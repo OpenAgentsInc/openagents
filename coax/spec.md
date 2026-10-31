@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.29.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.30.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1192,6 +1192,22 @@ profile separately, and names what remains unavailable: unowned units and
 their declarations and generated declarations. The canonical revision text and digest order are checked in
 `lib/compiler/sources.coax` (`SU_revision_text`). It is not a cache key,
 lockfile or toolchain manifest; build-only stage0 refuses it.
+
+Since 0.30.0, module visibility (r1a-public-hud-module): `#export a, B, c;`
+at file scope in a unit under a logical module lists declarations that
+module makes public. A module with any `#export` list is sealed: every
+other declaration of it is private, and naming one from another module,
+qualified (`hud.HUD_ARM`) or unqualified, is E0389 at the use. Units in the
+same module (its claim and the members it loads) use private names freely;
+`#authority` and checks stay with each physical unit. A module without a
+list keeps every declaration visible, so existing graphs are unchanged. A
+list names the module's own declarations: anything else is E0390, a name
+listed twice is E0391, `alias.Name` (a reexport) is E0614, malformed syntax
+is E0613 and `#export` in a unit with no logical module is E0615. Visibility
+never changes C spelling or ABI: `#export_c` remains the separate native
+export decision. `coax deps --modules` reports each module's sorted
+`exports`, or null when it has no list. verse/hud.coax (`verse.hud`) is the
+first sealed module.
 
 Since 0.29.0 (r1a-target-spans), both reports carry two typed records kept
 apart from nominal identity. Each declaration row has a `span`: the

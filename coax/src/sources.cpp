@@ -53,7 +53,8 @@ std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc) {
 // Source/proto directives are already parsed by their checked Coax scanners;
 // this bridge removes only those token spans, never parses declarations itself.
 static bool source_unit_syntax(const Source *source,const std::vector<Token> &tokens,
-                               const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit) {
+                               const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit,
+                               const std::vector<coax_t_SU_Export> &exports,int64_t export_count) {
   auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
   std::vector<coax_t_PS_Import> imports((size_t)caps.imports);
   auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
@@ -66,6 +67,7 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
     bool suppressed=false;
     for(int64_t n=0;n<load_count;n++)suppressed=suppressed || (token.loc.offset>=loads[(size_t)n].begin && token.loc.offset<loads[(size_t)n].end);
     suppressed=suppressed || (unit.claims && token.loc.offset>=unit.owner_begin && token.loc.offset<unit.owner_end);
+    for(int64_t n=0;n<export_count;n++)suppressed=suppressed || (token.loc.offset>=exports[(size_t)n].begin && token.loc.offset<exports[(size_t)n].end);
     for(int64_t n=0;n<scan.count;n++)suppressed=suppressed || (token.loc.offset>=imports[(size_t)n].loc.offset && token.loc.offset<imports[(size_t)n].end);
     if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
   }
@@ -169,12 +171,29 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       }
       u->source->claims=true;u->source->module=id;
     }
+    // Export lists name declarations the unit's logical module exposes; the
+    // directive bytes are blanked like #module, so the parser never sees them.
+    std::vector<coax_t_SU_Export> exported(512);
+    auto list=SU_exports({records.data(),(int64_t)records.size()},{exported.data(),(int64_t)exported.size()});
+    if (list.error) {
+      Loc at{1,1,(int32_t)list.offset};
+      for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
+      if (list.error==3) error_at(&local,at,"E0614","an export list names this module's own declarations; reexports are not supported","export the declaration from the module that declares it");
+      else error_at(&local,at,"E0613",list.error==2?"too many exported names in one unit":"#export requires file-scope identifiers separated by ',' and followed by ';'","#export hud_slot, HudRect;");
+      return false;
+    }
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
     composition=composition || scan.count!=0;
     if (composition && !u->balanced) {
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return false;
     }
-    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan)) return false;
+    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count)) return false;
+    for (int64_t i=0;i<list.count;i++) {
+      const auto &e=exported[(size_t)i];Loc at{1,1,(int32_t)e.at};
+      for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
+      u->source->exports.push_back({std::string(e.name.data,(size_t)e.name.count),at});
+      for (int64_t b=e.begin;b<e.end;b++) if (u->masked[(size_t)b]!='\n' && u->masked[(size_t)b]!='\r')u->masked[(size_t)b]=' ';
+    }
     if (scan.claims) for (int64_t at=scan.owner_begin;at<scan.owner_end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
     // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
     for (int64_t i=0;i<scan.count;i++) {
@@ -230,6 +249,13 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     for (int32_t i=0;i<at.offset;i++) if (src->text[(size_t)i]=='\n') {at.line++;at.col=1;} else at.col++;
     return at;
   };
+  for (const auto &u:units) if (!u->source->exports.empty() && u->source->module.empty()) {
+    const auto &e=u->source->exports.front();
+    error_at(src,{u->source->first_line+e.loc.line-1,e.loc.col,u->source->begin+e.loc.offset},"E0615",
+             "#export in '"+u->source->path+"', which belongs to no logical module",
+             "claim one with #module \"some.id\"; or load this file from a unit that does");
+    return false;
+  }
   std::vector<std::pair<const SourceUnit*,const SourceUnit::Alias*>> seen;
   for (const auto &u:units) for (const auto &a:u->source->aliases) {
     const auto &target=units[(size_t)a.target]->source;

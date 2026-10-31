@@ -132,6 +132,9 @@ const ErrorInfo ERRORS[] = {
     {"E0384", "unknown module alias", "A qualified name's alias must be bound in this module by #load \"FILE.coax\" as NAME;. Aliases belong to the logical module that loads them."},
     {"E0385", "module has no such declaration", "A qualified name sees only the declarations of the alias's module. Check the spelling, or load the module that declares it."},
     {"E0386", "ambiguous unqualified name", "Two modules declare this name and the use's own module does not. Qualify it with the alias of the module you mean: alias.Name."},
+    {"E0389", "private to its module", "A module with an #export list keeps every other declaration private. Use an exported name, or add the declaration to its module's #export list."},
+    {"E0390", "export of an undeclared name", "An #export list names declarations of its own logical module. Reexports of another module's names are not supported."},
+    {"E0391", "name exported twice", "List each exported name once across a module's #export lists."},
     {"E0387", "C cannot spell a module collision", "Two modules may each declare a name, and their private C spellings are qualified. An #export_c or #foreign symbol, or a type in a C library header, is one global C name, so a collision there is refused, never merged. Rename one."},
     {"E0388", "alias is not reexported", "alias.Name cannot name another module's alias. Load the module you mean here with its own alias."},
 
@@ -168,6 +171,9 @@ const ErrorInfo ERRORS[] = {
     {"E0610", "alias target has no logical module", "An alias binds to a logical module ID, so the loaded unit must claim one with #module \"some.id\";. Load a member file without an alias."},
     {"E0611", "alias names two modules", "Within one logical module an alias names one module. Pick another alias for the second module."},
     {"E0612", "unsupported layout target", "Layout facts are qualified only for the named native-lp64 target. coax layout and coax deps refuse any other --target instead of reporting LP64 values under its name."},
+    {"E0613", "malformed export list", "#export takes file-scope identifiers separated by ',' and ends with ';': #export hud_slot, HudRect;"},
+    {"E0614", "reexport in an export list", "An export list names only its module's own declarations; alias.Name is a reexport, which is not supported."},
+    {"E0615", "export outside a logical module", "#export belongs to a unit under a logical module. Claim one with #module, or load the file from a unit that does."},
     // ---- E07xx: device code ----
     {"E0700", "outside the CUDA compute subset", "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. A kernel with for thread: 0..<T loops (T a multiple of 32 up to 1024) runs T threads per item: a thread loop writes a shared array only at the elements its thread owns, code between thread loops never writes one, and shared arrays fit in 32 KiB."},
     {"E0701", "CUDA module has no kernel", "coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c."},

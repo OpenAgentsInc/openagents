@@ -455,7 +455,15 @@ static std::string modules_report(const Source *src, const File *file, const Emi
       out += std::string(f2 ? "" : ",") + "{\"path\":" + json_string(src->units[i]->canonical) + ",\"sha256\":" + json_string(hash[i]) + "}";
       f2 = false;
     }
-    out += "],\"content_revision\":" + json_string(content[m]) + ",\"dependencies\":[";
+    // A sealed module's public API: its #export names, sorted; null when every
+    // declaration stays visible (no list).
+    std::vector<std::string> names;
+    for (size_t i = 0; i < n; i++) if (src->units[i]->module == m) for (const auto &e : src->units[i]->exports) names.push_back(e.name);
+    std::sort(names.begin(), names.end());
+    std::string exports = names.empty() ? "null" : "[";
+    for (size_t i = 0; i < names.size(); i++) exports += (i ? "," : "") + json_string(names[i]);
+    if (!names.empty()) exports += "]";
+    out += "],\"exports\":" + exports + ",\"content_revision\":" + json_string(content[m]) + ",\"dependencies\":[";
     f2 = true;
     for (const auto &row : dep_json[m]) { out += std::string(f2 ? "" : ",") + row; f2 = false; }
     out += "],\"revision\":" + json_string(revision[m]) + "}";

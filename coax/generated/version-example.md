@@ -1,4 +1,4 @@
 ```bash
 $ coax/bin/coax version
-coax0 0.29.0
+coax0 0.30.0
 ```

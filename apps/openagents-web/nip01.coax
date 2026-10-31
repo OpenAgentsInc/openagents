@@ -5,7 +5,7 @@
 // compiled apart, decides every result; this file only draws them. A second
 // view lists NIP-01's parts and where each lives in the library.
 #load "splash.coax";
-#load "../../verse/hud.coax";
+#load "../../verse/hud.coax" as hud;
 
 #test "a result is VERIFIED only when the verifier said so" {
   #assert nip_label(0, true) == "VERIFIED";
@@ -167,7 +167,7 @@ nip_observed :: (p: [] Nip, observation: [] int) #export_c {
 }
 
 nip_slot :: (width: f32, height: f32, d: f32, index: int) -> Box {
-  r := verse_hud_slot(width / d, height / d, 0, index, CASES + 1);
+  r := hud.verse_hud_slot(width / d, height / d, 0, index, CASES + 1);
   return Box.{x0 = r.x * d, y0 = r.y * d, x1 = (r.x + r.width) * d, y1 = (r.y + r.height) * d};
 }
 nip_pick :: (p: [] Nip, slot: int) -> bool {

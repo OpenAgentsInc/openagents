@@ -3,6 +3,9 @@
 SU_Token :: struct {kind:u32;text:string;begin:int;end:int;}
 SU_Load :: struct {path:string;begin:int;end:int;alias:string;alias_begin:int;}
 SU_Scan :: struct {count:int;authority:bool;error:u32;offset:int;balanced:bool=true;claims:bool;owner:string;owner_begin:int;owner_end:int;}
+// One name in a `#export a, b;` list, with its token and its directive's range.
+SU_Export :: struct {name:string;at:int;begin:int;end:int;}
+SU_Exports :: struct {count:int;error:u32;offset:int;}
 SU_Visit :: struct {index:int= -1;action:u8;}
 
 #test "a top-level load retains its path and source span" {
@@ -271,6 +274,58 @@ SU_Visit :: struct {index:int= -1;action:u8;}
 }
 SU_check_required :: (authority:bool,entry:bool,mutation:bool)->bool #export_c {return authority || (entry && mutation);}
 
+// Export lists: `#export a, b;` at file scope names declarations its logical
+// module makes visible to other modules. Error 1 is syntax, 2 capacity,
+// 3 a qualified name (a reexport, which is not supported).
+#test "export lists record each name with its token and directive range" {
+ t:=[9] SU_Token.[SU_Token.{kind=6,text="export",begin=0,end=7},SU_Token.{kind=1,text="a",begin=8,end=9},SU_Token.{kind=14,begin=9,end=10},
+  SU_Token.{kind=1,text="b",begin=11,end=12},SU_Token.{kind=15,begin=12,end=13},
+  SU_Token.{kind=6,text="export",begin=14,end=21},SU_Token.{kind=1,text="c",begin=22,end=23},SU_Token.{kind=15,begin=23,end=24},SU_Token.{}];
+ out:[3] SU_Export;r:=SU_exports(t[..],out[..]);
+ #assert r.error==0 && r.count==3;
+ #assert out[0].name=="a" && out[0].at==8 && out[0].begin==0 && out[0].end==13;
+ #assert out[1].name=="b" && out[1].at==11 && out[1].begin==0 && out[1].end==13;
+ #assert out[2].name=="c" && out[2].at==22 && out[2].begin==14 && out[2].end==24;
+}
+#test "nested and other directives are not export lists" {
+ t:=[8] SU_Token.[SU_Token.{kind=10},SU_Token.{kind=6,text="export",begin=3},SU_Token.{kind=1,text="a"},SU_Token.{kind=15},SU_Token.{kind=11},
+  SU_Token.{kind=6,text="export_c"},SU_Token.{kind=1,text="exports"},SU_Token.{}];
+ out:[2] SU_Export;r:=SU_exports(t[..],out[..]);#assert r.error==1 && r.offset==3 && r.count==0;
+ u:=[6] SU_Token.[SU_Token.{kind=8},SU_Token.{kind=9},SU_Token.{kind=12},SU_Token.{kind=13},SU_Token.{kind=6,text="export_c"},SU_Token.{}];
+ r=SU_exports(u[..],out[..]);#assert r.error==0 && r.count==0;
+ v:=[7] SU_Token.[SU_Token.{kind=8},SU_Token.{kind=10},SU_Token.{kind=12},SU_Token.{kind=6,text="export",begin=4},SU_Token.{kind=1,text="a"},SU_Token.{kind=15},SU_Token.{}];
+ r=SU_exports(v[..],out[..]);#assert r.error==1 && r.offset==4;
+}
+#forall "only file scope admits an export list" pair:0..<3, inside:bool {
+ opens:=[3] u32.[8,10,12];o:=opens[pair];
+ t:=[6] SU_Token.[SU_Token.{kind=o},SU_Token.{kind=o+1},SU_Token.{kind=6,text="export",begin=2},SU_Token.{kind=1,text="a"},SU_Token.{kind=15},SU_Token.{}];
+ if inside {t[1]=SU_Token.{kind=6,text="export",begin=1};t[2]=SU_Token.{kind=1,text="a"};t[3]=SU_Token.{kind=15};t[4]=SU_Token.{kind=o+1};}
+ out:[1] SU_Export;r:=SU_exports(t[..],out[..]);
+ if inside {#assert r.error==1 && r.offset==1 && r.count==0;}else {#assert r.error==0 && r.count==1 && out[0].name=="a";}
+}
+#test "a reexport after a plain name keeps no partial list" {
+ t:=[7] SU_Token.[SU_Token.{kind=6,text="export",begin=0},SU_Token.{kind=1,text="a",begin=8},SU_Token.{kind=14},SU_Token.{kind=1,text="m",begin=11},SU_Token.{kind=20},SU_Token.{kind=1,text="b"},SU_Token.{kind=15}];
+ out:[2] SU_Export;r:=SU_exports(t[..],out[..]);#assert r.error==3 && r.offset==11 && r.count==0;
+ u:=[3] SU_Token.[SU_Token.{kind=6,text="export",begin=0},SU_Token.{kind=1,text="a",begin=8},SU_Token.{kind=15,end=10}];
+ r=SU_exports(u[..],out[..]);#assert r.error==0 && r.count==1 && out[0].end==10;
+}
+#forall "an export list is names separated by commas and ended by ';'" variant:0..<9 {
+ // 0 empty, 1 trailing comma, 2 no ';', 3 a string, 4 two names without a comma, 5 at EOF, 6 ok, 7 a.b, 8 capacity
+ t:=[6] SU_Token.[SU_Token.{kind=6,text="export",begin=5},SU_Token.{kind=1,text="a",begin=6},SU_Token.{kind=15},SU_Token.{},SU_Token.{},SU_Token.{}];n:=4;
+ if variant==0 {t[1]=SU_Token.{kind=15};}
+ if variant==1 {t[2]=SU_Token.{kind=14};t[3]=SU_Token.{kind=15};n=5;}
+ if variant==2 {t[2]=SU_Token.{kind=1,text="b"};}
+ if variant==3 {t[1]=SU_Token.{kind=5,text="a"};}
+ if variant==4 {t[2]=SU_Token.{kind=1,text="b"};t[3]=SU_Token.{kind=15};n=5;}
+ if variant==5 {n=2;}
+ if variant==7 {t[2]=SU_Token.{kind=20,begin=7};t[3]=SU_Token.{kind=1,text="b"};t[4]=SU_Token.{kind=15};n=6;}
+ room:=2;if variant==8 {t[2]=SU_Token.{kind=14};t[3]=SU_Token.{kind=1,text="b"};t[4]=SU_Token.{kind=15};n=6;room=1;}
+ out:[2] SU_Export;r:=SU_exports(t[0..<n],out[0..<room]);
+ if variant==6 {#assert r.error==0 && r.count==1 && out[0].name=="a" && out[0].at==6;}
+ else if variant==7 {#assert r.error==3 && r.offset==6;}
+ else if variant==8 {#assert r.error==2 && r.offset==5 && r.count==1;}
+ else {#assert r.error==1 && r.offset==5 && r.count==0;}
+}
 // Implementations follow only after their checks have been written.
 SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
  r:SU_Scan;stack:[128] u32;depth:=0;i:=0;
@@ -311,6 +366,30 @@ SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
   i+=1;
  }
  if depth!=0 {r.balanced=false;}
+ return r;
+}
+SU_exports :: (tokens:[] SU_Token,out:[] SU_Export)->SU_Exports #export_c {
+ r:SU_Exports;depth:=0;i:=0;
+ while i<tokens.count {
+  t:=tokens[i];
+  if t.kind==8 || t.kind==10 || t.kind==12 {depth+=1;}else if t.kind==9 || t.kind==11 || t.kind==13 {depth-=1;}
+  if t.kind==6 && t.text=="export" {
+   r.offset=t.begin;if depth!=0 {r.error=1;return r;}
+   first:=r.count;j:=i+1;
+   while true {
+    if j+1>=tokens.count || tokens[j].kind!=1 {r.count=first;r.error=1;return r;}
+    if tokens[j+1].kind==20 {r.count=first;r.error=3;r.offset=tokens[j].begin;return r;}
+    if r.count>=out.count {r.error=2;return r;}
+    out[r.count]=SU_Export.{name=tokens[j].text,at=tokens[j].begin,begin=t.begin};r.count+=1;
+    if tokens[j+1].kind==15 {break;}
+    if tokens[j+1].kind!=14 {r.count=first;r.error=1;return r;}
+    j+=2;
+   }
+   for k:first..<r.count {out[k].end=tokens[j+1].end;}
+   i=j+2;continue;
+  }
+  i+=1;
+ }
  return r;
 }
 SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c {

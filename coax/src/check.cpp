@@ -93,6 +93,8 @@ struct CheckInput {
   std::vector<coax_string> module_names;
   std::vector<std::string> alias_names;
   std::vector<coax_t_CK_Alias> aliases;
+  std::vector<std::string> export_names;
+  std::vector<coax_t_CK_Export> exports;
 };
 static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
   if(!unit || unit->module.empty())return 0;
@@ -109,6 +111,12 @@ static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nod
     const auto &name=input->alias_names[alias_at++];
     input->aliases.push_back({module_scope(input.get(),u.get()),{name.data(),(int64_t)name.size()},module_scope(input.get(),file->src->units[(size_t)a.target].get())});
   }
+  for(const auto &u:file->src->units)for(const auto &e:u->exports)input->export_names.push_back(e.name);
+  size_t export_at=0;
+  for(const auto &u:file->src->units)for(const auto &e:u->exports){
+    const auto &name=input->export_names[export_at++];
+    input->exports.push_back({module_scope(input.get(),u.get()),{name.data(),(int64_t)name.size()},{u->first_line+e.loc.line-1,e.loc.col,u->begin+e.loc.offset}});
+  }
   for(const auto &m:input->modules)input->module_names.push_back({m.data(),(int64_t)m.size()});
   for(int64_t id=0;id<=used;id++){
     const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
@@ -124,7 +132,7 @@ bool check(Arena *arena,File *file){
   std::vector<coax_t_CK_Type> records((size_t)caps.types);std::vector<coax_t_CK_Local> locals((size_t)caps.locals);
   std::vector<coax_t_CK_Error> errors((size_t)caps.errors);std::vector<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
   coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1},
-    {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()}};
+    {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()},{input->exports.data(),(int64_t)input->exports.size()}};
   const bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority});
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}

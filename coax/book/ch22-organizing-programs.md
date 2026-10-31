@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.29.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.30.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -237,8 +237,35 @@ with the same fields (`'a' is demo.left.V but is initialized with
 demo.right.V`). Aliases are not reexported: `l.r.V` is E0222. Native C gives
 colliding private names module-qualified spellings; an `#export_c` symbol or
 a library header's type is one global C name, so two modules exporting
-`open_it` is E0387. Every declaration is still visible from every module;
-choosing what a module exports is the next step.
+`open_it` is E0387.
+
+## Choose what a module exports
+
+By default every declaration in a module is visible to every other module.
+An `#export` list makes a module's API explicit. The engine HUD does this:
+
+```coax
+// verse/hud.coax
+#module "verse.hud";
+#export HudRect, HudPoint, verse_hud_slot;
+#export verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline, verse_hud_arm_down;
+#load "hud/types.coax";
+#load "hud/frame.coax";
+```
+
+Once a module has a list, the rest of its declarations are private. The
+landing page's nostr board loads it as `#load "../../verse/hud.coax" as
+hud;` and calls `hud.verse_hud_slot(...)`; writing `hud.HUD_ARM`, or plain
+`HUD_ARM`, stops with E0389 (`'HUD_ARM' is private to module 'verse.hud'`).
+The files the module loads (`hud/frame.coax` here) are part of it, so they
+use the private constants freely, and each keeps its own `#authority` and
+checks. A list names the module's own declarations: listing another
+module's name is E0390 and `#export other.Name;` (a reexport) is E0614.
+Visibility is a source rule only. It does not change C names: whether a
+procedure is a native symbol is still `#export_c`. A module without a list
+behaves as before, so you can add lists one module at a time.
+`coax deps verse/hud.coax --modules` prints the list as the module's
+`exports`.
 
 ## Keep source, ABI and protocol identity distinct
 

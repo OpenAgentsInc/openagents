@@ -1,5 +1,11 @@
 // Reusable engine HUD slots: content supplies action IDs and platform glyphs;
 // the engine owns the safe-area-aware hotbar geometry and hit areas.
+// The logical module verse.hud owns this file and the two it loads. Its
+// public API is the list below: the two packet types and the native HUD
+// functions. The HUD_* constants stay private (the functions return them).
+#module "verse.hud";
+#export HudRect, HudPoint, verse_hud_slot;
+#export verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline, verse_hud_arm_down;
 #load "hud/types.coax";
 #load "hud/frame.coax";
 #test "hotbar fits a narrow phone and stays above the home indicator" {

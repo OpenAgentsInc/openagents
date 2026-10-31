@@ -5,6 +5,9 @@ ModuleIdentity: `#module` owners, #load membership and the nominal
 declaration IDs that `coax deps --declarations` reports from the checked graph.
 QualifiedLookup: `#load "FILE.coax" as NAME;` path imports and NAME.Decl
 bindings resolved in the checked graph (r1a-qualified-lookup).
+Visibility: `#export` lists seal a module; private declarations are refused
+outside it, and the real verse/hud.coax graph keeps its native API
+(r1a-public-hud-module).
 TargetSpans: the native-lp64 target record against an independent C oracle,
 unsupported layout targets, and exact authored declaration spans
 (r1a-target-spans).
@@ -474,6 +477,114 @@ class QualifiedLookup(unittest.TestCase):
         self.error(dup / "main.coax", "E0334")
         dup = self.tree({"x.coax": '#module "m.x";\nV :: struct {}\nV :: struct {}\n', "main.coax": '#load "x.coax" as x;\nmain :: () {}\n'}, "e")
         self.error(dup / "main.coax", "E0372")
+# A sealed module (an #export list) whose member unit uses its private names,
+# loaded by a second module that is not sealed.
+SEALED = {
+    "geo/geo.coax": '#module "demo.geo";\n#export Rect, area, UNIT;\n#load "inner.coax";\nRect :: struct { w: int; h: int; }\nUNIT :: cast(int) 1;\narea :: (r: Rect) -> int { return scale(r.w * r.h); }\n',
+    "geo/inner.coax": '#authority;\nSCALE :: cast(int) 2;\nPad :: struct { p: int; }\nscale :: (v: int) -> int { p := Pad.{p = SCALE}; return v * p.p; }\n#test "members use private names" { #assert scale(3) == 6; }\n',
+    "mid.coax": '#module "demo.mid";\n#load "geo/geo.coax" as geo;\nmid_area :: () -> int { return geo.area(geo.Rect.{w = 2, h = 3}); }\nMID :: cast(int) 5;\n',
+    "main.coax": '#import "Basic";\n#load "mid.coax" as mid;\n#load "geo/geo.coax" as geo;\n'
+                 'main :: () { r := geo.Rect.{w = 4, h = 5}; print("% % % %\\n", geo.area(r), mid.mid_area(), mid.MID, geo.UNIT); }\n',
+}
+HUD_EXPORTS = ["HudPoint", "HudRect", "verse_hud_arm_down", "verse_hud_cut", "verse_hud_frame_arm", "verse_hud_frame_point",
+               "verse_hud_outline", "verse_hud_slot", "verse_hud_tone"]
+
+
+class Visibility(unittest.TestCase):
+    """Private-by-default declarations in modules with an #export list."""
+    setUp = ModuleIdentity.setUp
+    tree = ModuleIdentity.tree
+    run_coax = ModuleIdentity.run_coax
+    error = ModuleIdentity.error
+    ok = QualifiedLookup.ok
+
+    def refused(self, body, code, under):
+        files = dict(SEALED)
+        files["main.coax"] = '#import "Basic";\n#load "mid.coax" as mid;\n#load "geo/geo.coax" as geo;\nmain :: () { ' + body + ' }\n'
+        return self.error(self.tree(files, under) / "main.coax", code)
+
+    def test_exported_names_stay_usable_and_members_share_the_owner(self):
+        root = self.tree(SEALED)
+        self.assertEqual(self.ok("run", root / "main.coax"), "40 12 5 1\n")
+        # The member unit's #authority and its check stay with that physical unit.
+        out = self.ok("test", root / "geo/geo.coax", "--lib")
+        self.assertIn("members use private names", out)
+        self.assertIn("1 check, 1 passed, 0 failed", out)
+        m = json.loads(self.ok("deps", root / "main.coax", "--modules"))
+        exports = {x["id"]: x["exports"] for x in m["modules"]}
+        self.assertEqual(exports, {"demo.geo": ["Rect", "UNIT", "area"], "demo.mid": None})
+
+    def test_private_declarations_are_refused_outside_their_module(self):
+        cases = [("x := geo.SCALE;", "'SCALE' is private to module 'demo.geo'"),
+                 ("x := geo.scale(1);", "'scale' is private to module 'demo.geo'"),
+                 ("p := geo.Pad.{p = 1};", "'Pad' is private to module 'demo.geo'"),
+                 ("x := SCALE;", "'SCALE' is private to module 'demo.geo'"),
+                 ("x := scale(2);", "'scale' is private to module 'demo.geo'"),
+                 ("p: Pad;", "'Pad' is private to module 'demo.geo'")]
+        for i, (body, message) in enumerate(cases):
+            hit = self.refused(body, "E0389", f"p{i}")
+            self.assertEqual(hit["message"], message)
+            self.assertEqual(Path(hit["file"]).name, "main.coax")
+        # Transitive access: demo.mid's aliases and loaded names are not reexported.
+        self.refused("x := mid.geo.UNIT;", "E0388", "t0")
+        self.refused("x := mid.area(mid.Rect.{w = 1, h = 1});", "E0385", "t1")
+        self.refused("x := mid.SCALE;", "E0385", "t2")
+
+    def test_export_lists_name_own_declarations_once(self):
+        def geo(text, under):
+            files = dict(SEALED)
+            files["geo/geo.coax"] = SEALED["geo/geo.coax"].replace("#export Rect, area, UNIT;", text)
+            return self.tree(files, under) / "main.coax"
+        hit = self.error(geo("#export Rect, area, UNIT, MID;", "u"), "E0390")
+        self.assertEqual(hit["message"], "module 'demo.geo' exports 'MID', which it does not declare")
+        self.assertEqual((Path(hit["file"]).name, hit["line"]), ("geo.coax", 2))
+        self.error(geo("#export Rect, area, UNIT;\n#export area;", "d"), "E0391")
+        self.error(geo("#export Rect, mid.MID;", "r"), "E0614")
+        for i, text in enumerate(("#export Rect,;", "#export;", "#export Rect area;", '#export "Rect";')):
+            self.error(geo(text, f"s{i}"), "E0613")
+        lone = self.tree({"main.coax": "#export x;\nx :: 1;\nmain :: () {}\n"}, "l")
+        hit = self.error(lone / "main.coax", "E0615")
+        self.assertEqual((hit["line"], hit["col"]), (1, 9))
+
+    def test_unannotated_graphs_keep_every_name_visible(self):
+        files = dict(SEALED)
+        files["geo/geo.coax"] = SEALED["geo/geo.coax"].replace("#export Rect, area, UNIT;\n", "")
+        files["main.coax"] = '#import "Basic";\n#load "geo/geo.coax" as geo;\nmain :: () { print("% %\\n", geo.SCALE, scale(4)); }\n'
+        self.assertEqual(self.ok("run", self.tree(files) / "main.coax"), "2 8\n")
+        root = self.tree(HUD, "h")
+        self.assertEqual(self.ok("run", root / "main.coax"), "42\n")
+
+    def test_the_hud_graph_exposes_its_native_api(self):
+        hud = ROOT.parent / "verse/hud.coax"
+        self.assertIn("3 checks, 3 passed", self.ok("test", hud))
+        m = json.loads(self.ok("deps", hud, "--modules"))
+        (mod,) = m["modules"]
+        self.assertEqual(mod["id"], "verse.hud")
+        self.assertEqual(mod["exports"], HUD_EXPORTS)
+        self.assertEqual(sorted(Path(x["path"]).name for x in mod["members"]), ["frame.coax", "hud.coax", "types.coax"])
+        # A page in that graph cannot reach the private HUD_* constants.
+        page = self.base / "page.coax"
+        page.write_text('#load "%s" as hud;\nx :: () -> f32 { return hud.HUD_ARM; }\nmain :: () {}\n' % hud)
+        self.assertEqual(self.error(page, "E0389")["message"], "'HUD_ARM' is private to module 'verse.hud'")
+        cc = shutil.which("cc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no native C compiler for the HUD host")
+        header, lib = self.base / "hud.h", self.base / "hud.c"
+        lib.write_text(self.ok("c", hud, "--library", "--header", header))
+        host = self.base / "host.c"
+        host.write_text('#include <stdio.h>\n#include "hud.h"\nint main(void) {\n'
+                        '  coax_t_HudRect r = verse_hud_slot(320, 700, 34, 0, 6);\n'
+                        '  coax_t_HudPoint p = verse_hud_frame_point(0, 0, 100, 40, 7, 1);\n'
+                        '  printf("%zu %zu %g %g %g %g %g %g %g %g\\n", sizeof(coax_t_HudRect), sizeof(coax_t_HudPoint), r.width, r.height, p.x, p.y,\n'
+                        '         verse_hud_frame_arm(400, 1), verse_hud_tone(4), verse_hud_cut(1), verse_hud_outline() + verse_hud_arm_down());\n'
+                        '  return 0;\n}\n')
+        exe = self.base / "host"
+        subprocess.run([cc, "-std=c11", "-I", str(self.base), str(host), str(lib), "-lm", "-o", str(exe)], check=True)
+        out = subprocess.run([str(exe)], capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(out[:2], ["16", "8"])
+        for got, want in zip([float(v) for v in out[2:]], [44.0, 44.0, 93.0, 0.0, 22.0, 0.216, 10.0, 0.9]):
+            self.assertAlmostEqual(got, want, places=5)
+
 
 # Scalars by Coax name and the C type the oracle measures independently.
 ORACLE_TYPES = [("bool", "_Bool"), ("f32", "float"), ("f64", "double"), ("s8", "int8_t"), ("s16", "int16_t"),

@@ -91,6 +91,9 @@ struct SourceUnit {
   // `#load "FILE.coax" as NAME;`: the alias, the loaded unit, the alias offset in this unit.
   struct Alias { std::string name; int32_t target = 0; int32_t offset = 0; };
   std::vector<Alias> aliases;
+  // `#export a, b;`: each name and its location within this unit.
+  struct Export { std::string name; Loc loc; };
+  std::vector<Export> exports;
 };
 struct SourcePoint { std::string path; Loc loc; };
 struct Source {

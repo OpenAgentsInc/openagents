@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r1a-public-hud-module",
+  "alias": "#9548",
+  "parent": "r1a-identities (#963b), kept open",
+  "compiler_version": "0.30.0",
+  "graph": "verse/hud.coax",
+  "module": "verse.hud",
+  "exports": [
+    "HudPoint",
+    "HudRect",
+    "verse_hud_arm_down",
+    "verse_hud_cut",
+    "verse_hud_frame_arm",
+    "verse_hud_frame_point",
+    "verse_hud_outline",
+    "verse_hud_slot",
+    "verse_hud_tone"
+  ],
+  "members": [
+    {
+      "path": "verse/hud.coax",
+      "sha256": "938ce9a735cb9da0ef7591a847eb1978d747934f415c9e4d8717555ff973cead"
+    },
+    {
+      "path": "verse/hud/types.coax",
+      "sha256": "83d20fbf2f63f2f9f69ef0bf07c5e3609e0e7be862cdc5d2a95b2fcb4c21ec74"
+    },
+    {
+      "path": "verse/hud/frame.coax",
+      "sha256": "4511b429a6ca5018e15076f26125ce4fa82b1aed56ee00622cb6b90a8e7e4793"
+    }
+  ],
+  "content_revision": "92191714e5ab80727985c10a931b66b70632423d2e80f299c924bab8e18f6c49",
+  "revision": "e0e5778ebcc9a7e1d0e9e1f56ceae38b7e544452d038fb541883c1327f76eee9",
+  "declarations": [
+    {
+      "id": "coax.decl.v1:verse.hud:struct:HudRect",
+      "exported": true,
+      "unit": "verse/hud/types.coax",
+      "span": {
+        "start": 67,
+        "end": 122,
+        "start_line": 2,
+        "end_line": 2,
+        "sha256": "7a9ad2033093d8578139f56f57a4633c2d80a5acd4f02f2542f4018793dc9872"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:struct:HudPoint",
+      "exported": true,
+      "unit": "verse/hud/types.coax",
+      "span": {
+        "start": 123,
+        "end": 158,
+        "start_line": 3,
+        "end_line": 3,
+        "sha256": "0b91087e64c75ee7785e706113df6dcf752600a6d40a60ee63b536ece8284eef"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_GREY_WHITE",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 379,
+        "end": 402,
+        "start_line": 8,
+        "end_line": 8,
+        "sha256": "8b91e2f6526d9c1e81be8c11cfa1e90d3ab1fb5f1132de4e656ae4011685a4ee"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_GREY_LIGHT",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 403,
+        "end": 426,
+        "start_line": 8,
+        "end_line": 8,
+        "sha256": "0ed379785e5eb4a7f3dee04cd67f7283837e0263870d9fa9fbdf80342fccc64a"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_GREY_MID",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 427,
+        "end": 447,
+        "start_line": 8,
+        "end_line": 8,
+        "sha256": "457402f84b9fdcd6734c6de5587c292907aa8e7fb0c73b6938bf3812bedf2dc9"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_GREY_DIM",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 448,
+        "end": 469,
+        "start_line": 8,
+        "end_line": 8,
+        "sha256": "dcbf04ccb6e1a9b734170cdbca55e57f8c414517af051f4a8ebeb1414fbcc86a"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_ACCENT_R",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 470,
+        "end": 492,
+        "start_line": 9,
+        "end_line": 9,
+        "sha256": "514a60ece67169f49af28d12c768c4c24893364b3c41a3c495baf355c7b066f2"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_ACCENT_G",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 493,
+        "end": 515,
+        "start_line": 9,
+        "end_line": 9,
+        "sha256": "9e91b4a09f3e7ac1a40037b496bc4c765bb7eee2d2844d691878815e186bae91"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_ACCENT_B",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 516,
+        "end": 538,
+        "start_line": 9,
+        "end_line": 9,
+        "sha256": "2063db185651d6e551acb718afeb75059d90ecc8a4fc7dcc23b6c4cf4ecb6fcc"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_OUTLINE",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 577,
+        "end": 596,
+        "start_line": 10,
+        "end_line": 10,
+        "sha256": "b4f5739386f685852c8f11c4731f7fc192721a5e7d12564f5ff9a553ab9e81c4"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_ARM",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 647,
+        "end": 663,
+        "start_line": 11,
+        "end_line": 11,
+        "sha256": "d8a5e2b6a5d2539cdda6da1520aee4e4d112455f7cbe386a182fd9c389805223"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_ARM_DOWN",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 731,
+        "end": 751,
+        "start_line": 12,
+        "end_line": 12,
+        "sha256": "96734423561cae09ec7df30e0a792e23f2d1787938b45c7625a13b887c3155c6"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_CUT_BUTTON",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 794,
+        "end": 816,
+        "start_line": 13,
+        "end_line": 13,
+        "sha256": "c46ae1c8fa16565bfb8bbc599e4d2d01dad5862c29e5e3eed294730b0c3caf8b"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_CUT_PANEL",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 817,
+        "end": 839,
+        "start_line": 13,
+        "end_line": 13,
+        "sha256": "a873947c80a2f7ac33d48b8d51f373fe634b72435ef6f39d1494f3cfe85f1d8f"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:const:HUD_CUT_CARD",
+      "exported": false,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 840,
+        "end": 861,
+        "start_line": 13,
+        "end_line": 13,
+        "sha256": "21889003254ecaff98ac0d785d7e76f9695411eac60e9fb58d213e20b9eccf8b"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_slot",
+      "exported": true,
+      "unit": "verse/hud.coax",
+      "span": {
+        "start": 963,
+        "end": 1424,
+        "start_line": 19,
+        "end_line": 24,
+        "sha256": "1237b32f5b6d52a007b1c4c2779aea3b6477de239ee9434e339beb93fef37cb8"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_frame_point",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 1613,
+        "end": 1870,
+        "start_line": 26,
+        "end_line": 30,
+        "sha256": "d3449914ea4a261da524dc45774a2df58894b9c94579721089d1fb44f03596a4"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_frame_arm",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 1933,
+        "end": 2048,
+        "start_line": 32,
+        "end_line": 34,
+        "sha256": "f65ecaa4de3cd14f0088e3fa13bf47fb28554c1ac5d583f09ceadf7f8689be73"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_tone",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 2136,
+        "end": 2328,
+        "start_line": 36,
+        "end_line": 39,
+        "sha256": "036e4f7205862a901802de1c31998f2819f77e66a3a0e6ac27524849b722db4f"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_cut",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 2393,
+        "end": 2521,
+        "start_line": 41,
+        "end_line": 43,
+        "sha256": "b4ee7bbf6976f76548d3010a24799d94fcec241b2264741df2f44e5d1f2c608c"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_outline",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 2612,
+        "end": 2672,
+        "start_line": 45,
+        "end_line": 45,
+        "sha256": "0f2dd208244f217638f8e0ea20cf432988ac9f914bc16e8b9c285cf48e7fbe46"
+      }
+    },
+    {
+      "id": "coax.decl.v1:verse.hud:proc:verse_hud_arm_down",
+      "exported": true,
+      "unit": "verse/hud/frame.coax",
+      "span": {
+        "start": 2673,
+        "end": 2735,
+        "start_line": 46,
+        "end_line": 46,
+        "sha256": "1ffd38f88a60fef05f3ce68ab4c7245e0634cc93bc7944a286b8dc482e39f138"
+      }
+    }
+  ],
+  "private": [
+    "HUD_GREY_WHITE",
+    "HUD_GREY_LIGHT",
+    "HUD_GREY_MID",
+    "HUD_GREY_DIM",
+    "HUD_ACCENT_R",
+    "HUD_ACCENT_G",
+    "HUD_ACCENT_B",
+    "HUD_OUTLINE",
+    "HUD_ARM",
+    "HUD_ARM_DOWN",
+    "HUD_CUT_BUTTON",
+    "HUD_CUT_PANEL",
+    "HUD_CUT_CARD"
+  ],
+  "generated": {
+    "c_bytes": 14141,
+    "header_bytes": 3131
+  },
+  "caller": {
+    "path": "apps/openagents-web/nip01.coax",
+    "load": "#load \"../../verse/hud.coax\" as hud;",
+    "use": "hud.verse_hud_slot(...)",
+    "same_module_revision": true
+  },
+  "native": "Header unchanged byte for byte against 0.29.0; generated C for hud, nip01, nip-guide and pylon is identical apart from the source line numbers the six added lines shift. A C11 host calls verse_hud_slot, verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline and verse_hud_arm_down (tests/modules.py Visibility).",
+  "kernels": {
+    "sources": {
+      "tests": "42 checks passed",
+      "mutation": "550 mutants, 550 killed, 0 survived"
+    },
+    "checker": {
+      "tests": "570 checks passed",
+      "mutation": "4100 mutants, 4100 killed, 0 survived"
+    }
+  },
+  "fixtures": "coax/tests/modules.py Visibility: 5 tests (exported use and shared owner, private refusal qualified/unqualified/transitive, export-list errors E0390/E0391/E0613/E0614/E0615, unannotated compatibility, the real HUD graph and its C11 host)"
+}

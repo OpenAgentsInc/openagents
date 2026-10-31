@@ -179,7 +179,10 @@ CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;
 // Logical module scopes: a node's scope indexes modules (0 is the unowned
 // program); an alias names a target scope from within one scope.
 CK_Alias :: struct {scope:int;name:string;target:int;}
-CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;}
+// A name in a module's `#export` list. A module with any export is sealed:
+// its other declarations are private to it.
+CK_Export :: struct {scope:int;name:string;loc:CK_Loc;}
+CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;}
 CK_Options :: struct {library:bool;metal:bool;authority:bool;}
 CK_Caps :: struct {nodes:int;types:int;locals:int;errors:int;bytes:int;}
 CK_caps :: (nodes:int,source:int)->CK_Caps #export_c {
@@ -330,13 +333,30 @@ CK_module_name :: (c:CK_Context,scope:int)->string {if scope>0 && scope<c.module
 CK_qualifier :: (c:CK_Context,use:int)->int {
   u:=c.nodes[use];if u.kind!=CK_Tag.expr_ident || u.name2.count!=0 || CK_local(c,u.name)>=0 {return -1;}return CK_alias(c,u.scope,u.name);
 }
+CK_sealed :: (c:CK_Context,scope:int)->bool {for e:c.exports {if e.scope==scope {return true;}}return false;}
+CK_exported :: (c:CK_Context,scope:int,name:string)->bool {for e:c.exports {if e.scope==scope && e.name==name {return true;}}return false;}
+// A use outside a sealed module reaches only the names it exports.
+CK_visible :: (c:CK_Context,use:int,scope:int)->bool {
+  u:=c.nodes[use];if scope==u.scope || !CK_sealed(c,scope) || CK_exported(c,scope,u.name) {return true;}
+  parts:=[5] string.["'",u.name,"' is private to module '",CK_module_name(c,scope),"'"];
+  CK_error(c,u.loc,"E0389",CK_text(c,parts[..]),CK_join3(c,"add it to that module's list: #export ",u.name,";"));return false;
+}
+// Each exported name is declared by its own module, once per list.
+CK_exports_valid :: (c:CK_Context) {
+  for e,i:c.exports {
+    declared:=false;id:=c.nodes[1].head;
+    while id!=CK_NONE {n:=c.nodes[id];if n.scope==e.scope && n.name==e.name && (n.kind==CK_Tag.proc || n.kind==CK_Tag.constant || n.kind==CK_Tag.struct_ || n.kind==CK_Tag.enum_) {declared=true;}id=n.next;}
+    if !declared {parts:=[5] string.["module '",CK_module_name(c,e.scope),"' exports '",e.name,"', which it does not declare"];CK_error(c,e.loc,"E0390",CK_text(c,parts[..]),"export only the module's own declarations; reexports are not supported");}
+    for j:0..<i {if c.exports[j].scope==e.scope && c.exports[j].name==e.name {CK_error(c,e.loc,"E0391",CK_join3(c,"'",e.name,"' is already exported"),"list each name once");break;}}
+  }
+}
 CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
   u:=c.nodes[use];
   if u.name2.count!=0 {
     target:=CK_alias(c,u.scope,u.name2);
     if target<0 {CK_error(c,u.loc,"E0384",CK_join3(c,"unknown module alias '",u.name2,"'"),CK_join3(c,"load it first: #load \"FILE.coax\" as ",u.name2,";"));return false;}
     if CK_alias(c,target,u.name)>=0 {parts:=[5] string.["'",u.name2,".",u.name,"' reaches through another module's alias; aliases are not reexported"];CK_error(c,u.loc,"E0388",CK_text(c,parts[..]),"load that module here with its own alias");return false;}
-    for k:kinds {if CK_scan(c,k,u.name,target,true)!=CK_NONE {return true;}}
+    for k:kinds {if CK_scan(c,k,u.name,target,true)!=CK_NONE {return CK_visible(c,use,target);}}
     parts:=[6] string.["module '",CK_module_name(c,target),"' has no ",what," '",CK_join2(c,u.name,"'")];CK_error(c,u.loc,"E0385",CK_text(c,parts[..]),"");return false;
   }
   for k:kinds {if CK_clashes(c,k,u.name) && CK_scan(c,k,u.name,u.scope,false)== -1 {
@@ -345,6 +365,8 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
     parts:=[7] string.["'",u.name,"' is declared by both '",CK_module_name(c,first),"' and '",CK_module_name(c,second),"'"];
     CK_error(c,u.loc,"E0386",CK_text(c,parts[..]),CK_join2(c,"qualify it with a module alias: alias.",u.name));return false;
   }}
+  if c.exports.count==0 {return true;}
+  for k:kinds {d:=CK_lookup(c,k,use);if d!=CK_NONE {return CK_visible(c,use,c.nodes[d].scope);}}
   return true;
 }
 // Qualified module lookup. Scopes index modules ("" is the unowned program);
@@ -380,6 +402,64 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],aliases=aliases[..]};
  #assert CK_alias(c,0,"hud")==1 && CK_alias(c,2,"hud")==3 && CK_alias(c,0,"b")==2;
  #assert CK_alias(c,1,"hud")== -1 && CK_alias(c,2,"b")== -1 && CK_alias(c,0,"hu")== -1;
+}
+#forall "sealed modules expose only their exported names" variant:0..<12 {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[4] string.["","hud","util","open"];
+ aliases:=[3] CK_Alias.[CK_Alias.{scope=0,name="hud",target=1},CK_Alias.{scope=0,name="o",target=3},CK_Alias.{scope=2,name="hud",target=1}];
+ exports:=[2] CK_Export.[CK_Export.{scope=1,name="Rect",loc=CK_Loc.{line=2}},CK_Export.{scope=1,name="slot",loc=CK_Loc.{line=2}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Rect",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="slot",scope=1,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.constant,name="GAP",scope=1,next=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="Pad",scope=1,next=6};
+ nodes[6]=CK_Node.{kind=CK_Tag.constant,name="OPEN",scope=3,next=7};nodes[7]=CK_Node.{kind=CK_Tag.proc,name="helper",scope=1};
+ // uses: name, qualifier, the using scope
+ names:=[12] string.["Rect","slot","GAP","Pad","GAP","GAP","helper","OPEN","OPEN","Rect","helper","Pad"];
+ quals:=[12] string.["hud","","hud","","","","hud","o","","","","hud"];
+ scopes:=[12] int.[0,0,0,0,1,2,2,0,0,2,1,2];
+ kinds:=[4] CK_Tag.[CK_Tag.constant,CK_Tag.proc,CK_Tag.struct_,CK_Tag.enum_];
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,name=names[variant],name2=quals[variant],scope=scopes[variant],loc=CK_Loc.{line=5,column=7,offset=30}};
+ CK_collisions(c,false);#assert state[0].error_count==0;
+ ok:=CK_bind_check(c,9,kinds[..],"declaration");
+ good:=[12] bool.[true,true,false,false,true,false,false,true,true,true,true,false];
+ #assert ok==good[variant] && state[0].error_count==ifx ok then 0 else 1;
+ if !ok {e:=errors[0];#assert e.code=="E0389" && e.loc.line==5 && e.loc.column==7 && e.loc.offset==30;
+   #assert e.message==CK_join3(c,"'",names[variant],"' is private to module 'hud'") && e.fix==CK_join3(c,"add it to that module's list: #export ",names[variant],";");}
+}
+#test "visibility follows the sealed module, not the using one" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[3] string.["","a","b"];exports:=[1] CK_Export.[CK_Export.{scope=2,name="y"}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="x",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="y",scope=2};
+ #assert CK_sealed(c,2) && !CK_sealed(c,1) && !CK_sealed(c,0) && CK_exported(c,2,"y") && !CK_exported(c,1,"y") && !CK_exported(c,2,"x");
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="x",scope=2};#assert CK_visible(c,5,1) && state[0].error_count==0;
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="x",scope=1};#assert !CK_visible(c,5,2) && errors[0].message=="'x' is private to module 'b'";
+}
+#test "one export seals a module; unknown names stay the caller's to report" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[2] string.["","a"];exports:=[1] CK_Export.[CK_Export.{scope=1,name="y"}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name="x",scope=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.constant,name="y",scope=1,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.constant,name="q",scope=0};
+ CK_collisions(c,false);#assert state[0].error_count==0;kinds:=[1] CK_Tag.[CK_Tag.constant];
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="missing"};#assert CK_bind_check(c,6,kinds[..],"constant") && state[0].error_count==0;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,name="x"};#assert !CK_bind_check(c,6,kinds[..],"constant") && errors[0].code=="E0389";
+ // collisions also validate the lists
+ exports[0].name="q";CK_collisions(c,false);#assert state[0].error_count==2 && errors[1].code=="E0390";
+}
+#forall "an export names its own module's declaration once" variant:0..<6 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[3] string.["","a","b"];
+ kinds:=[4] CK_Tag.[CK_Tag.proc,CK_Tag.constant,CK_Tag.struct_,CK_Tag.enum_];
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.member,name="z",scope=1,next=3};
+ nodes[3]=CK_Node.{kind=kinds[variant%4],name="v",scope=1,next=4};nodes[4]=CK_Node.{kind=CK_Tag.constant,name="w",scope=2};
+ names:=[6] string.["v","v","v","v","w","z"];
+ exports:=[2] CK_Export.[CK_Export.{scope=1,name=names[variant],loc=CK_Loc.{line=3,column=9}},CK_Export.{scope=1,name="v",loc=CK_Loc.{line=4,column=2}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[0..<ifx variant<2 then 2 else 1]};
+ CK_exports_valid(c);
+ counts:=[6] int.[1,1,0,0,1,1];#assert state[0].error_count==counts[variant];
+ if variant<2 {#assert errors[0].code=="E0391" && errors[0].message=="'v' is already exported" && errors[0].fix=="list each name once" && errors[0].loc.line==4;}
+ if variant>=4 {#assert errors[0].code=="E0390" && errors[0].loc.line==3 && errors[0].loc.column==9 && errors[0].message==CK_join3(c,"module 'a' exports '",names[variant],"', which it does not declare") && errors[0].fix=="export only the module's own declarations; reexports are not supported";}
 }
 #forall "qualified and unqualified bindings at the original use" variant:0..<12 {
  nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
@@ -1417,6 +1497,7 @@ CK_collisions :: (c:CK_Context,library:bool) {
       }
     }id=d.next;
   }
+  CK_exports_valid(c);
 }
 CK_global_names :: (c:CK_Context) {
   pass:=0;while pass<2 {

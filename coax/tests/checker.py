@@ -23,7 +23,8 @@ class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Te
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64)]
 class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority')]
 class Alias(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('target',C.c_int64)]
-class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias))]
+class Export(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('loc',Loc)]
+class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export))]
 
 class Checker(unittest.TestCase):
     @classmethod

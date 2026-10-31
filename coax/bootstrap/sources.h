@@ -22,6 +22,8 @@ typedef struct { const char *data; int64_t count; } coax_string;
 typedef struct coax_t_SU_Token coax_t_SU_Token;
 typedef struct coax_t_SU_Load coax_t_SU_Load;
 typedef struct coax_t_SU_Scan coax_t_SU_Scan;
+typedef struct coax_t_SU_Export coax_t_SU_Export;
+typedef struct coax_t_SU_Exports coax_t_SU_Exports;
 typedef struct coax_t_SU_Visit coax_t_SU_Visit;
 #ifdef COAX_coax_t_SU_Scan_DEFINED
 #ifndef COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3634313a38313a39353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234363a636c61696d73353a5f426f6f6c323a3235353a6f776e657231313a636f61785f737472696e67323a333231313a6f776e65725f626567696e373a696e7436345f74323a3438393a6f776e65725f656e64373a696e7436345f74323a3536
@@ -67,6 +69,33 @@ struct coax_t_SU_Load { coax_string path; int64_t begin; int64_t end; coax_strin
 #define COAX_coax_v_t_SU_Load_DEFINED
 #define COAX_SCHEMA_coax_v_t_SU_Load_31343a636f61782d632d747970652d7631343a7669657731363a636f61785f765f745f53555f4c6f6164323a3136313a3831343a636f61785f745f53555f4c6f6164
 typedef struct { coax_t_SU_Load *data; int64_t count; } coax_v_t_SU_Load;
+#endif
+#ifdef COAX_coax_t_SU_Exports_DEFINED
+#ifndef COAX_SCHEMA_coax_t_SU_Exports_31343a636f61782d632d747970652d7631363a73747275637431373a636f61785f745f53555f4578706f727473323a3234313a38313a33353a636f756e74373a696e7436345f74313a30353a6572726f72383a75696e7433325f74313a38363a6f6666736574373a696e7436345f74323a3136
+#error "incompatible Coax C type coax_t_SU_Exports"
+#endif
+#else
+#define COAX_coax_t_SU_Exports_DEFINED
+#define COAX_SCHEMA_coax_t_SU_Exports_31343a636f61782d632d747970652d7631363a73747275637431373a636f61785f745f53555f4578706f727473323a3234313a38313a33353a636f756e74373a696e7436345f74313a30353a6572726f72383a75696e7433325f74313a38363a6f6666736574373a696e7436345f74323a3136
+struct coax_t_SU_Exports { int64_t count; uint32_t error; int64_t offset; };
+#endif
+#ifdef COAX_coax_t_SU_Export_DEFINED
+#ifndef COAX_SCHEMA_coax_t_SU_Export_31343a636f61782d632d747970652d7631363a73747275637431363a636f61785f745f53555f4578706f7274323a3430313a38313a34343a6e616d6531313a636f61785f737472696e67313a30323a6174373a696e7436345f74323a3136353a626567696e373a696e7436345f74323a3234333a656e64373a696e7436345f74323a3332
+#error "incompatible Coax C type coax_t_SU_Export"
+#endif
+#else
+#define COAX_coax_t_SU_Export_DEFINED
+#define COAX_SCHEMA_coax_t_SU_Export_31343a636f61782d632d747970652d7631363a73747275637431363a636f61785f745f53555f4578706f7274323a3430313a38313a34343a6e616d6531313a636f61785f737472696e67313a30323a6174373a696e7436345f74323a3136353a626567696e373a696e7436345f74323a3234333a656e64373a696e7436345f74323a3332
+struct coax_t_SU_Export { coax_string name; int64_t at; int64_t begin; int64_t end; };
+#endif
+#ifdef COAX_coax_v_t_SU_Export_DEFINED
+#ifndef COAX_SCHEMA_coax_v_t_SU_Export_31343a636f61782d632d747970652d7631343a7669657731383a636f61785f765f745f53555f4578706f7274323a3136313a3831363a636f61785f745f53555f4578706f7274
+#error "incompatible Coax C type coax_v_t_SU_Export"
+#endif
+#else
+#define COAX_coax_v_t_SU_Export_DEFINED
+#define COAX_SCHEMA_coax_v_t_SU_Export_31343a636f61782d632d747970652d7631343a7669657731383a636f61785f765f745f53555f4578706f7274323a3136313a3831363a636f61785f745f53555f4578706f7274
+typedef struct { coax_t_SU_Export *data; int64_t count; } coax_v_t_SU_Export;
 #endif
 #ifdef COAX_coax_t_SU_Visit_DEFINED
 #ifndef COAX_SCHEMA_coax_t_SU_Visit_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f53555f5669736974323a3136313a38313a32353a696e646578373a696e7436345f74313a30363a616374696f6e373a75696e74385f74313a38
@@ -116,12 +145,22 @@ COAX_LAYOUT(offsetof(coax_t_SU_Scan, claims) == 25, "offset of SU_Scan.claims");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner) == 32, "offset of SU_Scan.owner");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner_begin) == 48, "offset of SU_Scan.owner_begin");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner_end) == 56, "offset of SU_Scan.owner_end");
+COAX_LAYOUT(sizeof(coax_t_SU_Export) == 40 && COAX_ALIGNOF(coax_t_SU_Export) == 8, "layout of SU_Export");
+COAX_LAYOUT(offsetof(coax_t_SU_Export, name) == 0, "offset of SU_Export.name");
+COAX_LAYOUT(offsetof(coax_t_SU_Export, at) == 16, "offset of SU_Export.at");
+COAX_LAYOUT(offsetof(coax_t_SU_Export, begin) == 24, "offset of SU_Export.begin");
+COAX_LAYOUT(offsetof(coax_t_SU_Export, end) == 32, "offset of SU_Export.end");
+COAX_LAYOUT(sizeof(coax_t_SU_Exports) == 24 && COAX_ALIGNOF(coax_t_SU_Exports) == 8, "layout of SU_Exports");
+COAX_LAYOUT(offsetof(coax_t_SU_Exports, count) == 0, "offset of SU_Exports.count");
+COAX_LAYOUT(offsetof(coax_t_SU_Exports, error) == 8, "offset of SU_Exports.error");
+COAX_LAYOUT(offsetof(coax_t_SU_Exports, offset) == 16, "offset of SU_Exports.offset");
 COAX_LAYOUT(sizeof(coax_t_SU_Visit) == 16 && COAX_ALIGNOF(coax_t_SU_Visit) == 8, "layout of SU_Visit");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, index) == 0, "offset of SU_Visit.index");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, action) == 8, "offset of SU_Visit.action");
 
 _Bool SU_check_required(_Bool authority, _Bool entry, _Bool mutation);
 coax_t_SU_Scan SU_scan(coax_v_t_SU_Token tokens, coax_v_t_SU_Load out);
+coax_t_SU_Exports SU_exports(coax_v_t_SU_Token tokens, coax_v_t_SU_Export out);
 _Bool SU_admit(int64_t units, int64_t depth, int64_t total, int64_t bytes);
 coax_t_SU_Visit SU_visit(coax_v_string paths, coax_v_u8 states, coax_string path);
 _Bool SU_module_valid(coax_string id);
