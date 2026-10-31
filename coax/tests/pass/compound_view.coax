@@ -24,9 +24,17 @@ grow :: (t: [] Tree, c: [] int, n: int) {
   t[idx(c, 0)].n = idx(c, 3) + 40;
   t[0].count[idx(c, 3)] = t[0].count[idx(c, 0)] + 100;
 }
+// No call, but the index has two trapping operands, so its C text sequences
+// them through temporaries: `+=` must not spell that text twice.
+pairs :: (bytes: [] u8, counts: [] int) {
+  for i: 1..<bytes.count { counts[cast(int)bytes[i-1]*2 + cast(int)bytes[i]] += 1; }
+}
 main :: () {
   t: [1] Tree; c: [1] int;
   grow(t[..], c[..], 10);
   print("% % % %\n", t[0].count[0], t[0].count[1], t[0].count[2], t[0].count[3]);
   print("% % % % %\n", t[0].bits[3], t[0].at[1].x, t[0].at[1].y, t[0].n, c[0]);
+  b := [5] u8.[0, 1, 1, 0, 1]; k: [4] int;
+  pairs(b[..], k[..]);
+  print("% % % %\n", k[0], k[1], k[2], k[3]);
 }

@@ -120,6 +120,7 @@ main :: () {
     fit:=bg_fit(train[0..<BG_TRAIN.count],64,32,weights[..],stage[..],trace[..],false);#assert fit.status==BgStatus.ok;
     validation:=bg_evaluate(weights[..],validation_bytes[0..<BG_VALIDATION.count]);test:=bg_evaluate(weights[..],test_bytes[0..<BG_TEST.count]);
     #assert validation.status==BgStatus.ok && test.status==BgStatus.ok;
+    uniform:=8.0;#assert abs(fit.initial/log(2.0)-uniform)<1e-12 && validation.bits<uniform && test.bits<uniform;
     print("byte vocabulary: 256; parameters: 65536; updates: %\n",fit.updates);
     print("train nats: % -> %\n",fit.initial,fit.final);
     print("held out bits/byte: validation %, test %\n",validation.bits,test.bits);

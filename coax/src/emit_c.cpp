@@ -498,9 +498,25 @@ bool lowering_place_first(const Expr *target, const Expr *value, LoweringPolicy 
   return (has_call(target) && !trivial(value)) || (has_call(value) && !trivial(target)) ||
          (lowering_may_trap(target, p) && lowering_may_trap(value, p));
 }
-// `place op= value`: false when the place may be spelled twice in C.
+// True when some operation inside e evaluates its operands through
+// temporaries: e's C text assigns them, so it must not be spelled twice.
+bool lowering_inner_sequenced(const Expr *e, LoweringPolicy p) {
+  if (!e) return false;
+  std::vector<const Expr *> ops;
+  for (const Expr *x : {e->lhs, e->rhs, e->third}) if (x) ops.push_back(x);
+  for (const Expr *a : e->args) ops.push_back(a);
+  for (const FieldInit &f : e->fields) if (f.value) ops.push_back(f.value);
+  if (ops.size() >= 2 && lowering_sequenced(ops, p)) return true;
+  for (const Expr *x : ops) if (lowering_inner_sequenced(x, p)) return true;
+  return false;
+}
+// `place op= value`: false when the place may be spelled twice in C. A place
+// whose indexes are sequenced (`c[a[i-1]*256+a[i]] += 1`) is staged too, or
+// `place = place op value` would assign its temporaries twice in one
+// expression, which C leaves undefined.
 bool lowering_compound_staged(const Expr *target, const Expr *value, LoweringPolicy p) {
-  return has_call(target) || has_call(value) || (lowering_may_trap(target, p) && lowering_may_trap(value, p));
+  return has_call(target) || has_call(value) || (lowering_may_trap(target, p) && lowering_may_trap(value, p)) ||
+         lowering_inner_sequenced(target, p);
 }
 
 // An lvalue in the generated C.

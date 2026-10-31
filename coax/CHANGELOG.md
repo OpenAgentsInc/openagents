@@ -25,6 +25,11 @@ Commit: [`0b82a1587a56a4eed8ead255dd32300efe49fc30`](https://github.com/OpenAgen
   Views of strings, structs or views, fixed arrays and view results stay E0376.
 - The entropy bridge gains `cxrand_draw(out, n)`: one call writes the caller's
   view; `relay_conn.coax` and `cdp.coax` use it instead of n + 1 per-byte calls.
+- Same-version follow-up: `place op= value` stages the place's address when the
+  place's own indexes are sequenced through temporaries
+  (`c[a[i-1]*256+a[i]] += 1`). Spelling it twice assigned those temporaries
+  twice in one C expression, which C leaves undefined and clang rejects with
+  `-Wunsequenced`. `tests/pass/compound_view` covers it.
 
 ## 0.37.0 — 2026-10-31
 

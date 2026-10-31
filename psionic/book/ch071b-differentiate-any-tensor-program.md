@@ -223,7 +223,7 @@ ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
         }
     }
     a.at[a.count]=best;a.first[a.count]=first;a.last[a.count]=last;a.size[a.count]=size;a.count+=1;
-    if best+size>a.top {a.top=best+size;}
+    end:=best+size;a.top=(a.top+end+cast(int)abs(f64(a.top-end)))/2; // the larger, exactly (offsets are far below 2^53), with no branch to tie
     return a;
 }
 ```
