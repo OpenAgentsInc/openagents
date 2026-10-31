@@ -459,6 +459,35 @@ Explicit lane types such as `f32x4` and `s32x4` would be there when you
 want to write the vector code yourself. The usual rule for performance
 work applies: SIMD goes where a profiler says it helps, not everywhere.
 
+## Planned: logical shape apart from physical layout
+
+> Note: Not implemented. This is roadmap R21 (spec stage 11).
+
+Everything above chooses a layout by choosing a type: `[N] Pulse` is an
+array of structures and `SOA` storage is a structure of arrays, and code
+that reads the data is written for one of them. A numerical program wants
+the two apart. Its indexing should be written against what the data means
+(a batch of worlds, each with bodies, each with a pose) while the storage
+is chosen per target and measured.
+
+```jai
+// Sketch only: no syntax is accepted yet.
+Bodies :: tensor [worlds: dynamic, bodies: 64] Body
+          layout soa, tiled(worlds, 32)
+          placement device;
+```
+
+Each part would be checked separately: the logical shape (each dimension
+static, bounded or dynamic), the element type, the layout, the placement
+and the owner. Changing `layout` would change generated addresses and
+measured cost, never a result, and a change that does alter results (a
+different reduction order) would be refused as a layout change. Static
+dimensions and layout choices would be part of a kernel's identity;
+`coax explain` would say which values a kernel was specialized on and which
+edit recompiles it. A solver written for one world would run over a leading
+`worlds` dimension without being rewritten, which is how the Psionic physics
+engine plans to step many environments at once.
+
 ## Summary
 
 `coax0` lays out structs in the order you write them, at natural

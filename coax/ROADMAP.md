@@ -10,8 +10,10 @@ evidence and compatibility limits of what has actually shipped. It adds the
 physical-world foundations (R11–R20), including the spacecraft and
 solar-system work planned from the
 [physics design reference](../docs/research/expanse-physics-and-simulation-design-reference.md),
-and numbers every phase with a single integer;
-[section 30](#30-earlier-phase-labels) maps the earlier labels.
+then the simulation-compute phases (R21–R24) that a GPU physics engine at
+parity with [Genesis World](../docs/research/genesis/genesis.md) needs from the
+language, and numbers every phase with a single integer;
+[section 34](#34-earlier-phase-labels) maps the earlier labels.
 
 The goal is a systems language in which OpenAgents and Verse can express
 their computation, data, protocols, tools and build policy in Coax. Runtime
@@ -46,6 +48,7 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 | Protocols | Selected proto3 descriptor imports, bounded borrowed codecs and real app consumers | Remaining consumer/domain admission paths and consumer-justified schema features |
 | GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac/iOS integration; narrow Coaxial Wasm/WebGPU splash | Shared GPU resource declarations, general shader profiles, full engine browser vertical slice and evidence for other targets |
 | Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
+| Simulation compute | Bounded CUDA/Metal compute kernels, Psionic's library-level CUDA graph replay and leased DLPack views | Logical shapes separate from physical layouts and placement, visible specialization, measured compile and startup budgets with a correct kernel cache, device graphs and device-side loops as language forms, zero-copy buffer imports with explicit transfers, and kernel differentiation with custom adjoints |
 | Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 167; f64 space modules in `verse/` (rigid bodies, contacts, gravity fields including a spinning drum, thrusters and tanks, two-body orbits with a J2000 mean-element ephemeris, patched conics, Lambert transfers and RK4 finite burns, a floating-origin camera) used by Orbit League and Belt 2200 ([space primitives](../docs/verse/space.md)) | Units and frames with full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, deterministic integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
@@ -67,19 +70,21 @@ a new backend. R11–R20 make computation about the physical world checkable:
 transitive effects, then units and frames, typed clocks, bounded control,
 strict math, integrators and jobs, replay, robot-model import, stamped sensors
 with supervised actuators, fault scenarios, and finally parameter provenance,
-fidelity profiles and typed rule modules. Complete compiler migration in R21
-and resident compilation/reload in R22–R23 on their own evidence. R24 remains
-conditional on measurements.
+fidelity profiles and typed rule modules. R21–R24 make simulation compute
+first-class: logical tensors over chosen layouts, compile and startup budgets,
+device graphs with zero-copy buffers, and kernel differentiation. Complete
+compiler migration in R25 and resident compilation/reload in R26–R27 on their
+own evidence. R28 remains conditional on measurements.
 
 Every phase depends only on lower-numbered phases. The numbers give the default
 priority, not an instruction to block an independent experiment behind
 unrelated features. In particular, a browser feasibility test belongs in R1;
 the first GPU/browser slice does not require parallel jobs, full macros or a
 self-hosted compiler. Effects work starts with ownership in R3. Coax compiler
-migration can proceed in small pieces before R21 once each piece has its
-prerequisites. Restricted body replacement (R22) needs only R1's first
+migration can proceed in small pieces before R25 once each piece has its
+prerequisites. Restricted body replacement (R26) needs only R1's first
 delivery and can run early as an experiment; resident compilation also does
-not require completed self-hosting, so R21–R23 may overlap once their own
+not require completed self-hosting, so R25–R27 may overlap once their own
 dependencies and trust boundaries are satisfied.
 
 The physical-world phases share three continuous consumers: one running Verse
@@ -90,7 +95,10 @@ the `verse/` space modules: a freighter that loads cargo, transfers to a moving
 destination, rides out a fault and docks, used by the Verse space games and by
 Psionic Part XXV (chapters 249–258). Each of R12–R20 must improve one of them,
 and a facility both the robot and the spacecraft need (frames, clocks,
-integrators, replay, stamps) is built once for both. These phases produce language, library and checking work for
+integrators, replay, stamps) is built once for both. R21–R24 have one more
+consumer, the Psionic physics engine (rigid and articulated bodies, contact,
+particle and mesh materials, coupling and batched worlds), whose solvers are
+the first kernels to need layouts, budgets, device graphs and derivatives. These phases produce language, library and checking work for
 simulation. They do not authorize, drive or qualify real hardware; a hardware
 bridge, driver or real-time deployment profile needs its own authorization,
 safety review and target qualification outside this roadmap.
@@ -126,19 +134,24 @@ the first.
 | R18 — Stamped sensors and actuator supervision | R12 frames, R13 freshness and R14 bounded control; simulated devices only | Calibration identities, light-time emission/reception stamps and richer supervision policies |
 | R19 — Reproducible fault scenarios | R16 replay and R18 supervision | Larger scenario corpora on the same recorded format |
 | R20 — Provenance, fidelity profiles and rule modules | R5 annotations, R12 quantities and R16 recorded inventories; provenance-typed parameters and checked fidelity profiles | R11 effect summaries for typed rule modules that declare what they change |
-| R21 — Complete compiler migration and distribution | The facilities each individual pass needs; retain independent oracles and seeds | Coax semantic passes/emitters, documented trust boundary and supported distributions |
-| R22 — Restricted procedure-body replacement | R1 interface/layout identities and a quiescent, restricted Mac host; unchanged-ABI procedure-body replacement | Measured edit-to-result value before R23 |
-| R23 — Resident semantics and transactional migration | R1/R8 cache inputs, R3 ownership and R5 stable state identities; R15 quiescence when workers exist | Migration and rollback using R16's snapshot inventory |
-| R24 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | Faster debug or optimized output conforming to the same semantic profiles |
+| R21 — Logical tensors over chosen layouts | R4 generics, R5 layouts, R6 storage transformations and R9 resources; logical shape, layout, placement and ownership as separate checked parts, with visible specialization | Batch dimensions over unchanged solver code; tiled and padded layouts per target |
+| R22 — Compile and startup budgets | R1 content identities, R8 caching and R9 targets; five measured iteration cases and a content-keyed kernel cache | Budgets per target and per consumer; front-end skipping for unchanged kernels |
+| R23 — Device graphs and zero-copy buffers | R3 ownership, R9 GPU interfaces, R11 effects and R15 strict profiles; captured launch sequences and explicit transfers | Device-side bounded loops where targets allow, with host-driven fallback; imported foreign buffers |
+| R24 — Differentiate kernels | R4, R6, R15 and R21; forward and reverse mode over admitted kernels with explicit saved values | Custom adjoints, checkpointing policies and gradient modes enforced at compile time |
+| R25 — Complete compiler migration and distribution | The facilities each individual pass needs; retain independent oracles and seeds | Coax semantic passes/emitters, documented trust boundary and supported distributions |
+| R26 — Restricted procedure-body replacement | R1 interface/layout identities and a quiescent, restricted Mac host; unchanged-ABI procedure-body replacement | Measured edit-to-result value before R27 |
+| R27 — Resident semantics and transactional migration | R1/R8 cache inputs, R3 ownership and R5 stable state identities; R15 quiescence when workers exist | Migration and rollback using R16's snapshot inventory |
+| R28 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | Faster debug or optimized output conforming to the same semantic profiles |
 
 ### How this relates to spec section 20
 
 The spec's existing stage numbers remain useful topic identifiers. Stages 0/1
 are the bootstrap foundation; unfinished stage 2 evidence is R0/R2/R3. Stage 3
 expands through R1/R4/R5/R6. Stage 4 is R7/R8. Stage 5 is R3/R11/R15. Stages
-6/7 are R5/R9/R10 and ongoing protocol adoption. Stage 8 is R22/R23, and stage
-9 is R24. Stage 10, physical-world foundations, is R12–R14 and R16–R20. R21 is
-an explicit compiler migration track across those topics.
+6/7 are R5/R9/R10 and ongoing protocol adoption. Stage 8 is R26/R27, and stage
+9 is R28. Stage 10, physical-world foundations, is R12–R14 and R16–R20.
+Stage 11, simulation compute, is R21–R24. R25 is an explicit compiler
+migration track across those topics.
 
 The coarse stage numbers are not a global dependency chain: the protocol
 importer already shipped before the complete metadata/build/effects systems.
@@ -659,7 +672,7 @@ generic library routine. Fixtures include an allocation reached only through
 a generic instantiation, a callback, a cleanup path and a foreign call; each
 must surface in the summary with its path. Compare declared versus observed
 allocation and blocking on native runs. Mutating an effect source must change
-the summary. Hot replacement re-checks summaries in R22–R23.
+the summary. Hot replacement re-checks summaries in R26–R27.
 
 ## 15. R12 — Units and coordinate frames
 
@@ -942,7 +955,94 @@ outside its declaration refused; a module enabled in a profile that does not
 list it refused; replay under a different profile refused by R16. The
 simulated robot's calibrated parameters (R18) use the same records.
 
-## 24. R21 — Finish self-hosting and the supported toolchain
+## 24. R21 — Logical tensors over chosen layouts
+
+Planned. A numerical program must say separately what a value means and how it
+is stored. Give an array-valued declaration distinct, checked parts: its
+logical shape (with each dimension marked static, bounded or dynamic), its
+element type, its physical layout (row- or column-major, strided, tiled,
+structure-of-arrays or array-of-structures, padded), its placement (host,
+device or shared) and its owner. Indexing is written against the logical
+shape; the compiler lowers it through the declared layout, so changing a
+layout changes generated addresses and measured cost but never a result. A
+layout change that would alter results (a reordered reduction, for example)
+is not a layout change and is refused as one.
+
+Specialization is visible. Static dimensions and layout choices are part of a
+kernel's identity; bounded and dynamic ones are runtime parameters. `coax
+explain` reports, for each kernel, which values it was specialized on and
+which change would recompile it. A batch dimension (one environment of many)
+is an ordinary leading logical dimension, so a solver written for one world
+runs over a batch without being rewritten.
+
+Prerequisites: R4 generics, R5 layout metadata, R6 storage transformations and
+R9 resource declarations. **Consumer/gate:** the Psionic physics engine's
+solver state (the book's physics-engine part) declares its bodies, contacts
+and particles once and runs them in two layouts and at batch sizes 1 and 1,024
+with bit-identical results under its strict profile; a hidden recompilation
+caused by a value the program called dynamic is a failing fixture.
+
+## 25. R22 — Compile and startup budgets
+
+Planned. How long it takes to see a result is a language property. Split it
+into five measured cases and give each a budget: first compilation of a
+kernel; loading an already compiled kernel; rebuilding a scene from cached
+assets; changing a runtime parameter (which must not recompile); and changing a
+structural property (which must, and says why). A persistent kernel cache is
+keyed by content identities (R1): source, specialization values, layout,
+target, compiler build and options, so a stale entry cannot be reused and a
+valid one is never rebuilt. Front-end work for an unchanged kernel is skipped,
+not only code generation.
+
+Prerequisites: R1 content identities, R8 verified local caching and R9 target
+descriptions. **Consumer/gate:** the five cases are reported for the physics
+engine and for one Psionic model, on each qualified target; a planted stale
+cache entry (changed layout, compiler or option) is refused; a parameter edit
+that recompiles fails its budget.
+
+## 26. R23 — Device graphs and zero-copy buffers
+
+Planned. Iterative solvers launch many small kernels in a fixed pattern. Let a
+program capture a bounded sequence of launches into a replayable device
+program with immutable admitted bindings and bounded dynamic scalars (step
+count, tolerance), and let a bounded loop with a device-side exit condition
+run on the device where the target allows it. Where it does not, the same
+program runs with host-driven iteration and the same results; the report says
+which path ran. Psionic's CUDA graph replay (its own library effects today)
+becomes the first consumer of the language form.
+
+Buffers cross library boundaries without copies when ownership allows:
+another component's device or host buffer is imported as a view with its
+layout, placement, lifetime and synchronization stated, and every transfer
+between host and device is an explicit effect (R11) that `coax explain`
+counts. A step that silently reads back state fails its transfer budget.
+
+Prerequisites: R3 ownership, R9 GPU interfaces, R11 effects and R15 strict
+profiles. **Consumer/gate:** a contact solver's iterations replayed as one
+device program equal the unrolled launches bit for bit; a policy reads
+simulated observations through a shared buffer with zero copies recorded; a
+use after the exporter released the buffer is refused.
+
+## 27. R24 — Differentiate kernels
+
+Planned. Generate derivatives of admitted kernels rather than only of Psionic's
+tensor programs: forward mode (tangents) and reverse mode (adjoints) over the
+GPU and strict-math subset, with saved values, recomputation and
+checkpointing chosen explicitly and their memory reported. A kernel may supply
+its own adjoint, for example one that reuses a forward factorization to solve
+the transposed system; the compiler checks its signature and the derivative
+test checks its values. Each kernel states its gradient mode (`exact`,
+`custom`, `none`); a differentiable program that reaches a `none` kernel is
+refused at compile time, not given a zero gradient.
+
+Prerequisites: R4 generics, R6 typed code generation, R15 strict math and R21
+layouts. **Consumer/gate:** the engine's differentiable rigid step and one
+particle solver pass finite-difference and adjoint-consistency checks on fixed
+cases; the constraint solve's custom adjoint matches the generated one; a
+program that differentiates through a kernel marked `none` is refused with its
+path.
+
+## 28. R25 — Finish self-hosting and the supported toolchain
 
 Move the remaining semantic work into Coax in independently reviewable slices:
 verification/coverage and mutation policy; bounded evaluation; C/header/layout
@@ -972,7 +1072,7 @@ dependencies. Library, diagnostics, ABI, mutation and conformance suites pass;
 the remaining trust boundary is explicit. This track can start earlier whenever
 R2–R8 provide enough facilities for the next compiler pass.
 
-## 25. R22 — Restricted procedure-body replacement
+## 29. R26 — Restricted procedure-body replacement
 
 Before semantic caching or general migration, use a deliberately restricted
 Mac host to replace bodies behind unchanged exports, calling conventions,
@@ -988,7 +1088,7 @@ Retain the old callable table until candidate validation/publication succeeds.
 Measure edit-to-visible-result for an actual controller/world change. This
 experiment must show value before paying for general state migration.
 
-## 26. R23 — Resident semantics and transactional migration
+## 30. R27 — Resident semantics and transactional migration
 
 Use content/declaration dependencies to build a bounded resident cache. Test
 invalidation across targets, modules, descriptors, plugins, generics and build
@@ -1010,7 +1110,7 @@ edit-to-observable-frame latency. This is Mac development reload; signed iOS
 device updates keep their signing/deployment rules. No arbitrary stack migration
 or device code-loading bypass is implied.
 
-## 27. R24 — Add backends only after profiling
+## 31. R28 — Add backends only after profiling
 
 The C backend stays a working reference. Add a fast native debug backend only
 if C compilation/linking dominates the measured loop after caching and generated
@@ -1028,20 +1128,21 @@ not a mandatory runtime VM or a shortcut around semantics.
 tooling. Otherwise retain C output. Backend count is not the definition of the
 full vision.
 
-## 28. Feature coverage and completion policy
+## 32. Feature coverage and completion policy
 
 | Spec area | Phases that complete it |
 | --- | --- |
 | Representation, composition, strings, enums/unions and procedure forms (§4–9) | R2 basic forms; R3 ownership; R4 specialization; R6 storage transformations; R9/R15 vector and SIMD rules |
-| Compile-time execution and conditional work (§10) | Existing bounded evaluation retained; R1 dependencies/`#if`; R5 metadata/derivation; R6 typed code; R8 plugins; R21 evaluator migration |
+| Compile-time execution and conditional work (§10) | Existing bounded evaluation retained; R1 dependencies/`#if`; R5 metadata/derivation; R6 typed code; R8 plugins; R25 evaluator migration |
 | Memory, context and errors (§11) | R2 typed errors/cleanup; R3 explicit storage/context; R4 owning libraries; R11 transitive effects; R14 bounded contracts |
 | Jobs and determinism (§12–13) | R3 regions first; R10 target evidence; R11 effects; R15 math and schedules; R16 replay and snapshots |
 | Public protocols (§14) | Existing importer retained; R5 schema-aware derivation; R8 reproducible inputs; R10 consumer/domain/target expansion |
-| GPU programs (§15) | R5 target-aware metadata; R9 resources/MSL/WGSL pipeline; R15 deterministic restrictions where required |
-| Builds, iteration and reload (§16) | R0 measurements/debugging; R1 graph; R8 workspaces/capabilities; R22–R23 cache/reload; R24 conditional backends |
-| Modules, C/Swift interop and tooling (§17) | R1 namespaces/configuration; R2/R3 callback/ownership ABI; R7 formatter and safe compiler queries; R8 C-header import; R10 target matrix; R21 distribution |
+| GPU programs (§15) | R5 target-aware metadata; R9 resources/MSL/WGSL pipeline; R15 deterministic restrictions where required; R21 logical layouts; R23 device graphs and zero-copy buffers; R24 kernel derivatives |
+| Builds, iteration and reload (§16) | R0 measurements/debugging; R1 graph; R8 workspaces/capabilities; R22 compile and startup budgets; R26–R27 cache/reload; R28 conditional backends |
+| Modules, C/Swift interop and tooling (§17) | R1 namespaces/configuration; R2/R3 callback/ownership ABI; R7 formatter and safe compiler queries; R8 C-header import; R10 target matrix; R25 distribution |
 | Physical-world foundations (spec stage 10; semantics added to the spec with each phase) | R12 units and full-state frames; R13 clocks, time scales and ticks; R14 bounded control; R15 integrators and event location; R16 replay; R17 robot-model import; R18 sensors, light-time and supervision; R19 fault scenarios; R20 provenance, fidelity profiles and rule modules |
-| Verification for human/agent development (§10, §17 and book chapters 11/23) | R0 independent gates/status; checks/oracles at every phase; R6 provenance; R7 safe analysis/evidence; R21 trusted-chain documentation |
+| Simulation compute (spec stage 11) | R21 logical tensors, layouts and specialization; R22 compile and startup budgets; R23 device graphs and zero-copy buffers; R24 kernel derivatives |
+| Verification for human/agent development (§10, §17 and book chapters 11/23) | R0 independent gates/status; checks/oracles at every phase; R6 provenance; R7 safe analysis/evidence; R25 trusted-chain documentation |
 
 C-header import in R8 should use a constrained importer with explicit handling
 of macros, inline-only symbols, variadics, allocator pairing and unsupported
@@ -1087,7 +1188,7 @@ bound sufficiency explicitly. Continue only if one actual routine gets stronger
 coverage than enumeration at manageable cost. No solver/proof syntax, mandatory
 dependency or new milestone is justified before that result.
 
-## 29. Next implementation sequence
+## 33. Next implementation sequence
 
 This is a priority queue, not a serial barrier. Formatting, scoped evidence
 and simple escape diagnostics can start from current APIs while R0 measurements
@@ -1120,7 +1221,7 @@ and review remain open; every slice still needs its listed prerequisites.
    can proceed on their narrower prerequisites; owning libraries wait for R3's
    expansion.
 6. **Test platform and iteration assumptions early.** Extend Coaxial's existing
-   wasm32 probe and run R22's unchanged-layout Mac replacement experiment
+   wasm32 probe and run R26's unchanged-layout Mac replacement experiment
    once their exact prerequisites exist. Neither implies full browser support
    or general transactional migration.
 7. **Start the physical-world foundations on the simulated robot.** Once R4's
@@ -1132,13 +1233,17 @@ and review remain open; every slice still needs its listed prerequisites.
    and time scales first, then integrators and event location, light-time
    stamps, and provenance with fidelity profiles (R20) before any rule
    module.
-8. **Expand through consumers.** Complete richer generics/derivation, R8
+8. **Give the physics engine its compute forms.** When its first solvers
+   exist as library kernels, add R21's logical layouts and batch dimension,
+   then R22's budgets, R23's device graphs and buffers, and R24's kernel
+   derivatives, each through the same solver.
+9. **Expand through consumers.** Complete richer generics/derivation, R8
    workspaces, GPU interfaces, jobs, robot-model import, supervision and fault
    scenarios using the dependency table. Continue self-hosting in reviewable
    slices; gate full migration/reload, optional proof tooling and extra
    backends on their own evidence.
 
-## 30. Earlier phase labels
+## 34. Earlier phase labels
 
 Earlier revisions used lettered sub-phases and a shorter list. Project queue
 tasks keep their original slugs (for example `r4a-type-parameters`,
@@ -1164,9 +1269,10 @@ earlier label to its phase now.
 | R8a | R9 — Target-specific GPU interfaces |
 | R8b | R10 — Browser vertical slice |
 | R9 | R11 — Transitive effects, and R15 — Strict math and deterministic jobs |
-| R10 | R21 — Self-hosting and the supported toolchain |
-| R11a | R22 — Restricted procedure-body replacement |
-| R11b | R23 — Resident semantics and transactional migration |
-| R12 | R24 — Additional backends |
+| R10 | R25 — Self-hosting and the supported toolchain |
+| R11a | R26 — Restricted procedure-body replacement |
+| R11b | R27 — Resident semantics and transactional migration |
+| R12 | R28 — Additional backends |
 | (new) | R12 units and frames, R13 clocks, R14 bounded control, R16 replay, R17 robot-model import, R18 sensors and supervision, R19 fault scenarios |
-| R20–R23 of the first integer revision (2026-10-31) | R21–R24; R20 is now provenance, fidelity profiles and rule modules |
+| R21–R24 of the physical-world revision (2026-10-31) | R25–R28; R21–R24 are now the simulation-compute phases |
+| R20–R23 of the first integer revision (2026-10-31) | R25–R28; R20 is now provenance, fidelity profiles and rule modules |

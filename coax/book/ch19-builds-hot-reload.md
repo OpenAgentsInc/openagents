@@ -456,6 +456,26 @@ execution or artifact signing. Each of those is its own system. Today,
 for example, `coax0` doesn't provision or pin the C compiler; it uses
 whatever `COAX_CC` or `cc` names.
 
+## Planned: compile and startup budgets
+
+> Note: Not implemented. This is roadmap R22 (spec stage 11).
+
+"How long until I see the result" is really five different questions, and
+the plan gives each its own measured budget:
+
+1. compiling a kernel for the first time;
+2. loading a kernel that is already compiled;
+3. rebuilding a scene from cached assets;
+4. changing a runtime parameter, which must not recompile anything;
+5. changing a structural property, which must recompile and say why.
+
+A persistent kernel cache would be keyed by content identities: the source,
+the values a kernel was specialized on, its layout, the target, the
+compiler build and its options. A stale entry could never be reused and a
+valid one would never be rebuilt, and the front end would skip unchanged
+kernels rather than only skipping code generation. A parameter edit that
+triggers recompilation would fail its budget like any other regression.
+
 ## Hot reload is an engine design
 
 > Note: Not implemented. Nothing in `coax0`, `verse/` or the iOS app

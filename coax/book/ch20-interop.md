@@ -1060,6 +1060,20 @@ functions. The tests run the C build of the same file, so one source is
 checked on the CPU and drawn on the GPU. Chapter 17 covers GPU programs in
 general.
 
+## Planned: buffers without copies
+
+> Note: Not implemented. This is roadmap R23 (spec stage 11).
+
+The views above already cross the C boundary without copying, but only
+for host memory whose lifetime the caller holds. A simulator and a learning
+library that run on the same GPU want the same for device memory. A planned
+import would take another component's buffer as a view with its layout,
+placement, lifetime and synchronization stated, and refuse to use it after
+the exporter releases it. Every transfer between host and device would be an
+explicit effect that `coax explain` counts, so a step that quietly reads
+state back to the CPU fails its transfer budget instead of just running
+slowly. Psionic's leased DLPack views are the first consumer.
+
 ## What isn't here yet
 
 A few parts of the design are still ahead, and it's worth knowing their

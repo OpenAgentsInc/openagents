@@ -472,6 +472,29 @@ Metal and WGSL for WebGPU, each validated separately. The `coax metal`
 scalar profile has no vectors or resources. The implemented WGSL command
 uses its own admitted graphics subset, rather than this planned syntax.
 
+## Planned: device graphs and kernel derivatives
+
+> Note: Not implemented. These are roadmap R23 and R24 (spec stage 11).
+
+An iterative solver launches the same few kernels many times per step. A
+planned form would capture a bounded launch sequence once, with its
+bindings admitted and fixed, and replay it with only bounded scalars (an
+iteration count, a tolerance) changing. Where a target can run a loop with a
+device-side exit test, the loop stays on the device; where it cannot, the
+same program iterates from the host and the report says which ran. Results
+must be identical either way. Psionic already replays CUDA graphs through
+its own library effects; the language form would make that a checked
+program rather than a library convention.
+
+Derivatives would follow the same discipline. An admitted kernel could be
+differentiated in forward mode (tangents) or reverse mode (adjoints), with
+saved values and recomputation chosen explicitly and their memory reported.
+A kernel could supply its own adjoint, for example one that reuses a
+factorization from its forward solve, and every kernel would declare a
+gradient mode (`exact`, `custom` or `none`). A program that differentiates
+through a `none` kernel would be refused when it compiles, not handed a
+zero gradient at run time.
+
 ## Things that stay true either way
 
 WebAssembly isn't a GPU. Compiling Coax CPU code to Wasm for the
