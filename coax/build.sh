@@ -16,11 +16,46 @@ export LC_ALL=C
 cd "$(dirname "$0")"
 root="$(cd .. && pwd -P)"
 expected="$(./provenance.sh fingerprint "$root")"
-artifacts=(check-domains.c check-domains.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h)
+artifacts=(check-domains.c check-domains.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h mutation-survivors)
 cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
 cache="$cache_root/$expected"
-building=""
-trap '[[ -z "$building" ]] || rm -rf "$building"' EXIT
+building="" mutation_changed=strict changed_file=""
+trap '[[ -z "$building" ]] || rm -rf "$building"; [[ -z "$changed_file" ]] || rm -f "$changed_file"' EXIT
+
+# Which surviving mutants stop this build (coax/mutation-gate.sh): those on
+# lines changed since a base. The base is COAX_MUTATION_BASE, or else where
+# this checkout left origin/main; COAX_MUTATION_CHANGED names a ready list
+# (release.sh passes the lines changed since production). Survivors on other
+# lines are reported in coax/bin/mutation-survivors. COAX_MUTATION_FULL=1, or
+# no base, gates on every survivor: the full mutation check.
+if [[ -n "${COAX_MUTATION_FULL:-}" ]]; then mutation_changed=strict
+elif [[ -n "${COAX_MUTATION_CHANGED:-}" ]]; then
+  mutation_changed="$COAX_MUTATION_CHANGED"
+  [[ "$mutation_changed" == strict || -f "$mutation_changed" ]] || { echo "coax/build.sh: no changed-lines file $mutation_changed" >&2; exit 2; }
+  [[ "$mutation_changed" == strict ]] || mutation_changed="$(cd "$(dirname "$mutation_changed")" && pwd -P)/$(basename "$mutation_changed")"
+else
+  base="${COAX_MUTATION_BASE:-}"
+  [[ -n "$base" ]] || base="$(git -C "$root" merge-base HEAD origin/main 2> /dev/null || true)"
+  if [[ -n "$base" ]]; then
+    changed_file="$(mktemp "${TMPDIR:-/tmp}/coax-mutation-changed.XXXXXXXX")"
+    ./mutation-gate.sh changed "$root" "$base" > "$changed_file"
+    mutation_changed="$changed_file"
+  fi
+fi
+export COAX_MUTATION_CHANGED="$mutation_changed"
+# The survivors a cached build tolerated, as PATH:LINE, must not gate here.
+survivors_allowed() {
+  local list
+  [[ -s "$1/mutation-survivors" ]] || return 0
+  list="$(mktemp "${TMPDIR:-/tmp}/coax-survivors.XXXXXXXX")"
+  sed 's/^.*: //' "$1/mutation-survivors" > "$list"
+  if ./mutation-gate.sh verdict "$mutation_changed" "$list" > /dev/null; then rm -f "$list"; return 0; fi
+  rm -f "$list"; return 1
+}
+report_survivors() {
+  [[ -s bin/mutation-survivors ]] || return 0
+  echo "coax/build.sh: $(wc -l < bin/mutation-survivors | tr -d ' ') surviving mutant(s) on unchanged lines, reported in coax/bin/mutation-survivors, not gating (the full check: COAX_MUTATION_FULL=1 coax/build.sh)" >&2
+}
 
 # The C artifacts beside the compiler (native tests link them). A cached build
 # kept by build.sh has them; one kept by release.sh has only the compiler, and
@@ -34,6 +69,7 @@ artifacts_from() {
     if [[ -f "$from/$name" && ! -L "$from/$name" ]]; then cp "$from/$name" "$work/$name"; continue; fi
     case "$name" in
       check-domains.*|lexer.*|parser.*|checker.*|sources.*) cp "bootstrap/$name" "$work/$name" ;;
+      mutation-survivors) : > "$work/$name" ;;   # kept before survivors were reported: a strict build
       proto_runtime.inc)
         { printf 'static constexpr char PROTO_CORE_SOURCE[] = R"COAX_CORE('; cat lib/proto/wire.coax
           printf ')COAX_CORE";\nstatic constexpr char PROTO_MEMORY_SOURCE[] = R"COAX_MEMORY('; cat lib/proto/memory.coax
@@ -47,8 +83,26 @@ artifacts_from() {
   for name in "${artifacts[@]}"; do mv "$work/$name" "bin/$name"; done
   rm -rf "$work"
 }
+# Documentation is not a compiler input: it is validated on every build, with
+# the verified compiler that is about to be installed, and stale documents
+# leave coax/bin unchanged. A warm build compiles nothing; a bootstrap also
+# checks them with its stage0 before the expensive gates.
+# An explicit generator override (COAX_RELEASE_COMPILER) is trusted by its caller.
+check_documents() {
+  if [[ -n "${1:-}" && -z ${COAX_RELEASE_COMPILER:-} ]]; then COAX_RELEASE_COMPILER="$1" "$root/scripts/coax-release.sh" --check; return; fi
+  if [[ -n ${COAX_RELEASE_COMPILER:-} ]] || ./provenance.sh verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" > /dev/null 2>&1; then
+    "$root/scripts/coax-release.sh" --check
+  else
+    COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
+  fi
+}
 from_cache() {
   [[ -z "${COAX_BUILD_FRESH:-}" && -d "$cache" ]] || return 1
+  survivors_allowed "$cache" || return 1
+  # Verify the cached build, then validate the release documents with it
+  # before anything is installed: stale documents leave coax/bin unchanged.
+  ./provenance.sh verify "$root" "$cache/coax" "$cache/provenance-check" "$cache/provenance.record" 2> /dev/null || return 1
+  check_documents "$cache/coax" || exit 1
   mkdir -p bin
   ./provenance.sh install "$root" "$cache" 2> /dev/null || return 1
   artifacts_from "$cache"
@@ -65,19 +119,8 @@ keep() {
   else rm -rf "$into"; fi
 }
 
-# Documentation is not a compiler input: it is validated on every build. A
-# cached build is installed first and then checks it, so a warm build compiles
-# nothing; a bootstrap checks it with its stage0 before the expensive gates.
-# An explicit generator override (COAX_RELEASE_COMPILER) is trusted by its caller.
-check_documents() {
-  if [[ -n ${COAX_RELEASE_COMPILER:-} ]] || ./provenance.sh verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" > /dev/null 2>&1; then
-    "$root/scripts/coax-release.sh" --check
-  else
-    COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
-  fi
-}
 if from_cache; then
-  check_documents
+  report_survivors
 else
   # One builder per fingerprint on this machine (release.sh builds through
   # here too); a lock left by a dead builder is taken over.
@@ -92,11 +135,10 @@ else
     done
     building="$lock"; echo $$ > "$lock/pid"
   fi
-  if from_cache; then
-    check_documents
+  if from_cache; then :
   else
     snapshot="$(mktemp -d "${TMPDIR:-/tmp}/coax-build-snapshot.XXXXXXXX")"
-    trap 'rm -rf "$snapshot"; [[ -z "$building" ]] || rm -rf "$building"' EXIT
+    trap 'rm -rf "$snapshot"; [[ -z "$building" ]] || rm -rf "$building"; [[ -z "$changed_file" ]] || rm -f "$changed_file"' EXIT
     # Only what the bootstrap reads: its scripts and models (coax/*, files
     # only), the compiler's sources and seeds, and the documents
     # coax-release.sh checks. Never web/, tests/, node_modules or bin/.
@@ -113,19 +155,22 @@ else
     # Compare the compiled snapshot to the current target inputs before any
     # compiler or supporting artifact is installed.
     ./provenance.sh verify "$root" "$snapshot/coax/bin/coax" "$snapshot/coax/bin/provenance-check" "$snapshot/coax/bin/provenance.record"
+    check_documents "$snapshot/coax/bin/coax"
     mkdir -p bin
+    [[ -f "$snapshot/coax/bin/mutation-survivors" ]] || : > "$snapshot/coax/bin/mutation-survivors"
     for artifact in "${artifacts[@]}"; do
       cp "$snapshot/coax/bin/$artifact" "bin/.$artifact.$$"
       mv "bin/.$artifact.$$" "bin/$artifact"
     done
     ./provenance.sh install "$root" "$snapshot/coax/bin"
     keep
-    check_documents
   fi
+  report_survivors
 fi
 if [[ "${1:-}" == "test" ]]; then
   [[ -z "${snapshot:-}" ]] || rm -rf "$snapshot"
   [[ -z "$building" ]] || rm -rf "$building"
+  [[ -z "$changed_file" ]] || rm -f "$changed_file"
   trap - EXIT
   exec tests/run.sh
 fi

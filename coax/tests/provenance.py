@@ -34,7 +34,7 @@ class ProvenanceTests(unittest.TestCase):
   self.tree=Path(self.tmp.name)/'repo';(self.tree/'coax').mkdir(parents=True);(self.tree/'scripts').mkdir()
   for name in ('src','bootstrap','lib/compiler','lib/proto'):
    shutil.copytree(ROOT/name,self.tree/'coax'/name)
-  for name in ('build.sh','bootstrap-build.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
+  for name in ('build.sh','bootstrap-build.sh','mutation-gate.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
    shutil.copy2(ROOT/name,self.tree/'coax'/name)
   for name in RELEASE_DOCUMENTS+('changelog.coax','changelog-model.coax','changelog-bridge.c'):
    target=self.tree/'coax'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
@@ -172,7 +172,7 @@ printf 'compiler fixture\\n' > bin/coax
 cat src/eval.cpp >> bin/coax
 chmod +x bin/coax
 cp "$TEST_HELPER" bin/provenance-check
-for name in lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do : > "bin/$name"; done
+for name in check-domains.c check-domains.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do : > "bin/$name"; done
 input="$(./provenance.sh fingerprint ..)"
 ./provenance.sh write .. bin/coax bin/provenance-check bin/provenance.record "$input"
 touch "$TEST_READ"

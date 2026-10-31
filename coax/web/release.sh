@@ -179,11 +179,11 @@ compiler() {
   local root="$1" target="$2" fingerprint cache into
   fingerprint="$(compiler_env "$root/coax/provenance.sh" fingerprint "$root")" || return 1
   cache="$cache_root/$fingerprint"
-  install_from() { [[ -d "$1" ]] && compiler_env "$root/coax/provenance.sh" install "$target" "$1" 2> /dev/null; }
+  install_from() { [[ -d "$1" ]] && survivors_allowed "$1" && compiler_env "$root/coax/provenance.sh" install "$target" "$1" 2> /dev/null && survivors_to "$1" "$target"; }
   keep() {   # a checked build into the cache, whole or not at all
     into="$(mktemp -d "$cache_root/.keep.XXXXXXXX")"
     cp "$1/coax" "$1/provenance-check" "$1/provenance.record" "$into/"
-    for n in lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do
+    for n in lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h mutation-survivors; do
       [[ ! -f "$1/$n" ]] || cp "$1/$n" "$into/"
     done
     compiler_env "$root/coax/provenance.sh" verify "$target" "$into/coax" "$into/provenance-check" "$into/provenance.record" || { rm -rf "$into"; return 1; }
@@ -195,11 +195,28 @@ compiler() {
   # coax/build.sh takes one builder per fingerprint, keeps the checked build
   # in the cache, and installs one already there instead of building again.
   echo "  compiler   no checked build for these compiler inputs (${fingerprint:0:12}); bootstrapping one (coax/build.sh, about 15 min)"
-  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 ||
+  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" COAX_MUTATION_CHANGED="$mutation_changed" "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 ||
      ! { install_from "$cache" || { keep "$root/coax/bin" && install_from "$cache"; }; }; then
-    echo "release: coax/build.sh failed (log: $cache_root/$fingerprint.log)" >&2; return 1
+    echo "release: coax/build.sh failed (log: $cache_root/$fingerprint.log)" >&2
+    grep -A20 'surviving mutants' "$cache_root/$fingerprint.log" | sed 's/^/release: /' >&2 || true
+    return 1
   fi
 }
+# Surviving mutants stop a release only on compiler lines changed since
+# production's release (coax/mutation-gate.sh). Others are reported in
+# releases/<time>/MUTATION; the full check (COAX_MUTATION_FULL=1 coax/build.sh)
+# gates on all of them, outside releases. Without a production commit, or for
+# a commit older than this rule, every survivor gates.
+mutation_changed=strict
+survivors_allowed() {   # the survivors a cached build tolerated must not be on changed lines
+  local list ok=0
+  [[ -s "$1/mutation-survivors" ]] || return 0
+  [[ "$mutation_changed" != strict && -x "$repo/coax/mutation-gate.sh" ]] || return 1
+  list="$(mktemp)"; sed 's/^.*: //' "$1/mutation-survivors" > "$list"
+  "$repo/coax/mutation-gate.sh" verdict "$mutation_changed" "$list" > /dev/null || ok=1
+  rm -f "$list"; return $ok
+}
+survivors_to() { if [[ -s "$1/mutation-survivors" ]]; then cp "$1/mutation-survivors" "$2/coax/bin/mutation-survivors"; else rm -f "$2/coax/bin/mutation-survivors"; fi; }
 
 # Production's newest release, when it went live: "<commit> <time> staged|unstaged fast|thorough"
 # (releases/<time>/PASSED, written after production's walk and smoke). A
@@ -234,6 +251,11 @@ fi
 # Make sure the compiler for the commit is built before queueing, so a
 # bootstrap never holds the lock (and the releases behind it) for minutes.
 if [[ -n "${wanted:-}" ]] || wanted="$(git -C "$repo" rev-parse --verify -q "$ref^{commit}")"; then
+  production="$(live)"
+  if [[ -n "$production" && -x "$repo/coax/mutation-gate.sh" ]] && git -C "$repo" merge-base --is-ancestor "${production%% *}" "$wanted" 2> /dev/null; then
+    mutation_changed="$(mktemp)"
+    "$repo/coax/mutation-gate.sh" changed "$repo" "${production%% *}" "$wanted" > "$mutation_changed" || mutation_changed=strict
+  fi
   inputs="$(mktemp -d)"
   git -C "$repo" archive "$wanted" coax scripts/coax-release.sh | tar -x -C "$inputs"
   compiler "$inputs" "$inputs" || true   # checked again on the release's own tree below
@@ -280,6 +302,9 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 t=$(now)
 compiler "$tree" "$tree" || exit 1
 lap compiler "$t"
+if [[ -s "$tree/coax/bin/mutation-survivors" ]]; then
+  echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) on compiler lines unchanged since production: reported in releases/<time>/MUTATION, not gating"
+fi
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
 
 base_dir=$(mktemp -d)
@@ -435,6 +460,7 @@ lap "prod ${check#--}" "$t"
 echo "$full $stamp $($stage && echo staged || echo unstaged) $($thorough && echo thorough || echo fast)" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/PASSED" --quiet > /dev/null ||
   echo "release $commit: couldn't write releases/$stamp/PASSED; the next release walks in full" >&2
 echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)${held_names:+; held back: $held_names}"
+[[ ! -s "$tree/coax/bin/mutation-survivors" ]] || gcloud storage cp "$tree/coax/bin/mutation-survivors" "gs://$prod_bucket/releases/$stamp/MUTATION" --quiet > /dev/null 2>&1 || true
 # Independent review (r0-independent-review), a report only, never a stop: the
 # commits since the last live release that weaken a check together with its
 # code, and whether a separate review agent signed for each (coax/reviews/).

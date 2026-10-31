@@ -122,4 +122,7 @@ machine that holds the project key
   commit against its acceptance checks, reopens what doesn't hold
   (`bun publish.ts status SLUG open` with a note), and adjusts order and
   scope. It runs `coax/web/release.sh` when code changed (data needs no
-  release), and folds process notes into this file.
+  release), and folds process notes into this file. It owns the full mutation
+  check: after a release prints a `mutation` line, it runs
+  `COAX_MUTATION_FULL=1 coax/build.sh` and turns each survivor in
+  `releases/<time>/MUTATION` into a task (`coax/RELEASE.md`).

@@ -37,6 +37,13 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   stage0 test and mutation gate in `~/.cache/coax-gates/`, keyed by stage0's
   inputs, the command and the gate's source closure, and reuses it on an exact
   match. The build log prints each gate's time or `reused`.
+- Follow-up (build, `ax-release-gate`): a bootstrap mutation gate stops on
+  a surviving mutant only when it is on a line changed since a base:
+  `origin/main` for `coax/build.sh`, production's release commit for
+  `coax/web/release.sh`. Other survivors are listed in
+  `coax/bin/mutation-survivors` and `releases/<time>/MUTATION`.
+  `COAX_MUTATION_FULL=1 coax/build.sh` is the full check, which gates on
+  every survivor.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

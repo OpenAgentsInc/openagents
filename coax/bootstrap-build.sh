@@ -89,11 +89,35 @@ gate_key() {
   [[ -n "$closure" ]] || return 0
   key="$({ printf 'coax-gate-v1\0%s\0%s\0' "$stage0_id" "$closure"; printf '%s\0' "${@:2}"; } | sha)"
 }
+# A mutation gate that fails only on survivors is judged by mutation-gate.sh
+# against COAX_MUTATION_CHANGED (the lines changed since a base, from
+# coax/build.sh; unset or "strict": every survivor gates). Survivors on other
+# lines are listed in bin/mutation-survivors and do not stop the build. Their
+# gate result is kept with its survivors, and judged again on reuse.
+mutation_changed="${COAX_MUTATION_CHANGED:-strict}"
+: > "$work/mutation-survivors"
+judge() {   # judge LABEL SURVIVORS: 0 when none of them gates
+  local gating
+  if gating="$(./mutation-gate.sh verdict "$mutation_changed" "$2")"; then
+    echo "coax bootstrap: $(wc -l < "$2" | tr -d ' ') survivor(s) on unchanged lines, reported, not gating: $1"
+    sed "s|^|$1: |" "$2" >> "$work/mutation-survivors"
+    return 0
+  fi
+  if [[ "$mutation_changed" == strict ]]; then echo "coax bootstrap: surviving mutants stop the build, the full mutation check ($1):" >&2
+  else echo "coax bootstrap: surviving mutants on changed lines stop the build ($1):" >&2; fi
+  printf '%s\n' "$gating" | sed 's/^/  /' >&2
+  return 1
+}
 gate() {
   local start=$SECONDS label="${*//"$work"\//}" key=""
   if [[ -n "$gate_cache" && "$1" == "$work/stage0" && ( "$2" == test || "$2" == mutate ) ]]; then
     gate_key "$@"
-    if [[ -n "$key" && -f "$gate_cache/$key" ]]; then echo "coax bootstrap: reused   $label"; return 0; fi
+    if [[ -n "$key" && -f "$gate_cache/$key" ]]; then
+      sed -n 's/^survivor //p' "$gate_cache/$key" > "$work/survivors"
+      if [[ ! -s "$work/survivors" ]]; then echo "coax bootstrap: reused   $label"; return 0; fi
+      echo "coax bootstrap: reused   $label (with survivors)"
+      judge "$label" "$work/survivors"; return
+    fi
   fi
   if "$@" > "$work/gate.log" 2>&1; then
     echo "coax bootstrap: $(printf '%5d' $((SECONDS - start))) s  $label"
@@ -101,6 +125,13 @@ gate() {
       printf '%s\n' "$label" > "$gate_cache/.$key.$$" && mv "$gate_cache/.$key.$$" "$gate_cache/$key"
     fi
     return 0
+  fi
+  if [[ "$2" == mutate ]] && ./mutation-gate.sh survivors < "$work/gate.log" > "$work/survivors"; then
+    echo "coax bootstrap: $(printf '%5d' $((SECONDS - start))) s  $label"
+    if [[ -n "$key" ]] && mkdir -p "$gate_cache" 2> /dev/null; then
+      { printf '%s\n' "$label"; sed 's/^/survivor /' "$work/survivors"; } > "$gate_cache/.$key.$$" && mv "$gate_cache/.$key.$$" "$gate_cache/$key"
+    fi
+    judge "$label" "$work/survivors" && return 0
   fi
   cat "$work/gate.log" >&2
   return 1
@@ -252,6 +283,7 @@ cp "$work/sources.h" bin/sources.h
 cp "$work/proto_runtime.inc" bin/proto_runtime.inc
 cp "$work/proto_importer.c" bin/proto_importer.c
 cp "$work/proto_importer.h" bin/proto_importer.h
+cp "$work/mutation-survivors" bin/mutation-survivors
 # A record is published only after both bootstrap stages and all mandatory
 # compiler gates pass, and only if the exact inputs stayed unchanged.
 [[ "$(./provenance.sh fingerprint "$root")" == "$input_identity" ]] || { echo 'compiler inputs changed during bootstrap' >&2; exit 1; }

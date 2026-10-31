@@ -152,6 +152,33 @@ The build log prints each gate's time, or `reused` with its command.
 that the same gate passed on this machine; it is as trusted as the machine's
 cache directories, like the checked builds beside it.
 
+## Which surviving mutants stop a build
+
+A mutation gate in the bootstrap fails on a surviving mutant only when the
+survivor is on a line changed since a base commit. Survivors on other lines
+are listed in `coax/bin/mutation-survivors` and printed, but they don't stop
+the build. Only a regression that a change causes may stop it.
+[`mutation-gate.sh`](mutation-gate.sh) lists the changed lines and judges the
+survivors. A gate that fails for any other reason (a failing check, a
+procedure no check reaches) still stops the build.
+
+| Build | Base | Survivors that stop it |
+| --- | --- | --- |
+| `coax/build.sh` | `COAX_MUTATION_BASE`, or else where the checkout left `origin/main` | Those on lines the checkout changed |
+| `coax/web/release.sh` | Production's release commit (`releases/<time>/PASSED`) | Those on compiler lines changed since production |
+| `COAX_MUTATION_FULL=1 coax/build.sh` (the full check) | None | Every survivor |
+| No Git history and no base | None | Every survivor |
+
+A release that changes no compiler line since production is never stopped by a
+survivor. It lists any it finds in `releases/<time>/MUTATION`. A cached build
+records the survivors it tolerated, and a build or release reuses it only when
+none of them is on a line that build counts as changed.
+
+The full check runs outside releases. The Coax taskmaster owns it: it runs
+`COAX_MUTATION_FULL=1 coax/build.sh` after a release that reports survivors,
+and gives each survivor to a worker as a queue task. The release prints a
+`mutation` line whenever `releases/<time>/MUTATION` is written.
+
 ## Bootstrap, application and publication gates
 
 The snapshots are committed so a clean checkout can start from its reviewed

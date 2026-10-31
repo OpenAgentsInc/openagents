@@ -1038,7 +1038,10 @@ put `#authority` on the files where a bug costs money, keys or trust.
 The compiler holds itself to the same standard. `coax/build.sh` runs the
 checks and the mutation gate on the Coax parts of the compiler, such as
 the protocol wire runtime in `coax/lib/proto/wire.coax` (382 mutants,
-all killed), before it publishes `coax/bin/coax`.
+all killed), before it publishes `coax/bin/coax`. A surviving mutant stops that build when it is
+on a line you changed since `origin/main`. Survivors elsewhere are listed in
+`coax/bin/mutation-survivors`, and `COAX_MUTATION_FULL=1 coax/build.sh`
+gates on all of them.
 
 ## Keep a record of what ran
 
