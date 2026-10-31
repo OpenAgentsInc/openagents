@@ -347,8 +347,8 @@ jv_unescape :: (raw: string, out: [] u8) -> int {
     if cp < 0 { return -1; }
     i += 6;
     if cp >= 0xd800 && cp <= 0xdbff {
-      lo := ifx i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' then jv_u4(raw, i + 2) else -1;
-      if lo >= 0xdc00 && lo <= 0xdfff { cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00); i += 6; } else { cp = 0xfffd; }
+      low := ifx i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' then jv_u4(raw, i + 2) else -1;
+      if low >= 0xdc00 && low <= 0xdfff { cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00); i += 6; } else { cp = 0xfffd; }
     } else if cp >= 0xdc00 && cp <= 0xdfff { cp = 0xfffd; }
     k := jv_utf8(cp, out, n);
     if k < 0 { return -1; }
@@ -519,8 +519,8 @@ jo_requote :: (o: [] Jo, raw: string) {
     if raw[j + 1] == 'u' {
       e = j + 6;
       if e + 1 < raw.count && raw[e] == '\\' && raw[e + 1] == 'u' {
-        hi := jv_u4(raw, j + 2); lo := jv_u4(raw, e + 2);
-        if hi >= 0xd800 && hi <= 0xdbff && lo >= 0xdc00 && lo <= 0xdfff { e += 6; }
+        high := jv_u4(raw, j + 2); low := jv_u4(raw, e + 2);
+        if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
       }
     }
     if e > raw.count { o[0].bad = true; return; }

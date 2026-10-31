@@ -23,7 +23,8 @@
 //   POST /api/villa/pets/<id>/emote {said, error, last}  an emote the agent writes; emote/keep {name, label, text}; emote/<name>/delete
 //   POST /api/villa/report {kind, ref, why}      a memorial, a note or a chat line reported (migrations/0031_villa_reports.sql)
 //   GET  /api/villa/reports                      a signed-in admin: the open reports; POST reports/<kind>/<ref>/remove|keep
-//   GET  /api/villa/m/<slug>                     the share link: a page with the memorial's card, on to the realm
+//   GET  /api/villa/m/<slug>                     the old share link: 301 to /memorial/<slug>
+//   GET  /memorial/<slug>                        a memorial's own page (memorial.coax), its link preview naming the pet
 //   POST /api/villa/pets/<id>/files/<f>/show|unshow  the owner puts a photo or video on the memorial, or takes it off
 //   GET  /api/villa/memorial/<slug>/media/<hex>  a shown file's bytes, from the private bucket (Range too)
 //                                                (migrations/0034_villa_memorial_media.sql)
@@ -277,46 +278,113 @@ static void html(char *out, size_t cap, const char *s) {
   out[n] = 0;
 }
 
-// The share link: a small page whose card names the pet, on to the memorial in the realm.
-static void share(const request *q, PGconn *db, const char *slug) {
+// The old share link (/api/villa/m/<slug>): on to the memorial's own page.
+static void share(const request *q, const char *slug) {
   for (const char *c = slug; *c; c++) if (!isalnum((unsigned char)*c)) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
-  const char *v[1] = {slug};
-  PGresult *r = PQexecParams(db, "SELECT name, line, born, died FROM villa.pets WHERE slug = $1 AND status = 'placed'", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
-    PQclear(r);
-    const char *gone = "<!doctype html><meta charset=utf-8><title>Hecate's Cemetery</title><main><h1>Hecate's Cemetery</h1><a href=\"/realms/hecates-cemetery/\">Hecate's Cemetery</a></main>";
-    api_respond(q->fd, 404, "text/html; charset=utf-8", NULL, gone, strlen(gone));
-    return;
+  char to[200], head[300];
+  snprintf(to, sizeof to, "/memorial/%.40s", slug);
+  snprintf(head, sizeof head, "Location: %s\r\nCache-Control: public, max-age=3600\r\n", to);
+  api_respond(q->fd, 301, "text/html; charset=utf-8", head, to, strlen(to));
+}
+
+// Appends text to a growing page (the memorial's JSON can be long).
+static void page_add(buf *b, const char *t) { take((char *)t, 1, strlen(t), b); }
+
+// A memorial's own page, /memorial/<slug> (the load balancer sends /memorial/* here): its
+// link preview names the pet (title, dates and line, the garden's card), and the page is
+// memorial.coax, whose script tag it takes from the site's shell page
+// (/realms/hecates-cemetery/memorial/, content-named files) with the memorial as its
+// data-text, the JSON GET /api/villa/memorial/<slug> answers anyone. A memorial that
+// isn't there (removed, held, never was) is the same page saying so, 404.
+static void memorial_page(const request *q, PGconn *db, const char *slug) {
+  bool ok = *slug && strlen(slug) <= 16;
+  for (const char *c = slug; *c; c++) if (!isalnum((unsigned char)*c)) ok = false;
+  answer a = {404, NULL, NULL};
+  if (ok) {
+    char parts[64]; snprintf(parts, sizeof parts, "{memorial,%s}", slug);
+    const char *v[6] = {"GET", parts, "{}", "", env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
+    a = ask(db, Q("villa.api($1, $2::text[], $3::jsonb, $4, $5, $6)"), 6, v);
   }
-  char name[200], line[400], title[300], desc[600], page[4096], to[200];
-  html(name, sizeof name, PQgetvalue(r, 0, 0)); html(line, sizeof line, PQgetvalue(r, 0, 1));
-  const char *born = PQgetvalue(r, 0, 2), *died = PQgetvalue(r, 0, 3);
-  char dates[120] = "";
-  if (*born || *died) snprintf(dates, sizeof dates, "%.40s%s%.40s. ", born, *died ? " to " : "", died);
-  PQclear(r);
-  snprintf(title, sizeof title, "%s, in Hecate's Cemetery", name);
-  char dd[300]; html(dd, sizeof dd, dates);
-  snprintf(desc, sizeof desc, "%s%s", dd, *line ? line : "A memorial in the moonlit garden of Planetary Villa.");
-  snprintf(to, sizeof to, "/realms/hecates-cemetery/#m/%s", slug);
-  snprintf(page, sizeof page,
-           "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
-           "<title>%s</title><meta name=description content=\"%s\">"
-           "<meta property=og:title content=\"%s\"><meta property=og:description content=\"%s\">"
-           "<meta property=og:image content=\"%s/realms/hecates-cemetery/card.jpg\"><meta property=og:url content=\"%s/api/villa/m/%s\">"
-           "<meta name=twitter:card content=summary_large_image><meta http-equiv=refresh content=\"0;url=%s\"></head>"
-           "<body style=\"background:#05070d;color:#cfd8ee\"><main><h1>%s</h1><a href=\"%s\">%s</a></main></body></html>",
-           title, desc, title, desc, origin(), origin(), slug, to, name, to, title);
-  api_respond(q->fd, 200, "text/html; charset=utf-8", "Cache-Control: public, max-age=300\r\n", page, strlen(page));
+  bool found = a.status == 200 && a.body;
+  char name[200] = "", line[400] = "", born[60] = "", died[60] = "";
+  if (found) {
+    char raw[400];
+    field(db, a.body, "{name}", raw, sizeof raw); html(name, sizeof name, raw);
+    field(db, a.body, "{line}", raw, sizeof raw); html(line, sizeof line, raw);
+    field(db, a.body, "{born}", raw, sizeof raw); html(born, sizeof born, raw);
+    field(db, a.body, "{died}", raw, sizeof raw); html(died, sizeof died, raw);
+    if (!*name) found = false;
+  }
+  char title[300], desc[700], url[200], dates[140] = "";
+  if (*born || *died) snprintf(dates, sizeof dates, "%s%s%s. ", born, *died ? " to " : "", died);
+  if (found) snprintf(title, sizeof title, "%s, in Hecate's Cemetery", name);
+  else snprintf(title, sizeof title, "A memorial in Hecate's Cemetery");
+  snprintf(desc, sizeof desc, "%s%s", found ? dates : "", found && *line ? line : "A memorial in the moonlit garden of Planetary Villa, on the Verse.");
+  snprintf(url, sizeof url, "%s/memorial/%s", origin(), ok ? slug : "");
+  buf b = {NULL, 0, 0};
+  char head[4096];
+  snprintf(head, sizeof head,
+    "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+    "<title>%s</title>\n<meta name=\"description\" content=\"%s\">\n%s"
+    "<link rel=\"canonical\" href=\"%s\">\n"
+    "<meta property=\"og:type\" content=\"website\">\n<meta property=\"og:site_name\" content=\"OpenAgents\">\n"
+    "<meta property=\"og:title\" content=\"%s\">\n<meta property=\"og:description\" content=\"%s\">\n"
+    "<meta property=\"og:url\" content=\"%s\">\n"
+    "<meta property=\"og:image\" content=\"%s/realms/hecates-cemetery/card.jpg\">\n"
+    "<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n"
+    "<meta property=\"og:image:alt\" content=\"Hecate's Cemetery, a moonlit memorial garden\">\n"
+    "<meta name=\"twitter:card\" content=\"summary_large_image\">\n"
+    "<meta name=\"twitter:title\" content=\"%s\">\n<meta name=\"twitter:description\" content=\"%s\">\n"
+    "<meta name=\"twitter:image\" content=\"%s/realms/hecates-cemetery/card.jpg\">\n"
+    "<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\n"
+    "<script>if (\"gpu\" in navigator) document.documentElement.classList.add(\"gpu\")</script>\n"
+    "<style>\nhtml,body{margin:0;height:100%%;background:#3c4a6b;color:#ededed}\n"
+    "body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,sans-serif;font-size:14px;line-height:1.5}\n"
+    "canvas{position:fixed;inset:0;width:100%%;height:100%%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}\n"
+    "canvas[data-cursor=pointer]{cursor:pointer}\nmain{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}\n"
+    "html:not(.gpu) body{overflow:auto}\na{color:#ededed}\n"
+    ".gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%%);white-space:nowrap;padding:0}\n</style>\n</head>\n<body>\n"
+    "<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>%s</h1>\n<p><a href=\"/realms/hecates-cemetery\">Hecate's Cemetery</a></p>\n</main>\n"
+    "<script type=\"application/json\" id=\"memorial\">",
+    title, desc, found ? "" : "<meta name=\"robots\" content=\"noindex\">\n", url, title, desc, url, origin(), title, desc, origin(),
+    found ? title : "This memorial isn't here");
+  page_add(&b, head);
+  if (found) {   // JSON in a script element: every < written as <, so nothing in it closes the element
+    for (const char *c = a.body; *c; c++) { if (*c == '<') page_add(&b, "\\u003c"); else take((char *)c, 1, 1, &b); }
+  }
+  page_add(&b, "</script>\n<script type=\"module\">\n"
+    "const t = await (await fetch(\"/realms/hecates-cemetery/memorial/\")).text();\n"
+    "const from = new DOMParser().parseFromString(t, \"text/html\").querySelector(\"script[data-app]\");\n"
+    "const s = document.createElement(\"script\");\n"
+    "for (const a of from.attributes) s.setAttribute(a.name, a.value);\n"
+    "const m = document.getElementById(\"memorial\").textContent;\n");
+  page_add(&b, found ? "s.dataset.page = \"0\"; s.dataset.text = m;\n" : "s.dataset.page = \"1\";\n");
+  page_add(&b, "document.body.append(s);\n</script>\n</body>\n</html>\n");
+  free(a.body); free(a.all);
+  if (!b.p) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  api_respond(q->fd, found ? 200 : 404, "text/html; charset=utf-8", found ? "Cache-Control: public, max-age=60\r\n" : "Cache-Control: no-store\r\n", b.p, b.n);
+  free(b.p);
 }
 
 bool villa_route(const request *q) {
+  if (!strncmp(q->path, "/memorial/", 10) || !strcmp(q->path, "/memorial")) {
+    if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
+    const char *slug = q->path[9] ? q->path + 10 : "";
+    char want[40]; snprintf(want, sizeof want, "%.32s", slug);
+    size_t wl = strlen(want); if (wl && want[wl - 1] == '/') want[wl - 1] = 0;   // /memorial/<slug>/ too
+    PGconn *db = api_db();
+    if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+    memorial_page(q, db, want);
+    return true;
+  }
   if (strncmp(q->path, PREFIX, strlen(PREFIX))) return false;
   const char *rest = q->path + strlen(PREFIX);
   bool post = !strcmp(q->method, "POST");
   if (!post && strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
-  if (!strncmp(rest, "m/", 2) && !post) { share(q, db, rest + 2); return true; }
+  if (!strncmp(rest, "m/", 2) && !post) { share(q, rest + 2); return true; }
   if (post) {   // CSRF: a write comes from this site's pages
     char from[256];
     if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }

@@ -897,7 +897,7 @@ pet_pointer :: (p: [] PetUi, x: f32, y: f32, phase: int) -> bool {
     else if p[0].slug_n == 8 { pet_open_memorial(p, pet_s(p[0].slug[..], 8)); }
   }
   else if kind == B_SHARE {
-    n := pet_put(p[0].outbox[..], 0, "https://openagents.com/api/villa/m/");
+    n := pet_put(p[0].outbox[..], 0, "https://openagents.com/memorial/");
     n = pet_put(p[0].outbox[..], n, pet_s(p[0].m_slug[..], 8));
     if n > 0 { p[0].out_n = n; p[0].action = 2; pet_toast(p, "The link is copied: send it to family and friends"); pet_ev(p, EV_SHARE, 0); }
   }

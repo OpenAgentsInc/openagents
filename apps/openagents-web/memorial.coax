@@ -1,0 +1,673 @@
+// A memorial's own page, openagents.com/memorial/<slug>: a pet's memorial
+// from Hecate's Cemetery (villapet.coax, coax/web/api/villa.c) as a page you
+// can share. oa-api serves its HTML with the memorial's own link preview
+// (villa.c memorial_page) and hands the memorial to this page as its
+// data-text (message 2), the JSON GET /api/villa/memorial/<slug> answers:
+// name, born, died, line, story, traits, achievements, the photos and videos
+// its owner shows (media) and the notes from those who knew them.
+//
+// The page: a moonlit night like the garden's, the name on a tombstone, the
+// photos (a tap opens one large), their story, what made them them, what they
+// did, the notes, and the way into the garden: VISIT THEIR TOMBSTONE and
+// LEAVE A NOTE IN THE GARDEN open the realm at the memorial (#m/<slug>),
+// COPY LINK copies this page's address. A page that isn't there (data-page 1)
+// says so, with the way into the garden.
+//   coax/bin/coax test apps/openagents-web/memorial.coax
+
+#load "font.coax";
+#load "../../coax/lib/json/json.coax";
+#load "analytics.coax";
+
+VERTEX_FLOATS :: 12;
+MAX_VERTICES :: 40000;
+UNIFORM_FLOATS :: 48;
+PANELS :: 4;
+U_PANEL :: 8;            // per panel: x0, y0, x1, y1, then corner, alpha, kind, arch (a stone's top, how tall)
+U_MOON :: U_PANEL + PANELS * 8;   // the moon: x, y, radius (device pixels), how far the page scrolled
+MODE_STROKE :: 0.0;
+GAP :: 0.34;
+SPACE :: 0.95;
+INBOX :: 32768;
+OUTBOX :: 256;
+NODES :: 1536;
+
+// What the memorial keeps: a field's bytes each.
+NAME_BYTES :: 120; DATES_BYTES :: 64; LINE_BYTES :: 400; TEXT_BYTES :: 4000;
+NOTES :: 24; NOTE_NAME :: 40; NOTE_TEXT :: 600;
+MEDIA :: 12; MEDIA_ID :: 16;
+SLUG :: 8;
+HALF_TURN :: 3.14159265;
+
+K_ESCAPE :: -1; K_ENTER :: -2; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
+P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
+MSG_TEXT :: 2;           // the page's data-text: the memorial's JSON
+ACT_NAVIGATE :: 1; ACT_COPY :: 2;
+REALM :: "/realms/hecates-cemetery";
+SITE :: "https://openagents.com";
+
+// What a press can land on.
+B_HOME :: 1; B_VISIT :: 2; B_COPY :: 3; B_NOTE :: 4; B_MEDIA :: 5; B_CLOSE :: 6;
+BUTTONS :: 32;
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Memorial :: struct {
+  time: f32;
+  ready: bool;
+  width: f32; height: f32; d: f32;
+  page: int;                      // 0 a memorial, 1 not here (data-page)
+  got: bool;                      // the memorial came and read well
+  slug: [SLUG] u8; slug_n: int;
+  name: [NAME_BYTES] u8; name_n: int;
+  dates: [DATES_BYTES] u8; dates_n: int;
+  line: [LINE_BYTES] u8; line_n: int;
+  story: [TEXT_BYTES] u8; story_n: int;
+  traits: [TEXT_BYTES] u8; traits_n: int;
+  ach: [TEXT_BYTES] u8; ach_n: int;
+  notes: int;
+  n_name: [NOTES * NOTE_NAME] u8; n_name_n: [NOTES] int;
+  n_text: [NOTES * NOTE_TEXT] u8; n_text_n: [NOTES] int;
+  media: int;
+  m_id: [MEDIA * MEDIA_ID] u8; m_video: [MEDIA] bool;
+  big: int;                       // the photo open large, -1 none
+  scroll: f32; content: f32;      // how far down, and how tall the page's content is
+  buttons: int;
+  button: [BUTTONS] Box; button_kind: [BUTTONS] int; button_arg: [BUTTONS] int;
+  hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  copied: f32;                    // seconds the LINK COPIED word still shows
+  media_text: [1024] u8; media_n: int;
+  nodes: [NODES] JvNode;
+  inbox: [INBOX] u8;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+}
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+absf :: (x: f32) -> f32 { if x < 0 { return -x; } return x; }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.002 { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v]; out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+  }
+  return true;
+}
+
+// ---- ink: moon-pale text, a soft lilac for the labels (orange is Bitcoin's)
+
+INK_NAME :: 0; INK_TEXT :: 1; INK_DIM :: 2; INK_LABEL :: 3; INK_BUTTON :: 4;
+ink :: (d: f32, kind: int) -> Ink {
+  k := Ink.{core = 0.55 * d, light = 0.95, glow = 2.4 * d, red = 0.95, green = 0.93, blue = 0.88, mode = MODE_STROKE, scale = d};
+  if kind == INK_NAME { k.core = 0.9 * d; k.glow = 5 * d; k.light = 1.0; }
+  if kind == INK_TEXT { k.sans = true; k.light = 0.92; k.red = 0.93; k.green = 0.92; k.blue = 0.9; }
+  if kind == INK_DIM { k.sans = true; k.light = 0.62; k.red = 0.8; k.green = 0.84; k.blue = 0.94; }
+  if kind == INK_LABEL { k.light = 0.9; k.red = 0.78; k.green = 0.74; k.blue = 0.96; }
+  if kind == INK_BUTTON { k.light = 0.95; k.red = 0.9; k.green = 0.93; k.blue = 1.0; }
+  return k;
+}
+width_of :: (text: string, cap: f32, k: Ink) -> f32 { return ink_width(text, cap, GAP, SPACE, k); }
+put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
+}
+put_center :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - width_of(text, cap, k) * 0.5, y, cap, k);
+}
+// Wrapped text from the top line's baseline y: how far down it went (the next line's baseline) in end[0].
+// Lines above top or below bottom are measured but not drawn. centred: each line centred on x0..x1.
+wrapped :: (out: [] f32, at: int, text: string, x0: f32, x1: f32, y: f32, cap: f32, lead: f32, k: Ink, top: f32, bottom: f32,
+            centred: bool, end: [] f32) -> int {
+  v := at; from := 0; base := y;
+  next: [1] int;
+  while from < text.count {
+    stop := wrap_ink(text, from, x1 - x0, cap, GAP, SPACE, k, next[..]);
+    if next[0] <= from { break; }
+    piece := text[from..<stop];
+    if base > top && base - cap < bottom {
+      x := ifx centred then (x0 + x1 - width_of(piece, cap, k)) * 0.5 else x0;
+      v = put(out, v, piece, x, base, cap, k);
+    }
+    base += lead;
+    from = next[0];
+  }
+  end[0] = base;
+  return v;
+}
+
+// ---- the memorial, read from its JSON
+
+copy_into :: (dst: [] u8, s: string) -> int {
+  n := lo_int(s.count, dst.count);
+  // never cut a UTF-8 character in two
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+append :: (dst: [] u8, at: int, s: string) -> int {
+  if at < 0 || at > dst.count { return at; }
+  return at + copy_into(dst[at..<dst.count], s);
+}
+lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+str_of :: (d: Jv, at: int, dst: [] u8) -> int {
+  n := jv_str(d, at, dst);
+  return ifx n < 0 then 0 else n;
+}
+is_hex :: (s: string) -> bool {
+  if s.count != MEDIA_ID { return false; }
+  for i: 0..<s.count { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+is_slug :: (s: string) -> bool {
+  if s.count != SLUG { return false; }
+  for i: 0..<s.count { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) { return false; } }
+  return true;
+}
+
+memorial_take :: (s: [] Memorial, text: string) -> bool {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, s[0].nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v := d[0];
+  slug: [SLUG + 1] u8;
+  sn := str_of(v, jv_get(v, 0, "slug"), slug[..]);
+  if !is_slug(cast(string) slug[0..<sn]) { return false; }
+  for i: 0..<SLUG { s[0].slug[i] = slug[i]; }
+  s[0].slug_n = SLUG;
+  s[0].name_n = str_of(v, jv_get(v, 0, "name"), s[0].name[..]);
+  born: [24] u8; died: [24] u8;
+  bn := str_of(v, jv_get(v, 0, "born"), born[..]); dn := str_of(v, jv_get(v, 0, "died"), died[..]);
+  n := copy_into(s[0].dates[..], cast(string) born[0..<bn]);
+  if dn > 0 {
+    if bn > 0 { n = append(s[0].dates[..], n, " - "); }
+    n = append(s[0].dates[..], n, cast(string) died[0..<dn]);
+  }
+  s[0].dates_n = n;
+  s[0].line_n = str_of(v, jv_get(v, 0, "line"), s[0].line[..]);
+  s[0].story_n = str_of(v, jv_get(v, 0, "story"), s[0].story[..]);
+  s[0].traits_n = str_of(v, jv_get(v, 0, "traits"), s[0].traits[..]);
+  s[0].ach_n = str_of(v, jv_get(v, 0, "achievements"), s[0].ach[..]);
+  // the notes: the newest NOTES of them, the ones their owner hid left out
+  arr := jv_get(v, 0, "notes");
+  total := jv_len(v, arr);
+  shown := 0;
+  for i: 0..<total { if !jv_bool(v, jv_get(v, jv_at(v, arr, i), "hidden")) { shown += 1; } }
+  skip := ifx shown > NOTES then shown - NOTES else 0;
+  s[0].notes = 0; seen := 0;
+  for i: 0..<total {
+    e := jv_at(v, arr, i);
+    if jv_bool(v, jv_get(v, e, "hidden")) { continue; }
+    seen += 1;
+    if seen <= skip || s[0].notes >= NOTES { continue; }
+    k := s[0].notes;
+    s[0].n_name_n[k] = str_of(v, jv_get(v, e, "name"), s[0].n_name[k * NOTE_NAME..<(k + 1) * NOTE_NAME]);
+    s[0].n_text_n[k] = str_of(v, jv_get(v, e, "text"), s[0].n_text[k * NOTE_TEXT..<(k + 1) * NOTE_TEXT]);
+    if s[0].n_text_n[k] > 0 { s[0].notes = k + 1; }
+  }
+  // the photos and videos its owner shows
+  md := jv_get(v, 0, "media");
+  s[0].media = 0; s[0].big = -1;
+  for i: 0..<jv_len(v, md) {
+    if s[0].media >= MEDIA { break; }
+    e := jv_at(v, md, i);
+    hex: [MEDIA_ID + 1] u8;
+    hn := str_of(v, jv_get(v, e, "id"), hex[..]);
+    if !is_hex(cast(string) hex[0..<hn]) { continue; }
+    c := s[0].media;
+    for q: 0..<MEDIA_ID { s[0].m_id[c * MEDIA_ID + q] = hex[q]; }
+    kd: [8] u8;
+    kn := str_of(v, jv_get(v, e, "kind"), kd[..]);
+    s[0].m_video[c] = cast(string) kd[0..<kn] == "video";
+    s[0].media = c + 1;
+  }
+  s[0].got = s[0].name_n > 0;
+  return s[0].got;
+}
+
+name_s :: (s: [] Memorial) -> string { return cast(string) s[0].name[0..<s[0].name_n]; }
+slug_s :: (s: [] Memorial) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
+
+// ---- the layout and drawing
+
+Layout :: struct { x0: f32; x1: f32; top: f32; cap: f32; body: f32; phone: bool; }
+layout :: (w: f32, h: f32, d: f32) -> Layout {
+  l: Layout;
+  l.phone = w / d < 700;
+  cw := lo(w - 32 * d, 680 * d);
+  l.x0 = (w - cw) * 0.5; l.x1 = l.x0 + cw;
+  l.top = ifx l.phone then 16 * d else 28 * d;
+  l.cap = ifx l.phone then 9 * d else 10 * d;
+  l.body = 8.6 * d;   // the sans (font.coax SANS_MAX_CAP): story, traits, notes
+  return l;
+}
+
+button :: (s: [] Memorial, b: Box, kind: int, arg: int) {
+  n := s[0].buttons;
+  if n >= BUTTONS { return; }
+  s[0].button[n] = b; s[0].button_kind[n] = kind; s[0].button_arg[n] = arg;
+  s[0].buttons = n + 1;
+}
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A box's outline, its corners cut at 45° like the site's panels.
+outline :: (out: [] f32, at: int, b: Box, d: f32, light: f32) -> int {
+  v := at; c := 6 * d;
+  // top, right, bottom to the cut, the cut, left to the cut, the cut
+  pts := [12] f32.[b.x0 + c, b.y0, b.x1, b.y0, b.x1, b.y1, b.x0 + c, b.y1, b.x0, b.y1 - c, b.x0, b.y0 + c];
+  for i: 0..<6 {
+    j := (i + 1) % 6;
+    if lit(out, v, pts[i * 2], pts[i * 2 + 1], pts[j * 2], pts[j * 2 + 1], 0.45 * d, light, 1.6 * d, 0.82, 0.86, 1.0, MODE_STROKE) { v += 6; }
+  }
+  return v;
+}
+
+press_button :: (s: [] Memorial, out: [] f32, at: int, b: Box, word: string, kind: int, arg: int, d: f32, cap: f32) -> int {
+  button(s, b, kind, arg);
+  hot := s[0].hot >= 0 && s[0].hot < s[0].buttons && s[0].button_kind[s[0].hot] == kind && s[0].button_arg[s[0].hot] == arg;
+  v := outline(out, at, b, d, ifx hot then 0.95f32 else 0.55f32);
+  k := ink(d, INK_BUTTON);
+  return put_center(out, v, word, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1 + cap) * 0.5, cap, k);
+}
+
+// The ground the tombstone stands on (the stone itself is panel 0's glass, its arched top
+// drawn by memorial.wgsl), wider than the stone.
+ground :: (out: [] f32, at: int, b: Box, d: f32) -> int {
+  if lit(out, at, b.x0 - 28 * d, b.y1, b.x1 + 28 * d, b.y1, 0.6 * d, 0.6, 2.5 * d, 0.7, 0.86, 0.8, MODE_STROKE) { return at + 6; }
+  return at;
+}
+
+// A photo or video for the host to draw (coaxial_media) into b this frame.
+media_line :: (s: [] Memorial, q: int, b: Box, over: bool) {
+  if q < 0 || q >= s[0].media || b.y1 < 0 || b.y0 > s[0].height { return; }
+  t := s[0].media_text[..]; n := s[0].media_n;
+  word := ifx over then "over" else ifx s[0].m_video[q] then "video" else "image";
+  line: [160] u8; m := 0;
+  m = append(line[..], m, word); m = append(line[..], m, " /api/villa/memorial/");
+  m = append(line[..], m, slug_s(s)); m = append(line[..], m, "/media/");
+  m = append(line[..], m, cast(string) s[0].m_id[q * MEDIA_ID..<(q + 1) * MEDIA_ID]);
+  xs := [4] f32.[b.x0, b.y0, b.x1, b.y1];
+  for c: 0..<4 { m = append(line[..], m, " "); m = put_int(line[..], m, cast(int) xs[c]); }
+  m = append(line[..], m, "\n");
+  if n + m > t.count { return; }
+  for i: 0..<m { t[n + i] = line[i]; }
+  s[0].media_n = n + m;
+}
+put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; k := 0; x := v; neg := x < 0;
+  if neg { x = -x; }
+  while true { digits[k] = cast(u8) ('0' + x % 10); k += 1; x = x / 10; if x == 0 || k >= 20 { break; } }
+  n := at;
+  if neg && n < out.count { out[n] = '-'; n += 1; }
+  while k > 0 && n < out.count { k -= 1; out[n] = digits[k]; n += 1; }
+  return n;
+}
+
+glass :: (u: [] f32, k: int, b: Box, corner: f32, alpha: f32, kind: f32, arch: f32) {
+  if k < 0 || k >= PANELS { return; }
+  o := U_PANEL + k * 8;
+  u[o] = b.x0; u[o + 1] = b.y0; u[o + 2] = b.x1; u[o + 3] = b.y1;
+  u[o + 4] = corner; u[o + 5] = alpha; u[o + 6] = kind; u[o + 7] = arch;
+}
+
+PARTS :: [3] string.["THEIR STORY", "WHAT MADE THEM THEM", "WHAT THEY DID"];
+
+memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].big = -1; }
+  t := clamp(dt, 0, 0.1);
+  s[0].time += t;
+  s[0].copied = hi(s[0].copied - t, 0);
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  l := layout(width, height, d);
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1;
+  u[4] = ifx still then 1.0f32 else 0.0f32;
+  s[0].buttons = 0; s[0].media_n = 0;
+  s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 24 * d, 0));
+  y := l.top - s[0].scroll;
+  cap := l.cap; small := cap * 0.82;
+  v := 0;
+  // the way to the garden, top left
+  home := "HECATE'S CEMETERY";
+  hw := width_of(home, small, ink(d, INK_LABEL));
+  hb := Box.{x0 = l.x0, y0 = y, x1 = l.x0 + hw + 24 * d, y1 = y + small + 20 * d};
+  v = press_button(s, out, v, hb, home, B_HOME, 0, d, small);
+  y = hb.y1 + (ifx l.phone then 18 * d else 30 * d);
+  // the moon, behind the stone, up and to the right
+  u[U_MOON] = l.x1 - (ifx l.phone then 30 * d else 70 * d); u[U_MOON + 1] = l.top + (ifx l.phone then 14 * d else 70 * d) - s[0].scroll * 0.4;
+  u[U_MOON + 2] = ifx l.phone then 22 * d else 52 * d; u[U_MOON + 3] = s[0].scroll;
+  if s[0].page == 1 && !s[0].got {
+    return gone(s, out, u, v, l, y, d);
+  }
+  if !s[0].got {
+    v = put_center(out, v, "OPENING THE MEMORIAL...", width * 0.5, height * 0.5, cap, ink(d, INK_LABEL));
+    s[0].content = height;
+    return v;
+  }
+  // the stone, the name on it
+  sw := lo(l.x1 - l.x0, ifx l.phone then 340 * d else 420 * d);
+  name := name_s(s);
+  ncap := ifx l.phone then 20 * d else 26 * d;
+  nk := ink(d, INK_NAME);
+  while ncap > 10 * d && width_of(name, ncap, nk) > sw - 40 * d { ncap *= 0.92; }
+  cx := (l.x0 + l.x1) * 0.5;
+  sb := Box.{x0 = cx - sw * 0.5, y0 = y, x1 = cx + sw * 0.5, y1 = y};
+  arch := ifx l.phone then 46 * d else 62 * d;
+  inner := y + arch * 0.8;
+  v = put_center(out, v, "IN MEMORY OF", cx, inner, small, ink(d, INK_LABEL));
+  ny := inner + 16 * d + ncap;
+  v = put_center(out, v, name, cx, ny, ncap, nk);
+  ny += 12 * d;
+  if s[0].dates_n > 0 { ny += cap; v = put_center(out, v, cast(string) s[0].dates[0..<s[0].dates_n], cx, ny, cap, ink(d, INK_LABEL)); ny += 10 * d; }
+  end: [1] f32;
+  if s[0].line_n > 0 {
+    v = wrapped(out, v, cast(string) s[0].line[0..<s[0].line_n], sb.x0 + 22 * d, sb.x1 - 22 * d, ny + cap * 1.3, cap * 1.25, cap * 2.0, ink(d, INK_TEXT), -100, height + 100, true, end[..]);
+    ny = end[0] - cap * 0.6;
+  }
+  sb.y1 = ny + 22 * d;
+  v = ground(out, v, sb, d);
+  glass(u, 0, sb, 0, 0.9, 1, arch);
+  y = sb.y1 + 26 * d;
+  // the way into the garden, and the link
+  bh := ifx l.phone then 40 * d else 38 * d;
+  gap := 10 * d;
+  bw := (l.x1 - l.x0 - gap) * 0.5;
+  v = press_button(s, out, v, Box.{x0 = l.x0, y0 = y, x1 = l.x0 + bw, y1 = y + bh}, "VISIT THEIR TOMBSTONE", B_VISIT, 0, d, small);
+  v = press_button(s, out, v, Box.{x0 = l.x1 - bw, y0 = y, x1 = l.x1, y1 = y + bh}, ifx s[0].copied > 0 then "LINK COPIED" else "COPY LINK", B_COPY, 0, d, small);
+  y += bh + 28 * d;
+  // the photos and videos, three a row (two on a phone)
+  if s[0].media > 0 {
+    per := ifx l.phone then 2 else 3;
+    tw := (l.x1 - l.x0 - gap * f32(per - 1)) / f32(per); th := tw * 0.72;
+    for q: 0..<s[0].media {
+      row := q / per; col := q % per;
+      tb := Box.{x0 = l.x0 + f32(col) * (tw + gap), y0 = y + f32(row) * (th + gap), x1 = l.x0 + f32(col) * (tw + gap) + tw, y1 = y + f32(row) * (th + gap) + th};
+      v = outline(out, v, tb, d, 0.4);
+      button(s, tb, B_MEDIA, q);
+      if s[0].big < 0 { media_line(s, q, Box.{x0 = tb.x0 + 2 * d, y0 = tb.y0 + 2 * d, x1 = tb.x1 - 2 * d, y1 = tb.y1 - 2 * d}, false); }
+    }
+    rows := (s[0].media + per - 1) / per;
+    y += f32(rows) * (th + gap) + 20 * d;
+  }
+  // their story, what made them them, what they did
+  glass_top := y - 12 * d;
+  for q: 0..<3 {
+    text := ifx q == 0 then cast(string) s[0].story[0..<s[0].story_n] else ifx q == 1 then cast(string) s[0].traits[0..<s[0].traits_n] else cast(string) s[0].ach[0..<s[0].ach_n];
+    if text.count == 0 { continue; }
+    y += small;
+    v = put(out, v, PARTS[q], l.x0 + 16 * d, y, small, ink(d, INK_LABEL));
+    y += 12 * d + l.body * 1.3;
+    v = wrapped(out, v, text, l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
+    y = end[0] + 12 * d;
+  }
+  // from those who knew them
+  y += small;
+  v = put(out, v, "FROM THOSE WHO KNEW THEM", l.x0 + 16 * d, y, small, ink(d, INK_LABEL));
+  y += 14 * d;
+  if s[0].notes == 0 {
+    y += l.body * 1.5;
+    v = put(out, v, "No notes yet. Leave the first one in the garden.", l.x0 + 16 * d, y, l.body, ink(d, INK_DIM));
+    y += 16 * d;
+  }
+  for i: 0..<s[0].notes {
+    who := cast(string) s[0].n_name[i * NOTE_NAME..<i * NOTE_NAME + s[0].n_name_n[i]];
+    y += l.body * 1.4 + 6 * d;
+    v = put(out, v, who, l.x0 + 16 * d, y, l.body * 0.9, ink(d, INK_DIM));
+    y += l.body * 2.1;
+    v = wrapped(out, v, cast(string) s[0].n_text[i * NOTE_TEXT..<i * NOTE_TEXT + s[0].n_text_n[i]], l.x0 + 16 * d, l.x1 - 16 * d, y, l.body, l.body * 2.3, ink(d, INK_TEXT), -100, height + 100, false, end[..]);
+    y = end[0] - 2 * d;
+  }
+  y += 8 * d;
+  glass(u, 1, Box.{x0 = l.x0, y0 = glass_top, x1 = l.x1, y1 = y}, 8 * d, 0.62, 0, 0);
+  y += 18 * d;
+  v = press_button(s, out, v, Box.{x0 = l.x0, y0 = y, x1 = l.x1, y1 = y + bh}, "LEAVE A NOTE IN THE GARDEN", B_NOTE, 0, d, small);
+  y += bh + 22 * d;
+  v = put_center(out, v, "A MEMORIAL IN HECATE'S CEMETERY, ON THE VERSE", cx, y, small * 0.85, ink(d, INK_LABEL));
+  y += 30 * d;
+  s[0].content = y + s[0].scroll;
+  // a photo open large, over everything: a tap closes it
+  if s[0].big >= 0 && s[0].big < s[0].media {
+    s[0].buttons = 0;
+    full := Box.{x0 = 0, y0 = 0, x1 = width, y1 = height};
+    glass(u, 2, full, 0, 0.92, 2, 0);
+    m := 16 * d;
+    media_line(s, s[0].big, Box.{x0 = m, y0 = m, x1 = width - m, y1 = height - 56 * d}, true);
+    button(s, full, B_CLOSE, 0);
+    v = put_center(out, v, ifx s[0].m_video[s[0].big] then "A VIDEO THEY SHARED, WITHOUT SOUND. TAP TO CLOSE" else "A PHOTO THEY SHARED. TAP TO CLOSE", width * 0.5, height - 24 * d, small, ink(d, INK_LABEL));
+  }
+  return v;
+}
+
+// Not here (removed, held, or never was): the way into the garden instead.
+gone :: (s: [] Memorial, out: [] f32, u: [] f32, at: int, l: Layout, y: f32, d: f32) -> int {
+  v := at;
+  cx := (l.x0 + l.x1) * 0.5; yy := s[0].height * 0.42;
+  v = put_center(out, v, "THIS MEMORIAL ISN'T HERE", cx, yy, l.cap * 1.6, ink(d, INK_NAME));
+  yy += 30 * d;
+  v = put_center(out, v, "It may have been taken down by the one who made it.", cx, yy, l.body, ink(d, INK_DIM));
+  yy += 30 * d;
+  bw := lo(l.x1 - l.x0, 300 * d);
+  v = press_button(s, out, v, Box.{x0 = cx - bw * 0.5, y0 = yy, x1 = cx + bw * 0.5, y1 = yy + 40 * d}, "WALK IN HECATE'S CEMETERY", B_HOME, 0, d, l.cap * 0.82);
+  s[0].content = s[0].height;
+  return v;
+}
+
+// ---- input
+
+hit :: (s: [] Memorial, x: f32, y: f32) -> int {
+  for i: 0..<s[0].buttons { b := s[0].buttons - 1 - i; if inside(s[0].button[b], x, y) { return b; } }
+  return -1;
+}
+
+go :: (s: [] Memorial, url: string) {
+  s[0].out_n = copy_into(s[0].outbox[..], url); s[0].action = ACT_NAVIGATE;
+}
+
+// The garden at this memorial: the realm opens it (villa.coax villa_hash, #m/<slug>).
+garden_url :: (s: [] Memorial, out: [] u8) -> int {
+  n := copy_into(out, REALM);
+  if s[0].slug_n == SLUG { n = append(out[..], n, "/#m/"); n = append(out[..], n, slug_s(s)); }
+  return n;
+}
+memorial_url :: (s: [] Memorial, out: [] u8) -> int {
+  n := copy_into(out, SITE); n = append(out[..], n, "/memorial/"); n = append(out[..], n, slug_s(s));
+  return n;
+}
+
+act :: (s: [] Memorial, b: int) {
+  if b < 0 || b >= s[0].buttons { return; }
+  kind := s[0].button_kind[b];
+  if kind == B_HOME { go(s, REALM); return; }
+  if kind == B_VISIT || kind == B_NOTE {
+    t: [64] u8; n := garden_url(s, t[..]);
+    go(s, cast(string) t[0..<n]); return;
+  }
+  if kind == B_COPY {
+    s[0].out_n = memorial_url(s, s[0].outbox[..]); s[0].action = ACT_COPY; s[0].copied = 2.5;
+    return;
+  }
+  if kind == B_MEDIA { s[0].big = s[0].button_arg[b]; return; }
+  if kind == B_CLOSE { s[0].big = -1; return; }
+}
+
+memorial_pointer :: (s: [] Memorial, x: f32, y: f32, phase: int, kind: int) -> bool {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = hit(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = hit(s, x, y); }
+    if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+    if s[0].dragged && kind != 0 { s[0].scroll += s[0].drag_y - y; }
+    s[0].drag_y = y;
+    return true;
+  }
+  if phase == P_UP {
+    target := hit(s, x, y);
+    if !s[0].dragged && target == s[0].press && target >= 0 { act(s, target); }
+    s[0].press = -1;
+    if kind != 0 { s[0].hot = -1; }
+    return true;
+  }
+  s[0].press = -1;
+  return true;
+}
+
+memorial_key :: (s: [] Memorial, key: int) -> bool {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if key == K_ESCAPE && s[0].big >= 0 { s[0].big = -1; return true; }
+  if key == K_DOWN { s[0].scroll += 60 * d; return true; }
+  if key == K_UP { s[0].scroll -= 60 * d; return true; }
+  if key == ' ' { s[0].scroll += s[0].height * 0.8; return true; }
+  if key == K_HOME { s[0].scroll = 0; return true; }
+  if key == K_END { s[0].scroll = s[0].content; return true; }
+  return false;
+}
+
+memorial_message :: (s: [] Memorial, kind: int, length: int) {
+  if s.count < 1 || length < 0 || length > INBOX || kind != MSG_TEXT { return; }
+  took := memorial_take(s, cast(string) s[0].inbox[0..<length]);
+}
+
+// ---- the face's exports
+
+coaxial_memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  return memorial_frame(s, out, u, width, height, dpr, dt, still);
+}
+coaxial_memorial_pointer :: (s: [] Memorial, x: f32, y: f32, phase: int, kind: int) -> bool #export_c { return memorial_pointer(s, x, y, phase, kind); }
+coaxial_memorial_key :: (s: [] Memorial, key: int) -> bool #export_c { return memorial_key(s, key); }
+coaxial_memorial_wheel :: (s: [] Memorial, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_memorial_message :: (s: [] Memorial, kind: int, length: int) #export_c { memorial_message(s, kind, length); }
+coaxial_memorial_page :: (s: [] Memorial, page: int) #export_c { if s.count > 0 { s[0].page = page; } }
+coaxial_memorial_cursor :: (s: [] Memorial) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot >= 0 then 1 else 0; }
+coaxial_memorial_action :: (s: [] Memorial) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_memorial_action_done :: (s: [] Memorial) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_memorial_inbox_cap :: () -> int #export_c { return INBOX; }
+coaxial_memorial_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_memorial_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_memorial_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+ECHO :: "{\"born\": \"08/2015\", \"died\": \"04/2017\", \"line\": \"A quick dog who loved the beach\", \"mine\": false, \"name\": \"Pepper\", \"plot\": 40, \"slug\": \"ab12cd34\", \"media\": [{\"id\": \"00000000000000cc\", \"kind\": \"video\"}, {\"id\": \"not-hex\", \"kind\": \"image\"}, {\"id\": \"00000000000000dd\", \"kind\": \"image\"}], \"notes\": [{\"n\": 1, \"name\": \"Guest C54B\", \"text\": \"You were a fantastic dog\", \"hidden\": false}, {\"n\": 2, \"name\": \"Guest 11\", \"text\": \"hidden one\", \"hidden\": true}], \"story\": \"Brave, sweet and \\\"athletic\\\"\", \"traits\": \"fearless\", \"achievements\": \"\"}";
+
+given :: (s: [] Memorial, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  memorial_message(s, MSG_TEXT, text.count);
+}
+on_canvas :: (out: [] f32, n: int, w: f32, h: f32) -> bool {
+  for v: 0..<n {
+    x := out[v * VERTEX_FLOATS];
+    if x < -40 || x > w + 40 { return false; }
+  }
+  return true;
+}
+kind_box :: (s: [] Memorial, kind: int) -> Box {
+  for i: 0..<s[0].buttons { if s[0].button_kind[i] == kind { return s[0].button[i]; } }
+  return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+}
+tap :: (s: [] Memorial, b: Box) {
+  x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  a := memorial_pointer(s, x, y, P_DOWN, 1); b2 := memorial_pointer(s, x, y, P_UP, 1);
+}
+
+#test "the memorial is read from its JSON: dates, story, the notes its owner didn't hide, only hex media" {
+  s: [1] Memorial;
+  given(s[..], ECHO);
+  #assert s[0].got && name_s(s[..]) == "Pepper" && slug_s(s[..]) == "ab12cd34";
+  #assert cast(string) s[0].dates[0..<s[0].dates_n] == "08/2015 - 04/2017";
+  #assert cast(string) s[0].story[0..<s[0].story_n] == "Brave, sweet and \"athletic\"";
+  #assert s[0].notes == 1 && cast(string) s[0].n_text[0..<s[0].n_text_n[0]] == "You were a fantastic dog";
+  #assert s[0].media == 2 && s[0].m_video[0] && !s[0].m_video[1];
+  // not JSON, or no slug: nothing is taken
+  t: [1] Memorial;
+  given(t[..], "{\"name\": \"x\"}");
+  #assert !t[0].got;
+  given(t[..], "<html>");
+  #assert !t[0].got;
+}
+
+#test "the page lays out on a desktop and a phone, every stroke on the canvas, its buttons apart" {
+  sizes := [2] f32.[1280, 390]; highs := [2] f32.[800, 844]; dprs := [2] f32.[1, 3];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  for c: 0..<2 {
+    s: [1] Memorial;
+    given(s[..], ECHO);
+    w := sizes[c] * dprs[c]; h := highs[c] * dprs[c];
+    n := memorial_frame(s[..], out[..], u[..], w, h, dprs[c], 1.0 / 60.0, true);
+    #assert n > 200 && n < MAX_VERTICES - 600;
+    #assert on_canvas(out[..], n, w, h);
+    v := kind_box(s[..], B_VISIT); cp := kind_box(s[..], B_COPY); nt := kind_box(s[..], B_NOTE);
+    #assert v.x1 > v.x0 && cp.x1 > cp.x0 && nt.x1 > nt.x0;
+    #assert v.x1 <= cp.x0 && v.x0 >= 0 && cp.x1 <= w;
+    // its words fit its buttons
+    #assert width_of("VISIT THEIR TOMBSTONE", hi(dprs[c], 1) * (ifx c == 1 then 9.0f32 else 10.0f32) * 0.82, ink(dprs[c], INK_BUTTON)) < v.x1 - v.x0;
+    // the photos are named for the host, inside the canvas's width
+    #assert s[0].media_n > 0 && s[0].content > 0;
+    #assert u[0] == w && u[U_MOON + 2] > 0;
+  }
+}
+
+#test "VISIT and LEAVE A NOTE open the garden at the memorial; COPY LINK copies this page's address; a photo opens and closes" {
+  s: [1] Memorial;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  given(s[..], ECHO);
+  #assert memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
+  tap(s[..], kind_box(s[..], B_VISIT));
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery/#m/ab12cd34";
+  coaxial_memorial_action_done(s[..]);
+  tap(s[..], kind_box(s[..], B_COPY));
+  #assert s[0].action == ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "https://openagents.com/memorial/ab12cd34";
+  coaxial_memorial_action_done(s[..]);
+  tap(s[..], kind_box(s[..], B_NOTE));
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery/#m/ab12cd34";
+  coaxial_memorial_action_done(s[..]);
+  tap(s[..], kind_box(s[..], B_HOME));
+  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery";
+  coaxial_memorial_action_done(s[..]);
+  #assert memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
+  tap(s[..], kind_box(s[..], B_MEDIA));
+  #assert s[0].big == 0;
+  #assert memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
+  #assert cast(string) s[0].media_text[0..<4] == "over" && s[0].buttons == 1;
+  tap(s[..], kind_box(s[..], B_CLOSE));
+  #assert s[0].big == -1;
+  // a drag scrolls and presses nothing
+  #assert memorial_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 1.0 / 60.0, true) > 0;
+  b := kind_box(s[..], B_VISIT);
+  #assert memorial_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, P_DOWN, 1);
+  #assert memorial_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 - 300, P_MOVE, 1);
+  #assert memorial_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 - 300, P_UP, 1);
+  #assert s[0].action == 0 && s[0].scroll > 0;
+}
+
+#test "a memorial that isn't here says so and leads into the garden" {
+  s: [1] Memorial;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  coaxial_memorial_page(s[..], 1);
+  n := memorial_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true);
+  #assert n > 0 && s[0].buttons >= 1;
+  tap(s[..], kind_box(s[..], B_HOME));
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hecates-cemetery";
+  // waiting for it (no data yet, not refused): a word, no buttons but the way home
+  w: [1] Memorial;
+  #assert memorial_frame(w[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true) > 0;
+}

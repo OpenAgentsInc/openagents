@@ -154,6 +154,9 @@ cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/..
 # /realms: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
 realmlist=$!
+# /memorial/<slug>: a pet's memorial from Hecate's Cemetery, its page (oa-api serves the HTML, villa.c memorial_page).
+"$here/../../coax/web/wasm.sh" "$here/memorial.coax" "$here/memorial-face.c" "$here/build/memorial.wasm" &
+memorial=$!
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
@@ -174,6 +177,7 @@ COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/private.coax" 
   "$here/../../coax/lib/qr/qr-memory.coax" "$here/../../coax/lib/nostr/weblogin.coax" "$here/../../coax/lib/crypto/entropy.coax"
 wait "$admin"
 wait "$realmlist"
+wait "$memorial"
 wait "$og"
 wait "$chat"
 wait "$nip01"

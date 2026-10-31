@@ -239,9 +239,28 @@ check("villa: restored, it's back", call("GET", "/api/villa/memorial/%s/media/%s
 v("POST", "pets/%s/files/%s/unshow" % (pid, fid), kiki)
 check("villa: its owner takes it off", v("GET", "memorial/%s/media/%s" % (pet["slug"], fhex))[0] == 404 and v("GET", "memorial/" + pet["slug"])[1].get("media") == [])
 check("villa: a restored chat line says what it said", [m["text"] for m in json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"] if str(m["n"]) == line] == ["a rude line"])
-s, vpage = v("GET", "m/" + pet["slug"])
-check("villa: the share link names her and goes on to the realm", s == 200 and "Hecate, in Hecate&#39;s Cemetery" not in vpage
-      and "Hecate, in Hecate's Cemetery" in vpage and "#m/" + pet["slug"] in vpage and "og:image" in vpage, vpage[:200])
+# The memorial's own page (/memorial/<slug>, memorial.coax): its preview names her, the memorial rides in it as JSON.
+import http.client, re, urllib.parse
+_u = urllib.parse.urlparse(API)
+_c = http.client.HTTPConnection(_u.hostname, _u.port)
+_c.request("GET", "/api/villa/m/" + pet["slug"])
+_r = _c.getresponse(); _r.read()
+check("villa: the old share link goes on to the memorial's own page", _r.status == 301 and _r.getheader("Location") == "/memorial/" + pet["slug"], _r.status)
+s, raw, hh = call("GET", "/memorial/" + pet["slug"])
+mpage = raw.decode()
+check("villa: a memorial's page names her in its title and link preview", s == 200 and "<title>Hecate, in Hecate's Cemetery</title>" in mpage
+      and '<meta property="og:title" content="Hecate, in Hecate\'s Cemetery">' in mpage and re.search(r'<meta property="og:url" content="https?://[^"]+/memorial/%s">' % pet["slug"], mpage)
+      and re.search(r'og:image" content="https?://[^"]+/realms/hecates-cemetery/card.jpg"', mpage) and "summary_large_image" in mpage and "noindex" not in mpage, mpage[:600])
+embedded = re.search(r'<script type="application/json" id="memorial">(.*?)</script>', mpage, re.S)
+check("villa: the page carries the memorial anyone sees, and takes its script from the site's shell", embedded is not None
+      and json.loads(embedded.group(1)) == v("GET", "memorial/" + pet["slug"])[1] and 'fetch("/realms/hecates-cemetery/memorial/")' in mpage
+      and 's.dataset.page = "0"' in mpage and mpage.count("<main>") == 1, mpage[-900:])
+check("villa: a trailing slash is the same page", call("GET", "/memorial/%s/" % pet["slug"])[0] == 200)
+s, raw, _ = call("GET", "/memorial/zzzzzzzz")
+check("villa: a memorial that isn't here is the page saying so, 404 and unindexed", s == 404 and b"This memorial isn't here" in raw and b"noindex" in raw
+      and b'dataset.page = "1"' in raw and b"application/json\" id=\"memorial\"></script>" in raw, raw[-500:])
+check("villa: a name that can't be a memorial's is refused the same way", call("GET", "/memorial/a.b")[0] == 404 and call("GET", "/memorial/")[0] == 404)
+check("villa: only GET", call("POST", "/memorial/" + pet["slug"], b"{}")[0] == 405)
 s, vgone = v("POST", "pets/%s/remove" % pid, kiki)
 check("villa: removing takes the pet, its tombstone and its files", s == 200 and v("GET", "memorial/" + pet["slug"])[0] == 404
       and not any("/villa/" + pid in k for k in bucket["objects"]), bucket["objects"].keys())

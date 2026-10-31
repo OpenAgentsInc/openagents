@@ -15,13 +15,17 @@
 #   lb.sh private-pages        any other /projects/* that the site doesn't have answers with the
 #                              site's locked private page (/projects/private/), 404, so a slug
 #                              nobody routed looks like one you may not see
+#
+# Memorials (villa.c memorial_page):
+#   lb.sh memorial-route       /memorial and /memorial/* on both hosts -> the API, so each pet's
+#                              memorial page carries its own link preview
 set -euo pipefail
 project=openagentsgemini region=us-central1 map=coaxial-openagents-web-staging
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 g() { gcloud "$@" --project "$project" --quiet; }
-if [[ "${1:-}" == private-route || "${1:-}" == private-pages ]]; then
+if [[ "${1:-}" == private-route || "${1:-}" == private-pages || "${1:-}" == memorial-route ]]; then
   what="$1" slug="${2:-}"
-  [[ "$what" == private-pages || "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || { echo "lb.sh: private-route SLUG (lowercase letters, digits, -)" >&2; exit 2; }
+  [[ "$what" != private-route || "$slug" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || { echo "lb.sh: private-route SLUG (lowercase letters, digits, -)" >&2; exit 2; }
   [[ "$slug" != private ]] || { echo "lb.sh: 'private' is the site's locked page" >&2; exit 2; }
   tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
   g compute url-maps describe "$map" --global --format json > "$tmp"
@@ -48,7 +52,11 @@ for pm in m["pathMatchers"]:
     name = pm["name"]
     if name not in api: continue
     rules = pm.setdefault("routeRules", [])
-    if what == "private-route":
+    if what == "memorial-route":
+        want = [{"fullPathMatch": "/memorial"}, {"prefixMatch": "/memorial/"}]
+        if any(r.get("matchRules") == want for r in rules): continue
+        rules.append({"priority": room_before(rules, None), "matchRules": want, "service": base + "backendServices/" + api[name]})
+    elif what == "private-route":
         want = [{"fullPathMatch": f"/projects/{slug}"}, {"prefixMatch": f"/projects/{slug}/"}]
         if any(r.get("matchRules") == want for r in rules): continue
         anchor = next((r for r in rules if r.get("customErrorResponsePolicy") and any(x.get("prefixMatch") == "/projects/" for x in r["matchRules"])), None) or site_rule(rules)
