@@ -54,6 +54,211 @@ ToPoint :: struct {low:int;high:int;fraction:f64;}
     #assert to_soft(v,values[..],[4]int.[2,0,0,0],0)==0.25;
 }
 
+// The cases below use small exact inputs whose results were worked out by hand
+// or by an independent Python definition (exact fractions for interpolation).
+// A is [[1,2,3],[4,5,6]] read through a transposed [3,2] storage.
+#test "index helpers address row-major coordinates and broadcast sources exactly" {
+    s:=TvShape.{rank=3,dims=[4]int.[2,3,4,0]};c:=to_coords(s,23);#assert c[0]==1 && c[1]==2 && c[2]==3 && c[3]==0;
+    #assert to_flat(s,[4]int.[1,2,3,0])==23 && to_flat(s,[4]int.[0,1,0,0])==4 && to_flat(TvShape.{},[4]int.[0,0,0,0])==0;
+    grid:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};
+    #assert to_broadcast_index(TvShape.{rank=1,dims=[4]int.[3,0,0,0]},grid,5)==2 && to_broadcast_index(TvShape.{rank=2,dims=[4]int.[2,1,0,0]},grid,5)==1;
+    #assert to_broadcast_index(TvShape.{rank=2,dims=[4]int.[1,3,0,0]},grid,4)==1 && to_broadcast_index(TvShape.{},grid,5)==0 && to_broadcast_index(grid,grid,4)==4;
+    p:=to_plan(ToRequest.{op=ToOp.sum,axis=1},s,TvShape.{rank=1},0);c=to_reduce_coords(s,p,ToRequest.{op=ToOp.sum,axis=1},5);#assert c[0]==1 && c[1]==0 && c[2]==1;
+    keep:=ToRequest.{op=ToOp.sum,axis=1,keep=true};p=to_plan(keep,s,TvShape.{rank=1},0);c=to_reduce_coords(s,p,keep,5);#assert c[0]==1 && c[1]==0 && c[2]==1;
+    first:=ToRequest.{op=ToOp.sum};p=to_plan(first,s,TvShape.{rank=1},0);c=to_reduce_coords(s,p,first,6);#assert c[0]==0 && c[1]==1 && c[2]==2;
+    w:=to_accumulate(ToWide.{},1e20);w=to_accumulate(w,1);w=to_accumulate(w,-1e20);#assert to_total(w)==1 && w.sum==0 && w.correction==1;
+    #assert to_fits(3.4028234663852886e38) && to_fits(-3.4028234663852886e38) && !to_fits(3.402823466385289e38);
+}
+#test "argmax rank and window helpers keep the first index on ties" {
+    owner:=tv_owner(1,1,4).storage;v:=tv_contiguous(owner,TvShape.{rank=1,dims=[4]int.[4,0,0,0]},false).view;o:=[4]int.[0,0,0,0];
+    d:=[4]f32.[1,3,2,3];#assert to_argmax(v,d[..],o,0)==1;d=[4]f32.[5,3,1,4];#assert to_argmax(v,d[..],o,0)==0;
+    d=[4]f32.[1,2,3,4];#assert to_argmax(v,d[..],o,0)==3;d=[4]f32.[-4,-3,-1,-2];#assert to_argmax(v,d[..],o,0)==2;
+    d=[4]f32.[3,1,2,3];c:=o;
+    expect_down:=[4]int.[0,3,2,1];expect_up:=[4]int.[2,0,1,3];
+    for i:0..<4 {c[0]=i;#assert to_rank(v,d[..],c,0,true)==expect_down[i] && to_rank(v,d[..],c,0,false)==expect_up[i];}
+    image:=tv_contiguous(tv_owner(1,1,12).storage,TvShape.{rank=4,dims=[4]int.[1,1,3,4]},false).view;
+    q:=[12]f32.[0,1,2,3, 4,9,6,9, 8,9,7,1];
+    #assert to_pool_best(image,q[..],[4]int.[0,0,0,0],ToRequest.{height=2,width=3,stride=1})==5;
+    #assert to_pool_best(image,q[..],[4]int.[0,0,1,1],ToRequest.{height=2,width=2,stride=1})==5;
+    #assert to_pool_best(image,q[..],[4]int.[0,0,0,1],ToRequest.{height=1,width=2,stride=2})==3;
+    #assert to_pool_best(image,q[..],[4]int.[0,0,1,0],ToRequest.{height=1,width=2,stride=2})==9;
+    #assert to_pool_best(image,q[..],[4]int.[0,0,1,1],ToRequest.{height=1,width=2,stride=1})==5;
+    // A larger value just outside the strided window must not seed the search.
+    q[1]=99;q[4]=99;#assert to_pool_best(image,q[..],[4]int.[0,0,0,1],ToRequest.{height=1,width=2,stride=2})==3;
+    #assert to_pool_best(image,q[..],[4]int.[0,0,1,0],ToRequest.{height=1,width=2,stride=2})==9;
+    h:=to_point(0,2,3);#assert h.low==0 && h.high==1 && h.fraction==0;h=to_point(1,2,3);#assert h.low==0 && h.high==1 && h.fraction==0.5;
+    h=to_point(2,2,3);#assert h.low==1 && h.high==1 && h.fraction==0;h=to_point(1,3,5);#assert h.low==0 && h.high==1 && abs(h.fraction-0.4)<1e-15;
+    h=to_point(0,4,2);#assert h.low==0 && h.high==1 && h.fraction==0.5;h=to_point(1,4,2);#assert h.low==2 && h.high==3 && h.fraction==0.5;
+    h=to_point(0,1,3);#assert h.low==0 && h.high==0 && h.fraction==0;
+}
+#test "elementwise families broadcast either operand through strided views" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,3).storage];tall:=tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[3,2,0,0]},false).view;
+    views:=[2]TvView.[tv_transpose(owners[0],tall,0,1).view,tv_contiguous(owners[1],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view];
+    a:=[6]f32.[1,4,2,5,3,6];b:=[3]f32.[1,5,3];idx:[1]int;out:[6]f32;scratch:[6]f32;aux:[1]int;
+    ops:=[6]ToOp.[ToOp.add,ToOp.subtract,ToOp.multiply,ToOp.divide,ToOp.equal,ToOp.less];
+    expected:=[36]f32.[2,7,6,5,10,9, 0,-3,0,3,0,3, 1,10,9,4,25,18, 1,0.4,1,4,1,2, 1,0,1,0,1,0, 0,1,0,0,0,0];
+    for k:0..<6 {r:=to_forward_checked(ToRequest.{op=ops[k]},owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+        #assert r.status==ToStatus.ok && r.written==6 && r.aux_written==0;for i:0..<6 {#assert out[i]==expected[6*k+i];}}
+    swapped:=[2]TvStorage.[owners[1],owners[0]];sv:=[2]TvView.[views[1],views[0]];
+    r:=to_forward_checked(ToRequest.{op=ToOp.subtract},swapped[..],sv[..],b[..],a[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    back:=[6]f32.[0,3,0,-3,0,-3];#assert r.status==ToStatus.ok && r.written==6;for i:0..<6 {#assert out[i]==back[i];}
+    r=to_forward_checked(ToRequest.{op=ToOp.less},swapped[..],sv[..],b[..],a[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    more:=[6]f32.[0,0,0,1,0,1];for i:0..<6 {#assert out[i]==more[i];}
+    owners[1]=tv_owner(2,1,2).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,1,0,0]},false).view;col:=[2]f32.[10,20];
+    r=to_forward_checked(ToRequest.{op=ToOp.subtract},owners[..],views[..],a[..],col[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    rows:=[6]f32.[-9,-8,-7,-16,-15,-14];#assert r.status==ToStatus.ok;for i:0..<6 {#assert out[i]==rows[i];}
+    top:=[1]f32.[f32_from_bits(0x7f7fffff)];zero:=[1]f32.[0];one:=[2]TvStorage.[tv_owner(1,1,1).storage,tv_owner(2,1,1).storage];
+    scalars:=[2]TvView.[tv_contiguous(one[0],TvShape.{},false).view,tv_contiguous(one[1],TvShape.{},false).view];
+    r=to_forward_checked(ToRequest.{},one[..],scalars[..],top[..],zero[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && f32_bits(out[0])==0x7f7fffff;
+}
+#test "unary families refuse their domains and keep signed zero" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,0).storage];
+    views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=1,dims=[4]int.[6,0,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    a:=[6]f32.[-1.5,0,2,-3,0.5,7];none:[1]f32;idx:[1]int;out:[6]f32;scratch:[6]f32;aux:[1]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.negate},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    #assert r.status==ToStatus.ok && r.written==6 && out[0]==1.5 && f32_bits(out[1])==0x80000000 && out[2]==-2 && out[5]==-7;
+    a[1]=f32_from_bits(0x80000000);r=to_forward_checked(ToRequest.{op=ToOp.relu},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    relu:=[6]f32.[0,0,2,0,0.5,7];#assert r.status==ToStatus.ok;for i:0..<6 {#assert out[i]==relu[i];}#assert f32_bits(out[0])==0 && f32_bits(out[1])==0;a[1]=0;
+    e:=[6]f32.[0,1,-1,2,88.5,-88];
+    r=to_forward_checked(ToRequest.{op=ToOp.exponential},owners[..],views[..],e[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    #assert r.status==ToStatus.ok && out[0]==1 && abs(f64(out[1])-2.718281828459045)<1e-6 && abs(f64(out[2])-0.36787944117144233)<1e-7 && abs(f64(out[4])/2.7230878250681117e38-1)<1e-6;
+    e[3]=89;out[0]=-7;r=to_forward_checked(ToRequest.{op=ToOp.exponential},owners[..],views[..],e[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.arithmetic && out[0]==-7;
+    l:=[6]f32.[1,0.5,4,2.718281828459045,1e-30,3e38];
+    r=to_forward_checked(ToRequest.{op=ToOp.logarithm},owners[..],views[..],l[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    #assert r.status==ToStatus.ok && out[0]==0 && abs(f64(out[1])+0.6931471805599453)<1e-7 && abs(f64(out[2])-1.3862943611198906)<1e-6 && abs(f64(out[3])-1)<1e-6;
+    l[4]=0;#assert to_forward_checked(ToRequest.{op=ToOp.logarithm},owners[..],views[..],l[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.arithmetic;
+    l[4]=-1;#assert to_forward_checked(ToRequest.{op=ToOp.logarithm},owners[..],views[..],l[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.arithmetic;
+}
+#test "axis reductions softmax and indexed families follow logical coordinates" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,0).storage];tall:=tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[3,2,0,0]},false).view;
+    views:=[2]TvView.[tv_transpose(owners[0],tall,0,1).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    a:=[6]f32.[1,4,2,5,3,6];none:[1]f32;idx:[3]int;out:=[9]f32.[-7,-7,-7,-7,-7,-7,-7,-7,-7];scratch:[9]f32;aux:[1]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.sum,axis=1},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==2 && out[0]==6 && out[1]==15 && out[2]==-7;
+    r=to_forward_checked(ToRequest.{op=ToOp.sum,keep=true},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==3 && out[0]==5 && out[1]==7 && out[2]==9;
+    r=to_forward_checked(ToRequest.{op=ToOp.mean,axis=1},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==2 && out[0]==2 && out[1]==5;
+    r=to_forward_checked(ToRequest.{op=ToOp.mean},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==3 && out[0]==2.5 && out[1]==3.5 && out[2]==4.5;
+    m:=[6]f32.[-3,-5,-1,-6,-2,-4];
+    r=to_forward_checked(ToRequest.{op=ToOp.maximum,axis=1},owners[..],views[..],m[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==2 && out[0]==-1 && out[1]==-4;
+    r=to_forward_checked(ToRequest.{op=ToOp.maximum},owners[..],views[..],m[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==3 && out[0]==-3 && out[1]==-1 && out[2]==-2;
+    r=to_forward_checked(ToRequest.{op=ToOp.softmax,axis=1},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    soft:=[3]f64.[0.09003057317038046,0.24472847105479764,0.6652409557748218];#assert r.written==6;for i:0..<6 {#assert abs(f64(out[i])-soft[i%3])<1e-7;}
+    r=to_forward_checked(ToRequest.{op=ToOp.softmax},owners[..],views[..],a[..],none[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    for i:0..<3 {#assert abs(f64(out[i])-0.04742587317756678)<1e-7 && abs(f64(out[i+3])-0.9525741268224334)<1e-7;}
+    idx=[3]int.[2,0,2];r=to_forward_checked(ToRequest.{op=ToOp.take,axis=1},owners[..],views[..],a[..],none[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    taken:=[6]f32.[3,1,3,6,4,6];#assert r.status==ToStatus.ok && r.written==6;for i:0..<6 {#assert out[i]==taken[i];}
+    r=to_forward_checked(ToRequest.{op=ToOp.take},owners[..],views[..],a[..],none[0..<0],idx[1..<2],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==3 && out[0]==1 && out[1]==2 && out[2]==3;
+    idx[0]=1;r=to_forward_checked(ToRequest.{op=ToOp.take},owners[..],views[..],a[..],none[0..<0],idx[0..<1],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==3 && out[0]==4 && out[2]==6;
+    wide:=[1]f32.[0];big:=[4]f32.[1000,0,1,-2];
+    row:=[2]TvStorage.[tv_owner(1,1,4).storage,owners[1]];rv:=[2]TvView.[tv_contiguous(row[0],TvShape.{rank=1,dims=[4]int.[4,0,0,0]},false).view,views[1]];
+    r=to_forward_checked(ToRequest.{op=ToOp.softmax},row[..],rv[..],big[..],wide[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && out[0]==1 && out[1]==0 && out[3]==0;
+    big=[4]f32.[0,1000,1,-2];r=to_forward_checked(ToRequest.{op=ToOp.softmax},row[..],rv[..],big[..],wide[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && out[1]==1 && out[0]==0 && out[2]==0;
+}
+#test "update concat sort and topk write exact values and indices" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,4).storage];tall:=tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[3,2,0,0]},false).view;
+    views:=[2]TvView.[tv_transpose(owners[0],tall,0,1).view,tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,2,0,0]},false).view];
+    a:=[6]f32.[1,4,2,5,3,6];b:=[4]f32.[10,20,30,40];idx:=[2]int.[2,0];out:=[9]f32.[-7,-7,-7,-7,-7,-7,-7,-7,-7];scratch:[9]f32;aux:=[6]int.[-9,-9,-9,-9,-9,-9];stage:[6]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.update,axis=1},owners[..],views[..],a[..],b[..],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    updated:=[6]f32.[20,2,10,40,5,30];#assert r.status==ToStatus.ok && r.written==6;for i:0..<6 {#assert out[i]==updated[i];}
+    idx=[2]int.[1,1];r=to_forward_checked(ToRequest.{op=ToOp.update,axis=1},owners[..],views[..],a[..],b[..],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    twice:=[6]f32.[1,20,3,4,40,6];#assert r.status==ToStatus.ok;for i:0..<6 {#assert out[i]==twice[i];}
+    owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,0,0,0]},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.update,axis=1},owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    plain:=[6]f32.[1,2,3,4,5,6];#assert r.status==ToStatus.ok;for i:0..<6 {#assert out[i]==plain[i];}
+    owners[1]=tv_owner(2,1,2).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,1,0,0]},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.concat,axis=1},owners[..],views[..],a[..],b[0..<2],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    joined:=[8]f32.[1,2,3,10,4,5,6,20];#assert r.written==8;for i:0..<8 {#assert out[i]==joined[i];}
+    owners[1]=tv_owner(2,1,3).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[1,3,0,0]},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.concat},owners[..],views[..],a[..],b[0..<3],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    stacked:=[9]f32.[1,2,3,4,5,6,10,20,30];#assert r.written==9;for i:0..<9 {#assert out[i]==stacked[i];}
+    owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.sort},owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false);
+    #assert r.written==6 && r.aux_written==6;for i:0..<3 {#assert out[i]==f32(i+4) && out[i+3]==f32(i+1) && aux[i]==1 && aux[i+3]==0;}
+    r=to_forward_checked(ToRequest.{op=ToOp.topk,axis=1,k=2},owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false);
+    #assert r.written==4 && r.aux_written==4 && out[0]==3 && out[1]==2 && out[2]==6 && out[3]==5 && aux[0]==2 && aux[1]==1 && aux[2]==2 && aux[3]==1;
+    row:=[2]TvStorage.[tv_owner(1,1,4).storage,owners[1]];rv:=[2]TvView.[tv_contiguous(row[0],TvShape.{rank=1,dims=[4]int.[4,0,0,0]},false).view,views[1]];v:=[4]f32.[3,1,2,3];
+    r=to_forward_checked(ToRequest.{op=ToOp.sort,descending=false},row[..],rv[..],v[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false);
+    up:=[4]f32.[1,2,3,3];upi:=[4]int.[1,2,0,3];#assert r.written==4;for i:0..<4 {#assert out[i]==up[i] && aux[i]==upi[i];}
+    aux[0]=-9;r=to_forward_checked(ToRequest.{op=ToOp.topk,k=1},row[..],rv[..],v[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false);#assert r.aux_written==1 && out[0]==3 && aux[0]==0;
+    v=[4]f32.[1,3,2,3];aux[0]=-9;r=to_forward_checked(ToRequest.{op=ToOp.topk,k=1},row[..],rv[..],v[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false);#assert out[0]==3 && aux[0]==1;
+}
+#test "matrix convolution and image families match independent sums" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,6).storage];tall:=tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[3,2,0,0]},false).view;
+    views:=[2]TvView.[tv_transpose(owners[0],tall,0,1).view,tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[3,2,0,0]},false).view];
+    a:=[6]f32.[1,4,2,5,3,6];b:=[6]f32.[1,2,3,4,5,6];idx:[1]int;out:[30]f32;scratch:[30]f32;aux:[1]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.matmul},owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    #assert r.status==ToStatus.ok && r.written==4 && out[0]==22 && out[1]==28 && out[2]==49 && out[3]==64;
+    x:=[48]f32.[5,0,1,4,-4,3,-1,-4,-2,-3,1,3,-1,2,4,-3,5,-1,-4,-1,2,0,-2,2,-2,-3,-2,5,5,3,-2,-2,-4,-4,-1,-1,-2,-2,0,1,-1,4,-1,-2,-1,2,0,-4];
+    w:=[36]f32.[0,1,-1,-1,0,-2,0,0,2,2,-2,2,3,3,0,-2,0,0,0,1,3,0,-1,1,1,3,-1,-2,0,-2,3,0,1,-2,2,1];
+    conv:=[24]f32.[17,0,-4,6,34,-5,-14,9,-1,-3,13,-2,-14,2,3,-2,-32,-19,31,0,-12,-33,28,11];
+    cv:=[2]TvStorage.[tv_owner(1,1,48).storage,tv_owner(2,1,36).storage];
+    cw:=[2]TvView.[tv_contiguous(cv[0],TvShape.{rank=4,dims=[4]int.[2,2,3,4]},false).view,tv_contiguous(cv[1],TvShape.{rank=4,dims=[4]int.[3,2,2,3]},false).view];
+    r=to_forward_checked(ToRequest.{op=ToOp.conv2d},cv[..],cw[..],x[..],w[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && r.written==24;for i:0..<24 {#assert out[i]==conv[i];}
+    pool:=[40]f32.[-1,0,1,3,-3,0,-3,2,-2,1,-2,-3,3,-2,3,0,-1,1,-1,1,-1,3,0,-3,1,2,3,3,-1,3,-1,-3,0,-3,-2,-1,1,1,-1,-2];
+    pv:=[2]TvStorage.[tv_owner(1,1,40).storage,tv_owner(2,1,0).storage];pw:=[2]TvView.[tv_contiguous(pv[0],TvShape.{rank=4,dims=[4]int.[1,2,4,5]},false).view,tv_contiguous(pv[1],TvShape.{rank=1},false).view];
+    r=to_forward_checked(ToRequest.{op=ToOp.maxpool2d,height=2,width=3,stride=2},pv[..],pw[..],pool[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    most:=[8]f32.[2,3,3,3,3,3,1,1];#assert r.written==8;for i:0..<8 {#assert out[i]==most[i];}
+    r=to_forward_checked(ToRequest.{op=ToOp.avgpool2d,height=2,width=2,stride=2},pv[..],pw[..],pool[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    mean:=[8]f32.[-1,1,-1.5,0.25,1.75,-0.25,-1,-0.75];#assert r.written==8;for i:0..<8 {#assert out[i]==mean[i];}
+    n:=[12]f32.[1,2,3,4,5,6,7,8,9,10,11,12];nv:=[2]TvStorage.[tv_owner(1,1,12).storage,pv[1]];nw:=[2]TvView.[tv_contiguous(nv[0],TvShape.{rank=4,dims=[4]int.[1,2,2,3]},false).view,pw[1]];
+    r=to_forward_checked(ToRequest.{op=ToOp.nearest2d,height=3,width=5},nv[..],nw[..],n[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    near:=[30]f32.[1,1,2,2,3,1,1,2,2,3,4,4,5,5,6,7,7,8,8,9,7,7,8,8,9,10,10,11,11,12];#assert r.written==30;for i:0..<30 {#assert out[i]==near[i];}
+    q:=[6]f32.[1,2,4,8,16,32];qv:=[2]TvStorage.[tv_owner(1,1,6).storage,pv[1]];qw:=[2]TvView.[tv_contiguous(qv[0],TvShape.{rank=4,dims=[4]int.[1,1,2,3]},false).view,pw[1]];
+    r=to_forward_checked(ToRequest.{op=ToOp.bilinear2d,height=3,width=5},qv[..],qw[..],q[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    lerp:=[15]f64.[1.0,1.4,2.0,3.2,4.0,4.5,6.3,9.0,14.4,18.0,8.0,11.2,16.0,25.6,32.0];#assert r.written==15;for i:0..<15 {#assert abs(f64(out[i])-lerp[i])<1e-5*lerp[i];}
+    r=to_forward_checked(ToRequest.{op=ToOp.bilinear2d,height=1,width=2},qv[..],qw[..],q[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==2 && out[0]==5.625 && out[1]==15.75;
+    // Two batches of one channel: each output reads its own batch.
+    qw[0]=tv_contiguous(qv[0],TvShape.{rank=4,dims=[4]int.[2,1,1,3]},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.bilinear2d,height=1,width=5},qv[..],qw[..],q[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    pair:=[10]f64.[1,1.4,2,3.2,4,8,11.2,16,25.6,32];#assert r.written==10;for i:0..<10 {#assert abs(f64(out[i])-pair[i])<1e-5*pair[i];}
+    nw[0]=tv_contiguous(nv[0],TvShape.{rank=4,dims=[4]int.[2,1,2,3]},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.bilinear2d,height=3,width=2},nv[..],nw[..],n[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);
+    rise:=[12]f32.[1.25,2.75,2.75,4.25,4.25,5.75,7.25,8.75,8.75,10.25,10.25,11.75];#assert r.written==12;for i:0..<12 {#assert out[i]==rise[i];}
+    r=to_forward_checked(ToRequest.{op=ToOp.nearest2d,height=1,width=2},qv[..],qw[..],q[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.written==4 && out[0]==1 && out[1]==2 && out[2]==8 && out[3]==16;
+}
+#test "losses average exact squared errors and shifted cross entropy" {
+    owners:=[2]TvStorage.[tv_owner(1,1,8).storage,tv_owner(2,1,8).storage];shape:=TvShape.{rank=2,dims=[4]int.[2,4,0,0]};
+    views:=[2]TvView.[tv_contiguous(owners[0],shape,false).view,tv_contiguous(owners[1],shape,false).view];
+    a:=[8]f32.[1,2,3,4,5,6,7,8];b:=[8]f32.[0,2,5,4,8,6,7,9];idx:=[2]int.[2,0];out:[2]f32;scratch:[2]f32;aux:[1]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.mse},owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && r.written==1 && out[0]==1.875;
+    owners[0]=tv_owner(1,1,6).storage;owners[1]=tv_owner(2,1,0).storage;
+    views=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[2,3,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    logits:=[6]f32.[1,2,3,1,1,1];
+    r=to_forward_checked(ToRequest.{op=ToOp.cross_entropy},owners[..],views[..],logits[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && abs(f64(out[0])-0.7531091265562451)<1e-6;
+    logits=[6]f32.[1000,0,-3,0,1000,1];idx=[2]int.[0,2];
+    r=to_forward_checked(ToRequest.{op=ToOp.cross_entropy},owners[..],views[..],logits[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false);#assert r.status==ToStatus.ok && out[0]==499.5;
+}
+#test "admission refuses each bad record, index, value and destination alone" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,3).storage];
+    views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[2,3,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view];
+    a:=[6]f32.[1,2,3,4,5,6];b:=[3]f32.[1,2,3];idx:=[3]int.[0,1,2];out:=[6]f32.[-7,-7,-7,-7,-7,-7];scratch:[6]f32;aux:[6]int;stage:[6]int;add:=ToRequest.{};
+    #assert to_forward_checked(add,owners[0..<1],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    #assert to_forward_checked(add,owners[..],views[0..<1],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    stale:=views;stale[0].epoch=2;#assert to_forward_checked(add,owners[..],stale[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.view;
+    stale=views;stale[1].epoch=2;#assert to_forward_checked(add,owners[..],stale[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.view;
+    #assert to_forward_checked(add,owners[..],views[..],a[0..<5],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    #assert to_forward_checked(add,owners[..],views[..],a[..],b[0..<2],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    #assert to_forward_checked(add,owners[..],views[..],a[..],b[..],idx[0..<0],out[0..<5],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    #assert to_forward_checked(add,owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[0..<5],aux[0..<0],aux[0..<0],false).status==ToStatus.capacity;
+    huge:=f32_from_bits(0x7f7fffff);a[0]=huge*2;
+    #assert to_forward_checked(add,owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.number;
+    a[0]=1;b[0]=huge*2;#assert to_forward_checked(add,owners[..],views[..],a[..],b[..],idx[0..<0],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.number && out[0]==-7;
+    b[0]=1;owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;
+    take:=ToRequest.{op=ToOp.take,axis=1};
+    #assert to_forward_checked(take,owners[..],views[..],a[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.ok && out[2]==3;
+    idx[2]=3;#assert to_forward_checked(take,owners[..],views[..],a[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.index;
+    idx[2]=-1;#assert to_forward_checked(take,owners[..],views[..],a[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.index;
+    idx[2]=2;#assert to_forward_checked(ToRequest.{op=ToOp.take},owners[..],views[..],a[..],b[0..<0],idx[..],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.index;
+    ce:=ToRequest.{op=ToOp.cross_entropy};idx[0]=2;idx[1]=2;
+    #assert to_forward_checked(ce,owners[..],views[..],a[..],b[0..<0],idx[0..<2],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.ok;
+    idx[1]=3;#assert to_forward_checked(ce,owners[..],views[..],a[..],b[0..<0],idx[0..<2],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.index;
+    owners[1]=tv_owner(2,1,2).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,1,0,0]},false).view;idx[0]=3;
+    #assert to_forward_checked(ToRequest.{op=ToOp.update,axis=1},owners[..],views[..],a[..],b[0..<2],idx[0..<1],out[..],scratch[..],aux[0..<0],aux[0..<0],false).status==ToStatus.index;
+    owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;sort:=ToRequest.{op=ToOp.sort,axis=1};
+    #assert to_forward_checked(sort,owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[..],false).status==ToStatus.ok;
+    #assert to_forward_checked(sort,owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[0..<5],stage[..],false).status==ToStatus.capacity;
+    #assert to_forward_checked(sort,owners[..],views[..],a[..],b[0..<0],idx[0..<0],out[..],scratch[..],aux[..],stage[0..<5],false).status==ToStatus.capacity;
+}
+
 to_accumulate :: (s:ToWide,value:f64)->ToWide {next:=s.sum+value;virtual_value:=next-s.sum;error:=(s.sum-(next-virtual_value))+(value-virtual_value);return ToWide.{sum=next,correction=s.correction+error};}
 to_total :: (s:ToWide)->f64 {return s.sum+s.correction;}
 to_fits :: (value:f64)->bool {return abs(value)<=3.4028234663852886e38;}
@@ -64,10 +269,22 @@ to_read :: (v:TvView,data:[]f32,c:[4]int)->f64 {offset:=v.offset;for i:0..<v.sha
 to_broadcast_index :: (input:TvShape,output:TvShape,linear:int)->int {c:=to_coords(output,linear);n:=0;shift:=output.rank-input.rank;for i:0..<input.rank {value:=0;if input.dims[i]!=1 {value=c[i+shift];}n=n*input.dims[i]+value;}return n;}
 to_reduce_coords :: (a:TvShape,p:ToPlan,r:ToRequest,linear:int)->[4]int {o:=to_coords(p.shape,linear);c:[4]int;j:=0;for i:0..<a.rank {if i!=r.axis {if r.keep {c[i]=o[i];}else {c[i]=o[j];j+=1;}}}return c;}
 to_rank :: (v:TvView,data:[]f32,c:[4]int,axis:int,descending:bool)->int {selected:=c[axis];value:=to_read(v,data,c);other:=c;rank:=0;for j:0..<v.shape.dims[axis] {other[axis]=j;x:=to_read(v,data,other);better:=x<value;if descending {better=x>value;}if better || (x==value && j<selected) {rank+=1;}}return rank;}
-to_soft :: (v:TvView,data:[]f32,c:[4]int,axis:int)->f64 {other:=c;other[axis]=0;maximum:=to_read(v,data,other);for j:1..<v.shape.dims[axis] {other[axis]=j;x:=to_read(v,data,other);if x>maximum {maximum=x;}}
+// The first index of the largest value along an axis. Returning the index (not
+// the value) makes the tie rule a checked behaviour.
+to_argmax :: (v:TvView,data:[]f32,c:[4]int,axis:int)->int {other:=c;other[axis]=0;best:=0;maximum:=to_read(v,data,other);
+    for j:1..<v.shape.dims[axis] {other[axis]=j;x:=to_read(v,data,other);if x>maximum {maximum=x;best=j;}}return best;
+}
+to_soft :: (v:TvView,data:[]f32,c:[4]int,axis:int)->f64 {other:=c;other[axis]=to_argmax(v,data,c,axis);maximum:=to_read(v,data,other);
     den:ToWide;for j:0..<v.shape.dims[axis] {other[axis]=j;den=to_accumulate(den,exp(to_read(v,data,other)-maximum));}return exp(to_read(v,data,c)-maximum)/to_total(den);
 }
-to_point :: (out:int,input_size:int,output_size:int)->ToPoint {x:=(f64(out)+0.5)*f64(input_size)/f64(output_size)-0.5;if x<0 {x=0;}if x>f64(input_size-1) {x=f64(input_size-1);}lo:=int(x);hi:=lo+1;if hi>=input_size {hi=lo;}return ToPoint.{low=lo,high=hi,fraction=x-f64(lo)};}
+// Half-pixel source x=((2*out+1)*input-output)/(2*output), clamped to
+// [0,input-1] exactly in integers (numerators stay below 2^43) with branchless
+// minimum and maximum, so no clamp boundary has two equal answers.
+to_point :: (out:int,input_size:int,output_size:int)->ToPoint {
+    scale:=2*output_size;top:=scale*(input_size-1);t:=(2*out+1)*input_size-output_size;
+    t=(t+tv_magnitude(t))/2;t=(t+top-tv_magnitude(t-top))/2;
+    lo:=t/scale;hi:=lo+1;if hi>=input_size {hi=lo;}return ToPoint.{low=lo,high=hi,fraction=f64(t-lo*scale)/f64(scale)};
+}
 to_pool_best :: (v:TvView,data:[]f32,c:[4]int,r:ToRequest)->int {point:=c;point[2]=c[2]*r.stride;point[3]=c[3]*r.stride;best:=to_flat(v.shape,point);maximum:=to_at(v,data,best);
     for h:0..<r.height {for w:0..<r.width {point[2]=c[2]*r.stride+h;point[3]=c[3]*r.stride+w;index:=to_flat(v.shape,point);value:=to_at(v,data,index);if value>maximum {maximum=value;best=index;}}}return best;
 }
@@ -80,20 +297,21 @@ to_eval :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices:[]i
         else if (op==ToOp.equal && x==y) || (op==ToOp.less && x<y) {value=1;}return ToValue.{value=value};
     }
     if op==ToOp.negate || op==ToOp.relu || op==ToOp.exponential || op==ToOp.logarithm {x:=to_at(av,a,i);value:=-x;
-        if op==ToOp.relu {value=0;if x>0 {value=x;}}else if op==ToOp.exponential {if x>88.72283905206835 {return ToValue.{status=ToStatus.arithmetic};}value=exp(x);}
+        if op==ToOp.relu {value=0;if x>0 {value=x;}}else if op==ToOp.exponential {value=exp(x);}
         else if op==ToOp.logarithm {if x<=0 {return ToValue.{status=ToStatus.arithmetic};}value=log(x);}return ToValue.{value=value};
     }
     c:=to_coords(p.shape,i);
-    if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum {point:=to_reduce_coords(av.shape,p,r,i);total:ToWide;maximum:f64=0;
-        for j:0..<av.shape.dims[r.axis] {point[r.axis]=j;value:=to_read(av,a,point);total=to_accumulate(total,value);if j==0 || value>maximum {maximum=value;}}
-        value:=to_total(total);if op==ToOp.mean {value/=f64(av.shape.dims[r.axis]);}else if op==ToOp.maximum {value=maximum;}return ToValue.{value=value};
+    if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum {point:=to_reduce_coords(av.shape,p,r,i);
+        if op==ToOp.maximum {point[r.axis]=to_argmax(av,a,point,r.axis);return ToValue.{value=to_read(av,a,point)};}
+        total:ToWide;for j:0..<av.shape.dims[r.axis] {point[r.axis]=j;total=to_accumulate(total,to_read(av,a,point));}
+        value:=to_total(total);if op==ToOp.mean {value/=f64(av.shape.dims[r.axis]);}return ToValue.{value=value};
     }
     if op==ToOp.softmax {return ToValue.{value=to_soft(av,a,c,r.axis)};}
     if op==ToOp.take {point:=c;point[r.axis]=indices[c[r.axis]];return ToValue.{value=to_read(av,a,point)};}
     if op==ToOp.update {point:=c;selected:=-1;for j:0..<indices.count {if indices[j]==c[r.axis] {selected=j;}}if selected>=0 {point[r.axis]=selected;return ToValue.{value=to_read(bv,b,point)};}return ToValue.{value=to_read(av,a,c)};}
     if op==ToOp.concat {if c[r.axis]<av.shape.dims[r.axis] {return ToValue.{value=to_read(av,a,c)};}point:=c;point[r.axis]-=av.shape.dims[r.axis];return ToValue.{value=to_read(bv,b,point)};}
     if op==ToOp.sort || op==ToOp.topk {point:=c;for j:0..<av.shape.dims[r.axis] {point[r.axis]=j;if to_rank(av,a,point,r.axis,r.descending)==c[r.axis] {return ToValue.{value=to_read(av,a,point),index=j};}}}
-    if op==ToOp.matmul {total:ToWide;for k:0..<av.shape.dims[1] {total=to_accumulate(total,to_read(av,a,[4]int.[c[0],k,0,0])*to_read(bv,b,[4]int.[k,c[1],0,0]));}return ToValue.{value=to_total(total)};}
+    if op==ToOp.matmul {total:ToWide;row:=c;column:=c;for k:0..<av.shape.dims[1] {row[1]=k;column[0]=k;total=to_accumulate(total,to_read(av,a,row)*to_read(bv,b,column));}return ToValue.{value=to_total(total)};}
     if op==ToOp.conv2d {total:ToWide;for channel:0..<av.shape.dims[1] {for h:0..<bv.shape.dims[2] {for w:0..<bv.shape.dims[3] {x:=to_read(av,a,[4]int.[c[0],channel,c[2]+h,c[3]+w]);y:=to_read(bv,b,[4]int.[c[1],channel,h,w]);total=to_accumulate(total,x*y);}}}return ToValue.{value=to_total(total)};}
     if op==ToOp.maxpool2d {return ToValue.{value=to_at(av,a,to_pool_best(av,a,c,r))};}
     if op==ToOp.avgpool2d {total:ToWide;for h:0..<r.height {for w:0..<r.width {total=to_accumulate(total,to_read(av,a,[4]int.[c[0],c[1],c[2]*r.stride+h,c[3]*r.stride+w]));}}return ToValue.{value=to_total(total)/f64(p.inner)};}
@@ -103,8 +321,8 @@ to_eval :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices:[]i
         top:=(1-w.fraction)*v00+w.fraction*v01;bottom:=(1-w.fraction)*v10+w.fraction*v11;return ToValue.{value=(1-h.fraction)*top+h.fraction*bottom};
     }
     if op==ToOp.mse {total:ToWide;for j:0..<p.na {difference:=to_at(av,a,j)-to_at(bv,b,j);total=to_accumulate(total,difference*difference);}return ToValue.{value=to_total(total)/f64(p.na)};}
-    if op==ToOp.cross_entropy {total:ToWide;for row:0..<av.shape.dims[0] {maximum:=to_read(av,a,[4]int.[row,0,0,0]);for k:1..<av.shape.dims[1] {x:=to_read(av,a,[4]int.[row,k,0,0]);if x>maximum {maximum=x;}}
-        den:ToWide;for k:0..<av.shape.dims[1] {den=to_accumulate(den,exp(to_read(av,a,[4]int.[row,k,0,0])-maximum));}loss:=(maximum-to_read(av,a,[4]int.[row,indices[row],0,0]))+log(to_total(den));total=to_accumulate(total,loss);}
+    if op==ToOp.cross_entropy {total:ToWide;for row:0..<av.shape.dims[0] {point:[4]int;point[0]=row;point[1]=to_argmax(av,a,point,1);maximum:=to_read(av,a,point);
+        den:ToWide;for k:0..<av.shape.dims[1] {point[1]=k;den=to_accumulate(den,exp(to_read(av,a,point)-maximum));}point[1]=indices[row];loss:=(maximum-to_read(av,a,point))+log(to_total(den));total=to_accumulate(total,loss);}
         return ToValue.{value=to_total(total)/f64(av.shape.dims[0])};
     }return ToValue.{status=ToStatus.operation};
 }
@@ -113,7 +331,7 @@ to_admit :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indic
     if tv_layout(owners[0],views[0]).status!=TvStatus.ok || tv_layout(owners[1],views[1]).status!=TvStatus.ok {return ToPlan.{status=ToStatus.view};}
     p:=to_plan(r,views[0].shape,views[1].shape,indices.count);if p.status!=ToStatus.ok {return p;}
     if a.count!=owners[0].elements || b.count!=owners[1].elements {return ToPlan.{status=ToStatus.capacity};}
-    if r.op==ToOp.take || r.op==ToOp.update || r.op==ToOp.cross_entropy {bound:=0;if r.op==ToOp.cross_entropy {bound=views[0].shape.dims[1];}else {bound=views[0].shape.dims[r.axis];}for x:indices {if x<0 || x>=bound {return ToPlan.{status=ToStatus.index};}}}
+    if r.op==ToOp.take || r.op==ToOp.update || r.op==ToOp.cross_entropy {bound:=views[0].shape.dims[1];if r.op!=ToOp.cross_entropy {bound=views[0].shape.dims[r.axis];}for x:indices {if x<0 || x>=bound {return ToPlan.{status=ToStatus.index};}}}
     for i:0..<p.na {if !tv_finite(a[tv_offset(views[0],i)]) {return ToPlan.{status=ToStatus.number};}}
     for i:0..<p.nb {if !tv_finite(b[tv_offset(views[1],i)]) {return ToPlan.{status=ToStatus.number};}}
     return p;
