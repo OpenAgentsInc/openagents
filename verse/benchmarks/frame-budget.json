@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "written before optimizing; awaiting owner approval (NEEDS_OWNER.md)",
+  "display": {"refresh_hz": 120, "frame_period_ns": 8333333, "fallback_refresh_hz": 60},
+  "minimum_samples": 540,
+  "quantile": "nearest rank, the same as verse/benchmarks/run.py",
+  "metrics": {
+    "frame_cpu": {"p99_ns": 4000000, "max_ns": 8333333, "why": "half a 120 Hz frame at the 99th percentile; no single CPU frame longer than a 120 Hz period"},
+    "robots_and_bodies": {"p99_ns": 500000, "max_ns": 2000000, "why": "Coax kernel: robot poses and body capsules"},
+    "player_update": {"p99_ns": 250000, "max_ns": 1000000, "why": "Coax kernel: player controller update"},
+    "pose_and_palette_copy": {"p99_ns": 250000, "max_ns": 1000000, "why": "Coax kernel: player pose plus its palette copy"},
+    "buffer_copy": {"p99_ns": 100000, "max_ns": 500000, "why": "host buffer copy feeding the GPU (upload)"},
+    "render_encode": {"p99_ns": 2000000, "max_ns": 8333333, "why": "render encode and submission"},
+    "gpu": {"p99_ns": 6000000, "max_ns": 8333333, "why": "completed command buffer GPU time; a missing clock is not measured, never a pass"}
+  },
+  "kernel_heap_allocations": 0,
+  "device_required": "a verdict for a phone needs a physical iPhone capture; a Simulator capture is reported as simulator-only"
+}

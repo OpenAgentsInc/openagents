@@ -115,3 +115,32 @@ iPhone speed, memory pressure, power use or GPU performance. Device evidence,
 independent reference review and agreed tail budgets remain R0 work.
 
 See [the retained evidence](../../docs/verification/coax-r0-2026-10-28.md).
+
+## Frame-tail budget and physical devices
+
+The tail budget is written in [`frame-budget.json`](frame-budget.json) before
+any further optimization: per-scope p99 and max limits against a 120 Hz frame
+(8.33 ms), at least 540 samples, zero GPU errors and every command completed.
+[`tails.py`](tails.py) recomputes median, p95, p99, max, coefficient of
+variation and median absolute deviation from the raw samples and reports, per
+capture, `device-pass`, `simulator-only`, `over-budget`, `incomplete` (a
+metric absent or short, never a pass) or `infrastructure-error`. With several
+captures it also reports the spread of each p99 across runs.
+
+On a physical iPhone, run the same UI test with signing and copy the capture
+off the device:
+
+```sh
+cd apps/openagents-ios
+xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS,id=YOUR_DEVICE_UDID' -derivedDataPath build \
+  -allowProvisioningUpdates -parallel-testing-enabled NO \
+  -only-testing:OpenAgentsUITests/R0UITests test
+xcrun devicectl device copy from --device YOUR_DEVICE_UDID \
+  --domain-type appDataContainer --domain-identifier com.openagents.app \
+  --source Documents/R0-frame.json --destination /tmp/r0-device-1.json
+python3 verse/benchmarks/tails.py /tmp/r0-device-*.json --enforce
+```
+
+Repeat at least three times on the same named phone, retain every capture
+(gzip, deterministic) and the `tails.py --output` report.
