@@ -1,5 +1,26 @@
 # Owner actions
 
+## Coax header composition: existing visual baseline failures (2026-10-30)
+
+The `r1a-header-composition` issue (`#9bdc`) has a prepared compiler fix:
+15 tooling tests, six real iOS Bridge checks, the full bootstrap and three
+affected Wasm builds pass. Before/after Wasm binaries also match exactly for
+every application behind the eight pages flagged by the broader golden walk.
+
+The mandatory `coax/web/golden-check.sh --commit
+e6e6acabe75b6fbe191ee5fa0a325b9f718f2d74` still failed nine image checks.
+Confirmed causes include Haunt/Sandbox goldens predating the existing GALAXY
+button, live staging planet data, and Fairy Forest's unfrozen wing phase.
+No goldens were changed or failures reported as passing.
+
+Owner decision requested in this chat: allow the demonstrated baseline-only
+failures to remain explicit follow-up work while the header fix is pushed and
+the ordered compiler work continues, or require the global golden gate to be
+repaired first. The queue forbids approving someone else's visual changes and
+marking a task done with unmet acceptance; the compiler push and completion
+notice remain pending this decision. The issue definitions themselves are
+already on main in `314e74565c8910322101dd35cd0d966fa27cb1ca`.
+
 ## R0 adoption gate
 
 The benchmark/source-debugging implementation is usable. Closing R0 still
