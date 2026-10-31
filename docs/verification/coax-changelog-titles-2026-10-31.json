@@ -134,6 +134,57 @@
     "remaining": "The broader quantity-compiler checker/protocol/fixed-point and installation sequence did not finish under this command limit. It is outside this page/policy change.",
     "publication_choice": "Use the already provenance-qualified baseline Coax0.43 compiler and fully checked reader Wasm, with pinned existing production host/shader, for a focused page publication. No embedded compiler metadata changed in this task; no replacement compiler or full-site release marker is claimed."
   },
-  "publication": "Pending committed source and staging.",
-  "rebased_parent": "7be932de07227e97d5c5256108f1ea8de61306fa"
+  "publication": {
+    "result": "passed",
+    "verified_utc": "2026-10-31T19:59:41Z",
+    "url": "https://openagents.com/coax/changelog",
+    "source_commit": "7c447d1ea7daa041765d0d0a9bf7aeeb3c19d9e6",
+    "entries": 48,
+    "canonical_bytes": 34917,
+    "canonical_sha256": "3836b52aa3636ea022854c9edb51fc256d8757a46a4438768f1f54e5bc105f54",
+    "scope": "New qualified reader Wasm, three changelog objects, and only the changelog section in production llms-full.txt; all other pages and62 unrelated aggregate sections preserved.",
+    "manifest": "gs://openagentsgemini-openagents-web/scoped/coax-changelog/20261031T195550Z/manifest.json",
+    "backups": "gs://openagentsgemini-openagents-web/scoped/coax-changelog/20261031T195550Z/",
+    "apply_sha256": "5144074585c83828e6129e06a5bac018057a6d57b3bb09114b5b36fdc9034f95",
+    "apply_log": "/tmp/coax-changelog-titles-prod-apply.log",
+    "route_generation": "1793476720679292",
+    "index_generation": "1793476723481355",
+    "full_text_generation": "1793476717797115",
+    "http_oracle": "/tmp/coax-changelog-titles-http-production.log",
+    "full_http_smoke": "/tmp/coax-changelog-titles-smoke-production.log",
+    "browser": "/tmp/coax-changelog-titles-browser-production.log",
+    "phone_png_sha256": "42160b41028033a61d21e3894d94c3aaab07ee25f7c0e2c97eb931315ca667ef",
+    "phone_png_matches_reviewed_golden": true,
+    "release_marker": "No full-site PASSED or new compiler/cache record was written.",
+    "future_enforcement": "Both release-generation modes and each website build validate every heading before outputs are written. Normal website builds regenerate the canonical reader and Markdown automatically."
+  },
+  "rebased_parent": "7be932de07227e97d5c5256108f1ea8de61306fa",
+  "final_code_parent": "3ac1d39c3ba982bdf0e54b74a6edd0a36643a109",
+  "qualified_product_graph": {
+    "inventory": "/tmp/coax-changelog-titles-product-graph.log",
+    "units": [
+      "apps/openagents-web/changelog.coax",
+      "apps/openagents-web/font.coax",
+      "apps/openagents-web/analytics.coax",
+      "apps/openagents-web/changelog-content.coax"
+    ],
+    "rebase_evidence": "Reader, font, analytics, C face and analytics header are byte-identical between initial base06b6eb364b and pushed7c447d1ea7. The generated data is the qualified48-heading payload; no quantity frontend features enter this graph."
+  },
+  "staging": {
+    "strategy": "focused page using qualified Coax0.43/Wasm and pinned existing production host/shader",
+    "source_commit": "7c447d1ea7daa041765d0d0a9bf7aeeb3c19d9e6",
+    "package_manifest": "/tmp/coax-changelog-focused-7c447d1e/stage-manifest.json",
+    "apply_sha256": "4c8e82a113a367e5d4435c77bbaed58d0eaf3ab78c4ca0c141e9ada53a485f70",
+    "apply_log": "/tmp/coax-changelog-focused-stage-apply.log",
+    "http_oracle": "/tmp/coax-changelog-titles-http-staging.log",
+    "browser": "/tmp/coax-changelog-titles-browser-staging.log",
+    "goldens": "/tmp/coax-changelog-titles-goldens-staging.log",
+    "result": "passed",
+    "headings": 48,
+    "separate_viewport_lit_percent": {
+      "desktop": 7.7,
+      "phone": 12.4
+    },
+    "visual_evidence": "Deployed screenshots are byte-identical to the reviewed local goldens. Phone has40915 opaque lit pixels."
+  }
 }
