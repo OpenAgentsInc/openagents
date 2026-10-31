@@ -1,0 +1,84 @@
+// The tools-in-Coax rule (coax/tools-in-coax.md), checked: every tracked
+// .ts, .py, .js, .sh and .cjs file either says why it stays non-Coax in a
+// line starting "Firm reason:" or is on coax/tools-port.txt. A new file that
+// is neither fails. Entries on the list that are gone, or now carry a
+// header, are reported so the list keeps shrinking.
+//   coax/web/tool.sh tools-check            (from the repo root)
+// Not yet run by release.sh.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+LIST :: "coax/tools-port.txt";
+TC_FILE :: 33554432;
+// Bootstrap whose bytes are the compiler's fingerprint: reason 4 without a header.
+FINGERPRINTED :: [3] string.["coax/build.sh", "coax/bootstrap-build.sh", "coax/provenance.sh"];
+
+#test "which files the rule covers, and list lines" {
+  #assert tc_covered("a/b.ts") && tc_covered("x.py") && tc_covered("x.js") && tc_covered("x.sh") && tc_covered("x.cjs");
+  #assert !tc_covered("x.coax") && !tc_covered("x.mjs") && !tc_covered("ts") && !tc_covered("x.tsx");
+  #assert tc_listed("a\nb/c.ts\n# x.ts\n", "b/c.ts") && !tc_listed("a\nb/c.ts\n", "c.ts") && !tc_listed("# x.ts\n", "x.ts") && tc_listed("a", "a");
+  #assert tc_has("x\n# Firm reason: 5 (...)\n", "Firm reason:") && !tc_has("Firm reason", "Firm reason:");
+}
+tc_ends :: (s: string, tail: string) -> bool { return s.count > tail.count && s[s.count - tail.count..<s.count] == tail; }
+tc_covered :: (path: string) -> bool {
+  return tc_ends(path, ".ts") || tc_ends(path, ".py") || tc_ends(path, ".js") || tc_ends(path, ".sh") || tc_ends(path, ".cjs");
+}
+tc_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i] == part[0] && s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// Whether path is a whole line of the list (comment lines start with #).
+tc_listed :: (list: string, path: string) -> bool {
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    if list[i..<j] == path { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+
+tool_main :: () -> int #export_c {
+  list: [1048576] u8;
+  ln := fs_read(LIST, list[..]);
+  if ln < 0 { tool_errln("tools-check: run from the repo root (no coax/tools-port.txt here)"); return 2; }
+  text := cast(string) list[0..<ln];
+  argv := [7] string.["git", "ls-files", "*.ts", "*.py", "*.js", "*.sh", "*.cjs"];
+  files: [4194304] u8; err: [4096] u8;
+  r := proc_run(argv[..], 60000, files[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("tools-check: git ls-files failed"); return 2; }
+  all := cast(string) files[0..<r.out_n];
+  body: [TC_FILE] u8;
+  bad := 0; tracked := 0;
+  i := 0;
+  while i < all.count {
+    j := i;
+    while j < all.count && all[j] != '\n' { j += 1; }
+    path := all[i..<j]; i = j + 1;
+    if !tc_covered(path) { continue; }
+    tracked += 1;
+    skip := false;
+    for f: FINGERPRINTED { if f == path { skip = true; } }
+    if skip { continue; }
+    n := fs_read(path, body[..]);
+    header := n >= 0 && tc_has(cast(string) body[0..<n], "Firm reason:");
+    listed := tc_listed(text, path);
+    if !header && !listed { print("new non-Coax tool with no Firm reason: line and not on the port list: %\n", path); bad += 1; }
+    if header && listed { print("on the port list but carries a Firm reason: line (take it off the list): %\n", path); }
+  }
+  // Entries whose file is gone: the port landed, so the line goes.
+  k := 0;
+  while k < text.count {
+    e := k;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[k..<e]; k = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    if !tc_listed(all, line) { print("on the port list but not tracked (ported? take it off): %\n", line); }
+  }
+  print("tools-check: % tracked tool files, % new without a reason\n", tracked, bad);
+  return ifx bad == 0 then 0 else 1;
+}

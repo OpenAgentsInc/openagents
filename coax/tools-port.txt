@@ -393,7 +393,6 @@ coax/web/check-visuals.sh
 coax/web/chrome.ts
 coax/web/connect-pylon-page.ts
 coax/web/deploy.sh
-coax/web/everglade-guard.test.ts
 coax/web/frametime.ts
 coax/web/golden-check.sh
 coax/web/golden-pages.test.ts

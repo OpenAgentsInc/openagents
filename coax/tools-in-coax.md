@@ -97,6 +97,7 @@ the same inputs, then deletes it in the same commit that switches callers.
   byte for byte, as `clip.ts` before it was deleted. `Firm reason:` headers
   are on the browser host, the oracles and vector generators, and the seed
   scripts; everything else is on `coax/tools-port.txt`.
+  `coax/web/tool.sh tools-check` checks the rule below (not yet in release.sh).
 
 ## Keeping it this way (to build)
 
