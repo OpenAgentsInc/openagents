@@ -9,9 +9,9 @@ struct U {
   size: vec2f, time: f32, fade: f32,
   map: vec4f,      // origin x, y, tile (device px), squash
   info: vec4f,     // screen cols, rows, portrait, hover cell
-  info2: vec4f,    // hurt, selected cell, plates, 0
+  info2: vec4f,    // hurt, selected cell, plates, the map's stroke vertices (the rest are the HUD's)
   cells: array<vec4f, 32>,   // per cell: kind (+ the stair's progress as the fraction; 10 + class for a defender)
-  unit: array<vec4f, 32>,    // per cell with a defender: facing (sign) × (1 + its attack flash)
+  unit: array<vec4f, 32>,    // per cell with a defender: facing (sign) × (1 + its attack flash); the last two: the map's band (y0, y1) when zoomed in
   plate: array<vec4f, 48>,
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -396,7 +396,8 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   var c = vec3f(0.012, 0.012, 0.02) * (1.0 - 0.3 * length(q));
   let t = u.map.z;
   let local = (p - u.map.xy) / vec2f(t, t * u.map.w);
-  let inside = local.x >= 0.0 && local.y >= 0.0 && local.x < u.info.x && local.y < u.info.y;
+  let banded = p.y >= u.unit[31].z && p.y <= u.unit[31].w;
+  let inside = banded && local.x >= 0.0 && local.y >= 0.0 && local.x < u.info.x && local.y < u.info.y;
   if (t > 0.0 && inside) {
     let sc = floor(local);
     let f = fract(local);
@@ -427,7 +428,7 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
     // the party: the figure on this tile, then the one in front of it (its head reaches up here)
     c = stand(c, local, sc, t);
     c = stand(c, local, sc + vec2f(0.0, 1.0), t);
-  } else if (t > 0.0 && local.x >= -RIM && local.x < u.info.x + RIM && local.y >= -WALL && local.y < u.info.y + RIM) {
+  } else if (t > 0.0 && banded && local.x >= -RIM && local.x < u.info.x + RIM && local.y >= -WALL && local.y < u.info.y + RIM) {
     if (local.y < 0.0 && local.x >= 0.0 && local.x < u.info.x) {
       c = wall(local);
       // a figure in the first row can lift its head over the wall's foot
@@ -458,9 +459,11 @@ struct V {
   @location(1) shape: vec4f,
   @location(2) tint: vec4f,
   @location(3) bar: vec4f,
+  @location(4) @interpolate(flat) on_map: f32,   // 1: a map stroke, cut to the map's band
 }
-@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f, @location(3) d: vec4f) -> V {
+@vertex fn fx_vs(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f, @location(3) d: vec4f) -> V {
   var o: V;
+  o.on_map = select(0.0, 1.0, f32(vi) < u.info2.w);
   o.pos = vec4f(a.x / u.size.x * 2.0 - 1.0, 1.0 - a.y / u.size.y * 2.0, 0.0, 1.0);
   o.place = a.zw;
   o.shape = b;
@@ -471,6 +474,7 @@ struct V {
 // Modes (tint.w): 0 a capsule, 1 a ring (bar.x its width, bar.y the squash), 2 a glossy bubble
 // (bar.x the inner layer's radius as a share, bar.yzw its colour), 3 a soft light.
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
+  if (v.on_map > 0.5 && (v.pos.y < u.unit[31].z || v.pos.y > u.unit[31].w)) { discard; }
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let mode = i32(v.tint.w + 0.5);
   if (mode == 1) {

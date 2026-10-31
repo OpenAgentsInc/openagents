@@ -142,6 +142,9 @@ Defender :: struct {
 }
 Fx :: struct { kind: int; x: f32; y: f32; x2: f32; y2: f32; t: f32; life: f32; amount: int; r: f32; g: f32; b: f32; big: bool; dx: f32; }
 
+Finger :: struct { id: int = -1; x: f32; y: f32; }
+ZOOM_MAX :: 3.0;
+
 Stair :: struct {
   started: bool;
   track: [1] Track;
@@ -152,6 +155,12 @@ Stair :: struct {
   card_shot: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   // the map's layout this frame
   portrait: bool; ox: f32; oy: f32; tile: f32; scols: int; srows: int;
+  // the camera (verse/camera.coax's zoom and focus): the map as laid out to fit (bx, by, bt), its
+  // middle on the screen (acx, acy), how far in (zoom, 1 to ZOOM_MAX) and the map point, in tiles,
+  // at that middle (fu, fv); what lies outside clip_y0..clip_y1 is the HUD's
+  bx: f32; by: f32; bt: f32; acx: f32; acy: f32; clip_y0: f32; clip_y1: f32;
+  zoom: f32 = 1; fu: f32; fv: f32;
+  fingers: [2] Finger; pinch: f32; pinched: bool; panning: bool; mx: f32; my: f32;
   path_len: f32;
   cells: [CELLS] int;
   prog: [CELLS] f32;        // how far up the stair a stair cell is (tiles)
@@ -187,6 +196,7 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 hi_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
 clamp01 :: (v: f32) -> f32 { return lo(1, hi(0, v)); }
+clamp :: (v: f32, a: f32, b: f32) -> f32 { return lo(b, hi(a, v)); }
 GAP :: 0.5; SPACE :: 1.2;
 text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
@@ -353,6 +363,9 @@ stair_start :: (s: [] Stair) {
   s[0].dice[0] = srd_dice(20261030);
   s[0].hover = -1; s[0].hover_b = -1; s[0].press = -1; s[0].press_id = -1; s[0].down_cell = -1;
   s[0].tracked_wave = 0;
+  // the host's state starts zeroed, not at the struct's defaults: no finger down, the map fitted
+  for i: 0..<2 { s[0].fingers[i].id = -1; }
+  s[0].zoom = 1;
   track_init(s[0].track[..], "hold-the-stair");
   stair_reset(s);
 }
@@ -717,9 +730,44 @@ layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   rows := f32(s[0].srows) + f32(WALL_ROWS) + f32(RIM_TILES);
   t := lo(aw / (f32(s[0].scols) + 2 * f32(RIM_TILES)), ah / (rows * f32(SQUASH)));
   t = hi(t, 8);
-  s[0].tile = t;
-  s[0].ox = (w - t * f32(s[0].scols)) / 2;
-  s[0].oy = top + 8 * k + (ah - t * f32(SQUASH) * rows) / 2 + f32(WALL_ROWS) * t * f32(SQUASH);
+  s[0].bt = t;
+  s[0].bx = (w - t * f32(s[0].scols)) / 2;
+  s[0].by = top + 8 * k + (ah - t * f32(SQUASH) * rows) / 2 + f32(WALL_ROWS) * t * f32(SQUASH);
+  // the camera: the fitted map is zoom 1; in closer, the map point (fu, fv) sits at the fitted
+  // map's middle, kept so the map always covers the space it had
+  sq := f32(SQUASH);
+  x0 := s[0].bx - f32(RIM_TILES) * t; x1 := s[0].bx + (f32(s[0].scols) + f32(RIM_TILES)) * t;
+  y0 := s[0].by - f32(WALL_ROWS) * t * sq; y1 := s[0].by + (f32(s[0].srows) + f32(RIM_TILES)) * t * sq;
+  s[0].acx = (x0 + x1) / 2; s[0].acy = (y0 + y1) / 2;
+  s[0].clip_y0 = y0; s[0].clip_y1 = y1;
+  fu0 := (s[0].acx - s[0].bx) / t; fv0 := (s[0].acy - s[0].by) / (t * sq);
+  z := clamp(s[0].zoom, 1, f32(ZOOM_MAX));
+  if s[0].card_shot || s[0].golden { z = 1; }
+  if z <= 1.001 { z = 1; s[0].fu = fu0; s[0].fv = fv0; }
+  s[0].zoom = z;
+  hu := (x1 - x0) / t / 2; hv := (y1 - y0) / (t * sq) / 2;
+  s[0].fu = clamp(s[0].fu, fu0 - hu * (1 - 1 / z), fu0 + hu * (1 - 1 / z));
+  s[0].fv = clamp(s[0].fv, fv0 - hv * (1 - 1 / z), fv0 + hv * (1 - 1 / z));
+  s[0].tile = t * z;
+  s[0].ox = s[0].acx - s[0].fu * s[0].tile;
+  s[0].oy = s[0].acy - s[0].fv * s[0].tile * sq;
+}
+// Zoom by g about a screen point, keeping the map point under it there.
+zoom_about :: (s: [] Stair, g: f32, x: f32, y: f32) {
+  if s[0].tile <= 0 || s[0].bt <= 0 { return; }
+  sq := f32(SQUASH);
+  mu := (x - s[0].ox) / s[0].tile; mv := (y - s[0].oy) / (s[0].tile * sq);
+  z := clamp(s[0].zoom * g, 1, f32(ZOOM_MAX));
+  t := s[0].bt * z;
+  s[0].zoom = z;
+  s[0].fu = (s[0].acx - (x - mu * t)) / t;
+  s[0].fv = (s[0].acy - (y - mv * t * sq)) / (t * sq);
+}
+// Drag the map by (dx, dy) pixels.
+pan_by :: (s: [] Stair, dx: f32, dy: f32) {
+  if s[0].tile <= 0 { return; }
+  s[0].fu -= dx / s[0].tile;
+  s[0].fv -= dy / (s[0].tile * f32(SQUASH));
 }
 // Logical (column, row) tile units to the screen.
 to_screen :: (s: [] Stair, x: f32, y: f32) -> P2 {
@@ -729,6 +777,7 @@ to_screen :: (s: [] Stair, x: f32, y: f32) -> P2 {
 }
 cell_at :: (s: [] Stair, x: f32, y: f32) -> int {
   if s[0].tile <= 0 { return -1; }
+  if y < s[0].clip_y0 || y > s[0].clip_y1 { return -1; }   // under the HUD
   fx := (x - s[0].ox) / s[0].tile; fy := (y - s[0].oy) / (s[0].tile * f32(SQUASH));
   if fx < 0 || fy < 0 || fx >= f32(s[0].scols) || fy >= f32(s[0].srows) { return -1; }
   sc := cast(int) floor(fx); sr := cast(int) floor(fy);
@@ -856,6 +905,7 @@ stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -
   b := button_at(s, x, y);
   cell := cell_at(s, x, y);
   if kind == 0 && phase != 3 { s[0].hover_b = b; s[0].hover = cell; } else { s[0].hover_b = -1; s[0].hover = -1; }
+  if camera_pointer(s, x, y, phase, kind, id, b) { return true; }
   if phase == 0 {
     track_pointer(s[0].track[..], x, y, phase, kind, "");
     if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
@@ -887,6 +937,84 @@ stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -
   }
   return false;
 }
+// The camera's share of a pointer: two fingers pinch and pan (a tap or a press under way is
+// dropped); one finger or the mouse dragging the map when zoomed in pans it. True when taken.
+camera_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int, b: int) -> bool {
+  k := hi(s[0].dpr, 0.5);
+  if kind != 0 {
+    f := -1;
+    for i: 0..<2 { if s[0].fingers[i].id == id { f = i; } }
+    if phase == 0 && f < 0 {
+      for i: 0..<2 { if f < 0 && s[0].fingers[i].id < 0 { f = i; s[0].fingers[i] = Finger.{id = id, x = x, y = y}; } }
+      if s[0].fingers[0].id >= 0 && s[0].fingers[1].id >= 0 {
+        ex := s[0].fingers[0].x - s[0].fingers[1].x; ey := s[0].fingers[0].y - s[0].fingers[1].y;
+        s[0].pinch = sqrt(ex * ex + ey * ey);
+        s[0].down_on = false; s[0].press = -1; s[0].selected = -1; s[0].pinched = true;
+        return true;
+      }
+      s[0].panning = false;
+      return false;
+    }
+    if f < 0 { return false; }
+    both := s[0].fingers[0].id >= 0 && s[0].fingers[1].id >= 0;
+    if phase == 1 {
+      if both {
+        mx0 := (s[0].fingers[0].x + s[0].fingers[1].x) / 2; my0 := (s[0].fingers[0].y + s[0].fingers[1].y) / 2;
+        s[0].fingers[f].x = x; s[0].fingers[f].y = y;
+        nx := (s[0].fingers[0].x + s[0].fingers[1].x) / 2; ny := (s[0].fingers[0].y + s[0].fingers[1].y) / 2;
+        ex := s[0].fingers[0].x - s[0].fingers[1].x; ey := s[0].fingers[0].y - s[0].fingers[1].y;
+        d := sqrt(ex * ex + ey * ey);
+        layout(s, s[0].width, s[0].height, k);
+        pan_by(s, nx - mx0, ny - my0);
+        layout(s, s[0].width, s[0].height, k);
+        if s[0].pinch > 1 && d > 1 { zoom_about(s, d / s[0].pinch, nx, ny); }
+        s[0].pinch = d;
+        return true;
+      }
+      px := s[0].fingers[f].x; py := s[0].fingers[f].y;
+      s[0].fingers[f].x = x; s[0].fingers[f].y = y;
+      if s[0].pinched { return true; }
+      if s[0].zoom > 1.001 && s[0].press < 0 {
+        ddx := x - s[0].down_x; ddy := y - s[0].down_y;
+        if !s[0].panning && ddx * ddx + ddy * ddy > 144 * k * k { s[0].panning = true; s[0].down_on = false; pan_by(s, ddx, ddy); return true; }
+        if s[0].panning { pan_by(s, x - px, y - py); return true; }
+      }
+      return false;
+    }
+    if phase == 2 || phase == 3 {
+      s[0].fingers[f].id = -1;
+      if s[0].pinched {   // a pinch's fingers lifting: no tap
+        if s[0].fingers[0].id < 0 && s[0].fingers[1].id < 0 { s[0].pinched = false; }
+        return true;
+      }
+      if s[0].panning { s[0].panning = false; return true; }
+      return false;
+    }
+    return false;
+  }
+  // the mouse: a drag on the map pans when zoomed in
+  if phase == 0 { s[0].mx = x; s[0].my = y; s[0].panning = false; return false; }
+  if phase == 1 {
+    px := s[0].mx; py := s[0].my; s[0].mx = x; s[0].my = y;
+    if s[0].down_on || s[0].panning {
+      ddx := x - s[0].down_x; ddy := y - s[0].down_y;
+      if s[0].zoom > 1.001 && !s[0].panning && ddx * ddx + ddy * ddy > 64 * k * k { s[0].panning = true; s[0].down_on = false; pan_by(s, ddx, ddy); return true; }
+      if s[0].panning { pan_by(s, x - px, y - py); return true; }
+    }
+    return false;
+  }
+  if s[0].panning { s[0].panning = false; return true; }
+  return false;
+}
+// The wheel zooms about the mouse.
+stair_wheel :: (s: [] Stair, dy: f32) -> bool #export_c {
+  stair_start(s);
+  if s[0].card_shot || s[0].tile <= 0 { return false; }
+  if s[0].my < s[0].clip_y0 || s[0].my > s[0].clip_y1 { return false; }
+  zoom_about(s, f32(exp(f64(-dy) * 0.0018)), s[0].mx, s[0].my);
+  return true;
+}
+
 // A finger held still on a defender shows its card (the long-press).
 long_press :: (s: [] Stair) {
   if !s[0].down_on || s[0].long_done || s[0].clock - s[0].down_t < LONG_PRESS { return; }
@@ -1351,7 +1479,7 @@ maker_line :: (s: [] Stair, out: [] f32, at: int, w: f32, h: f32) -> int {
   if s[0].maker_n == 0 { return at; }
   k := hi(s[0].dpr, 0.5);
   bottom := ifx s[0].portrait then 184 * k else 118 * k;
-  map_y1 := s[0].oy + (f32(s[0].srows) + f32(RIM_TILES)) * s[0].tile * f32(SQUASH);
+  map_y1 := s[0].by + (f32(s[0].srows) + f32(RIM_TILES)) * s[0].bt * f32(SQUASH);
   // the band it sits in: the gap over the panel, or the strip under its buttons
   y0 := map_y1; y1 := h - bottom;
   if y1 - y0 < 24 * k { y0 = h - (ifx s[0].portrait then 14 * k else 22 * k); y1 = h; }
@@ -1525,9 +1653,9 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     n = say_at(out, n, lab, (r.x0 + r.x1) / 2 - tw / 2, (r.y0 + r.y1) / 2 + bc / 2, bc, ink(k, light, cr, cg, cb));
   }
   // the next wave, on the back wall: a bubble of each layer and how many
-  if s[0].phase == BUILD && s[0].wave < WAVES && s[0].tile > 0 {
-    wy := s[0].oy - f32(WALL_ROWS) * s[0].tile * f32(SQUASH) * 0.5;
-    wh := f32(WALL_ROWS) * s[0].tile * f32(SQUASH);
+  if s[0].phase == BUILD && s[0].wave < WAVES && s[0].bt > 0 {
+    wy := s[0].by - f32(WALL_ROWS) * s[0].bt * f32(SQUASH) * 0.5;
+    wh := f32(WALL_ROWS) * s[0].bt * f32(SQUASH);
     pc := lo(wh * 0.42, 13 * k);
     br := pc * 0.62;
     // what it says and how wide, to centre it
@@ -1538,7 +1666,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
       total += br * 2 + 4 * k + text_width(cast(string) buf[0..<m], pc) + 12 * k;
     }
-    px := s[0].ox + f32(s[0].scols) * s[0].tile * 0.5 - total / 2;
+    px := s[0].bx + f32(s[0].scols) * s[0].bt * 0.5 - total / 2;
     plate(s, u, Rect.{x0 = px - 10 * k, y0 = wy - pc * 0.5 - 7 * k, x1 = px + total + 4 * k, y1 = wy + pc * 0.5 + 7 * k}, 0.8, 0);
     n = say_at(out, n, "NEXT", px, wy + pc * 0.5, pc, ink(k, 0.8, INK_R, INK_G, INK_B));
     px += text_width("NEXT", pc) + 10 * k;
@@ -1558,7 +1686,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave);
     bc := lo(44 * k, w / 9);
     grow := 1 + 0.08 * (1.6 - s[0].banner);
-    my := s[0].oy + f32(s[0].srows) * s[0].tile * f32(SQUASH) * 0.5;
+    my := s[0].by + f32(s[0].srows) * s[0].bt * f32(SQUASH) * 0.5;
     n = say_mid(out, n, cast(string) buf[0..<m], w / 2, my + bc * grow * 0.5, bc * grow, Ink.{core = 1.6 * k, light = a, glow = 3 * k, red = GOLD_R, green = GOLD_G, blue = GOLD_B, mode = 0, scale = k});
   }
   // a toast
@@ -1566,13 +1694,13 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     tt := cast(string) s[0].toast[0..<s[0].toast_n];
     c := 14 * k;
     // over the map's first row, on a dark plate, clear of the wall and its preview
-    ty := s[0].oy + s[0].tile * f32(SQUASH) * 0.5 + c * 0.5;
+    ty := s[0].by + s[0].bt * f32(SQUASH) * 0.5 + c * 0.5;
     tw := text_width(tt, c);
     plate(s, u, Rect.{x0 = w / 2 - tw / 2 - 14 * k, y0 = ty - c - 10 * k, x1 = w / 2 + tw / 2 + 14 * k, y1 = ty + 10 * k}, clamp01(s[0].toast_t) * 0.9, 0);
     n = say_mid(out, n, tt, w / 2, ty, c, ink(k, clamp01(s[0].toast_t), GOLD_R, GOLD_G, GOLD_B));
   }
   if s[0].paused && s[0].phase != WON && s[0].phase != LOST {
-    py := s[0].oy + f32(s[0].srows) * s[0].tile * f32(SQUASH) * 0.5;
+    py := s[0].by + f32(s[0].srows) * s[0].bt * f32(SQUASH) * 0.5;
     pw := text_width("PAUSED", 20 * k);
     plate(s, u, Rect.{x0 = w / 2 - pw / 2 - 18 * k, y0 = py - 24 * k, x1 = w / 2 + pw / 2 + 18 * k, y1 = py + 24 * k}, 0.9, 0);
     n = say_mid(out, n, "PAUSED", w / 2, py + 10 * k, 20 * k, ink(k, 1, INK_R, INK_G, INK_B));
@@ -1640,6 +1768,10 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
     n = draw_beasts(s, out, n);
     n = draw_fx(s, out, n);
   }
+  // the map's strokes (the first n) and the floor are cut to the map's band when zoomed in
+  u[U_INFO2 + 3] = f32(n);
+  u[U_UNIT + 126] = ifx s[0].zoom > 1.001 then s[0].clip_y0 else 0.0f32;
+  u[U_UNIT + 127] = ifx s[0].zoom > 1.001 then s[0].clip_y1 else height;
   s[0].tip_shown = false;
   if !s[0].card_shot { n = draw_hud(s, out, u, n, width, height); }
   u[U_INFO2 + 2] = f32(s[0].plate_n);
@@ -1772,6 +1904,48 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   before := s[0].gold;
   sell(s[..], f);
   #assert s[0].gold == before + (50 + 30 + 50) * 7 / 10;
+}
+
+#test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].width = 780; s[0].height = 1688; s[0].dpr = 2;
+  layout(s[..], 780, 1688, 2);
+  #assert s[0].zoom == 1 && s[0].tile == s[0].bt;
+  pick(s[..], FIGHTER);
+  mid := to_screen(s[..], 5.5, 4.5);
+  // pinch out: 100 px apart to 250 px apart about the middle of tile (5, 4)
+  #assert stair_pointer(s[..], mid.x - 50, mid.y, 0, 1, 1);
+  #assert stair_pointer(s[..], mid.x + 50, mid.y, 0, 1, 2);
+  for i: 1..<11 {
+    d := 50 + 7.5 * f32(i);
+    #assert stair_pointer(s[..], mid.x - d, mid.y, 1, 1, 1);
+    #assert stair_pointer(s[..], mid.x + d, mid.y, 1, 1, 2);
+  }
+  #assert stair_pointer(s[..], mid.x + 125, mid.y, 2, 1, 2);
+  #assert stair_pointer(s[..], mid.x - 125, mid.y, 2, 1, 1);
+  layout(s[..], 780, 1688, 2);
+  #assert s[0].zoom > 2.3 && s[0].zoom < 2.7 && s[0].placed == 0;
+  after := to_screen(s[..], 5.5, 4.5);
+  #assert abs(after.x - mid.x) < 10 && abs(after.y - mid.y) < 10;   // the point under the fingers stayed (a finger moves at a time)
+  // one finger drags the map right by 60 px
+  down := stair_pointer(s[..], 300, 800, 0, 1, 3);
+  for i: 1..<7 { ok := stair_pointer(s[..], 300 + 10 * f32(i), 800, 1, 1, 3); }
+  #assert stair_pointer(s[..], 360, 800, 2, 1, 3);
+  layout(s[..], 780, 1688, 2);
+  moved := to_screen(s[..], 5.5, 4.5);
+  #assert abs(moved.x - after.x - 60) < 2 && s[0].placed == 0;
+  // the map never leaves its band: pan far, it stops at the edge; zoom back out, it fits again
+  pan_by(s[..], 100000, 100000);
+  layout(s[..], 780, 1688, 2);
+  // dragged as far right and down as it goes: the zoomed map's rim and wall meet the band's edges
+  #assert abs((s[0].ox - f32(RIM_TILES) * s[0].tile) - (s[0].bx - f32(RIM_TILES) * s[0].bt)) < 1;
+  #assert abs((s[0].oy - f32(WALL_ROWS) * s[0].tile * f32(SQUASH)) - s[0].clip_y0) < 1;
+  zoom_about(s[..], 0.1, 390, 800);
+  layout(s[..], 780, 1688, 2);
+  #assert s[0].zoom == 1 && s[0].ox == s[0].bx && s[0].oy == s[0].by;
+  // a tile under the HUD is no tile
+  #assert cell_at(s[..], 390, s[0].clip_y1 + 5) == -1;
 }
 
 #test "pause stops the clock and resume starts it" {

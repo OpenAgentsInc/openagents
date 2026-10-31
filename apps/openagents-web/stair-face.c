@@ -48,6 +48,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   drain(state);
   return used ? 1u : 0u;
 }
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { (void)stair_wheel(at(state), dy); drain(state); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)stair_cursor(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
