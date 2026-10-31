@@ -86,6 +86,21 @@ mutation 0 survivors) and `verse/player.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
+## Entities change only at the step's flush
+
+An entity in `aethyr/entity.coax` has a handle (slot and generation) for use
+inside a step and an `EntityId` from the store's counter for saves, the
+network and edits; nothing durable stores a handle. `entity_spawn` and
+`entity_despawn` are commands: `entity_flush` applies the despawns in slot
+order, then the spawns in the order they were asked for, so every system in
+a step sees the same entities and a spawned entity takes part from the next
+step. A despawn raises the slot's generation, so a stale handle never
+reaches the slot's next owner; a slot whose generation would wrap is retired,
+not reused. Checks: `aethyr/entity.coax` ("a store matches a plain list of
+IDs and values after every flush", "despawning while walking: every live
+entity is visited once, and none after its flush", "IDs survive save, load
+and replay"; mutation 0 survivors).
+
 ## Every walking realm asks one ground question
 
 The walking controller's floor comes from `aethyr/query.coax`:
