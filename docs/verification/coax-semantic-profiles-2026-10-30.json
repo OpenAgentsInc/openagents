@@ -358,10 +358,10 @@
     "generated_with": "previous qualified 0.24.0 header-composition compiler; no native policy fallback"
   },
   "golden_gate": {
-    "command": "coax/web/golden-check.sh --commit f242274671",
+    "command": "coax/web/golden-check.sh --commit 48fa03aa88",
     "outcome": "failed",
     "exit_status": 1,
-    "seconds": 190.34,
+    "seconds": 179.77,
     "failed_checks": 8,
     "flagged_pages": [
       "the-grid",
@@ -373,53 +373,19 @@
       "home-phone"
     ],
     "new_pages_outside_approved_baseline": [],
-    "raw_report": {
-      "base": "http://golden.localhost:50366",
-      "failed": [
-        "the-grid: matches its golden (265 blocks changed, 6 allowed, 0 moving, x 1104-1280, y 0-456; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-JUr5W1/the-grid.png)",
-        "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-TpS1Vs/haunted-house.png)",
-        "galaxy: matches its golden (227 blocks changed, 8 allowed, 0 moving, x 488-776, y 448-576; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Jf0XvM/galaxy.png)",
-        "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ORfgxp/haunted-house.png)",
-        "sandbox: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-gTlnkw/sandbox.png)",
-        "hecates-cemetery: matches its golden (149 blocks changed, 6 allowed, 262 moving, x 16-1240, y 32-704; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-pgR1aW/hecates-cemetery.png)",
-        "home: matches its golden (13 blocks changed, 4 allowed, 231 moving, x 120-1216, y 40-712; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-2HCAQJ/home.png)",
-        "home-phone: matches its golden (11 blocks changed, 4 allowed, 104 moving, x 272-352, y 168-664; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6d97YU/home-phone.png)"
-      ],
-      "golden": [
-        {
-          "name": "the-grid",
-          "path": "/realms/the-grid"
-        },
-        {
-          "name": "haunted-house",
-          "path": "/realms/haunted-house"
-        },
-        {
-          "name": "galaxy",
-          "path": "/verse/galaxy"
-        },
-        {
-          "name": "sandbox",
-          "path": "/realms/sandbox"
-        },
-        {
-          "name": "hecates-cemetery",
-          "path": "/realms/hecates-cemetery"
-        },
-        {
-          "name": "home",
-          "path": "/"
-        },
-        {
-          "name": "home-phone",
-          "path": "/"
-        }
-      ],
-      "other": []
-    },
-    "log": "/tmp/coax-semantic-golden.log",
-    "retained_artifacts": "/tmp/coax-semantic-golden-stage",
-    "log_sha256": "37380938705e5db48eb11fe42f5188a4a8fd127b31dba41f22fa0f9567576be0",
+    "failed_lines": [
+      "FAIL  the-grid: matches its golden (265 blocks changed, 6 allowed, 0 moving, x 1104-1280, y 0-456; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-gVyfbf/the-grid.png)",
+      "FAIL  sandbox: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-IJ5Bts/sandbox.png)",
+      "FAIL  haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Z7MBbo/haunted-house.png)",
+      "FAIL  galaxy: matches its golden (227 blocks changed, 8 allowed, 0 moving, x 488-776, y 448-576; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-DnrRTw/galaxy.png)",
+      "FAIL  haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-lvfc7K/haunted-house.png)",
+      "FAIL  hecates-cemetery: matches its golden (149 blocks changed, 6 allowed, 262 moving, x 16-1240, y 32-704; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Qv3isw/hecates-cemetery.png)",
+      "FAIL  home: matches its golden (13 blocks changed, 4 allowed, 240 moving, x 120-1216, y 40-712; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-gvjRib/home.png)",
+      "FAIL  home-phone: matches its golden (11 blocks changed, 4 allowed, 103 moving, x 272-352, y 168-664; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Bebe3x/home-phone.png)"
+    ],
+    "log": "/tmp/coax-semantic-golden-rebased.log",
+    "log_sha256": "d47bf18776f225c374aa291b46cbbcafbb8002488841d3cd221c2d539f9d4286",
+    "retained_shots": "/tmp/coax-semantic-golden-rebased-shots",
     "goldens_modified": false,
     "known_baseline_record": "docs/verification/coax-header-composition-2026-10-30.json",
     "owner_decision": {
@@ -429,7 +395,81 @@
       "reply": "Record baseline failures and continue (Recommended)",
       "scope": "Push this header fix and continue the ordered work while retaining the nine demonstrated baseline-only golden failures separately; no golden snapshots were approved or changed."
     },
-    "interpretation": "Eight failed checks on seven previously recorded pages; Fairy passed on this run. Keep these failures failed. Fresh paired whole-Wasm equivalence is recorded separately; no screenshot baseline was changed. Fresh paired builds are byte-identical for every affected app family. The extra raw-C comparison failed only on the required compiler-version provenance comment; its failure is retained."
+    "interpretation": "After preserving the two new upstream Verse commits, the walk still has eight failed checks on the same seven previously recorded pages; Fairy passed. All fresh paired Wasm inputs remain unchanged after rebase. Keep failures failed under the explicit baseline exception; no golden approved or rewritten.",
+    "pre_rebase_observation": {
+      "command": "coax/web/golden-check.sh --commit f242274671",
+      "outcome": "failed",
+      "exit_status": 1,
+      "seconds": 190.34,
+      "failed_checks": 8,
+      "flagged_pages": [
+        "the-grid",
+        "haunted-house",
+        "galaxy",
+        "sandbox",
+        "hecates-cemetery",
+        "home",
+        "home-phone"
+      ],
+      "new_pages_outside_approved_baseline": [],
+      "raw_report": {
+        "base": "http://golden.localhost:50366",
+        "failed": [
+          "the-grid: matches its golden (265 blocks changed, 6 allowed, 0 moving, x 1104-1280, y 0-456; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-JUr5W1/the-grid.png)",
+          "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-TpS1Vs/haunted-house.png)",
+          "galaxy: matches its golden (227 blocks changed, 8 allowed, 0 moving, x 488-776, y 448-576; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Jf0XvM/galaxy.png)",
+          "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ORfgxp/haunted-house.png)",
+          "sandbox: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-gTlnkw/sandbox.png)",
+          "hecates-cemetery: matches its golden (149 blocks changed, 6 allowed, 262 moving, x 16-1240, y 32-704; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-pgR1aW/hecates-cemetery.png)",
+          "home: matches its golden (13 blocks changed, 4 allowed, 231 moving, x 120-1216, y 40-712; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-2HCAQJ/home.png)",
+          "home-phone: matches its golden (11 blocks changed, 4 allowed, 104 moving, x 272-352, y 168-664; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6d97YU/home-phone.png)"
+        ],
+        "golden": [
+          {
+            "name": "the-grid",
+            "path": "/realms/the-grid"
+          },
+          {
+            "name": "haunted-house",
+            "path": "/realms/haunted-house"
+          },
+          {
+            "name": "galaxy",
+            "path": "/verse/galaxy"
+          },
+          {
+            "name": "sandbox",
+            "path": "/realms/sandbox"
+          },
+          {
+            "name": "hecates-cemetery",
+            "path": "/realms/hecates-cemetery"
+          },
+          {
+            "name": "home",
+            "path": "/"
+          },
+          {
+            "name": "home-phone",
+            "path": "/"
+          }
+        ],
+        "other": []
+      },
+      "log": "/tmp/coax-semantic-golden.log",
+      "retained_artifacts": "/tmp/coax-semantic-golden-stage",
+      "log_sha256": "37380938705e5db48eb11fe42f5188a4a8fd127b31dba41f22fa0f9567576be0",
+      "goldens_modified": false,
+      "known_baseline_record": "docs/verification/coax-header-composition-2026-10-30.json",
+      "owner_decision": {
+        "status": "approved_baseline_exception",
+        "date": "2026-10-30",
+        "source": "Explicit user reply in this chat",
+        "reply": "Record baseline failures and continue (Recommended)",
+        "scope": "Push this header fix and continue the ordered work while retaining the nine demonstrated baseline-only golden failures separately; no golden snapshots were approved or changed."
+      },
+      "interpretation": "Eight failed checks on seven previously recorded pages; Fairy passed on this run. Keep these failures failed. Fresh paired whole-Wasm equivalence is recorded separately; no screenshot baseline was changed. Fresh paired builds are byte-identical for every affected app family. The extra raw-C comparison failed only on the required compiler-version provenance comment; its failure is retained."
+    }
   },
   "limits": [
     "No complete R0 adoption claim, arbitrary native #test executable, semantic build cache, mixed-object linker enforcement or new GPU/device qualification.",
@@ -2428,5 +2468,14 @@
     ],
     "all_wasm_byte_identical": true,
     "all_generated_executable_text_identical_modulo_required_compiler_provenance": true
+  },
+  "rebase": {
+    "preserved_upstream_commits": [
+      "4d36d1cb9b",
+      "1f996ba6ca"
+    ],
+    "compiler_inputs_changed": false,
+    "paired_wasm_inputs_changed": false,
+    "qualified_results_reused": "Unchanged compiler inputs and paired app inputs; new browser walk because upstream host.js/private realm inputs changed."
   }
 }
