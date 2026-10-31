@@ -133,3 +133,27 @@ despawning while walking visits each live entity once; a session saved
 mid-way and loaded, and the same session replayed from nothing, end with the
 same digest and IDs. Mutation: 197 of 197 killed. Dead Gears'
 `verse/deadgears/ecs.coax` moves onto it with ec-migrate.
+
+## Replay (`aethyr/replay.coax`, `rand.coax`, `math.coax`)
+
+Every external event a session accepts is one `ReplayEvent`: its apply tick,
+source (controls, a model's answer, a network update), request or sequence
+number, epoch and payload. `replay_offer` is the gate: it refuses an event
+during a replay, an unknown source or unasked answer, an event from another
+epoch, a model request no longer open, or a stream number older than the
+last accepted (stale), and an answered request or a stream's last number
+again (duplicate), counting each; model answers are accepted in any order; it stamps an accepted
+event with the next step. Live and replay apply events the same way:
+`replay_take` before each step. `replay_ask` numbers requests in both modes
+and says to send them only live. A record starts with the constructed
+state's digest (`replay_play` refuses another), keeps a state digest every
+step, and reports the first step that differs. `aethyr/rand.coax` draws by
+seed, stream and counter. `aethyr/math.coax` computes sine, cosine and
+powers from exact IEEE operations: with the C library's, a recorded walk
+parted natively and in wasm after 105 steps; `verse/player.coax`'s step uses
+them now. Checks: live sessions with late, repeated and out-of-order
+answers and updates replay to the same digest at every step with no request
+sent; a planted fault is found at its step; `coax/web/replay-hosts.test.ts`
+gives the same session digests for a recorded walk natively and in wasm.
+Mutation: 321 of 321 (`replay.coax`), 50 of 50 (`rand.coax`), 154 of 154
+(`math.coax`).

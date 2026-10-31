@@ -1,0 +1,127 @@
+// The checks' side of aethyr/replay.coax: a session's backing, and a small realm with a
+// remote model and a peer that answer late, twice, out of order and from an old epoch. Only
+// the checks call it.
+#load "../rand.coax";
+
+ORACLE_EVENTS :: 512;
+ORACLE_MARKS :: 256;
+ORACLE_STEPS :: 120;
+ReplayBacking :: struct {
+  events: [ORACLE_EVENTS] ReplayEvent;
+  marks: [ORACLE_MARKS] int;
+  channels: [REPLAY_SOURCES] ReplayChannel;
+  n: [REPLAY_COUNTERS] int;
+}
+replay_backing :: (b: [] ReplayBacking) -> ReplaySession {
+  return ReplaySession.{events = b[0].events[..], marks = b[0].marks[..], channels = b[0].channels[..], n = b[0].n[..]};
+}
+oracle_event :: (source: int, request: int, epoch: int, w0: int) -> ReplayEvent {
+  e := ReplayEvent.{source = source, request = request, epoch = epoch};
+  e.words[0] = w0;
+  return e;
+}
+
+// The realm: a point that the controls push, a model's target pulls and a peer's position
+// nudges, with a seeded wobble a step.
+OracleRealm :: struct {
+  x: f32; v: f32; target: f32; peer: f32;
+  input: InputBuffer;
+  seed: int;
+  fault_at: int = -1;   // from this step on, the step reads something it shouldn't
+}
+oracle_realm_init :: (r: [] OracleRealm) { r[0] = OracleRealm.{target = 1}; }
+oracle_realm_digest :: (r: [] OracleRealm) -> int {
+  h := replay_mix(replay_mix(replay_mix(replay_mix(2166136261, cast(int) f32_bits(r[0].x)), cast(int) f32_bits(r[0].v)),
+    cast(int) f32_bits(r[0].target)), cast(int) f32_bits(r[0].peer));
+  h = replay_mix(replay_mix(replay_mix(h, r[0].input.steps_left), r[0].input.jump.pressed), cast(int) f32_bits(r[0].input.look_x));
+  return h;
+}
+
+// The remote model and the peer, outside the realm: what they will deliver, and when.
+OracleAnswer :: struct { request: int; epoch: int; value: int; due: int; }
+OracleRemote :: struct {
+  answers: [64] OracleAnswer; answer_n: int;
+  sent: int;                    // requests the realm sent: a replay sends none
+  held: ReplayEvent; holding: bool;   // a peer update held back, to arrive after a newer one
+  peer_seq: int;
+  accepted: int;               // events the gate accepted, as the session counts them
+}
+oracle_accepted :: (verdict: int) -> int { return ifx verdict == REPLAY_ACCEPTED then 1 else 0; }
+
+// One step, the same live and in a replay: the events the record holds for it, then the
+// rules. It asks the model every 16 steps and starts a new epoch every 50.
+oracle_step :: (s: ReplaySession, r: [] OracleRealm, remote: [] OracleRemote) {
+  t := replay_tick(s);
+  while true {
+    take := replay_take(s);
+    if !take.ok { break; }
+    e := take.event;
+    if e.source == REPLAY_ACTIONS {
+      r[0].input = input_frame(input_feed(r[0].input, replay_intent(e)), replay_steps(e));
+    } else if e.source == REPLAY_MODEL {
+      r[0].target = cast(f32) e.words[0] / 8;
+    } else {
+      r[0].peer = cast(f32) e.words[0] / 16;
+    }
+  }
+  if t % 16 == 3 {
+    ask := replay_ask(s, REPLAY_MODEL);
+    if ask.live {
+      // the model answers 1 to 30 steps later
+      delay := 1 + rand_below(replay_seed(s), 7, ask.request, 30);
+      remote[0].answers[remote[0].answer_n] = OracleAnswer.{request = ask.request, epoch = ask.epoch, value = rand_below(replay_seed(s), 8, ask.request, 40) - 20, due = t + delay};
+      remote[0].answer_n += 1;
+      remote[0].sent += 1;
+    }
+  }
+  if t % 50 == 49 { replay_new_epoch(s, REPLAY_MODEL); }
+  a := input_sample(r[0].input);
+  r[0].input = a.buffer;
+  dt: f32 = 0.015625;
+  push := a.actions.move_x * 2 + (r[0].target - r[0].x) * 0.5 + (r[0].peer - r[0].x) * 0.1;
+  if a.actions.jump { push += 4; }
+  r[0].v = (r[0].v + push * dt) * 0.98 + (rand_unit(replay_seed(s), 1, t) - 0.5) * 0.01 + a.actions.look_x;
+  if r[0].fault_at >= 0 && t >= r[0].fault_at { r[0].v += 0.001; }
+  r[0].x += r[0].v * dt;
+  replay_stepped(s, oracle_realm_digest(r));
+}
+
+// A live session: frames of 0 to 2 steps, each with its controls, the model's answers when
+// they're due (some twice), and the peer's updates (some twice, some held back and sent after
+// a newer one).
+oracle_session :: (s: ReplaySession, r: [] OracleRealm, remote: [] OracleRemote, seed: int, steps: int) {
+  f := 0;
+  got := 0;   // events accepted
+  while replay_tick(s) < steps {
+    t := replay_tick(s);
+    for k: 0..<remote[0].answer_n {
+      a := remote[0].answers[k];
+      if a.due != t { continue; }
+      got += oracle_accepted(replay_offer(s, oracle_event(REPLAY_MODEL, a.request, a.epoch, a.value)));
+      if rand_below(seed, 11, a.request, 3) == 0 { got += oracle_accepted(replay_offer(s, oracle_event(REPLAY_MODEL, a.request, a.epoch, a.value))); }
+    }
+    if f % 3 == 1 {
+      remote[0].peer_seq += 1;
+      u := oracle_event(REPLAY_NETWORK, remote[0].peer_seq, 0, rand_below(seed, 12, remote[0].peer_seq, 64) - 32);
+      pick := rand_below(seed, 13, remote[0].peer_seq, 4);
+      if pick == 0 && !remote[0].holding { remote[0].held = u; remote[0].holding = true; }
+      else {
+        got += oracle_accepted(replay_offer(s, u));
+        if pick == 1 { got += oracle_accepted(replay_offer(s, u)); }
+        if remote[0].holding && pick == 2 { got += oracle_accepted(replay_offer(s, remote[0].held)); remote[0].holding = false; }
+      }
+    }
+    steps_now := rand_below(seed, 9, f, 3);
+    move := cast(f32) (rand_below(seed, 10, f, 3) - 1);
+    i := input_keys(move, 0, false, rand_below(seed, 14, f, 9) == 0, false, cast(f32) rand_below(seed, 15, f, 3) * 0.001, 0, 0);
+    got += oracle_accepted(replay_offer(s, replay_frame_event(s, i, steps_now)));
+    for k: 0..<steps_now { if replay_tick(s) < steps { oracle_step(s, r, remote); } }
+    f += 1;
+  }
+  remote[0].accepted += got;
+}
+
+// A replay: every recorded step, with nothing from outside.
+oracle_replay :: (s: ReplaySession, r: [] OracleRealm, remote: [] OracleRemote) {
+  while replay_tick(s) < s.n[REPLAY_MARKS] { oracle_step(s, r, remote); }
+}

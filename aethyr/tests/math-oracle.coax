@@ -1,0 +1,9 @@
+// The checks' side of aethyr/math.coax: whether a is within `ulps` f32 steps of b (relative,
+// with a floor near zero). The pinned values in math.coax's checks come from Python's math
+// module (correctly rounded doubles), not from this file.
+math_near :: (a: f32, b: f32, ulps: f32) -> bool {
+  d := a - b; if d < 0 { d = -d; }
+  m := b; if m < 0 { m = -m; }
+  return d <= ulps * 0.00000011920929 * (ifx m > 0.000001 then m else 0.000001);
+}
+math_close :: (a: f64, b: f64, by: f64) -> bool { d := a - b; return d <= by && -d <= by; }

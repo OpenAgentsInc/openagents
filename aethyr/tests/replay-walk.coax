@@ -1,0 +1,152 @@
+// A recorded walk for aethyr/replay.coax's host check: the walking controller
+// (verse/player.coax) on a clock of uneven frames, with a peer whose updates arrive twice and
+// out of order and a model whose answers set your pace, arrive late, twice and from an old
+// epoch. The same file runs natively (aethyr/examples/replay-a-walk.coax) and in wasm
+// (coax/web/replay-hosts.test.ts, through replay-walk-face.c); both must give the same digests.
+
+#load "../replay.coax";
+#load "../loop.coax";
+#load "../rand.coax";
+#load "../../verse/player.coax";
+
+WALK_FRAMES :: 240;
+WALK_EVENTS :: 1024;
+WALK_MARKS :: 1024;
+WalkBacking :: struct {
+  events: [WALK_EVENTS] ReplayEvent;
+  marks: [WALK_MARKS] int;
+  channels: [REPLAY_SOURCES] ReplayChannel;
+  n: [REPLAY_COUNTERS] int;
+}
+walk_session :: (b: [] WalkBacking) -> ReplaySession {
+  return ReplaySession.{events = b[0].events[..], marks = b[0].marks[..], channels = b[0].channels[..], n = b[0].n[..]};
+}
+
+// book:begin walk-state
+// The realm's state: you, the peer's capsule, and the step that asks the model next.
+Walk :: struct {
+  you: Player;
+  peer: [BODY] f32;
+  fault_at: int = -1;   // from this step on, the step reads something it shouldn't
+}
+walk_init :: (w: [] Walk) {
+  w[0] = Walk.{you = verse_player_place(0, 0, 0, 0)};
+  w[0].peer = [BODY] f32.[3, 0, 3, 3, 1.4, 3, 0.4];
+}
+walk_digest :: (w: [] Walk) -> int {
+  p := w[0].you;
+  h := 2166136261;
+  floats := [14] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist,
+    p.target.x, p.target.y, p.target.z, p.pace];
+  for k: 0..<14 { h = replay_mix(h, cast(int) f32_bits(floats[k])); }
+  for k: 0..<BODY { h = replay_mix(h, cast(int) f32_bits(w[0].peer[k])); }
+  return replay_mix(replay_mix(h, replay_flag(p.on_ground)), p.jumps.pressed * 64 + p.jumps.taken);
+}
+// book:end walk-state
+
+// book:begin walk-step
+// One step, the same live and in a replay: apply what the record holds for this step, then
+// the rules. Every 40 steps the realm asks the model how fast to go; every 100 it starts a new
+// epoch, so an answer to an older question is stale.
+walk_step :: (s: ReplaySession, w: [] Walk, sent: [] int) {
+  t := replay_tick(s);
+  while true {
+    take := replay_take(s);
+    if !take.ok { break; }
+    e := take.event;
+    if e.source == REPLAY_ACTIONS { w[0].you = verse_player_intent(w[0].you, replay_intent(e)); }
+    if e.source == REPLAY_MODEL { w[0].you.pace = replay_float(e.words[0]); }
+    if e.source == REPLAY_NETWORK { for k: 0..<3 { w[0].peer[k] = replay_float(e.words[k]); w[0].peer[3 + k] = replay_float(e.words[k]) + ifx k == 1 then 1.4f32 else 0; } }
+  }
+  if t % 40 == 5 {
+    ask := replay_ask(s, REPLAY_MODEL);
+    if ask.live { sent[0] += 1; }   // a live session sends the request; a replay never does
+  }
+  if t % 100 == 99 { replay_new_epoch(s, REPLAY_MODEL); }
+  world := World.{bodies = w[0].peer[..]};
+  next := steps_in(world, w[0].you, 1);
+  if w[0].fault_at >= 0 && t >= w[0].fault_at { next.vel.x += 0.0001; }
+  w[0].you = next;
+  replay_stepped(s, walk_digest(w));
+}
+// book:end walk-step
+
+// A live walk: frames of uneven length on one clock, each with its controls; the model's
+// answer to request r arrives 3 to 70 steps later, and some twice; the peer sends its place
+// every other frame, some updates twice, some held back until after a newer one.
+walk_live :: (s: ReplaySession, w: [] Walk, sent: [] int, seed: int) -> int {
+  clock := loop_clock(LOOP_STEP_NS);
+  accepted := 0;
+  due: [64] int; for k: 0..<64 { due[k] = -1; }
+  later: ReplayEvent; holding := false; seq := 0;
+  frames := [6] f64.[0.0166667, 0.0333333, 0.0069444, 0.0166667, 0.1, 0.0];
+  for f: 0..<WALK_FRAMES {
+    t := replay_tick(s);
+    for r: 1..<64 {
+      if due[r] != t { continue; }
+      a := oracle_event(REPLAY_MODEL, r, walk_epoch_of(r), 0);
+      a.words[0] = replay_bits(0.5 + rand_unit(seed, 3, r));
+      accepted += oracle_accepted(replay_offer(s, a));
+      if rand_below(seed, 4, r, 3) == 0 { accepted += oracle_accepted(replay_offer(s, a)); }
+    }
+    if f % 2 == 0 {
+      seq += 1;
+      u := ReplayEvent.{source = REPLAY_NETWORK, request = seq};
+      u.words[0] = replay_bits(3 - cast(f32) seq * 0.02); u.words[1] = replay_bits(0); u.words[2] = replay_bits(3 - cast(f32) seq * 0.03);
+      pick := rand_below(seed, 5, seq, 4);
+      if pick == 0 && !holding { later = u; holding = true; }
+      else {
+        accepted += oracle_accepted(replay_offer(s, u));
+        if pick == 1 { accepted += oracle_accepted(replay_offer(s, u)); }
+        if holding && pick == 2 { accepted += oracle_accepted(replay_offer(s, later)); holding = false; }
+      }
+    }
+    clock = loop_accept(clock, frames[(f + rand_below(seed, 6, f, 2)) % 6]);
+    steps := loop_due(clock);
+    jump := f % 37 == 12;
+    turn := ifx f % 50 < 20 then 0.01f32 else 0;
+    i := input_keys(cast(f32) (rand_below(seed, 7, f / 20, 3) - 1), 1, f % 90 > 60, jump, false, turn, 0, 0);
+    accepted += oracle_accepted(replay_offer(s, replay_frame_event(s, i, steps)));
+    for k: 0..<steps {
+      before := sent[0];
+      walk_step(s, w, sent);
+      if sent[0] > before {
+        r := s.channels[REPLAY_MODEL].asked;
+        if r < 64 { due[r] = replay_tick(s) + 3 + rand_below(seed, 8, r, 68); }
+      }
+    }
+    clock = loop_ran(clock);
+  }
+  return accepted;
+}
+// The epoch request r was asked in: requests go out at steps 5, 45, 85, ..., and the epoch
+// goes up after steps 99, 199, ...
+walk_epoch_of :: (r: int) -> int { return (40 * (r - 1) + 5) / 100; }
+
+walk_replay :: (s: ReplaySession, w: [] Walk, sent: [] int) {
+  while replay_tick(s) < s.n[REPLAY_MARKS] { walk_step(s, w, sent); }
+}
+
+// What the hosts compare: mode 0 is the recorded session's digest, mode 1 the replay's (or -1
+// if it didn't match or sent a request), mode 2 the first divergent step of a replay with a
+// fault planted at step 150, and mode 3 the events the gate refused as duplicate, stale or
+// unknown, packed as duplicates * 1000000 + stale * 1000 + unknown.
+replay_walk :: (mode: int) -> int #export_c {
+  b: [1] WalkBacking; s := walk_session(b[..]);
+  w: [1] Walk; walk_init(w[..]);
+  sent: [1] int;
+  replay_record(s, walk_digest(w[..]), 2026);
+  accepted := walk_live(s, w[..], sent[..], 2026);
+  if accepted != replay_events(s) { return -2; }
+  recorded := replay_digest(s);
+  if mode == 0 { return recorded; }
+  if mode == 3 { return replay_refused(s, REPLAY_DUPLICATE) * 1000000 + replay_refused(s, REPLAY_STALE) * 1000 + replay_refused(s, REPLAY_UNKNOWN); }
+  again: [1] Walk; walk_init(again[..]);
+  if mode == 2 { again[0].fault_at = 150; }
+  asked := sent[0];
+  if !replay_play(s, walk_digest(again[..])) { return -3; }
+  walk_replay(s, again[..], sent[..]);
+  if mode == 2 { return replay_diverged(s); }
+  if !replay_matched(s) || sent[0] != asked || walk_digest(again[..]) != walk_digest(w[..]) { return -1; }
+  return replay_digest(s);
+}

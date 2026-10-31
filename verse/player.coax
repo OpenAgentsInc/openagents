@@ -34,6 +34,7 @@
 #load "../aethyr/loop.coax";
 #load "../aethyr/input.coax";
 #load "../aethyr/query.coax";   // the ground under you: one query for every walking realm
+#load "../aethyr/math.coax";    // sine, cosine and powers with the same bits natively and in the browser
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -396,7 +397,7 @@ camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
 look_at :: (p: Player) -> Vec3 { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
 
 orbit_offset :: (p: Player) -> Vec3 {
-  return Vec3.{x = sin(p.phi) * sin(p.theta), y = cos(p.phi), z = sin(p.phi) * cos(p.theta)};
+  return Vec3.{x = math_sin(p.phi) * math_sin(p.theta), y = math_cos(p.phi), z = math_sin(p.phi) * math_cos(p.theta)};
 }
 
 place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player {
@@ -470,7 +471,7 @@ wish :: (p: Player) -> Wish {
   mx := ax / size; mz := -ay / size;
   // Turn local -Z onto the camera's flat forward. The camera sits at theta
   // around the target, so its flat forward is -(sin theta, cos theta).
-  c := cos(p.theta); s := sin(p.theta);
+  c := math_cos(p.theta); s := math_sin(p.theta);
   w.x = mx * c + mz * s;
   w.z = -mx * s + mz * c;
   w.on = true;
@@ -579,7 +580,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   next = spring(next, look_at(next), dt);
   room := hi(f32(CAM_WALL_MIN), camera_room(w, next.target, orbit_offset(next), next.max_dist));
   if room < next.dist { next.dist = room; }
-  else { next.dist += (room - next.dist) * (1 - pow(f32(1 - CAM_LERP), dt * 60)); }
+  else { next.dist += (room - next.dist) * (1 - math_pow(f32(1 - CAM_LERP), dt * 60)); }
 
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }

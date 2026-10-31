@@ -1,0 +1,14 @@
+// book:begin example
+#load "../tests/replay-walk.coax";
+#import "Basic";
+
+// A recorded walk of 240 uneven frames, its replay, and a replay with a fault planted at
+// step 150. The browser runs the same file (coax/web/replay-hosts.test.ts).
+main :: () {
+  refused := replay_walk(3);
+  print("refused: % duplicate, % stale, % unknown\n", refused / 1000000, refused / 1000 % 1000, refused % 1000);
+  print("recorded session: %\n", replay_walk(0));
+  print("replayed session: %\n", replay_walk(1));
+  print("fault planted at step 150, first divergent step: %\n", replay_walk(2));
+}
+// book:end example

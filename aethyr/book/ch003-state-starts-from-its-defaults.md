@@ -194,10 +194,10 @@ doesn't compare them byte for byte yet.
 
 ## Still to do
 
-- Replay ([chapter 5](ch005-replay-a-session-exactly.md)) needs a digest of
-  the constructed state and of the state after a realm's setup with a fixed
-  seed. Both hosts must produce the same digest. Each session record starts
-  with this digest, so it lands with `ec-replay`.
+- Each session record starts with the digest of the constructed state, and
+  `replay_play` refuses a replay from any other state
+  ([chapter 5](ch005-replay-a-session-exactly.md)). Each realm writes its
+  own state digest as it moves onto replay, starting with the Grid.
 - The host calls `coaxial_state_init` with `?.`, so an engine without the
   export still starts with zeros. After every realm is built by the same
   `build.sh` step, the realm migration makes the call unconditional. For

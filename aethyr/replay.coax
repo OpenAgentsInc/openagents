@@ -1,0 +1,608 @@
+// Aethyr's recording and replay (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md):
+// a session is its constructed state's digest, a seed and the external events it accepted,
+// each in one envelope. Replaying the record gives the same state at every step.
+//
+// Everything from outside the simulation is an event in one envelope (ReplayEvent): a frame's
+// controls (REPLAY_ACTIONS), a model's answer (REPLAY_MODEL) or a network update
+// (REPLAY_NETWORK). The gate (replay_offer) decides whether to accept an event and stamps it
+// with its apply tick, the next step to run. The gate refuses a duplicate (the request it last
+// accepted from that source), a stale event (an earlier request, or another epoch) and an
+// answer to a question the realm never asked, and counts each refusal. Live and replay apply
+// events the same way: each step takes what the record holds for it (replay_take). A live
+// session takes what the gate just appended; a replay takes what was recorded, refuses every
+// live offer and makes no remote call (replay_ask says so).
+//
+// After each step the realm gives the session its state digest (replay_stepped). A recording
+// keeps it as a mark; a replay compares it with the mark and keeps the first step that differs.
+// All storage is the realm's own: a ReplaySession is views, as an EntityStore is.
+//   coax/bin/coax test aethyr/replay.coax --library
+//   coax/bin/coax mutate aethyr/replay.coax
+
+#module "aethyr.replay";
+#load "input.coax";
+#load "tests/replay-oracle.coax";   // the checks' session backing and a small realm
+
+// book:begin envelope
+// Where an event comes from. Controls and network updates are streams, latest-wins: the gate
+// accepts only a number past the last one it accepted from that source. Model answers reply to
+// the realm's requests: the gate accepts each open request's answer once, in any order.
+REPLAY_ACTIONS :: 0;   // the player's controls: one Intent a frame, numbered by frame
+REPLAY_MODEL :: 1;     // a model's answer to the realm's request (replay_ask)
+REPLAY_NETWORK :: 2;   // another player's update, numbered by its sender
+REPLAY_SOURCES :: 3;
+REPLAY_WORDS :: 10;    // payload words: an Intent and its frame's steps fill all ten
+REPLAY_OPEN :: 62;     // a model request is open until answered or 62 newer requests are asked
+
+// One accepted external event. The gate sets `tick`; the sender sets the rest.
+ReplayEvent :: struct {
+  tick: int;                     // the step that applies it
+  source: int;                   // REPLAY_ACTIONS, REPLAY_MODEL or REPLAY_NETWORK
+  request: int;                  // the request, frame or sender sequence number, from 1
+  epoch: int;                    // the source's epoch it belongs to
+  words: [REPLAY_WORDS] int;     // the accepted payload
+}
+
+// What the gate says about an offered event.
+REPLAY_ACCEPTED :: 0;
+REPLAY_DUPLICATE :: 1;   // the request the source last had accepted, again
+REPLAY_STALE :: 2;       // another epoch, a stream's earlier number, or a request no longer open
+REPLAY_UNKNOWN :: 3;     // no such source, a request below 1, or an answer never asked for
+REPLAY_FULL :: 4;        // the record has no room
+REPLAY_REPLAYING :: 5;   // a live event during a replay: the record already decided
+// book:end envelope
+
+// book:begin session
+// The session's counters, at these places in `n` (REPLAY_COUNTERS of them).
+REPLAY_MODE :: 0;        // REPLAY_RECORDING or REPLAY_PLAYING
+REPLAY_TICK :: 1;        // steps run: the next step's number
+REPLAY_EVENTS :: 2;      // events in the record
+REPLAY_CURSOR :: 3;      // the next event a step takes
+REPLAY_INITIAL :: 4;     // the constructed state's digest (chapter 3)
+REPLAY_SEED :: 5;        // the session's seed (aethyr/rand.coax)
+REPLAY_MARKS :: 6;       // marks kept: one state digest a step
+REPLAY_SEEN :: 7;        // every step digest seen so far, as one number
+REPLAY_DIVERGED :: 8;    // a replay's first step whose digest differs, plus one; 0 if none
+REPLAY_MISSED :: 9;      // recorded events a replay passed without taking
+REPLAY_REFUSED :: 10;    // refusals, one counter each from here (REPLAY_REFUSED + verdict)
+REPLAY_COUNTERS :: 16;
+
+REPLAY_RECORDING :: 0;
+REPLAY_PLAYING :: 1;
+
+// Each source's gate: its epoch, the last request accepted, the requests the realm asked and,
+// for model answers, which of the last REPLAY_OPEN requests are answered (bit k: request asked - k).
+ReplayChannel :: struct { epoch: int; last: int; asked: int; answered: int; }
+
+ReplaySession :: struct {
+  events: [] ReplayEvent;     // the record, in the order the gate accepted them
+  marks: [] int;              // the state digest after each step
+  channels: [] ReplayChannel; // REPLAY_SOURCES of them
+  n: [] int;                  // the counters
+}
+// book:end session
+
+replay_mix :: (h: int, v: int) -> int {
+  return ((h ^ (v & 4294967295)) * 16777619) & 4294967295;
+}
+replay_mix_wide :: (h: int, v: int) -> int { return replay_mix(replay_mix(h, v), v >> 32); }
+
+replay_reset_channels :: (s: ReplaySession) {
+  for c: 0..<s.channels.count { s.channels[c] = ReplayChannel.{}; }
+}
+// book:begin begin
+// A new recording: the constructed state's digest first, then the seed.
+replay_record :: (s: ReplaySession, initial: int, seed: int) {
+  for i: 0..<s.n.count { s.n[i] = 0; }   // REPLAY_MODE is REPLAY_RECORDING
+  replay_reset_channels(s);
+  s.n[REPLAY_INITIAL] = initial;
+  s.n[REPLAY_SEED] = seed;
+  s.n[REPLAY_SEEN] = 2166136261;
+}
+// Replays the session's record from its first step. The realm builds its state again,
+// constructs it as chapter 3 says, and passes that state's digest: false, and nothing
+// changes, if it is not the digest the record starts with.
+replay_play :: (s: ReplaySession, initial: int) -> bool {
+  if initial != s.n[REPLAY_INITIAL] { return false; }
+  replay_reset_channels(s);
+  s.n[REPLAY_MODE] = REPLAY_PLAYING;
+  s.n[REPLAY_TICK] = 0;
+  s.n[REPLAY_CURSOR] = 0;
+  s.n[REPLAY_SEEN] = 2166136261;
+  s.n[REPLAY_DIVERGED] = 0;
+  s.n[REPLAY_MISSED] = 0;
+  return true;
+}
+replay_playing :: (s: ReplaySession) -> bool { return s.n[REPLAY_MODE] == REPLAY_PLAYING; }
+replay_tick :: (s: ReplaySession) -> int { return s.n[REPLAY_TICK]; }
+replay_seed :: (s: ReplaySession) -> int { return s.n[REPLAY_SEED]; }
+replay_events :: (s: ReplaySession) -> int { return s.n[REPLAY_EVENTS]; }
+replay_refused :: (s: ReplaySession, verdict: int) -> int { return s.n[REPLAY_REFUSED + verdict]; }
+// book:end begin
+
+// book:begin gate
+// A request to a model: its number and the epoch it belongs to, and whether to send it. A
+// replay asks too, so the numbers match, but sends nothing: the answer is in the record.
+ReplayAsk :: struct { request: int; epoch: int; live: bool; }
+replay_ask :: (s: ReplaySession, source: int) -> ReplayAsk {
+  if source < 0 || source >= REPLAY_SOURCES { return ReplayAsk.{}; }
+  s.channels[source].asked += 1;
+  s.channels[source].answered = (s.channels[source].answered & 1152921504606846975) << 1;   // 2^60 - 1: REPLAY_OPEN bits
+  return ReplayAsk.{request = s.channels[source].asked, epoch = s.channels[source].epoch, live = !replay_playing(s)};
+}
+replay_epoch :: (s: ReplaySession, source: int) -> int {
+  if source < 0 || source >= REPLAY_SOURCES { return 0; }
+  return s.channels[source].epoch;
+}
+// A new epoch for a source (the question changed, the peer rejoined): every event from an
+// earlier epoch is stale from now on.
+replay_new_epoch :: (s: ReplaySession, source: int) {
+  if source < 0 || source >= REPLAY_SOURCES { return; }
+  s.channels[source].epoch += 1;
+}
+
+// What the gate decides about an event, without changing anything.
+replay_verdict :: (s: ReplaySession, e: ReplayEvent) -> int {
+  if replay_playing(s) { return REPLAY_REPLAYING; }
+  if e.source < 0 || e.source >= REPLAY_SOURCES || e.request < 1 { return REPLAY_UNKNOWN; }
+  c := s.channels[e.source];
+  if e.source == REPLAY_MODEL {
+    if e.request > c.asked { return REPLAY_UNKNOWN; }
+    if e.epoch != c.epoch || c.asked - e.request >= REPLAY_OPEN { return REPLAY_STALE; }
+    if ((c.answered >> (c.asked - e.request)) & 1) == 1 { return REPLAY_DUPLICATE; }
+  } else {
+    if e.epoch != c.epoch || e.request < c.last { return REPLAY_STALE; }
+    if e.request == c.last { return REPLAY_DUPLICATE; }
+  }
+  if s.n[REPLAY_EVENTS] >= s.events.count { return REPLAY_FULL; }
+  return REPLAY_ACCEPTED;
+}
+// The gate: an accepted event goes into the record, stamped to apply at the next step; a
+// refused one is counted under its verdict.
+replay_offer :: (s: ReplaySession, e: ReplayEvent) -> int {
+  v := replay_verdict(s, e);
+  if v != REPLAY_ACCEPTED { s.n[REPLAY_REFUSED + v] += 1; return v; }
+  stamped := e;
+  stamped.tick = s.n[REPLAY_TICK];
+  s.events[s.n[REPLAY_EVENTS]] = stamped;
+  s.n[REPLAY_EVENTS] += 1;
+  replay_accept(s, e);
+  return v;
+}
+// What accepting an event changes in its source's gate: in a recording at the offer, in a replay
+// at the take, so the gates agree at every step.
+replay_accept :: (s: ReplaySession, e: ReplayEvent) {
+  c := s.channels[e.source];
+  if e.source == REPLAY_MODEL { c.answered = c.answered | (1 << (c.asked - e.request)); }
+  else { c.last = e.request; }
+  s.channels[e.source] = c;
+}
+// book:end gate
+
+// book:begin step
+// The next event this step applies, if any: call it until `ok` is false, before the step.
+// A replay passes, and counts, any recorded event for a step already run.
+ReplayTake :: struct { ok: bool; event: ReplayEvent; }
+replay_take :: (s: ReplaySession) -> ReplayTake {
+  while s.n[REPLAY_CURSOR] < s.n[REPLAY_EVENTS] && s.events[s.n[REPLAY_CURSOR]].tick < s.n[REPLAY_TICK] {
+    s.n[REPLAY_CURSOR] += 1;
+    s.n[REPLAY_MISSED] += 1;
+  }
+  if s.n[REPLAY_CURSOR] >= s.n[REPLAY_EVENTS] { return ReplayTake.{}; }
+  e := s.events[s.n[REPLAY_CURSOR]];
+  if e.tick != s.n[REPLAY_TICK] { return ReplayTake.{}; }
+  s.n[REPLAY_CURSOR] += 1;
+  if replay_playing(s) { replay_accept(s, e); }
+  return ReplayTake.{ok = true, event = e};
+}
+// After the step: its state digest. A recording keeps it; a replay compares it with the
+// recording's and keeps the first step that differs.
+replay_stepped :: (s: ReplaySession, digest: int) {
+  t := s.n[REPLAY_TICK];
+  s.n[REPLAY_SEEN] = replay_mix_wide(s.n[REPLAY_SEEN], digest);
+  if replay_playing(s) {
+    differs := t >= s.n[REPLAY_MARKS] || s.marks[t] != digest;
+    if differs && s.n[REPLAY_DIVERGED] == 0 { s.n[REPLAY_DIVERGED] = t + 1; }
+  } else if t < s.marks.count {
+    s.marks[t] = digest;
+    s.n[REPLAY_MARKS] = t + 1;
+  }
+  s.n[REPLAY_TICK] = t + 1;
+}
+// The first step whose digest differs from the recording's, or -1.
+replay_diverged :: (s: ReplaySession) -> int { return s.n[REPLAY_DIVERGED] - 1; }
+// A replay is done and matched: every step recorded ran with the recorded digest, and every
+// recorded event for those steps was taken at its step. Events accepted after the last step
+// (for a step the recording never ran) are left.
+replay_matched :: (s: ReplaySession) -> bool {
+  c := s.n[REPLAY_CURSOR];
+  taken := c >= s.n[REPLAY_EVENTS] || s.events[c].tick >= s.n[REPLAY_TICK];
+  return replay_playing(s) && s.n[REPLAY_DIVERGED] == 0 && s.n[REPLAY_MISSED] == 0
+    && s.n[REPLAY_TICK] == s.n[REPLAY_MARKS] && taken;
+}
+// book:end step
+
+// book:begin digest
+// One event as one number.
+replay_event_digest :: (h: int, e: ReplayEvent) -> int {
+  d := replay_mix_wide(replay_mix_wide(replay_mix_wide(replay_mix_wide(h, e.tick), e.source), e.request), e.epoch);
+  for w: 0..<REPLAY_WORDS { d = replay_mix_wide(d, e.words[w]); }
+  return d;
+}
+// The session as one number: its initial digest, its seed, every event and every step digest
+// seen. A recording and a replay that matched it give the same number, on any host.
+replay_digest :: (s: ReplaySession) -> int {
+  h := replay_mix_wide(replay_mix_wide(2166136261, s.n[REPLAY_INITIAL]), s.n[REPLAY_SEED]);
+  for k: 0..<s.n[REPLAY_EVENTS] { h = replay_event_digest(h, s.events[k]); }
+  return replay_mix_wide(replay_mix(h, s.n[REPLAY_TICK]), s.n[REPLAY_SEEN]);
+}
+// Copies a record (its events, marks and counters) into another session: a save, or a
+// recording sent to another host. False if `to` is too small.
+replay_copy :: (from: ReplaySession, to: ReplaySession) -> bool {
+  if to.events.count < from.n[REPLAY_EVENTS] || to.marks.count < from.n[REPLAY_MARKS] || to.n.count < REPLAY_COUNTERS || to.channels.count < REPLAY_SOURCES { return false; }
+  for k: 0..<from.n[REPLAY_EVENTS] { to.events[k] = from.events[k]; }
+  for k: 0..<from.n[REPLAY_MARKS] { to.marks[k] = from.marks[k]; }
+  for c: 0..<REPLAY_SOURCES { to.channels[c] = from.channels[c]; }
+  for i: 0..<REPLAY_COUNTERS { to.n[i] = from.n[i]; }
+  return true;
+}
+// book:end digest
+
+// book:begin actions
+// A frame's controls as an event: the Intent (aethyr/input.coax) and the steps the frame ran,
+// floats by their bits.
+replay_bits :: (x: f32) -> int { return cast(int) f32_bits(x); }
+replay_float :: (w: int) -> f32 { return f32_from_bits(cast(u32) (w & 4294967295)); }
+replay_flag :: (b: bool) -> int { return ifx b then 1 else 0; }
+replay_frame_event :: (s: ReplaySession, i: Intent, steps: int) -> ReplayEvent {
+  e := ReplayEvent.{source = REPLAY_ACTIONS, request = s.channels[REPLAY_ACTIONS].last + 1, epoch = s.channels[REPLAY_ACTIONS].epoch};
+  e.words[0] = replay_bits(i.move_x); e.words[1] = replay_bits(i.move_y);
+  e.words[2] = replay_flag(i.run); e.words[3] = replay_flag(i.jump); e.words[4] = replay_flag(i.act);
+  e.words[5] = replay_bits(i.look_x); e.words[6] = replay_bits(i.look_y); e.words[7] = replay_bits(i.zoom);
+  e.words[8] = i.mended; e.words[9] = steps;
+  return e;
+}
+replay_intent :: (e: ReplayEvent) -> Intent {
+  return Intent.{move_x = replay_float(e.words[0]), move_y = replay_float(e.words[1]),
+    run = e.words[2] != 0, jump = e.words[3] != 0, act = e.words[4] != 0,
+    look_x = replay_float(e.words[5]), look_y = replay_float(e.words[6]), zoom = replay_float(e.words[7]),
+    mended = e.words[8]};
+}
+replay_steps :: (e: ReplayEvent) -> int { return e.words[9]; }
+// book:end actions
+
+// ---- checks
+
+#test "the gate accepts the next request and stamps the next step" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 77, 2026);
+  #assert !replay_playing(s) && replay_tick(s) == 0 && replay_seed(s) == 2026 && replay_events(s) == 0;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 5)) == REPLAY_ACCEPTED;
+  replay_stepped(s, 10);
+  replay_stepped(s, 11);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 3, 0, 6)) == REPLAY_ACCEPTED;   // a gap is fine
+  #assert replay_events(s) == 2 && b[0].events[0].tick == 0 && b[0].events[1].tick == 2;
+  #assert b[0].events[1].request == 3 && b[0].events[1].words[0] == 6 && b[0].channels[REPLAY_NETWORK].last == 3;
+  // the sender's own tick is not trusted
+  e := oracle_event(REPLAY_NETWORK, 4, 0, 7); e.tick = 999;
+  #assert replay_offer(s, e) == REPLAY_ACCEPTED && b[0].events[2].tick == 2;
+  #assert b[0].marks[0] == 10 && b[0].marks[1] == 11 && b[0].n[REPLAY_MARKS] == 2 && replay_tick(s) == 2;
+}
+
+#test "duplicate, stale and unknown events are refused and counted" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 1, 2);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 5, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 5, 0, 1)) == REPLAY_DUPLICATE;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 4, 0, 1)) == REPLAY_STALE;   // older than the last accepted
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 6, 1, 1)) == REPLAY_STALE;   // not this epoch
+  replay_new_epoch(s, REPLAY_NETWORK);
+  #assert replay_epoch(s, REPLAY_NETWORK) == 1 && replay_epoch(s, REPLAY_MODEL) == 0;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 6, 0, 1)) == REPLAY_STALE;   // the old epoch
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 6, 1, 1)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 1, 0, 1)) == REPLAY_UNKNOWN;   // never asked
+  a := replay_ask(s, REPLAY_MODEL);
+  #assert a.request == 1 && a.epoch == 0 && a.live;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 2, 0, 1)) == REPLAY_UNKNOWN;   // not asked yet
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 1, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(-1, 1, 0, 1)) == REPLAY_UNKNOWN && replay_offer(s, oracle_event(REPLAY_SOURCES, 1, 0, 1)) == REPLAY_UNKNOWN;
+  #assert replay_offer(s, oracle_event(REPLAY_ACTIONS, 0, 0, 1)) == REPLAY_UNKNOWN && replay_offer(s, oracle_event(REPLAY_ACTIONS, 1, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_refused(s, REPLAY_DUPLICATE) == 1 && replay_refused(s, REPLAY_STALE) == 3 && replay_refused(s, REPLAY_UNKNOWN) == 5;
+  #assert replay_refused(s, REPLAY_ACCEPTED) == 0 && replay_events(s) == 4;
+  #assert replay_ask(s, -1).request == 0 && replay_ask(s, REPLAY_SOURCES).request == 0 && replay_epoch(s, -1) == 0 && replay_epoch(s, REPLAY_SOURCES) == 0;
+  replay_new_epoch(s, -1); replay_new_epoch(s, REPLAY_SOURCES);
+  #assert b[0].channels[0].epoch == 0 && b[0].channels[1].epoch == 0 && b[0].channels[2].epoch == 1;
+  // a full record refuses, and says so
+  for k: 0..<ORACLE_EVENTS - 4 { #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 7 + k, 1, 1)) == REPLAY_ACCEPTED; }
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 900, 1, 1)) == REPLAY_FULL && replay_refused(s, REPLAY_FULL) == 1;
+}
+
+#test "model answers: each open request once, in any order, until 62 newer requests" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 1000, 0);
+  for k: 0..<3 { #assert replay_ask(s, REPLAY_MODEL).request == k + 1; }
+  // answers to 3, then 1, then 2: all accepted, in arrival order
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 3, 0, 30)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 1, 0, 10)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 3, 0, 30)) == REPLAY_DUPLICATE;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 2, 0, 20)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 1, 0, 10)) == REPLAY_DUPLICATE && replay_offer(s, oracle_event(REPLAY_MODEL, 2, 0, 20)) == REPLAY_DUPLICATE;
+  #assert b[0].channels[REPLAY_MODEL].answered == 7 && b[0].events[0].words[0] == 30 && b[0].events[1].words[0] == 10;
+  // the answered bits move as requests are asked: request 1 stays answered
+  #assert replay_ask(s, REPLAY_MODEL).request == 4 && b[0].channels[REPLAY_MODEL].answered == 14;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 1, 0, 10)) == REPLAY_DUPLICATE;
+  // request 4 stays open while 61 newer are asked, and closes at the 62nd
+  for k: 0..<61 { #assert replay_ask(s, REPLAY_MODEL).request == 5 + k; }
+  e4 := oracle_event(REPLAY_MODEL, 4, 0, 40);
+  #assert replay_verdict(s, e4) == REPLAY_ACCEPTED;
+  #assert replay_ask(s, REPLAY_MODEL).request == 66 && replay_verdict(s, e4) == REPLAY_STALE;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 66, 0, 1)) == REPLAY_ACCEPTED && replay_offer(s, oracle_event(REPLAY_MODEL, 5, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 5, 0, 1)) == REPLAY_DUPLICATE;
+  // a new epoch closes every open request
+  replay_new_epoch(s, REPLAY_MODEL);
+  #assert replay_offer(s, oracle_event(REPLAY_MODEL, 6, 0, 1)) == REPLAY_STALE && replay_offer(s, oracle_event(REPLAY_MODEL, 6, 1, 1)) == REPLAY_ACCEPTED;
+  // a replay marks the same answers at its takes
+  replay_stepped(s, 1);
+  #assert replay_play(s, 1000);
+  for k: 0..<3 { #assert replay_ask(s, REPLAY_MODEL).live == false; }
+  for k: 0..<3 { #assert replay_take(s).ok; }
+  #assert b[0].channels[REPLAY_MODEL].answered == 7;
+}
+
+#test "a step takes exactly its own events, in the order accepted" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 1000, 2);
+  #assert !replay_take(s).ok;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 10)) == REPLAY_ACCEPTED;
+  #assert replay_offer(s, oracle_event(REPLAY_ACTIONS, 1, 0, 20)) == REPLAY_ACCEPTED;
+  t := replay_take(s);
+  #assert t.ok && t.event.words[0] == 10;
+  t = replay_take(s);
+  #assert t.ok && t.event.words[0] == 20;
+  #assert !replay_take(s).ok;
+  replay_stepped(s, 1);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 2, 0, 30)) == REPLAY_ACCEPTED;
+  replay_stepped(s, 2);   // the step forgot to take it
+  replay_stepped(s, 3);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 3, 0, 40)) == REPLAY_ACCEPTED;
+  t = replay_take(s);
+  #assert t.ok && t.event.words[0] == 40 && t.event.tick == 3 && b[0].n[REPLAY_MISSED] == 1;
+  // a replay: the same takes, every live offer refused, no request sent
+  #assert !replay_play(s, 99) && !replay_playing(s);   // another constructed state
+  #assert replay_play(s, 1000) && replay_playing(s) && replay_tick(s) == 0 && b[0].channels[REPLAY_NETWORK].last == 0;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 9, 0, 1)) == REPLAY_REPLAYING && replay_refused(s, REPLAY_REPLAYING) == 1;
+  a := replay_ask(s, REPLAY_MODEL);
+  #assert !a.live && a.request == 1;
+  #assert replay_take(s).event.words[0] == 10 && replay_take(s).event.words[0] == 20 && !replay_take(s).ok;
+  #assert b[0].channels[REPLAY_NETWORK].last == 1 && b[0].channels[REPLAY_ACTIONS].last == 1;
+  replay_stepped(s, 1);
+  #assert replay_take(s).event.words[0] == 30 && !replay_take(s).ok;
+  replay_stepped(s, 2);
+  replay_stepped(s, 3);
+  #assert replay_take(s).event.words[0] == 40 && b[0].channels[REPLAY_NETWORK].last == 3;
+  #assert replay_diverged(s) == -1 && b[0].n[REPLAY_MISSED] == 0 && replay_matched(s);
+  replay_stepped(s, 4);
+  #assert replay_diverged(s) == 3 && !replay_matched(s);   // the recording has three steps
+}
+
+#test "a used session starts over, and every source has a gate" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  for i: 0..<REPLAY_COUNTERS { b[0].n[i] = 3; }
+  for c: 0..<REPLAY_SOURCES { b[0].channels[c] = ReplayChannel.{epoch = 2, last = 9, asked = 4}; }
+  replay_record(s, 8, 9);
+  #assert !replay_playing(s) && replay_tick(s) == 0 && replay_events(s) == 0 && b[0].n[REPLAY_INITIAL] == 8;
+  for i: 0..<REPLAY_COUNTERS { #assert i == REPLAY_INITIAL || i == REPLAY_SEED || i == REPLAY_SEEN || b[0].n[i] == 0; }
+  for c: 0..<REPLAY_SOURCES { #assert b[0].channels[c].epoch == 0 && b[0].channels[c].last == 0 && b[0].channels[c].asked == 0; }
+  // source 0, the controls, is a source like the others
+  #assert replay_ask(s, REPLAY_ACTIONS).request == 1 && replay_epoch(s, REPLAY_ACTIONS) == 0;
+  replay_new_epoch(s, REPLAY_ACTIONS);
+  #assert replay_epoch(s, REPLAY_ACTIONS) == 1;
+  e := replay_frame_event(s, Intent.{run = true}, 2);
+  #assert e.epoch == 1 && e.words[2] == 1 && e.words[3] == 0 && e.words[9] == 2;
+  #assert replay_offer(s, e) == REPLAY_ACCEPTED;
+  // a played session records again from scratch
+  replay_stepped(s, 1);
+  #assert replay_play(s, 8) && replay_playing(s);
+  replay_record(s, 8, 9);
+  #assert !replay_playing(s) && replay_events(s) == 0;
+}
+
+#test "a replay that skips an event, or leaves one, doesn't match" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 1000, 0);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_take(s).ok;
+  replay_stepped(s, 1);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 2, 0, 2)) == REPLAY_ACCEPTED;
+  #assert replay_take(s).ok;
+  replay_stepped(s, 2);
+  // step 0 doesn't take its event: step 1 passes it and counts it
+  #assert replay_play(s, 1000);
+  replay_stepped(s, 1);
+  #assert replay_take(s).event.words[0] == 2 && b[0].n[REPLAY_MISSED] == 1;
+  replay_stepped(s, 2);
+  #assert replay_diverged(s) == -1 && b[0].n[REPLAY_CURSOR] == 2 && !replay_matched(s);
+  // the last event never taken
+  #assert replay_play(s, 1000);
+  #assert replay_take(s).ok;
+  replay_stepped(s, 1);
+  replay_stepped(s, 2);
+  #assert replay_diverged(s) == -1 && b[0].n[REPLAY_MISSED] == 0 && !replay_matched(s);
+  // both taken: it matches
+  #assert replay_play(s, 1000);
+  #assert replay_take(s).ok; replay_stepped(s, 1); #assert replay_take(s).ok; replay_stepped(s, 2);
+  #assert replay_matched(s);
+  // an event accepted after the last step, for a step never run, is left and still matches
+  replay_record(s, 1000, 0);
+  replay_stepped(s, 1);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 1)) == REPLAY_ACCEPTED && b[0].events[0].tick == 1;
+  #assert replay_play(s, 1000);
+  replay_stepped(s, 1);
+  #assert replay_matched(s) && b[0].n[REPLAY_CURSOR] == 0;
+  #assert replay_play(s, 1000);
+  #assert !replay_matched(s);   // no step run yet
+  replay_stepped(s, 1);
+  replay_stepped(s, 2);
+  #assert !replay_matched(s);   // a step more than recorded
+  // one event at step 1 of three, never taken
+  replay_record(s, 1000, 0);
+  replay_stepped(s, 1);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 1)) == REPLAY_ACCEPTED;
+  replay_stepped(s, 2); replay_stepped(s, 3);
+  #assert replay_play(s, 1000);
+  replay_stepped(s, 1); replay_stepped(s, 2); replay_stepped(s, 3);
+  #assert replay_diverged(s) == -1 && !replay_matched(s);
+  // the record of the two-step session again
+  replay_record(s, 1000, 0);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 1)) == REPLAY_ACCEPTED;
+  #assert replay_take(s).ok; replay_stepped(s, 1);
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 2, 0, 2)) == REPLAY_ACCEPTED;
+  #assert replay_take(s).ok; replay_stepped(s, 2);
+  #assert replay_play(s, 1000);
+  #assert replay_take(s).ok; replay_stepped(s, 1); #assert replay_take(s).ok; replay_stepped(s, 2);
+  // a copy into a session of exactly the record's size carries every counter and gate
+  c: [1] ReplayBacking; v := replay_backing(c[..]);
+  v.events = c[0].events[0..<2]; v.marks = c[0].marks[0..<2];
+  #assert replay_copy(s, v) && replay_playing(v) && c[0].channels[REPLAY_ACTIONS].last == 0 && c[0].channels[REPLAY_NETWORK].last == 2;
+  b[0].channels[REPLAY_ACTIONS].last = 5;
+  #assert replay_copy(s, v) && c[0].channels[REPLAY_ACTIONS].last == 5 && c[0].n[REPLAY_MODE] == REPLAY_PLAYING;
+}
+
+#test "a replay finds the first step that differs" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 5, 6);
+  for t: 0..<10 { replay_stepped(s, 100 + t); }
+  d := replay_digest(s);
+  #assert replay_play(s, 5);
+  for t: 0..<10 { replay_stepped(s, 100 + t); }
+  #assert replay_matched(s) && replay_diverged(s) == -1 && replay_digest(s) == d;
+  #assert replay_play(s, 5);
+  for t: 0..<10 { replay_stepped(s, ifx t >= 6 then 0 else 100 + t); }
+  #assert replay_diverged(s) == 6 && !replay_matched(s) && replay_digest(s) != d;
+  #assert replay_play(s, 5);
+  for t: 0..<9 { replay_stepped(s, 100 + t); }
+  #assert !replay_matched(s) && replay_diverged(s) == -1;   // a step short
+  #assert !replay_play(s, 4) && replay_tick(s) == 9;
+  // marks past the record's room are not kept, and a replay can't match them
+  small: [1] ReplayBacking; t := replay_backing(small[..]);
+  t.marks = small[0].marks[0..<3];
+  replay_record(t, 5, 6);
+  for k: 0..<5 { replay_stepped(t, k); }
+  #assert t.n[REPLAY_MARKS] == 3 && small[0].marks[3] == 0;
+  #assert replay_play(t, 5);
+  for k: 0..<5 { replay_stepped(t, k); }
+  #assert replay_diverged(t) == 3;
+}
+
+#test "the digest is pinned and takes every part of the session" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 5, 6);
+  d0 := replay_digest(s);
+  #assert d0 == 3478464415;
+  #assert replay_offer(s, oracle_event(REPLAY_NETWORK, 1, 0, 3)) == REPLAY_ACCEPTED;
+  replay_stepped(s, 42);
+  d1 := replay_digest(s);
+  #assert d1 == 1721521954;
+  // each part changes it
+  c: [1] ReplayBacking; v := replay_backing(c[..]);
+  #assert replay_copy(s, v) && replay_digest(v) == d1 && c[0].marks[0] == 42 && c[0].channels[REPLAY_NETWORK].last == 1;
+  c[0].events[0].words[REPLAY_WORDS - 1] = 1; #assert replay_digest(v) != d1; c[0].events[0].words[REPLAY_WORDS - 1] = 0;
+  c[0].events[0].words[0] = 3 + (1 << 32); #assert replay_digest(v) != d1; c[0].events[0].words[0] = 3;
+  c[0].events[0].tick = 1; #assert replay_digest(v) != d1; c[0].events[0].tick = 0;
+  c[0].events[0].source = 1; #assert replay_digest(v) != d1; c[0].events[0].source = REPLAY_NETWORK;
+  c[0].events[0].request = 2; #assert replay_digest(v) != d1; c[0].events[0].request = 1;
+  c[0].events[0].epoch = 1; #assert replay_digest(v) != d1; c[0].events[0].epoch = 0;
+  c[0].n[REPLAY_INITIAL] = 4; #assert replay_digest(v) != d1; c[0].n[REPLAY_INITIAL] = 5;
+  c[0].n[REPLAY_SEED] = 7; #assert replay_digest(v) != d1; c[0].n[REPLAY_SEED] = 6;
+  c[0].n[REPLAY_SEED] = 6 + (1 << 32); #assert replay_digest(v) != d1; c[0].n[REPLAY_SEED] = 6;
+  c[0].n[REPLAY_TICK] = 2; #assert replay_digest(v) != d1; c[0].n[REPLAY_TICK] = 1;
+  #assert replay_digest(v) == d1;
+  replay_stepped(v, 42 + (1 << 32));
+  replay_stepped(s, 42);
+  #assert replay_digest(v) != replay_digest(s);
+  // a copy needs room
+  tiny: [1] ReplayBacking; w := replay_backing(tiny[..]);
+  w.events = tiny[0].events[0..<0]; #assert !replay_copy(s, w);
+  w = replay_backing(tiny[..]); w.marks = tiny[0].marks[0..<1]; #assert !replay_copy(s, w);
+  w = replay_backing(tiny[..]); w.n = tiny[0].n[0..<REPLAY_COUNTERS - 1]; #assert !replay_copy(s, w);
+  w = replay_backing(tiny[..]); w.channels = tiny[0].channels[0..<REPLAY_SOURCES - 1]; #assert !replay_copy(s, w);
+  w = replay_backing(tiny[..]); #assert replay_copy(s, w) && replay_digest(w) == replay_digest(s);
+}
+
+#test "a frame's controls survive the envelope bit for bit" {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  replay_record(s, 0, 0);
+  i := Intent.{move_x = -0.70710677, move_y = 1, run = true, jump = false, act = true, look_x = 0.0123, look_y = -0.5, zoom = 3, mended = 2};
+  e := replay_frame_event(s, i, 3);
+  #assert e.source == REPLAY_ACTIONS && e.request == 1 && e.epoch == 0 && replay_steps(e) == 3;
+  back := replay_intent(e);
+  #assert back.move_x == i.move_x && back.move_y == i.move_y && back.run && !back.jump && back.act;
+  #assert back.look_x == i.look_x && back.look_y == i.look_y && back.zoom == i.zoom && back.mended == 2;
+  #assert replay_offer(s, e) == REPLAY_ACCEPTED && replay_frame_event(s, i, 0).request == 2;
+  j := Intent.{jump = true, look_x = -0.0, move_y = -1};
+  f := replay_intent(replay_frame_event(s, j, 1));
+  #assert f.jump && !f.run && !f.act && f.move_y == -1 && f32_bits(f.look_x) == f32_bits(-0.0) && f.move_x == 0;
+  #assert replay_float(replay_bits(1.5) + (1 << 32)) == 1.5;
+}
+
+// book:begin check
+#forall "delayed, duplicate and stale events: a live session and its replay agree at every step" seed: 0..<8 {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  live: [1] OracleRealm;
+  remote: [1] OracleRemote;
+  oracle_realm_init(live[..]);
+  replay_record(s, oracle_realm_digest(live[..]), seed);
+  oracle_session(s, live[..], remote[..], seed, ORACLE_STEPS);
+  sent := remote[0].sent;
+  #assert sent > 4 && replay_events(s) > ORACLE_STEPS / 2;
+  #assert replay_refused(s, REPLAY_DUPLICATE) > 0 && replay_refused(s, REPLAY_STALE) > 0 && remote[0].accepted == replay_events(s);
+  // some answer applies more than a step after its request (requests go out at steps 3, 19, 35...)
+  late := 0;
+  for k: 0..<replay_events(s) { e := b[0].events[k]; if e.source == REPLAY_MODEL && e.tick > 16 * (e.request - 1) + 4 { late += 1; } }
+  #assert late > 0;
+  recorded := replay_digest(s);
+  // the replay: the same constructed state, no remote, the record's decisions
+  again: [1] OracleRealm;
+  oracle_realm_init(again[..]);
+  #assert replay_play(s, oracle_realm_digest(again[..]));
+  oracle_replay(s, again[..], remote[..]);
+  #assert remote[0].sent == sent;   // the replay sent nothing
+  #assert replay_matched(s) && replay_digest(s) == recorded && oracle_realm_digest(again[..]) == oracle_realm_digest(live[..]);
+  // the same session from a copy of the record, on a second session store
+  c: [1] ReplayBacking; v := replay_backing(c[..]);
+  #assert replay_copy(s, v);
+  third: [1] OracleRealm;
+  oracle_realm_init(third[..]);
+  #assert replay_play(v, oracle_realm_digest(third[..]));
+  oracle_replay(v, third[..], remote[..]);
+  #assert replay_matched(v) && replay_digest(v) == recorded && remote[0].sent == sent;
+}
+// book:end check
+
+#forall "a planted fault is found at the step it starts" seed: 0..<8 {
+  b: [1] ReplayBacking; s := replay_backing(b[..]);
+  live: [1] OracleRealm;
+  remote: [1] OracleRemote;
+  oracle_realm_init(live[..]);
+  replay_record(s, oracle_realm_digest(live[..]), seed);
+  oracle_session(s, live[..], remote[..], seed, ORACLE_STEPS);
+  again: [1] OracleRealm;
+  oracle_realm_init(again[..]);
+  #assert replay_play(s, oracle_realm_digest(again[..]));
+  again[0].fault_at = 5 + seed * 7;   // a step that reads something it shouldn't from here on
+  oracle_replay(s, again[..], remote[..]);
+  #assert replay_diverged(s) == again[0].fault_at && !replay_matched(s);
+  // one payload word changed in the record: the replay parts at that event's step
+  k := 0;
+  while b[0].events[k].source != REPLAY_NETWORK { k += 1; }
+  b[0].events[k].words[0] += 3;
+  edited: [1] OracleRealm;
+  oracle_realm_init(edited[..]);
+  #assert replay_play(s, oracle_realm_digest(edited[..]));
+  oracle_replay(s, edited[..], remote[..]);
+  #assert replay_diverged(s) == b[0].events[k].tick && !replay_matched(s);
+  // a state built some other way is refused before the first step
+  other: [1] OracleRealm;
+  oracle_realm_init(other[..]);
+  other[0].x = 0.5;
+  #assert !replay_play(s, oracle_realm_digest(other[..]));
+}

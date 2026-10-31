@@ -1,0 +1,113 @@
+// Aethyr's random streams (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md):
+// a draw is a pure function of a seed, a stream and a counter, with no generator state. A
+// realm gives each system or entity its own stream and counts its own draws, so a new
+// system, or one that draws more or less, never shifts another stream's numbers. Replay
+// (aethyr/replay.coax) records the seed; the counters are the realm's state.
+//
+// The mix is Chris Wellons' lowbias32 hash, applied to the seed, the stream and the counter in
+// turn, each as two 32-bit halves. Its multiplies wrap at 32 bits through a u64 product, so
+// native and wasm compute the same bits. tests/rand_oracle.py computes the same numbers in
+// Python, separately from this file.
+//   coax/bin/coax test aethyr/rand.coax --library
+//   coax/bin/coax mutate aethyr/rand.coax
+
+#module "aethyr.rand";
+
+// book:begin rand
+RAND_LOW :: 4294967295;   // the low 32 bits
+
+// a * b, wrapped at 32 bits.
+rand_mul :: (a: u32, b: u32) -> u32 { return cast(u32) ((cast(u64) a * cast(u64) b) % 4294967296); }
+// lowbias32: every input bit reaches every output bit.
+rand_mix :: (x: u32) -> u32 {
+  h := x;
+  h = h ^ (h >> 16);
+  h = rand_mul(h, 2146121005);   // 0x7feb352d
+  h = h ^ (h >> 15);
+  h = rand_mul(h, 2221713035);   // 0x846ca68b
+  h = h ^ (h >> 16);
+  return h;
+}
+rand_low :: (v: int) -> u32 { return cast(u32) (v & RAND_LOW); }
+rand_high :: (v: int) -> u32 { return cast(u32) ((v >> 32) & RAND_LOW); }
+// Draw number `counter` of stream `stream` under `seed`: 32 random bits.
+rand_u32 :: (seed: int, stream: int, counter: int) -> u32 {
+  h := rand_mix(rand_low(seed) ^ 2654435769);   // 0x9e3779b9
+  h = rand_mix(h ^ rand_high(seed));
+  h = rand_mix(h ^ rand_low(stream));
+  h = rand_mix(h ^ rand_high(stream));
+  h = rand_mix(h ^ rand_low(counter));
+  h = rand_mix(h ^ rand_high(counter));
+  return h;
+}
+// A number in [0, 1): the top 24 bits over 2^24, exact in f32.
+rand_unit :: (seed: int, stream: int, counter: int) -> f32 {
+  return cast(f32) (rand_u32(seed, stream, counter) >> 8) / 16777216.0;
+}
+// A whole number in [0, n): the 32 bits scaled by n, so no modulo bias past 1 in 2^32. A draw
+// has 32 bits, so n runs from 1 to 2^32; any other n gives -1, no draw.
+RAND_RANGE :: 4294967296;
+rand_below :: (seed: int, stream: int, counter: int, n: int) -> int {
+  if n < 1 || n > RAND_RANGE { return -1; }
+  return cast(int) ((cast(u64) rand_u32(seed, stream, counter) * cast(u64) n) >> 32);
+}
+// book:end rand
+
+// ---- checks
+
+#test "draws match the Python oracle (tests/rand_oracle.py)" {
+  #assert rand_mix(0) == 0;
+  #assert rand_mix(1) == 1753845952;
+  #assert rand_mix(4294967295) == 1734902346;
+  #assert rand_u32(0, 0, 0) == 1282570995;
+  #assert rand_u32(2026, 1, 0) == 1345137313;
+  #assert rand_u32(2026, 1, 1) == 1878911392;
+  #assert rand_u32(2026, 2, 0) == 4242705317;
+  #assert rand_u32(-1, 7, 4294967296) == 4240949196;
+  #assert rand_u32(1 << 40, 1 << 33, 5) == 3060007831;
+  #assert rand_below(2026, 3, 0, 6) == 5 && rand_below(2026, 3, 3, 6) == 1 && rand_below(1, 1, 1, 1 << 32) == 232996070;
+  #assert rand_below(1, 1, 1, 1 << 40) == -1 && rand_below(1, 1, 1, (1 << 32) + 1) == -1;
+  #assert rand_unit(2026, 1, 0) == 0.31318914890289307;
+}
+
+#test "a draw takes all of the seed, the stream and the counter" {
+  base := rand_u32(9, 4, 12);
+  #assert rand_u32(9, 4, 12) == base;
+  #assert rand_u32(10, 4, 12) != base && rand_u32(9 + (1 << 32), 4, 12) != base;
+  #assert rand_u32(9, 5, 12) != base && rand_u32(9, 4 + (1 << 32), 12) != base;
+  #assert rand_u32(9, 4, 13) != base && rand_u32(9, 4, 12 + (1 << 32)) != base;
+  #assert rand_u32(4, 9, 12) != base && rand_u32(9, 12, 4) != base;
+  #assert rand_below(9, 4, 12, 0) == -1 && rand_below(9, 4, 12, -3) == -1 && rand_below(9, 4, 12, 1) == 0;
+}
+
+#forall "a stream's draws don't depend on how much another stream drew" seed: 0..<16 {
+  // stream 1 drawn alone, then with stream 2 drawing 0 to 30 times between each draw
+  extra := (seed * 7) % 31;
+  other := 0;
+  for k: 0..<64 {
+    for e: 0..<extra { other += rand_below(seed, 2, k * extra + e, 100); }
+    #assert rand_u32(seed, 1, k) == rand_u32(seed, 1, k);
+  }
+  alone: [64] u32;
+  for k: 0..<64 { alone[k] = rand_u32(seed, 1, k); }
+  for k: 0..<64 { #assert alone[k] == rand_u32(seed, 1, k) && alone[k] != rand_u32(seed, 2, k); }
+  #assert other >= 0;
+}
+
+#test "draws are spread evenly: 16 bins of 16,384 units, and rand_below's range" {
+  bins: [16] int;
+  sum: f64 = 0;
+  for k: 0..<16384 {
+    u := rand_unit(77, 3, k);
+    #assert u >= 0 && u < 1;
+    bins[cast(int) (u * 16)] += 1;
+    sum += cast(f64) u;
+  }
+  // chi-square over 15 degrees of freedom: below 37.7 holds at p = 0.001
+  chi: f64 = 0;
+  for b: 0..<16 { d := cast(f64) (bins[b] - 1024); chi += d * d / 1024; }
+  #assert chi < 37.7 && sum / 16384 > 0.49 && sum / 16384 < 0.51;
+  seen: [6] int;
+  for k: 0..<600 { r := rand_below(77, 4, k, 6); #assert r >= 0 && r < 6; seen[r] += 1; }
+  for r: 0..<6 { #assert seen[r] > 60; }
+}

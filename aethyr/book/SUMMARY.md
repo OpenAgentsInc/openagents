@@ -9,7 +9,7 @@
 - [2. Spaces and units](ch002-spaces-and-units.md) — partly implemented
 - [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md)
 - [4. Input becomes typed actions](ch004-input-becomes-typed-actions.md)
-- [5. Replay a session exactly](ch005-replay-a-session-exactly.md) — design draft
+- [5. Replay a session exactly](ch005-replay-a-session-exactly.md)
 
 **II. A world**
 

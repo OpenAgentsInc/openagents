@@ -1,0 +1,156 @@
+// Aethyr's strict math (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md):
+// sine, cosine and powers computed the same way on every host. Coax's sin, cos and pow call
+// the host's C library: macOS's libm natively and wasi-libc in the browser. They differ in the
+// last bit for some inputs, so a walk drawn natively and in the browser parted after 105 steps
+// (aethyr/tests/replay-walk.coax, 2026-10-31). These use only +, -, *, /, floor and the bits of
+// a float, which IEEE 754 defines exactly, in f64, and round once to f32.
+//
+// Simulation steps call these, never sin, cos, tan, exp, log or pow (INVARIANTS.md). Drawing
+// may use either: it is not part of a step's state.
+//   coax/bin/coax test aethyr/math.coax --library
+//   coax/bin/coax mutate aethyr/math.coax
+
+#module "aethyr.math";
+#load "tests/math-oracle.coax";   // the checks' closeness test
+
+// book:begin math
+MATH_PIO2_HI :: 1.5707963267341256;     // pi/2's leading 33 bits: k * MATH_PIO2_HI is exact
+MATH_PIO2_LO :: 6.077100506506192e-11;  // pi/2 - MATH_PIO2_HI
+MATH_TWO_OVER_PI :: 0.6366197723675814;
+MATH_LN2_HI :: 0.6931471803691238;      // ln 2's leading 32 bits
+MATH_LN2_LO :: 1.9082149292705877e-10;  // ln 2 - MATH_LN2_HI
+MATH_BIG :: 1000000.0;                  // past this, an angle is refused: 0 for sine, 1 for cosine
+
+// sin and cos of r in [-pi/4, pi/4], by their Taylor series to r^13 and r^14: off by at most
+// 3e-14 and 2e-15, far inside an f32's half step (6e-8), and every term counts.
+math_sin_near :: (r: f64) -> f64 {
+  z := r * r;
+  return r + r * z * (-1.0 / 6 + z * (1.0 / 120 + z * (-1.0 / 5040 + z * (1.0 / 362880 + z * (-1.0 / 39916800 + z * (1.0 / 6227020800))))));
+}
+math_cos_near :: (r: f64) -> f64 {
+  z := r * r;
+  return 1 + z * (-1.0 / 2 + z * (1.0 / 24 + z * (-1.0 / 720 + z * (1.0 / 40320 + z * (-1.0 / 3628800 + z * (1.0 / 479001600 + z * (-1.0 / 87178291200)))))));
+}
+// The quarter turn x is in, and how far past it: x = k pi/2 + r.
+MathTurn :: struct { k: int; r: f64; }
+math_turn :: (x: f64) -> MathTurn {
+  k := floor(x * MATH_TWO_OVER_PI + 0.5);
+  return MathTurn.{k = cast(int) k, r = (x - k * MATH_PIO2_HI) - k * MATH_PIO2_LO};
+}
+math_sin_f64 :: (x: f64) -> f64 {
+  t := math_turn(x);
+  q := t.k & 3;
+  if q == 0 { return math_sin_near(t.r); }
+  if q == 1 { return math_cos_near(t.r); }
+  if q == 2 { return -math_sin_near(t.r); }
+  return -math_cos_near(t.r);
+}
+math_finite :: (x: f32) -> bool { return x == x && x < MATH_BIG && x > -MATH_BIG; }
+math_sin :: (x: f32) -> f32 {
+  if !math_finite(x) { return 0; }
+  return cast(f32) math_sin_f64(cast(f64) x);
+}
+math_cos :: (x: f32) -> f32 {
+  if !math_finite(x) { return 1; }
+  t := math_turn(cast(f64) x);
+  q := t.k & 3;
+  if q == 0 { return cast(f32) math_cos_near(t.r); }
+  if q == 1 { return cast(f32) -math_sin_near(t.r); }
+  if q == 2 { return cast(f32) -math_cos_near(t.r); }
+  return cast(f32) math_sin_near(t.r);
+}
+
+// e^x for x in [-700, 700], else 0 or 1e300: 2^k e^r, |r| <= ln 2 / 2, by the series to r^11 (off
+// by at most 7e-15 of e^r).
+math_exp_f64 :: (x: f64) -> f64 {
+  if x < -700 { return 0; }
+  if x > 700 { return 1.0e300; }
+  k := floor(x / (MATH_LN2_HI + MATH_LN2_LO) + 0.5);
+  r := (x - k * MATH_LN2_HI) - k * MATH_LN2_LO;
+  e := 1 + r * (1 + r * (1.0 / 2 + r * (1.0 / 6 + r * (1.0 / 24 + r * (1.0 / 120 + r * (1.0 / 720 + r * (1.0 / 5040
+    + r * (1.0 / 40320 + r * (1.0 / 362880 + r * (1.0 / 3628800 + r * (1.0 / 39916800)))))))))));
+  // times 2^k: k + 1023 into the exponent bits
+  return e * f64_from_bits(cast(u64) (cast(int) k + 1023) << 52);
+}
+// ln x for x > 0 and finite: x = m 2^e with m in [1, 2), and ln m = 2 atanh(s), s = (m - 1)/(m + 1)
+// <= 1/3, by its series to s^27 (off by at most 1e-15).
+math_log_f64 :: (x: f64) -> f64 {
+  bits := f64_bits(x);
+  e := cast(int) ((bits >> 52) & 2047) - 1023;
+  m := f64_from_bits((bits & 4503599627370495) | 4607182418800017408);   // the mantissa, in [1, 2)
+  s := (m - 1) / (m + 1);
+  z := s * s;
+  a := 2 * s * (1 + z * (1.0 / 3 + z * (1.0 / 5 + z * (1.0 / 7 + z * (1.0 / 9 + z * (1.0 / 11 + z * (1.0 / 13
+    + z * (1.0 / 15 + z * (1.0 / 17 + z * (1.0 / 19 + z * (1.0 / 21 + z * (1.0 / 23 + z * (1.0 / 25 + z * (1.0 / 27))))))))))))));
+  return cast(f64) e * MATH_LN2_HI + (a + cast(f64) e * MATH_LN2_LO);
+}
+// a^b for a > 0 and finite: e^(b ln a). Any other a gives 0, and b = 0 gives 1.
+math_pow :: (a: f32, b: f32) -> f32 {
+  if b == 0 { return 1; }
+  if !(a > 0) || !math_finite(a) || !math_finite(b) { return 0; }
+  return cast(f32) math_exp_f64(cast(f64) b * math_log_f64(cast(f64) a));
+}
+// book:end math
+
+// ---- checks
+
+#test "sine and cosine match the correctly rounded values" {
+  #assert math_sin(0) == 0 && math_cos(0) == 1;
+  #assert math_sin(0.5) == 0.47942554 && math_cos(0.5) == 0.87758255;
+  #assert math_sin(1) == 0.84147096 && math_cos(1) == 0.5403023;
+  #assert math_sin(-2) == -0.9092974 && math_cos(-2) == -0.41614684;
+  #assert math_sin(3.1415927) == -0.00000008742278 && math_cos(3.1415927) == -1;
+  #assert math_sin(4) == -0.7568025 && math_cos(4) == -0.6536436;
+  #assert math_sin(5.5) == -0.7055403 && math_cos(5.5) == 0.70866978;
+  #assert math_sin(100) == -0.50636566 && math_cos(100) == 0.86231887;
+  #assert math_sin(-123456.7) == 0.99941593 && math_cos(-123456.7) == -0.034172792;
+  #assert math_sin(0.0001) == 0.0001 && math_cos(0.0001) == 1;
+  #assert math_sin(1.0e7) == 0 && math_cos(1.0e7) == 1 && math_sin(-1.0e7) == 0 && math_cos(-1.0e7) == 1;
+  nan := 0.0f32; nan = nan / nan;
+  #assert math_sin(nan) == 0 && math_cos(nan) == 1;
+}
+
+#forall "sine and cosine: within 2 ulps of the C library over a turn, and sin^2 + cos^2 = 1" k: 0..<64 {
+  x := cast(f32) (k - 32) * 0.21f32 + 0.013f32;
+  #assert math_near(math_sin(x), sin(x), 2) && math_near(math_cos(x), cos(x), 2);
+  s := math_sin(x); c := math_cos(x);
+  #assert math_near(s * s + c * c, 1, 4);
+  #assert math_sin(-x) == -math_sin(x) && math_cos(-x) == math_cos(x);
+}
+
+#test "powers and their edges" {
+  #assert math_pow(2, 10) == 1024 && math_pow(9, 0.5) == 3 && math_pow(10, -2) == 0.01;
+  #assert math_pow(0.9, 1.25) == 0.876603364944458 && math_pow(0.5, 0.9375) == 0.5221368670463562;
+  #assert math_pow(1.5, 3) == 3.375 && math_pow(7, 1) == 7 && math_pow(1, 123.4) == 1;
+  #assert math_pow(0.001, 3) == 1.0000001937626735e-9 && math_pow(1000, 3) == 1000000000;
+  #assert math_pow(-2, 2) == 0 && math_pow(0, 2) == 0 && math_pow(-2, 0) == 1 && math_pow(2, 1.0e7) == 0 && math_pow(1.0e7, 2) == 0;
+  #assert math_exp_f64(-800) == 0 && math_exp_f64(800) == 1.0e300 && math_exp_f64(0) == 1;
+  #assert math_log_f64(1) == 0 && math_log_f64(2) == 0.6931471805599453;
+}
+
+#forall "powers: within 2 ulps of the C library" k: 0..<48 {
+  a := 0.05f32 + cast(f32) k * 0.37f32;
+  b := cast(f32) (k % 13) * 0.61f32 - 3.3f32;
+  #assert math_near(math_pow(a, b), pow(a, b), 2);
+}
+
+#test "the f64 kernels match Python's math at the ends of their ranges" {
+  // python3 -c "import math; print(repr(math.sin(0.7853981633974483)))" and so on
+  #assert math_close(math_sin_near(0.7853981633974483), 0.7071067811865475, 5.0e-14) && math_close(math_cos_near(0.7853981633974483), 0.7071067811865476, 3.0e-15);
+  #assert math_close(math_sin_near(-0.78), -0.7032794192004103, 5.0e-14) && math_close(math_cos_near(-0.78), 0.7109135380122773, 3.0e-15);
+  #assert math_close(math_sin_near(0.5), 0.479425538604203, 5.0e-14) && math_close(math_cos_near(0.25), 0.9689124217106447, 3.0e-15);
+  #assert math_close(math_exp_f64(0.34657359027997264), 1.414213562373095, 2.0e-14) && math_close(math_exp_f64(-0.3465), 0.7071588192872713, 2.0e-14);
+  #assert math_close(math_exp_f64(0.1), 1.1051709180756477, 2.0e-14);
+  #assert math_close(math_exp_f64(-700), 9.85967654375977e-305, 1.0e-318) && math_exp_f64(-700) > 0;
+  #assert math_close(math_exp_f64(700) / 1.0142320547350045e+304, 1, 1.0e-14);
+  #assert math_close(math_log_f64(1.5), 0.4054651081081644, 3.0e-15) && math_close(math_log_f64(1.9999999999999998), 0.6931471805599452, 3.0e-15);
+  #assert math_close(math_log_f64(3), 1.0986122886681098, 3.0e-15) && math_close(math_log_f64(0.1), -2.3025850929940455, 3.0e-15);
+  #assert math_close(math_log_f64(1.0e-300), -690.7755278982137, 1.0e-12);
+  // the edges: an angle of exactly MATH_BIG is refused; so are a zero or negative base
+  #assert math_sin(1000000) == 0 && math_cos(1000000) == 1 && math_sin(-1000000) == 0 && math_cos(-1000000) == 1;
+  #assert math_sin(999999.94) == -0.4078190326690674 && math_cos(-999999.94) == 0.9130627512931824;
+  #assert math_pow(0, -1) == 0 && math_pow(2, -1) == 0.5;
+  // each quarter turn
+  #assert math_sin(1.5707964) == 1 && math_cos(1.5707964) == -4.371138828673793e-8;
+  #assert math_sin(-1.5707964) == -1 && math_cos(4.712389) == 1.1924880638503055e-8;
+}
