@@ -13,8 +13,11 @@
 // rock mines until it is full, brings the ice home, refuels and goes back.
 // The Mars Union and the Terran Compact fly their own routes.
 //
-// Everything is glowing strokes in screen pixels (belt.wgsl fx, the
-// homepage's newland.wgsl style); belt-face.c binds it for the browser.
+// The map is glowing strokes in screen pixels (belt.wgsl fx, the homepage's
+// newland.wgsl style) over the sky pass, which shades the worlds and ice
+// rocks as discs and draws the Belt's dust (belt.wgsl world, belt_dust).
+// Labels are placed most important first where they overlap nothing.
+// belt-face.c binds it for the browser.
 //   coax/bin/coax test apps/openagents-web/belt.coax --library --steps 2000000000
 
 #load "font.coax";
@@ -23,12 +26,17 @@
 #load "../../verse/spacecam.coax";
 
 VERTEX_FLOATS :: 12;
-MAX_VERTICES :: 60000;
+MAX_VERTICES :: 90000;
 PANELS :: 8;
+DISCS :: 12;
 // The uniforms: width, height, time, fade; the Sun (x, y, radius in pixels, dpr);
-// the stars' drift (x, y), the panel count, 0; then per panel its rectangle and (cut, alpha, tint, 0).
+// the stars' drift (x, y), the panel count, the disc count; per panel its rectangle and
+// (cut, alpha, tint, 0); the Belt's dust (the Sun x, y, an AU in pixels, its turn); then per
+// world on screen (x, y, radius, kind) and (sunward x, y, seed, spin), all in device pixels.
 U_PANEL :: 12;
-UNIFORM_FLOATS :: U_PANEL + PANELS * 8;
+U_BELT :: U_PANEL + PANELS * 8;
+U_DISC :: U_BELT + 4;
+UNIFORM_FLOATS :: U_DISC + DISCS * 8;
 
 OUTBOX_CAP :: 256;
 ACT_NAVIGATE :: 1;
@@ -39,13 +47,17 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 
 // Colours: grey line art, the Free Belt's electric blue (the homepage's accent), the rivals' own.
+// Orange is Bitcoin's: nothing here is orange (the Mars Union is crimson, fuel is green).
 INK_R :: 0.86f32; INK_G :: 0.88f32; INK_B :: 0.92f32;
 DIM_R :: 0.5f32; DIM_G :: 0.53f32; DIM_B :: 0.58f32;
 BELT_R :: 0.216f32; BELT_G :: 0.851f32; BELT_B :: 0.851f32;
-MARS_R :: 1.0f32; MARS_G :: 0.46f32; MARS_B :: 0.3f32;
+MARS_R :: 0.96f32; MARS_G :: 0.32f32; MARS_B :: 0.42f32;
 TERRA_R :: 0.62f32; TERRA_G :: 0.74f32; TERRA_B :: 1.0f32;
 ICE_R :: 0.7f32; ICE_G :: 0.95f32; ICE_B :: 1.0f32;
-WARN_R :: 1.0f32; WARN_G :: 0.7f32; WARN_B :: 0.3f32;
+FUEL_R :: 0.5f32; FUEL_G :: 0.95f32; FUEL_B :: 0.6f32;
+FAST_R :: 0.76f32; FAST_G :: 0.6f32; FAST_B :: 1.0f32;
+LOW_R :: 1.0f32; LOW_G :: 0.42f32; LOW_B :: 0.52f32;
+PLUME_R :: 0.78f32; PLUME_G :: 0.9f32; PLUME_B :: 1.0f32;
 
 FREE_BELT :: 0; MARS_UNION :: 1; TERRAN :: 2;
 
@@ -55,8 +67,9 @@ P_ICE :: 11;
 ICE_ROCKS :: 8;
 PLACES :: 19;
 ICE_NAMES :: [8] string.["KESTREL", "MOROZ", "ANVIL", "TALLOW", "BRINE", "HOLLOW", "SABLE", "WICK"];
+ICE_RADII :: [8] f64.[2400.0, 1700.0, 3100.0, 1300.0, 2200.0, 2800.0, 1500.0, 1900.0];   // m
 STATION_ORBIT :: 1200000.0;   // m from Ceres's centre
-ROCKS :: 420;                 // the Belt's field, drawn
+ROCKS :: 900;                 // the Belt's field, drawn
 SHIPS :: 8;
 PATH :: 48;
 
@@ -111,7 +124,8 @@ Belt :: struct {
   mouse_down: bool; mx: f32; my: f32; dx0: f32; dy0: f32; dragging: bool; boxing: bool; shift: bool;
   pinch: f32;
   held: int;
-  toast: [96] u8; toast_n: int; toast_t: f32;
+  toast: [96] u8; toast_n: int; toast_t: f32; toast_y: f32;
+  arrive: [32] u8; arrive_n: int;   // the planned arrival's label, kept for the frame's labels
   panel_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   track: [1] Track;
@@ -256,7 +270,7 @@ place_orbit :: (s: [] Belt, p: int) -> Orbit {
 // How far from a place's centre its berths are, m.
 berth_radius :: (p: int) -> f64 {
   if p == P_STATION { return 700.0; }
-  if is_ice(p) { return 3000.0; }
+  if is_ice(p) { return ICE_RADII[p - P_ICE] * 1.9; }
   if p >= 1 && p < BODIES { return BODY_RADIUS[p] * 2.5; }
   return 1000.0;
 }
@@ -814,7 +828,93 @@ belt_cursor :: (s: [] Belt) -> int #export_c {
 
 // ---- drawing: the map
 
-Draw :: struct { n: int; k: f32; w: f32; h: f32; }
+// A frame's drawing: its strokes, the labels waiting to be placed (most important first, each
+// where it overlaps nothing placed before it), what they must not cover, and the worlds as discs.
+Tag :: struct { text: string; x: f32; y: f32; r: f32; cap: f32; light: f32; red: f32; green: f32; blue: f32; prio: int; }
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+TAGS :: 48;
+BLOCKS :: 128;
+Draw :: struct { n: int; k: f32; w: f32; h: f32; tags: [TAGS] Tag; tag_n: int; blocks: [BLOCKS] Rect; block_n: int; disc_n: int; }
+
+// Labels by importance: the one you are planning or have selected, yours, the worlds, the rivals.
+PRIO_HOT :: 10; PRIO_OWN :: 8; PRIO_WORLD :: 6; PRIO_ICE :: 4; PRIO_RIVAL :: 3; PRIO_PARKED :: 1;
+PRIO_ALWAYS :: 10;  // at or above this a label is drawn even when it must overlap
+
+tag :: (d: [] Draw, text: string, x: f32, y: f32, r: f32, cap: f32, light: f32, red: f32, green: f32, blue: f32, prio: int) {
+  if d[0].tag_n >= TAGS { return; }
+  if x < -300 || y < -100 || x > d[0].w + 100 || y > d[0].h + 100 { return; }
+  d[0].tags[d[0].tag_n] = Tag.{text = text, x = x, y = y, r = r, cap = cap, light = light, red = red, green = green, blue = blue, prio = prio};
+  d[0].tag_n += 1;
+}
+block_rect :: (d: [] Draw, x0: f32, y0: f32, x1: f32, y1: f32) {
+  if d[0].block_n >= BLOCKS { return; }
+  d[0].blocks[d[0].block_n] = Rect.{x0 = x0, y0 = y0, x1 = x1, y1 = y1};
+  d[0].block_n += 1;
+}
+// Something drawn at x, y, r across, that labels keep clear of.
+block :: (d: [] Draw, x: f32, y: f32, r: f32) {
+  if x + r < 0 || y + r < 0 || x - r > d[0].w || y - r > d[0].h { return; }
+  block_rect(d, x - r, y - r, x + r, y + r);
+}
+covers :: (d: [] Draw, a: Rect) -> bool {
+  for i: 0..<d[0].block_n {
+    b := d[0].blocks[i];
+    if a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0 { return true; }
+  }
+  return false;
+}
+// Place the labels: most important first, to the right of their thing, else left, below or
+// above; one that fits nowhere is left out unless it matters (PRIO_ALWAYS).
+place_tags :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
+  k := d[0].k;
+  // the HUD's panels, buttons and the toast are kept clear
+  for i: 0..<s[0].panel_n { o := U_PANEL + i * 8; block_rect(d, u[o], u[o + 1], u[o + 2], u[o + 3]); }
+  for i: 0..<s[0].btn_n { b := s[0].btn[i]; block_rect(d, b.x0, b.y0, b.x1, b.y1); }
+  if s[0].toast_t > 0 { block_rect(d, 0, s[0].toast_y - 12 * k, d[0].w, s[0].toast_y + 4 * k); }
+  done: [TAGS] bool;
+  for round: 0..<d[0].tag_n {
+    best := -1;
+    for i: 0..<d[0].tag_n { if !done[i] && (best < 0 || d[0].tags[i].prio > d[0].tags[best].prio) { best = i; } }
+    if best < 0 { break; }
+    done[best] = true;
+    g := d[0].tags[best];
+    tw := text_width(g.text, g.cap);
+    gap := g.r + 5 * k; pad := 2 * k;
+    xs := [4] f32.[g.x + gap, g.x - gap - tw, g.x - tw / 2, g.x - tw / 2];
+    bs := [4] f32.[g.y + g.cap / 2, g.y + g.cap / 2, g.y + gap + g.cap, g.y - gap];
+    chosen := -1;
+    for c: 0..<4 {
+      rc := Rect.{x0 = xs[c] - pad, y0 = bs[c] - g.cap - pad, x1 = xs[c] + tw + pad, y1 = bs[c] + pad};
+      if rc.x0 < 0 || rc.y0 < 0 || rc.x1 > d[0].w || rc.y1 > d[0].h { continue; }
+      if !covers(d, rc) { chosen = c; break; }
+    }
+    if chosen < 0 {
+      if g.prio < PRIO_ALWAYS || xs[0] < 0 || xs[0] + tw > d[0].w { continue; }
+      chosen = 0;
+    }
+    block_rect(d, xs[chosen] - pad, bs[chosen] - g.cap - pad, xs[chosen] + tw + pad, bs[chosen] + pad);
+    words(out, d, g.text, xs[chosen], bs[chosen], g.cap, g.light, g.red, g.green, g.blue);
+  }
+}
+
+// A world as a shaded disc, drawn by the sky's pass (belt.wgsl world()).
+disc :: (s: [] Belt, u: [] f32, d: [] Draw, at: D2, r: f64, kind: int, seed: f32, spin: f32) {
+  if d[0].disc_n >= DISCS { return; }
+  w := f64(d[0].w); h := f64(d[0].h);
+  rr := r * 2.4 + 6.0;
+  if at.x + rr < 0.0 || at.y + rr < 0.0 || at.x - rr > w || at.y - rr > h || r > 5000000.0 { return; }
+  sun := screen_of(s, D3_ZERO);
+  lx := sun.x - at.x; ly := sun.y - at.y;
+  ll := sqrt(lx * lx + ly * ly);
+  if ll <= 0.0 { lx = 1.0; ly = 0.0; ll = 1.0; }
+  o := U_DISC + d[0].disc_n * 8;
+  u[o] = pix(at.x); u[o + 1] = pix(at.y); u[o + 2] = pix(r); u[o + 3] = f32(kind);
+  u[o + 4] = f32(lx / ll); u[o + 5] = f32(ly / ll); u[o + 6] = seed; u[o + 7] = spin;
+  d[0].disc_n += 1;
+}
+DISC_KIND :: [10] int.[0, 1, 2, 3, 4, 5, 8, 9, 6, 7];
+// The least a world is drawn across at system zoom, in pixels at dpr 1.
+DISC_MIN :: [10] f32.[0.0, 3.6, 5.2, 5.6, 2.6, 4.8, 3.0, 2.6, 10.0, 8.5];
 
 stroke :: (out: [] f32, d: [] Draw, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, red: f32, green: f32, blue: f32) {
   stroke_g(out, d, ax, ay, bx, by, core, light, 1.4 * d[0].k, red, green, blue);
@@ -887,6 +987,55 @@ draw_path :: (s: [] Belt, out: [] f32, d: [] Draw, pts: [] D3, from: int, light:
   }
 }
 
+// A planned transfer: the coast brightening toward the arrival, a tick every 30 days, the
+// departure burn, and the crosshair where ship and target meet with the date.
+TRANSFER_PTS :: 72;
+draw_transfer :: (s: [] Belt, out: [] f32, d: [] Draw, p: Plan, light: f32, main: bool, red: f32, green: f32, blue: f32) {
+  k := d[0].k;
+  arc := orbit_from_state(p.tr.depart, GM_SUN, p.tr.t0);
+  prev := screen_of(s, p.tr.depart.r);
+  first := prev;
+  for i: 1..<TRANSFER_PTS {
+    f := f64(i) / f64(TRANSFER_PTS - 1);
+    q := screen_of(s, orbit_position(arc, p.tr.t0 + p.tr.tof * f));
+    l := light * (0.35 + 0.65 * f32(f));
+    stroke_g(out, d, pix(prev.x), pix(prev.y), pix(q.x), pix(q.y), (ifx main then 0.9f32 else 0.6f32) * k, l, 2.2 * k, red, green, blue);
+    prev = q;
+  }
+  // a tick every 30 days, across the line
+  if main {
+    days := 30.0 * DAY;
+    tt := days;
+    while tt < p.tr.tof - DAY * 5.0 {
+      a := screen_of(s, orbit_position(arc, p.tr.t0 + tt));
+      b := screen_of(s, orbit_position(arc, p.tr.t0 + tt + DAY));
+      dx := pix(b.x - a.x); dy := pix(b.y - a.y);
+      ln := sqrt(dx * dx + dy * dy);
+      if ln > 0.0001 {
+        nx := -dy / ln * 4 * k; ny := dx / ln * 4 * k;
+        stroke(out, d, pix(a.x) - nx, pix(a.y) - ny, pix(a.x) + nx, pix(a.y) + ny, 0.6 * k, light * 0.7, red, green, blue);
+      }
+      tt += days;
+    }
+  }
+  bx := pix(prev.x); by := pix(prev.y);
+  stroke(out, d, bx - 6 * k, by, bx - 2 * k, by, 0.9 * k, light, red, green, blue);
+  stroke(out, d, bx + 2 * k, by, bx + 6 * k, by, 0.9 * k, light, red, green, blue);
+  stroke(out, d, bx, by - 6 * k, bx, by - 2 * k, 0.9 * k, light, red, green, blue);
+  stroke(out, d, bx, by + 2 * k, bx, by + 6 * k, 0.9 * k, light, red, green, blue);
+  ring(out, d, bx, by, 9 * k, 24, 0.7 * k, light * 0.8, red, green, blue);
+  if main {
+    ax := pix(first.x); ay := pix(first.y);
+    dot(out, d, ax, ay, 2.2 * k, light, red, green, blue);
+    ring(out, d, ax, ay, 5 * k, 16, 0.6 * k, light * 0.7, red, green, blue);
+    dt := date_of(p.tr.t0 + p.tr.tof);
+    n := put(s[0].arrive[..], 0, "ARRIVE "); n = put_int(s[0].arrive[..], n, dt.day); n = put(s[0].arrive[..], n, " "); n = put(s[0].arrive[..], n, MONTHS[(dt.month - 1) % 12]);
+    s[0].arrive_n = n;
+    tag(d, cast(string) s[0].arrive[0..<n], bx, by, 10 * k, 6 * k, 0.9, red, green, blue, PRIO_HOT - 1);
+  }
+  block(d, bx, by, 9 * k);
+}
+
 // The station: a ring with spokes and two arms when it is big enough, else a diamond.
 draw_station :: (s: [] Belt, out: [] f32, d: [] Draw, at: D3) {
   c := screen_of(s, at);
@@ -909,7 +1058,9 @@ draw_station :: (s: [] Belt, out: [] f32, d: [] Draw, at: D3) {
     stroke(out, d, x, y + r, x - r, y, 1.0 * k, 0.95, BELT_R, BELT_G, BELT_B);
     stroke(out, d, x - r, y, x, y - r, 1.0 * k, 0.95, BELT_R, BELT_G, BELT_B);
   }
-  words(out, d, "HEARTH", x + hi(rr * 1.6, 10 * k), y + 14 * k, 7 * k, 0.85, BELT_R, BELT_G, BELT_B);
+  reach := hi(rr * 1.5, 7 * k);
+  block(d, x, y, reach);
+  if reach < 160 * k { tag(d, "HEARTH", x, y, reach, 7 * k, 0.9, BELT_R, BELT_G, BELT_B, ifx s[0].dest == P_STATION then PRIO_HOT else PRIO_OWN); }
 }
 
 // A ship: a chevron along its heading, or its hull in metres when close.
@@ -920,9 +1071,12 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   x := pix(c.x); y := pix(c.y); u := d[0].k;
   col := faction_rgb(sh.faction);
   heading := 0.0f32;
+  burn := ship_burn(s, k);
   if sh.mode == FLYING {
     rel := st.v;
     heading = f32(atan2_d(-rel.y * cos(s[0].cam.tilt), rel.x));
+    // braking for the arrival, the ship turns about and burns against its motion
+    if burn < 0 { heading += 3.1415927; }
   }
   ch := cos(heading); shd := sin(heading);
   hull := pix(spacecam_pixels(s[0].cam, ifx sh.dry > 400.0 then 180.0 else 120.0));
@@ -939,11 +1093,15 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
       stroke(out, d, bx, by, bx - ch * hull * 0.12 + nx * wd * 1.6 * sg, by - shd * hull * 0.12 + ny * wd * 1.6 * sg, 0.9 * u, 0.85, col.x, col.y, col.z);
     }
     ring(out, d, x + ch * hl * 0.62, y + shd * hl * 0.62, wd * 1.3, 20, 0.8 * u, 0.85, INK_R, INK_G, INK_B);
-    if sh.mode == FLYING && s[0].t - sh.t0 < 2.0 * DAY {
-      stroke(out, d, bx - ch * hull * 0.14, by - shd * hull * 0.14, bx - ch * hull * 0.6, by - shd * hull * 0.6, 2.0 * u, 0.9, 1.0, 0.85, 0.6);
+    if burn != 0 {
+      // the drive's plume out of the cone, flickering
+      f := plume_flicker(s, k);
+      stroke(out, d, bx - ch * hull * 0.14, by - shd * hull * 0.14, bx - ch * hull * (0.5 + 0.15 * f), by - shd * hull * (0.5 + 0.15 * f), 2.6 * u, 1.0, PLUME_R, PLUME_G, PLUME_B);
+      stroke(out, d, bx - ch * hull * 0.14, by - shd * hull * 0.14, bx - ch * hull * (1.0 + 0.3 * f), by - shd * hull * (1.0 + 0.3 * f), 1.0 * u, 0.6, PLUME_R, PLUME_G, PLUME_B);
     }
     if sel { ring(out, d, x, y, hl * 1.25, 48, 0.9 * u, 0.9, col.x, col.y, col.z); }
-    words(out, d, sh.name, x + hl * 1.3, y - 4 * u, 8 * u, 0.9, col.x, col.y, col.z);
+    block(d, x, y, hl);
+    tag(d, sh.name, x, y, hl * 1.1, 8 * u, 0.9, col.x, col.y, col.z, ifx sel then PRIO_HOT else ifx sh.faction == FREE_BELT then PRIO_OWN else PRIO_RIVAL);
     return;
   }
   r := 7 * u;
@@ -951,17 +1109,35 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   lx := x - ch * r * 0.7 + shd * r * 0.7; ly := y - shd * r * 0.7 - ch * r * 0.7;
   rx := x - ch * r * 0.7 - shd * r * 0.7; ry := y - shd * r * 0.7 + ch * r * 0.7;
   bright: f32 = ifx sh.faction == FREE_BELT then 1.0f32 else 0.75f32;
+  if burn != 0 {
+    f := plume_flicker(s, k);
+    tx := x - ch * r * 0.35; ty := y - shd * r * 0.35;
+    stroke_g(out, d, tx, ty, x - ch * r * (1.5 + 0.35 * f), y - shd * r * (1.5 + 0.35 * f), 1.3 * u, 1.0, 3.0 * u, PLUME_R, PLUME_G, PLUME_B);
+  }
   stroke(out, d, lx, ly, ax, ay, 1.0 * u, bright, col.x, col.y, col.z);
   stroke(out, d, ax, ay, rx, ry, 1.0 * u, bright, col.x, col.y, col.z);
   stroke(out, d, rx, ry, x - ch * r * 0.25, y - shd * r * 0.25, 1.0 * u, bright, col.x, col.y, col.z);
   stroke(out, d, x - ch * r * 0.25, y - shd * r * 0.25, lx, ly, 1.0 * u, bright, col.x, col.y, col.z);
   if sel { ring(out, d, x, y, 13 * u, 28, 0.9 * u, 0.95, col.x, col.y, col.z); }
-  if sel || sh.mode == FLYING || s[0].cam.scale > 0.0002 {
-    words(out, d, sh.name, x + 11 * u, y + 13 * u, 6.5 * u, ifx sel then 0.95f32 else 0.6f32, col.x, col.y, col.z);
-  }
+  block(d, x, y, 6 * u);
+  // a ship sitting on its world or station is not named until the view is close enough to tell them apart
+  if !sel && sh.mode != FLYING && spacecam_pixels(s[0].cam, berth_radius(sh.at)) < 14.0 * f64(u) { return; }
+  prio := ifx sel then PRIO_HOT else ifx sh.faction == FREE_BELT then PRIO_OWN else ifx sh.mode == FLYING then PRIO_RIVAL else PRIO_PARKED;
+  tag(d, sh.name, x, y, ifx sel then 14.0f32 * u else 8.0f32 * u, 6.5 * u, ifx sel then 0.95f32 else ifx sh.faction == FREE_BELT then 0.8f32 else 0.6f32, col.x, col.y, col.z, prio);
 }
 
-draw_map :: (s: [] Belt, out: [] f32, d: [] Draw) {
+// A ship burning: 1 for the departure burn, -1 for the arrival's (it brakes), 0 coasting.
+BURN_DAYS :: 1.2;
+ship_burn :: (s: [] Belt, k: int) -> int {
+  sh := s[0].ships[k];
+  if sh.mode != FLYING { return 0; }
+  if s[0].t - sh.t0 < BURN_DAYS * DAY { return 1; }
+  if sh.t0 + sh.tof - s[0].t < BURN_DAYS * DAY { return -1; }
+  return 0;
+}
+plume_flicker :: (s: [] Belt, k: int) -> f32 { return 0.5 + 0.5 * sin(s[0].clock * 31.0 + f32(k) * 1.7) * sin(s[0].clock * 17.0 + f32(k)); }
+
+draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   k := d[0].k;
   t := s[0].t;
   // Orbits: the worlds', faint; the ice rocks', fainter, in their own colour.
@@ -973,46 +1149,57 @@ draw_map :: (s: [] Belt, out: [] f32, d: [] Draw) {
     hot := s[0].dest == P_ICE + j;
     draw_orbit(s, out, d, s[0].ices[j], D3_ZERO, ifx hot then 0.35f32 else 0.08f32, ICE_R, ICE_G, ICE_B);
   }
-  // The field.
+  // The field: rocks of every brightness, the faint ones many (the dust between is belt.wgsl's).
   for j: 0..<ROCKS {
     c := screen_of(s, orbit_position(s[0].rocks[j], t));
-    dot(out, d, pix(c.x), pix(c.y), 0.9 * k, 0.75, INK_R, INK_G, INK_B);
+    h := f32((j * 7919 + 13) % 1000) / 1000.0;
+    dot(out, d, pix(c.x), pix(c.y), (0.45 + 0.6 * h * h) * k, 0.3 + 0.55 * h * h, 0.8, 0.8, 0.82);
   }
-  // The worlds.
+  // The worlds: shaded discs (bigger than life when far, so they read), a ring on the one you aim at.
+  spin_k := s[0].clock * 0.04;
   for b: 1..<BODIES {
     c := screen_of(s, orbit_body_position(b, t));
     x := pix(c.x); y := pix(c.y);
-    rp := pix(spacecam_pixels(s[0].cam, BODY_RADIUS[b]));
-    r := hi(rp, ifx b == BODY_JUPITER || b == BODY_SATURN then 5.0f32 * k else ifx b == BODY_CERES || b == BODY_VESTA || b == BODY_MOON then 2.6f32 * k else 3.6f32 * k);
+    rp := spacecam_pixels(s[0].cam, BODY_RADIUS[b]);
+    r := fmax(rp, f64(DISC_MIN[b] * k));
     if b == BODY_MOON {
       e := screen_of(s, orbit_body_position(BODY_EARTH, t));
       sep := pix(sqrt((e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y)));
-      if sep < 10 * k { continue; }
+      if sep < 14 * k { continue; }
     }
     hot := s[0].dest == b;
-    if r < 4000 * k {
-      sides := ifx r > 60 * k then 96 else 32;
-      ring(out, d, x, y, r, sides, 1.0 * k, ifx hot then 1.0f32 else 0.8f32, ifx b == BODY_MARS then 1.0f32 else INK_R, ifx b == BODY_MARS then 0.62f32 else INK_G, ifx b == BODY_MARS then 0.5f32 else INK_B);
-      if b == BODY_SATURN { ring(out, d, x, y, r * 2.0, 40, 0.6 * k, 0.4, INK_R, INK_G, INK_B); }
-    }
+    disc(s, u, d, c, r, DISC_KIND[b], f32(b) * 0.37, spin_k * f32(b % 4 + 1));
+    rf := pix(r);
+    if hot && rf < 4000 * k { ring(out, d, x, y, rf * 1.35 + 4 * k, ifx rf > 60 * k then 96 else 32, 0.8 * k, 0.9, BELT_R, BELT_G, BELT_B); }
+    reach := ifx b == BODY_SATURN then rf * 2.0 else rf;
+    block(d, x, y, reach);
     if b == BODY_CERES {
       st := screen_of(s, place_state(s, P_STATION, t).r);
       if abs(pix(st.x) - x) + abs(pix(st.y) - y) < 60 * k { continue; }
     }
-    words(out, d, BODY_NAMES[b], x + r + 5 * k, y + 3 * k, 7 * k, ifx hot then 1.0f32 else 0.62f32, INK_R, INK_G, INK_B);
+    if rf < 2000 * k { tag(d, BODY_NAMES[b], x, y, reach, 7 * k, ifx hot then 1.0f32 else 0.62f32, INK_R, INK_G, INK_B, ifx hot then PRIO_HOT else PRIO_WORLD); }
   }
-  // The ice rocks.
+  // The ice rocks: a diamond far off, the rock itself (lumpy, cratered, icy) close in.
   for j: 0..<ICE_ROCKS {
     c := screen_of(s, orbit_position(s[0].ices[j], t));
     x := pix(c.x); y := pix(c.y);
     hot := s[0].dest == P_ICE + j;
+    rr := spacecam_pixels(s[0].cam, ICE_RADII[j]);
     r := 3.5 * k;
-    stroke(out, d, x, y - r, x + r, y, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
-    stroke(out, d, x + r, y, x, y + r, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
-    stroke(out, d, x, y + r, x - r, y, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
-    stroke(out, d, x - r, y, x, y - r, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
+    if rr > 2.0 * f64(k) {
+      disc(s, u, d, c, rr, 10, f32(j) * 0.61 + 0.2, spin_k * 3.0 + f32(j));
+      r = hi(pix(rr), r);
+    }
+    if rr < 6.0 * f64(k) {
+      stroke(out, d, x, y - r, x + r, y, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
+      stroke(out, d, x + r, y, x, y + r, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
+      stroke(out, d, x, y + r, x - r, y, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
+      stroke(out, d, x - r, y, x, y - r, 0.8 * k, 0.9, ICE_R, ICE_G, ICE_B);
+    }
+    if hot && r < 2000 * k { ring(out, d, x, y, r * 1.4 + 4 * k, 32, 0.8 * k, 0.9, BELT_R, BELT_G, BELT_B); }
+    block(d, x, y, r);
     if hot || s[0].cam.scale * AU > 1400.0 * f64(k) {
-      words(out, d, ICE_NAMES[j], x + 6 * k, y + 3 * k, 6 * k, ifx hot then 1.0f32 else 0.6f32, ICE_R, ICE_G, ICE_B);
+      tag(d, ICE_NAMES[j], x, y, r, 6 * k, ifx hot then 1.0f32 else 0.6f32, ICE_R, ICE_G, ICE_B, ifx hot then PRIO_HOT else PRIO_ICE);
     }
   }
   draw_station(s, out, d, place_state(s, P_STATION, t).r);
@@ -1033,22 +1220,29 @@ draw_map :: (s: [] Belt, out: [] f32, d: [] Draw) {
       p := ifx opt == 0 then s[0].eco else s[0].fast;
       if !p.ok { continue; }
       if opt == 1 && abs(p.tr.tof - s[0].eco.tr.tof) < DAY { continue; }
-      arc := orbit_from_state(p.tr.depart, GM_SUN, p.tr.t0);
-      pts: [40] D3;
-      for i: 0..<40 { pts[i] = orbit_position(arc, p.tr.t0 + p.tr.tof * f64(i) / 39.0); }
-      light: f32 = ifx opt == 0 then 0.85f32 else 0.55f32;
-      red := ifx opt == 0 then BELT_R else WARN_R; green := ifx opt == 0 then BELT_G else WARN_G; blue := ifx opt == 0 then BELT_B else WARN_B;
-      draw_path(s, out, d, pts[..], 0, light, true, red, green, blue);
-      a := screen_of(s, pts[0]); b := screen_of(s, pts[39]);
-      ax := pix(a.x); ay := pix(a.y); bx := pix(b.x); by := pix(b.y);
-      stroke(out, d, bx - 5 * k, by, bx + 5 * k, by, 0.9 * k, light, red, green, blue);
-      stroke(out, d, bx, by - 5 * k, bx, by + 5 * k, 0.9 * k, light, red, green, blue);
-      ring(out, d, bx, by, 8 * k, 20, 0.7 * k, light * 0.8, red, green, blue);
-      if opt == 0 {
-        stroke(out, d, ax - 5 * k, ay, ax + 5 * k, ay, 0.9 * k, light, red, green, blue);
-        stroke(out, d, ax, ay - 5 * k, ax, ay + 5 * k, 0.9 * k, light, red, green, blue);
-        words(out, d, "ARRIVE", bx + 10 * k, by - 9 * k, 6 * k, 0.8, red, green, blue);
-      }
+      light: f32 = ifx opt == 0 then 0.95f32 else 0.6f32;
+      red := ifx opt == 0 then BELT_R else FAST_R; green := ifx opt == 0 then BELT_G else FAST_G; blue := ifx opt == 0 then BELT_B else FAST_B;
+      draw_transfer(s, out, d, p, light, opt == 0, red, green, blue);
+    }
+  }
+  // A ship mining: its tether down to the rock, ice coming up it.
+  for j: 0..<s[0].ship_n {
+    sh := s[0].ships[j];
+    if sh.mode != MINING || !is_ice(sh.at) { continue; }
+    rock := screen_of(s, place_state(s, sh.at, t).r);
+    me := screen_of(s, ship_state(s, j, t).r);
+    rr := spacecam_pixels(s[0].cam, ICE_RADII[sh.at - P_ICE]);
+    dx := pix(rock.x - me.x); dy := pix(rock.y - me.y);
+    ln := sqrt(dx * dx + dy * dy);
+    if rr < 3.0 * f64(k) || ln < 1 { continue; }
+    reach := hi(ln - pix(rr) * 0.85, 0);
+    ux := dx / ln; uy := dy / ln;
+    mx := pix(me.x); my := pix(me.y);
+    stroke(out, d, mx, my, mx + ux * reach, my + uy * reach, 0.5 * k, 0.45, ICE_R, ICE_G, ICE_B);
+    for g: 0..<4 {
+      f := (f32(g) / 4.0 + s[0].clock * 0.35) - floor(f32(g) / 4.0 + s[0].clock * 0.35);
+      px := mx + ux * reach * (1.0 - f); py := my + uy * reach * (1.0 - f);
+      dot(out, d, px, py, 1.4 * k, 0.9, ICE_R, ICE_G, ICE_B);
     }
   }
   // The ships, the selected last.
@@ -1095,6 +1289,13 @@ meter :: (out: [] f32, d: [] Draw, x: f32, y: f32, w: f32, full: f32, red: f32, 
   if f > 0.005 { stroke(out, d, x, y, x + w * f, y, 1.3 * k, 0.95, red, green, blue); }
 }
 
+// A labelled meter: the word on the left, the value on the right, the bar under them.
+gauge :: (out: [] f32, d: [] Draw, x: f32, y: f32, w: f32, cap: f32, word: string, value: string, full: f32, red: f32, green: f32, blue: f32) {
+  k := d[0].k;
+  words(out, d, word, x, y, cap, 0.65, red, green, blue);
+  words(out, d, value, x + w - text_width(value, cap), y, cap, 0.85, INK_R, INK_G, INK_B);
+  meter(out, d, x, y + 5 * k, w, full, red, green, blue);
+}
 place_short :: (p: int) -> string { if p == P_STATION { return "HEARTH"; } return place_name(p); }
 // A ship's card: where it is or is going (line), and how long or how full (side).
 ship_status :: (s: [] Belt, k: int, buf: [] u8) -> int {
@@ -1161,12 +1362,13 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   // The toast.
   if s[0].toast_t > 0 && s[0].toast_n > 0 {
     a := clamp(s[0].toast_t, 0, 1);
-    centred(out, d, cast(string) s[0].toast[0..<s[0].toast_n], w / 2, sy + 52 * k, 7.5 * k, 0.95 * a, INK_R, INK_G, INK_B);
+    s[0].toast_y = sy + 52 * k;
+    centred(out, d, cast(string) s[0].toast[0..<s[0].toast_n], w / 2, s[0].toast_y, 7.5 * k, 0.95 * a, INK_R, INK_G, INK_B);
   }
   // The Free Belt's ships, as cards along the bottom.
   cards := 3;
   cw := ifx phone then (w - 2 * m - 2 * 8 * k) / 3 else 200 * k;
-  chh := ifx phone then 70 * k else 66 * k;
+  chh := ifx phone then 80 * k else 76 * k;
   total := f32(cards) * cw + f32(cards - 1) * 8 * k;
   cx0 := (w - total) / 2;
   cy0 := h - m - chh - (ifx phone then 8 * k else 0);
@@ -1184,12 +1386,17 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     if n > 0 { side := cast(string) buf[0..<n]; words(out, d, side, x0 + cw - pad - text_width(side, 6.5 * k), cy0 + 18 * k, 6.5 * k, 0.8, INK_R, INK_G, INK_B); }
     n = ship_status(s, j, buf[..]);
     words(out, d, cast(string) buf[0..<n], x0 + pad, cy0 + 33 * k, ifx phone then 5.5f32 * k else 6.5f32 * k, 0.7, INK_R, INK_G, INK_B);
-    mw := cw - 2 * pad - (ifx phone then 0.0f32 else 34.0f32 * k);
-    meter(out, d, x0 + pad, cy0 + 45 * k, mw, f32(sh.fuel / sh.fuel_cap), WARN_R, WARN_G, WARN_B);
-    if !phone { words(out, d, "FUEL", x0 + pad + mw + 6 * k, cy0 + 47 * k, 5 * k, 0.6, WARN_R, WARN_G, WARN_B); }
+    // fuel and ice: a word, the tonnes, and a meter
+    mw := cw - 2 * pad;
+    vc := ifx phone then 4.8f32 * k else 5.5f32 * k;
+    n = put_count(buf[..], 0, sh.fuel); n = put(buf[..], n, " T");
+    low := sh.fuel < 0.2 * sh.fuel_cap;
+    gauge(out, d, x0 + pad, cy0 + 47 * k, mw, vc, "FUEL", cast(string) buf[0..<n], f32(sh.fuel / sh.fuel_cap),
+          ifx low then LOW_R else FUEL_R, ifx low then LOW_G else FUEL_G, ifx low then LOW_B else FUEL_B);
     if sh.cargo_cap > 0.0 {
-      meter(out, d, x0 + pad, cy0 + 56 * k, mw, f32(sh.cargo / sh.cargo_cap), ICE_R, ICE_G, ICE_B);
-      if !phone { words(out, d, "ICE", x0 + pad + mw + 6 * k, cy0 + 58 * k, 5 * k, 0.6, ICE_R, ICE_G, ICE_B); }
+      n = put_count(buf[..], 0, sh.cargo); n = put(buf[..], n, "/"); n = put_count(buf[..], n, sh.cargo_cap);
+      if !phone { n = put(buf[..], n, " T"); }
+      gauge(out, d, x0 + pad, cy0 + 64 * k, mw, vc, "ICE", cast(string) buf[0..<n], f32(sh.cargo / sh.cargo_cap), ICE_R, ICE_G, ICE_B);
     }
     c += 1;
   }
@@ -1235,7 +1442,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     i := add_button(s, x0, y0, x0 + ow, y1, B_GO, opt);
     ok := p.ok && p.enough;
     lit_: f32 = ifx !ok then 0.3f32 else ifx s[0].hover == i || s[0].press == i then 1.0f32 else 0.7f32;
-    red := ifx opt == 0 then BELT_R else WARN_R; green := ifx opt == 0 then BELT_G else WARN_G; blue := ifx opt == 0 then BELT_B else WARN_B;
+    red := ifx opt == 0 then BELT_R else FAST_R; green := ifx opt == 0 then BELT_G else FAST_G; blue := ifx opt == 0 then BELT_B else FAST_B;
     cc := 6 * k;
     stroke(out, d, x0, y0, x0 + ow - cc, y0, 0.7 * k, lit_, red, green, blue);
     stroke(out, d, x0 + ow - cc, y0, x0 + ow, y0 + cc, 0.7 * k, lit_, red, green, blue);
@@ -1247,7 +1454,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     if p.ok {
       n = plan_text(p, buf[..], true);
       if !p.enough { n = put(buf[..], 0, "NOT ENOUGH FUEL"); }
-      words(out, d, cast(string) buf[0..<n], x0 + 8 * k, y0 + 30 * k, 6.5 * k, lit_, INK_R, INK_G, INK_B);
+      words(out, d, cast(string) buf[0..<n], x0 + 8 * k, y0 + 30 * k, 6.5 * k, ifx p.enough then lit_ else 0.85f32, ifx p.enough then INK_R else LOW_R, ifx p.enough then INK_G else LOW_G, ifx p.enough then INK_B else LOW_B);
       n = plan_text(p, buf[..], false);
       words(out, d, cast(string) buf[0..<n], x0 + 8 * k, y0 + 43 * k, ifx phone then 5.0f32 * k else 6.0f32 * k, lit_ * 0.9, INK_R, INK_G, INK_B);
     }
@@ -1308,7 +1515,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   d: [1] Draw;
   d[0].k = hi(dpr, 0.5); d[0].w = width; d[0].h = height;
-  draw_map(s, out, d[..]);
+  draw_map(s, out, u, d[..]);
   // The box being drawn.
   if s[0].boxing && s[0].dragging {
     x0 := s[0].dx0; y0 := s[0].dy0; x1 := s[0].mx; y1 := s[0].my; kk := d[0].k;
@@ -1318,6 +1525,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     stroke(out, d[..], x0, y1, x0, y0, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
   }
   hud(s, out, u, d[..]);
+  place_tags(s, out, u, d[..]);
   // The uniforms.
   sun := screen_of(s, D3_ZERO);
   u[0] = width; u[1] = height; u[2] = ifx s[0].golden then 0.0f32 else s[0].clock; u[3] = 1;
@@ -1330,6 +1538,14 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   u[4] = pix(f64(width) / 2.0 + sx); u[5] = pix(f64(height) / 2.0 + sy); u[6] = pix(sr); u[7] = d[0].k;
   u[8] = f32(fclamp(s[0].cam.center.x / AU * 40.0, -100000.0, 100000.0)); u[9] = f32(fclamp(-s[0].cam.center.y / AU * 40.0, -100000.0, 100000.0));
   u[10] = f32(s[0].panel_n);
+  u[11] = f32(d[0].disc_n);
+  // The Belt's dust: about the Sun, while the Sun is near enough for f32; it turns at the
+  // middle of the Belt's rate (2.7 AU), as its rocks do.
+  au := s[0].cam.scale * AU;
+  if abs(sun.x) < 1000000.0 && abs(sun.y) < 1000000.0 && au < 60000.0 {
+    u[U_BELT] = pix(sun.x); u[U_BELT + 1] = pix(sun.y); u[U_BELT + 2] = f32(au);
+    u[U_BELT + 3] = f32(wrap_tau(s[0].t * sqrt(GM_SUN / (2.7 * AU * 2.7 * AU * 2.7 * AU))));
+  }
   track_frame(s[0].track[..], dt, width, height, dpr);
   if d[0].n > 0 { track_loaded(s[0].track[..], "load-engine"); }
   return d[0].n;
