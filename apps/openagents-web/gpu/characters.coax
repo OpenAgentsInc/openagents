@@ -1,0 +1,427 @@
+// characters's shaders, the source of apps/openagents-web/characters.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (characters.module,
+// characters.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// The characters realm (characters.coax): a night garden and the figures
+// standing in it, each a few dozen round cones (verse/figure.coax) melted
+// into one body and found by marching each pixel's ray through it, then the
+// HUD's strokes and plates. A figure is lit (its coat under the moon) or a
+// soft silhouette: black, its edge a fuzzy fringe that thins into the night,
+// lit by nothing but a rim of moonlight.
+// CharactersU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   figures 4
+//   panels 5
+//   dpr 6
+//   selected 7
+//   eye 8
+//   right 12
+//   up 16
+//   ahead 20
+//   moon 24
+//   pad 28
+//   panel 32
+//   fig 256
+//   bone 376
+// the eye, and the tangent of half the view's height
+// toward the moon
+// per plate: x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+// per figure (characters.coax FIG_FLOATS): bound; coat, look; marks, pattern; x, y, z, yaw; bones, blend, size, glow
+// per figure 32 bones: end a, radius + 1000 × region; end b, radius
+CHARACTERS_BONES :: 32;
+CHARACTERS_STEPS :: 56;
+characters_tone :: (c:V3)->V3 {
+  return wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),wg_exp_f3(wg_mul_f3f(wg_neg_f3(c),1.35f32)));
+}
+characters_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=4.0f32*s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.z>=2.0f32;
+  lit:bool=over||((s.z>=1.0f32)&&(s.z<2.0f32));
+  fill:V3=ifx over then v3(0.235f32,0.168f32,0.115f32) else v3(0.165f32,0.114f32,0.078f32);
+  line:V3=ifx lit then v3(0.86f32,0.70f32,0.42f32) else v3(0.69f32,0.541f32,0.29f32);
+  w:f32=1.25f32*s.x;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
+}
+characters_panels :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<28 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=characters_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+32),wg_at4(u,(cast(int)((k*2)+1))*4+32));
+      k+=1;
+    }
+  }
+  return c;
+}
+characters_hash3 :: (p:V3)->f32 {
+  q:V3=wg_fract_f3(wg_mul_f3f3(p,v3(0.1031f32,0.1030f32,0.0973f32)));
+  r:V3=wg_add_f3f(q,wg_dot3(q,wg_add_f3f(v3(q.y,q.x,q.z),33.33f32)));
+  return fract((r.x+r.y)*r.z);
+}
+characters_noise3 :: (p:V3)->f32 {
+  i:V3=wg_floor_f3(p);
+  f:V3=wg_fract_f3(p);
+  w:V3=wg_mul_f3f3(wg_mul_f3f3(f,f),wg_sub_ff3(3.0f32,wg_mul_ff3(2.0f32,f)));
+  a:f32=mix(mix(characters_hash3(i),characters_hash3(wg_add_f3f3(i,v3(1,0,0))),w.x),mix(characters_hash3(wg_add_f3f3(i,v3(0,1,0))),characters_hash3(wg_add_f3f3(i,v3(1,1,0))),w.x),w.y);
+  b:f32=mix(mix(characters_hash3(wg_add_f3f3(i,v3(0,0,1))),characters_hash3(wg_add_f3f3(i,v3(1,0,1))),w.x),mix(characters_hash3(wg_add_f3f3(i,v3(0,1,1))),characters_hash3(wg_add_f3f3(i,v3(1,1,1))),w.x),w.y);
+  return mix(a,b,w.z);
+}
+// One bone: a round cone from a to b, its radius going from ra to rb.
+characters_cone :: (p:V3,a:V4,b:V4)->f32 {
+  ab:V3=wg_sub_f3f3(v3(b.x,b.y,b.z),v3(a.x,a.y,a.z));
+  ap:V3=wg_sub_f3f3(p,v3(a.x,a.y,a.z));
+  h:f32=clampf(wg_dot3(ap,ab)/fmax(wg_dot3(ab,ab),1e-6f32),0.0f32,1.0f32);
+  ra:f32=a.w-(floor(a.w/1000.0f32)*1000.0f32);
+  return wg_length3(wg_sub_f3f3(ap,wg_mul_f3f(ab,h)))-mix(ra,b.w,h);
+}
+characters_smin :: (a:f32,b:f32,k:f32)->f32 {
+  h:f32=fmax(k-abs(a-b),0.0f32)/k;
+  return fmin(a,b)-(((h*h)*k)*0.25f32);
+}
+// The figure's body: its bones melted together.
+characters_body :: (f:s32,p:V3,u:[]f32)->f32 {
+  info:V4=wg_at4(u,(cast(int)((f*5)+4))*4+256);
+  n:s32=wg_i32_f(info.x);
+  k:f32=fmax(info.y,0.001f32);
+  d:f32=1e5f32;
+  {
+    i:s32=0;
+    while i<CHARACTERS_BONES {
+      if (i>=n) {
+        break;
+      }
+      o:s32=((f*CHARACTERS_BONES)+i)*2;
+      d=characters_smin(d,characters_cone(p,wg_at4(u,(cast(int)o)*4+376),wg_at4(u,(cast(int)(o+1))*4+376)),k);
+      i+=1;
+    }
+  }
+  return d;
+}
+// Which part of the body p is nearest (figure.coax REGION_*).
+characters_region :: (f:s32,p:V3,u:[]f32)->f32 {
+  n:s32=wg_i32_f(u[(cast(int)((f*5)+4))*4+256]);
+  d:f32=1e5f32;
+  r:f32=0.0f32;
+  {
+    i:s32=0;
+    while i<CHARACTERS_BONES {
+      if (i>=n) {
+        break;
+      }
+      o:s32=((f*CHARACTERS_BONES)+i)*2;
+      e:f32=characters_cone(p,wg_at4(u,(cast(int)o)*4+376),wg_at4(u,(cast(int)(o+1))*4+376));
+      if (e<d) {
+        d=e;
+        r=floor(u[(cast(int)o)*4+379]/1000.0f32);
+      }
+      i+=1;
+    }
+  }
+  return r;
+}
+characters_normal :: (f:s32,p:V3,u:[]f32)->V3 {
+  e:f32=0.002f32;
+  a:V3=v3(1.0f32,-1.0f32,-1.0f32);
+  b:V3=v3(-1.0f32,-1.0f32,1.0f32);
+  c:V3=v3(-1.0f32,1.0f32,-1.0f32);
+  d:V3=v3(1.0f32,1.0f32,1.0f32);
+  return wg_normalize3(wg_add_f3f3(wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(a,characters_body(f,wg_add_f3f3(p,wg_mul_f3f(a,e)),u)),wg_mul_f3f(b,characters_body(f,wg_add_f3f3(p,wg_mul_f3f(b,e)),u))),wg_mul_f3f(c,characters_body(f,wg_add_f3f3(p,wg_mul_f3f(c,e)),u))),wg_mul_f3f(d,characters_body(f,wg_add_f3f3(p,wg_mul_f3f(d,e)),u))));
+}
+// A coat's colour where p is on figure f, in its own frame.
+characters_coat :: (f:s32,p:V3,reg:f32,u:[]f32)->V3 {
+  base:V3=v3(u[(cast(int)((f*5)+1))*4+256],u[(cast(int)((f*5)+1))*4+257],u[(cast(int)((f*5)+1))*4+258]);
+  marks:V3=v3(u[(cast(int)((f*5)+2))*4+256],u[(cast(int)((f*5)+2))*4+257],u[(cast(int)((f*5)+2))*4+258]);
+  pattern:f32=u[(cast(int)((f*5)+2))*4+259];
+  at:V4=wg_at4(u,(cast(int)((f*5)+3))*4+256);
+  size:f32=fmax(u[(cast(int)((f*5)+4))*4+258],0.1f32);
+  c:f32=cos(at.w);
+  s:f32=sin(at.w);
+  w:V3=wg_sub_f3f3(p,v3(at.x,at.y,at.z));
+  l:V3=wg_div_f3f(v3((c*w.x)-(s*w.z),w.y,(s*w.x)+(c*w.z)),size);
+  if ((reg>6.5f32)&&(reg<7.5f32)) {
+    return v3(0.012f32,0.01f32,0.01f32);
+  }
+  if (reg>7.5f32) {
+    return v3(0.02f32,0.016f32,0.016f32);
+  }
+  m:f32=0.0f32;
+  if ((pattern>0.5f32)&&(pattern<1.5f32)) {
+    m=smoothstep(0.52f32,0.58f32,characters_noise3(wg_add_f3f3(wg_mul_f3f(l,5.0f32),wg_make_f3_f((cast(f32)(f))*7.0f32))));
+  } else if ((pattern>1.5f32)&&(pattern<2.5f32)) {
+    m=(ifx (reg>1.5f32)&&(reg<4.5f32) then 1.0f32 else 0.0f32)+(ifx (reg>5.5f32)&&(reg<6.5f32) then smoothstep(0.3f32,0.12f32,l.y) else 0.0f32);
+  } else if ((pattern>2.5f32)&&(pattern<3.5f32)) {
+    m=ifx (reg<0.5f32)||((reg>3.5f32)&&(reg<5.5f32)) then smoothstep(0.35f32,0.6f32,sin((l.z*32.0f32)+(characters_noise3(wg_mul_f3f(l,6.0f32))*4.0f32))) else 0.0f32;
+  } else if (pattern>3.5f32) {
+    m=ifx (reg>5.5f32)&&(reg<6.5f32) then smoothstep(0.17f32,0.12f32,l.y) else 0.0f32;
+  }
+  if (((reg>1.5f32)&&(reg<2.5f32))&&(pattern<0.5f32)) {
+    m=0.35f32;
+  }
+  return wg_mix_f3f3f(base,marks,clampf(m,0.0f32,1.0f32));
+}
+// What the ray hits of figure f: how far, and how much of the pixel the
+// figure covers with its colour (its soft fringe, if it has one).
+CharactersHit :: struct {t:f32; colour:V3; cover:f32; }
+characters_figure :: (f:s32,o:V3,d:V3,pix:f32,u:[]f32)->CharactersHit {
+  h:CharactersHit;
+  h.t=1e9f32;
+  h.cover=0.0f32;
+  b:V4=wg_at4(u,(cast(int)(f*5))*4+256);
+  soft:bool=u[(cast(int)((f*5)+1))*4+259]>0.5f32;
+  size:f32=fmax(u[(cast(int)((f*5)+4))*4+258],0.1f32);
+  fuzz:f32=ifx soft then 0.14f32*size else 0.0f32;
+  oc:V3=wg_sub_f3f3(o,v3(b.x,b.y,b.z));
+  r:f32=b.w+fuzz;
+  bb:f32=wg_dot3(oc,d);
+  disc:f32=((bb*bb)-wg_dot3(oc,oc))+(r*r);
+  if (disc<=0.0f32) {
+    return h;
+  }
+  q:f32=sqrt(disc);
+  t:f32=fmax((-bb)-q,0.0f32);
+  end:f32=(-bb)+q;
+  if (end<=0.0f32) {
+    return h;
+  }
+  least:f32=1e5f32;
+  at:f32=t;
+  hit:bool=false;
+  {
+    i:s32=0;
+    while i<CHARACTERS_STEPS {
+      p:V3=wg_add_f3f3(o,wg_mul_f3f(d,t));
+      e:f32=characters_body(f,p,u);
+      edge:f32=e-(pix*t);
+      if (edge<least) {
+        least=edge;
+        at=t;
+      }
+      if (e<((0.0006f32*t)+0.0004f32)) {
+        hit=true;
+        break;
+      }
+      t=t+fmax(e*0.9f32,0.004f32);
+      if (t>end) {
+        break;
+      }
+      i+=1;
+    }
+  }
+  moon:V3=wg_normalize3(v3(u[24],u[25],u[26]));
+  if soft {
+    // How deep the ray goes: how near it passed (outside), or how square
+    // to the surface it met it (inside: grazing is the edge).
+    depth:f32=least;
+    rim:f32=0.0f32;
+    reach:f32=fuzz+(pix*at);
+    if hit {
+      n:V3=characters_normal(f,wg_add_f3f3(o,wg_mul_f3f(d,t)),u);
+      facing:f32=abs(wg_dot3(n,d));
+      depth=((-2.0f32)*reach)*facing;
+      rim=pow(1.0f32-facing,2.5f32)*(0.3f32+(0.7f32*fmax(0.0f32,wg_dot3(n,moon)+0.4f32)));
+    }
+    p:V3=wg_add_f3f3(o,wg_mul_f3f(d,ifx hit then t else at));
+    wisp:f32=((characters_noise3(wg_add_f3f3(wg_mul_f3f(p,14.0f32),v3(0.0f32,u[2]*0.6f32,u[2]*0.2f32)))-0.5f32)*0.9f32)*fuzz;
+    cover:f32=1.0f32-smoothstep(-reach,reach,depth+wisp);
+    if (cover<=0.002f32) {
+      return h;
+    }
+    rim=fmax(rim,(0.5f32*(1.0f32-cover))*cover);
+    h.t=ifx hit then t else at;
+    h.colour=wg_add_f3f3(v3(0.003f32,0.004f32,0.007f32),wg_mul_f3f(wg_mul_f3f(v3(0.42f32,0.52f32,0.85f32),rim),0.5f32));
+    h.cover=cover*0.98f32;
+    return h;
+  }
+  if (!hit) {
+    cover:f32=1.0f32-smoothstep(0.0f32,(pix*at)*1.5f32,least);
+    if (cover<=0.001f32) {
+      return h;
+    }
+    t=at;
+  }
+  p:V3=wg_add_f3f3(o,wg_mul_f3f(d,t));
+  n:V3=characters_normal(f,p,u);
+  reg:f32=characters_region(f,p,u);
+  albedo:V3=characters_coat(f,p,reg,u);
+  sky:f32=0.06f32+(0.05f32*n.y);
+  key:f32=fmax(0.0f32,wg_dot3(n,moon));
+  rim:f32=pow(1.0f32-abs(wg_dot3(n,d)),3.0f32)*0.4f32;
+  glow:f32=u[(cast(int)((f*5)+4))*4+259];
+  light:V3=wg_add_f3f3(wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(v3(0.1f32,0.11f32,0.16f32),(sky*8.0f32)),wg_mul_f3f(wg_mul_f3f(v3(0.56f32,0.64f32,0.86f32),key),1.5f32)),wg_mul_f3f(v3(0.45f32,0.55f32,0.85f32),rim)),v3(glow,glow,glow));
+  c:V3=wg_mul_f3f3(albedo,light);
+  if ((reg>6.5f32)&&(reg<8.5f32)) {
+    spec:f32=pow(fmax(0.0f32,wg_dot3(wg_reflect3(d,n),moon)),24.0f32);
+    c=wg_add_f3f3(c,wg_mul_f3f(v3(0.6f32,0.65f32,0.8f32),spec));
+  }
+  h.t=t;
+  h.colour=c;
+  h.cover=ifx hit then 1.0f32 else 1.0f32-smoothstep(0.0f32,(pix*t)*1.5f32,least);
+  return h;
+}
+// The ground: dark grass, a pale gravel ring the walkers follow, and under
+// each figure the soft dark of its contact shadow.
+characters_ground :: (p:V3,dist:f32,u:[]f32)->V3 {
+  r:f32=wg_length2(v2(p.x,p.z));
+  grass:V3=wg_mul_f3f(v3(0.045f32,0.07f32,0.05f32),(0.75f32+(0.5f32*characters_noise3(wg_make_f3_f2f(wg_mul_f2f(v2(p.x,p.z),3.0f32),0.0f32)))));
+  ring:f32=smoothstep(0.3f32,0.22f32,abs(r-2.2f32))*(0.7f32+(0.5f32*characters_noise3(wg_make_f3_f2f(wg_mul_f2f(v2(p.x,p.z),14.0f32),1.0f32))));
+  c:V3=wg_mix_f3f3f(grass,v3(0.1f32,0.096f32,0.088f32),ring);
+  c=wg_mul_f3f3(c,wg_add_ff3(0.9f32,wg_mul_f3f(wg_mul_f3f(v3(0.56f32,0.64f32,0.86f32),fmax(0.0f32,u[25])),1.2f32)));
+  shade:f32=1.0f32;
+  n:s32=wg_i32_f(u[4]);
+  {
+    f:s32=0;
+    while f<6 {
+      if (f>=n) {
+        break;
+      }
+      b:V4=wg_at4(u,(cast(int)(f*5))*4+256);
+      size:f32=fmax(u[(cast(int)((f*5)+4))*4+258],0.1f32);
+      if (wg_length2(wg_sub_f2f2(v2(p.x,p.z),v2(b.x,b.z)))>(b.w+(0.4f32*size))) {
+        {f+=1; continue;}
+      }
+      e:f32=characters_body(f,wg_add_f3f3(p,v3(0.0f32,0.01f32,0.0f32)),u);
+      shade=fmin(shade,mix(0.25f32,1.0f32,smoothstep(0.0f32,0.38f32*size,e)));
+      f+=1;
+    }
+  }
+  c=wg_mul_f3f(c,shade);
+  fog:f32=1.0f32-exp(((-dist)*dist)*0.0009f32);
+  return wg_mix_f3f3f(c,v3(0.06f32,0.07f32,0.11f32),fog);
+}
+characters_sky :: (d:V3,u:[]f32)->V3 {
+  up:f32=clampf(d.y,0.0f32,1.0f32);
+  c:V3=wg_mix_f3f3f(v3(0.06f32,0.07f32,0.11f32),v3(0.01f32,0.012f32,0.035f32),sqrt(up));
+  grid:V3=wg_mul_f3f(d,90.0f32);
+  star:f32=characters_hash3(wg_floor_f3(grid));
+  if ((star>0.993f32)&&(d.y>0.04f32)) {
+    dot:f32=smoothstep(0.16f32,0.0f32,wg_length3(wg_sub_f3f3(wg_fract_f3(grid),v3(0.5f32,0.5f32,0.5f32))));
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.55f32,0.6f32,0.75f32),dot),(star-0.993f32)),120.0f32),(0.7f32+(0.3f32*sin((u[2]*1.3f32)+(star*90.0f32))))));
+  }
+  moon:V3=wg_normalize3(v3(u[24],u[25],u[26]));
+  m:f32=wg_dot3(d,moon);
+  c=wg_add_f3f3(c,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(v3(0.8f32,0.85f32,1.0f32),smoothstep(0.9993f32,0.9996f32,m)),1.6f32),wg_mul_f3f(v3(0.12f32,0.14f32,0.22f32),pow(fmax(m,0.0f32),60.0f32))));
+  return c;
+}
+characters_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+characters_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  ndc:V2=v2(((pos.x/u[0])*2.0f32)-1.0f32,1.0f32-((pos.y/u[1])*2.0f32));
+  aspect:f32=u[0]/fmax(u[1],1.0f32);
+  tv:f32=u[11];
+  d:V3=wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[20],u[21],u[22]),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(u[12],u[13],u[14]),ndc.x),aspect),tv)),wg_mul_f3f(wg_mul_f3f(v3(u[16],u[17],u[18]),ndc.y),tv)));
+  o:V3=v3(u[8],u[9],u[10]);
+  pix:f32=(2.0f32*tv)/fmax(u[1],1.0f32);
+  c:V3=characters_sky(d,u);
+  far:f32=1e9f32;
+  if (d.y<(-0.0001f32)) {
+    t:f32=(-o.y)/d.y;
+    far=t;
+    c=wg_mix_f3f3f(characters_ground(wg_add_f3f3(o,wg_mul_f3f(d,t)),t,u),c,smoothstep(55.0f32,80.0f32,t));
+  }
+  hits:[6]CharactersHit;
+  count:s32=0;
+  n:s32=wg_i32_f(u[4]);
+  {
+    f:s32=0;
+    while f<6 {
+      if (f>=n) {
+        break;
+      }
+      h:CharactersHit=characters_figure(f,o,d,pix,u);
+      if ((h.cover>0.0f32)&&(h.t<far)) {
+        hits[cast(int)count]=h;
+        count+=1;
+      }
+      f+=1;
+    }
+  }
+  {
+    i:s32=1;
+    while i<count {
+      j:s32=i;
+      while ((j>0)&&(hits[cast(int)(j-1)].t<hits[cast(int)j].t)) {
+        s:CharactersHit=hits[cast(int)j];
+        hits[cast(int)j]=hits[cast(int)(j-1)];
+        hits[cast(int)(j-1)]=s;
+        j-=1;
+      }
+      i+=1;
+    }
+  }
+  {
+    i:s32=0;
+    while i<count {
+      c=wg_mix_f3f3f(c,hits[cast(int)i].colour,hits[cast(int)i].cover);
+      i+=1;
+    }
+  }
+  return wg_make_f4_f3f(characters_panels(v2(pos.x,pos.y),wg_mul_f3f(characters_tone(c),u[3]),u),1.0f32);
+}
+// ---- the HUD: one quad per stroke (characters.coax lit)
+CharactersV :: struct {pos:V4; place:V2; shape:V4; tint:V4; extra:V4; }
+characters_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+characters_fx_vs :: (_vid2:u32,_iid3:u32,in_:characters_fx_vs_in,u:[]f32)->CharactersV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:CharactersV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.extra=d;
+  return o;
+}
+characters_fx_fs :: (v:CharactersV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_exp_f3 :: (p0:V3)->V3 {return v3(exp(p0.x),exp(p0.y),exp(p0.z));}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_fract_f3 :: (p0:V3)->V3 {return v3(fract(p0.x),fract(p0.y),fract(p0.z));}
+wg_add_f3f :: (a:V3,b:f32)->V3 {return v3(a.x+b,a.y+b,a.z+b);}
+wg_floor_f3 :: (p0:V3)->V3 {return v3(floor(p0.x),floor(p0.y),floor(p0.z));}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_sub_ff3 :: (a:f32,b:V3)->V3 {return v3(a-b.x,a-b.y,a-b.z);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_make_f3_f2f :: (p0:V2,p1:f32)->V3 {return v3(p0.x,p0.y,p1);}
+wg_add_ff3 :: (a:f32,b:V3)->V3 {return v3(a+b.x,a+b.y,a+b.z);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

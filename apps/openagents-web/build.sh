@@ -16,14 +16,13 @@ python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # and each realm's page (docs/verse/realm-host.md).
 bun "$here/../../coax/web/realms.ts"
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/light.coax verse_bar --into apps/openagents-web/splash.wgsl)
+# (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
 splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 # (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl)
+# (particles.wgsl loads verse/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
@@ -37,7 +36,7 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
 # and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague stair myrealm fixture realm waterlab; do
+for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague stair myrealm fixture realm waterlab admin changelog characters chat memorial og particles private project projects realmlist splash; do
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
@@ -144,7 +143,7 @@ bun "$tools/baked.ts"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax" "$here/project-capacity.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
-python3 "$here/../../coax/web/nip-shader.py" "$here/splash.wgsl" "$here/nip01.wgsl"
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/nip.coax apps/openagents-web/nip01.wgsl apps/openagents-web/gpu/nip.module)   # the splash's with sans glyphs
 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
 nip01=$!
 cmp -s "$here/nip01.wgsl" "$here/nip-guide.wgsl" || cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"   # generated, ignored; only on a change

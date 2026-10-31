@@ -1,0 +1,3 @@
+--vertices changelog_bg_vs,changelog_fx_vs
+--fragments changelog_bg_fs,changelog_fx_fs
+--bindings apps/openagents-web/gpu/changelog.bindings --strip changelog_

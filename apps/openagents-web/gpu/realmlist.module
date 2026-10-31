@@ -1,0 +1,3 @@
+--vertices realmlist_bg_vs,realmlist_fx_vs
+--fragments realmlist_bg_fs,realmlist_fx_fs
+--bindings apps/openagents-web/gpu/realmlist.bindings --strip realmlist_

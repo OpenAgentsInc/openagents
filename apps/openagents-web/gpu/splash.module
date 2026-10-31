@@ -1,0 +1,3 @@
+--vertices splash_bg_vs,splash_fx_vs
+--fragments splash_bg_fs,splash_fx_fs
+--bindings apps/openagents-web/gpu/splash.bindings --strip splash_

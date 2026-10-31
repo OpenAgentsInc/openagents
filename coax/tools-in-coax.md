@@ -40,7 +40,7 @@ About 70,000 lines of non-Coax code in tools and tests.
 | Psionic tests (`psionic/**/*.py`, 140 files, 70 of them oracles) | 16,900 | Oracles stay (2). The rest (device drivers, service checks) port. |
 | Nostr tests and vectors (`coax/tests/nostr`, `.py` and `.cjs`) | 12,800 | Vector generators and reference runners stay (2, 3); harnesses port. |
 | Web tools in TypeScript (`coax/web/*.ts`: shot, clip, goldens, perf, frametime, realms, strip, style-check, golden-*, place-reload, connect-pylon-page) | 8,500 | Port. |
-| Web tools in Python (`og-card.py`, `nip-pages.py`, `nip-shader.py`, `upload.py`) | 6,600 | Port. |
+| Web tools in Python (`og-card.py`, `nip-pages.py`, `upload.py`) | 6,600 | Port. |
 | `tools/coax-nostr/*` (audits, fuzz, timing, guards) | 6,400 | Mostly port; oracle pieces stay (2). |
 | API tests (`coax/web/api/*.py`, 35 files) and deploy checks | 5,500 | Port: tests of our own C API, not oracles. |
 | Project CLI (`coax/web/project/*.ts`: publish, baked, tasks) | 3,500 | Port. |

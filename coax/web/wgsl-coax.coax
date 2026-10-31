@@ -1173,10 +1173,13 @@ call :: (w: []W, name: string) -> Val {
   }
   g := fn_find(w, name);
   if g < 0 {
-    // the realm's own Coax (verse_style_*): an f32 function, called by its name
-    if !(name.count > 6 && name[0..<6] == "verse_") { w[0].p -= 1; err(w, "a function this does not know"); }
+    // the realm's own Coax (verse_style_*), or a procedure coax wgsl wrote from it (coax_p_NAME is
+    // NAME): an f32 function, called by its Coax name
+    callee := name;
+    if name.count > 7 && name[0..<7] == "coax_p_" { callee = name[7..<name.count]; }
+    else if !(name.count > 6 && name[0..<6] == "verse_") { w[0].p -= 1; err(w, "a function this does not know"); }
     for i: 0..<n { a[i] = convert(w, a[i], Y_F); }
-    b := w[0].an; ap(w, name); apc(w, '(');
+    b := w[0].an; ap(w, callee); apc(w, '(');
     for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
     apc(w, ')'); return mka(w, b, Y_F);
   }
@@ -1510,6 +1513,13 @@ emit_fn :: (w: []W, g: int) {
       o(w, ":u32");
     }
     if nloc > 0 { o(w, ",in_:"); o(w, pre(w)); o(w, "_"); o(w, name); o(w, "_in"); }
+    // or the attributes as one struct of them, a parameter with no attribute of its own
+    for i: 0..<w[0].gpn[g] {
+      q := w[0].gp[g] + i;
+      if w[0].pa[q] != 0 || w[0].yk[w[0].py[q]] != YK_ST { continue; }
+      if nloc > 0 { err(w, "attributes both as parameters and as a struct"); }
+      l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]); o(w, ","); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b));
+    }
   } else if stage == 2 {
     // the varyings (or the position), then front facing
     for want: 0..<2 {

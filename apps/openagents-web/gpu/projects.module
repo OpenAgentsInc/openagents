@@ -1,0 +1,3 @@
+--vertices projects_bg_vs,projects_fx_vs
+--fragments projects_bg_fs,projects_fx_fs
+--bindings apps/openagents-web/gpu/projects.bindings --strip projects_

@@ -406,6 +406,17 @@ Every phase and native feature is a task in the Verse project
     loads verse/light.coax, whose bare lo, hi and smooth are procedures, and
     Coax refuses a local of a procedure's name, so verse/gpu/shader.coax and
     verse/gpu/wgsl.coax name theirs low, high and blend.
+  - Every other page's module follows: admin, changelog, characters, chat,
+    memorial, og, particles, private, project, projects, realmlist and
+    splash, and the NIP pages' and /pylon's (gpu/nip.coax: splash's with the
+    sans glyphs, in place of coax/web/nip-shader.py, which is gone). The
+    translator calls a `coax_p_NAME` (a procedure coax wgsl wrote from the
+    loaded Coax) by NAME, and takes a vertex's attributes as one struct
+    parameter. The pages with goldens (the NIP pages, /pylon, the landing)
+    match; the nine without were A/B'd in one stage against shots of their
+    hand modules: seven 0 blocks changed; characters and project animate
+    (their hand module differs from itself by more than the Coax one does).
+    No page's WGSL is written by hand any more.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

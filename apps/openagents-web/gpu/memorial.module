@@ -1,0 +1,3 @@
+--vertices memorial_bg_vs,memorial_fx_vs
+--fragments memorial_bg_fs,memorial_fx_fs
+--bindings apps/openagents-web/gpu/memorial.bindings --strip memorial_

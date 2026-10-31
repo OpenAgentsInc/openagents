@@ -1,0 +1,3 @@
+--vertices og_bg_vs,og_fx_vs
+--fragments og_bg_fs,og_fx_fs
+--bindings apps/openagents-web/gpu/og.bindings --strip og_

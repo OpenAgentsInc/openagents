@@ -403,7 +403,6 @@ coax/web/golden-serve.ts
 coax/web/goldens.ts
 coax/web/http-requests.test.ts
 coax/web/nip-pages.py
-coax/web/nip-shader.py
 coax/web/og-card.py
 coax/web/og-render.ts
 coax/web/og.test.ts

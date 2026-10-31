@@ -1,0 +1,3 @@
+--vertices particles_particle_vs
+--fragments particles_particle_fs
+--bindings apps/openagents-web/gpu/particles.bindings --strip particles_

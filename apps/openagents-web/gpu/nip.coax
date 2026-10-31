@@ -1,0 +1,17 @@
+// The NIP pages' and /pylon's shaders (nip01.wgsl, nip-guide.wgsl and pylon.wgsl): the splash's
+// (gpu/splash.coax) with font.coax's sans glyphs. Glyphs and ui.coax's HUD bars share mode 4: a
+// glyph has shape.y 0, a HUD bar its positive half-height there. build.sh writes nip01.wgsl from
+// this with coax/web/wgsl-module.coax (nip.module, nip.bindings beside it).
+#load "splash.coax";
+nip_bg_vs :: (i:u32,iid:u32)->V4 {return splash_bg_vs(i,iid);}
+nip_bg_fs :: (pos:V4,u:[]f32)->V4 {return splash_bg_fs(pos,u);}
+nip_fx_vs :: (vid:u32,iid:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV {return splash_fx_vs(vid,iid,in_,u);}
+nip_fx_fs :: (v:SplashV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if v.tint.w>3.5f32 && v.shape.y==0.0f32 {
+    // a sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
+  return splash_fx_fs(v,u);
+}

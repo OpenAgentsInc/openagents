@@ -1,0 +1,3 @@
+--vertices admin_bg_vs,admin_fx_vs
+--fragments admin_bg_fs,admin_fx_fs
+--bindings apps/openagents-web/gpu/admin.bindings --strip admin_

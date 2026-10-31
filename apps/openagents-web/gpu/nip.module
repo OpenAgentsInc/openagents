@@ -1,0 +1,3 @@
+--vertices nip_bg_vs,nip_fx_vs
+--fragments nip_bg_fs,nip_fx_fs
+--bindings apps/openagents-web/gpu/nip.bindings --strip nip_

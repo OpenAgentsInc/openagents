@@ -1,0 +1,3 @@
+--vertices characters_bg_vs,characters_fx_vs
+--fragments characters_bg_fs,characters_fx_fs
+--bindings apps/openagents-web/gpu/characters.bindings --strip characters_

@@ -1,0 +1,179 @@
+// splash's shaders, the source of apps/openagents-web/splash.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (splash.module,
+// splash.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/light.coax";
+
+// The splash's two passes. Every number they draw from comes from
+// splash.coax and ui.coax: the canvas size, the nebula's clock, the fade,
+// how dim the scene is, the panel behind the terminal or a prompt, and each
+// stroke's place, width, light and glow.
+//
+// Temporary: hand-written WGSL until whole modules come from Coax (docs/verse/native-gpu.md, G6), except
+// the HUD bar, which is verse/light.coax's verse_bar (the iOS Start
+// bar's light, Stages.metal bar_fragment) written as WGSL by coax wgsl at
+// build time into the block below. The nebula is the previous
+// openagents.com splash's, unchanged.
+// SplashU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   scene 5
+//   pad0 6
+//   pad1 7
+//   panel 8
+//   k 12
+//   alpha 13
+//   tint 14
+//   pad2 15
+// x0, y0, x1, y1 in device pixels (ui.coax)
+// device px per point, opacity, 0 orange / 1 red / 2 granted
+// ---- the nebula: one full-screen triangle
+splash_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+splash_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+splash_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(splash_hash(i),splash_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(splash_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),splash_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+splash_fbm :: (q:V2)->f32 {
+  p:V2=q;
+  v:f32=0.0f32;
+  a:f32=0.5f32;
+  {
+    k:s32=0;
+    while k<5 {
+      v=v+(a*splash_noise(p));
+      p=wg_add_f2f2(wg_mul_f2f(p,2.03f32),v2(1.7f32,9.2f32));
+      a=a*0.5f32;
+      k+=1;
+    }
+  }
+  return v;
+}
+splash_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  uv:V2=wg_div_f2f(wg_sub_f2f2(v2(pos.x,pos.y),wg_mul_ff2(0.5f32,wg_at2(u,0))),u[1]);
+  t:f32=u[2]*0.035f32;
+  w:V2=v2(splash_fbm(wg_add_f2f2(wg_mul_f2f(uv,1.6f32),v2(t,-t))),splash_fbm(wg_add_f2f(wg_add_f2f2(wg_mul_f2f(uv,1.6f32),v2(-t,t*0.7f32)),4.0f32)));
+  n:f32=splash_fbm(wg_add_f2f2(wg_add_f2f2(wg_mul_f2f(uv,2.2f32),wg_mul_ff2(2.4f32,w)),v2(0.0f32,t)));
+  glow:f32=exp((-2.2f32)*wg_dot2(uv,uv));
+  tint:V3=wg_mix_f3f3f(v3(0.05f32,0.055f32,0.075f32),v3(0.20f32,0.21f32,0.27f32),n*n);
+  c:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(tint,glow),glow),(0.2f32+(0.8f32*n)));
+  star:f32=stepf(0.9975f32,splash_hash(wg_floor_f2(wg_mul_f2f(v2(pos.x,pos.y),0.5f32))))*(0.5f32+(0.5f32*sin((u[2]*1.3f32)+(splash_hash(wg_floor_f2(v2(pos.x,pos.y)))*40.0f32))));
+  c=wg_add_f3f3(c,wg_make_f3_f((star*0.5f32)*(1.0f32-(glow*0.6f32))));
+  c=wg_mul_f3f(wg_mul_f3f(c,u[3]),u[5]);
+  return wg_make_f4_f3f(splash_panel(v2(pos.x,pos.y),c,u),1.0f32);
+}
+// The panel behind the terminal, a prompt or a slide: dark glass in
+// verse_bar's shape (its two 45° cuts), faint scanlines and an inner glow
+// in the state's colour. The bar itself, edge and sweep, is drawn over it
+// as a MODE_BAR quad.
+splash_panel :: (p:V2,under:V3,u:[]f32)->V3 {
+  if (u[13]<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(u[10],u[11]),v2(u[8],u[9])),0.5f32);
+  q:V2=wg_sub_f2f2(p,wg_add_f2f2(v2(u[8],u[9]),half));
+  inside:f32=-cut_distance(-q.x,q.y,half.x,half.y,fmax(u[12],1.0f32));
+  if (inside<=(-1.0f32)) {
+    return under;
+  }
+  tint:V3=v3(1.0f32,0.55f32,0.12f32);
+  if ((u[14]>0.5f32)&&(u[14]<1.5f32)) {
+    tint=v3(1.0f32,0.24f32,0.24f32);
+  }
+  if (u[14]>1.5f32) {
+    tint=v3(1.0f32,0.65f32,0.3f32);
+  }
+  shade:V3=wg_mix_f3f3f(v3(0.055f32,0.039f32,0.024f32),v3(0.016f32,0.016f32,0.024f32),clampf((q.y+half.y)/fmax(2.0f32*half.y,1.0f32),0.0f32,1.0f32));
+  line:f32=ifx fract(p.y/3.0f32)<0.34f32 then 0.035f32 else 0.0f32;
+  glow:f32=exp((-fmax(inside,0.0f32))/18.0f32)*(ifx u[14]>1.5f32 then 0.16f32 else 0.06f32);
+  glass:V3=wg_add_f3f3(wg_add_f3f3(wg_mix_f3f3f(wg_mul_f3f(under,0.18f32),shade,0.86f32),v3(line,line,line)),wg_mul_f3f(tint,glow));
+  return wg_mix_f3f3f(under,glass,clampf(u[13],0.0f32,1.0f32)*smoothstep(-0.5f32,1.0f32,inside));
+}
+// ---- the words, the graph and the amounts: one quad per stroke
+SplashV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode (splash.coax MODE_*)
+// a HUD bar's press and flash
+splash_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+splash_fx_vs :: (_vid2:u32,_iid3:u32,in_:splash_fx_vs_in,u:[]f32)->SplashV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:SplashV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+splash_fx_fs :: (v:SplashV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  mode:f32=v.tint.w;
+  if (mode>3.5f32) {
+    // A HUD bar (ui.coax bar): place is the point from the bar's centre,
+    // shape its half width, half height, scale and light. As iOS draws it,
+    // a press shrinks the bar a little.
+    p:V2=wg_div_f2f(v.place,(1.0f32-(0.03f32*v.bar.x)));
+    c:f32=verse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),c),v.shape.w),u[3]),1.0f32);
+  }
+  if ((mode>1.5f32)&&(mode<2.5f32)) {
+    // A payment in flight, as the Payment Network demo draws one
+    // (aethyr-cpp src/paynet/render.cpp): a capsule glow-wide with a
+    // white-hot head, its tail fading back along the path.
+    r:f32=d/fmax(v.shape.w,1.0f32);
+    if (r>=1.0f32) {
+      return v4(0.0f32,0.0f32,0.0f32,1.0f32);
+    }
+    tail:f32=ifx v.shape.x>1.0f32 then mix(0.08f32,1.0f32,clampf(v.place.x/v.shape.x,0.0f32,1.0f32)) else 1.0f32;
+    g:f32=exp(((-r)*r)*5.0f32)*(1.0f32-r);
+    hot:f32=exp(((-r)*r)*36.0f32)*v.shape.y;
+    c:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),g),wg_mul_f3f(v3(1.0f32,0.95f32,0.86f32),hot)),tail),v.shape.z),u[3]);
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  if ((mode>0.5f32)&&(mode<1.5f32)) {
+    // A link: soft across, and faded within 8 px of its nodes.
+    ends:f32=smoothstep(0.0f32,8.0f32,v.place.x)*smoothstep(0.0f32,8.0f32,v.shape.x-v.place.x);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),((core*0.8f32)+halo)),ends),v.shape.z),u[3]),1.0f32);
+  }
+  if ((mode>2.5f32)&&(mode<3.5f32)) {
+    // An amount: a near-white core in a coloured glow.
+    c:V3=wg_mul_f3f(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(wg_mix_f3f3f(v3(v.tint.x,v.tint.y,v.tint.z),v3(1.0f32,0.97f32,0.92f32),0.75f32),core),wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),halo),1.8f32)),v.shape.z),u[3]);
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

@@ -1,0 +1,158 @@
+// memorial's shaders, the source of apps/openagents-web/memorial.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (memorial.module,
+// memorial.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// A memorial's page (memorial.coax): two passes. The background is the
+// garden's night in its flat style: a dusty blue sky paler toward the
+// horizon, a flat ivory moon with a soft halo, a few stars, and low faceted
+// hills along the foot that slide a little as the page scrolls; over it the
+// glass of up to four panels (the page's text, the stone's face, a photo's
+// dark surround). Then the strokes: the stroke font, the sans, the lines.
+// Every number comes from memorial.coax. Orange is Bitcoin's: none here.
+// MemorialU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   pad0 5
+//   pad1 6
+//   pad2 7
+//   panels 8
+//   moon 40
+//   pad3 44
+// per panel: x0, y0, x1, y1 (device pixels), then corner, alpha, kind, arch
+// the moon's x, y and radius (device pixels), how far the page scrolled
+// The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").
+memorial_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+memorial_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// A ridge of straight runs between hashed peaks: its height (0 to 1 of the band) at x.
+memorial_ridge :: (x:f32,step:f32,seed:f32)->f32 {
+  i:f32=floor(x/step);
+  f:f32=fract(x/step);
+  a:f32=memorial_hash(v2(i,seed));
+  b:f32=memorial_hash(v2(i+1.0f32,seed));
+  return mix(a,b,f);
+}
+memorial_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  h:f32=u[1];
+  t:f32=clampf(pos.y/h,0.0f32,1.0f32);
+  // the sky: deep dusty blue up top, paler toward the foot (sRGB, as the garden's palette)
+  c:V3=wg_mix_f3f3f(v3(0.235f32,0.29f32,0.42f32),v3(0.47f32,0.53f32,0.66f32),smoothstep(0.0f32,1.0f32,t));
+  // a few stars, still in a shot
+  cell:V2=wg_floor_f2(wg_div_f2f(v2(pos.x,pos.y),3.0f32));
+  tw:f32=ifx u[4]>0.5f32 then 1.0f32 else 0.5f32+(0.5f32*sin((u[2]*1.1f32)+(memorial_hash(cell)*40.0f32)));
+  c=wg_add_f3f3(c,wg_make_f3_f(((stepf(0.9985f32,memorial_hash(cell))*0.45f32)*tw)*(1.0f32-t)));
+  // the moon: a flat ivory disc, a soft halo round it
+  m:V4=wg_at4(u,40);
+  if (m.z>0.0f32) {
+    d:f32=wg_length2(wg_sub_f2f2(v2(pos.x,pos.y),v2(m.x,m.y)))/m.z;
+    c=wg_mix_f3f3f(c,v3(0.62f32,0.66f32,0.8f32),exp(-pow(fmax(d-1.0f32,0.0f32)*1.2f32,2.0f32))*0.35f32);
+    c=wg_mix_f3f3f(c,v3(0.96f32,0.94f32,0.87f32),1.0f32-smoothstep(0.985f32,1.015f32,d));
+  }
+  // two rows of low faceted hills along the foot, sliding a little as the page scrolls
+  k:f32=u[1]/800.0f32;
+  slide:f32=u[43]*0.08f32;
+  far:f32=h-((110.0f32+(70.0f32*memorial_ridge(pos.x+(slide*0.5f32),180.0f32*k,3.0f32)))*k);
+  near:f32=h-((40.0f32+(80.0f32*memorial_ridge(pos.x+slide,160.0f32*k,7.0f32)))*k);
+  if (pos.y>far) {
+    c=wg_mix_f3f3f(c,v3(0.33f32,0.4f32,0.5f32),0.9f32);
+  }
+  if (pos.y>near) {
+    // a facet: the ridge's run lit or in shade by its slope
+    s:f32=memorial_ridge((pos.x+slide)+1.0f32,160.0f32*k,7.0f32)-memorial_ridge((pos.x+slide)-1.0f32,160.0f32*k,7.0f32);
+    c=ifx s<0.0f32 then v3(0.33f32,0.43f32,0.42f32) else v3(0.27f32,0.36f32,0.38f32);
+  }
+  c=wg_mul_f3f(c,u[3]);
+  {
+    i:s32=0;
+    while i<4 {
+      c=memorial_panel(v2(pos.x,pos.y),c,wg_at4(u,(cast(int)(i*2))*4+8),wg_at4(u,(cast(int)((i*2)+1))*4+8));
+      i+=1;
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// A panel's glass: a rounded box, dark periwinkle and see-through, a thin pale edge.
+memorial_panel :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  alpha:f32=s.y;
+  if (alpha<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  dd:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  // a tombstone (s.w > 0): its top an arch s.w tall, half an ellipse across its width
+  arch:f32=s.w;
+  if ((arch>0.0f32)&&(p.y<(r.y+arch))) {
+    e:V2=v2((p.x-(r.x+half.x))/half.x,(p.y-(r.y+arch))/arch);
+    dd=(wg_length2(e)-1.0f32)*fmin(half.x,arch);
+  }
+  if (dd>1.0f32) {
+    return under;
+  }
+  fill:V3=v3(0.11f32,0.13f32,0.2f32);
+  if ((s.z>0.5f32)&&(s.z<1.5f32)) {
+    fill=wg_mix_f3f3f(v3(0.42f32,0.46f32,0.58f32),v3(0.3f32,0.34f32,0.45f32),clampf((p.y-r.y)/fmax(r.w-r.y,1.0f32),0.0f32,1.0f32));
+  } // the stone's face, lit from the moon above
+  if (s.z>1.5f32) {
+    fill=v3(0.04f32,0.05f32,0.08f32);
+  } // round a photo
+  inside:f32=clampf(0.5f32-dd,0.0f32,1.0f32);
+  c:V3=wg_mix_f3f3f(under,fill,alpha*inside);
+  if (s.z<1.5f32) {
+    edge:f32=clampf(1.5f32-abs(dd+0.75f32),0.0f32,1.0f32);
+    c=wg_mix_f3f3f(c,v3(0.86f32,0.88f32,0.96f32),edge*0.35f32);
+  }
+  return c;
+}
+// ---- the strokes: text and lines, one quad each (memorial.coax lit, font.coax draw_sans)
+MemorialV :: struct {pos:V4; place:V2; shape:V4; tint:V4; }
+// along, across, pixels (a glyph: its atlas coordinate)
+// length, core, light, glow
+// red, green, blue, mode
+memorial_fx_vs_in :: struct {a:V4; b:V4; c:V4; }
+memorial_fx_vs :: (_vid2:u32,_iid3:u32,in_:memorial_fx_vs_in,u:[]f32)->MemorialV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  o:MemorialV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  return o;
+}
+memorial_fx_fs :: (v:MemorialV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.tint.w>3.5f32) {
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.22f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

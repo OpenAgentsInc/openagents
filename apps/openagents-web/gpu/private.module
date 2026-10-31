@@ -1,0 +1,3 @@
+--vertices private_bg_vs,private_fx_vs
+--fragments private_bg_fs,private_fx_fs
+--bindings apps/openagents-web/gpu/private.bindings --strip private_

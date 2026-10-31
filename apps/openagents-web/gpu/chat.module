@@ -1,0 +1,3 @@
+--vertices chat_bg_vs,chat_fx_vs
+--fragments chat_bg_fs,chat_fx_fs
+--bindings apps/openagents-web/gpu/chat.bindings --strip chat_
