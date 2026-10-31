@@ -138,15 +138,15 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 // ---------------------------------------------------------------- ink and text
 
 Pen :: struct { d: f32; fade: f32; time: f32; }
-INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4;
+INK_WHITE :: 0; INK_DIM :: 1; INK_LIT :: 2; INK_PALE :: 3; INK_FAINT :: 4;
 ink :: (p: Pen, kind: int) -> Ink {
   k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
   if kind == INK_DIM { k.light = 0.48 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
   if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
-  if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
-  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
-  // small text is set in the system sans; titles, orange labels and the chrome stay in Filament
-  k.sans = kind != INK_ORANGE;
+  if kind == INK_LIT { k.light = 1.0 * p.fade; k.red = 0.5; k.green = 0.82; k.blue = 1.0; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 0.78; k.green = 0.9; k.blue = 1.0; }
+  // small text is set in the system sans; titles, accent labels and the chrome stay in Filament
+  k.sans = kind != INK_LIT;
   return k;
 }
 
@@ -210,7 +210,7 @@ rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light
 // A panel's frame, as /projects/coax draws it: faint outline, 45° cuts on the
 // plain corners, bright square brackets top left and bottom right.
 frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
-  k := ink(p, INK_ORANGE);
+  k := ink(p, INK_LIT);
   v := at; f := 0.28 * p.fade;
   xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
   ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
@@ -226,7 +226,7 @@ frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
 title_room :: (p: Pen) -> f32 { return 34 * p.d; }
 titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) -> int {
   cap := 8 * p.d; y := b.y0 + 20 * p.d;
-  o := ink(p, INK_ORANGE);
+  o := ink(p, INK_LIT);
   v := rule(out, at, b.x0 + 12 * p.d, y - cap * 0.5, b.x0 + 18 * p.d, y - cap * 0.5, o, p.fade);
   v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
   if note.count > 0 {
@@ -394,13 +394,13 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32) {
 
 header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: int) -> int {
   d := p.d; v := at; b := l.header;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
   white.sans = false; dim.sans = false;   // the top bar is Filament
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
   v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx hot == HIT_HOME then white else dim);
   crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
   v = put(out, v, "/", crumb, b.y0 + 22 * d, 7 * d, dim);
-  v = put(out, v, "PROJECTS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, orange);
+  v = put(out, v, "PROJECTS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, accent);
   ty := b.y0 + 58 * d;
   v = put(out, v, "PROJECTS", x, ty, 26 * d, white);
   buf: [64] u8;
@@ -416,13 +416,13 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: i
     v = put_fit(out, v, "WORK PEOPLE AND AGENTS CAN PICK UP", x, ty + 22 * d, 7.5 * d, white, right - x);
     v = chip(out, v, snap, l.all.x1 + 14 * d, l.mine.y1 - 5 * d, 6.5 * d, dim, p);
   }
-  // the filter: the one in force is orange; MINE says when it needs a sign-in
+  // the filter: the one in force is lit; MINE says when it needs a sign-in
   base := l.mine.y1 - 5 * d;
-  mk := ifx m == FILTER_MINE then orange else (ifx hot == HIT_MINE then white else dim);
-  ak := ifx m == FILTER_ALL then orange else (ifx hot == HIT_ALL then white else dim);
+  mk := ifx m == FILTER_MINE then accent else (ifx hot == HIT_MINE then white else dim);
+  ak := ifx m == FILTER_ALL then accent else (ifx hot == HIT_ALL then white else dim);
   v = chip(out, v, "MINE", l.mine.x0, base, cap, mk, p);
   v = chip(out, v, "ALL", l.all.x0, base, cap, ak, p);
-  v = chip(out, v, "NEW PROJECT", l.newp.x0, l.newp.y1 - 5 * d, cap, ifx hot == HIT_NEW then white else orange, p);
+  v = chip(out, v, "NEW PROJECT", l.newp.x0, l.newp.y1 - 5 * d, cap, ifx hot == HIT_NEW then white else accent, p);
   if !signed {
     note := "LOG IN TO SEE MINE";
     if l.wide { v = put_right(out, v, note, l.all.x1, l.mine.y0 - 8 * d, 6 * d, dim); }
@@ -434,18 +434,18 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, m: int, signed: bool, hot: i
 // One project's row: wide, its numbers in columns; narrow, stacked lines.
 draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: Pen, lit_up: bool, focused: bool) -> int {
   d := p.d; v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
   name := field(table, r, C_NAME); desc := field(table, r, C_DESC); working := field(table, r, C_WORKING);
   last := field(table, r, C_LAST_AT);
   x := b.x0 + 18 * d; right := b.x1 - 14 * d;
   if lit_up || focused {
     // the row the pointer or the keys are on: a bracket at its left and a mark
-    k := ifx focused then orange else ink(p, INK_PALE);
+    k := ifx focused then accent else ink(p, INK_PALE);
     v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 2 * d, b.y1 - 6 * d, k, p.fade);
     v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 8 * d, b.y0 + 6 * d, k, p.fade);
     v = rule(out, v, b.x0 + 2 * d, b.y1 - 6 * d, b.x0 + 8 * d, b.y1 - 6 * d, k, p.fade);
   }
-  nk := ifx lit_up || focused then orange else white;
+  nk := ifx lit_up || focused then accent else white;
   counts := [3] string.[field(table, r, C_OPEN), field(table, r, C_READY), field(table, r, C_DONE)];
   labels := [3] string.["OPEN", "READY", "DONE"];
   if l.wide {
@@ -458,11 +458,11 @@ draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: 
     v = put_fit(out, v, desc, x, b.y0 + 42 * d, 6.5 * d, dim, left - x - 16 * d);
     cx := left;
     for c: 0..<3 {
-      k := ifx c == 1 && parse(counts[c]) > 0 then orange else white;
+      k := ifx c == 1 && parse(counts[c]) > 0 then accent else white;
       v = put(out, v, counts[c], cx, b.y0 + 33 * d, 10 * d, k);
       cx += widths[c] * d;
     }
-    if working.count > 0 { v = put_fit(out, v, working, cx, b.y0 + 33 * d, 7 * d, orange, widths[3] * d - 14 * d); }
+    if working.count > 0 { v = put_fit(out, v, working, cx, b.y0 + 33 * d, 7 * d, accent, widths[3] * d - 14 * d); }
     else { v = put(out, v, "NOBODY", cx, b.y0 + 33 * d, 7 * d, faint); }
     cx += widths[3] * d;
     v = put(out, v, last, cx, b.y0 + 33 * d, 7 * d, dim);
@@ -474,11 +474,11 @@ draw_row :: (out: [] f32, at: int, l: Layout, b: Box, table: string, r: int, p: 
     for c: 0..<3 {
       v = put(out, v, labels[c], cx, b.y0 + 70 * d, 6 * d, dim);
       cx += text_width(labels[c], 6 * d) + 5 * d;
-      k := ifx c == 1 && parse(counts[c]) > 0 then orange else white;
+      k := ifx c == 1 && parse(counts[c]) > 0 then accent else white;
       v = put(out, v, counts[c], cx, b.y0 + 70 * d, 8 * d, k);
       cx += text_width(counts[c], 8 * d) + 14 * d;
     }
-    if working.count > 0 { v = put_fit(out, v, working, x, b.y0 + 86 * d, 6.5 * d, orange, right - x); }
+    if working.count > 0 { v = put_fit(out, v, working, x, b.y0 + 86 * d, 6.5 * d, accent, right - x); }
     else { v = put(out, v, "NOBODY WORKING NOW", x, b.y0 + 86 * d, 6.5 * d, faint); }
   }
   return rule(out, v, b.x0 + 10 * d, b.y1, b.x1 - 10 * d, b.y1, dim, 0.1 * p.fade);
@@ -529,8 +529,8 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
     v = draw_row(out, v, l, rb, table, order[k], p, hot == k, sel == k);
   }
   // more below or above: a small mark at the panel's edge
-  if scroll > 1 { v = diamond(out, v, b.x1 - 20 * d, l.rows_top + 4 * d, 3 * d, ink(p, INK_ORANGE), p.fade); }
-  if scroll < max_scroll(l, n, d) - 1 { v = diamond(out, v, b.x1 - 20 * d, b.y1 - 12 * d, 3 * d, ink(p, INK_ORANGE), p.fade); }
+  if scroll > 1 { v = diamond(out, v, b.x1 - 20 * d, l.rows_top + 4 * d, 3 * d, ink(p, INK_LIT), p.fade); }
+  if scroll < max_scroll(l, n, d) - 1 { v = diamond(out, v, b.x1 - 20 * d, b.y1 - 12 * d, 3 * d, ink(p, INK_LIT), p.fade); }
   return frame(out, v, b, 10 * d, p);
 }
 
@@ -659,7 +659,7 @@ put_center_wrapped :: (out: [] f32, at: int, text: string, cx: f32, y: f32, cap:
 
 draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -> int {
   d := p.d; dr := draft_row(text); k := drop_layout(l, d, dr >= 0); b := k.panel;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   signed := drop_flag(text, 1); signer := drop_flag(text, 2); dragging := drop_flag(text, 3);
   // a drop on a project (its page's ADD TO PROJECT): S's sixth field is its name (rc-later-drops)
   onto := ifx same(field(text, 0, 0), "S") then field(text, 0, 5) else "";
@@ -676,21 +676,21 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
   z := k.zone; cx := (z.x0 + z.x1) * 0.5; zw := box_w(z) - 24 * d; mid := (z.y0 + z.y1) * 0.5;
   dragging = dragging && signed;
   lit_zone := dragging || hot == HIT_ZONE;
-  v = dashed(out, v, z, ifx lit_zone then orange else dim, ifx dragging then p.fade else (ifx hot == HIT_ZONE then 0.8 * p.fade else 0.45 * p.fade), d);
+  v = dashed(out, v, z, ifx lit_zone then accent else dim, ifx dragging then p.fade else (ifx hot == HIT_ZONE then 0.8 * p.fade else 0.45 * p.fade), d);
   if outsider {
     v = put_center(out, v, "ONLY ITS MEMBERS ADD TO IT", cx, mid - 14 * d, 12 * d, white, zw);
   } else if dragging {
-    v = put_center(out, v, "LET GO TO DROP", cx, mid + 6 * d, 16 * d, orange, zw);
+    v = put_center(out, v, "LET GO TO DROP", cx, mid + 6 * d, 16 * d, accent, zw);
   } else if !signed {
     v = put_center(out, v, "LOG IN TO DROP FILES", cx, mid - 22 * d, 12 * d, white, zw);
     if signer {
-      v = chip(out, v, "LOG IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else orange, p);
+      v = chip(out, v, "LOG IN WITH NOSTR", k.signin.x0, k.signin.y1 - 5 * d, 9 * d, ifx hot == HIT_SIGNIN then white else accent, p);
       v = put_center(out, v, "Your browser's Nostr signer signs you in.", cx, mid + 4 * d, 6.5 * d, dim, zw);
     } else {
       v = put_center_wrapped(out, v, "Use a Nostr signer in this browser, or open your admin login link.", cx, mid + 4 * d, 6.5 * d, dim, zw, 12 * d, 2);
     }
   } else {
-    v = put_center(out, v, ifx l.wide then "DROP FILES HERE" else "TAP TO PICK FILES", cx, mid - 14 * d, 16 * d, ifx hot == HIT_ZONE then orange else white, zw);
+    v = put_center(out, v, ifx l.wide then "DROP FILES HERE" else "TAP TO PICK FILES", cx, mid - 14 * d, 16 * d, ifx hot == HIT_ZONE then accent else white, zw);
     v = put_center(out, v, ifx l.wide then "or click to pick them" else "or drop them here", cx, mid + 10 * d, 7 * d, dim, zw);
   }
   v = put_center_wrapped(out, v, "Documents, images, audio, 3D models, textures, video and zip. 64 MB a file, 40 files a drop.",
@@ -716,7 +716,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     refused := same(status, "refused");
     bb: [24] u8; bn := put_bytes(bb[..], 0, bytes);
     size := cast(string) bb[0..<bn];
-    sk := ifx refused then pale else (ifx same(status, "kept") then dim else orange);
+    sk := ifx refused then pale else (ifx same(status, "kept") then dim else accent);
     sw := ink_width(st, 6.5 * d, GAP, SPACE, sk);
     v = put_right(out, v, st, right, y, 6.5 * d, sk);
     v = put_right(out, v, size, right - sw - 14 * d, y, 6.5 * d, faint);
@@ -726,7 +726,7 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     bar := y + (ifx l.wide then 18.0f32 else 22.0f32) * d;
     v = rule(out, v, x, bar, right, bar, dim, 0.12 * p.fade);
     f := drop_progress(status, permille);
-    if f > 0 { v = rule(out, v, x, bar, x + w * f, bar, ifx refused then pale else orange, (ifx same(status, "kept") then 0.4f32 else 0.9f32) * p.fade); }
+    if f > 0 { v = rule(out, v, x, bar, x + w * f, bar, ifx refused then pale else accent, (ifx same(status, "kept") then 0.4f32 else 0.9f32) * p.fade); }
   }
   fb: [96] u8; fc := 0;
   if n == 0 { fc = put_text(fb[..], 0, "NOTHING DROPPED YET"); }
@@ -737,8 +737,8 @@ draw_drop :: (out: [] f32, at: int, l: Layout, p: Pen, text: string, hot: int) -
     if first > 0 { fc += put_text(fb[..], fc, ", "); fc += put_int(fb[..], fc, first); fc += put_text(fb[..], fc, " EARLIER NOT SHOWN"); }
   }
   v = put(out, v, cast(string) fb[0..<fc], x, b.y1 - 14 * d, 6 * d, dim);
-  if can_ask(text) { v = chip(out, v, "READ MY DROP", k.ask.x0, k.ask.y1 - 5 * d, 8 * d, ifx hot == HIT_DRAFT then white else orange, p); }
-  if can_review(text) { v = chip(out, v, "REVIEW", k.review.x0, k.review.y1 - 5 * d, 8 * d, ifx hot == HIT_REVIEW then white else orange, p); }
+  if can_ask(text) { v = chip(out, v, "READ MY DROP", k.ask.x0, k.ask.y1 - 5 * d, 8 * d, ifx hot == HIT_DRAFT then white else accent, p); }
+  if can_review(text) { v = chip(out, v, "REVIEW", k.review.x0, k.review.y1 - 5 * d, 8 * d, ifx hot == HIT_REVIEW then white else accent, p); }
   if dr >= 0 { v = draw_draft(out, v, k.draft, p, text, dr, l.wide); }
   return frame(out, v, b, 10 * d, p);
 }
@@ -758,12 +758,12 @@ can_review :: (text: string) -> bool {
 // The draft, in short: what the agent made of the drop. rc-review shows all of it.
 draw_draft :: (out: [] f32, at: int, b: Box, p: Pen, text: string, r: int, wide: bool) -> int {
   d := p.d; v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   v = rule(out, v, b.x0, b.y0, b.x1, b.y0, dim, 0.2 * p.fade);
   x := b.x0 + 8 * d; w := box_w(b) - 16 * d; y := b.y0 + 20 * d;
   status := field(text, r, 1);
   if same(status, "reading") {
-    v = put(out, v, "READING YOUR DROP", x, y, 9 * d, orange);
+    v = put(out, v, "READING YOUR DROP", x, y, 9 * d, accent);
     return put_wrapped(out, v, "An agent is reading every file and drafting the card, the design, the roadmap and what the engine needs. This takes a minute or two.",
                        x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 3);
   }
@@ -771,13 +771,13 @@ draw_draft :: (out: [] f32, at: int, b: Box, p: Pen, text: string, r: int, wide:
     v = put(out, v, "THE DRAFT DIDN'T WORK", x, y, 9 * d, pale);
     return put_wrapped(out, v, field(text, r, 9), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, 2);
   }
-  v = put(out, v, "DRAFT", x, y, 7 * d, orange);
+  v = put(out, v, "DRAFT", x, y, 7 * d, accent);
   v = put_fit(out, v, field(text, r, 2), x + text_width("DRAFT", 7 * d) + 14 * d, y, 11 * d, white, w - text_width("DRAFT", 7 * d) - 14 * d);
   v = put_wrapped(out, v, field(text, r, 3), x, y + 18 * d, 6.5 * d, dim, w, 12 * d, ifx wide then 1 else 2);
   sb: [160] u8; c := 0;
   labels := [5] string.[" MILESTONES  ", " TASKS  ", " MECHANICS  ", " OPEN QUESTIONS  ", " ENGINE NEEDS"];
   for i: 0..<5 { c += put_text(sb[..], c, field(text, r, 4 + i)); c += put_text(sb[..], c, labels[i]); }
-  return put_fit(out, v, cast(string) sb[0..<c], x, y + (ifx wide then 38.0f32 else 50.0f32) * d, 6.5 * d, orange, w);
+  return put_fit(out, v, cast(string) sb[0..<c], x, y + (ifx wide then 38.0f32 else 50.0f32) * d, 6.5 * d, accent, w);
 }
 
 // What's under (x, y) in the drop area.
@@ -1159,30 +1159,30 @@ review_row_at :: (s: [] ProjectsState, k: ReviewLayout, d: f32, x: f32, y: f32) 
 
 draw_item :: (out: [] f32, at: int, line: string, b: Box, p: Pen, lit_up: bool, open: bool) -> int {
   d := p.d; v := at; kind := item_kind(line); label := field(line, 0, 3); preview := field(line, 0, 4);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   w := box_w(b);
   if kind == 'H' {
-    v = put_fit(out, v, label, b.x0, b.y0 + 20 * d, 8 * d, orange, w);
-    return rule(out, v, b.x0, b.y0 + 26 * d, b.x1, b.y0 + 26 * d, orange, 0.25 * p.fade);
+    v = put_fit(out, v, label, b.x0, b.y0 + 20 * d, 8 * d, accent, w);
+    return rule(out, v, b.x0, b.y0 + 26 * d, b.x1, b.y0 + 26 * d, accent, 0.25 * p.fade);
   }
   if kind == 'G' { return put_fit(out, v, label, b.x0, b.y0 + 17 * d, 7.5 * d, pale, w); }
-  if kind == 'A' { return put_fit(out, v, label, b.x0, b.y0 + 14 * d, 6.5 * d, ifx lit_up then orange else faint, w); }
-  if lit_up && open { v = rule(out, v, b.x0 - 7 * d, b.y0 + 4 * d, b.x0 - 7 * d, b.y1 - 6 * d, orange, 0.9 * p.fade); }
-  v = put_fit(out, v, label, b.x0, b.y0 + 11 * d, 5.5 * d, ifx lit_up then orange else dim, w);
+  if kind == 'A' { return put_fit(out, v, label, b.x0, b.y0 + 14 * d, 6.5 * d, ifx lit_up then accent else faint, w); }
+  if lit_up && open { v = rule(out, v, b.x0 - 7 * d, b.y0 + 4 * d, b.x0 - 7 * d, b.y1 - 6 * d, accent, 0.9 * p.fade); }
+  v = put_fit(out, v, label, b.x0, b.y0 + 11 * d, 5.5 * d, ifx lit_up then accent else dim, w);
   if preview.count == 0 { return put(out, v, "empty", b.x0, b.y0 + 24 * d, 6.5 * d, faint); }
   return put_wrapped(out, v, preview, b.x0, b.y0 + 24 * d, 6.5 * d, white, w, 11 * d, 2);
 }
 
 draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) -> int {
   d := p.d; k := review_layout(l, d); b := k.panel; hot := s[0].hot;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT); pale := ink(p, INK_PALE);
   approved := review_approved(s);
   grows := review_grows(s);
   v := titled(out, at, b, ifx grows then "REVIEW CHANGES" else "REVIEW DRAFT", "", p);
   cap := FILTER_CAP * d;
   v = chip(out, v, "BACK", k.back.x0, k.back.y1 - 5 * d, cap, ifx hot == HIT_BACK then white else dim, p);
   v = chip(out, v, ifx grows then "DECLINE" else "DISCARD", k.discard.x0, k.discard.y1 - 5 * d, cap, ifx hot == HIT_DISCARD || s[0].confirm == HIT_DISCARD then white else dim, p);
-  if !approved { v = chip(out, v, ifx grows then "ACCEPT" else "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else orange, p); }
+  if !approved { v = chip(out, v, ifx grows then "ACCEPT" else "PUBLISH", k.publish.x0, k.publish.y1 - 5 * d, cap, ifx hot == HIT_PUBLISH then white else accent, p); }
   tx := b.x0 + 26 * d; ty := b.y0 + title_room(p) + 12 * d; tw := box_w(b) - 52 * d;
   note := field(review_line(s, 0), 0, 3);
   if s[0].confirm == HIT_PUBLISH {
@@ -1201,7 +1201,7 @@ draw_review :: (out: [] f32, at: int, s: [] ProjectsState, l: Layout, p: Pen) ->
                     tx, ty, 6.5 * d, dim, tw, 11 * d, 2);
   }
   if s[0].confirm != 0 {
-    v = chip(out, v, "YES", k.yes.x0, k.yes.y1 - 5 * d, cap, ifx hot == HIT_YES then white else orange, p);
+    v = chip(out, v, "YES", k.yes.x0, k.yes.y1 - 5 * d, cap, ifx hot == HIT_YES then white else accent, p);
     v = chip(out, v, "NO", k.no.x0, k.no.y1 - 5 * d, cap, ifx hot == HIT_NO then white else dim, p);
   }
   if s[0].edit_row > 0 { v = draw_editor(out, v, s, k, p); return frame(out, v, b, 10 * d, p); }
@@ -1323,10 +1323,10 @@ least :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 
 draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: Pen) -> int {
   d := p.d; v := at; hot := s[0].hot; cap := FILTER_CAP * d;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
   line := item(s, s[0].edit_row - 1);
-  v = put_fit(out, v, field(line, 0, 3), k.text.x0, k.save.y1 - 5 * d, 7 * d, orange, k.save.x0 - k.text.x0 - 12 * d);
-  v = chip(out, v, ifx s[0].saving then "SAVING" else "SAVE", k.save.x0, k.save.y1 - 5 * d, cap, ifx hot == HIT_SAVE then white else orange, p);
+  v = put_fit(out, v, field(line, 0, 3), k.text.x0, k.save.y1 - 5 * d, 7 * d, accent, k.save.x0 - k.text.x0 - 12 * d);
+  v = chip(out, v, ifx s[0].saving then "SAVING" else "SAVE", k.save.x0, k.save.y1 - 5 * d, cap, ifx hot == HIT_SAVE then white else accent, p);
   v = chip(out, v, "CANCEL", k.cancel.x0, k.cancel.y1 - 5 * d, cap, ifx hot == HIT_CANCEL then white else dim, p);
   tb := k.text;
   xs := [5] f32.[tb.x0, tb.x1, tb.x1, tb.x0, tb.x0];
@@ -1363,7 +1363,7 @@ draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: P
       ly := base + step * cast(f32) (n - top);
       if s[0].edit_all && end > from {
         b := x + ink_width(text[from..<end], tc, GAP, SPACE, white);
-        if lit(out, v, x - 1 * d, ly - tc * 0.5, b + 1 * d, ly - tc * 0.5, tc * 1.6, 0.42 * p.fade, 2 * d, orange.red, orange.green, orange.blue, MODE_STROKE) { v += 6; }
+        if lit(out, v, x - 1 * d, ly - tc * 0.5, b + 1 * d, ly - tc * 0.5, tc * 1.6, 0.42 * p.fade, 2 * d, accent.red, accent.green, accent.blue, MODE_STROKE) { v += 6; }
       }
       v = put(out, v, text[from..<end], x, ly, tc, white);
     }
@@ -1373,7 +1373,7 @@ draw_editor :: (out: [] f32, at: int, s: [] ProjectsState, k: ReviewLayout, p: P
   if p.time >= 19.9 || blink < 0.6 {
     cx := x + ink_width(text[cfrom..<caret], tc, GAP, SPACE, white);
     cy := base + step * cast(f32) (cl - top);
-    v = rule(out, v, cx + 1 * d, cy - tc - 2 * d, cx + 1 * d, cy + 3 * d, orange, 0.9 * p.fade);
+    v = rule(out, v, cx + 1 * d, cy - tc - 2 * d, cx + 1 * d, cy + 3 * d, accent, 0.9 * p.fade);
   }
   return v;
 }

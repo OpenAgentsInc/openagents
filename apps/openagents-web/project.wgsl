@@ -49,7 +49,7 @@ fn fbm(q: vec2f) -> f32 {
 }
 
 // A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint scanlines and
-// an orange glow inside its edge.
+// a blue glow inside its edge (orange is only for Bitcoin).
 fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let alpha = s.y * u.fade;
   if (alpha <= 0.0) { return under; }
@@ -58,7 +58,7 @@ fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let corner = min((w - x) + y, x + (h - y)) - s.x;
   let inside = min(side, corner * 0.7071);
   if (inside <= 0.0) { return under; }
-  let tint = vec3f(1.0, 0.55, 0.12);
+  let tint = vec3f(0.5, 0.82, 1.0);
   let shade = mix(vec3f(0.03, 0.022, 0.016), vec3f(0.01, 0.011, 0.016), clamp(y / max(h, 1.0), 0.0, 1.0));
   let line = select(0.0, 0.018, fract(p.y / 3.0) < 0.34);
   let edge = exp(-inside / 22.0) * 0.07;

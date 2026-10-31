@@ -21,16 +21,16 @@ coax_book_box :: (b:Box,d:f32)->Box {
 }
 coax_header :: (out:[]f32,at:int,b:Box,p:Pen,w:[]Work)->int {
   d:=p.d;v:=at;x:=b.x0+18*d;right:=b.x1-18*d;
-  body:=ink(p,INK_WHITE);dim:=ink(p,INK_DIM);title:=body;title.sans=false;orange:=ink(p,INK_ORANGE);
-  v=put(out,v,"OPENAGENTS / PROJECTS / COAX",x,b.y0+22*d,7*d,orange);
-  ab:=add_box(w,b,d);if ab.x1>ab.x0 {v=put(out,v,add_label(w,b,d),ab.x0,b.y0+22*d,7*d,orange);}
+  body:=ink(p,INK_WHITE);dim:=ink(p,INK_DIM);title:=body;title.sans=false;accent:=ink(p,INK_LIT);
+  v=put(out,v,"OPENAGENTS / PROJECTS / COAX",x,b.y0+22*d,7*d,accent);
+  ab:=add_box(w,b,d);if ab.x1>ab.x0 {v=put(out,v,add_label(w,b,d),ab.x0,b.y0+22*d,7*d,accent);}
   v=put(out,v,"Coax",x,b.y0+58*d,26*d,title);
   lines:[1]int;v=put_wrapped(out,v,COAX_INTRO,x,b.y0+82*d,8.5*d,body,right-x,19*d,32,lines[..]);
   book:=coax_book_box(b,d);
-  v=put(out,v,"READ THE COAX BOOK",book.x0,book.y0+28*d,9*d,orange);
-  v=rule(out,v,book.x0,book.y0+34*d,book.x0+text_width("READ THE COAX BOOK",9*d),book.y0+34*d,orange,0.8*p.fade);
+  v=put(out,v,"READ THE COAX BOOK",book.x0,book.y0+28*d,9*d,accent);
+  v=rule(out,v,book.x0,book.y0+34*d,book.x0+text_width("READ THE COAX BOOK",9*d),book.y0+34*d,accent,0.8*p.fade);
   y:=book.y1+24*d;cap:=7*d;
-  v=chip(out,v,"IN DEVELOPMENT",x,y,cap,orange,p);
+  v=chip(out,v,"IN DEVELOPMENT",x,y,cap,accent,p);
   lx:=x+chip_width("IN DEVELOPMENT",cap,p)+8*d;
   v=chip(out,v,w[0].license,lx,y,cap,dim,p);
   source:=ifx w[0].live==LIVE_LIVE then "LIVE" else ifx w[0].live==LIVE_OFFLINE then "OFFLINE" else "CONNECTING";

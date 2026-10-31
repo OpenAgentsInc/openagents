@@ -23,6 +23,8 @@ Stair Marc's (Episode 290).
    `GET /api/playtest/makers/<realm>` and hands the name to the realm as
    message 608; the realm module draws it in Coax (Orbit League, Hold the
    Stair, Belt 2200). TIP, in Bitcoin orange, opens `/realms/<realm>/tip`.
+   A realm nobody has claimed answers 200 `{realm, state: "unclaimed"}`
+   (migrations/0084); its tip page says so and links back to the realm.
 
 The maker changes their name or address with
 `POST /api/playtest/makers/<realm> {name?, lightning?}`, signed by the same key.

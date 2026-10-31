@@ -412,7 +412,7 @@ ch_chip :: (s: [] ChatState, out: [] f32, v: int, label: string, x: f32, y: f32,
   cap := 7 * p.d;
   b := chip_box(label, x, y, cap, p);
   ch_hit(s, b, id);
-  k := ifx on then ch_chrome(p, INK_ORANGE) else ifx s[0].hot == id then ch_chrome(p, INK_WHITE) else ch_chrome(p, INK_DIM);
+  k := ifx on then ch_chrome(p, INK_LIT) else ifx s[0].hot == id then ch_chrome(p, INK_WHITE) else ch_chrome(p, INK_DIM);
   return chip(out, v, label, x, y, cap, k, p);
 }
 ch_upper :: (buf: [] u8, at: int, text: string) -> int {
@@ -485,7 +485,7 @@ ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, 
       else {
         code = false;
         if draw && r.y > s[0].clip0 && code_y < s[0].clip1 {
-          r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_ORANGE), 0.45 * p.fade);
+          r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_LIT), 0.45 * p.fade);
         }
         r.y += 5 * d;
       }
@@ -522,7 +522,7 @@ ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, 
     if indent > 48 * d { indent = 48 * d; }
     if (ch_starts(line, "- ") || ch_starts(line, "* ") || ch_starts(line, "+ ")) {
       by := r.y + STEP * d * 0.8 - 3.5 * d;
-      if draw && ch_shows(s, by + 3 * d, STEP * d) { r.v = diamond(out, r.v, x0 + indent + 4 * d, by, 2.2 * d, ink(p, INK_ORANGE), 0.8 * p.fade); }
+      if draw && ch_shows(s, by + 3 * d, STEP * d) { r.v = diamond(out, r.v, x0 + indent + 4 * d, by, 2.2 * d, ink(p, INK_LIT), 0.8 * p.fade); }
       r = ch_text(s, out, r, ch_inline(line[2..<line.count], buf[..]), x0 + indent + 14 * d, x1 - x0 - indent - 14 * d, BODY, pale, 40, draw);
       continue;
     }
@@ -530,14 +530,14 @@ ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, 
     while digits < line.count && digits < 3 && line[digits] >= '0' && line[digits] <= '9' { digits += 1; }
     if digits > 0 && digits + 1 < line.count && (line[digits] == '.' || line[digits] == ')') && line[digits + 1] == ' ' {
       base := r.y + STEP * d * 0.8;
-      if draw && ch_shows(s, base, STEP * d) { r.v = put(out, r.v, line[0..<digits + 1], x0 + indent, base, 6.5 * d, ch_chrome(p, INK_ORANGE)); }
+      if draw && ch_shows(s, base, STEP * d) { r.v = put(out, r.v, line[0..<digits + 1], x0 + indent, base, 6.5 * d, ch_chrome(p, INK_LIT)); }
       r = ch_text(s, out, r, ch_inline(line[digits + 2..<line.count], buf[..]), x0 + indent + 18 * d, x1 - x0 - indent - 18 * d, BODY, pale, 40, draw);
       continue;
     }
     r = ch_text(s, out, r, ch_inline(line, buf[..]), x0, x1 - x0, BODY, pale, 200, draw);
   }
   if code && draw && r.y > s[0].clip0 && code_y < s[0].clip1 {
-    r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_ORANGE), 0.45 * p.fade);
+    r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_LIT), 0.45 * p.fade);
   }
   return r;
 }
@@ -581,7 +581,7 @@ ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, 
     cost := ch_cell(s, i, 10);
     if cred == "openagents" && cost.count > 0 && status != "queued" && status != "running" { m = ch_put(buf[..], m, " · $"); m = ch_put(buf[..], m, cost); }
     base = r.y + 10 * d;
-    if draw && ch_shows(s, base, 12 * d) { r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ch_chrome(p, INK_ORANGE), x1 - x0); }
+    if draw && ch_shows(s, base, 12 * d) { r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ch_chrome(p, INK_LIT), x1 - x0); }
     r.y += 13 * d;
     // the tools it used
     tools := 0;
@@ -593,7 +593,7 @@ ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, 
       if det.count > 0 { q = ch_put(tb[..], q, " "); q = ch_put(tb[..], q, det); }
       y0 := r.y;
       r = ch_text(s, out, r, cast(string) tb[0..<q], x0 + 10 * d, x1 - x0 - 10 * d, 6.5, ink(p, INK_DIM), 1, draw);
-      if draw && ch_shows(s, r.y, 12 * d) { r.v = rule(out, r.v, x0 + 3 * d, y0 + 4 * d, x0 + 3 * d, r.y - 2 * d, ink(p, INK_ORANGE), 0.4 * p.fade); }
+      if draw && ch_shows(s, r.y, 12 * d) { r.v = rule(out, r.v, x0 + 3 * d, y0 + 4 * d, x0 + 3 * d, r.y - 2 * d, ink(p, INK_LIT), 0.4 * p.fade); }
       tools += 1;
     }
     if tools > 0 { r.y += 4 * d; }
@@ -602,7 +602,7 @@ ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, 
     err := ch_cell(s, i, 8);
     if err.count > 0 && (status == "failed" || status == "refused" || status == "stopped") {
       r.y += 2 * d;
-      r = ch_text(s, out, r, err, x0, x1 - x0, 6.5, ch_chrome(p, INK_ORANGE), 4, draw);
+      r = ch_text(s, out, r, err, x0, x1 - x0, 6.5, ch_chrome(p, INK_LIT), 4, draw);
     }
     if status == "running" || status == "queued" {
       wb: [200] u8;
@@ -611,7 +611,7 @@ ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, 
       sw := chip_width("STOP", 7 * d, p);
       if draw && ch_shows(s, y, 14 * d) {
         pulse := 0.6 + 0.4 * ease(0.5 + 0.5 * sin(s[0].time * 4));
-        wk := ch_chrome(p, INK_ORANGE); wk.light *= pulse;
+        wk := ch_chrome(p, INK_LIT); wk.light *= pulse;
         r.v = put_fit(out, r.v, cast(string) wb[0..<w], x0, y, 6 * d, wk, x1 - x0 - sw - 12 * d);
         r.v = ch_chip(s, out, r.v, "STOP", x1 - sw, y, H_STOP, false, p);
       }
@@ -638,7 +638,7 @@ ch_field :: (s: [] ChatState, out: [] f32, v0: int, fb: Box, p: Pen, which: int,
   d := p.d; v := v0;
   on := s[0].typing && s[0].focus == which;
   typed := ch_typed(s, which);
-  k := ifx on then ink(p, INK_ORANGE) else ink(p, INK_DIM);
+  k := ifx on then ink(p, INK_LIT) else ink(p, INK_DIM);
   v = rule(out, v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx on then 0.9 * p.fade else 0.45 * p.fade);
   v = rule(out, v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
   tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
@@ -661,9 +661,9 @@ ch_field :: (s: [] ChatState, out: [] f32, v0: int, fb: Box, p: Pen, which: int,
     caret_x = tx + ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
   }
   if on && ch_all(s) && caret_x > tx + 2 * d && lit(out, v, tx - 1 * d, base - 4 * d, caret_x - 1 * d, base - 4 * d, 15 * d, 0.42 * p.fade, 2 * d,
-                                                    ink(p, INK_ORANGE).red, ink(p, INK_ORANGE).green, ink(p, INK_ORANGE).blue, MODE_STROKE) { v += 6; }
+                                                    ink(p, INK_LIT).red, ink(p, INK_LIT).green, ink(p, INK_LIT).blue, MODE_STROKE) { v += 6; }
   else if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
-    v = rule(out, v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
+    v = rule(out, v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_LIT), p.fade);
   }
   ch_hit(s, fb, hfield);
   if on || !s[0].typing { s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1; }
@@ -679,23 +679,23 @@ ch_composer :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   y := b.y0 + 16 * d;
   buf: [320] u8;
   m := 0;
-  orange := false;
-  if s[0].note_n > 0 && s[0].time - s[0].note_at < 12 { m = ch_put(buf[..], 0, cast(string) s[0].note[0..<s[0].note_n]); orange = true; }
+  accent := false;
+  if s[0].note_n > 0 && s[0].time - s[0].note_at < 12 { m = ch_put(buf[..], 0, cast(string) s[0].note[0..<s[0].note_n]); accent = true; }
   else if ch_local(s) { }
   else if ch_capped(s) {
     m = ch_put(buf[..], 0, "TODAY'S $"); m = ch_put(buf[..], m, ch_z(s, 2)); m = ch_put(buf[..], m, " FOR /CHAT IS USED UP. SAVE YOUR OWN KEY UNDER KEY, OR COME BACK TOMORROW.");
-    orange = true;
+    accent = true;
   } else if ch_has_key(s) {
     m = ch_put(buf[..], 0, "YOUR KEY · ");
     m = ch_put(buf[..], m, ifx ch_z(s, 3) == "oauth" then "CLAUDE SUBSCRIPTION" else "ANTHROPIC API KEY");
-    if ch_z(s, 5) == "1" { m = ch_put(buf[..], m, " · EXPIRED: MAKE A NEW ONE UNDER KEY"); orange = true; }
+    if ch_z(s, 5) == "1" { m = ch_put(buf[..], m, " · EXPIRED: MAKE A NEW ONE UNDER KEY"); accent = true; }
   } else if ch_first(s, 'Z') >= 0 {
     m = ch_put(buf[..], 0, "OPENAGENTS KEY · $"); m = ch_put(buf[..], m, ch_z(s, 1)); m = ch_put(buf[..], m, " OF $"); m = ch_put(buf[..], m, ch_z(s, 2)); m = ch_put(buf[..], m, " TODAY");
   }
   two := s[0].width / d < 700;
   if m > 0 {
     s[0].clip0 = 0; s[0].clip1 = s[0].height;
-    r := ch_text(s, out, ChFlow.{y = y - 9 * d, v = v}, cast(string) buf[0..<m], x0, x1 - x0, 6.5, ch_chrome(p, ifx orange then INK_ORANGE else INK_DIM), ifx two then 2 else 1, true);
+    r := ch_text(s, out, ChFlow.{y = y - 9 * d, v = v}, cast(string) buf[0..<m], x0, x1 - x0, 6.5, ch_chrome(p, ifx accent then INK_LIT else INK_DIM), ifx two then 2 else 1, true);
     v = r.v;
   }
   // the models
@@ -743,7 +743,7 @@ ch_key_panel :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
     m = ch_put(buf[..], m, " ending ");
     m = ch_put(buf[..], m, ch_z(s, 4));
     r = ch_text(s, out, r, cast(string) buf[0..<m], x0, x1 - x0, 8.5, ink(p, INK_WHITE), 2, true);
-    if ch_z(s, 5) == "1" { r = ch_text(s, out, r, "EXPIRED: make a new one with claude setup-token and REPLACE it.", x0, x1 - x0, 6.5, ch_chrome(p, INK_ORANGE), 2, true); }
+    if ch_z(s, 5) == "1" { r = ch_text(s, out, r, "EXPIRED: make a new one with claude setup-token and REPLACE it.", x0, x1 - x0, 6.5, ch_chrome(p, INK_LIT), 2, true); }
     y := r.y + 18 * d;
     v = r.v;
     v = ch_chip(s, out, v, "REPLACE", x0, y, H_REPLACE, false, p);
@@ -759,7 +759,7 @@ ch_key_panel :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
     r.y = fb.y1 + 12 * d;
     r = ch_text(s, out, r, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here.", x0, x1 - x0, 6.5, ink(p, INK_FAINT), 3, true);
   }
-  if s[0].knote_n > 0 { r.y += 4 * d; r = ch_text(s, out, r, cast(string) s[0].knote[0..<s[0].knote_n], x0, x1 - x0, 7, ch_chrome(p, INK_ORANGE), 4, true); }
+  if s[0].knote_n > 0 { r.y += 4 * d; r = ch_text(s, out, r, cast(string) s[0].knote[0..<s[0].knote_n], x0, x1 - x0, 7, ch_chrome(p, INK_LIT), 4, true); }
   cw := chip_width("CLOSE", 7 * d, p);
   r.v = ch_chip(s, out, r.v, "CLOSE", x1 - cw, b.y0 + 17 * d, H_CLOSE, false, p);
   return frame(out, r.v, b, 10 * d, p);
@@ -784,7 +784,7 @@ ch_list :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
     hot := s[0].hot == H_CONV + k;
     title := ch_cell(s, i, 2);
     if title.count == 0 { title = "(no words)"; }
-    v = put_fit(out, v, title, x0, y + 10 * d, BODY * d, ifx on then ch_chrome(p, INK_ORANGE) else ifx hot then white else ink(p, INK_PALE), x1 - x0);
+    v = put_fit(out, v, title, x0, y + 10 * d, BODY * d, ifx on then ch_chrome(p, INK_LIT) else ifx hot then white else ink(p, INK_PALE), x1 - x0);
     meta: [80] u8;
     m := ch_put(meta[..], 0, ch_model_name(ch_cell(s, i, 3)));
     m = ch_put(meta[..], m, " · "); m = ch_upper(meta[..], m, ch_cell(s, i, 4));
@@ -809,7 +809,7 @@ ch_header :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen, wide: bool)
   crumb := x + w1 + SPACE * 7 * d;
   v = put(out, v, "/", crumb, cy, 7 * d, dim);
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, "CHAT", px, cy, 7 * d, ch_chrome(p, INK_ORANGE));
+  v = put(out, v, "CHAT", px, cy, 7 * d, ch_chrome(p, INK_LIT));
   kw := chip_width("KEY", 7 * d, p);
   if !ch_local(s) { v = ch_chip(s, out, v, "KEY", right - kw, cy, H_KEY, s[0].keying, p); }
   else { kw = chip_width("LAB", 7 * d, p); v = ch_chip(s, out, v, "LAB", right - kw, cy, H_LAB, false, p); }
@@ -840,7 +840,7 @@ ch_locked :: (s: [] ChatState, out: [] f32, p: Pen) -> int {
   sw := chip_width("LOG IN", cap, p);
   b := chip_box("LOG IN", (w - sw) * 0.5, h * 0.5, cap, p);
   ch_hit(s, b, H_SIGNIN);
-  return chip(out, v, "LOG IN", (w - sw) * 0.5, h * 0.5, cap, ifx s[0].hot == H_SIGNIN then ch_chrome(p, INK_ORANGE) else white, p);
+  return chip(out, v, "LOG IN", (w - sw) * 0.5, h * 0.5, cap, ifx s[0].hot == H_SIGNIN then ch_chrome(p, INK_LIT) else white, p);
 }
 
 ch_signed_out :: (s: [] ChatState) -> bool { return s[0].status == 401 || s[0].status == 403 || s[0].status == 404; }
@@ -922,7 +922,7 @@ ch_lab :: (s: [] ChatState, out: [] f32, uniforms: [] f32, p: Pen, m: f32, g: f3
   cy := head.y0 + 26 * d;
   v := ch_chip(s, out, 0, "BACK", head.x0 + 14 * d, cy, H_BACK, false, p);
   lx := head.x0 + 14 * d + chip_width("BACK", 7 * d, p) + 16 * d;
-  v = put(out, v, "LAB", lx, cy, 7 * d, ch_chrome(p, INK_ORANGE));
+  v = put(out, v, "LAB", lx, cy, 7 * d, ch_chrome(p, INK_LIT));
   v = frame(out, v, head, 10 * d, p);
   bottom := height - m;
   comp := Box.{x0 = m, y0 = bottom - 56 * d, x1 = width - m, y1 = bottom};

@@ -392,8 +392,10 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   }
   if id == s[0].ask_id && s[0].ask_kind == ASK_MAKER {
     s[0].ask_id = -1;
+    // 200 {state: unclaimed} (0084; an older server answered 404) is a realm nobody has claimed yet
     nm := pv_value(bytes, i, "name");
-    s[0].maker_status = ifx code == 200 && nm.count > 0 then 200 else ifx code == 404 then 404 else 599;
+    unclaimed := code == 404 || (code == 200 && pv_value(bytes, i, "state") == "unclaimed");
+    s[0].maker_status = ifx unclaimed then 404 else ifx code == 200 && nm.count > 0 then 200 else 599;
     if s[0].maker_status == 200 && nm.count <= PV_CNAME { s[0].cname_n = pv_put(s[0].cname[..], 0, nm); }
     return;
   }
@@ -2770,7 +2772,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
   n := pv_fresh(s[..], out[..], u[..], 390, 844);
   coaxial_private_asked(s[..], 1);
-  pv_answer(s[..], 1, "404\n{\"error\": \"nobody has claimed this realm\"}");
+  pv_answer(s[..], 1, "200\n{\"realm\": \"belt-2200\", \"state\": \"unclaimed\"}");
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   #assert s[0].maker_status == 404 && !pv_has_hit(s[..], H_TIP0) && n > 0;
   pv_tip_ask(s[..], 100);

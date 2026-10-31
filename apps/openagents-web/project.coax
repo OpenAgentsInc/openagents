@@ -138,17 +138,17 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 
 Pen :: struct { d: f32; fade: f32; time: f32; demo: bool; }
 
-// The four inks of the page: white text, dim text, Bitcoin orange (#ff8c1f)
-// and the pale orange of something in review.
-INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4;
+// The four inks of the page: white text, dim text, the lit blue (orange is only for Bitcoin)
+// and the pale blue of something in review.
+INK_WHITE :: 0; INK_DIM :: 1; INK_LIT :: 2; INK_PALE :: 3; INK_FAINT :: 4;
 ink :: (p: Pen, kind: int) -> Ink {
   k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
   if kind == INK_DIM { k.light = 0.48 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
   if kind == INK_FAINT { k.light = 0.3 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
-  if kind == INK_ORANGE { k.light = 1.0 * p.fade; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
-  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
-  // small text is set in the system sans; titles, orange labels and the chrome stay in Filament
-  k.sans = kind != INK_ORANGE;
+  if kind == INK_LIT { k.light = 1.0 * p.fade; k.red = 0.5; k.green = 0.82; k.blue = 1.0; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 0.78; k.green = 0.9; k.blue = 1.0; }
+  // small text is set in the system sans; titles, accent labels and the chrome stay in Filament
+  k.sans = kind != INK_LIT;
   return k;
 }
 
@@ -246,7 +246,7 @@ rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light
 // (top right, bottom left) and square, bright L brackets on the highlighted
 // ones (top left, bottom right), as the HUD's panels have.
 frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
-  k := ink(p, INK_ORANGE);
+  k := ink(p, INK_LIT);
   v := at; f := 0.28 * p.fade;
   xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
   ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
@@ -260,12 +260,12 @@ frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
   return v;
 }
 
-// A panel's title: orange, with a short tick before it and a rule under it.
+// A panel's title: lit, with a short tick before it and a rule under it.
 // Returns the vertex count; the content starts at b.y0 + title_room.
 title_room :: (p: Pen) -> f32 { return 34 * p.d; }
 titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) -> int {
   cap := 8 * p.d; y := b.y0 + 20 * p.d;
-  o := ink(p, INK_ORANGE);
+  o := ink(p, INK_LIT);
   v := rule(out, at, b.x0 + 12 * p.d, y - cap * 0.5, b.x0 + 18 * p.d, y - cap * 0.5, o, p.fade);
   v = put(out, v, title, b.x0 + 24 * p.d, y, cap, o);
   if note.count > 0 {
@@ -452,7 +452,7 @@ step_mark :: (out: [] f32, at: int, mark: string, x: f32, y: f32, p: Pen) -> int
   d := p.d; v := at;
   if same(mark, ">") {
     beat := 0.55 + 0.45 * sin(p.time * 2.4);
-    return diamond(out, v, x, y, 2.4 * d, ink(p, INK_ORANGE), beat * p.fade);
+    return diamond(out, v, x, y, 2.4 * d, ink(p, INK_LIT), beat * p.fade);
   }
   if same(mark, "x") {
     k := ink(p, INK_PALE);
@@ -472,7 +472,7 @@ step_mark :: (out: [] f32, at: int, mark: string, x: f32, y: f32, p: Pen) -> int
 PlanDrawn :: struct { v: int; y: f32; }
 plan_steps :: (out: [] f32, at: int, w: [] Work, alias: string, x: f32, y0: f32, right: f32, bottom: f32, limit: int, p: Pen) -> PlanDrawn {
   d := p.d; v := at;
-  dim := ink(p, INK_DIM); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
+  dim := ink(p, INK_DIM); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE); accent := ink(p, INK_LIT);
   small := 6 * d; line := 11 * d;
   plans := w[0].plans;
   total := 0; current := -1;
@@ -527,7 +527,7 @@ plan_steps :: (out: [] f32, at: int, w: [] Work, alias: string, x: f32, y0: f32,
   if info >= 0 {
     note := field(w[0].plan_info, info, 5);
     if note.count > 0 && y <= bottom {
-      v = put(out, v, "NOTE", x, y, 5.5 * d, orange);
+      v = put(out, v, "NOTE", x, y, 5.5 * d, accent);
       v = put_fit(out, v, note, x + 26 * d, y, 5.5 * d, dim, right - x - 26 * d);
       y += line;
     }
@@ -853,7 +853,7 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
   c := camera(view, angle);
   roomy := box_w(b) > 520 * p.d;
   v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   grid := dim; grid.glow = 2.0 * p.d; grid.core = hi(0.45 * p.d, 0.7);
   // the floor, in one-unit pieces so each fades with its distance
   for i: -GRID..<GRID + 1 {
@@ -862,9 +862,9 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
       far := sqrt(x * x + z * z) / cast(f32) GRID;
       light := 0.42 * clamp(1.15 - far, 0, 1) * p.fade;
       onplot := abs(x) <= PLOT && abs(z + 0.5) <= PLOT;
-      v = seg(out, v, c, v3(x, 0, z), v3(x, 0, z + 1), ifx onplot then orange else grid, ifx onplot then light * 0.9 else light);
+      v = seg(out, v, c, v3(x, 0, z), v3(x, 0, z + 1), ifx onplot then accent else grid, ifx onplot then light * 0.9 else light);
       onplot2 := abs(z) <= PLOT && abs(x + 0.5) <= PLOT;
-      v = seg(out, v, c, v3(z, 0, x), v3(z + 1, 0, x), ifx onplot2 then orange else grid, ifx onplot2 then light * 0.9 else light);
+      v = seg(out, v, c, v3(z, 0, x), v3(z + 1, 0, x), ifx onplot2 then accent else grid, ifx onplot2 then light * 0.9 else light);
     }
   }
   // the plot's edge and its corner posts
@@ -872,8 +872,8 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
   cx := [5] f32.[-e, e, e, -e, -e];
   cz := [5] f32.[-e, -e, e, e, -e];
   for k: 0..<4 {
-    v = seg(out, v, c, v3(cx[k], 0.02, cz[k]), v3(cx[k + 1], 0.02, cz[k + 1]), orange, 0.85 * p.fade);
-    v = seg(out, v, c, v3(cx[k], 0, cz[k]), v3(cx[k], 0.7, cz[k]), orange, 0.7 * p.fade);
+    v = seg(out, v, c, v3(cx[k], 0.02, cz[k]), v3(cx[k + 1], 0.02, cz[k + 1]), accent, 0.85 * p.fade);
+    v = seg(out, v, c, v3(cx[k], 0, cz[k]), v3(cx[k], 0.7, cz[k]), accent, 0.7 * p.fade);
   }
   // the tree grows in over the first seconds
   n := t[0].n;
@@ -888,7 +888,7 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
     br := t[0].branch[i];
     from := ifx prev[br] < 0 then v3(0, t[0].trunk[i], 0) else t[0].at[prev[br]];
     recent := i >= n - 6;
-    v = seg(out, v, c, from, t[0].at[i], ifx recent then orange else twig, ifx recent then 0.8 * p.fade else 0.5 * p.fade);
+    v = seg(out, v, c, from, t[0].at[i], ifx recent then accent else twig, ifx recent then 0.8 * p.fade else 0.5 * p.fade);
     prev[br] = i;
   }
   // the nodes; the newest glow and pulse
@@ -899,15 +899,15 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
     r := (ifx recent then 3.2f32 else 2.2f32) * p.d;
     if recent {
       pulse := 0.6 + 0.4 * sin(p.time * 3.0 + cast(f32) i);
-      v = diamond(out, v, s.x, s.y, r, orange, pulse * p.fade);
+      v = diamond(out, v, s.x, s.y, r, accent, pulse * p.fade);
     } else {
       v = diamond(out, v, s.x, s.y, r, white, 0.6 * p.fade);
     }
     if i == n - 1 && i < shown {
       ring := 6 * p.d + 5 * p.d * fract(p.time * 0.7);
-      v = diamond(out, v, s.x, s.y, ring, orange, 0.6 * (1 - fract(p.time * 0.7)) * p.fade);
+      v = diamond(out, v, s.x, s.y, ring, accent, 0.6 * (1 - fract(p.time * 0.7)) * p.fade);
       small := 6.5 * p.d;
-      v = put(out, v, field(t[0].history, i, 0)[0..<7], s.x + 10 * p.d, s.y - 6 * p.d, small, orange);
+      v = put(out, v, field(t[0].history, i, 0)[0..<7], s.x + 10 * p.d, s.y - 6 * p.d, small, accent);
       if roomy { v = put(out, v, "HEAD", s.x + 10 * p.d, s.y + 5 * p.d, small, dim); }
     }
   }
@@ -924,14 +924,14 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
   // the task queue's beacon at the plot's front corner
   beacon := v3(e, 0, e);
   top := v3(e, 2.4, e);
-  v = seg(out, v, c, beacon, top, orange, 0.9 * p.fade);
+  v = seg(out, v, c, beacon, top, accent, 0.9 * p.fade);
   bs := spot(c, top);
   if bs.ok && inside(view, bs.x, bs.y) {
     beat := 0.55 + 0.45 * sin(p.time * 2.2);
-    v = diamond(out, v, bs.x, bs.y, 5 * p.d, orange, beat * p.fade);
-    v = diamond(out, v, bs.x, bs.y, 9 * p.d, orange, 0.35 * beat * p.fade);
+    v = diamond(out, v, bs.x, bs.y, 5 * p.d, accent, beat * p.fade);
+    v = diamond(out, v, bs.x, bs.y, 9 * p.d, accent, 0.35 * beat * p.fade);
     label := 6.5 * p.d;
-    v = put(out, v, "TASK QUEUE", bs.x + 13 * p.d, bs.y - 2 * p.d, label, orange);
+    v = put(out, v, "TASK QUEUE", bs.x + 13 * p.d, bs.y - 2 * p.d, label, accent);
     buf: [24] u8;
     m := number(ifx p.demo then open_tasks() else waiting, false, buf[..]);
     v = put(out, v, cast(string) buf[0..<m], bs.x + 13 * p.d, bs.y + 9 * p.d, label, white);
@@ -953,11 +953,11 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
       ns := spot(c, t[0].at[target]);
       if ns.ok {
         // work in flight: a pulse from the agent down to the commit it's on
-        beam := orange; beam.mode = MODE_LINK; beam.core = 0.5 * p.d;
+        beam := accent; beam.mode = MODE_LINK; beam.core = 0.5 * p.d;
         v = rule(out, v, s.x, s.y, ns.x, ns.y, beam, 0.45 * p.fade);
         f := fract(p.time * 1.4 + cast(f32) a * 0.4);
         hx := s.x + (ns.x - s.x) * f; hy := s.y + (ns.y - s.y) * f;
-        if lit(out, v, hx - (ns.x - s.x) * 0.08, hy - (ns.y - s.y) * 0.08, hx, hy, 1.2 * p.d, 0.9 * p.fade, 5 * p.d, 1.0, 0.55, 0.12, MODE_PULSE) { v += 6; }
+        if lit(out, v, hx - (ns.x - s.x) * 0.08, hy - (ns.y - s.y) * 0.08, hx, hy, 1.2 * p.d, 0.9 * p.fade, 5 * p.d, 0.5, 0.82, 1.0, MODE_PULSE) { v += 6; }
       }
     }
     // the marker: a small chevron over a dot
@@ -1062,20 +1062,20 @@ glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
 header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int {
   if !p.demo && project_intro(w) {return coax_header(out,at,b,p,w);}
   d := p.d; v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
   white.sans = false; dim.sans = false;   // the top bar is Filament
   x := b.x0 + 18 * d; right := b.x1 - 18 * d;
   // the project's name, line and home: from its 30621 event and its repository
   name := ifx p.demo then "COAX" else w[0].name;
   v = put(out, v, "OPENAGENTS / PROJECTS /", x, b.y0 + 22 * d, 7 * d, dim);
   crumb := x + text_width("OPENAGENTS / PROJECTS /", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, name, crumb, b.y0 + 22 * d, 7 * d, orange);
+  v = put(out, v, name, crumb, b.y0 + 22 * d, 7 * d, accent);
   if p.demo { v = put(out, v, "/ DEMO", crumb + text_width(name, 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, ink(p, INK_PALE)); }
   // a project made from a drop: its first realm, at the right of the crumbs
   rb := realm_box(w, b, d);
-  if rb.x1 > rb.x0 { v = put(out, v, realm_label(w, b, d), rb.x0, b.y0 + 22 * d, 7 * d, orange); }
+  if rb.x1 > rb.x0 { v = put(out, v, realm_label(w, b, d), rb.x0, b.y0 + 22 * d, 7 * d, accent); }
   ab := add_box(w, b, d);
-  if ab.x1 > ab.x0 { v = put(out, v, add_label(w, b, d), ab.x0, b.y0 + 22 * d, 7 * d, orange); }
+  if ab.x1 > ab.x0 { v = put(out, v, add_label(w, b, d), ab.x0, b.y0 + 22 * d, 7 * d, accent); }
   title := 26 * d;
   // a long name shrinks to fit a phone's width (PLANETARY VILLA)
   room := right - x;
@@ -1109,22 +1109,22 @@ header :: (out: [] f32, at: int, b: Box, p: Pen, wide: bool, w: [] Work) -> int 
   third := chip_width(source, cap, p) + 8 * d;
   cx := ifx wide then right - chip_width(open, cap, p) - chip_width(lic, cap, p) - 8 * d else x;
   if wide { cx = cx - third; }
-  v = chip(out, v, open, cx, chips_y, cap, orange, p);
+  v = chip(out, v, open, cx, chips_y, cap, accent, p);
   beat := 0.5 + 0.5 * sin(p.time * 2.4);
-  v = diamond(out, v, cx - 8 * d, chips_y - cap * 0.5, 2 * d, orange, beat * p.fade);
+  v = diamond(out, v, cx - 8 * d, chips_y - cap * 0.5, 2 * d, accent, beat * p.fade);
   v = chip(out, v, lic, cx + chip_width(open, cap, p) + 8 * d, chips_y, cap, dim, p);
   sx := cx + chip_width(open, cap, p) + chip_width(lic, cap, p) + 16 * d;
   if !wide && sx + chip_width(source, cap, p) > right { sx = x; chips_y = chips_y + cap + 16 * d; }
   live := !p.demo && w[0].live == LIVE_LIVE;
-  v = chip(out, v, source, sx, chips_y, cap, ifx p.demo then ink(p, INK_PALE) else ifx live then orange else dim, p);
-  if live { v = diamond(out, v, sx + chip_width(source, cap, p) + 6 * d, chips_y - cap * 0.5, 2 * d, orange, beat * p.fade); }
+  v = chip(out, v, source, sx, chips_y, cap, ifx p.demo then ink(p, INK_PALE) else ifx live then accent else dim, p);
+  if live { v = diamond(out, v, sx + chip_width(source, cap, p) + 6 * d, chips_y - cap * 0.5, 2 * d, accent, beat * p.fade); }
   return frame(out, v, b, 10 * d, p);
 }
 
 // The readouts over the scene: commits, contributors, lines, open tasks, agents at work.
 stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work, t: [] Tree) -> int {
   d := p.d; v := at;
-  dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); orange := ink(p, INK_ORANGE);
+  dim := ink(p, INK_DIM); white := ink(p, INK_WHITE); accent := ink(p, INK_LIT);
   dim.sans = false; white.sans = false;   // the stats are chrome: Filament
   labels := [5] string.["COMMITS", "CONTRIBUTORS", "LINES", "OPEN TASKS", "AGENTS AT WORK"];
   short := [5] string.["COMMITS", "PEOPLE", "LINES", "OPEN", "AGENTS"];
@@ -1143,7 +1143,7 @@ stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work, t: [] Tree) -> int {
     x := b.x0 + 16 * d + each * cast(f32) i;
     name := ifx text_width(labels[i], small) > each - 6 * d then short[i] else labels[i];
     v = put_fit(out, v, name, x, b.y0 + 18 * d, small, dim, each - 6 * d);
-    v = put_number(out, v, values[i], i == 2, x, b.y0 + 22 * d + cap, cap, ifx i == 3 then orange else white);
+    v = put_number(out, v, values[i], i == 2, x, b.y0 + 22 * d + cap, cap, ifx i == 3 then accent else white);
     v = rule(out, v, x - 6 * d, b.y0 + 10 * d, x - 6 * d, b.y0 + 26 * d + cap, dim, 0.15 * p.fade);
   }
   return v;
@@ -1152,15 +1152,15 @@ stats :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work, t: [] Tree) -> int {
 // The scene's own HUD: corner brackets, a caption and a legend.
 scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool, wk: [] Work) -> int {
   d := p.d; v := at;
-  orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
+  accent := ink(p, INK_LIT); dim := ink(p, INK_DIM); white := ink(p, INK_WHITE);
   arm := 16 * d;
   xs := [4] f32.[b.x0, b.x1, b.x0, b.x1];
   ys := [4] f32.[b.y0, b.y0, b.y1, b.y1];
   for k: 0..<4 {
     sx := ifx k % 2 == 0 then 1.0f32 else -1.0f32;
     sy := ifx k < 2 then 1.0f32 else -1.0f32;
-    v = rule(out, v, xs[k], ys[k], xs[k] + sx * arm, ys[k], orange, 0.8 * p.fade);
-    v = rule(out, v, xs[k], ys[k], xs[k], ys[k] + sy * arm, orange, 0.8 * p.fade);
+    v = rule(out, v, xs[k], ys[k], xs[k] + sx * arm, ys[k], accent, 0.8 * p.fade);
+    v = rule(out, v, xs[k], ys[k], xs[k], ys[k] + sy * arm, accent, 0.8 * p.fade);
   }
   small := 6 * d;
   pb: [96] u8;
@@ -1172,7 +1172,7 @@ scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool, wk: [] Work) 
     v = put_right(out, v, "COMMIT   RECENT   AGENT", lx, b.y1 - 12 * d, small, dim);
     w := text_width("COMMIT   RECENT   AGENT", small);
     v = diamond(out, v, lx - w - 8 * d, b.y1 - 15 * d, 2.2 * d, white, 0.6 * p.fade);
-    v = diamond(out, v, lx - w + text_width("COMMIT   ", small) - 7 * d, b.y1 - 15 * d, 2.6 * d, orange, p.fade);
+    v = diamond(out, v, lx - w + text_width("COMMIT   ", small) - 7 * d, b.y1 - 15 * d, 2.6 * d, accent, p.fade);
     ax := lx - w + text_width("COMMIT   RECENT   ", small) - 8 * d;
     v = rule(out, v, ax - 3 * d, b.y1 - 18 * d, ax, b.y1 - 15 * d, ink(p, INK_PALE), p.fade);
     v = rule(out, v, ax, b.y1 - 15 * d, ax + 3 * d, b.y1 - 18 * d, ink(p, INK_PALE), p.fade);
@@ -1181,7 +1181,7 @@ scene_hud :: (out: [] f32, at: int, b: Box, p: Pen, columns: bool, wk: [] Work) 
 }
 
 state_ink :: (p: Pen, s: int) -> Ink {
-  if s == STATE_OPEN { return ink(p, INK_ORANGE); }
+  if s == STATE_OPEN { return ink(p, INK_LIT); }
   if s == STATE_REVIEW { return ink(p, INK_PALE); }
   if s == STATE_DONE { return ink(p, INK_FAINT); }
   return ink(p, INK_WHITE);
@@ -1200,7 +1200,7 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
   o += number(claimed_tasks(), false, buf[o..<buf.count]);
   o += put_text(buf[..], o, " CLAIMED");
   v := titled(out, at, b, "TASK QUEUE", cast(string) buf[0..<o], p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 14 * d;
   cap := 7.5 * d; small := 6 * d;
@@ -1220,7 +1220,7 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
       state := field(TASKS, r, 1);
       sw := chip_width(state, small, p);
       done := s == STATE_DONE;
-      v = put(out, v, field(TASKS, r, 0), x, y, cap, ifx done then dim else orange);
+      v = put(out, v, field(TASKS, r, 0), x, y, cap, ifx done then dim else accent);
       v = chip(out, v, state, right - sw, y, small, k, p);
       title := field(TASKS, r, 2);
       lines := 1;
@@ -1249,13 +1249,13 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
   if show {
     // the live claims: who holds what, and how much of the lease is left
     ly := b.y1 - 12 * d - note_room - leases + 14 * d;
-    v = rule(out, v, x, ly - 4 * d, x + 6 * d, ly - 4 * d, orange, p.fade);
-    v = put(out, v, "LEASES", x + 12 * d, ly, small, orange);
+    v = rule(out, v, x, ly - 4 * d, x + 6 * d, ly - 4 * d, accent, p.fade);
+    v = put(out, v, "LEASES", x + 12 * d, ly, small, accent);
     v = put_right(out, v, "NIP-COORD CLAIMS · RENEW BEFORE ZERO", right, ly, 5.5 * d, dim);
     ly += 22 * d;
     for r: 0..<rows(LEASES) {
       left := clamp(cast(f32) parse(field(LEASES, r, 2)) - p.time * 30, 0, LEASE);   // time runs fast in the mockup
-      v = put(out, v, field(LEASES, r, 0), x, ly, small, orange);
+      v = put(out, v, field(LEASES, r, 0), x, ly, small, accent);
       v = put(out, v, field(LEASES, r, 1), x + idw, ly, small, pale);
       tl: [16] u8;
       mins := cast(int) (left / 60);
@@ -1269,7 +1269,7 @@ queue :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
       bx0 := x + idw; bx1 := right; by := ly + 9 * d;
       v = rule(out, v, bx0, by, bx1, by, dim, 0.12 * p.fade);
       fill := bx0 + (bx1 - bx0) * left / LEASE;
-      bar := orange; bar.core = 1.4 * d; bar.glow = 4 * d;
+      bar := accent; bar.core = 1.4 * d; bar.glow = 4 * d;
       if fill > bx0 + 1 { v = rule(out, v, bx0, by, fill, by, bar, 0.75 * p.fade); }
       for q: 1..<8 {
         tx := bx0 + (bx1 - bx0) * cast(f32) q / 8;
@@ -1302,7 +1302,7 @@ MOVES :: "NOW|SOLVER-7 renewed its claim on CX-105\n2M|MICROCODER-3 claimed CX-1
 activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
   d := p.d;
   v := titled(out, at, b, "ACTIVITY", "COMMITS ARE REAL · CLAIMS ARE SAMPLES", p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 12 * d;
   cap := 6.5 * d; step := 25 * d;
@@ -1310,7 +1310,7 @@ activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
   lead := 48 * d;
   for r: 0..<rows(MOVES) {
     if y > bottom { break; }
-    v = put(out, v, field(MOVES, r, 0), x, y, cap, orange);
+    v = put(out, v, field(MOVES, r, 0), x, y, cap, accent);
     v = put_fit(out, v, field(MOVES, r, 1), x + lead, y, cap, pale, right - x - lead);
     y += step;
   }
@@ -1320,7 +1320,7 @@ activity :: (out: [] f32, at: int, b: Box, p: Pen) -> int {
     i := n - 1 - k;
     date := field(COAX_HISTORY, i, 1);
     v = put(out, v, date[5..<date.count], x, y, cap, dim);
-    v = put(out, v, field(COAX_HISTORY, i, 0)[0..<7], x + lead, y, cap, orange);
+    v = put(out, v, field(COAX_HISTORY, i, 0)[0..<7], x + lead, y, cap, accent);
     hx := x + lead + text_width("0000000", cap) + 8 * d;
     v = put_fit(out, v, field(COAX_HISTORY, i, 4), hx, y, cap, white, right - hx);
     v = put_fit(out, v, branch_name(branch_index(field(COAX_HISTORY, i, 2))), hx, y + 10 * d, 5.5 * d, dim, right - hx);
@@ -1335,7 +1335,7 @@ POLICY :: "WHO|any registered agent key\nLOAD|one task at a time\nLEASE|2 hours,
 agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 12 * d;
   cap := 6.5 * d; step := ifx compact then 13 * d else 17 * d;
@@ -1347,7 +1347,7 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   }
   for r: 0..<rows(AGENT_STEPS) {
     if y > b.y1 - 10 * d { break; }
-    v = put(out, v, field(AGENT_STEPS, r, 0), x, y, cap, orange);
+    v = put(out, v, field(AGENT_STEPS, r, 0), x, y, cap, accent);
     v = put_fit(out, v, field(AGENT_STEPS, r, 1), x + lead, y, cap, white, right - x - lead);
     y += step;
   }
@@ -1358,8 +1358,8 @@ agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool) -> int {
   }
   if !compact && y + 90 * d < b.y1 - 10 * d {
     // the contribution policy (the spec's first one)
-    v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
-    v = put(out, v, "POLICY", x + 12 * d, y, 6 * d, orange);
+    v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, accent, p.fade);
+    v = put(out, v, "POLICY", x + 12 * d, y, 6 * d, accent);
     y += 18 * d;
     for r: 0..<rows(POLICY) {
       if y > b.y1 - 12 * d { break; }
@@ -1405,7 +1405,7 @@ lo_int :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 // a bright bar down its left: the row under the pointer, the keys' or the
 // open one.
 lit_row :: (out: [] f32, at: int, b: Box, light: f32, p: Pen) -> int {
-  k := ink(p, INK_ORANGE); c := 6 * p.d; v := at;
+  k := ink(p, INK_LIT); c := 6 * p.d; v := at;
   xs := [7] f32.[b.x0, b.x1 - c, b.x1, b.x1, b.x0 + c, b.x0, b.x0];
   ys := [7] f32.[b.y0, b.y0, b.y0 + c, b.y1, b.y1, b.y1 - c, b.y0];
   for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, 0.4 * light * p.fade); }
@@ -1424,7 +1424,7 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   o += put_text(buf[..], o, " WAITING");
   if w[0].done_n > 0 { o += put_text(buf[..], o, " · "); o += number(w[0].done_n, false, buf[o..<buf.count]); o += put_text(buf[..], o, " DONE"); }
   v := titled(out, at, b, "TASK QUEUE", cast(string) buf[0..<o], p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 14 * d;
   cap := 7.5 * d; small := 6 * d;
@@ -1453,15 +1453,15 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     if y + 14 * d > bottom { break; }
     state := ifx sc == SEC_WORKING then "IN PROGRESS" else ifx sc == SEC_DONE then "DONE" else ifx sc == SEC_READY then "READY"
              else ifx w[0].status[r] == WS_DRAFT then "DRAFT" else "WAITING";
-    hue := ifx sc == SEC_WORKING then white else ifx sc == SEC_READY then orange else dim;
+    hue := ifx sc == SEC_WORKING then white else ifx sc == SEC_READY then accent else dim;
     sw := chip_width(state, small, p);
     am := put_text(buf[..], 0, "#");
     am += put_text(buf[..], am, item(w, text, r, 0));
-    v = put(out, v, cast(string) buf[0..<am], x, y, cap, ifx sc == SEC_WAITING || sc == SEC_DONE then dim else orange);
+    v = put(out, v, cast(string) buf[0..<am], x, y, cap, ifx sc == SEC_WAITING || sc == SEC_DONE then dim else accent);
     if sc == SEC_WORKING {
       // in progress: the chip beats, someone is on it now
       beat := 0.55 + 0.45 * sin(p.time * 2.4);
-      v = diamond(out, v, right - sw - 7 * d, y - small * 0.5, 2 * d, orange, beat * p.fade);
+      v = diamond(out, v, right - sw - 7 * d, y - small * 0.5, 2 * d, accent, beat * p.fade);
     }
     v = chip(out, v, state, right - sw, y, small, hue, p);
     title := item(w, text, r, 3);
@@ -1561,11 +1561,11 @@ real_queue :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
 activity_rows :: (out: [] f32, at: int, x: f32, y0: f32, right: f32, bottom: f32, p: Pen, w: [] Work) -> int {
   rows_of := w[0].log;
   d := p.d; v := at;
-  dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE);
+  dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE); white := ink(p, INK_WHITE);
   small := 5.5 * d;
   y := y0;
-  v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, orange, p.fade);
-  v = put(out, v, "ACTIVITY", x + 12 * d, y, small, orange);
+  v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, accent, p.fade);
+  v = put(out, v, "ACTIVITY", x + 12 * d, y, small, accent);
   v = put_right(out, v, "CHICAGO TIME", right, y, small, dim);
   y += 15 * d;
   if rows(rows_of) == 0 {
@@ -1588,7 +1588,7 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
   d := p.d;
   text := w[0].text;
   v := titled(out, at, b, "MILESTONES", "FROM NOSTR", p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 12 * d;
   cap := 6.5 * d; small := 5.5 * d;
@@ -1602,7 +1602,7 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
     if root >= 0 {
       if y + 30 * d > b.y1 - 10 * d - keep { break; }
       if g > 0 { y += 4 * d; }
-      v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, ifx g == 0 then orange else pale, p.fade);
+      v = rule(out, v, x, y - 4 * d, x + 6 * d, y - 4 * d, ifx g == 0 then accent else pale, p.fade);
       v = put_fit(out, v, item(w, text, root, 3), x + 12 * d, y, 6.5 * d, ifx g == 0 then white else pale, right - x - 12 * d);
       y += 15 * d;
     }
@@ -1623,13 +1623,13 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
         rb: [16] u8;
         rn := number(pr.ready, false, rb[..]);
         rn += put_text(rb[..], rn, " READY");
-        v = put_right(out, v, cast(string) rb[0..<rn], right - 34 * d, y, small, orange);
+        v = put_right(out, v, cast(string) rb[0..<rn], right - 34 * d, y, small, accent);
       }
       // the bar: done of total
       by := y + 6 * d; bx1 := right;
       v = rule(out, v, x, by, bx1, by, dim, 0.1 * p.fade);
       if pr.total > 0 && pr.done > 0 {
-        bar := orange; bar.core = 1.1 * d; bar.glow = 3 * d;
+        bar := accent; bar.core = 1.1 * d; bar.glow = 3 * d;
         v = rule(out, v, x, by, x + (bx1 - x) * cast(f32) pr.done / cast(f32) pr.total, by, bar, 0.75 * p.fade);
       }
       y += 15 * d;
@@ -1646,7 +1646,7 @@ plan :: (out: [] f32, at: int, b: Box, p: Pen, w: [] Work) -> int {
 real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activity: bool, w: [] Work) -> int {
   d := p.d;
   v := titled(out, at, b, "FOR AGENTS", ifx compact then "" else "HOW TO CONTRIBUTE", p);
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
   x := b.x0 + 16 * d; right := b.x1 - 14 * d;
   y := b.y0 + title_room(p) + 12 * d;
   cap := 6.5 * d; step := ifx compact then 13 * d else 17 * d;
@@ -1658,7 +1658,7 @@ real_agents :: (out: [] f32, at: int, b: Box, p: Pen, compact: bool, with_activi
   }
   for r: 0..<rows(w[0].steps) {
     if y > b.y1 - 10 * d { break; }
-    v = put(out, v, field(w[0].steps, r, 0), x, y, cap, orange);
+    v = put(out, v, field(w[0].steps, r, 0), x, y, cap, accent);
     v = put_fit(out, v, field(w[0].steps, r, 1), x + lead, y, cap, white, right - x - lead);
     y += step;
   }
@@ -1805,7 +1805,7 @@ state_label :: (w: [] Work, r: int) -> string {
 }
 state_hue :: (w: [] Work, r: int, p: Pen) -> Ink {
   if w[0].kind[r] == KIND_TASK && w[0].claimed[r] { return ink(p, INK_WHITE); }
-  if w[0].ready[r] { return ink(p, INK_ORANGE); }
+  if w[0].ready[r] { return ink(p, INK_LIT); }
   return ink(p, INK_DIM);
 }
 
@@ -1849,10 +1849,10 @@ flow :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, w
   return Flow.{v = v, y = yy};
 }
 
-// A section's name in the detail: an orange tick, the name and a faint rule.
+// A section's name in the detail: a lit tick, the name and a faint rule.
 section :: (out: [] f32, at: int, name: string, x: f32, y: f32, right: f32, top: f32, bottom: f32, p: Pen) -> int {
   if !in_view(y, 6 * p.d, top, bottom) { return at; }
-  o := ink(p, INK_ORANGE);
+  o := ink(p, INK_LIT);
   v := rule(out, at, x, y - 3 * p.d, x + 6 * p.d, y - 3 * p.d, o, p.fade);
   v = put(out, v, name, x + 12 * p.d, y, 6 * p.d, o);
   sx := x + 18 * p.d + text_width(name, 6 * p.d);
@@ -1873,9 +1873,9 @@ related :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, k: int, x: f32
   tw := text_width(tag, cap);
   link := Box.{x0 = x - 4 * d, y0 = y - cap - 6 * d, x1 = x + tw + 4 * d, y1 = y + 6 * d};
   hot := !s[0].touch && s[0].pointed && inside(link, s[0].px, s[0].py);
-  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_ORANGE));
+  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_LIT));
   // underlined, as a link is
-  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_ORANGE), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
+  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_LIT), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
   if s[0].link_n < MAX_LINKS { s[0].link_box[s[0].link_n] = link; s[0].link_row[s[0].link_n] = k; s[0].link_n += 1; }
   st := state_label(w, k); small := 5.5 * d;
   sw := text_width(st, small);
@@ -1901,8 +1901,8 @@ far_related :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, fl: int, x
   tw := text_width(tag, cap);
   link := Box.{x0 = x - 4 * d, y0 = y - cap - 6 * d, x1 = x + tw + 4 * d, y1 = y + 6 * d};
   hot := !s[0].touch && s[0].pointed && inside(link, s[0].px, s[0].py);
-  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_ORANGE));
-  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_ORANGE), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
+  v = put(out, v, tag, x, y, cap, ink(p, ifx hot then INK_WHITE else INK_LIT));
+  v = rule(out, v, x, y + 3 * d, x + tw, y + 3 * d, ink(p, INK_LIT), (ifx hot then 0.9f32 else 0.45f32) * p.fade);
   if s[0].link_n < MAX_LINKS { s[0].link_box[s[0].link_n] = link; s[0].link_row[s[0].link_n] = -2 - fl; s[0].link_n += 1; }
   st := far_label(cell(lt, fl, 4)); small := 5.5 * d;
   sw := text_width(st, small);
@@ -1945,7 +1945,7 @@ far_rows :: (out: [] f32, at: int, s: [] ProjectState, w: [] Work, r: int, dir: 
 // and the event. Records the panel, CLOSE and the links for the pointer.
 detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work) -> int {
   d := p.d; text := w[0].text; r := s[0].open - 1;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); pale := ink(p, INK_PALE); faint := ink(p, INK_FAINT);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); pale := ink(p, INK_PALE); faint := ink(p, INK_FAINT);
   s[0].panel = b; s[0].link_n = 0;
   narrow := box_w(b) < 440 * d;
   pad := (ifx narrow then 16.0f32 else 24.0f32) * d;
@@ -1957,20 +1957,20 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
   big := 11 * d; small := 6.5 * d;
   n := put_text(buf[..], 0, "#");
   n += put_text(buf[..], n, item(w, text, r, 0));
-  v = rule(out, v, b.x0 + 10 * d, y - big * 0.5, x - 6 * d, y - big * 0.5, orange, p.fade);
-  v = put(out, v, cast(string) buf[0..<n], x, y, big, orange);
+  v = rule(out, v, b.x0 + 10 * d, y - big * 0.5, x - 6 * d, y - big * 0.5, accent, p.fade);
+  v = put(out, v, cast(string) buf[0..<n], x, y, big, accent);
   sx := x + text_width(cast(string) buf[0..<n], big) + 14 * d;
   st := state_label(w, r);
   v = chip(out, v, st, sx, y - 1 * d, small, state_hue(w, r, p), p);
   if w[0].kind[r] == KIND_TASK && w[0].claimed[r] {
     beat := 0.55 + 0.45 * sin(p.time * 2.4);
-    v = diamond(out, v, sx + chip_width(st, small, p) + 9 * d, y - 1 * d - small * 0.5, 2 * d, orange, beat * p.fade);
+    v = diamond(out, v, sx + chip_width(st, small, p) + 9 * d, y - 1 * d - small * 0.5, 2 * d, accent, beat * p.fade);
   }
   cw := chip_width("CLOSE", small, p);
   cx := right - cw;
   close := Box.{x0 = cx - 30 * d, y0 = b.y0, x1 = b.x1, y1 = y + 14 * d};
   hot := !s[0].touch && s[0].pointed && inside(close, s[0].px, s[0].py);
-  ck := ink(p, ifx hot then INK_ORANGE else INK_PALE);
+  ck := ink(p, ifx hot then INK_LIT else INK_PALE);
   v = chip(out, v, "CLOSE", cx, y - 1 * d, small, ck, p);
   // an X before it, and ESC for a keyboard
   xc := cx - 12 * d; yc := y - 1 * d - small * 0.5; xr := 3.5 * d;
@@ -2045,7 +2045,7 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
       if in_view(y, body, top, bottom) { v = step_mark(out, v, mark, x + 3 * d, y - body * 0.45, p); }
       now := same(mark, ">");
       lead := 14.0f32 * d;
-      if now && in_view(y, body, top, bottom) { v = put(out, v, "NOW", x + lead, y, 5.5 * d, orange); lead += 26 * d; }
+      if now && in_view(y, body, top, bottom) { v = put(out, v, "NOW", x + lead, y, 5.5 * d, accent); lead += 26 * d; }
       tint := ifx now then white else ifx same(mark, "x") then dim else pale;
       f := flow(out, v, cell(plans, k, 2), x + lead, y, body, tint, tw - lead, step, top, bottom);
       v = f.v; y = f.y + 2 * d;
@@ -2071,12 +2071,12 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
       h := 0;
       while h < line.count && (line[h] == '#' || line[h] == ' ') { h += 1; }
       y += 4 * d;
-      if in_view(y, small, top, bottom) { v = put_fit(out, v, line[h..<line.count], x, y, small, orange, tw); }
+      if in_view(y, small, top, bottom) { v = put_fit(out, v, line[h..<line.count], x, y, small, accent, tw); }
       y += step + 2 * d;
       continue;
     }
     if line.count > 2 && (line[0] == '-' || line[0] == '*') && line[1] == ' ' {
-      if in_view(y, body, top, bottom) { v = diamond(out, v, x + 3 * d, y - body * 0.45, 1.8 * d, orange, 0.8 * p.fade); }
+      if in_view(y, body, top, bottom) { v = diamond(out, v, x + 3 * d, y - body * 0.45, 1.8 * d, accent, 0.8 * p.fade); }
       f := flow(out, v, line[2..<line.count], x + 14 * d, y, body, pale, tw - 14 * d, step, top, bottom);
       v = f.v; y = f.y + 2 * d;
       continue;
@@ -2136,7 +2136,7 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
     when := piece(one, PART_BREAK, 0); by := piece(one, PART_BREAK, 1);
     if in_view(y, small, top, bottom) {
       v = put(out, v, when, x, y, small, dim);
-      if by.count > 0 { v = put_fit(out, v, by, x + text_width(when, small) + 10 * d, y, small, orange, right - x - text_width(when, small) - 10 * d); }
+      if by.count > 0 { v = put_fit(out, v, by, x + text_width(when, small) + 10 * d, y, small, accent, right - x - text_width(when, small) - 10 * d); }
     }
     y += 13 * d;
     f := flow(out, v, piece(one, PART_BREAK, 2), x + 8 * d, y, body, pale, tw - 8 * d, step, top, bottom);
@@ -2159,7 +2159,7 @@ detail :: (out: [] f32, at: int, b: Box, p: Pen, s: [] ProjectState, w: [] Work)
     v = rule(out, v, bx, top, bx, bottom, dim, 0.12 * p.fade);
     seen_part := span / (span + s[0].scroll_max);
     t0 := top + (span - span * seen_part) * s[0].scroll / s[0].scroll_max;
-    thumb := orange; thumb.core = 1.1 * d;
+    thumb := accent; thumb.core = 1.1 * d;
     v = rule(out, v, bx, t0, bx, t0 + span * seen_part, thumb, 0.8 * p.fade);
   }
   return frame(out, v, b, 10 * d, p);

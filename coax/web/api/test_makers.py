@@ -32,7 +32,7 @@ mk_maker_key = tempfile.mktemp()
 mk_maker_pk = subprocess.run([os.environ["SIGN"], "--new", mk_maker_key], capture_output=True, text=True, check=True).stdout.strip()
 
 s, b, _ = call("GET", "/api/playtest/makers/orbit-league")
-check("makers: an unclaimed realm has no maker", s == 404, (s, b))
+check("makers: an unclaimed realm says so, with no maker", s == 200 and json.loads(b) == {"realm": "orbit-league", "state": "unclaimed"}, (s, b))
 
 s, b, _ = mk_post("/api/admin/makers/orbit-league/code", {})
 check("makers: a code needs an admin (nobody signed in)", s == 401, (s, b))

@@ -275,7 +275,7 @@ ad_row_y :: (b: Box, d: f32, r: int) -> f32 { return b.y0 + (34 + 22) * d + AD_R
 
 ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> int {
   d := p.d; b := l.head;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
   x := b.x0 + 18 * d;
   v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
   crumb := x + ink_width("OPENAGENTS", 7 * d, GAP, SPACE, dim) + SPACE * 7 * d;  // dim ink is the sans: measure it as drawn
@@ -285,9 +285,9 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   note := ifx s[0].status == 0 || s[0].status == 1 then "LOADING" else ifx s[0].view == AD_SESSION then "ONE SESSION"
           else ifx s[0].page == AD_REPORTS && s[0].said > 0 then AD_ACT_DONE[s[0].said - 1]
           else ifx s[0].page == AD_REPORTS && s[0].said < 0 then "NOT DONE: ASKED AGAIN" else "CHICAGO TIME";
-  v = put_right(out, v, note, b.x1 - 18 * d, b.y0 + 22 * d, 6.5 * d, ifx s[0].status <= 1 then orange else dim);
+  v = put_right(out, v, note, b.x1 - 18 * d, b.y0 + 22 * d, 6.5 * d, ifx s[0].status <= 1 then accent else dim);
   if s[0].view == AD_SESSION && s[0].page != AD_REPORTS {
-    v = put_fit(out, v, cast(string) s[0].sid[0..<s[0].sid_n], x + text_width("ANALYTICS", 22 * d) + 20 * d, b.y0 + 54 * d, 8 * d, orange,
+    v = put_fit(out, v, cast(string) s[0].sid[0..<s[0].sid_n], x + text_width("ANALYTICS", 22 * d) + 20 * d, b.y0 + 54 * d, 8 * d, accent,
                 b.x1 - x - text_width("ANALYTICS", 22 * d) - 40 * d);
   }
   cap := 7.5 * d;
@@ -295,7 +295,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
     if !l.shown[i] { continue; }
     on := (i == 0 && s[0].view == AD_OVERVIEW) || (i == 1 && s[0].view == AD_SESSIONS) || (i >= 2 && i <= 5 && s[0].days == i - 2)
        || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos) || (i == 15 && s[0].team);
-    k := ifx on then orange else ifx s[0].hot == AD_CHIP + i then white else dim;
+    k := ifx on then accent else ifx s[0].hot == AD_CHIP + i then white else dim;
     v = chip(out, v, AD_CHIP_LABELS[i], l.chips[i].x0, l.chips[i].y1 - 5 * d, cap, k, p);
   }
   return frame(out, v, b, 10 * d, p);
@@ -303,7 +303,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
 
 ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32, p: Pen) -> int {
   d := p.d; v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); orange := ink(p, INK_ORANGE); faint := ink(p, INK_FAINT);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
   nrows := s[0].sec_rows[k]; cols := ifx ad_flag(s, k, 'r') then s[0].sec_cols[k] - 1 else s[0].sec_cols[k];   // "r": the last value is a button
   if b.y0 >= top {
     buf: [24] u8;
@@ -333,15 +333,15 @@ ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32,
     lit_up := opens && s[0].hot == i;
     for c: 0..<cols {
       text := ad_cell(s, s[0].row_at[i], s[0].row_end[i], c);
-      ik := ifx lit_up then orange else ifx c == 0 && opens then ink(p, INK_PALE) else ifx c == 0 then white else dim;
+      ik := ifx lit_up then accent else ifx c == 0 && opens then ink(p, INK_PALE) else ifx c == 0 then white else dim;
       v = put_fit(out, v, text, xs[c], y0 + 12 * d, 7 * d, ik, xs[c + 1] - xs[c] - 8 * d);
     }
-    if lit_up { v = rule(out, v, b.x0 + 4 * d, y0 + 2 * d, b.x0 + 4 * d, y0 + 15 * d, orange, p.fade); }
+    if lit_up { v = rule(out, v, b.x0 + 4 * d, y0 + 2 * d, b.x0 + 4 * d, y0 + 15 * d, accent, p.fade); }
     bx: [2] Box; acts: [2] int;
     nb := ad_buttons(s, k, b, r, bx[..], acts[..]);
     for j: 0..<nb {
       target := AD_ACT + i * 4 + acts[j];
-      bk := ifx s[0].hot == target then orange else ifx acts[j] == 0 then white else dim;
+      bk := ifx s[0].hot == target then accent else ifx acts[j] == 0 then white else dim;
       v = chip(out, v, AD_ACT_LABELS[acts[j]], bx[j].x0, bx[j].y1 - 5 * d, 6 * d, bk, p);
     }
   }

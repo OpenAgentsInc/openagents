@@ -951,9 +951,9 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   // the title, and GALAXY
   bw := 104 * k;
   tb := Box.{x0 = g, y0 = g, x1 = w - g - bw - 10 * k, y1 = g + 44 * k};
-  plate(s, tb, 0.92, LOOK_PLAIN);
+  // a heading, not a plate: a plate here read as a box to type in
   title := "BUILD YOUR OWN REALM";
-  n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 28 * k, fit_cap(title, 12 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.98), false, false);
+  n = write(d, out, n, title, tb.x0 + 2 * k, tb.y0 + 31 * k, fit_cap(title, 15 * k, tb.x1 - tb.x0 - 4 * k), GAP, SPACE, white(k, 0.98), false, false);
   n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "GALAXY", false);
   if s[0].phase == PH_SETUP { return draw_setup(s, out, n, tb.y1 + 14 * k); }
 

@@ -2,8 +2,9 @@
 // address its tips go to. Every rule is SQL's (migrations/0072_realm_makers.sql); this file reads
 // who asks.
 //
-//   GET  /api/playtest/makers/<realm>          -> 200 {realm, name, pubkey} (the maker also gets
-//                                                 lightning and mine), 404 unclaimed
+//   GET  /api/playtest/makers/<realm>          -> 200 {realm, state: claimed, name, pubkey} (the maker
+//                                                 also gets lightning and mine), or 200 {realm, state:
+//                                                 unclaimed} (0084); 404 a bad slug
 //   POST /api/playtest/makers/<realm>/claim {code, name, lightning}
 //                                              -> 200 {realm, name, lightning}; 400, 401 not logged in,
 //                                                 404 not this realm's code, 409 used already

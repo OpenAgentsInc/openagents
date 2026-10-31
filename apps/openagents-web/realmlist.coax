@@ -479,6 +479,8 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
   // through a label: the floor's and every tower's are cut around its plate
   name_cap := (ifx l.wide then 6.5f32 else 6.0f32) * d;
   named := l.wide && k.c > 70 * d;
+  shows: [MAX_REALMS] bool;
+  label_names(s, k, order, n, named, name_cap, p, shows[..]);
   clear: [MAX_REALMS * 2] Box; cn := 0;
   pad := 3 * d;
   for i: 0..<n {
@@ -486,14 +488,10 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
     x := s[0].gx[r]; y := s[0].gy[r]; h := s[0].gh[r];
     cx := sx(k, x, y); ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
     buf: [8] u8; m := put_int(buf[..], 0, i + 1);
-    rank_y := ifx named then ty - name_cap - 7 * d else ty;
+    rank_y := ifx shows[r] then ty - name_cap - 7 * d else ty;
     rw := ink_width(cast(string) buf[0..<m], 6 * d, GAP, SPACE, ink(p, INK_DIM));
     clear[cn] = Box.{x0 = cx - rw * 0.5 - pad, y0 = rank_y - 6 * d - pad, x1 = cx + rw * 0.5 + pad, y1 = rank_y + pad}; cn += 1;
-    if named {
-      title := field(REALMS_ROWS, r, C_TITLE);
-      nw := ink_width(title, name_cap, GAP, SPACE, ink(p, INK_DIM));
-      clear[cn] = Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - name_cap * 1.15 - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + name_cap * 0.35 + pad}; cn += 1;
-    }
+    if shows[r] { clear[cn] = name_plate(s, k, r, name_cap, p); cn += 1; }
   }
   // the floor: the cells, and fainter lines a cell beyond them
   fl := ink(p, INK_DIM);
@@ -528,21 +526,50 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
     buf: [8] u8; m := put_int(buf[..], 0, rank + 1);
     ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
     lab := ink(p, ifx on then INK_ACCENT else INK_DIM);
-    if named {
+    if shows[r] {
       v = put_center(out, v, field(REALMS_ROWS, r, C_TITLE), sx(k, x, y), ty, name_cap, ifx on then ink(p, INK_PALE) else ink(p, INK_DIM));
       v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty - name_cap - 7 * d, 6 * d, lab);
     } else {
       v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty, 6 * d, lab);
     }
   }
-  // the lit realm's name along the panel's foot, where a phone has no room over the towers
-  if !named {
-    lit_rank := ifx s[0].hot >= 0 && s[0].hot < n then s[0].hot else s[0].sel;
-    if lit_rank >= 0 && lit_rank < n {
+  // the lit realm's name along the panel's foot, when it has no room over its tower (a phone, or
+  // a tower another stands over)
+  lit_rank := ifx s[0].hot >= 0 && s[0].hot < n then s[0].hot else s[0].sel;
+  if lit_rank >= 0 && lit_rank < n && !shows[order[lit_rank]] {
+    {
       v = put_center(out, v, field(REALMS_ROWS, order[lit_rank], C_TITLE), (b.x0 + b.x1) * 0.5, b.y1 - 12 * d, 8 * d, ink(p, INK_PALE));
     }
   }
   return frame(out, v, b, 10 * d, p);
+}
+
+// A tower's name plate over its top.
+name_plate :: (s: [] RealmsState, k: Iso, r: int, cap: f32, p: Pen) -> Box {
+  d := p.d; pad := 3 * d;
+  cx := sx(k, s[0].gx[r], s[0].gy[r]); ty := sy(k, s[0].gx[r] - HALF, s[0].gy[r] - HALF, s[0].gh[r]) - 6 * d;
+  nw := ink_width(field(REALMS_ROWS, r, C_TITLE), cap, GAP, SPACE, ink(p, INK_DIM));
+  return Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - cap * 1.15 - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + cap * 0.35 + pad};
+}
+overlaps :: (a: Box, b: Box) -> bool { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+// Which towers' names show over them: a name shows only where it covers no other tower and no name
+// already shown (in rank order); the rest keep just their rank, and the lit one's name goes
+// along the panel's foot.
+label_names :: (s: [] RealmsState, k: Iso, order: [] int, n: int, named: bool, cap: f32, p: Pen, shows: [] bool) {
+  for i: 0..<n { shows[order[i]] = false; }
+  if !named { return; }
+  for i: 0..<n {
+    r := order[i];
+    b := name_plate(s, k, r, cap, p);
+    ok := true;
+    for j: 0..<n {
+      q := order[j];
+      if q == r { continue; }
+      if overlaps(b, tower_box(k, s[0].gx[q], s[0].gy[q], s[0].gh[q])) { ok = false; }
+      if shows[q] && overlaps(b, name_plate(s, k, q, cap, p)) { ok = false; }
+    }
+    shows[r] = ok;
+  }
 }
 
 // Each tower eases toward its place and height; still (a golden) puts it there.
@@ -996,6 +1023,34 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
       for k: 0..<SORTS { #assert apart(l.make, l.chips[k]); }
       #assert l.list.y1 - l.rows_top > l.row_h;
     }
+  }
+}
+
+#test "a tower's name shows only where it covers no other tower; the lit one's goes along the foot" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] RealmsState;
+  visits(s[..], "the-grid|13|720|4000\nhaunted-house|7|720|3000\neverglade|5|3600|2000\ndead-gears|2|180|1000\nice-cream-man|1|10|900\nhecates-cemetery|1|10|800\n");
+  w: f32 = 1440; h: f32 = 900;
+  p := Pen.{d = 1, fade = 1, time = 0};
+  l := layout(w, h, 1);
+  for sort: 0..<SORTS {
+    s[0].sort = sort; s[0].hot = -1; s[0].sel = -1;
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 1, 0, true) > 0;
+    order: [MAX_REALMS] int;
+    n := sorted(s[..], sort, order[..]);
+    k := iso_of(l.scene, n, p);
+    shows: [MAX_REALMS] bool;
+    label_names(s[..], k, order[..], n, true, 6.5, p, shows[..]);
+    named := 0;
+    for i: 0..<n {
+      r := order[i];
+      if !shows[r] { continue; }
+      named += 1;
+      b := name_plate(s[..], k, r, 6.5, p);
+      for j: 0..<n { q := order[j]; if q != r { #assert !overlaps(b, tower_box(k, s[0].gx[q], s[0].gy[q], s[0].gh[q])); } }
+    }
+    #assert named > 0;
   }
 }
 
