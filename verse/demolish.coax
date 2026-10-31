@@ -112,6 +112,15 @@ DEMO_GROUPS :: 256;        // groups whose middles the pieces tip away from
 DEMO_SIDES :: 12000;
 DEMO_SIDE_CAP :: 8;
 DEMO_SIDE_GAP :: 0.15;     // m: how near a neighbour's box comes
+// A piece standing under a roof whose top rises this far up into the roof's box (a gable closing an
+// end under the ridge) leans on that roof: once the roof no longer stands it comes loose and falls,
+// even if the wall under it stands (a gable end is a tall, thin triangle that nothing else braces).
+DEMO_BRACE_RISE :: 1.0;
+// A raised piece nothing stands under hangs on a wall face within DEMO_HANG m of it (a window box); a
+// thin upright piece half as tall as DEMO_LEAN_TALL m or more standing in a wall's box (a door, ivy
+// pressed on it) leans on that wall: either falls when its wall goes.
+DEMO_HANG :: 0.45;
+DEMO_LEAN_TALL :: 0.9;
 DEMO_WALL_TALL :: 1.2;     // m: half heights over this are walls (or posts)
 DEMO_WALL_THIN :: 0.35;    // m: a half thickness under this
 DEMO_LEVEL :: 3.12;        // m a storey
@@ -143,6 +152,7 @@ DemoPiece :: struct {
   state: int; body: int;       // DP_*, its body while loose
   sup_at: int; sup_n: int;     // the pieces holding it up (DemoWorld.supports)
   side_at: int; side_n: int;   // a wall's: the pieces it stands beside (DemoWorld.sides), 0 for anything else
+  brace: int;                  // what it leans on: the roof it rises into (a gable), the wall it stands in (a door), -1 none
   hit_at: f64;                 // when it last took damage
   stamp: int;                  // the last contact search that met it
 }
@@ -315,7 +325,7 @@ demo_add :: (w: [] DemoWorld, mesh: int, object: int, group: int, rows: [] f32) 
   p: DemoPiece;
   p.mesh = mesh; p.object = object; p.group = group;
   for k: 0..<12 { w[0].rest[i * 12 + k] = rows[k]; }
-  p.state = DP_STANDING; p.body = -1;
+  p.state = DP_STANDING; p.body = -1; p.brace = -1;
   p.hp = 1; p.max_hp = 1; p.ac = 10;
   w[0].pieces[i] = p;
   w[0].linked = false;
@@ -364,12 +374,63 @@ demo_cell :: (x: f32) -> int {
   return lo_int(hi_int(c, 0), DEMO_GRID - 1);
 }
 // Whether q holds p up: p's base rests on q's top or inside it, and their
-// footprints overlap (by more than a seam).
-demo_holds :: (p: DemoPiece, q: DemoPiece) -> bool {
-  if q.y0 > p.y0 + 0.2 || q.y1 < p.y0 - 0.45 { return false; }
-  if q.y1 > p.y1 + 0.5 && q.y0 > p.y0 - 0.05 { return false; }   // not something standing on it
-  m := 0.06f32;
-  return p.x0 + m < q.x1 && q.x0 + m < p.x1 && p.z0 + m < q.z1 && q.z0 + m < p.z1;
+// footprints overlap (by more than a seam). q starts lower than p: two pieces
+// side by side at one height (a window box's flowers, a stall's apples) don't
+// hold each other up, or they would hold each other in the air once what was
+// under them went.
+demo_holds :: (w: [] DemoWorld, i: int, j: int) -> bool {
+  if w[0].pieces[j].y0 > w[0].pieces[i].y0 - 0.05 || w[0].pieces[j].y1 < w[0].pieces[i].y0 - 0.45 { return false; }
+  return demo_overlap_at(w, i, j, 0.06);
+}
+// These take the world and indices and read the pieces in place: a DemoPiece is 30 scalars, and
+// copying two per candidate pair over a town runs the compile-time checks out of their traversal budget.
+// Whether piece j is a wall section or a post (demo_wallish, in place).
+demo_wallish_at :: (w: [] DemoWorld, j: int) -> bool {
+  return !w[0].pieces[j].pitched && w[0].pieces[j].hy > f32(DEMO_WALL_TALL) && lo(w[0].pieces[j].hx, w[0].pieces[j].hz) < f32(DEMO_WALL_THIN);
+}
+// Whether pieces i and j overlap in plan by more than m.
+demo_overlap_at :: (w: [] DemoWorld, i: int, j: int, m: f32) -> bool {
+  return w[0].pieces[i].x0 + m < w[0].pieces[j].x1 && w[0].pieces[j].x0 + m < w[0].pieces[i].x1 &&
+         w[0].pieces[i].z0 + m < w[0].pieces[j].z1 && w[0].pieces[j].z0 + m < w[0].pieces[i].z1;
+}
+// Whether roof j braces piece i: i stands under j (its base no higher than j's), rises DEMO_BRACE_RISE up
+// into it, and lies within its footprint.
+demo_braced_by :: (w: [] DemoWorld, i: int, j: int) -> bool {
+  if !w[0].pieces[j].pitched || w[0].pieces[i].pitched { return false; }
+  if w[0].pieces[i].y0 > w[0].pieces[j].y0 + 0.3 || w[0].pieces[i].y1 < w[0].pieces[j].y0 + f32(DEMO_BRACE_RISE) { return false; }
+  return demo_overlap_at(w, i, j, 0.06);
+}
+// Whether piece i, raised with nothing under it, hangs on j's face: j is a wall (or a post) standing from
+// under i's base to over its top, its box within DEMO_HANG of i's.
+demo_hangs_on :: (w: [] DemoWorld, i: int, j: int) -> bool {
+  if !demo_wallish_at(w, j) || w[0].pieces[j].y0 > w[0].pieces[i].y0 - 0.05 || w[0].pieces[j].y1 < w[0].pieces[i].y1 - 0.05 { return false; }
+  return demo_overlap_at(w, i, j, -f32(DEMO_HANG));
+}
+// The wall piece i hangs on (demo_hangs_on), the nearest, -1 none.
+demo_hang_wall :: (w: [] DemoWorld, i: int) -> int {
+  g := f32(DEMO_HANG);
+  px0 := w[0].pieces[i].x0; px1 := w[0].pieces[i].x1; pz0 := w[0].pieces[i].z0; pz1 := w[0].pieces[i].z1;
+  best := -1; near_ := 1.0e9f32;
+  for cx: demo_cell(px0 - g)..<demo_cell(px1 + g) + 1 {
+    for cz: demo_cell(pz0 - g)..<demo_cell(pz1 + g) + 1 {
+      c := cz * DEMO_GRID + cx;
+      for e: 0..<w[0].cell_n[c] {
+        j := w[0].cell_list[w[0].cell_at[c] + e];
+        if j == i || !demo_hangs_on(w, i, j) { continue; }
+        dx := hi(hi(w[0].pieces[j].x0 - px1, px0 - w[0].pieces[j].x1), 0); dz := hi(hi(w[0].pieces[j].z0 - pz1, pz0 - w[0].pieces[j].z1), 0);
+        if dx * dx + dz * dz < near_ { near_ = dx * dx + dz * dz; best = j; }
+      }
+    }
+  }
+  return best;
+}
+// Whether piece i leans on wall j: i is a thin upright thing (a door, ivy pressed on a wall, a shelf) that
+// isn't a wall itself, standing in j's box from about its foot. Once j goes, i has nothing to stand by.
+demo_leans_on :: (w: [] DemoWorld, i: int, j: int) -> bool {
+  if w[0].pieces[i].hy < f32(DEMO_LEAN_TALL) || lo(w[0].pieces[i].hx, w[0].pieces[i].hz) > f32(DEMO_WALL_THIN) { return false; }
+  if !demo_wallish_at(w, j) || demo_wallish_at(w, i) { return false; }
+  if w[0].pieces[j].y0 > w[0].pieces[i].y0 + 0.3 || w[0].pieces[j].y1 < w[0].pieces[i].y0 + 0.5 { return false; }
+  return demo_overlap_at(w, i, j, 0.05);
 }
 // Finds every piece's supports once its shapes are in: a grid of cells
 // lists the pieces over each (kept: the contacts search it), and each
@@ -404,7 +465,7 @@ demo_link :: (w: [] DemoWorld) {
           for e: 0..<w[0].cell_n[c] {
             j := w[0].cell_list[w[0].cell_at[c] + e];
             if j == i || p.sup_n >= DEMO_SUP_CAP || w[0].sup_n >= DEMO_SUPPORTS { continue; }
-            if !demo_holds(p, w[0].pieces[j]) { continue; }
+            if !demo_holds(w, i, j) { continue; }
             seen := false;
             for q: 0..<p.sup_n { if w[0].supports[p.sup_at + q] == j { seen = true; } }
             if seen { continue; }
@@ -412,8 +473,43 @@ demo_link :: (w: [] DemoWorld) {
           }
         }
       }
-      // a raised piece nothing holds (a sign on a post, a lintel) rests on the ground
+      // what a wall holds is the wall's: a window set in it, a wall over it, are carried by the wall
+      // alone, not by a shelf or a hearth inside touching them through it
+      walls := 0; resting := false;
+      for e: 0..<p.sup_n {
+        j := w[0].supports[p.sup_at + e];
+        if demo_wallish_at(w, j) { walls += 1; }
+        if w[0].pieces[j].y1 <= p.y0 + 0.12 { resting = true; }
+      }
+      if walls > 0 && walls < p.sup_n {
+        k := 0;
+        for e: 0..<p.sup_n {
+          j := w[0].supports[p.sup_at + e];
+          if demo_wallish_at(w, j) { w[0].supports[p.sup_at + k] = j; k += 1; }
+        }
+        w[0].sup_n -= p.sup_n - k; p.sup_n = k;
+      }
+      // a raised piece nothing is under (a window box, a sign), or that only cuts into what it touches
+      // rather than resting on it, hangs on the face of the wall it is fixed to
+      if walls == 0 && !resting {
+        j := demo_hang_wall(w, i);
+        if j >= 0 && p.sup_at < DEMO_SUPPORTS { w[0].sup_n -= p.sup_n; p.sup_n = 1; w[0].supports[p.sup_at] = j; w[0].sup_n += 1; }
+      }
+      // one nothing holds or hangs it (a lintel on its own) rests on the ground
       if p.sup_n == 0 { p.anchored = true; }
+    }
+    // what it leans on: the roof it rises up into (a gable), or the wall it stands in (a door, ivy)
+    p.brace = -1;
+    if !p.pitched {
+      for cx: demo_cell(p.x0)..<demo_cell(p.x1) + 1 {
+        for cz: demo_cell(p.z0)..<demo_cell(p.z1) + 1 {
+          c := cz * DEMO_GRID + cx;
+          for e: 0..<w[0].cell_n[c] {
+            j := w[0].cell_list[w[0].cell_at[c] + e];
+            if j != i && p.brace < 0 && (demo_braced_by(w, i, j) || demo_leans_on(w, i, j)) { p.brace = j; }
+          }
+        }
+      }
     }
     w[0].pieces[i] = p;
   }
@@ -446,6 +542,8 @@ demo_link_sides :: (w: [] DemoWorld) {
             j := w[0].cell_list[w[0].cell_at[c] + e];
             if j == i || p.side_n >= DEMO_SIDE_CAP || w[0].side_n >= DEMO_SIDES { continue; }
             if w[0].pieces[j].pitched || w[0].pieces[j].hy < 0.6 || abs(w[0].pieces[j].y0 - p.y0) > 0.5 { continue; }
+            // the same piece laid twice in one place isn't beside it
+            if w[0].pieces[j].mesh == p.mesh && abs(w[0].pieces[j].cx - p.cx) < 0.05 && abs(w[0].pieces[j].cz - p.cz) < 0.05 { continue; }
             if w[0].pieces[j].x0 > p.x1 + g || w[0].pieces[j].x1 < p.x0 - g || w[0].pieces[j].z0 > p.z1 + g || w[0].pieces[j].z1 < p.z0 - g { continue; }
             seen := false;
             for k: 0..<p.side_n { if w[0].sides[p.side_at + k] == j { seen = true; } }
@@ -1006,6 +1104,13 @@ demo_settle :: (w: [] DemoWorld) -> int {
     for i: 0..<w[0].n {
       // a wall left with nothing standing beside it turns about its base and falls
       if w[0].pieces[i].state == DP_STANDING && w[0].pieces[i].side_n > 0 && demo_standing_sides(w, i) == 0 {
+        demo_loosen(w, i);
+        if w[0].pieces[i].state != DP_STANDING { moved += 1; changed = true; }
+        continue;
+      }
+      // a gable whose roof is gone, or a door whose wall is, has nothing to stand by: it falls
+      br := w[0].pieces[i].brace;
+      if w[0].pieces[i].state == DP_STANDING && br >= 0 && br < w[0].n && w[0].pieces[br].state != DP_STANDING {
         demo_loosen(w, i);
         if w[0].pieces[i].state != DP_STANDING { moved += 1; changed = true; }
         continue;
@@ -1718,6 +1823,74 @@ demo_cottage :: (w: [] DemoWorld) {
   rows := [12] f32.[1, 0, 0, 0, 0, 1, 0, 6.24, 0, 0, 1, 0];
   r := demo_add(w, 2, 0, 7, rows[..]);
   demo_shape(w, r, v3(-4.2, 0, -4.2), v3(4.2, 3, 4.2), 0, 2, 15, 27, v3(0.6, 0.3, 0.2), true);
+}
+
+// The cottage dressed (the owner, October 30, a Mega Thunderbolt on Everglade): a gable closing its
+// south end under the ridge, a window box hung on the south wall's ground floor with two flowers side
+// by side in it, a door standing in that wall, and a post laid twice at its south-west corner.
+// Returns the gable; the rest follow it: box, flower, flower, door, post, post.
+demo_one :: (w: [] DemoWorld, mesh: int, x: f32, y: f32, z: f32, low: Point, high: Point) -> int {
+  rows := [12] f32.[1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z];
+  i := demo_add(w, mesh, 0, 7, rows[..]);
+  demo_shape(w, i, low, high, 0, 2, 15, 27, v3(0.8, 0.75, 0.6), false);
+  return i;
+}
+demo_dressed :: (w: [] DemoWorld) -> int {
+  demo_cottage(w);
+  g := demo_one(w, 3, 0, 6.24, -3.9, v3(-4, -0.1, -0.3), v3(4, 2.6, 0.3));        // the gable, up into the roof
+  box := demo_one(w, 4, -1, 0.8, -4.5, v3(-0.7, 0, -0.15), v3(0.7, 0.25, 0.15));      // the window box, off the wall's face
+  f0 := demo_one(w, 5, -1.3, 1.05, -4.5, v3(-0.15, 0, -0.1), v3(0.15, 0.7, 0.1));    // its flowers
+  f1 := demo_one(w, 5, -0.7, 1.05, -4.5, v3(-0.15, 0, -0.1), v3(0.15, 0.7, 0.1));
+  door := demo_one(w, 6, 1, 0, -4, v3(-0.5, 0, -0.05), v3(0.5, 2.3, 0.05));            // the door, in the wall
+  p0 := demo_one(w, 7, -4.1, 0, -4.1, v3(-0.1, 0, -0.1), v3(0.1, 3.0, 0.1));         // the corner post, twice
+  p1 := demo_one(w, 7, -4.1, 0, -4.1, v3(-0.1, 0, -0.1), v3(0.1, 3.0, 0.1));
+  return g;
+}
+
+#test "demolish: a gable leans on its roof: it stands while the roof does, and falls once the roof goes, the wall under it standing" {
+  w: [1] DemoWorld;
+  g := demo_dressed(w[..]);
+  demo_link(w[..]);
+  #assert w[0].pieces[g].brace == 32 && !w[0].pieces[g].anchored;
+  #assert demo_settle(w[..]) == 0;
+  // a wall under it broken: the gable still stands on the rest, the roof over it
+  hit := demo_damage(w[..], 17, 999, v3(-1, 4, -8), 2);
+  moved := demo_settle(w[..]);
+  #assert w[0].pieces[32].state == DP_STANDING && w[0].pieces[g].state == DP_STANDING;
+  // the roof gone: the gable comes loose, though the south wall's upper storey stands under it
+  hit = demo_damage(w[..], 32, 999, v3(0, 9, 0), 2);
+  moved = demo_settle(w[..]);
+  #assert w[0].pieces[g].state != DP_STANDING;
+  #assert w[0].pieces[18].state == DP_STANDING && w[0].pieces[19].state == DP_STANDING;
+  // nothing else is braced: the walls, the roof
+  for i: 0..<33 { #assert w[0].pieces[i].brace < 0; }
+}
+
+#test "demolish: what hangs on a wall or stands in it goes with it, and two things side by side don't hold each other up" {
+  w: [1] DemoWorld;
+  g := demo_dressed(w[..]);
+  box := g + 1; f0 := g + 2; f1 := g + 3; door := g + 4; post0 := g + 5; post1 := g + 6;
+  demo_link(w[..]);
+  // the box hangs on the south wall's ground-floor section behind it; the flowers rest on the box alone
+  #assert !w[0].pieces[box].anchored && w[0].pieces[box].sup_n == 1 && w[0].supports[w[0].pieces[box].sup_at] == 1;
+  for f: 0..<2 {
+    p := w[0].pieces[f0 + f];
+    #assert p.sup_n == 1 && w[0].supports[p.sup_at] == box;
+  }
+  #assert w[0].pieces[door].anchored && w[0].pieces[door].brace >= 0 && w[0].pieces[door].brace < 16;
+  // the two posts in one place aren't each other's neighbours
+  for k: 0..<w[0].pieces[post0].side_n { #assert w[0].sides[w[0].pieces[post0].side_at + k] != post1; }
+  #assert demo_settle(w[..]) == 0;
+  // the south wall's ground floor goes: the box, its flowers and the door with it
+  hit := false;
+  for i: 0..<4 { hit = demo_damage(w[..], i, 999, v3(f32(i) * 2 - 3, 1, -8), 2); }
+  moved := demo_settle(w[..]);
+  #assert w[0].pieces[box].state != DP_STANDING && w[0].pieces[door].state != DP_STANDING;
+  #assert w[0].pieces[f0].state != DP_STANDING && w[0].pieces[f1].state != DP_STANDING;
+  // and the west wall's: the posts at the corner, laid twice, topple, holding nothing up between them
+  for i: 8..<12 { hit = demo_damage(w[..], i, 999, v3(-8, 1, f32(i - 8) * 2 - 3), 2); }
+  moved = demo_settle(w[..]);
+  #assert w[0].pieces[post0].state != DP_STANDING && w[0].pieces[post1].state != DP_STANDING;
 }
 
 #test "demolish: a cottage's upper walls rest on the lower and the roof on the upper" {

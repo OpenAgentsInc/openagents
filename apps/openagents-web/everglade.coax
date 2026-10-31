@@ -1926,8 +1926,12 @@ building :: (s: [] Everglade, b: int) {
         }
       }
     }
-    // a post up each corner
-    for f: 0..<n { piece(s, M_CORNER, q.ax, g + f32(f) * f32(STOREY), q.az, 0, 1.6, 1, 1.6); }
+    // a post up each corner: each side its own (sides 0 and 2 both start at x0, z0, so 1 and 2 post
+    // their far ends): one at every corner, never two in one (they held each other up, a post alone
+    // standing in the air once its walls fell)
+    far := w == 1 || w == 2;
+    px := ifx far then q.bx else q.ax; pz := ifx far then q.bz else q.az;
+    for f: 0..<n { piece(s, M_CORNER, px, g + f32(f) * f32(STOREY), pz, 0, 1.6, 1, 1.6); }
   }
   top := g + f32(n) * f32(STOREY);
   w := x1 - x0; d := z1 - z0;

@@ -332,6 +332,31 @@ watch_spell_you :: (s: [] Everglade, at: Point, radius: f32, power: f32) {
   if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
 }
 
+// The Priest's Spiritual Weapon (watch.coax watch_weapon_step: it hangs by your shoulder at `at` and
+// strikes when `next` runs out): a spectral mace, one thing: a haft with a flanged head on its end and
+// a pommel, lit like pale gold metal (not flat glow: the owner, October 30, saw a yellow disc and a
+// yellow plank floating apart), rocking as it hangs, raised and swung down as each blow lands, a faint
+// glow round its head.
+WATCH_MACE_RGB :: Point.{x = 0.93, y = 0.85, z = 0.6};
+watch_mace :: (s: [] Everglade, at: Point, next: f32) {
+  t := f32(s[0].time);
+  // the blow: the last third of a second before it strikes, raised back then down
+  wind := clamp01(1 - next / 0.35);
+  yaw := 0.6 * sin(t * 0.7);
+  tilt := 0.35 + 0.12 * sin(t * 2.3) - 0.5 * wind + 2.0 * wind * wind * wind;
+  u := v3(sin(yaw) * sin(tilt), cos(tilt), cos(yaw) * sin(tilt));   // along the haft, to the head
+  c := add(at, v3(0, 0.05 * sin(t * 1.9), 0));
+  m := WATCH_MACE_RGB;
+  shape(s, SHAPE_BOX, LOOK_MATTE, c, yaw, tilt, 0.045, 0.62, 0.045, m.x * 0.8, m.y * 0.78, m.z * 0.74);
+  head := add(c, times(u, 0.36));
+  shape(s, SHAPE_SPHERE, LOOK_STONE, head, yaw, tilt, 0.17, 0.2, 0.17, m.x, m.y, m.z);
+  // its flanges, two plates crossed through the head along the haft
+  shape(s, SHAPE_BOX, LOOK_MATTE, head, yaw, tilt, 0.3, 0.2, 0.04, m.x, m.y, m.z);
+  shape(s, SHAPE_BOX, LOOK_MATTE, head, yaw, tilt, 0.04, 0.2, 0.3, m.x, m.y, m.z);
+  shape(s, SHAPE_SPHERE, LOOK_STONE, add(c, times(u, -0.32)), yaw, tilt, 0.07, 0.07, 0.07, m.x, m.y, m.z);
+  sp_glow(s, head, 0.35 + 0.08 * sin(t * 3.1), v3(0.32, 0.27, 0.12));
+}
+
 // The hunters' spells in the air (watch.coax Missile): bolts that fly and burst, the frost ray, the
 // Fireball's blast, the Lightning Bolt's line and the Cone of Cold's spray (sparks: everglade-spells.coax),
 // Hold Person's ring on you, the Priest's healing and Spiritual Weapon; and a caster's hands as they cast.
@@ -407,10 +432,7 @@ watch_missiles_draw :: (s: [] Everglade) {
     } else if m.kind == MS_HEAL {
       if burst { sp_burst(s, b, v3(0, 1, 0), 12, 1.6, 0.9, 0.09, v3(0.75, 1, 0.65), v3(0.95, 1, 0.8), -2); }
     } else if m.kind == MS_WEAPON && !flying {
-      // a spectral mace over your shoulder, turning
-      turn := f32(s[0].time) * 5;
-      shape(s, SHAPE_BOX, LOOK_FLAME, b, turn, 0.6, 0.06, 0.06, 0.8, 1, 0.88, 0.55);
-      shape(s, SHAPE_SPHERE, LOOK_FLAME, add(b, v3(sin(turn) * 0.38, 0.22, cos(turn) * 0.38)), 0, 0, 0.16, 0.16, 0.16, 1, 0.9, 0.6);
+      watch_mace(s, b, m.next);
     }
   }
   // a caster's hands glow as they cast, and a bar over their head fills to the spell
@@ -772,4 +794,26 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   #assert everglade_slow(g[..]) < 1;
   w[0].held_t = 2;
   #assert everglade_held(g[..]);
+}
+
+#test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  boxes := g[0].counts[SHAPE_BOX]; balls := g[0].counts[SHAPE_SPHERE];
+  at := v3(3, 2, 4);
+  for k: 0..<3 {
+    watch_mace(g[..], at, 1.5 - f32(k) * 0.6);   // hanging, then winding up to its blow
+    #assert g[0].counts[SHAPE_BOX] == boxes + 3 && g[0].counts[SHAPE_SPHERE] == balls + 2;
+    haft := (SLOT_AT[SHAPE_BOX] + boxes) * OBJECT_FLOATS;
+    head := (SLOT_AT[SHAPE_SPHERE] + balls) * OBJECT_FLOATS;
+    // the head sits on the haft's end: 0.36 m along it from the haft's middle, the way the haft points
+    hc := v3(g[0].objects[haft + 3], g[0].objects[haft + 7], g[0].objects[haft + 11]);
+    up := v3(g[0].objects[haft + 1], g[0].objects[haft + 5], g[0].objects[haft + 9]);   // its long axis, 0.62 m
+    hd := v3(g[0].objects[head + 3], g[0].objects[head + 7], g[0].objects[head + 11]);
+    #assert abs(length(sub(hd, hc)) - 0.36) < 0.01 && dot(sub(hd, hc), up) > 0.35 * 0.62 * 0.95;
+    #assert length(sub(hc, at)) < 0.1;
+    for n: 0..<3 { #assert cast(int) g[0].objects[(SLOT_AT[SHAPE_BOX] + boxes + n) * OBJECT_FLOATS + 15] / 8 != LOOK_FLAME; }
+    for n: 0..<2 { #assert cast(int) g[0].objects[(SLOT_AT[SHAPE_SPHERE] + balls + n) * OBJECT_FLOATS + 15] / 8 != LOOK_FLAME; }
+    g[0].counts[SHAPE_BOX] = boxes; g[0].counts[SHAPE_SPHERE] = balls;
+  }
 }
