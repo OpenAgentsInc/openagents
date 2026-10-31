@@ -26,6 +26,7 @@
 #load "../../verse/spacecam.coax";
 #load "../../verse/command.coax";
 #load "belt-station.coax";
+#load "belt-tactical.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -112,6 +113,7 @@ Ship :: struct {
   path: [PATH] D3;
   work: int; work_rock: int;
   route: [3] int; route_n: int; route_k: int; idle_until: f64;   // a rival's standing route
+  hull: f64 = 1.0;       // what is left of it after a fight, 0 to 1 (b22-tactical)
 }
 
 // A field rock, kept for drawing five thousand a frame: its orbit's axes scaled (a·P, b·Q, the
@@ -122,7 +124,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11; B_BUILD :: 12;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11; B_BUILD :: 12; B_TAC_BREAK :: 13; B_TAC_FAST :: 14; B_TAC_DONE :: 15;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -177,6 +179,7 @@ Belt :: struct {
   dirty: bool; save_t: f32; restored: bool; new_armed: f32;
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
+  tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
 }
 
 // ---- small things
@@ -519,6 +522,7 @@ plan_with :: (s: [] Belt, k: int, dest: int, fast: bool, share: f64) -> Plan {
 launch :: (s: [] Belt, k: int, dest: int, p: Plan) -> bool {
   if !p.ok || !p.enough { return false; }
   sh := s[0].ships[k];
+  if sh.faction == FREE_BELT && sh.mode == PARKED && sh.at == P_STATION && sh.hull < HULL_FLY { return false; }
   if sh.faction == FREE_BELT { sh.fuel -= p.fuel - p.burn2; }
   sh.from = sh.at;
   sh.mode = FLYING; sh.at = dest;
@@ -610,6 +614,7 @@ step_ships :: (s: [] Belt, dt: f64) {
   s[0].station[0] = station_step(s[0].station[0], dt / DAY);
   rigs_step(s, dt / DAY);
   yard_step(s, dt / DAY);
+  repair_step(s, dt / DAY);
   for k: 0..<s[0].ship_n {
     sh := s[0].ships[k];
     if sh.mode == FLYING && t >= sh.t0 + sh.tof { arrive(s, k); continue; }
@@ -645,7 +650,7 @@ step_ships :: (s: [] Belt, dt: f64) {
 // ---- the save: one text, kept in this browser (host.js action 4) and given back on the next
 // visit. Integers only (times in ms, masses in grams, the coast's start in mm and um/s), so it
 // reads back exactly; the rocks and the start come from belt_start, which is deterministic.
-SAVE_TAG :: "BELT2200 3";   // 1: the station kept only ice; 2: no yard or rigs
+SAVE_TAG :: "BELT2200 4";   // 1: the station kept only ice; 2: no yard or rigs; 3: no hulls
 qi :: (v: f64, scale: f64) -> int {
   x := v * scale;
   if !is_finite(x) { return 0; }
@@ -676,6 +681,7 @@ save_game :: (s: [] Belt, buf: [] u8) -> int {
     if sh.mode == FLYING { st = orbit_state(sh.arc, sh.t0); }
     n = put_field(buf, n, qi(st.r.x, 1000.0)); n = put_field(buf, n, qi(st.r.y, 1000.0)); n = put_field(buf, n, qi(st.r.z, 1000.0));
     n = put_field(buf, n, qi(st.v.x, 1000000.0)); n = put_field(buf, n, qi(st.v.y, 1000000.0)); n = put_field(buf, n, qi(st.v.z, 1000000.0));
+    n = put_field(buf, n, qi(sh.hull, 1000.0));
   }
   return n;
 }
@@ -696,7 +702,7 @@ load_game :: (s: [] Belt, text: string) -> bool {
   if text.count < SAVE_TAG.count + 2 { return false; }
   for i: 0..<SAVE_TAG.count - 1 { if text[i] != SAVE_TAG[i] { return false; } }
   version := cast(int) text[SAVE_TAG.count - 1] - '0';
-  if version < 1 || version > 3 { return false; }
+  if version < 1 || version > 4 { return false; }
   c: [1] Cur; c[0].at = SAVE_TAG.count;
   ships: [SHIPS] Ship;
   t := f64(read_int(text, c[..])) / 1000.0;
@@ -728,6 +734,7 @@ load_game :: (s: [] Belt, text: string) -> bool {
     sh.work = read_int(text, c[..]); sh.work_rock = read_int(text, c[..]); sh.route_k = read_int(text, c[..]); sh.idle_until = f64(read_int(text, c[..])) / 1000.0;
     r := d3(f64(read_int(text, c[..])) / 1000.0, f64(read_int(text, c[..])) / 1000.0, f64(read_int(text, c[..])) / 1000.0);
     v := d3(f64(read_int(text, c[..])) / 1000000.0, f64(read_int(text, c[..])) / 1000000.0, f64(read_int(text, c[..])) / 1000000.0);
+    sh.hull = ifx version >= 4 then fclamp(f64(read_int(text, c[..])) / 1000.0, 0.0, 1.0) else 1.0;
     if !c[0].ok || sh.mode < PARKED || sh.mode > MINING || sh.at < 1 || sh.at >= PLACES || sh.from < 1 || sh.from >= PLACES { return false; }
     if sh.mode == FLYING && (sh.tof <= 0.0 || d3_len(r) <= 0.0) { return false; }
     sh.slot = sh.slot % SHIPS; if sh.slot < 0 { sh.slot = 0; }
@@ -837,7 +844,13 @@ go :: (s: [] Belt, fast: bool) {
     n = put(buf[..], n, place_name(s[0].dest));
     say(s, cast(string) buf[0..<n]);
   } else {
-    say(s, "NOT ENOUGH PROPELLANT");
+    k0 := first_selected(s);
+    if k0 >= 0 && s[0].ships[k0].hull < HULL_FLY && s[0].ships[k0].mode == PARKED {
+      n := put(buf[..], 0, s[0].ships[k0].name); n = put(buf[..], n, " IN REPAIR: HULL "); n = put_int(buf[..], n, safe_int(s[0].ships[k0].hull * 100.0)); n = put(buf[..], n, "%");
+      say(s, cast(string) buf[0..<n]);
+    } else {
+      say(s, "NOT ENOUGH PROPELLANT");
+    }
   }
   s[0].dest = -1;
 }
@@ -944,7 +957,201 @@ engage :: (s: [] Belt, i: int, j: int, t: f64) {
   n := put(buf[..], 0, them.name); n = put(buf[..], n, " IN RANGE OF "); n = put(buf[..], n, mine.name);
   say(s, cast(string) buf[0..<n]);
   s[0].speed = 0;
+  if !s[0].tac[0].on { tac_begin(s, i, j, t); }
   if track_begin(s[0].track[..], "engaged") { track_str(s[0].track[..], "ours", mine.name); track_str(s[0].track[..], "theirs", them.name); track_end(s[0].track[..]); }
+}
+
+// ---- the tactical view (belt-tactical.coax): the two engaged ships and any other in flight within
+// range of them, in the ecliptic about their middle, kilometres and km/s
+HULL_FLY :: 0.5;            // a ship of ours under this stays in the yard
+HULL_REPAIR :: 0.05;        // a day, docked at home
+REPAIR_METAL :: 200.0;      // t of metal a whole hull
+TAC_RATE :: 12.0;           // battle seconds a real second (four times that, faster)
+tac_begin :: (s: [] Belt, i: int, j: int, t: f64) {
+  tac_clear(s[0].tac[..], cast(u64) (i * 977 + j * 131 + safe_int(t / 60.0) % 100000 + 1));
+  a := flight_state(s[0].ships[i], t); b := flight_state(s[0].ships[j], t);
+  mid := d3_scale(d3_add(a.r, b.r), 0.5); midv := d3_scale(d3_add(a.v, b.v), 0.5);
+  for k: 0..<s[0].ship_n {
+    sh := s[0].ships[k];
+    if sh.mode != FLYING || sh.hull <= 0.0 { continue; }
+    if !(sh.faction == FREE_BELT || s[0].ships[i].faction == sh.faction || s[0].ships[j].faction == sh.faction) { continue; }
+    st := ifx k == i then a else ifx k == j then b else flight_state(sh, t);
+    if k != i && k != j && d3_dist(st.r, a.r) > COMBAT_RANGE && d3_dist(st.r, b.r) > COMBAT_RANGE { continue; }
+    side := ifx sh.faction == FREE_BELT then 0 else 1;
+    // ships with no hold are warships: missiles and a rail gun; miners and freighters carry point defense
+    armed := sh.cargo_cap <= 0.0;
+    u := tac_add(s[0].tac[..], side, k, (st.r.x - mid.x) / 1000.0, (st.r.y - mid.y) / 1000.0, (st.v.x - midv.x) / 1000.0, (st.v.y - midv.y) / 1000.0, sh.hull, armed, sh.dry <= 600.0);
+  }
+  tac_face(s[0].tac[..]);
+  s[0].tac[0].on = true; s[0].tac_fast = false;
+  s[0].follow = -1;
+}
+// What the battle cost, back on the map: hulls, the crew lost with them, a crippled ship's cargo,
+// and a crippled ship towed home (ours to Hearth; a rival out for two months).
+tac_apply :: (s: [] Belt) {
+  tc := s[0].tac[0];
+  killed := 0; crippled := 0; theirs := 0;
+  for q: 0..<tc.n {
+    un := tc.units[q];
+    k := un.ship;
+    lost := un.start_hull - un.hull;
+    s[0].ships[k].hull = un.hull;
+    if s[0].ships[k].faction == FREE_BELT {
+      dead := safe_int(f64(s[0].ships[k].crew) * lost * 0.5 + 0.5);
+      if !un.live { dead = hi_int(dead, s[0].ships[k].crew / 2); }
+      killed += dead;
+      s[0].station[0].people = hi_int(0, s[0].station[0].people - dead);
+    }
+    if un.live { continue; }
+    s[0].ships[k].cargo = 0.0;
+    if s[0].ships[k].faction == FREE_BELT {
+      crippled += 1;
+      // towed home: the station's tug, no propellant of its own
+      p := plan_for(s, k, P_STATION, false);
+      p.enough = true;
+      fuel := s[0].ships[k].fuel;
+      if launch(s, k, P_STATION, p) { s[0].ships[k].fuel = fuel; s[0].ships[k].work = WORK_NONE; }
+    } else {
+      theirs += 1;
+      s[0].ships[k].idle_until = s[0].t + 60.0 * DAY;
+    }
+  }
+  buf: [96] u8;
+  n := 0;
+  if tc.end == TAC_WON || theirs > 0 { n = put(buf[..], 0, "THEIRS CRIPPLED: "); n = put_int(buf[..], n, theirs); }
+  else if tc.end == TAC_LOST { n = put(buf[..], 0, "OURS CRIPPLED, TOWED HOME"); }
+  else { n = put(buf[..], 0, "BROKE OFF"); }
+  if killed > 0 { n = put(buf[..], n, " · "); n = put_int(buf[..], n, killed); n = put(buf[..], n, " DEAD"); }
+  say(s, cast(string) buf[0..<n]);
+  if track_begin(s[0].track[..], "battle") { track_int(s[0].track[..], "end", tc.end); track_int(s[0].track[..], "dead", killed); track_int(s[0].track[..], "crippled", crippled); track_int(s[0].track[..], "theirs", theirs); track_end(s[0].track[..]); }
+  s[0].tac[0].on = false;
+  s[0].dirty = true;
+}
+// Docked at home, a hull mends: ours in Hearth's yard for metal, a rival in its own.
+repair_step :: (s: [] Belt, days: f64) {
+  for k: 0..<s[0].ship_n {
+    sh := s[0].ships[k];
+    if sh.hull >= 1.0 || sh.mode != PARKED { continue; }
+    want := fmin(1.0 - sh.hull, HULL_REPAIR * days);
+    if sh.faction == FREE_BELT {
+      if sh.at != P_STATION { continue; }
+      want = fmin(want, s[0].station[0].metal / REPAIR_METAL);
+      s[0].station[0].metal -= want * REPAIR_METAL;
+    }
+    s[0].ships[k].hull = fmin(1.0, sh.hull + want);
+  }
+}
+
+// The battle, drawn: the ships at their headings (not to scale: the space between them is), each
+// one's drift, missiles with their trails, slugs, point defense; its buttons and its outcome.
+draw_tac :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
+  k := d[0].k; w := d[0].w; h := d[0].h;
+  phone := w / k < 700;
+  m := 12 * k;
+  top := m + 56 * k; bottom := ifx phone then 150 * k else 110 * k;
+  // the frame: every ship in it, and room round them
+  x0 := 0.0; x1 := 0.0; y0 := 0.0; y1 := 0.0;
+  for q: 0..<s[0].tac[0].n {
+    un := s[0].tac[0].units[q];
+    if q == 0 || un.x < x0 { x0 = un.x; } if q == 0 || un.x > x1 { x1 = un.x; }
+    if q == 0 || un.y < y0 { y0 = un.y; } if q == 0 || un.y > y1 { y1 = un.y; }
+  }
+  cx := (x0 + x1) / 2.0; cy := (y0 + y1) / 2.0;
+  ext := fmax(fmax(x1 - x0, y1 - y0), 3000.0) * 1.3;
+  sc := f64(lo(w - 2 * m, h - top - bottom)) / ext;
+  mx := f64(w) / 2.0; my := f64(top + (h - top - bottom) / 2);
+  // a scale bar
+  bar := 1000.0;
+  while bar * sc < f64(60 * k) { bar *= 2.0; }
+  while bar * sc > f64(160 * k) { bar /= 2.0; }
+  bx := m + 4 * k; by := h - bottom - 14 * k;
+  stroke(out, d, bx, by, bx + f32(bar * sc), by, 0.7 * k, 0.5, INK_R, INK_G, INK_B);
+  stroke(out, d, bx, by - 4 * k, bx, by + 4 * k, 0.6 * k, 0.5, INK_R, INK_G, INK_B);
+  stroke(out, d, bx + f32(bar * sc), by - 4 * k, bx + f32(bar * sc), by + 4 * k, 0.6 * k, 0.5, INK_R, INK_G, INK_B);
+  buf: [96] u8;
+  n := put_count(buf[..], 0, bar); n = put(buf[..], n, " KM");
+  words(out, d, cast(string) buf[0..<n], bx, by - 8 * k, 7 * k, 0.6, INK_R, INK_G, INK_B);
+  tnow := s[0].tac[0].t;
+  // point defense bursts, fading
+  for i: 0..<TAC_TRACERS {
+    tr := s[0].tac[0].tracers[i];
+    age := tnow - tr.t;
+    if s[0].tac[0].tracer_k == 0 || age < 0.0 || age > 1.2 { continue; }
+    l := f32(1.0 - age / 1.2);
+    stroke(out, d, f32(mx + (tr.x0 - cx) * sc), f32(my - (tr.y0 - cy) * sc), f32(mx + (tr.x1 - cx) * sc), f32(my - (tr.y1 - cy) * sc), 0.5 * k, l * (ifx tr.kill then 0.9f32 else 0.4f32), 1.0, 1.0, 0.85);
+    if tr.kill { ring(out, d, f32(mx + (tr.x1 - cx) * sc), f32(my - (tr.y1 - cy) * sc), (4 + 10 * (1 - l)) * k, 10, 0.6 * k, l, 1.0, 1.0, 0.85); }
+  }
+  // slugs: a short bright streak along their flight
+  for i: 0..<TAC_SLUGS {
+    sl := s[0].tac[0].slugs[i];
+    if !sl.live { continue; }
+    px := f32(mx + (sl.x - cx) * sc); py := f32(my - (sl.y - cy) * sc);
+    tx := f32(mx + (sl.x - sl.vx * 2.0 - cx) * sc); ty := f32(my - (sl.y - sl.vy * 2.0 - cy) * sc);
+    stroke(out, d, tx, ty, px, py, 0.6 * k, 0.95, 0.95, 0.97, 1.0);
+  }
+  // missiles: a dot, a trail, brighter while burning
+  for i: 0..<TAC_MISSILES {
+    mm := s[0].tac[0].missiles[i];
+    if !mm.live { continue; }
+    col := faction_rgb(ifx mm.side == 0 then FREE_BELT else MARS_UNION);
+    for q: 0..<s[0].tac[0].n { if s[0].tac[0].units[q].side == mm.side { col = faction_rgb(s[0].ships[s[0].tac[0].units[q].ship].faction); break; } }
+    px := f32(mx + (mm.x - cx) * sc); py := f32(my - (mm.y - cy) * sc);
+    tx := f32(mx + (mm.x - mm.vx * 12.0 - cx) * sc); ty := f32(my - (mm.y - mm.vy * 12.0 - cy) * sc);
+    stroke(out, d, tx, ty, px, py, 0.5 * k, 0.35, col.x, col.y, col.z);
+    dot(out, d, px, py, ifx mm.burn > 0.0 then 2.2 * k else 1.5 * k, 1.0, col.x, col.y, col.z);
+    if mm.burn > 0.0 { dot(out, d, px, py, 0.9 * k, 1.0, 1.0, 1.0, 1.0); }
+  }
+  // the ships
+  for q: 0..<s[0].tac[0].n {
+    un := s[0].tac[0].units[q];
+    sh := s[0].ships[un.ship];
+    x := f32(mx + (un.x - cx) * sc); y := f32(my - (un.y - cy) * sc);
+    col := faction_rgb(sh.faction);
+    if !un.live { col = Point3.{x = 0.45, y = 0.46, z = 0.5}; }
+    hp := 30 * k;
+    ch := f32(cos(un.head)); sn := f32(-sin(un.head));
+    // its drift over the next minute
+    stroke(out, d, x, y, x + f32(un.vx * 60.0 * sc), y - f32(un.vy * 60.0 * sc), 0.5 * k, 0.25, col.x, col.y, col.z);
+    if un.thrust {
+      flick := 0.8 + 0.2 * sin(s[0].clock * 40 + f32(q));
+      stroke(out, d, x - ch * hp * 0.5, y - sn * hp * 0.5, x - ch * hp * (0.5 + 0.6 * flick), y - sn * hp * (0.5 + 0.6 * flick), 1.6 * k, 0.9, 0.75, 0.88, 1.0);
+    }
+    draw_hull(out, d, x, y, hp, ch, sn, sh.dry >= 500.0, col);
+    centred(out, d, sh.name, x, y + hp * 0.6 + 12 * k, 7.5 * k, ifx un.live then 0.9f32 else 0.5f32, col.x, col.y, col.z);
+    meter(out, d, x - 18 * k, y + hp * 0.6 + 18 * k, 36 * k, f32(un.hull), col.x, col.y, col.z);
+  }
+  // the top panel: what this is, how long, what is in the air
+  s[0].btn_n = 0;
+  panel(s, u, m, m, w - m, m + 44 * k, 0.85, false);
+  words(out, d, "ENGAGEMENT", m + 12 * k, m + 19 * k, 10 * k, 0.95, INK_R, INK_G, INK_B);
+  n = put(buf[..], 0, "T+"); n = put_int(buf[..], n, safe_int(tnow)); n = put(buf[..], n, " S · MISSILES "); n = put_int(buf[..], n, s[0].tac[0].launched);
+  n = put(buf[..], n, " · SHOT DOWN "); n = put_int(buf[..], n, s[0].tac[0].shot_down);
+  words(out, d, cast(string) buf[0..<n], m + 12 * k, m + 35 * k, fit_cap(cast(string) buf[0..<n], 7 * k, w - 4 * m), 0.7, BELT_R, BELT_G, BELT_B);
+  // the bottom panel: the buttons, or how it ended and what it cost
+  py0 := h - bottom + 8 * k;
+  panel(s, u, m, py0, w - m, h - m, 0.85, false);
+  bh := 34 * k;
+  bw := ifx phone then (w - 4 * m - 10 * k) / 2 else 170 * k;
+  if s[0].tac[0].end == TAC_FIGHTING {
+    by0 := h - m - 12 * k - bh;
+    if !s[0].tac[0].flee { button(s, out, d, w / 2 - bw - 5 * k, by0, w / 2 - 5 * k, by0 + bh, B_TAC_BREAK, 0, "BREAK OFF", 8 * k, false); }
+    else { centred(out, d, "BREAKING OFF", w / 2 - bw / 2 - 5 * k, by0 + bh / 2 + 4 * k, 8 * k, 0.6, INK_R, INK_G, INK_B); }
+    button(s, out, d, w / 2 + 5 * k, by0, w / 2 + bw + 5 * k, by0 + bh, B_TAC_FAST, 0, ifx s[0].tac_fast then "4X" else "1X", 8 * k, s[0].tac_fast);
+    return;
+  }
+  head := ifx s[0].tac[0].end == TAC_WON then "THEY ARE OUT OF THE FIGHT" else ifx s[0].tac[0].end == TAC_LOST then "OURS ARE OUT OF THE FIGHT" else "THE SHIPS HAVE DRIFTED APART";
+  words(out, d, head, m + 12 * k, py0 + 22 * k, fit_cap(head, 10 * k, w - 4 * m), 0.95, INK_R, INK_G, INK_B);
+  // each ship's hull
+  n = 0;
+  for q: 0..<s[0].tac[0].n {
+    un := s[0].tac[0].units[q];
+    if n > 0 { n = put(buf[..], n, " · "); }
+    n = put(buf[..], n, s[0].ships[un.ship].name); n = put(buf[..], n, " ");
+    if un.live { n = put_int(buf[..], n, safe_int(un.hull * 100.0)); n = put(buf[..], n, "%"); } else { n = put(buf[..], n, "CRIPPLED"); }
+    if n > 80 { break; }
+  }
+  words(out, d, cast(string) buf[0..<n], m + 12 * k, py0 + 40 * k, fit_cap(cast(string) buf[0..<n], 7.5 * k, w - 4 * m), 0.75, BELT_R, BELT_G, BELT_B);
+  button(s, out, d, w / 2 - bw / 2, h - m - 12 * k - bh, w / 2 + bw / 2, h - m - 12 * k, B_TAC_DONE, 0, "BACK TO THE MAP", 8 * k, true);
 }
 
 // ---- the yard: freighters from metal and people
@@ -1133,6 +1340,7 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
     s[0].facts = true;
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
     if stage_of(fact_of(text, "url")) == STAGE_HIGHLIGHT { stage_highlight(s); }
+    if stage_of(fact_of(text, "url")) == STAGE_BATTLE { stage_battle(s); }
     if query_word(fact_of(text, "url"), "card=1") { s[0].card = true; }
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
@@ -1193,6 +1401,7 @@ group_key :: (s: [] Belt, g: int, set: bool) {
 belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   started(s);
   track_key(s[0].track[..], key, false);
+  if s[0].tac[0].on { return false; }
   if key == KEY_SHIFT { s[0].shift = true; return true; }
   b := hold_bit(key);
   if b != 0 { s[0].held = s[0].held | b; return true; }
@@ -1252,6 +1461,9 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_ROCK { set_dest(s, P_ICE + b.arg); }
   if b.id == B_SYSTEM { look_at_system(s); }
   if b.id == B_BUILD { ok := yard_build(s); }
+  if b.id == B_TAC_BREAK { s[0].tac[0].flee = true; }
+  if b.id == B_TAC_FAST { s[0].tac_fast = !s[0].tac_fast; }
+  if b.id == B_TAC_DONE { tac_apply(s); }
   if b.id == B_NEW {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; new_game(s); } else { s[0].new_armed = 3.0; }
@@ -1404,6 +1616,14 @@ belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   k := hi(s[0].dpr, 0.5);
   on := button_at(s, x, y);
   track_pointer(s[0].track[..], x, y, phase, kind, ifx on >= 0 then "button" else "");
+  if s[0].tac[0].on {
+    // the battle takes only its buttons
+    if kind == 0 && phase == 1 { s[0].hover = on; }
+    if phase == 0 { s[0].press = on; }
+    if phase == 2 { if s[0].press >= 0 && s[0].press == on { press_button(s, on); } s[0].press = -1; }
+    if phase == 3 { s[0].press = -1; }
+    return true;
+  }
   if kind == 0 {
     if phase == 1 && !s[0].mouse_down { s[0].hover = on; s[0].mx = x; s[0].my = y; return on >= 0; }
     if phase == 0 {
@@ -1957,7 +2177,7 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   draw_station(s, out, d, place_state(s, P_STATION, t).r);
   // Coasting ships' arcs, from where they are on (not in a staged close-up, where they are stray lines).
   for j: 0..<s[0].ship_n {
-    if s[0].stage != STAGE_NONE { break; }
+    if s[0].stage == STAGE_HIGHLIGHT { break; }
     sh := s[0].ships[j];
     if sh.mode != FLYING { continue; }
     col := faction_rgb(sh.faction);
@@ -2078,6 +2298,10 @@ ship_status :: (s: [] Belt, k: int, buf: [] u8) -> int {
 }
 ship_side :: (s: [] Belt, k: int, buf: [] u8) -> int {
   sh := s[0].ships[k];
+  if sh.hull < 1.0 && sh.mode == PARKED {
+    n := put(buf, 0, "HULL "); n = put_int(buf, n, safe_int(sh.hull * 100.0));
+    return put(buf, n, "%");
+  }
   if sh.mode == FLYING {
     n := put_int(buf, 0, safe_int(fmax((sh.t0 + sh.tof - s[0].t) / DAY, 0.0)));
     return put(buf, n, " D");
@@ -2347,12 +2571,18 @@ belt_step :: (s: [] Belt, dt: f32) {
   real := f64(clamp(dt, 0, 0.1));
   // Time: game days a real second, stepped in pieces of at most two days so arrivals and mining are seen in order.
   game := ifx s[0].golden then 0.0 else SPEEDS[s[0].speed] * DAY * real;
-  if s[0].stage != STAGE_NONE { game = stage_game(s, real); }
-  while game > 0.0 {
+  if s[0].stage == STAGE_HIGHLIGHT { game = stage_game(s, real); }
+  if s[0].tac[0].on {
+    game = 0.0;
+    bt := real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0);
+    while bt > 0.0 && s[0].tac[0].end == TAC_FIGHTING { tac_step(s[0].tac[..], TAC_STEP); bt -= TAC_STEP; }
+  }
+  while game > 0.0 && !s[0].tac[0].on {
     piece := fmin(game, 2.0 * DAY);
     s[0].t += piece;
     step_ships(s, piece);
     game -= piece;
+    if s[0].tac[0].on { break; }   // a battle: the map's clock waits for it
   }
   if s[0].toast_t > 0 { s[0].toast_t -= f32(real); }
   if s[0].new_armed > 0 { s[0].new_armed -= f32(real); }
@@ -2382,7 +2612,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   s[0].cam = ifx s[0].golden then spacecam_settle(s[0].cam) else spacecam_ease(s[0].cam, real);
   // Locked on: the floating origin is the ship itself, exactly.
   if (s[0].follow >= 0 || s[0].follow_place >= 0) && s[0].cam.following && d3_dist(s[0].cam.center, s[0].cam.goal_center) * s[0].cam.scale < 0.5 { s[0].cam.center = s[0].cam.goal_center; }
-  if s[0].stage != STAGE_NONE { stage_camera(s); }
+  if s[0].stage == STAGE_HIGHLIGHT { stage_camera(s); }
 }
 
 belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
@@ -2404,10 +2634,19 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   d[0].k = hi(dpr, 0.5); d[0].w = width; d[0].h = height;
   // the map's strokes are mode 1: belt.wgsl dims them under the HUD's panels, so an orbit or a
   // rock never draws over a ship's card
+  if s[0].tac[0].on {
+    s[0].btn_n = 0;
+    draw_tac(s, out, u, d[..]);
+    u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
+    u[4] = -100000; u[5] = -100000; u[6] = 0; u[7] = d[0].k;
+    u[10] = f32(s[0].panel_n); u[11] = 0;
+    track_frame(s[0].track[..], dt, width, height, dpr);
+    return d[0].n;
+  }
   d[0].under = 1;
   draw_map(s, out, u, d[..]);
   d[0].under = 0;
-  if s[0].stage != STAGE_NONE { stage_rocks(s, u, d[..]); }
+  if s[0].stage == STAGE_HIGHLIGHT { stage_rocks(s, u, d[..]); }
   // The box being drawn.
   if s[0].boxing && s[0].dragging {
     x0 := s[0].dx0; y0 := s[0].dy0; x1 := s[0].mx; y1 := s[0].my; kk := d[0].k;
@@ -2417,7 +2656,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     stroke(out, d[..], x0, y1, x0, y0, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
   }
   s[0].tip_shown = false;
-  if s[0].card { s[0].btn_n = 0; } else if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); maker_line(s, out, d[..]); } else { stage_hud(s, out, u, d[..]); }
+  if s[0].card { s[0].btn_n = 0; } else if s[0].stage != STAGE_HIGHLIGHT { hud(s, out, u, d[..]); maker_line(s, out, d[..]); } else { stage_hud(s, out, u, d[..]); }
   // the Sun's disc and its bright core: no name is written over it
   sun_at := screen_of(s, D3_ZERO);
   block(d[..], pix(sun_at.x), pix(sun_at.y), hi(pix(spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SUN])) * 1.2, 9 * d[0].k));
@@ -2454,7 +2693,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
 // its fall, the Mars Union's IRONWAKE on its tail, ring ice tumbling past the lens, and the view
 // drifting in with them. The ships are drawn bigger than life (as the map draws far worlds), so a
 // hull reads beside a planet.
-STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1;
+STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1; STAGE_BATTLE :: 2;   // battle: KITE and IRONWAKE meeting, the tactical view up (nothing saved)
 STAGE_SECONDS :: 3.0;            // the dolly's length in real seconds; after it the view holds
 STAGE_RATE :: 700.0;             // game seconds a real second, so the swing past the rings is seen
 STAGE_LEAD :: 2400.0;            // game seconds before periapsis the moment starts
@@ -2485,9 +2724,25 @@ query_word :: (url: string, pair: string) -> bool {
 }
 stage_of :: (url: string) -> int {
   if query_word(url, "stage=highlight") { return STAGE_HIGHLIGHT; }
+  if query_word(url, "stage=battle") { return STAGE_BATTLE; }
   return STAGE_NONE;
 }
 
+// KITE and IRONWAKE on crossing courses, met: the tactical view.
+stage_battle :: (s: [] Belt) {
+  s[0].stage = STAGE_BATTLE;
+  p := place_state(s, P_STATION, s[0].t).r;
+  va := d3(0.0, 18000.0, 0.0); vb := d3(1200.0, 16500.0, 300.0);
+  for q: 0..<2 {
+    k := ifx q == 0 then 2 else 3;
+    s[0].ships[k].mode = FLYING; s[0].ships[k].t0 = s[0].t; s[0].ships[k].tof = 100.0 * DAY;
+    s[0].ships[k].dep_body = 0; s[0].ships[k].arr_body = 0; s[0].ships[k].at = P_STATION;
+    off := ifx q == 0 then d3(0.0, 0.0, 0.0) else d3(7000000.0, -4000000.0, 0.0);
+    s[0].ships[k].arc = orbit_from_state(orbit_state_of(d3_add(p, off), ifx q == 0 then va else vb), GM_SUN, s[0].t);
+  }
+  s[0].speed = 0;
+  tac_begin(s, 2, 3, s[0].t);
+}
 stage_highlight :: (s: [] Belt) {
   belt_reset(s);
   s[0].stage = STAGE_HIGHLIGHT; s[0].stage_t = 0.0; s[0].stage_ship = STAGE_SHIP;
@@ -2544,7 +2799,7 @@ stage_camera :: (s: [] Belt) {
 }
 // The least a staged ship's hull is drawn, in pixels (LANTERN big, the rival behind it smaller).
 stage_hull :: (s: [] Belt, k: int) -> f32 {
-  if s[0].stage == STAGE_NONE { return 0; }
+  if s[0].stage != STAGE_HIGHLIGHT { return 0; }
   // by Saturn's radius on screen, so the shot keeps its proportions in any frame
   big := pix(spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SATURN]));
   if k == s[0].stage_ship { return big * 0.85; }
@@ -2924,6 +3179,52 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert abs(c.tau - 5.0) < 0.0001 && abs(c.dist - 5.0) < 0.0001;
 }
 
+#test "a tactical battle: engaging opens it, it resolves, and BACK TO THE MAP applies the losses" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].speed = 2;
+  tc := s[0].t + 10.0 * DAY;
+  p := d3(400000000000.0, 0.0, 0.0);
+  va := d3(0.0, 18000.0, 0.0); vb := d3(0.0, 16500.0, 1500.0);
+  for q: 0..<2 {
+    k := ifx q == 0 then 2 else 3;   // KITE (no hold: armed) and IRONWAKE
+    s[0].ships[k].mode = FLYING; s[0].ships[k].t0 = s[0].t; s[0].ships[k].tof = 100.0 * DAY;
+    s[0].ships[k].dep_body = 0; s[0].ships[k].arr_body = 0; s[0].ships[k].at = P_STATION;
+    s[0].ships[k].arc = orbit_from_state(orbit_state_of(p, ifx q == 0 then va else vb), GM_SUN, tc);
+  }
+  people := s[0].station[0].people;
+  t0 := 0.0;
+  for i: 0..<12 { if !s[0].tac[0].on { s[0].t += DAY; step_ships(s[..], DAY); } }
+  #assert s[0].tac[0].on && s[0].tac[0].n == 2 && s[0].speed == 0;
+  t0 = s[0].t;
+  // the map's clock waits while it is fought
+  belt_step(s[..], 0.1);
+  #assert s[0].t == t0 && s[0].tac[0].t > 0.0;
+  end := tac_resolve(s[0].tac[..]);
+  #assert end != TAC_FIGHTING;
+  hk := s[0].tac[0].units[0].hull; hi_ := s[0].tac[0].units[1].hull;
+  #assert hk < 1.0 || hi_ < 1.0;
+  tac_apply(s[..]);
+  #assert !s[0].tac[0].on;
+  #assert s[0].ships[s[0].tac[0].units[0].ship].hull == hk && s[0].ships[s[0].tac[0].units[1].ship].hull == hi_;
+  // a ship of ours hurt lost some of its crew
+  if s[0].tac[0].units[0].side == 0 && hk < 0.9 { #assert s[0].station[0].people < people; }
+  // a hull kept in the save
+  buf: [16384] u8;
+  n := save_game(s[..], buf[..]);
+  r: [1] Belt;
+  belt_start(r[..]);
+  #assert load_game(r[..], cast(string) buf[0..<n]);
+  #assert abs(r[0].ships[2].hull - s[0].ships[2].hull) < 0.002 && abs(r[0].ships[3].hull - s[0].ships[3].hull) < 0.002;
+  // docked at Hearth under half a hull, a ship of ours waits for repairs, which take metal
+  s[0].ships[0].hull = 0.3; s[0].station[0].metal = 1000.0;
+  #assert s[0].ships[0].mode == PARKED && s[0].ships[0].at == P_STATION;
+  pl := plan_for(s[..], 0, P_ICE, false);
+  #assert !launch(s[..], 0, P_ICE, pl);
+  repair_step(s[..], 4.0);
+  #assert abs(s[0].ships[0].hull - 0.5) < 0.001 && abs(s[0].station[0].metal - 960.0) < 0.01;
+}
+
 #test "an order to a ship 20 light-minutes from Hearth takes effect 20 minutes later; meanwhile it keeps to its course" {
   s: [1] Belt;
   belt_start(s[..]);
@@ -2978,6 +3279,19 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   for i: 0..<n { if buf[i] == '|' { bars += 1; if bars == 5 { cut0 = i; } if bars == 19 { cut1 = i; } } }
   old: [OUTBOX_CAP] u8; m := 0;
   for i: 0..<n { if i < cut0 || i >= cut1 { old[m] = buf[i]; m += 1; } }
+  // and each ship's hull (version 4's), its line's last field
+  m2 := 0; line0 := 0; lastbar := -1; first := true;
+  for i: 0..<m + 1 {
+    if i == m || old[i] == 10 {
+      e := ifx !first && lastbar >= 0 then lastbar else i;
+      for j: line0..<e { old[m2] = old[j]; m2 += 1; }
+      if i < m { old[m2] = 10; m2 += 1; }
+      line0 = i + 1; lastbar = -1; first = false;
+      continue;
+    }
+    if old[i] == '|' { lastbar = i; }
+  }
+  m = m2;
   c: [1] Belt;
   belt_start(c[..]);
   #assert load_game(c[..], cast(string) old[0..<m]);
@@ -3049,6 +3363,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert stage_of("https://openagents.com/realms/belt-2200") == STAGE_NONE;
   #assert stage_of("https://openagents.com/realms/belt-2200?stage=other") == STAGE_NONE;
   #assert stage_of("https://openagents.com/realms/belt-2200?x=1&stage=highlight#a") == STAGE_HIGHLIGHT;
+  #assert stage_of("https://openagents.com/realms/belt-2200?stage=battle") == STAGE_BATTLE;
   s: [1] Belt;
   belt_start(s[..]);
   #assert stage_hull(s[..], STAGE_SHIP) == 0;

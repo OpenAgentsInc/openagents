@@ -1,0 +1,364 @@
+// Belt 2200's tactical view (b22-tactical): when ships come within combat range, a short battle in
+// the plane they meet in. Ships keep their momentum and turn at their own rate, so turning to fire
+// costs time; a rail gun fires a slug straight along the hull, led to where the target will be;
+// missiles burn and steer, then coast; point defense shoots at missiles coming in. The battle ends
+// when one side is out of the fight, when they have drifted apart, or when time runs out; what each
+// ship lost goes back to the map (belt.coax applies it).
+//   Units are kilometres and seconds. Everything is seeded: the same battle plays the same.
+
+TAC_UNITS :: 8; TAC_MISSILES :: 48; TAC_SLUGS :: 64; TAC_TRACERS :: 24;
+TAC_STEP :: 0.1;               // s
+TAC_MAX :: 1500.0;             // s: a battle never runs longer
+TAC_APART :: 30000.0;          // km: further than this and opening, they have broken off
+TAC_RAIL_SPEED :: 40.0;        // km/s, on top of the ship's own velocity
+TAC_RAIL_CD :: 8.0;            // s between shots
+TAC_RAIL_AIM :: 0.012;         // rad: the hull must point this close to the lead to fire
+TAC_RAIL_RANGE :: 16000.0;     // km
+TAC_RAIL_HIT :: 4.0;           // km: a slug passing this close hits
+TAC_RAIL_DMG :: 0.16;          // of a hull
+TAC_RAIL_LIFE :: 500.0;        // s
+TAC_MISSILE_ACCEL :: 0.15;     // km/s² (about 15 g)
+TAC_MISSILE_BURN :: 90.0;      // s of propellant; then it coasts
+TAC_MISSILE_LIFE :: 700.0;     // s
+TAC_MISSILE_HIT :: 6.0;        // km: its warhead goes off this close
+TAC_MISSILE_DMG :: 0.45;
+TAC_LAUNCH_CD :: 30.0;         // s between launches
+TAC_LAUNCH_RANGE :: 14000.0;   // km
+TAC_PD_RANGE :: 220.0;         // km
+TAC_PD_CD :: 0.35;             // s between bursts
+TAC_PD_KILL :: 0.22;           // a burst's chance on a missile
+TAC_FLEE_HULL :: 0.3;          // a rival breaks off below this
+TAC_WON :: 0; TAC_LOST :: 1; TAC_APART_END :: 2; TAC_TIME :: 3; TAC_FIGHTING :: -1;
+
+TacUnit :: struct {
+  live: bool;      // false: crippled (its hull is gone), out of the fight
+  side: int;       // 0 ours, 1 theirs
+  ship: int;       // its index on the map
+  x: f64; y: f64; vx: f64; vy: f64;
+  head: f64;       // where the hull points, rad
+  turn: f64;       // rad/s
+  accel: f64;      // km/s² at full thrust
+  thrust: bool;    // burning this step (for the drive's plume)
+  hull: f64;       // 0 to 1
+  start_hull: f64;
+  missiles: int; rail: bool;
+  rail_cd: f64; launch_cd: f64; pd_cd: f64;
+}
+TacMissile :: struct { live: bool; side: int; target: int; x: f64; y: f64; vx: f64; vy: f64; burn: f64; age: f64; }
+TacSlug :: struct { live: bool; side: int; x: f64; y: f64; vx: f64; vy: f64; age: f64; }
+TacTracer :: struct { x0: f64; y0: f64; x1: f64; y1: f64; t: f64; kill: bool; }
+Tac :: struct {
+  on: bool;        // the view is up
+  end: int;        // TAC_FIGHTING until it resolves
+  t: f64;
+  units: [TAC_UNITS] TacUnit; n: int;
+  missiles: [TAC_MISSILES] TacMissile;
+  slugs: [TAC_SLUGS] TacSlug;
+  tracers: [TAC_TRACERS] TacTracer; tracer_k: int;
+  seed: u64;
+  flee: bool;      // our side breaking off
+  launched: int; shot_down: int; slugs_fired: int;
+}
+
+tac_rand :: (t: [] Tac) -> f64 {
+  // xorshift: no products to overflow
+  x := t[0].seed;
+  x = x ^ (x << 13); x = x ^ (x >> 7); x = x ^ (x << 17);
+  t[0].seed = x;
+  return f64((x >> 11) & 0xFFFFFFFFFFFF) / 281474976710656.0;
+}
+tac_wrap :: (a: f64) -> f64 {
+  v := a;
+  while v > 3.14159265358979 { v -= 6.28318530717959; }
+  while v < -3.14159265358979 { v += 6.28318530717959; }
+  return v;
+}
+
+tac_clear :: (t: [] Tac, seed: u64) {
+  t[0] = Tac.{};
+  t[0].seed = seed | 1;
+  t[0].end = TAC_FIGHTING;
+}
+// A ship into the battle at (x, y) km with (vx, vy) km/s: armed (missiles and a rail gun) or not.
+tac_add :: (t: [] Tac, side: int, ship: int, x: f64, y: f64, vx: f64, vy: f64, hull: f64, armed: bool, nimble: bool) -> int {
+  if t[0].n >= TAC_UNITS { return -1; }
+  u: TacUnit;
+  u.live = hull > 0.0; u.side = side; u.ship = ship;
+  u.x = x; u.y = y; u.vx = vx; u.vy = vy;
+  u.turn = ifx nimble then 0.16 else 0.07;
+  u.accel = ifx nimble then 0.03 else 0.012;
+  u.hull = hull; u.start_hull = hull;
+  u.missiles = ifx armed then 4 else 0;
+  u.rail = armed;
+  // facing the other side to begin with comes later (tac_face), once both are in
+  u.launch_cd = 5.0 + f64(t[0].n) * 3.0;
+  t[0].units[t[0].n] = u;
+  t[0].n += 1;
+  return t[0].n - 1;
+}
+// Each ship starts facing the nearest of the other side.
+tac_face :: (t: [] Tac) {
+  for i: 0..<t[0].n {
+    e := tac_nearest_enemy(t, i);
+    if e >= 0 { t[0].units[i].head = atan2_d(t[0].units[e].y - t[0].units[i].y, t[0].units[e].x - t[0].units[i].x); }
+  }
+}
+tac_nearest_enemy :: (t: [] Tac, i: int) -> int {
+  best := -1; bd := 0.0;
+  for j: 0..<t[0].n {
+    if !t[0].units[j].live || t[0].units[j].side == t[0].units[i].side { continue; }
+    dx := t[0].units[j].x - t[0].units[i].x; dy := t[0].units[j].y - t[0].units[i].y;
+    dd := dx * dx + dy * dy;
+    if best < 0 || dd < bd { best = j; bd = dd; }
+  }
+  return best;
+}
+tac_side_live :: (t: [] Tac, side: int) -> int {
+  n := 0;
+  for i: 0..<t[0].n { if t[0].units[i].live && t[0].units[i].side == side { n += 1; } }
+  return n;
+}
+tac_side_armed :: (t: [] Tac, side: int) -> int {
+  n := 0;
+  for i: 0..<t[0].n { if t[0].units[i].live && t[0].units[i].side == side && (t[0].units[i].rail || t[0].units[i].missiles > 0) { n += 1; } }
+  return n;
+}
+
+// Where to point a slug of speed v (relative to the shooter) to meet a target at relative
+// position (px, py) moving at relative velocity (qx, qy): the time of flight, or -1 when it can't.
+tac_lead :: (px: f64, py: f64, qx: f64, qy: f64, v: f64) -> f64 {
+  a := qx * qx + qy * qy - v * v;
+  b := 2.0 * (px * qx + py * qy);
+  c := px * px + py * py;
+  if abs(a) < 0.000001 { return ifx b < 0.0 then -c / b else -1.0; }
+  dsc := b * b - 4.0 * a * c;
+  if dsc < 0.0 { return -1.0; }
+  r := sqrt(dsc);
+  t1 := (-b - r) / (2.0 * a); t2 := (-b + r) / (2.0 * a);
+  lo_t := fmin(t1, t2); hi_t := fmax(t1, t2);
+  return ifx lo_t > 0.0 then lo_t else ifx hi_t > 0.0 then hi_t else -1.0;
+}
+// The closest a point moving by (dx, dy) over a step comes to (cx, cy), from (x, y).
+tac_pass :: (x: f64, y: f64, dx: f64, dy: f64, cx: f64, cy: f64) -> f64 {
+  ll := dx * dx + dy * dy;
+  s := ifx ll > 0.0 then fclamp(((cx - x) * dx + (cy - y) * dy) / ll, 0.0, 1.0) else 0.0;
+  ex := x + dx * s - cx; ey := y + dy * s - cy;
+  return sqrt(ex * ex + ey * ey);
+}
+
+tac_hurt :: (t: [] Tac, j: int, dmg: f64) {
+  t[0].units[j].hull = fmax(0.0, t[0].units[j].hull - dmg);
+  if t[0].units[j].hull <= 0.0 { t[0].units[j].live = false; t[0].units[j].thrust = false; }
+}
+
+// One ship's turn of a step: choose a heading, turn toward it, burn or coast, fire.
+tac_unit :: (t: [] Tac, i: int, dt: f64) {
+  u := t[0].units[i];
+  if !u.live { return; }
+  e := tac_nearest_enemy(t, i);
+  t[0].units[i].rail_cd = fmax(0.0, u.rail_cd - dt);
+  t[0].units[i].launch_cd = fmax(0.0, u.launch_cd - dt);
+  t[0].units[i].pd_cd = fmax(0.0, u.pd_cd - dt);
+  want := u.head; burn := false; aiming := false; ex := 0.0; ey := 0.0;
+  if e >= 0 {
+    o := t[0].units[e];
+    px := o.x - u.x; py := o.y - u.y;
+    qx := o.vx - u.vx; qy := o.vy - u.vy;
+    dist := sqrt(px * px + py * py);
+    closing := -(px * qx + py * qy) / fmax(dist, 0.001);
+    away := atan2_d(-py, -px);
+    flee := (u.side == 0 && t[0].flee) || !u.rail || (u.side == 1 && u.hull < TAC_FLEE_HULL);
+    if flee {
+      want = away; burn = true;
+    } else if dist > TAC_RAIL_RANGE * 0.8 && closing < 1.5 {
+      // too far and not closing: burn toward
+      want = atan2_d(py, px); burn = true;
+    } else {
+      tof := tac_lead(px, py, qx, qy, TAC_RAIL_SPEED);
+      if tof > 0.0 { want = atan2_d(py + qy * tof, px + qx * tof); aiming = true; ex = px; ey = py; }
+      // too close and closing fast: the drive opens it, pointing the hull away costs the shot
+      if dist < 1500.0 && closing > 3.0 { want = away; burn = true; aiming = false; }
+    }
+    // missiles leave the tubes whatever way the hull points
+    if u.missiles > 0 && t[0].units[i].launch_cd <= 0.0 && dist < TAC_LAUNCH_RANGE && !(u.side == 0 && t[0].flee) {
+      for m: 0..<TAC_MISSILES {
+        if t[0].missiles[m].live { continue; }
+        kick := 0.5;
+        t[0].missiles[m] = TacMissile.{live = true, side = u.side, target = e, x = u.x, y = u.y, vx = u.vx + px / fmax(dist, 0.001) * kick, vy = u.vy + py / fmax(dist, 0.001) * kick, burn = TAC_MISSILE_BURN};
+        t[0].units[i].missiles -= 1; t[0].units[i].launch_cd = TAC_LAUNCH_CD; t[0].launched += 1;
+        break;
+      }
+    }
+    // point defense on the nearest of theirs coming in
+    if t[0].units[i].pd_cd <= 0.0 {
+      best := -1; bd := TAC_PD_RANGE * TAC_PD_RANGE;
+      for m: 0..<TAC_MISSILES {
+        mm := t[0].missiles[m];
+        if !mm.live || mm.side == u.side { continue; }
+        dx := mm.x - u.x; dy := mm.y - u.y;
+        if dx * dx + dy * dy < bd { bd = dx * dx + dy * dy; best = m; }
+      }
+      if best >= 0 {
+        t[0].units[i].pd_cd = TAC_PD_CD;
+        kill := tac_rand(t) < TAC_PD_KILL;
+        k := t[0].tracer_k % TAC_TRACERS;
+        t[0].tracers[k] = TacTracer.{x0 = u.x, y0 = u.y, x1 = t[0].missiles[best].x, y1 = t[0].missiles[best].y, t = t[0].t, kill = kill};
+        t[0].tracer_k += 1;
+        if kill { t[0].missiles[best].live = false; t[0].shot_down += 1; }
+      }
+    }
+  }
+  // turn: at its rate, no faster
+  d := tac_wrap(want - u.head);
+  step := u.turn * dt;
+  t[0].units[i].head = tac_wrap(u.head + fclamp(d, -step, step));
+  // the drive only pushes along the hull, and only once it points near where it wants
+  t[0].units[i].thrust = burn && abs(d) < 0.4;
+  if t[0].units[i].thrust {
+    t[0].units[i].vx += cos(t[0].units[i].head) * u.accel * dt;
+    t[0].units[i].vy += sin(t[0].units[i].head) * u.accel * dt;
+  }
+  // the rail gun: straight out of the bow
+  if aiming && u.rail && t[0].units[i].rail_cd <= 0.0 && abs(tac_wrap(want - t[0].units[i].head)) < TAC_RAIL_AIM && ex * ex + ey * ey < TAC_RAIL_RANGE * TAC_RAIL_RANGE {
+    for k: 0..<TAC_SLUGS {
+      if t[0].slugs[k].live { continue; }
+      h := t[0].units[i].head;
+      t[0].slugs[k] = TacSlug.{live = true, side = u.side, x = u.x, y = u.y, vx = u.vx + cos(h) * TAC_RAIL_SPEED, vy = u.vy + sin(h) * TAC_RAIL_SPEED};
+      t[0].units[i].rail_cd = TAC_RAIL_CD; t[0].slugs_fired += 1;
+      break;
+    }
+  }
+}
+
+tac_step :: (t: [] Tac, dt: f64) {
+  if t[0].end != TAC_FIGHTING { return; }
+  t[0].t += dt;
+  for i: 0..<t[0].n { tac_unit(t, i, dt); }
+  for i: 0..<t[0].n { t[0].units[i].x += t[0].units[i].vx * dt; t[0].units[i].y += t[0].units[i].vy * dt; }
+  // missiles: steer at where the target will be while they burn, then coast
+  for m: 0..<TAC_MISSILES {
+    mm := t[0].missiles[m];
+    if !mm.live { continue; }
+    t[0].missiles[m].age += dt;
+    if mm.age > TAC_MISSILE_LIFE { t[0].missiles[m].live = false; continue; }
+    tg := mm.target;
+    if tg < 0 || !t[0].units[tg].live {
+      // its target is out: the nearest of that side
+      tg = -1; bd := 0.0;
+      for j: 0..<t[0].n {
+        if !t[0].units[j].live || t[0].units[j].side == mm.side { continue; }
+        dx := t[0].units[j].x - mm.x; dy := t[0].units[j].y - mm.y;
+        if tg < 0 || dx * dx + dy * dy < bd { tg = j; bd = dx * dx + dy * dy; }
+      }
+      t[0].missiles[m].target = tg;
+    }
+    if tg >= 0 && mm.burn > 0.0 {
+      o := t[0].units[tg];
+      px := o.x - mm.x; py := o.y - mm.y; qx := o.vx - mm.vx; qy := o.vy - mm.vy;
+      dist := sqrt(px * px + py * py);
+      closing := fmax(-(px * qx + py * qy) / fmax(dist, 0.001), 1.0);
+      tgo := fmin(dist / closing, 200.0);
+      ax := px + qx * tgo; ay := py + qy * tgo;
+      al := fmax(sqrt(ax * ax + ay * ay), 0.001);
+      t[0].missiles[m].vx += ax / al * TAC_MISSILE_ACCEL * dt;
+      t[0].missiles[m].vy += ay / al * TAC_MISSILE_ACCEL * dt;
+      t[0].missiles[m].burn -= dt;
+    }
+    mx := t[0].missiles[m].vx * dt; my := t[0].missiles[m].vy * dt;
+    for j: 0..<t[0].n {
+      o := t[0].units[j];
+      if !o.live || o.side == mm.side { continue; }
+      // relative to the ship this step
+      if tac_pass(mm.x, mm.y, mx - o.vx * dt, my - o.vy * dt, o.x - o.vx * dt, o.y - o.vy * dt) <= TAC_MISSILE_HIT {
+        tac_hurt(t, j, TAC_MISSILE_DMG); t[0].missiles[m].live = false;
+        break;
+      }
+    }
+    t[0].missiles[m].x += mx; t[0].missiles[m].y += my;
+  }
+  // slugs: straight lines
+  for k: 0..<TAC_SLUGS {
+    sl := t[0].slugs[k];
+    if !sl.live { continue; }
+    t[0].slugs[k].age += dt;
+    if sl.age > TAC_RAIL_LIFE { t[0].slugs[k].live = false; continue; }
+    mx := sl.vx * dt; my := sl.vy * dt;
+    for j: 0..<t[0].n {
+      o := t[0].units[j];
+      if !o.live || o.side == sl.side { continue; }
+      if tac_pass(sl.x, sl.y, mx - o.vx * dt, my - o.vy * dt, o.x - o.vx * dt, o.y - o.vy * dt) <= TAC_RAIL_HIT {
+        tac_hurt(t, j, TAC_RAIL_DMG); t[0].slugs[k].live = false;
+        break;
+      }
+    }
+    t[0].slugs[k].x += mx; t[0].slugs[k].y += my;
+  }
+  // how it ends
+  ours := tac_side_live(t, 0); theirs := tac_side_live(t, 1);
+  if theirs == 0 { t[0].end = TAC_WON; return; }
+  if ours == 0 { t[0].end = TAC_LOST; return; }
+  if tac_side_armed(t, 0) == 0 && tac_side_armed(t, 1) == 0 && tac_flying_at_us(t) == 0 { t[0].end = TAC_APART_END; return; }
+  apart := true;
+  for i: 0..<t[0].n {
+    for j: 0..<t[0].n {
+      a := t[0].units[i]; b := t[0].units[j];
+      if !a.live || !b.live || a.side == b.side { continue; }
+      px := b.x - a.x; py := b.y - a.y;
+      if px * px + py * py < TAC_APART * TAC_APART || px * (b.vx - a.vx) + py * (b.vy - a.vy) < 0.0 { apart = false; }
+    }
+  }
+  if apart && tac_flying_at_us(t) == 0 { t[0].end = TAC_APART_END; return; }
+  if t[0].t >= TAC_MAX { t[0].end = TAC_TIME; }
+}
+// Missiles and slugs still in flight.
+tac_flying_at_us :: (t: [] Tac) -> int {
+  n := 0;
+  for m: 0..<TAC_MISSILES { if t[0].missiles[m].live { n += 1; } }
+  for k: 0..<TAC_SLUGS { if t[0].slugs[k].live { n += 1; } }
+  return n;
+}
+// Runs a battle to its end (for tests and for a battle no one is watching).
+tac_resolve :: (t: [] Tac) -> int {
+  while t[0].end == TAC_FIGHTING { tac_step(t, TAC_STEP); }
+  return t[0].end;
+}
+
+#test "tactical: a rail gun's lead meets a target crossing at speed" {
+  // a target 10,000 km off, crossing at 5 km/s: the slug, fired at 40 km/s along the lead, meets it
+  tof := tac_lead(10000.0, 0.0, 0.0, 5.0, TAC_RAIL_SPEED);
+  #assert tof > 0.0;
+  sx := 10000.0 / tof; sy := 5.0;   // the slug's velocity that meets it
+  #assert abs(sqrt(sx * sx + sy * sy) - TAC_RAIL_SPEED) < 0.001;
+  #assert tac_lead(10000.0, 0.0, 50.0, 0.0, TAC_RAIL_SPEED) < 0.0;   // running away faster than a slug
+}
+
+#test "tactical: two warships fight it out to an end, one side out or apart, the same every time on one seed" {
+  t: [1] Tac;
+  ends: [2] int; hulls: [2] f64;
+  for run: 0..<2 {
+    tac_clear(t[..], 7);
+    a := tac_add(t[..], 0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, true, true);
+    b := tac_add(t[..], 1, 1, 9000.0, 3000.0, -2.0, 0.0, 1.0, true, false);
+    tac_face(t[..]);
+    ends[run] = tac_resolve(t[..]);
+    hulls[run] = t[0].units[a].hull + t[0].units[b].hull * 10.0;
+    #assert t[0].launched > 0 && t[0].slugs_fired > 0;
+    #assert t[0].units[a].hull < 1.0 || t[0].units[b].hull < 1.0;   // someone was hit
+  }
+  #assert ends[0] != TAC_FIGHTING && ends[0] == ends[1] && hulls[0] == hulls[1];
+}
+
+#test "tactical: point defense shoots missiles down, and an unarmed freighter runs" {
+  t: [1] Tac;
+  tac_clear(t[..], 11);
+  f := tac_add(t[..], 0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, false, false);
+  w := tac_add(t[..], 1, 1, 2500.0, 0.0, 0.0, 0.0, 1.0, true, true);
+  t[0].units[w].rail = false;   // missiles only, so the point defense is what's tested
+  tac_face(t[..]);
+  for i: 0..<3000 { tac_step(t[..], TAC_STEP); }
+  // the freighter turned away from the warship and burned
+  u := t[0].units[f];
+  #assert u.vx < 0.0 && t[0].launched > 0;
+  end := tac_resolve(t[..]);
+  #assert end != TAC_FIGHTING && t[0].shot_down > 0;
+}
