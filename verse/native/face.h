@@ -44,4 +44,6 @@ uint32_t coaxial_particle_instances(uint32_t state);
 uint32_t coaxial_grass_instances(uint32_t state);
 // a traced page's surface (the water lab's sea): vertices drawn after bg, three a triangle
 uint32_t coaxial_surface_vertices(uint32_t state);
+// which page of the app to draw (host.js's data-page: the galaxy is the verse app's page 1)
+void coaxial_page(uint32_t state, int32_t page);
 #endif

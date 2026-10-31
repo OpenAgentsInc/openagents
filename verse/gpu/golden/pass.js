@@ -141,6 +141,18 @@ window.runSpec = async function (specFile) {
           at += xw * xh * 4 * n;
         }
         res.set(a[1], t.createView({ dimension: "2d-array" }));
+      } else if (a[0] === "atlas") {
+        // a glyph atlas's coverage (verse/tools/sans-atlas.coax), as the premultiplied white texture host.js makes
+        const [lw, lh, levels] = a.slice(3, 6).map(Number), alpha = await bytesOf(a[2]);
+        const t = d.createTexture({ size: [lw, lh], format: "rgba8unorm", mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+        let at = 0;
+        for (let level = 0; level < levels; level++) {
+          const xw = Math.max(1, lw >> level), xh = Math.max(1, lh >> level), rgba = new Uint8Array(xw * xh * 4);
+          for (let i = 0; i < xw * xh; i++) rgba.fill(alpha[at + i], i * 4, i * 4 + 4);
+          d.queue.writeTexture({ texture: t, mipLevel: level }, rgba, { bytesPerRow: xw * 4, rowsPerImage: xh }, [xw, xh]);
+          at += xw * xh;
+        }
+        res.set(a[1], t.createView());
       } else if (a[0] === "sampler") {
         const f = a[2] === "linear" ? "linear" : "nearest", wrap = a[3] === "repeat" ? "repeat" : "clamp-to-edge";
         res.set(a[1], d.createSampler({ magFilter: f, minFilter: f, mipmapFilter: a[4] === "mip" ? "linear" : "nearest",

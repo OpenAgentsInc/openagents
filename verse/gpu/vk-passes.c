@@ -5,6 +5,8 @@
 //   size W H                         the colour targets' size
 //   buffer NAME FILE                 a buffer the shaders name (bound as storage here)
 //   layers NAME FILE W H N LEVELS    an rgba8 sRGB 2D-array texture: level after level, each layer after layer
+//   atlas NAME FILE W H LEVELS       a glyph atlas: FILE one coverage byte a texel, level after level, made the
+//                                    premultiplied white rgba8 2D texture host.js draws (verse/tools/sans-atlas.coax)
 //   sampler NAME FILTER WRAP MIP CMP linear|nearest, repeat|clamp, mip|flat, none|less
 //   depth NAME W H                   a depth32float texture a pass draws and a later one samples (W H "frame": the size's)
 //   target NAME [W H | /K]           an rgba16float colour target (at the size, W by H, or the size over K rounded up),

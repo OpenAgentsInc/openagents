@@ -121,15 +121,50 @@ uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt) {
 }
 
 static void keep(int action, const char *text, uint32_t len);
+static char went[1100];
+static size_t went_len;
+static int went_set;
 int rh_after(RealmHost *h, int say) {
   int action = coaxial_action(h->state);
   if (!action) return 0;
   uint32_t len = coaxial_outbox_len(h->state);
   const char *text = (const char *)rh_ptr(coaxial_outbox(h->state));
   if (say) printf("realm-host: action %d: %.*s\n", action, (int)(len > 200 ? 200 : len), text);
+  if (action == 1 && len < sizeof went) { memcpy(went, text, len); went_len = len; went_set = 1; }
   keep(action, text, len);
   coaxial_action_done(h->state);
   return action;
+}
+
+void rh_page(RealmHost *h, int page) { coaxial_page(h->state, page); }
+
+static int starts(const char *p, size_t n, const char *with) { size_t k = strlen(with); return n >= k && !memcmp(p, with, k); }
+static int put_slug(const char *s, size_t n, char *slug, size_t cap) {
+  if (!n || n >= cap) return 0;
+  memcpy(slug, s, n); slug[n] = 0;
+  return 1;
+}
+int rh_realm_of(const char *p, size_t n, char *slug, size_t cap) {
+  if (starts(p, n, "https://openagents.com/")) { p += 22; n -= 22; }
+  size_t end = 0;   // the path, without its query or hash
+  while (end < n && p[end] != '?' && p[end] != '#') end++;
+  if (end == 1 && p[0] == '/') return put_slug("the-grid", 8, slug, cap);
+  if ((end == 9 || end == 10) && starts(p, end, "/new-land") && (end == 9 || p[9] == '/')) return put_slug("the-grid", 8, slug, cap);
+  if ((end == 13 || end == 14) && starts(p, end, "/verse/galaxy") && (end == 13 || p[13] == '/')) return put_slug("galaxy", 6, slug, cap);
+  if (!starts(p, end, "/realms/")) return 0;
+  size_t a = 8, b = a;
+  while (b < end && p[b] != '/') {
+    char c = p[b];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return 0;
+    b++;
+  }
+  if (b < end && b + 1 != end) return 0;   // a page under the realm (its tip): the web's
+  return put_slug(p + a, b - a, slug, cap);
+}
+int rh_went(char *slug, size_t cap) {
+  if (!went_set) return 0;
+  went_set = 0;
+  return rh_realm_of(went, went_len, slug, cap);
 }
 
 void rh_close(RealmHost *h) {
@@ -384,7 +419,8 @@ NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_surface_vertices(uint32_t s) { (void)s; return 0; }
-NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }   // a realm that does not zoom (Orbit League)
+NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }
+NONE void coaxial_page(uint32_t s, int32_t p) { (void)s; (void)p; }   // an app of one page   // a realm that does not zoom (Orbit League)
 NONE uint32_t coaxial_stores(void) { return 0; }
 NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
 NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }

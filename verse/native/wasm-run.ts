@@ -53,6 +53,7 @@ if (total > memory.buffer.byteLength) memory.grow(Math.ceil((total - memory.buff
 const state = base, vertices = base + stateCap, uniforms = vertices + maxVertices * floats * 4;
 x.coaxial_state_init?.(state); // struct defaults, as the browser host applies them
 if (opt.golden) x.coaxial_golden?.(1);
+x.coaxial_page?.(state, Number(opt.page ?? 0)); // data-page (the galaxy: the verse app's 1), before the facts, as host.js
 
 const bytesAt = (p: number, n: number) => new Uint8Array(memory.buffer, p, n);
 const after = () => { if (x.coaxial_action?.(state)) x.coaxial_action_done(state); };

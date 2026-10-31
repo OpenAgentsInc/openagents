@@ -6,7 +6,7 @@
 # draw list, counts and particles must be the same bytes; the uniforms and
 # stores must be the same words or within libm's rounding (realm-run.c).
 #   verse/native/check.sh HOST [REALM]    HOST is a Linux machine with nix (coderos-4080);
-#                                          REALM everglade (the default), stair, belt or waterlab
+#                                          REALM everglade (the default), stair, belt, waterlab, orbitleague, newland or verse (the galaxy)
 # Everglade needs its pack at apps/openagents-web/realms/everglade/assets/everglade.pack
 # (built by verse/tools/pack_realm.py); both need the wasm toolchain (coax/web/toolchain.sh).
 set -euo pipefail
@@ -29,6 +29,13 @@ case "$realm" in
     pack=""; libraries=(); given=(); there=""
     # not golden: golden mode holds the Stair still (its golden is one frame)
     steps=(--frames 900 --every 60 --keys 10:32:1,11:32:0,20:49:1,21:49:0,30:102:1,31:102:0) ;;
+  newland)
+    pack=""; libraries=("$m/player.coax" "$m/grid.coax"); given=(); there=""
+    steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
+  verse)
+    # the galaxy (page 1): a world chosen with the arrows and opened with Enter
+    pack=""; libraries=(); given=(--page 1); there="--page 1"
+    steps=(--frames 300 --every 30 --keys 20:-5:1,21:-5:0,40:-5:1,41:-5:0,60:-2:1,61:-2:0) ;;
   belt|waterlab|orbitleague)
     pack=""; libraries=(); given=(); there=""
     # a click, space, the arrows and W held a while
@@ -44,6 +51,7 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/c" -cf - . | ssh -o BatchMode=yes "
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; cd \$d; tar -xf - 2>/dev/null
 mkdir -p verse/native; cp build.sh verse/native/
 nix-shell -p gcc --run 'COAX=/nonexistent verse/native/build.sh $realm \$PWD' > /dev/null
+./realm-run --test-travel
 VERSE_NATIVE_CLOCK_MS=0 ./realm-run $there ${steps[*]} --against wasm" > "$work/native.txt" || status=$?
 grep -v "^frame" "$work/native.txt"
 # The frames, without the uniforms' and stores' hashes (compared above, within rounding).

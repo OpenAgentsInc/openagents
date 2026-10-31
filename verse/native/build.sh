@@ -20,6 +20,10 @@ case "$realm" in
     libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
+  # the Grid (/realms/the-grid, the homepage's module): the player and grid as Everglade has them
+  newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/player.coax" "$root/verse/grid.coax") ;;
+  # the galaxy (/verse/galaxy, the verse app's page 1), where travel starts
+  verse) app="$web/verse.coax"; face="$web/verse-face.c"; libraries=() ;;
   belt|waterlab|orbitleague) app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=() ;;
   *) echo "build.sh: no realm $realm" >&2; exit 2 ;;
 esac

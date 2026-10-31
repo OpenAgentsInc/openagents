@@ -52,6 +52,15 @@ uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt);
 // The realm's pending action, handled the way a host with no browser can:
 // it is printed (when `say`) and marked done. Returns the action, 0 for none.
 int rh_after(RealmHost *h, int say);
+// The page to draw (host.js's data-page), before the page's facts.
+void rh_page(RealmHost *h, int page);
+// Travel: a navigation (action 1) since the last call, as the realm it opens in SLUG (cap bytes):
+// 1 when it names one, 0 when there was none or it is the web's (a tip page, the builder, a site).
+int rh_went(char *slug, size_t cap);
+// The realm a path opens: /verse/galaxy the galaxy ("galaxy"), / and /new-land the Grid
+// ("the-grid"), /realms/SLUG (then nothing, /, ? or #) SLUG; an https://openagents.com
+// prefix is the same site. 0 for any other path.
+int rh_realm_of(const char *path, size_t len, char *slug, size_t cap);
 // The network and what the realm keeps: coaxial_http's requests go to HOST:PORT, each through
 // one HELPER process (verse/native/net.coax, the approved TLS); the playtest player's key
 // (action 5, every realm's) and this realm's place and bar (actions 11 and 12, as NAME) are

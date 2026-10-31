@@ -166,6 +166,27 @@ VkSpec *vk_spec_open(Vkc *v, const char *path, const VkSpecFiles *files) {
       free(done);
       continue;
     }
+    if (!strcmp(a[0], "atlas")) {
+      // a glyph atlas's coverage (verse/tools/sans-atlas.coax): one byte a texel, level after level,
+      // as the premultiplied white rgba8 texture host.js makes of it
+      int lw, lh, levels;
+      if (sscanf(line, "%*s %*s %*s %d %d %d", &lw, &lh, &levels) != 3 || lw < 1 || lh < 1 || levels < 1) FAIL("atlas NAME FILE W H LEVELS");
+      size_t size, cap, want = 0;
+      void *done;
+      for (int l = 0; l < levels; l++) want += (size_t)(lw >> l > 0 ? lw >> l : 1) * (size_t)(lh >> l > 0 ? lh >> l : 1);
+      const uint8_t *alpha = bytes_of(files, a[2], &size, &cap, &done);
+      if (!alpha) goto fail;
+      if (size < want) { free(done); FAIL("atlas: the file is smaller than its levels"); }
+      uint8_t *rgba = malloc(want * 4);
+      for (size_t i = 0; i < want; i++) memset(rgba + i * 4, alpha[i], 4);
+      free(done);
+      Res *r = &s->res[s->nres++];
+      snprintf(r->name, sizeof r->name, "%.63s", a[1]); r->kind = VKS_IMAGE;
+      r->img = vks_image_levels(v, (uint32_t)lw, (uint32_t)lh, 1, 0, VK_FORMAT_R8G8B8A8_UNORM, VKS_TEXTURE, (uint32_t)levels);
+      vks_upload(v, &r->img, rgba, want * 4);
+      free(rgba);
+      continue;
+    }
     if (!strcmp(a[0], "sampler")) {
       Res *r = &s->res[s->nres++];
       snprintf(r->name, sizeof r->name, "%.63s", a[1]); r->kind = VKS_SAMPLER;

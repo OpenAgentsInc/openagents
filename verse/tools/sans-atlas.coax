@@ -1,0 +1,150 @@
+// The sans atlas a native host draws text with (docs/verse/native-gpu.md, realms-native): the
+// atlas coax/web/host.js draws in the browser for a page whose shader declares sans_atlas
+// (sansAtlas: the printable ASCII and SANS_EXTRA, 16 to a row in cells of 96 pixels, white in
+// SANS_FONT, five levels each half the last), drawn the same way by headless Chrome and kept as
+// its coverage: each level's alpha, row after row, level after level (read from one screenshot of
+// the levels as grey, checked against the script's checksum of them). A host builds the
+// premultiplied white texture from it (each texel a, a, a, a, as copyExternalImageToTexture
+// premultiplies white), verse/gpu/vk-spec.c's and pass.js's `atlas` directive. Offline tooling;
+// never run by a page.
+//   coax/web/tool.sh verse/tools/sans-atlas.coax OUT [--report] [--script]   (--script prints the script)
+// It reads SANS_EXTRA and SANS_FONT from coax/web/host.js, so the atlas follows the page's.
+// The font is the system's (Helvetica on a Mac), as the browser on this machine draws it.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/image/png.coax";
+
+SA_COLS :: 16;
+SA_CELL :: 96;
+SA_LEVELS :: 5;
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: sans-atlas OUT [--report]"); return 2; }
+  return sa_run(args_at(a[..], 0), args_has(a[..], "--report"), args_has(a[..], "--script"));
+}
+
+sa_run :: (out_path: string, report: bool, script_only: bool) -> int {
+  host: [4194304] u8;
+  hn := fs_read("coax/web/host.js", host[..]);
+  if hn < 0 { tool_errln("sans-atlas: run it from the repository's root (no coax/web/host.js)"); return 2; }
+  extra := sa_line(cast(string) host[0..<hn], "const SANS_EXTRA = [", "];");
+  font := sa_line(cast(string) host[0..<hn], "const SANS_FONT = '", "';");
+  if extra.count == 0 || font.count == 0 { tool_errln("sans-atlas: host.js's SANS_EXTRA or SANS_FONT is not where it was"); return 1; }
+  codes := 95 + sa_commas(extra) + 1;
+  rows := (codes + SA_COLS - 1) / SA_COLS;
+  total := 0;
+  for l: 0..<SA_LEVELS { total += SA_COLS * (SA_CELL >> l) * rows * (SA_CELL >> l); }
+  atlas: [4194304] u8;
+  if total > atlas.count { tool_errln("sans-atlas: too large"); return 1; }
+  // one screenshot: the levels stacked down a canvas at one pixel a texel, each texel's alpha as an
+  // opaque grey; the script's checksum of the alpha must be the screenshot's
+  w := SA_COLS * SA_CELL; h := 0;
+  for l: 0..<SA_LEVELS { h += rows * (SA_CELL >> l); }
+  js: [8192] u8; jn := sa_script(js[..], extra, font);
+  if jn < 0 { tool_errln("sans-atlas: the script does not fit"); return 1; }
+  if script_only { print("%\n", cast(string) js[0..<jn]); return 0; }
+  pb: [1024] u8; tb: [1024] u8; sb: [64] u8;
+  tmp := fs_temp("sans-atlas-", tb[..]);
+  png_path := fs_join(tmp, "atlas.png", pb[..]);
+  sn := sa_put(sb[..], 0, ""); sn = sa_int(sb[..], sn, w); sn = sa_put(sb[..], sn, "x"); sn = sa_int(sb[..], sn, h);
+  shot := [8] string.["coax/web/tool.sh", "shot", "about:blank", png_path, cast(string) sb[0..<sn], "300", "--eval", cast(string) js[0..<jn]];
+  o: [65536] u8; e: [65536] u8;
+  r := proc_run(shot[..], 300000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err(cast(string) e[0..<r.err_n]); tool_errln("sans-atlas: headless Chrome failed"); rm := fs_remove(tmp); return 1; }
+  png: [16777216] u8;
+  pn := fs_read(png_path, png[..]);
+  rm := fs_remove(tmp);
+  info := png_info(png[0..<ifx pn > 0 then pn else 0]);
+  if pn <= 0 || info.status != PNG_OK || info.w != w || info.h != h { tool_errln("sans-atlas: the screenshot is not the canvas's size"); return 1; }
+  work: [40000000] u8; px: [16777216] u8;
+  if info.work > work.count || w * h * 4 > px.count || png_decode(png[0..<pn], work[..], px[..]) != PNG_OK { tool_errln("sans-atlas: the screenshot does not decode"); return 1; }
+  at := 0; y0 := 0;
+  for l: 0..<SA_LEVELS {
+    lw := SA_COLS * (SA_CELL >> l); lh := rows * (SA_CELL >> l);
+    for y: 0..<lh { for x: 0..<lw { atlas[at] = px[((y0 + y) * w + x) * 4]; at += 1; } }
+    y0 += lh;
+  }
+  want := sa_whole(cast(string) o[0..<r.out_n]);
+  sum := sa_sum(atlas[0..<total]);
+  if want < 0 || want != sum { tool_errln("sans-atlas: the screenshot's texels are not the canvas's (its colour or scale changed them)"); return 1; }
+  if !fs_write(out_path, cast(string) atlas[0..<total]) { tool_err("sans-atlas: cannot write "); tool_errln(out_path); return 1; }
+  if report {
+    lit := 0;
+    for i: 0..<SA_COLS * SA_CELL * rows * SA_CELL { if atlas[i] > 0 { lit += 1; } }
+    print("sans-atlas: % glyphs, % rows, % levels, % bytes; level 0 %x%, % texels lit\n", codes, rows, SA_LEVELS, total, SA_COLS * SA_CELL, rows * SA_CELL, lit);
+  }
+  return 0;
+}
+
+// The text between `start` (at a line's start) and `end` on that line.
+sa_line :: (text: string, start: string, end: string) -> string {
+  i := 0;
+  while i + start.count <= text.count {
+    if (i == 0 || text[i - 1] == '\n') && text[i..<i + start.count] == start {
+      j := i + start.count; k := j;
+      while k + end.count <= text.count && text[k] != '\n' {
+        if text[k..<k + end.count] == end { return text[j..<k]; }
+        k += 1;
+      }
+      return "";
+    }
+    i += 1;
+  }
+  return "";
+}
+sa_commas :: (s: string) -> int { n := 0; for i: 0..<s.count { if s[i] == ',' { n += 1; } } return n; }
+#test "host.js's lines" {
+  t := "x\nconst SANS_EXTRA = [1, 2, 3];\nconst SANS_FONT = 'A, \"B\"';\n";
+  #assert sa_line(t, "const SANS_EXTRA = [", "];") == "1, 2, 3" && sa_commas("1, 2, 3") == 2;
+  #assert sa_line(t, "const SANS_FONT = '", "';") == "A, \"B\"" && sa_line(t, "nope", ";") == "";
+}
+
+// The script: host.js's sansAtlas on OffscreenCanvases, each level's alpha put as opaque grey into
+// one canvas over the page (level after level, downwards); it returns the alpha's checksum (sa_sum).
+sa_script :: (out: [] u8, extra: string, font: string) -> int {
+  n := 0;
+  parts := [5] string.[
+    "(()=>{const codes=[...Array.from({length:95},(_,i)=>32+i),", extra,
+    "];const cols=16,rows=Math.ceil(codes.length/cols),cell=96,levels=5,font='", font,
+    "';const out=document.createElement('canvas');out.width=cols*cell;let H=0;for(let l=0;l<levels;l++)H+=rows*(cell>>l);out.height=H;out.style.cssText='position:fixed;left:0;top:0;width:'+out.width+'px;height:'+H+'px;image-rendering:pixelated';document.body.style.margin='0';document.body.appendChild(out);const G=out.getContext('2d');let y0=0,sum=0,at=0;for(let level=0;level<levels;level++){const c=cell>>level,w=cols*c,h=rows*c;const cv=new OffscreenCanvas(w,h),g=cv.getContext('2d');g.fillStyle='#fff';g.textBaseline='alphabetic';g.font=`${64/(1<<level)}px ${font}`;codes.forEach((code,i)=>g.fillText(String.fromCodePoint(code),(i%cols)*c+16/(1<<level),Math.floor(i/cols)*c+72/(1<<level)));const d=g.getImageData(0,0,w,h).data;const im=G.createImageData(w,h);for(let k=0;k<d.length;k+=4){const a=d[k+3];im.data[k]=a;im.data[k+1]=a;im.data[k+2]=a;im.data[k+3]=255;sum=(sum+a*((at%251)+1))%2147483647;at++;}G.putImageData(im,0,y0);y0+=h;}return String(sum);})()"];
+  for p: parts { if n + p.count > out.count { return -1; } for i: 0..<p.count { out[n + i] = p[i]; } n += p.count; }
+  return n;
+}
+// The script's checksum: each byte times its place mod 251, plus one, summed mod 2^31 - 1.
+sa_sum :: (b: [] u8) -> int {
+  sum := 0;
+  for i: 0..<b.count { sum = (sum + cast(int) b[i] * ((i % 251) + 1)) % 2147483647; }
+  return sum;
+}
+// A whole number (the first line of text), -1 if it is not one.
+sa_whole :: (text: string) -> int {
+  v := 0; n := 0;
+  for i: 0..<text.count {
+    c := text[i];
+    if c == '\n' { break; }
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) c - 48; n += 1;
+  }
+  return ifx n > 0 then v else -1;
+}
+#test "the checksum and its number" {
+  b := [3] u8.[1, 2, 255];
+  #assert sa_sum(b[..]) == 1 + 4 + 765 && sa_whole("770\n/x.png") == 770 && sa_whole("x") == -1 && sa_whole("") == -1;
+}
+sa_put :: (out: [] u8, n: int, s: string) -> int { for i: 0..<s.count { out[n + i] = s[i]; } return n + s.count; }
+sa_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [24] u8; k := 0; x := v;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) (48 + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return n + k;
+}
+#test "the script" {
+  b: [8192] u8; n := sa_script(b[..], "183", "A");
+  #assert n > 23 && cast(string) b[n - 23..<n] == "return String(sum);})()" && cast(string) b[0..<7] == "(()=>{c";
+}
+

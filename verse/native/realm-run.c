@@ -2,7 +2,7 @@
 // the GPU, so a native build can be held to the browser's wasm
 // (verse/native/wasm-run.ts prints the same lines from the wasm).
 //   realm-run [--pack FILE] [--facts FILE] [--frames N] [--size WxH] [--scale K]
-//             [--keys F:KEY:DOWN,...] [--extra BYTES,...] [--golden] [--every K] [--against DIR]
+//             [--keys F:KEY:DOWN,...] [--extra BYTES,...] [--golden] [--every K] [--against DIR] [--page N]
 // Each frame steps 1/60 s. --keys holds or lets go of a key (host.js KEYS:
 // -6 up, -7 down, -4 left, -5 right, or a code point) at frame F. --extra
 // are the sizes of the page's assets after the pack's four. Every K frames
@@ -38,9 +38,30 @@ static char *slurp(const char *path, size_t *n) {
   return p;
 }
 
+// The paths travel maps (rh_realm_of): realm-run --test-travel.
+static int test_travel(void) {
+  static const char *cases[][2] = {
+    {"/", "the-grid"}, {"/new-land", "the-grid"}, {"/new-land/", "the-grid"}, {"/verse/galaxy", "galaxy"}, {"/verse/galaxy/#x", "galaxy"},
+    {"/realms/orbit-league", "orbit-league"}, {"/realms/orbit-league/", "orbit-league"}, {"/realms/orbit-league/?quick=2v2", "orbit-league"},
+    {"/realms/haunted-house#a=1", "haunted-house"}, {"https://openagents.com/realms/belt-2200", "belt-2200"},
+    {"/realms/hold-the-stair/tip", ""}, {"/realms/", ""}, {"/realms/Bad", ""}, {"/docs", ""}, {"https://example.com/realms/x", ""},
+    {"lightning:lnbc1", ""}, {"/verse/galaxyx", ""}, {"/new-landing", ""}, {"", ""}};
+  int bad = 0;
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    char slug[64] = "";
+    int ok = rh_realm_of(cases[i][0], strlen(cases[i][0]), slug, sizeof slug);
+    if (ok != (cases[i][1][0] != 0) || (ok && strcmp(slug, cases[i][1]))) { fprintf(stderr, "realm-run: %s opens \"%s\", not \"%s\"\n", cases[i][0], ok ? slug : "", cases[i][1]); bad++; }
+  }
+  char tiny[4];
+  if (rh_realm_of("/realms/orbit-league", 20, tiny, sizeof tiny)) { fprintf(stderr, "realm-run: a slug past its room\n"); bad++; }
+  printf("realm-run: travel: %zu paths, %d wrong\n", sizeof cases / sizeof cases[0] + 1, bad);
+  return bad ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
+  if (argc == 2 && !strcmp(argv[1], "--test-travel")) return test_travel();
   const char *pack = NULL, *facts = NULL, *keys = "", *extra = "", *against = NULL;
-  int frames = 120, every = 30, golden = 0;
+  int frames = 120, every = 30, golden = 0, page = 0;
   float w = 1280, ht = 720, scale = 1;
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : "";
@@ -54,10 +75,12 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--extra")) extra = v, i++;
     else if (!strcmp(a, "--golden")) golden = 1;
     else if (!strcmp(a, "--against")) against = v, i++;
+    else if (!strcmp(a, "--page")) page = atoi(v), i++;
     else { fprintf(stderr, "realm-run: what is %s?\n", a); return 2; }
   }
   RealmHost h;
   rh_open(&h, golden);
+  rh_page(&h, page);
   if (rh_pack(&h, pack ? pack : "-")) return 1;
   if (facts) {
     size_t n;
@@ -89,6 +112,8 @@ int main(int argc, char **argv) {
     }
     uint32_t n = rh_frame(&h, w, ht, scale, 1.0f / 60);
     rh_after(&h, 1);
+    char slug[64];
+    if (rh_went(slug, sizeof slug)) printf("realm-run: frame %d goes to %s\n", f, slug);
     if (f % every && f != frames) continue;
     uint32_t draws = coaxial_draw_count(h.state);
     printf("frame %d: %u vertices %u draws (%u water) %u blades %u sparks", f, n, draws, coaxial_water_draws(h.state),

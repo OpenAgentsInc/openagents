@@ -184,10 +184,38 @@ static float half(uint16_t h) {
 }
 static int cmp_double(const void *a, const void *b) { double x = *(const double *)a, y = *(const double *)b; return x < y ? -1 : x > y; }
 
+// Travel (--go FILE): a navigation that opens another realm writes its slug to FILE, and the run
+// ends with status 3 so the launcher (verse/gpu/realm.sh) starts that realm; one that is the
+// web's (a tip page, a site) is ignored, as before.
+static int travelled;
+static int went_to(const char *file) {
+  char slug[64];
+  if (!rh_went(slug, sizeof slug)) return 0;
+  FILE *f = fopen(file, "w");
+  if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", file); return 0; }
+  fprintf(f, "%s\n", slug);
+  fclose(f);
+  fprintf(stderr, "vk-realm: it goes to %s\n", slug);
+  return 1;
+}
+// Headless keys, as realm-run's --keys: F:KEY:DOWN,... (KEY a code point or host.js's negative keys).
+static void press_keys(const char *keys, int frame) {
+  const char *p = keys;
+  while (*p) {
+    int at = (int)strtol(p, (char **)&p, 10);
+    if (*p != ':') return;
+    int key = (int)strtol(p + 1, (char **)&p, 10);
+    if (*p != ':') return;
+    int down = (int)strtol(p + 1, (char **)&p, 10);
+    if (at == frame) { if (down) coaxial_key(H.state, key, 0); else coaxial_key_up(H.state, key, 0); }
+    if (*p == ',') p++;
+  }
+}
+
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL;
@@ -195,7 +223,8 @@ int main(int argc, char **argv) {
   float scale = 1;
   uint32_t w = 0, h = 0;
   int golden = 0, headless = 0, demo = 0;
-  const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade";
+  const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
+  int page = 0;
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
@@ -213,6 +242,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--shot-at")) shot_at = atof(val), i++;
     else if (!strcmp(a, "--headless")) headless = atoi(val), i++;
     else if (!strcmp(a, "--out")) out = val, i++;
+    else if (!strcmp(a, "--page")) page = atoi(val), i++;
+    else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
+    else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
@@ -220,6 +252,7 @@ int main(int argc, char **argv) {
 
   // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
   rh_open(&H, golden);
+  rh_page(&H, page);
   if (rh_pack(&H, pack)) return 1;
   if (facts) {
     size_t n;
@@ -294,15 +327,17 @@ int main(int argc, char **argv) {
     for (frames = 1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
       if (net_dir) rh_net_poll(&H);
+      press_keys(keys, frames);
       hud_vertices = rh_frame(&H, (float)w, (float)h, scale, 1.0f / 60);
       update(s);
-      if (net_dir) rh_after(&H, 1);
+      rh_after(&H, net_dir != NULL);
+      if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; frames++; break; }
       double t1 = now_s();
       vks_submit(&v, record, s);
       stepped[frames] = t1 - t0;
       took[frames] = now_s() - t1;
     }
-    why = "it drew its frames";
+    if (!travelled) why = "it drew its frames";
     if (out) {
       FILE *f = fopen(out, "wb");
       if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", out); return 1; }
@@ -345,7 +380,8 @@ int main(int argc, char **argv) {
       rh_net_poll(&H);   // the answers that came, before the realm's step
       hud_vertices = with_cursor(rh_frame(&H, (float)w, (float)h, scale, (float)dt));
       update(s);
-      rh_after(&H, 0);   // keeps the player, place and bar (--net); a navigation or a copy a bare screen ignores
+      rh_after(&H, 0);   // keeps the player, place and bar (--net); a copy a bare screen ignores
+      if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; break; }
       double t1 = now_s();
       if (shot && !p.shoot && !p.shot_ready && t - start >= shot_at) p.shoot = 1;
       if (vkp_present(&v, &p, record, s, last[0]->image, w, h, NULL, NULL)) { vkp_resize(&v, &p, p.w, p.h); continue; }
@@ -398,5 +434,5 @@ int main(int argc, char **argv) {
   }
   rh_net_close();
   rh_close(&H);
-  return vkc_validation_errors ? 1 : 0;
+  return vkc_validation_errors ? 1 : travelled ? 3 : 0;
 }

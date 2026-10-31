@@ -456,6 +456,27 @@ Every phase and native feature is a task in the Verse project
     shares, and passes a page with none), vk-realm's 90th frame is
     vk-passes' to the bit, 2.8 ms of GPU a frame at 3840x2160. The host's
     wheel is optional (a realm that does not zoom).
+  - The galaxy runs natively (`verse`, the verse app's page 1: vk-realm and
+    realm-run take --page, the host's coaxial_page optional): its game
+    matches the wasm, and its text is drawn from the sans atlas host.js makes
+    with the browser's own font, baked once by verse/tools/sans-atlas.coax
+    (headless Chrome draws it as sansAtlas does; one screenshot of the levels
+    as grey, checked against the script's checksum) into
+    verse/native/sans-atlas.bin, which the spec's `atlas` directive makes the
+    same premultiplied white texture in vk-spec and in pass.js. flat-pass
+    matches the browser (0 of 230400 past tolerance); vk-realm's 90th frame
+    is vk-passes' to the bit.
+  - Travel: a realm's navigation (action 1) is remembered by the host and
+    mapped to the realm it opens (rh_realm_of: /verse/galaxy the galaxy, /
+    and /new-land the Grid, /realms/SLUG that realm; a tip page, the builder
+    or another site is the web's; realm-run --test-travel checks 20 paths).
+    vk-realm --go FILE writes the slug and leaves with status 3, and
+    verse/gpu/realm.sh, given several realms (REALM="verse orbitleague ..."),
+    builds each in its own directory and, on the screen, starts the realm the
+    slug names when it is native, else keeps the player where they were.
+    `REALM="verse orbitleague belt" REALM_PICK=6 realm.sh HOST check` picks
+    Orbit League in the galaxy headless (Right six times, Enter) and Orbit
+    League draws there.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
