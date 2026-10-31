@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.41.0 — 2026-10-31
 
-Commit: [`66c67c1ebc3f21c37e519355c9fc09df22fa6b86`](https://github.com/OpenAgentsInc/openagents/commit/66c67c1ebc3f21c37e519355c9fc09df22fa6b86)
+Commit: [`d29e54400cedfcfa3fb7abc9321359136ecc04de`](https://github.com/OpenAgentsInc/openagents/commit/d29e54400cedfcfa3fb7abc9321359136ecc04de)
 
 - The optional `tools/native_check_execution.py` maintenance driver uses the
   complete original evaluator baseline and one checked-AST C artifact at

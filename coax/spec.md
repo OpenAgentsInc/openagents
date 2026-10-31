@@ -428,8 +428,9 @@ each use is checked against it like any other type (`return 1` from a
 An unconstrained placeholder supports copying, assignment, parameters, locals,
 views, indexing a `[] $T` and iterating it. Arithmetic, ordering and equality
 require the corresponding built-in constraint described below; unconstrained
-`a < b`, `a == b` and `a + b` are refused with their usual codes. Placeholder
-casts and layout remain restricted: `cast(int) a` is refused, and `size_of`,
+`a < b`, `a == b` and `a + b` are refused with their usual codes. An
+unconstrained `cast(int) a` is also refused; `numeric` permits numeric casts.
+Placeholder layout remains restricted: `size_of`,
 `type_info` and `type_name` of a placeholder are E0399. Refused forms, each with its own
 explained code: a `$T` only in the result (E0392); a `$T` first written in a
 body, or anywhere outside a procedure signature (E0393); a nested generic
