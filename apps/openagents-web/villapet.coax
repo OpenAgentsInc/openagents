@@ -501,10 +501,14 @@ pet_start :: (p: [] PetUi) {
 }
 
 // The next request wanted (an ASK_*), 0 none.
-pet_next :: (p: [] PetUi) -> int {
+pet_next :: (p: [] PetUi) -> int { return pet_next_in(p, -1); }
+// The next request among the kinds in `only` (a mask): the face sends the agent's emote (slow, a
+// model writes it) on a channel of its own, so a vase, a save or a note never waits behind it.
+ASK_SLOW :: ASK_EMOTE;
+pet_next_in :: (p: [] PetUi, only: int) -> int {
   for k: 0..<ASK_KINDS {
     b := 1 << k;
-    if p[0].asks & b == 0 { continue; }
+    if p[0].asks & b == 0 || only & b == 0 { continue; }
     needs_pet := b == ASK_SAVE || b == ASK_AGENT || b == ASK_PLACE || b == ASK_HIDE || b == ASK_SHOW || b == ASK_FILE_DELETE;
     if needs_pet && !p[0].has { continue; }
     if b == ASK_SAVE && (p[0].dirty_t < 0.8 && p[0].asks & (ASK_AGENT | ASK_PLACE) == 0) { continue; }

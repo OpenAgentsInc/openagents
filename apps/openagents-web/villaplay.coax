@@ -56,7 +56,7 @@ play_do :: (s: [] Villa, what: int) {
       s[0].fetch.ball.held = 0;
       return;
     }
-    vel := v3(cos(s[0].face) * s[0].speed, 0, sin(s[0].face) * s[0].speed);
+    vel := v3(sin(s[0].face) * s[0].speed, 0, cos(s[0].face) * s[0].speed);   // a face's ahead is (sin, cos)
     s[0].fetch.ball = verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
     pet_ev(p, EV_FETCH, 0);
     q[0].stay = false; q[0].stop_ask = true;
@@ -88,8 +88,15 @@ play_do :: (s: [] Villa, what: int) {
   if what == DO_VASE {
     if p[0].bag[0] + p[0].bag[1] + p[0].bag[2] == 0 { pet_toast(p, "Pick glowing flowers in the field first (E)"); return; }
     p[0].view = PV_VASE; p[0].focus = -1;
-    ahead := v3(cos(s[0].face), 0, sin(s[0].face));
+    // in front of you on open ground (a face's ahead is sin, cos), never in a wall, a hedge or a stone
+    ahead := v3(sin(s[0].face), 0, cos(s[0].face));
     p[0].put_x = s[0].feet.x + ahead.x * 0.9; p[0].put_z = s[0].feet.z + ahead.z * 0.9; p[0].put_yaw = s[0].face;
+    if !villa_place_open(s, p[0].put_x, p[0].put_z) {
+      for i: 1..<PLACE_TRIES {
+        t := verse_place_try(p[0].put_x, p[0].put_z, i);
+        if villa_place_open(s, t.x, t.z) { p[0].put_x = t.x; p[0].put_z = t.z; break; }
+      }
+    }
     p[0].put_plot = ifx p[0].near >= 0 && p[0].near < p[0].garden then p[0].g_plot[p[0].near] else -1;
     if p[0].put_plot >= 0 {   // by the stone: in front of it, on the bed
       p[0].put_x = plot_x(p[0].put_plot) + 0.55; p[0].put_z = plot_z(p[0].put_plot) + 0.1;
@@ -101,6 +108,15 @@ play_do :: (s: [] Villa, what: int) {
 // A key for play: F the ball, 1 sit, 2 stay, 3 come, G dig, E pick, V the vase.
 play_key :: (s: [] Villa, key: int) -> bool {
   c := ifx key >= 'A' && key <= 'Z' then key + 32 else key;
+  p := s[0].pet[..];
+  // arranging the vase, 1 2 3 choose a flower; with any panel open the dog's keys do nothing
+  // (a 1 meant for a flower used to make the dog sit)
+  if p[0].view == PV_VASE && c >= '1' && c < '1' + FLOWER_KINDS {
+    f := c - '1';
+    if p[0].bag[f] > 0 { p[0].holding = ifx p[0].holding == f then -1 else f; } else { pet_toast(p, "You have none of those: pick some in the field"); }
+    return true;
+  }
+  if p[0].view != PV_NONE { return false; }
   what := ifx c == 'f' then DO_THROW else ifx c == '1' then DO_SIT else ifx c == '2' then DO_STAY else ifx c == '3' then DO_COME
           else ifx c == 'g' then DO_DIG else ifx c == 'e' then DO_PICK else ifx c == 'v' then DO_VASE else -1;
   if what < 0 { return false; }
@@ -137,7 +153,7 @@ play_step :: (s: [] Villa, dt: f32) {
     q[0].dig_t -= dt;
     if q[0].dig_t <= 0 {   // a hole where it dug, then it stands again
       d := s[0].fetch.dog;
-      ahead := v3(cos(d.face), 0, sin(d.face));
+      ahead := v3(sin(d.face), 0, cos(d.face));
       k := ifx q[0].hole_n < HOLES then q[0].hole_n else 0;
       q[0].holes[k * 3] = d.pos.x + ahead.x * 0.6; q[0].holes[k * 3 + 1] = d.pos.z + ahead.z * 0.6; q[0].holes[k * 3 + 2] = 0;
       if q[0].hole_n < HOLES { q[0].hole_n += 1; }

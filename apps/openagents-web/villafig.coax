@@ -209,7 +209,8 @@ vf_pose :: (f: [] Figs, w: VfFig) -> Pose {
 vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, bound: [] f32) -> int #export_c {
   if i < 0 || i >= VF_FIGS || !f[0].started { return 0; }
   w := f[0].figs[i];
-  return verse_figure_place(w.skel, vf_pose(f, w), Place.{x = x, y = y, z = z, yaw = yaw}, out, bound);
+  // a dog that sits (any motion that folds its hind legs under it) rests its rump on the ground
+  return verse_figure_place_seated(w.skel, vf_pose(f, w), Place.{x = x, y = y, z = z, yaw = yaw}, out, bound);
 }
 
 // A still emote (sit, sleep, dig...) ends: it fades back to standing.
@@ -289,4 +290,55 @@ vf_max_bones :: () -> int #export_c { return MAX_PARTS; }
   #assert f[0].figs[0].gait == Gait.run;
   bones: [MAX_PARTS * BONE_FLOATS] f32; bound: [4] f32;
   #assert vf_place(f[..], 0, 1, 0, 2, 0.5, bones[..], bound[..]) > 10 && bound[1] > 0.6;
+}
+
+// The lowest point of figure i's placed bones of one kind: the rump (the pelvis's
+// bone and the hind thighs' tops), or everything else but the tail.
+vf_low :: (f: [] Figs, i: int, bones: [] f32, n: int, rump: bool) -> f32 {
+  k := f[0].figs[i].skel;
+  r: f32 = 1000000;
+  for b: 0..<n {
+    q := k.part[b];
+    o := b * BONE_FLOATS;
+    is_rump := q.a == A_PELVIS && q.region == REGION_BODY || q.a == A_LH || q.a == A_RH;
+    if rump { if is_rump { r = lo(r, bones[o + 1] - q.ra); } continue; }
+    if is_rump || q.region == REGION_TAIL { continue; }
+    r = lo(r, lo(bones[o + 1] - q.ra, bones[o + 5] - q.rb));
+  }
+  return r;
+}
+
+#test "a dog that sits rests its rump on the ground and no paw sinks, whatever its build (sit, howl, sleep, an agent's sit)" {
+  builds := [50] f32.[
+    1, 1, 1, 1, 1, 1, 0.8, 1, 1, 1,
+    0.68, 0.85, 0.9, 0.85, 0.95, 0.9, 0.9, 0.95, 0.9, 1.0,
+    1.6, 1.4, 1.2, 1.3, 1.1, 1.2, 0.2, 1, 1.4, 1.6,
+    0.5, 0.5, 1.6, 1.6, 1.5, 0.5, 1, 1.8, 0.4, 2,
+    1.3, 1.6, 0.6, 0.6, 0.7, 1.6, 0, 0.6, 1.8, 0.6];
+  f: [1] Figs;
+  vf_start(f[..]);
+  agent := vf_motion_add(f[..], "motion sit_pretty; rig animal; seconds 1; hold; still; at 1; hind_left_hip -90 0 0; hind_right_hip -90 0 0; hind_left_knee 120 0 0; hind_right_knee 120 0 0; lift 0 -0.25 0");
+  #assert agent >= 0;
+  motions := [4] int.[vf_pet_emote(f[..], 0), vf_motion_named(f[..], "howl"), vf_motion_named(f[..], "sleep"), agent];
+  ground := [2] f32.[0, 1.37];
+  bones: [MAX_PARTS * BONE_FLOATS] f32; bound: [4] f32;
+  for b: 0..<5 {
+    for m: 0..<4 {
+      vf_set(f[..], 1, true, builds[b * 10..<b * 10 + 10], PATTERN_PLAIN, 0.6, 0.4, 0.2, 0.9, 0.9, 0.9);
+      #assert vf_emote(f[..], 1, motions[m]);
+      for t: 0..<9 { vf_tick(f[..], 0.25); vf_step(f[..], 1, 0, 0.25); }   // 2.25 s: every one has sat down, the howl not yet up
+      #assert vf_still(f[..], 1);
+      for g: 0..<2 {
+        n := vf_place(f[..], 1, 3, ground[g], -2, 0.7 * f32(b + m), bones[..], bound[..]);
+        #assert n > 20;
+        #assert abs(vf_low(f[..], 1, bones[..], n, true) - ground[g]) < 0.02;
+        #assert vf_low(f[..], 1, bones[..], n, false) > ground[g] - 0.005;
+      }
+      vf_stop(f[..], 1);
+      for t: 0..<8 { vf_tick(f[..], 0.25); vf_step(f[..], 1, 0, 0.25); }
+    }
+    // standing again, it stands on its paws as before: the seat leaves a standing dog alone
+    n := vf_place(f[..], 1, 0, 0, 0, 0, bones[..], bound[..]);
+    #assert vf_low(f[..], 1, bones[..], n, true) > 0.05;
+  }
 }

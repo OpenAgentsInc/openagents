@@ -478,6 +478,116 @@ verse_figure_place :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f
   if bound.count < 4 { return 0; }
   joints: [MAX_JOINTS] Fv;
   if !verse_figure_joints_at(k, p, at, joints[..]) { return 0; }
+  return figure_bones(k, joints[..], out, bound);
+}
+
+// The same, seated: an animal whose hind legs fold under it (a sit, a howl,
+// lying down, any motion that sits, an agent's too) rests on the ground
+// (verse_figure_seat), whatever its build. Anything else is placed as it is.
+verse_figure_place_seated :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c {
+  if bound.count < 4 { return 0; }
+  joints: [MAX_JOINTS] Fv;
+  if !verse_figure_joints_at(k, p, at, joints[..]) { return 0; }
+  verse_figure_seat(k, p, at, joints[..]);
+  return figure_bones(k, joints[..], out, bound);
+}
+
+// How far an animal's pose sits: 0 standing, 1 its hind legs folded under it
+// (both hips pitched forward 63 degrees or more; from 35 it starts).
+verse_figure_sitting :: (k: Skeleton, p: Pose) -> f32 #export_c {
+  if k.rig != Rig.animal { return 0; }
+  hip := -(verse_figure_turn_hold(k.rig, A_LH, p.turn[A_LH]).x + verse_figure_turn_hold(k.rig, A_RH, p.turn[A_RH]).x) * 0.5;
+  return smooth01((hip - 0.61) / 0.49);
+}
+// The lowest point of part i's two ends (their balls' bottoms).
+part_bottom :: (k: Skeleton, joints: [] Fv, i: int) -> f32 {
+  q := k.part[i];
+  return lo(joints[q.a].y - q.ra, joints[q.b].y - q.rb);
+}
+// The rump: the bottom of the pelvis's bone and the hind thighs' tops.
+rump_bottom :: (k: Skeleton, joints: [] Fv) -> f32 {
+  r: f32 = 1000000;
+  for i: 0..<k.parts {
+    q := k.part[i];
+    if q.a == A_PELVIS && q.region == REGION_BODY { r = lo(r, joints[q.a].y - q.ra); }
+    if q.a == A_LH || q.a == A_RH { r = lo(r, joints[q.a].y - q.ra); }
+  }
+  return r;
+}
+// The lowest point of everything but the rump and the tail (paws, legs, chest, head).
+rest_bottom :: (k: Skeleton, joints: [] Fv) -> f32 {
+  r: f32 = 1000000;
+  for i: 0..<k.parts {
+    q := k.part[i];
+    if q.region == REGION_TAIL || q.a == A_PELVIS || q.a == A_LH || q.a == A_RH { continue; }
+    r = lo(r, part_bottom(k, joints, i));
+  }
+  return r;
+}
+// Every joint turned by angle (radians, + lifts the front) about the line across the figure through c.
+seat_pitch :: (k: Skeleton, joints: [] Fv, src: [] Fv, c: Fv, yaw: f32, angle: f32) {
+  fx := sin(yaw); fz := cos(yaw);
+  ca := cos(angle); sa := sin(angle);
+  for j: 0..<k.joints {
+    d := fv_sub(src[j], c);
+    along := d.x * fx + d.z * fz;
+    na := along * ca - d.y * sa;
+    ny := along * sa + d.y * ca;
+    joints[j] = fv(src[j].x + (na - along) * fx, c.y + ny, src[j].z + (na - along) * fz);
+  }
+}
+// Sets a sitting animal's rump on the ground at.y: down (or up) by as much as
+// it sits, then, if that sinks its front paws, legs or chest, the body tips up
+// about the rump until they stand on the ground; past that it is lifted, so
+// nothing is ever under the ground.
+verse_figure_seat :: (k: Skeleton, p: Pose, at: Place, joints: [] Fv) #export_c {
+  w := verse_figure_sitting(k, p);
+  if !(w > 0) || joints.count < k.joints { return; }
+  src: [MAX_JOINTS] Fv;
+  for j: 0..<k.joints { src[j] = joints[j]; }
+  c := fv(joints[A_PELVIS].x, rump_bottom(k, joints), joints[A_PELVIS].z);
+  if seat_try(k, joints, src[..], c, at, w, 0) >= at.y - 0.002 { return; }
+  low: f32 = 0; high: f32 = 0.5;
+  if seat_try(k, joints, src[..], c, at, w, high) < at.y {
+    // tipped as far as a sitting dog goes: its front legs stand braced on the ground (a little
+    // shorter), and only what still reaches under it (a chest, a head) lifts the whole of it
+    for i: 0..<k.parts {
+      q := k.part[i];
+      if front_low(q.a) { joints[q.a].y = hi(joints[q.a].y, at.y + q.ra); }
+      if front_low(q.b) { joints[q.b].y = hi(joints[q.b].y, at.y + q.rb); }
+    }
+    lift := at.y - rest_bottom(k, joints);
+    if lift > 0 { for j: 0..<k.joints { joints[j].y += lift; } }
+    return;
+  }
+  for i: 0..<20 {
+    mid := (low + high) * 0.5;
+    if seat_try(k, joints, src[..], c, at, w, mid) < at.y { low = mid; } else { high = mid; }
+  }
+  low = seat_try(k, joints, src[..], c, at, w, high);
+}
+// The body tipped up by angle about the rump, then the rump set down on the ground by as much as
+// it sits: how low the rest of it then reaches.
+seat_try :: (k: Skeleton, joints: [] Fv, src: [] Fv, c: Fv, at: Place, w: f32, angle: f32) -> f32 {
+  seat_pitch(k, joints, src, c, at.yaw, angle * w);
+  dy := (at.y - rump_bottom(k, joints)) * w;
+  for j: 0..<k.joints { joints[j].y += dy; }
+  // the hind legs folded under it lie on the ground beside the rump, never through it
+  for i: 0..<k.parts {
+    q := k.part[i];
+    if !hind_low(q.a) { continue; }
+    joints[q.a].y = hi(joints[q.a].y, joints[q.a].y + (at.y + q.ra - joints[q.a].y) * w);
+    if hind_low(q.b) { joints[q.b].y = hi(joints[q.b].y, joints[q.b].y + (at.y + q.rb - joints[q.b].y) * w); }
+  }
+  return rest_bottom(k, joints);
+}
+// A front leg's elbow, wrist, paw or toe.
+front_low :: (j: int) -> bool { return j > A_LF && j <= A_LF + 4 || j > A_RF && j <= A_RF + 4; }
+// A hind leg's knee, hock, paw or toe.
+hind_low :: (j: int) -> bool { return j > A_LH && j <= A_LH + 4 || j > A_RH && j <= A_RH + 4; }
+
+// A posed figure's joints to its bones, as verse_figure_place writes them.
+figure_bones :: (k: Skeleton, joints: [] Fv, out: [] f32, bound: [] f32) -> int {
   n := 0;
   c := fv(0, 0, 0);
   for j: 0..<k.joints { c = fv_add(c, joints[j]); }

@@ -1103,6 +1103,7 @@ villa_draws :: (s: [] Villa) -> int #export_c { return DRAWS; }
 
 // ---- your pet, for the face (villapet.coax)
 villa_pet_next :: (s: [] Villa) -> int #export_c { return pet_next(s[0].pet[..]); }
+villa_pet_next_in :: (s: [] Villa, slow: bool) -> int #export_c { return pet_next_in(s[0].pet[..], ifx slow then ASK_SLOW else -1 - ASK_SLOW); }
 villa_pet_post :: (kind: int) -> bool #export_c { return pet_post(kind); }
 villa_pet_url :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_url(s[0].pet[..], kind, out); }
 villa_pet_body :: (s: [] Villa, kind: int, out: [] u8) -> int #export_c { return pet_body(s[0].pet[..], kind, out); }
@@ -1418,4 +1419,49 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
     n = villa_draw(s[..], out[..], u[..], sizes[c] * dprs[c], highs[c] * dprs[c], dprs[c], false, 0, 0, 0, 0);
     #assert n < MAX_VERTICES - 600 && p[0].tab == 1;
   }
+}
+
+#test "with the dog sitting, flowers are arranged in the vase and it is left: the request goes out" {
+  s: [1] Villa;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].still = true;   // no flight
+  villa_step(s[..], 1.0 / 60.0, 12, 0, 3, 0, 0, 0, 0);
+  #assert !villa_busy(s[..]);
+  p := s[0].pet[..];
+  p[0].skills = SKILL_OBEY | SKILL_FETCH | SKILL_DIG;
+  p[0].bag[0] = 2; p[0].bag[1] = 1;
+  p[0].emote = -1;
+  #assert villa_key(s[..], '1', 0) && p[0].emote == 0;   // sit
+  villa_set_pet_still(s[..], true);
+  villa_step(s[..], 1.0 / 60.0, 12, 0, 3, 0, 0, 0, 0);
+  n := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert villa_key(s[..], 'v', 0) && p[0].view == PV_VASE;
+  // it goes in front of you (facing +z), on open ground, not beside you where the dog sits
+  #assert p[0].put_z > s[0].feet.z + 0.5 && abs(p[0].put_x - s[0].feet.x) < 0.2 && villa_place_open(s[..], p[0].put_x, p[0].put_z);
+  // 1 chooses the first flower here; it doesn't make the dog sit again or stand
+  p[0].emote = -1;
+  #assert villa_key(s[..], '1', 0) && p[0].holding == 0 && p[0].emote == -1;
+  #assert villa_key(s[..], '1', 0) && p[0].holding == -1;
+  n = villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  kind := -1; slot := -1; put := -1;
+  for b: 0..<p[0].buttons {
+    if p[0].button_kind[b] == B_KIND && p[0].button_arg[b] == 0 { kind = b; }
+    if p[0].button_kind[b] == B_SLOT && p[0].button_arg[b] == 3 { slot = b; }
+    if p[0].button_kind[b] == B_PLACE_VASE { put = b; }
+  }
+  #assert kind >= 0 && slot >= 0 && put >= 0;
+  presses := [3] int.[kind, slot, put];
+  for i: 0..<3 {
+    bx := p[0].button[presses[i]];
+    #assert villa_pointer(s[..], (bx.x0 + bx.x1) / 2, (bx.y0 + bx.y1) / 2, 0, 0, 1);
+    up := villa_pointer(s[..], (bx.x0 + bx.x1) / 2, (bx.y0 + bx.y1) / 2, 2, 0, 1);
+    villa_step(s[..], 1.0 / 60.0, 12, 0, 3, 0, 0, 0, 0);
+    if i < 2 { n = villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0); }
+  }
+  #assert p[0].view == PV_NONE && p[0].asks & ASK_VASE != 0 && p[0].vase[3] == 0;
+  #assert villa_pet_next(s[..]) == ASK_VASE || p[0].asks & (ASK_VASE - 1) != 0;
+  // an emote the agent is still writing doesn't hold the vase up: it has a channel of its own
+  p[0].asks = ASK_EMOTE | ASK_VASE;
+  #assert villa_pet_next_in(s[..], false) == ASK_VASE && villa_pet_next_in(s[..], true) == ASK_EMOTE;
 }

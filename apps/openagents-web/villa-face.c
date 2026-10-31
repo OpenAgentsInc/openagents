@@ -54,6 +54,7 @@ static bool flight_told;
 static bool entered;   // world-enter and load-engine sent (the analytics contract, analytics-contract.json)
 // Your pet's requests (villapet.coax), one at a time; a player key minted first if the browser has none.
 static int32_t pet_ask = -1; static int64_t pet_kind;
+static int32_t slow_ask = -1; static int64_t slow_kind; static double slow_asked_at;
 static double pet_asked_at;
 static char pet_url_buf[160];
 static uint8_t pet_body_buf[12288];
@@ -165,16 +166,20 @@ static void pet_requests(uint32_t state) {
     if (!minted) { minted = true; mint_ask = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4); }
     return;
   }
-  if (pet_ask >= 0 && now - pet_asked_at < 200) return;
-  int64_t kind = villa_pet_next(at(state));
-  if (!kind) return;
-  int64_t un = villa_pet_url(at(state), kind, (coax_v_u8){(uint8_t *)pet_url_buf, sizeof pet_url_buf});
-  int64_t bn = villa_pet_post(kind) ? villa_pet_body(at(state), kind, (coax_v_u8){pet_body_buf, sizeof pet_body_buf}) : 0;
-  if (un <= 0 || bn < 0) { villa_pet_answer(at(state), kind, 0, (coax_string){"", 0}); return; }
-  int32_t id = coaxial_http((uint32_t)(uintptr_t)pet_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)pet_body_buf, (uint32_t)bn,
-                            (villa_pet_post(kind) ? 1 : 0) | 4 | 8);
-  if (id < 0) return;
-  pet_ask = id; pet_kind = kind; pet_asked_at = now;
+  // two channels: the agent's emote (a model writes it, slowly) on its own, everything else on the other
+  for (int slow = 1; slow >= 0; slow--) {
+    int32_t *ask = slow ? &slow_ask : &pet_ask; int64_t *ask_kind = slow ? &slow_kind : &pet_kind; double *asked_at = slow ? &slow_asked_at : &pet_asked_at;
+    if (*ask >= 0 && now - *asked_at < 200) continue;
+    int64_t kind = villa_pet_next_in(at(state), slow);
+    if (!kind) continue;
+    int64_t un = villa_pet_url(at(state), kind, (coax_v_u8){(uint8_t *)pet_url_buf, sizeof pet_url_buf});
+    int64_t bn = villa_pet_post(kind) ? villa_pet_body(at(state), kind, (coax_v_u8){pet_body_buf, sizeof pet_body_buf}) : 0;
+    if (un <= 0 || bn < 0) { villa_pet_answer(at(state), kind, 0, (coax_string){"", 0}); continue; }
+    int32_t id = coaxial_http((uint32_t)(uintptr_t)pet_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)pet_body_buf, (uint32_t)bn,
+                              (villa_pet_post(kind) ? 1 : 0) | 4 | 8);
+    if (id < 0) continue;
+    *ask = id; *ask_kind = kind; *asked_at = now;
+  }
 }
 
 static void room_requests(uint32_t state, float dt) {
@@ -352,6 +357,12 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     pet_ask = -1;
     uint32_t b; int st = http_status(length, &b);
     villa_pet_answer(at(state), pet_kind, st, (coax_string){(const char *)inbox + b, length - b});
+    return;
+  }
+  if (slow_ask >= 0 && kind == 512 + slow_ask) {
+    slow_ask = -1;
+    uint32_t b; int st = http_status(length, &b);
+    villa_pet_answer(at(state), slow_kind, st, (coax_string){(const char *)inbox + b, length - b});
     return;
   }
   if (room_ask >= 0 && kind == 512 + room_ask) {
