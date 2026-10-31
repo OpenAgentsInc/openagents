@@ -11,7 +11,7 @@ REFINE_MASS :: 0.80;       // of a tonne refined: reaction mass,
 REFINE_WATER :: 0.15;      // water,
 REFINE_AIR :: 0.05;        // and air (oxygen split from it)
 STATION_SHIFTS :: 30;      // people to work every shift
-FREIGHTER_METAL :: 150.0;  // tonnes of metal the yard builds a freighter from,
+FREIGHTER_METAL :: 600.0;  // tonnes of metal the yard builds a freighter from (about four big loads' worth),
 FREIGHTER_CREW :: 4;       // the people who crew it,
 FREIGHTER_DAYS :: 20.0;    // and the days it takes
 RIG_RATE :: 15.0;          // tonnes of ice a day a rig left at a rock drills, for haulers to fetch

@@ -2849,10 +2849,10 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   s: [1] Belt;
   belt_start(s[..]);
   #assert yard_can(s[..]) == YARD_METAL && !yard_build(s[..]);
-  s[0].station[0].metal = 200.0;
+  s[0].station[0].metal = 700.0;
   hands := free_hands(s[..]);
   #assert yard_can(s[..]) == YARD_OK && yard_build(s[..]);
-  #assert s[0].station[0].metal == 50.0 && free_hands(s[..]) == hands - FREIGHTER_CREW && yard_can(s[..]) == YARD_BUSY && s[0].ship_n == SHIP_BASE;
+  #assert s[0].station[0].metal == 100.0 && free_hands(s[..]) == hands - FREIGHTER_CREW && yard_can(s[..]) == YARD_BUSY && s[0].ship_n == SHIP_BASE;
   for i: 0..<19 { s[0].t += DAY; step_ships(s[..], DAY); }
   #assert s[0].ship_n == SHIP_BASE;
   s[0].t += DAY; step_ships(s[..], DAY);
