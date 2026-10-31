@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793488435,
+  "content": "All 19 removed #asserts in aethyr/space.coax reappear verbatim after the world()->world_point() rename (plus local renames raised->lifted_mid, edge->at_near); no other checks removed or loosened; player.coax only adds a #test",
+  "tags": [
+    [
+      "commit",
+      "bf5312df4019fe59cbde5951772db9a48ae5bf97"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "ffe1b6f964caebb35ca09fc982cc3961287f3cae96588a4d4c50d84b7325f9ec",
+  "sig": "d4e2dd0a2a1ac67b76e3a48fdd2fe7f72c89a24b89efb665b88309036147b5a4f448b1ccad2ae678f27618922e27ac7eaf71cfe3e86a385b103e4a20015e701e"
+}
