@@ -2306,6 +2306,11 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       hint = cast(string) hb[0..<hm];
     }
     else if s[0].pick < 0 && s[0].gold < cheapest { hint = "NOT ENOUGH GOLD YET · POP BEASTS FOR MORE"; }
+    // the first waves, with nothing to place: say what the game is instead
+    if s[0].pick < 0 && s[0].gold < cheapest && s[0].phase != BUILD && s[0].wave <= 3 {
+      m = put(buf[..], 0, "POP THE BEASTS BEFORE THEY REACH THE TOP");
+      hint = "EACH ONE THAT GETS THERE COSTS LIVES · POPS PAY GOLD";
+    }
     else if s[0].pick >= 0 {
       if s[0].touch { hint = ifx aim_cell(s) >= 0 then "TAP IT AGAIN TO PLACE · TAP OFF THE MAP TO STOP" else "TAP A TILE TO SEE ITS REACH"; }
       else { hint = "CLICK A TILE TO PLACE · ESC TO STOP"; }

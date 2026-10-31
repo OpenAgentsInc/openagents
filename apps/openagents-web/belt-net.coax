@@ -47,6 +47,7 @@ net_apply :: (s: [] Belt, t: string) {
 }
 // The speed buttons and keys: with a partner, both clocks change at one tick.
 set_speed :: (s: [] Belt, v: int) {
+  s[0].hold = false;
   if net_send(s, N_SPEED, v, 0, 0) { return; }
   s[0].speed = v;
 }
@@ -117,6 +118,7 @@ net_advance :: (s: [] Belt, game: f64) {
 }
 // A frame in a room: the relay's frames, then the ticks both have committed to.
 net_frame :: (s: [] Belt, real: f64) {
+  s[0].hold = false;   // two play on the shared clock
   L := s[0].lock[..];
   net_snapshots(s);
   lr_frame(L, real);

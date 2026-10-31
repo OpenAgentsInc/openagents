@@ -217,6 +217,25 @@ win_step :: (s: [] Belt, days: f64) {
   #assert s[0].engaged[kite] == -1 && s[0].engaged[m] == -1;
 }
 
+#test "a new player's first game: the clock waits for the first order, and the hint says what the game is" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\ncoarse=1\n");
+  #assert s[0].hold;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  t0 := s[0].t;
+  for f: 0..<3 { n := belt_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.1, false); }
+  #assert s[0].t == t0;
+  fleet_mine(s[..]);
+  #assert !s[0].hold;
+  for f: 0..<2 { n := belt_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.1, false); }
+  #assert s[0].t > t0;
+  // a saved game never waits
+  r: [1] Belt; belt_start(r[..]); r[0].restored = true;
+  belt_message(r[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\n");
+  #assert !r[0].hold;
+}
+
 #test "?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself" {
   s: [1] Belt;
   belt_start(s[..]);

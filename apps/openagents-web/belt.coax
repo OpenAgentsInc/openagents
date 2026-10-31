@@ -192,6 +192,7 @@ Belt :: struct {
   maker: [MAKER_BYTES] u8; maker_n: int;
   tip_x0: f32; tip_y0: f32; tip_x1: f32; tip_y1: f32; tip_shown: bool; tip_down: bool; tip_id: int; tip_hover: bool;
   dirty: bool; save_t: f32; restored: bool; new_armed: f32;
+  hold: bool;   // a new player's first game: the clock waits for their first order
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
   tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
@@ -874,6 +875,8 @@ load_game :: (s: [] Belt, text: string) -> bool {
 // Keep the game now and then while it runs (and at once after an order or an arrival).
 autosave :: (s: [] Belt, real: f32) {
   if s[0].golden || s[0].stage != STAGE_NONE || s[0].action != 0 { return; }
+  // a partner's game, joined by link, is not saved over the player's own
+  if s[0].lock[0].state != LR_OFF && s[0].lock[0].seat != 0 { return; }
   s[0].save_t -= real;
   // every few seconds, or a second after something changed
   if !(s[0].save_t <= 0 || (s[0].dirty && s[0].save_t <= SAVE_EVERY - 1.0)) { return; }
@@ -917,6 +920,7 @@ set_dest :: (s: [] Belt, p: int) {
 
 go :: (s: [] Belt, fast: bool) {
   if s[0].dest < 0 { return; }
+  s[0].hold = false;
   if net_send(s, N_GO, s[0].dest, ifx fast then 1 else 0, ifx s[0].shift then 1 else 0) { return; }
   sent := 0; queued := 0; lagged := 0; late := 0.0;
   for k: 0..<s[0].ship_n {
@@ -1321,6 +1325,7 @@ yard_can :: (s: [] Belt) -> int {
 // Lay down a freighter: its metal now, its crew off the shifts, done in FREIGHTER_DAYS.
 yard_build :: (s: [] Belt) -> bool {
   if yard_can(s) != YARD_OK { return false; }
+  s[0].hold = false;
   if net_send(s, N_BUILD, 0, 0, 0) { return true; }
   s[0].station[0].metal -= FREIGHTER_METAL;
   s[0].building = FREIGHTER_DAYS;
@@ -1389,6 +1394,7 @@ send_ship :: (s: [] Belt, k: int, dest: int, work: int) -> bool {
   return true;
 }
 fleet_mine :: (s: [] Belt) {
+  s[0].hold = false;
   if net_send(s, N_FLEET, 0, 0, 0) { return; }
   mining := 0; home := 0; stuck := 0;
   for k: 0..<s[0].ship_n {
@@ -1489,9 +1495,10 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
     if query_word(fact_of(text, "url"), "card=1") { s[0].card = true; }
     if query_word(fact_of(text, "url"), "unknown=1") { unknown_on(s); say(s, "THE UNKNOWN: A SIGNAL AT JUPITER'S LEADING POINT"); }
     net_page(s, fact_of(text, "url"));
+    if !s[0].golden && s[0].stage == STAGE_NONE && !s[0].restored && !s[0].card && !lr_on(s[0].lock[..]) { s[0].hold = true; }
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
-  if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); }
+  if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); if s[0].restored { s[0].hold = false; } }
   if kind == MAKER_KIND { take_maker(s, text); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE { track_world(s[0].track[..], "belt-2200"); }
@@ -1630,6 +1637,7 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_TAC_FAST { s[0].tac_fast = !s[0].tac_fast; }
   if b.id == B_TAC_DONE { tac_apply(s); }
   if b.id == B_OVER { s[0].over_seen = true; s[0].dirty = true; }
+  if b.id == B_NEW || b.id == B_SPEED { s[0].hold = false; }
   if b.id == B_NEW {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; if !net_send(s, N_NEW, 0, 0, 0) { new_game(s); } } else { s[0].new_armed = 3.0; }
@@ -2631,8 +2639,15 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   // Orders for the selection.
   sk := first_selected(s);
   if sk < 0 {
-    centred(out, d, "SELECT A SHIP", w / 2, cy0 - 12 * k, 7 * k, 0.55, INK_R, INK_G, INK_B);
-    block_rect(d, w / 2 - 90 * k, cy0 - 12 * k - 10 * k, w / 2 + 90 * k, cy0 - 12 * k + 3 * k);   // no name over the hint
+    if s[0].hold {
+      // A new player's first look: what the game is, and the first thing to do (the clock waits for it)
+      centred(out, d, "BRING HOME MORE ICE THAN THE MARS UNION", w / 2, cy0 - 34 * k, 7.5 * k, 0.95, ICE_R, ICE_G, ICE_B);
+      centred(out, d, "TAP A SHIP · THE CLOCK STARTS WITH YOUR FIRST ORDER", w / 2, cy0 - 12 * k, 6.5 * k, 0.75, INK_R, INK_G, INK_B);
+      block_rect(d, m, cy0 - 46 * k, w - m, cy0 - 12 * k + 3 * k);
+    } else {
+      centred(out, d, "SELECT A SHIP", w / 2, cy0 - 12 * k, 7 * k, 0.55, INK_R, INK_G, INK_B);
+      block_rect(d, w / 2 - 90 * k, cy0 - 12 * k - 10 * k, w / 2 + 90 * k, cy0 - 12 * k + 3 * k);   // no name over the hint
+    }
     return;
   }
   pw := ifx phone then w - 2 * m else 470 * k;
@@ -2759,6 +2774,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   real := f64(clamp(dt, 0, 0.1));
   // Time: game days a real second, stepped in pieces of at most two days so arrivals and mining are seen in order.
   game := ifx s[0].golden then 0.0 else SPEEDS[s[0].speed] * DAY * real;
+  if s[0].hold { game = 0.0; }
   if s[0].stage == STAGE_HIGHLIGHT { game = stage_game(s, real); }
   lr_idle(s[0].lock[..], real);
   if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
