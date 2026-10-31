@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent dense causal decoder fixtures; Python is authoring tooling only."""
 import math
 import struct

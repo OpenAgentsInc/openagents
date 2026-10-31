@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Explicit experimental/staging client. No auto-arm, production injection,
 // module loading, persistence or reinterpretation of a failed v2 entry.
 const capacities={password:128,record:4096,message:6144,relay:2048,recipient:64};

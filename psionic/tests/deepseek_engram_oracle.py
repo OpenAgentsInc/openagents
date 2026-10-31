@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned normalization/hash/row oracle. Never executes upstream model code."""
 import argparse,gzip,hashlib,json,math,re,struct,unicodedata
 from pathlib import Path

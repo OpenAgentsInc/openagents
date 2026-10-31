@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 25's independent oracle: which batches one pass admits, where each
 question's rows and logits sit, and how large the batch workspace is, derived
 from the written rule and the two models' shapes rather than from plan.coax.

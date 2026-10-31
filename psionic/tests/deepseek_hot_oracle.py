@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned exact-residency trace oracle; no model download or upstream runtime."""
 import argparse,gzip,json,hashlib
 from pathlib import Path

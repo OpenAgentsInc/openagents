@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 4 (bootstrap seed: regenerates a coax0 C seed with an already trusted compiler)
 # Explicitly refresh the generated C seed using a previously trusted compiler.
 # Normal builds never refresh a seed or silently accept a mismatch.
 set -euo pipefail

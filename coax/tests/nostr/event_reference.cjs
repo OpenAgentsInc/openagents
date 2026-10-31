@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 // Independent ECMAScript NIP-01 preimage/hash oracle; no product dependency.
 const fs=require('node:fs'),{createHash}=require('node:crypto');
 const rows=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));

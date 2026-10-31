@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // GPUI's atlas in the browser, for a page drawn with the shared Zeron
 // components (apps/shared/zeron/gpui.coax: /chat). What the Mac app's
 // Sources/Zeron.swift does with CoreText, done with the browser's own text:

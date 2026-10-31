@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Generic browser CSPRNG effect. The passed exports are the actual Coax policy;
 // this module owns address observation and WebCrypto calls, not admission policy.
 // No seed/provider argument exists. Tests replace globals in an isolated realm.

@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Generic browser effects only. Request admission, cadence and response meaning
 // belong to Coax. All response-bearing requests share the original eight slots.
 export function makeHttpRequests({

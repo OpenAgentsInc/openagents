@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent standard-library reference: Unicode regex + priority-queue BPE.
 Never imports/runs downloaded code or reads candidate outputs. Fixtures are owned.
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent high-precision/sort oracle for DeepSeek routing equations."""
 import argparse
 from decimal import Decimal, localcontext

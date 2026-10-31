@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent Decimal(120) fixtures; emits a C header, never runtime code.
 
 Inputs are exact binary32 dyadics from a fixed integer LCG. References use

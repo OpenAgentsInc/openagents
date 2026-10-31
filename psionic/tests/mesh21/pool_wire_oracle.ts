@@ -1,3 +1,4 @@
+// Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 // Independent test-only JCS/hash oracle for actual Coax-emitted content.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

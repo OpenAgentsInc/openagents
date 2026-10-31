@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser worker glue: scheduling and transport for Coax's wasm in a Web Worker)
 // Test-only observation at the exact terminal-message boundary. Production
 // code never inspects or returns transferred plaintext input contents.
 const receipts=new Map(),send=postMessage.bind(self);

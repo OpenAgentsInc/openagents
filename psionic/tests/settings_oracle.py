@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 182's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/settings.coax. The simulator, the rule, the

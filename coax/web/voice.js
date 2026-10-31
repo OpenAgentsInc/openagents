@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Voice on a web page (data-voice: the Haunted House's VOICE button): the
 // microphone, the socket to the voice host and the speaker. The voice engine
 // (verse/voice*.coax through coax/web/voice/voice-web.c, voice.wasm) decides

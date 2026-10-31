@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent oracle for chapter 161a, standard library only.
 
 Trains chapter 70's affine models with chapter 70's own oracle, folds their

@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent oracle for chapter 164 (shadow, then promote).
 
 Rebuilds psionic/fixtures/shadow.out line for line with the standard library:

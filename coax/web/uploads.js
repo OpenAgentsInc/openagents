@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Uploads to this site for a page with data-uploads (Planetary Villa's pets:
 // /api/villa/pets/<id>/files; coax/web/api/villa.c). The app asks with action
 // 30, its text the files URL (this site's, "/api/..."): the browser's file

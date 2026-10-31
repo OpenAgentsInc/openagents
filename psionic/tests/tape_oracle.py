@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 71's independent reference: no reverse mode at all.
 
 Seeded random programs over the tape's operations are evaluated in 60-digit

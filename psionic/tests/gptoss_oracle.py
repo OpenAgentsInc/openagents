@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned scalar references: full-prefix attention (no ring), direct-power YaRN,
 and Decimal(100) activation. Never imports upstream or Coax-generated output.
 """

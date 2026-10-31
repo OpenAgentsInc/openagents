@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent oracle for chapters 167 and 168: gadget results in binary64 and
 binary32, and seeded gate graphs with their integer values.
 

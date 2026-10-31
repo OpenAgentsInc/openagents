@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent recount-and-merge BPE. Downloaded tokenizer Python is inert AST DATA."""
 import argparse,ast,collections,gzip,hashlib,json,struct
 from pathlib import Path

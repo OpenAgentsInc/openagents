@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent variable-time test references. Never use these with production keys."""
 import ctypes as C
 import hashlib

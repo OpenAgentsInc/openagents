@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 import contextlib, io, copy, hashlib, importlib.util, pathlib, sys
 p=pathlib.Path(__file__).with_name('tensor_ir_oracle.py');spec=importlib.util.spec_from_file_location('ir_oracle',p);m=importlib.util.module_from_spec(spec);saved=sys.argv;sys.argv=[str(p)]
 with contextlib.redirect_stdout(io.StringIO()):spec.loader.exec_module(m)

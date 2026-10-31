@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned bit-exact original-format vectors and independent quantized FFN oracle.
 
 Uses rational binary scalars, exhaustive nearest-even grid search, math.fsum

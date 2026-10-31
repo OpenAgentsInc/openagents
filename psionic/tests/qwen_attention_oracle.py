@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned scalar reference for Qwen's split-half, partial rotary Q/K preparation."""
 import math,struct,sys
 from pathlib import Path

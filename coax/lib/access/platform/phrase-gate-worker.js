@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser worker glue: scheduling and transport for Coax's wasm in a Web Worker)
 // Dedicated-worker scheduling, scalar/byte transport and OS entropy only.
 // Coax performs every format, KDF, MAC/decryption, locator and terminal decision.
 let engine,active,initializing=false,poisoned=false;

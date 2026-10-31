@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 const STATE_KIND = 40, VIEWER_KIND = 3, REVIEW_KIND = 41, VALUE_KIND = 42;
 const ACT_PICK = 20, ACT_SIGNIN = 22, ACT_DRAFT = 23, ACT_EDIT = 24, ACT_SAVE = 25, ACT_PUBLISH = 26, ACT_DISCARD = 27;
 const PARALLEL = 3;

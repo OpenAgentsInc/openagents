@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 171's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/hull-memory.coax or chapter 165's and 166's

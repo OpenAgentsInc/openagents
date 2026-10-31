@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 4 (bootstrap seed: regenerates a coax0 C seed with an already trusted compiler)
 # Explicit source-unit kernel refresh with a previously trusted compiler.
 set -euo pipefail
 cd "$(dirname "$0")"

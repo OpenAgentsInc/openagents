@@ -88,6 +88,16 @@ exists today: sockets and TLS (`coax/platform/socket-native.c`,
 Each port keeps the old tool until the new one produces the same output on
 the same inputs, then deletes it in the same commit that switches callers.
 
+## Done so far
+
+- 2026-10-30: libraries `json/json.coax`, `text/base64.coax`, `sys/args.coax`,
+  `sys/fs.coax`, `sys/proc.coax`, `net/cdp.coax` (see `lib/sys/README.md`);
+  `coax/web/tool.sh NAME` builds and runs a Coax tool. `clip` and `shot` are
+  Coax (`coax/web/clip.coax`, `shot.coax`); `clip.coax` made the same frames,
+  byte for byte, as `clip.ts` before it was deleted. `Firm reason:` headers
+  are on the browser host, the oracles and vector generators, and the seed
+  scripts; everything else is on `coax/tools-port.txt`.
+
 ## Keeping it this way (to build)
 
 - A check in `coax/web/release.sh` (and later the Coax release tool) lists

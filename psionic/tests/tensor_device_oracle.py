@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Test tooling: independent integer counter and struct binary16/f32 oracle."""
 import json, pathlib, struct, sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]

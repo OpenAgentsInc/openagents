@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent vector generator: computes expected values outside Coax)
 """Writes schnorr_sign_vectors.coax: BIP-340 signing vectors 0-3 from the
 pinned upstream CSV with each stage's independent pure-Python intermediates."""
 if not __debug__: raise SystemExit('tests require Python assertions')

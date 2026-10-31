@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Coaxial's browser host. Platform effects only, as Swift is on the phone:
 // the WebGPU device and canvas, the frame clock, one WebAssembly.Memory that
 // holds every byte of the app's state, and (in development) the live channel

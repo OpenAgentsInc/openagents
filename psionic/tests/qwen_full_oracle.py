@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent small causal Qwen full-attention decoder layer reference."""
 import math,struct,sys
 from pathlib import Path

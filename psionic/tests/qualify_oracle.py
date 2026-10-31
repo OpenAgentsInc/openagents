@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 13 tooling: independent digest vectors and the transcribed Elephant evidence.
 
 The policy and value encodings below are written from the chapter's description,

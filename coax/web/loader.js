@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // A realm's loading screen (INVARIANTS.md, "Coaxial pages draw everything in Coax": the one
 // exception before the engine can draw). Its markup and style are written into every realm page
 // by realms.ts, so it shows at the first paint, before host.js or the engine arrive; host.js then

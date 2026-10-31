@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Chapter 187's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/loop.coax. The world (loop-sim-v1), the

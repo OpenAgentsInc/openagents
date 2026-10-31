@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Owned source-equation oracle: enumerate grids, round BF16 independently.
 
 No upstream modules are imported. BF16 input/output is serialized as bits;

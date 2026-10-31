@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent oracle for chapter 172: soft attention reads at a given sharpness
 and number format, with exact arithmetic in place of floating-point sums.
 

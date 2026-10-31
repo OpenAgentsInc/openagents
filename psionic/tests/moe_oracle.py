@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent sorted top-k and Decimal(100) softmax for the tiny MoE profile.
 
 No upstream code or Coax output is imported. Fixtures include the original

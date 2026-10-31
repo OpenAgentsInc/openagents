@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent dense scalar reference and central differences, tooling only.
 No Coax/native implementation is called to build these expected values."""
 import argparse,itertools,json,math,struct

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent E2M1 * power-of-two fixtures, using Python's scalar ldexp.
 
 This owned tool does not import or execute either upstream repository or Coax.

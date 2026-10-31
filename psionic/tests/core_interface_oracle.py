@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent oracle for chapter 175 (a frozen exact core with a learned interface).
 
 Standard library only, sharing no code with psionic/lib/core-interface.coax:

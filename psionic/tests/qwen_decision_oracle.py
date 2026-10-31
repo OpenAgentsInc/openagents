@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent two-block attention: prefix is bidirectional, siblings isolated."""
 import importlib.util,math,struct,sys
 from pathlib import Path

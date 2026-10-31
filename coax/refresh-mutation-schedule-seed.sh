@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 4 (bootstrap seed: regenerates a coax0 C seed with an already trusted compiler)
 # Refresh the checked mutation scheduling policy seed with a trusted compiler.
 set -euo pipefail
 cd "$(dirname "$0")"

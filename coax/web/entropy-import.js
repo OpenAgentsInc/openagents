@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 import { createEntropy } from "./entropy.js";
 
 const contractNames = ["entropy_admit", "entropy_chunk_bytes", "entropy_full_chunks", "entropy_tail", "entropy_finish", "entropy_request_limit", "entropy_output_admit"];

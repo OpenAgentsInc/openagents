@@ -1,3 +1,4 @@
+// Firm reason: 1 (browser worker glue: scheduling and transport for Coax's wasm in a Web Worker)
 // Dedicated-worker lifecycle and scheduling only. Coax owns KDF parameters,
 // work budgets, counters, cancellation and output admission. Not a gate cutover.
 let engine,job,initializing=false;

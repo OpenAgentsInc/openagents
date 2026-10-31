@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent vector generator: computes expected values outside Coax)
 """Writes event_sign_vectors.coax: one NIP-01 event signed independently in
 pure Python (BIP-340 vector 1's key and aux), with escapes in tags and content."""
 if not __debug__: raise SystemExit('tests require Python assertions')

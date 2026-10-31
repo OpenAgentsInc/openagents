@@ -1,3 +1,4 @@
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent official protoc interoperability and original content parity.
 Tooling only; run in the pinned proto/tools environment. No code from the
 source repo is imported or executed. The native binary is ASan/UBSan built.

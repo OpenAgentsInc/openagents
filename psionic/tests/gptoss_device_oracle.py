@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Compare GPU captures with recorded independent original CPU answers.
 No original CPU inference or NumPy runtime is needed for this check.
 The bound is fixed before any GPU captures are read.

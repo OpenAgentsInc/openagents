@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent Decimal equations and logical coordinate storage for chapter 26a.
 
 Only tooling: creates finite small graphs and a native expected-value header.

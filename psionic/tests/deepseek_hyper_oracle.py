@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
 """Independent scalar/Decimal hyper-connection fixtures. Tooling, never runtime.
 
 F32 storage boundaries, compensated-wide projection/reduction profile. The
