@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.33.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -728,6 +728,24 @@ operators, not every possible defect. `coax test` rejects files with no checks;
 `--steps` requires a positive uint64 value. JSON failure messages retain the
 check name and concrete counterexample. The compiler requires checks to exist,
 not a particular textual or historical order of writing them.
+
+Since 0.33.0, `coax test` and `coax mutate` accept `--evidence FILE` and write
+one `coax.evidence.v1` record. It binds every claim to the source units
+(path and SHA-256), the compiler (version and binary SHA-256), the target
+(the compile-time evaluator, where checks run), the profile, the selection
+(`--only`, `--list`, `--root-only`, shard) and the budgets (check steps,
+slots, containers, `#run` steps; for mutation, ten times each unmutated
+check's steps, at least 10000). Each `#test`, `#forall` and `#authority`
+execution-coverage claim, and the mutation claim, ends `passed`,
+`counterexample` (a failing case, a trap, a survivor or an unexecuted
+authority procedure), `inconclusive` (a budget ran out first, or one shard
+of a mutation run), `infrastructure-error` (a worker or shard record failed)
+or `not-checked` (excluded, not reached, a front-end failure or no mutation
+site). The verdict is the worst outcome present, from
+`EV_check`/`EV_add`/`EV_verdict`/`EV_mutation` in the checked policy kernel
+`lib/compiler/mutation-schedule.coax`; a run that executed nothing, or only
+part of the claims, is never `passed`. A record that cannot be written fails
+the command.
 
 ### 10.2 Reflection now and later
 

@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.32.0";
+IMPLEMENTATION_VERSION :: "0.33.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [110]ReleaseFeature.[
+CATALOGUE :: [111]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -98,6 +98,7 @@ CATALOGUE :: [110]ReleaseFeature.[
   ReleaseFeature.{id="source.qualified",section="Capabilities",name="`#load \"FILE.coax\" as NAME;` qualified lookup",meaning="Path imports bind an alias to a logical module; NAME.Type, NAME.proc() and NAME.CONST resolve in the checked graph with per-module scopes, ambiguity at the use and qualified C spellings; no reexports, module parameters or package search",status="partial",introduced="0.28.0"},
   ReleaseFeature.{id="source.visibility",section="Capabilities",name="`#export NAME, ...;` module visibility",meaning="A logical module with an #export list keeps its other declarations private: qualified and unqualified uses from other modules are E0389, member units share the owner, unlisted modules stay fully visible; exports name the module's own declarations (E0390, E0391), reexports fail (E0614); coax deps --modules reports each module's exports",status="partial",introduced="0.30.0"},
   ReleaseFeature.{id="lowering.order",section="Capabilities",name="Effect-ordered native lowering",meaning="CK_effects classifies each checked expression (call, trap, checked-overflow trap); native C sequences two trapping operands and a trapping place and value, so the first trap in source order is reported at -O0 and -O2 as in the evaluator; coax deps --lowering (0.32.0) prints the coax.lowering.v1 record of those decisions for the eligible subset",status="partial",introduced="0.31.0"},
+  ReleaseFeature.{id="verify.evidence",section="Capabilities",name="`coax test/mutate --evidence FILE`",meaning="Schema coax.evidence.v1: each check, authority-coverage and mutation claim bound to sources, compiler, evaluator target, profile, selection and budgets, ending passed, counterexample, inconclusive, infrastructure-error or not-checked; the verdict is the worst, so missing execution is never a pass",status="works",introduced="0.33.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

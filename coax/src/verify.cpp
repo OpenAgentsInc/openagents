@@ -37,6 +37,37 @@ static_assert((uint8_t)TypeKind::invalid == 0 && (uint8_t)TypeKind::string_ == 5
 
 static constexpr uint64_t TEST_STEPS = 20000000;
 
+// coax test/mutate --evidence FILE (coax.evidence.v1): the claims this run
+// made and how each ended. Outcomes and the run's verdict come from the
+// checked policy (EV_check, EV_add, EV_verdict, EV_mutation in
+// lib/compiler/mutation-schedule.coax); main.cpp writes the record.
+struct EvidenceClaim {
+  std::string kind, name, code, message, counterexample;
+  uint32_t outcome = 4;
+  uint64_t cases = 0, steps = 0;
+  Loc loc;
+};
+static std::string json_escape_basic(const std::string &s) {
+  std::string out;
+  for (unsigned char c : s) {
+    if (c == '"' || c == '\\') { out += '\\'; out += (char)c; }
+    else if (c < 0x20) { char b[8]; snprintf(b, sizeof b, "\\u%04x", c); out += b; }
+    else out += (char)c;
+  }
+  return out;
+}
+struct Evidence {
+  std::string path;
+  std::vector<EvidenceClaim> claims;
+  bool mutation = false;  // the run makes the mutation claim
+  uint32_t mutation_outcome = 4;
+  std::string mutation_detail;  // JSON object fields, without braces
+  bool infrastructure = false;
+} g_evidence;
+static void evidence_claim(EvidenceClaim c) {
+  if (!g_evidence.path.empty()) g_evidence.claims.push_back(std::move(c));
+}
+
 // Runs every check in order. Failures print as diagnostics with the check's
 // name and, for a #forall, the counterexample. verbose: one line per check,
 // written as each check ends, with its time. only: just the checks whose
@@ -50,7 +81,10 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
   if (failures) *failures = 0;
   if (ran) *ran = 0;
   for (CheckDecl *c : file->checks) {
-    if (only && to_std(c->name).find(*only) == std::string::npos) continue;
+    if (only && to_std(c->name).find(*only) == std::string::npos) {
+      evidence_claim({c->forall ? "#forall" : "#test", to_std(c->name), "", "excluded by --only", "", EV_check(false, false, false), 0, 0, c->loc});
+      continue;
+    }
     if (ran) ++*ran;
     const auto slots = file->ct_memory->slots, containers = file->ct_memory->containers;
     const auto began = std::chrono::steady_clock::now();
@@ -62,6 +96,8 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     executed.insert(executed.end(), r.executed.begin(), r.executed.end());
     const char *kind = c->forall ? "#forall" : "#test";
     std::string name = to_std(c->name);
+    evidence_claim({kind, name, r.passed ? "" : r.code, r.passed ? "" : r.message, r.counterexample,
+                    EV_check(true, r.passed, !r.passed && r.code == "E0400"), r.cases, r.steps, r.passed ? c->loc : r.loc});
     if (r.passed) {
       if (verbose) {
         printf("ok   %s %s (%llu case%s, %llu steps, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases,
@@ -87,15 +123,26 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       if (!r.counterexample.empty()) fprintf(stderr, "  counterexample: %s\n", r.counterexample.c_str());
     }
   }
-  if (ok && file->authority && !only) {
-    for (const ProcDecl *p : file->procs) {
-      if (!SU_check_required(p->authority,p->root_source,false) || p->foreign || str_eq(p->name, "main")) continue;
-      if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
-        error_at(file->src, p->loc, "E0380", "'" + to_std(p->name) + "' was never executed by a check",
-                 "calls in dead branches or pre-folded #run results do not exercise the procedure");
-        ok = false;
+  if (file->authority) {
+    // Execution coverage is a claim of its own: it needs every check to pass.
+    bool covered = true;
+    std::string missing;
+    if (ok && !only) {
+      for (const ProcDecl *p : file->procs) {
+        if (!SU_check_required(p->authority,p->root_source,false) || p->foreign || str_eq(p->name, "main")) continue;
+        if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
+          error_at(file->src, p->loc, "E0380", "'" + to_std(p->name) + "' was never executed by a check",
+                   "calls in dead branches or pre-folded #run results do not exercise the procedure");
+          ok = false;
+          covered = false;
+          missing += (missing.empty() ? "" : ", ") + to_std(p->name);
+        }
       }
     }
+    bool ran_coverage = !only && (ok || !covered);
+    evidence_claim({"#authority", "execution coverage", covered ? "" : "E0380",
+                    !ran_coverage ? (only ? "needs every check (--only)" : "a check failed first") : covered ? "" : "never executed: " + missing, "",
+                    EV_check(ran_coverage, covered, false), 0, 0, Loc{}});
   }
   return ok;
 }
@@ -638,7 +685,9 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   std::vector<uint64_t> base;
   std::vector<std::vector<const ProcDecl *>> paths;
   bool unstable = false;
+  g_evidence.mutation = true;
   if (!merging && !run_all_checks(file, TEST_STEPS, false, &base, nullptr, &paths, &unstable)) {
+    g_evidence.mutation_detail = "\"reason\":\"the checks fail before any mutation\"";
     fprintf(stderr, "coax: the checks fail before any mutation; make them pass first\n");
     return 1;
   }
@@ -661,7 +710,10 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   bool sharded = opt.shards != 0;
   std::vector<size_t> owned;
   if (merging) {
-    if (!merge_records(opt, fingerprint, total, &results, &facts)) return 1;
+    if (!merge_records(opt, fingerprint, total, &results, &facts)) {
+      g_evidence.infrastructure = true;
+      return 1;
+    }
     for (size_t i = 0; i < total; i++) owned.push_back(i);
   } else {
     facts.borrowed = mutation_borrowed_aggregate(file);
@@ -683,6 +735,7 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
         if (opt.trace) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);
       }
     } else if (!evaluate_parallel(run, owned, workers, &results)) {
+      g_evidence.infrastructure = true;
       return 1;
     }
     if (workers > 1 && opt.trace)
@@ -737,6 +790,22 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   if (equivalent) fprintf(report, ", %zu marked equivalent", equivalent);
   fprintf(report, "\n");
   if (m.mutants.empty()) fprintf(report, "no reachable mutation sites\n");
+  g_evidence.mutation_outcome = EV_mutation(!m.mutants.empty(), !survivors.empty(), !unreached.empty(), sharded);
+  {
+    std::string rows;
+    for (const Mutant *mu : survivors) {
+      auto point = source_point(file->src, diagnostic_loc(file->src, mu->loc));
+      rows += std::string(rows.empty() ? "" : ",") + "{\"file\":\"" + json_escape_basic(point.path) + "\",\"line\":" + std::to_string(point.loc.line) +
+              ",\"col\":" + std::to_string(point.loc.col) + ",\"mutant\":\"" + json_escape_basic(mu->what) + "\"}";
+    }
+    g_evidence.mutation_detail = "\"mutants\":" + std::to_string(total) + ",\"evaluated\":" + std::to_string(owned.size()) +
+        ",\"killed\":" + std::to_string(owned.size() - survivors.size() - equivalent) + ",\"survived\":[" + rows + "]" +
+        ",\"marked_equivalent\":" + std::to_string(equivalent) + ",\"unreached\":\"" + json_escape_basic(unreached) + "\"" +
+        ",\"scope\":\"" + (opt.root_only ? "root-only" : "all") + "\",\"shard\":" +
+        (sharded ? "[" + std::to_string(opt.shard) + "," + std::to_string(opt.shards) + "]" : std::string("null")) +
+        ",\"merged_records\":" + std::to_string(opt.merge.size()) + ",\"scheduling\":\"" + (facts.selective ? "selective" : "full") +
+        "\",\"per_check_budget\":\"max(10000, 10 x the unmutated check's steps)\"";
+  }
   if (opt.stats) fprintf(stderr, "mutation-scheduling %s checks=%llu skipped=%llu borrowed=%d strings=%d unstable=%d\n",
                          facts.selective ? "selective" : "full", (unsigned long long)invocations,
                          (unsigned long long)skipped, facts.borrowed, facts.strings, facts.unstable);

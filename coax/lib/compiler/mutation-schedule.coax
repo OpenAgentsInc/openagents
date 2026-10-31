@@ -70,3 +70,68 @@ MS_shard_owns :: (index:u64,shard:u64,count:u64)->bool #export_c {
  return index%count==shard-1;
 }
 MS_jobs_valid :: (jobs:u64)->bool #export_c {return jobs>=1 && jobs<=1024;}
+
+// Evidence outcomes (coax.evidence.v1). 0 passed, 1 counterexample,
+// 2 inconclusive (a budget ran out before a verdict), 3 infrastructure error,
+// 4 not checked. A claim is a pass only when it ran to a passing verdict.
+EV_PASSED :: cast(u32) 0;
+EV_COUNTEREXAMPLE :: cast(u32) 1;
+EV_INCONCLUSIVE :: cast(u32) 2;
+EV_INFRASTRUCTURE :: cast(u32) 3;
+EV_NOT_CHECKED :: cast(u32) 4;
+
+#forall "a check passes only when it ran and passed" ran:bool, passed:bool, budget:bool {
+ want:=ifx !ran then EV_NOT_CHECKED else ifx passed then EV_PASSED else ifx budget then EV_INCONCLUSIVE else EV_COUNTEREXAMPLE;
+ #assert EV_check(ran,passed,budget)==want;
+}
+// A whole run collects its claims' outcomes as a set (EV_add) and its
+// verdict is the worst one present, in the order infrastructure error,
+// counterexample, inconclusive, not checked, passed. An unknown outcome
+// counts as an infrastructure error; a run with no claims was not checked.
+#forall "the verdict is the worst outcome and never invents a pass" a:0..<6, b:0..<6 {
+ rank:=[6] u32.[0,3,2,4,1,4];
+ out:=[6] u32.[0,1,2,3,4,3];
+ bits:=EV_add(EV_add(0,cast(u32)a+ifx a==5 then 4 else 0),cast(u32)b+ifx b==5 then 9 else 0);
+ #assert EV_verdict(bits)==(ifx rank[a]>=rank[b] then out[a] else out[b]);
+ #assert (EV_verdict(bits)==EV_PASSED)==(a==0 && b==0);
+ #assert EV_verdict(EV_add(0,cast(u32)a))==out[a] || a==5;
+}
+#test "an empty run is not checked" {
+ #assert EV_verdict(0)==EV_NOT_CHECKED;
+ #assert EV_add(0,EV_PASSED)==1 && EV_add(0,EV_NOT_CHECKED)==2 && EV_add(0,EV_INCONCLUSIVE)==4 && EV_add(0,EV_COUNTEREXAMPLE)==8;
+ #assert EV_add(0,EV_INFRASTRUCTURE)==16 && EV_add(2,7)==18;
+}
+// Mutation: survivors are counterexamples; no reachable site, or an
+// unreached required procedure, is not a pass; one shard alone is
+// inconclusive for the file.
+#forall "a mutation run passes only as a complete, killing run" sites:bool, survivors:bool, unreached:bool, shard:bool {
+ want:=ifx survivors then EV_COUNTEREXAMPLE else ifx !sites || unreached then EV_NOT_CHECKED else ifx shard then EV_INCONCLUSIVE else EV_PASSED;
+ #assert EV_mutation(sites,survivors,unreached,shard)==want;
+}
+
+EV_check :: (ran:bool,passed:bool,budget:bool)->u32 #export_c {
+ if !ran {return EV_NOT_CHECKED;}
+ if passed {return EV_PASSED;}
+ if budget {return EV_INCONCLUSIVE;}
+ return EV_COUNTEREXAMPLE;
+}
+EV_add :: (bits:u32,outcome:u32)->u32 #export_c {
+ if outcome==EV_PASSED {return bits|1;}
+ if outcome==EV_NOT_CHECKED {return bits|2;}
+ if outcome==EV_INCONCLUSIVE {return bits|4;}
+ if outcome==EV_COUNTEREXAMPLE {return bits|8;}
+ return bits|16;
+}
+EV_verdict :: (bits:u32)->u32 #export_c {
+ if bits&16!=0 {return EV_INFRASTRUCTURE;}
+ if bits&8!=0 {return EV_COUNTEREXAMPLE;}
+ if bits&4!=0 {return EV_INCONCLUSIVE;}
+ if bits&1!=0 && bits&2==0 {return EV_PASSED;}
+ return EV_NOT_CHECKED;
+}
+EV_mutation :: (sites:bool,survivors:bool,unreached:bool,shard:bool)->u32 #export_c {
+ if survivors {return EV_COUNTEREXAMPLE;}
+ if !sites || unreached {return EV_NOT_CHECKED;}
+ if shard {return EV_INCONCLUSIVE;}
+ return EV_PASSED;
+}

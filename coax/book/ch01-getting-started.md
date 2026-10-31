@@ -1,7 +1,7 @@
 # Getting started
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.33.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Let's get Coax running. In this chapter we'll build the compiler, write
 the traditional first program, and look at the different ways the
@@ -41,7 +41,7 @@ Let's make sure it worked:
 <!-- coax-release:version-example:start -->
 ```bash
 $ coax/bin/coax version
-coax0 0.32.0
+coax0 0.33.0
 ```
 <!-- coax-release:version-example:end -->
 
@@ -304,7 +304,7 @@ set for reference:
 | `coax build FILE [-o out]` | Build an executable |
 | `coax check FILE` | Check without building |
 | `coax c FILE` | Print the generated C |
-| `coax test FILE` | Run the file's `#test` and `#forall` checks ([Chapter 10](ch10-writing-checks.md)) |
+| `coax test FILE [--evidence OUT]` | Run the file's `#test` and `#forall` checks; `--evidence` records each claim's outcome ([Chapter 10](ch10-writing-checks.md)) |
 | `coax mutate FILE [--root-only] [--jobs N] [--shard I/N]` | Check that the checks would catch small bugs, in parallel or in shards ([Chapter 10](ch10-writing-checks.md)) |
 | `coax layout FILE` | Print every struct's size, alignment and field offsets ([Chapter 11](ch11-data-layout.md)) |
 | `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` ([Chapter 17](ch17-interop.md)) |

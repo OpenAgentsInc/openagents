@@ -1022,6 +1022,23 @@ checks and the mutation gate on the Coax parts of the compiler, such as
 the protocol wire runtime in `coax/lib/proto/wire.coax` (382 mutants,
 all killed), before it publishes `coax/bin/coax`.
 
+## Keep a record of what ran
+
+When a check result has to be shown to someone else, a reviewer or a release
+gate, ask for a record:
+
+```sh
+coax test grid.coax --evidence grid-test.json
+coax mutate grid.coax --evidence grid-mutate.json
+```
+
+Each record lists every claim with how it ended: `passed`, `counterexample`
+(with the failing case), `inconclusive` (it ran out of steps before deciding),
+`infrastructure-error` or `not-checked`. It names the exact source files and
+compiler by hash, and the step budgets used. Its `verdict` is the worst of
+them, so a run with `--only`, a file that did not compile, or a single
+mutation shard never reads as a pass.
+
 ## What checks don't prove
 
 It's worth being exact about what passing all of this means.

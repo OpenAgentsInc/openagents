@@ -22,6 +22,9 @@
 // --json prints diagnostics as one JSON object per line on stderr.
 // The C compiler is $COAX_CC, or cc.
 #include "coax.h"
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #include "release.h"
 
 #ifdef COAX_BOOTSTRAP_IMPORTER
@@ -232,6 +235,72 @@ static int finish_profile(int status) {
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
+}
+
+// The coax.evidence.v1 record (see Evidence in verify.cpp). Every claim is
+// bound to the source units, compiler, evaluator target, profile, selection
+// and budgets; the verdict is EV_verdict over the claims' outcomes, so a run
+// that executed nothing, or stopped early, is never a pass.
+static int write_evidence(const std::string &cmd, const std::string &input, const Source *src, const EmitOptions &opts, bool checked,
+                          int status, uint64_t steps, uint64_t slots, const char *only, bool list, const MutationOptions &mutation) {
+  if (g_evidence.path.empty()) return status;
+  static const char *names[] = {"passed", "counterexample", "inconclusive", "infrastructure-error", "not-checked"};
+  auto outcome = [](uint32_t o) { return json_string(names[o < 5 ? o : 3]); };
+  uint32_t bits = 0;
+  std::string claims;
+  for (const EvidenceClaim &c : g_evidence.claims) {
+    bits = EV_add(bits, c.outcome);
+    std::string at = "null";
+    if (c.loc.line) {
+      auto p = source_point(src, c.loc);
+      at = "{\"file\":" + json_string(p.path) + ",\"line\":" + std::to_string(p.loc.line) + ",\"col\":" + std::to_string(p.loc.col) + "}";
+    }
+    claims += std::string(claims.empty() ? "" : ",") + "{\"kind\":" + json_string(c.kind) + ",\"name\":" + json_string(c.name) +
+              ",\"outcome\":" + outcome(c.outcome) + ",\"at\":" + at + ",\"cases\":" + std::to_string(c.cases) +
+              ",\"steps\":" + std::to_string(c.steps) + (c.code.empty() ? "" : ",\"code\":" + json_string(c.code)) +
+              (c.message.empty() ? "" : ",\"message\":" + json_string(c.message)) +
+              (c.counterexample.empty() ? "" : ",\"counterexample\":" + json_string(c.counterexample)) + "}";
+  }
+  std::string mutation_row = "null";
+  if (cmd == "mutate") {
+    uint32_t m = g_evidence.infrastructure ? 3 : g_evidence.mutation && !g_evidence.mutation_detail.empty() && checked ? g_evidence.mutation_outcome : 4;
+    if (g_evidence.mutation_detail.rfind("\"reason\"", 0) == 0) m = 4;
+    bits = EV_add(bits, m);
+    mutation_row = "{\"outcome\":" + outcome(m) + (g_evidence.mutation_detail.empty() ? "" : "," + g_evidence.mutation_detail) + "}";
+  }
+  if (g_evidence.infrastructure) bits = EV_add(bits, 3);
+  if (!checked) bits = EV_add(bits, 4);
+  std::string sources;
+  for (const auto &unit : src->units)
+    sources += std::string(sources.empty() ? "" : ",") + "{\"path\":" + json_string(unit->canonical) + ",\"sha256\":" + json_string(debug_source_hash(unit->text)) + "}";
+  std::string compiler_hash;
+  {
+    char self[4096];
+    uint32_t size = sizeof self;
+#ifdef __APPLE__
+    if (_NSGetExecutablePath(self, &size) == 0) compiler_hash = profile_file_hash(self);
+#else
+    ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
+    if (n > 0) { self[n] = 0; compiler_hash = profile_file_hash(self); }
+#endif
+    (void)size;
+  }
+  std::string text = "{\"schema\":\"coax.evidence.v1\",\"command\":" + json_string(cmd) + ",\"input\":" + json_string(input) +
+      ",\"compiler\":{\"version\":" + json_string(VERSION) + ",\"sha256\":" + (compiler_hash.empty() ? "null" : json_string(compiler_hash)) + "}" +
+      ",\"target\":{\"name\":\"coax-evaluator\",\"note\":\"checks run in the compile-time evaluator, not generated code\"}" +
+      ",\"profile\":{\"arithmetic\":\"checked\",\"selected_runtime_arithmetic\":" + json_string(opts.wrapping ? "wrapping" : "checked") + ",\"library\":" + (opts.library ? "true" : "false") + "}" +
+      ",\"selection\":{\"only\":" + (only ? json_string(only) : "null") + ",\"list\":" + (list ? "true" : "false") +
+      ",\"root_only\":" + (mutation.root_only ? "true" : "false") + "}" +
+      ",\"budgets\":{\"check_steps\":" + std::to_string(cmd == "mutate" ? TEST_STEPS : steps) + ",\"check_slots\":" + std::to_string(slots) +
+      ",\"check_containers\":" + std::to_string(CB_test_container_limit()) + ",\"run_steps\":" + std::to_string(opts.run_steps) + "}" +
+      ",\"sources\":[" + sources + "],\"front_end\":" + (checked ? "\"ok\"" : "\"failed\"") +
+      ",\"claims\":[" + claims + "],\"mutation\":" + mutation_row + ",\"exit_status\":" + std::to_string(status) +
+      ",\"verdict\":" + outcome(EV_verdict(bits)) + "}\n";
+  if (!write_file(g_evidence.path, text)) {
+    fprintf(stderr, "coax: cannot write evidence record '%s'\n", g_evidence.path.c_str());
+    return 1;
+  }
+  return status;
 }
 
 // Descriptor parsing and code generation run inside the compiler.
@@ -805,8 +874,8 @@ static int usage() {
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
           "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
-          "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list]\n"
-          "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
+          "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--evidence FILE]\n"
+          "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
           "                    --jobs N evaluates mutants in N processes (default: available cores,\n"
@@ -973,6 +1042,8 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--merge" && cmd == "mutate" && i + 1 < argc) mutation.merge.push_back(argv[++i]);
+    else if (a == "--evidence" && (cmd == "test" || cmd == "mutate") && i + 1 < argc && g_evidence.path.empty() && *argv[i + 1] && argv[i + 1][0] != '-')
+      g_evidence.path = argv[++i];
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--declarations" && cmd == "deps" && !declarations && !modules) declarations = true;
     else if (a == "--modules" && cmd == "deps" && !declarations && !modules && !lowering) modules = true;
@@ -1068,11 +1139,16 @@ static int main_impl(int argc, char **argv) {
     Source src;
     Arena arena;
     File file;
-    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return 1;
+    if (!profile_destination_disjoint(g_evidence.path)) return 1;
+    const uint64_t slots = test_slots ? test_slots : CB_test_slot_limit();
+    auto record = [&](int status, bool checked) {
+      return write_evidence(cmd, input, &src, opts, checked, status, steps, slots, only, list, mutation);
+    };
+    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return record(1, false);
     // Checks get their own, larger storage limits (budget.coax): a test may hold a whole world.
-    file.ct_memory->slot_limit = test_slots ? test_slots : CB_test_slot_limit();
+    file.ct_memory->slot_limit = slots;
     file.ct_memory->container_limit = CB_test_container_limit();
-    return cmd == "test" ? test_command(&file, steps, only, list) : mutate_command(&arena, &file, mutation);
+    return record(cmd == "test" ? test_command(&file, steps, only, list) : mutate_command(&arena, &file, mutation), true);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;

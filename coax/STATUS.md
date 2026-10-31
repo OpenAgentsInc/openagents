@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.33.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -139,6 +139,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#load "FILE.coax" as NAME;` qualified lookup | Path imports bind an alias to a logical module; NAME.Type, NAME.proc() and NAME.CONST resolve in the checked graph with per-module scopes, ambiguity at the use and qualified C spellings; no reexports, module parameters or package search | partial | 0.28.0 |
 | `#export NAME, ...;` module visibility | A logical module with an #export list keeps its other declarations private: qualified and unqualified uses from other modules are E0389, member units share the owner, unlisted modules stay fully visible; exports name the module's own declarations (E0390, E0391), reexports fail (E0614); coax deps --modules reports each module's exports | partial | 0.30.0 |
 | Effect-ordered native lowering | CK_effects classifies each checked expression (call, trap, checked-overflow trap); native C sequences two trapping operands and a trapping place and value, so the first trap in source order is reported at -O0 and -O2 as in the evaluator; coax deps --lowering (0.32.0) prints the coax.lowering.v1 record of those decisions for the eligible subset | partial | 0.31.0 |
+| `coax test/mutate --evidence FILE` | Schema coax.evidence.v1: each check, authority-coverage and mutation claim bound to sources, compiler, evaluator target, profile, selection and budgets, ending passed, counterexample, inconclusive, infrastructure-error or not-checked; the verdict is the worst, so missing execution is never a pass | works | 0.33.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

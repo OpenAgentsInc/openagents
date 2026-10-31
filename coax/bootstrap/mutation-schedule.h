@@ -29,6 +29,10 @@ _Bool MS_storage_changed(uint64_t before_slots, uint64_t before_containers, uint
 _Bool MS_shard_valid(uint64_t shard, uint64_t count);
 _Bool MS_shard_owns(uint64_t index, uint64_t shard, uint64_t count);
 _Bool MS_jobs_valid(uint64_t jobs);
+uint32_t EV_check(_Bool ran, _Bool passed, _Bool budget);
+uint32_t EV_add(uint32_t bits, uint32_t outcome);
+uint32_t EV_verdict(uint32_t bits);
+uint32_t EV_mutation(_Bool sites, _Bool survivors, _Bool unreached, _Bool shard);
 
 #ifdef __cplusplus
 }

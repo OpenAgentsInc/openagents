@@ -169,7 +169,17 @@ static void coax_show_string(coax_string s) {
 #define COAX_LAYOUT(c, m) _Static_assert(c, m)
 
 /* Types */
+typedef struct { uint32_t e[6]; } coax_a6_u32;
 
+static void coax_show_a6_u32(const coax_a6_u32 *v);
+static void coax_show_a6_u32(const coax_a6_u32 *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 6; i++) {
+    if (i) fputs(", ", stdout);
+    coax_print_uint(v->e[i]);
+  }
+  fputc(']', stdout);
+}
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source);
 _Bool MS_selective(_Bool l_reference, _Bool l_borrowed_aggregate, _Bool l_string_allocation, _Bool l_unstable_storage);
@@ -180,6 +190,10 @@ _Bool MS_storage_changed(uint64_t l_before_slots, uint64_t l_before_containers, 
 _Bool MS_shard_valid(uint64_t l_shard, uint64_t l_count);
 _Bool MS_shard_owns(uint64_t l_index, uint64_t l_shard, uint64_t l_count);
 _Bool MS_jobs_valid(uint64_t l_jobs);
+uint32_t EV_check(_Bool l_ran, _Bool l_passed, _Bool l_budget);
+uint32_t EV_add(uint32_t l_bits, uint32_t l_outcome);
+uint32_t EV_verdict(uint32_t l_bits);
+uint32_t EV_mutation(_Bool l_sites, _Bool l_survivors, _Bool l_unreached, _Bool l_shard);
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source) {
   return ((!l_root_only) || l_root_source);
@@ -237,4 +251,76 @@ _Bool MS_shard_owns(uint64_t l_index, uint64_t l_shard, uint64_t l_count) {
 
 _Bool MS_jobs_valid(uint64_t l_jobs) {
   return ((l_jobs >= UINT64_C(1)) && (l_jobs <= UINT64_C(1024)));
+}
+
+uint32_t EV_check(_Bool l_ran, _Bool l_passed, _Bool l_budget) {
+  if (!l_ran)
+  {
+    return ((uint32_t)UINT64_C(4));
+  }
+  if (l_passed)
+  {
+    return ((uint32_t)UINT64_C(0));
+  }
+  if (l_budget)
+  {
+    return ((uint32_t)UINT64_C(2));
+  }
+  return ((uint32_t)UINT64_C(1));
+}
+
+uint32_t EV_add(uint32_t l_bits, uint32_t l_outcome) {
+  if (l_outcome == ((uint32_t)UINT64_C(0)))
+  {
+    return ((uint32_t)(l_bits | ((uint32_t)UINT64_C(1))));
+  }
+  if (l_outcome == ((uint32_t)UINT64_C(4)))
+  {
+    return ((uint32_t)(l_bits | ((uint32_t)UINT64_C(2))));
+  }
+  if (l_outcome == ((uint32_t)UINT64_C(2)))
+  {
+    return ((uint32_t)(l_bits | ((uint32_t)UINT64_C(4))));
+  }
+  if (l_outcome == ((uint32_t)UINT64_C(1)))
+  {
+    return ((uint32_t)(l_bits | ((uint32_t)UINT64_C(8))));
+  }
+  return ((uint32_t)(l_bits | ((uint32_t)UINT64_C(16))));
+}
+
+uint32_t EV_verdict(uint32_t l_bits) {
+  if (((uint32_t)(l_bits & ((uint32_t)UINT64_C(16)))) != ((uint32_t)UINT64_C(0)))
+  {
+    return ((uint32_t)UINT64_C(3));
+  }
+  if (((uint32_t)(l_bits & ((uint32_t)UINT64_C(8)))) != ((uint32_t)UINT64_C(0)))
+  {
+    return ((uint32_t)UINT64_C(1));
+  }
+  if (((uint32_t)(l_bits & ((uint32_t)UINT64_C(4)))) != ((uint32_t)UINT64_C(0)))
+  {
+    return ((uint32_t)UINT64_C(2));
+  }
+  if ((((uint32_t)(l_bits & ((uint32_t)UINT64_C(1)))) != ((uint32_t)UINT64_C(0))) && (((uint32_t)(l_bits & ((uint32_t)UINT64_C(2)))) == ((uint32_t)UINT64_C(0))))
+  {
+    return ((uint32_t)UINT64_C(0));
+  }
+  return ((uint32_t)UINT64_C(4));
+}
+
+uint32_t EV_mutation(_Bool l_sites, _Bool l_survivors, _Bool l_unreached, _Bool l_shard) {
+  if (l_survivors)
+  {
+    return ((uint32_t)UINT64_C(1));
+  }
+  if ((!l_sites) || l_unreached)
+  {
+    return ((uint32_t)UINT64_C(4));
+  }
+  if (l_shard)
+  {
+    return ((uint32_t)UINT64_C(2));
+  }
+  return ((uint32_t)UINT64_C(0));
 }
