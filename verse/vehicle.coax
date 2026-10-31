@@ -12,7 +12,8 @@
 // Driving on any surface: the rays follow the chassis, not gravity, so a
 // wheel meets a wall or a ceiling as well as a floor; while wheels touch, a
 // `stick` pull holds the car to the surface it drives on (car-ball games'
-// sticky wheels). In the air, `air` turns the chassis (pitch from throttle,
+// sticky wheels): any floor, and a wall or ceiling while it is faster than
+// `stick_speed`; slower, it lets go and the car comes down. In the air, `air` turns the chassis (pitch from throttle,
 // yaw from steer, roll with the handbrake held), and a jump pushes it off the
 // surface, a second within DOUBLE_JUMP_WINDOW seconds once. That second jump
 // with the stick pushed (throttle or steer past DODGE_FLICK) is a dodge
@@ -51,6 +52,7 @@ VehicleSpec :: struct {
   steer: f64;             // rad, front wheels at full lock, standing
   steer_fade: f64;        // the share of lock lost at top speed
   stick: f64;             // m/s^2 toward the surface while wheels touch
+  stick_speed: f64 = 8.0; // m/s: on a wall or ceiling (not a floor) the pull holds only faster than this
   jump: f64;              // m/s along the chassis's up
   air: f64;               // rad/s turn rate in the air
 }
@@ -167,7 +169,11 @@ vehicle_step :: (b0: RigidBody, spec: VehicleSpec, st0: VehicleState, input: Veh
   landed := st.wheels > 0 && (st.jumps == 0 || st.since_jump > JUMP_CLEAR);
   if landed {
     st.air_time = 0.0; st.jumps = 0; st.dodge_t = 0.0;
-    b.force = d3_sub(b.force, d3_scale(st.ground_n, spec.stick * b.mass));
+    // the pull holds it to a floor, or to a wall or ceiling while it is
+    // fast; slow on a wall it lets go and the car comes down
+    gl := d3_len(gravity);
+    floorish := gl < 0.5 || -d3_dot(st.ground_n, gravity) / gl > 0.7;
+    if floorish || d3_len(b.vel) > spec.stick_speed { b.force = d3_sub(b.force, d3_scale(st.ground_n, spec.stick * b.mass)); }
   } else if st.wheels == 0 && st.dodge_t <= 0.0 {
     st.air_time += dt;
     // air control: a rate the chassis turns toward, about its own axes
@@ -364,4 +370,22 @@ script_run :: (spec: VehicleSpec) -> RigidBody {
     slip[hb] = abs(d3_dot(store[0].vel, side));
   }
   #assert slip[1] > slip[0] * 1.5 && slip[1] > 1.0;
+}
+
+#test "slow on a wall the wheels let go and the car comes down; fast it sticks" {
+  spec := vehicle_roadster();
+  // half a g (a station spinning back up): weak enough that the pull alone would hold it there
+  g := d3(0.0, -4.9, 0.0);
+  planes: [2] Plane;
+  planes[0] = plane(D3_Y, 0.0); planes[1] = plane(D3_X, 0.0);
+  // on the wall (x = 0, facing +x) at 6 m, its wheels on the glass, standing still
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.97, 6.0, 0.0), dq_z(-PI_D / 2.0));
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, planes[..], g, 360);
+  #assert store[0].pos.y < 3.0;
+  // fast along the wall it holds
+  store[0] = vehicle_body(spec, 1000.0, d3(0.97, 6.0, 0.0), dq_z(-PI_D / 2.0));
+  store[0].vel = d3(0.0, 0.0, 15.0);
+  st = test_drive(store[..], spec, VehicleState.{}, VehicleInput.{throttle = 1.0}, planes[..], g, 60);
+  #assert st.wheels >= 2 && store[0].pos.x < 1.3 && store[0].pos.y > 4.0;
 }

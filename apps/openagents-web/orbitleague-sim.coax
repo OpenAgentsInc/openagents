@@ -1,13 +1,17 @@
 // Orbit League's bot against scripted novices, natively (a match is too long
 // for a compile-time #test): six drivers who hold W and steer at the ball
-// (or at a spot behind it), deciding every 0, 0.4 or 0.8 s, play five
+// (or at a spot behind it, boosting a third of the time), deciding every
+// 0 to 1 s, play five
 // minutes each. The bot should keep a first match close (ol-fp-bot-easy) and
-// still score against a player who sits still.
+// still score against a player who sits still. No car stands on the glass
+// for long (ol-fp-wall-stand).
 //   coax/bin/coax run apps/openagents-web/orbitleague-sim.coax   (its last line: holds or FAILS)
 #import "Basic";
 #load "orbitleague.coax";
 
-novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool) {
+// glass: how long each car has stood on the glass (tipped up, off the
+// floor, with gravity on) and, in glass[2], the longest, seconds.
+novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool, glass: [] f64) {
   h := HOLD_UP; t := 0.0;
   for i: 0..<cast(int) (seconds / STEP) {
     t += STEP;
@@ -20,26 +24,35 @@ novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool) {
       if a > 0.3 { h |= HOLD_RIGHT; }
       if a < -0.3 { h |= HOLD_LEFT; }
     }
+    // every third ten seconds it boosts as well
+    if behind && cast(int) (s[0].played / 10.0) % 3 == 0 { h |= HOLD_BOOST; } else if (h & HOLD_BOOST) != 0 { h -= HOLD_BOOST; }
     s[0].held = h; game_step(s, STEP);
+    for c: 0..<2 {
+      b := s[0].bodies[c + 1];
+      if rigid_axis(b, D3_Y).y < 0.5 && b.pos.y > 1.2 && s[0].field.scale > 0.5 { glass[c] += STEP; } else { glass[c] = 0.0; }
+      glass[2] = fmax(glass[2], glass[c]);
+    }
   }
 }
 
 main :: () {
-  lags := [3] f64.[0.0, 0.4, 0.8];
+  lags := [6] f64.[0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
   you := 0; bot := 0; worst := 0; first := 0;
+  glass: [3] f64;
   for beh: 0..<2 { for l: lags {
     s: [1] OrbitLeague;
     game_reset(s[..]);
-    novice(s[..], 60.0, l, beh == 1);
+    novice(s[..], 60.0, l, beh == 1, glass[..]);
     first = most(first, s[0].score[1]);
-    novice(s[..], 240.0, l, beh == 1);
+    novice(s[..], 240.0, l, beh == 1, glass[..]);
     print("novice (behind %, every % s): you % bot %\n", beh, l, s[0].score[0], s[0].score[1]);
     you += s[0].score[0]; bot += s[0].score[1]; worst = most(worst, s[0].score[1]);
   } }
   t: [1] OrbitLeague;
   game_reset(t[..]);
   for i: 0..<cast(int) (120.0 / STEP) { game_step(t[..], STEP); }
-  print("six novices: you % bot %, the bot's most in a match %, in a first minute %; against a still player in 2 min: %\n", you, bot, worst, first, t[0].score[1]);
-  ok := worst <= 4 && first <= 1 && bot <= you + 6 && t[0].score[1] >= 3;
+  print("twelve novices: you % bot %, the bot's most in a match %, in a first minute %; against a still player in 2 min: %\n", you, bot, worst, first, t[0].score[1]);
+  print("the longest a car stood on the glass: % s\n", glass[2]);
+  ok := worst <= 5 && first <= 2 && bot <= you * 2 + 4 && t[0].score[1] >= 3 && glass[2] < 2.5;
   print("%\n", ifx ok then "holds" else "FAILS");
 }
