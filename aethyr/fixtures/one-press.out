@@ -1,0 +1,8 @@
+frame 0, steps 0
+frame 1, steps 2
+  step 0: jump true, run true, move (0.0, 1.0), look 0.15
+  step 1: jump false, run true, move (0.0, 1.0), look 0.15
+frame 2, steps 1
+  step 2: jump false, run true, move (0.0, 1.0), look 0.0
+presses 1 taken 1 waiting 0 lost 0
+keyboard and stick agree: true

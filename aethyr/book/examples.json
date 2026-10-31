@@ -70,6 +70,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/one-press.coax",
+      "chapter": "aethyr/book/ch004-input-becomes-typed-actions.md",
+      "stdout": "aethyr/fixtures/one-press.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

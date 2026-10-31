@@ -61,3 +61,28 @@ same state left zeroed must differ, or the realm fails. 16 realm states pass
 Orbit League, Hold the Stair, the villa and the pages with state defaults);
 a realm with no defaults has nothing to apply. `aethyr/loop.coax`'s clock
 also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.
+
+## Input (`aethyr/input.coax`)
+
+Keys, touch and pads become one `Intent` a frame (`input_keys`,
+`input_stick`), with one run rule (`INPUT_RUN_BY_DEFAULT`: moving runs,
+Shift walks; a stick past the dead zone runs on a full push) and one dead
+zone (0.2). The steps read it through an `InputBuffer`:
+
+- Levels (the move axes, run) are what is held when a step samples.
+- Presses (jump, act) are counted when they happen, and the first step that
+  samples after a press takes it: a frame with no step keeps it, and a frame
+  with two steps gives it to the first. At most four wait; more are counted
+  as lost.
+- Look and zoom add up between steps, and a frame's steps split them, so a
+  drag turns by the same total at any frame rate.
+- Values that aren't numbers, and axes past full travel, are refused or
+  clamped and counted (`mended`). `input_blur` releases every level at once.
+
+The walking controller (`verse/player.coax`) takes its jump from the first
+step after the press; its look still turns the camera at once until the
+camera moves to the steps (ec-camera). Checks: every press goes to the step a
+separate model names, over 64 random runs of 200 frames with frames of zero
+to eight steps; a keyboard session and the same touch session give the same
+`Intent` and the same player states; a press in a frame with no step jumps
+on the next. Mutation: 126 of 126 killed (`input.coax`).

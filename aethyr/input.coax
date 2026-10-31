@@ -1,0 +1,362 @@
+// Aethyr's input (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md): keys,
+// touch and pads become one typed Intent a frame, and the simulation reads it once per fixed
+// step (aethyr/loop.coax). Levels (an axis held, run) are whatever is held at the step.
+// Edges (jump, act) are counted when they happen and each is taken by exactly one step, the
+// first that samples after it: a frame that runs no step keeps a press for the next, and a
+// frame that runs three gives it to the first, so no press is lost or doubled. Look and zoom
+// are amounts: they gather between steps and the steps of a frame split them, so the total
+// turned is the total asked whatever the frame rate.
+//
+// Desktop and phone map to the same Intent: input_keys (keyboard axes, Shift, Space) and
+// input_stick (the touch stick, its full push, a quick tap) say the same thing the same way,
+// with one run rule and one dead zone.
+//   coax/bin/coax test aethyr/input.coax --library
+//   coax/bin/coax mutate aethyr/input.coax
+
+#module "aethyr.input";
+
+// book:begin rules
+INPUT_DEAD_ZONE :: 0.2;          // stick travel that counts as no input
+INPUT_RUN_BY_DEFAULT :: true;    // the owner's rule (2026-10-29): moving runs, Shift walks
+INPUT_MAX_WAITING :: 4;          // presses one edge keeps for later steps; more are counted, not kept
+INPUT_TOO_BIG :: 1000000.0;      // an amount this large is not one
+
+// A number that is a number: not infinite, not NaN, not absurd. Anything else is no input.
+input_finite :: (a: f32) -> bool { return a == a && a < INPUT_TOO_BIG && a > -INPUT_TOO_BIG; }
+// An axis in [-1, 1], and whether the device's number had to be mended (refused as no
+// number, or clamped from past full travel): counted, so a device that sends junk shows.
+InputAxis :: struct { value: f32; mended: int; }
+input_axis :: (a: f32) -> InputAxis {
+  if !input_finite(a) { return InputAxis.{value = 0, mended = 1}; }
+  if a > 1 { return InputAxis.{value = 1, mended = 1}; }
+  if a < -1 { return InputAxis.{value = -1, mended = 1}; }
+  return InputAxis.{value = a};
+}
+// Whether you run: a stick past the dead zone decides by its push; the keys go by
+// INPUT_RUN_BY_DEFAULT, Shift turning it the other way.
+input_keys_run :: (shift: bool) -> bool { return shift != INPUT_RUN_BY_DEFAULT; }
+input_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c {
+  if input_finite(pad_x) && input_finite(pad_y) && sqrt(pad_x * pad_x + pad_y * pad_y) > INPUT_DEAD_ZONE { return stick_run; }
+  return input_keys_run(shift);
+}
+// book:end rules
+
+// book:begin press
+// A press-type control: held now, and presses not yet taken by a step.
+InputPress :: struct {
+  held: bool;
+  waiting: int;     // presses waiting for a step, at most INPUT_MAX_WAITING
+  pressed: int;     // presses seen
+  taken: int;       // presses a step took
+  lost: int;        // presses past INPUT_MAX_WAITING: counted, never kept
+}
+// A press event (a key going down, a tap), whatever was held.
+input_press :: (e: InputPress) -> InputPress {
+  next := e;
+  next.held = true;
+  next.pressed += 1;
+  if e.waiting < INPUT_MAX_WAITING { next.waiting += 1; } else { next.lost += 1; }
+  return next;
+}
+input_release :: (e: InputPress) -> InputPress { next := e; next.held = false; return next; }
+// A level seen once a frame (a face that only knows what is held): a rise is a press.
+input_level :: (e: InputPress, down: bool) -> InputPress {
+  if down && !e.held { return input_press(e); }
+  next := e; next.held = down;
+  return next;
+}
+// A step takes one waiting press, if there is one.
+InputTake :: struct { edge: InputPress; pressed: bool; }
+input_take :: (e: InputPress) -> InputTake {
+  if e.waiting <= 0 { return InputTake.{edge = e, pressed = false}; }
+  next := e; next.waiting -= 1; next.taken += 1;
+  return InputTake.{edge = next, pressed = true};
+}
+// book:end press
+
+// book:begin intent
+// One frame's controls, from any device: the move axes (x right, y forward, each in
+// [-1, 1]), run, jump and act held, and look (radians: + turns left and looks up) and zoom
+// (steps) asked since the last frame.
+Intent :: struct {
+  move_x: f32; move_y: f32;
+  run: bool; jump: bool; act: bool;
+  look_x: f32; look_y: f32; zoom: f32;
+  mended: int;      // numbers refused or clamped on the way in
+}
+// Look and zoom: any finite amount, or none.
+input_amounts :: (i: Intent, look_x: f32, look_y: f32, zoom: f32) -> Intent {
+  next := i;
+  if input_finite(look_x) { next.look_x = look_x; } else { next.mended += 1; }
+  if input_finite(look_y) { next.look_y = look_y; } else { next.mended += 1; }
+  if input_finite(zoom) { next.zoom = zoom; } else { next.mended += 1; }
+  return next;
+}
+// The keyboard: axes of -1, 0 or 1 from the keys held.
+input_keys :: (key_x: f32, key_y: f32, shift: bool, jumping: bool, acting: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
+  x := input_axis(key_x); y := input_axis(key_y);
+  i := Intent.{move_x = x.value, move_y = y.value, run = input_keys_run(shift), jump = jumping, act = acting, mended = x.mended + y.mended};
+  return input_amounts(i, look_x, look_y, zoom);
+}
+// The touch stick (verse/grid.coax Sticks) or a pad: a push inside the dead zone is no move,
+// a full push runs, a quick tap jumps. A bad number on either axis is no push at all.
+input_stick :: (pad_x: f32, pad_y: f32, full_push: bool, tap: bool, acting: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
+  x := input_axis(pad_x); y := input_axis(pad_y);
+  i := Intent.{run = input_runs(false, full_push, pad_x, pad_y), jump = tap, act = acting, mended = x.mended + y.mended};
+  if input_finite(pad_x) && input_finite(pad_y) && sqrt(x.value * x.value + y.value * y.value) > INPUT_DEAD_ZONE {
+    i.move_x = x.value; i.move_y = y.value;
+  }
+  return input_amounts(i, look_x, look_y, zoom);
+}
+// book:end intent
+
+// book:begin buffer
+// What the steps read: levels as last fed, edges waiting, and look and zoom gathered.
+InputBuffer :: struct {
+  move_x: f32; move_y: f32;
+  run: bool;
+  jump: InputPress; act: InputPress;
+  look_x: f32; look_y: f32; zoom: f32;   // asked and not yet taken by a step
+  steps_left: int;                       // steps this frame will still sample (input_frame)
+  mended: int;                           // numbers refused or clamped, all told
+  untimed: int;                          // samples past the steps a frame declared: each took all
+}
+// What one step reads.
+Actions :: struct {
+  move_x: f32; move_y: f32;
+  run: bool; jump: bool; act: bool;
+  look_x: f32; look_y: f32; zoom: f32;
+}
+
+// Once a frame: levels replaced, a rise counted as a press, amounts gathered.
+input_feed :: (b: InputBuffer, i: Intent) -> InputBuffer {
+  x := input_axis(i.move_x); y := input_axis(i.move_y);
+  a := input_amounts(Intent.{}, i.look_x, i.look_y, i.zoom);
+  next := b;
+  next.move_x = x.value; next.move_y = y.value;
+  next.run = i.run;
+  next.jump = input_level(b.jump, i.jump);
+  next.act = input_level(b.act, i.act);
+  next.look_x += a.look_x; next.look_y += a.look_y; next.zoom += a.zoom;
+  next.mended += i.mended + x.mended + y.mended + a.mended;
+  return next;
+}
+// The steps this frame runs (loop_due): the amounts gathered are split among them.
+input_frame :: (b: InputBuffer, steps: int) -> InputBuffer {
+  next := b;
+  next.steps_left = steps;
+  return next;
+}
+// One step's sample: levels as held, one waiting press per edge, and this step's share of
+// the amounts. A sample past the steps the frame declared takes all of them, and is counted.
+Sampled :: struct { buffer: InputBuffer; actions: Actions; }
+input_sample :: (b: InputBuffer) -> Sampled {
+  next := b;
+  j := input_take(b.jump); k := input_take(b.act);
+  next.jump = j.edge; next.act = k.edge;
+  parts := b.steps_left;
+  if parts < 1 { parts = 1; next.untimed += 1; } else { next.steps_left -= 1; }
+  a := Actions.{move_x = b.move_x, move_y = b.move_y, run = b.run, jump = j.pressed, act = k.pressed,
+    look_x = b.look_x / f32(parts), look_y = b.look_y / f32(parts), zoom = b.zoom / f32(parts)};
+  // the last share is all that is left, so nothing gathered outlives its frame
+  next.look_x -= a.look_x; next.look_y -= a.look_y; next.zoom -= a.zoom;
+  return Sampled.{buffer = next, actions = a};
+}
+// Focus lost: every level is let go at once; presses already made still count.
+input_blur :: (b: InputBuffer) -> InputBuffer {
+  next := b;
+  next.move_x = 0; next.move_y = 0; next.run = false;
+  next.jump = input_release(b.jump); next.act = input_release(b.act);
+  return next;
+}
+// book:end buffer
+
+// ---- Checks ----
+
+axis_is :: (a: InputAxis, value: f32, mended: int) -> bool { return a.value == value && a.mended == mended; }
+#test "axes are clamped and bad numbers are no input, and both are counted" {
+  #assert axis_is(input_axis(0.5), 0.5, 0) && axis_is(input_axis(2), 1, 1) && axis_is(input_axis(-2), -1, 1);
+  #assert axis_is(input_axis(1), 1, 0) && axis_is(input_axis(-1), -1, 0) && axis_is(input_axis(0), 0, 0);
+  #assert !axis_is(InputAxis.{value = 1}, 1, 1) && !axis_is(InputAxis.{value = 1, mended = 1}, 0, 1);   // the checks' own comparison
+  #assert axis_is(input_axis(1.0 / 0.0), 0, 1) && axis_is(input_axis(-1.0 / 0.0), 0, 1) && axis_is(input_axis(0.0 / 0.0), 0, 1) && axis_is(input_axis(2000000), 0, 1);
+  #assert input_finite(999999) && !input_finite(1000000) && input_finite(-999999) && !input_finite(-1000000);
+  a := input_amounts(Intent.{}, 0.25, -3, 2);
+  #assert a.look_x == 0.25 && a.look_y == -3 && a.zoom == 2 && a.mended == 0;
+  #assert input_amounts(Intent.{}, 0.0 / 0.0, 0, 0).mended == 1 && input_amounts(Intent.{}, 0, 1.0 / 0.0, 0).mended == 1;
+  z := input_amounts(Intent.{look_x = 9, look_y = 9, zoom = 9}, 0, 0, 0.0 / 0.0);
+  #assert z.mended == 1 && z.zoom == 9 && z.look_x == 0 && z.look_y == 0;
+  #assert input_amounts(Intent.{look_x = 9, look_y = 9}, 0.0 / 0.0, 0.0 / 0.0, 0).look_x == 9 && input_amounts(Intent.{look_y = 9}, 0, 0.0 / 0.0, 0).look_y == 9;
+}
+
+#test "one run rule: a stick past the dead zone decides, else the keys and Shift" {
+  #assert input_runs(false, false, 0, 0) && !input_runs(true, false, 0, 0);
+  #assert input_runs(false, true, 0, 1) && !input_runs(false, false, 0, 0.5) && !input_runs(true, false, 0, 0.5) && input_runs(true, true, 0, 1);
+  #assert input_runs(false, false, 0.1, 0.1) && input_runs(false, false, 0.2, 0);   // inside (or on) the dead zone the keys decide
+  #assert !input_runs(false, false, 0.21, 0) && !input_runs(false, false, 0, -0.21) && !input_runs(false, false, -0.21, 0);
+  #assert input_runs(false, false, 1.0 / 0.0, 1) && input_runs(false, false, 1, 0.0 / 0.0);   // a bad stick is no stick
+  #assert input_keys_run(false) && !input_keys_run(true);
+}
+
+#test "an edge counts presses and a step takes one" {
+  e: InputPress;
+  t := input_take(e);
+  #assert !t.pressed && t.edge.waiting == 0 && t.edge.taken == 0;
+  e = input_press(e);
+  #assert e.held && e.waiting == 1 && e.pressed == 1;
+  e = input_release(e);
+  #assert !e.held && e.waiting == 1;   // a tap shorter than a frame still waits
+  t = input_take(e);
+  #assert t.pressed && t.edge.waiting == 0 && t.edge.taken == 1;
+  #assert !input_take(t.edge).pressed;
+  // a level: only a rise is a press
+  l: InputPress;
+  l = input_level(l, true); l = input_level(l, true);
+  #assert l.held && l.pressed == 1 && l.waiting == 1;
+  l = input_level(l, false);
+  #assert !l.held && l.pressed == 1;
+  l = input_level(l, true);
+  #assert l.pressed == 2 && l.waiting == 2;
+  // at most INPUT_MAX_WAITING wait; the rest are counted as lost
+  m: InputPress;
+  for i: 0..<INPUT_MAX_WAITING + 2 { m = input_press(m); }
+  #assert m.waiting == INPUT_MAX_WAITING && m.lost == 2 && m.pressed == INPUT_MAX_WAITING + 2;
+  m = input_take(m).edge;
+  #assert input_press(m).waiting == INPUT_MAX_WAITING && input_press(m).lost == 2;
+}
+
+#test "the keyboard and the touch stick say the same thing the same way" {
+  k := input_keys(0, 1, false, true, false, 0.1, -0.2, 1);
+  s := input_stick(0, 1, true, true, false, 0.1, -0.2, 1);
+  #assert k.move_x == s.move_x && k.move_y == s.move_y && k.run == s.run && k.jump == s.jump && k.act == s.act;
+  #assert k.look_x == s.look_x && k.look_y == s.look_y && k.zoom == s.zoom && k.run && k.move_y == 1;
+  // Shift walks; a light push walks
+  #assert !input_keys(1, 0, true, false, false, 0, 0, 0).run && !input_stick(0.5, 0, false, false, false, 0, 0, 0).run;
+  #assert input_keys(-1, 0, false, false, true, 0, 0, 0).act && input_stick(0, 0, false, false, true, 0, 0, 0).act;
+  // inside the dead zone the stick is no move, and keys inside it still are a move
+  d := input_stick(0.1, 0.15, false, false, false, 0, 0, 0);
+  #assert d.move_x == 0 && d.move_y == 0 && d.run;
+  #assert input_stick(0.2, 0, false, false, false, 0, 0, 0).move_x == 0 && input_stick(0.21, 0, false, false, false, 0, 0, 0).move_x == 0.21;
+  #assert input_stick(0, -0.5, false, false, false, 0, 0, 0).move_y == -0.5;
+  #assert input_stick(3, 0, true, false, false, 0, 0, 0).move_x == 1 && input_stick(3, 0, true, false, false, 0, 0, 0).mended == 1;
+  #assert input_stick(0.3, 0.4, true, false, false, 0, 0, 0).move_y == 0.4 && input_stick(0.3, 0.4, true, false, false, 0, 0, 0).mended == 0;
+  b := input_stick(0.0 / 0.0, 0.9, true, false, false, 0.0 / 0.0, 1.0 / 0.0, 0.0 / 0.0);
+  #assert b.move_x == 0 && b.move_y == 0 && b.look_x == 0 && b.look_y == 0 && b.zoom == 0 && b.mended == 4;
+  #assert input_stick(0.9, 0.0 / 0.0, true, false, false, 0, 0, 0).move_x == 0 && input_stick(0, 2, true, false, false, 0, 0, 0).mended == 1;
+  q := input_keys(0.0 / 0.0, 5, false, false, false, 1.0 / 0.0, 0.0 / 0.0, 2000000);
+  #assert q.move_x == 0 && q.move_y == 1 && q.look_x == 0 && q.look_y == 0 && q.zoom == 0 && q.mended == 5;
+  #assert input_keys(0, 3, false, false, false, 0, 0, 0).mended == 1 && input_keys(1, -1, true, true, true, 0.5, 0.5, 1).mended == 0;
+}
+
+#test "a buffer keeps levels as fed and gathers amounts" {
+  b: InputBuffer;
+  b = input_feed(b, input_keys(1, -1, false, true, true, 0.25, 0.5, 2));
+  b = input_feed(b, input_keys(1, -1, false, true, true, 0.25, 0.5, 2));
+  #assert b.move_x == 1 && b.move_y == -1 && b.run && b.jump.waiting == 1 && b.act.waiting == 1;
+  #assert b.look_x == 0.5 && b.look_y == 1 && b.zoom == 4;
+  #assert b.mended == 0;
+  c := input_feed(b, Intent.{move_x = 7, move_y = 0.0 / 0.0, look_x = 0.0 / 0.0, look_y = 0.25, zoom = 1, mended = 2});
+  #assert c.move_x == 1 && c.move_y == 0 && !c.run && !c.jump.held && c.look_x == 0.5 && c.jump.waiting == 1;
+  #assert c.look_y == 1.25 && c.zoom == 5 && c.mended == 5;
+  s := input_sample(b);
+  #assert s.actions.jump && s.actions.act && s.actions.move_x == 1 && s.actions.move_y == -1 && s.actions.run;
+  #assert s.actions.look_x == 0.5 && s.actions.look_y == 1 && s.actions.zoom == 4;
+  #assert s.buffer.look_x == 0 && s.buffer.look_y == 0 && s.buffer.zoom == 0 && s.buffer.jump.waiting == 0 && s.buffer.act.waiting == 0;
+  #assert s.buffer.move_x == 1 && s.buffer.run;   // levels stay held
+  #assert !input_sample(s.buffer).actions.jump && !input_sample(s.buffer).actions.act;
+}
+
+#test "a frame's steps split what was gathered" {
+  b: InputBuffer;
+  b = input_feed(b, input_keys(0, 0, false, false, false, 0.6, -0.3, 3));
+  b = input_frame(b, 3);
+  #assert b.steps_left == 3;
+  one := input_sample(b);
+  #assert abs(one.actions.look_x - 0.2) < 0.000001 && abs(one.actions.look_y + 0.1) < 0.000001 && one.actions.zoom == 1;
+  #assert one.buffer.steps_left == 2 && one.buffer.untimed == 0;
+  #assert abs(one.buffer.look_x - 0.4) < 0.000001 && abs(one.buffer.look_y + 0.2) < 0.000001 && one.buffer.zoom == 2;
+  two := input_sample(one.buffer);
+  three := input_sample(two.buffer);
+  #assert three.buffer.look_x == 0 && three.buffer.look_y == 0 && three.buffer.zoom == 0 && three.buffer.steps_left == 0;
+  sum := one.actions.look_x + two.actions.look_x + three.actions.look_x;
+  #assert abs(sum - 0.6) < 0.000001 && abs(two.actions.zoom - 1) < 0.000001;
+  // a frame that runs no step keeps everything for the next
+  z := input_frame(input_feed(b, input_keys(0, 0, false, true, false, 0.1, 0, 0)), 0);
+  #assert z.look_x > 0.69 && z.jump.waiting == 1;
+  last := input_sample(input_frame(b, 1));
+  #assert last.buffer.steps_left == 0 && last.buffer.untimed == 0 && last.actions.zoom == 3;
+  // a sample past the frame's steps (or with none declared, or a negative count) takes all, counted
+  for n: -1..<1 {
+    u := input_sample(input_frame(b, n));
+    #assert u.buffer.untimed == 1 && u.buffer.steps_left == n && u.actions.zoom == 3 && u.buffer.zoom == 0;
+  }
+  #assert input_sample(three.buffer).buffer.untimed == 1;
+}
+
+#test "losing focus lets every level go at once and keeps the presses made" {
+  b: InputBuffer;
+  b = input_feed(b, input_keys(1, 1, false, true, true, 0.5, 0, 0));
+  u := input_blur(b);
+  #assert u.move_x == 0 && u.move_y == 0 && !u.run && !u.jump.held && !u.act.held;
+  #assert u.jump.waiting == 1 && u.act.waiting == 1 && u.look_x == 0.5;
+  s := input_sample(u);
+  #assert s.actions.jump && s.actions.move_x == 0 && !s.actions.run;
+  // held again after focus comes back: that is a new press
+  #assert input_feed(u, input_keys(0, 0, false, true, false, 0, 0, 0)).jump.pressed == 2;
+}
+
+// The contract against an independent model. Presses come at random times in a run of
+// random frames, some running no step and some a stall's max: the model gives each press,
+// in order, to the first step that samples after it, one press a step, and counts a press
+// that finds INPUT_MAX_WAITING already waiting as lost. The buffer must give every press to
+// exactly the step the model does: none doubled, and none lost but those the model counts.
+// book:begin oracle
+#forall "every press is taken by exactly one step, the one the model names" seed: 0..<64 {
+  rng := seed * 7919 + 12345;   // a small LCG on int, mod 2^31
+  b: InputBuffer;
+  ran := 0;             // steps run so far
+  waiting := 0;         // the model's queue
+  presses := 0; taken := 0; lost := 0;
+  for frame: 0..<200 {
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    taps := (rng / 65536) % 3;           // 0, 1 or 2 presses this frame
+    if (rng / 8192) % 5 != 0 { taps = 0; }
+    for t: 0..<taps {
+      b.jump = input_press(b.jump); b.jump = input_release(b.jump); presses += 1;
+      if waiting < INPUT_MAX_WAITING { waiting += 1; } else { lost += 1; }
+    }
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    steps := (rng / 131072) % 3;          // 0, 1 or 2 steps
+    if (rng / 1024) % 23 == 0 { steps = 8; }        // now and then a stall's eight
+    b = input_frame(b, steps);
+    for s: 0..<steps {
+      x := input_sample(b);
+      b = x.buffer;
+      expect := waiting > 0;
+      if expect { waiting -= 1; }
+      #assert x.actions.jump == expect;
+      if x.actions.jump { taken += 1; }
+      ran += 1;
+    }
+  }
+  #assert b.jump.lost == lost && taken + b.jump.waiting + lost == presses && b.jump.waiting == waiting && b.jump.taken == taken;
+  #assert presses > 10 && ran > 100;
+}
+// book:end oracle
+
+// Look turns by the total asked whatever the frame rate: a drag of 1.2 rad over a second fed
+// at 30, 60, 120 or 144 FPS, split over each frame's steps, is all taken by the steps.
+#forall "a drag turns the same total at any frame rate" r: 0..<4 {
+  fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
+  b: InputBuffer;
+  turned := 0.0f32;
+  steps_run := 0;
+  for f: 0..<fps {
+    b = input_feed(b, input_keys(0, 0, false, false, false, 1.2 / f32(fps), 0, 0));
+    // the 64 Hz steps due by the end of frame f
+    due := (f + 1) * 64 / fps - steps_run;
+    b = input_frame(b, due);
+    for s: 0..<due { x := input_sample(b); b = x.buffer; turned += x.actions.look_x; }
+    steps_run += due;
+  }
+  #assert steps_run == 64 && abs(turned - 1.2) < 0.00002 && abs(b.look_x) < 0.00002;
+}

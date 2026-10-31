@@ -68,6 +68,7 @@ Player :: struct {
   pad_y: f32;
   run: bool;
   jump_held: bool;
+  jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/input.coax)
   // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;

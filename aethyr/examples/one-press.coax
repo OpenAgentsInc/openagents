@@ -1,0 +1,29 @@
+// book:begin example
+#load "../input.coax";
+#import "Basic";
+
+// A tap shorter than a frame, fed to frames that run 0, 2 and 1 steps: the press waits for
+// the first step and only that step jumps. A 0.3 rad drag is split over the frame's steps.
+main :: () {
+  b: InputBuffer;
+  b.jump = input_press(b.jump);
+  b.jump = input_release(b.jump);
+  b = input_feed(b, input_keys(0, 1, false, false, false, 0.3, 0, 0));
+  frames := [3] int.[0, 2, 1];
+  n := 0;
+  for f: 0..<3 {
+    b = input_frame(b, frames[f]);
+    print("frame %, steps %\n", f, frames[f]);
+    for s: 0..<frames[f] {
+      x := input_sample(b);
+      b = x.buffer;
+      print("  step %: jump %, run %, move (%, %), look %\n", n, x.actions.jump, x.actions.run, x.actions.move_x, x.actions.move_y, x.actions.look_x);
+      n += 1;
+    }
+  }
+  print("presses % taken % waiting % lost %\n", b.jump.pressed, b.jump.taken, b.jump.waiting, b.jump.lost);
+  k := input_keys(0, 1, false, true, false, 0, 0, 0);
+  t := input_stick(0, 1, true, true, false, 0, 0, 0);
+  print("keyboard and stick agree: %\n", k.move_x == t.move_x && k.move_y == t.move_y && k.run == t.run && k.jump == t.jump);
+}
+// book:end example

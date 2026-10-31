@@ -17,6 +17,7 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | Module | What |
 | --- | --- |
 | `loop.coax` | The one frame loop: fixed-step simulation, interpolated drawing, one clock |
+| `input.coax` | Keys, touch and pads to one `Intent` a frame; levels, presses each taken by exactly one fixed step, and look and zoom split over a frame's steps |
 | `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
 | `refusals.coax` | Checks that what must not compile doesn't: the fixtures in `tests/` |
 

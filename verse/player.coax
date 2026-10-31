@@ -32,6 +32,7 @@
 #module "verse.player";   // a page may #load it as an alias (Dead Gears does)
 #load "stand.coax";
 #load "../aethyr/loop.coax";
+#load "../aethyr/input.coax";
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -42,7 +43,7 @@ RUN :: 7.5;
 // a player's setting): true, moving runs (RUN) and holding Shift walks
 // (WALK); false, moving walks and Shift runs. On a phone the stick decides
 // either way: a full push runs, a light one walks (verse/grid.coax RUN_PAST).
-RUN_BY_DEFAULT :: true;
+RUN_BY_DEFAULT :: INPUT_RUN_BY_DEFAULT;   // aethyr/input.coax holds the rule
 GRAVITY :: 24.0;        // m/s^2
 JUMP :: 7.5;            // m/s up: a 1.17 m peak
 ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
@@ -57,7 +58,7 @@ SPRING_TIME :: 0.1;
 PHI_MIN :: 0.1;         // the camera's angle down from straight up
 PHI_MAX :: 3.04159265;  // PI - PHI_MIN
 BEHIND_PHI :: 1.10714872; // atan2(400, 200): behind you and above
-DEAD_ZONE :: 0.2;       // stick travel that counts as no input
+DEAD_ZONE :: INPUT_DEAD_ZONE;   // stick travel that counts as no input (aethyr/input.coax)
 STEP :: 0.015625;       // the fixed gameplay step, 1/64 s: aethyr/loop.coax's LOOP_STEP_NS
 RADIUS :: 0.3;          // your capsule, as aethyr's kRadius
 HEIGHT :: 1.8;
@@ -107,6 +108,7 @@ Player :: struct {
   pad_y: f32;
   run: bool;
   jump_held: bool;
+  jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/input.coax)
   // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;
@@ -419,10 +421,13 @@ verse_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #export_c {
   return place_in(w, x, y, z, yaw);
 }
 
+// book:begin input
 // This frame's controls, as InputIntent carries them: keyboard axes (-1, 0,
 // 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
-// deltas in radians (positive turns left and looks up). Jump acts when it is
-// first pressed; the look turns the camera at once.
+// deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
+// it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
+// frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
+// camera at once (the realms' cameras read theta and phi each frame; ec-camera moves it).
 verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #export_c {
   next := p;
@@ -434,24 +439,24 @@ verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32
   if !finite(key_y) { next.key_y = 0; }
   if !finite(pad_x) || !finite(pad_y) { next.pad_x = 0; next.pad_y = 0; }
   next.run = run;
-  pressed := jump && !p.jump_held;
+  next.jumps = input_level(p.jumps, jump);
   next.jump_held = jump;
-  if pressed && next.on_ground {
-    next.vel.y = JUMP;
-    next.on_ground = false;
-  }
   if finite(dyaw) { next.theta = wrap_angle(next.theta + dyaw); }
   if finite(dpitch) { next.phi = clamp(next.phi + dpitch, PHI_MIN, PHI_MAX); }
   return next;
 }
+// book:end input
 
 // Whether you run this frame, for every realm's face: shift is Shift held
 // (the key the realms call HOLD_RUN), stick_run the stick's full push
 // (verse/grid.coax), pad its travel. A stick past the dead zone decides; the
 // keys go by RUN_BY_DEFAULT, Shift turning it the other way.
 verse_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c {
-  if finite(pad_x) && finite(pad_y) && sqrt(pad_x * pad_x + pad_y * pad_y) > f32(DEAD_ZONE) { return stick_run; }
-  return shift != RUN_BY_DEFAULT;
+  return input_runs(shift, stick_run, pad_x, pad_y);
+}
+// One frame's Intent (aethyr/input.coax), from the keyboard or the touch stick alike.
+verse_player_intent :: (p: Player, i: Intent) -> Player {
+  return verse_player_input(p, 0, 0, i.move_x, i.move_y, i.run, i.jump, i.look_x, i.look_y);
 }
 
 // The way the controls push in the world, unit length when `on`.
@@ -499,8 +504,17 @@ spring :: (p: Player, dest: Vec3, dt: f32) -> Player {
   return next;
 }
 
-// One fixed step.
-step :: (w: World, p: Player, dt: f32) -> Player {
+// book:begin take
+// One fixed step. It first takes a waiting jump press: from the ground, it jumps.
+step :: (w: World, given: Player, dt: f32) -> Player {
+  p := given;
+  t := input_take(given.jumps);
+  p.jumps = t.edge;
+  if t.pressed && p.on_ground {
+    p.vel.y = JUMP;
+    p.on_ground = false;
+  }
+// book:end take
   next := p;
   dir := wish(p);
   speed := (ifx p.run then f32(RUN) else f32(WALK)) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
@@ -806,9 +820,11 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   w: World;
   p := verse_player_place(0, 0, 0, 0);
   p = verse_player_input(p, f32(ix), 0, 0, 0, run, true, 0, 0);
-  #assert !p.on_ground && p.vel.y == f32(JUMP);
-  peak := 0.0f32;
-  steps := 0;
+  #assert p.on_ground && p.jumps.waiting == 1;   // the press waits for the step
+  p = step(w, p, STEP);
+  #assert !p.on_ground && p.vel.y < f32(JUMP) && p.vel.y > f32(JUMP) - 1 && p.jumps.waiting == 0;
+  peak := p.pos.y;
+  steps := 1;
   while !p.on_ground && steps < 120 {
     p = step(w, p, STEP);
     if !p.on_ground { #assert p.act == Act.airborne; }
@@ -831,18 +847,71 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
   for i: 0..<5 { p = step(w, p, STEP); }
   vy := p.vel.y;
-  // Released and pressed again in the air: nothing.
+  #assert !p.on_ground && vy > 0;
+  // Released and pressed again in the air: the step takes the press, and nothing happens.
   p = verse_player_input(p, 0, 0, 0, 0, false, false, 0, 0);
   p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
-  #assert p.vel.y == vy;
+  #assert p.vel.y == vy && p.jumps.waiting == 1;
+  p = step(w, p, STEP);
+  #assert p.jumps.waiting == 0 && p.vel.y < vy;
   while !p.on_ground { p = step(w, p, STEP); }
   // Still held after landing: no jump until it is pressed again.
   p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
-  #assert p.on_ground;
+  p = step(w, p, STEP);
+  #assert p.on_ground && p.jumps.waiting == 0;
   p = verse_player_input(p, 0, 0, 0, 0, false, false, 0, 0);
   p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
-  #assert !p.on_ground && p.vel.y == f32(JUMP);
+  #assert p.on_ground;
+  p = step(w, p, STEP);
+  #assert !p.on_ground && p.vel.y > f32(JUMP) - 1;
 }
+
+// book:begin presses
+// The input contract (aethyr/input.coax, #12609): a press is taken by exactly one step. At
+// 144 FPS most frames run no step: a press in one of them jumps on the next step, not never.
+// A frame that runs two steps jumps once, not twice.
+#test "a press in a frame with no step jumps on the next one, and a frame of two jumps once" {
+  w: World;
+  p := verse_player_place(0, 0, 0, 0);
+  p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  p = advance_in(w, p, 0.001);                    // runs no step
+  #assert p.clock.ticks == 0 && p.on_ground && p.jumps.waiting == 1;
+  p = verse_player_input(p, 0, 0, 0, 0, false, false, 0, 0);   // let go before the step
+  p = advance_in(w, p, 0.015);
+  #assert p.clock.ticks == 1 && !p.on_ground && p.jumps.taken == 1;
+  q := verse_player_place(0, 0, 0, 0);
+  q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
+  q = advance_in(w, q, 0.032);                    // two steps
+  #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
+  one := step(w, step(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
+  #assert same_step(q, one) && !same_step(q, step(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
+  // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
+  ice := verse_player_place(0, 0, 0, 0); ice.grip = 0.5;
+  dry := verse_player_place(0, 0, 0, 0);
+  a := step(w, verse_player_input(ice, 0, 1, 0, 0, true, true, 0, 0), STEP);
+  b := step(w, verse_player_input(dry, 0, 1, 0, 0, true, true, 0, 0), STEP);
+  #assert !a.on_ground && same_step(a, b);
+}
+
+// The same action stream drives desktop and phone: a session on the keyboard and the same
+// session on the touch stick (forward, running, a jump, a turn to the left) become the same
+// Intent each frame, and the player passes through the same states.
+#test "the keyboard and the touch stick drive the same session to the same states" {
+  w: World;
+  k := verse_player_place(0, 0, 0, 0);
+  t := verse_player_place(0, 0, 0, 0);
+  for f: 0..<120 {
+    jump := f == 10 || f == 70;
+    x := ifx f >= 40 && f < 60 then -1.0f32 else 0.0f32;
+    keys := input_keys(x, 1, false, jump, false, 0, 0, 0);
+    touch := input_stick(x, 1, true, jump, false, 0, 0, 0);
+    k = advance_in(w, verse_player_intent(k, keys), 1.0 / 60.0);
+    t = advance_in(w, verse_player_intent(t, touch), 1.0 / 60.0);
+    #assert same_step(k, t) && k.pos.x == t.pos.x;
+  }
+  #assert k.jumps.taken == 2 && abs(k.pos.z) > 5 && abs(k.pos.x) > 0.5;   // it ran, turned and jumped twice
+}
+// book:end presses
 
 #test "placed in the air, you fall to the floor" {
   w: World;
@@ -1453,8 +1522,8 @@ gable :: (f: [] f32, eave: f32) {
   for i: 0..<120 { q = step(w, q, STEP); }
   #assert q.on_ground && near(q.pos.y, 7, 0.01);
   // and you jump off it as off the ground
-  q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
-  #assert !q.on_ground && q.vel.y == f32(JUMP);
+  q = step(w, verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0), STEP);
+  #assert !q.on_ground && q.vel.y > f32(JUMP) - 1 && q.pos.y > 7;
   // under it (inside, on the ground) it is no floor
   r := verse_player_place(-1, 0, 0, 0);
   for i: 0..<20 { r = step(w, r, STEP); }
