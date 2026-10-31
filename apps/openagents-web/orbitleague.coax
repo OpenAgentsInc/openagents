@@ -140,6 +140,8 @@ HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_JUMP :: 16; 
 KEY_SHIFT :: -13;
 OUTBOX :: 256;
 HOST_FACTS :: 600;
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BUTTONS :: 5;
 
 SBox :: struct { c: D3; h: D3; }
@@ -168,6 +170,9 @@ OrbitLeague :: struct {
   hover: int;
   boxes_ui: [BUTTONS] Box; shown: [BUTTONS] bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
+  // the maker's line, MADE BY <NAME> · TIP: the name (608), TIP's box and the finger on it
+  maker: [MAKER_BYTES] u8; maker_n: int;
+  tip_box: Box; tip_shown: bool; tip_down: bool; tip_id: int; tip_hover: bool;
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
   // the camera, eased
   cam_eye: [3] f32; cam_at: [3] f32; cam_ready: bool;
@@ -697,8 +702,32 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "card=1") { s[0].card = true; }
+  if kind == MAKER_KIND { take_maker(s, text); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_FACTS { track_world(s[0].track[..], "orbit-league"); }
+}
+
+// The maker's name, as sent (never read): up to MAKER_BYTES, not cutting a character.
+take_maker :: (s: [] OrbitLeague, text: string) {
+  n := least(text.count, MAKER_BYTES);
+  if n < text.count { while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; } }
+  for i: 0..<n { s[0].maker[i] = text[i]; }
+  s[0].maker_n = n;
+}
+
+// TIP: the maker's tip page.
+tip :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/orbit-league/tip"); s[0].action = ACT_NAVIGATE; } }
+
+// A finger or the mouse on TIP: only TIP's own presses are taken.
+tip_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  on := s[0].tip_shown && inside(s[0].tip_box, x, y);
+  if kind == 0 { s[0].tip_hover = on && phase != POINTER_CANCEL; }
+  if phase == POINTER_DOWN && on { s[0].tip_down = true; s[0].tip_id = id; return true; }
+  if !s[0].tip_down || id != s[0].tip_id { return false; }
+  if phase == POINTER_MOVE { return true; }
+  s[0].tip_down = false;
+  if phase == POINTER_UP && on { tip(s); }
+  return true;
 }
 
 game_golden :: (s: [] OrbitLeague, on: bool) #export_c { s[0].golden = on; }
@@ -756,6 +785,7 @@ button_at :: (s: [] OrbitLeague, x: f32, y: f32) -> int {
 game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { game_reset(s); }
   if kind == 1 { s[0].touch = true; }
+  if tip_pointer(s, x, y, phase, kind, id) { s[0].hover = -1; return true; }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   track_pointer(s[0].track[..], x, y, phase, kind, "");
@@ -789,7 +819,7 @@ game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: i
   }
   return false;
 }
-game_cursor :: (s: [] OrbitLeague) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+game_cursor :: (s: [] OrbitLeague) -> int #export_c { return ifx s[0].hover >= 0 || s[0].tip_hover then 1 else 0; }
 game_action :: (s: [] OrbitLeague) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
 game_action_done :: (s: [] OrbitLeague) #export_c { s[0].out_n = 0; }
 
@@ -896,6 +926,27 @@ hud_button :: (s: [] OrbitLeague, out: [] f32, at: int, which: int, b: Box, labe
   return centred(k, out, at, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, white(k, 0.95));
 }
 
+// MADE BY <NAME> · TIP along the bottom, centred between x0 and x1 (small,
+// dim; TIP in Bitcoin's orange). Nothing without a maker.
+maker_line :: (s: [] OrbitLeague, out: [] f32, at: int, x0: f32, x1: f32, base: f32) -> int {
+  s[0].tip_shown = false;
+  if s[0].maker_n == 0 { return at; }
+  k := s[0].dpr;
+  lead: [MAKER_BYTES + 16] u8;
+  n := put(lead[..], 0, "MADE BY "); n = put(lead[..], n, cast(string) s[0].maker[0..<s[0].maker_n]); n = put(lead[..], n, " · ");
+  left := cast(string) lead[0..<n];
+  lw := measure(left, GAP, SPACE, false); tw := measure("TIP", GAP, SPACE, false);
+  cap := lo(6 * k, (x1 - x0) / hi(lw + tw, 1));
+  x := (x0 + x1) * 0.5 - (lw + tw) * cap * 0.5;
+  v := write(k, out, at, left, x, base, cap, GAP, SPACE, white(k, 0.55), false, false);
+  tx := x + lw * cap;
+  hot := s[0].tip_hover || s[0].tip_down;
+  v = write(k, out, v, "TIP", tx, base, cap, GAP, SPACE, ink(0.6 * k, ifx hot then 1.0f32 else 0.8f32, 2 * k, ORANGE_R, ORANGE_G, ORANGE_B), false, false);
+  s[0].tip_box = Box.{x0 = tx - 8 * k, y0 = base - cap - 10 * k, x1 = tx + tw * cap + 8 * k, y1 = base + 8 * k};
+  s[0].tip_shown = true;
+  return v;
+}
+
 draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
   phone := w < 700 * k;
@@ -980,6 +1031,8 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     } else if s[0].played < 20 {
       v = centred(d, out, v, "DRAG HERE TO DRIVE", w * 0.25, h - 60 * k, 7.5 * k, white(k, 0.6));
     }
+    // the maker's line: bottom left, beside BOOST
+    v = maker_line(s, out, v, g, ob.x0 - 12 * k, h - g - 4 * k);
   } else {
     cb := Box.{x0 = w - g - 112 * k, y0 = g, x1 = w - g, y1 = g + 34 * k};
     v = hud_button(s, out, v, BTN_CAM, cb, ifx s[0].ball_cam then "CAR CAM  C" else "BALL CAM  C", 7.5 * k);
@@ -987,6 +1040,8 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
       hint := "W S DRIVE   A D STEER   SPACE JUMP, AGAIN WITH W A S D TO FLIP   SHIFT BOOST";
       v = centred(d, out, v, hint, w * 0.5, h - 30 * k, lo(8 * k, (w - 2 * g) / hi(measure(hint, GAP, SPACE, false), 1)), white(k, 0.65));
     }
+    // the maker's line: bottom middle, under the hint, clear of the boost gauge
+    v = maker_line(s, out, v, g + 110 * k, w - g - 110 * k, h - 12 * k);
   }
   // the ball, when it is off the screen: an arrow at the edge toward it
   bp := s[0].bodies[BALL].pos;
@@ -1022,6 +1077,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   view_rows(s);
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  s[0].tip_shown = false;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = ifx still || s[0].golden then 20.0f32 else s[0].time;
   u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32; u[6] = s[0].dpr;
@@ -1229,4 +1285,25 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   c := game_pointer(s[..], (jb.x0 + jb.x1) * 0.5, (jb.y0 + jb.y1) * 0.5, POINTER_DOWN, 1, 8);
   #assert s[0].button_id[BTN_JUMP] == 8 && you_drive(s[..]).input.jump || s[0].phase == PHASE_KICKOFF;
   #assert game_key(s[..], KEY_ESCAPE, 0) && game_action(s[..]) == ACT_NAVIGATE;
+}
+
+#test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" {
+  ss: [2] OrbitLeague;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for dims: 0..<2 {
+    s := ss[dims..<dims + 1];
+    w: f32 = ifx dims == 0 then 1440 else 390 * 3; h: f32 = ifx dims == 0 then 900 else 844 * 3; dpr: f32 = ifx dims == 0 then 1 else 3;
+    a := game_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert !s[0].tip_shown;
+    game_message(s, MAKER_KIND, "Topher");
+    b := game_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert b > a && s[0].tip_shown;
+    t := s[0].tip_box;
+    for i: 0..<BUTTONS { #assert !s[0].shown[i] || t.x1 < s[0].boxes_ui[i].x0 || t.x0 > s[0].boxes_ui[i].x1 || t.y1 < s[0].boxes_ui[i].y0 || t.y0 > s[0].boxes_ui[i].y1; }
+    #assert t.x0 >= 0 && t.x1 <= w && t.y1 <= h;
+    cx := (t.x0 + t.x1) * 0.5; cy := (t.y0 + t.y1) * 0.5;
+    #assert game_pointer(s, cx, cy, POINTER_DOWN, 1, 4) && !s[0].stick;
+    #assert game_pointer(s, cx, cy, POINTER_UP, 1, 4) && s[0].action == ACT_NAVIGATE;
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league/tip";
+  }
 }

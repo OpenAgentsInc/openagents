@@ -50,7 +50,7 @@ hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 
 // Colours: grey line art, the Free Belt's electric blue (the homepage's accent), the rivals' own.
-// Orange is Bitcoin's: nothing here is orange (the Mars Union is crimson, fuel is green).
+// Orange is Bitcoin's: nothing here is orange but the maker's TIP (the Mars Union is crimson, fuel is green).
 INK_R :: 0.86f32; INK_G :: 0.88f32; INK_B :: 0.92f32;
 DIM_R :: 0.5f32; DIM_G :: 0.53f32; DIM_B :: 0.58f32;
 BELT_R :: 0.216f32; BELT_G :: 0.851f32; BELT_B :: 0.851f32;
@@ -61,6 +61,9 @@ FUEL_R :: 0.5f32; FUEL_G :: 0.95f32; FUEL_B :: 0.6f32;
 FAST_R :: 0.76f32; FAST_G :: 0.6f32; FAST_B :: 1.0f32;
 LOW_R :: 1.0f32; LOW_G :: 0.42f32; LOW_B :: 0.52f32;
 PLUME_R :: 0.78f32; PLUME_G :: 0.9f32; PLUME_B :: 1.0f32;
+TIP_R :: 1.0f32; TIP_G :: 0.55f32; TIP_B :: 0.12f32;   // ui.coax's orange: a tip is Bitcoin
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 FREE_BELT :: 0; MARS_UNION :: 1; TERRAN :: 2;
 
@@ -135,6 +138,9 @@ Belt :: struct {
   arrive: [32] u8; arrive_n: int;   // the planned arrival's label, kept for the frame's labels
   panel_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  // the maker's line, MADE BY <NAME> · TIP: the name (608), TIP's box and the finger on it
+  maker: [MAKER_BYTES] u8; maker_n: int;
+  tip_x0: f32; tip_y0: f32; tip_x1: f32; tip_y1: f32; tip_shown: bool; tip_down: bool; tip_id: int; tip_hover: bool;
   dirty: bool; save_t: f32; restored: bool; new_armed: f32;
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
@@ -722,8 +728,29 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
   if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); }
+  if kind == MAKER_KIND { take_maker(s, text); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE { track_world(s[0].track[..], "belt-2200"); }
+}
+
+// The maker's name, as sent (never read): up to MAKER_BYTES, not cutting a character.
+take_maker :: (s: [] Belt, text: string) {
+  n := ifx text.count < MAKER_BYTES then text.count else MAKER_BYTES;
+  if n < text.count { while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; } }
+  for i: 0..<n { s[0].maker[i] = text[i]; }
+  s[0].maker_n = n;
+}
+
+// A finger or the mouse on TIP (the maker's tip page): only TIP's own presses are taken.
+tip_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  on := s[0].tip_shown && x >= s[0].tip_x0 && x <= s[0].tip_x1 && y >= s[0].tip_y0 && y <= s[0].tip_y1;
+  if kind == 0 && !s[0].mouse_down { s[0].tip_hover = on && phase != 3; }
+  if phase == 0 && on && s[0].press < 0 { s[0].tip_down = true; s[0].tip_id = id; return true; }
+  if !s[0].tip_down || id != s[0].tip_id { return false; }
+  if phase == 1 { return true; }
+  s[0].tip_down = false;
+  if phase == 2 && on && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/belt-2200/tip"); s[0].action = ACT_NAVIGATE; }
+  return true;
 }
 belt_golden :: (s: [] Belt, on: bool) #export_c { s[0].golden = on; }
 belt_action :: (s: [] Belt) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
@@ -912,6 +939,7 @@ pan :: (s: [] Belt, dx: f32, dy: f32) {
 
 belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   started(s);
+  if tip_pointer(s, x, y, phase, kind, id) { s[0].hover = -1; return true; }
   k := hi(s[0].dpr, 0.5);
   on := button_at(s, x, y);
   track_pointer(s[0].track[..], x, y, phase, kind, ifx on >= 0 then "button" else "");
@@ -1015,7 +1043,7 @@ belt_wheel :: (s: [] Belt, dy: f32) -> bool #export_c {
   return true;
 }
 belt_cursor :: (s: [] Belt) -> int #export_c {
-  if s[0].hover >= 0 { return 1; }
+  if s[0].hover >= 0 || s[0].tip_hover { return 1; }
   if s[0].boxing { return 2; }
   return 0;
 }
@@ -1724,6 +1752,39 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
 }
 
+// MADE BY <NAME> · TIP (small, dim; TIP in Bitcoin's orange) at the bottom: beside the ship
+// cards when there is room (a desktop), else in the strip under them. Nothing without a maker.
+maker_line :: (s: [] Belt, out: [] f32, d: [] Draw) {
+  s[0].tip_shown = false;
+  if s[0].maker_n == 0 { return; }
+  k := d[0].k; w := d[0].w; h := d[0].h;
+  phone := w / k < 700;
+  m := 12 * k;
+  // the cards, as hud lays them out
+  cw := ifx phone then (w - 2 * m - 2 * 8 * k) / 3 else 200 * k;
+  total := 3 * cw + 2 * 8 * k;
+  cards_x1 := (w + total) / 2;
+  lead: [MAKER_BYTES + 16] u8;
+  n := put(lead[..], 0, "MADE BY "); n = put(lead[..], n, cast(string) s[0].maker[0..<s[0].maker_n]); n = put(lead[..], n, " · ");
+  left := cast(string) lead[0..<n];
+  lw := measure(left, GAP, SPACE, false); tw := measure("TIP", GAP, SPACE, false);
+  // beside the cards: right of them, bottom aligned; else the strip under them
+  x0 := cards_x1 + 16 * k; x1 := w - m; y0 := h - m - 30 * k; y1 := h;
+  if (x1 - x0) < (lw + tw) * 5 * k {
+    x0 = m; x1 = w - m; y0 = h - (ifx phone then 20 * k else 12 * k); y1 = h;
+  }
+  cap := lo(lo(6 * k, y1 - y0 - 6 * k), (x1 - x0) / hi(lw + tw, 1));
+  base := ifx y1 - y0 > 24 * k then h - m - 4 * k else (y0 + y1) * 0.5 + cap * 0.5;
+  x := (x0 + x1) * 0.5 - (lw + tw) * cap * 0.5;
+  words(out, d, left, x, base, cap, 0.55, INK_R, INK_G, INK_B);
+  tx := x + lw * cap;
+  hot := s[0].tip_hover || s[0].tip_down;
+  words(out, d, "TIP", tx, base, cap, ifx hot then 1.0f32 else 0.8f32, TIP_R, TIP_G, TIP_B);
+  s[0].tip_x0 = tx - 8 * k; s[0].tip_x1 = tx + tw * cap + 8 * k; s[0].tip_y0 = y0 + 1 * k; s[0].tip_y1 = y1;
+  block_rect(d, x, base - cap - 2 * k, tx + tw * cap, base + 2 * k);   // no name is written over it
+  s[0].tip_shown = true;
+}
+
 // ---- the frame
 
 coaxial_belt_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
@@ -1797,7 +1858,8 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     stroke(out, d[..], x1, y1, x0, y1, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
     stroke(out, d[..], x0, y1, x0, y0, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
   }
-  if s[0].card { s[0].btn_n = 0; } else if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); } else { stage_hud(s, out, u, d[..]); }
+  s[0].tip_shown = false;
+  if s[0].card { s[0].btn_n = 0; } else if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); maker_line(s, out, d[..]); } else { stage_hud(s, out, u, d[..]); }
   // the Sun's disc and its bright core: no name is written over it
   sun_at := screen_of(s, D3_ZERO);
   block(d[..], pix(sun_at.x), pix(sun_at.y), hi(pix(spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SUN])) * 1.2, 9 * d[0].k));
@@ -2103,4 +2165,28 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert s[0].ships[k].mode == FLYING && s[0].t > t0 + 2.5 * STAGE_RATE;
   // and nothing was kept in the browser
   #assert s[0].action == 0 && s[0].out_n == 0;
+}
+
+#test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" {
+  ss: [2] Belt;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for dims: 0..<2 {
+    s := ss[dims..<dims + 1];
+    belt_start(s);
+    w: f32 = ifx dims == 0 then 1440 else 390 * 3; h: f32 = ifx dims == 0 then 900 else 844 * 3; dpr: f32 = ifx dims == 0 then 1 else 3;
+    a := belt_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert !s[0].tip_shown;
+    belt_message(s, MAKER_KIND, "Topher");
+    b := belt_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert b > a && s[0].tip_shown;
+    for i: 0..<s[0].btn_n { r := s[0].btn[i]; #assert s[0].tip_x1 < r.x0 || s[0].tip_x0 > r.x1 || s[0].tip_y1 < r.y0 || s[0].tip_y0 > r.y1; }
+    #assert s[0].tip_x0 >= 0 && s[0].tip_x1 <= w && s[0].tip_y1 <= h;
+    cx := (s[0].tip_x0 + s[0].tip_x1) * 0.5; cy := (s[0].tip_y0 + s[0].tip_y1) * 0.5;
+    kind := ifx dims == 0 then 0 else 1;
+    // the host takes any save the frames asked to keep first
+    kept := belt_action(s); belt_action_done(s);
+    #assert belt_pointer(s, cx, cy, 0, kind, 4) && !s[0].mouse_down && s[0].fingers[0].id < 0;
+    #assert belt_pointer(s, cx, cy, 2, kind, 4) && s[0].action == ACT_NAVIGATE;
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/belt-2200/tip";
+  }
 }

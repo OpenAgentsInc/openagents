@@ -127,6 +127,9 @@ LONG_PRESS :: 0.45;
 
 INK_R :: 0.86; INK_G :: 0.88; INK_B :: 0.92;
 GOLD_R :: 1.0; GOLD_G :: 0.8; GOLD_B :: 0.35;
+TIP_R :: 1.0; TIP_G :: 0.55; TIP_B :: 0.12;   // ui.coax's orange: Bitcoin's, for TIP alone
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; }
@@ -171,6 +174,9 @@ Stair :: struct {
   plate_n: int;
   toast: [64] u8; toast_n: int; toast_t: f32;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  // the maker's line, MADE BY <NAME> · TIP: the name (608), TIP's box and the finger on it
+  maker: [MAKER_BYTES] u8; maker_n: int;
+  tip_box: Rect; tip_shown: bool; tip_down: bool; tip_id: int; tip_hover: bool;
   facts: bool; tracked_wave: int;
 }
 
@@ -846,6 +852,7 @@ aim_cell :: (s: [] Stair) -> int {
 stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   stair_start(s);
   if kind != 0 { s[0].touch = true; }
+  if tip_pointer(s, x, y, phase, kind, id) { s[0].hover_b = -1; s[0].hover = -1; return true; }
   b := button_at(s, x, y);
   cell := cell_at(s, x, y);
   if kind == 0 && phase != 3 { s[0].hover_b = b; s[0].hover = cell; } else { s[0].hover_b = -1; s[0].hover = -1; }
@@ -906,7 +913,7 @@ stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
 stair_key_up :: (s: [] Stair, key: int, mods: int) -> bool #export_c { track_key_up(s[0].track[..], key); return false; }
 stair_blur :: (s: [] Stair) #export_c { s[0].down_on = false; s[0].press = -1; track_blur(s[0].track[..]); }
 stair_cursor :: (s: [] Stair) -> int #export_c {
-  if s[0].hover_b >= 0 { return 1; }
+  if s[0].hover_b >= 0 || s[0].tip_hover { return 1; }
   if s[0].hover >= 0 && (free_cell(s, s[0].hover) || defender_at(s, s[0].hover) >= 0) { return 1; }
   return 0;
 }
@@ -926,8 +933,29 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     if query_is(url, "stage", "highlight") { stage_highlight(s); }
     if query_is(url, "card", "1") { s[0].card_shot = true; }
   }
+  if kind == MAKER_KIND { take_maker(s, t); }
   ok := track_message(s[0].track[..], kind, t);
   if kind == HOST_PAGE { track_world(s[0].track[..], "hold-the-stair"); }
+}
+
+// The maker's name, as sent (never read): up to MAKER_BYTES, not cutting a character.
+take_maker :: (s: [] Stair, t: string) {
+  n := lo_i(t.count, MAKER_BYTES);
+  if n < t.count { while n > 0 && (t[n] & 0xC0) == 0x80 { n -= 1; } }
+  for i: 0..<n { s[0].maker[i] = t[i]; }
+  s[0].maker_n = n;
+}
+
+// A finger or the mouse on TIP (the maker's tip page): only TIP's own presses are taken.
+tip_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  on := s[0].tip_shown && in_rect(s[0].tip_box, x, y);
+  if kind == 0 { s[0].tip_hover = on && phase != 3; }
+  if phase == 0 && on { s[0].tip_down = true; s[0].tip_id = id; return true; }
+  if !s[0].tip_down || id != s[0].tip_id { return false; }
+  if phase == 1 { return true; }
+  s[0].tip_down = false;
+  if phase == 2 && on { leave_to(s, "/realms/hold-the-stair/tip"); }
+  return true;
 }
 // ?KEY=VALUE in a page's URL, exactly.
 query_is :: (url: string, key: string, value: string) -> bool {
@@ -1315,6 +1343,36 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   n := put(buf, 0, CLASS_NAME[c]); n = put(buf, n, " "); return put_int(buf, n, CLASS_COST[c]);
 }
 
+// MADE BY <NAME> · TIP (small, dim; TIP in Bitcoin's orange), centred: in the
+// gap between the map and the bottom panel when there is one, else in the
+// strip under the panel's buttons. Nothing without a maker.
+maker_line :: (s: [] Stair, out: [] f32, at: int, w: f32, h: f32) -> int {
+  s[0].tip_shown = false;
+  if s[0].maker_n == 0 { return at; }
+  k := hi(s[0].dpr, 0.5);
+  bottom := ifx s[0].portrait then 184 * k else 118 * k;
+  map_y1 := s[0].oy + (f32(s[0].srows) + f32(RIM_TILES)) * s[0].tile * f32(SQUASH);
+  // the band it sits in: the gap over the panel, or the strip under its buttons
+  y0 := map_y1; y1 := h - bottom;
+  if y1 - y0 < 24 * k { y0 = h - (ifx s[0].portrait then 14 * k else 22 * k); y1 = h; }
+  y0 = hi(y0, y1 - 40 * k);   // a tall gap: just over the panel
+  lead: [MAKER_BYTES + 16] u8;
+  n := put(lead[..], 0, "MADE BY "); n = put(lead[..], n, cast(string) s[0].maker[0..<s[0].maker_n]); n = put(lead[..], n, " · ");
+  left := cast(string) lead[0..<n];
+  lw := measure(left, GAP, SPACE, false); tw := measure("TIP", GAP, SPACE, false);
+  cap := lo(lo(6 * k, y1 - y0 - 6 * k), (w - 40 * k) / hi(lw + tw, 1));
+  base := (y0 + y1) * 0.5 + cap * 0.5;
+  x := w * 0.5 - (lw + tw) * cap * 0.5;
+  v := say_at(out, at, left, x, base, cap, ink(k, 0.55, INK_R, INK_G, INK_B));
+  tx := x + lw * cap;
+  hot := s[0].tip_hover || s[0].tip_down;
+  v = say_at(out, v, "TIP", tx, base, cap, ink(k, ifx hot then 1.0f32 else 0.8f32, TIP_R, TIP_G, TIP_B));
+  // the target: TIP and round it, within the band
+  s[0].tip_box = Rect.{x0 = tx - 8 * k, y0 = y0 + 1 * k, x1 = tx + tw * cap + 8 * k, y1 = y1 - 1 * k};
+  s[0].tip_shown = true;
+  return v;
+}
+
 draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> int {
   n := at;
   k := hi(s[0].dpr, 0.5);
@@ -1530,6 +1588,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     sc := lo(11 * k, (2 * half - 24 * k) / hi(measure(cast(string) buf[0..<m], GAP, SPACE, false), 1));
     n = say_mid(out, n, cast(string) buf[0..<m], cx, cy - 6 * k, sc, ink(k, 0.9, INK_R, INK_G, INK_B));
   }
+  n = maker_line(s, out, n, w, h);
   return n;
 }
 
@@ -1578,6 +1637,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
     n = draw_beasts(s, out, n);
     n = draw_fx(s, out, n);
   }
+  s[0].tip_shown = false;
   if !s[0].card_shot { n = draw_hud(s, out, u, n, width, height); }
   u[U_INFO2 + 2] = f32(s[0].plate_n);
   track_frame(s[0].track[..], dt, width, height, dpr);
@@ -1735,4 +1795,25 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   for i: 0..<720 { step(s[..], f32(STEP)); }
   #assert live_beasts(s[..]) >= 8 && s[0].pops >= 10;
   #assert !query_is("https://x/y?stage=highlights", "stage", "highlight") && query_is("https://x/y?a=1&stage=highlight#z", "stage", "highlight");
+}
+
+#test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" {
+  ss: [2] Stair;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for dims: 0..<2 {
+    s := ss[dims..<dims + 1];
+    w: f32 = ifx dims == 0 then 1440 else 390 * 3; h: f32 = ifx dims == 0 then 900 else 844 * 3; dpr: f32 = ifx dims == 0 then 1 else 3;
+    a := stair_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert !s[0].tip_shown;
+    stair_message(s, MAKER_KIND, "Topher");
+    b := stair_frame(s, out[..], u[..], w, h, dpr, 0, true);
+    #assert b > a && s[0].tip_shown;
+    t := s[0].tip_box;
+    for i: 0..<BUTTONS { r := s[0].boxes[i]; #assert !s[0].shown[i] || t.x1 < r.x0 || t.x0 > r.x1 || t.y1 < r.y0 || t.y0 > r.y1; }
+    #assert t.x0 >= 0 && t.x1 <= w && t.y1 <= h && cell_at(s, (t.x0 + t.x1) * 0.5, t.y0) < 0;
+    cx := (t.x0 + t.x1) * 0.5; cy := (t.y0 + t.y1) * 0.5;
+    #assert stair_pointer(s, cx, cy, 0, 1, 4) && s[0].press < 0 && !s[0].down_on;
+    #assert stair_pointer(s, cx, cy, 2, 1, 4) && s[0].action == ACT_NAVIGATE;
+    #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hold-the-stair/tip";
+  }
 }
