@@ -1102,8 +1102,10 @@ coax/bin/coax mutate coax/book/examples/ch10_build_profiles.coax --release
 ```
 
 Both branches must parse. Only the selected fields and statement blocks reach
-resolution, layout, compile-time work and output. The profile selector is fixed
-by the compiler's `--release` flag; it is not a lookup of a user constant.
+resolution, layout, compile-time work and output. Development is the default;
+the legacy `--release` preset selects release branches. Version 0.25.0 adds
+`--build-profile development|release` to override that selector independently
+of arithmetic and optimization. It is not a lookup of a user constant.
 Arbitrary conditions, imports and top-level declarations are still planned.
 Statement blocks keep lexical scope, so locals declared inside one stay there.
 
@@ -1112,5 +1114,6 @@ explicitly remove a development-only statement; it does not justify removing
 money, admission or other required authority checks. A profile's tests and
 mutation results describe that profile, so exercise both when both ship.
 The native struct layout differs: every linked consumer must use the matching
-profile/header. Wire schemas keep their own stable definitions. Compiler release
-arithmetic and native optimization also remain separate choices; see Chapter 24.
+profile/header. Wire schemas keep their own stable definitions. Compile-time
+and check arithmetic stay checked under every selection. Runtime arithmetic
+and native optimization are separate choices; see Chapter 24.

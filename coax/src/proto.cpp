@@ -12,10 +12,10 @@
 namespace coax::proto {
 using View = std::string_view;
 #include "proto_runtime.inc"
-struct Result { std::string source, provenance, error; };
-static Result import_descriptor(View raw,const std::string &prefix,const std::string &compiler) {
+struct Result { std::string source, provenance, error, descriptor_sha256; };
+static Result import_descriptor(View raw,const std::string &prefix,const std::string &compiler,bool capture_descriptor=false) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
-  (void)raw;(void)prefix;(void)compiler;
+  (void)raw;(void)prefix;(void)compiler;(void)capture_descriptor;
   return {{},{},"proto imports are disabled in the build-only stage0 compiler"};
 #else
   Result result;
@@ -49,14 +49,19 @@ static Result import_descriptor(View raw,const std::string &prefix,const std::st
     if(packaged.error.count) {result.error.assign(packaged.error.data,(size_t)packaged.error.count);return result;}
     result.source.assign((const char*)final_source.get(),(size_t)packaged.written);
     result.provenance.assign((const char*)final_source.get(),(size_t)packaged.provenance);
+    if(capture_descriptor) {
+      uint8_t hex[64];auto digest=S_hash(raw_input);
+      if(!S_hex(digest,{hex,64})){result.error="cannot record consumed descriptor hash";return result;}
+      result.descriptor_sha256.assign((const char*)hex,64);
+    }
   } catch(const std::bad_alloc &) {result.source.clear();result.provenance.clear();result.error="descriptor allocation failed";}
   return result;
 #endif
 }
-static Result import_file(const std::string &path,const std::string &prefix,const std::string &compiler) {
+static Result import_file(const std::string &path,const std::string &prefix,const std::string &compiler,bool capture_descriptor=false) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
   (void)path;
-  return import_descriptor({},prefix,compiler);
+  return import_descriptor({},prefix,compiler,capture_descriptor);
 #else
   const size_t capacity=(size_t)F_capacities().descriptor;
   FILE *file=fopen(path.c_str(),"rb");
@@ -74,7 +79,7 @@ static Result import_file(const std::string &path,const std::string &prefix,cons
   bool ok=!ferror(file);
   fclose(file);
   if (!ok) return {{},{},"cannot read proto descriptor: "+path};
-  return import_descriptor(raw,prefix,compiler);
+  return import_descriptor(raw,prefix,compiler,capture_descriptor);
 #endif
 }
 } // namespace coax::proto

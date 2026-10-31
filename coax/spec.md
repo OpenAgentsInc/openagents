@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -154,8 +154,32 @@ parallel checking, a server or a general fixed-point scheduler yet.
 
 ### 2.3 Backends and target separation
 
-C output is the first debug and release path. Release currently changes
-runtime integer overflow behavior and C optimization, not language features.
+C output is the first debug and release path. Version 0.25.0 separates runtime
+arithmetic, native optimization, build-profile selection and native debug
+information. The legacy defaults are retained: without flags, checked runtime
+integers, native `-O0`, development `BUILD_DEBUG` selection and native debug
+information; `--release` selects wrapping runtime integers, native `-O2`, release
+selection and no default native debug information. Explicit `--arithmetic
+checked|wrapping`, `--opt 0|1|2|3`, `--build-profile development|release` and
+`--debug-info` / `--no-debug-info` override their axes independently of argument
+order. Native optimization is accepted only for `build`, `lib` and `run`.
+
+The checked Coax profile policy admits command/option combinations and resolves
+the preset and overrides; the native driver transports arguments and performs
+tool/file effects. `--profile-report FILE` requests a separate schema-1 JSON
+profile record. It does not change the existing timing, dependency, source-map
+or release-inventory schemas. Ordinary generated output remains unchanged
+without the report option. Profile identity accompanies selected-profile
+evidence and mutation shard compatibility; this is not a semantic cache.
+
+One loaded source graph has one resolved profile. A separately compiled C or
+foreign callee executes its own arithmetic policy; the caller does not change
+or inherit that policy. Equal C layouts do not imply equal arithmetic semantics.
+Native integrations must retain the participating profile records; there is
+no claim of general enforcement across independently linked C objects. Existing
+GPU source lowerings may select arithmetic without qualifying new devices or
+establishing cross-backend numerical equivalence.
+
 A later native debug backend must earn its cost through measured iteration
 improvements. An optimizing backend can follow independently; no target is
 supported merely because a backend recognizes its CPU name.
@@ -438,9 +462,12 @@ The bootstrap implements `+ - * /` on integers and floats, `%` on integers,
 unary `-` on signed integers and floats, bitwise `& | ^` and shifts `<< >>`
 on integers, comparisons, boolean `&& || !`, and equality on scalars, enums
 and strings. Bitwise operators share the precedence of `+` and `*`, as in Go.
-Comparisons cannot chain. Integer arithmetic traps on overflow (signed and
-unsigned) in development and wraps in `--release`; division by zero always
-traps. The minimum integer divided by minus one traps; its remainder is zero.
+Comparisons cannot chain. Checked runtime arithmetic traps on overflow (signed
+and unsigned); wrapping arithmetic wraps `+`, `-`, `*` and signed negation.
+The defaults are checked without flags and wrapping under the legacy
+`--release` preset. `--arithmetic checked|wrapping` overrides that choice without
+changing native optimization or `BUILD_DEBUG`. Division by zero always traps.
+The minimum integer divided by minus one traps; its remainder is zero.
 Shifts by a negative amount or by the type's width or more trap in every
 build; `<<` discards high bits. Float arithmetic is IEEE binary32/binary64
 with one rounding per operation; the generated C disables contraction into
@@ -777,8 +804,10 @@ implemented by the scalar evaluator.
 
 Version 0.17.0 supports the fixed workspace selector `#if BUILD_DEBUG { ... }`
 with an optional `else { ... }` inside struct field lists and procedure/check
-statement blocks. `BUILD_DEBUG` selects development unless the compiler command
-has `--release`. It is a context-specific selector, not ordinary name resolution;
+statement blocks. `BUILD_DEBUG` selects development by default and release under
+the legacy `--release` preset. Version 0.25.0 adds the independent explicit
+`--build-profile development|release` override; arithmetic and optimization
+flags do not change this selector. It is context-specific, not ordinary name resolution;
 user constants cannot configure it. Selected fields join the enclosing struct
 in source order. Selected statement blocks keep ordinary lexical scope.
 
@@ -792,10 +821,11 @@ selection policy lives in the checked Coax parser, not a source-text preprocesso
 This changes struct layout. Every producer/consumer of such a native record must
 use the same profile and generated header. Keep profile-dependent fields out of
 published wire/native contracts unless the contract explicitly versions them.
-`--release` also retains its existing integer-wrapping behavior; this feature does
-not introduce a new overflow policy. Native optimization, NDEBUG, Xcode's build
-configuration and Coax build profile are separate inputs. Current app generation
-keeps the checked Coax profile; it does not silently adopt release arithmetic.
+The legacy `--release` preset retains its integer-wrapping default unless an
+explicit arithmetic override is supplied. Build-profile selection itself does
+not change overflow policy. Native optimization, NDEBUG, Xcode's configuration
+and Coax build profile are separate inputs. Current app generation keeps checked
+Coax arithmetic; it does not silently adopt release arithmetic.
 
 Arbitrary `#if CONSTANT`, negated/compound selectors, conditional imports and
 top-level declarations remain unsupported. General conditions will need the

@@ -202,9 +202,11 @@ static float coax_p_residue(float l_x, float l_c) {
 
 That's the same expression clang fused in Listing 13-4, but the pragma
 at the top of the file forbids the fusion. `coax0` also passes no
-fast-math flags to the C compiler, and `--release` changes only the
-optimization level (`-O2` instead of `-O0`) and what integer overflow
-does.
+fast-math flags to the C compiler. The legacy `--release` preset selects
+`-O2` instead of `-O0` and wrapping runtime integer arithmetic, along with
+release build-profile branches. Version 0.25.0 lets you select arithmetic,
+native optimization and the build profile independently (Chapter 24);
+none of those choices enables fast math.
 
 ## Two places the build mode still matters
 

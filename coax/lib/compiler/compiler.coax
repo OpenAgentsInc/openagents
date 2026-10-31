@@ -1,5 +1,6 @@
 // The compiler's authored source graph. No shell concatenation or downloaded modules.
 #load "budget.coax";
+#load "profiles.coax";
 #load "mutation-schedule.coax";
 #load "lexer.coax";
 #load "parser.coax";

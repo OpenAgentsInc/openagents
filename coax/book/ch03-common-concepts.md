@@ -655,9 +655,11 @@ before: 9223372036854775807
 after: -9223372036854775808
 ```
 
-With `--release`, `+ - *` wrap around instead, the way the hardware
-does. So debug builds catch the mistake while you're developing, and
-release builds don't pay for the check on every addition. A few things
+With the legacy `--release` preset, `+ - *` wrap around instead, the way
+the hardware does. These defaults remain unchanged. Version 0.25.0 adds
+`--arithmetic checked|wrapping` to select that behavior independently;
+`--opt 2` optimizes a native build while retaining checked arithmetic by
+default. A few things
 stop the program in both modes, because there is no sensible answer to
 wrap to: dividing by zero (or taking `%` of zero), dividing the smallest
 `int` by `-1`, and shifting by a negative amount or by the type's width

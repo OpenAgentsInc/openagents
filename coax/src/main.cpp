@@ -24,6 +24,7 @@
 
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "budget.h"
+#include "profiles.h"
 #else
 #include "proto_importer.h"
 #endif
@@ -141,7 +142,8 @@ static bool write_file(const std::string &path, const std::string &data) {
 }
 
 // Runs argv[0] from PATH and returns its exit status (128+signal if killed).
-static int run_process(const std::vector<std::string> &args) {
+static int run_process(const std::vector<std::string> &args,bool *started=nullptr) {
+  if(started)*started=false;
   std::vector<char *> argv;
   for (const std::string &a : args) argv.push_back((char *)a.c_str());
   argv.push_back(nullptr);
@@ -151,6 +153,7 @@ static int run_process(const std::vector<std::string> &args) {
     fprintf(stderr, "coax: cannot start '%s'\n", argv[0]);
     return 127;
   }
+  if(started)*started=true;
   int status = 0;
   while (waitpid(pid, &status, 0) < 0) {if (errno != EINTR) return 1;}
   if (WIFEXITED(status)) return WEXITSTATUS(status);
@@ -166,12 +169,60 @@ struct NativeTimings {
   uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
 } g_timings;
+
+// Observations of the checked Coax selection and host I/O. Hashing uses the
+// existing Coax SHA-256 implementation, never a native fallback.
+struct SemanticReport {
+  std::string path,command,backend,emitted,artifact;
+  coax_t_CP_Profile selection{};
+  bool resolved=false,native_invoked=false,inputs_admitted=false;
+  std::vector<std::pair<std::string,std::string>> sources,descriptors;
+} g_semantic;
+static bool profile_destination_disjoint(const std::string &path) {
+  if(g_semantic.path.empty() || path.empty())return true;
+  std::error_code first_error,second_error;
+  auto report=std::filesystem::weakly_canonical(g_semantic.path,first_error);
+  auto other=std::filesystem::weakly_canonical(path,second_error);
+  bool same=!first_error && !second_error && report==other;
+  std::error_code alias_error;
+  same=same || std::filesystem::equivalent(g_semantic.path,path,alias_error);
+  if(!same)return true;
+  fprintf(stderr,"coax: profile report '%s' aliases an input or output '%s'\n",g_semantic.path.c_str(),path.c_str());
+  g_semantic.resolved=false;g_timings.path.clear();return false;
+}
+static std::string profile_file_hash(const std::string &path) {
+  std::string bytes;
+  if(!read_record(path,&bytes))return "";
+  return debug_source_hash(bytes);
+}
+static int finish_semantic_report(int status) {
+  if(g_semantic.path.empty() || !g_semantic.resolved || !g_semantic.inputs_admitted)return status;
+  const auto &p=g_semantic.selection;
+  auto nullable=[](const std::string &s){return s.empty()?std::string("null"):json_string(s);};
+  auto inputs=[](const auto &rows){
+    std::string out="[";bool first=true;
+    for(const auto &[path,hash]:rows){out+=(first?"":",")+std::string("{\"path\":")+json_string(path)+",\"sha256\":"+json_string(hash)+"}";first=false;}
+    return out+"]";
+  };
+  if(!p.native && status==0)g_semantic.artifact=g_semantic.emitted;
+  std::string text="{\"schema_version\":1,\"compiler\":"+json_string(VERSION)+",\"command\":"+json_string(g_semantic.command)+
+    ",\"backend\":"+json_string(g_semantic.backend)+",\"profile_identity\":"+std::to_string(p.identity)+
+    ",\"runtime_arithmetic\":"+json_string(p.arithmetic==1?"wrapping":"checked")+",\"interpreter_arithmetic\":\"checked\",\"build_profile\":"+
+    json_string(p.development?"development":"release")+",\"selected_optimization_level\":"+std::to_string(p.optimization)+
+    ",\"native_optimization_flag\":"+(g_semantic.native_invoked?json_string("-O"+std::to_string(p.optimization)):"null")+
+    ",\"debug_info\":"+(p.debug_info?"true":"false")+",\"success\":"+(status==0?"true":"false")+",\"exit_status\":"+std::to_string(status)+
+    ",\"sources\":"+inputs(g_semantic.sources)+",\"descriptors\":"+inputs(g_semantic.descriptors)+",\"emitted_sha256\":"+nullable(g_semantic.emitted)+
+    ",\"artifact_sha256\":"+nullable(g_semantic.artifact)+"}\n";
+  if(!write_file(g_semantic.path,text)){fprintf(stderr,"coax: cannot write profile report '%s'\n",g_semantic.path.c_str());return 1;}
+  return status;
+}
 struct TimedPhase {
   const char *name;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
   ~TimedPhase() {if(!g_timings.path.empty())g_timings.seconds[name]+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();}
 };
 static int finish_profile(int status) {
+  status=finish_semantic_report(status);
   if(g_timings.path.empty()) return status;
   std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
@@ -202,11 +253,13 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
     std::filesystem::path path(r.path);
     if (path.is_relative()) path = std::filesystem::absolute(std::filesystem::path(source_point(src, r.loc).path).parent_path() / path);
     src->descriptor_inputs.push_back(std::filesystem::absolute(path).lexically_normal().string());
-    proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION);
+    if(!profile_destination_disjoint(src->descriptor_inputs.back()))return false;
+    proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION,!g_semantic.path.empty());
     if (!result.error.empty()) {
       error_at(src, r.loc, "E0502", result.error);
       return false;
     }
+    if(!g_semantic.path.empty())g_semantic.descriptors.emplace_back(src->descriptor_inputs.back(),result.descriptor_sha256);
     std::string &text = result.source;
     if (generated.size() + text.size() + 1 > 16 * 1024 * 1024) {
       error_at(src, r.loc, "E0502", "generated import exceeds source budget");
@@ -233,6 +286,7 @@ enum class Output : uint8_t { none, c, header, layout, deps };
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true) {
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
+  for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
   std::vector<Token> tokens;
   bool ok;{TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}
   if (ok) {
@@ -243,12 +297,19 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
       TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
     }
   }
-  if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, !opts.release);}
+  if(!g_semantic.path.empty()) {
+    for(const auto &unit:src->units)g_semantic.sources.emplace_back(unit->canonical,debug_source_hash(unit->text));
+    // No report is written when the complete input graph could not be read
+    // and checked for aliases (including failures partway through #load).
+    g_semantic.inputs_admitted=ok;
+  }
+  if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, opts.development);}
   if (ok) {
     bool exports = false;
     for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
     file->library = library == 1 || (library == 2 && exports);
     file->metal = opts.metal;
+    file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file);}
     if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
@@ -281,6 +342,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   for (const std::string &line : src.import_provenance) provenance += line + "\n";
   if (what == Output::c || what == Output::header) *text = provenance + *text;
   if (what==Output::c)g_timings.generated_bytes=text->size();
+  if(!g_semantic.path.empty() && what!=Output::none)g_semantic.emitted=debug_source_hash(*text);
   if (header_path && !write_file(*header_path, provenance + emit_header(&file))) {
     fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
     return false;
@@ -296,6 +358,7 @@ static std::string strip_ext(const std::string &p) {
 }
 
 static int build(const char *path, const std::string &exe, const EmitOptions &opts, bool keep_c) {
+  for(const auto &name:{exe,exe+".c",exe+".o"})if(!profile_destination_disjoint(name))return 1;
   std::string c;
   if (!compile(path, opts, Output::c, &c, opts.library ? 1 : 0)) return 1;
   std::string c_path = exe + ".c";
@@ -304,16 +367,16 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
     return 1;
   }
   const char *cc = getenv("COAX_CC");
-  std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", opts.release ? "-O2" : "-O0"};
-  if (!opts.release || opts.debug_info) args.push_back("-g");
+  std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", "-O"+std::to_string(opts.optimization)};
+  if (opts.debug_info) args.push_back("-g");
   args.push_back("-ffp-contract=off");
   std::string object=opts.library?exe:exe+".o";
   args.insert(args.end(),{"-c","-o",object,c_path});
   int rc;
-  {TimedPhase phase{"native_compile"};rc=run_process(args);}
+  {TimedPhase phase{"native_compile"};rc=run_process(args,&g_semantic.native_invoked);}
   if(rc==0 && !opts.library) {
     std::vector<std::string> link={cc&&*cc?cc:"cc",object,"-o",exe,"-lm"};
-    if(!opts.release || opts.debug_info) link.push_back("-g");
+    if(opts.debug_info) link.push_back("-g");
     TimedPhase phase{"link"};rc=run_process(link);
   }
   // Darwin's debug map references the object. Keep it for source debugging.
@@ -322,6 +385,10 @@ static int build(const char *path, const std::string &exe, const EmitOptions &op
   if (rc != 0) {
     fprintf(stderr, "coax: the C compiler failed on generated code (exit %d); this is a coax bug\n", rc);
     return 1;
+  }
+  if(!g_semantic.path.empty()) {
+    g_semantic.artifact=profile_file_hash(exe);
+    if(g_semantic.artifact.empty()){fprintf(stderr,"coax: cannot hash native artifact '%s'\n",exe.c_str());return 1;}
   }
   return 0;
 }
@@ -351,7 +418,7 @@ static int usage() {
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "       coax status [--json]\n"
-          "options: --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
   return 2;
 }
 
@@ -416,15 +483,25 @@ static int main_impl(int argc, char **argv) {
   const char *input = nullptr;
   std::string out, header, proto_prefix;
   EmitOptions opts;
+  coax_t_CP_Request request{};request.debug_info=-1;
+  std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
-    if (a == "--release") opts.release = true;
-    else if(a=="--debug-info")opts.debug_info=true;
-    else if(a=="--source-map" && i+1<argc){g_timings.source_map=argv[++i];opts.debug_info=true;}
+    if (a == "--release") request.legacy_release = true;
+    else if(a=="--arithmetic") {++request.arithmetic_count;arithmetic=i+1<argc?argv[++i]:"";}
+    else if(a=="--opt") {++request.optimization_count;optimization=i+1<argc?argv[++i]:"";}
+    else if(a=="--build-profile") {++request.build_profile_count;build_profile=i+1<argc?argv[++i]:"";}
+    else if(a=="--debug-info") {++request.debug_count;request.debug_info=1;}
+    else if(a=="--no-debug-info") {++request.debug_count;request.debug_info=0;}
+    else if(a=="--source-map" && i+1<argc){g_timings.source_map=argv[++i];request.source_map=true;}
+    else if(a=="--profile-report") {
+      if(!g_semantic.path.empty() || i+1>=argc || !*argv[i+1] || argv[i+1][0]=='-')return usage();
+      g_semantic.path=argv[++i];
+    }
     else if(a=="--timings" && i+1<argc)g_timings.path=argv[++i];
     else if (a == "--run-steps") {
       if (run_steps_seen || i + 1 >= argc || cmd == "proto") {
@@ -488,9 +565,24 @@ static int main_impl(int argc, char **argv) {
   }
 #ifdef COAX_BOOTSTRAP_IMPORTER
   if(!g_timings.source_map.empty()){fprintf(stderr,"coax: source maps require the final compiler, not build-only stage0\n");return 1;}
+  if(!g_semantic.path.empty()){fprintf(stderr,"coax: profile reports require the final compiler, not build-only stage0\n");return 1;}
 #endif
-  if((opts.debug_info || !g_timings.source_map.empty()) && cmd!="c" && cmd!="build" && cmd!="lib" && cmd!="run")return usage();
-  if (cmd=="build" || cmd=="lib" || cmd=="run") opts.debug_info=opts.debug_info || !opts.release;
+  request.arithmetic={arithmetic.data(),(int64_t)arithmetic.size()};
+  request.optimization={optimization.data(),(int64_t)optimization.size()};
+  request.build_profile={build_profile.data(),(int64_t)build_profile.size()};
+  // Legacy proto emission has no runtime profile; new profile choices require
+  // one of the source commands admitted by the checked Coax resolver.
+  if(cmd!="proto" || request.arithmetic_count || request.optimization_count || request.build_profile_count || request.debug_count || request.source_map || !g_semantic.path.empty()) {
+    auto profile=CP_resolve({cmd.data(),(int64_t)cmd.size()},request);
+    if(profile.error!=COAX_CP_Error_none) {
+      auto message=CP_message(profile.error);fprintf(stderr,"coax: %.*s\n",(int)message.count,message.data);return 1;
+    }
+    opts.wrapping=profile.arithmetic==1;opts.optimization=(int)profile.optimization;
+    opts.development=profile.development;opts.debug_info=profile.debug_info;opts.profile_identity=(int)profile.identity;
+    g_semantic.selection=profile;g_semantic.command=cmd;g_semantic.resolved=true;
+    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="c" || cmd=="header"?"c11":"evaluator";
+  }
+  for(const auto &name:{std::string(input),out,header,g_timings.source_map,g_timings.path})if(!profile_destination_disjoint(name))return 1;
   if (cmd == "proto") {
     if (proto_prefix.empty()) return usage();
     proto::Result result = proto::import_file(input, proto_prefix, VERSION);

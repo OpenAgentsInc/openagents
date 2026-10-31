@@ -415,6 +415,7 @@ struct File {
   std::shared_ptr<CtMemory> ct_memory = std::make_shared<CtMemory>();
   std::vector<std::unique_ptr<Value>> frozen_values;
   std::shared_ptr<CheckInput> check_input;
+  std::string execution_profile; // resolved semantic selection binds mutation receipts
   const Source *src = nullptr;
   Slice<Import> imports;
   Slice<ProcDecl *> procs;
@@ -445,7 +446,10 @@ std::string emit_debug_map(const File *file);
 struct EmitOptions {
   uint64_t run_steps = CB_default_steps(); // shared #run and constant evaluation budget
   bool debug_info = false; // opt-in original-source native line tables
-  bool release = false;  // release: integer overflow wraps; debug: it traps
+  bool wrapping = false; // runtime add/subtract/multiply/negation; evaluator stays checked
+  bool development = true; // BUILD_DEBUG source/layout selection only
+  int optimization = 0; // native C compiler level, independent of arithmetic/layout
+  int profile_identity = -1;
   bool library = false;  // no C main; #export_c procedures are the interface
   bool metal = false;    // Metal Shading Language instead of C
   bool cuda = false;     // CUDA C for NVRTC: the compute subset (lib/compiler/compute.coax)

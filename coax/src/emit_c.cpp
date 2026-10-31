@@ -667,7 +667,7 @@ struct Emitter {
   // ---- expressions ----
 
   std::string arith(const char *name, const Expr *e) {
-    std::string fn = std::string("coax_") + (opts.release && (strcmp(name, "add") == 0 || strcmp(name, "sub") == 0 || strcmp(name, "mul") == 0) ? "w" : "") +
+    std::string fn = std::string("coax_") + (opts.wrapping && (strcmp(name, "add") == 0 || strcmp(name, "sub") == 0 || strcmp(name, "mul") == 0) ? "w" : "") +
                      name + "_" + int_tag(e->type);
     bool wrapping = fn.compare(0, 6, "coax_w") == 0;
     std::string line = std::to_string(e->loc.line);
@@ -830,7 +830,7 @@ struct Emitter {
       case ExprKind::unary:
         if (e->op == Tok::bang) return "(!" + ex(e->lhs) + ")";
         if (is_float(e->type)) return "(-" + ex(e->lhs) + ")";
-        if (opts.release) return "coax_wneg_" + int_tag(e->type) + "(" + ex(e->lhs) + ")";
+        if (opts.wrapping) return "coax_wneg_" + int_tag(e->type) + "(" + ex(e->lhs) + ")";
         return "coax_neg_" + int_tag(e->type) + "(" + ex(e->lhs) + ", " + line + ")";
       case ExprKind::binary: return binary(e);
       case ExprKind::field:

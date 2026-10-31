@@ -32,12 +32,13 @@ trap 'rm -rf "$work"' EXIT
   printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/budget.c -o "$work/seed-budget.o"
+"${CC:-cc}" "${c_flags[@]}" -c bootstrap/profiles.c -o "$work/seed-profiles.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/mutation-schedule.c -o "$work/seed-mutation-schedule.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/lexer.c -o "$work/seed-lexer.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/parser.c -o "$work/seed-parser.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
-"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+"${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-profiles.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
 gate() {
   if "$@" > "$work/gate.log" 2>&1; then return 0; fi
   cat "$work/gate.log" >&2
@@ -53,6 +54,11 @@ gate "$work/stage0" mutate lib/compiler/budget.coax
 "$work/stage0" c lib/compiler/budget.coax --library --header "$work/budget.h" > "$work/budget.c"
 cmp bootstrap/budget.c "$work/budget.c"
 cmp bootstrap/budget.h "$work/budget.h"
+gate "$work/stage0" test lib/compiler/profiles.coax
+gate "$work/stage0" mutate lib/compiler/profiles.coax
+"$work/stage0" c lib/compiler/profiles.coax --library --header "$work/profiles.h" > "$work/profiles.c"
+cmp bootstrap/profiles.c "$work/profiles.c"
+cmp bootstrap/profiles.h "$work/profiles.h"
 gate "$work/stage0" test lib/compiler/provenance.coax
 gate "$work/stage0" mutate lib/compiler/provenance.coax
 "$work/stage0" c lib/compiler/provenance.coax --library --header "$work/provenance.h" > "$work/provenance.c"
@@ -106,6 +112,10 @@ gate "$work/coax" test lib/compiler/budget.coax
 "$work/coax" c lib/compiler/budget.coax --library --header "$work/final-budget.h" > "$work/final-budget.c"
 cmp bootstrap/budget.c "$work/final-budget.c"
 cmp bootstrap/budget.h "$work/final-budget.h"
+gate "$work/coax" test lib/compiler/profiles.coax
+"$work/coax" c lib/compiler/profiles.coax --library --header "$work/final-profiles.h" > "$work/final-profiles.c"
+cmp bootstrap/profiles.c "$work/final-profiles.c"
+cmp bootstrap/profiles.h "$work/final-profiles.h"
 gate "$work/coax" test lib/compiler/provenance.coax
 "$work/coax" c lib/compiler/provenance.coax --library --header "$work/final-provenance.h" > "$work/final-provenance.c"
 cmp "$work/provenance.c" "$work/final-provenance.c"
@@ -132,6 +142,8 @@ cmp bootstrap/sources.h "$work/final-sources.h"
 COAX_RELEASE_COMPILER="$PWD/$work/coax" ../scripts/coax-release.sh --check --binary "$PWD/$work/coax"
 # Publish only a fully checked build. C/header remain available for native tests.
 cp "$work/lexer.c" bin/lexer.c
+cp "$work/profiles.c" bin/profiles.c
+cp "$work/profiles.h" bin/profiles.h
 cp "$work/lexer.h" bin/lexer.h
 cp "$work/parser.c" bin/parser.c
 cp "$work/parser.h" bin/parser.h

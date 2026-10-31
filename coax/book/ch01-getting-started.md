@@ -1,7 +1,7 @@
 # Getting started
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Let's get Coax running. In this chapter we'll build the compiler, write
 the traditional first program, and look at the different ways the
@@ -41,7 +41,7 @@ Let's make sure it worked:
 <!-- coax-release:version-example:start -->
 ```bash
 $ coax/bin/coax version
-coax0 0.24.0
+coax0 0.25.0
 ```
 <!-- coax-release:version-example:end -->
 
@@ -314,9 +314,13 @@ set for reference:
 | `coax explain CODE` | Explain an error code ([Chapter 4](ch04-reading-errors.md)) |
 | `coax version` | Print the compiler's version |
 
-`run`, `build`, `lib` and `c` also take `--release`, for an optimized
-build. A release build changes one behavior you can see, which is what
-the next section is about.
+`run`, `build`, `lib` and `c` also take the legacy `--release` preset.
+It selects wrapping runtime integers and release build-profile branches;
+native builds also use `-O2`. The next section shows the overflow difference.
+Version 0.25.0 also lets you optimize without choosing wrapping arithmetic:
+`--opt 2` on `run`, `build` or `lib` keeps the default checked arithmetic.
+[Chapter 24](ch24-debugging-and-cost.md) explains the independent selections
+and their profile report.
 
 ## When a number gets too big
 
@@ -437,7 +441,8 @@ You've got Coax working. Let's recap what we covered:
   and the compiler checks the count.
 - `coax run` compiles and runs, `coax build` makes an executable, `coax
   c` shows the generated C, and `coax check` checks without building.
-- Ordinary builds stop on integer overflow; `--release` builds wrap.
+- Default builds stop on integer overflow; the legacy `--release` preset
+  wraps unless an explicit arithmetic selection overrides it.
 - Errors come with a location, a stable code, the source line and often
   a fix, and `coax explain` says more about any code.
 

@@ -1,7 +1,7 @@
 # Coax implementation roadmap
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated 2026-10-28. Baseline: the current compiler above, including source composition,
 CPU layout reflection and the first R0 benchmark/source-debugging slice. This
@@ -174,12 +174,16 @@ reliability or maintenance, stop feature expansion and fix that first.
 
 ### Early semantic conformance delivery
 
-Separate optimization, arithmetic policy, diagnostic instrumentation and
-verification selection. This is a **versioned design/migration task**, not a
-change to shipped 0.13.0 semantics. Today `--release` couples native optimization
-with wrapping runtime integers, while compile-time arithmetic remains checked.
-The app already optimizes checked emitted C externally; expose that combination
-deliberately in compiler profiles before changing defaults.
+Version 0.25.0 separates arithmetic, native optimization, the `BUILD_DEBUG`
+selector and native debug information through a checked Coax profile policy.
+Explicit axis flags override the legacy preset independently of argument order.
+The no-flag and `--release` defaults retain their previous behavior; compile-time
+and check arithmetic remain checked, and authority checks remain mandatory.
+An optional schema-1 profile report records the selection without changing
+ordinary emitted output or the existing timing/dependency/source-map schemas.
+This makes optimized checked native builds explicit instead of requiring the
+app's external C flags. It does not qualify new GPU devices, supply a semantic
+cache or enforce arbitrary independently linked C objects.
 
 Prefer checked ordinary integer arithmetic with explicit wrapping operations
 as the eventual design, subject to compatibility review and a documented
@@ -770,10 +774,11 @@ and review remain open; every slice still needs its listed prerequisites.
    release/status generation, or weaken a budget to close the milestone. Extend
    the shipped bounded differential tooling; start scoped evidence and the
    authoring-task corpus alongside this work.
-2. **Pin semantic profiles and native check execution.** Specify compatibility
-   and migration before changing arithmetic; expose optimized checked execution,
-   add literal/ordering vectors and run eligible checks on emitted native code.
-   Keep the optional bounded-checker experiment separate.
+2. **Extend semantic conformance and native check execution.** Preserve the
+   0.25.0 independent profile selections and legacy defaults. Expand independent
+   literal/ordering vectors and run eligible checks on emitted native code;
+   broader target/profile evidence remains explicit. Keep the optional
+   bounded-checker experiment separate.
 3. **Deliver R1a.** Declaration/content identities, explicit targets, original
    spans, basic namespaces and minimal inspectable procedure lowering. Use
    differential fixtures and independent oracles to pin execution semantics;

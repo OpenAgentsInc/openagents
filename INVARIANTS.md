@@ -1635,6 +1635,31 @@ generation, native descriptor ASan/UBSan fuzzing and the real iOS simulator
 flow in `coax/tests/proto_import.py` and app tests.
 
 
+## Compiler profile selection preserves legacy defaults and authority
+
+`coax/lib/compiler/profiles.coax` is `#authority` and owns command admission,
+duplicate/value validation and independent arithmetic, optimization, BUILD_DEBUG
+and debug-information resolution. Explicit axes override the legacy preset
+independent of argument order. No-flag and `--release` defaults retain their prior
+behavior. Native C++ transports choices and performs tool/file effects; it has no
+alternate resolution policy.
+
+Compile-time/check arithmetic stays checked and authority checks remain mandatory.
+One loaded graph has one profile; separately compiled C/foreign callees keep their
+own arithmetic. Schema-1 profile reports are optional observations, separate from
+existing report schemas. Native optimization is null when no native compiler
+started, and absent artifacts have null hashes. Input hashes use consumed source
+and descriptor bytes. A report refuses aliases with inputs/outputs and is not
+written when the complete input graph could not be admitted. These observations
+do not establish filesystem immutability or correctness. Resolved profile identity
+binds mutation receipts.
+
+Check: profile-unit checks/zero-survivor mutation, explicit trusted seed
+regeneration and both bootstrap fixed points; `coax/tests/semantic_profiles.py`
+covers native axes, O0/O2 behavior, failures, authority and mixed-profile receipt
+refusal. New device qualification, arbitrary native check execution and f32 decimal
+rounding remain separate gates.
+
 ## The compiler lexer is Coax with an explicit generated seed
 
 `coax/lib/compiler/lexer.coax` is the authored lexer, including keyword/operator

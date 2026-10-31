@@ -19,7 +19,7 @@ cp "$root/scripts/coax-release.sh" "$snapshot/scripts/coax-release.sh"
 # compiler or supporting artifact is installed.
 ./provenance.sh verify "$root" "$snapshot/coax/bin/coax" "$snapshot/coax/bin/provenance-check" "$snapshot/coax/bin/provenance.record"
 mkdir -p bin
-for artifact in lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do
+for artifact in profiles.c profiles.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do
   cp "$snapshot/coax/bin/$artifact" "bin/.$artifact.$$"
   mv "bin/.$artifact.$$" "bin/$artifact"
 done

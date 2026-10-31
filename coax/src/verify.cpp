@@ -486,6 +486,7 @@ static std::string mutation_fingerprint(const File *file, const std::vector<Muta
   // an unfiltered receipt, even if that graph has the same mutation sites.
   if (root_only) mix("scope:root-only:v1");
   mix(COAX_RELEASE_VERSION);
+  mix("execution-profile:v1:" + file->execution_profile);
   mix(file->src->text);
   for (const Mutant &mu : mutants) {
     auto point = source_point(file->src, diagnostic_loc(file->src, mu.loc));

@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "timezone": "America/Chicago",
+  "issue": "r0-semantic-profiles",
+  "alias": "c296",
+  "baseline_commit": "10b111711387cf0e265c0ad75da720d0c4dc86ac",
+  "scope": "Independent runtime arithmetic, native optimization, BUILD_DEBUG and native source debugging; opt-in version-1 artifact reports and profile-bound mutation receipts. Legacy default selections retained.",
+  "compiler": {
+    "baseline_sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134",
+    "qualified_sha256": "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d",
+    "provenance_record": [
+      "coax-provenance-v1",
+      "774953b1f321855932b5587b5e189873eeeb9fa2e5893284fbab9385a5b08f31",
+      "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d",
+      "bb9f0000c6cfd0519183fa149a02a3379dbd2ca66c8859b3985abddbe9337f56"
+    ],
+    "version": "0.25.0",
+    "host": "macOS-26.4-arm64-arm-64bit-Mach-O"
+  },
+  "policy_checks": {
+    "schema_version": 1,
+    "source": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/compiler/profiles.coax",
+    "source_sha256": "bfeb53c3b0f23adbb25c21919116002c5913d3d8c301c9e02a4974d3ae00611d",
+    "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+    "compiler_sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134",
+    "scope": "Model-only follow-up adds debug occurrence-count admission; prior policy evidence remains separately retained.",
+    "prior_evidence": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profiles-policy-evidence-ghux0qhh/result.json",
+    "check_first": {
+      "command": "coax/bin/coax test --library coax/lib/compiler/profiles.coax",
+      "checks": 15,
+      "passed": 13,
+      "failed": 2,
+      "witnesses": [
+        "debug occurrence count -2 with unset selection",
+        "message mapping for CP_Error.debug_count"
+      ]
+    },
+    "final_checks": {
+      "command": "coax/bin/coax test --library coax/lib/compiler/profiles.coax",
+      "checks": 15,
+      "passed": 15,
+      "failed": 0
+    },
+    "final_mutation": {
+      "command": "coax/bin/coax mutate --library coax/lib/compiler/profiles.coax",
+      "mutants": 165,
+      "killed": 165,
+      "survivors": 0,
+      "exemptions_added": false,
+      "limits_changed": false
+    },
+    "debug_admission": "count0 requires unset -1; count1 requires off0 or on1; duplicates/negative/inconsistent absent values reject CP_Error.debug_count; unset with occurrence rejects CP_Error.debug_value",
+    "request_field_order": [
+      "legacy_release:bool",
+      "arithmetic:string",
+      "arithmetic_count:int",
+      "optimization:string",
+      "optimization_count:int",
+      "build_profile:string",
+      "build_profile_count:int",
+      "debug_info:int=-1",
+      "debug_count:int",
+      "source_map:bool"
+    ]
+  },
+  "conformance": {
+    "schema_version": 1,
+    "kind": "selected semantic-profile verification observations",
+    "final_test_source": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/semantic_profiles.py",
+    "final_test_source_sha256": "8c6afd83dbbea7c11c613aa92190457c763ef7331bccd4930e6d137710cfd5ea",
+    "baseline_red_logs": [
+      "/tmp/coax-semantic-profiles-red.log",
+      "/tmp/coax-semantic-profiles-order-red.log",
+      "/tmp/coax-semantic-profiles-float-red.log",
+      "/tmp/coax-semantic-profiles-lib-red.log",
+      "/tmp/coax-semantic-reports-red.log",
+      "/tmp/coax-semantic-compiler-start-red.log",
+      "/tmp/coax-semantic-descriptor-red.log"
+    ],
+    "behavior": {
+      "compiler": "/tmp/coax-profile-candidate",
+      "compiler_sha256": "7c2b70336b5e04045a58ebdd6bcbb6e7fe48f599c0e5a6cc44ff861ffcc5ebfa",
+      "selector": "Python unittest suite selecting the listed methods",
+      "methods": [
+        "test_native_optimization_arithmetic_and_layout_matrix",
+        "test_legacy_release_defaults_and_explicit_override_order",
+        "test_native_library_profile_records_the_compiled_object",
+        "test_plain_emission_keeps_legacy_bytes_for_equivalent_axes",
+        "test_overflow_policy_is_independent_of_optimization",
+        "test_cast_shift_and_division_failures_are_never_disabled",
+        "test_ordered_places_and_cleanup_match_at_both_native_optimization_levels",
+        "test_existing_exact_float_and_noncontracted_operations_are_preserved",
+        "test_compile_time_and_authority_checks_remain_checked",
+        "test_invalid_choices_duplicates_and_unsupported_optimization_refuse",
+        "test_mutation_shards_bind_resolved_profiles_even_for_identical_sites",
+        "test_debug_selection_duplicates_and_source_map_conflicts_refuse"
+      ],
+      "passed": 12,
+      "seconds": 52.901,
+      "log": "/tmp/coax-semantic-first-green.log"
+    },
+    "reports": {
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "compiler_sha256": "cd7efe32cdc3645d7c258816ca671248e022623a718a514a046cdc42d914e565",
+      "methods": [
+        "test_profile_report_records_loaded_source_content_and_emission",
+        "test_report_frontend_failure_records_no_native_or_artifact",
+        "test_report_failed_compiler_start_does_not_claim_applied_optimization",
+        "test_check_report_has_no_emitted_or_native_artifact",
+        "test_incomplete_descriptor_graph_refuses_to_publish_a_report",
+        "test_profile_report_hashes_consumed_descriptor_bytes",
+        "test_report_destinations_cannot_overwrite_inputs",
+        "test_report_destinations_cannot_alias_declared_or_native_outputs"
+      ],
+      "first_run": {
+        "passed": 7,
+        "test_errors": 1,
+        "seconds": 2.487,
+        "log": "/tmp/coax-semantic-reports-v3.log",
+        "error": "Descriptor input path comparison assumed canonical spelling; production report retained equivalent absolute lexical Mac path."
+      },
+      "corrected_test": {
+        "method": "test_profile_report_hashes_consumed_descriptor_bytes",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "coax/tests",
+          "-p",
+          "semantic_profiles.py",
+          "-k",
+          "hashes_consumed_descriptor"
+        ],
+        "environment": {
+          "COAX_TEST_COMPILER": "/tmp/coax-profile-candidate-v3"
+        },
+        "passed": 1,
+        "seconds": 10.915,
+        "log": "/tmp/coax-semantic-descriptor-v3.log"
+      },
+      "covered": 8
+    },
+    "decimal_literals": {
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "method": "test_typed_f32_decimal_literals_pin_the_existing_two_step_contract",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "coax/tests",
+        "-p",
+        "semantic_profiles.py",
+        "-k",
+        "typed_f32_decimal"
+      ],
+      "environment": {
+        "COAX_TEST_COMPILER": "/tmp/coax-profile-candidate-v3"
+      },
+      "passed": 1,
+      "seconds": 3.77,
+      "log": "/tmp/coax-semantic-decimal-v3.log",
+      "scope": "Four independent decimal midpoint/adjacent bit vectors in evaluator authority checks and checked/wrapping native O0/O2; existing two-step binary64-then-binary32 meaning retained."
+    },
+    "covered_distinct_methods": 21,
+    "limits": "Selected passing observations were retained without rerunning unchanged passing cases. The first 12 methods predate report-only v3 fixes; report cases target v3. This is not a claim that the whole module was run together against a bootstrap-qualified binary, full arbitrary-native-check lowering, new literal semantics, general compiler correctness, GPU/target conformance or performance."
+  },
+  "regressions": [
+    {
+      "name": "build-profiles",
+      "tests": 5,
+      "outcome": "passed",
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "log": "/tmp/coax-semantic-build-profiles.log",
+      "log_sha256": "165911f294bdf33448a7ebbdb50f8902db8caa9f2a834dc970ee71529e0c12a0"
+    },
+    {
+      "name": "debugging",
+      "tests": 9,
+      "outcome": "passed",
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "log": "/tmp/coax-semantic-debugging.log",
+      "log_sha256": "76ec9c6af0d85d31675610e9c68d4188b16398e1f14b5122a911f6657ecd410c"
+    },
+    {
+      "name": "release",
+      "tests": 10,
+      "outcome": "passed",
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "log": "/tmp/coax-semantic-release.log",
+      "log_sha256": "19d7a103dd97bde8bcdf935f07ed868f3502c1a08c51d5aa5ca7711736aab896"
+    },
+    {
+      "name": "mutation-scope",
+      "tests": 9,
+      "outcome": "passed",
+      "compiler": "/tmp/coax-profile-candidate-v3",
+      "log": "/tmp/coax-semantic-mutation-scope.log",
+      "log_sha256": "4b59387a7ca291439d499dc6db00fa981a89649b4dd27c14541853484f40d2dd"
+    }
+  ],
+  "plain_c_parity": [
+    {
+      "source": "coax/examples/life.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 19804,
+      "identical": true,
+      "baseline_sha256": "643926aa242895a5a8cd4a537b6daae741cdef26d19f60c5be7246ac794bd303",
+      "candidate_sha256": "643926aa242895a5a8cd4a537b6daae741cdef26d19f60c5be7246ac794bd303"
+    },
+    {
+      "source": "coax/examples/life.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 19777,
+      "identical": true,
+      "baseline_sha256": "64b3b737300e5cd53aae25c4e355b066662800227485214842825e815737aba1",
+      "candidate_sha256": "64b3b737300e5cd53aae25c4e355b066662800227485214842825e815737aba1"
+    },
+    {
+      "source": "coax/examples/pulse/pulse.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 13674,
+      "identical": true,
+      "baseline_sha256": "341ce3df7fe7dba25dea940e8c0aac3228bf79bb6dc6c9f597dd1de0e9949d52",
+      "candidate_sha256": "341ce3df7fe7dba25dea940e8c0aac3228bf79bb6dc6c9f597dd1de0e9949d52"
+    },
+    {
+      "source": "coax/examples/pulse/pulse.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 13659,
+      "identical": true,
+      "baseline_sha256": "517dc078e123deff88d03724600134ddb98fe668adb0fb2e587c577ab7dfd43f",
+      "candidate_sha256": "517dc078e123deff88d03724600134ddb98fe668adb0fb2e587c577ab7dfd43f"
+    },
+    {
+      "source": "verse/camera.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 41308,
+      "identical": true,
+      "baseline_sha256": "78cfbb1f2829b3e5932218b883fdb9b0a12049622790fc50e847a627dc50bc2f",
+      "candidate_sha256": "78cfbb1f2829b3e5932218b883fdb9b0a12049622790fc50e847a627dc50bc2f"
+    },
+    {
+      "source": "verse/camera.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 41264,
+      "identical": true,
+      "baseline_sha256": "e53ad8436d3285adc34b9c1bb60b914c771d4df2139c2b28a0d3cb31d006f917",
+      "candidate_sha256": "e53ad8436d3285adc34b9c1bb60b914c771d4df2139c2b28a0d3cb31d006f917"
+    },
+    {
+      "source": "verse/grid.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 65053,
+      "identical": true,
+      "baseline_sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f",
+      "candidate_sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+    },
+    {
+      "source": "verse/grid.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 64781,
+      "identical": true,
+      "baseline_sha256": "91d374e47eebe7df73ec25389af2e40d3a7c8ed2f0a44233d7d50b5fad475ade",
+      "candidate_sha256": "91d374e47eebe7df73ec25389af2e40d3a7c8ed2f0a44233d7d50b5fad475ade"
+    },
+    {
+      "source": "verse/haunt-buffer.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 26714,
+      "identical": true,
+      "baseline_sha256": "dbc3c30a52f7cb44a483a7a95499c6e9ec4681d695d15b02a0cdb0227f72fff5",
+      "candidate_sha256": "dbc3c30a52f7cb44a483a7a95499c6e9ec4681d695d15b02a0cdb0227f72fff5"
+    },
+    {
+      "source": "verse/haunt-buffer.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 26678,
+      "identical": true,
+      "baseline_sha256": "6c15690d06410f4f42b04aed6d5f7fd36f88418f90df71a2b62ef6a24cd17d4f",
+      "candidate_sha256": "6c15690d06410f4f42b04aed6d5f7fd36f88418f90df71a2b62ef6a24cd17d4f"
+    },
+    {
+      "source": "psionic/lib/device/tile.coax",
+      "flags": [],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 25224,
+      "identical": true,
+      "baseline_sha256": "c686a418fe1df0423aa537faabd9384bcb183bd9b9447f02588aa5560ed34e64",
+      "candidate_sha256": "c686a418fe1df0423aa537faabd9384bcb183bd9b9447f02588aa5560ed34e64"
+    },
+    {
+      "source": "psionic/lib/device/tile.coax",
+      "flags": [
+        "--release"
+      ],
+      "baseline_status": 0,
+      "candidate_status": 0,
+      "bytes": 25101,
+      "identical": true,
+      "baseline_sha256": "c8163801bca458b31d4fdbafa76ee367bc9e1a5c31de52396bfdb5e2a3f0aef8",
+      "candidate_sha256": "c8163801bca458b31d4fdbafa76ee367bc9e1a5c31de52396bfdb5e2a3f0aef8"
+    }
+  ],
+  "bootstrap": {
+    "command": "coax/build.sh",
+    "outcome": "passed",
+    "seconds": 389.11,
+    "log": "/tmp/coax-semantic-bootstrap.log",
+    "log_sha256": "e01f69aa66a25be9df047b209f37215b6b9f664cc95929d0d5810ae813e381ca",
+    "scope": "Private snapshot; all required authority/mutation gates, explicit C/header seed reproduction, combined/final fixed points, release drift and provenance checks. This is not a run of every product/compiler Python suite."
+  },
+  "fresh_release_fallback": {
+    "command": "COAX_RELEASE_COMPILER=/tmp/coax-profile-absent-compiler scripts/coax-release.sh --check",
+    "outcome": "passed",
+    "log": "/tmp/coax-semantic-release-fallback.log"
+  },
+  "seed": {
+    "source": "coax/lib/compiler/profiles.coax",
+    "source_sha256": "bfeb53c3b0f23adbb25c21919116002c5913d3d8c301c9e02a4974d3ae00611d",
+    "c_sha256": "8004150e20f2829b677ff91f027904ba4e41560bb30fc9c15f3bf812c38663e5",
+    "header_sha256": "e7e327f895393f62e10a37011da2ebfc4e3aff72676ae13cb22aacda63a45111",
+    "generated_with": "previous qualified 0.24.0 header-composition compiler; no native policy fallback"
+  },
+  "golden_gate": {
+    "outcome": "pending",
+    "known_baseline_record": "docs/verification/coax-header-composition-2026-10-30.json",
+    "owner_decision": "Record baseline failures and continue (Recommended)",
+    "rule": "Keep baseline failures failed; do not rewrite goldens or waive a new regression."
+  },
+  "limits": [
+    "No complete R0 adoption claim, arbitrary native #test executable, semantic build cache, mixed-object linker enforcement or new GPU/device qualification.",
+    "Current binary64-then-binary32 decimal behavior is pinned; a direct-rounding migration remains open.",
+    "Reports observe consumed bytes and artifacts; they do not lock the filesystem or prove correctness.",
+    "No complete Psionic or iOS product gate was rerun. Passing focused results on unchanged inputs are retained rather than repeated."
+  ]
+}

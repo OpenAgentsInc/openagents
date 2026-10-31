@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.24.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -79,9 +79,26 @@ coax/build.sh test
 | `coax status [--json]` | Print the release catalogue as Markdown or inventory-schema-1 JSON |
 
 `--json` prints diagnostics as one JSON object per line. `COAX_CC` picks the
-C compiler (default `cc`). `--release` turns on C optimization and wrapping
-integer arithmetic; bounds, casts, shifts and division by zero are checked in
-every build. Normal compilation, including proto imports and iOS code generation, needs
+C compiler (default `cc`). The legacy `--release` preset selects wrapping
+runtime integers, native `-O2`, release `BUILD_DEBUG` branches and no default
+native debug information. With no flags, the defaults remain checked integers,
+native `-O0`, development branches and native debug information.
+
+Version 0.25.0 separates those choices. `--arithmetic checked|wrapping` selects
+runtime integer arithmetic; `--opt 0|1|2|3` selects native optimization for
+`build`, `lib` and `run` only; `--build-profile development|release` selects
+only `BUILD_DEBUG`; and `--debug-info` / `--no-debug-info` select native debug
+information. Explicit axis selections override the legacy preset regardless
+of argument order. `--profile-report FILE` writes an optional schema-1 JSON
+record of the selected profile; ordinary output is unchanged without it.
+[`PROFILES.md`](PROFILES.md) defines the version-1 contract, report fields,
+mixed-object limits and migration scope.
+Compile-time/check arithmetic remains checked, and authority checks still run.
+Bounds, casts, shifts and division by zero remain checked in every runtime
+arithmetic mode. GPU source selection uses its existing lowering; these flags
+do not establish new device support or cross-backend numerical parity.
+
+Normal compilation, including proto imports and iOS code generation, needs
 C++20 and C11 tools. The checked Coax importer and its embedded wire runtime ship in
 the compiler binary; no interpreter or helper installation is needed. Tests
 and schema maintenance still use Python 3. `COAX_HOST_TARGET` can supply an
@@ -142,9 +159,10 @@ squares :: () -> [8] u16 {
   so `x: u8 = 200;` works and `x: u8 = 300;` is E0350.
 - **Operators.** Arithmetic, `& | ^ << >>`, comparisons that do not chain,
   short-circuit `&& ||`. `cast(T) x` checks that the value fits; `cast,trunc(T)`
-  keeps the low bits; `cast(string)` borrows a `[] u8` view. Debug builds trap
-  on integer overflow and release builds wrap; floats are plain IEEE with no
-  fused operations.
+  keeps the low bits; `cast(string)` borrows a `[] u8` view. Runtime integer
+  overflow is checked by default and wrapping under the legacy release preset,
+  with an explicit arithmetic override available; floats are plain IEEE with
+  no fused operations in the C path.
 - **Data.** `Name :: struct { field: T; field: T = default; }` with defaults,
   literals `Name.{field = value}`, field access and assignment, and value
   copies. `Name :: enum u8 { a; b = 4; }` with `Name.a`, equality, and checked

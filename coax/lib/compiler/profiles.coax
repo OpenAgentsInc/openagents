@@ -1,0 +1,266 @@
+// Selection of semantic profiles. The host transports raw CLI choices and
+// performs compilation/I/O; this unit admits choices and resolves their meaning.
+#authority;
+
+CP_SCHEMA :: 1;
+CP_CHECKED :: 0;
+CP_WRAPPING :: 1;
+
+CP_Error :: enum u8 {
+ none; command; arithmetic_count; arithmetic_value;
+ optimization_count; optimization_value; optimization_command;
+ build_profile_count; build_profile_value; debug_count; debug_value; debug_command; source_map_debug;
+}
+
+CP_Request :: struct {
+ legacy_release:bool;
+ arithmetic:string; arithmetic_count:int;
+ optimization:string; optimization_count:int;
+ build_profile:string; build_profile_count:int;
+ debug_info:int = -1; debug_count:int;
+ source_map:bool;
+}
+
+CP_Profile :: struct {
+ error:CP_Error;
+ arithmetic:int;
+ optimization:int;
+ development:bool;
+ debug_info:bool;
+ identity:int = -1;
+ native:bool;
+}
+
+CP_COMMANDS :: [13]string.["run","build","lib","c","header","check","layout","deps","test","mutate","metal","cuda","metal-compute"];
+
+#forall "default and legacy choices retain every source command's old bundle" command:0..<13, release:bool {
+ request:CP_Request;request.legacy_release=release;
+ profile:=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==CP_Error.none;
+ #assert profile.native==(command<3);
+ #assert profile.arithmetic==(ifx release then 1 else 0);
+ #assert profile.optimization==(ifx release then 2 else 0);
+ #assert profile.development==!release;
+ #assert profile.debug_info==(command<3 && !release);
+ #assert profile.identity==(ifx command<3 then (ifx release then 37 else 56) else (ifx release then 5 else 8));
+}
+
+#forall "every native explicit axis wins over either legacy bundle" arithmetic:bool, optimization:0..<4, development:bool, debug:bool, release:bool {
+ request:CP_Request;request.legacy_release=release;
+ request.arithmetic=ifx arithmetic then "wrapping" else "checked";request.arithmetic_count=1;
+ choices:=[4]string.["0","1","2","3"];
+ request.optimization=choices[optimization];request.optimization_count=1;
+ request.build_profile=ifx development then "development" else "release";request.build_profile_count=1;
+ request.debug_info=ifx debug then 1 else 0;request.debug_count=1;
+ profile:=CP_resolve("build",request);
+ #assert profile.error==CP_Error.none && profile.native;
+ #assert profile.arithmetic==(ifx arithmetic then 1 else 0);
+ #assert profile.optimization==optimization;
+ #assert profile.development==development && profile.debug_info==debug;
+}
+
+#test "one selected axis leaves the others in their independently chosen bundle" {
+ request:CP_Request;request.legacy_release=true;
+ request.arithmetic="checked";request.arithmetic_count=1;
+ profile:=CP_resolve("run",request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_CHECKED && profile.optimization==2 && !profile.development && !profile.debug_info;
+ request.arithmetic="";request.arithmetic_count=0;
+ request.build_profile="development";request.build_profile_count=1;
+ profile=CP_resolve("run",request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_WRAPPING && profile.optimization==2 && profile.development && !profile.debug_info;
+ request.legacy_release=false;request.build_profile="release";
+ profile=CP_resolve("run",request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_CHECKED && profile.optimization==0 && !profile.development && profile.debug_info;
+ request.build_profile="";request.build_profile_count=0;request.optimization="3";request.optimization_count=1;
+ profile=CP_resolve("run",request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_CHECKED && profile.optimization==3 && profile.development && profile.debug_info;
+ request.optimization="";request.optimization_count=0;request.debug_info=0;request.debug_count=1;
+ profile=CP_resolve("run",request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_CHECKED && profile.optimization==0 && profile.development && !profile.debug_info;
+}
+
+#forall "occurrence counts admit only absent or one complete selection" count:-2..<4 {
+ request:CP_Request;request.arithmetic_count=count;request.arithmetic=ifx count==0 then "" else "checked";
+ profile:=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 || count==1 then CP_Error.none else CP_Error.arithmetic_count);
+ #assert (profile.identity>=0)==(count==0 || count==1);
+ request=CP_Request.{};request.optimization_count=count;request.optimization=ifx count==0 then "" else "2";
+ profile=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 || count==1 then CP_Error.none else CP_Error.optimization_count);
+ #assert (profile.identity>=0)==(count==0 || count==1);
+ request=CP_Request.{};request.build_profile_count=count;request.build_profile=ifx count==0 then "" else "release";
+ profile=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 || count==1 then CP_Error.none else CP_Error.build_profile_count);
+ #assert (profile.identity>=0)==(count==0 || count==1);
+}
+
+#forall "empty values cannot conceal duplicate or malformed occurrence counts" count:-2..<4 {
+ request:CP_Request;request.arithmetic_count=count;
+ profile:=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 then CP_Error.none else ifx count==1 then CP_Error.arithmetic_value else CP_Error.arithmetic_count);
+ #assert (profile.identity>=0)==(count==0);
+ request=CP_Request.{};request.optimization_count=count;
+ profile=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 then CP_Error.none else ifx count==1 then CP_Error.optimization_value else CP_Error.optimization_count);
+ #assert (profile.identity>=0)==(count==0);
+ request=CP_Request.{};request.build_profile_count=count;
+ profile=CP_resolve("build",request);
+ #assert profile.error==(ifx count==0 then CP_Error.none else ifx count==1 then CP_Error.build_profile_value else CP_Error.build_profile_count);
+ #assert (profile.identity>=0)==(count==0);
+}
+
+#test "unrecorded values are refused rather than acquiring an implicit occurrence" {
+ request:CP_Request;request.arithmetic="checked";
+ profile:=CP_resolve("c",request);#assert profile.error==CP_Error.arithmetic_count && profile.identity== -1;
+ request=CP_Request.{};request.optimization="2";
+ profile=CP_resolve("build",request);#assert profile.error==CP_Error.optimization_count && profile.identity== -1;
+ request=CP_Request.{};request.build_profile="release";
+ profile=CP_resolve("c",request);#assert profile.error==CP_Error.build_profile_count && profile.identity== -1;
+}
+
+#forall "missing malformed and differently spelled choices are rejected" index:0..<8 {
+ arithmetic:=[8]string.["","Checked","wrap","checked ","0","--release","wrapping!"," checked"];
+ optimization:=[8]string.["","-1","4","00","1.0","+1"," 2","-O2"];
+ build:=[8]string.["","debug","Release","release ","0","--opt","development!"," development"];
+ request:CP_Request;request.arithmetic=arithmetic[index];request.arithmetic_count=1;
+ profile:=CP_resolve("build",request);#assert profile.error==CP_Error.arithmetic_value && profile.identity== -1;
+ request=CP_Request.{};request.optimization=optimization[index];request.optimization_count=1;
+ profile=CP_resolve("build",request);#assert profile.error==CP_Error.optimization_value && profile.identity== -1;
+ request=CP_Request.{};request.build_profile=build[index];request.build_profile_count=1;
+ profile=CP_resolve("build",request);#assert profile.error==CP_Error.build_profile_value && profile.identity== -1;
+}
+
+#forall "native optimization and native debug have separate command admission" command:0..<13 {
+ request:CP_Request;request.optimization="0";request.optimization_count=1;
+ profile:=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==(ifx command<3 then CP_Error.none else CP_Error.optimization_command);
+ request=CP_Request.{};request.debug_info=1;request.debug_count=1;
+ profile=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==(ifx command<4 then CP_Error.none else CP_Error.debug_command);
+ request.debug_info=0;request.debug_count=1;
+ profile=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==(ifx command<4 then CP_Error.none else CP_Error.debug_command);
+ request=CP_Request.{};request.source_map=true;
+ profile=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==(ifx command<4 then CP_Error.none else CP_Error.debug_command);
+ if command<4 {#assert profile.debug_info;}
+ request.debug_info=0;request.debug_count=1;
+ profile=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==(ifx command<4 then CP_Error.source_map_debug else CP_Error.debug_command);
+ #assert profile.identity== -1;
+}
+
+#forall "arithmetic and development profiles apply to every source command" command:0..<13, release:bool {
+ request:CP_Request;request.arithmetic="wrapping";request.arithmetic_count=1;
+ request.build_profile=ifx release then "release" else "development";request.build_profile_count=1;
+ profile:=CP_resolve(CP_COMMANDS[command],request);
+ #assert profile.error==CP_Error.none && profile.arithmetic==CP_WRAPPING && profile.development==!release;
+}
+
+#forall "debug selectors reject values outside unset off and on" debug:-3..<4 {
+ request:CP_Request;request.debug_info=debug;request.debug_count=ifx debug== -1 then 0 else 1;
+ profile:=CP_resolve("run",request);
+ #assert profile.error==(ifx debug>= -1 && debug<=1 then CP_Error.none else CP_Error.debug_value);
+ if profile.error==CP_Error.none {#assert profile.debug_info==(debug!=0);}else{#assert profile.identity== -1;}
+}
+
+#forall "debug choices retain their own occurrence count and reject duplicates" count:-2..<4, debug:-1..<2 {
+ request:CP_Request;request.debug_info=debug;request.debug_count=count;
+ profile:=CP_resolve("run",request);
+ expected:=ifx count<0 || count>1 || (count==0 && debug!= -1) then CP_Error.debug_count else ifx count==1 && debug== -1 then CP_Error.debug_value else CP_Error.none;
+ #assert profile.error==expected;
+ #assert (profile.identity>=0)==(expected==CP_Error.none);
+ if expected==CP_Error.none {#assert profile.debug_info==(debug!=0);}
+}
+
+#forall "source maps imply debug without changing other independently selected axes" release:bool, debug:-1..<2 {
+ request:CP_Request;request.legacy_release=release;request.debug_info=debug;request.debug_count=ifx debug== -1 then 0 else 1;request.source_map=true;
+ profile:=CP_resolve("c",request);
+ #assert profile.error==(ifx debug==0 then CP_Error.source_map_debug else CP_Error.none);
+ if debug!=0 {
+  #assert profile.debug_info && !profile.native;
+  #assert profile.arithmetic==(ifx release then 1 else 0) && profile.optimization==(ifx release then 2 else 0) && profile.development==!release;
+ }
+}
+
+#forall "non-source and unknown commands cannot obtain a profile" index:0..<8 {
+ commands:=[8]string.["","proto","explain","version","serve","profile","coax c","RUN"];
+ request:CP_Request;profile:=CP_resolve(commands[index],request);
+ #assert profile.error==CP_Error.command && profile.identity== -1;
+}
+
+#forall "schema one identity preserves all six bits without collisions" arithmetic:0..<2, optimization:0..<4, development:bool, debug:bool, native:bool {
+ identity:=cp_identity(arithmetic,optimization,development,debug,native);
+ #assert CP_SCHEMA==1 && identity>=0 && identity<64;
+ #assert identity%2==arithmetic && (identity/2)%4==optimization;
+ #assert ((identity/8)%2==1)==development && ((identity/16)%2==1)==debug && (identity/32==1)==native;
+}
+
+#forall "each error carries its own stable explanatory message" error:CP_Error {
+ messages:=[13]string.["","semantic profiles require a source command","--arithmetic may be supplied once","--arithmetic requires checked or wrapping","--opt may be supplied once","--opt requires one of 0, 1, 2, or 3","--opt is supported only by run, build, or lib","--build-profile may be supplied once","--build-profile requires development or release","debug information may be selected once","debug-info selection must be unset, off, or on","native debug information is supported only by c, run, build, or lib","--source-map conflicts with disabled debug information"];
+ #assert CP_message(error)==messages[cast(int)error];
+}
+
+cp_source :: (command:string)->bool {
+ return command=="run" || command=="build" || command=="lib" || command=="c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute";
+}
+cp_native :: (command:string)->bool {return command=="run" || command=="build" || command=="lib";}
+cp_choice :: (text:string,count:int)->bool {return count>=0 && count<=1 && (count==1 || text.count==0);}
+cp_refuse :: (error:CP_Error)->CP_Profile {profile:CP_Profile;profile.error=error;return profile;}
+
+// Schema one identifies the six selection bits, including whether the host
+// compiles natively. It is not an artifact digest, target identity or ABI proof.
+cp_identity :: (arithmetic:int,optimization:int,development:bool,debug:bool,native:bool)->int {
+ return arithmetic+2*optimization+(ifx development then 8 else 0)+(ifx debug then 16 else 0)+(ifx native then 32 else 0);
+}
+
+CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c {
+ if !cp_source(command) {return cp_refuse(CP_Error.command);}
+ if !cp_choice(request.arithmetic,request.arithmetic_count) {return cp_refuse(CP_Error.arithmetic_count);}
+ if !cp_choice(request.optimization,request.optimization_count) {return cp_refuse(CP_Error.optimization_count);}
+ if !cp_choice(request.build_profile,request.build_profile_count) {return cp_refuse(CP_Error.build_profile_count);}
+ if request.debug_count<0 || request.debug_count>1 || (request.debug_count==0 && request.debug_info!= -1) {return cp_refuse(CP_Error.debug_count);}
+ if request.arithmetic_count==1 && request.arithmetic!="checked" && request.arithmetic!="wrapping" {return cp_refuse(CP_Error.arithmetic_value);}
+ if request.optimization_count==1 {
+  if request.optimization.count!=1 {return cp_refuse(CP_Error.optimization_value);}
+  if request.optimization[0]<'0' || request.optimization[0]>'3' {return cp_refuse(CP_Error.optimization_value);}
+ }
+ if request.build_profile_count==1 && request.build_profile!="development" && request.build_profile!="release" {return cp_refuse(CP_Error.build_profile_value);}
+ if request.debug_info< -1 || request.debug_info>1 || (request.debug_count==1 && request.debug_info== -1) {return cp_refuse(CP_Error.debug_value);}
+ native:=cp_native(command);
+ if request.optimization_count==1 && !native {return cp_refuse(CP_Error.optimization_command);}
+ if (request.debug_count==1 || request.source_map) && !native && command!="c" {return cp_refuse(CP_Error.debug_command);}
+ if request.source_map && request.debug_info==0 {return cp_refuse(CP_Error.source_map_debug);}
+
+ profile:CP_Profile;
+ profile.native=native;
+ profile.arithmetic=ifx request.legacy_release then CP_WRAPPING else CP_CHECKED;
+ profile.optimization=ifx request.legacy_release then 2 else 0;
+ profile.development=!request.legacy_release;
+ profile.debug_info=native && !request.legacy_release;
+ // Applying the raw explicit choices after the bundle makes CLI order
+ // irrelevant. In particular, a layout choice never selects arithmetic or -g.
+ if request.arithmetic_count==1 {profile.arithmetic=ifx request.arithmetic=="wrapping" then CP_WRAPPING else CP_CHECKED;}
+ if request.optimization_count==1 {profile.optimization=cast(int)(request.optimization[0]-'0');}
+ if request.build_profile_count==1 {profile.development=request.build_profile=="development";}
+ if request.debug_count==1 {profile.debug_info=request.debug_info==1;}
+ if request.source_map {profile.debug_info=true;}
+ profile.identity=cp_identity(profile.arithmetic,profile.optimization,profile.development,profile.debug_info,profile.native);
+ return profile;
+}
+
+CP_message :: (error:CP_Error)->string #export_c {
+ if error==CP_Error.none {return "";}
+ if error==CP_Error.command {return "semantic profiles require a source command";}
+ if error==CP_Error.arithmetic_count {return "--arithmetic may be supplied once";}
+ if error==CP_Error.arithmetic_value {return "--arithmetic requires checked or wrapping";}
+ if error==CP_Error.optimization_count {return "--opt may be supplied once";}
+ if error==CP_Error.optimization_value {return "--opt requires one of 0, 1, 2, or 3";}
+ if error==CP_Error.optimization_command {return "--opt is supported only by run, build, or lib";}
+ if error==CP_Error.build_profile_count {return "--build-profile may be supplied once";}
+ if error==CP_Error.build_profile_value {return "--build-profile requires development or release";}
+ if error==CP_Error.debug_count {return "debug information may be selected once";}
+ if error==CP_Error.debug_value {return "debug-info selection must be unset, off, or on";}
+ if error==CP_Error.debug_command {return "native debug information is supported only by c, run, build, or lib";}
+ return "--source-map conflicts with disabled debug information";
+}

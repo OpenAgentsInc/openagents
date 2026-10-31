@@ -245,12 +245,60 @@ optimizer, JIT tier, secret distribution or algorithm. Source restrictions,
 generated-object inspection, erasure, independent review and key custody remain
 separate gates. See the [harness method and scoped evidence](https://github.com/OpenAgentsInc/openagents/blob/main/tools/coax-nostr/timing/README.md).
 
-Build-profile layout is another input to preserve. In Coax 0.17.0,
-`#if BUILD_DEBUG` fields/statements select development unless the compiler
-command includes `--release`. That choice can change native struct sizes,
+Build-profile layout is another input to preserve. Since Coax 0.17.0,
+`#if BUILD_DEBUG` fields/statements select development by default and release
+under the legacy `--release` preset. Version 0.25.0 adds an independent
+`--build-profile development|release` override. That choice can change native struct sizes,
 reflection and ABI. Compile each producer and consumer with the same profile
 and generated header; a debugger source hash alone does not identify it.
 Native optimization, NDEBUG and Xcode's configuration are separate inputs.
 The existing app generator continues to use checked Coax semantics; a compiler
-release flag is an explicit adoption choice, including its existing arithmetic
+release preset is an explicit adoption choice, including its default arithmetic
 policy. General conditional compilation remains planned.
+
+## Select and record the execution profile
+
+Version 0.25.0 separates four choices that the legacy presets bundled together:
+
+| Choice | Explicit flag | Effect |
+| --- | --- | --- |
+| Runtime integer arithmetic | `--arithmetic checked` or `--arithmetic wrapping` | Overflow traps or wraps for the supported integer operations |
+| Native optimization | `--opt 0`, `1`, `2` or `3` | C compiler optimization for `build`, `lib` and `run` only |
+| Build-profile branches | `--build-profile development` or `--build-profile release` | Selects `BUILD_DEBUG` fields/statements only |
+| Native debug information | `--debug-info` or `--no-debug-info` | Selects native debug information independently of optimization |
+
+With no flags, the defaults remain checked runtime integers, native `-O0`,
+development branches and native debug information. The legacy `--release`
+preset remains wrapping integers, native `-O2`, release branches and no default
+native debug information. An explicit axis overrides the preset regardless of
+argument order. Selecting `--opt 2` alone therefore gives optimized checked
+native code. Selecting release branches alone does not select wrapping.
+
+For example, build the earlier source-debugging example with checked arithmetic
+and native optimization, recording the resolved settings separately:
+
+```shell
+coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
+  -o /tmp/coax-checked-opt --opt 2 --arithmetic checked \
+  --profile-report /tmp/coax-checked-opt.profile.json
+```
+
+`--profile-report FILE` writes a separate schema-1 JSON record. Its schema is
+independent of release-inventory, timing, dependency and source-map schemas.
+The report identifies the selected profile; it is not a claim that every check
+or target qualification ran. Preserve it with the actual source/dependencies,
+native commands and artifacts. For generated C or GPU source, a native/device
+compiler may still run outside Coax; do not treat requested settings as evidence
+of that later execution. No report is written unless requested.
+
+The checked Coax profile policy admits supported command/flag combinations.
+Compile-time evaluation and checks always use checked arithmetic, including
+when runtime code wraps, and authority requirements remain in force. An
+optimization flag cannot remove them. Existing GPU integer lowerings can select
+arithmetic, but that does not qualify another device or promise CPU/GPU equality.
+
+One loaded graph uses one profile. A separately compiled C or foreign callee
+uses its own arithmetic policy, which its caller does not inherit or override.
+Compatible C layouts do not establish compatible arithmetic semantics. Retain
+each participating profile record; this is not general enforcement across
+independently linked objects or an implemented semantic cache.
