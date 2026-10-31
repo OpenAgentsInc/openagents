@@ -400,7 +400,7 @@ Every phase and native feature is a task in the Verse project
     in the lowering: vector arithmetic written as WGSL's vector operators.
     Every page with a sin hash (the painterly, flat and fixture styles) waits
     on it.
-  - fairy, waterlab, fixture, orbitleague and realm stop the translator
+  - waterlab, fixture, orbitleague and realm stop the translator
     (a whole uniform struct as a value, builtins on vectors it does not
     know, indexing a vector, a vector from a struct's fields); stair too
     (`&` pointers).
@@ -419,6 +419,9 @@ Every phase and native feature is a task in the Verse project
   (Hecate's Cemetery) are Coax now and match their goldens; villa's module
   is the same image as the hand one in one stage (the 2 moving blocks are
   both's). villa no longer declares `post_depth`, which it never read.
+  fairy (Fairy Forest) follows, 0 blocks changed: the translator now reads
+  `arrayLength(&buffer)` as the view's count, and gives the wrapping
+  intrinsics a u32 for a `2u`. It drops an unread `post_depth` too.
 - 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
   one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
   (this site's paths only; the player key, an Authorization line, the

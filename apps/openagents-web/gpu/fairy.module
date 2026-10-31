@@ -1,0 +1,3 @@
+--vertices fairy_bg_vs,fairy_scene_vs,fairy_water_vs,fairy_fx_vs
+--fragments fairy_bg_fs,fairy_scene_fs,fairy_water_transmit_fs,fairy_water_emit_fs,fairy_bloom_fs,fairy_post_fs,fairy_fx_fs
+--bindings apps/openagents-web/gpu/fairy.bindings --strip fairy_

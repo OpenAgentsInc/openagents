@@ -725,7 +725,9 @@ binop :: (w: []W, op: int, a0: Val, b0: Val) -> Val {
     ap(w, "wg_fmod("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')'); return mka(w, r, rt);
   }
   if ub == Y_U && (op == OP_ADD || op == OP_SUB || op == OP_MUL) {
-    ap(w, OPNAME[op]); ap(w, "_wrap("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')'); return mka(w, r, rt);
+    // the wrapping intrinsics take two u32s: a literal operand (2u is Coax's untyped 2) is made one
+    a = convert(w, a, Y_U); b = convert(w, b, Y_U); r = w[0].an;
+    ap(w, OPNAME[op]); ap(w, "_wrap("); wrap_operand(w, a); apc(w, ','); wrap_operand(w, b); apc(w, ')'); return mka(w, r, rt);
   }
   apv(w, pa); ap(w, OPS[op]); apv(w, pb);
   v := mkv(w, r, rt);
@@ -1038,7 +1040,17 @@ bits_of :: (w: []W, from: int, to: int) {
 }
 conc_ty :: (w: []W, t: int) -> int { return ifx is_sc(w, t) then conc(t) else t; }
 // A call to a builtin or a procedure.
+wrap_operand :: (w: []W, v: Val) {
+  if v.n > 0 && is_digit(w[0].ar[v.s]) { ap(w, "cast(u32)"); }
+  apv(w, v);
+}
 call :: (w: []W, name: string) -> Val {
+  // arrayLength(&buffer): a storage buffer is a view, and its length is the view's count.
+  if name == "arrayLength" && atn(w, 1, "&") {
+    w[0].p += 2; v := ex(w); expect(w, ")");
+    b := w[0].an; ap(w, "cast(u32) "); apv(w, v); ap(w, ".count");
+    return mkv(w, b, Y_U);
+  }
   a: [32] Val; n := args(w, a[..]);
   if name == "all" || name == "any" {
     v := a[0];
