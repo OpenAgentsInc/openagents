@@ -1350,8 +1350,9 @@ draw_station :: (s: [] Belt, out: [] f32, d: [] Draw, at: D3) {
   }
   reach := hi(rr * 1.5, 7 * k);
   block(d, x, y, reach);
-  // Home is always named: your ships and the ice crowd round it, and would leave it no free side.
-  if reach < 160 * k { tag(d, "HEARTH", x, y, reach, 7 * k, 0.9, BELT_R, BELT_G, BELT_B, PRIO_ALWAYS); }
+  // Home is always named, first: your ships and the ice crowd round it, and would leave it no free
+  // side; the selected ship's name then finds a side of its own.
+  if reach < 160 * k { tag(d, "HEARTH", x, y, reach, 7 * k, 0.9, BELT_R, BELT_G, BELT_B, PRIO_HOT + 1); }
 }
 
 // A ship: a chevron along its heading, or its hull in metres when close.
@@ -1469,8 +1470,9 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   stroke(out, d, x - ch * r * 0.25, y - shd * r * 0.25, lx, ly, 1.0 * u, bright, col.x, col.y, col.z);
   if sel { ring(out, d, x, y, 13 * u, 28, 0.9 * u, 0.95, col.x, col.y, col.z); }
   block(d, x, y, 7.5 * u);   // the arrow's tip and wings, all of it
-  // a ship sitting on its world or station is not named until the view is close enough to tell them apart
-  if !sel && sh.mode != FLYING && spacecam_pixels(s[0].cam, berth_radius(sh.at)) < 14.0 * f64(u) { return; }
+  // a ship sitting on its world or station is not named until the view is close enough to tell them
+  // apart, selected or not (its card and its ring say which it is; the place's name stays readable)
+  if sh.mode != FLYING && spacecam_pixels(s[0].cam, berth_radius(sh.at)) < 14.0 * f64(u) { return; }
   prio := ifx sel then PRIO_HOT else ifx sh.faction == FREE_BELT then PRIO_OWN else ifx sh.mode == FLYING then PRIO_RIVAL else PRIO_PARKED;
   tag(d, sh.name, x, y, ifx sel then 14.0f32 * u else 8.0f32 * u, 6.5 * u, ifx sel then 0.95f32 else ifx sh.faction == FREE_BELT then 0.8f32 else 0.6f32, col.x, col.y, col.z, prio);
 }
