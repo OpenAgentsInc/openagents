@@ -13,9 +13,10 @@ mouse and touch use a dedicated control without invoking conversation or quest
 acceptance. The local line lasts four seconds with a six-second cooldown.
 
 Projection uses current gameplay after the world update. Both the strict world
-GET envelope and the existing edit parser must succeed. Actual edits, hidden or
-gone objects, destruction, spell-built geometry, missing targets, arrival and
-unsafe gameplay refuse authored routes. Player IDs cannot authorize a model
+GET envelope and the existing edit parser must succeed. Edits, hidden
+buildings, destruction and spell-built geometry refuse the tip only when they
+touch the route it describes (guide-route.coax, 2026-10-31); missing targets,
+arrival and unsafe gameplay refuse it. Player IDs cannot authorize a model
 request: a well-formed normal viewer hint and the server's ordinary cookie are
 required. Only literal `guard-ai=directions-shadow` enables that request.
 

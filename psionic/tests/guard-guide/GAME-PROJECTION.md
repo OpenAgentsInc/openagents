@@ -33,10 +33,13 @@ editing, casting, map or warp each refuse independently. The caller derives
 these facts from game state, including armed spell UI and other active edit UI.
 
 A route also requires `world_known`, present target/destination, no arrival,
-and unchanged supported geometry. The actual edit payload is
-`EgEdits.n/gone/hidden`: all three must be zero. An editor version is not edit
-presence. `altered_geometry` also refuses destruction or live spell walls that
-are not represented in EgEdits. The page owns finite position/range checks and
+and an untouched route. Since 2026-10-31 the page fills `edit_count`,
+`hidden` and `altered_geometry` with only what touches the route the tip
+describes (`verse/everglade/guide-route.coax`): placed things and hidden plan
+buildings whose footprints reach the walked strip, live spell walls/stones
+across it, and broken pieces or rubble on it; `gone` (removed people) is 0,
+since Bram and a quest giver are checked as actors. All must be zero; the
+policy itself is unchanged. An editor version is not edit presence. The page owns finite position/range checks and
 goal-target lookup.
 
 `ggp_goal_key` returns unique tags 17–19, 33–35 and 49–51 for those nine active

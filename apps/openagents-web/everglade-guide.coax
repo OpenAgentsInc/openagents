@@ -2,6 +2,7 @@
 // is separately linked; the C face hands off between world update and HUD draw.
 #load "../../verse/everglade/guard-guide-game-types.coax";
 #load "../../verse/everglade/guard-guide-session-types.coax";
+#load "../../verse/everglade/guide-route.coax";
 EgGuideInput :: struct {
   facts:GgpFacts;epoch:int;generation:int;world_revision:int;
   configured:bool;suspended:bool;blocked:bool;boundary:bool;asked:bool;
@@ -46,9 +47,20 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
     person:=eg_quest_giver(q);
     target_present=person>=0 && !eg_gone(s[0].ev.edits,person) && w[0].actors[person].ready && w[0].actors[person].hp>0 && w[0].actors[person].mode!=WM_DEAD;
   }
-  geometry:=sp_broken(s);
-  for i:0..<AB_STONES {if s[0].sp.ab[0].stones[i].live {geometry=true;}}
-  for i:0..<AB_WALLS {if s[0].sp.ab[0].walls[i].live {geometry=true;}}
+  // Only what touches the route this tip describes (guide-route.coax) refuses
+  // it: placed things and hidden buildings, spell walls/stones, broken pieces
+  // and their rubble. An edit anywhere else keeps the tip.
+  route:[GR_MAX*2]f32;rn:=0;if target.ok {rn=gr_route(a.x,a.z,target.x,target.z,route[..]);}
+  things:=0;hidden:u32=0;geometry:=false;
+  if rn>=2 {
+    things=gr_things(route[..],rn,s[0].ev.edits);hidden=gr_hidden(route[..],rn,s[0].ev.edits.hidden);
+    for i:0..<AB_STONES {st:=s[0].sp.ab[0].stones[i];if st.live && gr_touch_segment(route[..],rn,st.ax,st.az,st.bx,st.bz,f32(AB_ST_THICK)) {geometry=true;}}
+    for i:0..<AB_WALLS {wl:=s[0].sp.ab[0].walls[i];if wl.live && gr_touch_segment(route[..],rn,wl.ax,wl.az,wl.bx,wl.bz,0.5) {geometry=true;}}
+    // A page or test with nothing breakable has an empty demolition world.
+    dm:=sp_dm(s);
+    if dm.count>0 && dm[0].broken_n>0 {for p:0..<dm[0].n {if geometry {break;}pc:=dm[0].pieces[p];if pc.state!=DP_STANDING && gr_touch_box(route[..],rn,pc.x0,pc.z0,pc.x1,pc.z1) {geometry=true;}}}
+    if dm.count>0 {for b:0..<DEMO_BODIES {if geometry {break;}if dm[0].meta[b].kind!=0 {at:=demo_pos(dm,b);if gr_touch_point(route[..],rn,f32(at.x),f32(at.z),f32(dm[0].meta[b].radius)) {geometry=true;}}}}
+  }
   s[0].guide.facts=GgpFacts.{followed=q,stage=stage,guard=0,
     help_requested=s[0].guide.help_requested,find_work=s[0].guide.find_work,
     gameplay=s[0].wv.started && w[0].on && !s[0].paint_only && !s[0].guide.golden,
@@ -60,7 +72,7 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
     combat=w[0].wanted || hm_swinging(s),talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
     editing=s[0].ev.editing,casting=s[0].sp.casting>=0 || s[0].sp.armed>=0,
     map=s[0].above,warp=s[0].warp,world_known=s[0].guide.world_parsed,
-    edit_count=s[0].ev.edits.n,gone=s[0].ev.edits.gone,hidden=s[0].ev.edits.hidden,
+    edit_count=things,gone=0,hidden=hidden,
     altered_geometry=geometry,target_present=target_present,destination_present=target.ok,
     at_destination=target.ok && flat_gap(v3(target.x,0,target.z),you)<=f32(EG_QUEST_NEAR),
     hint_visible=s[0].guide.view.visible};

@@ -211,7 +211,8 @@ immediately and remains useful for guests and service failures.
 An optional `guard-ai=directions-shadow` request requires the actual viewer
 hint and cookie-authenticated endpoint. Its model result records telemetry
 alongside the local line; no remote-selected line is shown. Projection refuses
-unknown/edited worlds, live spell-built walls, destruction, missing targets,
+unknown worlds; edits, live spell-built walls and destruction that touch the
+described route; missing targets,
 arrival and unsafe gameplay. The narrow world-envelope validator must agree
 with the existing edit parser. Same-frame gameplay facts precede policy and HUD
 rendering. Current epoch, actor/generation, world, goal and intent fence every

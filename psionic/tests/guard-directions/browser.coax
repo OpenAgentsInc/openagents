@@ -13,11 +13,16 @@
 DB_DEADLINE :: 540000;
 DB_CALL_MS :: 5000;
 DB_HELD_MAX :: 8;
+// The published world: none; production's version 21 (11 owner edits, none on
+// the Find Work route); and that list plus one crate in the middle of Inn Street.
+DB_WORLDS :: [3]string.["{\"version\":0,\"doc\":null}",
+    "{\"doc\":{\"edits\":\"eg-edit 1\\nt 2 -122 1181 73 100\\nt 2 -27 867 73 100\\nt 1 242 -2393 107 100 1\\nt 0 -1265 -911 173 100 2\\nt 0 -1398 -927 173 100 2\\nt 0 -1531 -943 173 100 2\\nt 0 -1664 -959 173 100 2\\nt 1 -1336 -201 -180 100 3\\nt 1 -1456 -201 -180 100 3\\nt 4 -1453 349 17 100 4\\nt 4 -1257 294 77 100 5\\n\",\"everglade\":1},\"version\":21,\"publishedAt\":1793322199.199603,\"publishedBy\":\"owner\"}",
+    "{\"doc\":{\"edits\":\"eg-edit 1\\nt 2 -122 1181 73 100\\nt 2 -27 867 73 100\\nt 1 242 -2393 107 100 1\\nt 0 -1265 -911 173 100 2\\nt 0 -1398 -927 173 100 2\\nt 0 -1531 -943 173 100 2\\nt 0 -1664 -959 173 100 2\\nt 1 -1336 -201 -180 100 3\\nt 1 -1456 -201 -180 100 3\\nt 4 -1453 349 17 100 4\\nt 4 -1257 294 77 100 5\\nt 0 0 -2000 0 100\\n\",\"everglade\":1},\"version\":22,\"publishedAt\":1793322199.199603,\"publishedBy\":\"owner\"}"];
 // Generic bounded frame effect: the Coax test decides when to hold/release.
 DB_RAF :: "(()=>{const native=requestAnimationFrame.bind(globalThis),held=[];globalThis.__dbHoldFrames=false;globalThis.__dbHeldFrames=()=>held.length;globalThis.__dbResumeFrames=()=>{globalThis.__dbHoldFrames=false;for(const f of held.splice(0))native(f);return true;};globalThis.requestAnimationFrame=f=>native(t=>{if(globalThis.__dbHoldFrames){if(held.length>=8)throw Error('frame fixture bound');held.push(f);}else f(t);});})()";
 DbHeld :: struct {id:[256]u8;id_n:int;body:[4096]u8;body_n:int;wire:bool;done:bool;}
 DbCase :: struct {name:[96]u8;name_n:int;passed:bool;view:DbView;calls:int;wire:bool;}
-DbRun :: struct {origin:[256]u8;origin_n:int;held:[DB_HELD_MAX]DbHeld;calls:int;bad:bool;deadline:int;last_error:bool;errors:int;stale_errors:int;external:int;other:int;other_total:int;viewer:int=1;cases:[32]DbCase;case_n:int;expected:[4096]u8;expected_n:int;wasm_sha:[64]u8;module_stable:bool;}
+DbRun :: struct {origin:[256]u8;origin_n:int;held:[DB_HELD_MAX]DbHeld;calls:int;bad:bool;deadline:int;last_error:bool;errors:int;stale_errors:int;external:int;other:int;other_total:int;world:int;viewer:int=1;cases:[32]DbCase;case_n:int;expected:[4096]u8;expected_n:int;wasm_sha:[64]u8;module_stable:bool;}
 
 db_text :: (d:Jv,node:int,out:[]u8)->string {n:=jv_str(d,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
 db_send_simple :: (c:[]Cdp,id:string,method:string)->bool {
@@ -45,7 +50,7 @@ db_event :: (c:[]Cdp,s:[]DbRun) {
     if route==DB_EXTERNAL {s[0].external+=1;if !db_send_simple(c,id,"Fetch.failRequest") {s[0].bad=true;}return;}
     if route==DB_DOCUMENT {if !db_document(c,id) {s[0].bad=true;}return;}
     if route==DB_VIEWER {body:=ifx s[0].viewer==0 then "" else ifx s[0].viewer==2 then "H|f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\nA|1\n" else "H|f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\n";if db_send_body(c,id,200,body,"text/plain")<0 {s[0].bad=true;}return;}
-    if route==DB_WORLD {if db_send_body(c,id,200,"{\"version\":0,\"doc\":null}","application/json")<0 {s[0].bad=true;}return;}
+    if route==DB_WORLD {if db_send_body(c,id,200,DB_WORLDS[s[0].world],"application/json")<0 {s[0].bad=true;}return;}
     if route==DB_OTHER_API {if db_send_body(c,id,404,"{}","application/json")<0 {s[0].bad=true;}return;}
     if route==DB_ASSET {if !db_send_simple(c,id,"Fetch.continueRequest") {s[0].bad=true;}return;}
     // The decision route is shared with other Everglade consumers (the guard
@@ -104,9 +109,9 @@ db_reply :: (c:[]Cdp,s:[]DbRun,index:int,status:int,body:string,stale:bool)->boo
 }
 
 tool_main :: ()->int #export_c {
-    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>3 || !db_origin(args_at(a[..],0)) {tool_errln("usage: browser LOOPBACK_ORIGIN NEW_RESULT.json [all|local|responses|cancellations|reuse|combat|queued]");return 2;}
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>3 || !db_origin(args_at(a[..],0)) {tool_errln("usage: browser LOOPBACK_ORIGIN NEW_RESULT.json [all|local|responses|cancellations|reuse|combat|queued|edited]");return 2;}
     group:=ifx args_count(a[..])==3 then args_at(a[..],2) else "all";
-    if group!="all" && group!="local" && group!="responses" && group!="cancellations" && group!="reuse" && group!="combat" && group!="queued" {return 2;}
+    if group!="all" && group!="local" && group!="responses" && group!="cancellations" && group!="reuse" && group!="combat" && group!="queued" && group!="edited" {return 2;}
     out:=args_at(a[..],1);if fs_kind(out)!=FS_NONE {tool_errln("directions browser: output already exists");return 2;}
     s:[1]DbRun;origin:=args_at(a[..],0);s[0].origin_n=origin.count;for i:0..<origin.count {s[0].origin[i]=origin[i];}s[0].deadline=proc_now_ms()+DB_DEADLINE;
     s[0].expected_n=fs_read("psionic/fixtures/guard-guide-requests-v1/case0.json",s[0].expected[..]);if s[0].expected_n<1 {tool_errln("directions browser: frozen request unavailable");return 2;}
@@ -131,6 +136,7 @@ tool_main :: ()->int #export_c {
     if group=="all" || group=="reuse" {ok=ok && db_reuse_case(c[..],s[..]);}
     if group=="all" || group=="combat" {ok=ok && db_combat_case(c[..],s[..]);}
     if group=="all" || group=="queued" {ok=ok && db_queued_case(c[..],s[..]);}
+    if group=="all" || group=="edited" {ok=ok && db_edited_case(c[..],s[..],1) && db_edited_case(c[..],s[..],2);s[0].world=0;}
     cdp_close(c[..]);db_stop_server(server);after:[64]u8;s[0].module_stable=db_hash_module(after[..]) && db_same_hash(cast(string)s[0].wasm_sha[..],cast(string)after[..]);ok=ok && s[0].module_stable;
     written:=db_write_result(s[..],out,ok,group);
     if !ok || s[0].bad || !written {tool_errln("directions browser: qualification failed; inspect partial record");return 1;}
@@ -280,6 +286,18 @@ db_combat_case :: (c:[]Cdp,s:[]DbRun)->bool {
     return db_record(s,"natural-respawn-retains-revocation",ok && db_cancelled(v) && s[0].calls==1,v);
 }
 
+// An edited world: the published edits keep Find Work and its local tip with no
+// request; one crate in the street the tip describes refuses the offer.
+db_edited_case :: (c:[]Cdp,s:[]DbRun,world:int)->bool {
+    s[0].world=world;
+    if world==1 {ok:=db_setup(c,s,"",0) && db_press(c,s,"g");db_delay(c,s,200);v:=db_wait_view(c,s,0,0,0,0,4000);
+        return db_record(s,"published-11-edits-keep-find-work",ok && db_local(v,0) && v.local_action==1 && s[0].calls==0 && s[0].other==0,v);}
+    s[0].viewer=0;ok:=db_call(c,s,"Emulation.setFocusEmulationEnabled","{\"enabled\":true}")>=0 && db_visit(c,s,"");
+    // Bram is eligible (calm, near, visible): only the route refuses the offer.
+    eligible:=false;end:=proc_now_ms()+15000;while proc_now_ms()<end && !s[0].bad {if db_scalar(c,s,247)==1 {eligible=true;break;}db_delay(c,s,40);}
+    db_delay(c,s,1000);ok=ok && eligible && db_press(c,s,"g");db_delay(c,s,600);v:=db_snapshot(c,s);
+    return db_record(s,"crate-on-the-route-refuses",ok && v.version==1 && v.offer==0 && v.rendered==0 && v.local==0 && s[0].calls==0 && s[0].other==0,v);
+}
 db_hash_module :: (out:[]u8)->bool {
     if out.count!=64 {return false;}bytes:[8388608]u8;n:=fs_read("apps/openagents-web/build/everglade.wasm",bytes[..]);digest:[32]u8;
     if n<1 {return false;}state:[112]u8;if sha256_init(state[..])!=SHA_OK {return false;}

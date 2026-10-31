@@ -45,11 +45,14 @@ button was drawn.
 
 A route must also be known in the current world. Both the outer successful world
 response and the page's document parser must agree that the world was read.
-Unknown, malformed or failed loads refuse. This slice accepts only the canonical
-unmodified route: placed edits, deleted/hidden objects, broken geometry and live
-spell-created walls or stones all refuse directions. A nonzero document version
-alone is not evidence of an edit, and seeing a destination object alone does not
-prove a reachable route.
+Unknown, malformed or failed loads refuse. The route is the one the tip
+describes: from Bram along the plan's streets and trails (shortest by length)
+to the named place ([guide-route.coax](../../verse/everglade/guide-route.coax)).
+Only what touches that walked strip refuses directions: a placed thing or hidden
+building whose footprint reaches it, a live spell wall or stone across it, or a
+broken piece or its rubble on it. Edits elsewhere keep the tip, so the published
+world's eleven owner edits leave Find Work standing while a crate in Inn Street
+refuses it. Seeing a destination object alone does not prove a reachable route.
 
 ## Put the local line before the network
 
