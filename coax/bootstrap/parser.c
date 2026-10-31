@@ -3555,8 +3555,8 @@ static coax_a19_t_PS_Token coax_p_PS_frame_test_tokens(void) {
   int64_t coax_t100;
   int64_t coax_t101;
   coax_a19_t_PS_Token l_tokens = ((coax_a19_t_PS_Token){0});
-  (l_tokens).e[coax_index(INT64_C(0), 19, 4861)] = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(7)), .text = COAX_STR("frame", 5)});
-  ((l_tokens).e[coax_index(INT64_C(1), 19, 4861)]).kind = ((uint32_t)UINT64_C(8));
+  (l_tokens).e[coax_index(INT64_C(0), 19, 4862)] = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(7)), .text = COAX_STR("frame", 5)});
+  ((l_tokens).e[coax_index(INT64_C(1), 19, 4862)]).kind = ((uint32_t)UINT64_C(8));
   coax_a4_string l_names = ((coax_a4_string){{COAX_STR("handedness", 10), COAX_STR("convention", 10), COAX_STR("continuity", 10), COAX_STR("min_precision", 13)}});
   coax_a4_string l_words = ((coax_a4_string){{COAX_STR("right", 5), COAX_STR("cartesian", 9), COAX_STR("continuous", 10), COAX_STR("f32", 3)}});
   {
@@ -3564,26 +3564,23 @@ static coax_a19_t_PS_Token coax_p_PS_frame_test_tokens(void) {
     int64_t coax_hi95 = INT64_C(4);
     for (int64_t l_i = coax_lo95; l_i < coax_hi95; l_i++)
     {
-      int64_t l_at = coax_add_s64(INT64_C(2), coax_mul_s64(INT64_C(4), l_i, 4864), 4864);
-      coax_t96 = &((l_tokens).e[coax_index(l_at, 19, 4864)]);
-      *coax_t96 = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(1)), .text = (l_names).e[coax_index(l_i, 4, 4864)]});
-      ((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(1), 4864), 19, 4864)]).kind = ((uint32_t)UINT64_C(23));
-      coax_t97 = &((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(2), 4864), 19, 4864)]);
-      *coax_t97 = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(1)), .text = (l_words).e[coax_index(l_i, 4, 4864)]});
-      if (l_i != INT64_C(3))
-      {
-        ((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(3), 4864), 19, 4864)]).kind = ((uint32_t)UINT64_C(14));
-      }
+      int64_t l_at = coax_add_s64(INT64_C(2), coax_mul_s64(INT64_C(4), l_i, 4865), 4865);
+      coax_t96 = &((l_tokens).e[coax_index(l_at, 19, 4865)]);
+      *coax_t96 = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(1)), .text = (l_names).e[coax_index(l_i, 4, 4865)]});
+      ((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(1), 4865), 19, 4865)]).kind = ((uint32_t)UINT64_C(23));
+      coax_t97 = &((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(2), 4865), 19, 4865)]);
+      *coax_t97 = ((coax_t_PS_Token){.kind = ((uint32_t)UINT64_C(1)), .text = (l_words).e[coax_index(l_i, 4, 4865)]});
+      ((l_tokens).e[coax_index(coax_add_s64(l_at, INT64_C(3), 4865), 19, 4865)]).kind = ((uint32_t)UINT64_C(14));
     }
   }
-  ((l_tokens).e[coax_index(INT64_C(17), 19, 4865)]).kind = ((uint32_t)UINT64_C(9));
+  ((l_tokens).e[coax_index(INT64_C(17), 19, 4866)]).kind = ((uint32_t)UINT64_C(9));
   {
     int64_t coax_lo98 = INT64_C(0);
     int64_t coax_hi98 = INT64_C(19);
     for (int64_t l_i = coax_lo98; l_i < coax_hi98; l_i++)
     {
-      coax_t99 = &(((l_tokens).e[coax_index(l_i, 19, 4865)]).loc);
-      *coax_t99 = (coax_t100 = coax_add_s64(l_i, INT64_C(1), 4865), coax_t101 = coax_add_s64(INT64_C(200), l_i, 4865), ((coax_t_PS_Loc){.line = INT64_C(17), .column = coax_t100, .offset = coax_t101}));
+      coax_t99 = &(((l_tokens).e[coax_index(l_i, 19, 4866)]).loc);
+      *coax_t99 = (coax_t100 = coax_add_s64(l_i, INT64_C(1), 4866), coax_t101 = coax_add_s64(INT64_C(200), l_i, 4866), ((coax_t_PS_Loc){.line = INT64_C(17), .column = coax_t100, .offset = coax_t101}));
     }
   }
   return l_tokens;
