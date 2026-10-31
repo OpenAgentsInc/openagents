@@ -21,6 +21,7 @@ home="$out/home"; rm -rf "$home" "$out/settings.json"; mkdir -p "$home/work/open
 so="$here/zeron/fixtures/signed-out:/usr/bin:/bin"
 asks="$here/zeron/fixtures/asks:/usr/bin:/bin"
 room="$here/zeron/fixtures/room:/usr/bin:/bin"
+stream="$here/zeron/fixtures/stream:/usr/bin:/bin"
 mkdir -p "$home/.codex"; echo '{}' > "$home/.codex/auth.json"   # Codex's login on disk, for the stand-in codex
 three="wait 1 ; send Fix the sidebar width ; folder $home/work/openagents ; wait 1 ; send Review the tab bar ; folder $home/work/zeron ; wait 2"
 # name | size | steps | a line the run must print (or empty) | engine: demo, or the PATH the app starts with in an empty home | more arguments
@@ -28,6 +29,7 @@ cases=(
   "chat-1320x880|2640,1760|fixture open||demo"
   "chat-900x600|1800,1200|fixture open||demo"
   "type-and-paste|2640,1760|newchat ; type Hello from Coax ; key cmd+a ; menu Copy ; key end ; type , pasted:  ; menu Paste ; pasteboard|pasteboard: Hello from Coax|demo"
+  "chat-sonnet|2640,1760|wait 1 ; model Sonnet ; send What is two plus two? ; wait 1.2 ; last ; waitidle 10 ; last|last: Answered by claude-sonnet-5: two plus two is four, and the sum stays four however you group it.|$stream"
   "claude-missing|2640,1760|wait 2||/usr/bin:/bin"
   "claude-signed-out|2640,1760|wait 2 ; send hello ; wait 2||$so"
   "approval-waiting|2640,1760|access supervised ; send list the files ; wait 2 ; status|status: Waiting for your approval|$asks"

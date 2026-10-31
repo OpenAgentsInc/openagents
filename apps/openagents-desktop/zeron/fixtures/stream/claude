@@ -1,0 +1,29 @@
+#!/usr/bin/python3
+# A Claude Code for check.sh that streams its answer: it names the model it
+# was started with (--model) or switched to (set_model), and sends the answer a few words at a time, a
+# fifth of a second apart, so a shot mid-turn shows part of it. Lines carry
+# the fields the stream-json parser requires, as 2.1.316 writes them.
+import json, sys, time
+S = "00000000-0000-0000-0000-000000000000"
+USAGE = {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else "default"
+def out(x):
+    sys.stdout.write(json.dumps(x) + "\n"); sys.stdout.flush()
+for line in sys.stdin:
+    try: m = json.loads(line)
+    except Exception: continue
+    t = m.get("type")
+    if t == "control_request":
+        if m.get("request", {}).get("subtype") == "set_model": model = m["request"].get("model") or model
+        out({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"], "response": {"models": []}}})
+    elif t == "user":
+        words = ("Answered by " + model + ": two plus two is four, and the sum stays four however you group it.").split(" ")
+        for i, w in enumerate(words):
+            out({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": (" " if i else "") + w}},
+                 "parent_tool_use_id": None, "uuid": S, "session_id": S})
+            time.sleep(0.2)
+        text = " ".join(words)
+        out({"type": "assistant", "message": {"id": "m1", "model": model, "role": "assistant", "type": "message", "content": [{"type": "text", "text": text}],
+             "stop_reason": None, "stop_sequence": None, "usage": USAGE}, "parent_tool_use_id": None, "uuid": S, "session_id": S})
+        out({"type": "result", "subtype": "success", "is_error": False, "duration_ms": 3400, "duration_api_ms": 3400, "num_turns": 1,
+             "total_cost_usd": 0.008, "usage": USAGE, "modelUsage": {}, "permission_denials": [], "result": text, "uuid": S, "session_id": S})
