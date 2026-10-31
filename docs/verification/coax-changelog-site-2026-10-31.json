@@ -127,7 +127,15 @@
       ]
     },
     "release_marker": "No full-site PASSED marker was written for this scoped promotion.",
-    "automatic_sync": "Normal website builds regenerate all three outputs from coax/CHANGELOG.md; release smoke requires canonical source parity. Publishing the site is an explicit final Coax release checklist step."
+    "automatic_sync": "Normal website builds regenerate all three outputs from coax/CHANGELOG.md; release smoke requires canonical source parity. Publishing the site is an explicit final Coax release checklist step.",
+    "independent_review": {
+      "result": "passed",
+      "record": "/tmp/coax-changelog-publish-afad/independent-post/review.json",
+      "objects": 14,
+      "exact_data_payloads": 5,
+      "unrelated_full_text_sections_preserved": 60,
+      "stray_alias_absent": true
+    }
   },
   "release_requalification": {
     "base": "21dc5da9cadbfe493e9211d936eea617e6b260a7",
@@ -200,5 +208,19 @@
     "screenshots": "/tmp/coax-changelog-browser-staging-present",
     "visual_review": "Desktop and phone screenshots reviewed; latest 0.38.0 is readable.",
     "harness_correction": "Mark the outgoing document before navigation and wait for mobile presentation. Early phone screenshots could capture the previous document or an unpresented resized surface; final staging screenshots and interactions pass."
+  },
+  "observed_automatic_refresh": {
+    "release_commit": "575b776fca4f7340732bfbf951a2c7cbb64e166d",
+    "release_receipt": "gs://openagentsgemini-openagents-web/releases/20261031T153857Z/PASSED",
+    "change": "Another agent added a same-version compound-assignment fix to the canonical changelog. Its regular website release regenerated and published the reader and raw Markdown without a separate changelog upload.",
+    "canonical_bytes": 28796,
+    "canonical_sha256": "5f0f6b3a5dfa645ce581ae2bd819f8731241de7c91a090305c752c8a0938482a",
+    "exact_source_parity": true,
+    "public_http_smoke": "passed",
+    "public_browser": "passed",
+    "logs": [
+      "/tmp/coax-changelog-auto-refresh-smoke.log",
+      "/tmp/coax-changelog-browser-auto-refresh.log"
+    ]
   }
 }
