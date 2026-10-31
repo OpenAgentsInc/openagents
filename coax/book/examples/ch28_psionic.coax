@@ -1,0 +1,39 @@
+// Pure CPU metadata and scalar inference; no allocation or model artifact.
+// These entry points do not need an address-overlap observation or native shim.
+#load "../../../psionic/lib/tensor.coax";
+#load "../../../psionic/lib/learn.coax";
+#import "Basic";
+
+#test "book Psionic layout and index have literal integer expectations" {
+    shape := PsionicShape.{rank = 2, dims = [4] int.[2, 3, 0, 0]};
+    layout := psionic_tensor_layout(shape);
+    #assert layout.status == PsionicTensorStatus.ok && layout.elements == 6 && layout.bytes == 24;
+    #assert layout.strides[0] == 3 && layout.strides[1] == 1 && layout.strides[2] == 0 && layout.strides[3] == 0;
+    index := psionic_tensor_index(shape, [4] int.[1, 2, 0, 0]);
+    #assert index.status == PsionicTensorStatus.ok && index.offset == 5;
+    #assert psionic_tensor_index(shape, [4] int.[2, 0, 0, 0]).status == PsionicTensorStatus.index;
+}
+#test "book Psionic prediction checks status before using the scalar payload" {
+    prediction := psionic_predict(1.25f32, 3.0f32);
+    #assert prediction.status == PsionicStatus.ok && prediction.value == 3.75f32;
+    refused := psionic_predict(1.25f32, 17.0f32);
+    #assert refused.status == PsionicStatus.number && refused.value == 0;
+}
+
+// book:begin psionic
+main :: () {
+    shape := PsionicShape.{rank = 2, dims = [4] int.[2, 3, 0, 0]};
+    layout := psionic_tensor_layout(shape);
+    #assert layout.status == PsionicTensorStatus.ok;
+    index := psionic_tensor_index(shape, [4] int.[1, 2, 0, 0]);
+    #assert index.status == PsionicTensorStatus.ok;
+    print("tensor: % elements, % bytes, index %\n", layout.elements, layout.bytes, index.offset);
+
+    prediction := psionic_predict(1.25f32, 3.0f32);
+    #assert prediction.status == PsionicStatus.ok;
+    print("prediction: %\n", prediction.value);
+    refused := psionic_predict(1.25f32, 17.0f32);
+    #assert refused.status == PsionicStatus.number;
+    print("out-of-profile input refused\n");
+}
+// book:end psionic

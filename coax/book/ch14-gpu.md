@@ -14,18 +14,33 @@ and called from C, so a fragment shader and a unit test run the same
 source. In this chapter we'll write a small light library, test it,
 emit it as Metal, wire it to a hand-written vertex and fragment stage,
 and then look at how the real app does the same thing with
-`verse/light.coax`. We'll end with what's still a design: GPU struct
-layouts and full shader procedures.
+`verse/light.coax`. We'll end with the broader GPU layout and
+shader-declaration designs that remain separate work.
 
 > Note: `coax metal` and its scalar profile work in `coax0` 0.10.0, and
-> the iOS app ships with it. Everything under "Planned" at the end of the
-> chapter (`@gpu` structs, `shader` procedures, WGSL) is design only
-> (spec §15).
+> the iOS app ships with it. The `@gpu` struct and `shader` procedure
+> syntax under "Planned" remains design work (spec §15). The bounded
+> WGSL graphics command below is implemented through ordinary checked
+> Coax procedures and separate entry/binding inputs.
 >
 > A separate compute profile, `coax cuda` (0.23.0), compiles `#export_c`
 > kernels with loops, integers, fixed arrays and views to CUDA C. It is
 > described in the spec (§15) and used by the Psionic book's chapters 26 and
 > 30; this chapter stays with the Metal scalar profile.
+
+<!-- capability-claim: coax.wgsl.current -->
+A separate bounded graphics path is implemented:
+`coax wgsl FILE --vertices A,B --fragments C,D --bindings F [--strip P]`
+writes a WGSL module from ordinary checked Coax procedures. Its admitted
+subset includes vectors, records, graphics entry wrappers and resource
+bindings; unsupported entry shapes, bindings and layouts are refused.
+Everglade's main graphics module is generated from `verse/everglade/gpu.coax`
+with `gpu.module` and `gpu.bindings`. Its particles and other realm shaders
+still have their separately documented paths. This does not implement the
+planned `@gpu`/`shader` syntax, a general CPU/GPU layout model, or a qualified
+Psionic browser compute backend. Device and numerical evidence remains scoped
+to each actual consumer.
+<!-- /capability-claim -->
 
 ## What `coax metal` accepts
 
@@ -452,9 +467,9 @@ node_vs :: (v: Vertex_In, @instance inst: Instance, @uniform frame: Frame_Unifor
 A `shader` procedure would be a whole stage written in a restricted
 Coax: no general pointers, no allocation, no context and no recursion,
 with explicit access modes for each resource. It would lower to MSL for
-Metal and WGSL for WebGPU, each validated separately. Today's scalar
-profile is a much smaller subset of that idea, with no vectors and no
-resources.
+Metal and WGSL for WebGPU, each validated separately. The `coax metal`
+scalar profile has no vectors or resources. The implemented WGSL command
+uses its own admitted graphics subset, rather than this planned syntax.
 
 ## Things that stay true either way
 
@@ -489,12 +504,12 @@ the math is in Coax and tested, and the stage code stays in Metal.
 `coax metal` compiles a Coax file's `f32` and `bool` procedures to Metal
 Shading Language. Inside that profile you get `if`/`else`, locals,
 non-recursive calls and the built-in math functions, and the same file
-can carry `#test` and `#forall` checks that run on the CPU. Stage code,
-vectors, buffers and loops stay in hand-written Metal that calls the
-generated functions, and the two are concatenated into one source. The
-iOS app builds its whole visual style this way from `light.coax`. What
-isn't solved yet is sharing data layouts between CPU and GPU; that, and
-full shader procedures, are the planned part.
+can carry `#test` and `#forall` checks that run on the CPU. In that iOS
+scalar path, stage code, vectors, buffers and loops stay in hand-written
+Metal that calls the generated functions, and the two are concatenated
+into one source. The separate WGSL path generates bounded graphics modules
+for the named consumers. General CPU/GPU layout qualification and the
+planned `@gpu`/`shader` declaration forms remain separate work.
 
 Next we'll look at the other boundary Coax code crosses constantly: the
 protocol messages OpenAgents sends and receives.

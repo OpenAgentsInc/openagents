@@ -1,0 +1,58 @@
+// Offline RFC 6455 fixtures, not a network client.
+// The fixed mask is test data; live clients get a fresh mask from entropy.
+// All writable output arrays are disjoint from the mask and literal payload.
+#load "../../lib/net/ws.coax";
+#import "Basic";
+
+#test "book protocol uses the independent RFC masked Hello vector" {
+    mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; out: [11] u8;
+    expected := [11] u8.[0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58];
+    n := ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[..]);
+    #assert n == 11;
+    for i: 0..<11 { #assert out[i] == expected[i]; }
+}
+#test "book protocol reads a separately authored unmasked server frame" {
+    server := [7] u8.[0x81, 5, 'H', 'e', 'l', 'l', 'o'];
+    frame := ws_frame_read(cast(string) server[..], 5);
+    #assert frame.status == WS_FRAME_OK && frame.fin && frame.op == WS_OP_TEXT;
+    #assert frame.header == 2 && frame.length == 5 && frame.total == 7;
+    #assert cast(string) server[frame.header..<frame.total] == "Hello";
+    #assert ws_frame_read(cast(string) server[0..<6], 5).status == WS_FRAME_MORE;
+    #assert ws_frame_read(cast(string) server[..], 4).status == WS_FRAME_TOO_BIG;
+}
+#forall "book protocol exact output capacity refuses before writing" capacity: 0..<12 {
+    mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; out: [12] u8;
+    for i: 0..<12 { out[i] = 0xa5; }
+    n := ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[0..<capacity]);
+    if capacity < 11 {
+        #assert n == -1;
+        for b: out { #assert b == 0xa5; }
+    } else { #assert n == 11 && out[11] == 0xa5; }
+}
+
+// book:begin protocol
+main :: () {
+    mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; client: [11] u8;
+    written := ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], client[..]);
+    #assert written == 11;
+    print("client frame: % bytes\n", written);
+
+    // Server input is an independent unmasked fixture, not the client output.
+    server := [7] u8.[0x81, 5, 'H', 'e', 'l', 'l', 'o'];
+    frame := ws_frame_read(cast(string) server[..], 5);
+    #assert frame.status == WS_FRAME_OK;
+    print("server payload: %\n", cast(string) server[frame.header..<frame.total]);
+
+    partial := ws_frame_read(cast(string) server[0..<6], 5);
+    #assert partial.status == WS_FRAME_MORE;
+    print("partial frame needs more bytes\n");
+    oversized := ws_frame_read(cast(string) server[..], 4);
+    #assert oversized.status == WS_FRAME_TOO_BIG;
+    print("oversized frame refused\n");
+
+    short: [12] u8; for i: 0..<12 { short[i] = 0xa5; }
+    #assert ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], short[0..<10]) == -1;
+    for b: short { #assert b == 0xa5; }
+    print("short output refused without writes\n");
+}
+// book:end protocol

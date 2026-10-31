@@ -1,0 +1,5 @@
+client frame: 11 bytes
+server payload: Hello
+partial frame needs more bytes
+oversized frame refused
+short output refused without writes

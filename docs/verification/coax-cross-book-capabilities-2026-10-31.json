@@ -265,9 +265,16 @@
     ]
   },
   "push": {
-    "outcome": "ready_after_all_required_gates",
-    "tested_code_commit": "58650ba84380271596a706912308346e23b65f41",
-    "note": "Final amendment adds evidence and work definitions only; compiler and page inputs remain unchanged."
+    "outcome": "pushed",
+    "commit": "99f0d403f2b335654a54e1a60611f8c8251b3776",
+    "utc": "2026-10-31 13:53 UTC",
+    "rule": "The final rebase introduced only non-compiler inputs; provenance and reviewed claim bindings were verified before the push.",
+    "project_tasks_resolved": [
+      "coax-books-current-capabilities",
+      "coax-book-usage-accuracy"
+    ],
+    "project_markdown": "https://openagents.com/projects/coax/index.md",
+    "project_data_log": "/tmp/coax-cross-book-project-data.log"
   },
   "prose_baselines": {
     "coax": "/tmp/coax-current-book-prose-baseline.json",

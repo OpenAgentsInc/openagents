@@ -170,7 +170,7 @@ This table maps what Coax adds to the chapters that cover it:
 | Checks | `#test`, `#forall`, `#authority` and `coax mutate` today | [10](ch10-writing-checks.md) |
 | Parallelism | A job's capture list is its effects (planned) | [12](ch12-jobs.md) |
 | Determinism | Plain IEEE floats today; `strict` mode, `fixed32` and ordered tables planned | [13](ch13-determinism.md) |
-| GPU | A restricted Metal emitter today; shaders in Coax sharing struct layouts planned | [14](ch14-gpu.md) |
+| GPU | Scalar Metal, bounded compute and WGSL graphics modules implemented; general GPU layouts and shader declaration syntax remain planned | [14](ch14-gpu.md) |
 | Protocol | Field numbers, limits and versions on the type | [15](ch15-protocol.md) |
 | Hot reload | Persistent state behind a versioned C boundary (planned) | [16](ch16-builds-hot-reload.md) |
 | Tooling | Errors as JSON today; the compiler as a server agents can query, planned | [19](ch19-agents.md) |

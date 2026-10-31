@@ -52,6 +52,10 @@
 
 * [27. Building a voice system in pieces](ch27-case-study-voice.md)
 
+## Part VIII. Reusing libraries
+
+* [28. Reusing bounded libraries](ch28-library-recipes.md)
+
 ## Appendices
 
 * [A. Keywords, directives, types and status](appendix-a-keywords.md)

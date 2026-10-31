@@ -1,0 +1,588 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "issue": "coax-library-contract-recipes",
+  "root_id": "fc62f830454f904f54a8c555c65dae542f6b6ae5703ae8309eba1ffd21b47397",
+  "started_utc": "2026-10-31 13:54 UTC",
+  "deadline_utc": "2026-10-31 15:54 UTC",
+  "baseline_commit": "99f0d403f2b335654a54e1a60611f8c8251b3776",
+  "compiler_version": "0.37.0",
+  "compiler_provenance": [
+    "coax-provenance-v1",
+    "841eca107cc9c5a7601550a11568407ab1ddbfaf7b7cdf4f4b71f20ae8f05f50",
+    "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+    "49a6e667634109e0c1c7efb4c8119ad5b97d48f44db3f1a8b5c7840e083d8878"
+  ],
+  "scope": "Selected library contracts, three offline cross-domain book recipes, generic borrowed sequence operations used by actual Verse/Psionic consumers, and exact book-example selection.",
+  "recipe_qualification": {
+    "folder": "/tmp/coax-library-recipes-new-main-yshbg5o5",
+    "started_utc": "2026-10-31T14:24:08.139814+00:00",
+    "psionic_structure": {
+      "command": "python3 psionic/tests/book.py",
+      "exit_status": 0,
+      "log": "/tmp/coax-library-recipes-new-main-yshbg5o5/psionic-structure.log",
+      "sha256": "c6cb956f6f21d301ea658752d6f03e13f296b758e8979f3ecec97fb3170a7423",
+      "detail": "book structure: 96 programs, 378 source-linked listings, local links pass\n",
+      "reason": "PLAN and roadmap prose changed for incoming bounded graphics WGSL; this is the one new-input structure run."
+    },
+    "compiler": {
+      "version": "coax0 0.37.0",
+      "sha256": "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+      "fingerprint": "645e256e20ea0656b2d07bc7f2636d1d3462f609c3b3c589ee96c47246b24625",
+      "provenance_record": [
+        "coax-provenance-v1",
+        "645e256e20ea0656b2d07bc7f2636d1d3462f609c3b3c589ee96c47246b24625",
+        "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+        "ab76e1191c61ceb65a2d65ac216a7be10884bb0615fcb8fed4c668b0d1383519"
+      ],
+      "provenance_copy": "/tmp/coax-library-recipes-new-main-yshbg5o5/provenance.record",
+      "build_result": "/tmp/coax-library-new-main-build-result.json"
+    },
+    "selected-book": {
+      "command": [
+        "bash",
+        "coax/book/check-examples.sh",
+        "--only",
+        "ch28_verse",
+        "ch28_protocol",
+        "ch28_psionic",
+        "structure"
+      ],
+      "exit_status": 0,
+      "seconds": 3.237,
+      "log": "/tmp/coax-library-recipes-new-main-yshbg5o5/selected-book.log",
+      "sha256": "f74dc16b3438c23c0edf04e38dc73b4fc2b59761c59cafae23031aa16237b37b",
+      "detail": "book navigation, local links and checked excerpts pass\nselected book checks pass (4 of 106; partial verification)\n"
+    },
+    "native-four": {
+      "command": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "coax/tests/library_recipes.py",
+        "LibraryRecipesTests.test_protocol_checked_o0_native_sanitized",
+        "LibraryRecipesTests.test_protocol_checked_o2_native_sanitized",
+        "LibraryRecipesTests.test_psionic_checked_o0_native_sanitized",
+        "LibraryRecipesTests.test_psionic_checked_o2_native_sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 2.848,
+      "log": "/tmp/coax-library-recipes-new-main-yshbg5o5/native-four.log",
+      "sha256": "6c34a86cdfd9be1661f0916bef09f19bdab6b8a5e3381d6eaf000b9608362ffc",
+      "detail": "test_protocol_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o0_native_sanitized) ... ok\ntest_protocol_checked_o2_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o2_native_sanitized) ... ok\ntest_psionic_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o0_native_sanitized) ... ok\ntest_psionic_checked_o2_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o2_native_sanitized) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 2.772s\n\nOK\n"
+    },
+    "issue": "coax-library-contract-recipes",
+    "issue_alias": "fc62",
+    "qualified_utc": "2026-10-31T14:28:50.386931+00:00",
+    "outcome": "passed",
+    "qualification_reason": "Compiler inputs changed on incoming main 2431e6eb7c, including direct WGSL compiler work; the previous 0.37 receipts are retained separately.",
+    "prior_receipt": "/tmp/coax-library-recipes-qualification.json",
+    "source_sha256": {
+      "coax/book/examples/ch28_verse.coax": "b70e1c5c260333a551d822555098a6e79005078f8ec67ae80d0ae34e8876148e",
+      "coax/book/examples/ch28_verse.out": "c0258ca84c93f20e6034c1d61fae708d2d3f1aa179a7ea8d1cb2dfa0074321cb",
+      "coax/book/examples/ch28_protocol.coax": "a42a1bd76c586741ea280180d66c616e744b93ed551af4bd6f7d3145791a7e50",
+      "coax/book/examples/ch28_protocol.out": "ec3d70b12edfa02bb026bd4908c53241afaaa9d88ede8cc328005184e1fd8a18",
+      "coax/book/examples/ch28_psionic.coax": "2bcc8df273001c412dbd748439fb3f311d22a7de8f1f0e19a5f93a2d061130a4",
+      "coax/book/examples/ch28_psionic.out": "9f66a05112f42bab06b7b219089e5744018dbba91e1c4668f7d70712ae700f76",
+      "coax/tests/library_recipes.py": "f8fa73e59ba7ce4ca4dd5f199953bb75728d28ed0f81fda1e4c31a7d769c100b",
+      "coax/book/check-examples.sh": "8bd1663ee67a950db22bed10a50c990f963be8227c88a357271b7ed4a5802e7f",
+      "psionic/book/PLAN.md": "bde36c47fc7642e3a6c4ca0b23334424c4ea6cfcede3c7d6785afe024b9be7a0",
+      "psionic/docs/roadmap.md": "6f38763a7bbe2438fca2f1f675783e24eb5b892139a3165ffa0a1afae08a3cdb"
+    },
+    "focused_cases": {
+      "qualified": 6,
+      "native_methods_executed": [
+        "LibraryRecipesTests.test_protocol_checked_o0_native_sanitized",
+        "LibraryRecipesTests.test_protocol_checked_o2_native_sanitized",
+        "LibraryRecipesTests.test_psionic_checked_o0_native_sanitized",
+        "LibraryRecipesTests.test_psionic_checked_o2_native_sanitized"
+      ],
+      "authored_checks_reused": [
+        "LibraryRecipesTests.test_protocol_checks",
+        "LibraryRecipesTests.test_psionic_checks"
+      ],
+      "checks_receipt": "selected-book",
+      "explanation": "The selected book gate executed both complete recipe Coax check suites once. The standalone runner then executed only the four native checked O0/O2 ASan/UBSan cases, avoiding duplicate passing checks."
+    },
+    "scope": [
+      "Selected Coax book units: ch28_verse, ch28_protocol, ch28_psionic, structure; debug/release stdout and exit status, authored checks and current structure/claim bindings.",
+      "Four actual generated-C native checks: protocol and Psionic at checked O0/O2 with ASan/UBSan; exact stdout, empty stderr and exit0.",
+      "Psionic structure reran once because its WGSL prose changed:96 programs, 378 source-linked listings and local links.",
+      "No model, hardware, network, credential or downloaded-code execution.",
+      "Old raw receipts were preserved; no product code, source examples or runner logic were edited for this qualification."
+    ],
+    "source_snapshot_head": "8f242171cf0f9ac9f8ac9720390a79b60e3bbfb9",
+    "library_source_sha256": {
+      "coax/lib/net/ws.coax": "63516fa8fc61e7e04c13db36af37f85f5651a86731db3b5c6ff264f990e13e1f",
+      "coax/lib/crypto/sha1.coax": "b668ce0c73e20fdf3f2ba26460ac0c92eaa75cfd5f86d0372186d106f294aa3d",
+      "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "psionic/lib/learn.coax": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5"
+    }
+  },
+  "sequence_qualification": {
+    "outcome": "passed",
+    "record": "docs/verification/coax-sequence-adoption-2026-10-31.json",
+    "sha256": "bd2d455b63982850d7b62a81c5d0411311e25dd815a03cb6bfaa48fcb822e9a2",
+    "native": {
+      "record": "/tmp/coax-sequence-B-rebase-e6c/combined-native-qualification.json",
+      "sha256": "3daa09d49f0b1bba180ef60e908f94ab2f69565714d413069fbccb17e3b0fc9d",
+      "build_variants": 20,
+      "dimensions": [
+        "before/after actual consumers",
+        "checked native O0/O2",
+        "plain and ASan/UBSan"
+      ],
+      "generic_cases_per_variant": 7091,
+      "verse_cases_per_variant": 37884,
+      "psionic_cases_per_variant": 1284,
+      "public_api": {
+        "verse": {
+          "public_header_bytes_identical": true,
+          "sha256": "70fb140cc3d7b4e304de907d0e4853ba1e35b1316ded77eddbb5ada220d789a8"
+        },
+        "psionic": {
+          "public_header_bytes_identical": true,
+          "sha256": "bc7d1d1b254a5ae2905654242fa187b181617caeb91762085d63a7400910a9ca"
+        }
+      },
+      "explicit_target_allocations": 0,
+      "trap_cases": [
+        "negative and past-end sequence indices",
+        "original checked INT64_MIN formatting overflow"
+      ],
+      "scope": "Independent whole-buffer position/snprintf/header-concatenation oracles and guards, including empty/reversed ranges, sticky bad flags and partial negative-prefix writes. Four sequence and eight Verse profiles retain historical execution with exact current regenerated artifact identity; eight changed Psionic profiles are fresh. The Psionic count observes private sv_reverse calls. No host effects, model inference, GPU or browser execution.",
+      "fault_launcher_followup": {
+        "record": "/tmp/coax-sequence-B/quiet-faults.json",
+        "sha256": "340e189b9877f326cd00113ac5465d3effb3f77ddd7827596c49e6e847a540a6",
+        "cases": 16,
+        "scope": "Only changed expected-fault launching/classification against hash-verified previously qualified native artifacts; passing output/mutation/cost profiles were not rerun. Existing quiet_crash launcher suppresses child crash dialogs without changing real signals. This remains a historical launcher receipt; fresh Verse trap classification is also recorded in the new native receipt."
+      },
+      "fresh_variants": 8,
+      "reused_historical_variants": 12,
+      "psionic_target_calls_per_variant": 1674
+    },
+    "authority": {
+      "library": {
+        "checks": 4,
+        "finite_cases": 25,
+        "mutants": 27,
+        "killed": 27,
+        "survived": 0,
+        "evidence": "/tmp/coax-sequence-B/mutation-green.json",
+        "evidence_sha256": "e9ccaa5cb7b93658e2e2c1fdc193a4a139a8a334bf85cfb091bcade907077a38",
+        "source_sha256": "1beee0a14bbad97d024a44d6f211fb62ec6976bf6e95bdc52e3be6af78c2caef",
+        "historical_compiler": "coax0 0.37.0",
+        "historical_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+        "reused": true,
+        "reuse_scope": "Retained exact-source mutation receipt under the original compiler; unchanged checker/evaluator/verification/mutation/profile/budget/seed inputs are listed in the component proof. No new-compiler mutation score is claimed.",
+        "receipt_bindings_checked": {
+          "all_source_units_byte_identical": true,
+          "source_units": 1,
+          "profile": {
+            "arithmetic": "checked",
+            "selected_runtime_arithmetic": "checked",
+            "library": true
+          },
+          "selection": {
+            "only": null,
+            "list": false,
+            "root_only": false
+          },
+          "budgets": {
+            "check_steps": 20000000,
+            "check_slots": 33554432,
+            "check_containers": 2097152,
+            "run_steps": 100000
+          }
+        }
+      },
+      "consumer": {
+        "path": "psionic/lib/serve-engine.coax",
+        "scope": "Current root-only mutation with complete imported baseline checks and authority coverage",
+        "checks": 317,
+        "authority_claims": 1,
+        "mutants": 474,
+        "killed": 474,
+        "survived": 0,
+        "evidence": "/tmp/coax-sequence-B-rebase-e6c/psionic-mutation.json",
+        "evidence_sha256": "7dae4ce8fe9d5f67a0f71a28326d9e645ca59f304e833b75a410678ebb97997b",
+        "compiler": {
+          "version": "coax0 0.37.0",
+          "sha256": "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de"
+        },
+        "reused": false,
+        "source_sha256": "18254077b1a4aace6fde3a3eceb21a811a2396338e88c34315a6e65f7452d49d",
+        "receipt_bindings_checked": {
+          "all_source_units_byte_identical": true,
+          "source_units": 63,
+          "profile": {
+            "arithmetic": "checked",
+            "selected_runtime_arithmetic": "checked",
+            "library": true
+          },
+          "selection": {
+            "only": null,
+            "list": false,
+            "root_only": true
+          },
+          "budgets": {
+            "check_steps": 20000000,
+            "check_slots": 33554432,
+            "check_containers": 2097152,
+            "run_steps": 100000
+          }
+        }
+      }
+    },
+    "requalification": {
+      "reason": "Incoming e6c baseline includes three changed Psionic dependencies and new release-gate/compiler-cache inputs.",
+      "source_snapshot_head": "e748cd3dfe889f2531d6697767a4134930da1dc4",
+      "checked_compiler_build_record": "docs/verification/coax-changelog-release-2026-10-31.json",
+      "historical_record": "/tmp/coax-sequence-B-rebase-e6c/historical-sequence-adoption.json",
+      "historical_record_sha256": "d2db68d0875d6e925dcec2dee9cbdb492177e8243422ad4e4e5c31fd2b4b292b",
+      "baseline_archive": "/tmp/coax-sequence-B-rebase-e6c/baseline-manifest.json",
+      "baseline_archive_manifest_sha256": "be15d1752d7690aae60cb300aef0cb78f0cbde616df71d949a9b55e241ac9632",
+      "artifact_comparison": "/tmp/coax-sequence-B-rebase-e6c/artifact-comparison.json",
+      "artifact_comparison_sha256": "bb4aa965c09985521e181ec8f80b5f796593809e4ff2cd29b5cd0f25a1d6aa98",
+      "fresh_native_variants": 8,
+      "reused_identical_input_native_variants": 12,
+      "fresh_mutation": "serve-engine root-only, complete current imported baseline",
+      "reused_mutation": "sequence-only historical receipt with unchanged semantic components",
+      "scope": "No unchanged passing native profile or sequence mutation run was repeated. Changed Psionic translation units and imported baseline received fresh qualification."
+    },
+    "cost_summary": "Public headers are byte-identical. Source removes one 24-byte Verse temporary, but O0 adds helper frames and is not a measured memory win. Stack reports are per-function native compiler observations, not complete transitive peak stack. O2 inlining is observed, not promised by source. Object sizes include debug data and the test translation unit; whole-test timings are not isolated performance benchmarks."
+  },
+  "book_selector": {
+    "outcome": "passed",
+    "tests": 9,
+    "qualification": {
+      "red_log": "/tmp/coax-book-selection-red.log",
+      "red_result": "9 tests,13 subtest/assertion failures against the previous runner; fixture/compiler execution is isolated fake tooling, no real examples rerun",
+      "green_log": "/tmp/coax-book-selection-green.log",
+      "green_result": "9 tests passed,4.120seconds",
+      "cases": [
+        "list without execution",
+        "exact selection and debug/release fixtures",
+        "duplicate-name deduplication",
+        "empty/unknown selection refused before compiler/build/fixtures",
+        "filtered list without compiler",
+        "no-argument full sequence and nonzero expected exit",
+        "special host/check units",
+        "compile-only and structure selection",
+        "output mismatch remains failure"
+      ]
+    },
+    "source_sha256": {
+      "coax/book/check-examples.sh": "8bd1663ee67a950db22bed10a50c990f963be8227c88a357271b7ed4a5802e7f",
+      "coax/tests/book_selection.py": "43a34d6e7189c66dbb43532827148687984a0a8a66aa71830149df4d643536b6"
+    },
+    "scope": "These fixture-only regression inputs are unchanged. Retain the earlier passing result; other files in the historical index handoff later received unrelated README/WGSL prose updates."
+  },
+  "contracts_and_navigation": {
+    "outcome": "passed",
+    "index": "coax/LIBRARIES.md",
+    "chapter": "coax/book/ch28-library-recipes.md",
+    "selected_book_gate": {
+      "command": [
+        "bash",
+        "coax/book/check-examples.sh",
+        "--only",
+        "ch28_verse",
+        "ch28_protocol",
+        "ch28_psionic",
+        "structure"
+      ],
+      "exit_status": 0,
+      "seconds": 3.237,
+      "log": "/tmp/coax-library-recipes-new-main-yshbg5o5/selected-book.log",
+      "sha256": "f74dc16b3438c23c0edf04e38dc73b4fc2b59761c59cafae23031aa16237b37b",
+      "detail": "book navigation, local links and checked excerpts pass\nselected book checks pass (4 of 106; partial verification)\n"
+    },
+    "psionic_structure": {
+      "command": "python3 psionic/tests/book.py",
+      "exit_status": 0,
+      "log": "/tmp/coax-library-recipes-new-main-yshbg5o5/psionic-structure.log",
+      "sha256": "c6cb956f6f21d301ea658752d6f03e13f296b758e8979f3ecec97fb3170a7423",
+      "detail": "book structure: 96 programs, 378 source-linked listings, local links pass\n",
+      "reason": "PLAN and roadmap prose changed for incoming bounded graphics WGSL; this is the one new-input structure run."
+    },
+    "canonical_gate_wiring": "coax/tests/run.sh includes the already-qualified focused regression suites, sequence authority checks/mutation and current native profiles. Shell syntax was checked; the unchanged full compiler suite was not repeated."
+  },
+  "push": {
+    "outcome": "ready_to_push",
+    "target": "origin/main"
+  },
+  "limits": [
+    "Raw views remain caller-owned; no general ownership or lifetime analysis is introduced.",
+    "No network, credentials, model download, original-weight inference or new GPU qualification is needed or claimed.",
+    "A fixed WebSocket mask is offline fixture data, not a live-client randomness policy.",
+    "Psionic metadata/predict recipes do not exercise a fake overlap observation or pretend to copy tensors.",
+    "Helper call counts, source scratch removal and actual measured native costs must remain distinct."
+  ],
+  "outcome": "passed",
+  "visual_gate": {
+    "outcome": "passed",
+    "command": [
+      "coax/web/golden-check.sh",
+      "--commit",
+      "8f242171cf0f9ac9f8ac9720390a79b60e3bbfb9"
+    ],
+    "commit": "8f242171cf0f9ac9f8ac9720390a79b60e3bbfb9",
+    "exit_code": 0,
+    "seconds": 264.09690762503305,
+    "log": "/tmp/coax-library-merged-golden.log",
+    "scope": "Executed at 8f242171cf, then retained as browser-runtime evidence after source-scoped review of the later rebase. This is not a new-HEAD automated golden pass or a measured binary-identity claim.",
+    "later_rebase_retention": {
+      "outcome": "supported",
+      "audit": "/tmp/coax-browser-source-graph-audit.json",
+      "sha256": "80fa6037d23f8aa7cfe8d8bea6644927e1fc660743d2b1d94b4aa7351685b73f",
+      "queried_roots": 66,
+      "successful_roots": 65,
+      "source_paths": 330,
+      "changed_consumed_paths": 0,
+      "scope": "Declared browser wasm links, homepage/voice and shader roots. Linked compiler language/emission components, Verse, browser tooling and app build inputs are unchanged. Changed Psionic ML/robotics files are outside those closures.",
+      "caveat": "project.coax needs absent generated projects/baked.coax; project pages are outside the current 61-page golden registry. Source-scope retention is explicit; no fresh execution or binary equality is inferred."
+    }
+  },
+  "issue_followup": {
+    "slug": "r0-native-check-baseline-verdict",
+    "root_prefix": "a81ca15d",
+    "proof": "/tmp/coax-native-baseline-audit.json",
+    "scope": "Legacy subset differential agreement omits a failing quantified baseline; the next ordered task adds a versioned strict companion while preserving v1 meaning. No native helper implementation is bundled."
+  },
+  "updated_utc": "2026-10-31T14:42:47.558292+00:00",
+  "rebase": {
+    "onto": "b4e1bc9f9d84dc28093bbe422fd1e17e869ddd5e",
+    "compiler_provenance": "Current checked cache841eca installed through normal coax/build.sh and verified; original receipts retain their recorded compiler identities.",
+    "sequence_source_identities": "all final committed inputs match retained qualification",
+    "claim_bindings": "passed /tmp/coax-library-final-rebase-claims.log",
+    "scope": "Preserved all upstream source and documentation, including WGSL, release gate, Psionic policy and book changes. Current source bindings and appropriately retained observations are recorded separately.",
+    "latest_onto": "e6c10c379b",
+    "new_compiler_inputs": "New release/changelog gates qualified by their upstream checked build and current preflight. Compiler language/checker/evaluator/emitter components remain unchanged; changed Psionic inputs have fresh focused native and root-only mutation evidence.",
+    "merge_resolution": "Preserved upstream release_rc and our library_tools_rc/sequence_rc in canonical test aggregation; shell syntax passed."
+  },
+  "incoming_feature_reconciliation": {
+    "upstream": "2431e6eb7c848848102d1c8a5d9ab3384a3399f7",
+    "scope": "Correct newly stale direct-WGSL graphics statements in both books while retaining the distinct unqualified Psionic WebGPU compute path and planned general shader/layout syntax.",
+    "selected_claim_count": 9,
+    "new_claim": "coax.wgsl.current",
+    "review_log": "/tmp/coax-library-wgsl-claims-review.log",
+    "prose_review": "/tmp/coax-wgsl-claim-review.json",
+    "psionic_structure_state": "/tmp/coax-library-recipes-new-main-state.json",
+    "gates_pending": []
+  },
+  "new_main_checked_build": {
+    "exit_code": 0,
+    "seconds": 548.2373152920045,
+    "log": "/tmp/coax-library-new-main-build.log"
+  },
+  "new_main_compiler_provenance": [
+    "coax-provenance-v1",
+    "645e256e20ea0656b2d07bc7f2636d1d3462f609c3b3c589ee96c47246b24625",
+    "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+    "ab76e1191c61ceb65a2d65ac216a7be10884bb0615fcb8fed4c668b0d1383519"
+  ],
+  "initial_compiler_provenance": [
+    "coax-provenance-v1",
+    "bd7c11f2d901e28bf4f30213c9ad8044dacde327dfbc3061fe96fabfd74579db",
+    "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+    "11d9102d6a60d980821295fa63d529538d4e4eff1807eb4449b38d1e854eec35"
+  ],
+  "historical_recipe_qualification": {
+    "issue": "coax-library-contract-recipes",
+    "issue_alias": "fc62",
+    "compiler_version": "coax0 0.37.0",
+    "compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+    "source_sha256": {
+      "coax/book/examples/ch28_protocol.coax": "a42a1bd76c586741ea280180d66c616e744b93ed551af4bd6f7d3145791a7e50",
+      "coax/book/examples/ch28_protocol.out": "ec3d70b12edfa02bb026bd4908c53241afaaa9d88ede8cc328005184e1fd8a18",
+      "coax/book/examples/ch28_psionic.coax": "2bcc8df273001c412dbd748439fb3f311d22a7de8f1f0e19a5f93a2d061130a4",
+      "coax/book/examples/ch28_psionic.out": "9f66a05112f42bab06b7b219089e5744018dbba91e1c4668f7d70712ae700f76",
+      "coax/tests/library_recipes.py": "f8fa73e59ba7ce4ca4dd5f199953bb75728d28ed0f81fda1e4c31a7d769c100b"
+    },
+    "check_first": {
+      "log": "/tmp/coax-library-recipes-placeholder-red.log",
+      "sha256": "99efaec876f57c23a0b5a44352e49a07e7c2ef49528791b632e0f6b51c0e41b5",
+      "outcome": "Both placeholder mains compiled and ran under native O0 sanitizers but failed the previously authored exact output expectations before integration.",
+      "detail": "test_protocol_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o0_native_sanitized) ... FAIL\ntest_psionic_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o0_native_sanitized) ... FAIL\n\n======================================================================\nFAIL: test_protocol_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o0_native_sanitized)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/library_recipes.py\", line 57, in test_protocol_checked_o0_native_sanitized\n    self.native(\"ch28_protocol\", \"-O0\")\n    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/library_recipes.py\", line 48, in native\n    self.assertEqual(result.stdout, expected)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: b'placeholder\\n' != b'client frame: 11 bytes\\nserver payload: H[96 chars]es\\n'\n\n======================================================================\nFAIL: test_psionic_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o0_native_sanitized)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/library_recipes.py\", line 63, in test_psionic_checked_o0_native_sanitized\n    self.native(\"ch28_psionic\", \"-O0\")\n    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/library_recipes.py\", line 48, in native\n    self.assertEqual(result.stdout, expected)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: b'placeholder\\n' != b'tensor: 6 elements, 24 bytes, index 5\\npr[42 chars]ed\\n'\n\n----------------------------------------------------------------------\nRan 2 tests in 1.399s\n\nFAILED (failures=2)\n"
+    },
+    "qualification": {
+      "command": "python3 coax/tests/library_recipes.py",
+      "log": "/tmp/coax-library-recipes-green.log",
+      "sha256": "512ae62df039c250f9059b2fb2d9f1637179c7e631f2509f2908303226421cbf",
+      "tests_passed": 6,
+      "seconds": 2.917,
+      "detail": "test_protocol_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o0_native_sanitized) ... ok\ntest_protocol_checked_o2_native_sanitized (__main__.LibraryRecipesTests.test_protocol_checked_o2_native_sanitized) ... ok\ntest_protocol_checks (__main__.LibraryRecipesTests.test_protocol_checks) ... ok\ntest_psionic_checked_o0_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o0_native_sanitized) ... ok\ntest_psionic_checked_o2_native_sanitized (__main__.LibraryRecipesTests.test_psionic_checked_o2_native_sanitized) ... ok\ntest_psionic_checks (__main__.LibraryRecipesTests.test_psionic_checks) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 2.917s\n\nOK\n",
+      "coverage": [
+        "Both Coax entrypoint check suites, including authored recipe #test/#forall and imported authority checks",
+        "Actual generated-C native checked arithmetic at O0 and O2 with ASan and UBSan",
+        "Exact stdout, empty stderr, exit0 for both native recipes"
+      ],
+      "sanitizer_flags": [
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer"
+      ],
+      "float_flags": [
+        "-ffp-contract=off",
+        "-fno-fast-math"
+      ]
+    },
+    "entrypoints": {
+      "protocol": [
+        "ws_frame_write",
+        "ws_frame_read"
+      ],
+      "psionic": [
+        "psionic_tensor_layout",
+        "psionic_tensor_index",
+        "psionic_predict"
+      ]
+    },
+    "scope": [
+      "No external network, credentials, model data, downloads or runtime Python",
+      "Fixed RFC mask is fixture data; independent unmasked input is not a writer roundtrip",
+      "Mask, payload and writable outputs are disjoint live storage; no fabricated overlap observation",
+      "Psionic recipe performs metadata and scalar inference, not tensor copying/training or GPU execution",
+      "No new product policy or library source was introduced",
+      "Only the six focused cases ran; existing full gates were not repeated"
+    ]
+  },
+  "historical_index_qualification": {
+    "schema_version": 1,
+    "issue": "coax-library-contract-recipes",
+    "at": "2026-10-31T14:03:02.060174+00:00",
+    "owner_scope": [
+      "README.md",
+      "coax/README.md",
+      "coax/LIBRARIES.md",
+      "coax/book/README.md",
+      "coax/book/SUMMARY.md",
+      "coax/book/ch28-library-recipes.md",
+      "coax/book/check-examples.sh",
+      "coax/tests/book_selection.py"
+    ],
+    "source_sha256": {
+      "README.md": "4e36240be6c7551fb0636c7c4b3eab6099dc311e2d6f2ec0e7df06f9d62228ce",
+      "coax/README.md": "50d10786b6707cd8de5f5d9bce44ed8952c622ec2ee4d8294a4483cd7f71f3b0",
+      "coax/LIBRARIES.md": "dc44edc537bee885818b525ceaa88f54d32abb5c9232d66c9b35c0dbed2cd929",
+      "coax/book/README.md": "69243831799c45662078863cfaa57fbca9fbe697438be66045618ee5b2058afb",
+      "coax/book/SUMMARY.md": "fd652eeed90644a3a1d423a8485a7ce78e31df355d72dddf36637c9151341916",
+      "coax/book/ch28-library-recipes.md": "d23389b785d279b415fd3d8f1d78891249bff077a894e1d50b78dd465ad2ca26",
+      "coax/book/check-examples.sh": "8bd1663ee67a950db22bed10a50c990f963be8227c88a357271b7ed4a5802e7f",
+      "coax/tests/book_selection.py": "43a34d6e7189c66dbb43532827148687984a0a8a66aa71830149df4d643536b6"
+    },
+    "selector_check_first": {
+      "red_log": "/tmp/coax-book-selection-red.log",
+      "red_result": "9 tests,13 subtest/assertion failures against the previous runner; fixture/compiler execution is isolated fake tooling, no real examples rerun",
+      "green_log": "/tmp/coax-book-selection-green.log",
+      "green_result": "9 tests passed,4.120seconds",
+      "cases": [
+        "list without execution",
+        "exact selection and debug/release fixtures",
+        "duplicate-name deduplication",
+        "empty/unknown selection refused before compiler/build/fixtures",
+        "filtered list without compiler",
+        "no-argument full sequence and nonzero expected exit",
+        "special host/check units",
+        "compile-only and structure selection",
+        "output mismatch remains failure"
+      ]
+    },
+    "additional_observations": {
+      "bash_syntax": "passed bash -n",
+      "real_inventory": "/tmp/coax-book-selection-real-inventory.txt",
+      "new_recipe_units_present": 3,
+      "new_chapter_checked_source_and_output_links": 6,
+      "new_chapter_balanced_fenced_blocks": 7,
+      "new_index_and_chapter_local_targets_exist": true,
+      "per_entry_maturity_targets_and_exact_verification_commands": true
+    },
+    "full_book_gate": "Not run here: root will run the new recipe selection and full structure check once after all files settle.",
+    "other_recipe_qualification": "Other agents own actual Coax/native/sanitizer gates; no duplicate execution here.",
+    "publication": "No commits, pushes or external publication by this agent."
+  },
+  "historical_visual_gate": {
+    "outcome": "passed",
+    "command": [
+      "coax/web/golden-check.sh",
+      "--commit",
+      "a5c637a5d00a498687683895bcabda8ea59041a4"
+    ],
+    "commit": "a5c637a5d00a498687683895bcabda8ea59041a4",
+    "exit_code": 0,
+    "seconds": 304.0043696250068,
+    "log": "/tmp/coax-library-final-golden.log",
+    "scope": "Historical passing complete B code at a5c637a5d0 before incoming WGSL compiler/product changes. A fresh gate will qualify the new merged result; this result does not qualify that incoming change.",
+    "draft_gate": "The earlier 4f9612d135 draft gate was stopped before completion because it omitted the two consumer edits. It is not cited as a passing result."
+  },
+  "previous_merged_compiler_provenance": [
+    "coax-provenance-v1",
+    "645e256e20ea0656b2d07bc7f2636d1d3462f609c3b3c589ee96c47246b24625",
+    "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+    "ab76e1191c61ceb65a2d65ac216a7be10884bb0615fcb8fed4c668b0d1383519"
+  ],
+  "later_rebase_observation": {
+    "observed_utc": "2026-10-31T14:37:44.763221+00:00",
+    "source_head": "e748cd3dfe889f2531d6697767a4134930da1dc4",
+    "reason": "Incoming rebase adds chapter112 and changes Psionic chapter inventory. This later structure observation does not replace prior executable receipts.",
+    "psionic_structure": {
+      "command": "python3 psionic/tests/book.py",
+      "exit_status": 0,
+      "log": "/tmp/coax-library-recipes-later-rebase-3adgiydy/psionic-structure.log",
+      "sha256": "dc9e845299641a743a30f3b68a03274a137ed195cd4b1b8d8ec317136c90ac0d",
+      "detail": "book structure: 97 programs, 384 source-linked listings, local links pass\n"
+    },
+    "prior_executable_receipt": "/tmp/coax-library-recipes-new-main-qualification.json",
+    "retained_executable_receipt": {
+      "path": "/tmp/coax-library-recipes-new-main-qualification.json",
+      "compiler_sha256": "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+      "entrypoint_fixture_and_direct_dependency_identity": {
+        "coax/book/examples/ch28_verse.coax": true,
+        "coax/book/examples/ch28_verse.out": true,
+        "coax/book/examples/ch28_protocol.coax": true,
+        "coax/book/examples/ch28_protocol.out": true,
+        "coax/book/examples/ch28_psionic.coax": true,
+        "coax/book/examples/ch28_psionic.out": true,
+        "coax/tests/library_recipes.py": true,
+        "coax/lib/net/ws.coax": true,
+        "coax/lib/crypto/sha1.coax": true,
+        "psionic/lib/tensor.coax": true,
+        "psionic/lib/learn.coax": true
+      },
+      "unchanged_component_paths": [
+        "coax/src",
+        "coax/lib",
+        "coax/bootstrap",
+        "psionic/lib/tensor.coax",
+        "psionic/lib/learn.coax",
+        "verse/hud.coax",
+        "verse/hud/types.coax",
+        "verse/hud/frame.coax"
+      ],
+      "component_diff_paths": [],
+      "scope": "Native compiler source, emitter/policy libraries, seeds and selected Verse/Psionic dependencies are unchanged since the executable receipt, including current uncommitted-source inspection. Added changelog/release preflight sources and scripts change the build fingerprint, not those native compiler components. Retain the original execution receipt and compiler hash; cache installation/provenance is a separate root observation."
+    },
+    "claim_ledger_merge": {
+      "claim_count": 9,
+      "structure_gate_result": "passed",
+      "binding_drift_detected": false,
+      "notes": "The updated chapter112 inventory passes the integrated book/claim gate; existing scoped model and graphics-vs-compute claims remain accepted.",
+      "chapter112_scope": "The robotics-cartesian-bc-f64-v1 owned two-axis imitation controller and a separate tiny original NVIDIA data-admission fixture. It explicitly does not establish arm control or a complete vision-language-action model, and does not contradict existing Mammoth/V4.1 or general device-backward limitations."
+    },
+    "installed_compiler_observation": {
+      "sha256": "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+      "scope": "Hash observation only; root owns matching-cache installation/provenance verification. Existing native execution receipt retains its original compiler hash."
+    }
+  },
+  "checked_cache_install": {
+    "outcome": "passed",
+    "log": "/tmp/coax-library-changelog-cache-install.log",
+    "provenance": [
+      "coax-provenance-v1",
+      "841eca107cc9c5a7601550a11568407ab1ddbfaf7b7cdf4f4b71f20ae8f05f50",
+      "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+      "49a6e667634109e0c1c7efb4c8119ad5b97d48f44db3f1a8b5c7840e083d8878"
+    ],
+    "matching_upstream_bootstrap_record": "docs/verification/coax-changelog-release-2026-10-31.json",
+    "scope": "Installed the already fully checked matching compiler through normal coax/build.sh, including new changelog preflight; no bootstrap repeated."
+  }
+}

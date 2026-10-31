@@ -1,0 +1,32 @@
+#module "tests.sequence.native";
+#load "../../lib/sequence.coax" as sequence;
+
+SeqRecord :: struct { id: int; value: f64; }
+
+#test "generic sequence operations preserve concrete record fields" {
+  #assert seq_fixture_records();
+}
+
+seq_fixture_records :: () -> bool #export_c {
+  items := [3] SeqRecord.[SeqRecord.{id = 1, value = 3.25},
+    SeqRecord.{id = 2, value = f64_from_bits(0x8000000000000000)},
+    SeqRecord.{id = 3, value = 9.5}];
+  sequence.reverse(items[..]);
+  sequence.swap(items[..], 0, 1);
+  return items[0].id == 2 && f64_bits(items[0].value) == 0x8000000000000000
+    && items[1].id == 3 && items[1].value == 9.5
+    && items[2].id == 1 && items[2].value == 3.25;
+}
+
+seq_fixture_reverse_bytes :: (items: [] u8) -> int #export_c {
+  sequence.reverse(items);
+  return items.count;
+}
+
+seq_fixture_swap_bytes :: (items: [] u8, a: int, b: int) #export_c {
+  sequence.swap(items, a, b);
+}
+
+seq_fixture_reverse_floats :: (items: [] f64) #export_c {
+  sequence.reverse(items);
+}

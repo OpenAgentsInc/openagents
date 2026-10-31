@@ -911,7 +911,7 @@ their general language form remains planned.
 | Coax capability and remaining gap | Where Psionic needs it | Available boundary |
 | --- | --- | --- |
 | Bounded CUDA/Metal buffer, index, loop and dispatch compute is shipped; additional compute forms need their own admission and target evidence | 26–31, 40 | Generated Coax kernels and CPU oracles; no hand-written tensor shaders. |
-| Direct WGSL emission remains planned | 40 | Use CPU references; existing Coaxial browser rendering does not qualify a Psionic browser compute backend. |
+| Bounded direct WGSL graphics modules are shipped; a qualified Psionic WebGPU compute path remains work | 40 | Use CPU references until the compute workload has its own admitted lowering, binding and device evidence; graphics emission does not qualify it. |
 | Language jobs, threads and a memory model ([ch12](../../coax/book/ch12-jobs.md)) remain planned | 24, 25, 67, 116–120, 130–139 | Host workers may call Coax on disjoint ranges under their explicit replay and lifetime gates. |
 | Native `f16`/`bf16`, FP8 and FP4 scalar types remain planned | 22, 34, 41, 50, 63, every BF16 kernel | Packed storage, casts and format decoders already run in the declared Psionic profiles. |
 | Bounded generic copyable procedures and fixed-storage structs are shipped; numeric operation constraints ([ch08](../../coax/book/ch08-generics.md)) remain planned | Every multi-dtype kernel, 34 | Use admitted generic copying and storage; arithmetic kernels still use concrete numeric types until their constraints are implemented. |

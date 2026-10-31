@@ -1,0 +1,65 @@
+// Non-owning operations over caller-owned mutable views. Elements use Coax's
+// ordinary value copies, including shallow copies of borrowed values. The
+// caller keeps the backing storage and any element borrows alive and excludes
+// concurrent conflicting access. No view is retained or returned and no storage
+// is allocated. These procedures do not establish general lifetime safety.
+// swap uses ordinary index checks; reverse accepts every valid view, including
+// an empty one. Neither changes a caller's resource-admission policy.
+#module "coax.sequence";
+#export swap, reverse;
+#authority;
+
+#forall "swap follows an independent position map" a: 0..<4, b: 0..<4 {
+  original := [4] int.[11, 22, 33, 44];
+  actual := original;
+  swap(actual[..], a, b);
+  for i: 0..<4 {
+    expected := ifx i == a then original[b] else ifx i == b then original[a] else original[i];
+    #assert actual[i] == expected;
+  }
+}
+
+#forall "reverse maps every admitted prefix and preserves both sentinels" count: 0..<7 {
+  original := [8] int.[99, 10, 20, 30, 40, 50, 60, 88];
+  actual := original;
+  reverse(actual[1..<1 + count]);
+  for i: 0..<8 {
+    expected := ifx i >= 1 && i < 1 + count then original[count + 1 - i] else original[i];
+    #assert actual[i] == expected;
+  }
+  reverse(actual[1..<1 + count]);
+  for i: 0..<8 { #assert actual[i] == original[i]; }
+}
+
+#test "byte operations preserve zero and high-bit values" {
+  bytes := [5] u8.[0, 255, 1, 128, 17];
+  swap(bytes[..], 0, 4);
+  #assert bytes[0] == 17 && bytes[4] == 0;
+  reverse(bytes[1..<4]);
+  #assert bytes[0] == 17 && bytes[1] == 128 && bytes[2] == 1 && bytes[3] == 255 && bytes[4] == 0;
+  reverse(bytes[..]);
+  #assert bytes[0] == 0 && bytes[1] == 255 && bytes[2] == 1 && bytes[3] == 128 && bytes[4] == 17;
+}
+
+#test "float copies preserve signed zero and finite bit patterns" {
+  values := [4] f64.[f64_from_bits(0), f64_from_bits(0x8000000000000000),
+    f64_from_bits(0x0000000000000001), f64_from_bits(0x7fefffffffffffff)];
+  swap(values[..], 0, 3);
+  reverse(values[..]);
+  #assert f64_bits(values[0]) == 0;
+  #assert f64_bits(values[1]) == 0x0000000000000001;
+  #assert f64_bits(values[2]) == 0x8000000000000000;
+  #assert f64_bits(values[3]) == 0x7fefffffffffffff;
+}
+
+swap :: (items: [] $T, a: int, b: int) {
+  value := items[a];
+  items[a] = items[b];
+  items[b] = value;
+}
+
+reverse :: (items: [] $T) {
+  for i: 0..<items.count / 2 {
+    swap(items, i, items.count - 1 - i);
+  }
+}

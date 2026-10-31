@@ -1,0 +1,803 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "issue": "coax-library-contract-recipes",
+  "issue_alias": "fc62",
+  "started_utc": "2026-10-31 13:54 UTC",
+  "outcome": "passed",
+  "baseline_commit": "e6c10c379b9d2e86a0eedd681a785ab7ef6d6b17",
+  "scope": "One borrowed generic sequence module shared by actual Verse native pass formatting and Psionic HTTP rotation, plus an offline book recipe calling the public Verse HUD API.",
+  "compiler": {
+    "version": "coax0 0.37.0",
+    "sha256": "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+    "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+    "input_fingerprint": "841eca107cc9c5a7601550a11568407ab1ddbfaf7b7cdf4f4b71f20ae8f05f50",
+    "scope": "Current C/header generation, changed Psionic native qualification and current serve-engine root-only mutation. Unchanged historical sequence/Verse receipts retain their compiler identities."
+  },
+  "check_first": {
+    "stub_red": "/tmp/coax-sequence-B/stub-red-finite.log",
+    "stub_red_sha256": "ebfa9db097c6d3ae8660c6b20c5b4c0e07164abfecea00814e1c525f430df15e",
+    "counterexamples": "FAIL #forall swap follows an independent position map (0 ms)\ncoax/lib/sequence.coax:18:5: error[E0406]: assertion failed\n      #assert actual[i] == expected;\n      ^\n  note: in #forall swap follows an independent position map\n  counterexample: a = 0, b = 1\nFAIL #forall reverse maps every admitted prefix and preserves both sentinels (0 ms)\ncoax/lib/sequence.coax:28:5: error[E0406]: assertion failed\n      #assert actual[i] == expected;\n      ^\n  note: in #forall reverse maps every admitted prefix and preserves both sentinels\n  counterexample: count = 2\nFAIL #test byte operations preserve zero and high-bit values (0 ms)\ncoax/lib/sequence.coax:37:3: error[E0406]: assertion failed\n    #assert bytes[0] == 17 && bytes[4] == 0;\n    ^\n  note: in #test byte operations preserve zero and high-bit values\nFAIL #test float copies preserve signed zero and finite bit patterns (0 ms)\ncoax/lib/sequence.coax:48:3: error[E0406]: assertion failed\n    #assert f64_bits(values[1]) == 0x0000000000000001;\n    ^\n  note: in #test float copies preserve signed zero and finite bit patterns\n4 checks, 0 passed, 4 failed\n",
+    "initial_nonfinite_interpreter_refusal": {
+      "log": "/tmp/coax-sequence-B/stub-red.log",
+      "detail": "The evaluator refuses non-finite f64_from_bits construction with E0412. Non-finite copying was qualified in actual emitted native code instead; no interpreter observation was faked."
+    },
+    "first_mutation": {
+      "log": "/tmp/coax-sequence-B/mutation-first-survivors.log",
+      "detail": "Two byte-instance survivors exposed the missing multi-swap byte case. Added a five-byte reversal check; no equivalent markers or waivers."
+    },
+    "historical_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7"
+  },
+  "authority": {
+    "library": {
+      "checks": 4,
+      "finite_cases": 25,
+      "mutants": 27,
+      "killed": 27,
+      "survived": 0,
+      "evidence": "/tmp/coax-sequence-B/mutation-green.json",
+      "evidence_sha256": "e9ccaa5cb7b93658e2e2c1fdc193a4a139a8a334bf85cfb091bcade907077a38",
+      "source_sha256": "1beee0a14bbad97d024a44d6f211fb62ec6976bf6e95bdc52e3be6af78c2caef",
+      "historical_compiler": "coax0 0.37.0",
+      "historical_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+      "reused": true,
+      "reuse_scope": "Retained exact-source mutation receipt under the original compiler; unchanged checker/evaluator/verification/mutation/profile/budget/seed inputs are listed in the component proof. No new-compiler mutation score is claimed.",
+      "receipt_bindings_checked": {
+        "all_source_units_byte_identical": true,
+        "source_units": 1,
+        "profile": {
+          "arithmetic": "checked",
+          "selected_runtime_arithmetic": "checked",
+          "library": true
+        },
+        "selection": {
+          "only": null,
+          "list": false,
+          "root_only": false
+        },
+        "budgets": {
+          "check_steps": 20000000,
+          "check_slots": 33554432,
+          "check_containers": 2097152,
+          "run_steps": 100000
+        }
+      }
+    },
+    "consumer": {
+      "path": "psionic/lib/serve-engine.coax",
+      "scope": "Current root-only mutation with complete imported baseline checks and authority coverage",
+      "checks": 317,
+      "authority_claims": 1,
+      "mutants": 474,
+      "killed": 474,
+      "survived": 0,
+      "evidence": "/tmp/coax-sequence-B-rebase-e6c/psionic-mutation.json",
+      "evidence_sha256": "7dae4ce8fe9d5f67a0f71a28326d9e645ca59f304e833b75a410678ebb97997b",
+      "compiler": {
+        "version": "coax0 0.37.0",
+        "sha256": "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de"
+      },
+      "reused": false,
+      "source_sha256": "18254077b1a4aace6fde3a3eceb21a811a2396338e88c34315a6e65f7452d49d",
+      "receipt_bindings_checked": {
+        "all_source_units_byte_identical": true,
+        "source_units": 63,
+        "profile": {
+          "arithmetic": "checked",
+          "selected_runtime_arithmetic": "checked",
+          "library": true
+        },
+        "selection": {
+          "only": null,
+          "list": false,
+          "root_only": true
+        },
+        "budgets": {
+          "check_steps": 20000000,
+          "check_slots": 33554432,
+          "check_containers": 2097152,
+          "run_steps": 100000
+        }
+      }
+    },
+    "unchanged_dependencies": {
+      "baseline_commit": "e6c10c379b9d2e86a0eedd681a785ab7ef6d6b17",
+      "consumer": "psionic/lib/serve-engine.coax",
+      "unchanged_count": 61,
+      "files": [
+        {
+          "path": "psionic/lib/decision-answer.coax",
+          "sha256": "50258e8627fb1ffefc25a7e25d98f4170ad5baffd1ad1d7f194287911ca6198c"
+        },
+        {
+          "path": "psionic/lib/decision-session.coax",
+          "sha256": "80d7621235018dcd69fbc090fa4ead6e8329d897058fb43776326cad30150196"
+        },
+        {
+          "path": "psionic/lib/decision-models.coax",
+          "sha256": "f6fafbd13745a1a6b5fc43423d96be6e3c074f38a8ed24994ce20022e71ae0bc"
+        },
+        {
+          "path": "psionic/lib/qwen-model.coax",
+          "sha256": "a19e213d3f3d3f3018ea7dfcdcb5ee390154bea5f33c8764f750fcad4619be60"
+        },
+        {
+          "path": "psionic/lib/qwen-linear-layer.coax",
+          "sha256": "d98239772214fca7f7b5c488fd1e0b526187fb7155587d8426993eb232a4f9b0"
+        },
+        {
+          "path": "psionic/lib/qwen-block.coax",
+          "sha256": "068d4fb3a3620fb4db6dc608c6a93131c3f742c42cb5319861ef74b3c3f61542"
+        },
+        {
+          "path": "psionic/lib/qwen-matvec.coax",
+          "sha256": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae"
+        },
+        {
+          "path": "psionic/lib/ops.coax",
+          "sha256": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1"
+        },
+        {
+          "path": "psionic/lib/ops-contract.coax",
+          "sha256": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8"
+        },
+        {
+          "path": "psionic/lib/tensor.coax",
+          "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-block-vectors.coax",
+          "sha256": "0131144ef4f586bbcc6a9ce8bcaefe3c26bfadc12a5cbc5dac4b1010b6a59c9a"
+        },
+        {
+          "path": "psionic/lib/delta.coax",
+          "sha256": "b2521a1e43cd0985c0e4cf643b21218c122a3083d34b3580b706c265717d3b06"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/delta-vectors.coax",
+          "sha256": "e05e13be6ecf924f607a77fae6226cf7f88b0f41323c804472ac8f2ef374a4ce"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-linear-vectors.coax",
+          "sha256": "a0229db33c7e505ce29ebaf920aba90c4e2b05b3007731cd515a734d7f8d674f"
+        },
+        {
+          "path": "psionic/lib/qwen-decision.coax",
+          "sha256": "d367999746ccc5abc5b259d251e52e87d6b1d7eb07d91b47dd9b29608d052c78"
+        },
+        {
+          "path": "psionic/lib/qwen-full-layer.coax",
+          "sha256": "a9283010057aaa5f1a0674c72e619a1f09315a2a35c5c9b35cf896a12dc35946"
+        },
+        {
+          "path": "psionic/lib/qwen-attention.coax",
+          "sha256": "936fb068418baaa3d31aed6db6a79c2cc0f062206999b06f0f6a86c68598b1bb"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-attention-vectors.coax",
+          "sha256": "8e88d287fb214282f922d4693b2196a7344677e012c8e05962f9496ac7b92cf3"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-full-vectors.coax",
+          "sha256": "b36439cf747b64c8f78e8c5c376b62b712dec8d2be4d65925fe723797e24504d"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-decision-vectors.coax",
+          "sha256": "340f10af7b212c35ba8a65752ebeede2aec514888f5b86aa6d8f4327e8ac46f4"
+        },
+        {
+          "path": "psionic/lib/qwen-prefix.coax",
+          "sha256": "3844d466e870c0a2229d4b22d0a9078e9df53d6b92ac6048929419d501fec966"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-model-vectors.coax",
+          "sha256": "b02346222400f4cee756e3747f5599c4732e0aaf46a8cf55d4875fc2acaf8d9f"
+        },
+        {
+          "path": "psionic/lib/model-io/model-map.coax",
+          "sha256": "821172b76fb830349114512620f0199ec7527fdd55303464ca3b24e8ba5f7a7d"
+        },
+        {
+          "path": "psionic/lib/model-io/layer-map.coax",
+          "sha256": "5cf618828d7cc720e16e5153f4b047a840b68ee942afeb12050c595dd9faf2dd"
+        },
+        {
+          "path": "psionic/lib/model-io/access.coax",
+          "sha256": "5c78586b5152e99d212ac86fb659665cd442613a3628690b349f1aef0a172354"
+        },
+        {
+          "path": "psionic/lib/model-io/rank5.coax",
+          "sha256": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5"
+        },
+        {
+          "path": "psionic/lib/model-io/reader.coax",
+          "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627"
+        },
+        {
+          "path": "psionic/lib/model-io/format.coax",
+          "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca"
+        },
+        {
+          "path": "coax/lib/nostr/json.coax",
+          "sha256": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f"
+        },
+        {
+          "path": "coax/lib/nostr/fixtures/json_suite.coax",
+          "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+        },
+        {
+          "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+          "sha256": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046"
+        },
+        {
+          "path": "psionic/fixtures/models/ch04/fixtures.coax",
+          "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa"
+        },
+        {
+          "path": "psionic/lib/model-io/rank5-bundle.coax",
+          "sha256": "10c9b660513452c5e13db6011c10e3e5a3a9cd1cb722ff0fc6105b3590aa92cd"
+        },
+        {
+          "path": "psionic/lib/model-io/bundle.coax",
+          "sha256": "ce8329bccc9bd43d969ace7883830d96db7bf438fb4db78a3af1778f1a957c5f"
+        },
+        {
+          "path": "psionic/lib/model-io/identity.coax",
+          "sha256": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d"
+        },
+        {
+          "path": "coax/lib/crypto/sha256.coax",
+          "sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+        },
+        {
+          "path": "coax/lib/crypto/bytes.coax",
+          "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+        },
+        {
+          "path": "coax/lib/proto/fingerprint.coax",
+          "sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a"
+        },
+        {
+          "path": "psionic/fixtures/models/rank5/fixture.coax",
+          "sha256": "00d5b1bbad3b28fb5dbb3274de82700965a5dce27af95634b7b43f878a7af4db"
+        },
+        {
+          "path": "psionic/lib/text.coax",
+          "sha256": "2a41977d59cd5556ef75cdc2b39bcb7c0016f2191aeafb48e892d21e404cd2b9"
+        },
+        {
+          "path": "psionic/lib/text/tokenizer.coax",
+          "sha256": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027"
+        },
+        {
+          "path": "psionic/lib/text/unicode.coax",
+          "sha256": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/toy.coax",
+          "sha256": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/goldens.coax",
+          "sha256": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0"
+        },
+        {
+          "path": "psionic/lib/text/request.coax",
+          "sha256": "1cdc3927e3b8f659ce5ef6a437c9c7ca82dc6447462f4f10c5a45d62fd8bad31"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/slots.coax",
+          "sha256": "77edde7dc9335b7c42522b9fc4344f53b445aac3090fd133c77bf0e1eaab95d4"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/render-goldens.coax",
+          "sha256": "fae045401aad2782a2de2f466cc11ab985ab40a760a60be045f59ebd965d63d3"
+        },
+        {
+          "path": "psionic/lib/text/prefix.coax",
+          "sha256": "b8f9e68bce4fda573c7f3ab86a720631668b8f7f2a7bf77e265cbc2f9a8cb41c"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/pins.coax",
+          "sha256": "651be421e32266a8a38dda55dfa4d846a99564de2690242b5183c053564f4329"
+        },
+        {
+          "path": "psionic/lib/qwen-tokens.coax",
+          "sha256": "9f0bbb649487b60b30b96db663e4d465b43201e1ed83a963988ab7aa55d5f46c"
+        },
+        {
+          "path": "psionic/lib/readout.coax",
+          "sha256": "83c467fac4cfd1c44f19e08c3ea999aaba52832590fd0b3b35ef403b0adca4b7"
+        },
+        {
+          "path": "psionic/fixtures/readout/qwen-slot-ids.coax",
+          "sha256": "19d1bf515c17a37daa9831b6bf0aff43b9630c1333244c754836abb7d6e73190"
+        },
+        {
+          "path": "psionic/fixtures/readout/readout-vectors.coax",
+          "sha256": "aea35f847bf603d0d1db0f20f6450add3a27b4963aa0b05585866448dae5b226"
+        },
+        {
+          "path": "psionic/fixtures/hybrid/qwen-tokens-vectors.coax",
+          "sha256": "3ce9ff35ed6e945b9bb3de9aee3653954ab3ad4d0c632e3187bb971b9e069a9c"
+        },
+        {
+          "path": "psionic/fixtures/models/session/toy.coax",
+          "sha256": "c801e3c65758f7bf0f17d91653e34b69f7318353daf1cbbe5dd8c2a18c6596d1"
+        },
+        {
+          "path": "psionic/lib/decision-prepare.coax",
+          "sha256": "c7132d7ac8655b2cdf84266225ddc1b391f196c53164e500091bd2dceafc71fc"
+        },
+        {
+          "path": "psionic/fixtures/text/ch05/prepare-gold.coax",
+          "sha256": "a2492fc7eb13332c7ea1fee7446c6c6da4b6891fc88aa7a64a464368edfd8a82"
+        },
+        {
+          "path": "psionic/lib/qwen-request.coax",
+          "sha256": "7463900a89978706343f1accb073728a32159b65e187b4d6d10651896b386354"
+        },
+        {
+          "path": "psionic/lib/qwen-rope.coax",
+          "sha256": "afe3415f61511d4ad93ced99999aab95b8b7acaa4e009a6068921fcef6665cd8"
+        },
+        {
+          "path": "psionic/lib/serve-request.coax",
+          "sha256": "3d0c13dbc7c450dc38e8bbe8ad7d1e4cba48ee55856ce252ccf365cf2d613565"
+        },
+        {
+          "path": "psionic/fixtures/models/serve/toy.coax",
+          "sha256": "e2485ef07baa401c4e6342cc636d179d755c70ca91d478c596e3a17c5310a5e6"
+        }
+      ],
+      "scope": "All preexisting dependencies match the current frozen e6c baseline and current checkout. Three dependencies changed since the previous 2431 baseline, so the previous whole imported-graph identity is historical and current serve-engine root-only mutation is required.",
+      "evidence": "/tmp/coax-sequence-B-rebase-e6c/unchanged-dependencies.json",
+      "evidence_sha256": "2fdc5debcce3658eef5e96f0cb2bdfad3b0dd3bdaf61bfd5c9900ada5261b590",
+      "changed_since_previous_baseline": [
+        {
+          "path": "psionic/lib/delta.coax",
+          "prior_sha256": "572df86578050039152b6498ccc2e5e2328b04f4b14d251d8282c0b345f430de",
+          "current_sha256": "b2521a1e43cd0985c0e4cf643b21218c122a3083d34b3580b706c265717d3b06"
+        },
+        {
+          "path": "psionic/lib/qwen-attention.coax",
+          "prior_sha256": "3ba3079f189ebe3b228f746b2cb17d60a42d31f63ef0aaa00275a26dc09feb43",
+          "current_sha256": "936fb068418baaa3d31aed6db6a79c2cc0f062206999b06f0f6a86c68598b1bb"
+        },
+        {
+          "path": "psionic/lib/readout.coax",
+          "prior_sha256": "e6dfb06648b25a754e6946c9b8c6b44998314e1dd9ad02cd31dc1d8db5e26552",
+          "current_sha256": "83c467fac4cfd1c44f19e08c3ea999aaba52832590fd0b3b35ef403b0adca4b7"
+        }
+      ]
+    },
+    "earlier_dependency_gate": {
+      "record": "docs/verification/psionic-ch16-2026-10-29.md",
+      "record_sha256": "cb3076b203af8a2c1e61eefb655369e64b2ba4ebd3438c1253889d55087c4498",
+      "scope": "Retained prior Linux/GCC/Coax0.23 serving qualification, including 7661/7661 default-graph mutants. Its compiler/target scope is retained rather than presented as a new whole-graph score. It predates the three current imported-source changes and is not presented as their current qualification."
+    },
+    "compiler_component_identity": {
+      "path": "/tmp/coax-sequence-B-rebase-e6c/compiler-component-identity.json",
+      "sha256": "5cbfdbe00fd9a0cdf63143fbc1d3eff43a3f6f84b3eb62c32ddde793d02d6038",
+      "unchanged_components": 46,
+      "changed_components": [
+        "coax/build.sh",
+        "coax/bootstrap-build.sh",
+        "coax/provenance.sh",
+        "coax/lib/compiler/wgsl.coax",
+        "coax/src/main.cpp",
+        "coax/src/shader.cpp"
+      ],
+      "scope": "Source identity supporting historical sequence-only mutation reuse. Current serve-engine gets a fresh root-only receipt because its imported program graph changed; no historical whole-graph receipt is presented as new."
+    },
+    "historical_consumer_receipts": [
+      {
+        "path": "psionic/lib/serve-engine.coax",
+        "scope": "root-only with complete imported baseline checks and authority coverage",
+        "checks": 314,
+        "mutants": 474,
+        "killed": 474,
+        "survived": 0,
+        "evidence": "/tmp/coax-sequence-B/psionic-mutation.json",
+        "evidence_sha256": "c05bb6347088b4d3795f8517df847c5eedc6aee63fbde4cd51fd0156e81055e8",
+        "historical_compiler": "coax0 0.37.0",
+        "historical_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+        "reused": true,
+        "reuse_scope": "Retained exact-source mutation receipt under the original compiler; unchanged checker/evaluator/verification/mutation/profile/budget/seed inputs are listed in the component proof. No new-compiler mutation score is claimed.",
+        "receipt_bindings_checked": {
+          "all_source_units_byte_identical": true,
+          "source_units": 63,
+          "profile": {
+            "arithmetic": "checked",
+            "selected_runtime_arithmetic": "checked",
+            "library": false
+          },
+          "selection": {
+            "only": null,
+            "list": false,
+            "root_only": true
+          },
+          "budgets": {
+            "check_steps": 20000000,
+            "check_slots": 33554432,
+            "check_containers": 2097152,
+            "run_steps": 100000
+          }
+        },
+        "binding_check_scope": "Historical 2431 qualification only; three dependency hashes subsequently changed in e6c. Superseded by the fresh current receipt."
+      }
+    ]
+  },
+  "native": {
+    "record": "/tmp/coax-sequence-B-rebase-e6c/combined-native-qualification.json",
+    "sha256": "3daa09d49f0b1bba180ef60e908f94ab2f69565714d413069fbccb17e3b0fc9d",
+    "build_variants": 20,
+    "dimensions": [
+      "before/after actual consumers",
+      "checked native O0/O2",
+      "plain and ASan/UBSan"
+    ],
+    "generic_cases_per_variant": 7091,
+    "verse_cases_per_variant": 37884,
+    "psionic_cases_per_variant": 1284,
+    "public_api": {
+      "verse": {
+        "public_header_bytes_identical": true,
+        "sha256": "70fb140cc3d7b4e304de907d0e4853ba1e35b1316ded77eddbb5ada220d789a8"
+      },
+      "psionic": {
+        "public_header_bytes_identical": true,
+        "sha256": "bc7d1d1b254a5ae2905654242fa187b181617caeb91762085d63a7400910a9ca"
+      }
+    },
+    "explicit_target_allocations": 0,
+    "trap_cases": [
+      "negative and past-end sequence indices",
+      "original checked INT64_MIN formatting overflow"
+    ],
+    "scope": "Independent whole-buffer position/snprintf/header-concatenation oracles and guards, including empty/reversed ranges, sticky bad flags and partial negative-prefix writes. Four sequence and eight Verse profiles retain historical execution with exact current regenerated artifact identity; eight changed Psionic profiles are fresh. The Psionic count observes private sv_reverse calls. No host effects, model inference, GPU or browser execution.",
+    "fault_launcher_followup": {
+      "record": "/tmp/coax-sequence-B/quiet-faults.json",
+      "sha256": "340e189b9877f326cd00113ac5465d3effb3f77ddd7827596c49e6e847a540a6",
+      "cases": 16,
+      "scope": "Only changed expected-fault launching/classification against hash-verified previously qualified native artifacts; passing output/mutation/cost profiles were not rerun. Existing quiet_crash launcher suppresses child crash dialogs without changing real signals. This remains a historical launcher receipt; fresh Verse trap classification is also recorded in the new native receipt."
+    },
+    "fresh_variants": 8,
+    "reused_historical_variants": 12,
+    "psionic_target_calls_per_variant": 1674
+  },
+  "cost": {
+    "before_after": {
+      "verse": {
+        "O0": {
+          "before": {
+            "generated_c_bytes": 112752,
+            "object_bytes": 125104,
+            "executable_bytes": 98592,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n43915\t1169\t0\t51192\t96276\t17814",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-2431/generated/verse-before.c:1546:coax_p_put_int\t240\tstatic"
+            ]
+          },
+          "after": {
+            "generated_c_bytes": 117905,
+            "object_bytes": 125920,
+            "executable_bytes": 98800,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n44154\t1193\t0\t51547\t96894\t17a7e",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-2431/generated/verse-after.c:1641:coax_p_put_int\t208\tstatic",
+              "/tmp/coax-sequence-B-rebase-2431/generated/verse-after.c:2685:coax_p_reverse__2u8\t80\tstatic",
+              "/tmp/coax-sequence-B-rebase-2431/generated/verse-after.c:2715:coax_p_swap__2u8\t80\tstatic"
+            ]
+          }
+        },
+        "O2": {
+          "before": {
+            "generated_c_bytes": 112752,
+            "object_bytes": 37568,
+            "executable_bytes": 41200,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n3377\t128\t0\t25584\t29089\t71a1",
+            "stack_usage": []
+          },
+          "after": {
+            "generated_c_bytes": 117905,
+            "object_bytes": 39240,
+            "executable_bytes": 41264,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n3508\t152\t0\t26710\t30370\t76a2",
+            "stack_usage": []
+          }
+        }
+      },
+      "psionic": {
+        "O0": {
+          "before": {
+            "generated_c_bytes": 1731617,
+            "object_bytes": 649344,
+            "executable_bytes": 363984,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n270796\t10673\t0\t268592\t550061\t864ad",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:6760:coax_p_sv_reverse\t112\tstatic"
+            ]
+          },
+          "after": {
+            "generated_c_bytes": 1733943,
+            "object_bytes": 649712,
+            "executable_bytes": 364080,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n270843\t10697\t0\t268822\t550362\t865da",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:6767:coax_p_sv_reverse\t96\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:17210:coax_p_swap__2u8\t80\tstatic"
+            ]
+          }
+        },
+        "O2": {
+          "before": {
+            "generated_c_bytes": 1731617,
+            "object_bytes": 1374400,
+            "executable_bytes": 375008,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n210177\t10544\t0\t950931\t1171652\t11e0c4",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:6760:coax_p_sv_reverse\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:0:coax_p_sv_reverse.cold.1\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:0:coax_p_sv_reverse.cold.2\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:0:coax_p_sv_reverse.cold.3\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-before.c:0:coax_p_sv_reverse.cold.4\t16\tstatic"
+            ]
+          },
+          "after": {
+            "generated_c_bytes": 1733943,
+            "object_bytes": 1375376,
+            "executable_bytes": 375200,
+            "native_size": "__TEXT\t__DATA\t__OBJC\tothers\tdec\thex\n210224\t10568\t0\t951695\t1172487\t11e407",
+            "stack_usage": [
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:6767:coax_p_sv_reverse\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:0:coax_p_sv_reverse.cold.1\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:0:coax_p_sv_reverse.cold.2\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:0:coax_p_sv_reverse.cold.3\t16\tstatic",
+              "/tmp/coax-sequence-B-rebase-e6c/generated/psionic-after.c:0:coax_p_sv_reverse.cold.4\t16\tstatic"
+            ]
+          }
+        }
+      }
+    },
+    "timings": {
+      "sequence-after": {
+        "schema_version": 1,
+        "compiler": "coax0 0.37.0",
+        "success": true,
+        "exit_status": 0,
+        "generated_bytes": 20523,
+        "instances": 8,
+        "instance_generated_bytes": 2736,
+        "run_steps": 100000,
+        "evaluated_steps": 0,
+        "aggregate_peak_slots": 0,
+        "aggregate_peak_containers": 0,
+        "string_peak_bytes": 0,
+        "aggregate_traversal_work": 0,
+        "seconds": {
+          "authority": 0.000188917,
+          "check": 0.000378333,
+          "emit": 0.000651958,
+          "evaluate": 3.8083e-05,
+          "imports": 9.167e-06,
+          "lex": 0.000115417,
+          "load": 0.000609209,
+          "parse": 0.00040475,
+          "total": 0.002594625
+        }
+      },
+      "verse-before": {
+        "schema_version": 1,
+        "compiler": "coax0 0.37.0",
+        "success": true,
+        "exit_status": 0,
+        "generated_bytes": 112752,
+        "instances": 0,
+        "instance_generated_bytes": 0,
+        "run_steps": 100000,
+        "evaluated_steps": 58,
+        "aggregate_peak_slots": 113,
+        "aggregate_peak_containers": 16,
+        "string_peak_bytes": 0,
+        "aggregate_traversal_work": 194,
+        "seconds": {
+          "authority": 0.049084459,
+          "check": 0.003211625,
+          "emit": 0.001794667,
+          "evaluate": 7.1916e-05,
+          "imports": 8.7292e-05,
+          "lex": 0.001852958,
+          "load": 0.00442625,
+          "parse": 0.001153167,
+          "total": 0.061854333
+        }
+      },
+      "verse-after": {
+        "schema_version": 1,
+        "compiler": "coax0 0.37.0",
+        "success": true,
+        "exit_status": 0,
+        "generated_bytes": 117905,
+        "instances": 6,
+        "instance_generated_bytes": 2059,
+        "run_steps": 100000,
+        "evaluated_steps": 58,
+        "aggregate_peak_slots": 113,
+        "aggregate_peak_containers": 16,
+        "string_peak_bytes": 0,
+        "aggregate_traversal_work": 194,
+        "seconds": {
+          "authority": 0.047814792,
+          "check": 0.003787333,
+          "emit": 0.001775542,
+          "evaluate": 0.00016125,
+          "imports": 9.1833e-05,
+          "lex": 0.00136125,
+          "load": 0.005712125,
+          "parse": 0.001141125,
+          "total": 0.062200834
+        }
+      },
+      "psionic-before": {
+        "schema_version": 1,
+        "compiler": "coax0 0.37.0",
+        "success": true,
+        "exit_status": 0,
+        "generated_bytes": 1731617,
+        "instances": 0,
+        "instance_generated_bytes": 0,
+        "run_steps": 100000,
+        "evaluated_steps": 57883,
+        "aggregate_peak_slots": 72616,
+        "aggregate_peak_containers": 768,
+        "string_peak_bytes": 0,
+        "aggregate_traversal_work": 172573,
+        "seconds": {
+          "authority": 3.761825166,
+          "check": 0.388506375,
+          "emit": 0.014393375,
+          "evaluate": 0.004146833,
+          "imports": 0.002529292,
+          "lex": 0.038794542,
+          "load": 0.073227333,
+          "parse": 0.0432335,
+          "total": 4.330992708
+        }
+      },
+      "psionic-after": {
+        "schema_version": 1,
+        "compiler": "coax0 0.37.0",
+        "success": true,
+        "exit_status": 0,
+        "generated_bytes": 1733943,
+        "instances": 6,
+        "instance_generated_bytes": 2080,
+        "run_steps": 100000,
+        "evaluated_steps": 57883,
+        "aggregate_peak_slots": 72616,
+        "aggregate_peak_containers": 768,
+        "string_peak_bytes": 0,
+        "aggregate_traversal_work": 172573,
+        "seconds": {
+          "authority": 3.753655541,
+          "check": 0.436116292,
+          "emit": 0.014414333,
+          "evaluate": 0.003093125,
+          "imports": 0.002760916,
+          "lex": 0.037856708,
+          "load": 0.086888792,
+          "parse": 0.046183125,
+          "total": 4.384678
+        }
+      }
+    },
+    "source_helper_call_counts": {
+      "scope": "Derived from source loop bounds, not instrumented native helper-call counts. Native API invocations are recorded separately.",
+      "verse": "One reverse per formatted number; floor(digit_count/2) swaps inside it. Calls to put are unchanged.",
+      "psionic": "Original loop retained; floor((to-from)/2) swaps for an entered forward range; empty/reversed ranges retain their prior no-op behavior."
+    },
+    "interpretation": "Public headers are byte-identical. Source removes one 24-byte Verse temporary, but O0 adds helper frames and is not a measured memory win. Stack reports are per-function native compiler observations, not complete transitive peak stack. O2 inlining is observed, not promised by source. Object sizes include debug data and the test translation unit; whole-test timings are not isolated performance benchmarks.",
+    "qualification_scope": {
+      "verse": "Historical native costs for exact byte-identical current regenerated C/header and unchanged native driver/profile; not remeasured.",
+      "psionic": "Fresh before/after native observations with current imported program graph.",
+      "compile_timings": "Fresh current-compiler source generation; observational timings, not isolated benchmarks."
+    }
+  },
+  "book_recipe": {
+    "source": "coax/book/examples/ch28_verse.coax",
+    "output": "coax/book/examples/ch28_verse.out",
+    "cases": [
+      "caller-owned byte subrange reversal preserving delimiters",
+      "actual verse.hud slot/frame results",
+      "actual invalid-slot zero-rectangle refusal"
+    ],
+    "expected_output": "[2048]\nHUD slot: 13 610 44 44\n",
+    "scope": "Offline pure/generated-C API use; no iOS, display or GPU claim.",
+    "historical_checked_native": {
+      "compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+      "native_O0": "passed",
+      "native_O2": "passed",
+      "logs": [
+        "/tmp/coax-sequence-B/book-verse-HUD-O0.out",
+        "/tmp/coax-sequence-B/book-verse-HUD-O2.out"
+      ],
+      "scope": "Retained prior checked O0/O2 native recipe runs; not attributed to the current compiler."
+    },
+    "selected_book_receipt": {
+      "record": "/tmp/coax-library-recipes-new-main-qualification.json",
+      "sha256": "687e8f183ea8ab488f9543f353e9cf444f898c4e8f826cb4ae3b5e8231c40ca1",
+      "compiler_sha256": "2b3da2238b381e0d906f334d274ead33577451ddbc6826d8471afba9c97045ce",
+      "unit": "ch28_verse",
+      "authored_checks": "passed",
+      "debug_native_transcript": "passed",
+      "release_native_transcript": "passed",
+      "scope": "Reused the selected book gate once: authored checks plus default debug and --release native stdout/exit status. This is not an additional checked O2 run.",
+      "reused": true,
+      "reuse_scope": "The complete Verse recipe/sequence/HUD source graph is unchanged; checker/evaluator/C-emitter components are unchanged. Its actual debug/release execution retains compiler 2b3da223 scope; no extra unaffected recipe run is claimed."
+    },
+    "unchanged_source_graph": {
+      "coax/book/examples/ch28_verse.coax": "b70e1c5c260333a551d822555098a6e79005078f8ec67ae80d0ae34e8876148e",
+      "coax/lib/sequence.coax": "1beee0a14bbad97d024a44d6f211fb62ec6976bf6e95bdc52e3be6af78c2caef",
+      "verse/hud.coax": "938ce9a735cb9da0ef7591a847eb1978d747934f415c9e4d8717555ff973cead"
+    }
+  },
+  "source_sha256": {
+    "coax/lib/sequence.coax": "1beee0a14bbad97d024a44d6f211fb62ec6976bf6e95bdc52e3be6af78c2caef",
+    "verse/gpu/everglade-pass.coax": "e2e5fe9af08086df403fc3ffce09e6f7c9a2c4aedb2c47f7b8f8d6d95c590219",
+    "psionic/lib/serve-engine.coax": "18254077b1a4aace6fde3a3eceb21a811a2396338e88c34315a6e65f7452d49d",
+    "coax/tests/sequence.py": "03952dbff2c2d806ee1b1fdcf03dcb986592714d13c1d7389445b66729d1dbca",
+    "coax/tests/sequence/fixture.coax": "1c6f063b7a7608e04dbc464fe264ab0b442e014b479e7bcf99f2b2300a81c6d4",
+    "coax/tests/sequence/native.c": "bfd44bbb2f492cf37ba96660000bf3303520765596e1ecb4f9276f5ed2b2367a",
+    "coax/tests/sequence/consumer-native.c": "a99ea81b552c64d6f942a9c94afb43ef4346a05f8eddfdf5a43c7207b1b5780a",
+    "coax/book/examples/ch28_verse.coax": "b70e1c5c260333a551d822555098a6e79005078f8ec67ae80d0ae34e8876148e",
+    "coax/book/examples/ch28_verse.out": "c0258ca84c93f20e6034c1d61fae708d2d3f1aa179a7ea8d1cb2dfa0074321cb",
+    "coax/tests/quiet_crash.py": "546bf7e16ba8ace17c12884466af2c22e6938586923c37c7b779b1efe55b39b4",
+    "verse/hud.coax": "938ce9a735cb9da0ef7591a847eb1978d747934f415c9e4d8717555ff973cead"
+  },
+  "limits": [
+    "Native compiler stack reports are per function, not measured whole-process peak stack.",
+    "Allocation counters observe explicit generated-C malloc/calloc/realloc calls, not allocations inside system libraries.",
+    "Consumer host-effect imports abort if called; no network, server, GPU or model inference is exercised.",
+    "This is finite native qualification, not general lifetime or cross-target safety.",
+    "Caller owns valid mutable extents and all nested borrow lifetimes, and excludes conflicting concurrent access. No general borrow/lifetime inference or dynamic owning container is introduced.",
+    "No resource limits, output refusal policy, public native layouts, arithmetic profile, protocol/schema or platform effects were changed.",
+    "The source/header snapshots and mutation receipts qualify the named inputs. Later changed compiler or source inputs need their own qualification.",
+    "Unchanged mutation and native execution receipts retain historical compiler/target/profile scope; source-component and emitted-artifact identity do not constitute a new whole-compiler correctness claim."
+  ],
+  "requalification": {
+    "reason": "Incoming e6c baseline includes three changed Psionic dependencies and new release-gate/compiler-cache inputs.",
+    "source_snapshot_head": "e748cd3dfe889f2531d6697767a4134930da1dc4",
+    "checked_compiler_build_record": "docs/verification/coax-changelog-release-2026-10-31.json",
+    "historical_record": "/tmp/coax-sequence-B-rebase-e6c/historical-sequence-adoption.json",
+    "historical_record_sha256": "d2db68d0875d6e925dcec2dee9cbdb492177e8243422ad4e4e5c31fd2b4b292b",
+    "baseline_archive": "/tmp/coax-sequence-B-rebase-e6c/baseline-manifest.json",
+    "baseline_archive_manifest_sha256": "be15d1752d7690aae60cb300aef0cb78f0cbde616df71d949a9b55e241ac9632",
+    "artifact_comparison": "/tmp/coax-sequence-B-rebase-e6c/artifact-comparison.json",
+    "artifact_comparison_sha256": "bb4aa965c09985521e181ec8f80b5f796593809e4ff2cd29b5cd0f25a1d6aa98",
+    "fresh_native_variants": 8,
+    "reused_identical_input_native_variants": 12,
+    "fresh_mutation": "serve-engine root-only, complete current imported baseline",
+    "reused_mutation": "sequence-only historical receipt with unchanged semantic components",
+    "scope": "No unchanged passing native profile or sequence mutation run was repeated. Changed Psionic translation units and imported baseline received fresh qualification."
+  },
+  "requalification_history": [
+    {
+      "reason": "Incoming main 2431e6eb7c changed WGSL compiler inputs and the Verse translation unit before the final push.",
+      "source_snapshot_head": "8f242171cf0f9ac9f8ac9720390a79b60e3bbfb9",
+      "build_receipt": "/tmp/coax-library-new-main-build-result.json",
+      "historical_record": "/tmp/coax-sequence-B-rebase-2431/historical-sequence-adoption.json",
+      "historical_record_sha256": "7c7c66d5d43b82c6d58d9305899c85bf2636dcaccef3131ca6f29201f8939a09",
+      "historical_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+      "baseline_archive": "/tmp/coax-sequence-B-rebase-2431/baseline-manifest.json",
+      "baseline_archive_manifest_sha256": "c3ccc094ad15dc430741b40367a74527eafd3f5bbd55cda85a94f1683bedcb36",
+      "artifact_comparison": "/tmp/coax-sequence-B-rebase-2431/artifact-comparison.json",
+      "artifact_comparison_sha256": "ebb81ce1b565592882775c742dea66d351f3b6e2f0b0d92c753d570950dc6c95",
+      "fresh_native_variants": 8,
+      "reused_identical_input_native_variants": 12,
+      "mutation_receipts_reused": true,
+      "scope": "No unchanged passing native or mutation test was repeated. New source-producing compiler executions generated all comparison inputs; only changed Verse native inputs were executed again."
+    }
+  ]
+}

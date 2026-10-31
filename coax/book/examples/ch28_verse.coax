@@ -1,0 +1,30 @@
+// The same caller-owned byte operation used by Verse's pass formatter and
+// Psionic's HTTP response rotation. No GPU execution or ownership is implied.
+#import "Basic";
+#load "../../lib/sequence.coax" as sequence;
+#load "../../../verse/hud.coax" as hud;
+
+#test "reversing trace digits keeps the caller's delimiters" {
+  trace := [6] u8.['[', '8', '4', '0', '2', ']'];
+  sequence.reverse(trace[1..<5]);
+  #assert cast(string) trace[..] == "[2048]";
+  sequence.swap(trace[..], 1, 4);
+  #assert cast(string) trace[..] == "[8042]";
+}
+
+#test "the public HUD API places a slot and refuses an invalid slot" {
+  slot := hud.verse_hud_slot(320, 700, 34, 0, 6);
+  refused := hud.verse_hud_slot(320, 700, 34, 6, 6);
+  point := hud.verse_hud_frame_point(0, 0, 100, 40, 7, 1);
+  #assert slot.x == 13 && slot.y == 610 && slot.width == 44 && slot.height == 44;
+  #assert refused.x == 0 && refused.y == 0 && refused.width == 0 && refused.height == 0;
+  #assert point.x == 93 && point.y == 0;
+}
+
+main :: () {
+  trace := [6] u8.['[', '8', '4', '0', '2', ']'];
+  sequence.reverse(trace[1..<5]);
+  print("%\n", cast(string) trace[..]);
+  slot := hud.verse_hud_slot(320, 700, 34, 0, 6);
+  print("HUD slot: % % % %\n", int(slot.x), int(slot.y), int(slot.width), int(slot.height));
+}

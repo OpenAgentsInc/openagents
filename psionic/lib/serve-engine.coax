@@ -6,6 +6,7 @@
 #load "decision-answer.coax";
 #load "serve-request.coax";
 #load "../fixtures/models/serve/toy.coax";
+#load "../../coax/lib/sequence.coax" as sequence;
 #authority;
 // book:begin engine
 SvEngine :: struct {ok:bool;sealed:bool;session:PsSession;name:string;alias:string;digest:string;temperature:f32;capacity:int;options:int;}
@@ -242,7 +243,7 @@ sv_answer_code :: (status:QxStatus)->SvCode {
     if status==QxStatus.ok {return SvCode.none;}if status==QxStatus.capacity {return SvCode.limit_exceeded;}return SvCode.internal;
 }
 sv_reverse :: (out:[]u8,from:int,to:int) {
-    for s:0..<(to-from)/2 {c:=out[from+s];out[from+s]=out[to-1-s];out[to-1-s]=c;}
+    for s:0..<(to-from)/2 {sequence.swap(out,from+s,to-1-s);}
 }
 sv_less :: (a:string,b:string)->bool {
     i:=0;while i<a.count && i<b.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}i+=1;}return a.count<b.count;

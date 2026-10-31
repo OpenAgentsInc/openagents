@@ -33,6 +33,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sequence.coax" as sequence;
 
 EP_PACK :: "apps/openagents-web/realms/everglade/assets/everglade.pack";
 EP_SIZE :: "320 180";
@@ -383,9 +384,8 @@ put_int :: (s: [] Sp, v: int) {
   if x == 0 { d[0] = '0'; n = 1; }
   while x > 0 { d[n] = cast,trunc(u8) (48 + x % 10); x /= 10; n += 1; }
   if v < 0 { put(s, "-"); }
-  r: [24] u8;
-  for i: 0..<n { r[i] = d[n - 1 - i]; }
-  put(s, cast(string) r[0..<n]);
+  sequence.reverse(d[0..<n]);
+  put(s, cast(string) d[0..<n]);
 }
 cat :: (x: string, y: string, out: [] u8) -> string {
   if x.count + y.count > out.count { return ""; }

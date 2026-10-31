@@ -1,0 +1,3 @@
+tensor: 6 elements, 24 bytes, index 5
+prediction: 3.75
+out-of-profile input refused

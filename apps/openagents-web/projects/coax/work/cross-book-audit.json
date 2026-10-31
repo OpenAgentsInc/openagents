@@ -33,6 +33,23 @@
         "r8-backend-profile-manifest"
       ],
       "body": "## Problem\n\nVerse shader uniforms and Psionic tensor/kernel arguments repeat shape, offset, stride and access information across Coax declarations and platform launch/binding code. A matching byte count or successful generated shader compilation does not establish typed resource layout or the complete execution contract.\n\n## Scope\n\nWorkstream 7 of the cross-book audit. Carry an explicitly bounded subset of typed parameter records and storage-view metadata from the checked graph into actual GPU lowering and target-specific ABI/layout records. Select one real Verse graphics resource and one Psionic compute argument path; retain their arithmetic, workgroup rules, ownership and GPU lifetimes. Reuse the target/profile manifest and existing backend-conformance machinery. Keep direct WGSL pipeline migration in r8-direct-wgsl-layouts; this issue is not completion of that separate emitter contract.\n\n## Acceptance\n\n- Supported record fields, numeric storage views, shape/stride/access rules and target layout profiles are specified before implementation; unsupported records/aliases/stages fail with original-source diagnostics.\n- Generated size/alignment/offset/stride/binding facts agree with independent native/device observations for each claimed target.\n- The selected real Verse and Psionic consumers use the generated typed facts instead of independently maintained launch/layout copies; outputs and numerical tolerance rules are unchanged.\n- Available claimed backends execute bounded upload/kernel/readback fixtures, including a deliberately wrong field/stride/access case; unavailable hardware and unsupported forms remain explicitly unqualified.\n- Existing authority/mutation gates and lifetime/fence/error-path checks remain effective; no shared-memory/barrier or full-backend support is inferred from CPU checks.\n\n## Limits and implementation sequencing\n\nThis is an umbrella. Before implementation split it into acceptance-complete slices that each finish and push within two hours; keep this issue open until all consumer and device gates above pass. Do not broaden resource/interpreter/crypto budgets or waive missing device execution. Protocol identities and signed original bytes remain unchanged."
+    },
+    {
+      "slug": "r0-native-check-baseline-verdict",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Refuse a native pass when the evaluator baseline failed",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "regression"
+      ],
+      "blocked_by": [
+        "coax-library-contract-recipes"
+      ],
+      "body": "## Measured gap\n\nThe initial native helper from 3ea326018c returns passed/exit 0 for its eligible #test subset while the same source contains a failing #forall baseline. Ordinary coax test --library exits 1; the native subset record omits that quantified check. Frozen proof: /tmp/coax-native-baseline-audit.json. Existing coax.native-checks.v1 deliberately means subset differential agreement, including matching failed assertions/traps; preserve that historical meaning.\n\n## Scope\n\nAdd a versioned strict companion/verdict before expanding native check emission. Retain the complete compiler-owned evaluator baseline for original source bytes and explicitly name unsupported or unexecuted native claims. A failed, exhausted or missing baseline must not become a strict native pass. Preserve the existing parent claim and historical 62-check result. This host-tool correction does not complete compiler-owned native policy.\n\n## Acceptance\n\n- Retain the exact passing-test/failing-quantified-baseline source as a check-first regression. The strict invocation returns nonzero, names the failure with physical provenance and preserves the evaluator witness.\n- Tests cover failed/inconclusive/missing baseline observations, unsupported native coverage and a fully passing supported file.\n- Preserve normal evaluator budgets and mandatory authority checks; no resource increase makes a case pass. Test original bytes with library mode, rather than relabeling a synthetic-main graph as the original baseline.\n- Keep legacy v1 differential semantics identifiable. New strict meaning/fields use a new contract version; coax.evidence.v1 remains evaluator evidence.\n- Push focused code and evidence within two hours, then continue native emission/execution/domain/semantic/consumer children. Commands stay below fifteen minutes."
     }
   ]
 }

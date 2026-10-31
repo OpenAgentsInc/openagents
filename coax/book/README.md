@@ -47,6 +47,11 @@ project organization, asynchronous lifetimes, debugging and cost, verification
 boundaries, and a runnable protocol-to-native capstone. Part VII follows a
 voice system through small checked policies and native boundaries.
 
+Part VIII returns to small consumers of shared libraries: caller-owned buffers,
+protocol fixtures and a tiny Psionic CPU operation.
+
+The [selected library index](https://github.com/OpenAgentsInc/openagents/blob/main/coax/LIBRARIES.md) names reusable entry points, native link inputs and their lifetime/error limits. Chapter 28 supplies small offline consumers.
+
 The best way to learn is to type the examples in and run them. Change
 them, break them on purpose, and read what the compiler says.
 
@@ -133,6 +138,8 @@ on your path.
   [26. A complete boundary](ch26-a-complete-boundary.md)
 - Part VII. A case study:
   [27. Building a voice system in pieces](ch27-case-study-voice.md)
+- Part VIII. Reusing libraries:
+  [28. Reusing bounded libraries](ch28-library-recipes.md)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),

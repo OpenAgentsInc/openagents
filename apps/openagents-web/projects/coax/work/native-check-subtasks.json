@@ -14,7 +14,7 @@
         "cross-project"
       ],
       "blocked_by": [
-        "coax-library-contract-recipes"
+        "r0-native-check-baseline-verdict"
       ],
       "body": "## Scope\n\nEmit hidden wrappers for selected zero-argument #test bodies from their existing checked AST and original source locations. Put eligibility/reachable-effect admission in a small checked Coax policy; native code transports facts and uses the existing emitter. Reject reachable foreign/output effects and unsupported selected forms explicitly; unrelated product host code must not require linking shims. Do not rename original AST declarations.\n\n## Acceptance\n\nSelected/unselected and duplicate display names; loaded-source locations; caller-buffer assertions; reachable foreign refusal; unrelated host procedures pruned; ordinary product C contains no check wrappers/harness.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
     },

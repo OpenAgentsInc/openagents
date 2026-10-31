@@ -203,7 +203,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
-      "text_sha256": "8382c0c8424206352ac476d60d32e64f6e3ba53af9e4e761eb6a1a5856179e86",
+      "text_sha256": "841fce05e86dcb9c87226785567e7efbcdafc409f134092712a38cdf78548083",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -258,6 +258,14 @@
         {
           "path": "psionic/lib/autodiff.coax",
           "sha256": "6bb09dd6be49ffac8bd8d09de8d164d0f06de7866781dc9dcf7ad28204b05df9"
+        },
+        {
+          "path": "coax/lib/compiler/wgsl.coax",
+          "sha256": "aa007e09e351d8541babf3887622b1a8a6d1a5bb2dc574caef5d8d20efdfd5a5"
+        },
+        {
+          "path": "docs/verse/native-gpu.md",
+          "sha256": "fe5be2abcca78b74e8cbadd261b5f25bda278046c124d082d34150e745a845e6"
         }
       ]
     },
@@ -284,6 +292,40 @@
         {
           "path": "docs/verification/psionic-ch26-2026-10-29.md",
           "sha256": "d6779e8af5d26cda676b489dd74578ff101fe12798a5be8ef6dd40644666d7e6"
+        }
+      ]
+    },
+    {
+      "id": "coax.wgsl.current",
+      "document": "coax/book/ch14-gpu.md",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate.",
+      "text_sha256": "b5a7a20e0f3827729583c73418a77ff85cb601184305fba8a0f0e6577f034726",
+      "features": [
+        {
+          "id": "target.browser",
+          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "coax/lib/compiler/wgsl.coax",
+          "sha256": "aa007e09e351d8541babf3887622b1a8a6d1a5bb2dc574caef5d8d20efdfd5a5"
+        },
+        {
+          "path": "coax/src/shader.cpp",
+          "sha256": "43113873f6fd13f1ac27a8e8a0b37acf4601bd718a67819f1dc3f73a7b68a962"
+        },
+        {
+          "path": "docs/verse/native-gpu.md",
+          "sha256": "fe5be2abcca78b74e8cbadd261b5f25bda278046c124d082d34150e745a845e6"
+        },
+        {
+          "path": "verse/everglade/gpu.module",
+          "sha256": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3"
+        },
+        {
+          "path": "verse/everglade/gpu.bindings",
+          "sha256": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530"
         }
       ]
     }

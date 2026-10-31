@@ -258,11 +258,11 @@ operator requirements, data studies and source-license qualifications.
 | Framework track | 2a–3b, 4a, 26b–26c, 71b–71c, 74a, 75b–75c, 76a–76b, 78a, 81a–81c, 129a–129c, 161a, 189 | Tensor views and an operator library with a manifest → custom operators → general and composable autodiff over 26a's IR → modules, one trainer, data loading, reusable optimizers → GPU training, profiling, eager versus compiled → whole-experiment checkpoints and interchange (Safetensors writing, DLPack, ONNX export; pickles refused) → distributed tensors, data-parallel and fully sharded training → rebuilding three PyTorch tutorials with public APIs only. Graduation: a new network defined, trained, exported and served without PyTorch. |
 | Optional laboratories | A–D | SmolLM2-135M import; Mini/Bolt assistant architectures; higher-order derivatives/PINNs; activation and state inspection. |
 
-Several chapters need extensions beyond the shipped bounded compute subset
-and generic copyable procedures and fixed-storage structs: direct WGSL
-emission, language jobs and threads, narrow float scalar types, numeric
-operation constraints, general SIMD and allocators, and broader target
-qualification. The plan's
+Several chapters need extensions beyond shipped bounded CUDA/Metal compute,
+direct WGSL graphics modules and generic copyable procedures and fixed-storage
+structs: an admitted and qualified Psionic WebGPU compute path, language jobs
+and threads, narrow float scalar types, numeric operation constraints, general
+SIMD and allocators, and broader target qualification. The plan's
 [Coax feature map](../book/PLAN.md#coax-features-each-branch-needs)
 distinguishes the existing boundaries from those remaining language features.
 

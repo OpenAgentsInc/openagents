@@ -14,6 +14,7 @@ Everything Coax lives in this folder, at the root of the openagents repo.
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
+| [`LIBRARIES.md`](LIBRARIES.md) | Selected reusable entry points, maturity, targets, link inputs, storage/error contracts and offline recipes |
 | [`book/`](book/README.md) | *The Coax Programming Language*, source for the published book |
 | `src/`, `build.sh`, `tests/`, `examples/` | `coax0`, the bootstrap compiler |
 
@@ -69,6 +70,7 @@ coax/build.sh test
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |
 | `coax spirv FILE [--kernel NAME \| --fill A[,B,C,D] \| --stroke NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
+| `coax wgsl FILE (--functions A,B \| --vertices A,B --fragments C,D --bindings F [--strip P]) [--tree] [-o out.wgsl]` | Emit selected functions or a bounded WGSL graphics module from checked Coax; unsupported entries, resources and layouts refuse |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |

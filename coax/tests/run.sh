@@ -81,6 +81,17 @@ python3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.p
 sources_rc=$?
 python3 tests/reflection.py
 reflection_rc=$?
+# Book maintenance and bounded shared-library adoption, without model/network effects.
+python3 tests/book_claims.py && python3 tests/book_selection.py && python3 tests/library_recipes.py
+library_tools_rc=$?
+sequence_output=$(mktemp -d)
+if [[ -n "$sequence_output" ]] && "$COAX" test lib/sequence.coax --library && "$COAX" mutate lib/sequence.coax --library && \
+   python3 tests/sequence.py --output "$sequence_output"; then
+  sequence_rc=0
+else
+  sequence_rc=1
+fi
+[[ -z "$sequence_output" ]] || rm -rf "$sequence_output"
 python3 tests/debugging.py
 debugging_rc=$?
 python3 tests/nostr.py
@@ -113,4 +124,4 @@ wire_core_rc=$?
 importer_checks_rc=$?
 "$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
 fingerprint_checks_rc=$?
-[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
