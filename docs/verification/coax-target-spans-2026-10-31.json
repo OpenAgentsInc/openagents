@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r1a-target-spans",
+  "alias": "#7176",
+  "parent": "r1a-identities (#963b), kept open",
+  "baseline_commit": "e6437772c2",
+  "compiler_version": "0.29.0",
+  "scope": "Typed native-lp64 target record (pointer/count/view widths and alignments, every scalar from the checker's type table, calling convention c) and exact authored declaration spans in coax deps --declarations and --modules. Other layout targets refuse with E0612; generated declarations carry their #import_proto origin instead of a span.",
+  "kernels": {
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "change": "each top-level item records end = last token offset + raw_count before linking",
+      "tests": "179 checks passed",
+      "mutation": "1185 mutants, 1185 killed, 0 survived"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "change": "CK_Target record and CK_target(name): native-lp64 supported, every other name unsupported with a reason; tied to CK_builtin's string layout",
+      "tests": "566 checks passed",
+      "mutation": "4051 mutants, 4051 killed, 0 survived"
+    }
+  },
+  "fixtures": {
+    "file": "coax/tests/modules.py",
+    "class": "TargetSpans",
+    "cases": [
+      "native-lp64 pointer, count, view and 11 scalar sizes/alignments equal an independent C11 sizeof/alignof oracle; struct layout under both #if profiles uses the same count width",
+      "wasm32, metal, spirv and native-ilp32 refuse layout, deps --declarations and deps --modules with E0612 and print no report",
+      "spans select exactly the authored bytes (struct with #if form, enum with trailing comment, constant, procedure) across two loaded units; lines match; the release profile reports the same span",
+      "moving declarations keeps IDs, bytes and span sha256 while start offsets move; an edit changes only that declaration's hash",
+      "#import_proto declarations report span null and origin {directive, unit, line}"
+    ],
+    "result": "27 tests OK"
+  },
+  "limits": "Revisions stay module-scoped; spans and the target record are separate from nominal IDs. Schema-1 CPU reflection (type_info, field_info) is not Wasm or GPU metadata. No other layout target is qualified."
+}

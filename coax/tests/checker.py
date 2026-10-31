@@ -47,7 +47,7 @@ class Checker(unittest.TestCase):
         for i in range(n):
             v=parsed[i];x=nodes[i];x.field_index=-1
             for field,T in PS.Node._fields_:
-                if field=='width':continue
+                if field in ('width','end'):continue
                 value=getattr(v,field)
                 if field in ('loc','loc2'):value=Loc(value.line,value.column,value.offset)
                 if field=='floating':value=struct.unpack('Q',struct.pack('d',value))[0]

@@ -356,6 +356,7 @@ struct ProcDecl {
   Str name;
   int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;
+  int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
   Slice<Param> params;
   TypeExpr *ret_expr = nullptr;
   Type ret = &T_VOID;
@@ -378,6 +379,7 @@ struct Field {
 struct StructDecl {
   Str name;
   Loc loc;
+  int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
   Slice<Field> fields;
   TypeInfo *type = nullptr;
   uint8_t state = 0;     // layout: 0 unseen, 1 visiting, 2 done
@@ -394,6 +396,7 @@ struct EnumMember {
 struct EnumDecl {
   Str name;
   Loc loc;
+  int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
   TypeExpr *base_expr = nullptr;
   Slice<EnumMember> members;
   TypeInfo *type = nullptr;
@@ -407,6 +410,7 @@ struct Import {
 struct ConstDecl {
   Str name;
   Loc loc;
+  int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
   Expr *expr = nullptr;  // replaced with a literal after compile-time evaluation
   Type type = &T_INVALID;
   uint8_t checked = 0, evaluated = 0; // 0 unseen, 1 visiting, 2 done

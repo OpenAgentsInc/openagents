@@ -195,6 +195,15 @@ CK_builtin :: (id:int)->CK_Type #export_c {
   raw:=cast,trunc(u64)id;at:=0;if raw<16 {at=cast(int)raw;}alignment:=sizes[at];if alignment==0 {alignment=1;}if at==3 {alignment=8;}
   return CK_Type.{name=names[at],kind=kinds[at],size=sizes[at],alignment=alignment,bits=widths[at],is_signed=signed[at]};
 }
+// The one qualified layout target: the named native LP64 description the
+// checker lays types out with. A view or string is {pointer, count}; every
+// other layout-query target is unsupported rather than borrowing these values.
+CK_Target :: struct {name:string;supported:bool;data_model:string;pointer_size:int;pointer_alignment:int;count_size:int;count_alignment:int;view_size:int;view_alignment:int;calling_convention:string;reason:string;}
+CK_target :: (name:string)->CK_Target #export_c {
+  if name!="native-lp64" {return CK_Target.{name=name,reason="only the native-lp64 layout target is qualified; other targets have no layout description"};}
+  view:=CK_builtin(3);
+  return CK_Target.{name=name,supported=true,data_model="LP64",pointer_size=8,pointer_alignment=8,count_size=8,count_alignment=8,view_size=view.size,view_alignment=view.alignment,calling_convention="c"};
+}
 CK_builtin_type :: (name:string)->int {
   names:=[14] string.["int","s64","s8","s16","s32","u8","u16","u32","u64","uint","f32","f64","bool","string"];
   ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
@@ -340,6 +349,17 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
 }
 // Qualified module lookup. Scopes index modules ("" is the unowned program);
 // a graph built by hand: V, g and K are declared by modules a (1) and b (2).
+#test "native-lp64 is the only qualified layout target" {
+  t:=CK_target("native-lp64");
+  #assert t.supported && t.name=="native-lp64" && t.data_model=="LP64" && t.calling_convention=="c" && t.reason=="";
+  #assert t.pointer_size==8 && t.pointer_alignment==8 && t.count_size==8 && t.count_alignment==8;
+  // a view and a string are one pointer and one count, as the checker lays them out
+  #assert t.view_size==t.pointer_size+t.count_size && t.view_size==16 && t.view_alignment==8;
+  #assert CK_builtin(11).size==t.count_size && CK_builtin(15).size==t.pointer_size;
+  for name:[4] string.["wasm32","metal","native-ilp32","native-lp64 "] {
+    u:=CK_target(name);#assert !u.supported && u.name==name && u.pointer_size==0 && u.view_size==0 && u.data_model=="" && u.calling_convention=="" && u.reason!="";
+  }
+}
 #test "own scope first, then one other scope, ambiguity across two" {
  nodes:[12]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};

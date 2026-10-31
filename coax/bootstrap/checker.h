@@ -29,6 +29,7 @@ typedef struct coax_t_CK_Alias coax_t_CK_Alias;
 typedef struct coax_t_CK_Context coax_t_CK_Context;
 typedef struct coax_t_CK_Options coax_t_CK_Options;
 typedef struct coax_t_CK_Caps coax_t_CK_Caps;
+typedef struct coax_t_CK_Target coax_t_CK_Target;
 #ifdef COAX_coax_t_CM_Width_DEFINED
 #ifndef COAX_SCHEMA_coax_t_CM_Width_31343a636f61782d632d747970652d7631343a656e756d31353a636f61785f745f434d5f5769647468313a31313a31373a75696e74385f74313a32333a663332323a3332333a663634323a3634
 #error "incompatible Coax C type coax_t_CM_Width"
@@ -78,6 +79,15 @@ typedef uint8_t coax_t_CK_Kind;
 #define COAX_coax_t_CK_Type_DEFINED
 #define COAX_SCHEMA_coax_t_CK_Type_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f434b5f54797065323a3936313a38323a3131343a6b696e6431343a636f61785f745f434b5f4b696e64313a30343a6e616d6531313a636f61785f737472696e67313a38343a73697a65373a696e7436345f74323a3234393a616c69676e6d656e74373a696e7436345f74323a3332343a62697473373a696e7436345f74323a3430393a69735f7369676e6564353a5f426f6f6c323a3438343a656c656d373a696e7436345f74323a3536363a6c656e677468373a696e7436345f74323a3634343a6465636c373a696e7436345f74323a3732323a6964373a696e7436345f74323a3830353a73636f7065373a696e7436345f74323a3838
 struct coax_t_CK_Type { coax_t_CK_Kind kind; coax_string name; int64_t size; int64_t alignment; int64_t bits; _Bool is_signed; int64_t elem; int64_t length; int64_t decl; int64_t id; int64_t scope; };
+#endif
+#ifdef COAX_coax_t_CK_Target_DEFINED
+#ifndef COAX_SCHEMA_coax_t_CK_Target_31343a636f61782d632d747970652d7631363a73747275637431363a636f61785f745f434b5f546172676574333a313230313a38323a3131343a6e616d6531313a636f61785f737472696e67313a30393a737570706f72746564353a5f426f6f6c323a313631303a646174615f6d6f64656c31313a636f61785f737472696e67323a323431323a706f696e7465725f73697a65373a696e7436345f74323a343031373a706f696e7465725f616c69676e6d656e74373a696e7436345f74323a343831303a636f756e745f73697a65373a696e7436345f74323a353631353a636f756e745f616c69676e6d656e74373a696e7436345f74323a3634393a766965775f73697a65373a696e7436345f74323a373231343a766965775f616c69676e6d656e74373a696e7436345f74323a383031383a63616c6c696e675f636f6e76656e74696f6e31313a636f61785f737472696e67323a3838363a726561736f6e31313a636f61785f737472696e67333a313034
+#error "incompatible Coax C type coax_t_CK_Target"
+#endif
+#else
+#define COAX_coax_t_CK_Target_DEFINED
+#define COAX_SCHEMA_coax_t_CK_Target_31343a636f61782d632d747970652d7631363a73747275637431363a636f61785f745f434b5f546172676574333a313230313a38323a3131343a6e616d6531313a636f61785f737472696e67313a30393a737570706f72746564353a5f426f6f6c323a313631303a646174615f6d6f64656c31313a636f61785f737472696e67323a323431323a706f696e7465725f73697a65373a696e7436345f74323a343031373a706f696e7465725f616c69676e6d656e74373a696e7436345f74323a343831303a636f756e745f73697a65373a696e7436345f74323a353631353a636f756e745f616c69676e6d656e74373a696e7436345f74323a3634393a766965775f73697a65373a696e7436345f74323a373231343a766965775f616c69676e6d656e74373a696e7436345f74323a383031383a63616c6c696e675f636f6e76656e74696f6e31313a636f61785f737472696e67323a3838363a726561736f6e31313a636f61785f737472696e67333a313034
+struct coax_t_CK_Target { coax_string name; _Bool supported; coax_string data_model; int64_t pointer_size; int64_t pointer_alignment; int64_t count_size; int64_t count_alignment; int64_t view_size; int64_t view_alignment; coax_string calling_convention; coax_string reason; };
 #endif
 #ifdef COAX_coax_v_u8_DEFINED
 #ifndef COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
@@ -382,11 +392,24 @@ COAX_LAYOUT(offsetof(coax_t_CK_Caps, types) == 8, "offset of CK_Caps.types");
 COAX_LAYOUT(offsetof(coax_t_CK_Caps, locals) == 16, "offset of CK_Caps.locals");
 COAX_LAYOUT(offsetof(coax_t_CK_Caps, errors) == 24, "offset of CK_Caps.errors");
 COAX_LAYOUT(offsetof(coax_t_CK_Caps, bytes) == 32, "offset of CK_Caps.bytes");
+COAX_LAYOUT(sizeof(coax_t_CK_Target) == 120 && COAX_ALIGNOF(coax_t_CK_Target) == 8, "layout of CK_Target");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, name) == 0, "offset of CK_Target.name");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, supported) == 16, "offset of CK_Target.supported");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, data_model) == 24, "offset of CK_Target.data_model");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, pointer_size) == 40, "offset of CK_Target.pointer_size");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, pointer_alignment) == 48, "offset of CK_Target.pointer_alignment");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, count_size) == 56, "offset of CK_Target.count_size");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, count_alignment) == 64, "offset of CK_Target.count_alignment");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, view_size) == 72, "offset of CK_Target.view_size");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, view_alignment) == 80, "offset of CK_Target.view_alignment");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, calling_convention) == 88, "offset of CK_Target.calling_convention");
+COAX_LAYOUT(offsetof(coax_t_CK_Target, reason) == 104, "offset of CK_Target.reason");
 
 uint64_t CM_convert(uint64_t bits, coax_t_CM_Width from, coax_t_CM_Width to);
 uint64_t CM_float(uint32_t op, uint64_t left, uint64_t right);
 coax_t_CK_Caps CK_caps(int64_t nodes, int64_t source);
 coax_t_CK_Type CK_builtin(int64_t id);
+coax_t_CK_Target CK_target(coax_string name);
 uint32_t CK_intrinsic(coax_string name);
 uint32_t CK_byte_intrinsic(coax_string name);
 _Bool CK_c_keyword(coax_string name);

@@ -15,7 +15,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
 class Token(C.Structure):_fields_=[('kind',C.c_uint32),('text',LX.Text),('loc',Loc),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('raw_count',C.c_int64)]
 class Node(C.Structure):
-    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64)]
+    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):

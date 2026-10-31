@@ -345,6 +345,44 @@ static std::string read_bytes(const std::string &path) {
   fclose(f);
   return out;
 }
+// A declaration's exact authored range: unit-relative byte offsets of its
+// first and one-past-last token, their lines and the sha256 of those bytes.
+// A generated declaration has no authored range; it names its directive.
+static std::string span_json(const Source *src, Loc loc, int32_t end) {
+  for (const GeneratedRegion &region : src->generated)
+    if (loc.offset >= region.start && loc.offset < region.end) {
+      const SourceUnit *u = source_unit_at(src, region.directive);
+      return "\"span\":null,\"origin\":{\"directive\":\"#import_proto\",\"unit\":" + (u ? json_string(u->canonical) : std::string("null")) +
+             ",\"line\":" + std::to_string(source_point(src, region.directive).loc.line) + "}";
+    }
+  const SourceUnit *u = source_unit_at(src, loc);
+  if (!u || end <= loc.offset || loc.offset < u->begin || end > u->end || (size_t)(end - u->begin) > u->text.size())
+    return "\"span\":null,\"origin\":{\"unavailable\":\"no exact authored range is recorded for this declaration\"}";
+  const int32_t start = loc.offset - u->begin, stop = end - u->begin;
+  int end_line = 1;
+  for (int32_t i = 0; i < stop; i++) end_line += u->text[(size_t)i] == '\n';
+  const std::string bytes = u->text.substr((size_t)start, (size_t)(stop - start));
+  return "\"span\":{\"start\":" + std::to_string(start) + ",\"end\":" + std::to_string(stop) + ",\"start_line\":" +
+         std::to_string(source_point(src, loc).loc.line) + ",\"end_line\":" + std::to_string(end_line) +
+         ",\"sha256\":" + json_string(debug_source_hash(bytes)) + "},\"origin\":\"authored\"";
+}
+static std::string g_target = "native-lp64";
+static std::string target_json() {
+  const auto t = CK_target({g_target.data(), (int64_t)g_target.size()});
+  auto text = [](coax_string v) { return json_string(std::string(v.data, (size_t)v.count)); };
+  return "\"target\":{\"name\":" + text(t.name) + ",\"data_model\":" + text(t.data_model) + ",\"pointer\":{\"size\":" + std::to_string(t.pointer_size) +
+         ",\"align\":" + std::to_string(t.pointer_alignment) + "},\"count\":{\"size\":" + std::to_string(t.count_size) + ",\"align\":" +
+         std::to_string(t.count_alignment) + "},\"view\":{\"size\":" + std::to_string(t.view_size) + ",\"align\":" + std::to_string(t.view_alignment) +
+         "},\"scalars\":[" + [] {
+           std::string rows;
+           for (int id : {2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
+             const auto b = CK_builtin(id);
+             rows += std::string(rows.empty() ? "" : ",") + "{\"type\":" + json_string(std::string(b.name.data, (size_t)b.name.count)) +
+                     ",\"size\":" + std::to_string(b.size) + ",\"align\":" + std::to_string(b.alignment) + "}";
+           }
+           return rows;
+         }() + "],\"calling_convention\":" + text(t.calling_convention) + "}";
+}
 static std::string modules_report(const Source *src, const File *file, const EmitOptions &opts) {
   const size_t n = src->units.size();
   std::vector<std::string> hash(n);
@@ -425,27 +463,27 @@ static std::string modules_report(const Source *src, const File *file, const Emi
   out += "],\"declarations\":[";
   std::string legacy, generated;
   first = true;
-  auto decl = [&](uint8_t kind, Str name, Loc loc) {
+  auto decl = [&](uint8_t kind, Str name, Loc loc, int32_t end) {
     static const char *KINDS[] = {"proc", "struct", "enum", "const"};
     const SourceUnit *u = source_unit_at(src, loc);
     bool gen = false;
     for (const GeneratedRegion &region : src->generated) gen = gen || (loc.offset >= region.start && loc.offset < region.end);
-    std::string row = "{\"kind\":\"" + std::string(KINDS[kind]) + "\",\"name\":" + json_string(to_std(name));
-    if (gen) generated += std::string(generated.empty() ? "" : ",") + row + ",\"origin\":" + (u ? json_string(u->canonical) : "null") + "}";
+    std::string row = "{\"kind\":\"" + std::string(KINDS[kind]) + "\",\"name\":" + json_string(to_std(name)) + "," + span_json(src, loc, end);
+    if (gen) generated += std::string(generated.empty() ? "" : ",") + row + "}";
     std::string id = declaration_id(src, kind, name, loc);
     if (id.empty()) { legacy += std::string(legacy.empty() ? "" : ",") + row + ",\"unit\":" + (u ? json_string(u->canonical) : "null") + "}"; return; }
     out += std::string(first ? "" : ",") + "{\"id\":" + json_string(id) + ",\"module\":" + json_string(u->module) +
-           ",\"revision\":" + json_string(revision[u->module]) + ",\"generated\":" + (gen ? "true" : "false") + "}";
+           ",\"revision\":" + json_string(revision[u->module]) + ",\"generated\":" + (gen ? "true" : "false") + "," + span_json(src, loc, end) + "}";
     first = false;
   };
-  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc);
-  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc);
-  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc);
-  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc);
+  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
+  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
+  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
   std::string legacy_units;
   for (size_t i = 0; i < n; i++) if (src->units[i]->module.empty())
     legacy_units += std::string(legacy_units.empty() ? "" : ",") + "{\"path\":" + json_string(src->units[i]->canonical) + ",\"sha256\":" + json_string(hash[i]) + "}";
-  return out + "],\"unavailable\":{\"declaration_ranges\":\"declaration revisions are module-scoped; exact declaration ranges are not tracked\"" +
+  return out + "]," + target_json() + ",\"unavailable\":{\"declaration_revisions\":\"revisions are module-scoped; each declaration's span sha256 is its exact authored content\"" +
          ",\"legacy_units\":[" + legacy_units + "],\"legacy_declarations\":[" + legacy + "],\"generated_declarations\":[" + generated + "]}}\n";
 }
 
@@ -460,19 +498,19 @@ static std::string declarations_report(const Source *src, const File *file) {
   DeclarationReport refs{src};
   out += "],\"declarations\":[";
   first = true;
-  auto decl = [&](uint8_t kind, Str name, Loc loc) {
+  auto decl = [&](uint8_t kind, Str name, Loc loc, int32_t end) {
     static const char *KINDS[] = {"proc", "struct", "enum", "const"};
     bool generated = false;
     for (const GeneratedRegion &region : src->generated) generated = generated || (loc.offset >= region.start && loc.offset < region.end);
     out += std::string(first ? "" : ",") + "{\"kind\":\"" + KINDS[kind] + "\",\"name\":" + json_string(to_std(name)) +
            ",\"id\":" + refs.id_json(kind, name, loc) + ",\"unit\":" + refs.unit_json(loc) +
-           ",\"line\":" + std::to_string(source_point(src, loc).loc.line) + ",\"generated\":" + (generated ? "true" : "false") + "}";
+           ",\"line\":" + std::to_string(source_point(src, loc).loc.line) + ",\"generated\":" + (generated ? "true" : "false") + "," + span_json(src, loc, end) + "}";
     first = false;
   };
-  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc);
-  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc);
-  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc);
-  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc);
+  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
+  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
+  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
   for (const StructDecl *d : file->structs) {
     std::string from = refs.id_json(1, d->name, d->loc);
     for (const Field &f : d->fields) { refs.type(from, f.type, f.loc); refs.expr(from, f.init); }
@@ -488,7 +526,7 @@ static std::string declarations_report(const Source *src, const File *file) {
     refs.type(from, d->ret, d->loc);
     refs.stmt(from, d->body);
   }
-  return out + "],\"references\":[" + refs.text + "]}\n";
+  return out + "],\"references\":[" + refs.text + "]," + target_json() + "}\n";
 }
 
 // lex, parse, check and evaluate; then produce the requested text.
@@ -636,7 +674,7 @@ static int usage() {
           "       coax explain CODE | --all [--markdown]\n"
           "       coax version\n"
           "       coax status [--json]\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
   return 2;
 }
 
@@ -796,6 +834,7 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--declarations" && cmd == "deps" && !declarations && !modules) declarations = true;
     else if (a == "--modules" && cmd == "deps" && !declarations && !modules) modules = true;
+    else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
@@ -804,6 +843,15 @@ static int main_impl(int argc, char **argv) {
     else return usage();
   }
   if (!input || (!header.empty() && cmd != "c")) return usage();
+  if (cmd == "deps" || cmd == "layout") {
+    // Layout facts are qualified for one named target; any other refuses
+    // instead of reporting the native LP64 values under another name.
+    const auto t = CK_target({g_target.data(), (int64_t)g_target.size()});
+    if (!t.supported) {
+      fprintf(stderr, "coax: error[E0612]: layout target '%s' is unsupported: %.*s\n", g_target.c_str(), (int)t.reason.count, t.reason.data);
+      return 1;
+    }
+  }
   if (mutation.shards && !mutation.merge.empty()) {
     fprintf(stderr, "coax: --shard runs one part; --merge combines finished parts. Use one of them\n");
     return 1;

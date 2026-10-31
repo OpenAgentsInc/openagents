@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.29.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -34,6 +34,7 @@ Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.
+
 
 
 ## E01xx: lexer
@@ -206,6 +207,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0609` | package search is not supported | An aliased #load names a .coax file by its path, relative to the loading unit. Nothing searches packages or installs dependencies. |
 | `E0610` | alias target has no logical module | An alias binds to a logical module ID, so the loaded unit must claim one with #module "some.id";. Load a member file without an alias. |
 | `E0611` | alias names two modules | Within one logical module an alias names one module. Pick another alias for the second module. |
+| `E0612` | unsupported layout target | Layout facts are qualified only for the named native-lp64 target. coax layout and coax deps refuse any other --target instead of reporting LP64 values under its name. |
 | `E0700` | outside the CUDA compute subset | coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. A kernel with for thread: 0..<T loops (T a multiple of 32 up to 1024) runs T threads per item: a thread loop writes a shared array only at the elements its thread owns, code between thread loops never writes one, and shared arrays fit in 32 KiB. |
 | `E0701` | CUDA module has no kernel | coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0702` | outside the Metal compute subset | coax metal-compute accepts what coax cuda accepts (E0700). Apple GPUs have no binary64, so f64 is a float-float pair: f64_bits, f64_from_bits, sin, cos, tan and pow of an f64 and conversion of an f64 to an integer are refused. A view points into device memory, so a slice of a kernel's fixed array is refused except as a whole argument to a device primitive. The Apple matrix primitives (am_sg_mma_64x32x32, am_sg_spill_64x32, am_matmul_bf16) belong to group kernels of 128 threads (64, 128 or 256 for am_matmul_bf16), called between thread loops. |

@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.29.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -184,6 +184,16 @@ prints `coax.declarations.v1` JSON: every unit and its owner, every
 declaration's ID, file and line, and every resolved reference from one
 declaration to another. A declaration in a unit with no owner reports
 `"id": null`: the compiler does not invent identity from a path or a line.
+
+Each declaration row also has a `span`: the byte range of exactly the text
+you wrote for it (from its name to its closing `}` or `;`), its first and
+last line, and a SHA-256 of those bytes. Move a declaration within its file
+and its span moves while its ID and hash stay; edit it and the hash changes.
+A declaration that `#import_proto` generated has no span; its `origin`
+names the directive line instead. The `target` record says which layout the
+compiler used: `native-lp64`, with 8-byte pointers and counts and each
+scalar's size and alignment. `coax layout main.coax --target wasm32` stops
+with E0612 rather than printing LP64 sizes under another name.
 
 The rules are strict so the answer never depends on traversal order. Two
 files claiming one ID is E0606. A file without its own claim that two

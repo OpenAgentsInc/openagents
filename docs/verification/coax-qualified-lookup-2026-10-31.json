@@ -43,7 +43,7 @@
         "CK_call_bound"
       ],
       "checks": "565 checks, 565 passed",
-      "mutation": "4023 mutants, 4023 killed, 0 survived"
+      "mutation": "4044 mutants, 4044 killed, 0 survived"
     },
     "seeds": "bootstrap/sources.{c,h}, parser.c and checker.{c,h} refreshed; coax/build.sh regenerates them byte for byte"
   },

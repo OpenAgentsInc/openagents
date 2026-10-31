@@ -106,10 +106,10 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
       else {p->then_=parser_ref<Stmt>(objects,v.c);p->else_=parser_ref<Stmt>(objects,v.d);}
       if(v.kind==43) {p->target=parser_ref<Expr>(objects,v.c);p->then_=nullptr;p->op=(Tok)v.op;}
     }else switch(v.kind) {
-      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;break;}
-      case COAX_PS_Tag_decl_constant:{auto *p=parser_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=parser_ref<Expr>(objects,v.a);break;}
-      case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;break;}
-      case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;break;}
+      case COAX_PS_Tag_decl_constant:{auto *p=parser_ref<ConstDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->expr=parser_ref<Expr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
+      case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_param:{auto *p=parser_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);break;}
       case COAX_PS_Tag_decl_enum_member:{auto *p=parser_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}

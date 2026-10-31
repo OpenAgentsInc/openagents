@@ -5,6 +5,9 @@ ModuleIdentity: `#module` owners, #load membership and the nominal
 declaration IDs that `coax deps --declarations` reports from the checked graph.
 QualifiedLookup: `#load "FILE.coax" as NAME;` path imports and NAME.Decl
 bindings resolved in the checked graph (r1a-qualified-lookup).
+TargetSpans: the native-lp64 target record against an independent C oracle,
+unsupported layout targets, and exact authored declaration spans
+(r1a-target-spans).
 The tuple encoding and membership rules are checked and mutation-tested in
 lib/compiler/sources.coax; these fixtures pin the composed behavior.
 """
@@ -309,7 +312,8 @@ class ModuleRevisions(unittest.TestCase):
         root = self.tree(GUARD)
         r = self.modules(root / "page.coax")
         un = r["unavailable"]
-        self.assertIn("declaration_ranges", un)
+        self.assertNotIn("declaration_ranges", un)
+        self.assertIn("declaration_revisions", un)
         self.assertEqual([Path(u["path"]).name for u in un["legacy_units"]], ["page.coax"])
         self.assertEqual([d["name"] for d in un["legacy_declarations"]], ["page_frame"])
         self.assertNotIn("page_frame", json.dumps(r["declarations"]))
@@ -470,6 +474,141 @@ class QualifiedLookup(unittest.TestCase):
         self.error(dup / "main.coax", "E0334")
         dup = self.tree({"x.coax": '#module "m.x";\nV :: struct {}\nV :: struct {}\n', "main.coax": '#load "x.coax" as x;\nmain :: () {}\n'}, "e")
         self.error(dup / "main.coax", "E0372")
+
+# Scalars by Coax name and the C type the oracle measures independently.
+ORACLE_TYPES = [("bool", "_Bool"), ("f32", "float"), ("f64", "double"), ("s8", "int8_t"), ("s16", "int16_t"),
+                ("s32", "int32_t"), ("int", "int64_t"), ("u8", "uint8_t"), ("u16", "uint16_t"), ("u32", "uint32_t"),
+                ("u64", "uint64_t")]
+SPANS = {
+    "shapes.coax": '#module "demo.shapes";\n\n// a comment before is not part of the item\nPoint :: struct {\n  x: int;\n#if BUILD_DEBUG { tag: int; }\n  y: int;\n}\nMode :: enum u8 { a; b; }  // trailing\n',
+    "main.coax": '#load "shapes.coax";\nLIMIT :: cast(int) 3;\nsq :: (p: Point) -> int {\n  return p.x * p.y;\n}\nmain :: () {}\n',
+}
+
+
+class TargetSpans(unittest.TestCase):
+    """Target layout facts and exact original declaration ranges."""
+    setUp = ModuleIdentity.setUp
+    tree = ModuleIdentity.tree
+    run_coax = ModuleIdentity.run_coax
+    report = ModuleIdentity.report
+
+    def oracle(self):
+        cc = shutil.which("cc") or shutil.which("clang")
+        if not cc:
+            self.skipTest("no native C compiler for the layout oracle")
+        lines = ["#include <stdio.h>", "#include <stdint.h>", "#include <stddef.h>", "#include <stdalign.h>",
+                 "struct view { const void *data; int64_t count; };", "int main(void) {"]
+        rows = [("pointer", "void *"), ("count", "int64_t"), ("view", "struct view")] + ORACLE_TYPES
+        for name, ctype in rows:
+            lines.append(f'  printf("%s %zu %zu\\n", "{name}", sizeof({ctype}), alignof({ctype}));')
+        lines.append("  return 0;\n}\n")
+        src = self.base / "oracle.c"
+        src.write_text("\n".join(lines))
+        exe = self.base / "oracle"
+        subprocess.run([cc, "-std=c11", str(src), "-o", str(exe)], check=True)
+        out = subprocess.run([str(exe)], capture_output=True, text=True, check=True).stdout
+        return {n: (int(a), int(b)) for n, a, b in (l.split() for l in out.splitlines())}
+
+    def test_native_lp64_facts_agree_with_the_c_oracle(self):
+        t = self.report(self.tree(SPANS) / "main.coax")["target"]
+        seen = self.oracle()
+        if seen["pointer"] != (8, 8):
+            self.skipTest("the host is not LP64")
+        self.assertEqual((t["name"], t["data_model"], t["calling_convention"]), ("native-lp64", "LP64", "c"))
+        for key in ("pointer", "count", "view"):
+            self.assertEqual((t[key]["size"], t[key]["align"]), seen[key], key)
+        scalars = {s["type"]: (s["size"], s["align"]) for s in t["scalars"]}
+        self.assertEqual(sorted(scalars), sorted(n for n, _ in ORACLE_TYPES))
+        for name, _ in ORACLE_TYPES:
+            self.assertEqual(scalars[name], seen[name], name)
+        # The checker lays a declared struct out with the same facts.
+        layout = self.run_coax("layout", self.tree(SPANS, "l") / "main.coax")
+        self.assertEqual(layout.returncode, 0, layout.stderr)
+        # The development profile selects the #if field: three counts.
+        self.assertIn("Point  size %d  align %d" % (3 * seen["count"][0], seen["count"][1]), layout.stdout)
+        rel = self.run_coax("layout", self.tree(SPANS, "k") / "main.coax", "--build-profile", "release")
+        self.assertEqual(rel.returncode, 0, rel.stderr)
+        self.assertIn("Point  size %d  align %d" % (2 * seen["count"][0], seen["count"][1]), rel.stdout)
+        explicit = self.run_coax("deps", self.tree(SPANS, "e") / "main.coax", "--declarations", "--target", "native-lp64")
+        self.assertEqual(json.loads(explicit.stdout)["target"], t)
+
+    def test_unsupported_targets_refuse_instead_of_borrowing_lp64(self):
+        main = self.tree(SPANS) / "main.coax"
+        for target in ("wasm32", "metal", "spirv", "native-ilp32"):
+            for args in (("layout", main), ("deps", main, "--declarations"), ("deps", main, "--modules")):
+                p = self.run_coax(*args, "--target", target)
+                self.assertEqual(p.returncode, 1, (target, args))
+                self.assertEqual(p.stdout, "")
+                self.assertIn("E0612", p.stderr)
+                self.assertIn(f"'{target}'", p.stderr)
+        p = self.run_coax("check", main, "--target", "native-lp64")
+        self.assertNotEqual(p.returncode, 0, "--target is a layout-query option only")
+
+    def spans(self, main):
+        r = self.report(main)
+        units = {u["path"]: Path(u["path"]) for u in r["units"]}
+        out = {}
+        for d in r["declarations"]:
+            span = d["span"]
+            self.assertEqual(d["origin"], "authored")
+            text = Path(units[next(u for u in units if d["unit"] == u)]).read_bytes()
+            out[d["name"]] = (d["id"], span, text[span["start"]:span["end"]].decode())
+            self.assertEqual(span["start_line"], text[:span["start"]].count(b"\n") + 1)
+            self.assertEqual(span["end_line"], text[:span["end"]].count(b"\n") + 1)
+        return out
+
+    def test_spans_select_the_original_authored_bytes(self):
+        s = self.spans(self.tree(SPANS) / "main.coax")
+        self.assertEqual(s["Point"][2], "Point :: struct {\n  x: int;\n#if BUILD_DEBUG { tag: int; }\n  y: int;\n}")
+        self.assertEqual(s["Mode"][2], "Mode :: enum u8 { a; b; }")
+        self.assertEqual(s["LIMIT"][2], "LIMIT :: cast(int) 3;")
+        self.assertEqual(s["sq"][2], "sq :: (p: Point) -> int {\n  return p.x * p.y;\n}")
+        self.assertEqual(s["main"][2], "main :: () {}")
+        self.assertEqual((s["Point"][1]["start_line"], s["Point"][1]["end_line"]), (4, 8))
+        # The release profile selects the other #if form; the range is still the authored one.
+        rel = self.run_coax("deps", self.tree(SPANS, "r") / "main.coax", "--declarations", "--build-profile", "release")
+        self.assertEqual(rel.returncode, 0, rel.stderr)
+        point = next(d for d in json.loads(rel.stdout)["declarations"] if d["name"] == "Point")
+        self.assertEqual(point["span"], s["Point"][1])
+
+    def test_relocation_keeps_ids_and_moves_ranges_truthfully(self):
+        base = self.spans(self.tree(SPANS) / "main.coax")
+        moved = dict(SPANS)
+        moved["shapes.coax"] = SPANS["shapes.coax"].replace("// a comment before is not part of the item\n", "// a much longer comment\n// on two lines\n\n")
+        moved["shapes.coax"] = moved["shapes.coax"].replace("Mode :: enum u8 { a; b; }  // trailing\n", "") .replace("#module \"demo.shapes\";\n", "#module \"demo.shapes\";\nMode :: enum u8 { a; b; }\n")
+        after = self.spans(self.tree(moved, "m") / "main.coax")
+        for name in base:
+            self.assertEqual(after[name][0], base[name][0], name)
+            self.assertEqual(after[name][2], base[name][2], name)
+            self.assertEqual(after[name][1]["sha256"], base[name][1]["sha256"], name)
+        self.assertNotEqual(after["Point"][1]["start"], base["Point"][1]["start"])
+        self.assertLess(after["Mode"][1]["start"], after["Point"][1]["start"])
+        edited = dict(SPANS)
+        edited["shapes.coax"] = SPANS["shapes.coax"].replace("y: int;", "y:  int;")
+        e = self.spans(self.tree(edited, "x") / "main.coax")
+        self.assertEqual(e["Point"][0], base["Point"][0])
+        self.assertNotEqual(e["Point"][1]["sha256"], base["Point"][1]["sha256"])
+        self.assertEqual(e["Mode"][1]["sha256"], base["Mode"][1]["sha256"])
+
+    def test_generated_declarations_name_their_directive(self):
+        root = self.tree({"wire.coax": '#module "game.wire";\n\n#import_proto "types.pb" as Wire;\nmain :: () {}\n'})
+        shutil.copy(ROOT.parent / "proto/descriptors/ios-home.pb", root / "types.pb")
+        r = self.report(root / "wire.coax")
+        gen = [d for d in r["declarations"] if d["generated"]]
+        self.assertTrue(gen)
+        for d in gen:
+            self.assertIsNone(d["span"])
+            self.assertEqual(d["origin"]["directive"], "#import_proto")
+            self.assertEqual((Path(d["origin"]["unit"]).name, d["origin"]["line"]), ("wire.coax", 3))
+        authored = next(d for d in r["declarations"] if d["name"] == "main")
+        self.assertEqual(authored["origin"], "authored")
+        m = self.run_coax("deps", root / "wire.coax", "--modules")
+        self.assertEqual(m.returncode, 0, m.stderr)
+        r = json.loads(m.stdout)
+        self.assertEqual(r["target"]["name"], "native-lp64")
+        self.assertTrue(all(d["span"] is None for d in r["unavailable"]["generated_declarations"]))
+        self.assertTrue(all(d["span"] is None for d in r["declarations"] if d["generated"]))
+        self.assertTrue(all(d["span"]["sha256"] for d in r["declarations"] if not d["generated"]))
 
 
 if __name__ == "__main__":

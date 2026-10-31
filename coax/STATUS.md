@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.29.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -134,7 +134,8 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | --- | --- | --- | --- |
 | `#load` / `coax deps` | Bounded source composition and input inventory | works | 0.11.0 |
 | `coax deps --declarations` | Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph | works | 0.26.0 |
-| `coax deps --modules` | Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no exact declaration ranges or cache key | partial | 0.27.0 |
+| `coax deps --modules` | Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no per-declaration revisions or cache key | partial | 0.27.0 |
+| Declaration spans and the `native-lp64` target record | coax deps reports each declaration's exact authored byte range, lines and content hash, or its generated directive origin, and the typed native-lp64 layout record; coax layout and coax deps refuse any other --target (E0612) | partial | 0.29.0 |
 | `#load "FILE.coax" as NAME;` qualified lookup | Path imports bind an alias to a logical module; NAME.Type, NAME.proc() and NAME.CONST resolve in the checked graph with per-module scopes, ambiguity at the use and qualified C spellings; no visibility, reexports, module parameters or package search | partial | 0.28.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
