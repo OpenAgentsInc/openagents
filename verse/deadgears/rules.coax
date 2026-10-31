@@ -392,20 +392,20 @@ mutant_part :: (m: Mutant, k: int) -> Part {
   }
   // The walkers (reaver, brute): torso, head, two legs, two arms.
   sc := m.size;
-  body := sc * (ifx m.severed then 0.65f32 else 1.1f32);
-  if k == 0 { return part_box(0, body, 0, sc * 0.35, sc * 0.43, sc * 0.25, R_CORE); }
+  torso := sc * (ifx m.severed then 0.65f32 else 1.1f32);
+  if k == 0 { return part_box(0, torso, 0, sc * 0.35, sc * 0.43, sc * 0.25, R_CORE); }
   if k == 1 {
     if m.headless { return none; }
-    return part_box(0, body + sc * 0.6, 0.1, sc * 0.2, sc * 0.22, sc * 0.2, R_HEAD);
+    return part_box(0, torso + sc * 0.6, 0.1, sc * 0.2, sc * 0.22, sc * 0.2, R_HEAD);
   }
   if k == 2 || k == 3 {
     side: f32 = ifx k == 2 then -1.0f32 else 1.0f32;
     if m.severed && side < 0 { return none; }
-    return part_box(side * sc * 0.25, body * 0.4, 0, sc * 0.11, body * 0.4, sc * 0.12, R_LIMB);
+    return part_box(side * sc * 0.25, torso * 0.4, 0, sc * 0.11, torso * 0.4, sc * 0.12, R_LIMB);
   }
   if k == 4 || k == 5 {
     side: f32 = ifx k == 4 then -1.0f32 else 1.0f32;
-    return part_box(side * sc * 0.6, body + 0.05, 0, sc * 0.12, sc * 0.45, sc * 0.12, R_LIMB);
+    return part_box(side * sc * 0.6, torso + 0.05, 0, sc * 0.12, sc * 0.45, sc * 0.12, R_LIMB);
   }
   return none;
 }
@@ -432,12 +432,12 @@ dg_ray :: (g: Game, from: Point, dir: Point, range: f32) -> RayHit {
   hit.who = ECS_NONE;
   hit.t = range;
   reach := times(dir, range);
-  wall := arena_sweep(g.arena, from, 0, reach);
-  if wall <= 1 { hit.t = wall * range; hit.solid = true; }
+  solid_t := arena_sweep(g.arena, from, 0, reach);
+  if solid_t <= 1 { hit.t = solid_t * range; hit.solid = true; }
   r := dg_reactor(g);
   if r != ECS_NONE {
     rp := g.pos[slot_of(r)];
-    t := enter(Box.{lo = v3(rp.x - 1.9, -0.2, rp.z - 1.4), hi = v3(rp.x + 1.9, 1.35, rp.z + 1.4)}, 0, from, reach);
+    t := arena_enter(Block.{lo = v3(rp.x - 1.9, -0.2, rp.z - 1.4), hi = v3(rp.x + 1.9, 1.35, rp.z + 1.4)}, 0, from, reach);
     if t <= 1 && t * range < hit.t { hit.t = t * range; hit.solid = true; }
   }
   if dir.y < -0.000001 && from.y > 0 {
@@ -460,7 +460,7 @@ dg_ray :: (g: Game, from: Point, dir: Point, range: f32) -> RayHit {
       // Into the creature's frame: x right (cs, 0, -sn), z ahead (sn, 0, cs).
       lp := v3(cs * o.x - sn * o.z, o.y, sn * o.x + cs * o.z);
       ld := v3(cs * reach.x - sn * reach.z, reach.y, sn * reach.x + cs * reach.z);
-      t := enter(Box.{lo = times(q.half, -1), hi = q.half}, 0, lp, ld);
+      t := arena_enter(Block.{lo = times(q.half, -1), hi = q.half}, 0, lp, ld);
       if t <= 1 && t * range < hit.t {
         hit.t = t * range; hit.solid = false; hit.who = ecs_at(g.e, i); hit.region = q.region;
       }
@@ -805,8 +805,8 @@ walk_support :: (g: Game, i: int, goal_at: Point, dt: f32) {
   to := nav_head_for(g.nav, g.arena, 1, a, goal);
   x := to.x - a.x; z := to.z - a.z; l := sqrt(x * x + z * z);
   if l <= 0.001 { return; }
-  step := lo((ifx gap > 6 then 4.5f32 else 3.0f32) * dt, gap);
-  x = x / l * step; z = z / l * step;
+  stride := lo((ifx gap > 6 then 4.5f32 else 3.0f32) * dt, gap);
+  x = x / l * stride; z = z / l * stride;
   walk_body(g, i, x, z, f32(CHARACTER_RADIUS));
   g.yaw[i] = atan2(x, z);
 }
@@ -957,8 +957,8 @@ bolt_system :: (g: Game, dt: f32) {
     from := g.pos[i]; v := g.vel[i];
     motion := v3(v.x * dt, 0, v.z * dt);
     t := arena_sweep(g.arena, v3(from.x, 0.11, from.z), 0.1, motion);
-    wall := t <= 1;
-    k := ifx wall then t else 1.0f32;
+    walled := t <= 1;
+    k := ifx walled then t else 1.0f32;
     end := v3(from.x + motion.x * k, from.y, from.z + motion.z * k);
     if segment_distance(from, end, p) < 0.6 {
       g.pos[i] = end;
@@ -968,7 +968,7 @@ bolt_system :: (g: Game, dt: f32) {
       continue;
     }
     g.pos[i] = end;
-    if wall {
+    if walled {
       emit(g, Event.{kind = EV_BOLT_STRUCK, at = end, flag = false});
       ecs_destroy(g.e, ecs_at(g.e, i));
       continue;
@@ -1644,16 +1644,16 @@ spawn_crowd :: (g: Game) {
     e := dg_spawn_mutant(g, ifx k % 2 == 1 then REAVER else CRAWLER, -3 + f32(k) * 0.1, -1 + f32(k % 3) * 0.05, -1);
     g.mutant[slot_of(e)].attack = 1000000000;   // they close in but do not hit
   }
-  closest: f32 = 1000000000; near_you: f32 = 1000000000;
+  nearest_gap: f32 = 1000000000; near_you: f32 = 1000000000;
   for f: 0..<160 {
     tk(g, me);
     for i: 0..<ecs_high(g.e) {
       if !ecs_match(g.e, i, C_MUTANT, 0) { continue; }
       near_you = lo(near_you, flat(g.pos[i], me));
-      if f > 20 { for j: i + 1..<ecs_high(g.e) { if ecs_match(g.e, j, C_MUTANT, 0) { closest = lo(closest, flat(g.pos[i], g.pos[j])); } } }
+      if f > 20 { for j: i + 1..<ecs_high(g.e) { if ecs_match(g.e, j, C_MUTANT, 0) { nearest_gap = lo(nearest_gap, flat(g.pos[i], g.pos[j])); } } }
     }
   }
-  #assert closest > f32(REACH) - 0.05;
+  #assert nearest_gap > f32(REACH) - 0.05;
   #assert near_you > f32(REACH) - 0.05;
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { #assert flat(g.pos[i], me) < 4; } }   // still round you
   sb: [1] Store; b := dg_bind(sb[..]);
@@ -1698,10 +1698,10 @@ spawn_crowd :: (g: Game) {
   b := dg_spawn_bolt(g, v3(-5, 1, 6), v3(0, 0, -300));   // 5 m a step
   hp := dg_health(g);
   tk(g, me);
-  struck := 0; wall := 0;
-  for i: 0..<g.ev[0] { if g.events[i].kind == EV_BOLT_STRUCK { if g.events[i].flag { struck += 1; } else { wall += 1; } } }
+  struck := 0; walls_hit := 0;
+  for i: 0..<g.ev[0] { if g.events[i].kind == EV_BOLT_STRUCK { if g.events[i].flag { struck += 1; } else { walls_hit += 1; } } }
   #assert !ecs_alive(g.e, b);
-  #assert wall == 1 && struck == 0;
+  #assert walls_hit == 1 && struck == 0;
   #assert dg_health(g) == hp;
   // In the open the same bolt meets you, even passing you within a step.
   sh: [1] Store; h := dg_bind(sh[..]); dg_setup(h);
@@ -1731,14 +1731,14 @@ spawn_crowd :: (g: Game) {
   me := v3(0, 0, 6);
   g.pos[slot_of(ally)] = v3(0, 0, 9);
   tk(g, me);
-  closest: f32 = 1000000000;
+  nearest_gap: f32 = 1000000000;
   inside := false;
   for k: 0..<120 {
     tk(g, me);
-    closest = lo(closest, dist_to(g, ally, me));
+    nearest_gap = lo(nearest_gap, dist_to(g, ally, me));
     if dg_blocked(g, g.pos[slot_of(ally)].x, g.pos[slot_of(ally)].z, 0.05) { inside = true; }
   }
-  #assert closest > f32(REACH) - 0.05;
+  #assert nearest_gap > f32(REACH) - 0.05;
   #assert !inside;
   sb: [1] Store; b := dg_bind(sb[..]);
   dg_copy(g, b);

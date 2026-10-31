@@ -18,12 +18,12 @@
 #load "../space.coax";
 
 BOXES :: 16;
-Box :: struct { lo: Point; hi: Point; }
-Arena :: struct { boxes: [BOXES] Box; n: int; }
+Block :: struct { lo: Point; hi: Point; }
+Arena :: struct { boxes: [BOXES] Block; n: int; }
 
 arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
   next := a;
-  if a.n < BOXES { next.boxes[a.n] = Box.{lo = low, hi = high}; next.n = a.n + 1; }
+  if a.n < BOXES { next.boxes[a.n] = Block.{lo = low, hi = high}; next.n = a.n + 1; }
   return next;
 }
 
@@ -43,7 +43,7 @@ arena_cover :: (a: Arena, x: f32, z: f32, w: f32, d: f32, h: f32) -> Arena {
 
 flat :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); }
 
-sphere_meets :: (b: Box, c: Point, r: f32) -> bool {
+sphere_meets :: (b: Block, c: Point, r: f32) -> bool {
   q := v3(clamp(c.x, b.lo.x, b.hi.x), clamp(c.y, b.lo.y, b.hi.y), clamp(c.z, b.lo.z, b.hi.z));
   g := sub(c, q);
   return dot(g, g) < r * r;
@@ -60,7 +60,7 @@ arena_blocked :: (a: [] Arena, x: f32, z: f32, r: f32, height: f32) -> bool {
 
 // Where along p + d * t (t in 0..1) the segment enters box b grown by g on
 // every side; 2 when it misses or starts inside.
-enter :: (b: Box, g: f32, p: Point, d: Point) -> f32 {
+arena_enter :: (b: Block, g: f32, p: Point, d: Point) -> f32 {
   t0: f32 = 0; t1: f32 = 1;
   inside := true;
   for axis: 0..<3 {
@@ -89,7 +89,7 @@ arena_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
   for i: 0..<a[0].n {
     b := a[0].boxes[i];
     if p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z { return false; }
-    if enter(b, 0, p, d) <= 1 { return false; }
+    if arena_enter(b, 0, p, d) <= 1 { return false; }
   }
   return true;
 }
@@ -105,7 +105,7 @@ arena_wall_ray :: (a: [] Arena, p: Point, q: Point) -> bool {
 arena_sweep :: (a: [] Arena, c: Point, r: f32, motion: Point) -> f32 {
   best: f32 = 2;
   for i: 0..<a[0].n {
-    t := enter(a[0].boxes[i], r, c, motion);
+    t := arena_enter(a[0].boxes[i], r, c, motion);
     if t < best { best = t; }
   }
   return best;
@@ -237,11 +237,11 @@ nav_straight :: (a: [] Arena, p: Point, q: Point) -> bool {
   for i: 0..<a[0].n {
     b := a[0].boxes[i];
     if b.hi.y < 0.55 { continue; }
-    flatb := Box.{lo = v3(b.lo.x, -1, b.lo.z), hi = v3(b.hi.x, 1, b.hi.z)};
+    flatb := Block.{lo = v3(b.lo.x, -1, b.lo.z), hi = v3(b.hi.x, 1, b.hi.z)};
     s := v3(p.x, 0, p.z);
     g := f32(NAV_CLEAR) - 0.01;
     if s.x > flatb.lo.x - g && s.x < flatb.hi.x + g && s.z > flatb.lo.z - g && s.z < flatb.hi.z + g { return false; }
-    if enter(flatb, g, s, d) <= 1 { return false; }
+    if arena_enter(flatb, g, s, d) <= 1 { return false; }
   }
   return true;
 }
@@ -480,10 +480,10 @@ test_deck :: () -> Arena {
   p := from;
   for s: 0..<80 {
     to := nav_head_for(n, a, 0, p, me);
-    step := sub(to, p);
-    l := flat_length(step);
+    stride := sub(to, p);
+    l := flat_length(stride);
     if l < 0.3 { p = to; break; }
-    p = arena_walk(a, p, times(step, 0.3 / l), 0.3);
+    p = arena_walk(a, p, times(stride, 0.3 / l), 0.3);
     #assert !arena_blocked(a, p.x, p.z, 0.05, 0);
   }
   #assert flat(p, me) < 0.5;

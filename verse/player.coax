@@ -29,6 +29,7 @@
 // counts are exact; a stick inside the dead zone is no input (aethyr walked
 // at full speed on any stick drift).
 
+#module "verse.player";   // a page may #load it as an alias (Dead Gears does)
 #load "stand.coax";
 
 PI :: 3.14159265;

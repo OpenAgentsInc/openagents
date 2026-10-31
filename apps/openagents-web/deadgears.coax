@@ -18,6 +18,7 @@
 #load "analytics.coax";
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../verse/player.coax" as pc;   // the controller every walkable realm shares (#6d99)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -55,15 +56,20 @@ SAVE_TAG :: "deadgears-save 1";
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 DG_RUN_BY_DEFAULT :: true;   // verse/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16;
-HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024;
+HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024; HOLD_JUMP :: 2048;
 
 BTN_FIRE :: 0; BTN_RELOAD :: 1; BTN_COVER :: 2; BTN_MODE :: 3; BTN_LIFT :: 4; BTN_STUN :: 5;
-BTN_PAUSE :: 6; BTN_AGAIN :: 7; BTN_GALAXY :: 8; BTN_RESUME :: 9; BUTTONS :: 10;
+BTN_PAUSE :: 6; BTN_AGAIN :: 7; BTN_GALAXY :: 8; BTN_RESUME :: 9; BTN_JUMP :: 10; BUTTONS :: 11;
 
 LOOK_DRAG :: 0.0055;
 STICK :: 54.0;           // CSS pixels: the move stick's reach
 PITCH_REST :: -0.09;
 CAMERA_DIST :: 3.8;
+CAMERA_FLOOR :: 0.25;    // the camera stays this far over the deck
+RAISED :: 1.2;           // seconds the cutter stays up after a shot: you face the crosshair
+COVER_PACE :: 0.43;      // crouched at cover you move at this share of a walk
+DG_WALLS :: 24; DG_BODIES :: 96;
+BODY_NEAR :: 8.0;        // creatures further than this from you can't touch you or the camera this frame
 WAVE_HOURS :: [3] f32.[15.5, 17.2, 18.4];
 
 INK_R :: 0.8; INK_G :: 0.84; INK_B :: 0.9;
@@ -84,6 +90,15 @@ DeadGears :: struct {
   touch: bool; golden: bool; still: bool;
   card: bool;   // ?card=1: the hold without the HUD, for a link's card (coax/web/og-render.ts)
   feet: Point; yaw: f32; pitch: f32; walking: f32;
+  pl: pc.Player;            // you, walked by verse/player.coax
+  face: f32;                // the way you face: the crosshair with the cutter up, else the way you walk
+  raised: f32;              // seconds the cutter stays up after a shot
+  jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
+  // What the controller walks among this frame: the hull, the cover, the
+  // reactor and the crates at rest (pc.WALL numbers each), and the creatures
+  // and the support engineer (pc.BODY numbers each).
+  walls: [DG_WALLS * 6] f32; wall_n: int;
+  bodies: [DG_BODIES * 7] f32; body_n: int;
   eye: Point; at: Point;
   ally_last: Point; ally_speed: f32;
   held: int;
@@ -190,8 +205,8 @@ dg_page_start :: (s: [] DeadGears) {
   s[0].started = true;
   g := game(s);
   dg_setup(g);
-  s[0].feet = v3(0, 0, 9); s[0].yaw = f32(PI); s[0].pitch = f32(PITCH_REST);
-  g.pos[me_slot(g)] = s[0].feet;
+  s[0].pitch = f32(PITCH_REST);
+  stand_at(s, v3(0, 0, 9), f32(PI));
   s[0].pinned_hour = -1; s[0].deck_hour = -1;
   s[0].drag_id = -1; s[0].move_id = -1; s[0].look_id = -1; s[0].fire_touch = -1; s[0].repair_touch = -1;
   s[0].hover = -1; s[0].press = -1; s[0].press_id = -1;
@@ -207,8 +222,8 @@ started :: (s: [] DeadGears) { if !s[0].started { dg_page_start(s); } }
 again :: (s: [] DeadGears) {
   g := game(s);
   dg_reset(g);
-  s[0].feet = v3(0, 0, 9); s[0].yaw = f32(PI); s[0].pitch = f32(PITCH_REST);
-  g.pos[me_slot(g)] = s[0].feet;
+  s[0].pitch = f32(PITCH_REST);
+  stand_at(s, v3(0, 0, 9), f32(PI));
   s[0].deck_hour = -1; s[0].clock = 0; s[0].paused = false;
   for i: 0..<FX { s[0].fx[i].life = 0; }
   g.ev[0] = 0;
@@ -294,7 +309,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   g.st[0].mode = v[7]; g.st[0].kills = v[8];
   me := me_slot(g);
   g.hp[me] = clamp(f32(v[3]), 1, 100);
-  s[0].feet = v3(x, 0, z); s[0].yaw = f32(v[6]) / 1000; g.pos[me] = s[0].feet;
+  stand_at(s, v3(x, 0, z), f32(v[6]) / 1000);
   g.ev[0] = 0;
   s[0].last_phase = phase; s[0].last_wave = wave; s[0].deck_hour = -1;
   s[0].restored = true;
@@ -347,8 +362,8 @@ deadgears_action_done :: (s: [] DeadGears) #export_c { s[0].out_n = 0; }
 
 // ---- the controls
 
-over :: (s: [] DeadGears) -> bool { p := game(s).st[0].phase; return p == WON || p == LOST; }
-playing :: (s: [] DeadGears) -> bool { return !s[0].paused && !over(s); }
+fight_over :: (s: [] DeadGears) -> bool { p := game(s).st[0].phase; return p == WON || p == LOST; }
+playing :: (s: [] DeadGears) -> bool { return !s[0].paused && !fight_over(s); }
 
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_FORWARD; }
@@ -362,6 +377,7 @@ hold_bit :: (key: int) -> int {
   if key == KEY_DOWN { return HOLD_TILT_DOWN; }
   if key == 'f' || key == 'F' { return HOLD_FIRE; }
   if key == 'e' || key == 'E' { return HOLD_REPAIR; }
+  if key == ' ' { return HOLD_JUMP; }
   return 0;
 }
 
@@ -394,7 +410,7 @@ dg_tally :: (s: [] DeadGears, kind: int, flag: bool) {
 }
 
 set_paused :: (s: [] DeadGears, on: bool) {
-  if over(s) { return; }
+  if fight_over(s) { return; }
   if s[0].paused != on { track_setting(s[0].track[..], "paused", on); }
   s[0].paused = on;
   s[0].held = 0;
@@ -411,16 +427,16 @@ deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   used := redit_key(s[0].ed[..], key, true);
   if used > 0 { return used == 1; }
   if key == KEY_ESCAPE {
-    if over(s) { leave_to(s, "/verse/galaxy"); return true; }
+    if fight_over(s) { leave_to(s, "/verse/galaxy"); return true; }
     set_paused(s, !s[0].paused);
     return true;
   }
   if key == KEY_ENTER {
-    if over(s) { again(s); return true; }
+    if fight_over(s) { again(s); return true; }
     if s[0].paused { set_paused(s, false); return true; }
     return false;
   }
-  if s[0].paused || over(s) { return hold_bit(key) != 0; }
+  if s[0].paused || fight_over(s) { return hold_bit(key) != 0; }
   if key == 'r' || key == 'R' { done := act(s, BTN_RELOAD); return true; }
   if key == 'c' || key == 'C' { done := act(s, BTN_COVER); return true; }
   if key == 'q' || key == 'Q' { done := act(s, BTN_MODE); return true; }
@@ -473,6 +489,7 @@ deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id
       if fire_is_repair(s) { s[0].repair_touch = id; } else { s[0].fire_touch = id; }
       return true;
     }
+    if b == BTN_JUMP { s[0].jump_tap = playing(s); return true; }   // a jump goes on the touch, not the let-go
     if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
     if !playing(s) { return false; }
     if kind == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
@@ -526,10 +543,10 @@ deadgears_cursor :: (s: [] DeadGears) -> int #export_c { return ifx s[0].hover >
 
 fire_is_repair :: (s: [] DeadGears) -> bool { return game(s).st[0].phase == REPAIR; }
 
-hold_axis :: (held: int, plus: int, minus: int) -> f32 {
+hold_axis :: (bits: int, plus: int, minus: int) -> f32 {
   a := 0.0f32;
-  if held & plus != 0 { a += 1; }
-  if held & minus != 0 { a -= 1; }
+  if bits & plus != 0 { a += 1; }
+  if bits & minus != 0 { a -= 1; }
   return a;
 }
 
@@ -547,7 +564,22 @@ shoulder_at :: (s: [] DeadGears) -> Point {
   f := view_dir(s);
   right := unit_or(v3(-f.z, 0, f.x), v3(1, 0, 0));
   w := hi(s[0].width, 1); h := hi(s[0].height, 1);
-  return add(head, times(right, 0.72 * lo(1, w / h / 0.9)));
+  side := 0.72 * lo(1, w / h / 0.9);
+  // Hugging cover or a wall on that side, the shoulder comes in to stay out of it.
+  for k: 0..<5 {
+    at := add(head, times(right, side * (1 - f32(k) * 0.25)));
+    if !inside_wall(s, at, 0.12) { return at; }
+  }
+  return head;
+}
+// A point is inside (or within margin of) one of the walls you walk among.
+inside_wall :: (s: [] DeadGears, p: Point, margin: f32) -> bool {
+  for i: 0..<s[0].wall_n {
+    k := i * 6;
+    if p.x > s[0].walls[k] - margin && p.y > s[0].walls[k + 1] - margin && p.z > s[0].walls[k + 2] - margin &&
+       p.x < s[0].walls[k + 3] + margin && p.y < s[0].walls[k + 4] + margin && p.z < s[0].walls[k + 5] + margin { return true; }
+  }
+  return false;
 }
 // The cutter fires along the crosshair's ray; lift and stun aim where the
 // camera looks on the deck.
@@ -560,37 +592,100 @@ aim :: (s: [] DeadGears) {
   g.input[0].dir = view_dir(s);
 }
 
-// You walk among the hull, the covers and the reactor, round every other
-// character; crouched at cover you walk slowly and never run.
+// Stands you at p facing yaw, the camera behind you (a start, Again, a save).
+stand_at :: (s: [] DeadGears, p: Point, yaw: f32) {
+  g := game(s);
+  s[0].yaw = yaw; s[0].face = yaw;
+  s[0].pl = pc.verse_player_place(p.x, p.y, p.z, yaw);
+  s[0].feet = p;
+  g.pos[me_slot(g)] = p; g.yaw[me_slot(g)] = yaw;
+}
+
+// What you walk among this frame (#6d99): the arena's hull and cover, the
+// reactor, the crates lying still; the creatures near you and the support
+// engineer as capsules REACH from your middle.
+gather_world :: (s: [] DeadGears) {
+  g := game(s);
+  n := 0;
+  a := g.arena[0];
+  for i: 0..<a.n {
+    if n >= DG_WALLS { break; }
+    b := a.boxes[i];
+    put_wall(s, n, b.lo, b.hi); n += 1;
+  }
+  r := dg_reactor_pos(g);
+  if n < DG_WALLS { put_wall(s, n, v3(r.x - 1.9, -0.2, r.z - 1.4), v3(r.x + 1.9, 1.35, r.z + 1.4)); n += 1; }
+  for i: 0..<ecs_high(g.e) {
+    if n >= DG_WALLS { break; }
+    if !ecs_match(g.e, i, C_CARGO | C_POS, 0) { continue; }
+    c := g.cargo[i]; p := g.pos[i];
+    if c.held || c.thrown || p.y > 0.4 { continue; }
+    half := ifx c.kind == 1 then v3(0.08, 0.08, 0.55) else ifx c.kind == 2 then v3(0.22, 0.275, 0.22) else v3(0.325, 0.25, 0.3);
+    put_wall(s, n, sub(p, half), add(p, half)); n += 1;
+  }
+  s[0].wall_n = n;
+  m := 0;
+  reach := f32(REACH) - f32(CHARACTER_RADIUS);
+  for i: 0..<ecs_high(g.e) {
+    if m >= DG_BODIES { break; }
+    if i == me_slot(g) || !is_body(g.e, g.hp, i) { continue; }
+    q := g.pos[i];
+    if flat(q, s[0].feet) > f32(BODY_NEAR) { continue; }
+    tall: f32 = ifx ecs_match(g.e, i, C_MUTANT, 0) then hi(0.7, g.mutant[i].size * 1.8) + g.mutant[i].air else 1.8f32;
+    k := m * 7;
+    s[0].bodies[k] = q.x; s[0].bodies[k + 1] = q.y + reach; s[0].bodies[k + 2] = q.z;
+    s[0].bodies[k + 3] = q.x; s[0].bodies[k + 4] = q.y + hi(reach, tall - reach); s[0].bodies[k + 5] = q.z;
+    s[0].bodies[k + 6] = reach;
+    m += 1;
+  }
+  s[0].body_n = m;
+}
+put_wall :: (s: [] DeadGears, i: int, lo_: Point, hi_: Point) {
+  k := i * 6;
+  s[0].walls[k] = lo_.x; s[0].walls[k + 1] = lo_.y; s[0].walls[k + 2] = lo_.z;
+  s[0].walls[k + 3] = hi_.x; s[0].walls[k + 4] = hi_.y; s[0].walls[k + 5] = hi_.z;
+}
+the_world :: (s: [] DeadGears) -> pc.World {
+  w: pc.World;
+  w.walls = s[0].walls[0..<s[0].wall_n * 6];
+  w.bodies = s[0].bodies[0..<s[0].body_n * 7];
+  return w;
+}
+
+// You walk with verse/player.coax (#6d99), as the Grid, Everglade and the
+// garden do: you speed up and slow down, run, jump (Space, or JUMP on a
+// phone), step onto what is low enough and stand on what you jump onto,
+// among the hull, the cover, the reactor, the crates and every other
+// character. Crouched at cover you move slowly and never run or jump. With
+// the cutter up (fire held, or just fired) you face the crosshair and
+// strafe; otherwise you turn to face the way you walk.
 walk :: (s: [] DeadGears, dt: f32) {
   g := game(s);
   h := s[0].held;
-  ix := hold_axis(h, HOLD_RIGHT, HOLD_LEFT) + s[0].pad_x;
-  iy := hold_axis(h, HOLD_FORWARD, HOLD_BACK) + s[0].pad_y;
-  l := sqrt(ix * ix + iy * iy);
-  if l > 1 { ix = ix / l; iy = iy / l; l = 1; }
-  f := forward(s);
-  right := v3(-f.z, 0, f.x);
   cover := g.st[0].cover;
-  // as every realm (verse/player.coax RUN_BY_DEFAULT): moving runs and Shift walks; a stick runs on a full push
   pad := sqrt(s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y);
-  run := (ifx pad > 0.2 then pad > 0.8 else (h & HOLD_RUN != 0) != DG_RUN_BY_DEFAULT) && !cover;
-  speed: f32 = ifx cover then 1.5f32 else ifx run then 6.2f32 else 3.6f32;
-  move := v3((f.x * iy + right.x * ix) * speed * dt, 0, (f.z * iy + right.z * ix) * speed * dt);
-  ground: [1] Arena;
-  ground[0] = g.arena[0];
-  r := dg_reactor_pos(g);
-  ground[0] = arena_add(ground[0], v3(r.x - 1.9, -0.2, r.z - 1.4), v3(r.x + 1.9, 1.35, r.z + 1.4));
+  run := pc.verse_runs(h & HOLD_RUN != 0, pad > 0.8, s[0].pad_x, s[0].pad_y) && !cover;
+  jump := (h & HOLD_JUMP != 0 || s[0].jump_tap) && !cover;
+  s[0].jump_tap = false;
+  s[0].pl = pc.verse_player_input(s[0].pl, hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
+                                  s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
+  s[0].pl.theta = wrap_angle(s[0].yaw + f32(PI));   // it walks by the camera
+  s[0].pl.pace = ifx cover then f32(COVER_PACE) else 1.0f32;
+  gather_world(s);
   from := s[0].feet;
-  to := arena_walk(ground[..], from, move, f32(CHARACTER_RADIUS));
-  to = push_characters(g, me_slot(g), from, to, s[0].yaw);
-  if finite3(to) { s[0].feet = v3(clamp(to.x, -15.5, 15.5), 0, clamp(to.z, -23.5, 13.5)); }
+  s[0].pl = pc.advance_in(the_world(s), s[0].pl, dt);
+  f := pc.verse_player_feet(s[0].pl);
+  if finite(f.x) && finite(f.y) && finite(f.z) { s[0].feet = v3(f.x, f.y, f.z); }
+  if raised(s) { s[0].pl.face = s[0].yaw; s[0].pl.prev_face = s[0].yaw; }
+  s[0].face = pc.verse_player_face(s[0].pl);
   moved := flat(from, s[0].feet);
   s[0].walking = ifx dt > 0 then moved / dt else 0.0f32;
   track_walk(s[0].track[..], cast(f64) moved);
   g.pos[me_slot(g)] = s[0].feet;
-  g.yaw[me_slot(g)] = s[0].yaw + f32(PI);
+  g.yaw[me_slot(g)] = s[0].face;
 }
+// The cutter is up: fire held, or a shot in the last RAISED seconds.
+raised :: (s: [] DeadGears) -> bool { return s[0].raised > 0 || s[0].held & HOLD_FIRE != 0 || s[0].fire_touch >= 0; }
 
 turn_view :: (s: [] DeadGears, dt: f32) {
   h := s[0].held;
@@ -618,7 +713,7 @@ heard :: (s: [] DeadGears, from: int) {
     e := g.events[i];
     dg_tally(s, e.kind, e.flag);
     if e.kind == EV_SHOT {
-      s[0].shots += 1; s[0].fire_flash = 0.1;
+      s[0].shots += 1; s[0].fire_flash = 0.1; s[0].raised = f32(RAISED);
       if e.flag { s[0].hits += 1; s[0].hit_flash = 0.18; effect(s, FX_SPARK, e.to, e.at, 0.28, 1); }
     } else if e.kind == EV_BEAMED && e.flag {
       effect(s, FX_SPARK, e.to, e.at, 0.2, 0.7);
@@ -825,8 +920,8 @@ creature :: (s: [] DeadGears, kind: int, x: f32, z: f32, yaw: f32, hp: f32, m: M
       for leg: 0..<3 {
         if m.severed && side < 0 && leg == 0 { continue; }
         lz := f32(leg - 1) * 0.34;
-        step := sin(t * 12 + f32(leg) * 2 + side) * 0.1;
-        limb(s, origin, yaw, v3(side * 0.48, 0.23, lz + step), v3(0.09, 0.58, 0.1), bone, 0, side * 1.1, gait * 0.2);
+        stride := sin(t * 12 + f32(leg) * 2 + side) * 0.1;
+        limb(s, origin, yaw, v3(side * 0.48, 0.23, lz + stride), v3(0.09, 0.58, 0.1), bone, 0, side * 1.1, gait * 0.2);
       }
     }
     return;
@@ -843,9 +938,9 @@ creature :: (s: [] DeadGears, kind: int, x: f32, z: f32, yaw: f32, hp: f32, m: M
       for q: 0..<2 {
         leg := ifx q == 0 then -1.0f32 else 1.0f32;
         if m.severed && side < 0 && leg < 0 { continue; }
-        step := gait * leg * side * 0.18;
-        limb(s, origin, yaw, v3(side * 0.37, 0.43, leg * 0.46 + step), v3(0.17, 0.75, 0.2), flesh, 0, side * 0.12, gait * side * leg * 0.35);
-        limb(s, origin, yaw, v3(side * 0.37, 0.1, leg * 0.46 + step + 0.13), v3(0.23, 0.12, 0.4), bone, 0, 0, 0);
+        stride := gait * leg * side * 0.18;
+        limb(s, origin, yaw, v3(side * 0.37, 0.43, leg * 0.46 + stride), v3(0.17, 0.75, 0.2), flesh, 0, side * 0.12, gait * side * leg * 0.35);
+        limb(s, origin, yaw, v3(side * 0.37, 0.1, leg * 0.46 + stride + 0.13), v3(0.23, 0.12, 0.4), bone, 0, 0, 0);
       }
     }
     limb(s, origin, yaw, v3(0, 0.94, -0.96), v3(0.15, 0.18, 0.85), flesh, 0, gait * 0.25, -0.35);
@@ -924,7 +1019,7 @@ draw_world :: (s: [] DeadGears) {
     duck := s[0].ally_speed < 0.3 && ((dg_near_cover(g, g.pos[a]) && dg_alive_mutants(g) > 0) || dg_support_repairing(g));
     engineer(s, g.pos[a], g.yaw[a], duck, s[0].ally_speed, true, 100);
   }
-  engineer(s, s[0].feet, s[0].yaw, st.cover, s[0].walking, false, dg_health(g));
+  engineer(s, s[0].feet, s[0].face, st.cover, s[0].walking, false, dg_health(g));
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
     m := g.mutant[i];
@@ -1133,9 +1228,13 @@ camera :: (s: [] DeadGears, w: f32, h: f32) {
   g := game(s);
   f := view_dir(s);
   at := shoulder_at(s);
-  back := times(f, -f32(CAMERA_DIST));
-  room := arena_sweep(g.arena, at, 0.2, back);
-  if room < 1 { back = times(back, hi(0.15, room - 0.05)); }
+  // Pulled in by the hull, cover, reactor, crates and bodies as every
+  // realm's camera is (verse/player.coax camera_room), and kept over the deck.
+  dist := f32(CAMERA_DIST);
+  if s[0].wall_n == 0 { gather_world(s); }
+  room := pc.camera_room(the_world(s), pc.v3(at.x, at.y, at.z), pc.v3(-f.x, -f.y, -f.z), dist);
+  if f.y > 0.001 { room = lo(room, (at.y - f32(CAMERA_FLOOR)) / f.y); }
+  back := times(f, -hi(0.05, room));
   eye := add(at, back);
   eye.x = clamp(eye.x, -15.6, 15.6); eye.z = clamp(eye.z, -23.6, 13.6);
   s[0].eye = eye; s[0].at = add(at, times(f, 4));
@@ -1178,12 +1277,12 @@ on_screen :: (u: [] f32, p: Point, width: f32, height: f32) -> Screen {
 
 // ---- the HUD
 
-plate :: (s: [] DeadGears, u: [] f32, b: Rect, alpha: f32, look: f32) {
+plate :: (s: [] DeadGears, u: [] f32, b: Rect, opacity: f32, look: f32) {
   n := s[0].plate_n;
   if n >= PLATES { return; }
   k := U_PLATE + n * 8;
   u[k] = b.x0; u[k + 1] = b.y0; u[k + 2] = b.x1; u[k + 3] = b.y1;
-  u[k + 4] = alpha; u[k + 5] = look; u[k + 6] = s[0].dpr; u[k + 7] = 0;
+  u[k + 4] = opacity; u[k + 5] = look; u[k + 6] = s[0].dpr; u[k + 7] = 0;
   s[0].plate_n = n + 1;
 }
 phone :: (s: [] DeadGears) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
@@ -1330,7 +1429,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   ch := 7 * k;
   hit := s[0].hit_flash > 0;
   cr: f32 = ifx hit then RED_R else INK_R; cg: f32 = ifx hit then RED_G else INK_G; cbl: f32 = ifx hit then RED_B else INK_B;
-  if !over(s) && !s[0].paused {
+  if !fight_over(s) && !s[0].paused {
     if lit(out, n, cx - ch, cy, cx - 2.5 * k, cy, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
     if lit(out, n, cx + 2.5 * k, cy, cx + ch, cy, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
     if lit(out, n, cx, cy - ch, cx, cy - 2.5 * k, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
@@ -1349,13 +1448,15 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     // The thumbs' buttons, bottom right: FIRE (or REPAIR, held) and round it the rest.
     sb := 50 * k; gap := 8 * k; fb := 2 * sb + gap;
     fire := Rect.{x0 = w - gut - fb, y0 = h - gut - fb, x1 = w - gut, y1 = h - gut};
-    n = hud_button(s, u, out, n, BTN_FIRE, fire, ifx in_repair then "REPAIR" else "FIRE", 10 * k, false, !over(s) && (in_repair || st.ammo + st.reserve > 0));
+    n = hud_button(s, u, out, n, BTN_FIRE, fire, ifx in_repair then "REPAIR" else "FIRE", 10 * k, false, !fight_over(s) && (in_repair || st.ammo + st.reserve > 0));
     col := fire.x0 - gap - sb;
     n = hud_button(s, u, out, n, BTN_COVER, Rect.{x0 = col, y0 = fire.y1 - sb, x1 = col + sb, y1 = fire.y1}, "COVER", 6 * k, st.cover, true);
+    jc := col - gap - sb;
+    n = hud_button(s, u, out, n, BTN_JUMP, Rect.{x0 = jc, y0 = fire.y1 - sb, x1 = jc + sb, y1 = fire.y1}, "JUMP", 6 * k, false, !st.cover && s[0].pl.on_ground);
     n = hud_button(s, u, out, n, BTN_RELOAD, Rect.{x0 = col, y0 = fire.y0, x1 = col + sb, y1 = fire.y0 + sb}, "RELOAD", 5.5 * k, false, st.reload <= 0 && st.ammo < 12);
     row := fire.y0 - gap - sb;
-    held := dg_held_alive(g);
-    n = hud_button(s, u, out, n, BTN_LIFT, Rect.{x0 = fire.x1 - sb, y0 = row, x1 = fire.x1, y1 = row + sb}, ifx held then "THROW" else "LIFT", 6 * k, held, held || st.psi >= 15);
+    holding := dg_held_alive(g);
+    n = hud_button(s, u, out, n, BTN_LIFT, Rect.{x0 = fire.x1 - sb, y0 = row, x1 = fire.x1, y1 = row + sb}, ifx holding then "THROW" else "LIFT", 6 * k, holding, holding || st.psi >= 15);
     n = hud_button(s, u, out, n, BTN_STUN, Rect.{x0 = fire.x1 - 2 * sb - gap, y0 = row, x1 = fire.x1 - sb - gap, y1 = row + sb}, "STUN", 6 * k, false, st.psi >= 35 && st.stun_cooldown <= 0);
     n = hud_button(s, u, out, n, BTN_MODE, Rect.{x0 = col, y0 = row, x1 = col + sb, y1 = row + sb}, mode_word(st.mode), 6 * k, st.mode != CORE, true);
     n = words(s, out, n, ammo_line, fire.x1 - text_width(ammo_line, 8 * k), row - 10 * k, 8 * k, 0.9, ifx low then RED_R else INK_R, ifx low then RED_G else INK_G, ifx low then RED_B else INK_B);
@@ -1375,7 +1476,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     mn := put(mline[..], 0, "CUTTER · ");
     mn = put(mline[..], mn, mode_word(st.mode));
     n = words(s, out, n, cast(string) mline[0..<mn], ab.x0 + 16 * k, ab.y1 - 12 * k, 7 * k, 0.8, AMBER_R, AMBER_G, AMBER_B);
-    keys := ifx in_repair then "WASD MOVE · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD MOVE · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
+    keys := ifx in_repair then "WASD MOVE · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD MOVE · SPACE JUMP · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
     hs := 7 * k;
     room := ab.x0 - 2 * gut - 24 * k;
     lw := text_width(keys, hs);
@@ -1385,20 +1486,20 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     n = words(s, out, n, keys, kb.x0 + 12 * k, kb.y1 - 10 * k, hs, 0.8, INK_R, INK_G, INK_B);
   }
   // The end, and the pause: a card with what next.
-  if over(s) || s[0].paused {
+  if fight_over(s) || s[0].paused {
     won := st.phase == WON;
-    title := ifx over(s) then (ifx won then "SECURED" else "OVERRUN") else "PAUSED";
-    sub_line := ifx over(s) then (ifx won then "THE SHIP HOLDS." else "THE CRAWLERS TOOK THE SHIP.") else "THE FIGHT WAITS FOR YOU.";
+    title := ifx fight_over(s) then (ifx won then "SECURED" else "OVERRUN") else "PAUSED";
+    sub_line := ifx fight_over(s) then (ifx won then "THE SHIP HOLDS." else "THE CRAWLERS TOOK THE SHIP.") else "THE FIGHT WAITS FOR YOU.";
     cw := lo(w - 2 * gut, 360 * k); chh := 170 * k;
     card := Rect.{x0 = w / 2 - cw / 2, y0 = h / 2 - chh / 2, x1 = w / 2 + cw / 2, y1 = h / 2 + chh / 2};
     plate(s, u, card, 0.92, 1);
     tcap := 18 * k;
-    n = centred(s, out, n, title, w / 2, card.y0 + 28 * k + tcap, tcap, 1, ifx over(s) && !won then RED_R else INK_R, ifx over(s) && !won then RED_G else INK_G, ifx over(s) && !won then RED_B else INK_B);
+    n = centred(s, out, n, title, w / 2, card.y0 + 28 * k + tcap, tcap, 1, ifx fight_over(s) && !won then RED_R else INK_R, ifx fight_over(s) && !won then RED_G else INK_G, ifx fight_over(s) && !won then RED_B else INK_B);
     n = centred(s, out, n, sub_line, w / 2, card.y0 + 70 * k + 7 * k, 7 * k, 0.85, INK_R, INK_G, INK_B);
     bw2 := (cw - 48 * k) / 2; by := card.y1 - 20 * k - 36 * k;
     first := Rect.{x0 = card.x0 + 16 * k, y0 = by, x1 = card.x0 + 16 * k + bw2, y1 = by + 36 * k};
     second := Rect.{x0 = card.x1 - 16 * k - bw2, y0 = by, x1 = card.x1 - 16 * k, y1 = by + 36 * k};
-    if over(s) { n = hud_button(s, u, out, n, BTN_AGAIN, first, "AGAIN", 9 * k, true, true); }
+    if fight_over(s) { n = hud_button(s, u, out, n, BTN_AGAIN, first, "AGAIN", 9 * k, true, true); }
     else { n = hud_button(s, u, out, n, BTN_RESUME, first, "RESUME", 9 * k, true, true); }
     n = hud_button(s, u, out, n, BTN_GALAXY, second, "GALAXY", 9 * k, false, true);
   }
@@ -1437,6 +1538,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
     phases(s);
     s[0].clock += t;
     s[0].fire_flash = hi(0, s[0].fire_flash - t);
+    s[0].raised = hi(0, s[0].raised - t);
     s[0].hit_flash = hi(0, s[0].hit_flash - t);
     s[0].hurt = hi(0, s[0].hurt - t * 1.6);
     s[0].alarm = hi(0, s[0].alarm - t);
@@ -1490,7 +1592,7 @@ deadgears_store_cap :: () -> int #export_c { return OBJECTS * OBJECT_FLOATS * 4;
 
 // ---- checks
 
-frame :: (s: [] DeadGears, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+frame_at :: (s: [] DeadGears, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   return deadgears_frame(s, out[..], u[..], w, h, dpr, dt, false);
@@ -1512,7 +1614,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   started(s[..]);
   // floor; per rib row a stripe, two walls, two posts, two lamps, two deck lights, a rib; the bulkheads, the door posts, the far doors
   #assert s[0].hull_n == 1 + 9 * 10 + 2 + 4;
-  n := frame(s[..], 1280, 800, 1, 1.0 / 60.0);
+  n := frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
   #assert n > 0 && s[0].obj_n > s[0].hull_n + 7 * 5 + 8 + 2 * 20 && s[0].dropped == 0;
   // You stand at (0, 9) looking down the hold at the reactor, in front of the camera.
   #assert flat(s[0].feet, v3(0, 0, 9)) < 0.01 && s[0].eye.z > 9;
@@ -1531,11 +1633,11 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   for kind: 0..<TYPES { e := dg_spawn_mutant(g, kind, f32(kind) * 2 - 4, 0, ifx kind == SKITTER then 1 else -1); }
   i := 0;
   while i < ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) && g.mutant[i].kind == REAVER { g.mutant[i].severed = true; g.mutant[i].headless = true; } i += 1; }
-  n := frame(s[..], 1280, 800, 1, 0.016);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
   base := s[0].obj_n;
   #assert base > s[0].hull_n + 5 * 9;
   s[0].spawn_n = 200; s[0].facts = true;
-  n = frame(s[..], 1280, 800, 1, 0.016);
+  n = frame_at(s[..], 1280, 800, 1, 0.016);
   #assert dg_alive_mutants(g) >= 200 && s[0].dropped == 0 && s[0].obj_n > base + 200 * 8;
 }
 
@@ -1545,13 +1647,13 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   g := game(s[..]);
   #assert deadgears_key(s[..], 'q', 0) && g.st[0].mode == HEAD;
   #assert deadgears_key(s[..], 'f', 0);
-  for i: 0..<20 { n := frame(s[..], 1280, 800, 1, 0.05); }
+  for i: 0..<20 { n := frame_at(s[..], 1280, 800, 1, 0.05); }
   #assert g.st[0].ammo < 12 && s[0].shots > 0;
   #assert deadgears_key_up(s[..], 'f', 0);
   #assert deadgears_key(s[..], 'r', 0) && g.st[0].reload > 0;
   #assert deadgears_key(s[..], KEY_ESCAPE, 0) && s[0].paused;
   time := g.st[0].time;
-  for i: 0..<10 { n := frame(s[..], 1280, 800, 1, 0.05); }
+  for i: 0..<10 { n := frame_at(s[..], 1280, 800, 1, 0.05); }
   #assert g.st[0].time == time;
   #assert deadgears_key(s[..], KEY_ENTER, 0) && !s[0].paused;
   deadgears_message(s[..], HOST_HIDDEN, "");
@@ -1562,11 +1664,11 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   s: [1] DeadGears;
   started(s[..]);
   #assert deadgears_key(s[..], 'w', 0);
-  for i: 0..<20 { n := frame(s[..], 1280, 800, 1, 0.05); }
+  for i: 0..<20 { n := frame_at(s[..], 1280, 800, 1, 0.05); }
   #assert s[0].feet.z < 8 && abs(s[0].feet.x) < 0.01;
   // the cover at (5, 3): walk into it from the east and stop at its face
-  s[0].feet = v3(8, 0, 3); s[0].yaw = -f32(PI) / 2;
-  for i: 0..<60 { n := frame(s[..], 1280, 800, 1, 0.05); }
+  stand_at(s[..], v3(8, 0, 3), -f32(PI) / 2);
+  for i: 0..<60 { n := frame_at(s[..], 1280, 800, 1, 0.05); }
   #assert s[0].feet.x > 5 + 1.6 + 0.29;
 }
 
@@ -1592,16 +1694,114 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   }
 }
 
+// ---- the controller (#6d99): verse/player.coax walks you
+
+feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel.x + s[0].pl.vel.z * s[0].pl.vel.z); }
+
+#test "walking starts and stops with acceleration, not at once" {
+  s: [1] DeadGears;
+  started(s[..]);
+  clear_mutants(game(s[..]));
+  #assert deadgears_key(s[..], 'w', 0);
+  n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0);
+  first := feet_speed(s[..]);
+  #assert first > 0.5 && first < 4;
+  for i: 0..<15 { n = frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  #assert abs(feet_speed(s[..]) - f32(pc.RUN)) < 0.05;
+  #assert deadgears_key_up(s[..], 'w', 0);
+  n = frame_at(s[..], 1280, 800, 1, 1.0 / 32.0);
+  #assert feet_speed(s[..]) > 3 && feet_speed(s[..]) < f32(pc.RUN) - 1;
+  for i: 0..<10 { n = frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  #assert feet_speed(s[..]) == 0;
+}
+
+#test "you jump onto a low crate and step off it" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  clear_mutants(g);
+  g.st[0].ally_time = 1000;
+  // The small crate at (-8, 6) stands 0.575 m: too high to step onto.
+  stand_at(s[..], v3(-8, 0, 7.6), f32(PI));
+  #assert deadgears_key(s[..], 'w', 0) && deadgears_key(s[..], KEY_SHIFT, 0);
+  for i: 0..<30 { n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  #assert s[0].feet.y < 0.01 && s[0].feet.z > 6.2;   // it stops you
+  #assert deadgears_key(s[..], ' ', 0);
+  on_top := false;
+  for i: 0..<40 {
+    n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0);
+    if i == 5 { #assert deadgears_key_up(s[..], ' ', 0) && deadgears_key_up(s[..], 'w', 0); }   // a short hop forward
+    if abs(s[0].feet.y - 0.575) < 0.02 && abs(s[0].feet.z - 6) < 0.22 { on_top = true; }
+  }
+  #assert on_top;   // it stood on top of it
+  // Walk on and off its far side, back to the deck.
+  #assert deadgears_key(s[..], 'w', 0);
+  for i: 0..<40 { n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  #assert s[0].feet.y < 0.01 && s[0].feet.z < 5.2;
+}
+
+#test "the low cover is a ledge you can jump onto" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  clear_mutants(g);
+  stand_at(s[..], v3(-5, 0, 4.4), f32(PI));
+  #assert deadgears_key(s[..], 'w', 0) && deadgears_key(s[..], ' ', 0);
+  on_top := false;
+  for i: 0..<24 {
+    n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0);
+    if s[0].feet.y > 1.1 && s[0].feet.z < 3.65 && s[0].feet.z > 2.35 { on_top = true; }
+  }
+  #assert on_top;
+}
+
+#forall "the camera never ends up inside a wall, cover or the deck" k: 0..<48 {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  clear_mutants(g);
+  // Pressed against the covers, the reactor and the hull, looking every way.
+  spots := [32] f32.[-5, 4, -6.9, 3, 5, 2.2, 6.9, 3.2, -8, -10.2, -9.3, -12, 0, -15.3, 15.4, 0, -15.4, -20, 0, 13.4, 3.6, -16.5, -2.9, -15.1, 0, -18.6, 2.2, -12, 7, -12, -4, -6.2];
+  at := v3(spots[(k % 16) * 2], 0, spots[(k % 16) * 2 + 1]);
+  stand_at(s[..], at, f32(k) * 0.79);
+  s[0].pitch = ifx k % 3 == 0 then 0.45f32 else ifx k % 3 == 1 then -0.62f32 else 0.0f32;
+  w: f32 = ifx k % 2 == 0 then 1280.0f32 else 390.0f32; h: f32 = ifx k % 2 == 0 then 800.0f32 else 844.0f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := 0;
+  for f: 0..<4 { n = frame_in(out[..], u[..], s[..], w, h, 1, 1.0 / 60.0); }   // settled where it stands you
+  e := s[0].eye;
+  #assert !inside_wall(s[..], e, 0.02) && e.y >= f32(CAMERA_FLOOR) - 0.01;
+  #assert !inside_wall(s[..], g.input[0].from, 0);
+}
+
+#test "with the cutter up you strafe facing the crosshair; with it down you face your way" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  clear_mutants(g);
+  g.st[0].ally_time = 1000;
+  stand_at(s[..], v3(0, 0, 9), f32(PI));
+  #assert deadgears_key(s[..], 'd', 0) && deadgears_key(s[..], 'f', 0);
+  for i: 0..<20 { n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  #assert s[0].feet.x > 2 && abs(s[0].feet.z - 9) < 0.05;   // sideways
+  #assert abs(wrap_angle(s[0].face - s[0].yaw)) < 0.01;      // facing the crosshair
+  #assert abs(wrap_angle(g.yaw[me_slot(g)] - s[0].yaw)) < 0.01;
+  #assert deadgears_key_up(s[..], 'f', 0);
+  for i: 0..<60 { n := frame_at(s[..], 1280, 800, 1, 1.0 / 32.0); }
+  // Strafing right, now facing right (+x): yaw a quarter turn.
+  #assert abs(wrap_angle(s[0].face - f32(PI) / 2)) < 0.05;
+}
+
 #test "the thumbs: the left half walks, the right half looks, FIRE holds" {
   s: [1] DeadGears;
   started(s[..]);
-  n := frame(s[..], 1170, 2532, 3, 0.016);
+  n := frame_at(s[..], 1170, 2532, 3, 0.016);
   #assert s[0].shown[BTN_FIRE] && s[0].shown[BTN_STUN] && s[0].boxes[BTN_FIRE].x1 <= 1170;
   #assert deadgears_pointer(s[..], 200, 2000, 0, 1, 1);
   #assert deadgears_pointer(s[..], 200, 1800, 1, 1, 1) && s[0].pad_y > 0.9;
   yaw := s[0].yaw;
   #assert deadgears_pointer(s[..], 900, 1000, 0, 1, 2) && deadgears_pointer(s[..], 800, 1000, 1, 1, 2);
-  n = frame(s[..], 1170, 2532, 3, 0.05);
+  n = frame_at(s[..], 1170, 2532, 3, 0.05);
   #assert s[0].yaw != yaw && s[0].feet.z < 9;
   f := s[0].boxes[BTN_FIRE];
   #assert deadgears_pointer(s[..], (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, 0, 1, 3) && s[0].fire_touch == 3;
@@ -1617,7 +1817,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   g := game(s[..]);
   g.st[0].wave = 1; g.st[0].repairs = 1;
   start_wave(g, true); ecs_flush(g.e);
-  g.hp[me_slot(g)] = 64; s[0].feet = v3(2.5, 0, -3); g.st[0].mode = CORE;
+  g.hp[me_slot(g)] = 64; stand_at(s[..], v3(2.5, 0, -3), 0); g.st[0].mode = CORE;
   out: [OUTBOX_CAP] u8;
   m := save_line(s[..], out[..]);
   line := cast(string) out[0..<m];
@@ -1640,20 +1840,20 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
-  n := frame(s[..], 1280, 800, 1, 0.016);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
   for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) { dg_hit(g, ecs_at(g.e, i), 10000); } }
-  for i: 0..<5 { n = frame(s[..], 1280, 800, 1, 0.05); }
+  for i: 0..<5 { n = frame_at(s[..], 1280, 800, 1, 0.05); }
   #assert g.st[0].phase == REPAIR && deadgears_action(s[..]) == ACT_KEEP;
   g.st[0].phase = LOST;
-  n = frame(s[..], 1280, 800, 1, 0.05);
-  #assert over(s[..]) && s[0].shown[BTN_AGAIN];
+  n = frame_at(s[..], 1280, 800, 1, 0.05);
+  #assert fight_over(s[..]) && s[0].shown[BTN_AGAIN];
   #assert deadgears_key(s[..], KEY_ENTER, 0) && g.st[0].phase == FIGHT && g.st[0].wave == 1;
 }
 
 #test "?hour= holds the hour; otherwise each wave is later in the day" {
   s: [1] DeadGears;
   started(s[..]);
-  n := frame(s[..], 1280, 800, 1, 0.016);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
   #assert abs(s[0].deck_hour - 15.5) < 0.01;
   g := game(s[..]);
   g.st[0].wave = 3;
@@ -1665,7 +1865,7 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   #assert query_number("https://openagents.com/realms/dead-gears?xhour=3", "hour") < 0;
   p: [1] DeadGears;
   deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realms/dead-gears?hour=18.4");
-  n = frame(p[..], 1280, 800, 1, 0.016);
+  n = frame_at(p[..], 1280, 800, 1, 0.016);
   #assert abs(p[0].deck_hour - 18.4) < 0.01 && night_level(18.4) > night_level(15.5);
 }
 
@@ -1699,17 +1899,17 @@ play_out :: (s: [] DeadGears, phone_size: bool, fight: bool, frames: int) -> int
   w: f32 = ifx phone_size then 390.0f32 else 1280.0f32; h: f32 = ifx phone_size then 844.0f32 else 800.0f32;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := frame_in(out[..], u[..], s, w, h, 1, 0.05);
-  held := -1;
+  finger := -1;
   for f: 0..<frames {
-    if over(s) { n = frame_in(out[..], u[..], s, w, h, 1, 0.05); return f; }
+    if fight_over(s) { n = frame_in(out[..], u[..], s, w, h, 1, 0.05); return f; }
     if fight {
       b := s[0].boxes[BTN_FIRE];
       if g.st[0].phase == REPAIR {
-        s[0].feet = v3(0, 0, -14.2); g.pos[me_slot(g)] = s[0].feet;
-        if phone_size { if held < 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 7); held = 7; } }
+        if flat(s[0].feet, v3(0, 0, -14.2)) > 0.5 { stand_at(s, v3(0, 0, -14.2), s[0].yaw); }
+        if phone_size { if finger < 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 7); finger = 7; } }
         else { used := deadgears_key(s, 'e', 0); }
       } else {
-        if held >= 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 7); held = -1; }
+        if finger >= 0 { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 7); finger = -1; }
         bot_turn(s);
         if phone_size { used := deadgears_pointer(s, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 8); }
         else { used := deadgears_key(s, 'f', 0); }
@@ -1739,22 +1939,22 @@ won_through_the_controls :: (phone_size: bool) -> bool {
 
 #test "EDIT for its owner and admins only; the board switches the alarms and the radar off, and opening it pauses the fight" {
   s: [1] DeadGears;
-  n := frame(s[..], 1280, 800, 1, 1.0 / 60.0);
+  n := frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
   #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/dead-gears";
   objs := s[0].obj_n;
   verts := n;
   redit_requested(s[0].ed[..], 7);
   deadgears_message(s[..], HTTP_KIND + 7, "200\nrealm dead-gears\nrole visitor\nowner 0\nrow alarms 0 Flashing wave alarms\nrow radar 0 The radar\nrow sparks 1 Hit sparks\n");
-  n = frame(s[..], 1280, 800, 1, 1.0 / 60.0);
+  n = frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
   #assert s[0].obj_n == objs - 2 && n < verts && !s[0].ed[0].shown[RB_EDIT];   // no alarm strips, no radar; a visitor has no EDIT
   a: [1] DeadGears;
-  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  n = frame_at(a[..], 1280, 800, 1, 1.0 / 60.0);
   redit_requested(a[0].ed[..], 6);
   deadgears_message(a[..], HTTP_KIND + 6, "200\nrealm dead-gears\nrole admin\nowner 0\nrow radar 1 The radar\nwaiting 0\n");
-  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  n = frame_at(a[..], 1280, 800, 1, 1.0 / 60.0);
   e := a[0].ed[0].boxes[RB_EDIT];
   #assert a[0].ed[0].shown[RB_EDIT] && e.x1 < 1280 - 16 - 76 && e.x0 > 900 && !a[0].paused;
   #assert deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
-  n = frame(a[..], 1280, 800, 1, 1.0 / 60.0);
+  n = frame_at(a[..], 1280, 800, 1, 1.0 / 60.0);
   #assert a[0].ed[0].pane == REDIT_BOARD && a[0].paused;
 }
