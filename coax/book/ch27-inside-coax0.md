@@ -879,6 +879,14 @@ recognize an expected runtime trap or reduce a retained C-only seeded defect.
 A failed original evaluator check stays failed even when its native trap
 matches. These tools do not qualify untested targets or replace authority gates.
 
+A [named real-consumer profile](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md#named-real-consumer-profiles)
+also compares the HUD, Psionic tensor and game-decision checks at O0/O2.
+Its source-bound record keeps root and loaded checks, evaluator authority and
+mutation results distinct. The HUD checks agree across execution paths while
+leaving 25 of 40 root mutants alive; native agreement does not make weak
+assertions complete. Unsupported borrows and evaluator budget exhaustion
+remain nonqualifying observations.
+
 When you add a feature, it comes with a passing program, a failing program
 for each new error code, and an entry in `errors.cpp` for each code. When
 the feature belongs in the lexer, parser, checker or source policy, it comes with

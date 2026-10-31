@@ -296,6 +296,51 @@ record keeps these semantics separate from execution.v1 and evaluator evidence.
 An artifact-only failing-property observation remains explicitly unqualified
 when its original baseline fails.
 
+## Named real-consumer profiles
+
+The [2026-10-31 consumer record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-native-consumers-2026-10-31.json)
+qualifies these unchanged sources on the recorded Darwin-arm64 LP64 C11
+profile with Coax 0.44.0. Each entry has one complete, unfiltered original
+20M-step evaluator baseline, followed by the original ABI 2 bodies at checked
+O0/O2. Counts below exclude the separate evaluator-only `#authority` claims.
+
+| Entry | Authored bodies | Cases per optimization | Physical scope |
+| --- | ---: | ---: | --- |
+| `verse/hud.coax` | 3 `#test` | 3 | 2 root bodies; 1 from `hud/frame.coax` |
+| `psionic/lib/tensor.coax` | 8 `#test`, 4 `#forall` | 219 | All root bodies |
+| `psionic/lib/game/decision.coax` | 7 `#test` | 7 | All root bodies |
+
+These are 44 fresh native body processes and 458 completed cases across six
+native builds. Tensor and game decision retain their passed original
+`#authority` claims; fresh root mutation kills 68/68 and 173/173 respectively.
+None of these three source graphs imports another authority file. HUD's
+loaded check remains in its baseline and native execution, while its root-only
+mutation scope excludes dependency mutation sites.
+
+HUD's existing three checks leave 25 of 40 root mutants alive. That failed
+mutation result remains in the record. HUD has no `#authority` marker, and
+this profile establishes agreement for those authored assertions; it does not
+qualify their adequacy or establish complete layout correctness. Matching
+implementations can share a defect that the authored checks never observe.
+
+The record also retains two real limits:
+
+- `psionic/lib/pylon/decision.coax` passes all 56 original evaluator claims,
+  but native emission refuses its reachable borrowed-return closure with
+  `E0413` at `pd_env`. The runner's raw outcome is `infrastructure-error`;
+  the retained compiler diagnostic identifies this unsupported profile form.
+  No native body runs. Ordinary product C still emits and compiles, so this
+  verification refusal adds no language restriction to that product graph.
+- `verse/water-spectrum.coax` has 30 original claims at the default budget:
+  11 pass and 19 exhaust 20M steps with `E0400`. The result is inconclusive;
+  native emission and execution never start. No larger-budget rerun or
+  supplemental native result is substituted for this original baseline.
+
+The release catalogue describes the bounded emission/execution/finite-property
+mechanisms and keeps semantic experiments and consumer qualification separate.
+These named observations add no all-consumer, all-target or complete-ownership
+claim, and no product authority or mutation obligation is bypassed.
+
 ## Independent semantics and retained artifact defects
 
 Since 0.44.0, the optional `native_semantics_execution.py` companion uses the
@@ -462,8 +507,9 @@ transport-failure coverage.
 This companion still rewrites a bounded subset of source text into a temporary
 harness. It does not emit checks from the compiler's resolved AST, enumerate
 native finite-property domains, establish complete native authority execution
-coverage, or implement a bounded native output/evidence protocol. Those
-`r0-native-check-exe` children remain open. Its strict verdict is limited to the
+coverage, or implement a bounded native output/evidence protocol. The newer checked-AST execution companions above cover those mechanisms in
+their own versioned records; this legacy tool does not inherit that coverage.
+Its strict verdict is limited to the
 recorded sources, compiler, host C profiles and observations; it grants no
 broader language, ABI, Wasm, Metal, WGSL, device or mutation qualification.
 Evaluator authority coverage remains an evaluator claim and does not authorize
