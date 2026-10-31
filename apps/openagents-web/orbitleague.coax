@@ -1150,15 +1150,38 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     // the maker's line: bottom middle, under the hint, clear of the boost gauge
     v = maker_line(s, out, v, g + 110 * k, w - g - 110 * k, h - 12 * k);
   }
-  // the ball, when it is off the screen: an arrow at the edge toward it
+  // the ball, when it is off the screen: a marker at the edge toward it,
+  // clear of the score and, on a phone, of the thumbs
+  m := ball_marker(s, w, h, k, phone);
+  if m.ok && tinted_dot(out, v, m.x, m.y, 7 * k, 1, 8 * k, 1, 1, 1) { v += 6; }
+  return v;
+}
+
+// Where the off-screen ball's marker goes: from the screen's middle toward
+// the ball (behind you: toward its side, along the bottom), to the edge of
+// the space the HUD leaves.
+Marker :: struct { x: f32; y: f32; ok: bool; }
+ball_marker :: (s: [] OrbitLeague, w: f32, h: f32, k: f32, phone: bool) -> Marker {
   bp := s[0].bodies[BALL].pos;
   sp := seen(s, cast(f32) bp.x, cast(f32) bp.y, cast(f32) bp.z);
-  if !sp.ok || sp.x < 0 || sp.x > w || sp.y < 0 || sp.y > h {
-    ax := ifx sp.ok then clamp(sp.x, 40 * k, w - 40 * k) else w * 0.5;
-    ay := ifx sp.ok then clamp(sp.y, 90 * k, h - 60 * k) else h - 60 * k;
-    if tinted_dot(out, v, ax, ay, 7 * k, 1, 8 * k, 1, 1, 1) { v += 6; }
+  if sp.ok && sp.x >= 0 && sp.x <= w && sp.y >= 0 && sp.y <= h { return Marker.{}; }
+  x0 := 40 * k; x1 := w - 40 * k; y0 := 90 * k;
+  y1 := ifx phone then h - 210 * k else h - 60 * k;
+  cx := w * 0.5; cy := (y0 + y1) * 0.5;
+  dx: f32; dy: f32;
+  if sp.ok { dx = sp.x - cx; dy = sp.y - cy; }
+  else {
+    // behind the eye: its side on the screen's right, and down
+    rx := cast(f32) bp.x - s[0].eye[0]; rz := cast(f32) bp.z - s[0].eye[2];
+    side := rx * s[0].right[0] + rz * s[0].right[2];
+    dx = ifx side > 0 then w else -w; dx *= 0.25; dy = h;
   }
-  return v;
+  if abs(dx) < 0.001 && abs(dy) < 0.001 { dy = 1; }
+  // scale the direction to the box's edge
+  tx: f32 = ifx abs(dx) > 0.001 then (ifx dx > 0 then (x1 - cx) / dx else (x0 - cx) / dx) else 1000000;
+  ty: f32 = ifx abs(dy) > 0.001 then (ifx dy > 0 then (y1 - cy) / dy else (y0 - cy) / dy) else 1000000;
+  t := lo(tx, ty);
+  return Marker.{x = clamp(cx + dx * t, x0, x1), y = clamp(cy + dy * t, y0, y1), ok = true};
 }
 
 // ---- the frame
@@ -1505,4 +1528,41 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   #assert abs(wall_run(s[..], PI_D * 0.3, HOLD_UP | HOLD_RIGHT, 2.0, ARENA_HX - 3.0)) > 0.7;
   r := wall_run(s[..], PI_D * 0.5, HOLD_DOWN, 2.0, ARENA_HX - 3.0);
   #assert s[0].bodies[YOU].pos.x < ARENA_HX - 5.0;
+}
+
+#test "the off-screen ball's marker points toward it and stays off the phone's thumbs" {
+  s: [1] OrbitLeague;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := game_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, true);
+  k: f32 = 3;
+  w: f32 = 390 * 3; h: f32 = 844 * 3;
+  // the ball behind your car at the kickoff spot, a little to one side
+  s[0].bodies[BALL].pos = d3(6.0, 1.4, -ARENA_HZ + 3.0);
+  n = game_frame(s[..], out[..], u[..], w, h, 3, 0.0, true);
+  m := ball_marker(s[..], w, h, k, true);
+  #assert m.ok && m.y <= h - 210 * k && m.y >= 90 * k;
+  for i: 0..<BUTTONS { b := s[0].boxes_ui[i]; #assert !s[0].shown[i] || m.x < b.x0 || m.x > b.x1 || m.y < b.y0 || m.y > b.y1; }
+  // ball ahead and on screen: no marker
+  s[0].bodies[BALL].pos = d3(0.0, 1.4, 0.0);
+  n = game_frame(s[..], out[..], u[..], w, h, 3, 0.0, true);
+  #assert !ball_marker(s[..], w, h, k, true).ok;
+  // far to the right, up high and behind: on the right half
+  s[0].bodies[BALL].pos = d3(-20.0, 10.0, -36.0);
+  n = game_frame(s[..], out[..], u[..], w, h, 3, 0.0, true);
+  r := ball_marker(s[..], w, h, k, true);
+  #assert r.ok;
+}
+
+#test "a goal knocks a car near it back from the goal, then kickoff puts car and ball on their spots" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  s[0].no_bot = true;
+  run_for(s[..], KICKOFF + 0.1);
+  s[0].bodies[YOU].pos = d3(3.0, 0.9, ARENA_HZ - 6.0); s[0].bodies[YOU].vel = D3_ZERO;
+  s[0].bodies[BALL].pos = d3(0.0, 2.0, ARENA_HZ + 1.0); s[0].bodies[BALL].vel = d3(0.0, 0.0, 10.0);
+  run_for(s[..], 0.05);
+  #assert s[0].phase == PHASE_GOAL && s[0].blast_team == BLUE && s[0].bodies[YOU].vel.z < -3.0;
+  run_for(s[..], CELEBRATE);
+  #assert s[0].phase == PHASE_KICKOFF && d3_len(d3_sub(s[0].bodies[BALL].pos, d3(0.0, BALL_R + 0.02, 0.0))) < 0.05;
+  #assert abs(s[0].bodies[YOU].pos.x) < 0.01 && abs(s[0].bodies[YOU].pos.z + SPAWN_Z) < 0.01;
 }
