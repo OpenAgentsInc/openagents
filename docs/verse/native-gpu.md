@@ -118,4 +118,28 @@ Every phase and native feature is a task in the Verse project
   not confirmed. A high-priority queue (`VK_KHR_global_priority`) is not
   permitted for this user. The full-screen check is the boot session's job
   (gpu-display-session), where nothing else shares the display.
+- 2026-10-31: G2 display session: `verse/gpu/vk-display.c`, run by
+  `verse/gpu/display.sh HOST [--seconds N] [--demo] [--shot-at S]`. It switches
+  to a free VT so the desktop pauses, takes DRM master, and hands the connector
+  to Vulkan (`VK_EXT_acquire_drm_display`). It then presents with
+  `VK_KHR_display` in FIFO at the mode's rate, through the same offscreen
+  pipeline as the window. The window and the display share the swapchain
+  presenter (`vkp.h`) and the realm-on-GPU code (`vkr.h`). Keys come from evdev,
+  grabbed (`verse/kms/evdev.h`, moved out of kms.c). Escape, `--seconds`,
+  SIGINT and SIGTERM end it. A root watchdog kills it and switches back if it
+  outlives the limit by 20 s. On `coderos-4080` (RTX 4080, DP-1 2560x1440 at
+  59.951 Hz, nobody using the screen), a 20 s demo ran 1,196 frames with
+  0 dropped (longest 20.3 ms) and validation 0/0. `--shot` copies the image
+  presented at 6 s out of the swapchain, and it shows the realm: the sky,
+  moon, stars, basket and score. With a virtual keyboard
+  (`verse/gpu/vk-escape.c`, uinput) pressing Escape at 8 s, a 30 s run ended
+  "because Escape was pressed" after 420 frames. Both runs returned to VT 1,
+  and coder-compositor resumed (it reopened the inputs and set the mode
+  again). A grim capture from it afterwards showed the desktop as it was (no
+  windows, the cursor). DRM cannot confirm what is scanned out meanwhile: the
+  NVIDIA driver flips a leased display through its own modesetting, so the
+  planes still name the desktop's last framebuffer. The evidence is the
+  captured presented image, plus present timing locked to the display's
+  vblank. Booting a machine straight into this (a session entry in the host's
+  NixOS config) is not wired: that is a change to the host's config.
 

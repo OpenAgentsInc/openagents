@@ -27,7 +27,7 @@
 #ifdef __linux__
 #include <dirent.h>
 #include <fcntl.h>
-#include "keys.h"
+#include "evdev.h"
 #include <linux/input.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -211,55 +211,6 @@ static void demo_keys(double t) {
 // ---- the keyboard (evdev)
 
 #ifdef __linux__
-#define MAX_KEYBOARDS 16
-static int keyboards[MAX_KEYBOARDS], keyboard_count;
-
-// Every device that has a space bar is a keyboard. Grab it, so keys reach
-// the realm and not the console under it.
-static void open_keyboards(void) {
-  DIR *d = opendir("/dev/input");
-  if (!d) return;
-  struct dirent *e;
-  while ((e = readdir(d)) && keyboard_count < MAX_KEYBOARDS) {
-    if (strncmp(e->d_name, "event", 5) != 0) continue;
-    char path[300];
-    snprintf(path, sizeof path, "/dev/input/%s", e->d_name);
-    int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) continue;
-    unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = {0};
-    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof bits), bits) < 0 ||
-        !(bits[KEY_SPACE / (8 * sizeof(unsigned long))] & (1UL << (KEY_SPACE % (8 * sizeof(unsigned long)))))) {
-      close(fd);
-      continue;
-    }
-    ioctl(fd, EVIOCGRAB, 1);
-    keyboards[keyboard_count++] = fd;
-  }
-  closedir(d);
-}
-
-static void read_keys(void) {
-  struct input_event ev[64];
-  for (int i = 0; i < keyboard_count; i++) {
-    ssize_t n;
-    while ((n = read(keyboards[i], ev, sizeof ev)) > 0) {
-      for (size_t j = 0; j < (size_t)n / sizeof ev[0]; j++) {
-        if (ev[j].type != EV_KEY || ev[j].value == 2) continue;
-        int k = realm_key_of(ev[j].code);
-        if (!k) continue;
-        if (ev[j].value == 1) realm_key(state, k);
-        else realm_key_up(state, k);
-      }
-    }
-  }
-}
-
-static void close_keyboards(void) {
-  for (int i = 0; i < keyboard_count; i++) {
-    ioctl(keyboards[i], EVIOCGRAB, 0);
-    close(keyboards[i]);
-  }
-}
 
 // ---- the screen (DRM/KMS dumb buffers)
 
@@ -341,7 +292,7 @@ static int run_screen(double seconds, float scale, const char *shot, const char 
     fprintf(stderr, "verse-kms: dumb buffers failed: %s\n", strerror(errno));
     return 1;
   }
-  open_keyboards();
+  keyboards_open();
   fprintf(stderr, "verse-kms: %s on %dx%d@%d, %d threads, %d keyboards\n", realm_name(), w, h, mode.vrefresh, threads, keyboard_count);
   // Draw in memory and copy to the scanout buffer: the buffer is
   // write-combined, so scattered writes and any read back are slow.
@@ -352,7 +303,7 @@ static int run_screen(double seconds, float scale, const char *shot, const char 
   double start = now_s(), last = start, busy = 0;
   drmEventContext ev = {.version = 2, .page_flip_handler = on_flip};
   while (!stopping && now_s() - start < seconds) {
-    read_keys();
+    keyboards_read(state);
     double t = now_s();
     if (demo) demo_keys(t - start);
     int n = step(w, h, scale, (float)(t - last));
@@ -386,7 +337,7 @@ static int run_screen(double seconds, float scale, const char *shot, const char 
   }
   double total = now_s() - start;
   fprintf(stderr, "verse-kms: %d frames in %.1f s (%.1f fps), %.2f ms drawing a frame\n", frames, total, frames / total, frames ? busy / frames * 1000 : 0);
-  close_keyboards();
+  keyboards_close();
   record_close();
   free(ram);
   if (saved) {

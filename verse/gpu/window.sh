@@ -20,7 +20,7 @@ VERSE_KMS_GEN_ONLY=1 VERSE_KMS_REGEN=1 "$root/verse/kms/build.sh" "$work" > /dev
 light="$root/verse/kms/starcatch-light.coax"
 "$coax" spirv "$light" --fill starcatch_sky_r,starcatch_sky_g,starcatch_sky_b -o "$work/sky.spv"
 "$coax" spirv "$light" --stroke starcatch_fx -o "$work/fx.spv"
-cp "$here"/vk-window.c "$here"/vkc.c "$here"/vkc.h "$work/"
+cp "$here"/vk-window.c "$here"/vkc.c "$here"/vkc.h "$here"/vkp.c "$here"/vkp.h "$here"/vkr.c "$here"/vkr.h "$work/"
 args="$*"
 display="${VERSE_WAYLAND_DISPLAY:-wayland-1}"
 
@@ -37,7 +37,7 @@ nix-shell -p gcc pkg-config wayland wayland-scanner wayland-protocols vulkan-hea
     wayland-scanner private-code \$p/\$x.xml \$n-protocol.c
   done
   realm=\"starcatch-native.c starcatch.c starcatch-light.c\"
-  gcc -std=c11 -O2 -Wall -Wno-unknown-pragmas -I. vk-window.c vkc.c xdg-shell-protocol.c xdg-decoration-unstable-v1-protocol.c \$realm \$(pkg-config --cflags --libs wayland-client) -lvulkan -lm -o vk-window
+  gcc -std=c11 -O2 -Wall -Wno-unknown-pragmas -I. vk-window.c vkc.c vkp.c vkr.c xdg-shell-protocol.c xdg-decoration-unstable-v1-protocol.c \$realm \$(pkg-config --cflags --libs wayland-client) -lvulkan -lm -o vk-window
   ${VERSE_WINDOW_BUILD_ONLY:+echo built; exit 0}
   export VK_ADD_LAYER_PATH=\$(dirname \$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \"*validation-layers*\" | head -1))
   export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
