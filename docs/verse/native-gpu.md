@@ -383,3 +383,30 @@ Every phase and native feature is a task in the Verse project
   against the browser drawing the written modules: fx 9,191 of 460,800
   values past the tolerance (9,170 at G5), post 675 of 230,400 (659),
   validation 0/0. The other realms are next.
+- 2026-10-31: the realms begin (realms-native). Seven pages' modules are
+  written from Coax: verse, newland (connect-pylon.wgsl stays its copy,
+  connect-pylon-page.ts), builder, deadgears, icecream, garden and belt.
+  Each page's hand-written WGSL, translated by `coax/web/wgsl-coax.coax`,
+  is now `apps/openagents-web/gpu/NAME.coax` with `NAME.bindings` (host.js's
+  layout; a uniform block's size in vec4fs) and `NAME.module`; a page with
+  generated blocks (belt's stars) loads their Coax instead and calls it by
+  name. build.sh writes each `NAME.wgsl`, and golden-pages counts the
+  source as the page's input. Every one matches its golden. Not yet:
+  - myrealm translates and compiles, but its painted clouds move: the
+    clouds' hash is `fract(sin(x) * 43758)`, and its input, computed through
+    `wg_*` component helpers rather than WGSL's vector operators, comes out
+    an ulp apart, which the hash turns into other clouds (everything else is
+    identical, A/B against the hand-written module in one stage). The fix is
+    in the lowering: vector arithmetic written as WGSL's vector operators.
+    Every page with a sin hash (the painterly, flat and fixture styles) waits
+    on it.
+  - fairy, waterlab, villa, fixture, orbitleague and realm stop the
+    translator (a whole uniform struct as a value, builtins on vectors it
+    does not know, indexing a vector, a vector from a struct's fields);
+    droprealm and stair too (`fwidth` on a vector, `&` pointers).
+  - og, project, projects, realmlist, admin, private, memorial, chat,
+    splash and the rest translate but have no golden to hold them; they move
+    once a golden or a pass check covers them.
+  The `built` golden fails at origin/main since 59347994ba (made realms:
+  figures, animals, a windmill) with the hand-written module, before any of
+  this.
