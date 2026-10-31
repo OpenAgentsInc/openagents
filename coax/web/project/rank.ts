@@ -81,3 +81,33 @@ export function placed(sorted: string[], neighbour: number, where: "before" | "a
   if (where === "before") return between(neighbour > 0 ? sorted[neighbour - 1] : "", sorted[neighbour])
   return between(sorted[neighbour], neighbour + 1 < sorted.length ? sorted[neighbour + 1] : null)
 }
+
+/** The relay's tag limit per event (RS_MAX_TAGS in coax/lib/nostr/relay_server.coax). */
+export const RELAY_MAX_TAGS = 256
+/** Tags an order event carries besides its items: d, a and alt. */
+export const ORDER_FIXED_TAGS = 3
+
+type Orderable = { id: string; slug: string; rank: string; status: string }
+const done = (s: string) => s === "resolved" || s === "closed"
+
+/** The order the queue keeps: open items only (a finished item has nothing left to order, and
+ * leaving it out keeps the order event under the relay's tag limit), ranked items by rank, then
+ * unranked items in work-file order after them. A reopened item comes back unranked, at the end. */
+export function queueOrder(issues: Orderable[], workSlugs: string[]): { id: string; rank: string }[] {
+  const open = issues.filter((i) => !done(i.status))
+  const ranked = open.filter((i) => i.rank).sort((a, b) => (a.rank < b.rank ? -1 : 1)).map((i) => ({ id: i.id, rank: i.rank }))
+  const bySlug = new Map(open.map((i) => [i.slug, i]))
+  const last = ranked.length ? ranked[ranked.length - 1].rank : ""
+  const fresh = workSlugs.map((s) => bySlug.get(s)).filter((i): i is Orderable => !!i && !i.rank)
+  const keys = spreadBetween(last, null, fresh.length)
+  fresh.forEach((i, k) => ranked.push({ id: i.id, rank: keys[k] }))
+  const r = rebalance(ranked.map((e) => e.rank))
+  if (r.changed) ranked.forEach((e, i) => (e.rank = r.ranks[i]))
+  return ranked
+}
+
+/** Refuses an order the relay would refuse, before signing it. */
+export function checkOrderSize(n: number) {
+  if (n + ORDER_FIXED_TAGS > RELAY_MAX_TAGS)
+    throw new Error(`${n} open items: an order event holds at most ${RELAY_MAX_TAGS - ORDER_FIXED_TAGS} (relay tag limit); close or split the project`)
+}

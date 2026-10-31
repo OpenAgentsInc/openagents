@@ -44,7 +44,7 @@ import { aliases, checkWork, fieldTags, filters, fold, followups, ISSUE_REVISION
   KIND_PROJECT, KIND_REPO, naddr, projectCoord, projectTags, repoCoord, repoTags, sameFields, STATUS_KINDS, topo,
   type Fields, type Folded, type Issue, type ProjectConfig, type Status, type Step, type WorkItem, WORK_SCHEMA, SEED_SCHEMA, seedItems,
   parsePlan, planDone, planText, TASK_PLAN } from "./model"
-import { placed, rebalance, spread, spreadBetween } from "./rank"
+import { checkOrderSize, placed, queueOrder, rebalance, spread } from "./rank"
 import { firstAsk, linkTable, secondAsk, stillNeeded } from "./links"
 import { tables } from "./tables"
 
@@ -186,22 +186,14 @@ function statusEvent(issue: Issue, status: Status) {
 }
 
 function orderTags(entries: { id: string; rank: string }[]) {
+  checkOrderSize(entries.length)
   return [["d", config.slug], ["a", projectCoord(pk, config), config.relay],
     ...entries.map((e) => ["item", e.id, e.rank]), ["alt", `The ${config.name} project's task order`]]
 }
 
-/** The order the queue keeps: ranked items by rank, then unranked items in work-file order. */
+/** The order the queue keeps (rank.ts queueOrder): open items only, by rank, new ones after. */
 function ordered(f: Folded, work: WorkItem[]): { id: string; rank: string }[] {
-  const ranked = f.issues.filter((i) => i.rank).sort((a, b) => (a.rank < b.rank ? -1 : 1)).map((i) => ({ id: i.id, rank: i.rank }))
-  const bySlug = new Map(f.issues.map((i) => [i.slug, i]))
-  const last = ranked.length ? ranked[ranked.length - 1].rank : ""
-  // new items go after the ranked ones, in work-file order, spread evenly
-  const fresh = work.map((it) => bySlug.get(it.slug)).filter((i): i is Issue => !!i && !i.rank)
-  const keys = spreadBetween(last, null, fresh.length)
-  fresh.forEach((i, k) => ranked.push({ id: i.id, rank: keys[k] }))
-  const r = rebalance(ranked.map((e) => e.rank))
-  if (r.changed) ranked.forEach((e, i) => (e.rank = r.ranks[i]))
-  return ranked
+  return queueOrder(f.issues, work.map((it) => it.slug))
 }
 
 async function publishAll(relay: Relay) {
@@ -241,6 +233,7 @@ async function move(relay: Relay, what: string, where: "before" | "after", other
   const id = (s: string) => f.issues.find((i) => i.slug === s)?.id ?? (() => { throw new Error(`no item ${s}`) })()
   const moving = id(what), anchor = id(other)
   if (moving === anchor) throw new Error("an item can't move relative to itself")
+  for (const [s, i] of [[what, moving], [other, anchor]]) if (!entries.some((e) => e.id === i)) throw new Error(`${s} is finished: only open items are in the order`)
   const rest = entries.filter((e) => e.id !== moving)
   const at = rest.findIndex((e) => e.id === anchor)
   const rank = placed(rest.map((e) => e.rank), at, where)

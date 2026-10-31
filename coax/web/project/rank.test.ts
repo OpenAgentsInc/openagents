@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { between, LONG, placed, rebalance, spread, spreadBetween, valid } from "./rank"
+import { between, checkOrderSize, LONG, ORDER_FIXED_TAGS, placed, queueOrder, RELAY_MAX_TAGS, rebalance, spread, spreadBetween, valid } from "./rank"
 
 test("a rank lies strictly between its neighbours, at the ends too", () => {
   for (const [a, b] of [["", null], ["", "V"], ["V", null], ["1", "2"], ["1", "11"], ["1z", "2"], ["az", "b"], ["0001", "0002"], ["y", "z"], ["z", null], ["", "01"]] as const) {
@@ -66,4 +66,20 @@ test("a batch appended at the end stays short", () => {
   expect(r[0] > "V").toBe(true)
   expect(Math.max(...r.map((s) => s.length))).toBeLessThanOrEqual(3)
   expect(spreadBetween("1", "2", 0)).toEqual([])
+})
+
+test("the order leaves finished items out and fits the relay's tag limit", () => {
+  // ~300 items, most of them done: only the open ones are ordered
+  const issues = Array.from({ length: 300 }, (_, i) => ({
+    id: `id${i}`, slug: `s${i}`, rank: i < 260 ? spread(260)[i] : "", status: i % 5 === 0 || i >= 260 ? "open" : i % 2 ? "resolved" : "closed" }))
+  const order = queueOrder(issues, issues.map((i) => i.slug))
+  const open = issues.filter((i) => i.status === "open")
+  expect(order.map((e) => e.id).sort()).toEqual(open.map((i) => i.id).sort())
+  expect(order.length + ORDER_FIXED_TAGS).toBeLessThanOrEqual(RELAY_MAX_TAGS)
+  for (let i = 1; i < order.length; i++) expect(order[i].rank > order[i - 1].rank).toBe(true)
+  // the unranked new ones come last, in work-file order
+  expect(order.slice(-40).map((e) => e.id)).toEqual(issues.slice(260).map((i) => i.id))
+  // an order the relay would refuse is refused before signing
+  expect(() => checkOrderSize(RELAY_MAX_TAGS - ORDER_FIXED_TAGS)).not.toThrow()
+  expect(() => checkOrderSize(RELAY_MAX_TAGS - ORDER_FIXED_TAGS + 1)).toThrow(/tag limit/)
 })
