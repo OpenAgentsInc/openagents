@@ -1,0 +1,846 @@
+{
+  "schema": "psionic.panda-actuation.experiment.v1",
+  "prepared_UTC": "2026-10-31T22:51:33.698942+00:00",
+  "source_XML_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "official_SDK_commit": "a209134315dda126a714529bfa80f7478902644d",
+  "source_files": {
+    "engine_core_smooth.c": "cd3ce757716791b6df603d335bba335bff54669262ebfa67ce2a28cd8f8e6f64",
+    "engine_forward.c": "9cbd4d7cabb51110eb0e79192e195b6bd654dbdb4ebd7316ba37f002f123d80e",
+    "engine_passive.c": "c985d30cfda10f96842e38bfae46f2f5adda0d872ead25c30ac3323ba294a2f4"
+  },
+  "case_count": 18,
+  "cases": [
+    {
+      "name": "A-zero",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "A-dense",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ]
+    },
+    {
+      "name": "A-upper-lower",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ]
+    },
+    {
+      "name": "A-lower-upper",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ]
+    },
+    {
+      "name": "B-zero",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "B-dense",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ]
+    },
+    {
+      "name": "B-upper-lower",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ]
+    },
+    {
+      "name": "B-lower-upper",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ]
+    },
+    {
+      "name": "C-zero",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "C-dense",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ]
+    },
+    {
+      "name": "C-upper-lower",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ]
+    },
+    {
+      "name": "C-lower-upper",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ]
+    },
+    {
+      "name": "force-cap-zero-q-exact",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ]
+    },
+    {
+      "name": "force-cap-zero-q-inside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.019999999999999997,
+        -0.019999999999999997
+      ]
+    },
+    {
+      "name": "force-cap-zero-q-outside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.020000000000000004,
+        -0.020000000000000004
+      ]
+    },
+    {
+      "name": "force-cap-opposite-exact",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.04,
+        -0.04
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ]
+    },
+    {
+      "name": "force-cap-opposite-inside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.039999999999999994,
+        -0.039999999999999994
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ]
+    },
+    {
+      "name": "force-cap-opposite-outside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.04000000000000001,
+        -0.04000000000000001
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ]
+    }
+  ],
+  "case_sha256": "6ed8ec4e5394c5ba9d041229a43b6efafd08f10b5d9c2a0bcb219a142cff3bf0",
+  "typed_API": {
+    "name": "pa_forward",
+    "inputs": "q7:Radian,s2:Metre,v7:PidAngularRate,sv2:PidLinearRate,arm_control7:PmHingeGravity,finger_target2:Metre,output1:PaOutput",
+    "status": "PfkStatus; only ok/shape/number/range returned",
+    "output": "PaOutput{actuator:PidOutput,joint_passive:PidOutput,control_clipped:int,force_clipped:int}",
+    "raw": "pa_forward_raw(q9,v9,ctrl9,output1)"
+  },
+  "numeric_admission": {
+    "hinge_q": 100,
+    "slide_q": 1,
+    "hinge_rate": 20,
+    "slide_rate": 2,
+    "hinge_control": 10000,
+    "finger_target": 1,
+    "inclusive": true,
+    "all_finite": true
+  },
+  "source_profile_expectations": {
+    "nu": 9,
+    "na": 0,
+    "joint_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "transmission_type": 0,
+    "gear": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "dynamic_type": 0,
+    "activation_adr": -1,
+    "activation_count": 0,
+    "gain_type": 0,
+    "arm_gain0": 1,
+    "finger_gain0": 1000,
+    "arm_bias_type": 0,
+    "finger_bias_type": 1,
+    "finger_bias_prefix": [
+      0,
+      -1000,
+      0
+    ],
+    "ctrl_limited_all": true,
+    "arm_ctrl_ranges": [
+      [
+        -80,
+        80
+      ],
+      [
+        -80,
+        80
+      ],
+      [
+        -80,
+        80
+      ],
+      [
+        -80,
+        80
+      ],
+      [
+        -80,
+        80
+      ],
+      [
+        -12,
+        12
+      ],
+      [
+        -12,
+        12
+      ]
+    ],
+    "finger_ctrl_ranges": [
+      [
+        0,
+        0.04
+      ],
+      [
+        -0.04,
+        0
+      ]
+    ],
+    "arm_force_limited": false,
+    "finger_force_limited": true,
+    "finger_force_range": [
+      -20,
+      20
+    ],
+    "joint_actuator_force_limited_all": false,
+    "joint_stiffness_all": 0,
+    "joint_damping": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.01,
+      0.01,
+      100,
+      100
+    ],
+    "body_gravity_compensation_all": 0,
+    "joint_actuator_gravity_compensation_all": false,
+    "plugins": 0,
+    "tendons": 0,
+    "flex": 0,
+    "callbacks_null": true,
+    "disableflags_required_clear": [
+      "PASSIVE",
+      "ACTUATION",
+      "CLAMPCTRL"
+    ],
+    "disabled_actuator_group_mask": 0,
+    "unexpected_used_coefficient_or_flag": "refuse acquisition before any per-case SDK evaluation; do not silently generalize"
+  },
+  "budgets": {
+    "actuator_force": {
+      "atol": 5e-11,
+      "rtol": 0
+    },
+    "generalized_actuator_force": {
+      "atol": 5e-11,
+      "rtol": 0
+    },
+    "joint_spring_plus_damper": {
+      "atol": 5e-11,
+      "rtol": 0
+    },
+    "SDK_passive_recomposition_diagnostic": {
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "owned_clipping_counts": "exact independent scalar-source-profile oracle; SDK exposes force fields, not clip counters"
+  },
+  "raw_SDK_outputs_per_case": [
+    "actuator_force9",
+    "qfrc_actuator9",
+    "qfrc_spring9",
+    "qfrc_damper9",
+    "qfrc_gravcomp9",
+    "qfrc_fluid9",
+    "qfrc_passive9",
+    "actuator_length9",
+    "actuator_velocity9",
+    "sparse_moment_coefficients9",
+    "ctrl_after9"
+  ],
+  "compiled_metadata": "all9 identifiers, gear6, all gain/bias/dyn params, dyn/gain/bias/transmission kinds, actadr/actnum/actearly/actlimits, ctrl/force flags+ranges, group mask, joint force limits/gravcomp/stiffness/damping/frictionloss/qpos_spring, model/plugin/tendon/flex/callback flags, fluid options",
+  "new_SDK_work": "18 separately reset finite q/v/ctrl contexts, one forward each, 0 step/render/NN; same source XML/coefficients, no edited fluid settings",
+  "passive_scope": "joint spring+damper only; captured stiffness must be exactly0, so owned specialization is damping. Fluid/gravcomp/full passive diagnostic fields are retained but not claimed owned. Coulomb frictionloss is excluded constraint work.",
+  "nonclaims": "No full qfrc_passive match, full qacc, source constraint/contact/frictionloss solver, integration, hardware, generic actuator importer, compiler bounded proof, model-state activation dynamics or command provenance.",
+  "approved_proposal_sha256": "6d34d69aa33bc085810a1d5339b99baf643eddc47dc2dfc489c549362c25f3b2",
+  "frozen_before_capture_and_implementation": true,
+  "frozen_UTC": "2026-10-31T22:53:44.063784+00:00",
+  "task_start_UTC": "2026-10-31T22:53:00Z",
+  "deadline_UTC": "2026-11-01T00:53:00Z",
+  "diagnostic_same_forward_outputs": [
+    "qacc_smooth21",
+    "qacc21",
+    "qfrc_constraint21"
+  ],
+  "SDK_binary_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "SDK_observation_layout": "11 nine-word arrays in raw_SDK_outputs_per_case order, then full21 qacc_smooth/qacc/qfrc_constraint;162F64 words/context",
+  "input_format": {
+    "magic": 826687824,
+    "case_count": 18,
+    "row_words": 27,
+    "order": "q9,v9,ctrl9"
+  },
+  "numeric_profile": "Darwin arm64 F64; no fast math/contraction; finite-control subset only; SDK nonfinite fallback not reproduced; no cross-target/R15 claim",
+  "controller_input_note": "Finger targets are already controller-produced signed metre values; do not flip right target or add another normalized-command transformation."
+}

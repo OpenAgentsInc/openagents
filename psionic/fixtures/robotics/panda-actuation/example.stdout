@@ -1,0 +1,12 @@
+Panda source actuator and JOINT-passive query
+clipped controls: 9, forces: 2
+hinge 1 actuator/joint (micro-J/rad): 80000000 -70000
+hinge 2 actuator/joint (micro-J/rad): -80000000 40000
+hinge 3 actuator/joint (micro-J/rad): 80000000 -30000
+hinge 4 actuator/joint (micro-J/rad): -80000000 60000
+hinge 5 actuator/joint (micro-J/rad): 80000000 -50000
+hinge 6 actuator/joint (micro-J/rad): -12000000 2000
+hinge 7 actuator/joint (micro-J/rad): 12000000 -1000
+slide 1 actuator/joint (micro-N): 20000000 -3000000
+slide 2 actuator/joint (micro-N): -20000000 2000000
+Fluid, friction constraints and integration remain separate.

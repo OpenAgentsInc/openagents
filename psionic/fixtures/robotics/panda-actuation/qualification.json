@@ -1,0 +1,477 @@
+{
+  "schema": "psionic.panda-actuation.qualification.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "simulation_steps": 0,
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-actuation.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-actuation-native-first/debug/panda-actuation.h"
+      ],
+      "exit": 0,
+      "seconds": 0.17259791702963412,
+      "stderr_bytes": 0,
+      "stdout_sha256": "a617f5f8195555b95e0b201b9483c86f02a9cad283ab985ab25ea1e39b613be7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-actuation.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-actuation-native-first/release/panda-actuation.h"
+      ],
+      "exit": 0,
+      "seconds": 0.17149037501076236,
+      "stderr_bytes": 0,
+      "stdout_sha256": "24e7eff6864e210b1ff43a29bacad343a47dfe5f86c0634f666a4ae3d38f66b0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-actuation-native-first/debug",
+        "/private/tmp/panda-actuation-native-first/debug/panda-actuation.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_actuation_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-actuation-native-first/debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.15228899999056011,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-actuation-native-first/debug/native",
+        "/private/tmp/panda-actuation-native-first/input.bin",
+        "/private/tmp/panda-actuation-native-first/debug/forces.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.27270079200388864,
+      "stderr_bytes": 0,
+      "stdout_sha256": "60d24c142b356a875846ffa352536747aeb342b022e7c1efd710496d2e63396c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-actuation-native-first/release",
+        "/private/tmp/panda-actuation-native-first/release/panda-actuation.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_actuation_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-actuation-native-first/release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.3171477500000037,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-actuation-native-first/release/native",
+        "/private/tmp/panda-actuation-native-first/input.bin",
+        "/private/tmp/panda-actuation-native-first/release/forces.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.2676554159843363,
+      "stderr_bytes": 0,
+      "stdout_sha256": "60d24c142b356a875846ffa352536747aeb342b022e7c1efd710496d2e63396c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-actuation-native-first/debug",
+        "/private/tmp/panda-actuation-native-first/debug/panda-actuation.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_actuation_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-actuation-native-first/sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 0.5672365829814225,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-actuation-native-first/sanitized/native",
+        "/private/tmp/panda-actuation-native-first/input.bin",
+        "/private/tmp/panda-actuation-native-first/sanitized/forces.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.6290952090057544,
+      "stderr_bytes": 0,
+      "stdout_sha256": "60d24c142b356a875846ffa352536747aeb342b022e7c1efd710496d2e63396c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic.panda-actuation.native.v1",
+        "passed": true,
+        "cases": 18,
+        "record_bytes": 160,
+        "position_rate_boundaries": 36,
+        "control_boundaries": 18,
+        "alias_cases": 4,
+        "assertions": 3960
+      },
+      "metrics": {
+        "actuator_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "generalized_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "actuator_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        }
+      },
+      "clip_counts_exact": true,
+      "all_actual_force_words_finite": 324,
+      "C_sha256": "a617f5f8195555b95e0b201b9483c86f02a9cad283ab985ab25ea1e39b613be7",
+      "header_sha256": "e9514bde4d5b2344dfe5d99707c7c8f396e628a6b8c3ff6885ee563916c08bf1",
+      "binary_sha256": "84aa917963cb75d2a8182f9fbe0d16e8afa442574a9612c156a4f019efec8bff",
+      "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic.panda-actuation.native.v1",
+        "passed": true,
+        "cases": 18,
+        "record_bytes": 160,
+        "position_rate_boundaries": 36,
+        "control_boundaries": 18,
+        "alias_cases": 4,
+        "assertions": 3960
+      },
+      "metrics": {
+        "actuator_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "generalized_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "actuator_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        }
+      },
+      "clip_counts_exact": true,
+      "all_actual_force_words_finite": 324,
+      "C_sha256": "24e7eff6864e210b1ff43a29bacad343a47dfe5f86c0634f666a4ae3d38f66b0",
+      "header_sha256": "e9514bde4d5b2344dfe5d99707c7c8f396e628a6b8c3ff6885ee563916c08bf1",
+      "binary_sha256": "b404fab8a91401506fa6cdb6887fbdb39b6c094bb21dc757250dccdd2e912f05",
+      "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic.panda-actuation.native.v1",
+        "passed": true,
+        "cases": 18,
+        "record_bytes": 160,
+        "position_rate_boundaries": 36,
+        "control_boundaries": 18,
+        "alias_cases": 4,
+        "assertions": 3960
+      },
+      "metrics": {
+        "actuator_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "generalized_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_SDK": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "actuator_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        },
+        "joint_passive_scalar": {
+          "passed": true,
+          "values": 162,
+          "max_abs_error": 0.0,
+          "atol": 5e-11,
+          "rtol": 0
+        }
+      },
+      "clip_counts_exact": true,
+      "all_actual_force_words_finite": 324,
+      "C_sha256": "a617f5f8195555b95e0b201b9483c86f02a9cad283ab985ab25ea1e39b613be7",
+      "header_sha256": "e9514bde4d5b2344dfe5d99707c7c8f396e628a6b8c3ff6885ee563916c08bf1",
+      "binary_sha256": "be39c12caebd0d6632c9150e0f8bace9d85188fd7b022437692cde3a551517de",
+      "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+    }
+  ],
+  "supported_profile": {
+    "passed": true,
+    "joint_actuator_pairs": 9,
+    "bodies": 26,
+    "geoms": 152,
+    "before_case_forwards": true,
+    "source_used_parameters_only": true,
+    "fluid_facts_not_owned_fluid_qualification": true
+  },
+  "SDK_transmission_control_integrity": {
+    "length": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 0,
+      "rtol": 0
+    },
+    "velocity": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 0,
+      "rtol": 0
+    },
+    "moment": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 0,
+      "rtol": 0
+    },
+    "control_after": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 0,
+      "rtol": 0
+    }
+  },
+  "scalar_oracle_vs_SDK": {
+    "actuator": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 5e-11,
+      "rtol": 0
+    },
+    "generalized": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 5e-11,
+      "rtol": 0
+    },
+    "joint_passive": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 5e-11,
+      "rtol": 0
+    }
+  },
+  "SDK_full_passive_recomposition_diagnostic": {
+    "passed": true,
+    "values": 162,
+    "max_abs_error": 0.0,
+    "atol": 2e-10,
+    "rtol": 0
+  },
+  "guard_checks": {
+    "passed": true,
+    "refused_cases": 6,
+    "poison": "last force word/count and wrong extents"
+  },
+  "experiment_sha256": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+  "SDK_reference_sha256": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da",
+  "numeric_profile": "Darwin arm64 F64; no fast math/contraction; finite-control subset only; SDK nonfinite fallback not reproduced; no cross-target/R15 claim",
+  "nonclaims": "No full qfrc_passive match, full qacc, source constraint/contact/frictionloss solver, integration, hardware, generic actuator importer, compiler bounded proof, model-state activation dynamics or command provenance.",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_sha256": {
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/fixtures/robotics/panda-actuation/cases.f64": "6ed8ec4e5394c5ba9d041229a43b6efafd08f10b5d9c2a0bcb219a142cff3bf0",
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+    "psionic/fixtures/robotics/panda-actuation/sdk-capture-profile.json": "46bfd0d803242cedf2fc2bd8d193c9fe3f74cb9ea7d1de0773e670dd9943a440",
+    "psionic/fixtures/robotics/panda-actuation/sdk-model.json": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01",
+    "psionic/fixtures/robotics/panda-actuation/sdk-reference.json": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da",
+    "psionic/fixtures/robotics/panda-actuation/sdk-values.f64": "3db8fa7e7bfda7c00e0be75c543ee095d812c2f77925eaa3a03a17363e32d0b0",
+    "psionic/lib/robotics/panda-actuation-fixtures.coax": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95",
+    "psionic/lib/robotics/panda-actuation-math.coax": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+    "psionic/lib/robotics/panda-actuation-types.coax": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+    "psionic/lib/robotics/panda-actuation.coax": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-inverse-dynamics.coax": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff",
+    "psionic/tests/robotics/panda_actuation_bad_arm.coax": "7e64702049e4750d9e8471ea7cea1c14db24393e9a9c85b1a097ebff3310acc7",
+    "psionic/tests/robotics/panda_actuation_bad_output.coax": "487a5e95161816d539e1e6cf047fe1d874017eddcb56ac6753739f1cba8c6f6a",
+    "psionic/tests/robotics/panda_actuation_bad_rate.coax": "80c7bcfb68691e6b57203c0f82eff6c3c191aba85d9aaa96229c18b2cf164e2d",
+    "psionic/tests/robotics/panda_actuation_bad_target.coax": "95fdda8f62701fb9b3102bfb62defcf052f30f62aaefd0cf29423ebc12791ee9",
+    "psionic/tests/robotics/panda_actuation_native.c": "b0e0c8e1cf72a68b40fb3135884a28270ab31c590f699a95f458df8d48c57b91",
+    "psionic/tests/robotics/panda_actuation_reference.py": "bd3aa0da0338677235f187440d805dbb4a9d6546ef44cee8e2e90b1a68a6f1b1",
+    "psionic/tests/robotics/panda_actuation_sdk_reference.py": "7c860df8df491008d1bb0a39a41fe19d0cde7923ff96492db8b8f894f1f717e6"
+  },
+  "input_sha256": "9d0b8be6a9953caaa16c35bf9740e96db057f4552977fd86182747cca371250d",
+  "expected_sha256": "a61bf48a5dade3b823acb144d1c4a65b6fdd38c41cbe0151637d4118140eedfb",
+  "source_refusals": [
+    {
+      "name": "arm",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "source_sha256": "7e64702049e4750d9e8471ea7cea1c14db24393e9a9c85b1a097ebff3310acc7",
+      "stderr_sha256": "5c61ac911f114cc349e0f00f311bc1ea2c7297f936f666ea5c886b5aec2b31ec"
+    },
+    {
+      "name": "target",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "source_sha256": "95fdda8f62701fb9b3102bfb62defcf052f30f62aaefd0cf29423ebc12791ee9",
+      "stderr_sha256": "a1744728dd9d1dfaff0076095153af35bd664757a1111c22e0932a31754684c5"
+    },
+    {
+      "name": "rate",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "source_sha256": "80c7bcfb68691e6b57203c0f82eff6c3c191aba85d9aaa96229c18b2cf164e2d",
+      "stderr_sha256": "02ebe91959d752c8b32e5db670723cc1d2da378a5005c351ca0d9628ee0ef133"
+    },
+    {
+      "name": "output",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "source_sha256": "487a5e95161816d539e1e6cf047fe1d874017eddcb56ac6753739f1cba8c6f6a",
+      "stderr_sha256": "92a0f5ed2a4038f747879317357f88e536d6eb8762e364e42e10cb1b2b500dc2"
+    }
+  ],
+  "native_modes_byte_identical": true,
+  "seconds": 2.707992291019764
+}

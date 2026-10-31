@@ -1,0 +1,779 @@
+{
+  "schema": "psionic.panda-actuation.sdk-reference.v1",
+  "passed": true,
+  "SDK_version": "3.3.1",
+  "platform": "Darwin arm64 little-endian F64",
+  "source_XML": {
+    "original": {
+      "bytes": 60702,
+      "sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5"
+    },
+    "rewritten": {
+      "bytes": 66846,
+      "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+    }
+  },
+  "SDK_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "SDK_public_headers": {
+    "include/mujoco/mjdata.h": "9179d65ccf24f3841515f2092ab14c1f3982bdc358c6abe2c390d8b845f819c2",
+    "include/mujoco/mjexport.h": "2d0ec44615ce9e0dd3d80ce9ca2a8bcad1906840d2ab6b5a9af785f7be989f8b",
+    "include/mujoco/mjmacro.h": "067e74ccb1a17c3ca555d46cbae5cd86778220e5238706e40ea9bc7139cb7012",
+    "include/mujoco/mjmodel.h": "a314eca14b6abf5d74039b111741f61c3ec7555e09db1e0ae05b5a07ccc81ce8",
+    "include/mujoco/mjplugin.h": "f317d8f663b998630e814f80a5c0751ded173849c845ae2af211b24ddb1d934b",
+    "include/mujoco/mjrender.h": "497b9bd11971be5e79d68110b87d775787cf37a33aec51c11df47fea936999d8",
+    "include/mujoco/mjsan.h": "42389c4d645fe6f4c5d1195d72556f1238c126f979d05e56d86772949dc6b818",
+    "include/mujoco/mjspec.h": "e93670339ab514a76fe9ead833def33adf9093b06d82b7e4f6c94b24b98f2694",
+    "include/mujoco/mjthread.h": "f6bf0b51ed63049f0e6a04b19e97b76d36b261d27344a23c11b532640e94f0d7",
+    "include/mujoco/mjtnum.h": "23e59bf6fe00d62509f5e4f75ffe2d53877cb5e913731675092fa46c21abb738",
+    "include/mujoco/mjui.h": "74d8d97ce4777646f41589d870c754ed6e05cd6ac2350f2be1435c8405ed8ada",
+    "include/mujoco/mjvisualize.h": "05f84fbf86a061365600c0f03f43f0c39b6d3a6e27b3e21640515c5f460307ec",
+    "include/mujoco/mjxmacro.h": "d7858844b5800dcfcb9083a3b8c66d0b06bea911edb15b858ec398866ef33efc",
+    "include/mujoco/mujoco.h": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a"
+  },
+  "official_source_commit": "a209134315dda126a714529bfa80f7478902644d",
+  "official_source_files": {
+    "engine_core_smooth.c": {
+      "bytes": 71784,
+      "sha256": "cd3ce757716791b6df603d335bba335bff54669262ebfa67ce2a28cd8f8e6f64"
+    },
+    "engine_forward.c": {
+      "bytes": 34473,
+      "sha256": "9cbd4d7cabb51110eb0e79192e195b6bd654dbdb4ebd7316ba37f002f123d80e"
+    },
+    "engine_passive.c": {
+      "bytes": 30696,
+      "sha256": "c985d30cfda10f96842e38bfae46f2f5adda0d872ead25c30ac3323ba294a2f4"
+    }
+  },
+  "collector_source_sha256": "033278e1b18aaadb4dabbc2fb702d12acc1d44f3951ba43362a91f536129e324",
+  "driver_source_sha256": "7c860df8df491008d1bb0a39a41fe19d0cde7923ff96492db8b8f894f1f717e6",
+  "collector_binary_sha256": "73f1a08f2fe7982a8473da706fa7fce3399b869298b2973705292d77f91e8e5a",
+  "artifacts": {
+    "sdk-model.json": {
+      "bytes": 66499,
+      "sha256": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01"
+    },
+    "sdk-values.f64": {
+      "bytes": 23328,
+      "sha256": "3db8fa7e7bfda7c00e0be75c543ee095d812c2f77925eaa3a03a17363e32d0b0"
+    },
+    "sdk-capture-profile.json": {
+      "bytes": 2906,
+      "sha256": "46bfd0d803242cedf2fc2bd8d193c9fe3f74cb9ea7d1de0773e670dd9943a440"
+    },
+    "experiment.json": {
+      "bytes": 14662,
+      "sha256": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e"
+    },
+    "cases.f64": {
+      "bytes": 3888,
+      "sha256": "6ed8ec4e5394c5ba9d041229a43b6efafd08f10b5d9c2a0bcb219a142cff3bf0"
+    }
+  },
+  "preflight_support_admission": {
+    "passed": true,
+    "joint_actuator_pairs": 9,
+    "bodies": 26,
+    "geoms": 152,
+    "before_case_forwards": true,
+    "source_used_parameters_only": true,
+    "fluid_facts_not_owned_fluid_qualification": true
+  },
+  "metadata_reader_guards": {
+    "passed": true,
+    "positive_cases": 1,
+    "refused_cases": 34,
+    "SDK_calls": 0
+  },
+  "callbacks": "All exact eight callback keys were required and null before capture. Missing and unexpected keys are negative controls.",
+  "same_metadata_in_actual_capture_instance": true,
+  "input_shape": [
+    18,
+    27
+  ],
+  "output_shape": [
+    18,
+    162
+  ],
+  "output_numeric_words": 2916,
+  "all_output_words_finite": true,
+  "layout": [
+    {
+      "name": "actuator_force9",
+      "offset_words": 0,
+      "words": 9
+    },
+    {
+      "name": "qfrc_actuator9",
+      "offset_words": 9,
+      "words": 9
+    },
+    {
+      "name": "qfrc_spring9",
+      "offset_words": 18,
+      "words": 9
+    },
+    {
+      "name": "qfrc_damper9",
+      "offset_words": 27,
+      "words": 9
+    },
+    {
+      "name": "qfrc_gravcomp9",
+      "offset_words": 36,
+      "words": 9
+    },
+    {
+      "name": "qfrc_fluid9",
+      "offset_words": 45,
+      "words": 9
+    },
+    {
+      "name": "qfrc_passive9",
+      "offset_words": 54,
+      "words": 9
+    },
+    {
+      "name": "actuator_length9",
+      "offset_words": 63,
+      "words": 9
+    },
+    {
+      "name": "actuator_velocity9",
+      "offset_words": 72,
+      "words": 9
+    },
+    {
+      "name": "sparse_moment_coefficients9",
+      "offset_words": 81,
+      "words": 9
+    },
+    {
+      "name": "ctrl_after9",
+      "offset_words": 90,
+      "words": 9
+    },
+    {
+      "name": "qacc_smooth21",
+      "offset_words": 99,
+      "words": 21
+    },
+    {
+      "name": "qacc21",
+      "offset_words": 120,
+      "words": 21
+    },
+    {
+      "name": "qfrc_constraint21",
+      "offset_words": 141,
+      "words": 21
+    }
+  ],
+  "SDK_work": {
+    "metadata_only_model_loads": 1,
+    "capture_model_loads": 1,
+    "capture_resets": 18,
+    "case_forward_calls_started": 18,
+    "case_forward_calls_completed": 18,
+    "actual_sparse_rows_verified": 162,
+    "integration_steps": 0,
+    "render_calls": 0,
+    "NN_calls": 0,
+    "old_numeric_gates_repeated": false,
+    "call_counts": "Authored collector API calls; SDK model-compilation internals are not a separate physical trial."
+  },
+  "native": {
+    "forward_calls": 18,
+    "integration_steps": 0,
+    "render_calls": 0,
+    "NN_calls": 0,
+    "rows": 18,
+    "words_per_row": 162,
+    "sparse_rows_verified": 162,
+    "assertions": 23101
+  },
+  "progress_ledger": {
+    "bytes": 1294,
+    "sha256": "f87d8d4e663b93f33bf7a717a32bfa64f9f24731f59532fcbfdd27827d7ee5d8"
+  },
+  "private_execution_record": {
+    "bytes": 41296,
+    "sha256": "b1562e3882a6557f3ec48d8674b7f46d3d6b04ae260b496c9690023483c5df05"
+  },
+  "commands": [
+    {
+      "name": "compile",
+      "exit": 0,
+      "seconds": 0.35362041601911187,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "metadata",
+      "exit": 0,
+      "seconds": 2.0043263750267215,
+      "stdout": {
+        "bytes": 67,
+        "sha256": "be2ac37326c0bcb098b6d6a0830e816c9b97f23d32f770e50fb9e27740c9439a"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "capture",
+      "exit": 0,
+      "seconds": 1.8657337499898858,
+      "stdout": {
+        "bytes": 149,
+        "sha256": "a4f6d103fa122bde8bf783244a915d4e34c1744d2c2c5d3a0bdaed9b8732a157"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_asset_facts": [
+    {
+      "kind": "texture",
+      "name": "texplane",
+      "bytes": 73373,
+      "sha256": "a2aae4ba3b38c3ab9851eca9ad6e76cef9357ef75b3e9a4b280f694ca30acbc5"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-table",
+      "bytes": 940180,
+      "sha256": "9d714fbf44d4d44f279761c0ddd0b2fd7271446cdbb85fcbef8677fe5f929850"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-table-legs",
+      "bytes": 940180,
+      "sha256": "9d714fbf44d4d44f279761c0ddd0b2fd7271446cdbb85fcbef8677fe5f929850"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-wall",
+      "bytes": 516639,
+      "sha256": "d0bdaf13b44ab6ef3122451f6b3853e40bdf20bb9be7662649683ba525dfe191"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-study_wall_painting",
+      "bytes": 432815,
+      "sha256": "fa1bf8b6658d03b9b20ff6ea0276fed8b68d50894579d43caca2a94fd246063a"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-office_book_shelf",
+      "bytes": 1442030,
+      "sha256": "beef464a2aa9143ba6a25a44adcbfd1f1aff16c5969edbf08019b61025388402"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-plant",
+      "bytes": 1583401,
+      "sha256": "216886be0ecd4a765b5f00fe664dd27f25d7af19caef1c2012c4cca429d66349"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-black-book",
+      "bytes": 186624,
+      "sha256": "b743b0e878a10e579371707f3d135c6e7a80a8c307fffabfe1fea6a784830ec2"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-desk",
+      "bytes": 489350,
+      "sha256": "f1f228aca1dab2c88833d00d10983d3df62e64569bb61ad66865490cbd08a5c3"
+    },
+    {
+      "kind": "texture",
+      "name": "tex-floor_lamp",
+      "bytes": 24160,
+      "sha256": "a9735321ebc866113449bc4debb0c078752389d2b50541313ae7788f0fcde80d"
+    },
+    {
+      "kind": "texture",
+      "name": "black_book_1_tex-black_book",
+      "bytes": 186624,
+      "sha256": "b743b0e878a10e579371707f3d135c6e7a80a8c307fffabfe1fea6a784830ec2"
+    },
+    {
+      "kind": "texture",
+      "name": "white_yellow_mug_1_tex-white_yellow_mug",
+      "bytes": 8119611,
+      "sha256": "152a4b711c33e8cb6956233043580331bd0f54d5b3dbc13a9bc870201b295890"
+    },
+    {
+      "kind": "texture",
+      "name": "desk_caddy_1_tex-desk_caddy",
+      "bytes": 11230178,
+      "sha256": "ea07fb85ab5ef7167040e459ae4442827d114d778aaf4f6a8229bc3898406238"
+    },
+    {
+      "kind": "mesh",
+      "name": "study_wall_painting_vis",
+      "bytes": 98080,
+      "sha256": "ba42ab1796e320228178614b43b837531620c91503ba12b3b4b59f062e431821"
+    },
+    {
+      "kind": "mesh",
+      "name": "office_book_shelf_vis",
+      "bytes": 45160,
+      "sha256": "6386615fc43e41bd8df6544cdf95acf18fc0becf6e36266bfb5c66b7410472a5"
+    },
+    {
+      "kind": "mesh",
+      "name": "plant_vis",
+      "bytes": 732472,
+      "sha256": "648fed3592f88784f1dfde93387ca744b1b428ffed5d6a3a7317108b3cae45c5"
+    },
+    {
+      "kind": "mesh",
+      "name": "black_book_vis",
+      "bytes": 773296,
+      "sha256": "ca4a7f95bad5dee37a99c0374df132eadf5f8304770e5830f3286d730c844049"
+    },
+    {
+      "kind": "mesh",
+      "name": "desk_vis",
+      "bytes": 742624,
+      "sha256": "b883c91335372a5f7be2af0b83b95d2db429a5010110c8ca9739aef03d15f8f3"
+    },
+    {
+      "kind": "mesh",
+      "name": "floor_lamp_vis",
+      "bytes": 7983160,
+      "sha256": "6de4776381809fdc2f7a6eae997a8269fb40fe09ef977e05a3e4fa1949a4e949"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0",
+      "bytes": 10084,
+      "sha256": "dfc6d94330de8ddb005b311bfdba9f3b8e1aa7c256b71592ee7ff32cb9a9a5aa"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link1",
+      "bytes": 625884,
+      "sha256": "d24e332dffccf260b91d05dde17c5998bb9559d37da8608a8ee5213d9661f603"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link2",
+      "bytes": 15084,
+      "sha256": "370f7605a0fae3529db169ded50f52f171024aa792d4d773bc84197301f6a039"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link3",
+      "bytes": 15084,
+      "sha256": "0a8d638b9349c6c0eefc4e888636ac4838c4b27170f18a51699321118af709c1"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link4",
+      "bytes": 15084,
+      "sha256": "0180ebb5772ec9840cb049750cffb29a9ddc90311752a16ea34757782ef9e48d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link5",
+      "bytes": 15084,
+      "sha256": "dd17e688c7870e722283525879643d53a74c0024d328b0e14b034b54c8b6c31a"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6",
+      "bytes": 10084,
+      "sha256": "20b768e99a0e0440b5754dcca108016434e57937cc356acd9c352ccd3cb27f77"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7",
+      "bytes": 10084,
+      "sha256": "92ac6afcf7574c034d3170d8a68e95ac9048ab9d0dd5bbd8311b86e551b9ab1c"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_0",
+      "bytes": 358725,
+      "sha256": "ff032aa0aa3514c0820f8c07a676892fe5a7a85977ed3e4818d8ee8080cd8a2c"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_1",
+      "bytes": 122052,
+      "sha256": "d033464e59f40a3096d2d6cf7853afb5bdb258bf19accefa24fa040ea73763e2"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_2",
+      "bytes": 731627,
+      "sha256": "5f8782b8a222da3981d0c0108930fb8dadf44639a16bd85bc89cd7401ee5a766"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_3",
+      "bytes": 58037,
+      "sha256": "3fc91c0cd10c4aef9a493699fa83457c225d0854b28d55ccb0b47fe38f412f28"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_4",
+      "bytes": 256094,
+      "sha256": "f23819a788f7ce26965e540cef7a9bf5970ed99da3c1b875a91b0e544511e39d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_5",
+      "bytes": 21416,
+      "sha256": "e8e5ff98258aaca852979fd62a39d929c1d726d9e6fa19f1acc030553cdf2ed3"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_6",
+      "bytes": 4495,
+      "sha256": "41be78cbdc6b0d401efe4fa630fe6924ee3312e294403aa35a4e18a70f99139e"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_7",
+      "bytes": 34000,
+      "sha256": "75e3a2661f6366bb6c665282cd77f18b0da09ec1eaa8df29617fccf279970f6f"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_8",
+      "bytes": 3621712,
+      "sha256": "d751e2ad68ca735b0c3b0f8f11f7364026fe64166ebf4aab69446d4465c6129d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_9",
+      "bytes": 125294,
+      "sha256": "19817601101caeea79826ffe057ad0481b97f60e80870ee768fe32b6855ab9d2"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_10",
+      "bytes": 407944,
+      "sha256": "5d879fddef79581242c8d28bc4dea19759712f5d83820b9a7c8bf519035d52d3"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link0_vis_11",
+      "bytes": 24799,
+      "sha256": "1f47131b0f4a638b64065fa9d7fa0f6d196c7aa56ba717ce9d127d36a67338a5"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link1_vis",
+      "bytes": 3676668,
+      "sha256": "7e6cffc2656cac8c8faa9b43e41cba312b35519c9cc4c5bddd7159f14df50f2d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link2_vis",
+      "bytes": 3713545,
+      "sha256": "42ada2805819bd9364e567e23b4c1b71b91d9ac02525598d823c14bf8d25dabd"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link3_vis_0",
+      "bytes": 3499294,
+      "sha256": "6a1f18e21663f2acea23752dcb79b2a8e8ae96ab286dd9d90de1d61c0dd87c0b"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link3_vis_1",
+      "bytes": 81340,
+      "sha256": "73ad9e69c96283cc865424a64e38b53b7cd4385a0ff9834cae91a258ab92cb97"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link3_vis_2",
+      "bytes": 98021,
+      "sha256": "9cd5a95e3599005bfc76e3700f1e3b3051efe07665b0ae6efbce75860a89e7f9"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link3_vis_3",
+      "bytes": 571618,
+      "sha256": "01f69ca50a96cceb1bc1a0fcb4de9a7fe2b5b11d1d2e2a5c445723acef7eb483"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link4_vis_0",
+      "bytes": 99644,
+      "sha256": "76f42fd26edf4a6b78b055d3b48c4df59cebb93ffc36fc6e6e6c8d441dbec3c9"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link4_vis_1",
+      "bytes": 3608854,
+      "sha256": "85907c1c058ea1133cd6cf5a23535a1b77257b4852c753e08cbf87f79c4003c2"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link4_vis_2",
+      "bytes": 566926,
+      "sha256": "a019f7f862b782af509f649050ef45354ff73642742dea7525d8e1369a07fd94"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link4_vis_3",
+      "bytes": 80397,
+      "sha256": "b0fcc4417a0680860ee11af60df227ecc328b4b1c66908b9872dedfa8620d992"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link5_vis_0",
+      "bytes": 907061,
+      "sha256": "e30aa36ca950b2b57ba695423ee30da5da662b1a70b72d1533c5cd435b88355d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link5_vis_1",
+      "bytes": 45788,
+      "sha256": "1d4089d9f2d26ef677ff42b27a2cb4ba9691a8fcd19ac665ac5203b23d22b876"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link5_vis_2",
+      "bytes": 4535777,
+      "sha256": "c095257424ff95526d2ebab4f396833a2d77227e0d2b3bb899a0019d19c38c49"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_0",
+      "bytes": 181786,
+      "sha256": "ca3ca6f238a0ed1138bfd5d11982f610d96dfc98d2d663646f07fc4c2a3ea7b0"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_1",
+      "bytes": 23299,
+      "sha256": "a96dc760e3b8b0f6ab4e098248e4019e67ec9fcf404c6ab944e216dfc752e590"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_2",
+      "bytes": 10246,
+      "sha256": "bef85a944a58e7032a765cbb10445ac44450fe047f3fefe501e3a3ac90dd6caf"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_3",
+      "bytes": 15976,
+      "sha256": "a8f1f77b3978a16fcc8b4dd00af50431d1bca26576ef92f73d90d984dd188211"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_4",
+      "bytes": 18377,
+      "sha256": "0cf60228d09854089185c5bf9f23004603b3aef874b61b2b8dad7bdcc29178e1"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_5",
+      "bytes": 15690,
+      "sha256": "dfdcbfb610c052e2a4830fbc26a53ec99c0658ec3664a179c5471ff42d6a60de"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_6",
+      "bytes": 16884,
+      "sha256": "b13bafd7d8cee84a07e5a0667da8d1e1d9467112415332f23ef79c582421f8ce"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_7",
+      "bytes": 2464,
+      "sha256": "52d8f9cac4326716f46fad9aa1314491d377b1b36a374258a97aae196b006e51"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_8",
+      "bytes": 6323,
+      "sha256": "5e586f0aaa641cdae0d372bd2fb689600cf13fc629a52ba4ad6076bfa7b0834f"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_9",
+      "bytes": 16367,
+      "sha256": "3a3caf4c3596ff2661d559ee291a9ac7f66a6d943ebfcc417f229de72962d0dc"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_10",
+      "bytes": 462054,
+      "sha256": "915c2eedef0d04869814126a96da1ff70d1fc89fc65ac80021084b00cad5d757"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_11",
+      "bytes": 30999,
+      "sha256": "6edb35baa656d0b647541ab9de4706c4d471ec831e732955f9f4d347f4bc02fb"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_12",
+      "bytes": 4214,
+      "sha256": "5af3b6bdecc4de424eb0217627bf0f6185f126dbb0bc1a7fe39253f0a26f2907"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_13",
+      "bytes": 4327,
+      "sha256": "21dfaf6cb5f27a8593be82cee6ca3023e3829d5f2be5e30af54b5955ea87a554"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_14",
+      "bytes": 533553,
+      "sha256": "8aa89ae8b85fb54400771754d25d6813dfb41299821bc984f37498ac0d9cba14"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_15",
+      "bytes": 819438,
+      "sha256": "a9c3bcfb59c80b0e9f67c62775ea7564f1f11f55faf94b971c7fa2ee436e91bc"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link6_vis_16",
+      "bytes": 4284801,
+      "sha256": "0e76221e7c530dde22117afc57d95d48ddf30a5e586e3bd99ba6777a30b50e58"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_0",
+      "bytes": 1831721,
+      "sha256": "4a43571b6feb5dbb0b6f5b3d0a06f51f356371d27a10fc580c985107db16f2ac"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_1",
+      "bytes": 162840,
+      "sha256": "0fefd18ce20e90dac5ce7d181e676e6cf7504cca1f050c4d05c098169b417116"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_2",
+      "bytes": 280928,
+      "sha256": "44ae15f4a83bd36f4de3cce78e3f592c8a070ca1fd4539be3b1c58e21d8d8671"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_3",
+      "bytes": 164977,
+      "sha256": "08c6308530928ae7234edd1297039aff02b0d84d8bbfec8d01c5ab104fc4209b"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_4",
+      "bytes": 114146,
+      "sha256": "53e0bffb56a0fe9ebab0f43dc997512287ab14d8f9b2d77f1baf7f0c96367f59"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_5",
+      "bytes": 304295,
+      "sha256": "1fd161fb00e729732950770f20fb6e75c5a5ca1620bceac9d550c54f322d469d"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_6",
+      "bytes": 133885,
+      "sha256": "cd4f2b39adfd4857f922f3104fdd4cef01390265a5f2582c73d97f39dbc1755b"
+    },
+    {
+      "kind": "mesh",
+      "name": "robot0_link7_vis_7",
+      "bytes": 1058189,
+      "sha256": "f4f9e3c8532df4d1588e1c2ff82fae10facfb30a52329b7f595ee37d7bad6229"
+    },
+    {
+      "kind": "mesh",
+      "name": "mount0_pedestal",
+      "bytes": 1647684,
+      "sha256": "f96ff12bfb347c77580e4392556b15e47ef7228711c45b0f1193b100af22866a"
+    },
+    {
+      "kind": "mesh",
+      "name": "gripper0_hand",
+      "bytes": 10084,
+      "sha256": "94493e94f30fe940f2c8ca2f155c3bbe67bbff406d3edf5e261670d2f0f6e2ed"
+    },
+    {
+      "kind": "mesh",
+      "name": "gripper0_hand_vis",
+      "bytes": 353984,
+      "sha256": "fdeb1a924b8d0f1f997f47d6d8af102c7290a1d5144145efdc39501dc13f0fa1"
+    },
+    {
+      "kind": "mesh",
+      "name": "gripper0_finger",
+      "bytes": 1684,
+      "sha256": "2d07a740392f3b9b0816f65d64fff9927d3d57c897870fc4b6ff9c56fff3a0c8"
+    },
+    {
+      "kind": "mesh",
+      "name": "gripper0_finger_vis",
+      "bytes": 31284,
+      "sha256": "e49613148a74f1ba9b5793813078e5becf15833e0296073dc1c523508be35ae4"
+    },
+    {
+      "kind": "mesh",
+      "name": "gripper0_finger_vis2",
+      "bytes": 2884,
+      "sha256": "8857e33ee59c3a395c3036a11e4f1731c88c203c821bb03ca97737a2d04cba27"
+    },
+    {
+      "kind": "mesh",
+      "name": "black_book_1_black_book_vis",
+      "bytes": 773296,
+      "sha256": "ca4a7f95bad5dee37a99c0374df132eadf5f8304770e5830f3286d730c844049"
+    },
+    {
+      "kind": "mesh",
+      "name": "white_yellow_mug_1_white_yellow_mug_vis",
+      "bytes": 913048,
+      "sha256": "aeabcc3a57b84549568a1d6907542ef9e65ea126c101f6f3985deb8b55d3aa79"
+    },
+    {
+      "kind": "mesh",
+      "name": "desk_caddy_1_desk_caddy_vis",
+      "bytes": 2696776,
+      "sha256": "c2a31df6411aa382d91553a594faa2cb9577908c3881b9022616f9d6604333a4"
+    }
+  ],
+  "SDK_runtime_uninstrumented": true,
+  "collector_ASan_UBSan_fail_fast": true,
+  "numeric_profile": "Scalar F64, no fast math or contraction; finite frozen controls only. SDK sources read, never executed; installed approved SDK C effects only.",
+  "static_fluid_facts": {
+    "metadata": "all26body parent/root/geometry/inertia mappings and all geom fluid12/shape/local-pose facts",
+    "density": 1.2,
+    "viscosity": 2e-05,
+    "wind": [
+      0,
+      0,
+      0
+    ],
+    "geoms": 152,
+    "owned_fluid_qualified": false
+  },
+  "owned_math_qualified_by_this_receipt": false,
+  "scope": "Raw SDK actuator/joint-passive and separate full-passive/qacc/constraint diagnostics. No full passive, contact/frictionloss, fluid, full qacc, integrator, hardware, generic importer, or compiler bounded-control qualification."
+}

@@ -1,0 +1,2 @@
+#load "panda-actuation-types.coax";
+pa_same :: (a:PaOutput,b:PaOutput) {pid_same(a.actuator,b.actuator);pid_same(a.joint_passive,b.joint_passive);#assert a.control_clipped==b.control_clipped && a.force_clipped==b.force_clipped;}

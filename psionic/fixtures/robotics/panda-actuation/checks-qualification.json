@@ -1,0 +1,107 @@
+{
+  "schema": "psionic.panda-actuation.coax-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "check_groups": 8,
+  "cases": 135,
+  "equivalent_waivers": 0,
+  "proof_composition": "Name-bound scope proof, not an aggregate final rerun: math20/20; initial wrapper97/98 with sole survivor in pa_forward_raw; unchanged pa_forward body carries its kills; exact raw-only25/25 after the added refusal observation closes the sole survivor. No final full-wrapper or full authored Quantity-token score is claimed.",
+  "quantity_operator_token_scope": "Current lowering does not enumerate every authored scalar-quantity operator token. These are actual emitted scopes, complemented by independent literal/SDK/scalar equations.",
+  "old_passing_gates_rerun": false,
+  "source_sha256": {
+    "psionic/lib/robotics/panda-actuation-fixtures.coax": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95",
+    "psionic/lib/robotics/panda-actuation-math.coax": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+    "psionic/lib/robotics/panda-actuation-types.coax": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+    "psionic/lib/robotics/panda-actuation.coax": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111"
+  },
+  "logs": [
+    {
+      "path": "/tmp/panda-actuation-VM-first.log",
+      "sha256": "d21248814115857d0e8c989a3159544d1f8547e9beec566fe31a522f0168a54c",
+      "text": "ok   #forall actuation all typed span shapes precede numerical admission and preserve complete output (8 cases, 6644 steps, 0 ms)\nok   #forall actuation every coordinate rate and broad control box admits endpoints and refuses the next word (54 cases, 183457 steps, 3 ms)\nok   #test actuation source clipping counts and typed raw identity retain dense input roles and spare output (1 case, 8483 steps, 0 ms)\nok   #forall actuation packed shape refusal is atomic before invalid values (5 cases, 2907 steps, 0 ms)\nok   #forall actuation clamp exact endpoints and outside values preserve value and strict clip flag (5 cases, 256 steps, 0 ms)\nok   #forall actuation each exact source torque limit and viscous damping coefficient is fixed (7 cases, 275 steps, 0 ms)\nok   #test actuation finger targets become newtons before source force clipping and passive velocity stays separate (1 case, 817 steps, 0 ms)\n7 of 49 checks (--only 'actuation'), 7 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    },
+    {
+      "path": "/tmp/panda-actuation-raw-VM-first.log",
+      "sha256": "3eadebbac39397bb9e188aca9af789141c1d472df2437e61a9ed174e272bd1a6",
+      "text": "ok   #forall actuation packed coordinate rate and control refusals are independently observable (54 cases, 80770 steps, 1 ms)\n1 of 50 checks (--only 'actuation packed coordinate rate and control refusals'), 1 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    },
+    {
+      "path": "/tmp/panda-actuation-example-test-first.log",
+      "sha256": "616488d2261aea22c2b3cac9de9e10d0cfe6003a561fea45214d67aaff4b7d4b",
+      "text": "ok   #test Panda actuation example formats independent signed micro coefficients (1 case, 43 steps, 0 ms)\n1 of 51 checks (--only 'Panda actuation example'), 1 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    },
+    {
+      "path": "/tmp/panda-actuation-math-mutation-first.log",
+      "sha256": "72476967159d53dced22e45e03c16269c6ef766e7633a174d79d97b1ceb3cc8e",
+      "text": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n20 mutants, 20 killed, 0 survived\n"
+    },
+    {
+      "path": "/tmp/panda-actuation-mutation-first.log",
+      "sha256": "ea784e7c0f76cb4436c8170308175083235d1349d771d75fc92539e1808b60e9",
+      "text": "mutation scope: root-only (entry-source procedures; dependency checks retained)\npsionic/lib/robotics/panda-actuation.coax:46:25: mutant survived: the assignment was removed\n   for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];t[i].value=controls[7+i];}return pa_forward(q[..],s[..],v[..],sv[..],u[..],t[..],output);\n                          ^\n98 mutants, 97 killed, 1 survived\n"
+    },
+    {
+      "path": "/tmp/panda-actuation-raw-scope/mutation.log",
+      "sha256": "db4b08c10566073099ef76ae06f029d0121a7b2b77d3c0308cdfe24f82419e2d",
+      "text": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n25 mutants, 25 killed, 0 survived\n"
+    }
+  ],
+  "raw_followup_scope": {
+    "schema": "coax.changed-procedure-scope.v1",
+    "source": "psionic/lib/robotics/panda-actuation.coax",
+    "source_sha256": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111",
+    "changed_observation": "new public packed input refusal group, product body unchanged",
+    "selected_procedure": "pa_forward_raw",
+    "body_sha256": "634f681f47ca4a23d30a527662eea4544728d2d5bba7034ad5219ca0b1a40d5b",
+    "root_sha256": "810582e01b2b79e98aab5da7ec43d7f225de0cdcac9f55f331b3b26993f4627b",
+    "dependency_sha256": "25ee4ae7c0acc526a39f33a3868511c0effb4602d7d98d23c3e2cfc5e12ca8fe",
+    "all_baseline_checks_retained": true,
+    "other_public_procedure_byte_identity": true,
+    "initial_main_body_sha256": "075ff3a377f914e1d6f50938923acb6c63cb9f9720fada1cabfa342b4f597467",
+    "final_main_body_sha256": "075ff3a377f914e1d6f50938923acb6c63cb9f9720fada1cabfa342b4f597467",
+    "initial_source_reconstruction": "Remove only the appended new public raw refusal group. Product bodies were not edited.",
+    "initial_source_reconstructed_sha256": "92dabf6cd47003049b589e4b6861d2ab74c23ce1750eaff82734d982e39c9467"
+  },
+  "native_qualification_sha256": "a1366bc05fb796dca89d6a8d135ef269ccecdb3c984925fa5824f56ce5178f62",
+  "example": {
+    "source": "psionic/examples/panda-actuation.coax",
+    "source_sha256": "4e03f38416d1f8b407e815ac4a1223ffc37f9b61fc552f3d656b4c2d618f4991",
+    "golden": "psionic/fixtures/robotics/panda-actuation/example.stdout",
+    "golden_sha256": "9762452469523e3d084eb6bd99cf412b9dea30238b6660b66dbfea3ded062e58",
+    "profiles": [
+      {
+        "mode": "debug",
+        "stdout_path": "/tmp/panda-actuation-example-debug-first.stdout",
+        "stdout_sha256": "9762452469523e3d084eb6bd99cf412b9dea30238b6660b66dbfea3ded062e58",
+        "golden_exact": true
+      },
+      {
+        "mode": "release",
+        "stdout_path": "/tmp/panda-actuation-example-release-first.stdout",
+        "stdout_sha256": "9762452469523e3d084eb6bd99cf412b9dea30238b6660b66dbfea3ded062e58",
+        "golden_exact": true
+      }
+    ]
+  },
+  "unresolved_initial_survivors": 0,
+  "passing_focused_scopes": {
+    "pa_math": {
+      "mutants": 20,
+      "killed": 20,
+      "survived": 0
+    },
+    "pa_forward_raw": {
+      "mutants": 25,
+      "killed": 25,
+      "survived": 0
+    }
+  },
+  "carried_unchanged_function": {
+    "name": "pa_forward",
+    "body_sha256": "075ff3a377f914e1d6f50938923acb6c63cb9f9720fada1cabfa342b4f597467",
+    "initial_body_sha256": "075ff3a377f914e1d6f50938923acb6c63cb9f9720fada1cabfa342b4f597467",
+    "initial_wrapper_scope": "98 sites,97killed,one survivor specifically in pa_forward_raw; no other initial survivor",
+    "new_observation": "54 raw input-refusal cases appended; no product body changed"
+  }
+}

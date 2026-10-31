@@ -1,0 +1,101 @@
+{
+  "schema": "psionic.panda-actuation.sdk-capture-profile.v1",
+  "frozen_before_SDK_loading": true,
+  "frozen_UTC": "2026-10-31T22:57:45.503486+00:00",
+  "experiment_sha256": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+  "case_sha256": "6ed8ec4e5394c5ba9d041229a43b6efafd08f10b5d9c2a0bcb219a142cff3bf0",
+  "cases": 18,
+  "case_shape": [
+    18,
+    27
+  ],
+  "row_shape": [
+    18,
+    162
+  ],
+  "row_arrays": [
+    "actuator_force9",
+    "qfrc_actuator9",
+    "qfrc_spring9",
+    "qfrc_damper9",
+    "qfrc_gravcomp9",
+    "qfrc_fluid9",
+    "qfrc_passive9",
+    "actuator_length9",
+    "actuator_velocity9",
+    "sparse_moment_coefficients9",
+    "ctrl_after9",
+    "qacc_smooth21",
+    "qacc21",
+    "qfrc_constraint21"
+  ],
+  "array_words": [
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    21,
+    21,
+    21
+  ],
+  "SDK_version": 331,
+  "SDK_binary_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "source_original_XML_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_XML_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "metadata_phase": "load source model; write compiled facts; no mjData, per-case forward or integration. Validate all required support predicates before capture.",
+  "capture_phase": "new loaded model must satisfy same guards and emit byte-identical metadata before reading the frozen finite input packet; reset then one mj_forward per case. No steps/render/NN.",
+  "sparse_policy": "Pre-forward joint transmission/type/DOF/gear proves expected single-column support. Immediately after each forward, each actual row must have one nonzero, named DOF column and coefficient exactly1 before any case output is retained.",
+  "static_fluid_metadata_scope": {
+    "model": [
+      "density",
+      "viscosity",
+      "wind",
+      "gravity",
+      "disableflags",
+      "enableflags",
+      "disableactuator"
+    ],
+    "all_bodies": [
+      "id",
+      "name",
+      "parent_id",
+      "root_id",
+      "geom_adr",
+      "geom_count",
+      "dof_adr",
+      "dof_count",
+      "mass",
+      "inertia",
+      "inertial_position",
+      "inertial_quaternion_wxyz",
+      "gravcomp"
+    ],
+    "all_geoms": [
+      "id",
+      "name",
+      "body_id",
+      "type",
+      "size",
+      "position",
+      "quaternion_wxyz",
+      "fluid12"
+    ]
+  },
+  "fluid_metadata_only": true,
+  "full_passive_qacc_constraint": "Raw SDK diagnostics only, not qualification of owned fluid, contact, frictionloss or full forward dynamics.",
+  "public_artifacts": [
+    "sdk-capture-profile.json",
+    "sdk-model.json",
+    "sdk-values.f64",
+    "sdk-reference.json"
+  ],
+  "native_collector": "ASan+UBSan fail-fast, Darwin arm64 scalar F64, no fast math/contraction; SDK dylib itself uninstrumented",
+  "no_formula_in_collector": true
+}
