@@ -79,7 +79,8 @@ ICE_RADII :: [8] f64.[2400.0, 1700.0, 3100.0, 1300.0, 2200.0, 2800.0, 1500.0, 19
 STATION_ORBIT :: 1200000.0;   // m from Ceres's centre
 ROCKS :: 5000;                // the Belt's field, drawn
 ROCKS_FIRST :: 900;           // the first field's rocks, from the stream the ice rocks follow
-SHIPS :: 8;
+SHIPS :: 10;            // the seven at the start, and up to three freighters from the yard
+SHIP_BASE :: 7;
 LONG_PRESS :: 0.45;     // seconds a finger rests on a ship to add it to the selection
 // Light lag: what a faction sees of a ship is where it was distance / c ago. Each ship keeps its
 // last SIGHT_N states (position and velocity, one a step: at most two days apart) for where-was-it
@@ -121,7 +122,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11; B_BUILD :: 12;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -133,6 +134,8 @@ Belt :: struct {
   clock: f32;            // real seconds, for the sky's twinkle
   cam: SpaceCam;
   w: f32; h: f32; dpr: f32; touch: bool;
+  claim: [ICE_ROCKS] bool; stock: [ICE_ROCKS] f64;   // a miner leaves a rig at each rock it works; its ice waits for haulers
+  building: f64;         // days until the yard's freighter is done, 0 none
   station: [1] Station;  // Hearth Station's stores, refinery and people (belt-station.coax)
   delivered: f64;
   ships: [SHIPS] Ship; ship_n: int;
@@ -390,6 +393,8 @@ belt_reset :: (s: [] Belt) {
   s[0].toast_n = 0; s[0].toast_t = 0;
   s[0].speed = 2;
   s[0].station[0] = station_new();
+  s[0].building = 0.0;
+  for j: 0..<ICE_ROCKS { s[0].claim[j] = false; s[0].stock[j] = 0.0; }
   s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
   s[0].reach_ship = -1;
   for i: 0..<2 { s[0].fingers[i].id = -1; }
@@ -554,6 +559,7 @@ arrive :: (s: [] Belt, k: int) {
   if is_ice(sh.at) && !queued && sh.cargo_cap > 0.0 && sh.cargo < sh.cargo_cap {
     s[0].ships[k].mode = MINING;
     s[0].ships[k].work = WORK_MINE; s[0].ships[k].work_rock = sh.at;
+    if sh.mine_rate > 0.0 { s[0].claim[sh.at - P_ICE] = true; }
     n := put(buf[..], 0, sh.name); n = put(buf[..], n, " MINING AT "); n = put(buf[..], n, place_name(sh.at));
     say(s, cast(string) buf[0..<n]);
     return;
@@ -595,17 +601,24 @@ step_ships :: (s: [] Belt, dt: f64) {
   }
   s[0].station[0].away = away;
   s[0].station[0] = station_step(s[0].station[0], dt / DAY);
+  rigs_step(s, dt / DAY);
+  yard_step(s, dt / DAY);
   for k: 0..<s[0].ship_n {
     sh := s[0].ships[k];
     if sh.mode == FLYING && t >= sh.t0 + sh.tof { arrive(s, k); continue; }
     if sh.mode == MINING {
-      s[0].ships[k].cargo = fmin(sh.cargo_cap, sh.cargo + sh.mine_rate * dt / DAY);
-      if s[0].ships[k].cargo >= sh.cargo_cap {
+      r := sh.at - P_ICE;
+      take := fmin(s[0].stock[r], sh.cargo_cap - sh.cargo);
+      s[0].stock[r] -= take;
+      s[0].ships[k].cargo = fmin(sh.cargo_cap, sh.cargo + take + sh.mine_rate * dt / DAY);
+      // a miner fills its hold; a hauler leaves when it has emptied the rig's stock of a worthwhile load
+      hauled := sh.mine_rate <= 0.0 && s[0].stock[r] < 1.0 && s[0].ships[k].cargo >= HAUL_LOAD;
+      if s[0].ships[k].cargo >= sh.cargo_cap || hauled {
         p := plan_with(s, k, P_STATION, true, 0.4);
         if !p.enough { p = plan_for(s, k, P_STATION, true); }
         if launch(s, k, P_STATION, p) {
           buf: [96] u8;
-          n := put(buf[..], 0, sh.name); n = put(buf[..], n, " FULL: "); n = put_count(buf[..], n, sh.cargo_cap); n = put(buf[..], n, " T ICE, HEADING HOME");
+          n := put(buf[..], 0, sh.name); n = put(buf[..], n, ifx hauled then " LOADED: " else " FULL: "); n = put_count(buf[..], n, s[0].ships[k].cargo); n = put(buf[..], n, " T ICE, HEADING HOME");
           say(s, cast(string) buf[0..<n]);
         } else {
           s[0].ships[k].mode = PARKED;
@@ -625,7 +638,7 @@ step_ships :: (s: [] Belt, dt: f64) {
 // ---- the save: one text, kept in this browser (host.js action 4) and given back on the next
 // visit. Integers only (times in ms, masses in grams, the coast's start in mm and um/s), so it
 // reads back exactly; the rocks and the start come from belt_start, which is deterministic.
-SAVE_TAG :: "BELT2200 2";   // 1: the station kept only ice
+SAVE_TAG :: "BELT2200 3";   // 1: the station kept only ice; 2: no yard or rigs
 qi :: (v: f64, scale: f64) -> int {
   x := v * scale;
   if !is_finite(x) { return 0; }
@@ -639,6 +652,11 @@ save_game :: (s: [] Belt, buf: [] u8) -> int {
   n = put_field(buf, n, qi(hs.ice, 1000000.0)); n = put_field(buf, n, qi(s[0].delivered, 1000000.0));
   n = put_field(buf, n, qi(hs.mass, 1000000.0)); n = put_field(buf, n, qi(hs.metal, 1000000.0));
   n = put_field(buf, n, qi(hs.water, 1000000.0)); n = put_field(buf, n, qi(hs.air, 1000000.0));
+  n = put_field(buf, n, qi(s[0].building, 1000.0));
+  claims := 0;
+  for j: 0..<ICE_ROCKS { if s[0].claim[j] { claims = claims | (1 << j); } }
+  n = put_field(buf, n, claims);
+  for j: 0..<ICE_ROCKS { n = put_field(buf, n, qi(s[0].stock[j], 1000.0)); }
   n = put_field(buf, n, s[0].ship_n);
   for k: 0..<s[0].ship_n {
     sh := s[0].ships[k];
@@ -671,7 +689,7 @@ load_game :: (s: [] Belt, text: string) -> bool {
   if text.count < SAVE_TAG.count + 2 { return false; }
   for i: 0..<SAVE_TAG.count - 1 { if text[i] != SAVE_TAG[i] { return false; } }
   version := cast(int) text[SAVE_TAG.count - 1] - '0';
-  if version != 1 && version != 2 { return false; }
+  if version < 1 || version > 3 { return false; }
   c: [1] Cur; c[0].at = SAVE_TAG.count;
   ships: [SHIPS] Ship;
   t := f64(read_int(text, c[..])) / 1000.0;
@@ -687,9 +705,16 @@ load_game :: (s: [] Belt, text: string) -> bool {
     st.mass = f64(read_int(text, c[..])) / 1000000.0; st.metal = f64(read_int(text, c[..])) / 1000000.0;
     st.water = f64(read_int(text, c[..])) / 1000000.0; st.air = f64(read_int(text, c[..])) / 1000000.0;
   }
-  if read_int(text, c[..]) != s[0].ship_n || !c[0].ok || t < ORBIT_2200 { return false; }
-  for k: 0..<s[0].ship_n {
-    sh := s[0].ships[k];
+  building := 0.0; claims := 0; stock: [ICE_ROCKS] f64;
+  if version >= 3 {
+    building = f64(read_int(text, c[..])) / 1000.0;
+    claims = read_int(text, c[..]);
+    for j: 0..<ICE_ROCKS { stock[j] = fclamp(f64(read_int(text, c[..])) / 1000.0, 0.0, RIG_STOCK); }
+  }
+  saved_n := read_int(text, c[..]);
+  if saved_n < SHIP_BASE || saved_n > SHIPS || (version < 3 && saved_n != SHIP_BASE) || !c[0].ok || t < ORBIT_2200 { return false; }
+  for k: 0..<saved_n {
+    sh := ifx k < SHIP_BASE then s[0].ships[k] else freighter_new(k - SHIP_BASE);
     sh.mode = read_int(text, c[..]); sh.at = read_int(text, c[..]); sh.slot = read_int(text, c[..]); sh.from = read_int(text, c[..]);
     sh.fuel = f64(read_int(text, c[..])) / 1000000.0; sh.cargo = f64(read_int(text, c[..])) / 1000000.0;
     sh.t0 = f64(read_int(text, c[..])) / 1000.0; sh.tof = f64(read_int(text, c[..])) / 1000.0; sh.burn2 = f64(read_int(text, c[..])) / 1000000.0;
@@ -707,6 +732,9 @@ load_game :: (s: [] Belt, text: string) -> bool {
   s[0].t = t; s[0].speed = ifx sp >= 0 && sp < 4 then sp else 2;
   st.ice = fmax(st.ice, 0.0); st.mass = fmax(st.mass, 0.0); st.metal = fmax(st.metal, 0.0); st.water = fmax(st.water, 0.0); st.air = fmax(st.air, 0.0);
   s[0].station[0] = st; s[0].delivered = fmax(delivered, 0.0);
+  s[0].building = fclamp(building, 0.0, FREIGHTER_DAYS);
+  for j: 0..<ICE_ROCKS { s[0].claim[j] = (claims & (1 << j)) != 0; s[0].stock[j] = stock[j]; }
+  s[0].ship_n = saved_n;
   s[0].framed = false;   // the next frame frames the saved date's Hearth, not the start's
   for k: 0..<s[0].ship_n {
     sh := ships[k];
@@ -810,6 +838,72 @@ next_order :: (s: [] Belt, k: int) -> bool {
   return false;
 }
 
+// ---- the yard: freighters from metal and people
+FREIGHTER_NAMES :: [3] string.["DRAY", "TALLY", "HAWSER"];
+freighter_new :: (i: int) -> Ship {
+  sh := ship_new(FREE_BELT, FREIGHTER_NAMES[i % 3], P_STATION, 400.0, 900.0, 8000.0, 2000.0, 0.0);
+  sh.crew = FREIGHTER_CREW;
+  return sh;
+}
+// The station's people not crewing a ship (or a ship on the slips).
+free_hands :: (s: [] Belt) -> int {
+  n := s[0].station[0].people;
+  for k: 0..<s[0].ship_n { if s[0].ships[k].faction == FREE_BELT { n -= s[0].ships[k].crew; } }
+  if s[0].building > 0.0 { n -= FREIGHTER_CREW; }
+  return n;
+}
+YARD_OK :: 0; YARD_METAL :: 1; YARD_HANDS :: 2; YARD_BUSY :: 3; YARD_FULL :: 4;
+yard_can :: (s: [] Belt) -> int {
+  if s[0].building > 0.0 { return YARD_BUSY; }
+  if s[0].ship_n >= SHIPS { return YARD_FULL; }
+  if s[0].station[0].metal < FREIGHTER_METAL { return YARD_METAL; }
+  if free_hands(s) < FREIGHTER_CREW { return YARD_HANDS; }
+  return YARD_OK;
+}
+// Lay down a freighter: its metal now, its crew off the shifts, done in FREIGHTER_DAYS.
+yard_build :: (s: [] Belt) -> bool {
+  if yard_can(s) != YARD_OK { return false; }
+  s[0].station[0].metal -= FREIGHTER_METAL;
+  s[0].building = FREIGHTER_DAYS;
+  s[0].dirty = true;
+  say(s, "FREIGHTER LAID DOWN AT HEARTH");
+  return true;
+}
+yard_step :: (s: [] Belt, days: f64) {
+  if s[0].building <= 0.0 { return; }
+  s[0].building -= days;
+  if s[0].building > 0.0 { return; }
+  s[0].building = 0.0;
+  if s[0].ship_n >= SHIPS { return; }
+  k := s[0].ship_n;
+  s[0].ships[k] = freighter_new(k - SHIP_BASE);
+  s[0].ship_n += 1;
+  s[0].ships[k].slot = berth(s, k, P_STATION);
+  s[0].dirty = true;
+  buf: [64] u8;
+  n := put(buf[..], 0, s[0].ships[k].name); n = put(buf[..], n, " LAUNCHED AT HEARTH");
+  say(s, cast(string) buf[0..<n]);
+}
+// The rigs: each rock a miner has worked drills on, into its stock.
+rigs_step :: (s: [] Belt, days: f64) {
+  for j: 0..<ICE_ROCKS { if s[0].claim[j] { s[0].stock[j] = fmin(RIG_STOCK, s[0].stock[j] + RIG_RATE * days); } }
+}
+// A hauler's soonest rock with a rig, or -1.
+nearest_rig :: (s: [] Belt, k: int) -> int {
+  best := -1; best_t := 0.0;
+  for j: 0..<ICE_ROCKS {
+    if !s[0].claim[j] { continue; }
+    p := plan_for(s, k, P_ICE + j, true);
+    if !p.ok || !p.enough { continue; }
+    if best < 0 || p.tr.tof < best_t { best = P_ICE + j; best_t = p.tr.tof; }
+  }
+  return best;
+}
+// Where MINE ICE (HAUL ICE for a freighter) sends ship k: a miner's soonest rock, a hauler's soonest rig.
+ice_for :: (s: [] Belt, k: int) -> int {
+  return ifx s[0].ships[k].mine_rate > 0.0 then nearest_ice(s, k) else nearest_rig(s, k);
+}
+
 // MINE ICE. One ship: plan its trip to the ice rock it reaches soonest, for GO ECONOMY or GO FAST.
 // Several: each goes now on its own plan from where it is: a full hold flies home to unload,
 // a ship already mining keeps at it, one with no hold stays, the rest to their own soonest rock.
@@ -820,8 +914,8 @@ mine_order :: (s: [] Belt) {
   sh := s[0].ships[k];
   if sh.cargo_cap <= 0.0 { say(s, "KITE CARRIES NO CARGO"); return; }
   if hold_full(sh) { set_dest(s, P_STATION); say(s, "HOLD FULL: HOME TO UNLOAD"); return; }
-  j := nearest_ice(s, k);
-  if j < 0 { say(s, "NO ICE IN REACH"); return; }
+  j := ice_for(s, k);
+  if j < 0 { say(s, ifx sh.mine_rate > 0.0 then "NO ICE IN REACH" else "NO RIG IN REACH: A MINER SETS ONE WHERE IT MINES"); return; }
   set_dest(s, j);
 }
 hold_full :: (sh: Ship) -> bool { return sh.cargo_cap > 0.0 && sh.cargo >= sh.cargo_cap - 0.001; }
@@ -847,7 +941,7 @@ fleet_mine :: (s: [] Belt) {
       if send_ship(s, k, P_STATION, WORK_MINE) { s[0].ships[k].work_rock = ifx is_ice(sh.at) then sh.at else sh.work_rock; home += 1; } else { stuck += 1; }
       continue;
     }
-    j := nearest_ice(s, k);
+    j := ice_for(s, k);
     if j < 0 || !send_ship(s, k, j, WORK_MINE) { stuck += 1; continue; }
     mining += 1;
   }
@@ -1048,6 +1142,7 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_CANCEL { s[0].dest = -1; }
   if b.id == B_ROCK { set_dest(s, P_ICE + b.arg); }
   if b.id == B_SYSTEM { look_at_system(s); }
+  if b.id == B_BUILD { ok := yard_build(s); }
   if b.id == B_NEW {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; new_game(s); } else { s[0].new_armed = 3.0; }
@@ -1856,7 +1951,7 @@ ship_status :: (s: [] Belt, k: int, buf: [] u8) -> int {
   sh := s[0].ships[k];
   n := 0;
   if sh.mode == FLYING { n = put(buf, 0, "TO "); }
-  else if sh.mode == MINING { n = put(buf, 0, "MINING "); }
+  else if sh.mode == MINING { n = put(buf, 0, ifx sh.mine_rate > 0.0 then "MINING " else "LOADING "); }
   else { n = put(buf, 0, "AT "); }
   return put(buf, n, place_short(sh.at));
 }
@@ -1884,6 +1979,24 @@ plan_text :: (p: Plan, buf: [] u8, top: bool) -> int {
   return n;
 }
 
+// The Free Belt's ships as cards along the bottom: one row on a desktop, three a row on a phone.
+CardLayout :: struct { per_row: int; rows: int; cw: f32; ch: f32; x0: f32; y0: f32; x1: f32; }
+card_layout :: (s: [] Belt, w: f32, h: f32, k: f32, phone: bool) -> CardLayout {
+  m := 12 * k;
+  cards := 0;
+  for j: 0..<s[0].ship_n { if s[0].ships[j].faction == FREE_BELT { cards += 1; } }
+  if cards < 1 { cards = 1; }
+  l: CardLayout;
+  l.per_row = ifx phone then 3 else cards;
+  l.rows = (cards + l.per_row - 1) / l.per_row;
+  l.cw = ifx phone then (w - 2 * m - 2 * 8 * k) / 3 else lo(200 * k, (w - 2 * m - f32(cards - 1) * 8 * k) / f32(cards));
+  l.ch = ifx phone then 80 * k else 76 * k;
+  in_row := ifx cards < l.per_row then cards else l.per_row;
+  total := f32(in_row) * l.cw + f32(in_row - 1) * 8 * k;
+  l.x0 = (w - total) / 2; l.x1 = l.x0 + total;
+  l.y0 = h - m - f32(l.rows) * l.ch - f32(l.rows - 1) * 8 * k - (ifx phone then 8 * k else 0);
+  return l;
+}
 hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   k := d[0].k; w := d[0].w; h := d[0].h;
   phone := w / k < 700;
@@ -1927,6 +2040,21 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     button(s, out, d, w - m - 84 * k, vy, w - m, vy + 28 * k, B_SYSTEM, 0, "SYSTEM", 6.5 * k, false);
     if phone { toast_at = sy + 86 * k; }
   }
+  // The yard: a freighter when there is metal and people for one, else what it waits on.
+  yy := ifx phone then sy + 34 * k else sy;
+  yx0 := ifx phone then m else w - m - tw;
+  yx1 := ifx phone then m + 150 * k else w - m - 92 * k;
+  yc := yard_can(s);
+  if yc == YARD_OK {
+    button(s, out, d, yx0, yy, yx1, yy + 28 * k, B_BUILD, 0, "BUILD FREIGHTER", 6.5 * k, false);
+    if phone { toast_at = sy + 86 * k; }
+  } else if yc != YARD_FULL {
+    if yc == YARD_BUSY { n = put(buf[..], 0, "FREIGHTER IN "); n = put_count(buf[..], n, fmax(1.0, -floor(-s[0].building))); n = put(buf[..], n, " D"); }
+    else if yc == YARD_METAL { n = put(buf[..], 0, "FREIGHTER: "); n = put_count(buf[..], n, FREIGHTER_METAL); n = put(buf[..], n, " T METAL"); }
+    else { n = put(buf[..], 0, "FREIGHTER: "); n = put_int(buf[..], n, FREIGHTER_CREW); n = put(buf[..], n, " FREE HANDS"); }
+    words(out, d, cast(string) buf[0..<n], yx0 + 4 * k, yy + 18 * k, 6.5 * k, ifx yc == YARD_BUSY then 0.8f32 else 0.5f32, INK_R, INK_G, INK_B);
+    if phone { toast_at = sy + 86 * k; }
+  }
   // The toast.
   if s[0].toast_t > 0 && s[0].toast_n > 0 {
     a := clamp(s[0].toast_t, 0, 1);
@@ -1934,17 +2062,15 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     centred(out, d, cast(string) s[0].toast[0..<s[0].toast_n], w / 2, s[0].toast_y, 7.5 * k, 0.95 * a, INK_R, INK_G, INK_B);
   }
   // The Free Belt's ships, as cards along the bottom.
-  cards := 3;
-  cw := ifx phone then (w - 2 * m - 2 * 8 * k) / 3 else 200 * k;
-  chh := ifx phone then 80 * k else 76 * k;
-  total := f32(cards) * cw + f32(cards - 1) * 8 * k;
-  cx0 := (w - total) / 2;
-  cy0 := h - m - chh - (ifx phone then 8 * k else 0);
+  cl := card_layout(s, w, h, k, phone);
+  cw := cl.cw; chh := cl.ch;
+  cy0 := cl.y0;
   c := 0;
   for j: 0..<s[0].ship_n {
     sh := s[0].ships[j];
-    if sh.faction != FREE_BELT || c >= cards { continue; }
-    x0 := cx0 + f32(c) * (cw + 8 * k);
+    if sh.faction != FREE_BELT { continue; }
+    x0 := cl.x0 + f32(c % cl.per_row) * (cw + 8 * k);
+    cy0 = cl.y0 + f32(c / cl.per_row) * (chh + 8 * k);
     sel := s[0].cmd[0].selected[j];
     panel(s, u, x0, cy0, x0 + cw, cy0 + chh, ifx sel then 0.95f32 else 0.75f32, sel);
     card := add_button(s, x0, cy0, x0 + cw, cy0 + chh, B_CARD, j);
@@ -1968,6 +2094,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     }
     c += 1;
   }
+  cy0 = cl.y0;
   // Orders for the selection.
   sk := first_selected(s);
   if sk < 0 {
@@ -1984,6 +2111,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     bw2 := (pw - 4 * 8 * k) / 3;
     can_mine := s[0].ships[sk].cargo_cap > 0.0;
     labels2 := [3] string.["MINE ICE", "HOME", "FOLLOW"];
+    if s[0].ships[sk].mine_rate <= 0.0 { labels2[0] = "HAUL ICE"; }
     ids := [3] int.[B_MINE, B_HOME, B_FOLLOW];
     for i: 0..<3 {
       if i == 0 && !can_mine { continue; }
@@ -2066,9 +2194,7 @@ maker_line :: (s: [] Belt, out: [] f32, d: [] Draw) {
   phone := w / k < 700;
   m := 12 * k;
   // the cards, as hud lays them out
-  cw := ifx phone then (w - 2 * m - 2 * 8 * k) / 3 else 200 * k;
-  total := 3 * cw + 2 * 8 * k;
-  cards_x1 := (w + total) / 2;
+  cards_x1 := card_layout(s, w, h, k, phone).x1;
   lead: [MAKER_BYTES + 16] u8;
   n := put(lead[..], 0, "MADE BY "); n = put(lead[..], n, cast(string) s[0].maker[0..<s[0].maker_n]); n = put(lead[..], n, " · ");
   left := cast(string) lead[0..<n];
@@ -2598,6 +2724,59 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert selected_count(s[..]) == 1 && s[0].cmd[0].selected[0];
 }
 
+#test "the yard: a freighter spends its metal and crew and appears at Hearth when it is done, and the save keeps it" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  #assert yard_can(s[..]) == YARD_METAL && !yard_build(s[..]);
+  s[0].station[0].metal = 200.0;
+  hands := free_hands(s[..]);
+  #assert yard_can(s[..]) == YARD_OK && yard_build(s[..]);
+  #assert s[0].station[0].metal == 50.0 && free_hands(s[..]) == hands - FREIGHTER_CREW && yard_can(s[..]) == YARD_BUSY && s[0].ship_n == SHIP_BASE;
+  for i: 0..<19 { s[0].t += DAY; step_ships(s[..], DAY); }
+  #assert s[0].ship_n == SHIP_BASE;
+  s[0].t += DAY; step_ships(s[..], DAY);
+  f := SHIP_BASE;
+  #assert s[0].ship_n == SHIP_BASE + 1 && s[0].ships[f].faction == FREE_BELT && s[0].ships[f].mode == PARKED && s[0].ships[f].at == P_STATION;
+  #assert s[0].ships[f].crew == FREIGHTER_CREW && free_hands(s[..]) == hands - FREIGHTER_CREW && s[0].ships[f].slot != s[0].ships[0].slot;
+  buf: [OUTBOX_CAP] u8;
+  n := save_game(s[..], buf[..]);
+  b: [1] Belt;
+  belt_start(b[..]);
+  #assert load_game(b[..], cast(string) buf[0..<n]) && b[0].ship_n == SHIP_BASE + 1 && b[0].ships[f].name == s[0].ships[f].name && b[0].ships[f].cargo_cap == 2000.0;
+}
+
+#test "a freighter on a standing route hauls a rig's ice home again and again without new orders" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
+  // no rig yet: nowhere to haul from
+  s[0].ships[SHIP_BASE] = freighter_new(0); s[0].ship_n = SHIP_BASE + 1; s[0].ships[SHIP_BASE].slot = 3;
+  select_only(s[..], SHIP_BASE);
+  mine_order(s[..]);
+  #assert s[0].dest < 0;
+  // RASP mines a rock and leaves its rig there
+  rock := nearest_ice(s[..], 0);
+  select_only(s[..], 0); set_dest(s[..], rock); go(s[..], true);
+  for i: 0..<200 { s[0].t += DAY; step_ships(s[..], DAY); if s[0].claim[rock - P_ICE] { break; } }
+  #assert s[0].claim[rock - P_ICE];
+  // the freighter: HAUL ICE, once
+  select_only(s[..], SHIP_BASE);
+  #assert ice_for(s[..], SHIP_BASE) == rock;
+  mine_order(s[..]);
+  #assert s[0].dest == rock;
+  go(s[..], false);
+  #assert s[0].ships[SHIP_BASE].mode == FLYING;
+  // then two years of it hauling: it delivers more than once with no order given
+  hauled := 0; was := s[0].ships[SHIP_BASE].cargo;
+  for i: 0..<730 {
+    s[0].t += DAY; step_ships(s[..], DAY);
+    c := s[0].ships[SHIP_BASE].cargo;
+    if was > 0.0 && c == 0.0 { hauled += 1; }   // unloaded at Hearth, and off again
+    was = c;
+  }
+  #assert hauled >= 2 && s[0].ships[SHIP_BASE].work == WORK_MINE && s[0].ships[SHIP_BASE].work_rock == rock;
+}
+
 #test "Hearth refines its ice into reaction mass at the refinery's rate, a shift short while the crews are away, and an old save still reads" {
   s: [1] Belt;
   belt_start(s[..]);
@@ -2618,9 +2797,9 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   belt_start(b[..]);
   n := save_game(b[..], buf[..]);
   buf[SAVE_TAG.count - 1] = '1';
-  // drop the four new fields after delivered: "|ice|delivered|mass|metal|water|air|"
+  // drop the fields after delivered that version 1 didn't have: mass to the rigs' stocks
   bars := 0; cut0 := 0; cut1 := 0;
-  for i: 0..<n { if buf[i] == '|' { bars += 1; if bars == 5 { cut0 = i; } if bars == 9 { cut1 = i; } } }
+  for i: 0..<n { if buf[i] == '|' { bars += 1; if bars == 5 { cut0 = i; } if bars == 19 { cut1 = i; } } }
   old: [OUTBOX_CAP] u8; m := 0;
   for i: 0..<n { if i < cut0 || i >= cut1 { old[m] = buf[i]; m += 1; } }
   c: [1] Belt;

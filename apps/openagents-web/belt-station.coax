@@ -11,6 +11,12 @@ REFINE_MASS :: 0.80;       // of a tonne refined: reaction mass,
 REFINE_WATER :: 0.15;      // water,
 REFINE_AIR :: 0.05;        // and air (oxygen split from it)
 STATION_SHIFTS :: 30;      // people to work every shift
+FREIGHTER_METAL :: 150.0;  // tonnes of metal the yard builds a freighter from,
+FREIGHTER_CREW :: 4;       // the people who crew it,
+FREIGHTER_DAYS :: 20.0;    // and the days it takes
+RIG_RATE :: 15.0;          // tonnes of ice a day a rig left at a rock drills, for haulers to fetch
+HAUL_LOAD :: 500.0;        // a hauler that has emptied a rig's stock heads home with at least this
+RIG_STOCK :: 4000.0;       // what a rock's stock holds
 
 Station :: struct {
   ice: f64; metal: f64;              // tonnes delivered and not yet refined; metal kept
