@@ -384,8 +384,18 @@ The [example](examples/panda-actuation.coax) preserves the metre/newton boundary
 Run `psionic/check.sh --only robotics/panda-actuation` for its two authority
 roots and one offline Darwin-arm64 SDK-fact/scalar/native gate. Eighteen new
 forward-only captures qualify the source profile; the normal gate acquires no
-SDK data. Full passive/fluid, friction/contact constraints and integration remain
-separate; retained full-system acceleration fields are diagnostics.
+SDK data. The separate owned fluid query now completes this fixed model's passive
+force; friction/contact constraints and integration remain separate. Retained
+full-system acceleration fields are diagnostics.
+
+The [fixed-source fluid query](fixtures/robotics/panda-fluid/README.md) now owns
+inertia-box resistance at each COM in its principal-inertial frame, retaining
+fluid, joint viscous damping and complete passive force separately. Its
+[typed power example](examples/panda-fluid.coax) preserves the radian/metre
+basis. `psionic/check.sh --only robotics/panda-fluid` selects three authority
+roots and one offline Darwin-arm64 native gate. All 42 contexts pass cached
+SDK and independent matrix/virtual-work budgets; no SDK or simulation runs.
+Nonzero wind, ellipsoid fluid, constraints and integration remain pending.
 
 The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
 assembles the existing 144-word ABI from one admitted state. Its

@@ -1,0 +1,71 @@
+{
+  "schema": "psionic.panda-fluid.publication-binding.v1",
+  "passed": true,
+  "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+  "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
+  "prior_model_source_binding_sha256": "bb0611c713de239e880d1db97e2cdbe50354ab2ed3da77b707d9159366385e2c",
+  "scope": "Fixed-source fluid+joint damping/full passive query, independent matrix/SDK/virtualwork. No new SDK/NN/render/physics; no contacts/integration/R14/hardware. Source/native proofs carried unchanged by exact debug/release C/H.",
+  "numerical_reruns": 0,
+  "emissions": [
+    {
+      "mode": "debug",
+      "artifact": "panda-fluid.c",
+      "sha256": "202f9819c0f032eabb3b8badd5b002949d4728a7cc978958b9bdd731c20d067f",
+      "bytes": 192714,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "88921762498a27b16e16e4d672e0016cf55de3f6a10c71137a6a12e7d882cdd5"
+    },
+    {
+      "mode": "debug",
+      "artifact": "panda-fluid.h",
+      "sha256": "ca66fc7db94c89b5aac7da3a29c69b6a977f8b96592c7dd605e370f277f6175d",
+      "bytes": 29553,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "88921762498a27b16e16e4d672e0016cf55de3f6a10c71137a6a12e7d882cdd5"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-fluid.c",
+      "sha256": "7a3eec95a2e1e22aa01b5496207e7c8abeca684cbef09c031fc1d814fef84f06",
+      "bytes": 191454,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "88921762498a27b16e16e4d672e0016cf55de3f6a10c71137a6a12e7d882cdd5"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-fluid.h",
+      "sha256": "ca66fc7db94c89b5aac7da3a29c69b6a977f8b96592c7dd605e370f277f6175d",
+      "bytes": 29553,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "88921762498a27b16e16e4d672e0016cf55de3f6a10c71137a6a12e7d882cdd5"
+    }
+  ],
+  "component_commits": [
+    "526fcf36f2",
+    "2689c21da9"
+  ],
+  "qualification_sha256": "f5b8f8a2f577f51f91195003f2856b54a5751d2c2a9e2c495185f024ecc207a9",
+  "checks_sha256": "393a8f641a0426d84843460dbffea6fe1b940a006f1ff8328ef62a3015139e97",
+  "oracle_sha256": "6fda03168e51eb93b2d1704e12a7a95e3f29ea8589e0735c15ec5841146dc74e",
+  "book": {
+    "passed": true,
+    "programs": 120,
+    "source_linked_listings": 467,
+    "stdout_sha256": "7dd22a9a7675cd489434176dae2b94fc1fe1f11982ad3f7c6f16319db3f1a2b2",
+    "stderr_bytes": 0,
+    "initial_registry_missing_new_example_failure_retained_sha256": "8e6ec11e54d523314382d24a111b2e46454cfb35d4c776c601041c9c3de1f474",
+    "chapter_registry_format_only_followup": "Preserved prior compact JSON row formatting; parsed chapter registry exactly identical to the passing book-gate input, so no gate repeated."
+  },
+  "registration": {
+    "authority_roots": [
+      "panda-fluid-math",
+      "panda-fluid-body",
+      "panda-fluid"
+    ],
+    "native_gate_count": 1,
+    "native_target": "Darwin-arm64",
+    "list_checked": true,
+    "shell_syntax_passed": true
+  },
+  "owned_docs_only": true
+}

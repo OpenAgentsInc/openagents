@@ -82,16 +82,18 @@ its historical receipt is not a newly generated execution record.
    prefixes qualify fresh control queries after forward and cached requests
    before forward, with all 1,000 selected/shadow controller calls successful.
    Telemetry stays unchanged; SDK geometry, integration and contact remain.
-5. **Pending:** wire the explicit selector into the full neural runner, retaining
-   its declared observation, clock and command contracts. This needs its own
-   changed-context learned-policy qualification, not a repeated old episode.
+5. **Delivered build wiring:** the [explicit owned-query neural route](../../fixtures/robotics/panda-query-runtime/README.md)
+   authenticates scene/reset/SDK/assets and preserves observation, clock and
+   command order. Source/native/mocked-order checks and linking pass. A new
+   opted-in learned-policy episode remains unqualified.
 
 The [unconstrained applied-force query](../../fixtures/robotics/panda-forward-dynamics/README.md)
 separately composes the mass solve and velocity-dependent bias. It does not
 convert controller finger-position targets to force. The separate
 [actuator/joint-passive query](../../fixtures/robotics/panda-actuation/README.md)
 now supplies the admitted fixed-source control map and viscous joint damping.
-The source's nonzero fluid, full passive assembly, declared integrator and
-friction/contact constraints retain their own pending contracts. Observation rendering, full snapshots, typed clocks and
+The [owned fluid query](../../fixtures/robotics/panda-fluid/README.md) now supplies
+COM/principal-frame resistance and full passive assembly for the pinned profile.
+The declared integrator and friction/contact constraints retain their own pending contracts. Observation rendering, full snapshots, typed clocks and
 compiler-enforced bounded control keep their separate gates in the
 [remaining sequence](owned-control-loop.md).

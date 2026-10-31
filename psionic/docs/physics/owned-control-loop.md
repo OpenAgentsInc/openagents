@@ -71,8 +71,9 @@ The [fixed-source actuation and joint-passive query](../../fixtures/robotics/pan
 now maps signed finger-position targets and arm controls to actuator force,
 with strict clipping and a separate viscous damping vector. Eighteen source-
 admitted SDK forwards and independent scalar/native checks qualify that map.
-Full passive still requires the source's nonzero fluid forces; friction/contact
-constraints and integration remain separate. A gravity-only query cannot
+The [owned fluid query](../../fixtures/robotics/panda-fluid/README.md) now completes
+the pinned source's passive force with COM/principal-frame inertia-box drag.
+Friction/contact constraints and integration remain separate. A gravity-only query cannot
 replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The
@@ -81,9 +82,10 @@ now qualify two 250-step recorded-action prefixes: SDK-selected and owned-select
 with independent opposite-source controller state at every actual state. All
 1,000 normal controller calls succeed. Cached observations still precede forward;
 fresh control queries follow it. SDK shadow geometry, integration and contact
-remain. The next step is explicit provider wiring into the full neural runner,
-which still uses its original SDK path; no new neural or owned-solver episode
-is yet claimed. The source-visible low-level
+remain. The [explicit owned-query neural build](../../fixtures/robotics/panda-query-runtime/README.md)
+now wires the selected provider with authenticated inputs and qualified stage
+order; the default SDK route remains available. No new neural or owned-solver
+episode is yet claimed. The source-visible low-level
 profile/pose helpers remain trusted inputs rather than an arbitrary-POD admission
 API. Moving finger inertias cannot be omitted from the arm mass block.
 The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)

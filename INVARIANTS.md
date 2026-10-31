@@ -412,6 +412,25 @@ geometry, integration/contact and scene effects remain, with no owned simulator,
 passive/fluid solver, hardware or compiler boundedness claim. The actual SDK
 prefix is explicit opt-in with authenticated assets, never a default gate.
 
+## Fixed Panda fluid uses COM and principal-inertial frames
+
+The source's zero geom-fluid interaction flags select inertia-box fallback;
+they do not disable fluid. Positive-mass robot bodies use COM linear velocity
+and principal-inertial angular axes, including the hand without geometry and
+artificial fingertip inertias. World wrenches project through those same COM
+Jacobians. Explicit one-radian normalization gives angular rate inverse-second
+coefficients; physical moments restore hinge energy/radian and slides retain
+newtons. Their velocity products are watts.
+
+The fixed source admits shapes, coordinates then rates and publishes fluid,
+joint damping and complete passive force atomically. Complete passive relies
+on proved absent other passive sources; frictionloss remains a constraint.
+Omitted bodies are excluded only after full ancestor/DOF analysis, including
+fixed mounts sharing the robot root. Trusted coefficient helpers remain
+unsealed. Independent matrix/SDK/virtual-work evidence keeps frozen budgets,
+retains the earlier failed omission guard and qualifies no new SDK calls,
+physics integration, contact solver, generic models, R14 or hardware.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

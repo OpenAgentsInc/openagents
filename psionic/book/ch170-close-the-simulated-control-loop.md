@@ -1396,11 +1396,103 @@ quantity operator-token coverage remains an explicit compiler limitation.
 
 Joint passive is not full passive. The original model enables fluid: retained
 hinge-fluid coefficients reach 4.701012241 energy/radian, and slide-fluid
-coefficients reach 0.859280139N. The fluid calculation still needs an owned
-implementation. `dof_frictionloss` belongs to the constraint solver, so we do
+coefficients reach 0.859280139N. The owned fluid query below now supplies this
+fixed-source calculation. `dof_frictionloss` belongs to the constraint solver, so we do
 not invent a Coulomb term in the damping output. Contacts, constraint forces,
 integration, full SDK acceleration parity, compiler-bounded control and hardware
 remain separate milestones.
+
+## Fluid resistance completes this fixed robot's passive force
+
+The scene has air density 1.2 kg/m³, viscosity 2e−5 kg/(m·s), and zero wind. Its
+robot geoms all have the fluid-interaction coefficient zero. MuJoCo uses the
+inertia-box fallback in this case. Positive-mass bodies participate even with
+no geometry, including the hand. The artificial fingertip inertias remain the
+original simulator coefficients; replacing them with mesh-sized boxes would
+change the model.
+
+Each body's linear velocity is measured at its inertial center of mass. Its
+local axes are the principal-inertial axes: world-from-BODY multiplied by the
+normalized BODY-from-inertial attitude. Pinned MuJoCo `mj_objectVelocity` for a
+BODY/local request uses `xipos`/`ximat`. We form the COM linear/angular
+Jacobians, multiply by the nine joint rates, rotate into those principal axes,
+apply viscous and quadratic box resistance, rotate the wrench into world,
+then project it through those same COM Jacobians.
+
+Angles stay physical dimensions. An explicit one-radian basis converts angular
+rate to 1/s for drag. Dividing the physical moment in joules by one radian
+restores the hinge generalized force in joule/radian. A hinge force times its
+radian/s rate and a slide force times its metre/s rate both produce watts.
+The output keeps three vectors: fluid, joint viscous damping, and complete
+passive. Zero spring, gravity-compensation, tendon, flex, plugin and callback
+facts authorize that last sum for this source model. Frictionloss remains a
+constraint term.
+
+The public boundary accepts the existing ±100 rad/±1 m positions and ±20 rad/s/
+±2 m/s rates, with inclusive finite admission. It validates shapes, positions,
+then rates and publishes one 216-byte record atomically. Overlap is supported
+because inputs are read before publication. Force clipping and a guarantee of
+fitting the later solver's force cap are outside this query. Coefficient
+helpers remain trusted and source-visible; public construction supplies their
+poses, Jacobians and inertials.
+
+<!-- source: psionic/examples/panda-fluid.coax pfl-query -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ coordinates:=[9]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483,0.01,-0.01];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}for i:0..<2 {s[i].value=coordinates[i+7];sv[i].value=rates[i+7];}
+ forces:[1]PflOutput;#assert pfl_forward(q[..],s[..],v[..],sv[..],forces[..])==PfkStatus.ok;
+ fluid_power:pfku.Quantity(PflExamplePower,f64);passive_power:pfku.Quantity(PflExamplePower,f64);
+ for i:0..<7 {fluid_power=fluid_power+convert_unit(PflExamplePower,forces[0].fluid.hinge[i]*v[i]);passive_power=passive_power+convert_unit(PflExamplePower,forces[0].passive.hinge[i]*v[i]);print("hinge % fluid/joint/passive (micro-J/rad): % % %\n",i+1,pfl_example_micro(forces[0].fluid.hinge[i].value),pfl_example_micro(forces[0].joint_passive.hinge[i].value),pfl_example_micro(forces[0].passive.hinge[i].value));}
+ for i:0..<2 {fluid_power=fluid_power+convert_unit(PflExamplePower,forces[0].fluid.slide[i]*sv[i]);passive_power=passive_power+convert_unit(PflExamplePower,forces[0].passive.slide[i]*sv[i]);print("slide % fluid/joint/passive (micro-N): % % %\n",i+1,pfl_example_micro(forces[0].fluid.slide[i].value),pfl_example_micro(forces[0].joint_passive.slide[i].value),pfl_example_micro(forces[0].passive.slide[i].value));}
+ print("fluid/passive power (micro-W): % %\n",pfl_example_micro(fluid_power.value),pfl_example_micro(passive_power.value));
+```
+```shell
+coax/bin/coax run psionic/examples/panda-fluid.coax
+COAX=/path/to/current/coax psionic/tests/robotics/panda_fluid_check.sh /tmp/panda-fluid-proof-new
+```
+
+The experiment was frozen before implementation/comparison. Its 18 cached SDK
+rows contain 7 unique position/rate pairs, only 2 moving. Another 24 owned states
+are checked against independent homogeneous-matrix product-rule tangents and
+scalar resistance. No new SDK calls, rendering, inference or integration run.
+The independent oracle's first metadata preflight found fixed mount bodies
+sharing root 2. The original experiment/failure remain recorded. A versioned
+support addendum proves each omitted body's entire ancestor chain has no
+robot DOF 0..8, including fixed mounts 18–22. Cases, numerical formulas and
+budgets stayed frozen.
+
+The 17 new Coax groups/74 cases pass; actual emitted mutation scopes are 130/130
+for math, 12/12 for body, and 53/53 for the public boundary, all zero survivors without equivalent waivers.
+Scalar Quantity operator-token coverage remains incomplete. Independent field
+checks and typed unit refusals supplement that stated emitted-site proof.
+
+Debug, release and fail-fast ASan+UBSan each pass 3,752 native assertions over
+42 × 27 force coefficients, 90 IEEE input poisons, 36 inclusive boundaries, exact
+raw/typed ABI, four overlap cases, refusal/canary/spare/input snapshots and a
+16 body metadata sidecar. All owned status/force streams are byte-identical.
+The cached SDK comparison is numerical: hinge-fluid error 1.69e−14 J/rad and
+slide-fluid 5.00e−15 N; the independent matrix maximum is 1.16e−12 J/rad and
+4.00e−14 N. Each uses the original 5e−10 absolute / 0 relative budget. Virtual-work
+error 4.95e−12 W passes the original 5e−9 W budget; fluid/passive power is
+nonpositive. Source metadata matches every mass, COM, principal moment,
+ancestor mask and normalized inertial quaternion.
+
+The record retains a source-refusal tooling correction and Darwin sanitizer
+startup failure (`detect_leaks=1` is unsupported). Only the failed sanitizer
+startup was retried with leak detection disabled; passed debug/release proofs
+were carried by exact artifacts. Reader-only followup rejects late actual and
+expected NaN/±Inf and wrong extents without rerunning numerical code.
+
+This is a Darwin arm64 F64/libm profile. Cross-target/R15, arbitrary models,
+nonzero wind, ellipsoid fluid, contact/constraint solving, integration,
+compiler bounded-control proof and hardware remain pending. The scene runtime
+continues using SDK integration. Evidence and exact identities are in
+[`panda-fluid/README.md`](../fixtures/robotics/panda-fluid/README.md),
+[`qualification.json`](../fixtures/robotics/panda-fluid/qualification.json),
+and the linked checks, oracle, support, example and reader-guard receipts.
 
 ## Build the controller sample from one owned state
 
