@@ -527,6 +527,46 @@
         "b22-ai"
       ],
       "blocks": []
+    },
+    {
+      "slug": "b22-fp-pick-rock",
+      "parent": "b22-first-playable",
+      "title": "Pick an ice rock by name, not by a tap among twenty pixels",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "ui"
+      ],
+      "body": "Playtest (b22-fp-playtest): the eight ice rocks now sit a few degrees along Ceres's orbit, so at the system's scale they and your ships lie within about twenty pixels of Hearth and a tap can't choose one. With a ship selected, show the rocks in reach as a short row of named buttons (name, days, propellant), and let a tap near Hearth zoom in on it.",
+      "files": [
+        "apps/openagents-web/belt.coax"
+      ],
+      "acceptance": [
+        "A #test picks each of the eight rocks from the row at 390x844 and at 1280x800",
+        "Played on a phone: send RASP to a named rock without zooming"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "b22-fp-short-hops",
+      "parent": "b22-first-playable",
+      "title": "Short hops to rocks beside Ceres: weeks, not 100 to 200 days",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "gameplay"
+      ],
+      "body": "Playtest (b22-fp-playtest): every trip to an ice rock beside Ceres takes 100 to 200 days (14 to 28 seconds at 7 D/S) because plan_with's shortest time is 12% of a Hohmann transfer, about 100 days for a near orbit. For a place within a few degrees of the ship on its own orbit, plan from 15 days, so GO FAST is weeks and economy stays cheap.",
+      "files": [
+        "apps/openagents-web/belt.coax"
+      ],
+      "acceptance": [
+        "A #test: GO FAST to the nearest rock arrives in under 60 days within RASP's propellant",
+        "The existing planner #tests still pass"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
