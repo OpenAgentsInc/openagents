@@ -98,6 +98,19 @@ machine that holds the project key
   open.
 - **No rewards or amounts on tasks.** We do this work ourselves.
 - **Never print or commit the project key.**
+- **Weakening a check with its code needs an independent review.** A commit
+  that removes checks (`#assert`, `#test`, `#forall`, `#authority`, test
+  asserts), adds a `mutant: equivalent` mark, moves checks out of an
+  `#authority` file into one without it, drops a gate from `tests/run.sh` or
+  edits an `INVARIANTS.md`, and changes code in the same commit, is reviewed
+  by a separate review agent that signs with its own Nostr key, never the
+  project key (`coax/reviews/authors.json`):
+  `bun coax/web/project/review.ts sign COMMIT --key ~/work/.secrets/openagents-coax-reviewer.key`
+  writes `coax/reviews/COMMIT.json`; commit and push it. `release.sh` runs
+  `review.ts report` over the commits since the last live release, outside
+  the compiler, puts the result in `releases/<time>/REVIEW` and notes each
+  unreviewed commit on its task. It is a report, never a stop (owner,
+  2026-10-31): releases are not blocked by it.
 - **Process improvements** go in a note on the task you were doing, starting
   with `process:`, and the taskmaster folds the good ones into this file.
 

@@ -423,6 +423,17 @@ lap "prod ${check#--}" "$t"
 echo "$full $stamp $($stage && echo staged || echo unstaged) $($thorough && echo thorough || echo fast)" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/PASSED" --quiet > /dev/null ||
   echo "release $commit: couldn't write releases/$stamp/PASSED; the next release walks in full" >&2
 echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)${held_names:+; held back: $held_names}"
+# Independent review (r0-independent-review), a report only, never a stop: the
+# commits since the last live release that weaken a check together with its
+# code, and whether a separate review agent signed for each (coax/reviews/).
+# Unreviewed ones are noted on their queue task too.
+if [[ -n "${passed:-}" ]] && git -C "$repo" merge-base --is-ancestor "${passed%% *}" "$full" 2>/dev/null; then
+  review="$(mktemp)"
+  [[ -e "$tree/coax/web/project/node_modules" || ! -d "$here/project/node_modules" ]] || ln -s "$here/project/node_modules" "$tree/coax/web/project/node_modules"
+  ( cd "$tree/coax/web/project" && bounded 180 bun review.ts report --from "${passed%% *}" --to "$full" --note ) > "$review" 2>&1 || echo "review: the report did not finish (report only)" >> "$review"
+  head -1 "$review" | sed "s/^/release $commit: /"
+  gcloud storage cp "$review" "gs://$prod_bucket/releases/$stamp/REVIEW" --quiet > /dev/null 2>&1 || true
+fi
 # Fast path: the golden walk and 60 FPS run now, against production, as a report only.
 if ! $gated && [[ -z "$via" ]]; then
   # Its own checkout of the commit: this run's $tree goes when the run ends.
