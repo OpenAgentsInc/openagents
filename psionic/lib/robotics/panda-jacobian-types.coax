@@ -1,0 +1,6 @@
+// A fixed world grip-SITE derivative, not an axis-angle observation derivative.
+#load "panda-fk-types.coax";
+PjOutput :: struct {
+ linear:[21]pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);
+ angular:[21]pfku.Quantity(UnitOne,f64);
+}

@@ -1,0 +1,129 @@
+{
+  "schema": "psionic.panda-jacobian.experiment.v1",
+  "frozen_before_comparison": true,
+  "model": "Fixed twelve-body/seven-hinge original LIBERO demo0 Panda; local Z axes, zero anchors and references.",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "rows": [
+    0,
+    1,
+    2,
+    3,
+    64,
+    128,
+    232
+  ],
+  "retained_pc_samples": [
+    {
+      "bytes": 1152,
+      "row": 0,
+      "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a"
+    },
+    {
+      "bytes": 1152,
+      "row": 1,
+      "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143"
+    },
+    {
+      "bytes": 1152,
+      "row": 2,
+      "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f"
+    },
+    {
+      "bytes": 1152,
+      "row": 3,
+      "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727"
+    },
+    {
+      "bytes": 1152,
+      "row": 64,
+      "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd"
+    },
+    {
+      "bytes": 1152,
+      "row": 128,
+      "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d"
+    },
+    {
+      "bytes": 1152,
+      "row": 232,
+      "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418"
+    }
+  ],
+  "retained_word_slices": {
+    "q": [
+      12,
+      19
+    ],
+    "qd": [
+      19,
+      26
+    ],
+    "linear_jacobian": [
+      75,
+      96
+    ],
+    "angular_jacobian": [
+      96,
+      117
+    ],
+    "world_site_linear_angular_velocity": [
+      117,
+      123
+    ]
+  },
+  "retained_J_values": 294,
+  "retained_atol": 2e-12,
+  "retained_rtol": 0,
+  "FD_primary_h_radians": 1e-05,
+  "FD_h_sweep_radians": [
+    0.001,
+    0.0001,
+    1e-05,
+    1e-06,
+    1e-07
+  ],
+  "FD_linear_primary_atol_metres_per_radian": 3e-08,
+  "FD_angular_primary_atol": 3e-08,
+  "FD_rtol": 0,
+  "FD_policy": "Independent homogeneous-matrix reference; position central differences, WORLD-left SO3 log of Rplus*Rminus^T. Primary h fixed; report all steps without selecting a best. Only first47 interior cases are FD comparisons; +/-100 admission-boundary cases are finite-output checks, no perturbation of the refusing product API. This is the smooth geometric map, not derivative of refusal or bit-rounded code.",
+  "case_seed": 1347039281,
+  "corpus": {
+    "zero": 1,
+    "retained": 7,
+    "new_SDK_q_only_no_new_SDK_calls": 7,
+    "seeded_joint_range_interior": 32,
+    "inclusive_coordinate_boundaries": 14,
+    "signed_zero": 1,
+    "total": 62,
+    "FD_case_count": 47
+  },
+  "velocity_diagnostic_atol": 2e-10,
+  "velocity_rtol": 0,
+  "output": {
+    "shape": [
+      6,
+      7
+    ],
+    "linear_unit": "Metre/Radian",
+    "angular_unit": "angular Radian / joint Radian = UnitOne",
+    "basis": "PfkWorld; world XYZ rows, linear21 then angular21 row-major",
+    "target": "gripper0_grip_site; not handBODY axis-angle coordinates"
+  },
+  "numeric_profile": "Darwin-arm64 F64 scalar libm; -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off; no cross-target determinism claim.",
+  "frozen_FK_sources": {
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b"
+  },
+  "frozen_FK_fixture_sources": {
+    "source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "sdk-cases.f64": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+    "sdk-poses.f64": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+    "sdk-reference.json": "d7a4036276c9732e9038c52e4dc419d5b22f9c30d363836cbb2bc6f905981117"
+  },
+  "scope": "New own Jacobian only. No SDK/render/NN/episode/old suite; no inversion/dynamics/compiler#bounded or physical-command-validity claim."
+}

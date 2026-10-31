@@ -48,8 +48,10 @@ is a precursor to complete controller, schedule and producer snapshots.
 now supplies typed-radian-to-world-pose queries, with the hand BODY and grip
 SITE conventions independently checked. It is manually source-bound, with raw
 attitude boundaries. Finish the matching R17 articulated model/scene path:
-import/admitted inertias, fingers, Jacobians, forward dynamics, contacts and
-rendered observations. Compare small components with the SDK before
+import/admitted inertias, fingers, forward dynamics, contacts and rendered
+observations. The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
+now reuses the fixed FK profile, with separate metre/radian and angular-ratio
+blocks. Its numerical derivative qualification does not admit control commands. Compare small components with the SDK before
 running expensive whole episodes. A field layout alone is not embodiment parity.
 6. Complete R18/R19 sensor age, command expiry/limits and a frozen fault corpus,
 then full R16 restore/replay with complete state inventory. Preserve held-out

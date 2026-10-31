@@ -327,3 +327,10 @@ separate and shows atomic refusal. Run `psionic/check.sh --only robotics/panda-f
 for the three new roots and self-contained numerical/native reference gate.
 This is a source-bound model component; dynamics, fingers and robot import remain
 work toward the owned backend.
+
+The [owned grip-site Jacobian](fixtures/robotics/panda-jacobian/README.md)
+computes linear and angular response to the seven joint coordinates. Retained
+SDK columns and independent matrix-based finite differences qualify it. The
+[joint-rate example](examples/panda-jacobian.coax) uses units to turn radians
+per second into grip-site metres per second. Run
+`psionic/check.sh --only robotics/panda-jacobian` for its focused gate.

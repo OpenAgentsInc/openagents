@@ -1,0 +1,689 @@
+{
+  "schema": "psionic.panda-jacobian.public-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "0d70ede6d122ec88ee9f0f4cd86d9181ffe5172f5300b57dfc3b27d465e41b76",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": "7b010bc725c0c0494fc7377003591d1a16e63f334e7d409f6e73e936668252ac",
+    "psionic/lib/robotics/panda-jacobian-math.coax": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f",
+    "psionic/lib/robotics/panda-jacobian-types.coax": "408c9a3ff60888564b189ad5920f97ed9761a060cf981c7701979d4f9c08e58a",
+    "psionic/lib/robotics/panda-jacobian.coax": "f0d63c9389c3a8140eb583e208e424aacd624c1d21743666720c0c05d7f9e18f",
+    "psionic/tests/robotics/panda_jacobian_reference.py": "b95431a2b615965d9518e4abb06741d7c69a6ddee42a021e5ad9be469077db3f",
+    "psionic/tests/robotics/panda_jacobian_native.c": "969d044e12b7303d7a56f0d21bfcb64accf23e4f71e17be19bd9dbf6e37476f2",
+    "psionic/fixtures/robotics/panda-jacobian/experiment.json": "c3804cba794391bf1f78546d3f35fc913d2d1454cc5e27544a295966efb3a737",
+    "psionic/tests/robotics/panda_jacobian_bad_angle.coax": "998a6e568a0ec245e1a2b5a920444b933ebf433edeba4108aa4440bbfabcd3ed",
+    "psionic/tests/robotics/panda_jacobian_bad_linear_unit.coax": "3c75332a2f1b00eda1bc888d2419779fb245c612114e0c26d4f79223bc709aa1",
+    "psionic/tests/robotics/panda_jacobian_bad_angular_unit.coax": "9fb6a6202c92ce77e977b70aa0223521ef3198a1d4b04aff3ab8f00a9a5db2a7"
+  },
+  "independent_matrix_oracle_source_sha256": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+  "experiment_sha256": "c3804cba794391bf1f78546d3f35fc913d2d1454cc5e27544a295966efb3a737",
+  "case_count": 62,
+  "case_sha256": "af12a025e72b33ca16f22f2b4d2a7e8e8f6d1fc1ca87d625f71aa20afd5faa30",
+  "FD_case_count": 47,
+  "FD_table_sha256": "c76dcdf091e2a65d01f88035f8ed7b0426717da90904ed299fbb486eafe03e23",
+  "retained_samples": [
+    {
+      "row": 0,
+      "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+      "bytes": 1152
+    },
+    {
+      "row": 1,
+      "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+      "bytes": 1152
+    },
+    {
+      "row": 2,
+      "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+      "bytes": 1152
+    },
+    {
+      "row": 3,
+      "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+      "bytes": 1152
+    },
+    {
+      "row": 64,
+      "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+      "bytes": 1152
+    },
+    {
+      "row": 128,
+      "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+      "bytes": 1152
+    },
+    {
+      "row": 232,
+      "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+      "bytes": 1152
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic-panda-jacobian-native-v1",
+        "passed": true,
+        "cases": 62,
+        "assertions": 770,
+        "output_words_per_case": 42
+      },
+      "C_sha256": "08d95a52f68b338a93e1ea4db7c99abced7ea8a6b42704cbf421d7fcd0b5013e",
+      "header_sha256": "e113354f0df109592dc4a167dc231b724a73f6b8da24a360a1026956abc83306",
+      "binary_sha256": "241d7716c4a1c0c578a5deab92ad6ca5cb2b90ebab87c9e042c6afb0bf301e35",
+      "output_sha256": "2c18d46b1180fa44ac2720551ebb72d778db91bdac3faf7b50cd2c9528c5461e",
+      "retained_original_SDK_J": {
+        "values": 294,
+        "max_abs_error": 1.1102230246251565e-15,
+        "atol": 2e-12,
+        "rtol": 0,
+        "max_budget_fraction": 0.0005551115123125783,
+        "passed": true
+      },
+      "FD_sweep": {
+        "0.001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.5446327883417155e-07,
+          "angular_max_abs_error": 1.921796055626146e-13,
+          "within_primary_linear_budget": false,
+          "within_primary_angular_budget": true
+        },
+        "0.0001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.544892547222787e-09,
+          "angular_max_abs_error": 2.610800464708518e-12,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-05": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.264755132903474e-11,
+          "angular_max_abs_error": 1.5693224497681513e-11,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-06": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.1509061874414324e-10,
+          "angular_max_abs_error": 2.006874666449221e-10,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-07": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 2.7007941716394868e-09,
+          "angular_max_abs_error": 2.455603942408402e-09,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        }
+      },
+      "primary_FD_h_radians": 1e-05,
+      "retained_site_velocity": {
+        "values": 42,
+        "max_abs_error": 1.6653345369377348e-16,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 8.326672684688674e-07,
+        "passed": true
+      },
+      "private_helper_not_exported": true,
+      "analytic_columns_passed": true
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic-panda-jacobian-native-v1",
+        "passed": true,
+        "cases": 62,
+        "assertions": 770,
+        "output_words_per_case": 42
+      },
+      "C_sha256": "226949499c6e976d8d2a246d593ac5cf2032f2d8f29016d000ad1a39c9211d92",
+      "header_sha256": "e113354f0df109592dc4a167dc231b724a73f6b8da24a360a1026956abc83306",
+      "binary_sha256": "aa5728ed259b4497ed78a57909fa4b8de4c2ce1c152b0ac8c49d2fb8fb84e378",
+      "output_sha256": "2c18d46b1180fa44ac2720551ebb72d778db91bdac3faf7b50cd2c9528c5461e",
+      "retained_original_SDK_J": {
+        "values": 294,
+        "max_abs_error": 1.1102230246251565e-15,
+        "atol": 2e-12,
+        "rtol": 0,
+        "max_budget_fraction": 0.0005551115123125783,
+        "passed": true
+      },
+      "FD_sweep": {
+        "0.001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.5446327883417155e-07,
+          "angular_max_abs_error": 1.921796055626146e-13,
+          "within_primary_linear_budget": false,
+          "within_primary_angular_budget": true
+        },
+        "0.0001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.544892547222787e-09,
+          "angular_max_abs_error": 2.610800464708518e-12,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-05": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.264755132903474e-11,
+          "angular_max_abs_error": 1.5693224497681513e-11,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-06": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.1509061874414324e-10,
+          "angular_max_abs_error": 2.006874666449221e-10,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-07": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 2.7007941716394868e-09,
+          "angular_max_abs_error": 2.455603942408402e-09,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        }
+      },
+      "primary_FD_h_radians": 1e-05,
+      "retained_site_velocity": {
+        "values": 42,
+        "max_abs_error": 1.6653345369377348e-16,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 8.326672684688674e-07,
+        "passed": true
+      },
+      "private_helper_not_exported": true,
+      "analytic_columns_passed": true
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic-panda-jacobian-native-v1",
+        "passed": true,
+        "cases": 62,
+        "assertions": 770,
+        "output_words_per_case": 42
+      },
+      "C_sha256": "08d95a52f68b338a93e1ea4db7c99abced7ea8a6b42704cbf421d7fcd0b5013e",
+      "header_sha256": "e113354f0df109592dc4a167dc231b724a73f6b8da24a360a1026956abc83306",
+      "binary_sha256": "6d39389e3d39ca315a3df9f823d09da921495e7a1e1ba91dd4bdfd8d9addb614",
+      "output_sha256": "2c18d46b1180fa44ac2720551ebb72d778db91bdac3faf7b50cd2c9528c5461e",
+      "retained_original_SDK_J": {
+        "values": 294,
+        "max_abs_error": 1.1102230246251565e-15,
+        "atol": 2e-12,
+        "rtol": 0,
+        "max_budget_fraction": 0.0005551115123125783,
+        "passed": true
+      },
+      "FD_sweep": {
+        "0.001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.5446327883417155e-07,
+          "angular_max_abs_error": 1.921796055626146e-13,
+          "within_primary_linear_budget": false,
+          "within_primary_angular_budget": true
+        },
+        "0.0001": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 1.544892547222787e-09,
+          "angular_max_abs_error": 2.610800464708518e-12,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-05": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.264755132903474e-11,
+          "angular_max_abs_error": 1.5693224497681513e-11,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-06": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 3.1509061874414324e-10,
+          "angular_max_abs_error": 2.006874666449221e-10,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        },
+        "1e-07": {
+          "cases": 47,
+          "linear_values": 987,
+          "angular_values": 987,
+          "linear_max_abs_error": 2.7007941716394868e-09,
+          "angular_max_abs_error": 2.455603942408402e-09,
+          "within_primary_linear_budget": true,
+          "within_primary_angular_budget": true
+        }
+      },
+      "primary_FD_h_radians": 1e-05,
+      "retained_site_velocity": {
+        "values": 42,
+        "max_abs_error": 1.6653345369377348e-16,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 8.326672684688674e-07,
+        "passed": true
+      },
+      "private_helper_not_exported": true,
+      "analytic_columns_passed": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "emit-debug",
+      "arguments": [
+        "/private/tmp/coax-spatial-native-provenance-compiler/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-jacobian.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-jacobian-native-qualified/debug/panda-jacobian.h"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.04161637497600168,
+      "stderr_bytes": 0,
+      "stdout_sha256": "08d95a52f68b338a93e1ea4db7c99abced7ea8a6b42704cbf421d7fcd0b5013e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-debug",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-jacobian-native-qualified/debug",
+        "/private/tmp/panda-jacobian-native-qualified/debug/panda-jacobian.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_jacobian_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-jacobian-native-qualified/debug/native"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.17324674996780232,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "arguments": [
+        "/private/tmp/panda-jacobian-native-qualified/debug/native",
+        "/private/tmp/panda-jacobian-native-qualified/cases.bin",
+        "/private/tmp/panda-jacobian-native-qualified/debug/jacobians.f64"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.23022516700439155,
+      "stderr_bytes": 0,
+      "stdout_sha256": "a36a10388e1e455a916a071455a889a28538fc7223ceddaebe86a375c5f01b61",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-release",
+      "arguments": [
+        "/private/tmp/coax-spatial-native-provenance-compiler/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-jacobian.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-jacobian-native-qualified/release/panda-jacobian.h"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.04240650002611801,
+      "stderr_bytes": 0,
+      "stdout_sha256": "226949499c6e976d8d2a246d593ac5cf2032f2d8f29016d000ad1a39c9211d92",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-release",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-jacobian-native-qualified/release",
+        "/private/tmp/panda-jacobian-native-qualified/release/panda-jacobian.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_jacobian_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-jacobian-native-qualified/release/native"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.20631483296165243,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-release",
+      "arguments": [
+        "/private/tmp/panda-jacobian-native-qualified/release/native",
+        "/private/tmp/panda-jacobian-native-qualified/cases.bin",
+        "/private/tmp/panda-jacobian-native-qualified/release/jacobians.f64"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.26913316699210554,
+      "stderr_bytes": 0,
+      "stdout_sha256": "a36a10388e1e455a916a071455a889a28538fc7223ceddaebe86a375c5f01b61",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-sanitized",
+      "arguments": [
+        "/private/tmp/coax-spatial-native-provenance-compiler/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-jacobian.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-jacobian-native-qualified/sanitized/panda-jacobian.h"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.04060787503840402,
+      "stderr_bytes": 0,
+      "stdout_sha256": "08d95a52f68b338a93e1ea4db7c99abced7ea8a6b42704cbf421d7fcd0b5013e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-sanitized",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-jacobian-native-qualified/sanitized",
+        "/private/tmp/panda-jacobian-native-qualified/sanitized/panda-jacobian.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_jacobian_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-jacobian-native-qualified/sanitized/native"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.2783027500263415,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-sanitized",
+      "arguments": [
+        "/private/tmp/panda-jacobian-native-qualified/sanitized/native",
+        "/private/tmp/panda-jacobian-native-qualified/cases.bin",
+        "/private/tmp/panda-jacobian-native-qualified/sanitized/jacobians.f64"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.3396530839963816,
+      "stderr_bytes": 0,
+      "stdout_sha256": "a36a10388e1e455a916a071455a889a28538fc7223ceddaebe86a375c5f01b61",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_refusals": [
+    {
+      "name": "angle",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "source_sha256": "998a6e568a0ec245e1a2b5a920444b933ebf433edeba4108aa4440bbfabcd3ed",
+      "stderr_sha256": "8ce062522a4862f9e541cacea157760902c5a2dc91f2f0ae58b95aea2f5fb5cb",
+      "reused_not_repeated": true
+    },
+    {
+      "name": "linear_unit",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "source_sha256": "3c75332a2f1b00eda1bc888d2419779fb245c612114e0c26d4f79223bc709aa1",
+      "stderr_sha256": "75c1a74ee425394346424017c39c1ea1a4f4070a7791b177fc8fa77e55263eb7"
+    },
+    {
+      "name": "angular_unit",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "source_sha256": "9fb6a6202c92ce77e977b70aa0223521ef3198a1d4b04aff3ab8f00a9a5db2a7",
+      "stderr_sha256": "64284521ef48b757f0361887e6af658cbac0f571fc3eb9a8089681d1ca878df7"
+    }
+  ],
+  "scope": "New own Jacobian only. No SDK/render/NN/episode/old suite; no inversion/dynamics/compiler#bounded or physical-command-validity claim.",
+  "numeric_profile": "Darwin-arm64 F64 scalar libm; -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off; no cross-target determinism claim.",
+  "SDK_work": "None; seven old original SDK J captures reused by hash. No SDK import/link/forward/render/NN/episode.",
+  "FD_scope": "Independent homogeneous-matrix reference; position central differences, WORLD-left SO3 log of Rplus*Rminus^T. Primary h fixed; report all steps without selecting a best. Only first47 interior cases are FD comparisons; +/-100 admission-boundary cases are finite-output checks, no perturbation of the refusing product API. This is the smooth geometric map, not derivative of refusal or bit-rounded code.",
+  "prepared_reuse": {
+    "prior_record": "/tmp/panda-jacobian-native-first/record.json",
+    "prior_record_sha256": "53363f7d9711fd9e8027b320f55dc0db8049bb846ad0b62ddb382b681ef44bd5",
+    "prior_passed": false,
+    "FD_recipe_AST_identity": true,
+    "FD_input_and_table_identity": true,
+    "prior_failed_diagnostic_expectation_preserved": true
+  },
+  "native_modes_byte_identical": true,
+  "duration_seconds": 1.6710343749728054,
+  "status": "native qualified; actual merged0.45 publication compiler exact C/header binding passed",
+  "publication_compiler_binding_passed": true,
+  "private_native_record": {
+    "path": "/tmp/panda-jacobian-native-qualified/record.json",
+    "sha256": "6fb98182324fa29bd9a488a909e6114a1d6df976f4de7525b735e10fc2836905"
+  },
+  "source_gates": {
+    "math": {
+      "checks": 3,
+      "cases": 3,
+      "mutants": 33,
+      "killed": 33,
+      "survivors": 0,
+      "source_sha256": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f",
+      "log_sha256": "d62d6298740d8945f29a2eabc0ba418ef3f43417cdb64c491c8c8cd1f761d97c",
+      "initial_failed_mutation_log_sha256": "75af1a7b5c702a4195c2800e8fe462648e3856b9d8feff0f93ab5816ee1f9fcb",
+      "initial_survivors": 2,
+      "fix": "A dense proper-rotation literal check distinguishes adjacent matrix entries; no code change or waiver."
+    },
+    "wrapper": {
+      "new_checks": 3,
+      "new_cases": 16,
+      "mutants": 14,
+      "killed": 14,
+      "survivors": 0,
+      "source_sha256": "f0d63c9389c3a8140eb583e208e424aacd624c1d21743666720c0c05d7f9e18f",
+      "log_sha256": "9eadfebc9ca8ad7a3eadd87d517e1edd57f1c7c1cf1771604a3aa3e54b83ff4d",
+      "reuse_after_dependency_test_strengthening": true,
+      "dependency_product_body_byte_identical_sha256": "61677b7be8421a2431a2554096d3bde05b936bfe92ad408a0f78b8bb0e361c24"
+    },
+    "scope": "Only new product roots mutated, dependency baseline checks retained as required by Coax. No standalone old mutation/native/SDK gate rerun."
+  },
+  "all_mode_output_bytes_identical": true,
+  "initial_source_failure": {
+    "path": "/tmp/panda-jacobian-initial-source/failures.json",
+    "sha256": "cc01562480d7ab78de39a6482047322069ae5dfb426931564b0fc47743956560",
+    "preserved": true
+  },
+  "initial_oracle_failure": {
+    "path": "/tmp/panda-jacobian-native-first/record.json",
+    "sha256": "53363f7d9711fd9e8027b320f55dc0db8049bb846ad0b62ddb382b681ef44bd5",
+    "preserved": true
+  },
+  "no_public_from_FK_admission_API": true,
+  "no_SDK_or_renderer_or_NN_or_episode_calls": true,
+  "source_and_math_frozen": true,
+  "tooling_default_path_followup": {
+    "schema": "psionic.panda-jacobian.default-reference-followup.v1",
+    "passed": true,
+    "old_executed_driver_sha256": "b95431a2b615965d9518e4abb06741d7c69a6ddee42a021e5ad9be469077db3f",
+    "new_driver_sha256": "ae3272a3b71a41107a99777fb7eefb22f438c6416191b5854063fd6a8e77dee4",
+    "only_change": "--retained becomes an optional argument defaulting to the byte-identical bundled source samples.",
+    "mechanical_reversal_reproduces_executed_driver_sha256": true,
+    "independent_numerical_recipe_AST_identical": true,
+    "bundled_binding_sha256": "f9e2fd01e9a0db87a7c14f2725b0e3a313581d9faf02db213cc2ef0fbf17e987",
+    "bundled_total_bytes": 8064,
+    "rows": [
+      {
+        "row": 0,
+        "bytes": 1152,
+        "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 1,
+        "bytes": 1152,
+        "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 2,
+        "bytes": 1152,
+        "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 3,
+        "bytes": 1152,
+        "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 64,
+        "bytes": 1152,
+        "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 128,
+        "bytes": 1152,
+        "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      },
+      {
+        "row": 232,
+        "bytes": 1152,
+        "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+        "original_published_hash_exact": true,
+        "byte_identical_to_executed_private_sample": true
+      }
+    ],
+    "native_and_FD_results_reused_not_repeated": true,
+    "product_sources_unchanged": true,
+    "original_execution_record": "/tmp/panda-jacobian-native-qualified/record.json",
+    "original_execution_record_sha256": "6fb98182324fa29bd9a488a909e6114a1d6df976f4de7525b735e10fc2836905"
+  },
+  "publication_compiler_binding": {
+    "receipt_path": "/tmp/panda-jacobian-publication-emissions/receipt.json",
+    "receipt_sha256": "2f6ab5a3af942e6c8751db28d3a15e4196ddab12e98334a29e271b69f25c3459",
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "debug_release_C_and_headers_exact": true,
+    "ASan_source_context_reused": true,
+    "no_numerical_or_native_rerun": true
+  },
+  "reference_guard_followup": {
+    "schema": "psionic.panda-jacobian.reference-guard-followup.v1",
+    "passed": true,
+    "old_driver_sha256": "ae3272a3b71a41107a99777fb7eefb22f438c6416191b5854063fd6a8e77dee4",
+    "new_driver_sha256": "060c9ee50fbb35884862db79968e731248459221b1bf1b5090455cf43f91dff2",
+    "only_change": "Reject nonfinite expected comparison values and expected FD table entries before max. No derivative or numeric producer change.",
+    "mechanical_reversal_reproduces_prior_driver_sha256": true,
+    "FD_and_SO3_recipe_AST_identical": true,
+    "difference_arithmetic_assignments_AST_identical": true,
+    "new_guard_checks": [
+      {
+        "name": "firstNaN",
+        "refused": true
+      },
+      {
+        "name": "lateNaN",
+        "refused": true
+      },
+      {
+        "name": "latePositiveInf",
+        "refused": true
+      },
+      {
+        "name": "lateNegativeInf",
+        "refused": true
+      },
+      {
+        "name": "finite control",
+        "passed": true
+      }
+    ],
+    "cached_expected_values_verified_finite": {
+      "FD": 9870,
+      "retained_J": 294,
+      "world_velocity": 42
+    },
+    "no_FD_recalculation_or_product_native_or_SDK_run": true,
+    "prior_native_record": "/tmp/panda-jacobian-native-qualified/record.json",
+    "prior_native_record_sha256": "6fb98182324fa29bd9a488a909e6114a1d6df976f4de7525b735e10fc2836905"
+  },
+  "independent_read_only_review": {
+    "reviewer": "robotics_flow",
+    "geometry_and_WORLD_left_SO3_checked": true,
+    "retained_slices_checked": true,
+    "unit_boundary_and_boundary_excluded_FD_scope_checked": true,
+    "no_mathematical_blocker": true,
+    "expected_nonfinite_guard_hardened_separately": true
+  },
+  "book_example": {
+    "schema": "psionic.panda-jacobian.example.v1",
+    "passed": true,
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "example_sha256": "59e6b88ab57db0f3fef102f24ba7beb78ba7db18db1d097c946e4687bbf1105d",
+    "golden_sha256": "1796dcaa62d39af7e161e66dffbfaa10f35532451a662ef89f5b9916b58922de",
+    "prewritten_golden": "Independent .088metre lever arm \u00d7 .5radian/second => .044metre/second; angularratio1 \u00d7.5=>.5radian/second.",
+    "own_checks": 2,
+    "debug_and_release_stdout_exact_to_golden": true,
+    "stderr_empty": true,
+    "scope": "Only new example checks/debug/release; no old product mutation/native/FD/SDK rerun; zeroq is geometric, not a motorcommand.",
+    "record_path": "/tmp/panda-jacobian-example/record.json",
+    "record_sha256": "166dfaf3cd512c20315e40fd1c85d2a1974f51c1b3e1552cb88cce4dda7e345b",
+    "book_section_path": "/tmp/panda-jacobian-book-section.md",
+    "source_listing_matches_marker_region": true
+  }
+}

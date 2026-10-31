@@ -1,0 +1,10 @@
+// New check-only inputs/assertions; no product admission or provenance claim.
+#load "panda-jacobian-types.coax";
+pj_poison :: ()->PjOutput {p:PjOutput;for i:0..<21 {p.linear[i].value=f64(701+i);p.angular[i].value=f64(-801-i);}return p;}
+pj_same :: (a:PjOutput,b:PjOutput) {for i:0..<21 {#assert f64_bits(a.linear[i].value)==f64_bits(b.linear[i].value) && f64_bits(a.angular[i].value)==f64_bits(b.angular[i].value);}}
+pj_cardinal_fixture :: ()->PfkOutput {
+ p:PfkOutput;p.grip.position.x=17;p.grip.position.y=23;p.grip.position.z=31;
+ for i:0..<7 {p.links[i+2].position.x=f64(i+1);p.links[i+2].position.y=f64(-2*i);p.links[i+2].position.z=f64(3*i-1);r:[9]f64;
+  if i%3==0 {r=[9]f64.[1,0,0,0,1,0,0,0,1];}if i%3==1 {r=[9]f64.[0,0,1,1,0,0,0,1,0];}if i%3==2 {r=[9]f64.[0,1,0,0,0,1,1,0,0];}p.links[i+2].rotation=r;}
+ return p;
+}

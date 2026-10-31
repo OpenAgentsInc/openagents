@@ -1,0 +1,34 @@
+#import "Basic";
+#load "../lib/robotics/panda-jacobian.coax";
+
+#test "Panda Jacobian example rounded display has independently known rates" {
+ #assert panda_jacobian_micro(0.044)==44000 && panda_jacobian_micro(0.5)==500000;
+ #assert panda_jacobian_micro(0)==0 && panda_jacobian_micro(-0.044)== -44000;
+}
+#test "Panda Jacobian example quantity products explicitly cancel physical radians" {
+ gain:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);gain.value=0.088;
+ rate:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64);rate.value=0.5;
+ speed:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64)=gain*rate;
+ ratio:pfku.Quantity(UnitOne,f64);ratio.value=1;
+ angular:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64)=ratio*rate;
+ #assert panda_jacobian_micro(speed.value)==44000 && panda_jacobian_micro(angular.value)==500000;
+}
+// Display rounding only. The library's derivative and rate values stay F64.
+panda_jacobian_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("zero-angle Jacobian: geometry only; no motor command\n");
+// book:begin rates
+ q:[7]pfku.Quantity(pfku.Radian,f64);jacobian:[1]PjOutput;
+ #assert pj_forward(q[..],jacobian[..])==PfkStatus.ok;
+ joint_rate:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64);joint_rate.value=0.5;
+ // Joint1 is column0: world Y is row1, world angular Z is row2.
+ grip_y:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64)=jacobian[0].linear[7]*joint_rate;
+ world_z:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64)=jacobian[0].angular[14]*joint_rate;
+ #assert panda_jacobian_micro(grip_y.value)==44000 && panda_jacobian_micro(world_z.value)==500000;
+ print("joint 1 rate (urad/s): %\n",panda_jacobian_micro(joint_rate.value));
+ print("grip SITE world Y (um/s): %\n",panda_jacobian_micro(grip_y.value));
+ print("world angular Z (urad/s): %\n",panda_jacobian_micro(world_z.value));
+// book:end rates
+ // The mathematical zero pose has joint4=0, outside [-3.0718,-0.0698].
+ print("joint4=0 is outside its physical soft range\n");
+}

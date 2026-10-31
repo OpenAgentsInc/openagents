@@ -156,6 +156,21 @@ no simulation clock, hardware, model import, fingers or articulated dynamics
 claim. Source mutation counts cover emitted sites, excluding lowered spatial
 operator-token swaps.
 
+## The owned grip Jacobian is a derivative of one fresh kinematic query
+
+The exported Jacobian path evaluates its own fixed-model FK before projection.
+Its linear block means metres per joint radian; its angular block means world
+rotation radians per joint radian. UnitOne preserves that ratio explicitly,
+and multiplication by a radian-per-second rate restores angular speed.
+A coordinate-only arithmetic helper is not a caller-POD admission certificate.
+
+Refusals preserve caller output. Singular poses remain valid without inversion
+or command admission. Independent matrix position/SO3 differences use a frozen
+primary step and budget; the full sweep is diagnostic. Reference loaders reject
+nonfinite values before maxima. The proof does not differentiate rounding,
+refusal, saturation or soft joint-limit dynamics, and supplies no sensor stamp
+or generic typed transform chain.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

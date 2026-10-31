@@ -1,0 +1,35 @@
+// Private coordinate algebra for a locally produced FK snapshot. No exported
+// caller-POD admission API; these numbers explicitly mean derivatives per radian.
+#load "panda-jacobian-types.coax";
+#load "panda-jacobian-check-fixtures.coax";
+#authority;
+#test "Panda Jacobian cardinal world axes anchors and row-major entries have literal derivatives" {
+ fk:=pj_cardinal_fixture();r:=pj_project_owned(fk);
+ linear:=[21]f64.[-23,0,26,-29,0,17,-35,16,-29,0,13,-20,0,10,0,25,-14,0,31,-11,0];
+ angular:=[21]f64.[0,1,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,1];
+ for i:0..<21 {#assert r.linear[i].value==linear[i] && r.angular[i].value==angular[i];}
+}
+#test "Panda Jacobian co-moving tip and anchors have zero translation and retain world directions" {
+ fk:=pj_cardinal_fixture();for i:0..<7 {fk.links[i+2].position=fk.grip.position;}r:=pj_project_owned(fk);
+ for i:0..<21 {#assert r.linear[i].value==0;}#assert r.angular[1].value==1 && r.angular[9].value==1 && r.angular[20].value==1;
+}
+
+#test "Panda Jacobian dense proper rotation distinguishes world column from adjacent entries" {
+ fk:=pj_cardinal_fixture();fk.links[2].rotation=[9]f64.[-10.0/15.0,2.0/15.0,11.0/15.0,10.0/15.0,-5.0/15.0,10.0/15.0,5.0/15.0,14.0/15.0,2.0/15.0];r:=pj_project_owned(fk);
+ #assert abs(r.linear[0].value-274.0/15.0)<2e-12 && abs(r.linear[7].value+320.0/15.0)<2e-12 && abs(r.linear[14].value-93.0/15.0)<2e-12;
+ #assert r.angular[0].value==11.0/15.0 && r.angular[7].value==10.0/15.0 && r.angular[14].value==2.0/15.0;
+}
+
+pj_project_owned :: (fk:PfkOutput)->PjOutput {
+ fresh:PjOutput;
+ for joint:0..<7 {
+  pose:=fk.links[joint+2];ax:=pose.rotation[2];ay:=pose.rotation[5];az:=pose.rotation[8];
+  dx:=fk.grip.position.x-pose.position.x;dy:=fk.grip.position.y-pose.position.y;dz:=fk.grip.position.z-pose.position.z;
+  // Explicit fixed-radian generator boundary. No generic cross/angle erasure.
+  fresh.linear[joint].value=ay*dz-az*dy;
+  fresh.linear[7+joint].value=az*dx-ax*dz;
+  fresh.linear[14+joint].value=ax*dy-ay*dx;
+  fresh.angular[joint].value=ax;fresh.angular[7+joint].value=ay;fresh.angular[14+joint].value=az;
+ }
+ return fresh;
+}

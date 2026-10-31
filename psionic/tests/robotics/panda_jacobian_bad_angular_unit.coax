@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-jacobian.coax";
+wrong :: (j:PjOutput)->pfku.Quantity(pfku.Radian,f64) {return j.angular[0];}

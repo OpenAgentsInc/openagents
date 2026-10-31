@@ -1,0 +1,5 @@
+zero-angle Jacobian: geometry only; no motor command
+joint 1 rate (urad/s): 500000
+grip SITE world Y (um/s): 44000
+world angular Z (urad/s): 500000
+joint4=0 is outside its physical soft range

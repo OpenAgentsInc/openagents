@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
-units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain)
+units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian)
 optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
@@ -13,7 +13,8 @@ while [[ $# -gt 0 ]];do
     --list) list=1;shift;;
     *) unit=${1%.coax};unit=${unit#psionic/lib/};unit=${unit#robotics/};known=0
        if [[ $unit == panda-clock ]];then unit=panda-clock-adapter;fi
-       if [[ $unit == panda-fk ]];then requested+=(panda-fk-profile panda-fk-math panda-fk-chain);shift;continue;fi
+       if [[ $unit == panda-jacobian ]];then requested+=(panda-jacobian-math panda-jacobian);shift;continue;fi
+       if [[ $unit == panda-fk ]];then requested+=(panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian);shift;continue;fi
        if [[ $unit == robotics || $unit == all ]];then known=1;unit=robotics;fi
        for candidate in "${units[@]}" "${optins[@]}";do if [[ $unit == "$candidate" ]];then known=1;break;fi;done
        [[ $known == 1 ]] || { echo "unknown robotics unit: $1" >&2;exit 2; };requested+=("$unit");shift;;
@@ -30,9 +31,10 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/psionic-robotics.XXXXXXXX");trap 'rm -rf "$work"' EXIT
 core=0;example=0;metal=0;vision=0;text=0;action=0;action_plan=0;native_groups=0;optin_gates=0
 for unit in "${chosen[@]}";do
-  "$coax" test "psionic/lib/robotics/$unit.coax"
-  "$coax" test "psionic/lib/robotics/$unit.coax" --release
-  if [[ $mutate == 1 ]];then "$coax" mutate "psionic/lib/robotics/$unit.coax" --root-only --jobs "$jobs";fi
+  unit_flags=();if [[ $unit == panda-jacobian-math ]];then unit_flags=(--library);fi
+  "$coax" test "psionic/lib/robotics/$unit.coax" "${unit_flags[@]}"
+  "$coax" test "psionic/lib/robotics/$unit.coax" --release "${unit_flags[@]}"
+  if [[ $mutate == 1 ]];then "$coax" mutate "psionic/lib/robotics/$unit.coax" --root-only --jobs "$jobs" "${unit_flags[@]}";fi
   case "$unit" in
     sim|evaluate) core=1;;learn) core=1;example=1;;
     singlearm) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-singlearm.sh "$work/singlearm";native_groups=$((native_groups+1));;
@@ -45,6 +47,7 @@ for unit in "${chosen[@]}";do
     panda-env|panda-loop|panda-trace) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" "psionic/tests/robotics/check-$unit.sh" "$work/$unit";native_groups=$((native_groups+1));;
     panda-clock-adapter) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-clock.sh "$work/panda-clock";COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-clock-host.sh "$work/panda-clock-host";native_groups=$((native_groups+2));;
     panda-fk-chain) python3 psionic/tests/robotics/panda_fk_bindings_test.py;COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-fk.sh "$PWD/psionic/fixtures/robotics/panda-fk/retained-controller" "$work/panda-fk";native_groups=$((native_groups+1));;
+    panda-jacobian) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_jacobian_check.sh "$work/panda-jacobian";native_groups=$((native_groups+1));;
     panda-policy) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-policy-native.sh "$work/panda-policy";native_groups=$((native_groups+1));;
     groot-action-metal-kernels|groot-action-wide-kernels) action=1;;
     groot-device-kernels) echo "$unit: portable VM/release checks; actual GPU/Torch gate is explicit groot-device-gpu";;

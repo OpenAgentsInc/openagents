@@ -681,9 +681,105 @@ a claim of default-build bit parity, R15 or cross-target determinism.
 
 This component supplies a pure pose query, with no simulation clock or sensor
 freshness stamp. A cached SDK pose and a newly forwarded pose must still be
-compared with the joint coordinates of their actual generation. Finger branches,
-Jacobians, robot import, articulated dynamics, full R12 transforms and compiler
-bounded control remain subsequent slices.
+compared with the joint coordinates of their actual generation. Finger branches, robot import, articulated dynamics, full R12 transforms and
+compiler bounded control remain subsequent slices. The following section adds
+the owned geometric Jacobian.
+
+## Differentiate the grip-site geometry
+
+The owned FK query now has a geometric Jacobian: six world-coordinate rows
+for seven joint coordinates. The top three rows describe grip-site translation
+per radian; the bottom three describe world angular rotation per joint radian.
+For joint axis `a`, joint anchor `p` and grip position `g`:
+
+```jai
+J_linear[:,i]  = a[i] cross (g - p[i]) // numeric derivative per radian
+J_angular[:,i] = a[i]                 // radian/radian ratio
+```
+
+`pj_forward` evaluates its own FK snapshot before projecting those columns.
+It reuses FK's typed radians, finite/range admission and status; refusal
+preserves the caller's Jacobian. Singular configurations are valid geometry:
+this API neither inverts the matrix nor admits a motor command. Its exported
+native entries accept coordinates, not caller-supplied pose records. The
+non-exported projection helper performs arithmetic and establishes no input
+provenance guarantee.
+
+[`PjOutput`](../lib/robotics/panda-jacobian-types.coax) keeps separate
+21-value blocks: `Quantity(Metre/Radian,f64)` for translation and
+`Quantity(UnitOne,f64)` for the angular ratio. Raw attitude matrices remain
+convention-labelled boundaries; this does not complete frame-chain typing.
+
+[The qualification](../fixtures/robotics/panda-jacobian/qualification.json)
+records 47/47 killed new-root mutants and 62 native configurations, with
+770 ABI/admission assertions per debug, release and fail-fast sanitizer mode.
+All 2,604 output words per mode agree byte for byte under the explicit
+scalar-libm profile. All 294 retained SDK Jacobian values pass the frozen
+2e-12 absolute budget; maximum difference is 1.11e-15.
+
+An independent homogeneous-matrix FK supplies central position differences
+and a world-left SO3 rotation difference. The preselected step is 1e-5
+radians, with absolute budget 3e-8; largest linear/angular errors are
+3.27e-11 and 1.57e-11. The full 1e-3 through 1e-7 sweep is retained: the
+coarser 1e-3 result exceeds the primary budget and does not replace the chosen
+step. These are derivatives of the smooth kinematic map, not of floating
+rounding, refusal or source soft-limit dynamics. The reference loader explicitly
+rejects nonfinite expected values before computing maxima; five new guard
+controls and all 10,206 cached expected values pass without regenerating the
+numerical corpus. No SDK calls or old controller gates run for this slice.
+
+```shell
+psionic/check.sh --only robotics/panda-jacobian
+```
+
+## A joint rate becomes a world speed
+
+The zero-angle posture makes one derivative easy to predict. The grip site is
+0.088 metres from joint 1's world Z axis in world X. A positive joint-1 rate of
+0.5 radians per second therefore gives world Y speed `0.088 × 0.5 = 0.044`
+metres per second. The angular world Z speed is 0.5 radians per second.
+
+The quantities matter. `linear[7]` is row Y, column joint 1, with unit
+Metre/Radian. Multiplying it by Radian/Second cancels the same physical Radian
+factor and produces Metre/Second. `angular[14]` is the world Z/joint-1 angular
+ratio `UnitOne`; multiplying it preserves the rate's Radian/Second unit. There
+is no global rule that silently erases angles.
+
+<!-- source: psionic/examples/panda-jacobian.coax rates -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);jacobian:[1]PjOutput;
+ #assert pj_forward(q[..],jacobian[..])==PfkStatus.ok;
+ joint_rate:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64);joint_rate.value=0.5;
+ // Joint1 is column0: world Y is row1, world angular Z is row2.
+ grip_y:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64)=jacobian[0].linear[7]*joint_rate;
+ world_z:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64)=jacobian[0].angular[14]*joint_rate;
+ #assert panda_jacobian_micro(grip_y.value)==44000 && panda_jacobian_micro(world_z.value)==500000;
+ print("joint 1 rate (urad/s): %\n",panda_jacobian_micro(joint_rate.value));
+ print("grip SITE world Y (um/s): %\n",panda_jacobian_micro(grip_y.value));
+ print("world angular Z (urad/s): %\n",panda_jacobian_micro(world_z.value));
+```
+
+The display helper rounds only for presentation. The program prints 500000
+`urad/s` for joint 1, 44000 `um/s` for grip-site world Y, and 500000 `urad/s`
+for world angular Z. The prewritten golden follows the lever arm above;
+these are not numbers inferred from the program after running it.
+
+```shell
+coax/bin/coax test psionic/examples/panda-jacobian.coax --only 'Panda Jacobian example'
+coax/bin/coax run psionic/examples/panda-jacobian.coax
+coax/bin/coax run psionic/examples/panda-jacobian.coax --release
+```
+
+This is a local geometric calculation, not a motor command. At the all-zero
+posture joint 4 is outside its source physical soft range
+`[-3.0718,-0.0698]` radians. A geometric derivative can exist there without that
+posture being safe or admitted for control. The target is the grip SITE in the
+world basis; the angular block is not a derivative of the model's hand-BODY
+axis-angle observation coordinates.
+
+The example's two own checks and debug/release transcripts pass on the actual
+merged 0.45 compiler. Their stdout matches `psionic/fixtures/panda-jacobian.out`
+exactly. The unchanged Jacobian mutation/native/FD/SDK corpora were not rerun.
 
 ## Run the genuine experiment
 
