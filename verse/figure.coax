@@ -19,6 +19,8 @@
 // runs (a gallop, its back flexing), each foot's stride timed to its legs.
 //   coax/bin/coax test verse/figure.coax --library
 
+#module "verse.figure";   // a page may #load it as an alias (Dead Gears does)
+
 PI :: 3.14159265;
 MAX_JOINTS :: 36;
 MAX_PARTS :: 32;
@@ -280,8 +282,8 @@ rig_bone :: (k: Skeleton, a: int, b: int, ra: f32, rb: f32, region: int) -> Skel
 person :: (s: Shape) -> Skeleton {
   k: Skeleton; k.rig = Rig.person; k.joints = PERSON_JOINTS;
   z := s.size; L := s.legs * z; B := s.body * z; g := s.girth * z; h := s.head * z;
-  thigh := 0.43 * L; shin := 0.43 * L;
-  k = rig_joint(k, P_HIPS, -1, fv(0, thigh + shin + 0.09 * z, 0));
+  thigh := 0.43 * L; shank := 0.43 * L;
+  k = rig_joint(k, P_HIPS, -1, fv(0, thigh + shank + 0.09 * z, 0));
   k = rig_joint(k, P_SPINE, P_HIPS, fv(0, 0.12 * B, 0));
   k = rig_joint(k, P_CHEST, P_SPINE, fv(0, 0.22 * B, 0));
   k = rig_joint(k, P_NECK, P_CHEST, fv(0, 0.2 * B, 0));
@@ -296,7 +298,7 @@ person :: (s: Shape) -> Skeleton {
     hip := ifx side == 0 then P_L_HIP else P_R_HIP;
     k = rig_joint(k, hip, P_HIPS, fv(sx * 0.1 * g, -0.03 * z, 0));
     k = rig_joint(k, hip + 1, hip, fv(0, -thigh, 0));
-    k = rig_joint(k, hip + 2, hip + 1, fv(0, -shin, 0));
+    k = rig_joint(k, hip + 2, hip + 1, fv(0, -shank, 0));
     k = rig_joint(k, hip + 3, hip + 2, fv(0, -0.02 * z, 0.13 * z));
   }
   k = rig_bone(k, P_HIPS, P_L_HIP, 0.11 * g, 0.085 * g, REGION_BODY);

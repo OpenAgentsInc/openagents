@@ -41,7 +41,7 @@ TEAM_PLAYER :: 1; TEAM_ALLY :: 2; TEAM_HOSTILE :: 3;
 // Events, for sounds, effects and the HUD
 EV_SHOT :: 1; EV_HURT :: 2; EV_KILLED :: 3; EV_BEAMED :: 4; EV_RELOADING :: 5; EV_DRY_FIRE :: 6;
 EV_WAVE :: 7; EV_REPAIRED :: 8; EV_LIFTED :: 9; EV_THROWN :: 10; EV_STUNNED :: 11; EV_CARGO_STRUCK :: 12;
-EV_BOLT_FIRED :: 13; EV_BOLT_STRUCK :: 14; EV_ENDED :: 15; EV_REACTOR_HIT :: 16;
+EV_BOLT_FIRED :: 13; EV_BOLT_STRUCK :: 14; EV_ENDED :: 15; EV_REACTOR_HIT :: 16; EV_SEVERED :: 17;
 
 // The systems, in the order they run each fixed step
 S_CLOCK :: 0; S_CARGO :: 1; S_WEAPON :: 2; S_REPAIR :: 3; S_FIRE :: 4; S_MUTANTS :: 5; S_BOLTS :: 6; S_SUPPORT :: 7;
@@ -63,7 +63,7 @@ WAVE_MIX :: [9] int.[2, 0, 1, 4, 0, 1, 4, 2, 4];
 // wave 2s with seven was lost. Free aim and flanking make each harder, so
 // 4, 6, 8 (were 5, 7, 9).
 WAVE_SIZE :: [3] int.[4, 6, 8];
-dg_wave_count :: (wave: int) -> int { w := ifx wave < 1 then 1 else ifx wave > 3 then 3 else wave; return WAVE_SIZE[w - 1]; }
+dg_wave_count :: (number: int) -> int { w := ifx number < 1 then 1 else ifx number > 3 then 3 else number; return WAVE_SIZE[w - 1]; }
 CARGO_DAMAGE :: [3] f32.[100, 125, 85];
 // The support engineer's repair: alone it takes this long (you take 2.5 s),
 // from a spot this far beside and in front of the reactor's centre.
@@ -382,15 +382,15 @@ SHOT_RANGE :: 30.0;
 
 // One box of a creature's body, in its own frame (x right, z ahead, y up
 // from its feet), as the page draws it.
-Part :: struct { at: Point; half: Point; region: int; on: bool; }
-part_box :: (x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32, region: int) -> Part {
-  return Part.{at = v3(x, y, z), half = v3(hx, hy, hz), region = region, on = true};
+BodyPart :: struct { at: Point; half: Point; region: int; on: bool; }
+part_box :: (x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32, region: int) -> BodyPart {
+  return BodyPart.{at = v3(x, y, z), half = v3(hx, hy, hz), region = region, on = true};
 }
 
 // Box k (0 ..< PARTS) of mutant m; on is false past its last box, or for a
 // head or leg it has lost.
-mutant_part :: (m: Mutant, k: int) -> Part {
-  none: Part;
+mutant_part :: (m: Mutant, k: int) -> BodyPart {
+  none: BodyPart;
   if m.kind == SKITTER {
     if k == 0 { return part_box(0, 0.22, 0, 0.26, 0.2, 0.26, ifx m.part == 1 then R_HEAD else R_CORE); }
     return none;
@@ -557,6 +557,7 @@ dg_fire :: (g: Game) {
   } else if hit.region == R_LIMB {
     first := !g.mutant[ti].severed;
     g.mutant[ti].severed = true;
+    if first { emit(g, Event.{kind = EV_SEVERED, who = t, n = g.mutant[ti].kind, at = hit.at, to = muzzle}); }   // the limb comes off where it was hit
     dg_hit(g, t, ifx s.mode == SEVER then 30.0f32 else ifx first then 15.0f32 else 20.0f32);
   } else {
     n := ifx g.mutant[ti].kind == BRUTE && !g.mutant[ti].severed then 18.0f32 else 40.0f32;
@@ -1441,8 +1442,8 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 
 #test "waves, repairs and loss" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
-  for wave: 1..<4 {
-    #assert g.st[0].wave == wave;
+  for round: 1..<4 {
+    #assert g.st[0].wave == round;
     kill_all(g);
     #assert g.st[0].phase == REPAIR;
     tick(g, ME, false, true, 0, -1, 0.05);
@@ -1467,7 +1468,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 
 #test "three waves to victory" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
-  for wave: 0..<3 {
+  for round: 0..<3 {
     most := fight_wave(g, ME);
     #assert g.st[0].phase == REPAIR;
     repair(g);
@@ -1572,7 +1573,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   g.st[0].mode = HEAD;
   g.st[0].ally_time = 1000;
   most := 0;
-  for wave: 0..<3 {
+  for round: 0..<3 {
     m := fight_wave(g, ME);
     if m > most { most = m; }
     #assert g.st[0].phase == REPAIR;

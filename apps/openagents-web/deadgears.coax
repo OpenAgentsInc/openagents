@@ -19,6 +19,7 @@
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../verse/player.coax" as pc;   // the controller every walkable realm shares (#6d99)
+#load "../../verse/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -45,7 +46,7 @@ OBJECT_FLOATS :: 16;
 BOX_VERTICES :: 36;
 
 FX :: 64;
-FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10; FX_SHOT :: 11; FX_CHIP :: 12;
+FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10; FX_SHOT :: 11; FX_CHIP :: 12; FX_LIMB :: 13;
 // Your shots travel (#adba), each mode its own: SEVER a spinning blade,
 // HEAD a thin fast tracer, CORE a heavy slow bolt (metres a second).
 SHOT_SPEED :: [3] f32.[60, 150, 38];
@@ -110,6 +111,7 @@ DeadGears :: struct {
   raised: f32;              // seconds the cutter stays up after a shot
   jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
   dodge: f32; dodge_wait: f32; dodge_x: f32; dodge_y: f32;   // a dodge's time left, the wait, its way
+  skel: [TYPES] fig.Skeleton;   // each kind's rig, built once at the start (#ea44)
   // What the controller walks among this frame: the hull, the cover, the
   // reactor and the crates at rest (pc.WALL numbers each), and the creatures
   // and the support engineer (pc.BODY numbers each).
@@ -223,6 +225,7 @@ me_slot :: (g: Game) -> int { return slot_of(dg_player(g)); }
 
 dg_page_start :: (s: [] DeadGears) {
   s[0].started = true;
+  for q: 0..<TYPES { s[0].skel[q] = fig.verse_figure_skeleton(kind_shape(q)); }   // built once (#ea44)
   g := game(s);
   dg_setup(g);
   s[0].pitch = f32(PITCH_REST);
@@ -326,13 +329,13 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   if at[0] < 0 || sum != save_sum(v[0..<values]) { return false; }
   if values < SAVES { v[9] = -1; v[10] = 100; }
   if v[10] < 1 || v[10] > 100 { return false; }
-  wave := v[0]; repairs := v[1]; phase := v[2];
-  if wave < 1 || wave > 3 || repairs < 0 || repairs > 3 || phase < FIGHT || phase > LOST || v[7] < 0 || v[7] > 2 { return false; }
+  at_wave := v[0]; repairs := v[1]; phase := v[2];
+  if at_wave < 1 || at_wave > 3 || repairs < 0 || repairs > 3 || phase < FIGHT || phase > LOST || v[7] < 0 || v[7] > 2 { return false; }
   x := f32(v[4]) / 1000; z := f32(v[5]) / 1000;
   if !(abs(x) < 15.6) || !(z > -23.6 && z < 13.6) { return false; }
   g := game(s);
   dg_setup(g);
-  g.st[0].wave = wave - 1; g.st[0].repairs = repairs;
+  g.st[0].wave = at_wave - 1; g.st[0].repairs = repairs;
   start_wave(g, true);
   if phase != FIGHT {
     destroy_all(g, true, C_MUTANT);
@@ -352,12 +355,12 @@ restore :: (s: [] DeadGears, text: string) -> bool {
   g.hp[me] = clamp(f32(v[3]), 1, 100);
   stand_at(s, v3(x, 0, z), f32(v[6]) / 1000);
   g.ev[0] = 0;
-  s[0].last_phase = phase; s[0].last_wave = wave; s[0].deck_hour = -1;
+  s[0].last_phase = phase; s[0].last_wave = at_wave; s[0].deck_hour = -1;
   s[0].restored = true;
   s[0].paused = phase == WON || phase == LOST;
   buf: [48] u8;
   n := put(buf[..], 0, "CONTINUING · WAVE ");
-  n = put_int(buf[..], n, wave);
+  n = put_int(buf[..], n, at_wave);
   n = put(buf[..], n, " OF 3");
   if phase == REPAIR { n = put(buf[..], 0, "CONTINUING · REPAIR THE REACTOR"); }
   say(s, cast(string) buf[0..<n]);
@@ -804,6 +807,10 @@ heard :: (s: [] DeadGears, from: int) {
       } else if e.n == -1 {
         later(s, FX_CHIP, e.to, e.at, 0.3, 1, fly);    // it struck cover or a wall
       }
+    } else if e.kind == EV_SEVERED {
+      // The limb falls from where the shot took it (#ea44), and lies there.
+      fly := length(sub(e.at, e.to)) / SHOT_SPEED[g.st[0].mode];
+      later(s, FX_LIMB, e.at, e.to, 4, TYPE_SIZE[e.n], fly);
     } else if e.kind == EV_BEAMED && e.flag {
       effect(s, FX_SPARK, e.to, e.at, 0.2, 0.7);
     } else if e.kind == EV_HURT {
@@ -999,69 +1006,123 @@ creature :: (s: [] DeadGears, kind: int, x: f32, z: f32, yaw: f32, hp: f32, m: M
       side := ifx k == 0 then -1.0f32 else 1.0f32;
       for leg: 0..<3 {
         lz := f32(leg - 1) * 0.16;
-        wave := sin(t * 17 + f32(leg) * 2 + side) * 0.07;
-        limb(s, origin, yaw, v3(side * 0.23, 0.15, lz), v3(0.07, 0.3, 0.06), bone, 0, side * 0.9, wave * 3);
-        limb(s, origin, yaw, v3(side * 0.34, 0.06, lz + wave), v3(0.08, 0.06, 0.18), dark, 0, 0, 0);
+        sway := sin(t * 17 + f32(leg) * 2 + side) * 0.07;
+        limb(s, origin, yaw, v3(side * 0.23, 0.15, lz), v3(0.07, 0.3, 0.06), bone, 0, side * 0.9, sway * 3);
+        limb(s, origin, yaw, v3(side * 0.34, 0.06, lz + sway), v3(0.08, 0.06, 0.18), dark, 0, 0, 0);
       }
     }
     limb(s, origin, yaw, v3(0, 0.26, 0.19), v3(0.16, 0.035, 0.025), v3(0.8, 0.45, 0.3), 1, 0, 0);
     return;
   }
-  if kind == CRAWLER {
-    limb(s, origin, yaw, v3(0, 0.43, 0), v3(0.65, 0.48, 0.9), flesh, 0, gait * 0.05, 0);
-    limb(s, origin, yaw, v3(0, 0.59, -0.12), v3(0.5, 0.2, 0.58), bone, 0, 0, 0);
-    limb(s, origin, yaw, v3(0, 0.34, 0.56), v3(0.36, 0.25, 0.35), dark, 0, 0, 0);
-    for k: 0..<2 {
-      side := ifx k == 0 then -1.0f32 else 1.0f32;
-      limb(s, origin, yaw, v3(side * 0.24, 0.28, 0.73), v3(0.08, 0.09, 0.39), bone, 0, 0, side * 0.3);
-      for leg: 0..<3 {
-        if m.severed && side < 0 && leg == 0 { continue; }
-        lz := f32(leg - 1) * 0.34;
-        stride := sin(t * 12 + f32(leg) * 2 + side) * 0.1;
-        limb(s, origin, yaw, v3(side * 0.48, 0.23, lz + stride), v3(0.09, 0.58, 0.1), bone, 0, side * 1.1, gait * 0.2);
-      }
-    }
-    return;
+  // The rest are soft-bone figures (#ea44, verse/figure.coax): each kind its
+  // own build and gait, drawn bone by bone.
+  bones(s, kind, origin, yaw, m, flesh, bone, dark);
+}
+
+// ---- the creatures' bodies (#ea44): verse/figure.coax rigs and gaits,
+// each kind its own silhouette. The crawler is a long low four-legged
+// thing, the hound a deep-chested runner with a tail, the reaver a lean
+// stalker reaching with bone blades, the brute a hunched giant with spines
+// on its back. A walker that lost a leg drags itself bent double; a crawler
+// that lost its hind legs pulls itself on its front ones.
+
+kind_shape :: (kind: int) -> fig.Shape {
+  f: fig.Shape;
+  if kind == CRAWLER { f.rig = fig.Rig.animal; f.size = 1.1; f.legs = 0.5; f.body = 1.6; f.girth = 1.25; f.head = 1.2; f.snout = 0.5; f.tail = 0.3; f.ears = 0; f.ear_size = 0.5; }
+  else if kind == HOUND { f.rig = fig.Rig.animal; f.size = 1.6; f.legs = 1.1; f.body = 1.1; f.girth = 1.3; f.head = 1.1; f.snout = 1.5; f.tail = 0.7; f.ears = 0; f.ear_size = 0.6; }
+  else if kind == BRUTE { f.rig = fig.Rig.person; f.size = 1.45; f.legs = 0.8; f.body = 1.25; f.girth = 1.6; f.head = 0.75; }
+  else { f.rig = fig.Rig.person; f.size = 1.05; f.legs = 1.15; f.body = 1.05; f.girth = 0.75; f.head = 0.9; }
+  return f;
+}
+
+// Whether part p of a kind's skeleton is gone with a severed limb.
+lost_part :: (kind: int, part: fig.Part) -> bool {
+  if kind == REAVER || kind == BRUTE { return part.a == fig.P_L_HIP || part.a == fig.P_L_KNEE || part.a == fig.P_L_FOOT; }
+  if kind == CRAWLER { return part.a >= fig.A_LH && part.a < fig.A_LH + 10; }   // both hind legs
+  if kind == HOUND { return part.a >= fig.A_LH && part.a < fig.A_LH + 5; }      // the hind left
+  return false;
+}
+
+// Mutant m's pose now: its gait from the clock, and its kind's carriage.
+creature_pose :: (s: [] DeadGears, kind: int, m: Mutant, x: f32) -> fig.Pose {
+  shape := kind_shape(kind);
+  t := s[0].clock;
+  run := kind == HOUND || kind == CRAWLER;
+  gait := ifx m.stun > 0 then fig.Gait.stand else ifx run then fig.Gait.run else fig.Gait.walk;
+  if kind == CRAWLER && !m.severed { gait = fig.Gait.trot; }
+  rate := fig.verse_figure_stride_rate(shape, gait) * (ifx m.severed then 0.5f32 else 1.0f32);
+  p := fig.verse_figure_gait(shape.rig, gait, t * rate + x * 0.31 + f32(m.seq) * 0.17, t);
+  if shape.rig == fig.Rig.person {
+    // Reaching: the reaver's blades forward, the brute's long arms low.
+    reach: f32 = ifx kind == REAVER then -1.15f32 else -0.35f32;
+    p.turn[fig.P_L_SHOULDER].x += reach; p.turn[fig.P_R_SHOULDER].x += reach;
+    p.turn[fig.P_L_ELBOW].x += ifx kind == REAVER then -0.5f32 else -0.2f32;
+    p.turn[fig.P_R_ELBOW].x += ifx kind == REAVER then -0.5f32 else -0.2f32;
+    p.turn[fig.P_SPINE].x += ifx kind == BRUTE then 0.35f32 else 0.15f32;   // hunched
+    p.turn[fig.P_NECK].x -= ifx kind == BRUTE then 0.3f32 else 0.1f32;
+    if m.severed { p.turn[fig.P_SPINE].x += 0.75; p.lift.y -= 0.45; }       // down on one leg, dragging
+  } else if m.severed && kind == CRAWLER {
+    p.lift.y -= 0.12; p.turn[fig.A_SPINE].x -= 0.15;                        // its belly on the deck
   }
-  if kind == HOUND {
-    origin.y = ifx m.lunge > 0 then 0.18f32 else abs(gait) * 0.045;
-    limb(s, origin, yaw, v3(0, 0.83, 0), v3(0.66, 0.61, 1.32), flesh, 0, 0, gait * 0.07);
-    limb(s, origin, yaw, v3(0, 1.12, -0.1), v3(0.5, 0.2, 0.94), bone, 0, 0, 0);
-    limb(s, origin, yaw, v3(0, 0.98, 0.8), v3(0.46, 0.48, 0.52), bone, 0, 0, -0.2);
-    limb(s, origin, yaw, v3(0, 0.85, 1.12), v3(0.37, 0.25, 0.55), dark, 0, 0, 0);
-    limb(s, origin, yaw, v3(0, 1.02, 1.03), v3(0.32, 0.045, 0.04), v3(0.8, 0.4, 0.25), 1, 0, 0);
-    for k: 0..<2 {
-      side := ifx k == 0 then -1.0f32 else 1.0f32;
-      for q: 0..<2 {
-        leg := ifx q == 0 then -1.0f32 else 1.0f32;
-        if m.severed && side < 0 && leg < 0 { continue; }
-        stride := gait * leg * side * 0.18;
-        limb(s, origin, yaw, v3(side * 0.37, 0.43, leg * 0.46 + stride), v3(0.17, 0.75, 0.2), flesh, 0, side * 0.12, gait * side * leg * 0.35);
-        limb(s, origin, yaw, v3(side * 0.37, 0.1, leg * 0.46 + stride + 0.13), v3(0.23, 0.12, 0.4), bone, 0, 0, 0);
-      }
-    }
-    limb(s, origin, yaw, v3(0, 0.94, -0.96), v3(0.15, 0.18, 0.85), flesh, 0, gait * 0.25, -0.35);
-    for i: 0..<4 { limb(s, origin, yaw, v3(0, 1.36, -0.45 + f32(i) * 0.25), v3(0.09, 0.42, 0.12), bone, 0, 0, -0.3); }
-    return;
+  if m.stun > 0 { p.turn[0].z += sin(t * 20) * 0.15; }
+  if kind == HOUND && m.lunge > 0 { p.lift.y += 0.2; p.turn[0].x -= 0.25; }
+  return p;
+}
+
+bones :: (s: [] DeadGears, kind: int, origin: Point, yaw: f32, m: Mutant, flesh: Point, bone: Point, dark: Point) {
+  size := s[0].skel[kind].size;
+  pose := creature_pose(s, kind, m, origin.x);
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  if !fig.verse_figure_joints_at(s[0].skel[kind], pose, fig.Place.{x = origin.x, y = origin.y, z = origin.z, yaw = yaw}, joints[..]) { return; }
+  rig := s[0].skel[kind].rig;
+  eye := v3(1.0, 0.3, 0.28);
+  for q: 0..<s[0].skel[kind].parts {
+    part := s[0].skel[kind].part[q];
+    if m.severed && lost_part(kind, part) { continue; }
+    if m.headless && (part.region == fig.REGION_HEAD || part.region == fig.REGION_MUZZLE || part.region == fig.REGION_EYE || part.region == fig.REGION_NOSE || part.region == fig.REGION_EAR) { continue; }
+    if m.headless && kind != CRAWLER && kind != HOUND && part.a == fig.P_HEAD { continue; }
+    a := joints[part.a]; b := joints[part.b];
+    pa := v3(a.x, a.y, a.z); pb := v3(b.x, b.y, b.z);
+    c := ifx part.region == fig.REGION_LOWER then bone else ifx part.region == fig.REGION_HEAD || part.region == fig.REGION_MUZZLE then bone else ifx part.region == fig.REGION_NOSE then dark else flesh;
+    if part.region == fig.REGION_EYE { box(s, pa, times(v3(0.07, 0.05, 0.05), size), eye, 2.5, 0, yaw, 0); continue; }
+    width := (part.ra + part.rb) * 1.6;   // fuller than the bones: boxes, not blended cones
+    if part.a == part.b { box(s, pa, v3(width, width, width), c, 0, 0, yaw, 0); continue; }
+    beam_box(s, pa, pb, width, c, 0);
   }
-  body_y := scale * (ifx m.severed then 0.65f32 else 1.1f32);
-  limb(s, origin, yaw, v3(0, body_y, 0), v3(scale * 0.7, scale * 0.85, scale * 0.45), flesh, 0, 0, 0.18);
-  if !m.headless {
-    limb(s, origin, yaw, v3(0, body_y + scale * 0.6, 0.1), v3(scale * 0.38, scale * 0.44, scale * 0.4), bone, 0, gait * 0.1, 0);
-    limb(s, origin, yaw, v3(0, body_y + scale * 0.63, 0.32), v3(scale * 0.3, 0.045, 0.025), v3(0.9, 0.4, 0.25), 1, 0, 0);
+  // Eyes for the people, a glow in the dark of the head.
+  if rig == fig.Rig.person && !m.headless {
+    h := joints[fig.P_HEAD]; cr := joints[fig.P_CROWN];
+    fwd := v3(sin(yaw), 0, cos(yaw));
+    box(s, add(v3((h.x + cr.x) / 2, (h.y + cr.y) / 2, (h.z + cr.z) / 2), times(fwd, 0.09 * size)), times(v3(0.18, 0.035, 0.03), size), eye, 2.5, 0, yaw, 0);
   }
-  for k: 0..<2 {
-    side := ifx k == 0 then -1.0f32 else 1.0f32;
-    if !m.severed || side > 0 {
-      limb(s, origin, yaw, v3(side * scale * 0.25, body_y * 0.4, gait * side * 0.13), v3(scale * 0.2, body_y * 0.8, scale * 0.22), flesh, 0, side * 0.18, gait * 0.3);
-    }
-    limb(s, origin, yaw, v3(side * scale * 0.58, body_y + 0.12, gait * side * 0.13), v3(scale * 0.2, scale * 0.9, scale * 0.2), flesh, 0, side * 0.65, 0);
-    if !m.severed || side < 0 {
-      limb(s, origin, yaw, v3(side * scale * 0.83, body_y - 0.18, 0.2), v3(0.07, scale * 0.85, 0.14), bone, 0, -side * 0.45, 0);
+  if kind == REAVER {
+    // Bone blades from its hands, pointing where it reaches.
+    for side: 0..<2 {
+      hand := ifx side == 0 then fig.P_L_HAND else fig.P_R_HAND;
+      e := joints[hand - 1]; hd := joints[hand];
+      d := unit_or(v3(hd.x - e.x, hd.y - e.y, hd.z - e.z), v3(0, -1, 0));
+      beam_box(s, v3(hd.x, hd.y, hd.z), add(v3(hd.x, hd.y, hd.z), times(d, 0.55)), 0.05, bone, 0);
     }
   }
   if kind == BRUTE {
-    for i: 0..<3 { q := f32(i - 1); limb(s, origin, yaw, v3(q * 0.33, body_y + 0.5, -0.33), v3(0.15, 0.85, 0.16), bone, 0, q * 0.32, -0.4); }
+    // Spines along its back.
+    ch := joints[fig.P_CHEST]; sp := joints[fig.P_SPINE];
+    back := v3(-sin(yaw), 0, -cos(yaw));
+    for q: 0..<3 {
+      f := f32(q) / 2;
+      at := v3(sp.x + (ch.x - sp.x) * f, sp.y + (ch.y - sp.y) * f, sp.z + (ch.z - sp.z) * f);
+      root := add(at, times(back, 0.22 * size));
+      beam_box(s, root, add(root, add(times(back, 0.25), v3(0, 0.5, 0))), 0.07, bone, 0);
+    }
+  }
+  if kind == HOUND {
+    // A ridge of bone down its spine.
+    pe := joints[fig.A_PELVIS]; nk := joints[fig.A_NECK];
+    for q: 0..<4 {
+      f := 0.15 + f32(q) * 0.22;
+      at := v3(pe.x + (nk.x - pe.x) * f, pe.y + (nk.y - pe.y) * f + 0.12 * size, pe.z + (nk.z - pe.z) * f);
+      beam_box(s, at, add(at, v3(0, 0.22, 0)), 0.05, bone, 0);
+    }
   }
 }
 
@@ -1218,6 +1279,13 @@ effects :: (s: [] DeadGears) {
         box(s, at, v3(0.16, 0.16, 0.26), v3(0.55, 0.65, 1.0), 5, tilt, heading, s[0].clock * 8);
         beam_box(s, sub(at, times(d, hi(0.05, lo(0.7, length(sub(at, f.at)))))), at, 0.07, v3(0.45, 0.55, 1.0), 2.5 * fade + 0.5);
       }
+    } else if f.kind == FX_LIMB {
+      at := limb_at(f);
+      spin := lo(f.t, 0.45) * 9 + f32(i);
+      lying := f.t >= 0.45;
+      c := v3(0.33, 0.19, 0.21);
+      box(s, at, times(v3(0.12, 0.5, 0.13), f.size), c, 0, ifx lying then 1.5708f32 else spin, f32(i), 0);
+      box(s, add(at, v3(0, 0.02, 0)), times(v3(0.07, 0.07, 0.07), f.size), v3(0.65, 0.6, 0.54), 0, 0, f32(i), 0);   // the bone end
     } else if f.kind == FX_CHIP {
       // Chips off cover or the hull, thrown back toward you.
       back := unit_or(sub(f.to, f.at), v3(0, 0, 1));
@@ -2084,6 +2152,65 @@ bot_turn :: (s: [] DeadGears) {
   }
   if best >= 0 { aim_bot(s, best); }
 }
+// Where a severed limb is (#ea44): thrown back from the hit, falling for
+// 0.45 s, then lying on the deck.
+limb_at :: (f: Fx) -> Point {
+  t := lo(f.t, 0.45);
+  away := unit_or(v3(f.at.x - f.to.x, 0, f.at.z - f.to.z), v3(0, 0, 1));
+  y := hi(0.07 * f.size, f.at.y + 1.2 * t - 4.9 * t * t * 1.6);
+  return v3(f.at.x + away.x * t * 1.2, y, f.at.z + away.z * t * 1.2);
+}
+
+#test "each kind is its own silhouette, and a severed dropped falls from where it was hit (#ea44)" {
+  // Height, length and width of each kind standing, from its joints.
+  dims: [3 * 4] f32;
+  kinds := [4] int.[CRAWLER, REAVER, BRUTE, HOUND];
+  for q: 0..<4 {
+    s: [1] DeadGears;
+    started(s[..]);
+    m: Mutant;
+    k := fig.verse_figure_skeleton(kind_shape(kinds[q]));
+    joints: [fig.MAX_JOINTS] fig.Fv;
+    #assert fig.verse_figure_joints_at(k, creature_pose(s[..], kinds[q], m, 0), fig.Place.{}, joints[..]);
+    top: f32 = 0; front: f32 = -10; back: f32 = 10; wide: f32 = 0;
+    for j: 0..<k.joints { top = hi(top, joints[j].y); front = hi(front, joints[j].z); back = lo(back, joints[j].z); wide = hi(wide, abs(joints[j].x)); }
+    dims[q * 3] = top; dims[q * 3 + 1] = front - back; dims[q * 3 + 2] = wide;
+  }
+  // Any two kinds differ by at least a fifth in height, length or width.
+  for a: 0..<4 {
+    for b: a + 1..<4 {
+      apart := false;
+      for d: 0..<3 { x := dims[a * 3 + d]; y := dims[b * 3 + d]; if abs(x - y) > 0.2 * hi(x, y) { apart = true; } }
+      #assert apart;
+    }
+  }
+  // Shoot a reaver in the leg: the leg falls from there.
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := dg_spawn_mutant(g, REAVER, 0, 3, -1);
+  i := slot_of(e);
+  g.yaw[i] = 0; g.mutant[i].stun = 1000;
+  leg := dg_part_at(g, i, 3);
+  d := sub(leg, shoulder_at(s[..]));
+  s[0].yaw = atan2(d.x, d.z); s[0].pitch = atan2(d.y, flat_length(d));
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  used := deadgears_key(s[..], 'f', 0);
+  n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  #assert g.mutant[i].severed;
+  dropped := -1;
+  for q: 0..<FX { if s[0].fx[q].life > 0 && s[0].fx[q].kind == FX_LIMB { dropped = q; } }
+  #assert dropped >= 0;
+  hit := s[0].fx[dropped].at;
+  #assert flat(hit, leg) < 0.5 && abs(hit.y - leg.y) < 0.5;   // where it was hit
+  for q: 0..<30 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); }
+  rest := limb_at(s[0].fx[dropped]);
+  #assert rest.y < 0.15 && flat(rest, hit) < 1.5;               // on the deck, close by
+}
+
 // The crosshair is over a creature: its ray reaches one before anything solid.
 reticle_over :: (s: [] DeadGears) -> bool {
   g := game(s);
