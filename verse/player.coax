@@ -19,12 +19,17 @@
 // it, and pulls the camera in front of it. Walls are boxes (min and max
 // corners; verse/grid.coax's terminal): their tops are floors you stand
 // on, up to STEP_UP above your feet as aethyr's kStepUp, and higher ones
-// stop you as bodies do. Buildings come later and change only the
-// procedures under "The world".
+// stop you as bodies do. Floors are a realm's other surfaces
+// (verse/stand.coax: a roof's slopes, a tower's cone, rubble's tops): you
+// land on the highest one under you and walk on it up to STEP_UP above your
+// feet, one too steep (past STAND_STEEP) slides you off its low edge, and
+// one whose surface would cut through you stops you walking into it.
 //
 // Changes from aethyr: the fixed step is 1/64 s instead of 1/60 s, so step
 // counts are exact; a stick inside the dead zone is no input (aethyr walked
 // at full speed on any stick drift).
+
+#load "stand.coax";
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -61,6 +66,8 @@ PASSES :: 3;            // push-outs per step, for bodies that touch
 CAM_CLEAR :: 0.2;       // how far the camera keeps from a body
 WALL :: 6;              // numbers per wall: min x, y, z, max x, y, z
 STEP_UP :: 0.55;        // the highest top you walk onto
+FLOOR_PAD :: 0.15;      // how far past a floor's edge your middle may be and it still holds you
+SLIDE_GRIP :: 0.1;      // the share of your feet's push you keep on a slope too steep to stand on
 
 Vec3 :: struct { x: f32; y: f32; z: f32; }
 
@@ -70,6 +77,7 @@ World :: struct {
   room: f32 = 1000;
   bodies: [] f32;
   walls: [] f32;
+  floors: [] f32;       // STAND_FLOATS numbers each (verse/stand.coax), on the same floor as the walls
 }
 
 // What the character is doing, for the animation that comes later. The
@@ -109,6 +117,7 @@ Player :: struct {
   // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
   pace: f32 = 1;
   grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
+  sliding: bool;       // on a floor too steep to stand on, sliding down it
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -162,15 +171,40 @@ edge :: (b: Box, x: f32, z: f32) -> Edge {
 }
 
 // The floor under feet at (x, z): the ground, or the highest wall top your
-// capsule is over that is no more than STEP_UP above your feet.
-floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 {
-  out := w.ground;
+// capsule is over or floor you are over that is no more than STEP_UP above
+// your feet.
+floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return floor_under(w, x, z, feet).y; }
+// The same with its slope (a wall's top and the ground are level).
+floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
+  out := StandHit.{y = w.ground};
   for i: 0..<w.walls.count / WALL {
     b := wall(w, i);
-    if !b.ok || b.hi.y > feet + f32(STEP_UP) || b.hi.y <= out { continue; }
-    if edge(b, x, z).d < f32(RADIUS) { out = b.hi.y; }
+    if !b.ok || b.hi.y > feet + f32(STEP_UP) || b.hi.y <= out.y { continue; }
+    if edge(b, x, z).d < f32(RADIUS) { out.y = b.hi.y; }
+  }
+  n := w.floors.count / STAND_FLOATS;
+  if n > 0 {
+    h := stand_top(w.floors, n, x, z, feet + f32(STEP_UP), f32(FLOOR_PAD));
+    if h.y > out.y && finite(h.y) { out = h; }
   }
   return out;
+}
+// Whether a floor's surface at (x, z) would cut through you with your feet at `feet`: over a step
+// and under your head.
+floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool {
+  n := w.floors.count / STAND_FLOATS;
+  if n == 0 { return false; }
+  return stand_cuts(w.floors, n, x, z, feet + f32(STEP_UP), feet + f32(HEIGHT) - 0.1);
+}
+// p moved from `from`: if it walked into a floor's side (a roof's slope cutting through it where it
+// was clear before), back along whichever way stays clear, its speed that way stopped.
+off_floors :: (w: World, from: Player, p: Player) -> Player {
+  if w.floors.count < STAND_FLOATS || !floor_cuts(w, p.pos.x, p.pos.z, p.pos.y) || floor_cuts(w, from.pos.x, from.pos.z, from.pos.y) { return p; }
+  next := p;
+  if !floor_cuts(w, p.pos.x, from.pos.z, p.pos.y) { next.pos.z = from.pos.z; next.vel.z = 0; return next; }
+  if !floor_cuts(w, from.pos.x, p.pos.z, p.pos.y) { next.pos.x = from.pos.x; next.vel.x = 0; return next; }
+  next.pos.x = from.pos.x; next.pos.z = from.pos.z; next.vel.x = 0; next.vel.z = 0;
+  return next;
 }
 
 // Pushes p sideways out of every wall too high to stand on, zeroing the
@@ -461,17 +495,33 @@ step :: (w: World, p: Player, dt: f32) -> Player {
   diff := sqrt(dx * dx + dz * dz);
   if diff > 0 {
     grip := ifx finite(p.grip) && p.grip > 0 && p.grip < 1 && p.on_ground then p.grip else 1.0f32;
+    if p.sliding { grip = f32(SLIDE_GRIP); }
     applied := lo(diff, f32(ACCEL) * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
   }
+  before := next;
   next = move_across(w, next, next.vel.x * dt, next.vel.z * dt);
+  next = off_floors(w, before, next);
 
   // Gravity and the floor.
-  ground := floor_at(w, next.pos.x, next.pos.z, next.pos.y);
+  under := floor_under(w, next.pos.x, next.pos.z, next.pos.y);
+  ground := under.y;
   above := next.pos.y - ground;
   falls := true;
-  if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 {
+  next.sliding = false;
+  if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 && stand_steep(under) {
+    // Too steep to stand on: it holds you as you slide down it, gravity's pull along it speeding
+    // you toward its low edge, and over that you fall.
+    gl := sqrt(under.gx * under.gx + under.gz * under.gz);
+    pull := f32(GRAVITY) * gl / (1 + gl * gl) * dt;
+    next.vel.x -= under.gx / gl * pull; next.vel.z -= under.gz / gl * pull;
+    next.vel.y = 0;
+    next.pos.y = ground;
+    next.on_ground = false;
+    next.sliding = true;
+    falls = false;
+  } else if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 {
     if next.on_ground {
       // Standing: ease onto the floor.
       next.vel.y = 0;
@@ -542,6 +592,14 @@ verse_player_advance_among :: (p: Player, frame: f32, bodies: [] f32, walls: [] 
   w: World;
   w.bodies = bodies;
   w.walls = walls;
+  return advance_in(w, p, frame);
+}
+// And on floors (STAND_FLOATS numbers each, verse/stand.coax), on the same floor as the walls.
+verse_player_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32) -> Player #export_c {
+  w: World;
+  w.bodies = bodies;
+  w.walls = walls;
+  w.floors = floors;
   return advance_in(w, p, frame);
 }
 
@@ -1270,4 +1328,92 @@ verse_player_constrain :: (p:Player,x:f32,z:f32)->Player #export_c {
  if dx!=0 {next.pos.x=x;next.prev_pos.x=x;next.target.x+=dx;next.prev_target.x+=dx;next.vel.x=0;}
  if dz!=0 {next.pos.z=z;next.prev_pos.z=z;next.target.z+=dz;next.prev_target.z+=dz;next.vel.z=0;}
  return next;
+}
+
+// ---- floors (verse/stand.coax): a roof's slopes, a tower's cone
+
+// A gable roof 8 m across x and 10 m along z, its ridge along z at x 0: eaves `eave` up, the ridge 3 m over them.
+gable :: (f: [] f32, eave: f32) {
+  stand_put_quad(f, 0, -4, -5, 4, 0, 0, 10, eave, 3, 0);
+  stand_put_quad(f, 1, 4, -5, -4, 0, 0, 10, eave, 3, 0);
+}
+
+#test "coming down onto a roof you land on its slope and stand there, at the eave and at the ridge" {
+  f: [2 * STAND_FLOATS] f32;
+  gable(f[..], 4);
+  w: World;
+  w.floors = f[..];
+  p := verse_player_place(-3.5, 12, 0, 0);
+  for i: 0..<120 { p = step(w, p, STEP); }
+  #assert p.on_ground && near(p.pos.y, 4 + 3 * 0.5 / 4, 0.01) && !p.sliding;
+  q := verse_player_place(0, 12, 1, 0);
+  for i: 0..<120 { q = step(w, q, STEP); }
+  #assert q.on_ground && near(q.pos.y, 7, 0.01);
+  // and you jump off it as off the ground
+  q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
+  #assert !q.on_ground && q.vel.y == f32(JUMP);
+  // under it (inside, on the ground) it is no floor
+  r := verse_player_place(-1, 0, 0, 0);
+  for i: 0..<20 { r = step(w, r, STEP); }
+  #assert r.on_ground && r.pos.y == 0;
+}
+
+#test "walking along a roof follows its slope, and off its end you fall to the ground" {
+  f: [2 * STAND_FLOATS] f32;
+  gable(f[..], 4);
+  w: World;
+  w.floors = f[..];
+  p := verse_player_place(-2, 5.5, -4, 0);   // facing +z, along the ridge
+  for i: 0..<20 { p = step(w, p, STEP); }
+  #assert p.on_ground && near(p.pos.y, 5.5, 0.01);
+  p = held(p, 0, 1, false);
+  fell := false; low := 100.0f32;
+  for i: 0..<400 {
+    p = step(w, p, STEP);
+    if p.pos.z < 4.9 { #assert near(p.pos.y, 5.5, 0.05) && p.on_ground; }
+    if p.pos.z > 5.3 && !p.on_ground { fell = true; }
+    low = lo(low, p.pos.y);
+  }
+  #assert fell && p.pos.y == 0 && low == 0;
+  // across it: up its slope to the ridge, down the other side, off the far eave
+  q := verse_player_place(-3.8, 4.2, 0, f32(PI) / 2);
+  for i: 0..<20 { q = step(w, q, STEP); }
+  q = held(q, 0, 1, false);
+  top := 0.0f32;
+  for i: 0..<300 { q = step(w, q, STEP); top = hi(top, q.pos.y); }
+  #assert top > 6.8 && q.pos.x > 4.5 && q.pos.y == 0;
+}
+
+#test "a slope too steep to stand on slides you off its low edge" {
+  f: [STAND_FLOATS] f32;
+  stand_put_cone(f[..], 0, 0, 0, 2, 3, 4);
+  w: World;
+  w.floors = f[..];
+  p := verse_player_place(0.5, 9, 0, 0);
+  slid := false;
+  for i: 0..<400 {
+    p = step(w, p, STEP);
+    if p.sliding { slid = true; #assert !p.on_ground && p.pos.y > 2.9; }
+  }
+  #assert slid && p.pos.x > 2 && p.pos.y == 0 && p.on_ground;
+  // and while sliding you can't jump
+  q := verse_player_place(0.5, 9, 0, 0);
+  for i: 0..<60 { q = step(w, q, STEP); if q.sliding { break; } }
+  #assert q.sliding;
+  q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
+  #assert q.vel.y <= 0;
+}
+
+#test "walking into a low roof's edge from the side stops you; one under a step you walk onto" {
+  f: [2 * STAND_FLOATS] f32;
+  gable(f[..], 1);
+  w: World;
+  w.floors = f[..];
+  p := held(verse_player_place(-6, 0, 0, f32(PI) / 2), 0, 1, false);
+  for i: 0..<200 { p = step(w, p, STEP); }
+  #assert p.pos.x < -3.9 && p.pos.x > -4.5 && p.pos.y == 0;
+  gable(f[..], 0.3);
+  q := held(verse_player_place(-6, 0, 0, f32(PI) / 2), 0, 1, false);
+  for i: 0..<120 { q = step(w, q, STEP); }
+  #assert q.pos.x > -3 && q.pos.y > 0.5;
 }

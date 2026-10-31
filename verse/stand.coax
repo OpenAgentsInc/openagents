@@ -1,0 +1,351 @@
+// Standing: the surfaces a body comes down onto and walks on, over the
+// ground. A realm lists them as floors, STAND_FLOATS numbers each, and asks
+// for the highest one at or under a height (stand_top): where your feet
+// land coming down from there, or where they step onto walking (the height
+// you are at plus a step). A floor is one of:
+//
+// - a quad: a flat or sloped parallelogram, o + s a + t b for s and t in
+//   [0, 1] across the ground (x, z), its height y0 + s ya + t yb there. A
+//   box's top is one with no slope; a gable roof is two, one a slope either
+//   side of its ridge; a tilted slab of rubble its top face.
+// - a cone: a round tower roof, `rise` over its base at its middle and
+//   falling straight to its rim at radius r.
+// - a dome: a sphere's top, its middle (cx, cy, cz) and radius R.
+// - a ring: a flat band between two radii (a fountain's rim).
+//
+// Each answer is a StandHit: the height, its slope (dy/dx, dy/dz) and which
+// floor it is. A slope steeper than STAND_STEEP (55 degrees) holds you only
+// as long as you slide down it (verse/player.coax). `pad` lets a floor hold
+// a body whose middle is just past its edge (half a foot on a wall's top);
+// past a sloped floor's edge it is its edge's height.
+//
+// StandGrid is a grid of STAND_CELL m cells over a realm (STAND_SIDE a side
+// from x0, z0): each cell lists the floors over it, so a town's thousands of
+// floors cost a few per question. A realm whose floors can go (a roof blown
+// away) keeps them in the grid and skips the ones gone as it reads a cell.
+// Only builtins are used here, so any file may load it.
+//   coax/bin/coax test --library verse/stand.coax
+
+STAND_FLOATS :: 10;
+STAND_QUAD :: 1; STAND_CONE :: 2; STAND_DOME :: 3; STAND_RING :: 4;
+STAND_NONE :: -1000000.0;
+STAND_STEP :: 0.55;         // the highest top a walker steps onto (verse/player.coax STEP_UP)
+STAND_STEEP :: 1.43;        // tan 55 degrees: a steeper slope slides you off
+STAND_SIDE :: 64;           // cells a side
+STAND_CELL :: 4.0;          // m a cell
+STAND_CELLS :: STAND_SIDE * STAND_SIDE;
+STAND_LIST :: 65536;        // cell entries at most
+STAND_PAD :: 0.5;           // the widest pad a grid's floors are listed for
+
+StandHit :: struct { y: f32 = STAND_NONE; gx: f32; gz: f32; id: int = -1; }
+
+StandGrid :: struct {
+  x0: f32; z0: f32;
+  at: [STAND_CELLS] int; count: [STAND_CELLS] int;
+  list: [STAND_LIST] int; n: int;
+}
+
+stand_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+stand_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+stand_clamp :: (a: f32, low: f32, high: f32) -> f32 { return stand_lo(high, stand_hi(low, a)); }
+
+// ---- writing floors
+
+stand_put :: (out: [] f32, k: int, kind: int, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32, g: f32, h: f32, i: f32) {
+  o := k * STAND_FLOATS;
+  if k < 0 || o + STAND_FLOATS > out.count { return; }
+  out[o] = f32(kind); out[o + 1] = a; out[o + 2] = b; out[o + 3] = c; out[o + 4] = d;
+  out[o + 5] = e; out[o + 6] = f; out[o + 7] = g; out[o + 8] = h; out[o + 9] = i;
+}
+// A parallelogram from (ox, oz) along (ax, az) and (bx, bz), y0 at o, ya more at o + a, yb more at o + b.
+stand_put_quad :: (out: [] f32, k: int, ox: f32, oz: f32, ax: f32, az: f32, bx: f32, bz: f32, y0: f32, ya: f32, yb: f32) {
+  stand_put(out, k, STAND_QUAD, ox, oz, ax, az, bx, bz, y0, ya, yb);
+}
+// A level top over x0..x1, z0..z1.
+stand_put_box :: (out: [] f32, k: int, x0: f32, z0: f32, x1: f32, z1: f32, top: f32) {
+  stand_put_quad(out, k, x0, z0, x1 - x0, 0, 0, z1 - z0, top, 0, 0);
+}
+stand_put_cone :: (out: [] f32, k: int, cx: f32, cz: f32, r: f32, base: f32, rise: f32) {
+  stand_put(out, k, STAND_CONE, cx, cz, r, base, rise, 0, 0, 0, 0);
+}
+stand_put_dome :: (out: [] f32, k: int, cx: f32, cy: f32, cz: f32, radius: f32) {
+  stand_put(out, k, STAND_DOME, cx, cz, radius, cy, 0, 0, 0, 0, 0);
+}
+stand_put_ring :: (out: [] f32, k: int, cx: f32, cz: f32, inner: f32, outer: f32, top: f32) {
+  stand_put(out, k, STAND_RING, cx, cz, inner, outer, top, 0, 0, 0, 0);
+}
+// A box's top face: the box's middle c, its unit axes (u, v, w: 3 numbers each in `axes`) and half
+// sizes; the face is the one of its six that looks most nearly up.
+stand_put_box_top :: (out: [] f32, k: int, cx: f32, cy: f32, cz: f32, axes: [] f32, hx: f32, hy: f32, hz: f32) -> bool {
+  if axes.count < 9 { return false; }
+  up := 0; best := -1.0f32;
+  for a: 0..<3 { if abs(axes[a * 3 + 1]) > best { best = abs(axes[a * 3 + 1]); up = a; } }
+  if best < 0.0001 { return false; }
+  h := [3] f32.[hx, hy, hz];
+  sg := ifx axes[up * 3 + 1] > 0 then 1.0f32 else -1.0f32;
+  p := (up + 1) % 3; q := (up + 2) % 3;
+  fx := cx + axes[up * 3] * h[up] * sg; fy := cy + axes[up * 3 + 1] * h[up] * sg; fz := cz + axes[up * 3 + 2] * h[up] * sg;
+  ox := fx - axes[p * 3] * h[p] - axes[q * 3] * h[q];
+  oy := fy - axes[p * 3 + 1] * h[p] - axes[q * 3 + 1] * h[q];
+  oz := fz - axes[p * 3 + 2] * h[p] - axes[q * 3 + 2] * h[q];
+  stand_put_quad(out, k, ox, oz, axes[p * 3] * 2 * h[p], axes[p * 3 + 2] * 2 * h[p], axes[q * 3] * 2 * h[q], axes[q * 3 + 2] * 2 * h[q],
+                        oy, axes[p * 3 + 1] * 2 * h[p], axes[q * 3 + 1] * 2 * h[q]);
+  return true;
+}
+// The same floor lifted by dy (a realm that hands a walker floors over its own ground).
+stand_lift :: (f: [] f32, k: int, dy: f32) {
+  o := k * STAND_FLOATS;
+  if k < 0 || o + STAND_FLOATS > f.count { return; }
+  kind := cast(int) f[o];
+  if kind == STAND_QUAD { f[o + 7] += dy; }
+  else if kind == STAND_CONE { f[o + 4] += dy; }
+  else if kind == STAND_DOME { f[o + 4] += dy; }
+  else if kind == STAND_RING { f[o + 5] += dy; }
+}
+
+// ---- reading them
+
+// Floor k's surface over (x, z), or none (y STAND_NONE) if (x, z) is more than `pad` past it.
+stand_at :: (f: [] f32, k: int, x: f32, z: f32, pad: f32) -> StandHit {
+  out: StandHit;
+  o := k * STAND_FLOATS;
+  if k < 0 || o + STAND_FLOATS > f.count { return out; }
+  kind := cast(int) f[o];
+  if kind == STAND_QUAD {
+    ax := f[o + 3]; az := f[o + 4]; bx := f[o + 5]; bz := f[o + 6];
+    det := ax * bz - bx * az;
+    if abs(det) < 0.000001 { return out; }
+    dx := x - f[o + 1]; dz := z - f[o + 2];
+    s := (dx * bz - bx * dz) / det; t := (ax * dz - dx * az) / det;
+    la := sqrt(ax * ax + az * az); lb := sqrt(bx * bx + bz * bz);
+    ps := ifx la > 0.000001 then pad / la else 0.0f32;
+    pt := ifx lb > 0.000001 then pad / lb else 0.0f32;
+    if s < -ps || s > 1 + ps || t < -pt || t > 1 + pt { return out; }
+    ya := f[o + 8]; yb := f[o + 9];
+    out.y = f[o + 7] + stand_clamp(s, 0, 1) * ya + stand_clamp(t, 0, 1) * yb;
+    out.gx = (ya * bz - yb * az) / det; out.gz = (yb * ax - ya * bx) / det;
+    out.id = k;
+    return out;
+  }
+  dx := x - f[o + 1]; dz := z - f[o + 2];
+  d := sqrt(dx * dx + dz * dz);
+  if kind == STAND_CONE {
+    r := f[o + 3];
+    if r <= 0 || d > r + pad { return out; }
+    k_ := f[o + 5] / r;
+    out.y = f[o + 4] + f[o + 5] * (1 - stand_lo(d, r) / r);
+    if d > 0.0001 { out.gx = -k_ * dx / d; out.gz = -k_ * dz / d; }
+    out.id = k;
+    return out;
+  }
+  if kind == STAND_DOME {
+    r := f[o + 3];
+    if r <= 0 || d > r + pad { return out; }
+    e := stand_lo(d, r * 0.999);
+    up := sqrt(r * r - e * e);
+    out.y = f[o + 4] + up;
+    if d > 0.0001 { out.gx = -(dx / d) * e / up; out.gz = -(dz / d) * e / up; }
+    out.id = k;
+    return out;
+  }
+  if kind == STAND_RING {
+    if d < f[o + 3] - pad || d > f[o + 4] + pad { return out; }
+    out.y = f[o + 5]; out.id = k;
+    return out;
+  }
+  return out;
+}
+// The highest of floors 0..<n over (x, z) at or under `below`.
+stand_top :: (f: [] f32, n: int, x: f32, z: f32, below: f32, pad: f32) -> StandHit {
+  best: StandHit;
+  for k: 0..<n {
+    h := stand_at(f, k, x, z, pad);
+    if h.y <= below && h.y > best.y { best = h; }
+  }
+  return best;
+}
+// Whether one of floors 0..<n has its surface over (x, z) between `over` and `under`: it would cut through a
+// body standing there (verse/player.coax keeps you from walking into a roof's slope from the side).
+stand_cuts :: (f: [] f32, n: int, x: f32, z: f32, over: f32, under: f32) -> bool {
+  for k: 0..<n {
+    h := stand_at(f, k, x, z, 0);
+    if h.y > over && h.y < under { return true; }
+  }
+  return false;
+}
+stand_steep :: (h: StandHit) -> bool { return h.gx * h.gx + h.gz * h.gz > f32(STAND_STEEP * STAND_STEEP); }
+// The footprint floor k may hold a body over: x0, z0, x1, z1 (and its highest point), pad not included.
+StandRect :: struct { x0: f32; z0: f32; x1: f32; z1: f32; top: f32; ok: bool; }
+stand_rect :: (f: [] f32, k: int) -> StandRect {
+  out: StandRect;
+  o := k * STAND_FLOATS;
+  if k < 0 || o + STAND_FLOATS > f.count { return out; }
+  kind := cast(int) f[o];
+  if kind == STAND_QUAD {
+    ox := f[o + 1]; oz := f[o + 2]; ax := f[o + 3]; az := f[o + 4]; bx := f[o + 5]; bz := f[o + 6];
+    out.x0 = ox + stand_lo(ax, 0) + stand_lo(bx, 0); out.x1 = ox + stand_hi(ax, 0) + stand_hi(bx, 0);
+    out.z0 = oz + stand_lo(az, 0) + stand_lo(bz, 0); out.z1 = oz + stand_hi(az, 0) + stand_hi(bz, 0);
+    out.top = f[o + 7] + stand_hi(f[o + 8], 0) + stand_hi(f[o + 9], 0);
+    out.ok = true;
+    return out;
+  }
+  if kind < STAND_CONE || kind > STAND_RING { return out; }
+  r := ifx kind == STAND_RING then f[o + 4] else f[o + 3];
+  out.x0 = f[o + 1] - r; out.x1 = f[o + 1] + r; out.z0 = f[o + 2] - r; out.z1 = f[o + 2] + r;
+  out.top = ifx kind == STAND_CONE then f[o + 4] + f[o + 5] else ifx kind == STAND_DOME then f[o + 4] + r else f[o + 5];
+  out.ok = true;
+  return out;
+}
+
+// ---- the grid
+
+stand_col :: (g: [] StandGrid, x: f32) -> int { return cast(int) floor((x - g[0].x0) / f32(STAND_CELL)); }
+stand_row :: (g: [] StandGrid, z: f32) -> int { return cast(int) floor((z - g[0].z0) / f32(STAND_CELL)); }
+stand_ci :: (a: int) -> int { return ifx a < 0 then 0 else ifx a >= STAND_SIDE then STAND_SIDE - 1 else a; }
+// The cell (x, z) is in, or -1 outside the grid.
+stand_cell :: (g: [] StandGrid, x: f32, z: f32) -> int {
+  i := stand_col(g, x); j := stand_row(g, z);
+  if i < 0 || j < 0 || i >= STAND_SIDE || j >= STAND_SIDE { return -1; }
+  return j * STAND_SIDE + i;
+}
+// Lists floors 0..<n in every cell their footprint (and STAND_PAD round it) is over, the grid's corner at (x0, z0).
+// Returns false if the list ran out (the floors past it are left out).
+stand_grid_build :: (g: [] StandGrid, f: [] f32, n: int, x0: f32, z0: f32) -> bool {
+  g[0].x0 = x0; g[0].z0 = z0; g[0].n = 0;
+  for c: 0..<STAND_CELLS { g[0].count[c] = 0; g[0].at[c] = 0; }
+  // count, then lay each cell's run out, then fill
+  for k: 0..<n {
+    r := stand_rect(f, k);
+    if !r.ok { continue; }
+    i0 := stand_ci(stand_col(g, r.x0 - f32(STAND_PAD))); i1 := stand_ci(stand_col(g, r.x1 + f32(STAND_PAD)));
+    j0 := stand_ci(stand_row(g, r.z0 - f32(STAND_PAD))); j1 := stand_ci(stand_row(g, r.z1 + f32(STAND_PAD)));
+    for j: j0..<j1 + 1 { for i: i0..<i1 + 1 { g[0].count[j * STAND_SIDE + i] += 1; } }
+  }
+  total := 0;
+  for c: 0..<STAND_CELLS {
+    g[0].at[c] = total;
+    room := ifx total + g[0].count[c] <= STAND_LIST then g[0].count[c] else STAND_LIST - total;
+    g[0].count[c] = room; total += room;
+  }
+  full := true;
+  fill: [STAND_CELLS] int;
+  for k: 0..<n {
+    r := stand_rect(f, k);
+    if !r.ok { continue; }
+    i0 := stand_ci(stand_col(g, r.x0 - f32(STAND_PAD))); i1 := stand_ci(stand_col(g, r.x1 + f32(STAND_PAD)));
+    j0 := stand_ci(stand_row(g, r.z0 - f32(STAND_PAD))); j1 := stand_ci(stand_row(g, r.z1 + f32(STAND_PAD)));
+    for j: j0..<j1 + 1 {
+      for i: i0..<i1 + 1 {
+        c := j * STAND_SIDE + i;
+        if fill[c] >= g[0].count[c] { full = false; continue; }
+        g[0].list[g[0].at[c] + fill[c]] = k; fill[c] += 1;
+      }
+    }
+  }
+  g[0].n = total;
+  return full;
+}
+// The highest of the grid's floors over (x, z) at or under `below` (none gone: a realm whose floors
+// go reads the cell itself, as verse/demolish.coax demo_stand does).
+stand_grid_top :: (g: [] StandGrid, f: [] f32, x: f32, z: f32, below: f32, pad: f32) -> StandHit {
+  best: StandHit;
+  c := stand_cell(g, x, z);
+  if c < 0 { return best; }
+  for e: 0..<g[0].count[c] {
+    h := stand_at(f, g[0].list[g[0].at[c] + e], x, z, pad);
+    if h.y <= below && h.y > best.y { best = h; }
+  }
+  return best;
+}
+
+// ---- checks
+
+STAND_TEST_N :: 300;
+stand_near :: (a: f32, b: f32, tol: f32) -> bool { return abs(a - b) <= tol; }
+
+#test "stand: a box's top holds you over it, a step past its edge with a pad, and not from under it" {
+  f: [STAND_FLOATS * 2] f32;
+  stand_put_box(f[..], 0, 0, 0, 4, 2, 3);
+  #assert stand_near(stand_at(f[..], 0, 2, 1, 0).y, 3, 0.0001);
+  #assert stand_at(f[..], 0, 4.2, 1, 0).y == f32(STAND_NONE) && stand_near(stand_at(f[..], 0, 4.2, 1, 0.3).y, 3, 0.0001);
+  h := stand_at(f[..], 0, 1, 1, 0);
+  #assert h.gx == 0 && h.gz == 0 && h.id == 0 && !stand_steep(h);
+  // under it (your feet under its top) it is no floor; over it, it is
+  #assert stand_top(f[..], 1, 2, 1, 2, 0).y == f32(STAND_NONE);
+  #assert stand_near(stand_top(f[..], 1, 2, 1, 3.5, 0).y, 3, 0.0001);
+  // with a lower one beside: the highest at or under your feet
+  stand_put_box(f[..], 1, 0, 0, 4, 2, 1);
+  #assert stand_near(stand_top(f[..], 2, 2, 1, 2, 0).y, 1, 0.0001) && stand_near(stand_top(f[..], 2, 2, 1, 9, 0).y, 3, 0.0001);
+  #assert stand_cuts(f[..], 2, 2, 1, 0.5, 2) && !stand_cuts(f[..], 2, 2, 1, 3.5, 5);
+}
+
+#test "stand: a gable roof's two slopes rise from its eaves to its ridge, the slope telling the way down" {
+  // a roof 8 m across x, its ridge along z at x 0, eaves 2 m up at x -4 and 4, ridge 5 m up
+  f: [STAND_FLOATS * 2] f32;
+  stand_put_quad(f[..], 0, -4, -5, 4, 0, 0, 10, 2, 3, 0);
+  stand_put_quad(f[..], 1, 4, -5, -4, 0, 0, 10, 2, 3, 0);
+  #assert stand_near(stand_top(f[..], 2, -4, 0, 99, 0).y, 2, 0.0001);
+  #assert stand_near(stand_top(f[..], 2, 0, 0, 99, 0).y, 5, 0.0001);
+  #assert stand_near(stand_top(f[..], 2, -2, 3, 99, 0).y, 3.5, 0.0001) && stand_near(stand_top(f[..], 2, 2, 3, 99, 0).y, 3.5, 0.0001);
+  w := stand_top(f[..], 2, -2, 0, 99, 0); e := stand_top(f[..], 2, 2, 0, 99, 0);
+  #assert stand_near(w.gx, 0.75, 0.0001) && stand_near(e.gx, -0.75, 0.0001) && stand_near(w.gz, 0, 0.0001);
+  #assert !stand_steep(w);
+  // past its eave, nothing
+  #assert stand_top(f[..], 2, -4.5, 0, 99, 0).y == f32(STAND_NONE);
+  // turned 90 degrees the same: its ridge along x
+  stand_put_quad(f[..], 0, -5, -4, 0, 4, 10, 0, 2, 3, 0);
+  #assert stand_near(stand_at(f[..], 0, 1, -1, 0).y, 4.25, 0.0001) && stand_near(stand_at(f[..], 0, 1, -1, 0).gz, 0.75, 0.0001);
+}
+
+#test "stand: a tower's cone and a dome are steep at their rims, a ring holds you only on its band" {
+  f: [STAND_FLOATS * 3] f32;
+  stand_put_cone(f[..], 0, 10, 10, 2, 6, 4);
+  #assert stand_near(stand_at(f[..], 0, 10, 10, 0).y, 10, 0.0001) && stand_near(stand_at(f[..], 0, 11, 10, 0).y, 8, 0.0001);
+  #assert stand_steep(stand_at(f[..], 0, 11, 10, 0)) && stand_at(f[..], 0, 12.5, 10, 0).y == f32(STAND_NONE);
+  stand_put_dome(f[..], 1, 0, 3, 0, 4);
+  #assert stand_near(stand_at(f[..], 1, 0, 0, 0).y, 7, 0.0001) && !stand_steep(stand_at(f[..], 1, 1, 0, 0));
+  #assert stand_steep(stand_at(f[..], 1, 3.8, 0, 0));
+  stand_put_ring(f[..], 2, 0, -20, 2.4, 3, 0.8);
+  #assert stand_near(stand_at(f[..], 2, 2.7, -20, 0).y, 0.8, 0.0001) && stand_at(f[..], 2, 1, -20, 0).y == f32(STAND_NONE);
+  // lifted
+  stand_lift(f[..], 0, 1); stand_lift(f[..], 2, -0.5);
+  #assert stand_near(stand_at(f[..], 0, 10, 10, 0).y, 11, 0.0001) && stand_near(stand_at(f[..], 2, 2.7, -20, 0).y, 0.3, 0.0001);
+}
+
+#test "stand: a tilted slab's top face holds you on its slope" {
+  f: [STAND_FLOATS] f32;
+  // a 2 x 0.4 x 2 slab turned 0.3 rad about z, its middle at (0, 1, 0)
+  c := cos(0.3f32); sn := sin(0.3f32);
+  axes := [9] f32.[c, sn, 0,   -sn, c, 0,   0, 0, 1];
+  #assert stand_put_box_top(f[..], 0, 0, 1, 0, axes[..], 1, 0.2, 1);
+  h := stand_at(f[..], 0, 0, 0, 0);
+  #assert stand_near(h.y, 1 + 0.2 / c, 0.001) && stand_near(h.gx, sn / c, 0.001);
+  // upside down, the same face up
+  axes2 := [9] f32.[1, 0, 0,   0, -1, 0,   0, 0, -1];
+  #assert stand_put_box_top(f[..], 0, 5, 1, 5, axes2[..], 1, 0.5, 1);
+  #assert stand_near(stand_at(f[..], 0, 5.5, 5.5, 0).y, 1.5, 0.0001);
+}
+
+#test "stand: the grid finds the same highest floor as reading them all, over a town's worth" {
+  f: [STAND_TEST_N * STAND_FLOATS] f32;
+  seed := 7;
+  for k: 0..<STAND_TEST_N {
+    seed = (seed * 1103515245 + 12345) % 2147483648; x := f32(seed % 20000) / 100.0 - 100;
+    seed = (seed * 1103515245 + 12345) % 2147483648; z := f32(seed % 20000) / 100.0 - 100;
+    seed = (seed * 1103515245 + 12345) % 2147483648; w := 0.3 + f32(seed % 900) / 100.0;
+    seed = (seed * 1103515245 + 12345) % 2147483648; y := f32(seed % 1500) / 100.0;
+    if k % 3 == 0 { stand_put_quad(f[..], k, x, z, w, 0, 0, w * 0.7, y, w * 0.5, 0); }
+    else if k % 3 == 1 { stand_put_cone(f[..], k, x, z, w * 0.5, y, w); }
+    else { stand_put_box(f[..], k, x, z, x + w, z + w * 0.5, y); }
+  }
+  g: [1] StandGrid;
+  #assert stand_grid_build(g[..], f[..], STAND_TEST_N, -128, -128);
+  for q: 0..<120 {
+    seed = (seed * 1103515245 + 12345) % 2147483648; x := f32(seed % 20000) / 100.0 - 100;
+    seed = (seed * 1103515245 + 12345) % 2147483648; z := f32(seed % 20000) / 100.0 - 100;
+    seed = (seed * 1103515245 + 12345) % 2147483648; below := f32(seed % 2000) / 100.0;
+    a := stand_top(f[..], STAND_TEST_N, x, z, below, 0.3);
+    b := stand_grid_top(g[..], f[..], x, z, below, 0.3);
+    #assert a.y == b.y;
+  }
+}

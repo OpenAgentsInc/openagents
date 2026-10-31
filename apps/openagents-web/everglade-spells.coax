@@ -384,6 +384,7 @@ sp_shapes :: (s: [] Everglade) {
     o := sp_object(m);
     // a chunk's colour is its tint over the kit's own texture (sp_debris): white, a little toned
     demo_shape(w, i, v3(b[0], b[1], b[2]), v3(b[3], b[4], b[5]), ground_at(s, r[3], r[11]), o.material, o.ac, o.hp, v3(1, 1, 1), m == M_ROOF);
+    demo_set_top(w, i, eg_piece_top(m));   // what its top is to stand on (everglade-stand.coax)
   }
   demo_link(w);
   s[0].sp.ready = true;

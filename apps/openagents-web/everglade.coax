@@ -81,6 +81,7 @@
 #load "everglade-room.coax";
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-reply.coax";
+#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (verse/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
 
@@ -444,6 +445,7 @@ Everglade :: struct {
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
   rp: Reply;                               // reply with a realm: the sign, the smash, its link (everglade-reply.coax)
+  floors: [EG_STAND_NEAR * STAND_FLOATS] f32;   // the floors round you for the controller (everglade-stand.coax)
 }
 
 // ---- small things
@@ -647,7 +649,8 @@ build_scenery :: (s: [] Everglade) {
     // the fountain stands in the way as a round body, its plinth's
     if edit_in_hidden(s, solids[..], k) { continue; }
     fountain := x0 == fp[0] && z0 == fp[1] && x1 == fp[2] && z1 == fp[3];
-    if w < WALLS && !fountain { put6(s[0].walls[..], w, x0, 0, z0, x1, h, z1); w += 1; }
+    // a building's walls stand to its eaves: over them its roof holds you (everglade-stand.coax)
+    if w < WALLS && !fountain { put6(s[0].walls[..], w, x0, 0, z0, x1, eg_wall_top(x0, z0, x1, z1, h), z1); w += 1; }
     if h > 1.5 && bx < BOXES && x1 - x0 < 150 && z1 - z0 < 150 {
       g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
       put6(s[0].boxes[..], bx, x0, g - 1, z0, x1, g + h, z1); bx += 1;
@@ -927,6 +930,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     spells_facts(s, text);
     fork_facts(s, text);
     weather_facts(s, text);
+    eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
     ms := sp_number(fact(text, "now"));
@@ -1698,7 +1702,7 @@ shadow :: (s: [] Everglade, u: [] f32, x: f32, z: f32, y: f32, radius: f32, stre
 // The floor under (x, z) at or below height y: the ground, or the top of a
 // wall you can stand on (a bench, a crate) that the walking controller stands you on.
 floor_under :: (s: [] Everglade, x: f32, z: f32, y: f32) -> f32 {
-  f := ground_at(s, x, z);
+  f := hi(ground_at(s, x, z), everglade_stand(s, x, z, y + 0.1).y);
   for w: 0..<s[0].wall_n {
     k := w * 6;
     if x < s[0].walls[k] || x > s[0].walls[k + 3] || z < s[0].walls[k + 2] || z > s[0].walls[k + 5] { continue; }
@@ -3101,6 +3105,7 @@ camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Sho
   room := verse_orbit_room(o, s[0].boxes[0..<0], s[0].boxes[0..<s[0].box_n * 6]);
   room = lo(room, ground_room(s, verse_orbit_ray(o)));
   room = lo(room, trunks_room(s, verse_orbit_ray(o)));
+  room = lo(room, eg_stand_room(s, verse_orbit_ray(o)));   // a roof you stand on (everglade-stand.coax)
   o = verse_orbit_limit(o, room, dt);
   s[0].orbit = o;
   shot := verse_orbit_shot(o);

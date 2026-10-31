@@ -55,6 +55,12 @@
 //   and carried by the current, and lodges where it comes to rest or after
 //   DEMO_FLOAT_LIFE s; coming in fast it raises a splash event.
 //
+// - Standing (verse/stand.coax): every standing piece's top is a floor you
+//   come down onto and walk on (demo_stand): a box's top face, a roof's two
+//   slopes either side of its ridge, a tower roof's cone (demo_set_top), and
+//   each sleeping chunk's or loose piece's top face, so a roof blown away no
+//   longer holds you and the rubble it left does. They are listed on a grid
+//   of STAND_CELL m cells once the pieces are linked (demo_stand_build).
 // The realm draws: demo_rows gives each piece's instance rows (its rest
 // rows standing, nothing broken, moved with its body loose), demo_shard each
 // chunk's (its piece's mesh moved with its body) and demo_cell its planes;
@@ -64,6 +70,7 @@
 #load "space.coax";
 #load "rigid.coax";
 #load "terrain.coax";
+#load "stand.coax";
 
 DEMO_PIECES :: 4000;
 DEMO_MESHES :: 96;
@@ -136,6 +143,11 @@ DEMO_BITS :: 120;          // splinters alive at once
 DEMO_BIT_LIFE :: 40.0;     // s a splinter lies before it goes
 
 DP_STANDING :: 0; DP_LOOSE :: 1; DP_BROKEN :: 2;
+// What a piece's top is to stand on (demo_set_top): its box's top face, a roof's two slopes (a pitched
+// piece always), a tower roof's cone, or nothing (a door's leaf, a banner).
+DEMO_TOP_BOX :: 0; DEMO_TOP_GABLE :: 1; DEMO_TOP_CONE :: 2; DEMO_TOP_NONE :: 3;
+DEMO_STAND :: 6000;        // floors at most (a piece's top each, a roof's two)
+DEMO_STAND_WEST :: -128.0; // the floors' grid's corner (x and z), STAND_SIDE cells of STAND_CELL m from it
 DEMO_CHUNK :: 1; DEMO_WHOLE :: 2;   // what a body is
 
 // A piece: scalars only and at most 32 of them (the interpreter's checks hold
@@ -155,6 +167,7 @@ DemoPiece :: struct {
   brace: int;                  // what it leans on: the roof it rises into (a gable), the wall it stands in (a door), -1 none
   hit_at: f64;                 // when it last took damage
   stamp: int;                  // the last contact search that met it
+  top: int;                    // DEMO_TOP_*: what its top is to stand on
 }
 
 // A body's own things beside its rigid state (DemoWorld.state, DB_FLOATS a body).
@@ -237,6 +250,9 @@ DemoWorld :: struct {
   bits: [DEMO_BITS] DemoBit;
   // the spells' fields over the bodies this frame (demo_field_accel), the realm's to set
   fields: [DEMO_FIELDS] DemoField; field_n: int;
+  // the floors on the pieces' tops (demo_stand_build): STAND_FLOATS each, the piece each is on, their grid
+  stand: [DEMO_STAND * STAND_FLOATS] f32; stand_of: [DEMO_STAND] int; stand_n: int;
+  stand_grid: [1] StandGrid;
 }
 
 // ---- small things
@@ -522,7 +538,137 @@ demo_link :: (w: [] DemoWorld) {
   }
   for g: 0..<DEMO_GROUPS { if counts[g] > 0 { w[0].group_x[g] /= f32(counts[g]); w[0].group_z[g] /= f32(counts[g]); } }
   demo_link_towers(w);
+  demo_stand_build(w);
   w[0].linked = true;
+}
+
+// ---- standing on what stands (verse/stand.coax)
+
+demo_set_top :: (w: [] DemoWorld, i: int, kind: int) {
+  if i < 0 || i >= w[0].n { return; }
+  w[0].pieces[i].top = kind;
+}
+// Every piece's floors, on the grid: a pitched piece's two slopes from its eaves (its mesh's lowest x
+// and highest, at its lowest y) to its ridge (x 0, its highest y) along its z; a cone from its base's
+// middle; anything else its box's top face.
+demo_stand_build :: (w: [] DemoWorld) {
+  n := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    kind := ifx p.pitched then DEMO_TOP_GABLE else p.top;
+    if kind == DEMO_TOP_NONE || n + 2 > DEMO_STAND { continue; }
+    r := w[0].rest[i * 12..<i * 12 + 12];
+    mb := clamp_mesh(p.mesh) * 6;
+    lx := w[0].mesh_box[mb]; ly := w[0].mesh_box[mb + 1]; lz := w[0].mesh_box[mb + 2];
+    ux := w[0].mesh_box[mb + 3]; uy := w[0].mesh_box[mb + 4]; uz := w[0].mesh_box[mb + 5];
+    if kind == DEMO_TOP_GABLE {
+      ridge := demo_at(r, v3(0, uy, lz));
+      for side: 0..<2 {
+        ex := ifx side == 0 then lx else ux;
+        if abs(ex) < 0.01 { continue; }
+        o := demo_at(r, v3(ex, ly, lz)); a := sub(ridge, o); b := sub(demo_at(r, v3(ex, ly, uz)), o);
+        stand_put_quad(w[0].stand[..], n, o.x, o.z, a.x, a.z, b.x, b.z, o.y, a.y, b.y);
+        w[0].stand_of[n] = i; n += 1;
+      }
+      continue;
+    }
+    if kind == DEMO_TOP_CONE {
+      c := demo_at(r, v3((lx + ux) / 2, ly, (lz + uz) / 2));
+      rad := (ux - lx) / 2 * length(v3(r[0], r[4], r[8]));
+      rise := (uy - ly) * length(v3(r[1], r[5], r[9]));
+      stand_put_cone(w[0].stand[..], n, c.x, c.z, rad, c.y, rise);
+      w[0].stand_of[n] = i; n += 1;
+      continue;
+    }
+    axes: [9] f32;
+    for a: 0..<3 {
+      col := v3(r[a], r[4 + a], r[8 + a]);
+      l := length(col);
+      if l < 0.000001 { l = 1; }
+      axes[a * 3] = col.x / l; axes[a * 3 + 1] = col.y / l; axes[a * 3 + 2] = col.z / l;
+    }
+    if stand_put_box_top(w[0].stand[..], n, p.cx, p.cy, p.cz, axes[..], p.hx, p.hy, p.hz) { w[0].stand_of[n] = i; n += 1; }
+  }
+  w[0].stand_n = n;
+  full := stand_grid_build(w[0].stand_grid[..], w[0].stand[..], n, f32(DEMO_STAND_WEST), f32(DEMO_STAND_WEST));
+}
+// Body b's top face (a chunk's, a loose piece's) as floor k of out.
+demo_body_top :: (w: [] DemoWorld, b: int, out: [] f32, k: int) -> bool {
+  m := w[0].meta[b];
+  st := b * DB_FLOATS;
+  q := dq(w[0].state[st + 10], w[0].state[st + 11], w[0].state[st + 12], w[0].state[st + 13]);
+  x := dq_rotate(q, D3_X); y := dq_rotate(q, D3_Y); z := dq_rotate(q, D3_Z);
+  axes := [9] f32.[f32(x.x), f32(x.y), f32(x.z), f32(y.x), f32(y.y), f32(y.z), f32(z.x), f32(z.y), f32(z.z)];
+  c := demo_pos(w, b);
+  return stand_put_box_top(out, k, f32(c.x), f32(c.y), f32(c.z), axes[..], f32(m.hx), f32(m.hy), f32(m.hz));
+}
+// Whether body b is rubble you may stand on: a chunk or a loose piece lying asleep within `reach` of (x, z).
+demo_rubble_near :: (w: [] DemoWorld, b: int, x: f32, z: f32, reach: f32) -> bool {
+  if w[0].meta[b].kind == 0 || !demo_asleep(w, b) { return false; }
+  c := demo_pos(w, b);
+  r := f32(w[0].meta[b].radius) + reach;
+  return abs(x - f32(c.x)) <= r && abs(z - f32(c.z)) <= r;
+}
+// The highest surface of what stands (and the rubble lying still) over (x, z) at or under `below`,
+// `pad` past its edges; y STAND_NONE if there is none.
+demo_stand :: (w: [] DemoWorld, x: f32, z: f32, below: f32, pad: f32) -> StandHit {
+  best: StandHit;
+  if w.count < 1 { return best; }
+  if w[0].stand_n > 0 {
+    g := w[0].stand_grid[0..<1];
+    c := stand_cell(g, x, z);
+    if c >= 0 {
+      for e: 0..<g[0].count[c] {
+        k := g[0].list[g[0].at[c] + e];
+        if w[0].pieces[w[0].stand_of[k]].state != DP_STANDING { continue; }
+        h := stand_at(w[0].stand[..], k, x, z, pad);
+        if h.y <= below && h.y > best.y { best = h; }
+      }
+    }
+  }
+  face: [STAND_FLOATS] f32;
+  for b: 0..<DEMO_BODIES {
+    if !demo_rubble_near(w, b, x, z, pad) || !demo_body_top(w, b, face[..], 0) { continue; }
+    h := stand_at(face[..], 0, x, z, pad);
+    if h.y <= below && h.y > best.y { best = h; best.id = -2 - b; }
+  }
+  return best;
+}
+// The floors within `reach` of (x, z) (pieces still standing, rubble lying still), lowered by `base`,
+// into out from floor `at` on, at most up to its end: for a walker that takes a list
+// (verse/player.coax World.floors). Returns how many floors out holds now.
+demo_stand_near :: (w: [] DemoWorld, x: f32, z: f32, reach: f32, base: f32, out: [] f32, at: int) -> int {
+  n := at;
+  cap := out.count / STAND_FLOATS;
+  if w.count < 1 { return n; }
+  if w[0].stand_n > 0 {
+    g := w[0].stand_grid[0..<1];
+    i0 := stand_ci(stand_col(g, x - reach)); i1 := stand_ci(stand_col(g, x + reach));
+    j0 := stand_ci(stand_row(g, z - reach)); j1 := stand_ci(stand_row(g, z + reach));
+    for j: j0..<j1 + 1 {
+      for i: i0..<i1 + 1 {
+        c := j * STAND_SIDE + i;
+        for e: 0..<g[0].count[c] {
+          k := g[0].list[g[0].at[c] + e];
+          if n >= cap || w[0].pieces[w[0].stand_of[k]].state != DP_STANDING { continue; }
+          rc := stand_rect(w[0].stand[..], k);
+          if rc.x0 > x + reach || rc.x1 < x - reach || rc.z0 > z + reach || rc.z1 < z - reach { continue; }
+          // listed once though it is over several cells: its first cell in reach lists it
+          first := stand_ci(stand_col(g, rc.x0 - f32(STAND_PAD))); top := stand_ci(stand_row(g, rc.z0 - f32(STAND_PAD)));
+          if (i != hi_int(first, i0)) || (j != hi_int(top, j0)) { continue; }
+          o := k * STAND_FLOATS;
+          for q: 0..<STAND_FLOATS { out[n * STAND_FLOATS + q] = w[0].stand[o + q]; }
+          stand_lift(out, n, -base);
+          n += 1;
+        }
+      }
+    }
+  }
+  for b: 0..<DEMO_BODIES {
+    if n >= cap || !demo_rubble_near(w, b, x, z, reach) { continue; }
+    if demo_body_top(w, b, out, n) { stand_lift(out, n, -base); n += 1; }
+  }
+  return n;
 }
 
 // Whether a piece is a wall section or a post: tall and thin.
@@ -2189,4 +2335,55 @@ demo_tower :: (w: [] DemoWorld) {
     if i < 24 { low += -v.z; } else { high += -v.z; }
   }
   #assert high > low;
+}
+
+#test "demolish: you stand on a cottage's roof following its slope, eave to ridge, and on its walls' tops" {
+  w: [1] DemoWorld;
+  demo_cottage(w[..]);
+  demo_link(w[..]);
+  #assert w[0].stand_n == 34;   // 32 walls' tops and the roof's two slopes
+  eave := demo_stand(w[..], -4.0, 0, 99, 0);
+  #assert abs(eave.y - (6.24 + 3 * 0.2 / 4.2)) < 0.01 && abs(eave.gx - 3 / 4.2) < 0.01 && !stand_steep(eave);
+  #assert abs(demo_stand(w[..], 0, 1, 99, 0).y - 9.24) < 0.01;
+  #assert abs(demo_stand(w[..], 2.1, -3, 99, 0).y - 7.74) < 0.01 && demo_stand(w[..], 2.1, -3, 99, 0).gx < 0;
+  // past its eaves and its ends, nothing; inside under it, nothing but the walls' tops
+  #assert demo_stand(w[..], -4.5, 0, 99, 0).y == f32(STAND_NONE) && demo_stand(w[..], 0, 4.5, 99, 0).y == f32(STAND_NONE);
+  #assert demo_stand(w[..], 0, 0, 5, 0).y == f32(STAND_NONE);
+  #assert abs(demo_stand(w[..], -4, 0.5, 4, 0).y - 3.12) < 0.001 && abs(demo_stand(w[..], -4, 0.5, 6.3, 0).y - 6.24) < 0.001;
+  // a walker's list: the roof's slopes and the walls round, lowered to its own floor, each once
+  list: [64 * STAND_FLOATS] f32;
+  n := demo_stand_near(w[..], -3, 0, 2, 1, list[..], 0);
+  #assert n >= 6 && n < 20;
+  #assert abs(stand_top(list[..], n, -4.0, 0, 99, 0).y - (5.24 + 3 * 0.2 / 4.2)) < 0.01;
+  for a: 0..<n { for b: a + 1..<n {
+    alike := true;
+    for q: 0..<STAND_FLOATS { if list[a * STAND_FLOATS + q] != list[b * STAND_FLOATS + q] { alike = false; } }
+    #assert !alike;
+  } }
+}
+
+#test "demolish: a roof broken away no longer holds you; the rubble lying still does" {
+  w: [1] DemoWorld;
+  g := Ground.{n = 8, cell = 40, west = -160, south = -160};
+  heights: [81] f32;
+  demo_cottage(w[..]);
+  demo_link(w[..]);
+  #assert demo_stand(w[..], 0, 1, 99, 0).y > 9;
+  #assert demo_damage(w[..], 32, 99, v3(0, 12, 0), 6);
+  #assert demo_stand(w[..], 0, 1, 99, 0).y == f32(STAND_NONE);
+  for k: 0..<1200 { demo_step(w[..], g, heights[..], 1.0 / 60.0); }
+  #assert demo_awake(w[..]) == 0;
+  held := 0;
+  for b: 0..<DEMO_BODIES {
+    if w[0].meta[b].kind == 0 { continue; }
+    c := demo_pos(w[..], b);
+    h := demo_stand(w[..], f32(c.x), f32(c.z), 99, 0);
+    // the highest thing there is this chunk's top, or something over it (a wall, another chunk)
+    #assert h.y >= f32(c.y) - 0.01;
+    if h.id == -2 - b { held += 1; #assert h.y < f32(c.y) + f32(w[0].meta[b].radius) + 0.01; }
+  }
+  #assert held > 3;
+  // and standing it back up, it holds you again
+  _ := demo_restore(w[..], 7);
+  #assert abs(demo_stand(w[..], 0, 1, 99, 0).y - 9.24) < 0.01;
 }

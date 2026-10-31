@@ -43,6 +43,7 @@
 #load "routines.coax";
 #load "people-rig.coax";
 #load "../rules/srd5-combat.coax";
+#load "../stand.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
 WATCH_REIN :: 10;                      // the heat's reinforcements at most at once (WANTED levels 2 to 5)
@@ -318,7 +319,11 @@ Watch :: struct {
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
   call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
+  // what a thrown body comes down onto besides the ground (verse/stand.coax: the roofs and rubble round
+  // the bodies in flight, the realm's to set each frame), in the world
+  floors: [WATCH_FLOORS * STAND_FLOATS] f32; floor_n: int;
 }
+WATCH_FLOORS :: 96;
 WATCH_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
 
@@ -462,6 +467,15 @@ watch_on_rail :: (x: f32, z: f32, pad: f32) -> bool {
 watch_feet_y :: (w: [] Watch, heights: [] f32, x: f32, z: f32) -> f32 {
   if heights.count < EG_GROUND_POINTS { return 0; }
   return everglade_walk_height(heights, w[0].deck, x, z);
+}
+// What a body with its lowest point at `from` comes down onto at (x, z): the ground or deck under it,
+// or the highest of the floors round it (a roof, the rubble) at or under `from`.
+watch_floor_y :: (w: [] Watch, heights: [] f32, x: f32, z: f32, from: f32) -> f32 {
+  g := watch_feet_y(w, heights, x, z);
+  n := w[0].floor_n;
+  if n <= 0 { return g; }
+  h := stand_top(w[0].floors[..], n, x, z, from, 0.1);
+  return ifx h.y > g then h.y else g;
 }
 // Which side of the river (x) is on: -1 west of the bridge's span, 1 east, 0 in it.
 watch_bank :: (x: f32) -> int { if x < EG_BRIDGE[0] { return -1; } if x > EG_BRIDGE[2] { return 1; } return 0; }
@@ -1091,7 +1105,7 @@ tumble_stepped :: (w: [] Watch, b: Tumble, dt: f32, heights: [] f32) -> Tumble {
     if tumble_blocked(w, heights, nx, ny, nz) { nx = n.x; nz = n.z; n.vx = 0; n.vz = 0; }
     n.x = nx; n.z = nz; n.y = ny;
     n.pitch += n.spin * h;
-    g := watch_feet_y(w, heights, n.x, n.z);
+    g := watch_floor_y(w, heights, n.x, n.z, n.y - f32(TUMBLE_LIE) + 0.25);
     rest := g + tumble_rest_y(n.pitch);
     if n.y <= rest + 0.12 {
       if n.y <= rest { n.y = rest; if n.vy < 0 { n.vy = ifx n.vy < -2.5 then -n.vy * 0.25 else 0.0f32; } }
@@ -1108,7 +1122,7 @@ tumble_stepped :: (w: [] Watch, b: Tumble, dt: f32, heights: [] f32) -> Tumble {
     if n.still_t >= 0.2 || n.age >= f32(TUMBLE_LONGEST) {
       n.on = false; n.settle = 0;
       n.pitch = back; n.spin = 0; n.vx = 0; n.vy = 0; n.vz = 0;
-      n.y = watch_feet_y(w, heights, n.x, n.z) + f32(TUMBLE_LIE);
+      n.y = watch_floor_y(w, heights, n.x, n.z, n.y - f32(TUMBLE_LIE) + 0.25) + f32(TUMBLE_LIE);
       return n;
     }
   }

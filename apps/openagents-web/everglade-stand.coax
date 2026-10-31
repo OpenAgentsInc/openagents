@@ -1,0 +1,293 @@
+// Standing on what stands (verse/stand.coax): every surface you come down
+// onto holds you, you and the town's people alike. The town's pieces are
+// floors (verse/demolish.coax demo_stand: a box's top, a roof's two slopes,
+// a tower roof's cone, the rubble lying still), and over them the
+// observatory's dome and the fountain's two lips, which are no kit pieces.
+// A roof blown away holds no one; its rubble does.
+//
+// everglade_stand answers for anyone: the highest surface at (x, z) at or
+// under a height, the ground (walk_at) the lowest. The player's controller
+// (verse/player.coax) takes the floors round you each frame
+// (everglade_floors_near, over the ground you walk on, as its walls are);
+// the people's feet stand on what they came down on (ab_perch:
+// everglade-abilities.coax), and a body thrown by a blast lands on it
+// (verse/everglade/watch.coax tumble_stepped, the floors round it: eg_watch_floors).
+//   coax/bin/coax test apps/openagents-web/everglade.coax --only stand --steps 2000000000
+
+EG_STAND_PAD :: 0.15;       // how far past a floor's edge a body's middle may be (player.coax FLOOR_PAD)
+EG_STAND_NEAR :: 96;        // floors the player is handed at most
+EG_STAND_REACH :: 2.5;      // m round you they are taken from (a frame's step is under one)
+EG_STAND_EXTRAS :: 3;
+// The fountain's lips (everglade.wgsl lathe_point): the basin's, and the upper bowl's.
+EG_LIP :: [6] f32.[2.66, 3.08, 0.88,   1.1, 1.4, 2.14];
+
+// The floors that are no kit pieces, absolute: the observatory's dome while it stands, the fountain's lips.
+eg_stand_extras :: (s: [] Everglade, out: [] f32) -> int {
+  n := 0;
+  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) && !fi_dome_gone(s) {
+    c := fi_dome_centre(s);
+    stand_put_dome(out, n, c.x, c.y, c.z, f32(SP_DOME_R)); n += 1;
+  }
+  g := ground_at(s, 0, 0);
+  lip := EG_LIP;
+  for k: 0..<2 { stand_put_ring(out, n, 0, 0, lip[k * 3], lip[k * 3 + 1], g + lip[k * 3 + 2]); n += 1; }
+  return n;
+}
+
+// The highest surface over (x, z) at or under `below`: the ground (walk_at, id -1) or something on it.
+everglade_stand :: (s: [] Everglade, x: f32, z: f32, below: f32) -> StandHit {
+  h := StandHit.{y = walk_at(s, x, z)};
+  if s[0].sp.ready && s[0].sp.dm.count > 0 {
+    d := demo_stand(sp_dm(s), x, z, below, f32(EG_STAND_PAD));
+    if d.y > h.y { h = d; }
+  }
+  ex: [EG_STAND_EXTRAS * STAND_FLOATS] f32;
+  n := eg_stand_extras(s, ex[..]);
+  e := stand_top(ex[..], n, x, z, below, f32(EG_STAND_PAD));
+  if e.y > h.y { h = e; h.id = -1000 - e.id; }
+  return h;
+}
+// What a walker with its feet `feet` over the ground at (x, z) stands on, over that ground: 0 on it,
+// a roof's height over it on the roof (the highest surface no more than a step over its feet).
+everglade_stand_lift :: (s: [] Everglade, x: f32, z: f32, feet: f32) -> f32 {
+  base := walk_at(s, x, z);
+  return hi(everglade_stand(s, x, z, base + hi(feet, 0) + f32(STAND_STEP)).y - base, 0);
+}
+// The floors round (x, z) for the player's controller, over the ground you walk on there (the
+// controller's floor 0): into s.floors, how many.
+everglade_floors_near :: (s: [] Everglade, x: f32, z: f32) -> int #export_c {
+  if !s[0].started { everglade_start(s); }
+  return eg_floors_round(s, x, z, f32(EG_STAND_REACH), walk_at(s, x, z), s[0].floors[..], 0);
+}
+// The floors within `reach` of (x, z), lowered by `base`, into out from floor `at`: how many it holds then.
+eg_floors_round :: (s: [] Everglade, x: f32, z: f32, reach: f32, base: f32, out: [] f32, at: int) -> int {
+  n := at;
+  if s[0].sp.ready && s[0].sp.dm.count > 0 { n = demo_stand_near(sp_dm(s), x, z, reach, base, out, n); }
+  ex: [EG_STAND_EXTRAS * STAND_FLOATS] f32;
+  m := eg_stand_extras(s, ex[..]);
+  for k: 0..<m {
+    if (n + 1) * STAND_FLOATS > out.count { break; }
+    r := stand_rect(ex[..], k);
+    if r.x0 > x + reach || r.x1 < x - reach || r.z0 > z + reach || r.z1 < z - reach { continue; }
+    for q: 0..<STAND_FLOATS { out[n * STAND_FLOATS + q] = ex[k * STAND_FLOATS + q]; }
+    stand_lift(out, n, -base);
+    n += 1;
+  }
+  return n;
+}
+// The players' walls (everglade.coax build_scenery) stand to a building's eaves, not over its roof:
+// over them its roof is the floor, so you stand on it instead of in a box round it.
+eg_eave :: (b: int) -> f32 {
+  if b == EG_OBSERVATORY { return f32(STOREY) * f32(OBSERVATORY_STOREYS); }
+  return f32(STOREY) * f32(storeys(b));
+}
+eg_wall_top :: (x0: f32, z0: f32, x1: f32, z1: f32, h: f32) -> f32 {
+  for b: 0..<EG_BUILDINGS {
+    k := b * EG_BOX;
+    if x0 >= EG_BUILDING[k] - 0.01 && x1 <= EG_BUILDING[k + 2] + 0.01 && z0 >= EG_BUILDING[k + 1] - 0.01 && z1 <= EG_BUILDING[k + 3] + 0.01 { return lo(h, eg_eave(b)); }
+  }
+  // a gate tower: its two storeys of brick (everglade.coax palisade) under its cone
+  for i: 0..<EG_PALISADE_N {
+    k := i * EG_BOX;
+    if EG_PALISADE[k + 4] > 5 && x0 == EG_PALISADE[k] && z0 == EG_PALISADE[k + 1] && x1 == EG_PALISADE[k + 2] && z1 == EG_PALISADE[k + 3] { return lo(h, 2 * f32(STOREY) - 0.2); }
+  }
+  return h;
+}
+// What each kit piece's top is to stand on (verse/demolish.coax demo_set_top): a tower roof's a cone, a
+// gable front's two slopes; a door's leaf, a window's frame and a banner nothing.
+eg_piece_top :: (m: int) -> int {
+  if m == M_TOWER_ROOF { return DEMO_TOP_CONE; }
+  if m == M_GABLE { return DEMO_TOP_GABLE; }
+  if m == M_DOOR || m == M_WINDOW || m == M_BANNER { return DEMO_TOP_NONE; }
+  return DEMO_TOP_BOX;
+}
+// The floors round every body in flight (a person a blast threw, your own fallen body), in the
+// world, for the watch's tumble (verse/everglade/watch.coax watch_floor_y): how many.
+EG_TUMBLE_REACH :: 5.0;
+eg_watch_floors :: (s: [] Everglade, w: [] Watch) -> int {
+  n := 0;
+  for i: 0..<WATCH_ACTORS {
+    b := w[0].actors[i].body;
+    if b.on { n = eg_floors_round(s, b.x, b.z, f32(EG_TUMBLE_REACH), 0, w[0].floors[..], n); }
+  }
+  if w[0].you_body.on { n = eg_floors_round(s, w[0].you_body.x, w[0].you_body.z, f32(EG_TUMBLE_REACH), 0, w[0].floors[..], n); }
+  return n;
+}
+
+// How far the camera may back out along r before a roof or the rubble (anything over the ground no
+// more than 2 m over its target): standing on a roof's slope, the slope behind you keeps it out.
+EG_CAM_STEP :: 0.4;
+eg_stand_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
+  t := f32(EG_CAM_STEP);
+  while t < r.far {
+    p := add(r.from, times(r.dir, t));
+    h := everglade_stand(s, p.x, p.z, r.from.y + 2);
+    if h.id != -1 && p.y < h.y + 0.25 { return hi(t - f32(EG_CAM_STEP), 0.35); }
+    t += f32(EG_CAM_STEP);
+  }
+  return r.far;
+}
+
+// ?stage=roof (docs/verse/clips.md): you start 3 m over the temple's roof, on its west slope 3 m from
+// its ridge, facing along it, and come down on it.
+eg_stage :: (s: [] Everglade, url: string) {
+  if !eg_query_is(url, "stage", "roof") { return; }
+  r := eg_temple_roof(s);
+  x := r.x - 3; z := r.z - 7;
+  s[0].spawn = v3(x, eg_roof_at(r, x) + 3 - walk_at(s, x, z), z);
+  s[0].spawn_face = 0; s[0].warp = true;
+}
+// Whether the URL's query has key=value.
+eg_query_is :: (url: string, key: string, value: string) -> bool {
+  at := 0;
+  while at + key.count + 1 + value.count <= url.count {
+    before := ifx at == 0 then cast(u8) 63 else url[at - 1];
+    if (before == 63 || before == 38) && url[at..<at + key.count] == key && url[at + key.count] == 61 {
+      i := at + key.count + 1;
+      after := i + value.count;
+      return url[i..<after] == value && (after == url.count || url[after] == 38 || url[after] == 35);
+    }
+    at += 1;
+  }
+  return false;
+}
+
+// The temple's roof (everglade.coax building): its eaves' height, its ridge's, and its half span
+// from the ridge (along x: its ridge runs along z) to the eave; its piece once the town can break.
+EgRoof :: struct { eave: f32; ridge: f32; run: f32; x: f32; z: f32; piece: int; }
+eg_temple_roof :: (s: [] Everglade) -> EgRoof {
+  k := EG_TEMPLE * EG_BOX;
+  x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+  r: EgRoof;
+  r.x = (x0 + x1) / 2; r.z = (z0 + z1) / 2;
+  top := ground_at(s, r.x, r.z) + f32(storeys(EG_TEMPLE)) * f32(STOREY);
+  sx := (x1 - x0 + 0.8) / 8.24; sy := sx * 0.85;
+  r.eave = top + (0.78 - 0.782) * sy; r.ridge = top + (0.78 + 4.89) * sy; r.run = 4.125 * sx;
+  r.piece = -1;
+  if s[0].sp.dm.count > 0 {
+    w := sp_dm(s);
+    for i: 0..<w[0].n { if w[0].pieces[i].mesh == M_ROOF && w[0].pieces[i].group == EG_TEMPLE { r.piece = i; } }
+  }
+  return r;
+}
+// The roof's height at x across it (its ridge at r.x).
+eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * (1 - abs(x - r.x) / r.run); }
+
+// ---- checks
+
+#test "stand: Levitate ends on the temple's roof, and you stay on it" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  r := eg_temple_roof(g[..]);
+  #assert r.piece >= 0 && r.ridge > r.eave + 8;
+  x := r.x - 4; z := r.z;
+  base := walk_at(g[..], x, z);
+  want := eg_roof_at(r, x);
+  #assert abs(everglade_stand(g[..], x, z, 99).y - want) < 0.05;
+  // you levitate over it, 6 m over its slope there, and sink
+  g[0].feet = v3(x, want + 6 - base, z);
+  a := ab_of(g[..]);
+  a[0].lev_on = true; a[0].lev_sink = true; a[0].lev_up = false;
+  y := want + 6 - base; v := 0.0f32;
+  for k: 0..<600 {
+    if !a[0].lev_on { break; }
+    l := everglade_lift(g[..], x, z, y, v, y - 0.4 / 60, v - 0.4, 1.0 / 60);
+    y = l.y; v = l.vy;
+  }
+  // it ends on the roof, not through it
+  #assert !a[0].lev_on && abs(base + y - want) < 0.05;
+  // and the controller is handed the roof there: you stand on it, not inside on the temple's floor
+  n := everglade_floors_near(g[..], x, z);
+  #assert n > 0 && n <= EG_STAND_NEAR;
+  h := stand_top(g[0].floors[..], n, x, z, y + f32(STAND_STEP), f32(EG_STAND_PAD));
+  #assert abs(h.y - y) < 0.05 && !stand_steep(h);
+  // inside, under it, the floor is the temple's own
+  #assert everglade_stand(g[..], x, z, base + 1).y < base + 0.2;
+}
+
+#test "stand: a gable roof holds you at its eave and its ridge, at their heights, following its slope" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  r := eg_temple_roof(g[..]);
+  eave := everglade_stand(g[..], r.x - r.run + 0.2, r.z, 99);
+  ridge := everglade_stand(g[..], r.x, r.z + 2, 99);
+  #assert abs(eave.y - eg_roof_at(r, r.x - r.run + 0.2)) < 0.05 && abs(ridge.y - r.ridge) < 0.05;
+  // up from the eave to the ridge, never a step's jump between two strides
+  last := eave.y;
+  for k: 1..<40 {
+    x := r.x - r.run + 0.2 + f32(k) * (r.run - 0.2) / 40;
+    h := everglade_stand(g[..], x, r.z, 99);
+    #assert h.y > last && h.y - last < 0.4 && h.gx > 0.5;
+    last = h.y;
+  }
+  // a step past the eave's overhang, the ground (the temple's walls stand inside it)
+  #assert everglade_stand(g[..], r.x - r.run - 0.5, r.z, 99).y < walk_at(g[..], r.x - r.run - 0.5, r.z) + 0.01;
+  // a house's roof too, and a palisade's walkway
+  pk := 0;
+  pal := EG_PALISADE[pk * EG_BOX + 4];
+  px := (EG_PALISADE[0] + EG_PALISADE[2]) / 2; pz := (EG_PALISADE[1] + EG_PALISADE[3]) / 2;
+  #assert everglade_stand(g[..], px, pz, 99).y > walk_at(g[..], px, pz) + pal - 0.5;
+}
+
+#test "stand: the temple's roof blown away no longer holds you" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  r := eg_temple_roof(g[..]);
+  x := r.x - 4; z := r.z;
+  #assert everglade_stand(g[..], x, z, 99).y > r.eave;
+  _ := demo_damage(sp_dm(g[..]), r.piece, 9999, v3(x, r.ridge + 3, z), 6);
+  #assert sp_dm(g[..])[0].pieces[r.piece].state != DP_STANDING;
+  #assert everglade_stand(g[..], x, z, 99).y < r.eave - 5;
+  n := everglade_floors_near(g[..], x, z);
+  #assert stand_top(g[0].floors[..], n, x, z, 99, f32(EG_STAND_PAD)).y < r.eave - 5 - walk_at(g[..], x, z);
+}
+
+#test "stand: one thrown onto the temple's roof comes down on it and stays there; off its edge they fall" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  r := eg_temple_roof(g[..]);
+  w := watch_w(g[..]);
+  i := WATCH_FIRST_REIN;
+  x := r.x - 3; z := r.z;
+  b := w[0].actors[i].body;
+  b.on = false; b.x = x; b.z = z; b.y = eg_roof_at(r, x) + 4; b.pitch = 0;
+  b = tumble_kicked(b, v3(0.5, 1, 0));
+  for k: 0..<600 {
+    if !b.on { break; }
+    w[0].actors[i].body = b;
+    w[0].floor_n = eg_watch_floors(g[..], w);
+    b = tumble_stepped(w, b, 1.0 / 60, g[0].heights[..]);
+  }
+  #assert !b.on && abs(b.y - f32(TUMBLE_LIE) - eg_roof_at(r, b.x)) < 0.3;
+  // on their feet where they came down, they stand on the roof
+  w[0].actors[i].body = b;
+  ft := tumble_feet(b);
+  w[0].actors[i].x = ft.x; w[0].actors[i].z = ft.z;
+  ab_perch(g[..], i);
+  a := ab_of(g[..]);
+  #assert !a[0].up[i] && abs(folk_feet(g[..], ft.x, ft.z) + ab_air(g[..], i) - eg_roof_at(r, ft.x)) < 0.4;
+  for k: 0..<30 { w[0].actors[i].body.settle = f32(TUMBLE_SETTLE); ab_perch(g[..], i); }
+  #assert !a[0].up[i] && ab_air(g[..], i) > 5;
+  // moved off the roof's edge, they fall
+  w[0].actors[i].x = r.x - r.run - 1;
+  ab_perch(g[..], i);
+  #assert a[0].up[i] && a[0].air[i] > 5;
+}
+
+#test "stand: ?stage=roof starts you over the temple's roof, to come down on it" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_warp(g[..]);
+  everglade_message(g[..], MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1\nurl=https://openagents.com/realms/everglade?stage=roof");
+  #assert everglade_warp(g[..]);
+  r := eg_temple_roof(g[..]);
+  p := everglade_spawn(g[..]);
+  under := everglade_stand(g[..], p.x, p.z, walk_at(g[..], p.x, p.z) + p.y);
+  #assert under.id >= 0 && abs(walk_at(g[..], p.x, p.z) + p.y - under.y - 3) < 0.05 && abs(p.x - r.x) < r.run;
+  #assert !eg_query_is("https://x/y?stage=roofs", "stage", "roof") && eg_query_is("https://x/y?a=1&stage=roof#temple", "stage", "roof");
+}

@@ -119,6 +119,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
     s[0].wv.want = 0;
   }
   everglade_captain_frame(s, you);   // the guard captain's plan (everglade-guard-ai.coax)
+  w[0].floor_n = eg_watch_floors(s, w);   // what the bodies in flight come down onto (everglade-stand.coax)
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   // a hunter's spell threw you: the face adds it to your velocity
   if w[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }

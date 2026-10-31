@@ -130,6 +130,7 @@ Abilities :: struct {
   // they rose (for the fall), whether they hold on, and whether the cylinder has taken their save
   air: [WATCH_ACTORS] f32; air_v: [WATCH_ACTORS] f32; air_top: [WATCH_ACTORS] f32;
   up: [WATCH_ACTORS] bool; held: [WATCH_ACTORS] bool; saved: [WATCH_ACTORS] bool;
+  perch: [WATCH_ACTORS] f32;   // on their feet, how high over the ground what they stand on is (a roof they came down on)
   t: f32;
   keys: [AB_N] bool;         // the abilities' keys held (a held key's repeats press nothing)
   lev_on: bool; lev_up: bool; lev_sink: bool; lev_hold: f32; lev_t: f32;   // lev_hold: the height you hover at, world
@@ -1390,27 +1391,31 @@ everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
 // clip while they are up, and take 1d6 for every 10 feet when they land.
 ab_people :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
-  if !watch_on(s) { for i: 0..<WATCH_ACTORS { a[0].up[i] = false; a[0].air[i] = 0; } return; }
+  if !watch_on(s) { for i: 0..<WATCH_ACTORS { a[0].up[i] = false; a[0].air[i] = 0; a[0].perch[i] = 0; } return; }
   w := watch_w(s);
   steps := clamp_i(cast(int) (dt * 120) + 1, 1, 30);
   h := dt / f32(steps);
   for i: 0..<WATCH_ACTORS {
-    if !a[0].up[i] || ab_tk_holds(a, i) { continue; }
+    if ab_tk_holds(a, i) { continue; }
+    if !a[0].up[i] { ab_perch(s, i); continue; }
     pl := person_place(s, i);
     feet := folk_feet(s, pl.x, pl.z);
     y := a[0].air[i]; v := a[0].air_v[i];
+    // what they come down onto: the highest surface under them (a roof, the rubble), else the ground
+    fl := everglade_stand_lift(s, pl.x, pl.z, y);
     for q: 0..<steps {
       at := v3(pl.x, feet + y, pl.z);
       g := ifx ab_in_cylinder(a, at) then ab_rg_accel(a, feet + y, v) else -f32(AB_G);
       v += g * h;
       if a[0].feather[i] && v < -f32(AB_FF_SPEED) { v = -f32(AB_FF_SPEED); }
       y += v * h;
-      if y <= 0 && v <= 0 { break; }
+      if y <= fl && v <= 0 { break; }
     }
     a[0].air_top[i] = hi(a[0].air_top[i], y);
-    if y <= 0 && v <= 0 {
-      // landed: the fall's 1d6 per 10 feet (at most 20d6)
-      dice := ifx a[0].feather[i] then 0 else clamp_i(cast(int) floor(a[0].air_top[i] / (10 * f32(AB_FOOT)) + 0.000001), 0, 20);
+    if y <= fl && v <= 0 {
+      // landed (on what they came down onto, and they stand on it): the fall's 1d6 per 10 feet (at most 20d6)
+      a[0].perch[i] = fl;
+      dice := ifx a[0].feather[i] then 0 else clamp_i(cast(int) floor((a[0].air_top[i] - fl) / (10 * f32(AB_FOOT)) + 0.000001), 0, 20);
       a[0].feather[i] = false;
       if dice > 0 && w[0].actors[i].mode != WM_DEAD { watch_harm(w, i, srd_sum(s[0].sp.dice[..], dice, 6), ab_you(s)); }
       a[0].up[i] = false; a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].air_top[i] = 0;
@@ -1425,7 +1430,26 @@ ab_people :: (s: [] Everglade, dt: f32) {
 ab_air :: (s: [] Everglade, i: int) -> f32 {
   if i < 0 || i >= WATCH_ACTORS { return 0; }
   a := ab_of(s);
-  return ifx a[0].up[i] then a[0].air[i] else 0.0f32;
+  return ifx a[0].up[i] then a[0].air[i] else a[0].perch[i];
+}
+// Person i on their feet: they stand on what is under them, no more than a step over where they
+// stood (thrown, where their body came down); if it goes from under them (a roof blown away, its edge
+// walked off) they fall.
+ab_perch :: (s: [] Everglade, i: int) {
+  a := ab_of(s);
+  w := watch_w(s);
+  pl := person_place(s, i);
+  base := folk_feet(s, pl.x, pl.z);
+  from := base + a[0].perch[i];
+  b := w[0].actors[i].body;
+  thrown := b.on || (b.settle >= 0 && b.settle < f32(TUMBLE_SETTLE));
+  if thrown { from = b.y; }
+  top := hi(everglade_stand(s, pl.x, pl.z, from + f32(STAND_STEP)).y - base, 0);
+  if !thrown && top < a[0].perch[i] - 0.3 {
+    a[0].up[i] = true; a[0].air[i] = a[0].perch[i]; a[0].air_v[i] = 0; a[0].air_top[i] = a[0].perch[i]; a[0].perch[i] = 0;
+    return;
+  }
+  a[0].perch[i] = top;
 }
 
 // You, after the controller's step (everglade-face.c): in the cylinder the field moves you as the
@@ -1438,6 +1462,8 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
   if !sp_on(s) || !(dt > 0) || !finite(y0) || !finite(y1) { return out; }
   a := ab_of(s);
   floor_y := walk_at(s, x, z);
+  // what you come down onto over that ground: a roof, the rubble (everglade-stand.coax)
+  fl := everglade_stand_lift(s, x, z, y0);
   if a[0].rg_on {
     feet := floor_y + y0;
     dx := x - a[0].rg_at.x; dz := z - a[0].rg_at.z;
@@ -1448,7 +1474,7 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
       for q: 0..<steps { v += ab_rg_accel(a, y, v) * h; y += v * h; }
       roof := ab_roof(s, x, z, feet + f32(AB_HEIGHT) - 0.2);
       if y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT); v = lo(v, 0); }
-      if y <= floor_y { y = floor_y; v = hi(v, 0); }
+      if y <= floor_y + fl { y = floor_y + fl; v = hi(v, 0); }
       out.on = true; out.y = y - floor_y; out.vy = v;
       return out;
     }
@@ -1460,10 +1486,10 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
     else if a[0].lev_sink { v = -f32(AB_LEV_SINK); }
     else { v = clamp((a[0].lev_hold - (floor_y + y0)) * 1.5, -2, 2); }
     // Earthbound (the watch's Earthbind): no rising, and down 60 feet a round to the ground
-    if s[0].wv.started && watch_bound(watch_w(s)) { a[0].lev_up = false; a[0].lev_sink = true; v = -f32(BIND_FALL); a[0].lev_hold = floor_y; }
-    y := hi(y0 + v * dt, 0);
+    if s[0].wv.started && watch_bound(watch_w(s)) { a[0].lev_up = false; a[0].lev_sink = true; v = -f32(BIND_FALL); a[0].lev_hold = floor_y + fl; }
+    y := hi(y0 + v * dt, fl);
     if y > f32(AB_LEV_TOP) { y = f32(AB_LEV_TOP); v = lo(v, 0); if a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = floor_y + y; } }
-    if a[0].lev_sink && y <= 0.001 { a[0].lev_on = false; a[0].lev_sink = false; }
+    if a[0].lev_sink && y <= fl + 0.001 { a[0].lev_on = false; a[0].lev_sink = false; }
     roof := ab_roof(s, x, z, floor_y + y0 + f32(AB_HEIGHT) - 0.2);
     if floor_y + y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT) - floor_y; v = lo(v, 0); a[0].lev_up = false; a[0].lev_hold = floor_y + y; }
     out.on = true; out.y = y; out.vy = v;
@@ -1478,9 +1504,9 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
   }
   if a[0].ff_on {
     // Feather Fall: no faster than 60 feet a round, and it ends when you land
-    if y0 > 0.3 { a[0].ff_air = true; }
-    if vy1 < -f32(AB_FF_SPEED) && y1 > 0 { out.on = true; out.vy = -f32(AB_FF_SPEED); out.y = hi(y0 - f32(AB_FF_SPEED) * dt, 0); return out; }
-    if a[0].ff_air && y1 <= 0.001 { a[0].ff_on = false; a[0].ff_air = false; }
+    if y0 > fl + 0.3 { a[0].ff_air = true; }
+    if vy1 < -f32(AB_FF_SPEED) && y1 > fl { out.on = true; out.vy = -f32(AB_FF_SPEED); out.y = hi(y0 - f32(AB_FF_SPEED) * dt, fl); return out; }
+    if a[0].ff_air && y1 <= fl + 0.001 { a[0].ff_on = false; a[0].ff_air = false; }
   }
   return out;
 }
