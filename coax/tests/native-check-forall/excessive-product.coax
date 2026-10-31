@@ -1,0 +1,1 @@
+#forall "product exceeds exact cap" first: u16, second: u16 { #assert true; }

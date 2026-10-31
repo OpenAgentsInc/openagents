@@ -1,0 +1,108 @@
+{
+  "scope": "Projected original evaluator control captured before the C2 FD rewrite; original raw receipt remains /tmp/coax-native-forall-typed-original-accepted.json. Physical source paths are compared separately, and relative source spelling is reduced to the unchanged filename for this portable fixture.",
+  "schema": "coax.evidence.v1",
+  "compiler": {
+    "version": "coax0 0.41.0",
+    "sha256": "34ede8c231b936fcfa23ff6ccdf2d0592a346780416980d189c3b342d4c4f0d8"
+  },
+  "source_sha256": "cc65919b9b25c2c017336f13e837fbc33c08a05b5dabb2afe9ae3025c7f84c0b",
+  "claims": [
+    {
+      "kind": "#forall",
+      "name": "signed byte",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 12,
+        "col": 1
+      },
+      "cases": 256,
+      "steps": 2304
+    },
+    {
+      "kind": "#forall",
+      "name": "unsigned byte",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 13,
+        "col": 1
+      },
+      "cases": 256,
+      "steps": 1280
+    },
+    {
+      "kind": "#forall",
+      "name": "signed word",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 14,
+        "col": 1
+      },
+      "cases": 65536,
+      "steps": 589824
+    },
+    {
+      "kind": "#forall",
+      "name": "unsigned word",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 15,
+        "col": 1
+      },
+      "cases": 65536,
+      "steps": 327680
+    },
+    {
+      "kind": "#forall",
+      "name": "sparse enum declaration order",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 16,
+        "col": 1
+      },
+      "cases": 12,
+      "steps": 258
+    },
+    {
+      "kind": "#forall",
+      "name": "minimum int range",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 20,
+        "col": 1
+      },
+      "cases": 2,
+      "steps": 12
+    },
+    {
+      "kind": "#forall",
+      "name": "maximum int range",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 21,
+        "col": 1
+      },
+      "cases": 2,
+      "steps": 12
+    },
+    {
+      "kind": "#forall",
+      "name": "folded constant range",
+      "outcome": "passed",
+      "at": {
+        "file": "typed-domains.coax",
+        "line": 24,
+        "col": 1
+      },
+      "cases": 4,
+      "steps": 39
+    }
+  ],
+  "verdict": "passed"
+}

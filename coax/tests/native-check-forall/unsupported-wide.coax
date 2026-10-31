@@ -1,0 +1,1 @@
+#forall "wide integer needs an explicit range" value: s32 { #assert value == value; }

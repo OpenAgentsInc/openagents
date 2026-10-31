@@ -134,6 +134,18 @@ def get_policy(compiler=None, directory=None, deadline=None, _runner=None):
     return result
 
 
+def get_forall_policy(compiler=None, directory=None, deadline=None):
+    from native_forall_execution import get_policy as get_quantified_policy
+    return get_quantified_policy(compiler, directory, deadline)
+
+
+def observe_forall_artifact(binary, checks, *, timeout_s=10.0, max_output_bytes=1048576,
+                            deadline=None, policy=None):
+    from native_forall_execution import observe_artifact as observe_quantified
+    return observe_quantified(binary, checks, timeout_s=timeout_s, max_output_bytes=max_output_bytes,
+                              deadline=deadline, policy=policy)
+
+
 def classify_observation(expected_check, process_observation, *, policy=None):
     policy = policy or get_policy()
     code = policy.execution(expected_check, process_observation.get("stdout", b""), process_observation)
@@ -192,7 +204,11 @@ def _toolchain_outcomes(policy, chain):
 
 
 def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
-        max_output_bytes=1048576, cc=None, compiler=None):
+        max_output_bytes=1048576, cc=None, compiler=None, abi=1):
+    if type(abi) is not int or abi != 1:
+        from native_forall_execution import run as run_quantified
+        return run_quantified(files, keep=keep, steps=steps, only=only, timeout_s=timeout_s,
+                              max_output_bytes=max_output_bytes, cc=cc, compiler=compiler, abi=abi)
     started = time.monotonic()
     deadline = started + 840
     compiler = _compiler(compiler)
@@ -286,7 +302,7 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                 item["outcome"] = OUTCOMES[policy.aggregate(codes)]
                 continue
             if chain is None:
-                chain = identities.inspect(native_cc, session.run)
+                chain = identities.inspect(native_cc, session.run, cwd=REPO, environment=session.environment)
                 chain_codes = _toolchain_outcomes(policy, chain)
                 result["toolchain"] = _record(chain)
                 if policy.aggregate(chain_codes) == 0 and chain["sdk"].get("environment"):
@@ -311,6 +327,7 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                                  policy.integrity(item["artifact"]["observer_sha256"], _sha(OBSERVER)),
                                  policy.integrity(item["artifact"]["observer_header_sha256"], _sha(OBSERVER.with_suffix(".h"))),
                                  policy.integrity(item["artifact"]["policy_c_sha256"], _sha(policy.c)),
+                                 policy.integrity(item["artifact"]["policy_header_sha256"], _sha(policy.header)),
                                  policy.integrity(profile["binary_sha256"], _sha(binary))]
                 if policy.aggregate(profile_codes) == 0:
                     metadata = session.run([str(binary), "metadata"],
@@ -335,6 +352,7 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                       policy.integrity(result["compiler_sha256"], _sha(compiler)),
                       policy.integrity(policy.identity["source_sha256"], _sha(policy.source))]
             codes += [policy.integrity(expected_sha, _sha(path)) for path, expected_sha in policy.identity["sources"].items()]
+            codes.append(policy.integrity(policy.identity["library_sha256"], _sha(policy.library)))
             codes.append(policy.integrity(chain.get("program_sha256") or "", _sha(chain.get("resolved_program") or "")))
             item["outcome"] = OUTCOMES[policy.aggregate(codes)]
         result["outcome"] = OUTCOMES[policy.aggregate([item["outcome"] for item in result["files"]])]
@@ -387,22 +405,34 @@ def write_report(path, record, compiler=None):
                 for fact in manifest.get(name, []):
                     paths(fact, ("path", "resolved_path"))
 
-    def arguments(value):
+    def arguments(value, inherited_cwd=None):
+        cwd = Path(REPO if inherited_cwd is None else inherited_cwd)
         if type(value) is dict:
+            if type(value.get("cwd")) is str:
+                recorded_cwd = Path(value["cwd"])
+                cwd = recorded_cwd if recorded_cwd.is_absolute() else cwd / recorded_cwd
             for name, child in value.items():
                 if name in ("argv", "launched_argv", "host_cc", "native_cc") and type(child) is list:
+                    argument_cwd = Path(REPO) if name in ("host_cc", "native_cc") else cwd
                     for argument in child:
                         if type(argument) is str:
-                            candidate = shutil.which(argument) if not os.path.dirname(argument) else argument
-                            if candidate and Path(candidate).is_file():
+                            candidate = Path(argument)
+                            if not candidate.is_absolute():
+                                candidate = argument_cwd / candidate
+                            if candidate.is_file():
                                 consumed.append(candidate)
+                            if not os.path.dirname(argument):
+                                program = shutil.which(argument)
+                                if program and Path(program).is_file():
+                                    consumed.append(program)
                 else:
-                    arguments(child)
+                    arguments(child, cwd)
         elif type(value) is list:
             for child in value:
-                arguments(child)
+                arguments(child, cwd)
 
     arguments(record)
+    consumed += list(record.get("transport_sources", {}))
 
     toolchain = record.get("toolchain", {})
     paths(toolchain, ("resolved_program",))
@@ -437,11 +467,13 @@ def main(argv=None):
     parser.add_argument("--max-output-bytes", type=int, default=1048576)
     parser.add_argument("--cc")
     parser.add_argument("--compiler")
+    parser.add_argument("--verification-abi", type=int, default=1)
     parser.add_argument("--out")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     result = run(args.files, keep=args.keep, steps=args.steps, only=args.only, timeout_s=args.timeout,
-                 max_output_bytes=args.max_output_bytes, cc=args.cc, compiler=args.compiler)
+                 max_output_bytes=args.max_output_bytes, cc=args.cc, compiler=args.compiler,
+                 abi=args.verification_abi)
     if args.out:
         write_report(args.out, result, compiler=args.compiler)
     if args.json:

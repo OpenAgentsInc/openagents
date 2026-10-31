@@ -191,21 +191,25 @@ class PolicyUnavailable(RuntimeError):
 
 
 class Policy:
+    source_name = "native-execution.coax"
+    file_stem = "native-check-execution-policy"
+    input_names = ("native-execution.coax", "native-checks.coax", "mutation-schedule.coax", "budget.coax")
+
     def __init__(self, compiler, directory, deadline, runner=None):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=False)
-        self.c = self.directory / "native-check-execution-policy.c"
+        self.c = self.directory / (self.file_stem + ".c")
         self.header = self.c.with_suffix(".h")
         self.library = self.directory / ("native-check-execution-policy.dylib" if sys.platform == "darwin" else "native-check-execution-policy.so")
         self.compiler = Path(compiler).resolve()
         self.observations = []
-        self.source = ROOT / "lib/compiler/native-execution.coax"
+        self.source = ROOT / "lib/compiler" / self.source_name
         def invoke(argv, seconds, cap):
             if runner is not None:
                 return runner(argv, timeout_s=seconds, max_output_bytes=cap, quiet_faults=True)
             return process.run(argv, REPO, None, seconds, cap, deadline, quiet_faults=True)
         source_inputs = {str(ROOT / "lib/compiler" / name): digest(ROOT / "lib/compiler" / name)
-                         for name in ("native-execution.coax", "native-checks.coax", "mutation-schedule.coax", "budget.coax")}
+                         for name in self.input_names}
         request = [str(self.compiler), "c", str(self.source), "--library", "--header", str(self.header),
                    "--profile-report", "/dev/stderr"]
         result = invoke(request, 120, 67108864)

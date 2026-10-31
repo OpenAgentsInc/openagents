@@ -498,14 +498,29 @@ struct EmitOptions {
 std::string emit_c(const File *file, const EmitOptions &opts);
 // Verification emission borrows the original checked graph. Its procedure
 // and check lists are a separate admitted plan, never a copied or rewritten File.
+struct NativeCheckDomain {
+  uint32_t kind = 0; // 1 bool, 2 signed, 3 unsigned, 4 enum, 5 int range
+  Type type = nullptr;
+  int64_t first = 0;
+  uint64_t count = 0;
+  std::vector<uint64_t> values; // canonical enum members, in declaration order
+  std::vector<Str> labels; // borrowed member names, same order as values
+};
 struct NativeCheckCEntry {
   int64_t declaration_index = -1;
   const CheckDecl *check = nullptr;
+  std::vector<NativeCheckDomain> domains;
+  uint64_t case_count = 1;
 };
 struct NativeCheckCPlan {
   std::vector<const ProcDecl *> procedures;
   std::vector<NativeCheckCEntry> checks;
+  uint32_t verification_abi = 1;
 };
+bool plan_native_checks_c(const File *file, const EmitOptions &opts, const char *only,
+                          uint32_t verification_abi, NativeCheckCPlan *plan);
+// Mutable evaluation prepares checked range facts before the const emitter.
+bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t steps);
 std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan);
 // On refusal, emits original-source diagnostics and leaves text unchanged.
 // only is null for the complete check selection; authority admission belongs

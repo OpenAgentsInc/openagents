@@ -13,6 +13,20 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.42.0 — 2026-10-31
+
+Commit: pending
+
+- Finite-domain admission, products and tuple traversal now share one Coax
+  kernel between the evaluator and native verification, preserving the
+  original bound-evaluation budgets, case order and named witnesses.
+- `coax checks-c --verification-abi 2` emits the original parameterized
+  check procedures with immutable domain metadata. ABI 1 remains the default.
+- The optional execution companion's ABI 2 mode records `execution.v2` evidence
+  from one bounded process per property, with Coax-validated shared progress.
+  Full original evaluator baselines remain mandatory; time/output exhaustion
+  and malformed or incomplete observations cannot qualify native execution.
+
 ## 0.41.0 — 2026-10-31
 
 Commit: [`b91aed93e2b4267ccdc117d6cab3f272f2a896db`](https://github.com/OpenAgentsInc/openagents/commit/b91aed93e2b4267ccdc117d6cab3f272f2a896db)

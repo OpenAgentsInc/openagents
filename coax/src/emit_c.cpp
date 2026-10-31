@@ -2315,6 +2315,87 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   return s;
 }
 
+static std::string native_check_table_v2(const File *file, Emitter &em, const NativeCheckCPlan &plan) {
+  std::string s = "\n/* Explicit verification ABI2: immutable binding metadata and admitted word tuples. */\n"
+      "typedef struct Coax_VerificationEnumValue_v2 { uint64_t bits; const char *label; int64_t label_count; } Coax_VerificationEnumValue_v2;\n"
+      "typedef struct Coax_VerificationBinding_v2 {\n"
+      "  const char *name; int64_t name_count; const char *type_name; int64_t type_name_count;\n"
+      "  int64_t kind, width, is_signed, first; uint64_t count;\n"
+      "  const Coax_VerificationEnumValue_v2 *values; int64_t value_count;\n"
+      "} Coax_VerificationBinding_v2;\n"
+      "typedef struct Coax_VerificationCheck_v2 {\n"
+      "  int64_t declaration_index; const char *name; int64_t name_count;\n"
+      "  const char *source; int64_t source_count; int64_t line, column;\n"
+      "  int64_t kind; const Coax_VerificationBinding_v2 *bindings; int64_t binding_count;\n"
+      "  uint64_t case_count; int64_t (*run_values)(const uint64_t *, int64_t);\n"
+      "} Coax_VerificationCheck_v2;\n";
+  for (size_t row = 0; row < plan.checks.size(); ++row) {
+    const NativeCheckCEntry &entry = plan.checks[row];
+    const ProcDecl *proc = entry.check->proc;
+    std::string prefix = "coax_verification_v2_" + std::to_string(row);
+    for (size_t binding = 0; binding < entry.domains.size(); ++binding) {
+      const NativeCheckDomain &domain = entry.domains[binding];
+      if (domain.values.empty()) continue;
+      s += "static const Coax_VerificationEnumValue_v2 " + prefix + "_values_" + std::to_string(binding) + "[] = {\n";
+      for (size_t member = 0; member < domain.values.size(); ++member)
+        s += "  {UINT64_C(" + std::to_string(domain.values[member]) + "), " + c_string_text(domain.labels[member]) + ", " +
+             std::to_string(domain.labels[member].count) + "},\n";
+      s += "};\n";
+    }
+    if (!entry.domains.empty()) {
+      s += "static const Coax_VerificationBinding_v2 " + prefix + "_bindings[] = {\n";
+      for (size_t binding = 0; binding < entry.domains.size(); ++binding) {
+        const NativeCheckDomain &domain = entry.domains[binding];
+        const Param &param = proc->params[(int32_t)binding];
+        Type base = domain.type->kind == TypeKind::enum_ ? domain.type->elem : domain.type;
+        Str label{domain.type->name.data(), (int32_t)domain.type->name.size()};
+        s += "  {" + c_string_text(param.name) + ", " + std::to_string(param.name.count) + ", " + c_string_text(label) + ", " +
+             std::to_string(label.count) + ", " + std::to_string(domain.kind) + ", " +
+             std::to_string(base->bits) + ", " + (base->is_signed ? "1" : "0") + ", " +
+             int_text(&T_S64, (uint64_t)domain.first) + ", UINT64_C(" + std::to_string(domain.count) + "), " +
+             (domain.values.empty() ? "NULL" : prefix + "_values_" + std::to_string(binding)) + ", " +
+             std::to_string(domain.values.size()) + "},\n";
+      }
+      s += "};\n";
+    }
+    s += "static int64_t " + prefix + "_run(const uint64_t *values, int64_t count) {\n"
+         "  if (count != " + std::to_string(proc->params.count) +
+         (proc->params.count ? " || !values" : "") + ") return -1;\n";
+    if (!proc->params.count) s += "  (void)values;\n";
+    std::vector<std::string> arguments;
+    for (int32_t i = 0; i < proc->params.count; ++i) {
+      Type type = proc->params[i].type;
+      Type base = type->kind == TypeKind::enum_ ? type->elem : type;
+      std::string word = "values[" + std::to_string(i) + "]";
+      if (base->is_signed) {
+        std::string signed_word = "coax_signed_" + std::to_string(i);
+        s += "  int64_t " + signed_word + "; memcpy(&" + signed_word + ", &" + word + ", sizeof(" + signed_word + "));\n";
+        word = signed_word;
+      }
+      arguments.push_back("(" + c_type(type) + ")" + word);
+    }
+    s += "  " + em.proc_name(proc) + "(";
+    for (size_t i = 0; i < arguments.size(); ++i) s += (i ? ", " : "") + arguments[i];
+    s += ");\n  return 0;\n}\n";
+  }
+  s += "static const Coax_VerificationCheck_v2 coax_verification_table_v2[] = {\n";
+  for (size_t row = 0; row < plan.checks.size(); ++row) {
+    const NativeCheckCEntry &entry = plan.checks[row];
+    const CheckDecl *check = entry.check;
+    auto point = source_point(file->src, check->loc);
+    Str path{point.path.data(), (int32_t)point.path.size()};
+    s += "  {" + std::to_string(entry.declaration_index) + ", " + c_string_text(check->name) + ", " +
+         std::to_string(check->name.count) + ", " + c_string_text(path) + ", " + std::to_string(path.count) + ", " +
+         std::to_string(point.loc.line) + ", " + std::to_string(point.loc.col) + ", " + (check->forall ? "2" : "1") + ", " +
+         (entry.domains.empty() ? "NULL" : "coax_verification_v2_" + std::to_string(row) + "_bindings") + ", " +
+         std::to_string(entry.domains.size()) + ", UINT64_C(" + std::to_string(entry.case_count) + "), coax_verification_v2_" +
+         std::to_string(row) + "_run},\n";
+  }
+  s += "};\nconst Coax_VerificationCheck_v2 *coax_verification_checks_v2(int64_t *count) {\n"
+       "  if (count) *count = " + std::to_string(plan.checks.size()) + ";\n  return coax_verification_table_v2;\n}\n";
+  return s;
+}
+
 std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan) {
   Emitter em{file, opts};
   em.verification = true;
@@ -2358,6 +2439,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   s += "\n" + inits + shows + "\n";
   for (const ProcDecl *p : plan.procedures) s += em.prototype(p) + ";\n";
   s += functions;
+  if (plan.verification_abi == 2) return s + native_check_table_v2(file, em, plan);
   s += "\n/* Verification-only ABI v1: display strings are byte spans, not C identifiers. */\n"
        "typedef struct Coax_VerificationCheck_v1 {\n"
        "  int64_t declaration_index;\n"

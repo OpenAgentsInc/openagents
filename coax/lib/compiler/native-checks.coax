@@ -258,3 +258,105 @@ NC_plan :: (procedures:[]NC_Proc,checks:[]NC_Check,edges:[]NC_Edge,only:string,o
  }
  return NC_Result.{};
 }
+
+#test "ABI2 selects parameterized roots while ABI1 and invalid ABIs keep their contract" {
+ p:=[2]NC_Proc.[NC_Proc.{has_body=true,returns_void=true,parameter_count=2},NC_Proc.{has_body=true,returns_void=true}];
+ c:=[2]NC_Check.[NC_Check.{name="property",kind=2,procedure=0},NC_Check.{name="ordinary",kind=1,procedure=1}];
+ e:[1]NC_Edge;pm:=[2]u8.[9,9];cm:=[2]u8.[8,8];
+ r:=NC_plan_abi(p[..],c[..],e[0..<0],"",false,0,2,false,pm[..],cm[..]);
+ #assert r.reason==0 && r.index== -1 && pm[0]==1 && pm[1]==1 && cm[0]==1 && cm[1]==1;
+ r=NC_plan_abi(p[..],c[..],e[0..<0],"",false,0,1,false,pm[..],cm[..]);#assert r.reason==7;
+ for abi:[3]u32.[0,3,4294967295] {
+  pm[0]=9;cm[0]=8;r=NC_plan_abi(p[..],c[..],e[0..<0],"",false,0,abi,false,pm[..],cm[..]);
+  #assert r.reason==1 && r.index== -1 && pm[0]==9 && cm[0]==8;
+ }
+ r=NC_plan_abi(p[..],c[..],e[0..<0],"ordinary",true,0,1,false,pm[..],cm[..]);#assert r.reason==0 && pm[0]==0 && pm[1]==1;
+ pm[0]=9;cm[0]=8;r=NC_plan_abi(p[..],c[..],e[0..<0],"ordinary",true,0,2,false,pm[..],cm[..]);
+ #assert r.reason==0 && pm[0]==0 && pm[1]==1 && cm[0]==0 && cm[1]==1;
+ #assert NC_abi_reason_text(8)=="a selected check without a void body or with unsupported native arity";
+ #assert NC_abi_reason_text(1)==NC_reason_text(1) && NC_abi_reason_text(99)==NC_reason_text(99);
+}
+
+#forall "ABI2 admits at most64 property bindings and keeps ordinary roots zero-argument" kind:0..<4,at:0..<5,void:bool,body:bool {
+ counts:=[5]int.[-1,0,1,64,65];parameters:=counts[at];
+ p:=[1]NC_Proc.[NC_Proc.{has_body=body,returns_void=void,parameter_count=parameters}];
+ c:=[1]NC_Check.[NC_Check.{name="root",kind=cast(u32)kind,procedure=0}];e:[1]NC_Edge;pm:[1]u8;cm:[1]u8;
+ r:=NC_plan_abi(p[..],c[..],e[0..<0],"",false,0,2,false,pm[..],cm[..]);expected:u32=0;
+ if parameters<0 {expected=3;}else if kind<1 || kind>2 {expected=4;}
+ else if !void || !body || parameters>64 || (kind==1 && parameters!=0) {expected=8;}
+ #assert r.reason==expected && r.index==(ifx expected==0 then -1 else 0);
+ #assert pm[0]==cast(u8)(ifx expected==0 then 1 else 0) && cm[0]==cast(u8)(ifx expected==0 then 1 else 0);
+}
+
+#test "ABI2 closure preserves hazards cyclic reachability and structural refusal" {
+ p:=[3]NC_Proc.[NC_Proc.{has_body=true,returns_void=true,parameter_count=1},NC_Proc.{has_body=true},NC_Proc.{has_body=true}];
+ c:=[1]NC_Check.[NC_Check.{name="root",kind=2,procedure=0}];
+ e:=[3]NC_Edge.[NC_Edge.{from=1,to=2},NC_Edge.{from=0,to=1},NC_Edge.{from=2,to=1}];pm:[3]u8;cm:[1]u8;
+ r:=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);
+ #assert r.reason==0 && pm[0]==1 && pm[1]==1 && pm[2]==1 && cm[0]==1;
+ p[2].foreign=true;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==10 && r.index==2 && pm[0]==0 && pm[1]==0 && pm[2]==0 && cm[0]==0;
+ p[2].foreign=false;p[2].hazards=4;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==14;
+ p[2].hazards=0;e[0].to= -1;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==5 && r.index==0;
+ e[0].to=2;e[0].from=3;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==5;
+ e[0].from=1;c[0].procedure=3;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==4;
+ c[0].procedure=0;r=NC_plan_abi(p[..],c[..],e[..],"absent",true,0,2,false,pm[..],cm[..]);#assert r.reason==6 && r.index== -1;
+ r=NC_plan_abi(p[..],c[..],e[..],"root",false,0,2,false,pm[..],cm[..]);#assert r.reason==16 && r.index== -1;
+ e[0].to=0;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==0;
+ e[0].to=3;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==5;
+ e[0].to=2;p[0].hazards=1;r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[..],cm[..]);#assert r.reason==12 && r.index==0;p[0].hazards=0;
+ pm[0]=9;cm[0]=8;r=NC_plan_abi(p[..],c[..],e[..],"",false,1,2,true,pm[..],cm[..]);#assert r.reason==1 && pm[0]==9 && cm[0]==8;
+ r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,true,pm[..],cm[..]);#assert r.reason==2 && pm[0]==9 && cm[0]==8;
+ r=NC_plan_abi(p[..],c[..],e[..],"",false,0,2,false,pm[0..<2],cm[..]);#assert r.reason==2 && pm[0]==9 && cm[0]==8;
+}
+
+#test "native arity is versioned zero through64 and refuses negative or unknown profiles" {
+ #assert NC_max_native_arity()==64;
+ counts:=[7]int.[-1,0,1,63,64,65,65536];
+ for abi:[5]u32.[0,1,2,3,4294967295] {for count:counts {
+  expected:=ifx abi==1 then count==0 else abi==2 && count>=0 && count<=64;
+  #assert NC_native_arity(abi,count)==expected;
+ }}
+}
+NC_max_native_arity :: ()->int #export_c {return 64;}
+NC_native_arity :: (abi:u32,count:int)->bool #export_c {
+ if abi==1 {return count==0;}
+ return abi==2 && count>=0 && count<=NC_max_native_arity();
+}
+
+NC_abi_reason_text :: (reason:u32)->string #export_c {
+ if reason==8 {return "a selected check without a void body or with unsupported native arity";}
+ return NC_reason_text(reason);
+}
+NC_plan_abi :: (procedures:[]NC_Proc,checks:[]NC_Check,edges:[]NC_Edge,only:string,only_set:bool,profile:u32,abi:u32,overlap:bool,procedure_mask:[]u8,check_mask:[]u8)->NC_Result #export_c {
+ if abi==1 {return NC_plan(procedures,checks,edges,only,only_set,profile,overlap,procedure_mask,check_mask);}
+ if abi!=2 || profile!=0 {return NC_Result.{reason=1};}
+ if !nc_capacity(procedures.count,checks.count,edges.count,procedure_mask.count,check_mask.count) || overlap {return NC_Result.{reason=2};}
+ nc_clear(procedure_mask,check_mask);
+ if !nc_text_count(only.count) || (!only_set && only.count!=0) {return nc_refuse(16,-1,procedure_mask,check_mask);}
+ for i:0..<procedures.count {if procedures[i].parameter_count<0 {return nc_refuse(3,i,procedure_mask,check_mask);}}
+ for i:0..<checks.count {
+  c:=checks[i];if c.kind<1 || c.kind>2 || c.procedure<0 || c.procedure>=procedures.count || !nc_text_count(c.name.count) {return nc_refuse(4,i,procedure_mask,check_mask);}
+ }
+ for i:0..<edges.count {
+  e:=edges[i];if e.from<0 || e.from>=procedures.count || e.to<0 || e.to>=procedures.count {return nc_refuse(5,i,procedure_mask,check_mask);}
+ }
+ selected:=false;
+ for i:0..<checks.count {
+  c:=checks[i];if !only_set || nc_contains(c.name,only) {
+   p:=procedures[c.procedure];
+   if !p.returns_void || !p.has_body || !NC_native_arity(abi,p.parameter_count) || (c.kind==1 && p.parameter_count!=0) {return nc_refuse(8,i,procedure_mask,check_mask);}
+   procedure_mask[c.procedure]=1;check_mask[i]=1;selected=true;
+  }
+ }
+ if !selected {return nc_refuse(6,-1,procedure_mask,check_mask);}
+ changed:=true;
+ while changed {
+  changed=false;for i:0..<edges.count {
+   e:=edges[i];if procedure_mask[e.from]!=0 && procedure_mask[e.to]==0 {procedure_mask[e.to]=1;changed=true;}
+  }
+ }
+ for i:0..<procedures.count {if procedure_mask[i]!=0 {
+  reason:=nc_procedure_reason(procedures[i]);if reason!=0 {return nc_refuse(reason,i,procedure_mask,check_mask);}
+ }}
+ return NC_Result.{};
+}

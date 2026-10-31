@@ -1,0 +1,24 @@
+SignedSparse :: enum s64 {
+  minimum = -9223372036854775808;
+  negative = -7;
+  zero = 0;
+  maximum = 9223372036854775807;
+}
+UnsignedSparse :: enum u64 {
+  maximum = 18446744073709551615;
+  three = 3;
+  high = 9223372036854775808;
+}
+#forall "signed byte" value: s8 { #assert value >= -128 && value <= 127; }
+#forall "unsigned byte" value: u8 { #assert value <= 255; }
+#forall "signed word" value: s16 { #assert value >= -32768 && value <= 32767; }
+#forall "unsigned word" value: u16 { #assert value <= 65535; }
+#forall "sparse enum declaration order" left: SignedSparse, right: UnsignedSparse {
+  #assert left == SignedSparse.minimum || left == SignedSparse.negative || left == SignedSparse.zero || left == SignedSparse.maximum;
+  #assert right == UnsignedSparse.maximum || right == UnsignedSparse.three || right == UnsignedSparse.high;
+}
+#forall "minimum int range" value: -9223372036854775808..< -9223372036854775806 { #assert value < -9223372036854775806; }
+#forall "maximum int range" value: 9223372036854775805..<9223372036854775807 { #assert value >= 9223372036854775805; }
+LIMIT :: #run upper();
+upper :: () -> int { return 3; }
+#forall "folded constant range" value: -1..<LIMIT { #assert value >= -1 && value < 3; }

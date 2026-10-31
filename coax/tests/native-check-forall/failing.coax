@@ -1,0 +1,5 @@
+// Artifact-only transport: the complete original evaluator baseline must fail.
+// Canonical order reaches (offset=0, enabled=true) at zero-based ordinal 5.
+#forall "original failing tuple" offset: -2..<2, enabled: bool {
+  #assert offset != 0 || !enabled;
+}

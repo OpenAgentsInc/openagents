@@ -30,6 +30,7 @@
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "budget.h"
 #include "profiles.h"
+#include "check-domains.h"
 #else
 #include "proto_importer.h"
 #endif
@@ -874,7 +875,7 @@ static int usage() {
           "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
           "       coax header  file.coax [-o out.h]\n"
           "       coax c       file.coax [--release] [--library [--header out.h]]\n"
-          "       coax checks-c file.coax [--only SUBSTR] [-o checks.c]  verification-only checked C, no main\n"
+          "       coax checks-c file.coax [--verification-abi 1|2] [--only SUBSTR] [-o checks.c]  verification-only checked C\n"
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
@@ -975,6 +976,8 @@ static int main_impl(int argc, char **argv) {
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
+  uint32_t verification_abi = 1;
+  bool verification_abi_seen = false;
   bool list = false;
   uint64_t test_slots = 0;
   for (int i = 2; i < argc; i++) {
@@ -1006,6 +1009,13 @@ static int main_impl(int argc, char **argv) {
       g_timings.run_steps = opts.run_steps;
     }
     else if (a == "--only" && i + 1 < argc && (cmd == "test" || cmd == "checks-c") && !only) only = argv[++i];
+    else if (a == "--verification-abi" && cmd == "checks-c" && i + 1 < argc && !verification_abi_seen) {
+      const char *value = argv[++i];
+      uint64_t parsed = CB_parse_steps({value, (int64_t)strlen(value)});
+      if (!parsed || parsed > UINT32_MAX) return usage();
+      verification_abi = (uint32_t)parsed;
+      verification_abi_seen = true;
+    }
     else if (a == "--list" && cmd == "test") list = true;
     else if (a == "--slots" && i + 1 < argc && cmd == "test") {
       // A smaller value-slot limit for the checks than the test limit (a shared machine's memory).
@@ -1206,7 +1216,15 @@ static int main_impl(int argc, char **argv) {
     std::string text;
     {
       TimedPhase phase{"emit"};
-      if (!emit_native_checks_c(&file, opts, only, &text)) {
+      bool emitted = false;
+      if (verification_abi == 1) emitted = emit_native_checks_c(&file, opts, only, &text);
+      else {
+        NativeCheckCPlan plan;
+        emitted = plan_native_checks_c(&file, opts, only, verification_abi, &plan) &&
+                  prepare_native_check_domains(&file, &plan, TEST_STEPS);
+        if (emitted) text = emit_native_checks_c_plan(&file, opts, plan);
+      }
+      if (!emitted) {
         if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
         return 1;
       }

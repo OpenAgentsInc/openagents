@@ -1,0 +1,4 @@
+// The current language refuses aliases; ABI2 must preserve this admission rule.
+SignedAliases :: enum s64 { zero = 0; duplicate = 0; }
+UnsignedAliases :: enum u64 { high = 18446744073709551615; duplicate = 18446744073709551615; }
+#forall "source enum aliases remain invalid" value: SignedAliases { #assert true; }

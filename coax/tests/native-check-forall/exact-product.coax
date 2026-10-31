@@ -1,0 +1,2 @@
+// Metadata/admission fixture only: no claim that all 2^24 cases were executed.
+#forall "exact maximum product" first: u8, second: u16 { #assert first <= 255 && second <= 65535; }

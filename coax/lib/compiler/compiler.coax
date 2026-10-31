@@ -1,5 +1,6 @@
 // The compiler's authored source graph. No shell concatenation or downloaded modules.
 #load "budget.coax";
+#load "check-domains.coax";
 #load "profiles.coax";
 #load "mutation-schedule.coax";
 #load "lexer.coax";
@@ -12,6 +13,7 @@
 #load "native-checks.coax";
 #load "effects.coax";
 #load "native-execution.coax";
+#load "quantified-execution.coax";
 #load "spirv.coax";
 #load "shader.coax";
 #load "wgsl.coax";

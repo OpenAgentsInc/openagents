@@ -1,0 +1,2 @@
+// Malformed progress setup must refuse before this body can trap.
+#forall "never execute on malformed progress" value: 0..<1 { #assert false; }

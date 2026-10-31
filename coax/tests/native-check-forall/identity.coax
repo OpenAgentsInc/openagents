@@ -1,0 +1,7 @@
+#load "loaded.coax";
+#test "duplicate original identity" { #assert 3 * 7 == 21; }
+#forall "duplicate original identity" local: -1..<2 { #assert local >= -1 && local <= 1; }
+  #forall "property quote\" nul\0 tail λ" offset: -1..<1, enabled: bool {
+    #assert offset == -1 || offset == 0;
+    #assert enabled || !enabled;
+  }

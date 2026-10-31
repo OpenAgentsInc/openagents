@@ -1,0 +1,554 @@
+// Optional ABI2 verification policy. Hosts observe immutable compiler tables,
+// process facts and a fixed shared-memory image; Coax owns all interpretation.
+// Names/labels borrow catalog bytes; enum views borrow caller-owned word storage.
+// Input lifetimes and disjoint writable outputs are caller obligations.
+#load "check-domains.coax";
+#load "native-execution.coax";
+#authority;
+QE_MAGIC :: "COAXQE1\0";
+QE_PROGRESS :: "COAXQP1\0";
+QE_BINDINGS :: 262144;
+QE_MEMBERS :: 1048576;
+QE_REGION :: 32769;
+QE_SLOT :: 16384;
+QE_Expected :: struct {identity:EP_Identity;kind:u32;cases:u64;}
+QE_Check :: struct {identity:EP_Identity;kind:u32;cases:u64;binding_start:int;binding_count:int;}
+QE_Binding :: struct {name:string;type_name:string;domain:FD_Domain;member_start:int;member_count:int;}
+QE_Member :: struct {bits:u64;label:string;}
+QE_Frame :: struct {ok:bool;size:int;}
+QE_Sizes :: struct {outcome:u32;checks:int;bindings:int;members:int;}
+QE_State :: struct {reason:u32;event:u32;row:int;declaration_index:int;case_index:u64;total:u64;arity:int;completed:u64;}
+QE_Observation :: struct {outcome:u32;valid:bool;state:QE_State;slot:int = -1;values_offset:int;values_count:int;}
+
+#test "ABI2 catalog and witness bind the original physical declaration" {
+ id:=EP_Identity.{ordinal=0,declaration_index=7,line=3,column=2,name="check\0λ",source="/q"};q:=QE_Check.{identity=id,kind=2,cases=2,binding_count=1};
+ b:=QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain};rows:=[1]QE_Check.[q];bindings:=[1]QE_Binding.[b];members:[1]QE_Member;
+ #assert QE_catalog_valid(rows[..],bindings[..],members[0..<0]);
+ buf:[300]u8;at:=QE_encode_header(1,1,0,buf[..]);#assert at==28;
+ n:=QE_encode_check(q,buf[at..<buf.count]);#assert n==70;at+=n;n=QE_encode_binding(b,buf[at..<buf.count]);#assert n==64;at+=n;#assert at==162;
+ size:=QE_sizes(buf[0..<at]);#assert size.outcome==0 && size.checks==1 && size.bindings==1 && size.members==0;
+ rr:[1]QE_Check;bb:[1]QE_Binding;mm:[1]QE_Member;words:[1]u64;
+ #assert QE_decode(buf[0..<at],rr[..],bb[..],mm[0..<0],words[0..<0])==0;
+ expected:=[1]QE_Expected.[QE_Expected.{identity=id,kind=2,cases=2}];p:=ep_test_process();
+ #assert QE_metadata(expected[..],rr[..],bb[..],mm[0..<0],p)==EV_PASSED;
+ ds:[1]FD_Domain;#assert QE_domains(rr[0],bb[..],ds[..])==0;
+ values:=[1]u64.[18446744073709551615];text:[32]u8;
+ #assert QE_witness(q,bindings[..],members[0..<0],values[..],text[0..<0])==6;
+ #assert QE_witness(q,bindings[..],members[0..<0],values[..],text[..])==6 && cast(string)text[0..<6]=="x = -1";
+}
+#test "progress covers each original tuple and requires a complete clean DONE" {
+ q:=QE_Check.{identity=EP_Identity.{ordinal=0,declaration_index=7,line=3,column=2,name="p",source="/q"},kind=2,cases=2,binding_count=1};
+ bs:=[1]QE_Binding.[QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain}];region:[32769]u8;word:=[1]u64.[18446744073709551615];
+ #assert QE_region_size()==32769 && QE_initialize(region[..]) && QE_initial(region[..]);
+ s:=QE_start(q);#assert s.reason==0 && QE_ready(s);s=QE_begin(s);#assert s.event==1 && s.case_index==0;
+ slot:=QE_slot(255);#assert slot==0 && QE_encode_progress(s,word[..],region[1..<16385])==64;region[0]=cast(u8)slot;
+ p:=ep_test_process();p.returncode=-6;o:=QE_observe(q,bs[..],region[..],p);#assert o.valid && o.outcome==EV_COUNTEREXAMPLE && o.state.case_index==0 && o.slot==0;
+ #assert QE_end(s,-1).reason!=0;s=QE_end(s,0);#assert s.event==2 && s.completed==1;
+ #assert QE_encode_progress(s,word[..],region[16385..<region.count])==64;region[0]=1;
+ o=QE_observe(q,bs[..],region[..],p);#assert o.outcome==EV_INFRASTRUCTURE;
+ s=QE_begin(s);word[0]=0;#assert QE_encode_progress(s,word[..],region[1..<16385])==64;region[0]=0;
+ s=QE_end(s,0);#assert !QE_ready(s) && s.completed==2;#assert QE_encode_progress(s,word[..],region[16385..<region.count])==64;region[0]=1;
+ s=QE_done(s);#assert s.event==3;#assert QE_encode_progress(s,word[..],region[1..<16385])==64;region[0]=0;
+ p.returncode=0;o=QE_observe(q,bs[..],region[..],p);#assert o.valid && o.outcome==EV_PASSED && o.state.completed==2;
+ p.returncode=1;#assert QE_observe(q,bs[..],region[..],p).outcome==EV_INFRASTRUCTURE;
+ p.timeout=true;#assert QE_observe(q,bs[..],region[..],p).outcome==EV_INCONCLUSIVE;
+}
+#test "observer admission and ABI2 selection refuse malformed facts before effects" {
+ #assert QE_kind(1)==1 && QE_kind(2)==2 && QE_kind(4294967297)==0;
+ #assert QE_native_profile(8,8,8,1,true) && !QE_native_profile(8,8,8,2,true) && !QE_native_profile(8,8,8,1,false);
+ r:=QE_request(2,"metadata","","");#assert r.mode==1;
+ r=QE_request(4,"one","0","/p");#assert r.mode==2 && r.ordinal==0;
+ r=QE_request(4,"one","00","/p");#assert r.mode==0;
+ r=QE_request(4,"one","0","");#assert r.mode==0;
+ #assert QE_table(1,true) && !QE_table(0,true);
+ badwords:=[1]u64.[0];d:=QE_domain(5,64,1,-1,2,badwords[..]);#assert d.kind==0;
+ empty:[1]u64;d=QE_domain(5,64,1,-1,2,empty[0..<0]);#assert d.kind==5 && d.first== -1 && d.count==2;
+ cs:=[2]EP_Claim.[ep_test_claim(),ep_test_claim()];cs[1].kind="#forall";cs[1].cases=2;mask:=[2]u8.[9,9];
+ plan:=QE_plan(cs[..],"",false,mask[..]);#assert plan.outcome==0 && plan.count==2 && mask[0]==1 && mask[1]==2;
+ e:=QE_expected(cs[..],mask[..],1);#assert e.kind==2 && e.cases==2 && e.identity.declaration_index==1;
+ #assert QE_selected(cs[..],mask[..],1).ordinal==1;
+}
+
+#test "invalid catalog records refuse before borrowed storage is accessed" {
+ #assert !QE_check_valid(QE_Check.{},0,false,false,false,false);
+ #assert !QE_binding_valid(QE_Binding.{},false,false,false);
+ #assert !QE_member_valid(QE_Member.{},8,false,false);
+ out:[64]u8;#assert QE_encode_member(QE_Member.{},out[..])== -1;
+}
+
+#test "ABI2 requests are admitted before compiler effects" {#assert QE_abi(2) && !QE_abi(1) && !QE_abi(-1) && !QE_abi(3);}
+
+#test "scalar transport and catalog allocation boundaries are exact" {
+ #assert qe_u32(0) && qe_u32(4294967295) && !qe_u32(-1) && !qe_u32(4294967296);
+ #assert qe_catalog_size(67108864) && !qe_catalog_size(67108865);
+ #assert qe_totals(1,0,0) && qe_totals(4096,262144,1048576);
+ #assert !qe_totals(0,0,0) && !qe_totals(4097,0,0) && !qe_totals(1,-1,0) && !qe_totals(1,262145,0) && !qe_totals(1,0,-1) && !qe_totals(1,0,1048577);
+ #assert QE_slot(255)==0 && QE_slot(0)==1 && QE_slot(1)==0 && QE_slot(2)== -1;
+ r:=QE_request(1,"metadata","","");#assert r.reason==1;
+ r=QE_request(2,"one","0","");#assert r.mode==0;
+ r=QE_request(3,"metadata","","");#assert r.mode==0;
+ r=QE_request(4,"other","0","/p");#assert r.mode==0;
+ r=QE_request(2,"metadata","","extra");#assert r.mode==0;
+}
+#forall "domain transport distinguishes canonical scalar facts from narrowing" defect:0..<19 {
+ empty:[1]u64;kind:=5;width:=64;sign:=1;first:= -1;count:=cast(u64)2;
+ if defect==0 {kind=1;width=8;sign=0;first=0;}
+ else if defect==1 {kind=2;width=8;sign=1;first=-128;count=256;}
+ else if defect==2 {kind=3;width=8;sign=0;first=0;count=256;}
+ else if defect==3 {kind=4;width=8;first=0;}
+ else if defect==4 {kind=0;}else if defect==5 {kind=6;}else if defect==6 {kind=-1;}else if defect==7 {kind=4294967296;}
+ else if defect==8 {width=-1;}else if defect==9 {width=4294967296;}else if defect==10 {width=65;}
+ else if defect==11 {sign=2;}else if defect==12 {count=0;}else if defect==13 {count=16777217;}
+ else if defect==14 {kind=1;width=7;first=0;sign=0;}
+ else if defect==15 {kind=4;width=7;first=0;}else if defect==16 {kind=4;first=1;}
+ else if defect==17 {kind=3;width=8;first=0;sign=0;count=255;}else {first=9223372036854775807;count=1;}
+ d:=QE_domain(kind,width,sign,first,count,empty[0..<0]);#assert (d.kind!=0)==(defect<4);
+}
+#forall "single check fact defects cannot hide in a valid table" defect:0..<13 {
+ q:=QE_Check.{identity=EP_Identity.{ordinal=0,declaration_index=0,line=1,column=1,name="",source="/"},kind=1,cases=1};run:=true;name:=true;source:=true;present:=true;
+ if defect==0 {q.kind=0;}else if defect==1 {q.kind=2;}else if defect==2 {q.binding_count=1;}else if defect==3 {q.cases=2;}
+ else if defect==4 {q.binding_start=-1;}else if defect==5 {q.binding_start=262145;}else if defect==6 {q.identity.line=0;}
+ else if defect==7 {q.identity.source="";}else if defect==8 {run=false;}else if defect==9 {source=false;}
+ else if defect==10 {q.binding_count=65;}else if defect==11 {q.cases=0;}else {q.cases=16777217;}
+ #assert !QE_check_valid(q,1,run,name,source,present);
+}
+#test "ordinary and maximal property check fields preserve exact limits" {
+ q:=QE_Check.{identity=EP_Identity.{ordinal=0,declaration_index=0,line=1,column=1,source="/"},kind=1,cases=1,binding_start=262144};
+ #assert QE_check_valid(q,1,true,false,true,false);
+ q.kind=2;q.binding_count=64;q.binding_start=262080;q.cases=16777216;#assert QE_check_valid(q,1,true,false,true,true);
+ q.binding_start+=1;#assert !QE_check_valid(q,1,true,false,true,true);
+ q.binding_start=0;#assert !QE_check_valid(q,1,true,false,true,false);
+ q.identity.name="x";#assert !QE_check_valid(q,1,true,false,true,true);
+}
+#forall "binding observations require every independent field" defect:0..<12 {
+ b:=QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain};a:=true;t:=true;m:=true;
+ if defect==0 {a=false;}else if defect==1 {t=false;}else if defect==2 {b.name="";}else if defect==3 {b.type_name="";}
+ else if defect==4 {b.member_start=-1;}else if defect==5 {b.member_count=-1;}else if defect==6 {b.member_count=1048577;}
+ else if defect==7 {b.member_start=1048577;}else if defect==8 {b.domain.kind=0;}else if defect==9 {b.member_count=1;}
+ else if defect==10 {b.domain.kind=4;b.domain.first=0;b.member_count=2;m=false;}else {b.domain.kind=4;b.domain.first=0;b.member_count=1;}
+ #assert !QE_binding_valid(b,a,t,m);
+}
+#test "enum allocation and scalar zero-member bounds are separate" {
+ words:=[1]u64.[7];b:=QE_Binding.{name="x",type_name="E",domain=QE_domain(4,8,0,0,1048576,words[0..<0]),member_count=1048576};
+ #assert QE_binding_valid(b,true,true,true);b.member_start=1;#assert !QE_binding_valid(b,true,true,true);
+ b.member_start=0;b.member_count=1;b.domain=QE_domain(4,8,0,0,1,words[..]);#assert QE_binding_valid(b,true,true,true);
+ m:=QE_Member.{bits=7,label="a"};#assert QE_member_valid(m,8,false,true) && !QE_member_valid(m,8,false,false);
+ m.label="";#assert !QE_member_valid(m,8,false,true);m.label="a";m.bits=256;#assert !QE_member_valid(m,8,false,true);
+}
+#test "rich catalog roundtrip preserves every field byte and enum word" {
+ id0:=EP_Identity.{ordinal=0,declaration_index=0,line=1,column=1,source="/"};id1:=EP_Identity.{ordinal=1,declaration_index=99,line=7,column=9,name="p\0λ",source="/m"};
+ rows:=[2]QE_Check.[QE_Check.{identity=id0,kind=1,cases=1},QE_Check.{identity=id1,kind=2,cases=8,binding_count=3}];
+ ew:=[2]u64.[7,18446744073709551615];en:=FD_domain(4,8,true,0,0,2).domain;en.values=ew[..];
+ bs:=[3]QE_Binding.[QE_Binding.{name="a",type_name="B",domain=FD_domain(1,8,false,0,0,0).domain},QE_Binding.{name="mode",type_name="E",domain=en,member_count=2},QE_Binding.{name="z",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain,member_start=2}];
+ ms:=[2]QE_Member.[QE_Member.{bits=7,label="a"},QE_Member.{bits=18446744073709551615,label="neg\0λ"}];
+ #assert QE_catalog_valid(rows[..],bs[..],ms[..]);buf:[1024]u8;for i:0..<buf.count {buf[i]=165;}
+ at:=QE_encode_header(2,3,2,buf[..]);for r:rows {at+=QE_encode_check(r,buf[at..<buf.count]);}for b:bs {at+=QE_encode_binding(b,buf[at..<buf.count]);}for m:ms {at+=QE_encode_member(m,buf[at..<buf.count]);}
+ rr:[2]QE_Check;bb:[3]QE_Binding;mm:[2]QE_Member;ww:[2]u64;
+ #assert QE_decode(buf[0..<at],rr[..],bb[..],mm[..],ww[..])==0;
+ expected:=[2]QE_Expected.[QE_Expected.{identity=id0,kind=1,cases=1},QE_Expected.{identity=id1,kind=2,cases=8}];p:=ep_test_process();#assert QE_metadata(expected[..],rr[..],bb[..],mm[..],p)==0;
+ for i:0..<3 {#assert bb[i].name==bs[i].name && bb[i].type_name==bs[i].type_name && bb[i].member_start==bs[i].member_start && bb[i].member_count==bs[i].member_count && bb[i].domain.first==bs[i].domain.first && bb[i].domain.bits==bs[i].domain.bits;}
+ #assert mm[0].bits==7 && mm[1].bits==18446744073709551615 && mm[1].label==ms[1].label;
+ for length:0..<at {#assert QE_decode(buf[0..<length],rr[..],bb[..],mm[..],ww[..])==3;}
+ for pos:0..<at {
+  old:=buf[pos];buf[pos]^=1;r:=QE_decode(buf[0..<at],rr[..],bb[..],mm[..],ww[..]);
+  if r==0 {
+   same:=QE_metadata(expected[..],rr[..],bb[..],mm[..],p)==0;
+   for i:0..<3 {if bb[i].name!=bs[i].name || bb[i].type_name!=bs[i].type_name || bb[i].domain.first!=bs[i].domain.first || bb[i].domain.bits!=bs[i].domain.bits || bb[i].domain.is_signed!=bs[i].domain.is_signed {same=false;}}
+   for i:0..<2 {if mm[i].bits!=ms[i].bits || mm[i].label!=ms[i].label {same=false;}}#assert !same;
+  }else {#assert r==3;}buf[pos]=old;
+ }
+ values:=[3]u64.[1,18446744073709551615,0];out:[100]u8;n:=QE_witness(rows[1],bs[..],ms[..],values[..],out[..]);#assert n==32 && cast(string)out[0..<n]=="a = true, mode = E.neg\0λ, z = 0";
+}
+
+#test "fresh memory and exact encoder capacities refuse before writes" {
+ r:[32770]u8;for i:0..<r.count {r[i]=91;}
+ #assert !QE_initialize(r[..]) && r[0]==91 && r[32769]==91;
+ #assert QE_initialize(r[0..<32769]) && QE_initial(r[0..<32769]) && r[1]==0 && r[32768]==0 && r[32769]==91;
+ #assert !QE_initial(r[..]);r[0]=0;#assert !QE_initial(r[0..<32769]);r[0]=255;r[1]=1;#assert !QE_initial(r[0..<32769]);r[1]=0;r[32768]=1;#assert !QE_initial(r[0..<32769]);
+ out:[128]u8;for i:0..<out.count {out[i]=91;}
+ #assert QE_encode_header(1,0,0,out[0..<28])==28 && QE_encode_header(1,0,0,out[0..<27])== -1 && QE_encode_header(0,0,0,out[..])== -1;
+ q:=QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=1,cases=1};
+ #assert QE_encode_check(q,out[0..<61])==61 && QE_encode_check(q,out[0..<60])== -1;q.kind=0;#assert QE_encode_check(q,out[..])== -1;
+ b:=QE_Binding.{name="x",type_name="I",domain=FD_domain(5,64,true,0,1,0).domain};#assert QE_encode_binding(b,out[0..<62])==62 && QE_encode_binding(b,out[0..<61])== -1;b.name="";#assert QE_encode_binding(b,out[..])== -1;
+ m:=QE_Member.{bits=18446744073709551615,label="a"};#assert QE_encode_member(m,out[0..<29])==29 && QE_encode_member(m,out[0..<28])== -1;
+ empty:[1]u64;d:=QE_domain(5,64,1,9223372036854775806,1,empty[0..<0]);#assert d.kind==5;
+ b=QE_Binding.{name="x",type_name="E",domain=QE_domain(4,8,0,0,1048577,empty[0..<0]),member_count=1048577};#assert !QE_binding_valid(b,true,true,true);
+ b.member_count=1;b.domain=QE_domain(4,8,0,0,1,empty[0..<0]);#assert !QE_binding_valid(b,true,true,false);
+}
+#forall "state validity requires independent identity bounds and phase facts" defect:0..<20 {
+ s:=QE_State.{row=0,declaration_index=7,total=2,arity=1};
+ if defect==0 {s.reason=1;}else if defect==1 {s.row=-1;}else if defect==2 {s.row=4096;}else if defect==3 {s.declaration_index=-1;}else if defect==4 {s.declaration_index=4096;}
+ else if defect==5 {s.total=0;}else if defect==6 {s.total=16777217;}else if defect==7 {s.arity=-1;}else if defect==8 {s.arity=65;}
+ else if defect==9 {s.case_index=1;}else if defect==10 {s.completed=1;}else if defect==11 {s.event=1;s.completed=2;s.case_index=2;}
+ else if defect==12 {s.event=1;s.case_index=1;}else if defect==13 {s.event=2;s.completed=0;}else if defect==14 {s.event=2;s.case_index=2;s.completed=3;}
+ else if defect==15 {s.event=3;s.completed=1;s.case_index=1;}else if defect==16 {s.event=3;s.completed=2;s.case_index=0;}
+ else if defect==17 {s.event=4;}else if defect==18 {s.event=3;s.completed=2;s.case_index=2;}else {s.event=2;s.case_index=1;s.completed=1;}
+ #assert !qe_state(s) && !QE_ready(s) && QE_begin(s).reason==1 && QE_end(s,0).reason==1 && QE_done(s).reason==1;
+}
+#test "selection returns each physical ordinary and quantified declaration" {
+ cs:=[3]EP_Claim.[ep_test_claim(),ep_test_claim(),ep_test_claim()];cs[0].kind="#authority";cs[1].kind="#forall";cs[2].line=12;mask:=[3]u8.[0,2,1];
+ a:=QE_expected(cs[..],mask[..],0);b:=QE_expected(cs[..],mask[..],1);#assert a.identity.ordinal==0 && a.kind==2 && a.identity.declaration_index==0 && b.kind==1 && b.identity.line==12 && b.identity.declaration_index==1;
+ #assert QE_expected(cs[..],mask[..],-1).identity.ordinal== -1 && QE_expected(cs[..],mask[..],2).identity.ordinal== -1;
+ #assert QE_selected(cs[..],mask[0..<2],0).ordinal== -1;
+ p:=QE_plan(cs[..],"absent",true,mask[..]);#assert p.outcome==4 && p.count==0;
+ p=QE_plan(cs[..],"",false,mask[0..<2]);#assert p.outcome==3;
+ #assert QE_start(QE_Check.{}).reason==1;
+ s:=QE_State.{row=0,declaration_index=7,total=2,arity=1};#assert QE_end(s,0).reason==1 && QE_done(s).reason==1;
+ s=QE_begin(s);#assert QE_begin(s).reason==1 && QE_done(s).reason==1;s=QE_end(s,0);#assert QE_done(s).reason==1;
+}
+#test "every committed phase and packet byte has a source-bound outcome" {
+ q:=QE_Check.{identity=EP_Identity.{ordinal=3,declaration_index=7,line=1,column=1,name="p",source="/q"},kind=2,cases=2,binding_count=1};
+ bs:=[1]QE_Binding.[QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain}];region:[32769]u8;values:=[1]u64.[18446744073709551615];
+ #assert QE_initialize(region[..]);s:=QE_start(q);p:=ep_test_process();
+ #assert QE_observe(q,bs[..],region[..],p).outcome==3;
+ for phase:0..<5 {
+  if phase==0 || phase==2 {s=QE_begin(s);if phase==2 {values[0]=0;}}
+  else if phase==4 {s=QE_done(s);}else {s=QE_end(s,0);}
+  slot:=QE_slot(cast(u32)region[0]);at:=1+slot*16384;#assert QE_encode_progress(s,values[..],region[at..<at+16384])==64;region[0]=cast(u8)slot;
+  for code:-1..<2 {
+   p.returncode=code;o:=QE_observe(q,bs[..],region[..],p);want:=ifx phase==4 && code==0 then 0 else ifx (phase==0 || phase==2) && code<0 then 1 else 3;
+   #assert o.valid && o.outcome==cast(u32)want && o.state.case_index==s.case_index && o.values_offset==at+56 && o.values_count==1;
+  }
+  p.returncode=0;
+  for byte:0..<64 {
+   original:=region[at+byte];region[at+byte]^=1;#assert qe_progress(region[..],at).reason<=1;bad:=QE_observe(q,bs[..],region[..],p);#assert bad.outcome==3 && !bad.valid;region[at+byte]=original;
+   if phase>0 {other:=1+(1-slot)*16384;original=region[other+byte];region[other+byte]^=1;#assert qe_progress(region[..],other).reason<=1;bad=QE_observe(q,bs[..],region[..],p);#assert bad.outcome==3 && !bad.valid;region[other+byte]=original;}
+  }
+ }
+ p.timeout=true;o:=QE_observe(q,bs[..],region[..],p);#assert o.valid && o.outcome==2 && o.state.completed==2;
+ region[1]=0;#assert QE_observe(q,bs[..],region[..],p).outcome==2;
+ p.timeout=false;#assert QE_observe(q,bs[..],region[0..<32768],p).outcome==3;
+ region[0]=2;#assert QE_observe(q,bs[..],region[..],p).outcome==3;
+}
+#test "progress encoder and decimal witnesses honor complete capacities" {
+ s:=QE_State.{row=1,declaration_index=2,total=1,arity=1,event=1};v:=[1]u64.[18446744073709551615];out:[100]u8;for i:0..<out.count {out[i]=91;}
+ #assert QE_encode_progress(s,v[..],out[0..<64])==64 && QE_encode_progress(s,v[..],out[0..<63])== -1;
+ #assert QE_encode_progress(s,v[0..<0],out[..])== -1;s.event=0;#assert QE_encode_progress(s,v[..],out[..])== -1;s.reason=1;#assert QE_encode_progress(s,v[..],out[..])== -1;
+ q:=QE_Check.{binding_count=1};bs:=[1]QE_Binding.[QE_Binding.{name="n",type_name="int",domain=FD_domain(5,64,true,-9223372036854775808,9223372036854775807,0).domain}];ms:[1]QE_Member;
+ bs[0].domain=FD_Domain.{kind=5,bits=64,is_signed=true,first=-9223372036854775808,count=16777216};v[0]=9223372036854775808;
+ n:=QE_witness(q,bs[..],ms[0..<0],v[..],out[..]);#assert n==24 && cast(string)out[0..<n]=="n = -9223372036854775808";
+ bs[0].domain=FD_Domain.{kind=4,bits=64,is_signed=false,count=1};bs[0].member_count=1;ms[0]=QE_Member.{bits=18446744073709551615,label="huge"};bs[0].domain.values=v[..];v[0]=18446744073709551615;
+ n=qe_number(out[..],0,v[0],false,true);#assert n==20 && cast(string)out[0..<20]=="18446744073709551615";
+ #assert QE_witness(q,bs[..],ms[0..<0],v[..],out[..])== -1;
+ q.binding_count=0;#assert QE_witness(q,bs[0..<0],ms[0..<0],v[0..<0],out[..])==0;
+}
+
+#test "fixed progress capture reserves its bounded overflow probe before effects" {
+ #assert QE_capture(32769,32770)==2 && QE_capture(32770,32770)==0 && QE_capture(32771,32770)==0;
+ #assert QE_capture(-1,32770)==3 && QE_capture(32770,-1)==3 && QE_capture(32770,32769)==3 && QE_capture(0,32770)==2;
+}
+QE_capture :: (remaining:int,requested:int)->u32 #export_c {if remaining<0 || requested!=QE_REGION+1 {return 3;}return ifx remaining<requested then 2 else 0;}
+
+#test "minimal enum catalog attaches the first binding and rejects trailing bytes" {
+ ew:=[1]u64.[7];d:=FD_domain(4,8,false,0,0,1).domain;d.values=ew[..];q:=QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=2,cases=1,binding_count=1};b:=QE_Binding.{name="x",type_name="E",domain=d,member_count=1};m:=QE_Member.{bits=7,label="a"};
+ raw:[256]u8;at:=QE_encode_header(1,1,1,raw[..]);#assert QE_sizes(raw[0..<28]).outcome==0;
+ at+=QE_encode_check(q,raw[at..<raw.count]);at+=QE_encode_binding(b,raw[at..<raw.count]);at+=QE_encode_member(m,raw[at..<raw.count]);#assert at==180;
+ rr:[1]QE_Check;bb:[1]QE_Binding;mm:[1]QE_Member;words:[1]u64;
+ #assert QE_decode(raw[0..<at],rr[..],bb[..],mm[..],words[..])==0 && bb[0].domain.values[0]==7 && mm[0].label=="a";
+ #assert QE_decode(raw[0..<at+1],rr[..],bb[..],mm[..],words[..])==3;
+ raw[0]^=1;#assert QE_sizes(raw[0..<at]).outcome==3;raw[0]^=1;raw[16]=0;#assert QE_sizes(raw[0..<at]).outcome==3;
+ r:=QE_request(3,"one","0","/p");#assert r.mode==0;
+}
+#forall "catalog ownership and canonical facts are independently complete" defect:0..<12 {
+ ew:=[1]u64.[7];en:=FD_domain(4,8,false,0,0,1).domain;en.values=ew[..];
+ qs:=[2]QE_Check.[QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=2,cases=1,binding_count=1},QE_Check.{identity=EP_Identity.{ordinal=1,declaration_index=1,line=2,column=1,source="/"},kind=2,cases=2,binding_start=1,binding_count=1}];
+ bs:=[2]QE_Binding.[QE_Binding.{name="e",type_name="E",domain=en,member_count=1},QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,0,2,0).domain,member_start=1}];ms:=[1]QE_Member.[QE_Member.{bits=7,label="a"}];
+ if defect==0 {qs[0].binding_start=1;}else if defect==1 {qs[1].binding_count=2;}else if defect==2 {bs[1].member_count=1;}
+ else if defect==3 {bs[0].domain.values=ew[0..<0];}else if defect==4 {ms[0].bits=256;}else if defect==5 {ms[0].bits=8;}
+ else if defect==6 {ms[0].label="";}else if defect==7 {qs[1].cases=1;}else if defect==8 {qs[1].identity.ordinal=0;}
+ else if defect==9 {bs[1].member_start=0;}else if defect==10 {bs[0].member_start=1;}else {qs[0].binding_count=3;}
+ #assert !QE_catalog_valid(qs[..],bs[..],ms[..]);
+}
+#test "unused catalog storage and original expectations cannot qualify" {
+ q:=QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=1,cases=1};qs:=[1]QE_Check.[q];bs:[1]QE_Binding;ms:[1]QE_Member;
+ #assert !QE_catalog_valid(qs[..],bs[..],ms[0..<0]) && !QE_catalog_valid(qs[..],bs[0..<0],ms[..]);
+ #assert !QE_catalog_valid(qs[0..<0],bs[0..<0],ms[0..<0]);
+ ex:=[1]QE_Expected.[QE_Expected.{identity=q.identity,kind=1,cases=1}];p:=ep_test_process();
+ #assert QE_metadata(ex[0..<0],qs[..],bs[0..<0],ms[0..<0],p)==3;
+ ex[0].kind=2;#assert QE_metadata(ex[..],qs[..],bs[0..<0],ms[0..<0],p)==3;ex[0].kind=1;ex[0].cases=2;#assert QE_metadata(ex[..],qs[..],bs[0..<0],ms[0..<0],p)==3;
+ ex[0].cases=1;qs[0].cases=2;#assert QE_metadata(ex[..],qs[..],bs[0..<0],ms[0..<0],p)==3;
+ bs[0]=QE_Binding.{name="x",type_name="I",domain=FD_domain(5,64,true,0,16777216,0).domain};bs2:=[2]QE_Binding.[bs[0],bs[0]];qs[0].kind=2;qs[0].binding_count=2;qs[0].cases=1;
+ #assert !QE_catalog_valid(qs[..],bs2[..],ms[0..<0]);
+}
+#test "domain extraction validates nonzero flat offsets and exact outputs" {
+ bs:=[2]QE_Binding.[QE_Binding.{domain=FD_domain(1,8,false,0,0,0).domain},QE_Binding.{domain=FD_domain(5,64,true,-1,1,0).domain}];q:=QE_Check.{binding_start=1,binding_count=1};out:[1]FD_Domain;
+ #assert QE_domains(q,bs[..],out[..])==0 && out[0].kind==5 && out[0].first== -1;
+ #assert QE_domains(q,bs[..],out[0..<0])==3;q.binding_start=2;#assert QE_domains(q,bs[..],out[..])==3;q.binding_start=-1;#assert QE_domains(q,bs[..],out[..])==3;
+ q.binding_start=0;q.binding_count=65;#assert QE_domains(q,bs[..],out[..])==3;
+ cs:=[1]EP_Claim.[ep_test_claim()];mask:[1]u8;p:=QE_plan(cs[..],"",false,mask[..]);#assert p.outcome==0 && p.count==1;
+}
+#test "multiple progress words preserve the shared tuple and numeric witness contracts" {
+ ew:=[2]u64.[7,18446744073709551615];en:=FD_domain(4,8,true,0,0,2).domain;en.values=ew[..];
+ bs:=[3]QE_Binding.[QE_Binding.{name="a",type_name="bool",domain=FD_domain(1,8,false,0,0,0).domain},QE_Binding.{name="e",type_name="E",domain=en,member_count=2},QE_Binding.{name="z",type_name="int",domain=FD_domain(5,64,true,-1,1,0).domain,member_start=2}];
+ q:=QE_Check.{identity=EP_Identity.{ordinal=3,declaration_index=9,line=1,column=1,source="/"},kind=2,cases=8,binding_count=3};domains:[3]FD_Domain;#assert QE_domains(q,bs[..],domains[..])==0;
+ region:[32769]u8;#assert QE_initialize(region[..]);word:[3]u64;s:=QE_start(q);p:=ep_test_process();
+ for ordinal:0..<8 {
+  s=QE_begin(s);#assert FD_tuple(domains[..],cast(u64)ordinal,word[..])==0;
+  slot:=QE_slot(cast(u32)region[0]);at:=1+slot*16384;for i:0..<80 {region[at+i]=91;}
+  #assert QE_encode_progress(s,word[..],region[at..<at+80])==80;region[0]=cast(u8)slot;
+  p.returncode=-6;o:=QE_observe(q,bs[..],region[..],p);#assert o.valid && o.outcome==1;
+  s=QE_end(s,0);slot=QE_slot(cast(u32)region[0]);at=1+slot*16384;#assert QE_encode_progress(s,word[..],region[at..<at+80])==80;region[0]=cast(u8)slot;
+ }
+ s=QE_done(s);#assert QE_encode_progress(s,word[..],region[1..<81])==80;region[0]=0;p.returncode=0;#assert QE_observe(q,bs[..],region[..],p).outcome==0;
+ ms:=[2]QE_Member.[QE_Member.{bits=7,label="first"},QE_Member.{bits=18446744073709551615,label="negative"}];out:[100]u8;word[0]=0;word[1]=7;word[2]=0;
+ n:=QE_witness(q,bs[..],ms[..],word[..],out[..]);#assert cast(string)out[0..<n]=="a = false, e = E.first, z = 0";
+ #assert QE_witness(q,bs[..],ms[..],word[..],out[0..<n])==n;
+ word[0]=2;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;word[0]=0;word[1]=8;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;
+ word[1]=7;word[2]=1;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;word[2]=18446744073709551614;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;
+ word[2]=0;#assert QE_witness(q,bs[..],ms[..],word[0..<2],out[..])== -1;
+ q.binding_start=1;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;q.binding_start=-1;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;
+ q.binding_start=0;q.binding_count=65;#assert QE_witness(q,bs[..],ms[..],word[..],out[..])== -1;
+}
+
+#test "invalid previous phases domains and unused initial slots fail closed" {
+ ew:=[2]u64.[255,7];en:=FD_domain(4,8,true,0,0,2).domain;en.values=ew[..];bs:=[1]QE_Binding.[QE_Binding.{name="x",type_name="int",domain=FD_domain(5,64,true,0,2,0).domain}];
+ q:=QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=2,cases=2,binding_count=1};p:=ep_test_process();region:[32769]u8;word:=[1]u64.[0];#assert QE_initialize(region[..]);s:=QE_begin(QE_start(q));
+ #assert QE_encode_progress(s,word[..],region[1..<65])==64;region[0]=0;
+ region[16385]=1;#assert !QE_observe(q,bs[..],region[..],p).valid;region[16385]=0;region[32768]=1;#assert !QE_observe(q,bs[..],region[..],p).valid;region[32768]=0;
+ q.binding_start=1;#assert QE_observe(q,bs[..],region[..],p).outcome==3;q.binding_start=0;
+ bs[0].domain.is_signed=false;#assert QE_observe(q,bs[..],region[..],p).outcome==3;bs[0].domain.is_signed=true;
+ s=QE_begin(QE_end(s,0));word[0]=1;#assert QE_encode_progress(s,word[..],region[1..<65])==64;
+ #assert QE_encode_progress(s,word[..],region[16385..<16449])==64;#assert !QE_observe(q,bs[..],region[..],p).valid;
+ s=QE_end(s,0);#assert QE_encode_progress(s,word[..],region[16385..<16449])==64;region[0]=1;#assert QE_encode_progress(s,word[..],region[1..<65])==64;#assert !QE_observe(q,bs[..],region[..],p).valid;
+ done:=QE_done(s);#assert QE_done(done).reason==1;
+ // A valid current enum tuple must not hide an invalid preceding enum tuple.
+ bs[0].domain=en;s=QE_begin(QE_start(q));s=QE_end(s,0);word[0]=255;#assert QE_encode_progress(s,word[..],region[16385..<16449])==64;
+ s=QE_begin(s);word[0]=7;#assert QE_encode_progress(s,word[..],region[1..<65])==64;region[0]=0;#assert QE_observe(q,bs[..],region[..],p).outcome==3;
+ // Malformed current enum words refuse independently too.
+ word[0]=255;s=QE_begin(QE_start(q));#assert QE_encode_progress(s,word[..],region[1..<65])==64;#assert QE_observe(q,bs[..],region[..],p).outcome==3;
+}
+#test "exact witness capacity numeric canonicality and unsupported request reasons" {
+ bs:=[1]QE_Binding.[QE_Binding.{name="x",type_name="u8",domain=FD_domain(3,8,false,0,0,0).domain}];q:=QE_Check.{binding_count=1};ms:[1]QE_Member;word:=[1]u64.[256];out:[100]u8;
+ #assert QE_witness(q,bs[..],ms[0..<0],word[..],out[..])== -1;word[0]=255;n:=QE_witness(q,bs[..],ms[0..<0],word[..],out[0..<0]);#assert n==7;
+ for i:0..<n {out[i]=91;}#assert QE_witness(q,bs[..],ms[0..<0],word[..],out[0..<n])==n && cast(string)out[0..<n]=="x = 255";
+ q.binding_start=1;#assert QE_witness(q,bs[..],ms[0..<0],word[..],out[..])== -1;
+ #assert QE_request(2,"metadata","","x").reason==1 && QE_request(4,"invalid","0","/p").reason==1 && QE_request(3,"one","0","/p").reason==1;
+ cs:=[1]EP_Claim.[ep_test_claim()];cs[0].kind="#forall";mask:[1]u8;plan:=QE_plan(cs[..],"",false,mask[..]);#assert plan.count==1 && plan.outcome==0;
+}
+#test "later enum storage extents are admitted before member reads" {
+ words:=[2]u64.[7,8];e:=FD_domain(4,8,false,0,0,2).domain;e.values=words[..];one:=e;one.count=1;one.values=words[0..<1];
+ qs:=[2]QE_Check.[QE_Check.{identity=EP_Identity.{line=1,column=1,source="/"},kind=2,cases=1,binding_count=1},QE_Check.{identity=EP_Identity.{ordinal=1,declaration_index=1,line=2,column=1,source="/"},kind=2,cases=2,binding_start=1,binding_count=1}];
+ bs:=[2]QE_Binding.[QE_Binding.{name="a",type_name="E",domain=one,member_count=1},QE_Binding.{name="b",type_name="E",domain=e,member_start=1,member_count=2}];ms:=[2]QE_Member.[QE_Member.{bits=7,label="a"},QE_Member.{bits=7,label="a"}];
+ #assert !QE_catalog_valid(qs[..],bs[..],ms[..]);
+}
+
+QE_abi :: (abi:int)->bool #export_c {return abi==2;}
+QE_region_size :: ()->int #export_c {return QE_REGION;}
+QE_initialize :: (region:[]u8)->bool #export_c {
+ if region.count!=QE_REGION {return false;}region[0]=255;for i:1..<region.count {region[i]=0;}return true;
+}
+QE_initial :: (region:[]u8)->bool #export_c {
+ if region.count!=QE_REGION || region[0]!=255 {return false;}for i:1..<region.count {if region[i]!=0 {return false;}}return true;
+}
+QE_native_profile :: (pointer_bytes:int,long_bytes:int,char_bits:int,atomic_bytes:int,atomic_lock_free:bool)->bool #export_c {return EP_native_profile(pointer_bytes,long_bytes,char_bits) && atomic_bytes==1 && atomic_lock_free;}
+QE_request :: (argc:int,mode:string,ordinal:string,path:string)->EP_Request #export_c {
+ if mode=="metadata" {if path.count!=0 {return EP_Request.{reason=1};}return EP_request(argc,mode,ordinal);}
+ if argc==4 && ep_text(path.count) {return EP_request(3,mode,ordinal);}
+ return EP_Request.{reason=1};
+}
+QE_kind :: (raw:int)->u32 #export_c {if raw==1 {return 1;}if raw==2 {return 2;}return 0;}
+QE_domain :: (raw_kind:int,raw_width:int,raw_signed:int,first:int,count:u64,values:[]u64)->FD_Domain #export_c {
+ if !qe_u32(raw_kind) || !qe_u32(raw_width) || (raw_signed!=0 && raw_signed!=1) || !fd_total(count) {return FD_Domain.{};}
+ kind:=cast(u32)raw_kind;bits:=cast(u32)raw_width;sign:=raw_signed==1;
+ if kind==1 && (bits!=8 || sign) {return FD_Domain.{};}
+ if kind==4 {
+  if !fd_width(bits) || first!=0 || (values.count!=0 && cast(u64)values.count!=count) {return FD_Domain.{};}
+  return FD_Domain.{kind=kind,bits=bits,is_signed=sign,count=count,values=values};
+ }
+ if values.count!=0 {return FD_Domain.{};}
+ hi:=first;if kind==5 {
+  if bits!=64 || !sign || count>FD_LAST-fd_rank(first) {return FD_Domain.{};}
+  hi=cast,trunc(int)((fd_rank(first)+count)^FD_SIGN);
+ }
+ r:=FD_domain(kind,bits,sign,first,hi,cast(int)count);
+ if r.reason!=0 || r.domain.first!=first || r.domain.count!=count {return FD_Domain.{};}return r.domain;
+}
+QE_table :: (count:int,present:bool)->bool #export_c {return EP_table(count,present);}
+QE_check_valid :: (check:QE_Check,table_count:int,run_present:bool,name_present:bool,source_present:bool,bindings_present:bool)->bool #export_c {
+ q:=check;id:=q.identity;
+ return EP_row_valid(table_count,id.ordinal,id.declaration_index,id.line,id.column,id.name.count,id.source.count,run_present,name_present,source_present) &&
+  (q.kind==1 || q.kind==2) && NC_native_arity(2,q.binding_count) && q.binding_start>=0 && q.binding_start<=QE_BINDINGS-q.binding_count &&
+  (bindings_present || q.binding_count==0) && fd_total(q.cases) &&
+  ((q.kind==1 && q.binding_count==0 && q.cases==1) || (q.kind==2 && q.binding_count>0));
+}
+QE_binding_valid :: (binding:QE_Binding,name_present:bool,type_present:bool,members_present:bool)->bool #export_c {
+ b:=binding;d:=b.domain;
+ if !name_present || !type_present || !ep_text(b.name.count) || !ep_text(b.type_name.count) || b.member_start<0 || b.member_count<0 || b.member_start>QE_MEMBERS-b.member_count || (!members_present && b.member_count!=0) {return false;}
+ n:=QE_domain(cast(int)d.kind,cast(int)d.bits,ifx d.is_signed then 1 else 0,d.first,d.count,d.values);
+ if n.kind==0 {return false;}
+ if d.kind==4 {return cast(u64)b.member_count==d.count;}return b.member_count==0;
+}
+QE_member_valid :: (member:QE_Member,bits:u32,is_signed:bool,label_present:bool)->bool #export_c {return label_present && ep_text(member.label.count) && fd_width(bits) && fd_canonical(member.bits,bits,is_signed);}
+qe_totals :: (checks:int,bindings:int,members:int)->bool {return EP_table(checks,true) && bindings>=0 && bindings<=QE_BINDINGS && members>=0 && members<=QE_MEMBERS;}
+qe_head :: (out:[]u8,kind:int,length:int) {for i:0..<8 {out[i]=QE_MAGIC[i];}ep_put(out,8,kind);ep_put(out,12,length);}
+qe_put64 :: (out:[]u8,at:int,value:u64) {ep_put(out,at,cast(int)(value&4294967295));ep_put(out,at+4,cast(int)(value>>32));}
+qe_get64 :: (raw:[]u8,at:int)->u64 {return cast(u64)ep_get(raw,at) | (cast(u64)ep_get(raw,at+4)<<32);}
+qe_copy :: (out:[]u8,at:int,text:string) {for i:0..<text.count {out[at+i]=text[i];}}
+QE_encode_header :: (checks:int,bindings:int,members:int,out:[]u8)->int #export_c {
+ if !qe_totals(checks,bindings,members) || out.count<28 {return -1;}qe_head(out,1,28);ep_put(out,16,checks);ep_put(out,20,bindings);ep_put(out,24,members);return 28;
+}
+QE_encode_check :: (check:QE_Check,out:[]u8)->int #export_c {
+ q:=check;id:=q.identity;total:=60+id.name.count+id.source.count;
+ if !QE_check_valid(q,4096,true,true,true,true) || out.count<total {return -1;}
+ qe_head(out,2,total);ep_put(out,16,id.ordinal);ep_put(out,20,id.declaration_index);ep_put(out,24,cast(int)q.kind);ep_put(out,28,id.line);ep_put(out,32,id.column);
+ ep_put(out,36,id.name.count);ep_put(out,40,id.source.count);ep_put(out,44,q.binding_start);ep_put(out,48,q.binding_count);qe_put64(out,52,q.cases);
+ qe_copy(out,60,id.name);qe_copy(out,60+id.name.count,id.source);return total;
+}
+QE_encode_binding :: (binding:QE_Binding,out:[]u8)->int #export_c {
+ b:=binding;total:=60+b.name.count+b.type_name.count;if !QE_binding_valid(b,true,true,true) || out.count<total {return -1;}
+ qe_head(out,3,total);ep_put(out,16,b.name.count);ep_put(out,20,b.type_name.count);ep_put(out,24,cast(int)b.domain.kind);ep_put(out,28,cast(int)b.domain.bits);ep_put(out,32,ifx b.domain.is_signed then 1 else 0);
+ qe_put64(out,36,cast,trunc(u64)b.domain.first);qe_put64(out,44,b.domain.count);ep_put(out,52,b.member_start);ep_put(out,56,b.member_count);qe_copy(out,60,b.name);qe_copy(out,60+b.name.count,b.type_name);return total;
+}
+QE_encode_member :: (member:QE_Member,out:[]u8)->int #export_c {
+ if !ep_text(member.label.count) || out.count<28+member.label.count {return -1;}qe_head(out,4,28+member.label.count);qe_put64(out,16,member.bits);ep_put(out,24,member.label.count);qe_copy(out,28,member.label);return 28+member.label.count;
+}
+QE_sizes :: (raw:[]u8)->QE_Sizes #export_c {
+ bad:=QE_Sizes.{outcome=3};if !qe_catalog_size(raw.count) {return bad;}f:=qe_frame(raw,0,1,28);if !f.ok {return bad;}if f.size!=28 {return bad;}
+ c:=ep_get(raw,16);b:=ep_get(raw,20);m:=ep_get(raw,24);if !qe_totals(c,b,m) {return QE_Sizes.{outcome=3};}return QE_Sizes.{checks=c,bindings=b,members=m};
+}
+qe_frame :: (raw:[]u8,at:int,kind:int,minimum:int)->QE_Frame {
+ if at<0 || raw.count-at<minimum {return QE_Frame.{};}for i:0..<8 {if raw[at+i]!=QE_MAGIC[i] {return QE_Frame.{};}}
+ size:=ep_get(raw,at+12);if ep_get(raw,at+8)!=kind || size<minimum || size>raw.count-at {return QE_Frame.{};}return QE_Frame.{ok=true,size=size};
+}
+qe_text :: (raw:[]u8,at:int,count:int)->string {return cast(string)raw[at..<at+count];}
+QE_decode :: (raw:[]u8,checks:[]QE_Check,bindings:[]QE_Binding,members:[]QE_Member,words:[]u64)->u32 #export_c {
+ s:=QE_sizes(raw);if s.outcome!=0 || s.checks!=checks.count || s.bindings!=bindings.count || s.members!=members.count || words.count!=members.count {return 3;}
+ at:=28;
+ for i:0..<checks.count {
+  f:=qe_frame(raw,at,2,61);if !f.ok {return 3;}n:=f.size;a:=ep_get(raw,at+36);b:=ep_get(raw,at+40);if n!=60+a+b {return 3;}
+  q:=QE_Check.{identity=EP_Identity.{ordinal=ep_get(raw,at+16),declaration_index=ep_get(raw,at+20),line=ep_get(raw,at+28),column=ep_get(raw,at+32),name=qe_text(raw,at+60,a),source=qe_text(raw,at+60+a,b)},kind=cast(u32)ep_get(raw,at+24),cases=qe_get64(raw,at+52),binding_start=ep_get(raw,at+44),binding_count=ep_get(raw,at+48)};
+  if !QE_check_valid(q,checks.count,true,true,true,true) {return 3;}checks[i]=q;at+=n;
+ }
+ for i:0..<bindings.count {
+  f:=qe_frame(raw,at,3,62);if !f.ok {return 3;}n:=f.size;a:=ep_get(raw,at+16);b:=ep_get(raw,at+20);if n!=60+a+b {return 3;}
+  d:=QE_domain(ep_get(raw,at+24),ep_get(raw,at+28),ep_get(raw,at+32),cast,trunc(int)qe_get64(raw,at+36),qe_get64(raw,at+44),words[0..<0]);
+  r:=QE_Binding.{name=qe_text(raw,at+60,a),type_name=qe_text(raw,at+60+a,b),domain=d,member_start=ep_get(raw,at+52),member_count=ep_get(raw,at+56)};
+  if !QE_binding_valid(r,true,true,true) {return 3;}bindings[i]=r;at+=n;
+ }
+ for i:0..<members.count {
+  f:=qe_frame(raw,at,4,29);if !f.ok {return 3;}n:=f.size;count:=ep_get(raw,at+24);if !ep_text(count) || n!=28+count {return 3;}
+  members[i]=QE_Member.{bits=qe_get64(raw,at+16),label=qe_text(raw,at+28,count)};words[i]=members[i].bits;at+=n;
+ }
+ if at!=raw.count {return 3;}
+ for i:0..<bindings.count {
+  b:=bindings[i];if b.member_start>members.count-b.member_count {return 3;}
+  if b.domain.kind==4 {bindings[i].domain.values=words[b.member_start..<b.member_start+b.member_count];}
+ }
+ return ifx QE_catalog_valid(checks,bindings,members) then 0 else 3;
+}
+QE_catalog_valid :: (checks:[]QE_Check,bindings:[]QE_Binding,members:[]QE_Member)->bool #export_c {
+ if !qe_totals(checks.count,bindings.count,members.count) {return false;}next_b:int=0;next_m:int=0;
+ for i:0..<checks.count {
+  q:=checks[i];if !QE_check_valid(q,checks.count,true,true,true,true) || q.identity.ordinal!=i || q.binding_start!=next_b || q.binding_count>bindings.count-next_b {return false;}
+  total:u64=1;
+  for j:0..<q.binding_count {
+   b:=bindings[next_b+j];if !QE_binding_valid(b,true,true,true) || b.member_start!=next_m || b.member_count>members.count-next_m {return false;}
+   p:=FD_combine(total,b.domain.count);if !fd_shape(b.domain) {return false;}total=p.total;
+   for k:0..<b.member_count {m:=members[next_m+k];if !QE_member_valid(m,b.domain.bits,b.domain.is_signed,true) || m.bits!=b.domain.values[k] {return false;}}
+   next_m+=b.member_count;
+  }
+  if total!=q.cases {return false;}next_b+=q.binding_count;
+ }
+ return next_b==bindings.count && next_m==members.count;
+}
+QE_metadata :: (expected:[]QE_Expected,checks:[]QE_Check,bindings:[]QE_Binding,members:[]QE_Member,process:EP_Process)->u32 #export_c {
+ p:=EP_phase(process);if p!=0 {return p;}if expected.count!=checks.count || !QE_catalog_valid(checks,bindings,members) {return 3;}
+ for i:0..<checks.count {e:=expected[i];q:=checks[i];a:=e.identity;b:=q.identity;
+  if e.kind!=q.kind || e.cases!=q.cases || a.ordinal!=b.ordinal || a.declaration_index!=b.declaration_index || a.line!=b.line || a.column!=b.column || a.name!=b.name || a.source!=b.source {return 3;}
+ }return 0;
+}
+QE_domains :: (check:QE_Check,bindings:[]QE_Binding,out:[]FD_Domain)->u32 #export_c {
+ q:=check;if !NC_native_arity(2,q.binding_count) || q.binding_start<0 || q.binding_start>bindings.count-q.binding_count || out.count!=q.binding_count {return 3;}
+ for i:0..<out.count {out[i]=bindings[q.binding_start+i].domain;}return 0;
+}
+QE_plan :: (claims:[]EP_Claim,only:string,has_only:bool,mask:[]u8)->EP_Plan #export_c {
+ p:=EP_plan(claims,only,has_only,mask);if p.outcome==3 {return p;}if p.count>0 {p.outcome=0;}return p;
+}
+QE_selected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->EP_Identity #export_c {return QE_expected(claims,mask,ordinal).identity;}
+QE_expected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->QE_Expected #export_c {
+ if !ep_masks(claims,mask) || !EP_select(4096,ordinal) {return QE_Expected.{identity=EP_Identity.{ordinal= -1}};}
+ decl:int=0;selected:int=0;for i:0..<claims.count {
+  c:=claims[i];if c.kind=="#authority" {continue;}
+  if mask[i]!=0 {
+   if selected==ordinal {return QE_Expected.{identity=EP_Identity.{ordinal=ordinal,declaration_index=decl,line=c.line,column=c.column,name=c.name,source=c.source},kind=ifx c.kind=="#test" then 1 else 2,cases=cast(u64)c.cases};}
+   selected+=1;
+  }decl+=1;
+ }return QE_Expected.{identity=EP_Identity.{ordinal= -1}};
+}
+QE_start :: (check:QE_Check)->QE_State #export_c {
+ if !QE_check_valid(check,4096,true,true,true,true) {return QE_State.{reason=1};}
+ return QE_State.{row=check.identity.ordinal,declaration_index=check.identity.declaration_index,total=check.cases,arity=check.binding_count};
+}
+qe_state :: (s:QE_State)->bool {
+ if s.reason!=0 || !EP_select(4096,s.row) || !EP_select(4096,s.declaration_index) || !fd_total(s.total) || !NC_native_arity(2,s.arity) {return false;}
+ if s.event==0 {return s.case_index==0 && s.completed==0;}
+ if s.event==1 {return s.case_index==s.completed && s.completed<s.total;}
+ if s.event==2 {return s.case_index<s.total && s.completed==s.case_index+1;}
+ if s.event==3 {return s.completed==s.total && s.case_index==s.total-1;}
+ return false;
+}
+QE_ready :: (state:QE_State)->bool #export_c {return qe_state(state) && (state.event==0 || state.event==2) && state.completed<state.total;}
+QE_begin :: (state:QE_State)->QE_State #export_c {s:=state;if !QE_ready(s) {return QE_State.{reason=1};}s.event=1;s.case_index=s.completed;return s;}
+QE_end :: (state:QE_State,returned:int)->QE_State #export_c {s:=state;if !qe_state(s) || s.event!=1 || returned!=0 {return QE_State.{reason=1};}s.event=2;s.completed=s.case_index+1;return s;}
+QE_done :: (state:QE_State)->QE_State #export_c {s:=state;if !qe_state(s) || s.event!=2 || s.completed!=s.total {return QE_State.{reason=1};}s.event=3;return s;}
+QE_slot :: (previous:u32)->int #export_c {if previous==255 || previous==1 {return 0;}if previous==0 {return 1;}return -1;}
+QE_encode_progress :: (state:QE_State,tuple:[]u64,out:[]u8)->int #export_c {
+ s:=state;n:=56+8*s.arity;if !qe_state(s) || s.event==0 || tuple.count!=s.arity || out.count<n {return -1;}
+ for i:0..<8 {out[i]=QE_PROGRESS[i];}ep_put(out,8,cast(int)s.event);ep_put(out,12,n);ep_put(out,16,s.row);ep_put(out,20,s.declaration_index);ep_put(out,24,s.arity);ep_put(out,28,0);
+ qe_put64(out,32,s.case_index);qe_put64(out,40,s.completed);qe_put64(out,48,s.total);for i:0..<tuple.count {qe_put64(out,56+8*i,tuple[i]);}return n;
+}
+qe_progress :: (raw:[]u8,at:int)->QE_State {
+ for i:0..<8 {if raw[at+i]!=QE_PROGRESS[i] {return QE_State.{reason=1};}}
+ arity:=ep_get(raw,at+24);if !NC_native_arity(2,arity) || ep_get(raw,at+12)!=56+8*arity || ep_get(raw,at+28)!=0 {return QE_State.{reason=1};}
+ s:=QE_State.{event=cast(u32)ep_get(raw,at+8),row=ep_get(raw,at+16),declaration_index=ep_get(raw,at+20),arity=arity,case_index=qe_get64(raw,at+32),completed=qe_get64(raw,at+40),total=qe_get64(raw,at+48)};
+ if !qe_state(s) || s.event==0 {return QE_State.{reason=1};}return s;
+}
+qe_invalid :: (p:u32)->QE_Observation {return QE_Observation.{outcome=ifx p!=0 then p else 3};}
+QE_observe :: (check:QE_Check,bindings:[]QE_Binding,region:[]u8,process:EP_Process)->QE_Observation #export_c {
+ p:=ep_transport(process);
+ if region.count!=QE_REGION || region[0]>1 {return qe_invalid(p);}
+ slot:=cast(int)region[0];at:=1+slot*QE_SLOT;s:=qe_progress(region,at);q:=check;
+ if s.reason!=0 {return qe_invalid(p);}
+ if s.row!=q.identity.ordinal || s.declaration_index!=q.identity.declaration_index || s.total!=q.cases || s.arity!=q.binding_count || slot!=(ifx s.event==2 then 1 else 0) {return qe_invalid(p);}
+ domains:[64]FD_Domain;words:[64]u64;if QE_domains(q,bindings,domains[0..<s.arity])!=0 || FD_tuple(domains[0..<s.arity],s.case_index,words[0..<s.arity])!=0 {return qe_invalid(p);}
+ for i:0..<s.arity {if words[i]!=qe_get64(region,at+56+8*i) {return qe_invalid(p);}}
+ other:=1+(1-slot)*QE_SLOT;
+ if s.event==1 && s.case_index==0 {for i:0..<QE_SLOT {if region[other+i]!=0 {return qe_invalid(p);}}}
+ else {
+  prev:=qe_progress(region,other);
+  if prev.reason!=0 {return qe_invalid(p);}
+  if prev.row!=s.row || prev.declaration_index!=s.declaration_index || prev.total!=s.total || prev.arity!=s.arity {return qe_invalid(p);}
+  if s.event==1 {if prev.event!=2 || prev.completed!=s.case_index {return qe_invalid(p);}}
+  else if s.event==2 {if prev.event!=1 || prev.case_index!=s.case_index {return qe_invalid(p);}}
+  else {if prev.event!=2 || prev.completed!=s.total {return qe_invalid(p);}}
+  if FD_tuple(domains[0..<s.arity],prev.case_index,words[0..<s.arity])!=0 {return qe_invalid(p);}
+  for i:0..<s.arity {if words[i]!=qe_get64(region,other+56+8*i) {return qe_invalid(p);}}
+ }
+ outcome:=EV_INFRASTRUCTURE;if p!=0 {outcome=p;}else if s.event==3 && process.returncode==0 {outcome=EV_PASSED;}else if s.event==1 && process.returncode<0 {outcome=EV_COUNTEREXAMPLE;}
+ return QE_Observation.{outcome=outcome,valid=true,state=s,slot=slot,values_offset=at+56,values_count=s.arity};
+}
+QE_witness :: (check:QE_Check,bindings:[]QE_Binding,members:[]QE_Member,values:[]u64,out:[]u8)->int #export_c {
+ q:=check;if !NC_native_arity(2,q.binding_count) || values.count!=q.binding_count || q.binding_start<0 || q.binding_count<0 || q.binding_start>bindings.count-q.binding_count {return -1;}
+ needed:=qe_render(q,bindings,members,values,out,false);if needed<0 {return -1;}if out.count>=needed {return qe_render(q,bindings,members,values,out,true);}return needed;
+}
+qe_append :: (out:[]u8,at:int,text:string,write:bool)->int {if write {qe_copy(out,at,text);}return at+text.count;}
+qe_number :: (out:[]u8,at:int,word:u64,negative:bool,write:bool)->int {
+ pos:=at;n:=word;if negative {pos=qe_append(out,pos,"-",write);n=(FD_LAST^word)+1;}
+ digits:[20]u8;count:int=0;
+ while true {digits[count]=cast(u8)(n%10)+48;count+=1;n/=10;if n==0 {break;}}
+ if write {for i:0..<count {out[pos+i]=digits[count-1-i];}}return pos+count;
+}
+qe_render :: (q:QE_Check,bindings:[]QE_Binding,members:[]QE_Member,values:[]u64,out:[]u8,write:bool)->int {
+ at:int=0;for i:0..<values.count {
+  b:=bindings[q.binding_start+i];d:=b.domain;word:=values[i];if !QE_binding_valid(b,true,true,true) || b.member_start>members.count-b.member_count {return -1;}
+  if i!=0 {at=qe_append(out,at,", ",write);}at=qe_append(out,at,b.name,write);at=qe_append(out,at," = ",write);
+  if d.kind==1 {if word>1 {return -1;}at=qe_append(out,at,ifx word==0 then "false" else "true",write);}
+  else if d.kind==4 {
+   label:string="";for j:0..<b.member_count {m:=members[b.member_start+j];if m.bits==word {label=m.label;break;}}
+   if label.count==0 {return -1;}at=qe_append(out,at,b.type_name,write);at=qe_append(out,at,".",write);at=qe_append(out,at,label,write);
+  }else {if !fd_canonical(word,d.bits,d.is_signed) {return -1;}if d.kind==5 {rank:=word^FD_SIGN;first:=fd_rank(d.first);if rank<first || rank-first>=d.count {return -1;}}at=qe_number(out,at,word,d.is_signed && (word&FD_SIGN)!=0,write);}
+ }return at;
+}
+
+qe_u32 :: (value:int)->bool {return cast,trunc(u64)value<4294967296;}
+qe_catalog_size :: (count:int)->bool {return count<=67108864;}

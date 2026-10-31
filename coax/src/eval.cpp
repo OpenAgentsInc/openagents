@@ -981,89 +981,97 @@ struct Evaluator {
     return std::to_string((unsigned long long)v.bits);
   }
 
-  static constexpr uint64_t MAX_CASES = UINT64_C(1) << 24;
-
-  // Domains are descriptors, not arrays of Value. A wide finite range must
-  // not allocate gigabytes before either the case or step budget can fire.
+  // The Coax finite-domain kernel owns admission, products and traversal.
+  // This record owns only resolved type facts and enum storage for borrowed views.
   struct Domain {
     Type type = nullptr;
-    int64_t first = 0;
-    uint64_t count = 0;
-    Value value(uint64_t index) const {
-      uint64_t bits = type->kind == TypeKind::enum_
-          ? type->enum_decl->members[(int32_t)index].bits
-          : canon_bits(type, (uint64_t)((__int128)first + index));
-      return scalar(type, bits);
+    coax_t_FD_Domain fact{};
+    std::vector<uint64_t> enum_values;
+    coax_t_FD_Domain view() {
+      auto result = fact;
+      result.values = {enum_values.data(), (int64_t)enum_values.size()};
+      return result;
+    }
+    void attach_enum() {
+      if (type->kind == TypeKind::enum_)
+        for (const EnumMember &member : type->enum_decl->members) enum_values.push_back(member.bits);
     }
   };
 
   bool domain(const Param &prm, const Binding &b, Domain *out) {
     Type t = prm.type;
     out->type = t;
+    Type base = t->kind == TypeKind::enum_ && t->elem ? t->elem : t;
+    uint32_t kind = b.lo ? 5 : t == &T_BOOL ? 1 : t->kind == TypeKind::enum_ ? 4 :
+                    t->kind == TypeKind::integer ? (t->is_signed ? 2 : 3) : 0;
+    int64_t first = 0, last = 0;
     if (b.lo) {
       CtFrame empty;
       Value lo = expr(b.lo, empty, false);
       if (failed) return false;
       Value hi = expr(b.hi, empty, false);
       if (failed) return false;
-      int64_t l = (int64_t)lo.bits, h = (int64_t)hi.bits;
-      __int128 span = (__int128)h - (__int128)l;
-      if (span <= 0) {
-        err(b.lo->loc, "E0379", "#forall requires a nonempty increasing range");
-        return false;
-      }
-      if (span > MAX_CASES) {
-        err(b.lo->loc, "E0400", "#forall range has more than " + std::to_string(MAX_CASES) + " values");
-        return false;
-      }
-      out->first = l;
-      out->count = (uint64_t)span;
-    } else if (t == &T_BOOL) {
-      out->count = 2;
-    } else if (t->kind == TypeKind::enum_) {
-      out->count = (uint64_t)t->enum_decl->members.count;
-      if (!out->count) {
-        err(prm.loc, "E0379", "#forall cannot enumerate an empty enum");
-        return false;
-      }
-    } else {
-      out->first = t->is_signed ? -(INT64_C(1) << (t->bits - 1)) : 0;
-      out->count = UINT64_C(1) << t->bits;
+      first = (int64_t)lo.bits;
+      last = (int64_t)hi.bits;
     }
+    int64_t members = t->kind == TypeKind::enum_ ? t->enum_decl->members.count : 0;
+    auto admitted = FD_domain(kind, base->bits, base->is_signed, first, last, members);
+    if (admitted.reason) {
+      Loc at = b.lo ? b.lo->loc : prm.loc;
+      if (admitted.reason == 2) err(at, "E0379", "#forall requires a nonempty increasing range");
+      else if (admitted.reason == 3) err(at, "E0379", "#forall cannot enumerate an empty enum");
+      else if (admitted.reason == 4) err(at, "E0400", "#forall range has more than 16777216 values");
+      else err(at, "E0379", "#forall cannot enumerate this domain");
+      return false;
+    }
+    out->fact = admitted.domain;
+    return true;
+  }
+
+  bool domains(CheckDecl *c, std::vector<Domain> *out, uint64_t *total) {
+    out->resize((size_t)c->proc->params.count);
+    *total = 1;
+    for (int32_t i = 0; i < c->proc->params.count && !failed; i++) {
+      if (!domain(c->proc->params[i], c->domains[i], &(*out)[(size_t)i])) return false;
+      auto product = FD_combine(*total, (*out)[(size_t)i].fact.count);
+      if (product.reason) {
+        err(c->loc, "E0400", "#forall has more than 16777216 cases");
+        return false;
+      }
+      *total = product.total;
+    }
+    if (failed) return false;
+    for (auto &item : *out) item.attach_enum();
     return true;
   }
 
   CheckOutcome check(CheckDecl *c) {
     CheckOutcome out;
     ProcDecl *p = c->proc;
-    std::vector<Domain> domains((size_t)p->params.count);
+    std::vector<Domain> bound;
     uint64_t total = 1;
-    for (int32_t i = 0; i < p->params.count && !failed; i++) {
-      if (!domain(p->params[i], c->domains[i], &domains[(size_t)i])) break;
-      uint64_t count = domains[(size_t)i].count;
-      if (count > MAX_CASES / total) {
-        err(c->loc, "E0400", "#forall has more than " + std::to_string(MAX_CASES) + " cases");
-        break;
-      }
-      total *= count;
-    }
-    // An odometer over the bindings: the last one changes fastest.
-    std::vector<size_t> at(domains.size(), 0);
-    for (uint64_t n = 0; n < total && !failed; n++) {
+    domains(c, &bound, &total);
+    std::vector<coax_t_FD_Domain> facts;
+    for (auto &item : bound) facts.push_back(item.view());
+    std::vector<uint64_t> words(bound.size());
+    auto cursor = FD_begin(total);
+    while (!failed && cursor.ready) {
+      uint32_t reason = FD_tuple({facts.data(), (int64_t)facts.size()}, cursor.index,
+                                 {words.data(), (int64_t)words.size()});
+      if (reason) { err(c->loc, "E0400", "invalid finite-domain traversal facts"); break; }
       CtFrame frame;
-      for (size_t i = 0; i < domains.size(); i++) frame.locals.push_back({p->params[(int32_t)i].name, domains[i].value(at[i]), true});
+      for (size_t i = 0; i < bound.size(); i++)
+        frame.locals.push_back({p->params[(int32_t)i].name, scalar(bound[i].type, words[i]), true});
       Value ignored;
       stmt(p->body, frame, &ignored);
       out.cases++;
       if (failed) {
-        for (size_t i = 0; i < domains.size(); i++)
-          out.counterexample += (i ? ", " : "") + to_std(p->params[(int32_t)i].name) + " = " + show(domains[i].value(at[i]));
+        for (size_t i = 0; i < bound.size(); i++)
+          out.counterexample += (i ? ", " : "") + to_std(p->params[(int32_t)i].name) + " = " + show(scalar(bound[i].type, words[i]));
         break;
       }
-      for (size_t i = domains.size(); i-- > 0;) {
-        if (++at[i] < domains[i].count) break;
-        at[i] = 0;
-      }
+      cursor = FD_advance(cursor);
+      if (cursor.reason) err(c->loc, "E0400", "invalid finite-domain cursor");
     }
     out.executed = std::move(executed);
     out.passed = !failed;
@@ -1099,6 +1107,49 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc;
   out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
+}
+
+bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t steps) {
+  file->ct_memory->slot_limit = CB_test_slot_limit();
+  file->ct_memory->container_limit = CB_test_container_limit();
+  for (auto &entry : plan->checks) {
+    if (entry.declaration_index < 0 || entry.declaration_index >= file->checks.count ||
+        file->checks[(int32_t)entry.declaration_index] != entry.check) {
+      error_at(file->src, {}, "E0413", "native check plan does not name the original checked declaration");
+      return false;
+    }
+    CheckDecl *check = file->checks[(int32_t)entry.declaration_index];
+    Evaluator evaluator{file};
+    evaluator.max_steps = steps;
+    std::vector<Evaluator::Domain> domains;
+    uint64_t total = 1;
+    try {
+      if (!evaluator.domains(check, &domains, &total)) return false;
+    } catch (const CtTraversalLimit &) {
+      evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded");
+    } catch (const CtStringLimit &) {
+      evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded");
+    } catch (const CtLimit &limit) {
+      evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(limit));
+    } catch (const std::bad_alloc &) {
+      evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed");
+    }
+    if (evaluator.failed) return false;
+    entry.domains.clear();
+    entry.case_count = total;
+    for (auto &domain : domains) {
+      NativeCheckDomain observed;
+      observed.kind = domain.fact.kind;
+      observed.type = domain.type;
+      observed.first = domain.fact.first;
+      observed.count = domain.fact.count;
+      observed.values = std::move(domain.enum_values);
+      if (domain.type->kind == TypeKind::enum_)
+        for (const EnumMember &member : domain.type->enum_decl->members) observed.labels.push_back(member.name);
+      entry.domains.push_back(std::move(observed));
+    }
+  }
+  return true;
 }
 
 bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traversed) {

@@ -1,0 +1,2 @@
+#forall "selected passing property" value: -1..<2 { #assert value >= -1; }
+#forall "unselected failing property" value: 0..<2 { #assert value != 1; }

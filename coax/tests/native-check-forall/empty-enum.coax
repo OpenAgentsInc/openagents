@@ -1,0 +1,2 @@
+Empty :: enum u8 {}
+#forall "empty enum refuses" value: Empty { #assert true; }

@@ -33,14 +33,15 @@ def _line(observation):
     return os.fsdecode(raw.rstrip(b"\r\n"))
 
 
-def inspect(cc_argv, runner):
-    """Return raw facts; runner supplies bounded capture and quiet launching."""
+def inspect(cc_argv, runner, *, cwd=None, environment=None):
+    """Return raw facts in the supplied runner context, without mutating it."""
     argv = [os.fspath(part) for part in cc_argv]
+    lookup_environment = os.environ if environment is None else environment
     result = {
         "argv": argv, "resolved_program": None, "program_sha256": None,
         "resolution_error": None, "version_observation": None,
         "target_observation": None,
-        "settings": {name: os.environ.get(name) for name in _SETTINGS},
+        "settings": {name: lookup_environment.get(name) for name in _SETTINGS},
         "sdk": {"platform": platform.system(), "path_observation": None,
                 "version_observation": None, "path": None, "resolved_path": None,
                 "path_exists": False, "version": None, "settings_files": [],
@@ -50,11 +51,17 @@ def inspect(cc_argv, runner):
         result["resolution_error"] = "no compiler argv0 was supplied"
         return result
     try:
+        working_directory = Path.cwd() if cwd is None else Path(cwd).resolve()
         program = argv[0]
         if os.path.dirname(program):
-            resolved = Path(program).resolve(strict=True)
+            target = Path(program)
+            resolved = (target if target.is_absolute() else working_directory / target).resolve(strict=True)
         else:
-            found = shutil.which(program)
+            search = []
+            for entry in os.get_exec_path(lookup_environment):
+                directory = Path(entry)
+                search.append(os.fspath(directory if directory.is_absolute() else working_directory / directory))
+            found = shutil.which(program, path=os.pathsep.join(search))
             if found is None:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), program)
             resolved = Path(found).resolve(strict=True)

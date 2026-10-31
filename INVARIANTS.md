@@ -1861,8 +1861,35 @@ enforces caps while reading and kills the whole process group on exhaustion.
 the existing legacy/strict-baseline companions. It binds original sources,
 selected identities, C/observer/policy/native hashes and actual compiler/SDK
 observations. Those observations do not claim a complete SDK-content lock or
-broader target qualification. Selected `#forall` remains an explicit gap in
-this execution slice. Existing product authority gates remain unchanged.
+broader target qualification. Default ABI 1 leaves selected `#forall` as an
+explicit gap. Existing product authority gates remain unchanged.
+
+## Finite checks share Coax domain planning and bounded native progress
+
+`coax/lib/compiler/check-domains.coax` owns finite-domain admission, product
+limits and tuple traversal for both the evaluator and verification ABI 2.
+The trusted FD C/header seed reproduces at both bootstrap fixed points;
+there is no C++ enumeration fallback. Original bound expressions retain their
+order, step accounting and executed-procedure coverage. A rejected product
+stops before the next bound is evaluated. Enum declaration order, canonical
+signed values, nonempty domains, the 2²⁴-case cap and last-binding-fastest
+order remain language rules. Native arity 64 is a separate profile limit.
+
+ABI 2 calls the original checked parameterized procedures. Coax owns catalogue
+framing, progress transitions, expected tuples, witness formatting and verdicts
+in `quantified-execution.coax`; hosts allocate/map files, atomically publish
+encoded slots and invoke admitted procedure pointers. One fresh bounded process
+runs each property. A fresh 32769-byte region has a one-byte committed selector
+and two 16KiB slots; BEGIN is published before each body, END after it returns,
+and DONE after complete enumeration. A passing observation needs valid complete
+progress, normal exit0, both pipe EOFs and no transport error. A begun signal is
+a raw counterexample, never automatically a recognized typed trap. Exhaustion
+is inconclusive. Original unfiltered baselines remain mandatory for qualification.
+
+`execution.v2` is distinct from published ABI 1/EP1/execution.v1 contracts. An
+artifact-only failing-tuple observation does not invent an evaluator baseline
+or qualify a source whose original baseline failed. Captured source, descriptor,
+compiler, policy, observer and native bytes remain bound across phases.
 
 
 ## Compiler profile selection preserves legacy defaults and authority

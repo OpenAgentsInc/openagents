@@ -17,7 +17,7 @@ neither ends up in the program you ship.
 For a bounded native verification artifact, `coax checks-c FILE` separately
 emits admitted checked `#test` bodies and their callees as C11, with a table
 of original names and source locations. It emits no product `main`, does not
-execute the checks, and currently refuses selected `#forall` bodies and
+execute the checks, and its default ABI 1 refuses selected `#forall` bodies and
 unsupported effects or borrows. Ordinary `coax c` still omits checks. See the
 [native-check emission contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md#checked-ast-native-check-c-emission)
 for its supported scope and verification-only C interface.
@@ -26,7 +26,10 @@ The optional `coax/tools/native_check_execution.py` maintenance driver executes
 that artifact at `-O0` and `-O2`, after one full original evaluator baseline.
 Coax validates its selected identities and complete process observations;
 host tooling imposes time/output limits. It writes a separate native companion
-record. Selected `#forall` execution remains a later extension.
+record. Opting into `--verification-abi 2` adds finite `#forall` bodies and
+domain metadata. The evaluator and native runner use the same Coax domain
+planner and case order; each native property has one bounded process and
+retains exact case progress and named counterexamples. ABI 1 remains the default.
 
 In this chapter we'll write checks for a small procedure that splits a
 payment between people. We'll start with one example, watch it fail when
@@ -35,8 +38,9 @@ cases. After that we'll look at how to control the way checks run, how to
 organize them, what `#authority` adds for code that guards money, and
 finally how `coax mutate` checks the checks themselves.
 
-> Note: everything in this chapter runs on `coax0` 0.10.0. The checks
-> arrived in 0.5.0 and are specified in `coax/spec.md` (section 10.1.1).
+> Note: the payment examples run on `coax0` 0.10.0. Checks arrived in 0.5.0;
+> the optional native companion arrived in 0.41.0 and ABI 2 in 0.42.0.
+> The language rules are specified in `coax/spec.md` (section 10.1.1).
 
 ## How to write a check
 

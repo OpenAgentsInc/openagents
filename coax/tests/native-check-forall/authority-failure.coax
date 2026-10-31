@@ -1,0 +1,4 @@
+#authority;
+admitted :: (value: int) -> bool { return value >= 1; }
+#forall "authority original baseline fails" value: 0..<2 { #assert admitted(value); }
+#test "selected authority passing" { #assert admitted(2); }

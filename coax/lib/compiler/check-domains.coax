@@ -1,0 +1,203 @@
+// Shared finite-check domains. Hosts supply checked type/bound/member facts;
+// this model owns cardinality, product admission, canonical words and order.
+// Domain.values borrows immutable enum words, attached after streaming planning.
+// Every input/output view is valid and stable; writable tuple storage is disjoint.
+#authority;
+FD_CAP :: cast(u64)16777216;
+FD_SIGN :: cast(u64)9223372036854775808;
+FD_LAST :: cast(u64)18446744073709551615;
+FD_Domain :: struct {kind:u32;bits:u32;is_signed:bool;first:int;count:u64;values:[]u64;}
+FD_Result :: struct {reason:u32;domain:FD_Domain;}
+FD_Product :: struct {reason:u32;total:u64;}
+FD_Cursor :: struct {reason:u32;index:u64;total:u64;ready:bool;}
+
+#test "domain descriptors preserve bool signed and unsigned boundaries" {
+ #assert FD_limit()==16777216;
+ b:=FD_domain(1,0,true,0,0,0);#assert b.reason==0 && b.domain.kind==1 && b.domain.bits==8 && !b.domain.is_signed && b.domain.first==0 && b.domain.count==2 && b.domain.values.count==0;
+ for width:[2]u32.[8,16] {
+  s:=FD_domain(2,width,true,0,0,0);u:=FD_domain(3,width,false,0,0,0);
+  #assert s.reason==0 && u.reason==0 && s.domain.bits==width && u.domain.bits==width;
+  #assert s.domain.is_signed && !u.domain.is_signed && s.domain.kind==2 && u.domain.kind==3;
+  #assert s.domain.first== -(cast(int)1 << (cast(int)width-1)) && s.domain.count==(cast(u64)1 << cast(int)width);
+  #assert u.domain.first==0 && u.domain.count==s.domain.count;
+ }
+ #assert FD_domain(2,32,true,0,0,0).reason==1 && FD_domain(3,64,false,0,0,0).reason==1;
+ #assert FD_domain(2,8,false,0,0,0).reason==1 && FD_domain(3,8,true,0,0,0).reason==1;
+ #assert FD_domain(0,8,true,0,0,0).reason==1 && FD_domain(6,8,true,0,0,0).reason==1;
+}
+#forall "enum admission accepts every declared scalar width and retains count" width:0..<5,sign:bool {
+ widths:=[5]u32.[8,16,32,64,7];r:=FD_domain(4,widths[width],sign,0,0,3);
+ #assert r.reason==cast(u32)(ifx width<4 then 0 else 1);
+ if width<4 {#assert r.domain.kind==4 && r.domain.bits==widths[width] && r.domain.is_signed==sign && r.domain.first==0 && r.domain.count==3;}
+ #assert FD_domain(4,8,sign,0,0,1).reason==0;
+ #assert FD_domain(4,8,sign,0,0,0).reason==3 && FD_domain(4,8,sign,0,0,-1).reason==3;
+}
+#test "range spans use signed rank and never overflow at int64 extremes" {
+ r:=FD_domain(5,0,false,-2,3,0);#assert r.reason==0 && r.domain.kind==5 && r.domain.bits==64 && r.domain.is_signed && r.domain.first== -2 && r.domain.count==5;
+ #assert FD_domain(5,0,false,0,0,0).reason==2 && FD_domain(5,0,false,2,1,0).reason==2;
+ #assert FD_domain(5,0,false,-9223372036854775808,9223372036854775807,0).reason==4;
+ #assert FD_domain(5,0,false,0,16777217,0).reason==4;
+ r=FD_domain(5,0,false,0,16777216,0);#assert r.reason==0 && r.domain.count==16777216;
+ r=FD_domain(5,0,false,-9223372036854775808,-9223372036854775807,0);#assert r.reason==0 && r.domain.count==1 && r.domain.first== -9223372036854775808;
+ r=FD_domain(5,0,false,9223372036854775806,9223372036854775807,0);#assert r.reason==0 && r.domain.count==1 && r.domain.first==9223372036854775806;
+}
+#forall "small range counts are exact without allocating values" lo:-3..<4,hi:-3..<4 {
+ r:=FD_domain(5,0,false,lo,hi,0);
+ #assert r.reason==cast(u32)(ifx hi<=lo then 2 else 0);
+ if hi>lo {#assert r.domain.first==lo && r.domain.count==cast(u64)(hi-lo);}
+}
+#test "streaming products reject before a later binding is needed" {
+ a:=FD_combine(1,1);#assert a.reason==0 && a.total==1;
+ a=FD_combine(1,16777216);#assert a.reason==0 && a.total==16777216;
+ a=FD_combine(16777216,1);#assert a.reason==0 && a.total==16777216;
+ #assert FD_combine(16777216,2).reason==5 && FD_combine(1,16777217).reason==5;
+ #assert FD_combine(1,18446744073709551615).reason==5;
+ #assert FD_combine(0,1).reason==6 && FD_combine(16777217,1).reason==6 && FD_combine(1,0).reason==6;
+ a=FD_combine(256,65536);#assert a.reason==0 && a.total==16777216;
+}
+#forall "small nonempty products match independent multiplication" a:1..<9,b:1..<9 {
+ r:=FD_combine(cast(u64)a,cast(u64)b);#assert r.reason==0 && r.total==cast(u64)(a*b);
+}
+#test "tuples are last-binding-fastest and sparse enums preserve declaration duplicates" {
+ words:=[3]u64.[7,18446744073709551615,7];
+ b:=FD_domain(1,0,false,0,0,0).domain;e:=FD_domain(4,8,true,0,0,3).domain;e.values=words[..];r:=FD_domain(5,0,false,-1,1,0).domain;
+ ds:=[3]FD_Domain.[b,e,r];out:=[5]u64.[91,0,0,0,92];
+ enums:=[3]u64.[7,18446744073709551615,7];last:=[2]u64.[18446744073709551615,0];
+ for ordinal:0..<12 {
+  #assert FD_tuple(ds[..],cast(u64)ordinal,out[1..<4])==0;
+  #assert out[1]==cast(u64)(ordinal/6) && out[2]==enums[(ordinal/2)%3] && out[3]==last[ordinal%2];
+  #assert out[0]==91 && out[4]==92;
+ }
+ for i:0..<out.count {out[i]=81;}
+ #assert FD_tuple(ds[..],12,out[1..<4])==7 && FD_tuple(ds[..],0,out[1..<3])==7;
+ for i:0..<out.count {#assert out[i]==81;}
+}
+#test "tuple words cover signed extrema positive limits and huge lazy ranges" {
+ ds:[1]FD_Domain;out:[1]u64;
+ ds[0]=FD_domain(2,8,true,0,0,0).domain;#assert FD_tuple(ds[..],0,out[..])==0 && out[0]==18446744073709551488;
+ #assert FD_tuple(ds[..],255,out[..])==0 && out[0]==127;
+ ds[0]=FD_domain(2,16,true,0,0,0).domain;#assert FD_tuple(ds[..],0,out[..])==0 && out[0]==18446744073709518848;
+ #assert FD_tuple(ds[..],65535,out[..])==0 && out[0]==32767;
+ ds[0]=FD_domain(3,16,false,0,0,0).domain;#assert FD_tuple(ds[..],65535,out[..])==0 && out[0]==65535;
+ ds[0]=FD_domain(5,0,false,-9223372036854775808,-9223372036854775807,0).domain;#assert FD_tuple(ds[..],0,out[..])==0 && out[0]==9223372036854775808;
+ ds[0]=FD_domain(5,0,false,9223372036854775806,9223372036854775807,0).domain;#assert FD_tuple(ds[..],0,out[..])==0 && out[0]==9223372036854775806;
+ ds[0]=FD_domain(5,0,false,-1,16777215,0).domain;#assert FD_tuple(ds[..],16777215,out[..])==0 && out[0]==16777214;
+}
+#forall "tuple descriptors refuse corrupt observations without writes" defect:0..<13 {
+ ds:=[1]FD_Domain.[FD_domain(5,0,false,-1,1,0).domain];words:=[1]u64.[9];out:=[1]u64.[77];
+ if defect==0 {ds[0].kind=0;}else if defect==1 {ds[0].bits=32;}else if defect==2 {ds[0].is_signed=false;}
+ else if defect==3 {ds[0].count=0;}else if defect==4 {ds[0].count=16777217;}else if defect==5 {ds[0].values=words[..];}
+ else if defect==6 {ds[0].first=9223372036854775807;}else if defect==7 {ds[0]=FD_domain(4,8,false,0,0,2).domain;ds[0].values=words[..];}
+ else if defect==8 {ds[0]=FD_domain(1,0,false,0,0,0).domain;ds[0].bits=2;}else if defect==9 {ds[0]=FD_domain(2,8,true,0,0,0).domain;ds[0].first=0;}
+ else if defect==10 {ds[0]=FD_domain(3,8,false,0,0,0).domain;ds[0].count=255;}
+ else {ds[0]=FD_domain(4,8,false,0,0,1).domain;ds[0].values=words[..];if defect==11 {ds[0].bits=7;}else {ds[0].first=1;}}
+ r:=FD_tuple(ds[..],0,out[..]);#assert r==cast(u32)(ifx defect==4 then 5 else 6) && out[0]==77;
+}
+#test "zero bindings are one ordinary case and cursors cannot advance past completion" {
+ ds:[1]FD_Domain;out:[1]u64;
+ #assert FD_tuple(ds[0..<0],0,out[0..<0])==0 && FD_tuple(ds[0..<0],1,out[0..<0])==7;
+ c:=FD_begin(1);#assert c.reason==0 && c.ready && c.index==0 && c.total==1;
+ c=FD_advance(c);#assert c.reason==0 && !c.ready && c.index==1 && c.total==1;
+ #assert FD_advance(c).reason==6 && FD_begin(0).reason==6 && FD_begin(16777217).reason==6;
+ c=FD_begin(16777216);c.index=16777215;c=FD_advance(c);#assert c.reason==0 && !c.ready && c.index==16777216;
+ c=FD_begin(2);c=FD_advance(c);#assert c.reason==0 && c.ready && c.index==1;
+ c.reason=1;#assert FD_advance(c).reason==6;c=FD_begin(1);c.index=1;#assert FD_advance(c).reason==6;
+ c=FD_begin(1);c.total=0;#assert FD_advance(c).reason==6;
+}
+
+#test "enum canonical words validate once per chosen value and refusal preserves all output" {
+ minima:=[4]u64.[18446744073709551488,18446744073709518848,18446744071562067968,9223372036854775808];
+ maxima:=[4]u64.[127,32767,2147483647,9223372036854775807];widths:=[4]u32.[8,16,32,64];
+ unsigned:=[4]u64.[255,65535,4294967295,18446744073709551615];
+ for i:0..<4 {
+  #assert fd_canonical(minima[i],widths[i],true) && fd_canonical(maxima[i],widths[i],true);
+  #assert fd_canonical(unsigned[i],widths[i],false) && fd_canonical(0,widths[i],true);
+  if i<3 {#assert !fd_canonical(unsigned[i],widths[i],true) && !fd_canonical(minima[i],widths[i],false);}
+ }
+ words:=[1]u64.[255];e:=FD_domain(4,8,true,0,0,1).domain;e.values=words[..];ds:=[2]FD_Domain.[FD_domain(1,8,false,0,0,0).domain,e];out:=[2]u64.[71,72];
+ #assert FD_tuple(ds[..],0,out[..])==6 && out[0]==71 && out[1]==72;
+ words[0]=18446744073709551615;#assert FD_tuple(ds[..],0,out[..])==0 && out[0]==0 && out[1]==18446744073709551615;
+}
+
+#test "canonical validation uses the exact chosen enum ordinal" {
+ words:=[3]u64.[7,255,7];e:=FD_domain(4,8,true,0,0,3).domain;e.values=words[..];ds:=[3]FD_Domain.[FD_domain(1,8,false,0,0,0).domain,e,FD_domain(5,64,true,-1,1,0).domain];out:=[3]u64.[61,62,63];
+ #assert FD_tuple(ds[..],0,out[..])==0 && out[1]==7;
+ out[0]=61;out[1]=62;out[2]=63;#assert FD_tuple(ds[..],2,out[..])==6 && out[0]==61 && out[1]==62 && out[2]==63;
+ #assert FD_tuple(ds[..],4,out[..])==0 && out[1]==7;
+ #assert !fd_canonical(256,8,false) && !fd_canonical(65536,16,false) && !fd_canonical(4294967296,32,false);
+}
+
+// Streaming admission: evaluate one binding, describe it, combine it, then
+// evaluate the next binding. No callback or later-bound evaluation lives here.
+FD_limit :: ()->u64 #export_c {return FD_CAP;}
+FD_domain :: (kind:u32,bits:u32,is_signed:bool,lo:int,hi:int,enum_count:int)->FD_Result #export_c {
+ d:=FD_Domain.{kind=kind,bits=bits,is_signed=is_signed};
+ if kind==1 {d.bits=8;d.is_signed=false;d.count=2;return FD_Result.{domain=d};}
+ if kind==2 || kind==3 {
+  if (bits!=8 && bits!=16) || is_signed!=(kind==2) {return FD_Result.{reason=1};}
+  d.count=cast(u64)1 << cast(int)bits;
+  if is_signed {d.first= -(cast(int)1 << (cast(int)bits-1));}
+  return FD_Result.{domain=d};
+ }
+ if kind==4 {
+  if enum_count<=0 {return FD_Result.{reason=3};}
+  if !fd_width(bits) {return FD_Result.{reason=1};}
+  d.count=cast(u64)enum_count;return FD_Result.{domain=d};
+ }
+ if kind==5 {
+  if hi<=lo {return FD_Result.{reason=2};}
+  count:=fd_rank(hi)-fd_rank(lo);if count>FD_CAP {return FD_Result.{reason=4};}
+  d.bits=64;d.is_signed=true;d.first=lo;d.count=count;return FD_Result.{domain=d};
+ }
+ return FD_Result.{reason=1};
+}
+FD_combine :: (total:u64,count:u64)->FD_Product #export_c {
+ if !fd_total(total) || count==0 {return FD_Product.{reason=6};}
+ if count>FD_CAP/total {return FD_Product.{reason=5};}
+ return FD_Product.{total=total*count};
+}
+FD_tuple :: (domains:[]FD_Domain,ordinal:u64,out:[]u64)->u32 #export_c {
+ if out.count!=domains.count {return 7;}
+ total:u64=1;for d:domains {
+  p:=FD_combine(total,d.count);if p.reason!=0 {return p.reason;}
+  if !fd_shape(d) {return 6;}total=p.total;
+ }
+ if ordinal>=total {return 7;}
+ rest:=ordinal;for j:0..<domains.count {
+  i:=domains.count-1-j;d:=domains[i];at:=rest%d.count;rest/=d.count;
+  if d.kind==4 && !fd_canonical(d.values[cast(int)at],d.bits,d.is_signed) {return 6;}
+ }
+ rest=ordinal;for j:0..<domains.count {
+  i:=domains.count-1-j;d:=domains[i];at:=rest%d.count;rest/=d.count;out[i]=fd_word(d,at);
+ }
+ return 0;
+}
+FD_begin :: (total:u64)->FD_Cursor #export_c {
+ if !fd_total(total) {return FD_Cursor.{reason=6};}
+ return FD_Cursor.{total=total,ready=true};
+}
+FD_advance :: (cursor:FD_Cursor)->FD_Cursor #export_c {
+ if cursor.reason!=0 || !cursor.ready || !fd_total(cursor.total) || cursor.index>=cursor.total {return FD_Cursor.{reason=6};}
+ next:=cursor.index+1;return FD_Cursor.{index=next,total=cursor.total,ready=next<cursor.total};
+}
+fd_width :: (bits:u32)->bool {return bits==8 || bits==16 || bits==32 || bits==64;}
+fd_total :: (count:u64)->bool {return count>0 && count<=FD_CAP;}
+fd_rank :: (value:int)->u64 {return cast,trunc(u64)value ^ FD_SIGN;}
+fd_shape :: (d:FD_Domain)->bool {
+ if d.kind==4 {return fd_width(d.bits) && d.first==0 && cast(u64)d.values.count==d.count;}
+ if d.values.count!=0 {return false;}
+ if d.kind==5 {return d.bits==64 && d.is_signed && d.count<=FD_LAST-fd_rank(d.first);}
+ normal:=FD_domain(d.kind,d.bits,d.is_signed,d.first,d.first,cast(int)d.count);
+ return normal.reason==0 && normal.domain.first==d.first && normal.domain.count==d.count && normal.domain.bits==d.bits && normal.domain.is_signed==d.is_signed;
+}
+fd_word :: (d:FD_Domain,at:u64)->u64 {
+ if d.kind==4 {return d.values[cast(int)at];}
+ if d.kind==2 || d.kind==5 {return (fd_rank(d.first)+at)^FD_SIGN;}
+ return at;
+}
+fd_canonical :: (word:u64,bits:u32,is_signed:bool)->bool {
+ if bits==64 {return true;}
+ mask:=(cast(u64)1 << cast(int)bits)-1;expected:=word&mask;
+ if is_signed && (expected & (cast(u64)1 << (cast(int)bits-1)))!=0 {expected|=FD_LAST^mask;}
+ return expected==word;
+}

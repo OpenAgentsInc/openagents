@@ -243,4 +243,38 @@ bool emit_native_checks_c(const File *file, const EmitOptions &opts, const char 
 #endif
 }
 
+bool plan_native_checks_c(const File *file, const EmitOptions &opts, const char *only,
+                          uint32_t verification_abi, NativeCheckCPlan *plan) {
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  (void)opts; (void)only; (void)verification_abi; (void)plan;
+  error_at(file->src, {1, 1, 0}, "E0413", "the bootstrap compiler has no native-check emission policy");
+  return false;
+#else
+  NativeCheckFacts facts{file};
+  facts.collect();
+  std::vector<uint8_t> procedure_mask(facts.procedures.size()), check_mask(facts.checks.size());
+  uint32_t profile = (opts.wrapping ? 1u : 0u) | (opts.metal ? 2u : 0u) | (opts.cuda ? 4u : 0u) | (opts.metal_compute ? 8u : 0u);
+  coax_string selection{only ? only : "", only ? (int64_t)strlen(only) : 0};
+  bool overlap = facts.observe_overlap(procedure_mask, check_mask, selection);
+  coax_t_NC_Result result = NC_plan_abi({facts.proc_facts.data(), (int64_t)facts.proc_facts.size()},
+      {facts.checks.data(), (int64_t)facts.checks.size()}, {facts.edges.data(), (int64_t)facts.edges.size()},
+      selection, only != nullptr, profile, verification_abi, overlap,
+      {procedure_mask.data(), (int64_t)procedure_mask.size()}, {check_mask.data(), (int64_t)check_mask.size()});
+  if (result.reason) {
+    coax_string reason = verification_abi == 1 ? NC_reason_text(result.reason) : NC_abi_reason_text(result.reason);
+    error_at(file->src, nc_refusal_location(facts, result.reason, result.index), "E0413",
+             std::string(reason.data, (size_t)reason.count) + " is outside checked native-check emission");
+    return false;
+  }
+  NativeCheckCPlan selected;
+  selected.verification_abi = verification_abi;
+  for (size_t i = 0; i < facts.procedures.size(); ++i)
+    if (procedure_mask[i]) selected.procedures.push_back(facts.procedures[i]);
+  for (int32_t i = 0; i < file->checks.count; ++i)
+    if (check_mask[(size_t)i]) selected.checks.push_back({i, file->checks[i]});
+  *plan = std::move(selected);
+  return true;
+#endif
+}
+
 }  // namespace coax

@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.41.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.42.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -787,10 +787,20 @@ Since 0.39.0, `coax checks-c FILE [--only SUBSTR] [-o checks.c]` can separately
 emit admitted checked zero-argument `#test` bodies and their resolved callees
 as verification-only C11. It preserves original check identities through a
 versioned C table and emits no product `main`. Normal unfiltered authority
-validation remains mandatory. Selected `#forall`, wrapping arithmetic and
+validation remains mandatory. Default ABI 1 refuses selected `#forall`; wrapping arithmetic and
 unsupported effects or borrow forms refuse. Emission does not execute checks
 or change the evaluator-only `coax.evidence.v1` contract; the bounded scope and
 ABI are specified in [the native-check emission contract](verification-differential.md#checked-ast-native-check-c-emission).
+
+Since 0.42.0, `--verification-abi 2` also emits the original parameterized
+`#forall` procedures and immutable finite-domain metadata. The evaluator and
+native observer share `lib/compiler/check-domains.coax` for domain admission,
+the nonempty 2²⁴-case product limit and last-binding-fastest traversal. Bounds
+are evaluated in their original order and budget; an excessive product stops
+before later bindings are evaluated. ABI 2's native profile admits at most
+64 bindings. The optional execution companion uses one bounded process per
+property and a separate `coax.native-checks.execution.v2` record. ABI 1 and
+evaluator-only `coax.evidence.v1` keep their published meanings.
 
 ```jai
 #authority;

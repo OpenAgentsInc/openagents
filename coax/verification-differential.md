@@ -258,6 +258,44 @@ semantics, seeded-defect reduction and broader real-consumer qualification
 remain the subsequent native-check tasks. The independent vectors and host
 failure fixtures live in `tests/native_check_execution.py`.
 
+## Finite authored properties with verification ABI 2
+
+Since 0.42.0, `checks-c --verification-abi 2` emits both ordinary checks and
+original parameterized `#forall` procedures. Its immutable versioned table
+includes binding names/types, canonical enum words and labels, finite domains
+and exact case counts. The guarded `run_values` wrapper calls the original
+checked procedure; no check body is lifted or cloned. ABI 1 remains the default.
+
+```sh
+python3 coax/tools/native_check_execution.py coax/tests/native-check-forall/order.coax --verification-abi 2 --keep /tmp/coax-forall-execution --out /tmp/coax-forall-execution.json --json
+```
+
+The `check-domains.coax` kernel is shared by the evaluator and native observer.
+It owns bool, signed/unsigned 8- and 16-bit domains, sparse enums and half-open
+`int` ranges; the nonempty product is bounded by 2²⁴. The last binding changes
+fastest. Original bound evaluation retains its order and budget; rejected
+products stop before later expressions run. Native profile arity is at most 64,
+independently of the language's case limit.
+
+The optional ABI 2 runner still captures one complete, unfiltered original
+baseline and input profile before native emission. `--only` scopes native work
+only. The same C artifact is linked at checked O0/O2. Each selected property
+gets one fresh bounded process and a new 32769-byte shared progress file.
+Coax encodes catalogue/progress bytes, plans each tuple, validates transitions
+and formats bool, signed and enum witnesses. C maps the file, atomically
+publishes alternating 16KiB slots, and calls the admitted procedure pointer.
+
+A property publishes BEGIN before a tuple's body, END after return and DONE
+only after every case. The parent validates the committed and preceding slots,
+exact tuple, counts, process status and complete pipe EOF. DONE plus exit0 is
+required for pass. A signal after a valid BEGIN retains a raw counterexample
+with original source/binding names; it is not automatically a recognized Coax
+trap. Incomplete or malformed successful output is infrastructure failure;
+time/output exhaustion is inconclusive. The `coax.native-checks.execution.v2`
+record keeps these semantics separate from execution.v1 and evaluator evidence.
+An artifact-only failing-property observation remains explicitly unqualified
+when its original baseline fails.
+
 ## Legacy authored-check comparison
 
 `python3 coax/tools/native_checks.py --selection coax/tests/native-checks.json`

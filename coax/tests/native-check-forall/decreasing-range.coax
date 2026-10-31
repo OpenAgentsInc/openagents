@@ -1,0 +1,1 @@
+#forall "decreasing range refuses" value: 2..< -1 { #assert true; }

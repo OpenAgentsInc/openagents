@@ -1,0 +1,1 @@
+#forall "duplicate original identity" imported: bool { #assert imported || !imported; }

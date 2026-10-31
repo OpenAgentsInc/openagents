@@ -1,0 +1,6 @@
+// The independent case oracle is false/-2, false/-1, false/0,
+// true/-2, true/-1, true/0: the final authored binding changes fastest.
+#forall "bool then negative range" enabled: bool, offset: -2..<1 {
+  #assert enabled || !enabled;
+  #assert offset >= -2 && offset <= 0;
+}
