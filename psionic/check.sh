@@ -319,7 +319,7 @@ picks_native() {
 }
 selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; nanochat_chat=0; bpe_train=0; byte_lm=0; adamw=0; resume=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
 robotics=0;robotics_requested=()
-picks_robotics() { local n=${1%.coax};n=${n#psionic/lib/};[[ $n == robotics || $n == robotics/sim || $n == robotics/evaluate || $n == robotics/learn || $n == robotics/singlearm ]]; }
+picks_robotics() { local n=${1%.coax};n=${n#psionic/lib/};case "$n" in robotics|robotics/all|robotics/sim|robotics/evaluate|robotics/learn|robotics/singlearm|robotics/groot-artifact|robotics/groot-linear|robotics/groot-flow|robotics/groot-vision|robotics/groot-embodiment|robotics/groot-dit|robotics/groot-request|robotics/groot-metal-plan|robotics/groot-metal-kernels|robotics/groot-image|robotics/groot-text|robotics/groot-vision-device|robotics/groot-vision-metal-plan|robotics/groot-text-metal-plan|robotics/groot-device-kernels|robotics/groot-text-kernels|robotics/groot-action-metal-plan|robotics/groot-action-metal-kernels|robotics/groot-action-wide-kernels|robotics/groot-action-transcript|robotics/groot-device-gpu|robotics/groot-text-kernels-gpu|robotics/groot-linear-original|robotics/groot-metal-original|robotics/groot-vision-metal-original|robotics/groot-text-metal-original|robotics/groot-action-metal-original|robotics/groot-policy-metal-original) return 0;;*) return 1;;esac; }
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
@@ -532,7 +532,7 @@ fi
 
 if [[ $robotics == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/robotics/check.sh --mutate --jobs "$jobs" ${robotics_requested[@]+"${robotics_requested[@]}"}
-    phase "robotics (chapter112)"
+    phase "robotics (chapters112–113; portable default, explicit device opt-ins)"
 fi
 # Chapter 17's qualification gate has its own runner; --only qualify selects it.
 if [[ $qualify == 1 ]]; then

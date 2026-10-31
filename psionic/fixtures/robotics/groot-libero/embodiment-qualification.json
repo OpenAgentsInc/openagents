@@ -1,0 +1,64 @@
+{
+  "schema": "psionic-groot-embodiment-qualification-v1",
+  "date": "2026-10-31",
+  "scope": "Fixed original selected LIBERO statistics, bounded conversion arithmetic and admission only; not learned model execution.",
+  "sources": [
+    {
+      "path": "psionic/lib/robotics/groot-embodiment.coax",
+      "sha256": "456d51c8d26a71a3e4ac112233178420f354f2aea5e423208d665603f5211337"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-embodiment-types.coax",
+      "sha256": "29a98db6066afbc3f039f914ed1d149b0a815723ce758e082137181d3b781640"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-embodiment-check-fixtures.coax",
+      "sha256": "71e88c0db05cea9fc11fc12cea08622b4f11a31ee887c4156188a78bf2d8e99a"
+    },
+    {
+      "path": "psionic/tests/robotics/groot-embodiment-native.c",
+      "sha256": "a2b29bf00ae57210089591288ebda6ef06234ab0e76ae4f2cb0be63a110c2bb8"
+    },
+    {
+      "path": "psionic/tests/robotics/check-groot-embodiment.sh",
+      "sha256": "ce6bbf9d66aa6bc0daf24b2caee1046e4c263ee0d31b6a061da27960ff3c0e74"
+    },
+    {
+      "path": "psionic/tests/robotics/groot_embodiment_reference.py",
+      "sha256": "6492c71428d5eb2a611a7eec586404871a6834be7e6a95cb705b7cf459817392"
+    }
+  ],
+  "checks": 8,
+  "focused_mutation": {
+    "mutants": 85,
+    "killed": 85,
+    "survivors": 0,
+    "scope": "root-only"
+  },
+  "native": {
+    "cases_each": 67501,
+    "builds": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "flags": [
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ]
+  },
+  "numpy": {
+    "version": "2.4.6",
+    "states": 298,
+    "action_chunks": 265,
+    "exact_f32_words": 71831,
+    "statistics_sha256": "e97cd73beef2b81eca32eae792f88538c6b3681187709f069dc943f4bb41419b",
+    "optional_development_only": true
+  },
+  "api": {
+    "ge_normalize": "exact8finite F32 axis-angle state coordinates ->132 normalized values; paddingzero; no quaternion conversion",
+    "ge_decode": "exact40x132modelshape; consume first16x7finite F32 only; inverse stats thenF32policy boundary thenLIBEROgripper",
+    "GeRead": "status:u8,written:i64,clipped:i64; clipped counts strict outlier source coordinates; exact endpoints are not outliers",
+    "failure_atomicity": "Entire output preserved; successful output tail preserved; shape before overlap before consumed numbers"
+  }
+}

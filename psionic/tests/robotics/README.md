@@ -1,4 +1,66 @@
-# Tiny owned gantry: independent native checks
+# Robotics verification
+
+The default `robotics` / `all` group runs portable Coax debug/release checks,
+optional root-only mutation, and the available CPU native debug/release and
+ASan/UBSan groups. It requires neither private weights, Torch nor Metal.
+Original-header fact comparisons use Python's standard library.
+Device/library names such as `groot-device-kernels` and `groot-text-kernels`
+select portable VM checks; their actual GPU/Torch gates are explicit opt-ins.
+
+```shell
+psionic/tests/robotics/check.sh --list robotics
+psionic/check.sh --only robotics/groot-vision-metal-plan robotics/groot-text-metal-plan
+psionic/check.sh --only robotics/groot-action-metal-plan robotics/groot-action-transcript
+```
+
+CPU groups cover image/request/embodiment processing, text/vision layout,
+linear/flow/DiT components, state-encoder helpers, full vision/text/action
+metadata graphs, action kernels/wide norms and canonical action transcripts.
+Shared native groups run once when several selected units use the same oracle.
+`--list` prints the selection without executing any gate.
+
+| Explicit opt-in unit under `robotics/` | Requirement / runner |
+| --- | --- |
+| `groot-device-gpu` | Compatible Apple Metal GPU and existing Torch reference environment; `check-groot-device.sh` |
+| `groot-text-kernels-gpu` | Compatible Apple Metal GPU and existing Torch reference environment; `check-groot-text-kernels.sh` |
+| `groot-linear-original` | Authenticated category2 BF16 parts and existing NumPy; CPU component slice only |
+| `groot-metal-original` | Same selected parts, NumPy and compatible Metal; original state-encoder GPU slice |
+| `groot-vision-metal-original` | Authenticated full shards, original reference capsule, NumPy and Metal |
+| `groot-text-metal-original` | Full shards/reference capsule/NumPy/Metal; optional actual Coax vision output directory |
+| `groot-action-metal-original` | Full shards/reference capsule/NumPy/Metal; optional actual Coax backbone file |
+| `groot-policy-metal-original` | Full shards/reference capsule and existing Torch/NumPy/Metal; complete composed policy gate |
+
+These opt-ins are excluded from `robotics` and `all`, and fail when required
+devices or inputs are absent. They never count a skipped GPU as a pass. Set
+`PSIONIC_GROOT_STATE_WEIGHTS` for the four selected state parts;
+`PSIONIC_GROOT_SHARDS` and `PSIONIC_GROOT_CAPSULE` for original-model gates.
+`PSIONIC_GROOT_VISION_OUTPUTS` / `PSIONIC_GROOT_BACKBONE` optionally select
+actual upstream Coax features for the separate text/action gates.
+`REFERENCE_PYTHON` selects existing NumPy for state/vision checks;
+`GROOT_REFERENCE_PYTHON` selects the existing framework reference environment.
+No package installation or model download occurs in these dispatchers.
+The dispatcher uses temporary outputs; invoke the named direct runner with
+an explicit new output directory to retain its qualification artifacts.
+
+The action-plan native wrapper now has a portable default:
+
+```shell
+psionic/tests/robotics/check-groot-action-plan-native.sh NEW_OUTPUT_DIRECTORY
+psionic/tests/robotics/check-groot-action-plan-native.sh NEW_OUTPUT_DIRECTORY EXECUTED_GPU_BUILD_DIRECTORY
+```
+
+Both modes run the same 3,570 native graph/ABI cases in three build modes.
+The portable mode compares complete descriptor transcripts between debug,
+release and sanitized builds. The explicit prior-build mode additionally
+compares every transcript with the previously executed GPU graph; an optional
+third argument supplies that earlier transcript directly. Portable agreement
+is metadata evidence and makes no claim that a GPU ran.
+
+Dispatcher integration reuses the existing passing component/native records;
+only shell syntax and selection routing were checked for this thin-wrapper
+change. No unchanged numerical, mutation or original-model gate was repeated.
+
+## Tiny owned gantry: independent native checks
 
 This slice qualifies the chapter 167 simulator and imitation learner. It uses
 owned synthetic episodes, a declared two-axis Cartesian state in metres,

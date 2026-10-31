@@ -1,0 +1,211 @@
+// Independently authored reference operators for NVIDIA Isaac-GR00T N1.7,
+// source c56f54128d92f743889b7e4cecfc1ceafd88739e, modules/dit.py.
+// No learned projections, checkpoint execution, dropout or device parity here.
+#load "../tabular.coax";
+#load "groot-dit-types.coax";
+#authority;
+
+#test "DiT normalization metadata reuses checked LayerNorm extents and exact parameter conventions" {
+  #assert gdt_norm_admit(0,1,1,1,0,1,2,false)==GdtStatus.ok;
+  #assert gdt_norm_admit(1,2,3,6,6,6,12,false)==GdtStatus.ok && gdt_norm_admit(3,2,3,6,6,6,12,false)==GdtStatus.ok;
+  #assert gdt_norm_admit(4,1,2,2,0,2,4,false)==GdtStatus.kind;
+  #assert gdt_norm_admit(0,0,2,0,0,0,0,false)==GdtStatus.shape;
+  #assert gdt_norm_admit(0,1,2,1,0,2,4,false)==GdtStatus.capacity;
+  #assert gdt_norm_admit(0,1,2,2,1,2,4,false)==GdtStatus.capacity;
+  #assert gdt_norm_admit(1,1,2,2,3,2,4,false)==GdtStatus.capacity && gdt_norm_admit(1,1,2,2,5,2,4,false)==GdtStatus.capacity;
+  #assert gdt_norm_admit(0,1,2,2,0,1,4,false)==GdtStatus.capacity && gdt_norm_admit(0,1,2,2,0,2,3,false)==GdtStatus.capacity;
+  #assert gdt_norm_admit(0,1,2,2,0,2,4,true)==GdtStatus.alias;
+}
+#test "plain affine and the two AdaLN split orders have independent exact source formulas" {
+  x:=[4]f32.[-1,1,3,3];p:[4]f32;out:=[5]f32.[7,7,7,7,7];work:[8]f32;
+  r:=gdt_norm(GdtNorm.plain,2,2,x[..],p[0..<0],out[..],work[..],false);#assert r.status==GdtStatus.ok && r.written==4 && out[4]==7;
+  #assert abs(out[0]+0.999995f32)<1e-7f32 && abs(out[1]-0.999995f32)<1e-7f32 && out[2]==0 && out[3]==0;
+  p=[4]f32.[2,2,3,3];#assert gdt_norm(GdtNorm.affine,2,2,x[..],p[..],out[..],work[..],false).status==GdtStatus.ok;
+  #assert abs(out[0]-1.00001f32)<2e-7f32 && abs(out[1]-4.99999f32)<3e-7f32 && out[2]==3 && out[3]==3;
+  p=[4]f32.[1,1,3,3];#assert gdt_norm(GdtNorm.ada_block,2,2,x[..],p[..],out[..],work[..],false).status==GdtStatus.ok;
+  #assert abs(out[0]-1.00001f32)<2e-7f32 && abs(out[1]-4.99999f32)<3e-7f32 && out[2]==3;
+  p=[4]f32.[3,3,1,1];#assert gdt_norm(GdtNorm.ada_final,2,2,x[..],p[..],out[..],work[..],false).status==GdtStatus.ok;
+  #assert abs(out[0]-1.000001f32)<2e-7f32 && abs(out[1]-4.999999f32)<3e-7f32 && out[2]==3 && out[3]==3;
+}
+#test "normalization and affine arithmetic refuse without public partial writes" {
+  x:=[2]f32.[-1,1];p:=[4]f32.[1,f32_from_bits(0x7f7fffff),0,f32_from_bits(0x7f7fffff)];out:=[2]f32.[7,7];work:[4]f32;
+  r:=gdt_norm(GdtNorm.affine,1,2,x[..],p[..],out[..],work[..],false);#assert r.status==GdtStatus.arithmetic && r.written==0 && out[0]==7 && out[1]==7;
+  #assert gdt_norm(GdtNorm.plain,1,2,x[..],p[0..<0],out[0..<1],work[..],false).status==GdtStatus.capacity;
+  #assert gdt_norm(GdtNorm.plain,1,2,x[..],p[0..<0],out[..],work[..],true).status==GdtStatus.alias && out[0]==7;
+  max:=f32_from_bits(0x7f7fffff);#assert gdt_muladd(max,2,0).status==GdtStatus.arithmetic && gdt_muladd(max,1,max).status==GdtStatus.arithmetic;
+  rnum:=gdt_muladd(f32_from_bits(0x3f800001),f32_from_bits(0x3f7fffff),-1);#assert rnum.status==GdtStatus.ok && rnum.value==0;
+}
+#test "normalization parameters broadcast by axis rather than by row" {
+  x:=[6]f32.[-1,0,1,4,4,4];p:=[6]f32.[1,2,3,10,20,30];out:[6]f32;work:[12]f32;
+  #assert gdt_norm(GdtNorm.affine,2,3,x[..],p[..],out[..],work[..],false).status==GdtStatus.ok;
+  #assert abs(out[0]-8.775265f32)<2e-6f32 && out[1]==20 && abs(out[2]-33.674206f32)<4e-6f32 && out[3]==10 && out[4]==20 && out[5]==30;
+  #assert gdt_norm(GdtNorm.ada_block,2,3,x[..],p[..],out[..],work[..],false).status==GdtStatus.ok;
+  #assert abs(out[0]-7.550529f32)<2e-6f32 && out[1]==20 && abs(out[2]-34.89894f32)<5e-6f32 && out[3]==10 && out[4]==20 && out[5]==30;
+}
+#test "SiLU and tanh GELU use distinct bounded source expressions" {
+  x:=[5]f32.[-1,0,1,10,-10];out:=[6]f32.[7,7,7,7,7,7];work:[6]f32;
+  r:=gdt_activate(GdtActivation.silu,x[..],out[..],work[..],false);#assert r.status==GdtStatus.ok && r.written==5 && out[5]==7;
+  #assert abs(out[0]+0.26894143f32)<1e-7f32 && out[1]==0 && abs(out[2]-0.7310586f32)<1e-7f32;
+  #assert abs(out[3]-9.999546f32)<2e-6f32 && abs(out[4]+0.0004539787f32)<1e-9f32;
+  r=gdt_activate(GdtActivation.gelu_tanh,x[..],out[..],work[..],false);#assert r.status==GdtStatus.ok && out[5]==7;
+  #assert abs(out[0]+0.158808f32)<1e-6f32 && out[1]==0 && abs(out[2]-0.841192f32)<1e-6f32 && out[3]==10 && out[4]==0;
+  #assert gdt_activation_admit(2,1,1,1,false)==GdtStatus.kind;
+  #assert gdt_activation_admit(0,1,1,1,false)==GdtStatus.ok && gdt_activation_admit(0,1048576,1048576,1048576,false)==GdtStatus.ok;
+  #assert gdt_activation_admit(0,1048577,1048577,1048577,false)==GdtStatus.shape;
+  #assert gdt_activation_admit(0,0,1,1,false)==GdtStatus.shape;
+  #assert gdt_activation_admit(0,2,1,2,false)==GdtStatus.capacity && gdt_activation_admit(0,2,2,1,false)==GdtStatus.capacity;
+  #assert gdt_activate(GdtActivation.silu,x[..],out[0..<4],work[..],false).status==GdtStatus.capacity;
+  #assert gdt_activate(GdtActivation.silu,x[..],out[..],work[..],true).status==GdtStatus.alias;
+}
+#test "alternating DiT routes text self image self and rejects non-block indices" {
+  expected:=[4]GdtMask.[GdtMask.text,GdtMask.self,GdtMask.image,GdtMask.self];
+  for block:0..<32 {r:=gdt_block_route(block);#assert r.status==GdtStatus.ok && r.mask==expected[block%4];}
+  #assert gdt_block_route(-1).status==GdtStatus.shape && gdt_block_route(32).status==GdtStatus.shape;
+}
+#test "cross masks intersect image class with valid backbone tokens without inventing a self mask" {
+  image:=[4]u8.[0,1,0,1];valid:=[4]u8.[1,1,0,0];out:=[5]u8.[9,9,9,9,9];
+  r:=gdt_cross_mask(false,image[..],valid[..],out[..],false);#assert r.status==GdtStatus.ok && r.written==4 && out[0]==1 && out[1]==0 && out[2]==0 && out[3]==0 && out[4]==9;
+  r=gdt_cross_mask(true,image[..],valid[..],out[..],false);#assert r.status==GdtStatus.ok && out[0]==0 && out[1]==1 && out[2]==0 && out[3]==0 && out[4]==9;
+  for i:0..<5 {out[i]=9;}image[3]=2;#assert gdt_cross_mask(true,image[..],valid[..],out[..],false).status==GdtStatus.mask;for b:out {#assert b==9;}
+  image[3]=1;valid[0]=2;#assert gdt_cross_mask(false,image[..],valid[..],out[..],false).status==GdtStatus.mask;
+  valid[0]=1;#assert gdt_cross_mask(false,image[..],valid[0..<3],out[..],false).status==GdtStatus.shape;
+  #assert gdt_cross_mask(false,image[..],valid[..],out[0..<3],false).status==GdtStatus.capacity;
+  #assert gdt_cross_mask(false,image[..],valid[..],out[..],true).status==GdtStatus.alias;
+  single_image:=[1]u8.[0];single_valid:=[1]u8.[1];single:[1]u8;
+  #assert gdt_cross_mask(false,single_image[..],single_valid[..],single[..],false).written==1 && single[0]==1;
+  large:[1025]u8;target:[1025]u8;
+  #assert gdt_cross_mask(false,large[0..<1024],large[0..<1024],target[..],false).written==1024;
+  #assert gdt_cross_mask(false,large[..],large[..],target[..],false).status==GdtStatus.shape;
+  #assert gdt_cross_mask(false,large[0..<0],large[0..<0],target[..],false).status==GdtStatus.shape;
+}
+#test "attention layout admits the exact DiT and VL head widths without coupling them" {
+  a:=gdt_attention_plan(GdtAttention.{queries=41,keys=128,heads=32,dim=48});
+  #assert a.status==GdtStatus.ok && a.query==62976 && a.key==196608 && a.probability==128 && a.temporary==256 && a.stage==384 && a.work==63360;
+  a=gdt_attention_plan(GdtAttention.{queries=512,keys=512,heads=32,dim=64});#assert a.status==GdtStatus.ok && a.query==1048576 && a.key==1048576;
+  a=gdt_attention_plan(GdtAttention.{queries=1024,keys=1024,heads=32,dim=256});#assert a.status==GdtStatus.ok && a.query==8388608;
+  #assert gdt_attention_plan(GdtAttention.{queries=1,keys=1,heads=1,dim=1}).status==GdtStatus.ok;
+  for field:0..<8 {s:=GdtAttention.{queries=1,keys=1,heads=1,dim=1};if field==0 {s.queries=0;}if field==1 {s.keys=0;}if field==2 {s.heads=0;}if field==3 {s.dim=0;}if field==4 {s.queries=1025;}if field==5 {s.keys=1025;}if field==6 {s.heads=33;}if field==7 {s.dim=257;}#assert gdt_attention_plan(s).status==GdtStatus.shape;}
+}
+#test "bidirectional projected attention keeps query head and key positions distinct" {
+  s:=GdtAttention.{queries=2,keys=2,heads=2,dim=1};q:=[4]f32.[0,1,1,0];k:=[4]f32.[0,0,2,2];v:=[4]f32.[1,10,5,50];mask:=[2]u8.[1,1];out:=[5]f32.[7,7,7,7,7];work:[10]f32;
+  r:=gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false);
+  #assert r.status==GdtStatus.ok && r.written==4 && out[0]==3 && abs(out[1]-45.231884f32)<1e-5f32 && abs(out[2]-4.5231886f32)<1e-6f32 && out[3]==30 && out[4]==7;
+  mask[1]=0;#assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.ok && out[0]==1 && out[1]==10 && out[2]==1 && out[3]==10;
+  mask[0]=0;mask[1]=1;#assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.ok && out[0]==5 && out[1]==50 && out[2]==5 && out[3]==50;
+  mask[1]=0;#assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.ok;
+  for i:0..<4 {#assert out[i]==0;}#assert out[4]==7;
+}
+#test "attention uses inverse square root head scaling and staged failure" {
+  s:=GdtAttention.{queries=1,keys=2,heads=1,dim=2};q:=[2]f32.[1,1];k:=[4]f32.[0,0,1,1];v:=[4]f32.[1,2,5,10];mask:=[2]u8.[1,1];out:=[2]f32.[7,7];work:[8]f32;
+  r:=gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false);#assert r.status==GdtStatus.ok && abs(out[0]-4.2177186f32)<2e-6f32 && abs(out[1]-8.435437f32)<3e-6f32;
+  out=[2]f32.[7,7];q[0]=f32_from_bits(0x7f7fffff);k[2]=q[0];r=gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false);
+  #assert r.status==GdtStatus.arithmetic && r.written==0 && out[0]==7 && out[1]==7;
+  mask[0]=2;#assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.mask;
+  #assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[0..<1],work[..],false).status==GdtStatus.capacity;
+  #assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],true).status==GdtStatus.alias;
+  #assert gdt_attention_admit(s,2,3,4,2,2,8,false)==GdtStatus.capacity && gdt_attention_admit(s,2,4,3,2,2,8,false)==GdtStatus.capacity;
+  #assert gdt_attention_admit(s,1,4,4,2,2,8,false)==GdtStatus.capacity && gdt_attention_admit(s,2,4,4,1,2,8,false)==GdtStatus.capacity;
+  #assert gdt_attention_admit(s,2,4,4,2,2,7,false)==GdtStatus.capacity;
+}
+#test "the first attention key contributes its actual nonzero score" {
+  s:=GdtAttention.{queries=1,keys=2,heads=1,dim=1};q:=[1]f32.[1];k:=[2]f32.[2,0];v:=[2]f32.[1,5];mask:=[2]u8.[1,1];out:[1]f32;work:[7]f32;
+  #assert gdt_attention(s,q[..],k[..],v[..],mask[..],out[..],work[..],false).status==GdtStatus.ok && abs(out[0]-1.4768117f32)<1e-6f32;
+}
+
+gdt_norm_admit :: (kind:u8,rows:int,width:int,x:int,parameters:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+  if kind>3 {return GdtStatus.kind;}
+  p:=psionic_ops_plan(PsionicRequest.{op=PsionicOp.layernorm,rows=rows,width=width,epsilon=0.00001f32});
+  if p.status!=PsionicOpStatus.ok {return GdtStatus.shape;}
+  wanted:=ifx kind==0 then 0 else 2*width;
+  if x!=p.a || parameters!=wanted || out<p.output || work<2*p.output {return GdtStatus.capacity;}
+  if overlap {return GdtStatus.alias;}return GdtStatus.ok;
+}
+gdt_muladd :: (x:f32,scale:f32,shift:f32)->GdtNumber {
+  product:=f64(x)*f64(scale);if !psionic_ops_fits_f32(product) {return GdtNumber.{status=GdtStatus.arithmetic};}
+  narrowed:=f32(product);sum:=f64(narrowed)+f64(shift);
+  if !psionic_ops_fits_f32(sum) {return GdtNumber.{status=GdtStatus.arithmetic};}
+  return GdtNumber.{value=f32(sum)};
+}
+// Parameter order is part of this API; each vector broadcasts across rows.
+gdt_norm :: (kind:GdtNorm,rows:int,width:int,x:[]f32,parameters:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+  admitted:=gdt_norm_admit(cast(u8)kind,rows,width,x.count,parameters.count,out.count,work.count,overlap);
+  if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
+  for value:parameters {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
+  n:=rows*width;empty:[1]f32;indices:[1]int;mask:[1]u8;epsilon:=ifx kind==GdtNorm.ada_final then 0.000001f32 else 0.00001f32;
+  r:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.layernorm,rows=rows,width=width,epsilon=epsilon},x,empty[0..<0],indices[0..<0],mask[0..<0],work[0..<n],work[n..<2*n],false);
+  if r.status!=PsionicOpStatus.ok {return GdtResult.{status=GdtStatus.number};}
+  if kind!=GdtNorm.plain {
+    for i:0..<n {axis:=i%width;scale:=parameters[axis];shift:=parameters[width+axis];
+      if kind==GdtNorm.ada_final {scale=parameters[width+axis];shift=parameters[axis];}
+      if kind==GdtNorm.ada_block || kind==GdtNorm.ada_final {scale=f32(1.0f64+f64(scale));}
+      value:=gdt_muladd(work[i],scale,shift);if value.status!=GdtStatus.ok {return GdtResult.{status=value.status};}work[i]=value.value;
+    }
+  }
+  for i:0..<n {out[i]=work[i];}return GdtResult.{written=n};
+}
+gdt_activation_admit :: (kind:u8,n:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+  if kind>1 {return GdtStatus.kind;}p:=psionic_ops_plan(PsionicRequest.{rows=1,width=n});
+  if p.status!=PsionicOpStatus.ok {return GdtStatus.shape;}
+  if out<n || work<n {return GdtStatus.capacity;}if overlap {return GdtStatus.alias;}return GdtStatus.ok;
+}
+gdt_activate :: (kind:GdtActivation,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+  admitted:=gdt_activation_admit(cast(u8)kind,x.count,out.count,work.count,overlap);if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
+  for value:x {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
+  for i:0..<x.count {
+    value:=f64(x[i]);result:f64;
+    if kind==GdtActivation.silu {sigmoid:=f32(tb_sigmoid(value));result=value*f64(sigmoid);}
+    else {argument:=0.7978845608028654*(value+0.044715*value*value*value);result=(0.5*value)*(1+tb_tanh(argument));}
+    work[i]=f32(result);
+  }
+  for i:0..<x.count {out[i]=work[i];}return GdtResult.{written=x.count};
+}
+gdt_block_route :: (block:int)->GdtRoute #export_c {
+  if block<0 || block>=32 {return GdtRoute.{status=GdtStatus.shape};}
+  if block%2==1 {return GdtRoute.{mask=GdtMask.self};}
+  return GdtRoute.{mask=ifx block%4==0 then GdtMask.text else GdtMask.image};
+}
+gdt_cross_mask :: (images:bool,image:[]u8,valid:[]u8,out:[]u8,overlap:bool)->GdtResult #export_c {
+  if image.count<1 || image.count>1024 || valid.count!=image.count {return GdtResult.{status=GdtStatus.shape};}
+  if out.count<image.count {return GdtResult.{status=GdtStatus.capacity};}if overlap {return GdtResult.{status=GdtStatus.alias};}
+  for b:image {if b>1 {return GdtResult.{status=GdtStatus.mask};}}for b:valid {if b>1 {return GdtResult.{status=GdtStatus.mask};}}
+  for i:0..<image.count {out[i]=ifx valid[i]==1 && ((image[i]==1)==images) then 1 else 0;}return GdtResult.{written=image.count};
+}
+gdt_attention_plan :: (s:GdtAttention)->GdtAttentionPlan #export_c {
+  if s.queries<1 || s.queries>1024 || s.keys<1 || s.keys>1024 || s.heads<1 || s.heads>32 || s.dim<1 || s.dim>256 {return GdtAttentionPlan.{status=GdtStatus.shape};}
+  n:=s.queries*s.heads*s.dim;return GdtAttentionPlan.{query=n,key=s.keys*s.heads*s.dim,probability=s.keys,temporary=2*s.keys,stage=3*s.keys,work=3*s.keys+n};
+}
+gdt_attention_admit :: (s:GdtAttention,q:int,k:int,v:int,mask:int,out:int,work:int,overlap:bool)->GdtStatus #export_c {
+  p:=gdt_attention_plan(s);if p.status!=GdtStatus.ok {return p.status;}
+  if q!=p.query || k!=p.key || v!=p.key || mask!=s.keys || out<p.query || work<p.work {return GdtStatus.capacity;}
+  if overlap {return GdtStatus.alias;}return GdtStatus.ok;
+}
+// Projected tensors are [token,head,dimension]; all queries share a key mask.
+// The all-masked SDPA result is zero BEFORE the later learned output bias.
+gdt_attention :: (s:GdtAttention,q:[]f32,k:[]f32,v:[]f32,mask:[]u8,out:[]f32,work:[]f32,overlap:bool)->GdtResult #export_c {
+  admitted:=gdt_attention_admit(s,q.count,k.count,v.count,mask.count,out.count,work.count,overlap);if admitted!=GdtStatus.ok {return GdtResult.{status=admitted};}
+  for value:q {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
+  for value:k {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
+  for value:v {if !psionic_tensor_finite_bits(f32_bits(value)) {return GdtResult.{status=GdtStatus.number};}}
+  active:=false;for bit:mask {if bit>1 {return GdtResult.{status=GdtStatus.mask};}if bit==1 {active=true;}}
+  p:=gdt_attention_plan(s);for i:0..<p.query {work[p.stage+i]=0;}
+  if active {
+    empty:[1]f32;indices:[1]int;
+    for query:0..<s.queries {for head:0..<s.heads {
+      for key:0..<s.keys {
+        score:=0.0;if mask[key]==1 {acc:PsionicAccumulator;
+          for axis:0..<s.dim {acc=psionic_ops_accumulate(acc,f64(q[(query*s.heads+head)*s.dim+axis])*f64(k[(key*s.heads+head)*s.dim+axis]));}
+          score=psionic_ops_total(acc)/sqrt(f64(s.dim));
+        }
+        if !psionic_ops_fits_f32(score) {return GdtResult.{status=GdtStatus.arithmetic};}work[key]=f32(score);
+      }
+      r:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.softmax,rows=1,width=s.keys},work[0..<s.keys],empty[0..<0],indices[0..<0],mask,work[p.probability..<p.temporary],work[p.temporary..<p.stage],false);
+      if r.status!=PsionicOpStatus.ok {return GdtResult.{status=GdtStatus.arithmetic};}
+      for axis:0..<s.dim {acc:PsionicAccumulator;
+        for key:0..<s.keys {acc=psionic_ops_accumulate(acc,f64(work[p.probability+key])*f64(v[(key*s.heads+head)*s.dim+axis]));}
+        result:=psionic_ops_total(acc);if !psionic_ops_fits_f32(result) {return GdtResult.{status=GdtStatus.arithmetic};}
+        work[p.stage+(query*s.heads+head)*s.dim+axis]=f32(result);
+      }
+    }}
+  }
+  for i:0..<p.query {out[i]=work[p.stage+i];}return GdtResult.{written=p.query};
+}

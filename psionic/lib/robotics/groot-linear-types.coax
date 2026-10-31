@@ -1,0 +1,2 @@
+// Exact F32 scratch segments for one selected category's state encoder.
+GlLayout :: struct {status:QmStatus;first:int;stage:int;second:int;total:int;}

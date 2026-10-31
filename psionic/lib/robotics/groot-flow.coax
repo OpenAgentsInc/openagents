@@ -1,0 +1,123 @@
+// GR00T N1.7 flow/timestep CPU F32 reference operators, independently authored
+// from NVIDIA Isaac-GR00T c56f54128d92f743889b7e4cecfc1ceafd88739e.
+// Source formulas are distinct: action time=[sin,cos]/half; DiT time=[cos,sin]
+// with downscale_freq_shift1, followed elsewhere by its learned time MLP.
+#load "../ops.coax";
+#load "groot-flow-types.coax";
+#authority;
+
+#test "GR00T four Euler stages use the released continuous times and bucket IDs" {
+  expected:=[4]int.[0,250,500,750];
+  for step:0..<4 {s:=gf_schedule(step);#assert s.status==GfStatus.ok && s.bucket==expected[step] && s.dt==0.25f32;}
+  for step:[5]int.[-9223372036854775807-1,-1,4,5,9223372036854775807] {s:=gf_schedule(step);#assert s.status==GfStatus.time && s.bucket==0 && s.dt==0;}
+}
+#test "Euler metadata has explicit extent capacity time and alias precedence" {
+  #assert gf_advance_admit(0,1,1,1,1,false)==GfStatus.ok && gf_advance_admit(3,5280,5280,5280,5280,false)==GfStatus.ok;
+  for n:[5]int.[-1,0,5281,9223372036854775807,-9223372036854775807-1] {#assert gf_advance_admit(0,n,n,5280,5280,false)==GfStatus.shape;}
+  #assert gf_advance_admit(0,2,1,2,2,false)==GfStatus.shape && gf_advance_admit(0,2,3,2,2,false)==GfStatus.shape;
+  #assert gf_advance_admit(-1,0,0,0,0,true)==GfStatus.time;
+  #assert gf_advance_admit(0,2,2,1,2,true)==GfStatus.capacity && gf_advance_admit(0,2,2,2,1,true)==GfStatus.capacity;
+  #assert gf_advance_admit(0,2,2,2,2,true)==GfStatus.alias;
+}
+#test "Euler narrows its quarter product before addition and publishes completely" {
+  x:=[4]f32.[-1,2,0.5,f32_from_bits(0x80000000)];v:=[4]f32.[4,-4,0,f32_from_bits(0x80000000)];out:=[5]f32.[7,7,7,7,7];work:=[5]f32.[9,9,9,9,9];
+  r:=gf_advance(0,x[..],v[..],out[..],work[..],false);#assert r.status==GfStatus.ok && r.written==4;
+  #assert out[0]==0 && out[1]==1 && out[2]==0.5 && f32_bits(out[3])==0x80000000 && out[4]==7 && work[4]==9;
+  state:=[1]f32.[0];velocity:=[1]f32.[1];next:[1]f32;tmp:[1]f32;
+  for step:0..<4 {#assert gf_advance(step,state[..],velocity[..],next[..],tmp[..],false).status==GfStatus.ok;state=next;}
+  #assert state[0]==1;
+  // Exact quarter of the minimum subnormal rounds to zero before the sum.
+  state[0]=0;velocity[0]=f32_from_bits(1);#assert gf_advance(1,state[..],velocity[..],next[..],tmp[..],false).status==GfStatus.ok && f32_bits(next[0])==0;
+}
+#test "Euler refuses metadata and arithmetic failure without publishing any output" {
+  x:=[2]f32.[1,f32_from_bits(0x7f7fffff)];v:=[2]f32.[1,f32_from_bits(0x7f7fffff)];out:=[2]f32.[7,7];work:[2]f32;
+  r:=gf_advance(0,x[..],v[..],out[..],work[..],false);#assert r.status==GfStatus.arithmetic && r.written==0 && out[0]==7 && out[1]==7;
+  #assert gf_advance(4,x[..],v[..],out[..],work[..],false).status==GfStatus.time;
+  #assert gf_advance(0,x[..],v[0..<1],out[..],work[..],false).status==GfStatus.shape;
+  #assert gf_advance(0,x[..],v[..],out[0..<1],work[..],false).status==GfStatus.capacity;
+  #assert gf_advance(0,x[..],v[..],out[..],work[..],true).status==GfStatus.alias && out[0]==7 && out[1]==7;
+}
+#test "time embedding admission distinguishes kind width bucket and caller buffers" {
+  #assert gf_time_admit(0,2,0,2,2,false)==GfStatus.ok && gf_time_admit(1,4,999,4,4,false)==GfStatus.ok;
+  #assert gf_time_admit(0,4096,999,4096,4096,false)==GfStatus.ok && gf_time_admit(1,4096,0,4096,4096,false)==GfStatus.ok;
+  for kind:[3]u8.[2,3,255] {#assert gf_time_admit(kind,4,0,4,4,false)==GfStatus.kind;}
+  for width:[7]int.[-1,0,1,3,4097,4098,9223372036854775807] {#assert gf_time_admit(0,width,0,4096,4096,false)==GfStatus.shape;}
+  #assert gf_time_admit(1,2,0,4,4,false)==GfStatus.shape && gf_time_admit(1,4095,0,4096,4096,false)==GfStatus.shape;
+  #assert gf_time_admit(0,4,-1,4,4,false)==GfStatus.time && gf_time_admit(0,4,1000,4,4,false)==GfStatus.time;
+  #assert gf_time_admit(0,4,0,3,4,true)==GfStatus.capacity && gf_time_admit(0,4,0,4,3,true)==GfStatus.capacity;
+  #assert gf_time_admit(0,4,0,4,4,true)==GfStatus.alias;
+}
+#test "time zero has exact opposite half order and leaves trailing capacity alone" {
+  out:=[5]f32.[7,7,7,7,7];work:=[5]f32.[9,9,9,9,9];
+  r:=gf_time(GfTimeKind.action,4,0,out[..],work[..],false);#assert r.status==GfStatus.ok && r.written==4 && out[0]==0 && out[1]==0 && out[2]==1 && out[3]==1 && out[4]==7 && work[4]==9;
+  r=gf_time(GfTimeKind.dit,4,0,out[..],work[..],false);#assert r.status==GfStatus.ok && out[0]==1 && out[1]==1 && out[2]==0 && out[3]==0 && out[4]==7;
+}
+#test "action and DiT frequencies differ in denominator and computation order" {
+  a:[4]f32;b:[4]f32;work:[4]f32;
+  #assert gf_time(GfTimeKind.action,4,1,a[..],work[..],false).status==GfStatus.ok && gf_time(GfTimeKind.dit,4,1,b[..],work[..],false).status==GfStatus.ok;
+  #assert abs(a[0]-f32(sin(1.0f64)))<1e-7f32 && abs(a[2]-f32(cos(1.0f64)))<1e-7f32;
+  #assert abs(a[1]-0.009999833f32)<1e-8f32 && abs(a[3]-0.99995f32)<1e-7f32;
+  #assert abs(b[3]-0.0001f32)<1e-10f32 && b[1]==1;
+  six:[6]f32;six_work:[6]f32;#assert gf_time(GfTimeKind.dit,6,1,six[..],six_work[..],false).status==GfStatus.ok;
+  #assert abs(six[4]-0.009999833f32)<1e-8f32 && abs(six[5]-0.0001f32)<1e-10f32;
+  // All positions, not only the first frequency, must participate.
+  full:[1536]f32;tmp:[1536]f32;#assert gf_time(GfTimeKind.action,1536,750,full[..],tmp[..],false).written==1536;
+  #assert full[1]!=full[0] && full[767]!=full[0] && full[1535]!=full[768];
+}
+#test "time embedding refusals preserve destination and private scratch" {
+  out:=[4]f32.[7,7,7,7];work:=[4]f32.[9,9,9,9];
+  #assert gf_time(GfTimeKind.action,3,0,out[..],work[..],false).status==GfStatus.shape;
+  #assert gf_time(GfTimeKind.action,4,1000,out[..],work[..],false).status==GfStatus.time;
+  #assert gf_time(GfTimeKind.action,4,0,out[0..<3],work[..],false).status==GfStatus.capacity;
+  #assert gf_time(GfTimeKind.action,4,0,out[..],work[..],true).status==GfStatus.alias;
+  for i:0..<4 {#assert out[i]==7 && work[i]==9;}
+}
+
+gf_schedule :: (step:int)->GfSchedule #export_c {
+  if step<0 || step>=GF_STEPS {return GfSchedule.{status=GfStatus.time};}
+  return GfSchedule.{bucket=step*250,dt=0.25f32};
+}
+gf_advance_admit :: (step:int,n:int,velocities:int,out:int,work:int,overlap:bool)->GfStatus #export_c {
+  if gf_schedule(step).status!=GfStatus.ok {return GfStatus.time;}
+  if n<1 || n>GF_VALUES_MAX || velocities!=n {return GfStatus.shape;}
+  if out<n || work<n {return GfStatus.capacity;}
+  if overlap {return GfStatus.alias;}return GfStatus.ok;
+}
+// `overlap` truthfully covers all writable/input and writable/writable spans.
+// Caller owns valid immutable typed extents. Scratch may change on arithmetic
+// refusal; the public destination changes only after every element succeeds.
+gf_advance :: (step:int,x:[]f32,velocity:[]f32,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c {
+  admitted:=gf_advance_admit(step,x.count,velocity.count,out.count,work.count,overlap);
+  if admitted!=GfStatus.ok {return GfResult.{status=admitted};}
+  for value:x {if !psionic_tensor_finite_bits(f32_bits(value)) {return GfResult.{status=GfStatus.number};}}
+  for value:velocity {if !psionic_tensor_finite_bits(f32_bits(value)) {return GfResult.{status=GfStatus.number};}}
+  for i:0..<x.count {
+    product:=f32(0.25f64*f64(velocity[i]));value:=f64(x[i])+f64(product);
+    if !psionic_ops_fits_f32(value) {return GfResult.{status=GfStatus.arithmetic};}
+    work[i]=f32(value);
+  }
+  for i:0..<x.count {out[i]=work[i];}return GfResult.{written=x.count};
+}
+gf_time_admit :: (kind:u8,width:int,bucket:int,out:int,work:int,overlap:bool)->GfStatus #export_c {
+  if kind>1 {return GfStatus.kind;}
+  if width<2 || width/2>GF_TIME_HALF_MAX || width%2!=0 || (kind==1 && width<4) {return GfStatus.shape;}
+  if bucket<0 || bucket>=GF_BUCKETS {return GfStatus.time;}
+  if out<width || work<width {return GfStatus.capacity;}
+  if overlap {return GfStatus.alias;}return GfStatus.ok;
+}
+// Explicit F32 stages match the two source expression orders. Transcendentals
+// use the CPU F64 math function narrowed to F32, not a GPU/BF16 parity claim.
+gf_time :: (kind:GfTimeKind,width:int,bucket:int,out:[]f32,work:[]f32,overlap:bool)->GfResult #export_c {
+  admitted:=gf_time_admit(cast(u8)kind,width,bucket,out.count,work.count,overlap);
+  if admitted!=GfStatus.ok {return GfResult.{status=admitted};}
+  half:=width/2;ln:=f32(log(10000.0f64));ratio:=ln/f32(half);
+  for i:0..<half {
+    exponent:= -f32(i)*ratio;
+    if kind==GfTimeKind.dit {numerator:= -ln*f32(i);exponent=numerator/f32(half-1);}
+    frequency:=f32(exp(f64(exponent)));phase:=f32(bucket)*frequency;
+    a:=f32(sin(f64(phase)));b:=f32(cos(f64(phase)));
+    if kind==GfTimeKind.action {work[i]=a;work[half+i]=b;}
+    else {work[i]=b;work[half+i]=a;}
+  }
+  for i:0..<width {out[i]=work[i];}return GfResult.{written=width};
+}

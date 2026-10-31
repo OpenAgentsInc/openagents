@@ -1,0 +1,139 @@
+{
+  "schema": "psionic-groot-libero-contract-v1",
+  "model": "nvidia/GR00T-N1.7-LIBERO",
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "subfolder": "libero_10",
+  "source_code_revision": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+  "embodiment": "libero_sim",
+  "embodiment_category": 2,
+  "state_dim": 8,
+  "action_dim": 7,
+  "state_groups": [
+    {
+      "name": "x",
+      "dim": 1
+    },
+    {
+      "name": "y",
+      "dim": 1
+    },
+    {
+      "name": "z",
+      "dim": 1
+    },
+    {
+      "name": "roll",
+      "dim": 1
+    },
+    {
+      "name": "pitch",
+      "dim": 1
+    },
+    {
+      "name": "yaw",
+      "dim": 1
+    },
+    {
+      "name": "gripper",
+      "dim": 2
+    }
+  ],
+  "action_groups": [
+    {
+      "name": "x",
+      "dim": 1
+    },
+    {
+      "name": "y",
+      "dim": 1
+    },
+    {
+      "name": "z",
+      "dim": 1
+    },
+    {
+      "name": "roll",
+      "dim": 1
+    },
+    {
+      "name": "pitch",
+      "dim": 1
+    },
+    {
+      "name": "yaw",
+      "dim": 1
+    },
+    {
+      "name": "gripper",
+      "dim": 1
+    }
+  ],
+  "state_rotation": "axis-angle exponential coordinates; source names roll/pitch/yaw are notEulerangles",
+  "state_history": 1,
+  "cameras": [
+    "image",
+    "wrist_image"
+  ],
+  "model_action_horizon": 40,
+  "model_state_width": 132,
+  "model_action_width": 132,
+  "decoded_action_horizon": 16,
+  "reference_execution_horizon": 8,
+  "flow_steps": 4,
+  "flow_times": [
+    0,
+    250,
+    500,
+    750
+  ],
+  "flow_dt": 0.25,
+  "initial_noise": "Standard Gaussian [1,40,132]; record exact initial noise for cross-runtime parity.",
+  "normalization": {
+    "statistic": "q01/q99",
+    "clip": [
+      -1,
+      1
+    ],
+    "formula": "2*((x-q01)/(q99-q01))-1",
+    "implementation_note": "normalize_values_minmax uses zeros_like(input) and assigns intermediate0..1beforefinal2*x-1; preserve input-dtype rounding. np.isclose bounds produce zero.",
+    "decode": "(clip(n,-1,1)+1)/2*(q99-q01)+q01",
+    "relative_transform": "NONE for selected LIBERO ABSOLUTE/NON_EEF config; those labels do not make environment commands absolute poses."
+  },
+  "state_padding": "Zero-pad8to132 before category2 state encoder",
+  "action_padding": "40x132 internal prediction; decode first16rows, first7meaningful columns; legacy strict masks defaultfalse",
+  "gripper_to_environment": "-sign(2*g-1), preserving zero at g=.5",
+  "image_before_qwen_processor": {
+    "environment_flip": "Reverse both height and width axes; RGBchannels unchanged",
+    "use_albumentations": true,
+    "shortest_image_edge": 256,
+    "crop_fraction": 0.95,
+    "crop_on_256": [
+      6,
+      6,
+      249,
+      249
+    ],
+    "eval_sequence": "SmallestMaxSize256INTER_AREA -> FractionalCenterCrop(.95) -> SmallestMaxSize256INTER_AREA",
+    "image_crop_size_230": "Not selected when crop_fraction=.95 is present",
+    "letter_box": false
+  },
+  "language": "Lowercase and remove non-word/non-whitespace punctuation when formalize_language=true; user chat contains images in camera order then instruction; Qwen chat template add_generation_prompt=false.",
+  "backbone": {
+    "model": "nvidia/Cosmos-Reason2-2B",
+    "observed_revision": "9ce19a195e423419c349abfc86fd07178b230561",
+    "architecture": "Qwen3VLForConditionalGeneration",
+    "access": "gatedauto; unauthenticated config GET401 on2026-10-31",
+    "external_assets_required": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "merges.txt",
+      "vocab.json",
+      "preprocessor_config.json",
+      "video_preprocessor_config.json"
+    ],
+    "included_in_selected_checkpoint": false,
+    "fallback_equivalence_qualified": false
+  },
+  "support_status": "Planned original-checkpoint path; header/contract audit only. Chapter113 and114 are NOT complete."
+}

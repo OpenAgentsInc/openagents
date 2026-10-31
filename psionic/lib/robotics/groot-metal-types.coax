@@ -1,0 +1,8 @@
+// Selected state encoder only. Buffer extents are bytes; argument view counts
+// are elements of the kernel's declared type. Exclusive single-host ownership.
+GmsStatus :: enum u8 {ok;shape;capacity;alias;order;device;check;number;}
+GmsLayout :: struct {bytes:[8]int;nodes:int;}
+GmsArg :: struct {kind:int;integer:int;buffer:int;count:int;}
+GmsNode :: struct {status:GmsStatus;kernel:int;items:int;lanes:int;block:int;argc:int;args:[6]GmsArg;}
+GmsCursor :: struct {status:GmsStatus;next:int;waited:bool;published:bool;}
+GmsRead :: struct {status:GmsStatus;written:int;}

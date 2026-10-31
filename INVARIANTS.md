@@ -1,5 +1,32 @@
 # Invariants
 
+## Original GR00T execution qualifies a prepared observation and explicit numerical profile
+
+`psionic/lib/robotics/groot-*` executes the pinned GR00T-N1.7-LIBERO
+`libero_10` category-2 learned network through its 16×7 action adapter. The
+current complete graph admits one 140-token prepared-observation profile:
+two packed camera streams, normalized state and explicit initial noise.
+Coax owns tensor bindings, shapes, numerical operations, masks, every GPU
+launch argument/order, completion receipts and finite publication. Native C
+performs file, allocation and device effects. The caller supplies authenticated
+immutable original files, valid disjoint typed storage and honest effect
+receipts; matching metadata alone does not authenticate future payloads.
+
+BF16 stored coefficients feed F32 activations/affine stages and explicitly
+wide normalization statistics (Metal float-float). Same-input component
+comparisons and unchanged original full-network action endpoints pass their
+frozen bounds. The separate global late-hidden diagnostic remains failed;
+conditional head comparison does not relabel it or substitute SDK features
+into the product path. All 112 adapter outputs match an independent adapter
+on actual Coax results; all 16 gripper decisions match the original endpoint.
+This is not source-default BF16 identity or a task-success claim.
+
+Raw-image, ASCII request and state normalization operators have separate
+qualified boundaries. A raw simulator adapter, quaternion conversion, broader
+whole-model request lengths, observation timing, resets and physical control
+remain outside chapter 168. Evidence:
+`docs/verification/psionic-ch113-2026-10-31.md`.
+
 ## Robotics imitation keeps its simulated embodiment and recorded data distinct
 
 `psionic/lib/robotics/` owns `robotics-cartesian-bc-f64-v1`: a two-axis

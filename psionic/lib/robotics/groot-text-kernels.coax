@@ -1,0 +1,133 @@
+// F32 private text stages. Invalid metadata leaves that item's output/flag
+// poisoned; numeric failure writes flag1 and preserves its output. A caller
+// publishes only after every expected flag is zero. No model is implied here.
+#authority;
+
+#test "text device item bounds admit exact capacities and finite vector budget" {
+  #assert gtk_tokens(1) && gtk_tokens(512) && !gtk_tokens(0) && !gtk_tokens(513) && !gtk_tokens(-9223372036854775807-1);
+  #assert gtk_item(0,1,1,1) && gtk_item(16777215,16777216,16777216,16777216);
+  #assert !gtk_item(-1,1,1,1) && !gtk_item(1,1,1,1) && !gtk_item(0,0,1,1) && !gtk_item(0,16777217,16777217,16777217);
+  #assert !gtk_item(0,2,1,2) && !gtk_item(0,2,2,1);
+}
+#test "embedding and injection metadata cover genuine widths vocabulary and token maximums" {
+  #assert gtk_embed_bounds(0,1,1,1,1,1,128,1,1);
+  #assert gtk_embed_bounds(1048575,2048,151936,512,311164928,512,262144,1048576,1048576);
+  #assert gtk_inject_bounds(1048575,2048,1048576,512,262144,1048576,1048576);
+  for field:0..<12 {item:=0;w:=2;v:=3;t:=2;e:=6;m:=2;visual:=256;o:=4;f:=4;
+    if field==0 {item=-1;}if field==1 {item=4;}if field==2 {w=0;}if field==3 {w=2049;}if field==4 {v=0;}if field==5 {v=151937;}
+    if field==6 {t=0;}if field==7 {t=513;}if field==8 {e=5;}if field==9 {m=1;}if field==10 {visual=255;}if field==11 {o=3;}
+    #assert !gtk_embed_bounds(item,w,v,t,e,m,visual,o,f);
+  }
+  #assert !gtk_embed_bounds(0,2,3,2,6,2,256,4,3);
+  #assert gtk_inject_bounds(0,1,1,1,128,1,1) && !gtk_inject_bounds(0,0,1,1,128,1,1) && !gtk_inject_bounds(0,2049,2049,1,262272,2049,2049);
+  #assert !gtk_inject_bounds(0,2,4,0,256,4,4) && !gtk_inject_bounds(0,2,1026,513,256,1026,1026) && !gtk_inject_bounds(0,2,3,2,256,4,4) && !gtk_inject_bounds(0,2,4,2,255,4,4);
+  for w:[4]int.[-1,0,1,2049] {for v:[4]int.[-1,0,1,151937] {for t:[4]int.[-1,0,1,513] {
+    want:=w==1 && v==1 && t==1;n:=w*t;
+    #assert gtk_embed_bounds(0,w,v,t,w*v,t,128*w,n,n)==want;
+  }}}
+  for w:[4]int.[-1,0,1,2049] {for t:[4]int.[-1,0,1,513] {n:=w*t;#assert gtk_inject_bounds(0,w,n,t,128*w,n,n)==(w==1 && t==1);}}
+}
+#test "rotary metadata covers source Q16 K8 and every even128coordinate profile" {
+  #assert gtk_rotate_bounds(0,1,2,2,2,2,2);
+  #assert gtk_rotate_bounds(1048575,16,128,1048576,65536,1048576,1048576);
+  #assert gtk_rotate_bounds(524287,8,128,524288,65536,524288,524288);
+  for field:0..<10 {i:=0;h:=2;d:=4;n:=16;r:=8;o:=16;f:=16;
+    if field==0 {h=0;}if field==1 {h=17;}if field==2 {d=1;}if field==3 {d=130;}if field==4 {d=3;}if field==5 {n=15;}if field==6 {n=0;r=0;}if field==7 {n=4104;r=2052;o=n;f=n;}if field==8 {r=7;}if field==9 {i=16;}
+    #assert !gtk_rotate_bounds(i,h,d,n,r,o,f);
+  }
+  #assert !gtk_rotate_bounds(0,17,4,136,8,136,136) && !gtk_rotate_bounds(0,2,130,520,260,520,520);
+}
+#test "text device metadata and every IEEE exponent boundary are explicit" {
+  #assert gtk_token(0,1,-1) && gtk_token(151935,151936,0) && gtk_token(0,1,127);
+  #assert !gtk_token(-1,1,-1) && !gtk_token(1,1,-1) && !gtk_token(0,1,-2) && !gtk_token(0,1,128);
+  for b:[6]u32.[0,0x80000000,1,0x80000001,0x7f7fffff,0xff7fffff] {#assert gtk_numeric(b)==0;}
+  for b:[6]u32.[0x7f800000,0xff800000,0x7fc00000,0x7f800001,0xff800001,0x7fc00001] {#assert gtk_numeric(b)==1;}
+  #assert gtk_count(0,0)==1 && gtk_count(0,0x7f800001)==0 && gtk_receipt(3,3)==0 && gtk_receipt(2,3)==1;
+}
+#test "embedding replaces image slots with both camera extrema and preserves text bits" {
+  ids:=[3]int.[2,1,0];map:=[3]int.[-1,0,127];e:=[6]u16.[0x3f80,0x4000,0x4040,0x4080,0xbf80,0x3f00];visual:[256]f32;
+  for i:0..<256 {visual[i]=f32(i)/4.0f32;}out:=[7]f32.[7,7,7,7,7,7,7];flags:=[7]u8.[9,9,9,9,9,9,9];
+  for i:0..<6 {gtk_embed(i,2,3,ids[..],e[..],map[..],visual[..],out[..],flags[..]);}
+  expected:=[6]f32.[-1,0.5f32,0,0.25f32,63.5f32,63.75f32];for i:0..<6 {#assert out[i]==expected[i] && flags[i]==0;}#assert out[6]==7 && flags[6]==9;
+  for axis:0..<3 {bad:=map;bad[axis]=128;item:=axis*2;out[item]=7;flags[item]=9;gtk_embed(item,2,3,ids[..],e[..],bad[..],visual[..],out[..],flags[..]);#assert out[item]==7 && flags[item]==9;}
+  ids[0]=3;out[0]=7;flags[0]=9;gtk_embed(0,2,3,ids[..],e[..],map[..],visual[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+}
+#test "BF16 nonfinite embedding words poison numeric flags before F32 conversion" {
+  id:=[1]int.[0];map:=[1]int.[-1];visual:[128]f32;out:=[1]f32.[7];flags:=[1]u8.[9];
+  for word:[5]u16.[0x7f80,0xff80,0x7fc0,0x7f81,0xff81] {e:=[1]u16.[word];gtk_embed(0,1,1,id[..],e[..],map[..],visual[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==1;}
+}
+#test "deepstack injection adds image features and copies text including negative zero" {
+  x:=[6]f32.[-0.0f32,2,3,4,5,6];map:=[3]int.[-1,0,127];visual:[256]f32;for i:0..<256 {visual[i]=f32(i)/4.0f32;}
+  out:=[7]f32.[7,7,7,7,7,7,7];flags:=[7]u8.[9,9,9,9,9,9,9];for i:0..<6 {gtk_inject(i,2,x[..],map[..],visual[..],out[..],flags[..]);}
+  #assert f32_bits(out[0])==0x80000000 && out[1]==2 && out[2]==3 && out[3]==4.25f32 && out[4]==68.5f32 && out[5]==69.75f32;
+  for i:0..<6 {#assert flags[i]==0;}#assert out[6]==7 && flags[6]==9;
+  map[0]=-2;out[0]=7;flags[0]=9;gtk_inject(0,2,x[..],map[..],visual[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+}
+#test "text half rotary uses token shared coefficients for every Q or K head" {
+  x:[16]f32;for i:0..<16 {x[i]=f32(i+1);}rope:=[8]f32.[1,0,0,1,-1,0,0,-1];out:[17]f32;flags:[17]u8;out[16]=7;for i:0..<17 {flags[i]=9;}
+  for i:0..<16 {gtk_rotate(i,2,4,x[..],rope[..],out[..],flags[..]);}
+  expected:=[16]f32.[1,-4,3,2,5,-8,7,6,-9,12,-11,-10,-13,16,-15,-14];for i:0..<16 {#assert out[i]==expected[i] && flags[i]==0;}#assert out[16]==7 && flags[16]==9;
+}
+#test "elementwise text multiply and add keep explicit F32 and numeric flags" {
+  a:=[4]f32.[2,-3,0,-0.0f32];b:=[4]f32.[4,2,-1,-0.0f32];out:=[5]f32.[7,7,7,7,7];flags:=[5]u8.[9,9,9,9,9];
+  for i:0..<4 {gtk_multiply(i,a[..],b[..],out[..],flags[..]);}#assert out[0]==8 && out[1]==-6 && f32_bits(out[2])==0x80000000 && out[3]==0;
+  for i:0..<4 {#assert flags[i]==0;flags[i]=9;}
+  for i:0..<4 {gtk_add(i,a[..],b[..],out[..],flags[..]);}#assert out[0]==6 && out[1]==-1 && out[2]==-1 && f32_bits(out[3])==0x80000000;
+  for i:0..<4 {#assert flags[i]==0;}#assert out[4]==7 && flags[4]==9;
+}
+#test "every text kernel refuses malformed spans without changing output or flag poison" {
+  id:=[1]int.[0];map:=[1]int.[-1];e:=[1]u16.[0x3f80];visual:[128]f32;x:=[2]f32.[1,2];rope:=[2]f32.[1,0];out:=[2]f32.[7,7];flags:=[2]u8.[9,9];
+  gtk_embed(-1,1,1,id[..],e[..],map[..],visual[..],out[..],flags[..]);gtk_embed(1,1,1,id[..],e[..],map[..],visual[..],out[..],flags[..]);
+  gtk_embed(0,1,1,id[..],e[..],map[..],visual[..],out[0..<0],flags[..]);gtk_embed(0,1,1,id[..],e[..],map[..],visual[..],out[..],flags[0..<0]);
+  gtk_inject(-1,2,x[..],map[..],visual[..],out[..],flags[..]);gtk_inject(0,2,x[..],map[..],visual[..],out[..],flags[..]);
+  gtk_rotate(0,1,2,x[..],rope[0..<1],out[..],flags[..]);gtk_rotate(-1,1,2,x[..],rope[..],out[..],flags[..]);
+  for i:-1..<3 {if i>=0 && i<2 {continue;}gtk_multiply(i,x[..],x[..],out[..],flags[..]);gtk_add(i,x[..],x[..],out[..],flags[..]);}
+  gtk_multiply(0,x[..],x[0..<1],out[..],flags[..]);gtk_add(0,x[..],x[0..<1],out[..],flags[..]);
+  for i:0..<2 {#assert out[i]==7 && flags[i]==9;}
+}
+
+gtk_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
+gtk_count :: (count:int,bits:u32)->int {if gtk_numeric(bits)==0 {return count+1;}return count;}
+gtk_receipt :: (count:int,expected:int)->u8 {return ifx count==expected then 0 else 1;}
+gtk_item :: (item:int,n:int,out:int,flags:int)->bool {return n>=1 && n<=16777216 && item>=0 && item<n && out>=n && flags>=n;}
+gtk_tokens :: (n:int)->bool {return n>=1 && n<=512;}
+gtk_embed_bounds :: (item:int,width:int,vocab:int,tokens:int,embedding:int,map:int,visual:int,out:int,flags:int)->bool {
+  return width>=1 && width<=2048 && vocab>=1 && vocab<=151936 && gtk_tokens(tokens) && embedding==width*vocab && map==tokens && visual==128*width && gtk_item(item,tokens*width,out,flags);
+}
+gtk_inject_bounds :: (item:int,width:int,n:int,tokens:int,visual:int,out:int,flags:int)->bool {
+  return width>=1 && width<=2048 && gtk_tokens(tokens) && n==tokens*width && visual==128*width && gtk_item(item,n,out,flags);
+}
+gtk_rotate_bounds :: (item:int,heads:int,dim:int,n:int,rope:int,out:int,flags:int)->bool {
+  return heads>=1 && heads<=16 && dim>=2 && dim/2<=64 && dim%2==0 && n%(heads*dim)==0 && gtk_tokens(n/(heads*dim)) && rope==n/heads && gtk_item(item,n,out,flags);
+}
+gtk_map :: (image:int)->bool {return image>=-1 && image<=127;}
+gtk_token :: (id:int,vocab:int,image:int)->bool {return id>=0 && id<vocab && gtk_map(image);}
+// Each output is private until the caller verifies all expected flags.
+gtk_embed :: (item:int,width:int,vocab:int,ids:[]int,embedding:[]u16,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gtk_embed_bounds(item,width,vocab,ids.count,embedding.count,image_map.count,visual.count,out.count,flags.count) {return;}
+  token:=item/width;axis:=item%width;id:=ids[token];image:=image_map[token];if !gtk_token(id,vocab,image) {return;}value:f32;
+  if image>=0 {value=visual[image*width+axis];}
+  else {bits:=cast(u32)embedding[id*width+axis]<<16;if gtk_numeric(bits)!=0 {flags[item]=1;return;}value=f32_from_bits(bits);}
+  bad:=gtk_numeric(f32_bits(value));flags[item]=bad;if bad!=0 {return;}out[item]=value;
+}
+gtk_rotate :: (item:int,heads:int,dim:int,x:[]f32,rope:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gtk_rotate_bounds(item,heads,dim,x.count,rope.count,out.count,flags.count) {return;}
+  half:=dim/2;axis:=item%dim;pair:=axis%half;base:=(item/dim)*dim;token:=item/(heads*dim);
+  a:=x[base+pair];b:=x[base+pair+half];c:=rope[token*dim+2*pair];s:=rope[token*dim+2*pair+1];first:f32;second:f32;
+  if axis<half {first=a*c;second=(-b)*s;}else {first=b*c;second=a*s;}value:=first+second;
+  checked:=gtk_count(0,f32_bits(a));checked=gtk_count(checked,f32_bits(b));checked=gtk_count(checked,f32_bits(c));checked=gtk_count(checked,f32_bits(s));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,5);flags[item]=bad;if bad!=0 {return;}out[item]=value;
+}
+gtk_inject :: (item:int,width:int,x:[]f32,image_map:[]int,visual:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gtk_inject_bounds(item,width,x.count,image_map.count,visual.count,out.count,flags.count) {return;}
+  image:=image_map[item/width];if !gtk_map(image) {return;}value:=x[item];checked:=gtk_count(0,f32_bits(value));expected:=2;
+  if image>=0 {feature:=visual[image*width+item%width];checked=gtk_count(checked,f32_bits(feature));expected+=1;value+=feature;}
+  checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,expected);flags[item]=bad;if bad!=0 {return;}out[item]=value;
+}
+gtk_multiply :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if a.count!=b.count || !gtk_item(item,a.count,out.count,flags.count) {return;}
+  x:=a[item];y:=b[item];value:=x*y;checked:=gtk_count(0,f32_bits(x));checked=gtk_count(checked,f32_bits(y));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,3);flags[item]=bad;if bad!=0 {return;}out[item]=value;
+}
+gtk_add :: (item:int,a:[]f32,b:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if a.count!=b.count || !gtk_item(item,a.count,out.count,flags.count) {return;}
+  x:=a[item];y:=b[item];value:=x+y;checked:=gtk_count(0,f32_bits(x));checked=gtk_count(checked,f32_bits(y));checked=gtk_count(checked,f32_bits(value));bad:=gtk_receipt(checked,3);flags[item]=bad;if bad!=0 {return;}out[item]=value;
+}

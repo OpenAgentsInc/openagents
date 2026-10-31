@@ -1,0 +1,1160 @@
+{
+  "processor_class": "Gr00tN1d7Processor",
+  "processor_kwargs": {
+    "modality_configs": {
+      "real_g1_relative_eef_relative_joints": {
+        "video": {
+          "delta_indices": [
+            -20,
+            0
+          ],
+          "modality_keys": [
+            "ego_view"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef_9d",
+            "right_wrist_eef_9d",
+            "left_hand",
+            "right_hand",
+            "left_arm",
+            "right_arm",
+            "waist"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef_9d",
+            "right_wrist_eef_9d",
+            "left_hand",
+            "right_hand",
+            "left_arm",
+            "right_arm",
+            "waist",
+            "base_height_command",
+            "navigate_command"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.task_description"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "real_r1_pro_sharpa_relative_eef_mecka": {
+        "video": {
+          "delta_indices": [
+            -30,
+            0
+          ],
+          "modality_keys": [
+            "ego_view_cropratio_res320x240_freq30"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.coarse_action"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "real_r1_pro_sharpa_relative_eef_human": {
+        "video": {
+          "delta_indices": [
+            -20,
+            0
+          ],
+          "modality_keys": [
+            "ego_view_res320x240_freq20",
+            "left_wrist_view_res320x240_freq20",
+            "right_wrist_view_res320x240_freq20"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.coarse_action"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "real_r1_pro_sharpa_relative_eef": {
+        "video": {
+          "delta_indices": [
+            -20,
+            0
+          ],
+          "modality_keys": [
+            "ego_view_res320x240_freq20",
+            "left_wrist_view_res320x240_freq20",
+            "right_wrist_view_res320x240_freq20"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.coarse_action"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "xdof_relative_eef_relative_joint": {
+        "video": {
+          "delta_indices": [
+            -30,
+            0
+          ],
+          "modality_keys": [
+            "top_camera-images-rgb_320_240",
+            "left_camera-images-rgb_320_240",
+            "right_camera-images-rgb_320_240"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_gripper_pos",
+            "right_gripper_pos",
+            "left_joint_pos",
+            "right_joint_pos"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_gripper_pos",
+            "right_gripper_pos",
+            "left_joint_pos",
+            "right_joint_pos"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.task"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "real_r1_pro_sharpa_relative_eef_maxinsights": {
+        "video": {
+          "delta_indices": [
+            -30,
+            0
+          ],
+          "modality_keys": [
+            "ego_view_cropratio_res320x240_freq30"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_hand_joints",
+            "right_hand_joints"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.coarse_action"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "xdof_relative_eef_relative_joint_subtask": {
+        "video": {
+          "delta_indices": [
+            -30,
+            0
+          ],
+          "modality_keys": [
+            "top_camera-images-rgb_320_240",
+            "left_camera-images-rgb_320_240",
+            "right_camera-images-rgb_320_240"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_gripper_pos",
+            "right_gripper_pos",
+            "left_joint_pos",
+            "right_joint_pos"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "left_wrist_eef",
+            "right_wrist_eef",
+            "left_gripper_pos",
+            "right_gripper_pos",
+            "left_joint_pos",
+            "right_joint_pos"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.sub_task"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "oxe_droid_relative_eef_relative_joint": {
+        "video": {
+          "delta_indices": [
+            -15,
+            0
+          ],
+          "modality_keys": [
+            "exterior_image_1_left",
+            "wrist_image_left"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "eef_9d",
+            "gripper_position",
+            "joint_position"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "modality_keys": [
+            "eef_9d",
+            "gripper_position",
+            "joint_position"
+          ],
+          "action_configs": [
+            {
+              "rep": "RELATIVE",
+              "type": "EEF",
+              "format": "XYZ_ROT6D",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "RELATIVE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.language.language_instruction"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      },
+      "libero_sim": {
+        "video": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "image",
+            "wrist_image"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "state": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "x",
+            "y",
+            "z",
+            "roll",
+            "pitch",
+            "yaw",
+            "gripper"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "action": {
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "modality_keys": [
+            "x",
+            "y",
+            "z",
+            "roll",
+            "pitch",
+            "yaw",
+            "gripper"
+          ],
+          "action_configs": [
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            },
+            {
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT",
+              "state_key": null
+            }
+          ],
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        },
+        "language": {
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.action.task_description"
+          ],
+          "action_configs": null,
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null
+        }
+      }
+    },
+    "use_percentiles": true,
+    "use_mean_std": false,
+    "image_crop_size": [
+      230,
+      230
+    ],
+    "image_target_size": [
+      256,
+      256
+    ],
+    "formalize_language": true,
+    "max_state_dim": 132,
+    "max_action_dim": 132,
+    "apply_sincos_state_encoding": false,
+    "color_jitter_params": {
+      "brightness": 0.3,
+      "contrast": 0.4,
+      "saturation": 0.5,
+      "hue": 0.08
+    },
+    "random_rotation_angle": 0,
+    "letter_box_transform": false,
+    "exclude_state": false,
+    "state_dropout_prob": 0.2,
+    "use_albumentations": true,
+    "shortest_image_edge": 256,
+    "crop_fraction": 0.95,
+    "max_action_horizon": 40,
+    "use_relative_action": true
+  }
+}

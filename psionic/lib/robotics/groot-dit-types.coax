@@ -1,0 +1,11 @@
+// Single-observation batch, CPU F32 reference primitives. Projected Q/K/V,
+// learned norm parameters and modulation vectors are supplied by the caller.
+GdtStatus :: enum u8 {ok;kind;shape;capacity;alias;number;mask;arithmetic;}
+GdtResult :: struct {status:GdtStatus;written:int;}
+GdtNumber :: struct {status:GdtStatus;value:f32;}
+GdtNorm :: enum u8 {plain;affine;ada_block;ada_final;}
+GdtActivation :: enum u8 {silu;gelu_tanh;}
+GdtMask :: enum u8 {text;self;image;}
+GdtRoute :: struct {status:GdtStatus;mask:GdtMask;}
+GdtAttention :: struct {queries:int;keys:int;heads:int;dim:int;}
+GdtAttentionPlan :: struct {status:GdtStatus;query:int;key:int;probability:int;temporary:int;stage:int;work:int;}

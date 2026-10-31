@@ -259,3 +259,12 @@ retained; routine checks do not rerun it.
 [Chapter 123](book/ch123-learn-a-tokenizer.md): Deterministic Coax byte-BPE training, pinned nanochat two-digit splitting, independent merges and persisted chapter-9 PST5 round trips. Run `psionic/check.sh --only bpe-train`.
 
 [Chapter 124](book/ch124-adamw-and-explicit-precision.md): AdamW over a binary64 master copy with parameter groups, declared compute precision, all-or-nothing admission, a skip policy and exact resume, checked against an independent oracle. Run `psionic/check.sh --only adamw`.
+
+[Chapter 168](book/ch168-execute-a-groot-policy.md) executes the original
+GR00T-N1.7-LIBERO learned policy on Metal: both cameras, the retained language
+backbone and all four flow steps. The first profile accepts a prepared
+140-token observation; same-input component checks and original decoded action
+endpoints pass. Its separate global hidden-trace diagnostic remains outside
+its frozen bound. The [verification record](../docs/verification/psionic-ch113-2026-10-31.md)
+states the numerical profile, exact scope and reproduction commands. Simulator
+control and task success are the next chapter.

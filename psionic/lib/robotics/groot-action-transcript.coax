@@ -1,0 +1,14 @@
+// Tooling-only canonical descriptor checksum, not artifact authentication.
+#load "groot-action-metal-types.coax";
+#authority;
+#test "action transcript encoding has an independently serialized nonzero vector" {
+  node:=GvpNode.{kernel=3,items=4,lanes=5,block=6,argc=1,flag_count=7,flag_offset=8};node.args[0]=GvpArg.{kind=4,integer=9,buffer=10,count=11,offset=12,real=0.5f32};nodes:=[1]GvpNode.[node];stage:=GacStage.{kind=1,step=2,layer=3,nodes=1,flags=7};
+  #assert gact_digest(stage,nodes[..])==0xc06f2ad4704393f9;
+}
+gact_mix :: (hash:u64,value:int)->u64 {return mul_wrap(hash^cast,trunc(u64)value,1099511628211);}
+gact_digest :: (stage:GacStage,nodes:[]GvpNode)->u64 #export_c {
+  h:u64=14695981039346656037;fields:=[5]int.[stage.kind,stage.step,stage.layer,stage.nodes,stage.flags];for value:fields {h=gact_mix(h,value);}
+  for i:0..<stage.nodes {n:=nodes[i];f:=[7]int.[n.kernel,n.items,n.lanes,n.block,n.argc,n.flag_count,n.flag_offset];for value:f {h=gact_mix(h,value);}
+    for j:0..<n.argc {a:=n.args[j];v:=[6]int.[a.kind,a.integer,a.buffer,a.count,a.offset,cast(int)f32_bits(a.real)];for value:v {h=gact_mix(h,value);}}
+  }return h;
+}

@@ -1,0 +1,68 @@
+{
+  "schema": "psionic-groot-request-qualification-v1",
+  "date": "2026-10-31",
+  "scope": "Bounded ASCII selected LIBERO request preparation through original privately retained Cosmos tokenizer data; no learned model execution.",
+  "sources": [
+    {
+      "path": "psionic/lib/robotics/groot-request.coax",
+      "sha256": "3222cd09e9b4cf12fe0fc4dfccb3d6318bd5a6e2ed76882e6f072f69d6c50ecd"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-request-types.coax",
+      "sha256": "9a5b1e226be67aa1a3c9a4b8a8807a11e8131d87f0972f02b945ed5b2cb09f11"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-request-check-fixtures.coax",
+      "sha256": "c72a1669da9e56f94f8e1a80780aec118728746c5c8a51c857d6ba342c2c49c3"
+    },
+    {
+      "path": "psionic/tests/robotics/groot-request-native.c",
+      "sha256": "e4b3a15e0b622510f09f3c130576fe6adf3b6c76c12f0f838ac94e34ca30f197"
+    },
+    {
+      "path": "psionic/tests/robotics/check-groot-request.sh",
+      "sha256": "049ef65a49898d3da56630de0b2583b1bbe87c75d8b6853f76cdc731a5baa0d6"
+    },
+    {
+      "path": "psionic/tests/robotics/groot_request_reference.py",
+      "sha256": "c4f96e466c8bf93e22d357d551cb22a7c2f3ece6136cfb68e83bc8fb7aa517cc"
+    }
+  ],
+  "checks": {
+    "total": 21,
+    "new_libero": 8,
+    "unchanged_tokenizer_unicode_dependencies": 13
+  },
+  "focused_mutation": {
+    "scope": "root-only",
+    "mutants": 259,
+    "killed": 259,
+    "survivors": 0
+  },
+  "native": {
+    "cases_each": 441317,
+    "builds": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "original_private_table_sample": true
+  },
+  "original_tokenizer_reference": {
+    "library": "tokenizers",
+    "version": "0.23.1",
+    "requests": 167,
+    "plans": 662,
+    "exact_bytes_or_integer_words": 1261412,
+    "source_tokenizer_sha256": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+    "private_pst_sha256": "f856fb8ef64650f2841a3ec36792d9c52ada0ead2b44d04cb120c9be6cc2d73d"
+  },
+  "limitations": [
+    "ASCII language only;4096byte maximum",
+    "137..512token admitted profile is owned, not NVIDIA truncation",
+    "Existing tokenizer perpiece/work budgets still apply",
+    "Caller authenticates immutable private table and supplies valid typed extents, live text and honest disjoint-write facts",
+    "Single observation uses pad_to0; adding padding can change source unmasked VL selfattention output",
+    "No gated payloads committed; ordinary native checks need no Python or model frameworks"
+  ]
+}

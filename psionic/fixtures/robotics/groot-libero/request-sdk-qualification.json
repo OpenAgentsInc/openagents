@@ -1,0 +1,142 @@
+{
+  "schema": "psionic-groot-request-sdk-qualification-v1",
+  "date": "2026-10-31",
+  "source_file_sha256": "5890c5475d931598eb145670b4fd8ce074090729cda29f37cbb233174237c5f4",
+  "transformers": "4.57.3",
+  "torch": "2.9.0",
+  "model_initialization": "Qwen3VLModel(meta),sourceCosmosconfig,selected16textlayers; no learned tensors allocated/loaded",
+  "operation": "get_rope_index only; small CPUinteger metadata operations, no forward pass or CPUmodel fallback",
+  "source_config_sha256": "bec4b3d446efa05807365c9e1cec03ac590836879d02f3a6da879971154bdd3b",
+  "coax_request_source_sha256": "3222cd09e9b4cf12fe0fc4dfccb3d6318bd5a6e2ed76882e6f072f69d6c50ecd",
+  "cases": 18,
+  "exact_integer_words": 28662,
+  "records": [
+    {
+      "instruction_utf8_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": 137,
+      "count": 137,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "326692bd928e6f97c318c353c47a2f6f971b9ee55e935d81393f25218c458ed1"
+    },
+    {
+      "instruction_utf8_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": 137,
+      "count": 137,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "326692bd928e6f97c318c353c47a2f6f971b9ee55e935d81393f25218c458ed1"
+    },
+    {
+      "instruction_utf8_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": 137,
+      "count": 138,
+      "rope_delta": -113,
+      "sdk_positions_le_i64_sha256": "be6de9c9ea08eb9dc302d9fedf0ebfeb9791e3ac33a77522f0e6c7ee6ee56036"
+    },
+    {
+      "instruction_utf8_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "content": 137,
+      "count": 512,
+      "rope_delta": -487,
+      "sdk_positions_le_i64_sha256": "ad48e1d9effdb4fcfc3ef61426f40471e63fa97ea3eaf00962a30b1b85ec9e32"
+    },
+    {
+      "instruction_utf8_sha256": "b93ba56e05ea100da182879e0f985bf0386757badf65115891783c5b5a66286d",
+      "content": 140,
+      "count": 140,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "2545f85e5c7b45b9b2569644445fdfda40e42984ff952aece8e179de959b32b6"
+    },
+    {
+      "instruction_utf8_sha256": "b93ba56e05ea100da182879e0f985bf0386757badf65115891783c5b5a66286d",
+      "content": 140,
+      "count": 140,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "2545f85e5c7b45b9b2569644445fdfda40e42984ff952aece8e179de959b32b6"
+    },
+    {
+      "instruction_utf8_sha256": "b93ba56e05ea100da182879e0f985bf0386757badf65115891783c5b5a66286d",
+      "content": 140,
+      "count": 141,
+      "rope_delta": -113,
+      "sdk_positions_le_i64_sha256": "c2c24581cc96197f28fcc501c87f9ae2ca647e4526e2905c8e9625596039d5ff"
+    },
+    {
+      "instruction_utf8_sha256": "b93ba56e05ea100da182879e0f985bf0386757badf65115891783c5b5a66286d",
+      "content": 140,
+      "count": 512,
+      "rope_delta": -484,
+      "sdk_positions_le_i64_sha256": "8756132add60a455f72c97e9bb3367e5fa50f19fdd70f36088db696e6c9cf141"
+    },
+    {
+      "instruction_utf8_sha256": "756ced91046176f1dd31d5f388492d7760040b3368ee0237ebbb13f5f169f55a",
+      "content": 142,
+      "count": 142,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "6e5bb4797cee7953761d247323c82551dda1f44f5b21cc16d7c683d8e5646d91"
+    },
+    {
+      "instruction_utf8_sha256": "756ced91046176f1dd31d5f388492d7760040b3368ee0237ebbb13f5f169f55a",
+      "content": 142,
+      "count": 142,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "6e5bb4797cee7953761d247323c82551dda1f44f5b21cc16d7c683d8e5646d91"
+    },
+    {
+      "instruction_utf8_sha256": "756ced91046176f1dd31d5f388492d7760040b3368ee0237ebbb13f5f169f55a",
+      "content": 142,
+      "count": 143,
+      "rope_delta": -113,
+      "sdk_positions_le_i64_sha256": "18f9287e3af7c412e7088cfaa0e519af0e0372b8dcb853c8a5aa43d3b3b0857a"
+    },
+    {
+      "instruction_utf8_sha256": "756ced91046176f1dd31d5f388492d7760040b3368ee0237ebbb13f5f169f55a",
+      "content": 142,
+      "count": 512,
+      "rope_delta": -482,
+      "sdk_positions_le_i64_sha256": "73f89edbe194fa780a46481430688d21ed5faee774bfcde0ad92a42b91e3ba5c"
+    },
+    {
+      "instruction_utf8_sha256": "8ac3923e00c9eeb7db4cf08f965af1be0d84bba892fc9e15a56b06bb9d1c69e3",
+      "content": 147,
+      "count": 147,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "03708ed0c942680fff53a5ba7e4722b11cd467c97d24a5fadf3ab7d91ffae7c9"
+    },
+    {
+      "instruction_utf8_sha256": "8ac3923e00c9eeb7db4cf08f965af1be0d84bba892fc9e15a56b06bb9d1c69e3",
+      "content": 147,
+      "count": 147,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "03708ed0c942680fff53a5ba7e4722b11cd467c97d24a5fadf3ab7d91ffae7c9"
+    },
+    {
+      "instruction_utf8_sha256": "8ac3923e00c9eeb7db4cf08f965af1be0d84bba892fc9e15a56b06bb9d1c69e3",
+      "content": 147,
+      "count": 148,
+      "rope_delta": -113,
+      "sdk_positions_le_i64_sha256": "7dd86f6b074888ed68e701d4b4084af68b2ab983e9a1c96d732c8d6322297adf"
+    },
+    {
+      "instruction_utf8_sha256": "8ac3923e00c9eeb7db4cf08f965af1be0d84bba892fc9e15a56b06bb9d1c69e3",
+      "content": 147,
+      "count": 512,
+      "rope_delta": -477,
+      "sdk_positions_le_i64_sha256": "fe53869228f98d049337f536ffa35447fc3fef7fb381dc712ae8bb332a123df2"
+    },
+    {
+      "instruction_utf8_sha256": "60ea27b8acb47cf95ebb4777ba690b9b2e824655c282723cda502a96b2930361",
+      "content": 512,
+      "count": 512,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "24ea28849bae5770a095fbde5c6a540d4a4854e51af1af033b648128217e91e2"
+    },
+    {
+      "instruction_utf8_sha256": "60ea27b8acb47cf95ebb4777ba690b9b2e824655c282723cda502a96b2930361",
+      "content": 512,
+      "count": 512,
+      "rope_delta": -112,
+      "sdk_positions_le_i64_sha256": "24ea28849bae5770a095fbde5c6a540d4a4854e51af1af033b648128217e91e2"
+    }
+  ],
+  "scope": "SDK positions/delta match Coax and independent general-grid integer oracle; padding metadata parity does not imply padded/unpadded learned-feature equivalence."
+}

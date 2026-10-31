@@ -1,0 +1,6 @@
+// Authored small values for independent nonsquare/rounding checks.
+gl_fixture :: (dtype:QmDtype,values:[]f32,out:[]u8)->int {
+  size:=ifx dtype==QmDtype.bf16 then 2 else 4;
+  for value,i:values {bits:=f32_bits(value);if size==2 {bits>>=16;}for b:0..<size {out[i*size+b]=cast,trunc(u8)(bits>>cast(u32)(b*8));}}
+  return values.count*size;
+}

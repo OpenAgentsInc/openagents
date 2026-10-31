@@ -88,6 +88,7 @@
 - [124. AdamW and explicit precision](ch124-adamw-and-explicit-precision.md)
 
 - [167. Imitation before robotics scale](ch167-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
+- [168. Execute a GR00T policy](ch168-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
 
 - [170. Benchmark a service, not a kernel](ch170-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
 
@@ -129,5 +130,5 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 112, 123, 124, 167, 170, 213–219, 222–235, 237–242 and 245–247 have runnable code; the [introduction](README.md)
+Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 112, 123, 124, 167–168, 170, 213–219, 222–235, 237–242 and 245–247 have runnable code; the [introduction](README.md)
 table gives each one's exact status. The remaining outlines remain proposed.

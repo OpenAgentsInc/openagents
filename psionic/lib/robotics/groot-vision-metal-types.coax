@@ -1,0 +1,11 @@
+// Shared micro-op descriptor ABI for original GR00T Metal graphs.
+GvpStatus :: enum u8 {ok;shape;capacity;manifest;order;device;check;number;alias;}
+GvpArg :: struct {kind:int;integer:int;buffer:int;count:int;offset:int;real:f32;}
+GvpNode :: struct {status:GvpStatus;kernel:int;items:int;lanes:int;block:int;argc:int;args:[16]GvpArg;flag_count:int;flag_offset:int;}
+GvpStage :: struct {status:GvpStatus;kind:int;layer:int;merger:int;nodes:int;flags:int;}
+GvpCursor :: struct {status:GvpStatus;stage:int;node:int;}
+GvpSpec :: struct {ok:bool;prefix:string;suffix:string;rank:int;dims:[5]int;rows:int;cols:int;decode:bool;bytes:int;target_bytes:int;}
+GvpBind :: struct {status:GvpStatus;shard:int;begin:int;bytes:int;target_bytes:int;decode:bool;count:int;}
+GvpKernel :: struct {library:int;name:string;}
+GvpRead :: struct {status:GvpStatus;written:int;}
+GvpCapture :: struct {ok:bool;prefix:string;number:int;suffix:string;buffer:int;count:int;}

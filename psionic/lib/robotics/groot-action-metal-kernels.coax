@@ -1,0 +1,69 @@
+// Private F32 action-head glue; arithmetic and order are authored in Coax.
+#load "groot-device-kernels.coax";
+#authority;
+#test "action bias residual and ReLU stages broadcast across exact row widths" {
+  x:=[4]f32.[-2,-1,0,2];b:=[2]f32.[1,2];r:=[4]f32.[2,3,4,5];out:[4]f32;f:=[4]u8.[9,9,9,9];empty:[1]f32;
+  for i:0..<4 {gak_element(i,2,0,x[..],b[..],empty[0..<0],out[..],f[..]);#assert f[i]==0;}#assert out[0]==-1 && out[1]==1 && out[2]==1 && out[3]==4;
+  for i:0..<4 {gak_element(i,2,1,x[..],b[..],r[..],out[..],f[..]);#assert f[i]==0;}#assert out[0]==1 && out[1]==4 && out[2]==5 && out[3]==9;
+  for i:0..<4 {gak_element(i,2,2,x[..],b[..],empty[0..<0],out[..],f[..]);#assert f[i]==0;}#assert out[0]==0 && out[1]==1 && out[2]==1 && out[3]==4;
+  out[0]=7;f[0]=9;gak_element(-1,2,0,x[..],b[..],empty[0..<0],out[..],f[..]);gak_element(4,2,0,x[..],b[..],empty[0..<0],out[..],f[..]);gak_element(0,0,0,x[..],b[..],empty[0..<0],out[..],f[..]);gak_element(0,2,3,x[..],b[..],empty[0..<0],out[..],f[..]);#assert out[0]==7 && f[0]==9;
+}
+#test "action timestep profiles keep their distinct denominator expression order and layout" {
+  action:[1536]f32;dit:[256]f32;flags:[1536]u8;
+  for i:0..<1536 {flags[i]=9;gak_time(i,0,0,action[..],flags[..]);#assert action[i]==(ifx i<768 then 0.0f32 else 1.0f32) && flags[i]==0;}
+  for i:0..<256 {flags[i]=9;gak_time(i,1,0,dit[..],flags[..]);#assert dit[i]==(ifx i<128 then 1.0f32 else 0.0f32) && flags[i]==0;}
+  for step:1..<4 {for i:[4]int.[0,1,767,768] {gak_time(i,0,step,action[..],flags[..]);half:=i%768;coefficient:=f32(f64(f32_from_bits(0x41135d8e))/768);exponent:=f32(-f64(f32(half))*f64(coefficient));phase:=f32(f64(f32(exp(f64(exponent))))*f64(250*step));want:=ifx i<768 then f32(sin(f64(phase))) else f32(cos(f64(phase)));#assert abs(action[i]-want)<2e-5f32 && flags[i]==0;}}
+  #assert gak_time_bounds(1535,0,3,1536,1536) && gak_time_bounds(255,1,3,256,256);
+  for i:[3]int.[-1,1536,1537] {#assert !gak_time_bounds(i,0,0,1536,1536);}#assert !gak_time_bounds(0,-1,0,1536,1536) && !gak_time_bounds(0,2,0,1536,1536) && !gak_time_bounds(0,0,-1,1536,1536) && !gak_time_bounds(0,0,4,1536,1536) && !gak_time_bounds(0,0,0,1535,1536) && !gak_time_bounds(0,0,0,1536,1535);
+}
+#test "action concatenation hidden state position and Euler address independent coordinates" {
+  a:[61440]f32;t:[1536]f32;p:[61440]f32;s:[1536]f32;c:[122880]f32;x:[62976]f32;f:[122880]u8;
+  for i:0..<61440 {a[i]=f32(i%17);p[i]=f32(i%7)/8;}for i:0..<1536 {t[i]=f32(i%13);s[i]=f32(i%11);}
+  for i:[6]int.[0,1535,1536,3071,119809,122879] {f[i]=9;gak_concat(i,a[..],t[..],c[..],f[..]);axis:=i%3072;#assert c[i]==(ifx axis<1536 then a[(i/3072)*1536+axis] else t[axis-1536]) && f[i]==0;}
+  for i:[6]int.[0,1535,1536,3071,61439,62975] {f[i]=9;gak_hidden(i,s[..],a[..],p[..],x[..],f[..]);#assert x[i]==(ifx i<1536 then s[i] else a[i-1536]+p[i-1536]) && f[i]==0;}
+  old:[5280]f32;v:[5280]f32;out:[5280]f32;for i:0..<5280 {old[i]=f32(i%11);v[i]=f32(i%9)-4;}for i:[4]int.[0,1,132,5279] {f[i]=9;gak_euler(i,old[..],v[..],out[..],f[..]);#assert out[i]==old[i]+0.25f32*v[i] && f[i]==0;}
+}
+#test "action glue metadata has every exact singleton maximum and one-short boundary" {
+  #assert gak_element_bounds(0,1,0,1,1,0,1,1) && gak_element_bounds(8191,8192,2,8192,8192,0,8192,8192);
+  for field:0..<10 {i:=0;w:=2;k:=0;n:=4;bias:=2;r:=0;o:=4;f:=4;if field==0 {i= -1;}if field==1 {i=4;}if field==2 {w=0;}if field==3 {w=8193;n=w;bias=w;o=n;f=n;}if field==4 {k= -1;}if field==5 {k=3;}if field==6 {n=3;}if field==7 {bias=1;}if field==8 {o=3;}if field==9 {f=3;}#assert !gak_element_bounds(i,w,k,n,bias,r,o,f);}
+  #assert !gak_element_bounds(0,2,1,4,2,0,4,4) && !gak_element_bounds(0,2,0,4,2,4,4,4);
+  #assert gak_concat_bounds(122879,61440,1536,122880,122880) && gak_hidden_bounds(62975,1536,61440,61440,62976,62976) && gak_euler_bounds(5279,5280,5280,5280,5280);
+  for f:0..<6 {i:=0;a:=61440;t:=1536;o:=122880;flags:=122880;if f==0 {i= -1;}if f==1 {i=122880;}if f==2 {a-=1;}if f==3 {t-=1;}if f==4 {o-=1;}if f==5 {flags-=1;}#assert !gak_concat_bounds(i,a,t,o,flags);}
+  for f:0..<7 {i:=0;state:=1536;a:=61440;p:=61440;o:=62976;flags:=62976;if f==0 {i= -1;}if f==1 {i=62976;}if f==2 {state-=1;}if f==3 {a-=1;}if f==4 {p-=1;}if f==5 {o-=1;}if f==6 {flags-=1;}#assert !gak_hidden_bounds(i,state,a,p,o,flags);}
+  for f:0..<6 {i:=0;a:=5280;v:=5280;o:=5280;flags:=5280;if f==0 {i= -1;}if f==1 {i=5280;}if f==2 {a-=1;}if f==3 {v-=1;}if f==4 {o-=1;}if f==5 {flags-=1;}#assert !gak_euler_bounds(i,a,v,o,flags);}
+  zero:=[1]f32.[f32_from_bits(0x80000000)];out:[1]f32;flags:=[1]u8.[9];empty:[1]f32;gak_element(0,1,2,zero[..],zero[..],empty[0..<0],out[..],flags[..]);#assert f32_bits(out[0])==0x80000000 && flags[0]==0;
+  #assert f32_bits(gak_logarithm())==0x41135d8e;
+  d:[256]f32;df:[256]u8;for step:1..<4 {for i:[4]int.[0,1,127,255] {gak_time(i,1,step,d[..],df[..]);exponent:=f32(-f64(gak_logarithm())*f64(i%128));exponent=f32(f64(exponent)/127);phase:=f32(f64(f32(exp(f64(exponent))))*f64(250*step));expected:=ifx i<128 then f32(cos(f64(phase))) else f32(sin(f64(phase)));#assert abs(d[i]-expected)<2e-5f32 && df[i]==0;}}
+}
+gak_concat_bounds :: (i:int,a:int,t:int,o:int,f:int)->bool {return i>=0 && i<122880 && a==61440 && t==1536 && o>=122880 && f>=122880;}
+gak_hidden_bounds :: (i:int,s:int,a:int,p:int,o:int,f:int)->bool {return i>=0 && i<62976 && s==1536 && a==61440 && p==61440 && o>=62976 && f>=62976;}
+gak_euler_bounds :: (i:int,a:int,v:int,o:int,f:int)->bool {return i>=0 && i<5280 && a==5280 && v==5280 && o>=5280 && f>=5280;}
+gak_logarithm :: ()->f32 {return f32_from_bits(0x41135d8e);}
+
+gak_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool {if item<0 || item>=n || width<1 || width>8192 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}
+gak_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gak_element_bounds(item,width,kind,x.count,bias.count,residual.count,out.count,flags.count) {return;}
+  a:=x[item];b:=bias[item%width];value:=a+b;checked:=gdk_count(gdk_count(0,f32_bits(a)),f32_bits(b));wanted:=3;
+  if kind==1 {value+=residual[item];checked=gdk_count(checked,f32_bits(residual[item]));wanted+=1;}
+  if kind==2 && value<0 {value=0;}out[item]=value;checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,wanted);
+}
+gak_time_bounds :: (item:int,kind:int,step:int,out:int,flags:int)->bool {if kind<0 || kind>1 || step<0 || step>3 {return false;}width:=ifx kind==0 then 1536 else 256;return item>=0 && item<width && out>=width && flags>=width;}
+gak_time :: (item:int,kind:int,step:int,out:[]f32,flags:[]u8) #export_c {
+  if !gak_time_bounds(item,kind,step,out.count,flags.count) {return;}half:=ifx kind==0 then 768 else 128;i:=item%half;logarithm:=gak_logarithm();exponent:f32;
+  if kind==0 {coefficient:=logarithm/768.0f32;exponent= -f32(i)*coefficient;}else {exponent= -logarithm*f32(i);exponent/=127.0f32;}
+  frequency:=exp(exponent);phase:=f32(step*250)*frequency;cosine:=ifx kind==0 then item>=half else item<half;value:=ifx cosine then cos(phase) else sin(phase);out[item]=value;flags[item]=gdk_numeric(f32_bits(value));
+}
+gak_concat :: (item:int,a:[]f32,time:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gak_concat_bounds(item,a.count,time.count,out.count,flags.count) {return;}
+  token:=item/3072;axis:=item%3072;value:=ifx axis<1536 then a[token*1536+axis] else time[axis-1536];out[item]=value;flags[item]=gdk_numeric(f32_bits(value));
+}
+gak_hidden :: (item:int,state:[]f32,a:[]f32,position:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gak_hidden_bounds(item,state.count,a.count,position.count,out.count,flags.count) {return;}
+  value:f32;checked:int;wanted:int;if item<1536 {value=state[item];checked=gdk_count(0,f32_bits(value));wanted=1;}
+  else {j:=item-1536;left:=a[j];right:=position[j];value=left+right;checked=gdk_count(gdk_count(gdk_count(0,f32_bits(left)),f32_bits(right)),f32_bits(value));wanted=3;}
+  out[item]=value;flags[item]=gdk_receipt(checked,wanted);
+}
+gak_euler :: (item:int,old:[]f32,velocity:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gak_euler_bounds(item,old.count,velocity.count,out.count,flags.count) {return;}
+  product:=0.25f32*velocity[item];value:=old[item]+product;out[item]=value;checked:=gdk_count(gdk_count(gdk_count(0,f32_bits(old[item])),f32_bits(velocity[item])),f32_bits(value));flags[item]=gdk_receipt(checked,3);
+}

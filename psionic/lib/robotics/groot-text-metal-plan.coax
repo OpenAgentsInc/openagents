@@ -1,0 +1,205 @@
+// Original Cosmos text prefix16, F32 Metal; no LM readout or KV decode API.
+#load "groot-vision-metal-types.coax";
+#load "groot-artifact.coax";
+#load "groot-linear.coax";
+#load "groot-text.coax";
+#load "groot-request.coax";
+#load "groot-text-metal-check-fixtures.coax";
+#load "groot-text-metal-contract-fixtures.coax";
+#authority;
+GLP_BLOCKS :: [16]string.["backbone.model.model.language_model.layers.0.","backbone.model.model.language_model.layers.1.","backbone.model.model.language_model.layers.2.","backbone.model.model.language_model.layers.3.","backbone.model.model.language_model.layers.4.","backbone.model.model.language_model.layers.5.","backbone.model.model.language_model.layers.6.","backbone.model.model.language_model.layers.7.","backbone.model.model.language_model.layers.8.","backbone.model.model.language_model.layers.9.","backbone.model.model.language_model.layers.10.","backbone.model.model.language_model.layers.11.","backbone.model.model.language_model.layers.12.","backbone.model.model.language_model.layers.13.","backbone.model.model.language_model.layers.14.","backbone.model.model.language_model.layers.15."];
+GLP_SUFFIX :: [11]string.["input_layernorm.weight","post_attention_layernorm.weight","self_attn.q_norm.weight","self_attn.k_norm.weight","self_attn.q_proj.weight","self_attn.k_proj.weight","self_attn.v_proj.weight","self_attn.o_proj.weight","mlp.gate_proj.weight","mlp.up_proj.weight","mlp.down_proj.weight"];
+
+#test "text graph binds every active original tensor including all norm axes" {
+  sizes:=[2]int.[4990519232,1919980184];original:=GLP_ORIGINAL;
+  #assert glp_weight_count()==178 && glp_buffer_count()==202 && glp_stage_count()==18 && glp_kernel_count()==11;
+  for part:0..<178 {s:=glp_spec(part);t:=GLP_ORIGINAL[part];#assert s.ok && t.name.count==s.prefix.count+s.suffix.count && t.name[0..<s.prefix.count]==s.prefix && t.name[s.prefix.count..<t.name.count]==s.suffix;
+    #assert s.rank==t.shape.rank && s.bytes==t.end-t.begin;for a:0..<5 {#assert s.dims[a]==t.shape.dims[a];}
+    #assert s.rows==(ifx t.shape.rank==1 then 0 else t.shape.dims[0]) && s.cols==(ifx t.shape.rank==1 then t.shape.dims[0] else t.shape.dims[1]);
+    #assert s.decode==(t.shape.rank==1) && s.target_bytes==(ifx t.shape.rank==1 then s.bytes*2 else s.bytes);
+    b:=glp_bind(part,original[..],sizes[..]);#assert b.status==GvpStatus.ok && b.begin==t.begin && b.shard==t.shard && b.bytes==s.bytes && b.count==s.cols && b.decode==s.decode && b.target_bytes==s.target_bytes;
+  }
+  #assert !glp_spec(-1).ok && !glp_spec(178).ok;
+  for field:0..<12 {bad:=[2]P5Tensor.[GLP_ORIGINAL[1],P5Tensor.{name="other"}];if field==0 {bad[0].name="other";}if field==1 {bad[1]=bad[0];}if field==2 {bad[0].dtype=PwDtype.f32;}if field==3 {bad[0].shape.rank=2;}if field==4 {bad[0].shape.dims[0]+=1;}if field==5 {bad[0].shape.dims[4]=1;}if field==6 {bad[0].elements+=1;}if field==7 {bad[0].shard=-1;}if field==8 {bad[0].shard=2;}if field==9 {bad[0].begin=7;}if field==10 {bad[0].end=bad[0].begin-1;}if field==11 {bad[0].end+=2;}
+    #assert glp_bind(1,bad[..],sizes[..]).status!=GvpStatus.ok;
+  }
+  #assert glp_bind(0,original[..],sizes[0..<1]).status==GvpStatus.shape && glp_bind(-1,original[..],sizes[..]).status==GvpStatus.shape;
+  #assert glp_bind(0,original[0..<0],sizes[..]).status==GvpStatus.capacity;
+  short:=sizes;short[GLP_ORIGINAL[0].shard]=GLP_ORIGINAL[0].end-1;#assert glp_bind(0,original[..],short[..]).status==GvpStatus.manifest;
+}
+#test "text graph owns bounded resources ordered microops and separate numeric regions" {
+  names:=[11]string.["dt_project_16x64","gtk_embed","gaw_norm","gtk_rotate","gdk_scores","gdk_softmax","gdk_context","gtk_add","gdk_activate","gtk_multiply","gtk_inject"];
+  libs:=[11]int.[0,2,3,2,1,1,1,2,1,2,2];for i:0..<11 {k:=glp_kernel(i);#assert k.library==libs[i] && k.name==names[i];}#assert glp_kernel(-1).library==-1 && glp_kernel(11).library==-1;
+  #assert glp_tokens(137) && glp_tokens(512) && !glp_tokens(136) && !glp_tokens(513);
+  #assert glp_buffer_bytes(-1,140)==0 && glp_buffer_bytes(202,140)==0 && glp_buffer_bytes(0,136)==0;
+  for tokens:[3]int.[137,140,512] {for buffer:0..<202 {#assert glp_buffer_bytes(buffer,tokens)>0;}
+    for stage:0..<18 {s:=glp_stage(stage,tokens);#assert s.kind==(ifx stage==0 then 0 else ifx stage==17 then 2 else 1);if stage>0 && stage<17 {#assert s.layer==stage-1;}#assert s.status==GvpStatus.ok && s.nodes==(ifx stage==0 || stage==17 then 1 else ifx stage<=3 then 21 else 20);offset:=0;
+      for at:0..<s.nodes {n:=glp_node(stage,at,tokens);glp_contract(stage,at,tokens,n);#assert n.status==GvpStatus.ok && n.items>0 && n.block==128 && n.argc>=4 && n.argc<=16 && n.flag_offset==offset && n.kernel>=0 && n.kernel<11;
+        for a:0..<n.argc {arg:=n.args[a];#assert arg.kind==0 || arg.kind==2 || arg.kind==4;if arg.kind==4 {#assert arg.buffer>=0 && arg.buffer<202 && arg.offset>=0 && arg.count>=0;}}
+        if n.flag_count!=0 {f:=n.args[n.argc-1];#assert f.kind==4 && f.buffer==192 && f.count==n.flag_count && f.offset==offset;}offset+=n.flag_count;
+      }#assert offset==s.flags && s.flags<=glp_buffer_bytes(192,tokens);
+      #assert glp_node(stage,-1,tokens).status==GvpStatus.shape && glp_node(stage,s.nodes,tokens).status==GvpStatus.shape;
+    }
+  }
+  #assert glp_stage(-1,140).status==GvpStatus.shape && glp_stage(18,140).status==GvpStatus.shape && glp_stage(0,136).status==GvpStatus.shape;
+}
+#test "text receipts require every ordered launch actual wait and zero private flags" {
+  s:[1]GvpCursor;flags:[286720]u8;
+  #assert glp_done(s[..],0,140,0,flags[..])==GvpStatus.order;
+  s[0]=GvpCursor.{};#assert glp_sent(s[..],0,0,140,0)==GvpStatus.ok;
+  #assert glp_done(s[..],0,140,0,flags[..])==GvpStatus.ok && s[0].stage==1 && s[0].node==0;
+  #assert !glp_complete(s[0]);s[0]=GvpCursor.{stage=18};#assert glp_complete(s[0]);s[0].node=1;#assert !glp_complete(s[0]);s[0]=GvpCursor.{stage=18,status=GvpStatus.device};#assert !glp_complete(s[0]);
+  s[0]=GvpCursor.{};#assert glp_sent(s[..],0,0,140,7)==GvpStatus.check;s[0]=GvpCursor.{};#assert glp_sent(s[..],0,0,140,1)==GvpStatus.device;
+  s[0]=GvpCursor.{};#assert glp_sent(s[..],1,0,140,0)==GvpStatus.order;
+  s[0]=GvpCursor.{};#assert glp_sent(s[..],0,1,140,0)==GvpStatus.order;
+  s[0]=GvpCursor.{};#assert glp_sent(s[0..<0],0,0,140,0)==GvpStatus.shape && glp_done(s[0..<0],0,140,0,flags[..])==GvpStatus.shape;
+  for mode:0..<5 {s[0]=GvpCursor.{node=1};flags[0]=0;flags[286719]=0;if mode==0 {flags[0]=1;}if mode==1 {flags[286719]=1;}
+    status:=glp_done(s[..],0,140,ifx mode==3 then 7 else ifx mode==4 then 1 else 0,flags[0..<(ifx mode==2 then 286719 else 286720)]);#assert status!=GvpStatus.ok && s[0].stage==0;}
+}
+#test "text capture publication validates every raw float word before copying" {
+  raw:=[3]u32.[0x3f800000,0xc0000000,0x80000000];out:=[4]f32.[7,7,7,7];
+  #assert glp_copy(raw[..],out[..],false).status==GvpStatus.ok && out[0]==1 && out[1]==-2 && f32_bits(out[2])==0x80000000 && out[3]==7;
+  for word:[4]u32.[0x7f800000,0xff800000,0x7fc00001,0x7f800001] {raw[2]=word;out=[4]f32.[7,7,7,7];#assert glp_copy(raw[..],out[..],false).status==GvpStatus.number;for x:out {#assert x==7;}}
+  #assert glp_copy(raw[..],out[0..<2],false).status==GvpStatus.capacity && glp_copy(raw[..],out[..],true).status==GvpStatus.alias;
+  #assert glp_copy(raw[0..<0],out[..],false).status==GvpStatus.shape;
+  #assert glp_copy_size(1,1,false)==GvpStatus.ok && glp_copy_size(1048576,1048576,false)==GvpStatus.ok && glp_copy_size(1048577,1048577,false)==GvpStatus.shape;
+}
+
+glp_weight_count :: ()->int #export_c {return 178;}
+glp_buffer_count :: ()->int #export_c {return 202;}
+glp_stage_count :: ()->int #export_c {return 18;}
+glp_kernel_count :: ()->int #export_c {return 11;}
+glp_tokens :: (n:int)->bool #export_c {return n>=137 && n<=512;}
+glp_spec :: (part:int)->GvpSpec #export_c {
+  if part<0 || part>=178 {return GvpSpec.{};}s:GvpSpec;s.ok=true;s.prefix="backbone.model.model.language_model.";
+  if part==0 {s.suffix="embed_tokens.weight";s.rows=151936;s.cols=2048;}
+  else if part==177 {s.suffix="norm.weight";s.cols=2048;s.decode=true;}
+  else {slot:=(part-1)%11;s.prefix=GLP_BLOCKS[(part-1)/11];s.suffix=GLP_SUFFIX[slot];s.decode=slot<4;
+    s.cols=ifx slot==2 || slot==3 then 128 else ifx slot==10 then 6144 else 2048;
+    s.rows=ifx slot==5 || slot==6 then 1024 else ifx slot==8 || slot==9 then 6144 else 2048;
+  }
+  if s.decode {s.rank=1;s.rows=0;s.dims[0]=s.cols;s.bytes=2*s.cols;s.target_bytes=4*s.cols;}
+  else {s.rank=2;s.dims[0]=s.rows;s.dims[1]=s.cols;s.bytes=2*s.rows*s.cols;s.target_bytes=s.bytes;}return s;
+}
+glp_bind :: (part:int,inventory:[]P5Tensor,sizes:[]int)->GvpBind #export_c {
+  s:=glp_spec(part);if !s.ok || sizes.count!=2 {return GvpBind.{status=GvpStatus.shape};}
+  if !glp_inventory_valid(inventory.count) {return GvpBind.{status=GvpStatus.capacity};}found:=-1;
+  for i:0..<inventory.count {name:=inventory[i].name;if name.count==s.prefix.count+s.suffix.count && name[0..<s.prefix.count]==s.prefix && name[s.prefix.count..<name.count]==s.suffix {if found>=0 {return GvpBind.{status=GvpStatus.manifest};}found=i;}}
+  if found<0 {return GvpBind.{status=GvpStatus.manifest};}t:=inventory[found];
+  if t.dtype!=PwDtype.bf16 || t.shard<0 || t.shard>=2 || t.shape.rank!=s.rank || t.elements!=s.bytes/2 {return GvpBind.{status=GvpStatus.manifest};}
+  for a:0..<5 {if t.shape.dims[a]!=s.dims[a] {return GvpBind.{status=GvpStatus.manifest};}}
+  if !glp_span(t.begin,t.end,s.bytes,sizes[t.shard]) {return GvpBind.{status=GvpStatus.manifest};}
+  return GvpBind.{shard=t.shard,begin=t.begin,bytes=s.bytes,target_bytes=s.target_bytes,decode=s.decode,count=s.cols};
+}
+glp_buffer_bytes :: (buffer:int,tokens:int)->int #export_c {
+  if buffer<0 || buffer>=202 || !glp_tokens(tokens) {return 0;}if buffer<178 {return glp_spec(buffer).target_bytes;}
+  n:=tokens*2048;a:=tokens*16*tokens;image:=1048576;
+  sizes:=[24]int.[4*n,4*n,4*n,4*tokens*1024,4*tokens*1024,4*n,4*tokens*1024,4*n,4*n,4*tokens*6144,4*tokens*6144,4*a,a,4*a,a+23594*tokens,1,8*tokens,8*tokens,4*tokens*128,image,image,image,image,4*n];return sizes[buffer-178];
+}
+glp_kernel :: (index:int)->GvpKernel #export_c {
+  names:=[11]string.["dt_project_16x64","gtk_embed","gaw_norm","gtk_rotate","gdk_scores","gdk_softmax","gdk_context","gtk_add","gdk_activate","gtk_multiply","gtk_inject"];
+  if index<0 || index>=11 {return GvpKernel.{library=-1};}return GvpKernel.{library=ifx index==0 then 0 else ifx index==2 then 3 else ifx index==4 || index==5 || index==6 || index==8 then 1 else 2,name=names[index]};
+}
+glp_stage :: (stage:int,tokens:int)->GvpStage #export_c {
+  if stage<0 || stage>=18 || !glp_tokens(tokens) {return GvpStage.{status=GvpStatus.shape};}
+  if stage==0 {return GvpStage.{nodes=1,flags=tokens*2048};}if stage==17 {return GvpStage.{kind=2,nodes=1,flags=tokens};}
+  return GvpStage.{kind=1,layer=stage-1,nodes=ifx stage<=3 then 21 else 20,flags=16*tokens*tokens+(ifx stage<=3 then 23594 else 21546)*tokens};
+}
+glp_i :: (x:int)->GvpArg {return GvpArg.{integer=x};}
+glp_v :: (buffer:int,count:int)->GvpArg {return GvpArg.{kind=4,buffer=buffer,count=count};}
+glp_new :: (kernel:int,items:int,argc:int,flags:int)->GvpNode {return GvpNode.{kernel=kernel,items=items,lanes=1,block=128,argc=argc,flag_count=flags};}
+glp_norm :: (width:int,values:int,scale:int,input:int,output:int)->GvpNode {
+  n:=glp_new(2,values/width,8,values/width);n.args[0]=glp_i(width);n.args[1]=glp_i(2);n.args[2]=GvpArg.{kind=2,real=0.000001f32};n.args[3]=glp_v(input,values);n.args[4]=glp_v(scale,width);n.args[5]=glp_v(193,0);n.args[6]=glp_v(output,values);return n;
+}
+glp_project :: (rows:int,cols:int,tokens:int,weight:int,input:int,output:int)->GvpNode {
+  n:=glp_new(0,(rows/64)*((tokens+15)/16),6,0);n.lanes=128;n.args[0]=glp_i(rows);n.args[1]=glp_i(cols);n.args[2]=glp_i(tokens);n.args[3]=glp_v(weight,rows*cols/2);n.args[4]=glp_v(input,tokens*cols);n.args[5]=glp_v(output,tokens*rows);return n;
+}
+glp_raw :: (stage:int,at:int,tokens:int)->GvpNode {
+  s:=glp_stage(stage,tokens);if s.status!=GvpStatus.ok || at<0 || at>=s.nodes {return GvpNode.{status=GvpStatus.shape};}values:=tokens*2048;
+  if stage==0 {n:=glp_new(1,values,8,values);n.args[0]=glp_i(2048);n.args[1]=glp_i(151936);n.args[2]=glp_v(194,tokens);n.args[3]=glp_v(0,311164928);n.args[4]=glp_v(195,tokens);n.args[5]=glp_v(197,262144);n.args[6]=glp_v(178,values);return n;}
+  if stage==17 {return glp_norm(2048,values,177,178,201);}p:=1+11*s.layer;
+  if at==0 {return glp_norm(2048,values,p,178,179);}
+  if at>=1 && at<=3 {slot:=at-1;return glp_project(ifx slot==0 then 2048 else 1024,2048,tokens,p+4+slot,179,180+slot);}
+  if at==4 || at==5 {first:=at==4;return glp_norm(128,ifx first then values else tokens*1024,p+(ifx first then 2 else 3),ifx first then 180 else 181,ifx first then 183 else 184);}
+  if at==6 || at==7 {first:=at==6;count:=ifx first then values else tokens*1024;n:=glp_new(3,count,6,count);n.args[0]=glp_i(ifx first then 16 else 8);n.args[1]=glp_i(128);n.args[2]=glp_v(ifx first then 183 else 184,count);n.args[3]=glp_v(196,tokens*128);n.args[4]=glp_v(ifx first then 180 else 181,count);return n;}
+  if at==8 {count:=tokens*16*tokens;n:=glp_new(4,count,14,count);n.args[0]=glp_i(tokens);n.args[1]=glp_i(tokens);n.args[2]=glp_i(16);n.args[3]=glp_i(8);n.args[4]=glp_i(128);n.args[5]=glp_i(2);n.args[7]=glp_v(180,values);n.args[8]=glp_v(181,tokens*1024);n.args[9]=glp_v(193,0);n.args[10]=glp_v(193,0);n.args[11]=glp_v(189,count);n.args[12]=glp_v(190,count);return n;}
+  if at==9 {n:=glp_new(5,tokens*16,5,tokens*16);n.args[0]=glp_i(tokens);n.args[1]=glp_v(189,tokens*16*tokens);n.args[2]=glp_v(190,tokens*16*tokens);n.args[3]=glp_v(191,tokens*16*tokens);return n;}
+  if at==10 {n:=glp_new(6,values,9,values);n.args[0]=glp_i(tokens);n.args[1]=glp_i(tokens);n.args[2]=glp_i(16);n.args[3]=glp_i(8);n.args[4]=glp_i(128);n.args[5]=glp_v(191,tokens*16*tokens);n.args[6]=glp_v(182,tokens*1024);n.args[7]=glp_v(185,values);return n;}
+  if at==11 {return glp_project(2048,2048,tokens,p+7,185,186);}
+  if at==12 || at==19 {n:=glp_new(7,values,4,values);n.args[0]=glp_v(178,values);n.args[1]=glp_v(186,values);n.args[2]=glp_v(178,values);return n;}
+  if at==13 {return glp_norm(2048,values,p+1,178,179);}
+  if at==14 || at==15 {return glp_project(6144,2048,tokens,p+(ifx at==14 then 8 else 9),179,ifx at==14 then 187 else 188);}
+  if at==16 {n:=glp_new(8,tokens*6144,4,tokens*6144);n.args[1]=glp_v(187,tokens*6144);n.args[2]=glp_v(187,tokens*6144);return n;}
+  if at==17 {n:=glp_new(9,tokens*6144,4,tokens*6144);n.args[0]=glp_v(187,tokens*6144);n.args[1]=glp_v(188,tokens*6144);n.args[2]=glp_v(187,tokens*6144);return n;}
+  if at==18 {return glp_project(2048,6144,tokens,p+10,187,186);}
+  n:=glp_new(10,values,6,values);n.args[0]=glp_i(2048);n.args[1]=glp_v(178,values);n.args[2]=glp_v(195,tokens);n.args[3]=glp_v(198+s.layer,262144);n.args[4]=glp_v(178,values);return n;
+}
+glp_node :: (stage:int,at:int,tokens:int)->GvpNode #export_c {
+  n:=glp_raw(stage,at,tokens);if n.status!=GvpStatus.ok {return n;}offset:=0;for i:0..<at {offset+=glp_raw(stage,i,tokens).flag_count;}n.flag_offset=offset;
+  if n.flag_count!=0 {n.args[n.argc-1]=glp_v(192,n.flag_count);n.args[n.argc-1].offset=offset;}return n;
+}
+glp_sent :: (s:[]GvpCursor,stage:int,at:int,tokens:int,status:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}
+  if s[0].stage!=stage || s[0].node!=at {s[0].status=GvpStatus.order;return s[0].status;}n:=glp_node(stage,at,tokens);if n.status!=GvpStatus.ok {s[0].status=n.status;return s[0].status;}
+  if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;return s[0].status;}s[0].node+=1;return GvpStatus.ok;
+}
+glp_done :: (s:[]GvpCursor,stage:int,tokens:int,status:int,flags:[]u8)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=glp_stage(stage,tokens);if p.status!=GvpStatus.ok {s[0].status=p.status;return s[0].status;}
+  if s[0].stage!=stage || s[0].node!=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}
+  if status!=0 {s[0].status=ifx status==7 then GvpStatus.check else GvpStatus.device;return s[0].status;}
+  if flags.count!=p.flags {s[0].status=GvpStatus.capacity;return s[0].status;}for f:flags {if f!=0 {s[0].status=GvpStatus.number;return s[0].status;}}
+  s[0].stage+=1;s[0].node=0;return GvpStatus.ok;
+}
+glp_complete :: (s:GvpCursor)->bool #export_c {return s.status==GvpStatus.ok && s.stage==18 && s.node==0;}
+glp_capture :: (stage:int,tokens:int)->GvpCapture #export_c {
+  if !glp_tokens(tokens) || stage<0 || stage>=18 {return GvpCapture.{};}
+  return GvpCapture.{ok=true,prefix=ifx stage==17 then "backbone" else "text-stage",number=ifx stage==17 then -1 else stage,buffer=ifx stage==17 then 201 else 178,count=tokens*2048};
+}
+glp_input :: (slot:int)->GvpCapture #export_c {
+  names:=[4]string.["vision-merged.f32","vision-deepstack0.f32","vision-deepstack1.f32","vision-deepstack2.f32"];
+  if slot<0 || slot>=4 {return GvpCapture.{};}return GvpCapture.{ok=true,prefix=names[slot],buffer=197+slot,count=262144};
+}
+glp_copy_size :: (n:int,out:int,overlap:bool)->GvpStatus #export_c {
+  if n<1 || n>1048576 {return GvpStatus.shape;}if out<n {return GvpStatus.capacity;}if overlap {return GvpStatus.alias;}return GvpStatus.ok;
+}
+glp_copy :: (raw:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {
+  status:=glp_copy_size(raw.count,out.count,overlap);if status!=GvpStatus.ok {return GvpRead.{status=status};}
+  for bits:raw {if (bits&0x7f800000)==0x7f800000 {return GvpRead.{status=GvpStatus.number};}}
+  for i:0..<raw.count {out[i]=f32_from_bits(raw[i]);}return GvpRead.{written=raw.count};
+}
+
+#test "text captures and four original vision inputs retain exact named extents" {
+  names:=[4]string.["vision-merged.f32","vision-deepstack0.f32","vision-deepstack1.f32","vision-deepstack2.f32"];
+  for slot:0..<4 {c:=glp_input(slot);#assert c.ok && c.prefix==names[slot] && c.buffer==197+slot && c.count==262144;}
+  #assert !glp_input(-1).ok && !glp_input(4).ok;
+  for tokens:[3]int.[137,140,512] {for stage:0..<18 {c:=glp_capture(stage,tokens);#assert c.ok && c.prefix==(ifx stage==17 then "backbone" else "text-stage") && c.number==(ifx stage==17 then -1 else stage) && c.buffer==(ifx stage==17 then 201 else 178) && c.count==tokens*2048;}}
+  #assert !glp_capture(-1,140).ok && !glp_capture(18,140).ok && !glp_capture(0,136).ok && !glp_capture(0,513).ok;
+}
+
+#test "text device buffers retain exact typed extents for minimum ragged and maximum prefixes" {
+  for tokens:[3]int.[137,140,512] {word:=4*tokens*2048;half:=4*tokens*1024;wide:=4*tokens*6144;scores:=tokens*tokens*16;
+    expected:=[24]int.[word,word,word,half,half,word,half,word,word,wide,wide,4*scores,scores,4*scores,scores+23594*tokens,1,8*tokens,8*tokens,4*tokens*128,1048576,1048576,1048576,1048576,word];
+    for i:0..<24 {#assert glp_buffer_bytes(178+i,tokens)==expected[i];}for i:0..<178 {#assert glp_buffer_bytes(i,tokens)==glp_spec(i).target_bytes;}
+  }
+}
+#test "text bounded inventory and arithmetic source spans reject malformed scalars" {
+  #assert glp_inventory_valid(1) && glp_inventory_valid(4096) && !glp_inventory_valid(0) && !glp_inventory_valid(4097);
+  #assert glp_span(8,8,0,8) && glp_span(8,10,2,10) && !glp_span(7,10,3,10) && !glp_span(8,7,0,10) && !glp_span(8,10,1,10) && !glp_span(8,11,3,10);
+}
+#test "text private cursors preserve sticky failures and deny invalid equal forged stages" {
+  s:[1]GvpCursor;flags:[1]u8;s[0].status=GvpStatus.device;#assert glp_sent(s[..],0,0,140,0)==GvpStatus.device && glp_done(s[..],0,140,0,flags[..])==GvpStatus.device;
+  s[0]=GvpCursor.{stage=-1};#assert glp_sent(s[..],-1,0,140,0)==GvpStatus.shape && s[0].status==GvpStatus.shape;
+  s[0]=GvpCursor.{};#assert glp_done(s[..],-1,140,0,flags[..])==GvpStatus.shape && s[0].status==GvpStatus.shape;
+  s[0]=GvpCursor.{node=-1};#assert glp_sent(s[..],0,-1,140,0)==GvpStatus.shape;
+  s[0]=GvpCursor.{node=1};#assert glp_sent(s[..],0,1,140,0)==GvpStatus.shape;
+  s[0]=GvpCursor.{};#assert glp_sent(s[..],0,0,136,0)==GvpStatus.shape;
+  s[0]=GvpCursor.{node=21};#assert glp_done(s[..],1,140,0,flags[..])==GvpStatus.order;
+  s[0]=GvpCursor.{};#assert glp_done(s[..],0,136,0,flags[..])==GvpStatus.shape;
+  raw:=[2]u32.[0x7f800000,0x3f800000];out:=[2]f32.[7,7];#assert glp_copy(raw[..],out[..],false).status==GvpStatus.number && out[0]==7 && out[1]==7;
+}
+glp_inventory_valid :: (n:int)->bool {return n>=1 && n<=4096;}
+glp_span :: (begin:int,end:int,bytes:int,total:int)->bool {return begin>=8 && end>=begin && end<=total && end-begin==bytes;}
+
+#test "text wait receipts retain exact platform-check versus device failure" {
+ flags:[1]u8;for status:[2]int.[7,1] {s:=[1]GvpCursor.[GvpCursor.{node=1}];want:=ifx status==7 then GvpStatus.check else GvpStatus.device;#assert glp_done(s[..],0,140,status,flags[..])==want && s[0].status==want;}
+}

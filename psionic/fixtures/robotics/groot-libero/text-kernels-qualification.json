@@ -1,0 +1,795 @@
+{
+  "schema": "psionic-groot-text-kernels-reference-v1",
+  "date": "2026-10-31",
+  "torch": "2.9.0",
+  "numpy": "1.26.4",
+  "passed": true,
+  "tolerance_frozen_before_observation": {
+    "atol": 2e-05,
+    "rtol": 2e-05
+  },
+  "words": 36192976,
+  "results": [
+    {
+      "case": 0,
+      "op": "embed",
+      "backend": "debug",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "op": "embed",
+      "backend": "release",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "op": "embed",
+      "backend": "sanitized",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "op": "embed",
+      "backend": "metal",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "op": "inject",
+      "backend": "debug",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "op": "inject",
+      "backend": "release",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "op": "inject",
+      "backend": "sanitized",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "op": "inject",
+      "backend": "metal",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "op": "embed",
+      "backend": "debug",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "op": "embed",
+      "backend": "release",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "op": "embed",
+      "backend": "sanitized",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "op": "embed",
+      "backend": "metal",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "op": "inject",
+      "backend": "debug",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "op": "inject",
+      "backend": "release",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "op": "inject",
+      "backend": "sanitized",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "op": "inject",
+      "backend": "metal",
+      "words": 21,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "op": "embed",
+      "backend": "debug",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "op": "embed",
+      "backend": "release",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "op": "embed",
+      "backend": "sanitized",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "op": "embed",
+      "backend": "metal",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "op": "inject",
+      "backend": "debug",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "op": "inject",
+      "backend": "release",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "op": "inject",
+      "backend": "sanitized",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "op": "inject",
+      "backend": "metal",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "op": "embed",
+      "backend": "debug",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "op": "embed",
+      "backend": "release",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "op": "embed",
+      "backend": "sanitized",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "op": "embed",
+      "backend": "metal",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 7,
+      "op": "inject",
+      "backend": "debug",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 7,
+      "op": "inject",
+      "backend": "release",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 7,
+      "op": "inject",
+      "backend": "sanitized",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 7,
+      "op": "inject",
+      "backend": "metal",
+      "words": 65536,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 8,
+      "op": "embed",
+      "backend": "debug",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 8,
+      "op": "embed",
+      "backend": "release",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 8,
+      "op": "embed",
+      "backend": "sanitized",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 8,
+      "op": "embed",
+      "backend": "metal",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 9,
+      "op": "inject",
+      "backend": "debug",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 9,
+      "op": "inject",
+      "backend": "release",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 9,
+      "op": "inject",
+      "backend": "sanitized",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 9,
+      "op": "inject",
+      "backend": "metal",
+      "words": 3,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 10,
+      "op": "rotate",
+      "backend": "debug",
+      "words": 2,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 10,
+      "op": "rotate",
+      "backend": "release",
+      "words": 2,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 10,
+      "op": "rotate",
+      "backend": "sanitized",
+      "words": 2,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 10,
+      "op": "rotate",
+      "backend": "metal",
+      "words": 2,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 11,
+      "op": "rotate",
+      "backend": "debug",
+      "words": 126,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 11,
+      "op": "rotate",
+      "backend": "release",
+      "words": 126,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 11,
+      "op": "rotate",
+      "backend": "sanitized",
+      "words": 126,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 11,
+      "op": "rotate",
+      "backend": "metal",
+      "words": 126,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 12,
+      "op": "rotate",
+      "backend": "debug",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 12,
+      "op": "rotate",
+      "backend": "release",
+      "words": 286720,
+      "max_abs_error": 1.1920928955078125e-07,
+      "max_budget_fraction": 0.0039215434065443654,
+      "passed": true
+    },
+    {
+      "case": 12,
+      "op": "rotate",
+      "backend": "sanitized",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 12,
+      "op": "rotate",
+      "backend": "metal",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 13,
+      "op": "rotate",
+      "backend": "debug",
+      "words": 143360,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 13,
+      "op": "rotate",
+      "backend": "release",
+      "words": 143360,
+      "max_abs_error": 1.1920928955078125e-07,
+      "max_budget_fraction": 0.0039215434065443654,
+      "passed": true
+    },
+    {
+      "case": 13,
+      "op": "rotate",
+      "backend": "sanitized",
+      "words": 143360,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 13,
+      "op": "rotate",
+      "backend": "metal",
+      "words": 143360,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 14,
+      "op": "rotate",
+      "backend": "debug",
+      "words": 1048576,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 14,
+      "op": "rotate",
+      "backend": "release",
+      "words": 1048576,
+      "max_abs_error": 1.1920928955078125e-07,
+      "max_budget_fraction": 0.0039215434065443654,
+      "passed": true
+    },
+    {
+      "case": 14,
+      "op": "rotate",
+      "backend": "sanitized",
+      "words": 1048576,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 14,
+      "op": "rotate",
+      "backend": "metal",
+      "words": 1048576,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 15,
+      "op": "multiply",
+      "backend": "debug",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 15,
+      "op": "multiply",
+      "backend": "release",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 15,
+      "op": "multiply",
+      "backend": "sanitized",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 15,
+      "op": "multiply",
+      "backend": "metal",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 16,
+      "op": "multiply",
+      "backend": "debug",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 16,
+      "op": "multiply",
+      "backend": "release",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 16,
+      "op": "multiply",
+      "backend": "sanitized",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 16,
+      "op": "multiply",
+      "backend": "metal",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 17,
+      "op": "multiply",
+      "backend": "debug",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 17,
+      "op": "multiply",
+      "backend": "release",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 17,
+      "op": "multiply",
+      "backend": "sanitized",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 17,
+      "op": "multiply",
+      "backend": "metal",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 18,
+      "op": "add",
+      "backend": "debug",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 18,
+      "op": "add",
+      "backend": "release",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 18,
+      "op": "add",
+      "backend": "sanitized",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 18,
+      "op": "add",
+      "backend": "metal",
+      "words": 1,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 19,
+      "op": "add",
+      "backend": "debug",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 19,
+      "op": "add",
+      "backend": "release",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 19,
+      "op": "add",
+      "backend": "sanitized",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 19,
+      "op": "add",
+      "backend": "metal",
+      "words": 286720,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 20,
+      "op": "add",
+      "backend": "debug",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 20,
+      "op": "add",
+      "backend": "release",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 20,
+      "op": "add",
+      "backend": "sanitized",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    },
+    {
+      "case": 20,
+      "op": "add",
+      "backend": "metal",
+      "words": 3145728,
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "passed": true
+    }
+  ],
+  "source_sha256": {
+    "psionic/lib/robotics/groot-text-kernels.coax": "88c0b2425c07b0bc61f5107ae63fe7b4c6a056d9c4f9563e8f7752f589ce1924",
+    "psionic/tests/robotics/groot-text-kernels-native.c": "923a791b74eb8b36fcf21aa2a172ce49d6e97673d1e6fd9fbe39409b0de31cba",
+    "psionic/tests/robotics/check-groot-text-kernels.sh": "755684e7c639a459c26c488d386ac1544e2639e961a4de8b62d8efc6ce5c9811",
+    "psionic/tests/robotics/groot_text_kernels_reference.py": "e632944558e00ee9f1552de442469236fb92dbd1421aa181d71ed898b242300e"
+  },
+  "scope": "Owned embedding/half-rotation/deepstack/add/multiply primitives on realMetal and nativeCPU; original checkpoint/fullVLA execution is separate.",
+  "checks": 10,
+  "focused_mutation": {
+    "scope": "root-only",
+    "mutants": 228,
+    "killed": 228,
+    "survivors": 0
+  },
+  "native_builds": {
+    "cases_each": 21,
+    "finite_values_each": 9048244,
+    "builds": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ]
+  },
+  "real_gpu_device": "Apple M5 Max",
+  "numeric_and_metadata": "RealGPU/native NaN,Inf,overflowflag1preservesoutput; invalidmetadata/overshootpreservepoison9andcanaries; rawCINT64_MINextentguards UBSanqualified."
+}

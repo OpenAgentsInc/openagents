@@ -1,0 +1,134 @@
+#load "groot-request-types.coax";
+#load "groot-request-check-fixtures.coax";
+#load "../text/tokenizer.coax";
+#authority;
+
+#forall "LIBERO ASCII formalization matches independent Python lower and word-space classes" byte:0..<256 {
+  #assert gr_map(cast(u8)byte)==GR_ASCII_ORACLE[byte];
+}
+#test "LIBERO chat renders two exact64placeholder images before formalized text" {
+  out:[4096]u8;work:[4096]u8;for i:0..<4096 {out[i]=7;}
+  r:=gr_render("OPEN the DRAWER!!!",out[..],work[..],false);
+  #assert r.status==GrStatus.ok && r.written==GR_SAMPLE_RENDER.count;
+  #assert cast(string)out[0..<r.written]==GR_SAMPLE_RENDER && out[r.written]==7;
+  r=gr_render("OPEN the DRAWER!!!",out[0..<r.written],work[0..<r.written],false);#assert r.status==GrStatus.ok;
+  r=gr_render("",out[..],work[..],false);#assert r.status==GrStatus.ok && r.written==GR_SAMPLE_RENDER.count-15;
+  exact:[4096]u8;large_out:[8192]u8;large_work:[8192]u8;for i:0..<4096 {exact[i]='A';}
+  r=gr_render(cast(string)exact[..],large_out[..],large_work[..],false);#assert r.status==GrStatus.ok && r.written==5848;
+}
+#test "LIBERO rendering refusal never publishes output" {
+  out:[4096]u8;work:[4096]u8;for i:0..<4096 {out[i]=7;}
+  bad:=[1]u8.[128];large:[4097]u8;
+  #assert gr_render(cast(string)large[..],out[..],work[..],false).status==GrStatus.size;
+  #assert gr_render(cast(string)bad[..],out[..],work[..],false).status==GrStatus.unsupported;
+  #assert gr_render("é",out[..],work[..],false).status==GrStatus.unsupported;
+  #assert gr_render("open the drawer",out[..],work[..],true).status==GrStatus.overlap;
+  n:=GR_SAMPLE_RENDER.count;
+  #assert gr_render("open the drawer",out[0..<n-1],work[..],false).status==GrStatus.capacity;
+  #assert gr_render("open the drawer",out[..],work[0..<n-1],false).status==GrStatus.capacity;
+  for v:out {#assert v==7;}
+}
+#test "LIBERO request helper grammars distinguish every marker and base identifier boundary" {
+  tokens:[140]int;for i:0..<140 {tokens[i]=151655;}
+  tokens[0]=151644;tokens[1]=872;tokens[2]=198;tokens[3]=151652;tokens[68]=151653;tokens[69]=151652;tokens[134]=151653;
+  tokens[135]=2508;tokens[136]=279;tokens[137]=26482;tokens[138]=151645;tokens[139]=198;
+  for i:0..<140 {#assert gr_token(i,tokens[i],140);#assert !gr_token(i,-1,140);}
+  #assert !gr_token(139,1,140);
+  #assert gr_token(135,0,140) && gr_token(135,151642,140) && !gr_token(135,151643,140);
+  #assert gr_context(137) && gr_context(512) && !gr_context(136) && !gr_context(513);
+  #assert gr_language_count(0) && gr_language_count(4096) && !gr_language_count(-1) && !gr_language_count(4097);
+  #assert gr_padding(0,140) && gr_padding(140,140) && gr_padding(512,140) && !gr_padding(-1,140) && !gr_padding(139,140) && !gr_padding(513,140);
+}
+#test "LIBERO plan emits actual length, source masks and three compressed position axes" {
+  tokens:[140]int;for i:0..<140 {tokens[i]=151655;}
+  tokens[0]=151644;tokens[1]=872;tokens[2]=198;tokens[3]=151652;tokens[68]=151653;tokens[69]=151652;tokens[134]=151653;
+  tokens[135]=2508;tokens[136]=279;tokens[137]=26482;tokens[138]=151645;tokens[139]=198;
+  out:[3073]int;for i:0..<out.count {out[i]=-7;}
+  r:=gr_plan(tokens[..],0,out[0..<840],false);#assert r.status==GrStatus.ok && r.written==840 && r.content==140 && r.count==140 && r.rope_delta== -112;
+  for i:0..<140 {#assert out[i]==tokens[i] && out[140+i]==1 && out[280+i]==GR_GOLD_MASK[i];for axis:0..<3 {#assert out[(3+axis)*140+i]==GR_GOLD_POS[axis][i];}}
+  #assert out[840]== -7 && out[420+4]==4 && out[560+67]==11 && out[700+67]==11;
+  #assert out[420+68]==12 && out[420+69]==13 && out[420+70]==14 && out[560+133]==21 && out[700+133]==21 && out[420+134]==22 && out[700+139]==27;
+  r=gr_plan(tokens[..],142,out[..],false);#assert r.status==GrStatus.ok && r.count==142 && r.written==852 && r.rope_delta== -114;
+  for i:0..<2 {#assert out[i]==151643 && out[142+i]==0 && out[284+i]==0 && out[426+i]==1 && out[568+i]==1 && out[710+i]==1;}
+  #assert out[2]==151644 && out[142+2]==1 && out[426+2]==0 && out[284+6]==1 && out[852]== -7;
+}
+#test "LIBERO exact512context and padcapacity stay bounded without truncation" {
+  tokens:[513]int;for i:0..<513 {tokens[i]=1;}
+  for i:4..<68 {tokens[i]=151655;}for i:70..<134 {tokens[i]=151655;}
+  tokens[0]=151644;tokens[1]=872;tokens[2]=198;tokens[3]=151652;tokens[68]=151653;tokens[69]=151652;tokens[134]=151653;tokens[510]=151645;tokens[511]=198;
+  out:[3073]int;for i:0..<out.count {out[i]=-7;}
+  r:=gr_plan(tokens[0..<512],512,out[0..<3072],false);#assert r.status==GrStatus.ok && r.count==512 && r.content==512 && r.rope_delta== -112 && out[3072]== -7;
+  #assert gr_plan(tokens[..],0,out[..],false).status==GrStatus.size;
+}
+#test "LIBERO plan invalid counts capacities overlaps and every corrupted token publish nothing" {
+  tokens:[140]int;for i:0..<140 {tokens[i]=151655;}
+  tokens[0]=151644;tokens[1]=872;tokens[2]=198;tokens[3]=151652;tokens[68]=151653;tokens[69]=151652;tokens[134]=151653;
+  tokens[135]=2508;tokens[136]=279;tokens[137]=26482;tokens[138]=151645;tokens[139]=198;
+  out:[3073]int;for i:0..<out.count {out[i]=-7;}
+  #assert gr_plan(tokens[0..<136],0,out[..],false).status==GrStatus.size;
+  #assert gr_plan(tokens[..],139,out[..],false).status==GrStatus.size;
+  #assert gr_plan(tokens[..],0,out[0..<839],false).status==GrStatus.capacity;
+  #assert gr_plan(tokens[..],0,out[..],true).status==GrStatus.overlap;
+  for i:0..<140 {copy:=tokens;copy[i]=-1;r:=gr_plan(copy[..],0,out[..],false);#assert r.status==GrStatus.tokens && r.written==0 && r.count==0 && r.content==0 && r.rope_delta==0;}
+  for v:out {#assert v== -7;}
+}
+
+// ASCII domain of Python lower() then re.sub(r"[^\w\s]", "", text).
+gr_map :: (c:u8)->int {
+  if c>=128 {return -2;}
+  if c>=65 && c<=90 {return cast(int)c+32;}
+  if (c>=97 && c<=122) || (c>=48 && c<=57) || c==95 || (c>=9 && c<=13) || (c>=28 && c<=32) {return cast(int)c;}
+  return -1;
+}
+gr_context :: (n:int)->bool {return n>=137 && n<=512;}
+gr_language_count :: (n:int)->bool {return n>=0 && n<=4096;}
+gr_padding :: (pad:int,n:int)->bool {return pad==0 || (pad>=n && pad<=512);}
+gr_write :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+// book:begin render
+gr_render :: (instruction:string,out:[]u8,work:[]u8,overlap:bool)->GrRead #export_c {
+  if !gr_language_count(instruction.count) {return GrRead.{status=GrStatus.size};}
+  if overlap {return GrRead.{status=GrStatus.overlap};}
+  prefix:="<|im_start|>user\n";start:="<|vision_start|>";image:="<|image_pad|>";end:="<|vision_end|>";suffix:="<|im_end|>\n";
+  n:=prefix.count+2*(start.count+64*image.count+end.count)+suffix.count;
+  for c:instruction {mapped:=gr_map(c);if mapped== -2 {return GrRead.{status=GrStatus.unsupported};}if mapped!=-1 {n+=1;}}
+  if out.count<n || work.count<n {return GrRead.{status=GrStatus.capacity};}
+  at:=gr_write(work,0,prefix);
+  for camera:0..<2 {at=gr_write(work,at,start);for patch:0..<64 {at=gr_write(work,at,image);}at=gr_write(work,at,end);}
+  for c:instruction {mapped:=gr_map(c);if mapped!=-1 {work[at]=cast(u8)mapped;at+=1;}}
+  at=gr_write(work,at,suffix);for i:0..<at {out[i]=work[i];}return GrRead.{written=at};
+}
+// book:end render
+gr_token :: (i:int,id:int,n:int)->bool {
+  if i==0 {return id==151644;}if i==1 {return id==872;}if i==2 || i==n-1 {return id==198;}
+  if i==3 || i==69 {return id==151652;}if i==68 || i==134 {return id==151653;}
+  if i==n-2 {return id==151645;}if i<135 {return id==151655;}
+  return id>=0 && id<151643;
+}
+gr_slot :: (i:int)->GrSlot {
+  if i<4 {return GrSlot.{t=i,h=i,w=i};}
+  if i<68 {p:=i-4;return GrSlot.{t=4,h=4+p/8,w=4+p%8,image=true};}
+  if i<70 {p:=i-56;return GrSlot.{t=p,h=p,w=p};}
+  if i<134 {p:=i-70;return GrSlot.{t=14,h=14+p/8,w=14+p%8,image=true};}
+  p:=i-112;return GrSlot.{t=p,h=p,w=p};
+}
+// book:begin plan
+// Output is six contiguous arrays: IDs,attention,image,t-position,h-position,w-position.
+// Tokenization itself is existing pt_encode_checked with the admitted private Cosmos table.
+gr_plan :: (tokens:[]int,pad_to:int,out:[]int,overlap:bool)->GrRead #export_c {
+  n:=tokens.count;if !gr_context(n) || !gr_padding(pad_to,n) {return GrRead.{status=GrStatus.size};}
+  count:=n;if pad_to!=0 {count=pad_to;}
+  if out.count<6*count {return GrRead.{status=GrStatus.capacity};}
+  if overlap {return GrRead.{status=GrStatus.overlap};}
+  for i:0..<n {if !gr_token(i,tokens[i],n) {return GrRead.{status=GrStatus.tokens};}}
+  staged:[3072]int;left:=count-n;
+  for i:0..<count {
+    if i<left {staged[i]=151643;staged[3*count+i]=1;staged[4*count+i]=1;staged[5*count+i]=1;}
+    else {
+      at:=i-left;slot:=gr_slot(at);staged[i]=tokens[at];staged[count+i]=1;
+      if slot.image {staged[2*count+i]=1;}staged[3*count+i]=slot.t;staged[4*count+i]=slot.h;staged[5*count+i]=slot.w;
+    }
+  }
+  for i:0..<6*count {out[i]=staged[i];}
+  return GrRead.{written=6*count,content=n,count=count,rope_delta=n-112-count};
+}
+// book:end plan

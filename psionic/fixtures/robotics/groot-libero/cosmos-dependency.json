@@ -1,0 +1,315 @@
+{
+  "schema": "psionic-groot-cosmos-dependency-v1",
+  "observed_date": "2026-10-31",
+  "repository": "nvidia/Cosmos-Reason2-2B",
+  "revision": "9ce19a195e423419c349abfc86fd07178b230561",
+  "authorization": "Owner accepted model terms and authenticated Hugging Face; earlier unauthenticated401 is historical, resolved.",
+  "retention": "Metadata only here; all original gated asset payloads stay in private authorized cache. No third-party source scripts executed.",
+  "assets": [
+    {
+      "path": "config.json",
+      "bytes": 1505,
+      "sha256": "bec4b3d446efa05807365c9e1cec03ac590836879d02f3a6da879971154bdd3b",
+      "required_for_selected_image_vla": true,
+      "source_url": "https://huggingface.co/nvidia/Cosmos-Reason2-2B/resolve/9ce19a195e423419c349abfc86fd07178b230561/config.json"
+    },
+    {
+      "path": "tokenizer.json",
+      "bytes": 7032403,
+      "sha256": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+      "required_for_selected_image_vla": true,
+      "source_url": "https://huggingface.co/nvidia/Cosmos-Reason2-2B/resolve/9ce19a195e423419c349abfc86fd07178b230561/tokenizer.json"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "bytes": 10868,
+      "sha256": "c2da771801886ad9ae98181793ffd3dfb7f1af30f6f7c6a4e15d7dbba52e2399",
+      "required_for_selected_image_vla": true,
+      "source_url": "https://huggingface.co/nvidia/Cosmos-Reason2-2B/resolve/9ce19a195e423419c349abfc86fd07178b230561/tokenizer_config.json"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "bytes": 390,
+      "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+      "required_for_selected_image_vla": true,
+      "source_url": "https://huggingface.co/nvidia/Cosmos-Reason2-2B/resolve/9ce19a195e423419c349abfc86fd07178b230561/preprocessor_config.json"
+    },
+    {
+      "path": "generation_config.json",
+      "bytes": 269,
+      "sha256": "1e241830b48b397cb0900101421df5450baddc7adf01e5fc86b5615865f3bae4",
+      "required_for_selected_image_vla": false,
+      "source_url": "https://huggingface.co/nvidia/Cosmos-Reason2-2B/resolve/9ce19a195e423419c349abfc86fd07178b230561/generation_config.json"
+    }
+  ],
+  "architecture": {
+    "model_type": "qwen3_vl",
+    "architectures": [
+      "Qwen3VLForConditionalGeneration"
+    ],
+    "text_source": {
+      "hidden_size": 2048,
+      "intermediate_size": 6144,
+      "num_hidden_layers": 28,
+      "num_attention_heads": 16,
+      "num_key_value_heads": 8,
+      "head_dim": 128,
+      "hidden_act": "silu",
+      "rms_norm_eps": 1e-06,
+      "rope_theta": 5000000,
+      "rope_scaling": {
+        "mrope_interleaved": true,
+        "mrope_section": [
+          24,
+          20,
+          20
+        ],
+        "rope_type": "default"
+      },
+      "vocab_size": 151936,
+      "max_position_embeddings": 262144,
+      "bos_token_id": 151643,
+      "eos_token_id": 151645,
+      "attention_bias": false,
+      "attention_dropout": 0.0
+    },
+    "selected_retained_language_layers": 16,
+    "vision_source": {
+      "depth": 24,
+      "hidden_size": 1024,
+      "intermediate_size": 4096,
+      "num_heads": 16,
+      "hidden_act": "gelu_pytorch_tanh",
+      "patch_size": 16,
+      "temporal_patch_size": 2,
+      "spatial_merge_size": 2,
+      "in_channels": 3,
+      "out_hidden_size": 2048,
+      "num_position_embeddings": 2304,
+      "deepstack_visual_indexes": [
+        5,
+        11,
+        17
+      ]
+    },
+    "tie_word_embeddings": true
+  },
+  "tokenizer": {
+    "type": "BPE",
+    "base_vocab_entries": 151643,
+    "merge_entries": 151387,
+    "normalizer": {
+      "type": "NFC"
+    },
+    "pretokenizer": "Regex Split(Isolated,invert=false), then ByteLevel(add_prefix_space=false,trim_offsets=false,use_regex=false). Regex remains in privately retained original asset.",
+    "split_regex_sha256": "1ff7f41064896984db5d1bb6ff64fa4bc29007d08c1b439e505b7392777a319e",
+    "byte_fallback": false,
+    "unk_token": null,
+    "added_tokens": [
+      {
+        "id": 151643,
+        "content": "<|endoftext|>",
+        "special": true
+      },
+      {
+        "id": 151644,
+        "content": "<|im_start|>",
+        "special": true
+      },
+      {
+        "id": 151645,
+        "content": "<|im_end|>",
+        "special": true
+      },
+      {
+        "id": 151646,
+        "content": "<|object_ref_start|>",
+        "special": true
+      },
+      {
+        "id": 151647,
+        "content": "<|object_ref_end|>",
+        "special": true
+      },
+      {
+        "id": 151648,
+        "content": "<|box_start|>",
+        "special": true
+      },
+      {
+        "id": 151649,
+        "content": "<|box_end|>",
+        "special": true
+      },
+      {
+        "id": 151650,
+        "content": "<|quad_start|>",
+        "special": true
+      },
+      {
+        "id": 151651,
+        "content": "<|quad_end|>",
+        "special": true
+      },
+      {
+        "id": 151652,
+        "content": "<|vision_start|>",
+        "special": true
+      },
+      {
+        "id": 151653,
+        "content": "<|vision_end|>",
+        "special": true
+      },
+      {
+        "id": 151654,
+        "content": "<|vision_pad|>",
+        "special": true
+      },
+      {
+        "id": 151655,
+        "content": "<|image_pad|>",
+        "special": true
+      },
+      {
+        "id": 151656,
+        "content": "<|video_pad|>",
+        "special": true
+      },
+      {
+        "id": 151657,
+        "content": "<tool_call>",
+        "special": false
+      },
+      {
+        "id": 151658,
+        "content": "</tool_call>",
+        "special": false
+      },
+      {
+        "id": 151659,
+        "content": "<|fim_prefix|>",
+        "special": false
+      },
+      {
+        "id": 151660,
+        "content": "<|fim_middle|>",
+        "special": false
+      },
+      {
+        "id": 151661,
+        "content": "<|fim_suffix|>",
+        "special": false
+      },
+      {
+        "id": 151662,
+        "content": "<|fim_pad|>",
+        "special": false
+      },
+      {
+        "id": 151663,
+        "content": "<|repo_name|>",
+        "special": false
+      },
+      {
+        "id": 151664,
+        "content": "<|file_sep|>",
+        "special": false
+      },
+      {
+        "id": 151665,
+        "content": "<tool_response>",
+        "special": false
+      },
+      {
+        "id": 151666,
+        "content": "</tool_response>",
+        "special": false
+      },
+      {
+        "id": 151667,
+        "content": "<think>",
+        "special": false
+      },
+      {
+        "id": 151668,
+        "content": "</think>",
+        "special": false
+      }
+    ],
+    "add_bos_token": false,
+    "bos_token": null,
+    "eos_token": "<|im_end|>",
+    "pad_token": "<|endoftext|>",
+    "model_max_length": 262144,
+    "selected_padding_side": "left",
+    "chat_template_utf8_sha256": "3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4",
+    "selected_chat": "Single user; camera-order images then formalized instruction; no system text, vision IDs, or generation prompt. Each image marker expands to grid product /4 image_pad IDs."
+  },
+  "image_processor": {
+    "processor_class": "Qwen3VLProcessor",
+    "image_processor_type": "Qwen2VLImageProcessorFast",
+    "pixel_budget": {
+      "longest_edge": 16777216,
+      "shortest_edge": 65536
+    },
+    "patch_size": 16,
+    "temporal_patch_size": 2,
+    "merge_size": 2,
+    "image_mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "image_std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "selected_defaults": {
+      "do_resize": true,
+      "do_rescale": true,
+      "do_normalize": true,
+      "do_convert_rgb": true,
+      "rescale_factor": "1/255",
+      "resize": "BICUBIC if resizing required",
+      "rounding_factor": 32
+    },
+    "fused_normalization": "F32(pixel)-127.5f32, then divide by127.5f32. Fast processor folds1/rescale_factor into mean/std before normalize.",
+    "selected_square256": {
+      "resized_hw": [
+        256,
+        256
+      ],
+      "grid_thw": [
+        1,
+        16,
+        16
+      ],
+      "still_frame_repeats": 2,
+      "raw_patch_shape": [
+        256,
+        1536
+      ],
+      "merged_tokens": 64
+    },
+    "flatten_order": [
+      "grid_t",
+      "block_h",
+      "block_w",
+      "merge_h",
+      "merge_w",
+      "channel",
+      "temporal_patch",
+      "patch_h",
+      "patch_w"
+    ],
+    "source_version": "transformers4.57.3",
+    "sources": [
+      "https://github.com/huggingface/transformers/blob/v4.57.3/src/transformers/models/qwen2_vl/image_processing_qwen2_vl_fast.py",
+      "https://github.com/huggingface/transformers/blob/v4.57.3/src/transformers/image_processing_utils_fast.py",
+      "https://github.com/huggingface/transformers/blob/v4.57.3/src/transformers/models/qwen3_vl/processing_qwen3_vl.py"
+    ]
+  },
+  "scope": "Descriptive config/dependency pin, not executed processor/tokenizer/backbone or full model parity."
+}

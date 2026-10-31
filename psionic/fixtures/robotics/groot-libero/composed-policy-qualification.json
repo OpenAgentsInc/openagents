@@ -1,0 +1,1879 @@
+{
+  "acceptance": "Same-input component fidelity, unchanged original full-network action/velocity endpoints, and exact adapter handoff. Global hidden-trace diagnostics retain their own independent status.",
+  "all_global_hidden_boundaries_passed": false,
+  "all_learned_stages_coax_metal": true,
+  "category": 2,
+  "compiled_text_c_sha256": "a9907079e63567b419a30ed96f0a58fdf0f988f9341a0ad5aec26cf31b4b5394",
+  "components": {
+    "action": {
+      "record": {
+        "captures": [
+          {
+            "coax_sha256": "f10c1e8aceff80402b6f61131ead8bba9e1150661742bdfc5de437857ca3e70f",
+            "max_abs_error": 0.0008029937744140625,
+            "max_budget_fraction": 0.09960701206119942,
+            "name": "vl-conditioning",
+            "passed": true,
+            "reference_sha256": "a38ff5bc7ee6c4dff88d235699f0d0fdcd6041a20cbc50b5212a768d2394ac15",
+            "shape": [
+              1,
+              140,
+              2048
+            ],
+            "values": 286720
+          },
+          {
+            "coax_sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+            "max_abs_error": 0.0,
+            "max_budget_fraction": 0.0,
+            "name": "state-features",
+            "passed": true,
+            "reference_sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+            "shape": [
+              1,
+              1,
+              1536
+            ],
+            "values": 1536
+          },
+          {
+            "coax_sha256": "3f3167ece9318b40084044fbbc14c82b6e27b77752b8239e779f767952e83432",
+            "max_abs_error": 6.866455078125e-05,
+            "max_budget_fraction": 0.007094787715264063,
+            "name": "flow0-block0",
+            "passed": true,
+            "reference_sha256": "c04e40a14ecfd5c211db1438cde456f13ec2048df649e7f7bd4e4eb54526b99d",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "79ddcd6241cd3bbef0b74c5bd7808f3d09d130d2abe91d7e42f279436daa94ef",
+            "max_abs_error": 8.58306884765625e-05,
+            "max_budget_fraction": 0.005331372646340518,
+            "name": "flow0-block1",
+            "passed": true,
+            "reference_sha256": "2aca252623dc7f942162d678fb757afbdc7b55aa24e34c6aeb3218b9d0abb6ee",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "7f99b1a1cf2e556b4f689103b19e7e370b731c8bd223b31621ced4ac2e55970c",
+            "max_abs_error": 0.00040435791015625,
+            "max_budget_fraction": 0.04806710167393682,
+            "name": "flow0-block2",
+            "passed": true,
+            "reference_sha256": "0f60864610ada906e069053895fb42066e3a2724356cfeec6355f257e93ebb44",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "9dfead8b4acd4f028496d6a29bbac41f39ca52ad3857b63b3295dd409d0bdb69",
+            "max_abs_error": 0.00038909912109375,
+            "max_budget_fraction": 0.013643029492384075,
+            "name": "flow0-block3",
+            "passed": true,
+            "reference_sha256": "7882df879c88265f3069f7e483591b420b403954bd0592e0266b793f195d804d",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "2c3f2ee87c664d8dac79e9ed332dcf8d095442bc584d2664d9e6a82767d27a22",
+            "max_abs_error": 0.00157928466796875,
+            "max_budget_fraction": 0.22132381149113228,
+            "name": "flow0-block31",
+            "passed": true,
+            "reference_sha256": "29ce4a0985d9db4cf04ecd687ce2a5fe77b105970c4d74b6d4987f2d58d12f20",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "f629415e107b5f6a5aaae8006fa3026ccf4a15eb7413e2ad6ab41f009ce8bf79",
+            "max_abs_error": 1.2516975402832031e-05,
+            "max_budget_fraction": 0.00402568633255336,
+            "name": "flow0-velocity",
+            "passed": true,
+            "reference_sha256": "509595235bf2ae9b3c77ff9e00e576d18b7b58cb385043e613d451c76483fe31",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "2776b1844c08e198ae0bcdd98a16f4d398b8fa435ad92830ab5be69eb58ef7a2",
+            "max_abs_error": 3.129243850708008e-06,
+            "max_budget_fraction": 0.0015523975649357922,
+            "name": "flow0-actions",
+            "passed": true,
+            "reference_sha256": "3c7768c7d26941383e4959ef9ea21d1db362e0a611613edd67c6155d3126f7cd",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "c2742cccbdcdc9249c5421ed7774c653ee3df088a8c7bf9a2806051cf6036e9e",
+            "max_abs_error": 8.7738037109375e-05,
+            "max_budget_fraction": 0.020430368125217434,
+            "name": "flow1-block0",
+            "passed": true,
+            "reference_sha256": "12c2386fe3e685b17430494a382e1f9370c6c304bfd762378fc1398b66fdc400",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "c9607324cebda2d5227bbf731d4a6ccc9ec62b6efef3bd6fbbdf6b144afd77dd",
+            "max_abs_error": 0.000125885009765625,
+            "max_budget_fraction": 0.02792283453685483,
+            "name": "flow1-block1",
+            "passed": true,
+            "reference_sha256": "bbf1df386db171b43293348a5c1a791ae8d074c53155bba70d59b09136f5dfdf",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "d6dd98cc3d067d9044f4e34d882b272fe689d609ea05e553fa36cd893267a95b",
+            "max_abs_error": 0.000244140625,
+            "max_budget_fraction": 0.03430342358732459,
+            "name": "flow1-block2",
+            "passed": true,
+            "reference_sha256": "2e43f9a059b7c6e50a0931e75c05209c130cf780e254b1413ebdaa8465e2aadc",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "c009690517636d73b2b739ea0faa278746cc6ed93dd18131eeafccbfd66971a2",
+            "max_abs_error": 0.00023651123046875,
+            "max_budget_fraction": 0.028606459119821157,
+            "name": "flow1-block3",
+            "passed": true,
+            "reference_sha256": "92596b2019f3c7228d0c5fa4ff4a5539f05649fb880d1a58192535090885358d",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "ad7d0a3c8cf6c4a58aca0ce2e8d8e556832fcc91aa8fd33f68e3c5f2be16b2f3",
+            "max_abs_error": 0.0016937255859375,
+            "max_budget_fraction": 0.2752091589608102,
+            "name": "flow1-block31",
+            "passed": true,
+            "reference_sha256": "69f3f35c99c888c5b41b4ad093478d78da03089c83686416841f9f40ddff198d",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "2f05ccebcae6ca73866d054c1a33e11087cc10132e4b356e77d2e74e73116e94",
+            "max_abs_error": 2.6226043701171875e-05,
+            "max_budget_fraction": 0.009050442624312949,
+            "name": "flow1-velocity",
+            "passed": true,
+            "reference_sha256": "aa938cfa701d945f10a252e66f967c497c7bb8f082f7ec149c131c279657c7d6",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "b8d6b761179864f14b2e54f3e7b176df1ae2d2ccccdea6681187266fe0f41131",
+            "max_abs_error": 9.298324584960938e-06,
+            "max_budget_fraction": 0.004001308719151527,
+            "name": "flow1-actions",
+            "passed": true,
+            "reference_sha256": "47dfb13769532f89d584658cc931882cb09b8182fa6722296aae6f3877ab2239",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "eaa254b0bb754377af5a1e2e0cbd10976745f9c4ba2b7c925940bc7af5082453",
+            "max_abs_error": 0.000232696533203125,
+            "max_budget_fraction": 0.0725028569199578,
+            "name": "flow2-block0",
+            "passed": true,
+            "reference_sha256": "1a5421cf793ecc277531eb57c23b1e70928474badfeb3f2903f4a5938dcba82d",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "8cfda382df5e4d6dccad17c2c2e168ecd05cbc9b8e08a57d389163f3a6befe8c",
+            "max_abs_error": 0.000354766845703125,
+            "max_budget_fraction": 0.11410987808229356,
+            "name": "flow2-block1",
+            "passed": true,
+            "reference_sha256": "9ee66564d4ef7667a8ff68ad7c96854c0f183740511fa33c7fbb774e4db148a5",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "73d3ca2acefbc65e4cd0e77ffd0b23e73e8d889a08b6aeb77e53291c0f94a50d",
+            "max_abs_error": 0.00046539306640625,
+            "max_budget_fraction": 0.10991740658476944,
+            "name": "flow2-block2",
+            "passed": true,
+            "reference_sha256": "fae213c2a71d3947bef588adc45897d102f36c3b0fa778605cb028a5072b8c96",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "04a31319e38757621800e835ea4727f2db29d61a4ba0c39f44888da75418519d",
+            "max_abs_error": 0.0006103515625,
+            "max_budget_fraction": 0.10101716559890922,
+            "name": "flow2-block3",
+            "passed": true,
+            "reference_sha256": "95c2be5e45bb7041f1f057cc4fd48c7913e98f3096b1a247cf138f47e86155db",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "42200ea16e9ca4828b7d04a064827d6551a51d00edae52a31a2d5db016085ba4",
+            "max_abs_error": 0.0020055770874023438,
+            "max_budget_fraction": 0.6217595670839274,
+            "name": "flow2-block31",
+            "passed": true,
+            "reference_sha256": "408bb9677c853cfb1d94fc993b9b28a6cbf250327a61b5b17bb24ee43a11ad98",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "7ba6a22a16c427c70324dcc928cf6c51ec77573c88cf05c727070be9928a978c",
+            "max_abs_error": 0.0001811981201171875,
+            "max_budget_fraction": 0.0568132405741898,
+            "name": "flow2-velocity",
+            "passed": true,
+            "reference_sha256": "345a7f148c63765bd72ddacfdcb1cfca63ba14b7f33e860320d359ecabf1fd81",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "60136b623333b2349fabd60b5067c01217e67e703757da62996aed8f27ad190e",
+            "max_abs_error": 5.227327346801758e-05,
+            "max_budget_fraction": 0.0191404953653079,
+            "name": "flow2-actions",
+            "passed": true,
+            "reference_sha256": "27b7b1212f35a7ef81f6c7c1dac3257dbee65004d3297b5320ccd2b0b120bcde",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "cc125840866df289d7d6b3c1d1dcfcf83cdd100966f0be934574ab0830b1ecbf",
+            "max_abs_error": 0.0015001296997070312,
+            "max_budget_fraction": 0.29582690856238913,
+            "name": "flow3-block0",
+            "passed": true,
+            "reference_sha256": "73b2847235bc2303a8d82d6f093736bac5f0c9f41edc046c435a84949730a4a1",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "c41fbe2f2623e22d7da40a6b1b4f2c496f84cd64631e04507e3df8d9811723f6",
+            "max_abs_error": 0.002323150634765625,
+            "max_budget_fraction": 0.3144446262140588,
+            "name": "flow3-block1",
+            "passed": true,
+            "reference_sha256": "704165526183ce5b5efdd8a769b8b4c47307b79112f23884b97a9ad94a03b14b",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "c8cf30530285e08f0b54ac9cbb9a60244b95a68978baf083357f7dfd0697bb37",
+            "max_abs_error": 0.00298309326171875,
+            "max_budget_fraction": 0.4272303817548059,
+            "name": "flow3-block2",
+            "passed": true,
+            "reference_sha256": "9abf09c2a0e78f45f81918fe0ba1e82da20fb5481c92f90210e02bf3b637685e",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "7effdae71c3e7586af9c92a98b651848d5c43c0c78e65563a586509356a89079",
+            "max_abs_error": 0.003200531005859375,
+            "max_budget_fraction": 0.49278415489798677,
+            "name": "flow3-block3",
+            "passed": true,
+            "reference_sha256": "195015c5a05d23c469e61f45083c98a3af1a4f1616330db7d414b6f8e07744d4",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "0e34a904029c5d9b047767f63aaf1cfc65b6d2fa5547ba686866c03c14ffae00",
+            "max_abs_error": 0.019475936889648438,
+            "max_budget_fraction": 4.886841370555235,
+            "name": "flow3-block31",
+            "passed": false,
+            "reference_sha256": "60122b5ccf0a48eb0a7811b8bfac8ba621a1ebf24913f3c457956acf1c1f4013",
+            "shape": [
+              1,
+              41,
+              1536
+            ],
+            "values": 62976
+          },
+          {
+            "coax_sha256": "83e848d3c3944c944ab3d43c4d36a9e6ef8bc694d1ca4914e3ddcbcd067b194b",
+            "max_abs_error": 0.0020810365676879883,
+            "max_budget_fraction": 0.7907359635674844,
+            "name": "flow3-velocity",
+            "passed": true,
+            "reference_sha256": "3cb7147766d79481b120a3a24d62cf76f511e3603cf2b2062810e737ef699455",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "26f349e1efa01e78a996aa3fa785a395dfc28ab7831125ff98383fb995e2d241",
+            "max_abs_error": 0.0005587339401245117,
+            "max_budget_fraction": 0.2009555305341286,
+            "name": "flow3-actions",
+            "passed": true,
+            "reference_sha256": "67d0b7efd509fb3cb0643bf805e37fd2a224d9cbe0573a6e4d3d19f33e3c4a6d",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          },
+          {
+            "coax_sha256": "26f349e1efa01e78a996aa3fa785a395dfc28ab7831125ff98383fb995e2d241",
+            "max_abs_error": 0.0005587339401245117,
+            "max_budget_fraction": 0.2009555305341286,
+            "name": "normalized-actions",
+            "passed": true,
+            "reference_sha256": "67d0b7efd509fb3cb0643bf805e37fd2a224d9cbe0573a6e4d3d19f33e3c4a6d",
+            "shape": [
+              1,
+              40,
+              132
+            ],
+            "values": 5280
+          }
+        ],
+        "category": 2,
+        "device": {
+          "apple_family": 10,
+          "name": "Apple M5 Max",
+          "stage_compute_seconds": 0.322700333607
+        },
+        "input_backbone_matches_sdk_capsule": false,
+        "input_backbone_sha256": "6802551d5b5405c38b8f2259d26a89a9bb00110e4bc45a78a3df091c528ae7f2",
+        "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+        "passed": false,
+        "profile": "Original BF16 weights decoded exactly; F32 storage/products/affine stages, wide F64 normalization statistics (Metal float-float); source-default BF16 identity separate",
+        "schema": "psionic-groot-full-action-metal-reference-v1",
+        "scope": "Complete learned original category2 action head over recorded original-GPU backbone140; not complete Coax VLA, simulator success or physical control",
+        "source_reference": {
+          "cpu_fallback": false,
+          "diffusers": "0.35.1",
+          "inputs_npz_sha256": "0961aa1b2bb8a8888e621d8692fa5b0205438bba0cf29003e3b413228484c8e2",
+          "record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+          "torch": "2.9.0",
+          "transformers": "4.57.3"
+        },
+        "source_sha256": {
+          "psionic/lib/device/tile.coax": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+          "psionic/lib/robotics/groot-action-metadata-fixtures.coax": "0059bfa82a6444fd74179a850428845f0d799844da5d1b4ed021458e3af116b4",
+          "psionic/lib/robotics/groot-action-metal-kernels.coax": "93e6474a9496f2693881c97c49e2c19ad8bed26c9ebcb2d8e5ec2625f63308e3",
+          "psionic/lib/robotics/groot-action-metal-plan.coax": "e2806f0e262b50dbc5cbed221c628fe370ab1b5a37000fdec6573cbcccacd3ff",
+          "psionic/lib/robotics/groot-action-metal-types.coax": "8f5f049c9ea209edee5a5b608d4405d836b1d9069f6142665333c2403d8a170d",
+          "psionic/lib/robotics/groot-action-wide-kernels.coax": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c",
+          "psionic/lib/robotics/groot-device-kernels.coax": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af",
+          "psionic/tests/robotics/groot_action_metal.c": "deff391cd6be888f674394a4d9dd2cd263878e668f309df39ab246702e4d29c0",
+          "psionic/tests/robotics/groot_action_reference.py": "3b795c959f6fbb09d9be5597dd7c6a0936455a7c2a470d5d2636cef214f769a2",
+          "psionic/tests/robotics/groot_gpu_dispatch.h": "1390e35f49513a4ae17f75ba4cbd53c0be02b1ad83caa1bcf1e520abc5a41a4d"
+        },
+        "tolerance_frozen_before_observation": {
+          "atol": 0.002,
+          "rtol": 0.002
+        },
+        "values_compared": 1595296,
+        "whole_shard_hash_rechecked_here": false
+      },
+      "record_sha256": "bd80c2aa59ffe636cebcd2fe489763e6ac8504c381cf55702da9bd39dd276cf2"
+    },
+    "text": {
+      "record": {
+        "actual_sha256": "6802551d5b5405c38b8f2259d26a89a9bb00110e4bc45a78a3df091c528ae7f2",
+        "apple_family": 10,
+        "atol": 0.002,
+        "command_gpu_seconds": 0.123985916551,
+        "device": "Apple M5 Max",
+        "launches": 325,
+        "max_abs_error": 0.0007041692733764648,
+        "max_tolerance_fraction": 0.1339999712822688,
+        "passed": true,
+        "reference_sha256": "9b29aece11e18272b0645d8613a0ae1555031a9f1b9ea9bc85876420d5d773c1",
+        "rtol": 0.002,
+        "schema": "psionic-groot-text-metal-reference-v1",
+        "scope": "Complete original16-layer Cosmos text prefix, precomputed camera/deepstack inputs; no action decoder or simulated task claim.",
+        "values": 286720
+      },
+      "record_sha256": "dd42ec102f203219690fba6b91c6e62b260ec1d2c51ed76c10478164c46165e0"
+    },
+    "vision": {
+      "record": {
+        "all_diagnostic_boundaries_passed": true,
+        "category": 2,
+        "comparison_runtime": {
+          "interpreter": "/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+          "numpy": "2.3.5",
+          "python": "3.12.14"
+        },
+        "cpu_model_fallback": false,
+        "device": {
+          "apple_family": 10,
+          "gpu_all_stage_command_seconds": 0.214742041659,
+          "name": "Apple M5 Max",
+          "timing_scope": "GPU command batches; excludes compile, original-weight load/decode/upload, packed input preparation, waits/flag scans on CPU, captures and comparison."
+        },
+        "endpoint_outputs_passed": true,
+        "execution_profile": "Original BF16 learned weights; F32 Metal4 matrix accumulation, wide normalization statistics/centering/division (Metal float-float f64 profile), F32 affines/attention/tanh-GELU, independently qualified erf-polynomial merger GELU.",
+        "input_scope": "Original SDK-packed F32 pixels for two owned patterned still cameras; no captured real-world observation or preprocessor qualification claim.",
+        "learned_tensors": 315,
+        "micro_op_launches": 359,
+        "model": "nvidia/GR00T-N1.7-LIBERO",
+        "passed": true,
+        "preflight": {
+          "full_hash_receipt": "Reuses earlier completed full-shard authentication; sizes and exact headers rechecked for this run.",
+          "full_hash_receipt_sha256": "43c01ce9070e355abce12ada18fb1e4e71bf489636e7b61baa6b896297c22c22",
+          "full_hashes_recomputed": false,
+          "packed_pixels_sha256": "4db6cf9a6ee4d89335cdeaf8b786a722d90a0e349515dcbe099816b08d9cfb86",
+          "packed_pixels_shape": [
+            512,
+            1536
+          ],
+          "reference_inputs_npz_sha256": "0961aa1b2bb8a8888e621d8692fa5b0205438bba0cf29003e3b413228484c8e2",
+          "reference_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+          "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+          "schema": "psionic-groot-original-vision-preflight-v1",
+          "source_shards": [
+            {
+              "bytes": 4990519232,
+              "file": "model-00001-of-00002.safetensors",
+              "header_sha256": "ab6a13a00c1d497b3c6a91c0d81fb2097e31bfb8ea9da51ec1648c8c2e272421",
+              "previously_verified_full_sha256": "39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff"
+            },
+            {
+              "bytes": 1919980184,
+              "file": "model-00002-of-00002.safetensors",
+              "header_sha256": "dc560beef663998a04dad423af422ae8ac20dd6a8605dce048139db11eeef3a2",
+              "previously_verified_full_sha256": "8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703"
+            }
+          ]
+        },
+        "reference": {
+          "capsule_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+          "cpu_model_fallback": false,
+          "implementation": "Pinned original Transformers4.57.3 Qwen3VLModel on MPS/F32, independently captured earlier"
+        },
+        "results": [
+          {
+            "endpoint": false,
+            "max_abs_error": 1.049041748046875e-05,
+            "max_fraction_of_tolerance": 0.0034396576327394373,
+            "name": "vision-patch-projection",
+            "output_sha256": "e608534773913272e3500c27be2336959a648f0f6f791ca8a6ed88ba9af0e358",
+            "passed": true,
+            "reference_sha256": "7b7c68e3c21ecae694abd2073dbf0319550bee3df735ab61c1bb0f87f8785530",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 1.049041748046875e-05,
+            "max_fraction_of_tolerance": 0.003447403096319565,
+            "name": "vision-preblocks",
+            "output_sha256": "5db68adacfc7791e708a56f944f9126ebcd04c81656491712e00b2431c81bcb8",
+            "passed": true,
+            "reference_sha256": "dda329017fad14283b30eae5c1692e19317dc741b1cb56697a4f983a9d0ea07e",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 1.0013580322265625e-05,
+            "max_fraction_of_tolerance": 0.0038315895951542434,
+            "name": "vision-block0",
+            "output_sha256": "6a649ac3d32466ef92551556d8708dc304318d74823adb4783576e58c35831c1",
+            "passed": true,
+            "reference_sha256": "ce0c8618cd6155bff81202e131ebcfff0595d01b1ddb1e3c6989fc26db29a0d6",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 1.0967254638671875e-05,
+            "max_fraction_of_tolerance": 0.004837671308251031,
+            "name": "vision-block1",
+            "output_sha256": "853f9998b9aed479235d2a3cb46c3af8738617264ac81252153def5b4b71db1b",
+            "passed": true,
+            "reference_sha256": "e3be9e353935e2f920015f8f4be4b077bce301ae86e094238cd39c2c1b7c3b52",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 1.239776611328125e-05,
+            "max_fraction_of_tolerance": 0.004885910980434214,
+            "name": "vision-block2",
+            "output_sha256": "366a55e0b2ffcfccf5a887ba47f15f7b5dea2893b9e435d8928d84674f28ad8b",
+            "passed": true,
+            "reference_sha256": "39f878d56476c3648b84ec46b9a5b1352f44c5ab749e8980812488f2289ecf1a",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 3.6716461181640625e-05,
+            "max_fraction_of_tolerance": 0.011191168174247824,
+            "name": "vision-block3",
+            "output_sha256": "b74706d0b1f077d96fb0ecf22fda0e0d8d6d71df408647a0b979fd231bee256c",
+            "passed": true,
+            "reference_sha256": "a19f9a9e98604cd4d0f3fc0ac0eee764001c58876e8703ce60d61367aa3529f5",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 4.291534423828125e-05,
+            "max_fraction_of_tolerance": 0.012887020493655933,
+            "name": "vision-block4",
+            "output_sha256": "ab8f143a8c4c6a504a509c2bdab8e81b575da0e442eae963740c5b1b0f95f00d",
+            "passed": true,
+            "reference_sha256": "389deeec74812305c3d39e7412581020c2de93b42c48b3839833ababc4341c55",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 4.1961669921875e-05,
+            "max_fraction_of_tolerance": 0.012787315355162306,
+            "name": "vision-block5",
+            "output_sha256": "5cccd39c3f2acee03a45a8d2907fbfdd0a92f154c7a85e3e07d28707de3e46d7",
+            "passed": true,
+            "reference_sha256": "4168ea86b4ee7363ff3aec48e913ebe5acb7d8eb26597758524d92600a6b8128",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 4.1961669921875e-05,
+            "max_fraction_of_tolerance": 0.012787315355162306,
+            "name": "vision-deepstack0-input",
+            "output_sha256": "5cccd39c3f2acee03a45a8d2907fbfdd0a92f154c7a85e3e07d28707de3e46d7",
+            "passed": true,
+            "reference_sha256": "4168ea86b4ee7363ff3aec48e913ebe5acb7d8eb26597758524d92600a6b8128",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": true,
+            "max_abs_error": 1.239776611328125e-05,
+            "max_fraction_of_tolerance": 0.0039169849869799414,
+            "name": "vision-deepstack0",
+            "output_sha256": "9eedc8bd95fd53ffbc09a261990d61e041cae1b8e56a2f4e505c5f900f89833f",
+            "passed": true,
+            "reference_sha256": "641b904fab0a43ccece59ebed8b9dd10429825bc42556fd0dd1084191ad577aa",
+            "shape": [
+              128,
+              2048
+            ],
+            "values": 262144
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 3.8623809814453125e-05,
+            "max_fraction_of_tolerance": 0.013487805674889332,
+            "name": "vision-block6",
+            "output_sha256": "1205609ccb193bfaed8c0ba422f2ba2420e01628846a592e31223dc258d7aa49",
+            "passed": true,
+            "reference_sha256": "3f5f1a6791a6ee4d54b84374f3be4c9cca5afc4f1d560fb4d2cc0b16851e128a",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 3.6716461181640625e-05,
+            "max_fraction_of_tolerance": 0.013461141687327188,
+            "name": "vision-block7",
+            "output_sha256": "63219b21fed849e22eed1b47f6a97d50bff09c5486e2e16ffbba14f6aabd0967",
+            "passed": true,
+            "reference_sha256": "8031a889a4d86bbd98fc59213e597a37af0cbb20989e1464ed47438431238942",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 3.4809112548828125e-05,
+            "max_fraction_of_tolerance": 0.0123885568699079,
+            "name": "vision-block8",
+            "output_sha256": "e35120f6aa3ac728e764031b106c3a202b1d10f120f73be25371df4f076c99a0",
+            "passed": true,
+            "reference_sha256": "56793ca3b01ea1c6807d13963e9ea68df06abfbf18205e7298a275962a0651a3",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 5.698204040527344e-05,
+            "max_fraction_of_tolerance": 0.02230341540071825,
+            "name": "vision-block9",
+            "output_sha256": "46a68f0ee1bbceb4c83208d3eac763cff84813e87c86a7efedf842249bc1def6",
+            "passed": true,
+            "reference_sha256": "2ab503ff22ed8252f67b68ddb80fdd4c2e0a495ce3a2ef13614cee17387e5139",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.000579833984375,
+            "max_fraction_of_tolerance": 0.06814909936760613,
+            "name": "vision-block10",
+            "output_sha256": "c0b37956ace4fc1ccff9c3986683c0d7c515fdea3ffeeda64679f5faa05b5211",
+            "passed": true,
+            "reference_sha256": "7799ac1171f46a445de45eee090ae30d1a05579a9a3c75bc98dd11f5f5de3103",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0006866455078125,
+            "max_fraction_of_tolerance": 0.06080037698919901,
+            "name": "vision-block11",
+            "output_sha256": "292b7e798ba2124fcc52d85f21ae315db2982fd7d38770c8b44d3b631416d91b",
+            "passed": true,
+            "reference_sha256": "7cf5be0ec3393d87661ee48951dc18cba586ef9c721dc1ce0b85fd568350f67c",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0006866455078125,
+            "max_fraction_of_tolerance": 0.06080037698919901,
+            "name": "vision-deepstack1-input",
+            "output_sha256": "292b7e798ba2124fcc52d85f21ae315db2982fd7d38770c8b44d3b631416d91b",
+            "passed": true,
+            "reference_sha256": "7cf5be0ec3393d87661ee48951dc18cba586ef9c721dc1ce0b85fd568350f67c",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": true,
+            "max_abs_error": 1.71661376953125e-05,
+            "max_fraction_of_tolerance": 0.007088006101355651,
+            "name": "vision-deepstack1",
+            "output_sha256": "fb7bb9c052fc71fb339fe2392c5db204ed1c4f668cd1fb81cbeecb2fb7a3774e",
+            "passed": true,
+            "reference_sha256": "5f20187e9b75bf24e2364f883ea40ef580fea4ad0a7b4bec30096d1988a7a8d0",
+            "shape": [
+              128,
+              2048
+            ],
+            "values": 262144
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0006866455078125,
+            "max_fraction_of_tolerance": 0.19827529179722927,
+            "name": "vision-block12",
+            "output_sha256": "cc53bf0fbc2d725532803b81bca52304d3a3c542d1cec4ea0ca7858574c5bfee",
+            "passed": true,
+            "reference_sha256": "78666d8adf4c123cbf27496574a5cc95e31cba758e61cef156ef541280ba3f9c",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0007343292236328125,
+            "max_fraction_of_tolerance": 0.24761403951544644,
+            "name": "vision-block13",
+            "output_sha256": "2945074cc3d9cad9e106a2e7aec1780117ef6517e953d351374d7cafbd6a112f",
+            "passed": true,
+            "reference_sha256": "09e52025af1b43a05cd0804f84b82452e95752398b52acee872d6f2a2b94c1cd",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0011777877807617188,
+            "max_fraction_of_tolerance": 0.3148594862421191,
+            "name": "vision-block14",
+            "output_sha256": "7d0d746acf0c085c5f4dd6039b473c2dc19e091fd028d9b79c25e590081be733",
+            "passed": true,
+            "reference_sha256": "4b568a4d5c08eb25847240e50ad27385b69790972c7024e22dce43f975e9e43f",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0022907257080078125,
+            "max_fraction_of_tolerance": 0.3993380498005471,
+            "name": "vision-block15",
+            "output_sha256": "fc67184a9e26d4665a3bead2795ad58db45b0d0b3bdb5dc816f7ebce8d25456e",
+            "passed": true,
+            "reference_sha256": "04c8c41bd709b2da6ba60ac823c18b407223a1401ee08766041afbf20f0567e7",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.002300262451171875,
+            "max_fraction_of_tolerance": 0.3885901678052208,
+            "name": "vision-block16",
+            "output_sha256": "3a14c5dd17f3c13c3819e046967d0460f71c23079189769360f63f11e14e6948",
+            "passed": true,
+            "reference_sha256": "cf944f0aaa5cbbb806ecdf2f489acfecc330e90b677eddbc31ad77f8a68657a7",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.002285003662109375,
+            "max_fraction_of_tolerance": 0.39550098155552454,
+            "name": "vision-block17",
+            "output_sha256": "44b93ee455a100c6a37889f12ebfb20fe3fbe2c47fc499d0be90122da2ba5e17",
+            "passed": true,
+            "reference_sha256": "3a02b7feadf0e69fa33b0be2479a4c4e2751b6dfcd71ce13f751a7035a60bd00",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.002285003662109375,
+            "max_fraction_of_tolerance": 0.39550098155552454,
+            "name": "vision-deepstack2-input",
+            "output_sha256": "44b93ee455a100c6a37889f12ebfb20fe3fbe2c47fc499d0be90122da2ba5e17",
+            "passed": true,
+            "reference_sha256": "3a02b7feadf0e69fa33b0be2479a4c4e2751b6dfcd71ce13f751a7035a60bd00",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": true,
+            "max_abs_error": 0.000247955322265625,
+            "max_fraction_of_tolerance": 0.0662330575202007,
+            "name": "vision-deepstack2",
+            "output_sha256": "0b7bbd64ddca58816122fc12c619d08b0df4fba6de7d5c5ef1cf6e2cf4b32b1d",
+            "passed": true,
+            "reference_sha256": "524281766eeefb688c3df89fb5c6cda60711db75a38e0e0d322f5de08468ff45",
+            "shape": [
+              128,
+              2048
+            ],
+            "values": 262144
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.00228118896484375,
+            "max_fraction_of_tolerance": 0.40628185117229976,
+            "name": "vision-block18",
+            "output_sha256": "41b5f6701a5e66d720082d338688fac0fa614729fd6ea07703a77e382930119b",
+            "passed": true,
+            "reference_sha256": "ef00081a299f3dfe02ab42cf6ae72020ff46a6ca475982993cc90608d5dd6807",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0022716522216796875,
+            "max_fraction_of_tolerance": 0.3770411268610113,
+            "name": "vision-block19",
+            "output_sha256": "f123b4cb76a19e9e7816b85da329095ccdb77effdba6431cc6a05c136827558d",
+            "passed": true,
+            "reference_sha256": "092dd15f2f4056aabf9d08d7e079468018dc621e56b9059fb018e942554b04b6",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0022220611572265625,
+            "max_fraction_of_tolerance": 0.40303248238153383,
+            "name": "vision-block20",
+            "output_sha256": "e4cb52b8787cbaefa31e5ea556b35b57ecd2e56e64ed30a5e3d6526f0d3abc5f",
+            "passed": true,
+            "reference_sha256": "a4ef71755f31a59accda4232bd944f85faa1ba79c06cdfecbc2231a2ee2b4266",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.00218963623046875,
+            "max_fraction_of_tolerance": 0.3636241084557682,
+            "name": "vision-block21",
+            "output_sha256": "5a36080fae1a2989636280d704be21c923ef59c039f1c0634c725cb1a249d0ce",
+            "passed": true,
+            "reference_sha256": "7812387ee35edc77f0eb95a0ed13a1b4592ba680953b17c2c88c51e96a4c007f",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.0026226043701171875,
+            "max_fraction_of_tolerance": 0.5514673169831975,
+            "name": "vision-block22",
+            "output_sha256": "296a1477aa39aeff168e141bb5ccb5a944d518b5c76539b4cdc4af132ddaad07",
+            "passed": true,
+            "reference_sha256": "9c8b29131c70ed48c6e17b32d881953488517aaa316856176dd7ae008525a573",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.3026123046875,
+            "max_fraction_of_tolerance": 0.924862522603682,
+            "name": "vision-block23",
+            "output_sha256": "72aa90931368d6a9b4f84b7c37d537dff8956e5fa9209b9877901afcc8b9f60e",
+            "passed": true,
+            "reference_sha256": "41044441903878537229bffb02438073c4a89f5ba01a86e89e1e47a701f21a08",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": false,
+            "max_abs_error": 0.3026123046875,
+            "max_fraction_of_tolerance": 0.924862522603682,
+            "name": "vision-merger-input",
+            "output_sha256": "72aa90931368d6a9b4f84b7c37d537dff8956e5fa9209b9877901afcc8b9f60e",
+            "passed": true,
+            "reference_sha256": "41044441903878537229bffb02438073c4a89f5ba01a86e89e1e47a701f21a08",
+            "shape": [
+              512,
+              1024
+            ],
+            "values": 524288
+          },
+          {
+            "endpoint": true,
+            "max_abs_error": 0.0002923011779785156,
+            "max_fraction_of_tolerance": 0.08258890372135899,
+            "name": "vision-merged",
+            "output_sha256": "0b8d91fc1c6de22bad4209d91f859c36e5baccc4ed0194ccade32d4637c7ab40",
+            "passed": true,
+            "reference_sha256": "5d56345a66f4f3f905461da1edb8826fefd38b516cd502ebf8aecca50563dd9d",
+            "shape": [
+              128,
+              2048
+            ],
+            "values": 262144
+          }
+        ],
+        "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+        "schema": "psionic-groot-original-metal-vision-reference-v1",
+        "scope": "Complete original vision24 plus ordinary and three deepstack mergers only. Language, action flow, physical robot control and task success are separate.",
+        "source_sha256": {
+          "psionic/lib/device/tile.coax": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+          "psionic/lib/robotics/groot-action-wide-kernels.coax": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c",
+          "psionic/lib/robotics/groot-device-kernels.coax": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af",
+          "psionic/lib/robotics/groot-vision-device.coax": "31b266a9c1d58bb7705024019385c65f07382e17d4090b4bb9176a2b8a5ca7cf",
+          "psionic/lib/robotics/groot-vision-metal-check-fixtures.coax": "219abddac099785ade76693490261e19259d04fa6b3b9d0011a99e507b429a42",
+          "psionic/lib/robotics/groot-vision-metal-plan.coax": "39c7ee071c940a3a0f78141a29addaef180115e6f9d33ffbd0bed4ca05f7677e",
+          "psionic/lib/robotics/groot-vision-metal-types.coax": "e7e115d3d7ecd9b2701d64d27fd6876233b98cabdf4b53afff2360306b3a429d",
+          "psionic/platform/metal-host.m": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6",
+          "psionic/tests/robotics/groot_gpu_dispatch.h": "1390e35f49513a4ae17f75ba4cbd53c0be02b1ad83caa1bcf1e520abc5a41a4d",
+          "psionic/tests/robotics/groot_vision_metal.c": "773f8327f46786882169ebfe2ec9decb235c7e81790e0f460c610a00587be81b",
+          "psionic/tests/robotics/groot_vision_metal_reference.py": "ca353503a4214141c37a2441eafd3f59ef5ddc6720be5a60b279e0c295e4f0b2"
+        },
+        "stages": 29,
+        "subfolder": "libero_10",
+        "tolerance_frozen_before_comparison": {
+          "atol": 0.002,
+          "rtol": 0.0002
+        },
+        "values_compared": 16777216
+      },
+      "record_sha256": "40a5a70a71db23758b58b21981e62381e366b4b4594a444c8c281f0d3f9e47fd"
+    }
+  },
+  "conditional_head_proof": {
+    "record": {
+      "backbone_sha256": "6802551d5b5405c38b8f2259d26a89a9bb00110e4bc45a78a3df091c528ae7f2",
+      "captures": [
+        {
+          "coax_sha256": "f10c1e8aceff80402b6f61131ead8bba9e1150661742bdfc5de437857ca3e70f",
+          "conditional_reference_sha256": "efee0cdcd401edf3982f3a02ded17c45aeba0cb6a63b1454ce21a7e9be327402",
+          "max_abs_error": 2.002716064453125e-05,
+          "max_budget_fraction": 0.0035686869135457835,
+          "name": "vl-conditioning",
+          "passed": true,
+          "shape": [
+            1,
+            140,
+            2048
+          ],
+          "values": 286720
+        },
+        {
+          "coax_sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+          "conditional_reference_sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0.0,
+          "name": "state-features",
+          "passed": true,
+          "shape": [
+            1,
+            1,
+            1536
+          ],
+          "values": 1536
+        },
+        {
+          "coax_sha256": "3f3167ece9318b40084044fbbc14c82b6e27b77752b8239e779f767952e83432",
+          "conditional_reference_sha256": "83dc26dfa35ecfe25dc547196fa77eb5d0155664909826e53c06a61d94417304",
+          "max_abs_error": 3.0517578125e-05,
+          "max_budget_fraction": 0.0031730720414276286,
+          "name": "flow0-block0",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "79ddcd6241cd3bbef0b74c5bd7808f3d09d130d2abe91d7e42f279436daa94ef",
+          "conditional_reference_sha256": "40cade85424f894d1ad84e0af0b61ff2e745f546e07980d89be7060690c5680d",
+          "max_abs_error": 3.814697265625e-05,
+          "max_budget_fraction": 0.003473086186866425,
+          "name": "flow0-block1",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "7f99b1a1cf2e556b4f689103b19e7e370b731c8bd223b31621ced4ac2e55970c",
+          "conditional_reference_sha256": "7d491d913f3e4ff2a9470de99e9f5f3a1093a30813f18a628ea2927da3ba9982",
+          "max_abs_error": 0.000102996826171875,
+          "max_budget_fraction": 0.010299315267189987,
+          "name": "flow0-block2",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "9dfead8b4acd4f028496d6a29bbac41f39ca52ad3857b63b3295dd409d0bdb69",
+          "conditional_reference_sha256": "28931804f65a6f9239c788fc1e0585937c44c5ddf27ba0b3a7f71fd8953a351a",
+          "max_abs_error": 9.918212890625e-05,
+          "max_budget_fraction": 0.005033323146878801,
+          "name": "flow0-block3",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "2c3f2ee87c664d8dac79e9ed332dcf8d095442bc584d2664d9e6a82767d27a22",
+          "conditional_reference_sha256": "d178c6f6aca5da96bb8f2890a51a04245cce9534ab3224f54e3bfddb2ed90b32",
+          "max_abs_error": 0.00046539306640625,
+          "max_budget_fraction": 0.06245797293114956,
+          "name": "flow0-block31",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "f629415e107b5f6a5aaae8006fa3026ccf4a15eb7413e2ad6ab41f009ce8bf79",
+          "conditional_reference_sha256": "08a133e8a3b8797434b17327432adf1648112e297334084988ec9fe0282838fd",
+          "max_abs_error": 2.4437904357910156e-06,
+          "max_budget_fraction": 0.0006977310404228991,
+          "name": "flow0-velocity",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "2776b1844c08e198ae0bcdd98a16f4d398b8fa435ad92830ab5be69eb58ef7a2",
+          "conditional_reference_sha256": "0b508d7034e943545b04fa4ce75975a6da2f503dffdcd8d26dc8cf0cfd8ba34d",
+          "max_abs_error": 5.960464477539062e-07,
+          "max_budget_fraction": 0.0002277900522869286,
+          "name": "flow0-actions",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "c2742cccbdcdc9249c5421ed7774c653ee3df088a8c7bf9a2806051cf6036e9e",
+          "conditional_reference_sha256": "b6df98ce09cc13fcdabbd7f037d329eae96b1e29863e178fb60932f7009088d5",
+          "max_abs_error": 3.0517578125e-05,
+          "max_budget_fraction": 0.0034253033286376633,
+          "name": "flow1-block0",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "c9607324cebda2d5227bbf731d4a6ccc9ec62b6efef3bd6fbbdf6b144afd77dd",
+          "conditional_reference_sha256": "9e21874828312465ab22458b43ab0de0e682de81ba9163610a298710910a54fa",
+          "max_abs_error": 4.57763671875e-05,
+          "max_budget_fraction": 0.004501609646992346,
+          "name": "flow1-block1",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "d6dd98cc3d067d9044f4e34d882b272fe689d609ea05e553fa36cd893267a95b",
+          "conditional_reference_sha256": "d139725e6242784ccfac7ead651ceeba98c078343207d7e11f62ed5307c41315",
+          "max_abs_error": 6.103515625e-05,
+          "max_budget_fraction": 0.005329517398875738,
+          "name": "flow1-block2",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "c009690517636d73b2b739ea0faa278746cc6ed93dd18131eeafccbfd66971a2",
+          "conditional_reference_sha256": "3947f218c80cc87297c0f83a21dad2bb4f47ee4ba6ad03f19848fa750728bf7c",
+          "max_abs_error": 9.1552734375e-05,
+          "max_budget_fraction": 0.016047389009571197,
+          "name": "flow1-block3",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "ad7d0a3c8cf6c4a58aca0ce2e8d8e556832fcc91aa8fd33f68e3c5f2be16b2f3",
+          "conditional_reference_sha256": "1484983b2d035353b2aee0de54dce7112ad53f45db0d6ab0bbf198daa99f8ee3",
+          "max_abs_error": 0.00042724609375,
+          "max_budget_fraction": 0.0707391454711227,
+          "name": "flow1-block31",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "2f05ccebcae6ca73866d054c1a33e11087cc10132e4b356e77d2e74e73116e94",
+          "conditional_reference_sha256": "196bef4c5647cda8c8bba2405695d3959aa279eeaee894a479099ce099ff1a34",
+          "max_abs_error": 6.67572021484375e-06,
+          "max_budget_fraction": 0.002039694154937957,
+          "name": "flow1-velocity",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "b8d6b761179864f14b2e54f3e7b176df1ae2d2ccccdea6681187266fe0f41131",
+          "conditional_reference_sha256": "154952cd9f336152d31d7f10735aa1f7bc9545c1958dd798718761ce2b86e9cd",
+          "max_abs_error": 1.9669532775878906e-06,
+          "max_budget_fraction": 0.0008346293067715205,
+          "name": "flow1-actions",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "eaa254b0bb754377af5a1e2e0cbd10976745f9c4ba2b7c925940bc7af5082453",
+          "conditional_reference_sha256": "bb64bf204a1d1a283eeecdd993f2de6eed3e9185c017f80605f7ba8145854ca1",
+          "max_abs_error": 6.103515625e-05,
+          "max_budget_fraction": 0.013088553016482249,
+          "name": "flow2-block0",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "8cfda382df5e4d6dccad17c2c2e168ecd05cbc9b8e08a57d389163f3a6befe8c",
+          "conditional_reference_sha256": "fb514d8ca145b99e4c91071ab8bc0d58c14bc014678b48d2808c7d57120069b8",
+          "max_abs_error": 9.1552734375e-05,
+          "max_budget_fraction": 0.021961524407489188,
+          "name": "flow2-block1",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "73d3ca2acefbc65e4cd0e77ffd0b23e73e8d889a08b6aeb77e53291c0f94a50d",
+          "conditional_reference_sha256": "86cd9b16286822f23778af58206b2c33a381c190f85242e0dd416487e98df212",
+          "max_abs_error": 0.0001678466796875,
+          "max_budget_fraction": 0.023575156397764137,
+          "name": "flow2-block2",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "04a31319e38757621800e835ea4727f2db29d61a4ba0c39f44888da75418519d",
+          "conditional_reference_sha256": "08a9db8fbab0269a56afe422bbd637df6c47cf4b2db4f017fccef18461fe6718",
+          "max_abs_error": 0.00019073486328125,
+          "max_budget_fraction": 0.020732190872768147,
+          "name": "flow2-block3",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "42200ea16e9ca4828b7d04a064827d6551a51d00edae52a31a2d5db016085ba4",
+          "conditional_reference_sha256": "be1958e9fdbad277b5fcd5cb30973ed9f591533c1d02aa31d90755984b89882d",
+          "max_abs_error": 0.00064849853515625,
+          "max_budget_fraction": 0.11752908389101283,
+          "name": "flow2-block31",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "7ba6a22a16c427c70324dcc928cf6c51ec77573c88cf05c727070be9928a978c",
+          "conditional_reference_sha256": "d8182369bcc36910d91a51369b1a3cc422834fbcdb56ce1d9dcacd91993271fa",
+          "max_abs_error": 3.5643577575683594e-05,
+          "max_budget_fraction": 0.010287308058868924,
+          "name": "flow2-velocity",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "60136b623333b2349fabd60b5067c01217e67e703757da62996aed8f27ad190e",
+          "conditional_reference_sha256": "81a21168f44864ee97688801663e23d7a70758efdb1cde0d825bad2ebb8ab1f8",
+          "max_abs_error": 1.0341405868530273e-05,
+          "max_budget_fraction": 0.0038408267507608566,
+          "name": "flow2-actions",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "cc125840866df289d7d6b3c1d1dcfcf83cdd100966f0be934574ab0830b1ecbf",
+          "conditional_reference_sha256": "256b7f254a7352c751c67ee76859e143713573a777cf7d031fb0facc5d270bff",
+          "max_abs_error": 0.00028896331787109375,
+          "max_budget_fraction": 0.05960267730421104,
+          "name": "flow3-block0",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "c41fbe2f2623e22d7da40a6b1b4f2c496f84cd64631e04507e3df8d9811723f6",
+          "conditional_reference_sha256": "188e0a839bdbe14e3f7b947ed4be1aeb64faa8fc1923c8fd3e38c6927cca59ab",
+          "max_abs_error": 0.0004425048828125,
+          "max_budget_fraction": 0.06077803912431489,
+          "name": "flow3-block1",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "c8cf30530285e08f0b54ac9cbb9a60244b95a68978baf083357f7dfd0697bb37",
+          "conditional_reference_sha256": "67e2042daf952f43fdc9c3659891b23948d4ee57abcf27af6351e815c31e66e5",
+          "max_abs_error": 0.0005664825439453125,
+          "max_budget_fraction": 0.08843794811508308,
+          "name": "flow3-block2",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "7effdae71c3e7586af9c92a98b651848d5c43c0c78e65563a586509356a89079",
+          "conditional_reference_sha256": "e432e4f87711bdd1b9f20c5a0f840abf9cd35238cd2b5544e79c356f4f07b896",
+          "max_abs_error": 0.000621795654296875,
+          "max_budget_fraction": 0.09176947480099973,
+          "name": "flow3-block3",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "0e34a904029c5d9b047767f63aaf1cfc65b6d2fa5547ba686866c03c14ffae00",
+          "conditional_reference_sha256": "eade2614e6fded7cde7dd654352bbdb65543808f52ec62ccf911cb0ab89dc813",
+          "max_abs_error": 0.00347137451171875,
+          "max_budget_fraction": 0.8770731222560965,
+          "name": "flow3-block31",
+          "passed": true,
+          "shape": [
+            1,
+            41,
+            1536
+          ],
+          "values": 62976
+        },
+        {
+          "coax_sha256": "83e848d3c3944c944ab3d43c4d36a9e6ef8bc694d1ca4914e3ddcbcd067b194b",
+          "conditional_reference_sha256": "99ad9f32a59ca010017d4b00e6faf42c15361fdb3426a21134d6f03bc7494589",
+          "max_abs_error": 0.0003711581230163574,
+          "max_budget_fraction": 0.1423728506526565,
+          "name": "flow3-velocity",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "26f349e1efa01e78a996aa3fa785a395dfc28ab7831125ff98383fb995e2d241",
+          "conditional_reference_sha256": "769ed7b4b6ba1f65db5f94029504ffffecbf46b54368a637e1222fc07472a7d2",
+          "max_abs_error": 9.986758232116699e-05,
+          "max_budget_fraction": 0.036848287782894354,
+          "name": "flow3-actions",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        },
+        {
+          "coax_sha256": "26f349e1efa01e78a996aa3fa785a395dfc28ab7831125ff98383fb995e2d241",
+          "conditional_reference_sha256": "769ed7b4b6ba1f65db5f94029504ffffecbf46b54368a637e1222fc07472a7d2",
+          "max_abs_error": 9.986758232116699e-05,
+          "max_budget_fraction": 0.036848287782894354,
+          "name": "normalized-actions",
+          "passed": true,
+          "shape": [
+            1,
+            40,
+            132
+          ],
+          "values": 5280
+        }
+      ],
+      "category": 2,
+      "conditioned_on_coax_backbone": true,
+      "cpu_model_fallback": false,
+      "diffusers": "0.35.1",
+      "execution_and_capture_seconds": 0.24475741694914177,
+      "global_hidden_trace_failure_relabelled": false,
+      "input_backbone_sha256": "6802551d5b5405c38b8f2259d26a89a9bb00110e4bc45a78a3df091c528ae7f2",
+      "load_seconds": 0.42206716601504013,
+      "metadata_format_note": "Added the backbone_sha256 alias after successful comparison; exact executed source hashes and every numerical metric remain retained. No model or comparison rerun.",
+      "metadata_formatter_sha256": "a623a6f407adcdc0f882ceb0bafc37944d47fdb817a90584da286eef99383193",
+      "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+      "original_capsule_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+      "original_full_network_reference_replaced": false,
+      "original_state_noise_capsule_sha256": "0961aa1b2bb8a8888e621d8692fa5b0205438bba0cf29003e3b413228484c8e2",
+      "outputs": [
+        {
+          "bytes": 1146880,
+          "name": "vl-conditioning",
+          "sha256": "efee0cdcd401edf3982f3a02ded17c45aeba0cb6a63b1454ce21a7e9be327402",
+          "shape": [
+            1,
+            140,
+            2048
+          ]
+        },
+        {
+          "bytes": 6144,
+          "name": "state-features",
+          "sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+          "shape": [
+            1,
+            1,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow0-block0",
+          "sha256": "83dc26dfa35ecfe25dc547196fa77eb5d0155664909826e53c06a61d94417304",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow0-block1",
+          "sha256": "40cade85424f894d1ad84e0af0b61ff2e745f546e07980d89be7060690c5680d",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow0-block2",
+          "sha256": "7d491d913f3e4ff2a9470de99e9f5f3a1093a30813f18a628ea2927da3ba9982",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow0-block3",
+          "sha256": "28931804f65a6f9239c788fc1e0585937c44c5ddf27ba0b3a7f71fd8953a351a",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow0-block31",
+          "sha256": "d178c6f6aca5da96bb8f2890a51a04245cce9534ab3224f54e3bfddb2ed90b32",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow0-velocity",
+          "sha256": "08a133e8a3b8797434b17327432adf1648112e297334084988ec9fe0282838fd",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow0-actions",
+          "sha256": "0b508d7034e943545b04fa4ce75975a6da2f503dffdcd8d26dc8cf0cfd8ba34d",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow1-block0",
+          "sha256": "b6df98ce09cc13fcdabbd7f037d329eae96b1e29863e178fb60932f7009088d5",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow1-block1",
+          "sha256": "9e21874828312465ab22458b43ab0de0e682de81ba9163610a298710910a54fa",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow1-block2",
+          "sha256": "d139725e6242784ccfac7ead651ceeba98c078343207d7e11f62ed5307c41315",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow1-block3",
+          "sha256": "3947f218c80cc87297c0f83a21dad2bb4f47ee4ba6ad03f19848fa750728bf7c",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow1-block31",
+          "sha256": "1484983b2d035353b2aee0de54dce7112ad53f45db0d6ab0bbf198daa99f8ee3",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow1-velocity",
+          "sha256": "196bef4c5647cda8c8bba2405695d3959aa279eeaee894a479099ce099ff1a34",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow1-actions",
+          "sha256": "154952cd9f336152d31d7f10735aa1f7bc9545c1958dd798718761ce2b86e9cd",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow2-block0",
+          "sha256": "bb64bf204a1d1a283eeecdd993f2de6eed3e9185c017f80605f7ba8145854ca1",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow2-block1",
+          "sha256": "fb514d8ca145b99e4c91071ab8bc0d58c14bc014678b48d2808c7d57120069b8",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow2-block2",
+          "sha256": "86cd9b16286822f23778af58206b2c33a381c190f85242e0dd416487e98df212",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow2-block3",
+          "sha256": "08a9db8fbab0269a56afe422bbd637df6c47cf4b2db4f017fccef18461fe6718",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow2-block31",
+          "sha256": "be1958e9fdbad277b5fcd5cb30973ed9f591533c1d02aa31d90755984b89882d",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow2-velocity",
+          "sha256": "d8182369bcc36910d91a51369b1a3cc422834fbcdb56ce1d9dcacd91993271fa",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow2-actions",
+          "sha256": "81a21168f44864ee97688801663e23d7a70758efdb1cde0d825bad2ebb8ab1f8",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow3-block0",
+          "sha256": "256b7f254a7352c751c67ee76859e143713573a777cf7d031fb0facc5d270bff",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow3-block1",
+          "sha256": "188e0a839bdbe14e3f7b947ed4be1aeb64faa8fc1923c8fd3e38c6927cca59ab",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow3-block2",
+          "sha256": "67e2042daf952f43fdc9c3659891b23948d4ee57abcf27af6351e815c31e66e5",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow3-block3",
+          "sha256": "e432e4f87711bdd1b9f20c5a0f840abf9cd35238cd2b5544e79c356f4f07b896",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 251904,
+          "name": "flow3-block31",
+          "sha256": "eade2614e6fded7cde7dd654352bbdb65543808f52ec62ccf911cb0ab89dc813",
+          "shape": [
+            1,
+            41,
+            1536
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow3-velocity",
+          "sha256": "99ad9f32a59ca010017d4b00e6faf42c15361fdb3426a21134d6f03bc7494589",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "flow3-actions",
+          "sha256": "769ed7b4b6ba1f65db5f94029504ffffecbf46b54368a637e1222fc07472a7d2",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        },
+        {
+          "bytes": 21120,
+          "name": "normalized-actions",
+          "sha256": "769ed7b4b6ba1f65db5f94029504ffffecbf46b54368a637e1222fc07472a7d2",
+          "shape": [
+            1,
+            40,
+            132
+          ]
+        }
+      ],
+      "passed": true,
+      "reference_device": "mps",
+      "reference_dtype": "float32",
+      "schema": "psionic-groot-head-conditioned-on-coax-backbone-v1",
+      "scope": "Same-input component fidelity of the original learned head on an actual Coax backbone; independent full-network final outputs and global hidden-trace diagnostics remain separate.",
+      "source_checkout_executed": false,
+      "source_sha256": {
+        "groot_action_conditional_reference.py": "9c9addd84256e0562cfc1c6eb8c1ec22e781ff1270957fbaec34575605150a19",
+        "groot_vla_reference.py": "a7e956f4b7287c1408f7138e13b6ce24104162df4e1178458b69bcf153769398"
+      },
+      "tolerance_frozen_before_observation": {
+        "atol": 0.002,
+        "rtol": 0.002
+      },
+      "torch": "2.9.0",
+      "values_compared": 1595296
+    },
+    "record_sha256": "ae395f4836a420c017878c2acc5fd539af64853dab0bf880f46248e350e3c961"
+  },
+  "cpu_model_fallback": false,
+  "decoded_actions_sha256": "7df885a0ad2f83abd71f12ea5df5fa1926f5a6da919d534e2cd01d47ddba501c",
+  "decoded_handoff_exact_f32_words": 112,
+  "decoded_max_abs_error": 3.102421760559082e-05,
+  "decoded_max_tolerance_fraction": 0.021485715170674106,
+  "decoded_values": 112,
+  "exact_gripper_decisions": 16,
+  "exact_handoffs": [
+    "four vision outputs to text",
+    "text to action",
+    "original IDs,state,noise"
+  ],
+  "input_boundary": "Admitted prepared observation: two packed cameras, unpadded original IDs, normalized category2 state and explicit Gaussian noise.",
+  "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "normalized_actions_sha256": "26f349e1efa01e78a996aa3fa785a395dfc28ab7831125ff98383fb995e2d241",
+  "passed": true,
+  "real_robot_execution": false,
+  "reference_capsule_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+  "reproduction_wrapper_note": "Equivalent component sequence was executed once in its qualified slices; the new thin wrapper was syntax checked without repeating those unchanged passing runs.",
+  "request_tokens": 140,
+  "schema": "psionic-groot-composed-policy-v1",
+  "simulated_task_success_measured": false,
+  "verification_source": {
+    "psionic/lib/robotics/groot-embodiment.coax": "456d51c8d26a71a3e4ac112233178420f354f2aea5e423208d665603f5211337",
+    "psionic/tests/robotics/groot_decode.c": "1e61ab563fff3fd79623b175740f47265383f426d04485aad5915c01750095af",
+    "psionic/tests/robotics/groot_policy_reference.py": "45b228e9bc6c93a3477b8027de4c8ca30a91d032f6f7f0114a24a8f6e3d76cb6"
+  }
+}

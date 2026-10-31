@@ -1,0 +1,155 @@
+// Source contract: Transformers v4.57.3, commit47b0e478f324b54f177ea7998a0791870fdd0324.
+// Qwen2VL processor packing + Qwen3VL vision position/RoPE/merger layouts.
+// Typed input is one already resized/normalized NCHW image/video, not cameras
+// concatenated as time. F32 execution; no BF16 activation-profile claim.
+#load "groot-vision-types.coax";
+#load "../ops.coax";
+#authority;
+
+#test "vision planning bounds typed pixels before products and repeats a final odd frame" {
+  p:=gv_plan(1,32,64);#assert p.status==GvStatus.ok && p.pixels==6144 && p.patches==8 && p.packed==12288 && p.grid.t==1 && p.grid.h==2 && p.grid.w==4;
+  p=gv_plan(3,32,32);#assert p.status==GvStatus.ok && p.grid.t==2 && p.pixels==9216 && p.packed==12288;
+  #assert gv_plan(8,512,512).packed==6291456;
+  for v:[7]int.[-1,0,9,9223372036854775807,31,33,513] {#assert gv_plan(v,32,32).status==GvStatus.shape;}
+  #assert gv_plan(1,31,32).status==GvStatus.shape && gv_plan(1,33,32).status==GvStatus.shape && gv_plan(1,544,32).status==GvStatus.shape;
+  #assert gv_plan(1,32,0).status==GvStatus.shape && gv_plan(1,32,48).status==GvStatus.shape && gv_plan(1,32,544).status==GvStatus.shape;
+}
+#test "vision token positions use temporal block-row block-column then intra-block order" {
+  g:=GvGrid.{t=2,h=2,w=4};rows:=[8]int.[0,0,1,1,0,0,1,1];cols:=[8]int.[0,1,0,1,2,3,2,3];
+  for i:0..<16 {p:=gv_position(g,i);#assert p.status==GvStatus.ok && p.time==i/8 && p.row==rows[i%8] && p.column==cols[i%8];}
+  g=GvGrid.{t=2,h=4,w=6};for t:0..<2 {for row:0..<4 {for col:0..<6 {
+    token:=t*24+((row/2)*3+col/2)*4+(row%2)*2+col%2;p:=gv_position(g,token);#assert p.time==t && p.row==row && p.column==col;
+  }}}
+  g=GvGrid.{t=2,h=2,w=4};
+  #assert gv_position(g,-1).status==GvStatus.shape && gv_position(g,16).status==GvStatus.shape;
+  #assert gv_grid(GvGrid.{t=1,h=2,w=2}) && gv_grid(GvGrid.{t=4,h=32,w=32});
+  for bad:[6]GvGrid.[GvGrid.{t=0,h=2,w=2},GvGrid.{t=5,h=2,w=2},GvGrid.{t=1,h=1,w=2},GvGrid.{t=1,h=34,w=2},GvGrid.{t=1,h=2,w=3},GvGrid.{t=1,h=2,w=34}] {#assert !gv_grid(bad) && gv_position(bad,0).status==GvStatus.shape;}
+}
+#test "vision multi-frame packing keeps temporal stride and repeats only a missing last frame" {
+  pixels:[12288]f32;out:[12289]f32;for i:0..<12288 {pixels[i]=f32(i);}out[12288]=-7;
+  r:=gv_pack(4,32,32,pixels[..],out[..],false);#assert r.status==GvStatus.ok && r.written==12288 && out[12288]==-7;
+  #assert out[0]==0 && out[256]==3072 && out[512]==1024 && out[768]==4096 && out[6144]==6144 && out[6400]==9216;
+  r=gv_pack(3,32,32,pixels[0..<9216],out[..],false);#assert r.status==GvStatus.ok && out[6144]==6144 && out[6400]==6144;
+}
+#test "vision packing preserves exact NCHW values and repeats a still image temporally" {
+  pixels:[3072]f32;out:[6145]f32;for i:0..<3072 {pixels[i]=f32(i);}out[6144]=-7;
+  r:=gv_pack(1,32,32,pixels[..],out[0..<6144],false);#assert r.status==GvStatus.ok && r.written==6144 && out[6144]==-7;
+  #assert out[0]==0 && out[15]==15 && out[16]==32 && out[255]==495;
+  #assert out[256]==0 && out[512]==1024 && out[768]==1024 && out[1024]==2048;
+  #assert out[1536]==16 && out[3072]==512 && out[4608]==528;
+  for i:0..<6145 {out[i]=-7;}
+  #assert gv_pack(0,32,32,pixels[..],out[..],false).status==GvStatus.shape;
+  #assert gv_pack(1,32,32,pixels[0..<3071],out[..],false).status==GvStatus.capacity;
+  #assert gv_pack(1,32,32,pixels[..],out[0..<6143],false).status==GvStatus.capacity;
+  #assert gv_pack(1,32,32,pixels[..],out[..],true).status==GvStatus.alias;for value:out {#assert value==-7;}
+}
+#test "vision merge layout distinguishes ordinary pre-shuffle and deepstack post-shuffle norm" {
+  g:=GvGrid.{t=2,h=2,w=4};a:=gv_merge_layout(g,1024,false);b:=gv_merge_layout(g,1024,true);
+  #assert a.status==GvStatus.ok && a.rows==4 && a.width==4096 && a.values==16384 && a.norm_width==1024;
+  #assert b.status==GvStatus.ok && b.norm_width==4096;
+  #assert gv_merge_layout(GvGrid.{t=3,h=4,w=6},1024,false).rows==18;
+  #assert gv_merge_layout(g,1,false).width==4 && gv_merge_layout(g,2048,true).width==8192;
+  #assert gv_merge_layout(g,0,false).status==GvStatus.shape && gv_merge_layout(g,2049,false).status==GvStatus.shape;
+  #assert gv_merge_layout(GvGrid.{},1024,false).status==GvStatus.shape;
+  for layer:-1..<25 {want:=-1;if layer==5 {want=0;}if layer==11 {want=1;}if layer==17 {want=2;}#assert gv_deepstack(layer)==want;}
+}
+#test "vision learned-position interpolation addresses the pinned48 by48 table" {
+  g:=GvGrid.{t=1,h=2,w=2};p:=gv_posmix(g,0);#assert p.status==GvStatus.ok && p.indices[0]==0 && p.indices[1]==1 && p.indices[2]==48 && p.indices[3]==49 && p.weights[0]==1;
+  p=gv_posmix(g,3);#assert p.indices[0]==2303 && p.indices[1]==2303 && p.indices[2]==2303 && p.indices[3]==2303 && p.weights[0]==1;
+  g=GvGrid.{t=1,h=4,w=4};p=gv_posmix(g,3);#assert p.indices[0]==735 && p.indices[1]==736 && p.indices[2]==783 && p.indices[3]==784;
+  #assert abs(p.weights[0]-1.0f32/9)<0.000002f32 && abs(p.weights[3]-4.0f32/9)<0.000002f32;
+  #assert abs(p.weights[1]-2.0f32/9)<0.000002f32 && abs(p.weights[2]-2.0f32/9)<0.000002f32;
+  #assert gv_posmix(g,16).status==GvStatus.shape;
+}
+#test "vision rotary axes frequencies split halves and arithmetic refusal are explicit" {
+  #assert gv_inverse(0)==1 && abs(gv_inverse(8)-0.01f32)<0.00000001f32;
+  r:=gv_rotate(1,0,0,1);#assert r.status==GvStatus.ok && r.x==0 && r.y==1;
+  r=gv_rotate(1,2,1,0);#assert r.x==1 && r.y==2;
+  r=gv_rotate(2,1,0.5f32,0.5f32);#assert r.x==0.5f32 && r.y==1.5f32;
+  max:=f32_from_bits(0x7f7fffff);r=gv_rotate(max,-max,0.75f32,0.75f32);#assert r.status==GvStatus.arithmetic;
+  g:=GvGrid.{t=1,h=2,w=2};#assert gv_rope_span(g,1).count==256 && gv_rope_span(g,16).count==4096;
+  #assert gv_rope_span(g,0).status==GvStatus.shape && gv_rope_span(g,17).status==GvStatus.shape && gv_rope_span(GvGrid.{},1).status==GvStatus.shape;
+  #assert gv_rope_span(GvGrid.{t=2,h=4,w=6},2).count==6144;
+}
+#test "vision RoPE covers multiple heads and a nonsquare grid through the final value" {
+  g:=GvGrid.{t=1,h=2,w=4};x:[1024]f32;out:[1024]f32;work:[1024]f32;
+  for i:0..<1024 {x[i]=f32(i%9-4);out[i]=915;work[i]=915;}
+  r:=gv_rope(g,2,x[..],out[..],work[..],false);#assert r.status==GvStatus.ok && r.written==1024;
+  for i:0..<128 {#assert out[i]==x[i];}#assert abs(out[1023])<10;
+}
+#test "vision RoPE stages the complete tensor before output publication" {
+  g:=GvGrid.{t=1,h=2,w=2};x:[256]f32;out:[257]f32;work:[256]f32;for i:0..<256 {x[i]=f32(i%11-5);}out[256]=-7;
+  r:=gv_rope(g,1,x[..],out[0..<256],work[..],false);#assert r.status==GvStatus.ok && r.written==256 && out[256]==-7;
+  for i:0..<64 {#assert out[i]==x[i];}
+  #assert abs(out[80]-(f32(f64(x[80])*f64(f32(cos(1.0))))-f32(f64(x[112])*f64(f32(sin(1.0))))))<0.000001f32;
+  for i:0..<257 {out[i]=-7;}
+  #assert gv_rope(g,1,x[0..<255],out[..],work[..],false).status==GvStatus.capacity;
+  #assert gv_rope(g,1,x[..],out[0..<255],work[..],false).status==GvStatus.capacity;
+  #assert gv_rope(g,1,x[..],out[..],work[0..<255],false).status==GvStatus.capacity;
+  #assert gv_rope(g,1,x[..],out[..],work[..],true).status==GvStatus.alias;for value:out {#assert value==-7;}
+}
+
+gv_grid :: (g:GvGrid)->bool #export_c {return g.t>=1 && g.t<=4 && g.h>=2 && g.h/2<=16 && g.h%2==0 && g.w>=2 && g.w/2<=16 && g.w%2==0;}
+gv_plan :: (frames:int,height:int,width:int)->GvPlan #export_c {
+  if frames<1 || frames>8 || height<32 || height/32>16 || height%32!=0 || width<32 || width/32>16 || width%32!=0 {return GvPlan.{status=GvStatus.shape};}
+  g:=GvGrid.{t=(frames+1)/2,h=height/16,w=width/16};n:=g.t*g.h*g.w;
+  return GvPlan.{grid=g,pixels=frames*3*height*width,patches=n,packed=n*GV_VECTOR};
+}
+gv_position :: (g:GvGrid,token:int)->GvPosition #export_c {
+  if !gv_grid(g) || token<0 || token>=g.t*g.h*g.w {return GvPosition.{status=GvStatus.shape};}
+  local:=token%(g.h*g.w);block:=local/4;inside:=local%4;
+  return GvPosition.{time=token/(g.h*g.w),row=(block/(g.w/2))*2+inside/2,column=(block%(g.w/2))*2+inside%2};
+}
+// book:begin patches
+gv_pack :: (frames:int,height:int,width:int,pixels:[]f32,out:[]f32,overlap:bool)->GvRead #export_c {
+  p:=gv_plan(frames,height,width);if p.status!=GvStatus.ok {return GvRead.{status=p.status};}
+  if pixels.count!=p.pixels || out.count<p.packed {return GvRead.{status=GvStatus.capacity};}
+  if overlap {return GvRead.{status=GvStatus.alias};}
+  for value:pixels {if !psionic_tensor_finite_bits(f32_bits(value)) {return GvRead.{status=GvStatus.number};}}
+  for token:0..<p.patches {position:=gv_position(p.grid,token);for channel:0..<3 {for temporal:0..<2 {
+    frame:=position.time*2+temporal;if frame>=frames {frame=frames-1;}
+    for y:0..<16 {for x:0..<16 {
+      source:=((frame*3+channel)*height+position.row*16+y)*width+position.column*16+x;
+      destination:=token*GV_VECTOR+((channel*2+temporal)*16+y)*16+x;out[destination]=pixels[source];
+    }}
+  }}}
+  return GvRead.{written=p.packed};
+}
+// book:end patches
+gv_merge_layout :: (g:GvGrid,channels:int,postshuffle:bool)->GvMerge #export_c {
+  if !gv_grid(g) || channels<1 || channels>2048 {return GvMerge.{status=GvStatus.shape};}
+  n:=g.t*g.h*g.w;return GvMerge.{rows=n/4,width=4*channels,norm_width=ifx postshuffle then 4*channels else channels,values=n*channels};
+}
+gv_deepstack :: (layer:int)->int #export_c {if layer==5 {return 0;}if layer==11 {return 1;}if layer==17 {return 2;}return -1;}
+gv_posmix :: (g:GvGrid,token:int)->GvMix #export_c {
+  p:=gv_position(g,token);if p.status!=GvStatus.ok {return GvMix.{status=p.status};}
+  y:=f32(f64(p.row)*47/f64(g.h-1));x:=f32(f64(p.column)*47/f64(g.w-1));
+  yl:=cast(int)y;xl:=cast(int)x;yh:=yl;xh:=xl;if yl<47 {yh+=1;}if xl<47 {xh+=1;}
+  dy:=f32(f64(y)-f64(yl));dx:=f32(f64(x)-f64(xl));ay:=f32(1.0-f64(dy));ax:=f32(1.0-f64(dx));
+  return GvMix.{indices=[4]int.[yl*48+xl,yl*48+xh,yh*48+xl,yh*48+xh],weights=[4]f32.[f32(f64(ay)*f64(ax)),f32(f64(ay)*f64(dx)),f32(f64(dy)*f64(ax)),f32(f64(dy)*f64(dx))]};
+}
+gv_inverse :: (pair:int)->f32 {power:=f32(exp(log(f64(10000))*f64(pair)/16));return f32(1.0/f64(power));}
+gv_rotate :: (x:f32,y:f32,co:f32,si:f32)->GvRotation {
+  a:=f32(f64(x)*f64(co));b:=f32(f64(y)*f64(si));c:=f32(f64(y)*f64(co));d:=f32(f64(x)*f64(si));
+  rx:=f64(a)-f64(b);ry:=f64(c)+f64(d);
+  if !psionic_ops_fits_f32(rx) || !psionic_ops_fits_f32(ry) {return GvRotation.{status=GvStatus.arithmetic};}
+  return GvRotation.{x=f32(rx),y=f32(ry)};
+}
+gv_rope_span :: (g:GvGrid,heads:int)->GvSpan #export_c {
+  if !gv_grid(g) || heads<1 || heads>16 {return GvSpan.{status=GvStatus.shape};}
+  return GvSpan.{count=g.t*g.h*g.w*heads*GV_HEAD};
+}
+// book:begin rope
+gv_rope :: (g:GvGrid,heads:int,input:[]f32,out:[]f32,work:[]f32,overlap:bool)->GvRead #export_c {
+  p:=gv_rope_span(g,heads);if p.status!=GvStatus.ok {return GvRead.{status=p.status};}
+  if input.count!=p.count || out.count<p.count || work.count<p.count {return GvRead.{status=GvStatus.capacity};}
+  if overlap {return GvRead.{status=GvStatus.alias};}
+  for value:input {if !psionic_tensor_finite_bits(f32_bits(value)) {return GvRead.{status=GvStatus.number};}}
+  for token:0..<(p.count/heads/GV_HEAD) {position:=gv_position(g,token);for head:0..<heads {base:=(token*heads+head)*GV_HEAD;
+    for pair:0..<32 {coordinate:=ifx pair<16 then position.row else position.column;phase:=f32(f64(coordinate)*f64(gv_inverse(pair%16)));co:=f32(cos(f64(phase)));si:=f32(sin(f64(phase)));
+      r:=gv_rotate(input[base+pair],input[base+pair+32],co,si);if r.status!=GvStatus.ok {return GvRead.{status=r.status};}work[base+pair]=r.x;work[base+pair+32]=r.y;
+    }
+  }}
+  for i:0..<p.count {out[i]=work[i];}return GvRead.{written=p.count};
+}
+// book:end rope

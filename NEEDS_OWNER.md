@@ -1,5 +1,34 @@
 # Owner actions
 
+## GR00T chapter168: gated backbone tokenizer/processor (2026-10-31)
+
+The selected robotics artifact is NVIDIA
+`GR00T-N1.7-LIBERO@2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10`.
+Its public weights/config do not include the required Cosmos-Reason2-2B
+tokenizer, backbone configuration and processor. The official dependency's
+configuration GET returns HTTP401; no Hugging Face token environment or normal
+local token file is present. Source and checkpoint metadata have been read;
+no third-party repository scripts were executed.
+
+Please request/accept access at
+[NVIDIA Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B)
+and sign in locally using an approved account. Do not put a token in chat or
+this repository. If approved credentials already exist elsewhere locally,
+provide their location without their contents. Exact pinned asset hashes will
+be recorded after authorized retrieval. This blocks full text/image processor
+and original VLA parity; original-weight numerical components can proceed.
+
+Update: the owner accepted the model terms. A subsequent configuration GET
+still returned HTTP 401 and no local token was present. The installed
+`hf` command is available: run `hf auth login` locally using that approved
+account. Account terms acceptance and the local CLI credential are separate.
+
+Resolved: the owner accepted terms and signed in locally. Authorized retrieval
+now succeeds for pinned Cosmos revision
+`9ce19a195e423419c349abfc86fd07178b230561`; tokenizer/image processor assets
+are available in the normal Hugging Face cache. No credential was printed or
+committed. Original learned-network qualification is recorded in chapter 168; simulator integration remains separate.
+
 ## Made-realm golden after the incoming renderer change (2026-10-31)
 
 Resolved visual review: the original author reviewed and updated the `built`

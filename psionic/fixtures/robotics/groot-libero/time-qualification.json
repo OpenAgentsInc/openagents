@@ -1,0 +1,31 @@
+{
+  "action_width": 1536,
+  "buckets": [
+    0,
+    250,
+    500,
+    750
+  ],
+  "device": "Apple M5 Max",
+  "dit_width": 256,
+  "generated_shader_sha256": "897b9899297c8ed830f6dc30c6b846b0d927b36802a8e987ecbcbe18fd88d1c6",
+  "note": "Measured once during diagnosis against the original emitted shader. Subsequent Gak changes only factored metadata guards and the identical logarithm constant; passing time result was not rerun.",
+  "observed_differing_F32_words": 0,
+  "observed_max_abs_error": 0.0,
+  "output_sha256": "d304f6d5193dfe8344023370df6bb6eb63ee92ff89fd7359ee9021a8e3e33cb5",
+  "passed": true,
+  "probe_source_sha256": "5acf5b2c3f9339ee8f08d2cce97c4cd7bcdf351a4cd96f7ac6561543a35d5ba0",
+  "reference": {
+    "device": "mps",
+    "diffusers": "0.35.1",
+    "execution": "Independently invoked get_timestep_embedding and original action sinusoid formula; no NVIDIA checkout execution",
+    "torch": "2.9.0"
+  },
+  "schema": "psionic-groot-action-time-metal-v1",
+  "scope": "Analytic time features only; no learned output or model inference",
+  "tolerance_frozen_before_observation": {
+    "atol": 2e-05,
+    "rtol": 2e-05
+  },
+  "values_compared": 7168
+}

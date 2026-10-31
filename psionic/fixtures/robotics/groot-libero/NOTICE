@@ -1,0 +1,11 @@
+Licensed by NVIDIA Corporation under the NVIDIA Open Model License.
+
+Original target: NVIDIA GR00T-N1.7-LIBERO, revision
+2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21, subfolder libero_10.
+The pinned model card identifies the NVIDIA Open Model License Agreement.
+The retained agreement PDF is the October 24, 2025 version.
+
+This directory contains original small metadata and safetensors JSON headers,
+plus explicitly identified derived metadata. It contains no weight payload.
+The target architecture contains NVIDIA Cosmos-Reason2-2B; this metadata audit
+does not establish a working Cosmos or GR00T product or service.

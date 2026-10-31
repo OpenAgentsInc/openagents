@@ -1,0 +1,138 @@
+{
+  "schema": "psionic-groot-image-qualification-v1",
+  "date": "2026-10-31",
+  "sources": [
+    {
+      "path": "psionic/lib/robotics/groot-image.coax",
+      "sha256": "9c16d70b0ec51e482de53983f80cb0c34fd357dc21450990b96a88b58c413871"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-image-types.coax",
+      "sha256": "80ec9a49bee1c0f37db5ef6fa751b3d918676fa92e8f76cf9b6c6ed76628c7dd"
+    },
+    {
+      "path": "psionic/lib/robotics/groot-image-check-fixtures.coax",
+      "sha256": "231d74c0152cfe9532f27e19b0ea93c4a171df34e75ccb043a09f67e4dc5c63e"
+    },
+    {
+      "path": "psionic/tests/robotics/groot-image-native.c",
+      "sha256": "6d50175c7291928597804e4df0433e4a27c96ba0253f7d87e178a7bc086ac5a0"
+    },
+    {
+      "path": "psionic/tests/robotics/check-groot-image.sh",
+      "sha256": "e216c66193a154a98f088ff188f81c92dd0f905842dd6aab73b1db54e1e43483"
+    },
+    {
+      "path": "psionic/tests/robotics/groot_image_reference.py",
+      "sha256": "e045d0aff9359d9d06dd7c0d4e9724235ce079d114e27178a23b4c0060b0b0ad"
+    }
+  ],
+  "source_revision": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+  "source_url": "https://github.com/NVIDIA/Isaac-GR00T/blob/c56f54128d92f743889b7e4cecfc1ceafd88739e/gr00t/model/gr00t_n1d7/image_augmentations.py",
+  "resize_source": "https://github.com/opencv/opencv/blob/4.11.0/modules/imgproc/src/resize.cpp",
+  "api": {
+    "name": "gi_preprocess",
+    "arguments": [
+      "first_row:i64",
+      "rows:i64",
+      "raw:HWC_RGB_u8[196608]",
+      "out:NCHW_f32[3,rows,256]",
+      "work:f32[3,rows,256]",
+      "overlap:bool"
+    ],
+    "full_camera": "first_row0,rows256",
+    "row_boundary": "first>=0,rows>=1,rows<=256-first; signed integer extreme admission covered",
+    "recipe": "raw256squareRGBuint8; wrapperflipbothaxes; identity firstshortestedge256; centercrop243at6; INTER_AREAresize256; F32(pixel\u2212127.5)/127.5; NCHW",
+    "rounding": "Exact243\u2192256source11-bit coefficients; sourceucharvertical separate high-word rounding; generic floating bilinear output differs",
+    "atomicity": "Output untouched on refusal; output/work tails preserved on success; valid typed extents and honest disjoint-write fact are caller duties"
+  },
+  "checks": {
+    "declarations": 6,
+    "cases": 516,
+    "full_source_row_slices": 23,
+    "original_opencv_pixel_goldens": 432,
+    "all_axis_maps": 256,
+    "all_normalization_bytes": 256
+  },
+  "focused_mutation": {
+    "scope": "root-only",
+    "mutants": 101,
+    "killed": 101,
+    "survivors": 0
+  },
+  "native": {
+    "cases_each": 2082874,
+    "builds": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "flags": [
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ]
+  },
+  "opencv_reference": {
+    "version": "4.11.0",
+    "numpy": "1.26.4",
+    "images": 8,
+    "exact_f32_words": 1572864,
+    "records": [
+      {
+        "kind": 0,
+        "raw_rgb_u8_sha256": "c2acbbedc65b3c71b4b763e003b8b84547f7e6299fa33aafd9ddb362bbece82b",
+        "resized_rgb_u8_sha256": "3fcec1e48a98219efcbe90b987315474d448d48ab6acef6b66ed5ec50f19b9b9",
+        "normalized_nchw_f32_le_sha256": "62b3535b854f5b83b8911e8f2157341e9fad30b036a2e74e848dab5d006ddfc0"
+      },
+      {
+        "kind": 1,
+        "raw_rgb_u8_sha256": "3381de4ca9f3a477f25989dfc8b744e7916046b7aa369f61a9a2f7dc0963ec9e",
+        "resized_rgb_u8_sha256": "3381de4ca9f3a477f25989dfc8b744e7916046b7aa369f61a9a2f7dc0963ec9e",
+        "normalized_nchw_f32_le_sha256": "00cbbe71c8e0229f42fa9750a6f3d63bc0cbe3195c654cea336752597ece5232"
+      },
+      {
+        "kind": 2,
+        "raw_rgb_u8_sha256": "c1f7d702a80ae5e7dc52d62ef2577cbbb25c045d6dda3a49a872130518f48cc0",
+        "resized_rgb_u8_sha256": "c1f7d702a80ae5e7dc52d62ef2577cbbb25c045d6dda3a49a872130518f48cc0",
+        "normalized_nchw_f32_le_sha256": "d36953d67ef06acd7ef32e8db47ef075fa0bb8f8a1d2e639e09d61c3bc6c7f48"
+      },
+      {
+        "kind": 3,
+        "raw_rgb_u8_sha256": "755d9096427747a21441e2d05dc5f9947e0a9a210941c4f9221614395843dba8",
+        "resized_rgb_u8_sha256": "9a28a6fedb61a62d2205090741622e7913c8a0cb2196993d9dd8a68c78324e19",
+        "normalized_nchw_f32_le_sha256": "14e0cb2c220d886a4b68f87cb9605bb860a0fcd884f0820c52f79c0893e82b12"
+      },
+      {
+        "kind": 4,
+        "raw_rgb_u8_sha256": "a3f69192f4c98bd8559f180608513bade68a1f01ace2aca3abe5410b009c5648",
+        "resized_rgb_u8_sha256": "a0c3bc4c9f129750e3da3021480964e59247e06011f959ef2762b65d6c09de8a",
+        "normalized_nchw_f32_le_sha256": "3a0548cbd9f38da228cb197bfe437e46a8b3f423d446039bbf1ad9c2b456f653"
+      },
+      {
+        "kind": 5,
+        "raw_rgb_u8_sha256": "fec038ebd2e95c3594562e3a49d205ed72068a3f5e2dddd4d23aae0d5094059f",
+        "resized_rgb_u8_sha256": "41a89c2110f670c89aa9cbd75480024d3279eac09a0556530623f7993b1348de",
+        "normalized_nchw_f32_le_sha256": "dd19a728d5b9e0fb4131108c7c2554eec196ef4201f0132d59abbd31cd8ba701"
+      },
+      {
+        "kind": 6,
+        "raw_rgb_u8_sha256": "fb5f204ed84efa48484d193e260fcb573938c9153d852300b8f0cdf58cc2b85b",
+        "resized_rgb_u8_sha256": "44fb7d7db637ccb17c4e5d9c4dd530df9acc4c8ba08a3379ea522fdf3195a1ec",
+        "normalized_nchw_f32_le_sha256": "cd4ac8d1864460e2f977739a800c8beabb12a8c8b8dd645cec0ccde3d67af129"
+      },
+      {
+        "kind": 7,
+        "raw_rgb_u8_sha256": "2961137ded7508136fe713238cd32724903c17a8190fb0588bd762b2532a262c",
+        "resized_rgb_u8_sha256": "d5477408ca29a8c3411429df68b0362a26ef4a4a445f0d40f1c62bf21a85a517",
+        "normalized_nchw_f32_le_sha256": "73989762f6ab464762bf2986df9912a92e61fe4e17deaf4077f2ccc78f33fe5a"
+      }
+    ]
+  },
+  "additional_torchvision_normalization": {
+    "torch": "2.9.0",
+    "all_byte_values_times3channels": 768,
+    "exact_f32_words": 768,
+    "result": "F.normalize(F32pixels,torch.tensor([.5]*3)*255,torch.tensor([.5]*3)*255) matches F32(pixel\u2212127.5)/127.5 bit-for-bit"
+  },
+  "scope": "Pixel/source arithmetic on eight synthetic images only, not original image dataset, learned VLA execution, closed loop or robotic outcome. No framework dependency in runtime/ordinary native checks."
+}

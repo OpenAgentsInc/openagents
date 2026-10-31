@@ -1,0 +1,120 @@
+// Exact selected GR00T-N1.7-LIBERO libero_10 observation/action conversion.
+// Caller supplies finite F32 values and truthful spans/overlap facts. This
+// mathematical boundary neither admits a checkpoint nor supplies physics.
+#load "groot-embodiment-types.coax";
+#load "groot-embodiment-check-fixtures.coax";
+#authority;
+
+#test "LIBERO source quantiles are fixed independently of observations" {
+  for i:0..<8 {#assert GE_STATE_LO[i]==GE_TEST_STATE_LO[i] && GE_STATE_HI[i]==GE_TEST_STATE_HI[i];}
+  for i:0..<7 {#assert GE_ACTION_LO[i]==GE_TEST_ACTION_LO[i] && GE_ACTION_HI[i]==GE_TEST_ACTION_HI[i];}
+}
+#test "LIBERO finite words and clipping preserve every declared scalar boundary" {
+  for bits:[7]u32.[0,0x80000000,1,0x80000001,0x7f7fffff,0xff7fffff,0x3f800000] {#assert ge_bits_finite(bits) && ge_finite(f32_from_bits(bits));}
+  for bits:[6]u32.[0x7f800000,0xff800000,0x7fc00000,0xffc00000,0x7f800001,0x7fc00001] {#assert !ge_bits_finite(bits);}
+  #assert ge_clip(-2).value== -1 && ge_clip(-2).clipped && ge_clip(2).value==1 && ge_clip(2).clipped;
+  #assert ge_clip(-1).value== -1 && !ge_clip(-1).clipped && ge_clip(1).value==1 && !ge_clip(1).clipped;
+  #assert ge_clip(0.5f32).value==0.5f32 && !ge_clip(0.5f32).clipped;
+  #assert f32_bits(ge_clip(f32_from_bits(0x80000000)).value)==0x80000000;
+}
+#test "LIBERO state normalization uses all8source endpoints and zero pads132" {
+  state:[8]f32;out:[134]f32;for i:0..<134 {out[i]=7;}
+  for i:0..<8 {state[i]=f32(GE_TEST_STATE_LO[i]);}
+  r:=ge_normalize(state[..],out[..],false);#assert r.status==GeStatus.ok && r.written==132 && r.clipped==0;
+  for i:0..<8 {#assert out[i]== -1;}for i:8..<132 {#assert f32_bits(out[i])==0;}#assert out[132]==7 && out[133]==7;
+  for i:0..<8 {state[i]=f32(GE_TEST_STATE_HI[i]);}
+  r=ge_normalize(state[..],out[0..<132],false);#assert r.status==GeStatus.ok && r.written==132 && r.clipped==0;for i:0..<8 {#assert out[i]==1;}
+  for i:0..<8 {state[i]=f32_from_bits(0x7f7fffff);}r=ge_normalize(state[..],out[..],false);#assert r.status==GeStatus.ok && r.clipped==8;for i:0..<8 {#assert out[i]==1;}
+  for i:0..<8 {state[i]=f32_from_bits(0xff7fffff);}r=ge_normalize(state[..],out[..],false);#assert r.status==GeStatus.ok && r.clipped==8;for i:0..<8 {#assert out[i]== -1;}
+}
+#test "LIBERO state shape and overlap refusal preserve every output coordinate" {
+  state:[9]f32;out:[134]f32;for i:0..<134 {out[i]=7;}
+  for count:[3]int.[0,7,9] {r:=ge_normalize(state[0..<count],out[..],false);#assert r.status==GeStatus.shape && r.written==0;}
+  #assert ge_normalize(state[0..<8],out[0..<131],false).status==GeStatus.shape;
+  #assert ge_normalize(state[0..<8],out[..],true).status==GeStatus.overlap;
+  // Native tests supply nonfinite F32 values; the VM refuses their construction.
+  for v:out {#assert v==7;}
+}
+#test "LIBERO scalar arithmetic rounds the normalized intermediate before final scaling" {
+  #assert f32_bits(ge_state_clip(0,0).value)==0x3edf6dcc;
+  #assert f32_bits(ge_state_clip(1,0).value)==0xbd976dc8;
+  #assert f32_bits(ge_state_clip(4,0).value)==0x3cc727c0 && f32_bits(ge_state_clip(5,0).value)==0x3e8245fc;
+  #assert ge_state_clip(2,0).value== -1 && ge_state_clip(3,0).value== -1;
+  #assert ge_state_clip(6,0).value== -1 && ge_state_clip(7,0).value==1;
+}
+#test "LIBERO model40x132 projects only first16x7 and preserves every output tail" {
+  model:[5280]f32;out:[114]f32;for i:0..<5280 {model[i]=31;}for i:0..<114 {out[i]=7;}
+  for row:0..<16 {for axis:0..<7 {model[row*132+axis]=ifx row%2==0 then -1.0f32 else 1.0f32;}}
+  r:=ge_decode(model[..],out[0..<112],false);#assert r.status==GeStatus.ok && r.written==112 && r.clipped==0 && out[112]==7 && out[113]==7;
+  for row:0..<16 {for axis:0..<6 {want:=ifx row%2==0 then GE_TEST_ACTION_LO[axis] else GE_TEST_ACTION_HI[axis];#assert out[row*7+axis]==f32(want);}
+    #assert out[row*7+6]==(ifx row%2==0 then 1.0f32 else -1.0f32);}
+  for row:0..<16 {for axis:0..<7 {model[row*132+axis]=0;}}
+  r=ge_decode(model[..],out[..],false);#assert r.status==GeStatus.ok;for row:0..<16 {#assert f32_bits(out[row*7+6])==0x80000000;}
+  for row:0..<16 {for axis:0..<7 {model[row*132+axis]=2;}}
+  r=ge_decode(model[..],out[..],false);#assert r.status==GeStatus.ok && r.clipped==112;
+}
+#test "LIBERO action scalar clips then inverts quantiles and wrapper retains zero tie" {
+  for axis:0..<6 {#assert ge_action_clip(axis,-2).value==f32(GE_TEST_ACTION_LO[axis]) && ge_action_clip(axis,2).value==f32(GE_TEST_ACTION_HI[axis]);}
+  #assert ge_action_clip(6,-1).value==1 && ge_action_clip(6,1).value== -1;
+  #assert f32_bits(ge_action_clip(6,0).value)==0x80000000;
+  #assert ge_gripper(0)==1 && ge_gripper(1)== -1 && f32_bits(ge_gripper(0.5f32))==0x80000000;
+}
+#test "LIBERO decoder shape and overlap refusal preserve every output coordinate" {
+  model:[5281]f32;out:[114]f32;for i:0..<114 {out[i]=7;}
+  for count:[3]int.[0,5279,5281] {r:=ge_decode(model[0..<count],out[..],false);#assert r.status==GeStatus.shape && r.written==0;}
+  #assert ge_decode(model[0..<5280],out[0..<111],false).status==GeStatus.shape;
+  #assert ge_decode(model[0..<5280],out[..],true).status==GeStatus.overlap;
+  for v:out {#assert v==7;}
+}
+
+// Original selected libero_sim q01/q99, pinned by the independent metadata
+// fixture. These are fixed profile parameters, never fitted on current input.
+GE_STATE_LO :: [8]f64.[-0.38999009132385254,-0.28383004665374756,0.4479505717754364,1.8810230493545532,-2.8866775035858154,-1.159900426864624,0.0020664597395807505,-0.0400138795375824];
+GE_STATE_HI :: [8]f64.[0.15302616357803345,0.32915401458740234,1.2546923160552979,3.3035426139831543,2.7496531009674072,0.6893712878227234,0.04004855826497078,-0.0017598443664610386];
+GE_ACTION_LO :: [7]f64.[-0.6348214149475098,-0.7741071581840515,-0.7633928656578064,-0.09749999642372131,-0.14820000529289246,-0.2742857038974762,0];
+GE_ACTION_HI :: [7]f64.[0.7714285850524902,0.8464285731315613,0.9375,0.13928571343421936,0.15964286029338837,0.3246428668498993,1];
+
+ge_bits_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
+ge_finite :: (v:f32)->bool {return ge_bits_finite(f32_bits(v));}
+ge_clip :: (v:f32)->GeClipped {if v< -1 {return GeClipped.{value=-1,clipped=true};}if v>1 {return GeClipped.{value=1,clipped=true};}return GeClipped.{value=v};}
+ge_state_clip :: (axis:int,v:f32)->GeClipped {
+  // Early clipping is equivalent on finite values and avoids overflow of the
+  // source F32 intermediate for extremely distant observations.
+  if f64(v)<GE_STATE_LO[axis] {return GeClipped.{value=-1,clipped=true};}
+  if f64(v)>GE_STATE_HI[axis] {return GeClipped.{value=1,clipped=true};}
+  ratio:f32=f32((f64(v)-GE_STATE_LO[axis])/(GE_STATE_HI[axis]-GE_STATE_LO[axis]));
+  twice:f32=2.0f32*ratio;return ge_clip(twice-1.0f32);
+}
+// book:begin normalize
+ge_normalize :: (state:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+  if state.count!=8 || out.count<132 {return GeRead.{status=GeStatus.shape};}
+  if overlap {return GeRead.{status=GeStatus.overlap};}
+  for v:state {if !ge_finite(v) {return GeRead.{status=GeStatus.number};}}
+  staged:[132]f32;clipped:=0;
+  for i:0..<8 {v:=ge_state_clip(i,state[i]);staged[i]=v.value;if v.clipped {clipped+=1;}}
+  for i:0..<132 {out[i]=staged[i];}return GeRead.{written=132,clipped=clipped};
+}
+// book:end normalize
+ge_gripper :: (v:f32)->f32 {
+  twice:f32=2.0f32*v;center:f32=twice-1.0f32;
+  if center>0 {return -1;}if center<0 {return 1;}
+  return f32_from_bits(0x80000000);
+}
+ge_action_clip :: (axis:int,v:f32)->GeClipped {
+  clipped:=ge_clip(v);shifted:f32=clipped.value+1.0f32;unit:f32=shifted/2.0f32;
+  scaled:f64=f64(unit)*(GE_ACTION_HI[axis]-GE_ACTION_LO[axis]);
+  decoded:f32=f32(scaled+GE_ACTION_LO[axis]);
+  if axis==6 {decoded=ge_gripper(decoded);}return GeClipped.{value=decoded,clipped=clipped.clipped};
+}
+// book:begin decode
+ge_decode :: (model:[]f32,out:[]f32,overlap:bool)->GeRead #export_c {
+  if model.count!=5280 || out.count<112 {return GeRead.{status=GeStatus.shape};}
+  if overlap {return GeRead.{status=GeStatus.overlap};}
+  staged:[112]f32;clipped:=0;
+  for row:0..<16 {for axis:0..<7 {
+    v:=model[row*132+axis];if !ge_finite(v) {return GeRead.{status=GeStatus.number};}
+    action:=ge_action_clip(axis,v);staged[row*7+axis]=action.value;if action.clipped {clipped+=1;}
+  }}
+  for i:0..<112 {out[i]=staged[i];}return GeRead.{written=112,clipped=clipped};
+}
+// book:end decode

@@ -1,0 +1,3 @@
+// Bounded Cosmos/GR00T text-prefix support, not a text-generation API.
+GtStatus :: enum u8 {ok;shape;capacity;alias;value;}
+GtRead :: struct {status:GtStatus;written:int;}

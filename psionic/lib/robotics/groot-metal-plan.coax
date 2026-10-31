@@ -1,0 +1,97 @@
+// Original LIBERO category2 state encoder, Metal matrix-unit F32-accumulation
+// profile. The C host performs only pm_* effects from these Coax descriptors.
+#load "groot-metal-types.coax";
+#load "groot-linear.coax";
+#authority;
+
+#test "Metal selected-state layout fixes all private byte extents and launch arguments" {
+  p:=gms_layout();#assert p.nodes==4;
+  expected:=[8]int.[270336,3145728,4096,6144,528,4096,6144,2560];
+  for i:0..<8 {#assert p.bytes[i]==expected[i];}#assert gms_admit(expected[..],false)==GmsStatus.ok;
+  for i:0..<8 {bad:=expected;bad[i]-=1;#assert gms_admit(bad[..],false)==GmsStatus.capacity;}
+  #assert gms_admit(expected[0..<7],false)==GmsStatus.shape && gms_admit(expected[..],true)==GmsStatus.alias;
+  a:=gms_node(0);b:=gms_node(1);c:=gms_node(2);d:=gms_node(3);
+  #assert a.status==GmsStatus.ok && a.kernel==0 && a.items==16 && a.lanes==128 && a.block==128 && a.argc==6;
+  #assert a.args[0].integer==1024 && a.args[1].integer==132 && a.args[2].integer==1;
+  #assert a.args[3].kind==4 && a.args[3].buffer==0 && a.args[3].count==67584 && a.args[4].buffer==4 && a.args[4].count==132 && a.args[5].buffer==5 && a.args[5].count==1024;
+  #assert b.kernel==1 && b.items==1024 && b.lanes==1 && b.block==128 && b.argc==4 && b.args[0].buffer==5 && b.args[0].count==1024 && b.args[1].buffer==2 && b.args[2].buffer==7 && b.args[2].count==2560 && b.args[3].kind==0 && b.args[3].integer==0;
+  #assert c.kernel==0 && c.items==24 && c.args[0].integer==1536 && c.args[1].integer==1024 && c.args[2].integer==1 && c.args[3].buffer==1 && c.args[3].count==786432 && c.args[4].buffer==5 && c.args[4].count==1024 && c.args[5].buffer==6 && c.args[5].count==1536;
+  #assert d.kernel==2 && d.items==1536 && d.args[0].buffer==6 && d.args[1].buffer==3 && d.args[2].buffer==7 && d.args[3].integer==1024;
+  #assert gms_node(-1).status==GmsStatus.shape && gms_node(4).status==GmsStatus.shape;
+}
+#test "Metal command receipts are ordered and require an actual completed wait" {
+  p:=gms_layout();s:=[1]GmsCursor.[gms_begin(p.bytes[..],false)];flags:[2560]u8;h:[1024]u32;y:[1536]u32;out:[2561]f32;
+  #assert gms_publish(s[..],flags[..],h[..],y[..],out[..],false).status==GmsStatus.order;
+  for i:0..<4 {#assert gms_sent(s[..],i,0)==GmsStatus.ok;}
+  extra:=s;#assert gms_sent(extra[..],4,0)==GmsStatus.order;
+  #assert gms_publish(s[..],flags[..],h[..],y[..],out[..],false).status==GmsStatus.order;
+  #assert gms_waited(s[..],0)==GmsStatus.ok;
+  h[0]=f32_bits(2.0f32);y[0]=f32_bits(-3.0f32);y[1535]=f32_bits(3.0f32);out[2560]=7;r:=gms_publish(s[..],flags[..],h[..],y[..],out[0..<2560],false);
+  #assert r.status==GmsStatus.ok && r.written==2560 && out[0]==2 && out[1024]==-3 && out[2559]==3 && out[2560]==7;
+  #assert gms_publish(s[..],flags[..],h[..],y[..],out[..],false).status==GmsStatus.order;
+  t:=[1]GmsCursor.[gms_begin(p.bytes[..],false)];#assert gms_sent(t[..],1,0)==GmsStatus.order && gms_sent(t[..],0,0)==GmsStatus.order;
+  t[0]=gms_begin(p.bytes[..],false);#assert gms_waited(t[..],0)==GmsStatus.order;
+  t[0]=gms_begin(p.bytes[..],false);#assert gms_sent(t[..],0,7)==GmsStatus.check;
+  t[0]=gms_begin(p.bytes[..],false);#assert gms_sent(t[..],0,4)==GmsStatus.device;
+  t[0]=GmsCursor.{waited=true};#assert gms_sent(t[..],0,0)==GmsStatus.order;
+  t[0]=GmsCursor.{published=true};#assert gms_sent(t[..],0,0)==GmsStatus.order;
+  t[0]=GmsCursor.{next=-1};#assert gms_sent(t[..],-1,0)==GmsStatus.order;
+  t[0]=GmsCursor.{next=4,waited=true};#assert gms_waited(t[..],0)==GmsStatus.order;
+  t[0]=GmsCursor.{next=4,published=true};#assert gms_waited(t[..],0)==GmsStatus.order;
+  t[0]=GmsCursor.{status=GmsStatus.device};#assert gms_waited(t[..],0)==GmsStatus.device;
+  empty:[1]GmsCursor;#assert gms_sent(empty[0..<0],0,0)==GmsStatus.shape && gms_waited(empty[0..<0],0)==GmsStatus.shape && gms_publish(empty[0..<0],flags[..],h[..],y[..],out[..],false).status==GmsStatus.shape;
+}
+#test "Metal publication refuses private numeric errors and all malformed writable contracts" {
+  p:=gms_layout();flags:[2560]u8;h:[1024]u32;y:[1536]u32;out:[2560]f32;for i:0..<2560 {out[i]=7;}
+  for mode:0..<10 {s:=[1]GmsCursor.[gms_begin(p.bytes[..],false)];for i:0..<4 {#assert gms_sent(s[..],i,0)==GmsStatus.ok;}
+    #assert gms_waited(s[..],ifx mode==6 then 7 else ifx mode==7 then 4 else 0)==(ifx mode==6 then GmsStatus.check else ifx mode==7 then GmsStatus.device else GmsStatus.ok);
+    if mode==0 {flags[0]=1;}if mode==1 {flags[0]=0;flags[2559]=1;}
+    if mode==8 {h[0]=0x7f800000;}if mode==9 {y[1535]=0x7fc00001;}
+    r:=gms_publish(s[..],flags[0..<(ifx mode==2 then 2559 else 2560)],h[0..<(ifx mode==3 then 1023 else 1024)],y[0..<(ifx mode==4 then 1535 else 1536)],out[..],mode==5);
+    #assert r.status!=GmsStatus.ok && r.written==0;for value:out {#assert value==7;}flags[0]=0;flags[2559]=0;h[0]=0;y[1535]=0;
+  }
+}
+
+gms_layout :: ()->GmsLayout #export_c {return GmsLayout.{bytes=[8]int.[270336,3145728,4096,6144,528,4096,6144,2560],nodes=4};}
+gms_admit :: (capacities:[]int,overlap:bool)->GmsStatus #export_c {
+  if capacities.count!=8 {return GmsStatus.shape;}p:=gms_layout();for i:0..<8 {if capacities[i]<p.bytes[i] {return GmsStatus.capacity;}}
+  if overlap {return GmsStatus.alias;}return GmsStatus.ok;
+}
+gms_i :: (value:int)->GmsArg {return GmsArg.{integer=value};}
+gms_v :: (buffer:int,count:int)->GmsArg {return GmsArg.{kind=4,buffer=buffer,count=count};}
+gms_node :: (index:int)->GmsNode #export_c {
+  n:GmsNode;n.block=128;
+  if index==0 || index==2 {
+    first:=index==0;rows:=ifx first then 1024 else 1536;cols:=ifx first then 132 else 1024;
+    n.items=rows/64;n.lanes=128;n.argc=6;
+    n.args[0]=gms_i(rows);n.args[1]=gms_i(cols);n.args[2]=gms_i(1);
+    n.args[3]=gms_v(ifx first then 0 else 1,rows*cols/2);n.args[4]=gms_v(ifx first then 4 else 5,cols);n.args[5]=gms_v(ifx first then 5 else 6,rows);return n;
+  }
+  if index==1 || index==3 {
+    first:=index==1;count:=ifx first then 1024 else 1536;n.kernel=ifx first then 1 else 2;n.items=count;n.lanes=1;n.argc=4;
+    n.args[0]=gms_v(ifx first then 5 else 6,count);n.args[1]=gms_v(ifx first then 2 else 3,count);n.args[2]=gms_v(7,2560);n.args[3]=gms_i(ifx first then 0 else 1024);return n;
+  }
+  return GmsNode.{status=GmsStatus.shape};
+}
+gms_begin :: (capacities:[]int,overlap:bool)->GmsCursor #export_c {return GmsCursor.{status=gms_admit(capacities,overlap)};}
+gms_sent :: (s:[]GmsCursor,index:int,effect_status:int)->GmsStatus #export_c {
+  if s.count!=1 {return GmsStatus.shape;}if s[0].status!=GmsStatus.ok {return s[0].status;}
+  if s[0].waited || s[0].published || index!=s[0].next || s[0].next<0 || s[0].next>=4 {s[0].status=GmsStatus.order;return s[0].status;}
+  if effect_status!=0 {s[0].status=ifx effect_status==7 then GmsStatus.check else GmsStatus.device;return s[0].status;}
+  s[0].next+=1;return GmsStatus.ok;
+}
+gms_waited :: (s:[]GmsCursor,effect_status:int)->GmsStatus #export_c {
+  if s.count!=1 {return GmsStatus.shape;}if s[0].status!=GmsStatus.ok {return s[0].status;}
+  if s[0].waited || s[0].published || s[0].next!=4 {s[0].status=GmsStatus.order;return s[0].status;}
+  s[0].waited=true;if effect_status!=0 {s[0].status=ifx effect_status==7 then GmsStatus.check else GmsStatus.device;}return s[0].status;
+}
+gms_publish :: (s:[]GmsCursor,flags:[]u8,hidden:[]u32,final:[]u32,out:[]f32,overlap:bool)->GmsRead #export_c {
+  if s.count!=1 {return GmsRead.{status=GmsStatus.shape};}if s[0].status!=GmsStatus.ok {return GmsRead.{status=s[0].status};}
+  if !s[0].waited || s[0].next!=4 || s[0].published {return GmsRead.{status=GmsStatus.order};}
+  if flags.count!=2560 || hidden.count!=1024 || final.count!=1536 || out.count<2560 {return GmsRead.{status=GmsStatus.capacity};}
+  if overlap {return GmsRead.{status=GmsStatus.alias};}
+  for flag:flags {if flag!=0 {s[0].status=GmsStatus.number;return GmsRead.{status=s[0].status};}}
+  for value:hidden {if !psionic_tensor_finite_bits(value) {s[0].status=GmsStatus.number;return GmsRead.{status=s[0].status};}}
+  for value:final {if !psionic_tensor_finite_bits(value) {s[0].status=GmsStatus.number;return GmsRead.{status=s[0].status};}}
+  for i:0..<1024 {out[i]=f32_from_bits(hidden[i]);}for i:0..<1536 {out[1024+i]=f32_from_bits(final[i]);}s[0].published=true;return GmsRead.{written=2560};
+}

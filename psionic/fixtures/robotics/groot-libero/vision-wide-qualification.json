@@ -1,0 +1,146 @@
+{
+  "model": "nvidia/GR00T-N1.7-LIBERO",
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "subfolder": "libero_10",
+  "category": 2,
+  "passed": true,
+  "endpoint_outputs_passed": true,
+  "all_diagnostic_boundaries_passed": true,
+  "values_compared": 16777216,
+  "execution_profile": "Original BF16 learned weights; F32 Metal4 matrix accumulation, wide normalization statistics/centering/division (Metal float-float f64 profile), F32 affines/attention/tanh-GELU, independently qualified erf-polynomial merger GELU.",
+  "input_scope": "Original SDK-packed F32 pixels for two owned patterned still cameras; no captured real-world observation or preprocessor qualification claim.",
+  "learned_tensors": 315,
+  "stages": 29,
+  "micro_op_launches": 359,
+  "tolerance_frozen_before_comparison": {
+    "atol": 0.002,
+    "rtol": 0.0002
+  },
+  "device": {
+    "apple_family": 10,
+    "gpu_all_stage_command_seconds": 0.214742041659,
+    "name": "Apple M5 Max",
+    "timing_scope": "GPU command batches; excludes compile, original-weight load/decode/upload, packed input preparation, waits/flag scans on CPU, captures and comparison."
+  },
+  "reference": {
+    "capsule_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+    "cpu_model_fallback": false,
+    "implementation": "Pinned original Transformers4.57.3 Qwen3VLModel on MPS/F32, independently captured earlier"
+  },
+  "source_sha256": {
+    "psionic/lib/device/tile.coax": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+    "psionic/lib/robotics/groot-action-wide-kernels.coax": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c",
+    "psionic/lib/robotics/groot-device-kernels.coax": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af",
+    "psionic/lib/robotics/groot-vision-device.coax": "31b266a9c1d58bb7705024019385c65f07382e17d4090b4bb9176a2b8a5ca7cf",
+    "psionic/lib/robotics/groot-vision-metal-check-fixtures.coax": "219abddac099785ade76693490261e19259d04fa6b3b9d0011a99e507b429a42",
+    "psionic/lib/robotics/groot-vision-metal-plan.coax": "39c7ee071c940a3a0f78141a29addaef180115e6f9d33ffbd0bed4ca05f7677e",
+    "psionic/lib/robotics/groot-vision-metal-types.coax": "e7e115d3d7ecd9b2701d64d27fd6876233b98cabdf4b53afff2360306b3a429d",
+    "psionic/platform/metal-host.m": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6",
+    "psionic/tests/robotics/groot_gpu_dispatch.h": "1390e35f49513a4ae17f75ba4cbd53c0be02b1ad83caa1bcf1e520abc5a41a4d",
+    "psionic/tests/robotics/groot_vision_metal.c": "773f8327f46786882169ebfe2ec9decb235c7e81790e0f460c610a00587be81b",
+    "psionic/tests/robotics/groot_vision_metal_reference.py": "ca353503a4214141c37a2441eafd3f59ef5ddc6720be5a60b279e0c295e4f0b2"
+  },
+  "cpu_model_fallback": false,
+  "scope": "Complete original vision24 plus ordinary and three deepstack mergers only. Language, action flow, physical robot control and task success are separate.",
+  "schema": "psionic-groot-vision-wide-qualification-summary-v1",
+  "date": "2026-10-31",
+  "diagnostic_boundaries": 34,
+  "worst_boundary": {
+    "endpoint": false,
+    "max_abs_error": 0.3026123046875,
+    "max_fraction_of_tolerance": 0.924862522603682,
+    "name": "vision-block23",
+    "output_sha256": "72aa90931368d6a9b4f84b7c37d537dff8956e5fa9209b9877901afcc8b9f60e",
+    "passed": true,
+    "reference_sha256": "41044441903878537229bffb02438073c4a89f5ba01a86e89e1e47a701f21a08",
+    "shape": [
+      512,
+      1024
+    ],
+    "values": 524288
+  },
+  "endpoints": [
+    {
+      "endpoint": true,
+      "max_abs_error": 1.239776611328125e-05,
+      "max_fraction_of_tolerance": 0.0039169849869799414,
+      "name": "vision-deepstack0",
+      "output_sha256": "9eedc8bd95fd53ffbc09a261990d61e041cae1b8e56a2f4e505c5f900f89833f",
+      "passed": true,
+      "reference_sha256": "641b904fab0a43ccece59ebed8b9dd10429825bc42556fd0dd1084191ad577aa",
+      "shape": [
+        128,
+        2048
+      ],
+      "values": 262144
+    },
+    {
+      "endpoint": true,
+      "max_abs_error": 1.71661376953125e-05,
+      "max_fraction_of_tolerance": 0.007088006101355651,
+      "name": "vision-deepstack1",
+      "output_sha256": "fb7bb9c052fc71fb339fe2392c5db204ed1c4f668cd1fb81cbeecb2fb7a3774e",
+      "passed": true,
+      "reference_sha256": "5f20187e9b75bf24e2364f883ea40ef580fea4ad0a7b4bec30096d1988a7a8d0",
+      "shape": [
+        128,
+        2048
+      ],
+      "values": 262144
+    },
+    {
+      "endpoint": true,
+      "max_abs_error": 0.000247955322265625,
+      "max_fraction_of_tolerance": 0.0662330575202007,
+      "name": "vision-deepstack2",
+      "output_sha256": "0b7bbd64ddca58816122fc12c619d08b0df4fba6de7d5c5ef1cf6e2cf4b32b1d",
+      "passed": true,
+      "reference_sha256": "524281766eeefb688c3df89fb5c6cda60711db75a38e0e0d322f5de08468ff45",
+      "shape": [
+        128,
+        2048
+      ],
+      "values": 262144
+    },
+    {
+      "endpoint": true,
+      "max_abs_error": 0.0002923011779785156,
+      "max_fraction_of_tolerance": 0.08258890372135899,
+      "name": "vision-merged",
+      "output_sha256": "0b8d91fc1c6de22bad4209d91f859c36e5baccc4ed0194ccade32d4637c7ab40",
+      "passed": true,
+      "reference_sha256": "5d56345a66f4f3f905461da1edb8826fefd38b516cd502ebf8aecca50563dd9d",
+      "shape": [
+        128,
+        2048
+      ],
+      "values": 262144
+    }
+  ],
+  "focused_mutation": {
+    "groot-vision-metal-plan": {
+      "mutants": 913,
+      "killed": 913,
+      "survivors": 0
+    },
+    "unchanged-groot-vision-device": {
+      "mutants": 351,
+      "killed": 351,
+      "survivors": 0
+    },
+    "shared-groot-action-wide-kernels": {
+      "mutants": 55,
+      "killed": 55,
+      "survivors": 0
+    }
+  },
+  "native": {
+    "unchanged_cases_each": 64656,
+    "builds": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ]
+  },
+  "profile_note": "Allnormalizationusesqualifiedgaw_normwideCoaxF64statisticsviaMetalfloatfloat,thenF32affinestages. EarlierF32statistics/linspacefixreceiptispreservedseparatelyinvision-qualification.json."
+}

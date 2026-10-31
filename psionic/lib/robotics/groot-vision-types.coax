@@ -1,0 +1,14 @@
+// Pinned Cosmos-Reason2-2B/Qwen3VL vision-layout component; no image decode,
+// resize/normalization, learned projections, vision blocks or text execution.
+GvStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;}
+GvGrid :: struct {t:int;h:int;w:int;}
+GvPlan :: struct {status:GvStatus;grid:GvGrid;pixels:int;patches:int;packed:int;}
+GvPosition :: struct {status:GvStatus;time:int;row:int;column:int;}
+GvMix :: struct {status:GvStatus;indices:[4]int;weights:[4]f32;}
+GvMerge :: struct {status:GvStatus;rows:int;width:int;norm_width:int;values:int;}
+GvSpan :: struct {status:GvStatus;count:int;}
+GvRead :: struct {status:GvStatus;written:int;}
+GvRotation :: struct {status:GvStatus;x:f32;y:f32;}
+GV_PATCH :: 16;
+GV_VECTOR :: 1536;
+GV_HEAD :: 64;

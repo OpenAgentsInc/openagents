@@ -1,0 +1,73 @@
+#load "groot-image-types.coax";
+#load "groot-image-check-fixtures.coax";
+#authority;
+
+#forall "OpenCV source float11bit coefficient oracle covers all256axis coordinates" d:0..<256 {
+  a:=gi_axis(d);#assert a.lo==GI_AXIS_GOLD[d][0] && a.hi==GI_AXIS_GOLD[d][1] && a.a==GI_AXIS_GOLD[d][2] && a.b==GI_AXIS_GOLD[d][3];
+}
+#forall "fused Qwen normalization matches all256independent F32 byte values" v:0..<256 {
+  #assert f32_bits(gi_normalize(cast(u8)v))==GI_NORM_GOLD[v];
+}
+#test "original wrapper flips both axes without reversing RGB or leaking outside crop" {
+  #assert gi_source(0,0,0)==191979 && gi_source(0,0,2)==191981;
+  #assert gi_source(242,242,0)==5397 && gi_source(242,242,2)==5399;
+  #assert gi_source(17,23,1)==178855;
+}
+#test "original256RGB image row slices publish normalized NCHW and preserve tails" {
+  raw:[196608]u8;out:[1537]f32;work:[1537]f32;
+  for i:0..<196608 {raw[i]=cast(u8)((i*17+(i/768)*37)%256);}
+  for y:[12]int.[0,1,7,8,13,17,63,127,128,241,254,255] {
+    rows:=2;if y==255 {rows=1;}need:=rows*768;out[need]=7;work[need]=9;
+    r:=gi_preprocess(y,rows,raw[..],out[0..<need],work[0..<need],false);#assert r.status==GiStatus.ok && r.written==need && out[need]==7 && work[need]==9;
+    for p:GI_PIXEL_GOLD {at:=cast(int)p[0];py:=(at%65536)/256;if py>=y && py<y+rows {#assert f32_bits(out[(at/65536)*rows*256+(py-y)*256+at%256])==p[1];}}
+  }
+}
+#test "image row admission includes one row and exact full256row interval" {
+  #assert gi_rows(0,1) && gi_rows(255,1) && gi_rows(0,256) && gi_rows(1,255);
+  #assert !gi_rows(-1,1) && !gi_rows(0,0) && !gi_rows(0,257) && !gi_rows(1,256) && !gi_rows(256,1);
+}
+#test "image admission refuses wrong typed sizes and overlap before publishing" {
+  raw:[196609]u8;out:[196609]f32;work:[196609]f32;out[0]=7;out[196608]=7;
+  #assert gi_preprocess(0,256,raw[0..<0],out[..],work[..],false).status==GiStatus.shape;
+  #assert gi_preprocess(0,256,raw[0..<196607],out[..],work[..],false).status==GiStatus.shape;
+  #assert gi_preprocess(0,256,raw[..],out[..],work[..],false).status==GiStatus.shape;
+  #assert gi_preprocess(0,256,raw[0..<196608],out[0..<196607],work[..],false).status==GiStatus.shape;
+  #assert gi_preprocess(0,256,raw[0..<196608],out[..],work[0..<196607],false).status==GiStatus.shape;
+  #assert gi_preprocess(0,256,raw[0..<196608],out[..],work[..],true).status==GiStatus.overlap;
+  #assert gi_preprocess(-1,1,raw[0..<196608],out[..],work[..],false).status==GiStatus.shape;
+  #assert out[0]==7 && out[196608]==7;
+}
+
+gi_axis :: (d:int)->GiAxis {
+  // Exact specialization of source area-mode coefficients for243→256. None
+  // of the243-denominator fractions is a half-integer at11-bit quantization.
+  lo:=d*243/256;r:=(d+1)*243-(lo+1)*256;
+  positive:=(r+cast(int)abs(f64(r)))/2;
+  b:=(positive*2048+121)/243;
+  // lo is0..242; floor(lo/242) clips the one last neighbor to242.
+  hi:=lo+1-lo/242;return GiAxis.{lo=lo,hi=hi,a=2048-b,b=b};
+}
+gi_source :: (y:int,x:int,c:int)->int {return ((249-y)*256+(249-x))*3+c;}
+gi_normalize :: (v:u8)->f32 {center:f32=f32(v)-127.5f32;return center/127.5f32;}
+gi_rows :: (first:int,rows:int)->bool {return first>=0 && rows>=1 && rows<=256-first;}
+gi_pixel :: (raw:[]u8,y:GiAxis,x:GiAxis,c:int)->u8 {
+  top:=cast(int)raw[gi_source(y.lo,x.lo,c)]*x.a+cast(int)raw[gi_source(y.lo,x.hi,c)]*x.b;
+  bottom:=cast(int)raw[gi_source(y.hi,x.lo,c)]*x.a+cast(int)raw[gi_source(y.hi,x.hi,c)]*x.b;
+  // OpenCV's uchar vertical specialization rounds after separate high-word
+  // products; a generic22-bit bilinear sum gives different pixels.
+  first:=(y.a*(top>>4))>>16;second:=(y.b*(bottom>>4))>>16;
+  return cast(u8)((first+second+2)>>2);
+}
+// book:begin preprocess
+// Input is one raw simulator256x256HWC RGBu8 camera BEFORE its wrapper flip.
+// Output is normalized[3,rows,256]F32. (first=0,rows=256) is the full camera,
+// ready for gv_pack; smaller genuine row slices keep VM qualification bounded.
+gi_preprocess :: (first:int,rows:int,raw:[]u8,out:[]f32,work:[]f32,overlap:bool)->GiRead #export_c {
+  if !gi_rows(first,rows) {return GiRead.{status=GiStatus.shape};}need:=rows*768;
+  if raw.count!=196608 || out.count<need || work.count<need {return GiRead.{status=GiStatus.shape};}
+  if overlap {return GiRead.{status=GiStatus.overlap};}
+  axis:[256]GiAxis;for d:0..<256 {axis[d]=gi_axis(d);}
+  for y:0..<rows {for x:0..<256 {for c:0..<3 {work[c*rows*256+y*256+x]=gi_normalize(gi_pixel(raw,axis[first+y],axis[x],c));}}}
+  for i:0..<need {out[i]=work[i];}return GiRead.{written=need};
+}
+// book:end preprocess

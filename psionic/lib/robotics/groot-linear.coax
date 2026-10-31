@@ -1,0 +1,173 @@
+// GR00T category-specific linear/state-encoder component, CPU-F32-WIDE-v1.
+// Callers supply selected category rows. This does not select an embodiment,
+// admit a checkpoint or execute a complete VLA. BF16 weights remain bit exact
+// while packing; execution stores F32 and reuses qm_project's compensated F64.
+#load "../qwen-matvec.coax";
+#load "groot-linear-types.coax";
+#load "groot-linear-check-fixtures.coax";
+#authority;
+
+#test "GR00T selected input-major matrices pack into output-major words exactly" {
+  values:=[6]f32.[1,-2,3,4,5,6];want:=[6]f32.[1,4,-2,5,3,6];source:[24]u8;packed:[25]u8;packed[24]=173;
+  #assert gl_fixture(QmDtype.f32,values[..],source[..])==24;
+  r:=gl_pack(QmDtype.f32,2,3,source[..],packed[0..<24],false);#assert r.status==QmStatus.ok && r.written==24 && packed[24]==173;
+  for i:0..<6 {#assert qm_bits(QmDtype.f32,packed[..],i)==f32_bits(want[i]);}
+  small:[12]u8;out:[13]u8;out[12]=173;values[1]=f32_from_bits(0x80000000);want[2]=values[1];
+  #assert gl_fixture(QmDtype.bf16,values[..],small[..])==12;
+  r=gl_pack(QmDtype.bf16,2,3,small[..],out[..],false);#assert r.status==QmStatus.ok && r.written==12 && out[12]==173;
+  for i:0..<6 {#assert qm_bits(QmDtype.bf16,out[..],i)==f32_bits(want[i]);}
+}
+#test "GR00T packing refuses metadata capacity overlap and late nonfinite words atomically" {
+  source:[24]u8;out:[25]u8;for i:0..<25 {out[i]=173;}
+  #assert gl_pack(QmDtype.f32,0,3,source[..],out[..],false).status==QmStatus.shape;
+  #assert gl_pack(QmDtype.f32,2,3,source[0..<23],out[..],false).status==QmStatus.capacity;
+  #assert gl_pack(QmDtype.f32,2,3,source[..],out[0..<23],false).status==QmStatus.capacity;
+  #assert gl_pack(QmDtype.f32,2,3,source[..],out[..],true).status==QmStatus.alias;
+  source[22]=0x80;source[23]=0x7f;r:=gl_pack(QmDtype.f32,2,3,source[..],out[..],false);
+  #assert r.status==QmStatus.number && r.written==0;for b:out {#assert b==173;}
+  source[22]=0;source[23]=0;source[2]=0x80;source[3]=0x7f;#assert gl_pack(QmDtype.f32,2,3,source[..],out[..],false).status==QmStatus.number;for b:out {#assert b==173;}
+}
+#test "GR00T bias unpacking preserves BF16 values and signed zero without publishing a bad word" {
+  values:=[3]f32.[1,-2,f32_from_bits(0x80000000)];source:[12]u8;out:=[4]f32.[7,7,7,7];
+  for dtype:0..<2 {n:=gl_fixture(cast(QmDtype)dtype,values[..],source[..]);r:=gl_bias(cast(QmDtype)dtype,3,source[0..<n],out[0..<3],false);
+    #assert r.status==QmStatus.ok && r.written==3 && out[0]==1 && out[1]==-2 && f32_bits(out[2])==0x80000000 && out[3]==7;
+  }
+  #assert gl_bias(QmDtype.f32,0,source[..],out[..],false).status==QmStatus.shape;
+  #assert gl_bias(QmDtype.f32,3,source[0..<11],out[..],false).status==QmStatus.capacity;
+  #assert gl_bias(QmDtype.f32,3,source[..],out[0..<2],false).status==QmStatus.capacity;
+  #assert gl_bias(QmDtype.f32,3,source[..],out[..],true).status==QmStatus.alias;
+  for i:0..<4 {out[i]=7;}source[10]=0x80;source[11]=0x7f;
+  #assert gl_bias(QmDtype.f32,3,source[..],out[..],false).status==QmStatus.number;for v:out {#assert v==7;}
+  source[10]=0;source[11]=0;source[2]=0x80;source[3]=0x7f;#assert gl_bias(QmDtype.f32,3,source[..],out[..],false).status==QmStatus.number;for v:out {#assert v==7;}
+}
+#test "GR00T projection narrows before the separate bias addition" {
+  values:=[2]f32.[1,f32_from_bits(0x33800000)];w:[8]u8;#assert gl_fixture(QmDtype.f32,values[..],w[..])==8;
+  x:=[2]f32.[1,1];b:=[1]f32.[-1];out:=[2]f32.[7,7];work:[2]f32;
+  r:=gl_linear(QmDtype.f32,2,1,w[..],b[..],x[..],out[..],work[..],false);
+  #assert r.status==QmStatus.ok && r.written==1 && out[0]==0 && out[1]==7;
+}
+#test "GR00T nonsquare packed projection and separate bias have hand-computed values" {
+  values:=[6]f32.[1,4,-2,5,3,6];w:[24]u8;#assert gl_fixture(QmDtype.f32,values[..],w[..])==24;
+  x:=[2]f32.[2,-1];b:=[3]f32.[1,2,3];out:=[4]f32.[7,7,7,7];work:[6]f32;
+  r:=gl_linear(QmDtype.f32,2,3,w[..],b[..],x[..],out[..],work[..],false);
+  #assert r.status==QmStatus.ok && r.written==3 && out[0]==-1 && out[1]==-7 && out[2]==3 && out[3]==7;
+  #assert gl_linear(QmDtype.f32,0,3,w[..],b[..],x[..],out[..],work[..],false).status==QmStatus.shape;
+  #assert gl_linear(QmDtype.f32,2,3,w[0..<23],b[..],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_linear(QmDtype.f32,2,3,w[..],b[0..<2],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_linear(QmDtype.f32,2,3,w[..],b[..],x[0..<1],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_linear(QmDtype.f32,2,3,w[..],b[..],x[..],out[0..<2],work[..],false).status==QmStatus.capacity;
+  #assert gl_linear(QmDtype.f32,2,3,w[..],b[..],x[..],out[..],work[0..<5],false).status==QmStatus.capacity;
+  #assert gl_linear(QmDtype.f32,2,3,w[..],b[..],x[..],out[..],work[..],true).status==QmStatus.alias;
+}
+#test "GR00T late linear arithmetic failures preserve final output" {
+  values:=[2]f32.[1,f32_from_bits(0x7f7fffff)];w:[8]u8;#assert gl_fixture(QmDtype.f32,values[..],w[..])==8;
+  x:=[1]f32.[2];b:=[2]f32.[0,0];out:=[3]f32.[7,7,7];work:[4]f32;
+  r:=gl_linear(QmDtype.f32,1,2,w[..],b[..],x[..],out[..],work[..],false);#assert r.status==QmStatus.arithmetic && r.written==0;
+  for v:out {#assert v==7;}
+  x[0]=1;b[1]=f32_from_bits(0x7f7fffff);r=gl_linear(QmDtype.f32,1,2,w[..],b[..],x[..],out[..],work[..],false);
+  #assert r.status==QmStatus.arithmetic && r.written==0;for v:out {#assert v==7;}
+}
+#test "GR00T ReLU state encoder composes two projections without public intermediates" {
+  // First packed matrix [[1,-1],[2,1],[-1,1]], hidden[-1,5,1] -> [0,5,1].
+  first:=[6]f32.[1,-1,2,1,-1,1];second:=[6]f32.[1,2,3,-1,1,-2];w1:[24]u8;w2:[24]u8;
+  #assert gl_fixture(QmDtype.f32,first[..],w1[..])==24 && gl_fixture(QmDtype.f32,second[..],w2[..])==24;
+  b1:=[3]f32.[0,1,0];b2:=[2]f32.[0.5,-0.5];x:=[2]f32.[1,2];out:=[3]f32.[7,7,7];work:[15]f32;
+  r:=gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[0..<2],work[..],false);
+  #assert r.status==QmStatus.ok && r.written==2 && out[0]==13.5f32 && out[1]==2.5f32 && out[2]==7;
+  #assert gl_state(QmDtype.f32,0,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[..],false).status==QmStatus.shape;
+  #assert gl_state(QmDtype.f32,2,0,2,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[..],false).status==QmStatus.shape;
+  #assert gl_state(QmDtype.f32,2,3,0,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[..],false).status==QmStatus.shape;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[0..<23],b1[..],w2[..],b2[..],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[0..<2],w2[..],b2[..],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[0..<23],b2[..],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[0..<1],x[..],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[0..<1],out[..],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[0..<1],work[..],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[0..<14],false).status==QmStatus.capacity;
+  #assert gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[..],true).status==QmStatus.alias;
+  for i:0..<3 {out[i]=7;}w2[22]=0x80;w2[23]=0x7f;r=gl_state(QmDtype.f32,2,3,2,w1[..],b1[..],w2[..],b2[..],x[..],out[..],work[..],false);
+  #assert r.status==QmStatus.number && r.written==0;for v:out {#assert v==7;}
+}
+#test "GR00T F32 ReLU clears negative values and preserves either zero sign" {
+  #assert gl_relu(-1)==0 && gl_relu(1)==1 && gl_relu(0)==0;
+  #assert f32_bits(gl_relu(f32_from_bits(0x80000000)))==0x80000000;
+}
+#test "GR00T scratch layout and metadata admission are independently checkable" {
+  p:=gl_state_layout(3,2);#assert p.status==QmStatus.ok && p.first==3 && p.stage==9 && p.second==11 && p.total==15;
+  #assert gl_state_layout(32768,32768).total==196608;
+  for n:[4]int.[-1,0,32769,9223372036854775807] {#assert gl_state_layout(n,2).status==QmStatus.shape && gl_state_layout(3,n).status==QmStatus.shape;}
+  #assert gl_state_admit(QmDtype.f32,2,3,2,24,3,24,2,2,2,15,false)==QmStatus.ok;
+  for i:0..<7 {w1:=24;b1:=3;w2:=24;b2:=2;x:=2;out:=2;work:=15;
+    if i==0 {w1-=1;}if i==1 {b1-=1;}if i==2 {w2-=1;}if i==3 {b2-=1;}if i==4 {x-=1;}if i==5 {out-=1;}if i==6 {work-=1;}
+    #assert gl_state_admit(QmDtype.f32,2,3,2,w1,b1,w2,b2,x,out,work,false)==QmStatus.capacity;
+  }
+  #assert gl_state_admit(QmDtype.f32,2,3,2,24,3,24,2,2,3,16,true)==QmStatus.alias;
+  #assert gl_state_admit(QmDtype.f32,0,3,2,24,3,24,2,2,3,16,false)==QmStatus.shape;
+  #assert gl_state_admit(QmDtype.f32,2,3,0,24,3,24,2,2,3,16,false)==QmStatus.shape;
+}
+
+// `overlap` must truthfully describe every writable/read-only overlap and
+// writable/writable overlap. All typed spans have valid immutable extents and
+// exclusive caller ownership; a false flag cannot make forged pointers safe.
+// Pack once per selected immutable category, outside the inference loop.
+gl_pack :: (dtype:QmDtype,inputs:int,outputs:int,source:[]u8,packed:[]u8,overlap:bool)->QmResult #export_c {
+  if !qm_valid(cast(u8)dtype,outputs,inputs) {return QmResult.{status=QmStatus.shape};}
+  bytes:=qm_bytes(dtype,outputs,inputs);
+  if source.count!=bytes || packed.count<bytes {return QmResult.{status=QmStatus.capacity};}
+  if overlap {return QmResult.{status=QmStatus.alias};}
+  for i:0..<inputs*outputs {if !psionic_tensor_finite_bits(qm_bits(dtype,source,i)) {return QmResult.{status=QmStatus.number};}}
+  size:=ifx dtype==QmDtype.bf16 then 2 else 4;
+  for input:0..<inputs {for output:0..<outputs {for b:0..<size {
+    packed[(output*inputs+input)*size+b]=source[(input*outputs+output)*size+b];
+  }}}
+  return QmResult.{written=bytes};
+}
+gl_bias :: (dtype:QmDtype,count:int,source:[]u8,out:[]f32,overlap:bool)->QmResult #export_c {
+  // Both matrix axes share the same positive count bound; no allocation here.
+  if !qm_valid(cast(u8)dtype,count,count) {return QmResult.{status=QmStatus.shape};}
+  if source.count!=qm_bytes(dtype,1,count) || out.count<count {return QmResult.{status=QmStatus.capacity};}
+  if overlap {return QmResult.{status=QmStatus.alias};}
+  for i:0..<count {if !psionic_tensor_finite_bits(qm_bits(dtype,source,i)) {return QmResult.{status=QmStatus.number};}}
+  for i:0..<count {out[i]=f32_from_bits(qm_bits(dtype,source,i));}
+  return QmResult.{written=count};
+}
+
+// book:begin linear
+gl_linear :: (dtype:QmDtype,inputs:int,outputs:int,packed:[]u8,bias:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+  if !qm_valid(cast(u8)dtype,outputs,inputs) {return QmResult.{status=QmStatus.shape};}
+  if packed.count!=qm_bytes(dtype,outputs,inputs) || bias.count!=outputs || x.count!=inputs || out.count<outputs || work.count<2*outputs {return QmResult.{status=QmStatus.capacity};}
+  if overlap {return QmResult.{status=QmStatus.alias};}
+  for value:bias {if !psionic_tensor_finite_bits(f32_bits(value)) {return QmResult.{status=QmStatus.number};}}
+  // Each span is disjoint: projection result, qm_project's staging, public out.
+  r:=qm_project(dtype,outputs,inputs,packed,x,work[0..<outputs],work[outputs..<2*outputs],false);
+  if r.status!=QmStatus.ok {return r;}
+  for i:0..<outputs {
+    value:=f64(work[i])+f64(bias[i]);
+    if !psionic_ops_fits_f32(value) {return QmResult.{status=QmStatus.arithmetic};}
+    work[i]=f32(value);
+  }
+  for i:0..<outputs {out[i]=work[i];}return QmResult.{written=outputs};
+}
+// book:end linear
+// book:begin state
+gl_state :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:[]u8,b1:[]f32,w2:[]u8,b2:[]f32,x:[]f32,out:[]f32,work:[]f32,overlap:bool)->QmResult #export_c {
+  admitted:=gl_state_admit(dtype,inputs,hidden,outputs,w1.count,b1.count,w2.count,b2.count,x.count,out.count,work.count,overlap);
+  if admitted!=QmStatus.ok {return QmResult.{status=admitted};}layout:=gl_state_layout(hidden,outputs);
+  first:=gl_linear(dtype,inputs,hidden,w1,b1,x,work[0..<layout.first],work[layout.first..<layout.stage],false);
+  if first.status!=QmStatus.ok {return first;}
+  for i:0..<hidden {work[i]=gl_relu(work[i]);}
+  second:=gl_linear(dtype,hidden,outputs,w2,b2,work[0..<layout.first],work[layout.stage..<layout.second],work[layout.second..<layout.total],false);
+  if second.status!=QmStatus.ok {return second;}
+  for i:0..<outputs {out[i]=work[layout.stage+i];}return QmResult.{written=outputs};
+}
+// book:end state
+gl_relu :: (value:f32)->f32 {if value<0 {return 0;}return value;}
+gl_state_layout :: (hidden:int,outputs:int)->GlLayout #export_c {
+  if !qm_valid(cast(u8)QmDtype.f32,outputs,hidden) {return GlLayout.{status=QmStatus.shape};}
+  return GlLayout.{first=hidden,stage=3*hidden,second=3*hidden+outputs,total=3*(hidden+outputs)};
+}
+gl_state_admit :: (dtype:QmDtype,inputs:int,hidden:int,outputs:int,w1:int,b1:int,w2:int,b2:int,x:int,out:int,work:int,overlap:bool)->QmStatus #export_c {
+  if !qm_valid(cast(u8)dtype,hidden,inputs) || !qm_valid(cast(u8)dtype,outputs,hidden) {return QmStatus.shape;}
+  if w1!=qm_bytes(dtype,hidden,inputs) || b1!=hidden || w2!=qm_bytes(dtype,outputs,hidden) || b2!=outputs || x!=inputs || out<outputs || work<gl_state_layout(hidden,outputs).total {return QmStatus.capacity;}
+  if overlap {return QmStatus.alias;}return QmStatus.ok;
+}

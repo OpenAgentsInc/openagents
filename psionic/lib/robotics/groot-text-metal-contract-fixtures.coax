@@ -1,0 +1,26 @@
+// Independent original Qwen3-VL text-prefix operator/ABI contract (checks only).
+#load "groot-vision-metal-types.coax";
+glp_ti :: (n:GvpNode,a:int,want:int) {#assert n.args[a].kind==0 && n.args[a].integer==want;}
+glp_tv :: (n:GvpNode,a:int,buffer:int,count:int) {#assert n.args[a].kind==4 && n.args[a].buffer==buffer && n.args[a].count==count && n.args[a].offset==0;}
+glp_tn :: (n:GvpNode,width:int,count:int,scale:int,input:int,output:int) {#assert n.kernel==2 && n.lanes==1 && n.argc==8 && n.items==count/width && n.flag_count==count/width;glp_ti(n,0,width);glp_ti(n,1,2);#assert n.args[2].kind==2 && n.args[2].real==0.000001f32;glp_tv(n,3,input,count);glp_tv(n,4,scale,width);glp_tv(n,5,193,0);glp_tv(n,6,output,count);}
+glp_tm :: (n:GvpNode,rows:int,cols:int,tokens:int,weight:int,input:int,output:int) {tiles:=tokens/16+(ifx tokens%16!=0 then 1 else 0);#assert n.kernel==0 && n.lanes==128 && n.argc==6 && n.items==(rows/64)*tiles && n.flag_count==0;glp_ti(n,0,rows);glp_ti(n,1,cols);glp_ti(n,2,tokens);glp_tv(n,3,weight,rows*cols/2);glp_tv(n,4,input,tokens*cols);glp_tv(n,5,output,tokens*rows);}
+glp_contract :: (stage:int,at:int,tokens:int,n:GvpNode) {
+ count:=tokens*2048;#assert n.block==128;
+ if stage==0 {#assert n.kernel==1 && n.lanes==1 && n.argc==8 && n.items==count && n.flag_count==count;glp_ti(n,0,2048);glp_ti(n,1,151936);glp_tv(n,2,194,tokens);glp_tv(n,3,0,311164928);glp_tv(n,4,195,tokens);glp_tv(n,5,197,262144);glp_tv(n,6,178,count);return;}
+ if stage==17 {glp_tn(n,2048,count,177,178,201);return;}
+ base:=1+11*(stage-1);
+ if at==0 {glp_tn(n,2048,count,base,178,179);}
+ if at==1 {glp_tm(n,2048,2048,tokens,base+4,179,180);}if at==2 {glp_tm(n,1024,2048,tokens,base+5,179,181);}if at==3 {glp_tm(n,1024,2048,tokens,base+6,179,182);}
+ if at==4 {glp_tn(n,128,count,base+2,180,183);}if at==5 {glp_tn(n,128,tokens*1024,base+3,181,184);}
+ if at==6 || at==7 {first:=at==6;values:=ifx first then count else tokens*1024;#assert n.kernel==3 && n.lanes==1 && n.argc==6 && n.items==values && n.flag_count==values;glp_ti(n,0,ifx first then 16 else 8);glp_ti(n,1,128);glp_tv(n,2,ifx first then 183 else 184,values);glp_tv(n,3,196,tokens*128);glp_tv(n,4,ifx first then 180 else 181,values);}
+ if at==8 {a:=tokens*tokens*16;#assert n.kernel==4 && n.lanes==1 && n.argc==14 && n.items==a && n.flag_count==a;scalars:=[7]int.[tokens,tokens,16,8,128,2,0];for i:0..<7 {glp_ti(n,i,scalars[i]);}glp_tv(n,7,180,count);glp_tv(n,8,181,tokens*1024);glp_tv(n,9,193,0);glp_tv(n,10,193,0);glp_tv(n,11,189,a);glp_tv(n,12,190,a);}
+ if at==9 {#assert n.kernel==5 && n.lanes==1 && n.argc==5 && n.items==tokens*16 && n.flag_count==tokens*16;glp_ti(n,0,tokens);glp_tv(n,1,189,tokens*tokens*16);glp_tv(n,2,190,tokens*tokens*16);glp_tv(n,3,191,tokens*tokens*16);}
+ if at==10 {#assert n.kernel==6 && n.lanes==1 && n.argc==9 && n.items==count && n.flag_count==count;scalars:=[5]int.[tokens,tokens,16,8,128];for i:0..<5 {glp_ti(n,i,scalars[i]);}glp_tv(n,5,191,tokens*tokens*16);glp_tv(n,6,182,tokens*1024);glp_tv(n,7,185,count);}
+ if at==11 {glp_tm(n,2048,2048,tokens,base+7,185,186);}
+ if at==12 || at==19 {#assert n.kernel==7 && n.lanes==1 && n.argc==4 && n.items==count && n.flag_count==count;glp_tv(n,0,178,count);glp_tv(n,1,186,count);glp_tv(n,2,178,count);}
+ if at==13 {glp_tn(n,2048,count,base+1,178,179);}if at==14 {glp_tm(n,6144,2048,tokens,base+8,179,187);}if at==15 {glp_tm(n,6144,2048,tokens,base+9,179,188);}
+ if at==16 {#assert n.kernel==8 && n.lanes==1 && n.argc==4 && n.items==tokens*6144 && n.flag_count==tokens*6144;glp_ti(n,0,0);glp_tv(n,1,187,tokens*6144);glp_tv(n,2,187,tokens*6144);}
+ if at==17 {#assert n.kernel==9 && n.lanes==1 && n.argc==4 && n.items==tokens*6144 && n.flag_count==tokens*6144;glp_tv(n,0,187,tokens*6144);glp_tv(n,1,188,tokens*6144);glp_tv(n,2,187,tokens*6144);}
+ if at==18 {glp_tm(n,2048,6144,tokens,base+10,187,186);}
+ if at==20 {#assert stage<=3 && n.kernel==10 && n.lanes==1 && n.argc==6 && n.items==count && n.flag_count==count;glp_ti(n,0,2048);glp_tv(n,1,178,count);glp_tv(n,2,195,tokens);glp_tv(n,3,197+stage,262144);glp_tv(n,4,178,count);}
+}

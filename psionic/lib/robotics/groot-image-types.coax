@@ -1,0 +1,3 @@
+GiStatus :: enum u8 {ok;shape;overlap;}
+GiRead :: struct {status:GiStatus;written:int;}
+GiAxis :: struct {lo:int;hi:int;a:int;b:int;}

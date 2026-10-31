@@ -1,0 +1,6 @@
+#load "groot-vision-metal-types.coax";
+GacSpec :: struct {ok:bool;prefix:string;suffix:string;rank:int;dims:[5]int;rows:int;cols:int;category:bool;transpose:bool;decode:bool;bytes:int;take:int;target:int;}
+GacBinding :: struct {status:GvpStatus;shard:int;begin:int;bytes:int;target:int;decode:bool;transpose:bool;rows:int;cols:int;}
+GacStage :: struct {status:GvpStatus;kind:int;step:int;layer:int;nodes:int;flags:int;}
+GacBuild :: struct {count:int;flags:int;nodes:[24]GvpNode;}
+GacCapture :: struct {ok:bool;name:string;buffer:int;count:int;offset:int;}

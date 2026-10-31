@@ -1,0 +1,223 @@
+// Full original category2 action-head Metal graph; owned unpadded140-token profile.
+#load "groot-action-metal-types.coax";
+#load "groot-action-metadata-fixtures.coax";
+#load "groot-action-trace-fixtures.coax";
+#load "groot-artifact.coax";
+#load "groot-linear.coax";
+#authority;
+GAC_CATEGORY :: [7]string.["action_head.state_encoder.layer1","action_head.state_encoder.layer2","action_head.action_encoder.W1","action_head.action_encoder.W2","action_head.action_encoder.W3","action_head.action_decoder.layer1","action_head.action_decoder.layer2"];
+GAC_VL :: [4]string.["action_head.vl_self_attention.transformer_blocks.0.","action_head.vl_self_attention.transformer_blocks.1.","action_head.vl_self_attention.transformer_blocks.2.","action_head.vl_self_attention.transformer_blocks.3."];
+GAC_DIT :: [32]string.["action_head.model.transformer_blocks.0.","action_head.model.transformer_blocks.1.","action_head.model.transformer_blocks.2.","action_head.model.transformer_blocks.3.","action_head.model.transformer_blocks.4.","action_head.model.transformer_blocks.5.","action_head.model.transformer_blocks.6.","action_head.model.transformer_blocks.7.","action_head.model.transformer_blocks.8.","action_head.model.transformer_blocks.9.","action_head.model.transformer_blocks.10.","action_head.model.transformer_blocks.11.","action_head.model.transformer_blocks.12.","action_head.model.transformer_blocks.13.","action_head.model.transformer_blocks.14.","action_head.model.transformer_blocks.15.","action_head.model.transformer_blocks.16.","action_head.model.transformer_blocks.17.","action_head.model.transformer_blocks.18.","action_head.model.transformer_blocks.19.","action_head.model.transformer_blocks.20.","action_head.model.transformer_blocks.21.","action_head.model.transformer_blocks.22.","action_head.model.transformer_blocks.23.","action_head.model.transformer_blocks.24.","action_head.model.transformer_blocks.25.","action_head.model.transformer_blocks.26.","action_head.model.transformer_blocks.27.","action_head.model.transformer_blocks.28.","action_head.model.transformer_blocks.29.","action_head.model.transformer_blocks.30.","action_head.model.transformer_blocks.31."];
+GAC_VL_SUFFIX :: [16]string.["norm1.weight","norm1.bias","attn1.to_q.weight","attn1.to_q.bias","attn1.to_k.weight","attn1.to_k.bias","attn1.to_v.weight","attn1.to_v.bias","attn1.to_out.0.weight","attn1.to_out.0.bias","norm3.weight","norm3.bias","ff.net.0.proj.weight","ff.net.0.proj.bias","ff.net.2.weight","ff.net.2.bias"];
+GAC_DIT_SUFFIX :: [14]string.["norm1.linear.weight","norm1.linear.bias","attn1.to_q.weight","attn1.to_q.bias","attn1.to_k.weight","attn1.to_k.bias","attn1.to_v.weight","attn1.to_v.bias","attn1.to_out.0.weight","attn1.to_out.0.bias","ff.net.0.proj.weight","ff.net.0.proj.bias","ff.net.2.weight","ff.net.2.bias"];
+GAC_MISC :: [11]string.["action_head.vlln.weight","action_head.vlln.bias","action_head.position_embedding.weight","action_head.model.timestep_encoder.timestep_embedder.linear_1.weight","action_head.model.timestep_encoder.timestep_embedder.linear_1.bias","action_head.model.timestep_encoder.timestep_embedder.linear_2.weight","action_head.model.timestep_encoder.timestep_embedder.linear_2.bias","action_head.model.proj_out_1.weight","action_head.model.proj_out_1.bias","action_head.model.proj_out_2.weight","action_head.model.proj_out_2.bias"];
+GAC_CAPTURE0 :: [7]string.["flow0-block0","flow0-block1","flow0-block2","flow0-block3","flow0-block31","flow0-velocity","flow0-actions"];
+GAC_CAPTURE1 :: [7]string.["flow1-block0","flow1-block1","flow1-block2","flow1-block3","flow1-block31","flow1-velocity","flow1-actions"];
+GAC_CAPTURE2 :: [7]string.["flow2-block0","flow2-block1","flow2-block2","flow2-block3","flow2-block31","flow2-velocity","flow2-actions"];
+GAC_CAPTURE3 :: [7]string.["flow3-block0","flow3-block1","flow3-block2","flow3-block3","flow3-block31","flow3-velocity","flow3-actions"];
+
+#test "action graph inventories every selected learned parameter and fixed input workspace" {
+  #assert gac_weight_count()==537 && gac_buffer_count()==568 && gac_kernel_count()==12 && gac_stage_count()==142;
+  for i:0..<537 {s:=gac_spec(i);original:=GAC_ORIGINAL[i];#assert gac_match(original.name,s.prefix,s.suffix) && original.shape.rank==s.rank && original.elements*2==s.bytes;for axis:0..<5 {#assert original.shape.dims[axis]==s.dims[axis];}#assert s.ok && s.suffix.count>0 && s.bytes>0 && s.take>0 && s.target>0;
+    n:=1;for axis:0..<s.rank {#assert s.dims[axis]>0;n*=s.dims[axis];}for axis:s.rank..<5 {#assert s.dims[axis]==0;}
+    #assert s.cols==(ifx s.decode && i!=16 then 0 else original.shape.dims[1]) || (i==16 && s.cols==1536);#assert s.bytes==2*n && s.target==(ifx s.decode then 2*s.take else s.take) && gac_buffer_bytes(i)==s.target;
+    if i<14 {#assert s.category && s.dims[0]==32 && s.take*32==s.bytes && s.transpose==(i%2==0) && s.decode==(i%2==1);}
+    else {#assert !s.category && !s.transpose;}
+  }
+  #assert gac_spec(0).cols==132 && gac_spec(0).rows==1024 && gac_spec(13).rows==132;
+  #assert gac_spec(16).rank==2 && gac_spec(16).dims[0]==1024 && gac_spec(16).take==122880 && gac_spec(16).target==245760;
+  #assert gac_spec(89+4).cols==2048 && gac_spec(89+14+4).cols==1536;
+  #assert !gac_spec(-1).ok && !gac_spec(537).ok && gac_buffer_bytes(-1)==0 && gac_buffer_bytes(568)==0;
+}
+#test "action graph preserves original block ordering exact masks and every disjoint flags region" {
+  for stage:0..<142 {s:=gac_stage(stage);#assert s.status==GvpStatus.ok && s.nodes>0 && s.nodes<=24 && s.flags>0 && s.flags<=8388608;
+    if stage==0 {#assert s.kind==0 && s.nodes==1;}if stage>=1 && stage<=4 {#assert s.kind==1 && s.layer==stage-1 && s.nodes==18;}if stage==5 {#assert s.kind==2 && s.nodes==4;}
+    if stage>=6 {sub:=(stage-6)%34;#assert s.step==(stage-6)/34;if sub==0 {#assert s.kind==3 && s.nodes==17;}else if sub==33 {#assert s.kind==5 && s.nodes==11;}else {#assert s.kind==4 && s.layer==sub-1 && s.nodes==21;}}
+    built:=gac_build(stage);#assert gact_digest(s,built.nodes[..])==GAC_TRACE[stage];first:=gac_node(stage,0);#assert first.status==GvpStatus.ok && first.kernel==built.nodes[0].kernel && first.items==built.nodes[0].items;offset:=0;for at:0..<s.nodes {n:=built.nodes[at];#assert n.status==GvpStatus.ok && n.items>0 && n.argc>0 && n.argc<=16 && n.flag_offset==offset && n.block==128;
+      for j:0..<n.argc {a:=n.args[j];#assert a.kind==0 || a.kind==2 || a.kind==4;if a.kind==4 {#assert a.buffer>=0 && a.buffer<568 && a.count>=0 && a.offset>=0;}}
+      if n.flag_count>0 {last:=n.args[n.argc-1];#assert last.buffer==567 && last.count==n.flag_count && last.offset==offset;}offset+=n.flag_count;
+    }#assert offset==s.flags && gac_node(stage,-1).status==GvpStatus.shape && gac_node(stage,s.nodes).status==GvpStatus.shape;
+  }
+  #assert gac_stage(-1).status==GvpStatus.shape && gac_stage(142).status==GvpStatus.shape;
+}
+#test "action tensor binding selects category2 without trusting foreign shapes or headers" {
+  s:=gac_spec(0);t:=P5Tensor.{name="action_head.state_encoder.layer1.W",dtype=PwDtype.bf16,shape=P5Shape.{rank=3,dims=[5]int.[32,132,1024,0,0]},begin=8,end=8650760,elements=4325376,shard=1};inv:=[2]P5Tensor.[t,P5Tensor.{name="other"}];sizes:=[2]int.[4990519232,1919980184];r:=gac_bind(0,inv[..],sizes[..]);
+  #assert r.status==GvpStatus.ok && r.begin==540680 && r.bytes==270336 && r.target==270336 && r.transpose && !r.decode && r.rows==1024 && r.cols==132;
+  for bad:0..<11 {x:=inv;if bad==0 {x[1]=t;}if bad==1 {x[0].name="other";}if bad==2 {x[0].dtype=PwDtype.f32;}if bad==3 {x[0].shape.rank=2;}if bad==4 {x[0].shape.dims[1]=133;}if bad==5 {x[0].begin=7;}if bad==6 {x[0].end+=1;}if bad==7 {x[0].shard=2;}if bad==8 {x[0].elements-=1;}if bad==9 {x[0].shape.dims[4]=1;}if bad==10 {x[0].begin=1919980184;x[0].end=x[0].begin+s.bytes;}#assert gac_bind(0,x[..],sizes[..]).status!=GvpStatus.ok;}
+  #assert gac_bind(-1,inv[..],sizes[..]).status==GvpStatus.shape && gac_bind(0,inv[..],sizes[0..<1]).status==GvpStatus.shape && gac_bind(0,inv[0..<0],sizes[..]).status==GvpStatus.capacity;
+}
+#test "action kernel libraries captures and source attention routes are explicit" {
+  for k:0..<12 {s:=gac_kernel(k);#assert s.name.count>0 && s.library==(ifx k==0 then 0 else ifx k==1 then 3 else ifx k<7 then 1 else 2);}#assert gac_kernel(-1).name=="" && gac_kernel(12).name=="";
+  captures:=0;for stage:0..<142 {for slot:0..<3 {c:=gac_capture(stage,slot);if c.ok {captures+=1;#assert c.name.count>0 && c.count>0 && c.buffer>=537 && c.buffer<=566 && c.offset==0;}}}#assert captures==31;
+  #assert gac_capture(4,0).name=="vl-conditioning" && gac_capture(5,0).name=="state-features" && gac_capture(7,0).name=="flow0-block0" && gac_capture(141,2).name=="normalized-actions";
+  #assert !gac_capture(-1,0).ok && !gac_capture(0,-1).ok && !gac_capture(4,3).ok;
+  for layer:0..<32 {n:=gac_node(7+layer,10);#assert n.kernel==4 && n.args[0].integer==41 && n.args[1].integer==(ifx layer%2==0 then 140 else 41) && n.args[4].integer==48 && n.args[5].integer==(ifx layer%2==0 then 1 else 0);if layer%2==0 {#assert n.args[9].buffer==(ifx layer%4==0 then 540 else 541) && n.args[9].count==140;}else {#assert n.args[9].count==0;}}
+  n:=gac_node(1,7);#assert n.kernel==4 && n.args[0].integer==140 && n.args[1].integer==140 && n.args[4].integer==64 && n.args[5].integer==0 && n.args[9].count==0;
+}
+#test "action mask and BF16 decode reject late invalid data before publishing" {
+  ids:[140]int;text:[140]u8;image:[140]u8;ids[4]=151655;ids[139]=151935;
+  #assert gac_masks(ids[..],text[..],image[..],false)==GvpStatus.ok && image[4]==1 && text[4]==0 && image[0]==0 && text[0]==1;
+  text[0]=9;ids[139]=151936;#assert gac_masks(ids[..],text[..],image[..],false)==GvpStatus.shape && text[0]==9;
+  ids[139]= -1;#assert gac_masks(ids[..],text[..],image[..],false)==GvpStatus.shape;ids[139]=0;
+  #assert gac_masks(ids[0..<139],text[..],image[..],false)==GvpStatus.capacity && gac_masks(ids[..],text[0..<139],image[..],false)==GvpStatus.capacity && gac_masks(ids[..],text[..],image[0..<139],false)==GvpStatus.capacity && gac_masks(ids[..],text[..],image[..],true)==GvpStatus.alias;
+  bytes:[2048]u8;out:[1024]f32;for i:0..<1024 {bytes[2*i]=0x80;bytes[2*i+1]=0x3f;out[i]=7;}#assert gac_decode(1,bytes[..],out[..],false).status==GvpStatus.ok && out[0]==1 && out[1023]==1;
+  bytes[2047]=0x7f;bytes[2046]=0x80;out[0]=7;#assert gac_decode(1,bytes[..],out[..],false).status==GvpStatus.number && out[0]==7;
+  #assert gac_decode(0,bytes[..],out[..],false).status==GvpStatus.shape && gac_decode(1,bytes[0..<2047],out[..],false).status==GvpStatus.capacity && gac_decode(1,bytes[..],out[0..<1023],false).status==GvpStatus.capacity && gac_decode(1,bytes[..],out[..],true).status==GvpStatus.alias;
+}
+#test "action receipts require every launch completed wait flags and single final publication" {
+  s:[1]GvpCursor;flags:[140]u8;#assert gac_done(s[..],0,0,flags[..])==GvpStatus.order;s[0]=GvpCursor.{};#assert gac_sent(s[..],0,0,0)==GvpStatus.ok && gac_done(s[..],0,0,flags[..])==GvpStatus.ok && s[0].stage==1 && s[0].node==0;
+  s[0]=GvpCursor.{};#assert gac_sent(s[..],0,1,0)==GvpStatus.order;s[0]=GvpCursor.{};#assert gac_sent(s[..],0,0,7)==GvpStatus.check;s[0]=GvpCursor.{};#assert gac_sent(s[..],0,0,4)==GvpStatus.device;
+  s[0]=GvpCursor.{};#assert gac_sent(s[..],0,0,0)==GvpStatus.ok;flags[139]=9;#assert gac_done(s[..],0,0,flags[..])==GvpStatus.number;
+  words:[5280]u32;out:[5281]f32;out[5280]=7;s[0]=GvpCursor.{stage=142};#assert gac_publish(s[..],words[..],out[..],false).written==5280 && s[0].stage==143 && out[5280]==7;#assert gac_publish(s[..],words[..],out[..],false).status==GvpStatus.order;
+}
+
+#test "action canonical captures workspace and tiny descriptor boundaries match the qualified graph" {
+  for i:0..<31 {#assert gac_buffer_bytes(537+i)==GAC_WORKSPACE_ORIGINAL[i];c:=GAC_CAPTURE_ORIGINAL[i];got:=gac_capture(c.stage,c.slot);#assert got.ok && got.name==c.name && got.buffer==c.buffer && got.count==c.count && got.offset==c.offset;}
+  #assert !gac_capture(141,-1).ok && !gac_capture(141,3).ok && !gac_capture(141,4).ok && gac_node(142,0).status==GvpStatus.shape;
+  b:[1]GacBuild;args:=[3]GvpArg.[gac_i(0),gac_v(555,1),gac_v(556,1)];gac_op(b[..],3,1,args[..],1);#assert b[0].count==1 && b[0].flags==1 && b[0].nodes[0].argc==4 && b[0].nodes[0].args[3].count==1;
+  b[0]=GacBuild.{};gac_linear(b[..],0,555,0,16,562,0,0);#assert b[0].nodes[0].items==16;
+  b[0]=GacBuild.{};gac_attention(b[..],1,1,64,0);#assert b[0].nodes[0].args[5].integer==1 && b[0].nodes[0].args[9].buffer==0 && b[0].nodes[0].args[9].count==1;
+}
+#test "action bind supports either shard singleton inventories and every original selected range" {
+  sizes:=[2]int.[4990519232,1919980184];for i:0..<537 {o:=GAC_ORIGINAL[i];one:=[1]P5Tensor.[o];s:=gac_spec(i);r:=gac_bind(i,one[..],sizes[..]);#assert r.status==GvpStatus.ok && r.shard==o.shard && r.begin==o.begin+(ifx i<14 then 2*s.take else 0) && r.bytes==s.take && r.target==s.target && r.decode==s.decode && r.transpose==s.transpose && r.rows==s.rows && r.cols==s.cols;}
+  o:=GAC_ORIGINAL[0];one:=[1]P5Tensor.[o];one[0].shape.dims[0]=31;#assert gac_bind(0,one[..],sizes[..]).status==GvpStatus.manifest;
+}
+#test "action position decoder keeps its entire forty-row prefix and reports private preparation failure" {
+  bytes:[122880]u8;out:[61441]f32;for i:0..<61440 {bytes[2*i]=0x80;bytes[2*i+1]=0x3f;}bytes[0]=0;bytes[1]=0x40;out[61440]=7;
+  r:=gac_decode(16,bytes[..],out[..],false);#assert r.status==GvpStatus.ok && r.written==61440 && out[0]==2 && out[61439]==1 && out[61440]==7;
+  bytes[122879]=0x7f;bytes[122878]=0x80;r=gac_decode(16,bytes[..],out[..],false);#assert r.status==GvpStatus.number && r.written==0 && out[61440]==7;
+}
+#test "action cursor refuses malformed views stale stages skipped launches failed waits and missing numeric receipts" {
+  flags:[140]u8;s:[1]GvpCursor;s[0]=GvpCursor.{stage= -1};#assert gac_done(s[..],-1,0,flags[0..<0])==GvpStatus.order && s[0].status==GvpStatus.order;s[0]=GvpCursor.{};#assert gac_sent(s[0..<0],0,0,0)==GvpStatus.shape && gac_done(s[0..<0],0,0,flags[..])==GvpStatus.shape;
+  s[0]=GvpCursor.{status=GvpStatus.device};#assert gac_sent(s[..],0,0,0)==GvpStatus.device && gac_done(s[..],0,0,flags[..])==GvpStatus.device;
+  for mode:0..<5 {s[0]=GvpCursor.{};seq:=0;at:=0;if mode==0 {seq= -1;}if mode==1 {seq=1;}if mode==2 {at= -1;s[0].node= -1;}if mode==3 {at=1;s[0].node=1;}if mode==4 {s[0].node=1;}#assert gac_sent(s[..],seq,at,0)==GvpStatus.order && s[0].status==GvpStatus.order;}
+  for mode:0..<7 {s[0]=GvpCursor.{node=1};seq:=0;effect:=0;count:=140;expected:=GvpStatus.order;
+    if mode==0 {seq= -1;}if mode==1 {seq=1;}if mode==2 {s[0].node=0;}if mode==3 {effect=7;expected=GvpStatus.check;}if mode==4 {effect=4;expected=GvpStatus.device;}if mode==5 {count=139;expected=GvpStatus.capacity;}if mode==6 {flags[0]=9;expected=GvpStatus.number;}
+    #assert gac_done(s[..],seq,effect,flags[0..<count])==expected && s[0].status==expected;flags[0]=0;
+  }
+}
+#test "action final public copy validates every extent number and consumed state before any write" {
+  words:[5280]u32;out:[5281]f32;s:[1]GvpCursor;for i:0..<5281 {out[i]=7;}
+  for mode:0..<9 {s[0]=GvpCursor.{stage=142};sc:=1;nc:=5280;oc:=5280;overlap:=false;expected:=GvpStatus.order;
+    if mode==0 {sc=0;expected=GvpStatus.shape;}if mode==1 {s[0].status=GvpStatus.device;expected=GvpStatus.device;}if mode==2 {s[0].stage=141;}if mode==3 {s[0].node=1;}if mode==4 {nc=5279;expected=GvpStatus.capacity;}if mode==5 {oc=5279;expected=GvpStatus.capacity;}if mode==6 {overlap=true;expected=GvpStatus.alias;}if mode==7 {words[0]=0x7f800000;expected=GvpStatus.number;}if mode==8 {words[5279]=0x7fc00001;expected=GvpStatus.number;}
+    r:=gac_publish(s[0..<sc],words[0..<nc],out[0..<oc],overlap);#assert r.status==expected && r.written==0 && out[0]==7 && out[5279]==7;words[0]=0;words[5279]=0;
+  }
+  words[0]=0x40000000;words[5279]=0xc0400000;s[0]=GvpCursor.{stage=142};r:=gac_publish(s[..],words[..],out[0..<5280],false);#assert r.status==GvpStatus.ok && r.written==5280 && out[0]==2 && out[5279]== -3 && out[5280]==7;
+}
+
+gac_weight_count :: ()->int #export_c {return 537;}
+gac_buffer_count :: ()->int #export_c {return 568;}
+gac_kernel_count :: ()->int #export_c {return 12;}
+gac_stage_count :: ()->int #export_c {return 142;}
+gac_spec :: (part:int)->GacSpec #export_c {
+  if part<0 || part>=537 {return GacSpec.{};}s:GacSpec;s.ok=true;
+  if part<14 {p:=part/2;inputs:=[7]int.[132,1024,132,3072,1536,1024,1024];outputs:=[7]int.[1024,1536,1536,1536,1536,1024,132];s.prefix=GAC_CATEGORY[p];s.rows=outputs[p];s.category=true;s.decode=part%2==1;s.transpose=!s.decode;s.suffix=ifx s.decode then ".b" else ".W";s.rank=ifx s.decode then 2 else 3;s.dims[0]=32;
+    if s.decode {s.dims[1]=s.rows;s.bytes=64*s.rows;}else {s.cols=inputs[p];s.dims[1]=s.cols;s.dims[2]=s.rows;s.bytes=64*s.rows*s.cols;}s.take=s.bytes/32;
+  }else if part<25 {s.suffix=GAC_MISC[part-14];s.decode=part==14 || part==15 || part==16 || part==18 || part==20 || part==22 || part==24;
+    if part<=15 {s.rows=2048;}else if part==16 {s.rows=1024;s.cols=1536;}else {s.rows=ifx part==21 || part==22 then 3072 else ifx part==23 || part==24 then 1024 else 1536;s.cols=ifx part==17 then 256 else 1536;}
+    if s.decode && part!=16 {s.cols=0;s.rank=1;s.dims[0]=s.rows;s.bytes=2*s.rows;}else {s.rank=2;s.dims[0]=s.rows;s.dims[1]=s.cols;s.bytes=2*s.rows*s.cols;}s.take=ifx part==16 then 122880 else s.bytes;
+  }else if part<89 {p:=(part-25)%16;s.prefix=GAC_VL[(part-25)/16];s.suffix=GAC_VL_SUFFIX[p];s.decode=p==0 || p==1 || p==3 || p==5 || p==7 || p==9 || p==10 || p==11 || p==13 || p==15;s.rows=ifx p==12 || p==13 then 8192 else 2048;s.cols=ifx p==14 then 8192 else 2048;
+    if s.decode {s.cols=0;s.rank=1;s.dims[0]=s.rows;s.bytes=2*s.rows;}else {s.rank=2;s.dims[0]=s.rows;s.dims[1]=s.cols;s.bytes=2*s.rows*s.cols;}s.take=s.bytes;
+  }else {layer:=(part-89)/14;p:=(part-89)%14;s.prefix=GAC_DIT[layer];s.suffix=GAC_DIT_SUFFIX[p];s.decode=p%2==1;s.rows=ifx p==0 || p==1 then 3072 else ifx p==10 || p==11 then 6144 else 1536;s.cols=ifx p==12 then 6144 else ifx (p==4 || p==6) && layer%2==0 then 2048 else 1536;
+    if s.decode {s.cols=0;s.rank=1;s.dims[0]=s.rows;s.bytes=2*s.rows;}else {s.rank=2;s.dims[0]=s.rows;s.dims[1]=s.cols;s.bytes=2*s.rows*s.cols;}s.take=s.bytes;
+  }
+  s.target=ifx s.decode then 2*s.take else s.take;return s;
+}
+gac_match :: (name:string,prefix:string,suffix:string)->bool {return name.count==prefix.count+suffix.count && name[0..<prefix.count]==prefix && name[prefix.count..<name.count]==suffix;}
+gac_bind :: (part:int,inventory:[]P5Tensor,sizes:[]int)->GacBinding #export_c {
+  s:=gac_spec(part);if !s.ok || sizes.count!=2 {return GacBinding.{status=GvpStatus.shape};}if !gca_inventory_valid(inventory.count) {return GacBinding.{status=GvpStatus.capacity};}
+  found:= -1;for i:0..<inventory.count {if gac_match(inventory[i].name,s.prefix,s.suffix) {if found>=0 {return GacBinding.{status=GvpStatus.manifest};}found=i;}}
+  if found<0 {return GacBinding.{status=GvpStatus.manifest};}t:=inventory[found];if t.dtype!=PwDtype.bf16 || t.shard<0 || t.shard>=2 || t.shape.rank!=s.rank || t.elements!=s.bytes/2 {return GacBinding.{status=GvpStatus.manifest};}
+  for i:0..<5 {if t.shape.dims[i]!=s.dims[i] {return GacBinding.{status=GvpStatus.manifest};}}
+  if t.begin<8 || !pw_span(t.begin,t.end,s.bytes,sizes[t.shard]) {return GacBinding.{status=GvpStatus.manifest};}
+  return GacBinding.{shard=t.shard,begin=t.begin+(ifx s.category then 2*s.take else 0),bytes=s.take,target=s.target,decode=s.decode,transpose=s.transpose,rows=s.rows,cols=s.cols};
+}
+gac_buffer_bytes :: (buffer:int)->int #export_c {
+  if buffer<0 || buffer>=568 {return 0;}if buffer<537 {return gac_spec(buffer).target;}
+  sizes:=[31]int.[1146880,528,21120,140,140,1146880,6144,21120,251904,1146880,1146880,1146880,1146880,2508800,627200,2508800,1146880,4587520,4587520,4587520,6144,1024,6144,6144,12288,245760,491520,167936,163840,21120,8388608];return sizes[buffer-537];
+}
+gac_i :: (value:int)->GvpArg {return GvpArg.{integer=value};}
+gac_f :: (value:f32)->GvpArg {return GvpArg.{kind=2,real=value};}
+gac_v :: (buffer:int,count:int)->GvpArg {return GvpArg.{kind=4,buffer=buffer,count=count};}
+gac_vo :: (buffer:int,count:int,offset:int)->GvpArg {return GvpArg.{kind=4,buffer=buffer,count=count,offset=offset};}
+gac_op :: (b:[]GacBuild,kernel:int,items:int,args:[]GvpArg,flags:int) {
+  n:=GvpNode.{kernel=kernel,items=items,lanes=ifx kernel==0 then 128 else 1,block=128,argc=args.count,flag_count=flags,flag_offset=b[0].flags};for i:0..<args.count {n.args[i]=args[i];}
+  if flags>0 {n.args[args.count]=gac_vo(567,flags,b[0].flags);n.argc+=1;}b[0].nodes[b[0].count]=n;b[0].count+=1;b[0].flags+=flags;
+}
+gac_linear :: (b:[]GacBuild,weight:int,source:int,source_offset:int,tokens:int,destination:int,kind:int,residual:int) {
+  s:=gac_spec(weight);n:=tokens*s.rows;a:=[6]GvpArg.[gac_i(s.rows),gac_i(s.cols),gac_i(tokens),gac_v(weight,s.rows*s.cols/2),gac_vo(source,tokens*s.cols,source_offset),gac_v(554,n)];gac_op(b,0,((s.rows+63)/64)*((tokens+15)/16),a[..],0);
+  c:=[7]GvpArg.[gac_i(s.rows),gac_i(kind),gac_v(554,n),gac_v(weight+1,s.rows),gac_v(residual,ifx kind==1 then n else 0),gac_v(destination,n),GvpArg.{}];gac_op(b,7,n,c[0..<6],n);
+}
+gac_norm :: (b:[]GacBuild,source:int,destination:int,width:int,rows:int,kind:int,epsilon:f32,gamma:int,beta:int) {
+  a:=[7]GvpArg.[gac_i(width),gac_i(kind),gac_f(epsilon),gac_v(source,width*rows),gac_v(gamma,ifx kind==0 then 0 else width),gac_v(beta,ifx kind==1 then width else 0),gac_v(destination,width*rows)];gac_op(b,1,rows,a[..],rows);
+}
+gac_activation :: (b:[]GacBuild,source:int,destination:int,count:int,kind:int) {a:=[3]GvpArg.[gac_i(kind),gac_v(source,count),gac_v(destination,count)];gac_op(b,3,count,a[..],count);}
+gac_modulation :: (b:[]GacBuild,width:int,rows:int,order:int) {a:=[5]GvpArg.[gac_i(width),gac_i(order),gac_v(546,width*rows),gac_v(561,2*width),gac_v(555,width*rows)];gac_op(b,2,width*rows,a[..],width*rows);}
+gac_attention :: (b:[]GacBuild,queries:int,keys:int,width:int,mask:int) {
+  heads:=32;dim:=width/heads;n:=queries*heads*keys;a:=[13]GvpArg.[gac_i(queries),gac_i(keys),gac_i(heads),gac_i(heads),gac_i(dim),gac_i(ifx mask<0 then 0 else 1),gac_i(0),gac_v(547,queries*width),gac_v(548,keys*width),gac_v(ifx mask<0 then 540 else mask,ifx mask<0 then 0 else keys),gac_v(540,0),gac_v(550,n),gac_v(551,n)];gac_op(b,4,n,a[..],n);
+  c:=[4]GvpArg.[gac_i(keys),gac_v(550,n),gac_v(551,n),gac_v(552,n)];gac_op(b,5,queries*heads,c[..],queries*heads);
+  d:=[8]GvpArg.[gac_i(queries),gac_i(keys),gac_i(heads),gac_i(heads),gac_i(dim),gac_v(552,n),gac_v(549,keys*width),gac_v(553,queries*width)];gac_op(b,6,queries*width,d[..],queries*width);
+}
+gac_build :: (sequence:int)->GacBuild {
+  b:[1]GacBuild;if sequence==0 {gac_norm(b[..],537,542,2048,140,1,0.00001f32,14,15);return b[0];}
+  if sequence>=1 && sequence<=4 {base:=25+(sequence-1)*16;gac_norm(b[..],542,546,2048,140,1,0.00001f32,base,base+1);
+    gac_linear(b[..],base+2,546,0,140,547,0,0);gac_linear(b[..],base+4,546,0,140,548,0,0);gac_linear(b[..],base+6,546,0,140,549,0,0);gac_attention(b[..],140,140,2048,-1);
+    gac_linear(b[..],base+8,553,0,140,542,1,542);gac_norm(b[..],542,546,2048,140,1,0.00001f32,base+10,base+11);gac_linear(b[..],base+12,546,0,140,555,0,0);gac_activation(b[..],555,556,140*8192,1);gac_linear(b[..],base+14,556,0,140,542,1,542);return b[0];
+  }
+  if sequence==5 {gac_linear(b[..],0,538,0,1,555,2,0);gac_linear(b[..],2,555,0,1,543,0,0);return b[0];}
+  step:=(sequence-6)/34;sub:=(sequence-6)%34;current:=ifx step%2==0 then 539 else 544;
+  if sub==0 {for kind:0..<2 {width:=ifx kind==0 then 1536 else 256;out:=ifx kind==0 then 557 else 558;a:=[3]GvpArg.[gac_i(kind),gac_i(step),gac_v(out,width)];gac_op(b[..],8,width,a[..],width);}
+    gac_linear(b[..],4,current,0,40,562,0,0);concat:=[3]GvpArg.[gac_v(562,61440),gac_v(557,1536),gac_v(563,122880)];gac_op(b[..],9,122880,concat[..],122880);
+    gac_linear(b[..],6,563,0,40,555,0,0);gac_activation(b[..],555,556,61440,0);gac_linear(b[..],8,556,0,40,562,0,0);
+    hidden:=[4]GvpArg.[gac_v(543,1536),gac_v(562,61440),gac_v(16,61440),gac_v(545,62976)];gac_op(b[..],10,62976,hidden[..],62976);
+    gac_linear(b[..],17,558,0,1,555,0,0);gac_activation(b[..],555,556,1536,0);gac_linear(b[..],19,556,0,1,559,0,0);gac_activation(b[..],559,560,1536,0);return b[0];
+  }
+  if sub<=32 {layer:=sub-1;base:=89+14*layer;gac_norm(b[..],545,546,1536,41,0,0.00001f32,0,0);gac_linear(b[..],base,560,0,1,561,0,0);gac_modulation(b[..],1536,41,0);
+    gac_linear(b[..],base+2,555,0,41,547,0,0);keys:=ifx layer%2==0 then 140 else 41;context:=ifx layer%2==0 then 542 else 555;gac_linear(b[..],base+4,context,0,keys,548,0,0);gac_linear(b[..],base+6,context,0,keys,549,0,0);
+    gac_attention(b[..],41,keys,1536,ifx layer%2==1 then -1 else ifx layer%4==0 then 540 else 541);gac_linear(b[..],base+8,553,0,41,545,1,545);gac_norm(b[..],545,546,1536,41,0,0.00001f32,0,0);gac_linear(b[..],base+10,546,0,41,555,0,0);gac_activation(b[..],555,556,41*6144,1);gac_linear(b[..],base+12,556,0,41,545,1,545);return b[0];
+  }
+  gac_linear(b[..],21,560,0,1,561,0,0);gac_norm(b[..],545,546,1536,41,0,0.000001f32,0,0);gac_modulation(b[..],1536,41,1);gac_linear(b[..],23,555,0,41,564,0,0);gac_linear(b[..],10,564,4096,40,565,2,0);gac_linear(b[..],12,565,0,40,566,0,0);
+  next:=ifx step%2==0 then 544 else 539;a:=[3]GvpArg.[gac_v(current,5280),gac_v(566,5280),gac_v(next,5280)];gac_op(b[..],11,5280,a[..],5280);return b[0];
+}
+gac_schedule :: (sequence:int)->GacStage {
+  if sequence<0 || sequence>=142 {return GacStage.{status=GvpStatus.shape};}s:GacStage;
+  if sequence==0 {return s;}if sequence<5 {s.kind=1;s.layer=sequence-1;return s;}if sequence==5 {s.kind=2;return s;}s.step=(sequence-6)/34;sub:=(sequence-6)%34;s.kind=ifx sub==0 then 3 else ifx sub==33 then 5 else 4;s.layer=ifx s.kind==4 then sub-1 else 0;return s;
+}
+gac_stage :: (sequence:int)->GacStage #export_c {s:=gac_schedule(sequence);if s.status!=GvpStatus.ok {return s;}b:=gac_build(sequence);s.nodes=b.count;s.flags=b.flags;return s;}
+gac_node :: (sequence:int,index:int)->GvpNode #export_c {if sequence<0 || sequence>=142 || index<0 {return GvpNode.{status=GvpStatus.shape};}b:=gac_build(sequence);if index>=b.count {return GvpNode.{status=GvpStatus.shape};}return b.nodes[index];}
+gac_kernel :: (index:int)->GvpKernel #export_c {
+  if index<0 || index>=12 {return GvpKernel.{};}names:=[12]string.["dt_project_16x64","gaw_norm","gdk_modulate","gdk_activate","gdk_scores","gdk_softmax","gdk_context","gak_element","gak_time","gak_concat","gak_hidden","gak_euler"];return GvpKernel.{library=ifx index==0 then 0 else ifx index==1 then 3 else ifx index<7 then 1 else 2,name=names[index]};
+}
+gac_capture :: (sequence:int,slot:int)->GacCapture #export_c {
+  s:=gac_schedule(sequence);if slot<0 || slot>2 {return GacCapture.{};}
+  if sequence==4 && slot==0 {return GacCapture.{ok=true,name="vl-conditioning",buffer=542,count=286720};}if sequence==5 && slot==0 {return GacCapture.{ok=true,name="state-features",buffer=543,count=1536};}
+  names:=ifx s.step==0 then GAC_CAPTURE0 else ifx s.step==1 then GAC_CAPTURE1 else ifx s.step==2 then GAC_CAPTURE2 else GAC_CAPTURE3;
+  if s.kind==4 && slot==0 && (s.layer<4 || s.layer==31) {return GacCapture.{ok=true,name=names[ifx s.layer==31 then 4 else s.layer],buffer=545,count=62976};}
+  if s.kind==5 {if slot==0 {return GacCapture.{ok=true,name=names[5],buffer=566,count=5280};}if slot==1 || s.step==3 {return GacCapture.{ok=true,name=ifx slot==2 then "normalized-actions" else names[6],buffer=ifx s.step%2==0 then 544 else 539,count=5280};}}
+  return GacCapture.{};
+}
+gac_masks :: (ids:[]int,text:[]u8,image:[]u8,overlap:bool)->GvpStatus #export_c {
+  if ids.count!=140 || text.count<140 || image.count<140 {return GvpStatus.capacity;}if overlap {return GvpStatus.alias;}for id:ids {if id<0 || id>=151936 {return GvpStatus.shape;}}
+  for i:0..<140 {image[i]=ifx ids[i]==151655 then cast(u8)1 else cast(u8)0;text[i]=1-image[i];}return GvpStatus.ok;
+}
+gac_decode :: (part:int,source:[]u8,out:[]f32,overlap:bool)->GvpRead #export_c {
+  s:=gac_spec(part);if !s.ok || !s.decode {return GvpRead.{status=GvpStatus.shape};}n:=s.take/2;if source.count!=s.take || out.count<n {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}
+  width:=ifx part==16 then 1536 else n;rows:=n/width;for row:0..<rows {r:=gl_bias(QmDtype.bf16,width,source[row*width*2..<(row+1)*width*2],out[row*width..<(row+1)*width],false);if r.status!=QmStatus.ok {return GvpRead.{status=GvpStatus.number};}}
+  return GvpRead.{written=n};
+}
+gac_effect :: (status:int)->GvpStatus {return ifx status==7 then GvpStatus.check else GvpStatus.device;}
+gac_sent :: (s:[]GvpCursor,sequence:int,index:int,effect:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gac_stage(sequence);
+  if stage.status!=GvpStatus.ok || s[0].stage!=sequence || s[0].node!=index || index<0 || index>=stage.nodes {s[0].status=GvpStatus.order;return s[0].status;}
+  if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].node+=1;return GvpStatus.ok;
+}
+gac_done :: (s:[]GvpCursor,sequence:int,effect:int,flags:[]u8)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}stage:=gac_stage(sequence);
+  if stage.status!=GvpStatus.ok || s[0].stage!=sequence || s[0].node!=stage.nodes {s[0].status=GvpStatus.order;return s[0].status;}if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}
+  if flags.count!=stage.flags {s[0].status=GvpStatus.capacity;return s[0].status;}for flag:flags {if flag!=0 {s[0].status=GvpStatus.number;return s[0].status;}}s[0].stage+=1;s[0].node=0;return GvpStatus.ok;
+}
+gac_publish :: (s:[]GvpCursor,private:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {
+  if s.count!=1 {return GvpRead.{status=GvpStatus.shape};}if s[0].status!=GvpStatus.ok {return GvpRead.{status=s[0].status};}if s[0].stage!=142 || s[0].node!=0 {return GvpRead.{status=GvpStatus.order};}
+  if private.count!=5280 || out.count<5280 {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}for bits:private {if !psionic_tensor_finite_bits(bits) {return GvpRead.{status=GvpStatus.number};}}
+  for i:0..<5280 {out[i]=f32_from_bits(private[i]);}s[0].stage=143;return GvpRead.{written=5280};
+}

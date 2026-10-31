@@ -1,0 +1,34 @@
+// Only void kernels export into Metal. F32 matrix results add F32 bias once;
+// a per-output numeric flag fences publication of every nonfinite result.
+#authority;
+
+#test "Metal bias and ReLU preserve the separate F32 add and write every flag" {
+  x:=[4]f32.[-2,-1,0,2];b:=[4]f32.[1,2,0,-1];flags:=[8]u8.[7,7,7,7,7,7,7,7];
+  for i:0..<4 {gms_bias_relu(i,x[..],b[..],flags[..],0);}
+  #assert x[0]==0 && x[1]==1 && x[2]==0 && x[3]==1;for i:0..<4 {#assert flags[i]==0 && flags[i+4]==7;}
+  for i:0..<4 {gms_bias(i,x[..],b[..],flags[..],4);}
+  #assert x[0]==1 && x[1]==3 && x[2]==0 && x[3]==0;for i:0..<8 {#assert flags[i]==0;}
+  #assert gms_numeric(0)==0 && gms_numeric(0x80000000)==0 && gms_numeric(0x7f7fffff)==0;
+  #assert gms_numeric(0x7f800000)==1 && gms_numeric(0xff800000)==1 && gms_numeric(0x7fc00000)==1;
+  #assert gms_numeric(0x7f800001)==1;
+  x[0]=f32_from_bits(0x80000000);b[0]=x[0];gms_bias_relu(0,x[..],b[..],flags[..],0);#assert f32_bits(x[0])==0x80000000;
+}
+#forall "Metal kernel span and flag-offset boundaries are explicit" item:-1..<6,offset:-1..<6,kind:0..<4 {
+  values:=ifx kind==0 then 2 else ifx kind==3 then 1 else 4;bias:=ifx kind==1 then 2 else ifx kind==3 then 1 else 4;flags:=ifx kind==3 then 1 else 5;
+  want:=item>=0 && item<values && item<bias && offset>=0 && offset+item<flags;
+  #assert gms_kernel_bounds(item,values,bias,flags,offset)==want;
+}
+gms_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then 1 else 0;}
+// Counts name valid typed extents; subtract nonnegative offset before comparing
+// so adding a work item to an untrusted offset cannot overflow.
+gms_kernel_bounds :: (item:int,values:int,bias:int,flags:int,offset:int)->bool {return item>=0 && item<values && item<bias && offset>=0 && item<flags-offset;}
+gms_bias_relu :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c {
+  if !gms_kernel_bounds(item,values.count,bias.count,flags.count,offset) {return;}
+  value:=values[item]+bias[item];bad:=gms_numeric(f32_bits(value));flags[offset+item]=bad;
+  if bad!=0 {return;}if value<0 {value=0;}values[item]=value;
+}
+gms_bias :: (item:int,values:[]f32,bias:[]f32,flags:[]u8,offset:int) #export_c {
+  if !gms_kernel_bounds(item,values.count,bias.count,flags.count,offset) {return;}
+  value:=values[item]+bias[item];bad:=gms_numeric(f32_bits(value));flags[offset+item]=bad;
+  if bad!=0 {return;}values[item]=value;
+}

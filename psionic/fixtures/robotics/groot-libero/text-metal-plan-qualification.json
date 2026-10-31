@@ -1,0 +1,88 @@
+{
+  "active_text_tensors": 178,
+  "checks": {
+    "bindings_per_mode": 178,
+    "killed": 836,
+    "metadata_prefix_lengths": [
+      137,
+      140,
+      512
+    ],
+    "micro_ops_per_prefix": 325,
+    "modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "native_binding_facts_bit_identical": true,
+    "native_cases_per_mode": 1196,
+    "private_cursor_stages": 18,
+    "root_checks": 9,
+    "root_mutants": 836,
+    "survived": 0
+  },
+  "complete_header_tensors": 1031,
+  "date": "2026-10-31",
+  "model": "nvidia/GR00T-N1.7-LIBERO",
+  "native_evidence_reuse": {
+    "emitted_c_sha256": {
+      "debug": "03c3aa08b11f9e694e73205ffd6b7b6a7ca16ba2e06fee0b2864256b5827812b",
+      "release": "dbf350d86434af29a7dabb08e673710be3a921940aee786e143e5bbb09e80ad5"
+    },
+    "native_plan_source_sha256_before_norm_library_mapping": "aba9f27f9367e6bb32406076a60e82a36ad1363c5fca9f0b0f63fd242db90aa7",
+    "reason": "Only norm kernel name/library mapping changed afterward. All ABI fields, operator scalar/view arguments, tensor bindings, buffers, stage/node order and extents remain unchanged. The changed mapping has new root-only zero-survivor checks and separate actual GPU execution; prior native metadata proof is reused.",
+    "reference": {
+      "modes": [
+        {
+          "bindings": 178,
+          "mode": "debug",
+          "sha256": "4a3e633790b2d46042e7b514b816b37c3e744353d87bea03f53050d75541c8bb"
+        },
+        {
+          "bindings": 178,
+          "mode": "release",
+          "sha256": "4a3e633790b2d46042e7b514b816b37c3e744353d87bea03f53050d75541c8bb"
+        },
+        {
+          "bindings": 178,
+          "mode": "sanitized",
+          "sha256": "4a3e633790b2d46042e7b514b816b37c3e744353d87bea03f53050d75541c8bb"
+        }
+      ],
+      "native_modes_bit_identical": true,
+      "passed": true,
+      "schema": "psionic-groot-text-plan-native-reference-v1",
+      "scope": "Original committed header identities, all178active text binding metadata, native descriptor/ABI/private cursor/copy checks only; no model inference."
+    }
+  },
+  "norm_mapping": {
+    "kernel_id": 2,
+    "library": 3,
+    "name": "gaw_norm",
+    "profile": "F32 storage/affines; normalization statistics, centering and division use the qualified Metal float-float f64 profile."
+  },
+  "old_primitive_gates_reused": [
+    "groot-text.coax",
+    "groot-text-kernels.coax",
+    "groot-device-kernels.coax",
+    "device/tile.coax",
+    "groot-action-wide-kernels.coax"
+  ],
+  "original_header_sha256": {
+    "model-00001-of-00002.header.json": "ab6a13a00c1d497b3c6a91c0d81fb2097e31bfb8ea9da51ec1648c8c2e272421",
+    "model-00002-of-00002.header.json": "dc560beef663998a04dad423af422ae8ac20dd6a8605dce048139db11eeef3a2"
+  },
+  "passed": true,
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "schema": "psionic-groot-text-metal-plan-qualification-v1",
+  "scope": "Native ABI, all178original binding metadata, descriptor extents/private cursor/publication only. This receipt does not claim model numerical parity or closed-loop task success.",
+  "source_sha256": {
+    "psionic/lib/robotics/groot-text-metal-check-fixtures.coax": "8f7aceb0de9a20e336b0c077dce2fe994009ab04df2a4f5b1c5cc51b3705b253",
+    "psionic/lib/robotics/groot-text-metal-contract-fixtures.coax": "6d2787d7538bc9c26b0ce410ded37574966917579b4bfaacd1984a6b1f6c6c8a",
+    "psionic/lib/robotics/groot-text-metal-plan.coax": "95c58cf76f16cfd69bbdcc9027d7d4493444c7760bf7464610b2ab5102b8e3a9",
+    "psionic/tests/robotics/check-groot-text-metal-plan-native.sh": "6839c948ffb96ed9944793e2a1ac37441151493acfa3047fde82d4ee4707f78a",
+    "psionic/tests/robotics/groot-text-metal-plan-native.c": "1e462072081a52c5bf06bd84a5cd4224e89bcdb380c43262836d192f53e65022",
+    "psionic/tests/robotics/groot_text_plan_reference.py": "7fd84346e43fa51d74ded71456377b2db8d35fdbf17344260cc80198ee466d4c"
+  },
+  "subfolder": "libero_10"
+}

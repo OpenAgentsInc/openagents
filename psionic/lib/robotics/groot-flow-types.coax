@@ -1,0 +1,10 @@
+// Numerical flow operators only. Inputs, noise and velocities are caller owned;
+// this does not run a policy or prove that a caller advanced its own state.
+GfStatus :: enum u8 {ok;time;kind;shape;capacity;alias;number;arithmetic;}
+GfTimeKind :: enum u8 {action;dit;}
+GfResult :: struct {status:GfStatus;written:int;}
+GfSchedule :: struct {status:GfStatus;bucket:int;dt:f32;}
+GF_STEPS :: 4;
+GF_BUCKETS :: 1000;
+GF_VALUES_MAX :: 5280; // released action horizon40 * maximum dimension132
+GF_TIME_HALF_MAX :: 2048; // even embedding widths through4096

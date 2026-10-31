@@ -1,0 +1,21 @@
+// Independent architecture contract for descriptor checks (tooling only).
+#load "groot-vision-metal-types.coax";
+gvp_ti :: (n:GvpNode,a:int,want:int) {#assert n.args[a].kind==0 && n.args[a].integer==want;}
+gvp_tv :: (n:GvpNode,a:int,buffer:int,count:int) {#assert n.args[a].kind==4 && n.args[a].buffer==buffer && n.args[a].count==count && n.args[a].offset==0;}
+gvp_tm :: (n:GvpNode,rows:int,cols:int,tokens:int,weight:int,input:int,output:int) {#assert n.kernel==0 && n.lanes==128 && n.argc==6 && n.items==(rows/64)*(tokens/16) && n.flag_count==0;gvp_ti(n,0,rows);gvp_ti(n,1,cols);gvp_ti(n,2,tokens);gvp_tv(n,3,weight,rows*cols/2);gvp_tv(n,4,input,tokens*cols);gvp_tv(n,5,output,tokens*rows);}
+gvp_tn :: (n:GvpNode,width:int,scale:int,bias:int) {#assert n.kernel==1 && n.lanes==1 && n.argc==8 && n.items==524288/width && n.flag_count==524288/width;gvp_ti(n,0,width);gvp_ti(n,1,1);#assert n.args[2].kind==2 && n.args[2].real==0.000001f32;gvp_tv(n,3,315,524288);gvp_tv(n,4,scale,width);gvp_tv(n,5,bias,width);gvp_tv(n,6,316,524288);}
+gvp_te :: (n:GvpNode,width:int,kind:int,count:int,input:int,bias:int,output:int) {#assert n.kernel==6 && n.lanes==1 && n.argc==7 && n.items==count && n.flag_count==count;gvp_ti(n,0,width);gvp_ti(n,1,kind);gvp_tv(n,2,input,count);gvp_tv(n,3,bias,width);gvp_tv(n,4,ifx kind==1 then 315 else 328,ifx kind==1 then count else 0);gvp_tv(n,5,output,count);}
+gvp_contract :: (s:GvpStage,at:int,n:GvpNode) {
+ #assert n.block==128;
+ if s.kind==0 {if at==0 {gvp_tm(n,1024,1536,512,0,330,322);}else if at==1 {gvp_te(n,1024,0,524288,322,1,321);}else {#assert n.kernel==8 && n.items==524288 && n.lanes==1 && n.argc==5 && n.flag_count==524288;gvp_tv(n,0,321,524288);gvp_tv(n,1,335,1024);gvp_tv(n,2,2,1179648);gvp_tv(n,3,315,524288);}return;}
+ if s.kind==2 {base:=291+s.merger*6;if at==0 {gvp_tn(n,ifx s.merger==0 then 1024 else 4096,base,base+1);}if at==1 {gvp_tm(n,4096,4096,128,base+2,316,322);}if at==2 {gvp_te(n,4096,2,524288,322,base+3,323);}if at==3 {gvp_tm(n,2048,4096,128,base+4,323,321);}if at==4 {gvp_te(n,2048,0,262144,321,base+5,331+s.merger);}return;}
+ base:=3+12*s.layer;
+ if at==0 {gvp_tn(n,1024,base,base+1);}if at==1 {gvp_tm(n,3072,1024,512,base+2,316,317);}
+ if at==2 {#assert n.kernel==2 && n.lanes==1 && n.argc==6 && n.items==524288 && n.flag_count==524288;gvp_tv(n,0,317,1572864);gvp_tv(n,1,base+3,3072);gvp_tv(n,2,318,524288);gvp_tv(n,3,319,524288);gvp_tv(n,4,320,524288);}
+ if at==3 {#assert n.kernel==3 && n.lanes==1 && n.argc==14 && n.items==4194304 && n.flag_count==4194304;v:=[7]int.[512,512,16,16,64,4,0];for i:0..<7 {gvp_ti(n,i,v[i]);}gvp_tv(n,7,318,524288);gvp_tv(n,8,319,524288);gvp_tv(n,9,328,0);gvp_tv(n,10,327,512);gvp_tv(n,11,324,4194304);gvp_tv(n,12,325,4194304);}
+ if at==4 {#assert n.kernel==4 && n.lanes==1 && n.argc==5 && n.items==8192 && n.flag_count==8192;gvp_ti(n,0,512);gvp_tv(n,1,324,4194304);gvp_tv(n,2,325,4194304);gvp_tv(n,3,326,4194304);}
+ if at==5 {#assert n.kernel==5 && n.lanes==1 && n.argc==9 && n.items==524288 && n.flag_count==524288;v:=[5]int.[512,512,16,16,64];for i:0..<5 {gvp_ti(n,i,v[i]);}gvp_tv(n,5,326,4194304);gvp_tv(n,6,320,524288);gvp_tv(n,7,321,524288);}
+ if at==6 {gvp_tm(n,1024,1024,512,base+4,321,322);}if at==7 {gvp_te(n,1024,1,524288,322,base+5,315);}if at==8 {gvp_tn(n,1024,base+6,base+7);}if at==9 {gvp_tm(n,4096,1024,512,base+8,316,322);}if at==10 {gvp_te(n,4096,0,2097152,322,base+9,322);}
+ if at==11 {#assert n.kernel==7 && n.lanes==1 && n.argc==4 && n.items==2097152 && n.flag_count==2097152;gvp_ti(n,0,1);gvp_tv(n,1,322,2097152);gvp_tv(n,2,323,2097152);}
+ if at==12 {gvp_tm(n,1024,4096,512,base+10,323,321);}if at==13 {gvp_te(n,1024,1,524288,321,base+11,315);}
+}

@@ -1,0 +1,3 @@
+// Aggregate library for native component qualification; no learned CPU model.
+#load "../../lib/robotics/groot-action-metal-kernels.coax";
+#load "../../lib/robotics/groot-action-wide-kernels.coax";

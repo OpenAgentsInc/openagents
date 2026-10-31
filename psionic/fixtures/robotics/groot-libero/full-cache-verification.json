@@ -1,0 +1,47 @@
+{
+  "full_hash_receipt": "Earlier completed shasum -a 256 over both full downloaded shards; transcribed without repeating that passing run.",
+  "full_sha256_completed_utc": "2026-10-31T14:55:21.368879+00:00",
+  "full_shards": [
+    {
+      "bytes": 4990519232,
+      "file": "model-00001-of-00002.safetensors",
+      "sha256": "39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff"
+    },
+    {
+      "bytes": 1919980184,
+      "file": "model-00002-of-00002.safetensors",
+      "sha256": "8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703"
+    }
+  ],
+  "hashes_recomputed_for_this_record": false,
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "schema": "psionic-groot-full-cache-verification-v1",
+  "scope": "Payload identity and selected range provenance; not full-policy numerical parity or simulated task success.",
+  "selected_state_capture_comparison": [
+    {
+      "begin": 1408168600,
+      "bytes": 270336,
+      "exact_full_shard_range_match": true,
+      "file": "state-w1.bf16"
+    },
+    {
+      "begin": 1416282776,
+      "bytes": 2048,
+      "exact_full_shard_range_match": true,
+      "file": "state-b1.bf16"
+    },
+    {
+      "begin": 1422635672,
+      "bytes": 3145728,
+      "exact_full_shard_range_match": true,
+      "file": "state-w2.bf16"
+    },
+    {
+      "begin": 1517013656,
+      "bytes": 3072,
+      "exact_full_shard_range_match": true,
+      "file": "state-b2.bf16"
+    }
+  ],
+  "subfolder": "libero_10"
+}

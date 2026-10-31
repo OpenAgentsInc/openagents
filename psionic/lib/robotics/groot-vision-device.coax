@@ -1,0 +1,102 @@
+// Qwen3-VL fixed16x16 still-camera vision helpers, F32 device profile.
+// Only void kernels export. Every private output has its own numeric flag.
+#authority;
+
+#forall "vision GPU coordinates preserve 2x2 merge order and separate cameras" token:0..<512 {
+  local:=token%256;block:=local/4;row:=2*(block/8)+(local%4)/2;column:=2*(block%8)+local%2;
+  #assert gvi_coordinate(token,false)==row && gvi_coordinate(token,true)==column;
+  #assert gvi_coordinate(token,false)==gvi_coordinate(token%256,false);
+  positions:=[16]u32.[0x0,0x40488889,0x40c88889,0x41166667,0x41488889,0x417aaaab,0x41966667,0x41af7778,0x41c88888,0x41e19999,0x41faaaaa,0x4209ddde,0x42166666,0x4222eeef,0x422f7777,0x423c0000];y:=f32_from_bits(positions[row]);x:=f32_from_bits(positions[column]);yl:=cast(int)y;xl:=cast(int)x;yh:=ifx yl<47 then yl+1 else 47;xh:=ifx xl<47 then xl+1 else 47;dy:=y-f32(yl);dx:=x-f32(xl);
+  expected:=[4]int.[yl*48+xl,yl*48+xh,yh*48+xl,yh*48+xh];weights:=[4]f32.[(1-dy)*(1-dx),(1-dy)*dx,dy*(1-dx),dy*dx];
+  for c:0..<4 {#assert gvi_index(token,c)==expected[c] && gvi_weight(token,c)==weights[c];}
+}
+#forall "vision GPU inverse frequencies follow original power then reciprocal F32" pair:0..<16 {
+  power:=f32(exp(log(f64(10000))*f64(pair)/16));want:=f32(1.0/f64(power));#assert f32_bits(gvi_inverse(pair))==f32_bits(want);
+}
+#test "vision GPU learned-position prefix and private span checks are explicit" {
+  words:=[2]u32.[0xc0003f80,0x40804040];#assert gvi_bf16(words[..],0)==1 && gvi_bf16(words[..],1)==-2 && gvi_bf16(words[..],2)==3 && gvi_bf16(words[..],3)==4;
+  x:[2048]f32;b:[1024]f32;positions:[32768]u32;out:[2048]f32;flags:[2048]u8;
+  for word:0..<32768 {row:=word/512;lo:=0x3f80+((row+(2*word)%1024)%8)*16;hi:=0x3f80+((row+(2*word+1)%1024)%8)*16;positions[word]=cast(u32)lo|(cast(u32)hi<<16);}b[0]=4;b[1]=4;
+  for item:[5]int.[0,1,1024,1061,2047] {flags[item]=9;gvi_posadd(item,x[..],b[..],positions[..],out[..],flags[..]);axis:=item%1024;
+    want:=1.0f32+f32(axis%8)/8;if item>=1024 {dx:=47.0f32/15.0f32-3.0f32;want=(1.0f32+f32((3+axis)%8)/8)*(1-dx)+(1.0f32+f32((4+axis)%8)/8)*dx;}want+=b[axis];#assert abs(out[item]-want)<2e-6f32 && flags[item]==0;}
+  out[0]=7;flags[0]=9;gvi_posadd(-1,x[..],b[..],positions[..],out[..],flags[..]);gvi_posadd(0,x[0..<1023],b[..],positions[..],out[..],flags[..]);gvi_posadd(0,x[..],b[0..<1023],positions[..],out[..],flags[..]);gvi_posadd(0,x[..],b[..],positions[0..<511],out[..],flags[..]);gvi_posadd(0,x[..],b[..],positions[0..<512],out[..],flags[..]);gvi_posadd(0,x[..],b[..],positions[..],out[0..<0],flags[..]);gvi_posadd(0,x[..],b[..],positions[..],out[..],flags[0..<0]);#assert out[0]==7 && flags[0]==9;
+}
+#test "vision GPU fused bias split and RoPE preserves all head halves and axes" {
+  x:[12288]f32;b:[3072]f32;q:[4096]f32;k:[4096]f32;v:[4096]f32;flags:[4096]u8;
+  for i:0..<12288 {x[i]=f32(i%17-8)/16;}for i:0..<3072 {b[i]=f32(i%5-2)/8;}
+  for token:0..<4 {for head:[3]int.[0,1,15] {for d:0..<64 {axis:=head*64+d;i:=token*1024+axis;flags[i]=9;gvi_qkv(i,x[..],b[..],q[..],k[..],v[..],flags[..]);
+    coordinate:=ifx d%32<16 then token/2 else token%2;power:=f32(exp(log(f64(10000))*f64(d%16)/16));phase:=f32(f64(coordinate)*f64(f32(1.0/f64(power))));co:=f32(cos(f64(phase)));si:=f32(sin(f64(phase)));other:=head*64+(d+32)%64;sign:=ifx d<32 then -1.0f32 else 1.0f32;
+    a:=x[token*3072+axis]+b[axis];ar:=x[token*3072+other]+b[other];bb:=x[token*3072+1024+axis]+b[1024+axis];br:=x[token*3072+1024+other]+b[1024+other];
+    wantq:=a*co+(sign*ar)*si;wantk:=bb*co+(sign*br)*si;#assert abs(q[i]-wantq)<2e-6f32 && abs(k[i]-wantk)<2e-6f32 && v[i]==x[token*3072+2048+axis]+b[2048+axis] && flags[i]==0;
+  }}}
+  q[0]=7;flags[0]=9;gvi_qkv(-1,x[..],b[..],q[..],k[..],v[..],flags[..]);gvi_qkv(0,x[0..<3071],b[..],q[..],k[..],v[..],flags[..]);#assert q[0]==7 && flags[0]==9;
+}
+#test "vision device element operations keep bias residual and exact-erf profile distinct" {
+  x:=[4]f32.[-2,-1,0,2];b:=[2]f32.[1,2];r:=[4]f32.[2,3,4,5];empty:[1]f32;out:[4]f32;flags:[4]u8;
+  for i:0..<4 {flags[i]=9;gvi_element(i,2,0,x[..],b[..],empty[0..<0],out[..],flags[..]);#assert flags[i]==0;}#assert out[0]==-1 && out[1]==1 && out[2]==1 && out[3]==4;
+  for i:0..<4 {gvi_element(i,2,1,x[..],b[..],r[..],out[..],flags[..]);}#assert out[0]==1 && out[1]==4 && out[2]==5 && out[3]==9 && flags[3]==0;
+  for i:0..<4 {gvi_element(i,2,2,x[..],b[..],empty[0..<0],out[..],flags[..]);}#assert abs(out[0]+0.15865525f32)<3e-7f32 && abs(out[1]-0.8413447f32)<3e-7f32 && out[3]>3.9998f32;
+  #assert gvi_gelu(f32_from_bits(0x7f7fffff))==f32_from_bits(0x7f7fffff) && gvi_gelu(-f32_from_bits(0x7f7fffff))==0;
+  #assert gvi_gelu(0)==0 && gvi_gelu(9)==9 && gvi_gelu(-9)==0 && gvi_gelu(8)==8 && gvi_gelu(-8)==0;
+  out[0]=7;flags[0]=9;for kind:[3]int.[-1,3,9223372036854775807] {gvi_element(0,2,kind,x[..],b[..],empty[0..<0],out[..],flags[..]);}gvi_element(0,0,0,x[..],b[..],empty[0..<0],out[..],flags[..]);gvi_element(0,2,1,x[..],b[..],empty[0..<0],out[..],flags[..]);gvi_element(0,2,0,x[..],b[0..<1],empty[0..<0],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+  #assert gvi_bad(0x7f800000)==1 && gvi_bad(0x7f800001)==1 && gvi_bad(0xffc00000)==1 && gvi_bad(0x7f7fffff)==0 && gvi_bad(0x80000000)==0;
+}
+#test "vision device numeric predicates and exact saturation boundary are checkable from bits" {
+  for a:0..<2 {for b:0..<2 {#assert gvi_or(cast(u8)a,cast(u8)b)==cast(u8)(ifx a>b then a else b);}}
+  #assert gvi_tail(8)==1 && gvi_tail(-8)==-1 && gvi_tail(7.999f32)==0 && gvi_tail(-7.999f32)==0 && gvi_tail(0)==0;
+  #assert gvi_negative(-1) && !gvi_negative(0) && !gvi_negative(1);
+  x:[1024]f32;b:[1024]f32;positions:[25600]u32;out:[1024]f32;flags:[1024]u8;positions[0]=0x7f80;out[0]=7;flags[0]=9;gvi_posadd(0,x[..],b[..],positions[..],out[..],flags[..]);#assert flags[0]==1 && out[0]==7;
+  #assert gvi_pos_bounds(0,1024,1024,512,1024,1024) && gvi_pos_bounds(524287,524288,1024,1179648,524288,524288);
+  #assert !gvi_pos_bounds(524288,524288,1024,1179648,524288,524288) && !gvi_pos_bounds(0,524289,1024,1179648,524289,524289) && !gvi_pos_bounds(0,1024,1024,1179649,1024,1024);
+  #assert gvi_qkv_bounds(0,3072,3072,1024,1024,1024,1024) && !gvi_qkv_bounds(0,1575936,3072,525312,525312,525312,525312);
+  #assert !gvi_pos_bounds(0,525312,1024,1179648,525312,525312) && !gvi_pos_bounds(0,1024,1024,1180160,1024,1024);
+  #assert !gvi_element_bounds(0,1,0,2097153,1,0,2097153,2097153);
+  #assert gvi_qkv_bounds(524287,1572864,3072,524288,524288,524288,524288) && !gvi_qkv_bounds(524288,1572864,3072,524288,524288,524288,524288) && !gvi_qkv_bounds(0,1572865,3072,524288,524288,524288,524288);
+  for field:0..<7 {nx:=3072;nb:=3072;nq:=1024;nk:=1024;nv:=1024;nf:=1024;item:=0;if field==0 {nx=3071;}if field==1 {nb=3071;}if field==2 {nq=1023;}if field==3 {nk=1023;}if field==4 {nv=1023;}if field==5 {nf=1023;}if field==6 {item=-1;}#assert !gvi_qkv_bounds(item,nx,nb,nq,nk,nv,nf);}
+  #assert gvi_element_bounds(2097151,4096,0,2097152,4096,0,2097152,2097152) && gvi_element_bounds(0,1,0,1,1,0,1,1);
+  #assert !gvi_element_bounds(2097152,4096,0,2097152,4096,0,2097152,2097152) && !gvi_element_bounds(0,4096,0,2097153,4096,0,2097153,2097153) && !gvi_element_bounds(0,4097,0,4097,4097,0,4097,4097);
+  #assert !gvi_element_bounds(0,1,0,1,1,0,0,1) && !gvi_element_bounds(0,1,0,1,1,0,1,0) && !gvi_element_bounds(0,2,0,3,2,0,3,3) && !gvi_element_bounds(0,1,0,1,1,1,1,1);
+}
+gvi_bad :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
+gvi_coordinate :: (token:int,column:bool)->int {local:=token%256;block:=local/4;return ifx column then 2*(block%8)+local%2 else 2*(block/8)+(local%4)/2;}
+// Source CPU torch.linspace uses one rounded step and symmetric endpoints.
+gvi_linspace :: (coordinate:int)->f32 {step:=47.0f32/15.0f32;return ifx coordinate<8 then f32(coordinate)*step else 47.0f32-f32(15-coordinate)*step;}
+gvi_position :: (token:int,column:bool)->f32 {return gvi_linspace(gvi_coordinate(token,column));}
+gvi_index :: (token:int,corner:int)->int {y:=cast(int)gvi_position(token,false);x:=cast(int)gvi_position(token,true);if (corner&2)!=0 && y<47 {y+=1;}if (corner&1)!=0 && x<47 {x+=1;}return y*48+x;}
+gvi_weight :: (token:int,corner:int)->f32 {y:=gvi_position(token,false);x:=gvi_position(token,true);dy:=y-f32(cast(int)y);dx:=x-f32(cast(int)x);return (ifx (corner&2)!=0 then dy else 1.0f32-dy)*(ifx (corner&1)!=0 then dx else 1.0f32-dx);}
+gvi_inverse :: (pair:int)->f32 {words:=[16]u32.[0x3f800000,0x3f0ff59a,0x3ea1e89b,0x3e361887,0x3dcccccd,0x3d6655c2,0x3d0186e3,0x3c91ad39,0x3c23d70a,0x3bb8449c,0x3b4f3e38,0x3ae91528,0x3a83126f,0x3a136a16,0x39a5cb60,0x393a7753];return f32_from_bits(words[pair]);}
+gvi_bf16 :: (words:[]u32,index:int)->f32 {word:=words[index/2];half:=ifx index%2==0 then word&0xffff else word>>16;return f32_from_bits(half<<16);}
+gvi_posadd :: (item:int,x:[]f32,bias:[]f32,positions:[]u32,out:[]f32,flags:[]u8) #export_c {
+  if !gvi_pos_bounds(item,x.count,bias.count,positions.count,out.count,flags.count) {return;}
+  token:=item/1024;column:=item%1024;position:f32=0;
+  for corner:0..<4 {index:=gvi_index(token,corner)*1024+column;if index/2>=positions.count {return;}word:=positions[index/2];half:=ifx index%2==0 then word&0xffff else word>>16;bits:=half<<16;bad:=gvi_bad(bits);if bad!=0 {flags[item]=bad;return;}value:=f32_from_bits(bits);position+=value*gvi_weight(token,corner);}
+  value:=(x[item]+bias[column])+position;out[item]=value;flags[item]=gvi_bad(f32_bits(value));
+}
+gvi_qkv :: (item:int,x:[]f32,bias:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c {
+  if !gvi_qkv_bounds(item,x.count,bias.count,q.count,k.count,v.count,flags.count) {return;}
+  token:=item/1024;axis:=item%1024;d:=axis%64;other:=ifx d<32 then axis+32 else axis-32;sign:=ifx d<32 then -1.0f32 else 1.0f32;
+  phase:=f32(gvi_coordinate(token,(d%32)>=16))*gvi_inverse(d%16);co:=cos(phase);si:=sin(phase);base:=token*3072;
+  a:=x[base+axis]+bias[axis];ar:=x[base+other]+bias[other];b:=x[base+1024+axis]+bias[1024+axis];br:=x[base+1024+other]+bias[1024+other];c:=x[base+2048+axis]+bias[2048+axis];
+  qa:=a*co;qb:=(sign*ar)*si;ka:=b*co;kb:=(sign*br)*si;q[item]=qa+qb;k[item]=ka+kb;v[item]=c;
+  flags[item]=gvi_or(gvi_or(gvi_bad(f32_bits(q[item])),gvi_bad(f32_bits(k[item]))),gvi_bad(f32_bits(c)));
+}
+// Abramowitz-Stegun7.1.26 erf approximation, not the tanh GELU formula.
+// F32 error is qualified independently at2e-6+2e-6*abs(reference). Beyond8,
+// the true Gaussian tail is below F32 relevance; avoid squaring huge inputs.
+gvi_gelu :: (value:f32)->f32 {
+  tail:=gvi_tail(value);if tail!=0 {return ifx tail==1 then value else 0.0f32;}
+  z:=abs(value)*0.7071067811865476f32;t:=1.0f32/(1.0f32+0.3275911f32*z);
+  p:=1.061405429f32*t-1.453152027f32;p=p*t+1.421413741f32;p=p*t-0.284496736f32;p=p*t+0.254829592f32;p*=t;
+  erf:=1.0f32-p*exp(-z*z);if gvi_negative(value) {erf=-erf;}return (0.5f32*value)*(1.0f32+erf);
+}
+gvi_element :: (item:int,width:int,kind:int,x:[]f32,bias:[]f32,residual:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gvi_element_bounds(item,width,kind,x.count,bias.count,residual.count,out.count,flags.count) {return;}
+  value:=x[item]+bias[item%width];before:=f32_bits(value);if kind==1 {value+=residual[item];}if kind==2 {value=gvi_gelu(value);}out[item]=value;flags[item]=gvi_or(gvi_bad(before),gvi_bad(f32_bits(value)));
+}
+
+gvi_or :: (a:u8,b:u8)->u8 {return a|b;}
+gvi_tail :: (x:f32)->int {if x>=8 {return 1;}if x<=-8 {return -1;}return 0;}
+gvi_negative :: (x:f32)->bool {return x<0;}
+gvi_pos_bounds :: (item:int,n:int,bias:int,pos:int,out:int,flags:int)->bool {return item>=0 && item<n && n>=1024 && n/1024<=512 && n%1024==0 && bias==1024 && pos>=512 && pos/512<=2304 && pos%512==0 && out>=n && flags>=n;}
+gvi_qkv_bounds :: (item:int,nx:int,nb:int,nq:int,nk:int,nv:int,nf:int)->bool {if nx%3072!=0 || nx/3072>512 {return false;}n:=nx/3;return item>=0 && item<n && nb==3072 && nq>=n && nk>=n && nv>=n && nf>=n;}
+gvi_element_bounds :: (item:int,width:int,kind:int,n:int,bias:int,residual:int,out:int,flags:int)->bool {if item<0 || item>=n || n>2097152 || width<1 || width>4096 || n%width!=0 || kind<0 || kind>2 || bias!=width || out<n || flags<n {return false;}return residual==(ifx kind==1 then n else 0);}

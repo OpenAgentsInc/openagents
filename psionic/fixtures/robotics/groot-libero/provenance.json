@@ -1,0 +1,106 @@
+{
+  "schema": "psionic-groot-libero-provenance-v1",
+  "observed_date": "2026-10-31",
+  "model": "nvidia/GR00T-N1.7-LIBERO",
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "subfolder": "libero_10",
+  "reference_source": {
+    "repo": "https://github.com/NVIDIA/Isaac-GR00T",
+    "revision": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+    "execution": "Read only; no repository scripts or submodules executed.",
+    "local_checkout_hint": "~/work/projects/repos/Isaac-GR00T"
+  },
+  "model_card": {
+    "url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/blob/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/README.md",
+    "sha256": "33956fc189a30cde8b8abe7a5ca0e5b21e22d2da7882af4840eef20e799b2b2a",
+    "declared_license": "NVIDIA Open Model License Agreement",
+    "separate_license_file": "None in observed repository tree; do not apply this statement to original base checkpoint2fc962b."
+  },
+  "files": [
+    {
+      "path": "config.json",
+      "bytes": 2266,
+      "sha256": "ce763f74ad1cda2ca9e67491229cbc5810d83cae675cb4dad839a69a9731fd97",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/config.json",
+      "transform": "none"
+    },
+    {
+      "path": "processor_config.json",
+      "bytes": 26935,
+      "sha256": "545bb44c7d8caaf5ac82df55b90831271a1469a4e48adcc9a5f469f064f4e121",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/processor_config.json",
+      "transform": "none"
+    },
+    {
+      "path": "embodiment_id.json",
+      "bytes": 2145,
+      "sha256": "abc4a749389837416a102d9455a8c089336f2e417afb18565703b9944974bc35",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/embodiment_id.json",
+      "transform": "none"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "bytes": 104985,
+      "sha256": "407804ea5a62f4f8823f48811ae0edbb82fac101e9cf4d7273e6e2f692bb4d59",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model.safetensors.index.json",
+      "transform": "none"
+    },
+    {
+      "path": "libero-statistics.json",
+      "bytes": 4716,
+      "sha256": "e97cd73beef2b81eca32eae792f88538c6b3681187709f069dc943f4bb41419b",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/statistics.json",
+      "source_bytes": 4298413,
+      "source_sha256": "cbd3765acaec31fb65109304fa0c2ebd637732ddbe1b3cab0cc11bf244a498e1",
+      "transform": "Select top-level libero_sim only; indent2 JSON, original key order, one trailingLF. No numeric transformation."
+    },
+    {
+      "path": "model-00001-of-00002.header.json",
+      "bytes": 103352,
+      "sha256": "ab6a13a00c1d497b3c6a91c0d81fb2097e31bfb8ea9da51ec1648c8c2e272421",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00001-of-00002.safetensors",
+      "source_range_inclusive": [
+        8,
+        103359
+      ],
+      "transform": "Exact HTTP206 safetensors JSON header bytes; no tensor payload retained."
+    },
+    {
+      "path": "model-00002-of-00002.header.json",
+      "bytes": 34192,
+      "sha256": "dc560beef663998a04dad423af422ae8ac20dd6a8605dce048139db11eeef3a2",
+      "source_url": "https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/resolve/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00002-of-00002.safetensors",
+      "source_range_inclusive": [
+        8,
+        34199
+      ],
+      "transform": "Exact HTTP206 safetensors JSON header bytes; no tensor payload retained."
+    },
+    {
+      "path": "tensor-inventory.json",
+      "bytes": 346011,
+      "sha256": "da7c2eb4156fdb1ec5137bcdc6ad4147bf7b9b84198d1b08461a926c8af16c95",
+      "transform": "Authored interpretation/derived metadata; see pinned original files and source code."
+    },
+    {
+      "path": "embodiment-contract.json",
+      "bytes": 3797,
+      "sha256": "929f0a68cd06db6352784f37e9178f6b582e527b2a639d3a7629aea5501b890e",
+      "transform": "Authored interpretation/derived metadata; see pinned original files and source code."
+    },
+    {
+      "path": "NVIDIA-Open-Model-License-2025-10-24.pdf",
+      "bytes": 79005,
+      "sha256": "4d2fb590aa9b30c47f2058bff17291df7fa2aa0c1bd775a20703da9bb267cfab",
+      "source_url": "https://www.nvidia.com/content/dam/en-zz/Solutions/license-agreements/enterprise-software/nvidia-open-model-license-agreements-24-10-2025.pdf",
+      "transform": "none"
+    },
+    {
+      "path": "category2-capture.json",
+      "bytes": 2750,
+      "sha256": "06cd5afd54acb734a0f00210399cfd27111457acd1f4018b6c92297f60c85382",
+      "transform": "Root-reported exact component capture hashes added to header-derived category ranges. No tensor payload retained."
+    }
+  ],
+  "qualification": "HTTP206 range headers and small original metadata inspected. Advertised full shard digests are NOT payload verification or complete model support."
+}

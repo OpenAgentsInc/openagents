@@ -1,0 +1,227 @@
+// groot-device-f32-v1: private device stages, ordinary F32 storage/arithmetic.
+// Guards leave poisoned flags unchanged; publish only after every flag is zero.
+// No BF16 execution identity, learned projections, exact GELU or model runner.
+#authority;
+
+#test "device bounds accept source widths and refuse malformed private spans" {
+  #assert gdk_norm_bounds(0,1536,0,1536,0,0,1536,1);
+  #assert gdk_norm_bounds(0,1,0,1,0,0,1,1) && !gdk_norm_bounds(0,8193,0,8193,0,0,8193,1) && !gdk_norm_bounds(0,1,3,1,1,0,1,1) && !gdk_norm_bounds(0,1,0,16385,0,0,16385,16385);
+  #assert gdk_norm_bounds(1,2048,1,4096,2048,2048,4096,2);
+  #assert gdk_norm_bounds(0,128,2,128,128,0,128,1);
+  #assert gdk_norm_bounds(0,8192,0,16777216,0,0,16777216,2048);
+  #assert gdk_norm_bounds(16383,1,0,16384,0,0,16384,16384);
+  for field:0..<14 {item:=0;width:=2;kind:=0;n:=4;scale:=0;bias:=0;out:=4;flags:=2;
+    if field==0 {item= -1;}if field==1 {item=2;}if field==2 {width=0;}if field==3 {width=8193;}
+    if field==4 {kind= -1;}if field==5 {kind=3;}if field==6 {n=0;}if field==7 {n=32770;}
+    if field==8 {n=3;}if field==9 {n=32770;}if field==10 {scale=1;}if field==11 {bias=1;}if field==12 {out=3;}if field==13 {flags=1;}
+    #assert !gdk_norm_bounds(item,width,kind,n,scale,bias,out,flags);
+  }
+  #assert !gdk_norm_bounds(0,2,1,2,1,2,2,1) && !gdk_norm_bounds(0,2,1,2,2,1,2,1);
+  #assert !gdk_norm_bounds(0,2,2,2,1,0,2,1) && !gdk_norm_bounds(0,2,2,2,2,1,2,1);
+}
+#test "device F32 correction preserves cancellation and finite bit decisions" {
+  sum:f32=0;correction:f32=0;values:=[3]f32.[16777216,1,-16777216];for value:values {correction=gdk_add(sum,correction,value);sum+=value;}#assert sum+correction==1;
+  #assert gdk_add(1,0,16777216)==1;
+  #assert gdk_bad(0)==0 && gdk_bad(f32_from_bits(0x7f7fffff))==0 && gdk_numeric(0x7f800000)==1 && gdk_numeric(0xffc00001)==1;
+  #assert gdk_flag(0,0)==0 && gdk_flag(1,0)==1 && gdk_flag(0,0x7f800000)==1 && gdk_flag(1,0x7fc00001)==1;
+}
+#test "device row normalization separates plain affine RMS and invalid calls" {
+  x:=[4]f32.[-1,1,3,3];scale:=[2]f32.[2,3];bias:=[2]f32.[4,5];empty:[1]f32;out:=[4]f32.[7,7,7,7];flags:=[2]u8.[9,9];
+  for i:0..<2 {gdk_norm(i,2,0,0.00001f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);}
+  #assert abs(out[0]+0.999995f32)<2e-7f32 && out[2]==0 && flags[0]==0 && flags[1]==0;
+  for i:0..<2 {gdk_norm(i,2,1,0.00001f32,x[..],scale[..],bias[..],out[..],flags[..]);}
+  #assert abs(out[0]-2.00001f32)<3e-7f32 && abs(out[1]-7.999985f32)<1e-6f32 && out[2]==4 && out[3]==5 && flags[0]==0 && flags[1]==0;
+  for i:0..<2 {gdk_norm(i,2,2,0.00001f32,x[..],scale[..],empty[0..<0],out[..],flags[..]);}
+  #assert abs(out[0]+1.99999f32)<3e-7f32 && abs(out[1]-2.999985f32)<5e-7f32 && abs(out[2]-1.9999988f32)<5e-7f32 && flags[0]==0 && flags[1]==0;
+  x=[4]f32.[2,4,1,5];gdk_norm(0,2,0,0.00001f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);#assert abs(out[0]+0.999995f32)<2e-7f32;
+  out[0]=7;flags[0]=9;gdk_norm(0,2,0,0,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+  gdk_norm(-1,2,0,0.1f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+}
+#test "device AdaLN has explicit source split order and elementwise activations" {
+  x:=[4]f32.[-1,1,0,2];p:=[4]f32.[1,2,3,4];out:[4]f32;flags:=[4]u8.[9,9,9,9];
+  for i:0..<4 {gdk_modulate(i,2,0,x[..],p[..],out[..],flags[..]);}#assert out[0]==1 && out[1]==7 && out[2]==3 && out[3]==10 && flags[3]==0;
+  p=[4]f32.[3,4,1,2];for i:0..<4 {gdk_modulate(i,2,1,x[..],p[..],out[..],flags[..]);}#assert out[0]==1 && out[1]==7 && out[2]==3 && out[3]==10;
+  for i:0..<4 {gdk_activate(i,0,x[..],out[..],flags[..]);}#assert abs(out[0]+0.26894143f32)<1e-7f32 && abs(out[1]-0.7310586f32)<1e-7f32 && out[2]==0;for i:0..<4 {#assert flags[i]==0;flags[i]=9;}
+  for i:0..<4 {gdk_activate(i,1,x[..],out[..],flags[..]);}#assert abs(out[0]+0.158808f32)<1e-6f32 && abs(out[1]-0.841192f32)<1e-6f32 && out[2]==0;for i:0..<4 {#assert flags[i]==0;flags[i]=9;}
+  out[0]=7;flags[0]=9;gdk_activate(0,2,x[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+  #assert flags[0]==9;gdk_activate(4,0,x[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;gdk_activate(-1,0,x[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+  gdk_activate(0,0,x[..],out[0..<0],flags[..]);#assert out[0]==7 && flags[0]==9;
+  gdk_modulate(0,0,0,x[..],p[..],out[..],flags[..]);gdk_modulate(0,2,2,x[..],p[..],out[..],flags[..]);gdk_modulate(0,2,0,x[..],p[0..<3],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+}
+#test "device attention admission covers GQA source dimensions and rejects every invalid axis" {
+  #assert gdk_attention_shape(1,1,1,1,1,0,0) && gdk_attention_shape(1024,1024,32,8,128,7,0);
+  #assert gdk_attention_shape(140,140,16,8,128,3,0) && gdk_attention_shape(41,128,32,32,48,1,0);
+  for field:0..<14 {q:=2;k:=2;h:=2;kv:=1;d:=1;mode:=0;offset:=0;
+    if field==0 {q=0;}if field==1 {q=1025;}if field==2 {k=0;}if field==3 {k=1025;}if field==4 {h=0;}if field==5 {h=33;}if field==6 {kv=0;}if field==7 {kv=3;}if field==8 {d=0;}if field==9 {d=129;}if field==10 {mode= -1;}if field==11 {mode=8;}if field==12 {offset= -1;}if field==13 {offset=1025;}
+    #assert !gdk_attention_shape(q,k,h,kv,d,mode,offset);
+  }
+  #assert !gdk_attention_shape(2,2,3,2,1,0,0) && !gdk_attention_shape(2,3,2,1,1,4,0) && !gdk_attention_shape(2,2,2,1,1,2,1);
+  #assert gdk_visible(1,1,2,0,1,0,0) && !gdk_visible(1,2,2,0,1,0,0);
+  #assert gdk_visible(1,2,2,1,1,0,0) && !gdk_visible(0,0,1,0,0,0,0);
+  #assert !gdk_visible(0,1,4,0,1,0,1) && gdk_visible(0,1,4,0,1,2,2);
+}
+#test "device projected attention maps query groups and masks before stable softmax" {
+  q:=[4]f32.[0,1,1,0];k:=[2]f32.[0,2];v:=[2]f32.[1,5];valid:=[2]u8.[1,1];camera:=[2]int.[0,1];scores:[8]f32;keep:[8]u8;sf:=[8]u8.[9,9,9,9,9,9,9,9];prob:[8]f32;pf:=[4]u8.[9,9,9,9];out:[4]f32;of:=[4]u8.[9,9,9,9];
+  for i:0..<8 {gdk_scores(i,2,2,2,1,1,0,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],sf[..]);}
+  for i:0..<4 {gdk_softmax(i,2,scores[..],keep[..],prob[..],pf[..]);gdk_context(i,2,2,2,1,1,prob[..],v[..],out[..],of[..]);}
+  #assert out[0]==3 && abs(out[1]-4.5231886f32)<1e-6f32 && abs(out[2]-4.5231886f32)<1e-6f32 && out[3]==3;
+  #assert sf[0]==0 && pf[3]==0 && of[3]==0;
+  for mode:1..<8 {for i:0..<8 {gdk_scores(i,2,2,2,1,1,mode,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],sf[..]);}
+    for i:0..<8 {#assert sf[i]==0;query:=i/4;key:=i%2;expected:=((mode&2)==0 || key<=query) && ((mode&4)==0 || key==query);#assert (keep[i]==1)==expected;}
+  }
+  valid=[2]u8.[0,0];for i:0..<8 {gdk_scores(i,2,2,2,1,1,1,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],sf[..]);}
+  for i:0..<4 {gdk_softmax(i,2,scores[..],keep[..],prob[..],pf[..]);gdk_context(i,2,2,2,1,1,prob[..],v[..],out[..],of[..]);#assert out[i]==0 && pf[i]==0 && of[i]==0;}
+}
+#test "device stage guards preserve poison and numerical flags cover active and masked operands" {
+  q:=[1]f32.[1];k:=[1]f32.[2];v:=[1]f32.[3];valid:=[1]u8.[1];camera:=[1]int.[0];scores:=[1]f32.[7];keep:=[1]u8.[9];flags:=[1]u8.[9];out:=[1]f32.[7];
+  gdk_scores(1,1,1,1,1,1,0,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],flags[..]);#assert scores[0]==7 && flags[0]==9;gdk_scores(-1,1,1,1,1,1,0,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],flags[..]);#assert scores[0]==7 && keep[0]==9 && flags[0]==9;
+  gdk_scores(0,1,1,1,1,1,1,0,q[..],k[..],valid[0..<0],camera[..],scores[..],keep[..],flags[..]);#assert flags[0]==9;
+  gdk_scores(0,1,1,1,1,1,4,0,q[..],k[..],valid[..],camera[0..<0],scores[..],keep[..],flags[..]);#assert flags[0]==9;
+  for bad:0..<2 {q[0]=1;k[0]=2;valid[0]=1;camera[0]=0;
+    if bad==0 {valid[0]=2;}if bad==1 {camera[0]= -1;}
+    gdk_scores(0,1,1,1,1,1,5,0,q[..],k[..],valid[..],camera[..],scores[..],keep[..],flags[..]);#assert flags[0]==1;
+  }
+  scores[0]=0;keep[0]=2;flags[0]=9;gdk_softmax(0,1,scores[..],keep[..],out[..],flags[..]);#assert flags[0]==1;
+  out[0]=7;flags[0]=9;gdk_softmax(0,0,scores[..],keep[..],out[..],flags[..]);gdk_context(1,1,1,1,1,1,scores[..],v[..],out[..],flags[..]);gdk_context(-1,1,1,1,1,1,scores[..],v[..],out[..],flags[..]);#assert out[0]==7 && flags[0]==9;
+}
+#test "device stage capacity boundaries and QKV split preserve private sentinels" {
+  qkv:=[12]f32.[1,2,3,4,5,6,7,8,9,10,11,12];q:=[4]f32.[7,7,7,7];k:=[4]f32.[7,7,7,7];v:=[4]f32.[7,7,7,7];flags:=[4]u8.[9,9,9,9];
+  for i:0..<4 {gdk_qkv_split(i,2,qkv[..],q[..],k[..],v[..],flags[..]);}#assert q[0]==1 && q[1]==2 && q[2]==7 && q[3]==8 && k[0]==3 && k[1]==4 && k[2]==9 && v[0]==5 && v[1]==6 && v[3]==12 && flags[3]==0;
+  for field:0..<6 {q[0]=7;flags[0]=9;item:=0;width:=2;xn:=12;qn:=4;kn:=4;vn:=4;if field==0 {item= -1;}if field==1 {width=0;}if field==2 {xn=11;}if field==3 {qn=3;}if field==4 {kn=3;}if field==5 {vn=3;}
+    gdk_qkv_split(item,width,qkv[0..<xn],q[0..<qn],k[0..<kn],v[0..<vn],flags[..]);#assert q[0]==7 && flags[0]==9;
+  }
+  score:=[1]f32.[7];keep:=[1]u8.[9];valid:=[1]u8.[1];camera:=[1]int.[0];input:=[1]f32.[1];f:=[1]u8.[9];
+  for field:0..<5 {score[0]=7;f[0]=9;qn:=1;kn:=1;sn:=1;mn:=1;fn:=1;if field==0 {qn=0;}if field==1 {kn=0;}if field==2 {sn=0;}if field==3 {mn=0;}if field==4 {fn=0;}
+    gdk_scores(0,1,1,1,1,1,0,0,input[0..<qn],input[0..<kn],valid[..],camera[..],score[0..<sn],keep[0..<mn],f[0..<fn]);#assert score[0]==7 && f[0]==9;
+  }
+  for field:0..<5 {score[0]=7;f[0]=9;keys:=1;item:=0;kn:=1;on:=1;fn:=1;if field==0 {keys=1025;}if field==1 {item=1;}if field==2 {kn=0;}if field==3 {on=0;}if field==4 {fn=0;}
+    gdk_softmax(item,keys,input[..],keep[0..<kn],score[0..<on],f[0..<fn]);#assert score[0]==7 && f[0]==9;
+  }
+  for field:0..<4 {score[0]=7;f[0]=9;pn:=1;vn:=1;on:=1;fn:=1;if field==0 {pn=0;}if field==1 {vn=0;}if field==2 {on=0;}if field==3 {fn=0;}
+    gdk_context(0,1,1,1,1,1,input[0..<pn],input[0..<vn],score[0..<on],f[0..<fn]);#assert score[0]==7 && f[0]==9;
+  }
+}
+
+#forall "device visible masks exhaust all independent mode bits" mode:0..<8,valid:0..<2,q:0..<3,k:0..<3,offset:0..<2,qc:0..<2,kc:0..<2 {
+  shared:=(mode%2)==1;causal:=(mode/2%2)==1;camera:=(mode/4)==1;
+  expected:=(!shared || valid==1) && (!causal || k<=q+offset) && (!camera || qc==kc);
+  #assert gdk_visible(q,k,mode,offset,cast(u8)valid,qc,kc)==expected;
+}
+#test "device metadata boundaries include exact maximums and singleton stages" {
+  #assert gdk_count(3,0)==4 && gdk_count(3,0x7f800000)==3 && gdk_receipt(3,3)==0 && gdk_receipt(2,3)==1;
+  #assert gdk_attention_shape(1,1,1,1,1,0,1024) && gdk_attention_shape(2,1,1,1,1,1,0);
+  #assert gdk_modulate_bounds(0,1,1,1,2,1,1) && gdk_modulate_bounds(0,8192,0,8192,16384,8192,8192);
+  for f:0..<10 {i:=0;w:=2;o:=0;n:=4;p:=4;out:=4;flags:=4;if f==0 {i= -1;}if f==1 {i=4;}if f==2 {w=0;}if f==3 {w=8193;n=8193;p=16386;out=n;flags=n;}if f==4 {o= -1;}if f==5 {o=2;}if f==6 {n=3;}if f==7 {p=3;}if f==8 {out=3;}if f==9 {flags=3;}#assert !gdk_modulate_bounds(i,w,o,n,p,out,flags);}
+  #assert gdk_split_bounds(0,1,3,1,1,1,1) && gdk_split_bounds(0,8192,24576,8192,8192,8192,8192);
+  #assert !gdk_split_bounds(0,8193,24579,8193,8193,8193,8193) && !gdk_split_bounds(4,2,12,4,4,4,4) && !gdk_split_bounds(0,2,12,4,4,4,3);
+  #assert gdk_softmax_bounds(0,1,1,1,1,1) && gdk_softmax_bounds(0,1024,1024,1024,1024,1);
+  #assert gdk_softmax_bounds(2,2,6,6,6,3) && !gdk_softmax_bounds(3,2,6,6,6,3);
+  #assert !gdk_softmax_bounds(0,1025,1025,1025,1025,1) && !gdk_softmax_bounds(0,2,3,3,3,2) && !gdk_softmax_bounds(-1,1,1,1,1,1);
+}
+#test "device corrected reductions have independent cancellation witnesses" {
+  x:=[3]f32.[16777216,1,-16777216];out:[3]f32;flags:=[3]u8.[9,9,9];empty:[1]f32;
+  gdk_norm(0,3,0,0.00001f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);
+  #assert abs(out[1]-4.8666986e-8f32)<1e-14f32 && flags[0]==0;
+  k:=[3]f32.[1,1,1];valid:=[1]u8.[1];camera:=[1]int.[0];score:[1]f32;keep:[1]u8;
+  gdk_scores(0,1,1,1,1,3,0,0,x[..],k[..],valid[..],camera[..],score[..],keep[..],flags[..]);#assert abs(score[0]-0.57735026f32)<1e-7f32 && flags[0]==0;
+  p:=[3]f32.[1,1,1];gdk_context(0,1,3,1,1,1,p[..],x[..],out[..],flags[..]);#assert out[0]==1 && flags[0]==0;
+  s:=[3]f32.[0,-16.635532f32,-16.635532f32];mask:=[3]u8.[1,1,1];gdk_softmax(0,3,s[..],mask[..],out[..],flags[..]);#assert abs(out[0]-0.99999988f32)<3e-8f32 && flags[0]==0;
+  s=[3]f32.[1000,1000,-1000];#assert gdk_maximum(0,3,s[..],mask[..])==0;gdk_softmax(0,3,s[..],mask[..],out[..],flags[..]);#assert out[0]==0.5 && out[1]==0.5 && out[2]==0 && flags[0]==0;
+}
+#test "device asymmetric multihead multidimension attention matches independent wide equations" {
+  q:[36]f32;k:[36]f32;v:[36]f32;scores:[36]f32;keep:[36]u8;sf:[36]u8;prob:[36]f32;pf:[12]u8;out:[36]f32;of:[36]u8;valid:=[3]u8.[1,1,1];camera:=[3]int.[0,1,0];
+  for i:0..<36 {q[i]=f32((i*7)%17-8)/4;k[i]=f32((i*3)%13-6)/4;v[i]=f32((i*11)%19-9)/4;sf[i]=9;of[i]=9;}for i:0..<12 {pf[i]=9;}
+  for i:0..<36 {gdk_scores(i,3,3,4,4,3,0,0,q[..],k[..],valid[0..<0],camera[0..<0],scores[..],keep[..],sf[..]);query:=i/12;head:=i/3%4;key:=i%3;expected:f64=0;for d:0..<3 {expected+=f64(q[(query*4+head)*3+d])*f64(k[(key*4+head)*3+d]);}#assert abs(scores[i]-f32(expected/sqrt(3.0f64)))<3e-7f32 && sf[i]==0;}
+  for i:0..<12 {gdk_softmax(i,3,scores[..],keep[..],prob[..],pf[..]);den:f64=0;for key:0..<3 {den+=exp(f64(scores[i*3+key]));}for key:0..<3 {#assert abs(prob[i*3+key]-f32(exp(f64(scores[i*3+key]))/den))<1e-7f32;}#assert pf[i]==0;}
+  for i:0..<36 {gdk_context(i,3,3,4,4,3,prob[..],v[..],out[..],of[..]);query:=i/12;head:=i/3%4;d:=i%3;expected:f64=0;for key:0..<3 {expected+=f64(prob[(query*4+head)*3+key])*f64(v[(key*4+head)*3+d]);}#assert abs(out[i]-f32(expected))<3e-7f32 && of[i]==0;}
+}
+
+#test "device variance correction and maximum selection have independent rounding witnesses" {
+  x:=[6]f32.[-4096,4096,1,1,1,-3];empty:[1]f32;out:[6]f32;flags:=[6]u8.[9,9,9,9,9,9];
+  gdk_norm(0,6,0,0.00001f32,x[..],empty[0..<0],empty[0..<0],out[..],flags[..]);
+  #assert f32_bits(out[1])==f32_bits(4096.0f32/sqrt(5592407.5f32)) && flags[0]==0;
+  s:=[6]f32.[0,1,2,-1000,1000,1001];mask:=[6]u8.[1,1,1,1,1,1];prob:[6]f32;pf:=[2]u8.[9,9];
+  #assert gdk_maximum(0,3,s[..],mask[..])==2 && gdk_maximum(3,3,s[..],mask[..])==2;
+  gdk_softmax(1,3,s[..],mask[..],prob[..],pf[..]);#assert prob[3]==0 && abs(prob[4]-0.26894143f32)<1e-7f32 && abs(prob[5]-0.7310586f32)<1e-7f32 && pf[1]==0;
+  p:=[18]f32.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];q:[6]f32;k:[6]f32;v:[6]f32;f:[6]u8;
+  for i:0..<6 {gdk_qkv_split(i,3,p[..],q[..],k[..],v[..],f[..]);#assert q[i]==p[(i/3)*9+i%3] && k[i]==p[(i/3)*9+3+i%3] && v[i]==p[(i/3)*9+6+i%3] && f[i]==0;}
+  iq:=[1]f32.[1];ik:=[1]f32.[2];valid:=[1]u8.[1];cam:[1]int;score:[1]f32;keep:[1]u8;sf:=[1]u8.[9];
+  gdk_scores(0,1,1,1,1,1,1,0,iq[..],ik[..],valid[..],cam[0..<0],score[..],keep[..],sf[..]);#assert sf[0]==0 && keep[0]==1;
+  qq:=[2]f32.[1,1];kk:=[2]f32.[2,2];cc:=[2]int.[0,-1];ss:[4]f32;mm:[4]u8;ff:[4]u8;
+  for i:0..<4 {gdk_scores(i,2,2,1,1,1,4,0,qq[..],kk[..],valid[0..<0],cc[..],ss[..],mm[..],ff[..]);#assert ff[i]==(ifx i==0 then cast(u8)0 else cast(u8)1);}
+}
+
+gdk_add :: (sum:f32,correction:f32,value:f32)->f32 {next:=sum+value;virtual_value:=next-sum;error:=(sum-(next-virtual_value))+(value-virtual_value);return correction+error;}
+gdk_numeric :: (bits:u32)->u8 {return ifx (bits&0x7f800000)==0x7f800000 then cast(u8)1 else cast(u8)0;}
+gdk_bad :: (x:f32)->u8 {return gdk_numeric(f32_bits(x));}
+gdk_flag :: (bad:u8,bits:u32)->u8 {return bad|gdk_numeric(bits);}
+gdk_count :: (checked:int,bits:u32)->int {return checked+1-cast(int)gdk_numeric(bits);}
+gdk_receipt :: (checked:int,wanted:int)->u8 {return ifx checked==wanted then cast(u8)0 else cast(u8)1;}
+gdk_norm_bounds :: (item:int,width:int,kind:int,n:int,scale:int,bias:int,out:int,flags:int)->bool {
+  if width<1 || width>8192 || kind<0 || kind>2 || n<1 {return false;}
+  if n%width!=0 || n/width>16384 || item<0 || item>=n/width || out<n || flags<n/width {return false;}
+  if kind==0 {return scale==0 && bias==0;}if scale!=width {return false;}return bias==(ifx kind==1 then width else 0);
+}
+gdk_norm :: (item:int,width:int,kind:int,epsilon:f32,x:[]f32,scale:[]f32,bias:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gdk_norm_bounds(item,width,kind,x.count,scale.count,bias.count,out.count,flags.count) || epsilon<=0 {return;}
+  start:=item*width;sum:f32=0;correction:f32=0;checked:int=0;
+  for j:0..<width {value:=x[start+j];checked=gdk_count(checked,f32_bits(value));correction=gdk_add(sum,correction,value);sum+=value;}
+  mean:=ifx kind==2 then 0.0f32 else (sum+correction)/f32(width);variance:f32=0;vc:f32=0;
+  for j:0..<width {value:=x[start+j]-mean;square:=value*value;vc=gdk_add(variance,vc,square);variance+=square;}
+  denominator:=sqrt((variance+vc)/f32(width)+epsilon);checked=gdk_count(checked,f32_bits(denominator));
+  for j:0..<width {value:=(x[start+j]-mean)/denominator;if kind!=0 {value*=scale[j];checked=gdk_count(checked,f32_bits(scale[j]));}if kind==1 {value+=bias[j];checked=gdk_count(checked,f32_bits(bias[j]));}out[start+j]=value;checked=gdk_count(checked,f32_bits(value));}
+  wanted:=2*width+1;if kind!=0 {wanted+=width;}if kind==1 {wanted+=width;}flags[item]=gdk_receipt(checked,wanted);
+}
+gdk_modulate_bounds :: (item:int,width:int,order:int,n:int,parameters:int,out:int,flags:int)->bool {return item>=0 && item<n && width>=1 && width<=8192 && n%width==0 && order>=0 && order<=1 && parameters==2*width && out>=n && flags>=n;}
+gdk_modulate :: (item:int,width:int,order:int,x:[]f32,parameters:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gdk_modulate_bounds(item,width,order,x.count,parameters.count,out.count,flags.count) {return;}
+  axis:=item%width;scale:=parameters[axis];shift:=parameters[width+axis];if order==1 {scale=parameters[width+axis];shift=parameters[axis];}
+  factor:=1.0f32+scale;product:=x[item]*factor;value:=product+shift;out[item]=value;checked:=gdk_count(0,f32_bits(x[item]));checked=gdk_count(checked,f32_bits(scale));checked=gdk_count(checked,f32_bits(shift));checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,4);
+}
+gdk_activate :: (item:int,kind:int,x:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if item<0 || item>=x.count || kind<0 || kind>1 || out.count<x.count || flags.count<x.count {return;}
+  value:=x[item];result:f32;
+  if kind==0 {e:=exp(-abs(value));negative:=f32(f32_bits(value)>>31);sigmoid:=((1-negative)+negative*e)/(1+e);result=value*sigmoid;}
+  else {argument:=0.7978845608028654f32*(value+0.044715f32*value*value*value);e:=exp(-2.0f32*abs(argument));sign:=1.0f32-2.0f32*f32(f32_bits(argument)>>31);tanh:=sign*(1-e)/(1+e);result=(0.5f32*value)*(1+tanh);}
+  out[item]=result;checked:=gdk_count(0,f32_bits(value));checked=gdk_count(checked,f32_bits(result));flags[item]=gdk_receipt(checked,2);
+}
+gdk_attention_axes :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int)->bool {return queries>=1 && queries<=1024 && keys>=1 && keys<=1024 && heads>=1 && heads<=32 && kv_heads>=1 && kv_heads<=heads && heads%kv_heads==0 && dim>=1 && dim<=128;}
+gdk_attention_shape :: (queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int)->bool {
+  if !gdk_attention_axes(queries,keys,heads,kv_heads,dim) || mode<0 || mode>7 || offset<0 || offset>1024 {return false;}
+  if (mode&4)!=0 && queries!=keys {return false;}if (mode&2)!=0 && offset+queries>keys {return false;}return true;
+}
+gdk_visible :: (query:int,key:int,mode:int,offset:int,valid:u8,qcamera:int,kcamera:int)->bool {
+  if (mode&1)!=0 && valid==0 {return false;}if (mode&2)!=0 && key>offset+query {return false;}if (mode&4)!=0 && qcamera!=kcamera {return false;}return true;
+}
+gdk_scores :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,mode:int,offset:int,q:[]f32,k:[]f32,valid:[]u8,camera:[]int,scores:[]f32,keep:[]u8,flags:[]u8) #export_c {
+  if !gdk_attention_shape(queries,keys,heads,kv_heads,dim,mode,offset) {return;}n:=queries*heads*keys;
+  if item<0 || item>=n || q.count!=queries*heads*dim || k.count!=keys*kv_heads*dim || scores.count<n || keep.count<n || flags.count<n {return;}
+  if (mode&1)!=0 && valid.count!=keys {return;}if (mode&4)!=0 && camera.count!=keys {return;}
+  query:=item/(heads*keys);head:=item/keys%heads;key:=item%keys;kh:=head/(heads/kv_heads);sum:f32=0;correction:f32=0;checked:int=0;
+  for d:0..<dim {a:=q[(query*heads+head)*dim+d];b:=k[(key*kv_heads+kh)*dim+d];checked=gdk_count(checked,f32_bits(a));checked=gdk_count(checked,f32_bits(b));product:=a*b;correction=gdk_add(sum,correction,product);sum+=product;}
+  value:=(sum+correction)/sqrt(f32(dim));checked=gdk_count(checked,f32_bits(value));bit:u8;qc:int;kc:int;
+  if (mode&1)!=0 {bit=valid[key];if bit>1 {flags[item]=1;return;}}if (mode&4)!=0 {qc=camera[query];kc=camera[key];if qc<0 || kc<0 {flags[item]=1;return;}}
+  visible:=gdk_visible(query,key,mode,offset,bit,qc,kc);scores[item]=ifx visible then value else 0.0f32;keep[item]=ifx visible then cast(u8)1 else cast(u8)0;flags[item]=gdk_receipt(checked,2*dim+1);
+}
+gdk_softmax_bounds :: (item:int,keys:int,n:int,keep:int,out:int,flags:int)->bool {return keys>=1 && keys<=1024 && n%keys==0 && item>=0 && item<n/keys && keep==n && out>=n && flags>=n/keys;}
+gdk_maximum :: (start:int,keys:int,scores:[]f32,keep:[]u8)->int {best:= -1;for j:0..<keys {if keep[start+j]!=0 {if best<0 {best=j;}else if scores[start+j]>scores[start+best] {best=j;}}}return best;}
+gdk_softmax :: (item:int,keys:int,scores:[]f32,keep:[]u8,out:[]f32,flags:[]u8) #export_c {
+  if !gdk_softmax_bounds(item,keys,scores.count,keep.count,out.count,flags.count) {return;}
+  start:=item*keys;best:=gdk_maximum(start,keys,scores,keep);active:=best>=0;maximum:f32;if active {maximum=scores[start+best];}checked:int=0;
+  for j:0..<keys {checked=gdk_count(checked,f32_bits(scores[start+j]));if keep[start+j]>1 {flags[item]=1;return;}}
+  sum:f32=0;correction:f32=0;for j:0..<keys {value:f32;if keep[start+j]!=0 {value=exp(scores[start+j]-maximum);}out[start+j]=value;correction=gdk_add(sum,correction,value);sum+=value;}
+  denominator:=sum+correction;for j:0..<keys {value:=out[start+j];if active {value/=denominator;}out[start+j]=value;checked=gdk_count(checked,f32_bits(value));}flags[item]=gdk_receipt(checked,2*keys);
+}
+gdk_context :: (item:int,queries:int,keys:int,heads:int,kv_heads:int,dim:int,probability:[]f32,v:[]f32,out:[]f32,flags:[]u8) #export_c {
+  if !gdk_attention_axes(queries,keys,heads,kv_heads,dim) {return;}n:=queries*heads*dim;
+  if item<0 || item>=n || probability.count!=queries*heads*keys || v.count!=keys*kv_heads*dim || out.count<n || flags.count<n {return;}
+  query:=item/(heads*dim);head:=item/dim%heads;d:=item%dim;kh:=head/(heads/kv_heads);sum:f32=0;correction:f32=0;checked:int=0;
+  for key:0..<keys {a:=probability[(query*heads+head)*keys+key];b:=v[(key*kv_heads+kh)*dim+d];checked=gdk_count(checked,f32_bits(a));checked=gdk_count(checked,f32_bits(b));product:=a*b;correction=gdk_add(sum,correction,product);sum+=product;}
+  value:=sum+correction;out[item]=value;checked=gdk_count(checked,f32_bits(value));flags[item]=gdk_receipt(checked,2*keys+1);
+}
+
+gdk_split_bounds :: (item:int,width:int,n:int,q:int,k:int,v:int,flags:int)->bool {return width>=1 && width<=8192 && n%(3*width)==0 && item>=0 && item<n/3 && q>=n/3 && k>=n/3 && v>=n/3 && flags>=n/3;}
+gdk_qkv_split :: (item:int,width:int,qkv:[]f32,q:[]f32,k:[]f32,v:[]f32,flags:[]u8) #export_c {
+  if !gdk_split_bounds(item,width,qkv.count,q.count,k.count,v.count,flags.count) {return;}
+  token:=item/width;axis:=item%width;a:=qkv[token*3*width+axis];b:=qkv[token*3*width+width+axis];c:=qkv[token*3*width+2*width+axis];q[item]=a;k[item]=b;v[item]=c;checked:=gdk_count(0,f32_bits(a));checked=gdk_count(checked,f32_bits(b));checked=gdk_count(checked,f32_bits(c));flags[item]=gdk_receipt(checked,3);
+}

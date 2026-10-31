@@ -1,0 +1,87 @@
+{
+  "schema": "psionic-groot-category2-capture-v1",
+  "model": "nvidia/GR00T-N1.7-LIBERO",
+  "revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "subfolder": "libero_10",
+  "whole_shard_hash_verified": false,
+  "private_cache_hint": "~/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/category2",
+  "scope": "Four original category2 state-encoder component captures. These do not establish complete model inference.",
+  "components": [
+    {
+      "name": "action_head.state_encoder.layer1.W",
+      "file": "model-00002-of-00002.safetensors",
+      "dtype": "BF16",
+      "whole_shape": [
+        32,
+        132,
+        1024
+      ],
+      "category": 2,
+      "category_shape": [
+        132,
+        1024
+      ],
+      "file_offset": 1408168600,
+      "bytes": 270336,
+      "capture_name": "state-w1",
+      "capture_sha256": "2153820ab3384da5c97cde122b91771a00c82a5dc7704905d997f841ba3164e6",
+      "capture": "Root-owned private HTTP206 Content-Range and size checked on2026-10-31; payloadnotcommitted."
+    },
+    {
+      "name": "action_head.state_encoder.layer1.b",
+      "file": "model-00002-of-00002.safetensors",
+      "dtype": "BF16",
+      "whole_shape": [
+        32,
+        1024
+      ],
+      "category": 2,
+      "category_shape": [
+        1024
+      ],
+      "file_offset": 1416282776,
+      "bytes": 2048,
+      "capture_name": "state-b1",
+      "capture_sha256": "434177fe7b3a856b5d3e81ea63562e814f3ad96b9c35cdc39c8e1e468d1317c7",
+      "capture": "Root-owned private HTTP206 Content-Range and size checked on2026-10-31; payloadnotcommitted."
+    },
+    {
+      "name": "action_head.state_encoder.layer2.W",
+      "file": "model-00002-of-00002.safetensors",
+      "dtype": "BF16",
+      "whole_shape": [
+        32,
+        1024,
+        1536
+      ],
+      "category": 2,
+      "category_shape": [
+        1024,
+        1536
+      ],
+      "file_offset": 1422635672,
+      "bytes": 3145728,
+      "capture_name": "state-w2",
+      "capture_sha256": "e17d06407e544c362b4fff549df257a1fa108ae38b3bd604553b2d6e40c9f39d",
+      "capture": "Root-owned private HTTP206 Content-Range and size checked on2026-10-31; payloadnotcommitted."
+    },
+    {
+      "name": "action_head.state_encoder.layer2.b",
+      "file": "model-00002-of-00002.safetensors",
+      "dtype": "BF16",
+      "whole_shape": [
+        32,
+        1536
+      ],
+      "category": 2,
+      "category_shape": [
+        1536
+      ],
+      "file_offset": 1517013656,
+      "bytes": 3072,
+      "capture_name": "state-b2",
+      "capture_sha256": "adfcba5960705125ba54d79a1991b9fb9093a952141aed213d85cc23334e0b0d",
+      "capture": "Root-owned private HTTP206 Content-Range and size checked on2026-10-31; payloadnotcommitted."
+    }
+  ]
+}

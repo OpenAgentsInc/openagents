@@ -1,0 +1,5 @@
+// Selected LIBERO boundary only: state is already xyz + axis-angle + two
+// finger coordinates. This does not convert quaternions or execute a model.
+GeStatus :: enum u8 {ok;shape;number;overlap;}
+GeRead :: struct {status:GeStatus;written:int;clipped:int;}
+GeClipped :: struct {value:f32;clipped:bool;}

@@ -1,0 +1,672 @@
+{
+  "category": 2,
+  "coax_full_policy_compared": false,
+  "cosmos_revision": "9ce19a195e423419c349abfc86fd07178b230561",
+  "cpu_model_fallback": false,
+  "device": "mps",
+  "diffusers": "0.35.1",
+  "dtype": "float32",
+  "execution_and_capture_seconds": 29.03959337499691,
+  "input_scope": "Owned patterned images, authored normalized state, explicit PCG64 Gaussian noise; no captured robot episode or RNG parity claim.",
+  "load_seconds": 17.196245083003305,
+  "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "numpy": "1.26.4",
+  "opencv": "4.11.0",
+  "outputs": [
+    {
+      "bytes": 2097152,
+      "name": "vision-patch-projection",
+      "sha256": "7b7c68e3c21ecae694abd2073dbf0319550bee3df735ab61c1bb0f87f8785530",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-preblocks",
+      "sha256": "dda329017fad14283b30eae5c1692e19317dc741b1cb56697a4f983a9d0ea07e",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block0",
+      "sha256": "ce0c8618cd6155bff81202e131ebcfff0595d01b1ddb1e3c6989fc26db29a0d6",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block1",
+      "sha256": "e3be9e353935e2f920015f8f4be4b077bce301ae86e094238cd39c2c1b7c3b52",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block2",
+      "sha256": "39f878d56476c3648b84ec46b9a5b1352f44c5ab749e8980812488f2289ecf1a",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block3",
+      "sha256": "a19f9a9e98604cd4d0f3fc0ac0eee764001c58876e8703ce60d61367aa3529f5",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block4",
+      "sha256": "389deeec74812305c3d39e7412581020c2de93b42c48b3839833ababc4341c55",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block5",
+      "sha256": "4168ea86b4ee7363ff3aec48e913ebe5acb7d8eb26597758524d92600a6b8128",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-deepstack0-input",
+      "sha256": "4168ea86b4ee7363ff3aec48e913ebe5acb7d8eb26597758524d92600a6b8128",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 1048576,
+      "name": "vision-deepstack0",
+      "sha256": "641b904fab0a43ccece59ebed8b9dd10429825bc42556fd0dd1084191ad577aa",
+      "shape": [
+        128,
+        2048
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block6",
+      "sha256": "3f5f1a6791a6ee4d54b84374f3be4c9cca5afc4f1d560fb4d2cc0b16851e128a",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block7",
+      "sha256": "8031a889a4d86bbd98fc59213e597a37af0cbb20989e1464ed47438431238942",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block8",
+      "sha256": "56793ca3b01ea1c6807d13963e9ea68df06abfbf18205e7298a275962a0651a3",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block9",
+      "sha256": "2ab503ff22ed8252f67b68ddb80fdd4c2e0a495ce3a2ef13614cee17387e5139",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block10",
+      "sha256": "7799ac1171f46a445de45eee090ae30d1a05579a9a3c75bc98dd11f5f5de3103",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block11",
+      "sha256": "7cf5be0ec3393d87661ee48951dc18cba586ef9c721dc1ce0b85fd568350f67c",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-deepstack1-input",
+      "sha256": "7cf5be0ec3393d87661ee48951dc18cba586ef9c721dc1ce0b85fd568350f67c",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 1048576,
+      "name": "vision-deepstack1",
+      "sha256": "5f20187e9b75bf24e2364f883ea40ef580fea4ad0a7b4bec30096d1988a7a8d0",
+      "shape": [
+        128,
+        2048
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block12",
+      "sha256": "78666d8adf4c123cbf27496574a5cc95e31cba758e61cef156ef541280ba3f9c",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block13",
+      "sha256": "09e52025af1b43a05cd0804f84b82452e95752398b52acee872d6f2a2b94c1cd",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block14",
+      "sha256": "4b568a4d5c08eb25847240e50ad27385b69790972c7024e22dce43f975e9e43f",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block15",
+      "sha256": "04c8c41bd709b2da6ba60ac823c18b407223a1401ee08766041afbf20f0567e7",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block16",
+      "sha256": "cf944f0aaa5cbbb806ecdf2f489acfecc330e90b677eddbc31ad77f8a68657a7",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block17",
+      "sha256": "3a02b7feadf0e69fa33b0be2479a4c4e2751b6dfcd71ce13f751a7035a60bd00",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-deepstack2-input",
+      "sha256": "3a02b7feadf0e69fa33b0be2479a4c4e2751b6dfcd71ce13f751a7035a60bd00",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 1048576,
+      "name": "vision-deepstack2",
+      "sha256": "524281766eeefb688c3df89fb5c6cda60711db75a38e0e0d322f5de08468ff45",
+      "shape": [
+        128,
+        2048
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block18",
+      "sha256": "ef00081a299f3dfe02ab42cf6ae72020ff46a6ca475982993cc90608d5dd6807",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block19",
+      "sha256": "092dd15f2f4056aabf9d08d7e079468018dc621e56b9059fb018e942554b04b6",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block20",
+      "sha256": "a4ef71755f31a59accda4232bd944f85faa1ba79c06cdfecbc2231a2ee2b4266",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block21",
+      "sha256": "7812387ee35edc77f0eb95a0ed13a1b4592ba680953b17c2c88c51e96a4c007f",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block22",
+      "sha256": "9c8b29131c70ed48c6e17b32d881953488517aaa316856176dd7ae008525a573",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-block23",
+      "sha256": "41044441903878537229bffb02438073c4a89f5ba01a86e89e1e47a701f21a08",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 2097152,
+      "name": "vision-merger-input",
+      "sha256": "41044441903878537229bffb02438073c4a89f5ba01a86e89e1e47a701f21a08",
+      "shape": [
+        512,
+        1024
+      ]
+    },
+    {
+      "bytes": 1048576,
+      "name": "vision-merged",
+      "sha256": "5d56345a66f4f3f905461da1edb8826fefd38b516cd502ebf8aecca50563dd9d",
+      "shape": [
+        128,
+        2048
+      ]
+    },
+    {
+      "bytes": 1146880,
+      "name": "backbone",
+      "sha256": "9b29aece11e18272b0645d8613a0ae1555031a9f1b9ea9bc85876420d5d773c1",
+      "shape": [
+        1,
+        140,
+        2048
+      ]
+    },
+    {
+      "bytes": 1146880,
+      "name": "vl-conditioning",
+      "sha256": "a38ff5bc7ee6c4dff88d235699f0d0fdcd6041a20cbc50b5212a768d2394ac15",
+      "shape": [
+        1,
+        140,
+        2048
+      ]
+    },
+    {
+      "bytes": 6144,
+      "name": "state-features",
+      "sha256": "e9297e46d3d56495796724b5a4ecc1c3fa8f50f57f163fabe3ec0414362338e6",
+      "shape": [
+        1,
+        1,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow0-block0",
+      "sha256": "c04e40a14ecfd5c211db1438cde456f13ec2048df649e7f7bd4e4eb54526b99d",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow0-block1",
+      "sha256": "2aca252623dc7f942162d678fb757afbdc7b55aa24e34c6aeb3218b9d0abb6ee",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow0-block2",
+      "sha256": "0f60864610ada906e069053895fb42066e3a2724356cfeec6355f257e93ebb44",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow0-block3",
+      "sha256": "7882df879c88265f3069f7e483591b420b403954bd0592e0266b793f195d804d",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow0-block31",
+      "sha256": "29ce4a0985d9db4cf04ecd687ce2a5fe77b105970c4d74b6d4987f2d58d12f20",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow0-velocity",
+      "sha256": "509595235bf2ae9b3c77ff9e00e576d18b7b58cb385043e613d451c76483fe31",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow0-actions",
+      "sha256": "3c7768c7d26941383e4959ef9ea21d1db362e0a611613edd67c6155d3126f7cd",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow1-block0",
+      "sha256": "12c2386fe3e685b17430494a382e1f9370c6c304bfd762378fc1398b66fdc400",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow1-block1",
+      "sha256": "bbf1df386db171b43293348a5c1a791ae8d074c53155bba70d59b09136f5dfdf",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow1-block2",
+      "sha256": "2e43f9a059b7c6e50a0931e75c05209c130cf780e254b1413ebdaa8465e2aadc",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow1-block3",
+      "sha256": "92596b2019f3c7228d0c5fa4ff4a5539f05649fb880d1a58192535090885358d",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow1-block31",
+      "sha256": "69f3f35c99c888c5b41b4ad093478d78da03089c83686416841f9f40ddff198d",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow1-velocity",
+      "sha256": "aa938cfa701d945f10a252e66f967c497c7bb8f082f7ec149c131c279657c7d6",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow1-actions",
+      "sha256": "47dfb13769532f89d584658cc931882cb09b8182fa6722296aae6f3877ab2239",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow2-block0",
+      "sha256": "1a5421cf793ecc277531eb57c23b1e70928474badfeb3f2903f4a5938dcba82d",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow2-block1",
+      "sha256": "9ee66564d4ef7667a8ff68ad7c96854c0f183740511fa33c7fbb774e4db148a5",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow2-block2",
+      "sha256": "fae213c2a71d3947bef588adc45897d102f36c3b0fa778605cb028a5072b8c96",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow2-block3",
+      "sha256": "95c2be5e45bb7041f1f057cc4fd48c7913e98f3096b1a247cf138f47e86155db",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow2-block31",
+      "sha256": "408bb9677c853cfb1d94fc993b9b28a6cbf250327a61b5b17bb24ee43a11ad98",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow2-velocity",
+      "sha256": "345a7f148c63765bd72ddacfdcb1cfca63ba14b7f33e860320d359ecabf1fd81",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow2-actions",
+      "sha256": "27b7b1212f35a7ef81f6c7c1dac3257dbee65004d3297b5320ccd2b0b120bcde",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow3-block0",
+      "sha256": "73b2847235bc2303a8d82d6f093736bac5f0c9f41edc046c435a84949730a4a1",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow3-block1",
+      "sha256": "704165526183ce5b5efdd8a769b8b4c47307b79112f23884b97a9ad94a03b14b",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow3-block2",
+      "sha256": "9abf09c2a0e78f45f81918fe0ba1e82da20fb5481c92f90210e02bf3b637685e",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow3-block3",
+      "sha256": "195015c5a05d23c469e61f45083c98a3af1a4f1616330db7d414b6f8e07744d4",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 251904,
+      "name": "flow3-block31",
+      "sha256": "60122b5ccf0a48eb0a7811b8bfac8ba621a1ebf24913f3c457956acf1c1f4013",
+      "shape": [
+        1,
+        41,
+        1536
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow3-velocity",
+      "sha256": "3cb7147766d79481b120a3a24d62cf76f511e3603cf2b2062810e737ef699455",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "flow3-actions",
+      "sha256": "67d0b7efd509fb3cb0643bf805e37fd2a224d9cbe0573a6e4d3d19f33e3c4a6d",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    {
+      "bytes": 21120,
+      "name": "normalized-actions",
+      "sha256": "67d0b7efd509fb3cb0643bf805e37fd2a224d9cbe0573a6e4d3d19f33e3c4a6d",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    }
+  ],
+  "private_capsule": "~/.cache/psionic/groot-reference-capsule-indexfix",
+  "private_capsule_record_sha256": "a9662e7fef16b78f4acef225f62cc44624be86eeaf345148eaa78c39524e83ac",
+  "recipe": {
+    "image_grid_thw": [
+      [
+        1,
+        16,
+        16
+      ],
+      [
+        1,
+        16,
+        16
+      ]
+    ],
+    "rendered_utf8_sha256": "1cfa32a15cdfc6f7d6de0399fad9dcf128eccc7657c3a259b543ae88fce62660",
+    "tokens": 140
+  },
+  "reference_source": {
+    "file": "psionic/tests/robotics/groot_vla_reference.py",
+    "sha256": "a7e956f4b7287c1408f7138e13b6ce24104162df4e1178458b69bcf153769398"
+  },
+  "reproduces_nvidia_script_execution": false,
+  "schema": "psionic-groot-vla-reference-v1",
+  "simulated_task_success_measured": false,
+  "source_checkout_executed": false,
+  "torch": "2.9.0",
+  "transformers": "4.57.3",
+  "whole_shard_hash_rechecked_here": false
+}

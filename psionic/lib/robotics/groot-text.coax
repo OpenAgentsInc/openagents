@@ -1,0 +1,74 @@
+// Cosmos mRoPE with sections24/20/20, interleaved over64 frequency pairs.
+// CPU preparation of a small F32 table; learned model arithmetic is GPU work.
+#load "groot-text-types.coax";
+#authority;
+
+#test "text rotary interleaves twenty THW triples then four temporal pairs" {
+  #assert gt_axis(-1)==-1 && gt_axis(64)==-1;
+  for i:0..<64 {want:=0;if i<60 {want=i%3;}#assert gt_axis(i)==want;}
+}
+#test "text rotary stores cosine/sine pairs and uses the chosen position axis" {
+  positions:=[6]int.[0,1,0,2,0,3];out:[257]f32;work:[256]f32;out[256]=7;
+  r:=gt_rope(positions[..],out[..],work[..],false);#assert r.status==GtStatus.ok && r.written==256 && out[256]==7;
+  for j:0..<64 {#assert out[2*j]==1 && out[2*j+1]==0;}
+  for j:0..<64 {p:=ifx j<60 then j%3+1 else 1;power:=f32(exp(log(5000000.0f64)*f64(j)/64));phase:=f32(f32(p)*(1.0f32/power));
+    #assert out[128+2*j]==f32(cos(f64(phase))) && out[129+2*j]==f32(sin(f64(phase)));}
+}
+#test "text rotary shape positions capacity and alias refuse atomically" {
+  #assert gt_rope_admit(1,128,128,false)==GtStatus.ok && gt_rope_admit(512,65536,65536,false)==GtStatus.ok;
+  #assert gt_rope_admit(0,65536,65536,false)==GtStatus.shape && gt_rope_admit(-1,65536,65536,false)==GtStatus.shape && gt_rope_admit(513,65536,65536,false)==GtStatus.shape;
+  p:=[3]int.[511,511,511];out:[128]f32;work:[128]f32;for i:0..<128 {out[i]=7;}
+  #assert gt_rope(p[0..<0],out[..],work[..],false).status==GtStatus.shape;
+  #assert gt_rope(p[0..<2],out[..],work[..],false).status==GtStatus.shape;
+  too:[1539]int;#assert gt_rope(too[..],out[..],work[..],false).status==GtStatus.shape;
+  #assert gt_rope(p[..],out[0..<127],work[..],false).status==GtStatus.capacity;
+  #assert gt_rope(p[..],out[..],work[0..<127],false).status==GtStatus.capacity;
+  #assert gt_rope(p[..],out[..],work[..],true).status==GtStatus.alias;
+  for axis:0..<3 {p[axis]=-1;#assert gt_rope(p[..],out[..],work[..],false).status==GtStatus.value;p[axis]=512;#assert gt_rope(p[..],out[..],work[..],false).status==GtStatus.value;p[axis]=511;}
+  for v:out {#assert v==7;}#assert gt_rope(p[..],out[..],work[..],false).status==GtStatus.ok;
+}
+#test "image ordinals retain every text slot and both camera boundaries" {
+  single:=[1]int.[0];one:[1]int;onework:[1]int;#assert gt_images(single[..],one[..],onework[..],false).status==GtStatus.ok && one[0]==-1;
+  all:[512]int;allout:[512]int;alldraft:[512]int;#assert gt_images(all[..],allout[..],alldraft[..],false).status==GtStatus.ok;
+  for x:allout {#assert x==-1;}
+  ids:=[7]int.[1,151655,151655,2,151655,3,151935];out:=[8]int.[7,7,7,7,7,7,7,7];work:[7]int;
+  r:=gt_images(ids[..],out[..],work[..],false);#assert r.status==GtStatus.ok && r.written==7;
+  expected:=[8]int.[-1,0,1,-1,2,-1,-1,7];for i:0..<8 {#assert out[i]==expected[i];}
+  ids[6]=151936;#assert gt_images(ids[..],out[..],work[..],false).status==GtStatus.value;
+  ids[6]=-1;#assert gt_images(ids[..],out[..],work[..],false).status==GtStatus.value;
+  for i:0..<8 {#assert out[i]==expected[i];}
+  many:[129]int;for i:0..<129 {many[i]=151655;}saved:=out;
+  big:[129]int;draft:[129]int;#assert gt_images(many[..],big[..],draft[..],false).status==GtStatus.value;
+  #assert gt_images(ids[0..<0],out[..],work[..],false).status==GtStatus.shape;
+  huge:[513]int;#assert gt_images(huge[..],out[..],work[..],false).status==GtStatus.shape;
+  #assert gt_images(ids[..],out[0..<6],work[..],false).status==GtStatus.capacity;
+  #assert gt_images(ids[..],out[..],work[0..<6],false).status==GtStatus.capacity;
+  #assert gt_images(ids[..],out[..],work[..],true).status==GtStatus.alias;
+  for i:0..<8 {#assert out[i]==saved[i];}
+}
+
+gt_axis :: (pair:int)->int #export_c {if pair<0 || pair>=64 {return -1;}if pair==61 || pair==62 {return 0;}return pair%3;}
+gt_rope_admit :: (tokens:int,out:int,work:int,overlap:bool)->GtStatus #export_c {
+  if tokens<1 || tokens>512 {return GtStatus.shape;}
+  if out<tokens*128 || work<tokens*128 {return GtStatus.capacity;}
+  if overlap {return GtStatus.alias;}return GtStatus.ok;
+}
+gt_rope :: (positions:[]int,out:[]f32,work:[]f32,overlap:bool)->GtRead #export_c {
+  if positions.count%3!=0 {return GtRead.{status=GtStatus.shape};}
+  tokens:=positions.count/3;status:=gt_rope_admit(tokens,out.count,work.count,overlap);if status!=GtStatus.ok {return GtRead.{status=status};}size:=tokens*128;
+  for p:positions {if p<0 || p>511 {return GtRead.{status=GtStatus.value};}}
+  for j:0..<64 {
+    power:=f32(exp(log(5000000.0f64)*f64(j)/64));frequency:=1.0f32/power;axis:=gt_axis(j);
+    for t:0..<tokens {phase:=f32(f32(positions[axis*tokens+t])*frequency);work[t*128+2*j]=f32(cos(f64(phase)));work[t*128+2*j+1]=f32(sin(f64(phase)));}
+  }
+  for i:0..<size {out[i]=work[i];}return GtRead.{written=size};
+}
+gt_images :: (ids:[]int,out:[]int,work:[]int,overlap:bool)->GtRead #export_c {
+  if ids.count<1 || ids.count>512 {return GtRead.{status=GtStatus.shape};}
+  if out.count<ids.count || work.count<ids.count {return GtRead.{status=GtStatus.capacity};}
+  if overlap {return GtRead.{status=GtStatus.alias};}
+  ordinal:=0;
+  for i:0..<ids.count {token:=ids[i];if token<0 || token>=151936 {return GtRead.{status=GtStatus.value};}
+    work[i]=-1;if token==151655 {if ordinal>=128 {return GtRead.{status=GtStatus.value};}work[i]=ordinal;ordinal+=1;}}
+  for i:0..<ids.count {out[i]=work[i];}return GtRead.{written=ids.count};
+}

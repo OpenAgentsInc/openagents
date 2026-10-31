@@ -1,0 +1,2 @@
+# Exact safetensors header snapshots retain their format's space padding.
+*.header.json -diff

@@ -1,0 +1,4 @@
+// Selected two-camera LIBERO request; Unicode language formalization is not yet admitted.
+GrStatus :: enum u8 {ok;size;unsupported;capacity;overlap;tokens;}
+GrRead :: struct {status:GrStatus;written:int;content:int;count:int;rope_delta:int;}
+GrSlot :: struct {t:int;h:int;w:int;image:bool;}
