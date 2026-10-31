@@ -1,0 +1,3566 @@
+{
+  "schema": "coax.spatial-operator-native.v1",
+  "passed": true,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "sources_sha256": {
+    "coax/tests/spatial-operator-native.cpp": "dcf6649f5b8141895b3763991a7b9c5cd24248b8f03f2206903990d7a221e864",
+    "coax/tests/spatial-operator-oracle.c": "de41ed34608b71a7f9af43b1f8bbf64439da22148605af9771e5d6693e364d06",
+    "coax/tests/spatial_operator_native.py": "89063bb9b4e9a7b1ff01a6e3ff9323bcbd621688a305107881b2df7b7f35e766",
+    "coax/tests/spatial/operators.coax": "d10d88d7c2af04e43ee69f5010b039d869db727e4604b232c028f6cef8e60e50",
+    "coax/tests/spatial/operator-types.coax": "ed662dcd5dc36d28d360c8c2d9abb7e56be065d6749a0f33107b5f311ed1d1c0",
+    "coax/tests/spatial/operator-native-wrappers.coax": "ca1993137064110131e513ee7c71d241a75419eb301dbfdf160f3df646d1358c"
+  },
+  "frontend_inputs_sha256": {
+    "proto_importer.o": "72ce2a4b3b1af6f1c6ffc9adecf87bd2f6bd46a2d0960812beefdabe64aaf683",
+    "proto_importer.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+    "proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+  },
+  "commands": [
+    {
+      "name": "unity-build",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-spatial-operators-second",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-native.cpp",
+        "/private/tmp/coax-spatial-operators-second/proto_importer.o",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/unity-probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "apply-emit-undo",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/unity-probe",
+        "coax/tests/spatial/operators.coax",
+        "/private/tmp/spatial-operator-native-first/emitted"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first",
+      "exit_status": 0,
+      "stdout_sha256": "a398cee9dae5ed9b4ba1a0dcf66dc322220af0426db0d41170dfbed3c3f1f3ac",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    }
+  ],
+  "profiles": [
+    {
+      "mode": "debug",
+      "variant": "baseline",
+      "width": 0,
+      "segment": -1,
+      "observations": 60,
+      "differs_from_original_coordinates": 0,
+      "transcript_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/baseline/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/baseline/probe",
+            "0",
+            "-1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-0",
+      "width": 32,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-0/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-0/probe",
+            "32",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-1",
+      "width": 32,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-1/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-1/probe",
+            "32",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-2",
+      "width": 32,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-2/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-2/probe",
+            "32",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-3",
+      "width": 32,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-3/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-3/probe",
+            "32",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-4",
+      "width": 32,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-4/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-4/probe",
+            "32",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-5",
+      "width": 32,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-5/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-5/probe",
+            "32",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-6",
+      "width": 64,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-6/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-6/probe",
+            "64",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-7",
+      "width": 64,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-7/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-7/probe",
+            "64",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-8",
+      "width": 64,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-8/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-8/probe",
+            "64",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-9",
+      "width": 64,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-9/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-9/probe",
+            "64",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-10",
+      "width": 64,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-10/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-10/probe",
+            "64",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "debug",
+      "variant": "variant-11",
+      "width": 64,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/debug/variant-11/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/debug/variant-11/probe",
+            "64",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "baseline",
+      "width": 0,
+      "segment": -1,
+      "observations": 60,
+      "differs_from_original_coordinates": 0,
+      "transcript_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/baseline/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/baseline/probe",
+            "0",
+            "-1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-0",
+      "width": 32,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-0/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-0/probe",
+            "32",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-1",
+      "width": 32,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-1/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-1/probe",
+            "32",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-2",
+      "width": 32,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-2/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-2/probe",
+            "32",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-3",
+      "width": 32,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-3/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-3/probe",
+            "32",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-4",
+      "width": 32,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-4/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-4/probe",
+            "32",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-5",
+      "width": 32,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-5/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-5/probe",
+            "32",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-6",
+      "width": 64,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-6/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-6/probe",
+            "64",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-7",
+      "width": 64,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-7/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-7/probe",
+            "64",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-8",
+      "width": 64,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-8/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-8/probe",
+            "64",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-9",
+      "width": 64,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-9/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-9/probe",
+            "64",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-10",
+      "width": 64,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-10/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-10/probe",
+            "64",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "optimized",
+      "variant": "variant-11",
+      "width": 64,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O2",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/optimized/variant-11/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/optimized/variant-11/probe",
+            "64",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "baseline",
+      "width": 0,
+      "segment": -1,
+      "observations": 60,
+      "differs_from_original_coordinates": 0,
+      "transcript_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline",
+            "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline/probe",
+            "0",
+            "-1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline",
+          "exit_status": 0,
+          "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-0",
+      "width": 32,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0/probe",
+            "32",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0",
+          "exit_status": 0,
+          "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-1",
+      "width": 32,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1/probe",
+            "32",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1",
+          "exit_status": 0,
+          "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-2",
+      "width": 32,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2/probe",
+            "32",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2",
+          "exit_status": 0,
+          "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-3",
+      "width": 32,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3/probe",
+            "32",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3",
+          "exit_status": 0,
+          "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-4",
+      "width": 32,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4/probe",
+            "32",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4",
+          "exit_status": 0,
+          "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-5",
+      "width": 32,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5/probe",
+            "32",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5",
+          "exit_status": 0,
+          "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-6",
+      "width": 64,
+      "segment": 0,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6/probe",
+            "64",
+            "0"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6",
+          "exit_status": 0,
+          "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-7",
+      "width": 64,
+      "segment": 1,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7/probe",
+            "64",
+            "1"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7",
+          "exit_status": 0,
+          "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-8",
+      "width": 64,
+      "segment": 2,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8/probe",
+            "64",
+            "2"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8",
+          "exit_status": 0,
+          "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-9",
+      "width": 64,
+      "segment": 3,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9/probe",
+            "64",
+            "3"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9",
+          "exit_status": 0,
+          "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-10",
+      "width": 64,
+      "segment": 4,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10/probe",
+            "64",
+            "4"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10",
+          "exit_status": 0,
+          "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "variant-11",
+      "width": 64,
+      "segment": 5,
+      "observations": 60,
+      "differs_from_original_coordinates": 3,
+      "transcript_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "commands": [
+        {
+          "name": "build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+            "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+            "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11/probe"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        },
+        {
+          "name": "execute",
+          "arguments": [
+            "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11/probe",
+            "64",
+            "5"
+          ],
+          "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11",
+          "exit_status": 0,
+          "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_bytes": 0
+        }
+      ]
+    }
+  ],
+  "scope": "Twelve NEW binary token mutants; source-local callee swap, checked expression/initializer/type-description snapshots and exact C/header undo, then actual checked C. This does not snapshot every statement/procedure/compile-time heap object. No full old mutation, numeric, SDK or release gate.",
+  "frontend_source_sha256": {
+    "coax/src/check.cpp": "c48644ab420ff007bf40b35cb79f3bd87d4a3863e8e44643938880437407db08",
+    "coax/src/coax.h": "9af5fa202e6ae8cb0b17363643621a91d86c3cf81faee03ff4124a6a7cff203c",
+    "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+    "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+    "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+    "coax/src/errors.cpp": "932a825cc155c8d35f259f55032d49b159def3889f84a892dfa32e0feb2049cb",
+    "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+    "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+    "coax/src/main.cpp": "1cda1bd0180618c74259710e052ac3314686303933c2847d5f10c73ba80b2207",
+    "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+    "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+    "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+    "coax/src/release.h": "f793c0ce6f37125aade7801630dd09d0b2da7e9b16058752cd066ce0b45cd65a",
+    "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+    "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+    "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+    "coax/src/verify.cpp": "4acf6a716b9458160a6eb7ebc5c132c089d1cbdb495dace8fadbb0a06215f73a"
+  },
+  "source_inventory": {
+    "schema": "coax.spatial-operator-native-emission.v1",
+    "eligible": 12,
+    "no_alternate": 6,
+    "unsupported": 2,
+    "variants": [
+      {
+        "index": 0,
+        "owner": "pv_add32",
+        "width": 32,
+        "segment": 0,
+        "line": 22,
+        "column": 108,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 1,
+        "owner": "pv_sub32",
+        "width": 32,
+        "segment": 1,
+        "line": 23,
+        "column": 108,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 2,
+        "owner": "vv_add32",
+        "width": 32,
+        "segment": 2,
+        "line": 24,
+        "column": 110,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 3,
+        "owner": "vv_sub32",
+        "width": 32,
+        "segment": 3,
+        "line": 25,
+        "column": 110,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 4,
+        "owner": "scale32",
+        "width": 32,
+        "segment": 4,
+        "line": 26,
+        "column": 86,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 5,
+        "owner": "unscale32",
+        "width": 32,
+        "segment": 5,
+        "line": 27,
+        "column": 88,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 6,
+        "owner": "pv_add64",
+        "width": 64,
+        "segment": 0,
+        "line": 50,
+        "column": 108,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 7,
+        "owner": "pv_sub64",
+        "width": 64,
+        "segment": 1,
+        "line": 51,
+        "column": 108,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 8,
+        "owner": "vv_add64",
+        "width": 64,
+        "segment": 2,
+        "line": 52,
+        "column": 110,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 9,
+        "owner": "vv_sub64",
+        "width": 64,
+        "segment": 3,
+        "line": 53,
+        "column": 110,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 10,
+        "owner": "scale64",
+        "width": 64,
+        "segment": 4,
+        "line": 54,
+        "column": 86,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      },
+      {
+        "index": 11,
+        "owner": "unscale64",
+        "width": 64,
+        "segment": 5,
+        "line": 55,
+        "column": 88,
+        "site_local_callee_only": true,
+        "undo_exact": true
+      }
+    ]
+  },
+  "emitted_sha256": {
+    "baseline": {
+      "c": "3a0e44aca50f4ddce51632e7d8b2281a8ae2c867f2917f95188b4a21d8aa2aab",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-0": {
+      "c": "999d7daaa4a5f884d1dc55682285fe7c229d18a13c01640782fd39e5c14349eb",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-1": {
+      "c": "9fcc1bd5bc465c2f7e10b148a80a061e971b2cd1801caf8e0503f898d31adbe5",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-2": {
+      "c": "82ca74821814b5b18491d0c0abbd1994070faffd57548d57326f79c806c883f1",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-3": {
+      "c": "be29ccdec9fcfff3fb318158c5374c8b10242b69a277356d91f84a287cf0aabd",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-4": {
+      "c": "06da4cbfcfc987bd897a2cdc0f0c98b53080de42aa58f8177f08639957b23357",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-5": {
+      "c": "a8a70e6f0c83ae4779e79ff990e489b5ad5798df6ea4694b6ce53547069d90c1",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-6": {
+      "c": "ab947543951c15e00f4331a35373448d6843b3f2758826c372cabb64dc7fcd47",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-7": {
+      "c": "bd2eeec8df8dd3f28a457fd277888ebed12eaef57c4af2d020d616c98f485224",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-8": {
+      "c": "279d5492d0f0c33146de93874858e046a7a178ef2df0470202b7f823245dc3ae",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-9": {
+      "c": "fc66c5ed795f48338d471ff5b84f7df89ac5dda7d630fa6ffd08c04b1ff0783b",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-10": {
+      "c": "b47a774c0266571e90b1943623b77ca6647afd76bfef3878cfdb7507684611a7",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    },
+    "variant-11": {
+      "c": "79c955f456949752f90385fc6b04608fface50fbe3c7f7e427a4fe494d63468e",
+      "h": "799fd4c55b5dd4ec35101c5cdfb218b5f31a8441e5c7791cfd6077e85a103c11"
+    }
+  },
+  "native_observations": 2340,
+  "actual_source_token_native_witnesses": 12,
+  "execution_log": [
+    {
+      "name": "unity-build",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-spatial-operators-second",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-native.cpp",
+        "/private/tmp/coax-spatial-operators-second/proto_importer.o",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/unity-probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "apply-emit-undo",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/unity-probe",
+        "coax/tests/spatial/operators.coax",
+        "/private/tmp/spatial-operator-native-first/emitted"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first",
+      "exit_status": 0,
+      "stdout_sha256": "a398cee9dae5ed9b4ba1a0dcf66dc322220af0426db0d41170dfbed3c3f1f3ac",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-0/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/baseline/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-2/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-1/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-0/probe",
+        "32",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-3/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/baseline/probe",
+        "0",
+        "-1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-4/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-2/probe",
+        "32",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-5/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-1/probe",
+        "32",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-6/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-3/probe",
+        "32",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-7/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-4/probe",
+        "32",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-8/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-5/probe",
+        "32",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-9/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-6/probe",
+        "64",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-10/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-7/probe",
+        "64",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/debug/variant-11/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-8/probe",
+        "64",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/baseline/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-9/probe",
+        "64",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-0/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-10/probe",
+        "64",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-1/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/debug/variant-11/probe",
+        "64",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/debug/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-2/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/baseline/probe",
+        "0",
+        "-1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-3/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-0/probe",
+        "32",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-4/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-1/probe",
+        "32",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-5/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-2/probe",
+        "32",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-6/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-3/probe",
+        "32",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-7/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-4/probe",
+        "32",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-8/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-5/probe",
+        "32",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-9/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-6/probe",
+        "64",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-7/probe",
+        "64",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-10/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/optimized/variant-11/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-8/probe",
+        "64",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-9/probe",
+        "64",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline",
+        "/private/tmp/spatial-operator-native-first/emitted/baseline/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-10/probe",
+        "64",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-0/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/optimized/variant-11/probe",
+        "64",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/optimized/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-1/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline/probe",
+        "0",
+        "-1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/baseline",
+      "exit_status": 0,
+      "stdout_sha256": "25b5182d8c2b5d52b81b0bf8b201a85d7004cc41b02e7f5723d7241212270b58",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-2/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0/probe",
+        "32",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-0",
+      "exit_status": 0,
+      "stdout_sha256": "29b87bce3a009af9eb34ad29fb4eb66425015ea3801c5a2c04e2fad103096aaf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-3/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1/probe",
+        "32",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-1",
+      "exit_status": 0,
+      "stdout_sha256": "71295b66ce69c766bb2207b6f08abcbb2c43c5a83a1fb80f23265e362c4cd629",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-4/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2/probe",
+        "32",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-2",
+      "exit_status": 0,
+      "stdout_sha256": "b4e7fe37043b7280ec272907e16c6e65c77ca68cad36c96809aeac6699e03a05",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-5/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3/probe",
+        "32",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-3",
+      "exit_status": 0,
+      "stdout_sha256": "6fb5026d3701bb8d429bd09e4fbe2060898b885c9b9f77dc77bd902631fe6c80",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-6/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4/probe",
+        "32",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-4",
+      "exit_status": 0,
+      "stdout_sha256": "75f7ea8bc5fb0219bd894adc367195f8dcfa4c76a2f5bbb3097127f09868e333",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-7/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5/probe",
+        "32",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-5",
+      "exit_status": 0,
+      "stdout_sha256": "5ba2daa9875fa080a6dddfc354ff76b5469fff4271cca1da5f881dab6073b934",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-8/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6/probe",
+        "64",
+        "0"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-6",
+      "exit_status": 0,
+      "stdout_sha256": "3ce3ec5b9f8fbb6b7b40f865cb522798875afd6e2824d257da288e22e37c5842",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-9/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7/probe",
+        "64",
+        "1"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-7",
+      "exit_status": 0,
+      "stdout_sha256": "44a037bc630281920bf0d503c45c9b8d94d01d1f0011c2b82a60378f64139a42",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-10/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8/probe",
+        "64",
+        "2"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-8",
+      "exit_status": 0,
+      "stdout_sha256": "bf84c3dadaf498eec30e558f7ca0cab7058a3d71a525e6aaabba5d6883bcf04d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11",
+        "/private/tmp/spatial-operator-native-first/emitted/variant-11/operators.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/coax/tests/spatial-operator-oracle.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11/probe"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9/probe",
+        "64",
+        "3"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-9",
+      "exit_status": 0,
+      "stdout_sha256": "8e78e1adcbd2566f681537402852453cfcea63fbb762acd19463e2e1a9e578b7",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10/probe",
+        "64",
+        "4"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-10",
+      "exit_status": 0,
+      "stdout_sha256": "acd970786c9296729bb8ac8ea90e6863ba73e7d658a410e0e206729d4c8c2c7b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "execute",
+      "arguments": [
+        "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11/probe",
+        "64",
+        "5"
+      ],
+      "artifact_directory": "/private/tmp/spatial-operator-native-first/asan-ubsan/variant-11",
+      "exit_status": 0,
+      "stdout_sha256": "22b0c8eed96d49b59c8499fb78aab9e598b05cfe3cd9b9544ceeee6bb9a91764",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    }
+  ],
+  "duration_seconds": 48.9540222499636,
+  "artifact_directory": "/tmp/spatial-operator-native-first"
+}
