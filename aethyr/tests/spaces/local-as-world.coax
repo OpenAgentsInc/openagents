@@ -1,0 +1,4 @@
+// expect: E0325 a local point stored as a world one (local_to_world)
+#load "../../space.coax";
+f :: (q: LocalPoint) -> WorldPoint { w: WorldPoint = q; return w; }
+main :: () {}

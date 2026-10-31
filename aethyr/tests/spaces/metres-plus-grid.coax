@@ -1,0 +1,4 @@
+// expect: E0822 metres added to grid units (grid_metres converts)
+#load "../../space.coax";
+f :: (a: WorldPoint, g: GridPoint) -> f32 { d := world_distance(a, a) + grid_distance(g, g); return d.value; }
+main :: () {}

@@ -25,3 +25,24 @@ the same states, bit for bit, at 30, 60, 120 and 144 FPS; drawn at 60 FPS, a
 jump's feet change their per-frame move by at most 0.008 m (gravity alone is
 0.0067 m; drawing the last step instead lurches by 0.077 m) and its camera by
 at most 0.014 m (0.062 m).
+
+## Space (`aethyr/space.coax`)
+
+A position's type is its space: `WorldPoint` (metres, where physics puts
+things), `LocalPoint` (metres in a `Placement`: an origin and a yaw),
+`ViewPoint` (metres from a `Lens`: x right, y up, z ahead), `ScreenPoint`
+(CSS pixels) and `GridPoint` (the Grid's drawing units, two metres each).
+They move between spaces only through named functions (`local_to_world`,
+`world_to_grid`, `world_to_view`, `view_to_screen` and their inverses), and
+distances are R12 quantities, so metres and grid units don't mix
+(`grid_metres` converts, exactly). The lens and projection are the Grid's
+(`newland.coax` `cam`/`spot`); a point nearer than the lens's near plane is
+not drawn. `world_to_grid` scales heights as it scales the ground, so feet
+are drawn at their physics height.
+
+Mixing spaces is a compile error: `coax/web/tool.sh aethyr/refusals.coax`
+compiles each fixture in `aethyr/tests/spaces/` and checks the code it is
+refused with (E0317 a world point given for a view point or a grid point for
+a world one, E0325 a local point stored as a world one, E0822 metres plus
+grid units), against a control that must compile. Mutation: 78 of 78 killed
+(`space.coax`), 47 of 47 (`refusals.coax`).

@@ -1,0 +1,181 @@
+// Aethyr's spaces (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md): a
+// position is typed by the space it is in, and moves between spaces only through the named
+// functions here. Mixing them is a type error: a WorldPoint is not a ViewPoint, a GridPoint
+// is not a WorldPoint, and a distance in metres is not one in grid units (coax/lib/quantity.coax,
+// R12's first slice), so the compiler refuses what used to be a figure drawn at floor height
+// while the camera rose (aethyr/tests/spaces/ holds the refusals; aethyr/refusals.coax runs them).
+//
+//   world   metres, +Y up, yaw 0 faces +Z (openagents.engine.v1): where physics puts things
+//   local   metres in a placement: an origin and a yaw (a realm's room, a carried thing)
+//   view    metres from a lens: x right, y up, z ahead (depth)
+//   screen  CSS pixels, +y down
+//   grid    the Grid's drawing units: GRID_UNIT metres each, from the places' middle
+//
+// The lens and its projection are the Grid's (apps/openagents-web/newland.coax cam/spot):
+// an eye, a right/up/ahead basis, a focal length in pixels and a near plane in front of
+// which nothing is drawn.
+//   coax/bin/coax test aethyr/space.coax --library
+//   coax/bin/coax mutate aethyr/space.coax
+
+#module "aethyr.space";
+#load "../coax/lib/quantity.coax" as units;
+
+// A grid unit is two metres (the Grid draws a metre as half a unit, newland-walkers.coax
+// WALK_SCALE): a power of two, so converting is exact.
+GridUnit :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=2,denominator=1) {}
+GRID_PER_METRE :: 0.5;
+aethyr_grid_per_metre :: () -> f32 #export_c { return GRID_PER_METRE; }   // for a C face
+
+WorldPoint :: struct { x: f32; y: f32; z: f32; }
+LocalPoint :: struct { x: f32; y: f32; z: f32; }
+ViewPoint :: struct { x: f32; y: f32; z: f32; }
+ScreenPoint :: struct { x: f32; y: f32; }
+GridPoint :: struct { x: f32; y: f32; z: f32; }
+
+// Where a local space sits in the world: its origin and its yaw about +Y.
+Placement :: struct { origin: WorldPoint; yaw: f32; }
+
+// A camera's lens: the eye and its basis in the world, and how the view lands on screen.
+Lens :: struct {
+  eye: WorldPoint;
+  right: WorldPoint; up: WorldPoint; ahead: WorldPoint;   // unit directions in the world
+  cx: f32; cy: f32;                                        // the screen point straight ahead
+  focal: f32;                                              // pixels a metre at one metre's depth
+  near: f32;                                               // metres: nothing nearer is drawn
+}
+
+// A point on screen, with its depth, or none (ok false) when it is behind the near plane.
+Seen :: struct { at: ScreenPoint; depth: f32; ok: bool; }
+
+world :: (x: f32, y: f32, z: f32) -> WorldPoint { return WorldPoint.{x = x, y = y, z = z}; }
+world_add :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.x + b.x, a.y + b.y, a.z + b.z); }
+world_sub :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.x - b.x, a.y - b.y, a.z - b.z); }
+world_scale :: (a: WorldPoint, k: f32) -> WorldPoint { return world(a.x * k, a.y * k, a.z * k); }
+world_dot :: (a: WorldPoint, b: WorldPoint) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+world_cross :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+world_unit :: (a: WorldPoint) -> WorldPoint {
+  l := sqrt(world_dot(a, a));
+  if !(l > 0) { return world(0, 0, 1); }
+  return world_scale(a, 1 / l);
+}
+
+// Metres between two world points, and grid units between two grid points.
+world_distance :: (a: WorldPoint, b: WorldPoint) -> units.Quantity(units.Metre, f32) {
+  d := world_sub(a, b);
+  return units.Quantity.{value = sqrt(world_dot(d, d))};
+}
+grid_distance :: (a: GridPoint, b: GridPoint) -> units.Quantity(GridUnit, f32) {
+  dx := a.x - b.x; dy := a.y - b.y; dz := a.z - b.z;
+  return units.Quantity.{value = sqrt(dx * dx + dy * dy + dz * dz)};
+}
+grid_metres :: (d: units.Quantity(GridUnit, f32)) -> units.Quantity(units.Metre, f32) { return convert_unit(units.Metre, d); }
+
+// ---- between spaces
+
+// A local point in the world, and back: rotate by the placement's yaw, then move to its origin.
+local_to_world :: (p: Placement, q: LocalPoint) -> WorldPoint {
+  c := cos(p.yaw); s := sin(p.yaw);
+  return world(p.origin.x + q.x * c + q.z * s, p.origin.y + q.y, p.origin.z - q.x * s + q.z * c);
+}
+world_to_local :: (p: Placement, w: WorldPoint) -> LocalPoint {
+  c := cos(p.yaw); s := sin(p.yaw);
+  dx := w.x - p.origin.x; dz := w.z - p.origin.z;
+  return LocalPoint.{x = dx * c - dz * s, y = w.y - p.origin.y, z = dx * s + dz * c};
+}
+
+// The world as the Grid draws it: `mid` is the places' middle in grid units, and grid
+// heights are metres times GRID_PER_METRE too, so a figure's feet are drawn at its physics height.
+world_to_grid :: (mid: GridPoint, w: WorldPoint) -> GridPoint {
+  return GridPoint.{x = mid.x + w.x * GRID_PER_METRE, y = mid.y + w.y * GRID_PER_METRE, z = mid.z + w.z * GRID_PER_METRE};
+}
+grid_to_world :: (mid: GridPoint, g: GridPoint) -> WorldPoint {
+  return world((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
+}
+
+// A lens at `eye` looking at `at`, with +Y up.
+lens_at :: (eye: WorldPoint, at: WorldPoint, cx: f32, cy: f32, focal: f32, near: f32) -> Lens {
+  ahead := world_unit(world_sub(at, eye));
+  right := world_unit(world_cross(ahead, world(0, 1, 0)));
+  up := world_cross(right, ahead);
+  return Lens.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = focal, near = near};
+}
+world_to_view :: (l: Lens, w: WorldPoint) -> ViewPoint {
+  v := world_sub(w, l.eye);
+  return ViewPoint.{x = world_dot(v, l.right), y = world_dot(v, l.up), z = world_dot(v, l.ahead)};
+}
+view_to_world :: (l: Lens, v: ViewPoint) -> WorldPoint {
+  return world_add(l.eye, world_add(world_scale(l.right, v.x), world_add(world_scale(l.up, v.y), world_scale(l.ahead, v.z))));
+}
+view_to_screen :: (l: Lens, v: ViewPoint) -> Seen {
+  if v.z < l.near { return Seen.{at = ScreenPoint.{x = 0, y = 0}, depth = v.z, ok = false}; }
+  return Seen.{at = ScreenPoint.{x = l.cx + v.x / v.z * l.focal, y = l.cy - v.y / v.z * l.focal}, depth = v.z, ok = true};
+}
+world_to_screen :: (l: Lens, w: WorldPoint) -> Seen { return view_to_screen(l, world_to_view(l, w)); }
+
+// ---- Checks ----
+
+near_to :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
+same_world :: (a: WorldPoint, b: WorldPoint, t: f32) -> bool { return near_to(a.x, b.x, t) && near_to(a.y, b.y, t) && near_to(a.z, b.z, t); }
+
+#test "world arithmetic" {
+  a := world(1, 2, 3); b := world(-2, 0.5, 4);
+  #assert world_dot(a, b) == 11 && same_world(world_sub(a, b), world(3, 1.5, -1), 0) && same_world(world_add(a, b), world(-1, 2.5, 7), 0);
+  #assert same_world(world_cross(world(1, 0, 0), world(0, 1, 0)), world(0, 0, 1), 0);
+  #assert same_world(world_scale(a, 2), world(2, 4, 6), 0);
+  #assert same_world(world_unit(world(0, 3, 4)), world(0, 0.6, 0.8), 0.000001);
+  #assert same_world(world_unit(world(0, 0, 0)), world(0, 0, 1), 0) && same_world(world_unit(world(0, 0.00001, 0)), world(0, 1, 0), 0.0001);
+  #assert same_world(world_cross(world(1, 2, 3), world(4, 5, 6)), world(-3, 6, -3), 0);
+  // the checks' own comparison: each axis counts
+  #assert !same_world(world(1, 0, 0), world(0, 0, 0), 0.5) && !same_world(world(0, 1, 0), world(0, 0, 0), 0.5) && !same_world(world(0, 0, 1), world(0, 0, 0), 0.5);
+}
+
+#test "distances keep their units, and grid units convert exactly" {
+  d := world_distance(world(0, 0, 0), world(3, 0, 4));
+  #assert d.value == 5;
+  g := grid_distance(GridPoint.{x = 1, y = 1, z = 2}, GridPoint.{x = 3, y = 4, z = 8});
+  #assert g.value == 7 && grid_metres(g).value == 14;
+}
+
+#forall "a local point goes to the world and back" k: 0..<16 {
+  p := Placement.{origin = world(3, 1, -2), yaw = f32(k) * 0.4};
+  q := LocalPoint.{x = 1.5, y = 0.25, z = -0.75};
+  b := world_to_local(p, local_to_world(p, q));
+  #assert near_to(b.x, q.x, 0.00001) && near_to(b.y, q.y, 0.00001) && near_to(b.z, q.z, 0.00001);
+}
+
+#test "a placement turns with its yaw: a quarter turn takes local +Z to world +X" {
+  p := Placement.{origin = world(10, 2, 0), yaw = 1.5707963};
+  #assert same_world(local_to_world(p, LocalPoint.{x = 0, y = 0, z = 1}), world(11, 2, 0), 0.00001);
+  #assert same_world(local_to_world(p, LocalPoint.{x = 1, y = 3, z = 0}), world(10, 5, -1), 0.00001);
+  o := Placement.{origin = world(0, 0, 0), yaw = 0};
+  #assert same_world(local_to_world(o, LocalPoint.{x = 1, y = 2, z = 3}), world(1, 2, 3), 0);
+}
+
+#test "the Grid draws a metre as half a unit, heights too" {
+  mid := GridPoint.{x = 4, y = 0, z = -6};
+  g := world_to_grid(mid, world(2, 1.2, -4));
+  #assert g.x == 5 && g.y == 0.6 && g.z == -8;
+  raised := GridPoint.{x = 1, y = 2, z = 3};
+  #assert same_world(grid_to_world(raised, GridPoint.{x = 2, y = 3, z = 4}), world(2, 2, 2), 0);
+  #assert same_world(grid_to_world(mid, g), world(2, 1.2, -4), 0.000001);
+  // A jump's feet 1.17 m up are drawn 0.585 units up: at the physics height, not the floor's.
+  #assert world_to_grid(mid, world(0, 1.17, 0)).y == 0.585;
+  up := GridPoint.{x = 0, y = 3, z = 0};
+  #assert world_to_grid(up, world(0, 0, 0)).y == 3;
+}
+
+#test "the lens sees ahead, right, up, and nothing behind its near plane" {
+  l := lens_at(world(0, 0, -10), world(0, 0, 0), 400, 300, 500, 0.05);
+  #assert same_world(l.ahead, world(0, 0, 1), 0.000001) && same_world(l.right, world(-1, 0, 0), 0.000001) && same_world(l.up, world(0, 1, 0), 0.000001);
+  s := world_to_screen(l, world(0, 0, 0));
+  #assert s.ok && s.at.x == 400 && s.at.y == 300 && s.depth == 10;
+  r := world_to_screen(l, world(-1, 2, 0));       // to the right and up
+  #assert r.ok && r.at.x == 450 && r.at.y == 200;
+  #assert !world_to_screen(l, world(0, 0, -10)).ok;   // at the eye
+  #assert !world_to_screen(l, world(0, 0, -20)).ok;   // behind
+  m := lens_at(world(0, 0, -10), world(0, 0, 0), 400, 300, 500, 0.5);
+  edge := world_to_screen(m, world(0, 0, -9.5));      // exactly at the near plane: drawn
+  #assert edge.ok && edge.depth == 0.5 && !world_to_screen(m, world(0, 0, -9.75)).ok;
+  v := world_to_view(l, world(3, -1, 5));
+  #assert same_world(view_to_world(l, v), world(3, -1, 5), 0.00001);
+}

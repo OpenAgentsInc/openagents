@@ -1,0 +1,4 @@
+// expect: E0317 a screen point where a view point is wanted
+#load "../../space.coax";
+f :: (l: Lens, s: Seen) -> Seen { return view_to_screen(l, s.at); }
+main :: () {}
