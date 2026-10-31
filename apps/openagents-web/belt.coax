@@ -30,6 +30,8 @@
 #load "belt-rival.coax";
 #load "belt-win.coax";
 #load "belt-lockstep.coax";
+#load "lockroom.coax";
+#load "belt-net.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -128,7 +130,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11; B_BUILD :: 12; B_TAC_BREAK :: 13; B_TAC_FAST :: 14; B_TAC_DONE :: 15; B_REFINERY :: 16; B_OVER :: 17;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11; B_BUILD :: 12; B_TAC_BREAK :: 13; B_TAC_FAST :: 14; B_TAC_DONE :: 15; B_REFINERY :: 16; B_OVER :: 17; B_INVITE :: 18;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -193,6 +195,9 @@ Belt :: struct {
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
   tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
+  // a game for two over the room server (belt-net.coax, lockroom.coax)
+  lock: [1] Lock; net_applying: bool; net_acc: f64; net_nudge: bool; net_nudge_t: f64;
+  snap: [NET_SNAP] u8;
 }
 
 // ---- small things
@@ -912,6 +917,7 @@ set_dest :: (s: [] Belt, p: int) {
 
 go :: (s: [] Belt, fast: bool) {
   if s[0].dest < 0 { return; }
+  if net_send(s, N_GO, s[0].dest, ifx fast then 1 else 0, ifx s[0].shift then 1 else 0) { return; }
   sent := 0; queued := 0; lagged := 0; late := 0.0;
   for k: 0..<s[0].ship_n {
     if !s[0].cmd[0].selected[k] { continue; }
@@ -1315,6 +1321,7 @@ yard_can :: (s: [] Belt) -> int {
 // Lay down a freighter: its metal now, its crew off the shifts, done in FREIGHTER_DAYS.
 yard_build :: (s: [] Belt) -> bool {
   if yard_can(s) != YARD_OK { return false; }
+  if net_send(s, N_BUILD, 0, 0, 0) { return true; }
   s[0].station[0].metal -= FREIGHTER_METAL;
   s[0].building = FREIGHTER_DAYS;
   s[0].dirty = true;
@@ -1382,6 +1389,7 @@ send_ship :: (s: [] Belt, k: int, dest: int, work: int) -> bool {
   return true;
 }
 fleet_mine :: (s: [] Belt) {
+  if net_send(s, N_FLEET, 0, 0, 0) { return; }
   mining := 0; home := 0; stuck := 0;
   for k: 0..<s[0].ship_n {
     if !s[0].cmd[0].selected[k] { continue; }
@@ -1472,13 +1480,15 @@ follow_ship :: (s: [] Belt, k: int) {
 
 belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
   started(s);
+  if net_socket(s, kind, text) { return; }
   if kind == HOST_PAGE {
     s[0].facts = true;
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
     if stage_of(fact_of(text, "url")) == STAGE_HIGHLIGHT { stage_highlight(s); }
     if stage_of(fact_of(text, "url")) == STAGE_BATTLE { stage_battle(s); }
     if query_word(fact_of(text, "url"), "card=1") { s[0].card = true; }
-    if query_word(fact_of(text, "url"), "unknown=1") { unknown_on(s); }
+    if query_word(fact_of(text, "url"), "unknown=1") { unknown_on(s); say(s, "THE UNKNOWN: A SIGNAL AT JUPITER'S LEADING POINT"); }
+    net_page(s, fact_of(text, "url"));
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
   if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); }
@@ -1542,10 +1552,10 @@ belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   if key == KEY_SHIFT { s[0].shift = true; return true; }
   b := hold_bit(key);
   if b != 0 { s[0].held = s[0].held | b; return true; }
-  if key == ' ' { s[0].speed = ifx s[0].speed == 0 then 2 else 0; return true; }
+  if key == ' ' { set_speed(s, ifx s[0].speed == 0 then 2 else 0); return true; }
   if key >= '4' && key <= '9' { group_key(s, key - '0', (mods & 10) != 0); return true; }
-  if key == '1' || key == '2' || key == '3' { s[0].speed = key - '0'; return true; }
-  if key == '0' { s[0].speed = 0; return true; }
+  if key == '1' || key == '2' || key == '3' { set_speed(s, key - '0'); return true; }
+  if key == '0' { set_speed(s, 0); return true; }
   if key == KEY_ESCAPE {
     if s[0].dest >= 0 { s[0].dest = -1; } else { select_only(s, -1); }
     return true;
@@ -1582,9 +1592,26 @@ button_at :: (s: [] Belt, x: f32, y: f32) -> int {
   return -1;
 }
 
+// The refinery's next expansion (with a partner, an order both run).
+refinery_press :: (s: [] Belt) {
+  if refinery_cost(s[0].station[0]) > s[0].station[0].metal { return; }
+  if net_send(s, N_REFINERY, 0, 0, 0) { return; }
+  if refinery_build(s[0].station[..]) {
+    say(s, "REFINERY EXPANDED");
+    if track_begin(s[0].track[..], "refinery") { track_int(s[0].track[..], "level", s[0].station[0].refinery); track_end(s[0].track[..]); }
+    s[0].dirty = true;
+  }
+}
 press_button :: (s: [] Belt, i: int) {
   b := s[0].btn[i];
-  if b.id == B_SPEED { s[0].speed = b.arg; }
+  if b.id == B_SPEED { set_speed(s, b.arg); }
+  if b.id == B_INVITE { net_invite(s); }
+  if b.id == B_UNKNOWN {
+    // the view flies to it, as far out as it was
+    s[0].follow = -1; s[0].system = false; s[0].ride = -1; s[0].follow_place = P_UNKNOWN;
+    s[0].cam = spacecam_look(s[0].cam, place_state(s, P_UNKNOWN, s[0].t).r, s[0].cam.goal_scale);
+    s[0].cam.following = true;
+  }
   if b.id == B_CARD {
     if s[0].shift { s[0].cmd[0].selected[b.arg] = !s[0].cmd[0].selected[b.arg]; s[0].dest = -1; }
     else if s[0].cmd[0].selected[b.arg] && selected_count(s) == 1 { follow_ship(s, b.arg); }
@@ -1598,20 +1625,14 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_ROCK { set_dest(s, P_ICE + b.arg); }
   if b.id == B_SYSTEM { look_at_system(s); }
   if b.id == B_BUILD { ok := yard_build(s); }
-  if b.id == B_REFINERY {
-    if refinery_build(s[0].station[..]) {
-      say(s, "REFINERY EXPANDED");
-      if track_begin(s[0].track[..], "refinery") { track_int(s[0].track[..], "level", s[0].station[0].refinery); track_end(s[0].track[..]); }
-      s[0].dirty = true;
-    }
-  }
+  if b.id == B_REFINERY { refinery_press(s); }
   if b.id == B_TAC_BREAK { s[0].tac[0].flee = true; }
   if b.id == B_TAC_FAST { s[0].tac_fast = !s[0].tac_fast; }
   if b.id == B_TAC_DONE { tac_apply(s); }
   if b.id == B_OVER { s[0].over_seen = true; s[0].dirty = true; }
   if b.id == B_NEW {
     // twice to start over: the first press asks
-    if s[0].new_armed > 0 { s[0].new_armed = 0; new_game(s); } else { s[0].new_armed = 3.0; }
+    if s[0].new_armed > 0 { s[0].new_armed = 0; if !net_send(s, N_NEW, 0, 0, 0) { new_game(s); } } else { s[0].new_armed = 3.0; }
   }
   if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; }
 }
@@ -2494,6 +2515,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   phone := w / k < 700;
   m := 12 * k;
   s[0].btn_n = 0;
+  unknown_hint(s, out, d);   // the Unknown off the screen: a mark at the edge toward it (belt-win.coax)
   buf: [96] u8;
   // The title and the date, top left.
   tw := ifx phone then (w - 3 * m) / 2 else 230 * k;
@@ -2524,6 +2546,14 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
   gx := m + 4 * (bw + 6 * k);
   button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "GALAXY", 6.5 * k, false);
+  // INVITE: a game for two (belt-net.coax); on a phone where SYSTEM goes, when SYSTEM isn't up
+  away0 := s[0].cam.goal_scale > system_scale(s) * 4.0 || s[0].cam.goal_scale < system_scale(s) / 3.0 || s[0].follow >= 0 || s[0].follow_place >= 0;
+  if !s[0].golden && !s[0].card && s[0].stage == STAGE_NONE && (!phone || !away0) {
+    ib: [24] u8; il := net_label(s, ib[..]);
+    ix0 := ifx phone then w - m - 96 * k else gx + 76 * k;
+    iy := ifx phone then sy + 34 * k else sy;
+    button(s, out, d, ix0, iy, ix0 + 96 * k, iy + 28 * k, B_INVITE, 0, cast(string) ib[0..<il], 6.5 * k, lr_together(s[0].lock[..]));
+  }
   // Zoomed in or riding with something: a way back to the whole system.
   away := s[0].cam.goal_scale > system_scale(s) * 4.0 || s[0].cam.goal_scale < system_scale(s) / 3.0 || s[0].follow >= 0 || s[0].follow_place >= 0;
   toast_at := sy + 52 * k;
@@ -2730,7 +2760,8 @@ belt_step :: (s: [] Belt, dt: f32) {
   // Time: game days a real second, stepped in pieces of at most two days so arrivals and mining are seen in order.
   game := ifx s[0].golden then 0.0 else SPEEDS[s[0].speed] * DAY * real;
   if s[0].stage == STAGE_HIGHLIGHT { game = stage_game(s, real); }
-  if s[0].tac[0].on {
+  if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
+  if s[0].tac[0].on && !lr_on(s[0].lock[..]) {
     game = 0.0;
     bt := real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0);
     while bt > 0.0 && s[0].tac[0].end == TAC_FIGHTING { tac_step(s[0].tac[..], TAC_STEP); bt -= TAC_STEP; }

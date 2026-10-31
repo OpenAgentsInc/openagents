@@ -40,6 +40,42 @@ draw_unknown :: (s: [] Belt, out: [] f32, d: [] Draw) {
   block(d, x, y, r);
   tag(d, "THE UNKNOWN", x, y, r, 7 * k, ifx hot then 1.0f32 else 0.8f32, UNK_R, UNK_G, UNK_B, ifx hot then PRIO_HOT else PRIO_WORLD);
 }
+// Off the screen (or under the HUD), the Unknown is a mark at the edge toward it, which flies the
+// view there when tapped.
+B_UNKNOWN :: 19;
+unknown_hint :: (s: [] Belt, out: [] f32, d: [] Draw) {
+  if !s[0].unknown || s[0].card || s[0].golden || s[0].tac[0].on { return; }
+  k := d[0].k;
+  c := screen_of(s, place_state(s, P_UNKNOWN, s[0].t).r);
+  x := pix(c.x); y := pix(c.y);
+  x0 := 44 * k; x1 := s[0].w - 44 * k; y0 := 150 * k; y1 := s[0].h - 150 * k;
+  if x1 <= x0 || y1 <= y0 { return; }
+  if x >= x0 && x <= x1 && y >= y0 && y <= y1 { return; }
+  cx := s[0].w / 2; cy := s[0].h / 2;
+  dx := x - cx; dy := y - cy;
+  if abs(dx) < 0.001 && abs(dy) < 0.001 { return; }
+  // along the line from the middle to it, as far as the inset box goes
+  f: f32 = 1;
+  if dx > 0 { f = lo(f, (x1 - cx) / dx); }
+  if dx < 0 { f = lo(f, (x0 - cx) / dx); }
+  if dy > 0 { f = lo(f, (y1 - cy) / dy); }
+  if dy < 0 { f = lo(f, (y0 - cy) / dy); }
+  ex := cx + dx * f; ey := cy + dy * f;
+  dist := sqrt(dx * dx + dy * dy); ux := dx / dist; uy := dy / dist;
+  pulse := 0.75 + 0.25 * sin(s[0].clock * 3.0);
+  // the arrowhead, pointing out toward it, and its ring
+  tip_x := ex + ux * 14 * k; tip_y := ey + uy * 14 * k;
+  stroke(out, d, tip_x, tip_y, ex - uy * 7 * k, ey + ux * 7 * k, 1.1 * k, pulse, UNK_R, UNK_G, UNK_B);
+  stroke(out, d, tip_x, tip_y, ex + uy * 7 * k, ey - ux * 7 * k, 1.1 * k, pulse, UNK_R, UNK_G, UNK_B);
+  ring(out, d, ex - ux * 4 * k, ey - uy * 4 * k, 5 * k, 24, 0.9 * k, pulse, UNK_R, UNK_G, UNK_B);
+  label := "THE UNKNOWN";
+  cap := 7 * k;
+  tw := measure(label, GAP, SPACE, false) * cap;
+  lx := ifx ux > 0.3 then ex - tw - 14 * k else ifx ux < -0.3 then ex + 14 * k else ex - tw / 2;
+  ly := ifx uy > 0.3 then ey - 16 * k else ifx uy < -0.3 then ey + 24 * k else ey + cap / 2;
+  words(out, d, label, lx, ly, cap, 0.9, UNK_R, UNK_G, UNK_B);
+  i := add_button(s, lo(lx, ex - 16 * k), lo(ly - cap - 6 * k, ey - 16 * k), hi(lx + tw, ex + 16 * k), hi(ly + 6 * k, ey + 16 * k), B_UNKNOWN, 0);
+}
 // The match's end: a panel in the middle, its result and why, and PLAY ON to go back to the map.
 draw_over :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   if s[0].over == WIN_NONE || s[0].over_seen || s[0].tac[0].on { return; }
@@ -179,4 +215,25 @@ win_step :: (s: [] Belt, days: f64) {
   tac_apply(s[..]);
   #assert !s[0].tac[0].on && s[0].ships[m].mode == FLYING && s[0].ships[m].at == RIVAL_HOME && s[0].ships[m].cargo == 0.0;
   #assert s[0].engaged[kite] == -1 && s[0].engaged[m] == -1;
+}
+
+#test "?unknown=1: the Unknown off the screen is a mark at its edge, toward it; tapping it flies the view there, where the mark gives way to the Unknown itself" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?unknown=1\n");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for f: 0..<3 { n := belt_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false); }
+  #assert s[0].unknown && s[0].toast_n > 10;
+  hint := -1;
+  for i: 0..<s[0].btn_n { if s[0].btn[i].id == B_UNKNOWN { hint = i; } }
+  #assert hint >= 0;
+  // toward it: the Unknown's side of the screen
+  b := s[0].btn[hint];
+  c := screen_of(s[..], place_state(s[..], P_UNKNOWN, s[0].t).r);
+  #assert (pix(c.x) - 720.0) * ((b.x0 + b.x1) / 2.0 - 720.0) + (pix(c.y) - 450.0) * ((b.y0 + b.y1) / 2.0 - 450.0) > 0.0;
+  press_button(s[..], hint);
+  for f: 0..<90 { n := belt_frame(s[..], out[..], u[..], 1440, 900, 1, 0.05, false); }
+  c = screen_of(s[..], place_state(s[..], P_UNKNOWN, s[0].t).r);
+  #assert abs(pix(c.x) - 720.0) < 40.0 && abs(pix(c.y) - 450.0) < 40.0;
+  for i: 0..<s[0].btn_n { #assert s[0].btn[i].id != B_UNKNOWN; }
 }

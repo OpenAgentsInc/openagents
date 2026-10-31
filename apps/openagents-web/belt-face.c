@@ -10,13 +10,30 @@
 #include <stddef.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+#define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
+IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
+IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
+IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 
 static uint8_t inbox[4096];
 static bool golden;
 
 static coax_t_Belt *game_at(uint32_t state) { return (coax_t_Belt *)(uintptr_t)state; }
 static coax_v_t_Belt at(uint32_t state) { return (coax_v_t_Belt){game_at(state), 1}; }
-static void drain(uint32_t state) { track_drain(&game_at(state)->track.e[0]); }
+// The analytics batch, then the room's socket commands (belt-net.coax) in order; then the pipe is empty.
+static void drain(uint32_t state) {
+  track_drain(&game_at(state)->track.e[0]);
+  coax_t_Pipe *p = &game_at(state)->lock.e[0].pipe.e[0];
+  int64_t n = p->n;
+  for (int64_t k = 0; k < n; k++) {
+    uint32_t from = (uint32_t)(uintptr_t)&p->buf.e[p->from.e[k]], len = (uint32_t)p->len.e[k];
+    int32_t id = (int32_t)p->id.e[k];
+    if (p->op.e[k] == 1) belt_socket_opened(at(state), coaxial_socket_open(from, len));
+    else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
+    else if (p->op.e[k] == 3) coaxial_socket_close(id);
+  }
+  p->n = 0; p->used = 0;
+}
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Belt) * 1000003u + offsetof(coax_t_Belt, ships) * 7u + offsetof(coax_t_Belt, outbox) * 13u + 0x42454c54u);

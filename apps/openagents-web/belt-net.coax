@@ -1,0 +1,195 @@
+// Belt 2200 for two (b22-lockstep-net): both players command the Free Belt's fleet against the
+// Union's script, over the room server's relay (lockroom.coax). INVITE copies a link with a room
+// code (?coop=CODE); the one who opens it gets the game (the save, which both then load, so both
+// hold the same quantized state), and from then both clocks run in lockstep ticks of LOCK_NET a
+// real second, each NET_DAYS game days at the speed both chose. An order (a burn, a fleet's mining,
+// a freighter, the refinery, the speed, a new game) goes out for a tick both will run. A battle in
+// a game for two is fought to its end at once on its seed, as belt-lockstep.coax's ticks do.
+// Every NET_CHECK ticks the states' hashes (belt_hash) are compared; a desync is shown to both
+// and mended from the holder's save.
+//   coax/bin/coax test apps/openagents-web/belt.coax --only net
+
+NET_GAME :: "belt-2200";
+NET_RATE :: 20.0;         // ticks a real second
+NET_CHECK :: 40;          // two seconds
+NET_SNAP :: 8192;
+N_GO :: 0; N_FLEET :: 1; N_BUILD :: 2; N_REFINERY :: 3; N_SPEED :: 4; N_NEW :: 5;
+
+// With a partner, an order goes out (true); alone it is the caller's to do now.
+net_send :: (s: [] Belt, kind: int, a: int, b: int, c: int) -> bool {
+  if s[0].net_applying || !lr_together(s[0].lock[..]) { return false; }
+  mask := 0;
+  for k: 0..<s[0].ship_n { if s[0].cmd[0].selected[k] { mask = mask | (1 << k); } }
+  buf: [64] u8;
+  n := lr_put_int(buf[..], 0, kind); n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, mask);
+  n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, a); n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, b); n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, c);
+  ok := lr_order(s[0].lock[..], cast(string) buf[0..<n]);
+  return true;
+}
+// An order, as sent: for the ships it names, with this client's selection put back after.
+net_apply :: (s: [] Belt, t: string) {
+  at: [1] int; at[0] = 0;
+  kind := lr_int(t, at[..]); mask := lr_int(t, at[..]); a := lr_int(t, at[..]); b := lr_int(t, at[..]); c := lr_int(t, at[..]);
+  sel: [SHIPS] bool;
+  for k: 0..<SHIPS { sel[k] = s[0].cmd[0].selected[k]; }
+  dest := s[0].dest; shift := s[0].shift;
+  s[0].net_applying = true;
+  for k: 0..<SHIPS { s[0].cmd[0].selected[k] = k < s[0].ship_n && (mask & (1 << k)) != 0 && s[0].ships[k].faction == FREE_BELT; }
+  if kind == N_GO { s[0].dest = a; s[0].shift = c == 1; go(s, b == 1); }
+  if kind == N_FLEET { fleet_mine(s); }
+  if kind == N_BUILD { ok := yard_build(s); }
+  if kind == N_REFINERY { refinery_press(s); }
+  if kind == N_SPEED && a >= 0 && a < 4 { s[0].speed = a; }
+  if kind == N_NEW { new_game(s); }
+  s[0].net_applying = false;
+  if kind != N_NEW { for k: 0..<SHIPS { s[0].cmd[0].selected[k] = sel[k]; } s[0].dest = dest; }
+  s[0].shift = shift;
+}
+// The speed buttons and keys: with a partner, both clocks change at one tick.
+set_speed :: (s: [] Belt, v: int) {
+  if net_send(s, N_SPEED, v, 0, 0) { return; }
+  s[0].speed = v;
+}
+
+// The page's address: ?coop=CODE joins (?desync=1 nudges this client's metal once, five seconds in).
+net_page :: (s: [] Belt, url: string) {
+  L := s[0].lock[..];
+  lr_page(L, url);
+  if query_word(url, "desync=1") { s[0].net_nudge = true; }
+  if L[0].state == LR_OFF && lr_code_of(L, url) { lr_join(L, NET_GAME, NET_RATE, NET_CHECK); }
+}
+net_invite :: (s: [] Belt) {
+  L := s[0].lock[..];
+  if !lr_on(L) {
+    lr_make_code(L, cast(u64) (s[0].clock * 1000003.0) ^ cast(u64) (s[0].mx * 977.0 + s[0].my * 131.0) ^ cast(u64) safe_int(s[0].t / 60.0));
+    L[0].state = LR_OFF; L[0].sock = -1; L[0].partner = -1; L[0].seat = -1;
+    lr_join(L, NET_GAME, NET_RATE, NET_CHECK);
+  }
+  if s[0].action != 0 { return; }
+  s[0].out_n = lr_invite(L, s[0].outbox[..]);
+  s[0].action = ACT_COPY;
+  say(s, "LINK COPIED: SEND IT TO YOUR PARTNER");
+}
+ACT_COPY :: 2;
+// INVITE's label: the room's code once there is one.
+net_label :: (s: [] Belt, buf: [] u8) -> int {
+  L := s[0].lock[..];
+  if !lr_on(L) || L[0].code_n == 0 { return put(buf, 0, "INVITE"); }
+  n := put(buf, 0, ifx lr_together(L) then "CO-OP " else "ROOM ");
+  for i: 0..<L[0].code_n { c := L[0].code[i]; if c >= 'a' && c <= 'z' { c -= 32; } if n < buf.count { buf[n] = c; n += 1; } }
+  return n;
+}
+belt_socket_opened :: (s: [] Belt, id: int) #export_c { lr_opened(s[0].lock[..], id); }
+
+// Both hold the same game: what the save keeps, loaded into a fresh start (the view stays).
+net_rebase :: (s: [] Belt, text: string) -> bool {
+  cam := s[0].cam; follow := s[0].follow; place := s[0].follow_place; framed := s[0].framed; sys := s[0].system;
+  belt_reset(s);
+  for k: 0..<SHIPS { verse_command_clear(s[0].cmd[..], k); s[0].sight_n[k] = 0; s[0].sight_head[k] = 0; }
+  s[0].tac[0].on = false;
+  ok := load_game(s, text);
+  s[0].cam = cam; s[0].follow = follow; s[0].follow_place = place; s[0].framed = framed; s[0].system = sys;
+  s[0].restored = true; s[0].dirty = true;
+  return ok;
+}
+// The snapshot's two ends, between frames: the holder saves (and loads its own save); the joiner loads.
+net_snapshots :: (s: [] Belt) {
+  L := s[0].lock[..];
+  if L[0].want_snap {
+    n := save_game(s, s[0].snap[..]);
+    ok := net_rebase(s, cast(string) s[0].snap[0..<n]);
+    lr_snapshot_ready(L, n);
+  }
+  if L[0].adopt {
+    if net_rebase(s, cast(string) s[0].snap[0..<L[0].rx_total]) { lr_adopted(L); } else { L[0].adopt = false; L[0].state = LR_LOST; lr_say(L, "COULD NOT READ YOUR PARTNER'S GAME"); }
+  }
+}
+// A game day's piece of the clock, as belt_step runs it alone, but a battle is fought out at once.
+net_advance :: (s: [] Belt, game: f64) {
+  left := game;
+  while left > 0.0 {
+    piece := fmin(left, 2.0 * DAY);
+    s[0].t += piece;
+    step_ships(s, piece);
+    left -= piece;
+    if s[0].tac[0].on { e := tac_resolve(s[0].tac[..]); tac_apply(s); }
+  }
+}
+// A frame in a room: the relay's frames, then the ticks both have committed to.
+net_frame :: (s: [] Belt, real: f64) {
+  L := s[0].lock[..];
+  net_snapshots(s);
+  lr_frame(L, real);
+  lr_snapshot_send(L, s[0].snap[..]);
+  if L[0].note_new { L[0].note_new = false; say(s, cast(string) L[0].note[0..<L[0].note_n]); }
+  s[0].net_acc += real;
+  guard := 0;
+  while s[0].net_acc >= 1.0 / NET_RATE && guard < 6 {
+    if !lr_may_step(L) { break; }
+    buf: [LR_ORDER] u8; who: [1] int;
+    while true {
+      n := lr_take(L, L[0].tick, buf[..], who[..]);
+      if n < 0 { break; }
+      net_apply(s, cast(string) buf[0..<n]);
+    }
+    net_advance(s, SPEEDS[s[0].speed] * DAY / NET_RATE);
+    if lr_ticked(L) { lr_hash(L, belt_hash(s)); }
+    s[0].net_acc -= 1.0 / NET_RATE; guard += 1;
+  }
+  if s[0].net_acc > 6.0 / NET_RATE { s[0].net_acc = 6.0 / NET_RATE; }
+  if s[0].net_nudge && lr_together(L) {
+    s[0].net_nudge_t += real;
+    if s[0].net_nudge_t > 5.0 { s[0].net_nudge = false; s[0].station[0].metal += 1.0; }
+  }
+}
+
+// The relay's messages for this page.
+net_socket :: (s: [] Belt, kind: int, text: string) -> bool { return lr_socket(s[0].lock[..], kind, text, s[0].snap[..]); }
+
+// Two pages and the relay between them, for the checks.
+net_pump :: (a: [] Belt, b: [] Belt) {
+  p := a[0].lock[0].pipe[..];
+  for k: 0..<p[0].n {
+    if p[0].op[k] != PIPE_SEND { continue; }
+    buf: [LR_CHUNK * 2 + 16] u8;
+    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].lock[0].seat); n = lr_put(buf[..], n, " ");
+    n = lr_put(buf[..], n, pipe_bytes(p, k));
+    belt_message(b, SOCKET_KIND + 4 * b[0].lock[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
+  }
+  pipe_drained(p);
+}
+net_say :: (s: [] Belt, t: string) { belt_message(s, SOCKET_KIND + 4 * s[0].lock[0].sock + SOCKET_FRAME, t); }
+
+#test "net: INVITE makes a room; the one who joins gets the game; both fleets' orders play the same game in lockstep; a nudged client is seen by both and mended" {
+  a: [1] Belt; b: [1] Belt;
+  belt_start(a[..]); belt_start(b[..]);
+  belt_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200\n");
+  belt_message(b[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?coop=k7q2mm&desync=1\n");
+  net_invite(a[..]);
+  #assert a[0].action == ACT_COPY && lr_on(a[0].lock[..]);
+  #assert cast(string) a[0].outbox[0..<44] == "https://openagents.com/realms/belt-2200?coop";
+  #assert b[0].lock[0].state == LR_JOINING && b[0].net_nudge;
+  belt_socket_opened(a[..], 0); belt_socket_opened(b[..], 0);
+  net_say(a[..], "y 0 0");
+  // alone, a's order is its own at once
+  select_only(a[..], 0); mine_order(a[..]); go(a[..], true);
+  #assert a[0].ships[0].mode == FLYING;
+  for f: 0..<20 { net_frame(a[..], 0.05); pipe_drained(a[0].lock[0].pipe[..]); }
+  net_say(b[..], "y 1 1"); net_say(b[..], "j 0"); net_say(a[..], "j 1");
+  for f: 0..<170 {
+    net_frame(a[..], 0.05); net_frame(b[..], 0.05);
+    if f == 20 { select_only(b[..], 1); mine_order(b[..]); go(b[..], false); }
+    if f == 40 { set_speed(a[..], 1); }
+    net_pump(a[..], b[..]); net_pump(b[..], a[..]);
+  }
+  #assert lr_together(a[0].lock[..]) && lr_together(b[0].lock[..]);
+  #assert a[0].speed == 1 && b[0].speed == 1 && a[0].ships[1].mode != PARKED && b[0].ships[1].mode != PARKED && b[0].ships[0].mode != PARKED;
+  #assert a[0].lock[0].desyncs >= 1 && b[0].lock[0].desyncs >= 1 && !b[0].net_nudge;
+  d := a[0].lock[0].desyncs;
+  for f: 0..<90 { net_frame(a[..], 0.05); net_frame(b[..], 0.05); net_pump(a[..], b[..]); net_pump(b[..], a[..]); }
+  #assert a[0].lock[0].desyncs == d && b[0].lock[0].desyncs == d;
+  // at one tick, one game
+  for f: 0..<20 { net_frame(a[..], 0.05); net_pump(a[..], b[..]); net_pump(b[..], a[..]); }
+  for f: 0..<40 { if b[0].lock[0].tick < a[0].lock[0].tick { net_frame(b[..], 0.05); net_pump(b[..], a[..]); } }
+  #assert a[0].lock[0].tick == b[0].lock[0].tick && belt_hash(a[..]) == belt_hash(b[..]) && a[0].t > ORBIT_2200 + 70.0 * DAY;
+}
