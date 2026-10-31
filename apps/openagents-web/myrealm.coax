@@ -184,7 +184,8 @@ MyRealm :: struct {
   props: [PROP_MOST] int; prop_n: int;   // PROPS
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
-  herd: int; herd_kind: int; herd_split: int; herd_kind2: int;   // two herds (0088): the second's from herd_split
+  herd: int; herd_kind: int; herd_split: int; herd_kind2: int;
+  herd_room: [HERD] f32; herd_yaw: [HERD] f32;   // each one's room (its body, its walk) and which way it faces   // two herds (0088): the second's from herd_split
   dwellings: int; dwelling_kind: int; villagers: int; palette: int;
   herd_x: [HERD] f32; herd_z: [HERD] f32; villager_x: [VILLAGERS] f32; villager_z: [VILLAGERS] f32;
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
@@ -551,7 +552,8 @@ rand :: (r: [] Seed) -> f32 { r[0].v = (r[0].v * 48271) % 2147483647; return cas
 
 THING_MESH :: [THINGS] string.["Prop_Crate", "Barrel", "CommonTree_3", "Rock_Medium_1", "Fern_1", "", "Prop_WoodenFence_Single", "Chest_Wood"];
 THING_SIZE :: [THINGS] f32.[0.9, 1.0, 5.0, 1.3, 0.8, 0, 2.0, 0.9];   // metres its longest side is shown
-GREAT_GROW :: 4.2;   // a giant tree: this many times a tree's size (21 m)
+GREAT_GROW :: 4.2;
+WALK_ROUND :: 1.4;   // a walking one of the herd walks a round this many times its room   // a giant tree: this many times a tree's size (21 m)
 THING_SOLID :: [THINGS] bool.[true, true, true, true, false, true, true, true];
 
 // Is (x, z) free: off the water, off what's there, away from where you start, inside the ground?
@@ -564,6 +566,13 @@ free :: (s: [] MyRealm, x: f32, z: f32, r: f32) -> bool {
   cz := z - 6 - CAM_BACK; if r >= 0.8 && sqrt(x * x + cz * cz) < r + 1.6 { return false; }
   if water_in(s, x, z) > -(r + 0.3) { return false; }
   for i: 0..<s[0].solid_n { ox := x - s[0].solid_x[i]; oz := z - s[0].solid_z[i]; if sqrt(ox * ox + oz * oz) < s[0].solid_r[i] + r + 0.2 { return false; } }
+  return true;
+}
+// Is (x, z) clear for the herd's i'th: free of what stands there (a building, the water) by its
+// room, and apart from those already placed by both their rooms.
+herd_clear :: (s: [] MyRealm, x: f32, z: f32, room: f32, i: int) -> bool {
+  if !free(s, x, z, room + 0.3) { return false; }
+  for j: 0..<i { dx := x - s[0].herd_x[j]; dz := z - s[0].herd_z[j]; if sqrt(dx * dx + dz * dz) < room + s[0].herd_room[j] + 0.3 { return false; } }
   return true;
 }
 // A free spot between two radii from the middle, or none (x = 99).
@@ -718,15 +727,20 @@ lay_out :: (s: [] MyRealm) {
   pasture := Spot.{x = 99, z = 99};
   for i: 0..<s[0].herd {
     if i == 0 || i == s[0].herd_split { pasture = near_spot(s, r[..], 2.5); }   // two herds, two fields
+    kind := ifx i < s[0].herd_split then s[0].herd_kind else s[0].herd_kind2;
+    // its room: its body, and the round it walks if it walks (every third); apart from the rest
+    room := herd_room(kind) * (ifx i % 3 == 2 then 1.0f32 + WALK_ROUND else 1.0f32);
     c := Spot.{x = 99, z = 99};
     if pasture.x < 90 {
-      for tries: 0..<12 {
-        a := rand(r[..]) * 6.2831853; d := 0.8 + 3.2 * sqrt(rand(r[..]));
-        if free(s, pasture.x + d * sin(a), pasture.z - d * cos(a), 1.2) { c = Spot.{x = pasture.x + d * sin(a), z = pasture.z - d * cos(a)}; break; }
+      for tries: 0..<30 {
+        a := rand(r[..]) * 6.2831853; d := (0.6 + 1.6 * sqrt(rand(r[..]))) * (1.0 + 0.25 * cast(f32) (tries / 10)) * (1.2 + room);
+        x := pasture.x + d * sin(a); z := pasture.z - d * cos(a);
+        if herd_clear(s, x, z, room, i) { c = Spot.{x = x, z = z}; break; }
       }
     }
-    if c.x > 90 { c = spot(s, r[..], 6, GROUND_R - 3, 1.6); }
+    if c.x > 90 { c = spot(s, r[..], 6, GROUND_R - 3, room + 0.4); }
     if c.x > 90 { c = Spot.{x = 12 * sin(cast(f32) i * 2.4), z = -12 * cos(cast(f32) i * 2.4)}; }
+    s[0].herd_room[i] = room; s[0].herd_yaw[i] = rand(r[..]) * 6.2831853;
     s[0].herd_x[i] = c.x; s[0].herd_z[i] = c.z;
   }
   for p: 0..<s[0].prop_n {
@@ -869,53 +883,11 @@ dwelling :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int) {
 // An animal of the herd facing yaw (forward is (sin yaw, -cos yaw), as a figure's): bison (a dark
 // shaggy body, the hump, a low heavy head with horns), deer (light, long legs, antlers) or a horse
 // (long neck and head, a mane). graze 0 to 1 lowers its head to the grass.
-animal :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
-  if kind != CHICKEN { animal_figure(s, x, z, yaw, kind, (1 - graze) * 0.7, s[0].time * 0.55 + x * 0.3, graze, cast(int) (x * 7)); return; }   // myrealm-shapes.coax
-  if kind >= 3 { beast(s, x, z, yaw, kind, graze); glowing(s, 0); return; }   // the rest: myrealm-things.coax
-  crate := mesh_named(s, "Prop_Crate");
-  if crate < 0 { return; }
-  fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
-  turn := -yaw;
-  long := ifx kind == 0 then 1.9f32 else ifx kind == 1 then 1.15f32 else 1.6f32;
-  wide := ifx kind == 0 then 0.95f32 else ifx kind == 1 then 0.42f32 else 0.55f32;
-  deep := ifx kind == 0 then 0.95f32 else ifx kind == 1 then 0.5f32 else 0.62f32;
-  leg := ifx kind == 0 then 0.55f32 else ifx kind == 1 then 0.8f32 else 0.9f32;
-  r := ifx kind == 0 then 0.33f32 else ifx kind == 1 then 0.74f32 else 0.52f32;
-  g := ifx kind == 0 then 0.22f32 else ifx kind == 1 then 0.52f32 else 0.34f32;
-  b := ifx kind == 0 then 0.14f32 else ifx kind == 1 then 0.32f32 else 0.2f32;
-  sized(s, crate, x, leg, z, turn, 0, wide, deep, long, r, g, b);   // the body
-  for k: 0..<4 {
-    sx: f32 = ifx k % 2 == 0 then 1.0f32 else -1.0f32; sz: f32 = ifx k < 2 then 1.0f32 else -1.0f32;
-    lx := x + sx * 0.32 * wide * ax + sz * 0.36 * long * fx; lz := z + sx * 0.32 * wide * az + sz * 0.36 * long * fz;
-    sized(s, crate, lx, 0, lz, turn, 0, 0.11 + 0.08 * wide, leg + 0.05, 0.11 + 0.08 * wide, r * 0.7, g * 0.7, b * 0.7);
-  }
-  if kind == 0 {
-    // the hump and the shaggy front, the head low between them, short pale horns
-    sized(s, crate, x + 0.38 * fx, leg + deep - 0.1, z + 0.38 * fz, turn, 0, 0.85, 0.5, 0.85, r * 0.85, g * 0.82, b * 0.8);
-    sized(s, crate, x + 0.6 * fx, leg - 0.15, z + 0.6 * fz, turn, 0, 1.05, deep + 0.25, 0.7, r * 0.8, g * 0.75, b * 0.7);
-    hy := leg + 0.15 - 0.4 * graze;
-    sized(s, crate, x + 1.12 * fx, hy, z + 1.12 * fz, turn, 0, 0.6, 0.62, 0.55, r * 0.6, g * 0.55, b * 0.5);
-    for k: 0..<2 {
-      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32;
-      sized(s, crate, x + 1.1 * fx + sx * 0.36 * ax, hy + 0.5, z + 1.1 * fz + sx * 0.36 * az, turn, -sx * 0.6, 0.08, 0.22, 0.08, 0.88, 0.84, 0.74);
-    }
-    return;
-  }
-  // the neck rises from the front, the head on it (lowered to graze)
-  nh := ifx kind == 1 then 0.5f32 else 0.75f32;
-  ny := leg + deep * 0.6;
-  sized(s, crate, x + 0.5 * long * fx, ny, z + 0.5 * long * fz, turn, 0, 0.22 + 0.1 * wide, nh * (1 - 0.5 * graze), 0.28, r * 0.95, g * 0.95, b * 0.95);
-  hy := ny + nh * (1 - 0.5 * graze) - 0.6 * graze;
-  hl := ifx kind == 1 then 0.36f32 else 0.6f32;
-  sized(s, crate, x + (0.5 * long + 0.18) * fx, hy, z + (0.5 * long + 0.18) * fz, turn, 0, 0.24, 0.26, hl, r * 0.9, g * 0.88, b * 0.86);
-  if kind == 1 {
-    for k: 0..<2 {
-      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32;
-      sized(s, crate, x + 0.5 * long * fx + sx * 0.12 * ax, hy + 0.24, z + 0.5 * long * fz + sx * 0.12 * az, turn, -sx * 0.45, 0.04, 0.42, 0.04, 0.82, 0.74, 0.6);
-    }
-  } else {
-    sized(s, crate, x + 0.45 * long * fx, ny + 0.1, z + 0.45 * long * fz, turn, 0, 0.1, nh * (1 - 0.5 * graze) + 0.1, 0.3, 0.16, 0.11, 0.08);   // the mane
-  }
+animal :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) { herd_one(s, x, z, yaw, kind, graze, 0, 0, 0); }
+// One of the herd (myrealm-shapes.coax): walking at pace, phase through its strides.
+herd_one :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32, pace: f32, phase: f32, i: int) {
+  if kind == CHICKEN { hen(s, x, z, yaw, graze, phase, i); return; }
+  animal_figure(s, x, z, yaw, kind, pace, phase, graze, i);
 }
 // The village's clothes: plain, everyday colours.
 VILLAGE_RGB :: [18] f32.[0.62, 0.44, 0.3,  0.4, 0.5, 0.62,  0.7, 0.62, 0.42,  0.48, 0.58, 0.4,  0.66, 0.36, 0.32,  0.5, 0.42, 0.56];
@@ -941,14 +913,24 @@ actors :: (s: [] MyRealm) {
   if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true, 0, s[0].you_pace, s[0].walked / 1.3); }
   crate := mesh_named(s, "Prop_Crate");
   // the herd roams its patches, now and then stopping to graze; the village goes about its day
+  // the herd: each grazes, stands about or walks a small round of its own (its place keeps it
+  // clear of the rest and of buildings: lay_out), turning slowly
   for i: 0..<s[0].herd {
-    t := s[0].time * (0.05 + 0.012 * cast(f32) (i % 4)) + cast(f32) i * 1.7;
-    rr := 1.3 + 0.5 * sin(cast(f32) i * 1.9);
-    dir: f32 = ifx i % 2 == 0 then 1.0f32 else -1.0f32;
-    x := s[0].herd_x[i] + rr * cos(dir * t); z := s[0].herd_z[i] + rr * sin(dir * t);
-    yaw := turn_of(-dir * rr * sin(dir * t), -(dir * rr * cos(dir * t)));
-    graze := ifx s[0].still then 0.0f32 else hi(0, sin(s[0].time * 0.4 + cast(f32) i * 2.1) - 0.3);
-    animal(s, x, z, yaw, ifx i < s[0].herd_split then s[0].herd_kind else s[0].herd_kind2, graze);
+    kind := ifx i < s[0].herd_split then s[0].herd_kind else s[0].herd_kind2;
+    mode := i % 3;
+    t := s[0].time + cast(f32) i * 3.7;
+    x := s[0].herd_x[i]; z := s[0].herd_z[i];
+    yaw := s[0].herd_yaw[i] + 0.4 * sin(t * 0.07);
+    graze: f32 = 0; pace: f32 = 0; phase: f32 = 0;
+    if mode == 0 { graze = ifx s[0].still then 1.0f32 else clamp(0.6 + 0.8 * sin(t * 0.21), 0, 1); }
+    if mode == 1 { graze = ifx s[0].still then 0.0f32 else clamp(1.5 * sin(t * 0.13) - 1.0, 0, 1); }
+    if mode == 2 && !s[0].still {
+      // a slow round: about half a metre a second
+      rr := WALK_ROUND * herd_room(kind); a := t * 0.5 / rr;
+      x += rr * cos(a); z += rr * sin(a); yaw = turn_of(-sin(a), -cos(a));
+      pace = 0.7; phase = t * 0.5 / hi(0.5 * herd_room(kind), 0.2);
+    }
+    herd_one(s, x, z, yaw, kind, graze, pace, phase, i);
   }
   for i: 0..<s[0].villagers {
     t := s[0].time * (0.09 + 0.015 * cast(f32) (i % 3)) + cast(f32) i * 2.3;
@@ -1928,7 +1910,7 @@ draw_map :: (s: [] MyRealm, out: [] f32, at: int) -> int {
 
 // ---- the sky and ground, by the realm's ground and time of day
 
-GROUND_RGB :: [18] f32.[0.30, 0.42, 0.17,  0.16, 0.25, 0.11,  0.64, 0.51, 0.32,  0.84, 0.87, 0.92,  0.38, 0.37, 0.36,  0.74, 0.66, 0.46];
+GROUND_RGB :: [18] f32.[0.30, 0.42, 0.17,  0.21, 0.32, 0.14,  0.64, 0.51, 0.32,  0.84, 0.87, 0.92,  0.38, 0.37, 0.36,  0.74, 0.66, 0.46];
 // Painterly snow (art-styles.md, Made realms): the references' snow is never white paper but the sky's
 // blue in it, so the key's warm light and the haze still leave it a colour (white snow measured a
 // saturation of 0.08 to 0.10 at noon and dusk, under the style check's 0.22)
@@ -1947,9 +1929,9 @@ snow_low_sky :: (o: [] f32) {
   }
   o[SU_CLOUDS] = SNOW_LOW_CLOUDS;   // fewer clouds: their teal undersides grey a rose sky
 }
-SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
-HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
-SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
+SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.42, 0.52, 0.8,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
+HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  1.0, 0.74, 0.56,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
+SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.75, 0.6, -0.4, 1.0,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
 LAMP_SHARE :: [4] f32.[0, 0.25, 0.6, 1];
 PASTEL_SKY :: [3] f32.[0.12, 0.02, 0.06]; PASTEL_HORIZON :: [3] f32.[0.14, 0.0, 0.04];
 VIVID_SKY :: [3] f32.[0.7, 0.85, 1.12]; MUTED_HAZE :: [3] f32.[0.62, 0.64, 0.62];
@@ -2683,6 +2665,13 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
     dx := s[0].herd_x[i]; dz := s[0].herd_z[i] - 6;
     #assert sqrt(dx * dx + dz * dz) < 28 && dz < 0 && abs(dx) < -dz * 1.4;   // ahead, within a wide view
   }
+  // the herd apart: none overlaps another, walking round included, nor stands in a building
+  for i: 0..<s[0].herd {
+    for j: 0..<i { dx := s[0].herd_x[i] - s[0].herd_x[j]; dz := s[0].herd_z[i] - s[0].herd_z[j]; #assert sqrt(dx * dx + dz * dz) >= s[0].herd_room[i] + s[0].herd_room[j]; }
+    #assert s[0].herd_room[i] > 0.3;
+  }
+  // and doing different things: some grazing, some standing, some walking
+  #assert s[0].herd >= 3;
   // the windmill's sails turn in front of its cap, clear of the tower
   dx := s[0].mill_x[0]; dz := s[0].mill_z[0] - 6;
   #assert sqrt(dx * dx + dz * dz) < 18 && dz < 0;

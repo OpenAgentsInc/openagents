@@ -84,13 +84,15 @@ owl_shape :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, flap: 
     if perched {
       round_cone(s, sx, sy, sz, 0.07 * k, sx - fx * 0.06 * k, y + 0.07 * k, sz - fz * 0.06 * k, 0.04 * k, br * 0.8, bg * 0.8, bb * 0.8);
     } else {
-      // a broad wing: a soft shoulder, then a wide flat feathered blade beating from it
-      span := 0.62 * k;
+      // a broad wing: a fan of four long feathers from the shoulder, swept back, beating together
       ball(s, sx, sy, sz, 0.08 * k, br * 0.85, bg * 0.85, bb * 0.85);
-      coat(s, 1);
-      cx := 0.5 * span * cos(flap); cy := 0.5 * span * sin(flap);
-      sized(s, mesh_named(s, "Prop_Crate"), sx + w * cx * ax, sy + cy - 0.015 * k, sz + w * cx * az, -yaw, w * flap, span, 0.035 * k, 0.32 * k, br * 0.8, bg * 0.8, bb * 0.8);
-      glowing(s, 0);
+      for f: 0..<4 {
+        q := cast(f32) f;
+        span := (0.6 - 0.09 * q) * k; back := 0.08 + 0.09 * q;
+        ox := ax * w * cos(flap) * cos(back) - fx * sin(back); oz := az * w * cos(flap) * cos(back) - fz * sin(back); oy := sin(flap) * cos(back);
+        shade := 0.85 - 0.05 * q;
+        round_cone(s, sx - fx * 0.04 * k * q, sy, sz - fz * 0.04 * k * q, 0.09 * k, sx + ox * span, sy + oy * span, sz + oz * span, 0.055 * k, br * shade, bg * shade, bb * shade);
+      }
     }
   }
   // tail, and feet when perched
@@ -142,9 +144,9 @@ COTTAGE_COLOURS :: [5] int.[0, 4, 5, 1, 0];
 cottages :: (s: [] MyRealm, r: [] Seed, at: Spot, n: int) {
   crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
   // the well in the middle
+  masoned(s);
+  sized(s, barrel, at.x, 0, at.z, 0, 0, 1.4, 0.85, 1.4, STONE_RGB[0] * 1.2, STONE_RGB[1] * 1.2, STONE_RGB[2] * 1.2);
   coat(s, 1);
-  sized(s, barrel, at.x, 0, at.z, 0, 0, 1.3, 0.8, 1.3, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
-  glowing(s, 0);
   for k: 0..<2 { w: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, at.x + 0.55 * w, 0.8, at.z, 0, 0, 0.1, 1.1, 0.1, WOOD_RGB[0], WOOD_RGB[1], WOOD_RGB[2]); }
   sized(s, crate, at.x, 1.85, at.z, 0, 0, 1.5, 0.12, 1.0, 0.42, 0.24, 0.2);
   solid(s, at.x, at.z, 0.8);
@@ -261,7 +263,7 @@ sky_islands :: (s: [] MyRealm, r: [] Seed) {
     sized(s, rock, x, y - 0.35 * w * 0.3, z, a, 0, w, 0.3 * w * 0.5, 0.85 * w, tr, tg, tb);   // its grassy top
     glowing(s, 0);
     top := 0.4 * w;
-    round_cone(s, x, y - top, z, top, x + 0.08 * w, y - 1.25 * w, z, 0.1 * w, 0.42, 0.29, 0.19);   // the rock under it
+    round_cone(s, x, y - top, z, top, x + 0.08 * w, y - 1.25 * w, z, 0.1 * w, 0.58, 0.4, 0.26);   // the rock under it
     round_cone(s, x - 0.2 * w, y - 0.6 * w, z + 0.1 * w, 0.2 * w, x - 0.25 * w, y - 0.95 * w, z, 0.05 * w, 0.36, 0.25, 0.17);
     if i % 2 == 0 && tree >= 0 {
       k := 0.55 * w / hi(longest(s, tree), 0.01);
@@ -283,8 +285,8 @@ sky_islands :: (s: [] MyRealm, r: [] Seed) {
   }
 }
 ISLE_A :: [6] f32.[0.12, -0.5, 0.58, -0.22, 2.4, -2.6];
-ISLE_D :: [6] f32.[44, 48, 50, 64, 46, 48];
-ISLE_Y :: [6] f32.[4.5, 3, 7.5, 11, 5, 7];
+ISLE_D :: [6] f32.[36, 40, 42, 52, 40, 42];
+ISLE_Y :: [6] f32.[4, 2.5, 7, 10, 5, 7];
 ISLE_W :: [6] f32.[8, 6, 6, 8, 7, 6];
 
 // ---- the herd as verse/figure.coax animals, bone by bone (HERDS' order; a chicken keeps
@@ -395,3 +397,39 @@ animal_figure :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, pace: f32,
     }
   }
 }
+
+// A hen (HERDS' chicken): a round body tipped up at its tail, a small head with a red comb and
+// wattle, a yellow beak, two yellow legs; pecking at the ground when it grazes. White or brown.
+HEN_RGB :: [6] f32.[0.96, 0.94, 0.88,  0.62, 0.36, 0.2];
+hen :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, graze: f32, step: f32, i: int) {
+  k: f32 = 1.35;
+  fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
+  o := (i % 2) * 3; cr := HEN_RGB[o]; cg := HEN_RGB[o + 1]; cb := HEN_RGB[o + 2];
+  lift := 0.02 * k * abs(sin(step * 6.2831853));
+  by := 0.2 * k + lift;
+  // legs, stepping
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sw := 0.05 * k * sin(step * 6.2831853 + (ifx side == 0 then 0.0f32 else 3.1415926));
+    lx := x + ax * w * 0.045 * k; lz := z + az * w * 0.045 * k;
+    round_cone(s, lx, by, lz, 0.014 * k, lx + fx * sw, 0.012 * k, lz + fz * sw, 0.01 * k, 0.95, 0.75, 0.25);
+    ball(s, lx + fx * (sw + 0.03 * k), 0.008 * k, lz + fz * (sw + 0.03 * k), 0.016 * k, 0.95, 0.75, 0.25);
+  }
+  // the body: breast forward and low, tail up behind
+  round_cone(s, x + fx * 0.05 * k, by + 0.03 * k, z + fz * 0.05 * k, 0.11 * k, x - fx * 0.09 * k, by + 0.07 * k, z - fz * 0.09 * k, 0.085 * k, cr, cg, cb);
+  round_cone(s, x - fx * 0.12 * k, by + 0.08 * k, z - fz * 0.12 * k, 0.05 * k, x - fx * 0.17 * k, by + 0.2 * k, z - fz * 0.17 * k, 0.02 * k, cr * 0.85, cg * 0.85, cb * 0.85);
+  for side: 0..<2 { w: f32 = ifx side == 0 then 1.0f32 else -1.0f32; round_cone(s, x + ax * w * 0.08 * k + fx * 0.02 * k, by + 0.06 * k, z + az * w * 0.08 * k + fz * 0.02 * k, 0.05 * k, x + ax * w * 0.07 * k - fx * 0.09 * k, by + 0.08 * k, z + az * w * 0.07 * k - fz * 0.09 * k, 0.03 * k, cr * 0.9, cg * 0.9, cb * 0.9); }
+  // the neck and head, down to peck when it grazes
+  peck := graze * (0.5 + 0.5 * sin(s[0].time * 9 + cast(f32) i));
+  hx := x + fx * (0.12 + 0.06 * peck) * k; hz := z + fz * (0.12 + 0.06 * peck) * k; hy := by + (0.2 - 0.26 * peck) * k;
+  round_cone(s, x + fx * 0.08 * k, by + 0.08 * k, z + fz * 0.08 * k, 0.05 * k, hx, hy, hz, 0.04 * k, cr, cg, cb);
+  ball(s, hx, hy, hz, 0.05 * k, cr, cg, cb);
+  ball(s, hx, hy + 0.05 * k, hz, 0.025 * k, 0.9, 0.12, 0.1);   // the comb
+  ball(s, hx - fx * 0.02 * k, hy + 0.055 * k, hz - fz * 0.02 * k, 0.02 * k, 0.9, 0.12, 0.1);
+  ball(s, hx + fx * 0.04 * k, hy - 0.04 * k, hz + fz * 0.04 * k, 0.017 * k, 0.9, 0.12, 0.1);   // the wattle
+  round_cone(s, hx + fx * 0.045 * k, hy, hz + fz * 0.045 * k, 0.016 * k, hx + fx * 0.08 * k, hy - 0.01 * k, hz + fz * 0.08 * k, 0.004 * k, 0.95, 0.75, 0.25);
+  for side: 0..<2 { w: f32 = ifx side == 0 then 1.0f32 else -1.0f32; ball(s, hx + fx * 0.03 * k + ax * w * 0.03 * k, hy + 0.012 * k, hz + fz * 0.03 * k + az * w * 0.03 * k, 0.008 * k, 0.04, 0.03, 0.03); }
+}
+
+// How much room one of the herd needs round it (metres): its body's half length.
+herd_room :: (kind: int) -> f32 { return ifx kind == CHICKEN then 0.35f32 else 0.42 * BUILD[kind * 11] * BUILD[kind * 11 + 2]; }

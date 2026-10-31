@@ -418,13 +418,25 @@ fn round_vertex(m: Object, id: u32) -> Vert {
   return o;
 }
 // A painted piece: its texture's grain kept as light and dark, its own colour all the tint's.
+// Stone in courses: blocks half a metre high and about a metre long, each course offset by half a
+// block, each block its own shade, dark mortar between them.
+fn masonry(p: vec3f) -> f32 {
+  let row = floor(p.y / 0.5);
+  let along = (p.x + p.z * 0.83) / 1.05 + 0.5 * (row - 2.0 * floor(row * 0.5));
+  let fu = fract(along); let fv = fract(p.y / 0.5);
+  let joint = min(min(fu, 1.0 - fu) * 1.05, min(fv, 1.0 - fv) * 0.5);
+  let block = 0.78 + 0.2 * hash(vec2f(floor(along), row)) + 0.06 * noise(p.xz * 3.0 + p.yy * 2.0);
+  return mix(0.42, block, smoothstep(0.012, 0.035, joint));
+}
 fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t, vec3f(0.3, 0.59, 0.11))), clamp(-w, 0.0, 1.0)); }
 @fragment fn scene_fs(s: S) -> @location(0) vec4f {
   // a round piece has no texture: its tint, a little lighter toward its top
   let rounded = s.slice >= 4096u;
   let layer = select(s.slice, 0u, rounded);
   let sampled = textureSample(sheets, sheet, s.uv, layer);
-  let tex = select(vec4f(surfaced(sampled.rgb, s.glow), sampled.a), vec4f(1.0), rounded);
+  var tex = select(vec4f(surfaced(sampled.rgb, s.glow), sampled.a), vec4f(1.0), rounded);
+  // stone (glow below -1.5, myrealm-things.coax stone): laid blocks in courses, whatever the mesh
+  if (s.glow < -1.5) { tex = vec4f(vec3f(masonry(s.world)), 1.0); }
   // painterly leaves are blobs: their cutout from a nearer mip, so pinholes of sky close up
   let cut = select(select(tex.a, textureSampleLevel(sheets, sheet, s.uv, layer, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5), 1.0, rounded);
   if (cut < 0.35) { discard; }
@@ -447,7 +459,9 @@ fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t,
   lit += lanterns_near(s.world, n) * 1.4 + vec3f(max(s.glow, 0.0));
   let far = max(length(s.world - u.eye.xyz) - u.rx.w, 0.0);
   let haze = clamp(1.0 - exp(-far * 0.018), 0.0, 1.0);
-  let c = mix(paletted(tex.rgb) * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;
+  // a floating island's sky is clear: what floats in it keeps its colour further off
+  let thick = select(0.85, 0.4, land() > 0.5 && land() < 1.5);
+  let c = mix(paletted(tex.rgb) * s.tint * lit, u.horizon.rgb, haze * thick) * u.fade;
   return vec4f(panels(s.pos.xy, c), 1.0);
 }
 // ---- the strokes: one quad per stroke or light (myrealm.coax lit, tinted_dot)

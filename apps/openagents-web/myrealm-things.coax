@@ -35,6 +35,9 @@ glowing :: (s: [] MyRealm, g: f32) { s[0].glow_pen = g; }
 // What is drawn next is painted its tint (0 to 1): the texture's grain kept as light and dark only,
 // so stone is grey, a barn red and a sheep white, not the pack's brown wood tinted.
 coat :: (s: [] MyRealm, a: f32) { s[0].glow_pen = -a; }
+// What is drawn next is laid stone in its tint: blocks in courses with mortar between
+// (myrealm.wgsl masonry), not the texture's grain.
+masoned :: (s: [] MyRealm) { s[0].glow_pen = -2; }
 // A cone of rings narrowing as they rise (a roof, a tower's cap, a volcano).
 cone :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, w0: f32, w1: f32, h: f32, steps: int, r: f32, g: f32, b: f32) {
   for k: 0..<steps {
@@ -156,6 +159,7 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
     // corner under a pointed slate roof, a taller round keep in the middle with a flag
     sr := STONE_RGB[0] * 1.2; sg := STONE_RGB[1] * 1.2; sb := STONE_RGB[2] * 1.18;
     half: f32 = 4.6;
+    masoned(s);
     part_at(s, crate, x, z, yaw, 0, -half, 0, 2 * half, 3.4, 0.7, sr, sg, sb);
     part_at(s, crate, x, z, yaw, -half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
     part_at(s, crate, x, z, yaw, half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
@@ -166,15 +170,16 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
       u := (cast(f32) k - 2) * 1.9;
       part_at(s, crate, x, z, yaw, u, half, 3.4, 0.6, 0.5, 0.72, sr, sg, sb);   // the battlements over the front
     }
-    part_at(s, crate, x, z, yaw, 0, half + 0.3, 0, 1.6, 2.5, 0.12, 0.3, 0.2, 0.13);   // the gate
-    glowing(s, 0);
+    coat(s, 1); part_at(s, crate, x, z, yaw, 0, half + 0.3, 0, 1.6, 2.5, 0.12, 0.3, 0.2, 0.13);   // the gate
+    masoned(s);
     for c: 0..<4 {
       u: f32 = ifx c % 2 == 0 then half else -half; v: f32 = ifx c < 2 then half else -half;
       tx := fr_x(x, yaw, u, v); tz := fr_z(z, yaw, u, v);
-      round_cone(s, tx, 0, tz, 1.3, tx, 5.0, tz, 1.2, sr * 1.02, sg * 1.02, sb * 1.02);
-      round_cone(s, tx, 5.5, tz, 1.6, tx, 8.0, tz, 0.08, 0.32, 0.36, 0.55);
+      masoned(s); round_cone(s, tx, 0, tz, 1.3, tx, 5.0, tz, 1.2, sr * 1.02, sg * 1.02, sb * 1.02);
+      glowing(s, 0); round_cone(s, tx, 5.5, tz, 1.6, tx, 8.0, tz, 0.08, 0.32, 0.36, 0.55);
     }
-    round_cone(s, x, 0, z, 2.0, x, 7.0, z, 1.85, sr * 0.96, sg * 0.96, sb * 0.96);   // the keep
+    masoned(s); round_cone(s, x, 0, z, 2.0, x, 7.0, z, 1.85, sr * 0.96, sg * 0.96, sb * 0.96);   // the keep
+    glowing(s, 0);
     round_cone(s, x, 7.6, z, 2.3, x, 10.6, z, 0.1, 0.32, 0.36, 0.55);
     coat(s, 1);
     sized(s, crate, x, 10.4, z, yaw, 0, 0.08, 1.6, 0.08, 0.3, 0.22, 0.16);    sized(s, crate, x, 6.5, z, yaw, 0.25, 0.08, 1.8, 0.08, 0.3, 0.22, 0.16);
@@ -184,7 +189,7 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
   }
   if kind == 5 {
     // a stone tower: a round stone tower, a wider top ringed with battlements
-    glowing(s, 0);
+    masoned(s);
     round_cone(s, x, 0, z, 1.45, x, 7.4, z, 1.3, STONE_RGB[0] * 1.1, STONE_RGB[1] * 1.1, STONE_RGB[2] * 1.08);
     round_cone(s, x, 7.6, z, 1.65, x, 7.7, z, 1.65, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
     for k: 0..<6 {
@@ -241,15 +246,33 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
     return;
   }
   if kind == 9 {
-    // a temple: four stone steps, a shrine on top with a dark door, vines down its sides
-    for k: 0..<4 {
+    // a temple: a stepped pyramid of five stone tiers, a stair up its front, a shrine on top with a
+    // dark doorway and a roof slab, moss and vines down its sides
+    masoned(s);
+    tr: f32 = 0.74; tg: f32 = 0.72; tb: f32 = 0.6;
+    for k: 0..<5 {
       f := cast(f32) k;
-      sized(s, stone, x, 1.2 * f, z, yaw, 0, 8.4 - 1.7 * f, 1.22, 8.4 - 1.7 * f, 0.62 - 0.02 * f, 0.64 - 0.02 * f, 0.52);
+      w := 9.0 - 1.5 * f;
+      sized(s, crate, x, 1.1 * f, z, yaw, 0, w, 1.12, w, tr - 0.02 * f, tg - 0.01 * f, tb);
+      part_at(s, crate, x, z, yaw, 0, 0, 1.1 * f + 1.0, w + 0.2, 0.16, w + 0.2, tr * 0.9, tg * 0.9, tb * 0.9);   // its ledge
     }
-    sized(s, stone, x, 4.8, z, yaw, 0, 2.4, 1.9, 2.4, 0.66, 0.66, 0.56);
-    sized(s, crate, x, 6.7, z, yaw, 0, 3.0, 0.32, 3.0, 0.5, 0.5, 0.42);
-    part_at(s, crate, x, z, yaw, 0, 1.22, 4.8, 0.9, 1.4, 0.06, 0.12, 0.1, 0.08);
-    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -4.22f32 else 4.22f32, 1.0, 0.4, 0.08, 1.3, 0.5, 0.25, 0.5, 0.2); }
+    // the stair: steps up the front, between two low walls
+    for k: 0..<11 {
+      f := cast(f32) k;
+      part_at(s, crate, x, z, yaw, 0, 4.9 - 0.68 * f, 0, 2.0, 0.5 * (f + 1), 0.7, tr * 1.04, tg * 1.04, tb * 1.04);
+    }
+    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -1.15f32 else 1.15f32, 2.3, 0, 0.3, 4.6, 4.8, tr * 0.86, tg * 0.86, tb * 0.86); }
+    sized(s, crate, x, 5.5, z, yaw, 0, 2.8, 1.9, 2.6, tr * 1.02, tg * 1.02, tb * 1.02);   // the shrine
+    sized(s, crate, x, 7.4, z, yaw, 0, 3.4, 0.4, 3.2, tr * 0.92, tg * 0.92, tb * 0.92);
+    coat(s, 1);
+    part_at(s, crate, x, z, yaw, 0, 1.32, 5.5, 0.9, 1.3, 0.06, 0.06, 0.05, 0.04);   // its doorway
+    // moss on the tiers' corners, vines hanging
+    for k: 0..<4 {
+      a := yaw + 0.7854 + cast(f32) k * 1.5707963;
+      for q: 0..<3 { f := cast(f32) q; ball(s, x + (4.1 - 1.4 * f) * sin(a), 1.15 + 1.1 * f, z + (4.1 - 1.4 * f) * cos(a), 0.45, 0.3, 0.52, 0.22); }
+    }
+    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -3.0f32 else 3.0f32, 3.8, 0.9, 0.12, 2.6, 0.1, 0.25, 0.5, 0.2); }
+    glowing(s, 0);
     solid(s, x, z, 4.4);
     return;
   }
@@ -288,85 +311,7 @@ mill_sails :: (s: [] MyRealm) {
   }
 }
 
-// ---- animals
-
-// An animal of the herd beyond bison, deer and horses (animal's frame: forward is (sin yaw, -cos yaw)).
-BEAST_LONG :: [10] f32.[1.0, 0.85, 1.7, 0.95, 1.1, 0.7, 0.8, 1.5, 0.34, 3.0];
-BEAST_WIDE :: [10] f32.[0.78, 0.4, 0.75, 0.62, 0.34, 0.26, 0.32, 0.6, 0.26, 1.0];
-BEAST_DEEP :: [10] f32.[0.66, 0.45, 0.8, 0.55, 0.42, 0.3, 0.38, 0.7, 0.3, 1.2];
-BEAST_LEG :: [10] f32.[0.36, 0.55, 0.7, 0.24, 0.55, 0.28, 0.42, 1.25, 0.2, 1.5];
-BEAST_RGB :: [30] f32.[0.96, 0.94, 0.88,  0.82, 0.78, 0.7,  0.96, 0.95, 0.92,  0.98, 0.66, 0.64,  0.48, 0.48, 0.52,
-                       0.92, 0.46, 0.16,  0.6, 0.42, 0.26,  0.8, 0.64, 0.42,  1.0, 0.98, 0.94,  0.38, 0.54, 0.28];
-HEAD_W :: [10] f32.[0.34, 0.26, 0.45, 0.42, 0.26, 0.2, 0.24, 0.28, 0.16, 0.7];
-HEAD_H :: [10] f32.[0.32, 0.28, 0.42, 0.38, 0.26, 0.2, 0.24, 0.3, 0.18, 0.7];
-HEAD_L :: [10] f32.[0.38, 0.36, 0.55, 0.3, 0.42, 0.28, 0.34, 0.55, 0.18, 1.3];
-HEAD_UP :: [10] f32.[0.12, 0.3, 0.05, -0.05, 0.12, 0.08, 0.2, 1.2, 0.16, 0.7];
-beast :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
-  coat(s, 1);
-  crate := mesh_named(s, "Prop_Crate");
-  q := kind - 3;
-  if crate < 0 || q < 0 || q >= 10 { return; }
-  fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
-  turn := -yaw;
-  long := BEAST_LONG[q]; wide := BEAST_WIDE[q]; deep := BEAST_DEEP[q]; leg := BEAST_LEG[q];
-  r := BEAST_RGB[q * 3]; g := BEAST_RGB[q * 3 + 1]; b := BEAST_RGB[q * 3 + 2];
-  sized(s, crate, x, leg, z, turn, 0, wide, deep, long, r, g, b);   // the body
-  two := kind == 11 || kind == 12;   // a chicken and a dinosaur stand on two legs
-  for k: 0..<4 {
-    if two && k >= 2 { continue; }
-    sx: f32 = ifx k % 2 == 0 then 1.0f32 else -1.0f32; sz: f32 = ifx two then -0.15f32 else ifx k < 2 then 1.0f32 else -1.0f32;
-    lx := x + sx * 0.32 * wide * ax + sz * 0.36 * long * fx; lz := z + sx * 0.32 * wide * az + sz * 0.36 * long * fz;
-    lw := ifx kind == 12 then 0.4f32 else ifx kind == 11 then 0.05f32 else 0.09 + 0.08 * wide;
-    lr := ifx kind == 11 then 1.2f32 else r * 0.7; lg := ifx kind == 11 then 0.8f32 else g * 0.7; lb := ifx kind == 11 then 0.2f32 else b * 0.7;
-    if kind == 3 || kind == 5 { lr = 0.25; lg = 0.22; lb = 0.2; }
-    sized(s, crate, lx, 0, lz, turn, 0, lw, leg + 0.05, lw, lr, lg, lb);
-  }
-  // the head at the front (lowered to graze), on a neck where it is high
-  hw := HEAD_W[q]; hh := HEAD_H[q]; hl := HEAD_L[q];
-  hv := 0.5 * long + 0.3 * hl;
-  hy := leg + deep - 0.2 * hh + HEAD_UP[q] - (0.35 + 0.25 * HEAD_UP[q]) * graze;
-  hr := ifx kind == 3 then 0.22f32 else r * 0.92; hg := ifx kind == 3 then 0.2f32 else g * 0.92; hb := ifx kind == 3 then 0.18f32 else b * 0.92;
-  if HEAD_UP[q] > 0.4 { sized(s, crate, x + (0.5 * long) * fx, leg + 0.5 * deep, z + (0.5 * long) * fz, turn, 0, 0.6 * hw, hy - leg - 0.5 * deep + 0.1, 0.5 * hl, r * 0.96, g * 0.96, b * 0.96); }
-  sized(s, crate, x + hv * fx, hy, z + hv * fz, turn, 0, hw, hh, hl, hr, hg, hb);
-  ex := x + (hv - 0.1 * hl) * fx; ez := z + (hv - 0.1 * hl) * fz;
-  back := -0.5 * long;
-  if kind == 4 {   // a goat's horns swept back, its beard
-    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.08 * ax, hy + hh, ez + sx * 0.08 * az, turn, -sx * 0.35, 0.05, 0.24, 0.05, 0.5, 0.45, 0.36); }
-    sized(s, crate, x + (hv + 0.3 * hl) * fx, hy - 0.14, z + (hv + 0.3 * hl) * fz, turn, 0, 0.06, 0.16, 0.06, 0.4, 0.36, 0.3);
-  }
-  if kind == 5 {   // a cow's black patches, short pale horns, its pink nose
-    for k: 0..<2 {
-      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; off: f32 = ifx k == 0 then 0.25f32 else -0.3f32;
-      sized(s, crate, x + sx * 0.02 * ax + off * fx, leg + 0.25 * deep, z + sx * 0.02 * az + off * fz, turn, 0, wide + 0.02, 0.45 * deep, 0.45 * long, 0.12, 0.11, 0.11);
-    }
-    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.22 * ax, hy + hh, ez + sx * 0.22 * az, turn, -sx * 0.9, 0.05, 0.18, 0.05, 0.92, 0.88, 0.76); }
-    sized(s, crate, x + (hv + 0.48 * hl) * fx, hy + 0.04, z + (hv + 0.48 * hl) * fz, turn, 0, 0.36, 0.2, 0.1, 0.95, 0.62, 0.6);
-  }
-  if kind == 6 {   // a pig's snout and ears
-    sized(s, crate, x + (hv + 0.55 * hl) * fx, hy + 0.08, z + (hv + 0.55 * hl) * fz, turn, 0, 0.2, 0.16, 0.08, 0.85, 0.5, 0.5);
-    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.14 * ax, hy + hh, ez + sx * 0.14 * az, turn, -sx * 0.5, 0.1, 0.1, 0.05, r * 0.9, g * 0.8, b * 0.8); }
-  }
-  if kind == 7 || kind == 8 || kind == 9 {   // a wolf's, fox's or dog's ears and tail
-    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.36 * hw * ax, hy + hh, ez + sx * 0.36 * hw * az, turn, 0, 0.06, ifx kind == 9 then 0.08f32 else 0.14f32, 0.05, r * 0.8, g * 0.8, b * 0.8); }
-    tl := ifx kind == 8 then 0.55f32 else 0.45f32;
-    ty := ifx kind == 9 then leg + deep * 0.9 else leg + deep * 0.45;
-    sized(s, crate, x + (back - 0.5 * tl) * fx, ty, z + (back - 0.5 * tl) * fz, turn, 0, ifx kind == 8 then 0.18f32 else 0.1f32, ifx kind == 8 then 0.18f32 else 0.1f32, tl, r * 0.9, g * 0.9, b * 0.9);
-    if kind == 8 { sized(s, crate, x + (back - tl) * fx, ty, z + (back - tl) * fz, turn, 0, 0.14, 0.14, 0.14, 1.0, 0.98, 0.95); }   // its white tip
-  }
-  if kind == 10 {   // a camel's humps
-    for k: 0..<2 { off: f32 = ifx k == 0 then 0.3f32 else -0.3f32; sized(s, crate, x + off * fx, leg + deep - 0.05, z + off * fz, turn, 0, 0.42, 0.4, 0.42, r * 0.95, g * 0.92, b * 0.9); }
-  }
-  if kind == 11 {   // a chicken's red comb, its beak and its tail feathers
-    sized(s, crate, ex, hy + hh, ez, turn, 0, 0.04, 0.08, 0.12, 1.3, 0.2, 0.15);
-    sized(s, crate, x + (hv + 0.6 * hl) * fx, hy + 0.06, z + (hv + 0.6 * hl) * fz, turn, 0, 0.05, 0.04, 0.08, 1.3, 0.85, 0.2);
-    sized(s, crate, x + back * fx, leg + deep * 0.6, z + back * fz, turn, 0, 0.14, 0.24, 0.1, r * 0.95, g * 0.95, b * 0.92);
-  }
-  if kind == 12 {   // a dinosaur's long tail, tapering, and its small arms
-    sized(s, crate, x + (back - 0.7) * fx, leg + 0.35 * deep, z + (back - 0.7) * fz, turn, 0, 0.6, 0.6, 1.6, r * 0.95, g * 0.95, b * 0.95);
-    sized(s, crate, x + (back - 2.0) * fx, leg + 0.45 * deep, z + (back - 2.0) * fz, turn, 0, 0.3, 0.3, 1.2, r * 0.9, g * 0.9, b * 0.9);
-    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, x + sx * 0.4 * ax + 0.4 * long * fx, leg + 0.2 * deep, z + sx * 0.4 * az + 0.4 * long * fz, turn, 0, 0.12, 0.45, 0.12, r * 0.8, g * 0.8, b * 0.8); }
-  }
-}
+// ---- animals: myrealm-shapes.coax (animal_figure, hen)
 
 // ---- what flies beyond crows, bats and owls
 
