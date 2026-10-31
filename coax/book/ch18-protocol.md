@@ -48,7 +48,7 @@ message HomeConfiguration {
 }
 ```
 
-*Listing 15-1: The home screen's configuration message*
+*Listing 18-1: The home screen's configuration message*
 
 The `start` field is a `HudAction`, a button, from the shared engine
 schema `proto/openagents/engine/v1/hud.proto`:
@@ -97,7 +97,7 @@ main :: () {
 }
 ```
 
-*Listing 15-2: Building a `HudAction` and printing its wire bytes*
+*Listing 18-2: Building a `HudAction` and printing its wire bytes*
 
 ```shell
 $ coax run ch18_start_button.coax
@@ -254,7 +254,7 @@ main :: () {
 }
 ```
 
-*Listing 15-3: Building a configuration, then reading it back*
+*Listing 18-3: Building a configuration, then reading it back*
 
 ```shell
 $ coax run ch18_home_config.coax
@@ -329,7 +329,7 @@ output,
 
 and the setter refuses before writing anything, with error 6, `ALIAS`.
 What it can't see is an earlier view you're still holding. Give each
-message under construction its own pair of buffers, as Listing 15-3
+message under construction its own pair of buffers, as Listing 18-3
 does, and keep the final buffer alive until every reader is finished.
 
 ## Mistakes the compiler catches
@@ -454,7 +454,7 @@ main :: () {
 }
 ```
 
-*Listing 15-4: An admission policy over a generated codec*
+*Listing 18-4: An admission policy over a generated codec*
 
 ```shell
 $ coax run ch18_admit.coax
@@ -550,9 +550,9 @@ policy:
   if label.value.count<1 || label.value.count>32 {return false;}
 ```
 
-*Listing 15-5: The home screen's admission, from `verse/home.coax`*
+*Listing 18-5: The home screen's admission, from `verse/home.coax`*
 
-That's our Listing 15-4 with a stricter policy: a nonzero seed, at most
+That's our Listing 18-4 with a stricter policy: a nonzero seed, at most
 eight satellites, exactly the `home.start` button, enabled, shown, never
 pre-pressed, with a label of 1 to 32 printable ASCII bytes. The comment
 in the source puts it plainly: "The generated codec owns wire

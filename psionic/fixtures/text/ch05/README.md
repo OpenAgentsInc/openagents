@@ -1,4 +1,4 @@
-# Chapter 5 tokenizer data and owned references
+# Chapter 9 tokenizer data and owned references
 
 `tokenizer.json.gz` contains the byte-exact original tokenizer shared by the
 pinned Base Labs Elephant and Mammoth revisions. Its uncompressed SHA-256 is

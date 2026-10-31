@@ -125,7 +125,7 @@ main :: () {
 }
 ```
 
-*Listing 12-1: The same update in two orders, on separate and overlapping views*
+*Listing 14-1: The same update in two orders, on separate and overlapping views*
 
 ```shell
 $ coax run overlap.coax
@@ -207,7 +207,7 @@ Each chunk may write only its own index range of the arrays it writes,
 so writes have to be indexed by `it_index`. A write to
 `transforms[it_index + 1]` would be refused, because it reaches into the
 next chunk, which another worker may be running. That's exactly the
-overlap Listing 12-1 showed, ruled out by the loop's own shape.
+overlap Listing 14-1 showed, ruled out by the loop's own shape.
 
 ## Deterministic merges
 
@@ -307,7 +307,7 @@ main :: () {
 }
 ```
 
-*Listing 12-2: Two ways to merge partial sums, at 1, 2, 4 and 8 workers*
+*Listing 14-2: Two ways to merge partial sums, at 1, 2, 4 and 8 workers*
 
 The sample data is chosen to make rounding visible: eight values of
 100,000,000 followed by 56 values of 3. At that size, an `f32` can only
@@ -364,7 +364,7 @@ same input at 1, 2, 4 and 8 workers and compare the output bytes.
 
 Capture lists aren't a borrow checker, and Coax won't claim more than it
 checks. Before parallel jobs can be turned on, several things have to
-hold, and Listing 12-1 already showed why the first one matters.
+hold, and Listing 14-1 already showed why the first one matters.
 
 Field names aren't a proof. A view stored in one field can point into
 another field's memory, just as our two views pointed into one array.
@@ -413,9 +413,9 @@ in a fixed tree over blocks so the answer doesn't depend on the number
 of workers. We modeled that merge in ordinary code and checked it with a
 `#forall`.
 
-That last property, the same answer every time, is the subject of the
-next chapter: determinism, and what Coax does to make a replay come out
+That last property, the same answer every time, is the subject of
+[Chapter 16](ch16-determinism.md): determinism, and what Coax does to make a replay come out
 the same on every machine.
 
-For asynchronous platform I/O, deadlines, cancellation and late completions
-with the current compiler, see [Chapter 15](ch15-asynchronous-work.md).
+First, the next chapter covers asynchronous platform I/O, deadlines,
+cancellation and late completions with the current compiler.

@@ -28,7 +28,10 @@ own qualification gates.
 branch with an owned simulated imitation learner and a bounded original NVIDIA
 SingleArm data excerpt. Its six held-out successes qualify the declared gantry
 task. Panda control semantics, GR00T inference and richer simulated control
-remain later work.
+remain later work. Chapters 168–169 build on Coax's planned units and frames,
+typed clocks, bounded control, replay, robot-model import, supervision and
+fault scenarios (roadmap R12–R19) and on chapters 107, 109 and 111; real
+hardware stays a separately authorized later integration.
 
 The [device delivery sequence](../book/PLAN.md#gpt-oss-device-delivery-order)
 keeps the remaining target, scheduling and throughput work separate from those
@@ -300,7 +303,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | Scientific ML | Shared training/spectral core for Darcy; geometry operators for DoMINO; spherical operators for weather | Solver comparisons, bounded datasets, exact preprocessing and physical evaluation. Chapters 156–161; DoMINO and FourCastNet3 are independent specialties. |
 | New language architectures | Dense inference and exact recurrence; explicit router/expert execution for MoE | Tiny state transitions and expert choices, then complete Nano/Lightning checkpoint evidence. Chapters 162–164; optional Mini/Bolt retain distinct profiles. |
 | World generation | Mature vision, exact codecs, temporal conditioning and diffusion/flow methods | One complete bounded Cosmos3-Edge path; reference agreement and physical quality are separate tests. Chapters 165–166. |
-| Robot policies | Shared vision/language, training/flow, embodiment normalization and tiny imitation | Conditional GR00T artifact selection and one simulated action/control-loop profile. Chapters 167–169; Cosmos execution is not a prerequisite. |
+| Robot policies | Shared vision/language, training/flow, embodiment normalization and tiny imitation; the deterministic and differentiable solvers (109, 111) and transform functions (107); Coax units and frames, typed clocks, bounded control, replay, robot-model import, supervision and fault scenarios (roadmap R12–R19) | Conditional GR00T artifact selection and one simulated, replayable action/control-loop profile with a bounded control step and recorded fault scenarios; real hardware is a separately authorized later integration. Chapters 167–169; Cosmos execution is not a prerequisite. |
 | M9: integration and scale | A qualified model plus protocol consumer / a correct resumable trainer plus selected backend | Reproducible service benchmarks; versioned System One serving; batch-invariant continuous batching; prefix-cache hit evidence; routing and autoscaling policies checked in deterministic traffic simulation; measured cold starts; canary rollouts with golden-request checks; usage records priced by an `#authority` policy; the voice engine's never-awaited decision gate / one actual homogeneous multi-device topology. Chapters 170–183 and 132; disaggregation and multi-device inference only after a measurement shows the need. |
 | Mesh inference | A qualified model, two-stage parity and network transport | Split-versus-whole parity on the machines that ran it, verified stage packages, readiness-gated routes with generation fencing, measured placement objectives, saved-work routing, exact activation compression, sensitivity routing that fails closed, sampled re-execution checks, Mesh-LLM interoperation, then DeepSeek V4.1 across stages and Mistral Large 3 and Le Chonk across machines. Chapters 184–197; joining public meshes and paying peers are owner decisions. |
 | Harness | The live API, constrained decoding and the prefix cache | A simplest-loop baseline; requests rebuilt byte for byte from the session log; measured prefix-cache hit rates across long sessions; tool, sandbox and approval tests; condensation cost measured; each addition kept only with a measured gain over the simplest loop; no session content shared without consent. Chapters 198–211. |

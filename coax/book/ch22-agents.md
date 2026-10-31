@@ -220,7 +220,7 @@ main :: () {
 }
 ```
 
-*Listing 19-1: An agent's first attempt at a spending rule*
+*Listing 22-1: An agent's first attempt at a spending rule*
 
 The second line, `#authority;`, marks this as a file whose rules guard
 money. That changes what the compiler accepts:
@@ -277,7 +277,7 @@ Filename: spend.coax
 // ...
 ```
 
-*Listing 19-2: The spending rule with one test per procedure*
+*Listing 22-2: The spending rule with one test per procedure*
 
 ```shell
 $ coax run spend.coax
@@ -349,7 +349,7 @@ main :: () {
 }
 ```
 
-*Listing 19-3: The rule stated over a range of inputs*
+*Listing 22-3: The rule stated over a range of inputs*
 
 The ranges are chosen to cross every boundary: amounts from -2 through
 11, spent from 0 through 11, against a limit of 10, so the cases include
@@ -412,7 +412,7 @@ changes one character:
 ```
 
 The first test still passes: 0 + 100 is comfortably below 1000. If the
-file had only Listing 19-2's tests, the change would ship. But
+file had only Listing 22-2's tests, the change would ship. But
 `#authority` runs every check on every compile, so this doesn't even get
 as far as a test run:
 
@@ -562,6 +562,5 @@ the other places where code means something other than what it says.
 `#authority` file runs its checks on every compile, a change that breaks
 the rule can't be built at all, with the counterexample in the error.
 
-That's the end of Part IV. In Part V we turn to the compiler itself:
-Chapter 27 takes `coax0` apart, and Chapter 28 looks at what comes after
-it.
+[Chapter 23](ch23-verification-boundaries.md) closes Part IV with what
+those checks, and verification in general, do and don't establish.

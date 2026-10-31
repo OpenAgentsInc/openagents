@@ -120,7 +120,7 @@ glow_tone :: (light: f32) -> f32 #export_c {
 }
 ```
 
-*Listing 14-1: A light library inside the Metal scalar profile*
+*Listing 17-1: A light library inside the Metal scalar profile*
 
 This file has no `main`. It's a library, and it will be compiled three
 ways: as Metal for the GPU, as C for a CPU host, and by the checker for
@@ -206,7 +206,7 @@ float glow_tone(float l_light) {
 }
 ```
 
-*Listing 14-2: Part of the Metal that `coax metal` prints for Listing 14-1*
+*Listing 17-2: Part of the Metal that `coax metal` prints for Listing 17-1*
 
 It looks a lot like the C that `coax c` produces, and it comes from the
 same checked tree. Internal procedures get a `coax_p_` prefix and are
@@ -255,7 +255,7 @@ fragment float4 dot_fragment(DotOut in [[stage_in]]) {
 }
 ```
 
-*Listing 14-3: Metal stages that call the generated light functions*
+*Listing 17-3: Metal stages that call the generated light functions*
 
 `dot_vertex` reads one `Dot` per instance from buffer 0 and emits the
 six corners of a quad around it, passing each corner's position on the
@@ -281,7 +281,7 @@ some installs it's an optional component.)
 ## What the profile refuses
 
 Let's step outside the profile and see what happens. Suppose we want
-several rings of dots and add this to Listing 14-1:
+several rings of dots and add this to Listing 17-1:
 
 ```jai
 glow_ring :: (x: f32, y: f32, rings: int) -> f32 #export_c {

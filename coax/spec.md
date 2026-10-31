@@ -1369,7 +1369,7 @@ calling-convention attributes). `--target NAME` selects the target for
 `metal`, `spirv`, ...) is E0612 and prints no report, so no other target
 borrows the LP64 values. The record is checked in
 `lib/compiler/checker.coax` (`CK_target`) and against an independent C
-oracle in `tests/modules.py`. These are the records R8 target manifests and
+oracle in `tests/modules.py`. These are the records R10 target manifests and
 R7 query/evidence tools consume; they are not a toolchain manifest, and the
 schema-1 CPU reflection (`type_info`, `field_info`) stays CPU-only metadata,
 never Wasm or GPU layout.
@@ -1565,6 +1565,7 @@ engine remains unmeasured.
 | 7 — Browser vertical slice | wasm32 runtime/host ABI and separate shader bridge. | Geometry, memory growth, async resources, input, rendering and debug path in an actual browser. |
 | 8 — Resident compiler and reload | Dependency cache, stable code IDs, safe points and transactional state migration. | Mac-host edit/reload retains state and resources, rolls back failures and has measured latency. No device code-loading bypass. |
 | 9 — Additional backends | Earlier workflows demonstrate value; C backend remains a reference. | Native debug/optimized backends pass the same conformance and target suites and improve a measured workload. |
+| 10 — Physical-world foundations | Units and coordinate frames, typed clocks and multirate ticks, bounded control, deterministic replay and snapshots, robot-model import, stamped sensors with supervised simulated actuators, and fault scenarios; built on effects, generics and strict profiles. | A small simulated robot and a Verse world run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios. Real hardware is a separately authorized integration. |
 
 Stop after stage 2 if the subsystem is harder to maintain or less reliable
 than its C++ equivalent. Pause after stage 4 if ordinary C++ code generation

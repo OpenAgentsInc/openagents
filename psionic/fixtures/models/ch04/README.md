@@ -1,7 +1,7 @@
 # Owned original weight fixtures
 
 These tiny Safetensors artifacts are authored in this repository for
-[chapter 4](../../../book/ch004-reading-original-weights.md). They contain no
+[chapter 7](../../../book/ch007-reading-original-weights.md). They contain no
 external checkpoint or training data. `owned-v1` is a fixture revision label,
 not an upstream Git revision or proof of provenance.
 
@@ -15,7 +15,7 @@ not an upstream Git revision or proof of provenance.
 `model.safetensors.index.json` describe the same inventory. The single-file
 bias begins at payload byte 14, deliberately unaligned for F32. JSON key order
 differs from payload and manifest order. Payload bytes total 22 in either form.
-Config and tokenizer files are owned identity sidecars; chapter 4 hashes them
+Config and tokenizer files are owned identity sidecars; chapter 7 hashes them
 as opaque bytes and makes no tokenizer compatibility claim.
 
 [manifest.json](manifest.json) records original artifact sizes and SHA-256

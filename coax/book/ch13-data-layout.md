@@ -65,7 +65,7 @@ main :: () {
 }
 ```
 
-*Listing 11-1: The same fields in two orders*
+*Listing 13-1: The same fields in two orders*
 
 `size_of` takes a type and gives its size in bytes as a constant. It
 works on structs, enums and arrays alike. Run it:
@@ -144,7 +144,7 @@ Pulse :: struct {
 #assert size_of(Pulse) == 12;
 ```
 
-*Listing 11-2: A struct with its size pinned*
+*Listing 13-2: A struct with its size pinned*
 
 Now suppose someone adds a field, say `owner: u64` for who sent the
 pulse. An 8-byte field after three 4-byte ones needs four bytes of
@@ -288,7 +288,7 @@ main :: () {
 }
 ```
 
-*Listing 11-3: The same update over AoS and SoA storage*
+*Listing 13-3: The same update over AoS and SoA storage*
 
 `advance_aos` takes a view of pulses. Loop variables and elements are
 copies, so it copies each pulse into `p`, updates it and writes it back.
@@ -319,7 +319,7 @@ of memory traffic every frame.
 SoA isn't free, though. Code that works on one whole pulse, such as
 saving it or sending it, now has to gather it from three arrays. Adding
 a pulse means appending to three arrays and keeping them the same
-length, and in Listing 11-3 nothing but care keeps them in step. The
+length, and in Listing 13-3 nothing but care keeps them in step. The
 choice depends on which loops are hot, and it's a measurement to make,
 not a rule to follow.
 

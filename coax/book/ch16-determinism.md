@@ -75,7 +75,7 @@ main :: () {
 }
 ```
 
-*Listing 13-1: Calls that announce themselves*
+*Listing 16-1: Calls that announce themselves*
 
 ```shell
 $ coax run operand_order.coax
@@ -99,7 +99,7 @@ emitter stores each operand in a temporary, in order. Run
 int64_t l_p = (coax_t4 = coax_p_note(COAX_STR("first", 5), INT64_C(1)), coax_t5 = coax_p_note(COAX_STR("second", 6), INT64_C(2)), coax_p_pair(coax_t4, coax_t5));
 ```
 
-*Listing 13-2: The generated C for `pair(note("first", 1), note("second", 2))`*
+*Listing 16-2: The generated C for `pair(note("first", 1), note("second", 2))`*
 
 C's comma operator sequences its left side before its right, so
 `coax_t4` is computed before `coax_t5`, and only then is `pair` called.
@@ -131,7 +131,7 @@ main :: () {
 }
 ```
 
-*Listing 13-3: A subtraction that exposes how `x * x` was rounded*
+*Listing 16-3: A subtraction that exposes how `x * x` was rounded*
 
 The exact square of `x` is 1 + 2⁻¹¹ + 2⁻²⁴. An `f32` near 1 can't hold
 that last 2⁻²⁴, so a multiply that rounds gives exactly 1 + 2⁻¹¹, which
@@ -164,7 +164,7 @@ int main(void) {
 }
 ```
 
-*Listing 13-4: The same residue in C*
+*Listing 16-4: The same residue in C*
 
 On an Apple silicon Mac with Apple clang 21:
 
@@ -199,7 +199,7 @@ static float coax_p_residue(float l_x, float l_c) {
 }
 ```
 
-That's the same expression clang fused in Listing 13-4, but the pragma
+That's the same expression clang fused in Listing 16-4, but the pragma
 at the top of the file forbids the fusion. `coax0` also passes no
 fast-math flags to the C compiler. The legacy `--release` preset selects
 `-O2` instead of `-O0` and wrapping runtime integer arithmetic, along with
@@ -249,7 +249,7 @@ main :: () {
 }
 ```
 
-*Listing 13-5: Reading a variable that was never initialized*
+*Listing 16-5: Reading a variable that was never initialized*
 
 ```shell
 $ coax run garbage.coax
@@ -334,7 +334,7 @@ main :: () {
 }
 ```
 
-*Listing 13-6: The same computations at compile time and at run time*
+*Listing 16-6: The same computations at compile time and at run time*
 
 ```shell
 $ coax run same_answer.coax
@@ -451,11 +451,11 @@ main :: () {
 }
 ```
 
-*Listing 13-7: A small world, replayed from recorded input*
+*Listing 16-7: A small world, replayed from recorded input*
 
 There's a fair amount here, so let's take it a piece at a time.
 
-`next` is the same xorshift32 scrambler as `shuffle` in Listing 13-6.
+`next` is the same xorshift32 scrambler as `shuffle` in Listing 16-6.
 It takes an `Rng` by value and returns a `Draw` holding both the random
 number and the generator's new state. Coax procedures can't assign to
 their parameters, so `next` copies `r.state` into a local `h` first.
@@ -525,7 +525,7 @@ state equality or another target's behavior.
 ### Locking the replay in with a test
 
 A replay is only useful if someone notices when it changes. The `#test`
-at the bottom of Listing 13-7 records the golden fingerprint, and
+at the bottom of Listing 16-7 records the golden fingerprint, and
 `coax test` runs it (see [Chapter 11](ch11-writing-checks.md) for the
 whole checking toolkit):
 
@@ -634,7 +634,7 @@ replay_step :: (w: *World, input: Input) deterministic strict { ... }
 `deterministic` is a checked promise, and the check is transitive. A
 deterministic procedure can't read a clock, read uninitialized memory,
 iterate a hash-ordered table, or use ambient randomness, and it can't
-call anything that might. Our `Rng` value in Listing 13-7 is exactly the
+call anything that might. Our `Rng` value in Listing 16-7 is exactly the
 style this annotation will enforce. Today it's a convention you follow;
 later the compiler will reject code that breaks it.
 

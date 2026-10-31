@@ -186,3 +186,9 @@ repeat it. For example:
 That tells a reviewer far more than "verified". Keep limits near the
 claim they qualify, and use an actual contract to decide what additional
 evidence a release needs.
+
+That's the end of Part IV. Part V puts these pieces together in larger
+programs, starting with a complete boundary in
+[Chapter 24](ch24-a-complete-boundary.md). Part VI then turns to the compiler
+itself: Chapter 27 takes `coax0` apart, and Chapter 28 looks at what comes
+after it.

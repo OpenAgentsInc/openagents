@@ -1,6 +1,6 @@
 # Local-array return diagnostics
 
-This R3a slice adds E0383 in the Coax checker. A returned view/string that
+This first R3 slice adds E0383 in the Coax checker. A returned view/string that
 directly borrows a local fixed array is rejected, including simple local
 alias declarations/assignments, further slicing, casts, either `ifx` arm and
 inline fixed-array subobjects of local arrays/structs. A local alias retains

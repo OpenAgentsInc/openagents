@@ -5,7 +5,7 @@ Repository: `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`, revision
 
 The tokenizer JSON is retained as deterministic gzip. `r1.pst` packs its
 byte vocabulary and merge ranks with the already pinned Unicode-17 DATA
-from chapter 5. Configs and the reviewed Safetensors header remain inert
+from chapter 9. Configs and the reviewed Safetensors header remain inert
 DATA. No downloaded source code is executed. The original weight payload
 is not committed; `manifest.json` pins its complete size and SHA-256.
 `targets.coax` is generated from this reviewed header and the fixed Qwen2

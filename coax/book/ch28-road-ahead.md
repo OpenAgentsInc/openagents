@@ -13,9 +13,9 @@ See [current status](appendix-a-keywords.md), [release workflow](https://github.
 and [differential evidence](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md).
 Most of this book has had two kinds of material in it: what `coax0` does
 today, which you can run, and what the specification plans, which is
-marked as not yet available. This chapter is about the second kind. The
-practical chapters in Part VI then return to what can be built with the
-current subset.
+marked as not yet available. This chapter is about the second kind; the
+practical chapters of Part V showed what can be built with the current
+subset.
 We'll look at where things stand, the order in which the rest is planned to
 arrive, what each step has to prove before the next one starts, and the
 points at which the plan says to stop.
@@ -103,8 +103,9 @@ counts as done, and where each one is today.
 | 7. Browser vertical slice | A wasm32 runtime and host ABI, a separate shader bridge | Geometry, memory growth, async resources, input, rendering and debugging in a real browser | Current Coaxial application paths ship; general target/runtime/debugging qualification remains open |
 | 8. Resident compiler and reload | Dependency cache, stable code IDs, safe points, transactional migration | Edit and reload on a Mac host keeps state and resources, rolls back failures, and has measured latency | Not started |
 | 9. More backends | Only after earlier stages have shown their value; C stays as the reference | Native debug and optimized backends pass the same suites and beat the C output on a measured workload | Not started |
+| 10. Physical-world foundations | Units and frames, typed clocks and multirate ticks, bounded control, replay and snapshots, robot-model import, stamped sensors and supervised simulated actuators, fault scenarios | A small simulated robot and a Verse world run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios; real hardware stays a separate, authorized integration | Not started |
 
-*Table 21-1: The implementation stages*
+*Table 28-1: The implementation stages*
 
 Stage 6 started before stages 3 to 5, which might look out of order. The
 protocol plan needed a first bounded importer and codec before any product

@@ -566,7 +566,7 @@ is missing. No promise to implement every NIP or every JWT algorithm is implied.
 ## 16. Ownership, queue maintenance and scoped checks
 
 The [handoff](nostr-handoff.md) assigns this entire Nostr initiative, its plan,
-work seed and signed queue order to this Codex chat. R0-R12 remains a separate
+work seed and signed queue order to this Codex chat. R0–R23 remains a separate
 initiative with its existing worker. Use maximum safe parallelism on independent
 tasks, signed claims/plans/notes and reviewed completion evidence. The live-page
 worker finishes its in-flight task; preserve its work and reconcile the final

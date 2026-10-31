@@ -38,17 +38,17 @@ touches most of the everyday language at once. Chapters 3 and 4 then go
 back over the basics properly and show how to read the compiler's errors.
 
 Part II covers the language itself: structs and enums, memory, errors and
-cleanup, generics, compile-time execution, and writing checks. Part III
-is about data layout, jobs, determinism and the GPU. Part IV is about how
-Coax fits into OpenAgents: the protocol boundary, builds and hot reload,
-interop with C, C++ and Swift, targets, and tooling for agents. Part V
-opens up the compiler. Part VI turns those pieces into larger programs:
-project organization, asynchronous lifetimes, debugging and cost, verification
-boundaries, and a runnable protocol-to-native capstone. Part VII follows a
-voice system through small checked policies and native boundaries.
-
-Part VIII returns to small consumers of shared libraries: caller-owned buffers,
-protocol fixtures and a tiny Psionic CPU operation.
+cleanup, generics, compile-time execution, organizing a program into source
+units and modules, writing checks, and debugging and measuring cost. Part III
+is about data layout, jobs, asynchronous lifetimes, determinism and the GPU.
+Part IV is about how Coax fits into OpenAgents: the protocol boundary, builds
+and hot reload, interop with C, C++ and Swift, targets, tooling for agents,
+and what verification does and doesn't establish. Part V turns those pieces
+into larger programs: a runnable protocol-to-native capstone, a voice system
+built from small checked policies and native boundaries, and small consumers
+of shared libraries (caller-owned buffers, protocol fixtures and a tiny
+Psionic CPU operation). Part VI opens up the compiler and ends with the road
+ahead.
 
 The [selected library index](https://github.com/OpenAgentsInc/openagents/blob/main/coax/LIBRARIES.md) names reusable entry points, native link inputs and their lifetime/error limits. Chapter 26 supplies small offline consumers.
 
@@ -105,7 +105,8 @@ on your path.
 ## Contents at a glance
 
 - [Foreword](foreword.md) and [Introduction](introduction.md)
-- Part I. Getting started: [1. Getting started](ch01-getting-started.md),
+- Part I. Getting started:
+  [1. Getting started](ch01-getting-started.md),
   [2. A first project](ch02-a-first-project.md),
   [3. Common concepts](ch03-common-concepts.md),
   [4. Reading errors](ch04-reading-errors.md)
@@ -115,10 +116,13 @@ on your path.
   [7. Errors and cleanup](ch07-errors.md),
   [8. Generics and constraints](ch08-generics.md),
   [9. Compile time](ch09-compile-time.md),
-  [11. Writing checks](ch11-writing-checks.md)
+  [10. Organizing a larger program](ch10-organizing-programs.md),
+  [11. Writing checks](ch11-writing-checks.md),
+  [12. Debugging and measuring cost](ch12-debugging-and-cost.md)
 - Part III. Data and speed:
   [13. Data-oriented layout](ch13-data-layout.md),
   [14. Jobs: captures as effects](ch14-jobs.md),
+  [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md),
   [16. Determinism](ch16-determinism.md),
   [17. GPU programs](ch17-gpu.md)
 - Part IV. Coax in OpenAgents:
@@ -126,20 +130,15 @@ on your path.
   [19. Builds and hot reload](ch19-builds-hot-reload.md),
   [20. Living beside C, C++ and Swift](ch20-interop.md),
   [21. Targets: Apple first, then the browser](ch21-targets.md),
-  [22. Built for agents](ch22-agents.md)
-- Part V. Building Coax:
+  [22. Built for agents](ch22-agents.md),
+  [23. What verification establishes](ch23-verification-boundaries.md)
+- Part V. Larger programs:
+  [24. A complete boundary](ch24-a-complete-boundary.md),
+  [25. Building a voice system in pieces](ch25-case-study-voice.md),
+  [26. Reusing bounded libraries](ch26-library-recipes.md)
+- Part VI. Building Coax:
   [27. Inside coax0](ch27-inside-coax0.md),
   [28. The road ahead](ch28-road-ahead.md)
-- Part VI. Building larger programs:
-  [10. Organizing a larger program](ch10-organizing-programs.md),
-  [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md),
-  [12. Debugging and measuring cost](ch12-debugging-and-cost.md),
-  [23. What verification establishes](ch23-verification-boundaries.md),
-  [24. A complete boundary](ch24-a-complete-boundary.md)
-- Part VII. A case study:
-  [25. Building a voice system in pieces](ch25-case-study-voice.md)
-- Part VIII. Reusing libraries:
-  [26. Reusing bounded libraries](ch26-library-recipes.md)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),

@@ -81,7 +81,7 @@ main :: () {
 }
 ```
 
-*Listing 17-1: An exported easing function, with a `main` so it also runs on its own*
+*Listing 20-1: An exported easing function, with a `main` so it also runs on its own*
 
 The only new thing here is `#export_c` after the return type of `ease`.
 It tells the compiler three things: keep this procedure's name exactly as
@@ -147,7 +147,7 @@ float ease(float x);
 #endif
 ```
 
-*Listing 17-2: The whole header for ease.coax*
+*Listing 20-2: The whole header for ease.coax*
 
 Most of it is scaffolding, and it's the same in every header, so let's go
 through it once.
@@ -219,7 +219,7 @@ int main(void) {
 }
 ```
 
-*Listing 17-3: A C host calling the exported `ease`*
+*Listing 20-3: A C host calling the exported `ease`*
 
 Compile it with the object and run it:
 
@@ -306,7 +306,7 @@ main :: () {
 }
 ```
 
-*Listing 17-4: Exported procedures that take and return a struct, a view and an enum*
+*Listing 20-4: Exported procedures that take and return a struct, a view and an enum*
 
 ```shell
 $ coax run path.coax
@@ -337,7 +337,7 @@ float path_length(coax_v_t_Point points);
 coax_t_Mode path_next(coax_t_Mode m);
 ```
 
-*Listing 17-5: How path.coax's types look in C*
+*Listing 20-5: How path.coax's types look in C*
 
 Each kind of type has its own spelling.
 
@@ -386,7 +386,7 @@ int main(void) {
 }
 ```
 
-*Listing 17-6: A C host passing structs, a view and an enum*
+*Listing 20-6: A C host passing structs, a view and an enum*
 
 ```shell
 $ cc -std=c11 -Wall -o path_host path_host.c path.o
@@ -496,7 +496,7 @@ let total = points.withUnsafeMutableBufferPointer { buffer in
 print("length:", total)
 ```
 
-*Listing 17-7: Swift calling the same procedures*
+*Listing 20-7: Swift calling the same procedures*
 
 The view is the only awkward part. A Swift array doesn't promise its
 elements stay at one address, so we borrow its storage with
@@ -552,7 +552,7 @@ func describeNext() {
 }
 ```
 
-*Listing 17-8: Enum codes repeated in Swift, because the macros don't import*
+*Listing 20-8: Enum codes repeated in Swift, because the macros don't import*
 
 Add `describeNext()` to the end of `main.swift` and build both files:
 
@@ -564,7 +564,7 @@ length: 17.0
 after orbit: dolly
 ```
 
-The cost of Listing 17-8 is that the numbers now live in two places.
+The cost of Listing 20-8 is that the numbers now live in two places.
 Unless you give a member a value (`dolly = 1;`), Coax numbers enum members
 from 0 in the order you write them, so adding a member in the middle of a
 Coax enum silently shifts the Swift copy. For any enum that crosses the
@@ -613,7 +613,7 @@ meter_scan :: (h: int, count: int) -> bool #export_c {
 }
 ```
 
-*Listing 17-9: Two procedures the host provides, and one Coax exports*
+*Listing 20-9: Two procedures the host provides, and one Coax exports*
 
 This file has no `main`, so `coax run` refuses it, and the error tells you
 what to do instead:
@@ -667,7 +667,7 @@ int main(void) {
 }
 ```
 
-*Listing 17-10: A host that provides the `#foreign` procedures and calls the export*
+*Listing 20-10: A host that provides the `#foreign` procedures and calls the export*
 
 ```shell
 $ cc -std=c11 -Wall -o meter_host meter_host.c meter.o
@@ -985,7 +985,7 @@ main :: () {
 }
 ```
 
-*Listing 17-11: The pulse kernel*
+*Listing 20-11: The pulse kernel*
 
 ```shell
 $ coax run pulse_kernel.coax
@@ -1020,7 +1020,7 @@ Mac this was run on. That's one machine's measurement, not a promise.
 ## Metal functions
 
 The same procedures can also become Metal Shading Language, for the scalar
-math a shader calls. `coax metal` prints it. Take Listing 17-1 without its
+math a shader calls. `coax metal` prints it. Take Listing 20-1 without its
 `main` (the Metal profile has no loops or printing):
 
 ```shell

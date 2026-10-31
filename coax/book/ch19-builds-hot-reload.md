@@ -98,7 +98,7 @@ int main(void) {
 }
 ```
 
-*Listing 16-1: A C program that calls the Coax light functions*
+*Listing 19-1: A C program that calls the Coax light functions*
 
 It walks an 11-by-23 grid of characters (characters are about twice as
 tall as they are wide, hence the different counts), maps each one to a
@@ -130,7 +130,7 @@ cat ch17_stage.metal >> "$out/Glow.metal"
 "$out/preview"
 ```
 
-*Listing 16-2: Building one Coax file for C and for Metal*
+*Listing 19-2: Building one Coax file for C and for Metal*
 
 ```shell
 $ examples/lib/ch19_build.sh
@@ -184,7 +184,7 @@ float glow_tone(float light);
 #endif
 ```
 
-*Listing 16-3: The generated header for the light library*
+*Listing 19-3: The generated header for the light library*
 
 The comment at the top is for whoever calls this code from C, C++ or
 Swift. It gives the three facts that most often cause trouble at a
@@ -242,7 +242,7 @@ cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.tx
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
 ```
 
-*Listing 16-4: The script that turns `verse/*.coax` into the iOS app's sources*
+*Listing 19-4: The script that turns `verse/*.coax` into the iOS app's sources*
 
 It has three parts.
 
@@ -381,7 +381,7 @@ real 0.09
 That's about 28,000 lines of C and Metal from roughly 4,300 lines of
 Coax. Most of it is `Home.c`, 22,615 lines, nearly all of them the
 generated protocol codecs from Chapter 18; `coax c verse/home.coax`
-takes about 0.04 seconds by itself. Our glow build script in Listing 16-2,
+takes about 0.04 seconds by itself. Our glow build script in Listing 19-2,
 which also runs the C compiler and links, takes about 0.22 seconds.
 
 That measurement predates the Haunted House, its buffer gate and HUD module,
@@ -428,7 +428,7 @@ build :: () {
 }
 ```
 
-Compared with Listing 16-4, this would replace the shell loop with a
+Compared with Listing 19-4, this would replace the shell loop with a
 typed description of the same work. The plan adds three things a team
 build needs on top of Jai's model.
 
@@ -504,7 +504,7 @@ fixed, signed images, built the way this chapter described.
 
 Today's Coax build is a set of small, single-shot commands, each writing
 one kind of output: executables, object files, C, headers and Metal. A
-build script, ours in Listing 16-2 or the iOS app's `generate.sh`,
+build script, ours in Listing 19-2 or the iOS app's `generate.sh`,
 chains them and hands the results to the platform's own tools, with
 `#authority` files stopping the build when their checks fail. Generating
 all of the app's Coax code takes about a tenth of a second, but that's

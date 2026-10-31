@@ -576,14 +576,37 @@ different Gemma-4 architecture is an optional study in appendix B.
 | 165. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
 | 166. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
 | [167. Imitation before robotics scale](ch167-imitation-before-robotics-scale.md) — runnable: owned CPU imitation and original-data excerpt | Two-axis gantry behavior cloning with fixed state/action scales, whole-episode splits and separate action-error/rollout measures; pinned Panda metadata and 170 exact F32 values from an original PhysicalAI SingleArm episode. This qualifies data handling, not Panda command semantics or GR00T inference. |
-| 168. Execute a GR00T policy | GR00T-N1.7-3B as a candidate, subject to its unresolved artifact-license inconsistency; exact VLA/flow-matching action path for one embodiment. |
-| 169. Close the simulated control loop | Action chunks, observation timing, resets, held-out task success and failure recovery under the selected embodiment. |
+| 168. Execute a GR00T policy | GR00T-N1.7-3B as a candidate, subject to its unresolved artifact-license inconsistency; exact VLA/flow-matching action path for one embodiment. Joint positions, poses and action chunks are Coax unit- and frame-checked values (roadmap R12), with the embodiment's frames and limits imported from a checked robot model (R17); the observation and action spaces state their clocks and rates (R13). |
+| 169. Close the simulated control loop | The policy drives the deterministic solver of chapter 109, run as a simulated arm or gantry. Observations are stamped samples with a clock, frame and maximum age, and action chunks are held between policy updates under a declared sample-and-hold schedule (R13, R18). The control step that turns an action into a command is a `#bounded` Coax function: fixed stack and scratch, no allocation or blocking in its call graph (R14). A simulated supervisor refuses stale, out-of-limit or expired commands (R18). Every episode records and replays exactly under a named profile, and reset, held-out task success and failure recovery are measured over recorded fault scenarios such as sensor dropout, delayed observations and saturation (R16, R19). Chapter 111's differentiable solver and chapter 107's `vjp`, `jvp` and `vmap` check action sensitivities and batch episodes. No real hardware. |
 
 Cosmos needs mature vision, temporal representations and generative methods.
 The robotics path needs vision/language, shared training, action conventions
 and flow matching; it does not require Cosmos inference first. GR00T is not a
-commercial default while its card and included license disagree. Real robot
-control would be a separately authorized integration after simulation.
+commercial default while its card and included license disagree.
+
+The robot-policy chapters run on the physical-world foundations of the
+[Coax roadmap](../../coax/ROADMAP.md) and on this book's physics and
+transform chapters, all as prerequisites rather than parallel inventions:
+
+| Foundation | Where it comes from | What chapters 167–169 use it for |
+| --- | --- | --- |
+| Units and coordinate frames | Coax R12 | Joint angles, positions, poses and velocities carry a frame and a unit; mixing them is refused at compile time |
+| Typed clocks and multirate ticks | Coax R13 | Simulation time for episodes, declared policy and control rates, sample-and-hold of action chunks and maximum observation age |
+| Bounded control | Coax R14 | The control step is `#bounded`: fixed stack and scratch, no allocation, blocking or unbounded loops in its call graph |
+| Deterministic replay and snapshots | Coax R15–R16 | Episodes replay exactly under a named profile, with the first divergence reported; resets restore snapshots |
+| Robot-model import | Coax R17 | The embodiment's frames, joint limits and inertias come from a checked URDF subset |
+| Stamped sensors and actuator supervision | Coax R18 | Observations are stamped; a simulated supervisor validates every command's freshness, limits, epoch and expiry |
+| Fault scenarios | Coax R19 | Dropout, delays, saturation and invalid values are recorded scenarios that reproduce the same run |
+| Deterministic solver | Chapter 109 | The simulated system the policy controls |
+| Differentiable solver and parameter recovery | Chapter 111 | Sensitivities of outcomes to actions and physical parameters, checked against finite differences |
+| Transform functions | Chapter 107 | `grad`, `vjp`, `jvp` and `vmap` for action sensitivities and batched episodes |
+
+Chapter 167 already states its units and integration step in its profile; it
+moves onto these types as they ship. Chapters 168 and 169 are planned against
+them and do not start with hand-rolled clocks, frames or unchecked control
+loops. Real robot hardware is a separately authorized later integration, with
+its own safety review, device qualification and real-time profile; nothing in
+this part drives an actuator.
 
 ## XIX. Host inference in production
 
@@ -885,7 +908,7 @@ Python to tooling. The stable C ABI and DLPack (8) let others build one.
 | Scientific ML | Shared training/spectral core for FNO; geometry operators for DoMINO | Darcy 157 or DoMINO 160; spherical weather 161 branches independently. |
 | Hybrid / MoE language | Shared dense inference, state-space 162 and exact profiles; router 61 (Part VII) for Lightning | Nano 163 → Lightning 164. |
 | World generation | Shared vision/codec, diffusion/flow 146 and temporal 165 | One Cosmos3-Edge path 166. |
-| Robot policies | Shared vision/language, training, flow 146 and imitation/embodiment 167 | GR00T 168 → simulated closed loop 169, conditional on artifact terms. |
+| Robot policies | Shared vision/language, training, flow 146 and imitation/embodiment 167; the solvers 109 and 111 and transforms 107; Coax R12–R19 units and frames, clocks, bounded control, replay, robot-model import, supervision and fault scenarios | GR00T 168 → simulated closed loop 169, conditional on artifact terms; real hardware only as a separately authorized integration. |
 | Production hosting | A qualified model, 33's measurements and a consumer contract | Benchmark 170 → server and clients 171–172 → batching and cache 173–174 → routing, scaling, rollout, metering 175–179. |
 | Large-scale serving | Measured need from 170 and 173; two or more devices | Disaggregation 180; tensor/expert parallelism 181. |
 | Voice / training scale | 16, 170 and the voice gate / a resumable trainer plus backend | Voice pipeline 182 and decision steering 183 / distributed training 132. |
@@ -916,6 +939,7 @@ their general language form remains planned.
 | Bounded generic copyable procedures and fixed-storage structs are shipped; numeric operation constraints ([ch08](../../coax/book/ch08-generics.md)) remain planned | Every multi-dtype kernel, 50 | Use admitted generic copying and storage; arithmetic kernels still use concrete numeric types until their constraints are implemented. |
 | General SIMD/vector/matrix types remain planned; selected lane/group loops and matrix primitives already ship | 33–35, 147–150 | Scalar or qualified cooperative kernels; measure before requesting another form. |
 | Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 33, 36 caches, 73, 96 and 189 expert paging, 120 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
+| Units and frames, typed clocks, bounded control, replay, robot-model import, stamped sensors and fault scenarios ([roadmap R12–R19](../../coax/ROADMAP.md)) remain planned | 167–169 | Chapter 167 states its units and step in a fixed profile over plain `f64` fields; later chapters wait for the checked forms. |
 | A broader qualified target matrix and general asynchronous language effects remain work | 20–26, 44, 132, 171–183, 184–197 | Recorded owned Linux/CUDA and Apple CPU/Metal runs retain their named hardware and numerical scopes; they do not qualify every Linux target or an asynchronous ownership model. |
 
 The framework track already has strided views (3), owned device storage (6),

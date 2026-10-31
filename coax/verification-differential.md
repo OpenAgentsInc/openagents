@@ -1,6 +1,6 @@
 # Bounded valid-program differential verification
 
-`tools/differential.py` is an optional R0/R7a verification experiment. It does
+`tools/differential.py` is an optional R0/R7 verification experiment. It does
 not change compiler semantics, ordinary build dependencies or product code.
 It uses only Python's standard library and an already-built Coax compiler
 plus the host C compiler. The focused tests live in `tests/differential.py`.

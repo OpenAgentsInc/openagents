@@ -58,7 +58,7 @@ main :: () {
 }
 ```
 
-*Listing 10-1: A procedure that splits a payment, and one test for it*
+*Listing 11-1: A procedure that splits a payment, and one test for it*
 
 The procedure is ordinary Coax. `total / people` is integer division, so
 `base` is 3, and `total % people` is the remainder, 1. Person 0 is below
@@ -199,7 +199,7 @@ every small case. Add this after the test:
 // ...
 ```
 
-*Listing 10-2: A first try at a rule over every small bill*
+*Listing 11-2: A first try at a rule over every small bill*
 
 `#forall` is followed by an optional name and then one or more
 *bindings*. `total: 0..<50` means `total` takes every value from 0 up to
@@ -343,7 +343,7 @@ main :: () {
 }
 ```
 
-*Listing 10-3: `share` with a guard, and checks for both sides of it*
+*Listing 11-3: `share` with a guard, and checks for both sides of it*
 
 ```shell
 $ coax test split.coax
@@ -428,7 +428,7 @@ more than one. Add a third `#forall`:
 }
 ```
 
-*Listing 10-4: A rule about fairness*
+*Listing 11-4: A rule about fairness*
 
 A check can assert as many times as it likes and inside loops. This one
 makes up to seven assertions per case.
@@ -452,7 +452,7 @@ all its cases, which is why `coax test` reports steps per check.
 
 You can set the budget with `--steps`. A smaller budget is a quick way
 to see how expensive each check is, or to make sure a check stays cheap.
-Here's the finished file (Listing 10-6, later in this chapter) with a
+Here's the finished file (Listing 11-6, later in this chapter) with a
 budget of 60,000:
 
 ```shell
@@ -655,7 +655,7 @@ main :: () {
 }
 ```
 
-*Listing 10-5: A test that passes but checks too little*
+*Listing 11-5: A test that passes but checks too little*
 
 It passes. But the `<=` bug from earlier would pass it too, since person
 0 gets 4 either way. How would we notice that a test is this weak?
@@ -771,7 +771,7 @@ for synthetic files and real `#authority` units: pass it `.coax` paths to
 compare any file.
 
 To kill a survivor, write the check that would have caught it. Restore
-the two assertions for persons 1 and 2 (that's Listing 10-1 again):
+the two assertions for persons 1 and 2 (that's Listing 11-1 again):
 
 ```shell
 $ coax mutate split.coax
@@ -780,8 +780,8 @@ $ coax mutate split.coax
 
 ### Survivors that can't be killed
 
-Now let's mutate the full file: Listing 10-3 plus the fairness rule of
-Listing 10-4, with `#authority` at the top. That's 5 checks and over 900
+Now let's mutate the full file: Listing 11-3 plus the fairness rule of
+Listing 11-4, with `#authority` at the top. That's 5 checks and over 900
 cases. Surely nothing survives?
 
 ```shell
@@ -890,7 +890,7 @@ main :: () {
 }
 ```
 
-*Listing 10-6: The finished split, every check passing and every mutant
+*Listing 11-6: The finished split, every check passing and every mutant
 killed*
 
 ```shell
@@ -945,7 +945,7 @@ verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
 }
 ```
 
-*Listing 10-7: The start of `verse/wallet.coax`*
+*Listing 11-7: The start of `verse/wallet.coax`*
 
 Here is the small-instance pattern from earlier. The `#forall` covers
 amounts from -3 to 39 sats, crossing the boundary at zero, and the
@@ -972,7 +972,7 @@ the start:
 }
 ```
 
-*Listing 10-8: Every four-event history of a payment, from `verse/wallet.coax`*
+*Listing 11-8: Every four-event history of a payment, from `verse/wallet.coax`*
 
 `Event` has 8 values, so that's 8^4 = 4,096 histories, every one of
 them. The whole file runs in a few hundredths of a second:

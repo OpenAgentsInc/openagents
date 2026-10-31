@@ -170,7 +170,7 @@ main :: () {
 }
 ```
 
-*Listing 20-1: The program we'll follow through the compiler*
+*Listing 27-1: The program we'll follow through the compiler*
 
 ```shell
 $ coax run ch27_tiny.coax
@@ -193,7 +193,7 @@ one-element `[] LX_State` view, decoded string bytes go into a buffer the
 caller passes in, and so do error messages. The lexer never allocates.
 
 There's no command that prints tokens, but we don't need one. `LX_next` is
-an ordinary Coax procedure, so we can call it from Coax. Listing 20-2 is a
+an ordinary Coax procedure, so we can call it from Coax. Listing 27-2 is a
 small `main` that lexes one line of our program, prints each token, then
 hands the tokens to the parser and prints the tree it builds. It isn't a
 standalone program: it uses `LX_next`, `PS_parse` and their types, so we
@@ -244,7 +244,7 @@ main :: () {
 }
 ```
 
-*Listing 20-2: A driver that runs the compiler's lexer and parser on one line (the tree printer is elided; see the file)*
+*Listing 27-2: A driver that runs the compiler's lexer and parser on one line (the tree printer is elided; see the file)*
 
 The checked book build now loads the three physical files with `#load`.
 To compare with the original single-file walkthrough, from `coax/book`
@@ -367,7 +367,7 @@ A few decisions in the grammar are worth knowing about when you read
   deeper nesting reports E0221 instead of exhausting the host stack.
 
 The parser stops at the first error. Let's see that. If we delete the
-semicolon after `return x * x` in Listing 20-1 and check the file:
+semicolon after `return x * x` in Listing 27-1 and check the file:
 
 ```shell
 $ coax check tiny.coax
@@ -472,7 +472,7 @@ Within a body, a few design choices explain a lot of the errors you've met:
   format string and compares them with the arguments.
 
 Unlike the parser, the checker keeps going after an error, so one run shows
-you everything it can find. Let's break Listing 20-1 in three unrelated
+you everything it can find. Let's break Listing 27-1 in three unrelated
 places: give `hops` the default `300`, make `square` return `x * 2.5`, and
 drop the last argument to `print`.
 
@@ -638,7 +638,7 @@ int main(void) {
 }
 ```
 
-*Listing 20-3: The C that coax0 generates for Listing 20-1, after the runtime*
+*Listing 27-3: The C that coax0 generates for Listing 27-1, after the runtime*
 
 Let's read it from the top.
 
@@ -737,7 +737,7 @@ main :: () {
 }
 ```
 
-*Listing 20-4: Deferred statements and argument order*
+*Listing 27-4: Deferred statements and argument order*
 
 ```shell
 $ coax run ch27_defer_order.coax
@@ -775,7 +775,7 @@ static void coax_p_main(void) {
 }
 ```
 
-*Listing 20-5: The C for Listing 20-4*
+*Listing 27-5: The C for Listing 27-4*
 
 `defer` has no C equivalent, so the emitter copies the deferred statements
 to every exit of the block, in reverse order. Each `return e` first stores

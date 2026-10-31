@@ -9,8 +9,8 @@ site takes over a full-window GPU canvas, shows the Grid and the rest of
 Verse in the browser, loads fast, and is developed with edit-to-screen
 times measured in milliseconds rather than seconds. It sits beside the
 [implementation roadmap](ROADMAP.md): the framework is the real consumer for
-the roadmap's wasm32 feasibility test (R1), its GPU and browser proof (R8)
-and its reload work (R11). It does not reorder the roadmap. R0, the measured
+the roadmap's wasm32 feasibility test (R1), its GPU and browser proof (R9–R10)
+and its reload work (R21–R22). It does not reorder the roadmap. R0, the measured
 native kernel, is separate work.
 
 ## Decisions (2026-10-28)
@@ -218,7 +218,7 @@ Two Wasm details shape this:
 - Wasm can't free a module's code. The host drops references and lets the
   browser collect it; long sessions are part of the W1 test.
 
-Swapping code at a frame boundary is roadmap R11's transactional reload on
+Swapping code at a frame boundary is roadmap R21–R22's transactional reload on
 the browser, done early for development only. Production never loads code
 except at page load.
 
@@ -335,8 +335,8 @@ document's; the roadmap milestones they feed are named.
 - **W6. More Verse.** Voice in the browser, then the Haunted House, the
   wallet and the rest, each as its own slice.
 
-Roadmap R8's full gate (the same pinned workload on native Metal and in a
-browser, with output comparisons) is met by W2–W3 plus the comparisons R8
+Roadmap R10's full gate (the same pinned workload on native Metal and in a
+browser, with output comparisons) is met by W2–W3 plus the comparisons R10
 asks for. This framework doesn't claim it earlier.
 
 ## Naming

@@ -18,12 +18,15 @@
 * [7. Errors and cleanup](ch07-errors.md)
 * [8. Generics and constraints](ch08-generics.md)
 * [9. Compile time](ch09-compile-time.md)
+* [10. Organizing a larger program](ch10-organizing-programs.md)
 * [11. Writing checks](ch11-writing-checks.md)
+* [12. Debugging and measuring cost](ch12-debugging-and-cost.md)
 
 ## Part III. Data and speed
 
 * [13. Data-oriented layout](ch13-data-layout.md)
 * [14. Jobs: captures as effects](ch14-jobs.md)
+* [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md)
 * [16. Determinism](ch16-determinism.md)
 * [17. GPU programs](ch17-gpu.md)
 
@@ -34,27 +37,18 @@
 * [20. Living beside C, C++ and Swift](ch20-interop.md)
 * [21. Targets: Apple first, then the browser](ch21-targets.md)
 * [22. Built for agents](ch22-agents.md)
+* [23. What verification establishes](ch23-verification-boundaries.md)
 
-## Part V. Building Coax
+## Part V. Larger programs
+
+* [24. A complete boundary](ch24-a-complete-boundary.md)
+* [25. Building a voice system in pieces](ch25-case-study-voice.md)
+* [26. Reusing bounded libraries](ch26-library-recipes.md)
+
+## Part VI. Building Coax
 
 * [27. Inside coax0](ch27-inside-coax0.md)
 * [28. The road ahead](ch28-road-ahead.md)
-
-## Part VI. Building larger programs
-
-* [10. Organizing a larger program](ch10-organizing-programs.md)
-* [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md)
-* [12. Debugging and measuring cost](ch12-debugging-and-cost.md)
-* [23. What verification establishes](ch23-verification-boundaries.md)
-* [24. A complete boundary](ch24-a-complete-boundary.md)
-
-## Part VII. A case study
-
-* [25. Building a voice system in pieces](ch25-case-study-voice.md)
-
-## Part VIII. Reusing libraries
-
-* [26. Reusing bounded libraries](ch26-library-recipes.md)
 
 ## Appendices
 

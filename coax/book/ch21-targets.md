@@ -133,7 +133,7 @@ static void coax_trap(const char *what, int32_t line) {
 }
 ```
 
-*Listing 18-1: The start of every generated C file*
+*Listing 21-1: The start of every generated C file*
 
 Each piece is a question a new target has to answer.
 
@@ -240,7 +240,7 @@ path.c:13:10: fatal error: 'stdio.h' file not found
 1 error generated.
 ```
 
-Not far, and that's the expected answer. Listing 18-1 asks for a hosted C
+Not far, and that's the expected answer. Listing 21-1 asks for a hosted C
 library, and a bare WebAssembly target has none. You could point Clang at
 a WASI sysroot and get an object, but a browser isn't a WASI host either:
 there's no standard error for `coax_trap` to write to, and `print` has to
@@ -284,7 +284,7 @@ and rendering (spec §20, stage 7), not a Wasm link and a promise.
 
 Android, Linux and Windows follow the same rule, each with its own
 runtime, linker, ABI and debugging evidence. Some of the work is
-predictable from Listing 18-1: Android and Linux have a hosted C library
+predictable from Listing 21-1: Android and Linux have a hosted C library
 and Clang; Windows needs a compiler that provides the overflow builtins
 (Clang does) and a different answer for crash reporting. None of it has
 been done, so none of it is claimed.

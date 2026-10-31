@@ -127,7 +127,7 @@ message FrameDecision {
 }
 ```
 
-*Listing 27-1: The `FrameDecision` message, with its clamps written down
+*Listing 25-1: The `FrameDecision` message, with its clamps written down
 before any code*
 
 Notice what the comments promise: gain is clamped to -24..12 dB, a hold
@@ -187,7 +187,7 @@ enc_route :: (w: WRoute, a: [] u8, b: [] u8) -> V_Route {
 }
 ```
 
-*Listing 27-2: Building a `Route` with the generated setters, alternating
+*Listing 25-2: Building a `Route` with the generated setters, alternating
 two scratch buffers*
 
 There's one thing the wire checks can't do in the evaluator. The setters
@@ -233,7 +233,7 @@ KERNEL :: #run make_kernel();
 #assert KERNEL[KN - 1] == 0.0;
 ```
 
-*Listing 27-3: The resampling filter, built at compile time*
+*Listing 25-3: The resampling filter, built at compile time*
 
 Once we have 320 samples at 16 kHz, we measure them. Let's write a small
 version ourselves. We want three numbers per frame: the RMS level, the
@@ -322,7 +322,7 @@ main :: () {
 }
 ```
 
-*Listing 27-4: A level meter for one 20 ms frame*
+*Listing 25-4: A level meter for one 20 ms frame*
 
 A few lines deserve a closer look. `4.342944819032518 * log(p)` is
 10·log10(p) written with the natural log: decibels of a power ratio.
@@ -370,7 +370,7 @@ noise_next :: (noise: f32, rms: f32, speaking: bool) -> f32 {
 }
 ```
 
-*Listing 27-5: The noise floor estimate*
+*Listing 25-5: The noise floor estimate*
 
 Then a frame's speech likelihood combines three cues: how far it sits above
 the floor, how loud it is at all, and how often it crosses zero. Here is a
@@ -426,7 +426,7 @@ main :: () {
 }
 ```
 
-*Listing 27-6: Speech likelihood from three cues, with a rule checked over
+*Listing 25-6: Speech likelihood from three cues, with a rule checked over
 every whole-dB level and floor*
 
 Each cue goes through a sigmoid, so it's a soft 0-to-1 vote rather than a
@@ -575,7 +575,7 @@ main :: () {
 }
 ```
 
-*Listing 27-7: A toy end-of-turn machine, checked on every 12-frame
+*Listing 25-7: A toy end-of-turn machine, checked on every 12-frame
 pattern*
 
 `step` is a pure function: it takes the old state and one frame, and
@@ -656,7 +656,7 @@ turn_step :: (t0: Turn, speech: bool, above: bool, p: f32, end_now: bool, end_si
 #forall "turn machine" pattern: 0..<4096 {
 ```
 
-*Listing 27-8: The start of the real turn machine, and the rule its check
+*Listing 25-8: The start of the real turn machine, and the rule its check
 states over every 12-frame pattern*
 
 `ONSET_GAP` is 2 frames and `ONSET_SPAN` is 25 (500 ms). The new `above`
@@ -713,7 +713,7 @@ cut :: (s: [] VoiceState) {
 }
 ```
 
-*Listing 27-9: Cutting playback moves the epoch forward and empties the
+*Listing 25-9: Cutting playback moves the epoch forward and empties the
 buffer*
 
 If you've read Chapter 15, this is the same idea as a request epoch: a
@@ -740,7 +740,7 @@ breath doesn't cut the reply, and it happens once per turn:
   } else if !speech { s[0].barge_run = 0; }
 ```
 
-*Listing 27-10: Barge-in in `verse_voice_uplink`*
+*Listing 25-10: Barge-in in `verse_voice_uplink`*
 
 Notice `self_decide`. The engine doesn't cut playback directly here. It
 makes a decision, the same kind of decision an outside decider could send,
@@ -921,7 +921,7 @@ main :: () {
 }
 ```
 
-*Listing 27-11: A decision gate: clamps, a confidence floor, epochs and
+*Listing 25-11: A decision gate: clamps, a confidence floor, epochs and
 deadlines*
 
 The `has` bits are the proto's presence carried into Coax, so a missing
@@ -979,7 +979,7 @@ decide :: (s: [] VoiceState, d0: VoiceDecision) -> bool {
 }
 ```
 
-*Listing 27-12: The engine's one decision gate*
+*Listing 25-12: The engine's one decision gate*
 
 Each frame, `apply_due` looks at the parked decision for its stream. If
 the epoch changed since the decision was parked, it's thrown away. If its
@@ -1121,7 +1121,7 @@ main :: () {
 }
 ```
 
-*Listing 27-13: A four-slot jitter buffer and a trace replayed through it*
+*Listing 25-13: A four-slot jitter buffer and a trace replayed through it*
 
 The trace is a constant array, so it's part of the program, and the check
 replays it twice inside the compiler. The fingerprint is FNV-1a, done in
@@ -1214,7 +1214,7 @@ may_hear :: (f: Floor, slot: s32) -> bool {
 }
 ```
 
-*Listing 27-14: A small floor: consent, one holder, and who may be heard*
+*Listing 25-14: A small floor: consent, one holder, and who may be heard*
 
 For the check, we'll do what the real file does: write a reference model
 the obvious way, inline in the check, and compare the floor to it after
@@ -1252,7 +1252,7 @@ ones:
 }
 ```
 
-*Listing 27-15: A first model check, over every two-step sequence*
+*Listing 25-15: A first model check, over every two-step sequence*
 
 It passes all 324 cases. It looks thorough. Let's ask `coax mutate`
 whether it is:
@@ -1304,7 +1304,7 @@ nothing they do is visible. The fix is to check every three-step sequence:
     // ...
 ```
 
-*Listing 27-16: The model check extended to three steps*
+*Listing 25-16: The model check extended to three steps*
 
 ```shell
 $ coax test examples/ch25_floor.coax
@@ -1367,7 +1367,7 @@ over :: (used: u64, free: u64) -> u64 {
 }
 ```
 
-*Listing 27-17: Saturating arithmetic written so mutation can see its
+*Listing 25-17: Saturating arithmetic written so mutation can see its
 boundaries*
 
 `used < free + 1` means the same as `used <= free`, so why write it the
@@ -1455,7 +1455,7 @@ Filename: verse/platform/voice.h
  * "the old behavior"). Never renumber, reorder, or repurpose anything below.
 ```
 
-*Listing 27-18: The C face's compatibility promise*
+*Listing 25-18: The C face's compatibility promise*
 
 Its enums are numbered exactly as the proto, and `voice.c` asserts that at
 compile time with `_Static_assert`. Everything else in `voice.c` is
@@ -1478,7 +1478,7 @@ uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_vo
 }
 ```
 
-*Listing 27-19: One call through the C face*
+*Listing 25-19: One call through the C face*
 
 Notice that the input view's count comes from Coax
 (`verse_voice_input_frame_samples`), not from the caller. Chapter 20
@@ -1530,7 +1530,7 @@ host asks the meter and the floor, and does what they say:
   }
 ```
 
-*Listing 27-20: The host asks the two authorities before a turn runs*
+*Listing 25-20: The host asks the two authorities before a turn runs*
 
 Where the transcript goes is the floor's answer too
 (`oa_voice_floor_route`), never something read from the words. That's a
@@ -1660,7 +1660,7 @@ Filename: apps/openagents-ios/OpenAgents/Voice/VoiceSession.swift
     }
 ```
 
-*Listing 27-21: The phone's uplink: Coax decides, Swift moves bytes*
+*Listing 25-21: The phone's uplink: Coax decides, Swift moves bytes*
 
 Swift never decides that a turn started or ended, or that you barged in.
 It's told, and it does the platform part: send a control frame, stop the
@@ -1957,7 +1957,8 @@ voice host does sockets and HTTPS and asks Coax before every turn. The
 phone moves audio and bytes and acts on event bits. And each layer has its
 own test, from step-counted worst-case frames to a live Google run.
 
-This is the last chapter. If you want to keep going, the real files are
-the best next step: `verse/voice.coax` is about 1,450 lines, and after
+[Chapter 26](ch26-library-recipes.md) adds small library recipes, and Part
+VI opens up the compiler. If you want to keep going with voice, the real
+files are the best next step: `verse/voice.coax` is about 1,450 lines, and after
 this chapter you should be able to read all of it. The appendices collect
 the keywords, error codes and terms we've used along the way.

@@ -275,7 +275,7 @@ project with LINK A PHONE or by opening an invite link on the phone. See
 - Design: `coax/nostr.md`. Protocol for projects and tasks:
   `docs/protocol/2026-10-28-projects.md`.
 - Work file: `apps/openagents-web/projects/coax/work/nostr.json` (schema in
-  that directory's `README.md`). The Coax roadmap (R0–R12) is a separate
+  that directory's `README.md`). The Coax roadmap (R0–R23) is a separate
   initiative in `coax.json` and stays with the `codex-coax` worker.
 - Tools: `coax/web/project/` (`publish.ts`, `snapshot.ts`, `details.ts`).
   `QUEUE.md` there is the worker loop. Every verb takes a slug or alias.
