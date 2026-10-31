@@ -113,3 +113,10 @@ These outcomes are separate from source-framework full-trajectory parity,
 checkpoint-training holdout or NVIDIA benchmark performance. Four accumulated
 global vision diagnostics remain false under their unchanged budgets, while
 the independently checked public learned endpoints pass.
+
+The [source-framework baseline](framework-baseline-qualification.json) also
+reaches the limit on all three failed cases (20,30,40), using the same reset,
+noise, Coax prep/decoder/controller and a distinct actual-MPS reference provider.
+Its first frame matches all 5,280 frozen normalized outputs exactly. This is
+not NVIDIA BF16 benchmark parity, proof of identical trajectories or causal
+attribution. Product execution remains Coax; Python is reference tooling.

@@ -371,8 +371,17 @@ hardware disturbances are handled.
 
 The next policy-quality comparison is a source-framework closed-loop baseline
 under exactly this reset, noise and controller profile, especially for demos
-20, 30 and 40. It has not been run. That comparison can separate checkpoint or
-reset-profile limits from composed numerical drift. The four failed visual
+20, 30 and 40. It has now run on demos 20, 30 and 40: all three reference episodes also
+reach the 720-tick limit, with exact controls-only replay. The
+[reference receipt](../fixtures/robotics/libero-panda/framework-baseline-qualification.json)
+records all 270 actual MPS forwards. It uses the pinned official Transformers
+backbone and independently authored source-equation head under the F32 profile,
+with the same Coax preparation, decoding and controller; it is development
+tooling, not a Python product fallback or NVIDIA BF16 benchmark. The first
+genuine reference frame matches all 5,280 frozen normalized words exactly.
+These timeouts therefore occur without Coax numerical drift being necessary
+for the outcome. Independently evolving trajectories do not establish numerical
+identity or locate a failure cause. The four failed visual
 hidden diagnostics also remain a concrete numerical improvement target. The owned physical solver, differentiable sensitivities and batched
 function transforms remain separate [roadmap work](PLAN.md). A real deployment
 also needs a measured asynchronous deadline profile, hardware-specific state

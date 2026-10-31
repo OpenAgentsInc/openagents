@@ -1,0 +1,411 @@
+{
+  "aggregate": {
+    "GPU_seconds": null,
+    "all_exact_physics_replay": true,
+    "cases": 3,
+    "holds": 0,
+    "inference_wall_seconds": 199.48433599999998,
+    "model_calls": 270,
+    "native_Coax_subset_timeouts": 3,
+    "physics_steps": 54000,
+    "refusals": 0,
+    "source_framework_successes": 0,
+    "source_framework_timeouts": 3,
+    "task_outcome_differences": 0,
+    "task_success_acceptance_threshold": null,
+    "ticks": 2160,
+    "torque_axes_clipped": 5,
+    "wall_seconds": 223.605659
+  },
+  "cases": [
+    {
+      "case": "demo_020",
+      "holds": 0,
+      "learned_forward_mps_wall_sum_seconds": 38.95208695315523,
+      "model_calls": 90,
+      "native_Coax_original_ledger": {
+        "bytes": 704,
+        "sha256": "12a72fed140b465314b6c21751d802eb3a7acdda7b2faee02b26617f610582e6"
+      },
+      "native_Coax_success": false,
+      "outcome": "720-tick timeout",
+      "physics_steps": 18000,
+      "private_prepared_request_capsules": {
+        "all_capsule_sha_and_sizes_checked": true,
+        "chain_definition": "Start32zero bytes; SHA256(previous32 || each capsule SHA256 bytes) in request ordinal order",
+        "count": 90,
+        "ordered_sha_chain": "8ab75c7d448fee147fb6105b8cd7d8c0798033280477a9895c63dc6a3b486a8d",
+        "public_payloads": false,
+        "total_bytes": 287187120
+      },
+      "profile": "panda-libero-mujoco331-transformers-independenthead-mps-f32-fixed-noise-v1",
+      "refusals": 0,
+      "request_journal": {
+        "bytes": 54561,
+        "sha256": "bb6226b09b3436ad68f1a0ae7b1c32d3acdccb3c4b2b11ad7de40d546c0ff0eb"
+      },
+      "source_framework_first_decoded": {
+        "bytes": 448,
+        "sha256": "4134ae7904ae021c768d25ee8d95000f24a9ee5446d22d634df521f1d8b2a56c"
+      },
+      "source_framework_physics_trace": {
+        "bytes": 9216064,
+        "final_chain_sha256": "90b289c7ca75aa346757d1c258a09ac1bf35bed726f660c8ca6c20958e903376",
+        "independent_stdlib_chain_verified": true,
+        "records": 18000,
+        "sha256": "98458a990ec0f24b34fce5dfced8f26186fd6c61bbbde12c7856e8187bcf5707"
+      },
+      "source_framework_private_ledger": {
+        "bytes": 737,
+        "sha256": "a793629290a678e65da54900421167f66a7de8562dd1cb9af139360546c69767"
+      },
+      "source_framework_provider_metadata": {
+        "bytes": 1479,
+        "sha256": "18498752eb09348cfab8077f83ca0c96fe93d5ffcaa3026f8c5ff08d22bf60a7"
+      },
+      "source_framework_success": false,
+      "task_outcome_difference": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": null,
+        "inference_max_seconds": 0.931054,
+        "inference_seconds": 40.117677,
+        "model_context_open_seconds": 2.26116675,
+        "wall_seconds": 44.044088
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "case": "demo_030",
+      "holds": 0,
+      "learned_forward_mps_wall_sum_seconds": 60.84464658400975,
+      "model_calls": 90,
+      "native_Coax_original_ledger": {
+        "bytes": 705,
+        "sha256": "b8e7029a8e29bb7bf19b48ef67a0d189748c64c48a179852161a65df08f46f10"
+      },
+      "native_Coax_success": false,
+      "outcome": "720-tick timeout",
+      "physics_steps": 18000,
+      "private_prepared_request_capsules": {
+        "all_capsule_sha_and_sizes_checked": true,
+        "chain_definition": "Start32zero bytes; SHA256(previous32 || each capsule SHA256 bytes) in request ordinal order",
+        "count": 90,
+        "ordered_sha_chain": "5b202c7a3781e36291c156222d47ea9aabe19508665b56b34e5dd5d6a9b1dcfa",
+        "public_payloads": false,
+        "total_bytes": 287187120
+      },
+      "profile": "panda-libero-mujoco331-transformers-independenthead-mps-f32-fixed-noise-v1",
+      "refusals": 0,
+      "request_journal": {
+        "bytes": 54543,
+        "sha256": "665aeb3902fa3c3579ed444fb749f5c81980e06de20ec767146e14e891f38466"
+      },
+      "source_framework_first_decoded": {
+        "bytes": 448,
+        "sha256": "93d5c5ba2583c61551a16e943fb9ad8909014ce1a8d707eb13a82bc048362b46"
+      },
+      "source_framework_physics_trace": {
+        "bytes": 9216064,
+        "final_chain_sha256": "198992fcadf2276928ef452f339be04f03c3feece6402dadaa8945e8a8500c81",
+        "independent_stdlib_chain_verified": true,
+        "records": 18000,
+        "sha256": "e91b2df4530a15d6e70843bd50258017833a4206c0149a01955103a94fcaa263"
+      },
+      "source_framework_private_ledger": {
+        "bytes": 736,
+        "sha256": "b611ef66860cd99cf7387b0c5fdb955bb9d3065e4e795289c03638499eeb4d63"
+      },
+      "source_framework_provider_metadata": {
+        "bytes": 1479,
+        "sha256": "5fcd5d3b3ce12f445843c266c20cdde5760ecb13580cccf0d0d67b03d5ebed60"
+      },
+      "source_framework_success": false,
+      "task_outcome_difference": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": null,
+        "inference_max_seconds": 1.294806,
+        "inference_seconds": 62.03448,
+        "model_context_open_seconds": 1.66170154,
+        "wall_seconds": 69.365596
+      },
+      "torque_axes_clipped": 2
+    },
+    {
+      "case": "demo_040",
+      "holds": 0,
+      "learned_forward_mps_wall_sum_seconds": 95.91037279181182,
+      "model_calls": 90,
+      "native_Coax_original_ledger": {
+        "bytes": 704,
+        "sha256": "8fddb32181431ab61367f8aa6da79d96dd9f99008de18d48612147403090acc2"
+      },
+      "native_Coax_success": false,
+      "outcome": "720-tick timeout",
+      "physics_steps": 18000,
+      "private_prepared_request_capsules": {
+        "all_capsule_sha_and_sizes_checked": true,
+        "chain_definition": "Start32zero bytes; SHA256(previous32 || each capsule SHA256 bytes) in request ordinal order",
+        "count": 90,
+        "ordered_sha_chain": "5c6d3b41e262b84452b576b7489679ddd5f48f5a3a42b1333f13db81ad6ae3e5",
+        "public_payloads": false,
+        "total_bytes": 287187120
+      },
+      "profile": "panda-libero-mujoco331-transformers-independenthead-mps-f32-fixed-noise-v1",
+      "refusals": 0,
+      "request_journal": {
+        "bytes": 54515,
+        "sha256": "924e8c1774bae6d3463f247d69e34d4bc84c6fa6b0e0a5256808a08b4450eb80"
+      },
+      "source_framework_first_decoded": {
+        "bytes": 448,
+        "sha256": "bc570ccfcd4b1965692eafbc17e10db5ee61dd6bfe578b03553ba64e87fe4f8d"
+      },
+      "source_framework_physics_trace": {
+        "bytes": 9216064,
+        "final_chain_sha256": "7d5276880d536521ad44ecf497fcb92ada2da510e63e90fd49a20cfc19ac9506",
+        "independent_stdlib_chain_verified": true,
+        "records": 18000,
+        "sha256": "bf7285e8b74ae5553b225c3db819f4787c8e970d8ae1c8b0e12f25f18e4372d2"
+      },
+      "source_framework_private_ledger": {
+        "bytes": 738,
+        "sha256": "bbfbf762f14d4fa9a6525778d7008b3bace6566a9c58b9675df3daaffab39758"
+      },
+      "source_framework_provider_metadata": {
+        "bytes": 1478,
+        "sha256": "8820014e225329ab6168d116b96e53c1322abe09ef1680981add9e148fe983fb"
+      },
+      "source_framework_success": false,
+      "task_outcome_difference": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": null,
+        "inference_max_seconds": 2.264305,
+        "inference_seconds": 97.332179,
+        "model_context_open_seconds": 4.88180133,
+        "wall_seconds": 110.195975
+      },
+      "torque_axes_clipped": 3
+    }
+  ],
+  "completed": true,
+  "executed_build": {
+    "panda-policy-generated.c": {
+      "bytes": 551964,
+      "sha256": "61b7e8537fb16c63340c8a5170f674c9197a35052ba045517117236ede4e61c0"
+    },
+    "panda-policy-generated.h": {
+      "bytes": 54556,
+      "sha256": "596fc744fb6e4547224568eb53ad20a979ceaa0e672d8b0f50e314715b38f1a3"
+    },
+    "panda-reference.dylib": {
+      "bytes": 217192,
+      "sha256": "16e1c519d19d5782da312f6c3a4c92533444e1ff597ff888ffcb201bff936fe3"
+    },
+    "panda-session.c": {
+      "bytes": 206173,
+      "sha256": "f5a39628141a07f64231d72d3f1b88bf409bf6a23597235b1eb4e88d99d6de0a"
+    },
+    "panda-session.h": {
+      "bytes": 20375,
+      "sha256": "6cb2b52249750e8fffc46e137bbff0a3906c1bdce18abc56fbe2a4123df52f5b"
+    }
+  },
+  "failure_scope": "Callback/SDK/controller/clock failures abort without completed ledgers; all three original frozen cases were run once without selecting only wins.",
+  "first_frame_changed_resident_integration": {
+    "all_prepared_words_exact": true,
+    "framework_normalized_output": {
+      "bytes": 21120,
+      "sha256": "d61667e84d31d69c9dc7c29ce87bde7dca129e413198d383aaa4ff319e0718d0"
+    },
+    "frozen_tolerance": {
+      "atol": 0.002,
+      "rtol": 0.002
+    },
+    "independent_decoded_values_exact": 112,
+    "independent_gripper_bits_exact": 16,
+    "max_abs_error": 0,
+    "normalized_bit_identical": true,
+    "normalized_values": 5280,
+    "original_genuine152_capsule_record_sha256": "bf0643b55bd1b6754948dc2079e3de1694d81d4c06d8211c442fce1221e91a5a",
+    "private_receipt": {
+      "bytes": 625,
+      "sha256": "41e729b9dec69b45681d724892262fa5dcc50dc1c52369cc4ef0c5ef6de066b4"
+    },
+    "provider_metadata": {
+      "bytes": 1476,
+      "sha256": "9f2fdca4c51e7c4ddcb4770f7216aee42ca7d71d6722ad42d48abadb66335880"
+    },
+    "same_observation_scope": "Only the unchanged genuine152 first-frame input/capsule; no same-observation claim is made across independently evolving task trajectories.",
+    "shared_Coax_decoded_output": {
+      "bytes": 448,
+      "sha256": "968449e10a19d19c8674b941b3ae8df1b2fd4417767810164509ebde0d9739d6"
+    }
+  },
+  "integration_qualification_passed": true,
+  "interpretation": {
+    "attribution_rule": "Independently evolving trajectories cannot localize numerical drift; a task-outcome difference requires SAME-actual-observation comparison before attribution. Private prepared-input/normalized-output capsules are retained for such diagnostics.",
+    "not_established": "Numerical identity on all observations, originalNVIDIA BF16/wrapper behavior, canonical reset/RNG parity, task correctness on other cases, or the cause of the timeouts.",
+    "old_3_of6_and_global_vision_hidden_failure_receipts_replaced": false,
+    "same_observation_shadow_executed": false,
+    "supported": "The independent source-framework F32 provider also timed out on all three cases under this owned fixedreset/noise/controller profile. These outcomes alone do not identify the cause."
+  },
+  "learned_profile": {
+    "CPU_learned_model_fallback": false,
+    "NVIDIA_BF16_wrapper_or_benchmark_claim": false,
+    "backbone_tensors": 493,
+    "category": 2,
+    "cloned_repository_execution": false,
+    "cosmos_revision": "9ce19a195e423419c349abfc86fd07178b230561",
+    "diffusers": "0.35.1",
+    "head_tensors": 537,
+    "hidden_layer_capture_hooks": false,
+    "learned_device": "mps",
+    "learned_dtype": "float32",
+    "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+    "source_weights": "BF16 decoded exactly toF32",
+    "torch": "2.9.0",
+    "transformers": "4.57.3",
+    "use_cache": false,
+    "weights_resident_across_requests": true
+  },
+  "schema": "psionic-panda-framework-baseline-qualification-v1",
+  "selection_scope": "Posthoc diagnostic subset020/030/040 selected because they timed out in the original frozen169evaluation; not a checkpoint-training holdout, fullsix-case reference score or generalization estimate.",
+  "shared_with_native_Coax": {
+    "Coax_backbone_features_fed_to_reference": false,
+    "SDK_physics_and_rendering": true,
+    "actions_before_replan": 8,
+    "clock_guard": true,
+    "controller": true,
+    "explicit_noise_sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0",
+    "finite_guard_and_action_decoder": true,
+    "maximum_ticks": 720,
+    "nominal_home": true,
+    "paired_original_XML_and_init_state": true,
+    "physical_substeps_per_tick": 25,
+    "raw_image_preparation": true,
+    "source_framework_computes_own_vision_positions_and_text": true,
+    "state_normalization": true,
+    "supervisor": true,
+    "tokenizer_and152IDs": true
+  },
+  "source_framework_model_provider": "Pinned installed Transformers backbone plus independently authored source-equation action head; original selected weights",
+  "source_identity": {
+    "psionic/lib/robotics/panda-policy.coax": {
+      "bytes": 27248,
+      "sha256": "ff47118d0157aa344b3b93828b0d7e973309151ba18fdb60f05d47456c9dd56e"
+    },
+    "psionic/platform/panda-env.c": {
+      "bytes": 8240,
+      "sha256": "dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0"
+    },
+    "psionic/platform/panda-policy.c": {
+      "bytes": 15361,
+      "sha256": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0"
+    },
+    "psionic/tests/robotics/PANDA_REFERENCE.md": {
+      "bytes": 3508,
+      "sha256": "3f92712c62d0cdcc46d6ceb54b112c1630bb89d2afefea58e829ec8819d9c7e6"
+    },
+    "psionic/tests/robotics/build-panda-reference.sh": {
+      "bytes": 1451,
+      "sha256": "af0c858a8baff6aefb6bd35e2d5afce1b7e1e19fa4b8d16c7beaba83bc94f731"
+    },
+    "psionic/tests/robotics/check-panda-reference-native.sh": {
+      "bytes": 1023,
+      "sha256": "e8043389f340c35fae4ebd6048d13bc0f54f5bff03cf9cd1a0e0d193f3e01b0c"
+    },
+    "psionic/tests/robotics/groot_vla_reference.py": {
+      "bytes": 15214,
+      "sha256": "a7e956f4b7287c1408f7138e13b6ce24104162df4e1178458b69bcf153769398"
+    },
+    "psionic/tests/robotics/panda-session.coax": {
+      "bytes": 6442,
+      "sha256": "1bdf3eac860ac9d95391bf1bfcd27588fc0b811adfaa518108fb93973ae91c61"
+    },
+    "psionic/tests/robotics/panda_loop_effects.h": {
+      "bytes": 12110,
+      "sha256": "27da2477e2e6e359ce00a9813607d05eaa253ad3a4609822b28ea9fe2917d687"
+    },
+    "psionic/tests/robotics/panda_loop_metal.c": {
+      "bytes": 1754,
+      "sha256": "e75e195e56d873c2d01b9a676e065220f17d46375fcdf90d2a9da835c19c7bc5"
+    },
+    "psionic/tests/robotics/panda_loop_provider.h": {
+      "bytes": 536,
+      "sha256": "1163f9991b722665ae85b2a7390cc558692e25470af8743616cff14d7eb25f01"
+    },
+    "psionic/tests/robotics/panda_reference_bridge.c": {
+      "bytes": 6049,
+      "sha256": "ab5a0a2514395badc5f07c5f145465639e3312eef9c9189de02b50c262c94b35"
+    },
+    "psionic/tests/robotics/panda_reference_bridge.h": {
+      "bytes": 1235,
+      "sha256": "95c9b6fc2e765658cb2b812bd36866548777c29ddb2a0a8d26dace06b61b41a7"
+    },
+    "psionic/tests/robotics/panda_reference_loop.c": {
+      "bytes": 902,
+      "sha256": "677a73705012bb144c23f20815015aba30661f7af1c894c896039cb9c52ea066"
+    },
+    "psionic/tests/robotics/panda_reference_native.c": {
+      "bytes": 2286,
+      "sha256": "cecf7d8b18896e2f8a52b038b95affc9ca1d74bde5015124fe35152d65a7a145"
+    },
+    "psionic/tests/robotics/panda_reference_policy.py": {
+      "bytes": 13070,
+      "sha256": "77c867b46f17572bfe6c134c88a83b0b1a772893eba8ee42e658c6a94d1e66cd"
+    },
+    "psionic/tests/robotics/run-panda-loop-reference.sh": {
+      "bytes": 556,
+      "sha256": "724f25f993fa9decd188ca6627845973915b88bedaf6ac56e715a3144be5f772"
+    }
+  },
+  "source_identity_notes": "Post-run header comment clarifies effect1/0 versus runnerCLI0; no ABI or numerical change.",
+  "targeted_changed_seam_checks": {
+    "Coax_sources_changed": false,
+    "boundary_native_checks_each": 3960542,
+    "callback_failure_nonfinite_partial_write_atomic_refusal": true,
+    "callback_output_all_words_poisoned_before_call": true,
+    "modes": [
+      "release",
+      "ASan+UBSan"
+    ],
+    "native_one_tick_ASan": {
+      "binary": {
+        "bytes": 876928,
+        "sha256": "4ed12c6774024e817549726934f9509d22c2a783c59f4e01a0f9885d0745a7f8"
+      },
+      "compared_prefix_bytes": 12832,
+      "decoded112_exact_to_original": true,
+      "original_native_schema_profile_fieldset_unchanged": true,
+      "physics_trace": {
+        "bytes": 12864,
+        "final_chain_sha256": "7493f558ae8a6acd838f3e7719d163f4ca963dd22ea01dd8b7c11111e3134557",
+        "independent_stdlib_chain_verified": true,
+        "records": 25,
+        "sha256": "f4aedf41a8969fab19fe5c918b63dd77f93897d69c2bcd9cb9dffd944ccde435"
+      },
+      "private_ledger": {
+        "bytes": 693,
+        "sha256": "48d9ae72b53347141747a60f4f34aa54c5141d55d3a63eae73b0b451e814734a"
+      },
+      "seed_plus_first25_records_exact_to_original": true
+    },
+    "release_boundary_binary": {
+      "bytes": 155368,
+      "sha256": "e8867530cc25142b5bc12739da982492055847ace1d8f6f820e8566ab9285876"
+    },
+    "sanitized_boundary_binary": {
+      "bytes": 549336,
+      "sha256": "249516e6935ff5b67c712709720069eb32fc3eb62d83a86a5f7e6bbb588f4a71"
+    },
+    "sanitized_boundary_log": {
+      "bytes": 95,
+      "sha256": "e9ca01986d357ea6f63dd4c1671981a1e0a1ed95e6dfa981260e33b8872363d0"
+    },
+    "unchanged_numeric_gates_rerun": false
+  },
+  "timing_scope": "Inference wall includes private prepared-request archive work; GPUdevice time uninstrumented/null. Shared-machine runs are not a dedicated throughput benchmark. Simulation pauses during inference;20Hz is logical cadence."
+}
