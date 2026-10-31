@@ -109,6 +109,7 @@ Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
 Belt :: struct {
   started: bool; golden: bool; facts: bool; framed: bool;
+  card: bool;   // ?card=1: the map without the HUD, for a link's card (coax/web/og-render.ts)
   t: f64;                // seconds since J2000
   speed: int = 2;
   clock: f32;            // real seconds, for the sky's twinkle
@@ -413,6 +414,7 @@ started :: (s: [] Belt) { if !s[0].started { belt_start(s); } }
 
 ship_mass :: (sh: Ship) -> f64 { return sh.dry + sh.cargo + sh.fuel; }
 
+NEAR_TOF :: 200.0 * DAY;   // the longest trip planned to a place near the ship's own orbit
 plan_for :: (s: [] Belt, k: int, dest: int, fast: bool) -> Plan { return plan_with(s, k, dest, fast, 0.85); }
 plan_with :: (s: [] Belt, k: int, dest: int, fast: bool, share: f64) -> Plan {
   p: Plan;
@@ -424,6 +426,9 @@ plan_with :: (s: [] Belt, k: int, dest: int, fast: bool, share: f64) -> Plan {
   hoh := orbit_hohmann_time(a1, target.a, GM_SUN);
   tmin := fmax(20.0 * DAY, 0.12 * hoh);
   tmax := fmax(tmin + 30.0 * DAY, 1.25 * hoh);
+  // A place on nearly the ship's own orbit (a rock beside Ceres): the cheapest trip there is a
+  // phasing loop most of the way round the Sun, years for a hop. Such a hop is planned within NEAR_TOF.
+  if abs(target.a - a1) < 0.25 * a1 { tmax = fmin(tmax, fmax(tmin + 30.0 * DAY, NEAR_TOF)); }
   m0 := ship_mass(sh);
   budget := ifx sh.fuel > 0.0 then orbit_delta_v(sh.isp, m0, m0 - share * sh.fuel) else 0.0;
   if sh.faction != FREE_BELT { budget = 25000.0; }
@@ -713,6 +718,7 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
     s[0].facts = true;
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
     if stage_of(fact_of(text, "url")) == STAGE_HIGHLIGHT { stage_highlight(s); }
+    if query_word(fact_of(text, "url"), "card=1") { s[0].card = true; }
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
   if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); }
@@ -1365,7 +1371,7 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   stroke(out, d, rx, ry, x - ch * r * 0.25, y - shd * r * 0.25, 1.0 * u, bright, col.x, col.y, col.z);
   stroke(out, d, x - ch * r * 0.25, y - shd * r * 0.25, lx, ly, 1.0 * u, bright, col.x, col.y, col.z);
   if sel { ring(out, d, x, y, 13 * u, 28, 0.9 * u, 0.95, col.x, col.y, col.z); }
-  block(d, x, y, 6 * u);
+  block(d, x, y, 7.5 * u);   // the arrow's tip and wings, all of it
   // a ship sitting on its world or station is not named until the view is close enough to tell them apart
   if !sel && sh.mode != FLYING && spacecam_pixels(s[0].cam, berth_radius(sh.at)) < 14.0 * f64(u) { return; }
   prio := ifx sel then PRIO_HOT else ifx sh.faction == FREE_BELT then PRIO_OWN else ifx sh.mode == FLYING then PRIO_RIVAL else PRIO_PARKED;
@@ -1791,7 +1797,10 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     stroke(out, d[..], x1, y1, x0, y1, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
     stroke(out, d[..], x0, y1, x0, y0, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
   }
-  if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); } else { stage_hud(s, out, u, d[..]); }
+  if s[0].card { s[0].btn_n = 0; } else if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); } else { stage_hud(s, out, u, d[..]); }
+  // the Sun's disc and its bright core: no name is written over it
+  sun_at := screen_of(s, D3_ZERO);
+  block(d[..], pix(sun_at.x), pix(sun_at.y), hi(pix(spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SUN])) * 1.2, 9 * d[0].k));
   place_tags(s, out, u, d[..]);
   // The uniforms.
   sun := screen_of(s, D3_ZERO);
@@ -1956,6 +1965,17 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert b.year == 2200 && b.month == 1 && b.day == 1;
   c := date_of(ORBIT_2200 + 59.0 * DAY);
   #assert c.year == 2200 && c.month == 3 && c.day == 1;
+}
+
+#test "a trip to any ice rock near Ceres is planned in months, not a loop round the Sun" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  for j: 0..<ICE_ROCKS {
+    for fast: 0..<2 {
+      p := plan_for(s[..], 0, P_ICE + j, fast == 1);
+      #assert p.ok && p.tr.tof <= NEAR_TOF + DAY;
+    }
+  }
 }
 
 #test "a miner sent for ice mines at the rock, flies home and delivers it, and the rivals fly" {
