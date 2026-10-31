@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -64,10 +64,6 @@ everglade=$!
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
 fairy=$!
-# /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player, thumbs and the people (verse/cast.coax).
-"$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \
-  "$m/player.coax" "$m/grid.coax" "$m/cast.coax" &
-thegrid=$!
 # /realms/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
@@ -107,7 +103,7 @@ orbitleague=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
-# The public homepage and /new-land alias. Warm start is real Coax-verified
+# The public homepage and /new-land alias, and /realms/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified
 # public data; open pages independently watch and refresh Nostr in Coax.
 bun "$here/../../coax/web/project/landing.ts" || echo "home: keeping its last complete verified warm start" >&2
 "$here/../../coax/web/project/build-home.sh" "$here/build/newland.wasm" &
@@ -201,7 +197,6 @@ wait "$belt"
 wait "$orbitleague"
 wait "$everglade"
 wait "$fairy"
-wait "$thegrid"
 wait "$villa"
 [[ -z "$newland" ]] || wait "$newland"
 wait "$connectpylon"

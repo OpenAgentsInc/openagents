@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Homepage renderer, public verifier and project fold in separate Coax units.
+# Homepage renderer, public verifier and project fold in separate Coax units; the same module is
+# the Grid (/realms/the-grid, data-page 1), with the player and thumbs as libraries.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../../.." && pwd)"
@@ -13,6 +14,14 @@ for unit in newland landing-browser landing-fold; do
   (cd "$repo" && coax/bin/coax c "$directory/$unit.coax" --library --header "$work/$unit.h") > "$work/$unit.c"
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
   objects+=("$work/$unit.o")
+done
+# The Grid (/realms/the-grid) is this module walked (newland-walk.coax): the engine's controller
+# and the phone's thumbs are libraries, as every realm links them (Player.h, Grid.h).
+for library in verse/player.coax verse/grid.coax; do
+  base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
+  (cd "$repo" && coax/bin/coax c "$library" --library --header "$work/$base.h") > "$work/$base.c"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$base.c" -o "$work/$base.o"
+  objects+=("$work/$base.o")
 done
 for unit in newland landing-reader landing-fold landing-cache; do
   directory="$here"; [[ "$unit" != newland ]] || directory="$repo/apps/openagents-web"

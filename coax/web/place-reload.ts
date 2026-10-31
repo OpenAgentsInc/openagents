@@ -20,7 +20,6 @@ const REALMS: Record<string, { slot: string; walk: string; hash?: string; click?
   "everglade#quest-board": { slot: "everglade", walk: "s4000 d900 s2500", hash: "quest-board", step: "s" },
   "fairy-forest": { slot: "fairy-forest", walk: "w3500 d900 w2000", click: [1073, 591] },
   "hecates-cemetery": { slot: "hecates-cemetery", walk: "w3500 d900 w2000" },
-  "the-grid": { slot: "the-grid", walk: "w3500 d900 w2000" },
   "garden": { slot: "garden", walk: "w3500 d900 w2000" },
   "haunted-house": { slot: "haunted-house", walk: "w2500 d600 w1500" },
   "sandbox": { slot: "sandbox", walk: "w2500 d600 w1500" },

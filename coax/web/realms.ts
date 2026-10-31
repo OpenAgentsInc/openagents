@@ -32,7 +32,8 @@ export type Style = (typeof STYLES)[number]
 export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
-export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+// page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
+export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -209,6 +210,7 @@ export function page(r: Realm): string {
   const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
   const alt = esc(r.card ? r.alt : `${r.title}: a still of the realm, with its name`)
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
+    + (r.page ? ` data-page="${r.page}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")

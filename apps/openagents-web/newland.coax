@@ -18,6 +18,7 @@
 #load "newland-xp.coax";
 #load "analytics.coax";
 #load "newland-walkers.coax";
+#load "newland-walk.coax";   // the Grid, /realms/the-grid: this scene, walked (data-page 1)
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
@@ -119,6 +120,7 @@ LandState :: struct {
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
   pylons: int; pyl: [MAX_PYLONS] Pyl;
   walk: [1] Walkers; walk_box: Box; walk_click: bool; dive_fade: f32;   // WALK AROUND and the Grid's walkers (newland-walkers.coax)
+  walking: bool; wk: [1] Walk;   // the Grid's page (data-page 1): this scene walked, you in it (newland-walk.coax)
   playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
   network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_rows:[MAX_PYLONS]Box;
   action: int; outbox: [256] u8; out_n: int;
@@ -388,7 +390,7 @@ dot3 :: (a: Fv, b: Fv) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
 cross3 :: (a: Fv, b: Fv) -> Fv { return fv(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 unit3 :: (a: Fv) -> Fv { l := sqrt(dot3(a, a)); if l <= 0 { return a; } return fv_times(a, 1 / l); }
 
-Cam :: struct { eye: Fv; right: Fv; up: Fv; ahead: Fv; cx: f32; cy: f32; focal: f32; clip: Box; vx: f32; vy: f32; vr: f32; }
+Cam :: struct { eye: Fv; right: Fv; up: Fv; ahead: Fv; cx: f32; cy: f32; focal: f32; clip: Box; vx: f32; vy: f32; vr: f32; near: f32; }   // near: nothing closer is drawn
 Spot :: struct { x: f32; y: f32; z: f32; ok: bool; }
 
 // A high view from the south-east at about 45°, far away and long-lensed so
@@ -400,12 +402,12 @@ cam :: (look: Fv, yaw: f32, pitch: f32, reach: f32, cx: f32, cy: f32, across: f3
   right := unit3(cross3(ahead, fv(0, 1, 0)));
   up := cross3(right, ahead);
   return Cam.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = across / reach * dist, clip = clip,
-              vx = w * 0.5, vy = h * 0.5, vr = sqrt(w * w + h * h) * 0.5};
+              vx = w * 0.5, vy = h * 0.5, vr = sqrt(w * w + h * h) * 0.5, near = 1};
 }
 spot :: (c: Cam, p: Fv) -> Spot {
   v := fv_sub(p, c.eye);
   z := dot3(v, c.ahead);
-  if z < 1 { return Spot.{x = 0, y = 0, z = z, ok = false}; }
+  if z < c.near { return Spot.{x = 0, y = 0, z = z, ok = false}; }
   return Spot.{x = c.cx + dot3(v, c.right) / z * c.focal, y = c.cy - dot3(v, c.up) / z * c.focal, z = z, ok = true};
 }
 // The vignette: light falls off toward the corners.
@@ -416,7 +418,13 @@ vignette :: (c: Cam, x: f32, y: f32) -> f32 {
 }
 seg :: (out: [] f32, at: int, c: Cam, a: Fv, b: Fv, k: Ink, light: f32) -> int {
   if light <= 0.003 { return at; }
-  p := spot(c, a); q := spot(c, b);
+  // a line that runs behind a walker's camera (the Grid, newland-walk.coax) is cut at the near plane
+  za := dot3(fv_sub(a, c.eye), c.ahead); zb := dot3(fv_sub(b, c.eye), c.ahead);
+  edge_z := c.near * 1.001;
+  if za < edge_z && zb < edge_z { return at; }
+  ca := a; cb := b;
+  if za < edge_z { ca = fv_mix(a, b, (edge_z - za) / (zb - za)); } else if zb < edge_z { cb = fv_mix(b, a, (edge_z - zb) / (za - zb)); }
+  p := spot(c, ca); q := spot(c, cb);
   if !p.ok || !q.ok { return at; }
   t0 := 0.0f32; t1 := 1.0f32;
   dx := q.x - p.x; dy := q.y - p.y;
@@ -2002,8 +2010,10 @@ coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].
 
 // ---------------------------------------------------------------- the frame
 
-coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+// The frame's start, the homepage's and the Grid's alike (newland-walk.coax): the tables read, the
+// clocks on, every Pylon's state for now, the page's size and the uniforms up from black.
+LandFrame :: struct { step: f32; t: f32; motion: f32; d: f32; l: Layout; p: Pen; }
+land_begin :: (s: [] LandState, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> LandFrame {
   if s[0].golden {s[0].wall=HOME_GOLD_CAPTURED+600;s[0].wall_age=s[0].data_age;}
   if !s[0].ready { read_tables(s); s[0].card_k = -1; }
   step := clamp(dt, 0, 0.1);
@@ -2015,21 +2025,25 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     s[0].pyl[i].status=ifx q.live then (ifx s[0].wall<=0 || land_now(s)>=q.valid_until then ST_STALE else q.captured_status) else land_beacon_state(q.captured_status,q.demo,q.valid_for,age,s[0].wall>=LAND_CAPTURED);
   }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
-  d := hi(dpr, 1);
-  t := s[0].time;
-  l := layout(width, height, d);
-  p := Pen.{d = d, fade = 1, time = t, still = still, phone = l.phone};
-  motion := ifx still then 40.0f32 else t + 40;   // the people's clock: already out walking
+  f: LandFrame;
+  f.step = step; f.d = hi(dpr, 1); f.t = s[0].time;
+  f.l = layout(width, height, f.d);
+  f.p = Pen.{d = f.d, fade = 1, time = f.t, still = still, phone = f.l.phone};
+  f.motion = ifx still then 40.0f32 else f.t + 40;   // the people's clock: already out walking
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
   uniforms[0] = width; uniforms[1] = height;
-  uniforms[2] = ifx still then 20.0f32 else 20 + t;
-  uniforms[3] = ifx still then 1.0f32 else ease((t - 0.15) / 3.0);   // up from black
+  uniforms[2] = ifx still then 20.0f32 else 20 + f.t;
+  uniforms[3] = ifx still then 1.0f32 else ease((f.t - 0.15) / 3.0);   // up from black
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[6] = 1;
-  walk_dive(s, step);   // WALK AROUND: the view dives in (newland-walkers.coax)
-  walkers_step(s, step);
-  c := frame_view(s, l, t, step, still, width, height, d);
-  v := floor_grid(out, 0, s, c, s[0].look, p);
+  return f;
+}
+
+// The scene, through camera c: the floor round look, the roads, the places with their trees and
+// tasks, the Pylons, the XP, the people and agents, and the names. The homepage looks at it from
+// high over the places; the Grid from behind you, walking in it (newland-walk.coax).
+land_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, t: f32, motion: f32) -> int {
+  v := floor_grid(out, at, s, c, look, p);
   v = roads(out, v, s, c, p);
   for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
   v = pylon_bay(out, v, s, c, p, t);
@@ -2038,7 +2052,27 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   if coaxial_land_walkers(s) > 0 { v = walkers_draw(out, v, s, c, p, motion); } else { v = people(out, v, s, c, p, motion); }
   v = agents(out, v, s, c, p, motion);
   for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
-  v = pylon_labels(out, v, s, c, p);
+  return pylon_labels(out, v, s, c, p);
+}
+
+// The live status: where the projects' data stands (the homepage's corner line, the Grid's too).
+land_status :: (s: [] LandState, capture: [] u8) -> int {
+  cn:=0;net:=s[0].net[..];ready:=0;for k:0..<HOME_PROJECTS {if (net[0].ready&(1<<k))!=0 {ready+=1;}}
+  if !net[0].started {cn=app(capture,cn,"Build snapshot / connecting to Nostr");}
+  else if net[0].watch_state!=2 {cn=app(capture,cn,"Reconnecting / verified cached data");}
+  else if net[0].stalled {cn=app(capture,cn,"Refresh incomplete / verified cached data");}
+  else {cn=app(capture,cn,ifx ready==HOME_PROJECTS then "Live Nostr / " else "Syncing Nostr / ");cn=app_int(capture,cn,ready);cn=app(capture,cn," of 6 projects");}
+  return cn;
+}
+
+coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  f := land_begin(s, uniforms, width, height, dpr, dt, still);
+  step := f.step; d := f.d; t := f.t; l := f.l; p := f.p; motion := f.motion;
+  walk_dive(s, step);   // WALK AROUND: the view dives in (newland-walkers.coax)
+  walkers_step(s, step);
+  c := frame_view(s, l, t, step, still, width, height, d);
+  v := land_scene(out, 0, s, c, s[0].look, p, t, motion);
   scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
@@ -2046,11 +2080,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
-  capture:[192]u8;cn:=0;net:=s[0].net[..];ready:=0;for k:0..<HOME_PROJECTS {if (net[0].ready&(1<<k))!=0 {ready+=1;}}
-  if !net[0].started {cn=app(capture[..],cn,"Build snapshot / connecting to Nostr");}
-  else if net[0].watch_state!=2 {cn=app(capture[..],cn,"Reconnecting / verified cached data");}
-  else if net[0].stalled {cn=app(capture[..],cn,"Refresh incomplete / verified cached data");}
-  else {cn=app(capture[..],cn,ifx ready==HOME_PROJECTS then "Live Nostr / " else "Syncing Nostr / ");cn=app_int(capture[..],cn,ready);cn=app(capture[..],cn," of 6 projects");}
+  capture:[192]u8;cn:=land_status(s,capture[..]);
   if !sheet {
     if l.phone {
       v=put_fit(out,v,cast(string)capture[0..<cn],16*d,68*d,7*d,ink(p,INK_PALE),width-32*d);

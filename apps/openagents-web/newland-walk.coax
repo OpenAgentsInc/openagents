@@ -1,0 +1,473 @@
+// The Grid, openagents.com/realms/the-grid: the homepage's own scene, walked.
+//
+// The page is the homepage's module (newland.coax) with data-page 1 (coaxial_land_page). Everything
+// in it is the homepage's: land_scene draws the same places, trees, task ticks, roads, Pylons, XP,
+// agents and people from the same tables and the same live relay fold, in the same inks and
+// shaders. Only the camera differs: behind you as you walk among them, with the engine's
+// controller (verse/player.coax, its own library, which the face steps) and the phone's thumbs
+// (verse/grid.coax). The HUD is the Grid's: THE GRID with the project you are nearest, HOME and
+// GALAXY, the controls' hint, the live status and the thumb's ring. A click (not a drag) on a
+// project, a person, an agent or a Pylon opens the homepage's card for it.
+//
+// Where you are: the Grid's metres are the playtest room the-grid's (room.coax), half a grid unit
+// each (WALK_SCALE, as the homepage draws the Grid's walkers, newland-walkers.coax), from the
+// places' middle. The face posts where you are about five times a second; the room answers with
+// everyone else, who walk here as they do on the homepage, under their names. From the homepage's
+// WALK AROUND (?from=home) the camera comes down from the homepage's view onto you.
+
+WK_HOME :: "/";
+WK_GALAXY :: "/verse/galaxy";
+WK_ROOM :: "the-grid";
+WK_POST_EVERY :: 0.2;        // s between posts to the room
+WK_SPAWN_X :: 28.0;          // m from the places' middle: south-east of them, where the homepage looks from,
+WK_SPAWN_Z :: 28.0;          // far enough back that every project is in view as you arrive
+WK_SPAWN_FACE :: -2.35619449;   // facing north-west, into the places (the player's yaw: x = sin, z = cos)
+WK_DIST :: 9.0;              // m the camera starts behind you (the wheel takes it from 1 to 20)
+WK_PHI :: 1.35;              // rad down from straight up: a little over your head, the trees and their names ahead
+WK_TAN :: 0.57735027;        // tan of half the view's height: 60 degrees
+WK_TAN_WIDE :: 0.45;         // and of half its width on a tall screen (a phone: closer in, turn to see the rest)
+WK_NEAR :: 0.05;             // grid units: nothing nearer the eye is drawn
+WK_DIVE :: 2.2;              // s the camera takes to come down from the homepage
+WK_LOOK_DRAG :: 0.0055;      // rad a CSS pixel of drag turns
+WK_TURN :: 1.8;              // rad/s the arrow keys turn
+WK_WHEEL :: 0.006;           // m a wheel unit zooms
+WK_HOLD_FORWARD :: 1; WK_HOLD_BACK :: 2; WK_HOLD_LEFT :: 4; WK_HOLD_RIGHT :: 8; WK_HOLD_RUN :: 16; WK_HOLD_JUMP :: 32;
+WK_HOLD_TURN_LEFT :: 64; WK_HOLD_TURN_RIGHT :: 128; WK_HOLD_TILT_UP :: 256; WK_HOLD_TILT_DOWN :: 512;
+WK_KEY_SHIFT :: -13;         // host.js KEYS
+WK_PRESS_HOME :: 1; WK_PRESS_GALAXY :: 2; WK_PRESS_CARD :: 3;
+
+Walk :: struct {
+  held: int;                         // WK_HOLD_* keys held
+  key_x: f32; key_y: f32; run: bool; jump: bool;   // this frame's, for the face's player
+  look_yaw: f32; look_pitch: f32;    // rad to turn the camera (positive turns left and looks up); the face takes them
+  zoom: f32;                         // m to move the camera out; the face takes it
+  drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32; down_x: f32; down_y: f32; dragged: bool;
+  home_box: Box; galaxy_box: Box; title_box: Box;
+  press: int; press_id: int;         // a press begun on HOME, GALAXY or the card (WK_PRESS_*), and its finger
+  feet: Fv; face: f32; phase: f32; act: int; placed: bool;   // you, in grid units, and your stride
+  from_home: bool; dive: f32;        // WALK AROUND brought you: the camera comes down
+}
+
+// The face: which page this is (host.js data-page; 1 the Grid).
+coaxial_land_page :: (s: [] LandState, page: int) #export_c { if s.count > 0 { s[0].walking = page == 1; } }
+coaxial_land_walking :: (s: [] LandState) -> bool #export_c { return s.count > 0 && s[0].walking; }
+coaxial_walk_spawn_x :: () -> f32 #export_c { return WK_SPAWN_X; }
+coaxial_walk_spawn_z :: () -> f32 #export_c { return WK_SPAWN_Z; }
+coaxial_walk_spawn_face :: () -> f32 #export_c { return WK_SPAWN_FACE; }
+coaxial_walk_dist :: () -> f32 #export_c { return WK_DIST; }
+coaxial_walk_phi :: () -> f32 #export_c { return WK_PHI; }
+coaxial_walk_room :: () -> string #export_c { return WK_ROOM; }
+coaxial_walk_post_every :: () -> f32 #export_c { return WK_POST_EVERY; }
+
+// The page facts (host.js message 600): the address asks for the dive when its query has from=home.
+coaxial_walk_facts :: (s: [] LandState, facts: string) #export_c {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > 4 && facts[i..<i + 4] == "url=" && wk_from_home(facts[i + 4..<e]) && !s[0].golden { s[0].wk[0].from_home = true; }
+    i = e + 1;
+  }
+}
+wk_from_home :: (url: string) -> bool {
+  q := 0;
+  while q < url.count && url[q] != '?' && url[q] != '#' { q += 1; }
+  if q >= url.count || url[q] != '?' { return false; }
+  i := q + 1;
+  while i < url.count && url[i] != '#' {
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == "from=home" { return true; }
+    i = e + 1;
+  }
+  return false;
+}
+
+// ---- the controls
+
+wk_hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return WK_HOLD_FORWARD; }
+  if key == 's' || key == 'S' { return WK_HOLD_BACK; }
+  if key == 'a' || key == 'A' { return WK_HOLD_LEFT; }
+  if key == 'd' || key == 'D' { return WK_HOLD_RIGHT; }
+  if key == WK_KEY_SHIFT { return WK_HOLD_RUN; }
+  if key == ' ' { return WK_HOLD_JUMP; }
+  if key == KEY_LEFT { return WK_HOLD_TURN_LEFT; }
+  if key == KEY_RIGHT { return WK_HOLD_TURN_RIGHT; }
+  if key == KEY_UP { return WK_HOLD_TILT_UP; }
+  if key == KEY_DOWN { return WK_HOLD_TILT_DOWN; }
+  return 0;
+}
+wk_axis :: (held: int, plus: int, minus: int) -> f32 {
+  a := 0.0f32;
+  if held & plus != 0 { a += 1; }
+  if held & minus != 0 { a -= 1; }
+  return a;
+}
+
+coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  if s[0].card != CARD_NONE && key == KEY_ESCAPE { close_card(s); return true; }
+  if key == '+' || key == '=' { s[0].wk[0].zoom -= 0.8; return true; }
+  if key == '-' || key == '_' { s[0].wk[0].zoom += 0.8; return true; }
+  b := wk_hold_bit(key);
+  if b == 0 { return false; }
+  s[0].wk[0].held = s[0].wk[0].held | b;
+  return true;
+}
+coaxial_walk_key_up :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  b := wk_hold_bit(key);
+  if b == 0 { return false; }
+  if s[0].wk[0].held & b != 0 { s[0].wk[0].held = s[0].wk[0].held - b; }
+  return true;
+}
+coaxial_walk_blur :: (s: [] LandState) #export_c {
+  if s.count < 1 { return; }
+  s[0].wk[0].held = 0; s[0].wk[0].drag_on = false; s[0].wk[0].press = 0;
+}
+coaxial_walk_wheel :: (s: [] LandState, dy: f32) #export_c {
+  if s.count < 1 || !finite(dy) { return; }
+  if s[0].card == CARD_NETWORK { s[0].network_scroll = clamp(s[0].network_scroll + dy, 0, s[0].network_scroll_max); return; }
+  s[0].wk[0].zoom += clamp(dy, -400, 400) * WK_WHEEL;
+}
+
+// This frame's controls from the keys held: the axes, run and jump, and the arrows' turn.
+coaxial_walk_controls :: (s: [] LandState, dt: f32) #export_c {
+  if s.count < 1 { return; }
+  w := s[0].wk[..];
+  h := w[0].held;
+  t := ifx finite(dt) then clamp(dt, 0, 0.1) else 0.0f32;
+  w[0].key_x = wk_axis(h, WK_HOLD_RIGHT, WK_HOLD_LEFT);
+  w[0].key_y = wk_axis(h, WK_HOLD_FORWARD, WK_HOLD_BACK);
+  w[0].run = h & WK_HOLD_RUN != 0;
+  w[0].jump = h & WK_HOLD_JUMP != 0;
+  w[0].look_yaw += wk_axis(h, WK_HOLD_TURN_LEFT, WK_HOLD_TURN_RIGHT) * WK_TURN * t;
+  w[0].look_pitch += wk_axis(h, WK_HOLD_TILT_UP, WK_HOLD_TILT_DOWN) * WK_TURN * 0.6 * t;
+}
+// The face handed the turn and the zoom to the player.
+coaxial_walk_used :: (s: [] LandState) #export_c {
+  if s.count < 1 { return; }
+  s[0].wk[0].look_yaw = 0; s[0].wk[0].look_pitch = 0; s[0].wk[0].zoom = 0;
+}
+
+// A mouse drag turns the camera; a press let go where it began is a click: HOME, GALAXY, the card's
+// buttons, or a project, person, agent or Pylon (its card). A finger off them is the face's thumbs.
+coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  w := s[0].wk[..];
+  d := hi(s[0].dpr, 1);
+  s[0].px = x; s[0].py = y; s[0].pointed = true;
+  if kind != 0 { s[0].touch = true; } else if phase == POINTER_MOVE && !w[0].drag_on { s[0].touch = false; }
+  if phase == POINTER_DOWN {
+    p := 0;
+    if inside(w[0].home_box, x, y) { p = WK_PRESS_HOME; }
+    else if inside(w[0].galaxy_box, x, y) { p = WK_PRESS_GALAXY; }
+    else if s[0].card != CARD_NONE && inside(s[0].card_box, x, y) { p = WK_PRESS_CARD; }
+    if p != 0 { w[0].press = p; w[0].press_id = id; w[0].down_x = x; w[0].down_y = y; return true; }
+  }
+  if w[0].press != 0 && id == w[0].press_id {
+    if phase == POINTER_UP {
+      p := w[0].press; w[0].press = 0;
+      if p == WK_PRESS_HOME && inside(w[0].home_box, x, y) { go(s, WK_HOME); }
+      if p == WK_PRESS_GALAXY && inside(w[0].galaxy_box, x, y) { go(s, WK_GALAXY); }
+      if p == WK_PRESS_CARD && abs(x - w[0].down_x) + abs(y - w[0].down_y) <= CLICK * d { opened := click(s, x, y); }
+    } else if phase == POINTER_CANCEL { w[0].press = 0; }
+    else if phase == POINTER_MOVE && w[0].press == WK_PRESS_CARD && s[0].card == CARD_NETWORK {
+      s[0].network_scroll = clamp(s[0].network_scroll - (y - w[0].down_y) / d, 0, s[0].network_scroll_max); w[0].down_y = y;
+    }
+    return true;
+  }
+  if kind != 0 { return false; }
+  if phase == POINTER_DOWN {
+    w[0].drag_on = true; w[0].drag_id = id; w[0].drag_x = x; w[0].drag_y = y; w[0].down_x = x; w[0].down_y = y; w[0].dragged = false;
+    return true;
+  }
+  if !w[0].drag_on || id != w[0].drag_id { return false; }
+  if phase == POINTER_MOVE {
+    if abs(x - w[0].down_x) + abs(y - w[0].down_y) > CLICK * d { w[0].dragged = true; }
+    w[0].look_yaw -= (x - w[0].drag_x) / d * WK_LOOK_DRAG;
+    w[0].look_pitch -= (y - w[0].drag_y) / d * WK_LOOK_DRAG;
+    w[0].drag_x = x; w[0].drag_y = y;
+    return true;
+  }
+  w[0].drag_on = false;
+  if phase == POINTER_UP && !w[0].dragged { opened := click(s, x, y); }
+  return true;
+}
+coaxial_walk_cursor :: (s: [] LandState) -> int #export_c {
+  if s.count < 1 || s[0].touch || !s[0].pointed || s[0].wk[0].drag_on { return 0; }
+  x := s[0].px; y := s[0].py;
+  if inside(s[0].wk[0].home_box, x, y) || inside(s[0].wk[0].galaxy_box, x, y) { return 1; }
+  if s[0].card != CARD_NONE {
+    if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
+    if inside(s[0].card_box, x, y) { return 0; }
+  }
+  return ifx pick(s, x, y).kind != CARD_NONE then 1 else 0;
+}
+
+// ---- the camera
+
+// A camera at eye looking at at, its lens focal pixels, its middle at (cx, cy).
+wk_cam :: (eye: Fv, at: Fv, focal: f32, cx: f32, cy: f32, width: f32, height: f32) -> Cam {
+  ahead := unit3(fv_sub(at, eye));
+  right := unit3(cross3(ahead, fv(0, 1, 0)));
+  up := cross3(right, ahead);
+  return Cam.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = focal,
+              clip = Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, vx = width * 0.5, vy = height * 0.5,
+              vr = sqrt(width * width + height * height) * 0.5, near = WK_NEAR};
+}
+wk_focal :: (width: f32, height: f32) -> f32 { return lo(height * 0.5 / WK_TAN, width * 0.5 / WK_TAN_WIDE); }
+// The Grid's metres as the scene's grid units: half a unit each, from the places' middle.
+wk_at :: (mid: Fv, x: f32, y: f32, z: f32) -> Fv { return fv(mid.x + x * WALK_SCALE, y * WALK_SCALE, mid.z + z * WALK_SCALE); }
+
+// From the homepage: its view at the end of WALK AROUND's dive (over the places' middle, close in),
+// gliding down to the camera behind you. The lens eases so the picture's scale never jumps.
+wk_dive :: (s: [] LandState, f: LandFrame, to: Cam, width: f32, height: f32) -> Cam {
+  w := s[0].wk[..];
+  if !w[0].from_home || w[0].dive >= WK_DIVE { return to; }
+  w[0].dive += f.step;
+  mid := centre(s, -1);
+  s[0].user = true; s[0].look = mid; s[0].zoom = ZOOM_IN * 0.5; s[0].zoom_to = s[0].zoom; s[0].yaw = 0.785398;
+  s[0].touches = 0; s[0].vel_x = 0; s[0].vel_z = 0;
+  from := frame_view(s, f.l, f.t, f.step, f.p.still, width, height, f.d);
+  e := smooth01(w[0].dive / WK_DIVE); e = smooth01(e);
+  to_at := fv_add(to.eye, fv_times(to.ahead, 6));
+  eye := fv_mix(from.eye, to.eye, e); at := fv_mix(s[0].look, to_at, e);
+  scale := (from.focal / fv_length(fv_sub(s[0].look, from.eye))) * (1 - e) + (to.focal / 6) * e;
+  return wk_cam(eye, at, scale * fv_length(fv_sub(at, eye)), from.cx + (to.cx - from.cx) * e, from.cy + (to.cy - from.cy) * e, width, height);
+}
+
+// ---- you
+
+wk_you :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  w := s[0].wk[0];
+  head := fv_add(w.feet, fv(0, 1.7 * FIG, 0));
+  if fv_length(fv_sub(head, c.eye)) < 0.45 { return at; }   // the camera is in your head: first person
+  gait := ifx w.act == 2 || w.act == 3 then Gait.run else ifx w.act == 1 then Gait.walk else Gait.stand;
+  pose := verse_figure_gait(Rig.person, gait, w.phase, t);
+  top: [1] Spot;
+  return figure(out, at, c, verse_figure_skeleton(person_shape(1)), pose, w.feet.x, w.feet.z, w.face, ink(p, INK_BRIGHT), 1, p, top[..]);
+}
+
+// The project you are nearest: its name for the title's second line.
+wk_nearest :: (s: [] LandState) -> int {
+  best := -1; most := 1.0e9f32;
+  for k: 0..<s[0].plots {
+    dx := s[0].plot[k].x - s[0].wk[0].feet.x; dz := s[0].plot[k].z - s[0].wk[0].feet.z;
+    if dx * dx + dz * dz < most { most = dx * dx + dz * dz; best = k; }
+  }
+  return best;
+}
+
+// ---- the HUD
+
+wk_hint :: (s: [] LandState, l: Layout) -> string {
+  if s[0].touch || l.phone { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
+  return "WASD MOVE · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT WALKS";
+}
+
+wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width: f32, height: f32,
+           move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int {
+  v := at; d := f.d; p := f.p; l := f.l;
+  w := s[0].wk[..];
+  hud := ifx p.still then 1.0f32 else ease((f.t - 0.6) / 0.8);
+  m := (ifx l.phone then 16.0f32 else 28.0f32) * d;
+  hover := !s[0].touch && s[0].pointed;
+  // THE GRID, and the project you are nearest
+  cap := (ifx l.phone then 10.0f32 else 12.0f32) * d; small := 7.0 * d;
+  title := "THE GRID";
+  k := wk_nearest(s);
+  near := ifx k >= 0 then field(land_projects(s[..]), k, 1) else "";
+  word := ink(p, INK_WHITE); word.sans = false; word.core = 0.62 * d; word.glow = 7 * d;
+  tw := hi(measure(title, TITLE_GAP, TITLE_SPACE, false) * cap, text_width(near, small, ink(p, INK_PALE)));
+  tb := Box.{x0 = m, y0 = m, x1 = m + tw + 28 * d, y1 = m + cap + small + 30 * d};
+  glass(u, 0, tb, 7 * d, 0.92 * hud, 0); w[0].title_box = tb;
+  v = frame(out, v, tb, 7 * d, ink(p, INK_BRIGHT), 0.5 * hud, p);
+  v = draw_text(out, v, title, tb.x0 + 14 * d, tb.y0 + 12 * d + cap, cap, TITLE_GAP, TITLE_SPACE, dimmed(word, 0.95 * hud), false, false);
+  if near.count > 0 { v = put(out, v, near, tb.x0 + 14 * d, tb.y1 - 11 * d, small, dimmed(ink(p, INK_PALE), hud)); }
+  // GALAXY, top right; HOME left of it
+  bw := (ifx l.phone then 92.0f32 else 120.0f32) * d; bh := 40 * d;
+  gb := Box.{x0 = width - m - bw, y0 = m, x1 = width - m, y1 = m + bh};
+  hb := Box.{x0 = gb.x0 - 8 * d - bw, y0 = m, x1 = gb.x0 - 8 * d, y1 = m + bh};
+  w[0].galaxy_box = gb; w[0].home_box = hb;
+  v = button(out, v, hb, "HOME", true, hover && inside(hb, s[0].px, s[0].py) || w[0].press == WK_PRESS_HOME, false, p, hud);
+  glass(u, 1, hb, 7 * d, 0.95 * hud, 1);
+  v = button(out, v, gb, "GALAXY", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
+  glass(u, 2, gb, 7 * d, 0.95 * hud, 1);
+  // the live status: under the title on a phone, the bottom corner on a computer (as the homepage's)
+  capture: [192] u8; cn := land_status(s, capture[..]);
+  if l.phone { v = put_fit(out, v, cast(string) capture[0..<cn], m, tb.y1 + 16 * d, 7 * d, dimmed(ink(p, INK_PALE), hud), width - 2 * m); }
+  else { v = put_fit(out, v, cast(string) capture[0..<cn], 16 * d, height - 14 * d, 7 * d, dimmed(ink(p, INK_PALE), hud), 320 * d); }
+  // the hint along the bottom, unless a card is up
+  if s[0].card == CARD_NONE {
+    line := wk_hint(s, l);
+    hs := 7.5 * d; dim := ink(p, INK_PALE); dim.sans = false;
+    room := width - 2 * m - 24 * d - (ifx l.phone then 0.0f32 else 2 * 330 * d);
+    if room < 160 * d { room = width - 2 * m - 24 * d; }
+    lw := measure(line, 0.5, 1.2, false) * hs;
+    if lw > room { hs = hs * room / lw; lw = room; }
+    y1 := height - (ifx l.phone then 16.0f32 else 22.0f32) * d;
+    hb2 := Box.{x0 = (width - lw) * 0.5 - 12 * d, y0 = y1 - hs - 20 * d, x1 = (width + lw) * 0.5 + 12 * d, y1 = y1};
+    glass(u, 3, hb2, 6 * d, 0.85 * hud, 0);
+    v = draw_text(out, v, line, (width - lw) * 0.5, y1 - 10 * d, hs, 0.5, 1.2, dimmed(dim, 0.9 * hud), false, false);
+  }
+  // the walking thumb's ring and where it is pushed
+  if move_on {
+    r := 46 * d; ring_k := ink(p, INK_DIM);
+    for i: 0..<32 {
+      a0 := cast(f32) i * 2 * PI / 32; a1 := cast(f32) (i + 1) * 2 * PI / 32;
+      v = rule(out, v, ox + r * cos(a0), oy + r * sin(a0), ox + r * cos(a1), oy + r * sin(a1), ring_k, 0.6);
+    }
+    v = diamond(out, v, ox + pad_x * r, oy - pad_y * r, 7 * d, ink(p, INK_BRIGHT), 0.9);
+  }
+  return v;
+}
+
+// ---- the frame
+
+// The Grid's frame: the homepage's scene through the camera behind you (feet, eye and what it looks
+// at in the Grid's metres, from the face's player), you in it, and the HUD.
+coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                       fx: f32, fy: f32, fz: f32, face: f32, act: int, ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32,
+                       move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !finite(fx) || !finite(fy) || !finite(fz) || !finite(ex) || !finite(ey) || !finite(ez) || !finite(ax) || !finite(ay) || !finite(az) { return 0; }
+  f := land_begin(s, uniforms, width, height, dpr, dt, still);
+  walkers_step(s, f.step);   // everyone else on the Grid, eased toward where the room says
+  w := s[0].wk[..];
+  mid := centre(s, -1);
+  feet := wk_at(mid, fx, fy, fz);
+  // your stride, as the walkers' (newland-walkers.coax)
+  if w[0].placed {
+    moved := sqrt((feet.x - w[0].feet.x) * (feet.x - w[0].feet.x) + (feet.z - w[0].feet.z) * (feet.z - w[0].feet.z));
+    stride: f32 = (ifx act == 2 then 2.6f32 else 1.45f32) * FIG;
+    if moved < 2 { w[0].phase = fract(w[0].phase + moved / stride); }
+  }
+  w[0].placed = true; w[0].feet = feet; w[0].face = face; w[0].act = act;
+  c := wk_cam(wk_at(mid, ex, ey, ez), wk_at(mid, ax, ay, az), wk_focal(width, height), width * 0.5, height * 0.5, width, height);
+  c = wk_dive(s, f, c, width, height);
+  s[0].view = c; s[0].clip = c.clip; s[0].zoom = 0.4;   // close: the Pylons' labels say what they run
+  // the homepage's boxes are not on this page
+  none := Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].playtest = none; s[0].network_box = none; s[0].walk_box = none; s[0].gal_box = none; s[0].gal_open = none; s[0].gal_over = -1;
+  v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
+  v = wk_you(out, v, s, c, f.p, f.motion);
+  scene_end := v;
+  if s[0].card != CARD_NONE {
+    s[0].card_t += f.step;
+    v = card(out, v, s, f.l, f.p, f.motion, width, height);
+    b := s[0].card_box;
+    rise := ease(s[0].card_t / 0.22);
+    glass(uniforms, 4, b, ifx f.l.phone then 0.0f32 else 12 * f.d, 0.97 * rise, 0);
+    for q: 0..<scene_end / 6 {
+      o := q * 6 * VERTEX_FLOATS;
+      x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+      y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+      if inside(b, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.9 * rise; } }
+    }
+  } else {
+    s[0].card_box = none; s[0].close_box = none; s[0].open_box = none;
+  }
+  v = wk_hud(out, v, s, uniforms, f, width, height, move_on, ox, oy, pad_x, pad_y);
+  // the scene goes quiet behind the title and the buttons, so they read (as the homepage's panels)
+  for q: 0..<scene_end / 6 {
+    o := q * 6 * VERTEX_FLOATS;
+    x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+    y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+    if inside(w[0].title_box, x, y) || inside(w[0].home_box, x, y) || inside(w[0].galaxy_box, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 0.15; } }
+  }
+  uniforms[5] = f32(PANELS);
+  return v;
+}
+
+#test "the Grid draws the homepage's scene from behind you, and its own HUD" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1);
+  #assert coaxial_land_walking(s[..]);
+  s[0].time = 9;
+  // you at the spawn, the camera 9 m behind and a little above you, looking at your head
+  n := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false,
+                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert n > 1000 && n < TEST_VERTICES && n % 6 == 0 && u[5] == f32(PANELS);
+  // the same projects the homepage shows: every one of them named on screen ahead of you
+  named := 0;
+  for k: 0..<s[0].plots { if s[0].plot[k].tag.x1 > s[0].plot[k].tag.x0 { named += 1; } }
+  #assert s[0].plots > 3 && named >= s[0].plots - 1;
+  #assert s[0].wk[0].home_box.x1 > s[0].wk[0].home_box.x0 && s[0].wk[0].galaxy_box.x0 > s[0].wk[0].home_box.x1;
+  #assert s[0].playtest.x1 == 0 && s[0].walk_box.x1 == 0;   // the homepage's buttons are not here
+  // the same frame for the homepage still draws its own view
+  h: [1] LandState; h[0].time = 9;
+  #assert coaxial_land_frame(h[..], out[..], u[..], 1440, 900, 1, 0.016, false) > 1000 && h[0].playtest.x1 > h[0].playtest.x0;
+}
+#test "a phone's Grid frame draws within the vertex budget, its thumb's ring too" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  // standing in the places' middle, looking across all of them
+  m := coaxial_walk_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false,
+                          0, 0, 0, WK_SPAWN_FACE, 1, 6.2, 3.5, 6.2, 0, 1.52, 0, true, 300, 2000, 0.4, 0.6);
+  #assert m > 1000 && m < TEST_VERTICES;
+}
+// A laptop's frame at the spawn, the camera behind you, for the checks.
+wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
+  return coaxial_walk_frame(s, out, u, 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
+                            WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+}
+#test "keys walk and turn, a drag looks and is never a click, HOME and GALAXY go where they say" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  #assert wk_test_frame(s[..], out[..], u[..]) > 0;
+  #assert coaxial_walk_key(s[..], 'w', 0) && coaxial_walk_key(s[..], KEY_LEFT, 0) && !coaxial_walk_key(s[..], 'q', 0);
+  coaxial_walk_controls(s[..], 0.1);
+  #assert s[0].wk[0].key_y == 1 && s[0].wk[0].key_x == 0 && s[0].wk[0].look_yaw > 0;
+  coaxial_walk_used(s[..]);
+  #assert coaxial_walk_key_up(s[..], 'w', 0); coaxial_walk_controls(s[..], 0.1);
+  #assert s[0].wk[0].key_y == 0;
+  coaxial_walk_blur(s[..]); coaxial_walk_used(s[..]);
+  // a drag across empty floor turns the camera and opens nothing
+  #assert coaxial_walk_pointer(s[..], 700, 860, POINTER_DOWN, 0, 1);
+  #assert coaxial_walk_pointer(s[..], 760, 860, POINTER_MOVE, 0, 1);
+  #assert coaxial_walk_pointer(s[..], 760, 860, POINTER_UP, 0, 1);
+  #assert s[0].wk[0].look_yaw < 0 && s[0].card == CARD_NONE && s[0].action == 0;
+  // a click on a project's name opens its card, the homepage's
+  k := 0; while k < s[0].plots && s[0].plot[k].tag.x1 <= s[0].plot[k].tag.x0 { k += 1; }
+  #assert k < s[0].plots;
+  b := s[0].plot[k].tag; x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  #assert coaxial_walk_pointer(s[..], x, y, POINTER_DOWN, 0, 2) && coaxial_walk_pointer(s[..], x, y, POINTER_UP, 0, 2);
+  #assert s[0].card == CARD_PLACE && s[0].card_k == k && s[0].action == 0;
+  #assert coaxial_walk_key(s[..], KEY_ESCAPE, 0) && s[0].card == CARD_NONE;
+  // a finger off the buttons is the thumbs'
+  #assert !coaxial_walk_pointer(s[..], 300, 700, POINTER_DOWN, 1, 3);
+  hb := s[0].wk[0].home_box;
+  #assert coaxial_walk_pointer(s[..], hb.x0 + 4, hb.y0 + 4, POINTER_DOWN, 1, 4) && coaxial_walk_pointer(s[..], hb.x0 + 4, hb.y0 + 4, POINTER_UP, 1, 4);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == WK_HOME;
+  coaxial_land_action_done(s[..]);
+  gb := s[0].wk[0].galaxy_box;
+  #assert coaxial_walk_pointer(s[..], gb.x0 + 4, gb.y0 + 4, POINTER_DOWN, 0, 5) && coaxial_walk_pointer(s[..], gb.x0 + 4, gb.y0 + 4, POINTER_UP, 0, 5);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == WK_GALAXY;
+}
+#test "everyone else on the Grid walks it here too, where the room says, and ?from=home dives" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  #assert coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
+                             WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":8,\"y\":0,\"z\":8,\"yaw\":0}],\"messages\":[]}");
+  #assert coaxial_land_walkers(s[..]) == 1;
+  #assert coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
+                             WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
+  #assert s[0].walk[0].seen[0];
+  #assert wk_from_home("https://openagents.com/realms/the-grid?from=home") && wk_from_home("/realms/the-grid?a=1&from=home#x");
+  #assert !wk_from_home("/realms/the-grid?from=homes") && !wk_from_home("/realms/the-grid#from=home");
+  coaxial_walk_facts(s[..], "tab=t\nurl=https://openagents.com/realms/the-grid?from=home\n");
+  #assert s[0].wk[0].from_home;
+  // the dive starts at the homepage's view, far over the places, and ends behind you
+  first := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
+                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert first > 0 && s[0].view.eye.y > 20;
+  s[0].wk[0].dive = WK_DIVE - 0.05;
+  #assert coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.1, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
+                             WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
+  #assert s[0].view.eye.y < 2;
+}

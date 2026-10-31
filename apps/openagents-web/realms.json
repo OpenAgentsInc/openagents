@@ -62,7 +62,7 @@
     { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
       "realm": {
         "slug": "the-grid",
-        "added": "2026-10-29T02:53", "line": "The bare Verse world: lines out to the dark",
+        "added": "2026-10-29T02:53", "line": "The homepage's live projects, walked",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
             {"id": "robots", "label": "Robots walking their rounds", "says": "the small robots patrolling the grid"},
@@ -70,21 +70,12 @@
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "The Grid",
-        "description": "The Grid, the bare Verse world: a floor of lines out to the dark, the Pylon terminal, the help desk and the gym, robots walking their rounds with the Foreman by the start, and the gate to Everglade.",
+        "description": "The Grid: the homepage's live projects, walked. The same trees of commits, task ticks, Pylons, agents and people, updating from Nostr as they do there, seen as you walk among them.",
         "alt": "Enter the Verse: walk the Grid",
-        "module": "thegrid",
+        "module": "newland", "page": 1,
         "slot": "the-grid",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": [
-          "data:/realms/the-grid/assets/grid.data",
-          "storage:/realms/the-grid/assets/grid.vertices",
-          "storage:/realms/the-grid/assets/grid.lines",
-          "storage:/realms/the-grid/assets/grid.bones",
-          "index:/realms/the-grid/assets/grid.indices",
-          "data:/realms/the-grid/assets/cast/Cast.bin",
-          "storage:/realms/the-grid/assets/cast/Cast.bin",
-          "layers:/realms/the-grid/assets/cast/cast-layer5.jpg|/realms/the-grid/assets/cast/cast-layer9.jpg|/realms/the-grid/assets/cast/cast-layer10.jpg|/realms/the-grid/assets/cast/cast-layer11.jpg|/realms/the-grid/assets/cast/cast-layer12.jpg|/realms/the-grid/assets/cast/cast-layer16.jpg"
-        ]
+        "assets": []
       } },
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
       "realm": {
