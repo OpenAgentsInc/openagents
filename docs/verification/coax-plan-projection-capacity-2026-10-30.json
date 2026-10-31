@@ -1,0 +1,483 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "timezone": "America/Chicago",
+  "issue": "r1a-plan-projection-capacity",
+  "issue_root": "ba11c162f4f9e6732329cf8b1ea3f8c54b6fd73fe1425932dbd73ccbf6d29891",
+  "started_utc": "2026-10-31 04:32:16 UTC",
+  "baseline_commit": "d1442f9d672fd418c90a54d30ef1d6413f853a18",
+  "source_filed_before_implementation": true,
+  "scope": "Increase only the bounded plans output table from 16,384 to 65,536 bytes, retaining resolved-task plan history and complete-view refusal above the new limit.",
+  "preexisting_public_failure": {
+    "at": "2026-10-31T04:29:08.124Z",
+    "relay": "wss://relay.openagents.com",
+    "artificialReplayCap": 37,
+    "verifiedIssues": 263,
+    "capturedEvents": 2409,
+    "uniqueEvents": 2409,
+    "capturedBytes": 3348672,
+    "native": {
+      "state": 4,
+      "incomplete": 5,
+      "pages": 74,
+      "displayedRoots": 256,
+      "storedEvents": 2409,
+      "stage": 3,
+      "query": 0,
+      "boundary": -1,
+      "pageCount": 0,
+      "boundaryCount": 0,
+      "historyPeak": 0,
+      "known": 263,
+      "storedBytes": 2459337
+    },
+    "largestTimestampGroups": [
+      {
+        "stage": "comments",
+        "timestamp": 1793317855,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793317849,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793317641,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793317633,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793255994,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793249940,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793237504,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793234029,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793233937,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793229443,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793229440,
+        "count": 2
+      },
+      {
+        "stage": "comments",
+        "timestamp": 1793327903,
+        "count": 2
+      }
+    ],
+    "tableBytes": {
+      "items": 33224,
+      "plans": 45483,
+      "details": 479500,
+      "log": 8132,
+      "info": 5531
+    },
+    "tableLimits": {
+      "items": 131072,
+      "plans": 16384,
+      "details": 1048576,
+      "log": 16384,
+      "info": 16384
+    }
+  },
+  "chronological_baseline": {
+    "capturedAt": "2026-10-31T04:29:08.124Z",
+    "newRootsRemoved": 7,
+    "priorRoots": 256,
+    "priorPlanBytes": 45174,
+    "currentRoots": 263,
+    "currentPlanBytes": 45483,
+    "planLimit": 16384,
+    "plannedIssues": 120,
+    "largestPlans": [
+      {
+        "slug": "crypto-secret-audit-large-closure",
+        "status": "resolved",
+        "steps": 14,
+        "bytes": 1655
+      },
+      {
+        "slug": "schnorr-self-verification-boundary",
+        "status": "open",
+        "steps": 10,
+        "bytes": 846
+      },
+      {
+        "slug": "project-page-live",
+        "status": "resolved",
+        "steps": 9,
+        "bytes": 788
+      },
+      {
+        "slug": "fi-jws-verifier",
+        "status": "open",
+        "steps": 6,
+        "bytes": 779
+      },
+      {
+        "slug": "project-page-verify",
+        "status": "open",
+        "steps": 4,
+        "bytes": 738
+      },
+      {
+        "slug": "nostr-relay-state-machine",
+        "status": "open",
+        "steps": 8,
+        "bytes": 684
+      },
+      {
+        "slug": "nostr-nip42",
+        "status": "open",
+        "steps": 6,
+        "bytes": 610
+      },
+      {
+        "slug": "nip44-v2",
+        "status": "resolved",
+        "steps": 8,
+        "bytes": 587
+      },
+      {
+        "slug": "unicode-nfkc",
+        "status": "resolved",
+        "steps": 3,
+        "bytes": 582
+      },
+      {
+        "slug": "host-socket-pipe",
+        "status": "resolved",
+        "steps": 8,
+        "bytes": 574
+      }
+    ],
+    "firstNewRootTimestamp": 1793420705,
+    "beforeFirstNewRoot": {
+      "roots": 256,
+      "planBytes": 45174
+    }
+  },
+  "check_first_red": {
+    "log": "/tmp/coax-capacity-prep/plan-projection-16k-red.log",
+    "expected_bytes": 46080,
+    "retained_finished_task_plans": 120,
+    "largest_step_bytes": 88,
+    "largest_signed_event_bytes": 939,
+    "old_capacity": 16384,
+    "outcome": "Native reader refused with OFFLINE/incomplete5 before the constant change; independent reference projected all complete plan rows."
+  },
+  "frozen_input_hashes": {
+    "public-263-diagnostic.json": {
+      "sha256": "20555bef58de12942e587babd2fc7fa3ffd9ae6540f0e43a7a6703a272def8a6",
+      "bytes": 1836
+    },
+    "public-plan-baseline-comparison.json": {
+      "sha256": "e303438c386b6ead20ebe7638934c0d1301fb21bbcd851a038eba8b031539b3b",
+      "bytes": 1485
+    },
+    "plan-projection-16k-red.log": {
+      "sha256": "b1a599d2063a840ca8d6e2a368abfaea2736f4b5cd2c5b7395c18ae0b0d1bdce",
+      "bytes": 1541
+    }
+  },
+  "verification": {
+    "outcome": "passed",
+    "focused_tests": 4,
+    "focused_assertions": 534,
+    "focused_log": "/tmp/coax-capacity-prep/plan-projection-64k-green.log",
+    "focused_log_sha256": "d1748c10545c338892977ddc3f2ecfb6e505d3c37a15fb5951358491faafa3d3",
+    "focused_detail": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/project/live-catchup.test.ts:\n(pass) actual WebGPU browser draws 263 roots with 45 KiB of retained plans and a live update without reload [4072.92ms]\n(pass) frozen public 263-root capture retains all five tables and historical plans [798.86ms]\nplan projection capacity diagnostic {\"targetBytes\":46080,\"independentlySized\":46080,\"oracleBytes\":46080,\"plannedFinishedTasks\":120,\"largestStepBytes\":88,\"largestEventBytes\":939,\"native\":{\"state\":3,\"incomplete\":0,\"roots\":263,\"known\":263}}\n(pass) plan projection capacity retains a legitimate 45 KiB table including resolved-task plans [277.98ms]\n(pass) plan projection capacity accepts 65536 bytes and refuses 65537 atomically [535.85ms]\n\n 4 pass\n 11 filtered out\n 0 fail\n 534 expect() calls\nRan 4 tests across 1 file. [8.30s]",
+    "fresh_public_tests": 1,
+    "fresh_public_assertions": 6,
+    "fresh_public_log": "/tmp/coax-capacity-prep/public-264-green.log",
+    "fresh_public_log_sha256": "76b3979ef7cf58b67fa4f2263f66f43b5154ab7381e916aaed04c94d927a8747",
+    "fresh_public_detail": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/project/live-catchup.test.ts:\npublic native capture diagnostic {\"at\":\"2026-10-31T04:36:15.993Z\",\"relay\":\"wss://relay.openagents.com\",\"artificialReplayCap\":37,\"verifiedIssues\":264,\"capturedEvents\":2418,\"uniqueEvents\":2418,\"capturedBytes\":3370954,\"native\":{\"state\":3,\"incomplete\":0,\"pages\":74,\"displayedRoots\":264,\"storedEvents\":2418,\"stage\":3,\"query\":0,\"boundary\":-1,\"pageCount\":0,\"boundaryCount\":0,\"historyPeak\":0,\"known\":264,\"storedBytes\":2478018},\"largestTimestampGroups\":[{\"stage\":\"comments\",\"timestamp\":1793317855,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793317849,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793317641,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793317633,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793255994,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793249940,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793237504,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793234029,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793233937,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793229443,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793229440,\"count\":2},{\"stage\":\"comments\",\"timestamp\":1793327903,\"count\":2}],\"tableBytes\":{\"items\":33381,\"plans\":45750,\"details\":482049,\"log\":8534,\"info\":5531},\"tableLimits\":{\"items\":131072,\"plans\":65536,\"details\":1048576,\"log\":16384,\"info\":16384}}\n(pass) published public queue matches verified snapshot through the capped native consumer [4411.99ms]\n\n 1 pass\n 14 filtered out\n 0 fail\n 6 expect() calls\nRan 1 test across 1 file. [6.78s]",
+    "fresh_public": {
+      "at": "2026-10-31T04:36:15.993Z",
+      "relay": "wss://relay.openagents.com",
+      "artificialReplayCap": 37,
+      "verifiedIssues": 264,
+      "capturedEvents": 2418,
+      "uniqueEvents": 2418,
+      "capturedBytes": 3370954,
+      "native": {
+        "state": 3,
+        "incomplete": 0,
+        "pages": 74,
+        "displayedRoots": 264,
+        "storedEvents": 2418,
+        "stage": 3,
+        "query": 0,
+        "boundary": -1,
+        "pageCount": 0,
+        "boundaryCount": 0,
+        "historyPeak": 0,
+        "known": 264,
+        "storedBytes": 2478018
+      },
+      "largestTimestampGroups": [
+        {
+          "stage": "comments",
+          "timestamp": 1793317855,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793317849,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793317641,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793317633,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793255994,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793249940,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793237504,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793234029,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793233937,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793229443,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793229440,
+          "count": 2
+        },
+        {
+          "stage": "comments",
+          "timestamp": 1793327903,
+          "count": 2
+        }
+      ],
+      "tableBytes": {
+        "items": 33381,
+        "plans": 45750,
+        "details": 482049,
+        "log": 8534,
+        "info": 5531
+      },
+      "tableLimits": {
+        "items": 131072,
+        "plans": 65536,
+        "details": 1048576,
+        "log": 16384,
+        "info": 16384
+      }
+    },
+    "policy_qualification_reused": {
+      "record": "docs/verification/coax-project-capacity-2026-10-30.json",
+      "source": "apps/openagents-web/project-capacity.coax",
+      "source_sha256": "5d195d81b31f045607d77a566ed786713a33fa9846ae6dcdbe0d16f9f6e8f9d8",
+      "compiler_sha256": "c35e79a780ca05d5f77a43119046359131ad3e66ebe5286f7df1e49a485c561e",
+      "checks": 6,
+      "mutants": 23,
+      "survivors": 0,
+      "inputs_unchanged": true
+    }
+  },
+  "rollout": {
+    "outcome": "pending"
+  },
+  "limits": [
+    "Plan output still refuses above 65,536 bytes; no plan history is discarded.",
+    "4 MiB event store, the other four output-table capacities, row/query/crypto limits and relay order-tag limits are unchanged.",
+    "Physical State layout changes; old loaded clients require the updated artifact on normal reload.",
+    "R1a identity, namespace, source-span and lowering work remains open.",
+    "Developer hot state migration is not qualified: host arena allocation retains old storage. Cold loads and normal reloads are the shipping path."
+  ],
+  "production_build": {
+    "version": 1,
+    "source_change_only_plans_constant": true,
+    "new_plan_capacity": 65536,
+    "other_budgets_unchanged": true,
+    "project_build": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-plan-projection-qualification-896u084t/project-build.json",
+    "project_interface": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-plan-projection-qualification-896u084t/project-interface.json",
+    "native_layout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-plan-projection-qualification-896u084t/native-layout.json",
+    "landing_reader_parity": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-plan-projection-qualification-896u084t/landing-reader-parity.json",
+    "reuse_reader_320_321_qualification": "/tmp/coax-capacity-prep/new-compiler-reader-320.json",
+    "new_plan_red": "/tmp/coax-capacity-prep/plan-projection-16k-red.log",
+    "public_preexisting_plan_pressure": "/tmp/coax-capacity-prep/public-plan-baseline-comparison.json",
+    "no_commits": true
+  },
+  "coax_fold_check": {
+    "command": "coax/bin/coax test apps/openagents-web/project-fold.coax --library --only 'captured relay transcript'",
+    "outcome": "same_20_million_step_limit_before_and_after",
+    "log": "/tmp/coax-plan-projection-pure-fold-library.log",
+    "detail": "FAIL #test the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte (314 ms)\napps/openagents-web/project-fold.coax:1058:3: error[E0400]: compile-time evaluation exceeded 20000000 steps\n    j: [1] Json; json_start(j[..], text);\n    ^\n  note: in #test the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte\n1 of 21 checks (--only 'captured relay transcript'), 0 passed, 1 failed",
+    "budgets_increased": false,
+    "initial_invocation_error": {
+      "log": "/tmp/coax-plan-projection-pure-fold.log",
+      "detail": "The initial command omitted --library and correctly refused this main-less module. The corrected library command is recorded separately."
+    },
+    "scope": "The captured-transcript pure check exceeds its unchanged20,000,000-step allowance before and after this resize. Native tests execute the actual writer and public replacement. No whole-Fold authority/mutation pass is claimed; existing r0-native-check-exe tracks scalable native checks.",
+    "baseline_control": {
+      "source_commit": "d1442f9d672fd418c90a54d30ef1d6413f853a18",
+      "plan_capacity": 16384,
+      "copy": "/tmp/coax-capacity-prep/project-fold-original16k-absolute.coax",
+      "modification": "All relative #load paths were made absolute for this external old-source control; source logic is unchanged.",
+      "log": "/tmp/coax-plan-projection-pure-fold-original16k-absolute.log",
+      "detail": "FAIL #test the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte (278 ms)\n/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax:89:10: error[E0400]: compile-time evaluation exceeded 20000000 steps\n    c:=text[i];if c<0x80 {return 1;}\n           ^\n  note: in #test the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte\n1 of 21 checks (--only 'captured relay transcript'), 0 passed, 1 failed"
+    }
+  },
+  "review": {
+    "schema_version": 1,
+    "issue": "r1a-plan-projection-capacity",
+    "reviewer": "compiler_audit",
+    "review_base_commit": "d1442f9d672fd418c90a54d30ef1d6413f853a18",
+    "scope": "Read-only review of plans projection capacity; no compiler, Store, query, crypto or other table-budget change.",
+    "requested_capacity_bytes": {
+      "old": 16384,
+      "new": 65536,
+      "increase_per_tables": 49152
+    },
+    "state_layout": {
+      "measurement_source": "Root-supplied qualified baseline State measurement; delta independently derived from two resident Tables values in Live.",
+      "old_state_bytes": 20927904,
+      "tables_instances_in_live": 2,
+      "increase_bytes": 98304,
+      "expected_new_state_bytes": 21026208,
+      "work_layout_changes": false,
+      "notes": "Work.plans remains a borrowed string descriptor. Offsets after enlarged Tables within Live change. State's sizeof-based layout fingerprint changes; headers, native adapters and Wasm must be regenerated together."
+    },
+    "strict_bounds": [
+      {
+        "source": "coax/lib/nostr/json.coax:345",
+        "finding": "json_raw refuses a negative offset or an append beyond the destination count with -1, preserving failure through a chained writer."
+      },
+      {
+        "source": "apps/openagents-web/project-fold.coax:801",
+        "finding": "write_plans marks Tables.complete=false on plans or info output exhaustion, and records zero length for the failed output. The unchanged 16KiB info cap can still independently refuse a candidate."
+      },
+      {
+        "source": "apps/openagents-web/project-fold.coax:665",
+        "finding": "write_tables sets complete at entry and does not reset it after write_plans fails."
+      },
+      {
+        "source": "apps/openagents-web/project-live.coax:208",
+        "finding": "live_prepare refuses an incomplete candidate instead of marking it ready."
+      },
+      {
+        "source": "apps/openagents-web/project.coax:2513",
+        "finding": "live_apply refuses incomplete or oversized item candidates before advancing the fold counter or replacing any displayed table. Refusal deliberately sets OFFLINE/incomplete=5 and clears dirty, while retaining the five displayed tables and fold counter."
+      }
+    ],
+    "history_and_parsing": {
+      "projection_limit_steps_per_task": 24,
+      "source": "apps/openagents-web/project-fold.coax:301,321,801,826",
+      "findings": [
+        "Existing plan_line/plan_step parsing and normalization are unchanged.",
+        "Projection retains the existing per-task 24-step limit; it does not claim unbounded plan text.",
+        "Working tasks' plans are emitted first, then plans on remaining task roots without filtering closed/resolved tasks.",
+        "Latest-plan selection, event history, status, rank and author rules remain unchanged.",
+        "The larger output array does not rewrite or discard original signed event bytes."
+      ]
+    },
+    "unchanged_limits": {
+      "store_events": 8192,
+      "store_bytes": 4194304,
+      "store_tags": 65536,
+      "store_elements": 131072,
+      "fold_issues": 320,
+      "items_output_bytes": 131072,
+      "log_output_bytes": 16384,
+      "info_output_bytes": 16384,
+      "details_output_bytes": 1048576,
+      "scratch_output_bytes": 70000,
+      "body_buffer_bytes": 70000,
+      "browser_memory_max_bytes": 67108864,
+      "query_and_crypto_limits": "Unchanged; independently owned and enforced."
+    },
+    "ui_consumption": {
+      "source": "apps/openagents-web/project.coax:plan_steps and detail plan rendering",
+      "finding": "Consumers iterate the admitted plans string count and draw a bounded visible window; Work does not add another fixed-size plans copy. Existing parser/field bounds continue to apply."
+    },
+    "qualification_limits": [
+      "This is an output-capacity and prior-view-atomicity review, not whole-app interpreter authority qualification.",
+      "Book agent owns independent exact 65536/65537-byte native fixtures and actual signed public capture parity; this reviewer did not duplicate those passing gates.",
+      "Cold page initialization uses the same 64MiB browser cap. Development hot reload may need a full page reload: host.js:292-305 allocates a fresh whole arena above existing memory when State grows, so retaining the previous large arena can exhaust that cap. No hot-state migration claim is made."
+    ],
+    "review_result": "The plans-array-only increase preserves the existing strict output bounds and fail-closed publication model; require exact writer-boundary and cold-page evidence before claiming qualification."
+  },
+  "identity_preservation": {
+    "total": 264,
+    "old_identities": 256,
+    "all_old_unchanged": true,
+    "new_plan_root": "ba11c162f4f9e6732329cf8b1ea3f8c54b6fd73fe1425932dbd73ccbf6d29891"
+  },
+  "source_sha256": {
+    "apps/openagents-web/project-fold.coax": "6456400179d50e1afc7b5c7e41436063b75d26ece0795adf0caf49caf4221a58",
+    "apps/openagents-web/projects/coax/work/r1a-subtasks.json": "96eb5ac4a1bb9aef0234379402d6f09278a03450ea47049759ff40817a824de2",
+    "coax/web/project/live-catchup.test.ts": "e322e1323d4e1b3102bd0814a00be5b17e3b222cfd01a508a69036ce430aed31"
+  },
+  "browser": {
+    "headless": true,
+    "muted": true,
+    "root_count": 263,
+    "plans_bytes": 46080,
+    "retained_finished_task_plans": 120,
+    "all_five_tables_match": true,
+    "live_update_without_reload": true,
+    "screenshot": "/tmp/coax-plan-projection-browser.png",
+    "screenshot_sha256": "c8d2cba019c9a85152e35a18e1c547c0ad7c775dc968c8bf2ac9098f700a7e64"
+  },
+  "golden_gate": {
+    "outcome": "pending_commit",
+    "rule": "Keep demonstrated baseline failures separate; no golden updates."
+  }
+}

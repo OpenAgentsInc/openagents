@@ -503,7 +503,7 @@ fold_one :: (s: [] Store, f: [] Fold, r: int) {
 
 // ---------------------------------------------------------------- the tables
 
-ITEMS_CAP :: 131072; LOG_CAP :: 16384; PLANS_CAP :: 16384; INFO_CAP :: 16384; SCRATCH_CAP :: 70000;
+ITEMS_CAP :: 131072; LOG_CAP :: 16384; PLANS_CAP :: 65536; INFO_CAP :: 16384; SCRATCH_CAP :: 70000;
 
 Tables :: struct {
   complete: bool;

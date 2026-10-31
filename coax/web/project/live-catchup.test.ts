@@ -74,7 +74,7 @@ void probe_message(Probe*p,int kind,const char*t,int n){memcpy(p->live.inbox.e,t
 void probe_open(Probe*p,int id){coaxial_project_opened(lv(p),id);}
 void probe_budget(Probe*p){p->live.pages=256;}
 void probe_advance(Probe*p,int seconds){p->page.time+=seconds;probe_frame(p);}
-int probe_info(Probe*p,int k){switch(k){case 0:return p->live.state;case 1:return p->work.n;case 2:return p->work.working_n;case 3:return p->live.incomplete;case 4:return p->live.pages;case 5:return p->live.store.e[0].n;case 6:return p->live.connects;case 10:return p->live.pipe.e[0].n;}return -1;}
+int probe_info(Probe*p,int k){switch(k){case 0:return p->live.state;case 1:return p->work.n;case 2:return p->work.working_n;case 3:return p->live.incomplete;case 4:return p->live.pages;case 5:return p->live.store.e[0].n;case 6:return p->live.connects;case 7:return p->live.stage;case 8:return p->live.query;case 9:return p->live.page_min;case 10:return p->live.pipe.e[0].n;case 11:return p->live.page_count;case 12:return p->live.page_min_count;case 13:return p->live.history_peak;case 14:return p->live.known_n;case 15:return p->live.store.e[0].used;}return -1;}
 static coax_string table(Probe*p,int k){switch(k){case 0:return p->work.text;case 1:return p->work.plans;case 2:return p->work.details;case 3:return p->work.log;case 4:return p->work.plan_info;}return(coax_string){0};}
 const char *probe_text(Probe*p,int k){return table(p,k).data;}int probe_len(Probe*p,int k){return table(p,k).count;}
 int probe_op(Probe*p,int k){return p->live.pipe.e[0].op.e[k];}int probe_cmd_len(Probe*p,int k){return p->live.pipe.e[0].len.e[k];}const char*probe_cmd(Probe*p,int k){return(const char*)p->live.pipe.e[0].buf.e+p->live.pipe.e[0].from.e[k];}
@@ -144,7 +144,7 @@ test('page and fold capacity both cover every combined seed item',()=>{
  expect(foldCap).toBe(display);expect(display).toBeGreaterThanOrEqual(countSeeds);expect(foldCap).toBeGreaterThanOrEqual(155)
 })
 
-test('actual WebGPU browser draws the complete 263-root inventory and a live worker update without reload',async()=>{
+test('actual WebGPU browser draws 263 roots with 45 KiB of retained plans and a live update without reload',async()=>{
   const wasm=join(temp,'project.wasm'),face=join(temp,'browser-face.c')
   writeFileSync(face,`#include "${join(app,'project-face.c')}"\n
 EXPORT("probe_count") uint32_t probe_count(uint32_t p){return state_at(p)->work.n;}
@@ -156,7 +156,7 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
 `)
   run(['bash',join(root,'coax/web/wasm.sh'),join(app,'project.coax'),face,wasm,join(app,'project-names.coax'),join(app,'project-capacity.coax')])
   const sockets=new Set<any>(), queries:any[]=[]
-  const fixture=capacityInventory(263),fixtureRows=fixture.rows
+  const fixture=planProjectionInventory(45*1024),fixtureRows=fixture.rows
   const server=Bun.serve({port:0,fetch(request,server){
     const url=new URL(request.url)
     if(url.pathname==='/relay'){if(server.upgrade(request,{data:{subs:new Map()}}))return;return new Response('upgrade required',{status:400})}
@@ -192,7 +192,10 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     await waitFor(1)
     const loadedAt=current.timeOrigin,initialFrames=current.frames
     const want=expected(fixtureRows);expect(current.count).toBe(263);expect(current.frames).toBeGreaterThan(0);expect(current.tables).toEqual([want.rows,want.plans,want.details,want.log,want.planInfo])
-    const update=sign(1111,40000,[['E',fixture.roots[4].id],['K','1621'],['P',pk],['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
+    expect(Buffer.byteLength(current.tables[1])).toBe(45*1024)
+    expect(Buffer.byteLength(current.tables[1])).toBeGreaterThan(16384)
+    expect(Buffer.byteLength(current.tables[1])).toBeLessThanOrEqual(65536)
+    const update=sign(1111,60000,[['E',fixture.roots[4].id],['K','1621'],['P',pk],['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
     fixtureRows.push(update)
     for(const socket of sockets)for(const request of socket.data.subs.values()){const lines=answer(request,[update],{cap:37});if(lines.length>1)socket.send(lines[0])}
     await waitFor(2)
@@ -201,7 +204,7 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     expect(browserErrors).toEqual([])
     expect(queries.filter(q=>String(q[1]).startsWith('catchup-')).length).toBeGreaterThan(10)
     const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/coax-live-catchup-browser.png',Buffer.from(screenshot.result.data,'base64'))
-    writeFileSync('/tmp/coax-live-catchup-browser.json',JSON.stringify({count:current.count,workers:current.workers,state:current.state,frames:current.frames,queries:queries.length,tableParity:true,reloaded:current.timeOrigin!==loadedAt},null,2)+'\n')
+    writeFileSync('/tmp/coax-live-catchup-browser.json',JSON.stringify({count:current.count,workers:current.workers,state:current.state,frames:current.frames,queries:queries.length,planBytes:Buffer.byteLength(current.tables[1]),retainedFinishedPlans:fixture.planned.length,tableParity:true,reloaded:current.timeOrigin!==loadedAt},null,2)+'\n')
   }finally{ws?.close();chrome.kill();await chrome.exited;server.stop(true)}
 },60000)
 
@@ -213,10 +216,42 @@ if(process.env.COAX_LIVE_REAL==='1')test('published public queue matches verifie
  try{rows=await relay.all(filters(actual.pubkey,actual));const ids=rows.filter(e=>e.kind===KIND_ISSUE).map(e=>e.id);for(let i=0;i<ids.length;i+=50)rows.push(...await relay.all(followups(actual.pubkey,ids.slice(i,i+50))))}finally{relay.close()}
  const authoritative=fold(actual.pubkey,actual,rows),t=tables(authoritative)
  const ui=new NativeUI(actual.pubkey)
- try{ui.connect();ui.pump(rows,{cap:37});expect(ui.info(0)).toBe(3);expect(ui.info(1)).toBe(authoritative.issues.length);expect(ui.text(0)).toBe(t.rows);expect(ui.text(1)).toBe(t.plans);expect(ui.text(2)).toBe(t.details);expect(ui.text(3)).toBe(t.log);expect(ui.text(4)).toBe(t.planInfo)
+ try{ui.connect();ui.pump(rows,{cap:37})
+ const captured=[...new Map(rows.map(e=>[e.id,e])).values()]
+ const groups=new Map<string,number>()
+ for(const e of captured){const stage=e.kind===1621?'issues':e.kind===1111?'comments':e.kind>=1630&&e.kind<=1633?'statuses':'metadata';const key=stage+':'+e.created_at;groups.set(key,(groups.get(key)??0)+1)}
+ const diagnostic={at:new Date().toISOString(),relay:actual.relay,artificialReplayCap:37,verifiedIssues:authoritative.issues.length,
+   capturedEvents:rows.length,uniqueEvents:captured.length,capturedBytes:Buffer.byteLength(JSON.stringify(rows)),
+   native:{state:ui.info(0),incomplete:ui.info(3),pages:ui.info(4),displayedRoots:ui.info(1),storedEvents:ui.info(5),stage:ui.info(7),query:ui.info(8),boundary:ui.info(9),pageCount:ui.info(11),boundaryCount:ui.info(12),historyPeak:ui.info(13),known:ui.info(14),storedBytes:ui.info(15)},
+   largestTimestampGroups:[...groups].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([key,count])=>({stage:key.split(':')[0],timestamp:Number(key.split(':')[1]),count})),
+   tableBytes:{items:Buffer.byteLength(t.rows),plans:Buffer.byteLength(t.plans),details:Buffer.byteLength(t.details),log:Buffer.byteLength(t.log),info:Buffer.byteLength(t.planInfo)},
+   tableLimits:{items:131072,plans:65536,details:1048576,log:16384,info:16384}}
+ writeFileSync(`/tmp/coax-capacity-prep/public-${authoritative.issues.length}-diagnostic.json`,JSON.stringify(diagnostic,null,2)+'\n')
+ writeFileSync(`/tmp/coax-capacity-prep/public-${authoritative.issues.length}-capture.json`,JSON.stringify(rows)+'\n')
+ console.log('public native capture diagnostic',JSON.stringify(diagnostic))
+ expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:3,incomplete:0,roots:authoritative.issues.length})
+ expect(ui.text(0)).toBe(t.rows);expect(ui.text(1)).toBe(t.plans);expect(ui.text(2)).toBe(t.details);expect(ui.text(3)).toBe(t.log);expect(ui.text(4)).toBe(t.planInfo)
  writeFileSync('/tmp/coax-live-catchup-public.json',JSON.stringify({relay:actual.relay,rows:ui.info(1),workers:ui.info(2),state:ui.info(0),pages:ui.info(4),capturedEvents:rows.length,verifiedIssues:authoritative.issues.length,tableParity:true},null,2)+'\n')
  }finally{ui.close()}
 },60000)
+
+// Replay a separately retained, signature-verified public capture without
+// altering its events or the native reader's pagination/storage limits.
+if(process.env.COAX_LIVE_FROZEN_PATH)test('frozen public 263-root capture retains all five tables and historical plans',()=>{
+ const actual=JSON.parse(readFileSync(join(app,'projects/coax/project.json'),'utf8'))
+ const rows:Event[]=JSON.parse(readFileSync(process.env.COAX_LIVE_FROZEN_PATH!,'utf8'))
+ const authoritative=fold(actual.pubkey,actual,rows),want=tables(authoritative),ui=new NativeUI(actual.pubkey)
+ expect(authoritative.issues.length).toBe(263)
+ expect(Buffer.byteLength(want.plans)).toBeGreaterThan(16384)
+ expect(Buffer.byteLength(want.plans)).toBeLessThanOrEqual(65536)
+ try {
+   ui.connect();ui.pump(rows,{cap:37})
+   expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:3,incomplete:0,roots:263})
+   expect(ui.text(0)).toBe(want.rows);expect(ui.text(1)).toBe(want.plans);expect(ui.text(2)).toBe(want.details);expect(ui.text(3)).toBe(want.log);expect(ui.text(4)).toBe(want.planInfo)
+   writeFileSync('/tmp/coax-capacity-prep/public-263-frozen-green.json',JSON.stringify({capture:process.env.COAX_LIVE_FROZEN_PATH,
+     roots:ui.info(1),capturedEvents:rows.length,planBytes:Buffer.byteLength(ui.text(1)),state:ui.info(0),incomplete:ui.info(3),pages:ui.info(4),tableParity:true},null,2)+'\n')
+ } finally {ui.close()}
+})
 
 
 // The issue inventory and its signed open-task order have independent caps.
@@ -270,6 +305,80 @@ function expectCapacityView(ui:NativeUI,fixture:ReturnType<typeof capacityInvent
   expect(fixture.order.tags.filter(tag=>tag[0]==='item').length).toBe(110)
   expect(fixture.order.tags.length).toBe(113)
 }
+
+// Keep each signed event and step modest. Only the aggregate projection is
+// large: 120 finished tasks retain four short steps each, plus the live plan.
+// Root IDs/aliases do not depend on plan text, so byte sizing is independent
+// of the native serializer and remains stable at the one-byte boundary.
+function planProjectionInventory(targetBytes:number) {
+  const base=capacityInventory(263),initial=expected(base.rows),planned=base.roots.slice(112,232)
+  const fields=planned.flatMap((issue,i)=>Array.from({length:4},(_,step)=>({issue,plan:i,step,prefix:`history-${i}-${step} `})))
+  const fixedBytes=Buffer.byteLength(initial.plans)+fields.reduce((n,field)=>n+initial.alias.get(field.issue.id)!.length+4+Buffer.byteLength(field.prefix),0)
+  const padding=targetBytes-fixedBytes
+  if(padding<fields.length)throw Error('plan fixture target is too small for meaningful step text')
+  const each=Math.floor(padding/fields.length),remainder=padding%fields.length
+  const texts=fields.map((field,index)=>field.prefix+'x'.repeat(each+(index<remainder?1:0)))
+  const plans=planned.map((issue,i)=>sign(1111,50000+i,[['E',issue.id],['K','1621'],['P',pk],['plan',TASK_PLAN],['by','history-worker']],
+    texts.slice(i*4,i*4+4).map(text=>'- [x] '+text).join('\n')))
+  const rows=[...base.rows,...plans],oracle=expected(rows)
+  const independentlySized=Buffer.byteLength(initial.plans)+fields.reduce((n,field,index)=>n+initial.alias.get(field.issue.id)!.length+4+Buffer.byteLength(texts[index]),0)
+  return {...base,rows,oracle,planned,targetBytes,independentlySized,
+    largestStepBytes:Math.max(...texts.map(text=>Buffer.byteLength(text))),
+    largestEventBytes:Math.max(...plans.map(event=>Buffer.byteLength(JSON.stringify(event))))}
+}
+
+function expectPlanProjection(ui:NativeUI,fixture:ReturnType<typeof planProjectionInventory>) {
+  expect(fixture.independentlySized).toBe(fixture.targetBytes)
+  expect(Buffer.byteLength(fixture.oracle.plans)).toBe(fixture.targetBytes)
+  expect(fixture.largestStepBytes).toBeLessThan(256)
+  expect(fixture.largestEventBytes).toBeLessThan(2048)
+  expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:3,incomplete:0,roots:263})
+  assertTables(ui,fixture.rows)
+  const projected=ui.text(1)
+  for(const issue of fixture.planned) {
+    expect(['resolved','closed']).toContain(fixture.oracle.by.get(issue.id)!.status)
+    expect(projected).toContain(fixture.oracle.alias.get(issue.id)+'|x|history-')
+  }
+}
+
+test('plan projection capacity retains a legitimate 45 KiB table including resolved-task plans',()=>{
+  const fixture=planProjectionInventory(45*1024),ui=new NativeUI()
+  try {
+    ui.connect();ui.pump(fixture.rows,{cap:37})
+    const diagnostic={targetBytes:fixture.targetBytes,independentlySized:fixture.independentlySized,
+      oracleBytes:Buffer.byteLength(fixture.oracle.plans),plannedFinishedTasks:fixture.planned.length,
+      largestStepBytes:fixture.largestStepBytes,largestEventBytes:fixture.largestEventBytes,
+      native:{state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1),known:ui.info(14)}}
+    writeFileSync('/tmp/coax-capacity-prep/plan-projection-45k.json',JSON.stringify(diagnostic,null,2)+'\n')
+    console.log('plan projection capacity diagnostic',JSON.stringify(diagnostic))
+    expectPlanProjection(ui,fixture)
+  } finally {ui.close()}
+})
+
+test('plan projection capacity accepts 65536 bytes and refuses 65537 atomically',()=>{
+  const accepted=planProjectionInventory(65536),overflow=planProjectionInventory(65537),ui=new NativeUI()
+  expect(accepted.roots.map(e=>e.id)).toEqual(overflow.roots.map(e=>e.id))
+  expect(overflow.independentlySized).toBe(65537)
+  expect(Buffer.byteLength(overflow.oracle.plans)).toBe(65537)
+  expect(overflow.oracle.rows).toBe(accepted.oracle.rows)
+  expect(overflow.oracle.details).toBe(accepted.oracle.details)
+  expect(overflow.oracle.log).toBe(accepted.oracle.log)
+  expect(overflow.oracle.planInfo).toBe(accepted.oracle.planInfo)
+  expect(overflow.largestStepBytes).toBeLessThan(256)
+  expect(overflow.largestEventBytes).toBeLessThan(2048)
+  try {
+    ui.connect();ui.pump(accepted.rows,{cap:37})
+    expectPlanProjection(ui,accepted)
+    const previous=Array.from({length:5},(_,k)=>ui.text(k))
+    ui.reconnect();ui.pump(overflow.rows,{cap:37})
+    expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:4,incomplete:5,roots:263})
+    expect(Array.from({length:5},(_,k)=>ui.text(k))).toEqual(previous)
+    expect(Buffer.byteLength(ui.text(1))).toBe(65536)
+    writeFileSync('/tmp/coax-capacity-prep/plan-projection-64k-boundary.json',JSON.stringify({acceptedBytes:65536,rejectedBytes:65537,
+      roots:263,retainedFinishedPlans:accepted.planned.length,largestStepBytes:overflow.largestStepBytes,largestEventBytes:overflow.largestEventBytes,
+      state:ui.info(0),incomplete:ui.info(3),priorTablesPreserved:true},null,2)+'\n')
+  } finally {ui.close()}
+})
 
 test('inventory capacity native scalar and string policies agree with independent row counts',()=>{
   for(const count of [-1,0,1,319,320,321])for(const maximum of [-1,0,1,319,320,321]) {

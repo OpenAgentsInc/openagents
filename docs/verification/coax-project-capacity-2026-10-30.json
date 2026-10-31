@@ -3,9 +3,9 @@
   "date": "2026-10-30",
   "timezone": "America/Chicago",
   "issue": "r1a-project-inventory-capacity",
-  "publication": "Drafted in work/r1a-subtasks.json before implementation; publish after updated deployed reader. The existing umbrella claim/note tracks this prerequisite.",
+  "publication": "The updated 320-root reader was deployed in production at ab70234e13eb9fccd04b51b51ff1a5d75888edb7 (PASSED 20261031T041441Z) before the seven extra issue roots were published. All prior 256 identities remain unchanged. Actual public all-five-table parity remains blocked by the pre-existing plan-output allowance; see r1a-plan-projection-capacity.",
   "baseline_commit": "9797ddc78e1d70c413d6b83c4cafe3b20f7a0c95",
-  "scope": "Finite320-row project inventory, preserving hierarchy/resolved history and independent relay order limits. Public baked/live replacement gates refuse oversized row sets before mutating the complete view.",
+  "scope": "Finite 320-row project inventory, preserving hierarchy/resolved history and independent relay order limits. Public baked/live replacement gates refuse oversized row sets before mutating the complete view.",
   "source_sha256": {
     "apps/openagents-web/project.coax": "2b13105180856ff242384a0e0dcdbbe6e5e55b290fbfaecacbed44491bebf987",
     "apps/openagents-web/project-fold.coax": "1feba52ce71190f5bf090c69053a1e1aa36a497a1191b2999879c59610304ca5",
@@ -317,7 +317,7 @@
     "No whole-app authority/mutation claim: legacy Store/fold fixtures exceed interpreter aggregate storage; existing checks and budgets were preserved. The new small policy is authority checked and mutation qualified independently.",
     "The private fold API remains void and retains its existing bounded caller preconditions; all public live/landing paths refuse excess scoped roots before invoking it.",
     "No new namespace/identity compiler capability is claimed. R1a and R3 remain open/blocked until original acceptance is fulfilled.",
-    "Event/byte/table/query budgets and relay tag limits were not enlarged.",
+    "The inventory-capacity commits did not enlarge event/byte/table/query budgets or relay tag limits. A separately filed plan-output prerequisite changes only the plans projection from 16 KiB to 64 KiB; its independent record retains the real prior failure.",
     "The stale native page layout oracle114 was corrected to the current public project_layout contract; independent canvas/vertex/name checks were retained.",
     "Already loaded older clients keep their old finite capacity and fail closed on oversized new candidates; normal reload receives new code. New page loads must receive the320 reader before extra roots are published."
   ],
@@ -361,8 +361,27 @@
     "scope": "build.sh is a shared registered input, so the walk renders registered realm/NIP pages. Project routes use the dedicated263-row native/WebGPU qualification. Five prior app-family parity input sets are unchanged. Homepage verifier intentionally changes with the shared Fold capacity and has separate real-Wasm320/321 qualification; its draw source is unchanged. Keep all8 baseline failures failed."
   },
   "rollout": {
-    "outcome": "pending",
-    "rule": "Ship updated reader before publishing roots257..263; then capture public verified parity and refresh Markdown twins."
+    "outcome": "reader_deployed_issues_published_public_projection_blocked",
+    "passed_ref": "ab70234e13eb9fccd04b51b51ff1a5d75888edb7",
+    "passed_stamp": "20261031T041441Z",
+    "project_layout_record": "/tmp/coax-capacity-production-layout.json",
+    "state_bytes": 20927904,
+    "published_source_count": 263,
+    "all_256_old_ids_unchanged": true,
+    "actual_public_capture": {
+      "roots": 263,
+      "events": 2409,
+      "stored_bytes": 2459337,
+      "limit_bytes": 4194304,
+      "incomplete": 5,
+      "plan_bytes": 45483,
+      "plan_capacity": 16384,
+      "diagnostic": "/tmp/coax-capacity-prep/public-263-diagnostic.json",
+      "chronological_baseline": "/tmp/coax-capacity-prep/public-plan-baseline-comparison.json"
+    },
+    "blocking_issue": "r1a-plan-projection-capacity",
+    "blocking_record": "docs/verification/coax-plan-projection-capacity-2026-10-30.json",
+    "task_status": "open pending the separate prerequisite; no actual public parity pass is claimed yet."
   },
   "prior_parity_input_scope": {
     "verse": {
@@ -411,5 +430,26 @@
     },
     "test_log": "/tmp/coax-capacity-prep/landing-reader-320.log"
   },
-  "pipeline_note": "A conservative all-input equality assertion correctly caught project-fold.coax in the homepage verifier. The evidence writer stopped; the outer shell lacked errexit and pushed the already-tested code at fa0a8b10a1 with rollout still pending. No deployment or extra root publication occurred. Added real LandingReader Wasm320 acceptance/321 refusal/recovery qualification before rollout; subsequent dependent commands use errexit."
+  "pipeline_note": "A conservative all-input equality assertion correctly caught project-fold.coax in the homepage verifier. The evidence writer stopped; the outer shell lacked errexit and pushed the already-tested code at fa0a8b10a1 with rollout still pending. No deployment or extra root publication occurred. Added real LandingReader Wasm320 acceptance/321 refusal/recovery qualification before rollout; subsequent dependent commands use errexit.",
+  "original_capacity_source_commit": "fa0a8b10a169b4ddc82b05e089b47b2912b7d785",
+  "shipping_compiler_qualification": {
+    "record": "/tmp/coax-capacity-prep/shipping-compiler-qualification.json",
+    "provenance": [
+      "coax-provenance-v1",
+      "24544cf0ef6cbb7d40dd85b7364b3a3fa88b6ac11e90f6a24d39907942003693",
+      "c35e79a780ca05d5f77a43119046359131ad3e66ebe5286f7df1e49a485c561e",
+      "46700f61f474d8400a800bd9f6c4053d736883aa7aa0658e3032f98c82e29881"
+    ],
+    "tests_passed": 7,
+    "assertions": 1048,
+    "policy_checks_passed": 6,
+    "policy_mutants_killed": 23,
+    "policy_mutants_survived": 0,
+    "pure_320_row_check": {
+      "log": "/tmp/coax-capacity-pure-work-320.log",
+      "outcome": "passed",
+      "steps": 279796
+    },
+    "reuse": "Recorded qualification on changed compiler inputs, before the separately scoped plan projection change."
+  }
 }
