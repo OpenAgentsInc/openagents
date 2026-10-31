@@ -29,6 +29,7 @@
 #load "../../verse/thrust.coax";
 #load "../../verse/drum.coax";
 #load "../../verse/sphere.coax";
+#load "../../aethyr/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "socket.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -150,7 +151,9 @@ HIT_KICK :: 0.35;
 HIT_FLATTEN :: 0.65;
 HIT_SPIN :: 0.6;         // the share of the car's spin speed across the contact that the ball takes     // how much of the up-down part of a hit's line the kick drops (ol-hit-feel)        // the share of the closing speed added to the ball on a car's hit
 STEP :: 0.008333333333333333;   // physics at 120 Hz
+STEP_NS :: 8333333;             // the same step on the engine's clock (aethyr/loop.coax)
 MAX_STEPS :: 12;
+MAX_FRAME_NS :: 100000000;      // a frame counts for at most 0.1 s: 12 steps
 BLUE :: 0; MAGENTA :: 1;
 PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3; PHASE_REPLAY :: 4;
 // ol-replay: each step's drives and a whole physics state each second, so a
@@ -237,7 +240,7 @@ OrbitLeague :: struct {
   spec: VehicleSpec;
   phase: int; phase_t: f64; clock: f64; played: f64; overtime: bool;
   score: [2] int; last_goal: int; touches: int;
-  carry: f64;                 // physics time not yet stepped
+  sim: FrameClock = FrameClock.{step_ns = STEP_NS, max_frame_ns = MAX_FRAME_NS, max_steps = MAX_STEPS};   // physics time not yet stepped
   held: int;
   ball_cam: bool;
   stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
@@ -989,9 +992,10 @@ goal_scored :: (s: [] OrbitLeague, team: int) {
 
 game_step :: (s: [] OrbitLeague, dt: f64) {
   if s[0].golden { return; }
-  s[0].carry = fmin(s[0].carry + dt, STEP * f64(MAX_STEPS));
-  while s[0].carry >= STEP {
-    s[0].carry -= STEP;
+  s[0].sim = loop_accept(s[0].sim, dt);
+  due := loop_due(s[0].sim);
+  s[0].sim = loop_ran(s[0].sim);
+  for k: 0..<due {
     if s[0].clip_play { clip_step(s); continue; }
     s[0].phase_t += STEP;
     if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }

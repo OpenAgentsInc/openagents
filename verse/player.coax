@@ -31,6 +31,7 @@
 
 #module "verse.player";   // a page may #load it as an alias (Dead Gears does)
 #load "stand.coax";
+#load "../aethyr/loop.coax";
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -57,9 +58,7 @@ PHI_MIN :: 0.1;         // the camera's angle down from straight up
 PHI_MAX :: 3.04159265;  // PI - PHI_MIN
 BEHIND_PHI :: 1.10714872; // atan2(400, 200): behind you and above
 DEAD_ZONE :: 0.2;       // stick travel that counts as no input
-STEP :: 0.015625;       // the fixed gameplay step, 1/64 s
-MAX_STEPS :: 8;         // steps one frame may run; the rest is dropped
-MAX_FRAME :: 0.25;      // the longest frame time that counts
+STEP :: 0.015625;       // the fixed gameplay step, 1/64 s: aethyr/loop.coax's LOOP_STEP_NS
 RADIUS :: 0.3;          // your capsule, as aethyr's kRadius
 HEIGHT :: 1.8;
 BODY :: 7;              // numbers per body: one end, the other, the radius
@@ -107,9 +106,9 @@ Player :: struct {
   pad_y: f32;
   run: bool;
   jump_held: bool;
-  // Fixed steps: time not yet stepped, and where the last step began, so the
-  // frame shows a point between the last two steps.
-  carry: f32;
+  // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
+  // and where the last step began, so the frame shows a point between the last two.
+  clock: FrameClock;
   prev_pos: Vec3;
   prev_target: Vec3 = Vec3.{x = 0, y = LOOK_AT_HEIGHT, z = 0};
   prev_face: f32;
@@ -576,22 +575,27 @@ step :: (w: World, p: Player, dt: f32) -> Player {
   return next;
 }
 
-// Advances by a frame's time in fixed steps. At most MAX_STEPS run, and a
-// longer backlog is dropped, so a stall never makes a frame slower.
+// Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
+// the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
+// dropped, so a stall never makes a frame slower.
 advance_in :: (w: World, p: Player, frame: f32) -> Player {
   next := p;
-  if finite(frame) { next.carry += clamp(frame, 0, MAX_FRAME); }
-  n := 0;
-  while next.carry >= f32(STEP) && n < MAX_STEPS {
+  next.clock = loop_accept(p.clock, cast(f64) frame);
+  next = steps_in(w, next, loop_due(next.clock));
+  next.clock = loop_ran(next.clock);
+  return next;
+}
+// Runs n fixed steps (what a clock says are due), keeping where the last began, so the
+// frame interpolates between the last two.
+steps_in :: (w: World, p: Player, n: int) -> Player {
+  next := p;
+  for i: 0..<n {
     next.prev_pos = next.pos;
     next.prev_target = next.target;
     next.prev_face = next.face;
     next.prev_dist = next.dist;
     next = step(w, next, STEP);
-    next.carry -= STEP;
-    n += 1;
   }
-  if next.carry >= f32(STEP) { next.carry = 0; }
   return next;
 }
 
@@ -619,7 +623,7 @@ verse_player_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32
 }
 
 // How far this frame is between the last two steps, in [0, 1].
-alpha :: (p: Player) -> f32 { return clamp(p.carry / f32(STEP), 0, 1); }
+alpha :: (p: Player) -> f32 { return loop_alpha(p.clock); }
 
 // The feet and facing to draw this frame.
 verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.pos, alpha(p)); }
@@ -975,32 +979,33 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   q = verse_player_input(p, 0, 0, 0.5, bad, false, false, 0, 0);
   #assert q.pad_x == 0 && q.pad_y == 0;
   q = verse_player_advance(q, bad);
-  #assert q.carry == 0;
+  // a non-number, infinite or absurdly long frame is no frame: refused, nothing stepped
+  #assert q.clock.carry_ns == 0 && q.clock.ticks == 0 && q.clock.refused == 1;
+  #assert finite(q.pos.x) && finite(q.pos.y) && finite(q.pos.z);
   q = verse_player_advance(q, 0.1);
-  #assert finite(q.pos.x) && finite(q.pos.z) && finite(q.carry);
+  #assert finite(q.pos.x) && finite(q.pos.z) && q.clock.carry_ns >= 0 && q.clock.carry_ns < LOOP_STEP_NS;
 }
 
 #test "frames run whole steps and show the point between" {
   p := held(verse_player_place(0, 0, 0, 0), 0, 1, false);
   // A frame of exactly one step runs it.
   one := verse_player_advance(p, STEP);
-  #assert one.carry == 0 && one.pos.z > 0;
+  #assert one.clock.carry_ns == 0 && one.clock.ticks == 1 && one.pos.z > 0;
   // A negative frame counts as none.
-  #assert verse_player_advance(p, -1).carry == 0;
+  #assert verse_player_advance(p, -1).clock.carry_ns == 0 && verse_player_advance(p, -1).clock.ticks == 0;
   p = verse_player_advance(p, f32(STEP) * 1.5);
   #assert alpha(p) == 0.5;
   f := verse_player_feet(p);
   #assert f.z > p.prev_pos.z && f.z < p.pos.z;
   #assert near(f.z, (p.prev_pos.z + p.pos.z) / 2, 0.0001);
-  // A long stall runs at most MAX_STEPS and keeps no backlog, even one step.
+  // A long stall runs at most LOOP_MAX_STEPS and keeps no backlog of whole steps.
   w: World;
   s := p;
-  for i: 0..<MAX_STEPS { s = step(w, s, STEP); }
+  for i: 0..<LOOP_MAX_STEPS { s = step(w, s, STEP); }
   q := verse_player_advance(p, 10);
-  #assert q.carry == 0 && q.pos.z == s.pos.z;
+  #assert q.clock.carry_ns < LOOP_STEP_NS && q.pos.z == s.pos.z && q.clock.dropped_ns > 0;
   r := verse_player_place(0, 0, 0, 0);
-  r.carry = 0;
-  #assert verse_player_advance(r, f32(STEP) * (MAX_STEPS + 1)).carry == 0;
+  #assert verse_player_advance(r, f32(STEP) * (LOOP_MAX_STEPS + 1)).clock.carry_ns == 0;
 }
 
 #test "each step remembers where it began" {
@@ -1018,8 +1023,80 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   p := verse_player_place(0, 0, 0, 3.1);
   p.prev_face = 3.1;
   p.face = -3.1;
-  p.carry = f32(STEP) / 2;
+  p.clock.carry_ns = LOOP_STEP_NS / 2;
   #assert abs(verse_player_face(p)) > 3.1;
+}
+
+// The engine core's loop contract (aethyr/loop.coax, #12609): the steps are fixed whatever
+// the frame rate, so a run and jump fed at 30, 60, 120 or 144 frames a second passes
+// through the same states, bit for bit, at every step. Only how many steps each frame
+// runs, and the point drawn between the last two, differ.
+same_step :: (a: Player, b: Player) -> bool {
+  return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
+    && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.target.y == b.target.y && a.dist == b.dist;
+}
+// No stutter at 60 FPS: the 64 Hz steps do not land one to a frame (some frames run two),
+// yet what is drawn moves smoothly. Through a jump's flight the feet drawn each frame change
+// speed by no more than gravity does in a frame plus the interpolation's error (measured
+// 0.008 m), and the camera by no more than its spring's own pull adds (0.014 m); drawing the
+// last step instead lurches by 0.077 m (feet) and 0.062 m (camera) every few frames.
+#test "a jump drawn at 60 FPS has no stutter" {
+  w: World;
+  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  frame := cast(f32) (1.0 / 60.0);
+  bound := f32(GRAVITY) * frame * frame + 0.004;   // 0.0107 m
+  eye_bound := 0.016f32;
+  was_y := 0.0f32; was_dy := 0.0f32; was_eye := 0.0f32; was_deye := 0.0f32;
+  flying := 0;
+  for k: 0..<90 {
+    p = advance_in(w, p, frame);
+    y := verse_player_feet(p).y;
+    eye := verse_player_eye(p).y;
+    dy := y - was_y; deye := eye - was_eye;
+    if k >= 2 && !p.on_ground && p.prev_pos.y > 0 && p.clock.ticks > 2 {
+      #assert abs(dy - was_dy) <= bound;
+      #assert abs(deye - was_deye) <= eye_bound;
+      flying += 1;
+    }
+    was_y = y; was_dy = dy; was_eye = eye; was_deye = deye;
+  }
+  #assert flying > 30;   // most of a 0.6 s flight was checked
+  // Drawing the last step instead (no interpolation) would fail the same bound.
+  q := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  worst := 0.0f32; worst_eye := 0.0f32; was_y = 0; was_dy = 0; was_eye = 0; was_deye = 0;
+  for k: 0..<40 {
+    q = advance_in(w, q, frame);
+    dy := q.pos.y - was_y;
+    eye := q.target.y + orbit_offset(q).y * q.dist;
+    deye := eye - was_eye;
+    if k >= 2 && !q.on_ground { worst = hi(worst, abs(dy - was_dy)); worst_eye = hi(worst_eye, abs(deye - was_deye)); }
+    was_y = q.pos.y; was_dy = dy; was_eye = eye; was_deye = deye;
+  }
+  #assert worst > 3 * bound && worst_eye > 3 * eye_bound;
+}
+
+#forall "a run and jump has the same states at 30, 60, 120 and 144 FPS" r: 0..<4 {
+  fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
+  w: World;
+  // The reference: one step at a time, the input held as it is through the run.
+  ref: [160] Player;
+  q := verse_player_input(verse_player_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
+  for i: 0..<160 { q = step(w, q, STEP); ref[i] = q; }
+  #assert ref[20].pos.y > 0.5 && ref[159].on_ground;   // it jumped, and landed
+  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
+  last := 0;
+  while p.clock.ticks < 160 {
+    p = advance_in(w, p, cast(f32) (1.0 / cast(f64) fps));
+    if p.clock.ticks > 160 { break; }
+    if p.clock.ticks > 0 { #assert same_step(p, ref[p.clock.ticks - 1]); }
+    // what is drawn lies between the last two steps
+    if p.clock.ticks > 1 {
+      f := verse_player_feet(p);
+      #assert f.y >= lo(p.prev_pos.y, p.pos.y) && f.y <= hi(p.prev_pos.y, p.pos.y);
+    }
+    #assert p.clock.ticks - last <= 2 * (64 / fps + 1);
+    last = p.clock.ticks;
+  }
 }
 
 #test "the act names what you are doing" {

@@ -9,7 +9,7 @@
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
-// verse/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
+// verse/, aethyr/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
 // 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
@@ -192,9 +192,9 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
   return n;
 }
 
-// Under apps/openagents-web/ or verse/, and not in a hidden folder (.dev scratch).
+// Under apps/openagents-web/, verse/, aethyr/ (the engine core), coax/web/ or coax/lib/, and not in a hidden folder (.dev scratch).
 su_in :: (path: string) -> bool {
-  roots := [4] string.["apps/openagents-web/", "verse/", "coax/web/", "coax/lib/"];
+  roots := [5] string.["apps/openagents-web/", "verse/", "aethyr/", "coax/web/", "coax/lib/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
