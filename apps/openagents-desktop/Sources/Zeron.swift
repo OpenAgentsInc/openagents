@@ -471,6 +471,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them; plan on|off)
   //   open model|access   a chip's menu, as a press on it opens it
   //   attach PATH     the file staged and attached, as the paperclip's panel or a drop would
+  //   answer allow|deny  the asking notice's Allow or Deny    status  print the status strip    last  print the last text
   //   folder PATH     a new session in PATH (as the folder picker makes one)    sidebar  Cmd+S    desk  print the sessions and tabs
 //   wait SECS       let the frames run    waitidle [SECS]  until the running turn ends (at most SECS, 300)
   // Without --frames the shot is taken 12 frames after the last step.
@@ -537,6 +538,11 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "newchat": zr_new_chat(state)
     case "folder": newSession(cwd: (arg as NSString).expandingTildeInPath)   // a new session in that folder, as the folder picker makes it
     case "sidebar": dsk_toggle(desk)
+    case "answer": if zr_answer(state, arg == "allow" ? 1 : 0) == 0 { print("answer: nothing is asking") }   // the asking notice's Allow or Deny, as a press on it
+    case "status", "last":   // the status strip's words; the conversation's last text
+      var b = [UInt8](repeating: 0, count: 4096)
+      let n = Int(verb == "status" ? zr_status_text(state, &b, 4096) : zr_last_text(state, &b, 4096))
+      print("\(verb): \(String(decoding: b[0..<n], as: UTF8.self))")
     case "desk":   // the desk as the scripted checks read it
       let tabs = (0..<dsk_tabs(desk)).map { String(dsk_tab(desk, $0)) }.joined(separator: ",")
       print("desk: active=\(dsk_count(desk) > 0 ? Int(coaxActive()) : -1) tabs=\(tabs) sessions=\(dsk_count(desk)) collapsed=\(dsk_collapsed(desk))")

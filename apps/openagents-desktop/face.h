@@ -112,6 +112,9 @@ void dsk_quit(void *desk);
 int32_t dsk_tabs(void *desk);
 int32_t dsk_tab(void *desk, int32_t t);
 int32_t dsk_collapsed(void *desk);
+int32_t zr_answer(void *state, int32_t allow);
+int32_t zr_status_text(void *state, uint8_t *out, int32_t cap);
+int32_t zr_last_text(void *state, uint8_t *out, int32_t cap);
 // The composer's menus and attachments (zeron/picker.coax, attachments.coax):
 // choose_named picks a model or effort by id or name (1 model, 2 effort),
 // open_menu opens a chip's menu (1 model, 3 access); take_action 3 asks for

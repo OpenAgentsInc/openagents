@@ -312,7 +312,9 @@ transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
 in the composer; the app with claude off PATH, and with a logged-out Claude
 Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
 does; three sessions in two folders with the sidebar open at 1320x880 and
-900x600, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
+900x600, a Supervised turn that asks to run `ls` (the stand-in
+`zeron/fixtures/asks/claude`) waiting, then allowed and denied, with the
+agent's answer read from the `last` step, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
 Sidebar and New Session whose result it reads from the `desk` step), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
 pixels off by more than 48 of 255. `--update` rewrites the goldens; look at
 them before committing. `OpenAgents --fps SECS` opens the window and prints
@@ -463,6 +465,13 @@ component is ported.
   the sidebar while the composer is empty (with text they select). Each
   session has its own atlas in the host (its glyph cache is its own). Not
   yet: the ROOM tab, settings and restoring sessions at launch.
+- Built (2026-10-31): the status strip under the docked composer (in its
+  bottom margin, so the composer never moves): a dot and "Working · 1m 5s",
+  "Waiting for your approval" (amber) while an Allow/Deny notice is open, or
+  "Idle · last turn 12s · $0.03" from the engine's last result. Approvals stay
+  inline in the transcript for Claude Code, Codex and Psionic; Deny reaches
+  Claude Code as the refusal "The user denied this.", which the agent sees as
+  the tool's error.
 - **Transcript:**
   - your messages, and each agent's text as it streams;
   - tool calls folded to one line, opening to show the input and result;

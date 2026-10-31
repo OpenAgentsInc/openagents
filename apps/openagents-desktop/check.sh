@@ -19,6 +19,7 @@ export BROWSER=/usr/bin/true PSIONIC_HOST=none
 
 home="$out/home"; rm -rf "$home"; mkdir -p "$home/work/openagents" "$home/work/zeron"
 so="$here/zeron/fixtures/signed-out:/usr/bin:/bin"
+asks="$here/zeron/fixtures/asks:/usr/bin:/bin"
 three="wait 1 ; send Fix the sidebar width ; folder $home/work/openagents ; wait 1 ; send Review the tab bar ; folder $home/work/zeron ; wait 2"
 # name | size | steps | a line the run must print (or empty) | engine: demo, or the PATH the app starts with in an empty home
 cases=(
@@ -27,6 +28,9 @@ cases=(
   "type-and-paste|2640,1760|newchat ; type Hello from Coax ; key cmd+a ; menu Copy ; key end ; type , pasted:  ; menu Paste ; pasteboard|pasteboard: Hello from Coax|demo"
   "claude-missing|2640,1760|wait 2||/usr/bin:/bin"
   "claude-signed-out|2640,1760|wait 2 ; send hello ; wait 2||$so"
+  "approval-waiting|2640,1760|access supervised ; send list the files ; wait 2 ; status|status: Waiting for your approval|$asks"
+  "approval-allow|2640,1760|access supervised ; send list the files ; wait 2 ; answer allow ; waitidle 10 ; status ; last|last: Allowed: ls found a.txt and b.txt.|$asks"
+  "approval-deny|2640,1760|access supervised ; send list the files ; wait 2 ; answer deny ; waitidle 10 ; last|last: Refused: The user denied this.|$asks"
   "sidebar-open|2640,1760|$three||$so"
   "sidebar-900x600|1800,1200|$three||$so"
   "sidebar-shortcuts|2640,1760|$three ; keyevent cmd+1 ; keyevent shift+down ; keyevent shift+up ; menu Close Tab ; menu Toggle Sidebar ; menu New Session ; wait 1 ; desk|desk: active=3 tabs=0,2,3 sessions=4 collapsed=1|$so"

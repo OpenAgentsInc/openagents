@@ -160,3 +160,6 @@ void dsk_quit(void *desk) { coaxial_desk_quit(desk_at(desk)); }
 int32_t dsk_tabs(void *desk) { return (int32_t)coaxial_desk_tabs(desk_at(desk)); }
 int32_t dsk_tab(void *desk, int32_t t) { return (int32_t)coaxial_desk_tab(desk_at(desk), t); }
 int32_t dsk_collapsed(void *desk) { return coaxial_desk_collapsed(desk_at(desk)) ? 1 : 0; }
+int32_t zr_answer(void *state, int32_t allow) { return coaxial_zeron_answer(at(state), allow != 0) ? 1 : 0; }
+int32_t zr_status_text(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_status_text(at(state), (coax_v_u8){out, cap}); }
+int32_t zr_last_text(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_last_text(at(state), (coax_v_u8){out, cap}); }

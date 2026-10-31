@@ -426,10 +426,66 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
   t_clamp(t);
   v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - STATUS_STRIP_HEIGHT);
   v = paint_composer_docked(out, v, c, s[0].atlas[..], th, d, x, h - ZR_DOCK_BOTTOM, cw);
+  v = zr_paint_status(out, v, s, th, d, x, h - ZR_DOCK_BOTTOM, cw);
   v = zr_paint_failure(out, v, s, th, d, x, c[0].y, cw);
   v = pk_paint(out, v, s[0].picker[..], zr_view_cat(s), zr_menu_sel(s), s[0].atlas[..], th, d, w, h);
   zr_update_cursor(s);
   return v;
+}
+
+// The status strip under the docked composer, in its bottom margin so the
+// composer never moves: working (with the turn's time), waiting for your
+// approval, or idle (with the last turn's time and cost when the engine
+// reported them). Not on the demo.
+ZR_STATUS_IDLE :: 0; ZR_STATUS_WORKING :: 1; ZR_STATUS_WAITING :: 2;
+zr_status :: (s: [] ZeronState) -> int {
+  ss := s[0].session[..];
+  if ss[0].asking >= 0 { return ZR_STATUS_WAITING; }
+  if ss[0].live { return ZR_STATUS_WORKING; }
+  return ZR_STATUS_IDLE;
+}
+zr_put :: (out: [] u8, at: int, text: string) -> int { k := at; for b: text { if k < out.count { out[k] = b; k += 1; } } return k; }
+zr_put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; nd := 0; x := ifx v < 0 then 0 else v;
+  while x > 0 || nd == 0 { digits[nd] = cast(u8) ('0' + x % 10); x /= 10; nd += 1; }
+  k := at;
+  while nd > 0 && k < out.count { nd -= 1; out[k] = digits[nd]; k += 1; }
+  return k;
+}
+// 12s, 1m 5s, 1h 2m
+zr_put_secs :: (out: [] u8, at: int, secs: int) -> int {
+  k := at;
+  if secs >= 3600 { k = zr_put_int(out, k, secs / 3600); k = zr_put(out, k, "h "); k = zr_put_int(out, k, secs % 3600 / 60); return zr_put(out, k, "m"); }
+  if secs >= 60 { k = zr_put_int(out, k, secs / 60); k = zr_put(out, k, "m "); }
+  k = zr_put_int(out, k, secs % 60);
+  return zr_put(out, k, "s");
+}
+zr_status_text :: (s: [] ZeronState, out: [] u8) -> string {
+  ss := s[0].session[..];
+  st := zr_status(s);
+  k := 0;
+  if st == ZR_STATUS_WAITING { k = zr_put(out, 0, "Waiting for your approval"); }
+  else if st == ZR_STATUS_WORKING { k = zr_put(out, 0, "Working · "); k = zr_put_secs(out, k, cast(int) floor(ss[0].secs)); }
+  else {
+    k = zr_put(out, 0, "Idle");
+    if ss[0].turns > 0 && ss[0].turn_ms > 0 { k = zr_put(out, k, " · last turn "); k = zr_put_secs(out, k, (ss[0].turn_ms + 500) / 1000); }
+    if ss[0].turns > 0 && ss[0].cost > 0 {
+      cents := cast(int) floor(ss[0].cost * 100 + 0.5);
+      k = zr_put(out, k, " · $"); k = zr_put_int(out, k, cents / 100); k = zr_put(out, k, ".");
+      if cents % 100 < 10 { k = zr_put(out, k, "0"); }
+      k = zr_put_int(out, k, cents % 100);
+    }
+  }
+  return cast(string) out[0..<k];
+}
+zr_paint_status :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, x: f32, y: f32, cw: f32) -> int {
+  if s[0].demo { return at; }
+  buf: [96] u8;
+  st := zr_status(s);
+  dot := ifx st == ZR_STATUS_WORKING then th.accent else ifx st == ZR_STATUS_WAITING then hex(WARNING, 1) else opacity(th.faint, 0.5);
+  top := y + 8; size: f32 = 6;
+  v := paint_quad(out, at, d, x + 16, top + (STATUS_STRIP_HEIGHT - size) / 2, size, size, size / 2, 0, dot, dot);
+  return paint_text(out, v, s[0].atlas[..], d, FONT_SMALL, zr_status_text(s, buf[..]), x + 16 + size + 8, top, STATUS_STRIP_HEIGHT, th.faint);
 }
 
 // The catalogs the menus show, one per mode (Claude's is the engine's).
@@ -799,6 +855,27 @@ coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c {
   return a;
 }
 // The app is quitting: Claude Code's process group goes with it.
+// The status strip's words, and the conversation's last text part (for scripted runs).
+coaxial_zeron_status_text :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+  if s.count < 1 { return 0; }
+  buf: [96] u8;
+  t := zr_status_text(s, buf[..]);
+  return zr_put(out, 0, t);
+}
+coaxial_zeron_last_text :: (s: [] ZeronState, out: [] u8) -> int #export_c {
+  if s.count < 1 { return 0; }
+  ss := s[0].session[..];
+  k := ss[0].n - 1;
+  while k >= 0 && ss[0].parts[k].kind != P_TEXT { k -= 1; }
+  if k < 0 { return 0; }
+  return zr_put(out, 0, s_text_of(ss, k));
+}
+// What a press on the asking notice's Allow (1) or Deny (0) does, for scripted runs: the same action the button sets.
+coaxial_zeron_answer :: (s: [] ZeronState, allow: bool) -> bool #export_c {
+  if s.count < 1 || s[0].session[0].asking < 0 { return false; }
+  s[0].transcript[0].action = ifx allow then A_ALLOW else A_DENY;
+  return true;
+}
 coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); so_cancel(s[0].lab[0].call[..]); gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
@@ -978,6 +1055,26 @@ zr_test_screen :: (s: [] ZeronState) {
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   #assert s[0].session[0].n == 0 && c[0].n == 5 && s[0].att[0].n == 1 && s[0].att[0].sn == 0;
   #assert cast(string) c[0].failure[0..<c[0].failure_n] == "gpt-oss-20b reads text only, so it can't see Image 1. Remove it, or switch the chat to Claude.";
+}
+
+#test "the status strip: working with the turn's time, waiting for approval, idle with the last turn's time and cost" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  out: [200000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  ss := s[0].session[..]; buf: [96] u8;
+  s_user(ss, "list the files");
+  ss[0].secs = 65.4;
+  #assert zr_status(s[..]) == ZR_STATUS_WORKING && zr_status_text(s[..], buf[..]) == "Working · 1m 5s";
+  s_notice(ss, N_ASK, "Bash: ls"); ss[0].asking = ss[0].n - 1;
+  #assert zr_status_text(s[..], buf[..]) == "Waiting for your approval";
+  #assert coaxial_zeron_answer(s[..], true) && s[0].transcript[0].action == A_ALLOW;
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert ss[0].asking < 0 && !coaxial_zeron_answer(s[..], false);
+  s_turn_end(ss, false, ""); ss[0].turn_ms = 12400; ss[0].cost = 0.034;
+  #assert zr_status(s[..]) == ZR_STATUS_IDLE && zr_status_text(s[..], buf[..]) == "Idle · last turn 12s · $0.03";
+  ss[0].cost = 0;
+  #assert zr_status_text(s[..], buf[..]) == "Idle · last turn 12s";
 }
 
 #test "the screen opens on Zeron's empty new chat; a sent message starts the chat, the composer docked under it" {

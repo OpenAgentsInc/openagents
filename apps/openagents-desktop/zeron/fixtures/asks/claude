@@ -1,0 +1,40 @@
+#!/bin/sh
+# A Claude Code for check.sh that asks to run a command: a message gets a Bash
+# tool call and a can_use_tool request; allowed, the command's output and an
+# answer that names it; denied, an answer that quotes the refusal it was given.
+# Lines carry the fields the stream-json parser requires, as 2.1.316 writes them.
+S=00000000-0000-0000-0000-000000000000
+U='"usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}'
+say() {   # an assistant message whose content is $1
+  printf '{"type":"assistant","message":{"id":"m%s","model":"claude-opus-5-5","role":"assistant","type":"message","content":[%s],"stop_reason":null,"stop_sequence":null,%s},"parent_tool_use_id":null,"uuid":"%s","session_id":"%s"}\n' "$2" "$1" "$U" "$S" "$S"
+}
+stream() { # the text as it streams (the transcript takes text from the deltas)
+  printf '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"%s"}},"parent_tool_use_id":null,"uuid":"%s","session_id":"%s"}\n' "$1" "$S" "$S"
+}
+tool() {  # the Bash call's result: $1 the output, $2 true when refused
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"%s","is_error":%s}]},"parent_tool_use_id":null,"uuid":"%s","session_id":"%s"}\n' "$1" "$2" "$S" "$S"
+}
+done_() { # the turn's result: $1 the text, $2 cost, $3 ms
+  printf '{"type":"result","subtype":"success","is_error":false,"duration_ms":%s,"duration_api_ms":%s,"num_turns":1,"total_cost_usd":%s,%s,"modelUsage":{},"permission_denials":[],"result":"%s","uuid":"%s","session_id":"%s"}\n' "$3" "$3" "$2" "$U" "$1" "$S" "$S"
+}
+while IFS= read -r line; do
+  case "$line" in
+    *'"control_request"'*)
+      id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
+      printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"models":[]}}}\n' "$id" ;;
+    *'"type":"user"'*)
+      say '{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}' 1
+      printf '{"type":"control_request","request_id":"ask-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_1"}}\n' ;;
+    *'"control_response"'*'"behavior":"allow"'*)
+      tool 'a.txt\nb.txt' false
+      stream 'Allowed: ls found a.txt and b.txt.'
+      say '{"type":"text","text":"Allowed: ls found a.txt and b.txt."}' 2
+      done_ 'Allowed: ls found a.txt and b.txt.' 0.0123 2400 ;;
+    *'"control_response"'*'"behavior":"deny"'*)
+      why=$(printf '%s' "$line" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+      tool "$why" true
+      stream "Refused: $why"
+      say "{\"type\":\"text\",\"text\":\"Refused: $why\"}" 2
+      done_ "Refused: $why" 0.0062 1800 ;;
+  esac
+done
