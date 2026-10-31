@@ -1,0 +1,260 @@
+// The release history, drawn on WebGPU with the shared Filament/sans font.
+// Content is generated from coax/CHANGELOG.md; browser glue transports effects.
+#load "font.coax";
+#load "analytics.coax";
+#load "changelog-content.coax";
+
+VERTEX_FLOATS :: 12;
+CC_UNIFORMS :: 88;
+CC_VERTICES :: 100000;
+CC_OUTBOX :: 262144;
+CC_PROJECT :: "/projects/coax";
+CC_RAW :: "/coax/changelog/index.md";
+CcBox :: struct {x0:f32;y0:f32;x1:f32;y1:f32;}
+ChangelogState :: struct {
+  ready:bool;w:f32;h:f32;d:f32=1;scroll:f32;limit:f32;body:CcBox;
+  tops:[CC_BLOCKS]f32;lines:[CC_BLOCKS]int;
+  px:f32;py:f32;down:bool;pointer:int;start_y:f32;start_x:f32;start_scroll:f32;dragged:bool;press:int=-1;
+  focus:int=-1;action:int;out_n:int;outbox:[CC_OUTBOX]u8;copied:f32;
+  first:int=-1;last:int=-1;
+}
+
+#test "changelog reading column and four controls fit phones and desktop" {
+  s:[1]ChangelogState;
+  widths:=[3]f32.[320,390,1440];heights:=[3]f32.[568,844,900];
+  for i:0..<3 {
+    s[0].w=widths[i];s[0].h=heights[i];cc_chrome(s[..]);
+    #assert s[0].body.x0>=16 && s[0].body.x1<=widths[i]-16;
+    #assert s[0].body.y0>100 && s[0].body.y1<=heights[i]-20 && s[0].body.y1>s[0].body.y0+120;
+    for j:0..<4 {b:=cc_control(s[..],j);#assert b.x0>=16 && b.x1<=widths[i]-16 && b.y1<s[0].body.y0 && b.y1-b.y0>=44;}
+  }
+}
+#test "changelog wheel and keyboard clamp to the measured history" {
+  s:[1]ChangelogState;s[0].w=390;s[0].h=844;cc_chrome(s[..]);s[0].limit=500;
+  cc_wheel(s[..],123);#assert s[0].scroll==123;
+  cc_wheel(s[..],10000000);#assert s[0].scroll==s[0].limit;
+  #assert cc_key(s[..],-8,0) && s[0].scroll==0;
+  #assert cc_key(s[..],-11,0) && s[0].scroll>0;
+  #assert cc_key(s[..],-9,0) && s[0].scroll==s[0].limit;
+  cc_wheel(s[..],-10000000);#assert s[0].scroll==0;
+}
+#test "changelog copy carries more than32KiB and refuses overflow without a partial action" {
+  s:[1]ChangelogState;large:[33001]u8;large[0]='A';large[33000]='Z';
+  #assert cc_emit(s[..],cast(string)large[..],2);
+  #assert s[0].action==2 && s[0].out_n==33001 && s[0].outbox[0]=='A' && s[0].outbox[33000]=='Z';
+  cc_done(s[..]);#assert s[0].action==0 && s[0].out_n==0;
+  #assert cc_go(s[..],3) && s[0].out_n==CC_MARKDOWN.count;
+  #assert cast(string)s[0].outbox[0..<s[0].out_n]==CC_MARKDOWN;
+  huge:[CC_OUTBOX+1]u8;#assert !cc_emit(s[..],cast(string)huge[..],2) && s[0].action==0 && s[0].out_n==0;
+}
+#test "changelog navigation uses actual routes and only link rows activate" {
+  s:[1]ChangelogState;
+  #assert cc_go(s[..],0) && cast(string)s[0].outbox[0..<s[0].out_n]==CC_PROJECT;
+  #assert cc_go(s[..],1) && cast(string)s[0].outbox[0..<s[0].out_n]==CC_SOURCE_URL;
+  #assert cc_go(s[..],2) && cast(string)s[0].outbox[0..<s[0].out_n]==CC_RAW;
+  link:=-1;plain:=-1;for i:0..<CC_BLOCKS {if CC_KIND[i]==3 {link=i;}else {plain=i;}}
+  #assert link>=0 && plain>=0 && cc_go(s[..],link+4);
+  #assert cast(string)s[0].outbox[0..<s[0].out_n]==CC_LINK[link];
+  #assert !cc_go(s[..],plain+4) && s[0].action==0 && !cc_go(s[..],-1);
+}
+#test "changelog tabs in both directions and enter activates the focused control" {
+  s:[1]ChangelogState;s[0].w=390;s[0].h=844;cc_chrome(s[..]);s[0].limit=10000;
+  for i:0..<CC_BLOCKS {s[0].tops[i]=100+20*cast(f32)i;}
+  s[0].focus=-1;#assert cc_key(s[..],-15,0) && s[0].focus==0;
+  #assert cc_key(s[..],-2,0) && cast(string)s[0].outbox[0..<s[0].out_n]==CC_PROJECT;
+  #assert cc_key(s[..],-15,1) && s[0].focus>=4;
+  #assert CC_KIND[s[0].focus-4]==3 && s[0].scroll>0;
+  #assert cc_key(s[..],-15,0) && s[0].focus==0;
+  #assert !cc_key(s[..],12345,0);
+}
+#test "changelog touch drag cancellation and extra pointers never navigate" {
+  s:[1]ChangelogState;s[0].w=390;s[0].h=844;s[0].d=2;cc_chrome(s[..]);b:=cc_control(s[..],0);
+  x:=(b.x0+8)*2;y:=(b.y0+8)*2;
+  #assert cc_pointer(s[..],x,y,0,1,7);
+  #assert cc_pointer(s[..],x,y+30,1,1,7);
+  #assert cc_pointer(s[..],x,y+30,2,1,7) && s[0].action==0;
+  #assert cc_pointer(s[..],x,y,0,1,7) && cc_pointer(s[..],x,y,3,1,7) && s[0].action==0;
+  #assert cc_pointer(s[..],x,y,0,1,7) && cc_pointer(s[..],x,y,0,1,8);
+  #assert cc_pointer(s[..],x,y,2,1,7) && s[0].action==0;
+  #assert cc_pointer(s[..],x,y,0,1,7) && cc_pointer(s[..],x,y,2,1,7) && s[0].action==1;
+}
+#test "changelog blur releases an interrupted pointer without activating a link" {
+  s:[1]ChangelogState;s[0].w=390;s[0].h=844;s[0].d=1;cc_chrome(s[..]);b:=cc_control(s[..],0);
+  #assert cc_pointer(s[..],b.x0+10,b.y0+10,0,1,5);cc_blur(s[..]);
+  #assert !s[0].down && s[0].press== -1 && s[0].action==0;
+  #assert !cc_pointer(s[..],b.x0+10,b.y0+10,2,1,5);
+}
+#test "changelog initially selects the latest release and Home restores the intro" {
+  s:[1]ChangelogState;s[0].w=390;s[0].h=844;cc_chrome(s[..]);s[0].limit=100000;
+  first:=-1;for i:0..<CC_BLOCKS {s[0].tops[i]=100+50*cast(f32)i;if first<0 && CC_KIND[i]==1 {first=i;}}
+  #assert first>=0;cc_start(s[..]);#assert s[0].scroll==s[0].tops[first]-12;
+  #assert cc_key(s[..],-8,0) && s[0].scroll==0;
+}
+
+lo :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+hi :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+clamp :: (x:f32,a:f32,b:f32)->f32 {return lo(b,hi(a,x));}
+// The same bounded stroke quad used by project.coax and the shared font.
+lit :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,core:f32,light:f32,glow:f32,red:f32,green:f32,blue:f32,mode:f32)->bool {
+  if at<0 || (at+6)*VERTEX_FLOATS>out.count || light<=0.002 {return false;}
+  dx:=bx-ax;dy:=by-ay;length:=sqrt(dx*dx+dy*dy);if length<=0 {return false;}
+  ux:=dx/length;uy:=dy/length;nx:=-uy;ny:=ux;r:=glow+core;
+  a:=[6]f32.[-r,length+r,length+r,-r,length+r,-r];c:=[6]f32.[-r,-r,r,-r,r,r];
+  for q:0..<6 {o:=(at+q)*VERTEX_FLOATS;
+    out[o]=ax+ux*a[q]+nx*c[q];out[o+1]=ay+uy*a[q]+ny*c[q];out[o+2]=a[q];out[o+3]=c[q];
+    out[o+4]=length;out[o+5]=core;out[o+6]=light;out[o+7]=glow;out[o+8]=red;out[o+9]=green;out[o+10]=blue;out[o+11]=mode;
+  }return true;
+}
+cc_ink :: (kind:int,d:f32)->Ink {
+  k:=Ink.{core=0.55*d,light=0.94,glow=1*d,red=0.92,green=0.94,blue=0.97,mode=0,scale=d,sans=true};
+  if kind==1 {k.sans=false;k.scale=0;k.core=0.65*d;k.glow=2*d;}
+  if kind==3 {k.red=0.5;k.green=0.82;k.blue=1;}
+  if kind==4 {k.light=0.62;k.red=0.75;k.green=0.8;k.blue=0.87;}
+  return k;
+}
+cc_cap :: (kind:int)->f32 {return ifx kind==1 then 14.0f32 else 8.7f32;}
+cc_step :: (kind:int)->f32 {return ifx kind==1 then 34.0f32 else 24.0f32;}
+cc_inside :: (b:CcBox,x:f32,y:f32)->bool {return x>=b.x0 && x<b.x1 && y>=b.y0 && y<b.y1;}
+cc_count :: (text:string,width:f32,kind:int)->int {
+  from:=0;lines:=0;next:[1]int;k:=cc_ink(kind,1);cap:=cc_cap(kind);
+  while from<text.count {end:=wrap_ink(text,from,width,cap,0.34,0.95,k,next[..]);
+    from=ifx next[0]>from then next[0] else from+1;lines+=1;
+  }return ifx lines>0 then lines else 1;
+}
+cc_chrome :: (s:[]ChangelogState) {
+  w:=hi(240,s[0].w);h:=hi(320,s[0].h);left:=hi(16,(w-900)*0.5);right:=w-left;
+  top:=ifx w<700 then 210.0f32 else 158.0f32;
+  s[0].body=CcBox.{x0=left,y0=top,x1=right,y1=h-32};
+}
+cc_layout :: (s:[]ChangelogState) {
+  cc_chrome(s);room:=s[0].body.x1-s[0].body.x0-32;y:=12.0f32;
+  for i:0..<CC_BLOCKS {
+    if CC_KIND[i]==1 {y+=12;}
+    s[0].tops[i]=y;s[0].lines[i]=cc_count(CC_TEXT[i],room,CC_KIND[i]);
+    y+=cast(f32)s[0].lines[i]*cc_step(CC_KIND[i])+(ifx CC_KIND[i]==3 then 7.0f32 else 14.0f32);
+  }
+  s[0].limit=hi(0,y+8-(s[0].body.y1-s[0].body.y0));s[0].scroll=clamp(s[0].scroll,0,s[0].limit);
+}
+// New readers land on the newest release; Home still reaches the full preface.
+cc_start :: (s:[]ChangelogState) {
+  for i:0..<CC_BLOCKS {if CC_KIND[i]==1 {s[0].scroll=clamp(s[0].tops[i]-12,0,s[0].limit);return;}}
+  s[0].scroll=0;
+}
+cc_control :: (s:[]ChangelogState,id:int)->CcBox #export_c {
+  b:CcBox;if id<0 || id>3 {return b;}
+  left:=s[0].body.x0;right:=s[0].body.x1;cols:=ifx s[0].w<700 then 2 else 4;
+  width:=(right-left-8*cast(f32)(cols-1))/cast(f32)cols;
+  x:=left+cast(f32)(id%cols)*(width+8);y:=94+cast(f32)(id/cols)*52;
+  return CcBox.{x0=x,y0=y,x1=x+width,y1=y+44};
+}
+// Only fully visible text lines are interactive; clipped rows cannot leak hits.
+cc_link_box :: (s:[]ChangelogState,i:int)->CcBox {
+  empty:CcBox;if i<0 || i>=CC_BLOCKS || CC_KIND[i]!=3 {return empty;}
+  row:=s[0].body.y0+s[0].tops[i]-s[0].scroll;step:=cc_step(3);
+  first:=hi(0,-floor((row-s[0].body.y0)/step));end:=lo(cast(f32)s[0].lines[i],floor((s[0].body.y1-row)/step));
+  if end<=first {return empty;}
+  return CcBox.{x0=s[0].body.x0+12,y0=row+first*step,x1=s[0].body.x1-16,y1=row+end*step};
+}
+cc_hit :: (s:[]ChangelogState,x:f32,y:f32)->int #export_c {
+  for i:0..<4 {if cc_inside(cc_control(s,i),x,y) {return i;}}
+  if cc_inside(s[0].body,x,y) {for i:0..<CC_BLOCKS {if CC_KIND[i]==3 && cc_inside(cc_link_box(s,i),x,y) {return i+4;}}}
+  return -1;
+}
+cc_wheel :: (s:[]ChangelogState,dy:f32) #export_c {if dy==dy {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}}
+cc_key :: (s:[]ChangelogState,key:int,mods:int)->bool #export_c {
+  if key==-8 {s[0].scroll=0;return true;}if key==-9 {s[0].scroll=s[0].limit;return true;}
+  if key==-6 || key==-7 {cc_wheel(s,ifx key==-6 then -36.0f32 else 36.0f32);return true;}
+  if key==-10 || key==-11 || (key==32 && s[0].focus<0) {by:=hi(24,s[0].body.y1-s[0].body.y0-40);cc_wheel(s,ifx key==-10 then -by else by);return true;}
+  if key==-15 {
+    step:=ifx (mods&1)!=0 then -1 else 1;next:=s[0].focus;
+    if next<0 {next=ifx step>0 then -1 else 0;}
+    for n:0..<CC_BLOCKS+4 {
+      next=(next+step+CC_BLOCKS+4)%(CC_BLOCKS+4);
+      if next<4 || CC_KIND[next-4]==3 {break;}
+    }
+    s[0].focus=next;
+    if next>=4 {s[0].scroll=clamp(s[0].tops[next-4]-16,0,s[0].limit);}
+    return true;
+  }
+  if (key==-2 || key==32) && s[0].focus>=0 {return cc_go(s,s[0].focus);}
+  return false;
+}
+cc_emit :: (s:[]ChangelogState,text:string,action:int)->bool {
+  s[0].action=0;s[0].out_n=0;
+  if (action!=1 && action!=2) || text.count==0 || text.count>s[0].outbox.count {return false;}
+  for i:0..<text.count {s[0].outbox[i]=text[i];}s[0].out_n=text.count;s[0].action=action;return true;
+}
+cc_done :: (s:[]ChangelogState) #export_c {s[0].action=0;s[0].out_n=0;}
+cc_blur :: (s:[]ChangelogState) #export_c {s[0].down=false;s[0].dragged=true;s[0].press= -1;}
+cc_go :: (s:[]ChangelogState,id:int)->bool {
+  if id==0 {return cc_emit(s,CC_PROJECT,1);}if id==1 {return cc_emit(s,CC_SOURCE_URL,1);}
+  if id==2 {return cc_emit(s,CC_RAW,1);}if id==3 {ok:=cc_emit(s,CC_MARKDOWN,2);if ok {s[0].copied=2.5;}return ok;}
+  if id>=4 && id<CC_BLOCKS+4 && CC_KIND[id-4]==3 {return cc_emit(s,CC_LINK[id-4],1);}
+  cc_done(s);return false;
+}
+cc_pointer :: (s:[]ChangelogState,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c {
+  d:=hi(0.5,s[0].d);px:=x/d;py:=y/d;s[0].px=px;s[0].py=py;
+  if phase==0 {
+    if s[0].down {s[0].dragged=true;return true;}
+    s[0].down=true;s[0].pointer=id;s[0].start_x=px;s[0].start_y=py;s[0].start_scroll=s[0].scroll;s[0].dragged=false;s[0].press=cc_hit(s,px,py);return true;
+  }
+  if !s[0].down || s[0].pointer!=id {return false;}
+  if phase==1 {
+    if abs(px-s[0].start_x)>6 || abs(py-s[0].start_y)>6 {s[0].dragged=true;}
+    if cc_inside(s[0].body,s[0].start_x,s[0].start_y) {s[0].scroll=clamp(s[0].start_scroll+s[0].start_y-py,0,s[0].limit);}return true;
+  }
+  if phase==2 || phase==3 {
+    s[0].down=false;
+    if phase==2 && !s[0].dragged && s[0].press>=0 && cc_hit(s,px,py)==s[0].press {ok:=cc_go(s,s[0].press);}
+    return true;
+  }return false;
+}
+cc_revision :: ()->int #export_c {
+  h:u32=2166136261;for c:CC_MARKDOWN {h=mul_wrap(h^cast(u32)c,cast(u32)16777619);}return cast(int)h;
+}
+cc_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,cap:f32,k:Ink)->int {return draw_text(out,v,text,x,y,cap,0.34,0.95,k,false,false);}
+cc_rule :: (out:[]f32,v:int,x0:f32,y0:f32,x1:f32,y1:f32,k:Ink)->int {
+  return ifx lit(out,v,x0,y0,x1,y1,k.core,k.light,k.glow,k.red,k.green,k.blue,0) then v+6 else v;
+}
+cc_frame :: (s:[]ChangelogState,out:[]f32,u:[]f32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c {
+  if s.count<1 || u.count<CC_UNIFORMS || !(d>=0.5 && d<=4) || !(width>=240*d && width<=32768) || !(height>=320*d && height<=32768) {return 0;}
+  w:=width/d;h:=height/d;
+  fresh:=!s[0].ready;if fresh {s[0].ready=true;s[0].focus=-1;}
+  if s[0].w!=w || s[0].h!=h {s[0].w=w;s[0].h=h;cc_layout(s);}
+  if fresh {cc_start(s);}
+  s[0].d=d;s[0].copied=hi(0,s[0].copied-clamp(dt,0,0.1));s[0].first=-1;s[0].last=-1;
+  for i:0..<CC_UNIFORMS {u[i]=0;}u[0]=width;u[1]=height;u[2]=20;u[3]=1;u[4]=1;u[5]=1;
+  b:=s[0].body;u[8]=b.x0*d;u[9]=b.y0*d;u[10]=b.x1*d;u[11]=b.y1*d;u[12]=8*d;u[13]=0.96;
+  v:=0;left:=b.x0*d;white:=cc_ink(2,d);dim:=cc_ink(4,d);accent:=cc_ink(3,d);
+  title_cap:=lo(18,(b.x1-b.x0)/measure(CC_TITLE,0.34,0.95,false));
+  v=cc_text(out,v,CC_TITLE,left,49*d,title_cap*d,cc_ink(1,d));
+  v=cc_text(out,v,"RELEASE HISTORY / LATEST",left,76*d,6.8*d,dim);
+  v=cc_text(out,v,CC_LATEST,left+175*d,76*d,7*d,accent);
+  labels:=[4]string.["PROJECT","SOURCE","READ MARKDOWN",ifx s[0].copied>0 then "COPIED" else "COPY MARKDOWN"];
+  for i:0..<4 {
+    c:=cc_control(s,i);hot:=s[0].focus==i || cc_hit(s,s[0].px,s[0].py)==i;k:=ifx hot then white else accent;
+    v=cc_rule(out,v,c.x0*d,(c.y1-1)*d,c.x1*d,(c.y1-1)*d,k);
+    v=cc_text(out,v,labels[i],(c.x0+8)*d,(c.y0+28)*d,7*d,k);
+  }
+  x:=(b.x0+12)*d;room:=(b.x1-b.x0-32)*d;
+  for i:0..<CC_BLOCKS {
+    y:=b.y0+s[0].tops[i]-s[0].scroll;kind:=CC_KIND[i];step:=cc_step(kind);
+    if y+cast(f32)s[0].lines[i]*step<=b.y0 || y>=b.y1 {continue;}
+    from:=0;line:=0;next:[1]int;cap:=cc_cap(kind)*d;k:=cc_ink(kind,d);
+    while from<CC_TEXT[i].count {
+      // Measure in the same CSS space as layout so DPR cannot change line breaks.
+      end:=wrap_ink(CC_TEXT[i],from,b.x1-b.x0-32,cc_cap(kind),0.34,0.95,cc_ink(kind,1),next[..]);top:=y+cast(f32)line*step;
+      if top>=b.y0 && top+step<=b.y1 {
+        if s[0].first<0 {s[0].first=i;}s[0].last=i;
+        v=cc_text(out,v,CC_TEXT[i][from..<end],x,(top+(ifx kind==1 then 23.0f32 else 18.0f32))*d,cap,k);
+        if kind==3 && s[0].focus==i+4 {v=cc_rule(out,v,x,(top+22)*d,x+lo(room,ink_width(CC_TEXT[i][from..<end],cap,0.34,0.95,k)),(top+22)*d,accent);}
+      }
+      from=ifx next[0]>from then next[0] else from+1;line+=1;
+    }
+  }
+  if s[0].limit>0 {rail:=b.y1-b.y0-16;thumb:=hi(24,rail*rail/(rail+s[0].limit));y:=b.y0+8+(rail-thumb)*s[0].scroll/s[0].limit;
+    v=cc_rule(out,v,(b.x1-5)*d,y*d,(b.x1-5)*d,(y+thumb)*d,accent);
+  }
+  v=cc_text(out,v,"HOME: INTRO / END: OLDEST / TAB: LINKS",left,(h-13)*d,5.2*d,dim);
+  return v;
+}

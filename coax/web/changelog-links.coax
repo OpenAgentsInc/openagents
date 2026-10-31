@@ -1,0 +1,43 @@
+// URL admission for changelog links; rendering and I/O are separate.
+#authority;
+
+#test "HTTPS, repository relatives and document anchors retain their kind" {
+  #assert cgl_kind("https://github.com/OpenAgentsInc/openagents/commit/abc")==1;
+  #assert cgl_kind("https://example.org/a?q=one&two=2#three")==1;
+  #assert cgl_kind("STATUS.md")==2 && cgl_kind("../docs/a.md#section")==2;
+  #assert cgl_kind("#a-release")==3 && cgl_kind("#a")==3;
+  #assert cgl_https("https://") && cgl_https("https://x") && !cgl_https("https:/") && !cgl_https("http://x");
+  #assert cgl_kind("a")==2 && cgl_kind("https://x")==1;
+  #assert cgl_kind("")==0 && cgl_kind("#")==0;
+  #assert cgl_kind("https://")==0 && cgl_kind("https:///a")==0 && cgl_kind("https://?a")==0 && cgl_kind("https://#a")==0;
+  #assert cgl_kind("/a")==0 && cgl_kind("//example.org")==0;
+  #assert cgl_kind("http://example.org")==0 && cgl_kind("javascript:alert(1)")==0 && cgl_kind("file:a")==0;
+  #assert cgl_kind("a:b")==0 && cgl_kind("https://x/a:b")==1;
+}
+#test "link bytes have a finite independent rejection alphabet" {
+  bad:=[7]u8.[127,'"','\'','<','>','\\','`'];
+  s:=[3]u8.['a','x','b'];
+  for i:0..<256 {
+    c:=cast(u8)i;expected:=i>32;
+    for b:bad {if c==b {expected=false;}}
+    #assert cgl_byte(c)==expected;
+    s[1]=c;
+    #assert (cgl_kind(cast(string)s[..])!=0)==(expected && c!=':');
+  }
+}
+cgl_byte :: (c:u8)->bool {
+  return c>32 && c!=127 && c!='"' && c!='\'' && c!='<' && c!='>' && c!='\\' && c!='`';
+}
+cgl_https :: (s:string)->bool {return s.count>=8 && s[0..<8]=="https://";}
+cgl_kind :: (s:string)->int {
+  if s.count==0 {return 0;}
+  for c:s {if !cgl_byte(c) {return 0;}}
+  if cgl_https(s) {
+    if s.count==8 || s[8]=='/' || s[8]=='?' || s[8]=='#' {return 0;}
+    return 1;
+  }
+  if s[0]=='/' {return 0;}
+  for c:s {if c==':' {return 0;}}
+  if s[0]=='#' {return ifx s.count>1 then 3 else 0;}
+  return 2;
+}

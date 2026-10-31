@@ -60,6 +60,15 @@ from the observed introducing commit. A rebase can change that hash: rerun
 Source archives without Git still require a concrete, well-formed commit line.
 Finalize the hash before building from the bootstrap's private source snapshot.
 
+The public history lives at <https://openagents.com/coax/changelog>, linked from
+the Coax project page. Every website build runs the Coax changelog generator
+before compiling its reader, deriving the GPU content, accessible HTML and
+byte-identical Markdown twin from `coax/CHANGELOG.md`. The normal staging and
+production smoke checks require that source parity and the page's assets, so
+publishing a site release cannot silently leave an older changelog online.
+Release the pushed commit with `coax/web/release.sh --ref COMMIT`; no separate
+changelog edit or upload is needed.
+
 Run the model's checks/mutation when its policy changes. The normal bootstrap
 already runs them; an unchanged model does not need an additional manual run.
 Build the compiler once when its embedded metadata changes. Ordinary prose

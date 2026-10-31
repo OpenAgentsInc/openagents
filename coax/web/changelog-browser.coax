@@ -1,0 +1,114 @@
+// Real headless/muted Chrome checks of the shipped Coax reader and its effects.
+//   coax/web/tool.sh coax/web/changelog-browser.coax BASE OUTPUT_DIRECTORY
+#import "Basic";
+#load "../lib/net/cdp.coax";
+#load "../../apps/openagents-web/changelog-content.coax";
+
+CB_INIT :: "globalThis.__copy='';globalThis.__events=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{globalThis.__copy=text}}});const take=body=>(body?.text?body.text():Promise.resolve(typeof body==='string'?body:new TextDecoder().decode(body||new Uint8Array()))).then(t=>{try{globalThis.__events.push(JSON.parse(t))}catch{}});const keep=globalThis.fetch.bind(globalThis);globalThis.fetch=(url,opts)=>{if(new URL(url,location.href).pathname==='/api/analytics/events'){take(opts?.body);return Promise.resolve(new Response('{}',{status:200}))}return keep(url,opts)};navigator.sendBeacon=(url,body)=>{if(new URL(url,location.href).pathname==='/api/analytics/events')take(body);return true};";
+CB_READY :: "(async()=>{for(let i=0;i<100;i++){if(globalThis.coaxial?.ready&&document.querySelector('canvas')?.width>0){await new Promise(r=>setTimeout(r,250));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
+CB_READER_READY :: "(async()=>{for(let i=0;i<100;i++){if(coaxial.probe()>0){await new Promise(r=>setTimeout(r,200));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
+
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: changelog-browser BASE OUTPUT_DIRECTORY");return 2;}
+  base:=args_at(a[..],0);out:=args_at(a[..],1);
+  if !fs_mkdir(out) {return 2;}
+  c:[1]Cdp;
+  if !cdp_launch(c[..],1280,800,"coax-changelog-check-") {tool_errln(cdp_error(c[..]));return 1;}
+  ok:=cb_run(c[..],base,out);cdp_close(c[..]);
+  if !ok {return 1;}
+  print("PASS: real WebGPU desktop/phone, complete history, keyboard/touch, clipboard bytes, project navigation and analytics\n");return 0;
+}
+cb_call :: (c:[]Cdp,name:string,params:string)->bool {return cdp_call(c,name,params,15000)>=0;}
+cb_eval :: (c:[]Cdp,script:string)->int {
+  buf:[1048576]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+  jo_key(o[..],"expression");jo_str(o[..],script);jo_key(o[..],"awaitPromise");jo_bool(o[..],true);
+  jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);
+  if o[0].bad {return -1;}
+  r:=cdp_call(c,"Runtime.evaluate",jo_text(o[..]),15000);
+  if r<0 {return -1;}return jv_path(cdp_doc(c),r,"result.value");
+}
+cb_true :: (c:[]Cdp,script:string,label:string)->bool {
+  v:=cb_eval(c,script);ok:=v>=0 && jv_bool(cdp_doc(c),v);
+  print("% %\n",ifx ok then "ok" else "FAIL",label);return ok;
+}
+cb_nav :: (c:[]Cdp,url:string)->bool {
+  buf:[4096]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  return !o[0].bad && cb_call(c,"Page.navigate",jo_text(o[..])) && cb_true(c,CB_READY,"engine ready on the canvas");
+}
+cb_shot :: (c:[]Cdp,out:string,name:string)->bool {
+  r:=cdp_call(c,"Page.captureScreenshot","{\"format\":\"png\"}",15000);
+  if r<0 {return false;}
+  d:=cdp_doc(c);data:=jv_get(d,r,"data");if jv_kind(d,data)!=JV_STRING {return false;}
+  png:[25165824]u8;n:=b64_decode(jv_raw(d,data),png[..]);path:[4096]u8;
+  return n>0 && fs_write(fs_join(out,name,path[..]),cast(string)png[0..<n]);
+}
+cb_key :: (c:[]Cdp,key:string,code:int)->bool {
+  bytes:[1024]u8;o:[1]Jo;
+  for phase:0..<2 {
+    jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx phase==0 then "keyDown" else "keyUp");
+    jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"code");jo_str(o[..],key);
+    jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],code);jo_key(o[..],"nativeVirtualKeyCode");jo_int(o[..],code);jo_end(o[..]);
+    if !cb_call(c,"Input.dispatchKeyEvent",jo_text(o[..])) {return false;}
+  }proc_sleep(200);return true;
+}
+cb_control :: (c:[]Cdp,id:int)->bool {
+  bytes:[1024]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);
+  // A JSON number is safe to splice as part of this fixed read-only expression.
+  script:[256]u8;w:[1]Jo;jo_start(w[..],script[..]);jo_int(w[..],10+id*2);
+  expr:[1024]u8;n:=0;n=cb_copy(expr[..],n,"({x:coaxial.guardProbe(");n=cb_copy(expr[..],n,jo_text(w[..]));
+  n=cb_copy(expr[..],n,"),y:coaxial.guardProbe(");jo_start(w[..],script[..]);jo_int(w[..],11+id*2);
+  n=cb_copy(expr[..],n,jo_text(w[..]));n=cb_copy(expr[..],n,")})");
+  v:=cb_eval(c,cast(string)expr[0..<n]);if v<0 {return false;}
+  d:=cdp_doc(c);x:=jv_int(d,jv_get(d,v,"x"),-1);y:=jv_int(d,jv_get(d,v,"y"),-1);
+  if x<0 || y<0 {return false;}
+  for phase:0..<3 {
+    jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx phase==0 then "mouseMoved" else ifx phase==1 then "mousePressed" else "mouseReleased");
+    jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"button");jo_str(o[..],ifx phase==0 then "none" else "left");
+    jo_key(o[..],"clickCount");jo_int(o[..],1);jo_end(o[..]);
+    if !cb_call(c,"Input.dispatchMouseEvent",jo_text(o[..])) {return false;}
+  }proc_sleep(250);return true;
+}
+cb_copy :: (out:[]u8,at:int,text:string)->int {
+  if at<0 || at+text.count>out.count {return -1;}
+  for i:0..<text.count {out[at+i]=text[i];}return at+text.count;
+}
+#test "browser check expression transport keeps exact bytes and refuses short buffers" {
+  b:[3]u8;#assert cb_copy(b[..],0,"ab")==2 && cb_copy(b[..],2,"c")==3;
+  #assert cast(string)b[..]=="abc" && cb_copy(b[..],1,"xyz")== -1 && cb_copy(b[..],-1,"x")== -1;
+}
+cb_run :: (c:[]Cdp,base:string,out:string)->bool {
+  if !cb_call(c,"Page.enable","{}") {return false;}
+  args:[8192]u8;j:[1]Jo;jo_start(j[..],args[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],CB_INIT);jo_end(j[..]);
+  if !cb_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..])) {return false;}
+  path:[4096]u8;
+  if !cb_nav(c,fs_join(base,"coax/changelog?golden=1",path[..])) {return false;}
+  if !cb_true(c,CB_READER_READY,"reader submitted a nonempty frame") {return false;}
+  if !cb_true(c,"document.documentElement.classList.contains('gpu')&&getComputedStyle(document.querySelector('main')).position==='absolute'&&document.querySelector('canvas').width>0","visible Coax canvas and hidden accessible fallback") {return false;}
+  source:[262145]u8;got:[262145]u8;want_n:=fs_read("coax/CHANGELOG.md",source[..]);
+  v:=cb_eval(c,"fetch('/coax/changelog/index.md').then(r=>r.text())");if v<0 {return false;}
+  n:=jv_str(cdp_doc(c),v,got[..]);
+  if want_n<0 || n!=want_n || cast(string)source[0..<want_n]!=cast(string)got[0..<n] {tool_errln("FAIL canonical Markdown bytes");return false;}
+  print("ok canonical Markdown: % bytes\n",n);
+  if !cb_shot(c,out,"changelog-desktop.png") || !cb_key(c,"End",35) {return false;}
+  v=cb_eval(c,"coaxial.probe()===coaxial.guardProbe(0)&&coaxial.guardProbe(1)>0&&coaxial.guardProbe(1)===coaxial.guardProbe(2)");
+  if v<0 || !jv_bool(cdp_doc(c),v) {tool_errln("FAIL complete history at End");return false;}
+  if !cb_shot(c,out,"changelog-bottom.png") || !cb_key(c,"Home",36) {return false;}
+  if !cb_true(c,"coaxial.guardProbe(1)===0","Home reaches the complete introduction") {return false;}
+  if !cb_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}") {return false;}
+  if !cb_nav(c,fs_join(base,"coax/changelog?golden=1",path[..])) || !cb_true(c,CB_READER_READY,"phone reader frame ready") {return false;}
+  if !cb_shot(c,out,"changelog-phone.png") || !cb_control(c,3) {return false;}
+  v=cb_eval(c,"globalThis.__copy");if v<0 {return false;}
+  n=jv_str(cdp_doc(c),v,got[..]);
+  if n!=want_n || cast(string)source[0..<want_n]!=cast(string)got[0..<n] {tool_errln("FAIL clipboard source bytes");return false;}
+  print("ok copied every canonical byte through the actual Coax action\n");
+  if !cb_call(c,"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":1}") {return false;}
+  if !cb_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":190,\"y\":640}]}") || !cb_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchMove\",\"touchPoints\":[{\"x\":190,\"y\":300}]}") || !cb_call(c,"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}") {return false;}
+  proc_sleep(200);
+  if !cb_true(c,"coaxial.guardProbe(1)>0","phone touch scroll") || !cb_key(c,"Home",36) {return false;}
+  if !cb_true(c,"(async()=>{for(let i=0;i<40;i++){if(globalThis.__events.some(b=>(b.events||b).some?.(e=>e.ev==='page-view'&&e.page==='coax-changelog')))return true;await new Promise(r=>setTimeout(r,100))}return false})()","page-view analytics captured without counting automation") {return false;}
+  // The shared host deliberately suppresses ghost mouse events for800ms after touch.
+  proc_sleep(1000);
+  if !cb_control(c,0) || !cb_true(c,CB_READY,"project navigation engine ready") {return false;}
+  if !cb_true(c,"location.pathname==='/projects/coax'&&!!document.querySelector('main a[href=\"/coax/changelog\"]')","project page exposes the changelog") {return false;}
+  return cb_shot(c,out,"project-phone.png");
+}

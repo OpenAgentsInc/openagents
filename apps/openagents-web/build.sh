@@ -7,6 +7,9 @@ mkdir -p "$here/build"
 python3 "$here/../../coax/web/nip-pages.py" --check
 # The quickstart is authored once; stale generated document/shader bytes refuse a release.
 bun "$here/../../coax/web/connect-pylon-page.ts" --check
+# The public Coax release history is always built from the canonical Markdown.
+(cd "$here/../.." && coax/web/tool.sh coax/web/changelog-page.coax --write)
+"$here/../../coax/web/check-visuals.sh" "$here"
 # Guard the shared-library/output race before launching parallel world builds.
 python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
@@ -118,6 +121,9 @@ newland=$!
 # /docs/connect-a-pylon: the Pylon quickstart on the homepage's Grid (connect-pylon.coax loads newland.coax).
 "$here/../../coax/web/wasm.sh" "$here/connect-pylon.coax" "$here/connect-pylon-face.c" "$here/build/connect-pylon.wasm" &
 connectpylon=$!
+# /coax/changelog: the compiler's complete release history, drawn in Coax.
+"$here/../../coax/web/wasm.sh" "$here/changelog.coax" "$here/changelog-face.c" "$here/build/changelog.wasm" &
+changelog=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
@@ -207,3 +213,4 @@ wait "$fairy"
 wait "$villa"
 [[ -z "$newland" ]] || wait "$newland"
 wait "$connectpylon"
+wait "$changelog"

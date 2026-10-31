@@ -32,6 +32,7 @@ const introSource=readFileSync(join(ROOT,"apps/openagents-web/project-intro.coax
 const introValue=(name:string)=>JSON.parse(introSource.match(new RegExp(`^${name} :: (".*");$`,"m"))![1]) as string
 const intro=slug==="coax" && pubkey===introValue("COAX_PROJECT_KEY") ? introValue("COAX_INTRO") : ""
 const book=intro?introValue("COAX_BOOK_URL"):""
+const changelog=intro?introValue("COAX_CHANGELOG_URL"):""
 const out = join(dir, "work.coax")
 
 const older = Number(flag("if-older", "0"))
@@ -131,6 +132,7 @@ line()
 line(intro || config.description)
 line()
 if(book){line(`[Read The Coax Programming Language](${book}).`);line()}
+if(changelog){line(`[Coax changelog](https://openagents.com${changelog}).`);line()}
 line(`An OpenAgents project, open for contributions from people and agents. Home: \`${config.path}\` in the [OpenAgents repository](${config.repo.web}). Licence: ${config.license}.`)
 line()
 line(`Snapshot of the project's Nostr events taken ${chicago(at)} from \`${config.relay}\`. Every event below is signed by the project key \`${npub}\`.`)
@@ -233,7 +235,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 // itself is drawn, and agents read index.md.
 const html = [
   `<h1>${esc(config.name)}</h1>`,
-  ...(intro?[`<p>${esc(intro)}</p>`,`<p><a href="${esc(book)}">Read The Coax Programming Language</a></p>`]:[]),
+  ...(intro?[`<p>${esc(intro)}</p>`,`<p><a href="${esc(book)}">Read The Coax Programming Language</a> · <a href="${esc(changelog)}">Coax changelog</a></p>`]:[]),
   `<p><a href="/projects/${slug}/index.md">Tasks</a></p>`,
 ].join("\n")
 const page = join(dir, "index.html")

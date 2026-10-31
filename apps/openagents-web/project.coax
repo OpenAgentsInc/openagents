@@ -977,21 +977,29 @@ scene :: (out: [] f32, at: int, b: Box, p: Pen, t: [] Tree, still: bool, waiting
 
 // ---------------------------------------------------------------- the layout
 
-#test "Coax's introduction fits a small phone and its book link navigates" {
+#test "Coax's introduction fits phones and both resource links navigate" {
   wk:[1]Work;s:[1]ProjectState;
   wk[0].slug="coax";wk[0].key=COAX_PROJECT_KEY;
   #assert project_intro(wk[..]);
-  sizes:=[6]f32.[320,568,390,844,1440,900];
-  for k:0..<3 {
-    width:=sizes[k*2];height:=sizes[k*2+1];
-    l:=project_layout(width,height,1,wk[..]);
-    #assert fits_in(l.header,width,height) && fits_in(l.scene,width,height) && fits_in(l.queue,width,height) && box_h(l.queue)>=QUEUE_MIN;
+  sizes:=[12]f32.[320,568,1,390,844,1,1440,900,1,640,1136,2];
+  for k:0..<4 {
+    width:=sizes[k*3];height:=sizes[k*3+1];d:=sizes[k*3+2];
+    l:=project_layout(width,height,d,wk[..]);
+    #assert fits_in(l.header,width,height) && fits_in(l.scene,width,height) && fits_in(l.queue,width,height) && box_h(l.queue)>=QUEUE_MIN*d;
     #assert apart(l.header,l.scene) && apart(l.scene,l.queue);
     if l.agents_on {#assert fits_in(l.agents,width,height) && apart(l.queue,l.agents);}
-    book:=coax_book_box(l.header,1);#assert inside(l.header,mid_x(book),mid_y(book)) && box_h(book)>=44;
-    s[0].width=width;s[0].height=height;s[0].dpr=1;
+    book:=coax_book_box(l.header,d);changes:=coax_changelog_box(l.header,d);
+    #assert inside(l.header,book.x0,book.y0) && inside(l.header,book.x1,book.y1) && box_h(book)>=44*d;
+    #assert inside(l.header,changes.x0,changes.y0) && inside(l.header,changes.x1,changes.y1) && box_h(changes)>=44*d;
+    #assert box_w(book)>=44*d && box_w(changes)>=44*d && apart(book,changes);
+    #assert box_w(book)>=text_width(COAX_BOOK_LABEL,9*d) && box_w(changes)>=text_width(COAX_CHANGELOG_LABEL,9*d);
+    s[0].width=width;s[0].height=height;s[0].dpr=d;
     #assert click(s[..],wk[..],mid_x(book),mid_y(book));
     #assert same(cast(string)s[0].outbox[0..<s[0].out_n],COAX_BOOK_URL);
+    #assert click(s[..],wk[..],mid_x(changes),mid_y(changes));
+    #assert same(cast(string)s[0].outbox[0..<s[0].out_n],"/coax/changelog");
+    s[0].pointed=true;s[0].px=mid_x(changes);s[0].py=mid_y(changes);
+    #assert coaxial_project_cursor(s[..],wk[..])==1;
   }
   wk[0].key="other";#assert !project_intro(wk[..]);
 }
@@ -2243,8 +2251,9 @@ set_add :: (w: [] Work, slug: string, key: string) {
 
 click :: (s: [] ProjectState, w: [] Work, x: f32, y: f32) -> bool {
   if s[0].page==0 && project_intro(w) {
-    d:=hi(s[0].dpr,1);book:=coax_book_box(project_layout(s[0].width,s[0].height,d,w).header,d);
+    d:=hi(s[0].dpr,1);head:=project_layout(s[0].width,s[0].height,d,w).header;book:=coax_book_box(head,d);
     if inside(book,x,y) {s[0].action=ACT_NAVIGATE;s[0].out_n=put_text(s[0].outbox[..],0,COAX_BOOK_URL);return true;}
+    if inside(coax_changelog_box(head,d),x,y) {s[0].action=ACT_NAVIGATE;s[0].out_n=put_text(s[0].outbox[..],0,COAX_CHANGELOG_URL);return true;}
   }
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));
   if rb.x1 > rb.x0 && inside(rb, x, y) { s[0].action = ACT_NAVIGATE; s[0].out_n = put_text(s[0].outbox[..], 0, w[0].realm); return true; }
@@ -2341,8 +2350,8 @@ coaxial_project_cursor :: (s: [] ProjectState, w: [] Work) -> int #export_c {
   if s.count < 1 || w.count < 1 || s[0].page != 0 || s[0].touch || !s[0].pointed { return 0; }
   x := s[0].px; y := s[0].py;
   if project_intro(w) {
-    d:=hi(s[0].dpr,1);
-    if inside(coax_book_box(project_layout(s[0].width,s[0].height,d,w).header,d),x,y) {return 1;}
+    d:=hi(s[0].dpr,1);head:=project_layout(s[0].width,s[0].height,d,w).header;
+    if inside(coax_book_box(head,d),x,y) || inside(coax_changelog_box(head,d),x,y) {return 1;}
   }
   if crumb_at(s, x, y).count > 0 { return 1; }
   rb := realm_box(w, layout(s[0].width, s[0].height, hi(s[0].dpr, 1)).header, hi(s[0].dpr, 1));

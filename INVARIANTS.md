@@ -1884,6 +1884,13 @@ checks require a finalized hash. In a Git checkout that hash must match the
 observed introducing commit; archives retain structural validation. `--write`
 fills or repairs only the current commit line from Git, preserving authored history.
 
+The public `/coax/changelog` page and its Markdown twin derive from that same
+file. Each website build runs the Coax generator before compiling the Coax
+reader; display text and accessible HTML resolve repository links against the
+canonical GitHub source, while the Markdown twin preserves every source byte.
+The Coax project links to the page, and staging/production smoke checks require
+source parity, discoverability and the reader's named assets.
+
 Check: `coax test/mutate coax/release-model.coax` and
 `coax test coax/changelog-model.coax` /
 `coax mutate coax/changelog-model.coax --root-only` (zero survivors),

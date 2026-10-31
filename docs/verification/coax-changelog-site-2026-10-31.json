@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-31",
+  "scope": "Publish the canonical Coax changelog through the Coax WebGPU reader at /coax/changelog, link it from the Coax project, regenerate on website builds and require HTTP/source parity at release.",
+  "initial_base": "dbd924cc75",
+  "initial_content": {
+    "latest": "0.37.0",
+    "releases": 42,
+    "blocks": 256,
+    "markdown_bytes": 27641
+  },
+  "source_sha256": {
+    "apps/openagents-web/build.sh": "ffaead37d6e8e45e022f7bf91b4bc2f4e6a223124c5f1606a03e2356aeff8481",
+    "apps/openagents-web/changelog.coax": "dddccd8118b077a0b50ce2be9ba751431c9723d50659dbbb5eca289a8a25f49a",
+    "apps/openagents-web/changelog-face.c": "320205a2e0af044f6577939cf88d9a94ceb5a86edef0840558a4b4d09ab2958d",
+    "apps/openagents-web/changelog.wgsl": "946ae33a236f782655c045575068134f3f4bd08fe03347212bba61e4f6ed915f",
+    "coax/web/changelog-page.coax": "0fd765666bb7bb16d590cfd506f44e8967a00165c040182ed1d24d076feda07a",
+    "coax/web/changelog-links.coax": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801",
+    "coax/web/changelog-browser.coax": "3d9bd7822080d04516288c539a5097126e81f8d9f63f2ff4a1108e57a0011c34",
+    "coax/web/golden-pages.ts": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41",
+    "coax/web/smoke.sh": "324bff16b37365e282d8df30d378ecc381c29d7a1c2331d19a1adff484a22c50"
+  },
+  "initial_qualification": {
+    "generator": {
+      "checks_passed": 30,
+      "policy_mutants_killed": 70,
+      "survivors": 0,
+      "oracle_cases": 3,
+      "logs": [
+        "/tmp/coax-changelog-page-tests-final.log",
+        "/tmp/coax-changelog-links-mutate-final.log",
+        "/tmp/coax-changelog-page-oracle-final.log"
+      ]
+    },
+    "reader": {
+      "authored_checks_passed": 8,
+      "native_profiles": [
+        "O0",
+        "O2",
+        "ASan/UBSan"
+      ],
+      "frames_per_profile": 16,
+      "viewports": 5,
+      "max_vertices_observed": 10098,
+      "guard_bytes": true,
+      "finite_geometry": true,
+      "copy_bytes": 27641,
+      "logs": [
+        "/tmp/coax-changelog-first-release-red.log",
+        "/tmp/coax-changelog-first-release-unit-green.log",
+        "/tmp/coax-changelog-first-release-product-green.log"
+      ]
+    },
+    "project_link": {
+      "viewports": 4,
+      "wasm_resource_navigations": 6,
+      "logs": [
+        "/tmp/coax-project-changelog-red.log",
+        "/tmp/coax-project-changelog-green.log",
+        "/tmp/coax-project-changelog-wasm.log"
+      ]
+    },
+    "browser": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-browser-local.log",
+      "screenshots": "/tmp/coax-changelog-browser-local",
+      "checks": [
+        "real WebGPU desktop and phone",
+        "latest-first viewport",
+        "End reaches complete history; Home reaches intro",
+        "touch scroll",
+        "exact source and clipboard bytes",
+        "analytics captured locally",
+        "project navigation and fallback link"
+      ],
+      "clipboard": "Browser effect replaced with isolated in-memory writer; owner clipboard untouched."
+    },
+    "goldens": {
+      "desktop": "coax/web/goldens/coax-changelog.png",
+      "phone": "coax/web/goldens/coax-changelog-phone.png",
+      "log": "/tmp/coax-changelog-goldens-local.log"
+    },
+    "source_tracking": {
+      "initial_cases": 10,
+      "new_link_dependency_case": 1,
+      "logs": [
+        "/tmp/coax-changelog-site-tracking-green.log",
+        "/tmp/coax-changelog-site-tracking-link-green.log"
+      ]
+    },
+    "visual_and_metadata_gates": "passed"
+  },
+  "publication": "After source commit, run standard staging checks and verify the public source bytes and browser route. Final publication receipt follows.",
+  "release_requalification": {
+    "base": "21dc5da9cadbfe493e9211d936eea617e6b260a7",
+    "compiler_version": "0.38.0",
+    "compiler_sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+    "latest": "0.38.0",
+    "releases": 43,
+    "blocks": 261,
+    "markdown_bytes": 28450,
+    "canonical_sha256": "c086248b77984c4ff995fdbb6e57754ed88c785d085bfd5896fa9c0e33364b39",
+    "reason": "Coax 0.38 landed during implementation; the normal generator updated all three site outputs from the new canonical entry.",
+    "generator": {
+      "checks_passed": 30,
+      "oracle_cases": 3,
+      "url_policy": "Unchanged: reuse prior 70/70 killed, zero survivors.",
+      "logs": [
+        "/tmp/coax-changelog-page-tests-038.log",
+        "/tmp/coax-changelog-page-oracle-038.log"
+      ]
+    },
+    "reader": {
+      "authored_checks_passed": 8,
+      "profiles": [
+        "native O0",
+        "native O2",
+        "ASan/UBSan",
+        "Wasm"
+      ],
+      "frames_per_profile": 16,
+      "viewports": 5,
+      "max_vertices_observed": 10920,
+      "guard_bytes": true,
+      "finite_geometry": true,
+      "copy_bytes": 28450,
+      "wasm_sha256": "627b13116777bf5fd3108cfac14057e9b35205d1507b7925d03cd0dc4a588544",
+      "log": "/tmp/coax-changelog-reader-038-product.log"
+    },
+    "project_link": {
+      "viewports": 4,
+      "wasm_viewports": 3,
+      "wasm_resource_navigations": 6,
+      "max_vertices_observed": 46884,
+      "wasm_sha256": "bb69004132dedb8991bb784ceb0ef7ae3f4440a7e230d364835ea912235ccd34",
+      "logs": [
+        "/tmp/coax-project-changelog-038-check.log",
+        "/tmp/coax-project-changelog-038-wasm.log"
+      ]
+    },
+    "browser": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-browser-038.log",
+      "screenshots": "/tmp/coax-changelog-browser-038",
+      "clipboard_and_analytics": "Intercepted inside the isolated headless browser; owner clipboard and public counts untouched."
+    },
+    "goldens": {
+      "result": "passed; desktop and phone visually reviewed",
+      "log": "/tmp/coax-changelog-goldens-038.log"
+    }
+  }
+}

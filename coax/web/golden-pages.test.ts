@@ -87,3 +87,13 @@ test("canonical Pylon quickstart and linked board track shared content",()=>{
       ? ['connect-pylon','connect-pylon-phone','pylon','pylon-phone']
       : ['connect-pylon','connect-pylon-phone'])
 })
+
+test("the Coax changelog is walked on desktop and phone",()=>{
+  expect(p.pages['coax-changelog']?.path).toBe('/coax/changelog')
+  expect(p.pages['coax-changelog-phone']?.size).toEqual([390,844])
+})
+
+test("Coax changelog source and generator invalidate its two views",()=>{
+  for(const path of ['coax/CHANGELOG.md','coax/web/changelog-page.coax','apps/openagents-web/changelog-content.coax','coax/web/changelog-links.coax'])
+    expect(affected([path],p)).toEqual(['coax-changelog','coax-changelog-phone'])
+})

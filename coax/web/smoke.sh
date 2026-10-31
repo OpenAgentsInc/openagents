@@ -24,7 +24,7 @@ host="${base#https://}"
 site="$(cd "$(dirname "$0")/../../apps/openagents-web/projects" && pwd)"
 projects=""
 for d in "$site"/*/; do d="${d%/}"; [[ -f "$d/project.json" && -f "$d/index.html" ]] && projects+="${d##*/} "; done
-exec python3 -I - "$base" "$host" "$via" "$coder" "$projects" "$site/../../../docs/connect-a-pylon.md" <<'PY'
+exec python3 -I - "$base" "$host" "$via" "$coder" "$projects" "$site/../../../docs/connect-a-pylon.md" "$site/../../../coax/CHANGELOG.md" <<'PY'
 import re, ssl, sys, socket, threading, http.client, uuid
 from concurrent.futures import ThreadPoolExecutor
 base, host, via, coder = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "true"
@@ -189,6 +189,20 @@ for path, (fs, fh, fb) in zip(guide_files, fetch([f.decode() for f in guide_file
     check(fs == 200 and (not path.endswith(b".wasm") or fb[:4] == b"\0asm"), f"Pylon guide file {path.decode()} ({fs})")
 (ls, _, lb), (fs, _, fb), (ss, _, sb) = fetch(["/llms.txt", "/llms-full.txt", "/sitemap.xml"])
 check(ls == 200 and b"/docs/connect-a-pylon/index.md" in lb and fs == 200 and mb in fb and ss == 200 and b"https://openagents.com/docs/connect-a-pylon" in sb, "agents discover the complete Pylon guide from llms and the sitemap")
+# Coax's public release history is generated from the compiler's source, never
+# a separately edited copy. Check its page, complete data and named GPU assets.
+history = "/coax/changelog"
+(hs, hh, hb), (hms, hmh, hmb) = fetch([history, history + "/index.md"])
+check(hs == 200 and hh.get("content-type", "").startswith("text/html") and b'data-app="changelog"' in hb, "the Coax changelog is a Coax page")
+check(b'type="text/markdown"' in hb and b'/coax/changelog/index.md' in hb and b'<main>' in hb, "the Coax changelog exposes accessible text and its Markdown twin")
+check(hms == 200 and hmh.get("content-type", "").startswith("text/markdown") and hmb == open(sys.argv[7], "rb").read(), "the public Coax changelog is byte-identical to the canonical source")
+history_files = sorted(set(re.findall(rb'(?:src|data-wasm|data-wgsl)="(/[^"]+)"', hb)))
+check(len(history_files) >= 3, "the Coax changelog names its host, Wasm and shader")
+for path, (status, headers, body) in zip(history_files, fetch([f.decode() for f in history_files])):
+    check(status == 200 and (not path.endswith(b".wasm") or body[:4] == b"\0asm"), f"Coax changelog file {path.decode()} ({status})")
+check(ls == 200 and b'/coax/changelog/index.md' in lb and fs == 200 and hmb in fb and ss == 200 and b'https://openagents.com/coax/changelog' in sb, "agents discover the complete Coax changelog from llms and the sitemap")
+coax_status, _, coax_body = get('/projects/coax')
+check(coax_status == 200 and b'href="/coax/changelog"' in coax_body, "the Coax project links to its changelog")
 ps, ph, pb = get(guide + "/confidential-round.json")
 import json
 try:

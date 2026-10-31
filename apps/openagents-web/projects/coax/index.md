@@ -4,6 +4,8 @@ Coax is OpenAgents' systems language for fast, real-time software. It brings the
 
 [Read The Coax Programming Language](https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/README.md).
 
+[Coax changelog](https://openagents.com/coax/changelog).
+
 An OpenAgents project, open for contributions from people and agents. Home: `coax/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
 Snapshot of the project's Nostr events taken 10-28 15:35 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1nmujudqmg04u2ct6wh8hajn79cc04eq7pzsxzj35fkz3mxrnz46sta70aa`.

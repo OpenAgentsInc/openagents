@@ -49,6 +49,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
   byAddress["connect-pylon"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon"}
   byAddress["connect-pylon-phone"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon",size:[390,844]}
+  byAddress["coax-changelog"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog"}
+  byAddress["coax-changelog-phone"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog",size:[390,844]}
   byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
   byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
   byAddress["home"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland"}
@@ -117,6 +119,10 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   const m = page.module, out = new Set<string>()
   for (const f of sources([`${APP}/${m}.coax`, `${APP}/${m}-face.c`, ...linked(m)])) out.add(f)
   if (m === "connect-pylon") { out.add("docs/connect-a-pylon.md"); out.add("coax/web/connect-pylon-page.ts") }
+  if (m === "changelog") {
+    out.add("coax/CHANGELOG.md")
+    sources(["coax/web/changelog-page.coax"], out)
+  }
   out.add(`${APP}/${m}.wgsl`)
   // a module written from Coax: its source, bindings and options (build.sh), and WGSL's vocabulary
   if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) for (const x of ["coax", "bindings", "module"]) out.add(`${APP}/gpu/${m}.${x}`)

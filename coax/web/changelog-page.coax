@@ -1,0 +1,237 @@
+// Canonical Coax changelog -> Coax reader data, accessible HTML and Markdown.
+// Run from the repository root: coax/web/tool.sh coax/web/changelog-page.coax --write|--check
+#load "../release.coax";
+#load "../changelog-model.coax";
+#load "changelog-links.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+
+CG_TITLE :: "Coax changelog";
+CG_SOURCE :: "https://github.com/OpenAgentsInc/openagents/blob/main/coax/CHANGELOG.md";
+CG_BASE :: "https://github.com/OpenAgentsInc/openagents/blob/main/coax/";
+CG_MAX_BLOCKS :: 4096;
+CG_MAX_OUTPUT :: 1048576;
+CG_MAX_TEXT :: 8192;
+CG_MAX_LINK :: 262144; // The reader's navigation outbox.
+CgBlock :: struct {kind:int;text:string;link:string;}
+CgLink :: struct {label:string;url:string;}
+CgParse :: struct {n:int;used:int;latest:string;}
+CgBuffer :: struct {bytes:[]u8;n:int;bad:bool;}
+CG_FIXTURE :: "# Coax changelog\n\nRead [`STATUS.md`](STATUS.md) and **plain** `code`.\n\n## 0.37.0 — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- A concrete bounded release improves <storage> & output.\n";
+
+#test "canonical paragraphs headings links and text survive as reader blocks" {
+  blocks:[20]CgBlock;arena:[4096]u8;p:[1]CgParse;
+  #assert cg_parse(CG_FIXTURE,"0.37.0",blocks[..],arena[..],p[..]);
+  #assert p[0].latest=="0.37.0" && p[0].n==6;
+  #assert blocks[0].kind==2 && blocks[0].text=="Read STATUS.md and plain code.";
+  #assert blocks[1].kind==3 && blocks[1].text=="STATUS.md" && blocks[1].link=="https://github.com/OpenAgentsInc/openagents/blob/main/coax/STATUS.md";
+  #assert blocks[2].kind==1 && blocks[2].text=="0.37.0 — 2026-10-31";
+  #assert blocks[3].text=="Commit: 0123456789abcdef0123456789abcdef01234567";
+  #assert blocks[4].kind==3 && blocks[4].link=="https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567";
+  #assert blocks[5].text=="- A concrete bounded release improves <storage> & output.";
+}
+#test "malformed links and bounded buffers refuse before producing a document" {
+  blocks:[20]CgBlock;arena:[4096]u8;p:[1]CgParse;
+  #assert !cg_parse(CG_FIXTURE,"0.38.0",blocks[..],arena[..],p[..]);
+  #assert !cg_parse(CG_FIXTURE,"0.37.0",blocks[0..<1],arena[..],p[..]);
+  #assert !cg_parse(CG_FIXTURE,"0.37.0",blocks[..],arena[0..<4],p[..]);
+  links:[4]CgLink;n:[1]int;
+  #assert cg_inline("read [bad](javascript:alert)",arena[..],0,links[..],n[..])<0;
+  #assert cg_inline("read [bad](",arena[..],0,links[..],n[..])<0;
+  #assert cg_inline("array [4] int and [good](STATUS.md)",arena[..],0,links[..],n[..])==22;
+  #assert cast(string)arena[0..<22]=="array [4] int and good";
+  #assert cg_inline("[wiki](https://example.org/a(b))",arena[..],0,links[..],n[..])==4;
+  #assert n[0]==1 && links[0].url=="https://example.org/a(b)";
+  #assert cg_inline("`call[0](value)`",arena[..],0,links[..],n[..])==14 && n[0]==0;
+}
+#test "HTML and Coax string escaping are independent and ASCII display is explicit" {
+  data:[4096]u8;b:[1]CgBuffer;b[0].bytes=data[..];
+  cg_html(b[..],"<tag> & \"quote\" 'x'");
+  #assert cg_value(b[..])=="&lt;tag&gt; &amp; &quot;quote&quot; &#39;x&#39;";
+  b[0].n=0;cg_quote(b[..],"a\n\t\"\\—",false);
+  #assert cg_value(b[..])=="\"a\\n\\t\\\"\\\\—\"";
+  b[0].n=0;cg_quote(b[..],"a—b–c’s“d”",true);
+  #assert cg_value(b[..])=="\"a-b-c's\\\"d\\\"\"";
+}
+cg_copy :: (arena:[]u8,at:int,s:string)->int {
+  if at<0 || at+s.count>arena.count {return -1;}
+  for i:0..<s.count {arena[at+i]=s[i];}return at+s.count;
+}
+cg_char :: (arena:[]u8,at:int,c:u8,start:int)->int {
+  if at<0 {return -1;}
+  space:=c==' ' || c=='\n' || c=='\t';
+  if space && (at==start || arena[at-1]==' ') {return at;}
+  if at>=arena.count {return -1;}
+  arena[at]=ifx space then cast(u8)' ' else c;return at+1;
+}
+cg_plain :: (raw:string,arena:[]u8,position:int)->int {
+  at:=position;start:=at;i:=0;
+  while i<raw.count {
+    if raw[i]=='`' {i+=1;continue;}
+    if CL_at(raw,i,"**") {i+=2;continue;}
+    at=cg_char(arena,at,raw[i],start);if at<0 {return -1;}i+=1;
+  }
+  if at>start && arena[at-1]==' ' {at-=1;}return at;
+}
+cg_inline :: (raw:string,arena:[]u8,position:int,links:[]CgLink,n:[]int)->int {
+  at:=position;start:=at;i:=0;n[0]=0;
+  while i<raw.count {
+    if raw[i]=='`' {
+      code_end:=i+1;while code_end<raw.count && raw[code_end]!='`' {code_end+=1;}
+      if code_end==raw.count {return -1;}
+      for j:i+1..<code_end {at=cg_char(arena,at,raw[j],start);if at<0 {return -1;}}
+      i=code_end+1;continue;
+    }
+    if CL_at(raw,i,"**") {i+=2;continue;}
+    if raw[i]=='[' {
+      end:=i+1;while end<raw.count && raw[end]!=']' {end+=1;}
+      if CL_at(raw,end,"](") {
+        to:=end+2;depth:=1;
+        while to<raw.count {
+          if raw[to]=='(' {depth+=1;}
+          if raw[to]==')' {depth-=1;if depth==0 {break;}}
+          to+=1;
+        }
+        if to==raw.count || n[0]>=links.count {return -1;}
+        label:=raw[i+1..<end];url:=raw[end+2..<to];
+        if label.count==0 || cgl_kind(url)==0 {return -1;}
+        at=cg_plain(label,arena,at);if at<0 {return -1;}
+        links[n[0]]=CgLink.{label=label,url=url};n[0]+=1;i=to+1;continue;
+      }
+    }
+    at=cg_char(arena,at,raw[i],start);if at<0 {return -1;}i+=1;
+  }
+  if at>start && arena[at-1]==' ' {at-=1;}return at;
+}
+cg_block :: (kind:int,raw:string,blocks:[]CgBlock,arena:[]u8,p:[]CgParse)->bool {
+  if p[0].n>=blocks.count {return false;}
+  links:[64]CgLink;n:[1]int;start:=p[0].used;
+  end:=cg_inline(raw,arena,start,links[..],n[..]);
+  if end<0 || end-start>CG_MAX_TEXT {return false;}
+  blocks[p[0].n]=CgBlock.{kind=kind,text=cast(string)arena[start..<end]};p[0].n+=1;p[0].used=end;
+  for i:0..<n[0] {
+    if p[0].n>=blocks.count {return false;}
+    start=p[0].used;end=cg_plain(links[i].label,arena,start);
+    if end<=start || end-start>CG_MAX_TEXT {return false;}
+    label:=cast(string)arena[start..<end];url_start:=end;
+    k:=cgl_kind(links[i].url);
+    if k==2 {end=cg_copy(arena,end,CG_BASE);}
+    if k==3 {end=cg_copy(arena,end,CG_SOURCE);}
+    end=cg_copy(arena,end,links[i].url);if end<0 || end-url_start>CG_MAX_LINK {return false;}
+    blocks[p[0].n]=CgBlock.{kind=3,text=label,link=cast(string)arena[url_start..<end]};
+    p[0].n+=1;p[0].used=end;
+  }return true;
+}
+cg_parse :: (source:string,version:string,blocks:[]CgBlock,arena:[]u8,p:[]CgParse)->bool {
+  p[0].n=0;p[0].used=0;p[0].latest="";
+  if !CL_at(source,0,"# Coax changelog\n") || !CL_plan(source,version,"",false).ok {return false;}
+  for c:source {if c<32 && c!='\n' && c!='\t' {return false;}}
+  at:=0;from:=-1;to:=0;
+  while at<source.count {
+    end:=at;while end<source.count && source[end]!='\n' {end+=1;}line:=source[at..<end];
+    blank:=true;for c:line {if c!=' ' && c!='\t' {blank=false;}}
+    boundary:=blank || CL_at(line,0,"# ") || CL_at(line,0,"## ") || CL_at(line,0,"- ");
+    if boundary && from>=0 {
+      if !cg_block(2,source[from..<to],blocks,arena,p) {return false;}from=-1;
+    }
+    if CL_at(line,0,"## ") {
+      if !cg_block(1,line[3..<line.count],blocks,arena,p) {return false;}
+    } else if !blank && !CL_at(line,0,"# ") {
+      if from<0 {from=at;}to=end;
+    }
+    at=ifx end<source.count then end+1 else end;
+  }
+  if from>=0 && !cg_block(2,source[from..<to],blocks,arena,p) {return false;}
+  p[0].latest=version;return true;
+}
+cg_add :: (b:[]CgBuffer,s:string) {
+  if b[0].bad {return;}
+  n:=cg_copy(b[0].bytes[..],b[0].n,s);
+  if n<0 {b[0].bad=true;return;}b[0].n=n;
+}
+cg_number :: (b:[]CgBuffer,value:int) {
+  if value==0 {cg_add(b,"0");return;}
+  digits:[24]u8;n:=0;v:=value;
+  while v>0 {digits[n]=cast(u8)(v%10+48);v/=10;n+=1;}
+  for i:0..<n {at:=n-1-i;cg_add(b,cast(string)digits[at..<at+1]);}
+}
+cg_html :: (b:[]CgBuffer,s:string) {
+  for i:0..<s.count {
+    c:=s[i];
+    if c=='&' {cg_add(b,"&amp;");}
+    else if c=='<' {cg_add(b,"&lt;");}
+    else if c=='>' {cg_add(b,"&gt;");}
+    else if c=='"' {cg_add(b,"&quot;");}
+    else if c=='\'' {cg_add(b,"&#39;");}
+    else {cg_add(b,s[i..<i+1]);}
+  }
+}
+cg_quote :: (b:[]CgBuffer,s:string,ascii:bool) {
+  cg_add(b,"\"");i:=0;
+  while i<s.count {
+    if ascii && (CL_at(s,i,"—") || CL_at(s,i,"–")) {cg_add(b,"-");i+=3;continue;}
+    if ascii && (CL_at(s,i,"‘") || CL_at(s,i,"’")) {cg_add(b,"'");i+=3;continue;}
+    if ascii && (CL_at(s,i,"“") || CL_at(s,i,"”")) {cg_add(b,"\\\"");i+=3;continue;}
+    c:=s[i];
+    if c=='"' {cg_add(b,"\\\"");}
+    else if c=='\\' {cg_add(b,"\\\\");}
+    else if c=='\n' {cg_add(b,"\\n");}
+    else if c=='\t' {cg_add(b,"\\t");}
+    else {cg_add(b,s[i..<i+1]);}
+    i+=1;
+  }cg_add(b,"\"");
+}
+cg_value :: (b:[]CgBuffer)->string {return cast(string)b[0].bytes[0..<b[0].n];}
+cg_data :: (source:string,blocks:[]CgBlock,p:[]CgParse,b:[]CgBuffer) {
+  cg_add(b,"// Generated by coax/web/changelog-page.coax from coax/CHANGELOG.md.\nCC_TITLE :: ");cg_quote(b,CG_TITLE,false);
+  cg_add(b,";\nCC_SOURCE_URL :: ");cg_quote(b,CG_SOURCE,false);
+  cg_add(b,";\nCC_LATEST :: ");cg_quote(b,p[0].latest,false);
+  cg_add(b,";\nCC_MARKDOWN :: ");cg_quote(b,source,false);
+  cg_add(b,";\nCC_BLOCKS :: ");cg_number(b,p[0].n);
+  cg_add(b,";\nCC_KIND :: [CC_BLOCKS]int.[");
+  for i:0..<p[0].n {if i>0 {cg_add(b,",");}cg_number(b,blocks[i].kind);}
+  cg_add(b,"];\nCC_TEXT :: [CC_BLOCKS]string.[");
+  for i:0..<p[0].n {if i>0 {cg_add(b,",");}cg_quote(b,blocks[i].text,true);}
+  cg_add(b,"];\nCC_LINK :: [CC_BLOCKS]string.[");
+  for i:0..<p[0].n {if i>0 {cg_add(b,",");}cg_quote(b,blocks[i].link,false);}
+  cg_add(b,"];\n");
+}
+cg_page :: (blocks:[]CgBlock,p:[]CgParse,b:[]CgBuffer) {
+  cg_add(b,"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Coax changelog — OpenAgents</title>\n<meta name=\"description\" content=\"Every Coax compiler release, its commit and shipped changes.\">\n<link rel=\"canonical\" href=\"https://openagents.com/coax/changelog\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/coax/changelog/index.md\">\n<meta property=\"og:image\" content=\"https://openagents.com/og/projects/coax.jpg\">\n<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\n<script>if(\"gpu\" in navigator)document.documentElement.classList.add(\"gpu\")</script>\n<style>\nhtml,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.6}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}canvas[data-cursor=pointer]{cursor:pointer}main{max-width:760px;margin:auto;padding:32px 20px}a{color:#b9e8e8}code{white-space:pre-wrap;overflow-wrap:anywhere}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}\n</style>\n</head>\n<body>\n<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>Coax changelog</h1>\n<p><a href=\"/projects/coax\">Coax project</a> · <a href=\"/coax/changelog/index.md\">Read or copy the Markdown</a> · <a href=\"");
+  cg_html(b,CG_SOURCE);cg_add(b,"\">Canonical source</a></p>\n");
+  for i:0..<p[0].n {
+    kind:=blocks[i].kind;
+    cg_add(b,ifx kind==1 then "<h2>" else "<p>");
+    if kind==3 {cg_add(b,"<a href=\"");cg_html(b,blocks[i].link);cg_add(b,"\">");}
+    cg_html(b,blocks[i].text);
+    if kind==3 {cg_add(b,"</a>");}
+    cg_add(b,ifx kind==1 then "</h2>\n" else "</p>\n");
+  }
+  cg_add(b,"</main>\n<script type=\"module\" src=\"/coaxial/host.js\" data-app=\"changelog\"></script>\n</body>\n</html>\n");
+}
+cg_output :: (path:string,text:string,write:bool,old:[]u8)->bool {
+  n:=fs_read(path,old);
+  if n>=0 && cast(string)old[0..<n]==text {return true;}
+  if !write {tool_err("changelog: stale or missing output ");tool_errln(path);return false;}
+  if !fs_write(path,text) {tool_err("changelog: cannot write ");tool_errln(path);return false;}return true;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;
+  if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: changelog-page --write|--check (from repository root)");return 2;}
+  mode:=args_at(args[..],0);write:=mode=="--write";
+  if !write && mode!="--check" {tool_errln("usage: changelog-page --write|--check");return 2;}
+  input:[CL_MAX_BYTES+1]u8;n:=fs_read("coax/CHANGELOG.md",input[..]);
+  if n<0 {tool_errln("changelog: missing or oversized coax/CHANGELOG.md");return 1;}
+  source:=cast(string)input[0..<n];blocks:[CG_MAX_BLOCKS]CgBlock;arena:[CG_MAX_OUTPUT]u8;p:[1]CgParse;
+  if !cg_parse(source,IMPLEMENTATION_VERSION,blocks[..],arena[..],p[..]) {tool_errln("changelog: invalid current release, unsupported link or document capacity exceeded");return 1;}
+  content_bytes:[CG_MAX_OUTPUT]u8;html_bytes:[CG_MAX_OUTPUT]u8;
+  content:[1]CgBuffer;html:[1]CgBuffer;content[0].bytes=content_bytes[..];html[0].bytes=html_bytes[..];
+  cg_data(source,blocks[..],p[..],content[..]);cg_page(blocks[..],p[..],html[..]);
+  if content[0].bad || html[0].bad {tool_errln("changelog: generated output exceeds its bound");return 1;}
+  if write && !fs_mkdir("apps/openagents-web/coax/changelog") {tool_errln("changelog: cannot create output directory");return 1;}
+  old:[CG_MAX_OUTPUT]u8;
+  if !cg_output("apps/openagents-web/changelog-content.coax",cg_value(content[..]),write,old[..]) {return 1;}
+  if !cg_output("apps/openagents-web/coax/changelog/index.html",cg_value(html[..]),write,old[..]) {return 1;}
+  if !cg_output("apps/openagents-web/coax/changelog/index.md",source,write,old[..]) {return 1;}
+  print("changelog: % % blocks, % source bytes\n",ifx write then "generated" else "checked",p[0].n,n);return 0;
+}
