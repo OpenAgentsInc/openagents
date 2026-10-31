@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.38.0 — 2026-10-31
 
-Commit: [`e18f99cfabaadaaacd1c5bd5038044413e7c9e2f`](https://github.com/OpenAgentsInc/openagents/commit/e18f99cfabaadaaacd1c5bd5038044413e7c9e2f)
+Commit: [`0b82a1587a56a4eed8ead255dd32300efe49fc30`](https://github.com/OpenAgentsInc/openagents/commit/0b82a1587a56a4eed8ead255dd32300efe49fc30)
 
 - `#foreign` parameters may be borrowed views of integers, floats and `bool`
   (`[] u8`, `[] s16`, `[] f32`, `[] bool`, ...), passed as the `{data, count}`
