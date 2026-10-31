@@ -5,8 +5,8 @@
     {
       "id": "coax.generics.current",
       "document": "coax/book/ch08-generics.md",
-      "scope": "Copyable generic procedures, fixed-array value parameters and fixed-storage generic structs; constraints, general numerical operators and view-containing struct bindings remain unsupported.",
-      "text_sha256": "f561881f63ff76cafb30034e3f53092537f0e2ddbc658b77651b3db6bb98cd94",
+      "scope": "Copyable generic procedures, fixed-array value parameters, fixed-storage generic structs and the built-in copyable/equatable/ordered/numeric constraints; user constraints/operators, generic casts/layout queries and view-containing bindings remain separate.",
+      "text_sha256": "1ec3b6ecbb125467157b288c41d8f7a2eeff47d717190523b48cd48270452de0",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -28,7 +28,7 @@
       "evidence": [
         {
           "path": "coax/tests/generics.py",
-          "sha256": "bba017a09f2db57991468a698c3fd6ce30df89e24b18650f08dcd2613c96d83c"
+          "sha256": "b4c15e970251c83be69f51620b2c789178a617ed60d17b3755fe605ddb43f9d9"
         }
       ]
     },
@@ -261,11 +261,11 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "6be9881c3baea9cb53e17d01ef191a9386df4624b7c7023f72b3f89f7bf3d395"
+          "sha256": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5"
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "ac69b0c84a52928ec44dedf8b35ff57c6a6b153ca673c57e41aa9d9bed7bf323"
+          "sha256": "d99d67234e2446e172bf6e7c07812024678f2ffc2207fb5ec2adf221d5ce8d12"
         }
       ]
     },
@@ -309,15 +309,15 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "6be9881c3baea9cb53e17d01ef191a9386df4624b7c7023f72b3f89f7bf3d395"
+          "sha256": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5"
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "9743023e3e2e999ae469ee461a9eb7bc63392770def666f74f95b91dffc4378c"
+          "sha256": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190"
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "ac69b0c84a52928ec44dedf8b35ff57c6a6b153ca673c57e41aa9d9bed7bf323"
+          "sha256": "d99d67234e2446e172bf6e7c07812024678f2ffc2207fb5ec2adf221d5ce8d12"
         },
         {
           "path": "verse/everglade/gpu.module",
