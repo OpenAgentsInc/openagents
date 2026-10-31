@@ -41,7 +41,7 @@ TEAM_PLAYER :: 1; TEAM_ALLY :: 2; TEAM_HOSTILE :: 3;
 // Events, for sounds, effects and the HUD
 EV_SHOT :: 1; EV_HURT :: 2; EV_KILLED :: 3; EV_BEAMED :: 4; EV_RELOADING :: 5; EV_DRY_FIRE :: 6;
 EV_WAVE :: 7; EV_REPAIRED :: 8; EV_LIFTED :: 9; EV_THROWN :: 10; EV_STUNNED :: 11; EV_CARGO_STRUCK :: 12;
-EV_BOLT_FIRED :: 13; EV_BOLT_STRUCK :: 14; EV_ENDED :: 15;
+EV_BOLT_FIRED :: 13; EV_BOLT_STRUCK :: 14; EV_ENDED :: 15; EV_REACTOR_HIT :: 16;
 
 // The systems, in the order they run each fixed step
 S_CLOCK :: 0; S_CARGO :: 1; S_WEAPON :: 2; S_REPAIR :: 3; S_FIRE :: 4; S_MUTANTS :: 5; S_BOLTS :: 6; S_SUPPORT :: 7;
@@ -62,6 +62,14 @@ CARGO_DAMAGE :: [3] f32.[100, 125, 85];
 // The support engineer's repair: alone it takes this long (you take 2.5 s),
 // from a spot this far beside and in front of the reactor's centre.
 ALLY_REPAIR_TIME :: 7.5; ALLY_REPAIR_SIDE :: 1.4; ALLY_REPAIR_FRONT :: 2.1;
+// The reactor's casing (it stands in the arena as cover does).
+REACTOR_W :: 3.8; REACTOR_D :: 2.8; REACTOR_H :: 1.35;
+// Roles (#96d6): a runner swings this far to your side before it closes;
+// the brute stops this far off while it can see you, and shoots; crawlers
+// make for the reactor when you are this far from it.
+FLANK_SIDE :: 3.5; BRUTE_HOLD :: 11.0; REACTOR_LURE :: 12.0;
+// Where crawlers come up: the vents low in the side walls.
+VENTS :: [8] f32.[-15.2, -6, 15.2, -6, -15.2, 4, 15.2, 4];
 CHARACTER_RADIUS :: 0.3;
 CHARACTER_HEIGHT :: 1.8;
 REACH :: 0.9;        // closest two characters' centres come
@@ -434,12 +442,6 @@ dg_ray :: (g: Game, from: Point, dir: Point, range: f32) -> RayHit {
   reach := times(dir, range);
   solid_t := arena_sweep(g.arena, from, 0, reach);
   if solid_t <= 1 { hit.t = solid_t * range; hit.solid = true; }
-  r := dg_reactor(g);
-  if r != ECS_NONE {
-    rp := g.pos[slot_of(r)];
-    t := arena_enter(Block.{lo = v3(rp.x - 1.9, -0.2, rp.z - 1.4), hi = v3(rp.x + 1.9, 1.35, rp.z + 1.4)}, 0, from, reach);
-    if t <= 1 && t * range < hit.t { hit.t = t * range; hit.solid = true; }
-  }
   if dir.y < -0.000001 && from.y > 0 {
     t := -from.y / dir.y;
     if t < hit.t { hit.t = t; hit.solid = true; }
@@ -849,13 +851,16 @@ start_wave :: (g: Game, now: bool) {
   me := dg_player(g);
   if ecs_has(g.e, me, C_HEALTH) { g.hp[slot_of(me)] = lo(100, g.hp[slot_of(me)] + 30); }
   r := dg_reactor(g);
-  if ecs_has(g.e, r, C_USE) { g.progress[slot_of(r)] = 0; }
+  if ecs_has(g.e, r, C_USE) { g.progress[slot_of(r)] = 0; g.hp[slot_of(r)] = 100; }
   g.st[0].held = ECS_NONE;
   g.st[0].psi = 100;
   count := 3 + g.st[0].wave * 2;
   for i: 0..<count {
     side: f32 = ifx i % 2 == 1 then 1.0f32 else -1.0f32;
-    e := dg_spawn_mutant(g, WAVE_MIX[i % 9], side * (8 + f32(i % 3) * 2), -21 + f32(i % 3) * 2, -1);
+    kind := WAVE_MIX[i % 9];
+    x := side * (8 + f32(i % 3) * 2); z := -21 + f32(i % 3) * 2;
+    if kind == CRAWLER { v := (i / 2) % 4; x = VENTS[v * 2]; z = VENTS[v * 2 + 1]; }   // up from a vent
+    e := dg_spawn_mutant(g, kind, x, z, -1);
     if e != ECS_NONE { g.mutant[slot_of(e)].attack = 1 + f32(i) * 0.35; }
   }
   for c: 0..<6 { e := spawn_cargo(g, CARGO_AT[c * 3], CARGO_AT[c * 3 + 1], int(CARGO_AT[c * 3 + 2])); }
@@ -886,6 +891,71 @@ fire_system :: (g: Game, dt: f32) {
   if !g.st[0].skip && g.input[0].firing { dg_fire(g); }
 }
 
+// ---- roles (#96d6)
+
+ROLE_CHASE :: 0;    // straight at you, round the covers
+ROLE_FLANK :: 1;    // a runner: swings out to your side, then closes
+ROLE_HOLD :: 2;     // the brute: stands off where it sees you and shoots
+ROLE_REACTOR :: 3;  // a crawler: makes for the reactor while you are far from it
+
+// What mutant slot i is doing now.
+dg_role :: (g: Game, i: int) -> int {
+  m := g.mutant[i]; e := g.pos[i]; p := dg_player_pos(g);
+  d := flat(e, p);
+  if m.part >= 0 || m.severed { return ROLE_CHASE; }
+  if m.kind == HOUND {
+    facing := direction(g.input[0].aim_x, g.input[0].aim_z);
+    ahead := ifx d > 0.001 then ((e.x - p.x) * facing.x + (e.z - p.z) * facing.z) / d else 0.0f32;
+    if d > 2.6 && ahead > 0.5 { return ROLE_FLANK; }   // in front of you: swing round
+    return ROLE_CHASE;
+  }
+  if m.kind == BRUTE && d < f32(BRUTE_HOLD) && d > 1.6 && !dg_wall_ray(g, e, p) { return ROLE_HOLD; }
+  if m.kind == CRAWLER && m.seq % 2 == 0 && flat(p, dg_reactor_pos(g)) > f32(REACTOR_LURE) { return ROLE_REACTOR; }
+  return ROLE_CHASE;
+}
+
+// Where mutant slot i heads for its role.
+dg_goal :: (g: Game, i: int, role: int) -> Point {
+  p := dg_player_pos(g); e := g.pos[i];
+  if role == ROLE_FLANK {
+    facing := direction(g.input[0].aim_x, g.input[0].aim_z);
+    side: f32 = ifx g.mutant[i].seq % 2 == 0 then 1.0f32 else -1.0f32;
+    goal := v3(p.x - facing.z * side * f32(FLANK_SIDE) + facing.x * 0.5, 0, p.z + facing.x * side * f32(FLANK_SIDE) + facing.z * 0.5);
+    if dg_blocked(g, goal.x, goal.z, 0.4) || abs(goal.x) > 14.5 || goal.z < -22 || goal.z > 12 {
+      goal = v3(p.x + facing.z * side * f32(FLANK_SIDE), 0, p.z - facing.x * side * f32(FLANK_SIDE));   // the other side
+      if dg_blocked(g, goal.x, goal.z, 0.4) || abs(goal.x) > 14.5 || goal.z < -22 || goal.z > 12 { return p; }
+    }
+    return goal;
+  }
+  if role == ROLE_REACTOR {
+    r := dg_reactor_pos(g);
+    // The middle of the reactor's nearer long side.
+    return v3(clamp(e.x, r.x - 1.2, r.x + 1.2), 0, ifx e.z < r.z then r.z - f32(REACTOR_D) / 2 - 0.6 else r.z + f32(REACTOR_D) / 2 + 0.6);
+  }
+  return p;
+}
+
+// p is within reach of the reactor's casing.
+dg_at_reactor :: (g: Game, p: Point, reach: f32) -> bool {
+  r := dg_reactor_pos(g);
+  dx := hi(0, abs(p.x - r.x) - f32(REACTOR_W) / 2); dz := hi(0, abs(p.z - r.z) - f32(REACTOR_D) / 2);
+  return dx * dx + dz * dz < reach * reach;
+}
+
+// The reactor takes n; at nothing the ship is lost.
+dg_reactor_hit :: (g: Game, n: f32, from: Point) {
+  if g.st[0].phase != FIGHT { return; }
+  r := slot_of(dg_reactor(g));
+  g.hp[r] = hi(0, g.hp[r] - n);
+  emit(g, Event.{kind = EV_REACTOR_HIT, amount = n, at = from});
+  if g.hp[r] == 0 {
+    g.st[0].phase = LOST;
+    g.st[0].cover = false;
+    emit(g, Event.{kind = EV_ENDED, flag = false});
+  }
+}
+dg_reactor_health :: (g: Game) -> f32 { return g.hp[slot_of(dg_reactor(g))]; }
+
 mutant_system :: (g: Game, dt: f32) {
   if g.st[0].skip { return; }
   p := dg_player_pos(g);
@@ -911,25 +981,33 @@ mutant_system :: (g: Game, dt: f32) {
     d := flat(e, p);
     g.yaw[i] = atan2(p.x - e.x, p.z - e.z);
     if m.kind == HOUND && d > 1.8 && d < 5 && m.attack <= 0 { m.lunge = 0.4; m.attack = 1.5; }
-    if d > 1.2 {
+    role := dg_role(g, i);
+    goal := dg_goal(g, i, role);
+    if role == ROLE_HOLD {
+      g.mutant[i] = m;   // the brute stands and shoots
+    } else if d > 1.2 || role != ROLE_CHASE {
       speed := m.speed * (ifx m.severed then 0.38f32 else 1.0f32) * (ifx m.lunge > 0 then 2.0f32 else 1.0f32);
-      x := p.x - e.x; z := p.z - e.z;
-      // Round the covers on the walking grid when they stand between.
-      to := nav_head_for(g.nav, g.arena, 0, e, p);
-      if to.x != p.x || to.z != p.z {
-        x = to.x - e.x; z = to.z - e.z;
-        g.yaw[i] = atan2(x, z);
-      } else if m.kind == HOUND && d > 4 {
-        x += cos(g.st[0].time + f32(m.seq)) * 1.4;
-        z += sin(g.st[0].time + f32(m.seq)) * 1.4;
-      }
+      // Straight at the goal when the way is clear; else round the covers
+      // on the walking grid (a runner whose swing is blocked closes on you).
+      flow := ifx role == ROLE_REACTOR then 2 else 0;
+      facing := ifx role == ROLE_FLANK && !nav_straight(g.arena, e, goal) then p else goal;
+      to := nav_head_for(g.nav, g.arena, flow, e, facing);
+      x := to.x - e.x; z := to.z - e.z;
       l := sqrt(x * x + z * z);
-      if l == 0 { l = 1; }
-      g.mutant[i] = m;
-      walk_body(g, i, x / l * speed * dt, z / l * speed * dt, mutant_radius(m));
-      e = g.pos[i];
+      if l > 0.05 {
+        g.yaw[i] = atan2(x, z);
+        g.mutant[i] = m;
+        walk_body(g, i, x / l * speed * dt, z / l * speed * dt, mutant_radius(m));
+        e = g.pos[i];
+      }
     }
-    if d < 1.6 && m.attack <= 0 {
+    if role == ROLE_REACTOR && dg_at_reactor(g, e, 0.9) {
+      if m.attack <= 0 {
+        m.attack = 1.2;
+        dg_reactor_hit(g, m.damage * 0.5, e);
+      }
+      g.mutant[i] = m;
+    } else if d < 1.6 && m.attack <= 0 {
       m.attack = ifx m.kind == SKITTER then 0.8f32 else 1.2f32;
       g.mutant[i] = m;
       dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e);
@@ -1067,6 +1145,8 @@ build_arena :: (g: Game) {
     c := g.cover[i];
     a = arena_cover(a, g.pos[i].x, g.pos[i].z, c.w, c.d, c.h);
   }
+  r := dg_reactor(g);
+  if r != ECS_NONE { rp := g.pos[slot_of(r)]; a = arena_cover(a, rp.x, rp.z, f32(REACTOR_W), f32(REACTOR_D), f32(REACTOR_H)); }
   g.arena[0] = a;
   nav_bake(g.nav, g.arena);
 }
@@ -1102,13 +1182,13 @@ dg_setup :: (g: Game) {
     g.pos[slot_of(e)] = v3(COVERS[c * 5], 0, COVERS[c * 5 + 1]);
     g.cover[slot_of(e)] = Cover.{w = COVERS[c * 5 + 2], d = COVERS[c * 5 + 3], h = COVERS[c * 5 + 4]};
   }
+  r := new_entity(g, C_POS | C_USE | C_REACTOR);
+  if r != ECS_NONE { g.pos[slot_of(r)] = v3(0, 0, -17); g.radius[slot_of(r)] = 3; }
   build_arena(g);
   me := new_entity(g, C_POS | C_HEALTH | C_TEAM | C_ENGINEER);
   if me != ECS_NONE { g.pos[slot_of(me)] = v3(0, 0, 9); g.yaw[slot_of(me)] = f32(PI); g.team[slot_of(me)] = TEAM_PLAYER; }
   ally := new_entity(g, C_POS | C_TEAM | C_SUPPORT);
   if ally != ECS_NONE { g.pos[slot_of(ally)] = v3(-2.2, 0, 8); g.yaw[slot_of(ally)] = f32(PI); g.team[slot_of(ally)] = TEAM_ALLY; }
-  r := new_entity(g, C_POS | C_USE | C_REACTOR);
-  if r != ECS_NONE { g.pos[slot_of(r)] = v3(0, 0, -17); g.radius[slot_of(r)] = 3; }
   dg_reset(g);
 }
 
@@ -1530,6 +1610,101 @@ shot_hits :: (g: Game) -> int {
   aim_at(g, v3(5, 0, 9), dg_part_at(g, slot_of(r), 1));
   hit = dg_aimed(g);
   #assert hit.who == r && hit.region == R_HEAD;
+}
+
+// ---- roles (#96d6): runners flank, the brute pins, crawlers use the vents and the reactor
+
+#test "a runner reaches you from the side while you face a crawler" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;   // the support engineer holds its fire
+  clear_mutants(g);
+  me := v3(0, 0, 8);
+  c := dg_spawn_mutant(g, CRAWLER, 0, 2, -1);
+  g.mutant[slot_of(c)].stun = 1000;   // in front of you, held there
+  h := dg_spawn_mutant(g, HOUND, 0, -8, -1);
+  g.mutant[slot_of(h)].attack = 1000;  // it closes but does not bite
+  side_on := false; frames := 0; flanked := false;
+  while frames < 300 && !side_on {
+    tick(g, me, false, false, 0, -1, 0.05);
+    frames += 1;
+    q := g.pos[slot_of(h)];
+    d := flat(q, me);
+    if d > 2.5 && abs(q.x - me.x) > 2.5 { flanked = true; }
+    // Beside you: it came round, not down the line you face.
+    side_on = d < 1.7 && abs(q.x - me.x) > abs(q.z - me.z);
+  }
+  #assert flanked && side_on;
+  // Facing it now, it is ahead of you again: it swings to your new side.
+  #assert dg_role(g, slot_of(h)) == ROLE_CHASE;
+}
+
+#forall "no creature walks through cover" k: 0..<10 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  // You beside a cover, a creature of each kind on its far side.
+  me := ifx k % 2 == 0 then v3(-5, 0, 5) else v3(8, 0, -8.5);
+  far := ifx k % 2 == 0 then v3(-5, 0, 1) else v3(8, 0, -15.5);
+  e := dg_spawn_mutant(g, k % TYPES, far.x, far.z, -1);
+  g.mutant[slot_of(e)].attack = 1000;
+  inside := false;
+  for f: 0..<110 {
+    tick(g, me, false, false, 0, -1, 0.05);
+    if !ecs_alive(g.e, e) { break; }
+    q := g.pos[slot_of(e)];
+    if dg_blocked(g, q.x, q.z, 0.05) { inside = true; }
+  }
+  #assert !inside;
+  #assert dist_to(g, e, me) < 3.5 || g.mutant[slot_of(e)].kind == BRUTE;   // it got round to you (the brute stands off)
+}
+
+#test "the brute holds off where it sees you and shoots; behind cover it can't" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  b := dg_spawn_mutant(g, BRUTE, 0, -2, -1);
+  me := v3(0, 0, 8);
+  bolts := 0;
+  for f: 0..<120 {
+    tick(g, me, false, false, 0, -1, 0.05);
+    bolts += dg_events(g, EV_BOLT_FIRED);
+  }
+  #assert dist_to(g, b, me) > 8 && bolts >= 2;   // it stood off and fired
+  // Out of its sight (behind the tall cover at (8, -12)) it comes looking.
+  g.pos[slot_of(b)] = v3(8, 0, -16);
+  hide := v3(8, 0, -9.8);
+  #assert dg_wall_ray(g, g.pos[slot_of(b)], hide) && dg_role(g, slot_of(b)) != ROLE_HOLD;
+}
+
+#test "crawlers come up from the vents, and go for the reactor when you are far from it" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  vented := 0;
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) || g.mutant[i].kind != CRAWLER { continue; }
+    #assert abs(abs(g.pos[i].x) - 15.2) < 0.01;
+    vented += 1;
+  }
+  #assert vented >= 1;
+  clear_mutants(g);
+  g.st[0].ally_time = 1000000;
+  c := dg_spawn_mutant(g, CRAWLER, -15.2, -6, -1);
+  g.mutant[slot_of(c)].seq = 0;   // the even ones go for the reactor
+  me := v3(10, 0, 10);   // far from the reactor
+  hits := 0;
+  for f: 0..<400 {
+    tick(g, me, false, false, 0, -1, 0.05);
+    hits += dg_events(g, EV_REACTOR_HIT);
+    if hits > 0 { break; }
+  }
+  #assert hits > 0 && dg_reactor_health(g) < 100 && dist_to(g, c, dg_reactor_pos(g)) < 3.2;
+  // Come close and it turns on you.
+  #assert dg_role(g, slot_of(c)) == ROLE_REACTOR;
+  g.pos[slot_of(dg_player(g))] = v3(0, 0, -12);
+  #assert dg_role(g, slot_of(c)) == ROLE_CHASE;
+  // Left alone, the crawlers wreck the reactor and the ship is lost.
+  g.hp[slot_of(dg_reactor(g))] = 3;
+  for f: 0..<60 { tick(g, me, false, false, 0, -1, 0.05); if g.st[0].phase == LOST { break; } }
+  #assert g.st[0].phase == LOST;
 }
 
 spawn_crowd :: (g: Game) {

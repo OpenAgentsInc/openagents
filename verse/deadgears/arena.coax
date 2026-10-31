@@ -195,7 +195,7 @@ Nav :: struct {
   walk: [NAV_CELLS] bool;
   heap: [NAV_CELLS] s32;
   slot: [NAV_CELLS] s32;   // where each cell is in the heap, -1 out of it
-  flows: [2] Flow;         // 0 to you (the mutants), 1 where the support engineer heads
+  flows: [3] Flow;         // 0 to you (the mutants), 1 where the support engineer heads, 2 to the reactor
   ready: bool;
   bakes: int;
 }
@@ -226,7 +226,7 @@ nav_bake :: (n: [] Nav, a: [] Arena) {
     }
     n[0].walk[c] = open;
   }
-  for f: 0..<2 { n[0].flows[f].goal = -1; n[0].flows[f].key_x = 1000000000; n[0].flows[f].key_z = 1000000000; }
+  for f: 0..<3 { n[0].flows[f].goal = -1; n[0].flows[f].key_x = 1000000000; n[0].flows[f].key_z = 1000000000; }
   n[0].ready = true;
   n[0].bakes += 1;
 }

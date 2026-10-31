@@ -601,7 +601,7 @@ stand_at :: (s: [] DeadGears, p: Point, yaw: f32) {
   g.pos[me_slot(g)] = p; g.yaw[me_slot(g)] = yaw;
 }
 
-// What you walk among this frame (#6d99): the arena's hull and cover, the
+// What you walk among this frame (#6d99): the arena's hull, cover and
 // reactor, the crates lying still; the creatures near you and the support
 // engineer as capsules REACH from your middle.
 gather_world :: (s: [] DeadGears) {
@@ -613,8 +613,6 @@ gather_world :: (s: [] DeadGears) {
     b := a.boxes[i];
     put_wall(s, n, b.lo, b.hi); n += 1;
   }
-  r := dg_reactor_pos(g);
-  if n < DG_WALLS { put_wall(s, n, v3(r.x - 1.9, -0.2, r.z - 1.4), v3(r.x + 1.9, 1.35, r.z + 1.4)); n += 1; }
   for i: 0..<ecs_high(g.e) {
     if n >= DG_WALLS { break; }
     if !ecs_match(g.e, i, C_CARGO | C_POS, 0) { continue; }
@@ -841,6 +839,13 @@ build_hull :: (s: [] DeadGears) {
     side := ifx k == 0 then -1.0f32 else 1.0f32;
     hull_box(s, v3(side * 3, 2.1, 13.7), v3(0.22, 4.2, 0.2), v3(0.7, 0.73, 0.76), 0);
     hull_box(s, v3(side * 11, 2, -23.7), v3(3.2, 3.2, 0.1), v3(0.035, 0.045, 0.055), 0);
+  }
+  // The vents the crawlers come up from (#96d6): a dark mouth low in each side wall, slatted.
+  for v: 0..<4 {
+    vx := VENTS[v * 2]; vz := VENTS[v * 2 + 1];
+    side := ifx vx < 0 then -1.0f32 else 1.0f32;
+    hull_box(s, v3(side * 15.72, 0.36, vz), v3(0.1, 0.62, 1.2), v3(0.02, 0.025, 0.03), 0);
+    for q: 0..<3 { hull_box(s, v3(side * 15.66, 0.16 + f32(q) * 0.2, vz), v3(0.05, 0.05, 1.24), v3(0.3, 0.33, 0.37), 0); }
   }
   s[0].hull_n = s[0].obj_n;
 }
@@ -1382,7 +1387,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   q = put(buf[..], q, " LEFT");
   wave_line := cast(string) buf[0..<q];
   at_reactor := in_repair && flat(s[0].feet, dg_reactor_pos(g)) < 3;
-  objective := ifx in_repair then (ifx at_reactor then (ifx small then "HOLD REPAIR" else "HOLD E TO REPAIR") else "REPAIR THE REACTOR") else ifx st.cover then "COVER" else "CONTAIN";
+  objective := ifx in_repair then (ifx at_reactor then (ifx small then "HOLD REPAIR" else "HOLD E TO REPAIR") else "REPAIR THE REACTOR") else ifx st.phase == FIGHT && dg_reactor_health(g) < 100 then "DEFEND THE REACTOR" else ifx st.cover then "COVER" else "CONTAIN";
   pw := hi(hi(text_width("DEAD GEARS", cap), text_width(wave_line, line_cap)), 150 * k) + 28 * k;
   ph := cap + line_cap * 2 + 56 * k;
   top := Rect.{x0 = gut, y0 = gut, x1 = gut + pw, y1 = gut + ph};
@@ -1404,6 +1409,10 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   oy := ifx small then top.y1 + 24 * k else gut + 30 * k;
   n = centred(s, out, n, objective, w / 2, oy, oc, 0.95, ifx in_repair then AMBER_R else INK_R, ifx in_repair then AMBER_G else INK_G, ifx in_repair then AMBER_B else INK_B);
   if in_repair { n = bar(s, out, n, w / 2 - 80 * k, oy + 12 * k, 160 * k, dg_repair_progress(g), AMBER_R, AMBER_G, AMBER_B); }
+  else if st.phase == FIGHT && dg_reactor_health(g) < 100 {
+    // Crawlers at the reactor (#96d6): how much of it is left.
+    n = bar(s, out, n, w / 2 - 80 * k, oy + 12 * k, 160 * k, dg_reactor_health(g) / 100, RED_R, RED_G, RED_B);
+  }
   // PAUSE and the radar, top right.
   pb := Rect.{x0 = w - gut - 76 * k, y0 = gut, x1 = w - gut, y1 = gut + 32 * k};
   n = hud_button(s, u, out, n, BTN_PAUSE, pb, ifx s[0].paused then "RESUME" else "PAUSE", 7 * k, s[0].paused, true);
@@ -1612,8 +1621,8 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
 #test "the ship: the demo's hull, built once, then the fight's things over it" {
   s: [1] DeadGears;
   started(s[..]);
-  // floor; per rib row a stripe, two walls, two posts, two lamps, two deck lights, a rib; the bulkheads, the door posts, the far doors
-  #assert s[0].hull_n == 1 + 9 * 10 + 2 + 4;
+  // floor; per rib row a stripe, two walls, two posts, two lamps, two deck lights, a rib; the bulkheads, the door posts, the far doors, the vents
+  #assert s[0].hull_n == 1 + 9 * 10 + 2 + 4 + 4 * 4;
   n := frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
   #assert n > 0 && s[0].obj_n > s[0].hull_n + 7 * 5 + 8 + 2 * 20 && s[0].dropped == 0;
   // You stand at (0, 9) looking down the hold at the reactor, in front of the camera.
