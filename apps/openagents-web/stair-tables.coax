@@ -17,12 +17,14 @@
 //   round R every E                           R 1-20 defenders a round, one more each E waves (1-10)
 //   stair C R C R ...                         the stair's corners from the cellar door to the top
 //       (2 to 16 of them, column 0-13, row 0-8), each straight across or down from the last
+//   seed N                                    the dice's seed for the map (1-999999999; optional)
 //   # anything after a hash is a note
 // Every layer, class, level, wave, start, round and stair must be there.
 //   coax/bin/coax test apps/openagents-web/stair.coax
 
 TABLE_LAYERS :: 4; TABLE_CLASSES :: 3; TABLE_WAVES :: 10; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
 TABLE_ERROR :: 160;
+STAIR_SEED :: 20261030;   // the dice's seed when a table names none
 TABLE_LAYER_NAMES :: [4] string.["mote", "wisp", "glimmer", "ember"];
 TABLE_CLASS_NAMES :: [3] string.["fighter", "wizard", "cleric"];
 
@@ -37,6 +39,7 @@ Content :: struct {
   kind: [TABLE_WAVES * TABLE_GROUPS] int; count: [TABLE_WAVES * TABLE_GROUPS] int;
   gap: [TABLE_WAVES * TABLE_GROUPS] f32; delay: [TABLE_WAVES * TABLE_GROUPS] f32;
   start_gold: int; start_lives: int; round_base: int; round_every: int;
+  seed: u64;   // the dice's seed for this map: the same seed rolls the same game
   way_n: int; way_c: [TABLE_CORNERS] int; way_r: [TABLE_CORNERS] int;
   // what was given, to refuse a table missing a part
   had_layer: [TABLE_LAYERS] bool; had_class: [TABLE_CLASSES] bool; had_level: [TABLE_CLASSES] bool;
@@ -214,6 +217,16 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
     c[0].had_wave[w] = true;
     return true;
   }
+  if head == "seed" {
+    if n != 2 { return table_refuse(c, line, "seed N", ""); }
+    sd := table_number(table_word(k, 1));
+    if !sd.ok || !sd.whole || sd.v < 1 || sd.v > 999999999 { return table_refuse(c, line, "a seed is a whole number from 1 to 999999999", ""); }
+    // f32 can't hold every whole number that big: read the digits
+    w := table_word(k, 1); v: u64 = 0;
+    for ch: w { v = v * 10 + cast(u64) (ch - '0'); }
+    c[0].seed = v;
+    return true;
+  }
   if head == "start" {
     if n != 5 { return table_refuse(c, line, "start gold G lives L", ""); }
     gd := table_num(c, k, line, 2, "gold", true, 0, 9999); if !gd.ok { return false; }
@@ -291,6 +304,7 @@ stair_tables_read :: (c: [] Content, text: string) -> bool {
   if !c[0].had_start { return table_refuse(c, line, "no start", ""); }
   if !c[0].had_round { return table_refuse(c, line, "no round", ""); }
   if c[0].way_n < 2 { return table_refuse(c, line, "no stair", ""); }
+  if c[0].seed == 0 { c[0].seed = STAIR_SEED; }
   c[0].ok = true; c[0].line = 0;
   return true;
 }
