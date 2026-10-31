@@ -1205,8 +1205,8 @@ flight_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   t := s[0].fl_t;
   a := clamp((t - 4.2) / 1.2, 0, 1) * clamp((8.4 - t) / 0.8, 0, 1);
   if a > 0.01 {
-    cap := lo(26 * k, w / 16);
     title := "HECATE'S CEMETERY";
+    cap := lo(26 * k, (w - 40 * k) / hi(text_width(title, 1), 0.001));   // the whole name fits a phone
     m = draw_text(out, m, title, (w - text_width(title, cap)) / 2, h * 0.3, cap, GAP, SPACE, ink(k, 0.95 * a, PALE_R, PALE_G, PALE_B), false, false);
     small := cap * 0.42;
     over := "PLANETARY VILLA";

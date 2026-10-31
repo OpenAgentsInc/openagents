@@ -352,7 +352,21 @@ camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
         enter = hi(enter, lo(t0, t1)); leave = lo(leave, hi(t0, t1));
       }
     }
-    if hit && enter <= leave { room = lo(room, enter); }
+    if !hit || enter > leave { continue; }
+    if enter > 0 { room = lo(room, enter); continue; }
+    // Hugging it (inside its CAM_CLEAR band): it only holds the camera in
+    // if the line runs into the wall itself, not when it backs away from it
+    // (Dead Gears, 2026-10-31: walking into the hull put the camera in it).
+    real := 0.0f32; out := max; meets := true;
+    for k: 0..<3 {
+      if abs(d[k]) < 0.000001 {
+        if o[k] < l[k] || o[k] > h[k] { meets = false; }
+      } else {
+        t0 := (l[k] - o[k]) / d[k]; t1 := (h[k] - o[k]) / d[k];
+        real = hi(real, lo(t0, t1)); out = lo(out, hi(t0, t1));
+      }
+    }
+    if meets && real <= out { room = lo(room, hi(0, real - f32(CAM_CLEAR))); }
   }
   far := add(target, times(offset, max));
   for i: 0..<w.bodies.count / BODY {
@@ -1244,6 +1258,9 @@ desk :: (out: [] f32) {
   // Pointing away, clear; from inside, none.
   #assert camera_room(w, v3(0, 0.5, 2), v3(0, 0, -1), 4) == 4;
   #assert camera_room(w, v3(0, 0.5, 4), v3(0, 0, 1), 4) == 0;
+  // Hugging it, within CAM_CLEAR: backing away is clear, into it none.
+  #assert camera_room(w, v3(0, 0.5, 3.5 - f32(CAM_CLEAR) / 2), v3(0, 0, -1), 4) == 4;
+  #assert camera_room(w, v3(0, 0.5, 3.5 - f32(CAM_CLEAR) / 2), v3(0, 0, 1), 4) == 0;
 }
 
 #test "walls with bad numbers, inside out or partial are skipped" {
