@@ -302,8 +302,8 @@ a typed constant.
 Implemented aggregates are structs with field defaults (`v: Vec2;` takes
 them; `= ---` skips them; a field may be noted `#flat` after its type, which
 only `coax spirv` and `coax wgsl` read: that varying is the provoking vertex's, not
-interpolated; or `#depth`, which only `coax wgsl` reads: a fragment's f32 output
-that is its depth, not a color target), enums with a declared width, fixed arrays `[N] T`
+interpolated; or `#depth`, which only `coax spirv` and `coax wgsl` read: a
+fragment's f32 output that is its depth, not a color target), enums with a declared width, fixed arrays `[N] T`
 (N known while checking) and views `[] T`. Arrays and structs are values:
 assignment and calls copy them. A view borrows an array variable's storage
 (`a[..]`, `a[lo..<hi]`); writes through it change the array, including through

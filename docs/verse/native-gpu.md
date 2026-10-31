@@ -398,7 +398,7 @@ Every phase and native feature is a task in the Verse project
     changed in every view. A field may be noted `#depth` (coax/spec.md): a
     fragment's f32 output that is its depth, which lib/compiler/wgsl.coax
     writes as `@builtin(frag_depth)` between targets that keep their
-    locations (`coax spirv` still refuses it). The translator reads
+    locations; `coax spirv` writes it as FragDepth, with DepthReplacing. The translator reads
     `@builtin(frag_depth)` as that, knows mat3x3f (M3, m3_apply in
     verse/gpu/wgsl.coax), and writes a store to a vector's element by a
     dynamic index as the vector with it set.
@@ -421,6 +421,12 @@ Every phase and native feature is a task in the Verse project
     realm in one stage: 0 blocks changed against its hand WGSL, now deleted)
     gives a new realm its shaders in Coax, verse/SKILL.md says so, and
     build.sh writes every gpu/*.module.
+  - And natively: every entry of every gpu/*.coax module lowers with
+    `coax spirv` (each fragment with its vertex), the fixture's and the
+    water lab's depth-writing backgrounds included (spirv-val, a test aid,
+    accepts both). What is left for every realm native is the host: each
+    realm's game linked natively as Everglade's is (verse/native/build.sh
+    knows only everglade), and a navigation to another realm followed.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
