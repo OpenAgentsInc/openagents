@@ -1,0 +1,625 @@
+// SPIR-V for `coax spirv`: the Metal scalar profile (f32 and bool, if/else
+// and calls, which the checker enforces) lowered to a SPIR-V 1.3 module for
+// Vulkan. Native code observes the checked tree and hands it here as words
+// (the tree code below); this file decides every instruction, and native
+// code writes the words it returns. Without a kernel the module is a
+// library (the Linkage capability), which Vulkan does not load. With a
+// kernel, one procedure is wrapped in a GLCompute entry point `main` (64
+// invocations a group): invocation x below the push constant count reads its
+// arguments from storage buffer 0 (set 0, binding 0) at x*parameters+k and
+// writes its result to storage buffer 1 (binding 1) at x, a bool as 1.0 or 0.0.
+// A kernel keeps f32 NaN, infinity and signed zero (SPV_KHR_float_controls),
+// so the device needs shaderSignedZeroInfNanPreserveFloat32.
+//
+// Tree code, version 1:
+//   module: procs kernel (ret params type*)*procs (locals type* stmt)*procs
+//     kernel is a procedure index or SV_NO_KERNEL; parameters are the first locals
+//   type: 0 void, 1 bool, 2 f32
+//   stmt: 1 block n stmt* | 2 expr e | 3 assign local op e | 4 return e | 5 return
+//       | 6 if has_else e stmt [stmt]
+//   expr: 16 f32 bits | 17 bool v | 18 local | 19 binary op e e | 20 negate e | 21 not e
+//       | 22 call proc n e* | 23 math fn n e* | 24 select e e e
+//   op: 0 none (assign) 1 + 2 - 3 * 4 / 5 % 6 < 7 <= 8 > 9 >= 10 == 11 != 12 && 13 ||
+//   math: 1 sin 2 cos 3 tan 4 exp 5 log 6 sqrt 7 floor 8 abs 9 pow
+#authority;
+
+SV_NO_KERNEL :: 0xFFFFFFFF;
+SV_PROCS :: 256; SV_LOCALS :: 1024; SV_CONSTS :: 512; SV_ARGS :: 32;
+// The work view: per procedure, then per local, then the constants (type,
+// bits and id each), then code.
+SV_W_FN :: 0; SV_W_RET :: 256; SV_W_FTYPE :: 512; SV_W_SIG :: 768;
+SV_W_LOCAL :: 1024; SV_W_LTYPE :: 2048; SV_W_CONST :: 3072; SV_W_CODE :: 4608;
+SV_T_VOID :: 0; SV_T_BOOL :: 1; SV_T_F32 :: 2; SV_T_U32 :: 3;
+
+SvState :: struct {
+  n:int; c:int; at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int; consts:int; procs:int; locals:int;
+  t_void:u32; t_bool:u32; t_f32:u32; t_u32:u32; p_bool:u32; p_f32:u32; glsl:u32; c_true:u32; c_false:u32;
+  k_main:u32; k_fn:u32; k_v3:u32; k_pv3:u32; k_gid:u32; k_rt:u32; k_buf:u32; k_pbuf:u32; k_in:u32; k_out:u32;
+  k_pf:u32; k_pcs:u32; k_ppc:u32; k_pc:u32; k_ppu:u32;
+}
+SvVal :: struct {id:u32; ty:u32;}
+
+// Reasons. 0 lowers; each other value names what is refused.
+#test "every refusal reason has its own text" {
+  #assert SV_reason_text(0)=="" && SV_reason_text(1)=="a malformed tree" && SV_reason_text(2)=="a module larger than its buffer";
+  #assert SV_reason_text(3)=="more than 256 procedures" && SV_reason_text(4)=="more than 1024 locals in one procedure";
+  #assert SV_reason_text(5)=="more than 512 constants" && SV_reason_text(7)=="an operation on these types";
+  #assert SV_reason_text(6)=="a kernel that is not a procedure of f32 parameters returning f32 or bool";
+  #assert SV_reason_text(8)=="a call with more than 32 arguments" && SV_reason_text(9)=="this reason" && SV_reason_text(4000000000)=="this reason";
+}
+SV_reason_text :: (reason:u32)->string #export_c {
+  texts:=[9] string.["","a malformed tree","a module larger than its buffer","more than 256 procedures",
+    "more than 1024 locals in one procedure","more than 512 constants",
+    "a kernel that is not a procedure of f32 parameters returning f32 or bool","an operation on these types",
+    "a call with more than 32 arguments"];
+  if reason>=9 {return "this reason";}
+  return texts[cast(int)reason];
+}
+
+// Opcodes (SPIR-V 1.3 specification, section 3.49) and enumerants.
+SV_OP_EXTENSION :: 10; SV_OP_EXT_IMPORT :: 11; SV_OP_EXT_INST :: 12; SV_OP_MEMORY_MODEL :: 14; SV_OP_ENTRY_POINT :: 15; SV_OP_EXECUTION_MODE :: 16;
+SV_OP_CAPABILITY :: 17; SV_OP_TYPE_VOID :: 19; SV_OP_TYPE_BOOL :: 20; SV_OP_TYPE_INT :: 21; SV_OP_TYPE_FLOAT :: 22;
+SV_OP_TYPE_VECTOR :: 23; SV_OP_TYPE_RUNTIME_ARRAY :: 29; SV_OP_TYPE_STRUCT :: 30; SV_OP_TYPE_POINTER :: 32;
+SV_OP_TYPE_FUNCTION :: 33; SV_OP_CONSTANT_TRUE :: 41; SV_OP_CONSTANT_FALSE :: 42; SV_OP_CONSTANT :: 43;
+SV_OP_FUNCTION :: 54; SV_OP_FUNCTION_PARAMETER :: 55; SV_OP_FUNCTION_END :: 56; SV_OP_FUNCTION_CALL :: 57;
+SV_OP_VARIABLE :: 59; SV_OP_LOAD :: 61; SV_OP_STORE :: 62; SV_OP_ACCESS_CHAIN :: 65; SV_OP_DECORATE :: 71;
+SV_OP_MEMBER_DECORATE :: 72; SV_OP_COMPOSITE_EXTRACT :: 81; SV_OP_FNEGATE :: 127; SV_OP_IADD :: 128; SV_OP_IMUL :: 132;
+SV_OP_LOGICAL_NOT :: 168; SV_OP_SELECT :: 169; SV_OP_ULESS_THAN :: 176;
+SV_OP_SELECTION_MERGE :: 247; SV_OP_LABEL :: 248; SV_OP_BRANCH :: 249; SV_OP_BRANCH_CONDITIONAL :: 250;
+SV_OP_RETURN :: 253; SV_OP_RETURN_VALUE :: 254; SV_OP_UNREACHABLE :: 255;
+SV_SC_INPUT :: 1; SV_SC_PUSH_CONSTANT :: 9; SV_SC_STORAGE_BUFFER :: 12; SV_SC_FUNCTION :: 7;
+
+sv_fail :: (s:[]SvState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+// What a refused step hands back: nothing reads it, since the first refusal is the result.
+sv_refused :: ()->SvVal {return SvVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
+sv_nothing :: ()->u32 {return 0;} // mutant: equivalent (no value is read after a refusal)
+sv_id :: (s:[]SvState)->u32 {id:=s[0].next;s[0].next+=1;return id;}
+// A word to the module (the header, types and constants) or to the code,
+// which follows them; code is dropped while muted (after a return).
+sv_word :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,word:u32) {
+  if code {
+    if s[0].mute>0 {return;}
+    at:=SV_W_CODE+s[0].c;
+    if at>=w.count {sv_fail(s,2);return;}
+    w[at]=word;s[0].c+=1;return;
+  }
+  if s[0].n>=out.count {sv_fail(s,2);return;}
+  out[s[0].n]=word;s[0].n+=1;
+}
+sv_op :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,words:int) {sv_word(s,out,w,code,(cast(u32)words<<16)|op);}
+sv1 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32) {sv_op(s,out,w,code,op,2);sv_word(s,out,w,code,a);}
+sv2 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32) {sv_op(s,out,w,code,op,3);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);}
+sv3 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32) {
+  sv_op(s,out,w,code,op,4);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);sv_word(s,out,w,code,c);
+}
+sv4 :: (s:[]SvState,out:[]u32,w:[]u32,code:bool,op:u32,a:u32,b:u32,c:u32,d:u32) {
+  sv_op(s,out,w,code,op,5);sv_word(s,out,w,code,a);sv_word(s,out,w,code,b);sv_word(s,out,w,code,c);sv_word(s,out,w,code,d);
+}
+sv_r1 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32)->u32 {r:=sv_id(s);sv3(s,out,w,true,op,ty,r,a);return r;}
+sv_r2 :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 {r:=sv_id(s);sv4(s,out,w,true,op,ty,r,a,b);return r;}
+sv_label :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) {sv1(s,out,w,true,SV_OP_LABEL,id);s[0].open=true;}
+sv_end_block :: (s:[]SvState,out:[]u32,w:[]u32,op:u32) {sv_op(s,out,w,true,op,1);s[0].open=false;}
+sv_name :: (s:[]SvState,out:[]u32,w:[]u32,text:string) {
+  for i:0..<text.count/4+1 {
+    word:u32=0;
+    for b:0..<4 {at:=i*4+b;if at<text.count {word|=cast(u32)text[at]<<cast(u32)(8*b);}}
+    sv_word(s,out,w,false,word);
+  }
+}
+
+sv_next :: (s:[]SvState,tree:[]u32)->u32 {
+  if s[0].at>=tree.count {sv_fail(s,1);return sv_nothing();}
+  v:=tree[s[0].at];s[0].at+=1;return v;
+}
+sv_type :: (s:[]SvState,code:u32)->u32 {
+  if code==SV_T_VOID {return s[0].t_void;}
+  if code==SV_T_BOOL {return s[0].t_bool;}
+  if code==SV_T_F32 {return s[0].t_f32;}
+  sv_fail(s,1);return sv_nothing();
+}
+sv_pointer :: (s:[]SvState,code:u32)->u32 {
+  if code==SV_T_BOOL {return s[0].p_bool;}
+  if code==SV_T_F32 {return s[0].p_f32;}
+  sv_fail(s,1);return sv_nothing();
+}
+// One constant per (type, bits), kept with the types.
+sv_const :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,bits:u32)->u32 {
+  for k:0..<s[0].consts {at:=SV_W_CONST+3*k;if w[at]==ty && w[at+1]==bits {return w[at+2];}}
+  if s[0].consts>=SV_CONSTS {sv_fail(s,5);return sv_nothing();}
+  id:=sv_id(s);
+  sv3(s,out,w,false,SV_OP_CONSTANT,ifx ty==SV_T_F32 then s[0].t_f32 else s[0].t_u32,id,bits);
+  at:=SV_W_CONST+3*s[0].consts;w[at]=ty;w[at+1]=bits;w[at+2]=id;s[0].consts+=1;
+  return id;
+}
+
+// Two values combined: arithmetic and order on f32, logic on bool, equality on both.
+sv_binary :: (s:[]SvState,out:[]u32,w:[]u32,op:u32,a:SvVal,b:SvVal)->SvVal {
+  // FAdd FSub FMul FDiv FRem; FOrdLessThan ...LessThanEqual ...GreaterThan ...GreaterThanEqual FOrdEqual FUnordNotEqual
+  float_ops:=[13] u32.[129,131,133,136,140,184,188,186,190,180,183,0,0];
+  // LogicalEqual LogicalNotEqual LogicalAnd LogicalOr
+  bool_ops:=[13] u32.[0,0,0,0,0,0,0,0,0,164,165,167,166];
+  if a.ty!=b.ty || a.ty==SV_T_VOID || op<1 || op>13 {sv_fail(s,7);return sv_refused();}
+  code:=ifx a.ty==SV_T_F32 then float_ops[cast(int)op-1] else bool_ops[cast(int)op-1];
+  if code==0 {sv_fail(s,7);return sv_refused();}
+  ty:u32=ifx a.ty==SV_T_F32 && op<=5 then SV_T_F32 else SV_T_BOOL;
+  return SvVal.{id=sv_r2(s,out,w,code,sv_type(s,ty),a.id,b.id),ty=ty};
+}
+// A GLSL.std.450 instruction on f32, with one operand or two.
+sv_ext1 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32)->u32 {
+  r:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_EXT_INST,6);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
+  sv_word(s,out,w,true,s[0].glsl);sv_word(s,out,w,true,inst);sv_word(s,out,w,true,a);
+  return r;
+}
+sv_ext2 :: (s:[]SvState,out:[]u32,w:[]u32,inst:u32,a:u32,b:u32)->u32 {
+  r:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_EXT_INST,7);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
+  sv_word(s,out,w,true,s[0].glsl);sv_word(s,out,w,true,inst);sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);
+  return r;
+}
+sv_select :: (s:[]SvState,out:[]u32,w:[]u32,c:u32,a:u32,b:u32)->u32 {
+  r:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_SELECT,6);sv_word(s,out,w,true,s[0].t_f32);sv_word(s,out,w,true,r);
+  sv_word(s,out,w,true,c);sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);
+  return r;
+}
+// pow as C's powf, where GLSL's Pow leaves x<0 and x==0 undefined:
+// |x|^y, negated for x<0 and an odd whole y, NaN for x<0 and a fractional y;
+// 0 or infinity for x==0 as y is above or below 0; and 1 whenever y==0.
+sv_pow :: (s:[]SvState,out:[]u32,w:[]u32,x:u32,y:u32)->u32 {
+  f:=s[0].t_f32;b:=s[0].t_bool;
+  zero:=sv_const(s,out,w,SV_T_F32,0);one:=sv_const(s,out,w,SV_T_F32,0x3F800000);half:=sv_const(s,out,w,SV_T_F32,0x3F000000);
+  nan:=sv_const(s,out,w,SV_T_F32,0x7FC00000);inf:=sv_const(s,out,w,SV_T_F32,0x7F800000);
+  r:=sv_ext2(s,out,w,26,sv_ext1(s,out,w,4,x),y);
+  whole:=sv_r2(s,out,w,180,b,sv_ext1(s,out,w,8,y),y);
+  odd:=sv_r2(s,out,w,183,b,sv_ext1(s,out,w,10,sv_r2(s,out,w,133,f,y,half)),zero);
+  negative:=sv_select(s,out,w,whole,sv_select(s,out,w,odd,sv_r1(s,out,w,SV_OP_FNEGATE,f,r),r),nan);
+  r=sv_select(s,out,w,sv_r2(s,out,w,184,b,x,zero),negative,r);
+  r=sv_select(s,out,w,sv_r2(s,out,w,180,b,x,zero),sv_select(s,out,w,sv_r2(s,out,w,186,b,y,zero),zero,inf),r);
+  return sv_select(s,out,w,sv_r2(s,out,w,180,b,y,zero),one,r);
+}
+sv_local :: (s:[]SvState,tree:[]u32)->int {
+  id:=cast(int)sv_next(s,tree);
+  if id>=s[0].locals {sv_fail(s,1);return cast(int)sv_nothing();}
+  return id;
+}
+
+sv_expr :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32)->SvVal {
+  k:=sv_next(s,tree);
+  if !s[0].ok {return sv_refused();}
+  if k==16 {return SvVal.{id=sv_const(s,out,w,SV_T_F32,sv_next(s,tree)),ty=SV_T_F32};}
+  if k==17 {return SvVal.{id=ifx sv_next(s,tree)!=0 then s[0].c_true else s[0].c_false,ty=SV_T_BOOL};}
+  if k==18 {
+    id:=sv_local(s,tree);ty:=w[SV_W_LTYPE+id];
+    return SvVal.{id=sv_r1(s,out,w,SV_OP_LOAD,sv_type(s,ty),w[SV_W_LOCAL+id]),ty=ty};
+  }
+  if k==19 {op:=sv_next(s,tree);a:=sv_expr(s,tree,out,w);b:=sv_expr(s,tree,out,w);return sv_binary(s,out,w,op,a,b);}
+  if k==20 || k==21 {
+    a:=sv_expr(s,tree,out,w);
+    want:u32=ifx k==20 then SV_T_F32 else SV_T_BOOL;
+    if a.ty!=want {sv_fail(s,7);return sv_refused();}
+    return SvVal.{id=sv_r1(s,out,w,ifx k==20 then SV_OP_FNEGATE else SV_OP_LOGICAL_NOT,sv_type(s,want),a.id),ty=want};
+  }
+  args:[32] u32;
+  if k==22 {
+    target:=cast(int)sv_next(s,tree);n:=cast(int)sv_next(s,tree);
+    if target>=s[0].procs {sv_fail(s,1);return sv_refused();}
+    sig:=cast(int)w[SV_W_SIG+target];
+    if n!=cast(int)tree[sig+1] {sv_fail(s,1);return sv_refused();}
+    for i:0..<n {
+      a:=sv_expr(s,tree,out,w);
+      if a.ty!=tree[sig+2+i] {sv_fail(s,7);return sv_refused();}
+      args[i]=a.id;
+    }
+    r:=sv_id(s);
+    sv_op(s,out,w,true,SV_OP_FUNCTION_CALL,4+n);sv_word(s,out,w,true,sv_type(s,tree[sig]));sv_word(s,out,w,true,r);sv_word(s,out,w,true,w[SV_W_FN+target]);
+    for i:0..<n {sv_word(s,out,w,true,args[i]);}
+    return SvVal.{id=r,ty=tree[sig]};
+  }
+  if k==23 {
+    // GLSL.std.450: Sin Cos Tan Exp Log Sqrt Floor FAbs, and pow as C has it.
+    insts:=[8] u32.[13,14,15,27,28,31,8,4];
+    fn:=sv_next(s,tree);n:=sv_next(s,tree);
+    want:u32=ifx fn==9 then 2 else 1;
+    if fn<1 || fn>9 || n!=want {sv_fail(s,1);return sv_refused();}
+    for i:0..<cast(int)n {
+      a:=sv_expr(s,tree,out,w);
+      if a.ty!=SV_T_F32 {sv_fail(s,7);return sv_refused();}
+      args[i]=a.id;
+    }
+    if fn==9 {return SvVal.{id=sv_pow(s,out,w,args[0],args[1]),ty=SV_T_F32};}
+    return SvVal.{id=sv_ext1(s,out,w,insts[cast(int)fn-1],args[0]),ty=SV_T_F32};
+  }
+  if k==24 {
+    c:=sv_expr(s,tree,out,w);a:=sv_expr(s,tree,out,w);b:=sv_expr(s,tree,out,w);
+    if c.ty!=SV_T_BOOL || a.ty!=b.ty || a.ty==SV_T_VOID {sv_fail(s,7);return sv_refused();}
+    r:=sv_id(s);
+    sv_op(s,out,w,true,SV_OP_SELECT,6);sv_word(s,out,w,true,sv_type(s,a.ty));sv_word(s,out,w,true,r);
+    sv_word(s,out,w,true,c.id);sv_word(s,out,w,true,a.id);sv_word(s,out,w,true,b.id);
+    return SvVal.{id=r,ty=a.ty};
+  }
+  sv_fail(s,1);return sv_refused();
+}
+
+// A statement after a return is checked like any other and writes no code.
+sv_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) {
+  dead:=!s[0].open;
+  if dead {s[0].mute+=1;}
+  sv_live_stmt(s,tree,out,w,ret);
+  if dead {s[0].mute-=1;s[0].open=false;}
+}
+sv_live_stmt :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,ret:u32) {
+  k:=sv_next(s,tree);
+  if !s[0].ok {return;}
+  if k==1 {n:=sv_next(s,tree);for i:0..<cast(int)n {if !s[0].ok {return;}sv_stmt(s,tree,out,w,ret);}return;}
+  if k==2 {value:=sv_expr(s,tree,out,w);return;}
+  if k==3 {
+    id:=sv_local(s,tree);op:=sv_next(s,tree);v:=sv_expr(s,tree,out,w);ty:=w[SV_W_LTYPE+id];
+    if op!=0 {cur:=SvVal.{id=sv_r1(s,out,w,SV_OP_LOAD,sv_type(s,ty),w[SV_W_LOCAL+id]),ty=ty};v=sv_binary(s,out,w,op,cur,v);}
+    if v.ty!=ty {sv_fail(s,7);return;}
+    sv2(s,out,w,true,SV_OP_STORE,w[SV_W_LOCAL+id],v.id);return;
+  }
+  if k==4 {
+    v:=sv_expr(s,tree,out,w);
+    if v.ty!=ret || ret==SV_T_VOID {sv_fail(s,7);return;}
+    sv1(s,out,w,true,SV_OP_RETURN_VALUE,v.id);s[0].open=false;return;
+  }
+  if k==5 {if ret!=SV_T_VOID {sv_fail(s,7);return;}sv_end_block(s,out,w,SV_OP_RETURN);return;}
+  if k==6 {
+    has_else:=sv_next(s,tree)!=0;c:=sv_expr(s,tree,out,w);
+    if c.ty!=SV_T_BOOL {sv_fail(s,7);return;}
+    merge:=sv_id(s);then_:=sv_id(s);else_:=ifx has_else then sv_id(s) else merge;
+    sv2(s,out,w,true,SV_OP_SELECTION_MERGE,merge,0);
+    sv3(s,out,w,true,SV_OP_BRANCH_CONDITIONAL,c.id,then_,else_);
+    sv_label(s,out,w,then_);sv_stmt(s,tree,out,w,ret);
+    open:=s[0].open;
+    if open {sv1(s,out,w,true,SV_OP_BRANCH,merge);}
+    if has_else {
+      sv_label(s,out,w,else_);sv_stmt(s,tree,out,w,ret);
+      if s[0].open {sv1(s,out,w,true,SV_OP_BRANCH,merge);open=true;}
+    } else {open=true;}
+    sv_label(s,out,w,merge);
+    if !open {sv_end_block(s,out,w,SV_OP_UNREACHABLE);}
+    return;
+  }
+  sv_fail(s,1);
+}
+
+sv_proc :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+  locals:=cast(int)sv_next(s,tree);
+  if locals>SV_LOCALS {sv_fail(s,4);return;}
+  for i:0..<locals {w[SV_W_LTYPE+i]=sv_next(s,tree);}
+  s[0].locals=locals;
+  sig:=cast(int)w[SV_W_SIG+p];ret:=tree[sig];params:=cast(int)tree[sig+1];
+  // Parameters are the first locals; when they are not, the body is left
+  // unread and the tree is refused for it.
+  if params>locals {return;}
+  for i:0..<params {if tree[sig+2+i]!=w[SV_W_LTYPE+i] {return;}}
+  if !s[0].ok {return;}
+  sv4(s,out,w,true,SV_OP_FUNCTION,sv_type(s,ret),w[SV_W_FN+p],0,w[SV_W_FTYPE+p]);
+  first:=s[0].next;
+  for i:0..<params {sv2(s,out,w,true,SV_OP_FUNCTION_PARAMETER,sv_type(s,w[SV_W_LTYPE+i]),sv_id(s));}
+  sv_label(s,out,w,sv_id(s));
+  for i:0..<locals {id:=sv_id(s);w[SV_W_LOCAL+i]=id;sv3(s,out,w,true,SV_OP_VARIABLE,sv_pointer(s,w[SV_W_LTYPE+i]),id,SV_SC_FUNCTION);}
+  for i:0..<params {sv2(s,out,w,true,SV_OP_STORE,w[SV_W_LOCAL+i],first+cast(u32)i);}
+  sv_stmt(s,tree,out,w,ret);
+  if s[0].open {sv_end_block(s,out,w,ifx ret==SV_T_VOID then SV_OP_RETURN else SV_OP_UNREACHABLE);}
+  sv_op(s,out,w,true,SV_OP_FUNCTION_END,1);
+}
+
+// A pointer to element `at` of a storage buffer's array.
+sv_element :: (s:[]SvState,out:[]u32,w:[]u32,buffer:u32,u0:u32,at:u32)->u32 {
+  r:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_ACCESS_CHAIN,6);sv_word(s,out,w,true,s[0].k_pf);sv_word(s,out,w,true,r);
+  sv_word(s,out,w,true,buffer);sv_word(s,out,w,true,u0);sv_word(s,out,w,true,at);
+  return r;
+}
+// The kernel's entry point: one invocation per argument row.
+sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+  sig:=cast(int)w[SV_W_SIG+p];ret:=tree[sig];params:=cast(int)tree[sig+1];
+  u0:=sv_const(s,out,w,SV_T_U32,0);
+  sv4(s,out,w,true,SV_OP_FUNCTION,s[0].t_void,s[0].k_main,0,s[0].k_fn);
+  sv_label(s,out,w,sv_id(s));
+  g:=sv_r1(s,out,w,SV_OP_LOAD,s[0].k_v3,s[0].k_gid);
+  x:=sv_r2(s,out,w,SV_OP_COMPOSITE_EXTRACT,s[0].t_u32,g,0);
+  count:=sv_r1(s,out,w,SV_OP_LOAD,s[0].t_u32,sv_r2(s,out,w,SV_OP_ACCESS_CHAIN,s[0].k_ppu,s[0].k_pc,u0));
+  inside:=sv_r2(s,out,w,SV_OP_ULESS_THAN,s[0].t_bool,x,count);
+  merge:=sv_id(s);body:=sv_id(s);
+  sv2(s,out,w,true,SV_OP_SELECTION_MERGE,merge,0);
+  sv3(s,out,w,true,SV_OP_BRANCH_CONDITIONAL,inside,body,merge);
+  sv_label(s,out,w,body);
+  base:=sv_r2(s,out,w,SV_OP_IMUL,s[0].t_u32,x,sv_const(s,out,w,SV_T_U32,cast(u32)params));
+  args:[32] u32;
+  for i:0..<params {
+    at:=sv_r2(s,out,w,SV_OP_IADD,s[0].t_u32,base,sv_const(s,out,w,SV_T_U32,cast(u32)i));
+    args[i]=sv_r1(s,out,w,SV_OP_LOAD,s[0].t_f32,sv_element(s,out,w,s[0].k_in,u0,at));
+  }
+  v:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_FUNCTION_CALL,4+params);sv_word(s,out,w,true,sv_type(s,ret));sv_word(s,out,w,true,v);sv_word(s,out,w,true,w[SV_W_FN+p]);
+  for i:0..<params {sv_word(s,out,w,true,args[i]);}
+  if ret==SV_T_BOOL {v=sv_select(s,out,w,v,sv_const(s,out,w,SV_T_F32,0x3F800000),sv_const(s,out,w,SV_T_F32,0));}
+  sv2(s,out,w,true,SV_OP_STORE,sv_element(s,out,w,s[0].k_out,u0,x),v);
+  sv1(s,out,w,true,SV_OP_BRANCH,merge);
+  sv_label(s,out,w,merge);
+  sv_end_block(s,out,w,SV_OP_RETURN);
+  sv_op(s,out,w,true,SV_OP_FUNCTION_END,1);
+}
+
+// The kernel's interface: ids, then decorations, before any type.
+sv_kernel_interface :: (s:[]SvState,out:[]u32,w:[]u32) {
+  s[0].k_main=sv_id(s);s[0].k_fn=sv_id(s);s[0].k_v3=sv_id(s);s[0].k_pv3=sv_id(s);s[0].k_gid=sv_id(s);
+  s[0].k_rt=sv_id(s);s[0].k_buf=sv_id(s);s[0].k_pbuf=sv_id(s);s[0].k_in=sv_id(s);s[0].k_out=sv_id(s);
+  s[0].k_pf=sv_id(s);s[0].k_pcs=sv_id(s);s[0].k_ppc=sv_id(s);s[0].k_pc=sv_id(s);s[0].k_ppu=sv_id(s);
+  // OpEntryPoint GLCompute %main "main" %gid; LocalSize 64 1 1
+  sv_op(s,out,w,false,SV_OP_ENTRY_POINT,6);sv_word(s,out,w,false,5);sv_word(s,out,w,false,s[0].k_main);sv_name(s,out,w,"main");sv_word(s,out,w,false,s[0].k_gid);
+  sv_op(s,out,w,false,SV_OP_EXECUTION_MODE,6);sv_word(s,out,w,false,s[0].k_main);sv_word(s,out,w,false,17);
+  sv_word(s,out,w,false,64);sv_word(s,out,w,false,1);sv_word(s,out,w,false,1);
+  sv3(s,out,w,false,SV_OP_EXECUTION_MODE,s[0].k_main,4461,32);
+  // BuiltIn GlobalInvocationId; ArrayStride 4; Block with member 0 at 0; set 0, bindings 0 and 1.
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_gid,11,28);
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_rt,6,4);
+  sv2(s,out,w,false,SV_OP_DECORATE,s[0].k_buf,2);
+  sv4(s,out,w,false,SV_OP_MEMBER_DECORATE,s[0].k_buf,0,35,0);
+  sv2(s,out,w,false,SV_OP_DECORATE,s[0].k_pcs,2);
+  sv4(s,out,w,false,SV_OP_MEMBER_DECORATE,s[0].k_pcs,0,35,0);
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_in,34,0);sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_in,33,0);
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_out,34,0);sv3(s,out,w,false,SV_OP_DECORATE,s[0].k_out,33,1);
+}
+sv_kernel_types :: (s:[]SvState,out:[]u32,w:[]u32) {
+  sv2(s,out,w,false,SV_OP_TYPE_FUNCTION,s[0].k_fn,s[0].t_void);
+  sv3(s,out,w,false,SV_OP_TYPE_VECTOR,s[0].k_v3,s[0].t_u32,3);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_pv3,SV_SC_INPUT,s[0].k_v3);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].k_pv3,s[0].k_gid,SV_SC_INPUT);
+  sv2(s,out,w,false,SV_OP_TYPE_RUNTIME_ARRAY,s[0].k_rt,s[0].t_f32);
+  sv2(s,out,w,false,SV_OP_TYPE_STRUCT,s[0].k_buf,s[0].k_rt);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_pbuf,SV_SC_STORAGE_BUFFER,s[0].k_buf);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].k_pbuf,s[0].k_in,SV_SC_STORAGE_BUFFER);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].k_pbuf,s[0].k_out,SV_SC_STORAGE_BUFFER);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_pf,SV_SC_STORAGE_BUFFER,s[0].t_f32);
+  sv2(s,out,w,false,SV_OP_TYPE_STRUCT,s[0].k_pcs,s[0].t_u32);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_ppc,SV_SC_PUSH_CONSTANT,s[0].k_pcs);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].k_ppc,s[0].k_pc,SV_SC_PUSH_CONSTANT);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_ppu,SV_SC_PUSH_CONSTANT,s[0].t_u32);
+}
+
+// Whether procedures a and b have the same signature (one function type serves both).
+sv_same_sig :: (tree:[]u32,a:int,b:int)->bool {
+  if tree[a]!=tree[b] || tree[a+1]!=tree[b+1] {return false;}
+  for i:0..<cast(int)tree[a+1] {if tree[a+2+i]!=tree[b+2+i] {return false;}}
+  return true;
+}
+
+// The module's word count, or minus the reason it was refused. The work
+// view holds the tables and the code: at least SV_W_CODE words, plus the code.
+SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
+  st:[1] SvState;s:=st[..];w:=work;
+  s[0].next=1;s[0].ok=true;
+  if w.count<SV_W_CODE {return -2;}
+  procs:=cast(int)sv_next(s,tree);kernel:=sv_next(s,tree);
+  if procs>SV_PROCS {return -3;}
+  s[0].procs=procs;
+  for p:0..<procs {
+    w[SV_W_SIG+p]=cast(u32)s[0].at;w[SV_W_RET+p]=sv_next(s,tree);
+    params:=cast(int)sv_next(s,tree);
+    if params>SV_ARGS {return -8;}
+    s[0].at+=params;
+  }
+  if !s[0].ok || s[0].at>tree.count {return -1;}
+  if kernel!=SV_NO_KERNEL {
+    ok:=cast(int)kernel<procs && (w[SV_W_RET+cast(int)kernel]==SV_T_F32 || w[SV_W_RET+cast(int)kernel]==SV_T_BOOL);
+    if ok {sig:=cast(int)w[SV_W_SIG+cast(int)kernel];for i:0..<cast(int)tree[sig+1] {ok=ok && tree[sig+2+i]==SV_T_F32;}}
+    if !ok {return -6;}
+  }
+  // Header, capability, GLSL.std.450, memory model.
+  sv_word(s,out,w,false,0x07230203);sv_word(s,out,w,false,0x00010300);sv_word(s,out,w,false,0);
+  sv_word(s,out,w,false,0); // mutant: equivalent (the id bound, written over at the end)
+  sv_word(s,out,w,false,0);
+  sv1(s,out,w,false,SV_OP_CAPABILITY,1);
+  // Without a kernel the module is a library of functions: Linkage. A
+  // kernel keeps IEEE NaN, infinity and signed zero in f32, as C does:
+  // SignedZeroInfNanPreserve, from SPV_KHR_float_controls.
+  if kernel==SV_NO_KERNEL {sv1(s,out,w,false,SV_OP_CAPABILITY,5);}
+  else {
+    sv1(s,out,w,false,SV_OP_CAPABILITY,4466);
+    sv_op(s,out,w,false,SV_OP_EXTENSION,7);sv_name(s,out,w,"SPV_KHR_float_controls");
+  }
+  s[0].glsl=sv_id(s);
+  sv_op(s,out,w,false,SV_OP_EXT_IMPORT,6);sv_word(s,out,w,false,s[0].glsl);sv_name(s,out,w,"GLSL.std.450");
+  sv2(s,out,w,false,SV_OP_MEMORY_MODEL,0,1);
+  if kernel!=SV_NO_KERNEL {sv_kernel_interface(s,out,w);}
+  // Types: void, bool, f32, u32, the Function pointers, the bool constants.
+  s[0].t_void=sv_id(s);sv1(s,out,w,false,SV_OP_TYPE_VOID,s[0].t_void);
+  s[0].t_bool=sv_id(s);sv1(s,out,w,false,SV_OP_TYPE_BOOL,s[0].t_bool);
+  s[0].t_f32=sv_id(s);sv2(s,out,w,false,SV_OP_TYPE_FLOAT,s[0].t_f32,32);
+  s[0].t_u32=sv_id(s);sv3(s,out,w,false,SV_OP_TYPE_INT,s[0].t_u32,32,0);
+  s[0].p_bool=sv_id(s);sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].p_bool,SV_SC_FUNCTION,s[0].t_bool);
+  s[0].p_f32=sv_id(s);sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].p_f32,SV_SC_FUNCTION,s[0].t_f32);
+  s[0].c_true=sv_id(s);sv2(s,out,w,false,SV_OP_CONSTANT_TRUE,s[0].t_bool,s[0].c_true);
+  s[0].c_false=sv_id(s);sv2(s,out,w,false,SV_OP_CONSTANT_FALSE,s[0].t_bool,s[0].c_false);
+  if kernel!=SV_NO_KERNEL {sv_kernel_types(s,out,w);}
+  // One function type per signature, one id per procedure.
+  for p:0..<procs {
+    w[SV_W_FN+p]=sv_id(s);
+    sig:=cast(int)w[SV_W_SIG+p];same:=p;
+    for q:0..<p {if sv_same_sig(tree,sig,cast(int)w[SV_W_SIG+q]) {same=q;break;}}
+    if same<p {w[SV_W_FTYPE+p]=w[SV_W_FTYPE+same];continue;}
+    // The kernel's own type serves a procedure with nothing in and nothing out.
+    if kernel!=SV_NO_KERNEL && tree[sig]==SV_T_VOID && tree[sig+1]==0 {w[SV_W_FTYPE+p]=s[0].k_fn;continue;}
+    id:=sv_id(s);w[SV_W_FTYPE+p]=id;params:=cast(int)tree[sig+1];
+    sv_op(s,out,w,false,SV_OP_TYPE_FUNCTION,3+params);sv_word(s,out,w,false,id);sv_word(s,out,w,false,sv_type(s,tree[sig]));
+    for i:0..<params {sv_word(s,out,w,false,sv_type(s,tree[sig+2+i]));}
+  }
+  for p:0..<procs {if s[0].ok {sv_proc(s,tree,out,w,p);}}
+  if s[0].ok && kernel!=SV_NO_KERNEL {sv_kernel(s,tree,out,w,cast(int)kernel);}
+  if s[0].ok && s[0].at!=tree.count {sv_fail(s,1);}
+  // The code follows the types and constants.
+  for i:0..<s[0].c {if s[0].ok {sv_word(s,out,w,false,w[SV_W_CODE+i]);}}
+  if !s[0].ok {return -cast(int)s[0].reason;}
+  out[3]=s[0].next;
+  return s[0].n;
+}
+
+// ---- checks
+//
+// A tree as text: decimal words with one space between, K for SV_NO_KERNEL.
+sv_parse :: (text:string,into:[]u32)->int {
+  n:=0;at:=0;
+  while at<text.count {
+    end:=at;
+    while end<text.count && text[end]!=' ' {end+=1;}
+    v:u32=0;
+    for i:at..<end {v=ifx text[i]=='K' then SV_NO_KERNEL else v*10+cast(u32)(text[i]-'0');}
+    into[n]=v;n+=1;at=end+1;
+  }
+  return n;
+}
+#test "a tree's text is its words" {
+  t:[8] u32;
+  #assert sv_parse("",t[..])==0 && sv_parse("12 K 0",t[..])==3 && t[0]==12 && t[1]==SV_NO_KERNEL && t[2]==0;
+}
+sv_try :: (tree:[]u32)->int {out:[16384] u32;work:[24576] u32;return SV_lower(tree,out[..],work[..]);}
+sv_text :: (text:string)->int {t:[4096] u32;return sv_try(t[0..<sv_parse(text,t[..])]);}
+// A digest of a module's words, so a check can pin all of them.
+sv_digest :: (words:[]u32,n:int)->u64 {
+  h:u64=17;
+  for i:0..<n {h=(h*31+cast(u64)words[i])%4294967291;}
+  return h;
+}
+
+// A module using every statement, operator and math function:
+//   0 f(x:f32,b:bool)->f32 {y:=x*2;y+=1;if b && !(-y<0.5) {return sqrt(y);} else {y=pow(y,2);} return ifx b then y else floor(x);}
+//   1 g() {r:=f(1,true);f(0,false);return;if true {return;r=3;} r=4;}   (all after the first return is dead)
+//   2 h(a:f32)->bool {return a==a || a!=1;}
+//   3 k(a:f32)->f32 {return (sin(cos(tan(exp(log(abs(a))))))-a)/a%a;}
+//   4 m(a:f32)->bool {return (a<=a)==(a>a) != (a>=a);}
+//   5 q(a:bool,b:bool)->f32 {if a {y:=1;} if b {return 2;} else {return 3;}}
+//   6 r(a:bool,x:f32)->f32 {if a {return x;} x=1;}   (it can run off its end)
+//   7 v() {g(); if true {return;} else {return;}}
+//   8 z()->f32 {return ifx h(1) then 1 else 0;}
+//   9 f2(x:f32,b:bool)->f32 {return x;}   (f's signature)
+//  10 u() {}
+SV_SAMPLE :: "11 K 2 2 2 1 0 0 1 1 2 2 1 2 1 1 2 2 2 1 1 2 2 1 2 0 0 2 0 2 2 2 1 0 0 3 2 1 2 1 4 3 2 0 19 3 18 0 16 1073741824 3 2 1 16 1065353216 6 1 19 12 18 1 21 19 6 20 18 2 16 1056964608 1 1 4 23 6 1 18 2 3 2 0 23 9 2 18 2 16 1073741824 4 24 18 1 18 2 23 7 1 18 0 1 2 1 5 3 0 0 22 0 2 16 1065353216 17 1 2 22 0 2 16 0 17 0 5 6 0 17 1 1 2 5 3 0 0 16 1077936128 3 0 0 16 1082130432 1 2 1 1 4 19 13 19 10 18 0 18 0 19 11 18 0 16 1065353216 1 2 1 1 4 19 5 19 4 19 2 23 1 1 23 2 1 23 3 1 23 4 1 23 5 1 23 8 1 18 0 18 0 18 0 18 0 1 2 1 1 4 19 11 19 10 19 7 18 0 18 0 19 8 18 0 18 0 19 9 18 0 18 0 3 1 1 2 1 2 6 0 18 0 1 1 3 2 0 16 1065353216 6 1 18 1 4 16 1073741824 4 16 1077936128 2 1 2 1 2 6 0 18 0 4 18 1 3 1 0 16 1065353216 0 1 2 2 22 1 0 6 1 17 1 5 5 0 4 24 22 2 1 16 1065353216 16 1065353216 16 0 2 2 1 4 18 0 0 1 0";
+sv_lower_sample :: (kernel:u32,out:[]u32)->int {
+  t:[512] u32;work:[8192] u32;
+  n:=sv_parse(SV_SAMPLE,t[..]);t[1]=kernel;
+  return SV_lower(t[0..<n],out,work[..]);
+}
+
+#test "every refusal reason has its own text" {
+  #assert SV_reason_text(0)=="" && SV_reason_text(1)=="a malformed tree" && SV_reason_text(2)=="a module larger than its buffer";
+  #assert SV_reason_text(3)=="more than 256 procedures" && SV_reason_text(4)=="more than 1024 locals in one procedure";
+  #assert SV_reason_text(5)=="more than 512 constants" && SV_reason_text(7)=="an operation on these types";
+  #assert SV_reason_text(6)=="a kernel that is not a procedure of f32 parameters returning f32 or bool";
+  #assert SV_reason_text(8)=="a call with more than 32 arguments" && SV_reason_text(9)=="this reason" && SV_reason_text(4000000000)=="this reason";
+}
+#test "the sample lowers to the same words, with and without a kernel" {
+  out:[4096] u32;
+  n:=sv_lower_sample(SV_NO_KERNEL,out[..]);
+  #assert n==796 && out[0]==0x07230203 && out[1]==0x00010300 && out[2]==0 && out[4]==0 && sv_digest(out[..],n)==2056161814;
+  n=sv_lower_sample(2,out[..]);
+  #assert n==1001 && sv_digest(out[..],n)==2170032101;
+  n=sv_lower_sample(3,out[..]);
+  #assert n==995 && sv_digest(out[..],n)==635193859;
+  n=sv_lower_sample(4,out[..]);
+  #assert n==1001 && sv_digest(out[..],n)==46208011;
+  n=sv_lower_sample(8,out[..]);
+  #assert n==975 && sv_digest(out[..],n)==2074098404;
+}
+#test "a kernel is a procedure of f32 parameters returning f32 or bool" {
+  out:[4096] u32;
+  for k:0..<12 {
+    n:=sv_lower_sample(cast(u32)k,out[..]);
+    #assert (n>0)==(k==2 || k==3 || k==4 || k==8) && (n== -6)==!(k==2 || k==3 || k==4 || k==8);
+  }
+  // One past the procedures, with tables beyond them that would admit it.
+  tree:=[10] u32.[1,1,2,1,2,1,2,4,18,0];work:[8192] u32;
+  for i:0..<8192 {work[i]=2;}
+  #assert SV_lower(tree[..],out[..],work[..])== -6;
+}
+#test "a cut, padded or unknown tree is refused" {
+  #assert sv_text("1 K 2 1 2 1 2 4 18 0")>0 && sv_text("1 K 2 1 2 1 2 4")== -1 && sv_text("1 K 2 1 2 1 2 4 18")== -1;
+  #assert sv_text("1 K 2 1 2 1 2 4 18 0 0")== -1 && sv_text("1 K 2 5")== -1 && sv_text("1 K")== -1 && sv_text("1")== -1;
+  #assert sv_text("1 K 0 0 0 9")== -1 && sv_text("1 K 0 0 0 2 25")== -1 && sv_text("1 K 0 0 0 2 18 0")== -1;
+  #assert sv_text("1 K 5 0 0 5")== -1 && sv_text("1 K 0 1 2 0 5")== -1 && sv_text("1 K 0 1 2 1 1 5")== -1 && sv_text("1 K 0 0 1 0 5")== -1;
+  #assert sv_text("1 K 0 0 1 2 3 1 0 16 0")== -1 && sv_text("1 K 0 0 1 2 3 0 0 16 0")>0;
+}
+#test "calls take the arguments their procedures declare" {
+  // 0 () {...}, 1 (f32)->bool {return true;}
+  #assert sv_text("2 K 0 0 1 1 2 0 2 22 1 1 16 0 1 2 4 17 1")>0 && sv_text("2 K 0 0 1 1 2 0 2 22 1 1 17 0 1 2 4 17 1")== -7;
+  #assert sv_text("2 K 0 0 1 1 2 0 2 22 1 0 1 2 4 17 1")== -1 && sv_text("2 K 0 0 1 1 2 0 2 22 2 1 16 0 1 2 4 17 1")== -1;
+  #assert sv_text("2 K 0 0 1 1 2 0 4 21 22 1 1 16 0 1 2 4 17 1")== -7 && sv_text("2 K 0 0 1 1 2 0 2 21 22 1 1 16 0 1 2 4 17 1")>0;
+  // A call one past the procedures, where the table beyond them would agree with it.
+  #assert sv_text("2 1 2 1 2 2 1 2 1 2 4 22 2 1 18 0 1 2 4 18 0")== -1 && sv_text("2 1 2 1 2 2 1 2 1 2 4 22 1 1 18 0 1 2 4 18 0")>0;
+}
+#test "math takes f32 and its own number of arguments" {
+  for fn:1..<9 {
+    t:[16] u32;
+    n:=sv_parse("1 K 0 0 0 2 23 0 1 16 0",t[..]);t[7]=cast(u32)fn;
+    #assert sv_try(t[0..<n])>0;
+    t[9]=17;
+    #assert sv_try(t[0..<n])== -7;
+    t[8]=2;
+    #assert sv_try(t[0..<n])== -1;
+  }
+  #assert sv_text("1 K 0 0 0 2 23 9 2 16 0 16 0")>0 && sv_text("1 K 0 0 0 2 23 9 2 16 0 17 0")== -7 && sv_text("1 K 0 0 0 2 23 9 1 16 0")== -1;
+  #assert sv_text("1 K 0 0 0 2 23 0 1 16 0")== -1 && sv_text("1 K 0 0 0 2 23 10 1 16 0")== -1;
+  #assert sv_text("1 K 0 0 0 2 23 0 0")== -1 && sv_text("1 K 0 0 0 2 23 10 0")== -1 && sv_text("1 K 0 0 0 2 23 1 0")== -1;
+}
+#forall "each operator takes the types it is defined on" op:0..<15, f:bool {
+  t:[16] u32;
+  n:=sv_parse("1 K 0 1 2 1 2 2 19 0 18 0 18 0",t[..]);t[9]=cast(u32)op;
+  if !f {t[4]=1;t[6]=1;}
+  want:=ifx f then op>=1 && op<=11 else op>=10 && op<=13;
+  #assert (sv_try(t[0..<n])>0)==want && (sv_try(t[0..<n])== -7)==!want;
+}
+#test "operations take values of their own types" {
+  #assert sv_text("1 K 0 1 2 1 2 2 19 1 18 0 17 1")== -7 && sv_text("1 K 0 1 1 1 1 2 19 1 18 0 16 0")== -7;
+  #assert sv_text("2 K 0 0 0 0 0 5 0 2 19 10 22 0 0 22 0 0")== -7 && sv_text("2 K 0 0 0 0 0 5 0 2 19 10 17 0 17 0")>0;
+  #assert sv_text("1 K 0 1 1 1 1 2 20 18 0")== -7 && sv_text("1 K 0 1 2 1 2 2 21 18 0")== -7;
+  #assert sv_text("1 K 0 1 2 1 2 2 20 18 0")>0 && sv_text("1 K 0 1 1 1 1 2 21 18 0")>0;
+  #assert sv_text("1 K 0 1 2 1 2 2 24 18 0 18 0 18 0")== -7 && sv_text("1 K 0 1 1 1 1 2 24 18 0 18 0 16 0")== -7;
+  #assert sv_text("2 K 0 0 0 1 1 0 5 1 1 2 24 18 0 22 0 0 22 0 0")== -7 && sv_text("1 K 0 1 1 1 1 2 24 18 0 16 0 16 0")>0;
+  #assert sv_text("1 K 0 1 2 1 2 4 18 0")== -7 && sv_text("1 K 2 1 2 1 2 5")== -7 && sv_text("1 K 1 1 2 1 2 4 18 0")== -7;
+  #assert sv_text("1 K 0 1 2 1 2 3 0 0 17 1")== -7 && sv_text("1 K 0 1 2 1 2 3 0 1 16 0")>0 && sv_text("1 K 0 1 1 1 1 3 0 1 17 1")== -7;
+  #assert sv_text("1 K 0 1 2 1 2 6 0 18 0 1 0")== -7 && sv_text("1 K 0 1 2 1 2 6 0 17 1 1 0")>0;
+}
+#test "a module fits its limits: procedures, locals, constants and arguments" {
+  t:[1600] u32;
+  // 256 procedures, each `() {return;}`; then 257.
+  t[0]=256;t[1]=SV_NO_KERNEL;
+  for p:0..<256 {t[2+2*p]=0;t[3+2*p]=0;t[514+2*p]=0;t[515+2*p]=5;}
+  #assert sv_try(t[0..<1026])>0;
+  t[0]=257;
+  #assert sv_try(t[0..<1026])== -3;
+  // 1024 locals, then 1025.
+  t[0]=1;t[2]=0;t[3]=0;t[4]=1024;
+  for i:0..<1025 {t[5+i]=2;}
+  t[1029]=5;
+  #assert sv_try(t[0..<1030])>0;
+  t[4]=1025;t[1030]=5;
+  #assert sv_try(t[0..<1031])== -4;
+  // 512 distinct constants, then 513; a repeated one is one constant.
+  t[4]=0;t[5]=1;t[6]=512;
+  for i:0..<513 {t[7+3*i]=2;t[8+3*i]=16;t[9+3*i]=cast(u32)i;}
+  #assert sv_try(t[0..<1543])>0;
+  t[6]=513;
+  #assert sv_try(t[0..<1546])== -5;
+  t[1545]=0;
+  #assert sv_try(t[0..<1546])>0;
+  // 32 parameters and a call with 32 arguments; then 33.
+  t[0]=1;t[2]=2;t[3]=32;
+  for i:0..<33 {t[4+i]=2;t[37+i]=2;}
+  t[36]=32;t[69]=4;t[70]=18;t[71]=31;
+  #assert sv_try(t[0..<72])>0;
+  t[3]=33;
+  #assert sv_try(t[0..<72])== -8;
+  n:=sv_parse("1 K 0 32 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 32 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 22 0 32",t[..]);
+  for i:0..<32 {t[n+2*i]=18;t[n+2*i+1]=cast(u32)i;}
+  #assert sv_try(t[0..<n+64])>0;
+  // The buffers: the tables, then the code past them, and the module.
+  tree:=[10] u32.[1,SV_NO_KERNEL,2,1,2,1,2,4,18,0];small:[64] u32;out:[4096] u32;work:[8192] u32;
+  #assert SV_lower(tree[..],out[..],work[..])>0 && SV_lower(tree[..],small[..],work[..])== -2;
+  #assert SV_lower(tree[..],out[..],work[0..<SV_W_CODE+6])== -2 && SV_lower(tree[..],out[..],work[0..<SV_W_CODE-1])== -2;
+  empty:=[2] u32.[0,SV_NO_KERNEL];
+  #assert SV_lower(empty[..],out[..],work[0..<SV_W_CODE])>0;
+}

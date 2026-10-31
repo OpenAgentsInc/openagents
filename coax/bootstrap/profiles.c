@@ -187,9 +187,10 @@ typedef uint8_t coax_t_CP_Error;
 #define COAX_CP_Error_debug_command ((coax_t_CP_Error)UINT64_C(11))
 #define COAX_CP_Error_source_map_debug ((coax_t_CP_Error)UINT64_C(12))
 struct coax_t_CP_Profile { coax_t_CP_Error error; int64_t arithmetic; int64_t optimization; _Bool development; _Bool debug_info; int64_t identity; _Bool native; };
-typedef struct { coax_string e[13]; } coax_a13_string;
+typedef struct { coax_string e[14]; } coax_a14_string;
 typedef struct { coax_string e[4]; } coax_a4_string;
 typedef struct { coax_string e[8]; } coax_a8_string;
+typedef struct { coax_string e[13]; } coax_a13_string;
 COAX_LAYOUT(sizeof(coax_t_CP_Request) == 104 && _Alignof(coax_t_CP_Request) == 8, "layout of CP_Request");
 COAX_LAYOUT(offsetof(coax_t_CP_Request, legacy_release) == 0, "offset of CP_Request.legacy_release");
 COAX_LAYOUT(offsetof(coax_t_CP_Request, arithmetic) == 8, "offset of CP_Request.arithmetic");
@@ -228,9 +229,10 @@ static void coax_show_t_CP_Request(const coax_t_CP_Request *v);
 static void coax_show_t_CP_Profile(const coax_t_CP_Profile *v);
 static void coax_show_t_CP_Error(coax_t_CP_Error v);
 static coax_t_CP_Error coax_to_t_CP_Error(int64_t s, uint64_t u, int is_signed, int32_t l);
-static void coax_show_a13_string(const coax_a13_string *v);
+static void coax_show_a14_string(const coax_a14_string *v);
 static void coax_show_a4_string(const coax_a4_string *v);
 static void coax_show_a8_string(const coax_a8_string *v);
+static void coax_show_a13_string(const coax_a13_string *v);
 static void coax_show_t_CP_Request(const coax_t_CP_Request *v) {
   fputs("CP_Request.{", stdout);
   fputs("legacy_release = ", stdout); coax_print_bool(v->legacy_release);
@@ -292,9 +294,9 @@ static coax_t_CP_Error coax_to_t_CP_Error(int64_t s, uint64_t u, int is_signed, 
   coax_trap("value is not a member of enum CP_Error", l);
   return 0;
 }
-static void coax_show_a13_string(const coax_a13_string *v) {
+static void coax_show_a14_string(const coax_a14_string *v) {
   fputc('[', stdout);
-  for (int64_t i = 0; i < 13; i++) {
+  for (int64_t i = 0; i < 14; i++) {
     if (i) fputs(", ", stdout);
     coax_show_string(v->e[i]);
   }
@@ -316,6 +318,14 @@ static void coax_show_a8_string(const coax_a8_string *v) {
   }
   fputc(']', stdout);
 }
+static void coax_show_a13_string(const coax_a13_string *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 13; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_string(v->e[i]);
+  }
+  fputc(']', stdout);
+}
 
 static _Bool coax_p_cp_source(coax_string l_command);
 static _Bool coax_p_cp_native(coax_string l_command);
@@ -326,7 +336,7 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
 coax_string CP_message(coax_t_CP_Error l_error);
 
 static _Bool coax_p_cp_source(coax_string l_command) {
-  return (((((((((((((coax_string_eq(l_command, COAX_STR("run", 3))) || (coax_string_eq(l_command, COAX_STR("build", 5)))) || (coax_string_eq(l_command, COAX_STR("lib", 3)))) || (coax_string_eq(l_command, COAX_STR("c", 1)))) || (coax_string_eq(l_command, COAX_STR("header", 6)))) || (coax_string_eq(l_command, COAX_STR("check", 5)))) || (coax_string_eq(l_command, COAX_STR("layout", 6)))) || (coax_string_eq(l_command, COAX_STR("deps", 4)))) || (coax_string_eq(l_command, COAX_STR("test", 4)))) || (coax_string_eq(l_command, COAX_STR("mutate", 6)))) || (coax_string_eq(l_command, COAX_STR("metal", 5)))) || (coax_string_eq(l_command, COAX_STR("cuda", 4)))) || (coax_string_eq(l_command, COAX_STR("metal-compute", 13))));
+  return ((((((((((((((coax_string_eq(l_command, COAX_STR("run", 3))) || (coax_string_eq(l_command, COAX_STR("build", 5)))) || (coax_string_eq(l_command, COAX_STR("lib", 3)))) || (coax_string_eq(l_command, COAX_STR("c", 1)))) || (coax_string_eq(l_command, COAX_STR("header", 6)))) || (coax_string_eq(l_command, COAX_STR("check", 5)))) || (coax_string_eq(l_command, COAX_STR("layout", 6)))) || (coax_string_eq(l_command, COAX_STR("deps", 4)))) || (coax_string_eq(l_command, COAX_STR("test", 4)))) || (coax_string_eq(l_command, COAX_STR("mutate", 6)))) || (coax_string_eq(l_command, COAX_STR("metal", 5)))) || (coax_string_eq(l_command, COAX_STR("cuda", 4)))) || (coax_string_eq(l_command, COAX_STR("metal-compute", 13)))) || (coax_string_eq(l_command, COAX_STR("spirv", 5))));
 }
 
 static _Bool coax_p_cp_native(coax_string l_command) {

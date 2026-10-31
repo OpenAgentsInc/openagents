@@ -31,9 +31,9 @@ CP_Profile :: struct {
  native:bool;
 }
 
-CP_COMMANDS :: [13]string.["run","build","lib","c","header","check","layout","deps","test","mutate","metal","cuda","metal-compute"];
+CP_COMMANDS :: [14]string.["run","build","lib","c","header","check","layout","deps","test","mutate","metal","cuda","metal-compute","spirv"];
 
-#forall "default and legacy choices retain every source command's old bundle" command:0..<13, release:bool {
+#forall "default and legacy choices retain every source command's old bundle" command:0..<14, release:bool {
  request:CP_Request;request.legacy_release=release;
  profile:=CP_resolve(CP_COMMANDS[command],request);
  #assert profile.error==CP_Error.none;
@@ -130,7 +130,7 @@ CP_COMMANDS :: [13]string.["run","build","lib","c","header","check","layout","de
  profile=CP_resolve("build",request);#assert profile.error==CP_Error.build_profile_value && profile.identity== -1;
 }
 
-#forall "native optimization and native debug have separate command admission" command:0..<13 {
+#forall "native optimization and native debug have separate command admission" command:0..<14 {
  request:CP_Request;request.optimization="0";request.optimization_count=1;
  profile:=CP_resolve(CP_COMMANDS[command],request);
  #assert profile.error==(ifx command<3 then CP_Error.none else CP_Error.optimization_command);
@@ -150,7 +150,7 @@ CP_COMMANDS :: [13]string.["run","build","lib","c","header","check","layout","de
  #assert profile.identity== -1;
 }
 
-#forall "arithmetic and development profiles apply to every source command" command:0..<13, release:bool {
+#forall "arithmetic and development profiles apply to every source command" command:0..<14, release:bool {
  request:CP_Request;request.arithmetic="wrapping";request.arithmetic_count=1;
  request.build_profile=ifx release then "release" else "development";request.build_profile_count=1;
  profile:=CP_resolve(CP_COMMANDS[command],request);
@@ -202,7 +202,7 @@ CP_COMMANDS :: [13]string.["run","build","lib","c","header","check","layout","de
 }
 
 cp_source :: (command:string)->bool {
- return command=="run" || command=="build" || command=="lib" || command=="c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute";
+ return command=="run" || command=="build" || command=="lib" || command=="c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute" || command=="spirv";
 }
 cp_native :: (command:string)->bool {return command=="run" || command=="build" || command=="lib";}
 cp_choice :: (text:string,count:int)->bool {return count>=0 && count<=1 && (count==1 || text.count==0);}

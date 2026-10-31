@@ -69,6 +69,8 @@ cmp bootstrap/mutation-schedule.c "$work/mutation-schedule.c"
 cmp bootstrap/mutation-schedule.h "$work/mutation-schedule.h"
 gate "$work/stage0" test lib/compiler/compute.coax
 gate "$work/stage0" mutate lib/compiler/compute.coax
+gate "$work/stage0" test lib/compiler/spirv.coax
+gate "$work/stage0" mutate lib/compiler/spirv.coax
 gate "$work/stage0" test lib/compiler/lexer.coax
 gate "$work/stage0" mutate lib/compiler/lexer.coax
 "$work/stage0" c lib/compiler/lexer.coax --library --header "$work/lexer.h" > "$work/lexer.c"

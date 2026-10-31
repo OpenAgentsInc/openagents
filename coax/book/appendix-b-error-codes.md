@@ -28,7 +28,7 @@ The first two digits after the `E` give the stage that reports the error:
 | `E04` | Compile-time evaluation and checks | Chapters 9 and 10 |
 | `E05` | Protobuf descriptor imports | Chapter 15 |
 | `E06` | Source-unit composition | Chapter 22 |
-| `E07` | Device code (`coax cuda`, `coax metal-compute`) | Chapter 14 |
+| `E07` | Device code (`coax cuda`, `coax metal-compute`, `coax spirv`) | Chapter 14 |
 
 Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
@@ -197,3 +197,4 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0701` | CUDA module has no kernel | coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0702` | outside the Metal compute subset | coax metal-compute accepts what coax cuda accepts (E0700). Apple GPUs have no binary64, so f64 is a float-float pair: f64_bits, f64_from_bits, sin, cos, tan and pow of an f64 and conversion of an f64 to an integer are refused. A view points into device memory, so a slice of a kernel's fixed array is refused except as a whole argument to a device primitive. |
 | `E0703` | Metal compute module has no kernel | coax metal-compute compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
+| `E0704` | outside the SPIR-V lowering | coax spirv lowers what coax metal accepts (f32 and bool, if/else and acyclic calls) to SPIR-V 1.3 for Vulkan. --kernel NAME wraps one procedure of f32 parameters, returning f32 or bool, in a GLCompute entry point; without it the module is a library. A module has at most 256 procedures, 1024 locals in one procedure, 1024 constants and 32 arguments in one call. |

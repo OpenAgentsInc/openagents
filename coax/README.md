@@ -68,6 +68,7 @@ coax/build.sh test
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |
+| `coax spirv FILE [--kernel NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
@@ -318,6 +319,18 @@ apps/openagents-ios/build.sh
   with `MTLMathModeSafe` and precise math functions (the generated pragmas also
   turn contraction off). `psionic/tests/run_metal_kernels.sh` runs the kernels
   against the C build on the GPU.
+- `coax spirv FILE` writes what `coax metal` accepts (f32 and bool, if/else,
+  acyclic calls) as a SPIR-V 1.3 module for Vulkan. Native code hands the
+  checked tree to `lib/compiler/spirv.coax`, which decides every instruction.
+  `--kernel NAME` wraps one procedure of f32 parameters, returning f32 or
+  bool, in a GLCompute entry point `main` of 64 invocations: row x below the
+  push constant count reads its arguments from storage buffer 0 at
+  x*parameters+k and writes its result to storage buffer 1 at x (a bool as 1
+  or 0). Without `--kernel` the module is a library (the Linkage capability),
+  which Vulkan does not load. `pow` keeps C's meaning for a negative or zero
+  base, which GLSL's `Pow` leaves undefined. Refusals are E0704.
+  `verse/gpu/light-check.sh` runs every procedure of `verse/light.coax`
+  against the C build on a Vulkan GPU.
 
 ## Compile-time contract
 

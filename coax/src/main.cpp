@@ -9,6 +9,7 @@
 //   coax c       file.coax [--release] [--lib]       print the generated C
 //   coax cuda    file.coax [--release]               CUDA C for NVRTC (the compute subset)
 //   coax metal-compute file.coax [--release]         Metal compute kernels (the same subset)
+//   coax spirv   file.coax [--kernel NAME] [-o out.spv]  SPIR-V for Vulkan (the Metal scalar profile)
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
 //   coax test    file.coax [--steps N] [--only S] [--list]  run every #test and #forall (or those named with S; --list names them)
@@ -34,6 +35,7 @@
 #include "eval.cpp"
 #include "emit_c.cpp"
 #include "compute.cpp"
+#include "spirv.cpp"
 #include "lex.cpp"
 #include "parse.cpp"
 #include "verify.cpp"
@@ -403,6 +405,7 @@ static int usage() {
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
+          "       coax spirv   file.coax [--kernel NAME] [-o out.spv]\n"
           "       coax check   file.coax\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
@@ -477,11 +480,11 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "test" && cmd != "mutate" && cmd != "proto")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
   const char *input = nullptr;
-  std::string out, header, proto_prefix;
+  std::string out, header, proto_prefix, kernel;
   EmitOptions opts;
   coax_t_CP_Request request{};request.debug_info=-1;
   std::string arithmetic,optimization,build_profile;
@@ -546,6 +549,7 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
+    else if (a == "--kernel" && i + 1 < argc && cmd == "spirv" && kernel.empty()) kernel = argv[++i];
     else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
@@ -597,7 +601,7 @@ static int main_impl(int argc, char **argv) {
     opts.wrapping=profile.arithmetic==1;opts.optimization=(int)profile.optimization;
     opts.development=profile.development;opts.debug_info=profile.debug_info;opts.profile_identity=(int)profile.identity;
     g_semantic.selection=profile;g_semantic.command=cmd;g_semantic.resolved=true;
-    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="c" || cmd=="header"?"c11":"evaluator";
+    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="spirv"?"spirv":cmd=="c" || cmd=="header"?"c11":"evaluator";
   }
   for(const auto &name:{std::string(input),out,header,g_timings.source_map,g_timings.path})if(!profile_destination_disjoint(name))return 1;
   if (cmd == "proto") {
@@ -618,6 +622,24 @@ static int main_impl(int argc, char **argv) {
   if (cmd == "metal") opts.library = opts.metal = true;
   if (cmd == "cuda") opts.library = opts.cuda = true;
   if (cmd == "metal-compute") opts.library = opts.metal_compute = true;
+  if (cmd == "spirv") {
+    // The Metal scalar profile, checked as for coax metal, then lowered.
+    opts.library = opts.metal = true;
+    Source src;
+    Arena arena;
+    File file;
+    std::string words;
+    if (!front_end(input, &src, &arena, &file, opts, 1) || !emit_spirv(&file, kernel, &words)) {
+      if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
+      return 1;
+    }
+    if (out.empty()) fwrite(words.data(), 1, words.size(), stdout);
+    else if (!write_file(out, words)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
+      return 1;
+    }
+    return 0;
+  }
   if (cmd == "test" || cmd == "mutate") {
     Source src;
     Arena arena;

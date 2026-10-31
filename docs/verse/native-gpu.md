@@ -79,3 +79,10 @@ Every phase and native feature is a task in the Verse project
   then `vk-check 1920x1080` runs the 393-word Coax module on the RTX 4080:
   2,060,582 pixels exact, 13,018 one rounding step off (f32 to u8), 0 wrong,
   and 0 errors and 0 warnings under `VK_LAYER_KHRONOS_validation`.
+- 2026-10-31: G1: `coax spirv FILE [--kernel NAME]`. The C++ driver hands
+  the checked tree to `coax/lib/compiler/spirv.coax` (tree code v1), which
+  writes the SPIR-V and passes the zero-survivor mutation gate. Kernels keep
+  IEEE NaN and infinity (`SPV_KHR_float_controls`), and `pow` keeps C's
+  meaning for a negative or zero base. `verse/gpu/light-check.sh coderos-4080`
+  runs all 18 procedures of `verse/light.coax` on the RTX 4080 against the C
+  build over 65,536 rows each, under the validation layers.
