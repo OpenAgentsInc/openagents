@@ -15,7 +15,7 @@
     "apps/openagents-web/changelog.wgsl": "946ae33a236f782655c045575068134f3f4bd08fe03347212bba61e4f6ed915f",
     "coax/web/changelog-page.coax": "0fd765666bb7bb16d590cfd506f44e8967a00165c040182ed1d24d076feda07a",
     "coax/web/changelog-links.coax": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801",
-    "coax/web/changelog-browser.coax": "3d9bd7822080d04516288c539a5097126e81f8d9f63f2ff4a1108e57a0011c34",
+    "coax/web/changelog-browser.coax": "af2b24a71f761077aa865650ac7298f522ec1b80746d93a0a54edde6f699efe9",
     "coax/web/golden-pages.ts": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41",
     "coax/web/smoke.sh": "324bff16b37365e282d8df30d378ecc381c29d7a1c2331d19a1adff484a22c50"
   },
@@ -89,7 +89,46 @@
     },
     "visual_and_metadata_gates": "passed"
   },
-  "publication": "After source commit, run standard staging checks and verify the public source bytes and browser route. Final publication receipt follows.",
+  "publication": {
+    "date_utc": "2026-10-31T15:37:07Z",
+    "result": "passed",
+    "url": "https://openagents.com/coax/changelog",
+    "source_commit": "afad5d5139a8672bccc820636d75e5e3eceafb83",
+    "scope": "Two pages and their named assets; production-derived project Markdown, llms.txt, llms-full.txt and sitemap.xml. Other live page objects were not promoted.",
+    "manifest": "gs://openagentsgemini-openagents-web/scoped/coax-changelog/20261031T153054Z-6039/manifest.json",
+    "backups": "gs://openagentsgemini-openagents-web/scoped/coax-changelog/20261031T153054Z-6039/",
+    "apply_sha256": "aad5bfed9840c4d86b2095a8aaf30dd2b10cb8d7037233e7f8c8bcf688b6612d",
+    "apply_log": "/tmp/coax-changelog-publish-afad/apply.log",
+    "canonical_bytes": 28450,
+    "canonical_sha256": "c086248b77984c4ff995fdbb6e57754ed88c785d085bfd5896fa9c0e33364b39",
+    "clean_route_http_status": 200,
+    "clean_route_object_generation": "1793461011341789",
+    "http_smoke": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-production-smoke-final.log"
+    },
+    "browser": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-browser-production-final.log",
+      "screenshots": "/tmp/coax-changelog-browser-production-final",
+      "desktop_and_phone_visually_reviewed": true,
+      "checks": "Complete history, Home/End, touch, exact clipboard bytes, project navigation and page-view capture in isolated browser memory."
+    },
+    "aggregate_review": {
+      "unrelated_full_text_sections_preserved": 60,
+      "source": "Production-derived edits, preserving unrelated bytes and section order; generation preconditions prevent lost updates."
+    },
+    "alias_correction": {
+      "initial_failure": "Gcloud inferred the newly populated coax/changelog destination as a folder, creating coax/changelog/changelog. The direct public route redirected to index.html, and the smoke and browser route checks caught it.",
+      "fix": "Copied the pinned staging alias to the explicit parent coax/; direct route now answers 200. Removed only the mistaken nested object at its exact created generation.",
+      "logs": [
+        "/tmp/coax-changelog-publish-afad/alias-fix.log",
+        "/tmp/coax-changelog-publish-afad/alias-cleanup.log"
+      ]
+    },
+    "release_marker": "No full-site PASSED marker was written for this scoped promotion.",
+    "automatic_sync": "Normal website builds regenerate all three outputs from coax/CHANGELOG.md; release smoke requires canonical source parity. Publishing the site is an explicit final Coax release checklist step."
+  },
   "release_requalification": {
     "base": "21dc5da9cadbfe493e9211d936eea617e6b260a7",
     "compiler_version": "0.38.0",
@@ -147,5 +186,19 @@
       "result": "passed; desktop and phone visually reviewed",
       "log": "/tmp/coax-changelog-goldens-038.log"
     }
+  },
+  "staging": {
+    "commit": "afad5d5139a8672bccc820636d75e5e3eceafb83",
+    "release_result": "passed",
+    "elapsed_seconds": 156.9,
+    "http_smoke": "passed",
+    "all_pages_startup": "passed",
+    "live_home": "passed",
+    "log": "/tmp/coax-changelog-staging-release.log",
+    "canonical_markdown_sha256": "c086248b77984c4ff995fdbb6e57754ed88c785d085bfd5896fa9c0e33364b39",
+    "browser_log": "/tmp/coax-changelog-browser-staging-present.log",
+    "screenshots": "/tmp/coax-changelog-browser-staging-present",
+    "visual_review": "Desktop and phone screenshots reviewed; latest 0.38.0 is readable.",
+    "harness_correction": "Mark the outgoing document before navigation and wait for mobile presentation. Early phone screenshots could capture the previous document or an unpresented resized surface; final staging screenshots and interactions pass."
   }
 }

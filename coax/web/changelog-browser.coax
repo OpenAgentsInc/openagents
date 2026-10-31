@@ -5,7 +5,7 @@
 #load "../../apps/openagents-web/changelog-content.coax";
 
 CB_INIT :: "globalThis.__copy='';globalThis.__events=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{globalThis.__copy=text}}});const take=body=>(body?.text?body.text():Promise.resolve(typeof body==='string'?body:new TextDecoder().decode(body||new Uint8Array()))).then(t=>{try{globalThis.__events.push(JSON.parse(t))}catch{}});const keep=globalThis.fetch.bind(globalThis);globalThis.fetch=(url,opts)=>{if(new URL(url,location.href).pathname==='/api/analytics/events'){take(opts?.body);return Promise.resolve(new Response('{}',{status:200}))}return keep(url,opts)};navigator.sendBeacon=(url,body)=>{if(new URL(url,location.href).pathname==='/api/analytics/events')take(body);return true};";
-CB_READY :: "(async()=>{for(let i=0;i<100;i++){if(globalThis.coaxial?.ready&&document.querySelector('canvas')?.width>0){await new Promise(r=>setTimeout(r,250));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
+CB_READY :: "(async()=>{for(let i=0;i<100;i++){if(!globalThis.__changelogLeaving&&globalThis.coaxial?.ready&&document.querySelector('canvas')?.width>0){await new Promise(r=>setTimeout(r,250));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
 CB_READER_READY :: "(async()=>{for(let i=0;i<100;i++){if(coaxial.probe()>0){await new Promise(r=>setTimeout(r,200));return true}await new Promise(r=>setTimeout(r,50))}return false})()";
 
 tool_main :: ()->int #export_c {
@@ -32,6 +32,7 @@ cb_true :: (c:[]Cdp,script:string,label:string)->bool {
   print("% %\n",ifx ok then "ok" else "FAIL",label);return ok;
 }
 cb_nav :: (c:[]Cdp,url:string)->bool {
+  if cb_eval(c,"globalThis.__changelogLeaving=true")<0 {return false;}
   buf:[4096]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
   return !o[0].bad && cb_call(c,"Page.navigate",jo_text(o[..])) && cb_true(c,CB_READY,"engine ready on the canvas");
 }
@@ -82,7 +83,7 @@ cb_run :: (c:[]Cdp,base:string,out:string)->bool {
   if !cb_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..])) {return false;}
   path:[4096]u8;
   if !cb_nav(c,fs_join(base,"coax/changelog?golden=1",path[..])) {return false;}
-  if !cb_true(c,CB_READER_READY,"reader submitted a nonempty frame") {return false;}
+  if !cb_true(c,"location.pathname==='/coax/changelog'","changelog route committed") || !cb_true(c,CB_READER_READY,"reader submitted a nonempty frame") {return false;}
   if !cb_true(c,"document.documentElement.classList.contains('gpu')&&getComputedStyle(document.querySelector('main')).position==='absolute'&&document.querySelector('canvas').width>0","visible Coax canvas and hidden accessible fallback") {return false;}
   source:[262145]u8;got:[262145]u8;want_n:=fs_read("coax/CHANGELOG.md",source[..]);
   v:=cb_eval(c,"fetch('/coax/changelog/index.md').then(r=>r.text())");if v<0 {return false;}
@@ -96,6 +97,7 @@ cb_run :: (c:[]Cdp,base:string,out:string)->bool {
   if !cb_true(c,"coaxial.guardProbe(1)===0","Home reaches the complete introduction") {return false;}
   if !cb_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}") {return false;}
   if !cb_nav(c,fs_join(base,"coax/changelog?golden=1",path[..])) || !cb_true(c,CB_READER_READY,"phone reader frame ready") {return false;}
+  proc_sleep(1500); // Let the resized mobile surface present before the screenshot.
   if !cb_shot(c,out,"changelog-phone.png") || !cb_control(c,3) {return false;}
   v=cb_eval(c,"globalThis.__copy");if v<0 {return false;}
   n=jv_str(cdp_doc(c),v,got[..]);
@@ -108,6 +110,7 @@ cb_run :: (c:[]Cdp,base:string,out:string)->bool {
   if !cb_true(c,"(async()=>{for(let i=0;i<40;i++){if(globalThis.__events.some(b=>(b.events||b).some?.(e=>e.ev==='page-view'&&e.page==='coax-changelog')))return true;await new Promise(r=>setTimeout(r,100))}return false})()","page-view analytics captured without counting automation") {return false;}
   // The shared host deliberately suppresses ghost mouse events for800ms after touch.
   proc_sleep(1000);
+  if cb_eval(c,"globalThis.__changelogLeaving=true")<0 {return false;}
   if !cb_control(c,0) || !cb_true(c,CB_READY,"project navigation engine ready") {return false;}
   if !cb_true(c,"location.pathname==='/projects/coax'&&!!document.querySelector('main a[href=\"/coax/changelog\"]')","project page exposes the changelog") {return false;}
   return cb_shot(c,out,"project-phone.png");

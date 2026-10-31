@@ -49,6 +49,8 @@ coax/build.sh
 scripts/coax-release.sh --check --binary coax/bin/coax
 python3 -m unittest discover -s coax/tests -p release.py
 # Commit the finalized changelog; push both commits together after rebasing.
+# Finish the release by publishing its website and canonical changelog:
+coax/web/release.sh --ref "$(git rev-parse HEAD)"
 ```
 
 `--write` permits `Commit: pending` for preparation. When Git history contains
@@ -66,8 +68,9 @@ before compiling its reader, deriving the GPU content, accessible HTML and
 byte-identical Markdown twin from `coax/CHANGELOG.md`. The normal staging and
 production smoke checks require that source parity and the page's assets, so
 publishing a site release cannot silently leave an older changelog online.
-Release the pushed commit with `coax/web/release.sh --ref COMMIT`; no separate
-changelog edit or upload is needed.
+Publishing the pushed commit with `coax/web/release.sh --ref COMMIT` is the final
+required Coax release step; no separate changelog edit or upload is needed.
+A version bump or GitBook publication alone does not deploy the website.
 
 Run the model's checks/mutation when its policy changes. The normal bootstrap
 already runs them; an unchanged model does not need an additional manual run.
