@@ -79,6 +79,7 @@
 #load "everglade-sky.coax";
 #load "everglade-room.coax";
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
+#load "everglade-reply.coax";
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
 
@@ -433,6 +434,7 @@ Everglade :: struct {
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
+  rp: Reply;                               // reply with a realm: the sign, the smash, its link (everglade-reply.coax)
 }
 
 // ---- small things
@@ -908,6 +910,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   everglade_guard_message(s, kind, text);
   if fork_message(s, kind, text) { return; }
   if everglade_voice_message(s, kind, text) { return; }
+  if rp_message(s, kind, text) { return; }   // reply with a realm (everglade-reply.coax)
   if kind == MSG_TEXT { talk_typed(s, text); return; }
   if kind == MSG_FACTS {
     if !s[0].started { everglade_start(s); }
@@ -1068,6 +1071,7 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   everglade_guard_invalidate(s);
+  if hash == "reply" { rp_open(s); return; }   // the line to reply with a realm, open (everglade-reply.coax)
   // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
   // the painting; the names are text like the HUD's plates, and a phone's narrow canvas makes them a big share)
   if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+paint" { s[0].paint_only = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
@@ -1205,6 +1209,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
+  if rp_key(s, key, mods) { return true; }   // reply with a realm (everglade-reply.coax)
   if everglade_voice_key(s, key, true) { return true; }
   if spells_key(s, key, mods) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
@@ -1241,6 +1246,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if !s[0].started { everglade_start(s); }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   if fork_pointer(s, x, y, phase, id) { return true; }
+  if rp_pointer(s, x, y, phase, id) { return true; }   // reply with a realm (everglade-reply.coax)
   if talk_pointer(s, x, y, phase, id) { return true; }
   if chat_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
@@ -1630,7 +1636,7 @@ everglade_action :: (s: [] Everglade) -> int #export_c { a := s[0].action; s[0].
 everglade_action_done :: (s: [] Everglade) #export_c { s[0].out_n = 0; }
 
 // While you talk, the phone's keyboard comes up over the typed line.
-everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || s[0].chat.typing || redit_typing(s[0].ev.ed[..]); }
+everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || s[0].chat.typing || redit_typing(s[0].ev.ed[..]) || rp_typing(s); }
 
 // ---- the scene
 
@@ -3542,7 +3548,9 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
+  if rp_clean(s) { return rp_sign(s, out, u, 0); }   // the moment of impact: the view and the sign alone (everglade-reply.coax)
   n := ifx s[0].paint_only then 0 else labels(s, out, u, 0, you);
+  n = rp_sign(s, out, u, n);
   if !s[0].paint_only && s[0].talk < 0 { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
   gutter := 16 * k;
   cap := 11 * k;
@@ -3562,6 +3570,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = fork_hud(s, out, u, n, title_box);   // FORK and its pane (everglade-fork.coax)
+  n = rp_hud(s, out, u, n);   // REPLY and its panel (everglade-reply.coax)
   n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
@@ -3670,6 +3679,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   kit_cats(s);
   watch_arms(s);
   hm_frame(s, t); hm_draw(s, shown);   // the sledgehammer (everglade-hammer.coax)
+  rp_frame(s, t); rp_board(s);   // reply with a realm: its swarm and its sign (everglade-reply.coax)
   spells_frame(s, u, shot, t);
   wildlife(s, shown, still);   // last: it takes only the shapes' slots left over
   first := cast(u32) hi_i(s[0].identity_first, 0);

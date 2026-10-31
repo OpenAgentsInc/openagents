@@ -158,7 +158,7 @@
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
-import { startCard } from "./card.js";
+import { startCard, startMoment } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
@@ -1577,7 +1577,10 @@ function snapshot() {
     };
   });
 }
-if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady });
+// A moment's card (card.js startMoment): the app's action 31 holds the next frame, 32 sends it (Everglade's reply with a realm).
+const moment = startMoment({ key: () => player()?.key || "", snapshot });
+if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady,
+  moment: script.dataset.cardOn === "impact" ? moment : null });
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;

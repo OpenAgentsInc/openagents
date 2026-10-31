@@ -279,6 +279,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (voice_edit_route(&q)) return;
   if (chat_route(&q)) return;   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
   if (room_route(&q)) return;
+  if (replies_route(&q)) return;
   if (realms_route(&q)) return;   // before the players': /api/playtest/realms...
   if (player_route(&q)) return;
   if (private_route(&q)) return;

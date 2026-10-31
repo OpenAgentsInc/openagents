@@ -243,6 +243,7 @@ static bool jpeg_1200x630(const unsigned char *b, size_t n) {
   }
   return false;
 }
+bool realms_jpeg_card(const unsigned char *b, size_t n) { return jpeg_1200x630(b, n); }   // replies.c's card too
 static void card(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool post) {
   const char *v[3] = {slug, key, admin};
   if (!post) {

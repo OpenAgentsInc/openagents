@@ -9,7 +9,7 @@
 // Browser code: it needs the canvas and Blob APIs, so it is JavaScript like the rest of the host.
 const W = 1200, H = 630, MAX = 300 * 1024, SETTLE_MS = 3000, AGAIN_MS = 60000;
 
-export function startCard({ url, key, snapshot, ready }) {
+export function startCard({ url, key, snapshot, ready, moment }) {
   if (!url || typeof document === "undefined") return;
   const headers = () => (key() ? { "X-Verse-Player": key() } : {});
   let busy = false;
@@ -19,10 +19,14 @@ export function startCard({ url, key, snapshot, ready }) {
     try {
       const want = await fetch(url, { headers: headers(), cache: "no-store" }).then((r) => (r.ok ? r.text() : "no"));
       if (want.trim() !== "want") return;
-      const until = Date.now() + 60000;
-      while (!ready() && Date.now() < until) await sleep(500);
-      await sleep(SETTLE_MS);
-      const shot = ready() ? await snapshot() : null;
+      let shot = null;
+      if (moment) shot = await moment();   // a page whose card is a moment (data-card-on): the frame the app named
+      else {
+        const until = Date.now() + 60000;
+        while (!ready() && Date.now() < until) await sleep(500);
+        await sleep(SETTLE_MS);
+        shot = ready() ? await snapshot() : null;
+      }
       const frame = shot && !blank(shot) ? shot : null;
       const blob = await jpeg(compose(frame, meta("og:title") || document.title, meta("og:description")));
       if (!blob || blob.size > MAX) return;
@@ -35,6 +39,36 @@ export function startCard({ url, key, snapshot, ready }) {
   };
   setTimeout(round, 1000);
   setInterval(round, AGAIN_MS);
+}
+
+// A moment's card (Everglade's reply with a realm, docs/verse/replies.md): the app's action 31 is
+// its moment (the moment of impact), and this holds the next frame drawn; its action 32,
+// "URL\nTITLE\nLINE", sends that frame under the title and line as the card at URL (this site's
+// /api/ only), with the player key. moment() is the held frame, or the next one the app names.
+export function startMoment({ key, snapshot }) {
+  let held = null;
+  const waiting = [];
+  if (typeof addEventListener === "undefined") return () => Promise.resolve(null);
+  addEventListener("coaxial", async (e) => {
+    const { code, text } = e.detail || {};
+    if (code === 31) {
+      const shot = await snapshot();
+      if (shot && !blank(shot)) held = shot;
+      for (const w of waiting.splice(0)) w(held);
+    }
+    if (code === 32) {
+      const [url, title = "", line = ""] = String(text || "").split("\n");
+      if (!/^\/api\/playtest\/replies\/[a-z0-9]{12}\/card$/.test(url || "")) return;
+      try {
+        const blob = await jpeg(compose(held, title, line));
+        if (!blob || blob.size > MAX) return;
+        await fetch(url, { method: "POST", headers: { ...(key() ? { "X-Verse-Player": key() } : {}), "Content-Type": "image/jpeg" }, body: blob });
+      } catch {
+        // its page asks its maker for the card again (data-card)
+      }
+    }
+  });
+  return () => (held ? Promise.resolve(held) : new Promise((resolve) => waiting.push(resolve)));
 }
 
 // A frame the browser couldn't copy comes back black: then the card is the title and line alone.
@@ -86,9 +120,12 @@ export function compose(frame, title, line) {
   g.textAlign = "right"; spaced(g, "OPENAGENTS.COM", W - 62, small, 2.5, true); g.textAlign = "left";
   // the name: thin capitals drawn as outlines, the line-art look
   let size = 58;
-  const name = String(title || "").toUpperCase();
+  let name = String(title || "").toUpperCase();
   g.font = `200 ${size}px ${sans}`;
   while (size > 28 && g.measureText(name).width + name.length * 6 > W - 124) { size -= 2; g.font = `200 ${size}px ${sans}`; }
+  let shown = name;
+  while (shown.length > 1 && g.measureText(shown + "...").width + (shown.length + 3) * 6 > W - 124) shown = shown.slice(0, -1);
+  if (shown !== name) name = shown.trimEnd() + "...";
   g.strokeStyle = "#fff"; g.lineWidth = 1.6;
   spaced(g, name, 62, frame ? top + 98 : 250, 6, false, true);
   g.fillStyle = "rgba(205,210,225,0.9)"; g.font = `400 22px ${sans}`;

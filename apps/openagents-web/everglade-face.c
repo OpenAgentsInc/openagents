@@ -56,6 +56,10 @@ static coax_t_EgFork fork_state;   /* FORK's state (everglade-fork.coax everglad
 #define RESET_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[1], world_path(st, 1)
 #define EDIT_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[2], world_path(st, 2)
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
+// Reply with a realm (everglade-reply.coax): the reply, once the swarm has landed, with the player key.
+#define REPLY_URL "/api/playtest/replies"
+static int32_t reply_id = -1;
+static void reply_out(uint32_t state);
 static bool world_asked;
 static void edit_out(uint32_t state);
 static void bar_frame(uint32_t state);
@@ -324,6 +328,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   guard_out(state);
   captain_out(state);
   ask_out(state);
+  reply_out(state);
   room_out(state, dt);
   edit_out(state);
   place_frame(state);
@@ -436,6 +441,24 @@ static void room_out(uint32_t state, float dt) {
   room_asked_at = now;
 }
 
+// The reply to keep (everglade-reply.coax), once the browser has a player key; none: the page is told.
+static void reply_out(uint32_t state) {
+  if (reply_id >= 0 || !facts_seen || golden) return;
+  if (!has_player) {
+    if (!mint_tried) {
+      mint_tried = true;
+      mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+      if (mint_id < 0) mint_id = -1;
+    }
+    if (mint_id < 0 && everglade_reply_post(at(state)).count > 0) everglade_reply_answer(at(state), (coax_string){"0\n", 2});
+    return;
+  }
+  coax_string body = everglade_reply_post(at(state));
+  if (!body.count) return;
+  reply_id = coaxial_http((uint32_t)(uintptr_t)REPLY_URL, sizeof REPLY_URL - 1, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, 1 | 4 | 8);
+  if (reply_id < 0) { reply_id = -1; everglade_reply_answer(at(state), (coax_string){"0\n", 2}); }
+}
+
 // The page's question, once the browser has a player key (or minting one failed).
 static void ask_out(uint32_t state) {
   int64_t n = everglade_ask(at(state));
@@ -545,6 +568,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     if (place_back && !place_keeper.moved) place_put(state, place_here(state));
     return;
   }
+  if (reply_id >= 0 && kind == 512 + reply_id) { reply_id = -1; everglade_reply_answer(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (edit_id >= 0 && kind == 512 + edit_id) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (post_id >= 0 && kind == 512 + post_id) {
     post_id = -1;

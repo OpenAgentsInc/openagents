@@ -62,3 +62,5 @@ long npc_ask_model_twice(const char *url_env, const char *model, const char *req
 bool drops_site_write(const char *name, const char *type, const char *data);
 bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n);
 void realms_refresh_pages(void);   // realms.c: on start, made realms' pages written with an older template
+bool realms_jpeg_card(const unsigned char *b, size_t n);   // realms.c: a 1200x630 JPEG's frame header
+bool replies_route(const request *q);     // replies.c: reply with a realm (ev-reply-realm)

@@ -1,0 +1,669 @@
+// Reply with a realm (ev-reply-realm, docs/verse/replies.md), loaded by everglade.coax: the talk's
+// "3D reply guy". REPLY (top right, or the page's #reply) opens a line: paste a post's link or type
+// a line, and PUT IT UP hangs the words on a sign on the house on the road in by the South Gate
+// (plan.coax EG_BUILDING 12) and stands you on the street facing it. SMASH IT (or Enter) brings a
+// Meteor Swarm down on its roof (everglade-spells.coax, the bar's own spell, its dice seeded here),
+// and once it lands the reply is kept (POST /api/playtest/replies, the face sends it) and its link
+// shows, to copy and share back as the reply. Only what was typed or pasted is sent: a link is text,
+// shown as text, never fetched.
+//
+// The moment of impact is the reply's card: once two meteors have landed the page's script is told
+// (action 31: coax/web/card.js holds the next frame drawn, the HUD off for it but for the sign), and
+// once the reply has its id the frame goes to it as its card (action 32, "URL\nTITLE\nLINE").
+//
+// Its page (/realms/everglade/reply/<id>) opens this realm with the reply (message 620, the API's
+// lines: id=, house=, seed=, kind=, text=): the same sign, the same place to stand, and the same
+// swarm from the same dice, a few seconds after the town is in; then WATCH AGAIN and REPLY WITH
+// YOUR OWN. The town's debris steps with the frames, so the dust may fall a little differently;
+// where each meteor comes down and what it rolls are the seed's.
+
+RP_LINES :: 620;           // the reply page's reply (data-lines 620:/api/playtest/replies/<id>)
+RP_IMPACT :: 31;           // action: the moment of impact, card.js holds the next frame
+RP_CARD :: 32;             // action: that frame is reply <id>'s card ("URL\nTITLE\nLINE")
+RP_NAV :: 1;               // action: go to the outbox's address
+RP_COPY :: 2;              // action: copy the outbox's text
+RP_TEXT_MAX :: 140;        // characters in a line (the API's limit too)
+RP_LINK_MAX :: 280;        // characters in a link
+RP_BYTES :: 1200;          // room for 280 characters of UTF-8
+RP_HOUSE :: 12;            // the house on the road in: (8, -46) to (18, -36), 7 m, its door west on the street
+RP_STAND_X :: -3.0; RP_STAND_Z :: -48.0;   // where you stand to watch it: across the street, south-west of it
+RP_SIGN_X :: 7.8;          // the sign on its west wall, over the door
+RP_SIGN_Y :: 4.3;          // m over the ground
+RP_SIGN_W :: 5.0;          // m along the wall
+RP_WAIT :: 2.5;            // s on the reply page before the swarm is cast, once the town is in
+RP_AFTER :: 3.0;           // s after the last meteor before the link is asked for (the dust settles)
+RP_CLEAN :: 0.3;           // s the HUD stays off at the moment of impact (the card's frame)
+
+// What a reply is at: nothing, the line open, the words up, the swarm cast, falling, landed, and its link.
+RP_IDLE :: 0; RP_TYPING :: 1; RP_UP :: 2; RP_CASTING :: 3; RP_FALLING :: 4; RP_LANDED :: 5; RP_SENDING :: 6; RP_LINKED :: 7; RP_FAILED :: 8;
+// Its buttons.
+RP_B_OPEN :: 0; RP_B_PUT :: 1; RP_B_CLOSE :: 2; RP_B_SMASH :: 3; RP_B_CHANGE :: 4; RP_B_COPY :: 5; RP_B_VISIT :: 6; RP_B_AGAIN :: 7; RP_B_OWN :: 8; RP_B_FIELD :: 9;
+RP_BUTTONS :: 10;
+
+Reply :: struct {
+  phase: int; t: f32;        // RP_*, and seconds in it
+  words: [RP_BYTES] u8; words_n: int;   // what was typed or pasted, the sign's words
+  link: bool;                // the words are a post's link (http:// or https://, no spaces)
+  replay: bool;              // the reply page: its words and seed came with it
+  waiting: bool;             // the reply page is waiting for the town before it casts
+  seed: int;                 // the swarm's dice
+  id: [16] u8; id_n: int;    // the reply's id, once kept
+  origin: [80] u8; origin_n: int;   // the page's own origin (the facts' url=), for the link
+  body: [RP_BYTES + 120] u8; body_n: int; post: bool;   // the reply for the face to send, once
+  error: [80] u8; error_n: int;
+  impact: bool; card: bool;  // the moment's frame asked for; its card sent
+  clean: f32;                // s the HUD stays off but for the sign
+  boxes: [RP_BUTTONS] Box; finger: int; pressed: int;
+  out: [RP_BYTES + 200] u8; out_n: int; action: int;   // an action waiting for the outbox
+  copied: f32;               // s since COPY LINK was pressed (it says COPIED)
+}
+
+rp_words :: (s: [] Everglade) -> string { return cast(string) s[0].rp.words[0..<s[0].rp.words_n]; }
+rp_id :: (s: [] Everglade) -> string { return cast(string) s[0].rp.id[0..<s[0].rp.id_n]; }
+rp_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+// Characters (code points) in text.
+rp_chars :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if (text[i] & 0xC0) != 0x80 { n += 1; } }
+  return n;
+}
+// A post's link: http:// or https:// and no spaces (kept and shown as the text it is).
+rp_is_link :: (text: string) -> bool {
+  if !(text.count > 8 && text[0..<8] == "https://") && !(text.count > 7 && text[0..<7] == "http://") { return false; }
+  for i: 0..<text.count { if text[i] == ' ' || text[i] == '"' || text[i] == '<' || text[i] == '>' || text[i] == '\\' || text[i] == '`' || text[i] == '\'' { return false; } }
+  return true;
+}
+rp_limit :: (s: [] Everglade) -> int { return ifx rp_is_link(rp_words(s)) then RP_LINK_MAX else RP_TEXT_MAX; }
+
+rp_busy :: (s: [] Everglade) -> bool { return s[0].rp.phase != RP_IDLE; }
+rp_typing :: (s: [] Everglade) -> bool { return s[0].rp.phase == RP_TYPING; }
+// While the swarm is on its way and for the card's frame, the HUD stays off but for the sign.
+rp_clean :: (s: [] Everglade) -> bool { return s[0].rp.clean > 0; }
+
+rp_open :: (s: [] Everglade) {
+  if s[0].talk >= 0 || s[0].board || s[0].rp.replay { return; }
+  if s[0].chat.typing { chat_close(s); }
+  s[0].rp.phase = RP_TYPING; s[0].rp.t = 0; s[0].rp.finger = -1; s[0].rp.pressed = -1;
+  s[0].held = 0;
+}
+rp_close :: (s: [] Everglade) {
+  s[0].rp.phase = RP_IDLE; s[0].rp.t = 0; s[0].rp.finger = -1; s[0].rp.pressed = -1;
+  s[0].rp.post = false; s[0].rp.id_n = 0; s[0].rp.error_n = 0;
+}
+
+// The words, one line of plain characters: no control characters or bars, runs of space as one,
+// at most the limit's characters. A character is taken whole or not at all.
+rp_type :: (s: [] Everglade, text: string) {
+  i := 0;
+  while i < text.count {
+    c := text[i];
+    size := ifx c < 0x80 then 1 else ifx (c & 0xE0) == 0xC0 then 2 else ifx (c & 0xF0) == 0xE0 then 3 else ifx (c & 0xF8) == 0xF0 then 4 else 1;
+    if c == '\n' || c == '\r' { rp_put_up(s); return; }
+    if (c >= 0x80 && size == 1) || i + size > text.count { i += 1; continue; }
+    n := s[0].rp.words_n;
+    space := c < 32 || c == 127 || c == '|' || c == ' ';
+    if space && (n == 0 || s[0].rp.words[n - 1] == ' ') { i += 1; continue; }
+    if n + size > RP_BYTES || rp_chars(rp_words(s)) >= RP_LINK_MAX { return; }
+    if space { s[0].rp.words[n] = ' '; s[0].rp.words_n = n + 1; i += 1; continue; }
+    for b: 0..<size { s[0].rp.words[n + b] = text[i + b]; }
+    s[0].rp.words_n = n + size;
+    i += size;
+  }
+}
+rp_backspace :: (s: [] Everglade) {
+  n := s[0].rp.words_n;
+  while n > 0 { n -= 1; if (s[0].rp.words[n] & 0xC0) != 0x80 { break; } }
+  s[0].rp.words_n = n;
+}
+// The words without a space at either end, and whether they are within the limit.
+rp_trim :: (s: [] Everglade) {
+  n := s[0].rp.words_n;
+  while n > 0 && s[0].rp.words[n - 1] == ' ' { n -= 1; }
+  s[0].rp.words_n = n;
+  if n > 0 && s[0].rp.words[0] == ' ' {
+    for k: 1..<n { s[0].rp.words[k - 1] = s[0].rp.words[k]; }
+    s[0].rp.words_n = n - 1;
+  }
+}
+rp_fits :: (s: [] Everglade) -> bool { c := rp_chars(rp_words(s)); return c >= 1 && c <= rp_limit(s); }
+
+// PUT IT UP: the words go on the house's sign and you stand across the street from it.
+rp_put_up :: (s: [] Everglade) {
+  rp_trim(s);
+  if !rp_fits(s) { return; }
+  s[0].rp.link = rp_is_link(rp_words(s));
+  s[0].rp.phase = RP_UP; s[0].rp.t = 0; s[0].rp.id_n = 0; s[0].rp.error_n = 0; s[0].rp.card = false;
+  rp_stand(s);
+}
+// Across the street from the house, facing its sign.
+rp_stand :: (s: [] Everglade) {
+  x := f32(RP_STAND_X); z := f32(RP_STAND_Z);
+  t := rp_target(s);
+  s[0].spawn = v3(x, 0, z); s[0].spawn_face = yaw_of(t.x - x, t.z - z);
+  s[0].feet = v3(x, ground_at(s, x, z), z);
+  o := verse_orbit_start(s[0].feet, s[0].spawn_face);
+  o.pitch = 0.16; o.want = 8.5; o.zoom = 8.5;
+  s[0].orbit = o;
+  s[0].warp = true; s[0].above = false; s[0].lift = 0;
+}
+// Where the swarm is aimed: the middle of the house's roof.
+rp_target :: (s: [] Everglade) -> Point {
+  k := RP_HOUSE * EG_BOX;
+  x := (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2; z := (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2;
+  if !sp_on(s) { return v3(x, ground_at(s, x, z) + EG_BUILDING[k + 4], z); }
+  return v3(x, sp_surface(s, x, z, 1000), z);
+}
+// The sign's middle, on the house's street wall over its door.
+rp_sign_at :: (s: [] Everglade) -> Point {
+  k := RP_HOUSE * EG_BOX;
+  z := (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2;
+  return v3(f32(RP_SIGN_X), ground_at(s, f32(RP_SIGN_X), z) + f32(RP_SIGN_Y), z);
+}
+// The sign still hangs while the wall it is on stands.
+rp_sign_up :: (s: [] Everglade) -> bool {
+  if !sp_on(s) { return true; }
+  w := sp_dm(s);
+  p := rp_sign_at(s);
+  for i: 0..<w[0].n {
+    q := w[0].pieces[i];
+    if q.state != DP_STANDING { continue; }
+    if p.x > q.x0 - 0.6 && p.x < q.x1 + 0.6 && p.z > q.z0 - 1.2 && p.z < q.z1 + 1.2 && p.y > q.y0 - 0.8 && p.y < q.y1 + 0.8 { return true; }
+  }
+  return false;
+}
+
+// The swarm's dice: the reply page's seed, else this visit's clock and how long you have been here.
+rp_new_seed :: (s: [] Everglade) -> int {
+  // 32-bit FNV-1a kept in a u64, so no step overflows
+  v: u64 = 2166136261;
+  for i: 0..<s[0].visit_n { v = ((v ^ cast(u64) s[0].visit[i]) * 16777619) & 0xFFFFFFFF; }
+  v = ((v ^ (cast(u64) (s[0].time * 1000) & 0xFFFFFFFF)) * 16777619) & 0xFFFFFFFF;
+  return 1 + cast(int) (v % 2147483646);
+}
+
+// SMASH IT: the town stands whole again, then the Meteor Swarm comes down on the house from the seed's dice.
+rp_smash :: (s: [] Everglade) {
+  if !sp_on(s) || s[0].sp.casting >= 0 { return; }
+  if !s[0].rp.replay { s[0].rp.seed = rp_new_seed(s); }
+  if sp_broken(s) {
+    _ := sp_restore(s, -1);
+    for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
+  }
+  s[0].sp.dice[0] = srd_dice(cast(u64) s[0].rp.seed);
+  s[0].sp.rn = 0;
+  s[0].sp.armed = SP_METEOR;
+  s[0].sp.aim = rp_target(s); s[0].sp.aim_n = v3(0, 1, 0); s[0].sp.aim_ok = true; s[0].sp.far = false;
+  sp_cast(s);
+  if s[0].sp.casting != SP_METEOR { s[0].sp.armed = -1; return; }
+  s[0].rp.phase = RP_CASTING; s[0].rp.t = 0; s[0].rp.impact = false; s[0].rp.card = false; s[0].rp.id_n = 0; s[0].rp.error_n = 0;
+}
+
+// The reply for the face: {"realm":"everglade","text"|"link":WORDS,"seed":N}, every character escaped.
+rp_body :: (s: [] Everglade) -> int {
+  b := s[0].rp.body[..];
+  n := rp_put(b, 0, ifx s[0].rp.link then "{\"realm\":\"everglade\",\"link\":\"" else "{\"realm\":\"everglade\",\"text\":\"");
+  w := rp_words(s);
+  for i: 0..<w.count {
+    c := w[i];
+    if n + 8 >= b.count { return 0; }
+    if c == '"' || c == '\\' { b[n] = '\\'; b[n + 1] = c; n += 2; continue; }
+    if c < 32 { b[n] = ' '; n += 1; continue; }
+    b[n] = c; n += 1;
+  }
+  n = rp_put(b, n, "\",\"seed\":");
+  digits: [12] u8; d := 0; v := s[0].rp.seed;
+  while v > 0 && d < 12 { digits[d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; }
+  while d > 0 { d -= 1; if n < b.count { b[n] = digits[d]; n += 1; } }
+  n = rp_put(b, n, "}");
+  return ifx n < b.count then n else 0;
+}
+// The face takes the reply to send, once.
+everglade_reply_post :: (s: [] Everglade) -> string #export_c {
+  if !s[0].rp.post { return ""; }
+  s[0].rp.post = false;
+  return cast(string) s[0].rp.body[0..<s[0].rp.body_n];
+}
+// The API's answer: "STATUS\n" then {id, path, page} or {error}.
+everglade_reply_answer :: (s: [] Everglade, text: string) #export_c {
+  if s[0].rp.phase != RP_SENDING { return; }
+  status := 0; i := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { status = status * 10 + cast(int) (text[i] - '0'); i += 1; }
+  if status == 200 {
+    id := rp_json_text(text, "\"id\":\"");
+    if id.count == 12 {
+      for k: 0..<12 { s[0].rp.id[k] = id[k]; }
+      s[0].rp.id_n = 12;
+      s[0].rp.phase = RP_LINKED; s[0].rp.t = 0;
+      rp_card(s);
+      return;
+    }
+  }
+  e := rp_json_text(text, "\"error\":\"");
+  n := 0;
+  msg := ifx status == 0 then "NO ANSWER: TRY AGAIN" else ifx e.count > 0 then e else "THE LINK WASN'T MADE";
+  for k: 0..<msg.count { if n < 80 { s[0].rp.error[n] = msg[k]; n += 1; } }
+  s[0].rp.error_n = n;
+  s[0].rp.phase = RP_FAILED; s[0].rp.t = 0;
+}
+// A string field's value in a small JSON answer (ids and our own messages: no escapes in them).
+rp_json_text :: (text: string, key: string) -> string {
+  for i: 0..<text.count {
+    if i + key.count > text.count { return ""; }
+    if text[i..<i + key.count] != key { continue; }
+    a := i + key.count; e := a;
+    while e < text.count && text[e] != '"' && text[e] != '\\' { e += 1; }
+    return text[a..<e];
+  }
+  return "";
+}
+
+// An action for the host, when the outbox is free (else next frame).
+rp_act :: (s: [] Everglade, code: int, text: string) {
+  s[0].rp.out_n = rp_put(s[0].rp.out[..], 0, text); s[0].rp.action = code;
+  rp_flush(s);
+}
+rp_flush :: (s: [] Everglade) {
+  if s[0].rp.action == 0 || s[0].action != 0 { return; }
+  n := lo_int(s[0].rp.out_n, OUTBOX);
+  for k: 0..<n { s[0].outbox[k] = s[0].rp.out[k]; }
+  s[0].out_n = n; s[0].action = s[0].rp.action; s[0].rp.action = 0;
+}
+// The held frame goes to the reply as its card: under its words, and where it is from.
+rp_card :: (s: [] Everglade) {
+  if s[0].rp.card || s[0].rp.id_n == 0 || !s[0].rp.impact { return; }
+  s[0].rp.card = true;
+  t: [RP_BYTES + 200] u8;
+  n := rp_put(t[..], 0, "/api/playtest/replies/");
+  n = rp_put(t[..], n, rp_id(s));
+  n = rp_put(t[..], n, "/card\n");
+  n = rp_put(t[..], n, rp_words(s));
+  n = rp_put(t[..], n, "\nA reply from Everglade, smashed with a meteor shower. Watch it again on openagents.com.");
+  rp_act(s, RP_CARD, cast(string) t[0..<n]);
+}
+// The reply's link: this page's origin, /realms/everglade/reply/<id>.
+rp_link :: (s: [] Everglade, out: [] u8) -> string {
+  n := rp_put(out, 0, ifx s[0].rp.origin_n > 0 then cast(string) s[0].rp.origin[0..<s[0].rp.origin_n] else "https://openagents.com");
+  n = rp_put(out, n, "/realms/everglade/reply/");
+  n = rp_put(out, n, rp_id(s));
+  return cast(string) out[0..<n];
+}
+
+// ---- hooks: the realm calls these
+
+// The page facts' url= gives the origin; the reply page's lines its reply.
+rp_message :: (s: [] Everglade, kind: int, text: string) -> bool {
+  if kind == MSG_FACTS {
+    u := fact(text, "url");
+    slashes := 0; e := 0;
+    while e < u.count { if u[e] == '/' { slashes += 1; if slashes == 3 { break; } } e += 1; }
+    if slashes >= 2 && e <= 80 && (u[0..<lo_int(8, u.count)] == "https://" || u[0..<lo_int(7, u.count)] == "http://") {
+      for k: 0..<e { s[0].rp.origin[k] = u[k]; }
+      s[0].rp.origin_n = e;
+    }
+    return false;
+  }
+  if kind == MSG_TEXT && rp_typing(s) { rp_type(s, text); return true; }
+  if kind != RP_LINES { return false; }
+  id := fact(text, "id"); words := fact(text, "text");
+  seed := 0;
+  sd := fact(text, "seed");
+  for i: 0..<sd.count { if sd[i] >= '0' && sd[i] <= '9' && seed < 214748364 { seed = seed * 10 + cast(int) (sd[i] - '0'); } }
+  if id.count != 12 || words.count == 0 || seed < 1 { return true; }
+  s[0].rp.replay = true;
+  s[0].rp.seed = seed;
+  for k: 0..<12 { s[0].rp.id[k] = id[k]; }
+  s[0].rp.id_n = 12;
+  s[0].rp.words_n = 0;
+  rp_type(s, words);
+  rp_trim(s);
+  s[0].rp.link = fact(text, "kind") == "link";
+  s[0].rp.phase = RP_UP; s[0].rp.t = 0; s[0].rp.waiting = true; s[0].rp.card = true;   // its card is card.js's here (data-card)
+  rp_stand(s);
+  return true;
+}
+
+// A key: the line types while open, Enter puts it up; with the words up Enter smashes; Esc closes.
+rp_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  ph := s[0].rp.phase;
+  if ph == RP_IDLE { return false; }
+  if ph == RP_TYPING {
+    if key == KEY_ESCAPE { rp_close(s); return true; }
+    if key == KEY_ENTER { rp_put_up(s); return true; }
+    if key == KEY_BACKSPACE { rp_backspace(s); return true; }
+    if (mods & 10) != 0 { return false; }
+    if key < 32 || key == 127 { return key >= 0; }
+    one: [4] u8; c := key;
+    size := ifx c < 0x80 then 1 else ifx c < 0x800 then 2 else ifx c < 0x10000 then 3 else 4;
+    if size == 1 { one[0] = cast(u8) c; }
+    if size == 2 { one[0] = cast(u8) (0xC0 | (c >> 6)); one[1] = cast(u8) (0x80 | (c & 63)); }
+    if size == 3 { one[0] = cast(u8) (0xE0 | (c >> 12)); one[1] = cast(u8) (0x80 | ((c >> 6) & 63)); one[2] = cast(u8) (0x80 | (c & 63)); }
+    if size == 4 { one[0] = cast(u8) (0xF0 | (c >> 18)); one[1] = cast(u8) (0x80 | ((c >> 12) & 63)); one[2] = cast(u8) (0x80 | ((c >> 6) & 63)); one[3] = cast(u8) (0x80 | (c & 63)); }
+    rp_type(s, cast(string) one[0..<size]);
+    return true;
+  }
+  if key == KEY_ESCAPE && !s[0].rp.replay && ph != RP_CASTING && ph != RP_FALLING { rp_close(s); return true; }
+  if key == KEY_ENTER && (ph == RP_UP || ph == RP_LINKED || ph == RP_FAILED) && !s[0].rp.waiting {
+    if ph == RP_FAILED && s[0].rp.seed > 0 && !s[0].rp.replay { rp_send(s); return true; }
+    rp_smash(s); return true;
+  }
+  return false;
+}
+
+rp_press :: (s: [] Everglade, b: int) {
+  if b == RP_B_OPEN { rp_open(s); return; }
+  if b == RP_B_FIELD { return; }
+  if b == RP_B_PUT { rp_put_up(s); return; }
+  if b == RP_B_CLOSE { rp_close(s); return; }
+  if b == RP_B_SMASH { rp_smash(s); return; }
+  if b == RP_B_CHANGE { s[0].rp.phase = RP_TYPING; s[0].rp.t = 0; return; }
+  if b == RP_B_AGAIN { if s[0].rp.phase == RP_FAILED && !s[0].rp.replay { rp_send(s); } else { rp_smash(s); } return; }
+  if b == RP_B_COPY { buf: [200] u8; rp_act(s, RP_COPY, rp_link(s, buf[..])); s[0].rp.copied = 0.001; return; }
+  if b == RP_B_VISIT { buf: [200] u8; rp_act(s, RP_NAV, rp_link(s, buf[..])); return; }
+  if b == RP_B_OWN { rp_act(s, RP_NAV, "/realms/everglade#reply"); return; }
+}
+// A press on a button: taken on its way down, done when it lifts on the same button.
+rp_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 {
+    for b: 0..<RP_BUTTONS {
+      if in_box(s[0].rp.boxes[b], x, y) { s[0].rp.finger = id; s[0].rp.pressed = b; return true; }
+    }
+    return false;
+  }
+  if s[0].rp.finger != id || s[0].rp.pressed < 0 { return false; }
+  if phase >= 2 {
+    b := s[0].rp.pressed;
+    s[0].rp.finger = -1; s[0].rp.pressed = -1;
+    if phase == 2 && in_box(s[0].rp.boxes[b], x, y) { rp_press(s, b); }
+  }
+  return true;
+}
+
+// The reply goes to the face (it sends it with the player's key).
+rp_send :: (s: [] Everglade) {
+  n := rp_body(s);
+  if n <= 0 { return; }
+  s[0].rp.body_n = n; s[0].rp.post = true;
+  s[0].rp.phase = RP_SENDING; s[0].rp.t = 0; s[0].rp.error_n = 0;
+}
+
+// Each frame, before the spells': the reply page casts once the town is in; the swarm is followed
+// to its impact and its landing, and the reply is sent once the dust has settled.
+rp_frame :: (s: [] Everglade, dt: f32) {
+  s[0].rp.t += dt;
+  s[0].rp.clean = hi(s[0].rp.clean - dt, 0);
+  if s[0].rp.copied > 0 { s[0].rp.copied += dt; if s[0].rp.copied > 2 { s[0].rp.copied = 0; } }
+  rp_flush(s);
+  ph := s[0].rp.phase;
+  if s[0].rp.waiting {
+    if !sp_on(s) || !s[0].pack_ready { s[0].rp.t = 0; return; }
+    if s[0].rp.t >= f32(RP_WAIT) { s[0].rp.waiting = false; rp_smash(s); }
+    return;
+  }
+  if ph == RP_CASTING {
+    s[0].rp.clean = f32(RP_CLEAN);
+    if s[0].sp.casting < 0 { s[0].rp.phase = RP_FALLING; s[0].rp.t = 0; }
+    return;
+  }
+  if ph == RP_FALLING {
+    live := 0;
+    for m: 0..<SP_METEORS { if s[0].sp.meteors[m].live { live += 1; } }
+    landed := SP_METEORS - live;
+    if !s[0].rp.impact { s[0].rp.clean = f32(RP_CLEAN); }
+    if landed >= 2 && !s[0].rp.impact {
+      s[0].rp.impact = true;
+      rp_act(s, RP_IMPACT, "impact");
+    }
+    if live == 0 { s[0].rp.phase = RP_LANDED; s[0].rp.t = 0; }
+    return;
+  }
+  if ph == RP_LANDED && s[0].rp.t >= f32(RP_AFTER) {
+    if s[0].rp.replay { s[0].rp.phase = RP_LINKED; s[0].rp.t = 0; return; }
+    rp_send(s);
+  }
+}
+
+// The sign: a board on the house's wall while it stands, and the words over it, as large as the
+// board is on screen (at least readable), on up to three lines.
+rp_board :: (s: [] Everglade) {
+  if !rp_busy(s) || rp_typing(s) || !rp_sign_up(s) { return; }
+  p := rp_sign_at(s);
+  shape(s, SHAPE_BOX, LOOK_MATTE, add(p, v3(-0.06, 0, 0)), 0, 0, 0.14, 1.5, f32(RP_SIGN_W), 0.2, 0.13, 0.07);
+}
+rp_sign :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
+  n := n0;
+  if !rp_busy(s) || rp_typing(s) || s[0].rp.words_n == 0 { return n; }
+  k := hi(s[0].dpr, 0.5);
+  p := rp_sign_at(s);
+  half := f32(RP_SIGN_W) / 2;
+  a := on_screen(u, add(p, v3(-0.3, 0, -half)), s[0].width, s[0].height);
+  b := on_screen(u, add(p, v3(-0.3, 0, half)), s[0].width, s[0].height);
+  c := on_screen(u, add(p, v3(-0.3, 0, 0)), s[0].width, s[0].height);
+  if !c.ok { return n; }
+  span := ifx a.ok && b.ok then abs(b.x - a.x) else 220 * k;
+  width := clamp(span * 0.92, 200 * k, s[0].width - 40 * k);
+  words := rp_words(s);
+  // the largest cap whose lines (three at most) fit the width
+  cap := clamp(span / 14, 7.5 * k, 22 * k);
+  lines: [6] int; count := 0;
+  while true {
+    count = rp_wrap(words, cap, width, lines[..]);
+    if count <= 3 || cap <= 7.5 * k { break; }
+    cap -= k;
+  }
+  shown := lo_int(count, 3);
+  lead := cap * 1.6;
+  top := c.y - f32(shown - 1) * lead / 2;
+  most := 0.0f32;
+  for q: 0..<shown { most = hi(most, text_width(words[lines[q * 2]..<lines[q * 2 + 1]], cap)); }
+  plate(s, u, Box.{x0 = c.x - most / 2 - cap, y0 = top - cap * 0.9, x1 = c.x + most / 2 + cap, y1 = top + f32(shown - 1) * lead + cap * 1.1}, 0.7, 0);
+  for q: 0..<shown {
+    line := words[lines[q * 2]..<lines[q * 2 + 1]];
+    cut: [RP_BYTES + 4] u8;
+    if q == 2 && count > 3 { line = rp_ellipsis(line, cap, width, cut[..]); }
+    lw := text_width(line, cap);
+    n = draw_text(out, n, line, c.x - lw / 2, top + f32(q) * lead + cap * 0.5, cap, GAP, SPACE, ink(k, 1.0, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  return n;
+}
+// Greedy lines of words within width: their byte ranges into lines (start, end each); how many.
+rp_wrap :: (text: string, cap: f32, width: f32, lines: [] int) -> int {
+  count := 0; start := 0; i := 0; last_space := -1;
+  while start < text.count {
+    i = start; last_space = -1; end := text.count;
+    while i < text.count {
+      if text[i] == ' ' { last_space = i; }
+      j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }
+      if text_width(text[start..<j], cap) > width {
+        end = ifx last_space > start then last_space else ifx i > start then i else j;
+        break;
+      }
+      i = j;
+    }
+    if count * 2 + 1 < lines.count { lines[count * 2] = start; lines[count * 2 + 1] = end; }
+    count += 1;
+    start = end; while start < text.count && text[start] == ' ' { start += 1; }
+    if count >= 3 && start < text.count { count += 1; break; }
+  }
+  return count;
+}
+// A line cut to fit with "…" after it.
+rp_ellipsis :: (line: string, cap: f32, width: f32, out: [] u8) -> string {
+  t := line;
+  while t.count > 0 && text_width(t, cap) + cap > width { t = t[0..<t.count - 1]; while t.count > 0 && (t[t.count - 1] & 0xC0) == 0x80 { t = t[0..<t.count - 1]; } if t.count > 0 && t[t.count - 1] >= 0xC0 { t = t[0..<t.count - 1]; } }
+  n := rp_put(out, 0, t);
+  n = rp_put(out, n, "…");
+  return cast(string) out[0..<n];
+}
+// Text cut from its start to fit (what was typed last stays in view).
+rp_tail :: (text: string, cap: f32, width: f32) -> string {
+  t := text;
+  while t.count > 0 && text_width(t, cap) > width { t = t[1..<t.count]; while t.count > 0 && (t[0] & 0xC0) == 0x80 { t = t[1..<t.count]; } }
+  return t;
+}
+
+rp_button :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, b: int, word: string, x: f32, y: f32, cap: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := text_width(word, cap) + 32 * k; h := cap + 26 * k;
+  box := Box.{x0 = x, y0 = y, x1 = x + w, y1 = y + h};
+  s[0].rp.boxes[b] = box;
+  plate(s, u, box, 0.88, ifx s[0].rp.pressed == b then 2.0f32 else 1.0f32);
+  return draw_text(out, n, word, x + 16 * k, y + h - 13 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+rp_button_w :: (s: [] Everglade, word: string, cap: f32) -> f32 { return text_width(word, cap) + 32 * hi(s[0].dpr, 0.5); }
+
+// The HUD: REPLY by MAP, and while a reply is made, its panel at the top of the view.
+rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
+  n := n0;
+  for b: 0..<RP_BUTTONS { s[0].rp.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width;
+  gutter := 16 * k;
+  cap := 9 * k; small := 7 * k;
+  ph := s[0].rp.phase;
+  if ph == RP_IDLE {
+    if s[0].above || s[0].talk >= 0 || s[0].board || s[0].ev.editing || s[0].rp.replay || !sp_on(s) { return n; }
+    mb := s[0].map_button;
+    bw := rp_button_w(s, "REPLY", cap);
+    return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", mb.x0 - 10 * k - bw, mb.y0, cap);
+  }
+  pw := lo(w - 2 * gutter, 640 * k);
+  x0 := (w - pw) / 2;
+  y := gutter + 64 * k;
+  if phone(s) { y = gutter + 110 * k; }
+  if ph == RP_TYPING {
+    plate(s, u, Box.{x0 = x0, y0 = y, x1 = x0 + pw, y1 = y + 150 * k}, 0.86, 0);
+    n = draw_text(out, n, "REPLY WITH A REALM", x0 + 16 * k, y + 24 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, "PASTE A POST'S LINK OR TYPE A LINE: IT GOES ON A HOUSE'S SIGN", x0 + 16 * k, y + 44 * k, small, GAP, SPACE, ink(k, 0.75, PARCH_R, PARCH_G, PARCH_B), false, false);
+    f := Box.{x0 = x0 + 14 * k, y0 = y + 58 * k, x1 = x0 + pw - 14 * k, y1 = y + 92 * k};
+    s[0].rp.boxes[RP_B_FIELD] = f;
+    s[0].field[0] = f.x0; s[0].field[1] = f.y0; s[0].field[2] = f.x1; s[0].field[3] = f.y1;
+    plate(s, u, f, 0.95, 1);
+    words := rp_words(s);
+    if words.count > 0 { n = draw_text(out, n, rp_tail(words, cap, f.x1 - f.x0 - 24 * k), f.x0 + 10 * k, f.y1 - 12 * k, cap, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false); }
+    else { n = draw_text(out, n, "YOUR LINE, OR A LINK", f.x0 + 10 * k, f.y1 - 12 * k, cap, GAP, SPACE, ink(k, 0.5, PARCH_R, PARCH_G, PARCH_B), false, false); }
+    // how many characters are left
+    left := rp_limit(s) - rp_chars(words);
+    count: [24] u8; cn := 0; v := ifx left < 0 then -left else left;
+    if left < 0 { count[0] = '-'; cn = 1; }
+    digits: [8] u8; d := 0;
+    while (v > 0 || d == 0) && d < 8 { digits[d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; }
+    while d > 0 { d -= 1; count[cn] = digits[d]; cn += 1; }
+    cw := text_width(cast(string) count[0..<cn], small);
+    n = draw_text(out, n, cast(string) count[0..<cn], f.x1 - cw - 4 * k, y + 44 * k, small, GAP, SPACE, ink(k, ifx left < 0 then 1.0f32 else 0.6f32, PARCH_R, PARCH_G, PARCH_B), false, false);
+    by := y + 104 * k;
+    n = rp_button(s, out, u, n, RP_B_PUT, "PUT IT UP", x0 + 14 * k, by, cap);
+    n = rp_button(s, out, u, n, RP_B_CLOSE, "CLOSE", s[0].rp.boxes[RP_B_PUT].x1 + 10 * k, by, cap);
+    if !phone(s) { n = draw_text(out, n, "ENTER PUTS IT UP · ESC CLOSES", s[0].rp.boxes[RP_B_CLOSE].x1 + 14 * k, by + 24 * k, small, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false); }
+    return n;
+  }
+  if ph == RP_CASTING || ph == RP_FALLING { return n; }
+  title := ifx s[0].rp.replay then "A REPLY FROM EVERGLADE" else
+           ifx ph == RP_UP then "YOUR WORDS ARE ON THE HOUSE" else ifx ph == RP_LANDED then "SMASHED" else
+           ifx ph == RP_SENDING then "MAKING YOUR LINK" else ifx ph == RP_LINKED then "YOUR REPLY'S LINK" else "THE LINK WASN'T MADE";
+  said := ifx s[0].rp.replay then (ifx s[0].rp.waiting || ph == RP_UP then "A METEOR SHOWER IS ON ITS WAY" else "SMASHED WITH A METEOR SHOWER") else
+         ifx ph == RP_UP then (ifx phone(s) then "SMASH IT WITH A METEOR SHOWER" else "SMASH IT WITH A METEOR SHOWER · ENTER") else
+         ifx ph == RP_LANDED || ph == RP_SENDING then "ITS LINK SHOWS WHEN THE DUST SETTLES" else
+         ifx ph == RP_LINKED then "SHARE IT BACK AS YOUR REPLY: ITS PICTURE IS THE IMPACT" else cast(string) s[0].rp.error[0..<s[0].rp.error_n];
+  tall := ifx ph == RP_LINKED && !s[0].rp.replay then 136.0f32 else ifx ph == RP_UP || ph == RP_FAILED || (ph == RP_LINKED && s[0].rp.replay) then 104.0f32 else 56.0f32;
+  plate(s, u, Box.{x0 = x0, y0 = y, x1 = x0 + pw, y1 = y + tall * k}, 0.86, 0);
+  n = draw_text(out, n, title, x0 + 16 * k, y + 24 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, said, x0 + 16 * k, y + 44 * k, small, GAP, SPACE, ink(k, 0.75, PARCH_R, PARCH_G, PARCH_B), false, false);
+  by := y + 58 * k;
+  if ph == RP_UP && !s[0].rp.replay {
+    n = rp_button(s, out, u, n, RP_B_SMASH, "SMASH IT", x0 + 14 * k, by, cap);
+    n = rp_button(s, out, u, n, RP_B_CHANGE, "CHANGE THE WORDS", s[0].rp.boxes[RP_B_SMASH].x1 + 10 * k, by, cap);
+    n = rp_button(s, out, u, n, RP_B_CLOSE, "CLOSE", s[0].rp.boxes[RP_B_CHANGE].x1 + 10 * k, by, cap);
+  }
+  if ph == RP_FAILED {
+    n = rp_button(s, out, u, n, RP_B_AGAIN, "TRY AGAIN", x0 + 14 * k, by, cap);
+    n = rp_button(s, out, u, n, RP_B_CLOSE, "CLOSE", s[0].rp.boxes[RP_B_AGAIN].x1 + 10 * k, by, cap);
+  }
+  if ph == RP_LINKED && s[0].rp.replay {
+    n = rp_button(s, out, u, n, RP_B_AGAIN, "WATCH AGAIN", x0 + 14 * k, by, cap);
+    n = rp_button(s, out, u, n, RP_B_OWN, "REPLY WITH YOUR OWN", s[0].rp.boxes[RP_B_AGAIN].x1 + 10 * k, by, cap);
+  }
+  if ph == RP_LINKED && !s[0].rp.replay {
+    buf: [200] u8;
+    link := rp_link(s, buf[..]);
+    lb := Box.{x0 = x0 + 14 * k, y0 = by, x1 = x0 + pw - 14 * k, y1 = by + 30 * k};
+    plate(s, u, lb, 0.95, 1);
+    n = draw_text(out, n, rp_tail(link, small, lb.x1 - lb.x0 - 20 * k), lb.x0 + 10 * k, lb.y1 - 11 * k, small, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+    by2 := by + 40 * k;
+    n = rp_button(s, out, u, n, RP_B_COPY, ifx s[0].rp.copied > 0 then "COPIED" else "COPY LINK", x0 + 14 * k, by2, cap);
+    n = rp_button(s, out, u, n, RP_B_VISIT, "OPEN IT", s[0].rp.boxes[RP_B_COPY].x1 + 10 * k, by2, cap);
+    n = rp_button(s, out, u, n, RP_B_AGAIN, "AGAIN", s[0].rp.boxes[RP_B_VISIT].x1 + 10 * k, by2, cap);
+    n = rp_button(s, out, u, n, RP_B_CLOSE, "CLOSE", s[0].rp.boxes[RP_B_AGAIN].x1 + 10 * k, by2, cap);
+  }
+  return n;
+}
+
+#test "reply: a line goes up on the house, is smashed, and is sent once with its seed, escaped" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  everglade_message(g[..], MSG_FACTS, "url=https://openagents.com/realms/everglade#reply\nnow=1730000000123\nplayer=p-1\n");
+  rp_open(g[..]);
+  #assert rp_typing(g[..]) && everglade_wants_text(g[..]);
+  everglade_message(g[..], MSG_TEXT, "Ship  \"it\" \\ |now|\t");
+  #assert rp_words(g[..]) == "Ship \"it\" \\ now ";
+  #assert everglade_key(g[..], KEY_BACKSPACE, 0) && rp_words(g[..]) == "Ship \"it\" \\ now";
+  #assert everglade_key(g[..], KEY_ENTER, 0) && g[0].rp.phase == RP_UP && !g[0].rp.link && everglade_warp(g[..]);
+  // the line is held to 140 characters, a link to 280
+  rp_open(g[..]); g[0].rp.words_n = 0;
+  long: [300] u8;
+  for i: 0..<300 { long[i] = 'x'; }
+  rp_type(g[..], cast(string) long[0..<300]);
+  #assert rp_chars(rp_words(g[..])) == RP_LINK_MAX && !rp_fits(g[..]);
+  rp_put_up(g[..]);
+  #assert g[0].rp.phase == RP_TYPING;   // too long for a line: it stays open
+  g[0].rp.words_n = 0;
+  rp_type(g[..], "https://x.com/someone/status/123");
+  #assert rp_is_link(rp_words(g[..])) && rp_fits(g[..]);
+  #assert !rp_is_link("https://x.com/a b") && !rp_is_link("javascript:alert(1)") && !rp_is_link("https://x.com/\"><b>");
+  g[0].rp.words_n = 0;
+  rp_type(g[..], "Ship \"it\" \\ now");
+  rp_put_up(g[..]);
+  // its body: every quote and backslash escaped, the seed a whole number
+  g[0].rp.seed = 4242;
+  n := rp_body(g[..]);
+  #assert cast(string) g[0].rp.body[0..<n] == "{\"realm\":\"everglade\",\"text\":\"Ship \\\"it\\\" \\\\ now\",\"seed\":4242}";
+  #assert rp_new_seed(g[..]) >= 1 && rp_new_seed(g[..]) <= 2147483647;
+  // sent once, and its link once kept
+  rp_send(g[..]);
+  #assert everglade_reply_post(g[..]).count == n && everglade_reply_post(g[..]).count == 0;
+  everglade_reply_answer(g[..], "200\n{\"id\":\"0a1b2c3d4e5f\",\"path\":\"/realms/everglade/reply/0a1b2c3d4e5f\",\"page\":true}");
+  #assert g[0].rp.phase == RP_LINKED && rp_id(g[..]) == "0a1b2c3d4e5f";
+  buf: [200] u8;
+  #assert rp_link(g[..], buf[..]) == "https://openagents.com/realms/everglade/reply/0a1b2c3d4e5f";
+  // a refusal says why, and TRY AGAIN sends it again
+  g[0].rp.phase = RP_SENDING;
+  everglade_reply_answer(g[..], "400\n{\"error\":\"a line is 140 characters at most\"}");
+  #assert g[0].rp.phase == RP_FAILED && cast(string) g[0].rp.error[0..<g[0].rp.error_n] == "a line is 140 characters at most";
+  rp_press(g[..], RP_B_AGAIN);
+  #assert g[0].rp.phase == RP_SENDING && everglade_reply_post(g[..]).count == n;
+}
+
+#test "reply: the reply page takes its words and seed, stands you facing the house and waits for the town" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  #assert rp_message(g[..], RP_LINES, "id=0a1b2c3d4e5f\nrealm=everglade\nhouse=12\nseed=424242\nkind=text\ntext=Ship it <b>now</b>\n");
+  #assert g[0].rp.replay && g[0].rp.seed == 424242 && rp_words(g[..]) == "Ship it <b>now</b>" && g[0].rp.waiting && everglade_warp(g[..]);
+  #assert g[0].rp.phase == RP_UP && !rp_typing(g[..]);
+  // no REPLY of its own on the reply page, and Esc doesn't drop the reply
+  rp_open(g[..]);
+  _ := everglade_key(g[..], KEY_ESCAPE, 0);
+  #assert g[0].rp.phase == RP_UP;
+  // without the town in, it waits
+  rp_frame(g[..], 5);
+  #assert g[0].rp.waiting && g[0].rp.t == 0;
+  // a malformed reply is ignored
+  h: [1] Everglade;
+  everglade_start(h[..]);
+  #assert rp_message(h[..], RP_LINES, "id=short\nseed=1\ntext=x\n") && !h[0].rp.replay;
+  // the words wrap onto three lines at most
+  lines: [8] int;
+  #assert rp_wrap("one two three four five six seven eight nine ten", 10, 120, lines[..]) >= 2;
+}

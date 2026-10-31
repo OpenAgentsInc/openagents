@@ -92,6 +92,8 @@ if "realms/made-slugs.txt" in have:
     req = urllib.request.Request(api + "/o/" + urllib.parse.quote("realms/made-slugs.txt", safe="") + "?alt=media", headers=auth)
     with urllib.request.urlopen(req, timeout=30) as r:
         published += [f"realms/{s}/" for s in r.read().decode().split() if s]
+# And replies made in Everglade (coax/web/api/replies.c, ev-reply-realm): their pages and cards.
+published += ["realms/everglade/reply/"]
 stale = [n for n in have if n not in keep and n.startswith(prefix) and not any(n == p.rstrip("/") or (p.endswith("/") and n.startswith(p)) for p in published)]
 list(pool.map(lambda n: call(api + "/o/" + urllib.parse.quote(n, safe=""), "DELETE"), stale))
 print(f"  sent {len(sent)}, removed {len(stale)}, unchanged {len(keep) - len(sent)}")
