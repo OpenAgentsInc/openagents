@@ -72,6 +72,15 @@ def md5(path, name=""):
     return base64.b64encode(hashlib.md5(gzip.compress(data, mtime=0) if zipped(name) else data).digest()).decode()
 
 have = listing()
+# Realm invites (coax/web/api/access.c): while the API's marker says "on", /realms' text copy drops
+# its /realms/new link, as the API wrote it when the flag was turned on; the marker itself stays.
+BUILD_LINK = ", [build your own realm](https://openagents.com/realms/new)"
+twin = os.path.join(stage, "site", "realms", "index.md")
+if "realms/invite-only.txt" in have and os.path.exists(twin):
+    req = urllib.request.Request(api + "/o/" + urllib.parse.quote("realms/invite-only.txt", safe="") + "?alt=media", headers=auth)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        if r.read().decode().strip() == "on":
+            open(twin, "w").write(open(twin).read().replace(BUILD_LINK, ""))
 pool = cf.ThreadPoolExecutor(16)
 sent = []
 for root, cache in (("assets", "public, max-age=31536000, immutable"), ("site", "no-cache")):
@@ -87,7 +96,7 @@ if "projects/published-slugs.txt" in have:
     with urllib.request.urlopen(req, timeout=30) as r:
         published += [f"projects/{s}/" for s in r.read().decode().split() if s]
 # So are realms made at /realms/new (coax/web/api/realms.c): their pages and the list.
-published += ["realms/made-slugs.txt"]
+published += ["realms/made-slugs.txt", "realms/invite-only.txt"]
 if "realms/made-slugs.txt" in have:
     req = urllib.request.Request(api + "/o/" + urllib.parse.quote("realms/made-slugs.txt", safe="") + "?alt=media", headers=auth)
     with urllib.request.urlopen(req, timeout=30) as r:

@@ -31,6 +31,8 @@
 //   OA_WORKOS_PROVIDER      the connection AuthKit opens (GoogleOAuth; "authkit" shows them all)
 #include "api.h"
 #include <ctype.h>
+#include <signal.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -191,6 +193,35 @@ static bool playtest(const request *q, PGconn *db, const char *rest) {
 }
 
 // ---- /api/admin/access
+// /realms' text copy (realms/index.md, written by coax/web/realms.ts) links to /realms/new. With
+// realm_invites on it doesn't: the API writes the marker realms/invite-only.txt ("on" or "off") and
+// the copy with or without the link into the site's bucket, in a child; coax/web/upload.py keeps the
+// marker and drops the link from each release's copy while it says "on". Without a bucket (a dev
+// server, the tests) nothing is written.
+#define BUILD_LINK ", [build your own realm](https://openagents.com/realms/new)"
+static char *replaced(const char *text, const char *from, const char *to) {
+  const char *at = strstr(text, from);
+  if (!at) return NULL;
+  size_t a = (size_t)(at - text), f = strlen(from), t = strlen(to), n = strlen(text);
+  char *out = malloc(n - f + t + 1);
+  if (!out) return NULL;
+  memcpy(out, text, a); memcpy(out + a, to, t); memcpy(out + a + t, at + f, n - a - f + 1);
+  return out;
+}
+static void realms_twin(PGconn *db) {
+  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) return;
+  bool on = flag(db, "realm_invites");
+  signal(SIGCHLD, SIG_IGN);
+  if (fork() != 0) return;
+  bool kept = drops_site_write("realms/invite-only.txt", "text/plain; charset=utf-8", on ? "on\n" : "off\n");
+  char *md = drops_site_read("realms/index.md"), *to = NULL;
+  if (md) to = on ? replaced(md, BUILD_LINK, "") : (strstr(md, BUILD_LINK) ? NULL : replaced(md, "(https://openagents.com/verse/galaxy).", "(https://openagents.com/verse/galaxy)" BUILD_LINK "."));
+  bool wrote = to && drops_site_write("realms/index.md", "text/markdown; charset=utf-8", to);
+  api_log("access: realms twin %s: marker %s, copy %s", on ? "on" : "off", kept ? "kept" : "not kept", wrote ? "written" : "as it was");
+  free(md); free(to);
+  _exit(0);
+}
+
 static bool digits(const char *s, size_t n) {
   if (!n || n > 18) return false;
   for (size_t i = 0; i < n; i++) if (!isdigit((unsigned char)s[i])) return false;
@@ -215,7 +246,7 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
   char *body = body_of(q);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   const char *v[3] = {body, who, origin()};
-  if (!strcmp(rest, "flag")) answer(q, db, RESULT "access.set_flag($1::jsonb, $2) x", 2, v, "flag");
+  if (!strcmp(rest, "flag")) { answer(q, db, RESULT "access.set_flag($1::jsonb, $2) x", 2, v, "flag"); realms_twin(db); }
   else if (!strcmp(rest, "invites")) answer(q, db, RESULT "access.mint($1::jsonb, $2, $3) x", 3, v, "mint");
   else if (!strcmp(rest, "creators")) answer(q, db, RESULT "access.add($1::jsonb, $2) x", 2, v, "add");
   else if (!strcmp(rest, "grandfather")) answer(q, db, RESULT "access.grandfather($2) x WHERE $1::text IS NOT NULL", 2, v, "grandfather");

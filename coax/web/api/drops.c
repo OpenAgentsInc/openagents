@@ -1177,6 +1177,29 @@ bool drops_site_write_bytes(const char *name, const char *type, const unsigned c
   char tok[4096];
   return token(tok, sizeof tok) && site_put_bytes(tok, name, type, data, n);
 }
+// A text object's bytes from the site's bucket (malloc'd, NUL-terminated), or NULL (access.c).
+char *drops_site_read(const char *name) {
+  const char *bucket = getenv("OA_SITE_BUCKET");
+  char tok[4096], obj[1024], url[2048], auth[4200];
+  if (!bucket || !*bucket || !token(tok, sizeof tok)) return NULL;
+  enc(obj, sizeof obj, name);
+  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s?alt=media", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"), bucket, obj);
+  CURL *h = curl_easy_init();
+  if (!h) return NULL;
+  bytes b = {0};
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  struct curl_slist *list = curl_slist_append(NULL, auth);
+  curl_easy_setopt(h, CURLOPT_URL, url);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, list);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take_model);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, 30L);
+  long status = 0;
+  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(list); curl_easy_cleanup(h);
+  if (status != 200 || !add(&b, "", 1)) { free(b.p); return NULL; }
+  return (char *)b.p;
+}
 bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap) {
   return open_upload(object, type, bytes, from, out, cap);
 }

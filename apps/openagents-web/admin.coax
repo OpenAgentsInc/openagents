@@ -255,8 +255,8 @@ ad_field :: (line: string, k: int) -> string {
 ad_access_rows :: (s: [] AdminState, bytes: string, from: int) {
   n := 0;
   for part: 0..<4 {
-    head := ifx part == 0 then "#SWITCHES|fw|SWITCH|STATE|VALUE\n" else ifx part == 1 then "#INVITES|vw|ID|USES|USED|STATE|NOTE\n"
-            else ifx part == 2 then "#REQUESTS|qw|ID|WHO|WHAT THEY'D MAKE|CONTACT|STATE\n" else "#CREATORS|w|WHO|HOW\n";
+    head := ifx part == 0 then "#SWITCHES|fw|SWITCH|STATE|VALUE\n" else ifx part == 1 then "#INVITES|vw|ID|USES|USED|STATE|NOTE|EXPIRES\n"
+            else ifx part == 2 then "#REQUESTS|qw|ID|WHO|WHAT THEY'D MAKE|CONTACT|STATE|ASKED\n" else "#CREATORS|w|WHO|HOW|SINCE\n";
     kind := cast(u8) (ifx part == 0 then 'F' else ifx part == 1 then 'I' else ifx part == 2 then 'R' else 'C');
     n = ad_dput(s, n, head);
     i := from;
@@ -273,12 +273,14 @@ ad_access_rows :: (s: [] AdminState, bytes: string, from: int) {
         n = ad_dput(s, n, label); n = ad_dput(s, n, ifx on then "|ON|1\n" else "|OFF|0\n");
       } else if part == 1 {
         for k: 1..<4 { n = ad_dput(s, n, ad_field(line, k)); n = ad_dput(s, n, "|"); }
-        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 6)); n = ad_dput(s, n, "\n");
+        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 6)); n = ad_dput(s, n, "|");
+        n = ad_dput(s, n, ad_field(line, 7)); n = ad_dput(s, n, "\n");   // when it expires, Chicago time (0091)
       } else if part == 2 {
         for k: 1..<5 { n = ad_dput(s, n, ad_field(line, k)); n = ad_dput(s, n, "|"); }
-        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "\n");
+        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 7)); n = ad_dput(s, n, "\n");
       } else {
-        n = ad_dput(s, n, ad_field(line, 1)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 2)); n = ad_dput(s, n, "\n");
+        n = ad_dput(s, n, ad_field(line, 1)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 2)); n = ad_dput(s, n, "|");
+        n = ad_dput(s, n, ad_field(line, 4)); n = ad_dput(s, n, "\n");
       }
     }
   }
@@ -869,7 +871,7 @@ AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nno
   #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/analytics";
 }
 
-AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000|live|for the playtest\nI|11|1|1|1780000000000|used|\nR|7|npub1asker|a racing track|me@example.com|waiting|1780000000000\nR|6|npub1other|a garden||declined|1770000000000\nC|npub1maker|grandfathered|1760000000000\n";
+AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000|live|for the playtest|Sep 21 11:33\nI|11|1|1|1780000000000|used||May 28 15:46\nR|7|npub1asker|a racing track|me@example.com|waiting|1780000000000|May 28 15:46\nR|6|npub1other|a garden||declined|1770000000000|Feb 02 21:20\nC|npub1maker|grandfathered|1760000000000|Oct 09 03:53\n";
 
 #test "/admin/access reads the lines into SWITCHES, INVITES, REQUESTS and CREATORS, with buttons only where they do something" {
   s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
@@ -888,6 +890,8 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   #assert ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 0) == "INVITE ONLY" && ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 1) == "ON";
   #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 4) == "for the playtest" && ad_cell(s[..], s[0].row_at[4], s[0].row_end[4], 2) == "a racing track";
   #assert ad_cell(s[..], s[0].row_at[6], s[0].row_end[6], 0) == "npub1maker";
+  #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 5) == "Sep 21 11:33" && ad_cell(s[..], s[0].row_at[4], s[0].row_end[4], 5) == "May 28 15:46";   // when, Chicago time
+  #assert ad_cell(s[..], s[0].row_at[6], s[0].row_end[6], 2) == "Oct 09 03:53";
   n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   #assert n > n0;
   l := ad_layout(s[..]);

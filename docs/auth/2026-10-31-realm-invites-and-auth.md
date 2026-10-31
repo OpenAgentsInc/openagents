@@ -4,7 +4,7 @@ Status: spec, and a first build behind two flags that are off
 (2026-10-31). Nothing is deployed. Owner's ask: only approved users make
 realms; add user authentication, probably WorkOS with Nostr.
 
-Code: `coax/web/api/access.c`, `coax/web/api/migrations/0090_realm_invites.sql`,
+Code: `coax/web/api/access.c`, `coax/web/api/migrations/0090_realm_invites.sql` and `0091_access_times.sql`,
 the gate in `realms.c`; checks in `coax/web/api/test_access.py`. Pages:
 `builder.coax` (the invite screen), `private.coax` (`/invite`), the admin
 access view, and the MAKE A REALM links in `realmlist.coax`, `verse.coax`,
@@ -90,6 +90,12 @@ their body (payload tag) and are good once.
   `creator`, `asked`. With `make 0` the MAKE A REALM links are hidden and
   `/realms/new` shows the invite screen (code box, request form). Any error
   reads as `make 1`, today's behaviour; the server still enforces.
+- **Text copies:** `/realms`' markdown copy (`realms/index.md`, from
+  `coax/web/realms.ts`) links to `/realms/new`. Turning the flag on or off
+  writes the marker `realms/invite-only.txt` and the copy without or with
+  that link into the site's bucket (`access.c`); `coax/web/upload.py` keeps
+  the marker and drops the link from every release's copy while it says
+  `on`. Its HTML copy has no such link.
 
 ## 5. API
 
@@ -98,7 +104,7 @@ their body (payload tag) and are good once.
 | `GET /api/playtest/access` | anyone | lines; off: `invites 0`, `make 1` |
 | `POST /api/playtest/access/redeem {code}` | logged in | `creator 1`; 401, 404, 429 |
 | `POST /api/playtest/access/request {note, contact?}` | logged in | `asked waiting`; 400, 401, 429 |
-| `GET /api/admin/access` | admin | rows `F` flags, `I` invites, `R` requests, `C` creators |
+| `GET /api/admin/access` | admin | rows `F` flags, `I` invites, `R` requests, `C` creators; each ends with its time in Chicago (0091) |
 | `POST /api/admin/access/flag {name, on}` | admin | `realm_invites`, `auth_v2` |
 | `POST /api/admin/access/invites {uses?, days?, note?}` | admin | `{id, code, link}`, the code once |
 | `POST /api/admin/access/invites/<id>/revoke` | admin | 404 none |
