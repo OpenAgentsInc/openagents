@@ -112,7 +112,9 @@ BTN_REALM :: 5;                        // MAKE YOUR REALM, or YOUR REALM
 BTN_NAME :: 6; BTN_CHOICE :: 7;        // the setup: the name box, then a row per choice
 BTN_MAKE :: BTN_CHOICE + CHOICES; BTN_BACK :: BTN_MAKE + 1;
 BTN_GUIDE :: BTN_BACK + 1;             // the landing's Agent orb: hold to talk to the guide
-BUTTONS :: BTN_GUIDE + 1;
+BTN_WHO :: BTN_GUIDE + 1;              // the galaxy's top right: who you are; a press opens /login
+BUTTONS :: BTN_WHO + 1;
+WHO_URL :: "/login";
 
 // The Agent orb's voice (coax/web/voice.js, the page's data-voice="guide"):
 // action 7 "on" while it's held and "end" when let go (push to talk); voice.js
@@ -317,6 +319,7 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
   if b == BTN_HOUSE { pick(s, t, HOUSE, "tag"); return; }
   if b == BTN_CODING { pick(s, t, CODING, "tag"); return; }
   if b == BTN_REALM { realm_button(s, t); return; }
+  if b == BTN_WHO { track(t, "login-open"); if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, WHO_URL); } return; }
   if b == BTN_NAME { s[0].focused = true; return; }
   if b >= BTN_CHOICE && b < BTN_CHOICE + CHOICES { c := b - BTN_CHOICE; s[0].picks[c] = (s[0].picks[c] + 1) % CHOICE_COUNT[c]; return; }
   if b == BTN_MAKE { make_realm(s, t); return; }
@@ -467,6 +470,7 @@ verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c {
   if b == BTN_MAKE { return "realm-make"; }
   if b == BTN_BACK { return "realm-back"; }
   if b == BTN_GUIDE { return "guide"; }
+  if b == BTN_WHO { return "login"; }
   if s[0].page == PAGE_GALAXY && !s[0].setup { p := planet_at(s, x, y); if p >= 0 { return realm_id_at(s, p); } }
   return "";
 }
@@ -1180,12 +1184,13 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   vertices := at;
   phone := s[0].touch || w < 640 * k;
   vertices = write(d, out, vertices, "THE VERSE", 16 * k, 16 * k + 13 * k, 9 * k, WIDE * 0.6, space_for(WIDE * 0.6), white(k, 0.95), false, false);
-  // who you are, top right: the email given, else a guest
-  who := ifx s[0].kept_n > 0 then kept_text(s) else "GUEST";
+  // who you are, top right: the email given, else a guest who can log in; a press opens /login
+  who := ifx s[0].kept_n > 0 then kept_text(s) else "GUEST · LOG IN";
   wcap := 8 * k;
   ww := lo(measure(who, GAP, SPACE, false) * wcap + 28 * k, w * 0.5);
   wb := Box.{x0 = w - 16 * k - ww, y0 = 14 * k, x1 = w - 16 * k, y1 = 44 * k};
-  plate(s, wb, 0.85, LOOK_PLAIN);
+  s[0].boxes[BTN_WHO] = wb; s[0].shown[BTN_WHO] = true;
+  plate(s, wb, 0.85, button_look(s, BTN_WHO, false));
   vertices = draw_fit(d, out, vertices, who, wb.x0 + 14 * k, (wb.y0 + wb.y1) * 0.5 + wcap * 0.5, wcap, GAP, SPACE, white(k, 0.9), ww - 28 * k);
   vertices = centred(d, out, vertices, "GALAXY", cx, 82 * k, 9 * k, WIDE, bronze(k, 0.9));
 
@@ -1716,4 +1721,14 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   open := 0;
   for p: 0..<PLANETS { if PLANET_KIND[p] == KIND_OPEN { open += 1; } }
   #assert open > 1;
+}
+
+#test "the galaxy's GUEST · LOG IN is a control: a press opens /login" {
+  s: [1] VerseState; t: [1] Track;
+  page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+  #assert s[0].shown[BTN_WHO];
+  click(s[..], t[..], s[0].boxes[BTN_WHO]);
+  #assert cast(string) s[0].next[0..<s[0].next_n] == "/login";
+  redraw(s[..], t[..], 0.016);
+  #assert s[0].action == ACT_NAVIGATE;
 }
