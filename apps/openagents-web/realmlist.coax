@@ -544,12 +544,12 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
   return frame(out, v, b, 10 * d, p);
 }
 
-// A tower's name plate over its top.
+// A tower's label over its top when it is named: its name and the rank above it.
 name_plate :: (s: [] RealmsState, k: Iso, r: int, cap: f32, p: Pen) -> Box {
   d := p.d; pad := 3 * d;
   cx := sx(k, s[0].gx[r], s[0].gy[r]); ty := sy(k, s[0].gx[r] - HALF, s[0].gy[r] - HALF, s[0].gh[r]) - 6 * d;
   nw := ink_width(field(REALMS_ROWS, r, C_TITLE), cap, GAP, SPACE, ink(p, INK_DIM));
-  return Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - cap * 1.15 - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + cap * 0.35 + pad};
+  return Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - cap - 13 * d - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + cap * 0.35 + pad};
 }
 overlaps :: (a: Box, b: Box) -> bool { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
 // Which towers' names show over them: a name shows only where it covers no other tower and no name
