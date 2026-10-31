@@ -141,6 +141,13 @@ bounded() {
   (( status != 143 && status != 137 )) || echo "  $(basename "$2" 2>/dev/null || echo check) passed its ${limit} s limit" >&2
   return "$status"
 }
+# Only what a release breaks may stop it. Each check also runs against what is live before
+# anything changes (the baseline); a check already failing there is reported, never blocking:
+# the release goes out and the failure stays someone's to fix (owner, 2026-10-31: never again
+# "nothing can be released"). smoke.sh is compared failure by failure.
+fails_of() { sed -n 's/^  FAIL  //p' | sed 's/ ([^)]*)$//' | sort -u; }
+new_fails() { comm -23 <(printf '%s\n' "$1" | sed '/^$/d' | sort -u) <(printf '%s\n' "$2" | sed '/^$/d' | sort -u); }
+already() { echo "  $1 already fails on what is live, so it doesn't stop this release: $2" >&2; }
 # Headless Chromes on a temporary profile whose parent is gone (adopted by
 # launchd/init): left by a check that was killed outright. Never a person's
 # own Chrome, whose profile isn't in a temporary directory.
@@ -271,16 +278,41 @@ compiler "$tree" "$tree" || exit 1
 lap compiler "$t"
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
 
+base_dir=$(mktemp -d)
+live_via=""
+[[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || live_via="--via $lb_ip"
+# the baseline runs beside the staging build
+( "$tree/coax/web/smoke.sh" https://openagents.com $live_via > "$base_dir/smoke" 2>&1 || true
+  if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]]; then
+    bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com > "$base_dir/home" 2>&1 && echo ok > "$base_dir/home.ok" || true
+  fi
+  [[ -n "$live_via" ]] || { bounded 600 bun "$tree/coax/web/goldens.ts" https://openagents.com --starts > "$base_dir/starts" 2>&1 && echo ok > "$base_dir/starts.ok" || true; } ) &
+baseline_job=$!
+baseline() { wait "$baseline_job" 2>/dev/null || true; }
+live_ok() { [[ -f "$base_dir/$1.ok" ]]; }
+live_smoke_fails() { fails_of < "$base_dir/smoke"; }
+
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
-  t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
+  t=$(now); staging_smoke=$("$tree/coax/web/smoke.sh" https://staging.openagents.com 2>&1) || true; echo "$staging_smoke"; baseline
+  broke=$(new_fails "$(fails_of <<< "$staging_smoke")" "$(live_smoke_fails)")
+  [[ -z "$broke" ]] || { echo "release $commit: staging smoke fails where production passes; production is untouched:" >&2; echo "$broke" >&2; exit 1; }
+  [[ -z "$(fails_of <<< "$staging_smoke")" ]] || already "smoke" "$(fails_of <<< "$staging_smoke" | tr '\n' ';')"
+  lap smoke "$t"
   if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]]; then
-    t=$(now); bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; lap "live home" "$t"
+    t=$(now)
+    if ! bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; then
+      if live_ok home; then echo "release $commit: staging's live homepage fails where production's passes; production is untouched" >&2; exit 1; fi
+      already "the live homepage check" "$(tail -1 "$base_dir/home")"
+    fi
+    lap "live home" "$t"
   fi
   t=$(now)
   if ! $gated; then
-    bounded 600 bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts ||
-      { echo "release $commit: staging's pages don't start (goldens.ts --starts above); production is untouched" >&2; exit 1; }
+    if ! bounded 600 bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts; then
+      if live_ok starts || [[ -n "$live_via" ]]; then echo "release $commit: staging's pages don't start (goldens.ts --starts above) where production's do; production is untouched" >&2; exit 1; fi
+      already "goldens.ts --starts" "$(tail -3 "$base_dir/starts" | tr '\n' ' ')"
+    fi
     lap starts "$t"
   else
   # Pages unchanged since production's newest live release, if it was staged, skip their golden comparison.
@@ -367,16 +399,24 @@ via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
 walked=true check=--starts
 ! $thorough || check=--walk
+baseline
 [[ -n "$via" ]] || bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
-if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via; then
-  echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
+if ! $walked && [[ "$check" == --starts ]] && ! live_ok starts; then already "goldens.ts --starts" "it failed before this release went out too"; walked=true; fi
+prod_smoke=$("$tree/coax/web/smoke.sh" https://openagents.com $via 2>&1) || true; echo "$prod_smoke"
+broke=$(new_fails "$(fails_of <<< "$prod_smoke")" "$(live_smoke_fails)")
+if ! $walked || [[ -n "$broke" ]]; then
+  echo "release $commit: production smoke failed where it passed before this release; rolling back to the pages from before" >&2
+  [[ -z "$broke" ]] || echo "$broke" >&2
   "$here/rollback.sh" "$stamp"
   exit 1
 fi
 if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]] && ! bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com; then
-  echo "release $commit: production live homepage failed; rolling back" >&2
-  "$here/rollback.sh" "$stamp"
-  exit 1
+  if live_ok home; then
+    echo "release $commit: production live homepage failed where it passed before this release; rolling back" >&2
+    "$here/rollback.sh" "$stamp"
+    exit 1
+  fi
+  already "the live homepage check" "$(tail -1 "$base_dir/home")"
 fi
 lap "prod ${check#--}" "$t"
 # This release went live after its walk and smoke: the next one may build on it.
