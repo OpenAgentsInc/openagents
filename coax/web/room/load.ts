@@ -5,22 +5,23 @@
 const base = process.argv[2] ?? "ws://127.0.0.1:8830";
 const players = Number(process.argv[3] ?? 4), seconds = Number(process.argv[4] ?? 10);
 const room = `load-${Date.now() % 100000}`;
-type P = { ws: WebSocket; heard: number; seat: number; ball: number[]; tick: number; gaps: number };
+type P = { ws: WebSocket; heard: number; seat: number; balls: Map<number, number[]>; tick: number; gaps: number };
 const ps: P[] = [];
 for (let i = 0; i < players; i++) {
   const ws = new WebSocket(`${base}/api/room/orbit-league/${room}`);
-  const p: P = { ws, heard: 0, seat: -1, ball: [], tick: 0, gaps: 0 };
+  const p: P = { ws, heard: 0, seat: -1, balls: new Map(), tick: 0, gaps: 0 };
   ws.onmessage = (e) => {
     const f = String(e.data).split(" ");
     if (f[0] !== "s") return;
     const tick = Number(f[1]);
     if (p.tick && tick !== p.tick + 1) p.gaps++;
     p.tick = tick; p.seat = Number(f[2]); p.heard++;
-    p.ball = f.slice(10, 13).map(Number);
+    p.balls.set(tick, f.slice(10, 13).map(Number));
   };
   ps.push(p);
 }
-await new Promise((r) => setTimeout(r, 1000));
+// every socket open (a cold service or a fresh edge can take a few seconds)
+for (let i = 0; i < 50 && ps.some((p) => p.ws.readyState === WebSocket.CONNECTING); i++) await new Promise((r) => setTimeout(r, 100));
 const open = ps.filter((p) => p.ws.readyState === WebSocket.OPEN).length;
 let t = 0;
 const send = setInterval(() => {
@@ -38,11 +39,12 @@ const dt = (performance.now() - t0) / 1000;
 clearInterval(send);
 const rates = ps.map((p, i) => (p.heard - start[i]) / dt);
 const seats = ps.map((p) => p.seat);
-// the same ball: even seats as sent, odd seats turned round (x and z negated)
-const balls = ps.map((p) => (p.seat % 2 ? [-p.ball[0], p.ball[1], -p.ball[2]] : p.ball));
+// the same ball at the same tick: even seats as sent, odd seats turned round (x and z negated)
+const tick = Math.min(...ps.map((p) => p.tick)) - 1;
+const balls = ps.map((p) => { const b = p.balls.get(tick) ?? [NaN, NaN, NaN]; return p.seat % 2 ? [-b[0], b[1], -b[2]] : b; });
 const spread = Math.max(...balls.map((b) => Math.hypot(b[0] - balls[0][0], b[1] - balls[0][1], b[2] - balls[0][2])));
 console.log(JSON.stringify({ room, open, seats, rates: rates.map((r) => +r.toFixed(1)), gaps: ps.map((p) => p.gaps), ball_spread_mm: spread }));
 ps.forEach((p) => p.ws.close());
-const ok = open === players && rates.every((r) => r >= 59) && spread < 2000;
+const ok = open === players && rates.every((r) => r >= 59) && spread < 2;
 console.log(ok ? "holds" : "fails");
 process.exit(ok ? 0 : 1);
