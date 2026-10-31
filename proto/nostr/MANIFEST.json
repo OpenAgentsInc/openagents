@@ -202,6 +202,30 @@
       ]
     },
     {
+      "package": "nostr.block.pl.v1alpha1",
+      "proto": "nostr/block/pl/v1alpha1/lease.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-PL.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "1e793eb8ccada7cb2dafc07b5de6745143052babd21ed2cc42319edd6b87bf72"
+        }
+      ]
+    },
+    {
+      "package": "nostr.block.rs.v1alpha1",
+      "proto": "nostr/block/rs/v1alpha1/read_state.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-RS.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "d7279c8bac746e925ba57b091e988052051f3abad21dfaa4f6b5f329aadeed2d"
+        }
+      ]
+    },
+    {
       "package": "nostr.block.wp.v1alpha1",
       "proto": "nostr/block/wp/v1alpha1/workspace.proto",
       "status": "alpha",

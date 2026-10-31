@@ -1,0 +1,99 @@
+// An untrusted, source-preserving NIP-PL push-lease envelope (kind 30350),
+// for Coder host push leases. A matching DTO is not a signature check, an
+// expiration window (now, allowed skew, max_lease_ttl), an executor-key
+// lookup, a decryption of the lease or its acceptance. Public tags are exactly
+// one d (1 to 64 bytes), one expiration (canonical decimal), one exec and at
+// most one alt, each with one value; any other tag, an empty tag, a duplicate
+// or an extra value refuses the envelope, as the NIP requires. The protobuf
+// wire and exact source JSON are borrowed and must remain stable.
+//
+// Checks: coax test coax/lib/nostr/adapters/pl-projection.coax --run-steps 250000000 (its secp tables are built at compile time).
+#load "pl-proto-import.coax";
+#load "event-projection.coax";
+#load "../../../tests/nostr/pl_lease_fixtures.coax";
+#authority;
+
+PlaLease :: struct {original:[]u8;consistent:bool;}
+
+// v as canonical decimal: no sign, no leading zero, nothing else.
+pla_decimal :: (s:string,v:u64)->bool {
+ digits:[20]u8;n:=0;x:=v;
+ while true {digits[n]=cast(u8)(48+cast(int)(x%10));n+=1;x/=10;if x==0 {break;}}
+ if s.count!=n {return false;}
+ for i:0..<n {if s[i]!=digits[n-1-i] {return false;}}
+ return true;
+}
+
+pla_tags :: (p:PL_PushLease,e:N_Event)->bool {
+ installation:=PL_PushLease_get_installation(p).value;expiration:=PL_PushLease_get_expiration(p).value;
+ executor:=PL_PushLease_get_executor_key(p).value;alt:=PL_PushLease_get_alt(p);
+ if installation.count==0 {return false;}
+ seen:u32=0;tags:=N_Event_iter_tags(e);
+ while tags.has_value {
+  values:=N_Tag_iter_values(tags.value);if !values.has_value {return false;}
+  tag:=values.value;values=N_Tag_next_values(values);
+  field:=ifx tag=="d" then 1 else ifx tag=="expiration" then 2 else ifx tag=="exec" then 4 else ifx tag=="alt" then 8 else 0;
+  if field==0 || !values.has_value || (seen & cast(u32)field)!=0 {return false;}
+  seen|=cast(u32)field;value:=values.value;values=N_Tag_next_values(values);
+  if values.has_value {return false;}
+  if field==1 && value!=installation {return false;}
+  if field==2 && !pla_decimal(value,expiration) {return false;}
+  if field==4 && value!=executor {return false;}
+  if field==8 && (!alt.present || value!=alt.value) {return false;}
+  tags=N_Event_next_tags(tags);
+ }
+ return (seen & 7)==7 && ((seen & 8)!=0)==alt.present;
+}
+
+pla_read :: (wire:[]u8)->PlaLease #export_c {
+ p:=PL_PushLease_decode(wire);if p.error!=0 {return PlaLease.{};}
+ source:=PL_PushLease_get_original(p).value;
+ checked:=npa_read(source.wire);if !checked.consistent {return PlaLease.{};}
+ event:=N_SignedEvent_get_event(N_SignedEvent_decode(source.wire)).value;
+ if N_Event_get_kind(event).value!=30350 || !pla_tags(p,event) {return PlaLease.{};}
+ return PlaLease.{original=checked.original,consistent=true};
+}
+
+#test "PL accepts matching envelopes without accepting the lease" {
+ a:=PL_FIX_OK;r:=pla_read(a[..]);#assert r.consistent && r.original.count>0 && r.original[0]==123;
+ b:=PL_FIX_NO_ALT;#assert pla_read(b[..]).consistent;
+ c:=PL_FIX_ZERO;#assert pla_read(c[..]).consistent;
+ d:=PL_FIX_MAX;#assert pla_read(d[..]).consistent;
+ e:=PL_FIX_D64;#assert pla_read(e[..]).consistent;
+ empty:[1]u8;#assert !pla_read(empty[0..<0]).consistent;
+}
+#test "PL projection cannot diverge from its original" {
+ a:=PL_FIX_BAD_KIND;#assert !pla_read(a[..]).consistent;
+ b:=PL_FIX_BAD_ORIGINAL;#assert !pla_read(b[..]).consistent;
+ c:=PL_FIX_BAD_D;#assert !pla_read(c[..]).consistent;
+ d:=PL_FIX_BAD_EXPIRATION;#assert !pla_read(d[..]).consistent;
+ e:=PL_FIX_BAD_EXEC;#assert !pla_read(e[..]).consistent;
+ f:=PL_FIX_BAD_ALT;#assert !pla_read(f[..]).consistent;
+ g:=PL_FIX_ALT_ONLY_PROJECTED;#assert !pla_read(g[..]).consistent;
+ h:=PL_FIX_ALT_NOT_PROJECTED;#assert !pla_read(h[..]).consistent;
+}
+#test "PL public tags are exactly d, expiration, exec and at most one alt, one value each" {
+ a:=PL_FIX_NO_D;#assert !pla_read(a[..]).consistent;
+ b:=PL_FIX_NO_EXPIRATION;#assert !pla_read(b[..]).consistent;
+ c:=PL_FIX_NO_EXEC;#assert !pla_read(c[..]).consistent;
+ d:=PL_FIX_DUP_D;#assert !pla_read(d[..]).consistent;
+ e:=PL_FIX_DUP_EXPIRATION;#assert !pla_read(e[..]).consistent;
+ f:=PL_FIX_DUP_EXEC;#assert !pla_read(f[..]).consistent;
+ g:=PL_FIX_DUP_ALT;#assert !pla_read(g[..]).consistent;
+ h:=PL_FIX_EXTRA_TAG;#assert !pla_read(h[..]).consistent;
+ i:=PL_FIX_EMPTY_TAG;#assert !pla_read(i[..]).consistent;
+ j:=PL_FIX_EXTRA_VALUE;#assert !pla_read(j[..]).consistent;
+ k:=PL_FIX_EXTRA_EXEC_VALUE;#assert !pla_read(k[..]).consistent;
+ l:=PL_FIX_NO_VALUE;#assert !pla_read(l[..]).consistent;
+ m:=PL_FIX_EMPTY_D;#assert !pla_read(m[..]).consistent;
+ n:=PL_FIX_UNKNOWN_AS_D;#assert !pla_read(n[..]).consistent;
+}
+#test "PL expiration is canonical unsigned decimal" {
+ a:=PL_FIX_LEADING_ZERO;#assert !pla_read(a[..]).consistent;
+ b:=PL_FIX_SIGNED;#assert !pla_read(b[..]).consistent;
+ c:=PL_FIX_PLUS;#assert !pla_read(c[..]).consistent;
+ d:=PL_FIX_OVERFLOW;#assert !pla_read(d[..]).consistent;
+ e:=PL_FIX_EMPTY_EXPIRATION;#assert !pla_read(e[..]).consistent;
+ #assert pla_decimal("0",0) && pla_decimal("10",10) && pla_decimal("18446744073709551615",18446744073709551615);
+ #assert !pla_decimal("",0) && !pla_decimal("00",0) && !pla_decimal("11",10) && !pla_decimal("01",10) && !pla_decimal("1",10) && !pla_decimal("21",11);
+}

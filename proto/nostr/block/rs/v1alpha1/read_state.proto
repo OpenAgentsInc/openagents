@@ -1,0 +1,15 @@
+syntax = "proto3";
+package nostr.block.rs.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// NIP-RS: an unverified projection of a kind 30078 read-state event's public
+// envelope. The original signed event is retained; the NIP-44 blob (client_id,
+// contexts, overrides) stays ciphertext and is not projected. Decoding does
+// not verify the signature, decrypt, detect a client_id conflict or merge.
+message ReadStateEvent {
+  nostr.event.v1alpha1.SignedEvent original = 1 [(openagents.options.v1alpha1.required_value)=true];
+  // The 32 lowercase hex characters after `read-state:` in the single `d` tag.
+  optional string slot = 2 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=32];
+}

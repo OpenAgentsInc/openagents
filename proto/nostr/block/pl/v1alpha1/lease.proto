@@ -1,0 +1,18 @@
+syntax = "proto3";
+package nostr.block.pl.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// NIP-PL kind 30350: an unverified projection of a push lease's public
+// envelope. The original signed event is retained; the NIP-44 content (origin,
+// transport, endpoint, subscriptions) stays ciphertext and is not projected.
+// Decoding does not verify the signature, check the expiration against a
+// clock or a max_lease_ttl, find the executor key, or accept the lease.
+message PushLease {
+  nostr.event.v1alpha1.SignedEvent original = 1 [(openagents.options.v1alpha1.required_value)=true];
+  optional string installation = 2 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=64]; // `d`
+  optional uint64 expiration = 3 [(openagents.options.v1alpha1.required_value)=true]; // NIP-40 unix seconds
+  optional string executor_key = 4 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=256]; // `exec`
+  optional string alt = 5 [(openagents.options.v1alpha1.max_bytes)=256];
+}

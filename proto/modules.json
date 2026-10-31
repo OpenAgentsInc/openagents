@@ -65,7 +65,9 @@
       "exclude": [
         "nostr/block/mp/v1alpha1/project.proto",
         "nostr/event/v1alpha2/event.proto",
-        "nostr/block/gs/v1alpha1/signature.proto"
+        "nostr/block/gs/v1alpha1/signature.proto",
+        "nostr/block/pl/v1alpha1/lease.proto",
+        "nostr/block/rs/v1alpha1/read_state.proto"
       ]
     }
   },
@@ -145,6 +147,12 @@
     ],
     "block-git-signature": [
       "nostr/block/gs/v1alpha1/signature.proto"
+    ],
+    "block-push-lease": [
+      "nostr/block/pl/v1alpha1/lease.proto"
+    ],
+    "block-read-state": [
+      "nostr/block/rs/v1alpha1/read_state.proto"
     ]
   },
   "profile_namespaces": {
@@ -244,6 +252,16 @@
     "block-git-signature": [
       "nostr.block.gs.",
       "nostr.block.oa.",
+      "openagents.options."
+    ],
+    "block-push-lease": [
+      "nostr.event.",
+      "nostr.block.pl.",
+      "openagents.options."
+    ],
+    "block-read-state": [
+      "nostr.event.",
+      "nostr.block.rs.",
       "openagents.options."
     ]
   }

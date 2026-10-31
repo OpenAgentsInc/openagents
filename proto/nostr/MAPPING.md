@@ -25,6 +25,8 @@ allocates new Nostr kinds or wire protocols.
 | WP | WorkspaceProfileCommand | 9033 icon value; absent/empty clears, validated http(s)/image data URL sets. Live relay admin/owner authorization is required; NIP-11 presentation remains public. |
 | MP | Project, RepositoryMember | Kind 30621 source event retained byte-for-byte; project `d` and optional metadata retain presence; ordered `a` coordinates and optional relay hints preserve their original strings. Shape/bounds alone do not verify the signer, compare projections with original tags, validate repository coordinates, determine listing visibility, or grant repository/channel authority. |
 | GS | GitSignature (with OA OwnerAttestation) | The exact armored signature git stores, retained byte-for-byte, plus `v`, `pk`, `sig`, `t` and optional `oa` with its exact conditions string. Decoding does not lift `pk`, verify `sig` or the attestation, hash the payload, evaluate conditions or set trust; `gs-projection.coax` checks only that the armor is the one canonical encoding of the projected values. |
+| PL | PushLease | Kind 30350 source event retained; `d`, `expiration`, `exec` and optional `alt` projected. The NIP-44 lease stays ciphertext. `pl-projection.coax` requires exactly those public tags, one value each, canonical decimal expiration; no signature, clock/TTL window, executor lookup or acceptance. |
+| RS | ReadStateEvent | Kind 30078 source event retained; the `read-state:` slot projected. The NIP-44 blob stays ciphertext. `rs-projection.coax` requires exactly one well-formed `d` and one `t` = `read-state`; no signature, decryption, conflict check or merge. |
 
 ## Boundaries and limits
 

@@ -1,0 +1,89 @@
+// An untrusted, source-preserving NIP-RS read-state envelope (kind 30078), for
+// the CTRL and WS read-state consumers. It is consistent only for an event the
+// NIP says to keep: exactly one d tag, `read-state:` and 32 lowercase hex (the
+// projected slot), and exactly one ["t", "read-state"]. Other tags, and other t
+// values, are allowed. A matching DTO is not a signature check, a NIP-44
+// decryption, a client_id conflict check or a merge. The protobuf wire and
+// exact source JSON are borrowed and must remain stable.
+//
+// Checks: coax test coax/lib/nostr/adapters/rs-projection.coax --run-steps 250000000 (its secp tables are built at compile time).
+#load "rs-proto-import.coax";
+#load "event-projection.coax";
+#load "../../../tests/nostr/rs_read_state_fixtures.coax";
+#authority;
+
+RsaReadState :: struct {original:[]u8;consistent:bool;}
+
+RSA_PREFIX :: "read-state:";
+
+// 32 lowercase hex characters.
+rsa_slot :: (s:string)->bool {
+ if s.count!=32 {return false;}
+ for i:0..<32 {c:=s[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
+// d is the prefix and then exactly the slot.
+rsa_d :: (d:string,slot:string)->bool {
+ if d.count!=RSA_PREFIX.count+slot.count {return false;}
+ for i:0..<RSA_PREFIX.count {if d[i]!=RSA_PREFIX[i] {return false;}}
+ for i:0..<slot.count {if d[RSA_PREFIX.count+i]!=slot[i] {return false;}}
+ return true;
+}
+
+rsa_tags :: (m:RS_ReadStateEvent,e:N_Event)->bool {
+ slot:=RS_ReadStateEvent_get_slot(m).value;
+ if !rsa_slot(slot) {return false;}
+ ds:=0;ts:=0;tags:=N_Event_iter_tags(e);
+ while tags.has_value {
+  values:=N_Tag_iter_values(tags.value);
+  if values.has_value {
+   tag:=values.value;values=N_Tag_next_values(values);
+   if tag=="d" {ds+=1;if !values.has_value || !rsa_d(values.value,slot) {return false;}}
+   if tag=="t" && values.has_value && values.value=="read-state" {ts+=1;}
+  }
+  tags=N_Event_next_tags(tags);
+ }
+ return ds==1 && ts==1;
+}
+
+rsa_read :: (wire:[]u8)->RsaReadState #export_c {
+ m:=RS_ReadStateEvent_decode(wire);if m.error!=0 {return RsaReadState.{};}
+ source:=RS_ReadStateEvent_get_original(m).value;
+ checked:=npa_read(source.wire);if !checked.consistent {return RsaReadState.{};}
+ event:=N_SignedEvent_get_event(N_SignedEvent_decode(source.wire)).value;
+ if N_Event_get_kind(event).value!=30078 || !rsa_tags(m,event) {return RsaReadState.{};}
+ return RsaReadState.{original=checked.original,consistent=true};
+}
+
+#test "RS keeps read-state envelopes whatever else they carry" {
+ a:=RS_FIX_OK;r:=rsa_read(a[..]);#assert r.consistent && r.original.count>0 && r.original[0]==123;
+ b:=RS_FIX_MORE_TAGS;#assert rsa_read(b[..]).consistent;
+ c:=RS_FIX_EXTRA_D_VALUE;#assert rsa_read(c[..]).consistent;
+ empty:[1]u8;#assert !rsa_read(empty[0..<0]).consistent;
+}
+#test "RS projection cannot diverge from its original" {
+ a:=RS_FIX_BAD_KIND;#assert !rsa_read(a[..]).consistent;
+ b:=RS_FIX_BAD_ORIGINAL;#assert !rsa_read(b[..]).consistent;
+ c:=RS_FIX_BAD_SLOT;#assert !rsa_read(c[..]).consistent;
+}
+#test "RS ignores events without exactly one well-formed d and one read-state t" {
+ a:=RS_FIX_NO_D;#assert !rsa_read(a[..]).consistent;
+ b:=RS_FIX_TWO_D;#assert !rsa_read(b[..]).consistent;
+ c:=RS_FIX_D_NO_VALUE;#assert !rsa_read(c[..]).consistent;
+ d:=RS_FIX_OTHER_PREFIX;#assert !rsa_read(d[..]).consistent;
+ e:=RS_FIX_UPPER;#assert !rsa_read(e[..]).consistent;
+ f:=RS_FIX_SHORT;#assert !rsa_read(f[..]).consistent;
+ g:=RS_FIX_LONG;#assert !rsa_read(g[..]).consistent;
+ h:=RS_FIX_NOT_HEX;#assert !rsa_read(h[..]).consistent;
+ i:=RS_FIX_NO_T;#assert !rsa_read(i[..]).consistent;
+ j:=RS_FIX_TWO_T;#assert !rsa_read(j[..]).consistent;
+ k:=RS_FIX_T_OTHER_ONLY;#assert !rsa_read(k[..]).consistent;
+ l:=RS_FIX_T_NO_VALUE;#assert rsa_read(l[..]).consistent;
+ m:=RS_FIX_VALUE_NOT_T;#assert rsa_read(m[..]).consistent;
+}
+#test "RS slot and d spellings" {
+ #assert rsa_slot("0123456789abcdef0123456789abcdef") && rsa_slot("90af90af90af90af90af90af90af90af");
+ #assert !rsa_slot("0123456789abcdef0123456789abcde") && !rsa_slot("0123456789abcdef0123456789abcdeg") && !rsa_slot("/123456789abcdef0123456789abcdef");
+ #assert !rsa_slot(":123456789abcdef0123456789abcdef") && !rsa_slot("`123456789abcdef0123456789abcdef") && !rsa_slot("A123456789abcdef0123456789abcdef");
+ #assert rsa_d("read-state:ab","ab") && !rsa_d("read-state:ab","ac") && !rsa_d("read-statf:ab","ab") && !rsa_d("Read-state:ab","ab") && !rsa_d("read-state:a","ab");
+}
