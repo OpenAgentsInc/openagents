@@ -59,7 +59,8 @@ must use a real monotonic effect, not game time, which pauses and changes speed.
 | M1. A decision arrives while play continues (21b) | A reusable Coax ticket/lifecycle gate and generic HTTP cancellation/deadline/late-response fencing. Fixed capacity, one pending guard request, exactly-once consumption and explicit refusal reasons. | Authored Coax checks; focused authority mutation; native debug/release and sanitizer checks; controlled asynchronous browser/effect tests. |
 | M2. An Everglade guard asks (21c) | A small Coax observation/request/response adapter, exact model/question/options validation, and an opt-in shadow integration at the existing guard-frame boundary. | Synthetic responses and actual emitted Wasm exercise request, callback, invalidation and fallback; default/golden modes make no model calls. |
 | M3. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 156–158 and 164 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
-| M3b. Requested directions (21e) | A separate explicit-help candidate, current visible goal and fixed authored routes; new frozen labels/requests and strong deterministic reference. Keep it isolated from the existing ambient policy. | 5/5 finite live smoke contexts match both the authored labels and the instant local rule. Actual page integration, player benefit and any remote-model advantage remain open. |
+| M3b. Requested directions (21e) | A separate explicit-help candidate, current visible goal and fixed authored routes; new frozen labels/requests and strong deterministic reference. Keep it isolated from the existing ambient policy. | 5/5 finite live smoke contexts match both the authored labels and the instant local rule. No measured player benefit or remote-model advantage. |
+| M3c. Directions in the actual game (21f) | Separate Directions/Find Work control, immediate local tip and optional authenticated shadow. Project current gameplay before policy and draw the HUD afterward in the same frame. | Focused projection/session checks and native ABI oracles; actual Wasm browser qualification covers controls, refusals and cancellation. Remote answers never select the displayed line. |
 | M4. Ambient application | Explicit opt-in ambient mode displays one authored line after the same admission gate; normal patrol and combat retain priority. No default activation from a confidence number alone. | Calm acceptance, alarm/death/edit/leave invalidation, late/duplicate/old callbacks, malformed answers and service refusals. Browser behavior and frame-time checks on the changed path. |
 | M5. Operational reliability | A narrow consumer-focused slice of 117/120/124: service cancellation, bounded scheduling, capacity budgets and separately hosted qualified same-checkpoint providers with explicit route admission. | Kill/disconnect/overload drills, no stale application, independent-provider recovery and no frame stalls. Provider errors retain useful typed causes. |
 | M6. Other consumers | Other Everglade ambient characters, then discrete decisions in other games. Voice uses its existing epoch gate; continuous vehicle control stays local. | Each consumer has its own legal action set, observation scope, validity conditions, fallback and quality gate. |
@@ -199,14 +200,25 @@ is unhelpful in those requested contexts; the finite local goal-to-tip rule is
 also perfect and immediate. There is no demonstrated remote-model advantage,
 calibration or measured player benefit.
 
-Directions remains an isolated prototype and runnable lifecycle example. No new
-page interaction or remote-selected line is enabled. The next game slice should
-project only the current visible objective, add a separate explicit Directions
-intent and show the cheap local reference immediately. An optional remote shadow
-path must bind each new intent, goal/world/actor/cooldown revision and HTTP slot
-through Gd, including same-goal cancel/re-request. Refuse edited-world routes
-until reachability is qualified. Do not reuse `talk_to` and its quest/dialogue
-side effects for this intent.
+[Chapter 21f](../../psionic/book/ch021f-a-guard-gives-directions.md) connects that
+candidate to the actual Everglade page. Nearby calm Bram offers a separate
+Directions button for the HUD's current unmet objective, or Find Work when no
+quest is followed. Click/touch or G creates an explicit intent without invoking
+`talk_to`, accepting a quest or changing dialogue. The fixed local tip appears
+immediately and remains useful for guests and service failures.
+
+An optional `guard-ai=directions-shadow` request requires the actual viewer
+hint and cookie-authenticated endpoint. Its model result records telemetry
+alongside the local line; no remote-selected line is shown. Projection refuses
+unknown/edited worlds, live spell-built walls, destruction, missing targets,
+arrival and unsafe gameplay. The narrow world-envelope validator must agree
+with the existing edit parser. Same-frame gameplay facts precede policy and HUD
+rendering. Current epoch, actor/generation, world, goal and intent fence every
+request, including same-goal cancel/re-request. A four-second local tip,
+six-second cooldown, eight-second shadow lease, ten-second cadence and
+six-attempt visit budget bound the interaction. Refused gestures never queue
+a retry. See the [page integration record](../verification/guard-directions-page-2026-10-30.md)
+for the exact changed-source checks and synthetic browser scope.
 
 Any player-facing remote selection needs a richer independently labeled purpose
 where the model can add value over a strong local rule, plus real frame and

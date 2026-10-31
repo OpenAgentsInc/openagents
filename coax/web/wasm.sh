@@ -10,6 +10,7 @@ set -euo pipefail
 coax_file="$1"; face="$2"; out="$3"; shift 3
 libraries=("$@")
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
+coax_driver="${COAX:-$repo/coax/bin/coax}"
 # Coax sources by their path in the repository (apps/openagents-web/x.coax),
 # never the checkout's absolute path: the C embeds source paths for its
 # runtime messages, so a module built in any checkout or temporary release
@@ -36,7 +37,7 @@ trap 'rm -rf "$work"' EXIT
 # COAXIAL_RUN_STEPS: a larger compile-time budget (coax --run-steps) for libraries whose
 # tables are computed at compile time (secp256k1 signing, for /login's words account).
 run_steps=(); [[ -n "${COAXIAL_RUN_STEPS:-}" ]] && run_steps=(--run-steps "$COAXIAL_RUN_STEPS")
-(cd "$repo" && coax/bin/coax c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$name.c"
+(cd "$repo" && "$coax_driver" c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$name.c"
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
 # links without the optimizer pass, for the fastest edit-to-screen loop;
@@ -51,7 +52,7 @@ objects=("$work/$name.o" "$work/$name.face.o")
 pids=()
 for library in ${libraries[@]+"${libraries[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-  (cd "$repo" && coax/bin/coax c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c"
+  (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c"
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o" & pids+=($!)
   objects+=("$work/$base.o")
 done

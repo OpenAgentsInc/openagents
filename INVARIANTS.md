@@ -2182,7 +2182,7 @@ proof that remote work stopped or that a model's probabilities are calibrated.
 The generic browser HTTP slots fence async completion across cancellation,
 reuse and engine replacement. Bounded requests have an abort timer and stream
 byte cap; explicit cancellation releases silently. Host JS does effects only.
-The first Everglade consumer keeps admission and its authored option contract
+The ambient Everglade consumer keeps admission and its authored option contract
 in a separately linked Coax policy library. It is off by default; opt-in shadow
 mode records enums and changes no patrol, combat, dialogue or replicated state.
 Golden/clip/background and revoked local contexts cannot initiate/apply a guard
@@ -2206,9 +2206,37 @@ only fixed authored tips. Its decoder pins the checkpoint/provider and complete
 choice contract; semantic admission rejects a route for another goal, expired
 answers and revoked requests, including quiet. It is stateless: a page must
 still bind new intents, current world/goal/actor/cooldown revisions and transport
-ownership through Gd before applying anything at a simulation boundary. The
-runnable example composes those gates; the game page has no Directions consumer
-yet and default/ambient model behavior remains disabled.
+ownership through Gd before applying anything at a simulation boundary.
+
+The actual page's separate Directions/Find Work interaction uses
+`guard-guide-game.coax` for current-state projection and
+`guard-guide-session.coax` for intent, local display and shadow admission. A
+new eligible gesture displays the deterministic local rule immediately, including
+for guests. An empty quest tracker supplies no goal until explicit Find Work;
+active quests use the same followed objective as the HUD. Known unmodified
+geometry, living calm nearby Bram, foreground play and an unmet available
+destination are required. Saved edits, hidden/gone objects, spell walls and
+destruction refuse authored routes until reachability is qualified.
+
+Only literal `guard-ai=directions-shadow` plus a confirmed viewer hint can start
+the optional cookie-authenticated shadow. Player/guest IDs confer no authority;
+the server validates the cookie. The narrow world-envelope gate and successful
+game edit parser must agree before world-known. The local tip lasts four seconds;
+new tips have a six-second cooldown. Shadows have an eight-second lease,
+ten-second cadence and six-attempt visit budget, with no queued retry. Current
+epoch, actor/generation, world, followed quest/stage, goal and monotonic intent
+own each request. A queued gesture retains its input epoch; invalidation before
+the next frame cannot mint it as a fresh intent. A new gesture cancels an older owner even during cooldown.
+Only this intent's own local hint is normalized; external hints still revoke.
+
+The page updates gameplay and captures facts before the separately linked Coax
+policy runs; it draws the HUD afterward in the same frame. C transports those
+facts and effects without deciding admission. Callbacks stage only. Lifecycle,
+world, objective, combat, editing, leaving and respawn revoke pending owners;
+the host cancels their HTTP slots. Nonboundary updates cannot consume queued
+gestures or start/admit work. Every displayed line remains the local rule;
+remote admissions, refusals and quiet answers are telemetry only. The ambient
+consumer and remote-selected behavior remain off by default.
 
 Directions evaluation binds every remote record to its case's frozen request
 SHA-256, keeps development and held-out observations separate, and exposes

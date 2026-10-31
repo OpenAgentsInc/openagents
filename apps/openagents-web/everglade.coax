@@ -72,6 +72,7 @@
 #load "everglade-spells.coax";
 #load "everglade-watch.coax";
 #load "everglade-guard-ai.coax";
+#load "everglade-guide.coax";
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
 #load "everglade-interiors.coax";
@@ -327,6 +328,7 @@ Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 Everglade :: struct {
   started: bool;
   guard_ai: EgGuardAi;
+  guide: EgGuide;
   ground_gen: int;   // bumped each time the ground (store 0) is built: the host uploads it then
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
@@ -920,6 +922,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   everglade_guard_message(s, kind, text);
+  if kind == 601 || kind == 603 { s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].guide.key_down=false; s[0].guide.finger= -1; }
   if fork_message(s, kind, text) { return; }
   if everglade_voice_message(s, kind, text) { return; }
   if rp_message(s, kind, text) { return; }   // reply with a realm (everglade-reply.coax)
@@ -938,6 +941,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     return;
   }
   if kind == MSG_KEPT {
+    everglade_guard_invalidate(s);
     n := 0;
     for i: 0..<text.count { if n < SAVE_BYTES { s[0].kept[n] = text[i]; n += 1; } }
     s[0].kept_n = ifx text.count <= SAVE_BYTES then n else 0;
@@ -1224,7 +1228,8 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].board { return board_key(s, key, mods); }
   if rp_key(s, key, mods) { return true; }   // reply with a realm (everglade-reply.coax)
   if everglade_voice_key(s, key, true) { return true; }
-  if spells_key(s, key, mods) { return true; }
+  if everglade_guide_key(s, key) { return true; }
+  if spells_key(s, key, mods) { everglade_guard_invalidate(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
@@ -1241,6 +1246,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
 }
 
 everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
+  if key == 'g' || key == 'G' { s[0].guide.key_down=false; }
   if everglade_voice_key(s, key, false) { return true; }
   if spells_key_up(s, key, mods) { return true; }
   b := hold_bit(key);
@@ -1249,7 +1255,7 @@ everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_blur :: (s: [] Everglade) #export_c { everglade_guard_focus(s, false); s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
+everglade_blur :: (s: [] Everglade) #export_c { everglade_guard_focus(s, false); s[0].guide.key_down=false; s[0].guide.finger= -1; s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -1263,7 +1269,8 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if talk_pointer(s, x, y, phase, id) { return true; }
   if chat_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
-  if spells_pointer(s, x, y, phase, kind, id) { return true; }
+  if everglade_guide_pointer(s, x, y, phase, id) { return true; }
+  if spells_pointer(s, x, y, phase, kind, id) { if phase == 0 || phase == 2 { everglade_guard_invalidate(s); } return true; }
   if kind != 0 {
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
@@ -1352,6 +1359,7 @@ take_player :: (s: [] Everglade, text: string) {
     line := text[i..<e];
     i = e + 1;
     if line.count < 7 || line[0..<7] != "player=" { continue; }
+    if line[7..<line.count] != player_id(s) { everglade_guard_invalidate(s); }
     n := 0;
     for k: 7..<line.count { if n < 64 { s[0].player[n] = line[k]; n += 1; } }
     s[0].player_n = n;
@@ -3605,6 +3613,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   n = rp_hud(s, out, u, n);   // REPLY and its panel (everglade-reply.coax)
   n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
+  s[0].guide.button=Box.{};s[0].guide.drawn=0;
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
@@ -3654,6 +3663,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
     plate(s, u, tb, 0.85, ifx s[0].talk_finger >= 0 then 2.0f32 else 1.0f32);
     n = draw_text(out, n, ask, tb.x0 + 16 * k, tb.y1 - 15 * k, ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   }
+  n = everglade_guide_hud(s,out,u,n,y1-hs-lift);
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -3841,12 +3851,11 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].waited += t;
     if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; everglade_answer(s, "0\n"); }
   }
-  n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0 && !s[0].board, ox, oy, pad_x, pad_y, shown);
-  n = watch_overlay(s, out, u, n);
-  u[5] = f32(s[0].plate_n);
-  // Observe after every gameplay mutation: hammer, spells, edits and weather.
-  everglade_guard_tick(s, shown, folk_clock(s, still));
-  return n;
+  everglade_guide_observe(s,shown,still);
+  s[0].guide.hud_move=move_on && !s[0].above && s[0].talk<0 && !s[0].board;
+  s[0].guide.ox=ox;s[0].guide.oy=oy;s[0].guide.pad_x=pad_x;s[0].guide.pad_y=pad_y;
+  if s[0].guide.defer_hud {return 0;}
+  return everglade_finish_frame(s,out,u);
 }
 
 board_middle :: () -> Point {

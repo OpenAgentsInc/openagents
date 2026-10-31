@@ -1,0 +1,17 @@
+// Data-only contract shared by the independent Directions policy and game page.
+#load "guard-guide-types.coax";
+GGS_VISIBLE_MS :: 4000;
+GGS_COOLDOWN_MS :: 6000;
+GGS_CADENCE_MS :: 10000;
+GGS_MAX_ATTEMPTS :: 6;
+GgsInput :: struct {
+  observation:GgObservation;
+  epoch:int;actor:int;generation:int;world_revision:int;goal_revision:int;intent:int;
+  configured:bool;authenticated:bool;suspended:bool;blocked:bool;boundary:bool;
+  url:string;hint_intent:int;
+}
+GgsView :: struct {
+  offer:bool;can_request:bool;local_action:int;local_intent:int;visible:bool;
+  until_ms:int;cooldown_until_ms:int;
+}
+GgsEffect :: struct {sequence:int;intent:int;url:string;body:string;flags:int;timeout_ms:int;}

@@ -24,7 +24,7 @@
 // server's copies, moved to open ground if it no longer is. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
-#include "Guard-decision.h"
+#include "Guard-guide-policy.h"
 #include "Player.h"
 #include "Grid.h"
 #include "River.h"
@@ -66,6 +66,12 @@ static void bar_frame(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
 static void guard_out(uint32_t state);
+static void guide_out(uint32_t state);
+static int32_t guide_id = -1;
+static int64_t guide_sequence, guide_intent;
+static bool guide_authenticated, guide_world_outer;
+static coax_t_GgsSession guide_state;
+static coax_v_t_GgsSession guides(void) { return (coax_v_t_GgsSession){&guide_state,1}; }
 static int32_t guard_id = -1;
 static int64_t guard_sequence;
 static coax_t_GaSession guard_state;
@@ -307,9 +313,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
+  everglade_guide_begin(at(state), golden);
   int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  guide_out(state);
+  n = everglade_finish_frame(at(state), out, u);
   if (n > 0) {
     // the river's uniform block, after the page's frame has written the rest
     int64_t at_water = everglade_water_at();
@@ -518,8 +527,8 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(), key);
   return everglade_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { everglade_guard_focus(at(state), true); guard_out(state); }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { everglade_blur(at(state)); guard_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { everglade_guard_focus(at(state), true); guard_out(state); guide_out(state); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { everglade_blur(at(state)); guard_out(state); guide_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
@@ -539,6 +548,13 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   start(state);
   if (kind == 601 || kind == 603) { everglade_guard_message(at(state), kind, (coax_string){(const char *)inbox,length}); guard_out(state); }
+  if (kind == 606) { guide_authenticated = ggp_viewer((coax_string){(const char *)inbox,length}); guide_out(state); }
+  if (kind == 601 || kind == 603) guide_out(state);
+  if (guide_id >= 0 && kind == 512 + guide_id) {
+    guide_id = -1;
+    ggs_receive(guides(), guide_sequence, guard_now_ms(), (coax_string){(const char *)inbox,length});
+    return;
+  }
   if (guard_id >= 0 && kind == 512 + guard_id) {
     guard_id = -1;
     ga_receive(gs(), guard_sequence, guard_now_ms(), (coax_string){(const char *)inbox, length});
@@ -563,6 +579,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (world_id >= 0 && kind == 512 + world_id) {
     world_id = -1;
+    guide_world_outer = ggp_world_answer((coax_string){(const char *)inbox,length});
     // a golden shot is the designed city: what admins published (test edits too) never holds a release
     // back; the world is still asked for, so the page settles as it always does, and read as nobody's edits
     static const char empty[] = "200\n{\"doc\": null, \"version\": 0}";
@@ -665,4 +682,36 @@ static void captain_out(uint32_t state) {
   everglade_captain_sent(cs(), captain_sequence, captain_id >= 0);
 }
 EXPORT("coaxial_captain_probe") int32_t coaxial_captain_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)everglade_captain_probe(cs(), field); }
-EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)ga_probe(gs(), field); }
+// The whole game update precedes this call; only the local view is copied
+// back before HUD draw. C performs transport/clock/span effects only.
+static void guide_out(uint32_t state) {
+  int64_t ms = guard_now_ms();
+  coax_t_EgGuideInput page = everglade_guide_take(at(state));
+  guide_intent = ggp_intent(guide_intent, page.asked, page.boundary, page.asked_epoch, page.epoch);
+  coax_t_GgpFacts facts = page.facts;
+  facts.world_known = ggp_world_ready(facts.world_known, guide_world_outer);
+  coax_t_GgObservation observation = ggp_project(facts);
+  coax_t_GgsInput input = {0};
+  input.observation = observation; input.epoch = page.epoch; input.actor = facts.guard;
+  input.generation = page.generation; input.world_revision = page.world_revision;
+  input.goal_revision = ggp_goal_key(facts.followed, facts.stage); input.intent = guide_intent;
+  input.configured = page.configured; input.authenticated = guide_authenticated;
+  input.suspended = page.suspended; input.blocked = page.blocked; input.boundary = page.boundary;
+  input.url = page.url; input.hint_intent = page.hint_intent;
+  ggs_step(guides(), input, ms);
+  if (guide_id >= 0 && !ggs_pending(guides(), guide_sequence)) { guard_cancel(guide_id); guide_id = -1; }
+  coax_t_GgsEffect effect = ggs_effect(guides(), ms);
+  if (effect.body.count) {
+    guide_sequence = effect.sequence;
+    guide_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+        (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
+        (uint32_t)effect.flags, effect.timeout_ms);
+    ggs_sent(guides(), guide_sequence, guide_id >= 0);
+  }
+  everglade_guide_view(at(state), ggs_view(guides(), ms), observation, ggp_offer(facts), ms);
+}
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) {
+  if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
+  if (field >= 200) return (int32_t)ggs_probe(guides(), field);
+  return (int32_t)ga_probe(gs(), field);
+}

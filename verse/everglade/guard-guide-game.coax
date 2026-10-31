@@ -1,0 +1,257 @@
+// Chapter21f: current local facts project to the existing Directions contract.
+// This module owns no geometry, quest mutation, transport or UI effects.
+#load "guard-guide-game-types.coax";
+#load "guard-guide-game-check-fixtures.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+
+#test "only the currently followed authored step determines a route goal" {
+    expected:=[9]int.[2,2,5,3,3,5,4,4,5];
+    for q:0..<3 {for st:1..<4 {#assert ggp_goal(q,st,false)==expected[q*3+st-1] && ggp_goal(q,st,true)==0;}}
+    for q:[6]int.[-9223372036854775807-1,-2,-1,3,4,9223372036854775807] {for st:1..<4 {#assert ggp_goal(q,st,false)==0;}}
+    for st:[6]int.[-9223372036854775807-1,-1,0,4,9,9223372036854775807] {for q:0..<3 {#assert ggp_goal(q,st,false)==0;}}
+    #assert ggp_goal(-1,0,false)==0 && ggp_goal(-1,0,true)==1;
+    for q:[5]int.[-9223372036854775807-1,-2,0,3,9223372036854775807] {#assert ggp_goal(q,0,true)==0;}
+    for st:[5]int.[-9223372036854775807-1,-1,1,9,9223372036854775807] {#assert ggp_goal(-1,st,true)==0;}
+}
+#test "Bram alone and every positive or blocking gameplay fact are independently required" {
+    f:=ggp_test_facts();#assert ggp_eligible(f) && !ggp_eligible(GgpFacts.{});
+    for k:0..<8 {bad:=f;
+        if k==0 {bad.gameplay=false;}if k==1 {bad.foreground=false;}if k==2 {bad.player_alive=false;}
+        if k==3 {bad.guard_calm=false;}if k==4 {bad.guard_alive=false;}if k==5 {bad.guard_full_health=false;}
+        if k==6 {bad.guard_visible=false;}if k==7 {bad.guard_near=false;}
+        #assert !ggp_eligible(bad) && !ggp_project(bad).eligible && ggp_offer(bad)==0;
+    }
+    for k:0..<7 {bad:=f;
+        if k==0 {bad.combat=true;}if k==1 {bad.talking=true;}if k==2 {bad.board=true;}if k==3 {bad.editing=true;}
+        if k==4 {bad.casting=true;}if k==5 {bad.map=true;}if k==6 {bad.warp=true;}
+        #assert !ggp_eligible(bad) && !ggp_project(bad).eligible && ggp_offer(bad)==0;
+    }
+    for actor:[4]int.[-9223372036854775807-1,-1,1,9223372036854775807] {f.guard=actor;#assert !ggp_eligible(f) && ggp_offer(f)==0;}
+}
+#test "real edit payload and unsupported geometry refuse even without a version field" {
+    f:=ggp_test_facts();#assert ggp_route(f) && ggp_project(f).destination_available;
+    for count:[4]int.[-9223372036854775807-1,-1,1,9223372036854775807] {bad:=f;bad.edit_count=count;#assert !ggp_route(bad) && ggp_offer(bad)==0 && !ggp_project(bad).destination_available;}
+    for mask:[4]u32.[1,2,2147483648,4294967295] {
+        bad:=f;bad.gone=mask;#assert !ggp_route(bad) && ggp_offer(bad)==0;
+        bad=f;bad.hidden=mask;#assert !ggp_route(bad) && ggp_offer(bad)==0;
+    }
+    for k:0..<5 {bad:=f;
+        if k==0 {bad.world_known=false;}if k==1 {bad.target_present=false;}if k==2 {bad.destination_present=false;}
+        if k==3 {bad.at_destination=true;}if k==4 {bad.altered_geometry=true;}
+        #assert !ggp_route(bad) && !ggp_project(bad).destination_available && ggp_offer(bad)==0;
+    }
+    f.stage=9;#assert !ggp_route(f) && ggp_offer(f)==0;
+}
+#test "presentation offers never manufacture a request or replace an active objective with find work" {
+    f:=ggp_test_facts();f.help_requested=false;
+    #assert ggp_offer(f)==1 && !ggp_project(f).help_requested && ggp_project(f).goal==2;
+    f.find_work=true;#assert ggp_offer(f)==1 && ggp_project(f).goal==0 && !ggp_route(f);
+    f.find_work=false;f.followed=-1;f.stage=0;
+    #assert ggp_offer(f)==2 && ggp_project(f).goal==0 && !ggp_project(f).help_requested && !ggp_route(f);
+    f.find_work=true;f.help_requested=true;
+    #assert ggp_offer(f)==2 && ggp_project(f).goal==1 && ggp_route(f) && ggp_project(f).help_requested;
+    f.hint_visible=true;#assert ggp_offer(f)==0 && ggp_project(f).hint_visible && ggp_route(f);
+    f.hint_visible=false;f.stage=9;#assert ggp_offer(f)==0;
+    f.stage=0;f.followed=0;#assert ggp_offer(f)==0;
+}
+#test "the projection preserves each contract field without conflating hint cooldown and quest HUD" {
+    f:=ggp_test_facts();o:=ggp_project(f);
+    #assert o.help_requested && o.goal==2 && o.destination_available && !o.at_destination && !o.hint_visible && o.eligible;
+    f.help_requested=false;f.hint_visible=true;f.at_destination=true;f.followed=2;f.stage=2;o=ggp_project(f);
+    #assert !o.help_requested && o.goal==4 && !o.destination_available && o.at_destination && o.hint_visible && o.eligible;
+    f.guard_near=false;#assert !ggp_project(f).eligible;
+}
+#test "intent counters saturate and invalid counters never become fresh" {
+    #assert ggp_next_intent(0)==1 && ggp_next_intent(1)==2 && ggp_next_intent(99)==100;
+    #assert ggp_next_intent(2147483646)==2147483647 && ggp_next_intent(2147483647)==2147483647 && ggp_next_intent(2147483648)==2147483648;
+    #assert ggp_next_intent(9223372036854775806)==9223372036854775806 && ggp_next_intent(9223372036854775807)==9223372036854775807;
+    #assert ggp_next_intent(-1)==-1 && ggp_next_intent(-9223372036854775807-1)==-9223372036854775807-1;
+}
+#test "only a queued input from this same epoch can advance at a simulation boundary" {
+    expected:=[8]int.[8,8,8,8,8,8,8,9];
+    for bits:0..<8 {
+        #assert ggp_intent(8,(bits&1)!=0,(bits&2)!=0,ifx (bits&4)!=0 then 11 else 10,11)==expected[bits];
+    }
+    for epoch:[4]int.[-9223372036854775807-1,0,1,9223372036854775807] {
+        #assert ggp_intent(0,true,true,epoch,epoch)==1;
+    }
+    #assert ggp_intent(0,true,true,-9223372036854775807-1,9223372036854775807)==0;
+    #assert ggp_intent(0,true,true,9223372036854775807,-9223372036854775807-1)==0;
+    #assert ggp_intent(2147483646,true,true,2,2)==2147483647 && ggp_intent(2147483647,true,true,2,2)==2147483647;
+    #assert ggp_intent(-1,true,true,2,2)==-1 && ggp_intent(2147483648,true,true,2,2)==2147483648;
+}
+#test "a world becomes known only after both independent envelope and edit reads pass" {
+    #assert !ggp_world_ready(false,false) && !ggp_world_ready(true,false) && !ggp_world_ready(false,true) && ggp_world_ready(true,true);
+}
+#test "current quest tags stay unique and refuse every noncurrent stage" {
+    tags:=[9]int.[17,18,19,33,34,35,49,50,51];
+    for q:0..<3 {for stage:1..<4 {#assert ggp_goal_key(q,stage)==tags[q*3+stage-1];}}
+    #assert ggp_goal_key(-1,0)==0;
+    for q:[6]int.[-9223372036854775807-1,-2,-1,3,4,9223372036854775807] {for stage:1..<4 {#assert ggp_goal_key(q,stage)==-1;}}
+    for stage:[6]int.[-9223372036854775807-1,-1,0,4,9,9223372036854775807] {for q:0..<3 {#assert ggp_goal_key(q,stage)==-1;}}
+    #assert ggp_goal_key(-2,0)==-1 && ggp_goal_key(-1,9)==-1 && ggp_goal_key(0,0)==-1;
+}
+#test "only one exact viewer H line grants a client authentication hint" {
+    b:[16385]u8;c:[16385]u8;valid:=ggp_test_text(b[..],"K|npub-test\n\nH|",GGP_TEST_HEX,"\nM|member\nJ|project\nA|1\n");
+    #assert ggp_viewer(valid) && ggp_viewer(ggp_test_text(c[..],"H|",GGP_TEST_HEX,""));
+    #assert ggp_viewer(ggp_test_text(c[..],"K|\nJ|\nM|\nA|\nH|",GGP_TEST_HEX,"\n"));
+    for text:[10]string.["","A|1\n","K|npub-only\n","H|aa\n","H\n","h|0123\n","player=guest\n","account=member\n","|bad\n","H|\n"] {#assert !ggp_viewer(text);}
+    twice:=ggp_test_text(c[..],valid,"H|",GGP_TEST_HEX);#assert !ggp_viewer(twice);
+    #assert !ggp_viewer(ggp_test_text(c[..],"unknown\nH|",GGP_TEST_HEX,""));
+    #assert !ggp_viewer(ggp_test_text(c[..],"H|",GGP_TEST_HEX,"\nunknown"));
+    #assert !ggp_viewer(ggp_test_text(c[..],"H|",GGP_TEST_HEX[0..<63],""));
+    #assert !ggp_viewer(ggp_test_text(c[..],"H|",GGP_TEST_HEX,"0"));
+    #assert ggp_viewer(ggp_test_text(c[..],"\nH|",GGP_TEST_HEX,"\n"));
+    #assert !ggp_viewer(ggp_test_text(c[..],valid,valid,""));
+    #assert !ggp_viewer(ggp_test_text(c[..],valid,"H|aa\n",""));
+    #assert !ggp_viewer(ggp_test_text(c[..],"X|unrelated\nH|",GGP_TEST_HEX,"\n"));
+    #assert !ggp_viewer(ggp_test_text(c[..],valid,"H|z",GGP_TEST_HEX[1..<64]));
+}
+#test "every viewer hex nibble, exact input cap and blank-line boundary are checked" {
+    b:[16385]u8;prefix:=ggp_test_text(b[..],"H|",GGP_TEST_HEX,"\n");n:=prefix.count;
+    for at:2..<66 {saved:=b[at];for bad:[8]u8.[47,58,64,65,96,103,13,255] {b[at]=bad;#assert !ggp_viewer(cast(string)b[0..<n]);}b[at]=saved;}
+    for i:n..<b.count {b[i]='\n';}
+    #assert ggp_viewer(cast(string)b[0..<16384]) && !ggp_viewer(cast(string)b[..]);
+}
+#test "world baseline and positive canonical objects require the current outer contract" {
+    #assert ggp_world_status("200\n") && ggp_world_status("200\nnot json") && !ggp_world_status("200") && !ggp_world_status("201\n");
+    #assert ggp_world_answer("200\n{\"version\":0}") && ggp_world_answer("200\n{\"doc\":null,\"version\":0}");
+    #assert ggp_world_answer("200\n{\"version\"  :  0 }") && ggp_world_answer("200\n{\"version\" : 1,\"doc\":{\"edits\" : \"eg-edit 1\\n\"}}");
+    #assert ggp_world_answer("200\n{\"version\":1,\"doc\":{\"edits\":\"eg-edit 1\\n\"}}");
+    #assert ggp_world_answer("200\n{\"doc\":{\"everglade\":1,\"edits\":\"eg-edit 1\\n\"},\"version\":2,\"publishedBy\":\"test\",\"publishedAt\":12.5}");
+    #assert ggp_world_answer("200\n{\"version\":1,\"doc\":{\"edits\":\"\"},\"publishedBy\":null,\"publishedAt\":null}");
+    // This helper checks the outer envelope, not eg-edit syntax. The page must
+    // ALSO require eg_edits_answer>=0 before world_known becomes true.
+    #assert ggp_world_answer("200\n{\"version\":1,\"doc\":{\"edits\":\"invalid edit text\"}}");
+    for text:[18]string.["","200\n", "503\n{\"version\":0}","200 {}","200\n[]","200\n{\"doc\":null}","200\n{\"version\":false}","200\n{\"version\":\"0\"}","200\n{\"version\":-1}","200\n{\"version\":-0}","200\n{\"version\":0.0}","200\n{\"version\":0e0}","200\n{\"version\":9007199254740993}","200\n{\"version\":0,\"doc\":{}}","200\n{\"version\":1}","200\n{\"version\":1,\"doc\":null}","200\n{\"version\":1,\"doc\":[]}","200\n{\"version\":1,\"doc\":{\"edits\":false}}"] {#assert !ggp_world_answer(text);}
+}
+#test "unknown nested keys, duplicate aliases and incompatible separators cannot fool the old world reader" {
+    for text:[15]string.[
+        "200\n{\"x\":{\"version\":0},\"version\":1,\"doc\":{\"edits\":\"eg-edit 1\\n\"}}",
+        "200\n{\"version\":0,\"version\":1}","200\n{\"version\":0,\"\\u0076ersion\":0}","200\n{\"\\u0076ersion\":0}",
+        "200\n{\"version\":0,\"doc\":null,\"doc\":null}",
+        "200\n{\"version\":1,\"doc\":{\"edits\":\"\",\"edits\":\"\"}}",
+        "200\n{\"version\":1,\"doc\":{\"edits\":\"\",\"\\u0065dits\":\"\"}}",
+        "200\n{\"version\":1,\"doc\":{\"edits\":\"\",\"extra\":0}}",
+        "200\n{\"version\":0,\"publishedAt\":{\"version\":1}}",
+        "200\n{\"version\":0,\"publishedBy\":[]}",
+        "200\n{\"version\"\t:0}","200\n{\"version\":\t0}",
+        "200\n{\"version\":1,\"doc\":{\"edits\"\n:\"\"}}",
+        "200\n{\"version\":1,\"doc\":{\"edits\":\r\"\"}}",
+        "200\n{\"version\":1,\"doc\":{\"everglade\":{},\"edits\":\"\"}}"
+    ] {#assert !ggp_world_answer(text);}
+}
+#test "the canonical world input cap is inclusive and all known metadata remains unique" {
+    b:[65537]u8;head:="200\n{\"version\":0}";for i:0..<b.count {b[i]=ifx i<head.count then head[i] else cast(u8)' ';}
+    #assert ggp_world_answer(cast(string)b[0..<65536]) && !ggp_world_answer(cast(string)b[..]);
+    #assert !ggp_world_answer("200\n{\"version\":0,\"publishedAt\":0,\"publishedAt\":0}");
+    #assert !ggp_world_answer("200\n{\"version\":0,\"publishedBy\":null,\"publishedBy\":null}");
+    #assert !ggp_world_answer("200\n{\"version\":1,\"doc\":{\"everglade\":1,\"everglade\":1,\"edits\":\"\"}}");
+}
+
+// Checks precede the implementation below.
+ggp_goal :: (followed:int,stage:int,find_work:bool)->int #export_c {
+    if find_work {return ifx followed==-1 && stage==0 then 1 else 0;}
+    if followed<0 || followed>2 || stage<1 || stage>3 {return 0;}
+    return ifx stage==3 then 5 else followed+2;
+}
+ggp_eligible :: (f:GgpFacts)->bool #export_c {
+    return f.guard==0 && f.gameplay && f.foreground && f.player_alive &&
+        f.guard_calm && f.guard_alive && f.guard_full_health && f.guard_visible && f.guard_near &&
+        !f.combat && !f.talking && !f.board && !f.editing && !f.casting && !f.map && !f.warp;
+}
+ggp_clear_route :: (f:GgpFacts)->bool {
+    return f.world_known && f.edit_count==0 && f.gone==0 && f.hidden==0 && !f.altered_geometry &&
+        f.target_present && f.destination_present && !f.at_destination;
+}
+ggp_route :: (f:GgpFacts)->bool #export_c {
+    return ggp_goal(f.followed,f.stage,f.find_work)!=0 && ggp_clear_route(f);
+}
+ggp_project :: (f:GgpFacts)->GgObservation #export_c {
+    return GgObservation.{help_requested=f.help_requested,goal=ggp_goal(f.followed,f.stage,f.find_work),
+        destination_available=ggp_route(f),at_destination=f.at_destination,hint_visible=f.hint_visible,eligible=ggp_eligible(f)};
+}
+ggp_offer :: (f:GgpFacts)->int #export_c {
+    if !ggp_eligible(f) || !ggp_clear_route(f) || f.hint_visible {return 0;}
+    if ggp_goal(f.followed,f.stage,false)!=0 {return 1;}
+    return ifx f.followed==-1 && f.stage==0 then 2 else 0;
+}
+ggp_next_intent :: (current:int)->int #export_c {
+    if current<0 || current>=2147483647 {return current;}
+    return current+1;
+}
+ggp_intent :: (current:int,asked:bool,boundary:bool,asked_epoch:int,epoch:int)->int #export_c {
+    return ifx asked && boundary && asked_epoch==epoch then ggp_next_intent(current) else current;
+}
+ggp_world_ready :: (parsed:bool,outer:bool)->bool #export_c {return parsed && outer;}
+ggp_goal_key :: (q:int,stage:int)->int #export_c {
+    if q==-1 && stage==0 {return 0;}
+    if q<0 || q>2 || stage<1 || stage>3 {return -1;}
+    return (q+1)*16+stage;
+}
+
+// Only VIEWER_KIND606 from the cookie-backed /api/auth/me reader may call this.
+// H is a client hint, never server authorization or a key to sign with. Known
+// K/J/M/A lines are inert. Unknown lines, duplicate H and noncanonical hex refuse.
+ggp_viewer_line :: (line:string)->int {
+    if line.count==0 {return 0;}
+    if line.count<2 || line[1]!='|' {return -1;}
+    if line[0]=='H' {
+        if line.count!=66 {return -1;}
+        for i:2..<66 {c:=line[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return -1;}}
+        return 1;
+    }
+    if line[0]=='K' || line[0]=='J' || line[0]=='M' || line[0]=='A' {return 0;}
+    return -1;
+}
+ggp_viewer :: (text:string)->bool #export_c {
+    if text.count>16384 {return false;}seen:=false;at:=0;
+    for i:0..<text.count {
+        if text[i]!='\n' {continue;}
+        status:=ggp_viewer_line(text[at..<i]);if status<0 || (status==1 && seen) {return false;}
+        if status==1 {seen=true;}at=i+1;
+    }
+    last:=ggp_viewer_line(text[at..<text.count]);
+    return last>=0 && !(last==1 && seen) && (seen || last==1);
+}
+
+// A deliberately narrow current-GET profile: canonical unique raw keys, outer
+// version/doc/publishedBy/publishedAt; doc edits and optional numeric everglade.
+// This prevents the unchanged legacy global first-key scan from selecting a
+// nested version/edits. Only space separators are accepted where that reader
+// scans; unrelated known metadata remains inert, unknown fields refuse.
+ggp_world_gap :: (v:Jv,node:int)->bool {
+    end:=v.nodes[node].from;if jv_kind(v,node)==JV_STRING {end-=1;}
+    for i:v.nodes[node].key_to+1..<end {c:=v.text[i];if c!=' ' && c!=':' {return false;}}
+    return true;
+}
+ggp_world_fields :: (v:Jv,at:int,doc:bool)->bool {
+    seen:=0;
+    for i:0..<jv_len(v,at) {
+        node:=jv_at(v,at,i);key:=jv_key(v,node);kind:=jv_kind(v,node);bit:=0;
+        if doc {
+            if key=="edits" {bit=1;if kind!=JV_STRING || !ggp_world_gap(v,node) {return false;}}
+            if key=="everglade" {bit=2;if kind!=JV_NUMBER {return false;}}
+        } else {
+            if key=="version" {bit=1;if !ggp_world_gap(v,node) {return false;}}
+            if key=="doc" {bit=2;}
+            if key=="publishedBy" {bit=4;if kind!=JV_STRING && kind!=JV_NULL {return false;}}
+            if key=="publishedAt" {bit=8;if kind!=JV_NUMBER && kind!=JV_NULL {return false;}}
+        }
+        if bit==0 || (seen&bit)!=0 {return false;}seen|=bit;
+    }
+    return true;
+}
+ggp_world_answer :: (answer:string)->bool #export_c {
+    if answer.count>65536 || !ggp_world_status(answer) {return false;}
+    nodes:[16]JvNode;d:[1]Jv;if !jv_parse(d[..],answer[4..<answer.count],nodes[..]) {return false;}v:=d[0];
+    if jv_kind(v,0)!=JV_OBJECT || !ggp_world_fields(v,0,false) {return false;}
+    version_node:=jv_get(v,0,"version");version:=jv_int(v,version_node,-1);
+    if version<0 || jv_raw(v,version_node)[0]=='-' {return false;}
+    doc:=jv_get(v,0,"doc");if version==0 {return doc==-1 || jv_kind(v,doc)==JV_NULL;}
+    return jv_kind(v,doc)==JV_OBJECT && ggp_world_fields(v,doc,true) && jv_kind(v,jv_get(v,doc,"edits"))==JV_STRING;
+}
+ggp_world_status :: (answer:string)->bool {
+    return answer.count>=4 && answer[0..<4]=="200\n";
+}

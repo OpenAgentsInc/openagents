@@ -950,6 +950,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/guard-gives-directions.coax",
+      "chapter": "psionic/book/ch021f-a-guard-gives-directions.md",
+      "stdout": "psionic/fixtures/guard-gives-directions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

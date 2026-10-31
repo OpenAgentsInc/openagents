@@ -1,0 +1,125 @@
+// The page supplies current facts and draws ONLY the local rule's view. Policy
+// is separately linked; the C face hands off between world update and HUD draw.
+#load "../../verse/everglade/guard-guide-game-types.coax";
+#load "../../verse/everglade/guard-guide-session-types.coax";
+EgGuideInput :: struct {
+  facts:GgpFacts;epoch:int;generation:int;world_revision:int;
+  configured:bool;suspended:bool;blocked:bool;boundary:bool;asked:bool;
+  asked_epoch:int;hint_intent:int;url:string;
+}
+EgGuide :: struct {
+  facts:GgpFacts;view:GgsView;observation:GgObservation;
+  world_parsed:bool;defer_hud:bool;golden:bool;prepared:bool;
+  asked:bool;help_requested:bool;find_work:bool;key_down:bool;asked_epoch:int;
+  offered:int;button:Box;finger:int=-1;drawn:int;now_ms:int;
+  hud_move:bool;ox:f32;oy:f32;pad_x:f32;pad_y:f32;you:Point;still:bool;
+}
+
+everglade_guide_begin :: (s:[]Everglade,golden:bool) #export_c {s[0].guide.defer_hud=true;s[0].guide.golden=golden;}
+everglade_guide_ask :: (s:[]Everglade) {
+  // This is an input edge, not permission. Current facts are checked at the
+  // following simulation boundary, even if this previously drawn button aged.
+  s[0].guide.asked=true;s[0].guide.help_requested=true;
+  s[0].guide.asked_epoch=s[0].guard_ai.input.epoch;
+  s[0].guide.find_work=s[0].guide.offered==2;
+}
+everglade_guide_key :: (s:[]Everglade,key:int)->bool {
+  if key!='g' && key!='G' {return false;}
+  if s[0].guide.offered==0 || s[0].guide.now_ms<s[0].guide.view.cooldown_until_ms {return false;}
+  if !s[0].guide.key_down {everglade_guide_ask(s);}
+  s[0].guide.key_down=true;return true;
+}
+everglade_guide_pointer :: (s:[]Everglade,x:f32,y:f32,phase:int,id:int)->bool {
+  if phase==0 && s[0].guide.now_ms>=s[0].guide.view.cooldown_until_ms && in_box(s[0].guide.button,x,y) {s[0].guide.finger=id;return true;}
+  if s[0].guide.finger!=id || id<0 {return false;}
+  if phase==2 && in_box(s[0].guide.button,x,y) {everglade_guide_ask(s);}
+  if phase>=2 {s[0].guide.finger= -1;}return true;
+}
+
+everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
+  w:=watch_w(s);a:=w[0].actors[0];q:=follow(s);stage:=0;
+  if q>=0 {stage=s[0].stages[q];}
+  target:=QuestMark.{ok=true,x=board_middle().x,z=board_middle().z};
+  if q>=0 {target=eg_quest_mark(q,stage);}
+  target_present:=target.ok;
+  if q>=0 && eg_quest_kind_at(q,stage)==EG_STEP_TALK {
+    person:=eg_quest_giver(q);
+    target_present=person>=0 && !eg_gone(s[0].ev.edits,person) && w[0].actors[person].ready && w[0].actors[person].hp>0 && w[0].actors[person].mode!=WM_DEAD;
+  }
+  geometry:=sp_broken(s);
+  for i:0..<AB_STONES {if s[0].sp.ab[0].stones[i].live {geometry=true;}}
+  for i:0..<AB_WALLS {if s[0].sp.ab[0].walls[i].live {geometry=true;}}
+  s[0].guide.facts=GgpFacts.{followed=q,stage=stage,guard=0,
+    help_requested=s[0].guide.help_requested,find_work=s[0].guide.find_work,
+    gameplay=s[0].wv.started && w[0].on && !s[0].paint_only && !s[0].guide.golden,
+    foreground=!s[0].guard_ai.input.suspended,player_alive=!w[0].dead && w[0].hp>0,
+    guard_calm=a.ready && a.mode==WM_CALM && !a.body.on && a.shout<0,
+    guard_alive=a.hp>0,guard_full_health=a.hp==a.max,
+    guard_visible=!eg_gone(s[0].ev.edits,0) && !s[0].folk[0].indoors,
+    guard_near=flat_gap(v3(a.x,0,a.z),you)<8,
+    combat=w[0].wanted || hm_swinging(s),talking=s[0].talk>=0 || s[0].chat.typing,board=s[0].board,
+    editing=s[0].ev.editing,casting=s[0].sp.casting>=0 || s[0].sp.armed>=0,
+    map=s[0].above,warp=s[0].warp,world_known=s[0].guide.world_parsed,
+    edit_count=s[0].ev.edits.n,gone=s[0].ev.edits.gone,hidden=s[0].ev.edits.hidden,
+    altered_geometry=geometry,target_present=target_present,destination_present=target.ok,
+    at_destination=target.ok && flat_gap(v3(target.x,0,target.z),you)<=f32(EG_QUEST_NEAR),
+    hint_visible=s[0].guide.view.visible};
+  s[0].guide.you=you;s[0].guide.still=still;s[0].guide.prepared=true;
+}
+
+everglade_guide_take :: (s:[]Everglade)->EgGuideInput #export_c {
+  input:=EgGuideInput.{facts=s[0].guide.facts,epoch=s[0].guard_ai.input.epoch,
+    generation=s[0].guard_ai.generation,world_revision=s[0].ev.ed[0].version,
+    configured=s[0].guard_ai.input.configured,suspended=s[0].guard_ai.input.suspended,
+    blocked=s[0].guard_ai.input.blocked || s[0].guide.golden,
+    boundary=s[0].guide.prepared,asked=s[0].guide.asked && s[0].guide.prepared,
+    asked_epoch=s[0].guide.asked_epoch,hint_intent=s[0].guide.view.local_intent,
+    url=cast(string)s[0].guard_ai.url[0..<s[0].guard_ai.url_n]};
+  if s[0].guide.prepared {s[0].guide.asked=false;}return input;
+}
+everglade_guide_view :: (s:[]Everglade,shown_view:GgsView,observation:GgObservation,offered:int,now_ms:int) #export_c {
+  s[0].guide.view=shown_view;s[0].guide.observation=observation;
+  s[0].guide.offered=offered;s[0].guide.now_ms=now_ms;
+}
+
+// Only this local view is rendered. There is no raw remote choice in the page.
+everglade_guide_hud :: (s:[]Everglade,out:[]f32,u:[]f32,n0:int,bottom:f32)->int {
+  s[0].guide.button=Box.{};s[0].guide.drawn=0;n:=n0;
+  k:=hi(s[0].dpr,0.5);w:=s[0].width;
+  if s[0].guide.offered>0 && s[0].guide.now_ms>=s[0].guide.view.cooldown_until_ms {
+    word:=ifx s[0].guide.offered==2 then "BRAM · FIND WORK · G" else "BRAM · DIRECTIONS · G";
+    cap:=8.5*k;bw:=lo(text_width(word,cap)+28*k,w-32*k);
+    b:=Box.{x0=(w-bw)/2,y0=bottom-126*k,x1=(w+bw)/2,y1=bottom-84*k};
+    s[0].guide.button=b;plate(s,u,b,0.86,ifx s[0].guide.finger>=0 then 2.0f32 else 1.0f32);
+    n=draw_text(out,n,word,b.x0+14*k,b.y1-15*k,cap,GAP,SPACE,ink(k,0.95,GOLD_R,GOLD_G,GOLD_B),false,false);
+  }
+  a:=s[0].guide.view.local_action;
+  if !s[0].guide.view.visible || a<1 || a>=GG_LINES.count {return n;}
+  said:=GG_LINES[a];cap:=9*k;pw:=lo(w-32*k,620*k);inner:=pw-28*k;
+  starts:[4]int;ends:[4]int;lines:=0;from:=0;next:[1]int;
+  while from<said.count && lines<4 {
+    e:=wrap(said,from,inner/cap,GAP,SPACE,false,next[..]);starts[lines]=from;ends[lines]=e;lines+=1;
+    if next[0]<=from {break;}from=next[0];
+  }
+  lead:=cap*2.1;y1:=bottom-138*k;y0:=y1-(f32(lines)*lead+36*k);
+  plate(s,u,Box.{x0=(w-pw)/2,y0=y0,x1=(w+pw)/2,y1=y1},0.92,0);
+  n=draw_text(out,n,"BRAM",(w-pw)/2+14*k,y0+19*k,7*k,GAP,SPACE,ink(k,0.95,GOLD_R,GOLD_G,GOLD_B),false,false);
+  for i:0..<lines {n=draw_text(out,n,said[starts[i]..<ends[i]],(w-pw)/2+14*k,y0+34*k+f32(i)*lead,cap,GAP,SPACE,ink(k,0.95,PARCH_R,PARCH_G,PARCH_B),false,false);}
+  s[0].guide.drawn=a;return n;
+}
+
+everglade_finish_frame :: (s:[]Everglade,out:[]f32,u:[]f32)->int #export_c {
+  if !s[0].guide.prepared {return 0;}
+  s[0].guide.prepared=false;
+  n:=hud(s,out,u,s[0].guide.hud_move,s[0].guide.ox,s[0].guide.oy,s[0].guide.pad_x,s[0].guide.pad_y,s[0].guide.you);
+  n=watch_overlay(s,out,u,n);u[5]=f32(s[0].plate_n);
+  everglade_guard_tick(s,s[0].guide.you,folk_clock(s,s[0].guide.still));return n;
+}
+everglade_guide_probe :: (s:[]Everglade,field:int)->int #export_c {
+  if field==240 {return cast(int)s[0].guide.button.x0;}if field==241 {return cast(int)s[0].guide.button.y0;}
+  if field==242 {return cast(int)s[0].guide.button.x1;}if field==243 {return cast(int)s[0].guide.button.y1;}
+  if field==244 {return s[0].guide.offered;}if field==245 {return s[0].guide.drawn;}
+  if field==250 {return ifx s[0].wt[0].dead then 1 else 0;}
+  if field==251 {return s[0].guard_ai.input.epoch;}if field==252 {return s[0].guard_ai.generation;}
+  if field==246 {return s[0].guide.observation.goal;}if field==247 {return ifx s[0].guide.observation.eligible then 1 else 0;}return -1;
+}

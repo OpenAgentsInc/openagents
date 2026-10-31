@@ -1,0 +1,13 @@
+// Synthetic local facts only; never a model-quality or page-rendering oracle.
+#load "guard-guide-game-types.coax";
+GGP_TEST_HEX :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ggp_test_facts :: ()->GgpFacts {
+    return GgpFacts.{followed=0,stage=1,guard=0,help_requested=true,
+        gameplay=true,foreground=true,player_alive=true,guard_calm=true,
+        guard_alive=true,guard_full_health=true,guard_visible=true,guard_near=true,
+        world_known=true,target_present=true,destination_present=true};
+}
+ggp_test_text :: (out:[]u8,a:string,b:string,c:string)->string {
+    n:=0;for part:[3]string.[a,b,c] {for byte:part {if n>=out.count {return "";}out[n]=byte;n+=1;}}
+    return cast(string)out[0..<n];
+}

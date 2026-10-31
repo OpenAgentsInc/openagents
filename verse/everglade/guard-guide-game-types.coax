@@ -1,0 +1,16 @@
+// Local page facts only. Geometry, the current HUD follow lookup and world
+// decoding stay with the page; no quest arrays, coordinates or player text.
+#load "guard-guide-types.coax";
+GgpFacts :: struct {
+    followed:int=-1; stage:int; guard:int=-1;
+    help_requested:bool; find_work:bool;
+    gameplay:bool; foreground:bool; player_alive:bool;
+    guard_calm:bool; guard_alive:bool; guard_full_health:bool;
+    guard_visible:bool; guard_near:bool;
+    combat:bool; talking:bool; board:bool; editing:bool; casting:bool;
+    map:bool; warp:bool;
+    world_known:bool; edit_count:int; gone:u32; hidden:u32;
+    altered_geometry:bool;
+    target_present:bool; destination_present:bool;
+    at_destination:bool; hint_visible:bool;
+}

@@ -1,0 +1,11 @@
+// Synthetic policy checks only; no product fixture, identity or player data.
+#load "guard-guide-session-types.coax";
+ggs_test_input :: ()->GgsInput {
+  return GgsInput.{observation=GgObservation.{help_requested=true,goal=2,destination_available=true,eligible=true},epoch=1,actor=0,generation=2,world_revision=3,goal_revision=4,intent=1,configured=true,authenticated=true,boundary=true,url="/realms/everglade?guard-ai=directions-shadow"};
+}
+ggs_test_deliver :: (s:[]GgsSession,sequence:int,now_ms:int) {
+  out:[8196]u8;prefix:="200\n";
+  for index:0..<prefix.count {out[index]=prefix[index];}
+  for index:0..<GG_RESPONSE.count {out[index+4]=GG_RESPONSE[index];}
+  ggs_receive(s,sequence,now_ms,cast(string)out[0..<GG_RESPONSE.count+4]);
+}

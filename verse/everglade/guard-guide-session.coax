@@ -1,0 +1,400 @@
+// Explicit Directions: immediate authored LOCAL line; remote choices are SHADOW
+// telemetry only. The fixed goal-to-tip rule remains the displayed authority.
+#load "guard-guide-session-types.coax";
+#load "guard-guide.coax";
+#load "guard-metrics.coax";
+#load "guard-guide-session-check-fixtures.coax";
+#load "../../psionic/lib/game/decision.coax";
+#authority;
+GgsKey :: struct {epoch:int;actor:int;generation:int;world_revision:int;goal_revision:int;goal:int;}
+GgsSession :: struct {
+  ticket:[1]GdState;metrics:[1]GaMetrics;key:GgsKey;
+  initialized:bool;have_key:bool;mode:int;disabled:bool;last_ms:int;last_intent:int;
+  send:bool;start:bool;started_ms:int;due_ms:int;body:[1024]u8;body_n:int;
+  offer:bool;external_hint:bool;local_action:int;local_intent:int;until_ms:int;cooldown_until_ms:int;
+  local_shown:int;admitted:int;fallback:int;last_raw:int;last_admitted:int;
+}
+
+#test "Directions mode is exact, bounded, fragment-safe and duplicate-safe" {
+  #assert ggs_mode("/realm")==0 && ggs_mode("/?guard-ai=shadow")==0;
+  #assert ggs_mode("/?x=1&guard-ai=directions-shadow#gate")==1;
+  #assert ggs_mode("/#?guard-ai=directions-shadow")==0;
+  #assert ggs_mode("/?guard-ai=directions-shadow&guard-ai")==0;
+  #assert ggs_mode("/?guard-ai=wrong&guard-ai=directions-shadow")==0;
+  #assert ggs_mode("/?guard-ai=directions-shadow&guard-ai=directions-shadow")==0;
+  #assert ggs_mode("/?guard-ai=directions-shadow&x=1")==1;
+  #assert ggs_mode("?guard-ai=directions-shadow")==1 && ggs_mode("?x?guard-ai=directions-shadow")==0;
+  #assert ggs_mode("?guard-ai=&guard-ai=directions-shadow")==0;
+  b:[2049]u8;for i:0..<b.count {b[i]='x';}prefix:="/?guard-ai=directions-shadow&";for i:0..<prefix.count {b[i]=prefix[i];}
+  #assert ggs_mode(cast(string)b[0..<2048])==1 && ggs_mode(cast(string)b[..])==0;
+}
+#test "one explicit intent shows a LOCAL line immediately and stages shadow only" {
+  s:[1]GgsSession;i:=ggs_test_input();i.boundary=false;ggs_step(s[..],i,0);
+  v:=ggs_view(s[..],0);#assert v.offer && !v.can_request && v.visible && v.local_action==2 && v.local_intent==1 && v.until_ms==4000 && v.cooldown_until_ms==6000;
+  #assert s[0].local_shown==1 && s[0].metrics[0].used==0 && ggs_effect(s[..],0).sequence==0;
+  i.boundary=true;i.observation.hint_visible=true;i.hint_intent=1;ggs_step(s[..],i,1);
+  e:=ggs_effect(s[..],1);#assert e.sequence==1 && e.intent==1 && e.url=="/api/v1/systemone" && e.flags==5 && e.timeout_ms==8000 && e.body.count>600;
+  expected:[1024]u8;n:=gg_request(ggs_test_input().observation,expected[..]);#assert e.body==cast(string)expected[0..<n];
+  #assert ggs_pending(s[..],1);ggs_sent(s[..],1,true);#assert ggs_effect(s[..],1).sequence==0;
+  ggs_test_deliver(s[..],1,2);#assert s[0].ticket[0].phase==GD_READY && s[0].admitted==0 && s[0].last_raw==2;
+  i.boundary=false;ggs_step(s[..],i,3);#assert s[0].admitted==0;
+  i.boundary=true;ggs_step(s[..],i,4);#assert s[0].admitted==1 && s[0].fallback==0 && s[0].last_admitted==2;
+  #assert s[0].metrics[0].last_network==1 && s[0].metrics[0].last_queue==2 && s[0].metrics[0].last_total==3;
+  #assert ggs_view(s[..],4).local_action==2 && s[0].local_shown==1 && !ggs_pending(s[..],1);
+  ggs_step(s[..],i,10001);#assert s[0].metrics[0].used==1 && !ggs_view(s[..],10001).visible;
+}
+#test "own tip and its cooldown never revoke the SAME intent, external hints do" {
+  for k:0..<4 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+    i.observation.hint_visible=true;i.hint_intent=1;
+    if k==0 {ggs_test_deliver(s[..],1,4500);ggs_step(s[..],i,4501);#assert s[0].admitted==1 && !ggs_view(s[..],4501).visible;}
+    else {if k==1 {i.hint_intent=0;}if k==2 {i.hint_intent=2;}if k==3 {i.intent=2;}
+      ggs_step(s[..],i,1);#assert s[0].admitted==0 && s[0].fallback==1 && s[0].metrics[0].last_reason==GM_REVOKED;
+      ggs_test_deliver(s[..],1,2);#assert s[0].admitted==0 && s[0].metrics[0].late==1;
+    }
+  }
+}
+#test "all current semantic identities fence pending or staged choices and old lines" {
+  for k:0..<7 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);ggs_test_deliver(s[..],1,1);
+    if k==0 {i.epoch+=1;}if k==1 {i.actor+=1;}if k==2 {i.generation+=1;}if k==3 {i.world_revision+=1;}if k==4 {i.goal_revision+=1;}if k==5 {i.observation.goal=3;}if k==6 {i.intent+=1;}
+    ggs_step(s[..],i,2);#assert s[0].admitted==0 && s[0].ticket[0].phase==0 && s[0].metrics[0].last_reason==GM_STALE && s[0].fallback==1;
+    if k!=6 {#assert !ggs_view(s[..],2).visible && s[0].local_action==0 && ggs_view(s[..],2).local_intent==0 && ggs_view(s[..],2).until_ms==0;}
+  }
+}
+#test "every gameplay and lifecycle refusal cancels immediately even off-boundary" {
+  for k:0..<12 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+    if k==0 {i.observation.eligible=false;}if k==1 {i.observation.destination_available=false;}if k==2 {i.observation.at_destination=true;}
+    if k==3 {i.suspended=true;}if k==4 {i.blocked=true;}if k==5 {i.configured=false;}if k==6 {i.authenticated=false;}
+    if k==7 {i.observation.help_requested=false;}if k==8 {i.intent=0;}if k==9 {i.intent=-1;}if k==10 {i.intent=GD_SEQUENCE_MAX+1;}if k==11 {i.url="/realm";}
+    i.boundary=false;ggs_step(s[..],i,1);#assert !ggs_pending(s[..],1) && s[0].fallback==1 && s[0].metrics[0].last_reason==GM_REVOKED;
+    if k!=6 && k!=11 {#assert !ggs_view(s[..],1).visible;}
+    i=ggs_test_input();ggs_step(s[..],i,10000);#assert s[0].metrics[0].used==1;
+  }
+}
+#test "normal guest and blocked visits never dispatch and local help never needs auth" {
+  for k:0..<8 {
+    s:[1]GgsSession;i:=ggs_test_input();
+    if k==0 {i.url="/realm";}if k==1 {i.authenticated=false;}if k==2 {i.configured=false;}if k==3 {i.suspended=true;}
+    if k==4 {i.blocked=true;}if k==5 {i.observation.help_requested=false;}if k==6 {i.intent=0;}if k==7 {i.observation.hint_visible=true;}
+    ggs_step(s[..],i,0);#assert ggs_effect(s[..],0).sequence==0 && s[0].metrics[0].used==0;
+    #assert ggs_view(s[..],0).visible==(k==0 || k==1);
+  }
+}
+#test "intent replacement cancels old work even when cooldown or cadence refuses new" {
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+  i.intent=2;ggs_step(s[..],i,1000);#assert s[0].fallback==1 && s[0].metrics[0].used==1 && s[0].local_shown==1;
+  ggs_test_deliver(s[..],1,1001);#assert s[0].admitted==0;
+  i.intent=3;ggs_step(s[..],i,6000);#assert s[0].local_shown==2 && ggs_view(s[..],6000).local_intent==3 && s[0].metrics[0].used==1;
+  ggs_step(s[..],i,10000);#assert s[0].metrics[0].used==1;
+  i.intent=4;ggs_step(s[..],i,12000);#assert s[0].metrics[0].used==2 && s[0].ticket[0].sequence==2;
+  ggs_sent(s[..],2,true);ggs_test_deliver(s[..],1,12001);#assert ggs_pending(s[..],2);
+  ggs_test_deliver(s[..],2,12002);ggs_step(s[..],i,12003);#assert s[0].admitted==1;
+}
+#test "six remote attempts per visit survive epoch changes, with exact ten second cadence" {
+  s:[1]GgsSession;i:=ggs_test_input();
+  for n:0..<6 {i.intent=n+1;i.epoch=n+1;ggs_step(s[..],i,n*10000);#assert s[0].metrics[0].used==n+1;ggs_sent(s[..],n+1,false);}
+  i.intent=7;i.epoch=7;ggs_step(s[..],i,60000);#assert s[0].metrics[0].used==6 && s[0].fallback==6 && s[0].local_shown==7 && ggs_effect(s[..],60000).sequence==0;
+  t:[1]GgsSession;i=ggs_test_input();ggs_step(t[..],i,0);ggs_sent(t[..],1,false);i.intent=2;ggs_step(t[..],i,9999);#assert t[0].metrics[0].used==1;
+  i.intent=3;ggs_step(t[..],i,16000);#assert t[0].metrics[0].used==2 && t[0].due_ms==26000;
+}
+#test "auth and quota close shadow for visit without suppressing subsequent LOCAL tips" {
+  for code:[2]string.["401\n","429\n"] {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);ggs_receive(s[..],1,1,code);
+    #assert s[0].disabled && s[0].fallback==1 && s[0].metrics[0].replies==1;
+    #assert s[0].metrics[0].last_reason==ifx code=="401\n" then GM_AUTH else GM_QUOTA;
+    i.intent=2;ggs_step(s[..],i,10000);#assert s[0].local_shown==2 && s[0].metrics[0].used==1 && ggs_view(s[..],10000).visible;
+  }
+}
+#test "HTTP refusal malformed contracts and wrong routes never replace local text" {
+  for k:0..<5 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+    text:="503\n{}";if k==1 {text="200\n{}";}if k==2 {text="0\n";}if k==3 {text="";}if k==4 {i.observation.goal=3;}
+    if k==4 {ggs_step(s[..],i,1);}else {ggs_receive(s[..],1,1,text);}
+    #assert s[0].admitted==0 && s[0].fallback==1 && !ggs_pending(s[..],1);
+    if k<4 {#assert ggs_view(s[..],1).local_action==2 && s[0].last_raw==-1;}
+    expected:=GM_HTTP;if k==1 {expected=GM_MALFORMED;}if k==4 {expected=GM_STALE;}#assert s[0].metrics[0].last_reason==expected;
+  }
+  s:[1]GgsSession;i:=ggs_test_input();i.observation.goal=3;ggs_step(s[..],i,0);ggs_sent(s[..],1,true);ggs_test_deliver(s[..],1,1);ggs_step(s[..],i,2);
+  #assert s[0].last_raw==2 && s[0].admitted==0 && s[0].fallback==1 && s[0].last_admitted==-1 && ggs_view(s[..],2).local_action==3 && s[0].metrics[0].last_reason==GM_STALE;
+}
+#test "timeout is terminal once through frame effect or reply, never an extra retry" {
+  for k:0..<3 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,100);
+    if k==0 {ggs_step(s[..],i,8100);}if k==1 {#assert ggs_effect(s[..],8100).sequence==0;}if k==2 {ggs_sent(s[..],1,true);ggs_test_deliver(s[..],1,8100);}
+    #assert s[0].fallback==1 && s[0].metrics[0].terminals==1 && s[0].metrics[0].last_reason==GM_TIMEOUT;
+    ggs_step(s[..],i,8101);ggs_test_deliver(s[..],1,8102);ggs_test_deliver(s[..],1,8103);
+    #assert s[0].fallback==1 && s[0].metrics[0].late==1 && s[0].metrics[0].used==1;
+  }
+}
+#test "only dispatched owned WAITING callbacks count once; duplicate sent cannot revoke" {
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);
+  ggs_test_deliver(s[..],1,1);#assert s[0].ticket[0].phase==GD_WAITING && s[0].metrics[0].replies==0;
+  ggs_sent(s[..],2,false);#assert s[0].send;ggs_sent(s[..],1,true);ggs_sent(s[..],1,false);#assert ggs_pending(s[..],1);
+  ggs_test_deliver(s[..],99,100000);ggs_test_deliver(s[..],1,2);ggs_receive(s[..],1,3,"200\n{}");
+  #assert s[0].metrics[0].replies==1 && s[0].last_raw==2 && s[0].ticket[0].phase==GD_READY;
+  ggs_step(s[..],i,4);#assert s[0].admitted==1 && s[0].metrics[0].terminals==1;
+}
+#test "a first-boundary candidate cannot survive lost eligibility or queued cadence" {
+  s:[1]GgsSession;i:=ggs_test_input();i.boundary=false;ggs_step(s[..],i,0);i.observation.eligible=false;ggs_step(s[..],i,1);
+  i.observation.eligible=true;i.boundary=true;ggs_step(s[..],i,2);#assert s[0].metrics[0].used==0 && s[0].local_shown==1 && !ggs_view(s[..],2).visible;
+}
+#test "tip visibility cooldown clocks and offer need no help event or model mode" {
+  s:[1]GgsSession;i:=ggs_test_input();i.intent=0;i.observation.help_requested=false;i.url="/realm";ggs_step(s[..],i,0);
+  #assert ggs_view(s[..],0).offer && ggs_view(s[..],0).can_request && !ggs_view(s[..],0).visible && ggs_view(s[..],0).local_action==0;
+  i.intent=1;i.observation.help_requested=true;ggs_step(s[..],i,1);
+  #assert ggs_view(s[..],4000).visible && !ggs_view(s[..],4001).visible && !ggs_view(s[..],6000).can_request && ggs_view(s[..],6001).can_request;
+  #assert !ggs_view(s[..],-1).visible && !ggs_view(s[..],-1).can_request && !ggs_view(s[..],GD_TIME_MAX+1).visible;
+  #assert !ggs_view(s[..],0).visible && !ggs_view(s[..],0).can_request;
+}
+#test "invalid identity intent clock and sequence edges fail closed without wrapping" {
+  for k:0..<12 {
+    s:[1]GgsSession;i:=ggs_test_input();now:=0;
+    if k==0 {i.epoch=0;}if k==1 {i.actor=-1;}if k==2 {i.generation=-1;}if k==3 {i.world_revision=-1;}if k==4 {i.goal_revision=-1;}
+    if k==5 {i.intent=-1;}if k==6 {i.intent=GD_SEQUENCE_MAX+1;}if k==7 {now=-1;}if k==8 {now=GD_TIME_MAX+1;}
+    if k==9 {now=GD_TIME_MAX-7999;}if k==10 {s[0].ticket[0].sequence=GD_SEQUENCE_MAX;}if k==11 {s[0].ticket[0].sequence=-1;}
+    ggs_step(s[..],i,now);#assert s[0].metrics[0].used==0 && !ggs_pending(s[..],1);
+    if k<9 {#assert !ggs_view(s[..],now).offer && !ggs_view(s[..],now).visible;}
+  }
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,100);ggs_sent(s[..],1,true);ggs_step(s[..],i,99);#assert s[0].fallback==1 && !ggs_view(s[..],100).visible && s[0].metrics[0].last_reason==GM_REVOKED;
+  t:[1]GgsSession;i.intent=GD_SEQUENCE_MAX;ggs_step(t[..],i,0);#assert t[0].last_intent==GD_SEQUENCE_MAX && t[0].metrics[0].used==1;
+  ggs_step(t[..],i,10000);#assert t[0].metrics[0].used==1;
+}
+#test "capacity is exactly one for every exported entry and probes are bounded" {
+  s:[2]GgsSession;i:=ggs_test_input();for n:[2]int.[0,2] {
+    ggs_step(s[0..<n],i,0);ggs_sent(s[0..<n],1,false);ggs_test_deliver(s[0..<n],1,0);
+    #assert !ggs_pending(s[0..<n],1) && ggs_effect(s[0..<n],0).sequence==0 && !ggs_view(s[0..<n],0).offer && ggs_probe(s[0..<n],200)==-1;
+  }
+  #assert ggs_probe(s[0..<1],207)==-1 && ggs_probe(s[0..<1],208)==-1 && ggs_probe(s[0..<1],199)==-1 && ggs_probe(s[0..<1],999)==-1;
+}
+
+// No decoding/normalization of query bytes: only this one literal opt-in works.
+ggs_mode :: (url:string)->int {
+  if url.count>2048 {return 0;}start:=-1;stop:=url.count;
+  for index:0..<url.count {if url[index]=='#' {stop=index;break;}if url[index]=='?' && start<0 {start=index;}}
+  if start<0 {return 0;}at:=start+1;seen:=false;mode:=0;
+  while true {end:=at;while end<stop && url[end]!='&' {end+=1;}part:=url[at..<end];
+    if part=="guard-ai" || (part.count>=9 && part[0..<9]=="guard-ai=") {
+      if seen {return 0;}seen=true;if part=="guard-ai=directions-shadow" {mode=1;}
+    }
+    if end==stop {break;}at=end+1;
+  }return mode;
+}
+ggs_key :: (i:GgsInput)->GgsKey {return GgsKey.{epoch=i.epoch,actor=i.actor,generation=i.generation,world_revision=i.world_revision,goal_revision=i.goal_revision,goal=i.observation.goal};}
+ggs_same_key :: (a:GgsKey,b:GgsKey)->bool {return a.epoch==b.epoch && a.actor==b.actor && a.generation==b.generation && a.world_revision==b.world_revision && a.goal_revision==b.goal_revision && a.goal==b.goal;}
+ggs_context :: (i:GgsInput)->GdContext {return GdContext.{epoch=i.epoch,actor=i.actor,generation=i.generation,revision=i.intent,policy=2,options=1};}
+ggs_input_ok :: (i:GgsInput)->bool {return i.epoch>0 && i.actor>=0 && i.generation>=0 && i.world_revision>=0 && i.goal_revision>=0 && i.intent>=0 && i.intent<=GD_SEQUENCE_MAX;}
+ggs_clock :: (s:[]GgsSession,now_ms:int)->bool {return now_ms>=0 && now_ms<=GD_TIME_MAX && now_ms>=s[0].last_ms;}
+ggs_observation :: (s:[]GgsSession,i:GgsInput)->GgObservation {
+  o:=i.observation;
+  // Provenance is essential: an old/external tip cannot borrow this exemption.
+  // Keep ownership after visual expiry, since the same intent's cooldown can
+  // still be visible to the page while its shadow is completing.
+  if s[0].local_action>0 && s[0].local_intent==i.intent && i.hint_intent==i.intent {o.hint_visible=false;}
+  return o;
+}
+ggs_clear_line :: (s:[]GgsSession) {s[0].local_action=0;s[0].local_intent=0;s[0].until_ms=0;}
+ggs_finish :: (s:[]GgsSession,reason:int) {
+  if s[0].ticket[0].phase==0 {return;}
+  sequence:=s[0].ticket[0].sequence;
+  if gm_end(s[0].metrics[..],sequence,reason) {s[0].fallback+=1;}
+  _:=gd_cancel(s[0].ticket[..],sequence);s[0].send=false;
+}
+
+// A nonboundary observation may revoke; only the post-gameplay boundary may
+// mint a network request or count a staged shadow. No remote enum is displayed.
+ggs_step :: (s:[]GgsSession,i:GgsInput,now_ms:int) #export_c {
+  if s.count!=1 {return;}
+  if !s[0].initialized {s[0].initialized=true;s[0].last_raw=-1;s[0].last_admitted=-1;}
+  s[0].mode=ggs_mode(i.url);
+  fresh:=i.intent>s[0].last_intent && i.intent<=GD_SEQUENCE_MAX;
+  if fresh {s[0].last_intent=i.intent;}
+  if !ggs_clock(s,now_ms) {
+    ggs_finish(s,GM_REVOKED);ggs_clear_line(s);s[0].start=false;s[0].offer=false;return;
+  }
+  s[0].last_ms=now_ms;k:=ggs_key(i);same:=s[0].have_key && ggs_same_key(k,s[0].key);
+  o:=ggs_observation(s,i);s[0].external_hint=o.hint_visible;
+  playable:=i.configured && !i.suspended && !i.blocked && ggs_input_ok(i);
+  offer:=o;offer.help_requested=true;offer.hint_visible=false;s[0].offer=playable && gg_ready(offer);
+  active:=playable && i.intent==s[0].last_intent && gg_ready(o);
+  remote:=s[0].mode==1 && i.authenticated && !s[0].disabled;
+  if s[0].ticket[0].phase!=0 {
+    if now_ms>=s[0].ticket[0].ticket.expires_ms {ggs_finish(s,GM_TIMEOUT);}
+    else if !active || !remote {ggs_finish(s,GM_REVOKED);}
+    else if !same || fresh {ggs_finish(s,GM_STALE);}
+  }
+  if !same {ggs_clear_line(s);s[0].start=false;}
+  s[0].key=k;s[0].have_key=true;
+  if fresh {s[0].start=false;}
+  if !active {ggs_clear_line(s);s[0].start=false;return;}
+  if !remote {s[0].start=false;}
+  if fresh && now_ms>=s[0].cooldown_until_ms && now_ms<=GD_TIME_MAX-GGS_COOLDOWN_MS {
+    s[0].local_action=gg_baseline(o);s[0].local_intent=i.intent;s[0].local_shown+=1;
+    s[0].until_ms=now_ms+GGS_VISIBLE_MS;s[0].cooldown_until_ms=now_ms+GGS_COOLDOWN_MS;
+    s[0].start=remote;
+  }
+  if !i.boundary {return;}
+  if s[0].ticket[0].phase==GD_READY {
+    answer:=gg_admit(o,GgAnswer.{ok=true,action=s[0].ticket[0].action},now_ms-s[0].started_ms);
+    if !answer.ok {ggs_finish(s,GM_STALE);}
+    else {
+      taken:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,ggs_context(i),now_ms,gg_legal(o));
+      if taken.code==GdCode.ok {
+        _:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].admitted+=1;s[0].last_admitted=taken.action;
+      }else {ggs_finish(s,GM_STALE);}
+    }
+  }
+  if !s[0].start {return;}s[0].start=false;
+  // Consume the explicit event once. Failed cadence/capacity never queues retry.
+  if s[0].metrics[0].used>=GGS_MAX_ATTEMPTS || now_ms<s[0].due_ms || now_ms>GD_TIME_MAX-GGS_CADENCE_MS {return;}
+  b:=gd_begin(s[0].ticket[..],ggs_context(i),now_ms,GG_TIMEOUT);if b.code!=GdCode.ok {return;}
+  _:=gm_begin(s[0].metrics[..],b.ticket.sequence,now_ms);s[0].started_ms=now_ms;s[0].due_ms=now_ms+GGS_CADENCE_MS;
+  // Qualified gg_ready + the fixed 1024-byte destination cover all five frozen
+  // requests (685..695 bytes). No private game/history fields are serialized.
+  s[0].body_n=gg_request(o,s[0].body[..]);s[0].send=true;
+}
+ggs_view :: (s:[]GgsSession,now_ms:int)->GgsView #export_c {
+  if s.count!=1 || !ggs_clock(s,now_ms) {return GgsView.{};}
+  // Only showing a checked nonquiet local line sets a positive until_ms;
+  // every revocation clears that deadline. Zero is already invisible at now0.
+  visible:=now_ms<s[0].until_ms;
+  return GgsView.{offer=s[0].offer,can_request=s[0].offer && !s[0].external_hint && now_ms>=s[0].cooldown_until_ms,local_action=ifx visible then s[0].local_action else 0,local_intent=s[0].local_intent,visible=visible,until_ms=s[0].until_ms,cooldown_until_ms=s[0].cooldown_until_ms};
+}
+ggs_pending :: (s:[]GgsSession,sequence:int)->bool #export_c {return s.count==1 && s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
+ggs_effect :: (s:[]GgsSession,now_ms:int)->GgsEffect #export_c {
+  if s.count!=1 || !s[0].send {return GgsEffect.{};}
+  if !ggs_clock(s,now_ms) {ggs_finish(s,GM_REVOKED);return GgsEffect.{};}
+  if now_ms>=s[0].ticket[0].ticket.expires_ms {ggs_finish(s,GM_TIMEOUT);return GgsEffect.{};}
+  s[0].last_ms=now_ms;
+  return GgsEffect.{sequence=s[0].ticket[0].sequence,intent=s[0].ticket[0].ticket.context.revision,url="/api/v1/systemone",body=cast(string)s[0].body[0..<s[0].body_n],flags=5,timeout_ms=s[0].ticket[0].ticket.expires_ms-now_ms};
+}
+ggs_sent :: (s:[]GgsSession,sequence:int,started:bool) #export_c {
+  if !ggs_pending(s,sequence) || !s[0].send {return;}s[0].send=false;
+  if !started {ggs_finish(s,GM_NO_TRANSPORT);}
+}
+ggs_receive :: (s:[]GgsSession,sequence:int,now_ms:int,text:string) #export_c {
+  if s.count!=1 {return;}
+  if !ggs_pending(s,sequence) {_:=gm_late(s[0].metrics[..],sequence);return;}
+  if s[0].send {return;}
+  if !ggs_clock(s,now_ms) {ggs_finish(s,GM_REVOKED);return;}s[0].last_ms=now_ms;
+  _:=gm_reply(s[0].metrics[..],sequence,now_ms);
+  status:="";body:="";if text.count>=4 {status=text[0..<4];body=text[4..<text.count];}
+  if status=="401\n" || status=="429\n" {
+    s[0].disabled=true;ggs_finish(s,ifx status=="401\n" then GM_AUTH else GM_QUOTA);return;
+  }
+  if now_ms>=s[0].ticket[0].ticket.expires_ms {ggs_finish(s,GM_TIMEOUT);return;}
+  if status!="200\n" {ggs_finish(s,GM_HTTP);return;}
+  a:=gg_decode(body);if !a.ok {ggs_finish(s,GM_MALFORMED);return;}s[0].last_raw=a.action;
+  if gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {ggs_finish(s,GM_STALE);}
+}
+// This range is separate from the old ambient probe. No body/identity is kept.
+// 200version,201mode,202local,203starts,204replies,205admit,206fallback,
+// 207raw,208admittedAction,209reason,210terminal,211late,212phase,213seq,
+// 214disabled,215localAction,216localIntent,217lastIntent,218cooldown.
+// 220..228reasons;400..410network;420..430queue;440..450total;293..296last.
+ggs_probe :: (s:[]GgsSession,field:int)->int #export_c {
+  if s.count!=1 {return -1;}
+  if field==200 {return 1;}if field==201 {return s[0].mode;}if field==202 {return s[0].local_shown;}
+  if field==203 {return s[0].metrics[0].used;}if field==204 {return s[0].metrics[0].replies;}if field==205 {return s[0].admitted;}if field==206 {return s[0].fallback;}
+  if field==207 {return ifx s[0].initialized then s[0].last_raw else -1;}if field==208 {return ifx s[0].initialized then s[0].last_admitted else -1;}
+  if field==209 {return s[0].metrics[0].last_reason;}if field==210 {return s[0].metrics[0].terminals;}if field==211 {return s[0].metrics[0].late;}
+  if field==212 {return s[0].ticket[0].phase;}if field==213 {return ifx s[0].ticket[0].phase!=0 then s[0].ticket[0].sequence else 0;}
+  if field==214 {return ifx s[0].disabled then 1 else 0;}if field==215 {return s[0].local_action;}if field==216 {return s[0].local_intent;}if field==217 {return s[0].last_intent;}if field==218 {return s[0].cooldown_until_ms;}
+  if field>=220 && field<229 {return s[0].metrics[0].outcomes[field-220].value;}
+  if field>=400 && field<411 {return s[0].metrics[0].network[field-400].value;}
+  if field>=420 && field<431 {return s[0].metrics[0].queue[field-420].value;}
+  if field>=440 && field<451 {return s[0].metrics[0].total[field-440].value;}
+  if field==293 {return s[0].metrics[0].last_network;}if field==294 {return s[0].metrics[0].last_queue;}if field==295 {return s[0].metrics[0].last_total;}
+  if field==296 {return gm_probe(s[0].metrics[..],16);}
+  return -1;
+}
+
+#test "the public local key and ticket retain independent uncompressed identities" {
+  i:=ggs_test_input();k:=ggs_key(i);c:=ggs_context(i);
+  #assert k.epoch==1 && k.actor==0 && k.generation==2 && k.world_revision==3 && k.goal_revision==4 && k.goal==2;
+  #assert c.epoch==1 && c.actor==0 && c.generation==2 && c.revision==1 && c.policy==2 && c.options==1;
+  i.generation=0;i.world_revision=0;i.goal_revision=0;i.intent=0;#assert ggs_input_ok(i);
+  for flag:0..<7 {bad:=i;if flag==0 {bad.epoch=0;}if flag==1 {bad.actor=-1;}if flag==2 {bad.generation=-1;}if flag==3 {bad.world_revision=-1;}if flag==4 {bad.goal_revision=-1;}if flag==5 {bad.intent=-1;}if flag==6 {bad.intent=GD_SEQUENCE_MAX+1;}#assert !ggs_input_ok(bad);}
+  i.intent=GD_SEQUENCE_MAX;#assert ggs_input_ok(i);
+  s:[1]GgsSession;#assert ggs_clock(s[..],0) && ggs_clock(s[..],GD_TIME_MAX) && !ggs_clock(s[..],-1) && !ggs_clock(s[..],GD_TIME_MAX+1);
+  s[0].last_ms=1;#assert !ggs_clock(s[..],0) && ggs_clock(s[..],1);
+}
+#test "a zero-owner or externally-owned hint cannot borrow the own-tip exemption" {
+  s:[1]GgsSession;i:=ggs_test_input();i.intent=0;i.hint_intent=0;i.observation.hint_visible=true;
+  #assert ggs_observation(s[..],i).hint_visible;ggs_step(s[..],i,0);#assert ggs_view(s[..],0).offer && !ggs_view(s[..],0).can_request;
+  i.intent=1;i.hint_intent=1;s[0].local_intent=1;
+  for action:0..<5 {s[0].local_action=action;#assert ggs_observation(s[..],i).hint_visible==(action==0);}
+  s[0].local_action=2;i.hint_intent=2;#assert ggs_observation(s[..],i).hint_visible;i.hint_intent=1;i.intent=2;#assert ggs_observation(s[..],i).hint_visible;
+}
+#test "cancellation before dispatch clears an effect and never leaks a queued intent" {
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);i.suspended=true;ggs_step(s[..],i,1);
+  #assert !s[0].send && s[0].fallback==1 && ggs_effect(s[..],1).sequence==0;
+  t:[1]GgsSession;i=ggs_test_input();i.boundary=false;ggs_step(t[..],i,10);#assert t[0].start;
+  ggs_step(t[..],i,9);#assert !t[0].start && !t[0].offer;
+  i.boundary=true;ggs_step(t[..],i,11);#assert t[0].metrics[0].used==0;
+  u:[1]GgsSession;i=ggs_test_input();i.boundary=false;ggs_step(u[..],i,0);i.authenticated=false;i.boundary=true;ggs_step(u[..],i,1);#assert u[0].metrics[0].used==0;
+  i.authenticated=true;ggs_step(u[..],i,10000);#assert u[0].metrics[0].used==0;
+}
+#test "effect and callback clock regression preserve refusal and exactly one terminal" {
+  for flag:0..<2 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,10);
+    if flag==0 {#assert ggs_effect(s[..],9).sequence==0;}
+    else {e:=ggs_effect(s[..],11);#assert e.timeout_ms==7999 && s[0].last_ms==11;ggs_sent(s[..],1,true);ggs_test_deliver(s[..],1,10);}
+    #assert s[0].fallback==1 && s[0].metrics[0].last_reason==GM_REVOKED && s[0].metrics[0].replies==0 && !ggs_pending(s[..],1);
+  }
+}
+#test "transport refusal and ticket representation corruption fail closed" {
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,false);
+  #assert s[0].fallback==1 && s[0].metrics[0].last_reason==GM_NO_TRANSPORT && s[0].metrics[0].replies==0;
+  t:[1]GgsSession;ggs_step(t[..],i,0);ggs_sent(t[..],1,true);ggs_test_deliver(t[..],1,1);t[0].ticket[0].ticket.context.policy=3;ggs_step(t[..],i,2);
+  #assert t[0].admitted==0 && t[0].fallback==1 && t[0].metrics[0].last_reason==GM_STALE;
+  u:[1]GgsSession;ggs_step(u[..],i,0);ggs_sent(u[..],1,true);u[0].ticket[0].ticket.sequence=2;ggs_test_deliver(u[..],1,1);
+  #assert u[0].admitted==0 && u[0].fallback==1 && u[0].metrics[0].last_reason==GM_STALE;
+}
+#test "local and network additions honor their exact maximum safe millisecond" {
+  for delta:0..<2 {
+    s:[1]GgsSession;i:=ggs_test_input();now:=GD_TIME_MAX-GGS_COOLDOWN_MS+delta;ggs_step(s[..],i,now);
+    #assert ggs_view(s[..],now).visible==(delta==0);#assert s[0].metrics[0].used==0;
+    t:[1]GgsSession;now=GD_TIME_MAX-GGS_CADENCE_MS+delta;ggs_step(t[..],i,now);
+    #assert t[0].metrics[0].used==(ifx delta==0 then 1 else 0);
+  }
+}
+#test "probe schema has distinct stable values, reserved holes and no writes" {
+  s:[1]GgsSession;s[0].initialized=true;s[0].mode=1;s[0].local_shown=11;s[0].metrics[0].used=2;s[0].metrics[0].replies=3;
+  s[0].admitted=4;s[0].fallback=5;s[0].last_raw=2;s[0].last_admitted=3;s[0].metrics[0].last_reason=9;s[0].metrics[0].terminals=6;s[0].metrics[0].late=7;
+  s[0].ticket[0].phase=1;s[0].ticket[0].sequence=8;s[0].disabled=true;s[0].local_action=4;s[0].local_intent=10;s[0].last_intent=12;s[0].cooldown_until_ms=13000;
+  expected:=[19]int.[1,1,11,2,3,4,5,2,3,9,6,7,1,8,1,4,10,12,13000];for at:0..<expected.count {#assert ggs_probe(s[..],200+at)==expected[at];}
+  s[0].ticket[0].phase=0;s[0].disabled=false;#assert ggs_probe(s[..],213)==0 && ggs_probe(s[..],214)==0;
+  for at:0..<9 {s[0].metrics[0].outcomes[at].value=at+100;#assert ggs_probe(s[..],220+at)==100+at;}
+  for at:0..<11 {s[0].metrics[0].network[at].value=at+200;s[0].metrics[0].queue[at].value=at+300;s[0].metrics[0].total[at].value=at+400;#assert ggs_probe(s[..],400+at)==200+at && ggs_probe(s[..],420+at)==300+at && ggs_probe(s[..],440+at)==400+at;}
+  s[0].metrics[0].last_network=20;s[0].metrics[0].last_queue=30;s[0].metrics[0].last_total=50;s[0].metrics[0].network_clipped=true;s[0].metrics[0].total_clipped=true;
+  #assert ggs_probe(s[..],293)==20 && ggs_probe(s[..],294)==30 && ggs_probe(s[..],295)==50 && ggs_probe(s[..],296)==5;
+  for at:[17]int.[199,219,229,239,240,244,292,297,399,411,419,431,439,451,500,-1,GD_TIME_MAX] {#assert ggs_probe(s[..],at)==-1;}
+  #assert s[0].local_shown==11 && s[0].last_ms==0;
+}
+#test "pre-boundary world changes and new intents cancel a not-yet-minted candidate" {
+  for kind:0..<2 {
+    s:[1]GgsSession;i:=ggs_test_input();i.boundary=false;ggs_step(s[..],i,0);#assert s[0].start;
+    if kind==0 {i.world_revision+=1;}else {i.intent+=1;}
+    ggs_step(s[..],i,1);#assert !s[0].start;
+    i.boundary=true;ggs_step(s[..],i,2);#assert s[0].metrics[0].used==0;
+  }
+}
+#test "a callback arrival fences earlier frame clocks while all local routes stay authored" {
+  s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);ggs_test_deliver(s[..],1,2);
+  ggs_step(s[..],i,1);#assert s[0].admitted==0 && s[0].metrics[0].last_reason==GM_REVOKED;
+  expected:=[5]int.[1,2,3,4,1];for index:0..<5 {t:[1]GgsSession;i.observation.goal=index+1;ggs_step(t[..],i,0);#assert ggs_view(t[..],0).visible && ggs_view(t[..],0).local_action==expected[index];}
+}
+#test "explicit permission loss wins over simultaneous epoch or new-intent staleness" {
+  for edge:0..<3 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+    i.epoch+=1;i.suspended=true;i.intent+=1;now:=1;if edge==1 {now=8000;}if edge==2 {i.suspended=false;i.authenticated=false;}
+    ggs_step(s[..],i,now);#assert s[0].metrics[0].last_reason==(ifx edge==1 then GM_TIMEOUT else GM_REVOKED) && s[0].fallback==1 && s[0].admitted==0;
+  }
+}
+#test "an out-of-range future serial cannot poison the highest valid intent" {
+  s:[1]GgsSession;i:=ggs_test_input();i.intent=GD_SEQUENCE_MAX+1;ggs_step(s[..],i,0);
+  #assert s[0].last_intent==0 && s[0].local_shown==0;
+  i.intent=1;ggs_step(s[..],i,1);#assert s[0].last_intent==1 && s[0].local_shown==1 && s[0].metrics[0].used==1;
+}

@@ -1,0 +1,74 @@
+#import "Basic";
+#load "../../verse/everglade/guard-guide-game.coax";
+#load "../../verse/everglade/guard-guide-session.coax";
+
+// Only authored facts, synthetic response bytes and monotonic sample times.
+// Creating an effect does not execute HTTP. No model or game is contacted.
+main :: () {
+    facts:=GgpFacts.{followed=0,stage=1,guard=0,help_requested=true,
+        gameplay=true,foreground=true,player_alive=true,guard_calm=true,
+        guard_alive=true,guard_full_health=true,guard_visible=true,guard_near=true,
+        world_known=ggp_world_ready(true,ggp_world_answer("200\n{\"doc\":null,\"version\":0}")),
+        target_present=true,destination_present=true};
+    input:=GgsInput.{observation=ggp_project(facts),epoch=1,actor=0,generation=1,
+        world_revision=0,goal_revision=ggp_goal_key(facts.followed,facts.stage),
+        intent=ggp_next_intent(0),configured=true,authenticated=true,boundary=true,
+        url="/realms/everglade?guard-ai=directions-shadow"};
+    session:[1]GgsSession;
+// book:begin local
+    ggs_step(session[..],input,100);
+    local:=ggs_view(session[..],100);
+    print("local before reply: %\n",local.local_action);
+    print("local line: %\n",gg_line(local.local_action));
+    effect:=ggs_effect(session[..],100);
+    print("shadow effect is bounded: %\n",effect.sequence==1 && effect.flags==5 && effect.timeout_ms==8000);
+// book:end local
+
+    // The fixture is a checked East Gate answer, not a live model result.
+    wire:[8196]u8;prefix:="200\n";
+    for index:0..<prefix.count {wire[index]=prefix[index];}
+    for index:0..<GG_RESPONSE.count {wire[index+4]=GG_RESPONSE[index];}
+    response:=cast(string)wire[0..<GG_RESPONSE.count+4];
+// book:begin shadow
+    ggs_sent(session[..],effect.sequence,true);
+    ggs_receive(session[..],effect.sequence,110,response);
+    print("callback stages without admission: %\n",ggs_probe(session[..],212)==GD_READY && ggs_probe(session[..],205)==0);
+    input.observation.hint_visible=local.visible;input.hint_intent=local.local_intent;
+    ggs_step(session[..],input,111);
+    print("same-intent own tip admits shadow: %\n",ggs_probe(session[..],205)==1);
+    print("display remains the local rule: %\n",ggs_view(session[..],111).local_action==2);
+// book:end shadow
+
+// book:begin replacement
+    input.observation.hint_visible=false;input.intent=ggp_next_intent(input.intent);
+    ggs_step(session[..],input,10100);next:=ggs_effect(session[..],10100);
+    ggs_sent(session[..],next.sequence,true);
+    input.hint_intent=ggs_view(session[..],10100).local_intent;input.observation.hint_visible=true;
+    input.intent=ggp_next_intent(input.intent);ggs_step(session[..],input,10101);
+    print("replacement during cooldown cancels old work: %\n",!ggs_pending(session[..],next.sequence) && ggs_probe(session[..],203)==2);
+    ggs_receive(session[..],next.sequence,10102,response);
+    print("old callback changes no admission: %\n",ggs_probe(session[..],205)==1 && ggs_probe(session[..],211)==1);
+// book:end replacement
+
+    revoked:[1]GgsSession;input.intent=1;input.observation=ggp_project(facts);
+    ggs_step(revoked[..],input,20000);ggs_sent(revoked[..],1,true);ggs_receive(revoked[..],1,20001,response);
+    facts.edit_count=1;input.observation=ggp_project(facts);input.world_revision+=1;
+    ggs_step(revoked[..],input,20002);
+    print("world edit suppresses a staged shadow: %\n",ggs_probe(revoked[..],205)==0 && ggs_probe(revoked[..],206)==1 && !ggs_view(revoked[..],20002).visible);
+
+    late:[1]GgsSession;facts.edit_count=0;input.observation=ggp_project(facts);
+    ggs_step(late[..],input,30000);ggs_sent(late[..],1,true);ggs_receive(late[..],1,38000,response);
+    print("exact deadline refuses the late answer: %\n",ggs_probe(late[..],205)==0 && ggs_probe(late[..],209)==GM_TIMEOUT);
+    ggs_step(late[..],input,40000);print("timeout queues no retry: %\n",ggs_probe(late[..],203)==1);
+
+    empty:[1]GgsSession;facts.followed= -1;facts.stage=0;facts.help_requested=false;
+    input.observation=ggp_project(facts);input.intent=0;input.goal_revision=ggp_goal_key(-1,0);
+    input.url="/realms/everglade";input.authenticated=false;
+    ggs_step(empty[..],input,0);
+    print("empty tracker offers explicit Find Work: %\n",ggp_offer(facts)==2);
+    print("empty tracker requests nothing: %\n",ggs_probe(empty[..],203)==0 && !ggs_view(empty[..],0).visible);
+    facts.find_work=true;facts.help_requested=true;input.intent=ggp_next_intent(0);input.observation=ggp_project(facts);
+    ggs_step(empty[..],input,1);
+    print("explicit Find Work local action: %\n",ggs_view(empty[..],1).local_action);
+    print("local-only guest requests nothing: %\n",ggs_probe(empty[..],203)==0);
+}

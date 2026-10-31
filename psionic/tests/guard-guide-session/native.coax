@@ -1,0 +1,3 @@
+// Library entry for the independent C ABI oracle, no effects or model calls.
+#load "../../../verse/everglade/guard-guide-session.coax";
+#load "../../../verse/everglade/guard-guide-fixtures.coax";

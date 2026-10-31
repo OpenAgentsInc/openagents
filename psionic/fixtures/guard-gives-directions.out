@@ -1,0 +1,15 @@
+local before reply: 2
+local line: The East Gate leads toward the Deep Wood and the waystone.
+shadow effect is bounded: true
+callback stages without admission: true
+same-intent own tip admits shadow: true
+display remains the local rule: true
+replacement during cooldown cancels old work: true
+old callback changes no admission: true
+world edit suppresses a staged shadow: true
+exact deadline refuses the late answer: true
+timeout queues no retry: true
+empty tracker offers explicit Find Work: true
+empty tracker requests nothing: true
+explicit Find Work local action: 1
+local-only guest requests nothing: true

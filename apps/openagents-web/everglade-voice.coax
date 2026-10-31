@@ -211,8 +211,10 @@ everglade_edit_reset :: (s: [] Everglade) -> bool #export_c { r := s[0].ev.reset
 // The published list (GET /api/playtest/world/everglade's answer), laid over the plan for everyone.
 everglade_world :: (s: [] Everglade, answer: string) #export_c {
     everglade_guard_invalidate(s);
+  s[0].guide.world_parsed=false;
   got: [1] EgEdits;
   if eg_edits_answer(answer, got[..]) < 0 { return; }
+  s[0].guide.world_parsed=true;
   s[0].ev.edits = got[0];
   edit_walls(s);
 }
