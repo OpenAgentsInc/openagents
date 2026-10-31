@@ -120,8 +120,9 @@ BOT_MISS_LATE :: 6.0;
 // In the drum a miss wide still rolls down the curve toward the middle, and
 // a beginner spends longer finding the ball on the curve: the bot drives
 // slower there and waits longer after a hit (ol-drum-bot).
-BOT_DRUM_THROTTLE :: 0.5;
-BOT_DRUM_RECOVER :: 2.5;
+BOT_DRUM_THROTTLE :: 0.42;
+BOT_DRUM_RECOVER :: 3.0;
+BOT_DRUM_MISS :: 1.8;    // and its aim misses by this much more: on the curve a new player scores less too
 BOT_PATH :: 30;          // ol-bot: the ball's path ahead, a sample every BOT_PATH_DT
 BOT_PATH_DT :: 0.1;
 BOT_LOOK :: 0.1;         // it looks again this often
@@ -748,6 +749,7 @@ bot_hit :: (s: [] OrbitLeague, c: int) {
   s[0].bot_touch_t[c] = s[0].played;
   late := fclamp(s[0].played / MATCH_TIME, 0.0, 1.0);
   miss := BOT_MISS + (BOT_MISS_LATE - BOT_MISS) * late;
+  if s[0].drum { miss *= BOT_DRUM_MISS; }
   s[0].bot_aim[c] = (rnd(s) * 2.0 - 1.0) * miss;
 }
 

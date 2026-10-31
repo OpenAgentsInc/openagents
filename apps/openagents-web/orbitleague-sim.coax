@@ -55,7 +55,8 @@ arena :: (kind: int, glass: [] f64) -> bool {
   game_reset(t[..]); set_arena_kind(t[..], kind);
   for i: 0..<cast(int) (120.0 / STEP) { game_step(t[..], STEP); }
   print("%: twelve novices: you % bot %, the bot's most in a match %, in a first minute %, in the first 15 s %; against a still player in 2 min: %\n", name, you, bot, worst, first, early, t[0].score[1]);
-  return worst <= 5 && first <= 2 && early == 0 && bot * 2 <= you * 3 + 8 && t[0].score[1] >= 2;
+  // the same beginner balance in every arena: twelve novices together score within six of the bot
+  return worst <= 5 && first <= 2 && early == 0 && bot <= you + 6 && t[0].score[1] >= 2;
 }
 
 // The pro bot (?bot=pro, ol-bot): full matches against the novices who aim
