@@ -468,11 +468,13 @@ seen :: (s: [] DropRealm, x: f32, y: f32, z: f32) -> Seen {
 
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
-GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
-EMBER_R :: 1.0; EMBER_G :: 0.9; EMBER_B :: 0.62;   // lit gold: orange is only for Bitcoin
+// The lamp you carry and the lines under the name are moonlit blue, never
+// amber: orange is only for Bitcoin. The plates keep the Verse's gold edge.
+EMBER_R :: 0.80; EMBER_G :: 0.92; EMBER_B :: 1.0;   // the lamp: a cool white flame
+MOON_R :: 0.62; MOON_G :: 0.80; MOON_B :: 0.90;     // the subtitle and the pack's head line
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
 white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
-bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
+moonlit :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, MOON_R, MOON_G, MOON_B); }
 
 plate :: (s: [] DropRealm, b: Box, alpha: f32, look: f32) {
   n := s[0].plate_n;
@@ -516,7 +518,7 @@ draw_pack :: (s: [] DropRealm, out: [] f32, at: int, top: f32) -> int {
     if !s[0].pack_ready && !s[0].pack_failed {
       share := ifx s[0].total > 0 then clamp(cast(f32) s[0].loaded / cast(f32) s[0].total, 0, 1) else 0.0f32;
       x0 := b.x0 + 14 * k; x1 := b.x1 - 14 * k; y := b.y0 + 30 * k;
-      if lit(out, vertices, x0, y, x1, y, 0.5 * k, 0.25, 1 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+      if lit(out, vertices, x0, y, x1, y, 0.5 * k, 0.25, 1 * k, MOON_R, MOON_G, MOON_B, MODE_STROKE) { vertices += 6; }
       if share > 0 && lit(out, vertices, x0, y, x0 + (x1 - x0) * share, y, 1.2 * k, 1, 2.5 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { vertices += 6; }
     }
     return vertices;
@@ -531,7 +533,7 @@ draw_pack :: (s: [] DropRealm, out: [] f32, at: int, top: f32) -> int {
   head := cast(string) buf[0..<n];
   room := bw - 28 * k;
   y := b.y0 + 20 * k;
-  vertices = write(d, out, vertices, head, b.x0 + 14 * k, y, fit_cap(head, 7 * k, room), GAP, SPACE, bronze(k, 0.95), false, false);
+  vertices = write(d, out, vertices, head, b.x0 + 14 * k, y, fit_cap(head, 7 * k, room), GAP, SPACE, moonlit(k, 0.95), false, false);
   for i: 0..<s[0].licence_n {
     if i >= PANEL_ROWS {
       y += PANEL_LINE * k;
@@ -576,7 +578,7 @@ draw_realm :: (s: [] DropRealm, out: [] f32) -> int {
   tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, ifx phone then w - g else w - 2 * g - bw), y1 = g + 54 * k};
   plate(s, tb, 0.92, LOOK_PLAIN);
   vertices = write(d, out, vertices, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
-  vertices = write(d, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
+  vertices = write(d, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, moonlit(k, 0.9), false, false);
 
   // PROJECT (or GALAXY), top right
   b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};

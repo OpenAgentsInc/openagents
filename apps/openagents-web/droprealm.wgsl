@@ -84,10 +84,10 @@ fn lamp_near(p: vec3f, n: vec3f) -> f32 {
   let edge = select(0.0, 1.0 - smoothstep(u.eye.w - 0.6, u.eye.w, r), down);
   // a stone floor: a faint metre grid and rings two metres apart, lit by a dim key and your lamp
   let fade = exp(-t * 0.02);
-  var ground = vec3f(0.045, 0.043, 0.05) + vec3f(0.035, 0.03, 0.025) * grid * fade + vec3f(0.08, 0.064, 0.036) * rings * 0.6 * fade;
-  ground += vec3f(1.0, 0.62, 0.28) * lamp_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.55;
+  var ground = vec3f(0.045, 0.043, 0.05) + vec3f(0.035, 0.03, 0.025) * grid * fade + vec3f(0.05, 0.062, 0.078) * rings * 0.6 * fade;
+  ground += vec3f(0.55, 0.78, 1.0) * lamp_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.55;
   let off = (r - u.eye.w) * 2.5;
-  ground += vec3f(0.8, 0.64, 0.36) * exp(-off * off) * 0.25;
+  ground += vec3f(0.45, 0.6, 0.78) * exp(-off * off) * 0.25;
   let c = mix(sky, ground, edge * u.fade);
   return vec4f(panels(p, c), 1.0);
 }
@@ -130,7 +130,7 @@ struct S {
   let n = normalize(s.normal);
   let key = max(0.0, dot(n, normalize(vec3f(-0.4, 0.8, 0.45))));
   var lit = vec3f(0.16, 0.17, 0.22) * (0.6 + 0.4 * n.y) + vec3f(0.55, 0.56, 0.65) * key;
-  lit += vec3f(1.0, 0.62, 0.28) * lamp_near(s.world, n) * 1.6;
+  lit += vec3f(0.55, 0.78, 1.0) * lamp_near(s.world, n) * 1.6;
   let c = tex.rgb * s.tint * lit * u.fade;
   return vec4f(panels(s.pos.xy, c), 1.0);
 }
