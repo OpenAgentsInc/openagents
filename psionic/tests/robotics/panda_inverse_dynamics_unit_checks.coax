@@ -1,0 +1,9 @@
+#load "../../lib/robotics/panda-inverse-dynamics-types.coax";
+PidCheckPower :: struct @unit(mass=1,length=2,time=-3,angle=0,numerator=1,denominator=1) {}
+#test "Panda inverse force dimensions preserve mixed angle length acceleration and power" {
+ hh:pfku.Quantity(PmHingeInertia,f64);hh.value=2;hs:pfku.Quantity(PmCrossInertia,f64);hs.value=3;ss:pfku.Quantity(pfku.Kilogram,f64);ss.value=5;
+ ha:pfku.Quantity(PidAngularAcceleration,f64);ha.value=7;sa:pfku.Quantity(PidLinearAcceleration,f64);sa.value=11;
+ h1:=convert_unit(PmHingeGravity,hh*ha);h2:=convert_unit(PmHingeGravity,hs*sa);s1:=convert_unit(PmSlideGravity,hs*ha);s2:=convert_unit(PmSlideGravity,ss*sa);
+ #assert h1.value==14 && h2.value==33 && s1.value==21 && s2.value==55;
+ hv:pfku.Quantity(PidAngularRate,f64);hv.value=13;sv:pfku.Quantity(PidLinearRate,f64);sv.value=17;hp:=convert_unit(PidCheckPower,h1*hv);sp:=convert_unit(PidCheckPower,s1*sv);#assert hp.value==182 && sp.value==357;
+}

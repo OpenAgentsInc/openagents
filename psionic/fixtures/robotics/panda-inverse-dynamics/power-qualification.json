@@ -1,0 +1,139 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.power-reference.v1",
+  "passed": true,
+  "h_time_seconds": 1e-05,
+  "power_atol_W": 2e-06,
+  "rtol": 0,
+  "case_count": 24,
+  "frozen_native_record_sha256": "dacf50c357cf348ba2e69a20eb38ba4574588b85435b06d177104c817c600abd",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_inverse_dynamics_power_reference.py": "d08fed8d008e15290dedda9b150da45c373ed7a49fa72e253af6c4cab79e8d2e",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f"
+  },
+  "new_reference_work": "72 independent matrix-metric evaluations:base/plus/minus for24cachedcases. No old coordinate-FD table regeneration,nativeexecution,SDKorNN.",
+  "comparisons": [
+    {
+      "velocity_bias_power_W": 0.0,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 0.0
+    },
+    {
+      "velocity_bias_power_W": 0.024845376889409843,
+      "kinetic_metric_change_power_W": 0.024845376894798796,
+      "abs_error_W": 5.388953172591471e-12
+    },
+    {
+      "velocity_bias_power_W": -0.024845376889409843,
+      "kinetic_metric_change_power_W": -0.024845376894798796,
+      "abs_error_W": 5.388953172591471e-12
+    },
+    {
+      "velocity_bias_power_W": 0.02484537688941968,
+      "kinetic_metric_change_power_W": 0.024845376894798796,
+      "abs_error_W": 5.379117290482682e-12
+    },
+    {
+      "velocity_bias_power_W": 0.0,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 0.0
+    },
+    {
+      "velocity_bias_power_W": 0.0,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 0.0
+    },
+    {
+      "velocity_bias_power_W": -0.31291114379719587,
+      "kinetic_metric_change_power_W": -0.3129111437941644,
+      "abs_error_W": 3.03146396873899e-12
+    },
+    {
+      "velocity_bias_power_W": 0.31291114379719587,
+      "kinetic_metric_change_power_W": 0.3129111437941644,
+      "abs_error_W": 3.03146396873899e-12
+    },
+    {
+      "velocity_bias_power_W": -0.312911143797193,
+      "kinetic_metric_change_power_W": -0.3129111437941644,
+      "abs_error_W": 3.0285773888749645e-12
+    },
+    {
+      "velocity_bias_power_W": -8.22367347830255e-19,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 8.22367347830255e-19
+    },
+    {
+      "velocity_bias_power_W": 0.0,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 0.0
+    },
+    {
+      "velocity_bias_power_W": -0.22412689076121103,
+      "kinetic_metric_change_power_W": -0.22412689074866873,
+      "abs_error_W": 1.2542300531492856e-11
+    },
+    {
+      "velocity_bias_power_W": 0.22412689076121103,
+      "kinetic_metric_change_power_W": 0.22412689074866873,
+      "abs_error_W": 1.2542300531492856e-11
+    },
+    {
+      "velocity_bias_power_W": -0.22412689076120024,
+      "kinetic_metric_change_power_W": -0.22412689074866873,
+      "abs_error_W": 1.2531503612578376e-11
+    },
+    {
+      "velocity_bias_power_W": 0.0,
+      "kinetic_metric_change_power_W": 0.0,
+      "abs_error_W": 0.0
+    },
+    {
+      "velocity_bias_power_W": -3.656178525990043,
+      "kinetic_metric_change_power_W": -3.6561785254490933,
+      "abs_error_W": 5.409495074104598e-10
+    },
+    {
+      "velocity_bias_power_W": -2.2226915339337014,
+      "kinetic_metric_change_power_W": -2.2226915345567155,
+      "abs_error_W": 6.230140847662824e-10
+    },
+    {
+      "velocity_bias_power_W": 1.3448900814410578,
+      "kinetic_metric_change_power_W": 1.34489008099586,
+      "abs_error_W": 4.451978785624533e-10
+    },
+    {
+      "velocity_bias_power_W": -3.6738486129974444,
+      "kinetic_metric_change_power_W": -3.673848612512487,
+      "abs_error_W": 4.849574075649343e-10
+    },
+    {
+      "velocity_bias_power_W": -5.488068069513029,
+      "kinetic_metric_change_power_W": -5.4880680688331,
+      "abs_error_W": 6.799290019898763e-10
+    },
+    {
+      "velocity_bias_power_W": 2.2838138959007774,
+      "kinetic_metric_change_power_W": 2.283813895642971,
+      "abs_error_W": 2.5780622081583715e-10
+    },
+    {
+      "velocity_bias_power_W": -1.1668735019634704,
+      "kinetic_metric_change_power_W": -1.166873502207468,
+      "abs_error_W": 2.439977109247593e-10
+    },
+    {
+      "velocity_bias_power_W": -2.9406995688531326,
+      "kinetic_metric_change_power_W": -2.9406995682766177,
+      "abs_error_W": 5.765148358705119e-10
+    },
+    {
+      "velocity_bias_power_W": 1.7369838448172248,
+      "kinetic_metric_change_power_W": 1.7369838451951536,
+      "abs_error_W": 3.779287993666003e-10
+    }
+  ],
+  "max_abs_error_W": 6.799290019898763e-10,
+  "max_budget_fraction": 0.00033996450099493813,
+  "seconds": 0.32097720802994445
+}

@@ -1,0 +1,166 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.sdk-reference.v1",
+  "passed": true,
+  "profile_sha256": "1c5414859bfeb5eabf1cb7049737b7c437187f3137a8f9a6e793477bf1ee54e1",
+  "pc_sample_profile_sha256": "b93ffdffae22806bd9be65774a3086a83e1e6af9c856fbf6ecaac7550dfc4878",
+  "experiment_sha256": "6b255a86a733e7a1d2f797691cec0b3fa3954b3b0d61e5a70de51a4691a81019",
+  "collector_sha256": "2f856783574fd50f2f02d76c50d555827509ed17c7c1deed3fc380f103473b82",
+  "driver_sha256": "9cd77c9a5b18d5a3b0800e5d00a714187956dd84e13bcacaa66436b4d152ac62",
+  "input_sha256": "223513d05058c1cc5fbb59be8d0c610dfc68bc1ff7bf0b3f4f554a73e5ef3fb6",
+  "sdk_version": "3.3.1",
+  "sdk_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "SDK_headers": {
+    "mujoco.h": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a",
+    "mjmodel.h": "a314eca14b6abf5d74039b111741f61c3ec7555e09db1e0ae05b5a07ccc81ce8",
+    "mjdata.h": "9179d65ccf24f3841515f2092ab14c1f3982bdc358c6abe2c390d8b845f819c2"
+  },
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "commands": [
+    {
+      "name": "compile",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/include",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_inverse_dynamics_sdk_collect.c",
+        "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/libmujoco.3.3.1.dylib",
+        "-o",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/collector"
+      ],
+      "exit": 0,
+      "seconds": 0.4769061249680817,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "capture",
+      "argv": [
+        "/private/tmp/panda-inverse-dynamics-sdk-first/collector",
+        "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/sdk-input.bin",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/sdk-mass-bias.f64",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/sdk-rne-body.f64",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/sdk-model.json",
+        "/private/tmp/panda-inverse-dynamics-sdk-first/sdk-pc-samples.f64"
+      ],
+      "exit": 0,
+      "seconds": 3.308632000000216,
+      "stderr_bytes": 0,
+      "stdout_sha256": "680ddd57bb432e60968428c12fc958bc942f97ecdc1fc3d8b35c0cd3fac801dd",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "calls": {
+    "mj_resetData": 15,
+    "mj_forward": 15,
+    "mj_fullM": 15,
+    "mj_rne_flag_acc1": 15,
+    "mj_jacSite": 15,
+    "mj_objectVelocity_SITE_global": 15,
+    "mj_step": 0,
+    "render": 0,
+    "NN": 0
+  },
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "case_count": 15,
+  "zero_velocity_contexts": 3,
+  "nonzero_velocity_contexts": 12,
+  "scope": "NEW rawSDK matchedq/v/a facts only:15contexts,12nonzero-v/3zero-v,0steps/render/NN. SourceM9row5oldsubfields are carried by exactalias; new matchedPcSample fields are separate from any later ownedadapter/controller qualification.",
+  "same_input_RNE_plus_armature": {
+    "values": 135,
+    "max_abs_error": 7.993605777301127e-15,
+    "atol": 5e-11,
+    "rtol": 0,
+    "passed": true
+  },
+  "fresh_pc_sample_words": 2160,
+  "model_source_facts_exact": true,
+  "previously_observed_case5_M_bias_byte_alias": true,
+  "artifacts": {
+    "experiment.json": {
+      "sha256": "6b255a86a733e7a1d2f797691cec0b3fa3954b3b0d61e5a70de51a4691a81019",
+      "bytes": 17529
+    },
+    "cases.f64": {
+      "sha256": "684c892c72d4e6341e695c1b7bae22a5d5e7d01e3310f1349b98c5c0c8271b49",
+      "bytes": 5184
+    },
+    "sdk-profile.json": {
+      "sha256": "1c5414859bfeb5eabf1cb7049737b7c437187f3137a8f9a6e793477bf1ee54e1",
+      "bytes": 2926
+    },
+    "sdk-pc-sample-profile.json": {
+      "sha256": "b93ffdffae22806bd9be65774a3086a83e1e6af9c856fbf6ecaac7550dfc4878",
+      "bytes": 1646
+    },
+    "sdk-mass-bias.f64": {
+      "sha256": "256c8c7911c1a488c565abfc59a94124430421769ca34b2e03bb7cf0c673c7e8",
+      "bytes": 10800
+    },
+    "sdk-rne-body.f64": {
+      "sha256": "9b05786e3ce40ef5ac6167025110b8405d09a62dbae9da83a42846f307bdd547",
+      "bytes": 1080
+    },
+    "sdk-model.json": {
+      "sha256": "6ad64e3c8c9045e8f0b664f2cf99fd9743e7d6bd2eb2c2a3ef34529cf76fc47d",
+      "bytes": 10390
+    },
+    "sdk-pc-samples.f64": {
+      "sha256": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+      "bytes": 17280
+    },
+    "sdk-force.f64": {
+      "sha256": "56ce0b6d29a39b88ec5e36a8a94e1478f7daf5b2f9de47904a2407019b7021e1",
+      "bytes": 1080
+    }
+  },
+  "seconds": 3.78819079202367,
+  "owned_inverse_dynamics_qualified": false,
+  "executed_capture_record_sha256": "6c3c50e6ef54f23459337120373a089bde23400b9c42cc5444b521ec4134d347",
+  "input_case_count": 24,
+  "selected_case_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "captured_shapes": {
+    "sdk-mass-bias.f64": [
+      15,
+      90
+    ],
+    "sdk-rne-body.f64": [
+      15,
+      9
+    ],
+    "sdk-pc-samples.f64": [
+      15,
+      144
+    ],
+    "sdk-force.f64": [
+      15,
+      9
+    ]
+  },
+  "source_terms": "Dataset card Apache-2.0; LIBERO/robosuite separately pinned MIT; MuJoCo3.3.1 Apache-2.0. Original acquired scene/mesh data stays private. See ../libero-panda/acquisition.json."
+}

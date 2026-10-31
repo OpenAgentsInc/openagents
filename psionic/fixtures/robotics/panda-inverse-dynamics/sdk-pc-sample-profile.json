@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.sdk-pc-sample-profile.v1",
+  "frozen_before_capture": true,
+  "profile_sha256": "1c5414859bfeb5eabf1cb7049737b7c437187f3137a8f9a6e793477bf1ee54e1",
+  "source_contract": {
+    "psionic/platform/panda-env.c": "dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0",
+    "psionic/lib/robotics/panda-control-types.coax": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3"
+  },
+  "case_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "shape": [
+    15,
+    144
+  ],
+  "layout": "position3,rotation9,q7,qd7,M49,Jpos21,Jrot21,worldSITEvelocitylinear3+angular3,bias7,actuatorlower7,actuatorupper7",
+  "target": "gripper0_grip_site; world frame; fresh same forward generation; no post-step lag",
+  "extra_calls_only": {
+    "mj_jacSite": 15,
+    "mj_objectVelocity_SITE_global": 15,
+    "extra_forward": 0
+  },
+  "whole_observations_are_NEW": true,
+  "previously_observed_M_bias_row": {
+    "case_index": 5,
+    "purpose": "NEW matched wholePcSample/siteJacobian/sitevelocity/actuatorlimits justifies one fresh context; old M9/g0 proof is carried, not rerun as a qualification. SDK necessarily computes these fields during the NEW whole observation.",
+    "prior_fixture": "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.f64",
+    "prior_case_index": 4,
+    "prior_fixture_sha256": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed"
+  },
+  "scope": "Independent raw wholeSDKPcSamples for a future owned-controller adapter. No ownedadapter/controller/episode success proof yet."
+}

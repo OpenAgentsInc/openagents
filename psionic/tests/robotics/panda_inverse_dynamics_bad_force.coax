@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-inverse-dynamics-types.coax";
+wrong :: (out:PidOutput)->pfku.Quantity(PmSlideGravity,f64) {return out.hinge[0];}

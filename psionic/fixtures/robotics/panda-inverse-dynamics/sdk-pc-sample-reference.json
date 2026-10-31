@@ -1,0 +1,45 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.sdk-pc-sample-reference.v1",
+  "raw_SDK_observations_only": true,
+  "owned_adapter_qualified": false,
+  "capture_reference_sha256": "27da6f9c18c45fd7f4572e630b42a0e80ddb56921679a34dfcdd51b16cdf89a4",
+  "pc_profile_sha256": "b93ffdffae22806bd9be65774a3086a83e1e6af9c856fbf6ecaac7550dfc4878",
+  "shape": [
+    15,
+    144
+  ],
+  "bytes": 17280,
+  "sha256": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+  "case_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "case_identity_source": "experiment.json +cases.f64 first15q/v/a rows",
+  "sample_order": "position3,rotation9,q7,qd7,M49,Jpos21,Jrot21,velocitylinear3+angular3,bias7,lower7,upper7",
+  "age": "Fresh sameforward generation, time0, no step/stale state",
+  "calls_from_same_forward_contexts": {
+    "mj_forward": 15,
+    "mj_jacSite": 15,
+    "mj_objectVelocity_SITE_global": 15,
+    "extra_forward": 0,
+    "integration": 0
+  },
+  "previously_observed_M_bias_alias": {
+    "case_index": 5,
+    "old_fixture_case_index": 4,
+    "subfields_are_not_new_M9_qualification": true
+  }
+}

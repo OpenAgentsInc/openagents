@@ -1,0 +1,91 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.sdk-profile.v1",
+  "frozen_before_capture": true,
+  "experiment_sha256": "6b255a86a733e7a1d2f797691cec0b3fa3954b3b0d61e5a70de51a4691a81019",
+  "input24_sha256": "684c892c72d4e6341e695c1b7bae22a5d5e7d01e3310f1349b98c5c0c8271b49",
+  "SDK_case_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "SDK_case_names": [
+    "zero/zero",
+    "zero/dense",
+    "zero/negative-dense",
+    "zero/dense-acceleration",
+    "zero/slides-only",
+    "nominal-home/zero",
+    "nominal-home/dense",
+    "nominal-home/negative-dense",
+    "nominal-home/dense-acceleration",
+    "nominal-home/slides-only",
+    "dense/zero",
+    "dense/dense",
+    "dense/negative-dense",
+    "dense/dense-acceleration",
+    "dense/slides-only"
+  ],
+  "SDK_contexts": 15,
+  "nonzero_velocity_contexts": 12,
+  "zero_velocity_contexts": 3,
+  "calls": {
+    "mj_resetData": 15,
+    "mj_forward": 15,
+    "mj_fullM": 15,
+    "mj_rne_flag_acc1": 15,
+    "mj_jacSite": 15,
+    "mj_objectVelocity_SITE_global": 15,
+    "mj_step": 0,
+    "render": 0,
+    "NN": 0
+  },
+  "M_bias_shape": [
+    15,
+    90
+  ],
+  "body_RNE_shape": [
+    15,
+    9
+  ],
+  "case_shape": [
+    15,
+    27
+  ],
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "SDK_version": "3.3.1",
+  "SDK_force_atol": 5e-10,
+  "SDK_internal_RNE_plus_armature_atol": 5e-11,
+  "rtol": 0,
+  "collector_sha256": "2f856783574fd50f2f02d76c50d555827509ed17c7c1deed3fc380f103473b82",
+  "input_units": "q:7rad+2m;v:7rad/s+2m/s;a:7rad/s2+2m/s2",
+  "force_units": "7energy/rad+2force under explicit one-radian source normalization",
+  "excluded": "Passive damping/friction/fluid,actuator/contact/constraint forces; not qfrc_inverse/motor request/episode.",
+  "previously_observed_subfields": {
+    "case_index": 5,
+    "purpose": "NEW matched wholePcSample/siteJacobian/sitevelocity/actuatorlimits justifies one fresh context; old M9/g0 proof is carried, not rerun as a qualification. SDK necessarily computes these fields during the NEW whole observation.",
+    "prior_fixture": "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.f64",
+    "prior_case_index": 4,
+    "prior_fixture_sha256": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed"
+  },
+  "source_model_fixture": {
+    "path": "psionic/fixtures/robotics/panda-fingers/sdk-model.json",
+    "sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031"
+  },
+  "source_profiles": {
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e"
+  }
+}
