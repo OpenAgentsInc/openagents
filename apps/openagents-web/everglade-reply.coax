@@ -539,7 +539,13 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
     if s[0].above || s[0].talk >= 0 || s[0].board || s[0].ev.editing || s[0].rp.replay || !sp_on(s) { return n; }
     mb := s[0].map_button;
     bw := rp_button_w(s, "REPLY", cap);
-    return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", mb.x0 - 10 * k - bw, mb.y0, cap);
+    // left of the whole row: EDIT (or BUILD) and TALK sit left of MAP for those who edit, and REPLY
+    // drawn over EDIT took the owner's tap (everglade-edit.coax, everglade-voice.coax)
+    edge := mb.x0 - 2 * k;
+    if eg_builder(s) { edge -= text_width(ifx s[0].ev.admin then "EDIT" else "BUILD", 9 * k) + 40 * k; }
+    tb := s[0].ev.button;
+    if tb.x1 > tb.x0 && tb.x0 < edge { edge = tb.x0; }
+    return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", edge - 8 * k - bw, mb.y0, cap);
   }
   pw := lo(w - 2 * gutter, 640 * k);
   x0 := (w - pw) / 2;
