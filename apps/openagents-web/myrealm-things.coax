@@ -11,7 +11,7 @@ BUILDINGS :: 4;
 BUILDING_KINDS :: [11] string.["cabin", "barn", "windmill", "lighthouse", "castle", "tower", "market", "shop", "saloon", "temple", "ruins"];
 BUILDING_WORDS :: [11] string.["a log cabin", "a red barn", "a windmill", "a lighthouse", "a castle", "a stone tower", "a market",
                                "a shop", "a saloon", "a temple", "ruins"];
-BUILDING_R :: [11] f32.[2.8, 3.4, 1.8, 1.6, 6.0, 1.7, 4.6, 2.6, 3.4, 4.6, 3.4];   // its footprint, for a free spot
+BUILDING_R :: [11] f32.[2.8, 3.4, 1.8, 1.6, 6.0, 1.7, 4.6, 2.6, 3.4, 5.2, 3.4];   // its footprint, for a free spot
 HERDS :: [13] string.["bison", "deer", "horse", "sheep", "goat", "cow", "pig", "wolf", "fox", "dog", "camel", "chicken", "dinosaur"];
 FLIERS :: [9] string.["crow", "bat", "owl", "parrot", "gull", "dragon", "fairy", "firefly", "butterfly"];
 FLY_CROW :: 0; FLY_BAT :: 1; FLY_OWL :: 2; FLY_PARROT :: 3; FLY_GULL :: 4; FLY_DRAGON :: 5; FLY_FAIRY :: 6; FLY_FIREFLY :: 7; FLY_BUTTERFLY :: 8;
@@ -248,35 +248,35 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
     return;
   }
   if kind == 9 {
-    // a temple: a stepped pyramid of five stone tiers, a stair up its front, a shrine on top with a
-    // dark doorway and a roof slab, moss and vines down its sides
+    // a temple: a broad stepped pyramid of four stone tiers, a stair up its front, a small low
+    // shrine on its flat top with a dark doorway and a roof slab, moss and vines down its sides
     masoned(s);
     tr: f32 = 0.74; tg: f32 = 0.72; tb: f32 = 0.6;
-    for k: 0..<5 {
+    for k: 0..<4 {
       f := cast(f32) k;
-      w := 9.0 - 1.5 * f;
+      w := 10.0 - 1.4 * f;
       sized(s, crate, x, 1.1 * f, z, yaw, 0, w, 1.12, w, tr - 0.02 * f, tg - 0.01 * f, tb);
       part_at(s, crate, x, z, yaw, 0, 0, 1.1 * f + 1.0, w + 0.2, 0.16, w + 0.2, tr * 0.9, tg * 0.9, tb * 0.9);   // its ledge
     }
     // the stair: steps up the front, between two low walls
-    for k: 0..<11 {
+    for k: 0..<9 {
       f := cast(f32) k;
-      part_at(s, crate, x, z, yaw, 0, 4.9 - 0.68 * f, 0, 2.0, 0.5 * (f + 1), 0.7, tr * 1.04, tg * 1.04, tb * 1.04);
+      part_at(s, crate, x, z, yaw, 0, 5.3 - 0.6 * f, 0, 2.0, 0.5 * (f + 1), 0.62, tr * 1.04, tg * 1.04, tb * 1.04);
     }
-    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -1.15f32 else 1.15f32, 2.3, 0, 0.3, 4.6, 4.8, tr * 0.86, tg * 0.86, tb * 0.86); }
-    // the shrine: low, as wide as the top tier, so the pyramid reads as one shape
-    sized(s, crate, x, 5.5, z, yaw, 0, 2.7, 1.05, 2.5, tr * 1.02, tg * 1.02, tb * 1.02);
-    sized(s, crate, x, 6.55, z, yaw, 0, 3.1, 0.28, 2.9, tr * 0.92, tg * 0.92, tb * 0.92);
+    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -1.15f32 else 1.15f32, 2.9, 0, 0.3, 3.9, 5.0, tr * 0.86, tg * 0.86, tb * 0.86); }
+    // the shrine: small and low, barely above the top tier, so the pyramid reads as one shape
+    sized(s, crate, x, 4.4, z, yaw, 0, 2.4, 0.9, 2.2, tr * 1.02, tg * 1.02, tb * 1.02);
+    sized(s, crate, x, 5.3, z, yaw, 0, 2.8, 0.22, 2.6, tr * 0.92, tg * 0.92, tb * 0.92);
     coat(s, 1);
-    part_at(s, crate, x, z, yaw, 0, 1.27, 5.5, 0.8, 0.85, 0.06, 0.06, 0.05, 0.04);   // its doorway
+    part_at(s, crate, x, z, yaw, 0, 1.12, 4.4, 0.7, 0.72, 0.06, 0.06, 0.05, 0.04);   // its doorway
     // moss on the tiers' corners, vines hanging
     for k: 0..<4 {
       a := yaw + 0.7854 + cast(f32) k * 1.5707963;
-      for q: 0..<3 { f := cast(f32) q; ball(s, x + (4.1 - 1.4 * f) * sin(a), 1.15 + 1.1 * f, z + (4.1 - 1.4 * f) * cos(a), 0.45, 0.3, 0.52, 0.22); }
+      for q: 0..<3 { f := cast(f32) q; ball(s, x + (6.9 - 0.99 * f) * sin(a), 1.15 + 1.1 * f, z + (6.9 - 0.99 * f) * cos(a), 0.45, 0.3, 0.52, 0.22); }
     }
     for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -3.0f32 else 3.0f32, 3.8, 0.9, 0.12, 2.6, 0.1, 0.25, 0.5, 0.2); }
     glowing(s, 0);
-    solid(s, x, z, 4.4);
+    solid(s, x, z, 4.9);
     return;
   }
   // ruins: broken columns in two rows, a lintel still on two, one fallen, blocks about
@@ -324,6 +324,7 @@ WING_RGB :: [12] f32.[1.0, 0.82, 0.22,  0.4, 0.62, 1.0,  1.0, 1.0, 0.98,  0.95, 
 flier_at :: (s: [] MyRealm, i: int, b: Bird) -> bool {
   f := s[0].flier;
   if f <= FLY_OWL || f == FLY_FIREFLY { return f == FLY_FIREFLY; }   // fireflies are only their light (draw_world)
+  if f == FLY_PARROT { parrot_shape(s, b, i); return true; }
   crate := mesh_named(s, "Prop_Crate");
   coat(s, 1);
   span := ifx f == FLY_PARROT then 0.7f32 else ifx f == FLY_GULL then 1.0f32 else ifx f == FLY_DRAGON then 4.6f32 else ifx f == FLY_FAIRY then 0.24f32 else 0.34f32;

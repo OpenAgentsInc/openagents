@@ -116,6 +116,52 @@ owl_shape :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, flap: 
   }
 }
 
+// A parrot in flight, like an owl drawn round: a long body in its colour, a round head, a pale
+// curved beak, a dark eye, a long tail, and broad plain wings of its colour with a second colour
+// along their edge (FLIER_RGB, WING_RGB).
+PARROT :: 0.6;
+parrot_shape :: (s: [] MyRealm, b: Bird, i: int) {
+  crate := mesh_named(s, "Prop_Crate");
+  k: f32 = PARROT; x := b.x; y := b.y; z := b.z; yaw := b.yaw;
+  fx := -sin(yaw); fz := cos(yaw); ax := cos(yaw); az := sin(yaw);
+  o := (i % 4) * 3;
+  r := FLIER_RGB[o]; g := FLIER_RGB[o + 1]; bl := FLIER_RGB[o + 2];
+  wr := WING_RGB[o]; wg := WING_RGB[o + 1]; wb := WING_RGB[o + 2];
+  // the body, level in flight, its chest ahead
+  round_cone(s, x - fx * 0.22 * k, y, z - fz * 0.22 * k, 0.09 * k, x + fx * 0.2 * k, y + 0.03 * k, z + fz * 0.2 * k, 0.12 * k, r, g, bl);
+  hx := x + fx * 0.36 * k; hy := y + 0.08 * k; hz := z + fz * 0.36 * k;
+  ball(s, hx, hy, hz, 0.1 * k, r * 1.05, g * 1.05, bl * 1.05);
+  // a pale face patch, the eyes, and a hooked beak
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    ball(s, hx + fx * 0.04 * k + ax * w * 0.07 * k, hy + 0.01 * k, hz + fz * 0.04 * k + az * w * 0.07 * k, 0.045 * k, 0.95, 0.93, 0.88);
+    ball(s, hx + fx * 0.05 * k + ax * w * 0.095 * k, hy + 0.02 * k, hz + fz * 0.05 * k + az * w * 0.095 * k, 0.02 * k, 0.05, 0.04, 0.04);
+  }
+  round_cone(s, hx + fx * 0.08 * k, hy, hz + fz * 0.08 * k, 0.05 * k, hx + fx * 0.17 * k, hy - 0.06 * k, hz + fz * 0.17 * k, 0.012 * k, 0.92, 0.86, 0.68);
+  // the long tail, in its two colours
+  round_cone(s, x - fx * 0.2 * k, y, z - fz * 0.2 * k, 0.06 * k, x - fx * 0.75 * k, y - 0.05 * k, z - fz * 0.75 * k, 0.02 * k, r * 0.9, g * 0.9, bl * 0.9);
+  round_cone(s, x - fx * 0.3 * k, y + 0.02 * k, z - fz * 0.3 * k, 0.04 * k, x - fx * 0.7 * k, y, z - fz * 0.7 * k, 0.015 * k, wr, wg, wb);
+  // the wings: plates out from the shoulder, its colour then the edge's
+  flap := ifx s[0].still then 0.3f32 else 0.55 * sin(s[0].time * 9.0 + cast(f32) i);
+  pen := s[0].glow_pen; untextured(s);
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sx := x + ax * w * 0.08 * k; sz := z + az * w * 0.08 * k;
+    run: f32 = 0; ry := y + 0.04 * k;
+    for f: 0..<4 {
+      q := cast(f32) f; oo := f * 4;
+      long := (OWL_WING[oo + 1] - OWL_WING[oo]) * k; back := OWL_WING[oo + 3] * k * 1.3;
+      bend := flap + 0.1 * q; mid := run + 0.5 * long * cos(bend);
+      cx := sx + ax * w * mid - fx * back; cz := sz + az * w * mid - fz * back;
+      thick := (0.06 - 0.01 * q) * k;
+      cr := ifx f >= 2 then wr else r; cg := ifx f >= 2 then wg else g; cb := ifx f >= 2 then wb else bl;
+      sized(s, crate, cx, ry + 0.5 * long * sin(bend) - 0.5 * thick, cz, -yaw, w * bend, long, thick, OWL_WING[oo + 2] * k * 0.85, cr, cg, cb);
+      run += 0.9 * long * cos(bend); ry += 0.9 * long * sin(bend);
+    }
+  }
+  s[0].glow_pen = pen;
+}
+
 // ---- where things go: the headline places ahead of you, and what fills the ground between
 
 // The places for what was asked for, in turn: left and right of straight ahead, then straight
@@ -450,7 +496,7 @@ herd_room :: (kind: int) -> f32 { return ifx kind == CHICKEN then 0.35f32 else 0
 
 // ---- how high what stands reaches: a grid of cells over the realm, each the top of the highest
 // thing laid out over it (not the ground's cover or the hills), for what flies to keep above
-ROOF_N :: 16; ROOF_CELLS :: 256; ROOF_CELL :: 3.5;
+ROOF_N :: 28; ROOF_CELLS :: 784; ROOF_CELL :: 2.0;
 roof_cell :: (v: f32) -> int { return cast(int) floor(v / ROOF_CELL + 0.5 * cast(f32) ROOF_N); }
 roofs_out :: (s: [] MyRealm) {
   for c: 0..<ROOF_CELLS { s[0].roof[c] = 0; }
@@ -479,6 +525,8 @@ roofs_out :: (s: [] MyRealm) {
       for j: j0 - span..<j0 + span + 1 {
         if i < 0 || j < 0 || i >= ROOF_N || j >= ROOF_N { continue; }
         c := j * ROOF_N + i;
+        mx := (cast(f32) i + 0.5 - 0.5 * cast(f32) ROOF_N) * ROOF_CELL - cx; mz := (cast(f32) j + 0.5 - 0.5 * cast(f32) ROOF_N) * ROOF_CELL - cz;
+        if sqrt(mx * mx + mz * mz) > reach + 0.71 * ROOF_CELL { continue; }
         if top > s[0].roof[c] { s[0].roof[c] = top; }
       }
     }
@@ -556,33 +604,65 @@ wood_tree :: (s: [] MyRealm, r: [] Seed, x: f32, z: f32, jungle: bool, i: int) {
   }
   thing_at(s, 4, x + 0.9, z + 0.4, rand(r) * 6.28, 1.4, 0);
 }
-// Where the owls circle: ahead of where you start, where they need not climb over a roof and no
-// roof stands between them and the camera (behind you), nearer straight ahead the better.
+// Birds that circle the home round (owl_home): crows, bats, owls, parrots and gulls. A dragon
+// flies high and wide, and fairies, fireflies and butterflies flit low near you (bird_at).
+circling :: (s: [] MyRealm) -> bool { return s[0].flier < FLY_DRAGON; }
+// Each circling bird's height: the home round's, rising early for what stands ahead of it, never
+// lower than just over what is under it.
+birds_up :: (s: [] MyRealm) {
+  if !circling(s) { return; }
+  for i: 0..<s[0].birds {
+    o := owl_at(s, i);
+    want := hi(s[0].owl_up + 0.3 * sin(cast(f32) i * 1.7 + s[0].time * 0.5), roof_near(s, o.x, o.z, 1) + 1.4);
+    y := s[0].owl_y[i];
+    y = ifx y <= 0 || s[0].still then want else y + (want - y) * 0.06;
+    s[0].owl_y[i] = hi(y, roof_near(s, o.x, o.z, 0) + 0.8);
+  }
+}
+// The view from where you start (third person, view_rows): the eye, and how far off straight
+// ahead a point may be, across and up, and still be seen on a phone held upright (narrow) and on a
+// desktop (short), with a margin.
+SEEN_ACROSS :: 0.5; SEEN_UP :: 0.46;
+in_view :: (x: f32, y: f32, z: f32) -> bool {
+  ey: f32 = CAM_UP; ez: f32 = 6 + CAM_BACK;
+  // forward: toward (0, LOOK_UP, 6 - LOOK_AHEAD)
+  fy: f32 = LOOK_UP - CAM_UP; fz: f32 = -(CAM_BACK + LOOK_AHEAD); fl := sqrt(fy * fy + fz * fz); fy /= fl; fz /= fl;
+  dx := x; dy := y - ey; dz := z - ez;
+  depth := dy * fy + dz * fz;
+  if depth < 2 { return false; }
+  up := dy * (-fz) + dz * fy;   // along the camera's up: (0, -fz, fy) when fz < 0
+  return abs(dx / depth) < SEEN_ACROSS && abs(up / depth) < SEEN_UP;
+}
+// Where the circling birds fly: a round centred in that view, ahead of where you start and between
+// what stands there, at a height they can keep without climbing out of sight, sized to fit the
+// view at its distance; the place where most of the round is in view and in front of every roof.
 owl_home :: (s: [] MyRealm) {
-  best: f32 = 999; s[0].owl_hx = 0; s[0].owl_hz = -10;
-  cz0: f32 = 6 + CAM_BACK; up: f32 = CAM_UP;
-  for ai: 0..<9 {
-    a := (cast(f32) ai - 4) * 0.2;
-    for di: 0..<7 {
-      d := 6.5 + 1.5 * cast(f32) di;
+  best: f32 = 999; s[0].owl_hx = 0; s[0].owl_hz = -4; s[0].owl_r = 2; s[0].owl_up = OWL_UP;
+  ez: f32 = 6 + CAM_BACK; ey: f32 = CAM_UP;
+  for ai: 0..<7 {
+    a := (cast(f32) ai - 3) * 0.15;
+    for di: 0..<8 {
+      d := 3 + 2 * cast(f32) di;
       cx := d * sin(a); cz := 6 - d * cos(a);
-      high: f32 = 0;
-      for k: 0..<12 {
-        q := cast(f32) k * 0.5235988;
-        high = hi(high, roof_near(s, cx + OWL_WIDE * OWL_ROUND * cos(q), cz + OWL_DEEP * OWL_ROUND * sin(q), 1));
-      }
-      over := hi(OWL_UP, high + 1.4);   // how high they would fly there
-      hidden: f32 = 0;
-      for k: 0..<12 {
-        q := cast(f32) k * 0.5235988; px := cx + OWL_WIDE * OWL_ROUND * cos(q); pz := cz + OWL_DEEP * OWL_ROUND * sin(q);
-        for f: 1..<5 {
-          g := 0.2 * cast(f32) f;
-          if roof_near(s, g * px, cz0 + g * (pz - cz0), 0) > up + g * (over - up) { hidden += 1; break; }
+      rr := lo(OWL_ROUND, 0.75 * SEEN_ACROSS * (d + CAM_BACK) / OWL_WIDE);
+      for hk: 0..<4 {
+        h := 2.6 + 1.0 * cast(f32) hk;
+        bad: f32 = 0;
+        for k: 0..<24 {
+          q := cast(f32) k * 0.2617994; px := cx + OWL_WIDE * rr * cos(q); pz := cz + OWL_DEEP * rr * sin(q);
+          y := hi(h, roof_near(s, px, pz, 1) + 1.4);
+          shown := in_view(px, y, pz);
+          if shown {
+            for f: 1..<5 {
+              g := 0.2 * cast(f32) f;
+              if roof_near(s, g * px, ez + g * (pz - ez), 0) > ey + g * (y - ey) { shown = false; break; }
+            }
+          }
+          if !shown { bad += 1; }
         }
+        score := 2 * bad + 1.5 * abs(a) + 0.05 * abs(d - 9) + 0.15 * abs(h - OWL_UP);
+        if score < best { best = score; s[0].owl_hx = cx; s[0].owl_hz = cz; s[0].owl_r = rr; s[0].owl_up = h; s[0].owl_seen = 24 - cast(int) bad; }
       }
-      // climbing takes them out of the top of the view; a roof between hides them
-      score := 2 * (over - OWL_UP) + 1.5 * hidden + 2.5 * abs(a) + 0.1 * abs(d - 13);
-      if score < best { best = score; s[0].owl_hx = cx; s[0].owl_hz = cz; }
     }
   }
 }

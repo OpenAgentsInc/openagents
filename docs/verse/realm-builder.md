@@ -171,11 +171,12 @@ warmer and cooler ground, and soft hills on the horizon (a floating island inste
 sight and clouds at its edge). None of it is a feature or a listed line. People and animals are
 verse/figure.coax rigs drawn bone by bone as round cones (myrealm.wgsl `round_vertex`); owls are
 round with pale faces, three of them perched on the giant tree's branches; the rest are owl-sized
-(about a metre of wing, broad plain plates tapering to a rounded tip) and circle over open ground
-ahead of you (`owl_home`), climbing over anything that stands under or ahead of them (`roofs_out`,
+(about a metre of wing, broad plain plates tapering to a rounded tip). Owls and every other bird
+but a dragon and the low fliers circle a round placed inside the view from where you start, on a
+phone and a desktop alike, in front of the buildings rather than behind them (`owl_home`), climbing over anything that stands under or ahead of them (`roofs_out`,
 a grid of how high what stands reaches), so they never fly into a building. A forest ground is a
 wood (`wood`): trees either side of the first buildings, framing them, and a ring round the realm
 with the view ahead kept open; a jungle (a forest with a temple, parrots or palms) is denser, with
-palms, hanging vines and ferns at the trees' feet. The palette sets the
+palms, hanging vines and ferns at the trees' feet. Parrots are drawn round like owls: a body, head, beak, eyes, long tail and two-coloured wings. The palette sets the
 sun's colour and the sky's mood (pastel rosy, vivid deep blue and golden light, muted grey haze),
 and the day sky has drifting clouds.
