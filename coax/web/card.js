@@ -72,9 +72,9 @@ export function compose(frame, title, line) {
   const top = H - band;
   if (frame) {
     const fade = g.createLinearGradient(0, top - 60, 0, top);
-    fade.addColorStop(0, "rgba(0,0,0,0)"); fade.addColorStop(1, "rgba(0,0,0,0.92)");
+    fade.addColorStop(0, "rgba(0,0,0,0)"); fade.addColorStop(1, "#000");
     g.fillStyle = fade; g.fillRect(0, top - 60, W, 60);
-    g.fillStyle = "rgba(0,0,0,0.92)"; g.fillRect(0, top, W, band);
+    g.fillStyle = "#000"; g.fillRect(0, top, W, band);   // opaque: the HUD under it never shows through
   }
   g.strokeStyle = "rgba(255,255,255,0.9)"; g.lineWidth = 2;
   const mark = (x, y, dx, dy) => { g.beginPath(); g.moveTo(x, y + dy * 32); g.lineTo(x, y); g.lineTo(x + dx * 54, y); g.stroke(); };
