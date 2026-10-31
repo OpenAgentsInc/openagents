@@ -1,0 +1,87 @@
+#load "oscillator-data.coax";
+#load "../tabular.coax";
+#authority;
+OeFit :: struct {status:OsStatus;training_rows:int;epochs:int;steps:int;mean:[5]f64;sd:[5]f64;target_mean:[2]f64;target_sd:[2]f64;affine:[12]f64;mlp:[114]f64;}
+
+#test "surrogate budgets and deterministic seeds precede fitting" {
+  for axis:0..<2 {for kind:2..<4 {c:=oe_config(axis,kind,256);want:=10900+axis;if kind==3 {want+=10;}#assert c.epochs==256 && c.batch==32 && c.rate==0.03 && c.decay==0.0001 && c.init_seed==cast(u64)want && c.shuffle_seed==cast(u64)(10920+axis);}}
+  #assert oe_model(2).features==5 && oe_model(2).hidden==0 && !oe_model(2).logistic && oe_model(3).hidden==8 && oe_model(3).features==5;
+  #assert oe_shape(OsStatus.ok,1280,1,1) && oe_shape(OsStatus.ok,1280,256,256);
+  #assert !oe_shape(OsStatus.ok,1279,1,1) && !oe_shape(OsStatus.ok,1281,1,1);
+  d:OeData;#assert oe_fit(d,256,1).status==OsStatus.shape;d.rows=1280;d.status=OsStatus.state;#assert oe_fit(d,256,1).status==OsStatus.shape;d.status=OsStatus.ok;
+  #assert oe_fit(d,0,1).status==OsStatus.shape && oe_fit(d,257,1).status==OsStatus.shape && oe_fit(d,16,0).status==OsStatus.shape && oe_fit(d,16,257).status==OsStatus.shape;
+}
+#test "tiny fitting exercises all four heads using training-prefix scaling only" {
+  source:=oe_data();d:=source;for row:0..<16 {at:=(row/2)*32+row%2;for j:0..<5 {d.x[5*row+j]=source.x[5*at+j];}for j:0..<2 {d.y[2*row+j]=source.y[2*at+j];}}
+  fit:=oe_fit(d,16,1);#assert fit.status==OsStatus.ok && fit.training_rows==16 && fit.epochs==1 && fit.steps==4 && oe_fit_ok(fit);
+  #assert fit.mean[3]==2.15625 && fit.sd[3]>0 && fit.mean[4]==0.5625 && fit.sd[4]>0;
+  #assert abs(fit.affine[0])>0.0001 && abs(fit.affine[7])>0.0001 && fit.mlp[0]!=0 && fit.mlp[57]!=0 && fit.target_sd[0]>0 && fit.target_sd[1]>0 && abs(fit.mlp[56])>0.00000001 && abs(fit.mlp[113])>0.00000001;
+  // A complete, centered first affine batch has zero mean residual and therefore zero bias update.
+  #assert abs(fit.affine[5])<1e-14 && abs(fit.affine[11])<1e-14;
+  #assert abs(fit.target_mean[0]-(-0.0017352856728996419))<1e-13 && abs(fit.target_mean[1]-(-0.034424115176064106))<1e-13;
+  #assert abs(fit.target_sd[0]-0.2136238398349947)<1e-13 && abs(fit.target_sd[1]-1.3693263068185983)<1e-13;
+  changed:=d;for row:16..<1280 {for j:0..<5 {changed.x[5*row+j]=0;}changed.y[2*row]=999;changed.y[2*row+1]=-999;}
+  other:=oe_fit(changed,16,1);#assert other.status==OsStatus.ok;
+  for i:0..<5 {#assert f64_bits(fit.mean[i])==f64_bits(other.mean[i]) && f64_bits(fit.sd[i])==f64_bits(other.sd[i]);}
+  for i:0..<12 {#assert f64_bits(fit.affine[i])==f64_bits(other.affine[i]);}for i:0..<114 {#assert f64_bits(fit.mlp[i])==f64_bits(other.mlp[i]);}
+}
+#test "mean persistence affine and MLP are distinct honest model paths" {
+  fit:=oe_fit_fixture();p:=OsParams.{spring=2,damping=0.5};s:=OsState.{position=0.5,velocity=-0.25};
+  mean:=oe_predict(fit,0,p,s,0);keep:=oe_predict(fit,1,p,s,0);line:=oe_predict(fit,2,p,s,0);mlp:=oe_predict(fit,3,p,s,0);
+  #assert mean.status==OsStatus.ok && mean.state.position==0.5125 && mean.state.velocity== -0.275;
+  #assert keep.status==OsStatus.ok && keep.state.position==0.5 && keep.state.velocity== -0.25;
+  #assert line.status==OsStatus.ok && line.state.position==0.525 && line.state.velocity== -0.2;
+  #assert mlp.status==OsStatus.ok && abs(mlp.state.position-(0.5+0.05*(0.25+2*tb_tanh(0.125))))<1e-14 && abs(mlp.state.velocity-(-0.25+0.05*(-0.5+3*tb_tanh(0.5))))<1e-14;
+  #assert oe_predict(fit,-1,p,s,0).status==OsStatus.parameters && oe_predict(fit,4,p,s,0).status==OsStatus.parameters;
+  fit.target_mean[0]=100;#assert oe_predict(fit,0,p,s,0).status==OsStatus.state;
+}
+#test "surrogate validity and refusal expose metadata numeric and physical boundaries" {
+  fit:=oe_fit_fixture();#assert fit.training_rows==16 && fit.epochs==1;p:=OsParams.{spring=2,damping=0.5};s:=OsState.{};
+  edge:=fit;edge.training_rows=1;edge.epochs=256;#assert oe_fit_ok(edge);edge.training_rows=256;#assert oe_fit_ok(edge);
+  for mode:0..<10 {bad:=fit;if mode==0 {bad.status=OsStatus.state;}if mode==1 {bad.training_rows=0;}if mode==2 {bad.training_rows=257;}if mode==3 {bad.epochs=0;}if mode==4 {bad.epochs=257;}if mode==5 {bad.sd[0]=0;}if mode==6 {bad.target_sd[1]=0;}if mode==7 {bad.affine[0]=1000001;}if mode==8 {bad.mlp[113]=-1000001;}if mode==9 {bad.target_sd[0]=0;}#assert !oe_fit_ok(bad) && oe_predict(bad,0,p,s,0).status==OsStatus.parameters;}
+  fit.sd[0]=0.000000001;fit.sd[1]=1000000;fit.target_sd[0]=0.000000001;fit.target_sd[1]=1000000;fit.mean[0]=1000000;fit.target_mean[1]=-1000000;fit.affine[0]=1000000;fit.mlp[113]=-1000000;#assert oe_fit_ok(fit);
+  fit=oe_fit_fixture();p.mass=2;r:=oe_predict(fit,1,p,s,0);#assert r.status==OsStatus.parameters && r.state.position==0 && r.state.velocity==0;
+}
+
+oe_model :: (kind:int)->TbModel {return TbModel.{features=5,hidden=ifx kind==2 then 0 else 8};}
+oe_config :: (axis:int,kind:int,epochs:int)->TbConfig {seed:=10900+axis;if kind==3 {seed+=10;}return TbConfig.{epochs=epochs,batch=32,rate=0.03,decay=0.0001,init_seed=cast(u64)seed,shuffle_seed=cast(u64)(10920+axis)};}
+oe_shape :: (status:OsStatus,rows:int,n:int,epochs:int)->bool {return status==OsStatus.ok && rows==1280 && n>=1 && n<=256 && epochs>=1 && epochs<=256;}
+oe_fit :: (data:OeData,training_rows:int,epochs:int)->OeFit #export_c {
+  if !oe_shape(data.status,data.rows,training_rows,epochs) {return OeFit.{status=OsStatus.shape};}
+  d:=data;fit:=OeFit.{epochs=epochs};rows:[1280]int;for i:0..<training_rows {rows[i]=i;fit.training_rows+=1;}
+  xs:[6400]f64;
+  if tb_fit_scale(d.x[..],5,rows[0..<training_rows],fit.mean[..],fit.sd[..],false)!=TbStatus.ok || tb_apply_scale(d.x[..],5,fit.mean[..],fit.sd[..],xs[..],false)!=TbStatus.ok {return OeFit.{status=OsStatus.number};}
+  for axis:0..<2 {
+    raw:[1280]f64;for row:0..<1280 {raw[row]=data.y[2*row+axis];}mu:[1]f64;sd:[1]f64;yn:[1280]f64;
+    if tb_fit_scale(raw[..],1,rows[0..<training_rows],mu[..],sd[..],false)!=TbStatus.ok || tb_apply_scale(raw[..],1,mu[..],sd[..],yn[..],false)!=TbStatus.ok {return OeFit.{status=OsStatus.number};}
+    fit.target_mean[axis]=mu[0];fit.target_sd[axis]=sd[0];
+    for kind:2..<4 {
+      params:[57]f64;order:[1280]int;model:=oe_model(kind);r:=tb_train(model,oe_config(axis,kind,epochs),xs[..],yn[..],rows[0..<training_rows],params[..],order[..],false);
+      if r.status!=TbStatus.ok {return OeFit.{status=OsStatus.parameters};}fit.steps+=r.steps;
+      if kind==2 {for j:0..<6 {fit.affine[axis*6+j]=params[j];}}else {for j:0..<57 {fit.mlp[axis*57+j]=params[j];}}
+    }
+  }
+  return fit;
+}
+oe_fit_ok :: (fit:OeFit)->bool {
+  if !oe_shape(fit.status,1280,fit.training_rows,fit.epochs) {return false;}
+  for i:0..<5 {if !tb_in(fit.mean[i],-1000000,1000000) || !tb_in(fit.sd[i],0.000000001,1000000) {return false;}}
+  for i:0..<2 {if !tb_in(fit.target_mean[i],-1000000,1000000) || !tb_in(fit.target_sd[i],0.000000001,1000000) {return false;}}
+  for p:fit.affine {if !tb_in(p,-1000000,1000000) {return false;}}for p:fit.mlp {if !tb_in(p,-1000000,1000000) {return false;}}return true;
+}
+// book:begin predict
+oe_predict :: (fit:OeFit,kind:int,p:OsParams,s:OsState,force:f64)->OsStep #export_c {
+  status:=os_admit(p,s,force,OS_DT);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
+  if !oe_fit_ok(fit) || kind<0 || kind>3 {return OsStep.{status=OsStatus.parameters,state=s};}
+  if kind==1 {return OsStep.{state=s};}
+  affine:=fit.affine;mlp:=fit.mlp;raw:=[5]f64.[s.position,s.velocity,force,p.spring,p.damping];x:[5]f64;for i:0..<5 {x[i]=(raw[i]-fit.mean[i])/fit.sd[i];}delta:[2]f64;
+  for axis:0..<2 {
+    delta[axis]=fit.target_mean[axis];
+    if kind==2 {delta[axis]+=fit.target_sd[axis]*tb_output(oe_model(kind),affine[axis*6..<axis*6+6],x[..]);}
+    if kind==3 {delta[axis]+=fit.target_sd[axis]*tb_output(oe_model(kind),mlp[axis*57..<axis*57+57],x[..]);}
+  }
+  next:=OsState.{position=s.position+OS_DT*delta[0],velocity=s.velocity+OS_DT*delta[1]};
+  if !os_state_ok(next) {return OsStep.{status=OsStatus.state,state=s};}return OsStep.{state=next};
+}
+// book:end predict
+oe_fit_fixture :: ()->OeFit {f:=OeFit.{training_rows=16,epochs=1,target_mean=[2]f64.[0.25,-0.5],target_sd=[2]f64.[2,3]};for i:2..<5 {f.sd[i]=1;}f.mean[0]=0.25;f.sd[0]=2;f.mean[1]=-0.5;f.sd[1]=0.5;f.affine[0]=1;f.affine[7]=1;f.mlp[0]=1;f.mlp[48]=1;f.mlp[58]=1;f.mlp[105]=1;return f;}

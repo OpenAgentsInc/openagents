@@ -1,5 +1,23 @@
 # Invariants
 
+## Owned oscillator dynamics and learned surrogates keep their roles distinct
+
+`psionic/lib/physics/oscillator*.coax` owns a fixed-mass F64 damped forced
+oscillator, piecewise-constant-force RK4 and atomic bounded rollouts. Parameters,
+state, force, step size and horizon are admitted before publication; refusal
+preserves the caller’s public state/trajectory. This smooth one-axis plant is
+not articulated Panda/contact physics or a compiler bounded-control proof.
+
+Training uses the frozen whole-episode parameter/initial-state/forcing split.
+Feature and target scales see training rows only. The affine and MLP heads
+predict state increments per unit time; independent learned rollouts feed back
+their own predicted state, with refusal and completed length observable.
+One-step position error favors the affine model; the MLP improves the held-out
+rollout metrics. Neither metric substitutes for the other. The closed-form
+physical reference, independent data/SGD oracle and native mode comparisons
+are recorded in `psionic/fixtures/physics/oscillator/qualification.json`.
+
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 169 profile uses the original LIBERO/Panda scene, selected GR00T

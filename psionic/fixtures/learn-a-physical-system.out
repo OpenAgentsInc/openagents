@@ -1,0 +1,17 @@
+profile: oscillator-rk4-f64-v1
+whole groups train/validation/test: 8/4/4; rows 256/512/512
+teacher dt 0.05s; train 32 steps; heldout 128 steps
+four heads: 256 epochs, batch 32, rate 0.03, 8192 updates
+train mean: one-step um/um-s 25912 40662; rollout 429534 548895; completed 8/8; scored 256/256
+train persistence: one-step um/um-s 25924 40666; rollout 429808 548564; completed 8/8; scored 256/256
+train affine: one-step um/um-s 450 17817; rollout 137937 160483; completed 8/8; scored 256/256
+train MLP: one-step um/um-s 1305 4037; rollout 21996 33309; completed 8/8; scored 256/256
+validation mean: one-step um/um-s 19145 34729; rollout 649898 398526; completed 4/4; scored 512/512
+validation persistence: one-step um/um-s 19166 34711; rollout 645638 393213; completed 4/4; scored 512/512
+validation affine: one-step um/um-s 383 15222; rollout 200133 260319; completed 4/4; scored 512/512
+validation MLP: one-step um/um-s 1705 8055; rollout 113540 90369; completed 4/4; scored 512/512
+test mean: one-step um/um-s 14698 26781; rollout 604206 325772; completed 4/4; scored 512/512
+test persistence: one-step um/um-s 14688 26778; rollout 597703 321339; completed 4/4; scored 512/512
+test affine: one-step um/um-s 388 15414; rollout 187958 212786; completed 4/4; scored 512/512
+test MLP: one-step um/um-s 2035 11290; rollout 138474 122190; completed 4/4; scored 512/512
+MLP improves heldout rollout; affine wins one-step position. No retuning.

@@ -1,0 +1,7 @@
+OsStatus :: enum u8 {ok;number;parameters;state;force;time;shape;capacity;overlap;}
+OsParams :: struct {mass:f64=1;spring:f64;damping:f64;}
+OsState :: struct {position:f64;velocity:f64;}
+OsStep :: struct {status:OsStatus;state:OsState;}
+OsRun :: struct {status:OsStatus;written:int;}
+OS_DT :: 0.05;
+OS_STEPS_MAX :: 128;

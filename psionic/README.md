@@ -268,3 +268,9 @@ endpoints pass. Its separate global hidden-trace diagnostic remains outside
 its frozen bound. The [verification record](../docs/verification/psionic-ch113-2026-10-31.md)
 states the numerical profile, exact scope and reproduction commands. Simulator
 control and task outcomes are now exercised in [chapter 169](book/ch169-close-the-simulated-control-loop.md): the genuine Panda loop uses original scene/state pairs, a resident Coax GPU policy, an own Coax controller and MuJoCo 3.3.1 as the evaluation backend. The chapter distinguishes exact controls-only physics replay, measured task outcomes, recovered declared faults and the remaining own-solver/compiler/differentiability work.
+
+[Chapter 109](book/ch109-learn-a-physical-system.md) supplies an owned F64
+forced-oscillator RK4 solver and learned surrogate. Whole parameter/initial
+state/forcing groups remain held out; independent learned rollouts are measured
+separately from one-step errors, including the stronger affine one-step result.
+Run `psionic/check.sh --only physics/oscillator` for its focused gate.

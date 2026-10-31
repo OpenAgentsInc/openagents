@@ -1,0 +1,87 @@
+// Owned smooth plant, oscillator-rk4-f64-v1. Metres, seconds, kilograms and
+// newtons; mass is fixed at1kg. Pure fixed-step RK4, piecewise-constant force.
+#load "oscillator-types.coax";
+#authority;
+
+#test "oscillator profile and every scalar admission boundary are explicit" {
+  #assert os_profile()=="oscillator-rk4-f64-v1";
+  p:=OsParams.{spring=0.5,damping=0.1};s:=OsState.{position=2};
+  #assert os_step(p,s,1,0.05).status==OsStatus.ok;
+  s.position= -2;#assert os_step(p,s,-1,0.0009765625).status==OsStatus.ok;
+  s=OsState.{velocity=4};#assert os_step(p,s,-2,0.05).status==OsStatus.ok;
+  s.velocity= -4;#assert os_step(p,s,2,0.05).status==OsStatus.ok;
+  p.spring=4;p.damping=1;s=OsState.{};#assert os_step(p,s,0,0.05).status==OsStatus.ok;
+  #assert os_admit(p,s,2,0.05)==OsStatus.ok && os_admit(p,s,-2,0.0009765625)==OsStatus.ok;
+  for mode:0..<10 {q:=p;t:=s;force:f64=0;dt:f64=0.05;
+    if mode==0 {q.mass=0.999;}if mode==1 {q.mass=1.001;}if mode==2 {q.spring=0.499;}if mode==3 {q.spring=4.001;}if mode==4 {q.damping=0.099;}if mode==5 {q.damping=1.001;}
+    if mode==6 {t.position=2.001;}if mode==7 {t.velocity=-4.001;}if mode==8 {force=2.001;}if mode==9 {dt=0.051;}
+    r:=os_step(q,t,force,dt);#assert r.status!=OsStatus.ok && r.state.position==t.position && r.state.velocity==t.velocity;
+  }
+  #assert os_admit(p,s,0,0.0009)==OsStatus.time;
+  #assert os_bits_finite(0) && os_bits_finite(0x8000000000000000) && os_bits_finite(0x7fefffffffffffff);
+  #assert !os_bits_finite(0x7ff0000000000000) && !os_bits_finite(0xfff0000000000000) && !os_bits_finite(0x7ff8000000000001);
+}
+#test "RK4 matches independent rational matrix polynomial and forced equilibrium" {
+  p:=OsParams.{spring=2,damping=0.5};s:=OsState.{position=0.5,velocity=-0.25};r:=os_step(p,s,0.5,0.03125);
+  #assert r.status==OsStatus.ok && abs(r.state.position-0.49200790748000145)<1e-14 && abs(r.state.velocity+0.26138105305532616)<1e-14;
+  p.spring=1;p.damping=1;s=OsState.{position=0.5};r=os_step(p,s,0.5,0.05);#assert r.status==OsStatus.ok && r.state.position==0.5 && r.state.velocity==0;
+}
+
+#test "unforced oscillator loses energy and repeated calls are deterministic" {
+  p:=OsParams.{spring=2,damping=0.5};s:=OsState.{position=0.75,velocity=-0.25};before:=os_energy(p,s);
+  for i:0..<64 {a:=os_step(p,s,0,0.05);b:=os_step(p,s,0,0.05);#assert a.status==OsStatus.ok && f64_bits(a.state.position)==f64_bits(b.state.position) && f64_bits(a.state.velocity)==f64_bits(b.state.velocity);after:=os_energy(p,a.state);#assert after<=before+1e-14;before=after;s=a.state;}
+  #assert before<0.25;
+}
+#test "rollout publishes initial and all new states with an untouched tail" {
+  p:=OsParams.{spring=1,damping=0.5};s:=OsState.{position=0.5};force:=[4]f64.[0,0.5,-0.5,0];out:[6]OsState;for i:0..<6 {out[i]=OsState.{position=7,velocity=9};}
+  r:=os_rollout(p,s,force[..],0.05,out[..],false);#assert r.status==OsStatus.ok && r.written==5 && out[0].position==0.5 && out[0].velocity==0 && out[5].position==7 && out[5].velocity==9;
+  #assert os_rollout(p,s,force[..],0.05,out[0..<5],false).status==OsStatus.ok;
+  for i:0..<4 {step:=os_step(p,s,force[i],0.05);#assert f64_bits(out[i+1].position)==f64_bits(step.state.position) && f64_bits(out[i+1].velocity)==f64_bits(step.state.velocity);s=step.state;}
+  r=os_rollout(p,s,force[0..<0],0.05,out[..],false);#assert r.status==OsStatus.ok && r.written==1 && out[0].position==s.position;
+}
+#test "rollout refuses shape capacity overlap and late failure before publication" {
+  p:=OsParams.{spring=1,damping=0.5};s:=OsState.{position=0.5};forces:[129]f64;out:[130]OsState;for i:0..<130 {out[i]=OsState.{position=7,velocity=9};}
+  #assert os_rollout(p,s,forces[..],0.05,out[..],false).status==OsStatus.shape;
+  #assert os_rollout(p,s,forces[0..<128],0.05,out[0..<128],false).status==OsStatus.capacity;
+  #assert os_rollout(p,s,forces[0..<1],0.05,out[..],true).status==OsStatus.overlap;
+  forces[127]=2.001;#assert os_rollout(p,s,forces[0..<128],0.05,out[..],false).status==OsStatus.force;forces[127]=0;
+  p.mass=2;#assert os_rollout(p,s,forces[0..<1],0.05,out[..],false).status==OsStatus.parameters;p.mass=1;
+  s.position=2;s.velocity=4;#assert os_rollout(p,s,forces[0..<1],0.05,out[..],false).status==OsStatus.state;
+  for v:out {#assert v.position==7 && v.velocity==9;}
+  s=OsState.{};r:=os_rollout(p,s,forces[0..<128],0.05,out[..],false);#assert r.status==OsStatus.ok && r.written==129;
+}
+
+os_profile :: ()->string #export_c {return "oscillator-rk4-f64-v1";}
+os_bits_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+os_finite :: (v:f64)->bool {return os_bits_finite(f64_bits(v));}
+os_state_ok :: (s:OsState)->bool {return abs(s.position)<=2 && abs(s.velocity)<=4;}
+os_admit :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStatus {
+  numbers:=[7]f64.[p.mass,p.spring,p.damping,s.position,s.velocity,force,dt];for v:numbers {if !os_finite(v) {return OsStatus.number;}}
+  if p.mass!=1 || p.spring<0.5 || p.spring>4 || p.damping<0.1 || p.damping>1 {return OsStatus.parameters;}
+  if !os_state_ok(s) {return OsStatus.state;}if abs(force)>2 {return OsStatus.force;}
+  if dt<0.0009765625 || dt>0.05 {return OsStatus.time;}return OsStatus.ok;
+}
+// book:begin field
+os_rhs :: (p:OsParams,s:OsState,force:f64)->OsState {
+  return OsState.{position=s.velocity,velocity=(force-p.damping*s.velocity)-p.spring*s.position};
+}
+// book:end field
+os_shift :: (s:OsState,k:OsState,h:f64)->OsState {return OsState.{position=s.position+h*k.position,velocity=s.velocity+h*k.velocity};}
+os_energy :: (p:OsParams,s:OsState)->f64 {return 0.5*s.velocity*s.velocity+0.5*p.spring*s.position*s.position;}
+// book:begin step
+os_step :: (p:OsParams,s:OsState,force:f64,dt:f64)->OsStep #export_c {
+  status:=os_admit(p,s,force,dt);if status!=OsStatus.ok {return OsStep.{status=status,state=s};}
+  a:=os_rhs(p,s,force);b:=os_rhs(p,os_shift(s,a,dt/2),force);
+  c:=os_rhs(p,os_shift(s,b,dt/2),force);d:=os_rhs(p,os_shift(s,c,dt),force);
+  next:=OsState.{position=s.position+(dt/6)*(((a.position+2*b.position)+2*c.position)+d.position),velocity=s.velocity+(dt/6)*(((a.velocity+2*b.velocity)+2*c.velocity)+d.velocity)};
+  if !os_state_ok(next) {return OsStep.{status=OsStatus.state,state=s};}return OsStep.{state=next};
+}
+// book:end step
+os_rollout :: (p:OsParams,initial:OsState,forces:[]f64,dt:f64,out:[]OsState,overlap:bool)->OsRun #export_c {
+  if forces.count<0 || forces.count>128 {return OsRun.{status=OsStatus.shape};}
+  if out.count<forces.count+1 {return OsRun.{status=OsStatus.capacity};}if overlap {return OsRun.{status=OsStatus.overlap};}
+  status:=os_admit(p,initial,0,dt);if status!=OsStatus.ok {return OsRun.{status=status};}
+  staged:[129]OsState;staged[0]=initial;
+  for i:0..<forces.count {r:=os_step(p,staged[i],forces[i],dt);if r.status!=OsStatus.ok {return OsRun.{status=r.status};}staged[i+1]=r.state;}
+  for i:0..<forces.count+1 {out[i]=staged[i];}return OsRun.{written=forces.count+1};
+}

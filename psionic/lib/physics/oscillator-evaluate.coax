@@ -1,0 +1,61 @@
+#load "oscillator-learn.coax";
+#authority;
+// Scores count accepted predictions; a refused learned rollout ends permanently.
+OeMetric :: struct {status:OsStatus;episodes:int;completed:int;one_rows:int;roll_rows:int;one_refused:int;roll_refused:int;first_episode:int=-1;first_tick:int=-1;one_q:f64;one_v:f64;roll_q:f64;roll_v:f64;max_q:f64;max_v:f64;}
+
+#test "error peak helper chooses its second argument on an exact tie" {#assert oe_larger(2,3)==3 && oe_larger(3,2)==3 && f64_bits(oe_larger(f64_from_bits(cast(u64)0x8000000000000000),0))==0;}
+
+#test "evaluation refuses malformed model and split before scoring" {
+  f:=oe_fit_fixture();#assert oe_evaluate(f,-1,0).status==OsStatus.shape && oe_evaluate(f,4,0).status==OsStatus.shape;
+  #assert oe_evaluate(f,0,-1).status==OsStatus.shape && oe_evaluate(f,0,3).status==OsStatus.shape;
+  #assert oe_evaluate(f,2,0).status==OsStatus.ok && oe_evaluate(f,3,0).status==OsStatus.ok;
+  f.status=OsStatus.state;#assert oe_evaluate(f,0,0).status==OsStatus.parameters;
+}
+#test "persistence scores every disjoint group and never resets to the teacher" {
+  f:=oe_fit_fixture();train:=oe_evaluate(f,1,0);valid:=oe_evaluate(f,1,1);test:=oe_evaluate(f,1,2);
+  #assert train.status==OsStatus.ok && train.episodes==8 && train.completed==8 && train.one_rows==256 && train.roll_rows==256;
+  #assert valid.status==OsStatus.ok && valid.episodes==4 && valid.completed==4 && valid.one_rows==512 && valid.roll_rows==512;
+  #assert test.status==OsStatus.ok && test.episodes==4 && test.completed==4 && test.one_rows==512 && test.roll_rows==512;
+  #assert test.one_refused==0 && test.roll_refused==0 && test.first_episode== -1 && test.first_tick== -1;
+  #assert test.one_q>0 && test.one_v>0 && test.roll_q>test.one_q*20 && test.roll_v>test.one_v*20 && test.max_q>0.1 && test.max_v>0.1;
+  // Independently calculated with the fixed table and the RK4 polynomial in Python.
+  #assert abs(test.one_q-0.11046174462839173)<1e-12 && abs(test.one_v-0.36714739713221783)<1e-12;
+  #assert abs(test.roll_q-182.91144758097636)<1e-11 && abs(test.roll_v-52.86832422953746)<1e-11;
+  #assert abs(test.max_q-1.2419415097772875)<1e-12 && abs(test.max_v-0.8480643684466501)<1e-12;
+  // The first test episode's constant prediction stays exactly at its initial state.
+  e:=oe_episode(200);truth:=e.initial;one_q:f64;one_v:f64;roll_q:f64;roll_v:f64;max_q:f64;max_v:f64;
+  for tick:0..<128 {old:=truth;truth=os_step(e.params,truth,oe_force(200,tick),OS_DT).state;one_q+=(old.position-truth.position)*(old.position-truth.position);one_v+=(old.velocity-truth.velocity)*(old.velocity-truth.velocity);roll_q+=(e.initial.position-truth.position)*(e.initial.position-truth.position);roll_v+=(e.initial.velocity-truth.velocity)*(e.initial.velocity-truth.velocity);max_q=oe_larger(max_q,abs(e.initial.position-truth.position));max_v=oe_larger(max_v,abs(e.initial.velocity-truth.velocity));}
+  #assert test.one_q>one_q && test.one_v>one_v && test.roll_q>roll_q && test.roll_v>roll_v && test.max_q>=max_q && test.max_v>=max_v;
+}
+#test "a refused surrogate trajectory keeps its scored prefix and names the first refusal" {
+  f:=oe_fit_fixture();m:=oe_evaluate(f,0,2);#assert m.status==OsStatus.ok && m.episodes==4 && m.completed<4 && m.one_rows==512 && m.one_refused==0;
+  #assert m.roll_refused>0 && m.roll_rows<512 && m.roll_rows>0 && m.first_episode==203 && m.first_tick>0 && m.first_tick<128;
+  f.target_mean[0]=100;m=oe_evaluate(f,0,2);#assert m.status==OsStatus.ok && m.one_rows==0 && m.roll_rows==0 && m.one_refused==512 && m.roll_refused==4 && m.completed==0 && m.first_episode==200 && m.first_tick==0;
+  train:=oe_evaluate(f,0,0);#assert train.first_episode==0 && train.first_tick==0 && train.roll_refused==8 && train.completed==0;
+}
+// book:begin evaluation
+oe_evaluate :: (fit:OeFit,kind:int,split:int)->OeMetric #export_c {
+  if kind<0 || kind>3 || split<0 || split>2 {return OeMetric.{status=OsStatus.shape};}
+  if !oe_fit_ok(fit) {return OeMetric.{status=OsStatus.parameters};}
+  m:OeMetric;count:=ifx split==0 then 8 else 4;first:=ifx split==0 then 0 else (ifx split==1 then 100 else 200);
+  for group:0..<count {
+    e:=oe_episode(first+group);truth:=e.initial;learned:=e.initial;alive:=true;m.episodes+=1;
+    for tick:0..<e.steps {
+      u:=oe_force(e.id,tick);next:=os_step(e.params,truth,u,OS_DT);if next.status!=OsStatus.ok {return OeMetric.{status=next.status};}
+      one:=oe_predict(fit,kind,e.params,truth,u);
+      if one.status==OsStatus.ok {q:=one.state.position-next.state.position;v:=one.state.velocity-next.state.velocity;m.one_q+=q*q;m.one_v+=v*v;m.one_rows+=1;}else {m.one_refused+=1;}
+      if alive {
+        own:=oe_predict(fit,kind,e.params,learned,u);
+        if own.status!=OsStatus.ok {alive=false;m.roll_refused+=1;if m.first_episode<0 {m.first_episode=e.id;m.first_tick=tick;}}
+        else {learned=own.state;q:=learned.position-next.state.position;v:=learned.velocity-next.state.velocity;m.roll_q+=q*q;m.roll_v+=v*v;m.max_q=oe_larger(m.max_q,abs(q));m.max_v=oe_larger(m.max_v,abs(v));m.roll_rows+=1;}
+      }
+      truth=next.state;
+    }
+    if alive {m.completed+=1;}
+  }
+  return m;
+}
+// book:end evaluation
+
+// Choose b on ties, preserving the second input word even for signed zero.
+oe_larger :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}

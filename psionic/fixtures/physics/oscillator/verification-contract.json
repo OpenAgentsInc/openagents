@@ -1,0 +1,12 @@
+{
+  "schema":"psionic-oscillator-numeric-contract-v1",
+  "frozen_before":"full 256-epoch training experiment and native analytic qualification",
+  "one_step_closed_form_absolute":0.00001,
+  "refinement_error_ratio_interval":[12,20],
+  "energy_monotonic_absolute_slack":0.000000000001,
+  "independent_dataset_absolute":0.00000000001,
+  "independent_full_training_parameter_absolute":0.000000001,
+  "independent_metric_absolute":0.00000001,
+  "debug_release_sanitized":"all serialized solver, dataset, learned parameter and metric F64 words identical",
+  "comparison_policy":"No heldout-quality threshold, hyperparameter retuning, clipping, or teacher resets. Report all four baselines/models, all split coverage, and every refusal."
+}

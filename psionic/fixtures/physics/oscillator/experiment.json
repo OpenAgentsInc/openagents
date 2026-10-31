@@ -1,0 +1,175 @@
+{
+  "schema": "psionic-oscillator-experiment-v1",
+  "status": "Frozen before the first training run",
+  "profile": "oscillator-rk4-f64-v1",
+  "mass_kg": 1,
+  "dt_seconds": 0.05,
+  "training_steps_per_episode": 32,
+  "evaluation_steps_per_episode": 128,
+  "features": [
+    "position",
+    "velocity",
+    "force",
+    "spring",
+    "damping"
+  ],
+  "targets": [
+    "(next_position-position)/dt",
+    "(next_velocity-velocity)/dt"
+  ],
+  "groups": {
+    "train": {
+      "ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "spring": [
+        0.75,
+        1.25,
+        1.75,
+        2.25,
+        2.75,
+        3.25,
+        3.75,
+        1.5
+      ],
+      "damping": [
+        0.15,
+        0.35,
+        0.55,
+        0.75,
+        0.95,
+        0.25,
+        0.65,
+        0.85
+      ],
+      "position": [
+        -0.8,
+        -0.4,
+        0.4,
+        0.8,
+        -0.8,
+        -0.4,
+        0.4,
+        0.8
+      ],
+      "velocity": [
+        -0.2,
+        0.2,
+        -0.2,
+        0.2,
+        0.2,
+        -0.2,
+        0.2,
+        -0.2
+      ],
+      "forcing": "three-level square sequence: [0,.5,-.5][(tick//8+id)%3]"
+    },
+    "validation": {
+      "ids": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "spring": [
+        1,
+        2,
+        3,
+        3.5
+      ],
+      "damping": [
+        0.2,
+        0.4,
+        0.6,
+        0.8
+      ],
+      "position": [
+        -0.6,
+        0.6,
+        -0.6,
+        0.6
+      ],
+      "velocity": [
+        -0.1,
+        -0.1,
+        0.1,
+        0.1
+      ],
+      "forcing": "triangle: .25*(((tick//8+id)%5)-2)"
+    },
+    "test": {
+      "ids": [
+        200,
+        201,
+        202,
+        203
+      ],
+      "spring": [
+        0.875,
+        1.875,
+        2.875,
+        3.875
+      ],
+      "damping": [
+        0.3,
+        0.5,
+        0.7,
+        0.9
+      ],
+      "position": [
+        -0.7,
+        -0.3,
+        0.3,
+        0.7
+      ],
+      "velocity": [
+        0.15,
+        -0.15,
+        0.15,
+        -0.15
+      ],
+      "forcing": "pulse: phase=(tick+3*id)%20; .5 if phase<5, -.25 if phase<10, else0"
+    }
+  },
+  "split_policy": "Whole parameter/initial-condition/forcing episodes; feature and target scaling fit training rows only; no held-out data for fitting or model selection.",
+  "models": [
+    "training mean increment",
+    "persistence",
+    "two affine heads",
+    "two tanh MLP heads(features5,hidden8)"
+  ],
+  "training": {
+    "epochs": 256,
+    "batch": 32,
+    "rate": 0.03,
+    "decay": 0.0001,
+    "affine_init_seeds": [
+      10900,
+      10901
+    ],
+    "mlp_init_seeds": [
+      10910,
+      10911
+    ],
+    "shuffle_seeds": [
+      10920,
+      10921
+    ],
+    "parameters_per_mlp_head": 57,
+    "work_per_mlp_head": 3735552
+  },
+  "metrics": [
+    "teacher-forced one-step position/velocity RMSE",
+    "independent autoregressive position/velocity RMSE",
+    "maximum rollout error",
+    "completed bounded rollouts and first refusal tick"
+  ],
+  "acceptance": "Solver has independent analytic/refinement/energy evidence and atomic admission. Surrogate and all baselines are measured honestly, including instability or a negative comparison. No Panda/contact/hardware claim."
+}

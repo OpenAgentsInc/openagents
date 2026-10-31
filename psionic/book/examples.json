@@ -1010,6 +1010,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/learn-a-physical-system.coax",
+      "chapter": "psionic/book/ch109-learn-a-physical-system.md",
+      "stdout": "psionic/fixtures/learn-a-physical-system.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

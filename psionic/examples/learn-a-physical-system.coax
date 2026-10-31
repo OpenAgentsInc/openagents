@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../lib/physics/oscillator-evaluate.coax";
+oe_example_micro :: (x:f64)->int {return cast(int)floor(x*1000000+0.5);}
+// book:begin example
+main :: () {
+    print("profile: oscillator-rk4-f64-v1\n");
+    data:=oe_data();#assert data.status==OsStatus.ok && data.rows==1280;
+    print("whole groups train/validation/test: 8/4/4; rows 256/512/512\n");
+    print("teacher dt 0.05s; train 32 steps; heldout 128 steps\n");
+    fit:=oe_fit(data,256,256);
+    #assert fit.status==OsStatus.ok && fit.training_rows==256 && fit.epochs==256 && fit.steps==8192;
+    print("four heads: 256 epochs, batch 32, rate 0.03, 8192 updates\n");
+    splits:=[3]string.["train","validation","test"];
+    names:=[4]string.["mean","persistence","affine","MLP"];
+    for split:0..<3 {for kind:0..<4 {
+        m:=oe_evaluate(fit,kind,split);#assert m.status==OsStatus.ok;
+        #assert m.completed==m.episodes && m.one_refused==0 && m.roll_refused==0;
+        one_q:=oe_example_micro(sqrt(m.one_q/f64(m.one_rows)));one_v:=oe_example_micro(sqrt(m.one_v/f64(m.one_rows)));
+        roll_q:=oe_example_micro(sqrt(m.roll_q/f64(m.roll_rows)));roll_v:=oe_example_micro(sqrt(m.roll_v/f64(m.roll_rows)));
+        if split==2 && kind==3 {#assert one_q==2035 && one_v==11290 && roll_q==138474 && roll_v==122190;}
+        print("% %: one-step um/um-s % %; rollout % %; completed %/%; scored %/%\n",splits[split],names[kind],one_q,one_v,roll_q,roll_v,m.completed,m.episodes,m.one_rows,m.roll_rows);
+    }}
+    print("MLP improves heldout rollout; affine wins one-step position. No retuning.\n");
+}
+// book:end example
