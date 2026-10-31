@@ -1,0 +1,10 @@
+decoder: 3856 parameters, 2 layers of 2-query/1-key-value-head attention; 24 training and 6 held-out pairs
+step 0: train loss 2.0019668884972965
+step 30: train loss 0.22580630853515607
+step 60: train loss 0.20176667649377125
+step 90: train loss 0.20023256428124206
+held-out loss: 1.0845807076927156
+prompt 0 1 -> 0 1 0 1 0 1
+prompt 1 2 -> 1 2 1 2 1 2
+held-out prompts continued exactly: 6 of 6
+head-only next-token accuracy on the same positions: 3 of 36

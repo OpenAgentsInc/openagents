@@ -140,4 +140,4 @@ The [transcript](../fixtures/byte-lm.out) is exact for the named CPU build.
 records debug/release, mutation, native reference and sanitizer evidence.
 The normal gate verifies captured data offline; `byte_lm_oracle.py --write`
 explicitly regenerates the independent experiment when its inputs change.
-Decoder gradients and transformer training remain chapters 113 and 115.
+[Chapter 113](ch113-differentiate-a-decoder.md) adds a causal decoder and its gradients; training the whole decoder as a permanent regression remains chapter 115.

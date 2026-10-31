@@ -1000,6 +1000,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/causal-decoder.coax",
+      "chapter": "psionic/book/ch113-differentiate-a-decoder.md",
+      "stdout": "psionic/fixtures/causal-decoder.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

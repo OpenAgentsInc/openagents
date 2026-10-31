@@ -1,0 +1,43 @@
+#import "Basic";
+#load "../lib/transformer/decoder.coax";
+#load "../lib/optim/adamw.coax";
+// book:begin example
+// Alternating copy: every sequence is a,b,a,b,a,b,a,b with a != b drawn from
+// six symbols. From position 2 on, the next token is the one two places back,
+// so only attention over the context can predict it; six pairs are held out.
+CD_SHAPE :: TdShape.{vocab=6,width=16,heads=2,kv_heads=1,head_width=8,hidden=32,layers=2,context=8};
+cd_held_out :: (a:int,b:int)->bool {return b==(a+1)%6;}
+cd_sequence :: (a:int,b:int,out:[]int) {for t:0..<8 {out[t]=a;if t%2==1 {out[t]=b;}}}
+// The vocabulary head alone, reading only the current token's embedding.
+cd_head_only :: (s:TdShape,p:[]f64,token:int)->int {
+    x:[16]f64;y:[16]f64;z:[6]f64;for i:0..<16 {x[i]=p[token*16+i];}
+    rms:=td_norm(x[..],0,p,td_final_norm(s),16,y[..],0);#assert rms>0;td_matvec(p,td_unembed(s),6,16,y[..],0,z[..],0);return td_argmax(z[..]);
+}
+main :: () {
+    s:=CD_SHAPE;n:=td_parameter_count(s);p:[3856]f64;#assert n==3856;seed:=td_init(s,CrSeed.{seed=113},p[..]);#assert seed.counter==3856;
+    w:[4096]f64;dw:[4096]f64;#assert td_work_count(s)<=4096;grads:[3856]f64;total:[3856]f64;m:[3856]f64;v:[3856]f64;
+    groups:=[1]AwGroup.[AwGroup.{first=0,count=3856,lr=0.01,beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];state:AwState;none:[1]f32;
+    train:[24][8]int;held:[6][8]int;nt:=0;nh:=0;
+    for a:0..<6 {for b:0..<6 {if a!=b {if cd_held_out(a,b) {cd_sequence(a,b,held[nh][..]);nh+=1;}else {cd_sequence(a,b,train[nt][..]);nt+=1;}}}}
+    print("decoder: % parameters, % layers of 2-query/1-key-value-head attention; % training and % held-out pairs\n",n,s.layers,nt,nh);
+    for step:0..<120 {
+        loss:=0.0;for i:0..<n {total[i]=0;}
+        for k:0..<24 {r:=td_gradients(s,p[..],train[k][..],w[..],dw[..],grads[..],false);#assert r.status==TdStatus.ok;loss+=r.loss/24;for i:0..<n {total[i]+=grads[i]/24;}}
+        if step%30==0 {print("step %: train loss %\n",step,loss);}
+        a:=aw_step(groups[..],AwPolicy.{},state,p[..],total[..],m[..],v[..],none[0..<0],false);#assert a.status==AwStatus.ok;state=a.state;
+    }
+    logits:[48]f64;held_loss:=0.0;for k:0..<6 {r:=td_forward(s,p[..],held[k][..],w[..],logits[..],false);#assert r.status==TdStatus.ok;held_loss+=r.loss/6;}
+    print("held-out loss: %\n",held_loss);
+    // Generate six tokens after each two-token prompt with the KV cache.
+    copied:=0;head:=0;out:[6]f64;
+    for k:0..<6 {tokens:=held[k];filled:=0;next:=tokens[0];generated:[8]int;generated[0]=tokens[0];generated[1]=tokens[1];
+        for t:0..<7 {r:=td_decode(s,p[..],w[..],filled,generated[t],out[..],false);#assert r.status==TdStatus.ok;filled=r.written;next=td_argmax(out[..]);if t>=1 {generated[t+1]=next;}}
+        same:=true;for t:0..<8 {if generated[t]!=tokens[t] {same=false;}}if same {copied+=1;}
+        for t:1..<7 {if cd_head_only(s,p[..],tokens[t])==tokens[t+1] {head+=1;}}
+        if k<2 {print("prompt % % -> % % % % % %\n",tokens[0],tokens[1],generated[2],generated[3],generated[4],generated[5],generated[6],generated[7]);}
+    }
+    print("held-out prompts continued exactly: % of 6\n",copied);
+    print("head-only next-token accuracy on the same positions: % of 36\n",head);
+    #assert copied==6 && head<36;
+}
+// book:end example

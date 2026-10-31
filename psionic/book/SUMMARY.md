@@ -82,6 +82,7 @@
 - [104. Gradients as a program](ch104-gradients-as-a-program.md)
 - [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md)
 - [112. Bytes and a small language model](ch112-bytes-and-a-small-language-model.md)
+- [113. Differentiate a decoder](ch113-differentiate-a-decoder.md)
 
 - [122. A checkpoint holds the whole experiment](ch122-a-checkpoint-holds-the-whole-experiment.md)
 - [123. Learn a tokenizer](ch123-learn-a-tokenizer.md)
