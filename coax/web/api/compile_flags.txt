@@ -1,0 +1,9 @@
+-std=c11
+-Wall
+-Wextra
+-D_DEFAULT_SOURCE
+-I.
+-I/opt/homebrew/opt/postgresql@16/include
+-I/opt/homebrew/opt/secp256k1/include
+-I/opt/homebrew/opt/openssl@3/include
+-I/opt/homebrew/include
