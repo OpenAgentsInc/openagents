@@ -292,7 +292,7 @@ xp_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height:f32,
   white:=chrome(ink(p,INK_WHITE));dim:=ink(p,INK_DIM);bright:=ink(p,INK_BRIGHT);blue:=ink(p,INK_BLUE);
   if l.phone {
     line:[96]u8;n:=xp_comma(line[..],0,x[0].total);n=app(line[..],n," XP from ");n=app_int(line[..],n,x[0].counted);n=app(line[..],n," awards");
-    return put_fit(out,v,cast(string)line[0..<n],16*d,96*d,6.5*d,dimmed(ink(p,INK_PALE),light),l.galaxy.x0-26*d);
+    return put_fit(out,v,cast(string)line[0..<n],16*d,84*d,6.5*d,dimmed(ink(p,INK_PALE),light),l.galaxy.x0-26*d);
   }
   b:=xp_box(l,d,height);if b.y1-b.y0<120*d {return v;}
   v=frame(out,v,b,8*d,bright,0.7*light,p);

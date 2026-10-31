@@ -2095,7 +2095,6 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   if !sheet {
     if l.phone {
       v=put_fit(out,v,cast(string)capture[0..<cn],16*d,68*d,7*d,ink(p,INK_PALE),width-32*d);
-      v=put_fit(out,v,"Live Pylons and project claims / git history at deploy",16*d,82*d,6.5*d,ink(p,INK_DIM),width-32*d);
     }else {v=put_fit(out,v,cast(string)capture[0..<cn],16*d,height-14*d,7*d,ink(p,INK_PALE),width-32*d);}
   }
   if !sheet && l.phone {v=xp_panel(out,v,s,l,p,width,height,hud);}
@@ -2126,7 +2125,8 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
           o := q * 6 * VERTEX_FLOATS;
           x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
           y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
-          if inside(xb, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.8 * feed_on; } }
+          // nearly gone: a project's name behind the ledger would read through it
+          if inside(xb, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.97 * feed_on; } }
         }
       }
     }
