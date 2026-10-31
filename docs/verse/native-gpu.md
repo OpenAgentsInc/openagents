@@ -394,9 +394,16 @@ Every phase and native feature is a task in the Verse project
   source as the page's input. Every one matches its golden. Not yet:
   - myrealm (a made realm, the `built` golden) followed once dot stayed
     dot: 0 blocks changed, where its painted clouds had moved.
-  - fixture and realm stop the translator (builtins on vectors it does not
-    know, indexing a vector, a vector from a struct's fields); waterlab
-    writes `@builtin(frag_depth)`, which a Coax fragment cannot yet say.
+  - fixture (the realm host's test world, ten goldens) follows, 0 blocks
+    changed in every view. A field may be noted `#depth` (coax/spec.md): a
+    fragment's f32 output that is its depth, which lib/compiler/wgsl.coax
+    writes as `@builtin(frag_depth)` between targets that keep their
+    locations (`coax spirv` still refuses it). The translator reads
+    `@builtin(frag_depth)` as that, knows mat3x3f (M3, m3_apply in
+    verse/gpu/wgsl.coax), and writes a store to a vector's element by a
+    dynamic index as the vector with it set.
+  - realm stops the translator; waterlab should now follow fixture
+    (it too writes frag_depth).
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

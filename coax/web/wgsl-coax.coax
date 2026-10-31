@@ -38,7 +38,7 @@ Y_F :: 1; Y_I :: 2; Y_U :: 3; Y_B :: 4; Y_AF :: 5; Y_AI :: 6;
 // Module variables.
 MV_UNIFORM :: 1; MV_STORAGE :: 2; MV_HANDLE :: 3; MV_PRIVATE :: 4;
 // Parameter attributes.
-PA_VID :: 1; PA_IID :: 2; PA_POS :: 3; PA_FRONT :: 4; PA_LOC :: 5;
+PA_VID :: 1; PA_IID :: 2; PA_POS :: 3; PA_FRONT :: 4; PA_LOC :: 5; PA_DEPTH :: 6;
 // Operators.
 OP_ADD :: 1; OP_SUB :: 2; OP_MUL :: 3; OP_DIV :: 4; OP_MOD :: 5; OP_LT :: 6; OP_LE :: 7; OP_GT :: 8; OP_GE :: 9;
 OP_EQ :: 10; OP_NE :: 11; OP_AND :: 12; OP_OR :: 13; OP_BAND :: 14; OP_BOR :: 15; OP_XOR :: 16; OP_SHL :: 17; OP_SHR :: 18;
@@ -55,6 +55,7 @@ W :: struct {
   ss: [256] int; se: [256] int; sf: [256] int; sc: [256] int; ns: int;
   fs: [4096] int; fe: [4096] int; fy: [4096] int; ft: [4096] int; nf: int;
   fflat: [4096] bool; flat: bool;   // a field written @interpolate(flat); the last attributes held one
+  fdepth: [4096] bool;   // a field written @builtin(frag_depth)
   ms: [128] int; me: [128] int; my: [128] int; mk: [128] int; mt: [128] int; nm: int;
   mx: [128] int;    // a private variable's initializer, at its first token (0: none)
   mh: [128] bool;   // a private variable some procedure other than an entry writes
@@ -79,6 +80,7 @@ Val :: struct {
   um: int; ds: int; dn: int; k: int;      // a uniform reference: module var um-1, at float dynamic text + k
   cop: int; as: int; an: int; ay: int; bs: int; bn: int; by: int;   // a vector comparison, for all() and any()
   box: int; ref: bool;   // the value of boxed local box-1 (its view's one element); ref: &it, the view itself
+  gt: int; gs: int; gn: int; gis: int; gin: int;   // an element of a vector of type gt by a dynamic index: the vector's text, the index's
 }
 
 // ---- text
@@ -210,7 +212,7 @@ ytx :: (w: []W, t: int) {
     if c == Y_F { ap(w, "V"); } else if c == Y_I { ap(w, "I"); } else if c == Y_U { ap(w, "U"); } else { ap(w, "B"); }
     apn(w, w[0].yn[t]); return;
   }
-  if k == YK_MAT { ap(w, "M4"); return; }
+  if k == YK_MAT { apc(w, 'M'); apn(w, w[0].yn[t]); return; }
   if k == YK_ST { st_name(w, w[0].ye[t]); return; }
   if k == YK_ARR { apc(w, '['); apn(w, w[0].yn[t]); apc(w, ']'); ytx(w, w[0].ye[t]); return; }
   if k == YK_RT { ap(w, "[]"); ytx(w, w[0].ye[t]); return; }
@@ -221,7 +223,7 @@ ytx :: (w: []W, t: int) {
 ycode :: (w: []W, t: int) {
   k := w[0].yk[t];
   c := conc(ybase(w, t));
-  if k == YK_MAT { ap(w, "m4"); return; }
+  if k == YK_MAT { apc(w, 'm'); apn(w, w[0].yn[t]); return; }
   ap(w, ifx c == Y_F then "f" else ifx c == Y_I then "i" else ifx c == Y_U then "u" else "b");
   if k == YK_VEC { apn(w, w[0].yn[t]); }
 }
@@ -253,6 +255,8 @@ ptype :: (w: []W) -> int {
     expect(w, "<"); w[0].p += 1; expect(w, ","); t := ptype(w); expect(w, ">"); w[0].ptr_last = true; return t;
   }
   if name == "mat4x4f" { return ty_find(w, YK_MAT, 4, 0); }
+  if name == "mat3x3f" { return ty_find(w, YK_MAT, 3, 0); }
+  if name == "mat3x3" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_MAT, 3, 0); }
   if name == "mat4x4" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_MAT, 4, 0); }
   if name == "array" {
     expect(w, "<"); el := ptype(w);
@@ -300,7 +304,7 @@ usize :: (w: []W, t: int) -> int {
   k := w[0].yk[t];
   if k == YK_SC { return 1; }
   if k == YK_VEC { return w[0].yn[t]; }
-  if k == YK_MAT { return 16; }
+  if k == YK_MAT { return w[0].yn[t] * 4; }
   if k == YK_ARR { return w[0].yn[t] * ustride(w, w[0].ye[t]); }
   if k == YK_ST {
     sid := w[0].ye[t]; at_ := 0;
@@ -326,7 +330,7 @@ skip_attrs :: (w: []W) -> int {   // the attributes at p; returns a stage (1 ver
     if is_at(w, "(") {
       if a == "builtin" {
         b := tt(w, w[0].p + 1);
-        if b == "vertex_index" { r = PA_VID; } else if b == "instance_index" { r = PA_IID; } else if b == "position" { r = PA_POS; } else if b == "front_facing" { r = PA_FRONT; }
+        if b == "vertex_index" { r = PA_VID; } else if b == "instance_index" { r = PA_IID; } else if b == "position" { r = PA_POS; } else if b == "front_facing" { r = PA_FRONT; } else if b == "frag_depth" { r = PA_DEPTH; }
       }
       if a == "location" { r = PA_LOC; }
       if a == "interpolate" && tt(w, w[0].p + 1) == "flat" { w[0].flat = true; }
@@ -365,7 +369,7 @@ declare :: (w: []W) {
       while !is_at(w, "}") {
         a := skip_attrs(w);
         f := w[0].nf; w[0].fs[f] = w[0].ts[w[0].p]; w[0].fe[f] = w[0].te[w[0].p]; w[0].ft[f] = w[0].p; w[0].p += 1;
-        w[0].fflat[f] = w[0].flat;
+        w[0].fflat[f] = w[0].flat; w[0].fdepth[f] = a == PA_DEPTH;
         expect(w, ":"); w[0].fy[f] = ptype(w); w[0].nf = f + 1; w[0].sc[sid] += 1;
         if is_at(w, ",") || is_at(w, ";") { w[0].p += 1; }
       }
@@ -719,7 +723,7 @@ binop :: (w: []W, op: int, a0: Val, b0: Val) -> Val {
   ta := a.ty; tb := b.ty;
   rel := op >= OP_LT && op <= OP_NE;
   if w[0].yk[ta] == YK_MAT && op == OP_MUL {
-    r := w[0].an; ap(w, "m4_apply("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')');
+    r := w[0].an; apc(w, 'm'); apn(w, w[0].yn[ta]); ap(w, "_apply("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')');
     return mka(w, r, tb);
   }
   if is_vec(w, ta) || is_vec(w, tb) {
@@ -859,7 +863,7 @@ postfix :: (w: []W) -> Val {
         if !ix.lit { err(w, "a matrix column by a dynamic index"); continue; }
         pv := paren(w, mat(w, v));
         b := w[0].an; apv(w, pv); ap(w, ".c"); apn(w, ix.iv);
-        r := mka(w, b, vec(w, Y_F, 4)); r.path = v.path; v = r; continue;
+        r := mka(w, b, vec(w, Y_F, w[0].yn[t])); r.path = v.path; v = r; continue;
       }
       if k == YK_VEC {
         if ix.lit { v = comp(w, v, ix.iv); continue; }
@@ -870,7 +874,9 @@ postfix :: (w: []W) -> Val {
         ap(w, "return p."); ap(w, CMP[vlen(w, t) - 1]); ap(w, ";}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
         iv := as_int(w, ix);
         b := w[0].an; ap(w, hn); apc(w, '('); apv(w, vv); apc(w, ','); apv(w, iv); apc(w, ')');
-        v = mka(w, b, ybase(w, t)); continue;
+        r := mka(w, b, ybase(w, t));
+        if v.path { r.gt = t; r.gs = vv.s; r.gn = vv.n; r.gis = iv.s; r.gin = iv.n; }
+        v = r; continue;
       }
       if k == YK_ARR || k == YK_RT {
         pv := paren(w, v); iv := as_int(w, ix);
@@ -923,7 +929,7 @@ literal :: (w: []W) -> Val {
   return v;
 }
 is_ctor_type :: (s: string) -> bool {
-  if s == "f32" || s == "i32" || s == "u32" || s == "bool" || s == "mat4x4f" || s == "mat4x4" || s == "array" { return true; }
+  if s == "f32" || s == "i32" || s == "u32" || s == "bool" || s == "mat4x4f" || s == "mat4x4" || s == "mat3x3f" || s == "mat3x3" || s == "array" { return true; }
   return s.count >= 4 && s[0..<3] == "vec" && s[3] >= '2' && s[3] <= '4';
 }
 primary :: (w: []W) -> Val {
@@ -1023,8 +1029,12 @@ construct :: (w: []W, t0: int) -> Val {
     apc(w, '}'); return mka(w, b, t);
   }
   if k == YK_MAT {
-    if n != 4 { err(w, "a matrix from other than four columns"); }
-    b := w[0].an; ap(w, "M4.{c0="); apv(w, a[0]); ap(w, ",c1="); apv(w, a[1]); ap(w, ",c2="); apv(w, a[2]); ap(w, ",c3="); apv(w, a[3]); apc(w, '}');
+    c := w[0].yn[t];
+    if n != c { err(w, "a matrix from other than its columns"); return mka(w, w[0].an, t); }
+    for i: 0..<n { a[i] = convert_ty(w, a[i], vec(w, Y_F, c)); }
+    b := w[0].an; apc(w, 'M'); apn(w, c); ap(w, ".{");
+    for i: 0..<n { if i > 0 { apc(w, ','); } ap(w, "c"); apn(w, i); apc(w, '='); apv(w, a[i]); }
+    apc(w, '}');
     return mka(w, b, t);
   }
   if k == YK_VEC {
@@ -1336,6 +1346,17 @@ if_chain :: (w: []W, d: int) {
     o(w, " else {\n"); block(w, d + 1);
   }
 }
+// place = v; a vector's element by a dynamic index is the vector with it set (wg_set_CODE).
+store :: (w: []W, lhs: Val, v: Val) {
+  if lhs.gt == 0 { ov(w, lhs); o(w, "="); ov(w, v); o(w, ";"); return; }
+  t := lhs.gt;
+  nb := w[0].an; ap(w, "wg_set_"); ycode(w, t); hn := art(w, nb, w[0].an - nb);
+  db := w[0].an; ap(w, " :: (p:"); ytx(w, t); ap(w, ",i:int,x:"); ytx(w, ybase(w, t)); ap(w, ")->"); ytx(w, t); ap(w, " {r:=p; ");
+  for c: 0..<vlen(w, t) { ap(w, "if i=="); apn(w, c); ap(w, " {r."); ap(w, CMP[c]); ap(w, "=x;} "); }
+  ap(w, "return r;}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
+  base := art(w, lhs.gs, lhs.gn); ix := art(w, lhs.gis, lhs.gin);
+  o(w, base); o(w, "="); o(w, hn); o(w, "("); o(w, base); o(w, ","); o(w, ix); o(w, ","); ov(w, v); o(w, ");");
+}
 // An assignment, increment or call statement at p, without its ';'.
 stmt_simple :: (w: []W) {
   if is_at(w, "_") && atn(w, 1, "=") { w[0].p += 2; v := mat(w, ex(w)); w[0].serial += 1; o(w, "_d"); b := w[0].an; apn(w, w[0].serial); o(w, art(w, b, w[0].an - b)); o(w, ":="); ov(w, v); o(w, ";"); return; }
@@ -1347,14 +1368,14 @@ stmt_simple :: (w: []W) {
     else { ov(w, lhs); o(w, ifx inc then "+=1;" else "-=1;"); }
     return;
   }
-  if is_at(w, "=") { w[0].p += 1; v := mat(w, ex(w)); ov(w, lhs); o(w, "="); ov(w, convert_ty(w, v, lhs.ty)); o(w, ";"); return; }
+  if is_at(w, "=") { w[0].p += 1; v := mat(w, ex(w)); store(w, lhs, convert_ty(w, v, lhs.ty)); return; }
   s := cur(w);
   if w[0].tk[w[0].p] == TK_P && s.count == 2 && s[1] == '=' && s != "==" && s != "!=" && s != "<=" && s != ">=" {
     op := ifx s[0] == '+' then OP_ADD else ifx s[0] == '-' then OP_SUB else ifx s[0] == '*' then OP_MUL else ifx s[0] == '/' then OP_DIV else ifx s[0] == '%' then OP_MOD else ifx s[0] == '&' then OP_BAND else ifx s[0] == '|' then OP_BOR else OP_XOR;
     w[0].p += 1;
     v := mat(w, ex(w));
     r := binop(w, op, lhs, v);
-    ov(w, lhs); o(w, "="); ov(w, convert_ty(w, r, lhs.ty)); o(w, ";");
+    store(w, lhs, convert_ty(w, r, lhs.ty));
     return;
   }
   // a call as a statement: its value, if any, kept in a local Coax lets go unused
@@ -1435,7 +1456,7 @@ emit_struct :: (w: []W, sid: int) {
   b := w[0].an; st_name(w, sid); o(w, art(w, b, w[0].an - b)); o(w, " :: struct {");
   for i: 0..<w[0].sc[sid] {
     f := w[0].sf[sid] + i;
-    b = w[0].an; field(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, art(w, b, w[0].an - b)); o(w, ":"); b = w[0].an; ytx(w, w[0].fy[f]); o(w, art(w, b, w[0].an - b)); o(w, ifx w[0].fflat[f] then " #flat; " else "; ");
+    b = w[0].an; field(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, art(w, b, w[0].an - b)); o(w, ":"); b = w[0].an; ytx(w, w[0].fy[f]); o(w, art(w, b, w[0].an - b)); o(w, ifx w[0].fflat[f] then " #flat; " else ifx w[0].fdepth[f] then " #depth; " else "; ");
   }
   o(w, "}\n");
 }

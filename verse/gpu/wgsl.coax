@@ -56,6 +56,9 @@ wg_refract3 :: (e:V3,n:V3,eta:f32)->V3 {
   s:=eta*d+sqrt(k);
   return v3(eta*e.x-s*n.x,eta*e.y-s*n.y,eta*e.z-s*n.z);
 }
+// WGSL's mat3x3f, its columns; m3_apply(m, v) is m * v.
+M3 :: struct {c0:V3; c1:V3; c2:V3;}
+m3_apply :: (m:M3,v:V3)->V3 {return add3(add3(scale3(m.c0,v.x),scale3(m.c1,v.y)),scale3(m.c2,v.z));}
 wg_transpose :: (m:M4)->M4 {
   return M4.{c0=v4(m.c0.x,m.c1.x,m.c2.x,m.c3.x),c1=v4(m.c0.y,m.c1.y,m.c2.y,m.c3.y),
              c2=v4(m.c0.z,m.c1.z,m.c2.z,m.c3.z),c3=v4(m.c0.w,m.c1.w,m.c2.w,m.c3.w)};
@@ -172,6 +175,9 @@ wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c
   #assert wg_length2(v2(3,4))==5 && wg_length4(v4(1,1,1,1))==2 && wg_normalize2(v2(0,2)).y==1 && wg_normalize4(v4(0,0,0,3)).w==1;
   #assert wg_dot2(v2(1,2),v2(3,4))==11 && wg_dot3(v3(1,0,0),v3(2,0,0))==2 && wg_dot4(v4(1,1,1,1),v4(1,2,3,4))==10;
   #assert wg_length3(v3(0,3,4))==5 && wg_normalize3(v3(2,0,0)).x==1 && wg_cross3(v3(1,0,0),v3(0,1,0)).z==1 && wg_reflect3(v3(1,-1,0),v3(0,1,0)).y==1;
+  m3:=M3.{c0=v3(1,2,3),c1=v3(4,5,6),c2=v3(7,8,9)};
+  a3:=m3_apply(m3,v3(1,0,2));
+  #assert a3.x==15 && a3.y==18 && a3.z==21;
   m:=M4.{c0=v4(1,2,3,4),c1=v4(5,6,7,8),c2=v4(9,10,11,12),c3=v4(13,14,15,16)};
   t:=wg_transpose(m);
   #assert t.c0.y==5 && t.c1.x==2 && t.c3.z==12 && t.c2.w==15 && t.c0.x==1 && t.c3.w==16;

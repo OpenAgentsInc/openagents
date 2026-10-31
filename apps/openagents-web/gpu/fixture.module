@@ -1,0 +1,3 @@
+--vertices fixture_bg_vs,fixture_caster_vs,fixture_grass_vs,fixture_scene_vs,fixture_fx_vs
+--fragments fixture_bg_fs,fixture_grass_fs,fixture_scene_fs,fixture_bloom_fs,fixture_post_fs,fixture_fx_fs
+--bindings apps/openagents-web/gpu/fixture.bindings --strip fixture_
