@@ -1,0 +1,144 @@
+// Files for Coax tools: read and write whole files, ask what a path is,
+// make directories (and temporary ones), remove trees, list a directory.
+// The effects are coax/platform/store-file-native.c (cxfs_*); paths are
+// built and checked here. Every call names its path in full.
+//   data: [65536] u8; n := fs_read("a.txt", data[..]);   // -1 when missing or bigger than data
+//   ok := fs_write("b.txt", cast(string) data[0..<n]);
+//   tmp: [1024] u8; dir := fs_temp("coax-clip-", tmp[..]); // "" on failure
+//   ok = fs_remove(dir);
+//   names: [1] FsList; k := fs_list(dir, names[..]);   // fs_entry(names[..], i)
+// A path holds no zero byte and is at most FS_PATH_MAX bytes.
+
+cxfs_path_push :: (byte: int) -> int #foreign;
+cxfs_read :: () -> int #foreign;
+cxfs_byte :: (i: int) -> int #foreign;
+cxfs_put :: (byte: int) -> int #foreign;
+cxfs_write :: (append: int) -> int #foreign;
+cxfs_kind :: () -> int #foreign;
+cxfs_size :: () -> int #foreign;
+cxfs_mkdir :: () -> int #foreign;
+cxfs_temp :: () -> int #foreign;
+cxfs_name_byte :: (i: int) -> int #foreign;
+cxfs_remove :: () -> int #foreign;
+cxfs_list :: () -> int #foreign;
+cxfs_entry_len :: (i: int) -> int #foreign;
+cxfs_entry_byte :: (i: int, j: int) -> int #foreign;
+cxfs_cwd :: () -> int #foreign;
+
+FS_PATH_MAX :: 4096;
+FS_NONE :: 0; FS_FILE :: 1; FS_DIR :: 2; FS_OTHER :: 3;
+
+#test "paths: what may be pushed, joining" {
+  #assert fs_path_ok("a/b.txt") && !fs_path_ok("") && fs_path_ok("/");
+  z := [3] u8.['a', 0, 'b'];
+  #assert !fs_path_ok(cast(string) z[..]);
+  out: [16] u8;
+  #assert fs_join("a", "b", out[..]) == "a/b" && fs_join("a/", "b", out[..]) == "a/b" && fs_join("", "b", out[..]) == "b";
+  #assert fs_join("/", "x", out[..]) == "/x" && fs_join("aaaaaaaaaa", "bbbbbbbbbb", out[..]) == "";
+  #assert fs_base("a/b/c.png") == "c.png" && fs_base("c") == "c" && fs_dir("a/b/c.png") == "a/b" && fs_dir("c") == "." && fs_dir("/c") == "/";
+}
+fs_path_ok :: (path: string) -> bool {
+  if path.count < 1 || path.count > FS_PATH_MAX { return false; }
+  for c: path { if c == 0 { return false; } }
+  return true;
+}
+// dir/name into out (one slash between), or "" when it does not fit.
+fs_join :: (dir: string, name: string, out: [] u8) -> string {
+  slash := dir.count > 0 && dir[dir.count - 1] != '/';
+  n := dir.count + (ifx slash then 1 else 0) + name.count;
+  if n > out.count { return ""; }
+  for i: 0..<dir.count { out[i] = dir[i]; }
+  at := dir.count;
+  if slash { out[at] = '/'; at += 1; }
+  for i: 0..<name.count { out[at + i] = name[i]; }
+  return cast(string) out[0..<n];
+}
+// The last part of a path, and what comes before it ("." when nothing does).
+fs_base :: (path: string) -> string {
+  i := path.count - 1;
+  while i >= 0 && path[i] != '/' { i -= 1; }
+  return path[i + 1..<path.count];
+}
+fs_dir :: (path: string) -> string {
+  i := path.count - 1;
+  while i >= 0 && path[i] != '/' { i -= 1; }
+  if i < 0 { return "."; }
+  if i == 0 { return "/"; }
+  return path[0..<i];
+}
+
+// Pushes path for the next effect; false when it is not a path.
+fs_push :: (path: string) -> bool {
+  if !fs_path_ok(path) { return false; }
+  for c: path { if cxfs_path_push(cast(int) c) != 0 { return false; } }
+  return true;
+}
+// The whole file into out: its size, or -1 (missing, unreadable, or bigger than out).
+fs_read :: (path: string, out: [] u8) -> int {
+  if !fs_push(path) { return -1; }
+  n := cxfs_read();
+  if n < 0 || n > out.count { return -1; }
+  for i: 0..<n { out[i] = cast,trunc(u8) cxfs_byte(i); }
+  return n;
+}
+fs_put_all :: (data: string) -> bool {
+  for c: data { if cxfs_put(cast(int) c) != 0 { return false; } }
+  return true;
+}
+// Replaces (or creates) the file with data.
+fs_write :: (path: string, data: string) -> bool {
+  ok := fs_put_all(data);
+  if !fs_push(path) { r := cxfs_write(0); return false; }
+  return cxfs_write(0) == 0 && ok;
+}
+fs_append :: (path: string, data: string) -> bool {
+  ok := fs_put_all(data);
+  if !fs_push(path) { r := cxfs_write(1); return false; }
+  return cxfs_write(1) == 0 && ok;
+}
+// FS_NONE, FS_FILE, FS_DIR or FS_OTHER; -1 when the path cannot be asked about.
+fs_kind :: (path: string) -> int { return ifx fs_push(path) then cxfs_kind() else -1; }
+fs_exists :: (path: string) -> bool { return fs_kind(path) > 0; }
+fs_size :: (path: string) -> int { return ifx fs_push(path) then cxfs_size() else -1; }
+// The directory and every missing parent.
+fs_mkdir :: (path: string) -> bool { return fs_push(path) && cxfs_mkdir() == 0; }
+// The file, or the directory with everything in it. A missing path is fine.
+fs_remove :: (path: string) -> bool { return fs_push(path) && cxfs_remove() == 0; }
+// A new empty directory in the system's temporary folder whose name starts
+// with prefix (no slash in it); its path in out, or "".
+fs_temp :: (prefix: string, out: [] u8) -> string {
+  if !fs_push(prefix) { return ""; }
+  n := cxfs_temp();
+  return fs_name(n, out);
+}
+// The working directory, or "".
+fs_cwd :: (out: [] u8) -> string { return fs_name(cxfs_cwd(), out); }
+fs_name :: (n: int, out: [] u8) -> string {
+  if n < 1 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast,trunc(u8) cxfs_name_byte(i); }
+  return cast(string) out[0..<n];
+}
+
+FS_LIST_MAX :: 4096;
+FS_LIST_BYTES :: 262144;
+// A directory's names, sorted bytewise; full when some did not fit.
+FsList :: struct { bytes: [FS_LIST_BYTES] u8; used: int; from: [FS_LIST_MAX] int; to: [FS_LIST_MAX] int; n: int; full: bool; }
+// The names in dir (without . and ..): their count, or -1.
+fs_list :: (dir: string, l: [] FsList) -> int {
+  l[0].used = 0; l[0].n = 0; l[0].full = false;
+  if !fs_push(dir) { return -1; }
+  k := cxfs_list();
+  if k < 0 { return -1; }
+  for i: 0..<k {
+    m := cxfs_entry_len(i);
+    if l[0].n >= FS_LIST_MAX || l[0].used + m > FS_LIST_BYTES { l[0].full = true; break; }
+    l[0].from[l[0].n] = l[0].used;
+    for j: 0..<m { l[0].bytes[l[0].used + j] = cast,trunc(u8) cxfs_entry_byte(i, j); }
+    l[0].used += m; l[0].to[l[0].n] = l[0].used; l[0].n += 1;
+  }
+  return l[0].n;
+}
+fs_entry :: (l: [] FsList, i: int) -> string {
+  if i < 0 || i >= l[0].n { return ""; }
+  return cast(string) l[0].bytes[l[0].from[i]..<l[0].to[i]];
+}
