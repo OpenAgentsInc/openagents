@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793483091,
+  "content": "Compared each of the 7 removed #assert lines in psionic/lib/shadow.coax and verse/fairy-forest/forest.coax with its replacement (count -> models[0].count/blooms[0].count, entries[i] -> bounded_get), same values and conditions, no test or case dropped, and the capacity refusal now enforced by coax/lib/bounded.coax whose 9 checks are gated in tests/run.sh.",
+  "tags": [
+    [
+      "commit",
+      "1f9d64a193fcd45d08ff775fbc7f034d2ead84ba"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "ced196734326fca1a1e8811ea2a74925ea85ad6c0a76391b27952394d1b09990",
+  "id": "89bd4af1d8009efc01a197b3de2398746c32570bc6a9fa209e66910c63780d3f",
+  "sig": "5d574b5d678affdb61c24e1152967da6bc7541ff8d6e948aa9d302693c32ad162e21827129c857973ee31e78148bcb7f4d5e283927fb3a11b6810dbe8c7cc6c3"
+}
