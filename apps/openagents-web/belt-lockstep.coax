@@ -1,0 +1,93 @@
+// Belt 2200's lockstep core (b22-lockstep): for multiplayer, only orders cross the network. The
+// match runs in fixed ticks (LOCK_TICK of game time each); an order names the tick it takes effect
+// on, so every client applies it at the same point in the same state. The rules are deterministic
+// (the Union's script included: belt-rival.coax), so the same orders give the same game. Each client
+// hashes its state every LOCK_CHECK ticks (a few seconds at 7 D/S) and the hashes are compared: the
+// first that differ is a desync, reported with its tick.
+//   coax/bin/coax test apps/openagents-web/belt.coax --only lockstep
+
+LOCK_TICK :: 0.25;            // days of game time a tick
+LOCK_CHECK :: 8;              // ticks between hashes: two game days
+ORD_GO :: 0; ORD_MINE :: 1; ORD_BUILD :: 2; ORD_REFINERY :: 3;
+Order :: struct { tick: int; kind: int; ship: int; dest: int; fast: bool; }
+
+// One order on a client: the same as its button, for the ship it names.
+lock_apply :: (s: [] Belt, o: Order) {
+  if o.kind == ORD_BUILD { ok := yard_build(s); return; }
+  if o.kind == ORD_REFINERY { ok := refinery_build(s[0].station[..]); return; }
+  if o.ship < 0 || o.ship >= s[0].ship_n || s[0].ships[o.ship].faction != FREE_BELT { return; }
+  select_only(s, o.ship);
+  if o.kind == ORD_MINE { mine_order(s); } else { set_dest(s, o.dest); }
+  go(s, o.fast);
+  s[0].dest = -1;
+}
+// A tick: its orders, in the order they were sent, then the game moves LOCK_TICK on.
+lock_tick :: (s: [] Belt, tick: int, orders: [] Order, n: int) {
+  for i: 0..<n { if orders[i].tick == tick { lock_apply(s, orders[i]); } }
+  dt := LOCK_TICK * DAY;
+  s[0].t += dt;
+  step_ships(s, dt);
+  if s[0].tac[0].on { e := tac_resolve(s[0].tac[..]); tac_apply(s); }   // a battle in lockstep: fought to its end on its seed, the same everywhere
+}
+
+// The state's hash: FNV-1a over the game's quantities, quantized as the save keeps them.
+FNV_START :: 1469598103934665603;
+FNV_PRIME :: 1099511628211;
+hash_int :: (h: u64, v: int) -> u64 {
+  w := ifx v > 4000000000000000000 then 4000000000000000000 else ifx v < -4000000000000000000 then -4000000000000000000 else v;
+  r := h; x := cast(u64) (ifx w < 0 then (-(w + 1)) * 2 + 1 else w * 2);   // zigzag: no sign to cast
+  for b: 0..<8 { r = mul_wrap(r ^ (x & 255), FNV_PRIME); x = x >> 8; }
+  return r;
+}
+belt_hash :: (s: [] Belt) -> u64 {
+  h: u64 = FNV_START;
+  h = hash_int(h, qi(s[0].t, 1000.0));
+  st := s[0].station[0];
+  h = hash_int(h, qi(st.ice, 1000.0)); h = hash_int(h, qi(st.metal, 1000.0)); h = hash_int(h, qi(st.mass, 1000.0));
+  h = hash_int(h, qi(st.water, 1000.0)); h = hash_int(h, qi(st.air, 1000.0)); h = hash_int(h, st.refinery); h = hash_int(h, st.people);
+  h = hash_int(h, qi(s[0].delivered, 1000.0)); h = hash_int(h, qi(s[0].building, 1000.0));
+  h = hash_int(h, qi(s[0].rival[0].ice, 1000.0)); h = hash_int(h, qi(s[0].rival[0].metal, 1000.0)); h = hash_int(h, qi(s[0].rdelivered, 1000.0));
+  h = hash_int(h, qi(s[0].rbuilding, 1000.0)); h = hash_int(h, s[0].over);
+  for j: 0..<ICE_ROCKS { h = hash_int(h, qi(s[0].stock[j], 1000.0)); h = hash_int(h, (ifx s[0].claim[j] then 1 else 0) + (ifx s[0].rclaim[j] then 2 else 0)); }
+  h = hash_int(h, s[0].ship_n);
+  for k: 0..<s[0].ship_n {
+    sh := s[0].ships[k];
+    h = hash_int(h, sh.faction); h = hash_int(h, sh.mode); h = hash_int(h, sh.at); h = hash_int(h, sh.work_rock);
+    h = hash_int(h, qi(sh.fuel, 1000.0)); h = hash_int(h, qi(sh.cargo, 1000.0)); h = hash_int(h, qi(sh.hull, 1000.0));
+    h = hash_int(h, qi(sh.t0, 1.0)); h = hash_int(h, qi(sh.tof, 1.0));
+  }
+  return h;
+}
+
+// The desync checker: each client's hash at each check, compared as they come in.
+LockCheck :: struct { checks: int; desync: bool; tick: int = -1; }
+lock_compare :: (c: [] LockCheck, tick: int, mine: u64, theirs: u64) {
+  c[0].checks += 1;
+  if mine != theirs && !c[0].desync { c[0].desync = true; c[0].tick = tick; }
+}
+
+#test "lockstep: two clients given the same orders have equal state hashes after ten game-days; a different order is a desync, reported at its check" {
+  a: [1] Belt; b: [1] Belt; x: [1] Belt;
+  belt_start(a[..]); belt_start(b[..]); belt_start(x[..]);
+  orders := [4] Order.[
+    Order.{tick = 0, kind = ORD_MINE, ship = 0, fast = true},
+    Order.{tick = 2, kind = ORD_MINE, ship = 1, fast = true},
+    Order.{tick = 5, kind = ORD_GO, ship = 2, dest = P_ICE + 3, fast = false},
+    Order.{tick = 20, kind = ORD_GO, ship = 2, dest = P_STATION, fast = true}];
+  // the third client's KITE goes to another rock
+  other := orders;
+  other[2].dest = P_ICE + 4;
+  same: [1] LockCheck; diff: [1] LockCheck;
+  ticks := cast(int) (10.0 / LOCK_TICK);
+  for tick: 0..<ticks {
+    lock_tick(a[..], tick, orders[..], 4); lock_tick(b[..], tick, orders[..], 4); lock_tick(x[..], tick, other[..], 4);
+    if (tick + 1) % LOCK_CHECK == 0 {
+      ha := belt_hash(a[..]);
+      lock_compare(same[..], tick, ha, belt_hash(b[..]));
+      lock_compare(diff[..], tick, ha, belt_hash(x[..]));
+    }
+  }
+  #assert abs(a[0].t - b[0].t) < 0.001 && a[0].ships[0].mode != PARKED && a[0].ships[2].mode == FLYING;
+  #assert same[0].checks == 5 && !same[0].desync && belt_hash(a[..]) == belt_hash(b[..]);
+  #assert diff[0].desync && diff[0].tick == LOCK_CHECK - 1;
+}

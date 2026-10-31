@@ -29,6 +29,7 @@
 #load "belt-tactical.coax";
 #load "belt-rival.coax";
 #load "belt-win.coax";
+#load "belt-lockstep.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;

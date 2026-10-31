@@ -509,6 +509,28 @@
       "blocked_by": [
         "b22-ai"
       ],
+      "blocks": [
+        "b22-lockstep-net"
+      ]
+    },
+    {
+      "slug": "b22-lockstep-net",
+      "parent": "b22-rivals",
+      "title": "Two players over the relay with the lockstep core",
+      "size": "M",
+      "labels": [],
+      "body": "belt-lockstep.coax has the core: fixed ticks, orders that name their tick, the state hash and the desync checker. Wire it to the page: a 1v1 room through coax/web/api, the page sends its orders and hashes and plays at a fixed rate, and a desync shows to both players.",
+      "files": [
+        "apps/openagents-web/belt-lockstep.coax",
+        "apps/openagents-web/belt.coax",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two headless browsers in one room see the same ships after a minute of orders, and a forced desync is reported on both"
+      ],
+      "blocked_by": [
+        "b22-lockstep"
+      ],
       "blocks": []
     },
     {
