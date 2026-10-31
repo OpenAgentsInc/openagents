@@ -1,0 +1,3 @@
+recursive :: (input: []u8) -> []u8 { return recursive(input); }
+through :: (input: []u8) -> []u8 { return recursive(input); }
+main :: () {}

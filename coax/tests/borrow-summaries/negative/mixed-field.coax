@@ -1,0 +1,8 @@
+Pair :: struct { selected: []u8; other: []u8; }
+choose :: (pair: Pair) -> []u8 { return pair.selected; }
+escaped :: (external: []u8) -> []u8 {
+  local: [4]u8;
+  pair := Pair.{selected=local[..],other=external};
+  return choose(pair);
+}
+main :: () {}

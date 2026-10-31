@@ -4892,13 +4892,12 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
 // Test-only token fixture: all four literal metadata words, with no lexer or
 // checker dependency. The independently compiled lexer/native transport checks
 // in tests/parser.py exercise the actual source spelling as a separate oracle.
-// Every field takes a trailing comma; the closing token then replaces the last.
 PS_frame_test_tokens :: ()->[19]PS_Token {
  tokens:[19]PS_Token;tokens[0]=PS_Token.{kind=7,text="frame"};tokens[1].kind=8;
  names:=[4]string.["handedness","convention","continuity","min_precision"];
- words:=[4]string.["right","cartesian","continuous","f32"];
- for i:0..<4 {at:=2+4*i;tokens[at]=PS_Token.{kind=1,text=names[i]};tokens[at+1].kind=23;tokens[at+2]=PS_Token.{kind=1,text=words[i]};tokens[at+3].kind=14;}
- tokens[17].kind=9;for i:0..<19 {tokens[i].loc=PS_Loc.{line=17,column=i+1,offset=200+i};}return tokens;
+ words:=[4]string.["right","cartesian","continuous","f32"];tokens[17].kind=9;
+ for i:0..<4 {at:=2+4*i;tokens[at]=PS_Token.{kind=1,text=names[i]};tokens[at+1].kind=23;tokens[at+2]=PS_Token.{kind=1,text=words[i]};if i!=3 {tokens[at+3].kind=14;}}
+ for i:0..<19 {tokens[i].loc=PS_Loc.{line=17,column=i+1,offset=200+i};}return tokens;
 }
 #forall "frame literal vocabulary has exact raw transport values" field:0..<4 {
  words:=[9]string.["right","left","cartesian","body","optical","continuous","jumping","f32","f64"];

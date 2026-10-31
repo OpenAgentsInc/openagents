@@ -1,0 +1,11 @@
+copy_text :: (out: []u8, parts: []string) -> string {
+  count := 0;
+  for part: parts { for ch: part { out[count] = ch; count += 1; } }
+  return cast(string)out[0..<count];
+}
+through :: (out: []u8) -> string {
+  scratch := [2]u8.[65,66];
+  parts := [2]string.[cast(string)scratch[..],"C"];
+  return copy_text(out,parts[..]);
+}
+main :: () {}

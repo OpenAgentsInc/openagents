@@ -1,0 +1,403 @@
+{
+  "schema": "coax.borrow-summaries.fixtures.v1",
+  "scope": "Source return-flow fixtures. Retained external caller-state stores, foreign retention and completion/cancellation lifetimes remain separate work.",
+  "cases": [
+    {
+      "id": "reject-helper-local",
+      "source": "negative/helper-local.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/helper-local.coax",
+          "line": 4,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-forward-chain",
+      "source": "negative/forward-chain.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/forward-chain.coax",
+          "line": 3,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-generic-chain",
+      "source": "negative/generic-chain.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/generic-chain.coax",
+          "line": 5,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-loaded-chain",
+      "source": "negative/loaded-chain.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/loaded-chain.coax",
+          "line": 4,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-loaded-diagnostic",
+      "source": "negative/loaded-diagnostic.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "helpers/escaping.coax",
+          "line": 6,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-struct-literal",
+      "source": "negative/struct-literal.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/struct-literal.coax",
+          "line": 4,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-nested-field-write",
+      "source": "negative/nested-field-write.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/nested-field-write.coax",
+          "line": 7,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-array-of-borrows",
+      "source": "negative/array-of-borrows.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/array-of-borrows.coax",
+          "line": 3,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-array-field-write",
+      "source": "negative/array-field-write.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/array-field-write.coax",
+          "line": 6,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-by-value-array",
+      "source": "negative/by-value-array.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/by-value-array.coax",
+          "line": 2,
+          "col": 15,
+          "code": "E0366"
+        }
+      ]
+    },
+    {
+      "id": "reject-by-value-record",
+      "source": "negative/by-value-record.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/by-value-record.coax",
+          "line": 3,
+          "col": 20,
+          "code": "E0366"
+        }
+      ]
+    },
+    {
+      "id": "reject-owned-helper-slice",
+      "source": "negative/owned-helper-slice.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/owned-helper-slice.coax",
+          "line": 4,
+          "col": 14,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-mixed-field",
+      "source": "negative/mixed-field.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/mixed-field.coax",
+          "line": 6,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-conditional-helper",
+      "source": "negative/conditional-helper.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/conditional-helper.coax",
+          "line": 4,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-self-referential-copy",
+      "source": "negative/self-referential-copy.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/self-referential-copy.coax",
+          "line": 5,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-sibling-names",
+      "source": "negative/sibling-names.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/sibling-names.coax",
+          "line": 6,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "accept-by-value-descriptors",
+      "source": "positive/by-value-descriptors.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-caller-views",
+      "source": "positive/caller-views.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-generic-forward",
+      "source": "positive/generic-forward.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-loaded-helper",
+      "source": "positive/loaded-helper.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-mixed-field",
+      "source": "positive/mixed-field.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-nested-aggregate",
+      "source": "positive/nested-aggregate.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-owned-copy",
+      "source": "positive/owned-copy.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-scratch-copy",
+      "source": "positive/scratch-copy.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-sibling-names",
+      "source": "positive/sibling-names.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-unused-local-argument",
+      "source": "positive/unused-local-argument.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "reject-by-value-array-copy",
+      "source": "negative/by-value-array-copy.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/by-value-array-copy.coax",
+          "line": 3,
+          "col": 14,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-by-value-record-copy",
+      "source": "negative/by-value-record-copy.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/by-value-record-copy.coax",
+          "line": 4,
+          "col": 20,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-local-and-unknown-call",
+      "source": "negative/local-and-unknown-call.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/local-and-unknown-call.coax",
+          "line": 5,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "manual-recursive-only",
+      "source": "manual/recursive-only.coax",
+      "outcome": "accept-manual",
+      "diagnostics": [],
+      "analysis_obligation": "Incomplete/manual status2 is observed independently by graph/native inspection; source acceptance alone is not completeness."
+    },
+    {
+      "id": "manual-helper-local-state",
+      "source": "manual/helper-local-state.coax",
+      "outcome": "accept-manual",
+      "diagnostics": [],
+      "analysis_obligation": "Local state may be written through a helper; retain incomplete/manual status2, not complete-empty. Retained caller-state lifetime remains later work."
+    },
+    {
+      "id": "manual-helper-alias-local-state",
+      "source": "manual/helper-alias-local-state.coax",
+      "outcome": "accept-manual",
+      "diagnostics": [],
+      "analysis_obligation": "A view alias still reaches local aggregate storage modified through a helper; require independently observed incomplete/manual status2, not complete-empty."
+    },
+    {
+      "id": "reject-alias-local-field-write",
+      "source": "negative/alias-local-field-write.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/alias-local-field-write.coax",
+          "line": 7,
+          "col": 15,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "accept-alias-mixed-field",
+      "source": "positive/alias-mixed-field.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-borrow-leaves-64",
+      "source": "positive/borrow-leaves-64.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "reject-borrow-leaves-65",
+      "source": "negative/borrow-leaves-65.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/borrow-leaves-65.coax",
+          "line": 68,
+          "col": 1,
+          "code": "E0381"
+        }
+      ]
+    },
+    {
+      "id": "manual-call-projected-local-write",
+      "source": "manual/call-projected-local-write.coax",
+      "outcome": "accept-manual",
+      "diagnostics": [],
+      "analysis_obligation": "The assignment root is a checked helper-returned view through a by-value record. If not projected precisely, require incomplete/manual status2, never complete-empty. No interprocedural helper-store permission is inferred."
+    },
+    {
+      "id": "reject-dynamic-alias-local-write",
+      "source": "negative/dynamic-alias-local-write.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/dynamic-alias-local-write.coax",
+          "line": 7,
+          "col": 15,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "manual-record-held-helper-state",
+      "source": "manual/record-held-helper-state.coax",
+      "outcome": "accept-manual",
+      "diagnostics": [],
+      "analysis_obligation": "A by-value context still holds a mutable view into local descriptor storage. Helper writes through that view must leave status2/manual unless modeled; no complete-empty or retention permission."
+    }
+  ],
+  "support": [
+    "helpers/identity.coax",
+    "helpers/escaping.coax"
+  ]
+}

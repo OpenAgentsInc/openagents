@@ -1,0 +1,3 @@
+owned :: () -> [3]u8 { value := [3]u8.[65,66,67]; return value; }
+through :: () -> [3]u8 { return owned(); }
+main :: () {}

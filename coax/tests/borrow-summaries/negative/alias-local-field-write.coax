@@ -1,0 +1,9 @@
+Slot :: struct { view: []u8; }
+escaped :: () -> Slot {
+  slots: [1]Slot;
+  alias := slots[..];
+  local: [4]u8;
+  alias[0].view = local[..];
+  return slots[0];
+}
+main :: () {}

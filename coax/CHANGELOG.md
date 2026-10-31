@@ -13,6 +13,12 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.46.0 — Returned Borrow Summaries — 2026-10-31
+
+Commit: [`ab028aaaf0be50451752c1045912a063190dffad`](https://github.com/OpenAgentsInc/openagents/commit/ab028aaaf0be50451752c1045912a063190dffad)
+
+- Extend local-borrow diagnostics through resolved helper calls and aggregate return projections, preserving caller-owned descriptors and explicit manual scope for recursive/helper-store paths; qualify real caller-buffer return APIs.
+
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 
 Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgentsInc/openagents/commit/1f9d64a193fcd45d08ff775fbc7f034d2ead84ba)

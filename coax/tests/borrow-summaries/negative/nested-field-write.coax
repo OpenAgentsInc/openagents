@@ -1,0 +1,9 @@
+Inner :: struct { part: []u8; }
+Outer :: struct { inner: Inner; tag: int; }
+escaped :: () -> Outer {
+  local: [4]u8;
+  packet: Outer;
+  packet.inner.part = local[..];
+  return packet;
+}
+main :: () {}

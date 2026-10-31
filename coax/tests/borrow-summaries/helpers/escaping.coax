@@ -1,0 +1,7 @@
+#module "borrow.fixture.escaping";
+#export escaped;
+#load "identity.coax" as api;
+escaped :: () -> []u8 {
+  local: [4]u8;
+  return api.byte_id(local[..]);
+}

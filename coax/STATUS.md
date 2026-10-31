@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -153,7 +153,8 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Generic constraints | $T: equatable, ordered, numeric or copyable; bodies check against the constraint and calls outside it are refused with an instantiation trace (E0805-E0808) | partial | 0.40.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
-| E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |
+| E0383 local-borrow diagnostics | Rejects direct local fixed-array view/string returns and simple aliases, slices and casts. Helper and aggregate return diagnostics have a separate bounded profile; retained storage and general ownership remain unchecked | works | 0.13.0 |
+| Bounded returned-borrow diagnostics | Resolved helper and aggregate return projections retain known caller, static and local origins; a concrete local witness reports E0383 even beside an incomplete arm. Recursion and unmodeled helper writes remain explicit manual status, not a safe empty result. Resource exhaustion is E0381; retained caller-state and general region lifetimes remain separate | partial | 0.46.0 |
 | Release/status generation | Canonical Coax catalogue, CLI status and build/publication drift gate | works | 0.14.0 |
 | Compiler build identity | Checked source and artifact consistency record for site releases; not authentication | works | 0.22.0 |
 | Explicit semantic profile selection | Independent arithmetic, native optimization, build selector and debug information; optional schema-1 profile report; legacy presets retained, no general cross-object or device qualification | partial | 0.25.0 |

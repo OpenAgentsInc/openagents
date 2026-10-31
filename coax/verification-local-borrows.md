@@ -1,6 +1,6 @@
 # Local-array return diagnostics
 
-This first R3 slice adds E0383 in the Coax checker. A returned view/string that
+The original R3 slice added E0383 in the Coax checker. A returned view/string that
 directly borrows a local fixed array is rejected, including simple local
 alias declarations/assignments, further slicing, casts, either `ifx` arm and
 inline fixed-array subobjects of local arrays/structs. A local alias retains
@@ -12,12 +12,12 @@ a fixed array value copies it out. No owning-value syntax, allocation,
 implicit retain, deep copy or destruction rule is introduced. View/string
 descriptors still borrow storage whose owner must outlive all uses.
 
-This is not general lifetime safety. The checker does not summarize calls,
-track borrows stored inside arrays/structs, diagnose stores into caller memory
-or retention by a callee, compute loop dataflow fixed points, or enforce
-shorter nested-block storage lifetimes. For example, returning `identity(a[..])`
-and returning a struct containing `a[..]` still require manual review.
-Alias propagation around a loop back edge can also evade this local pass.
+That original pass did not summarize calls, track borrows stored inside
+arrays/structs, diagnose stores into caller memory or retention by a callee,
+compute loop dataflow fixed points, or enforce shorter nested-block storage
+lifetimes. Its original helper/aggregate return gaps are the subject of the
+bounded [return-summary extension](verification-return-borrows.md).
+Alias propagation around a loop back edge can evade the original local pass.
 Returning a borrowed parameter does not certify that its caller supplied
 valid storage or will honor a foreign API's lifetime contract.
 
@@ -60,6 +60,7 @@ C with the trusted and final compilers: 11,288 bytes, SHA-256
 ## Origin policy foundation
 
 The standalone [borrow-origin policy](verification-borrow-origins.md) provides
-bounded supplied-fact set and substitution operations for the next checker
-slice. Helper/aggregate return integration and retained request lifetimes
-remain open; the current diagnostic limits above still apply.
+bounded supplied-fact set and substitution operations. The bounded
+[return-summary integration](verification-return-borrows.md) builds on those
+operations. Retained request lifetimes remain separate work; the qualification
+above records the original direct-local diagnostic profile.

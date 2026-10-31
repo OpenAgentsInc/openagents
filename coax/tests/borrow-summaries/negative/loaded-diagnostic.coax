@@ -1,0 +1,2 @@
+#load "../helpers/escaping.coax" as api;
+main :: () { ignored := api.escaped(); }

@@ -1,0 +1,5 @@
+escaped :: (bytes: [4]u8) -> []u8 {
+  copy := bytes;
+  return copy[..];
+}
+main :: () {}

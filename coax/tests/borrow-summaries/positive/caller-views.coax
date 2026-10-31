@@ -1,0 +1,4 @@
+tail :: (input: []u8) -> []u8 { alias := input; return alias[1..<alias.count]; }
+text :: (input: []u8) -> string { return cast(string)input; }
+text_tail :: (input: string) -> string { return input[1..<input.count]; }
+main :: () {}

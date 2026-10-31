@@ -1,0 +1,3 @@
+through :: (input: []u8) -> []u8 { return identity(input); }
+identity :: (input: $T) -> $T { return input; }
+main :: () {}

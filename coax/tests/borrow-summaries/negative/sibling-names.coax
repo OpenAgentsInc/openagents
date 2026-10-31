@@ -1,0 +1,8 @@
+identity :: (input: []u8) -> []u8 { return input; }
+escaped :: (external: []u8) -> []u8 {
+  result := external;
+  if true { scratch: [4]u8; same := external; }
+  if true { scratch: [4]u8; same := scratch[..]; result = identity(same); }
+  return result;
+}
+main :: () {}

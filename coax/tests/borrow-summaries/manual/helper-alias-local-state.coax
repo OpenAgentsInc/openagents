@@ -1,0 +1,9 @@
+Slot :: struct { part: []u8; }
+store :: (slots: []Slot, input: []u8) { slots[0].part = input; }
+through :: (out: []u8) -> Slot {
+  slots: [1]Slot;
+  alias := slots[..];
+  store(alias,out);
+  return slots[0];
+}
+main :: () {}

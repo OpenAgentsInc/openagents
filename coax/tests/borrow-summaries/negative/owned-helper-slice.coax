@@ -1,0 +1,6 @@
+owned :: () -> [4]u8 { value: [4]u8; return value; }
+escaped :: () -> []u8 {
+  copy := owned();
+  return copy[..];
+}
+main :: () {}

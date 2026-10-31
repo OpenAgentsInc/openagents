@@ -1,0 +1,4 @@
+Holder :: struct { fixed: [4]u8; borrowed: []u8; }
+through :: (holder: Holder) -> []u8 { return holder.borrowed; }
+array_descriptor :: (items: [1][]u8) -> []u8 { return items[0]; }
+main :: () {}

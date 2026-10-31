@@ -1,0 +1,7 @@
+Packet :: struct { bytes: [4]u8; part: []u8; }
+escaped :: () -> Packet {
+  packet: Packet;
+  packet.part = packet.bytes[..];
+  return packet;
+}
+main :: () {}

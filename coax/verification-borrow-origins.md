@@ -1,11 +1,11 @@
 # Borrow-origin policy foundation
 
 `lib/compiler/borrow-summary.coax` supplies bounded operations on explicit
-borrow-origin facts. It is a standalone `#authority` kernel. The checker
-integration and retained request-buffer work continue in the linked
-`r3a-return-borrow-summaries` and `r3a-retained-request-borrows` issues.
-Current E0383 behavior remains described in
-[Local-array return diagnostics](verification-local-borrows.md).
+borrow-origin facts. A0 qualified it as a standalone, unloaded `#authority`
+kernel. The bounded [return-summary integration](verification-return-borrows.md)
+now loads these operations in the checker. Retained request-buffer work remains
+in `r3a-retained-request-borrows`. The original E0383 profile remains described
+in [Local-array return diagnostics](verification-local-borrows.md).
 
 For `BS_union` and `BS_substitute`, `ok` means that supplied facts passed
 representation checks and the facts required for that operation were marked complete. The kernel does not establish
@@ -79,6 +79,7 @@ layout and literal-result expectations, poisoned output guards and sanitizers.
 It exercises policy operations; helper-return diagnostics, checker seeds and
 System One request completion/cancellation are qualified by later children.
 
-The compiler does not load this foundation until that integration is made.
-Its qualification record binds the actual producer and source rather than
-claiming a new compiler ownership capability.
+The historical A0 qualification did not load the kernel into the compiler;
+its record binds that actual producer, source and unchanged compiled closure.
+The later return-summary integration has its own checker/producer/seed record.
+Neither record establishes general ownership or retained request lifetimes.

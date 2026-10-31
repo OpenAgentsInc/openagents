@@ -1,0 +1,10 @@
+Inner :: struct { bytes: []u8; text: string; }
+Outer :: struct { inner: Inner; }
+make :: (bytes: []u8, text: string) -> Outer {
+  result: Outer;
+  result.inner.bytes = bytes;
+  result.inner.text = text;
+  return result;
+}
+through :: (bytes: []u8, text: string) -> Outer { return make(bytes,text); }
+main :: () {}

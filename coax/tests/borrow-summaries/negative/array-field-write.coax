@@ -1,0 +1,8 @@
+Packet :: struct { parts: [2]string; }
+escaped :: () -> Packet {
+  local: [4]u8;
+  packet: Packet;
+  packet.parts[1] = cast(string)local[..];
+  return packet;
+}
+main :: () {}

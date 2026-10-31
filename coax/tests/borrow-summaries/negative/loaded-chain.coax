@@ -1,0 +1,6 @@
+#load "../helpers/identity.coax" as api;
+escaped :: () -> string {
+  local: [4]u8;
+  return api.text_id(cast(string)local[..]);
+}
+main :: () {}

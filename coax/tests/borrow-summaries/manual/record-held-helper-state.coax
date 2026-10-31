@@ -1,0 +1,11 @@
+Slot :: struct { view: []u8; }
+Context :: struct { slots: []Slot; }
+store_context :: (context: Context, input: []u8) { context.slots[0].view = input; }
+through :: () -> Slot {
+  slots: [1]Slot;
+  context := Context.{slots=slots[..]};
+  local: [4]u8;
+  store_context(context,local[..]);
+  return slots[0];
+}
+main :: () {}

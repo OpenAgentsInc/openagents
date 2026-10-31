@@ -1,0 +1,5 @@
+escaped :: () -> [1][]u8 {
+  local: [4]u8;
+  return [1][]u8.[local[..]];
+}
+main :: () {}

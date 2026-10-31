@@ -1,0 +1,5 @@
+// Test-only exported wrappers around the unchanged real System One functions.
+#load "../../lib/systemone/transport.coax";
+
+borrow_so_digits :: (out:[]u8,value:int)->string #export_c {return so_digits(out,value);}
+borrow_so_stderr :: (handle:int,out:[]u8)->string #export_c {return so_stderr(handle,out);}

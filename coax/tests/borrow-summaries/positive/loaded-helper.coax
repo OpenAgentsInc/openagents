@@ -1,0 +1,3 @@
+#load "../helpers/identity.coax" as api;
+through :: (input: []u8) -> []u8 { return api.byte_id(input); }
+main :: () {}

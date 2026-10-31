@@ -1,0 +1,7 @@
+escaped :: () -> []u8 {
+  local: [4]u8;
+  return second(local[..]);
+}
+second :: (input: []u8) -> []u8 { return first(input); }
+first :: (input: []u8) -> []u8 { return input; }
+main :: () {}

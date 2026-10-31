@@ -1,0 +1,6 @@
+choose :: (unused: []u8, selected: []u8) -> []u8 { return selected; }
+through :: (external: []u8) -> []u8 {
+  local: [4]u8;
+  return choose(local[..],external);
+}
+main :: () {}

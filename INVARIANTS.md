@@ -2118,12 +2118,22 @@ before use. All accesses remain checked, zero-weight interpolation still
 normalizes, and public quaternion defaults/target ABI are unchanged. Raw
 median/tail evidence and explicit stack costs stay separate from adoption claims.
 
-E0383 is a bounded checker diagnostic for direct local-array view/string
-returns and simple aliases/slices/casts/conditional arms. Borrowed parameter
-returns remain valid. Conservative false positives and interprocedural,
-aggregate-contained, loop and nested-block lifetime gaps are documented; this
-is not general ownership safety. Check: checker authority/mutation and seeds,
-focused native/sanitizer/negative cases in `coax/verification-local-borrows.md`.
+E0383 rejects known local backing origins in returned views/strings, including
+supported checked-helper paths and descriptor fields/elements of aggregates.
+Storage ownership is separate from descriptor pointee origins; copying a
+record does not rebase its views. Exact returned parameter/field projections
+exclude unrelated arguments, including scratch that a helper merely reads.
+Borrowed parameter returns remain valid under the caller's lifetime duties.
+Direct immutable by-value array slices retain E0366; local-copy slices are
+E0383. Known local witnesses survive incomplete origins. Recursive queries and
+unsupported helper writes remain explicitly incomplete/manual, never complete
+empty or lifetime-safe by default. Bounded analysis exhaustion is E0381.
+Retained caller-state stores, completion/cancellation, general fixed points
+and nested-block regions remain work; this is not general ownership safety.
+Check: checker authority/mutation and seeds, original-source diagnostics,
+internal summary status and native/sanitizer buffer-return profiles in
+`coax/verification-return-borrows.md`; the initial direct-local profile remains
+in `coax/verification-local-borrows.md`.
 
 ## One protocol for all OpenAgents surfaces
 

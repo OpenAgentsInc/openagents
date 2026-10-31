@@ -4,7 +4,7 @@
 > `coax0`. Heap memory, the context and temporary storage are design.
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have
@@ -460,10 +460,22 @@ assignment, so a later overwrite with a parameter borrow can still be refused.
 Returning a parameter view or a string borrowed from it is valid; its caller
 must keep the storage alive. Returning an array value copies its elements.
 
-This check does not follow calls or borrows stored in aggregate fields or
-elements. It does not diagnose callees retaining a borrow, stores into caller
-memory, shorter nested-block lifetimes or aliases propagated around loop back
-edges. It is an early diagnostic, not general lifetime safety.
+The bounded return-summary extension also follows supported checked helpers
+and descriptors stored in ordinary record fields and fixed-array elements.
+It keeps exact parameter and field origins separate: a helper that reads local
+scratch but returns only the caller's output buffer does not make that output
+borrow the scratch. Copying a record copies its view descriptors; it does not
+rebase a view that still points into the old local record.
+
+Recursive queries and unsupported helper writes remain incomplete/manual.
+Acceptance of those paths is not proof of safe lifetimes; a known local origin
+still causes E0383 when another arm is unknown. Direct views of immutable
+by-value array parameters retain E0366. An owned array can be copied out, while
+a returned view of a local copy is E0383. Analysis limits refuse with E0381.
+Retained caller-state stores, completion/cancellation, general fixed points
+and shorter nested-block regions remain separate work. The
+[recorded return-summary boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
+does not claim general lifetime safety.
 
 The fix is to decide who owns the storage. If the result is small and fixed,
 return the array itself, `-> [4] int`, which copies it out. If the caller
@@ -891,7 +903,7 @@ changes that. Here is what's actually checked.
 | A view is only taken of a writable array variable | Enforced (`E0366`) |
 | A view can't escape compile time | Enforced (`E0409`) |
 | Integer overflow traps in development builds | Enforced (wraps in `--release`) |
-| Direct/simple-alias returns of local-array views and strings | Rejected (`E0383`); general borrow lifetimes remain unchecked |
+| Known local borrows returned directly, through supported helpers or inside aggregates | Rejected (`E0383`); recursive/helper-write summaries can remain manual, and general lifetime safety is not established |
 | Handles with generation checks for long-lived references | Planned |
 | Explicit owners and reset points; debug poisoning of freed memory | Planned |
 | Allocation as a checked effect | Planned |

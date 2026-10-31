@@ -1,0 +1,6 @@
+identity :: (input: []u8) -> []u8 { return input; }
+escaped :: (external: []u8, first: bool) -> []u8 {
+  local: [4]u8;
+  return ifx first then identity(external) else identity(local[..]);
+}
+main :: () {}

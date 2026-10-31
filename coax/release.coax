@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.45.0";
+IMPLEMENTATION_VERSION :: "0.46.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [122]ReleaseFeature.[
+CATALOGUE :: [123]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -112,7 +112,8 @@ CATALOGUE :: [122]ReleaseFeature.[
   ReleaseFeature.{id="generics.constraints",section="Capabilities",name="Generic constraints",meaning="$T: equatable, ordered, numeric or copyable; bodies check against the constraint and calls outside it are refused with an instantiation trace (E0805-E0808)",status="partial",introduced="0.40.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
-  ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},
+  ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Rejects direct local fixed-array view/string returns and simple aliases, slices and casts. Helper and aggregate return diagnostics have a separate bounded profile; retained storage and general ownership remain unchecked",status="works",introduced="0.13.0"},
+  ReleaseFeature.{id="borrow.returns",section="Capabilities",name="Bounded returned-borrow diagnostics",meaning="Resolved helper and aggregate return projections retain known caller, static and local origins; a concrete local witness reports E0383 even beside an incomplete arm. Recursion and unmodeled helper writes remain explicit manual status, not a safe empty result. Resource exhaustion is E0381; retained caller-state and general region lifetimes remain separate",status="partial",introduced="0.46.0"},
   ReleaseFeature.{id="release.status",section="Capabilities",name="Release/status generation",meaning="Canonical Coax catalogue, CLI status and build/publication drift gate",status="works",introduced="0.14.0"},
   ReleaseFeature.{id="release.provenance",section="Capabilities",name="Compiler build identity",meaning="Checked source and artifact consistency record for site releases; not authentication",status="works",introduced="0.22.0"},
   ReleaseFeature.{id="compiler.semantic-profiles",section="Capabilities",name="Explicit semantic profile selection",meaning="Independent arithmetic, native optimization, build selector and debug information; optional schema-1 profile report; legacy presets retained, no general cross-object or device qualification",status="partial",introduced="0.25.0"},

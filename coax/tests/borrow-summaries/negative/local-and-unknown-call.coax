@@ -1,0 +1,7 @@
+recursive :: (input: []u8) -> []u8 { return recursive(input); }
+identity :: (input: []u8) -> []u8 { return input; }
+escaped :: (out: []u8, flag: bool) -> []u8 {
+  local: [4]u8;
+  return identity(ifx flag then local[..] else recursive(out));
+}
+main :: () {}

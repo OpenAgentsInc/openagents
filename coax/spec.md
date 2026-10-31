@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -311,20 +311,32 @@ a view parameter. A view does not extend the array's lifetime. Strings index
 to `u8` and slice to strings, and are immutable; `cast(string) bytes[..]`
 borrows a `[] u8` as text. Indices and slices are checked in every build.
 
-The checker rejects a returned view or string when local provenance identifies
-backing storage in a local fixed array (E0383). This includes inline array
-fields/elements, direct local aliases and assignments, subranges, casts and
-either `ifx` branch. A local alias keeps its may-borrow flag after reassignment,
-so even an overwritten or unreachable local borrow can be refused. Returning
-a borrowed parameter, or copying a fixed array value out, remains valid.
+The checker rejects a returned value when bounded provenance analysis finds a
+view or string referring to local fixed storage (E0383). This includes local
+aliases, subranges, casts and either `ifx` arm, together with supported checked
+helper returns and borrowed descriptors inside ordinary records and fixed
+arrays. Concrete call targets, parameter positions and field projections are
+resolved by the checker. Reading an argument does not automatically make the
+result borrow it. An aggregate's inline storage and its contained descriptor
+pointees remain distinct: copying the aggregate does not rebase its views.
 
-This bounded diagnostic is not a general lifetime analysis. It does not track
-borrows stored inside aggregates, returned through calls, retained by callees,
-or escaping into caller storage, and does not compute loop fixed points or
-enforce shorter nested-block lifetimes. Those cases still require explicit
-owner/lifetime discipline. Assignment, passing and returning a view copy only
-its descriptor; the caller must keep the backing storage valid for every use.
-This slice adds no owning value transfer or destruction semantics.
+May-origin joins can retain an earlier local borrow after reassignment, so
+overwritten or unreachable borrows can be refused. A known local origin still
+causes E0383 when another origin is incomplete. Borrowed parameters and their
+aggregate descriptor fields can remain returnable; an owned fixed-array value
+can be copied out. Direct slices of immutable by-value array parameters retain
+E0366; copying into a local and returning its slice is E0383.
+
+This remains a bounded diagnostic, not general lifetime safety. Recursive
+queries and unsupported mutation through helpers retain an explicit
+incomplete/manual summary. Their acceptance does not prove safe lifetimes or
+complete empty provenance. Query, projection, depth and workspace exhaustion
+refuse with E0381. Retention by callees, stores into longer-lived caller
+storage, general recursive/loop fixed points and shorter nested-block lifetimes
+remain work. Assignment, passing and returning a view copy only its descriptor;
+the caller must keep backing storage alive for every use. No owning value
+transfer or destruction semantics are introduced. The current boundary and
+verification profiles are in [return-borrow summaries](verification-return-borrows.md).
 
 Implemented scalar extensions in 0.3.0 are specified in the
 [compiler reference](README.md#native-libraries-and-metal): explicit casts,

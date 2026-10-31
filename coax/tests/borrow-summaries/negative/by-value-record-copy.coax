@@ -1,0 +1,6 @@
+Owned :: struct { bytes: [4]u8; }
+escaped :: (input: Owned) -> []u8 {
+  copy := input;
+  return copy.bytes[..];
+}
+main :: () {}

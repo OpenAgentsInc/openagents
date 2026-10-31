@@ -1,0 +1,7 @@
+through :: (external: []u8) -> []u8 {
+  result := external;
+  if true { scratch: [4]u8; same := scratch[..]; }
+  if true { scratch: [4]u8; same := external; result = same; }
+  return result;
+}
+main :: () {}

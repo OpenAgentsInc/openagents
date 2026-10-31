@@ -1,0 +1,4 @@
+#module "borrow.fixture.identity";
+#export byte_id, text_id;
+byte_id :: (input: []u8) -> []u8 { return input; }
+text_id :: (input: string) -> string { return input; }

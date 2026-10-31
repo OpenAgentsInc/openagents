@@ -1,0 +1,10 @@
+Pair :: struct { selected: []u8; other: []u8; }
+through :: (external: []u8) -> []u8 {
+  slots: [1]Pair;
+  slots[0].selected = external;
+  alias := slots[..];
+  local: [4]u8;
+  alias[0].other = local[..];
+  return slots[0].selected;
+}
+main :: () {}

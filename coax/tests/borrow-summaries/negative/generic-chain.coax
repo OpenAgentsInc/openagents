@@ -1,0 +1,7 @@
+identity :: (input: $T) -> $T { return input; }
+through :: (input: []u8) -> []u8 { return identity(input); }
+escaped :: () -> []u8 {
+  local: [4]u8;
+  return through(local[..]);
+}
+main :: () {}
