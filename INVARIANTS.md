@@ -72,6 +72,20 @@ The first Spacecam consumer preserves the public D3/SpaceCam layouts and
 subtracts F64 points before narrowing. Its boundary assertion is not an
 end-to-end migration of every world coordinate.
 
+## Each input press is taken by exactly one fixed step
+
+Realm input reaches the simulation through `aethyr/input.coax`. Keys and the
+touch stick map to one `Intent` with one run rule and one dead zone. A press
+(jump, act) is counted when it happens and taken by the first fixed step that
+samples after it: a frame that runs no step keeps it, and a frame that runs
+several gives it to one. At most `INPUT_MAX_WAITING` presses wait; more are
+counted as lost, never kept. Values that aren't numbers, and axes past full
+travel, are refused or clamped and counted. Checks: `aethyr/input.coax`
+("every press is taken by exactly one step, the one the model names";
+mutation 0 survivors) and `verse/player.coax` ("a press in a frame with no
+step jumps on the next one, and a frame of two jumps once", "the keyboard
+and the touch stick drive the same session to the same states").
+
 ## Simulation steps and supplied wall clocks keep their domains
 
 The step-clock precursor uses integer simulation steps and distinct nominal
