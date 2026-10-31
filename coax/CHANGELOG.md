@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 
-Commit: pending
+Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgentsInc/openagents/commit/1f9d64a193fcd45d08ff775fbc7f034d2ead84ba)
 
 - A generic struct's length argument may be a named integer constant as well
   as a literal: `Box(f64, CAP)`, `Box(u8, lib.CAP)`, `CAP :: 2 * 8`. The
