@@ -20,7 +20,7 @@ ROOMS :: 8;
 CONNS :: 32;
 PATH :: "/api/room/orbit-league/";
 
-RmConn :: struct { live: bool; room: int = -1; seat: int = -1; }
+RmConn :: struct { live: bool; room: int = -1; seat: int = -1; echo: int = -1; }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
   live: bool; tick: int;
@@ -102,6 +102,8 @@ rm_heard :: (v: [] RmServer, conn: int, text: string) #export_c {
   if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return; }
   c := v[0].conns[conn];
   v[0].rooms[c.room].cars[c.seat] = room_report(text, v[0].rooms[c.room].cars[c.seat]);
+  e := room_report_clock(text);
+  if e >= 0 { v[0].conns[conn].echo = e; }
 }
 rm_left :: (v: [] RmServer, conn: int) #export_c {
   if conn < 0 || conn >= CONNS { return; }
@@ -128,7 +130,7 @@ rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
   for i: 0..<CONNS {
     if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; seats[n] = v[0].conns[i].seat; n += 1; }
   }
-  return room_state(v[0].rooms[r].s[..], v[0].rooms[r].tick, v[0].conns[conn].seat, cars[..], seats[..], n, v[0].out[..]);
+  return room_state_echo(v[0].rooms[r].s[..], v[0].rooms[r].tick, v[0].conns[conn].seat, cars[..], seats[..], n, v[0].conns[conn].echo, v[0].out[..]);
 }
 rm_players :: (v: [] RmServer) -> int #export_c {
   n := 0;
