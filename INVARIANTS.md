@@ -2427,6 +2427,28 @@ metadata, managed regions, stale binaries, real acceptance probes and
 publication rejection before credentials/network). Workflow and limits:
 `coax/RELEASE.md`.
 
+## Compiler builds reuse only exactly matching checked results
+
+`coax/build.sh` installs a cached compiler only after `provenance.sh install`
+verifies its record against the current tree's compiler-input fingerprint. One
+builder runs per fingerprint on a machine; the others wait and install its
+result. Every install is a copy to a temporary name followed by a rename.
+
+The bootstrap reuses a stage0 `test` or `mutate` gate only when a passing
+result exists under a key that hashes stage0's complete inputs (sources, seeds,
+the embedded proto runtime, compilers, flags, SDK and build environment), the
+exact gate command and the bytes of every source that `stage0 deps` lists for
+the gate's file. A gate whose sources cannot be listed always runs. Failures
+are never kept. Final-compiler gates and seed comparisons always run.
+`COAX_BUILD_FRESH=1` runs every gate and ignores cached builds. The cache
+directories are trusted local state, like the checked-build cache; a reused
+gate records an earlier pass on this machine, not a signature.
+
+Check: `coax/tests/build-cache.sh` (three concurrent warm builds in new
+worktrees install the same verified compiler within the time limit), and a
+bootstrap log after a one-file change names the reused gates. Workflow:
+`coax/RELEASE.md#build-caches`.
+
 ## Generated C headers check compatible declarations across libraries
 
 Headers share compatible fixed arrays, views, records and enums through
