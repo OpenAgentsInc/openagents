@@ -1,0 +1,510 @@
+{
+  "schema": "coax.quantity.bootstrap.execution.v1",
+  "root": "/private/tmp/coax-spatial-fixture-fixes-source",
+  "working_directory": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+  "output_directory": "/private/tmp/coax-spatial-fixture-fixes-reconstruction",
+  "source_commit": null,
+  "source_commit_limit": "HEAD is a label, not a clean-tree assertion; source hashes and normal fingerprints bind actual inputs.",
+  "normal_bootstrap_recipe_sha256": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+  "normal_seed_compile_order": [
+    "budget",
+    "check-domains",
+    "profiles",
+    "mutation-schedule",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "normal_seed_link_order": [
+    "check-domains",
+    "mutation-schedule",
+    "budget",
+    "profiles",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "seed_sha256": {
+    "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+    "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+    "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+    "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "coax/bootstrap/parser.c": "f145e67525bec737fab558b01b057130bf029ef0a38565c1527160824f473045",
+    "coax/bootstrap/parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "coax/bootstrap/checker.c": "ce6615e39db262b38ff8dd486d1e41f661f2aad3ae6efb9bd65eaacb55a8473d",
+    "coax/bootstrap/checker.h": "76c2e599032a37035c718a9ac1afd50ba7828ca6a1340bd890f04c1a23492632",
+    "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+    "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8"
+  },
+  "authored_source_sha256": {
+    "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+    "coax/lib/compiler/parser.coax": "a54529653ff640a455fee11d84dfc980b7c93e6e4bd36dd93c29eb32e4e07a05",
+    "coax/lib/compiler/checker.coax": "a12c2e68d88ebef916cc36fc2fe50ede03b2180f6161513a1784c6dc22ce3738",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "embedded_protocol_sources_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+  "preparation": {
+    "generated_file": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_runtime.inc",
+    "source": "Four exact lib/proto source literals, with the normal raw-string delimiters."
+  },
+  "command_count": 24,
+  "shared_wall_budget_seconds": 840,
+  "normal_rebuild_command": "coax/build.sh",
+  "normal_rebuild_executed": false,
+  "scope": "Focused checked-in-seed reconstruction and C/header fixed point, not the complete normal release/cache/provenance qualification.",
+  "source_writes": false,
+  "cache_or_installed_release_published": false,
+  "commands": [
+    {
+      "name": "fingerprint-before",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-spatial-fixture-fixes-source"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/fingerprint-before.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/fingerprint-before.stderr",
+      "remaining_wall_budget_seconds": 839.9928310000105,
+      "exit": 0,
+      "elapsed_seconds": 0.8887807079590857
+    },
+    {
+      "name": "seed-budget",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/budget.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-budget.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-budget.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-budget.stderr",
+      "remaining_wall_budget_seconds": 839.1033597500063,
+      "exit": 0,
+      "elapsed_seconds": 0.03039879200514406
+    },
+    {
+      "name": "seed-check-domains",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/check-domains.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-check-domains.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-check-domains.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-check-domains.stderr",
+      "remaining_wall_budget_seconds": 839.0725581670413,
+      "exit": 0,
+      "elapsed_seconds": 0.04684533301042393
+    },
+    {
+      "name": "seed-profiles",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/profiles.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-profiles.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-profiles.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-profiles.stderr",
+      "remaining_wall_budget_seconds": 839.0253485840512,
+      "exit": 0,
+      "elapsed_seconds": 0.04252650000853464
+    },
+    {
+      "name": "seed-mutation-schedule",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/mutation-schedule.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-mutation-schedule.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-mutation-schedule.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-mutation-schedule.stderr",
+      "remaining_wall_budget_seconds": 838.9824092920171,
+      "exit": 0,
+      "elapsed_seconds": 0.03486508299829438
+    },
+    {
+      "name": "seed-lexer",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/lexer.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-lexer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-lexer.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-lexer.stderr",
+      "remaining_wall_budget_seconds": 838.9471732500242,
+      "exit": 0,
+      "elapsed_seconds": 0.12301870796363801
+    },
+    {
+      "name": "seed-parser",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/parser.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-parser.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-parser.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-parser.stderr",
+      "remaining_wall_budget_seconds": 838.8237330840202,
+      "exit": 0,
+      "elapsed_seconds": 0.368599625013303
+    },
+    {
+      "name": "seed-checker",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/checker.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-checker.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-checker.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-checker.stderr",
+      "remaining_wall_budget_seconds": 838.454697334033,
+      "exit": 0,
+      "elapsed_seconds": 1.2764311670325696
+    },
+    {
+      "name": "seed-sources",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/sources.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-sources.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-sources.stderr",
+      "remaining_wall_budget_seconds": 837.1777387920301,
+      "exit": 0,
+      "elapsed_seconds": 0.09413549996679649
+    },
+    {
+      "name": "stage0-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-DCOAX_BOOTSTRAP_IMPORTER",
+        "-I",
+        "bootstrap",
+        "-I",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/stage0",
+        "src/main.cpp",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-check-domains.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-mutation-schedule.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-budget.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-profiles.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-lexer.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-parser.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-checker.o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/stage0-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/stage0-cxx.stderr",
+      "remaining_wall_budget_seconds": 837.0828816250432,
+      "exit": 0,
+      "elapsed_seconds": 5.846135125029832
+    },
+    {
+      "name": "stage0-graph",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/stage0",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.c",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/stage0-graph.stderr",
+      "remaining_wall_budget_seconds": 831.2362463340396,
+      "exit": 0,
+      "elapsed_seconds": 12.89363216602942
+    },
+    {
+      "name": "graph-object",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.c",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-object.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-object.stderr",
+      "remaining_wall_budget_seconds": 818.3421207090141,
+      "exit": 0,
+      "elapsed_seconds": 3.808630332991015
+    },
+    {
+      "name": "final-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction",
+        "-o",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "src/main.cpp",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-cxx.stderr",
+      "remaining_wall_budget_seconds": 814.5329015840543,
+      "exit": 0,
+      "elapsed_seconds": 7.122726500034332
+    },
+    {
+      "name": "final-version",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "version"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-version.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-version.stderr",
+      "remaining_wall_budget_seconds": 807.4096797090024,
+      "exit": 0,
+      "elapsed_seconds": 0.21033874998101965
+    },
+    {
+      "name": "final-graph",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/rebuilt.c",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-graph.stderr",
+      "remaining_wall_budget_seconds": 807.1983421670157,
+      "exit": 0,
+      "elapsed_seconds": 9.771932040981483
+    },
+    {
+      "name": "graph-c-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.c",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/rebuilt.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-c-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-c-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 797.4259538340266,
+      "exit": 0,
+      "elapsed_seconds": 0.005351957981474698
+    },
+    {
+      "name": "graph-header-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/proto_importer.h",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-header-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/graph-header-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 797.4201362919994,
+      "exit": 0,
+      "elapsed_seconds": 0.003116541018243879
+    },
+    {
+      "name": "final-seed-parser",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-final.c",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-seed-parser.stderr",
+      "remaining_wall_budget_seconds": 797.4165829170379,
+      "exit": 0,
+      "elapsed_seconds": 0.23281045799376443
+    },
+    {
+      "name": "parser-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.c",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-final.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 797.1832490420202,
+      "exit": 0,
+      "elapsed_seconds": 0.0036235839943401515
+    },
+    {
+      "name": "parser-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.h",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/parser-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 797.1791870840243,
+      "exit": 0,
+      "elapsed_seconds": 0.003106541989836842
+    },
+    {
+      "name": "final-seed-checker",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-final.c",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/final-seed-checker.stderr",
+      "remaining_wall_budget_seconds": 797.1754532500054,
+      "exit": 0,
+      "elapsed_seconds": 3.876188624999486
+    },
+    {
+      "name": "checker-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.c",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-final.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 793.298755417054,
+      "exit": 0,
+      "elapsed_seconds": 0.003911542007699609
+    },
+    {
+      "name": "checker-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.h",
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/checker-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 793.2944231670117,
+      "exit": 0,
+      "elapsed_seconds": 0.0028876669821329415
+    },
+    {
+      "name": "fingerprint-after",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-spatial-fixture-fixes-source"
+      ],
+      "cwd": "/private/tmp/coax-spatial-fixture-fixes-source/coax",
+      "stdout_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/fingerprint-after.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/fingerprint-after.stderr",
+      "remaining_wall_budget_seconds": 793.291206917027,
+      "exit": 0,
+      "elapsed_seconds": 0.8016398749896325
+    }
+  ],
+  "passed": true,
+  "input_fingerprint_before": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "input_fingerprint_after": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "compiler_version": "coax0 0.45.0",
+  "artifacts": {
+    "stage0": "5eca089cca96283a06286861336c14251629515cbca24fce3e66292b2ed87705",
+    "proto_importer.c": "92521ef9c8c413babcc718bc659e8e025498184128735ecd52d4da5e2328a3ad",
+    "proto_importer.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+    "proto_importer.o": "d5e0402ecd4a4f1eda2b2c5724c16381cedcfc67c4fb9c9f7a5af1436e9ecbc7",
+    "coax": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "rebuilt.c": "92521ef9c8c413babcc718bc659e8e025498184128735ecd52d4da5e2328a3ad",
+    "rebuilt.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9"
+  },
+  "compiler_binary_path": "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+  "fixed_points": {
+    "compiler_graph_c": true,
+    "compiler_graph_header": true,
+    "checked_in_parser_seed_c_and_header": true,
+    "checked_in_checker_seed_c_and_header": true
+  },
+  "duration_seconds": 47.51659104099963
+}
