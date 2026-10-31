@@ -390,15 +390,17 @@ belt_reset :: (s: [] Belt) {
     s[0].rocks[k] = rock_of(o);
   }
   // The ice rocks, near Ceres along its orbit, so the first trips are short: Ceres's own state
-  // turned about its orbit's axis, a hair out of its plane and a hair faster or slower. A rock on
-  // another plane or out of round costs kilometres a second to reach however near it looks.
+  // turned about its orbit's axis and a hair out of its plane, at Ceres's speed: the same energy,
+  // so the same year, and they stay beside Ceres however many years a game runs (a hair faster
+  // or slower and they spread round the whole orbit in a century). A rock on another plane or
+  // out of round costs kilometres a second to reach however near it looks.
   cs := orbit_state(orbit_body(BODY_CERES), s[0].t);
   axis := d3_unit(d3_cross(cs.r, cs.v));
   for k: 0..<ICE_ROCKS {
     side := ifx k % 2 == 0 then 1.0 else -1.0;
     ang := side * (0.012 + 0.012 * f64(k / 2) + 0.006 * rand_next(r[..]));
     tilt := (rand_next(r[..]) - 0.5) * 0.6 * DEG;
-    speed := 1.0 + 0.006 * (rand_next(r[..]) - 0.5);
+    speed := 1.0 + 0.0 * rand_next(r[..]);   // the draw kept: the rocks after it stay where they were
     pr := turn_about(cs.r, axis, ang);
     pv := d3_scale(turn_about(cs.v, axis, ang), speed);
     pv = turn_about(pv, d3_unit(pr), tilt);
@@ -2201,6 +2203,21 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   e := plan_for(s[..], 0, j, false);
   #assert p.ok && p.enough && p.tr.tof < 60.0 * DAY && p.fuel < s[0].ships[0].fuel;
   #assert e.ok && e.tr.dv <= p.tr.dv;
+}
+
+#test "the ice rocks keep Ceres's year: a century on they are still within a few degrees of Hearth" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  for k: 0..<ICE_ROCKS {
+    o := s[0].ices[k];
+    c := orbit_body(BODY_CERES);
+    #assert abs(o.a / c.a - 1.0) < 0.000001;
+    t := s[0].t + 100.0 * 365.25 * DAY;
+    h := place_state(s[..], P_STATION, t).r;
+    p := orbit_position(o, t);
+    cosang := d3_dot(h, p) / (d3_len(h) * d3_len(p));
+    #assert cosang > cos(8.0 * DEG);
+  }
 }
 
 #test "the field: five thousand rocks where their orbits put them, each a quad, all within the vertex budget" {
