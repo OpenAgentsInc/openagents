@@ -24,7 +24,7 @@ A Verse realm at https://openagents.com/realms/hold-the-stair: a popping tower d
 
 - Fighter: a longsword, d20 + 5 against the beast's armor class, 1d8 + 3 slashing; a natural 20 doubles the dice.
 - Wizard: Fire Bolt, d20 + 5, 1d10 fire. An ember is immune to fire, so against one the wizard casts Magic Missile (three darts that never miss, 1d4 + 1 force each, two slots a wave) or turns its Fire Bolt on another beast.
-- Cleric: Sacred Flame, the beast makes a Dexterity save against DC 13 or takes 1d8 radiant.
+- Cleric: Sacred Flame, the beast makes a Dexterity save against DC 13 or takes 1d8 radiant. A shadow can't be targeted until it is seen: a cleric with one in its reach casts Daylight (once a wave), and shadows within three tiles of it are seen.
 - Rogue: a shortsword, d20 + 5, 1d6 + 3 piercing, and Sneak Attack: 1d6 more when another of the party stands beside its target. Level 2 gives Cunning Action (its turns come a quarter sooner); level 3, Sneak Attack 2d6.
 - Ranger: a longbow, d20 + 5, 1d8 + 3 piercing, at the longest reach. Its favoured layer is the strongest in the coming wave when it is placed: it shoots those first and adds Hunter's Mark (1d6). Level 2 marks whatever it hits; level 3 looses two arrows a turn.
 - Bard: Vicious Mockery, a Wisdom save against DC 13 or 1d6 psychic, and Bardic Inspiration: each turn the nearest of the party in its reach adds a d6 to its next attack roll. Level 2 inspires two; level 3 mocks for 2d6.

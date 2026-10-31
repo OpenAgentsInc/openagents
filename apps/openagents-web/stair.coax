@@ -42,6 +42,9 @@ LAYER_NAME :: [8] string.["MOTE", "WISP", "GLIMMER", "EMBER", "FROSTLING", "IRON
 // A wisp resists cold; an ember is immune to fire, a frostling to cold; an ironskin resists slashing,
 // piercing and bludgeoning from non-magical attacks (every weapon here is); a hulk regenerates.
 HULK_REGEN :: 2.0;   // hit points a second
+// A shadow can't be targeted until it is seen: a cleric casts Daylight (once a wave, when a shadow
+// is in its reach), and every shadow within DAYLIGHT_REACH of it is seen for the rest of the wave.
+DAYLIGHT_REACH :: 3.0;
 // What each pops into: up to two inner layers (-1 none).
 
 // ---- the party (SRD 5.2.1 classes at level 1)
@@ -131,7 +134,8 @@ Defender :: struct {
   inspired: int;   // a Bardic Inspiration die waiting for its next attack roll (its sides, 0 none)
   smite: bool;     // a paladin's Divine Smite, ready this wave
   aura: int;       // the +1 a paladin's aura added to its last roll (0 none)
-  insp: int;       // the inspiration die it added to its last roll (0 none)   // bless: the d4 Bless added to its last roll (0 none)
+  insp: int;       // the inspiration die it added to its last roll (0 none)
+  daylight: bool;  // a cleric's Daylight, lit this wave   // bless: the d4 Bless added to its last roll (0 none)
   hits: int; misses: int; pops: int;
   roll: int; total: int; vs: int; hit: bool; crit: bool; dealt: int; how: int;   // the last turn (how: 0 attack, 1 save, 2 auto)
   aim: f32; flash: f32;
@@ -481,13 +485,25 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
 }
 
 // The beast furthest along within range of a cell (-1 none); skip: a layer to pass over (-1 none).
+// A beast the party can target: anything but a shadow, and a shadow in a cleric's Daylight.
+shadow_seen :: (s: [] Stair, i: int) -> bool {
+  if s[0].beasts[i].kind != SHADOW { return true; }
+  p := beast_xy(s, i);
+  for k: 0..<DEFENDERS {
+    d := s[0].party[k];
+    if !d.live || !d.daylight { continue; }
+    c := cell_xy(d.cell);
+    if (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) <= f32(DAYLIGHT_REACH * DAYLIGHT_REACH) { return true; }
+  }
+  return false;
+}
 first_in_range :: (s: [] Stair, cell: int, range: f32, skip: int) -> int {
   c := cell_xy(cell);
   n := area_sphere(s, c.x, c.y, range, s[0].area[0].hits[..]);
   best := -1; far := -1.0f32;
   for j: 0..<n {
     i := s[0].area[0].hits[j];
-    if s[0].beasts[i].kind == skip { continue; }
+    if s[0].beasts[i].kind == skip || !shadow_seen(s, i) { continue; }
     if s[0].beasts[i].d > far { far = s[0].beasts[i].d; best = i; }
   }
   return best;
@@ -500,6 +516,7 @@ refresh :: (s: [] Stair, k: int) {
   s[0].party[k].slots2 = ifx lv >= 3 then SHATTER_SLOTS else 0;
   s[0].party[k].surge = lv >= 2;
   s[0].party[k].smite = s[0].party[k].cls == PALADIN && lv >= 2;
+  s[0].party[k].daylight = false;
 }
 // A cleric of level 2 or more with this defender in its reach blesses it.
 blessed :: (s: [] Stair, k: int) -> bool {
@@ -591,7 +608,7 @@ first_of :: (s: [] Stair, cell: int, range: f32, kind: int) -> int {
   c := cell_xy(cell);
   best := -1; far := -1.0f32;
   for i: 0..<BEASTS {
-    if !s[0].beasts[i].live || s[0].beasts[i].kind != kind { continue; }
+    if !s[0].beasts[i].live || s[0].beasts[i].kind != kind || !shadow_seen(s, i) { continue; }
     p := beast_xy(s, i);
     dx := p.x - c.x; dy := p.y - c.y;
     if dx * dx + dy * dy <= range * range && s[0].beasts[i].d > far { far = s[0].beasts[i].d; best = i; }
@@ -813,7 +830,19 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     inspire(s, k, ifx d.level >= 2 then 2 else 1);
     return true;
   }
-  // Cleric: Sacred Flame, the target saves (Dexterity) against DC 13 or takes 1d8 radiant
+  // Cleric: Daylight first, once a wave, when a shadow it can't see is in its reach
+  if !d.daylight {
+    for i: 0..<BEASTS {
+      if !s[0].beasts[i].live || s[0].beasts[i].kind != SHADOW || shadow_seen(s, i) { continue; }
+      p := beast_xy(s, i);
+      if (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) > s[0].ct[0].range[CLERIC] * s[0].ct[0].range[CLERIC] { continue; }
+      s[0].party[k].daylight = true;
+      record(s, k, 0, 0, 0, true, false, 6, p);
+      add_fx(s, FX_LEVEL, c.x, c.y, 0, 0, 1.2, 0, 1.0, 0.95, 0.7, true);
+      return true;
+    }
+  }
+  // Sacred Flame, the target saves (Dexterity) against DC 13 or takes 1d8 radiant
   t := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
   if t < 0 { return false; }
   b := s[0].beasts[t]; p := beast_xy(s, t);
@@ -1491,7 +1520,8 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
     share := ifx inner >= 0 then 0.5f32 else 0.0f32;
     ir := 0.0f32; ig := 0.0f32; ib := 0.0f32;
     if inner >= 0 { ir = s[0].ct[0].red[inner]; ig = s[0].ct[0].green[inner]; ib = s[0].ct[0].blue[inner]; }
-    n = bubble(out, n, q.x, y, rad, 1.0, r, g, bl, share, ir, ig, ib);
+    // a shadow no one can see is only a smudge
+    n = bubble(out, n, q.x, y, rad, ifx b.kind == SHADOW && !shadow_seen(s, i) then 0.3f32 else 1.0f32, r, g, bl, share, ir, ig, ib);
     // the face: two glowing eyes (one on a mote), a grin; a blink now and then
     ex := q.x + lx * rad * 0.2; ey := y - rad * 0.05 + ly * rad * 0.12;
     bw := b.wob * 0.11 + f32(i) * 0.37;
@@ -1591,6 +1621,13 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
         n = seg(out, n, px - pr, py, px, py - pr * 1.4, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
         n = seg(out, n, px, py - pr * 1.4, px + pr, py, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
       }
+    }
+    if d.daylight {
+      // Daylight: a warm pool round the cleric
+      c := cell_xy(d.cell);
+      q := to_screen(s, c.x, c.y);
+      rr := f32(DAYLIGHT_REACH) * t;
+      n = ring(out, n, q.x, q.y, rr * 0.5, rr, 0.07, 1.0, 0.93, 0.62, 0);
     }
     if i == s[0].card || d.cell == s[0].hover {
       c := cell_xy(d.cell);
@@ -1933,7 +1970,8 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     if d.cls == PALADIN { feat = ifx d.level >= 3 then "AURA +1 TO HIT, 3 TILES · DIVINE SMITE 2D8" else ifx d.level == 2 then "AURA +1 TO HIT, 2 TILES · DIVINE SMITE 2D8 A WAVE" else "AURA: THE PARTY WITHIN 2 TILES +1 TO HIT"; }
     lens[nl] = put(lines[nl][..], 0, feat); tones[nl] = 2; nl += 1;
     m = 0;
-    if d.roll < 0 && d.how != 3 { m = put(buf[..], 0, "NO TURN YET"); }
+    if d.roll < 0 && d.how != 3 && d.how != 6 { m = put(buf[..], 0, "NO TURN YET"); }
+    else if d.how == 6 { m = put(buf[..], 0, "LAST: DAYLIGHT, SHADOWS IN REACH SEEN"); }
     else if d.how == 3 { m = put(buf[..], 0, "LAST: SHATTER, "); m = put_int(buf[..], m, d.dealt); m = put(buf[..], m, " THUNDER"); }
     else if d.how == 2 { m = put(buf[..], 0, "LAST: MAGIC MISSILE, NEVER MISSES, "); m = put_int(buf[..], m, d.dealt); }
     else if d.how == 1 {
@@ -2631,6 +2669,39 @@ LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1
   irons := 0;
   for i: 0..<BEASTS { if s[0].beasts[i].live && s[0].beasts[i].kind == IRONSKIN { irons += 1; } }
   #assert irons == 4;
+}
+
+#test "shadows: a defender without detection skips a shadow; a cleric's Daylight reveals it and then it is targeted" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].gold = 5000;
+  sh := spawn(s[..], SHADOW, 12.0);
+  p := beast_xy(s[..], sh);
+  // a free tile beside it for a fighter, another within the cleric's reach
+  fc := -1; cc := -1;
+  for y: 0..<ROWS {
+    for x: 0..<COLS {
+      c := cell_of(x, y);
+      if !free_cell(s[..], c) { continue; }
+      q := cell_xy(c);
+      dd := (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+      if dd <= 1.2 * 1.2 && fc < 0 { fc = c; continue; }
+      if dd > 1.5 * 1.5 && dd <= 2.5 * 2.5 && cc < 0 { cc = c; }
+    }
+  }
+  #assert fc >= 0 && cc >= 0;
+  s[0].placed_round = 0;
+  #assert place(s[..], fc, FIGHTER);
+  f := defender_at(s[..], fc);
+  #assert !shadow_seen(s[..], sh) && !take_turn(s[..], f) && s[0].beasts[sh].hp == s[0].ct[0].hp[SHADOW];
+  s[0].placed_round = 0;
+  #assert place(s[..], cc, CLERIC);
+  c := defender_at(s[..], cc);
+  #assert take_turn(s[..], c) && s[0].party[c].daylight && s[0].party[c].how == 6;
+  #assert shadow_seen(s[..], sh) && take_turn(s[..], f);
+  // a new wave: Daylight again
+  refresh(s[..], c);
+  #assert !s[0].party[c].daylight;
 }
 
 #test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {
