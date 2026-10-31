@@ -1,4 +1,6 @@
-// Translated from WGSL by coax/web/wgsl-coax.coax.
+// Everglade's shaders, the source of everglade.wgsl (G6): build.sh writes that module from this
+// with coax/web/wgsl-module.coax (gpu.module, gpu.bindings), and coax spirv lowers it for the
+// GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../gpu/wgsl.coax";
 #load "../style.coax";
 

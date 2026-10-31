@@ -1,4 +1,6 @@
-// Translated from WGSL by coax/web/wgsl-coax.coax.
+// Everglade's particles, the source of everglade-fx.wgsl (G6): build.sh writes that module from this
+// with coax/web/wgsl-module.coax (gpu-fx.module, gpu-fx.bindings), and coax spirv lowers it for
+// the GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../gpu/wgsl.coax";
 #load "../style.coax";
 
@@ -32,7 +34,7 @@ EGFX_FIRE :: 0.0f32;
 EGFX_SMOKE :: 1.0f32;
 EGFX_GLOW :: 2.0f32;
 EGFX_RING :: 3.0f32;
-EgfxP :: struct {pos:V4; corner:V2; colour:V4; look:V4; depth:V2; near:f32; }
+EgfxP :: struct {pos:V4; corner:V2; colour:V4; look:V4 #flat; depth:V2; near:f32 #flat; }
 // across the quad, -1 to 1 (a streak's: along it, then across)
 // kind, seed, a streak's length over its width (fire: how opaque), distance
 // its own w (the view's distance along the eye's axis), and how soft its meeting is (m)

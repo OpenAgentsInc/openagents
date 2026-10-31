@@ -1,0 +1,7 @@
+# Everglade's particles' bindings for `coax wgsl verse/everglade/gpu-fx.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# They are coax/web/host.js's particlePipeline layouts: group 0 everglade.wgsl's uniforms, read
+# up to the eye (28 floats, 7 vec4fs); group 1 the puffs; group 3 the scene's depth copied for the water.
+u 0 0 uniform 7
+puffs 1 0
+particle_depth 3 1

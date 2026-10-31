@@ -1,0 +1,3 @@
+--vertices egfx_particle_vs,egfx_particle_over_vs
+--fragments egfx_particle_fs,egfx_particle_over_fs
+--bindings verse/everglade/gpu-fx.bindings --strip egfx_

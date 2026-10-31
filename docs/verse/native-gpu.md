@@ -104,9 +104,8 @@ the checker) and grows the lowering:
   and the same frame through `verse/native` (realm-host), so both draw the
   same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
   (`verse/everglade/gpu.coax`, `gpu-fx.coax`; `verse/gpu/wgsl.coax` is
-  WGSL's vocabulary). Since G6 `gpu.coax` is the source and the web build's
-  `everglade.wgsl` is written from it; the particles' WGSL is still
-  translated. `verse/gpu/everglade-pass.coax
+  WGSL's vocabulary). Since G6 both are the source, and the web build's
+  `everglade.wgsl` and `everglade-fx.wgsl` are written from them. `verse/gpu/everglade-pass.coax
   HOST PASS` checks a pass. The live shaders hash with
   `fract(sin(x) * 43758.5)`, and sin of so large an argument is each GPU's
   own (WGSL bounds its error only on [-pi, pi]). So the check gives both
@@ -376,5 +375,11 @@ Every phase and native feature is a task in the Verse project
   `verse/everglade/gpu.module`), and the hand-written WGSL is gone. The
   pass check lowers the same Coax to SPIR-V (`int-hash` now swaps the hash
   in the Coax and writes the module from it), so the browser and the 4080
-  draw from one file. The particles (`everglade-fx.wgsl`) and the other
-  realms are next.
+  draw from one file. The particles follow: `verse/everglade/gpu-fx.coax`
+  (`look` and `near` `#flat`) with `gpu-fx.bindings` (everglade's
+  uniforms read up to the eye, 7 vec4fs) and `gpu-fx.module` writes
+  `everglade-fx.wgsl`, and the pass check lowers it directly, so nothing
+  of Everglade's WGSL is translated or hand-written any more. RTX 4080
+  against the browser drawing the written modules: fx 9,191 of 460,800
+  values past the tolerance (9,170 at G5), post 675 of 230,400 (659),
+  validation 0/0. The other realms are next.
