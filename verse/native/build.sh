@@ -15,13 +15,17 @@ root="$(cd "$here/../.." && pwd -P)"
 realm="${1:?usage: build.sh REALM OUT}"
 out="${2:?usage: build.sh REALM OUT}"
 web="$root/apps/openagents-web"
+units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
     libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
   # the Grid (/realms/the-grid, the homepage's module): the player and grid as Everglade has them
-  newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/player.coax" "$root/verse/grid.coax") ;;
+  # and the homepage's own units (coax/web/project/build-home.sh's: the reader, the fold, the cache)
+  newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/player.coax" "$root/verse/grid.coax")
+    units_too=("$root/coax/web/project/landing-browser.coax" "$root/coax/web/project/landing-fold.coax")
+    faces_too=("$root/coax/web/project/landing-reader-face.c" "$root/coax/web/project/landing-fold-face.c" "$root/coax/web/project/landing-cache-face.c") ;;
   # the galaxy (/verse/galaxy, the verse app's page 1), where travel starts
   verse) app="$web/verse.coax"; face="$web/verse-face.c"; libraries=() ;;
   belt|waterlab|orbitleague) app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=() ;;
@@ -36,13 +40,26 @@ if [[ -x "$coax" ]]; then
     base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
     (cd "$root" && "$coax" c "$(relative "$library")" --library --header "$out/$base.h") > "$out/$base.c" &
   done
+  for unit in ${units_too[@]+"${units_too[@]}"}; do
+    base="$(basename "$unit" .coax)"
+    (cd "$root" && "$coax" c "$(relative "$unit")" --library --header "$out/$base.h") > "$out/$base.c" &
+  done
   wait
-  cp "$face" "$web"/*-face.h "$out/"
+  cp "$face" "$web"/*-face.h "$web"/*-bridge.h ${faces_too[@]+"${faces_too[@]}"} "$out/"
   cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # shellcheck disable=SC2086
   (cd "$out" && python3 "$root/coax/web/defaults.py" "$(basename "$face")" "$realm.face.c" $units)
-  echo "$realm.face.c $units" > "$out/sources"
+  # An export named apart from its C function (the homepage's EXPORT("coaxial_page") void page): wasm
+  # renames it; natively the name is an alias of the function, so the host's call reaches it.
+  grep -o 'EXPORT("[a-z_0-9]*")[^(;{]*(' "$face" | sed -E 's/^EXPORT\("([a-z_0-9]+)"\).*[^a-z_0-9]([a-z_0-9]+)\($/\1 \2/' |
+    while read -r name fn; do
+      [[ -n "$fn" && "$name" != "$fn" ]] || continue
+      (cd "$out" && grep -qw -- "$name" $units) && continue   # a unit's own procedure already (#export_c)
+      echo "extern __typeof__($fn) $name __attribute__((alias(\"$fn\")));"
+    done >> "$out/$realm.face.c" || true
+  extra=""; for f in ${faces_too[@]+"${faces_too[@]}"}; do extra="$extra $(basename "$f")"; done
+  echo "$realm.face.c $units$extra" > "$out/sources"
 fi
 [[ "$(uname)" == Linux ]] || exit 0
 read -r -a sources < "$out/sources"

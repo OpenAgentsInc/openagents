@@ -18,7 +18,31 @@ const [w, h] = (opt.size ?? "1280x720").split("x").map(Number);
 const scale = Number(opt.scale ?? 1);
 
 // coax/web/wasm.sh links with --max-memory=67108864 (1024 pages); the module asks for at least its own data.
-const memory = new WebAssembly.Memory({ initial: 512, maximum: 1024 });
+// As host.js: 128 pages, grown to the initial pages the module's memory import declares (a module
+// with large static data, the homepage's, declares more), so the arena lands where the browser's does.
+const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 });
+function importedMemoryPages(b: Uint8Array): number {
+  let i = 8;
+  const leb = () => { let v = 0, shift = 0, c; do { c = b[i++]; v += (c & 0x7f) * 2 ** shift; shift += 7; } while (c & 0x80); return v; };
+  const skipName = () => { const n = leb(); i += n; };
+  while (i < b.length) {
+    const id = b[i++], size = leb(), end = i + size;
+    if (id === 2) {
+      for (let n = leb(); n > 0; n--) {
+        skipName(); skipName();
+        const kind = b[i++];
+        if (kind === 0) leb();
+        else if (kind === 1) { i++; const f = leb(); leb(); if (f & 1) leb(); }
+        else if (kind === 2) { leb(); return leb(); }
+        else if (kind === 3) { i += 2; }
+        else return 0;
+      }
+      return 0;
+    }
+    i = end;
+  }
+  return 0;
+}
 const clock = () => BigInt(process.env.VERSE_NATIVE_CLOCK_MS ?? Math.floor(performance.now()));
 const env: Record<string, unknown> = {
   memory,
@@ -29,8 +53,12 @@ const env: Record<string, unknown> = {
   coaxial_http_cancel: () => 0,
   host_line: () => {}, host_dot: () => {}, host_slot: () => {},
   coaxial_socket_open: () => -1, coaxial_socket_send: () => {}, coaxial_socket_close: () => {},
+  // byte storage refused (UNAVAILABLE), as natively (realm-host.c)
+  coaxial_storage_put: () => 2, coaxial_storage_get: () => 2, coaxial_storage_delete: () => 2, coaxial_storage_cancel: () => 0,
 };
-const module = await WebAssembly.compile(readFileSync(wasmPath));
+const wasmBytes = new Uint8Array(readFileSync(wasmPath));
+const module = await WebAssembly.compile(wasmBytes);
+{ const pages = importedMemoryPages(wasmBytes), have = memory.buffer.byteLength / 65536; if (pages > have) memory.grow(pages - have); }
 const imports: Record<string, Record<string, unknown>> = { env };
 for (const imp of WebAssembly.Module.imports(module)) {
   if (imp.kind !== "function") continue;

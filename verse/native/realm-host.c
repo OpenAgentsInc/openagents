@@ -389,6 +389,16 @@ static int64_t clock_ms(void) {
   return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 int64_t guard_now_ms(void) { return clock_ms(); }
+// the seconds clock (env.coaxial_now_seconds), on the same clock
+int64_t coaxial_now_seconds(void) { return clock_ms() / 1000; }
+// byte storage (env.coaxial_storage_*: the browser's IndexedDB): none natively, refused as host.js
+// refuses it where the browser has none (UNAVAILABLE), so the app keeps going without it
+int32_t coaxial_storage_put(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g, uint32_t h, int32_t i) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; return 2;
+}
+int32_t coaxial_storage_get(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 2;
+}
 // coaxial_http_bounded and coaxial_http_cancel, as the face names them
 int32_t guard_http(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, int64_t f) {
   return (int32_t)request(a, b, c, d, (int32_t)e, f < 0 ? 0 : f);
@@ -419,8 +429,9 @@ NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_surface_vertices(uint32_t s) { (void)s; return 0; }
-NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }
-NONE void coaxial_page(uint32_t s, int32_t p) { (void)s; (void)p; }   // an app of one page   // a realm that does not zoom (Orbit League)
+NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }   // a realm that does not zoom (Orbit League)
+NONE void coaxial_page(uint32_t s, int32_t p) { (void)s; (void)p; }   // an app of one page
+NONE void coaxial_golden(uint32_t on) { (void)on; }   // an app with no golden mode (the homepage)
 NONE uint32_t coaxial_stores(void) { return 0; }
 NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
 NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }

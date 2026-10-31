@@ -477,6 +477,20 @@ Every phase and native feature is a task in the Verse project
     `REALM="verse orbitleague belt" REALM_PICK=6 realm.sh HOST check` picks
     Orbit League in the galaxy headless (Right six times, Enter) and Orbit
     League draws there.
+  - The Grid runs natively (`newland`, page 1: the homepage's module with
+    its own units, as coax/web/project/build-home.sh links them). The
+    native build aliases an export named apart from its C function (the
+    homepage's EXPORT("coaxial_page") void page) unless a unit defines that
+    name; the host's seconds clock follows its milliseconds clock, and
+    byte storage is refused (UNAVAILABLE, as host.js refuses it without
+    IndexedDB) on both sides. wasm-run lays memory out as host.js does
+    (grown to the module's declared pages). The game matches the wasm,
+    flat-pass matches the browser, and vk-realm's 90th frame is vk-passes'
+    to the bit; the galaxy opens it (REALM_PICK=2). Compared, the sans
+    atlas is sampled nearest on both sides: GPUs filter an 8-bit texture
+    linearly with their own precision (one step on the Grid's grey text),
+    so the check is the shader's; vk-realm draws with host.js's linear
+    sampler.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

@@ -3,7 +3,7 @@
 # gpu-realm-host), and travel between them: each realm's Coax as C (verse/native/build.sh), its
 # live spec with its modules (and Everglade's layers decoded in Coax), built there with gcc, each
 # in a directory of its own. REALM is one or more, the first where play starts: everglade (the
-# default; everglade-pass live --emit), verse (the galaxy, page 1), stair (Hold the Stair), belt
+# default; everglade-pass live --emit), verse (the galaxy, page 1), newland (the Grid, page 1), stair (Hold the Stair), belt
 # (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen, each realm: 90 golden frames, the last
 #                                                    against vk-passes drawing the spec's own frame, and
@@ -46,14 +46,14 @@ read -r -a realms <<< "${REALM:-everglade}"
 given_of() {
   case "$1" in
     everglade) echo "everglade.pack --facts everglade.facts --extra 9000" ;;
-    verse) echo "- --page 1" ;;
+    verse|newland) echo "- --page 1" ;;
     *) echo "-" ;;
   esac
 }
 for realm in "${realms[@]}"; do
   case "$realm" in
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
-    verse|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
+    verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
   "$root/verse/native/build.sh" "$realm" "$work/$realm/c" > /dev/null

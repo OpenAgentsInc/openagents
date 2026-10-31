@@ -15,7 +15,8 @@
 // The realms: stair (Hold the Stair), belt (Belt 2200) and waterlab (the water lab: a surface,
 // surface_vs and surface_fs drawn after bg, which writes its depth, as host.js draws a traced
 // page's surface), orbitleague (Orbit League: its roadster's mesh a storage buffer) and verse
-// (the galaxy, its page 1).
+// (the galaxy, its page 1) and newland (the Grid: the homepage's module, page 1, built as the site
+// builds it, coax/web/project/build-home.sh).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -23,9 +24,9 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sequence.coax" as sequence;
 
-FP_REALMS :: [5] string.["stair", "belt", "waterlab", "orbitleague", "verse"];
+FP_REALMS :: [6] string.["stair", "belt", "waterlab", "orbitleague", "verse", "newland"];
 // The page an app draws (host.js's data-page): the galaxy is the verse app's page 1.
-fp_page :: (realm: string) -> string { return ifx realm == "verse" then "1" else "0"; }
+fp_page :: (realm: string) -> string { return ifx realm == "verse" || realm == "newland" then "1" else "0"; }
 // A realm's traced mesh (host.js's mesh:URL, a storage buffer named mesh), "" for none.
 fp_mesh :: (realm: string) -> string { return ifx realm == "orbitleague" then "apps/openagents-web/realms/orbit-league/assets/roadster.bin" else ""; }
 FP_SIZE :: "320 180";
@@ -48,7 +49,7 @@ fp_known :: (realm: string) -> bool {
   for r: FP_REALMS { if r == realm { return true; } }
   return false;
 }
-#test "the flat realms" { #assert fp_known("stair") && fp_known("belt") && fp_known("waterlab") && fp_known("orbitleague") && fp_mesh("belt") == "" && fp_page("verse") == "1" && fp_page("belt") == "0" && !fp_known("everglade") && !fp_known(""); }
+#test "the flat realms" { #assert fp_known("stair") && fp_known("belt") && fp_known("waterlab") && fp_known("orbitleague") && fp_mesh("belt") == "" && fp_page("verse") == "1" && fp_page("newland") == "1" && fp_page("belt") == "0" && fp_known("newland") && !fp_known("everglade") && !fp_known(""); }
 
 fp_run :: (host: string, realm: string, work: string, allow: string, keep: string, emit: string, int_hash: bool) -> int {
   b: [8] [1024] u8; o: [65536] u8;
@@ -59,7 +60,8 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   app := cat(cat("apps/openagents-web/", realm, b[2][..]), ".coax", b[3][..]);
   face := cat(cat("apps/openagents-web/", realm, b[4][..]), "-face.c", b[5][..]);
   build := [4] string.["coax/web/wasm.sh", app, face, wasm];
-  if fp_step("the wasm", build[..], o[..]) < 0 { return 1; }
+  home := [2] string.["coax/web/project/build-home.sh", wasm];
+  if fp_step("the wasm", ifx realm == "newland" then home[..] else build[..], o[..]) < 0 { return 1; }
   frame := [16] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--page", fp_page(realm), "--dump", dir];
   if fp_step("the frame", frame[..], o[..]) < 0 { return 1; }
   // the module the browser draws, and the entries lowered
@@ -90,7 +92,7 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   // a page that draws text from the sans atlas (host.js's useSans) gets the baked one
   sans := fp_declares(wgsl, "var sans_atlas:");
   if sans && !fp_copy("verse/native/sans-atlas.bin", fs_join(dir, "sans-atlas.bin", b[4][..])) { return 1; }
-  fp_spec(s, hud, floats, surface, mesh.count > 0, sans);
+  fp_spec(s, hud, floats, surface, mesh.count > 0, sans, int_hash);
   if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[4][..]), cast(string) sp[0..<s[0].n]) { tool_errln("flat-pass: cannot write the spec"); return 1; }
   if emit.count > 0 {
     if !fs_mkdir(emit) && fs_kind(emit) <= 0 { tool_errln("flat-pass: cannot make the --emit directory"); return 1; }
@@ -111,31 +113,36 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
 // through fx_vs and fx_fs, blended max, alpha too. With a surface (SURFACE vertices this
 // frame), bg_fs writes its depth (the test always passing) and $surface vertices draw after
 // it, tested less and written, before the strokes.
-// The sans atlas (verse/tools/sans-atlas.coax) and host.js's sampler for it.
+// The sans atlas (verse/tools/sans-atlas.coax) and host.js's sampler for it; compared, its texels
+// are taken nearest (GPUs weight an 8-bit texture's linear filter with their own precision, one
+// step on grey text: as a sin hash is each GPU's own, int-hash), so the check is the shader's.
 FP_SANS :: "atlas sans_atlas sans-atlas.bin 1536 672 5\nsampler sans_sampler linear clamp mip none\n";
-fp_spec :: (s: [] Sp, hud: int, floats: int, surface: int, mesh: bool, sans: bool) {
+FP_SANS_NEAREST :: "atlas sans_atlas sans-atlas.bin 1536 672 5\nsampler sans_sampler nearest clamp flat none\n";
+fp_spec :: (s: [] Sp, hud: int, floats: int, surface: int, mesh: bool, sans: bool, nearest: bool) {
   put(s, "wgsl page.wgsl\nsize "); put(s, FP_SIZE); put(s, "\nlet hud "); put_int(s, hud);
   if surface > 0 {
     put(s, "\nlet surface "); put_int(s, surface);
-    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); } if sans { put(s, FP_SANS); }
+    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); } if sans { put(s, ifx nearest then FP_SANS_NEAREST else FP_SANS); }
     put(s, "depth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\n");
     put(s, "pass surface_fs.spv surface_vs surface_fs 1 d 0 0 $surface keep\nbuffer hud hud.bin\n");
   } else {
-    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); } if sans { put(s, FP_SANS); }
+    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); } if sans { put(s, ifx nearest then FP_SANS_NEAREST else FP_SANS); }
     put(s, "pass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\n");
   }
   put(s, "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:"); put_int(s, floats); put(s, "\n");
 }
 #test "a flat realm's spec" {
   o: [1024] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
-  fp_spec(s, 7506, 16, 0, false, false);
+  fp_spec(s, 7506, 16, 0, false, false, false);
   #assert !s[0].bad && cast(string) o[0..<s[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 7506\nbuffer u u.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
-  w: [1024] u8; sw: [1] Sp; sw[0] = Sp.{buf = w[..]}; fp_spec(sw[..], 30, 16, 6, false, false);
+  w: [1024] u8; sw: [1] Sp; sw[0] = Sp.{buf = w[..]}; fp_spec(sw[..], 30, 16, 6, false, false, false);
   #assert !sw[0].bad && cast(string) w[0..<sw[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 30\nlet surface 6\nbuffer u u.bin\ndepth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\npass surface_fs.spv surface_vs surface_fs 1 d 0 0 $surface keep\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
-  t: [8] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; fp_spec(sb[..], 1, 16, 0, false, false);
-  x: [1024] u8; sx: [1] Sp; sx[0] = Sp.{buf = x[..]}; fp_spec(sx[..], 2, 16, 0, false, true);
+  t: [8] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; fp_spec(sb[..], 1, 16, 0, false, false, false);
+  x: [1024] u8; sx: [1] Sp; sx[0] = Sp.{buf = x[..]}; fp_spec(sx[..], 2, 16, 0, false, true, false);
   #assert !sx[0].bad && cast(string) x[0..<sx[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 2\nbuffer u u.bin\natlas sans_atlas sans-atlas.bin 1536 672 5\nsampler sans_sampler linear clamp mip none\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
-  m: [1024] u8; sm: [1] Sp; sm[0] = Sp.{buf = m[..]}; fp_spec(sm[..], 2, 16, 0, true, false);
+  y: [1024] u8; sy: [1] Sp; sy[0] = Sp.{buf = y[..]}; fp_spec(sy[..], 2, 16, 0, false, true, true);
+  #assert !sy[0].bad && cast(string) y[0..<sy[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 2\nbuffer u u.bin\natlas sans_atlas sans-atlas.bin 1536 672 5\nsampler sans_sampler nearest clamp flat none\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
+  m: [1024] u8; sm: [1] Sp; sm[0] = Sp.{buf = m[..]}; fp_spec(sm[..], 2, 16, 0, true, false, false);
   #assert !sm[0].bad && cast(string) m[0..<sm[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 2\nbuffer u u.bin\nbuffer mesh mesh.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
   #assert sb[0].bad;
 }
