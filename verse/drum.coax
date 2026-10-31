@@ -118,15 +118,15 @@ drum_drive_step :: (store: [] RigidBody, i: int, d: Drum, f: GravityField, spec:
     store[0] = rigid_body(150.0, d3(118.0, 118.0, 118.0), d3_add(d.centre, d3_scale(out, 14.0)), DQ.{});
     store[0].vel = d3_add(d3_scale(out, 25.0), d3(0.0, 0.0, 3.0));
     w := rigid_world(1.0 / 120.0, store[..]);
-    bounced := false; inside := true;
+    bounced := false; kept_in := true;
     for i: 0..<120 {
       w = gravity_step(w, f);
       ct := drum_sphere(d, store[0].pos, 1.4);
       if ct.hit { store[0] = contact_resolve_static(store[0], ct, 0.65, 0.35); }
       if d3_dot(store[0].vel, out) < 0.0 { bounced = true; }
-      if drum_clearance(d, store[0].pos) < 1.4 - 0.05 { inside = false; }
+      if drum_clearance(d, store[0].pos) < 1.4 - 0.05 { kept_in = false; }
     }
-    #assert bounced && inside;
+    #assert bounced && kept_in;
   }
 }
 
