@@ -65,6 +65,13 @@ and operator overloading remain planned, and generic struct bindings
 still reject views and view-containing values. Chapters 8 and 10 and the
 generated status catalogue describe the exact subset and its limits.
 
+Native C also supports [nominal scalar quantities](https://github.com/OpenAgentsInc/openagents/blob/main/coax/QUANTITIES.md) with
+`f32` or `f64` carriers and explicit binary-scale unit conversion. The Grid's
+fog helper uses metre-valued inputs, a scalar precursor to the physical-world
+work below. This does not supply typed points, vectors, coordinate transforms
+or clocks, and quantities add no finite-value or actuator-admission checks.
+Other output backends refuse concrete quantity use in this initial profile.
+
 Pointers and dynamic arrays, tagged unions and `switch`, `try` and
 optionals, the context and allocators, richer reflection and macros, jobs
 and effects, `strict` and `deterministic`, importing C headers, `build.coax`
@@ -105,7 +112,7 @@ counts as done, and where each one is today.
 | 7. Browser vertical slice | A wasm32 runtime and host ABI, a separate shader bridge | Geometry, memory growth, async resources, input, rendering and debugging in a real browser | Current Coaxial application paths ship; general target/runtime/debugging qualification remains open |
 | 8. Resident compiler and reload | Dependency cache, stable code IDs, safe points, transactional migration | Edit and reload on a Mac host keeps state and resources, rolls back failures, and has measured latency | Not started |
 | 9. More backends | Only after earlier stages have shown their value; C stays as the reference | Native debug and optimized backends pass the same suites and beat the C output on a measured workload | Not started |
-| 10. Physical-world foundations | Units and frames (including moving and rotating frames), typed clocks with astronomical time scales and multirate ticks, bounded control, integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time and supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules | A small simulated robot, a Verse world and a spacecraft scenario run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios; each scenario parameter says whether it is measured, inferred or invented; real hardware stays a separate, authorized integration | Not started; the `verse/` space modules (orbits, burns, gravity fields, contacts) are the starting consumer, with units and frames in comments |
+| 10. Physical-world foundations | Units and frames (including moving and rotating frames), typed clocks with astronomical time scales and multirate ticks, bounded control, integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time and supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules | A small simulated robot, a Verse world and a spacecraft scenario run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios; each scenario parameter says whether it is measured, inferred or invented; real hardware stays a separate, authorized integration | Started: nominal scalar quantities in native C and metre-valued Grid fog inputs; typed points, vectors, frames, clocks and the complete scenario gates remain planned. Existing orbital and frame state still uses plain numbers and documented conventions |
 | 11. Simulation compute | Logical tensor shapes separate from physical layout, placement and ownership, with visible specialization; budgets for cold compile, warm load and parameter changes, with a content-keyed kernel cache; captured device graphs and device-side loops; zero-copy buffer imports with explicit transfers; forward- and reverse-mode kernel derivatives with custom adjoints | The Psionic physics engine's solvers run unchanged at batch 1 and 1,024 and in two layouts with identical results; each iteration case meets its budget; a replayed solver graph equals its unrolled launches; a step reads observations with zero recorded copies; kernel derivatives pass finite-difference checks and a program differentiating a `none` kernel is refused | Planned (roadmap R21–R24); Psionic's library-level CUDA graph replay and leased DLPack views are the starting consumers |
 
 *Table 28-1: The implementation stages*

@@ -503,13 +503,24 @@ them: `a + b * t` reads like the math it is. In Coax an operator must be
 syntax costs what math costs. Assignment, field access, `&&`, `||` and
 calls can't be overloaded. A future user-defined ordering requirement
 could connect such operators to generic code. Today's built-in `ordered`
-bound admits integers and floats; it does not admit custom struct operators.
+bound admits integers, floats and the compiler's nominal scalar quantities;
+it does not enable custom struct operators.
 
 > Note: The built-in math types `v2 v3 v4 quat m3 m4` are planned to come
 > with their operators. Neither they nor `operator` declarations exist in
 > `coax0` yet.
 
 ## Computing types (later)
+
+The compiler already supplies a bounded scalar-unit family through
+[`coax.quantity`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/QUANTITIES.md): nominal quantities with an `f32` or
+`f64` carrier, same-unit addition, subtraction and comparisons, raw-scalar
+scaling, and explicit conversion for matching dimensions with binary scale
+ratios. These compiler-owned operators do not implement general user-defined
+operators or type computation. Quantities satisfy `copyable`, `equatable`
+and `ordered`, while `numeric` still requires closed scalar arithmetic.
+Quantity products, dimensional result algebra, typed points and coordinate
+frames remain future work.
 
 Forrest Smith's typesafe-units experiment in Jai uses `#modify` and type
 inspection to compute result types from physical dimensions, so that

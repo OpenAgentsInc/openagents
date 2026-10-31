@@ -206,8 +206,8 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
-      "text_sha256": "b276c40599f353d5158ddcf7a5a26a291d1a33b3b7badb3863707c6345756a45",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal f32/f64 scalar quantities on native C; frames, typed clocks, other targets and existing plain-f64 consumer migrations remain separate.",
+      "text_sha256": "76c6754be7eb32788f865dbc4b3782368485fa9a456a135b06280260059d4085",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -274,6 +274,26 @@
         {
           "path": "docs/verse/native-gpu.md",
           "sha256": "4fa370b3d8d283f1d74fc2a9405f2880f182b044dce250d2acb53172b0f742bd"
+        },
+        {
+          "path": "coax/QUANTITIES.md",
+          "sha256": "c02aa5d219a4d4b740f12e8b5690e21a2e8b40472e485989ba67aadea9e1ba38"
+        },
+        {
+          "path": "coax/lib/quantity.coax",
+          "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+        },
+        {
+          "path": "coax/lib/compiler/quantity.coax",
+          "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+        },
+        {
+          "path": "coax/tests/quantity.py",
+          "sha256": "d2a14588c3f5718e47fd675ff0933f4860207a31821d10bf5b678392e56fa956"
+        },
+        {
+          "path": "docs/verification/coax-quantity-psionic-compatibility-2026-10-31.json",
+          "sha256": "0f1d23d18d2fdf909b10f8233bc715bf469fb818c7d0269e19f34537cf4c6907"
         }
       ]
     },

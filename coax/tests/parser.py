@@ -3,6 +3,7 @@
 Python is test tooling only; neither bootstrap nor app generation invokes it.
 """
 import ctypes as C
+import json
 import os
 from pathlib import Path
 import random
@@ -14,13 +15,41 @@ import lexer as LX
 ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
 class Token(C.Structure):_fields_=[('kind',C.c_uint32),('text',LX.Text),('loc',Loc),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('raw_count',C.c_int64)]
+class Unit(C.Structure):_fields_=[('e',C.c_int64*6)]
 class Node(C.Structure):
-    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64)]
+    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64),('quantity',C.c_uint8),('unit',Unit)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):
     class V(C.Structure):_fields_=[('data',C.POINTER(T)),('count',C.c_int64)]
     return V
+
+def assert_native_layouts(header,records):
+    """Compare ctypes transport to C layout without calling either kernel."""
+    with tempfile.TemporaryDirectory(prefix='coax-transport-layout-') as temporary:
+        directory=Path(temporary);source=directory/'layout.c';binary=directory/'layout'
+        lines=['#include <stddef.h>','#include <stdio.h>',f'#include {json.dumps(str(Path(header).resolve()))}','int main(void){']
+        for name,record in records:
+            lines.append(f'printf("{name} %zu %zu",sizeof({name}),_Alignof({name}));')
+            for field,_ in record._fields_:
+                lines.append(f'printf(" {field}=%zu",offsetof({name},{field}));')
+            lines.append('puts("");')
+        lines.append('return 0;}');source.write_text('\n'.join(lines)+'\n')
+        LX.checked([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror',source,'-o',binary])
+        output=LX.checked([binary]).decode().splitlines()
+    actual={}
+    for row in output:
+        name,size,alignment,*fields=row.split()
+        actual[name]={'size':int(size),'alignment':int(alignment),'offsets':{k:int(v) for k,v in (field.split('=') for field in fields)}}
+    mismatches=[]
+    for name,record in records:
+        expected={'size':C.sizeof(record),'alignment':C.alignment(record),'offsets':{field:getattr(record,field).offset for field,_ in record._fields_}}
+        if actual.get(name)!=expected:mismatches.append({'type':name,'ctypes':expected,'native':actual.get(name)})
+    if mismatches:raise AssertionError('native transport layout mismatch: '+json.dumps(mismatches,sort_keys=True))
+    return actual
+
+def transport_records():
+    return [('coax_string',LX.Text),('coax_t_PS_Loc',Loc),('coax_t_PS_Token',Token),('coax_a6_s64',Unit),('coax_t_PS_Node',Node),('coax_t_PS_State',State),('coax_t_PS_Result',Result),('coax_v_t_PS_Node',view(Node))]
 
 class Parser(unittest.TestCase):
     @classmethod
@@ -29,6 +58,7 @@ class Parser(unittest.TestCase):
         cls.tmp=tempfile.TemporaryDirectory(prefix='coax-native-parser-');cls.d=Path(cls.tmp.name)
         cls.source=cls.d/'parser.c';cls.header=cls.d/'parser.h'
         cls.source.write_bytes(LX.checked([ROOT/'bin/coax','c',ROOT/'lib/compiler/parser.coax','--library','--header',cls.header]))
+        assert_native_layouts(cls.header,transport_records())
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'parser.dylib'])
         cls.lib=C.CDLL(str(cls.d/'parser.dylib'))
         cls.lib.PS_parse.argtypes=[LX.Text,view(Token),view(Node),view(State),view(C.c_uint8)]
@@ -62,6 +92,14 @@ class Parser(unittest.TestCase):
         self.assertFalse(r.ok);self.assertEqual(LX.raw(s.code),b'E0203')
         self.assertEqual((s.loc.line,s.loc.column,s.loc.offset),(1,12,11))
         self.assertEqual(msg,b'comparisons cannot be chained')
+    def test_quantity_annotation_graph_transport(self):
+        source='Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=3,denominator=2) {} Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}'
+        result,nodes,state,message,keep=self.parse(source)
+        self.assertTrue(result.ok,message)
+        declarations={LX.raw(n.name):n for n in nodes[:state.used+1] if n.kind==66}
+        self.assertEqual(declarations[b'Speed'].quantity,1)
+        self.assertEqual(list(declarations[b'Speed'].unit.e),[0,1,-1,0,3,2])
+        self.assertEqual(declarations[b'Quantity'].quantity,2)
     def test_random_parenthesized_expression_trees(self):
         rng=random.Random(197)
         ops=[('+',34),('-',35),('*',36),('/',37),('%',38),('&',39),('|',40),('^',41),('<<',42),('>>',43)]

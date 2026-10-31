@@ -15,16 +15,29 @@ import parser as PS
 
 ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
+class Unit(C.Structure):_fields_=[(n,C.c_int64) for n in ('mass','length','time','angle','numerator','denominator')]
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_uint64),('type',C.c_int64),('field_index',C.c_int64),('proc',C.c_int64),('constant',C.c_int64),('negative',C.c_bool),('folded',C.c_bool),('builtin_print',C.c_bool),('byte_intrinsic',C.c_uint32),('intrinsic',C.c_uint32),('mark',C.c_int64),('reached',C.c_bool),('metal_done',C.c_bool),('metal_active',C.c_bool),('skip_authority',C.c_bool),('scope',C.c_int64),('collides',C.c_bool),('clash',C.c_int64),('effects',C.c_uint8),('own_effects',C.c_uint8),('effects_known',C.c_bool),('generic',C.c_bool),('origin',C.c_int64),('pristine',C.c_int64),('chain',C.c_int64),('key',LX.Text)]
-class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need')]
+    _fields_ += [('quantity',C.c_uint8),('unit',Unit)]
+class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64)]
-class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority')]
+class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool)]
+class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority','quantity_device')]
 class Alias(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('target',C.c_int64)]
 class Export(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('loc',Loc)]
 class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export))]
+
+def transport_records():
+    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_CK_Context',Context)]
+
+class TransportABI(unittest.TestCase):
+    def test_generated_seed_headers_match_ctypes(self):
+        # Header-only probes are safe even when the Python graph stride is stale.
+        # Collect both failures rather than reaching either kernel with bad memory.
+        for header,records in [('parser',PS.transport_records()),('checker',transport_records())]:
+            with self.subTest(header=header):
+                PS.assert_native_layouts(ROOT/'bootstrap'/f'{header}.h',records)
 
 class Checker(unittest.TestCase):
     @classmethod
@@ -33,6 +46,7 @@ class Checker(unittest.TestCase):
         cls.tmp=tempfile.TemporaryDirectory(prefix='coax-checker-');cls.d=Path(cls.tmp.name)
         cls.source=cls.d/'checker.c';cls.header=cls.d/'checker.h'
         cls.source.write_bytes(LX.checked([ROOT/'bin/coax','c',ROOT/'lib/compiler/checker.coax','--library','--header',cls.header]))
+        PS.assert_native_layouts(cls.header,transport_records())
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'checker.dylib'])
         cls.lib=C.CDLL(str(cls.d/'checker.dylib'))
         cls.lib.CK_meta_capacity.argtypes=[Context._fields_[0][1],C.c_int64];cls.lib.CK_meta_capacity.restype=C.c_int64
@@ -42,7 +56,7 @@ class Checker(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup();PS.Parser.tearDownClass()
-    def check(self,source,metal=False):
+    def check(self,source,metal=False,quantity_device=False):
         result,parsed,s,msg,keep=self.parser.parse(source);self.assertTrue(result.ok,msg)
         n=s.used+1;nodes=(Node*(n*3+16))();types=(Type*(n*3+16))();locals_=(Local*(n+16))();errors=(Error*(n*8+16))();storage=(C.c_uint8*(len(source)*8+n*512+4096))();state=(State*1)()
         for i in range(n):
@@ -52,6 +66,7 @@ class Checker(unittest.TestCase):
                 value=getattr(v,field)
                 if field in ('loc','loc2'):value=Loc(value.line,value.column,value.offset)
                 if field=='floating':value=struct.unpack('Q',struct.pack('d',value))[0]
+                if field=='unit':value=Unit(*value.e)
                 setattr(x,field,value)
 
             if v.kind==17:x.type=6 if v.width==32 else 7 if v.width==64 else 0
@@ -61,7 +76,7 @@ class Checker(unittest.TestCase):
             expanded=(Node*(len(nodes)+extra))()
             C.memmove(expanded,nodes,C.sizeof(nodes));nodes=expanded
         arrays=[nodes,types,locals_,errors,storage,state];views=[T for _,T in Context._fields_];ctx=Context(*[V(a,len(a)) for V,a in zip(views,arrays)])
-        ok=self.lib.CK_run(ctx,n-1,Options(True,metal,parsed[1].flag))
+        ok=self.lib.CK_run(ctx,n-1,Options(True,metal,parsed[1].flag,quantity_device))
         return ok,nodes,types,errors,state[0],(keep,parsed,*arrays)
     def test_independent_layout_and_constant_typing(self):
         source='S :: struct {a:u8;b:int;c:[3]u16;} E :: enum s8 {a= -128;b;} f :: ()->u8 {return 2*3+1;}'
@@ -72,6 +87,21 @@ class Checker(unittest.TestCase):
         self.assertEqual([x.field_index for x in fields],[0,8,16])
         folded=[x for x in n[:s.used+1] if x.kind==16 and x.type==12 and x.value==7]
         self.assertEqual(len(folded),1)
+    def test_quantity_graph_transport_and_device_option(self):
+        source='Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=3,denominator=2) {} Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;} f :: ()->f64 {a:Quantity(Speed,f64)=Quantity.{value=4};return a.value;}'
+        ok,nodes,types,errors,state,owners=self.check(source)
+        self.assertTrue(ok,[LX.raw(e.message) for e in errors[:state.error_count]])
+        unit=next(n for n in nodes[:state.used+1] if n.kind==66 and LX.raw(n.name)==b'Speed')
+        self.assertEqual(unit.quantity,1)
+        self.assertEqual([getattr(unit.unit,field) for field,_ in Unit._fields_],[0,1,-1,0,3,2])
+        quantities=[t for t in types[:state.type_count] if t.carrier]
+        self.assertTrue(quantities)
+        self.assertTrue(all(t.carrier==7 and t.unit==unit.type for t in quantities))
+        self.assertFalse(state.quantity_device)
+        ok,nodes,types,errors,state,owners=self.check(source,quantity_device=True)
+        self.assertFalse(ok)
+        self.assertTrue(state.quantity_device)
+        self.assertIn('E0828',[LX.raw(e.code).decode() for e in errors[:state.error_count]])
     def test_independent_policy_errors(self):
         cases=[('f :: () {x:u8=256;}','E0350'),('f :: () {x:=1/0;}','E0407'),
                ('f :: (x:int) {x=2;}','E0344'),('S :: struct {x:S;}','E0353'),
