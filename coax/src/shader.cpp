@@ -49,7 +49,8 @@ struct ShaderTree {
       else if (n == "SamplerCompare") code = {11, 1};
       else {
         code = {7, (uint32_t)t->struct_decl->fields.count};
-        for (const Field &f : t->struct_decl->fields) { code.push_back(type(f.type, f.loc)); code.push_back((uint32_t)f.offset); }
+        // a #flat field's offset carries bit 31 (an interface's fields have locations, not offsets)
+        for (const Field &f : t->struct_decl->fields) { code.push_back(type(f.type, f.loc)); code.push_back((uint32_t)f.offset | (f.flat ? 0x80000000u : 0u)); }
         code.push_back((uint32_t)t->size);
       }
     } else if (t->kind == TypeKind::array && t->elem) code = {8, type(t->elem, loc), (uint32_t)t->length, (uint32_t)t->elem->size};

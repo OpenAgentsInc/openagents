@@ -111,7 +111,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
       case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
       case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_param:{auto *p=parser_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);break;}
-      case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);break;}
+      case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);p->flat=v.flag;break;}
       case COAX_PS_Tag_decl_enum_member:{auto *p=parser_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_field_init:{auto *p=parser_ref<FieldInit>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}

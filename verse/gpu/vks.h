@@ -46,8 +46,10 @@ typedef struct {
   VkSampler sampler;
 } VksBinding;
 
-// Blending: replace; add (one, one); alpha (source over); multiply (the target by the source's colour).
-enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2, VKS_MUL = 3 };
+// Blending, as source and destination factors: replace; add (one, one); alpha (source alpha, one
+// minus it); multiply (zero, the source's colour); over (one, one minus source alpha, premultiplied);
+// under (zero, one minus source alpha); keep (zero, one).
+enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2, VKS_MUL = 3, VKS_OVER = 4, VKS_UNDER = 5, VKS_KEEP = 6 };
 typedef struct {
   const uint32_t *words;
   size_t count;
@@ -69,7 +71,7 @@ typedef struct {
   uint32_t ntargets;
   VksImage *depth;
   int blend, depth_test, depth_write, cull_back;
-  int alpha_keep;    // blending keeps the targets' alpha (WebGPU's zero, one)
+  int alpha_blend;   // the alpha's blending, a VKS_ mode (0: one, then as alpha's for VKS_ALPHA, else one)
   uint32_t masked;   // targets (bit i) this pass leaves as they are: write mask 0
   int depth_always;  // the depth test passes always (else less)
   int keep;          // keep what the targets hold, else clear them

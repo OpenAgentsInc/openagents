@@ -54,6 +54,7 @@ W :: struct {
   yk: [1024] int; yn: [1024] int; ye: [1024] int; ny: int;
   ss: [256] int; se: [256] int; sf: [256] int; sc: [256] int; ns: int;
   fs: [4096] int; fe: [4096] int; fy: [4096] int; ft: [4096] int; nf: int;
+  fflat: [4096] bool; flat: bool;   // a field written @interpolate(flat); the last attributes held one
   ms: [128] int; me: [128] int; my: [128] int; mk: [128] int; mt: [128] int; nm: int;
   mh: [128] bool;   // a private variable some procedure other than an entry writes
   ks: [1024] int; ke: [1024] int; kx: [1024] int; kxe: [1024] int; kt: [1024] int; nk: int;
@@ -310,7 +311,7 @@ ufield :: (w: []W, sid: int, fi: int) -> int {
 
 // ---- declarations (pass 1)
 skip_attrs :: (w: []W) -> int {   // the attributes at p; returns a stage (1 vertex, 2 fragment, 3 compute) or a parameter attribute
-  r := 0;
+  r := 0; w[0].flat = false;
   while is_at(w, "@") {
     w[0].p += 1; a := cur(w); w[0].p += 1;
     if a == "vertex" { r = 1; } else if a == "fragment" { r = 2; } else if a == "compute" { r = 3; }
@@ -320,6 +321,7 @@ skip_attrs :: (w: []W) -> int {   // the attributes at p; returns a stage (1 ver
         if b == "vertex_index" { r = PA_VID; } else if b == "instance_index" { r = PA_IID; } else if b == "position" { r = PA_POS; } else if b == "front_facing" { r = PA_FRONT; }
       }
       if a == "location" { r = PA_LOC; }
+      if a == "interpolate" && tt(w, w[0].p + 1) == "flat" { w[0].flat = true; }
       depth := 0;
       while true { if is_at(w, "(") { depth += 1; } if is_at(w, ")") { depth -= 1; if depth == 0 { w[0].p += 1; break; } } w[0].p += 1; }
     }
@@ -355,6 +357,7 @@ declare :: (w: []W) {
       while !is_at(w, "}") {
         a := skip_attrs(w);
         f := w[0].nf; w[0].fs[f] = w[0].ts[w[0].p]; w[0].fe[f] = w[0].te[w[0].p]; w[0].ft[f] = w[0].p; w[0].p += 1;
+        w[0].fflat[f] = w[0].flat;
         expect(w, ":"); w[0].fy[f] = ptype(w); w[0].nf = f + 1; w[0].sc[sid] += 1;
         if is_at(w, ",") || is_at(w, ";") { w[0].p += 1; }
       }
@@ -1345,7 +1348,7 @@ emit_struct :: (w: []W, sid: int) {
   b := w[0].an; st_name(w, sid); o(w, art(w, b, w[0].an - b)); o(w, " :: struct {");
   for i: 0..<w[0].sc[sid] {
     f := w[0].sf[sid] + i;
-    b = w[0].an; field(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, art(w, b, w[0].an - b)); o(w, ":"); b = w[0].an; ytx(w, w[0].fy[f]); o(w, art(w, b, w[0].an - b)); o(w, "; ");
+    b = w[0].an; field(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, art(w, b, w[0].an - b)); o(w, ":"); b = w[0].an; ytx(w, w[0].fy[f]); o(w, art(w, b, w[0].an - b)); o(w, ifx w[0].fflat[f] then " #flat; " else "; ");
   }
   o(w, "}\n");
 }

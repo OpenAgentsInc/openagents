@@ -473,6 +473,12 @@ PS_field_block :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,parent:int) {
   if PS_kw(t,s,"using") {PS_reserved(s,out,token);return;}
   f:=PS_ident(t,s,out,"a field name");PS_expect(t,s,out,16,"after the field name");
   field:=PS_new(n,s,out,PS_Tag.decl_field,f.loc);n[field].name=f.text;n[field].a=PS_type(t,n,s,out);
+  // #flat: a shader's varying the rasterizer does not interpolate (the provoking vertex's)
+  if PS_at(t,s,6) {
+   d:=PS_take(t,s);
+   if d.text=="flat" {n[field].flag=true;}
+   else {parts:=[3] string.["#",d.text," is not supported on fields"];PS_error(s,out,d.loc,"E0210","",parts[..]);return;}
+  }
   if PS_at(t,s,23) {PS_skip(t,s);n[field].b=PS_expression(t,n,s,out);}
   PS_expect(t,s,out,15,"after the field");PS_link(n,parent,field);
  }
@@ -3955,6 +3961,18 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   if variant==2 || variant==3 {#assert r==0 && state[0].code=="E0222" && state[0].loc.column==2 && state[0].loc.offset==20;}
   if variant==4 {#assert r==2 && nodes[2].kind==PS_Tag.expr_field && nodes[2].name=="f" && nodes[2].name2=="" && state[0].pos==2;}
   if variant==5 {#assert r==3 && nodes[3].kind==PS_Tag.expr_field && nodes[3].a==2 && nodes[3].name=="g" && state[0].pos==4;}
+}
+#test "a field may be written #flat, and no other note" {
+  // { a:f32 #flat; b:f32; }
+  tokens:=[11] PS_Token.[PS_Token.{kind=10},PS_Token.{kind=1,text="a"},PS_Token.{kind=16},PS_Token.{kind=1,text="f32"},PS_Token.{kind=6,text="flat"},PS_Token.{kind=15},
+    PS_Token.{kind=1,text="b"},PS_Token.{kind=16},PS_Token.{kind=1,text="f32"},PS_Token.{kind=15},PS_Token.{kind=11}];
+  nodes:[32] PS_Node;nodes[1]=PS_Node.{kind=PS_Tag.decl_struct_};state:=[1] PS_State.[PS_State.{used=2}];message:[256] u8;
+  PS_field_block(tokens[..],nodes[..],state[..],message[..],1);
+  f:=nodes[1].head;g:=nodes[f].next;
+  #assert state[0].code=="" && nodes[f].name=="a" && nodes[f].flag && nodes[g].name=="b" && !nodes[g].flag;
+  tokens[4]=PS_Token.{kind=6,text="packed",loc=PS_Loc.{column=9}};state[0]=PS_State.{used=2};nodes[1].head=0;
+  PS_field_block(tokens[..],nodes[..],state[..],message[..],1);
+  #assert state[0].code=="E0210" && state[0].loc.column==9 && cast(string)message[0..<state[0].length]=="#packed is not supported on fields";
 }
 #test "an unqualified struct literal keeps its name and position" {
   tokens:=[4] PS_Token.[PS_Token.{kind=20},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];nodes:[8] PS_Node;

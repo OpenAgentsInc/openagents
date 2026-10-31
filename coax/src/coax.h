@@ -380,6 +380,7 @@ struct Field {
   Type type = &T_INVALID;
   Expr *init = nullptr;  // a constant default, frozen to a literal by evaluation
   int32_t offset = 0;
+  bool flat = false;     // #flat: a shader varying taken from the provoking vertex, not interpolated
 };
 
 struct StructDecl {

@@ -3,11 +3,11 @@
 // fract(sin(x) * 43758.5): sin of so large an argument is each platform's
 // own (WGSL bounds sin's error only on [-pi, pi]), so the browser on a Mac
 // and Vulkan on the 4080 draw different ridges and clouds from the same
-// uniforms. For the check only, this writes copies of everglade.wgsl and
-// verse/style.coax whose four sin hashes are one integer hash instead, so
+// uniforms. For the check only, this writes copies of everglade.wgsl,
+// everglade-fx.wgsl and verse/style.coax whose sin hashes are one integer hash instead, so
 // what is left between the two is the port's own difference. The live
 // files are not changed.
-//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (writes OUT_DIR/everglade.wgsl, OUT_DIR/style.coax)
+//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (writes OUT_DIR/everglade.wgsl, OUT_DIR/everglade-fx.wgsl, OUT_DIR/style.coax)
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -51,7 +51,13 @@ tool_main :: () -> int #export_c {
   style := ih_replace(cast(string) src[0..<m], IH_STYLE, IH_STYLE_INT, dst[..], 1);
   if style.count == 0 { tool_errln("int-hash: verse/style.coax does not have verse_style_hash"); return 1; }
   if !fs_write(fs_join(out, "style.coax", p[..]), style) { tool_errln("int-hash: cannot write style.coax"); return 1; }
-  print("int-hash: %/everglade.wgsl and %/style.coax\n", out, out);
+  // the spells' particles: hash2, the same line
+  f := fs_read("apps/openagents-web/everglade-fx.wgsl", src[..]);
+  if f < 0 { tool_errln("int-hash: no apps/openagents-web/everglade-fx.wgsl"); return 1; }
+  fx := ih_replace(cast(string) src[0..<f], IH_SIN, r, dst[..], 1);
+  if fx.count == 0 { tool_errln("int-hash: everglade-fx.wgsl does not have its sin hash"); return 1; }
+  if !fs_write(fs_join(out, "everglade-fx.wgsl", p[..]), fx) { tool_errln("int-hash: cannot write everglade-fx.wgsl"); return 1; }
+  print("int-hash: %/everglade.wgsl, %/everglade-fx.wgsl and %/style.coax\n", out, out, out);
   return 0;
 }
 

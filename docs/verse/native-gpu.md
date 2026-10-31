@@ -285,3 +285,15 @@ Every phase and native feature is a task in the Verse project
   its panels included. RTX 4080: 12 passes, validation 0/0, 1,369 of
   230,400 values past the tolerance, on bloomed foliage edges and the
   Ranger's silhouette (2,000 allowed).
+- 2026-10-31: G5, fx and particles (G5 complete). `everglade-pass.coax fx`
+  draws the water frame and then everglade-fx.wgsl's particles, translated
+  as its own module: the smoke over what is behind (premultiplied, alpha
+  under), then fire, glows and the shockwave added, soft against the water's
+  depth copy. The frame is a Meteor Swarm 260 frames after its cast (srd5
+  ruleset, 1 then a click on the road: 429 quads), since the still frames
+  hold no particle on screen. WGSL `@interpolate(flat)` became a Coax field
+  note, `#flat`, which the lowering decorates Flat (the particles' kind
+  compares, interpolated, had striped the road). RTX 4080: validation 0/0,
+  9,170 of 460,800 values past the tolerance, median 0.006 (half-float
+  steps in stacked fire), 25 pixels off by more than 0.1 at billow edges
+  (10,000 allowed); post with the particles, 14 passes, 659 of 230,400.

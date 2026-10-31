@@ -147,13 +147,15 @@ window.runSpec = async function (specFile) {
           colour = targets.slice(0, nt);
         } else colour = a[4].split(",").map((n) => { const r = res.get(n); if (!r) throw new Error(`the spec has no ${n}`); return r.texture; });
         const keep = opts.includes("keep"), write = !opts.includes("nowrite"), always = opts.includes("always");
-        const mode = (opts.find((o) => o.startsWith("blend=")) || "").slice(6), alphaKeep = opts.includes("alphakeep");
+        const mode = (opts.find((o) => o.startsWith("blend=")) || "").slice(6), alphaMode = (opts.find((o) => o.startsWith("alpha=")) || "").slice(6);
         const masked = opts.filter((o) => o.startsWith("mask=")).map((o) => +o.slice(5));
-        for (const o of opts) if (!/^(keep|nowrite|always|alphakeep|blend=(add|mul|alpha)|mask=\d+|bind=\w+:\w+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        for (const o of opts) if (!/^(keep|nowrite|always|(blend|alpha)=(add|alpha|mul|over|under|keep)|mask=\d+|bind=\w+:\w+)$/.test(o)) throw new Error(`no pass option ${o}`);
         const rebound = new Map(opts.filter((o) => o.startsWith("bind=")).map((o) => o.slice(5).split(":")));
-        const factors = { add: ["one", "one"], mul: ["zero", "src"], alpha: ["src-alpha", "one-minus-src-alpha"] }[mode];
-        const blend = factors ? { color: { operation: "add", srcFactor: factors[0], dstFactor: factors[1] },
-          alpha: alphaKeep ? { operation: "add", srcFactor: "zero", dstFactor: "one" } : { operation: "add", srcFactor: "one", dstFactor: mode === "alpha" ? "one-minus-src-alpha" : "one" } } : undefined;
+        // vks.h's modes, as WebGPU factors; the alpha follows the colour's unless alpha= says (alpha: over)
+        const modes = { add: ["one", "one"], alpha: ["src-alpha", "one-minus-src-alpha"], mul: ["zero", "src"], over: ["one", "one-minus-src-alpha"],
+          under: ["zero", "one-minus-src-alpha"], keep: ["zero", "one"] };
+        const of = (m) => ({ operation: "add", srcFactor: modes[m][0], dstFactor: modes[m][1] });
+        const blend = mode ? { color: of(mode), alpha: of(alphaMode || (mode === "alpha" ? "over" : "add")) } : undefined;
         last = colour;
         let depth = null;
         if (depthName === "own") depth = d.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView();

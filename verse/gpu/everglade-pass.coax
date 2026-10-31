@@ -18,7 +18,10 @@
 //           not written), the grass and the scene into light, aux and the depth; the light and
 //           depth copied for the water; then each water draw's two halves, transmit (the light
 //           times it) and emit (added), depth tested, not written, aux and alpha kept
-//   post    that frame, then host.js's bloom (five steps through a quarter and an eighth of the
+//   fx      the water frame, then the particles (everglade-fx.wgsl, its own module): the smoke over
+//           what is behind it (premultiplied), then the fire and glows added, both soft against the
+//           depth copied for the water
+//   post    the fx frame, then host.js's bloom (five steps through a quarter and an eighth of the
 //           size) and post_fs, the frame as it goes to the screen
 // Both sides sample one linear sampler without anisotropy (host.js asks for 8x, which is each
 // GPU's own), and the layers the browser decoded and mipmapped.
@@ -33,14 +36,22 @@ EP_SIZE :: "320 180";
 EP_SHADOW :: 2048;          // the shadow map's side on a desktop (host.js shadowLayout)
 // A pass: the entries it lowers (vertex and fragment pairs, each lowered to FS.spv), and the
 // values allowed past the tolerance (edge pixels; bg measured 15 at 320x180).
-// `at` is the place the frame starts at (the page's hash, "" for the spawn).
-EpPass :: struct { name: string; entries: string; allow: string; at: string; }
-EP_PASSES :: [5] EpPass.[
+// `at` is the place the frame starts at (the page's hash, "" for the spawn); fx, everglade-fx.wgsl's
+// entries; run, the frame's own wasm-run options instead of the still 90th frame (EP_STILL).
+EpPass :: struct { name: string; entries: string; allow: string; at: string; fx: string; run: string; }
+EP_STILL :: "--frames 90 --every 90 --golden";
+// a Meteor Swarm (the srd5 ruleset's spells): 1 arms it, a click on the road casts it, and 260
+// frames in its fire, smoke, glows and shockwave are in the air (429 quads)
+EP_SPELL :: "--fact ruleset=srd5 --keys 30:49:1,31:49:0 --pointer 40:200:120 --frames 260 --every 260";
+EP_FRAME :: "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs";
+EP_FX :: "particle_over_vs particle_over_fs particle_vs particle_fs";
+EP_PASSES :: [6] EpPass.[
   EpPass.{name = "bg", entries = "bg_vs bg_fs", allow = "40"},
   EpPass.{name = "scene", entries = "shadow_vs shadow_fs scene_vs scene_fs", allow = "400"},
   EpPass.{name = "grass", entries = "shadow_vs shadow_fs grass_vs grass_fs", allow = "400"},
-  EpPass.{name = "water", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs", allow = "2000", at = "weir"},
-  EpPass.{name = "post", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs bg_vs bloom_fs bg_vs post_fs", allow = "2000", at = "weir"}];
+  EpPass.{name = "water", entries = EP_FRAME, allow = "2000", at = "weir"},
+  EpPass.{name = "fx", entries = EP_FRAME, allow = "10000", fx = EP_FX, run = EP_SPELL},
+  EpPass.{name = "post", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs bg_vs bloom_fs bg_vs post_fs", allow = "2000", fx = EP_FX, run = EP_SPELL}];
 // host.js postLayouts's bloom steps (blur x, blur y, again, then to an eighth) and postTargets's chain:
 // each step's target and source
 EP_BLOOM :: [5] string.["q0 light 0 0 0 4", "q1 q0 1 0 1 1", "q0 q1 0 1 1 1", "e1 q0 1 0 1 2", "e0 e1 0 1 1 1"];
@@ -49,7 +60,7 @@ ep_find :: (name: string) -> int {
   for i: 0..<EP_PASSES.count { if EP_PASSES[i].name == name { return i; } }
   return -1;
 }
-#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("post") == 4 && ep_find("bloom") == -1 && ep_find("") == -1; }
+#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("fx") == 4 && ep_find("post") == 5 && ep_find("bloom") == -1 && ep_find("") == -1; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -74,31 +85,39 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string) -> int 
   build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
     "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
   if step("the wasm", build[..], o[..]) < 0 { return 1; }
-  frame := [22] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
-    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", frame_dir, "--hash", p.at];
-  if step("the frame", frame[0..<ifx p.at.count > 0 then 22 else 20], o[..]) < 0 { return 1; }
+  base := [15] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
+    "--extra", "9000", "--size", "320x180", "--dump", frame_dir];
+  frame: [48] string; fn := 0;
+  for w: base { frame[fn] = w; fn += 1; }
+  if p.at.count > 0 { frame[fn] = "--hash"; frame[fn + 1] = p.at; fn += 2; }
+  opts := ifx p.run.count > 0 then p.run else EP_STILL;
+  k := 0;
+  while ep_word(opts, k).count > 0 && fn < 48 { frame[fn] = ep_word(opts, k); fn += 1; k += 1; }
+  if step("the frame", frame[0..<fn], o[..]) < 0 { return 1; }
   int_dir := fs_join(work, "int", b[2][..]);
   ih := [3] string.["coax/web/tool.sh", "verse/gpu/int-hash.coax", int_dir];
   if step("the integer hash", ih[..], o[..]) < 0 { return 1; }
   print("everglade-pass: %, one integer hash on both sides\n", p.name);
   i1: [1024] u8; i2: [1024] u8;
-  ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "style.coax", i2[..]), p.allow, keep);
+  i3: [1024] u8;
+  ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "everglade-fx.wgsl", i3[..]), fs_join(int_dir, "style.coax", i2[..]), p.allow, keep);
   if live {
     print("everglade-pass: %, the live sin hashes (reported only)\n", p.name);
-    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "verse/style.coax", "9999999", "");
+    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/everglade-fx.wgsl", "verse/style.coax", "9999999", "");
   }
   return ifx ok then 0 else 1;
 }
 
 // A directory of the spec and its files, then pass-check on it.
-check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string, wgsl: string, style: string, allow: string, keep: string) -> bool {
+check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string, wgsl: string, fx_wgsl: string, style: string, allow: string, keep: string) -> bool {
   b: [8] [1024] u8; o: [262144] u8;
   dir := fs_join(work, tag, b[0][..]);
   if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("everglade-pass: cannot make a directory"); return false; }
   // the frame's files, and the WGSL
-  files := [11] string.["u.bin", "s0.bin", "s1.bin", "s2.bin", "s3.bin", "draws.bin", "draws.txt", "vertices.bin", "index.bin", "layers.bin.list", ""];
+  files := [11] string.["u.bin", "s0.bin", "s1.bin", "s2.bin", "s3.bin", "draws.bin", "draws.txt", "vertices.bin", "index.bin", "layers.bin.list", "puffs.bin"];
   for f: files { if f.count > 0 && !copy(fs_join(frame_dir, f, b[1][..]), fs_join(dir, f, b[2][..])) { return false; } }
   if !copy(wgsl, fs_join(dir, "everglade.wgsl", b[1][..])) { return false; }
+  if p.fx.count > 0 && !copy(fx_wgsl, fs_join(dir, "everglade-fx.wgsl", b[1][..])) { return false; }
   list: [8192] u8;
   ln := fs_read(fs_join(frame_dir, "layers.bin.list", b[1][..]), list[..]);
   nlayers := 0;
@@ -118,8 +137,20 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   if step("the translation", tr[..], o[..]) < 0 { return false; }
   k := 0;
   while ep_word(p.entries, k).count > 0 {
-    if !lower(dir, coax_out, ep_word(p.entries, k), ep_word(p.entries, k + 1)) { return false; }
+    if !lower(dir, coax_out, "eg_", ep_word(p.entries, k), ep_word(p.entries, k + 1)) { return false; }
     k += 2;
+  }
+  if p.fx.count > 0 {
+    // the particles' module, translated and lowered the same way
+    fb: [1024] u8;
+    fx_out := fs_join(dir, "gpu-fx.coax", fb[..]);
+    tf := [7] string.["coax/web/tool.sh", "wgsl-coax", fx_out, "egfx", fx_wgsl, "--loads", loads];
+    if step("the particles' translation", tf[..], o[..]) < 0 { return false; }
+    j := 0;
+    while ep_word(p.fx, j).count > 0 {
+      if !lower(dir, fx_out, "egfx_", ep_word(p.fx, j), ep_word(p.fx, j + 1)) { return false; }
+      j += 2;
+    }
   }
   // the spec
   dt: [256] u8;
@@ -128,6 +159,7 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   all := args_whole(ep_word(words, 0));
   draws := all - args_whole(ep_word(words, 1));
   blades := args_whole(ep_word(words, 2));
+  sparks := args_whole(ep_word(words, 3));
   side := ep_image_side(dir, nlayers);
   sp: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
   put(s, "wgsl everglade.wgsl\nsize "); put(s, EP_SIZE); put(s, "\nbuffer u u.bin\n");
@@ -150,9 +182,13 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
       if blades <= 0 { tool_errln("everglade-pass: the frame has no grass"); return false; }
     }
     if p.name == "grass" { put(s, "pass grass_fs.spv grass_vs grass_fs 2 own 0 0 3:"); put_int(s, blades); put(s, "\n"); }
-    if p.name == "water" || p.name == "post" {
+    if p.name == "water" || p.name == "fx" || p.name == "post" {
       if all <= draws { tool_errln("everglade-pass: the frame has no water"); return false; }
       ep_water(s, scene, blades, draws, all);
+    }
+    if p.fx.count > 0 {
+      if sparks <= 0 { tool_errln("everglade-pass: the frame has no particles"); return false; }
+      ep_fx(s, sparks);
     }
     if p.name == "post" { ep_post(s, 320, 180); }
   }
@@ -175,7 +211,7 @@ ep_water :: (s: [] Sp, scene: string, blades: int, draws: int, all: int) {
     half := [2] string.["water_transmit_fs blend=mul", "water_emit_fs blend=add"];
     for h: half {
       put(s, "pass "); put(s, ep_word(h, 0)); put(s, ".spv water_vs "); put(s, ep_word(h, 0)); put(s, " light,aux scene_depth 0 0 draws:");
-      put_int(s, i); put(s, ":"); put_int(s, i + 1); put(s, " keep nowrite "); put(s, ep_word(h, 1)); put(s, " alphakeep mask=1\n");
+      put_int(s, i); put(s, ":"); put_int(s, i + 1); put(s, " keep nowrite "); put(s, ep_word(h, 1)); put(s, " alpha=keep mask=1\n");
     }
   }
 }
@@ -185,8 +221,31 @@ ep_water :: (s: [] Sp, scene: string, blades: int, draws: int, all: int) {
   t := cast(string) o[0..<s[0].n];
   #assert !s[0].bad && ep_lines(t) == 12;
   #assert ep_line(t, 6) == "pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:9 keep";
-  #assert ep_line(t, 10) == "pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=mul alphakeep mask=1";
-  #assert ep_line(t, 11) == "pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=add alphakeep mask=1";
+  #assert ep_line(t, 10) == "pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=mul alpha=keep mask=1";
+  #assert ep_line(t, 11) == "pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=add alpha=keep mask=1";
+}
+
+// The particles after the water (host.js particlePipeline): `sparks` quads of 6 vertices, the smoke
+// over what is behind (premultiplied; its alpha takes the bloom's share), then the rest added, depth
+// tested and not written, aux kept; soft against the depth copied for the water. The WGSL they are
+// drawn from is everglade-fx.wgsl, and everglade.wgsl again after them.
+ep_fx :: (s: [] Sp, sparks: int) {
+  put(s, "wgsl everglade-fx.wgsl\nbuffer puffs puffs.bin\n");
+  half := [2] string.["particle_over blend=over alpha=under", "particle blend=add alpha=add"];
+  for h: half {
+    put(s, "pass "); put(s, ep_word(h, 0)); put(s, "_fs.spv "); put(s, ep_word(h, 0)); put(s, "_vs "); put(s, ep_word(h, 0));
+    put(s, "_fs light,aux scene_depth 0 0 6:"); put_int(s, sparks); put(s, " keep nowrite "); put(s, ep_word(h, 1)); put(s, " "); put(s, ep_word(h, 2));
+    put(s, " mask=1 bind=particle_depth:water_scene_depth\n");
+  }
+  put(s, "wgsl everglade.wgsl\n");
+}
+#test "the particles' passes" {
+  o: [2048] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  ep_fx(s, 24);
+  t := cast(string) o[0..<s[0].n];
+  #assert !s[0].bad && ep_lines(t) == 5 && ep_line(t, 4) == "wgsl everglade.wgsl";
+  #assert ep_line(t, 2) == "pass particle_over_fs.spv particle_over_vs particle_over_fs light,aux scene_depth 0 0 6:24 keep nowrite blend=over alpha=under mask=1 bind=particle_depth:water_scene_depth";
+  #assert ep_line(t, 3) == "pass particle_fs.spv particle_vs particle_fs light,aux scene_depth 0 0 6:24 keep nowrite blend=add alpha=add mask=1 bind=particle_depth:water_scene_depth";
 }
 
 // The bloom and post passes after ep_water, at W by H (EP_SIZE).
@@ -213,11 +272,11 @@ ep_post :: (s: [] Sp, w: int, h: int) {
   #assert ep_line(t, 16) == "pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux bind=post_depth:scene_depth";
 }
 
-// vs and fs of the translation, as FS.spv with FS.spv.bindings (coax spirv's report).
-lower :: (dir: string, coax_out: string, vs: string, fs_: string) -> bool {
+// vs and fs of the translation (PREFIX their names there), as FS.spv with FS.spv.bindings (coax spirv's report).
+lower :: (dir: string, coax_out: string, prefix: string, vs: string, fs_: string) -> bool {
   b: [4] [1024] u8; o: [65536] u8; v: [128] u8; f: [128] u8; nb: [256] u8;
   spv := fs_join(dir, cat(fs_, ".spv", nb[..]), b[0][..]);
-  low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat("eg_", vs, v[..]), "--fragment", cat("eg_", fs_, f[..])];
+  low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat(prefix, vs, v[..]), "--fragment", cat(prefix, fs_, f[..])];
   argv: [9] string;
   for i: 0..<7 { argv[i] = low[i]; }
   argv[7] = "-o"; argv[8] = spv;

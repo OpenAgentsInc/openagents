@@ -13,7 +13,7 @@
 //   index FILE                       u32 indices for the draw list
 //   draws FILE N                     the draw list: N records of u32 first, count, base instance, instances
 //   pass SPV VS FS TARGETS DEPTH BIAS SLOPE CALLS
-//          [keep] [nowrite] [always] [blend=add|mul|alpha] [alphakeep] [mask=I] [bind=NAME:RES]...
+//          [keep] [nowrite] [always] [blend=MODE] [alpha=MODE] [mask=I] [bind=NAME:RES]...
 //                                    VS and FS the WGSL's entries (for the browser); SPV a module from coax spirv, SPV.bindings its bindings ("binding I KIND NAME"
 //                                    a line, as coax spirv prints them); TARGETS a number of rgba16float colour targets
 //                                    of its own (cleared to 0), or target NAMEs joined by commas; DEPTH a depth NAME,
@@ -21,9 +21,9 @@
 //                                    WebGPU's depthBias and depthBiasSlopeScale; CALLS "draws" (the whole list),
 //                                    "draws:A:B" (records A to B, B not included), or V or V:I vertices and instances.
 //                                    keep: the targets and depth are loaded, not cleared; nowrite: depth is tested,
-//                                    not written; always: the depth test always passes; blend: the colour blended
-//                                    (one, one; source over; the target times the source); alphakeep: the targets'
-//                                    alpha kept; mask=I: target I left as it is; bind: the shader's NAME is RES
+//                                    not written; always: the depth test always passes; blend: the colour blended,
+//                                    a MODE of vks.h's: add, alpha, mul, over, under or keep; alpha: the alpha's
+//                                    (else as blend's); mask=I: target I left as it is; bind: the shader's NAME is RES
 //                                    in this pass
 // The last pass's colour targets (it must have some) are written to OUT as float32 RGBA rows, target after target.
 //   vk-passes SPEC OUT
@@ -61,6 +61,12 @@ static Res *find(const char *name) {
   exit(1);
 }
 typedef struct { VksPipe *pipe; VksPass *pass; } Draw;
+// A blend mode's name (vks.h), 0 none.
+static int mode(const char *m) {
+  static const char *names[] = {"", "add", "alpha", "mul", "over", "under", "keep"};
+  for (int i = 1; i < 7; i++) if (!strcmp(m, names[i])) return i;
+  return 0;
+}
 static void record(VkCommandBuffer cmd, void *user) { Draw *d = user; vks_pipe_record(d->pipe, cmd, d->pass); }
 
 int main(int argc, char **argv) {
@@ -199,10 +205,8 @@ int main(int argc, char **argv) {
         if (!strcmp(o, "keep")) pass.keep = 1;
         else if (!strcmp(o, "nowrite")) pass.depth_write = 0;
         else if (!strcmp(o, "always")) pass.depth_always = 1;
-        else if (!strcmp(o, "alphakeep")) pass.alpha_keep = 1;
-        else if (!strcmp(o, "blend=add")) pass.blend = VKS_ADD;
-        else if (!strcmp(o, "blend=mul")) pass.blend = VKS_MUL;
-        else if (!strcmp(o, "blend=alpha")) pass.blend = VKS_ALPHA;
+        else if (!strncmp(o, "blend=", 6) && mode(o + 6) > 0) pass.blend = mode(o + 6);
+        else if (!strncmp(o, "alpha=", 6) && mode(o + 6) > 0) pass.alpha_blend = mode(o + 6);
         else if (!strncmp(o, "mask=", 5)) pass.masked |= 1u << atoi(o + 5);
         else if (!strncmp(o, "bind=", 5)) continue;
         else { fprintf(stderr, "vk-passes: no pass option %s\n", o); return 1; }
