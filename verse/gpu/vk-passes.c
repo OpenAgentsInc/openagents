@@ -16,7 +16,7 @@
 //   let NAME V                       a count, used as $NAME for a number in a pass's calls or the draw list's N
 //   each draws:A:B ... end           the directives between once for each of the list's records A to B (draws:each: that one)
 //   pass SPV VS FS TARGETS DEPTH BIAS SLOPE CALLS
-//          [keep] [nowrite] [always] [blend=MODE] [alpha=MODE] [mask=I] [bind=NAME:RES]...
+//          [keep] [nowrite] [always] [blend=MODE] [alpha=MODE] [mask=I] [bind=NAME:RES]... [vertices=NAME:FLOATS]
 //                                    VS and FS the WGSL's entries (for the browser); SPV a module from coax spirv, SPV.bindings its bindings ("binding I KIND NAME"
 //                                    a line, as coax spirv prints them); TARGETS a number of rgba16float colour targets
 //                                    of its own (cleared to 0), or target NAMEs joined by commas; DEPTH a depth NAME,
@@ -25,9 +25,10 @@
 //                                    "draws:A:B" (records A to B, B not included), "draws:each", or V or V:I vertices and instances.
 //                                    keep: the targets and depth are loaded, not cleared; nowrite: depth is tested,
 //                                    not written; always: the depth test always passes; blend: the colour blended,
-//                                    a MODE of vks.h's: add, alpha, mul, over, under or keep; alpha: the alpha's
+//                                    a MODE of vks.h's: add, alpha, mul, over, under, keep or max; alpha: the alpha's
 //                                    (else as blend's); mask=I: target I left as it is; bind: the shader's NAME is RES
-//                                    in this pass
+//                                    in this pass; vertices: buffer NAME holds the vertex entry's attributes, FLOATS
+//                                    floats a vertex, one vec4f per four
 // The last pass's colour targets (it must have some) are written to OUT as float32 RGBA rows, target after target.
 //   vk-passes SPEC OUT
 #include "vk-spec.h"

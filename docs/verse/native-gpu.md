@@ -327,6 +327,17 @@ Every phase and native feature is a task in the Verse project
   `realm.sh HOST screen --seconds 25 --demo` ran on DP-1 at 2560x1440:
   1,433 frames in 23.9 s (59.94 a second), longest gap 21 ms, then back on
   VT 1; the presented image is the village, the grass, the shadows and the
-  Ranger walking. Still to come: the HUD's own vertices (host.js draws them
-  with its fx pipeline after post; the panels show, their text does not),
-  the pointer, sound, and the realm's actions (navigation, sockets).
+  Ranger walking.
+- 2026-10-31: the HUD and the pointer natively. The spec's last pass is
+  host.js's HUD: the frame's own vertices through fx_vs/fx_fs (a pass
+  option `vertices=NAME:FLOATS`, a vec4f attribute per four floats, and
+  blend `max`, which vks and the browser runner both take); wasm-run dumps
+  them as hud.bin. post with the HUD against the browser: 15 passes, 639 of
+  230,400 values past the tolerance, validation 0/0. `verse/kms/mice.h`
+  reads the mice (grabbed, relative motion kept inside the screen) as
+  host.js's pointer and wheel, and vk-realm draws the pointer as a dot after
+  the HUD. On the RTX 4080 at 2560x1440: 1,434 frames in 23.9 s (59.94 a
+  second), 0 dropped, longest gap 20.3 ms; the presented image has the
+  title, the reply and map buttons, the HP bar, the place labels and the
+  "E: swing the hammer" prompt. Still to come: sound, and the realm's
+  actions (navigation, sockets), which a bare screen ignores for now.

@@ -104,11 +104,13 @@ const fnv = (b: Uint8Array) => {
 const keys = (opt.keys ?? "").split(",").filter(Boolean).map((k) => k.split(":").map(Number));
 // --pointer F:X:Y,...: a click (down, up) at device pixel X, Y before frame F, as host.js's test hook clicks
 const clicks = (opt.pointer ?? "").split(",").filter(Boolean).map((k) => k.split(":").map(Number));
+let hud = 0;
 for (let f = 1; f <= frames; f++) {
   for (const [kf, key, down] of keys) if (kf === f) { (down ? x.coaxial_key : x.coaxial_key_up)(state, key, 0); sayAfter(); }
   for (const [cf, cx, cy] of clicks) if (cf === f) for (const ph of [0, 2]) { x.coaxial_pointer(state, cx, cy, ph, 0, 1); sayAfter(); }
   let n = x.coaxial_frame(state, vertices, uniforms, w, h, scale, 1 / 60, 0) >>> 0;
   n = Math.min(n, maxVertices);
+  hud = n;
   sayAfter();
   if (f % every && f !== frames) continue;
   const draws = x.coaxial_draw_count(state) >>> 0;
@@ -128,10 +130,14 @@ if (opt.dump) {
   for (let k = 0; k < Math.min(4, x.coaxial_stores()); k++)
     writeFileSync(`${opt.dump}/s${k}.bin`, bytesAt(x.coaxial_store(state, k), (x.coaxial_store_bytes(state, k) >>> 0) & ~3));
   // what a pass check draws the scene from (verse/gpu/everglade-pass.coax): the draw list, how many of its
-  // last draws are water, the grass's blades and the particles' quads, the pack's storage (vertices) and index buffers, and its layer images in order
+  // last draws are water, the grass's blades, the particles' quads, the frame's vertices and their floats, the pack's storage (vertices) and index buffers, and its layer images in order
   const draws = x.coaxial_draw_count(state) >>> 0;
   writeFileSync(`${opt.dump}/draws.bin`, draws ? bytesAt(x.coaxial_draws(state), draws * 16) : new Uint8Array(16));
-  writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0} ${x.coaxial_grass_instances?.(state) >>> 0} ${x.coaxial_particle_instances?.(state) >>> 0}\n`);
+  writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0} ${x.coaxial_grass_instances?.(state) >>> 0} ${x.coaxial_particle_instances?.(state) >>> 0} ${hud} ${floats}\n`);
+  // the frame's own vertices (the HUD, host.js's fx pipeline after post), at least 16 bytes
+  const hudBytes = new Uint8Array(Math.max(16, hud * floats * 4));
+  hudBytes.set(bytesAt(vertices, hud * floats * 4));
+  writeFileSync(`${opt.dump}/hud.bin`, hudBytes);
   // the particles' puffs (host.js writes coaxial_particle_bytes of them each frame)
   if (x.coaxial_particles) writeFileSync(`${opt.dump}/puffs.bin`, bytesAt(x.coaxial_particles(state), Math.max(16, (x.coaxial_particle_bytes(state) >>> 0) & ~3)));
   if (of(2)) writeFileSync(`${opt.dump}/vertices.bin`, of(2)!.bytes);

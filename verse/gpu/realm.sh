@@ -26,7 +26,7 @@ mkdir -p "$work/ship/spec"
 (cd "$work/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$work/ship/spec/")
 cp "$work/realm"/*.c "$work/realm"/*.h "$work/realm/sources" "$work/ship/"
 cp "$here"/vk-realm.c "$here"/vk-passes.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-   "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$root"/verse/kms/evdev.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$work/ship/"
+   "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$work/ship/"
 cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$work/ship/"
 args="$*"
 

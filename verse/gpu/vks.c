@@ -8,11 +8,11 @@
 
 // A blend mode's source (dst 0) or destination (dst 1) factor (vks.h).
 static VkBlendFactor factor(int mode, int dst) {
-  static const VkBlendFactor f[7][2] = {{VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ZERO}, {VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE},
+  static const VkBlendFactor f[8][2] = {{VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ZERO}, {VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE},
     {VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA}, {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_SRC_COLOR},
     {VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA}, {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA},
-    {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE}};
-  return f[mode >= 0 && mode < 7 ? mode : 0][dst];
+    {VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE}, {VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE}};
+  return f[mode >= 0 && mode < 8 ? mode : 0][dst];
 }
 static int is_depth(VkFormat f) { return f == VK_FORMAT_D32_SFLOAT || f == VK_FORMAT_D16_UNORM || f == VK_FORMAT_D24_UNORM_S8_UINT; }
 static VkImageAspectFlags aspect(const VksImage *t) { return t->depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT; }
@@ -259,8 +259,9 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
   for (uint32_t i = 0; i < pass->ntargets; i++) {
     int off = (pass->masked >> i) & 1, am = pass->alpha_blend ? pass->alpha_blend : pass->blend == VKS_ALPHA ? VKS_OVER : VKS_ADD;
     blends[i] = (VkPipelineColorBlendAttachmentState){.blendEnable = pass->blend != VKS_REPLACE && !off,
-      .srcColorBlendFactor = factor(pass->blend, 0), .dstColorBlendFactor = factor(pass->blend, 1), .colorBlendOp = VK_BLEND_OP_ADD,
-      .srcAlphaBlendFactor = factor(am, 0), .dstAlphaBlendFactor = factor(am, 1), .alphaBlendOp = VK_BLEND_OP_ADD,
+      .srcColorBlendFactor = factor(pass->blend, 0), .dstColorBlendFactor = factor(pass->blend, 1),
+      .colorBlendOp = pass->blend == VKS_MAX ? VK_BLEND_OP_MAX : VK_BLEND_OP_ADD,
+      .srcAlphaBlendFactor = factor(am, 0), .dstAlphaBlendFactor = factor(am, 1), .alphaBlendOp = am == VKS_MAX ? VK_BLEND_OP_MAX : VK_BLEND_OP_ADD,
       .colorWriteMask = off ? 0 : 0xF};
   }
   VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, .attachmentCount = pass->ntargets, .pAttachments = blends};

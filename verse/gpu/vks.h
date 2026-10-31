@@ -48,8 +48,8 @@ typedef struct {
 
 // Blending, as source and destination factors: replace; add (one, one); alpha (source alpha, one
 // minus it); multiply (zero, the source's colour); over (one, one minus source alpha, premultiplied);
-// under (zero, one minus source alpha); keep (zero, one).
-enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2, VKS_MUL = 3, VKS_OVER = 4, VKS_UNDER = 5, VKS_KEEP = 6 };
+// under (zero, one minus source alpha); keep (zero, one); max (the larger of the two, host.js's HUD).
+enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2, VKS_MUL = 3, VKS_OVER = 4, VKS_UNDER = 5, VKS_KEEP = 6, VKS_MAX = 7 };
 typedef struct {
   const uint32_t *words;
   size_t count;

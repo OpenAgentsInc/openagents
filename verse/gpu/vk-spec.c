@@ -96,8 +96,8 @@ static const void *bytes_of(const VkSpecFiles *files, const char *name, size_t *
   return p;
 }
 static int mode(const char *m) {
-  static const char *names[] = {"", "add", "alpha", "mul", "over", "under", "keep"};
-  for (int i = 1; i < 7; i++) if (!strcmp(m, names[i])) return i;
+  static const char *names[] = {"", "add", "alpha", "mul", "over", "under", "keep", "max"};
+  for (int i = 1; i < 8; i++) if (!strcmp(m, names[i])) return i;
   return 0;
 }
 
@@ -297,6 +297,18 @@ VkSpec *vk_spec_open(Vkc *v, const char *path, const VkSpecFiles *files) {
         else if (!strncmp(o, "alpha=", 6) && mode(o + 6) > 0) pass->alpha_blend = mode(o + 6);
         else if (!strncmp(o, "mask=", 5)) pass->masked |= 1u << atoi(o + 5);
         else if (!strncmp(o, "bind=", 5)) continue;
+        else if (!strncmp(o, "vertices=", 9)) {
+          // a vertex buffer of FLOATS floats a vertex, one vec4f attribute per four
+          char name[64];
+          int floats = 0;
+          const char *colon = strchr(o + 9, ':');
+          if (!colon || colon - (o + 9) >= 64 || (floats = atoi(colon + 1)) < 1 || floats > 32) { free(words); FAIL("vertices=NAME:FLOATS"); }
+          snprintf(name, sizeof name, "%.*s", (int)(colon - (o + 9)), o + 9);
+          Res *r = find(s, name);
+          if (!r || r->kind != VKS_STORAGE) { free(words); FAIL("the spec has no buffer %s", name); }
+          pass->vertices = &r->buf; pass->stride = (uint32_t)floats * 4; pass->nattrs = (uint32_t)(floats + 3) / 4;
+          for (uint32_t k = 0; k < pass->nattrs; k++) pass->attrs[k] = (VkVertexInputAttributeDescription){k, 0, VK_FORMAT_R32G32B32A32_SFLOAT, k * 16};
+        }
         else { free(words); FAIL("no pass option %s", o); }
       }
       if (!strncmp(calls, "draws", 5)) {

@@ -126,7 +126,7 @@ window.runSpec = async function (specFile) {
       else if (a[0] === "buffer" || a[0] === "index") {
         const bytes = await bytesOf(a[0] === "index" ? a[1] : a[2]);
         const b = d.createBuffer({ size: Math.max(16, Math.ceil(bytes.length / 16) * 16),
-          usage: (a[0] === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
+          usage: (a[0] === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX) | GPUBufferUsage.COPY_DST });
         const whole = new Uint8Array(Math.ceil(bytes.length / 4) * 4); whole.set(bytes);
         d.queue.writeBuffer(b, 0, whole);
         if (a[0] === "index") index = b; else res.set(a[1], { buffer: b });
@@ -173,12 +173,15 @@ window.runSpec = async function (specFile) {
         const keep = opts.includes("keep"), write = !opts.includes("nowrite"), always = opts.includes("always");
         const mode = (opts.find((o) => o.startsWith("blend=")) || "").slice(6), alphaMode = (opts.find((o) => o.startsWith("alpha=")) || "").slice(6);
         const masked = opts.filter((o) => o.startsWith("mask=")).map((o) => +o.slice(5));
-        for (const o of opts) if (!/^(keep|nowrite|always|(blend|alpha)=(add|alpha|mul|over|under|keep)|mask=\d+|bind=\w+:\w+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        for (const o of opts) if (!/^(keep|nowrite|always|(blend|alpha)=(add|alpha|mul|over|under|keep|max)|mask=\d+|bind=\w+:\w+|vertices=\w+:\d+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        // a vertex buffer of FLOATS floats a vertex, one vec4f attribute per four (host.js's fx pipeline)
+        const vtx = (opts.find((o) => o.startsWith("vertices=")) || "").slice(9).split(":");
+        const vertexBuffers = vtx[0] ? [{ arrayStride: +vtx[1] * 4, attributes: Array.from({ length: Math.ceil(+vtx[1] / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] : [];
         const rebound = new Map(opts.filter((o) => o.startsWith("bind=")).map((o) => o.slice(5).split(":")));
         // vks.h's modes, as WebGPU factors; the alpha follows the colour's unless alpha= says (alpha: over)
         const modes = { add: ["one", "one"], alpha: ["src-alpha", "one-minus-src-alpha"], mul: ["zero", "src"], over: ["one", "one-minus-src-alpha"],
-          under: ["zero", "one-minus-src-alpha"], keep: ["zero", "one"] };
-        const of = (m) => ({ operation: "add", srcFactor: modes[m][0], dstFactor: modes[m][1] });
+          under: ["zero", "one-minus-src-alpha"], keep: ["zero", "one"], max: ["one", "one"] };
+        const of = (m) => ({ operation: m === "max" ? "max" : "add", srcFactor: modes[m][0], dstFactor: modes[m][1] });
         const blend = mode ? { color: of(mode), alpha: of(alphaMode || (mode === "alpha" ? "over" : "add")) } : undefined;
         last = colour;
         let depth = null;
@@ -186,7 +189,7 @@ window.runSpec = async function (specFile) {
         else if (depthName !== "-") depth = res.get(depthName).view;
         const pipeline = await d.createRenderPipelineAsync({
           layout: "auto",
-          vertex: { module, entryPoint: vs },
+          vertex: { module, entryPoint: vs, buffers: vertexBuffers },
           fragment: { module, entryPoint: fs, targets: colour.map((_, i) => masked.includes(i) ? { format: "rgba16float", writeMask: 0 }
             : { format: "rgba16float", ...(blend ? { blend } : {}) }) },
           primitive: { topology: "triangle-list", cullMode: "none" },
@@ -211,6 +214,7 @@ window.runSpec = async function (specFile) {
           ...(depth ? { depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: keep ? "load" : "clear", depthStoreOp: "store" } } : {}),
         });
         pass.setPipeline(pipeline);
+        if (vtx[0]) pass.setVertexBuffer(0, res.get(vtx[0]).buffer);
         const top = Math.max(-1, ...groups.keys());
         for (let g = 0; g <= top; g++) pass.setBindGroup(g, d.createBindGroup({ layout: pipeline.getBindGroupLayout(g), entries: groups.get(g) ?? [] }));
         if (calls.startsWith("draws")) {

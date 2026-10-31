@@ -2,7 +2,7 @@
 // gpu-realm-host): its Coax built with gcc (verse/native/realm-host.h, the face host.js
 // drives) and the passes host.js draws, as the spec everglade-pass --emit writes (the live
 // WGSL lowered by coax spirv, the layers decoded in Coax), kept on the GPU (vk-spec.h). Each
-// frame the realm runs, its uniforms, stores, particles and draw list go into the spec's
+// frame the realm runs, its uniforms, stores, particles, draw list and own vertices (the HUD) go into the spec's
 // buffers in place, its counts are set, and the spec is recorded and presented.
 //   vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden]
 //            [--seconds N] [--demo] [--shot OUT.ppm] [--shot-at S]       on the screen (vkd.h)
@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 #include "evdev.h"
 #include "face.h"
+#include "mice.h"
 #include "realm-host.h"
 #include "vk-spec.h"
 #include "vkd.h"
@@ -45,6 +46,7 @@ bool realm_key_up(void *state, int key) { (void)state; coaxial_key_up(H.state, k
 static const void *file(void *user, const char *name, size_t *size, size_t *cap) {
   (void)user;
   if (!strcmp(name, "u.bin")) { *size = *cap = (size_t)H.uniform_floats * 4; return rh_ptr(H.uniforms); }
+  if (!strcmp(name, "hud.bin")) { *size = 16; *cap = (size_t)H.max_vertices * H.floats * 4; return rh_ptr(H.vertices); }
   if (name[0] == 's' && name[1] >= '0' && name[1] <= '9' && !strcmp(name + 2, ".bin")) {
     int k = name[1] - '0';
     *size = coaxial_store_bytes(H.state, k) & ~3u;
@@ -64,13 +66,35 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
   return NULL;  // the rest from the directory (the layers, the draw list's first frame)
 }
 
+// The pointer: the mice into the face, as host.js's pointer and wheel events, and drawn as a
+// dot after the frame's own vertices (fx_vs's 16 floats: the place in device pixels and the
+// place in the stroke, its shape, tint and bar; a stroke of length 0 is a round glow).
+static void to_pointer(void *user, float x, float y, int phase) { (void)user; coaxial_pointer(H.state, x, y, phase, 0, 1); }
+static void to_wheel(void *user, float dy) { (void)user; coaxial_wheel(H.state, dy); }
+static Mice mice;
+static int cursor;
+static uint32_t with_cursor(uint32_t n) {
+  if (!cursor || H.floats != 16 || n + 6 > (uint32_t)H.max_vertices) return n;
+  float *v = (float *)rh_ptr(H.vertices) + (size_t)n * 16, r = 14;
+  static const float corner[6][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, -1}, {1, 1}, {-1, 1}};
+  for (int i = 0; i < 6; i++, v += 16) {
+    float dx = corner[i][0] * r, dy = corner[i][1] * r;
+    float one[16] = {mice.x + dx, mice.y + dy, dx, dy, 0, mice.down ? 4.5f : 3.0f, 1, 6, 1, 1, 1, 1, 0, 0, 0, 0};
+    memcpy(v, one, sizeof one);
+  }
+  return n + 6;
+}
+
 typedef struct { VkcBuffer *buf; uint32_t version; size_t cap; } Store;
 static Store stores[4];
-static VkcBuffer *uniforms, *puffs;
+static VkcBuffer *uniforms, *puffs, *hud;
+static uint32_t hud_vertices;   // the last frame's own vertices (rh_frame's count)
 
 // The frame's data into the spec, as host.js writes its buffers.
 static void update(VkSpec *s) {
   memcpy(uniforms->map, rh_ptr(H.uniforms), (size_t)H.uniform_floats * 4);
+  if (hud) memcpy(hud->map, rh_ptr(H.vertices), (size_t)hud_vertices * H.floats * 4);
+  vk_spec_let(s, "hud", hud ? hud_vertices : 0);
   for (int k = 0; k < 4; k++) {
     Store *st = &stores[k];
     if (!st->buf) continue;
@@ -162,7 +186,7 @@ int main(int argc, char **argv) {
   }
   rh_deliver(&H, nextra, sizes);
   // one frame so the stores exist at their sizes before the spec's buffers are made
-  rh_frame(&H, 320, 180, scale, 1.0f / 60);
+  hud_vertices = rh_frame(&H, 320, 180, scale, 1.0f / 60);
   if (chdir(dir)) { fprintf(stderr, "vk-realm: no directory %s\n", dir); return 1; }
 
   Vkc v;
@@ -181,6 +205,7 @@ int main(int argc, char **argv) {
   w = vk_spec_width(s); h = vk_spec_height(s);
   uniforms = vk_spec_buffer(s, "u");
   puffs = vk_spec_buffer(s, "puffs");
+  hud = vk_spec_buffer(s, "hud");
   static const char *store_names[4] = {"heights", "objects", "pose", "water_nodes"};
   for (int k = 0; k < 4; k++) {
     stores[k].buf = vk_spec_buffer(s, store_names[k]);
@@ -200,7 +225,7 @@ int main(int argc, char **argv) {
     // the frame before the spec was opened is the first of them
     for (frames = 1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
-      rh_frame(&H, (float)w, (float)h, scale, 1.0f / 60);
+      hud_vertices = rh_frame(&H, (float)w, (float)h, scale, 1.0f / 60);
       update(s);
       double t1 = now_s();
       vks_submit(&v, record, s);
@@ -222,13 +247,18 @@ int main(int argc, char **argv) {
     }
   } else {
     keyboards_open();
-    fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz; Escape or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, seconds);
+    mice_open(&mice, (float)w, (float)h);
+    cursor = mice.count > 0;
+    MiceTo to = {to_pointer, to_wheel, NULL};
+    fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
+            mice.count, seconds);
     double start = now_s(), prev = start;
     while (frames < MAX_FRAMES) {
       double t = now_s();
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
       if (keyboards_read(NULL)) { why = "Escape was pressed"; break; }
+      mice_read(&mice, (float)w, (float)h, &to);
       if (demo) {
         // walk forward and turn now and then, for a run nobody plays
         int phase = (int)((t - start) / 3) % 3;
@@ -241,7 +271,7 @@ int main(int argc, char **argv) {
       double dt = t - prev;
       prev = t;
       if (dt > 0.1) dt = 0.1;
-      rh_frame(&H, (float)w, (float)h, scale, (float)dt);
+      hud_vertices = with_cursor(rh_frame(&H, (float)w, (float)h, scale, (float)dt));
       update(s);
       rh_after(&H, 0);   // a navigation, a sound, a socket: nothing a bare screen can do yet
       double t1 = now_s();
@@ -287,6 +317,7 @@ int main(int argc, char **argv) {
     vkp_close(&v, &p);
     vkd_close(&v, &screen);
     keyboards_close();
+    mice_close(&mice);
   }
   rh_close(&H);
   return vkc_validation_errors ? 1 : 0;

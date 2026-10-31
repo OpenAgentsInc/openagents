@@ -22,7 +22,7 @@
 //           what is behind it (premultiplied), then the fire and glows added, both soft against the
 //           depth copied for the water
 //   post    the fx frame, then host.js's bloom (five steps through a quarter and an eighth of the
-//           size) and post_fs, the frame as it goes to the screen
+//           size), post_fs and the HUD (the frame's own vertices), the frame as it goes to the screen
 //   live    post's passes at the spawn's still frame: the spec a host that draws every frame
 //           draws (verse/gpu/vk-realm.c), with --emit DIR its directory; its counts may be 0
 // Both sides sample one linear sampler without anisotropy (host.js asks for 8x, which is each
@@ -46,7 +46,7 @@ EP_STILL :: "--frames 90 --every 90 --golden";
 // frames in its fire, smoke, glows and shockwave are in the air (429 quads)
 EP_SPELL :: "--fact ruleset=srd5 --keys 30:49:1,31:49:0 --pointer 40:200:120 --frames 260 --every 260";
 EP_FRAME :: "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs";
-EP_POST :: "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs bg_vs bloom_fs bg_vs post_fs";
+EP_POST :: "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs bg_vs bloom_fs bg_vs post_fs fx_vs fx_fs";
 EP_FX :: "particle_over_vs particle_over_fs particle_vs particle_fs";
 EP_PASSES :: [7] EpPass.[
   EpPass.{name = "bg", entries = "bg_vs bg_fs", allow = "40"},
@@ -129,7 +129,7 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   dir := fs_join(work, tag, b[0][..]);
   if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("everglade-pass: cannot make a directory"); return false; }
   // the frame's files, and the WGSL
-  files := [11] string.["u.bin", "s0.bin", "s1.bin", "s2.bin", "s3.bin", "draws.bin", "draws.txt", "vertices.bin", "index.bin", "layers.bin.list", "puffs.bin"];
+  files := [12] string.["u.bin", "s0.bin", "s1.bin", "s2.bin", "s3.bin", "draws.bin", "draws.txt", "vertices.bin", "index.bin", "layers.bin.list", "puffs.bin", "hud.bin"];
   for f: files { if f.count > 0 && !copy(fs_join(frame_dir, f, b[1][..]), fs_join(dir, f, b[2][..])) { return false; } }
   if !copy(wgsl, fs_join(dir, "everglade.wgsl", b[1][..])) { return false; }
   if p.fx.count > 0 && !copy(fx_wgsl, fs_join(dir, "everglade-fx.wgsl", b[1][..])) { return false; }
@@ -175,11 +175,13 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   draws := all - args_whole(ep_word(words, 1));
   blades := args_whole(ep_word(words, 2));
   sparks := args_whole(ep_word(words, 3));
+  hud := args_whole(ep_word(words, 4)); hud_floats := args_whole(ep_word(words, 5));
   side := ep_image_side(dir, nlayers);
   sp: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
   put(s, "wgsl everglade.wgsl\nsize "); put(s, EP_SIZE); put(s, "\n");
   // the frame's counts, by name: a host that draws every frame sets them (vk-spec.h)
-  put(s, "let all "); put_int(s, all); put(s, "\nlet scene "); put_int(s, draws); put(s, "\nlet blades "); put_int(s, blades); put(s, "\nlet sparks "); put_int(s, sparks); put(s, "\n");
+  put(s, "let all "); put_int(s, all); put(s, "\nlet scene "); put_int(s, draws); put(s, "\nlet blades "); put_int(s, blades); put(s, "\nlet sparks "); put_int(s, sparks);
+  put(s, "\nlet hud "); put_int(s, hud); put(s, "\n");
   put(s, "buffer u u.bin\n");
   if p.name == "bg" { put(s, "pass bg_fs.spv bg_vs bg_fs 2 - 0 0 3\n"); }
   else {
@@ -207,7 +209,11 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
       if sparks <= 0 && !live { tool_errln("everglade-pass: the frame has no particles"); return false; }
       ep_fx(s);
     }
-    if p.name == "post" || live { ep_post(s); }
+    if p.name == "post" || live {
+      if hud_floats < 1 || hud_floats > 32 { tool_errln("everglade-pass: the frame does not say its vertices' floats"); return false; }
+      ep_post(s);
+      ep_hud(s, hud_floats);
+    }
   }
   if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[1][..]), cast(string) sp[0..<s[0].n]) { tool_errln("everglade-pass: cannot write the spec"); return false; }
   // the layers decoded and mipmapped in Coax (verse/gpu/layers.coax), else pass-check has the browser decode them
@@ -297,6 +303,20 @@ ep_post :: (s: [] Sp) {
   #assert ep_line(t, 6) == "floats step0 0 0 0 4" && ep_line(t, 7) == "pass bloom_fs.spv bg_vs bloom_fs q0 - 0 0 3 bind=bloom_src:light bind=bloom_step:step0";
   #assert ep_line(t, 15) == "pass bloom_fs.spv bg_vs bloom_fs e0 - 0 0 3 bind=bloom_src:e1 bind=bloom_step:step4";
   #assert ep_line(t, 16) == "pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux bind=post_depth:scene_depth";
+}
+
+// The HUD after post, as host.js draws it into the screen's pass: the frame's own $hud vertices
+// (FLOATS floats each, a vec4f attribute per four) through fx_vs and fx_fs, the larger of each
+// channel kept where they meet.
+ep_hud :: (s: [] Sp, floats: int) {
+  put(s, "buffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:"); put_int(s, floats); put(s, "\n");
+}
+#test "the HUD's pass" {
+  o: [512] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  ep_hud(s, 16);
+  t := cast(string) o[0..<s[0].n];
+  #assert !s[0].bad && ep_lines(t) == 2 && ep_line(t, 0) == "buffer hud hud.bin";
+  #assert ep_line(t, 1) == "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16";
 }
 
 // vs and fs of the translation (PREFIX their names there), as FS.spv with FS.spv.bindings (coax spirv's report).
