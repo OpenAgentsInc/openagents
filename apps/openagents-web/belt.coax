@@ -2274,6 +2274,27 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
 }
 
+#test "from the whole system down to a 300 m hull in flight: the followed ship holds its pixel, frame after frame" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := belt_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  select_only(s[..], 0);
+  mine_order(s[..]);
+  go(s[..], true);
+  for i: 0..<40 { belt_step(s[..], 0.05); }   // well under way
+  #assert s[0].ships[0].mode == FLYING;
+  follow_ship(s[..], 0);
+  s[0].cam.goal_scale = 1.0;   // a pixel a metre: the hull 120-180 px long at 2.7 AU from the Sun
+  s[0].speed = 1;
+  s[0].cam = spacecam_settle(s[0].cam);
+  for i: 0..<8 {
+    n = belt_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+    q := ship_screen(s[..], 0);
+    #assert abs(q.x - 640.0) < 0.5 && abs(q.y - 400.0) < 0.5 && n > 0;
+  }
+}
+
 #test "a miner sent for ice mines at the rock, flies home and delivers it, and the rivals fly" {
   s: [1] Belt;
   belt_start(s[..]);
