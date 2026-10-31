@@ -50,3 +50,7 @@ A browser with WebGPU: a current Chrome or Edge, or Safari 26. About 6.6 MB arri
 ## Credits
 
 Original layout and art by OpenAgents (Apache-2.0); sounds CC0; Quaternius CC0 props (`apps/openagents-ios/OpenAgents/Resources/Haunt-NOTICE.txt`).
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

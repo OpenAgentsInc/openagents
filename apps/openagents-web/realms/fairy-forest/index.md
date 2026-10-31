@@ -37,3 +37,7 @@ Where you are and what you restored (the bloomed patches and the woken roots) is
 ## Not yet
 
 No voice talk yet.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

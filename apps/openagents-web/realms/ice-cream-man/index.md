@@ -19,3 +19,7 @@ A Verse realm at https://openagents.com/realms/ice-cream-man: the Ice Cream Man'
 - `apps/openagents-web/icecream.coax` is the HUD and its cards, `icecream-face.c` binds both for the browser, `icecream.wgsl` draws them: banded light, each room's fluorescent flicker, the fog, the ink outlines and the HUD's plates.
 - Add `#trace=600` and the page hands out the first 600 steps' inputs; `verse/icecream/test-browser.sh` plays the page headless and replays what it recorded on the native rules, step for step.
 - The page is written from `realms.json` by `coax/web/realms.ts`. The contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

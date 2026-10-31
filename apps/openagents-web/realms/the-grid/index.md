@@ -24,3 +24,7 @@ Each place's name shows over it as you come near. Walk up to a station and press
 
 - The art is OpenAgents' own Grid scene from the first Verse demo, packed for the browser by `verse/tools/pack_grid.py`: the faces and lines in their flat colours, the robot and its walk, idle and wave clips, and the robots' recorded rounds.
 - The page is `apps/openagents-web/thegrid.coax` with `thegrid-face.c`, drawn by `thegrid.wgsl`; you walk with the engine's controller (`verse/player.coax`) and see it through its camera (`verse/camera.coax`). You and everyone else are the human character from `Cast.bin` (`verse/cast.coax`), the one the app's own Grid uses; who is here comes from the playtest room `the-grid` (`thegrid-people.coax`).
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

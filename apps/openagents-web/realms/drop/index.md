@@ -15,3 +15,7 @@ Where a project made from a drop first opens, at https://openagents.com/realms/d
 - `apps/openagents-web/droprealm.coax` is the realm, `droprealm-face.c` binds it for the browser, `droprealm.wgsl` draws it.
 - On PUBLISH, the API (`coax/web/api/drops.c`, `migrations/0040_project_realm.sql`) reads each dropped `.glb` (binary glTF 2.0): every triangle list where its nodes put it, its colour and its embedded texture. It packs them into one asset pack and writes the project's realm page, which takes this module from this page.
 - Only `.glb` files with their data inside are placed today; compressed meshes and models in other formats are listed on the realm's own page as not placed.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

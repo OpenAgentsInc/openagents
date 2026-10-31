@@ -16,3 +16,7 @@ A Verse realm at https://openagents.com/realms/orbit-league: electric roadsters 
 - The physics is the Verse engine's space primitives (`docs/verse/space.md`): `verse/vehicle.coax` (wheels, suspension, grip, jumps), `verse/contact.coax` (the ball against the cars, the walls and the goal frames), `verse/gravity.coax` (the station's spin as a gravity field) and `verse/thrust.coax` (the boost), on `verse/rigid.coax`.
 - `apps/openagents-web/orbitleague.coax` is the game: the match, the bot, the camera and the HUD. `orbitleague-face.c` binds it for the browser and `orbitleague.wgsl` traces the arena, the cars, the ball and the space round the station.
 - The design is `docs/verse/game-ideas/orbit-league.md`. The page is written from `realms.json` by `coax/web/realms.ts`; the contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

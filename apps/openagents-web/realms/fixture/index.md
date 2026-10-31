@@ -15,3 +15,7 @@ The realm host's test world at https://openagents.com/realms/fixture. Every Vers
 - `apps/openagents-web/fixture.coax` is the realm, `fixture-face.c` binds it for the browser, `fixture.wgsl` draws it.
 - `verse/tools/pack_realm.py` compiles the pack from `verse/packs/fixture.json` and writes `licences.md`.
 - The page is written from `realms.json` by `coax/web/realms.ts`. The contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

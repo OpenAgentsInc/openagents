@@ -16,3 +16,7 @@ Every realm made at https://openagents.com/realms/new opens here: `/realms/<slug
 - `apps/openagents-web/myrealm.coax` is the realm, `myrealm-face.c` binds it, `myrealm.wgsl` draws it, on the fixture realm's pack (`realms/fixture/assets/fixture.pack`).
 - The realm's spec is `GET /api/playtest/realms/<slug>` (`coax/web/api/realms.c`, `migrations/0048_realm_builder.sql`). The features are laid out from the slug, so everyone sees the same realm.
 - The full spec: `docs/verse/realm-builder.md`.
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).

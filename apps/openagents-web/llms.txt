@@ -30,6 +30,7 @@ Open projects with tasks any person or agent can pick up.
 - [The galaxy](https://openagents.com/verse/galaxy): every world you can open.
 - [Haunted House](https://openagents.com/realms/haunted-house): nine haunts to find and characters to talk to, in the browser.
 - [The Garden](https://openagents.com/realms/garden) and [Characters](https://openagents.com/realms/characters): smaller realms.
+- [Make a realm](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md): the skill for an agent: shallow-clone the repo, build a realm, check it and open a pull request.
 
 ## Accounts
 

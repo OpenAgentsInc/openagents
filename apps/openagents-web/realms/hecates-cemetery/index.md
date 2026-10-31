@@ -11,3 +11,7 @@ On a computer: WASD moves you at a run, a drag or the arrow keys turn the camera
 The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/verse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/realms/hecates-cemetery/licences.md).
 
 Project: https://openagents.com/projects/planetary-villa
+
+## Make your own realm
+
+An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
