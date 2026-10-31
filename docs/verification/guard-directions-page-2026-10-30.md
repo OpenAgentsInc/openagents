@@ -136,19 +136,30 @@ both per group and in one run.
 
 ## Production
 
-Released by `coax/web/release.sh` as `bcb6099592` (stamp `20261031T052547Z`,
-staged, fast path). Headless muted Chrome on `https://openagents.com/realms/everglade`
-as a guest: the page serves `everglade.5cec37586ce8.wasm` (the qualified
-module above), the scene starts, and pressing G makes 0 decision requests.
-Directions is not offered there today: the published world (version 21) has
-11 owner edits, and the projection refuses authored routes in any edited
-world (`ggp_clear_route` requires `edit_count==0`). Showing Directions in
-production needs edit-aware route reachability, listed below.
+First released by `coax/web/release.sh` as `bcb6099592` (stamp
+`20261031T052547Z`): Directions was never offered there, because the published
+world (version 21) has 11 owner edits and the projection then refused any
+edited world.
+
+Edit-aware routes and the empty-demolition-world guard shipped as `b713ceb8a6`
+(stamp `20261031T054424Z`, staged, live in 288 s; module
+`everglade.71884e3c1d05.wasm`, local build
+`1842022e7b4be7a071d04c38b9625959175b8440428455e8a885124e76833c3c`). That build
+passed 28/28 browser cases, including the `edited` group: the published 11-edit
+world keeps Find Work and its local tip with no request, and the same list plus
+one crate in Inn Street refuses the offer while Bram is eligible.
+
+Headless muted Chrome on `https://openagents.com/realms/everglade` as a guest,
+against the live 11-edit world: walking north from the default spawn, Bram
+offered **Find Work** after 0.8 s; G drew "The quest board is beside the
+commons fountain." with 0 decision requests. A headless tab never has focus,
+and a page without focus suspends the guard, so the check set
+`document.hasFocus` true and resent the page facts, as a focused tab reports them.
 
 ## Remaining gates
 
 This makes local help usable and exercises the real optional shadow consumer.
 It does not demonstrate model advantage over the instant perfect local rule,
-player benefit, arbitrary edited-world reachability, independent-provider
+player benefit, reachability around obstacles that do not touch the street strip, independent-provider
 recovery or production fault tolerance. Remote-selected dialogue, ambient
 default activation, combat/crime decisions and Belt remain separate work.
