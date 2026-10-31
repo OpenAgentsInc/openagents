@@ -2023,7 +2023,8 @@
       ],
       "blocks": [
         "server-session-lifecycle",
-        "web-nostr-api-verifier-cutover"
+        "web-nostr-api-verifier-cutover",
+        "nip98-mutants"
       ],
       "slug": "server-nip98-session",
       "title": "The server verifies NIP-98 HTTP auth and issues a session",
@@ -4123,6 +4124,36 @@
       ],
       "blocked_by": [
         "relay-server-r2"
+      ],
+      "blocks": []
+    },
+    {
+      "parent": "m9-phone-sign-in",
+      "slug": "nip98-mutants",
+      "title": "Kill the surviving NIP-98 mutants",
+      "size": "M",
+      "labels": [
+        "server",
+        "auth",
+        "mutation"
+      ],
+      "body": "Root-only mutation of coax/web/api/nip98.coax (the API's NIP-98 check, #authority) kills 1032 of 1203 mutants; 171 survive: about 68 in the parser (n98_parse), 21 in the id/signature path (n98_event), 19 in the rules (n98_rules), the rest in the string, number, base64 and test helpers. Add signed fixtures (nostr-effect, nip98_fixtures.ts) and cheap checks that reach the id and rules without BIP-340, and restructure sentinel and bound code so no mutant hides behind an equivalent. Behaviour must not change: nip98_diff.c against the former C check (nip98_reference.c) stays at zero disagreements.",
+      "files": [
+        "coax/web/api/nip98.coax",
+        "coax/web/api/nip98_fixtures.ts",
+        "coax/web/api/nip98_vectors.coax",
+        "coax/web/api/nip98_corpus.tsv",
+        "coax/web/api/nip98.generated.c",
+        "coax/web/api/nip98.generated.h",
+        "coax/web/api/nip98.sha256"
+      ],
+      "acceptance": [
+        "coax/bin/coax mutate coax/web/api/nip98.coax --root-only: zero survivors, or each survivor documented as a true equivalent in a comment at its line",
+        "coax/web/api/test.sh: nip98 checks pass and nip98_diff reports 0 disagreements",
+        "coax/web/api/nip98.sh --check passes"
+      ],
+      "blocked_by": [
+        "server-nip98-session"
       ],
       "blocks": []
     }
