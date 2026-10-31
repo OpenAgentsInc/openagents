@@ -76,6 +76,15 @@ for src in "${sources[@]}"; do
         fail=1
       fi
     done
+  elif ! rg -q '^main\s*::' "$src"; then
+    # No main: an #export_c library, built as an object file in both profiles.
+    for mode in debug release; do
+      flags=()
+      [[ $mode != release ]] || flags+=(--release)
+      if ! "$COAX" lib "$src" -o "$tmp/lib.o" "${flags[@]}" > /dev/null 2> "$tmp/compile.log"; then
+        echo "FAIL $src ($mode) does not build as a library"; cat "$tmp/compile.log"; fail=1
+      fi
+    done
   elif ! "$COAX" c "$src" > /dev/null 2> "$tmp/compile.log"; then
     echo "FAIL $src does not compile"; cat "$tmp/compile.log"; fail=1
   fi

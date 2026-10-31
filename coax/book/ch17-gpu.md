@@ -35,7 +35,8 @@ writes a WGSL module from ordinary checked Coax procedures. Its admitted
 subset includes vectors, records, graphics entry wrappers and resource
 bindings; unsupported entry shapes, bindings and layouts are refused.
 Everglade's main graphics module is generated from `verse/everglade/gpu.coax`
-with `gpu.module` and `gpu.bindings`. Its particles and other realm shaders
+with `gpu.module` and `gpu.bindings`, and its particle module from
+`gpu-fx.coax` with `gpu-fx.module` and `gpu-fx.bindings`. Other realm shaders
 still have their separately documented paths. This does not implement the
 planned `@gpu`/`shader` syntax, a general CPU/GPU layout model, or a qualified
 Psionic browser compute backend. Device and numerical evidence remains scoped

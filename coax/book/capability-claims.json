@@ -113,7 +113,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "66b4689a6aa375738635930d1e15bcb9bd68504941515fe1e70ca37bb02412b9"
+          "sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -257,7 +257,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "66b4689a6aa375738635930d1e15bcb9bd68504941515fe1e70ca37bb02412b9"
+          "sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
@@ -265,7 +265,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff"
+          "sha256": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44"
         }
       ]
     },
@@ -299,7 +299,7 @@
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
       "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate.",
-      "text_sha256": "b5a7a20e0f3827729583c73418a77ff85cb601184305fba8a0f0e6577f034726",
+      "text_sha256": "dc825e0eb306e3779a73f999e9e4cdaca1ae204a5c92b15f7ad241f83d9e9d28",
       "features": [
         {
           "id": "target.browser",
@@ -317,7 +317,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff"
+          "sha256": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44"
         },
         {
           "path": "verse/everglade/gpu.module",
@@ -326,6 +326,14 @@
         {
           "path": "verse/everglade/gpu.bindings",
           "sha256": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530"
+        },
+        {
+          "path": "verse/everglade/gpu-fx.module",
+          "sha256": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9"
+        },
+        {
+          "path": "verse/everglade/gpu-fx.bindings",
+          "sha256": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a"
         }
       ]
     }
