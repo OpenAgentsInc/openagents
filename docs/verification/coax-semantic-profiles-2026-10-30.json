@@ -358,15 +358,2075 @@
     "generated_with": "previous qualified 0.24.0 header-composition compiler; no native policy fallback"
   },
   "golden_gate": {
-    "outcome": "pending",
+    "command": "coax/web/golden-check.sh --commit f242274671",
+    "outcome": "failed",
+    "exit_status": 1,
+    "seconds": 190.34,
+    "failed_checks": 8,
+    "flagged_pages": [
+      "the-grid",
+      "haunted-house",
+      "galaxy",
+      "sandbox",
+      "hecates-cemetery",
+      "home",
+      "home-phone"
+    ],
+    "new_pages_outside_approved_baseline": [],
+    "raw_report": {
+      "base": "http://golden.localhost:50366",
+      "failed": [
+        "the-grid: matches its golden (265 blocks changed, 6 allowed, 0 moving, x 1104-1280, y 0-456; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-JUr5W1/the-grid.png)",
+        "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-TpS1Vs/haunted-house.png)",
+        "galaxy: matches its golden (227 blocks changed, 8 allowed, 0 moving, x 488-776, y 448-576; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-Jf0XvM/galaxy.png)",
+        "haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ORfgxp/haunted-house.png)",
+        "sandbox: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-gTlnkw/sandbox.png)",
+        "hecates-cemetery: matches its golden (149 blocks changed, 6 allowed, 262 moving, x 16-1240, y 32-704; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-pgR1aW/hecates-cemetery.png)",
+        "home: matches its golden (13 blocks changed, 4 allowed, 231 moving, x 120-1216, y 40-712; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-2HCAQJ/home.png)",
+        "home-phone: matches its golden (11 blocks changed, 4 allowed, 104 moving, x 272-352, y 168-664; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-6d97YU/home-phone.png)"
+      ],
+      "golden": [
+        {
+          "name": "the-grid",
+          "path": "/realms/the-grid"
+        },
+        {
+          "name": "haunted-house",
+          "path": "/realms/haunted-house"
+        },
+        {
+          "name": "galaxy",
+          "path": "/verse/galaxy"
+        },
+        {
+          "name": "sandbox",
+          "path": "/realms/sandbox"
+        },
+        {
+          "name": "hecates-cemetery",
+          "path": "/realms/hecates-cemetery"
+        },
+        {
+          "name": "home",
+          "path": "/"
+        },
+        {
+          "name": "home-phone",
+          "path": "/"
+        }
+      ],
+      "other": []
+    },
+    "log": "/tmp/coax-semantic-golden.log",
+    "retained_artifacts": "/tmp/coax-semantic-golden-stage",
+    "log_sha256": "37380938705e5db48eb11fe42f5188a4a8fd127b31dba41f22fa0f9567576be0",
+    "goldens_modified": false,
     "known_baseline_record": "docs/verification/coax-header-composition-2026-10-30.json",
-    "owner_decision": "Record baseline failures and continue (Recommended)",
-    "rule": "Keep baseline failures failed; do not rewrite goldens or waive a new regression."
+    "owner_decision": {
+      "status": "approved_baseline_exception",
+      "date": "2026-10-30",
+      "source": "Explicit user reply in this chat",
+      "reply": "Record baseline failures and continue (Recommended)",
+      "scope": "Push this header fix and continue the ordered work while retaining the nine demonstrated baseline-only golden failures separately; no golden snapshots were approved or changed."
+    },
+    "interpretation": "Eight failed checks on seven previously recorded pages; Fairy passed on this run. Keep these failures failed. Fresh paired whole-Wasm equivalence is recorded separately; no screenshot baseline was changed. Fresh paired builds are byte-identical for every affected app family. The extra raw-C comparison failed only on the required compiler-version provenance comment; its failure is retained."
   },
   "limits": [
     "No complete R0 adoption claim, arbitrary native #test executable, semantic build cache, mixed-object linker enforcement or new GPU/device qualification.",
     "Current binary64-then-binary32 decimal behavior is pinned; a direct-rounding migration remains open.",
     "Reports observe consumed bytes and artifacts; they do not lock the filesystem or prove correctness.",
     "No complete Psionic or iOS product gate was rerun. Passing focused results on unchanged inputs are retained rather than repeated."
-  ]
+  ],
+  "staged_wasm": [
+    {
+      "path": "assets/build/admin.ebd50d3f4305.wasm",
+      "bytes": 56429,
+      "sha256": "ebd50d3f4305dbfd86ebbd549f61b44d84942178169c36f2c8300a19d3bb15c4"
+    },
+    {
+      "path": "assets/build/belt.dd773ce29951.wasm",
+      "bytes": 201391,
+      "sha256": "dd773ce29951b7dc74d5e0382af8c498cc5400cbbafded9114794d116dbde3c0"
+    },
+    {
+      "path": "assets/build/builder.d86a6b70a28f.wasm",
+      "bytes": 126992,
+      "sha256": "d86a6b70a28f0c985e626993293613ceaa22ceb0fe939d781a576ed8ffa7ac2f"
+    },
+    {
+      "path": "assets/build/characters.ddc7e591d72a.wasm",
+      "bytes": 147776,
+      "sha256": "ddc7e591d72a3b13acefc1ddb156a5c35a8e5437d110f6d4f63524ea642f25cd"
+    },
+    {
+      "path": "assets/build/chat.ef23a6dbf378.wasm",
+      "bytes": 257787,
+      "sha256": "ef23a6dbf37810178f313295f2fa23e0ec6700a3b1848d88b30cb8f158fdb4a2"
+    },
+    {
+      "path": "assets/build/connect-pylon.e6da1b0a4342.wasm",
+      "bytes": 103312,
+      "sha256": "e6da1b0a4342b6529931ffa3f7cb2cb19c1da31cf0bf08d7ea49eb7fbf709f68"
+    },
+    {
+      "path": "assets/build/deadgears.a779f38e9cd8.wasm",
+      "bytes": 269264,
+      "sha256": "a779f38e9cd8af1a91387eab6a8bb1a8f61d0e5229700a092a3cd914d41bcc7b"
+    },
+    {
+      "path": "assets/build/droprealm.1017b92871f0.wasm",
+      "bytes": 53717,
+      "sha256": "1017b92871f052f1c869dda03411a83bf8532866cd8023e7338ea29318c5a965"
+    },
+    {
+      "path": "assets/build/everglade.7b65b87fdd57.wasm",
+      "bytes": 1622128,
+      "sha256": "7b65b87fdd575d99021a3f6fa927791c1aaf343f4ebf9e82e40e23d8a49da87d"
+    },
+    {
+      "path": "assets/build/fairy.bf0571a79ae2.wasm",
+      "bytes": 633323,
+      "sha256": "bf0571a79ae29e9ea4a3628eecfa5851e7cc922ea5b917c9db475fc2d3bb4e0d"
+    },
+    {
+      "path": "assets/build/fixture.b4dffcaf7541.wasm",
+      "bytes": 71620,
+      "sha256": "b4dffcaf754172ad18a5d26a4a4078f8009d8ce24b71bdf8c77c8ee12e5408a2"
+    },
+    {
+      "path": "assets/build/garden.de82a4e9c1f7.wasm",
+      "bytes": 173649,
+      "sha256": "de82a4e9c1f7e533427a7557ad6179d5a5d02fc0e0d57488294d6d9fffb0ca7a"
+    },
+    {
+      "path": "assets/build/icecream.c283e22e35f5.wasm",
+      "bytes": 416992,
+      "sha256": "c283e22e35f5c290e7dc5e729720eceb3403aa3f5af04c4f720ab3d0c4aa355c"
+    },
+    {
+      "path": "assets/build/myrealm.a9e5536a48ef.wasm",
+      "bytes": 232841,
+      "sha256": "a9e5536a48ef2f406e7c9519b9aeb82cd8ba3083c2c8283b221f0a16d49c909f"
+    },
+    {
+      "path": "assets/build/newland.97e890e477ca.wasm",
+      "bytes": 652906,
+      "sha256": "97e890e477ca9a173f67c0b3c62d9b10340aca3d42c51b258ae42ad38301fb9c"
+    },
+    {
+      "path": "assets/build/nip-guide.58d61f69cdb3.wasm",
+      "bytes": 165150,
+      "sha256": "58d61f69cdb3294e77483b60b3efc63ab00fad0297f0b9702689ebffff4528a3"
+    },
+    {
+      "path": "assets/build/nip01.10604584b239.wasm",
+      "bytes": 117305,
+      "sha256": "10604584b2395199742334623c33f55a813c292f66ee1773e16e3445b95bac95"
+    },
+    {
+      "path": "assets/build/og.17f3893e0a59.wasm",
+      "bytes": 62199,
+      "sha256": "17f3893e0a59a9158c22b94e6eb0f516b9d03ad5eebc70ab6dec733d30d7cda4"
+    },
+    {
+      "path": "assets/build/orbitleague.6002dbf29333.wasm",
+      "bytes": 148834,
+      "sha256": "6002dbf293331406ed01569f0fc5514fe98a1a189e671281998785ec85ee0284"
+    },
+    {
+      "path": "assets/build/private.8fed5dde92d0.wasm",
+      "bytes": 329093,
+      "sha256": "8fed5dde92d04a75a5f9a45186f4d2b0a561e12120ca0de6347269a26b17876b"
+    },
+    {
+      "path": "assets/build/project.9abe24c9dd55.wasm",
+      "bytes": 1771162,
+      "sha256": "9abe24c9dd555d56ed7d7d0a4bc15ddeac4407d56a14a39f470f3bea4acfa4ba"
+    },
+    {
+      "path": "assets/build/projects.a367b72cdeb9.wasm",
+      "bytes": 154097,
+      "sha256": "a367b72cdeb9f1dd9aa60e6c272cd0d6526c07f7c09c83dec1613e005f46e8bb"
+    },
+    {
+      "path": "assets/build/pylon.65b9b9a90ac9.wasm",
+      "bytes": 149392,
+      "sha256": "65b9b9a90ac95e93e3a71ef7e2edf8a535c5e257581fd1f16ab3e5ae4df1f383"
+    },
+    {
+      "path": "assets/build/realm.c94e6ac88599.wasm",
+      "bytes": 485001,
+      "sha256": "c94e6ac88599d528e5bf72409b6c998636c700ed60c71860d1f74d72b22341ad"
+    },
+    {
+      "path": "assets/build/realmlist.85681b5c74fa.wasm",
+      "bytes": 105283,
+      "sha256": "85681b5c74fa8748684907d792827a1b3db47f8c39da902d61da279f71688e05"
+    },
+    {
+      "path": "assets/build/splash.71c0aa05d6b0.wasm",
+      "bytes": 124843,
+      "sha256": "71c0aa05d6b024be7b11a232dbbdd53cadbf38f8b3dce1d1ff641c04d82f85f2"
+    },
+    {
+      "path": "assets/build/stair.32ad5c02357a.wasm",
+      "bytes": 137475,
+      "sha256": "32ad5c02357aa89d256faab768551d415c0017bd7917e0544d2c74a00e048362"
+    },
+    {
+      "path": "assets/build/thegrid.2ba230219edf.wasm",
+      "bytes": 250450,
+      "sha256": "2ba230219edffd7d849e57ebdea220e505cd4fd12ecdbd46316511a5dd9cbba4"
+    },
+    {
+      "path": "assets/build/verse.0a8e7c7708f7.wasm",
+      "bytes": 137600,
+      "sha256": "0a8e7c7708f72dd49ba00352ddf1f99e42728777a995671561f0d760bed62555"
+    },
+    {
+      "path": "assets/build/villa.1226e559e1df.wasm",
+      "bytes": 416295,
+      "sha256": "1226e559e1dfb7d290e2f28e14c7de7f42aa43045c3b2989e1a2318fa3d0bb5c"
+    },
+    {
+      "path": "assets/build/voice.1ae708768205.wasm",
+      "bytes": 164900,
+      "sha256": "1ae708768205fc6fd2c4412e8ae28bb0ec1fde6a4434559f58ac41151aebf54f"
+    },
+    {
+      "path": "assets/build/waterlab.903f9d73da8e.wasm",
+      "bytes": 74370,
+      "sha256": "903f9d73da8e660d4e4367185a4927b6a33ada6c6ed39344323b6f578655b809"
+    },
+    {
+      "path": "site/build/admin.ebd50d3f4305.wasm",
+      "bytes": 56429,
+      "sha256": "ebd50d3f4305dbfd86ebbd549f61b44d84942178169c36f2c8300a19d3bb15c4"
+    },
+    {
+      "path": "site/build/belt.dd773ce29951.wasm",
+      "bytes": 201391,
+      "sha256": "dd773ce29951b7dc74d5e0382af8c498cc5400cbbafded9114794d116dbde3c0"
+    },
+    {
+      "path": "site/build/builder.d86a6b70a28f.wasm",
+      "bytes": 126992,
+      "sha256": "d86a6b70a28f0c985e626993293613ceaa22ceb0fe939d781a576ed8ffa7ac2f"
+    },
+    {
+      "path": "site/build/characters.ddc7e591d72a.wasm",
+      "bytes": 147776,
+      "sha256": "ddc7e591d72a3b13acefc1ddb156a5c35a8e5437d110f6d4f63524ea642f25cd"
+    },
+    {
+      "path": "site/build/chat.ef23a6dbf378.wasm",
+      "bytes": 257787,
+      "sha256": "ef23a6dbf37810178f313295f2fa23e0ec6700a3b1848d88b30cb8f158fdb4a2"
+    },
+    {
+      "path": "site/build/connect-pylon.e6da1b0a4342.wasm",
+      "bytes": 103312,
+      "sha256": "e6da1b0a4342b6529931ffa3f7cb2cb19c1da31cf0bf08d7ea49eb7fbf709f68"
+    },
+    {
+      "path": "site/build/deadgears.a779f38e9cd8.wasm",
+      "bytes": 269264,
+      "sha256": "a779f38e9cd8af1a91387eab6a8bb1a8f61d0e5229700a092a3cd914d41bcc7b"
+    },
+    {
+      "path": "site/build/droprealm.1017b92871f0.wasm",
+      "bytes": 53717,
+      "sha256": "1017b92871f052f1c869dda03411a83bf8532866cd8023e7338ea29318c5a965"
+    },
+    {
+      "path": "site/build/everglade.7b65b87fdd57.wasm",
+      "bytes": 1622128,
+      "sha256": "7b65b87fdd575d99021a3f6fa927791c1aaf343f4ebf9e82e40e23d8a49da87d"
+    },
+    {
+      "path": "site/build/fairy.bf0571a79ae2.wasm",
+      "bytes": 633323,
+      "sha256": "bf0571a79ae29e9ea4a3628eecfa5851e7cc922ea5b917c9db475fc2d3bb4e0d"
+    },
+    {
+      "path": "site/build/fixture.b4dffcaf7541.wasm",
+      "bytes": 71620,
+      "sha256": "b4dffcaf754172ad18a5d26a4a4078f8009d8ce24b71bdf8c77c8ee12e5408a2"
+    },
+    {
+      "path": "site/build/garden.de82a4e9c1f7.wasm",
+      "bytes": 173649,
+      "sha256": "de82a4e9c1f7e533427a7557ad6179d5a5d02fc0e0d57488294d6d9fffb0ca7a"
+    },
+    {
+      "path": "site/build/icecream.c283e22e35f5.wasm",
+      "bytes": 416992,
+      "sha256": "c283e22e35f5c290e7dc5e729720eceb3403aa3f5af04c4f720ab3d0c4aa355c"
+    },
+    {
+      "path": "site/build/myrealm.a9e5536a48ef.wasm",
+      "bytes": 232841,
+      "sha256": "a9e5536a48ef2f406e7c9519b9aeb82cd8ba3083c2c8283b221f0a16d49c909f"
+    },
+    {
+      "path": "site/build/newland.97e890e477ca.wasm",
+      "bytes": 652906,
+      "sha256": "97e890e477ca9a173f67c0b3c62d9b10340aca3d42c51b258ae42ad38301fb9c"
+    },
+    {
+      "path": "site/build/nip-guide.58d61f69cdb3.wasm",
+      "bytes": 165150,
+      "sha256": "58d61f69cdb3294e77483b60b3efc63ab00fad0297f0b9702689ebffff4528a3"
+    },
+    {
+      "path": "site/build/nip01.10604584b239.wasm",
+      "bytes": 117305,
+      "sha256": "10604584b2395199742334623c33f55a813c292f66ee1773e16e3445b95bac95"
+    },
+    {
+      "path": "site/build/og.17f3893e0a59.wasm",
+      "bytes": 62199,
+      "sha256": "17f3893e0a59a9158c22b94e6eb0f516b9d03ad5eebc70ab6dec733d30d7cda4"
+    },
+    {
+      "path": "site/build/orbitleague.6002dbf29333.wasm",
+      "bytes": 148834,
+      "sha256": "6002dbf293331406ed01569f0fc5514fe98a1a189e671281998785ec85ee0284"
+    },
+    {
+      "path": "site/build/private.8fed5dde92d0.wasm",
+      "bytes": 329093,
+      "sha256": "8fed5dde92d04a75a5f9a45186f4d2b0a561e12120ca0de6347269a26b17876b"
+    },
+    {
+      "path": "site/build/project.9abe24c9dd55.wasm",
+      "bytes": 1771162,
+      "sha256": "9abe24c9dd555d56ed7d7d0a4bc15ddeac4407d56a14a39f470f3bea4acfa4ba"
+    },
+    {
+      "path": "site/build/projects.a367b72cdeb9.wasm",
+      "bytes": 154097,
+      "sha256": "a367b72cdeb9f1dd9aa60e6c272cd0d6526c07f7c09c83dec1613e005f46e8bb"
+    },
+    {
+      "path": "site/build/pylon.65b9b9a90ac9.wasm",
+      "bytes": 149392,
+      "sha256": "65b9b9a90ac95e93e3a71ef7e2edf8a535c5e257581fd1f16ab3e5ae4df1f383"
+    },
+    {
+      "path": "site/build/realm.c94e6ac88599.wasm",
+      "bytes": 485001,
+      "sha256": "c94e6ac88599d528e5bf72409b6c998636c700ed60c71860d1f74d72b22341ad"
+    },
+    {
+      "path": "site/build/realmlist.85681b5c74fa.wasm",
+      "bytes": 105283,
+      "sha256": "85681b5c74fa8748684907d792827a1b3db47f8c39da902d61da279f71688e05"
+    },
+    {
+      "path": "site/build/splash.71c0aa05d6b0.wasm",
+      "bytes": 124843,
+      "sha256": "71c0aa05d6b024be7b11a232dbbdd53cadbf38f8b3dce1d1ff641c04d82f85f2"
+    },
+    {
+      "path": "site/build/stair.32ad5c02357a.wasm",
+      "bytes": 137475,
+      "sha256": "32ad5c02357aa89d256faab768551d415c0017bd7917e0544d2c74a00e048362"
+    },
+    {
+      "path": "site/build/thegrid.2ba230219edf.wasm",
+      "bytes": 250450,
+      "sha256": "2ba230219edffd7d849e57ebdea220e505cd4fd12ecdbd46316511a5dd9cbba4"
+    },
+    {
+      "path": "site/build/verse.0a8e7c7708f7.wasm",
+      "bytes": 137600,
+      "sha256": "0a8e7c7708f72dd49ba00352ddf1f99e42728777a995671561f0d760bed62555"
+    },
+    {
+      "path": "site/build/villa.1226e559e1df.wasm",
+      "bytes": 416295,
+      "sha256": "1226e559e1dfb7d290e2f28e14c7de7f42aa43045c3b2989e1a2318fa3d0bb5c"
+    },
+    {
+      "path": "site/build/voice.1ae708768205.wasm",
+      "bytes": 164900,
+      "sha256": "1ae708768205fc6fd2c4412e8ae28bb0ec1fde6a4434559f58ac41151aebf54f"
+    },
+    {
+      "path": "site/build/waterlab.903f9d73da8e.wasm",
+      "bytes": 74370,
+      "sha256": "903f9d73da8e660d4e4367185a4927b6a33ada6c6ed39344323b6f578655b809"
+    }
+  ],
+  "staging_hash_scope": "Cross-run staging hashes are retained, but are not compared with the prior isolated fixture: merged input/output paths differ. Same-input paired builds are authoritative for compiler-change equivalence.",
+  "wasm_equivalence": {
+    "schema_version": 1,
+    "root": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents",
+    "directory": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls",
+    "scope": "Fresh paired current merged source builds. The only selected compiler differs. Each target uses exactly the same generated C/header/object/link-output paths and existing build flags for both sides. Build script copies only fix their repo location, compiler executable and private work directory; repository scripts/provenance and production are unchanged. Coax defaults remain checked/development; Wasm/native C compilation uses the existing release O2 flags. This is selected artifact parity, not browser behavior or target qualification.",
+    "compilers": {
+      "baseline": {
+        "path": "/tmp/coax-profile-baseline/coax",
+        "sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134",
+        "version": "coax0 0.24.0"
+      },
+      "candidate": {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+        "sha256": "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d",
+        "version": "coax0 0.25.0"
+      }
+    },
+    "scripts": {
+      "coax/web/wasm.sh": {
+        "source_sha256": "95e1fcaa4b04bd1b8e9f95013542f81c7b5dd7a94123b2d3720bf7a2e109e50b",
+        "adapted": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+        "adapted_sha256": "8a69a11bd37646704aeb2bd2f385a365bd39e75d443d5f29bc48b1a2dd1eacbe"
+      },
+      "coax/web/project/build-home.sh": {
+        "source_sha256": "092bc10b821bee0fa838ffcf7b096067909461c9cde53e5fef70675b09c94373",
+        "adapted": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-home.sh",
+        "adapted_sha256": "30bf6d47e9af14857890ad25b151255feb03cb30ac6ff3525c4b0cc828c71194"
+      },
+      "coax/web/toolchain.sh": {
+        "source_sha256": "53a97a8a69730f19aaa7cf2644a300a244b9603f291c8730f851e9389ff6f63c"
+      }
+    },
+    "targets": [
+      {
+        "target": "verse",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse-face.c",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/verse.wasm"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 1.368,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/baseline/verse.wasm",
+            "bytes": 137595,
+            "sha256": "7a5045406924f428c5ae8df60990f4cdf20e092c54013c98d3c447327cf9f987",
+            "generated": {
+              "verse.c": {
+                "bytes": 506214,
+                "sha256": "bebab3404651e8d9be7c95e23ae726fedcd5fce788901ef15e86f307cd0922e1"
+              },
+              "verse.h": {
+                "bytes": 62533,
+                "sha256": "85bb0eb007c281ea0d15ec62c8e57bec9d7c33d78b9df410c1876fe198d15e64"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 1.743,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/verse/candidate/verse.wasm",
+            "bytes": 137595,
+            "sha256": "7a5045406924f428c5ae8df60990f4cdf20e092c54013c98d3c447327cf9f987",
+            "generated": {
+              "verse.c": {
+                "bytes": 506214,
+                "sha256": "bebab3404651e8d9be7c95e23ae726fedcd5fce788901ef15e86f307cd0922e1"
+              },
+              "verse.h": {
+                "bytes": 62533,
+                "sha256": "85bb0eb007c281ea0d15ec62c8e57bec9d7c33d78b9df410c1876fe198d15e64"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": true
+      },
+      {
+        "target": "thegrid",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-people.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-track.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-face.c",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/thegrid.wasm",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 2.561,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/baseline/thegrid.wasm",
+            "bytes": 250418,
+            "sha256": "0275c0923d2b4cee23a821c4201b8462724ce4e569e26540029472e3be2ce830",
+            "generated": {
+              "Cast.c": {
+                "bytes": 97531,
+                "sha256": "2325e1b2701056e3cdc1421ddce13251b1d279eb3c5d83b07d8d3e1f5f228a64"
+              },
+              "Cast.h": {
+                "bytes": 13140,
+                "sha256": "2f97d702f1366bc8a3e4feab5ebc0eb778dad546b2cf4671451f38b1f54120db"
+              },
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "thegrid.c": {
+                "bytes": 684155,
+                "sha256": "738663a064e74559ea704f00fe47f2f55522e4ece78b17ee6e084105e9c8bbd7"
+              },
+              "thegrid.h": {
+                "bytes": 137274,
+                "sha256": "f0c96525321533f0fade1755b2fa954b2d31d021abbabcc265a5cb20aeaa97c8"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 2.748,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/thegrid/candidate/thegrid.wasm",
+            "bytes": 250418,
+            "sha256": "0275c0923d2b4cee23a821c4201b8462724ce4e569e26540029472e3be2ce830",
+            "generated": {
+              "Cast.c": {
+                "bytes": 97531,
+                "sha256": "2325e1b2701056e3cdc1421ddce13251b1d279eb3c5d83b07d8d3e1f5f228a64"
+              },
+              "Cast.h": {
+                "bytes": 13140,
+                "sha256": "2f97d702f1366bc8a3e4feab5ebc0eb778dad546b2cf4671451f38b1f54120db"
+              },
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "thegrid.c": {
+                "bytes": 684155,
+                "sha256": "738663a064e74559ea704f00fe47f2f55522e4ece78b17ee6e084105e9c8bbd7"
+              },
+              "thegrid.h": {
+                "bytes": 137274,
+                "sha256": "f0c96525321533f0fade1755b2fa954b2d31d021abbabcc265a5cb20aeaa97c8"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": true
+      },
+      {
+        "target": "realm",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-flight.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-room.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-world.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/proto/descriptors/haunt.pb",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-layout.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-face.c",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/realm.wasm",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 2.962,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/baseline/realm.wasm",
+            "bytes": 484873,
+            "sha256": "5b57ddbcc42aa0ccfdb7ae3b7a60a7fcc42e34e7ffe0626f07ef7b770aff6e7d",
+            "generated": {
+              "Cinematic.c": {
+                "bytes": 29412,
+                "sha256": "17c33923616922386d66e5dae14188e551a39be819394b12fc64797c7a4b654d"
+              },
+              "Cinematic.h": {
+                "bytes": 7050,
+                "sha256": "9f61df74e83d5a4a9c28d035f550767f8c5416a81fb5417b9b20828e15b8a179"
+              },
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Haunt-buffer.c": {
+                "bytes": 26714,
+                "sha256": "dbc3c30a52f7cb44a483a7a95499c6e9ec4681d695d15b02a0cdb0227f72fff5"
+              },
+              "Haunt-buffer.h": {
+                "bytes": 1451,
+                "sha256": "c1930cb7f69d620dc259377e0ede751e000e0d118957f86fc92418a693648560"
+              },
+              "Haunt.c": {
+                "bytes": 811293,
+                "sha256": "81467f03b1de557e61f37aca6eec4282d21385e9fec4b7f158bcb032d49b6f36"
+              },
+              "Haunt.h": {
+                "bytes": 57442,
+                "sha256": "f6df66bf8a60040a50b638991ed316d9a6399b9c94bf9c5840726f4d3eebe28a"
+              },
+              "Particles.c": {
+                "bytes": 20723,
+                "sha256": "caec24b0fc7525524e6c6c3606199139e8c61423ef496a1b1a36eabd27f77c9c"
+              },
+              "Particles.h": {
+                "bytes": 1633,
+                "sha256": "1f71b2245553e77251d08b09bdfe979ca162578a48e2bae0892107defe4b944d"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Setpiece.c": {
+                "bytes": 43728,
+                "sha256": "ad711dee8d4b52160075c7eae935c8f52481b6a90955b2bbe8f30d1610aa9b0a"
+              },
+              "Setpiece.h": {
+                "bytes": 3783,
+                "sha256": "31936df171fcc8b2b17e84e8c364ebf8138eca49850099ba1d4d55dcf0384203"
+              },
+              "realm.c": {
+                "bytes": 769039,
+                "sha256": "216fba27ca54c59784cddced11eb909dec5b84ed82c8a0524c708743217b820c"
+              },
+              "realm.h": {
+                "bytes": 130642,
+                "sha256": "a3508c8ee526dc3bd5f97cce95e8f5deb4ac24652aec5ab9c16703ea19b1606e"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 2.921,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/realm/candidate/realm.wasm",
+            "bytes": 484873,
+            "sha256": "5b57ddbcc42aa0ccfdb7ae3b7a60a7fcc42e34e7ffe0626f07ef7b770aff6e7d",
+            "generated": {
+              "Cinematic.c": {
+                "bytes": 29412,
+                "sha256": "17c33923616922386d66e5dae14188e551a39be819394b12fc64797c7a4b654d"
+              },
+              "Cinematic.h": {
+                "bytes": 7050,
+                "sha256": "9f61df74e83d5a4a9c28d035f550767f8c5416a81fb5417b9b20828e15b8a179"
+              },
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Haunt-buffer.c": {
+                "bytes": 26714,
+                "sha256": "dbc3c30a52f7cb44a483a7a95499c6e9ec4681d695d15b02a0cdb0227f72fff5"
+              },
+              "Haunt-buffer.h": {
+                "bytes": 1451,
+                "sha256": "c1930cb7f69d620dc259377e0ede751e000e0d118957f86fc92418a693648560"
+              },
+              "Haunt.c": {
+                "bytes": 811293,
+                "sha256": "e222ba7b2389317464d7e23e01c287e9e46a1e5acc5f6bbfe242bd3fe37fae89"
+              },
+              "Haunt.h": {
+                "bytes": 57442,
+                "sha256": "9063570a4bac730102b415ff66b8a2376a5064fe846a0122e83340de2606bee5"
+              },
+              "Particles.c": {
+                "bytes": 20723,
+                "sha256": "caec24b0fc7525524e6c6c3606199139e8c61423ef496a1b1a36eabd27f77c9c"
+              },
+              "Particles.h": {
+                "bytes": 1633,
+                "sha256": "1f71b2245553e77251d08b09bdfe979ca162578a48e2bae0892107defe4b944d"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Setpiece.c": {
+                "bytes": 43728,
+                "sha256": "ad711dee8d4b52160075c7eae935c8f52481b6a90955b2bbe8f30d1610aa9b0a"
+              },
+              "Setpiece.h": {
+                "bytes": 3783,
+                "sha256": "31936df171fcc8b2b17e84e8c364ebf8138eca49850099ba1d4d55dcf0384203"
+              },
+              "realm.c": {
+                "bytes": 769039,
+                "sha256": "216fba27ca54c59784cddced11eb909dec5b84ed82c8a0524c708743217b820c"
+              },
+              "realm.h": {
+                "bytes": 130642,
+                "sha256": "a3508c8ee526dc3bd5f97cce95e8f5deb4ac24652aec5ab9c16703ea19b1606e"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": false
+      },
+      {
+        "target": "villa",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villapet.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaplay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaroom.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villatips.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/motion.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/throw.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa-face.c",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/villa.wasm",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 3.669,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/baseline/villa.wasm",
+            "bytes": 416274,
+            "sha256": "0d197e56faf31a129e2ee4bd946a5065b269411a605c085471edd278c3529008",
+            "generated": {
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Villafig.c": {
+                "bytes": 160849,
+                "sha256": "fa7b2eb4f5f4f87de0092c7f357eef3893db8e670b2c4135cfb3f306972b01a6"
+              },
+              "Villafig.h": {
+                "bytes": 35375,
+                "sha256": "523471cc40b2956612b066db79e25d0ad709a019d1ae8c3beb085b4029c28dbd"
+              },
+              "villa.c": {
+                "bytes": 968705,
+                "sha256": "17c011fe741498bc992f2ade7dea6534a6628f5df38f6e07511ce537b4fc1e4a"
+              },
+              "villa.h": {
+                "bytes": 183838,
+                "sha256": "c8fe4a3d994b8eccf46d18a2d8f30613702c7f3c72bccac84ad5e1c19f462b83"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 3.626,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/villa/candidate/villa.wasm",
+            "bytes": 416274,
+            "sha256": "0d197e56faf31a129e2ee4bd946a5065b269411a605c085471edd278c3529008",
+            "generated": {
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Villafig.c": {
+                "bytes": 160849,
+                "sha256": "fa7b2eb4f5f4f87de0092c7f357eef3893db8e670b2c4135cfb3f306972b01a6"
+              },
+              "Villafig.h": {
+                "bytes": 35375,
+                "sha256": "523471cc40b2956612b066db79e25d0ad709a019d1ae8c3beb085b4029c28dbd"
+              },
+              "villa.c": {
+                "bytes": 968705,
+                "sha256": "17c011fe741498bc992f2ade7dea6534a6628f5df38f6e07511ce537b4fc1e4a"
+              },
+              "villa.h": {
+                "bytes": 183838,
+                "sha256": "c8fe4a3d994b8eccf46d18a2d8f30613702c7f3c72bccac84ad5e1c19f462b83"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": true
+      },
+      {
+        "target": "fairy",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairycourse.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairygarden.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyhome.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymaker.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymap.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymend.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairynight.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypark.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypond.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyquest.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyroom.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyskills.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairytools.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyvillage.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairywoodcutter.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/forest.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/life.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/night.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/park.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/talk.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/rigid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water-look.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-wasm.sh",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy-face.c",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/fairy.wasm",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 6.442,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/baseline/fairy.wasm",
+            "bytes": 633293,
+            "sha256": "8d7a0f97ae06ae5eda9052d666829884bc13deb62be34e90c0c39c400404cf79",
+            "generated": {
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Stream.c": {
+                "bytes": 299443,
+                "sha256": "899af25b87297891e8dba6c5dab8c911c32bf129cb8a45d5ec62c643b07abb50"
+              },
+              "Stream.h": {
+                "bytes": 50788,
+                "sha256": "9828a5468c756662203dd644b39003e4965909c44480f9164626464cd29ee80c"
+              },
+              "fairy.c": {
+                "bytes": 1457982,
+                "sha256": "293276d645d4ea08d7c9bdccf349d7785fd986ea6c41546ea5d4c8dcebb336dd"
+              },
+              "fairy.h": {
+                "bytes": 217365,
+                "sha256": "1435a8589369c5aeb15e53875c9e2ea9cb48e67eb4915218a743953411634691"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 5.228,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/fairy/candidate/fairy.wasm",
+            "bytes": 633293,
+            "sha256": "8d7a0f97ae06ae5eda9052d666829884bc13deb62be34e90c0c39c400404cf79",
+            "generated": {
+              "Grid.c": {
+                "bytes": 65053,
+                "sha256": "45bd525b999e778a329bf9161cd8b563416184a3c8c112dfeb7b000cfd751a3f"
+              },
+              "Grid.h": {
+                "bytes": 9912,
+                "sha256": "b30c8ec2992bcfde87a43416ccf4b6492b7172d27304d07976d3b92d7df7572b"
+              },
+              "Player.c": {
+                "bytes": 59049,
+                "sha256": "301cd0e2eaa7685447761dd9706ca0b6345bbb251a652a7d3b95e8946ed62af3"
+              },
+              "Player.h": {
+                "bytes": 10128,
+                "sha256": "ef56f5c6a9cd07e3694b3e05799ce394aafd70062e457eafdd6a8e614276ae33"
+              },
+              "Stream.c": {
+                "bytes": 299443,
+                "sha256": "899af25b87297891e8dba6c5dab8c911c32bf129cb8a45d5ec62c643b07abb50"
+              },
+              "Stream.h": {
+                "bytes": 50788,
+                "sha256": "9828a5468c756662203dd644b39003e4965909c44480f9164626464cd29ee80c"
+              },
+              "fairy.c": {
+                "bytes": 1457982,
+                "sha256": "293276d645d4ea08d7c9bdccf349d7785fd986ea6c41546ea5d4c8dcebb336dd"
+              },
+              "fairy.h": {
+                "bytes": 217365,
+                "sha256": "1435a8589369c5aeb15e53875c9e2ea9cb48e67eb4915218a743953411634691"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": true
+      },
+      {
+        "target": "newland",
+        "source_inputs": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-data.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-golden-data.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-network.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-reader-bridge.h",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-targets.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-walkers.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-xp.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-fold.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/socket.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/bytes.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/ecdh_fast.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr_fast.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32_total.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group32.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_mult.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_scalar.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/sha256.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-admission.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-policy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/bech32-core.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/codecs-common.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/event.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter_read.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay_tables.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/nip42_events.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/hex.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/message.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/nip19-core.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/proto/fingerprint.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fast_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/scalar_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-browser.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-nostr.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-reader-face.c",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-xp.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/beacon.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/template.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/frame.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/types.coax"
+        ],
+        "command": [
+          "bash",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/paired-home.sh",
+          "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/newland.wasm"
+        ],
+        "work_path": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/work",
+        "builds": [
+          {
+            "side": "baseline",
+            "compiler": "/tmp/coax-profile-baseline/coax",
+            "exit_code": 0,
+            "seconds": 11.266,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/baseline/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/baseline/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/tmp/coax-profile-baseline/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/baseline/newland.wasm",
+            "bytes": 651530,
+            "sha256": "0af11ad0311451b4093bba930daa752807a064ec925d08798c395220312adfe5",
+            "generated": {
+              "landing-browser.c": {
+                "bytes": 660134,
+                "sha256": "60c759245bb876f1b08f15c37f7151954dc32e8d93fc5796ab97c5110de7a247"
+              },
+              "landing-browser.h": {
+                "bytes": 89371,
+                "sha256": "de2347c4b5b552038b7f398e9662b5c2b5ec66067a59cd22dd459c47bf026b6d"
+              },
+              "landing-fold.c": {
+                "bytes": 206725,
+                "sha256": "a81f90320d5aca89fabf07a553e039f045318c0acf7c0655d9065cc0fd2bc9f7"
+              },
+              "landing-fold.h": {
+                "bytes": 25887,
+                "sha256": "141e19d5356b9fe088ac45cd20564f623418e7cd35cd20c19721db8953354816"
+              },
+              "newland.c": {
+                "bytes": 995544,
+                "sha256": "19920e030283e786f2734b14f28d5ef1f412bba116142d39d499db6274ebb7b9"
+              },
+              "newland.h": {
+                "bytes": 145897,
+                "sha256": "1ee4c5dade81c34f8e826fc14459b0d954a87e989aa5cf065f3fb14deaedbe41"
+              }
+            }
+          },
+          {
+            "side": "candidate",
+            "compiler": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+            "exit_code": 0,
+            "seconds": 10.783,
+            "stdout": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/candidate/stdout.log",
+            "stderr": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/candidate/stderr.log",
+            "environment": {
+              "COAX_AB_COMPILER": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/bin/coax",
+              "COAX_AB_WORK": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/work",
+              "COAXIAL_MODE": "release"
+            },
+            "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-profile-wasm-parity-yh9ehdls/newland/candidate/newland.wasm",
+            "bytes": 651530,
+            "sha256": "0af11ad0311451b4093bba930daa752807a064ec925d08798c395220312adfe5",
+            "generated": {
+              "landing-browser.c": {
+                "bytes": 660134,
+                "sha256": "60c759245bb876f1b08f15c37f7151954dc32e8d93fc5796ab97c5110de7a247"
+              },
+              "landing-browser.h": {
+                "bytes": 89371,
+                "sha256": "de2347c4b5b552038b7f398e9662b5c2b5ec66067a59cd22dd459c47bf026b6d"
+              },
+              "landing-fold.c": {
+                "bytes": 206725,
+                "sha256": "a81f90320d5aca89fabf07a553e039f045318c0acf7c0655d9065cc0fd2bc9f7"
+              },
+              "landing-fold.h": {
+                "bytes": 25887,
+                "sha256": "141e19d5356b9fe088ac45cd20564f623418e7cd35cd20c19721db8953354816"
+              },
+              "newland.c": {
+                "bytes": 995544,
+                "sha256": "19920e030283e786f2734b14f28d5ef1f412bba116142d39d499db6274ebb7b9"
+              },
+              "newland.h": {
+                "bytes": 145897,
+                "sha256": "1ee4c5dade81c34f8e826fc14459b0d954a87e989aa5cf065f3fb14deaedbe41"
+              }
+            }
+          }
+        ],
+        "byte_identical": true,
+        "generated_identical": true
+      }
+    ],
+    "source_sha256_before": {
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax": "06e855b7aa414bcc6dc6be98c10c0c720ce9cb85ed38b687b5d83e1aa97acfff",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h": "84d685877de9ac42c8e92df0ed1e26e1ff02ee4b51f94e5c7cd5599516ccaa61",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy-face.c": "648921566dd00af51399b0374ebdbdf12364b188c6ab2a7984340d59a8cc3d38",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax": "993f00f98d901f27ac047765285d00fe98991322f11d6b0236ffeab600e55de0",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairycourse.coax": "81b0b477d8e0a3f29c8610c4ec55111f217d0891f53d91e9986d879ff055ac2c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairygarden.coax": "710ae7b474034073bd9c3483b206f3e2c86ac83cb4b9fd88b9f6e4d0131025f2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyhome.coax": "b65c6755ebedbcf75fb0b5564d79d808d26b20154de8c97169463f3cff8268f8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymaker.coax": "452cce98afe95d125e3b89eaba8c3f73df336ceec9650312e8db6f2474c45036",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymap.coax": "efe664155061b19c535d2fba109a5b0b3184d4b1d1971a788aebd8e99497b7ba",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymend.coax": "dec1439970253a09bbfc51ebe12abd756f1fdd34be7f76a84e7a0562fcd5ced2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairynight.coax": "6004a6f0d3dafe918f365a67a6788c2f5d7e32cd8095a876f289b576bfbbb2a6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypark.coax": "986d7e8a3276468e1a543cda61ccec42cc4ef3f216796c6dadb79a225663dd9f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypond.coax": "6121fe5b20bc388fb80232928832f75b31e61cc59ed4dc0be1203a2e3fd916e8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyquest.coax": "f3e7043fe705ef58eec1902b70580621ec61bc493df97a746e93c5ac54af3501",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyroom.coax": "02e95fe9cfcbb46531095b2bc2de3b8794d98baf1b3dc92987212fab7e11e9da",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyskills.coax": "3e49f442f14b5434e9455451a66650f16ecf59305aeb29d9ceb8d0be5ac1725c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairytools.coax": "2a4f220311ada22c4c2b027f80e6d88ca7982448052a66dba61f33aab193ee25",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyvillage.coax": "31620e32fba02a6e55f92f5966dc7c50cc4eb278e0ee8ef8f9c853076df03ff5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairywoodcutter.coax": "72df37856d8119154a1be1c06bc99474e7e20f888334e1d487aaaf967801fe4b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax": "37fe091afa40087986e865d8bdef9aec126864eeef8b94896bd4fe05c6d9e5dd",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax": "f93ce2f5c21b208c51a9af588f70cc2066d656e58ac46497d4d25bf0be8963ff",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-data.coax": "ba33f2614801f87fe2679285d5d73ff778d0d8d9d5e2de8065e85fdd6f370e54",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-face.c": "3fef9fb53f17f19dd9fe8d116d000ce8870007e0a8a60423e3fe597307d50852",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-golden-data.coax": "134beae607e326a7fbcd3ddd0def6df039b13eddc6c3c67b592cbc09d8650d24",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-network.coax": "aea3bae8ae4dc3ca911834af940d642b8cd39cb89f02e21a3ee786e18387ecd8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-reader-bridge.h": "f1f2cc335b2ac51e6a4b9156d1900557828a87db0c2d8a8580cb867e31b757fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-targets.coax": "65b966f0e3e7e3cb878d6bb6816c6ad526a2f5c409dce04ad0dc01d53fea4c33",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-walkers.coax": "49e68fb21503da1bf6f99a28bdf98c9102c6bfcdbb3823ce3820dc543265863c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-xp.coax": "919901a3236a2aa5d40ec30022a9aa3e3e4b4bae7afadd742e2f51f45e1dc48b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland.coax": "1d126545882aabd38ed0b4f509265c30a4a856daf04c3ff15581f415045f5354",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h": "cb2d5cc46c2755be856128718586f21ce2554598dabeb2b2111b10b7bb7df4fb",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax": "ac4432d626b377dcb0ffac025446264ad2346863e3217022a61f14f5becb7d46",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax": "1399235910cc331506baf27830418e5cdd60873f1eaa1cbb6f55919c5a72fce9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-fold.coax": "61599bd6899f737cc730fb54bf9c8d398992e642fb0effb351c822185aff363b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-face.c": "96520eb4da538d7ae883460e5036543cc9c8d0df58a6592dff1537fcc6b65691",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-flight.c": "5e424950545067be76fc31c4ff01987c40a82b66774ffb745464b672f9a75290",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-room.c": "50e289ba2678026702235225f5c4c48272ebfd6ab0f32de84eceec5c4ee3d6ca",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-world.c": "90f625967aa86605555bf3938afbff7b1348b8168ebc2c523f72e2fe3c4e1e68",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax": "a047d0e270dad5c038bbefcd9017a9b7dc6be9757780c3f2ad02e27ba2f0f50e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax": "038298b4d4384d2a8733d0900b5d7c99a14c2afd5f821e9ca823d5b908d78912",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax": "6007aba525002fbda13b2dcd2213c031d328a8ed756b1a0edf0797efd03a0546",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax": "187524b26998e581219fab3604a1e1d9ec586c3a1abfbfcb4742d3360169ddc6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/socket.coax": "24cad57587999779eeb1625c32229ac8ee466da241aee3c90f576d25ec954923",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax": "4ccb5901b4d04835b1faadda87efb18a5d9125aaa334d044602779d7a75673d1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-face.c": "70fb6cc7868984b5b709ef91755c27e5323365afa185bb3542dd003dd4046de9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-people.coax": "11d58618c6cb4924a7b2f27446d49c408b16b930521542bbc8a95ca64c143c8d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-track.coax": "bb048aa1b451278eb7a72722a97938ad61aad76ddb74060c5f18b618ca17fbfa",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax": "53d507224b5a1486fb8352492ba52774d58c0f3301664210fb949bb4c6dc0958",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax": "1578e8fc6b7d4646268be1c01b75705541981935c3c04edfd1c428296bb561af",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse-face.c": "e3d2ec5375bfb638a3e25d92c60bd52b9d1f692dbb9a5fd4b8744c1f8d9aedf0",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax": "2ac7a9dc31df192001f816d6ff7ba79175585351b1822e11b43ecbb2e071c9d9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa-face.c": "0143736d744a258f315496f182e879332cf6712f7688c9eb60d4a4d52f85cc1f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax": "6f37b97e3b8966170913b426150498a2421de18f80b35c3a4e02f277bbac2bc1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax": "a8d2054b774b84b1f3b1ef2a41b8843bfd8429c209e465894c3cf91e9e2b4868",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villapet.coax": "b267498a5fe9d1dfdb6e7ba39d3f070bef3310d0fa9bdf9a3bab6f18deb22c4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaplay.coax": "4a1c5fe076301f09047123dab97a62ff0dce478547405ca68b7a6b494b742952",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaroom.coax": "2963cfd03ce77a5f8536564a17a58b02f4d9a5fc6ba2a937a8cacc4d3a67edc1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villatips.coax": "71827dd5c25f9756b9a01780c61e0f3145f194cd72a70bc436e8383a3c2f6d44",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax": "601bec3da0379d041561084e27aa96a35871ae1eda56c74623a55e2886d7b946",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/bech32-core.coax": "9019b7848b9de635bd8e0e79f2a190dc5bb81e912f19e5476eae84235e4387b1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter.coax": "e364258615344efc147ad8a5de596893e2e75ebfdadd483c902782c3dd804cf2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter_read.coax": "db3c2f203165d09f3c9e99ad019ec74ead8a4bb693754599100f1dd42c3fd260",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay_tables.coax": "c7c79a488d6d8fce48c5b0146b101ff2e405b75186415bb2999d846a995f7353",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/nip42_events.coax": "c8f8d30cf82c033d3f3afea3bf42055265787e487d89f398013af201531e538f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/message.coax": "26fcce23387737c607bd06ea8b24731cfb4c5cf7f7b2a350af53f931c2980e0b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/nip19-core.coax": "93cd5e77d25e4610434d8e02b894d8cde23319a1527036aacc53747d0f2f9318",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-browser.coax": "5ab7cab50d294706355bdd8b02ee03f5389ea4893ede52026e053d993f18069b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache-face.c": "cdad6c1b747561be93767561052161d2abf3c05832d5ec531517c3aa7097548c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache.coax": "e3611011ae9163d0f18cf8a12f78a0fbca75bb0e65eabcd2cfa3dbf4af258fee",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold-face.c": "54695d6593c1ceff74cdc284a80bbd0962203db08206439a26663589e27acae2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold.coax": "1bc2d6c8b543657c4b35b49acfd8ce0db23c08dc4434b21f6fb25b29de9d033f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-nostr.coax": "e2638447f9a9a206c58373e8f00ab23014dee8fb09ccae40175c0f8b725c2e47",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-reader-face.c": "d5ed927bab7c6b91a09f33907d0d4ad79ce4c0d2de95e42f8b7de6e5bad9cda6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-xp.coax": "2a2153f1baf21ae7dd098ad2c6832eb77fa898558b4b460eced0a6f15b008830",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/proto/descriptors/haunt.pb": "eef4eac03df5a25098d6a150c45ad8c71f02a7476c8c76f620245d045b5fb8a5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/beacon.coax": "aa1bba8910de351367d5c4d7fb8a14f22c9ac513b3a41afbfd260fa27dd3d2e2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/template.coax": "a9186106097fa48d3e97ae6bbb9fa1d74f06e66f2af98fb09158bb1c1962df48",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax": "e616a3a88713d21d41341740175e9907e887eaf86180820dcf31fc19422294fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax": "2eaba268db0abb6fcb7f08f71545e6484937b677e464d1378cc5c3a66c3f33d4",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax": "3978f0b5603d6259df6f1c8373820f3abec9bf9658288e1e3a59c363d85d430d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax": "7034711982ccea332c23d226d40aedc915b80c402a960d37dc4a8a1c6c5e38d3",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/forest.coax": "1820c2a7d87b7cee0af49f61d7764a2b97eb3c941f1e7d77d7bc648baa08c2a5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/life.coax": "c4ba640bef541954e8e71cb5d8137a9bc387f28f36ba5a5de5839ce6c7ce6760",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/night.coax": "3fca02470619cdf0c5b4858a565f218690a67355ed86b2bc60b45fece0c1cd02",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/park.coax": "f83afe7e9cd5c6b5655caba5c690f8b22a21e5962a10fa15bedced0fa9365621",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax": "fa2f3b7df105a5622a99b2d883407d288922a8cef78d591f52c19c4704d86b7f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/talk.coax": "6fa309e8391eb38ebd17e9df5ac359ae0558cf0cb8793e364ee59a58f856230e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax": "730ee3cf5b1b7c2a789c26ae49517a8014554ef193677a2d0a84d873c38ae46a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax": "b5e88d88f65af8bf2ea77a845153657aa8459130ff611c86337e8a40f874cd7f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax": "b82dae4e45ada2be00fc9c49ef73bb30fdc97ad188686b72d1201540d8ab2872",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-layout.coax": "9ada75b499d49869e843d6f921ee051562109944bde2888e2bebe1adf7beab13",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax": "2705283b203d3922ee8340c60db6720bd3beac90dd29ebd418687ad3b1ff43a4",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/frame.coax": "4511b429a6ca5018e15076f26125ce4fa82b1aed56ee00622cb6b90a8e7e4793",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/types.coax": "83d20fbf2f63f2f9f69ef0bf07c5e3609e0e7be862cdc5d2a95b2fcb4c21ec74",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/motion.coax": "f8cb14c7eced642a745d8433d818070ce5e0e4d81ccf4522f4961fb47a1bf128",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax": "2a3da1130c16107c20f8ad862e4b0ae0f2ec68eaca1500f804912307780cfd4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax": "905fca6ef9eb76731e15b85104d30868ed3fd4d5c5ea3a79e52a54b437bf0d3a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/rigid.coax": "0443f449a6f1cf6b43e1e42d22bb3410202ab8b668ed2e8eafc801741948afa2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax": "d948891b8d05f4c59b80159614c26bc1cae302dec1fc4023aa150350516f54a9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax": "24ad418c043e092727c63639bd2ac1ca527e7ed0813c7492f1fe86e50004718e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax": "35daf2a05481c375a1021a770f4502fce733a6d5cab4865f997635709cee597b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/throw.coax": "e850b2502b87ef3fdf7b885bc3addc374d64ca75ec1c47535173266435cba267",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water-look.coax": "e2cbd2e1b3837b341b88a1e5b83d3bf0ef5da55473c990bbd6538156d182ff01",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water.coax": "aeaa41a2497abf5c68ae12311d2c46214cb0c32a89f8977610c823f49557882a"
+    },
+    "dependency_inventory": {
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-people.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-track.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax"
+        ],
+        "descriptors": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/proto/descriptors/haunt.pb"
+        ]
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-layout.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/throw.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villapet.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaplay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaroom.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villatips.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/motion.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/forest.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/park.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/talk.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyroom.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyquest.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/life.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymaker.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyhome.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairygarden.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyvillage.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairycourse.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyskills.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/night.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairynight.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypond.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairywoodcutter.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymend.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairytools.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypark.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymap.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water-look.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/rigid.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-data.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-golden-data.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/frame.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/types.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-network.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/socket.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-targets.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-xp.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-walkers.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-browser.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-browser.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-nostr.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/event.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fast_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/hex.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/codecs-common.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_mult.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/bytes.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_scalar.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/scalar_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/sha256.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/proto/fingerprint.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_fixtures.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-admission.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-policy.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_checks.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr_fast.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/ecdh_fast.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group32.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32_total.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/message.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter_read.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/nip19-core.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/bech32-core.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/beacon.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/template.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-xp.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/nip42_events.coax"
+        ],
+        "descriptors": []
+      },
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold.coax": {
+        "schema_version": 1,
+        "run_steps": 100000,
+        "aggregate_slot_limit": 1572864,
+        "aggregate_container_limit": 131072,
+        "aggregate_traversal_limit": 134217728,
+        "string_live_byte_limit": 67108864,
+        "string_materialization_work_limit": 268435456,
+        "sources": [
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-fold.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax",
+          "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay_tables.coax"
+        ],
+        "descriptors": []
+      }
+    },
+    "toolchain": {
+      "clang": "/opt/homebrew/opt/llvm/bin/clang",
+      "sysroot": "/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+      "resources": "/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes",
+      "version": "Homebrew clang version 23.1.4\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /opt/homebrew/Cellar/llvm/23.1.4/bin\nConfiguration file: /opt/homebrew/Cellar/llvm/23.1.4/etc/clang/arm64-apple-darwin25.cfg\n",
+      "clang_sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a"
+    },
+    "source_sha256_after": {
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics-face.h": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/analytics.coax": "06e855b7aa414bcc6dc6be98c10c0c720ce9cb85ed38b687b5d83e1aa97acfff",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/edit-face.h": "84d685877de9ac42c8e92df0ed1e26e1ff02ee4b51f94e5c7cd5599516ccaa61",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy-face.c": "648921566dd00af51399b0374ebdbdf12364b188c6ab2a7984340d59a8cc3d38",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairy.coax": "993f00f98d901f27ac047765285d00fe98991322f11d6b0236ffeab600e55de0",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairycourse.coax": "81b0b477d8e0a3f29c8610c4ec55111f217d0891f53d91e9986d879ff055ac2c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairygarden.coax": "710ae7b474034073bd9c3483b206f3e2c86ac83cb4b9fd88b9f6e4d0131025f2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyhome.coax": "b65c6755ebedbcf75fb0b5564d79d808d26b20154de8c97169463f3cff8268f8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymaker.coax": "452cce98afe95d125e3b89eaba8c3f73df336ceec9650312e8db6f2474c45036",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymap.coax": "efe664155061b19c535d2fba109a5b0b3184d4b1d1971a788aebd8e99497b7ba",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairymend.coax": "dec1439970253a09bbfc51ebe12abd756f1fdd34be7f76a84e7a0562fcd5ced2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairynight.coax": "6004a6f0d3dafe918f365a67a6788c2f5d7e32cd8095a876f289b576bfbbb2a6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypark.coax": "986d7e8a3276468e1a543cda61ccec42cc4ef3f216796c6dadb79a225663dd9f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairypond.coax": "6121fe5b20bc388fb80232928832f75b31e61cc59ed4dc0be1203a2e3fd916e8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyquest.coax": "f3e7043fe705ef58eec1902b70580621ec61bc493df97a746e93c5ac54af3501",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyroom.coax": "02e95fe9cfcbb46531095b2bc2de3b8794d98baf1b3dc92987212fab7e11e9da",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyskills.coax": "3e49f442f14b5434e9455451a66650f16ecf59305aeb29d9ceb8d0be5ac1725c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairytools.coax": "2a4f220311ada22c4c2b027f80e6d88ca7982448052a66dba61f33aab193ee25",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairyvillage.coax": "31620e32fba02a6e55f92f5966dc7c50cc4eb278e0ee8ef8f9c853076df03ff5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/fairywoodcutter.coax": "72df37856d8119154a1be1c06bc99474e7e20f888334e1d487aaaf967801fe4b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/font.coax": "37fe091afa40087986e865d8bdef9aec126864eeef8b94896bd4fe05c6d9e5dd",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/galaxy.coax": "f93ce2f5c21b208c51a9af588f70cc2066d656e58ac46497d4d25bf0be8963ff",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-data.coax": "ba33f2614801f87fe2679285d5d73ff778d0d8d9d5e2de8065e85fdd6f370e54",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-face.c": "3fef9fb53f17f19dd9fe8d116d000ce8870007e0a8a60423e3fe597307d50852",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-golden-data.coax": "134beae607e326a7fbcd3ddd0def6df039b13eddc6c3c67b592cbc09d8650d24",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-network.coax": "aea3bae8ae4dc3ca911834af940d642b8cd39cb89f02e21a3ee786e18387ecd8",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-reader-bridge.h": "f1f2cc335b2ac51e6a4b9156d1900557828a87db0c2d8a8580cb867e31b757fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-targets.coax": "65b966f0e3e7e3cb878d6bb6816c6ad526a2f5c409dce04ad0dc01d53fea4c33",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-walkers.coax": "49e68fb21503da1bf6f99a28bdf98c9102c6bfcdbb3823ce3820dc543265863c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland-xp.coax": "919901a3236a2aa5d40ec30022a9aa3e3e4b4bae7afadd742e2f51f45e1dc48b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/newland.coax": "1d126545882aabd38ed0b4f509265c30a4a856daf04c3ff15581f415045f5354",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-face.h": "cb2d5cc46c2755be856128718586f21ce2554598dabeb2b2111b10b7bb7df4fb",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place-orbit.coax": "ac4432d626b377dcb0ffac025446264ad2346863e3217022a61f14f5becb7d46",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/place.coax": "1399235910cc331506baf27830418e5cdd60873f1eaa1cbb6f55919c5a72fce9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-fold.coax": "61599bd6899f737cc730fb54bf9c8d398992e642fb0effb351c822185aff363b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-face.c": "96520eb4da538d7ae883460e5036543cc9c8d0df58a6592dff1537fcc6b65691",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-flight.c": "5e424950545067be76fc31c4ff01987c40a82b66774ffb745464b672f9a75290",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-room.c": "50e289ba2678026702235225f5c4c48272ebfd6ab0f32de84eceec5c4ee3d6ca",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm-world.c": "90f625967aa86605555bf3938afbff7b1348b8168ebc2c523f72e2fe3c4e1e68",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realm.coax": "a047d0e270dad5c038bbefcd9017a9b7dc6be9757780c3f2ad02e27ba2f0f50e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/realms.coax": "038298b4d4384d2a8733d0900b5d7c99a14c2afd5f821e9ca823d5b908d78912",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/room.coax": "6007aba525002fbda13b2dcd2213c031d328a8ed756b1a0edf0797efd03a0546",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/save.coax": "187524b26998e581219fab3604a1e1d9ec586c3a1abfbfcb4742d3360169ddc6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/socket.coax": "24cad57587999779eeb1625c32229ac8ee466da241aee3c90f576d25ec954923",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/textkeys.coax": "4ccb5901b4d04835b1faadda87efb18a5d9125aaa334d044602779d7a75673d1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-face.c": "70fb6cc7868984b5b709ef91755c27e5323365afa185bb3542dd003dd4046de9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-people.coax": "11d58618c6cb4924a7b2f27446d49c408b16b930521542bbc8a95ca64c143c8d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid-track.coax": "bb048aa1b451278eb7a72722a97938ad61aad76ddb74060c5f18b618ca17fbfa",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/thegrid.coax": "53d507224b5a1486fb8352492ba52774d58c0f3301664210fb949bb4c6dc0958",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/ui.coax": "1578e8fc6b7d4646268be1c01b75705541981935c3c04edfd1c428296bb561af",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse-face.c": "e3d2ec5375bfb638a3e25d92c60bd52b9d1f692dbb9a5fd4b8744c1f8d9aedf0",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/verse.coax": "2ac7a9dc31df192001f816d6ff7ba79175585351b1822e11b43ecbb2e071c9d9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa-face.c": "0143736d744a258f315496f182e879332cf6712f7688c9eb60d4a4d52f85cc1f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villa.coax": "6f37b97e3b8966170913b426150498a2421de18f80b35c3a4e02f277bbac2bc1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villafig.coax": "a8d2054b774b84b1f3b1ef2a41b8843bfd8429c209e465894c3cf91e9e2b4868",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villapet.coax": "b267498a5fe9d1dfdb6e7ba39d3f070bef3310d0fa9bdf9a3bab6f18deb22c4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaplay.coax": "4a1c5fe076301f09047123dab97a62ff0dce478547405ca68b7a6b494b742952",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villaroom.coax": "2963cfd03ce77a5f8536564a17a58b02f4d9a5fc6ba2a937a8cacc4d3a67edc1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/villatips.coax": "71827dd5c25f9756b9a01780c61e0f3145f194cd72a70bc436e8383a3c2f6d44",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/world.coax": "601bec3da0379d041561084e27aa96a35871ae1eda56c74623a55e2886d7b946",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr.coax": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/bech32-core.coax": "9019b7848b9de635bd8e0e79f2a190dc5bb81e912f19e5476eae84235e4387b1",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter.coax": "e364258615344efc147ad8a5de596893e2e75ebfdadd483c902782c3dd804cf2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/filter_read.coax": "db3c2f203165d09f3c9e99ad019ec74ead8a4bb693754599100f1dd42c3fd260",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/coax_relay_tables.coax": "c7c79a488d6d8fce48c5b0146b101ff2e405b75186415bb2999d846a995f7353",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/fixtures/nip42_events.coax": "c8f8d30cf82c033d3f3afea3bf42055265787e487d89f398013af201531e538f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/message.coax": "26fcce23387737c607bd06ea8b24731cfb4c5cf7f7b2a350af53f931c2980e0b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/nostr/nip19-core.coax": "93cd5e77d25e4610434d8e02b894d8cde23319a1527036aacc53747d0f2f9318",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-browser.coax": "5ab7cab50d294706355bdd8b02ee03f5389ea4893ede52026e053d993f18069b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache-face.c": "cdad6c1b747561be93767561052161d2abf3c05832d5ec531517c3aa7097548c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-cache.coax": "e3611011ae9163d0f18cf8a12f78a0fbca75bb0e65eabcd2cfa3dbf4af258fee",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold-face.c": "54695d6593c1ceff74cdc284a80bbd0962203db08206439a26663589e27acae2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-fold.coax": "1bc2d6c8b543657c4b35b49acfd8ce0db23c08dc4434b21f6fb25b29de9d033f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-nostr.coax": "e2638447f9a9a206c58373e8f00ab23014dee8fb09ccae40175c0f8b725c2e47",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-reader-face.c": "d5ed927bab7c6b91a09f33907d0d4ad79ce4c0d2de95e42f8b7de6e5bad9cda6",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/landing-xp.coax": "2a2153f1baf21ae7dd098ad2c6832eb77fa898558b4b460eced0a6f15b008830",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/proto/descriptors/haunt.pb": "eef4eac03df5a25098d6a150c45ad8c71f02a7476c8c76f620245d045b5fb8a5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/beacon.coax": "aa1bba8910de351367d5c4d7fb8a14f22c9ac513b3a41afbfd260fa27dd3d2e2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/psionic/lib/pylon/template.coax": "a9186106097fa48d3e97ae6bbb9fa1d74f06e66f2af98fb09158bb1c1962df48",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/camera.coax": "e616a3a88713d21d41341740175e9907e887eaf86180820dcf31fc19422294fc",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cast.coax": "2eaba268db0abb6fcb7f08f71545e6484937b677e464d1378cc5c3a66c3f33d4",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/cinematic.coax": "3978f0b5603d6259df6f1c8373820f3abec9bf9658288e1e3a59c363d85d430d",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/edit/edit.coax": "7034711982ccea332c23d226d40aedc915b80c402a960d37dc4a8a1c6c5e38d3",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/forest.coax": "1820c2a7d87b7cee0af49f61d7764a2b97eb3c941f1e7d77d7bc648baa08c2a5",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/life.coax": "c4ba640bef541954e8e71cb5d8137a9bc387f28f36ba5a5de5839ce6c7ce6760",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/night.coax": "3fca02470619cdf0c5b4858a565f218690a67355ed86b2bc60b45fece0c1cd02",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/park.coax": "f83afe7e9cd5c6b5655caba5c690f8b22a21e5962a10fa15bedced0fa9365621",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/stream.coax": "fa2f3b7df105a5622a99b2d883407d288922a8cef78d591f52c19c4704d86b7f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/fairy-forest/talk.coax": "6fa309e8391eb38ebd17e9df5ac359ae0558cf0cb8793e364ee59a58f856230e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/figure.coax": "730ee3cf5b1b7c2a789c26ae49517a8014554ef193677a2d0a84d873c38ae46a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/grid.coax": "b5e88d88f65af8bf2ea77a845153657aa8459130ff611c86337e8a40f874cd7f",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-buffer.coax": "b82dae4e45ada2be00fc9c49ef73bb30fdc97ad188686b72d1201540d8ab2872",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt-layout.coax": "9ada75b499d49869e843d6f921ee051562109944bde2888e2bebe1adf7beab13",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/haunt.coax": "2705283b203d3922ee8340c60db6720bd3beac90dd29ebd418687ad3b1ff43a4",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/frame.coax": "4511b429a6ca5018e15076f26125ce4fa82b1aed56ee00622cb6b90a8e7e4793",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/hud/types.coax": "83d20fbf2f63f2f9f69ef0bf07c5e3609e0e7be862cdc5d2a95b2fcb4c21ec74",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/motion.coax": "f8cb14c7eced642a745d8433d818070ce5e0e4d81ccf4522f4961fb47a1bf128",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/particles.coax": "2a3da1130c16107c20f8ad862e4b0ae0f2ec68eaca1500f804912307780cfd4c",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/player.coax": "905fca6ef9eb76731e15b85104d30868ed3fd4d5c5ea3a79e52a54b437bf0d3a",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/rigid.coax": "0443f449a6f1cf6b43e1e42d22bb3410202ab8b668ed2e8eafc801741948afa2",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/setpiece.coax": "d948891b8d05f4c59b80159614c26bc1cae302dec1fc4023aa150350516f54a9",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/space.coax": "24ad418c043e092727c63639bd2ac1ca527e7ed0813c7492f1fe86e50004718e",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/terrain.coax": "35daf2a05481c375a1021a770f4502fce733a6d5cab4865f997635709cee597b",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/throw.coax": "e850b2502b87ef3fdf7b885bc3addc374d64ca75ec1c47535173266435cba267",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water-look.coax": "e2cbd2e1b3837b341b88a1e5b83d3bf0ef5da55473c990bbd6538156d182ff01",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/verse/water.coax": "aeaa41a2497abf5c68ae12311d2c46214cb0c32a89f8977610c823f49557882a"
+    },
+    "sources_unchanged": true,
+    "compilers_unchanged": true,
+    "all_byte_identical": false,
+    "harness_exit_code": 1,
+    "harness_exit_reason": "All selected Wasm comparisons passed; the harness additionally required byte-identical raw generated C/headers and failed that stronger condition because the required Haunt protobuf compiler-version provenance comment advanced from 0.24.0 to 0.25.0.",
+    "harness": {
+      "path": "/tmp/coax-profile-wasm-parity.py",
+      "sha256": "0fef2405a309cfb1b6a52e402673421bcd2ed9e8c973aa10455f9cb785546418",
+      "log": "/tmp/coax-profile-wasm-parity.log"
+    },
+    "environment_options": {
+      "COAXIAL_MODE": "release",
+      "COAXIAL_RUN_STEPS": null,
+      "Coax_emission": [
+        "c",
+        "SOURCE",
+        "--library",
+        "--header",
+        "SAME_WORK_HEADER"
+      ],
+      "Coax_arithmetic": "legacy default checked",
+      "Coax_BUILD_DEBUG": "legacy default development",
+      "normal_Wasm_C_flags": [
+        "--target=wasm32-wasip1",
+        "--sysroot=RECORDED_SYSROOT",
+        "-resource-dir=RECORDED_RESOURCES",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-unused-but-set-variable",
+        "-I SAME_WORK_PATH"
+      ],
+      "homepage_C_faces": "Exact existing build-home.sh flags; source and adapted scripts retained with hashes.",
+      "path_scope": "Each target used the identical absolute input paths, private work path, generated file paths, compiler/link output paths, library order and flags on baseline/candidate. Retained artifacts were copied out only after each completed build. No staging artifact/path comparison was substituted."
+    },
+    "commit_observed_after": "f2422746715d0a6d2b99edfd09b7fffdbbf546ef",
+    "generated_metadata_only_differences": [
+      {
+        "target": "realm",
+        "file": "Haunt.c",
+        "scope": "First protobuf provenance comment line only",
+        "change": "compiler=coax0-0.24.0 -> compiler=coax0-0.25.0",
+        "all_other_bytes_identical": true,
+        "baseline_sha256": "81467f03b1de557e61f37aca6eec4282d21385e9fec4b7f158bcb032d49b6f36",
+        "candidate_sha256": "e222ba7b2389317464d7e23e01c287e9e46a1e5acc5f6bbfe242bd3fe37fae89"
+      },
+      {
+        "target": "realm",
+        "file": "Haunt.h",
+        "scope": "First protobuf provenance comment line only",
+        "change": "compiler=coax0-0.24.0 -> compiler=coax0-0.25.0",
+        "all_other_bytes_identical": true,
+        "baseline_sha256": "f6df66bf8a60040a50b638991ed316d9a6399b9c94bf9c5840726f4d3eebe28a",
+        "candidate_sha256": "9063570a4bac730102b415ff66b8a2376a5064fe846a0122e83340de2606bee5"
+      }
+    ],
+    "all_wasm_byte_identical": true,
+    "all_generated_executable_text_identical_modulo_required_compiler_provenance": true
+  }
 }
