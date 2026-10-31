@@ -1,0 +1,678 @@
+{
+  "schema": "coax-effects-040-integration-qualification-v1",
+  "date": "2026-10-31",
+  "passed": true,
+  "scope": "Changed 0.40.0 checker/parser integration of the first conservative compiler-owned effect inventory. Not full R11, a bootstrap/release qualification, or bounded admission.",
+  "immutable_source": {
+    "git_head": "3c588727e91a124ea38dfcd3768cb5645c7ae6bd",
+    "snapshot": "/tmp/coax-effects-040-3c588727e91a",
+    "input_fingerprint_before_and_after": "95ac0f5c76deecdffb6a17fd348b4e2ac52fa6d1469205454d0a56b26f6752ea"
+  },
+  "private_build": {
+    "schema": "coax-effects-040-integration-build-v1",
+    "git_head": "3c588727e91a124ea38dfcd3768cb5645c7ae6bd",
+    "snapshot": "/tmp/coax-effects-040-3c588727e91a",
+    "seed_compiler": "/tmp/coax-effects-build/coax-final",
+    "seed_sha256": "cc61d706ab6ca4ff0e1d354c595071b4677a1ed87508a75961078a3bdef7e269",
+    "steps": [
+      {
+        "name": "generate",
+        "arguments": [
+          "/tmp/coax-effects-build/coax-final",
+          "c",
+          "/tmp/coax-effects-040-3c588727e91a/coax/lib/compiler/compiler.coax",
+          "--library",
+          "--header",
+          "/tmp/coax-effects-040-build/proto_importer.h"
+        ],
+        "elapsed_seconds": 49.969261582999025,
+        "exit": 0
+      },
+      {
+        "name": "cc",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "/tmp/coax-effects-040-build/proto_importer.c",
+          "-o",
+          "/tmp/coax-effects-040-build/proto_importer.o"
+        ],
+        "elapsed_seconds": 6.457771041023079,
+        "exit": 0
+      },
+      {
+        "name": "cxx",
+        "arguments": [
+          "c++",
+          "-std=c++20",
+          "-O0",
+          "-g",
+          "-I/tmp/coax-effects-040-build",
+          "-o",
+          "/tmp/coax-effects-040-build/coax",
+          "/tmp/coax-effects-040-3c588727e91a/coax/src/main.cpp",
+          "/tmp/coax-effects-040-build/proto_importer.o"
+        ],
+        "elapsed_seconds": 2.3234681670437567,
+        "exit": 1
+      },
+      {
+        "name": "cxx-with-source-runtime-literals",
+        "arguments": [
+          "c++",
+          "-std=c++20",
+          "-O0",
+          "-g",
+          "-I/tmp/coax-effects-040-build",
+          "-o",
+          "/tmp/coax-effects-040-build/coax",
+          "/tmp/coax-effects-040-3c588727e91a/coax/src/main.cpp",
+          "/tmp/coax-effects-040-build/proto_importer.o"
+        ],
+        "elapsed_seconds": 5.472554124949966,
+        "exit": 0
+      }
+    ],
+    "input_fingerprint": "95ac0f5c76deecdffb6a17fd348b4e2ac52fa6d1469205454d0a56b26f6752ea",
+    "artifacts": {
+      "proto_importer.c": "0c15cfa3b8f1e632a8e90fdf35b82e8ed943fce1047489d62db32da666df91d5",
+      "proto_importer.h": "e733f34fe1d877b1f5ce3526c29a36b420b642baac5ad1922247188617166197",
+      "proto_importer.o": "d44e572639b79c2764fc9b944729213c2a6cfc903043381ad8f53adce9308909",
+      "proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+      "coax": "fe2a8269257f87010f9a65df929f7856ed299db7df4395e8b65acee26f1763e2"
+    },
+    "source_sha256": {
+      "coax/src/main.cpp": "0eb95371f9b559601d4957acd55f7e08a0eb93bc2d9317bc5f271eaa74798943",
+      "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+      "coax/lib/compiler/compiler.coax": "5120ff4849299d2f436b5a83dc4845754ce6c654f5a8018978c3648025cfcb7c",
+      "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+      "coax/lib/compiler/checker.coax": "28685c11b28422fe69aa54586a3021276dd577cbed109c65e69c4ede5453a2ca",
+      "coax/lib/compiler/parser.coax": "bf29f5d38a8ea235a56902df091bbaf5ce4b90ac282e644029ad88c07f499b9b",
+      "coax/src/release.h": "6b7a9226767c6021d38498eb86a729a85e074ac615f441ebf01936f6618e0dd2"
+    },
+    "scope": "Focused private source integration build; graph emission retained mandatory authority checks. No full bootstrap, standalone unchanged policy gates, policy/native oracle or mutation suite was run.",
+    "passed": true
+  },
+  "focused_smoke": {
+    "schema": "coax-effects-040-integration-smoke-v1",
+    "git_head": "3c588727e91a124ea38dfcd3768cb5645c7ae6bd",
+    "compiler": "/tmp/coax-effects-040-build/coax",
+    "compiler_sha256": "fe2a8269257f87010f9a65df929f7856ed299db7df4395e8b65acee26f1763e2",
+    "checks": [
+      {
+        "name": "numeric-integer",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/numeric-integer.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "1adce0f2f50b8162b1a9b6aba15c416aec46a6f76b145ef592bae8ace120d432",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "ed9a36e350b57e5f1cc611b06cab41149554de61bea06923cae4e600048f3bad",
+        "passed": true,
+        "source": "#import \"Basic\"; helper :: (x:$T:numeric)->$T { print(\"%\",x);return x+x; } root :: ()->int {return helper(7);} floating :: ()->f64 {return helper(0.5f64);}\nmain :: () {}\n"
+      },
+      {
+        "name": "numeric-floating",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/numeric-floating.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "floating"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "1adce0f2f50b8162b1a9b6aba15c416aec46a6f76b145ef592bae8ace120d432",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "1c393cb3bf727b01454f196e98f5777dff00ff7efcc0bc92e87a31c4f9573aef",
+        "passed": true,
+        "source": "#import \"Basic\"; helper :: (x:$T:numeric)->$T { print(\"%\",x);return x+x; } root :: ()->int {return helper(7);} floating :: ()->f64 {return helper(0.5f64);}\nmain :: () {}\n"
+      },
+      {
+        "name": "numeric-wrapping",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/numeric-wrapping.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root",
+          "--arithmetic",
+          "wrapping"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "1adce0f2f50b8162b1a9b6aba15c416aec46a6f76b145ef592bae8ace120d432",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "2ffb7c36271ab98ab359b568f29d8d2f1ef013febbcb50187e39fa2b181b086e",
+        "passed": true,
+        "source": "#import \"Basic\"; helper :: (x:$T:numeric)->$T { print(\"%\",x);return x+x; } root :: ()->int {return helper(7);} floating :: ()->f64 {return helper(0.5f64);}\nmain :: () {}\n"
+      },
+      {
+        "name": "numeric-selected-instances",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/numeric-selected-instances.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "helper"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "1adce0f2f50b8162b1a9b6aba15c416aec46a6f76b145ef592bae8ace120d432",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "ea9fffd8bf2ce747ead40e153fb29a0add7f37a62988b7f0de6c158c4b4d3778",
+        "passed": true,
+        "source": "#import \"Basic\"; helper :: (x:$T:numeric)->$T { print(\"%\",x);return x+x; } root :: ()->int {return helper(7);} floating :: ()->f64 {return helper(0.5f64);}\nmain :: () {}\n"
+      },
+      {
+        "name": "numeric-nested-foreign",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/numeric-nested-foreign.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "7170b254d79cd1b5f38db3e369aaa5bbdcfa1d3949168a92ea21ffc4d66aa794",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "2a16c4b73d9994eb96db5aa7cdd370f742536747cc3ccfe24ac3c8800f21f293",
+        "passed": true,
+        "source": "io :: () #foreign; inner :: (x:$T:numeric) {io();} outer :: (x:$T:numeric) {inner(x);} root :: () {outer(7);}\nmain :: () {}\n"
+      },
+      {
+        "name": "ordered-nested",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/ordered-nested.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "0cc0162d1e7ebd1074fed647fee88a35633f6bc2c3399485e3bbd483b00791f9",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "3343b5ba82d3a8455d912e46017fcba66b97d8b055460ef0670c57eba13c4d0d",
+        "passed": true,
+        "source": "less :: (a:$T:ordered,b:$T)->bool {return a<b;} root :: ()->bool {return less(2,3);}\nmain :: () {}\n"
+      },
+      {
+        "name": "copyable-generic-struct",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/copyable-generic-struct.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "db8556592ae0593970bf59bce31342b255a3136a549ea0e0c76bf1f90a1c138b",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "126b233d0cd8d752ef239043e24461e344c3bfe9209bb54ed62fb514866a51d0",
+        "passed": true,
+        "source": "Box :: struct($T:copyable) {x:$T;} keep :: (x:$T:copyable)->$T {return x;} root :: ()->int {b:Box(int)=Box.{x=7};return keep(b).x;}\nmain :: () {}\n"
+      },
+      {
+        "name": "unused-constrained-template",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/unused-constrained-template.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "f15f1b4ea12e7b107580d0e5bedb7141a6ce7adace684687bbe925cec0cdff0a",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "5634c27f733764e2eed7aa462f88dcb63165230d50842daa18b225c9f709c437",
+        "passed": true,
+        "source": "#import \"Basic\"; unused :: (x:$T:numeric) {print(\"%\",x);} root :: ()->int {return 7;}\nmain :: () {}\n"
+      },
+      {
+        "name": "reject-numeric-bool",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/reject-numeric-bool.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "0174596057a07a1436f72b24a9e6cbd051367ab960ae54d0d4d8d9075b8bfdbc",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "passed": true,
+        "source": "twice :: (x:$T:numeric)->$T {return x+x;} root :: () {x:=twice(true);}\nmain :: () {}\n"
+      },
+      {
+        "name": "reject-ordered-bool",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/reject-ordered-bool.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "ddb016ef48c8ea201f9296d3a118a81ff3f5784cbb69e59ef9716ea9f9c4f5b6",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "passed": true,
+        "source": "less :: (a:$T:ordered,b:$T)->bool {return a<b;} root :: () {x:=less(true,false);}\nmain :: () {}\n"
+      },
+      {
+        "name": "reject-equatable-struct",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-build/cases/reject-equatable-struct.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "root"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "f3e222276811c43553e233b228c06c0a9f4ca2ea294e3e53ff38289ab86c1a66",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "passed": true,
+        "source": "P :: struct {x:int;} same :: (a:$T:equatable,b:$T)->bool {return a==b;} root :: () {x:=same(P.{x=1},P.{x=2});}\nmain :: () {}\n"
+      },
+      {
+        "name": "panda-pc-step",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "pc_step"
+        ],
+        "elapsed_seconds": null,
+        "exit": null,
+        "reused_passing_output_without_reexecution": true,
+        "source_sha256": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc",
+        "prior_exit_validation": "Prior smoke invocation passed its success or nonzero refusal assertion before failing only on /tmp canonical-path normalization; exact exit code was not retained.",
+        "output_sha256": "611de3eebcace133cdd3e4f9124cce6c319bfecea5b07ad06c01e8b9697d3363",
+        "passed": true
+      },
+      {
+        "name": "verse-orbit-follow",
+        "arguments": [
+          "/tmp/coax-effects-040-build/coax",
+          "deps",
+          "/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+          "--library",
+          "--effects",
+          "--proc",
+          "verse_orbit_follow"
+        ],
+        "elapsed_seconds": 0.09439074998954311,
+        "exit": 0,
+        "reused_passing_output_without_reexecution": false,
+        "source_sha256": "e616a3a88713d21d41341740175e9907e887eaf86180820dcf31fc19422294fc",
+        "output_sha256": "a1c8ee713e7801e2181da575ffd402ed943d86206557f3ecd3241dbb08969ea9",
+        "passed": true
+      }
+    ],
+    "consumers": {
+      "panda-pc-step": {
+        "path": "/tmp/coax-effects-040-build/panda-pc-step.stdout",
+        "procedures": 53,
+        "edges": 236,
+        "sites": 894,
+        "effects_mask": 125,
+        "reachable": 35,
+        "same_frozen_report_after_path_normalization": true,
+        "actual_report": {
+          "schema": "coax.effects.v1",
+          "status": "inspected",
+          "profile": {
+            "arithmetic": "checked"
+          },
+          "scope": "conservative checked-AST may-effects, not R11 completion or bounded admission",
+          "unknown_policy": "foreign resources, intrinsic implementations and borrowed regions remain unqualified; absence of a bit is not an allocation or blocking proof",
+          "uninstantiated_templates": 0,
+          "generic_templates": 0,
+          "procedure_count": 53,
+          "edge_count": 236,
+          "site_count": 894,
+          "sources": [
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+              "sha256": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc"
+            },
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control-types.coax",
+              "sha256": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3"
+            },
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control-check-fixtures.coax",
+              "sha256": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e"
+            },
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-matrix.coax",
+              "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+            },
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-matrix-types.coax",
+              "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483"
+            }
+          ],
+          "procedures": [
+            {
+              "id": 16,
+              "name": "pc_step",
+              "instance_key": "",
+              "declaration": {
+                "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                "line": 93,
+                "column": 1
+              },
+              "generic_instance": false,
+              "effects_mask": 125,
+              "reachable_procedures": 35,
+              "reachable_recursion": false,
+              "acyclic_removed": 35,
+              "effects": [
+                {
+                  "kind": "host_io",
+                  "site_kind": 4,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 94,
+                    "column": 91
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "unknown_effects",
+                  "site_kind": 4,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 94,
+                    "column": 91
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "may_trap",
+                  "site_kind": 4,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 94,
+                    "column": 91
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "borrowed_read",
+                  "site_kind": 5,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 94,
+                    "column": 91
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "borrowed_write",
+                  "site_kind": 6,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 112,
+                    "column": 11
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "intrinsic_resources_unqualified",
+                  "site_kind": 7,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                    "line": 105,
+                    "column": 87
+                  },
+                  "path": [
+                    {
+                      "procedure": 16,
+                      "name": "pc_step",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/psionic/lib/robotics/panda-control.coax",
+                        "line": 93,
+                        "column": 1
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "verse-orbit-follow": {
+        "path": "/tmp/coax-effects-040-build/verse-orbit-follow.stdout",
+        "procedures": 81,
+        "edges": 564,
+        "sites": 200,
+        "effects_mask": 68,
+        "reachable": 19,
+        "same_frozen_report_after_path_normalization": true,
+        "actual_report": {
+          "schema": "coax.effects.v1",
+          "status": "inspected",
+          "profile": {
+            "arithmetic": "checked"
+          },
+          "scope": "conservative checked-AST may-effects, not R11 completion or bounded admission",
+          "unknown_policy": "foreign resources, intrinsic implementations and borrowed regions remain unqualified; absence of a bit is not an allocation or blocking proof",
+          "uninstantiated_templates": 0,
+          "generic_templates": 0,
+          "procedure_count": 81,
+          "edge_count": 564,
+          "site_count": 200,
+          "sources": [
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+              "sha256": "e616a3a88713d21d41341740175e9907e887eaf86180820dcf31fc19422294fc"
+            },
+            {
+              "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/space.coax",
+              "sha256": "d65d4ceec6703ba659a2426814149fa6b39c0cd9bd9546d4cb053e0306025a48"
+            }
+          ],
+          "procedures": [
+            {
+              "id": 18,
+              "name": "verse_orbit_follow",
+              "instance_key": "",
+              "declaration": {
+                "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+                "line": 229,
+                "column": 1
+              },
+              "generic_instance": false,
+              "effects_mask": 68,
+              "reachable_procedures": 19,
+              "reachable_recursion": false,
+              "acyclic_removed": 19,
+              "effects": [
+                {
+                  "kind": "unknown_effects",
+                  "site_kind": 7,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+                    "line": 242,
+                    "column": 8
+                  },
+                  "path": [
+                    {
+                      "procedure": 18,
+                      "name": "verse_orbit_follow",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+                        "line": 229,
+                        "column": 1
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "intrinsic_resources_unqualified",
+                  "site_kind": 7,
+                  "site": {
+                    "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+                    "line": 242,
+                    "column": 8
+                  },
+                  "path": [
+                    {
+                      "procedure": 18,
+                      "name": "verse_orbit_follow",
+                      "instance_key": "",
+                      "declaration": {
+                        "unit": "/private/tmp/coax-effects-040-3c588727e91a/verse/camera.coax",
+                        "line": 229,
+                        "column": 1
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "passed": true,
+    "scope": "Only merged 0.40 checked-AST/CLI integration and original resolved consumer inspections. No operational product/robot session; no standalone policy/native/mutation reruns. Standard report frontend preserves mandatory authority checks in the compiler VM."
+  },
+  "compiler_version": "coax0 0.40.0",
+  "reused_frozen_proofs": {
+    "path": "coax-effects-inventory-2026-10-31.json",
+    "unchanged_effect_policy_sha256": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+    "unchanged_native_extractor_sha256": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+    "authority_policy_checks": 7,
+    "authority_policy_root_mutants_killed": 199,
+    "independent_policy_native_cases": 247,
+    "native_modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "standalone_policy_or_native_or_mutation_rerun": false
+  },
+  "compatibility_limits": [
+    "Only successfully checked concrete generic instantiations participate in runtime call closure. Uninstantiated constrained templates remain separately counted, not assigned speculative runtime effects.",
+    "numeric/ordered/equatable/copyable constrain allowable source operations and bindings; they do not establish effect, allocation, blocking, alias/escape, lifetime, stack or clock guarantees.",
+    "Foreign calls, intrinsic implementations and borrowed-region obligations remain explicitly unqualified. A zero mask is not a resource or purity certificate.",
+    "This private compiler emits the current authored graph with a previously qualified 0.39 seed and links the current 0.40 C++ bridge. It does not install or certify the production bootstrap compiler.",
+    "Only required check programs execute in the compiler VM; no operational Panda/Verse session, original-model inference, GPU dispatch, simulator episode or network request runs. Standard compiler/report operations retain mandatory authority checks."
+  ],
+  "harness_diagnostics": [
+    "Initial C++ private build lacked generated proto_runtime.inc; only the failing C++ step was retried after embedding the four exact pinned protocol sources. Both attempts remain recorded.",
+    "Initial report comparison normalized /tmp but not macOS canonical /private/tmp. Previously passing compiler outputs were reused and rechecked after normalization, not executed again.",
+    "The first Verse command used orbit_follow instead of the frozen procedure name verse_orbit_follow. Its explicit missing-procedure refusal was retained; the corrected requested inspection passed."
+  ]
+}
