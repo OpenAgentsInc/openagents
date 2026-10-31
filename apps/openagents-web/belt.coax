@@ -24,6 +24,7 @@
 #load "analytics.coax";
 #load "../../verse/orbit.coax";
 #load "../../verse/spacecam.coax";
+#load "../../verse/command.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -78,6 +79,7 @@ STATION_ORBIT :: 1200000.0;   // m from Ceres's centre
 ROCKS :: 5000;                // the Belt's field, drawn
 ROCKS_FIRST :: 900;           // the first field's rocks, from the stream the ice rocks follow
 SHIPS :: 8;
+LONG_PRESS :: 0.45;     // seconds a finger rests on a ship to add it to the selection
 // Light lag: what a faction sees of a ship is where it was distance / c ago. Each ship keeps its
 // last SIGHT_N states (position and velocity, one a step: at most two days apart) for where-was-it
 // queries; the same history can serve replay. Bodies and rocks need none: their orbits answer for any time.
@@ -134,7 +136,8 @@ Belt :: struct {
   ships: [SHIPS] Ship; ship_n: int;
   rocks: [ROCKS] Rock;
   ices: [ICE_ROCKS] Orbit;
-  selected: [SHIPS] bool;
+  cmd: [1] Command;      // which ships are chosen, the control groups and each ship's queue of orders (verse/command.coax)
+  press_t: f32;          // when a finger went down, for a long-press
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
   sight: [SHIPS * SIGHT_N] Sight; sight_head: [SHIPS] int; sight_n: [SHIPS] int;
@@ -379,7 +382,7 @@ belt_reset :: (s: [] Belt) {
   s[0].started = true;
   s[0].t = ORBIT_2200 + 60.0 * DAY;
   s[0].delivered = 0.0;
-  for j: 0..<SHIPS { s[0].selected[j] = false; }
+  for j: 0..<SHIPS { s[0].cmd[0].selected[j] = false; }
   s[0].toast_n = 0; s[0].toast_t = 0;
   s[0].speed = 2;
   s[0].ice = 1200.0;
@@ -543,7 +546,8 @@ arrive :: (s: [] Belt, k: int) {
   s[0].ships[k].slot = berth(s, k, sh.at);
   buf: [96] u8;
   if sh.faction != FREE_BELT { s[0].ships[k].idle_until = s[0].t + 25.0 * DAY; return; }
-  if is_ice(sh.at) && sh.cargo_cap > 0.0 && sh.cargo < sh.cargo_cap {
+  queued := verse_command_queued(s[0].cmd[..], k) > 0;
+  if is_ice(sh.at) && !queued && sh.cargo_cap > 0.0 && sh.cargo < sh.cargo_cap {
     s[0].ships[k].mode = MINING;
     s[0].ships[k].work = WORK_MINE; s[0].ships[k].work_rock = sh.at;
     n := put(buf[..], 0, sh.name); n = put(buf[..], n, " MINING AT "); n = put(buf[..], n, place_name(sh.at));
@@ -565,6 +569,7 @@ arrive :: (s: [] Belt, k: int) {
     take := fmin(need, s[0].ice);
     s[0].ships[k].fuel += take; s[0].ice -= take;
     say(s, cast(string) buf[0..<n]);
+    if next_order(s, k) { return; }
     if sh.work == WORK_MINE && is_ice(sh.work_rock) {
       p := plan_with(s, k, sh.work_rock, true, 0.4);
       if !launch(s, k, sh.work_rock, p) { s[0].ships[k].work = WORK_NONE; }
@@ -573,6 +578,7 @@ arrive :: (s: [] Belt, k: int) {
   }
   n := put(buf[..], 0, sh.name); n = put(buf[..], n, " ARRIVED AT "); n = put(buf[..], n, place_name(sh.at));
   say(s, cast(string) buf[0..<n]);
+  ok := next_order(s, k);
 }
 
 // The ships over dt seconds of game time.
@@ -706,16 +712,16 @@ new_game :: (s: [] Belt) {
 
 selected_count :: (s: [] Belt) -> int {
   n := 0;
-  for k: 0..<s[0].ship_n { if s[0].selected[k] { n += 1; } }
+  for k: 0..<s[0].ship_n { if s[0].cmd[0].selected[k] { n += 1; } }
   return n;
 }
 first_selected :: (s: [] Belt) -> int {
-  for k: 0..<s[0].ship_n { if s[0].selected[k] { return k; } }
+  for k: 0..<s[0].ship_n { if s[0].cmd[0].selected[k] { return k; } }
   return -1;
 }
 select_only :: (s: [] Belt, k: int) {
-  for j: 0..<SHIPS { s[0].selected[j] = false; }
-  if k >= 0 { s[0].selected[k] = true; }
+  for j: 0..<SHIPS { s[0].cmd[0].selected[j] = false; }
+  if k >= 0 { s[0].cmd[0].selected[k] = true; }
   s[0].dest = -1;
 }
 
@@ -731,9 +737,15 @@ set_dest :: (s: [] Belt, p: int) {
 
 go :: (s: [] Belt, fast: bool) {
   if s[0].dest < 0 { return; }
-  sent := 0;
+  sent := 0; queued := 0;
   for k: 0..<s[0].ship_n {
-    if !s[0].selected[k] { continue; }
+    if !s[0].cmd[0].selected[k] { continue; }
+    if s[0].shift && s[0].ships[k].mode == FLYING {
+      // Shift and an order: it waits until this ship arrives
+      if verse_command_push(s[0].cmd[..], k, CmdOrder.{target = s[0].dest, arg = ifx fast then 1 else 0}) { queued += 1; }
+      continue;
+    }
+    if !s[0].shift { verse_command_clear(s[0].cmd[..], k); }
     p := plan_for(s, k, s[0].dest, fast);
     if launch(s, k, s[0].dest, p) {
       sent += 1;
@@ -747,10 +759,30 @@ go :: (s: [] Belt, fast: bool) {
     n = put(buf[..], n, " BURNING FOR "); n = put(buf[..], n, place_name(s[0].dest));
     say(s, cast(string) buf[0..<n]);
     if track_begin(s[0].track[..], "order") { track_str(s[0].track[..], "to", place_name(s[0].dest)); track_bool(s[0].track[..], "fast", fast); track_int(s[0].track[..], "ships", sent); track_end(s[0].track[..]); }
+  } else if queued > 0 {
+    n := put(buf[..], 0, ifx queued == 1 then "NEXT: " else "THEN ALL TO ");
+    n = put(buf[..], n, place_name(s[0].dest));
+    say(s, cast(string) buf[0..<n]);
   } else {
     say(s, "NOT ENOUGH PROPELLANT");
   }
   s[0].dest = -1;
+}
+// A ship that has arrived takes the next order off its queue: true when it burned for it.
+next_order :: (s: [] Belt, k: int) -> bool {
+  while verse_command_queued(s[0].cmd[..], k) > 0 {
+    o := verse_command_pop(s[0].cmd[..], k);
+    p := plan_for(s, k, o.target, o.arg == 1);
+    if launch(s, k, o.target, p) {
+      s[0].ships[k].work = ifx is_ice(o.target) && s[0].ships[k].cargo_cap > 0.0 then WORK_MINE else WORK_NONE;
+      s[0].ships[k].work_rock = o.target;
+      buf: [96] u8;
+      n := put(buf[..], 0, s[0].ships[k].name); n = put(buf[..], n, " BURNING FOR "); n = put(buf[..], n, place_name(o.target));
+      say(s, cast(string) buf[0..<n]);
+      return true;
+    }
+  }
+  return false;
 }
 
 mine_order :: (s: [] Belt) {
@@ -874,6 +906,20 @@ hold_bit :: (key: int) -> int {
   return 0;
 }
 
+// Ctrl (or Cmd) and 4-9 makes the selection a group; the digit alone selects it again
+// (1-3 and 0 stay the clock's speeds).
+group_key :: (s: [] Belt, g: int, set: bool) {
+  buf: [48] u8;
+  n := put(buf[..], 0, "GROUP "); n = put_count(buf[..], n, f64(g));
+  if set {
+    if selected_count(s) == 0 { return; }
+    ok := verse_command_group_set(s[0].cmd[..], g);
+    n = put(buf[..], n, ": "); n = put_count(buf[..], n, f64(selected_count(s))); n = put(buf[..], n, ifx selected_count(s) == 1 then " SHIP" else " SHIPS");
+    say(s, cast(string) buf[0..<n]);
+    return;
+  }
+  if verse_command_group_recall(s[0].cmd[..], g) { s[0].dest = -1; say(s, cast(string) buf[0..<n]); }
+}
 belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   started(s);
   track_key(s[0].track[..], key, false);
@@ -881,6 +927,7 @@ belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   b := hold_bit(key);
   if b != 0 { s[0].held = s[0].held | b; return true; }
   if key == ' ' { s[0].speed = ifx s[0].speed == 0 then 2 else 0; return true; }
+  if key >= '4' && key <= '9' { group_key(s, key - '0', (mods & 10) != 0); return true; }
   if key == '1' || key == '2' || key == '3' { s[0].speed = key - '0'; return true; }
   if key == '0' { s[0].speed = 0; return true; }
   if key == KEY_ESCAPE {
@@ -923,8 +970,8 @@ press_button :: (s: [] Belt, i: int) {
   b := s[0].btn[i];
   if b.id == B_SPEED { s[0].speed = b.arg; }
   if b.id == B_CARD {
-    if s[0].shift { s[0].selected[b.arg] = !s[0].selected[b.arg]; s[0].dest = -1; }
-    else if s[0].selected[b.arg] && selected_count(s) == 1 { follow_ship(s, b.arg); }
+    if s[0].shift { s[0].cmd[0].selected[b.arg] = !s[0].cmd[0].selected[b.arg]; s[0].dest = -1; }
+    else if s[0].cmd[0].selected[b.arg] && selected_count(s) == 1 { follow_ship(s, b.arg); }
     else { select_only(s, b.arg); }
   }
   if b.id == B_MINE { mine_order(s); }
@@ -981,7 +1028,7 @@ map_tap :: (s: [] Belt, x: f32, y: f32) {
   k := hi(s[0].dpr, 0.5);
   own := ship_at(s, x, y, 16 * k, FREE_BELT);
   if own >= 0 {
-    if s[0].shift { s[0].selected[own] = !s[0].selected[own]; s[0].dest = -1; } else { select_only(s, own); }
+    if s[0].shift { s[0].cmd[0].selected[own] = !s[0].cmd[0].selected[own]; s[0].dest = -1; } else { select_only(s, own); }
     return;
   }
   if selected_count(s) > 0 {
@@ -1055,14 +1102,12 @@ ride_step :: (s: [] Belt) {
 }
 
 box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
-  ax := lo(x0, x1); bx := hi(x0, x1); ay := lo(y0, y1); by := hi(y0, y1);
-  if !s[0].shift { for j: 0..<SHIPS { s[0].selected[j] = false; } }
+  xs: [SHIPS] f32; ys: [SHIPS] f32; mine: [SHIPS] bool;
   for k: 0..<s[0].ship_n {
-    if s[0].ships[k].faction != FREE_BELT { continue; }
     q := ship_screen(s, k);
-    x := pix(q.x); y := pix(q.y);
-    if x >= ax && x <= bx && y >= ay && y <= by { s[0].selected[k] = true; }
+    xs[k] = pix(q.x); ys[k] = pix(q.y); mine[k] = s[0].ships[k].faction == FREE_BELT;
   }
+  n := verse_command_box(s[0].cmd[..], xs[0..<s[0].ship_n], ys[0..<s[0].ship_n], mine[0..<s[0].ship_n], x0, y0, x1, y1, s[0].shift);
   s[0].dest = -1;
 }
 
@@ -1121,7 +1166,7 @@ belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   }
   // Fingers: one taps or pans, two pinch.
   if phase == 0 {
-    s[0].touch = true;
+    s[0].touch = true; s[0].press_t = s[0].clock;
     if on >= 0 && s[0].fingers[0].id < 0 { s[0].press = on; return true; }
     for i: 0..<2 {
       if s[0].fingers[i].id < 0 {
@@ -1168,7 +1213,12 @@ belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> 
   }
   if phase == 2 || phase == 3 {
     both := s[0].fingers[0].id >= 0 && s[0].fingers[1].id >= 0;
-    if phase == 2 && !both && !s[0].dragging { map_tap(s, x, y); }
+    if phase == 2 && !both && !s[0].dragging {
+      // a long-press on your ship adds it to the selection, or takes it out
+      own := ship_at(s, x, y, 16 * k, FREE_BELT);
+      if own >= 0 && s[0].clock - s[0].press_t >= LONG_PRESS { verse_command_toggle(s[0].cmd[..], own); s[0].dest = -1; }
+      else { map_tap(s, x, y); }
+    }
     s[0].fingers[f].id = -1;
     if !both { s[0].dragging = false; }
     return true;
@@ -1636,7 +1686,7 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     if sh.mode != FLYING { continue; }
     col := faction_rgb(sh.faction);
     done := int(fclamp((t - sh.t0) / sh.tof * f64(PATH - 1), 0.0, f64(PATH - 1)));
-    light: f32 = ifx s[0].selected[j] then 0.7f32 else 0.28f32;
+    light: f32 = ifx s[0].cmd[0].selected[j] then 0.7f32 else 0.28f32;
     draw_path(s, out, d, sh.path[..], done, light, false, col.x, col.y, col.z);
     e := screen_of(s, sh.path[PATH - 1]);
     ring(out, d, pix(e.x), pix(e.y), 4 * k, 12, 0.7 * k, light, col.x, col.y, col.z);
@@ -1673,8 +1723,8 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     }
   }
   // The ships, the selected last.
-  for j: 0..<s[0].ship_n { if !s[0].selected[j] { draw_ship(s, out, d, j, false); } }
-  for j: 0..<s[0].ship_n { if s[0].selected[j] { draw_ship(s, out, d, j, true); } }
+  for j: 0..<s[0].ship_n { if !s[0].cmd[0].selected[j] { draw_ship(s, out, d, j, false); } }
+  for j: 0..<s[0].ship_n { if s[0].cmd[0].selected[j] { draw_ship(s, out, d, j, true); } }
 }
 
 // ---- drawing: the HUD
@@ -1824,7 +1874,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     sh := s[0].ships[j];
     if sh.faction != FREE_BELT || c >= cards { continue; }
     x0 := cx0 + f32(c) * (cw + 8 * k);
-    sel := s[0].selected[j];
+    sel := s[0].cmd[0].selected[j];
     panel(s, u, x0, cy0, x0 + cw, cy0 + chh, ifx sel then 0.95f32 else 0.75f32, sel);
     card := add_button(s, x0, cy0, x0 + cw, cy0 + chh, B_CARD, j);
     pad := 10 * k;
@@ -2400,6 +2450,37 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   rivals := 0;
   for k: 0..<s[0].ship_n { if s[0].ships[k].faction != FREE_BELT && s[0].ships[k].route_k != 0 { rivals += 1; } }
   #assert rivals > 0;
+}
+
+#test "fleets: a box takes all three ships and one order sends them all; Ctrl+4 keeps them as a group; Shift queues the next order" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
+  box_select(s[..], -100000, -100000, 100000, 100000);
+  #assert selected_count(s[..]) == 3;   // the Free Belt's three, not the rivals
+  #assert belt_key(s[..], '4', 2) && verse_command_group_size(s[0].cmd[..], 4) == 3;
+  select_only(s[..], 1);
+  #assert belt_key(s[..], '4', 0) && selected_count(s[..]) == 3;
+  #assert belt_key(s[..], '2', 0) && s[0].speed == 2;   // 1-3 stay the clock
+  mine_order(s[..]);
+  rock := s[0].dest;
+  #assert is_ice(rock);
+  go(s[..], true);
+  for k: 0..<3 { #assert s[0].ships[k].mode == FLYING && s[0].ships[k].at == rock; }
+  // Shift and an order while RASP flies: home to Hearth once it gets there
+  select_only(s[..], 0);
+  s[0].shift = true;
+  set_dest(s[..], P_STATION);
+  go(s[..], false);
+  s[0].shift = false;
+  #assert s[0].ships[0].at == rock && verse_command_queued(s[0].cmd[..], 0) == 1;
+  turned := false;
+  for i: 0..<400 {
+    s[0].t += DAY;
+    step_ships(s[..], DAY);
+    if s[0].ships[0].mode == FLYING && s[0].ships[0].at == P_STATION { turned = true; break; }
+  }
+  #assert turned && verse_command_queued(s[0].cmd[..], 0) == 0;
 }
 
 #test "a rival leaves its world on a hyperbola and arrives at its periapsis, with no jump at the handoff" {

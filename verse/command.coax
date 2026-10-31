@@ -1,0 +1,124 @@
+// Commanding units, as a real-time strategy game does: a selection, box select, control groups
+// and a queue of orders per unit. The realm keeps its units; this keeps which are chosen and what
+// each is to do next. Units are numbered 0..CMD_UNITS-1, groups 1..9 (0 unused), and an order is
+// two ints the realm gives meaning to (Belt 2200: a destination and whether to go fast).
+//
+//   verse_command_only(c, k)       select k alone (-1: nothing)
+//   verse_command_toggle(c, k)     add or take k from the selection (Shift-click; a long-press on a phone)
+//   verse_command_box(c, ...)      every eligible unit whose screen point is in a rectangle
+//   verse_command_group_set(c, g)  group g is the selection (Ctrl or Cmd and a digit)
+//   verse_command_group_recall     the selection is group g (the digit), false when it's empty
+//   verse_command_push / pop       an order at the end of a unit's queue (Shift and an order), the next one off it
+//   coax/bin/coax test verse/command.coax --library
+
+CMD_UNITS :: 64;
+CMD_GROUPS :: 10;
+CMD_QUEUE :: 8;
+
+CmdOrder :: struct { target: int = -1; arg: int; }
+Command :: struct {
+  selected: [CMD_UNITS] bool;
+  groups: [CMD_GROUPS * CMD_UNITS] bool;
+  queue: [CMD_UNITS * CMD_QUEUE] CmdOrder;
+  queued: [CMD_UNITS] int;
+}
+
+cmd_unit :: (k: int) -> bool { return k >= 0 && k < CMD_UNITS; }
+
+verse_command_count :: (c: [] Command) -> int {
+  n := 0;
+  for k: 0..<CMD_UNITS { if c[0].selected[k] { n += 1; } }
+  return n;
+}
+verse_command_first :: (c: [] Command) -> int {
+  for k: 0..<CMD_UNITS { if c[0].selected[k] { return k; } }
+  return -1;
+}
+verse_command_only :: (c: [] Command, k: int) {
+  for j: 0..<CMD_UNITS { c[0].selected[j] = false; }
+  if cmd_unit(k) { c[0].selected[k] = true; }
+}
+verse_command_toggle :: (c: [] Command, k: int) {
+  if cmd_unit(k) { c[0].selected[k] = !c[0].selected[k]; }
+}
+// Every unit i < xs.count with eligible[i] whose point (xs[i], ys[i]) is in the rectangle
+// (corners either way round); add keeps what was already selected.
+verse_command_box :: (c: [] Command, xs: [] f32, ys: [] f32, eligible: [] bool, x0: f32, y0: f32, x1: f32, y1: f32, add: bool) -> int {
+  ax := ifx x0 < x1 then x0 else x1; bx := ifx x0 < x1 then x1 else x0;
+  ay := ifx y0 < y1 then y0 else y1; by := ifx y0 < y1 then y1 else y0;
+  if !add { verse_command_only(c, -1); }
+  n := 0;
+  for i: 0..<xs.count {
+    if i >= CMD_UNITS || i >= ys.count || i >= eligible.count || !eligible[i] { continue; }
+    if xs[i] >= ax && xs[i] <= bx && ys[i] >= ay && ys[i] <= by { c[0].selected[i] = true; n += 1; }
+  }
+  return n;
+}
+verse_command_group_set :: (c: [] Command, g: int) -> bool {
+  if g < 1 || g >= CMD_GROUPS { return false; }
+  for k: 0..<CMD_UNITS { c[0].groups[g * CMD_UNITS + k] = c[0].selected[k]; }
+  return true;
+}
+verse_command_group_size :: (c: [] Command, g: int) -> int {
+  if g < 1 || g >= CMD_GROUPS { return 0; }
+  n := 0;
+  for k: 0..<CMD_UNITS { if c[0].groups[g * CMD_UNITS + k] { n += 1; } }
+  return n;
+}
+verse_command_group_recall :: (c: [] Command, g: int) -> bool {
+  if verse_command_group_size(c, g) == 0 { return false; }
+  for k: 0..<CMD_UNITS { c[0].selected[k] = c[0].groups[g * CMD_UNITS + k]; }
+  return true;
+}
+// A unit gone (sold, destroyed) leaves every group and its queue.
+verse_command_forget :: (c: [] Command, k: int) {
+  if !cmd_unit(k) { return; }
+  c[0].selected[k] = false;
+  for g: 0..<CMD_GROUPS { c[0].groups[g * CMD_UNITS + k] = false; }
+  c[0].queued[k] = 0;
+}
+verse_command_push :: (c: [] Command, k: int, o: CmdOrder) -> bool {
+  if !cmd_unit(k) || c[0].queued[k] >= CMD_QUEUE { return false; }
+  c[0].queue[k * CMD_QUEUE + c[0].queued[k]] = o;
+  c[0].queued[k] += 1;
+  return true;
+}
+verse_command_pop :: (c: [] Command, k: int) -> CmdOrder {
+  if !cmd_unit(k) || c[0].queued[k] == 0 { return CmdOrder.{}; }
+  o := c[0].queue[k * CMD_QUEUE];
+  for i: 1..<c[0].queued[k] { c[0].queue[k * CMD_QUEUE + i - 1] = c[0].queue[k * CMD_QUEUE + i]; }
+  c[0].queued[k] -= 1;
+  return o;
+}
+verse_command_queued :: (c: [] Command, k: int) -> int { return ifx cmd_unit(k) then c[0].queued[k] else 0; }
+verse_command_clear :: (c: [] Command, k: int) { if cmd_unit(k) { c[0].queued[k] = 0; } }
+
+// ---- checks
+
+#test "select, toggle, box and groups" {
+  c: [1] Command;
+  verse_command_only(c[..], 2);
+  #assert verse_command_count(c[..]) == 1 && verse_command_first(c[..]) == 2;
+  verse_command_toggle(c[..], 5); verse_command_toggle(c[..], 2);
+  #assert verse_command_count(c[..]) == 1 && verse_command_first(c[..]) == 5;
+  xs := [4] f32.[10, 50, 90, 55]; ys := [4] f32.[10, 50, 90, 52]; ok := [4] bool.[true, true, true, false];
+  #assert verse_command_box(c[..], xs[..], ys[..], ok[..], 100, 0, 40, 100, false) == 2;   // the fourth isn't eligible
+  #assert c[0].selected[1] && c[0].selected[2] && !c[0].selected[0] && !c[0].selected[5];
+  #assert verse_command_group_set(c[..], 3) && verse_command_group_size(c[..], 3) == 2;
+  verse_command_only(c[..], 0);
+  #assert verse_command_group_recall(c[..], 3) && verse_command_count(c[..]) == 2 && c[0].selected[1];
+  #assert !verse_command_group_recall(c[..], 4) && verse_command_count(c[..]) == 2;   // an empty group changes nothing
+  verse_command_forget(c[..], 1);
+  #assert verse_command_group_size(c[..], 3) == 1 && !c[0].selected[1];
+}
+
+#test "a queue of orders, first in first out, and full at CMD_QUEUE" {
+  c: [1] Command;
+  #assert verse_command_pop(c[..], 4).target == -1;
+  for i: 0..<CMD_QUEUE { #assert verse_command_push(c[..], 4, CmdOrder.{target = 10 + i, arg = i % 2}); }
+  #assert !verse_command_push(c[..], 4, CmdOrder.{target = 99});
+  a := verse_command_pop(c[..], 4); b := verse_command_pop(c[..], 4);
+  #assert a.target == 10 && a.arg == 0 && b.target == 11 && b.arg == 1 && verse_command_queued(c[..], 4) == CMD_QUEUE - 2;
+  verse_command_clear(c[..], 4);
+  #assert verse_command_queued(c[..], 4) == 0;
+}

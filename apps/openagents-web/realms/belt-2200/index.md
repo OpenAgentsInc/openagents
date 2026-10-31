@@ -4,7 +4,8 @@ A Verse realm at https://openagents.com/realms/belt-2200: a hard sci-fi strategy
 
 ## How to play
 
-- Select a ship: tap or click it on the map, or its card at the bottom; on a desktop, drag a box around ships (Shift adds to the selection).
+- Select a ship: tap or click it on the map, or its card at the bottom; on a desktop, drag a box around ships (Shift adds to the selection). On a phone, rest a finger on a ship to add it to the selection or take it out.
+- Fleets: one order sends every selected ship. Ctrl and 4 to 9 keeps the selection as a group, and the digit alone selects it again. Hold Shift as you give an order to a ship in flight and it goes there once it arrives.
 - Pick where it goes: tap a world, an ice rock or the station, or press MINE ICE (the ice rock it reaches soonest) or HOME. The planner shows two transfers, GO ECONOMY and GO FAST, each with its time, delta-v and propellant; the arc is the coast between the two burns, a tick every 30 days, ending where ship and target meet on the date shown. A ship's card shows its propellant and ice in tonnes.
 - A ship that reaches an ice rock mines until its hold is full, flies home, delivers the ice to Hearth Station, refuels from it (water is reaction mass) and goes back for more. ICE at the top right is the station's stock.
 - Time: PAUSE, 1, 7 or 30 days a second (Space pauses; 1, 2 and 3 pick a speed).
