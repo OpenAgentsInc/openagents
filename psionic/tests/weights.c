@@ -36,8 +36,8 @@ static void originals(void) {
     uint8_t *manifest=read_original("manifest.json",CH04_MANIFEST_JSON,sizeof CH04_MANIFEST_JSON);free(manifest);
     coax_t_PwIdentity id={str("openagents-owned-ch04-fixture"),str("owned-v1"),str(CH04_CONFIG_SHA),str(CH04_TOKENIZER_SHA),str(CH04_MODEL_SAFETENSORS_INDEX_JSON_SHA)};
     coax_t_PwShard shards[]={
-        {str("model-00001-of-00002.safetensors"),bytes(a,sizeof CH04_MODEL_00001_OF_00002_SAFETENSORS),sizeof CH04_MODEL_00001_OF_00002_SAFETENSORS,str(CH04_MODEL_00001_OF_00002_SAFETENSORS_SHA)},
-        {str("model-00002-of-00002.safetensors"),bytes(b,sizeof CH04_MODEL_00002_OF_00002_SAFETENSORS),sizeof CH04_MODEL_00002_OF_00002_SAFETENSORS,str(CH04_MODEL_00002_OF_00002_SAFETENSORS_SHA)}};
+        {str("model-00001-of-00002.safetensors"),bytes(a,sizeof CH04_MODEL_00001_OF_00002_SAFETENSORS),sizeof CH04_MODEL_00001_OF_00002_SAFETENSORS,str(CH04_MODEL_00001_OF_00002_SAFETENSORS_SHA),false},
+        {str("model-00002-of-00002.safetensors"),bytes(b,sizeof CH04_MODEL_00002_OF_00002_SAFETENSORS),sizeof CH04_MODEL_00002_OF_00002_SAFETENSORS,str(CH04_MODEL_00002_OF_00002_SAFETENSORS_SHA),false}};
     coax_t_PwSpec specs[]={
         {str("scale"),{0,{{0,0,0,0}}},COAX_PwDtype_bf16,1},
         {str("linear.bias"),{1,{{2,0,0,0}}},COAX_PwDtype_f32,1},
@@ -82,7 +82,7 @@ static void originals(void) {
     failed(psionic_weights_bundle(id,cv,tv,iv,sv,ev,tensors(out,4),tensors(out,4)),COAX_PwStatus_alias);
     coax_v_t_PwShard impossible={NULL,17};
     failed(psionic_weights_bundle(id,cv,tv,iv,impossible,ev,tensors(out,4),tensors(draft,4)),COAX_PwStatus_size);
-    coax_t_PwShard single={str("model.safetensors"),bytes(one,sizeof CH04_MODEL_SAFETENSORS),sizeof CH04_MODEL_SAFETENSORS,str(CH04_MODEL_SAFETENSORS_SHA)};
+    coax_t_PwShard single={str("model.safetensors"),bytes(one,sizeof CH04_MODEL_SAFETENSORS),sizeof CH04_MODEL_SAFETENSORS,str(CH04_MODEL_SAFETENSORS_SHA),false};
     for(int i=0;i<3;i++) specs[i].shard=0;id.index_sha=str("");
     r=psionic_weights_bundle(id,cv,tv,bytes(NULL,0),(coax_v_t_PwShard){&single,1},ev,tensors(out,4),tensors(draft,4));
     assert(r.status==0 && r.written==3);
