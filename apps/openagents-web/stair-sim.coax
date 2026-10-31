@@ -1,0 +1,18 @@
+// Hold the Stair's difficulty curve over many seeds, natively (the #tests in stair.coax take one):
+//   coax/bin/coax run apps/openagents-web/stair-sim.coax --release
+// Each line: a player (stair.coax's play_as), WON or LOST, the wave it ended on, lives left,
+// defenders placed and the lives waves 9 and 10 took.
+#import "Basic";
+#load "stair.coax";
+
+main :: () {
+  names := [5] string.["NEW_PLAYER", "NEW_LEVELS", "BETWEEN", "HOARDER", "BEST"];
+  s: [1] Stair;
+  stair_start(s[..]);
+  for who: 0..<5 {
+    for seed: 1..<6 {
+      r := play_as(s[..], who, cast(u64) (seed * 7919));
+      print("% seed %: % wave % lives % placed % late %\n", names[who], seed * 7919, ifx r.won then "WON " else "LOST", r.wave, r.lives, r.placed, r.lost_late);
+    }
+  }
+}

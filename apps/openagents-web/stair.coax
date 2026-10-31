@@ -43,7 +43,7 @@ LAYER_NAME :: [4] string.["MOTE", "WISP", "GLIMMER", "EMBER"];
 LAYER_AC :: [4] int.[10, 11, 13, 12];
 LAYER_HP :: [4] int.[2, 4, 5, 7];
 LAYER_DEX :: [4] int.[0, 1, 3, 1];          // Dexterity save
-LAYER_SPEED :: [4] f32.[1.0, 1.25, 1.9, 1.45]; // tiles a second
+LAYER_SPEED :: [4] f32.[1.0, 1.25, 1.6, 1.45]; // tiles a second
 LAYER_SIZE :: [4] f32.[0.19, 0.24, 0.26, 0.3];
 LAYER_GOLD :: [4] int.[2, 2, 3, 3];        // gold for popping it
 LAYER_LIVES :: [4] int.[1, 3, 7, 11];        // what it takes from the tower at the top (itself and all inside)
@@ -93,17 +93,16 @@ WAVE_KIND :: [30] int.[
   MOTE, -1, -1,      MOTE, -1, -1,       WISP, MOTE, -1,     WISP, MOTE, -1,     GLIMMER, WISP, -1,
   GLIMMER, WISP, -1, EMBER, GLIMMER, -1, EMBER, WISP, -1,    GLIMMER, EMBER, -1, EMBER, GLIMMER, EMBER];
 WAVE_COUNT :: [30] int.[
-  12, 0, 0,   20, 0, 0,   8, 14, 0,   18, 10, 0,   6, 14, 0,
-  14, 10, 0,  5, 12, 0,   10, 12, 0,  18, 8, 0,    12, 12, 6];
+  12, 0, 0,   20, 0, 0,   6, 12, 0,   12, 10, 0,   3, 10, 0,   6, 8, 0,  3, 6, 0,   6, 12, 0,  20, 8, 0,    14, 14, 8];
 WAVE_GAP :: [30] f32.[
-  0.9, 0, 0,   0.55, 0, 0,   1.0, 0.5, 0,   0.6, 0.4, 0,   1.2, 0.6, 0,
-  0.7, 0.5, 0,  1.6, 0.6, 0,  1.0, 0.5, 0,   0.45, 1.0, 0,  0.8, 0.5, 0.6];
+  0.9, 0, 0,   0.55, 0, 0,   1.0, 0.5, 0,   0.6, 0.4, 0,   1.6, 0.6, 0,
+  1.0, 0.6, 0,  2.0, 0.9, 0,  1.2, 0.5, 0,   0.45, 1.0, 0,  0.8, 0.5, 0.6];
 WAVE_DELAY :: [30] f32.[
   0, 0, 0,   0, 0, 0,   0, 2, 0,   0, 3, 0,   0, 1, 0,
   0, 3, 0,   0, 2, 0,   0, 4, 0,   0, 3, 0,   0, 4, 9];
 
 START_GOLD :: 140;
-START_LIVES :: 50;
+START_LIVES :: 100;
 // How many defenders go on the field in one round: three, and one more every two waves.
 ROUND_BASE :: 3; ROUND_EVERY :: 2;
 BEASTS :: 512;
@@ -1877,6 +1876,53 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   }
   return s[0].phase;
 }
+// Seeded players for the difficulty curve (the tests below, and stair-sim.coax over many seeds):
+//   NEW_PLAYER    one defender a round, placed between waves, never levelled
+//   NEW_LEVELS    one a round, and levels with what's left over a placement's worth
+//   BETWEEN       as many as the round allows, between waves only, then levels with all the rest
+//   HOARDER       three defenders, then nothing (the first playtest's run)
+//   BEST          as many as the round allows, mid-wave too as gold comes in, then levels
+NEW_PLAYER :: 0; NEW_LEVELS :: 1; BETWEEN :: 2; HOARDER :: 3; BEST :: 4;
+Played :: struct { won: bool; wave: int; lives: int; placed: int; lost_late: int; }
+place_rotation :: (s: [] Stair, most: int) {
+  done := 0;
+  while done < most && round_left(s) > 0 && s[0].gold >= CLASS_COST[AI_CLASSES[s[0].placed % 6]] {
+    spot := ai_spot(s);
+    if spot < 0 || !place(s, spot, AI_CLASSES[s[0].placed % 6]) { break; }
+    done += 1;
+  }
+}
+level_all :: (s: [] Stair, keep: int) {
+  for q: 0..<DEFENDERS {
+    d := s[0].party[q];
+    if d.live && d.level < MAX_LEVEL && s[0].gold - up_cost(d.cls, d.level) >= keep { ok := upgrade(s, q); }
+  }
+}
+play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
+  stair_reset(s);
+  s[0].dice[0] = srd_dice(seed);
+  r: Played;
+  guard := 0;
+  while s[0].phase != WON && s[0].phase != LOST && guard < 800000 {
+    if who == BEST && s[0].phase == FIGHT {
+      place_rotation(s, 99);
+      if round_left(s) <= 0 { for i: 0..<3 { level_all(s, 0); } }
+    }
+    if s[0].phase == BUILD {
+      most := ifx who == BETWEEN || who == BEST then 99 else ifx who == HOARDER then (ifx s[0].placed < 3 then 3 else 0) else 1;
+      place_rotation(s, most);
+      if who == NEW_LEVELS { level_all(s, 85); }
+      if who == BETWEEN || who == BEST { for i: 0..<3 { level_all(s, 0); } }
+      ok := start_wave(s);
+    }
+    before := s[0].lives;
+    step(s, f32(STEP));
+    if s[0].wave >= WAVES - 1 { r.lost_late += before - s[0].lives; }
+    guard += 1;
+  }
+  r.won = s[0].phase == WON; r.wave = s[0].wave; r.lives = s[0].lives; r.placed = s[0].placed;
+  return r;
+}
 #test "with no party the tower falls; a party that builds as gold allows holds the stair" {
   s: [1] Stair;
   stair_start(s[..]);
@@ -1896,6 +1942,25 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   for i: 0..<DEFENDERS {
     #assert a[0].party[i].live == b[0].party[i].live && a[0].party[i].hits == b[0].party[i].hits && a[0].party[i].misses == b[0].party[i].misses && a[0].party[i].pops == b[0].party[i].pops;
   }
+}
+
+#test "the curve: a new player placing one a round reaches wave 8" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  r := play_as(s[..], NEW_PLAYER, 7919);
+  #assert r.wave >= 8;
+}
+#test "the curve: a player who keeps their gold and places three falls by wave 7" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  r := play_as(s[..], HOARDER, 7919);
+  #assert !r.won && r.wave <= 7;
+}
+#test "the curve: the best play holds the stair, but waves 9 and 10 take lives" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  r := play_as(s[..], BEST, 7919);
+  #assert r.won && r.lost_late >= 20 && r.lives < START_LIVES / 2;
 }
 
 #test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {

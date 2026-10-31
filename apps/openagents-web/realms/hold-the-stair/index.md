@@ -30,6 +30,7 @@ The red numbers rise over whatever is hit; MISS, SAVED and IMMUNE say why nothin
 ## How it is made
 
 - `apps/openagents-web/stair.coax` is the game: the stair, the waves, the party's turns and the drawing. The dice and attack rolls are `verse/rules/srd5.coax` and `verse/rules/srd5-combat.coax`, the same rules Everglade plays by. `stair-face.c` binds it for the browser and `stair.wgsl` draws it.
+- The difficulty curve is checked by seeded players (`play_as` in `stair.coax`): one defender a round reaches wave 8 or later, and the best play holds the stair but loses lives to waves 9 and 10. `coax/bin/coax run apps/openagents-web/stair-sim.coax --release` plays them over many seeds.
 - The design is `docs/verse/game-ideas/hold-the-stair.md` in the OpenAgents repository; the page is written from `realms.json` by `coax/web/realms.ts` (`docs/verse/realm-host.md`).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
