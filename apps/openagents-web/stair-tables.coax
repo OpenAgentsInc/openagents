@@ -1,0 +1,303 @@
+// Hold the Stair's content as text tables (hts-content-tables): the bubble-beasts' layers, the
+// party's classes and levels, the ten waves, the start and the stair itself, a statement a line,
+// that an agent can write and stair_tables_read checks. A table that breaks a rule is refused
+// whole with its line and the reason, never bent to fit; the game plays STAIR_TABLES.
+//
+//   layer NAME ac A hp H dex D con C speed S size Z gold G lives L colour R G B inside A B
+//       NAME: mote, wisp, glimmer or ember (their rules are the engine's: an ember's fire
+//       immunity, a wisp's cold resistance); A 5-25, H 1-99, D and C -5 to 10, S 0.2-4 tiles a
+//       second, Z 0.1-0.45 tiles, G 0-99 gold popped, L 1-99 lives taken at the top, R G B 0-1,
+//       inside: the two layers it pops into (- for none), each lower than itself
+//   class NAME cost C range R turn T          NAME fighter, wizard or cleric; C 1-999 gold,
+//       R 0.5-8 tiles, T 0.2-6 seconds between turns
+//   level NAME C2 C3                          gold for levels 2 and 3, 1-999
+//   wave N KIND COUNT gap G delay D           a group of wave N (1-10, at most three groups):
+//       COUNT 1-200 beasts of KIND, G 0.05-10 seconds apart, the first after D 0-60 seconds
+//   start gold G lives L                      G 0-9999, L 1-999
+//   round R every E                           R 1-20 defenders a round, one more each E waves (1-10)
+//   stair C R C R ...                         the stair's corners from the cellar door to the top
+//       (2 to 16 of them, column 0-13, row 0-8), each straight across or down from the last
+//   # anything after a hash is a note
+// Every layer, class, level, wave, start, round and stair must be there.
+//   coax/bin/coax test apps/openagents-web/stair.coax
+
+TABLE_LAYERS :: 4; TABLE_CLASSES :: 3; TABLE_WAVES :: 10; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
+TABLE_ERROR :: 160;
+TABLE_LAYER_NAMES :: [4] string.["mote", "wisp", "glimmer", "ember"];
+TABLE_CLASS_NAMES :: [3] string.["fighter", "wizard", "cleric"];
+
+Content :: struct {
+  ok: bool; line: int; error: [TABLE_ERROR] u8; error_n: int;
+  ac: [TABLE_LAYERS] int; hp: [TABLE_LAYERS] int; dex: [TABLE_LAYERS] int; con: [TABLE_LAYERS] int;
+  speed: [TABLE_LAYERS] f32; size: [TABLE_LAYERS] f32; gold: [TABLE_LAYERS] int; lives: [TABLE_LAYERS] int;
+  red: [TABLE_LAYERS] f32; green: [TABLE_LAYERS] f32; blue: [TABLE_LAYERS] f32;
+  inner_a: [TABLE_LAYERS] int; inner_b: [TABLE_LAYERS] int;
+  cost: [TABLE_CLASSES] int; range: [TABLE_CLASSES] f32; turn: [TABLE_CLASSES] f32;
+  up: [TABLE_CLASSES * 2] int;
+  kind: [TABLE_WAVES * TABLE_GROUPS] int; count: [TABLE_WAVES * TABLE_GROUPS] int;
+  gap: [TABLE_WAVES * TABLE_GROUPS] f32; delay: [TABLE_WAVES * TABLE_GROUPS] f32;
+  start_gold: int; start_lives: int; round_base: int; round_every: int;
+  way_n: int; way_c: [TABLE_CORNERS] int; way_r: [TABLE_CORNERS] int;
+  // what was given, to refuse a table missing a part
+  had_layer: [TABLE_LAYERS] bool; had_class: [TABLE_CLASSES] bool; had_level: [TABLE_CLASSES] bool;
+  had_wave: [TABLE_WAVES] bool; had_start: bool; had_round: bool;
+}
+
+// The first playable's content.
+STAIR_TABLES :: [24] string.[
+  "# the bubble-beasts: original creatures, stat blocks in the SRD's terms",
+  "layer mote    ac 10 hp 2 dex 0 con 0 speed 1.0  size 0.19 gold 2 lives 1  colour 0.55 0.8 1.0   inside - -",
+  "layer wisp    ac 11 hp 4 dex 1 con 0 speed 1.25 size 0.24 gold 2 lives 3  colour 0.35 1.0 0.45  inside mote mote",
+  "layer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6  size 0.26 gold 3 lives 7  colour 1.0 0.86 0.25  inside wisp wisp",
+  "layer ember   ac 12 hp 7 dex 1 con 2 speed 1.45 size 0.3  gold 3 lives 11 colour 1.0 0.2 0.22   inside glimmer wisp",
+  "# the party: SRD 5.2.1 classes; ranges in tiles, turns in seconds (the six-second round, scaled)",
+  "class fighter cost 50 range 1.6 turn 0.9",
+  "class wizard  cost 85 range 3.4 turn 1.4",
+  "class cleric  cost 65 range 3.0 turn 1.3",
+  "level fighter 30 50",
+  "level wizard  50 80",
+  "level cleric  40 65",
+  "# the waves: light to wave 8, heavy at 9 and 10 (stair.coax's play_as players check the curve)",
+  "wave 1 mote 12 gap 0.9 delay 0",
+  "wave 2 mote 20 gap 0.55 delay 0",
+  "wave 3 wisp 6 gap 1.0 delay 0;  wave 3 mote 12 gap 0.5 delay 2",
+  "wave 4 wisp 12 gap 0.6 delay 0; wave 4 mote 10 gap 0.4 delay 3",
+  "wave 5 glimmer 3 gap 1.6 delay 0; wave 5 wisp 10 gap 0.6 delay 1",
+  "wave 6 glimmer 6 gap 1.0 delay 0; wave 6 wisp 8 gap 0.6 delay 3",
+  "wave 7 ember 3 gap 2.0 delay 0; wave 7 glimmer 6 gap 0.9 delay 2",
+  "wave 8 ember 6 gap 1.2 delay 0; wave 8 wisp 12 gap 0.5 delay 4",
+  "wave 9 glimmer 20 gap 0.45 delay 0; wave 9 ember 8 gap 1.0 delay 3",
+  "wave 10 ember 14 gap 0.8 delay 0; wave 10 glimmer 14 gap 0.5 delay 4; wave 10 ember 8 gap 0.6 delay 9",
+  "start gold 140 lives 100; round 3 every 2; stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1"];
+
+TableWord :: struct { at: int; end: int; }
+table_blank :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
+TableNumber :: struct { ok: bool; v: f32; whole: bool; }
+// A decimal number: an optional sign, digits, an optional point and digits.
+table_number :: (s: string) -> TableNumber {
+  i := 0; sign: f64 = 1; v: f64 = 0; digits := 0; whole := true;
+  if i < s.count && (s[i] == '-' || s[i] == '+') { if s[i] == '-' { sign = -1; } i += 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { if digits < 9 { v = v * 10 + cast(f64) (s[i] - '0'); } digits += 1; i += 1; }
+  if i < s.count && s[i] == '.' {
+    whole = false;
+    i += 1; scale: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { if digits < 12 { v += scale * cast(f64) (s[i] - '0'); scale *= 0.1; } digits += 1; i += 1; }
+  }
+  if digits == 0 || i != s.count || digits > 12 { return TableNumber.{}; }
+  return TableNumber.{ok = true, v = cast(f32) (sign * v), whole = whole};
+}
+table_layer :: (word: string) -> int { for i: 0..<TABLE_LAYERS { if TABLE_LAYER_NAMES[i] == word { return i; } } return -1; }
+table_class :: (word: string) -> int { for i: 0..<TABLE_CLASSES { if TABLE_CLASS_NAMES[i] == word { return i; } } return -1; }
+table_put :: (buf: [] u8, at: int, text: string) -> int { n := at; for c: text { if n < buf.count { buf[n] = c; n += 1; } } return n; }
+table_refuse :: (c: [] Content, line: int, why: string, what: string) -> bool {
+  c[0].ok = false; c[0].line = line;
+  n := table_put(c[0].error[..], 0, "line ");
+  digits: [12] u8; m := 0; v := line;
+  if v == 0 { digits[0] = '0'; m = 1; }
+  while v > 0 && m < 12 { digits[m] = cast(u8) ('0' + v % 10); v /= 10; m += 1; }
+  while m > 0 { m -= 1; if n < c[0].error.count { c[0].error[n] = digits[m]; n += 1; } }
+  n = table_put(c[0].error[..], n, ": "); n = table_put(c[0].error[..], n, why); n = table_put(c[0].error[..], n, what);
+  c[0].error_n = n;
+  return false;
+}
+// v with up to two decimals.
+table_decimal :: (buf: [] u8, at: int, v: f32) -> int {
+  n := at;
+  a := v;
+  if a < 0 { n = table_put(buf, n, "-"); a = -a; }
+  h := cast(int) floor(a * 100 + 0.5);
+  digits: [12] u8; m := 0; w := h / 100;
+  if w == 0 { digits[0] = '0'; m = 1; }
+  while w > 0 && m < 12 { digits[m] = cast(u8) ('0' + w % 10); w /= 10; m += 1; }
+  while m > 0 { m -= 1; if n < buf.count { buf[n] = digits[m]; n += 1; } }
+  f := h % 100;
+  if f != 0 {
+    n = table_put(buf, n, ".");
+    if n < buf.count { buf[n] = cast(u8) ('0' + f / 10); n += 1; }
+    if f % 10 != 0 && n < buf.count { buf[n] = cast(u8) ('0' + f % 10); n += 1; }
+  }
+  return n;
+}
+stair_tables_error :: (c: [] Content) -> string { return cast(string) c[0].error[0..<c[0].error_n]; }
+
+// One statement's words: the number after a key word at w[i] (its own name the word before it).
+TableCursor :: struct { text: string; w: [48] TableWord; n: int; }
+table_word :: (k: [] TableCursor, i: int) -> string { if i >= k[0].n { return ""; } return k[0].text[k[0].w[i].at..<k[0].w[i].end]; }
+// The number at word i, whole when it must be, within lo..hi; ok false (with the line refused) otherwise.
+table_num :: (c: [] Content, k: [] TableCursor, line: int, i: int, key: string, whole: bool, low: f32, high: f32) -> TableNumber {
+  if table_word(k, i - 1) != key { no := table_refuse(c, line, "expected ", key); return TableNumber.{}; }
+  v := table_number(table_word(k, i));
+  if !v.ok || (whole && !v.whole) || v.v < low || v.v > high {
+    buf: [64] u8;
+    m := table_put(buf[..], 0, key); m = table_put(buf[..], m, ifx whole then " is a whole number from " else " is a number from ");
+    m = table_decimal(buf[..], m, low); m = table_put(buf[..], m, " to "); m = table_decimal(buf[..], m, high);
+    no := table_refuse(c, line, cast(string) buf[0..<m], "");
+    return TableNumber.{};
+  }
+  return v;
+}
+
+// One statement (no notes, no ';'). False: refused, c[0].error says why.
+table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
+  n := k[0].n;
+  head := table_word(k, 0);
+  if head == "layer" {
+    if n != 25 { return table_refuse(c, line, "layer NAME ac A hp H dex D con C speed S size Z gold G lives L colour R G B inside A B", ""); }
+    l := table_layer(table_word(k, 1));
+    if l < 0 { return table_refuse(c, line, "a layer is mote, wisp, glimmer or ember, not ", table_word(k, 1)); }
+    if c[0].had_layer[l] { return table_refuse(c, line, "a second layer ", table_word(k, 1)); }
+    ac := table_num(c, k, line, 3, "ac", true, 5, 25); if !ac.ok { return false; }
+    hp := table_num(c, k, line, 5, "hp", true, 1, 99); if !hp.ok { return false; }
+    dx := table_num(c, k, line, 7, "dex", true, -5, 10); if !dx.ok { return false; }
+    cn := table_num(c, k, line, 9, "con", true, -5, 10); if !cn.ok { return false; }
+    sp := table_num(c, k, line, 11, "speed", false, 0.2, 4); if !sp.ok { return false; }
+    sz := table_num(c, k, line, 13, "size", false, 0.1, 0.45); if !sz.ok { return false; }
+    gd := table_num(c, k, line, 15, "gold", true, 0, 99); if !gd.ok { return false; }
+    lv := table_num(c, k, line, 17, "lives", true, 1, 99); if !lv.ok { return false; }
+    if table_word(k, 18) != "colour" { return table_refuse(c, line, "expected colour", ""); }
+    rgb: [3] f32;
+    for j: 0..<3 { v := table_number(table_word(k, 19 + j)); if !v.ok || v.v < 0 || v.v > 1 { return table_refuse(c, line, "colour is three numbers from 0 to 1", ""); } rgb[j] = v.v; }
+    if table_word(k, 22) != "inside" { return table_refuse(c, line, "expected inside", ""); }
+    inner: [2] int;
+    for j: 0..<2 {
+      word := table_word(k, 23 + j);
+      inner[j] = ifx word == "-" then -1 else table_layer(word);
+      if word != "-" && (inner[j] < 0 || inner[j] >= l) { return table_refuse(c, line, "a layer pops into lower layers (or -), not ", word); }
+    }
+    c[0].ac[l] = cast(int) ac.v; c[0].hp[l] = cast(int) hp.v; c[0].dex[l] = cast(int) dx.v; c[0].con[l] = cast(int) cn.v;
+    c[0].speed[l] = sp.v; c[0].size[l] = sz.v; c[0].gold[l] = cast(int) gd.v; c[0].lives[l] = cast(int) lv.v;
+    c[0].red[l] = rgb[0]; c[0].green[l] = rgb[1]; c[0].blue[l] = rgb[2];
+    c[0].inner_a[l] = inner[0]; c[0].inner_b[l] = inner[1];
+    c[0].had_layer[l] = true;
+    return true;
+  }
+  if head == "class" {
+    if n != 8 { return table_refuse(c, line, "class NAME cost C range R turn T", ""); }
+    q := table_class(table_word(k, 1));
+    if q < 0 { return table_refuse(c, line, "a class is fighter, wizard or cleric, not ", table_word(k, 1)); }
+    if c[0].had_class[q] { return table_refuse(c, line, "a second class ", table_word(k, 1)); }
+    co := table_num(c, k, line, 3, "cost", true, 1, 999); if !co.ok { return false; }
+    ra := table_num(c, k, line, 5, "range", false, 0.5, 8); if !ra.ok { return false; }
+    tu := table_num(c, k, line, 7, "turn", false, 0.2, 6); if !tu.ok { return false; }
+    c[0].cost[q] = cast(int) co.v; c[0].range[q] = ra.v; c[0].turn[q] = tu.v; c[0].had_class[q] = true;
+    return true;
+  }
+  if head == "level" {
+    if n != 4 { return table_refuse(c, line, "level NAME C2 C3", ""); }
+    q := table_class(table_word(k, 1));
+    if q < 0 { return table_refuse(c, line, "a class is fighter, wizard or cleric, not ", table_word(k, 1)); }
+    if c[0].had_level[q] { return table_refuse(c, line, "a second level for ", table_word(k, 1)); }
+    for j: 0..<2 {
+      v := table_number(table_word(k, 2 + j));
+      if !v.ok || !v.whole || v.v < 1 || v.v > 999 { return table_refuse(c, line, "a level's cost is a whole number of gold from 1 to 999", ""); }
+      c[0].up[q * 2 + j] = cast(int) v.v;
+    }
+    c[0].had_level[q] = true;
+    return true;
+  }
+  if head == "wave" {
+    if n != 8 { return table_refuse(c, line, "wave N KIND COUNT gap G delay D", ""); }
+    wv := table_number(table_word(k, 1));
+    if !wv.ok || !wv.whole || wv.v < 1 || wv.v > f32(TABLE_WAVES) { return table_refuse(c, line, "a wave is numbered 1 to 10", ""); }
+    w := cast(int) wv.v - 1;
+    l := table_layer(table_word(k, 2));
+    if l < 0 { return table_refuse(c, line, "a wave's beasts are mote, wisp, glimmer or ember, not ", table_word(k, 2)); }
+    cnt := table_number(table_word(k, 3));
+    if !cnt.ok || !cnt.whole || cnt.v < 1 || cnt.v > 200 { return table_refuse(c, line, "a wave's count is a whole number from 1 to 200", ""); }
+    gp := table_num(c, k, line, 5, "gap", false, 0.05, 10); if !gp.ok { return false; }
+    dl := table_num(c, k, line, 7, "delay", false, 0, 60); if !dl.ok { return false; }
+    g := -1;
+    for j: 0..<TABLE_GROUPS { if g < 0 && c[0].kind[w * TABLE_GROUPS + j] < 0 { g = j; } }
+    if g < 0 { return table_refuse(c, line, "a wave has at most three groups", ""); }
+    i := w * TABLE_GROUPS + g;
+    c[0].kind[i] = l; c[0].count[i] = cast(int) cnt.v; c[0].gap[i] = gp.v; c[0].delay[i] = dl.v;
+    c[0].had_wave[w] = true;
+    return true;
+  }
+  if head == "start" {
+    if n != 5 { return table_refuse(c, line, "start gold G lives L", ""); }
+    gd := table_num(c, k, line, 2, "gold", true, 0, 9999); if !gd.ok { return false; }
+    lv := table_num(c, k, line, 4, "lives", true, 1, 999); if !lv.ok { return false; }
+    c[0].start_gold = cast(int) gd.v; c[0].start_lives = cast(int) lv.v; c[0].had_start = true;
+    return true;
+  }
+  if head == "round" {
+    if n != 4 { return table_refuse(c, line, "round R every E", ""); }
+    rb := table_number(table_word(k, 1));
+    if !rb.ok || !rb.whole || rb.v < 1 || rb.v > 20 { return table_refuse(c, line, "a round's defenders are a whole number from 1 to 20", ""); }
+    ev := table_num(c, k, line, 3, "every", true, 1, 10); if !ev.ok { return false; }
+    c[0].round_base = cast(int) rb.v; c[0].round_every = cast(int) ev.v; c[0].had_round = true;
+    return true;
+  }
+  if head == "stair" {
+    m := n - 1;
+    if m % 2 != 0 || m < 4 || m > TABLE_CORNERS * 2 { return table_refuse(c, line, "stair is 2 to 16 corners, a column and a row each", ""); }
+    for j: 0..<m / 2 {
+      cc := table_number(table_word(k, 1 + j * 2)); rr := table_number(table_word(k, 2 + j * 2));
+      if !cc.ok || !cc.whole || !rr.ok || !rr.whole || cc.v < 0 || cc.v > 13 || rr.v < 0 || rr.v > 8 {
+        return table_refuse(c, line, "a corner is a column 0 to 13 and a row 0 to 8", "");
+      }
+      c[0].way_c[j] = cast(int) cc.v; c[0].way_r[j] = cast(int) rr.v;
+      if j > 0 {
+        dc := c[0].way_c[j] - c[0].way_c[j - 1]; dr := c[0].way_r[j] - c[0].way_r[j - 1];
+        if (dc != 0) == (dr != 0) { return table_refuse(c, line, "each corner is straight across or down from the last, and not on it", ""); }
+      }
+    }
+    c[0].way_n = m / 2;
+    return true;
+  }
+  return table_refuse(c, line, "a statement is layer, class, level, wave, start, round or stair, not ", head);
+}
+// Reads a whole table: true and every part filled, or false with c[0].error starting with the line.
+stair_tables_read :: (c: [] Content, text: string) -> bool {
+  c[0] = Content.{};
+  for i: 0..<TABLE_WAVES * TABLE_GROUPS { c[0].kind[i] = -1; }
+  k: [1] TableCursor;
+  line := 0; i := 0;
+  while i <= text.count {
+    // a line, its note cut off
+    line += 1;
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    stop := e;
+    for j: i..<e { if text[j] == '#' && stop == e { stop = j; } }
+    // its statements, between ';'
+    a := i;
+    while a <= stop {
+      b := a;
+      while b < stop && text[b] != ';' { b += 1; }
+      k[0].text = text; k[0].n = 0;
+      p := a;
+      while p < b {
+        while p < b && table_blank(text[p]) { p += 1; }
+        if p >= b { break; }
+        q := p;
+        while q < b && !table_blank(text[q]) { q += 1; }
+        if k[0].n < 48 { k[0].w[k[0].n] = TableWord.{at = p, end = q}; }
+        k[0].n += 1;
+        p = q;
+      }
+      if k[0].n > 48 { return table_refuse(c, line, "too many words in one statement", ""); }
+      if k[0].n > 0 && !table_statement(c, k[..], line) { return false; }
+      a = b + 1;
+    }
+    i = e + 1;
+  }
+  // every part there, the stair's ends on the map's edge
+  for l: 0..<TABLE_LAYERS { if !c[0].had_layer[l] { return table_refuse(c, line, "no layer ", TABLE_LAYER_NAMES[l]); } }
+  for q: 0..<TABLE_CLASSES { if !c[0].had_class[q] { return table_refuse(c, line, "no class ", TABLE_CLASS_NAMES[q]); } }
+  for q: 0..<TABLE_CLASSES { if !c[0].had_level[q] { return table_refuse(c, line, "no level for ", TABLE_CLASS_NAMES[q]); } }
+  for w: 0..<TABLE_WAVES { if !c[0].had_wave[w] { return table_refuse(c, line, "a wave is missing: every one of 1 to 10 has a group", ""); } }
+  if !c[0].had_start { return table_refuse(c, line, "no start", ""); }
+  if !c[0].had_round { return table_refuse(c, line, "no round", ""); }
+  if c[0].way_n < 2 { return table_refuse(c, line, "no stair", ""); }
+  c[0].ok = true; c[0].line = 0;
+  return true;
+}
+// STAIR_TABLES, a line each, read into c (true unless the built-in table is broken).
+stair_tables_default :: (c: [] Content) -> bool {
+  buf: [4096] u8;
+  n := 0;
+  for i: 0..<STAIR_TABLES.count { n = table_put(buf[..], n, STAIR_TABLES[i]); if n < buf.count { buf[n] = '\n'; n += 1; } }
+  return stair_tables_read(c, cast(string) buf[0..<n]);
+}

@@ -15,6 +15,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/rules/srd5-combat.coax";
+#load "stair-tables.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 36000;
@@ -33,33 +34,15 @@ RIM_TILES :: 0.16;
 CELL_FLOOR :: 0; CELL_PATH :: 1; CELL_DEFENDER :: 2; CELL_DOOR :: 3; CELL_TOP :: 4;
 
 // The stair: waypoints (column, row) from the cellar door to the tower top.
-WAYPOINTS :: 8;
-WAY_C :: [8] int.[0, 3, 3, 7, 7, 10, 10, 13];
-WAY_R :: [8] int.[7, 7, 2, 2, 6, 6, 1, 1];
 
 // ---- the bubble-beasts (original creatures, stat blocks in the SRD's terms)
 MOTE :: 0; WISP :: 1; GLIMMER :: 2; EMBER :: 3; LAYERS :: 4;
 LAYER_NAME :: [4] string.["MOTE", "WISP", "GLIMMER", "EMBER"];
-LAYER_AC :: [4] int.[10, 11, 13, 12];
-LAYER_HP :: [4] int.[2, 4, 5, 7];
-LAYER_DEX :: [4] int.[0, 1, 3, 1];          // Dexterity save
-LAYER_SPEED :: [4] f32.[1.0, 1.25, 1.6, 1.45]; // tiles a second
-LAYER_SIZE :: [4] f32.[0.19, 0.24, 0.26, 0.3];
-LAYER_GOLD :: [4] int.[2, 2, 3, 3];        // gold for popping it
-LAYER_LIVES :: [4] int.[1, 3, 7, 11];        // what it takes from the tower at the top (itself and all inside)
-LAYER_R :: [4] f32.[0.55, 0.35, 1.0, 1.0];
-LAYER_G :: [4] f32.[0.8, 1.0, 0.86, 0.2];
-LAYER_B :: [4] f32.[1.0, 0.45, 0.25, 0.22];
 // What each pops into: up to two inner layers (-1 none).
-INNER_A :: [4] int.[-1, MOTE, WISP, GLIMMER];
-INNER_B :: [4] int.[-1, MOTE, WISP, WISP];
 
 // ---- the party (SRD 5.2.1 classes at level 1)
 FIGHTER :: 0; WIZARD :: 1; CLERIC :: 2; CLASSES :: 3;
 CLASS_NAME :: [3] string.["FIGHTER", "WIZARD", "CLERIC"];
-CLASS_COST :: [3] int.[50, 85, 65];
-CLASS_RANGE :: [3] f32.[1.6, 3.4, 3.0];      // tiles
-CLASS_TURN :: [3] f32.[0.9, 1.4, 1.3];       // seconds between turns (the six-second round, scaled)
 CLASS_R :: [3] f32.[0.85, 0.72, 1.0];
 CLASS_G :: [3] f32.[0.88, 0.55, 0.86];
 CLASS_B :: [3] f32.[0.95, 1.0, 0.42];
@@ -80,31 +63,15 @@ SACRED_DC :: 13;
 // its reach adds a d4 to attack rolls. Cleric 3: Spiritual Weapon, a melee spell attack +5 each
 // turn too, 1d8 + 3 force.
 MAX_LEVEL :: 3;
-UP_COST :: [6] int.[30, 50, 50, 80, 40, 65];     // (class, level 2), (class, level 3)
 SHATTER_SLOTS :: 2; SHATTER_RADIUS :: 1.0; SHATTER_DC :: 13; SHATTER_MIN :: 3;
-LAYER_CON :: [4] int.[0, 0, 1, 2];               // Constitution save
 STAIR_SPIRIT :: SrdCreature.{name = "Spiritual Weapon", ac = 10, hp = 1, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_FORCE};
-up_cost :: (cls: int, level: int) -> int { return ifx level >= MAX_LEVEL then 0 else UP_COST[cls * 2 + level - 1]; }
+up_cost :: (s: [] Stair, cls: int, level: int) -> int { return ifx level >= MAX_LEVEL then 0 else s[0].ct[0].up[cls * 2 + level - 1]; }
 
 // ---- the waves: up to three groups each (layer, count, seconds between, delay)
 WAVES :: 10;
 GROUPS :: 3;
-WAVE_KIND :: [30] int.[
-  MOTE, -1, -1,      MOTE, -1, -1,       WISP, MOTE, -1,     WISP, MOTE, -1,     GLIMMER, WISP, -1,
-  GLIMMER, WISP, -1, EMBER, GLIMMER, -1, EMBER, WISP, -1,    GLIMMER, EMBER, -1, EMBER, GLIMMER, EMBER];
-WAVE_COUNT :: [30] int.[
-  12, 0, 0,   20, 0, 0,   6, 12, 0,   12, 10, 0,   3, 10, 0,   6, 8, 0,  3, 6, 0,   6, 12, 0,  20, 8, 0,    14, 14, 8];
-WAVE_GAP :: [30] f32.[
-  0.9, 0, 0,   0.55, 0, 0,   1.0, 0.5, 0,   0.6, 0.4, 0,   1.6, 0.6, 0,
-  1.0, 0.6, 0,  2.0, 0.9, 0,  1.2, 0.5, 0,   0.45, 1.0, 0,  0.8, 0.5, 0.6];
-WAVE_DELAY :: [30] f32.[
-  0, 0, 0,   0, 0, 0,   0, 2, 0,   0, 3, 0,   0, 1, 0,
-  0, 3, 0,   0, 2, 0,   0, 4, 0,   0, 3, 0,   0, 4, 9];
 
-START_GOLD :: 140;
-START_LIVES :: 100;
 // How many defenders go on the field in one round: three, and one more every two waves.
-ROUND_BASE :: 3; ROUND_EVERY :: 2;
 BEASTS :: 512;
 DEFENDERS :: 48;
 FX :: 160;
@@ -146,6 +113,7 @@ ZOOM_MAX :: 3.0;
 
 Stair :: struct {
   started: bool;
+  ct: [1] Content;   // the layers, classes, levels, waves and stair (stair-tables.coax)
   track: [1] Track;
   dice: [1] SrdDice;
   time: f64; clock: f32; acc: f32;
@@ -300,23 +268,23 @@ say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink)
 
 cell_of :: (c: int, r: int) -> int { return c + r * COLS; }
 // Distance along the stair at the centre of each waypoint, and where a distance is (tile units).
-path_length :: () -> f32 {
+path_length :: (s: [] Stair) -> f32 {
   l := 0.0f32;
-  for i: 1..<WAYPOINTS { l += f32(abs_i(WAY_C[i] - WAY_C[i - 1]) + abs_i(WAY_R[i] - WAY_R[i - 1])); }
+  for i: 1..<s[0].ct[0].way_n { l += f32(abs_i(s[0].ct[0].way_c[i] - s[0].ct[0].way_c[i - 1]) + abs_i(s[0].ct[0].way_r[i] - s[0].ct[0].way_r[i - 1])); }
   return l + 1.0;   // the door and the top are half a tile each, and half a tile off the top
 }
 abs_i :: (v: int) -> int { return ifx v < 0 then -v else v; }
 P2 :: struct { x: f32; y: f32; }
-path_at :: (d: f32) -> P2 {
+path_at :: (s: [] Stair, d: f32) -> P2 {
   // half a tile in from the door
   left := d - 0.5;
-  if left < 0 { return P2.{x = f32(WAY_C[0]) + 0.5 + left, y = f32(WAY_R[0]) + 0.5}; }
-  for i: 1..<WAYPOINTS {
-    dc := WAY_C[i] - WAY_C[i - 1]; dr := WAY_R[i] - WAY_R[i - 1];
+  if left < 0 { return P2.{x = f32(s[0].ct[0].way_c[0]) + 0.5 + left, y = f32(s[0].ct[0].way_r[0]) + 0.5}; }
+  for i: 1..<s[0].ct[0].way_n {
+    dc := s[0].ct[0].way_c[i] - s[0].ct[0].way_c[i - 1]; dr := s[0].ct[0].way_r[i] - s[0].ct[0].way_r[i - 1];
     seglen := f32(abs_i(dc) + abs_i(dr));
-    if left <= seglen || i == WAYPOINTS - 1 {
+    if left <= seglen || i == s[0].ct[0].way_n - 1 {
       t := left / hi(seglen, 0.001);
-      return P2.{x = f32(WAY_C[i - 1]) + 0.5 + f32(dc) * t, y = f32(WAY_R[i - 1]) + 0.5 + f32(dr) * t};
+      return P2.{x = f32(s[0].ct[0].way_c[i - 1]) + 0.5 + f32(dc) * t, y = f32(s[0].ct[0].way_r[i - 1]) + 0.5 + f32(dr) * t};
     }
     left -= seglen;
   }
@@ -325,17 +293,17 @@ path_at :: (d: f32) -> P2 {
 lay_cells :: (s: [] Stair) {
   for i: 0..<CELLS { s[0].cells[i] = CELL_FLOOR; s[0].prog[i] = 0; }
   d := 0.5f32;
-  for i: 1..<WAYPOINTS {
-    c := WAY_C[i - 1]; r := WAY_R[i - 1];
+  for i: 1..<s[0].ct[0].way_n {
+    c := s[0].ct[0].way_c[i - 1]; r := s[0].ct[0].way_r[i - 1];
     while true {
       s[0].cells[cell_of(c, r)] = CELL_PATH; s[0].prog[cell_of(c, r)] = d;
-      if c == WAY_C[i] && r == WAY_R[i] { break; }
-      if c < WAY_C[i] { c += 1; } else if c > WAY_C[i] { c -= 1; } else if r < WAY_R[i] { r += 1; } else { r -= 1; }
+      if c == s[0].ct[0].way_c[i] && r == s[0].ct[0].way_r[i] { break; }
+      if c < s[0].ct[0].way_c[i] { c += 1; } else if c > s[0].ct[0].way_c[i] { c -= 1; } else if r < s[0].ct[0].way_r[i] { r += 1; } else { r -= 1; }
       d += 1;
     }
   }
-  s[0].cells[cell_of(WAY_C[0], WAY_R[0])] = CELL_DOOR;
-  s[0].cells[cell_of(WAY_C[WAYPOINTS - 1], WAY_R[WAYPOINTS - 1])] = CELL_TOP;
+  s[0].cells[cell_of(s[0].ct[0].way_c[0], s[0].ct[0].way_r[0])] = CELL_DOOR;
+  s[0].cells[cell_of(s[0].ct[0].way_c[s[0].ct[0].way_n - 1], s[0].ct[0].way_r[s[0].ct[0].way_n - 1])] = CELL_TOP;
   for i: 0..<DEFENDERS { if s[0].party[i].live { s[0].cells[s[0].party[i].cell] = CELL_DEFENDER; } }
 }
 free_cell :: (s: [] Stair, cell: int) -> bool { return cell >= 0 && cell < CELLS && s[0].cells[cell] == CELL_FLOOR; }
@@ -347,14 +315,14 @@ defender_at :: (s: [] Stair, cell: int) -> int {
 // ---- starting
 
 stair_reset :: (s: [] Stair) {
-  s[0].phase = BUILD; s[0].wave = 0; s[0].lives = START_LIVES; s[0].gold = START_GOLD; s[0].speed = 1;
+  s[0].phase = BUILD; s[0].wave = 0; s[0].lives = s[0].ct[0].start_lives; s[0].gold = s[0].ct[0].start_gold; s[0].speed = 1;
   for i: 0..<BEASTS { s[0].beasts[i].live = false; }
   for i: 0..<DEFENDERS { s[0].party[i].live = false; }
   for i: 0..<FX { s[0].fx[i].life = 0; }
   s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0; s[0].placed_round = 0;
   s[0].pick = -1; s[0].paused = false;
   s[0].selected = -1; s[0].card = -1; s[0].hurt = 0;
-  s[0].path_len = path_length();
+  s[0].path_len = path_length(s);
   lay_cells(s);
 }
 stair_start :: (s: [] Stair) {
@@ -363,6 +331,7 @@ stair_start :: (s: [] Stair) {
   s[0].dice[0] = srd_dice(20261030);
   s[0].hover = -1; s[0].hover_b = -1; s[0].press = -1; s[0].press_id = -1; s[0].down_cell = -1;
   s[0].tracked_wave = 0;
+  ok := stair_tables_default(s[0].ct[..]);
   // the host's state starts zeroed, not at the struct's defaults: no finger down, the map fitted
   for i: 0..<2 { s[0].fingers[i].id = -1; }
   s[0].zoom = 1;
@@ -379,13 +348,13 @@ add_fx :: (s: [] Stair, kind: int, x: f32, y: f32, x2: f32, y2: f32, life: f32, 
   dx := srd_unit(s[0].dice[..]) * 2 - 1;
   s[0].fx[k] = Fx.{kind = kind, x = x, y = y, x2 = x2, y2 = y2, t = 0, life = life, amount = amount, r = r, g = g, b = b, big = big, dx = dx};
 }
-beast_xy :: (s: [] Stair, i: int) -> P2 { return path_at(s[0].beasts[i].d); }
+beast_xy :: (s: [] Stair, i: int) -> P2 { return path_at(s, s[0].beasts[i].d); }
 cell_xy :: (cell: int) -> P2 { return P2.{x = f32(cell % COLS) + 0.5, y = f32(cell / COLS) + 0.5}; }
 
 spawn :: (s: [] Stair, kind: int, d: f32) -> int {
   for i: 0..<BEASTS {
     if !s[0].beasts[i].live {
-      s[0].beasts[i] = Beast.{live = true, kind = kind, d = d, hp = LAYER_HP[kind], wob = srd_unit(s[0].dice[..]) * 6.28};
+      s[0].beasts[i] = Beast.{live = true, kind = kind, d = d, hp = s[0].ct[0].hp[kind], wob = srd_unit(s[0].dice[..]) * 6.28};
       return i;
     }
   }
@@ -406,11 +375,11 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
   if s[0].beasts[i].hp > 0 { return; }
   // pop: the layer inside comes out where it was
   s[0].beasts[i].live = false;
-  s[0].gold += LAYER_GOLD[b.kind]; s[0].pops += 1;
+  s[0].gold += s[0].ct[0].gold[b.kind]; s[0].pops += 1;
   if by >= 0 { s[0].party[by].pops += 1; }
-  add_fx(s, FX_POP, p.x, p.y, 0, 0, 0.6, 0, LAYER_R[b.kind], LAYER_G[b.kind], LAYER_B[b.kind], b.kind >= GLIMMER);
-  if INNER_A[b.kind] >= 0 { j := spawn(s, INNER_A[b.kind], b.d + 0.12); }
-  if INNER_B[b.kind] >= 0 { j := spawn(s, INNER_B[b.kind], hi(b.d - 0.12, 0)); }
+  add_fx(s, FX_POP, p.x, p.y, 0, 0, 0.6, 0, s[0].ct[0].red[b.kind], s[0].ct[0].green[b.kind], s[0].ct[0].blue[b.kind], b.kind >= GLIMMER);
+  if s[0].ct[0].inner_a[b.kind] >= 0 { j := spawn(s, s[0].ct[0].inner_a[b.kind], b.d + 0.12); }
+  if s[0].ct[0].inner_b[b.kind] >= 0 { j := spawn(s, s[0].ct[0].inner_b[b.kind], hi(b.d - 0.12, 0)); }
 }
 
 // The beast furthest along within range of a cell (-1 none); skip: a layer to pass over (-1 none).
@@ -440,7 +409,7 @@ blessed :: (s: [] Stair, k: int) -> bool {
     d := s[0].party[i];
     if !d.live || d.cls != CLERIC || d.level < 2 { continue; }
     e := cell_xy(d.cell);
-    if (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y) <= CLASS_RANGE[CLERIC] * CLASS_RANGE[CLERIC] { return true; }
+    if (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y) <= s[0].ct[0].range[CLERIC] * s[0].ct[0].range[CLERIC] { return true; }
   }
   return false;
 }
@@ -464,11 +433,11 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
 fighter_attack :: (s: [] Stair, k: int) -> bool {
   d := s[0].party[k];
   c := cell_xy(d.cell);
-  t := first_in_range(s, d.cell, CLASS_RANGE[FIGHTER], -1);
+  t := first_in_range(s, d.cell, s[0].ct[0].range[FIGHTER], -1);
   if t < 0 { return false; }
   b := s[0].beasts[t]; p := beast_xy(s, t);
-  a := stair_attack(s, k, STAIR_FIGHTER, LAYER_AC[b.kind], ifx d.level >= 3 then 19 else 20);
-  record(s, k, a.roll, a.total, LAYER_AC[b.kind], a.hit, a.crit, 0, p);
+  a := stair_attack(s, k, STAIR_FIGHTER, s[0].ct[0].ac[b.kind], ifx d.level >= 3 then 19 else 20);
+  record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
   add_fx(s, FX_SLASH, c.x, c.y, p.x, p.y, 0.26, 0, 0.9, 0.92, 1.0, a.crit);
   if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
   if a.hit { hurt_beast(s, t, a.damage, STAIR_FIGHTER.kind, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
@@ -501,7 +470,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     return true;
   }
   if d.cls == WIZARD {
-    t := first_in_range(s, d.cell, CLASS_RANGE[WIZARD], -1);
+    t := first_in_range(s, d.cell, s[0].ct[0].range[WIZARD], -1);
     if t < 0 { return false; }
     // Shatter, where three or more crowd together
     if d.slots2 > 0 && crowd(s, t, f32(SHATTER_RADIUS)) >= SHATTER_MIN {
@@ -515,7 +484,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
         if !s[0].beasts[i].live { continue; }
         q := beast_xy(s, i);
         if (q.x - at.x) * (q.x - at.x) + (q.y - at.y) * (q.y - at.y) > f32(SHATTER_RADIUS) * f32(SHATTER_RADIUS) { continue; }
-        sv := srd_save(dice, LAYER_CON[s[0].beasts[i].kind], SHATTER_DC);
+        sv := srd_save(dice, s[0].ct[0].con[s[0].beasts[i].kind], SHATTER_DC);
         took := ifx sv.success then dmg / 2 else dmg;
         total += took;
         hurt_beast(s, i, took, DMG_THUNDER, false, k);
@@ -531,7 +500,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
         record(s, k, 0, 0, 0, true, false, 2, p);
         total := 0;
         for dart: 0..<3 {
-          if !s[0].beasts[t].live { t = first_in_range(s, d.cell, CLASS_RANGE[WIZARD], -1); if t < 0 { break; } }
+          if !s[0].beasts[t].live { t = first_in_range(s, d.cell, s[0].ct[0].range[WIZARD], -1); if t < 0 { break; } }
           q := beast_xy(s, t);
           add_fx(s, FX_DART, c.x, c.y, q.x, q.y, 0.45, 0, 0.75, 0.6, 1.0, false);
           dmg := srd_roll(dice, 4) + 1; total += dmg;
@@ -540,31 +509,31 @@ take_turn :: (s: [] Stair, k: int) -> bool {
         s[0].party[k].dealt = total;
         return true;
       }
-      other := first_in_range(s, d.cell, CLASS_RANGE[WIZARD], EMBER);
+      other := first_in_range(s, d.cell, s[0].ct[0].range[WIZARD], EMBER);
       if other >= 0 { t = other; }
     }
     b := s[0].beasts[t]; p := beast_xy(s, t);
-    a := stair_attack(s, k, STAIR_FIRE_BOLT, LAYER_AC[b.kind], 20);
-    record(s, k, a.roll, a.total, LAYER_AC[b.kind], a.hit, a.crit, 0, p);
+    a := stair_attack(s, k, STAIR_FIRE_BOLT, s[0].ct[0].ac[b.kind], 20);
+    record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
     add_fx(s, FX_BOLT, c.x, c.y, p.x, p.y, 0.4, 0, 1.0, 0.3, 0.15, a.crit);
     if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
     if a.hit { hurt_beast(s, t, a.damage, DMG_FIRE, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     return true;
   }
   // Cleric: Sacred Flame, the target saves (Dexterity) against DC 13 or takes 1d8 radiant
-  t := first_in_range(s, d.cell, CLASS_RANGE[CLERIC], -1);
+  t := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
   if t < 0 { return false; }
   b := s[0].beasts[t]; p := beast_xy(s, t);
-  sv := srd_save(dice, LAYER_DEX[b.kind], SACRED_DC);
+  sv := srd_save(dice, s[0].ct[0].dex[b.kind], SACRED_DC);
   record(s, k, sv.roll, sv.total, SACRED_DC, !sv.success, false, 1, p);
   add_fx(s, FX_FLAME, p.x, p.y, c.x, c.y, 0.55, 0, 1.0, 0.92, 0.55, false);
   if !sv.success { hurt_beast(s, t, srd_roll(dice, 8), DMG_RADIANT, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
   // Spiritual Weapon: a spectral mace strikes too
   if d.level >= 3 {
-    w := first_in_range(s, d.cell, CLASS_RANGE[CLERIC], -1);
+    w := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
     if w >= 0 {
       q := beast_xy(s, w);
-      a := srd_attack(dice, STAIR_SPIRIT, LAYER_AC[s[0].beasts[w].kind]);
+      a := srd_attack(dice, STAIR_SPIRIT, s[0].ct[0].ac[s[0].beasts[w].kind]);
       add_fx(s, FX_SPIRIT, q.x, q.y, c.x, c.y, 0.4, 0, 1.0, 0.9, 0.5, a.crit);
       if a.hit { hurt_beast(s, w, a.damage, DMG_FORCE, a.crit, k); } else { add_fx(s, FX_MISS, q.x, q.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     }
@@ -590,26 +559,26 @@ atan2_f :: (y: f32, x: f32) -> f32 {
 
 wave_groups_done :: (s: [] Stair) -> bool {
   w := s[0].wave - 1;
-  for g: 0..<GROUPS { if WAVE_KIND[w * GROUPS + g] >= 0 && s[0].spawned[g] < WAVE_COUNT[w * GROUPS + g] { return false; } }
+  for g: 0..<GROUPS { if s[0].ct[0].kind[w * GROUPS + g] >= 0 && s[0].spawned[g] < s[0].ct[0].count[w * GROUPS + g] { return false; } }
   return true;
 }
 
 start_wave :: (s: [] Stair) -> bool {
   if s[0].phase != BUILD || s[0].wave >= WAVES { return false; }
   s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0; s[0].banner = 1.6;
-  for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = WAVE_DELAY[(s[0].wave - 1) * GROUPS + g]; }
+  for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = s[0].ct[0].delay[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { refresh(s, i); }
   s[0].placed_round = 0;
-  if round_allowance(s[0].wave) > round_allowance(s[0].wave - 1) {
+  if round_allowance(s, s[0].wave) > round_allowance(s, s[0].wave - 1) {
     buf: [48] u8;
-    n := put(buf[..], 0, "NOW "); n = put_int(buf[..], n, round_allowance(s[0].wave)); n = put(buf[..], n, " DEFENDERS A ROUND");
+    n := put(buf[..], 0, "NOW "); n = put_int(buf[..], n, round_allowance(s, s[0].wave)); n = put(buf[..], n, " DEFENDERS A ROUND");
     say(s, cast(string) buf[0..<n]);
   }
   return true;
 }
 // Defenders allowed in the round that a wave opens (wave 0 is the build before the first).
-round_allowance :: (wave: int) -> int { return ROUND_BASE + hi_i(wave, 0) / ROUND_EVERY; }
-round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s[0].wave) - s[0].placed_round, 0); }
+round_allowance :: (s: [] Stair, wave: int) -> int { return s[0].ct[0].round_base + hi_i(wave, 0) / s[0].ct[0].round_every; }
+round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s, s[0].wave) - s[0].placed_round, 0); }
 
 step :: (s: [] Stair, dt: f32) {
   for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += dt; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
@@ -621,25 +590,25 @@ step :: (s: [] Stair, dt: f32) {
   s[0].wave_t += dt;
   // spawns at the cellar door
   for g: 0..<GROUPS {
-    kind := WAVE_KIND[w * GROUPS + g];
-    if kind < 0 || s[0].spawned[g] >= WAVE_COUNT[w * GROUPS + g] { continue; }
+    kind := s[0].ct[0].kind[w * GROUPS + g];
+    if kind < 0 || s[0].spawned[g] >= s[0].ct[0].count[w * GROUPS + g] { continue; }
     s[0].spawn_t[g] -= dt;
     if s[0].spawn_t[g] <= 0 {
       j := spawn(s, kind, 0);
       s[0].spawned[g] += 1;
-      s[0].spawn_t[g] += WAVE_GAP[w * GROUPS + g];
+      s[0].spawn_t[g] += s[0].ct[0].gap[w * GROUPS + g];
     }
   }
   // the climb
   for i: 0..<BEASTS {
     if !s[0].beasts[i].live { continue; }
-    s[0].beasts[i].d += LAYER_SPEED[s[0].beasts[i].kind] * dt;
+    s[0].beasts[i].d += s[0].ct[0].speed[s[0].beasts[i].kind] * dt;
     s[0].beasts[i].wob += dt * 3;
     s[0].beasts[i].age += dt;
     if s[0].beasts[i].d >= s[0].path_len && s[0].swarm { s[0].beasts[i].d -= s[0].path_len; continue; }
     if s[0].beasts[i].d >= s[0].path_len {
       s[0].beasts[i].live = false;
-      s[0].lives -= LAYER_LIVES[s[0].beasts[i].kind];
+      s[0].lives -= s[0].ct[0].lives[s[0].beasts[i].kind];
       s[0].leaked += 1;
       s[0].hurt = 1;
     }
@@ -655,7 +624,7 @@ step :: (s: [] Stair, dt: f32) {
     if !s[0].party[k].live { continue; }
     s[0].party[k].wait -= dt;
     if s[0].party[k].wait <= 0 {
-      if take_turn(s, k) { s[0].party[k].wait += CLASS_TURN[s[0].party[k].cls]; } else { s[0].party[k].wait = 0; }
+      if take_turn(s, k) { s[0].party[k].wait += s[0].ct[0].turn[s[0].party[k].cls]; } else { s[0].party[k].wait = 0; }
     }
   }
   if wave_groups_done(s) && live_beasts(s) == 0 {
@@ -670,16 +639,16 @@ step :: (s: [] Stair, dt: f32) {
 }
 
 place :: (s: [] Stair, cell: int, cls: int) -> bool {
-  if !free_cell(s, cell) || s[0].gold < CLASS_COST[cls] || s[0].phase == WON || s[0].phase == LOST || round_left(s) <= 0 { return false; }
+  if !free_cell(s, cell) || s[0].gold < s[0].ct[0].cost[cls] || s[0].phase == WON || s[0].phase == LOST || round_left(s) <= 0 { return false; }
   for i: 0..<DEFENDERS {
     if !s[0].party[i].live {
       d: Defender;
       d.live = true; d.cls = cls; d.cell = cell; d.slots = MM_SLOTS; d.level = 1;
       // initiative: a d20 sets where in the round its first turn falls
-      d.wait = f32(srd_roll(s[0].dice[..], 20)) / 20 * CLASS_TURN[cls];
+      d.wait = f32(srd_roll(s[0].dice[..], 20)) / 20 * s[0].ct[0].turn[cls];
       d.roll = -1;
       s[0].party[i] = d;
-      s[0].gold -= CLASS_COST[cls];
+      s[0].gold -= s[0].ct[0].cost[cls];
       s[0].placed += 1; s[0].placed_round += 1;
       lay_cells(s);
       track_tally(s[0].track[..], "place", CLASS_NAME[cls]);
@@ -691,16 +660,16 @@ place :: (s: [] Stair, cell: int, cls: int) -> bool {
 // What a defender has cost, levels and all.
 spent :: (s: [] Stair, k: int) -> int {
   d := s[0].party[k];
-  n := CLASS_COST[d.cls];
-  for lv: 1..<d.level { n += up_cost(d.cls, lv); }
+  n := s[0].ct[0].cost[d.cls];
+  for lv: 1..<d.level { n += up_cost(s, d.cls, lv); }
   return n;
 }
 // A level up: it costs gold, not a place in the round; the new level's slots come at once.
 upgrade :: (s: [] Stair, k: int) -> bool {
   if k < 0 || !s[0].party[k].live || s[0].phase == WON || s[0].phase == LOST { return false; }
   d := s[0].party[k];
-  if d.level >= MAX_LEVEL || s[0].gold < up_cost(d.cls, d.level) { return false; }
-  s[0].gold -= up_cost(d.cls, d.level);
+  if d.level >= MAX_LEVEL || s[0].gold < up_cost(s, d.cls, d.level) { return false; }
+  s[0].gold -= up_cost(s, d.cls, d.level);
   s[0].party[k].level += 1;
   lv := s[0].party[k].level;
   if lv == 2 { s[0].party[k].slots += 1; s[0].party[k].surge = true; }
@@ -838,9 +807,9 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
 can_upgrade :: (s: [] Stair) -> bool {
   k := s[0].card;
   if k < 0 || !s[0].party[k].live || s[0].party[k].level >= MAX_LEVEL { return false; }
-  return s[0].gold >= up_cost(s[0].party[k].cls, s[0].party[k].level);
+  return s[0].gold >= up_cost(s, s[0].party[k].cls, s[0].party[k].level);
 }
-can_pick :: (s: [] Stair, c: int) -> bool { return s[0].gold >= CLASS_COST[c] && round_left(s) > 0; }
+can_pick :: (s: [] Stair, c: int) -> bool { return s[0].gold >= s[0].ct[0].cost[c] && round_left(s) > 0; }
 button_at :: (s: [] Stair, x: f32, y: f32) -> int {
   for b: 0..<BUTTONS { if s[0].shown[b] && in_rect(s[0].boxes[b], x, y) { return b; } }
   return -1;
@@ -878,14 +847,14 @@ tap_cell :: (s: [] Stair, cell: int) {
 pick :: (s: [] Stair, c: int) {
   if s[0].pick == c { s[0].pick = -1; s[0].selected = -1; return; }
   if round_left(s) <= 0 { say(s, "NO MORE DEFENDERS THIS ROUND"); return; }
-  if s[0].gold < CLASS_COST[c] { say(s, "NOT ENOUGH GOLD"); return; }
+  if s[0].gold < s[0].ct[0].cost[c] { say(s, "NOT ENOUGH GOLD"); return; }
   s[0].pick = c; s[0].card = -1;
 }
 drop :: (s: [] Stair, cell: int) {
   c := s[0].pick;
   if c < 0 { return; }
   if round_left(s) <= 0 { say(s, "NO MORE DEFENDERS THIS ROUND"); s[0].pick = -1; s[0].selected = -1; return; }
-  if s[0].gold < CLASS_COST[c] { say(s, "NOT ENOUGH GOLD"); s[0].pick = -1; s[0].selected = -1; return; }
+  if s[0].gold < s[0].ct[0].cost[c] { say(s, "NOT ENOUGH GOLD"); s[0].pick = -1; s[0].selected = -1; return; }
   if place(s, cell, c) {
     s[0].selected = -1;
     if !can_pick(s, c) { s[0].pick = -1; }
@@ -1109,13 +1078,13 @@ query_is :: (url: string, key: string, value: string) -> bool {
 can_level :: (s: [] Stair) -> bool {
   for k: 0..<DEFENDERS {
     d := s[0].party[k];
-    if d.live && d.level < MAX_LEVEL && up_cost(d.cls, d.level) <= s[0].gold { return true; }
+    if d.live && d.level < MAX_LEVEL && up_cost(s, d.cls, d.level) <= s[0].gold { return true; }
   }
   return false;
 }
 spot_near :: (s: [] Stair, along: f32) -> int {
   best := -1; bd := 1000.0f32;
-  m := path_at(s[0].path_len * along);
+  m := path_at(s, s[0].path_len * along);
   for cell: 0..<CELLS {
     if !free_cell(s, cell) || !beside_path(s, cell) { continue; }
     c := cell_xy(cell);
@@ -1174,23 +1143,23 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
   for i: 0..<BEASTS {
     b := s[0].beasts[i];
     if !b.live { continue; }
-    p := path_at(b.d);
+    p := path_at(s, b.d);
     q := to_screen(s, p.x, p.y);
-    ahead := to_screen(s, path_at(b.d + 0.2).x, path_at(b.d + 0.2).y);
+    ahead := to_screen(s, path_at(s, b.d + 0.2).x, path_at(s, b.d + 0.2).y);
     lx := ahead.x - q.x; ly := ahead.y - q.y;
     ll := hi(sqrt(lx * lx + ly * ly), 0.001); lx /= ll; ly /= ll;
     bob := sin(b.wob) * t * 0.04;
     // out of its outer skin (or the cellar door) with a bounce
     grow := clamp01(b.age / 0.28);
     pop := 1 - (1 - grow) * (1 - grow) * (1 - grow) + 0.22 * sin(grow * 3.14159);
-    rad := LAYER_SIZE[b.kind] * t * (0.35 + 0.65 * pop);
+    rad := s[0].ct[0].size[b.kind] * t * (0.35 + 0.65 * pop);
     y := q.y - t * 0.24 + bob;
-    r := LAYER_R[b.kind]; g := LAYER_G[b.kind]; bl := LAYER_B[b.kind];
+    r := s[0].ct[0].red[b.kind]; g := s[0].ct[0].green[b.kind]; bl := s[0].ct[0].blue[b.kind];
     // a bubble a little squashed and stretched as it bobs
-    inner := INNER_A[b.kind];
+    inner := s[0].ct[0].inner_a[b.kind];
     share := ifx inner >= 0 then 0.5f32 else 0.0f32;
     ir := 0.0f32; ig := 0.0f32; ib := 0.0f32;
-    if inner >= 0 { ir = LAYER_R[inner]; ig = LAYER_G[inner]; ib = LAYER_B[inner]; }
+    if inner >= 0 { ir = s[0].ct[0].red[inner]; ig = s[0].ct[0].green[inner]; ib = s[0].ct[0].blue[inner]; }
     n = bubble(out, n, q.x, y, rad, 1.0, r, g, bl, share, ir, ig, ib);
     // the face: two glowing eyes (one on a mote), a grin; a blink now and then
     ex := q.x + lx * rad * 0.2; ey := y - rad * 0.05 + ly * rad * 0.12;
@@ -1259,7 +1228,7 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
     if i == s[0].card || d.cell == s[0].hover {
       c := cell_xy(d.cell);
       q := to_screen(s, c.x, c.y);
-      n = ring(out, n, q.x, q.y, CLASS_RANGE[d.cls] * t, hi(1, 1.2 * k), 0.5, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], 0);
+      n = ring(out, n, q.x, q.y, s[0].ct[0].range[d.cls] * t, hi(1, 1.2 * k), 0.5, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], 0);
     }
   }
   a := aim_cell(s);
@@ -1268,15 +1237,15 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
     q := to_screen(s, cell_xy(a).x, cell_xy(a).y);
     r := CLASS_R[c]; g := CLASS_G[c]; b := CLASS_B[c];
     pulse := 0.75 + 0.25 * sin(s[0].clock * 5);
-    rr := CLASS_RANGE[c] * t;
+    rr := s[0].ct[0].range[c] * t;
     n = ring(out, n, q.x, q.y, rr * 0.5, rr, 0.06, r, g, b, 0);
     n = ring(out, n, q.x, q.y, rr, hi(1, 1.6 * k), 0.7 * pulse, r, g, b, 0);
     for i: 0..<BEASTS {
       if !s[0].beasts[i].live { continue; }
-      p := path_at(s[0].beasts[i].d); cc := cell_xy(a);
-      if (p.x - cc.x) * (p.x - cc.x) + (p.y - cc.y) * (p.y - cc.y) <= CLASS_RANGE[c] * CLASS_RANGE[c] {
+      p := path_at(s, s[0].beasts[i].d); cc := cell_xy(a);
+      if (p.x - cc.x) * (p.x - cc.x) + (p.y - cc.y) * (p.y - cc.y) <= s[0].ct[0].range[c] * s[0].ct[0].range[c] {
         bq := to_screen(s, p.x, p.y);
-        n = ring_sq(out, n, bq.x, bq.y - t * 0.24, LAYER_SIZE[s[0].beasts[i].kind] * t * 1.45, hi(1, t * 0.02), 0.8, r, g, b, 1);
+        n = ring_sq(out, n, bq.x, bq.y - t * 0.24, s[0].ct[0].size[s[0].beasts[i].kind] * t * 1.45, hi(1, t * 0.02), 0.8, r, g, b, 1);
       }
     }
   }
@@ -1483,11 +1452,11 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   if b == B_UPGRADE {
     d := s[0].party[s[0].card];
     if d.level >= MAX_LEVEL { return put(buf, 0, "LEVEL 3"); }
-    n := put(buf, 0, "LEVEL "); n = put_int(buf, n, d.level + 1); n = put(buf, n, " · "); n = put_int(buf, n, up_cost(d.cls, d.level));
+    n := put(buf, 0, "LEVEL "); n = put_int(buf, n, d.level + 1); n = put(buf, n, " · "); n = put_int(buf, n, up_cost(s, d.cls, d.level));
     return ifx s[0].portrait then n else put(buf, n, " GOLD");
   }
   c := b - B_FIGHTER;
-  n := put(buf, 0, CLASS_NAME[c]); n = put(buf, n, " "); return put_int(buf, n, CLASS_COST[c]);
+  n := put(buf, 0, CLASS_NAME[c]); n = put(buf, n, " "); return put_int(buf, n, s[0].ct[0].cost[c]);
 }
 
 // MADE BY <NAME> · TIP (small, dim; TIP in Bitcoin's orange), centred: in the
@@ -1609,10 +1578,10 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     // how many more this round, and what to do next
     left := round_left(s);
     m = put(buf[..], 0, "PLACE "); m = put_int(buf[..], m, left); m = put(buf[..], m, " MORE THIS ROUND (");
-    m = put_int(buf[..], m, round_allowance(s[0].wave)); m = put(buf[..], m, " A ROUND)");
+    m = put_int(buf[..], m, round_allowance(s, s[0].wave)); m = put(buf[..], m, " A ROUND)");
     hint := "PICK A DEFENDER, THEN A TILE BESIDE THE STAIR";
-    cheapest := CLASS_COST[FIGHTER];
-    for c: 0..<CLASSES { if CLASS_COST[c] < cheapest { cheapest = CLASS_COST[c]; } }
+    cheapest := s[0].ct[0].cost[FIGHTER];
+    for c: 0..<CLASSES { if s[0].ct[0].cost[c] < cheapest { cheapest = s[0].ct[0].cost[c]; } }
     hb: [64] u8;
     if left <= 0 { hint = ifx s[0].phase == BUILD then "START THE WAVE FOR MORE" else "MORE WHEN THE NEXT WAVE STARTS"; }
     if left <= 0 && s[0].phase == BUILD && s[0].gold >= 150 && can_level(s) {
@@ -1657,7 +1626,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       nc := 12 * k;
       while text_width(CLASS_NAME[cls], nc) > room && nc > 7 * k { nc -= 0.5 * k; }
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
-      m = put_int(buf[..], 0, CLASS_COST[cls]); m = put(buf[..], m, " GOLD");
+      m = put_int(buf[..], 0, s[0].ct[0].cost[cls]); m = put(buf[..], m, " GOLD");
       cc := lo(10 * k, nc);
       while text_width(cast(string) buf[0..<m], cc) > room && cc > 6 * k { cc -= 0.5 * k; }
       n = say_at(out, n, cast(string) buf[0..<m], tx, (r.y0 + r.y1) / 2 + cc + 4 * k, cc, ink(k, light * 0.9, GOLD_R, GOLD_G, GOLD_B));
@@ -1683,30 +1652,30 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     // what it says and how wide, to centre it
     total := text_width("NEXT", pc) + 10 * k;
     for g: 0..<GROUPS {
-      kind := WAVE_KIND[s[0].wave * GROUPS + g];
+      kind := s[0].ct[0].kind[s[0].wave * GROUPS + g];
       if kind < 0 { continue; }
-      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
+      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, s[0].ct[0].count[s[0].wave * GROUPS + g]);
       total += br * 2 + 4 * k + text_width(cast(string) buf[0..<m], pc) + 12 * k;
-      if LAYER_LIVES[kind] > 1 { m = put_int(buf[..], 0, LAYER_LIVES[kind]); total += pc * 1.1 + 3 * k + text_width(cast(string) buf[0..<m], pc) + 10 * k; }
+      if s[0].ct[0].lives[kind] > 1 { m = put_int(buf[..], 0, s[0].ct[0].lives[kind]); total += pc * 1.1 + 3 * k + text_width(cast(string) buf[0..<m], pc) + 10 * k; }
     }
     px := s[0].bx + f32(s[0].scols) * s[0].bt * 0.5 - total / 2;
     plate(s, u, Rect.{x0 = px - 10 * k, y0 = wy - pc * 0.5 - 7 * k, x1 = px + total + 4 * k, y1 = wy + pc * 0.5 + 7 * k}, 0.8, 0);
     n = say_at(out, n, "NEXT", px, wy + pc * 0.5, pc, ink(k, 0.8, INK_R, INK_G, INK_B));
     px += text_width("NEXT", pc) + 10 * k;
     for g: 0..<GROUPS {
-      kind := WAVE_KIND[s[0].wave * GROUPS + g];
+      kind := s[0].ct[0].kind[s[0].wave * GROUPS + g];
       if kind < 0 { continue; }
-      n = bubble(out, n, px + br, wy, br, 1, LAYER_R[kind], LAYER_G[kind], LAYER_B[kind], 0, 0, 0, 0);
+      n = bubble(out, n, px + br, wy, br, 1, s[0].ct[0].red[kind], s[0].ct[0].green[kind], s[0].ct[0].blue[kind], 0, 0, 0, 0);
       px += br * 2 + 4 * k;
-      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
-      n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, LAYER_R[kind], LAYER_G[kind], LAYER_B[kind]));
+      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, s[0].ct[0].count[s[0].wave * GROUPS + g]);
+      n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, s[0].ct[0].red[kind], s[0].ct[0].green[kind], s[0].ct[0].blue[kind]));
       px += text_width(cast(string) buf[0..<m], pc) + 12 * k;
       // the lives each takes if it reaches the top
-      if LAYER_LIVES[kind] > 1 {
+      if s[0].ct[0].lives[kind] > 1 {
         hr2 := pc * 0.36;
         n = heart(out, n, px, wy - hr2 * 0.2, hr2);
         px += pc * 1.1 + 3 * k;
-        m = put_int(buf[..], 0, LAYER_LIVES[kind]);
+        m = put_int(buf[..], 0, s[0].ct[0].lives[kind]);
         n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, 1.0, 0.42, 0.4));
         px += text_width(cast(string) buf[0..<m], pc) + 10 * k;
       }
@@ -1814,12 +1783,35 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
 
 // ---- checks
 
+#test "the game's content is its tables: they read whole, and a broken one is refused with its line and why" {
+  c: [1] Content;
+  #assert stair_tables_default(c[..]) && c[0].hp[EMBER] == 7 && c[0].cost[WIZARD] == 85 && c[0].count[9 * GROUPS + 2] == 8 && c[0].way_n == 8;
+  // the game plays them
+  s: [1] Stair;
+  stair_start(s[..]);
+  #assert s[0].lives == c[0].start_lives && s[0].gold == c[0].start_gold && s[0].path_len == path_length(s[..]);
+  good := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside - -\nlayer wisp ac 11 hp 4 dex 1 con 0 speed 1.2 size 0.24 gold 2 lives 3 colour 0 1 0 inside mote mote\nlayer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6 size 0.26 gold 3 lives 7 colour 1 1 0 inside wisp wisp\nlayer ember ac 12 hp 7 dex 1 con 2 speed 1.4 size 0.3 gold 3 lives 11 colour 1 0 0 inside glimmer wisp\nclass fighter cost 50 range 1.6 turn 0.9; class wizard cost 85 range 3.4 turn 1.4; class cleric cost 65 range 3 turn 1.3\nlevel fighter 30 50; level wizard 50 80; level cleric 40 65\nwave 1 mote 5 gap 1 delay 0; wave 2 mote 5 gap 1 delay 0; wave 3 mote 5 gap 1 delay 0; wave 4 mote 5 gap 1 delay 0; wave 5 mote 5 gap 1 delay 0\nwave 6 wisp 5 gap 1 delay 0; wave 7 wisp 5 gap 1 delay 0; wave 8 wisp 5 gap 1 delay 0; wave 9 wisp 5 gap 1 delay 0; wave 10 ember 5 gap 1 delay 0\nstart gold 200 lives 30 # a note\nround 2 every 3\nstair 0 4 13 4";
+  #assert stair_tables_read(c[..], good) && c[0].way_n == 2 && c[0].start_lives == 30;
+  // a straight stair across the middle row: the game lays it
+  s[0].ct[0] = c[0];
+  stair_reset(s[..]);
+  #assert s[0].path_len == 14 && s[0].cells[cell_of(0, 4)] == CELL_DOOR && s[0].cells[cell_of(13, 4)] == CELL_TOP && s[0].cells[cell_of(6, 4)] == CELL_PATH;
+  // broken: a layer popping into a bigger one, a range out of bounds, a crooked stair, a missing wave, a word it doesn't know
+  bad := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside wisp -";
+  #assert !stair_tables_read(c[..], bad) && c[0].line == 1 && stair_tables_error(c[..]) == "line 1: a layer pops into lower layers (or -), not wisp";
+  #assert !stair_tables_read(c[..], "# fine\nclass wizard cost 85 range 30 turn 1.4") && c[0].line == 2 && stair_tables_error(c[..]) == "line 2: range is a number from 0.5 to 8";
+  #assert !stair_tables_read(c[..], "stair 0 4 3 5") && stair_tables_error(c[..]) == "line 1: each corner is straight across or down from the last, and not on it";
+  #assert !stair_tables_read(c[..], "wave 11 mote 5 gap 1 delay 0") && stair_tables_error(c[..]) == "line 1: a wave is numbered 1 to 10";
+  #assert !stair_tables_read(c[..], "\n\ntower 3") && c[0].line == 3;
+  #assert !stair_tables_read(c[..], "start gold 1 lives 1") && stair_tables_error(c[..]) == "line 1: no layer mote";
+}
+
 #test "the stair winds from the cellar door to the tower top, and the cells beside it are floor" {
   s: [1] Stair;
   stair_start(s[..]);
   #assert s[0].path_len > 26 && s[0].path_len < 29;
-  a := path_at(0.5); #assert abs(a.x - 0.5) < 0.01 && abs(a.y - 7.5) < 0.01;
-  z := path_at(s[0].path_len - 0.5); #assert abs(z.x - 13.5) < 0.01 && abs(z.y - 1.5) < 0.01;
+  a := path_at(s[..], 0.5); #assert abs(a.x - 0.5) < 0.01 && abs(a.y - 7.5) < 0.01;
+  z := path_at(s[..], s[0].path_len - 0.5); #assert abs(z.x - 13.5) < 0.01 && abs(z.y - 1.5) < 0.01;
   #assert s[0].cells[cell_of(0, 7)] == CELL_DOOR && s[0].cells[cell_of(13, 1)] == CELL_TOP;
   #assert s[0].cells[cell_of(3, 4)] == CELL_PATH && s[0].cells[cell_of(4, 4)] == CELL_FLOOR;
   #assert free_cell(s[..], cell_of(4, 6)) && !free_cell(s[..], cell_of(5, 2));
@@ -1828,7 +1820,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
 #test "placing costs gold, a placed tile is taken, and the layers pop into their insides" {
   s: [1] Stair;
   stair_start(s[..]);
-  #assert place(s[..], cell_of(4, 6), FIGHTER) && s[0].gold == START_GOLD - 50;
+  #assert place(s[..], cell_of(4, 6), FIGHTER) && s[0].gold == s[0].ct[0].start_gold - 50;
   #assert !place(s[..], cell_of(4, 6), CLERIC) && !free_cell(s[..], cell_of(4, 6));
   #assert !place(s[..], cell_of(5, 2), CLERIC);
   i := spawn(s[..], EMBER, 5);
@@ -1836,7 +1828,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   #assert s[0].beasts[i].live && live_beasts(s[..]) == 1;     // immune to fire
   hurt_beast(s[..], i, 50, DMG_FORCE, false, -1);
   #assert live_beasts(s[..]) == 2 && s[0].beasts[i].kind != EMBER;    // a glimmer and a wisp
-  #assert s[0].pops == 1 && s[0].gold == START_GOLD - 50 + LAYER_GOLD[EMBER];
+  #assert s[0].pops == 1 && s[0].gold == s[0].ct[0].start_gold - 50 + s[0].ct[0].gold[EMBER];
 }
 
 // A simple player: defenders on free tiles beside the stair, from the door up, as gold allows.
@@ -1855,7 +1847,7 @@ ai_spot :: (s: [] Stair) -> int {
   for cell: 0..<CELLS {
     if !free_cell(s, cell) || !beside_path(s, cell) { continue; }
     c := cell_xy(cell);
-    m := path_at(s[0].path_len * 0.45);
+    m := path_at(s[..], s[0].path_len * 0.45);
     dd := (c.x - m.x) * (c.x - m.x) + (c.y - m.y) * (c.y - m.y);
     if dd < bd { bd = dd; best = cell; }
   }
@@ -1865,7 +1857,7 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   guard := 0;
   while s[0].phase != WON && s[0].phase != LOST && guard < 400000 {
     if builds {
-      while s[0].gold >= CLASS_COST[AI_CLASSES[s[0].placed % 6]] {
+      while s[0].gold >= s[0].ct[0].cost[AI_CLASSES[s[0].placed % 6]] {
         spot := ai_spot(s);
         if spot < 0 || !place(s, spot, AI_CLASSES[s[0].placed % 6]) { break; }
       }
@@ -1886,7 +1878,7 @@ NEW_PLAYER :: 0; NEW_LEVELS :: 1; BETWEEN :: 2; HOARDER :: 3; BEST :: 4;
 Played :: struct { won: bool; wave: int; lives: int; placed: int; lost_late: int; }
 place_rotation :: (s: [] Stair, most: int) {
   done := 0;
-  while done < most && round_left(s) > 0 && s[0].gold >= CLASS_COST[AI_CLASSES[s[0].placed % 6]] {
+  while done < most && round_left(s) > 0 && s[0].gold >= s[0].ct[0].cost[AI_CLASSES[s[0].placed % 6]] {
     spot := ai_spot(s);
     if spot < 0 || !place(s, spot, AI_CLASSES[s[0].placed % 6]) { break; }
     done += 1;
@@ -1895,7 +1887,7 @@ place_rotation :: (s: [] Stair, most: int) {
 level_all :: (s: [] Stair, keep: int) {
   for q: 0..<DEFENDERS {
     d := s[0].party[q];
-    if d.live && d.level < MAX_LEVEL && s[0].gold - up_cost(d.cls, d.level) >= keep { ok := upgrade(s, q); }
+    if d.live && d.level < MAX_LEVEL && s[0].gold - up_cost(s[..], d.cls, d.level) >= keep { ok := upgrade(s, q); }
   }
 }
 play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
@@ -1960,7 +1952,7 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   s: [1] Stair;
   stair_start(s[..]);
   r := play_as(s[..], BEST, 7919);
-  #assert r.won && r.lost_late >= 20 && r.lives < START_LIVES / 2;
+  #assert r.won && r.lost_late >= 20 && r.lives < s[0].ct[0].start_lives / 2;
 }
 
 #test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {
@@ -1980,7 +1972,7 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   #assert s[0].placed == 1 && s[0].selected == cell_of(4, 5);   // a phone's first tap only aims
   tap_cell(s[..], cell_of(4, 5));
   #assert s[0].placed == 2;
-  #assert round_allowance(0) == 3 && round_allowance(1) == 3 && round_allowance(2) == 4 && round_allowance(9) == 7;
+  #assert round_allowance(s[..], 0) == 3 && round_allowance(s[..], 1) == 3 && round_allowance(s[..], 2) == 4 && round_allowance(s[..], 9) == 7;
   tap_cell(s[..], cell_of(2, 4)); tap_cell(s[..], cell_of(2, 4));
   #assert s[0].placed == 3 && round_left(s[..]) == 0 && s[0].pick == -1;
   #assert !place(s[..], cell_of(4, 3), FIGHTER);
