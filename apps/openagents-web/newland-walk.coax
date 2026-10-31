@@ -234,7 +234,7 @@ wk_dive :: (s: [] LandState, f: LandFrame, to: Cam, width: f32, height: f32) -> 
   w := s[0].wk[..];
   if !w[0].from_home || w[0].dive >= WK_DIVE { return to; }
   w[0].dive += f.step;
-  mid := centre(s, -1);
+  mid := centre(s[..], -1);
   s[0].user = true; s[0].look = mid; s[0].zoom = ZOOM_IN * 0.5; s[0].zoom_to = s[0].zoom; s[0].yaw = 0.785398;
   s[0].touches = 0; s[0].vel_x = 0; s[0].vel_z = 0;
   from := frame_view(s, f.l, f.t, f.step, f.p.still, width, height, f.d);
@@ -267,6 +267,56 @@ wk_nearest :: (s: [] LandState) -> int {
   return best;
 }
 
+// Which way the project you are nearest lies, once you have walked off from the projects: how far
+// (m) and to which side of the view (WK_WAY_*: ahead, right, behind, left), for the title's second
+// line and the arrow on the ground at your feet. Near one (within WK_FAR m) there is no way to say.
+WK_FAR :: 16.0;              // m from the nearest project's middle past which the HUD points the way back
+WK_WAY_AHEAD :: 0; WK_WAY_RIGHT :: 1; WK_WAY_BEHIND :: 2; WK_WAY_LEFT :: 3;
+WK_WAY_WORD :: [4] string.[" m ahead", " m to your right", " m behind you", " m to your left"];
+WkWay :: struct { k: int; far: bool; metres: f32; side: int; dx: f32; dz: f32; }
+wk_way :: (s: [] LandState, c: Cam) -> WkWay {
+  k := wk_nearest(s);
+  if k < 0 { return WkWay.{k = -1}; }
+  dx := s[0].plot[k].x - s[0].wk[0].feet.x; dz := s[0].plot[k].z - s[0].wk[0].feet.z;
+  m := sqrt(dx * dx + dz * dz) / WALK_SCALE;
+  // the view's ahead and right along the ground: a project is right of you when it draws right of the middle
+  ah := sqrt(c.ahead.x * c.ahead.x + c.ahead.z * c.ahead.z); rh := sqrt(c.right.x * c.right.x + c.right.z * c.right.z);
+  a := ifx ah > 0.0001 then (dx * c.ahead.x + dz * c.ahead.z) / ah else dz;
+  r := ifx rh > 0.0001 then (dx * c.right.x + dz * c.right.z) / rh else dx;
+  side := WK_WAY_AHEAD;
+  if a < 0 && abs(r) < -a * 0.6 { side = WK_WAY_BEHIND; }        // within about 30 degrees of straight back
+  else if abs(r) > a * 0.6 { side = ifx r > 0 then WK_WAY_RIGHT else WK_WAY_LEFT; }   // past about 30 degrees of straight on
+  return WkWay.{k = k, far = m > WK_FAR, metres = m, side = side, dx = dx, dz = dz};
+}
+// The title's second line: "Near Coder", or once you are far, "Coder, 40 m to your left".
+wk_way_line :: (s: [] LandState, way: WkWay, buf: [] u8) -> int {
+  if way.k < 0 { return 0; }
+  name := field(land_projects(s[..]), way.k, 1);
+  if !way.far { return app(buf, app(buf, 0, "Near "), name); }
+  n := app(buf, 0, name); n = app(buf, n, ", ");
+  n = app_int(buf, n, cast(int) (way.metres + 0.5));
+  return app(buf, n, WK_WAY_WORD[way.side]);
+}
+// The arrow on the ground at your feet, pointing at the project you are nearest, while you are far.
+wk_way_arrow :: (out: [] f32, at: int, s: [] LandState, c: Cam, way: WkWay, p: Pen, light: f32) -> int {
+  if way.k < 0 || !way.far { return at; }
+  l := sqrt(way.dx * way.dx + way.dz * way.dz);
+  if l < 0.0001 { return at; }
+  ux := way.dx / l; uz := way.dz / l;
+  f := s[0].wk[0].feet;
+  y: f32 = 0.02;
+  tail := spot(c, fv(f.x + ux * 0.9, y, f.z + uz * 0.9));
+  tip := spot(c, fv(f.x + ux * 2.3, y, f.z + uz * 2.3));
+  wing_l := spot(c, fv(f.x + ux * 1.8 - uz * 0.4, y, f.z + uz * 1.8 + ux * 0.4));
+  wing_r := spot(c, fv(f.x + ux * 1.8 + uz * 0.4, y, f.z + uz * 1.8 - ux * 0.4));
+  k := ink(p, INK_BRIGHT);
+  v := at;
+  if tail.ok && tip.ok { v = rule(out, v, tail.x, tail.y, tip.x, tip.y, k, light); }
+  if tip.ok && wing_l.ok { v = rule(out, v, wing_l.x, wing_l.y, tip.x, tip.y, k, light); }
+  if tip.ok && wing_r.ok { v = rule(out, v, wing_r.x, wing_r.y, tip.x, tip.y, k, light); }
+  return v;
+}
+
 // ---- the HUD
 
 wk_hint :: (s: [] LandState, l: Layout) -> string {
@@ -284,11 +334,12 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   // THE GRID, and the project you are nearest
   cap := (ifx l.phone then 10.0f32 else 12.0f32) * d; small := 7.0 * d;
   title := "THE GRID";
-  k := wk_nearest(s);
-  // the project you are nearest, said as one: "Near Coder", not a bare name that reads as the Grid's subtitle
-  nb: [80] u8; nn := 0;
-  if k >= 0 { nn = app(nb[..], 0, "Near "); nn = app(nb[..], nn, field(land_projects(s[..]), k, 1)); }
+  // the project you are nearest, said as one: "Near Coder", not a bare name that reads as the Grid's
+  // subtitle; walked off from them, which way it lies and how far ("Coder, 40 m to your left")
+  way := wk_way(s, s[0].view);
+  nb: [96] u8; nn := wk_way_line(s, way, nb[..]);
   near := cast(string) nb[0..<nn];
+  v = wk_way_arrow(out, v, s, s[0].view, way, p, 0.9 * hud);
   word := ink(p, INK_WHITE); word.sans = false; word.core = 0.62 * d; word.glow = 7 * d;
   tw := hi(measure(title, TITLE_GAP, TITLE_SPACE, false) * cap, text_width(near, small, ink(p, INK_PALE)));
   tb := Box.{x0 = m, y0 = m, x1 = m + tw + 28 * d, y1 = m + cap + small + 30 * d};
@@ -365,7 +416,7 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   redit_step(e, s[0].time, width, height, dpr);
   s[0].grid_names_off = !redit_row_on(e, "names"); s[0].grid_walkers_off = !redit_row_on(e, "walkers");
   w := s[0].wk[..];
-  mid := centre(s, -1);
+  mid := centre(s[..], -1);
   feet := wk_at(mid, fx, fy, fz);
   // your stride, as the walkers' (newland-walkers.coax)
   if w[0].placed {
@@ -541,4 +592,47 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   pe := p[0].ed[0].boxes[RB_EDIT];
   tb := p[0].wk[0].title_box; gb := p[0].wk[0].galaxy_box; hb := p[0].wk[0].home_box;
   #assert p[0].ed[0].shown[RB_EDIT] && pe.y0 >= gb.y1 && pe.x1 <= 390 * 3 && !(pe.x0 < tb.x1 && pe.y0 < tb.y1) && !(pe.x0 < hb.x1 && pe.y0 < hb.y1);
+}
+wk_has :: (text: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "walked off from every project, the HUD names the nearest one, which way it lies and how far, and an arrow points there" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  // among the projects: "Near ..."
+  mid := centre(s[..], -1);
+  #assert wk_test_frame(s[..], out[..], u[..]) > 0 && s[0].plots > 0;
+  px := (s[0].plot[0].x - mid.x) / WALK_SCALE; pz := (s[0].plot[0].z - mid.z) / WALK_SCALE;
+  _ := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, px + 1, 0, pz + 1, 0, 0,
+                          px + 1, 3.5, pz - 8, px + 1, 1.52, pz + 1, false, 0, 0, 0, 0);
+  nb: [96] u8;
+  way := wk_way(s[..], s[0].view);
+  #assert way.k == 0 && !way.far && wk_has(cast(string) nb[0..<wk_way_line(s[..], way, nb[..])], "Near ");
+  // 80 m south of the places' middle, the camera behind you looking north (+z): the nearest is ahead
+  far_z := -80.0f32;
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 0, 0, far_z, 0, 0,
+                         0, 3.5, far_z - 9, 0, 1.52, far_z, false, 0, 0, 0, 0);
+  way = wk_way(s[..], s[0].view);
+  line := cast(string) nb[0..<wk_way_line(s[..], way, nb[..])];
+  #assert way.far && way.side == WK_WAY_AHEAD && way.metres > WK_FAR && wk_has(line, " m ahead") && wk_has(line, field(land_projects(s[..]), way.k, 1));
+  // looking south instead: it is behind you; looking east or west, to one side, and the two sides differ
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 0, 0, far_z, 0, 0, 0, 3.5, far_z + 9, 0, 1.52, far_z, false, 0, 0, 0, 0);
+  #assert wk_way(s[..], s[0].view).side == WK_WAY_BEHIND;
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 0, 0, far_z, 0, 0, 9, 3.5, far_z, 0, 1.52, far_z, false, 0, 0, 0, 0);
+  a := wk_way(s[..], s[0].view).side;
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 0, 0, far_z, 0, 0, -9, 3.5, far_z, 0, 1.52, far_z, false, 0, 0, 0, 0);
+  b := wk_way(s[..], s[0].view).side;
+  #assert (a == WK_WAY_LEFT && b == WK_WAY_RIGHT) || (a == WK_WAY_RIGHT && b == WK_WAY_LEFT);
+  // the side said is the side the project draws on: looking east or west, its middle is off to that side of the screen
+  _ = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false, 0, 0, far_z, 0, 0, 9, 3.5, far_z - 2, 0, 1.52, far_z, false, 0, 0, 0, 0);
+  w2 := wk_way(s[..], s[0].view);
+  sp := spot(s[0].view, fv(s[0].plot[w2.k].x, 0, s[0].plot[w2.k].z));
+  #assert !sp.ok || (w2.side == WK_WAY_RIGHT && sp.x > 720) || (w2.side == WK_WAY_LEFT && sp.x < 720) || w2.side == WK_WAY_AHEAD;
+  // and the arrow at your feet draws while far, not while near
+  #assert wk_way_arrow(out[..], 0, s[..], s[0].view, w2, Pen.{d = 1, fade = 1, time = 9, still = false, phone = false}, 1) > 0;
+  near := w2; near.far = false;
+  #assert wk_way_arrow(out[..], 0, s[..], s[0].view, near, Pen.{d = 1, fade = 1, time = 9, still = false, phone = false}, 1) == 0;
 }
