@@ -43,6 +43,7 @@ const ErrorInfo ERRORS[] = {
     {"E0219", "enum needs an underlying type", "An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout."},
     {"E0220", "malformed check", "#test takes a name string and a block: #test \"refunds never exceed payment\" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }."},
     {"E0221", "parser resource limit", "The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure."},
+    {"E0222", "qualified name reaches through an alias", "A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias."},
 
     // ---- E03xx: checker ----
     {"E0301", "type not supported yet", "The type is in the plan (spec 6.2) but coax0 does not implement it, for example dynamic arrays '[..] T' or vectors."},
@@ -128,6 +129,11 @@ const ErrorInfo ERRORS[] = {
     {"E0382", "invalid reflection category", "field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout."},
 
     {"E0383", "returned borrow may outlive local storage", "A returned view or string may borrow a local fixed array, directly or through a local alias, subrange, cast or ifx. Return the fixed array value or use caller-owned storage. This conservative local check does not establish general lifetime safety."},
+    {"E0384", "unknown module alias", "A qualified name's alias must be bound in this module by #load \"FILE.coax\" as NAME;. Aliases belong to the logical module that loads them."},
+    {"E0385", "module has no such declaration", "A qualified name sees only the declarations of the alias's module. Check the spelling, or load the module that declares it."},
+    {"E0386", "ambiguous unqualified name", "Two modules declare this name and the use's own module does not. Qualify it with the alias of the module you mean: alias.Name."},
+    {"E0387", "C cannot spell a module collision", "Two modules may each declare a name, and their private C spellings are qualified. An #export_c or #foreign symbol, or a type in a C library header, is one global C name, so a collision there is refused, never merged. Rename one."},
+    {"E0388", "alias is not reexported", "alias.Name cannot name another module's alias. Load the module you mean here with its own alias."},
 
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time resource budget exceeded", "Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N)."},
@@ -149,7 +155,7 @@ const ErrorInfo ERRORS[] = {
     {"E0503", "retired in 0.6.0", "Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0."},
     {"E0504", "proto imports are CPU-only", "Generated binary codecs are CPU code and cannot be compiled as Metal shaders."},
     // ---- E06xx: source units ----
-    {"E0600", "invalid source load", "Use #load \"part.coax\"; at file scope with a nonempty, NUL-free path. Loads are literal source inputs, never compile-time effects."},
+    {"E0600", "invalid source load", "Use #load \"part.coax\"; at file scope with a nonempty, NUL-free path, or #load \"part.coax\" as name; to bind its module to an alias. Loads are literal source inputs, never compile-time effects."},
     {"E0601", "source unit cannot be read", "The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load."},
     {"E0602", "source load cycle", "A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once."},
     {"E0603", "source graph budget exceeded", "One compilation admits at most 128 distinct source units, 32 active units, 16 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading."},
@@ -157,6 +163,10 @@ const ErrorInfo ERRORS[] = {
     {"E0605", "invalid logical module", "Write #module \"engine.hud\"; once per source unit, at file scope. An ID is 1 to 128 bytes of lowercase dotted segments; each segment starts with a-z and continues with a-z, 0-9 or _."},
     {"E0606", "logical module claimed twice", "Two different canonical source units claimed one logical module ID. A module has one authored owner unit; its other files are #load members of it."},
     {"E0607", "source unit under two logical modules", "A unit without its own #module is a member of the modules whose units load it, and it may belong to only one. Give the shared unit its own #module, or load it under one module."},
+    {"E0608", "module parameters are not supported", "An aliased #load takes the module as written: #load \"hud.coax\" as hud;. Configured or parameterized modules are not part of coax0."},
+    {"E0609", "package search is not supported", "An aliased #load names a .coax file by its path, relative to the loading unit. Nothing searches packages or installs dependencies."},
+    {"E0610", "alias target has no logical module", "An alias binds to a logical module ID, so the loaded unit must claim one with #module \"some.id\";. Load a member file without an alias."},
+    {"E0611", "alias names two modules", "Within one logical module an alias names one module. Pick another alias for the second module."},
     // ---- E07xx: device code ----
     {"E0700", "outside the CUDA compute subset", "coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. A kernel with for thread: 0..<T loops (T a multiple of 32 up to 1024) runs T threads per item: a thread loop writes a shared array only at the elements its thread owns, code between thread loops never writes one, and shared arrays fit in 32 KiB."},
     {"E0701", "CUDA module has no kernel", "coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c."},

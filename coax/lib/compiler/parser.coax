@@ -128,8 +128,14 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     n[id].b=PS_type(t,n,s,out);return PS_valid(s,id);
   }
   if v.kind!=1 && v.kind!=2 {parts:=[2] string.["expected a type, found ",PS_label(v.kind)];PS_error(s,out,v.loc,"E0202","",parts[..]);return 0;}
-  n[id].name=PS_take(t,s).text;return PS_valid(s,id);
+  n[id].name=PS_take(t,s).text;
+  // alias.Name: a module-qualified type (name2 is the alias), exactly one alias deep.
+  if v.kind==1 && PS_at(t,s,20) && PS_peek(t,s,1).kind==1 {PS_skip(t,s);n[id].name2=n[id].name;n[id].name=PS_take(t,s).text;
+    if PS_at(t,s,20) && PS_peek(t,s,1).kind==1 {PS_reexport(s,out,v.loc);return 0;}}
+  return PS_valid(s,id);
 }
+PS_origin :: (n:[] PS_Node,e:int)->PS_Loc {q:=e;while n[q].kind==PS_Tag.expr_field {q=n[q].a;}return n[q].loc;}
+PS_reexport :: (s:[] PS_State,out:[] u8,loc:PS_Loc) {PS_fail(s,out,loc,"E0222","a qualified name takes one module alias; aliases are not reexported","load that module here with its own alias");}
 PS_expression :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {return PS_expr(t,n,s,out,1);}
 PS_expr :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,min_prec:int)->int {
   if !PS_enter(s,out,PS_peek(t,s,0).loc) {return 0;}defer PS_leave(s);
@@ -324,9 +330,16 @@ PS_postfix :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,first:int)->in
   while s[0].code=="" {
     v:=PS_peek(t,s,0);after:=PS_peek(t,s,1);
     if v.kind==20 && after.kind==1 {PS_skip(t,s);f:=PS_new(n,s,out,PS_Tag.expr_field,v.loc);n[f].name=PS_take(t,s).text;n[f].a=e;e=f;}
+    else if v.kind==8 && n[e].kind==PS_Tag.expr_field && n[n[e].a].kind==PS_Tag.expr_ident {
+      // alias.proc(...): a module-qualified call at the alias's source position.
+      q:=n[e].a;n[e].kind=PS_Tag.expr_call;n[e].name2=n[q].name;n[e].loc=n[q].loc;n[e].a=0;PS_skip(t,s);PS_list_expr(t,n,s,out,e,9,"after the arguments");
+    }
+    else if v.kind==8 && n[e].kind==PS_Tag.expr_field && n[n[e].a].kind==PS_Tag.expr_field {PS_reexport(s,out,PS_origin(n,e));return 0;}
     else if v.kind==20 && after.kind==10 {
-      if n[e].kind!=PS_Tag.expr_ident {PS_fail(s,out,v.loc,"E0215","a struct literal starts with the struct's name","Point.{x = 1, y = 2}");return 0;}
-      lit:=PS_new(n,s,out,PS_Tag.expr_struct_lit,n[e].loc);ty:=PS_new(n,s,out,PS_Tag.type_named,n[e].loc);n[ty].name=n[e].name;n[lit].d=ty;PS_skip(t,s);PS_skip(t,s);
+      head:=e;qual:="";if n[e].kind==PS_Tag.expr_field && n[n[e].a].kind==PS_Tag.expr_ident {head=n[e].a;qual=n[head].name;}
+      else if n[e].kind==PS_Tag.expr_field && n[n[e].a].kind==PS_Tag.expr_field {PS_reexport(s,out,PS_origin(n,e));return 0;}
+      else if n[e].kind!=PS_Tag.expr_ident {PS_fail(s,out,v.loc,"E0215","a struct literal starts with the struct's name","Point.{x = 1, y = 2}");return 0;}
+      lit:=PS_new(n,s,out,PS_Tag.expr_struct_lit,n[head].loc);ty:=PS_new(n,s,out,PS_Tag.type_named,n[head].loc);n[ty].name=n[e].name;n[ty].name2=qual;n[lit].d=ty;PS_skip(t,s);PS_skip(t,s);
       while !PS_at(t,s,11) && s[0].code=="" {
         name:=PS_ident(t,s,out,"a field name");PS_expect(t,s,out,23,"after the field name; struct literals name every field");
         f:=PS_new(n,s,out,PS_Tag.decl_field_init,name.loc);n[f].name=name.text;n[f].a=PS_expression(t,n,s,out);PS_link(n,lit,f);
@@ -3894,6 +3907,47 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   #assert PS_primary(tokens[..],nodes[..],state[..],message[..])==0 && state[0].code=="E0217";
   tokens[0]=PS_Token.{kind=2,text="type_of"};state[0]=PS_State.{};
   #assert PS_primary(tokens[..],nodes[..],state[..],message[..])==0 && state[0].code=="E0204";
+}
+#forall "a type is one name or one alias-qualified name" variant:0..<5 {
+  tokens:=[7] PS_Token.[PS_Token.{kind=1,text="hud",loc=PS_Loc.{line=2,column=5,offset=9}},PS_Token.{kind=20},PS_Token.{kind=1,text="V"},PS_Token.{kind=15},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[2].kind=10;}
+  if variant==2 {tokens[3]=PS_Token.{kind=20};tokens[4]=PS_Token.{kind=1,text="W"};}
+  if variant==3 {tokens[0].kind=2;}
+  if variant==4 {tokens[3]=PS_Token.{kind=20};tokens[4]=PS_Token.{kind=10};}
+  nodes:[8] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_type(tokens[..],nodes[..],state[..],message[..]);
+  if variant==0 || variant==4 {#assert id==1 && state[0].code=="" && nodes[1].name=="V" && nodes[1].name2=="hud" && state[0].pos==3 && nodes[1].kind==PS_Tag.type_named;}
+  if variant==1 || variant==3 {#assert id==1 && nodes[1].name=="hud" && nodes[1].name2=="" && state[0].pos==1;}
+  if variant==2 {#assert id==0 && state[0].code=="E0222" && state[0].loc.line==2 && state[0].loc.column==5 && state[0].fix=="load that module here with its own alias";
+    #assert cast(string)message[0..<state[0].length]=="a qualified name takes one module alias; aliases are not reexported";}
+}
+#forall "postfix: an alias-qualified call or struct literal, one alias deep" variant:0..<6 {
+  // hud.f(1) / hud.V.{} ; variants 2..3 reach through two names, 4..5 are plain fields
+  tokens:=[9] PS_Token.[PS_Token.{kind=20},PS_Token.{kind=1,text="f"},PS_Token.{kind=8},PS_Token.{kind=3,value=1},PS_Token.{kind=9},PS_Token.{kind=15},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 || variant==3 {tokens[1].text="V";tokens[2]=PS_Token.{kind=20};tokens[3]=PS_Token.{kind=10};tokens[4]=PS_Token.{kind=11};}
+  if variant==4 {tokens[2]=PS_Token.{kind=15};}
+  if variant==5 {tokens[2]=PS_Token.{kind=20};tokens[3]=PS_Token.{kind=1,text="g"};tokens[4]=PS_Token.{kind=15};}
+  nodes:[16] PS_Node;nodes[1]=PS_Node.{kind=PS_Tag.expr_ident,name="hud",loc=PS_Loc.{line=3,column=2,offset=20}};used:=1;
+  if variant==2 || variant==3 {nodes[2]=PS_Node.{kind=PS_Tag.expr_field,name="mid",a=1,loc=PS_Loc.{line=3,column=5,offset=23}};used=2;}
+  state:=[1] PS_State.[PS_State.{used=used}];message:[256] u8;
+  r:=PS_postfix(tokens[..],nodes[..],state[..],message[..],used);
+  if variant==0 {e:=nodes[r];#assert r==2 && e.kind==PS_Tag.expr_call && e.name=="f" && e.name2=="hud" && e.a==0 && e.loc.line==3 && e.loc.column==2 && e.loc.offset==20;
+    #assert nodes[e.head].kind==PS_Tag.expr_int_lit && nodes[e.head].value==1 && state[0].pos==5;}
+  if variant==1 {lit:=nodes[r];ty:=nodes[lit.d];#assert lit.kind==PS_Tag.expr_struct_lit && ty.kind==PS_Tag.type_named && ty.name=="V" && ty.name2=="hud";
+    #assert lit.loc.column==2 && ty.loc.column==2 && ty.loc.offset==20 && state[0].pos==5;}
+  if variant==2 || variant==3 {#assert r==0 && state[0].code=="E0222" && state[0].loc.column==2 && state[0].loc.offset==20;}
+  if variant==4 {#assert r==2 && nodes[2].kind==PS_Tag.expr_field && nodes[2].name=="f" && nodes[2].name2=="" && state[0].pos==2;}
+  if variant==5 {#assert r==3 && nodes[3].kind==PS_Tag.expr_field && nodes[3].a==2 && nodes[3].name=="g" && state[0].pos==4;}
+}
+#test "an unqualified struct literal keeps its name and position" {
+  tokens:=[4] PS_Token.[PS_Token.{kind=20},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];nodes:[8] PS_Node;
+  nodes[1]=PS_Node.{kind=PS_Tag.expr_ident,name="P",loc=PS_Loc.{column=4}};state:=[1] PS_State.[PS_State.{used=1}];message:[64] u8;
+  r:=PS_postfix(tokens[..],nodes[..],state[..],message[..],1);
+  #assert nodes[r].kind==PS_Tag.expr_struct_lit && nodes[nodes[r].d].name=="P" && nodes[nodes[r].d].name2=="" && nodes[r].loc.column==4;
+  tokens[0]=PS_Token.{kind=8};state[0]=PS_State.{used=1};#assert PS_postfix(tokens[..],nodes[..],state[..],message[..],1)==1 && state[0].pos==0;
+  // an index of a field is not a name: x.y[0].{}
+  tokens[0]=PS_Token.{kind=20};nodes[2]=PS_Node.{kind=PS_Tag.expr_field,a=1};nodes[3]=PS_Node.{kind=PS_Tag.expr_index,a=2};state[0]=PS_State.{used=3};
+  #assert PS_postfix(tokens[..],nodes[..],state[..],message[..],3)==0 && state[0].code=="E0215";
 }
 #test "postfix rejects a non-name struct and a closed range directly" {
   tokens:=[5] PS_Token.[PS_Token.{kind=20},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{},PS_Token.{}];nodes:[32] PS_Node;nodes[1]=PS_Node.{kind=PS_Tag.expr_int_lit};state:=[1] PS_State.[PS_State.{used=1}];message:[256] u8;

@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -57,7 +57,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#foreign` | After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool` | works | — |
 | `#import_proto "file.pb" as Prefix;` | Generate types and bounded codecs from a protobuf descriptor set (CPU code only) | works | — |
 | `#load "part.coax";` | Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority | works | 0.11.0 |
-| `#module "a.b";` | Claim a logical owner for a source unit; its #load members share it and declarations get nominal IDs. Identity only: lookup stays flat | works | 0.26.0 |
+| `#module "a.b";` | Claim a logical owner for a source unit; its #load members share it; declarations get nominal IDs and a module scope for qualified lookup | works | 0.26.0 |
 | `#if` | BUILD_DEBUG field/statement blocks; general conditions and top-level declarations remain planned | partial | 0.17.0 |
 | `#insert` `#expand` `#text` `#location` | Typed code and macros | reserved | — |
 | `#derive(...)` | Generate operations from fields | reserved | — |
@@ -135,6 +135,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#load` / `coax deps` | Bounded source composition and input inventory | works | 0.11.0 |
 | `coax deps --declarations` | Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph | works | 0.26.0 |
 | `coax deps --modules` | Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no exact declaration ranges or cache key | partial | 0.27.0 |
+| `#load "FILE.coax" as NAME;` qualified lookup | Path imports bind an alias to a logical module; NAME.Type, NAME.proc() and NAME.CONST resolve in the checked graph with per-module scopes, ambiguity at the use and qualified C spellings; no visibility, reexports, module parameters or package search | partial | 0.28.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

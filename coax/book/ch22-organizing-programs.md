@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -188,9 +188,8 @@ declaration to another. A declaration in a unit with no owner reports
 The rules are strict so the answer never depends on traversal order. Two
 files claiming one ID is E0606. A file without its own claim that two
 different modules load is E0607; give it its own `#module` instead. A bad
-claim is E0605. A claim is identity only: lookup is still one flat
-namespace, two `Vec` declarations in one graph still collide, and the
-generated C is unchanged.
+claim is E0605. A claim alone is identity: it changes no lookup and no
+generated C.
 
 An ID says which declaration; a revision says whether it may have changed.
 `coax deps main.coax --modules` prints each module's `content_revision`
@@ -201,6 +200,35 @@ their IDs stay. Everglade's page and its guard policy are compiled
 separately and both load `verse/everglade/guard-types.coax`, which claims
 `verse.everglade.guard_types`; both report the same IDs and revisions for
 `GaObservation`, `GaInput` and `GaEffect`.
+
+## Name another module's declarations
+
+Two modules may each declare `V`. Load them with aliases and say which one
+you mean:
+
+```coax
+#import "Basic";
+#load "left.coax" as l;    // claims #module "demo.left"
+#load "right.coax" as r;   // claims #module "demo.right"
+main :: () {
+  a: l.V = l.V.{x = l.g()};
+  b := r.V.{x = r.g()};
+  print("% % %\n", a.x, b.x, l.K + r.K);
+}
+```
+
+`l.V`, `l.g()` and `l.K` see only `demo.left`. A plain `V` would be
+ambiguous here (E0386, at the use), because two modules declare it and this
+file declares none; a name only one module declares still resolves without
+an alias, so existing `#load` programs keep working. An alias names the
+loaded file's `#module` (E0610 if it has none), so renaming `l` to `left`
+changes no declaration ID, and `l.V` and `r.V` stay different types even
+with the same fields (`'a' is demo.left.V but is initialized with
+demo.right.V`). Aliases are not reexported: `l.r.V` is E0222. Native C gives
+colliding private names module-qualified spellings; an `#export_c` symbol or
+a library header's type is one global C name, so two modules exporting
+`open_it` is E0387. Every declaration is still visible from every module;
+choosing what a module exports is the next step.
 
 ## Keep source, ABI and protocol identity distinct
 

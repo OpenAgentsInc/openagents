@@ -3,6 +3,8 @@
 
 ModuleIdentity: `#module` owners, #load membership and the nominal
 declaration IDs that `coax deps --declarations` reports from the checked graph.
+QualifiedLookup: `#load "FILE.coax" as NAME;` path imports and NAME.Decl
+bindings resolved in the checked graph (r1a-qualified-lookup).
 The tuple encoding and membership rules are checked and mutation-tested in
 lib/compiler/sources.coax; these fixtures pin the composed behavior.
 """
@@ -136,12 +138,15 @@ class ModuleIdentity(unittest.TestCase):
         a, b = self.ids(left / "main.coax")[("struct", "Vec")], self.ids(right / "main.coax")[("struct", "Vec")]
         self.assertNotEqual(a, b)
         self.assertEqual((a, b), (PREFIX + "math.left:struct:Vec", PREFIX + "math.right:struct:Vec"))
-        # Identity is not a namespace: one graph keeps one flat declaration namespace.
+        # One graph may hold both: each module scopes its own declarations, and
+        # an unqualified use that two modules could mean is ambiguous (QualifiedLookup).
         both = self.tree({"l.coax": '#module "math.left";\nVec :: struct { x: f32; }\n',
                           "r.coax": '#module "math.right";\nVec :: struct { x: f32; }\n',
                           "main.coax": '#load "l.coax";\n#load "r.coax";\nmain :: () {}\n'}, "both")
         p = self.run_coax("check", both / "main.coax")
-        self.assertNotEqual(p.returncode, 0, "two same-spelling declarations must still collide in the flat namespace")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        (both / "main.coax").write_text('#load "l.coax";\n#load "r.coax";\nmain :: () { v: Vec; }\n')
+        self.error(both / "main.coax", "E0386")
 
     def test_two_units_cannot_claim_one_module(self):
         root = self.tree({"a.coax": '#module "engine.hud";\nA :: 1;\n',
@@ -317,6 +322,154 @@ class ModuleRevisions(unittest.TestCase):
         self.assertTrue(any("descriptor" in d for d in wire["dependencies"]))
         self.assertTrue(r["unavailable"]["generated_declarations"])
         self.assertTrue(all(d["generated"] for d in r["declarations"] if "Wire_" in d["id"]))
+
+
+# Two modules that spell the same local names differently.
+PAIR = {
+    "left.coax": '#module "demo.left";\nV :: struct { x: int; }\nE :: enum u8 { lo; hi; }\nK :: cast(int) 10;\ng :: () -> int { return 1; }\nscale :: (v: V) -> int { return v.x * K; }\n',
+    "right.coax": '#module "demo.right";\nV :: struct { x: int; }\nK :: cast(int) 20;\ng :: () -> int { return 2; }\n',
+    "main.coax": '#import "Basic";\n#load "left.coax" as l;\n#load "right.coax" as r;\n'
+                 'main :: () {\n  a: l.V = l.V.{x = l.g()};\n  b := r.V.{x = r.g()};\n  e := l.E.hi;\n'
+                 '  print("% % % % % %\\n", a.x, b.x, l.K, r.K, l.scale(a), cast(int) e);\n}\n',
+}
+PAIR_OUT = "1 2 10 20 10 1\n"
+
+
+class QualifiedLookup(unittest.TestCase):
+    """Qualified names bind through the checked graph to originating declarations."""
+    setUp = ModuleIdentity.setUp
+    tree = ModuleIdentity.tree
+    run_coax = ModuleIdentity.run_coax
+    report = ModuleIdentity.report
+    ids = ModuleIdentity.ids
+    error = ModuleIdentity.error
+
+    def ok(self, *args):
+        p = self.run_coax(*args)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return p.stdout
+
+    def at(self, main, code, line, column, text=None):
+        d = self.error(main, code)
+        self.assertEqual((Path(d["file"]).name, d["line"], d["col"]), (main.name, line, column), d)
+        if text:
+            self.assertIn(text, d["message"])
+        return d
+
+    def case(self, body, under, extra=None):
+        files = dict(PAIR)
+        files["main.coax"] = '#import "Basic";\n#load "left.coax" as l;\n#load "right.coax" as r;\n' + body
+        files.update(extra or {})
+        return self.tree(files, under) / "main.coax"
+
+    def test_colliding_names_resolve_in_every_backend(self):
+        main = self.tree(PAIR) / "main.coax"
+        self.assertEqual(self.ok("run", main), PAIR_OUT)
+        exe = self.base / "pair"
+        self.ok("build", main, "-o", exe)
+        self.assertEqual(subprocess.run([str(exe)], capture_output=True, text=True).stdout, PAIR_OUT)
+        c = self.ok("c", main)
+        # Colliding declarations get distinct C spellings; unique ones keep theirs.
+        for spelling in ["coax_q1t_V", "coax_q2t_V", "coax_q1p_g", "coax_q2p_g", "coax_p_scale", "coax_t_E"]:
+            self.assertIn(spelling, c)
+        # The evaluator (compile-time) binds the same declarations.
+        folded = self.case('X :: #run (l.g() * 100 + r.g() * 10 + l.K);\nmain :: () { print("%\\n", X); }\n', "ct")
+        self.assertEqual(self.ok("run", folded), "130\n")
+
+    def test_metal_scalar_kernel_binds_qualified_calls(self):
+        files = {
+            "warm.coax": '#module "shade.warm";\ngain :: (x: f32) -> f32 { return x * 0.5; }\n',
+            "cool.coax": '#module "shade.cool";\ngain :: (x: f32) -> f32 { return x * 0.25; }\n',
+            "shader.coax": '#load "warm.coax" as warm;\n#load "cool.coax" as cool;\n'
+                           'shade :: (x: f32) -> f32 #export_c { return warm.gain(x) + cool.gain(x); }\n',
+        }
+        root = self.tree(files)
+        metal = self.ok("metal", root / "shader.coax")
+        self.assertIn("coax_q1p_gain(", metal)
+        self.assertIn("coax_q2p_gain(", metal)
+        self.assertIn("0.5", metal.split("coax_q1p_gain(", 2)[-1].split("}")[0] + metal)
+        # The same file's C library computes the same values.
+        lib = self.ok("c", root / "shader.coax", "--library")
+        self.assertIn("coax_q1p_gain", lib)
+
+    def test_unknown_ambiguous_and_missing_names_fail_at_the_use(self):
+        self.at(self.case('main :: () { v: zz.V; }\n', "a"), "E0384", 4, 17, "'zz'")
+        self.at(self.case('main :: () { v: V; }\n', "b"), "E0386", 4, 17, "'demo.left' and 'demo.right'")
+        self.at(self.case('main :: () { x := g(); }\n', "c"), "E0386", 4, 19)
+        self.at(self.case('main :: () { x := r.E.hi; }\n', "d"), "E0385", 4, 19, "module 'demo.right' has no declaration 'E'")
+        self.at(self.case('main :: () { v: l.W; }\n', "e"), "E0385", 4, 17, "no type 'W'")
+        self.at(self.case('main :: () { x := r.scale(r.V.{x=1}); }\n', "f"), "E0385", 4, 19, "no procedure 'scale'")
+        self.at(self.case('main :: () { x := l.g; }\n', "g"), "E0305", 4, 19)
+        self.at(self.case('main :: () { l.K = 3; }\n', "h"), "E0344", 4, 18)
+        # A qualified name never falls back to a builtin type.
+        self.at(self.case('main :: () { v: l.int; }\n', "i"), "E0385", 4, 17)
+
+    def test_aliases_do_not_change_ids_and_same_layout_stays_nominal(self):
+        base = self.ids(self.tree(PAIR, "a") / "main.coax")
+        renamed = dict(PAIR)
+        renamed["main.coax"] = PAIR["main.coax"].replace(" as l;", " as left;").replace("l.", "left.")
+        moved = self.tree(renamed, "b") / "main.coax"
+        self.assertEqual(self.ok("run", moved), PAIR_OUT)
+        self.assertEqual(self.ids(moved), base)
+        report = self.report(self.tree(PAIR, "c") / "main.coax")
+        ids = {d["id"] for d in report["declarations"]}
+        self.assertIn(PREFIX + "demo.left:struct:V", ids)
+        self.assertIn(PREFIX + "demo.right:struct:V", ids)
+        d = self.at(self.case('main :: () { v: l.V = r.V.{x=1}; }\n', "d"), "E0325", 4, 23)
+        self.assertIn("demo.left.V", d["message"])
+        self.assertIn("demo.right.V", d["message"])
+        self.at(self.case('f :: (v: r.V) {}\nmain :: () { f(l.V.{x=1}); }\n', "e"), "E0317", 5, 16)
+
+    def test_unsupported_forms_fail_explicitly(self):
+        self.at(self.case('main :: () { v: l.r.V; }\n', "a"), "E0222", 4, 17)
+        self.at(self.case('main :: () { x := l.r.g(); }\n', "b"), "E0222", 4, 19)
+        self.at(self.case('main :: () { v := l.r.V.{x=1}; }\n', "c"), "E0222", 4, 19)
+        inner = {"left.coax": PAIR["left.coax"] + '#load "right.coax" as r;\n'}
+        self.at(self.case('main :: () { x := l.r.K; }\n', "d", inner), "E0388", 4, 19, "'l.r'")
+        for text, code in [('#load "left.coax" as l(n=1);\nmain :: () {}\n', "E0608"),
+                           ('#load "left" as l;\nmain :: () {}\n', "E0609"),
+                           ('#load "left.coax" as 7;\nmain :: () {}\n', "E0600")]:
+            root = self.tree(dict(PAIR, **{"m.coax": text}), "x" + code)
+            self.at(root / "m.coax", code, 1, 1)
+        plain = self.tree(dict(PAIR, **{"plain.coax": "p :: () {}\n", "m.coax": '#load "plain.coax" as p;\nmain :: () {}\n'}), "y")
+        self.at(plain / "m.coax", "E0610", 1, 23, "plain.coax'")
+        twice = self.tree(dict(PAIR, **{"m.coax": '#load "left.coax" as a;\n#load "right.coax" as a;\nmain :: () {}\n'}), "z")
+        self.at(twice / "m.coax", "E0611", 2, 23, "'demo.left'")
+        same = self.tree(dict(PAIR, **{"m.coax": '#load "left.coax" as a;\n#load "left.coax" as a;\nmain :: () {}\n'}), "w")
+        self.ok("check", same / "m.coax")
+
+    def test_c_symbol_collisions_are_refused_not_merged(self):
+        files = {
+            "one.coax": '#module "lib.one";\nopen_it :: () -> int #export_c { return 1; }\nT :: struct { a: int; }\n',
+            "two.coax": '#module "lib.two";\nopen_it :: () -> int #export_c { return 2; }\n',
+            "main.coax": '#load "one.coax" as one;\n#load "two.coax" as two;\n',
+        }
+        root = self.tree(files)
+        d = self.error(root / "main.coax", "E0387")
+        self.assertIn("C symbol 'open_it'", d["message"])
+        types = {
+            "one.coax": '#module "lib.one";\nT :: struct { a: int; }\nget_one :: (t: T) -> int #export_c { return t.a; }\n',
+            "two.coax": '#module "lib.two";\nT :: struct { a: int; }\n',
+            "main.coax": '#load "one.coax" as one;\n#load "two.coax" as two;\n',
+        }
+        root = self.tree(types, "b")
+        p = self.run_coax("c", root / "main.coax", "--library")
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("E0387", p.stderr)
+        self.assertIn("C library header spells types by name", p.stderr)
+
+    def test_legacy_load_graphs_are_unchanged(self):
+        root = self.tree(HUD)
+        self.assertEqual(self.ok("run", root / "main.coax"), "42\n")
+        flat = dict(HUD)
+        flat["hud.coax"] = HUD["hud.coax"].replace('#module "engine.hud";\n', "")
+        c_flat = self.ok("c", self.tree(flat, "f") / "main.coax")
+        self.assertNotIn("coax_q", c_flat)
+        # Same-scope duplicates are still duplicates.
+        dup = self.tree({"main.coax": 'g :: () {}\ng :: () {}\nmain :: () {}\n'}, "d")
+        self.error(dup / "main.coax", "E0334")
+        dup = self.tree({"x.coax": '#module "m.x";\nV :: struct {}\nV :: struct {}\n', "main.coax": '#load "x.coax" as x;\nmain :: () {}\n'}, "e")
+        self.error(dup / "main.coax", "E0372")
 
 
 if __name__ == "__main__":

@@ -388,7 +388,10 @@ std::string tag(Type t) {
     case TypeKind::floating: return t->name;
     case TypeKind::bool_: return "bool";
     case TypeKind::string_: return "string";
-    case TypeKind::struct_: case TypeKind::enum_: return "t_" + t->name;
+    case TypeKind::struct_: case TypeKind::enum_:
+      // A name two modules declare is spelled by its module scope; coax_q never comes from a user name.
+      if (t->scope) return "q" + std::to_string(t->scope) + "t_" + to_std(t->kind == TypeKind::struct_ ? t->struct_decl->name : t->enum_decl->name);
+      return "t_" + t->name;
     case TypeKind::array: return "a" + std::to_string(t->length) + "_" + tag(t->elem);
     case TypeKind::view: return "v_" + tag(t->elem);
     default: return "void";
@@ -575,7 +578,8 @@ struct Emitter {
   }
   std::string proc_name(const ProcDecl *p) {
     if (device() && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
-    return p->export_c || p->foreign ? to_std(p->name) : "coax_p_" + to_std(p->name);
+    if (p->export_c || p->foreign) return to_std(p->name);
+    return p->scope ? "coax_q" + std::to_string(p->scope) + "p_" + to_std(p->name) : "coax_p_" + to_std(p->name);
   }
 
   // Evaluate operands left to right when order is observable; build() gets
@@ -1432,7 +1436,7 @@ struct TypeWriter {
         done.push_back(t);
         std::string definition = "typedef " + c_type(t->elem) + " " + c_type(t) + ";\n";
         for (const EnumMember &m : t->enum_decl->members)
-          definition += "#define COAX_" + to_std(t->enum_decl->name) + "_" + to_std(m.name) + " " + int_text(t, m.bits) + "\n";
+          definition += "#define COAX_" + (t->scope ? "q" + std::to_string(t->scope) + "_" : std::string()) + to_std(t->enum_decl->name) + "_" + to_std(m.name) + " " + int_text(t, m.bits) + "\n";
         out += header ? header_type_definition(t, definition) : definition;
         break;
       }

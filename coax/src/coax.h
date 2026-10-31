@@ -88,6 +88,9 @@ struct SourceUnit {
   bool claims = false;
   std::string module;
   std::vector<int32_t> loads; // indices in Source::units this unit #loads, in written order
+  // `#load "FILE.coax" as NAME;`: the alias, the loaded unit, the alias offset in this unit.
+  struct Alias { std::string name; int32_t target = 0; int32_t offset = 0; };
+  std::vector<Alias> aliases;
 };
 struct SourcePoint { std::string path; Loc loc; };
 struct Source {
@@ -168,6 +171,7 @@ struct TypeInfo {
   int32_t bits = 0;          // integer and floating widths
   bool is_signed = false;
   const TypeInfo *elem = nullptr;  // array, view; enum: the underlying integer type
+  int32_t scope = 0;         // struct/enum declared under one name by two modules: its C spelling's module scope
   int64_t length = 0;        // array
   StructDecl *struct_decl = nullptr;
   EnumDecl *enum_decl = nullptr;
@@ -350,6 +354,7 @@ struct Param {
 
 struct ProcDecl {
   Str name;
+  int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;
   Slice<Param> params;
   TypeExpr *ret_expr = nullptr;

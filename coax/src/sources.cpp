@@ -149,7 +149,10 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     if (scan.error) {
       Loc at{1,1,(int32_t)scan.offset};
       for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
-      if (scan.error==3) error_at(&local,at,"E0605","#module requires one top-level lowercase dotted ID string followed by ';'","write #module \"engine.hud\"; once, at file scope");
+      if (scan.error==4) error_at(&local,at,"E0600","#load \"FILE.coax\" as NAME requires an identifier alias followed by ';'","#load \"hud.coax\" as hud;");
+      else if (scan.error==5) error_at(&local,at,"E0608","module parameters are not supported","load the module as written: #load \"hud.coax\" as hud;");
+      else if (scan.error==6) error_at(&local,at,"E0609","an aliased #load names a .coax file path; package search is not supported","write the relative path: #load \"lib/hud.coax\" as hud;");
+      else if (scan.error==3) error_at(&local,at,"E0605","#module requires one top-level lowercase dotted ID string followed by ';'","write #module \"engine.hud\"; once, at file scope");
       else error_at(&local,at,scan.error==2?"E0603":"E0600",scan.error==2?"too many source loads in one unit":"#load requires a top-level nonempty NUL-free string path followed by ';'");
       return false;
     }
@@ -181,6 +184,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       if (next.is_relative()) next=std::filesystem::path(display).parent_path()/next;
       Loc at{1,1,(int32_t)r.begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
       if (!visit(next.lexically_normal().string(),depth+1,&local,at,self)) return false;
+      if (r.alias.count) u->source->aliases.push_back({std::string(r.alias.data,(size_t)r.alias.count),u->source->loads.back(),(int32_t)r.alias_begin});
     }
     u->state=2;finished.push_back(self);return true;
   };
@@ -218,6 +222,31 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     owner[(size_t)*it]=joined;
   }
   for (size_t i=0;i<units.size();i++) if (owner[i]>=0) units[i]->source->module=units[(size_t)owner[i]]->source->module;
+  // An alias names the loaded unit's own claim, so it binds to that logical
+  // module's declaration IDs and never to a path. Within one module an alias
+  // means one module.
+  auto alias_loc=[&](const SourceUnit *from,int32_t offset){
+    Loc at{1,1,from->begin+offset};
+    for (int32_t i=0;i<at.offset;i++) if (src->text[(size_t)i]=='\n') {at.line++;at.col=1;} else at.col++;
+    return at;
+  };
+  std::vector<std::pair<const SourceUnit*,const SourceUnit::Alias*>> seen;
+  for (const auto &u:units) for (const auto &a:u->source->aliases) {
+    const auto &target=units[(size_t)a.target]->source;
+    if (!target->claims) {
+      error_at(src,alias_loc(u->source.get(),a.offset),"E0610","alias '"+a.name+"' names '"+target->path+"', which has no #module of its own",
+               "add #module \"some.id\"; to that file, or load it without an alias");
+      return false;
+    }
+    for (const auto &[from,b]:seen) {
+      if (b->name==a.name && from->module==u->source->module && units[(size_t)b->target]->source->module!=target->module) {
+        error_at(src,alias_loc(u->source.get(),a.offset),"E0611","alias '"+a.name+"' already names module '"+units[(size_t)b->target]->source->module+"' here",
+                 "pick another alias");
+        return false;
+      }
+    }
+    seen.push_back({u->source.get(),&a});
+  }
   return true;
 }
 } // namespace coax

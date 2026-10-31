@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.28.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1115,10 +1115,11 @@ Version 0.11.0 implements `#load "part.coax";` at file scope. Literal paths
 resolve relative to the declaring unit (absolute paths are explicit too).
 Canonical source paths provide once-only identity; active cycles are E0602.
 The entry source followed by depth-first loads in written order forms one
-flat declaration namespace. Each physical unit is validated by the Coax grammar before composition and
+declaration graph. Each physical unit is validated by the Coax grammar before composition and
 must balance its own delimiters within depth 128; no declaration may cross
 a unit boundary. Comments and string contents never become directives. Names resolve across
-units, and duplicates remain errors. Loads are not interpreted `#run` effects.
+units, and duplicates remain errors within one logical module scope (see
+qualified lookup below). Loads are not interpreted `#run` effects.
 
 The checked Coax kernel in `lib/compiler/sources.coax` owns load syntax,
 identity/cycle decisions, verification-scope policy and resource admission.
@@ -1174,10 +1175,9 @@ checked graph: each unit's owner, each top-level declaration's ID, physical
 unit, line and generated origin, and each resolved reference between
 declarations (calls, typed constants, and struct/enum types in signatures,
 fields, locals and literals; the checker inlines untyped literal constants,
-so their uses are not references). A claim does not create a namespace:
-lookup stays flat, duplicate spellings in one graph remain errors, C
-spellings and generated code are unchanged, and `#authority` and
-diagnostics stay with each physical unit.
+so their uses are not references). A claim alone changes no lookup, C
+spelling or generated code, and `#authority` and diagnostics stay with each
+physical unit.
 
 Since 0.27.0, `coax deps FILE --modules` emits `coax.modules.v1` JSON:
 conservative module-scoped revisions kept apart from nominal IDs. A module's
@@ -1194,10 +1194,35 @@ their declarations, generated declarations, and exact declaration ranges
 `lib/compiler/sources.coax` (`SU_revision_text`). It is not a cache key,
 lockfile or toolchain manifest; build-only stage0 refuses it.
 
+Since 0.28.0, qualified lookup (r1a-qualified-lookup): `#load "hud.coax" as
+hud;` is an explicit filesystem path import that binds the alias `hud`, within
+the loading unit's logical module, to the loaded unit's own `#module` claim
+(E0610 when it has none; E0611 when one module binds an alias to two
+modules). Each top-level declaration belongs to its unit's module scope (the
+unowned program is one scope), so two modules may each declare `V`, `g` or
+`K`; duplicates within one scope remain errors. `hud.V` in a type or struct
+literal, `hud.g(...)` and `hud.K` (and `hud.E.member`) bind only in the
+alias's module (E0385 otherwise; E0384 for an unknown alias; a qualified
+name never falls back to a builtin). An unqualified name binds in its own
+module first, then to a declaration exactly one other scope makes; two such
+scopes are ambiguous (E0386) at the use. A local shadows an alias. Binding
+happens in the checked Coax graph (`CK_lookup`, `CK_bind_check` in
+`lib/compiler/checker.coax`), so the evaluator, native C and the Metal scalar
+backend share the same declaration bindings; aliases never change nominal
+IDs, and same-layout types of two modules stay nominally distinct (their
+diagnostics read `demo.left.V`). Colliding private declarations get
+scope-qualified C spellings (`coax_q1t_V`, `coax_q1p_g`); names declared once
+keep theirs, so legacy graphs emit identical C. A collision C cannot spell, an
+`#export_c` or `#foreign` symbol or a type in a `--library` header, is E0387
+rather than merged. Reaching through another module's alias (`a.b.V`) is
+refused (E0222, E0388): aliases are not reexported. Module parameters
+(E0608) and package search (an alias path must name a `.coax` file, E0609)
+are not supported. Every declaration is still visible to every module;
+private-by-default modules are the next slice.
+
 `#import "Basic";` remains the only named built-in module, providing checked
-`print`. Qualified lookup, explicit visibility, separate namespaces, content
-revisions, locked packages and conditional module parameters remain
-planned. Vendored/locked sources are explicit inputs; import does not download
+`print`. Explicit visibility, locked packages and conditional module
+parameters remain planned. Vendored/locked sources are explicit inputs; import does not download
 code. Future conditional compilation and module parameters must be represented
 in cache keys and editor analysis.
 

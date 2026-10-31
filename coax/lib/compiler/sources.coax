@@ -1,7 +1,7 @@
 // Source-unit syntax and admission. Native code reads files and owns storage.
 #authority;
 SU_Token :: struct {kind:u32;text:string;begin:int;end:int;}
-SU_Load :: struct {path:string;begin:int;end:int;}
+SU_Load :: struct {path:string;begin:int;end:int;alias:string;alias_begin:int;}
 SU_Scan :: struct {count:int;authority:bool;error:u32;offset:int;balanced:bool=true;claims:bool;owner:string;owner_begin:int;owner_end:int;}
 SU_Visit :: struct {index:int= -1;action:u8;}
 
@@ -77,6 +77,40 @@ SU_Visit :: struct {index:int= -1;action:u8;}
  #assert SU_admit(0,0,16777216,0);
  paths:=[1] string.["x"];states:=[1] u8.[0];
  r:=SU_visit(paths[..],states[..],"x");#assert r.action==3 && r.index==0;
+}
+
+// Path imports with aliases: `#load "hud.coax" as hud;` binds the alias to
+// the loaded unit's logical module. Module parameters and package search are
+// refused explicitly (4 alias syntax, 5 module parameters, 6 package search).
+#test "an aliased load keeps its path, alias and full span" {
+ t:=[6] SU_Token.[SU_Token.{kind=6,text="load",begin=1,end=6},SU_Token.{kind=5,text="hud.coax",begin=7,end=17},SU_Token.{kind=1,text="as",begin=18,end=20},SU_Token.{kind=1,text="hud",begin=21,end=24},SU_Token.{kind=15,begin=24,end=25},SU_Token.{}];
+ out:[1] SU_Load;r:=SU_scan(t[..],out[..]);
+ #assert r.error==0 && r.count==1 && out[0].path=="hud.coax" && out[0].alias=="hud" && out[0].alias_begin==21 && out[0].begin==1 && out[0].end==25;
+ plain:=[3] SU_Token.[t[0],t[1],SU_Token.{kind=15,end=18}];r=SU_scan(plain[..],out[..]);
+ #assert r.error==0 && out[0].alias=="" && out[0].alias_begin==0 && out[0].end==18;
+}
+#forall "alias syntax: an identifier, then ';'" kind:0..<17 {
+ t:=[5] SU_Token.[SU_Token.{kind=6,text="load",begin=2},SU_Token.{kind=5,text="m.coax"},SU_Token.{kind=1,text="as"},SU_Token.{kind=cast(u32)kind,text="m"},SU_Token.{kind=15}];out:[1] SU_Load;
+ r:=SU_scan(t[..],out[..]);
+ if kind==1 {#assert r.error==0 && r.count==1;}else {#assert r.error==4 && r.offset==2 && r.count==0;}
+ t[3].kind=1;t[4].kind=cast(u32)kind;r=SU_scan(t[..],out[..]);
+ if kind==15 {#assert r.error==0;}else if kind==8 {#assert r.error==5;}else {#assert r.error==4;}
+}
+#test "truncated aliases, other words and package paths are refused" {
+ t:=[5] SU_Token.[SU_Token.{kind=6,text="load"},SU_Token.{kind=5,text="m.coax"},SU_Token.{kind=1,text="as"},SU_Token.{kind=1,text="m"},SU_Token.{kind=15}];out:[1] SU_Load;
+ #assert SU_scan(t[0..<3],out[..]).error==4;#assert SU_scan(t[0..<4],out[..]).error==4;
+ t[2].text="is";#assert SU_scan(t[..],out[..]).error==1;t[2].text="as";
+ t[1].text="hud";#assert SU_scan(t[..],out[..]).error==6;
+ t[1].text="dir/hud.coax";#assert SU_scan(t[..],out[..]).error==0 && out[0].alias=="m";
+ t[1].text=".coax";#assert SU_scan(t[..],out[..]).error==6;
+ t[1].text="a.coa";#assert SU_scan(t[..],out[..]).error==6;
+ t[1].text="hud";t[2].text="x";#assert SU_scan(t[..],out[..]).error==1;
+ t[1]=SU_Token.{kind=3,text="7"};t[2].text="as";#assert SU_scan(t[..],out[..]).error==1;
+}
+#forall "import paths name a .coax file" c:u8 {
+ p:=[7] u8.['x','.','c','o','a','x',c];q:=[6] u8.[c,'.','c','o','a','x'];
+ #assert !SU_path_file(cast(string) p[..]);#assert SU_path_file(cast(string) p[0..<6]);
+ #assert SU_path_file(cast(string) q[..]);#assert !SU_path_file(cast(string) q[1..<6]);
 }
 
 // Logical modules (schema 1). `#module "a.b";` claims an authored owner for
@@ -245,11 +279,18 @@ SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
   if t.kind==6 && t.text=="load" {
    r.offset=t.begin;
    if depth!=0 || i+2>=tokens.count {r.error=1;return r;}
-   path:=tokens[i+1];end:=tokens[i+2];
+   path:=tokens[i+1];close:=i+2;end:=tokens[close];alias:="";alias_begin:=0;
+   if path.kind==5 && end.kind==1 && end.text=="as" {
+    if i+4>=tokens.count || tokens[i+3].kind!=1 {r.error=4;return r;}
+    close=i+4;end=tokens[close];if end.kind==8 {r.error=5;return r;}if end.kind!=15 {r.error=4;return r;}
+    if !SU_path_file(path.text) {r.error=6;return r;}
+    alias=tokens[i+3].text;alias_begin=tokens[i+3].begin;
+   }
    if path.kind!=5 || end.kind!=15 || path.text.count==0 {r.error=1;return r;}
    for c:path.text {if c==0 {r.error=1;return r;}}
    if r.count>=out.count {r.error=2;return r;}
-   out[r.count]=SU_Load.{path=path.text,begin=t.begin,end=end.end};r.count+=1;i+=3;continue;
+   // The path, alias and terminator that follow are inert tokens for this scan.
+   out[r.count]=SU_Load.{path=path.text,begin=t.begin,end=end.end,alias=alias,alias_begin=alias_begin};r.count+=1;
   }
   if t.kind==6 && t.text=="module" {
    r.offset=t.begin;
@@ -304,6 +345,9 @@ SU_ident_valid :: (name:string)->bool #export_c {
   if !alpha && (i==0 || !(c>='0' && c<='9')) {return false;}
  }
  return true;
+}
+SU_path_file :: (path:string)->bool #export_c {
+ return path.count>5 && path[path.count-5..<path.count]==".coax";
 }
 SU_owner_join :: (current:int,reaching:int)->int #export_c {
  if current== -2 || reaching<0 || current==reaching {return current;}

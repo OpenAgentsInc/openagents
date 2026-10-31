@@ -77,7 +77,7 @@ main :: () {}
     def test_actual_evaluator_under_sanitizers(self):
         with tempfile.TemporaryDirectory(prefix='coax-traversal-asan-') as d:
             directory=Path(d); objects=[]
-            for name in ('budget','mutation-schedule','lexer','parser','checker','sources'):
+            for name in ('budget','profiles','mutation-schedule','lexer','parser','checker','sources'):
                 obj=directory/(name+'.o')
                 subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined',
                                 '-c',str(ROOT/'bootstrap'/(name+'.c')),'-o',str(obj)],

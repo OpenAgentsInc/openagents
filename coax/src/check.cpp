@@ -88,12 +88,32 @@ struct CheckInput {
   std::vector<coax_t_CK_Node> nodes;
   std::vector<void*> objects;
   int64_t used=0;
+  // Logical module scopes (0 is the unowned program) and the aliases each scope loads.
+  std::vector<std::string> modules;
+  std::vector<coax_string> module_names;
+  std::vector<std::string> alias_names;
+  std::vector<coax_t_CK_Alias> aliases;
 };
+static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
+  if(!unit || unit->module.empty())return 0;
+  for(size_t i=1;i<input->modules.size();i++)if(input->modules[i]==unit->module)return (int64_t)i;
+  input->modules.push_back(unit->module);return (int64_t)input->modules.size()-1;
+}
 static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t used){
   auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;input->nodes.resize((size_t)used+1);
+  input->modules.push_back("");
+  for(const auto &u:file->src->units)module_scope(input.get(),u.get());
+  for(const auto &u:file->src->units)for(const auto &a:u->aliases)input->alias_names.push_back(a.name);
+  size_t alias_at=0;
+  for(const auto &u:file->src->units)for(const auto &a:u->aliases){
+    const auto &name=input->alias_names[alias_at++];
+    input->aliases.push_back({module_scope(input.get(),u.get()),{name.data(),(int64_t)name.size()},module_scope(input.get(),file->src->units[(size_t)a.target].get())});
+  }
+  for(const auto &m:input->modules)input->module_names.push_back({m.data(),(int64_t)m.size()});
   for(int64_t id=0;id<=used;id++){
     const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
     n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.skip_authority=!file->src->units.empty() && !source_authority(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
+    n.scope=module_scope(input.get(),source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset}));
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
   file->check_input=std::move(input);
@@ -103,7 +123,8 @@ bool check(Arena *arena,File *file){
   auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);input->nodes.resize((size_t)(caps.nodes+extra));
   std::vector<coax_t_CK_Type> records((size_t)caps.types);std::vector<coax_t_CK_Local> locals((size_t)caps.locals);
   std::vector<coax_t_CK_Error> errors((size_t)caps.errors);std::vector<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
-  coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1}};
+  coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1},
+    {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()}};
   const bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority});
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
@@ -113,7 +134,7 @@ bool check(Arena *arena,File *file){
   for(int64_t i=16;i<state.type_count;i++)types.push_back(make<TypeInfo>(arena));
   g_composite_list.clear();
   for(int64_t i=16;i<state.type_count;i++){
-    const auto &r=records[(size_t)i];auto *t=types[(size_t)i];t->kind=(TypeKind)r.kind;t->name=checked_text(r.name);t->size=(int32_t)r.size;t->align=(int32_t)r.alignment;t->bits=(int32_t)r.bits;t->is_signed=r.is_signed;t->length=r.length;t->id=(int32_t)r.id;t->elem=types[(size_t)r.elem];
+    const auto &r=records[(size_t)i];auto *t=types[(size_t)i];t->kind=(TypeKind)r.kind;t->name=checked_text(r.name);t->size=(int32_t)r.size;t->align=(int32_t)r.alignment;t->bits=(int32_t)r.bits;t->is_signed=r.is_signed;t->length=r.length;t->id=(int32_t)r.id;t->scope=(int32_t)r.scope;t->elem=types[(size_t)r.elem];
     if(r.kind==COAX_CK_Kind_struct_)t->struct_decl=checked_ref<StructDecl>(objects,r.decl);
     if(r.kind==COAX_CK_Kind_enum_)t->enum_decl=checked_ref<EnumDecl>(objects,r.decl);
     if(r.kind==COAX_CK_Kind_array || r.kind==COAX_CK_Kind_view)g_composite_list.push_back(t);
@@ -129,7 +150,7 @@ bool check(Arena *arena,File *file){
       else if(v.kind==COAX_CK_Tag_stmt_assign){p->target=checked_ref<Expr>(objects,v.c);p->op=(Tok)v.op;}
       else {p->then_=checked_ref<Stmt>(objects,v.c);p->else_=checked_ref<Stmt>(objects,v.d);}}
     else switch(v.kind){
-      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;break;}
+      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->scope=v.collides?(int32_t)v.scope:0;break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}

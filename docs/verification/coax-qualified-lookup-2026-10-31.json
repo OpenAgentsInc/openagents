@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r1a-qualified-lookup",
+  "alias": "#9888",
+  "parent": "r1a-identities (#963b), kept open",
+  "baseline_commit": "427ce9d4be",
+  "compiler_version": "0.28.0",
+  "scope": "Explicit path imports with aliases (#load \"FILE.coax\" as NAME;), per-module declaration scopes and qualified type/procedure/constant/enum-member lookup in the checked Coax graph. Legacy #load graphs are unchanged; visibility (private-by-default modules) is the next child.",
+  "kernels": {
+    "sources": {
+      "file": "coax/lib/compiler/sources.coax",
+      "new_rules": [
+        "SU_scan alias form (errors 4 alias syntax, 5 module parameters, 6 package search)",
+        "SU_path_file"
+      ],
+      "checks": "37 checks, 37 passed",
+      "mutation": "456 mutants, 456 killed, 0 survived"
+    },
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "new_rules": [
+        "PS_type alias.Name",
+        "PS_postfix alias.proc(...) and alias.Type.{...}",
+        "PS_origin",
+        "PS_reexport (E0222)"
+      ],
+      "checks": "178 checks, 178 passed",
+      "mutation": "1180 mutants, 1180 killed, 0 survived"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_alias",
+        "CK_scan",
+        "CK_lookup",
+        "CK_qualifier",
+        "CK_bind_check (E0384, E0385, E0386, E0388)",
+        "CK_module_name",
+        "CK_collisions (E0387, scope-qualified type names)",
+        "scope-aware duplicate rules",
+        "CK_call_bound"
+      ],
+      "checks": "565 checks, 565 passed",
+      "mutation": "4023 mutants, 4023 killed, 0 survived"
+    },
+    "seeds": "bootstrap/sources.{c,h}, parser.c and checker.{c,h} refreshed; coax/build.sh regenerates them byte for byte"
+  },
+  "native_transport": [
+    "src/sources.cpp records aliases and refuses E0608-E0611",
+    "src/check.cpp passes node scopes, module IDs and aliases to CK_run",
+    "src/emit_c.cpp spells colliding private declarations coax_qNt_/coax_qNp_; unique names keep their spelling"
+  ],
+  "fixtures": {
+    "file": "coax/tests/modules.py",
+    "class": "QualifiedLookup",
+    "tests": 7,
+    "covers": [
+      "colliding V/g/K/E resolve under coax run, native build, emitted C and compile-time #run",
+      "Metal scalar kernel binds warm.gain/cool.gain to distinct procedures",
+      "unknown alias, ambiguity, missing declaration, proc-as-value, constant assignment and qualified builtin fail at the use",
+      "alias rename keeps declaration IDs; same-layout types stay nominally distinct",
+      "reexport chains, module parameters, package search, alias without #module and alias conflicts refused",
+      "colliding #export_c symbols and library header types refused (E0387)",
+      "legacy #load graphs, flat C and same-scope duplicates unchanged"
+    ]
+  },
+  "legacy_codegen": {
+    "compared_with": "coax0 0.27.0 (427ce9d4be build)",
+    "pages": "56 of 56 compilable apps/openagents-web/*.coax pages emit byte-identical C (--library); everglade.coax, verse/everglade/guard-decision.coax, verse/hud.coax identical"
+  },
+  "limits": [
+    "no private/public admission yet (r1a-public-hud-module)",
+    "one alias deep; aliases are not reexported",
+    "an unqualified name still binds to a declaration exactly one other scope makes (legacy compatibility)",
+    "untyped literal constants are inlined, so their uses are not declaration references"
+  ]
+}
