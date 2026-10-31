@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.43.0 — 2026-10-31
 
-Commit: pending
+Commit: [`baca83b6844126d77059469177b16271b4a40ed7`](https://github.com/OpenAgentsInc/openagents/commit/baca83b6844126d77059469177b16271b4a40ed7)
 
 - A generic call binds its typed arguments first, then gives an untyped
   literal for a bare `$T` the type they bound, or its `int`/`f64` default
