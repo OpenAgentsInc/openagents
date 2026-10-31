@@ -464,6 +464,44 @@
         "ol-quick-match"
       ],
       "blocks": []
+    },
+    {
+      "slug": "ol-fp-wall-stand",
+      "parent": "ol-first-playable",
+      "title": "A car that rides up the glass comes back down on its wheels",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Playtest #26ec: a car hitting the glass fast, or the bot after a kickoff hit, rides up the wall and stands on its nose or tail for seconds with its wheels on the glass, and the camera has to look down on it. Until the drum arena (ol-drum-arena) lets cars drive the walls, a car whose wheels touch a wall and not the floor should settle back onto the floor within a second, wheels down.",
+      "files": [
+        "apps/openagents-web/orbitleague.coax"
+      ],
+      "acceptance": [
+        "A #test drives a car into the glass at speed at several angles, with and without boost: within 1.5 s it is on the floor with its wheels down",
+        "Played on a phone and a laptop, no car is seen standing on the glass"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ol-fp-bot-easy",
+      "parent": "ol-first-playable",
+      "title": "A bot a first-time player can beat",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Playtest #26ec: the bot found the ball and scored twice in the first 10 seconds (fixed for the kickoff in 88b1ceda91: it no longer boosts in), and it still scores long shots in the first minute while a new player is learning to steer. Give it a reaction delay after each touch, an aim error that shrinks as the match goes on, and a top speed below yours without boost, so a first match is close.",
+      "files": [
+        "apps/openagents-web/orbitleague.coax"
+      ],
+      "acceptance": [
+        "A #test plays a scripted novice (drive at the ball, no boost, no jumps) for five minutes against the bot: the bot scores no more than three goals",
+        "The bot still scores against a player who stands still"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
