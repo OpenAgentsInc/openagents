@@ -264,6 +264,26 @@ per-scalar absolute-plus-relative budgets. The first failed native fault setup
 remains recorded. This query supplies no net-force assembly, contacts, integration,
 command admission, compiler bounded proof, sensor clock or hardware control.
 
+## Panda applied-force acceleration keeps bias and actuator semantics explicit
+
+The fixed-source forward query admits positions, rates and applied generalized
+forces before subtracting owned gravity-plus-velocity bias in matching units.
+Applied and net coefficients each have their own inclusive magnitude-10000
+numerical cap; a legal applied endpoint may therefore refuse at the net cap.
+Refusal preserves all caller output and no force is silently clipped. One
+source-bound pose/profile feeds the metric and zero-acceleration inverse query,
+then the existing explicit radian/metre basis restores typed acceleration.
+
+Finger applied forces are newtons, whereas controller finger targets are
+metres; the query supplies no actuator conversion. Complete finite independent
+Gaussian/equation comparisons and original prescribed accelerations qualify
+the arithmetic. The 85 emitted zero-survivor sites do not claim complete
+Quantity subtraction-token provenance. Native evidence is the named Darwin-arm64
+scalar-libm profile, with unsupported targets refused rather than skipped as
+passes. Source-visible helpers remain trusted and unsealed. Passive forces,
+contacts, integration, complete SDK qacc parity, compiler bounded control and
+hardware execution remain separate qualifications.
+
 ## The owned controller sample is one fresh query with a separate behavior proof
 
 The fixed-source constructor admits matching arm/finger positions and rates,

@@ -1252,6 +1252,84 @@ assembly, integration, compiler bounded control and real hardware remain
 separate qualifications. Zero joint angles here are a numerical query, not
 an actuator-valid home.
 
+## An applied force becomes acceleration
+
+The net-force solver answers a deliberately narrow question: which acceleration
+would a supplied net force produce? A caller normally has an applied generalized
+force instead. Gravity and motion already contribute force, so we first subtract
+the owned bias:
+
+```jai
+M(q) * acceleration = applied - bias(q, rate)
+```
+
+The [new public query](../lib/robotics/panda-forward-dynamics.coax) evaluates one
+fresh fixed-source FK, builds the full nine-coordinate metric, and evaluates the
+owned inverse query at zero acceleration. Its result is the gravity-plus-velocity
+bias. Both operands of the subtraction carry the same physical force unit:
+energy/radian for a hinge, newtons for a slide. The existing one-radian/one-metre
+basis and mass solver then restore angular and linear acceleration quantities.
+
+Applied force and net force each have an inclusive magnitude-10000 numerical
+limit. A legal applied endpoint can produce an illegal net force when the bias
+opposes it; the query refuses and preserves caller output. It never clips the
+force into the admitted box. Those large mathematical limits are separate from
+motor command limits. In particular, the controller's finger-position targets
+are metres, while this query requires newtons. Actuator mapping is still absent.
+
+The [runnable example](../examples/panda-forward-dynamics.coax) supplies the
+original SDK force from retained context13. The original acceleration was
+chosen before any of these queries, so its golden display is independent of the
+new forward implementation.
+
+<!-- source: psionic/examples/panda-forward-dynamics.coax pfd-query -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ // Retained original SDK M*a+bias, experiment context13; not motor targets.
+ applied:=[9]f64.[10.97794424270289, -19.859397263891573, 0.9544918198938825, 16.59200521881249, -1.1636592449850924, 2.503706256966014, -0.8899579105213928, 0.9824336240405068, 0.59784382475265];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];h[i].value=applied[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];f[i].value=applied[7+i];}
+ acceleration:[1]PmsOutput;
+ #assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],acceleration[..])==PmsStatus.ok;
+ for i:0..<7 {print("hinge % (micro-rad/s^2): %\n",i+1,pfd_example_micro(acceleration[0].hinge[i].value));}
+ for i:0..<2 {print("slide % (micro-m/s^2): %\n",i+1,pfd_example_micro(acceleration[0].slide[i].value));}
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-forward-dynamics.coax
+coax/bin/coax run psionic/examples/panda-forward-dynamics.coax --release
+COAX=coax/bin/coax psionic/tests/robotics/panda_forward_dynamics_check.sh /tmp/panda-forward-new
+```
+
+The [frozen experiment](../fixtures/robotics/panda-forward-dynamics/experiment.json)
+contains 15 original `M*a+bias` contexts, three zero-applied/zero-rate gravity
+contexts, and 18 signed applied-cap contexts. Independent pivoted Gaussian solves
+and original-SDK equation residuals compare 297 admitted acceleration words;
+33 records admit and 3 refuse at the separate net-force cap. All statuses and 324
+output words match byte for byte across debug, release and fail-fast ASan/UBSan.
+Each native run passes 4,028 assertions. The 135 original prescribed acceleration
+words differ by at most 7.627e-15. Eight new Coax groups/125 cases pass and all
+85 actual emitted root mutants are killed; the existing quantity-token lowering limitation remains
+explicit, so that score does not claim every authored quantity operator token.
+
+Native evidence uses Darwin arm64 F64 scalar libm, with fast math and contraction
+disabled. Unsupported targets are refused rather than counted as skipped passes.
+The frozen scalar budgets remain those of the mass solver. Actual and expected
+arrays must be complete and finite before maxima. The native witness also
+checks all input IEEE classes, count extremes, raw/typed identity, admission
+precedence and output overlap with all input views. Source-visible low-level
+helpers remain trusted and unsealed.
+
+This is an unconstrained acceleration query. Zero applied force gives
+gravity-driven joint acceleration; it does not turn gravity off. Passive forces,
+damping, contact, actuator conversion and integration are still absent. It is
+not a comparison with the SDK's fully assembled `mj_forward.qacc`, a simulated
+step, a controller rollout, compiler-bounded control or hardware execution.
+
 ## Build the controller sample from one owned state
 
 The source controller consumes one published `PcSample`: 144 F64 words holding

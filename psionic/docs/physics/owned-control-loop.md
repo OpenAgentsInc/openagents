@@ -63,9 +63,12 @@ now qualifies nine-coordinate inertial response, with explicit coordinate bases,
 new Cholesky arithmetic and independent Gaussian/residual references. It accepts
 already assembled NETforce and restores formal angular/linear acceleration units;
 composition with inverse dynamics needs explicit conversion to its nominal units.
-Applied-force/forward-dynamics assembly, contact and integration remain separate;
-a gravity-only query cannot replace the
-controller's nonzero-velocity bias sample. The
+The [applied-force forward query](../../fixtures/robotics/panda-forward-dynamics/README.md)
+now subtracts owned gravity-plus-velocity bias and composes the existing mass
+solve. Its separate applied/net caps, complete finite Gaussian/residual comparisons
+and original prescribed-acceleration corpus qualify an unconstrained query.
+Passive forces, contacts, actuator mapping and integration remain separate;
+a gravity-only query cannot replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The
 next step is the opt-in SDK-query adapter and a short recorded-command prefix;

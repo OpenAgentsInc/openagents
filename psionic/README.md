@@ -366,6 +366,17 @@ left-slide acceleration using the whole coupled mass column. Run
 and single native/reference gate. Net-force assembly, integration and physical
 control remain separate qualifications.
 
+The [applied-force forward query](fixtures/robotics/panda-forward-dynamics/README.md)
+subtracts owned gravity and velocity bias before the net-force solve. It returns
+typed angular/linear acceleration, with separate applied and net-force caps and
+atomic refusal. The [example](examples/panda-forward-dynamics.coax) recovers a
+preselected original SDK acceleration. Run
+`psionic/check.sh --only robotics/panda-forward-dynamics` for its two authority
+roots and one Darwin-arm64 native/reference gate; other targets fail admission
+rather than count as skipped passes. Passive forces, contacts, actuator mapping
+and integration remain separate. The 85 killed emitted sites do not establish
+complete quantity-subtraction token mutation coverage.
+
 The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
 assembles the existing 144-word ABI from one admitted state. Its
 [example](examples/panda-owned-sample.coax) uses independently frozen SDK fields.
