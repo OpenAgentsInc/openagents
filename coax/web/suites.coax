@@ -43,7 +43,7 @@ SU_ARENA :: 4194304;         // their bytes and the suites' paths
 SU_SUITES :: 1024;
 SU_TEXT :: 8388608;          // the largest .coax file read
 SU_HEAD_LINES :: 80;
-SU_TIMEOUT_MS :: 1800000;    // one suite's longest run, 30 minutes
+SU_TIMEOUT_MS :: 3600000;    // one suite's longest run, 60 minutes: a hang guard, not a budget (Everglade takes ~41 on a loaded Mac)
 SU_JOBS :: 6;
 
 SuHead :: struct { found: bool; steps: string; run_steps: string; library: bool; root_only: bool; native: string; }
@@ -528,7 +528,7 @@ tool_main :: () -> int #export_c {
       su_say(ifx passed then "ok   " else "FAIL "); su_say(s.path);
       if s.steps.count > 0 { su_say(" (--steps "); su_say(s.steps); su_say(")"); }
       su_say(": ");
-      if over { su_say("still running after 30 minutes"); } else if last.count > 0 { su_say(last); } else { su_say("no summary"); }
+      if over { su_say("still running after 60 minutes"); } else if last.count > 0 { su_say(last); } else { su_say("no summary"); }
       print(" (% s)\n", (proc_now_ms() - lanes[l].started_ms) / 1000);
       if !passed {
         for f: 0..<lanes[l].fails_kept { su_say("       "); su_say(cast(string) lanes[l].fails[f][0..<lanes[l].fail_n[f]]); su_say("\n"); }
