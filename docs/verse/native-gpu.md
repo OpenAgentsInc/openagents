@@ -278,3 +278,10 @@ Every phase and native feature is a task in the Verse project
   copies, draw ranges and those blends (vkc enables `independentBlend`).
   On the RTX 4080: validation 0/0, 999 values past the tolerance, on
   foliage edges and thin wave lines (2,000 allowed).
+- 2026-10-31: G5, bloom and post. `everglade-pass.coax post` draws that
+  frame, then host.js's five bloom steps (a quarter, then an eighth of the
+  size, each with its own source and step uniform: spec `bind=NAME:RES`,
+  `floats`, sized targets) and post_fs, the frame as it goes to the screen,
+  its panels included. RTX 4080: 12 passes, validation 0/0, 1,369 of
+  230,400 values past the tolerance, on bloomed foliage edges and the
+  Ranger's silhouette (2,000 allowed).

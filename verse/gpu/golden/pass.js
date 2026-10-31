@@ -126,8 +126,12 @@ window.runSpec = async function (specFile) {
         const t = d.createTexture({ size: [+a[2], +a[3]], format: "depth32float",
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
         res.set(a[1], { texture: t, view: t.createView() });
+      } else if (a[0] === "floats") {
+        const f = new Float32Array(a.slice(2).map(Number)), b = d.createBuffer({ size: Math.max(16, f.byteLength), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        d.queue.writeBuffer(b, 0, f);
+        res.set(a[1], { buffer: b });
       } else if (a[0] === "target") {
-        const t = d.createTexture({ size: [w, h], format: "rgba16float",
+        const t = d.createTexture({ size: a[2] ? [+a[2], +a[3]] : [w, h], format: "rgba16float",
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
         res.set(a[1], { texture: t, view: t.createView() });
       } else if (a[0] === "copy") {
@@ -145,7 +149,8 @@ window.runSpec = async function (specFile) {
         const keep = opts.includes("keep"), write = !opts.includes("nowrite"), always = opts.includes("always");
         const mode = (opts.find((o) => o.startsWith("blend=")) || "").slice(6), alphaKeep = opts.includes("alphakeep");
         const masked = opts.filter((o) => o.startsWith("mask=")).map((o) => +o.slice(5));
-        for (const o of opts) if (!/^(keep|nowrite|always|alphakeep|blend=(add|mul|alpha)|mask=\d+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        for (const o of opts) if (!/^(keep|nowrite|always|alphakeep|blend=(add|mul|alpha)|mask=\d+|bind=\w+:\w+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        const rebound = new Map(opts.filter((o) => o.startsWith("bind=")).map((o) => o.slice(5).split(":")));
         const factors = { add: ["one", "one"], mul: ["zero", "src"], alpha: ["src-alpha", "one-minus-src-alpha"] }[mode];
         const blend = factors ? { color: { operation: "add", srcFactor: factors[0], dstFactor: factors[1] },
           alpha: alphaKeep ? { operation: "add", srcFactor: "zero", dstFactor: "one" } : { operation: "add", srcFactor: "one", dstFactor: mode === "alpha" ? "one-minus-src-alpha" : "one" } } : undefined;
@@ -168,8 +173,8 @@ window.runSpec = async function (specFile) {
           if (!m) continue;
           const name = m[1], decl = wgsl.match(new RegExp(`@group\\((\\d+)\\)\\s*@binding\\((\\d+)\\)\\s*var(?:<[^>]*>)?\\s+${name}\\s*:`));
           if (!decl) throw new Error(`the WGSL does not declare ${name}`);
-          const r = res.get(name);
-          if (!r) throw new Error(`the spec has no ${name}`);
+          const r = res.get(rebound.get(name) ?? name);
+          if (!r) throw new Error(`the spec has no ${rebound.get(name) ?? name}`);
           const g = +decl[1];
           if (!groups.has(g)) groups.set(g, []);
           groups.get(g).push({ binding: +decl[2], resource: r.view ?? r });

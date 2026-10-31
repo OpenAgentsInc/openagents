@@ -7,12 +7,13 @@
 //   layers NAME FILE W H N LEVELS    an rgba8 sRGB 2D-array texture: level after level, each layer after layer
 //   sampler NAME FILTER WRAP MIP CMP linear|nearest, repeat|clamp, mip|flat, none|less
 //   depth NAME W H                   a depth32float texture a pass draws and a later one samples
-//   target NAME                      an rgba16float colour target at the size, which later passes keep or sample
+//   target NAME [W H]                an rgba16float colour target (at the size, or W by H), which later passes keep or sample
+//   floats NAME V...                 a buffer of the floats (a WGSL uniform, bound as storage here)
 //   copy FROM TO                     one image into another of its size and format (a depth too)
 //   index FILE                       u32 indices for the draw list
 //   draws FILE N                     the draw list: N records of u32 first, count, base instance, instances
 //   pass SPV VS FS TARGETS DEPTH BIAS SLOPE CALLS
-//          [keep] [nowrite] [always] [blend=add|mul|alpha] [alphakeep] [mask=I]
+//          [keep] [nowrite] [always] [blend=add|mul|alpha] [alphakeep] [mask=I] [bind=NAME:RES]...
 //                                    VS and FS the WGSL's entries (for the browser); SPV a module from coax spirv, SPV.bindings its bindings ("binding I KIND NAME"
 //                                    a line, as coax spirv prints them); TARGETS a number of rgba16float colour targets
 //                                    of its own (cleared to 0), or target NAMEs joined by commas; DEPTH a depth NAME,
@@ -22,7 +23,8 @@
 //                                    keep: the targets and depth are loaded, not cleared; nowrite: depth is tested,
 //                                    not written; always: the depth test always passes; blend: the colour blended
 //                                    (one, one; source over; the target times the source); alphakeep: the targets'
-//                                    alpha kept; mask=I: target I left as it is
+//                                    alpha kept; mask=I: target I left as it is; bind: the shader's NAME is RES
+//                                    in this pass
 // The last pass's colour targets (it must have some) are written to OUT as float32 RGBA rows, target after target.
 //   vk-passes SPEC OUT
 #include "vks.h"
@@ -124,7 +126,21 @@ int main(int argc, char **argv) {
       if (!w) { fprintf(stderr, "vk-passes: target before size\n"); return 1; }
       Res *r = &res[nres++];
       snprintf(r->name, sizeof r->name, "%s", a[1]); r->kind = VKS_IMAGE;
-      r->img = vks_image(&v, w, h, 1, 0, VK_FORMAT_R16G16B16A16_SFLOAT, VKS_TARGET | VKS_TEXTURE);
+      int tw = (int)w, th = (int)h;
+      sscanf(line, "%*s %*s %d %d", &tw, &th);
+      r->img = vks_image(&v, (uint32_t)tw, (uint32_t)th, 1, 0, VK_FORMAT_R16G16B16A16_SFLOAT, VKS_TARGET | VKS_TEXTURE);
+      continue;
+    }
+    if (!strcmp(a[0], "floats")) {
+      float f[64];
+      int nf = 0, used = 0;
+      char *p = line;
+      sscanf(p, "%*s %*s%n", &used); p += used;
+      while (nf < 64 && sscanf(p, "%f%n", &f[nf], &used) == 1) { p += used; nf++; }
+      VkcBuffer b = vkc_buffer(&v, nf * 4 < 16 ? 16 : (size_t)nf * 4);
+      memcpy(b.map, f, (size_t)nf * 4);
+      Res *r = &res[nres++];
+      snprintf(r->name, sizeof r->name, "%s", a[1]); r->kind = VKS_STORAGE; r->buf = b;
       continue;
     }
     if (!strcmp(a[0], "copy")) { vks_copy(&v, &find(a[1])->img, &find(a[2])->img); continue; }
@@ -152,6 +168,11 @@ int main(int argc, char **argv) {
       while (fgets(bl, sizeof bl, bf)) {
         int i; char kind[64], name[128];
         if (sscanf(bl, "binding %d %63s %127s", &i, kind, name) != 3) continue;
+        // a bind=NAME:RES option names what NAME is in this pass
+        for (int k = 9; k < nt; k++) {
+          size_t ln = strlen(name);
+          if (!strncmp(tok[k], "bind=", 5) && !strncmp(tok[k] + 5, name, ln) && tok[k][5 + ln] == ':') snprintf(name, sizeof name, "%s", tok[k] + 6 + ln);
+        }
         Res *r = find(name);
         if ((uint32_t)i != nb) { fprintf(stderr, "vk-passes: %s's bindings are not in order\n", bpath); return 1; }
         binds[nb++] = r->kind == VKS_STORAGE ? (VksBinding){VKS_STORAGE, &r->buf} : r->kind == VKS_IMAGE ? (VksBinding){VKS_IMAGE, .image = &r->img}
@@ -183,6 +204,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(o, "blend=mul")) pass.blend = VKS_MUL;
         else if (!strcmp(o, "blend=alpha")) pass.blend = VKS_ALPHA;
         else if (!strncmp(o, "mask=", 5)) pass.masked |= 1u << atoi(o + 5);
+        else if (!strncmp(o, "bind=", 5)) continue;
         else { fprintf(stderr, "vk-passes: no pass option %s\n", o); return 1; }
       }
       unsigned from = 0, to = ndraws;

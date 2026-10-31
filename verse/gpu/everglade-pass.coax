@@ -18,6 +18,8 @@
 //           not written), the grass and the scene into light, aux and the depth; the light and
 //           depth copied for the water; then each water draw's two halves, transmit (the light
 //           times it) and emit (added), depth tested, not written, aux and alpha kept
+//   post    that frame, then host.js's bloom (five steps through a quarter and an eighth of the
+//           size) and post_fs, the frame as it goes to the screen
 // Both sides sample one linear sampler without anisotropy (host.js asks for 8x, which is each
 // GPU's own), and the layers the browser decoded and mipmapped.
 #import "Basic";
@@ -33,17 +35,21 @@ EP_SHADOW :: 2048;          // the shadow map's side on a desktop (host.js shado
 // values allowed past the tolerance (edge pixels; bg measured 15 at 320x180).
 // `at` is the place the frame starts at (the page's hash, "" for the spawn).
 EpPass :: struct { name: string; entries: string; allow: string; at: string; }
-EP_PASSES :: [4] EpPass.[
+EP_PASSES :: [5] EpPass.[
   EpPass.{name = "bg", entries = "bg_vs bg_fs", allow = "40"},
   EpPass.{name = "scene", entries = "shadow_vs shadow_fs scene_vs scene_fs", allow = "400"},
   EpPass.{name = "grass", entries = "shadow_vs shadow_fs grass_vs grass_fs", allow = "400"},
-  EpPass.{name = "water", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs", allow = "2000", at = "weir"}];
+  EpPass.{name = "water", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs", allow = "2000", at = "weir"},
+  EpPass.{name = "post", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs bg_vs bloom_fs bg_vs post_fs", allow = "2000", at = "weir"}];
+// host.js postLayouts's bloom steps (blur x, blur y, again, then to an eighth) and postTargets's chain:
+// each step's target and source
+EP_BLOOM :: [5] string.["q0 light 0 0 0 4", "q1 q0 1 0 1 1", "q0 q1 0 1 1 1", "e1 q0 1 0 1 2", "e0 e1 0 1 1 1"];
 
 ep_find :: (name: string) -> int {
   for i: 0..<EP_PASSES.count { if EP_PASSES[i].name == name { return i; } }
   return -1;
 }
-#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("bloom") == -1 && ep_find("") == -1; }
+#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("post") == 4 && ep_find("bloom") == -1 && ep_find("") == -1; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -144,10 +150,11 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
       if blades <= 0 { tool_errln("everglade-pass: the frame has no grass"); return false; }
     }
     if p.name == "grass" { put(s, "pass grass_fs.spv grass_vs grass_fs 2 own 0 0 3:"); put_int(s, blades); put(s, "\n"); }
-    if p.name == "water" {
+    if p.name == "water" || p.name == "post" {
       if all <= draws { tool_errln("everglade-pass: the frame has no water"); return false; }
       ep_water(s, scene, blades, draws, all);
     }
+    if p.name == "post" { ep_post(s, 320, 180); }
   }
   if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[1][..]), cast(string) sp[0..<s[0].n]) { tool_errln("everglade-pass: cannot write the spec"); return false; }
   pc := [9] string.["coax/web/tool.sh", "verse/gpu/pass-check.coax", host, dir, "spec.txt", "--allow", allow, "--keep", keep];
@@ -180,6 +187,30 @@ ep_water :: (s: [] Sp, scene: string, blades: int, draws: int, all: int) {
   #assert ep_line(t, 6) == "pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:9 keep";
   #assert ep_line(t, 10) == "pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=mul alphakeep mask=1";
   #assert ep_line(t, 11) == "pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=add alphakeep mask=1";
+}
+
+// The bloom and post passes after ep_water, at W by H (EP_SIZE).
+ep_post :: (s: [] Sp, w: int, h: int) {
+  put(s, "target q0 "); put_int(s, (w + 3) / 4); put(s, " "); put_int(s, (h + 3) / 4); put(s, "\ntarget q1 "); put_int(s, (w + 3) / 4); put(s, " "); put_int(s, (h + 3) / 4);
+  put(s, "\ntarget e0 "); put_int(s, (w + 7) / 8); put(s, " "); put_int(s, (h + 7) / 8); put(s, "\ntarget e1 "); put_int(s, (w + 7) / 8); put(s, " "); put_int(s, (h + 7) / 8);
+  put(s, "\nsampler bloom_lin linear clamp flat none\nsampler post_lin linear clamp flat none\n");
+  for k: 0..<EP_BLOOM.count {
+    st := EP_BLOOM[k];
+    put(s, "floats step"); put_int(s, k);
+    for i: 2..<6 { put(s, " "); put(s, ep_word(st, i)); }
+    put(s, "\npass bloom_fs.spv bg_vs bloom_fs "); put(s, ep_word(st, 0)); put(s, " - 0 0 3 bind=bloom_src:"); put(s, ep_word(st, 1));
+    put(s, " bind=bloom_step:step"); put_int(s, k); put(s, "\n");
+  }
+  put(s, "pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux bind=post_depth:scene_depth\n");
+}
+#test "the bloom and post passes" {
+  o: [4096] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  ep_post(s, 320, 180);
+  t := cast(string) o[0..<s[0].n];
+  #assert !s[0].bad && ep_lines(t) == 17 && ep_line(t, 0) == "target q0 80 45" && ep_line(t, 2) == "target e0 40 23";
+  #assert ep_line(t, 6) == "floats step0 0 0 0 4" && ep_line(t, 7) == "pass bloom_fs.spv bg_vs bloom_fs q0 - 0 0 3 bind=bloom_src:light bind=bloom_step:step0";
+  #assert ep_line(t, 15) == "pass bloom_fs.spv bg_vs bloom_fs e0 - 0 0 3 bind=bloom_src:e1 bind=bloom_step:step4";
+  #assert ep_line(t, 16) == "pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux bind=post_depth:scene_depth";
 }
 
 // vs and fs of the translation, as FS.spv with FS.spv.bindings (coax spirv's report).
