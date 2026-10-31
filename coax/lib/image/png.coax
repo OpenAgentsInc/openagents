@@ -1,0 +1,206 @@
+// PNG (ISO/IEC 15948) to RGBA8, for the textures a realm's pack holds (verse/gpu, the scene
+// host): 8 bits a channel, gray, gray and alpha, RGB or RGBA, not interlaced; every chunk's CRC
+// checked, ancillary chunks passed over, an unknown critical one refused. The caller gives the
+// buffers (png_info says how large); nothing is allocated. Colour chunks (gAMA, iCCP) are not
+// applied: the pack's images carry none.
+#authority;
+#load "inflate.coax";
+PNG_OK :: 0;
+PNG_NOT :: 1;           // not a PNG
+PNG_UNSUPPORTED :: 2;   // a PNG this decoder does not take
+PNG_BAD :: 3;           // malformed
+PNG_SMALL :: 4;         // the caller's buffers are too small
+PNG_MAX :: 16384;       // the largest width or height taken
+// What png_decode needs: work bytes (the image data, then it inflated), and w*h*4 out.
+PngInfo :: struct { status: int; w: int; h: int; channels: int; work: int; idat: int; }
+
+png_be :: (b: []u8, at: int) -> int {
+  return (cast(int) b[at] << 24) | (cast(int) b[at + 1] << 16) | (cast(int) b[at + 2] << 8) | cast(int) b[at + 3];
+}
+// CRC-32 (ISO 3309), as zlib's crc32.
+png_crc :: (b: []u8) -> int {
+  c: u32 = 4294967295;
+  for x: b {
+    c = c ^ cast(u32) x;
+    for k: 0..<8 { c = ifx (c & 1) != 0 then (c >> 1) ^ 3988292384 else c >> 1; }
+  }
+  return cast(int) (c ^ 4294967295);
+}
+// The chunks, checked; with copy, the image data gathered into work.
+png_walk :: (src: []u8, work: []u8, copy: bool) -> PngInfo {
+  r: PngInfo; r.status = PNG_NOT;
+  sig := [8] u8.[137, 80, 78, 71, 13, 10, 26, 10];
+  if src.count < 8 { return r; }
+  for i: 0..<8 { if src[i] != sig[i] { return r; } }
+  r.status = PNG_BAD;
+  at := 8; seen := false;
+  while true {
+    if at + 12 > src.count { return r; }
+    size := png_be(src, at);
+    if size > src.count - at - 12 { return r; }
+    kind := cast(string) src[at + 4..<at + 8];
+    if png_crc(src[at + 4..<at + 8 + size]) != png_be(src, at + 8 + size) { return r; }
+    d := at + 8;
+    if !seen {
+      if kind != "IHDR" || size != 13 { return r; }
+      seen = true;
+      r.w = png_be(src, d); r.h = png_be(src, d + 4);
+      ct := cast(int) src[d + 9];
+      r.channels = ifx ct == 0 then 1 else (ifx ct == 2 then 3 else (ifx ct == 4 then 2 else (ifx ct == 6 then 4 else 0)));
+      if r.w < 1 || r.h < 1 || r.w > PNG_MAX || r.h > PNG_MAX || src[d + 8] != 8 || r.channels == 0 || src[d + 10] != 0 || src[d + 11] != 0 || src[d + 12] != 0 {
+        r.status = PNG_UNSUPPORTED; return r;
+      }
+    } else if kind == "IDAT" {
+      if copy { for i: 0..<size { work[r.idat + i] = src[d + i]; } }
+      r.idat += size;
+    } else if kind == "IEND" {
+      if r.idat == 0 { return r; }
+      r.status = PNG_OK;
+      r.work = r.idat + r.h * (1 + r.w * r.channels);
+      return r;
+    } else if (src[at + 4] & 32) == 0 { r.status = PNG_UNSUPPORTED; return r; }
+    at += 12 + size;
+  }
+  return r; // mutant: equivalent (the loop above only returns)
+}
+png_info :: (src: []u8) -> PngInfo { none: [1] u8; return png_walk(src, none[0..<0], false); } // mutant: equivalent (without copy the view is not read)
+png_abs :: (x: int) -> int { return ifx x < 0 then -x else x; } // mutant: equivalent (0 and -0 are one int)
+// A filter's prediction from the byte to the left, the one above and the one above-left.
+png_pred :: (f: int, a: int, b: int, c: int) -> int {
+  if f == 1 { return a; }
+  if f == 2 { return b; }
+  if f == 3 { return (a + b) / 2; }
+  p := a + b - c;
+  pa := png_abs(p - a); pb := png_abs(p - b); pc := png_abs(p - c);
+  if pa <= pb && pa <= pc { return a; } // mutant: equivalent (pa < pb: a tie of pa and pb with a != b puts c midway, so pc is 0 and c is taken either way)
+  if pb <= pc { return b; }
+  return c;
+}
+// The image as RGBA8 into out (w*h*4 bytes), work at least png_info's: PNG_OK or why not.
+png_decode :: (src: []u8, work: []u8, out: []u8) -> int {
+  r := png_info(src);
+  if r.status != PNG_OK { return r.status; }
+  if work.count < r.work || out.count < r.w * r.h * 4 { return PNG_SMALL; }
+  _ := png_walk(src, work, true);
+  st := r.w * r.channels; ch := r.channels;
+  if zlib_inflate(work[0..<r.idat], work[r.idat..<r.work]) != r.h * (st + 1) { return PNG_BAD; }
+  for y: 0..<r.h {
+    row := r.idat + y * (st + 1);
+    f := cast(int) work[row];
+    if f > 4 { return PNG_BAD; }
+    for i: 0..<st {
+      a := ifx i >= ch then cast(int) work[row + 1 + i - ch] else 0;
+      b := ifx y > 0 then cast(int) work[row - st + i] else 0;
+      c := ifx i >= ch && y > 0 then cast(int) work[row - st + i - ch] else 0;
+      p := ifx f == 0 then 0 else png_pred(f, a, b, c);
+      work[row + 1 + i] = cast(u8) ((cast(int) work[row + 1 + i] + p) & 255);
+    }
+    for x: 0..<r.w {
+      s := row + 1 + x * ch; o := (y * r.w + x) * 4;
+      for k: 0..<3 { out[o + k] = work[s + ifx ch >= 3 then k else 0]; }
+      out[o + 3] = ifx ch == 2 || ch == 4 then work[s + ch - 1] else 255;
+    }
+  }
+  return PNG_OK;
+}
+
+PngCase :: struct { w: int; h: int; ch: int; digest: u64; }
+// PNG files (made with python zlib): png_pix pixels, or random ones; their RGBA digests.
+PNG_NOISE3 :: [156] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,7,0,0,0,4,8,2,0,0,0,205,164,178,42,0,0,0,99,73,68,65,84,120,156,1,88,0,167,255,4,165,77,202,115,216,102,163,248,61,88,15,113,195,247,157,88,182,163,17,153,1,4,38,204,167,255,43,100,27,5,168,138,19,86,138,98,253,242,69,75,208,188,55,3,137,220,129,23,233,182,197,197,77,113,109,127,229,111,177,125,51,93,99,99,48,4,38,63,231,154,140,162,80,164,49,141,67,136,149,121,195,254,39,205,190,242,222,87,234,43,170,137,110,122,132,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_NOISE4 :: [152] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,5,0,0,0,4,8,6,0,0,0,70,51,245,64,0,0,0,95,73,68,65,84,120,156,1,84,0,171,255,4,86,59,252,30,25,88,70,96,92,53,188,171,138,29,207,101,241,247,193,70,3,140,165,248,62,151,176,241,17,253,117,83,14,32,27,32,213,112,7,91,177,4,100,39,82,126,177,111,109,43,1,197,105,44,157,81,81,22,216,57,145,200,1,77,51,186,13,215,55,6,63,93,71,250,166,189,138,63,252,183,188,166,61,246,195,36,170,91,134,17,16,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_NOISE1 :: [96] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,9,0,0,0,3,8,0,0,0,0,100,97,122,170,0,0,0,39,73,68,65,84,120,156,99,241,124,93,125,35,47,118,103,92,0,11,211,205,151,203,255,101,50,251,238,100,137,85,63,237,227,177,92,208,141,1,0,210,229,12,130,111,144,105,235,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_ONE :: [69] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,2,0,0,0,144,119,83,222,0,0,0,12,73,68,65,84,120,156,99,225,227,235,7,0,0,233,0,176,208,197,224,57,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_RGB :: [166] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,6,0,0,0,5,8,2,0,0,0,233,58,10,177,0,0,0,28,73,68,65,84,120,218,99,80,12,235,118,171,222,144,189,224,234,132,163,191,182,190,146,191,197,239,194,88,179,241,153,14,133,102,234,7,0,0,0,28,73,68,65,84,42,96,138,142,142,78,74,74,202,204,204,44,40,40,40,47,47,175,171,171,99,62,158,88,227,231,231,23,48,169,12,226,0,0,0,29,73,68,65,84,20,20,20,26,122,53,242,102,228,157,152,24,22,160,42,71,16,200,116,44,112,44,7,179,0,239,149,35,111,61,99,58,227,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_RGBA :: [137] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,4,0,0,0,6,8,6,0,0,0,228,57,63,117,0,0,0,80,73,68,65,84,120,218,99,209,73,156,118,90,21,9,48,23,246,44,59,232,238,238,126,220,219,251,180,183,223,57,63,63,166,104,32,72,2,130,76,32,40,0,2,70,219,162,229,119,172,144,0,195,140,179,76,230,55,249,156,43,164,252,91,118,70,79,56,250,139,5,164,197,35,201,195,35,211,3,2,0,207,109,34,246,129,135,239,245,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_GRAY :: [80] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,5,0,0,0,3,8,0,0,0,0,126,93,154,36,0,0,0,23,73,68,65,84,120,218,99,228,86,5,2,150,104,29,32,96,238,243,246,187,20,10,0,26,25,4,1,75,176,136,223,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_GRAYA :: [107] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,3,0,0,0,4,8,4,0,0,0,225,36,77,140,0,0,0,3,116,69,88,116,107,0,118,203,4,243,144,0,0,0,35,73,68,65,84,120,218,99,18,243,182,46,72,152,202,18,29,173,3,4,12,103,24,255,155,24,165,51,31,140,57,231,23,20,4,0,113,92,8,231,158,194,35,145,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_FLAT :: [77] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,4,0,0,0,3,8,2,0,0,0,59,150,57,145,0,0,0,20,73,68,65,84,120,218,99,97,103,103,103,128,1,22,6,36,128,194,1,0,4,104,0,34,53,91,151,241,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_CASES :: [9] PngCase.[PngCase.{w=7, h=4, ch=3, digest=218598606}, PngCase.{w=5, h=4, ch=4, digest=4275517012}, PngCase.{w=9, h=3, ch=1, digest=1551601139}, PngCase.{w=1, h=1, ch=3, digest=16135073}, PngCase.{w=6, h=5, ch=3, digest=3517945112}, PngCase.{w=4, h=6, ch=4, digest=3924796044}, PngCase.{w=5, h=3, ch=1, digest=4030713513}, PngCase.{w=3, h=4, ch=2, digest=1478839712}, PngCase.{w=4, h=3, ch=3, digest=426549074}];
+PNG_BAD_SIGNATURE :: [79] u8.[137,80,78,71,13,10,26,11,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_INTERLACED :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,1,138,211,170,229,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_DEPTH16 :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,16,2,0,0,0,173,68,70,48,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_PALETTE :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,3,0,0,0,69,104,253,22,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_BAD_CRC :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,252,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_CUT :: [73] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69];
+PNG_BAD_NO_IDAT :: [45] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_FILTER5 :: [74] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,17,73,68,65,84,120,156,99,101,100,98,102,97,101,99,128,80,0,1,87,0,48,2,44,14,98,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_SHORT_DATA :: [74] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,17,73,68,65,84,120,156,99,96,100,98,102,97,101,99,0,83,0,0,230,0,37,153,240,239,250,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_LONG_DATA :: [75] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,18,73,68,65,84,120,156,99,96,100,98,102,97,101,99,128,80,236,0,1,67,0,50,149,246,139,161,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_NOT_IHDR :: [94] u8.[137,80,78,71,13,10,26,10,0,0,0,3,116,69,88,116,107,0,118,203,4,243,144,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_CRITICAL :: [91] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,0,65,65,65,65,155,13,8,241,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_ZERO_WIDE :: [67] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,0,0,0,0,2,8,2,0,0,0,249,33,74,78,0,0,0,10,73,68,65,84,120,156,99,96,0,0,0,2,0,1,72,175,164,113,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_NO_IEND :: [67] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108];
+PNG_BAD_IHDR_SHORT :: [78] u8.[137,80,78,71,13,10,26,10,0,0,0,12,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,185,9,121,60,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_COMPRESSION :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,1,0,0,252,22,240,68,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_FILTER_METHOD :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,1,0,228,207,171,50,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_HUGE_SIZE :: [79] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,35,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_FIRST_BYTE :: [79] u8.[136,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,2,0,0,0,253,212,154,115,0,0,0,22,73,68,65,84,120,218,99,80,12,235,118,171,222,192,80,179,241,217,138,187,66,0,38,4,6,30,77,246,96,108,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_SIG_ONLY :: [8] u8.[137,80,78,71,13,10,26,10];
+PNG_BAD_W16384 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,64,0,0,0,0,1,8,2,0,0,0,169,253,33,15,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_W16385 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,64,1,0,0,0,1,8,2,0,0,0,70,63,74,49,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_H16384 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,64,0,8,2,0,0,0,31,32,245,2,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
+PNG_BAD_H16385 :: [66] u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,64,1,8,2,0,0,0,212,124,38,167,0,0,0,9,73,68,65,84,120,156,99,0,0,0,1,0,1,94,255,125,249,0,0,0,0,73,69,78,68,174,66,96,130];
+png_digest :: (b: []u8) -> u64 {
+  h: u64 = 17;
+  for x: b { h = (h * 31 + cast(u64) x) % 4294967291; }
+  return h;
+}
+// A file decoded: what png_info says, png_decode's answers with one byte less of work and of
+// out, its answer with enough, and the digest of the RGBA it gives.
+PngRun :: struct { info: PngInfo; short_work: int; short_out: int; status: int; digest: u64; }
+png_run :: (src: []u8, c: PngCase) -> PngRun {
+  work: [512] u8; out: [256] u8; p: PngRun;
+  p.info = png_info(src);
+  n := c.w * c.h * 4;
+  p.short_work = png_decode(src, work[0..<p.info.work - 1], out[..]); // mutant: equivalent (any shorter buffer is too small)
+  p.short_out = png_decode(src, work[..], out[0..<n - 1]); // mutant: equivalent (any shorter buffer is too small)
+  p.status = png_decode(src, work[0..<p.info.work], out[0..<n]);
+  p.digest = png_digest(out[0..<n]);
+  return p;
+}
+#test "PNGs of each colour type and every filter, on random and on regular pixels" {
+  k := PNG_CASES;
+  n3 := PNG_NOISE3; n4 := PNG_NOISE4; n1 := PNG_NOISE1; one := PNG_ONE; rgb := PNG_RGB; rgba := PNG_RGBA; gray := PNG_GRAY; graya := PNG_GRAYA; flat := PNG_FLAT;
+  files := [9] []u8.[n3[..], n4[..], n1[..], one[..], rgb[..], rgba[..], gray[..], graya[..], flat[..]];
+  for i: 0..<9 {
+    c := k[i]; p := png_run(files[i], c); r := p.info;
+    #assert r.status == PNG_OK && r.w == c.w && r.h == c.h && r.channels == c.ch && r.work == r.idat + c.h * (1 + c.w * c.ch);
+    #assert p.short_work == PNG_SMALL && p.short_out == PNG_SMALL && p.status == PNG_OK && p.digest == c.digest;
+  }
+}
+png_refused :: (src: []u8) -> int { work: [512] u8; out: [64] u8; return png_decode(src, work[..], out[..]); }
+#test "what is not a PNG, not one taken, or malformed" {
+  { b := PNG_BAD_SIGNATURE; #assert png_refused(b[..]) == PNG_NOT && png_refused(b[0..<7]) == PNG_NOT; }
+  { b := PNG_BAD_FIRST_BYTE; #assert png_refused(b[..]) == PNG_NOT; }
+  { b := PNG_BAD_SIG_ONLY; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_INTERLACED; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_DEPTH16; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_PALETTE; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_COMPRESSION; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_FILTER_METHOD; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_ZERO_WIDE; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_CRITICAL; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_BAD_CRC; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_CUT; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_HUGE_SIZE; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_NO_IDAT; #assert png_refused(b[..]) == PNG_BAD && png_info(b[..]).status == PNG_BAD; }
+  { b := PNG_BAD_NO_IEND; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_FILTER5; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_SHORT_DATA; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_LONG_DATA; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_NOT_IHDR; #assert png_refused(b[..]) == PNG_BAD; }
+  { b := PNG_BAD_IHDR_SHORT; #assert png_refused(b[..]) == PNG_BAD; }
+  // the largest width and height are taken (the buffers are then too small), one more is not
+  { b := PNG_BAD_W16384; #assert png_info(b[..]).status == PNG_OK && png_refused(b[..]) == PNG_SMALL; }
+  { b := PNG_BAD_H16384; #assert png_info(b[..]).status == PNG_OK && png_refused(b[..]) == PNG_SMALL; }
+  { b := PNG_BAD_W16385; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+  { b := PNG_BAD_H16385; #assert png_refused(b[..]) == PNG_UNSUPPORTED; }
+}
+#test "Paeth's ties go to the left, then above; CRC-32" {
+  #assert png_pred(4, 5, 5, 5) == 5 && png_pred(4, 1, 9, 1) == 9 && png_pred(4, 9, 1, 1) == 9 && png_pred(4, 3, 7, 10) == 3;
+  #assert png_pred(4, 2, 6, 4) == 4 && png_pred(4, 0, 3, 2) == 0 && png_pred(4, 0, 3, 1) == 3 && png_pred(4, 6, 2, 9) == 2;
+  #assert png_pred(4, 7, 7, 3) == 7 && png_pred(4, 5, 1, 4) == 1 && png_pred(4, 1, 5, 4) == 1 && png_pred(4, 4, 8, 2) == 8;
+  #assert png_pred(3, 255, 255, 0) == 255 && png_pred(1, 3, 4, 5) == 3 && png_pred(2, 3, 4, 5) == 4;
+  b := [9] u8.[73, 72, 68, 82, 0, 0, 0, 1, 0];
+  #assert png_crc(b[..]) == 2254025085;
+}
