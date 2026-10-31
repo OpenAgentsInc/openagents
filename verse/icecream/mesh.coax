@@ -17,7 +17,7 @@
 // the same vertices as the demo: verse/icecream/test-mesh.sh compares them
 // one by one against the C++ built natively, and the checks below hold the
 // counts and bounds it recorded (fixtures/mesh-oracle.coax).
-//   coax/bin/coax test verse/icecream/mesh.coax --library
+//   coax/bin/coax test verse/icecream/mesh.coax --library --steps 1000000000   (the house seeds ~512M)
 #load "rules.coax";
 #load "fixtures/mesh-oracle.coax";
 

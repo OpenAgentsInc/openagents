@@ -9,7 +9,7 @@
 // the CPU and the procedures read them, so a check can run a shader whole.
 // On the CPU, sampling is nearest or bilinear over texel centers, clamped
 // to the edge; the GPU's own filter is what the host's sampler says.
-//   coax/bin/coax test verse/gpu/shader.coax
+//   coax/bin/coax test verse/gpu/shader.coax --library
 
 V2 :: struct {x:f32; y:f32;}
 V3 :: struct {x:f32; y:f32; z:f32;}

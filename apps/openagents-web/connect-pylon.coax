@@ -1,5 +1,6 @@
 // Canonical Markdown is compiled into this Coax document. The live Grid,
 // text, buttons and HUD frame are the homepage/Metareal drawing primitives.
+//   coax/bin/coax test apps/openagents-web/connect-pylon.coax --steps 400000000   (as newland.coax; a Grid frame ~385M)
 #load "newland.coax";
 #load "connect-pylon-content.coax";
 

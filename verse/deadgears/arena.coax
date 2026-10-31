@@ -13,7 +13,7 @@
 //
 // Every query is a pure function of the boxes (and the grid of them), so a
 // restored fight moves exactly as the original.
-//   coax/bin/coax test --library verse/deadgears/arena.coax
+//   coax/bin/coax test --library verse/deadgears/arena.coax --steps 40000000   (the flow-field check walks ~25M)
 
 #load "../space.coax";
 

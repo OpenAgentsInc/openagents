@@ -1,7 +1,8 @@
 // nip01-verify.coax's checks, apart so the page's build doesn't run them:
 #load "nip01-verify.coax";
 
-// Each check verifies a real signature: run with coax test --steps 1000000000.
+// Each check verifies a real signature (~38M steps the longest):
+//   coax/bin/coax test apps/openagents-web/nip01-verify-test.coax --steps 1000000000
 #test "the captured event verifies and each changed copy is refused where it changed" {
   o: [NV_OBSERVED] int;
   nv_run(0, o[..]); #assert o[0] == NE_OK && o[3] == 1 && o[4] == 0x81 && o[36] == 0x81;

@@ -1,0 +1,434 @@
+// Every Coax test suite of the web app and the Verse, each run at the budget
+// its own header declares.
+//   coax/web/tool.sh suites                    # every suite
+//   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (coax deps)
+//   coax/web/tool.sh suites --list             # the suites and their budgets; nothing runs
+//   coax/web/tool.sh suites --only PATH,PATH   # these suites (paths from the repo root)
+//   coax/web/tool.sh suites --jobs N           # suites side by side (default 6)
+//   coax test coax/web/suites.coax --library   # its own checks
+//
+// The convention. A suite is a .coax file under apps/openagents-web/ or
+// verse/ with a #test or #forall in it that no other file #loads, or one
+// whose header (its first 80 lines) names itself in a `coax test` line. That
+// line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
+// 2000000000` gives each of its tests 2,000,000,000 steps, and --library and
+// --root-only pass on too. A suite with no such line runs at the compiler's
+// default, 20,000,000 steps a test; one that needs more says so in its own
+// header, and nothing raises the budget for every suite. A file another
+// suite loads runs its tests inside that suite.
+//
+// release.sh runs it with --since production's release once the release is
+// live, as a report (releases/<time>/SUITES); it never holds a release back.
+// Exit 0 when every suite passed, 1 when one failed, 2 on bad usage.
+#import "Basic";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+SU_FILES :: 4096;            // tracked .coax files read
+SU_LOADS :: 16384;           // #load lines kept, as repo paths
+SU_ARENA :: 4194304;         // their bytes and the suites' paths
+SU_SUITES :: 1024;
+SU_TEXT :: 8388608;          // the largest .coax file read
+SU_HEAD_LINES :: 80;
+SU_TIMEOUT_MS :: 1800000;    // one suite's longest run, 30 minutes
+SU_JOBS :: 6;
+
+SuHead :: struct { found: bool; steps: string; library: bool; root_only: bool; }
+Suite :: struct { path: string; steps: string; library: bool; root_only: bool; missing: string; }   // missing: a #load not in the tree
+// Kept text: bytes is a view of the caller's buffer.
+SuArena :: struct { bytes: [] u8; used: int; full: bool; }
+
+su_keep :: (a: [] SuArena, s: string) -> string {
+  if a[0].used + s.count > a[0].bytes.count { a[0].full = true; return ""; }
+  at := a[0].used;
+  for i: 0..<s.count { a[0].bytes[at + i] = s[i]; }
+  a[0].used += s.count;
+  return cast(string) a[0].bytes[at..<at + s.count];
+}
+
+su_ident :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+su_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
+su_starts :: (s: string, at: int, word: string) -> bool {
+  if at + word.count > s.count { return false; }
+  for i: 0..<word.count { if s[at + i] != word[i] { return false; } }
+  return true;
+}
+su_base :: (path: string) -> string {
+  from := 0;
+  for i: 0..<path.count { if path[i] == '/' { from = i + 1; } }
+  return path[from..<path.count];
+}
+su_dir :: (path: string) -> string {
+  to := 0;
+  for i: 0..<path.count { if path[i] == '/' { to = i; } }
+  return path[0..<to];
+}
+
+// The repo path of rel (a #load's string) from dir (a repo path): "." and
+// ".." resolved, "" when it climbs out of the repo.
+su_norm :: (dir: string, rel: string, out: [] u8) -> string {
+  starts: [256] int; n := 0; used := 0;
+  for pass: 0..<2 {
+    s := ifx pass == 0 then dir else rel;
+    i := 0;
+    while i <= s.count {
+      j := i;
+      while j < s.count && s[j] != '/' { j += 1; }
+      part := s[i..<j];
+      if part.count == 0 || part == "." {
+      } else if part == ".." {
+        if n == 0 { return ""; }
+        n -= 1; used = starts[n];   // back to before it (and its slash)
+      } else {
+        if n >= 256 || used + part.count + 1 > out.count { return ""; }
+        starts[n] = used;
+        if n > 0 { out[used] = '/'; used += 1; }
+        for k: 0..<part.count { out[used + k] = part[k]; }
+        used += part.count; n += 1;
+      }
+      i = j + 1;
+    }
+  }
+  return cast(string) out[0..<used];
+}
+
+// A #test or #forall at the start of a line (spaces before it allowed).
+su_has_tests :: (text: string) -> bool {
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && su_space(text[j]) { j += 1; }
+    for word: [2] string.["#test", "#forall"] {
+      if su_starts(text, j, word) && (j + word.count >= text.count || !su_ident(text[j + word.count])) { return true; }
+    }
+    while i < text.count && text[i] != '\n' { i += 1; }
+    i += 1;
+  }
+  return false;
+}
+
+// The `coax test` line in the first SU_HEAD_LINES lines that names a file
+// called base, and the budget and flags on it.
+su_head :: (text: string, base: string) -> SuHead {
+  h: SuHead;
+  i := 0; line := 0;
+  while i < text.count && line < SU_HEAD_LINES {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    l := text[i..<e];
+    for k: 0..<l.count {
+      if !su_starts(l, k, "coax test") { continue; }
+      // the words after it: the first .coax one is the file it runs
+      named := false; steps := ""; library := false; root_only := false;
+      w := k + 9;
+      while w < l.count {
+        while w < l.count && su_space(l[w]) { w += 1; }
+        x := w;
+        while x < l.count && !su_space(l[x]) { x += 1; }
+        word := l[w..<x];
+        if word.count > 5 && su_starts(word, word.count - 5, ".coax") && !named {
+          if su_base(word) != base { break; }
+          named = true;
+        } else if word == "--library" { library = true; }
+        else if word == "--root-only" { root_only = true; }
+        else if word == "--steps" {
+          y := x;
+          while y < l.count && su_space(l[y]) { y += 1; }
+          z := y;
+          while z < l.count && l[z] >= '0' && l[z] <= '9' { z += 1; }
+          if z > y { steps = l[y..<z]; }
+        }
+        w = x;
+      }
+      if named { h.found = true; h.steps = steps; h.library = library; h.root_only = root_only; return h; }
+    }
+    i = e + 1; line += 1;
+  }
+  return h;
+}
+
+// Each #load's repo path, from the file at path, kept in a.
+su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: int) -> int {
+  n := from;
+  dir := su_dir(path);
+  buf: [1024] u8;
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && su_space(text[j]) { j += 1; }
+    if su_starts(text, j, "#load") {
+      q := j + 5;
+      while q < text.count && text[q] != '"' && text[q] != '\n' { q += 1; }
+      if q < text.count && text[q] == '"' {
+        r := q + 1;
+        while r < text.count && text[r] != '"' && text[r] != '\n' { r += 1; }
+        p := su_norm(dir, text[q + 1..<r], buf[..]);
+        if p.count > 0 && n < loads.count { loads[n] = su_keep(a, p); n += 1; }
+      }
+    }
+    while i < text.count && text[i] != '\n' { i += 1; }
+    i += 1;
+  }
+  return n;
+}
+
+// Under apps/openagents-web/ or verse/, and not in a hidden folder (.dev scratch).
+su_in :: (path: string) -> bool { return (su_starts(path, 0, "apps/openagents-web/") || su_starts(path, 0, "verse/")) && !su_contains(path, "/."); }
+
+#test "paths: a #load from a file's folder, dots resolved, never out of the repo" {
+  b: [256] u8;
+  #assert su_norm("apps/openagents-web", "../../verse/space.coax", b[..]) == "verse/space.coax";
+  #assert su_norm("verse/everglade", "../terrain.coax", b[..]) == "verse/terrain.coax";
+  #assert su_norm("verse", "./edit/edit.coax", b[..]) == "verse/edit/edit.coax";
+  #assert su_norm("apps/openagents-web", "font.coax", b[..]) == "apps/openagents-web/font.coax";
+  #assert su_norm("verse", "../../x.coax", b[..]) == "";
+  #assert su_base("verse/everglade/plan.coax") == "plan.coax" && su_dir("verse/everglade/plan.coax") == "verse/everglade";
+}
+#test "a suite has a #test or #forall at a line's start; a word that only begins so does not count" {
+  #assert su_has_tests("x :: 1;\n#test \"a\" { }\n") && su_has_tests("  #forall a: 0..<3 { }");
+  #assert !su_has_tests("// #testing\n#tests_off :: 1;\n") && !su_has_tests("x := \"#test\";\n");
+}
+#test "the header's own coax test line carries the budget and flags; another file's does not" {
+  t := "// Everglade.\n//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000\n#load \"x.coax\";\n";
+  h := su_head(t, "everglade.coax");
+  #assert h.found && h.steps == "2000000000" && !h.library;
+  #assert !su_head(t, "fairy.coax").found;
+  l := su_head("//   coax/bin/coax test --library verse/water.coax --steps 500000000\n", "water.coax");
+  #assert l.found && l.library && l.steps == "500000000";
+  d := su_head("// coax test verse/space.coax\n", "space.coax");
+  #assert d.found && d.steps == "";
+}
+#test "loads: each #load's repo path, comments and strings that only mention it left out" {
+  keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string;
+  n := su_loads("#load \"font.coax\";\n  #load \"../../verse/camera.coax\";\n// see #loading\n", "apps/openagents-web/x.coax", a[..], loads[..], 0);
+  #assert n == 2 && loads[0] == "apps/openagents-web/font.coax" && loads[1] == "verse/camera.coax";
+}
+
+su_say :: (s: string) { print("%", s); }
+
+// Runs argv in dir to its end: stdout into out.
+su_run :: (argv: [] string, dir: string, out: [] u8) -> ProcRun {
+  r: ProcRun;
+  h := proc_new();
+  if h < 0 { r.started = PROC_ERROR; return r; }
+  ok := proc_cwd(h, dir);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  if !ok { d := proc_release(h); r.started = PROC_ERROR; return r; }
+  r.started = proc_start(h);
+  if r.started != 0 { d := proc_release(h); return r; }
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, 600000, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n == PROC_TIMEOUT { r.timed_out = true; break; }
+    if n == PROC_TOO_LONG { r.cut = true; continue; }
+    if r.out_n + n + 1 > out.count { r.cut = true; continue; }
+    for i: 0..<n { out[r.out_n + i] = line[i]; }
+    out[r.out_n + n] = '\n'; r.out_n += n + 1;
+  }
+  if r.timed_out { k := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, 5000);
+  d := proc_release(h);
+  return r;
+}
+
+su_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if su_starts(hay, i, needle) { return true; } }
+  return false;
+}
+
+Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [6] [256] u8; fail_n: [6] int; fails_kept: int; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("suites: too many arguments"); return 2; }
+  since := args_value(a[..], "--since", ""); only := args_value(a[..], "--only", "");
+  list_only := args_has(a[..], "--list");
+  jobs := SU_JOBS;
+  if args_has(a[..], "--jobs") { j := args_number(args_value(a[..], "--jobs", "")); if !j.ok || j.value < 1 { tool_errln("suites: --jobs N"); return 2; } jobs = cast(int) j.value; }
+  if jobs > 16 { jobs = 16; }
+
+  big: [SU_TEXT] u8;
+  av1 := [3] string.["git", "rev-parse", "--show-toplevel"];
+  top := su_run(av1[..], ".", big[..]);
+  if top.started != 0 || top.status != 0 || top.out_n < 2 { tool_errln("suites: not in a git checkout"); return 2; }
+  kept: [SU_ARENA] u8; arena: [1] SuArena; arena[0].bytes = kept[..];
+  root := su_keep(arena[..], cast(string) big[0..<top.out_n - 1]);
+  bin_buf: [4096] u8;
+  coax := fs_join(root, "coax/bin/coax", bin_buf[..]);
+  if !fs_exists(coax) { tool_err("suites: no compiler at "); tool_err(coax); tool_errln(" (coax/build.sh)"); return 2; }
+
+  av2 := [3] string.["git", "ls-files", "*.coax"];
+  listed := su_run(av2[..], root, big[..]);
+  if listed.started != 0 || listed.status != 0 || listed.cut { tool_errln("suites: git ls-files failed"); return 2; }
+  files: [SU_FILES] string; nf := 0;
+  i := 0;
+  while i < listed.out_n {
+    e := i;
+    while e < listed.out_n && big[e] != '\n' { e += 1; }
+    p := cast(string) big[i..<e];
+    if p.count > 0 && !su_starts(p, 0, "projects/") && nf < SU_FILES { files[nf] = su_keep(arena[..], p); nf += 1; }
+    i = e + 1;
+  }
+  loads: [SU_LOADS] string; nl := 0;
+  cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; nc := 0;
+  pb: [4096] u8;
+  for f: 0..<nf {
+    path := files[f];
+    n := fs_read(fs_join(root, path, pb[..]), big[..]);
+    if n < 0 { continue; }
+    text := cast(string) big[0..<n];
+    from := nl;
+    nl = su_loads(text, path, arena[..], loads[..], nl);
+    if su_in(path) && su_has_tests(text) && nc < SU_SUITES {
+      h := su_head(text, su_base(path));
+      // a #load that isn't in the tree: generated by the build (projects/baked.coax) or staged (a template)
+      missing := "";
+      for k: from..<nl { if missing.count == 0 && !fs_exists(fs_join(root, loads[k], pb[..])) { missing = loads[k]; } }
+      cand[nc] = Suite.{path = path, steps = su_keep(arena[..], h.steps), library = h.library, root_only = h.root_only, missing = missing};
+      heads[nc] = h.found; nc += 1;
+    }
+  }
+  if arena[0].full || nl >= SU_LOADS || nf >= SU_FILES || nc >= SU_SUITES { tool_errln("suites: more files than it keeps; raise SU_*"); return 2; }
+
+  suites: [SU_SUITES] Suite; ns := 0;
+  for c: 0..<nc {
+    loaded := false;
+    for l: 0..<nl { if loads[l] == cand[c].path { loaded = true; break; } }
+    if loaded && !heads[c] { continue; }
+    if only.count > 0 {
+      hit := false; s := 0;
+      for k: 0..<only.count + 1 {
+        if k == only.count || only[k] == ',' { if only[s..<k] == cand[c].path { hit = true; } s = k + 1; }
+      }
+      if !hit { continue; }
+    }
+    suites[ns] = cand[c]; ns += 1;
+  }
+
+  if since.count > 0 {
+    changed: [1048576] u8;
+    av3 := [5] string.["git", "diff", "--name-only", since, "HEAD"];
+    d := su_run(av3[..], root, changed[..]);
+    if d.started != 0 || d.status != 0 { tool_err("suites: git diff "); tool_err(since); tool_errln(" failed"); return 2; }
+    keep := 0;
+    db: [4096] u8;
+    for s: 0..<ns {
+      dir := fs_join(root, su_dir(suites[s].path), db[..]);
+      av4 := [3] string.[coax, "deps", su_base(suites[s].path)];
+      deps := su_run(av4[..], dir, big[..]);
+      touched := deps.started != 0 || deps.status != 0;   // can't tell: run it
+      text := cast(string) big[0..<deps.out_n];
+      c := 0;
+      while !touched && c < d.out_n {
+        e := c;
+        while e < d.out_n && changed[e] != '\n' { e += 1; }
+        if e > c {
+          want: [4096] u8; w := 0;
+          want[w] = '"'; w += 1;
+          for b: 0..<root.count { want[w] = root[b]; w += 1; }
+          want[w] = '/'; w += 1;
+          for b: c..<e { if w < 4094 { want[w] = changed[b]; w += 1; } }
+          want[w] = '"'; w += 1;
+          if su_contains(text, cast(string) want[0..<w]) { touched = true; }
+        }
+        c = e + 1;
+      }
+      if touched { suites[keep] = suites[s]; keep += 1; }
+    }
+    ns = keep;
+  }
+
+  if list_only {
+    for s: 0..<ns {
+      su_say(suites[s].path);
+      if suites[s].steps.count > 0 { su_say("  --steps "); su_say(suites[s].steps); } else { su_say("  default"); }
+      if suites[s].library { su_say(" --library"); }
+      if suites[s].root_only { su_say(" --root-only"); }
+      if suites[s].missing.count > 0 { su_say("  (skipped here: loads "); su_say(suites[s].missing); su_say(", not in the tree)"); }
+      su_say("\n");
+    }
+    return 0;
+  }
+  // A suite that loads a file the tree doesn't hold is said and left out: build.sh
+  // generates projects/baked.coax before the release runs these; a template runs from its stage.
+  runs := 0; skipped := 0;
+  for s: 0..<ns {
+    if suites[s].missing.count > 0 { su_say("skip "); su_say(suites[s].path); su_say(": loads "); su_say(suites[s].missing); su_say(", which is not in the tree (generated by the build, or a template's stage)\n"); skipped += 1; }
+    else { suites[runs] = suites[s]; runs += 1; }
+  }
+  ns = runs;
+
+  lanes: [16] Lane;
+  for l: 0..<16 { lanes[l].h = -1; }
+  next := 0; done := 0; failed := 0;
+  t0 := proc_now_ms();
+  line: [65536] u8; db2: [4096] u8;
+  while done < ns {
+    for l: 0..<jobs {
+      if lanes[l].h < 0 && next < ns {
+        s := suites[next];
+        h := proc_new();
+        ok := h >= 0 && proc_cwd(h, fs_join(root, su_dir(s.path), db2[..])) && proc_arg(h, coax) && proc_arg(h, "test") && proc_arg(h, su_base(s.path));
+        if s.steps.count > 0 { ok = ok && proc_arg(h, "--steps") && proc_arg(h, s.steps); }
+        if s.library { ok = ok && proc_arg(h, "--library"); }
+        if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
+        lanes[l].suite = next; lanes[l].last_n = 0; lanes[l].fails_kept = 0; lanes[l].started_ms = proc_now_ms();
+        next += 1;
+        if !ok || proc_start(h) != 0 {
+          if h >= 0 { r := proc_release(h); }
+          su_say("FAIL "); su_say(s.path); su_say(": the compiler did not start\n"); failed += 1; done += 1;
+          continue;
+        }
+        lanes[l].h = h;
+      }
+      if lanes[l].h < 0 { continue; }
+      h := lanes[l].h;
+      ended := false;
+      while true {
+        n := proc_line(h, 0, line[..]);
+        if n == PROC_TIMEOUT { break; }
+        if n == PROC_EOF || n == PROC_ERROR { ended = true; break; }
+        if n == PROC_TOO_LONG { continue; }
+        t := cast(string) line[0..<n];
+        if su_contains(t, " passed, ") && su_contains(t, " failed") {   // "418 checks, 418 passed, 0 failed" or "1 check, ..."
+          m := ifx n > 512 then 512 else n;
+          for k: 0..<m { lanes[l].last[k] = line[k]; }
+          lanes[l].last_n = m;
+        }
+        if su_starts(t, 0, "FAIL") && lanes[l].fails_kept < 6 {
+          f := lanes[l].fails_kept; m := ifx n > 256 then 256 else n;
+          for k: 0..<m { lanes[l].fails[f][k] = line[k]; }
+          lanes[l].fail_n[f] = m; lanes[l].fails_kept += 1;
+        }
+      }
+      over := proc_now_ms() - lanes[l].started_ms > SU_TIMEOUT_MS;
+      if !ended && !over { continue; }
+      if over { k := proc_kill(h, PROC_SIGKILL); }
+      status := proc_wait(h, 5000);
+      err: [2048] u8;
+      tail := proc_stderr(h, err[..]);
+      r := proc_release(h);
+      lanes[l].h = -1; done += 1;
+      s := suites[lanes[l].suite];
+      last := cast(string) lanes[l].last[0..<lanes[l].last_n];
+      passed := !over && status == 0 && su_contains(last, " 0 failed");
+      if !passed { failed += 1; }
+      su_say(ifx passed then "ok   " else "FAIL "); su_say(s.path);
+      if s.steps.count > 0 { su_say(" (--steps "); su_say(s.steps); su_say(")"); }
+      su_say(": ");
+      if over { su_say("still running after 30 minutes"); } else if last.count > 0 { su_say(last); } else { su_say("no summary"); }
+      print(" (% s)\n", (proc_now_ms() - lanes[l].started_ms) / 1000);
+      if !passed {
+        for f: 0..<lanes[l].fails_kept { su_say("       "); su_say(cast(string) lanes[l].fails[f][0..<lanes[l].fail_n[f]]); su_say("\n"); }
+        if lanes[l].last_n == 0 && tail.count > 0 { su_say("       "); su_say(tail); su_say("\n"); }
+      }
+    }
+    proc_sleep(50);
+  }
+  print("suites: % of % passed in % s (% skipped)\n", ns - failed, ns, (proc_now_ms() - t0) / 1000, skipped);
+  return ifx failed > 0 then 1 else 0;
+}

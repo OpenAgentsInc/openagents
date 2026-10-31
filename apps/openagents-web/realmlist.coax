@@ -3,6 +3,7 @@
 // visitors), RECENT (when it opened), PLAYED (minutes in it) or A-Z; the
 // towers move to their new places and grow to the sort's numbers, and the
 // list follows. A click or Enter on a row or a tower opens the realm.
+//   coax/bin/coax test apps/openagents-web/realmlist.coax --steps 200000000   (the page-fit check ~97M)
 //
 // The rows are REALMS_ROWS (realms/list.coax, written by coax/web/realms.ts
 // from realms.json). The numbers come from /api/analytics/realms as message

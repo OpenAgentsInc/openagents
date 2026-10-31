@@ -5,7 +5,7 @@
 // (coax/web/api/migrations/0031_npc_memory.sql): what you told one of them
 // on an earlier visit, it can recall. The cats talk too, as cats would.
 // The question's body is written here: eg_ask_body.
-//   coax/bin/coax test --library verse/everglade/people.coax --steps 400000000
+//   coax/bin/coax test --library verse/everglade/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "plan.coax";
 

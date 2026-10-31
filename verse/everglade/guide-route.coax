@@ -6,7 +6,7 @@
 // touching edit (a placed thing, a hidden plan building), a spell's wall or
 // stone, or rubble and broken pieces of a building refuse the tip; an edit
 // anywhere else leaves it standing.
-//   coax/bin/coax test --library verse/everglade/guide-route.coax
+//   coax/bin/coax test --library verse/everglade/guide-route.coax --steps 2000000000   (it loads plan.coax and its checks)
 #load "edits.coax";
 
 GR_MAX :: 34;

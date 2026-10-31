@@ -10,7 +10,7 @@
 // Everything is drawn flat: stair.wgsl's bg_fs draws the floor, the stair and
 // the panels from the uniforms; the beasts, the party, the bolts, the red
 // damage numbers and the HUD text are fx strokes (font.coax).
-//   coax/bin/coax test apps/openagents-web/stair.coax --steps 2000000000
+//   coax/bin/coax test apps/openagents-web/stair.coax --steps 3000000000   (the three-maps check ~2.03B)
 
 #load "font.coax";
 #load "analytics.coax";

@@ -14,7 +14,7 @@
 // player (the page's save slot, everglade) as text eg_quest_save writes and
 // eg_quest_load reads, tied to the player's public id so another player on
 // the same browser starts afresh.
-//   coax/bin/coax test --library verse/everglade/quests.coax --steps 400000000
+//   coax/bin/coax test --library verse/everglade/quests.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "people.coax";
 

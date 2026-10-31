@@ -4,7 +4,7 @@
 // piece of furniture, doorway lintel, the floor and the ceiling by a sphere
 // swept along it. With the drag (orbit), the wheel, Shift Lock over the right
 // shoulder, V between first and third person, and the boom's easing.
-//   coax/bin/coax test verse/icecream/camera.coax --library
+//   coax/bin/coax test verse/icecream/camera.coax --library --steps 1000000000   (the house seeds ~512M)
 #load "mesh.coax";
 
 CAM_MIN_ZOOM :: 0.5f32;

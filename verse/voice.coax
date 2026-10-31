@@ -8,7 +8,7 @@
 // confidence floor. Downlink audio gets the gain/duck/pause state and a
 // deterministic jitter buffer. No words, keys or I/O come here; the C face is
 // verse/platform/voice.h and voice.c.
-//   coax/bin/coax test verse/voice.coax
+//   coax/bin/coax test verse/voice.coax --steps 40000000   (the quiet-gap check ~22M)
 //   coax/bin/coax c verse/voice.coax --library --header Voice.h
 
 // ---------------------------------------------------------------- constants

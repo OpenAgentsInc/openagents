@@ -1,4 +1,5 @@
 // New page cases exercise the existing libraries; no production authority.
+//   coax/bin/coax test apps/openagents-web/nip-guide-observe-test.coax --steps 80000000   (each NIP example ~39M)
 #load "nip-guide-observe.coax";
 #load "nip/catalog.coax";
 

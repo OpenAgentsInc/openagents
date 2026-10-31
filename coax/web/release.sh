@@ -16,6 +16,10 @@
 # screenshots), then production. The golden walk and the 60 FPS check run AFTER
 # the release is live, against production, as a report (releases/<time>/AFTER):
 # they never hold back a page or stop a release. --gated restores the gate.
+# After them, every Coax suite under apps/openagents-web and verse whose sources
+# changed since production's last release runs at the budget its own header
+# declares (`coax test FILE --steps N` there; coax/web/suites.coax), also a
+# report only (releases/<time>/SUITES).
 #
 # Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked
 # in headless Chrome against its golden screenshots (goldens.ts): each page
@@ -442,13 +446,23 @@ if ! $gated && [[ -z "$via" ]]; then
   # Its own checkout of the commit: this run's $tree goes when the run ends.
   aft="$(mktemp -d)"; after="$aft.txt"
   git -C "$repo" worktree add -q --detach "$aft/t" "$full" 2>/dev/null
+  # The Coax suites need what the build generated (projects/baked.coax and each project's tables).
+  ( cd "$tree" && find apps/openagents-web/projects -name '*.coax' ) 2>/dev/null | while read -r f; do
+    [[ -f "$aft/t/$f" ]] || cp "$tree/$f" "$aft/t/$f" 2>/dev/null || true
+  done
+  suites="$aft.suites"; since=(); [[ -n "${passed:-}" ]] && since=(--since "${passed%% *}")
   ( { bounded 1800 env GOLDENS_FULL=1 bun "$aft/t/coax/web/goldens.ts" https://openagents.com && echo "after: goldens passed" || echo "after: goldens differ (report only; fix or retake: bun coax/web/goldens.ts https://staging.openagents.com --update)"
       bounded 900 bun "$aft/t/coax/web/perf.ts" https://openagents.com && echo "after: 60 FPS held" || echo "after: 60 FPS missed (report only)"
     } > "$after" 2>&1
     gcloud storage cp "$after" "gs://$prod_bucket/releases/$stamp/AFTER" --quiet > /dev/null 2>&1 || true
+    # Every Coax suite whose sources changed since production's last release, each at the
+    # budget its header declares (coax/web/suites.coax), as a report only.
+    { compiler "$aft/t" "$aft/t" > /dev/null && ( cd "$aft/t" && bounded 3600 coax/web/tool.sh suites "${since[@]+"${since[@]}"}" ) && echo "after: suites passed" || echo "after: a suite failed (report only; coax/web/tool.sh suites --only PATH)"
+    } > "$suites" 2>&1
+    gcloud storage cp "$suites" "gs://$prod_bucket/releases/$stamp/SUITES" --quiet > /dev/null 2>&1 || true
     git -C "$repo" worktree remove --force "$aft/t" 2>/dev/null || true ) < /dev/null &
   disown
-  echo "release $commit: goldens and 60 FPS check running after the release (report: $after, then releases/$stamp/AFTER)"
+  echo "release $commit: goldens and 60 FPS check running after the release (report: $after, then releases/$stamp/AFTER); the changed Coax suites after them ($suites, then releases/$stamp/SUITES)"
 fi
 # The commit released broke a page itself: the rest is live, but say so with a failure.
 if [[ -n "${held_mine:-}" ]]; then

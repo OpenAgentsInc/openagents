@@ -26,7 +26,7 @@
 // what the scene draws (villa.wgsl). villa-face.c binds it for the browser,
 // runs the player, and poses the figures (villafig.coax) between its calls:
 // villa_controls, the player's step, villa_step, the figures, villa_draw.
-//   coax/bin/coax test apps/openagents-web/villa.coax --steps 80000000
+//   coax/bin/coax test apps/openagents-web/villa.coax --steps 200000000   (the stone route check ~155M)
 
 #load "font.coax";
 #load "analytics.coax";

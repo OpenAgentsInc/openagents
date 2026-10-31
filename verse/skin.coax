@@ -18,7 +18,7 @@
 // length. skin_palette then writes each joint's skinning matrix (its posed
 // transform times its inverse bind) as three rows of four for the vertex
 // shader.
-//   coax/bin/coax test verse/skin.coax
+//   coax/bin/coax test verse/skin.coax --library
 
 #load "space.coax";
 
