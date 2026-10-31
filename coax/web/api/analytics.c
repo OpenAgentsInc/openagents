@@ -171,7 +171,7 @@ static void ingest(const request *q) {
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   const char *params[2] = {body, ctx};
-  // A robot's User-Agent (analytics.bot_agent, migrations/0085_analytics_bots.sql) marks the batch
+  // A robot's User-Agent (analytics.bot_agent, migrations/0089_analytics_bots.sql) marks the batch
   // auto = 'bot' when nothing else marked it, so robots count as automation everywhere.
   PGresult *r = PQexecParams(db, "SELECT analytics.ingest($1::jsonb, CASE WHEN coalesce($2::jsonb->>'auto', '') = '' "
                                  "AND analytics.bot_agent($2::jsonb->>'ua') IS NOT NULL THEN jsonb_set($2::jsonb, '{auto}', '\"bot\"') "
