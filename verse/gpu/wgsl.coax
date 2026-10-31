@@ -26,6 +26,15 @@ u4 :: (x:u32,y:u32,z:u32,w:u32)->U4 {return U4.{x=x,y=y,z=z,w=w};}
 wg_at2 :: (u:[]f32,at:int)->V2 {return v2(u[at],u[at+1]);}
 wg_at3 :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
 wg_at4 :: (u:[]f32,at:int)->V4 {return v4(u[at],u[at+1],u[at+2],u[at+3]);}
+// A uniform block's u32 and i32 are its words' bits.
+wg_atu :: (u:[]f32,at:int)->u32 {return f32_bits(u[at]);}
+wg_ati :: (u:[]f32,at:int)->s32 {return cast,trunc(s32)f32_bits(u[at]);}
+wg_at2u :: (u:[]f32,at:int)->U2 {return u2(wg_atu(u,at),wg_atu(u,at+1));}
+wg_at3u :: (u:[]f32,at:int)->U3 {return u3(wg_atu(u,at),wg_atu(u,at+1),wg_atu(u,at+2));}
+wg_at4u :: (u:[]f32,at:int)->U4 {return u4(wg_atu(u,at),wg_atu(u,at+1),wg_atu(u,at+2),wg_atu(u,at+3));}
+wg_at2i :: (u:[]f32,at:int)->I2 {return i2(wg_ati(u,at),wg_ati(u,at+1));}
+wg_at3i :: (u:[]f32,at:int)->I3 {return i3(wg_ati(u,at),wg_ati(u,at+1),wg_ati(u,at+2));}
+wg_at4i :: (u:[]f32,at:int)->I4 {return i4(wg_ati(u,at),wg_ati(u,at+1),wg_ati(u,at+2),wg_ati(u,at+3));}
 
 // Geometry.
 wg_dot2 :: (a:V2,b:V2)->f32 {return dot2(a,b);}
@@ -39,6 +48,14 @@ wg_normalize3 :: (a:V3)->V3 {return normalize3(a);}
 wg_normalize4 :: (a:V4)->V4 {return scale4(a,1.0f32/wg_length4(a));}
 wg_cross3 :: (a:V3,b:V3)->V3 {return cross3(a,b);}
 wg_reflect3 :: (i:V3,n:V3)->V3 {return reflect3(i,n);}
+// refract as WGSL's: 0 past the critical angle (k < 0).
+wg_refract3 :: (e:V3,n:V3,eta:f32)->V3 {
+  d:=dot3(n,e);
+  k:=1.0f32-eta*eta*(1.0f32-d*d);
+  if k<0 {return v3(0,0,0);}
+  s:=eta*d+sqrt(k);
+  return v3(eta*e.x-s*n.x,eta*e.y-s*n.y,eta*e.z-s*n.z);
+}
 wg_transpose :: (m:M4)->M4 {
   return M4.{c0=v4(m.c0.x,m.c1.x,m.c2.x,m.c3.x),c1=v4(m.c0.y,m.c1.y,m.c2.y,m.c3.y),
              c2=v4(m.c0.z,m.c1.z,m.c2.z,m.c3.z),c3=v4(m.c0.w,m.c1.w,m.c2.w,m.c3.w)};
@@ -66,6 +83,8 @@ wg_tanh :: (x:f32)->f32 {
   return (e-1.0f32)/(e+1.0f32);
 }
 wg_inverse_sqrt :: (x:f32)->f32 {return 1.0f32/sqrt(x);}
+wg_sinh :: (x:f32)->f32 {return (exp(x)-exp(-x))*0.5f32;}
+wg_cosh :: (x:f32)->f32 {return (exp(x)+exp(-x))*0.5f32;}
 // atan on [0, 1]: Abramowitz and Stegun 4.4.49 (within 2e-8 before f32 rounding).
 wg_atan01 :: (x:f32)->f32 {
   z:=x*x;
@@ -127,6 +146,18 @@ wg_snorm8 :: (b:u32)->f32 {
 }
 wg_unpack4x8snorm :: (x:u32)->V4 {return v4(wg_snorm8(wg_byte(x,0)),wg_snorm8(wg_byte(x,8)),wg_snorm8(wg_byte(x,16)),wg_snorm8(wg_byte(x,24)));}
 wg_unpack2x16unorm :: (x:u32)->V2 {return v2(cast(f32)(x&0xFFFF)/65535.0f32,cast(f32)(x>>16)/65535.0f32);}
+// A half float's 16 bits as the f32 it is exactly: subnormals scaled, infinities and NaNs kept.
+wg_half :: (h:u32)->f32 {
+  sign:=(h>>15)&1;e:=(h>>10)&0x1F;m:=h&0x3FF;
+  if e==0 {
+    v:=cast(f32)m*0.000000059604644775390625f32;
+    if sign==1 {return -v;}
+    return v;
+  }
+  if e==31 {return f32_from_bits((sign<<31)|0x7F800000|(m<<13));}
+  return f32_from_bits((sign<<31)|((e+112)<<23)|(m<<13));
+}
+wg_unpack2x16float :: (x:u32)->V2 {return v2(wg_half(x&0xFFFF),wg_half(x>>16));}
 
 // Textures by vector.
 wg_dims_2d :: (t:Tex2D)->U2 {return u2(gpu_width(t),gpu_height(t));}
@@ -159,6 +190,9 @@ wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c
   #assert wg_sign_i(-4)== -1 && wg_sign_i(4)==1 && wg_sign_i(0)==0 && wg_min_u(2,3)==2 && wg_max_u(2,3)==3 && wg_clamp_u(9,1,4)==4 && wg_clamp_u(0,1,4)==1;
 }
 #test "conversions clamp; bits and bytes" {
+  ub:=[4] f32.[f32_from_bits(7),-2,1,f32_from_bits(0x80000000)];
+  #assert wg_atu(ub[..],0)==7 && wg_ati(ub[..],1)== -1073741824 && wg_at4u(ub[..],0).z==0x3F800000 && wg_at2i(ub[..],2).y== -2147483647-1;
+  #assert wg_at3u(ub[..],1).x==0xC0000000 && wg_at3i(ub[..],0).x==7 && wg_at4i(ub[..],0).w== -2147483647-1 && wg_at2u(ub[..],0).y==0xC0000000;
   #assert wg_u32_f(-3)==0 && wg_u32_f(3.9f32)==3 && wg_u32_f(5000000000.0f32)==4294967040 && wg_u32_f(0)==0;
   #assert wg_i32_f(-3.9f32)== -3 && wg_i32_f(-5000000000.0f32)== -2147483647-1 && wg_i32_f(5000000000.0f32)==2147483520 && wg_i32_f(7)==7;
   #assert wg_f32_b(true)==1 && wg_f32_b(false)==0 && wg_u32_b(true)==1 && wg_u32_b(false)==0 && wg_i32_b(true)==1 && wg_i32_b(false)==0;
@@ -167,6 +201,13 @@ wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c
   #assert c.x==0 && c.y==0 && abs(c.z-128.0f32/255.0f32)<0.0000001f32 && c.w==1;
   s:=wg_unpack4x8snorm(0x80FF017F);
   #assert s.x==1 && abs(s.y-1.0f32/127.0f32)<0.0000001f32 && abs(s.z+1.0f32/127.0f32)<0.0000001f32 && s.w== -1;
+  #assert wg_sinh(0)==0 && wg_cosh(0)==1 && abs(wg_sinh(1)-1.17520119f32)<0.000001f32 && abs(wg_cosh(-1)-1.54308063f32)<0.000001f32;
+  #assert wg_half(0x3C00)==1 && wg_half(0xC000)== -2 && wg_half(0x3555)==0.333251953125f32 && wg_half(0x0001)==0.000000059604644775390625f32;
+  #assert wg_half(0x8001)== -0.000000059604644775390625f32 && wg_half(0x7BFF)==65504 && wg_half(0)==0 && wg_half(0x8000)==0;
+  f2:=wg_unpack2x16float(0xC0003C00);
+  #assert f2.x==1 && f2.y== -2;
+  r:=wg_refract3(v3(0,-1,0),v3(0,1,0),0.75f32);
+  #assert r.y== -1 && r.x==0 && wg_refract3(v3(0.9f32,-0.43588989f32,0),v3(0,1,0),1.5f32).y==0;
   h:=wg_unpack2x16unorm(0xFFFF0000);
   #assert h.x==0 && h.y==1;
   #assert i2(1,2).y==2 && i3(1,2,3).z==3 && i4(1,2,3,4).w==4 && u2(1,2).x==1 && u3(1,2,3).y==2 && u4(1,2,3,4).z==3;

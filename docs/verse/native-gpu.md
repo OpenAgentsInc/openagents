@@ -400,10 +400,9 @@ Every phase and native feature is a task in the Verse project
     in the lowering: vector arithmetic written as WGSL's vector operators.
     Every page with a sin hash (the painterly, flat and fixture styles) waits
     on it.
-  - waterlab, fixture and realm stop the translator
-    (a whole uniform struct as a value, builtins on vectors it does not
-    know, indexing a vector, a vector from a struct's fields); stair too
-    (`&` pointers).
+  - fixture and realm stop the translator (builtins on vectors it does not
+    know, indexing a vector, a vector from a struct's fields); waterlab
+    writes `@builtin(frag_depth)`, which a Coax fragment cannot yet say.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
@@ -429,6 +428,18 @@ Every phase and native feature is a task in the Verse project
   `wg_acos`, and a constructor takes up to 256 arguments. Its module calls
   none of verse/style.coax's functions, though the hand WGSL carried their
   block, so realms.ts takes a module whose Coax source loads the presets.
+  stair (Hold the Stair) follows, 0 blocks changed: a `ptr<function, T>`
+  parameter is a view of one T and a local whose address is taken is one
+  (`NAME_store:[1]T`, read as `NAME[0]`); lib/compiler/wgsl.coax writes a
+  call with no result as a statement even when its arguments call (it was
+  `_ = paint(...)`); and verse/gpu/shader.coax's dot2, dot3 and dot4 are
+  written as WGSL's `dot`. That last is the sin-hash fix: stair's stones
+  hash `fract(sin(dot(p, k)) * 43758)`, and a dot written out as a sum of
+  products rounds otherwise on the GPU, which the hash turns into other
+  stones (A/B in one stage: `dot` alone brings it to 0 blocks). Every page
+  already from Coax was re-shot with it and matches. The translator also
+  reads a uniform's u32 and i32 as their words' bits and knows refract,
+  unpack2x16float, sinh and cosh, for waterlab.
 - 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
   one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
   (this site's paths only; the player key, an Authorization line, the

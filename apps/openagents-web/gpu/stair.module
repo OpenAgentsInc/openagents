@@ -1,0 +1,3 @@
+--vertices stair_bg_vs,stair_fx_vs
+--fragments stair_bg_fs,stair_fx_fs
+--bindings apps/openagents-web/gpu/stair.bindings --strip stair_

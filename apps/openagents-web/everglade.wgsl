@@ -1577,7 +1577,7 @@ fn coax_p_eg_hash(p_p: vec2f) -> f32 {
 }
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
-  return sqrt(coax_p_dot2(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_eg_ground_y(p_q: vec2f) -> f32 {
   var l_q: vec2f = p_q;
@@ -1786,7 +1786,7 @@ fn coax_p_eg_grass_mask(p_q: vec2f) -> f32 {
 fn coax_p_wg_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   var l_b: vec2f = p_b;
-  return coax_p_dot2(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_verse_style_gust(p_x: f32, p_z: f32, p_t: f32, p_wx: f32, p_wz: f32, p_speed: f32, p_scale: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -2234,7 +2234,7 @@ fn coax_p_verse_style_bloom_share(p_lum: f32, p_threshold: f32, p_knee: f32) -> 
 fn coax_p_wg_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
   var l_a: vec3f = p_a;
   var l_b: vec3f = p_b;
-  return coax_p_dot3(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_verse_style_shaft_source(p_cos_t: f32) -> f32 {
   var l_cos_t: f32 = p_cos_t;
@@ -2384,7 +2384,7 @@ fn coax_p_eg_spell_soft_part(p_s: coax_t15, p_paint_leaf_far: bool) -> coax_t23 
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
-  return sqrt(coax_p_dot3(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_wg_cvt_u2f2(p_p: vec2f) -> coax_t29 {
   var l_p: vec2f = p_p;
@@ -3316,7 +3316,7 @@ fn coax_p_wg_get_f4(p_p: vec4f, p_i: i32) -> f32 {
 fn coax_p_wg_dot4(p_a: vec4f, p_b: vec4f) -> f32 {
   var l_a: vec4f = p_a;
   var l_b: vec4f = p_b;
-  return coax_p_dot4(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_eg_lathe_vertex(p_id: u32, p_word: u32) -> coax_t32 {
   var l_id: u32 = p_id;
@@ -3634,11 +3634,6 @@ fn coax_p_eg_water_shoal(p_k: f32, p_depth: f32) -> f32 {
   var l_k: f32 = p_k;
   var l_depth: f32 = p_depth;
   return sqrt(coax_p_wg_tanh(coax_p_clampf((l_k * l_depth), 0.0f, 0x1.400000p3f)));
-}
-fn coax_p_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
-  var l_a: vec2f = p_a;
-  var l_b: vec2f = p_b;
-  return ((l_a.x * l_b.x) + (l_a.y * l_b.y));
 }
 fn coax_p_wg_div_f2f(p_a: vec2f, p_b: f32) -> vec2f {
   var l_a: vec2f = p_a;
@@ -4074,11 +4069,6 @@ fn coax_p_eg_water_shafts(p_o: vec3f, p_d: vec3f, p_path: f32, p_level: f32) -> 
     }
   }
   return (((l_sum / 0x1.000000p4f) * l_reach) * 0x1.666666p-2f);
-}
-fn coax_p_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
-  return (((l_a.x * l_b.x) + (l_a.y * l_b.y)) + (l_a.z * l_b.z));
 }
 fn coax_p_eg_shard_plane(p_cell: u32, p_k: u32) -> vec4f {
   var l_cell: u32 = p_cell;
@@ -4954,11 +4944,6 @@ fn coax_p_u4(p_x: u32, p_y: u32, p_z: u32, p_w: u32) -> coax_t33 {
   var l_w: u32 = p_w;
   return coax_t33(l_x, l_y, l_z, l_w);
 }
-fn coax_p_dot4(p_a: vec4f, p_b: vec4f) -> f32 {
-  var l_a: vec4f = p_a;
-  var l_b: vec4f = p_b;
-  return ((((l_a.x * l_b.x) + (l_a.y * l_b.y)) + (l_a.z * l_b.z)) + (l_a.w * l_b.w));
-}
 fn coax_p_eg_lathe_point(p_profile: u32, p_j: u32) -> vec2f {
   var l_profile: u32 = p_profile;
   var l_j: u32 = p_j;
@@ -5048,7 +5033,7 @@ fn coax_p_verse_style_hash(p_x: f32, p_y: f32) -> f32 {
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
-  return sqrt(coax_p_dot3(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_scale3(p_a: vec3f, p_k: f32) -> vec3f {
   var l_a: vec3f = p_a;
@@ -5840,7 +5825,7 @@ fn coax_p_eg_water_view_w(p_d: f32) -> f32 {
 fn coax_p_reflect3(p_i: vec3f, p_n: vec3f) -> vec3f {
   var l_i: vec3f = p_i;
   var l_n: vec3f = p_n;
-  return coax_p_sub3(l_i, coax_p_scale3(l_n, (0x1.000000p1f * coax_p_dot3(l_n, l_i))));
+  return coax_p_sub3(l_i, coax_p_scale3(l_n, (0x1.000000p1f * dot(l_n, l_i))));
 }
 fn coax_p_wg_fract_f3(p_p0: vec3f) -> vec3f {
   var l_p0: vec3f = p_p0;

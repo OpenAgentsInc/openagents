@@ -296,7 +296,6 @@ wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
   }
   v:=wg_variant(s,tree,w,p,ids[0..<n]);
   if v<0 {return;}
-  s[0].called=wg_ret(tree,w,p)==WG_VOID;
   wg_variant_name(s,names,w,out,v);wg_put(s,out,"(");
   s[0].at=args;first:=true;
   for i:0..<n {
@@ -310,6 +309,8 @@ wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
     else {wg_local(s,names,out,l,true);}
   }
   wg_put(s,out,")");
+  // after the arguments, whose own calls set it too
+  s[0].called=wg_ret(tree,w,p)==WG_VOID;
 }
 // Procedure p's variant for the words ids: the one there is, else a new one at the end
 // of the pool; -1 when the pool has no room.
@@ -350,6 +351,13 @@ wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
     if (g==7 || g==8) && i==2 {wg_put(s,out,")");}
   }
   wg_put(s,out,ifx g==10 then ").x" else (ifx g==11 then ").y" else ")"));
+}
+// Whether procedure p is a dotN of two vectors of N f32 giving an f32 (N 2 to 4).
+wg_is_dot :: (tree:[]u32,names:string,w:[]u32,p:int)->bool {
+  name:=wg_word(wg_line(names,p),0);
+  if name.count!=4 || name[0..<3]!="dot" || name[3]<'2' || name[3]>'4' {return false;} // mutant: equivalent (past 4 no vector has that width)
+  sig:=wg_sig(w,p);d:=cast(int)(name[3]-'0');
+  return tree[sig+1]==2 && wg_tk(tree,w,tree[sig])==2 && wg_vector(tree,w,tree[sig+2])==d && wg_vector(tree,w,tree[sig+3])==d;
 }
 // A view's count: a local array's length, a storage buffer's arrayLength (a uniform
 // block has none).
@@ -398,14 +406,20 @@ wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   if k==22 {
     p:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);
     if p>=s[0].procs || n!=wg_params(tree,w,p) {wg_fail(s,1);return;}
+    if wg_is_dot(tree,names,w,p) {
+      // verse/gpu/shader.coax's dot2, dot3 and dot4 are WGSL's dot, rounded as the GPU's own
+      // (a sum of products written out rounds otherwise, which a sin hash turns into other noise)
+      wg_put(s,out,"dot(");wg_expr(s,tree,names,w,out);wg_put(s,out,", ");wg_expr(s,tree,names,w,out);wg_put(s,out,")");
+      return;
+    }
     if s[0].whole {wg_call(s,tree,names,w,out,p,n);return;}
-    s[0].called=wg_ret(tree,w,p)==WG_VOID;
     wg_proc_name(s,names,w,out,p);wg_put(s,out,"(");
     for i:0..<n {
       if i>0 {wg_put(s,out,", ");}
       wg_expr(s,tree,names,w,out);
     }
     wg_put(s,out,")");
+    s[0].called=wg_ret(tree,w,p)==WG_VOID;
     return;
   }
   if k==23 {
@@ -1164,6 +1178,34 @@ WG_WGSL_MOD :: "struct coax_t8 {\n  x: vec4f,\n  y: vec2f,\n}\nstruct coax_in_8 
 WG_SAMPLE_STORE :: "2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5";
 WG_NAMES_STORE :: "fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n";
 WG_WGSL_STORE :: "struct coax_t9 {\n  x: f32,\n  y: u32,\n  z: f32,\n}\nstruct coax_t10 {\n  x: u32,\n  y: f32,\n  z: vec2f,\n  w: array<vec2f, 3>,\n  f4: f32,\n  f5: coax_t9,\n  f6: f32,\n  f7: f32,\n}\nstruct coax_t13 {\n  x: vec3f,\n  y: f32,\n}\nstruct coax_t15 {\n  x: f32,\n  y: f32,\n  z: vec2f,\n}\n@group(0) @binding(0) var<storage, read> k1: array<coax_t10>;\n@group(0) @binding(1) var<storage, read> k2: array<coax_t13>;\n@group(0) @binding(2) var<storage, read> k3: array<coax_t15>;\n@group(0) @binding(3) var<storage, read> us: array<u32>;\n@group(0) @binding(4) var<storage, read> is: array<i32>;\nfn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_x: coax_t10;\n  var l_y: coax_t13;\n  var l_z: coax_t15;\n  l_x = k1[0i];\n  l_y = k2[0i];\n  l_z = k3[0i];\n  return vec4f((((f32(l_x.x) + l_x.w[2i].y) + l_x.f5.z) + l_x.f7), (l_y.x.z + l_y.y), (l_z.z.y + f32(us[0i])), f32(is[0i]));\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+// A fragment of dot2, dot3 and dot4, and of procedures of their shapes but for one part
+// (dot5: two V2s to an f32; pick: a V2 and a V3; kcip: a V3 and a V2; twice: to a V2; one: of one V2).
+WG_SAMPLE_DOT :: "2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 3 2 0 2 4 2 8 12 12 6 1 6 4 6 7 8 6 134 1 4 3 40 1 22 1 2 27 41 40 0 0 27 41 40 0 1 3 40 2 22 2 3 27 41 40 0 0 16 2 1065353216 16 2 1073741824 3 40 3 22 3 4 27 41 40 0 0 27 41 40 0 1 27 41 40 0 2 27 41 40 0 3 4 31 6 4 19 1 19 1 22 4 2 18 1 18 1 22 5 2 18 1 18 2 22 6 2 18 2 18 1 19 1 19 1 22 7 2 18 2 18 2 25 22 8 2 18 1 18 1 1 22 9 1 18 1 19 1 22 10 2 18 3 18 3 22 11 2 18 1 18 1 16 2 1065353216 7 2 2 2 2 2 2 10 1 1 4 31 7 2 18 0 18 1 8 3 2 2 2 3 2 2 2 12 1 1 4 31 8 3 18 0 18 1 18 2 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 2 7 7 2 7 7 29 1 1 4 19 1 19 3 27 41 40 0 0 27 41 40 1 0 19 3 27 41 40 0 1 27 41 40 1 1 2 2 7 8 2 7 8 15 1 1 4 19 3 27 41 40 0 0 27 41 40 1 2 2 2 8 7 2 8 7 15 1 1 4 19 3 27 41 40 0 2 27 41 40 1 0 2 2 8 8 2 8 8 43 1 1 4 19 1 19 1 19 3 27 41 40 0 0 27 41 40 1 0 19 3 27 41 40 0 1 27 41 40 1 1 19 3 27 41 40 0 2 27 41 40 1 2 7 2 7 7 2 7 7 23 1 1 4 22 1 2 19 1 27 41 40 0 0 27 41 40 1 0 27 41 40 0 1 2 1 7 1 7 8 1 1 4 27 41 40 0 1 2 2 6 6 2 6 6 57 1 1 4 19 1 19 1 19 1 19 3 27 41 40 0 0 27 41 40 1 0 19 3 27 41 40 0 1 27 41 40 1 1 19 3 27 41 40 0 2 27 41 40 1 2 19 3 27 41 40 0 3 27 41 40 1 3 2 2 7 7 2 7 7 15 1 1 4 19 3 27 41 40 0 0 27 41 40 1 1 1 1 0 0";
+WG_NAMES_DOT :: "fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\nkcip a b\ndot3 a b\ntwice a b\none a\ndot4 a b\ndot5 a b\npos\n";
+WG_WGSL_DOT :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: vec2f;\n  var l_b: vec3f;\n  var l_c: vec4f;\n  l_a = coax_p_v2(l_pos.x, l_pos.y);\n  l_b = coax_p_v3(l_pos.x, 0x1.000000p0f, 0x1.000000p1f);\n  l_c = coax_p_v4(l_pos.x, l_pos.y, l_pos.z, l_pos.w);\n  return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);\n}\nfn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  return vec2f(l_x, l_y);\n}\nfn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  var l_z: f32 = p_z;\n  return vec3f(l_x, l_y, l_z);\n}\nfn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  var l_z: f32 = p_z;\n  var l_w: f32 = p_w;\n  return vec4f(l_x, l_y, l_z, l_w);\n}\nfn coax_p_pick(p_a: vec2f, p_b: vec3f) -> f32 {\n  var l_a: vec2f = p_a;\n  var l_b: vec3f = p_b;\n  return (l_a.x * l_b.z);\n}\nfn coax_p_kcip(p_a: vec3f, p_b: vec2f) -> f32 {\n  var l_a: vec3f = p_a;\n  var l_b: vec2f = p_b;\n  return (l_a.z * l_b.x);\n}\nfn coax_p_twice(p_a: vec2f, p_b: vec2f) -> vec2f {\n  var l_a: vec2f = p_a;\n  var l_b: vec2f = p_b;\n  return coax_p_v2((l_a.x + l_b.x), l_a.y);\n}\nfn coax_p_one(p_a: vec2f) -> f32 {\n  var l_a: vec2f = p_a;\n  return l_a.y;\n}\nfn coax_p_dot5(p_a: vec2f, p_b: vec2f) -> f32 {\n  var l_a: vec2f = p_a;\n  var l_b: vec2f = p_b;\n  return (l_a.x * l_b.y);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+// Whether text holds part.
+wg_has :: (text:string,part:string)->bool {
+  for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
+  return false;
+}
+#test "dot2, dot3 and dot4 of vectors of their width are WGSL's dot, and nothing else of their names is" {
+  out:[8192] u8;
+  #assert wg_mtext(WG_SAMPLE_DOT,WG_NAMES_DOT,out[..])==WG_WGSL_DOT;
+  #assert wg_has(wg_mtext(WG_SAMPLE_DOT,"fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\nkcip a b\ndot3 a b\ntwice a b\none a\ndot4 a b\ndot2 a b\npos\n",out[..]),"return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + dot(l_a, l_a)), 0x1.000000p0f);");
+  #assert wg_has(wg_mtext(WG_SAMPLE_DOT,"fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\ndot2 a b\nkcip a b\ndot3 a b\ntwice a b\none a\ndot4 a b\ndot5 a b\npos\n",out[..]),"return vec4f(((dot(l_a, l_a) + coax_p_dot2(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);");
+  #assert wg_has(wg_mtext(WG_SAMPLE_DOT,"fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\ndot2 a b\ndot3 a b\ntwice a b\none a\ndot4 a b\ndot5 a b\npos\n",out[..]),"return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_dot2(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);");
+  #assert wg_has(wg_mtext(WG_SAMPLE_DOT,"fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\nkcip a b\ndot3 a b\ndot2 a b\none a\ndot4 a b\ndot5 a b\npos\n",out[..]),"return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_dot2(l_a, l_a)).y) + coax_p_one(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);");
+  #assert wg_has(wg_mtext(WG_SAMPLE_DOT,"fs pos a b c\nv2 x y\nv3 x y z\nv4 x y z w\ndot2 a b\npick a b\nkcip a b\ndot3 a b\ntwice a b\ndot2 a\ndot4 a b\ndot5 a b\npos\n",out[..]),"return vec4f(((dot(l_a, l_a) + coax_p_pick(l_a, l_b)) + coax_p_kcip(l_b, l_a)), ((dot(l_b, l_b) + (coax_p_twice(l_a, l_a)).y) + coax_p_dot2(l_a)), (dot(l_c, l_c) + coax_p_dot5(l_a, l_a)), 0x1.000000p0f);");
+  #assert wg_has("abc","bc") && wg_has("abc","ab") && !wg_has("abc","cd") && wg_has("abc","");
+}
+// A fragment calling bump(view, two()): a call with no result whose argument is a call is a statement.
+WG_SAMPLE_VCALL :: "2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 8 2 1 4 9 2 3 6 1 6 3 6 7 8 42 1 4 3 40 1 17 7 11 2 1 2 22 1 2 18 2 22 2 0 4 31 6 4 27 42 40 1 16 5 0 0 27 41 40 0 1 16 2 0 16 2 1065353216 0 2 8 2 2 8 2 22 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 18 1 2 0 0 6 1 1 4 16 2 1073741824 1 1 0 0";
+WG_NAMES_VCALL :: "fs pos st s\nbump w x\ntwo\npos\n";
+WG_WGSL_VCALL :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_st: array<f32, 1>;\n  l_st = array<f32, 1>();\n  coax_p_bump(&l_st, coax_p_two());\n  return vec4f(l_st[0i], l_pos.y, 0.0f, 0x1.000000p0f);\n}\nfn coax_p_two() -> f32 {\n  return 0x1.000000p1f;\n}\nfn coax_p_bump(p_w: ptr<function, array<f32, 1>>, p_x: f32) {\n  var l_x: f32 = p_x;\n  (*p_w)[0i] = ((*p_w)[0i] + l_x);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+#test "a call with no result is a statement, whatever calls its arguments make" {
+  out:[4096] u8;
+  #assert wg_mtext(WG_SAMPLE_VCALL,WG_NAMES_VCALL,out[..])==WG_WGSL_VCALL;
+}
 // A fragment of fwidth(pos.x)+dpdx(pos.y) and dpdy(pos.x) (GPU procedures 14, 12, 13).
 WG_SAMPLE_DERIV :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 14 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
 WG_SAMPLE_DERIV_15 :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 15 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";

@@ -214,7 +214,7 @@ fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
 }
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
-  return sqrt(coax_p_dot2(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
   var l_a: f32 = p_a;
@@ -261,7 +261,7 @@ fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
 fn coax_p_wg_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   var l_b: vec2f = p_b;
-  return coax_p_dot2(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_wg_make_f3_f(p_p0: f32) -> vec3f {
   var l_p0: f32 = p_p0;
@@ -382,7 +382,7 @@ fn coax_p_wg_sub_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
-  return sqrt(coax_p_dot3(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_wg_div_f3f(p_a: vec3f, p_b: f32) -> vec3f {
   var l_a: vec3f = p_a;
@@ -408,11 +408,6 @@ fn coax_p_egfx_clip(p_w: vec3f) -> vec4f {
   var l_p: vec4f;
   l_p = coax_p_v4(l_w.x, l_w.y, l_w.z, 0x1.000000p0f);
   return coax_p_v4(coax_p_wg_dot4(coax_p_wg_at4(8i), l_p), coax_p_wg_dot4(coax_p_wg_at4(12i), l_p), coax_p_wg_dot4(coax_p_wg_at4(16i), l_p), coax_p_wg_dot4(coax_p_wg_at4(20i), l_p));
-}
-fn coax_p_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
-  var l_a: vec2f = p_a;
-  var l_b: vec2f = p_b;
-  return ((l_a.x * l_b.x) + (l_a.y * l_b.y));
 }
 fn coax_p_saturate(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -457,12 +452,12 @@ fn coax_p_wg_at4(p_at: i32) -> vec4f {
 fn coax_p_wg_dot4(p_a: vec4f, p_b: vec4f) -> f32 {
   var l_a: vec4f = p_a;
   var l_b: vec4f = p_b;
-  return coax_p_dot4(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_wg_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
   var l_a: vec3f = p_a;
   var l_b: vec3f = p_b;
-  return coax_p_dot3(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_wg_cvt_i2f2(p_p: vec2f) -> coax_t15 {
   var l_p: vec2f = p_p;
@@ -496,11 +491,6 @@ fn coax_p_wg_load_depth(p_c: coax_t15, p_level: i32) -> f32 {
   var l_level: i32 = p_level;
   return textureLoad(particle_depth, vec2i(l_c.x, l_c.y), l_level);
 }
-fn coax_p_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
-  return (((l_a.x * l_b.x) + (l_a.y * l_b.y)) + (l_a.z * l_b.z));
-}
 fn coax_p_cross3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_a: vec3f = p_a;
   var l_b: vec3f = p_b;
@@ -509,11 +499,6 @@ fn coax_p_cross3(p_a: vec3f, p_b: vec3f) -> vec3f {
 fn coax_p_normalize3(p_a: vec3f) -> vec3f {
   var l_a: vec3f = p_a;
   return coax_p_scale3(l_a, (0x1.000000p0f / coax_p_length3(l_a)));
-}
-fn coax_p_dot4(p_a: vec4f, p_b: vec4f) -> f32 {
-  var l_a: vec4f = p_a;
-  var l_b: vec4f = p_b;
-  return ((((l_a.x * l_b.x) + (l_a.y * l_b.y)) + (l_a.z * l_b.z)) + (l_a.w * l_b.w));
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   var l_x: f32 = p_x;
@@ -544,7 +529,7 @@ fn coax_p_wg_clamp_i(p_x: i32, p_lo: i32, p_hi: i32) -> i32 {
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
-  return sqrt(coax_p_dot3(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_scale3(p_a: vec3f, p_k: f32) -> vec3f {
   var l_a: vec3f = p_a;

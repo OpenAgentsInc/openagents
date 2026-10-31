@@ -167,7 +167,7 @@ fn coax_p_wg_sub_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
 }
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
-  return sqrt(coax_p_dot2(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_verse_sun_disc(p_d: f32, p_r: f32) -> f32 {
   var l_d: f32 = p_d;
@@ -511,11 +511,6 @@ fn coax_p_verse_star_layer(p_x: f32, p_y: f32, p_cell: f32, p_density: f32, p_si
   l_twinkle = (0x1.99999ap-1f + (0x1.99999ap-3f * sin(((l_t * (0x1.666666p-1f + (0x1.000000p1f * l_pick))) + (l_pick * 0x1.400000p5f)))));
   return ((exp((-l_d2)) * l_bright) * l_twinkle);
 }
-fn coax_p_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
-  var l_a: vec2f = p_a;
-  var l_b: vec2f = p_b;
-  return ((l_a.x * l_b.x) + (l_a.y * l_b.y));
-}
 fn coax_p_stars_min(p_a: f32, p_b: f32) -> f32 {
   var l_a: f32 = p_a;
   var l_b: f32 = p_b;
@@ -636,12 +631,12 @@ fn coax_p_belt_air(p_kind: i32) -> vec4f {
 fn coax_p_wg_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   var l_b: vec2f = p_b;
-  return coax_p_dot2(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_wg_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
   var l_a: vec3f = p_a;
   var l_b: vec3f = p_b;
-  return coax_p_dot3(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_belt_surface(p_kind: i32, p_n: vec3f, p_seed: f32, p_spin: f32) -> vec3f {
   var l_kind: i32 = p_kind;
@@ -766,11 +761,6 @@ fn coax_p_wg_mul_ff2(p_a: f32, p_b: vec2f) -> vec2f {
   var l_b: vec2f = p_b;
   return coax_p_v2((l_a * l_b.x), (l_a * l_b.y));
 }
-fn coax_p_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
-  return (((l_a.x * l_b.x) + (l_a.y * l_b.y)) + (l_a.z * l_b.z));
-}
 fn coax_p_wg_atan2(p_y: f32, p_x: f32) -> f32 {
   var l_y: f32 = p_y;
   var l_x: f32 = p_x;
@@ -828,7 +818,7 @@ fn coax_p_belt_hash2(p_p: vec2f) -> f32 {
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
-  return sqrt(coax_p_dot3(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_scale3(p_a: vec3f, p_k: f32) -> vec3f {
   var l_a: vec3f = p_a;

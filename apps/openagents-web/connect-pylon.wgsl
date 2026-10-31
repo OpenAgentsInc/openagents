@@ -226,7 +226,7 @@ fn coax_p_wg_add_f2f(p_a: vec2f, p_b: f32) -> vec2f {
 fn coax_p_wg_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   var l_b: vec2f = p_b;
-  return coax_p_dot2(l_a, l_b);
+  return dot(l_a, l_b);
 }
 fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
   var l_x: f32 = p_x;
@@ -276,7 +276,7 @@ fn coax_p_wg_make_f3_f(p_p0: f32) -> vec3f {
 }
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
-  return sqrt(coax_p_dot2(l_a, l_a));
+  return sqrt(dot(l_a, l_a));
 }
 fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -384,11 +384,6 @@ fn coax_p_newland_noise(p_p: vec2f) -> f32 {
   l_f = coax_p_wg_fract_f2(l_p);
   l_s = coax_p_wg_mul_f2f2(coax_p_wg_mul_f2f2(l_f, l_f), coax_p_wg_sub_ff2(0x1.800000p1f, coax_p_wg_mul_ff2(0x1.000000p1f, l_f)));
   return coax_p_mix(coax_p_mix(coax_p_newland_hash(l_i), coax_p_newland_hash(coax_p_wg_add_f2f2(l_i, coax_p_v2(0x1.000000p0f, 0.0f))), l_s.x), coax_p_mix(coax_p_newland_hash(coax_p_wg_add_f2f2(l_i, coax_p_v2(0.0f, 0x1.000000p0f))), coax_p_newland_hash(coax_p_wg_add_f2f2(l_i, coax_p_v2(0x1.000000p0f, 0x1.000000p0f))), l_s.x), l_s.y);
-}
-fn coax_p_dot2(p_a: vec2f, p_b: vec2f) -> f32 {
-  var l_a: vec2f = p_a;
-  var l_b: vec2f = p_b;
-  return ((l_a.x * l_b.x) + (l_a.y * l_b.y));
 }
 fn coax_p_fract(p_x: f32) -> f32 {
   var l_x: f32 = p_x;

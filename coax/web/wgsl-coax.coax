@@ -64,6 +64,8 @@ W :: struct {
   ea: [65536] int; eb: [65536] int; ne: int;
   ps: [16384] int; pe: [16384] int; py: [16384] int; pa: [16384] int; pt: [16384] int; np: int;
   ls: [4096] int; le: [4096] int; lo: [4096] int; lon: [4096] int; ly: [4096] int; nl: int;
+  lbox: [4096] bool;   // a local whose address is taken (or a pointer parameter): its Coax name is a view of one
+  pptr: [16384] bool; ptr_last: bool;   // a parameter of ptr<function, T>, as a []T
   lb: [1048576] u8; lbn: int;   // local names (the arena rewinds after each statement)
   us: [64] int; un: [64] int; nu: int;
   pre: [64] u8; pren: int;
@@ -76,6 +78,7 @@ Val :: struct {
   path: bool; atom: bool; lit: bool; iv: int;
   um: int; ds: int; dn: int; k: int;      // a uniform reference: module var um-1, at float dynamic text + k
   cop: int; as: int; an: int; ay: int; bs: int; bn: int; by: int;   // a vector comparison, for all() and any()
+  box: int; ref: bool;   // the value of boxed local box-1 (its view's one element); ref: &it, the view itself
 }
 
 // ---- text
@@ -245,6 +248,10 @@ ptype :: (w: []W) -> int {
   if name.count == 4 && name[0..<3] == "vec" {
     n := cast(int) (name[3] - '0'); expect(w, "<"); b := ptype(w); expect(w, ">"); return vec(w, b, n);
   }
+  if name == "ptr" {
+    // ptr<function, T>: a view of one T; the caller marks the parameter
+    expect(w, "<"); w[0].p += 1; expect(w, ","); t := ptype(w); expect(w, ">"); w[0].ptr_last = true; return t;
+  }
   if name == "mat4x4f" { return ty_find(w, YK_MAT, 4, 0); }
   if name == "mat4x4" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_MAT, 4, 0); }
   if name == "array" {
@@ -391,7 +398,7 @@ declare :: (w: []W) {
       while !is_at(w, ")") {
         a := skip_attrs(w);
         q := w[0].np; w[0].ps[q] = w[0].ts[w[0].p]; w[0].pe[q] = w[0].te[w[0].p]; w[0].pt[q] = w[0].p; w[0].pa[q] = a; w[0].p += 1;
-        expect(w, ":"); w[0].py[q] = ptype(w); w[0].np = q + 1; w[0].gpn[g] += 1;
+        expect(w, ":"); w[0].ptr_last = false; w[0].py[q] = ptype(w); w[0].pptr[q] = w[0].ptr_last; w[0].np = q + 1; w[0].gpn[g] += 1;
         if is_at(w, ",") { w[0].p += 1; }
       }
       w[0].p += 1; w[0].gr[g] = 0;
@@ -498,14 +505,14 @@ local :: (w: []W, s: int, e: int, ty: int) -> int {
       k += 1;
     }
   }
-  i := w[0].nl; w[0].ls[i] = s; w[0].le[i] = e; w[0].ly[i] = ty; keep_name(w, i, b); w[0].nl = i + 1;
+  i := w[0].nl; w[0].ls[i] = s; w[0].le[i] = e; w[0].ly[i] = ty; w[0].lbox[i] = false; keep_name(w, i, b); w[0].nl = i + 1;
   return i;
 }
 // A fresh local name: _NAME then a serial.
 fresh :: (w: []W, stem: string, ty: int) -> int {
   w[0].serial += 1;
   b := w[0].an; ap(w, stem); apn(w, w[0].serial);
-  i := w[0].nl; w[0].ls[i] = 0; w[0].le[i] = 0; w[0].ly[i] = ty; keep_name(w, i, b); w[0].nl = i + 1;
+  i := w[0].nl; w[0].ls[i] = 0; w[0].le[i] = 0; w[0].ly[i] = ty; w[0].lbox[i] = false; keep_name(w, i, b); w[0].nl = i + 1;
   return i;
 }
 l_find :: (w: []W, name: string) -> int {
@@ -538,7 +545,7 @@ scalar_fn :: (name: string, b: int) -> string {
   if name == "abs" || name == "floor" || name == "sin" || name == "cos" || name == "tan" || name == "exp" || name == "log" || name == "sqrt" || name == "pow" || name == "mix" || name == "fract" || name == "smoothstep" || name == "saturate" { return name; }
   if name == "min" { return "fmin"; } if name == "max" { return "fmax"; } if name == "clamp" { return "clampf"; } if name == "step" { return "stepf"; }
   if name == "ceil" { return "wg_ceil"; } if name == "round" { return "wg_round"; } if name == "trunc" { return "wg_trunc"; } if name == "sign" { return "wg_sign"; }
-  if name == "exp2" { return "wg_exp2"; } if name == "log2" { return "wg_log2"; } if name == "tanh" { return "wg_tanh"; } if name == "atan2" { return "wg_atan2"; }
+  if name == "exp2" { return "wg_exp2"; } if name == "log2" { return "wg_log2"; } if name == "tanh" { return "wg_tanh"; } if name == "sinh" { return "wg_sinh"; } if name == "cosh" { return "wg_cosh"; } if name == "atan2" { return "wg_atan2"; }
   if name == "dpdx" { return "gpu_dpdx"; } if name == "dpdy" { return "gpu_dpdy"; } if name == "fwidth" { return "gpu_fwidth"; }
     if name == "atan" { return "wg_atan"; } if name == "acos" { return "wg_acos"; } if name == "asin" { return "wg_asin"; } if name == "inverseSqrt" { return "wg_inverse_sqrt"; }
   return "";
@@ -577,8 +584,14 @@ mat :: (w: []W, v: Val) -> Val {
   if v.um == 0 { return v; }
   t := v.ty; b := w[0].an;
   name := srx(w, w[0].ms[v.um - 1], w[0].me[v.um - 1]);
-  if is_sc(w, t) { ap(w, name); apc(w, '['); off(w, v, 0); apc(w, ']'); }
-  else if is_vec(w, t) { ap(w, "wg_at"); apn(w, vlen(w, t)); apc(w, '('); ap(w, name); apc(w, ','); off(w, v, 0); apc(w, ')'); }
+  bt := conc(ybase(w, t));
+  if is_sc(w, t) && bt != Y_U && bt != Y_I { ap(w, name); apc(w, '['); off(w, v, 0); apc(w, ']'); }
+  else if is_sc(w, t) { ap(w, ifx bt == Y_U then "wg_atu(" else "wg_ati("); ap(w, name); apc(w, ','); off(w, v, 0); apc(w, ')'); }
+  else if is_vec(w, t) {
+    // a u32 or i32 vector is its words' bits
+    ap(w, "wg_at"); apn(w, vlen(w, t)); if bt == Y_U { apc(w, 'u'); } if bt == Y_I { apc(w, 'i'); }
+    apc(w, '('); ap(w, name); apc(w, ','); off(w, v, 0); apc(w, ')');
+  }
   else if w[0].yk[t] == YK_ST || w[0].yk[t] == YK_ARR {
     // a whole struct or array: each field or element read where the block keeps it
     st := w[0].yk[t] == YK_ST; sid := w[0].ye[t];
@@ -776,6 +789,14 @@ unary :: (w: []W) -> Val {
     return v;
   }
   if is_at(w, "!") { w[0].p += 1; a := paren(w, mat(w, unary(w))); r := w[0].an; apc(w, '!'); apv(w, a); return mkv(w, r, Y_B); }
+  // &local: its view (only a call takes it); *pointer: the view's element, which naming it already is
+  if is_at(w, "&") {
+    w[0].p += 1; l := l_find(w, cur(w));
+    if l < 0 || !w[0].lbox[l] { err(w, "a pointer to other than a local"); w[0].p += 1; return Val.{ty = Y_F}; }
+    w[0].p += 1;
+    b := w[0].an; ap(w, lname(w, l)); v := mka(w, b, w[0].ly[l]); v.ref = true; return v;
+  }
+  if is_at(w, "*") { w[0].p += 1; return unary(w); }
   if is_at(w, "~") { w[0].p += 1; a := paren(w, mat(w, unary(w))); r := w[0].an; apv(w, a); ap(w, "^0xFFFFFFFF"); return mkv(w, r, a.ty); }
   return postfix(w);
 }
@@ -937,7 +958,10 @@ primary :: (w: []W) -> Val {
   if is_at(w, "(") { return call(w, name); }
   // a name
   l := l_find(w, name);
-  if l >= 0 { b := w[0].an; ap(w, lname(w, l)); v := mka(w, b, w[0].ly[l]); v.path = true; return v; }
+  if l >= 0 {
+    b := w[0].an; ap(w, lname(w, l)); if w[0].lbox[l] { ap(w, "[0]"); }
+    v := mka(w, b, w[0].ly[l]); v.path = true; if w[0].lbox[l] { v.box = l + 1; } return v;
+  }
   m := mv_find(w, name);
   if m >= 0 {
     if w[0].mk[m] == MV_UNIFORM { return Val.{ty = w[0].my[m], um = m + 1, path = true, atom = true}; }
@@ -1096,7 +1120,7 @@ call :: (w: []W, name: string) -> Val {
     b := w[0].an; ap(w, "ifx "); apv(w, a[2]); ap(w, " then "); apv(w, x); ap(w, " else "); apv(w, y);
     return mkv(w, b, t);
   }
-  if name == "dot" || name == "length" || name == "normalize" || name == "distance" || name == "cross" || name == "reflect" {
+  if name == "dot" || name == "length" || name == "normalize" || name == "distance" || name == "cross" || name == "reflect" || name == "refract" {
     t := a[0].ty; vn := vlen(w, t);
     if vn == 0 {
       if name == "length" { b := w[0].an; ap(w, "abs("); apv(w, a[0]); apc(w, ')'); return mka(w, b, conc(t)); }
@@ -1115,9 +1139,9 @@ call :: (w: []W, name: string) -> Val {
     return mka(w, b, ifx name == "dot" || name == "length" then Y_F else vec(w, Y_F, vn));
   }
   if name == "transpose" { b := w[0].an; ap(w, "wg_transpose("); apv(w, a[0]); apc(w, ')'); return mka(w, b, a[0].ty); }
-  if name == "unpack4x8unorm" || name == "unpack4x8snorm" || name == "unpack2x16unorm" {
+  if name == "unpack4x8unorm" || name == "unpack4x8snorm" || name == "unpack2x16unorm" || name == "unpack2x16float" {
     b := w[0].an; ap(w, "wg_"); ap(w, name); apc(w, '('); apv(w, a[0]); apc(w, ')');
-    return mka(w, b, vec(w, Y_F, ifx name == "unpack2x16unorm" then 2 else 4));
+    return mka(w, b, vec(w, Y_F, ifx name == "unpack2x16unorm" || name == "unpack2x16float" then 2 else 4));
   }
   if name.count > 7 && name[0..<7] == "texture" { return texture(w, name, a[..], n); }
   f := scalar_fn(name, conc(ybase(w, a[0].ty)));
@@ -1146,7 +1170,17 @@ call :: (w: []W, name: string) -> Val {
     for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
     apc(w, ')'); return mka(w, b, Y_F);
   }
-  for i: 0..<n { a[i] = convert_ty(w, a[i], w[0].py[w[0].gp[g] + i]); }
+  for i: 0..<n {
+    q := w[0].gp[g] + i;
+    if w[0].pptr[q] {
+      // a pointer parameter takes &local, or a pointer parameter passed on: the view
+      if !a[i].ref && a[i].box > 0 { b := w[0].an; ap(w, lname(w, a[i].box - 1)); a[i] = mka(w, b, a[i].ty); a[i].ref = true; }
+      if !a[i].ref { err(w, "a pointer argument of other than a local"); }
+      continue;
+    }
+    if a[i].ref { err(w, "a pointer where a value is wanted"); }
+    a[i] = convert_ty(w, a[i], w[0].py[q]);
+  }
   b := w[0].an; ap(w, pre(w)); apc(w, '_'); ap(w, name); apc(w, '(');
   for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
   bindings(w, w[0].gm[g], n > 0);
@@ -1270,9 +1304,26 @@ decl :: (w: []W) {
   semi(w);
   if t < 0 { err(w, "a declaration with no type or value"); t = Y_F; }
   l := local(w, ns, ne, t);
+  if addressed(w, ns, ne) {
+    // its address is taken: a view of one, which its name reads as [0]
+    o(w, lname(w, l)); o(w, "_store:[1]"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); o(w, ";");
+    o(w, lname(w, l)); o(w, ":="); o(w, lname(w, l)); o(w, "_store[..];");
+    if has { o(w, lname(w, l)); o(w, "[0]="); ov(w, convert_ty(w, v, t)); o(w, ";"); }
+    w[0].lbox[l] = true;
+    return;
+  }
   o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b));
   if has { o(w, "="); ov(w, convert_ty(w, v, t)); }
   o(w, ";");
+}
+// Whether the function being written takes the address of a local named by source s..e
+// (an & after an opening parenthesis or a comma, then the name).
+addressed :: (w: []W, s: int, e: int) -> bool {
+  g := w[0].fn_cur; name := srx(w, s, e);
+  for i: w[0].gb[g] + 1..<w[0].gbe[g] - 1 {
+    if tt(w, i) == "&" && (tt(w, i - 1) == "(" || tt(w, i - 1) == ",") && tt(w, i + 1) == name { return true; }
+  }
+  return false;
 }
 if_chain :: (w: []W, d: int) {
   w[0].p += 1;
@@ -1453,7 +1504,9 @@ emit_fn :: (w: []W, g: int) {
     for i: 0..<w[0].gpn[g] {
       q := w[0].gp[g] + i;
       if !first { o(w, ","); } first = false;
-      l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b));
+      l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]); o(w, lname(w, l)); o(w, ":");
+      if w[0].pptr[q] { o(w, "[]"); w[0].lbox[l] = true; }
+      b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b));
     }
   }
   for i: 0..<w[0].nm {
