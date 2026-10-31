@@ -1,0 +1,127 @@
+{
+  "authority_policy": {
+    "checks": 7,
+    "killed": 199,
+    "log": "/tmp/coax-effects-current-mutation.log",
+    "no_equivalent_waivers": true,
+    "root_mutants": 199,
+    "survived": 0
+  },
+  "cli": {
+    "additional_optin_parity_log": "/tmp/coax-effects-product-parity.log",
+    "full_suite_log": "/tmp/coax-effects-cli-final.log",
+    "host_sanitized_compiler_sha256": "28c55939a7d20c94ff1d558062f39707c1e0021835e3e885c03f87e77b97604b",
+    "host_sanitized_log": "/tmp/coax-effects-cli-sanitized.log",
+    "host_sanitized_passed_methods": 12,
+    "leak_detection": "Disabled for the existing compiler arena allocation model; ASan/UBSan remain enabled.",
+    "passed_methods": 13
+  },
+  "consumers": {
+    "panda-pc-step": {
+      "edges": 236,
+      "effects": [
+        "host_io",
+        "unknown_effects",
+        "may_trap",
+        "borrowed_read",
+        "borrowed_write",
+        "intrinsic_resources_unqualified"
+      ],
+      "effects_mask": 125,
+      "path": "docs/verification/coax-effects-2026-10-31/panda-pc-step.json",
+      "procedures": 53,
+      "reachable": 35,
+      "reachable_recursion": false,
+      "sha256": "121abaefb917e9b91fd1e5dd7909467c59cbfe7f1207eead8f71645486e0aa9d",
+      "sites": 894
+    },
+    "verse-orbit-follow": {
+      "edges": 564,
+      "effects": [
+        "unknown_effects",
+        "intrinsic_resources_unqualified"
+      ],
+      "effects_mask": 68,
+      "path": "docs/verification/coax-effects-2026-10-31/verse-orbit-follow.json",
+      "procedures": 81,
+      "reachable": 19,
+      "reachable_recursion": false,
+      "sha256": "c1d2cea75abe76266306ecf76b2622e6f81ef37e814dc15fac33a44b6690887b",
+      "sites": 200
+    }
+  },
+  "date": "2026-10-31",
+  "independent_native_policy": {
+    "cases": 247,
+    "compiler": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/bin/coax",
+    "compiler_sha256": "08776e5c5d6f00fa2289531f7c566ebc06d76d7a0c9c704b7e01e4dff2723df8",
+    "modes": [
+      {
+        "mode": "debug",
+        "passed": true,
+        "sha256": "fb192f26bc90fce84576ebc828eed3a21662fc0ddb5e2843b358f79f2d8280c0"
+      },
+      {
+        "mode": "release",
+        "passed": true,
+        "sha256": "fb192f26bc90fce84576ebc828eed3a21662fc0ddb5e2843b358f79f2d8280c0"
+      },
+      {
+        "mode": "sanitized",
+        "passed": true,
+        "sha256": "fb192f26bc90fce84576ebc828eed3a21662fc0ddb5e2843b358f79f2d8280c0"
+      }
+    ],
+    "oracle": "Floyd-Warshall and independently enumerated simple paths",
+    "passed": true,
+    "schema": "coax-effects-native-v1"
+  },
+  "passed": true,
+  "private_compiler": {
+    "authored_compiler_c_flags": [
+      "-std=c11",
+      "-O1",
+      "-g"
+    ],
+    "generated_c_sha256": "bcb857302e5a6b83330a1eae47efe568ed19ff557ef7bdf7af95d99ff6865481",
+    "generated_header_sha256": "b2e12390a64317ba4cd5e62ea07ee7eb3233e464f92e43ca8cd83208a253f296",
+    "generated_object_sha256": "e49f637221744d33f70d9c43b17a4121197f57e152e8c070fddb18b57fece86e",
+    "host_cpp_flags": [
+      "-std=c++20",
+      "-O0",
+      "-g"
+    ],
+    "input_fingerprint": "860d9776c69cd18dabade458f071ab63899adc8e0249652f24ddb18033b3ff59",
+    "path": "/tmp/coax-effects-build/coax-final",
+    "qualification": "Private focused build from the current authored compiler graph; not an installed production release/provenance publication.",
+    "sha256": "cc61d706ab6ca4ff0e1d354c595071b4677a1ed87508a75961078a3bdef7e269"
+  },
+  "schema": "coax-effects-inspection-qualification-v1",
+  "scope": "First conservative compiler-owned may-effect inventory, not full R11, #bounded, stack, allocation/blocking, clocks, alias/escape or hardware qualification.",
+  "seeded_extractor_negative": {
+    "defect": "Skip defer bodies in private native fact extractor",
+    "detected": true,
+    "log": "/tmp/coax-effects-seeded/result.log",
+    "source_unchanged": true
+  },
+  "source_sha256": {
+    "coax/EFFECTS.md": "8ab85e675a8a10475033e898a76895fe19360da8581678b43e960d0ac420e914",
+    "coax/README.md": "e41109799464336fae3c046b9b83bb0350531616f43db23bc66860c43a48e70e",
+    "coax/bootstrap-build.sh": "f1eedfed9446b73880191e41893229c53925fd13bb96a2f1ffcba547541cf1e6",
+    "coax/lib/compiler/compiler.coax": "5120ff4849299d2f436b5a83dc4845754ce6c654f5a8018978c3648025cfcb7c",
+    "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+    "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+    "coax/src/main.cpp": "0eb95371f9b559601d4957acd55f7e08a0eb93bc2d9317bc5f271eaa74798943",
+    "coax/tests/effects-native.c": "f1f3e216721ae4e3ac648db15f503b1c3ebb82c00cbc19bf1c309bb95f444bf5",
+    "coax/tests/effects.py": "a4613946a777ff4ea1c3ee5f0427c663ead73932d669a167c10d0312a9f6cf8b",
+    "coax/tests/run.sh": "3c5b6b0efcb4d08d37598af1a42853d95304e0fbe1ca7ab961a776b6d672f536"
+  },
+  "verification_scope": [
+    "No full bootstrap or unrelated explicit mutation suite was run.",
+    "Ordinary compiler graph emission retained mandatory authority checks.",
+    "Product C for an owned scalar program is byte-identical to the existing compiler.",
+    "Consumer inspection reads code only; no original-model inference, device control, simulator episode or network call executes.",
+    "All native graph output bytes match across debug/release/ASan+UBSan.",
+    "Descriptor inputs and imported effect resources remain separate provenance/summary obligations."
+  ]
+}

@@ -71,6 +71,8 @@ cmp bootstrap/mutation-schedule.c "$work/mutation-schedule.c"
 cmp bootstrap/mutation-schedule.h "$work/mutation-schedule.h"
 gate "$work/stage0" test lib/compiler/compute.coax
 gate "$work/stage0" mutate lib/compiler/compute.coax
+gate "$work/stage0" test lib/compiler/effects.coax
+gate "$work/stage0" mutate lib/compiler/effects.coax --root-only
 gate "$work/stage0" test lib/compiler/native-checks.coax
 gate "$work/stage0" mutate lib/compiler/native-checks.coax
 gate "$work/stage0" test lib/compiler/spirv.coax

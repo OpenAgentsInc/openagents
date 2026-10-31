@@ -39,6 +39,7 @@
 #include "eval.cpp"
 #include "emit_c.cpp"
 #include "native_checks.cpp"
+#include "effects.cpp"
 #include "compute.cpp"
 #include "spirv.cpp"
 #include "shader.cpp"
@@ -350,7 +351,7 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules, lowering };
+enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules, lowering, effects };
 
 // `coax deps --declarations` (schema coax.declarations.v1): each unit's
 // logical owner, every top-level declaration's nominal ID and every resolved
@@ -802,6 +803,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::declarations) *text = declarations_report(&src, &file);
   else if (what == Output::modules) *text = modules_report(&src, &file, opts);
   else if (what == Output::lowering) *text = lowering_report(&src, &file, opts);
+  else if (what == Output::effects) {if(!effects_report(&src,&file,opts,g_lower_proc,text))return false;}
   else if (what == Output::deps) {
     *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
@@ -884,6 +886,7 @@ static int usage() {
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
           "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
+          "       coax deps    file.coax --effects [--proc NAME]   JSON transitive may-effects and witness paths\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
@@ -968,7 +971,7 @@ static int main_impl(int argc, char **argv) {
   std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
-  bool declarations = false, modules = false, lowering = false;
+  bool declarations = false, modules = false, lowering = false, effects = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
@@ -1063,10 +1066,11 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--evidence" && (cmd == "test" || cmd == "mutate") && i + 1 < argc && g_evidence.path.empty() && *argv[i + 1] && argv[i + 1][0] != '-')
       g_evidence.path = argv[++i];
     else if (a == "--keep-c") keep_c = true;
-    else if (a == "--declarations" && cmd == "deps" && !declarations && !modules) declarations = true;
-    else if (a == "--modules" && cmd == "deps" && !declarations && !modules && !lowering) modules = true;
-    else if (a == "--lowering" && cmd == "deps" && !declarations && !modules && !lowering) lowering = true;
-    else if (a == "--proc" && lowering && i + 1 < argc) g_lower_proc = argv[++i];
+    else if (a == "--declarations" && cmd == "deps" && !declarations && !modules && !lowering && !effects) declarations = true;
+    else if (a == "--modules" && cmd == "deps" && !declarations && !modules && !lowering && !effects) modules = true;
+    else if (a == "--lowering" && cmd == "deps" && !declarations && !modules && !lowering && !effects) lowering = true;
+    else if (a == "--effects" && cmd == "deps" && !declarations && !modules && !lowering && !effects) effects=true;
+    else if (a == "--proc" && (lowering || effects) && i + 1 < argc) g_lower_proc = argv[++i];
     else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -1239,7 +1243,7 @@ static int main_impl(int argc, char **argv) {
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout" || cmd == "deps") {
-    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : lowering ? Output::lowering : Output::deps) : Output::layout, &text, 2)) return 1;
+    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : lowering ? Output::lowering : effects ? Output::effects : Output::deps) : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }

@@ -10,6 +10,7 @@
 #load "../proto/importer.coax";
 #load "compute.coax";
 #load "native-checks.coax";
+#load "effects.coax";
 #load "spirv.coax";
 #load "shader.coax";
 #load "wgsl.coax";

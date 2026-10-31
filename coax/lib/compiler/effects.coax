@@ -1,0 +1,112 @@
+// Compiler inspection policy, schema coax.effects.v1. No admission of #bounded.
+// Native code supplies resolved procedures/call edges/operation sites; this
+// module owns effect classification, closure and deterministic witness paths.
+#authority;
+EF_Edge :: struct {from:int;to:int;}
+EF_Site :: struct {procedure:int;kind:int;}
+EF_Result :: struct {status:u32;effects:u32;reached:int;recursive:bool;acyclic_removed:int;}
+
+#test "effect classes keep unknown resource obligations and native trap logging explicit" {
+  want:=[13]u32.[0,5,6,4,13,20,36,68,132,260,13,4,4];
+  for i:1..<13 {#assert EF_bits(i)==want[i] && EF_site_bits(i,false)==want[i];}
+  #assert EF_bits(0)==0 && EF_bits(13)==0 && EF_bits(-1)==0;
+  for i:0..<9 {#assert EF_bit(i)==(cast(u32)1<<cast(u32)i);}
+  #assert EF_bit(-1)==0 && EF_bit(9)==0;
+  #assert EF_capacity(1,0,0) && EF_capacity(4096,0,0) && EF_capacity(1,65536,65536);
+  #assert !EF_capacity(0,0,0) && !EF_capacity(4097,0,0) && !EF_capacity(1,-1,0) && !EF_capacity(1,0,-1);
+  #assert !EF_capacity(1,65537,0) && !EF_capacity(1,0,65537) && !EF_capacity(4096,4097,0);
+  #assert !EF_capacity(257,65281,0);
+  #assert EF_capacity(4096,4096,0) && EF_capacity(4096,0,4096) && !EF_capacity(4096,0,4097);
+}
+#test "transitive effects and first breadth first witnesses follow resolved call edges" {
+  edges:=[5]EF_Edge.[EF_Edge.{from=0,to=1},EF_Edge.{from=0,to=2},EF_Edge.{from=1,to=3},EF_Edge.{from=2,to=3},EF_Edge.{from=4,to=4}];
+  sites:=[4]EF_Site.[EF_Site.{procedure=3,kind=1},EF_Site.{procedure=2,kind=2},EF_Site.{procedure=4,kind=9},EF_Site.{procedure=1,kind=4}];
+  parent:[5]int;via:[5]int;queue:[5]int;degree:[5]int;w:[10]int;w[9]=77;
+  r:=EF_trace(5,edges[..],sites[..],0,parent[..],via[..],queue[..],degree[..],w[..],false,false);
+  #assert r.status==0 && r.effects==15 && r.reached==4 && r.acyclic_removed==4 && !r.recursive;
+  #assert parent[0]==-1 && parent[1]==0 && parent[2]==0 && parent[3]==1 && parent[4]==-2;
+  #assert via[0]==-1 && via[1]==0 && via[2]==1 && via[3]==2 && via[4]==-1;
+  #assert w[0]==3 && w[1]==1 && w[2]==3 && w[3]==3 && w[4]==-1 && w[5]==-1 && w[6]==-1 && w[7]==-1 && w[8]==-1 && w[9]==77;
+  r=EF_trace(5,edges[..],sites[..],4,parent[..],via[..],queue[..],degree[..],w[..],false,false);
+  #assert r.status==0 && r.effects==260 && r.reached==1 && r.acyclic_removed==0 && r.recursive && w[2]==2 && w[8]==2;
+}
+#test "cycles are reported only in the reachable graph including downstream nodes" {
+  edges:=[5]EF_Edge.[EF_Edge.{from=0,to=1},EF_Edge.{from=1,to=2},EF_Edge.{from=2,to=1},EF_Edge.{from=2,to=3},EF_Edge.{from=4,to=4}];
+  sites:=[1]EF_Site.[EF_Site.{procedure=3,kind=7}];p:[5]int;v:[5]int;q:[5]int;d:[5]int;w:[9]int;
+  r:=EF_trace(5,edges[..],sites[..],0,p[..],v[..],q[..],d[..],w[..],false,false);
+  #assert r.status==0 && r.recursive && r.reached==4 && r.acyclic_removed==1 && r.effects==68 && p[3]==2 && w[6]==0;
+  r=EF_trace(5,edges[0..<1],sites[0..<0],0,p[..],v[..],q[..],d[..],w[..],false,false);
+  #assert r.status==0 && !r.recursive && r.reached==2 && r.acyclic_removed==2 && r.effects==0;
+  for bit:0..<9 {#assert w[bit]==-1;}
+}
+#test "malformed graphs and insufficient or aliased scratch refuse before writes" {
+  edges:=[1]EF_Edge.[EF_Edge.{from=0,to=1}];sites:=[1]EF_Site.[EF_Site.{procedure=0,kind=1}];
+  p:[3]int;v:[3]int;q:[3]int;d:[3]int;w:[10]int;for i:0..<3 {p[i]=71;v[i]=72;q[i]=73;d[i]=74;}for i:0..<10 {w[i]=75;}
+  for mode:0..<13 {n:=2;root:=0;pn:=3;vn:=3;qn:=3;dn:=3;wn:=10;overlap:=false;e:=edges;s:=sites;
+    if mode==0 {n=0;}if mode==1 {root=-1;}if mode==2 {root=2;}if mode==3 {pn=1;}if mode==4 {vn=1;}if mode==5 {qn=1;}if mode==6 {dn=1;}if mode==7 {wn=8;}if mode==8 {overlap=true;}if mode==9 {e[0].from=-1;}if mode==10 {e[0].to=2;}if mode==11 {s[0].procedure=2;}if mode==12 {s[0].kind=13;}
+    r:=EF_trace(n,e[..],s[..],root,p[0..<pn],v[0..<vn],q[0..<qn],d[0..<dn],w[0..<wn],false,overlap);
+    #assert r.status==cast(u32)(ifx mode<=2 then 1 else ifx mode<=7 then 2 else ifx mode==8 then 3 else ifx mode<=10 then 4 else 5) && r.effects==0 && r.reached==0 && !r.recursive;
+    for i:0..<3 {#assert p[i]==71 && v[i]==72 && q[i]==73 && d[i]==74;}for x:w {#assert x==75;}
+  }
+  #assert EF_in_range(0,2) && EF_in_range(1,2) && !EF_in_range(-1,2) && !EF_in_range(2,2);
+}
+#test "all direct kinds and duplicate edges retain effects without false cycles" {
+  e:=[2]EF_Edge.[EF_Edge.{from=0,to=1},EF_Edge.{from=0,to=1}];p:[3]int;v:[3]int;q:[3]int;d:[3]int;w:[10]int;
+  for kind:1..<13 {s:=[1]EF_Site.[EF_Site.{procedure=1,kind=kind}];r:=EF_trace(2,e[..],s[..],0,p[..],v[..],q[..],d[..],w[..],false,false);
+    #assert r.status==0 && r.effects==EF_bits(kind) && r.reached==2 && !r.recursive && p[1]==0 && v[1]==0;
+    for bit:0..<9 {#assert w[bit]==(ifx (r.effects&EF_bit(bit))!=0 then 0 else -1);}
+  }
+}
+
+#test "first site zero is stable and topological removal respects late discovered dependencies" {
+  edges:=[4]EF_Edge.[EF_Edge.{from=0,to=1},EF_Edge.{from=0,to=2},EF_Edge.{from=1,to=3},EF_Edge.{from=3,to=2}];
+  sites:=[2]EF_Site.[EF_Site.{procedure=0,kind=1},EF_Site.{procedure=1,kind=1}];p:[4]int;v:[4]int;q:[4]int;d:[4]int;w:[9]int;
+  r:=EF_trace(4,edges[..],sites[..],0,p[..],v[..],q[..],d[..],w[..],false,false);
+  #assert r.status==0 && r.effects==5 && r.reached==4 && r.acyclic_removed==4 && !r.recursive && w[0]==0 && w[2]==0;
+  incoming:=[2]EF_Edge.[EF_Edge.{from=0,to=1},EF_Edge.{from=2,to=1}];
+  r=EF_trace(3,incoming[..],sites[0..<0],0,p[..],v[..],q[..],d[..],w[..],false,false);
+  #assert r.status==0 && r.reached==2 && r.acyclic_removed==2 && !r.recursive;
+}
+
+#test "wrapping suppresses only conditional integer overflow sites not always on traps" {
+  p:[1]int;v:[1]int;q:[1]int;d:[1]int;w:[9]int;e:[1]EF_Edge;
+  s:=[2]EF_Site.[EF_Site.{procedure=0,kind=10},EF_Site.{procedure=0,kind=4}];
+  #assert EF_site_bits(10,true)==0 && EF_site_bits(4,true)==13 && EF_site_bits(1,true)==5;
+  r:=EF_trace(1,e[0..<0],s[0..<1],0,p[..],v[..],q[..],d[..],w[..],true,false);
+  #assert r.status==0 && r.effects==0 && w[0]==-1 && w[2]==-1 && w[3]==-1;
+  r=EF_trace(1,e[0..<0],s[..],0,p[..],v[..],q[..],d[..],w[..],true,false);
+  #assert r.status==0 && r.effects==13 && w[0]==1 && w[2]==1 && w[3]==1;
+}
+
+EF_bit :: (bit:int)->u32 #export_c {if bit<0 || bit>=9 {return 0;}return cast(u32)1<<cast(u32)bit;}
+// site kinds: print,foreign,unknown,trap,borrow-read,borrow-write,
+// intrinsic-resource-obligation,uninitialized-storage,address-observation.
+EF_bits :: (kind:int)->u32 #export_c {
+  if kind==1 {return 5;}if kind==2 {return 6;}if kind==3 {return 4;}if kind==4 {return 13;}
+  if kind==5 {return 20;}if kind==6 {return 36;}if kind==7 {return 68;}if kind==8 {return 132;}if kind==9 {return 260;}if kind==10 {return 13;}if kind==11 || kind==12 {return 4;}return 0;
+}
+EF_site_bits :: (kind:int,wrapping:bool)->u32 #export_c {return ifx kind==10 && wrapping then 0 else EF_bits(kind);}
+EF_in_range :: (v:int,n:int)->bool {return v>=0 && v<n;}
+EF_capacity :: (n:int,e:int,s:int)->bool #export_c {
+  return n>=1 && n<=4096 && e>=0 && e<=65536 && s>=0 && s<=65536 && n*(e+s)<=16777216;
+}
+EF_trace :: (n:int,edges:[]EF_Edge,sites:[]EF_Site,root:int,parent:[]int,via:[]int,queue:[]int,degree:[]int,witness:[]int,wrapping:bool,overlap:bool)->EF_Result #export_c {
+  if !EF_capacity(n,edges.count,sites.count) || !EF_in_range(root,n) {return EF_Result.{status=1};}
+  if parent.count<n || via.count<n || queue.count<n || degree.count<n || witness.count<9 {return EF_Result.{status=2};}
+  if overlap {return EF_Result.{status=3};}
+  for edge:edges {if !EF_in_range(edge.from,n) || !EF_in_range(edge.to,n) {return EF_Result.{status=4};}}
+  for site:sites {if !EF_in_range(site.procedure,n) || site.kind<1 || site.kind>12 {return EF_Result.{status=5};}}
+  for i:0..<n {parent[i]=-2;via[i]=-1;degree[i]=0;}for i:0..<9 {witness[i]=-1;}
+  parent[root]=-1;queue[0]=root;head:=0;tail:=1;bits:u32=0;
+  while head<tail {
+    current:=queue[head];head+=1;
+    for site,i:sites {if site.procedure==current {own:=EF_site_bits(site.kind,wrapping);bits|=own;for bit:0..<9 {#assert EF_bit(bit)!=0;if (own&EF_bit(bit))!=0 && witness[bit]<0 {witness[bit]=i;}}}}
+    for edge,i:edges {if edge.from==current && parent[edge.to]==-2 {parent[edge.to]=current;via[edge.to]=i;queue[tail]=edge.to;tail+=1;}}
+  }
+  reached:=tail;
+  for edge:edges {if parent[edge.from]!=-2 {degree[edge.to]+=1;}}
+  head=0;tail=ifx degree[root]==0 then 1 else 0;
+  removed:=0;
+  while head<tail {current:=queue[head];head+=1;removed+=1;for edge:edges {if edge.from==current {degree[edge.to]-=1;if degree[edge.to]==0 {queue[tail]=edge.to;tail+=1;}}}}
+  return EF_Result.{effects=bits,reached=reached,recursive=removed<reached,acyclic_removed=removed};
+}
