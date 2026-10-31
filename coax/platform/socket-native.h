@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* TCP client sockets for Coax on Linux and macOS, through #foreign scalars
+/* TCP and Unix-domain client sockets for Coax on Linux and macOS, through #foreign scalars
    only. A handle is a small index; bytes cross one at a time. This file does
    effects only: name resolution, connect, read, write, close and a monotonic
    clock. The WebSocket protocol, the relay policy and every limit beyond
@@ -17,6 +17,9 @@ extern "C" {
    tries each address with a nonblocking connect bounded by timeout_ms, and
    returns a handle or CXSOCK_RESOLVE / CXSOCK_REFUSED / CXSOCK_TIMEOUT /
    CXSOCK_FULL / CXSOCK_ERROR. The pushed host is cleared either way.
+   A local stream socket: push its path instead and call
+   cxsock_connect_unix(timeout_ms) (CXSOCK_REFUSED when nothing listens there);
+   the handle reads and writes the same way.
 
    Write: cxsock_write buffers a byte (CXSOCK_FULL past CXSOCK_MAX_OUT);
    cxsock_flush(h, timeout_ms) sends every buffered byte or fails.
@@ -38,6 +41,7 @@ extern "C" {
 #define CXSOCK_MAX_OUT (1048576)
 int64_t cxsock_host_push(int64_t byte);
 int64_t cxsock_connect(int64_t port, int64_t timeout_ms);
+int64_t cxsock_connect_unix(int64_t timeout_ms);
 int64_t cxsock_write(int64_t h, int64_t byte);
 int64_t cxsock_flush(int64_t h, int64_t timeout_ms);
 int64_t cxsock_read(int64_t h, int64_t timeout_ms);

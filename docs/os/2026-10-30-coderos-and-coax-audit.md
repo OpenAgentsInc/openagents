@@ -269,8 +269,17 @@ compiler and the examples have not been run on Linux yet.
   Installing it means pointing the unit's ExecStart at a 20-line
   derivation that runs `coax build`, which is a NixOS change that needs
   the owner's yes.
-- **Step 2 rows 2 to 6: not started.** Row 2 waits on a Coax `coder` to
-  update. Rows 4 to 6 wait on C header import and pointer FFI in the
+- **Step 2 row 3, the desk command: written, not installed.**
+  `os/desk.coax` is `coder-desk` in Coax: the desk protocol over a Unix
+  socket (`cxsock_connect_unix`, new in `coax/platform/socket-native.c`),
+  every verb, and the Rust client's arguments, output and exit codes. On
+  coderos-4080, `list`, `screens`, `focused`, `status` and `reading`
+  against the live desk print the same bytes as the Rust client, and the
+  requests for all 21 other verbs, sent to a stand-in socket, match it byte
+  for byte. The Hyprland backend is not ported; with no desk socket it says
+  so. Installing it in place of the Rust binary is part of step 1.
+- **Step 2 rows 2 and 4 to 6: not started.** Row 2 waits on a Coax `coder`
+  to update. Rows 4 to 6 wait on C header import and pointer FFI in the
   compiler.
 
 ## Decisions for the owner

@@ -1,0 +1,658 @@
+// coder-desk in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 3): ask the desktop
+// session on this computer what is on its screens, and change one window, over the desk protocol
+// (generation 1: one JSON object per line on a Unix socket, a request then the desk's answer).
+// It replaces the Rust coder-desk-cli (openagents 2ca255550e, crates/coder-desk-cli and
+// crates/coder-desk's native backend) with the same subcommands, arguments, output and exit status:
+//   0 the desk answered; 2 the command line was wrong; 3 no desktop session here; 4 the session's
+//   desk did not answer; 5 the desk refused, and stderr says why; 6 an answer this cannot read.
+// list, screens and focused print the desk's JSON value; reading prints the screens, the focused
+// screen's name and the desks as one object with sorted keys, as serde_json's map wrote it.
+// The socket is $CODER_DESK_SOCKET, else $CODER_QUEST_SOCKET. A Hyprland session (no desk socket,
+// HYPRLAND_INSTANCE_SIGNATURE set) is the Rust client's second backend, not ported: this says so.
+//   coax/web/tool.sh os/desk.coax VERB [ARGS...]
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+
+DK_GENERATION :: 1;
+DK_USAGE :: 2; DK_NO_SESSION :: 3; DK_UNREACHABLE :: 4; DK_REFUSED :: 5; DK_UNREADABLE :: 6;
+DK_MAX_LINE :: 1048576;   // the longest answer line read
+DK_ANSWER_MS :: 5000;     // how long the desk has to answer
+DK_MOST_STEPS :: 256; DK_MOST_MS :: 1000;
+DK_HAND_STEPS :: 16; DK_HAND_MS :: 220;
+
+DK_NO_SESSION_COPY :: "error: there is no desktop session here, so there is no desk to ask. A run reached over SSH and a host with no compositor have none.";
+
+// ---- the command line
+
+// What a run asks: its request line(s), how its answer prints, or why the command line is wrong.
+Ask :: struct { verb: string; out: [] u8; n: int; bad: string; }
+
+DK_FLAG_VALUES :: "--path --desk --at --size --border --rounding --steps --ms --modifier --screen";
+// Whether a flag takes the word after it.
+dk_takes :: (flag: string) -> bool {
+  w := DK_FLAG_VALUES; i := 0;
+  while i < w.count {
+    j := i; while j < w.count && w[j] != ' ' { j += 1; }
+    if w[i..<j] == flag { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+// A flag's value (--name V or --name=V), and whether it is there.
+Flag :: struct { there: bool; value: string; }
+dk_flag :: (argv: [] string, name: string) -> Flag {
+  for i: 1..<argv.count {
+    a := argv[i];
+    if a == name { return ifx i + 1 < argv.count then Flag.{there = true, value = argv[i + 1]} else Flag.{there = true, value = ""}; }
+    if a.count > name.count && a[0..<name.count] == name && a[name.count] == '=' { return Flag.{there = true, value = a[name.count + 1..<a.count]}; }
+  }
+  return Flag.{};
+}
+// The positional words after the verb: its arguments that are not flags or a flag's value.
+dk_positional :: (argv: [] string, out: [] string) -> int {
+  n := 0; i := 1;
+  while i < argv.count {
+    a := argv[i];
+    if a.count > 2 && a[0] == '-' && a[1] == '-' {
+      eq := false; for c: a { if c == '=' { eq = true; } }
+      if !eq && dk_takes(a) { i += 1; }
+    } else if n < out.count { out[n] = a; n += 1; }
+    i += 1;
+  }
+  return n;
+}
+#test "positional words skip flags and their values" {
+  argv := [7] string.["move", "-5", "--steps", "4", "10", "--ms=50", "--silent"];
+  p: [4] string;
+  #assert dk_positional(argv[..], p[..]) == 2 && p[0] == "-5" && p[1] == "10";
+  #assert dk_flag(argv[..], "--steps").value == "4" && dk_flag(argv[..], "--ms").value == "50" && dk_flag(argv[..], "--silent").there;
+  #assert !dk_flag(argv[..], "--path").there;
+}
+
+// A whole number: its value, or ok false.
+Whole :: struct { v: int; ok: bool; }
+dk_whole :: (text: string) -> Whole {
+  t := dk_trim(text);
+  if t.count == 0 { return Whole.{}; }
+  neg := t[0] == '-'; i := ifx t[0] == '-' || t[0] == '+' then 1 else 0;
+  if i >= t.count || t.count - i > 18 { return Whole.{}; }
+  v := 0;
+  while i < t.count { if t[i] < '0' || t[i] > '9' { return Whole.{}; } v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  return Whole.{v = ifx neg then -v else v, ok = true};
+}
+#test "whole numbers" {
+  #assert dk_whole("42").v == 42 && dk_whole("-7").v == -7 && dk_whole(" 3 ").ok && dk_whole("+9").v == 9;
+  #assert !dk_whole("").ok && !dk_whole("-").ok && !dk_whole("1.5").ok && !dk_whole("x").ok;
+}
+dk_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t') { b -= 1; }
+  return s[a..<b];
+}
+// A decimal as serde_json writes the f64 it is: "2" is 2.0, "1.50" is 1.5, "-0.25" stays. Plain
+// decimals only (an exponent is refused); "" when the text is not one.
+dk_decimal :: (text: string, out: [] u8) -> string {
+  t := dk_trim(text); n := 0; i := 0;
+  if t.count == 0 { return ""; }
+  if t[0] == '-' { out[n] = '-'; n += 1; i = 1; } else if t[0] == '+' { i = 1; }
+  a := i; while i < t.count && t[i] >= '0' && t[i] <= '9' { i += 1; }
+  ints := t[a..<i]; frac := "";
+  if i < t.count && t[i] == '.' { b := i + 1; i += 1; while i < t.count && t[i] >= '0' && t[i] <= '9' { i += 1; } frac = t[b..<i]; }
+  if i != t.count || (ints.count == 0 && frac.count == 0) || ints.count + frac.count > 30 { return ""; }
+  z := 0; while z + 1 < ints.count && ints[z] == '0' { z += 1; }
+  ints = ints[z..<ints.count];
+  e := frac.count; while e > 0 && frac[e - 1] == '0' { e -= 1; }
+  frac = frac[0..<e];
+  if ints.count == 0 { out[n] = '0'; n += 1; } else { for c: ints { out[n] = c; n += 1; } }
+  out[n] = '.'; n += 1;
+  if frac.count == 0 { out[n] = '0'; n += 1; } else { for c: frac { out[n] = c; n += 1; } }
+  // -0.0 as serde writes it
+  return cast(string) out[0..<n];
+}
+#test "decimals as serde writes them" {
+  b: [64] u8;
+  #assert dk_decimal("2", b[..]) == "2.0" && dk_decimal("1.50", b[..]) == "1.5" && dk_decimal("-0.25", b[..]) == "-0.25";
+  #assert dk_decimal("007.10", b[..]) == "7.1" && dk_decimal(".5", b[..]) == "0.5" && dk_decimal("3.", b[..]) == "3.0" && dk_decimal("+4", b[..]) == "4.0";
+  #assert dk_decimal("1e3", b[..]) == "" && dk_decimal("", b[..]) == "" && dk_decimal(".", b[..]) == "" && dk_decimal("x", b[..]) == "";
+}
+
+// A selector on the wire: a handle as it is, class:ID, title:TITLE; address:H is H.
+dk_selector :: (named: string) -> string {
+  t := dk_trim(named);
+  if dk_starts(t, "class:") || dk_starts(t, "title:") { return t; }
+  if dk_starts(t, "address:") { return t[8..<t.count]; }
+  return t;
+}
+#test "selectors" {
+  #assert dk_selector(" class:chromium ") == "class:chromium" && dk_selector("title:a b") == "title:a b";
+  #assert dk_selector("address:0x1") == "0x1" && dk_selector("0x2") == "0x2";
+}
+dk_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+
+// A lowercase copy (ASCII), into out.
+dk_lower :: (s: string, out: [] u8) -> string {
+  n := ifx s.count < out.count then s.count else out.count;
+  for i: 0..<n { c := s[i]; out[i] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+  return cast(string) out[0..<n];
+}
+// A button's word (left, right, middle), "" for none.
+dk_button :: (named: string) -> string {
+  b: [16] u8;
+  w := dk_lower(dk_trim(named), b[..]);
+  if w == "left" { return "left"; }
+  if w == "right" { return "right"; }
+  if w == "middle" { return "middle"; }
+  return "";
+}
+// A modifier's bit (super 1, shift 2, ctrl 4, alt 8), 0 for none.
+dk_modifier :: (named: string) -> int {
+  b: [16] u8;
+  w := dk_lower(dk_trim(named), b[..]);
+  if w == "super" || w == "logo" || w == "win" { return 1; }
+  if w == "shift" { return 2; }
+  if w == "ctrl" || w == "control" { return 4; }
+  if w == "alt" { return 8; }
+  return 0;
+}
+#test "buttons and modifiers" {
+  #assert dk_button("LEFT") == "left" && dk_button(" middle") == "middle" && dk_button("right") == "right" && dk_button("up") == "";
+  #assert dk_modifier("Win") == 1 && dk_modifier("shift") == 2 && dk_modifier("control") == 4 && dk_modifier("alt") == 8 && dk_modifier("meta") == 0;
+}
+// Held modifiers spelled in their order, joined by +.
+dk_spelled :: (held: int, out: [] u8) -> string {
+  names := [4] string.["super", "shift", "ctrl", "alt"];
+  n := 0;
+  for k: 0..<4 {
+    if (held & (1 << k)) == 0 { continue; }
+    if n > 0 { out[n] = '+'; n += 1; }
+    for c: names[k] { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+// Modifiers spelled with +: their bits, or -1 when a word is not a modifier.
+dk_modifiers :: (spelled: string) -> int {
+  held := 0; i := 0;
+  while i <= spelled.count {
+    j := i; while j < spelled.count && spelled[j] != '+' { j += 1; }
+    w := dk_trim(spelled[i..<j]);
+    if w.count > 0 { m := dk_modifier(w); if m == 0 { return -1; } held |= m; }
+    i = j + 1;
+  }
+  return held;
+}
+// A chord as the bind table spells it (modifiers in order, then the key, lowercase): "" when it
+// names no key or a word before the key is not a modifier.
+dk_chord :: (spelled: string, out: [] u8) -> string {
+  words: [16] string; n := 0; i := 0;
+  while i <= spelled.count {
+    j := i; while j < spelled.count && spelled[j] != '+' { j += 1; }
+    w := dk_trim(spelled[i..<j]);
+    if w.count > 0 && n < 16 { words[n] = w; n += 1; }
+    i = j + 1;
+  }
+  if n == 0 { return ""; }
+  held := 0;
+  for k: 0..<n - 1 { m := dk_modifier(words[k]); if m == 0 { return ""; } held |= m; }
+  m := dk_spelled(held, out);
+  at := m.count;
+  if at > 0 { out[at] = '+'; at += 1; }
+  kb: [64] u8;
+  for c: dk_lower(words[n - 1], kb[..]) { out[at] = c; at += 1; }
+  return cast(string) out[0..<at];
+}
+#test "chords and modifiers" {
+  b: [64] u8;
+  #assert dk_chord("shift+super+T", b[..]) == "super+shift+t" && dk_chord("return", b[..]) == "return" && dk_chord("ctrl + c", b[..]) == "ctrl+c";
+  #assert dk_chord("", b[..]) == "" && dk_chord("meta+x", b[..]) == "" && dk_chord("alt+ctrl+shift+super+F1", b[..]) == "super+shift+ctrl+alt+f1";
+  #assert dk_modifiers("ctrl+shift") == 6 && dk_modifiers("") == 0 && dk_modifiers("ctrl+nope") == -1;
+  #assert dk_spelled(6, b[..]) == "shift+ctrl" && dk_spelled(0, b[..]) == "";
+}
+
+// A motion's steps and ms: the named or default, refused out of bounds (bad says why).
+Motion :: struct { steps: int; ms: int; bad: string; }
+dk_motion :: (steps: Flag, ms: Flag, unnamed_steps: int, unnamed_ms: int) -> Motion {
+  m := Motion.{steps = unnamed_steps, ms = unnamed_ms};
+  if steps.there { w := dk_whole(steps.value); if !w.ok || w.v < 0 { m.bad = "a motion's --steps is a whole number"; return m; } m.steps = w.v; }
+  if ms.there { w := dk_whole(ms.value); if !w.ok || w.v < 0 { m.bad = "a motion's --ms is a whole number"; return m; } m.ms = w.v; }
+  if m.steps == 0 { m.bad = "a motion takes at least one step"; }
+  else if m.steps > DK_MOST_STEPS { m.bad = "a motion takes at most 256 steps"; }
+  else if m.ms > DK_MOST_MS { m.bad = "a motion runs for at most 1000 milliseconds, because the socket answers within two seconds"; }
+  return m;
+}
+#test "motions" {
+  none := Flag.{};
+  #assert dk_motion(none, none, 1, 0).bad == "" && dk_motion(none, none, 16, 220).steps == 16;
+  #assert dk_motion(Flag.{there = true, value = "0"}, none, 1, 0).bad == "a motion takes at least one step";
+  #assert dk_motion(Flag.{there = true, value = "256"}, none, 1, 0).bad == "" && dk_motion(Flag.{there = true, value = "257"}, none, 1, 0).bad != "";
+  #assert dk_motion(none, Flag.{there = true, value = "1000"}, 1, 0).bad == "" && dk_motion(none, Flag.{there = true, value = "1001"}, 1, 0).bad != "";
+}
+// steps and ms on the wire: only when they differ from the verb's unnamed motion.
+dk_put_motion :: (o: [] Jo, m: Motion, unnamed_steps: int, unnamed_ms: int) {
+  if m.steps == unnamed_steps && m.ms == unnamed_ms { return; }
+  jo_key(o, "steps"); jo_int(o, m.steps); jo_key(o, "ms"); jo_int(o, m.ms);
+}
+
+// The request a command line makes, into out: the line, or Ask.bad (a usage error).
+dk_request :: (argv: [] string, out: [] u8) -> Ask {
+  r := Ask.{out = out};
+  if argv.count == 0 { r.bad = "error: name a verb: list, screens, focused, reading, open, focus, place, raise, close, shape, scale, notice, reload, key, type, click, move, press, release, drag, scroll, shot, status"; return r; }
+  v := argv[0]; r.verb = v;
+  p: [8] string; np := dk_positional(argv, p[..]);
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "generation"); jo_int(o[..], DK_GENERATION);
+  ty := v;
+  if v == "press" || v == "release" {
+    if np != 1 { r.bad = "error: press and release name one button or key"; return r; }
+    key := dk_flag(argv, "--key").there; button := dk_flag(argv, "--button").there;
+    if key && button { r.bad = "error: --key and --button are one or the other"; return r; }
+    b := ifx key then "" else dk_button(p[0]);
+    if button && b == "" { r.bad = "error: a button is `left`, `right`, or `middle`"; return r; }
+    if b != "" {
+      jo_key(o[..], "type"); jo_str(o[..], ifx v == "press" then "button_press" else "button_release");
+      jo_key(o[..], "button"); jo_str(o[..], b);
+    } else {
+      w := dk_trim(p[0]);
+      if w.count == 0 { r.bad = "error: a press names a key or a modifier, such as `a`, `return`, or `super`"; return r; }
+      kb: [64] u8; mb: [16] u8;
+      m := dk_modifier(w);
+      jo_key(o[..], "type"); jo_str(o[..], ifx v == "press" then "key_press" else "key_release");
+      jo_key(o[..], "key"); jo_str(o[..], ifx m != 0 then dk_spelled(m, mb[..]) else dk_lower(w, kb[..]));
+    }
+    jo_end(o[..]); r.n = o[0].n; return r;
+  }
+  if v == "list" || v == "screens" || v == "focused" || v == "reload" || v == "status" || v == "reading" {
+    if np != 0 { r.bad = "error: this verb takes no arguments"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], ifx v == "reading" then "screens" else v);
+  } else if v == "open" {
+    path := dk_flag(argv, "--path");
+    if (np == 1) == path.there || np > 1 { r.bad = "error: an `open` names exactly one of a command and `--path`."; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "open");
+    if np == 1 { jo_key(o[..], "command"); jo_str(o[..], p[0]); } else { jo_key(o[..], "path"); jo_str(o[..], path.value); }
+    d := dk_flag(argv, "--desk");
+    if d.there { w := dk_whole(d.value); if !w.ok || w.v < 0 { r.bad = "error: --desk is a desk's number"; return r; } jo_key(o[..], "desk"); jo_int(o[..], w.v); }
+    if dk_flag(argv, "--silent").there { jo_key(o[..], "silent"); jo_bool(o[..], true); }
+  } else if v == "focus" || v == "raise" || v == "close" {
+    if np != 1 { r.bad = "error: name one window: a handle, `class:<app-id>`, or `title:<title>`"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], v); jo_key(o[..], "handle"); jo_str(o[..], dk_selector(p[0]));
+  } else if v == "place" {
+    w := ifx np == 2 then dk_whole(p[1]) else Whole.{};
+    if np != 2 || !w.ok || w.v < 0 { r.bad = "error: place names a window and a desk's number"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "place"); jo_key(o[..], "handle"); jo_str(o[..], dk_selector(p[0])); jo_key(o[..], "desk"); jo_int(o[..], w.v);
+  } else if v == "shape" {
+    if np != 1 { r.bad = "error: shape names one window"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "shape"); jo_key(o[..], "handle"); jo_str(o[..], dk_selector(p[0]));
+    if !dk_pair(o[..], argv, "float", "--float", "--tile") { r.bad = "error: --float and --tile are one or the other"; return r; }
+    if dk_flag(argv, "--pin").there { jo_key(o[..], "pin"); jo_bool(o[..], true); }
+    at := dk_flag(argv, "--at");
+    if at.there {
+      c := 0; while c < at.value.count && at.value[c] != ',' { c += 1; }
+      x := dk_whole(at.value[0..<c]); y := ifx c < at.value.count then dk_whole(at.value[c + 1..<at.value.count]) else Whole.{};
+      if !x.ok || !y.ok { r.bad = "error: a point is written `<x>,<y>`"; return r; }
+      jo_key(o[..], "at"); jo_obj(o[..]); jo_key(o[..], "x"); jo_int(o[..], x.v); jo_key(o[..], "y"); jo_int(o[..], y.v); jo_end(o[..]);
+    }
+    sz := dk_flag(argv, "--size");
+    if sz.there {
+      c := 0; while c < sz.value.count && sz.value[c] != 'x' { c += 1; }
+      w := dk_whole(sz.value[0..<c]); h := ifx c < sz.value.count then dk_whole(sz.value[c + 1..<sz.value.count]) else Whole.{};
+      if !w.ok || !h.ok { r.bad = "error: a size is written `<width>x<height>`"; return r; }
+      jo_key(o[..], "size"); jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], w.v); jo_key(o[..], "height"); jo_int(o[..], h.v); jo_end(o[..]);
+    }
+    if !dk_pair(o[..], argv, "aspect", "--aspect", "--no-aspect") { r.bad = "error: --aspect and --no-aspect are one or the other"; return r; }
+    bs := dk_flag(argv, "--border"); br := dk_flag(argv, "--rounding");
+    if bs.there || br.there {
+      jo_key(o[..], "border"); jo_obj(o[..]);
+      if bs.there { w := dk_whole(bs.value); if !w.ok { r.bad = "error: --border is a whole number of pixels"; return r; } jo_key(o[..], "size"); jo_int(o[..], w.v); }
+      if br.there { w := dk_whole(br.value); if !w.ok { r.bad = "error: --rounding is a whole number of pixels"; return r; } jo_key(o[..], "rounding"); jo_int(o[..], w.v); }
+      jo_end(o[..]);
+    }
+    if !dk_pair(o[..], argv, "shadow", "--shadow", "--no-shadow") { r.bad = "error: --shadow and --no-shadow are one or the other"; return r; }
+  } else if v == "scale" {
+    db: [64] u8;
+    s := ifx np == 2 then dk_decimal(p[1], db[..]) else "";
+    if np != 2 || s == "" { r.bad = "error: scale names a screen and a scale, such as `DP-2 1.5`"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "scale"); jo_key(o[..], "screen"); jo_str(o[..], p[0]); jo_key(o[..], "scale"); jo_raw(o[..], s);
+  } else if v == "notice" || v == "type" {
+    if np != 1 { r.bad = "error: name the text, in quotes"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], v); jo_key(o[..], "text"); jo_str(o[..], p[0]);
+  } else if v == "key" {
+    cb: [128] u8;
+    c := ifx np == 1 then dk_chord(p[0], cb[..]) else "";
+    if c == "" { r.bad = "error: a chord names a key, such as `super+t` or `return`, after modifiers"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "key"); jo_key(o[..], "chord"); jo_str(o[..], c);
+  } else if v == "click" {
+    x := ifx np >= 2 then dk_whole(p[0]) else Whole.{}; y := ifx np >= 2 then dk_whole(p[1]) else Whole.{};
+    b := ifx np == 3 then dk_button(p[2]) else "left";
+    if np < 2 || np > 3 || !x.ok || !y.ok || b == "" { r.bad = "error: click takes x, y and a button (left, right, middle)"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "click"); jo_key(o[..], "x"); jo_int(o[..], x.v); jo_key(o[..], "y"); jo_int(o[..], y.v); jo_key(o[..], "button"); jo_str(o[..], b);
+  } else if v == "move" {
+    x := ifx np == 2 then dk_whole(p[0]) else Whole.{}; y := ifx np == 2 then dk_whole(p[1]) else Whole.{};
+    if !x.ok || !y.ok { r.bad = "error: move takes x and y"; return r; }
+    m := dk_motion(dk_flag(argv, "--steps"), dk_flag(argv, "--ms"), 1, 0);
+    if m.bad != "" { r.bad = m.bad; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "move"); jo_key(o[..], "x"); jo_int(o[..], x.v); jo_key(o[..], "y"); jo_int(o[..], y.v);
+    dk_put_motion(o[..], m, 1, 0);
+  } else if v == "drag" {
+    if np < 4 || np > 5 { r.bad = "error: drag takes x1, y1, x2, y2 and a button"; return r; }
+    c: [4] Whole; for k: 0..<4 { c[k] = dk_whole(p[k]); if !c[k].ok { r.bad = "error: drag's points are whole numbers"; return r; } }
+    b := ifx np == 5 then dk_button(p[4]) else "left";
+    if b == "" { r.bad = "error: a button is `left`, `right`, or `middle`"; return r; }
+    held := dk_modifiers(dk_flag(argv, "--modifier").value);
+    if held < 0 { r.bad = "error: a modifier is `super`, `shift`, `ctrl`, or `alt`"; return r; }
+    m := dk_motion(dk_flag(argv, "--steps"), dk_flag(argv, "--ms"), DK_HAND_STEPS, DK_HAND_MS);
+    if m.bad != "" { r.bad = m.bad; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "drag");
+    jo_key(o[..], "from"); jo_obj(o[..]); jo_key(o[..], "x"); jo_int(o[..], c[0].v); jo_key(o[..], "y"); jo_int(o[..], c[1].v); jo_end(o[..]);
+    jo_key(o[..], "to"); jo_obj(o[..]); jo_key(o[..], "x"); jo_int(o[..], c[2].v); jo_key(o[..], "y"); jo_int(o[..], c[3].v); jo_end(o[..]);
+    jo_key(o[..], "button"); jo_str(o[..], b);
+    sb: [64] u8; s := dk_spelled(held, sb[..]);
+    if s.count > 0 { jo_key(o[..], "modifiers"); jo_str(o[..], s); }
+    dk_put_motion(o[..], m, DK_HAND_STEPS, DK_HAND_MS);
+  } else if v == "scroll" {
+    xb: [64] u8; yb: [64] u8;
+    dx := ifx np == 2 then dk_decimal(p[0], xb[..]) else ""; dy := ifx np == 2 then dk_decimal(p[1], yb[..]) else "";
+    if dx == "" || dy == "" { r.bad = "error: scroll takes dx and dy"; return r; }
+    m := dk_motion(dk_flag(argv, "--steps"), dk_flag(argv, "--ms"), 1, 0);
+    if m.bad != "" { r.bad = m.bad; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "scroll"); jo_key(o[..], "dx"); jo_raw(o[..], dx); jo_key(o[..], "dy"); jo_raw(o[..], dy);
+    if dk_flag(argv, "--discrete").there { jo_key(o[..], "discrete"); jo_bool(o[..], true); }
+    dk_put_motion(o[..], m, 1, 0);
+  } else if v == "shot" {
+    if np != 1 { r.bad = "error: shot names the PNG to write"; return r; }
+    jo_key(o[..], "type"); jo_str(o[..], "shot"); jo_key(o[..], "path"); jo_str(o[..], p[0]);
+    sc := dk_flag(argv, "--screen");
+    if sc.there { jo_key(o[..], "screen"); jo_str(o[..], sc.value); }
+  } else { r.bad = "error: no such verb; see the list in os/desk.coax"; return r; }
+  jo_end(o[..]);
+  if o[0].bad { r.bad = "error: the request is too long"; return r; }
+  r.n = o[0].n;
+  return r;
+}
+// A pair of flags into an optional bool: on true, off false, neither left out; both is wrong.
+dk_pair :: (o: [] Jo, argv: [] string, key: string, on: string, off: string) -> bool {
+  a := dk_flag(argv, on).there; b := dk_flag(argv, off).there;
+  if a && b { return false; }
+  if a || b { jo_key(o, key); jo_bool(o, a); }
+  return true;
+}
+#test "requests as the Rust client encodes them" {
+  b: [4096] u8;
+  t1 := [1] string.["list"];
+  #assert dk_line(dk_request(t1[..], b[..])) == "{\"generation\":1,\"type\":\"list\"}";
+  t2 := [5] string.["open", "foot", "--desk", "3", "--silent"];
+  #assert dk_line(dk_request(t2[..], b[..])) == "{\"generation\":1,\"type\":\"open\",\"command\":\"foot\",\"desk\":3,\"silent\":true}";
+  t3 := [3] string.["place", "address:0x5", "2"];
+  #assert dk_line(dk_request(t3[..], b[..])) == "{\"generation\":1,\"type\":\"place\",\"handle\":\"0x5\",\"desk\":2}";
+  t4 := [9] string.["shape", "class:foot", "--tile", "--pin", "--at", "10,-20", "--size=300x200", "--rounding", "4"];
+  #assert dk_line(dk_request(t4[..], b[..])) == "{\"generation\":1,\"type\":\"shape\",\"handle\":\"class:foot\",\"float\":false,\"pin\":true,\"at\":{\"x\":10,\"y\":-20},\"size\":{\"width\":300,\"height\":200},\"border\":{\"rounding\":4}}";
+  t5 := [3] string.["scale", "DP-1", "1.50"];
+  #assert dk_line(dk_request(t5[..], b[..])) == "{\"generation\":1,\"type\":\"scale\",\"screen\":\"DP-1\",\"scale\":1.5}";
+  t6 := [2] string.["key", "Shift+super+T"];
+  #assert dk_line(dk_request(t6[..], b[..])) == "{\"generation\":1,\"type\":\"key\",\"chord\":\"super+shift+t\"}";
+  t7 := [4] string.["click", "5", "-6", "right"];
+  #assert dk_line(dk_request(t7[..], b[..])) == "{\"generation\":1,\"type\":\"click\",\"x\":5,\"y\":-6,\"button\":\"right\"}";
+  t8 := [3] string.["move", "1", "2"];
+  #assert dk_line(dk_request(t8[..], b[..])) == "{\"generation\":1,\"type\":\"move\",\"x\":1,\"y\":2}";
+  t9 := [5] string.["move", "1", "2", "--steps", "4"];
+  #assert dk_line(dk_request(t9[..], b[..])) == "{\"generation\":1,\"type\":\"move\",\"x\":1,\"y\":2,\"steps\":4,\"ms\":0}";
+  ta := [7] string.["drag", "0", "0", "9", "9", "--modifier", "ctrl+shift"];
+  #assert dk_line(dk_request(ta[..], b[..])) == "{\"generation\":1,\"type\":\"drag\",\"from\":{\"x\":0,\"y\":0},\"to\":{\"x\":9,\"y\":9},\"button\":\"left\",\"modifiers\":\"shift+ctrl\"}";
+  tb := [4] string.["scroll", "0", "-3", "--discrete"];
+  #assert dk_line(dk_request(tb[..], b[..])) == "{\"generation\":1,\"type\":\"scroll\",\"dx\":0.0,\"dy\":-3.0,\"discrete\":true}";
+  tc := [2] string.["press", "left"];
+  #assert dk_line(dk_request(tc[..], b[..])) == "{\"generation\":1,\"type\":\"button_press\",\"button\":\"left\"}";
+  td := [3] string.["release", "left", "--key"];
+  #assert dk_line(dk_request(td[..], b[..])) == "{\"generation\":1,\"type\":\"key_release\",\"key\":\"left\"}";
+  te := [2] string.["press", "Control"];
+  #assert dk_line(dk_request(te[..], b[..])) == "{\"generation\":1,\"type\":\"key_press\",\"key\":\"ctrl\"}";
+  tf := [4] string.["shot", "/tmp/a.png", "--screen", "DP-1"];
+  #assert dk_line(dk_request(tf[..], b[..])) == "{\"generation\":1,\"type\":\"shot\",\"path\":\"/tmp/a.png\",\"screen\":\"DP-1\"}";
+  tg := [2] string.["notice", "say \"hi\""];
+  #assert dk_line(dk_request(tg[..], b[..])) == "{\"generation\":1,\"type\":\"notice\",\"text\":\"say \\\"hi\\\"\"}";
+}
+#test "usage errors" {
+  b: [4096] u8;
+  u1 := [1] string.["open"]; u2 := [3] string.["open", "x", "--path=/a"]; u3 := [2] string.["place", "w"];
+  u4 := [4] string.["shape", "w", "--float", "--tile"]; u5 := [3] string.["scale", "DP-1", "1e2"]; u6 := [2] string.["key", "meta+x"];
+  u7 := [4] string.["click", "1", "2", "up"]; u8 := [5] string.["move", "1", "2", "--steps", "0"]; u9 := [1] string.["fly"];
+  ua := [4] string.["press", "up", "--key", "--button"]; ub := [2] string.["list", "x"]; uc := [5] string.["move", "1", "2", "--ms", "1001"];
+  #assert dk_request(u1[..], b[..]).bad != "" && dk_request(u2[..], b[..]).bad != "" && dk_request(u3[..], b[..]).bad != "";
+  #assert dk_request(u4[..], b[..]).bad != "" && dk_request(u5[..], b[..]).bad != "" && dk_request(u6[..], b[..]).bad != "";
+  #assert dk_request(u7[..], b[..]).bad != "" && dk_request(u8[..], b[..]).bad != "" && dk_request(u9[..], b[..]).bad != "";
+  #assert dk_request(ua[..], b[..]).bad != "" && dk_request(ub[..], b[..]).bad != "" && dk_request(uc[..], b[..]).bad != "";
+}
+dk_line :: (r: Ask) -> string { return ifx r.bad == "" then cast(string) r.out[0..<r.n] else r.bad; }
+
+// ---- the answer
+
+// What one answer says: its type, or why it cannot be read.
+DK_READ_OK :: 0;
+// Checks an answer's generation and type: "" when it is `want`, else the stderr sentence and its
+// exit status in code.
+Verdict :: struct { say: string; code: int; }
+dk_verdict :: (d: Jv, want: string, msg: [] u8) -> Verdict {
+  if !d.ok || jv_kind(d, 0) != JV_OBJECT { return Verdict.{say = "error: the desk answered something this client cannot read", code = DK_UNREADABLE}; }
+  ty := jv_raw(d, jv_get(d, 0, "type"));
+  if ty == "refused" {
+    n := jv_str(d, jv_get(d, 0, "message"), msg);
+    return Verdict.{say = cast(string) msg[0..<ifx n > 0 then n else 0], code = DK_REFUSED};
+  }
+  if jv_int(d, jv_get(d, 0, "generation"), -1) != DK_GENERATION { return Verdict.{say = "error: this client speaks generation 1 of the desk protocol and the desk answered another", code = DK_UNREADABLE}; }
+  if ty != "windows" && ty != "screens" && ty != "focused" && ty != "status" && ty != "done" { return Verdict.{say = "error: the desk answered a reply this client does not know", code = DK_UNREADABLE}; }
+  if ty != want { return Verdict.{say = "error: the desk answered with a reply this verb does not take", code = DK_UNREADABLE}; }
+  return Verdict.{};
+}
+#test "answers: refused, other generations, unknown and wrong replies" {
+  nodes: [64] JvNode; d: [1] Jv; m: [256] u8;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"done\"}", nodes[..]) && dk_verdict(d[0], "done", m[..]).code == 0;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"refused\",\"code\":\"no_such_window\",\"message\":\"no window w\"}", nodes[..]);
+  v := dk_verdict(d[0], "done", m[..]);
+  #assert v.code == DK_REFUSED && v.say == "no window w";
+  #assert jv_parse(d[..], "{\"generation\":2,\"type\":\"done\"}", nodes[..]) && dk_verdict(d[0], "done", m[..]).code == DK_UNREADABLE;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"party\"}", nodes[..]) && dk_verdict(d[0], "done", m[..]).code == DK_UNREADABLE;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"windows\",\"windows\":[]}", nodes[..]) && dk_verdict(d[0], "done", m[..]).code == DK_UNREADABLE;
+  #assert dk_verdict(d[0], "windows", m[..]).code == 0;
+  #assert !jv_parse(d[..], "nope", nodes[..]) && dk_verdict(d[0], "done", m[..]).code == DK_UNREADABLE;
+}
+
+// A JSON value with every object's keys in bytewise order (serde_json's map), compact.
+dk_sorted :: (d: Jv, at: int, o: [] Jo) {
+  k := jv_kind(d, at);
+  if k == JV_OBJECT {
+    kids: [256] int; n := 0;
+    c := d.nodes[at].first;
+    while c >= 0 && n < 256 { kids[n] = c; n += 1; c = d.nodes[c].next; }
+    // insertion sort by raw key
+    for i: 1..<n { j := i; while j > 0 && dk_less(jv_key(d, kids[j]), jv_key(d, kids[j - 1])) { t := kids[j]; kids[j] = kids[j - 1]; kids[j - 1] = t; j -= 1; } }
+    jo_obj(o);
+    for i: 0..<n { jo_value(o); jo_byte(o, '"'); jo_put(o, jv_key(d, kids[i])); jo_byte(o, '"'); jo_byte(o, ':'); o[0].keyed = true; dk_sorted(d, kids[i], o); }
+    jo_end(o);
+  } else if k == JV_ARRAY {
+    jo_arr(o);
+    c := d.nodes[at].first;
+    while c >= 0 { dk_sorted(d, c, o); c = d.nodes[c].next; }
+    jo_end(o);
+  } else if k == JV_STRING { jo_value(o); jo_byte(o, '"'); jo_put(o, jv_raw(d, at)); jo_byte(o, '"'); }
+  else { jo_raw(o, jv_raw(d, at)); }
+}
+dk_less :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+#test "sorted keys, nested" {
+  nodes: [64] JvNode; d: [1] Jv; b: [512] u8; o: [1] Jo;
+  #assert jv_parse(d[..], "{\"name\":\"DP-1\",\"at\":{\"y\":0,\"x\":0},\"size\":{\"width\":2560,\"height\":1440},\"scale\":1.0,\"desk\":1,\"l\":[{\"b\":true,\"a\":null}]}", nodes[..]);
+  jo_start(o[..], b[..]); dk_sorted(d[0], 0, o[..]);
+  #assert jo_text(o[..]) == "{\"at\":{\"x\":0,\"y\":0},\"desk\":1,\"l\":[{\"a\":null,\"b\":true}],\"name\":\"DP-1\",\"scale\":1.0,\"size\":{\"height\":1440,\"width\":2560}}";
+  #assert dk_less("a", "b") && dk_less("a", "ab") && !dk_less("b", "a") && !dk_less("a", "a");
+}
+
+// reading: the desks the screens and windows name, by id (a screen's desk, then each window's,
+// counted), with the first screen name each gave; then the whole object with sorted keys.
+dk_reading :: (screens: Jv, focused: Jv, windows: Jv, o: [] Jo) {
+  ids: [64] int; names: [64] string; counts: [64] int; n := 0;
+  sa := jv_get(screens, 0, "screens");
+  c := ifx jv_kind(screens, sa) == JV_ARRAY then screens.nodes[sa].first else -1;
+  while c >= 0 { n = dk_row(ids[..], names[..], counts[..], n, jv_int(screens, jv_get(screens, c, "desk"), 0), jv_raw(screens, jv_get(screens, c, "name")), 0); c = screens.nodes[c].next; }
+  wa := jv_get(windows, 0, "windows");
+  c = ifx jv_kind(windows, wa) == JV_ARRAY then windows.nodes[wa].first else -1;
+  while c >= 0 { n = dk_row(ids[..], names[..], counts[..], n, jv_int(windows, jv_get(windows, c, "desk"), 0), jv_raw(windows, jv_get(windows, c, "screen")), 1); c = windows.nodes[c].next; }
+  for i: 1..<n { j := i; while j > 0 && ids[j] < ids[j - 1] { ti := ids[j]; ids[j] = ids[j - 1]; ids[j - 1] = ti; tn := names[j]; names[j] = names[j - 1]; names[j - 1] = tn; tc := counts[j]; counts[j] = counts[j - 1]; counts[j - 1] = tc; j -= 1; } }
+  jo_obj(o);
+  jo_key(o, "desks"); jo_arr(o);
+  for i: 0..<n {
+    jo_obj(o); jo_key(o, "id"); jo_int(o, ids[i]);
+    jo_key(o, "screen"); jo_value(o); jo_byte(o, '"'); jo_put(o, names[i]); jo_byte(o, '"');
+    jo_key(o, "windows"); jo_int(o, counts[i]); jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "focused");
+  fw := jv_get(focused, 0, "window");
+  fs := ifx jv_kind(focused, fw) == JV_OBJECT then jv_get(focused, fw, "screen") else -1;
+  if jv_kind(focused, fs) == JV_STRING && jv_raw(focused, fs).count > 0 { jo_value(o); jo_byte(o, '"'); jo_put(o, jv_raw(focused, fs)); jo_byte(o, '"'); } else { jo_null(o); }
+  jo_key(o, "screens");
+  if jv_kind(screens, sa) == JV_ARRAY { dk_sorted(screens, sa, o); } else { jo_raw(o, "[]"); }
+  jo_end(o);
+}
+dk_row :: (ids: [] int, names: [] string, counts: [] int, n: int, id: int, screen: string, add: int) -> int {
+  for i: 0..<n {
+    if ids[i] == id { counts[i] += add; if names[i].count == 0 { names[i] = screen; } return n; }
+  }
+  if n >= ids.count { return n; }
+  ids[n] = id; names[n] = screen; counts[n] = add;
+  return n + 1;
+}
+#test "reading, as the Rust client prints it" {
+  n1: [64] JvNode; n2: [64] JvNode; n3: [64] JvNode; s: [1] Jv; f: [1] Jv; w: [1] Jv; b: [1024] u8; o: [1] Jo;
+  #assert jv_parse(s[..], "{\"generation\":1,\"type\":\"screens\",\"screens\":[{\"name\":\"DP-1\",\"at\":{\"x\":0,\"y\":0},\"size\":{\"width\":2560,\"height\":1440},\"scale\":1.0,\"desk\":1}]}", n1[..]);
+  #assert jv_parse(f[..], "{\"generation\":1,\"type\":\"focused\",\"window\":null}", n2[..]);
+  #assert jv_parse(w[..], "{\"generation\":1,\"type\":\"windows\",\"windows\":[]}", n3[..]);
+  jo_start(o[..], b[..]); dk_reading(s[0], f[0], w[0], o[..]);
+  #assert jo_text(o[..]) == "{\"desks\":[{\"id\":1,\"screen\":\"DP-1\",\"windows\":0}],\"focused\":null,\"screens\":[{\"at\":{\"x\":0,\"y\":0},\"desk\":1,\"name\":\"DP-1\",\"scale\":1.0,\"size\":{\"height\":1440,\"width\":2560}}]}";
+  // windows on another desk and the focus on a screen
+  #assert jv_parse(f[..], "{\"generation\":1,\"type\":\"focused\",\"window\":{\"screen\":\"DP-1\",\"desk\":3}}", n2[..]);
+  #assert jv_parse(w[..], "{\"generation\":1,\"type\":\"windows\",\"windows\":[{\"desk\":3,\"screen\":\"DP-1\"},{\"desk\":1,\"screen\":\"DP-1\"},{\"desk\":3,\"screen\":\"\"}]}", n3[..]);
+  jo_start(o[..], b[..]); dk_reading(s[0], f[0], w[0], o[..]);
+  #assert jo_text(o[..]) == "{\"desks\":[{\"id\":1,\"screen\":\"DP-1\",\"windows\":1},{\"id\":3,\"screen\":\"DP-1\",\"windows\":2}],\"focused\":\"DP-1\",\"screens\":[{\"at\":{\"x\":0,\"y\":0},\"desk\":1,\"name\":\"DP-1\",\"scale\":1.0,\"size\":{\"height\":1440,\"width\":2560}}]}";
+}
+
+// ---- the socket
+
+// One request line on the desk's socket and its answer line (without the newline) into out:
+// its length, or -1 when nothing answers on the socket, -2 when it stopped answering.
+dk_speak :: (socket: string, line: string, out: [] u8) -> int {
+  for c: socket { r := cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(DK_ANSWER_MS);
+  if h < 0 { return -1; }
+  for c: line { r := cxsock_write(h, cast(int) c); }
+  r := cxsock_write(h, 10);
+  if cxsock_flush(h, DK_ANSWER_MS) != 0 { x := cxsock_close(h); return -2; }
+  n := 0;
+  while n < out.count {
+    got := cxsock_read(h, DK_ANSWER_MS);
+    if got == -1 { break; }   // the end of the stream
+    if got < 0 { x := cxsock_close(h); return -2; }
+    done := false;
+    for i: 0..<got {
+      c := cxsock_byte(h, i);
+      if c == 10 { done = true; break; }
+      if n < out.count { out[n] = cast,trunc(u8) c; n += 1; }
+    }
+    if done { break; }
+  }
+  x := cxsock_close(h);
+  return n;
+}
+// Whether something answers on the socket.
+dk_answers :: (socket: string) -> bool {
+  for c: socket { r := cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(DK_ANSWER_MS);
+  if h < 0 { return false; }
+  x := cxsock_close(h);
+  return true;
+}
+
+dk_unreachable :: (socket: string) {
+  tool_err("error: this run names a desktop session that is no longer there. Its control socket at ");
+  tool_err(socket); tool_errln(" does not answer, so the session has ended or it belongs to another user.");
+}
+
+// One verb asked and its answer parsed into d: 0, or the exit status (its sentence printed).
+dk_ask :: (socket: string, line: string, want: string, text: [] u8, d: [] Jv, nodes: [] JvNode) -> int {
+  n := dk_speak(socket, line, text);
+  if n == -1 { dk_unreachable(socket); return DK_UNREACHABLE; }
+  if n < 0 { tool_errln("error: the desk stopped answering"); return DK_UNREADABLE; }
+  ok := jv_parse(d, cast(string) text[0..<n], nodes);
+  m: [4096] u8;
+  v := dk_verdict(d[0], want, m[..]);
+  if v.code == DK_REFUSED { tool_err("error: the desk refused the request: "); tool_errln(v.say); }
+  else if v.code != 0 { tool_errln(v.say); }
+  return v.code;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: coder-desk VERB [ARGS...]"); return DK_USAGE; }
+  argv: [32] string; nargs := args_count(a[..]);
+  if nargs > 32 { tool_errln("error: too many arguments"); return DK_USAGE; }
+  for i: 0..<nargs { argv[i] = args_at(a[..], i); }
+  lb: [65536] u8;
+  r := dk_request(argv[0..<nargs], lb[..]);
+  if r.bad != "" { tool_errln(r.bad); return DK_USAGE; }
+  // the desk this run is inside
+  sb: [4096] u8; qb: [4096] u8; hb: [256] u8;
+  socket := proc_getenv("CODER_DESK_SOCKET", sb[..]);
+  if socket.count == 0 { socket = proc_getenv("CODER_QUEST_SOCKET", qb[..]); }
+  if socket.count == 0 {
+    if proc_getenv("HYPRLAND_INSTANCE_SIGNATURE", hb[..]).count > 0 {
+      tool_errln("error: this is a Hyprland session with no desk socket; this coder-desk speaks the desk protocol only (the Rust client's Hyprland backend is not ported)");
+      return DK_UNREACHABLE;
+    }
+    tool_errln(DK_NO_SESSION_COPY); return DK_NO_SESSION;
+  }
+  if !dk_answers(socket) { dk_unreachable(socket); return DK_UNREACHABLE; }
+  line := cast(string) lb[0..<r.n];
+  text: [DK_MAX_LINE] u8; nodes: [16384] JvNode; d: [1] Jv;
+  v := r.verb;
+  if v == "status" {
+    print("backend: native\nsocket: %", socket);
+    if dk_ask(socket, line, "status", text[..], d[..], nodes[..]) == 0 {
+      print("\nhands: %", ifx jv_bool(d[0], jv_path(d[0], 0, "hands.on")) then "on" else "off");
+    }
+    print("\n");
+    return 0;
+  }
+  if v == "list" || v == "screens" || v == "focused" {
+    want := ifx v == "list" then "windows" else v;
+    code := dk_ask(socket, line, want, text[..], d[..], nodes[..]);
+    if code != 0 { return code; }
+    print("%\n", jv_raw(d[0], jv_get(d[0], 0, ifx v == "list" then "windows" else ifx v == "screens" then "screens" else "window")));
+    return 0;
+  }
+  if v == "reading" {
+    t2: [65536] u8; n2: [2048] JvNode; d2: [1] Jv;   // a focused answer is one window
+    t3: [DK_MAX_LINE] u8; n3: [16384] JvNode; d3: [1] Jv;
+    code := dk_ask(socket, "{\"generation\":1,\"type\":\"screens\"}", "screens", text[..], d[..], nodes[..]);
+    if code == 0 { code = dk_ask(socket, "{\"generation\":1,\"type\":\"focused\"}", "focused", t2[..], d2[..], n2[..]); }
+    if code == 0 { code = dk_ask(socket, "{\"generation\":1,\"type\":\"list\"}", "windows", t3[..], d3[..], n3[..]); }
+    if code != 0 { return code; }
+    ob: [262144] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+    dk_reading(d[0], d2[0], d3[0], o[..]);
+    if o[0].bad { tool_errln("error: this command could not write what the desk answered"); return DK_UNREADABLE; }
+    print("%\n", jo_text(o[..]));
+    return 0;
+  }
+  return dk_ask(socket, line, "done", text[..], d[..], nodes[..]);
+}

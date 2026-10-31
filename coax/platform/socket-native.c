@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/un.h>
 
 typedef struct {
   int fd;                 /* -1 when the slot is free */
@@ -78,6 +79,40 @@ int64_t cxsock_connect(int64_t port, int64_t timeout_ms) {
   cxsock_host_len = 0; cxsock_host_bad = 0;
   if (bad) return CXSOCK_ERROR;
   return cxsock_connect_host(host, port, timeout_ms);
+}
+
+int64_t cxsock_connect_unix(int64_t timeout_ms) {
+  cxsock_init();
+  struct sockaddr_un addr;
+  int bad = cxsock_host_bad || cxsock_host_len == 0 || cxsock_host_len >= (int)sizeof addr.sun_path || timeout_ms < 0;
+  cxsock_host[cxsock_host_len] = 0;
+  memset(&addr, 0, sizeof addr);
+  addr.sun_family = AF_UNIX;
+  if (!bad) memcpy(addr.sun_path, cxsock_host, (size_t)cxsock_host_len);
+  cxsock_host_len = 0; cxsock_host_bad = 0;
+  if (bad) return CXSOCK_ERROR;
+  int slot = -1;
+  for (int i = 0; i < CXSOCK_MAX; i++) if (cxsock_slots[i].fd < 0) { slot = i; break; }
+  if (slot < 0) return CXSOCK_FULL;
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0) return CXSOCK_ERROR;
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
+#ifdef SO_NOSIGPIPE
+  int one = 1; setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+  if (connect(fd, (struct sockaddr *)&addr, sizeof addr) != 0) {
+    if (errno != EINPROGRESS && errno != EAGAIN) { close(fd); return CXSOCK_REFUSED; }
+    int w = cxsock_wait(fd, POLLOUT, cxsock_now_ms() + timeout_ms);
+    int err = 0; socklen_t len = sizeof err;
+    if (w != 0) { close(fd); return w; }
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) != 0 || err != 0) { close(fd); return CXSOCK_REFUSED; }
+  }
+  cxsock_slot *s = &cxsock_slots[slot];
+  if (s->out == NULL) s->out = (unsigned char *)malloc(CXSOCK_MAX_OUT);
+  if (s->out == NULL) { close(fd); return CXSOCK_ERROR; }
+  s->fd = fd; s->in_count = 0; s->out_count = 0;
+  return slot;
 }
 
 int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms) {
