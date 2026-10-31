@@ -28,6 +28,7 @@
 #load "../../verse/gravity.coax";
 #load "../../verse/thrust.coax";
 #load "../../verse/drum.coax";
+#load "../../verse/sphere.coax";
 #load "socket.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -164,6 +165,11 @@ ROOM_NAME :: 32;
 ROOM_PLAYERS :: 4;      // the most cars in a room
 ROOM_HZ :: 60.0;        // the server's tick, and how often a player reports its car
 ROOM_OFF :: 0; ROOM_JOINING :: 1; ROOM_IN :: 2; ROOM_LOST :: 3;
+SPHERE_R :: 24.0;       // the sphere arena's radius (ol-sphere-arena): about the drum's floor area
+SPHERE_GOAL_R :: 4.0;   // each pole's goal: the cap within this of the axis
+SPHERE_SPAWN :: 14.0;   // metres round the curve from the lowest point that each car starts
+SPHERE_PAD_Z :: 0.65;   // the pads' z, scaled to stay out of the goal caps
+ARENA_BOX :: 0; ARENA_DRUM :: 1; ARENA_SPHERE :: 2;
 DRUM_R :: 15.0;         // the drum arena's radius, metres; it is as long as the box
 CAM_BALL_OFF :: 0.3;   // radians: the furthest ball cam puts the ball off centre to fit the car in
 
@@ -213,6 +219,7 @@ OrbitLeague :: struct {
   bot_aim: f64;               // its aim's miss on this approach, metres across the goal
   no_bot: bool;               // ?bot=0: practice alone
   drum: bool;                 // ?arena=drum: the drum, not the box
+  sphere: bool;               // ?arena=sphere: the sphere (drum is then false)
   spin_every: f64 = SPIN_EVERY;   // seconds at spin between spin-downs; 0: never (ol-spin-down)
   spin_g: f64 = 1.0;              // the spin's gravity in g: 1, or HALF_SPIN
   spin_now: f64 = 1.0;            // the spin now, 0 to 1 (spin_share)
@@ -240,11 +247,71 @@ OrbitLeague :: struct {
 // ---- the arena
 
 arena_drum :: () -> Drum { return drum_on_floor(DRUM_R, ARENA_HZ); }
-// Which way is up for something standing at p: the floor's, or the drum's.
-up_at :: (s: [] OrbitLeague, p: D3) -> D3 { return ifx s[0].drum then drum_up(arena_drum(), p) else D3_Y; }
-// The arena's half width and height for the goal ends' walls.
-arena_hx :: (s: [] OrbitLeague) -> f64 { return ifx s[0].drum then DRUM_R else ARENA_HX; }
-arena_h :: (s: [] OrbitLeague) -> f64 { return ifx s[0].drum then 2.0 * DRUM_R else ARENA_H; }
+arena_sphere :: () -> Sphere { return sphere_on_floor(SPHERE_R); }
+// The drum or the sphere: a curved floor that goes on round.
+curved :: (s: [] OrbitLeague) -> bool { return s[0].drum || s[0].sphere; }
+arena_kind :: (s: [] OrbitLeague) -> int { return ifx s[0].sphere then ARENA_SPHERE else ifx s[0].drum then ARENA_DRUM else ARENA_BOX; }
+// Which way is up for something standing at p: the floor's, the drum's or the sphere's.
+up_at :: (s: [] OrbitLeague, p: D3) -> D3 {
+  if s[0].sphere { return sphere_up(arena_sphere(), p); }
+  return ifx s[0].drum then drum_up(arena_drum(), p) else D3_Y;
+}
+// How far p is in from the floor under it (the curve's, or the box floor's).
+clearance :: (s: [] OrbitLeague, p: D3) -> f64 {
+  if s[0].sphere { return sphere_clearance(arena_sphere(), p); }
+  return ifx s[0].drum then drum_clearance(arena_drum(), p) else p.y;
+}
+// The arena's half width and height.
+arena_hx :: (s: [] OrbitLeague) -> f64 { return ifx s[0].sphere then SPHERE_R else ifx s[0].drum then DRUM_R else ARENA_HX; }
+arena_h :: (s: [] OrbitLeague) -> f64 { return 2.0 * arena_hx(s) * (ifx curved(s) then 1.0 else ARENA_H / (2.0 * ARENA_HX)); }
+// The sphere's goal line: a ball's centre past this z (toward a pole) is in.
+sphere_goal_z :: () -> f64 { r := SPHERE_R - BALL_R; return sqrt(r * r - SPHERE_GOAL_R * SPHERE_GOAL_R); }
+// The team that scored with the ball's centre at z: BLUE past +z's line, MAGENTA past -z's, or -1.
+goal_past :: (s: [] OrbitLeague, z: f64) -> int {
+  line := ifx s[0].sphere then sphere_goal_z() else ARENA_HZ + BALL_R;
+  return ifx z > line then BLUE else ifx z < -line then MAGENTA else -1;
+}
+// Where the goal you attack (team BLUE: +z) or defend is, for the bot's aim.
+goal_point :: (s: [] OrbitLeague, z_sign: f64) -> D3 {
+  if s[0].sphere { return d3(0.0, SPHERE_R, z_sign * SPHERE_R); }
+  return d3(0.0, 0.0, z_sign * (ARENA_HZ + 2.0));
+}
+// The point over the floor at floor coordinates (x, z), lift up, and its frame.
+floor_point :: (s: [] OrbitLeague, x: f64, z: f64, lift: f64) -> D3 {
+  if s[0].sphere { return sphere_at(arena_sphere(), x, z, lift); }
+  if s[0].drum { return drum_turn(d3(0.0, lift, z), x / DRUM_R); }
+  return d3(x, lift, z);
+}
+floor_turn :: (s: [] OrbitLeague, x: f64, z: f64) -> DQ {
+  if s[0].sphere { return sphere_turn(arena_sphere(), x, z); }
+  return ifx s[0].drum then dq_z(x / DRUM_R) else DQ.{};
+}
+
+// Seen from where something is: the rotation that takes the floor's frame at
+// the arena's lowest point (up +y) to the frame at p, about the curve's
+// centre. In the box nothing turns; in the drum it is Rz(drum_angle); in the
+// sphere the shortest turn from +y to the up at p.
+frame_at :: (s: [] OrbitLeague, p: D3) -> DQ {
+  if s[0].drum { return dq_z(drum_angle(arena_drum(), p)); }
+  if !s[0].sphere { return DQ.{}; }
+  up := sphere_up(arena_sphere(), p);
+  w := 1.0 + up.y;
+  if w < 0.000001 { return dq_z(PI_D); }
+  // the shortest arc from +y to up: axis y x up, half the angle
+  return dq_unit(dq(up.z, 0.0, -up.x, w));
+}
+curve_centre :: (s: [] OrbitLeague) -> D3 { return d3(0.0, arena_hx(s), 0.0); }
+// p seen from the frame q (into the lowest point's frame), and back.
+to_floor :: (s: [] OrbitLeague, p: D3, q: DQ) -> D3 {
+  if !curved(s) { return p; }
+  c := curve_centre(s);
+  return d3_add(c, dq_rotate(dq_conj(q), d3_sub(p, c)));
+}
+from_floor :: (s: [] OrbitLeague, p: D3, q: DQ) -> D3 {
+  if !curved(s) { return p; }
+  c := curve_centre(s);
+  return d3_add(c, dq_rotate(q, d3_sub(p, c)));
+}
 
 // The drum seen from where the car is: Rz(a) about the drum's axis turns the
 // floor's lowest line to the line at angle a round it (drum_angle).
@@ -292,6 +359,8 @@ build_boxes :: (s: [] OrbitLeague) {
     s[0].boxes[k + 4] = sbox(-GOAL_HW - WALL, -1.0, fmin(za, zn), -GOAL_HW, GOAL_H + WALL, fmax(za, zn));
     s[0].boxes[k + 5] = sbox(GOAL_HW, -1.0, fmin(za, zn), GOAL_HW + WALL, GOAL_H + WALL, fmax(za, zn));
   }
+  // the sphere has no frames: its goals are caps of its curve
+  if s[0].sphere { for k: 0..<BOXES { s[0].boxes[k] = sbox(-1.0, -1001.0, -1.0, 1.0, -1000.0, 1.0); } }
 }
 
 // ---- the match
@@ -311,8 +380,7 @@ pad_at :: (i: int) -> D3 {
 // the distance round the curve from the floor's lowest line).
 pad_world :: (s: [] OrbitLeague, i: int) -> D3 {
   p := pad_at(i);
-  if !s[0].drum { return d3(p.x, 0.0, p.z); }
-  return drum_turn(d3(0.0, 0.0, p.z), p.x / DRUM_R);
+  return floor_point(s, p.x, ifx s[0].sphere then p.z * SPHERE_PAD_Z else p.z, 0.0);
 }
 pad_wait_of :: (i: int) -> f64 { return ifx pad_at(i).y > 0.5 then PAD_BIG_WAIT else PAD_SMALL_WAIT; }
 
@@ -322,7 +390,7 @@ take_pads :: (s: [] OrbitLeague, dt: f64) {
   for c: 0..<2 {
     b := s[0].bodies[c + 1];
     // its height off the floor (in the drum: in from the rim)
-    off := ifx s[0].drum then drum_clearance(arena_drum(), b.pos) else b.pos.y;
+    off := clearance(s, b.pos);
     if off > 2.0 || s[0].tanks[c].fuel >= 100.0 { continue; }
     for i: 0..<PADS {
       if s[0].pad_wait[i] > 0.0 { continue; }
@@ -343,6 +411,13 @@ kickoff :: (s: [] OrbitLeague) {
   s[0].bodies[YOU] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, 1.0, -SPAWN_Z), DQ.{});
   s[0].bodies[BOT] = vehicle_body(s[0].spec, CAR_MASS, ifx s[0].no_bot then d3(arena_hx(s) - 3.0, 1.0, ARENA_HZ - 4.0) else d3(0.0, 1.0, SPAWN_Z), dq_y(PI_D));
   if s[0].no_bot && s[0].drum { s[0].bodies[BOT].pos = d3(0.0, 1.0, ARENA_HZ - 4.0); }
+  if s[0].sphere {
+    s[0].bodies[BALL].pos = floor_point(s, 0.0, 0.0, BALL_R + 0.02);
+    s[0].bodies[YOU].pos = floor_point(s, 0.0, -SPHERE_SPAWN, 1.0); s[0].bodies[YOU].orientation = floor_turn(s, 0.0, -SPHERE_SPAWN);
+    // without the bot its car parks round the side, out of the way
+    bx := ifx s[0].no_bot then SPHERE_R * 1.3 else 0.0;
+    s[0].bodies[BOT].pos = floor_point(s, bx, SPHERE_SPAWN, 1.0); s[0].bodies[BOT].orientation = dq_mul(floor_turn(s, bx, SPHERE_SPAWN), dq_y(PI_D));
+  }
   for c: 0..<2 {
     s[0].cars[c] = VehicleState.{};
     s[0].tanks[c] = tank(fmax(s[0].tanks[c].fuel, BOOST_START), 100.0, false);
@@ -367,7 +442,7 @@ new_match :: (s: [] OrbitLeague) {
 game_reset :: (s: [] OrbitLeague) {
   s[0].started = true;
   s[0].spec = vehicle_roadster();
-  s[0].field = ifx s[0].drum then drum_field(arena_drum(), FULL_SPIN_G) else gravity_constant(d3(0.0, -FULL_SPIN_G, 0.0));
+  s[0].field = arena_field(s);
   s[0].stick_id = -1; s[0].hover = -1;
   for b: 0..<BUTTONS { s[0].button_id[b] = -1; }
   build_boxes(s);
@@ -464,7 +539,7 @@ ball_hit :: (ball: RigidBody, car: RigidBody, spec: VehicleSpec, ct: Contact) ->
 
 bot_drive :: (s: [] OrbitLeague) -> Drive {
   me := s[0].bodies[BOT]; bl := s[0].bodies[BALL];
-  goal := d3(0.0, 0.0, -ARENA_HZ - 2.0);     // it attacks your goal, at -z
+  goal := goal_point(s, -1.0);     // it attacks your goal, at -z
   out: Drive;
   if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
   if s[0].no_bot { return out; }
@@ -473,16 +548,19 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   if s[0].played - s[0].bot_touch_t < bot_recover(s) { out.input.throttle = 0.2; return out; }
   // it aims at a point across your goal mouth that misses by bot_aim
   goal.x = fclamp(s[0].bot_aim, -GOAL_HW - 6.0, GOAL_HW + 6.0);
+  // the sphere's goal is a cap SPHERE_GOAL_R round: the miss in the same proportion
+  if s[0].sphere { goal.x *= SPHERE_GOAL_R / GOAL_HW; }
   aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
   // ahead of where the ball goes: a short lead on its velocity
   lead := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
   target := d3_sub(lead, d3_scale(aim, 3.0));
   // on the wrong side of the ball (between it and our goal): go round, back toward its own goal
-  if me.pos.z < bl.pos.z - 1.0 { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), 0.0, bl.pos.z + 9.0); }
+  if me.pos.z < bl.pos.z - 1.0 { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), ifx s[0].sphere then bl.pos.y else 0.0, bl.pos.z + 9.0); }
   target.x = fclamp(target.x, -arena_hx(s) + 2.0, arena_hx(s) - 2.0);
-  target.z = fclamp(target.z, -ARENA_HZ + 2.0, ARENA_HZ - 2.0);
-  a := ifx s[0].drum then steer_local(me, target) else steer_to(me, target);
-  dist := ifx s[0].drum then d3_dist(target, me.pos) else d3_len(d3(target.x - me.pos.x, 0.0, target.z - me.pos.z));
+  hz := ifx s[0].sphere then SPHERE_R - 2.0 else ARENA_HZ;
+  target.z = fclamp(target.z, -hz + 2.0, hz - 2.0);
+  a := ifx curved(s) then steer_local(me, target) else steer_to(me, target);
+  dist := ifx curved(s) then d3_dist(target, me.pos) else d3_len(d3(target.x - me.pos.x, 0.0, target.z - me.pos.z));
   out.input.steer = fclamp(a * 2.2, -1.0, 1.0);
   out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else ifx s[0].drum then BOT_DRUM_THROTTLE else BOT_THROTTLE;
   out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
@@ -566,6 +644,11 @@ stage_hold :: (s: [] OrbitLeague) {
 // The ball against the arena: the floor, glass or curve, and the goal ends.
 ball_arena :: (s: [] OrbitLeague) {
   bp := ball_planes();
+  if s[0].sphere {
+    ct := sphere_ball(arena_sphere(), s[0].bodies[BALL].pos, BALL_R);
+    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
+    return;
+  }
   if s[0].drum {
     // the curve, inside the drum; in a goal its flat floor
     bpos := s[0].bodies[BALL].pos;
@@ -592,8 +675,8 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   dm := arena_drum();
   for c: 0..<2 {
     i := c + 1;
-    dp := drum_planes(dm, s[0].bodies[i].pos);
-    st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, ifx s[0].drum then dp[..] else cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
+    dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[i].pos) else drum_planes(dm, s[0].bodies[i].pos);
+    st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, ifx curved(s) then dp[..] else cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
     s[0].bodies[i] = st.body;
     if st.state.jumps > s[0].cars[c].jumps && c == 0 { s[0].jumped[0] = true; }
     s[0].cars[c] = st.state;
@@ -616,8 +699,8 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   w = rigid_step(w, D3_ZERO);
   // the cars against the arena, the ball, each other
   for c: 0..<2 {
-    dp := drum_planes(dm, s[0].bodies[c + 1].pos);
-    s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, ifx s[0].drum then dp[..] else cp[..], 0.1, CAR_WALL_MU);
+    dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[c + 1].pos) else drum_planes(dm, s[0].bodies[c + 1].pos);
+    s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, ifx curved(s) then dp[..] else cp[..], 0.1, CAR_WALL_MU);
   }
   ball_arena(s);
   for c: 0..<2 {
@@ -669,11 +752,11 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
     if s[0].stuck_for[c] > STUCK_TIME {
       b := s[0].bodies[i];
       // set down where it is, facing the way it faced, on the floor under it
-      a := ifx s[0].drum then drum_angle(dm, b.pos) else 0.0;
-      f := drum_turn_dir(rigid_axis(b, D3_Z), -a);
-      on := ifx s[0].drum then drum_turn(d3(0.0, 0.0, b.pos.z), -a) else b.pos;
-      b.orientation = dq_mul(dq_z(a), dq_y(atan2_d(f.x, f.z)));
-      b.pos = ifx s[0].drum then drum_turn(d3(on.x, 1.2, on.z), a) else d3(b.pos.x, 1.2, b.pos.z);
+      q := frame_at(s, b.pos);
+      f := dq_rotate(dq_conj(q), rigid_axis(b, D3_Z));
+      on := to_floor(s, b.pos, q);
+      b.orientation = dq_mul(q, dq_y(atan2_d(f.x, f.z)));
+      b.pos = from_floor(s, d3(on.x, 1.2, on.z), q);
       b.vel = D3_ZERO; b.omega = D3_ZERO;
       s[0].bodies[i] = b;
       s[0].stuck_for[c] = 0.0;
@@ -682,8 +765,15 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   // anything that left the arena (it shouldn't) comes back to the kickoff
   for i: 0..<BODIES {
     p := s[0].bodies[i].pos;
-    if !d3_finite(p) || abs(p.x) > arena_hx(s) + 4.0 || p.y < -3.0 || p.y > arena_h(s) + 4.0 || abs(p.z) > ARENA_HZ + GOAL_D + 4.0 { kickoff(s); return; }
+    if out_of_arena(s, p) { kickoff(s); return; }
   }
+}
+
+// Something that left the arena (it shouldn't): through the glass or the curve.
+out_of_arena :: (s: [] OrbitLeague, p: D3) -> bool {
+  if !d3_finite(p) { return true; }
+  if s[0].sphere { return sphere_clearance(arena_sphere(), p) < -4.0; }
+  return abs(p.x) > arena_hx(s) + 4.0 || p.y < -3.0 || p.y > arena_h(s) + 4.0 || abs(p.z) > ARENA_HZ + GOAL_D + 4.0;
 }
 
 goal_scored :: (s: [] OrbitLeague, team: int) {
@@ -735,11 +825,15 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     drives[0] = you_drive(s);
     drives[1] = bot_drive(s);
     if s[0].phase == PHASE_OVER { drives[0] = Drive.{}; drives[1] = Drive.{}; }
+    // the sphere's curve slopes down to its equator everywhere off it: through
+    // the countdown the cars and the ball wait where they were set
+    held: [BODIES] RigidBody;
+    for i: 0..<BODIES { held[i] = s[0].bodies[i]; }
     physics_step(s, drives);
+    if s[0].sphere && s[0].phase == PHASE_KICKOFF { for i: 0..<BODIES { s[0].bodies[i] = held[i]; } }
     if s[0].phase == PHASE_PLAY && !s[0].online {
-      z := s[0].bodies[BALL].pos.z;
-      if z > ARENA_HZ + BALL_R { goal_scored(s, BLUE); }
-      else if z < -ARENA_HZ - BALL_R { goal_scored(s, MAGENTA); }
+      team := goal_past(s, s[0].bodies[BALL].pos.z);
+      if team >= 0 { goal_scored(s, team); }
     }
   }
 }
@@ -874,6 +968,7 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if !s[0].started { game_reset(s); }
   if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "arena=drum") { set_arena(s, true); }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "arena=sphere") { set_arena_kind(s, ARENA_SPHERE); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=60") { s[0].spin_every = 60.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=off") { s[0].spin_every = 0.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=half") { s[0].spin_g = HALF_SPIN; }
@@ -888,11 +983,17 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
 }
 
 // The box or the drum: a new match in it.
-set_arena :: (s: [] OrbitLeague, drum: bool) {
-  s[0].drum = drum;
-  s[0].field = ifx drum then drum_field(arena_drum(), FULL_SPIN_G) else gravity_constant(d3(0.0, -FULL_SPIN_G, 0.0));
+set_arena :: (s: [] OrbitLeague, drum: bool) { set_arena_kind(s, ifx drum then ARENA_DRUM else ARENA_BOX); }
+set_arena_kind :: (s: [] OrbitLeague, kind: int) {
+  s[0].drum = kind == ARENA_DRUM; s[0].sphere = kind == ARENA_SPHERE;
+  s[0].field = arena_field(s);
   build_boxes(s);
   new_match(s);
+}
+// The spin's field: the box's floor pulls down; the drum and the sphere spin.
+arena_field :: (s: [] OrbitLeague) -> GravityField {
+  if s[0].sphere { return sphere_field(arena_sphere(), FULL_SPIN_G); }
+  return ifx s[0].drum then drum_field(arena_drum(), FULL_SPIN_G) else gravity_constant(d3(0.0, -FULL_SPIN_G, 0.0));
 }
 
 // ---- the online room (ol-room)
@@ -1002,11 +1103,11 @@ room_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
   if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
   if s[0].phase == PHASE_PLAY {
     z := s[0].bodies[BALL].pos.z;
-    team := ifx z > ARENA_HZ + BALL_R then BLUE else ifx z < -ARENA_HZ - BALL_R then MAGENTA else -1;
+    team := goal_past(s, z);
     if team >= 0 { s[0].score[team] += 1; s[0].last_goal = team; s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0; }
   }
   p := s[0].bodies[BALL].pos;
-  if !d3_finite(p) || abs(p.x) > arena_hx(s) + 4.0 || p.y < -3.0 || p.y > arena_h(s) + 4.0 || abs(p.z) > ARENA_HZ + GOAL_D + 4.0 { room_kickoff(s); }
+  if out_of_arena(s, p) { room_kickoff(s); }
 }
 // The state frame for the player in `seat`; cars[i] is seat seats[i]'s.
 room_state :: (s: [] OrbitLeague, tick: int, seat: int, cars: [] RigidBody, seats: [] int, players: int, buf: [] u8) -> int {
@@ -1210,7 +1311,7 @@ game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: i
       s[0].button_id[b] = id;
       if b == BTN_CAM { toggle_cam(s); }
       if b == BTN_AGAIN { play_again(s); }
-      if b == BTN_ARENA { set_arena(s, !s[0].drum); track_tally(s[0].track[..], ifx s[0].drum then "drum" else "box", ""); }
+      if b == BTN_ARENA { set_arena_kind(s, (arena_kind(s) + 1) % 3); track_tally(s[0].track[..], ifx s[0].sphere then "sphere" else ifx s[0].drum then "drum" else "box", ""); }
       if b == BTN_BOOST { track_tally(s[0].track[..], "boost", ""); }
       return true;
     }
@@ -1253,17 +1354,21 @@ leaning :: (s: [] OrbitLeague, b: RigidBody, st: VehicleState) -> bool {
 
 // Within a car's height of the floor or a wall.
 near_surface :: (s: [] OrbitLeague, p: D3) -> bool {
+  if s[0].sphere { return sphere_clearance(arena_sphere(), p) < 2.6; }
   if s[0].drum { return drum_clearance(arena_drum(), p) < 2.6 || abs(p.z) > ARENA_HZ - 1.4; }
   return p.y < 2.6 || abs(p.x) > ARENA_HX - 1.4 || (abs(p.z) > ARENA_HZ - 1.4 && abs(p.x) > GOAL_HW);
 }
 
 fsign :: (x: f64) -> f64 { return ifx x < 0.0 then -1.0 else 1.0; }
 // Within a car's length of a side or end wall.
-at_glass :: (s: [] OrbitLeague, p: D3) -> bool { return (!s[0].drum && abs(p.x) > ARENA_HX - 3.2) || abs(p.z) > ARENA_HZ - 3.2; }
+at_glass :: (s: [] OrbitLeague, p: D3) -> bool { return !s[0].sphere && ((!s[0].drum && abs(p.x) > ARENA_HX - 3.2) || abs(p.z) > ARENA_HZ - 3.2); }
 
 // Where the eye can be: inside the glass, or in a goal's mouth.
-eye_inside :: (e: D3, slack: f64, drum: bool) -> bool {
+eye_inside :: (e: D3, slack: f64, kind: int) -> bool {
   m := 0.8 - slack;
+  // the sphere: anywhere inside its curve
+  if kind == ARENA_SPHERE { return sphere_clearance(arena_sphere(), e) > m + 0.4; }
+  drum := kind == ARENA_DRUM;
   if drum {
     // inside the curve, or down in a goal's mouth under it
     in_goal := abs(e.z) > ARENA_HZ - m && abs(e.x) < GOAL_HW - m && e.y > m && e.y < GOAL_H - m;
@@ -1314,9 +1419,11 @@ ball_cam_look :: (e: D3, car: D3, ball: D3) -> D3 {
 // rises or swings round the car, the least change that still frames the car
 // (and on ball cam the ball); it never leaves the arena. If nothing frames
 // both, your car wins: the edge marker shows where the ball is.
-choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens, drum: bool) -> Shot3 {
-  hh := ifx drum then 2.0 * DRUM_R else ARENA_H;
-  hx := ifx drum then DRUM_R else ARENA_HX;
+choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens, kind: int) -> Shot3 {
+  drum := kind != ARENA_BOX;
+  rc := ifx kind == ARENA_SPHERE then SPHERE_R else DRUM_R;
+  hh := ifx drum then 2.0 * rc else ARENA_H;
+  hx := ifx drum then rc else ARENA_HX;
   best := Shot3.{}; best_cost := 1000000.0;
   near := Shot3.{}; near_cost := 1000000.0;
   carp := d3_add(car, d3(0.0, 0.5, 0.0));
@@ -1328,7 +1435,7 @@ choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens, dru
     d := d3(dir.x * c + dir.z * sn, 0.0, -dir.x * sn + dir.z * c);
     e := d3_add(d3_sub(car, d3_scale(d, back)), d3(0.0, up, 0.0));
     e.y = fclamp(e.y, 0.8, hh - 0.8);
-    if !eye_inside(e, 0.0, drum) { continue; }
+    if !eye_inside(e, 0.0, kind) { continue; }
     look := ifx ball_cam then ball_cam_look(e, car, ball) else d3_unit_or(d3_sub(at, e), d);
     cost := abs(turn) + 0.15 * (CAM_BACK - back) + 0.05 * (up - CAM_UP);
     qc := lands(e, look, carp, l);
@@ -1344,8 +1451,8 @@ choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens, dru
     // no eye fits round the car (deep in a goal): above it, looking ahead
     e := d3(fclamp(car.x, -hx + 0.8, hx - 0.8), fclamp(car.y + CAM_UP + 3.0, 0.8, hh - 0.8), fclamp(car.z, -ARENA_HZ - GOAL_D + 1.0, ARENA_HZ + GOAL_D - 1.0));
     e = d3_sub(e, d3_scale(dir, 2.0));
-    if !eye_inside(e, 0.0, drum) { e.x = fclamp(e.x, -hx + 0.8, hx - 0.8); e.z = fclamp(e.z, -ARENA_HZ + 2.6, ARENA_HZ - 2.6); }
-    if drum && !eye_inside(e, 0.0, drum) { e = d3(0.0, CAM_UP + 3.0, e.z); }
+    if !eye_inside(e, 0.0, kind) { e.x = fclamp(e.x, -hx + 0.8, hx - 0.8); e.z = fclamp(e.z, -ARENA_HZ + 2.6, ARENA_HZ - 2.6); }
+    if drum && !eye_inside(e, 0.0, kind) { e = d3(0.0, CAM_UP + 3.0, e.z); }
     return Shot3.{eye = e, at = d3_add(car, d3_scale(dir, 2.0))};
   }
   if !ball_cam { return near; }
@@ -1365,11 +1472,11 @@ camera :: (s: [] OrbitLeague, dt: f32) {
   car := s[0].bodies[YOU]; bl := s[0].bodies[BALL];
   // in the drum the shot is found as if the car were on the floor's lowest
   // line, then turned back round the axis to where it is
-  turn := ifx s[0].drum then drum_angle(arena_drum(), car.pos) else 0.0;
-  if s[0].drum {
-    car.pos = drum_turn(car.pos, -turn); car.vel = drum_turn_dir(car.vel, -turn);
-    car.orientation = dq_mul(dq_z(-turn), car.orientation);
-    bl.pos = drum_turn(bl.pos, -turn);
+  turn := frame_at(s, car.pos);
+  if curved(s) {
+    car.pos = to_floor(s, car.pos, turn); car.vel = dq_rotate(dq_conj(turn), car.vel);
+    car.orientation = dq_mul(dq_conj(turn), car.orientation);
+    bl.pos = to_floor(s, bl.pos, turn);
   }
   f := rigid_axis(car, D3_Z);
   dir := d3_unit_or(d3(f.x, 0.0, f.z), D3_Z);
@@ -1379,9 +1486,9 @@ camera :: (s: [] OrbitLeague, dt: f32) {
   at := d3_add(car.pos, d3_add(d3_scale(dir, 4.0), d3(0.0, 1.0, 0.0)));
   // ball cam: behind the car on the line from the ball
   if s[0].ball_cam { to := d3_sub(bl.pos, car.pos); dir = d3_unit_or(d3(to.x, 0.0, to.z), dir); }
-  shot := choose_shot(car.pos, dir, bl.pos, s[0].ball_cam, at, lens_of(s[0].width, s[0].height), s[0].drum);
+  shot := choose_shot(car.pos, dir, bl.pos, s[0].ball_cam, at, lens_of(s[0].width, s[0].height), arena_kind(s));
   up := D3_Y;
-  if s[0].drum { shot.eye = drum_turn(shot.eye, turn); shot.at = drum_turn(shot.at, turn); up = drum_turn_dir(D3_Y, turn); }
+  if curved(s) { shot.eye = from_floor(s, shot.eye, turn); shot.at = from_floor(s, shot.at, turn); up = dq_rotate(turn, D3_Y); }
   e := f3(shot.eye); a := f3(shot.at); w := f3(up);
   k: f32 = ifx s[0].cam_ready then 1 - exp(-dt * 7.0) else 1;
   for i: 0..<3 {
@@ -1542,7 +1649,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     ab := Box.{x0 = w * 0.5 - 90 * k, y0 = h * 0.38 + 24 * k, x1 = w * 0.5 + 90 * k, y1 = h * 0.38 + 66 * k};
     v = hud_button(s, out, v, BTN_AGAIN, ab, "PLAY AGAIN", 10 * k);
     db := Box.{x0 = ab.x0, y0 = ab.y1 + 12 * k, x1 = ab.x1, y1 = ab.y1 + 46 * k};
-    v = hud_button(s, out, v, BTN_ARENA, db, ifx s[0].drum then "PLAY IN THE BOX" else "PLAY IN THE DRUM", 8 * k);
+    v = hud_button(s, out, v, BTN_ARENA, db, ifx s[0].sphere then "PLAY IN THE BOX" else ifx s[0].drum then "PLAY IN THE SPHERE" else "PLAY IN THE DRUM", 8 * k);
   }
   // boost, bottom right (above the buttons on a phone)
   fuel := cast(f32) s[0].tanks[0].fuel;
@@ -1667,7 +1774,8 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now, s[0].wheel_spin[0]);
   put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now, s[0].wheel_spin[1]);
   u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
-  u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D; u[GOAL_AT + 2] = ifx s[0].drum then cast(f32) DRUM_R else 0;
+  u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D; u[GOAL_AT + 2] = ifx s[0].sphere then cast(f32) -SPHERE_R else ifx s[0].drum then cast(f32) DRUM_R else 0;
+  u[GOAL_AT + 3] = cast(f32) SPHERE_GOAL_R;
   put_trail(u, TRAIL_AT, bl.pos, ball_glow(s), s[0].ball_trail[..], s[0].ball_k[..], 0);
   for c: 0..<2 {
     put_trail(u, TRAIL_AT + (c + 1) * (TRAIL_N + 1) * 4, nozzle(s[0].bodies[c + 1]), ifx s[0].boosting[c] then 1.0 else 0.0,
@@ -1677,7 +1785,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   u[BLAST_AT + 3] = cast(f32) s[0].blast_t; u[BLAST_AT + 4] = cast(f32) s[0].blast_team;
   for i: 0..<PADS {
     p := pad_at(i); o := PADS_AT + i * 4;
-    u[o] = cast(f32) p.x; u[o + 1] = cast(f32) p.z; u[o + 2] = cast(f32) p.y; u[o + 3] = cast(f32) (1.0 - s[0].pad_wait[i] / pad_wait_of(i));
+    u[o] = cast(f32) p.x; u[o + 1] = cast(f32) (ifx s[0].sphere then p.z * SPHERE_PAD_Z else p.z); u[o + 2] = cast(f32) p.y; u[o + 3] = cast(f32) (1.0 - s[0].pad_wait[i] / pad_wait_of(i));
   }
   n := ifx s[0].card then draw_sparks(s, out, 0) else draw_hud(s, out);
   u[5] = cast(f32) s[0].plate_n;
@@ -1934,7 +2042,7 @@ eye_of :: (s: [] OrbitLeague) -> D3 { return d3(cast(f64) s[0].eye[0], cast(f64)
       s[0].bodies[BALL].pos = b;
       s[0].cam_ready = false;
       camera(s[..], 0.016); view_rows(s[..]);
-      #assert eye_inside(eye_of(s[..]), 0.01, false);
+      #assert eye_inside(eye_of(s[..]), 0.01, ARENA_BOX);
       w := s[0].width; h := s[0].height;
       pb := seen(s[..], cast(f32) b.x, cast(f32) b.y, cast(f32) b.z);
       pc := seen(s[..], cast(f32) c.x, cast(f32) c.y + 0.5, cast(f32) c.z);
@@ -1956,7 +2064,7 @@ eye_of :: (s: [] OrbitLeague) -> D3 { return d3(cast(f64) s[0].eye[0], cast(f64)
   s[0].cam_ready = false;
   camera(s[..], 0.016); view_rows(s[..]);
   pc := seen(s[..], -23.5, 1.0, -38.5);
-  #assert eye_inside(eye_of(s[..]), 0.01, false) && pc.ok && pc.x > 0 && pc.x < 1440 && pc.y > 0 && pc.y < 900 && pc.w > 3.0;
+  #assert eye_inside(eye_of(s[..]), 0.01, ARENA_BOX) && pc.ok && pc.x > 0 && pc.x < 1440 && pc.y > 0 && pc.y < 900 && pc.w > 3.0;
 }
 
 // Drive into the glass (or across open floor at x), then hold `held` for
@@ -2319,4 +2427,74 @@ hit_way :: (spec: VehicleSpec, car: RigidBody, ball_at: D3, ball_vel: D3) -> D3 
   spun := car; spun.omega = d3(0.0, 6.0, 0.0);
   side := hit_way(spec, spun, d3(0.0, 1.0, h.z + BALL_R - 0.05), D3_ZERO);
   #assert abs(side.x) > 0.15 && d3_dot(side, nose) < 0.99;
+}
+
+// ---- the sphere arena (ol-sphere-arena)
+
+sphere_game :: (s: [] OrbitLeague) {
+  game_reset(s); s[0].no_bot = true; set_arena_kind(s, ARENA_SPHERE);
+  run_for(s, KICKOFF + 0.1);
+}
+#test "?arena=sphere plays in the sphere: the cars start on its curve on their wheels and the ball at its lowest point" {
+  s: [1] OrbitLeague;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?arena=sphere\n");
+  #assert s[0].sphere && !s[0].drum && arena_kind(s[..]) == ARENA_SPHERE;
+  sp := arena_sphere();
+  for i: 1..<BODIES {
+    b := s[0].bodies[i];
+    #assert near_d(sphere_clearance(sp, b.pos), 1.0, 0.001) && d3_dot(rigid_axis(b, D3_Y), sphere_up(sp, b.pos)) > 0.999;
+  }
+  #assert s[0].bodies[YOU].pos.z < -10.0 && s[0].bodies[BOT].pos.z > 10.0;
+  run_for(s[..], KICKOFF + 1.0);
+  you := s[0].bodies[YOU];
+  #assert s[0].cars[0].wheels == 4 && d3_dot(rigid_axis(you, D3_Y), sphere_up(sp, you.pos)) > 0.95 && sphere_clearance(sp, you.pos) < 1.5;
+  #assert near_d(sphere_clearance(sp, s[0].bodies[BALL].pos), BALL_R, 0.05);
+}
+#test "in the sphere a car drives round toward the equator's wall and up it, wheels on" {
+  s: [1] OrbitLeague;
+  sphere_game(s[..]);
+  sp := arena_sphere();
+  s[0].bodies[YOU].pos = floor_point(s[..], 0.0, 0.0, 0.9); s[0].bodies[YOU].orientation = dq_y(PI_D / 2.0);
+  s[0].bodies[BALL].pos = floor_point(s[..], 0.0, 15.0, BALL_R);
+  s[0].held = HOLD_UP | HOLD_BOOST;
+  top := 0.0; off := 0;
+  for i: 0..<cast(int) (2.5 / STEP) {
+    game_step(s[..], STEP);
+    b := s[0].bodies[YOU];
+    top = fmax(top, b.pos.y);
+    if s[0].cars[0].wheels == 0 { off += 1; }
+  }
+  // up past the wall's middle, and on its wheels almost all the way
+  #assert top > SPHERE_R && cast(f64) off * STEP < 0.4;
+}
+#test "in the sphere a ball into the +z pole's cap is blue's goal, into the -z cap magenta's; a ball elsewhere is no goal" {
+  s: [1] OrbitLeague;
+  sphere_game(s[..]);
+  #assert goal_past(s[..], sphere_goal_z() + 0.1) == BLUE && goal_past(s[..], -sphere_goal_z() - 0.1) == MAGENTA && goal_past(s[..], 20.0) == -1;
+  // rolled hard up the curve straight at +z's pole it climbs into the cap
+  at := floor_point(s[..], 0.0, 20.0, BALL_R + 0.05);
+  s[0].bodies[BALL].pos = at; s[0].bodies[BALL].vel = d3_scale(d3_unit(d3_sub(floor_point(s[..], 0.0, 20.1, BALL_R + 0.05), at)), 18.0);
+  for i: 0..<cast(int) (3.0 / STEP) { game_step(s[..], STEP); if s[0].phase == PHASE_GOAL { break; } }
+  #assert s[0].phase == PHASE_GOAL && s[0].score[BLUE] == 1;
+}
+#test "the sphere's camera stays inside it and keeps your car in frame, at the bottom and up the wall" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); s[0].no_bot = true; set_arena_kind(s[..], ARENA_SPHERE);
+  s[0].width = 1440; s[0].height = 900;
+  zs := [3] f64.[0.0, 30.0, -20.0]; xs := [3] f64.[0.0, 0.0, 25.0];
+  for k: 0..<3 {
+    s[0].bodies[YOU].pos = floor_point(s[..], xs[k], zs[k], 0.9); s[0].bodies[YOU].orientation = floor_turn(s[..], xs[k], zs[k]);
+    s[0].cam_ready = false;
+    camera(s[..], 0.016);
+    e := d3(cast(f64) s[0].cam_eye[0], cast(f64) s[0].cam_eye[1], cast(f64) s[0].cam_eye[2]);
+    #assert sphere_clearance(arena_sphere(), e) > 0.5;
+  }
+}
+#test "the arena button goes box, drum, sphere, box" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  #assert arena_kind(s[..]) == ARENA_BOX;
+  set_arena_kind(s[..], (arena_kind(s[..]) + 1) % 3); #assert s[0].drum;
+  set_arena_kind(s[..], (arena_kind(s[..]) + 1) % 3); #assert s[0].sphere && !s[0].drum;
+  set_arena_kind(s[..], (arena_kind(s[..]) + 1) % 3); #assert !s[0].sphere && !s[0].drum;
 }

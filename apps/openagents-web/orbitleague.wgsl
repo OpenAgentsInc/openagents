@@ -20,7 +20,7 @@ struct U {
   ballq: vec4f,                 // its attitude
   cars: array<Car, 2>,
   arena: vec4f,                 // half width, half length, roof, the goal mouth's half width
-  goal: vec4f,                  // crossbar, net depth, the drum's radius (0: the box)
+  goal: vec4f,                  // crossbar, net depth, the drum's radius (0: the box; minus the sphere's radius: the sphere), the sphere's goal caps' radius
   misc: vec4f,                  // the ball's speed (m/s)
   panel: array<vec4f, 32>,
   trail: array<vec4f, 27>,      // the ball's trail, then each car's boost: a bound (centre, radius) and 8 points (place, strength)
@@ -513,6 +513,54 @@ fn shade_hit(h: Hit, rd: vec3f) -> vec3f {
 // ?arena=drum: the inside of a drum along z on the floor (verse/drum.coax),
 // its radius u.goal.z. The floor is its curve all the way round.
 fn in_drum() -> bool { return u.goal.z > 0.0; }
+// ?arena=sphere: the inside of a sphere on the floor (verse/sphere.coax),
+// radius -u.goal.z, spun about z, with a goal cap u.goal.w round at each pole.
+fn in_sphere() -> bool { return u.goal.z < 0.0; }
+fn curved() -> bool { return u.goal.z != 0.0; }
+fn sr() -> f32 { return -u.goal.z; }
+fn sph_c() -> vec3f { return vec3f(0.0, sr(), 0.0); }
+// Where a ray from inside leaves through the sphere.
+fn sph_t(ro: vec3f, rd: vec3f) -> f32 {
+  let o = ro - sph_c();
+  let b = dot(o, rd); let c = dot(o, o) - sr() * sr();
+  let disc = b * b - c;
+  if (disc < 0.0) { return 1e9; }
+  let t = -b + sqrt(disc);
+  return select(1e9, t, t > 0.0);
+}
+fn sph_n(p: vec3f) -> vec3f { return normalize(sph_c() - p); }
+// p's floor coordinates: round the axis from the lowest point, and toward the +z pole.
+fn sph_uv(p: vec3f) -> vec2f {
+  let d = normalize(p - sph_c());
+  return vec2f(sr() * atan2(d.x, -d.y), sr() * asin(clamp(d.z, -1.0, 1.0)));
+}
+// The surface's point at floor coordinates x, z (verse/sphere.coax sphere_at).
+fn sph_at(x: f32, z: f32) -> vec3f {
+  let a = x / sr(); let f = z / sr();
+  return vec3f(sr() * cos(f) * sin(a), sr() - sr() * cos(f) * cos(a), sr() * sin(f));
+}
+// The curve's up at p, the drum's or the sphere's.
+fn curve_n(p: vec3f) -> vec3f { if (in_sphere()) { return sph_n(p); } return drum_n(p); }
+// The sphere's deck: the box's markings round its middle, lit rings of
+// latitude, and at each pole its goal: a cap in the team's colour behind a
+// net, ringed in light.
+fn sph_col(p: vec3f) -> vec3f {
+  let q = sph_uv(p);
+  var c = deck_col(vec3f(q.x, 0.0, q.y), 1e4);
+  var hoop = 0.0;
+  for (var k = 0; k < 4; k++) { hoop = max(hoop, 1.0 - smoothstep(0.12, 0.3, abs(abs(q.y) - (8.0 + f32(k) * 7.0)))); }
+  c = mix(c, vec3f(0.6, 1.0, 0.95), hoop * 0.4);
+  let side = select(BLUE, MAGENTA, p.z > 0.0);
+  let rho = length(p.xy - sph_c().xy);
+  let gr = u.goal.w;
+  if (rho < gr) {
+    let g = abs(fract(p.xy / 0.6 + 0.5) - 0.5) * 0.6;
+    let mesh = 1.0 - smoothstep(0.015, 0.04, min(g.x, g.y));
+    c = mix(side * 0.35, side * 1.3, mesh * 0.7);
+  }
+  c += mix(side, vec3f(1.0), 0.3) * exp(-pow((rho - gr) / 0.25, 2.0)) * 1.2;
+  return c;
+}
 // Where a ray from inside leaves through the curve.
 fn drum_t(ro: vec3f, rd: vec3f) -> f32 {
   let r = u.goal.z;
@@ -533,6 +581,7 @@ fn drum_uv(p: vec3f) -> vec2f { return vec2f(u.goal.z * atan2(p.x, u.goal.z - p.
 fn drum_at(x: f32, z: f32) -> vec3f { let a = x / u.goal.z; return vec3f(u.goal.z * sin(a), u.goal.z * (1.0 - cos(a)), z); }
 // How high something at p stands over the floor under it.
 fn over_floor(p: vec3f) -> f32 {
+  if (in_sphere()) { return sr() - length(p - sph_c()); }
   if (in_drum()) { return u.goal.z - length(vec2f(p.x, p.y - u.goal.z)); }
   return p.y;
 }
@@ -590,7 +639,7 @@ fn shadow(p: vec3f) -> f32 {
 }
 // The same on the drum's curve: each thing's shadow falls straight out from the axis.
 fn drum_shadow(p: vec3f) -> f32 {
-  let n = drum_n(p);
+  let n = curve_n(p);
   var k = 1.0;
   let bq = u.ball.xyz - p; let bh = dot(bq, n);
   let bd = length(bq - n * bh);
@@ -635,6 +684,7 @@ fn pad_orbs(ro: vec3f, rd: vec3f, tmax: f32) -> vec3f {
     let bob = 1.3 + 0.15 * moving() * sin(u.time * 2.0 + f32(i));
     var at = vec3f(pd.x, bob, pd.y);
     if (in_drum()) { let f = drum_at(pd.x, pd.y); at = f + drum_n(f) * bob; }
+    if (in_sphere()) { let f = sph_at(pd.x, pd.y); at = f + sph_n(f) * bob; }
     o += PAD_COL * (halo(ro, rd, at, tmax, 0.35) * 1.4 + halo(ro, rd, at, tmax, 1.0) * 0.25);
   }
   return o;
@@ -694,6 +744,8 @@ struct Glass { t: f32, col: vec3f, a: f32, add: vec3f }
 fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
   let hx = u.arena.x; let hz = u.arena.y; let hh = u.arena.z; let gw = u.arena.w; let gh = u.goal.x; let gd = u.goal.y;
   var out = Glass(1e9, vec3f(0.0), 0.0, vec3f(0.0));
+  // the sphere has no glass: its goals are in its curve
+  if (in_sphere()) { return out; }
   // the exit: the nearest face ahead
   var t = 1e9; var n = vec3f(0.0);
   let drum = in_drum();
@@ -755,6 +807,7 @@ fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
 fn frames(ro: vec3f, rd: vec3f) -> Hit {
   let hz = u.arena.y; let gw = u.arena.w; let gh = u.goal.x;
   var h = miss();
+  if (in_sphere()) { return h; }
   for (var e = -1.0; e <= 1.0; e += 2.0) {
     let col = select(BLUE, MAGENTA, e > 0.0) * 1.3;
     let z = e * (hz + 0.15);
@@ -787,7 +840,13 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
     let p = ro + rd * t;
     if (t < 1e8 && abs(p.z) <= hz) { h = Hit(t, drum_n(p), drum_col(p), 0.0, 5); }
   }
-  if (rd.y < 0.0) {
+  let sphere = in_sphere();
+  if (sphere) {
+    let t = sph_t(ro, rd);
+    let p = ro + rd * t;
+    if (t < 1e8) { h = Hit(t, sph_n(p), sph_col(p), 0.0, 5); }
+  }
+  if (rd.y < 0.0 && !sphere) {
     let t = -ro.y / rd.y;
     let p = ro + rd * t;
     var on = (abs(p.x) <= hx && abs(p.z) <= hz) || (abs(p.x) <= gw && abs(p.z) <= hz + gd);
@@ -797,18 +856,18 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   }
   h = closer(h, movers(ro, rd));
   h = closer(h, frames(ro, rd));
-  if (h.t > 1e8 && !drum) { h = ribs(ro, rd); }
+  if (h.t > 1e8 && !drum && !sphere) { h = ribs(ro, rd); }
   var c = vec3f(0.0);
   if (h.t < 1e8) {
     let p = ro + rd * h.t;
     if (h.mat == 5) {
-      let flat = !drum || abs(p.z) > hz;
+      let flat = !sphere && (!drum || abs(p.z) > hz);
       var pq = p;
-      if (!flat) { let w = drum_uv(p); pq = vec3f(w.x, 0.0, w.y); }
+      if (!flat) { let w = select(drum_uv(p), sph_uv(p), sphere); pq = vec3f(w.x, 0.0, w.y); }
       c = h.col * 0.85 * select(shadow(p), drum_shadow(p), !flat) + underglow(p) + pads(pq);
       // the blast's ring running out over the floor
       if (u.blast.w >= 0.0) {
-        let ring = (select(length(p.xz - u.blast.xz), length(p - u.blast.xyz), drum) - blast_r(u.blast.w) * 1.1) / 1.2;
+        let ring = (select(length(p.xz - u.blast.xz), length(p - u.blast.xyz), drum || sphere) - blast_r(u.blast.w) * 1.1) / 1.2;
         c += mix(team(u.blast2.x), vec3f(1.0), 0.3) * exp(-ring * ring) * blast_fade(u.blast.w) * 0.9;
       }
       // the floor is polished: the ball, the cars, the frames and the boost in it
@@ -837,7 +896,7 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   c += blast(ro, rd, h.t);
   c += pad_orbs(ro, rd, h.t);
   c += lights(ro, rd, u.cars[0], h.t) + lights(ro, rd, u.cars[1], h.t);
-  if (!drum && (rd.y > 0.0 || h.t > 1e8)) { c += rib_lights(ro, rd, h.t); }
+  if (!drum && !sphere && (rd.y > 0.0 || h.t > 1e8)) { c += rib_lights(ro, rd, h.t); }
   // zero-g: a cold tint; a goal: its team's flash
   c = mix(c, c * vec3f(0.85, 0.95, 1.15), u.zerog * 0.5);
   c += team(u.fwd.w) * u.eye.w * 0.12;

@@ -1,0 +1,103 @@
+// A sphere arena (Orbit League's ol-sphere-arena): the inside of a ball as
+// the drivable surface, spun about one axis, so it pulls hardest at the
+// equator and not at all at the poles, where the goals are. As in
+// verse/drum.coax everything is in the sphere's own rotating frame: its
+// spin is a verse/gravity.coax drum field about the axis, so "down" is away
+// from the axis, and on the sphere's surface it leans toward the equator
+// the nearer you are to a pole.
+//
+// The curve is given to the engine as the tangent plane under a body
+// (sphere_planes), as the drum's is: for a car a few metres across inside a
+// sphere tens of metres round it is within millimetres of the curve.
+//   coax/bin/coax test --library verse/sphere.coax --steps 2000000000
+
+#load "vehicle.coax";
+#load "gravity.coax";
+
+Sphere :: struct {
+  centre: D3;
+  axis: D3;       // the spin axis, a unit vector: the poles are at centre +- radius axis
+  radius: f64;
+}
+
+// A sphere spun about z, resting on the plane y = 0 (its lowest point at the origin).
+sphere_on_floor :: (r: f64) -> Sphere { return Sphere.{centre = d3(0.0, r, 0.0), axis = D3_Z, radius = r}; }
+
+// The spin field: g at the equator.
+sphere_field :: (s: Sphere, g: f64) -> GravityField { return gravity_drum(s.centre, s.axis, drum_spin_for(s.radius, g)); }
+
+// The surface's inward normal (up, for whatever stands on it) under pos.
+// At the centre every direction is as good; it picks the lowest point's.
+sphere_up :: (s: Sphere, pos: D3) -> D3 {
+  o := d3_sub(pos, s.centre);
+  if d3_len(o) < 0.000001 { return D3_Y; }
+  return d3_neg(d3_unit(o));
+}
+// How far pos is inside the surface (negative: through it).
+sphere_clearance :: (s: Sphere, pos: D3) -> f64 { return s.radius - d3_dist(pos, s.centre); }
+
+// The tangent plane under pos, facing in.
+sphere_plane :: (s: Sphere, pos: D3) -> Plane {
+  n := sphere_up(s, pos);
+  return plane_through(n, d3_add(s.centre, d3_scale(n, -s.radius)));
+}
+// The planes a body at pos meets: the surface under it (three, as the
+// drum's: the other two face away beyond the poles, so nothing meets them).
+sphere_planes :: (s: Sphere, pos: D3) -> [3] Plane {
+  p: [3] Plane;
+  p[0] = sphere_plane(s, pos);
+  far := s.radius * 3.0;
+  p[1] = plane_through(s.axis, d3_sub(s.centre, d3_scale(s.axis, far)));
+  p[2] = plane_through(d3_neg(s.axis), d3_add(s.centre, d3_scale(s.axis, far)));
+  return p;
+}
+// A ball against the surface: the contact, if it touches.
+sphere_ball :: (s: Sphere, c: D3, r: f64) -> Contact { return contact_sphere_plane(c, r, sphere_plane(s, c)); }
+
+// The point `lift` metres in from the surface at floor coordinates (x, z):
+// arc lengths from the lowest point, z toward the +axis pole, then x round
+// the axis. (0, 0) is the lowest point; z = +-radius pi/2 is a pole.
+sphere_at :: (s: Sphere, x: f64, z: f64, lift: f64) -> D3 {
+  r := s.radius - lift;
+  return d3_add(s.centre, dq_rotate(sphere_turn(s, x, z), d3(0.0, -r, 0.0)));
+}
+// The rotation taking the lowest point's frame (up +y, forward +z) to the
+// frame at floor coordinates (x, z): about x toward the pole, then about the axis.
+sphere_turn :: (s: Sphere, x: f64, z: f64) -> DQ { return dq_mul(dq_z(x / s.radius), dq_x(-z / s.radius)); }
+
+// Checks.
+
+#test "the tangent plane under any point is tangent to the sphere and faces the centre" {
+  s := sphere_on_floor(24.0);
+  for k: 0..<12 {
+    a := cast(f64) k * 0.5;
+    p := sphere_at(s, 10.0 * sin(a), 18.0 * cos(a), 6.0);
+    pl := sphere_plane(s, p);
+    #assert near_d(sphere_clearance(s, p), 6.0, 0.000001) && near_d(plane_distance(pl, p), 6.0, 0.000001);
+    rim := sphere_at(s, 10.0 * sin(a), 18.0 * cos(a), 0.0);
+    #assert near_d(plane_distance(pl, rim), 0.0, 0.000001) && near_d(d3_dot(pl.n, sphere_up(s, p)), 1.0, 0.000001);
+  }
+  // the lowest point is the origin, facing up; a quarter round toward +z is the pole
+  #assert d3_len(sphere_at(s, 0.0, 0.0, 0.0)) < 0.000001 && near_d(sphere_up(s, d3(0.0, 1.0, 0.0)).y, 1.0, 0.000001);
+  pole := sphere_at(s, 0.0, 24.0 * PI_D / 2.0, 0.0);
+  #assert d3_dist(pole, d3(0.0, 24.0, 24.0)) < 0.000001;
+  #assert d3_dist(sphere_at(s, 24.0 * PI_D / 2.0, 0.0, 0.0), d3(24.0, 24.0, 0.0)) < 0.000001;
+  // sphere_turn takes the lowest point's up to the up there
+  #assert d3_dist(dq_rotate(sphere_turn(s, 7.0, -9.0), D3_Y), sphere_up(s, sphere_at(s, 7.0, -9.0, 1.0))) < 0.000001;
+  // a ball resting on the surface touches it; one 2 m in does not
+  #assert sphere_ball(s, sphere_at(s, 3.0, 4.0, 0.9), 1.0).hit && !sphere_ball(s, sphere_at(s, 3.0, 4.0, 2.0), 1.0).hit;
+}
+#test "the spin pulls 1 g at the equator, less toward a pole, nothing at it, and always out from the axis" {
+  s := sphere_on_floor(24.0);
+  f := sphere_field(s, G_EARTH);
+  eq := gravity_at(f, sphere_at(s, 0.0, 0.0, 0.0));
+  #assert near_d(d3_len(eq), G_EARTH, 0.0001) && eq.y < 0.0;
+  mid := gravity_at(f, sphere_at(s, 0.0, 24.0 * PI_D / 4.0, 0.0));
+  #assert near_d(d3_len(mid), G_EARTH * sqrt(0.5), 0.0001) && abs(mid.z) < 0.000001;
+  #assert d3_len(gravity_at(f, d3(0.0, 24.0, 23.9))) < 0.000001;
+  // leaning toward the equator: on the surface near a pole, gravity has a part along it, away from the pole
+  p := sphere_at(s, 0.0, 30.0, 0.0);
+  g := gravity_at(f, p);
+  along := d3_sub(g, d3_scale(sphere_up(s, p), d3_dot(g, sphere_up(s, p))));
+  #assert along.z < -0.5;
+}
