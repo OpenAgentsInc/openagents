@@ -10,3 +10,14 @@ hgk_grant :: (i:int,w:[]u8)->H_Grant {
   for k:from..<to {w[k-from]=all[k];}
   return H_Grant_decode(w[0..<to-from]);
 }
+
+// hg_open on an original read by the event reader, against projection i
+// (-1: the fixture's own), with the precomputed conversation key of this
+// device and the host (or, with owner, the k=2 owner key).
+hgk_open :: (original:string,i:int,owner:bool,unused:bool,work:[]u8)->HostGrant {
+  pre:[HG_REGION]u8;e:=nostr_event_read(original,pre[..],false);#assert e.error==NE_OK;
+  w:[4096]u8;g:=hgk_grant(i,w[..]);
+  ck:=ifx owner then HG_CK_OWNER else HG_CK_HOST;x:=HG_DEVICE_X;
+  return hg_open(original,e,g,ck[..],x[..],work);
+}
+hgk_zero :: (work:[]u8)->bool {for b:work {if b!=0 {return false;}}return true;}

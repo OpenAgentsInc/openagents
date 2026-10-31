@@ -122,6 +122,47 @@ HostGrant :: struct {
   junk:=[3]u8.[0xff,0xff,0xff];#assert host_access_bind_checked(junk[..],dev[..],x[..],work[..],false).error==HG_WIRE;
 }
 
+#test "an independently sealed grant opens to its projection and keeps the exact original" {
+  work:[HG_WORK]u8;work[9]=1;r:=hgk_open(HG_ORIGINAL_OK,-1,false,false,work[..]);
+  #assert r.error==HG_OK && r.original==HG_ORIGINAL_OK && r.rights==4 && r.expires_at==1790086400 && hgk_zero(work[..]);
+}
+#test "opening refuses a changed projection" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_OK,4,false,false,work[..]).error==HG_PROJECTION;}
+#test "opening refuses a substituted plaintext" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_OTHER_ENVELOPE,-1,false,false,work[..]).error==HG_PROJECTION;}
+#test "opening refuses another device's artifact" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_FOR_OTHER,-1,false,false,work[..]).error==HG_ARTIFACT;}
+#test "opening refuses an envelope encrypted to another key" {work:[HG_WORK]u8;work[3]=1;#assert hgk_open(HG_ORIGINAL_WRONG_KEY_P,-1,false,false,work[..]).error==HG_DECRYPT && hgk_zero(work[..]);}
+#test "opening refuses a grant signed by someone other than its host" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_NOT_HOST,-1,true,false,work[..]).error==HG_ISSUER;}
+#test "opening refuses a mailbox that is not the grant id" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_MAILBOX,-1,false,false,work[..]).error==HG_ISSUER;}
+#test "opening refuses a scoped grant as unsupported" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_SCOPED,-1,false,false,work[..]).error==HG_SCOPED;}
+#test "opening refuses a wrong digest" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_DIGEST,-1,false,false,work[..]).error==HG_ENVELOPE;}
+#test "opening refuses another schema" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_SCHEMA,-1,false,false,work[..]).error==HG_ENVELOPE;}
+#test "opening refuses another kind" {work:[HG_WORK]u8;#assert hgk_open(HG_ORIGINAL_KIND1,-1,false,false,work[..]).error==HG_ARTIFACT;}
+#test "the bind refuses an absent original, a non-event and an out-of-range signature" {
+  dev:=HG_DEVICE_SECRET;x:=HG_DEVICE_X;work:[HG_WORK]u8;
+  n:=HG_ACCESS_NO_GRANT;#assert host_access_bind_checked(n[..],dev[..],x[..],work[..],false).error==HG_WIRE;
+  a:=HG_ACCESS_NO_AUTH;#assert host_access_bind_checked(a[..],dev[..],x[..],work[..],false).error==HG_WIRE;
+  b:=HG_ACCESS_EMPTY_JSON;#assert host_access_bind_checked(b[..],dev[..],x[..],work[..],false).error==HG_WIRE;
+}
+#test "the bind refuses a non-event and an out-of-range signature" {
+  dev:=HG_DEVICE_SECRET;x:=HG_DEVICE_X;work:[HG_WORK]u8;
+  c:=HG_ACCESS_BAD_EVENT;#assert host_access_bind_checked(c[..],dev[..],x[..],work[..],false).error==HG_EVENT;
+  d:=HG_ACCESS_BAD_S;#assert host_access_bind_checked(d[..],dev[..],x[..],work[..],false).error==HG_SIGNATURE;
+}
+#test "tags fail closed on shapes the reader would not produce" {
+  dev:=HG_DEVICE_HEX;mail:[64]u8;
+  #assert !hg_tags("{}",dev,mail[..]) && !hg_tags("[[\"p\",1]]",dev,mail[..]) && !hg_tags("[\"p\"]",dev,mail[..]);
+  long:[310]u8;head:="[[\"p\",\"";for i:0..<head.count {long[i]=head[i];}
+  for i:head.count..<306 {long[i]='a';}long[306]='"';long[307]=']';long[308]=']';
+  #assert !hg_tags(cast(string)long[0..<309],dev,mail[..]);
+  // A longer name that starts with p is not a p tag.
+  #assert hg_tags("[[\"\"],[\"x\",\"p\"],[\"px\",\"0\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:artifact:v1\"]]",dev,mail[..]);
+}
+#test "relays, the largest safe number, and a nonzero epoch" {
+  r:[257]u8;for i:0..<257 {r[i]='r';}
+  #assert !hg_relay_ok("") && hg_relay_ok("w") && hg_relay_ok(cast(string)r[0..<256]) && !hg_relay_ok(cast(string)r[..]);
+  #assert hg_number("9007199254740992")==-1;
+  w:[4096]u8;g:=hgk_grant(8,w[..]);
+  e:=hg_body(HG_GRANT_EPOCH1,g,HG_HOST_HEX,HG_DEVICE_HEX,HG_MAILBOX_HEX);#assert e.error==HG_OK && e.epoch==1;
+}
 hg_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
 hg_right :: (name:string)->int {
   names:=[7]string.["observe","operate","terminal","review","access_read","access_admin","world"];
@@ -135,46 +176,48 @@ hg_hex64 :: (s:string)->bool {
 }
 // Exactly one ["p", device], one ["h", <64-hex>] (copied to mailbox) and a ["t","oa:artifact:v1"].
 hg_tags :: (tags:string,device_hex:string,mailbox:[]u8)->bool {
-  decoded:[256]u8;name:[8]u8;j:[1]Json;json_start(j[..],tags);
+  // A tag string longer than 256 decoded bytes fails closed.
+  decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
   if json_next(j[..])!=JSON_ARRAY {return false;}
-  ps:=0;hs:=0;ts:=0;
+  ps:=0;hs:=0;topic:=false;
   t:=json_next(j[..]);
   while t==JSON_ARRAY {
-    k:=0;nn:=0;v:=json_next(j[..]);
+    k:=0;name:u8;v:=json_next(j[..]);
     while v==JSON_STRING {
-      raw:=json_text(j[..]);
-      if raw.count>256 {return false;}
-      n:=json_unescape(raw,decoded[..]);if n<0 {return false;}
-      if k==0 {nn=ifx n<=8 then n else 0;for i:0..<nn {name[i]=decoded[i];}}
-      if k==1 && nn==1 {
+      n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return false;}
+      if k==0 && n==1 {name=decoded[0];}
+      if k==1 {
         value:=cast(string)decoded[0..<n];
-        if name[0]=='p' {ps+=1;if value!=device_hex {return false;}}
-        if name[0]=='h' {hs+=1;if !hg_hex64(value) {return false;}for i:0..<64 {mailbox[i]=decoded[i];}}
-        if name[0]=='t' && value=="oa:artifact:v1" {ts+=1;}
+        if name=='p' {ps+=1;if value!=device_hex {return false;}}
+        if name=='h' {hs+=1;if !hg_hex64(value) {return false;}for i:0..<64 {mailbox[i]=decoded[i];}}
+        if name=='t' && value=="oa:artifact:v1" {topic=true;}
       }
       k+=1;v=json_next(j[..]);
     }
     if v!=JSON_ARRAY_END {return false;}
     t=json_next(j[..]);
   }
-  return t==JSON_ARRAY_END && ps==1 && hs==1 && ts>=1;
+  return t==JSON_ARRAY_END && ps==1 && hs==1 && topic;
 }
 hg_text :: (raw:string,out:[]u8)->string {
-  n:=json_unescape(raw,out);if n<0 {return "";}return cast(string)out[0..<n];
+  n:=json_unescape(raw,out);if n<0 {return "";}return cast(string)out[0..<n]; // mutant: equivalent (n<=0 and n<1 also give "" exactly when n is 0)
 }
-// A string field of the grant against its projection: present, equal.
+// A grant field against its projection. Every signed string is nonempty, so
+// an absent projected field ("") never matches; proto3 writes no zero
+// scalar, so an absent number reads as 0.
 hg_same :: (signed:string,projected:H__pb_String)->bool {
-  return projected.error==0 && projected.present && projected.value==signed;
+  return projected.value==signed && projected.error==0;
 }
-// proto3 writes no zero scalar: absent reads as 0.
 hg_u64 :: (signed:int,projected:H__pb_U64)->bool {
-  return projected.error==0 && (projected.present || signed==0) && projected.value==cast(u64)signed;
+  return projected.value==cast(u64)signed && projected.error==0;
 }
+hg_relay_ok :: (relay:string)->bool {return relay.count>0 && relay.count<=256;}
 hg_number :: (raw:string)->int {
   // JCS has admitted a safe integer token; only nonnegative digits pass here.
-  if raw.count==0 || raw.count>16 {return -1;}
+  if raw.count==0 || raw.count>16 {return -1;} // mutant: equivalent (17 digits fit int and exceed HG_MAX_SAFE below)
   v:=0;for c:raw {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
   if raw.count>1 && raw[0]=='0' {return -1;}
+  if v>HG_MAX_SAFE {return -1;}
   return v;
 }
 HG_FIELDS :: [13]string.["v","requires","grant","host","owner","device","relay","rights","epoch","origin","issued_at","expires_at","scope"];
@@ -209,16 +252,15 @@ hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,ma
         name:=hg_text(json_text(j[..]),d[..]);k:=hg_right(name);
         if k<0 || k<=last {return r;}
         last=k;r.rights+=1;
-        if ri.error!=0 || !ri.has_value || ri.value!=name {mismatch=true;}
+        if !ri.has_value || ri.value!=name {mismatch=true;}
         else {ri=H_Grant_next_rights(ri);}
         v=json_next(j[..]);
       }
       if v!=JSON_ARRAY_END || r.rights==0 {return r;}
-      if ri.has_value || ri.error!=0 {mismatch=true;}
+      if ri.has_value {mismatch=true;}
     } else if f==9 {
       if t!=JSON_OBJECT {return r;}
-      o:=H_Grant_get_origin(projected);
-      if o.error!=0 || !o.present {mismatch=true;}
+      o:=H_Grant_get_origin(projected); // absent: its fields read "" and never match
       inner:=0;
       while true {
         u:=json_next(j[..]);if u==JSON_OBJECT_END {break;}
@@ -227,15 +269,13 @@ hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,ma
         inner|=which;value:=hg_text(json_text(j[..]),d[..]);
         if which==1 && value!="invitation" && value!="approval" {return r;}
         if which!=1 && !hg_hex64(value) {return r;}
-        if o.present && o.error==0 {
-          projected_value:=ifx which==1 then H_GrantOrigin_get_kind(o.value) else ifx which==2 then H_GrantOrigin_get_id(o.value) else H_GrantOrigin_get_issuer(o.value);
-          if !hg_same(value,projected_value) {mismatch=true;}
-        }
+        projected_value:=ifx which==1 then H_GrantOrigin_get_kind(o.value) else ifx which==2 then H_GrantOrigin_get_id(o.value) else H_GrantOrigin_get_issuer(o.value);
+        if !hg_same(value,projected_value) {mismatch=true;}
       }
       if inner!=7 {return r;}
     } else if f==8 || f==10 || f==11 {
       if t!=JSON_NUMBER {return r;}
-      n:=hg_number(raw);if n<0 || n>HG_MAX_SAFE {return r;}
+      n:=hg_number(raw);if n<0 {return r;}
       if f==8 {r.epoch=n;if !hg_u64(n,H_Grant_get_epoch(projected)) {mismatch=true;}}
       if f==10 {r.issued_at=n;if !hg_u64(n,H_Grant_get_issued_at(projected)) {mismatch=true;}}
       if f==11 {r.expires_at=n;if !hg_u64(n,H_Grant_get_expires_at(projected)) {mismatch=true;}}
@@ -244,7 +284,7 @@ hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,ma
       value:=hg_text(raw,d[..]);
       if f==0 {if value!=HG_SCHEMA {return r;}}
       else if f==6 {
-        if value.count==0 || value.count>256 {return r;}
+        if !hg_relay_ok(value) {return r;}
         if !hg_same(value,H_Grant_get_relay(projected)) {mismatch=true;}
       } else {
         if !hg_hex64(value) {return r;}
@@ -265,7 +305,7 @@ hg_body :: (body:string,projected:H_Grant,signer_hex:string,device_hex:string,ma
 hg_done :: (r:HostGrant,error:u32,work:[]u8)->HostGrant {
   hg_zero(work[0..<HG_WORK]);
   if error!=HG_OK {fail:HostGrant;fail.error=error;return fail;}
-  out:=r;out.error=HG_OK;return out;
+  return r;
 }
 
 // Binds Access.grant to Access.authorization for the device whose secret
@@ -277,31 +317,45 @@ host_access_bind_checked :: (access_wire:[]u8,device_secret:[]u8,device_x:[]u8,w
   if device_secret.count!=32 || device_x.count!=32 || work.count<HG_WORK || overlap {return r;}
   access:=H_Access_decode(access_wire);
   if access.error!=0 {return hg_done(r,HG_WIRE,work);}
-  g:=H_Access_get_grant(access);auth:=H_Access_get_authorization(access);
-  if g.error!=0 || !g.present || auth.error!=0 || !auth.present {return hg_done(r,HG_WIRE,work);}
-  original:=H_SignedEvent_get_json(auth.value);
+  g:=H_Access_get_grant(access);
+  if !g.present || g.error!=0 {return hg_done(r,HG_WIRE,work);}
+  // An absent authorization reads as an empty SignedEvent: its json is absent too.
+  original:=H_SignedEvent_get_json(H_Access_get_authorization(access).value);
   if original.error!=0 || !original.present {return hg_done(r,HG_WIRE,work);}
   text:=original.value;
-  pre:=work[0..<HG_REGION];body:=work[HG_REGION..<2*HG_REGION];nwork:=work[2*HG_REGION..<4*HG_REGION];scratch:=work[4*HG_REGION..<5*HG_REGION];
+  // The regions are each at least twice what their user needs.
+  pre:=work[0..<HG_REGION]; // mutant: equivalent (a 1-byte shift of a region bound is never reached)
   e:=nostr_event_read(text,pre,false);
   if e.error!=NE_OK {return hg_done(r,HG_EVENT,work);}
   if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return hg_done(r,HG_SIGNATURE,work);}
+  ck:[32]u8;ew:[1]EcdhScratch;peer:=e.public_key;
+  c:=nip44_conversation_key_from_keys_checked(device_secret,peer[..],ew[..],ck[..],false);
+  if c!=NIP44_OK {return hg_done(r,ifx c==NIP44_SECRET then HG_KEY else HG_DECRYPT,work);}
+  result:=hg_open(text,e,g.value,ck[..],device_x,work);
+  hg_zero(ck[..]); // mutant: equivalent (wipes a local no output reads)
+  return result;
+}
+// After the signature and the ECDH conversation key (device secret, signer):
+// recipient, decryption, envelope and grant. Split out so checks reach it
+// within a check budget (ECDH alone is about one); host_access_bind_checked
+// is the only caller outside checks.
+hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)->HostGrant {
+  r:HostGrant;
+  // 32 bytes always fit 64 without overlap: hex encoding cannot refuse here.
   dev:[64]u8;signer:[64]u8;mail:[64]u8;
-  hd:=hex_encode_checked(cast(string)device_x,dev[..],false);hs:=hex_encode_checked(cast(string)e.public_key[..],signer[..],false);
-  if hd.error!=NC_OK || hs.error!=NC_OK {return hg_done(r,HG_INPUT,work);}
+  peer:=e.public_key;
+  hd:=hex_encode_checked(cast(string)device_x,dev[..],false);hs:=hex_encode_checked(cast(string)peer[..],signer[..],false);
   if e.kind!=3188 || !hg_tags(text[e.tags_from..<e.tags_to],cast(string)dev[..],mail[..]) {return hg_done(r,HG_ARTIFACT,work);}
-  ck:[32]u8;ew:[1]EcdhScratch;
-  c:=nip44_conversation_key_from_keys_checked(device_secret,e.public_key[..],ew[..],ck[..],false);
-  if c!=NIP44_OK {hg_zero(ck[..]);return hg_done(r,ifx c==NIP44_SECRET then HG_KEY else HG_DECRYPT,work);}
+  // The reader admitted content as JSON of at most 65536 bytes: it unescapes into the 131072-byte scratch.
+  scratch:=work[4*HG_REGION..<5*HG_REGION]; // mutant: equivalent (see the region note above)
   n:=json_unescape(text[e.content_from..<e.content_to],scratch);
-  if n<0 {hg_zero(ck[..]);return hg_done(r,HG_DECRYPT,work);}
-  d:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)scratch[0..<n],nwork,body,false);
-  hg_zero(ck[..]);
+  body:=work[HG_REGION..<2*HG_REGION];nwork:=work[2*HG_REGION..<4*HG_REGION]; // mutant: equivalent (see the region note above)
+  d:=nip44_decrypt_checked(NIP44_COMPAT,ck,cast(string)scratch[0..<n],nwork,body,false);
   if d.error!=NIP44_OK {return hg_done(r,HG_DECRYPT,work);}
   envelope:=cast(string)body[0..<d.written];
   info:=envelope_check_body_checked(envelope,HG_SCHEMA,scratch,false);
   if info.error!=AE_OK {return hg_done(r,HG_ENVELOPE,work);}
-  b:=hg_body(envelope[info.inline_from..<info.inline_to],g.value,cast(string)signer[..],cast(string)dev[..],cast(string)mail[..]);
+  b:=hg_body(envelope[info.inline_from..<info.inline_to],g,cast(string)signer[..],cast(string)dev[..],cast(string)mail[..]);
   if b.error!=HG_OK {return hg_done(r,b.error,work);}
   b.original=text;return hg_done(b,HG_OK,work);
 }

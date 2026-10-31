@@ -38,3 +38,7 @@ hgc_bind :: (wire:[]u8,other:bool)->HostGrant {
   d:=HG_ACCESS_DIGEST;#assert hgc_bind(d[..],false).error==HG_ENVELOPE;
   c:=HG_ACCESS_SCHEMA;#assert hgc_bind(c[..],false).error==HG_ENVELOPE;
 }
+#test "a zero device secret refuses after the signature, as HG_KEY" {
+  w:=HG_ACCESS_OK;dev:[32]u8;x:=HG_DEVICE_X;work:[HG_WORK]u8;
+  #assert host_access_bind_checked(w[..],dev[..],x[..],work[..],false).error==HG_KEY;
+}
