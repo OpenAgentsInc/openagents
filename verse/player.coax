@@ -1152,6 +1152,17 @@ same_step :: (a: Player, b: Player) -> bool {
 }
 // book:end stutter
 
+#forall "same_step compares every field it names" k: 0..<10 {
+  a := verse_player_input(verse_player_place(1, 0.5, 2, 0.3), 0, 1, 0, 0, false, true, 0, 0);
+  #assert same_step(a, a) && a.jump_held && a.jumps.held;
+  b := a;
+  if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }
+  else if k == 4 { b.vel.y += 1; } else if k == 5 { b.vel.z += 1; } else if k == 6 { b.face += 1; } else if k == 7 { b.on_ground = !b.on_ground; }
+  else if k == 8 { b.target.y += 1; } else { b.dist += 1; }
+  #assert !same_step(a, b);
+  #assert !verse_player_input(a, 0, 1, 0, 0, false, false, 0, 0).jump_held;
+}
+
 #forall "a run and jump has the same states at 30, 60, 120 and 144 FPS" r: 0..<4 {
   fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
   w: World;
