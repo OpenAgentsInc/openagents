@@ -1895,6 +1895,9 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   m3 := frame_of(s[..], t[..], 2560, 1600);
   redit_requested(s[0].ed[..], 1); used2 := redit_message(s[0].ed[..], HTTP_KIND + 1, EDIT_SPEC);
   m4 := frame_of(s[..], t[..], 2560, 1600);
+  // FEATURES open: the layer reads the asks too, then it is done
+  if s[0].ed[0].req_ready && s[0].ed[0].req_what == REQ_E_ASKS { redit_requested(s[0].ed[..], 1); used3 := redit_message(s[0].ed[..], HTTP_KIND + 1, "200\n"); }
+  m5 := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].req_ready && url_is(s[..], "/api/playtest/realms/moonlit-marsh");
 }
 #test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" {

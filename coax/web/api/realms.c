@@ -30,6 +30,12 @@
 //   GET  /api/playtest/realms/<slug>/panes             -> text/plain: "lore WHO|TEXT", "quest GIVER|ASK|S|S|S|REWARD"
 //   POST /api/playtest/realms/<slug>/lore {who, text}  -> 200 {who, saved}; 400, 403, 409
 //   POST /api/playtest/realms/<slug>/quest {giver, ask, steps, reward}   -> 200 {giver, saved}; 400, 403, 409
+// What its owner asked for (migrations/0078_realm_asks.sql): the feature list, ADD and DELETE.
+//   GET  /api/playtest/realms/<slug>/asks              -> text/plain: "ask ID applied|waiting|removing ask|remove WORDS" ("" for a visitor)
+//   POST /api/playtest/realms/<slug>/asks {words}      -> text/plain: "ask ID applied|waiting", the board's rows; 400, 403, 404, 429
+//   POST /api/playtest/realms/<slug>/asks/<id>/delete  -> 200 {deleted, reverted} | {ask, state: removing}; 403, 404
+//   POST /api/playtest/realms/<slug>/rows/<key>/delete -> 200 {deleted} | {ask, state: waiting}; 403, 404
+//   POST /api/playtest/realms/<slug>/asks/<id>/done {commit}   a site admin: built in code, or its code out; 400, 403, 404, 409
 //
 // Who asks: the X-Verse-Player key (a logged-in player's key carries its account). A write from
 // another site's page (Origin) is refused. As a question is, the model call and the page's writes
@@ -398,7 +404,7 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
 
 // ---- talking revises a realm's board (migrations/0050_realm_edit.sql): asked here, the model's
 // answer kept by a child, as a plan is. ?as=lines answers the board's rows as lines.
-static void revise_answer(int fd, const char *asked, const char *request, bool lines) {
+static void revise_answer(int fd, const char *asked, const char *request, bool lines, bool ask) {
   const char *model = env_or("OA_BUILDER_MODEL", "gemini-2.5-flash");
   char *got = NULL;
   double t0 = api_now_ms();
@@ -408,7 +414,8 @@ static void revise_answer(int fd, const char *asked, const char *request, bool l
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
   const char *v[5] = {asked, http, got ? got : "", model, taken};
-  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.fork_revise_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+  PGresult *r = db ? PQexecParams(db, ask ? "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.ask_answer($1::jsonb, $2::int, $3, $4, $5::int) x"
+                                         : "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.fork_revise_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
@@ -421,12 +428,16 @@ static void revise_answer(int fd, const char *asked, const char *request, bool l
   free(got);
 }
 
-static void revise(const request *q, PGconn *db, const char *slug, const char *key, const char *admin) {
+// ask: an ADD from the feature list (migrations/0078_realm_asks.sql): the same revision, kept as an
+// ask with what it changed; it always answers lines.
+static void revise(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool ask) {
   char *body = body_of(q);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   const char *v[5] = {slug, body, env_or("OA_BUILDER_DAILY_CAP", "3000"), key, admin};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text "
-                                 "FROM verse.edit_revise_ask($1, $2::jsonb, $3::int, $4, $5::boolean) x", 5, NULL, v, NULL, NULL, 0);
+  PGresult *r = PQexecParams(db, ask ? "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id', 'ask', x->'ask')::text, x->>'lines' "
+                                       "FROM verse.ask_add($1, $2::jsonb, $3::int, $4, $5::boolean) x"
+                                     : "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id')::text, NULL::text "
+                                       "FROM verse.edit_revise_ask($1, $2::jsonb, $3::int, $4, $5::boolean) x", 5, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
@@ -437,7 +448,13 @@ static void revise(const request *q, PGconn *db, const char *slug, const char *k
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
-  bool lines = as_lines(q);
+  bool lines = ask || as_lines(q);
+  if (status == 200 && PQgetisnull(r, 0, 2)) {   // kept, but the model can't be asked today: it waits
+    const char *t = PQgetisnull(r, 0, 4) ? "" : PQgetvalue(r, 0, 4);
+    api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, t, strlen(t));
+    PQclear(r);
+    return;
+  }
   if (status != 200) {
     char out[200]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", PQgetvalue(r, 0, 1));
     PQclear(r);
@@ -448,7 +465,7 @@ static void revise(const request *q, PGconn *db, const char *slug, const char *k
   PQclear(r);
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid == 0) { revise_answer(q->fd, asked, request, lines); _exit(0); }
+  if (pid == 0) { revise_answer(q->fd, asked, request, lines, ask); _exit(0); }
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
   free(request); free(asked);
 }
@@ -526,6 +543,14 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
+  if (!strcmp(what, "asks") && !post) {   // what its owner and admins asked for (0078): "" for anyone else
+    const char *v[3] = {slug, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT verse.ask_list($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else { api_log("realms: asks: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    PQclear(r);
+    return true;
+  }
   if (!strcmp(what, "card")) { card(q, db, slug, key, admin, post); return true; }
   if (!strcmp(what, "fork")) { fork_realm(q, db, slug, key, admin, post); return true; }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
@@ -569,7 +594,8 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
-  if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin); return true; }
+  if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin, false); return true; }
+  if (!strcmp(what, "asks")) { revise(q, db, slug, key, admin, true); return true; }
   if (!strcmp(what, "lore") || !strcmp(what, "quest")) {
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
@@ -589,6 +615,31 @@ bool realms_route(const request *q) {
                                               : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_switch($1, $2::jsonb, $3, $4::boolean) x",
              4, v, what);
     free(body);
+    return true;
+  }
+  // DELETE an ask, an agent's done for one, or DELETE a board's row (0078)
+  static const char asks[] = "asks/", rows[] = "rows/";
+  if (!strncmp(what, asks, sizeof asks - 1) || !strncmp(what, rows, sizeof rows - 1)) {
+    bool row = what[0] == 'r';
+    const char *id = what + (row ? sizeof rows - 1 : sizeof asks - 1), *end = strchr(id, '/');
+    char name[64];
+    size_t k = end ? (size_t)(end - id) : 0;
+    bool done = end && !row && !strcmp(end, "/done");
+    bool ok = end && k > 0 && k < (row ? sizeof name : 19) && (done || !strcmp(end, "/delete"));
+    for (size_t i = 0; ok && i < k; i++) ok = row ? ((id[i] >= 'a' && id[i] <= 'z') || (id[i] >= '0' && id[i] <= '9') || id[i] == '-' || id[i] == ':') : (id[i] >= '0' && id[i] <= '9');
+    if (!ok) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    memcpy(name, id, k); name[k] = 0;
+    if (done) {
+      char *body = body_of(q);
+      if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+      const char *v[4] = {slug, name, body, admin};
+      sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.ask_done($1, $2::bigint, $3::jsonb, $4::boolean) x", 4, v, "ask done");
+      free(body);
+      return true;
+    }
+    const char *v[4] = {slug, name, key, admin};
+    sql_json(q, db, row ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.ask_row_delete($1, $2, $3, $4::boolean) x"
+                        : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.ask_delete($1, $2::bigint, $3, $4::boolean) x", 4, v, "delete");
     return true;
   }
   static const char card[] = "proposals/";

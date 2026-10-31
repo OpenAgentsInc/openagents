@@ -32,9 +32,13 @@ REDIT_SLUG :: 64; REDIT_URL :: 200; REDIT_BODY :: 1400; REDIT_TYPED :: 200; REDI
 REDIT_UNKNOWN :: 0; REDIT_VISITOR :: 1; REDIT_ADMIN :: 2; REDIT_OWNER :: 3;
 REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3; REDIT_LORE_PANE :: 4; REDIT_QUEST_PANE :: 5;
 REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_SETTINGS :: 3; REQ_E_CARDS :: 4; REQ_E_DECIDE :: 5; REQ_E_REVISE :: 6; REQ_E_PLACE :: 7;
-REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10;
-// buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE, SAVE, and LORE <-> QUEST
-RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_N :: 10;
+REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
+// buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE, SAVE, LORE <-> QUEST, and MORE (the feature list's next page)
+RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_N :: 11;
+// What its owner asked for (migrations/0078_realm_asks.sql): the asks, each applied, waiting (NOT APPLIED) or removing.
+REDIT_ASKS :: 24; REDIT_WORDS :: 120; REDIT_ITEMS :: 40;   // the list: the board's rows, then the asks (REDIT_ROWS + REDIT_ASKS)
+ASK_WAITING :: 0; ASK_APPLIED :: 1; ASK_REMOVING :: 2;
+REDIT_ARMED_S :: 4.0f32;   // DELETE, tapped once, reads SURE? this long
 // The panes' fields: a character's lore, then the quest's ask, three steps and reward.
 RF_LORE :: 0; RF_ASK :: 1; RF_STEP :: 2; RF_REWARD :: 5; RF_N :: 6;
 REDIT_LORES :: 12; REDIT_QUESTS :: 12; REDIT_DRAFT :: 400; REDIT_PART :: 160;
@@ -88,6 +92,11 @@ RealmEdit :: struct {
   draft: [RF_N * REDIT_DRAFT] u8; draft_n: [RF_N] int; dirty: bool;
   field: int; field_press: int; fbox: [RF_N] RBox; fshown: [RF_N] bool;   // field: the one you type into + 1 (0: none, the board's words)
   type_box: RBox;   // where what you type is drawn: a phone's keyboard field goes there
+  // what its owner asked for, and DELETE: the item tapped once (SURE?), what to send
+  ask_n: int; ask_id: [REDIT_ASKS] int; ask_state: [REDIT_ASKS] int;
+  ask_words: [REDIT_ASKS * REDIT_WORDS] u8; ask_words_n: [REDIT_ASKS] int; asks_due: bool;
+  del_box: [REDIT_ITEMS] RBox; del_shown: [REDIT_ITEMS] bool; del_press: int; armed: int; armed_at: f32;
+  del_row: int; del_ask: int; list_first: int; list_page: int;
 }
 
 // ---- small helpers of its own (a realm's names stay its own)
@@ -209,6 +218,35 @@ redit_quest_part :: (e: [] RealmEdit, q: int, p_part: int) -> string {
   at := (q * 5 + p_part) * REDIT_PART;
   return cast(string) e[0].quest_part[at..<at + e[0].quest_part_n[q * 5 + p_part]];
 }
+// ---- what its owner asked for
+redit_ask_words :: (e: [] RealmEdit, a: int) -> string { return cast(string) e[0].ask_words[a * REDIT_WORDS..<a * REDIT_WORDS + e[0].ask_words_n[a]]; }
+redit_ask_of :: (e: [] RealmEdit, id: int) -> int { for a: 0..<e[0].ask_n { if e[0].ask_id[a] == id { return a; } } return -1; }
+// The list: "ask ID applied|waiting|removing ask|remove WORDS", newest first.
+redit_read_asks :: (e: [] RealmEdit, text: string) {
+  e[0].ask_n = 0;
+  i := 0;
+  while i < text.count && e[0].ask_n < REDIT_ASKS {
+    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
+    if redit_word(line, 0) != "ask" { continue; }
+    a := e[0].ask_n;
+    e[0].ask_id[a] = redit_int(redit_word(line, 1));
+    st := redit_word(line, 2);
+    e[0].ask_state[a] = ifx st == "applied" then ASK_APPLIED else ifx st == "removing" then ASK_REMOVING else ASK_WAITING;
+    e[0].ask_words_n[a] = redit_copy(e[0].ask_words[a * REDIT_WORDS..<(a + 1) * REDIT_WORDS], redit_rest(line, 4));
+    redit_upper(e[0].ask_words[a * REDIT_WORDS..<(a + 1) * REDIT_WORDS], e[0].ask_words_n[a]);
+    if e[0].ask_id[a] > 0 && e[0].ask_words_n[a] > 0 { e[0].ask_n = a + 1; }
+  }
+  if e[0].armed >= e[0].row_n + e[0].ask_n { e[0].armed = -1; }
+}
+// DELETE on the list's item i (a row, then the asks): the first tap asks SURE?, the second sends it.
+redit_delete_tap :: (e: [] RealmEdit, i: int) {
+  if !redit_may(e) || i < 0 || i >= e[0].row_n + e[0].ask_n { return; }
+  if e[0].armed != i || e[0].time - e[0].armed_at > REDIT_ARMED_S { e[0].armed = i; e[0].armed_at = e[0].time; return; }
+  e[0].armed = -1;
+  if i < e[0].row_n { e[0].del_row = i; } else { e[0].del_ask = e[0].ask_id[i - e[0].row_n]; }
+  redit_note(e, "Deleting.");
+}
+
 redit_draft :: (e: [] RealmEdit, f: int) -> string { return cast(string) e[0].draft[f * REDIT_DRAFT..<f * REDIT_DRAFT + e[0].draft_n[f]]; }
 redit_field_cap :: (f: int) -> int { return ifx f == RF_LORE then REDIT_DRAFT else ifx f == RF_ASK then REDIT_PART else 100; }
 // The drafts become what is saved for the character whose panes are up.
@@ -280,6 +318,7 @@ redit_start :: (e: [] RealmEdit, slug: string) {
   e[0].slug_n = redit_copy(e[0].slug[..], slug);
   e[0].req_id = -1; e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].switch_row = -1; e[0].decide_due = 0;
   e[0].spec_due = true; e[0].field = 0; e[0].field_press = 0;
+  e[0].del_press = -1; e[0].armed = -1; e[0].del_row = -1; e[0].del_ask = 0;
 }
 
 // ---- the spec (verse.edit_spec), a line each
@@ -432,10 +471,20 @@ redit_next :: (e: [] RealmEdit) {
     redit_ask(e, REQ_E_SETTINGS, "/settings", redit_put(b, n, "}}"), true);
     return;
   }
+  if e[0].del_row >= 0 || e[0].del_ask > 0 {
+    tail: [REDIT_KEY + 24] u8;
+    m := 0;
+    if e[0].del_row >= 0 && e[0].del_row < e[0].row_n { m = redit_put(tail[..], 0, "/rows/"); m = redit_put(tail[..], m, redit_key_of(e, e[0].del_row)); }
+    else if e[0].del_ask > 0 { m = redit_put(tail[..], 0, "/asks/"); m = redit_put_int(tail[..], m, e[0].del_ask); }
+    e[0].del_row = -1; e[0].del_ask = 0;
+    if m > 0 { m = redit_put(tail[..], m, "/delete"); redit_ask(e, REQ_E_DELETE, cast(string) tail[0..<m], 0, true); }
+    return;
+  }
   if e[0].revise_n > 0 {
-    n := redit_put(b, 0, "{\"prompt\":"); n = redit_quote(b, n, cast(string) e[0].revise[0..<e[0].revise_n]);
+    // every ask goes on the list (an ADD): the board's revision through the model, kept with what it changed
+    n := redit_put(b, 0, "{\"words\":"); n = redit_quote(b, n, cast(string) e[0].revise[0..<e[0].revise_n]);
     e[0].revise_n = 0;
-    redit_ask(e, REQ_E_REVISE, "/revise?as=lines", redit_put(b, n, "}"), true);
+    redit_ask(e, REQ_E_ADD, "/asks", redit_put(b, n, "}"), true);
     return;
   }
   if e[0].place_thing_n > 0 {
@@ -460,6 +509,7 @@ redit_next :: (e: [] RealmEdit) {
     return;
   }
   if e[0].cards_due && redit_may(e) { e[0].cards_due = false; redit_ask(e, REQ_E_CARDS, "/proposals", 0, false); return; }
+  if e[0].asks_due && redit_may(e) { e[0].asks_due = false; redit_ask(e, REQ_E_ASKS, "/asks", 0, false); return; }
   if e[0].panes_due && e[0].ready { e[0].panes_due = false; redit_ask(e, REQ_E_PANES, "/panes", 0, false); }
 }
 redit_drop_card :: (e: [] RealmEdit) {
@@ -479,6 +529,13 @@ redit_place :: (e: [] RealmEdit, thing: string, x: f32, z: f32, yaw: f32) {
   e[0].place_thing_n = redit_copy(e[0].place_thing[..], thing); e[0].place_x = x; e[0].place_z = z; e[0].place_yaw = yaw;
 }
 
+// Does our server's answer hold a field (its own JSON, never the player's words).
+redit_has :: (text: string, p_part: string) -> bool {
+  if p_part.count == 0 { return true; }
+  if text.count < p_part.count { return false; }
+  for i: 0..<text.count - p_part.count + 1 { if text[i..<i + p_part.count] == p_part { return true; } }
+  return false;
+}
 redit_status :: (text: string) -> int { return redit_int(text[0..<redit_line_end(text, 0)]); }
 redit_body :: (text: string) -> string { e := redit_line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
 
@@ -496,6 +553,26 @@ redit_answer :: (e: [] RealmEdit, text: string) {
   }
   if what == REQ_E_SWITCH { if status != 200 { redit_note(e, "Not switched. Try again."); } e[0].spec_due = true; return; }
   if what == REQ_E_SETTINGS { if status != 200 { redit_note(e, "Not saved. Try again."); } e[0].spec_due = true; return; }
+  if what == REQ_E_ADD {
+    if status == 200 {
+      redit_read_rows(e, p_body);
+      p_first := p_body[0..<redit_line_end(p_body, 0)];
+      redit_note(e, ifx redit_word(p_first, 2) == "applied" then "Applied: it's in the realm now." else "Not applied yet: it stays on the list.");
+      e[0].spec_due = true; e[0].asks_due = true; e[0].list_first = 0;
+    }
+    else if status == 429 { redit_note(e, "One at a time: say it again in a moment."); }
+    else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
+    else { redit_note(e, ifx p_body.count > 0 && p_body.count < 60 then p_body else "Not heard. Try again."); }
+    return;
+  }
+  if what == REQ_E_ASKS { if status == 200 { redit_read_asks(e, p_body); } return; }
+  if what == REQ_E_DELETE {
+    if status == 200 { redit_note(e, ifx redit_has(p_body, "\"deleted\"") then "Deleted." else "Off now; its code comes out next."); }
+    else if status == 403 { redit_note(e, "Only its owner and admins change it."); }
+    else { redit_note(e, "Not deleted. Try again."); }
+    e[0].spec_due = true; e[0].asks_due = true;
+    return;
+  }
   if what == REQ_E_REVISE {
     if status == 200 { redit_read_rows(e, p_body); redit_note(e, "The board is the realm now."); e[0].spec_due = true; }
     else if status == 429 { redit_note(e, "One at a time: say it again in a moment."); }
@@ -596,6 +673,7 @@ redit_pane :: (e: [] RealmEdit, pane: int) {
   e[0].pane = ifx e[0].pane == pane then REDIT_SHUT else pane;
   e[0].typing = false; e[0].field = 0;
   if pane == REDIT_CARDS_PANE { e[0].cards_due = true; }
+  if pane == REDIT_BOARD { e[0].asks_due = true; e[0].armed = -1; }
 }
 redit_toggle :: (e: [] RealmEdit) {
   if e[0].pane != REDIT_SHUT { e[0].pane = REDIT_SHUT; e[0].typing = false; e[0].field = 0; redit_talk_up(e); return; }
@@ -644,6 +722,7 @@ redit_key :: (e: [] RealmEdit, key: int, p_down: bool) -> int {
 redit_inside :: (b: RBox, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 redit_button_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for i: 0..<RB_N { if e[0].shown[i] && redit_inside(e[0].boxes[i], x, y) { return i; } } return -1; }
 redit_row_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for i: 0..<REDIT_ROWS { if e[0].row_shown[i] && redit_inside(e[0].rows[i], x, y) { return i; } } return -1; }
+redit_del_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for i: 0..<REDIT_ITEMS { if e[0].del_shown[i] && redit_inside(e[0].del_box[i], x, y) { return i; } } return -1; }
 redit_field_at :: (e: [] RealmEdit, x: f32, y: f32) -> int { for f: 0..<RF_N { if e[0].fshown[f] && redit_inside(e[0].fbox[f], x, y) { return f; } } return -1; }
 // Over the layer: the pane's plate or a button.
 redit_over :: (e: [] RealmEdit, x: f32, y: f32) -> bool {
@@ -658,6 +737,7 @@ redit_press :: (e: [] RealmEdit, b: int) {
   if b == RB_ACCEPT { redit_decide(e, true); return; }
   if b == RB_DECLINE { redit_decide(e, false); return; }
   if b == RB_SAVE { redit_save(e); return; }
+  if b == RB_MORE { e[0].list_first = e[0].list_first + redit_hi_int(1, e[0].list_page); if e[0].list_first >= e[0].row_n + e[0].ask_n { e[0].list_first = 0; } e[0].armed = -1; return; }
   if b == RB_SWAP { e[0].pane = ifx e[0].pane == REDIT_LORE_PANE then REDIT_QUEST_PANE else REDIT_LORE_PANE; e[0].typing = false; e[0].field = 0; }
 }
 redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool {
@@ -666,20 +746,23 @@ redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool 
     b := redit_button_at(e, x, y);
     if b == RB_TALK { e[0].press = b; e[0].finger = id; redit_talk_down(e); return true; }
     if b >= 0 { e[0].press = b; e[0].finger = id; return true; }
+    d := redit_del_at(e, x, y);
+    if d >= 0 { e[0].del_press = d; e[0].finger = id; return true; }
     r := redit_row_at(e, x, y);
     if r >= 0 { e[0].row_press = r; e[0].finger = id; return true; }
     f := redit_field_at(e, x, y);
     if f >= 0 { e[0].field_press = f + 1; e[0].finger = id; return true; }
     return redit_over(e, x, y);
   }
-  if id != e[0].finger || (e[0].press < 0 && e[0].row_press < 0 && e[0].field_press == 0) { return phase != 1 && redit_over(e, x, y); }
+  if id != e[0].finger || (e[0].press < 0 && e[0].row_press < 0 && e[0].field_press == 0 && e[0].del_press < 0) { return phase != 1 && redit_over(e, x, y); }
   if phase == 1 { return true; }
-  b := e[0].press; r := e[0].row_press; fp := e[0].field_press;
-  e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].field_press = 0;
+  b := e[0].press; r := e[0].row_press; fp := e[0].field_press; dp := e[0].del_press;
+  e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].field_press = 0; e[0].del_press = -1;
   if fp > 0 && phase != 3 && redit_field_at(e, x, y) == fp - 1 { e[0].typing = true; e[0].field = fp; e[0].typed_n = 0; return true; }
   if b == RB_TALK { redit_talk_up(e); return true; }
   if phase == 3 { return true; }
   if b >= 0 && redit_button_at(e, x, y) == b { redit_press(e, b); }
+  if dp >= 0 && redit_del_at(e, x, y) == dp { redit_delete_tap(e, dp); }
   if r >= 0 && redit_row_at(e, x, y) == r {
     if e[0].pane == REDIT_BOARD { redit_switch(e, r); } else if e[0].pane == REDIT_SETTINGS { redit_set_tool(e, redit_settings_tool(e, r)); }
   }
@@ -740,6 +823,7 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   for i: 0..<RB_N { e[0].shown[i] = false; }
   for i: 0..<REDIT_ROWS { e[0].row_shown[i] = false; }
   for f: 0..<RF_N { e[0].fshown[f] = false; }
+  for i: 0..<REDIT_ITEMS { e[0].del_shown[i] = false; }
   if !e[0].ready || !redit_may(e) { return at; }
   k := e[0].dpr;
   n := redit_button(e, out, at, RB_EDIT, anchor, ifx e[0].pane != REDIT_SHUT then "DONE" else "EDIT", e[0].pane != REDIT_SHUT);
@@ -760,7 +844,7 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   redit_plate(e, RBox.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}, 0.9, 0);
   pad := 14 * k;
   // the tabs: one pane at a time
-  tabs := [3] string.["THE BOARD", "SETTINGS", "WAITING"];
+  tabs := [3] string.["FEATURES", "SETTINGS", "WAITING"];
   tw := (pw - 2 * pad - 2 * 6 * k) / 3;
   for t: 0..<3 {
     bx := x0 + pad + f32(t) * (tw + 6 * k);
@@ -789,33 +873,86 @@ redit_rows_at :: (e: [] RealmEdit, out: [] f32, at: int, i: int, label: string, 
   return redit_text(e, out, n, label, x + size + 10 * k, y + (h + 8 * k) / 2, 8 * k, ifx on then redit_parch(k, 0.95) else redit_parch(k, 0.55), room - size - 10 * k);
 }
 
-// THE BOARD: what's in the realm now, a checkbox a row; HOLD TO TALK (on a page with a voice) and TYPE IT revise it.
+// The list's item i: a bullet, what it is, APPLIED or NOT APPLIED, and DELETE. A board's row (what
+// the realm's code switches) is a tap to switch, then the asks, newest first.
+redit_item :: (e: [] RealmEdit, out: [] f32, at: int, i: int, x: f32, y: f32, room: f32) -> int {
+  k := e[0].dpr; p_h := 26 * k; p_cap := 7.5 * k; p_tag_cap := 6.5 * k;
+  p_row := i < e[0].row_n;
+  p_a := i - e[0].row_n;
+  p_words := ifx p_row then redit_label_of(e, i) else redit_ask_words(e, p_a);
+  p_on := ifx p_row then e[0].row_on[i] else e[0].ask_state[p_a] == ASK_APPLIED;
+  p_tag := ifx p_on then "APPLIED" else ifx !p_row && e[0].ask_state[p_a] == ASK_REMOVING then "REMOVING" else "NOT APPLIED";
+  p_dw := 60 * k;
+  e[0].del_box[i] = RBox.{x0 = x + room - p_dw, y0 = y + 1 * k, x1 = x + room, y1 = y + p_h - 1 * k}; e[0].del_shown[i] = true;
+  // DELETE is an outline, not a plate (a realm has few plates)
+  p_db := e[0].del_box[i]; p_hot := e[0].armed == i || e[0].del_press == i;
+  n := redit_frame(out, at, p_db, p_hot, k);
+  p_dl := ifx e[0].armed == i then "SURE?" else "DELETE";
+  p_dlw := redit_lo(redit_width(p_dl, p_tag_cap), p_dw - 8 * k);
+  n = redit_text(e, out, n, p_dl, (p_db.x0 + p_db.x1 - p_dlw) / 2, (p_db.y0 + p_db.y1 + p_tag_cap) / 2, p_tag_cap, ifx p_hot then redit_gold(k, 1.0) else redit_parch(k, 0.8), p_dw - 8 * k);
+  p_tw := redit_width(p_tag, p_tag_cap);
+  p_tx := x + room - p_dw - 10 * k - p_tw;
+  n = redit_text(e, out, n, p_tag, p_tx, y + (p_h + p_tag_cap) / 2, p_tag_cap, ifx p_on then redit_gold(k, 0.95) else redit_parch(k, 0.5), 0);
+  // the bullet
+  p_cy := y + p_h / 2;
+  if lit(out, n, x + 2 * k, p_cy, x + 3.5 * k, p_cy, 1.6 * k, 0.95, 1.2 * k, 0.80, 0.64, 0.36, 0) { n += 6; }
+  p_text_room := p_tx - 10 * k - (x + 12 * k);
+  p_end := redit_fit(p_words, 0, p_cap, p_text_room);
+  p_shown: [REDIT_WORDS + 4] u8;
+  p_m := redit_copy(p_shown[..], p_words);
+  if p_end < p_words.count { p_m = redit_put(p_shown[..], redit_fit(p_words, 0, p_cap, p_text_room - redit_width("...", p_cap)), "..."); }
+  if p_row { e[0].rows[i] = RBox.{x0 = x - 4 * k, y0 = y, x1 = p_tx - 4 * k, y1 = y + p_h}; e[0].row_shown[i] = true; }
+  return redit_text(e, out, n, cast(string) p_shown[0..<p_m], x + 12 * k, y + (p_h + p_cap) / 2, p_cap, redit_parch(k, ifx p_on then 0.95f32 else 0.6f32), p_text_room);
+}
+
+// FEATURES: what the realm has and what its owner asked for, each APPLIED or NOT APPLIED, with DELETE;
+// ADD (HOLD TO TALK on a page with a voice, typing everywhere) asks for a new one or a change.
 redit_board :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32, bottom: f32) -> int {
   k := e[0].dpr;
-  n := at; yy := y;
-  if e[0].row_n == 0 { n = redit_text(e, out, n, "NOTHING HERE SWITCHES YET", x, yy + 10 * k, 8 * k, redit_parch(k, 0.8), room); yy += 26 * k; }
-  for i: 0..<e[0].row_n {
-    if yy + 26 * k > bottom - 90 * k { break; }
-    n = redit_rows_at(e, out, n, i, redit_label_of(e, i), e[0].row_on[i], x, yy, room);
-    yy += 28 * k;
+  n := at; p_yy := y;
+  if e[0].armed >= 0 && e[0].time - e[0].armed_at > REDIT_ARMED_S { e[0].armed = -1; }
+  p_items := e[0].row_n + e[0].ask_n;
+  if p_items == 0 { n = redit_text(e, out, n, "NOTHING ASKED FOR YET", x, p_yy + 10 * k, 8 * k, redit_parch(k, 0.8), room); p_yy += 26 * k; }
+  p_fit := redit_hi_int(1, cast(int) ((bottom - 90 * k - y) / (30 * k)));
+  p_more := p_items > p_fit;
+  if p_more { p_fit = redit_hi_int(1, p_fit - 1); }
+  e[0].list_page = p_fit;
+  if e[0].list_first >= p_items { e[0].list_first = 0; }
+  for p_j: 0..<p_fit {
+    p_i := e[0].list_first + p_j;
+    if p_i >= p_items { break; }
+    n = redit_item(e, out, n, p_i, x, p_yy, room);
+    p_yy += 30 * k;
   }
-  yy += 10 * k;
+  if p_more {
+    p_lab: [40] u8;
+    p_last := redit_least(p_items, e[0].list_first + p_fit);
+    p_m := redit_put(p_lab[..], 0, "MORE  ("); p_m = redit_put_int(p_lab[..], p_m, e[0].list_first + 1); p_m = redit_put(p_lab[..], p_m, "-");
+    p_m = redit_put_int(p_lab[..], p_m, p_last); p_m = redit_put(p_lab[..], p_m, " OF "); p_m = redit_put_int(p_lab[..], p_m, p_items); p_m = redit_put(p_lab[..], p_m, ")");
+    p_mb := RBox.{x0 = x, y0 = p_yy, x1 = x + room, y1 = p_yy + 24 * k};
+    e[0].boxes[RB_MORE] = p_mb; e[0].shown[RB_MORE] = true;
+    n = redit_frame(out, n, p_mb, e[0].press == RB_MORE, k);
+    p_mw := redit_width(cast(string) p_lab[0..<p_m], 6.5 * k);
+    n = redit_text(e, out, n, cast(string) p_lab[0..<p_m], (p_mb.x0 + p_mb.x1 - p_mw) / 2, (p_mb.y0 + p_mb.y1 + 6.5 * k) / 2, 6.5 * k, redit_gold(k, 0.95), room);
+    p_yy += 30 * k;
+  }
+  p_yy += 6 * k;
   if e[0].typing {
-    p_shown := cast(string) e[0].typed[0..<e[0].typed_n];
-    e[0].type_box = RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 30 * k};
+    p_said := cast(string) e[0].typed[0..<e[0].typed_n];
+    e[0].type_box = RBox.{x0 = x, y0 = p_yy, x1 = x + room, y1 = p_yy + 30 * k};
     redit_plate(e, e[0].type_box, 0.95, 1);
-    n = redit_text(e, out, n, ifx p_shown.count > 0 then p_shown else "TYPE HOW IT SHOULD CHANGE, THEN ENTER", x + 8 * k, yy + 19 * k, 8 * k, redit_parch(k, ifx p_shown.count > 0 then 0.95f32 else 0.5f32), room - 16 * k);
-    yy += 38 * k;
+    n = redit_text(e, out, n, ifx p_said.count > 0 then p_said else "TYPE WHAT YOU WANT, THEN ENTER", x + 8 * k, p_yy + 19 * k, 8 * k, redit_parch(k, ifx p_said.count > 0 then 0.95f32 else 0.5f32), room - 16 * k);
+    p_yy += 38 * k;
   } else if e[0].caption_n > 0 {
-    n = redit_text(e, out, n, cast(string) e[0].caption[0..<e[0].caption_n], x, yy + 10 * k, 7.5 * k, redit_parch(k, 0.85), room);
-    yy += 22 * k;
+    n = redit_text(e, out, n, cast(string) e[0].caption[0..<e[0].caption_n], x, p_yy + 10 * k, 7.5 * k, redit_parch(k, 0.85), room);
+    p_yy += 22 * k;
   }
-  half := (room - 8 * k) / 2;
+  p_half := (room - 8 * k) / 2;
   if e[0].voice {
-    n = redit_button(e, out, n, RB_TALK, RBox.{x0 = x, y0 = yy, x1 = x + half, y1 = yy + 32 * k}, ifx e[0].held then "LISTENING" else "HOLD TO TALK", e[0].held);
-    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x + half + 8 * k, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, ifx e[0].typing then "CANCEL" else "TYPE IT", e[0].typing);
+    n = redit_button(e, out, n, RB_TALK, RBox.{x0 = x, y0 = p_yy, x1 = x + p_half, y1 = p_yy + 32 * k}, ifx e[0].held then "LISTENING" else "HOLD TO TALK", e[0].held);
+    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x + p_half + 8 * k, y0 = p_yy, x1 = x + room, y1 = p_yy + 32 * k}, ifx e[0].typing then "CANCEL" else "ADD BY TYPING", e[0].typing);
   } else {
-    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, ifx e[0].typing then "CANCEL" else "TYPE HOW IT SHOULD CHANGE", e[0].typing);
+    n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x, y0 = p_yy, x1 = x + room, y1 = p_yy + 32 * k}, ifx e[0].typing then "CANCEL" else "ADD A FEATURE OR A CHANGE", e[0].typing);
   }
   return n;
 }

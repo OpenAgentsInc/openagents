@@ -135,9 +135,9 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert redit_message(e[..], REDIT_MSG_TEXT, "no \"robots\", names back");
   #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
   redit_step(e[..], 2, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/the-grid/revise?as=lines") && body_is(e[..], "{\"prompt\":\"no \\\"robots\\\", names back\"}");
-  #assert answer(e[..], 4, "200\nplan 7\nrow robots 0 Robots walking their rounds\nrow names 1 Place names in the air\n");
-  #assert !redit_row_on(e[..], "robots") && redit_row_on(e[..], "names") && e[0].spec_due;
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && body_is(e[..], "{\"words\":\"no \\\"robots\\\", names back\"}");
+  #assert answer(e[..], 4, "200\nask 7 applied\nplan 7\nrow robots 0 Robots walking their rounds\nrow names 1 Place names in the air\n");
+  #assert !redit_row_on(e[..], "robots") && redit_row_on(e[..], "names") && e[0].spec_due && e[0].asks_due;
   // a page with a voice: HOLD TO TALK opens the microphone, the words heard go to the model
   _f := redit_message(e[..], REDIT_FACTS, "voice=everglade\nplayer=p-1\n");
   #assert e[0].voice;
@@ -156,12 +156,69 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert !redit_message(e[..], REDIT_MSG_VOICE, "heard|what time is it");   // not ours: the realm hears it
   e[0].req_ready = false; e[0].req_id = -1; e[0].spec_due = false;
   redit_step(e[..], 5, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/the-grid/revise?as=lines") && answer(e[..], 5, "429\none at a time") && e[0].note_n > 0;
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && answer(e[..], 5, "429\none at a time") && e[0].note_n > 0;
   // a visitor can't talk the board round
   v: [1] RealmEdit;
   opened(v[..], "the-grid", VISITOR);
   redit_say(v[..], "no robots");
   #assert v[0].revise_n == 0;
+}
+
+#test "FEATURES: the rows and the asks, each APPLIED or NOT APPLIED; DELETE asks SURE? and sends it" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  #assert e[0].pane == REDIT_BOARD && e[0].asks_due;
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && (e[0].req_flags & HTTP_POST) == 0;
+  #assert answer(e[..], 1, "200\nask 9 waiting ask a ghost cat by the gate\nask 4 applied ask no robots at night\nask 2 removing ask a bell\n");
+  #assert e[0].ask_n == 3 && e[0].ask_id[0] == 9 && e[0].ask_state[0] == ASK_WAITING && e[0].ask_state[1] == ASK_APPLIED && e[0].ask_state[2] == ASK_REMOVING;
+  #assert redit_ask_words(e[..], 0) == "A GHOST CAT BY THE GATE";
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  // two rows, three asks: five bullets, each with DELETE, inside the screen
+  for i: 0..<5 { #assert e[0].del_shown[i] && e[0].del_box[i].x1 <= 1440 && e[0].del_box[i].y1 <= 900; }
+  #assert !e[0].del_shown[5] && e[0].plate_n <= REDIT_PLATES;
+  // DELETE once reads SURE?; again, it sends the ask's delete
+  #assert tap(e[..], e[0].del_box[2]) && e[0].armed == 2 && e[0].del_ask == 0;
+  #assert tap(e[..], e[0].del_box[2]) && e[0].armed == -1 && e[0].del_ask == 9;
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks/9/delete") && (e[0].req_flags & HTTP_POST) != 0;
+  #assert answer(e[..], 2, "200\n{\"deleted\": 9, \"reverted\": 0}") && e[0].asks_due && e[0].spec_due;
+  // a row's DELETE goes to the row
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].del_box[0]) && tap(e[..], e[0].del_box[0]) && e[0].del_row == 0;
+  e[0].spec_due = false; e[0].asks_due = false;
+  redit_step(e[..], 4, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/rows/robots/delete");
+  // SURE? lapses
+  _w := answer(e[..], 3, "200\n{\"ask\": 11, \"state\": \"waiting\"}");
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].del_box[1]) && e[0].armed == 1;
+  redit_step(e[..], 10, 1440, 900, 1);
+  #assert tap(e[..], e[0].del_box[1]) && e[0].armed == 1 && e[0].del_row == -1;
+}
+
+#test "FEATURES on a phone: everything fits the width, and MORE pages a long list" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  redit_start(e[..], "the-grid");
+  redit_step(e[..], 1, 390 * 3, 700 * 3, 3);
+  _s := answer(e[..], 0, HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  redit_step(e[..], 2, 390 * 3, 700 * 3, 3);
+  _l := answer(e[..], 1, "200\nask 30 waiting ask one\nask 29 waiting ask two\nask 28 waiting ask three\nask 27 waiting ask four\nask 26 waiting ask five\nask 25 waiting ask six\nask 24 waiting ask seven\nask 23 waiting ask eight\nask 22 waiting ask nine\nask 21 waiting ask ten\nask 20 waiting ask eleven\nask 19 waiting ask twelve\nask 18 waiting ask thirteen\nask 17 waiting ask fourteen\nask 16 waiting ask fifteen\nask 15 waiting ask sixteen\n");
+  #assert e[0].ask_n == 16;
+  anchor := RBox.{x0 = 390 * 3 - 100 * 3, y0 = 16 * 3, x1 = 390 * 3 - 16 * 3, y1 = 54 * 3};
+  _ := redit_hud(e[..], out[..], 0, anchor);
+  #assert e[0].shown[RB_MORE] && e[0].list_page < 18 && e[0].del_shown[0];
+  for i: 0..<REDIT_ITEMS { if e[0].del_shown[i] { #assert e[0].del_box[i].x0 >= 0 && e[0].del_box[i].x1 <= 390 * 3 && e[0].del_box[i].y1 <= 700 * 3; } }
+  page := e[0].list_page;
+  #assert tap(e[..], e[0].boxes[RB_MORE]) && e[0].list_first == page;
+  _ = redit_hud(e[..], out[..], 0, anchor);
+  #assert !e[0].del_shown[0] && e[0].del_shown[page];
 }
 
 #test "the cards: read, the first shown, ACCEPT sends it and takes it off" {

@@ -178,3 +178,19 @@ and lists it on the galaxy.
 
 The realm's maker can be named and tipped in Bitcoin: the team sends a
 one-time claim link (`docs/verse/makers.md`).
+
+## Asks waiting on code
+
+Every realm's edit mode keeps the list of what its owner asked for
+(`docs/verse/realm-edit.md`, "What you asked for"). An ask the realm's code can't do yet is NOT
+APPLIED and waits for someone to build it. To work one, as an agent with a site admin key:
+
+1. Read the list: `GET https://openagents.com/api/playtest/realms/<slug>/asks`, signed with NIP-98
+   (`ask ID STATE KIND WORDS`, newest first). `waiting ask` is to build; `waiting remove` is a row
+   whose code is to come out; `removing ask` is built code to take out again.
+2. Build it (or take it out) in the realm's files as this skill says, with `#test`s, a new board
+   row in `realms.json` and its migration when the owner should be able to switch it, and push to
+   `main`. Taking a row out: its code, its `realms.json` row and a migration that drops it from
+   `verse.realm_rights` and `verse.realm_edit.switched`. Taking built code out: revert its commit.
+3. Mark it: `POST /api/playtest/realms/<slug>/asks/<id>/done {"commit": "<the pushed 40-hex hash>"}`,
+   signed with NIP-98. A built ask becomes APPLIED; a remove (or a removing ask) leaves the list.

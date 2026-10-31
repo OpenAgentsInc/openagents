@@ -62,7 +62,7 @@ The realm reads `redit_row_on(ed, "robots")` where its code draws the thing, `re
 server's answer changed it.
 
 EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Making the world:
-panes"): THE BOARD (a checkbox a row; HOLD TO TALK on a page with a voice, TYPE IT everywhere),
+panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
 (the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
 
@@ -103,3 +103,43 @@ hotbar's things only, each placed where an admin's would go and sent as a card; 
 owner's page puts the thing in the city and publishes it as an edit by hand. Its owner and admin
 accounts make voice edits (HOLD TO TALK, `/api/playtest/realm/everglade/edit`, npc.c) as a site
 admin does; theirs are paced and counted under their key's hash.
+
+## What you asked for: the feature list
+
+FEATURES, the first pane EDIT opens in every realm, is a bulleted list: first the board's rows (what
+the realm's code switches; a tap on one switches it), then every ask its owner and admins made,
+newest first. Each says APPLIED or NOT APPLIED (REMOVING while its code comes out), with DELETE
+(tapped once it reads SURE?; a second tap within 4 s sends it). ADD (HOLD TO TALK, or typing) asks
+for a new feature or a change. A phone gets the same list a page at a time (MORE).
+
+The server keeps the list per realm, for its owner and admins only (`migrations/0078_realm_asks.sql`,
+`verse.realm_asks`). An ask goes the way talking to the board always went: the model answers under
+a schema whose enums are this realm's rows (a made realm's: the builder's catalogue), under the
+builder's daily cap and pace, and no words are matched anywhere. What the answer changed is kept
+with the ask, each changed row as it was before and after (and a made realm's ground and time).
+
+| | |
+|---|---|
+| `GET /asks` | `ask ID applied\|waiting\|removing ask\|remove WORDS`, newest first; `""` for a visitor |
+| `POST /asks {words}` | ADD: lines `ask ID applied\|waiting`, `plan N`, then the board's rows |
+| `POST /asks/<id>/delete` | DELETE an ask: `{deleted, reverted}`, or `{state: removing}` for one built in code |
+| `POST /rows/<key>/delete` | DELETE a board's row: `{deleted}` (a made realm), or `{ask, state: waiting}` (a hand-built one) |
+| `POST /asks/<id>/done {commit}` | a site admin (an agent signing NIP-98): built in code, or its code taken out |
+
+How DELETE cleans up:
+
+- **An applied ask**: each row it changed that is still as it left it goes back to what it was
+  before (a hand-built row's entry leaves `realm_edit.switched` when it had none; a made realm's
+  feature it added leaves `features` and `off` altogether), and the ask is deleted. A row changed
+  again since belongs to that later change and is left alone.
+- **A waiting ask** (NOT APPLIED: the realm's code can't do it yet): it is deleted.
+- **A made realm's row**: its feature is data, so it leaves the realm's `features` and `off` at
+  once, and an ask whose only change it was goes with it.
+- **A hand-built realm's row** is code: it is switched off now and a `remove` ask waits ("Take out
+  ..."). The agent that takes its code out (and the row out of `realms.json` and `realm_rights`, in
+  a migration) marks it done with the pushed commit, and the ask is gone. DELETE on that remove ask
+  instead puts the row back on.
+- **An ask built in code** (marked done with its commit): DELETE makes it REMOVING; its code comes
+  out the way it went in (reverting that commit, with tests), and done with that commit removes it.
+
+`verse/SKILL.md` ("Asks waiting on code") is how an agent works the waiting ones.
