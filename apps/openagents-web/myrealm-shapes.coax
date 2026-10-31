@@ -57,7 +57,13 @@ person_figure :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, r:
 // flap is its wings' beat; perched, its wings fold at its sides.
 OWL_BODY :: [3] f32.[0.56, 0.4, 0.25];
 OWL_FACE :: [3] f32.[0.96, 0.9, 0.76];
+// An owl's size: perched on a branch, and flying (its wings then span about a metre, a crow's 0.6),
+// and the height it flies at over open ground (metres; over roofs it rises: roof_near).
+OWL_PERCHED :: 1.0; OWL_FLYING :: 0.62; OWL_UP :: 3.6; OWL_ROUND :: 3.6; OWL_WIDE :: 1.6; OWL_DEEP :: 0.55;
+// An owl's wing, shoulder out: each plate's start and end (times its size), its breadth, how far back.
+OWL_WING :: [16] f32.[0.0, 0.27, 0.36, 0.0,  0.24, 0.5, 0.3, 0.04,  0.47, 0.7, 0.21, 0.09,  0.67, 0.8, 0.11, 0.13];
 owl_shape :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, flap: f32, perched: bool) {
+  crate := mesh_named(s, "Prop_Crate");
   fx := -sin(yaw); fz := cos(yaw); ax := cos(yaw); az := sin(yaw);
   k := size;
   br := OWL_BODY[0]; bg := OWL_BODY[1]; bb := OWL_BODY[2];
@@ -84,15 +90,23 @@ owl_shape :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, flap: 
     if perched {
       round_cone(s, sx, sy, sz, 0.07 * k, sx - fx * 0.06 * k, y + 0.07 * k, sz - fz * 0.06 * k, 0.04 * k, br * 0.8, bg * 0.8, bb * 0.8);
     } else {
-      // a broad wing: a fan of four long feathers from the shoulder, swept back, beating together
+      // a broad wing: four plates of plain feather out from the shoulder, each thinner, narrower,
+      // swept further back and curling a little higher than the last, so it tapers to a rounded
+      // tip and shows an arc from in front; beating together
       ball(s, sx, sy, sz, 0.08 * k, br * 0.85, bg * 0.85, bb * 0.85);
+      pen := s[0].glow_pen; untextured(s);
+      run: f32 = 0; ry := sy;
       for f: 0..<4 {
-        q := cast(f32) f;
-        span := (0.6 - 0.09 * q) * k; back := 0.08 + 0.09 * q;
-        ox := ax * w * cos(flap) * cos(back) - fx * sin(back); oz := az * w * cos(flap) * cos(back) - fz * sin(back); oy := sin(flap) * cos(back);
-        shade := 0.85 - 0.05 * q;
-        round_cone(s, sx - fx * 0.04 * k * q, sy, sz - fz * 0.04 * k * q, 0.09 * k, sx + ox * span, sy + oy * span, sz + oz * span, 0.055 * k, br * shade, bg * shade, bb * shade);
+        o := f * 4; q := cast(f32) f;
+        long := (OWL_WING[o + 1] - OWL_WING[o]) * k; back := OWL_WING[o + 3] * k; shade := 0.86 - 0.05 * q;
+        bend := flap + 0.14 * q;
+        mid := run + 0.5 * long * cos(bend);
+        cx := sx + ax * w * mid - fx * back; cz := sz + az * w * mid - fz * back;
+        thick := (0.09 - 0.015 * q) * k;
+        sized(s, crate, cx, ry + 0.5 * long * sin(bend) - 0.5 * thick, cz, -yaw, w * bend, long, thick, OWL_WING[o + 2] * k, br * shade, bg * shade, bb * shade);
+        run += 0.9 * long * cos(bend); ry += 0.9 * long * sin(bend);
       }
+      s[0].glow_pen = pen;
     }
   }
   // tail, and feet when perched
@@ -433,3 +447,142 @@ hen :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, graze: f32, step: f32, i: int) 
 
 // How much room one of the herd needs round it (metres): its body's half length.
 herd_room :: (kind: int) -> f32 { return ifx kind == CHICKEN then 0.35f32 else 0.42 * BUILD[kind * 11] * BUILD[kind * 11 + 2]; }
+
+// ---- how high what stands reaches: a grid of cells over the realm, each the top of the highest
+// thing laid out over it (not the ground's cover or the hills), for what flies to keep above
+ROOF_N :: 16; ROOF_CELLS :: 256; ROOF_CELL :: 3.5;
+roof_cell :: (v: f32) -> int { return cast(int) floor(v / ROOF_CELL + 0.5 * cast(f32) ROOF_N); }
+roofs_out :: (s: [] MyRealm) {
+  for c: 0..<ROOF_CELLS { s[0].roof[c] = 0; }
+  for p: 0..<s[0].static_n {
+    if p >= s[0].cover_from && p < s[0].cover_to { continue; }
+    m := s[0].piece_mesh[p];
+    top: f32 = 0; cx: f32 = 0; cz: f32 = 0; reach: f32 = 0;
+    if m == ROUND {
+      ra := s[0].piece_k[p]; rb := s[0].piece_roll[p];
+      top = hi(s[0].piece_y[p] + ra, s[0].piece_sy[p] + rb);
+      cx = 0.5 * (s[0].piece_x[p] + s[0].piece_sx[p]); cz = 0.5 * (s[0].piece_z[p] + s[0].piece_sz[p]);
+      dx := s[0].piece_x[p] - s[0].piece_sx[p]; dz := s[0].piece_z[p] - s[0].piece_sz[p];
+      reach = 0.5 * sqrt(dx * dx + dz * dz) + hi(ra, rb);
+    } else {
+      o := m * 6; k := s[0].piece_k[p];
+      top = s[0].piece_y[p] + (s[0].mesh_box[o + 4] - s[0].mesh_box[o + 1]) * k * s[0].piece_sy[p];
+      cx = s[0].piece_x[p]; cz = s[0].piece_z[p];
+      reach = 0.5 * hi((s[0].mesh_box[o + 3] - s[0].mesh_box[o]) * k * s[0].piece_sx[p], (s[0].mesh_box[o + 5] - s[0].mesh_box[o + 2]) * k * s[0].piece_sz[p]);
+      // a tree's crown is high off the ground at its edges: only its middle counts
+      if m > 0 && leaves_of(s, m - 1) == m { reach *= 0.5; }
+    }
+    // every cell the piece's footprint touches
+    span := cast(int) floor(reach / ROOF_CELL) + 1;
+    i0 := roof_cell(cx); j0 := roof_cell(cz);
+    for i: i0 - span..<i0 + span + 1 {
+      for j: j0 - span..<j0 + span + 1 {
+        if i < 0 || j < 0 || i >= ROOF_N || j >= ROOF_N { continue; }
+        c := j * ROOF_N + i;
+        if top > s[0].roof[c] { s[0].roof[c] = top; }
+      }
+    }
+  }
+}
+// The highest top within this many cells of (x, z).
+roof_near :: (s: [] MyRealm, x: f32, z: f32, cells: int) -> f32 {
+  i0 := roof_cell(x); j0 := roof_cell(z); top: f32 = 0;
+  for i: i0 - cells..<i0 + cells + 1 {
+    for j: j0 - cells..<j0 + cells + 1 {
+      if i < 0 || j < 0 || i >= ROOF_N || j >= ROOF_N { continue; }
+      top = hi(top, s[0].roof[j * ROOF_N + i]);
+    }
+  }
+  return top;
+}
+
+// ---- the wood: a forest ground is a forest, a jungle's (a temple, parrots or palms in a forest)
+// dense with broadleaf trees, palms and hanging vines. Trees stand either side of the first
+// buildings, framing them; the rest in a ring round the realm, the view ahead kept open.
+jungle_of :: (s: [] MyRealm) -> bool {
+  if s[0].ground != 1 { return false; }
+  if s[0].flier == FLY_PARROT && s[0].birds > 0 { return true; }
+  if s[0].trees > 0 && s[0].tree_kind == 4 { return true; }
+  for i: 0..<s[0].building_n { if s[0].building[i] == 9 { return true; } }
+  return false;
+}
+WOOD_JUNGLE :: 34; WOOD_FOREST :: 22;
+wood :: (s: [] MyRealm, r: [] Seed) {
+  if s[0].ground != 1 || s[0].camera == CAM_SIDE { return; }
+  jungle := jungle_of(s);
+  // either side of each of the first buildings (seen from where you start), a little behind it
+  for b: 0..<s[0].built_n {
+    bx := s[0].built_x[b]; bz := s[0].built_z[b]; br := s[0].built_r[b];
+    vx := bx; vz := bz - 6; vd := hi(sqrt(vx * vx + vz * vz), 0.1); vx /= vd; vz /= vd;   // ahead, from you to it
+    for k: 0..<3 {
+      side: f32 = ifx k == 0 then -1.0f32 else ifx k == 1 then 1.0f32 else 0.3f32;
+      out := ifx k == 2 then 0.0f32 else br + 2.2;
+      behind := ifx k == 2 then br + 3.0 else 1.0;
+      for tries: 0..<5 {
+        j := cast(f32) tries * 0.7;
+        x := bx - vz * side * (out + j) + vx * (behind + rand(r) * j);
+        z := bz + vx * side * (out + j) + vz * (behind + rand(r) * j);
+        if free(s, x, z, 1.0) { wood_tree(s, r, x, z, jungle, k + b); break; }
+      }
+    }
+  }
+  n := (ifx jungle then WOOD_JUNGLE else WOOD_FOREST) - s[0].trees;
+  for i: 0..<n {
+    for tries: 0..<12 {
+      a := rand(r) * 6.2831853; d := 10 + (GROUND_R - 12) * sqrt(rand(r));
+      x := d * sin(a); z := 6 - d * cos(a);
+      // the view ahead stays open near you
+      ahead := cos(a) > 0.8;
+      if ahead && d < 20 { continue; }
+      if free(s, x, z, 1.0) { wood_tree(s, r, x, z, jungle, i); break; }
+    }
+  }
+}
+VINE_RGB :: [3] f32.[0.16, 0.36, 0.12];
+wood_tree :: (s: [] MyRealm, r: [] Seed, x: f32, z: f32, jungle: bool, i: int) {
+  grow := 0.95 + 0.6 * rand(r);
+  if jungle && i % 3 == 1 { palm(s, x, z, rand(r) * 6.28, 0.9 + 0.35 * rand(r)); glowing(s, 0); return; }
+  kind := ifx s[0].trees > 0 && !jungle then s[0].tree_kind else ifx !jungle && i % 3 == 2 then 1 else 0;
+  if kind == 3 { kind = i % 2; }
+  if kind == 4 { palm(s, x, z, rand(r) * 6.28, grow); glowing(s, 0); return; }
+  thing_at(s, 2, x, z, rand(r) * 6.28, grow, kind);
+  if !jungle { return; }
+  // vines hanging from the crown, and a fern at its foot
+  top := 5.0 * grow;
+  for v: 0..<3 {
+    a := rand(r) * 6.2831853; o := (0.9 + 0.6 * rand(r)) * grow;
+    vx := x + o * sin(a); vz := z + o * cos(a); long := (1.6 + 1.6 * rand(r)) * grow;
+    round_cone(s, vx, 0.62 * top, vz, 0.05, vx, 0.62 * top - long, vz, 0.025, VINE_RGB[0], VINE_RGB[1], VINE_RGB[2]);
+  }
+  thing_at(s, 4, x + 0.9, z + 0.4, rand(r) * 6.28, 1.4, 0);
+}
+// Where the owls circle: ahead of where you start, where they need not climb over a roof and no
+// roof stands between them and the camera (behind you), nearer straight ahead the better.
+owl_home :: (s: [] MyRealm) {
+  best: f32 = 999; s[0].owl_hx = 0; s[0].owl_hz = -10;
+  cz0: f32 = 6 + CAM_BACK; up: f32 = CAM_UP;
+  for ai: 0..<9 {
+    a := (cast(f32) ai - 4) * 0.2;
+    for di: 0..<7 {
+      d := 6.5 + 1.5 * cast(f32) di;
+      cx := d * sin(a); cz := 6 - d * cos(a);
+      high: f32 = 0;
+      for k: 0..<12 {
+        q := cast(f32) k * 0.5235988;
+        high = hi(high, roof_near(s, cx + OWL_WIDE * OWL_ROUND * cos(q), cz + OWL_DEEP * OWL_ROUND * sin(q), 1));
+      }
+      over := hi(OWL_UP, high + 1.4);   // how high they would fly there
+      hidden: f32 = 0;
+      for k: 0..<12 {
+        q := cast(f32) k * 0.5235988; px := cx + OWL_WIDE * OWL_ROUND * cos(q); pz := cz + OWL_DEEP * OWL_ROUND * sin(q);
+        for f: 1..<5 {
+          g := 0.2 * cast(f32) f;
+          if roof_near(s, g * px, cz0 + g * (pz - cz0), 0) > up + g * (over - up) { hidden += 1; break; }
+        }
+      }
+      // climbing takes them out of the top of the view; a roof between hides them
+      score := 2 * (over - OWL_UP) + 1.5 * hidden + 2.5 * abs(a) + 0.1 * abs(d - 13);
+      if score < best { best = score; s[0].owl_hx = cx; s[0].owl_hz = cz; }
+    }
+  }
+}

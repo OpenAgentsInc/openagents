@@ -38,6 +38,8 @@ coat :: (s: [] MyRealm, a: f32) { s[0].glow_pen = -a; }
 // What is drawn next is laid stone in its tint: blocks in courses with mortar between
 // (myrealm.wgsl masonry), not the texture's grain.
 masoned :: (s: [] MyRealm) { s[0].glow_pen = -2; }
+// What is drawn next is plain: its tint alone, no grain at all (an owl's wing feathers).
+untextured :: (s: [] MyRealm) { s[0].glow_pen = -3; }
 // A cone of rings narrowing as they rise (a roof, a tower's cap, a volcano).
 cone :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, w0: f32, w1: f32, h: f32, steps: int, r: f32, g: f32, b: f32) {
   for k: 0..<steps {
@@ -262,10 +264,11 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
       part_at(s, crate, x, z, yaw, 0, 4.9 - 0.68 * f, 0, 2.0, 0.5 * (f + 1), 0.7, tr * 1.04, tg * 1.04, tb * 1.04);
     }
     for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -1.15f32 else 1.15f32, 2.3, 0, 0.3, 4.6, 4.8, tr * 0.86, tg * 0.86, tb * 0.86); }
-    sized(s, crate, x, 5.5, z, yaw, 0, 2.8, 1.9, 2.6, tr * 1.02, tg * 1.02, tb * 1.02);   // the shrine
-    sized(s, crate, x, 7.4, z, yaw, 0, 3.4, 0.4, 3.2, tr * 0.92, tg * 0.92, tb * 0.92);
+    // the shrine: low, as wide as the top tier, so the pyramid reads as one shape
+    sized(s, crate, x, 5.5, z, yaw, 0, 2.7, 1.05, 2.5, tr * 1.02, tg * 1.02, tb * 1.02);
+    sized(s, crate, x, 6.55, z, yaw, 0, 3.1, 0.28, 2.9, tr * 0.92, tg * 0.92, tb * 0.92);
     coat(s, 1);
-    part_at(s, crate, x, z, yaw, 0, 1.32, 5.5, 0.9, 1.3, 0.06, 0.06, 0.05, 0.04);   // its doorway
+    part_at(s, crate, x, z, yaw, 0, 1.27, 5.5, 0.8, 0.85, 0.06, 0.06, 0.05, 0.04);   // its doorway
     // moss on the tiers' corners, vines hanging
     for k: 0..<4 {
       a := yaw + 0.7854 + cast(f32) k * 1.5707963;

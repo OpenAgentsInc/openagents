@@ -180,6 +180,8 @@ MyRealm :: struct {
   great: bool; great_kind: int; great_x: f32; great_z: f32;
   cover_from: int; cover_to: int;   // the ground's own look and the horizon (myrealm-shapes.coax), not features
   slot_i: int; near_i: int;   // the next of the headline places ahead of you (SLOT_A)
+  built_n: int; built_x: [4] f32; built_z: [4] f32; built_r: [4] f32;   // the first buildings laid out, for the wood to frame
+  roof: [ROOF_CELLS] f32; owl_y: [BIRDS] f32; owl_hx: f32; owl_hz: f32;   // how high what stands reaches, by cell (roofs_out); each flying owl's height
   perch_n: int; perch: [12] f32;   // where owls sit on the giant tree's branches: x, y, z, yaw   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
   props: [PROP_MOST] int; prop_n: int;   // PROPS
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
@@ -655,7 +657,7 @@ lay_out :: (s: [] MyRealm) {
   land_out(s, r[..]); glowing(s, 0);
   // the headline things first, in the places ahead of you (SLOT_A): what was asked for most is
   // in frame and close from where you start, on a phone too
-  s[0].slot_i = 0; s[0].near_i = 0; s[0].perch_n = 0;
+  s[0].slot_i = 0; s[0].near_i = 0; s[0].perch_n = 0; s[0].built_n = 0;
   for i: 0..<s[0].building_n {
     kind := s[0].building[i];
     br := BUILDING_R[kind];
@@ -664,6 +666,7 @@ lay_out :: (s: [] MyRealm) {
     if c.x > 90 { c = spot(s, r[..], 4, GROUND_R - 2, 0.6 * br); }
     if c.x > 90 { continue; }
     building_at(s, kind, c.x, c.z, turn_of(-c.x, 6 - c.z)); glowing(s, 0);
+    if s[0].built_n < 4 { n := s[0].built_n; s[0].built_x[n] = c.x; s[0].built_z[n] = c.z; s[0].built_r[n] = br; s[0].built_n = n + 1; }
   }
   // a village with no houses or camp asked for: a few cottages round a well, its people among them
   hamlet := Spot.{x = 99, z = 99};
@@ -762,6 +765,7 @@ lay_out :: (s: [] MyRealm) {
     if kind == 4 { palm(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
     thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind);
   }
+  wood(s, r[..]);
   for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); } }
   for i: 0..<s[0].plants {
     c := spot(s, r[..], 3, GROUND_R - 2, 0.4);
@@ -777,6 +781,8 @@ lay_out :: (s: [] MyRealm) {
     pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false, p + 1, 0, 0);
   }
   s[0].static_n = s[0].piece_n;
+  roofs_out(s); owl_home(s);
+  for i: 0..<BIRDS { s[0].owl_y[i] = 0; }
   actors(s);
   s[0].laid = true;
 }
@@ -948,10 +954,18 @@ actors :: (s: [] MyRealm) {
       if i < s[0].perch_n {
         o := i * 4;
         look := ifx s[0].still then 0.0f32 else 0.5 * sin(s[0].time * 0.4 + cast(f32) i * 2.0);
-        owl_shape(s, s[0].perch[o], s[0].perch[o + 1], s[0].perch[o + 2], s[0].perch[o + 3] + look, 1.9, 0, true);
+        owl_shape(s, s[0].perch[o], s[0].perch[o + 1], s[0].perch[o + 2], s[0].perch[o + 3] + look, OWL_PERCHED, 0, true);
       } else {
+        // owl-sized, a little bigger than a crow, wide and slow over the roofs: rising early
+        // for what stands ahead of it, never lower than just over what is under it
+        o := owl_at(s, i); x := o.x; z := o.z;
+        want := hi(OWL_UP + 0.4 * sin(cast(f32) i * 1.7 + s[0].time * 0.5), roof_near(s, x, z, 1) + 1.4);
+        y := s[0].owl_y[i];
+        y = ifx y <= 0 || s[0].still then want else y + (want - y) * 0.06;
+        y = hi(y, roof_near(s, x, z, 0) + 0.8);
+        s[0].owl_y[i] = y;
         flap := ifx s[0].still then 0.3f32 else 0.6 * sin(s[0].time * 4.5 + cast(f32) i);
-        owl_shape(s, b.x, b.y - 0.3, b.z, b.yaw + 1.5707963, 1.3, flap, false);
+        owl_shape(s, x, y, z, o.yaw, OWL_FLYING, flap, false);
       }
       continue;
     }
@@ -993,6 +1007,15 @@ bird_at :: (s: [] MyRealm, i: int) -> Bird {
   y := (ifx big then 9.0f32 else ifx low then 1.4f32 else 3.6f32) + 0.6 * sin(cast(f32) i * 1.3 + s[0].time * 0.7) + ifx s[0].flying then s[0].y else 0.0f32;
   // its heading: along the circle (the wings span across it)
   return Bird.{x = x, y = y, z = z, yaw = a};
+}
+// A flying owl's place: wide and slow round its home over open ground ahead of you (owl_home; its
+// height: actors).
+owl_at :: (s: [] MyRealm, i: int) -> Bird {
+  rr := OWL_ROUND - 0.4 + 0.8 * sin(cast(f32) i * 2.3);
+  a := s[0].time * 0.22 + cast(f32) i / cast(f32) hi_int(s[0].birds, 1) * 6.2831853;
+  // a flattened round, wide across your view and shallow along it, so they stay about as far off
+  ox := OWL_WIDE * rr * cos(a); oz := OWL_DEEP * rr * sin(a);
+  return Bird.{x = s[0].owl_hx + ox, y = s[0].owl_y[i], z = s[0].owl_hz + oz, yaw = turn_of(OWL_WIDE * sin(a), OWL_DEEP * cos(a))};   // facing the way it flies
 }
 flock_target :: (s: [] MyRealm) -> Spot { return Spot.{x = s[0].x + 7 * sin(s[0].yaw), z = s[0].z - 7 * cos(s[0].yaw)}; }
 
@@ -2227,6 +2250,53 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   // three owls sit on the giant tree's branches; an owl is round: a body, a pale breast, a big
   // head with a pale face, dark eyes, ear tufts and a beak, many more pieces than a crow's
   #assert s[0].perch_n == 3 && !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) > (q[0].piece_n - q[0].static_n) + 5 * 10;
+}
+
+#test "owls are owl-sized and fly over the roofs, never into a castle or a windmill" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "owl-keep", "realm owl-keep\nname Owl Keep\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\nfeature building castle\nfeature building windmill\nfeature bigtree round\nfeature flock owl 6\n");
+  #assert s[0].laid && s[0].owls && s[0].perch_n == 3;
+  // what stands is in the grid: the castle's towers and the windmill's cap reach above 8 m
+  top: f32 = 0; for c: 0..<ROOF_CELLS { top = hi(top, s[0].roof[c]); }
+  #assert top > 8;
+  // a wingspan of about a metre (a crow's is 0.62), a perched owl about half a metre tall
+  span := 2 * (0.14 + OWL_WING[13]) * OWL_FLYING;
+  #assert span > 0.8 && span < 1.3 && 0.62 * OWL_PERCHED < 0.7;
+  s[0].still = false;
+  for step: 0..<240 {
+    s[0].time += 0.25; actors(s[..]);
+    for i: s[0].perch_n..<s[0].birds {
+      o := owl_at(s[..], i);
+      #assert o.y >= roof_near(s[..], o.x, o.z, 0) + 0.79 && o.y >= OWL_UP - 0.5;
+    }
+  }
+}
+
+#test "a jungle is dense with trees, palms and vines, and its temple stands framed by them" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "jungle-temple", "realm jungle-temple\nname Jungle Temple\nstyle lowpoly\nground forest\ntime dawn\nowner 0\nfeature building temple\nfeature flock parrot 6\nfeature herd fox 3\n");
+  #assert s[0].laid && jungle_of(s[..]) && s[0].built_n == 1;
+  tree := mesh_named(s[..], "CommonTree_3");
+  trees := 0; beside := 0;
+  bx := s[0].built_x[0]; bz := s[0].built_z[0];
+  for p: 0..<s[0].static_n {
+    if s[0].piece_mesh[p] != tree { continue; }
+    trees += 1;
+    dx := s[0].piece_x[p] - bx; dz := s[0].piece_z[p] - bz;
+    if sqrt(dx * dx + dz * dz) < s[0].built_r[0] + 6 { beside += 1; }
+  }
+  // broadleaf trees (palms besides), at least two of them close by the temple; the view ahead open
+  #assert trees >= 16 && beside >= 2 && s[0].piece_n <= PIECES;
+  for p: 0..<s[0].static_n {
+    if s[0].piece_mesh[p] != tree { continue; }
+    dx := s[0].piece_x[p]; dz := s[0].piece_z[p] - 6;
+    #assert sqrt(dx * dx + dz * dz) > 4;
+  }
+  // a meadow has no wood
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "meadow", "realm meadow\nname Meadow\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature building temple\n");
+  m := 0; for p: 0..<q[0].static_n { if q[0].piece_mesh[p] == tree { m += 1; } }
+  #assert m == 0 && !jungle_of(q[..]);
 }
 
 #test "0088's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {

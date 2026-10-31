@@ -434,11 +434,13 @@ fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t,
   let rounded = s.slice >= 4096u;
   let layer = select(s.slice, 0u, rounded);
   let sampled = textureSample(sheets, sheet, s.uv, layer);
-  var tex = select(vec4f(surfaced(sampled.rgb, s.glow), sampled.a), vec4f(1.0), rounded);
+  // plain (glow below -2.5, myrealm-things.coax untextured): its tint alone, like a round piece
+  let bare = rounded || s.glow < -2.5;
+  var tex = select(vec4f(surfaced(sampled.rgb, s.glow), sampled.a), vec4f(1.0), bare);
   // stone (glow below -1.5, myrealm-things.coax stone): laid blocks in courses, whatever the mesh
-  if (s.glow < -1.5) { tex = vec4f(vec3f(masonry(s.world)), 1.0); }
+  if (s.glow < -1.5 && !bare) { tex = vec4f(vec3f(masonry(s.world)), 1.0); }
   // painterly leaves are blobs: their cutout from a nearer mip, so pinholes of sky close up
-  let cut = select(select(tex.a, textureSampleLevel(sheets, sheet, s.uv, layer, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5), 1.0, rounded);
+  let cut = select(select(tex.a, textureSampleLevel(sheets, sheet, s.uv, layer, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5), 1.0, bare);
   if (cut < 0.35) { discard; }
   // nothing shows below the ground (a round piece's lower half ball, a rock's buried foot)
   if (s.world.y < -0.04 && (length(s.world.xz) < u.eye.w || land() < 0.5 || land() > 1.5)) { discard; }
@@ -448,7 +450,7 @@ fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t,
     let dist = length(s.world - u.eye.xyz);
     // painted: the texture's grain softened toward a nearer mip; flat: large fills of colour, the
     // texture's own mean (a far mip) more than its grain
-    let soft = surfaced(textureSampleLevel(sheets, sheet, s.uv, s.slice, select(2.5, 5.0, flat_style())).rgb, s.glow);
+    let soft = select(surfaced(textureSampleLevel(sheets, sheet, s.uv, s.slice, select(2.5, 5.0, flat_style())).rgb, s.glow), tex.rgb, s.glow < -1.5 || rounded);
     let a = paletted(mix(tex.rgb, soft, select(0.55, 0.8, flat_style()))) * s.tint;
     var c = select(painted(a, n, d), flat_lit(a, n), flat_style()) + styled_lights(a, s.world, n) + a * max(s.glow, 0.0);
     c = styled_far(c, s.world, dist, d);
