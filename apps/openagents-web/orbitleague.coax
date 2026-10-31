@@ -501,6 +501,7 @@ new_match :: (s: [] OrbitLeague) {
 
 game_reset :: (s: [] OrbitLeague) {
   s[0].started = true;
+  struct_defaults(s);
   s[0].spec = vehicle_roadster();
   s[0].field = arena_field(s);
   s[0].stick_id = -1; s[0].hover = -1;
@@ -511,6 +512,16 @@ game_reset :: (s: [] OrbitLeague) {
   track_init(s[0].track[..], "orbit-league");
 }
 
+// The fields with a default, set by hand: the page's state starts as zeroed
+// memory (the face never runs the struct's initialisers), so a default left
+// to the struct is 0 in the browser: no gravity (spin_g), no bot (cars_n).
+// The test below zeroes them and checks game_reset sets each one.
+struct_defaults :: (s: [] OrbitLeague) {
+  s[0].copied_t = -100.0; s[0].cars_n = 2; s[0].bot_miss_k = 1.0;
+  s[0].bot_path_at = -100.0; s[0].bot_path_goal = -1;
+  s[0].spin_every = SPIN_EVERY; s[0].spin_g = 1.0; s[0].spin_now = 1.0;
+  s[0].sock = -1; s[0].oth_gap = 1.0 / 60.0;
+}
 // The station's spin, 0 to 1, after `played` seconds of play: full for
 // `every` seconds, then a spin-down of SPIN_DOWN (RAMP down, zero-g, RAMP
 // up), and again. every 0: it never spins down.
@@ -3417,4 +3428,22 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   #assert q[0].paint == 26;
   game_message(q[..], HOST_KEPT, "paint 999");
   #assert q[0].paint == 26;
+}
+
+#test "a page's state starts zeroed, and game_reset gives every defaulted field its default: gravity, the bot, its miss (the face runs no initialisers)" {
+  s: [1] OrbitLeague;
+  // zeroed, as the browser's memory is
+  s[0].copied_t = 0.0; s[0].cars_n = 0; s[0].bot_miss_k = 0.0; s[0].bot_path_at = 0.0; s[0].bot_path_goal = 0;
+  s[0].spin_every = 0.0; s[0].spin_g = 0.0; s[0].spin_now = 0.0; s[0].sock = 0; s[0].oth_gap = 0.0;
+  game_reset(s[..]);
+  d: [1] OrbitLeague;
+  #assert s[0].copied_t == d[0].copied_t && s[0].cars_n == d[0].cars_n && s[0].bot_miss_k == d[0].bot_miss_k;
+  #assert s[0].bot_path_at == d[0].bot_path_at && s[0].bot_path_goal == d[0].bot_path_goal;
+  #assert s[0].spin_every == d[0].spin_every && s[0].spin_g == d[0].spin_g && s[0].spin_now == d[0].spin_now;
+  #assert s[0].sock == d[0].sock && s[0].oth_gap == d[0].oth_gap;
+  // and the ball falls
+  run_for(s[..], KICKOFF + 0.5);
+  s[0].bodies[BALL].pos = d3(0.0, 6.0, 10.0); s[0].bodies[BALL].vel = D3_ZERO;
+  run_for(s[..], 0.5);
+  #assert s[0].bodies[BALL].pos.y < 5.0;
 }
