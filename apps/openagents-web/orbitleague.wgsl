@@ -23,6 +23,9 @@ struct U {
   goal: vec4f,                  // crossbar, net depth
   misc: vec4f,                  // the ball's speed (m/s)
   panel: array<vec4f, 32>,
+  trail: array<vec4f, 27>,      // the ball's trail, then each car's boost: a bound (centre, radius) and 8 points (place, strength)
+  blast: vec4f,                 // the goal's blast: centre, age (< 0 none)
+  blast2: vec4f,                // its team
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -403,7 +406,9 @@ fn halo(ro: vec3f, rd: vec3f, p: vec3f, tmax: f32, r: f32) -> f32 {
 }
 fn lights(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   let f = c.z.xyz;
-  if (length(c.p.xyz - ro) > 90.0) { return vec3f(0.0); }
+  let m = c.p.xyz - ro;
+  let along = dot(m, rd);
+  if (along < 0.0 || dot(m, m) - along * along > 9.0 || along > 90.0) { return vec3f(0.0); }
   let front = max(0.0, -dot(rd, f)); let back = max(0.0, dot(rd, f));
   var o = vec3f(0.0);
   for (var s = -1.0; s <= 1.0; s += 2.0) {
@@ -413,6 +418,50 @@ fn lights(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   let tp = c.p.xyz - f * 2.1;
   o += mix(team(c.x.w), vec3f(1.0), 0.3) * halo(ro, rd, tp, tmax, 0.35) * back * 0.5;
   return o;
+}
+
+// A trail of light through its points, strongest and widest at its head.
+fn trail(ro: vec3f, rd: vec3f, k: i32, tmax: f32, width: f32, col: vec3f) -> vec3f {
+  let b = u.trail[k * 9];
+  if (b.w < 0.0) { return vec3f(0.0); }
+  let m = ro - b.xyz;
+  let bq = dot(m, rd);
+  if (dot(m, m) - bq * bq > b.w * b.w) { return vec3f(0.0); }
+  var o = vec3f(0.0);
+  for (var i = 0; i < 7; i++) {
+    let p0 = u.trail[k * 9 + 1 + i]; let p1 = u.trail[k * 9 + 2 + i];
+    if (p0.w <= 0.0 && p1.w <= 0.0) { continue; }
+    let ab = p1.xyz - p0.xyz;
+    let w0 = ro - p0.xyz;
+    let bb = dot(rd, ab); let cc = dot(ab, ab); let dd = dot(rd, w0); let ee = dot(ab, w0);
+    let den = cc - bb * bb;
+    var t = 0.0;
+    if (den > 1e-6) { t = clamp((ee - bb * dd) / den, 0.0, 1.0); }
+    let q = p0.xyz + ab * t;
+    let s = dot(q - ro, rd);
+    if (s < 0.0 || s > tmax) { continue; }
+    let dist = length(ro + rd * s - q);
+    let age = (f32(i) + t) / 7.0;
+    let r = width * (1.0 - 0.7 * age);
+    o += col * (exp(-dist * dist / (r * r * 0.2)) * 0.9 + exp(-dist * dist / (r * r)) * 0.3) * mix(p0.w, p1.w, t) * (1.0 - age);
+  }
+  return o;
+}
+// The goal's blast: a shell of light in the scorer's colour, and a flash at its heart.
+fn blast_r(age: f32) -> f32 { return 1.5 + 28.0 * (1.0 - exp(-age * 2.2)); }
+fn blast_fade(age: f32) -> f32 { let k = 1.0 - clamp(age / 1.6, 0.0, 1.0); return k * k; }
+fn blast(ro: vec3f, rd: vec3f, tmax: f32) -> vec3f {
+  let age = u.blast.w;
+  if (age < 0.0) { return vec3f(0.0); }
+  let c = u.blast.xyz;
+  let r = blast_r(age);
+  let s = dot(c - ro, rd);
+  let dd = length(ro + rd * s - c);
+  if (s < -r || dd > r + 6.0 || s - r > tmax) { return vec3f(0.0); }
+  let rim = exp(-pow((r - dd) / (1.0 + r * 0.15), 2.0));
+  let col = mix(team(u.blast2.x), vec3f(1.0), 0.3);
+  let heart = exp(-dd * dd / (8.0 + age * 60.0)) * max(0.0, 1.0 - age * 1.6) * 2.5;
+  return col * (rim * 2.2 + 0.2 * step(dd, r)) * blast_fade(age) + mix(col, vec3f(1.0), 0.6) * heart;
 }
 
 fn qrot(q: vec4f, v: vec3f) -> vec3f { let t = 2.0 * cross(q.xyz, v); return v + q.w * t + cross(q.xyz, t); }
@@ -521,6 +570,10 @@ fn ribs(ro: vec3f, rd: vec3f) -> Hit {
   let steel = vec3f(0.11, 0.12, 0.15);
   for (var k = 0; k < 4; k++) {
     let z = -30.0 + f32(k) * 20.0;
+    // only a ray that passes the arch's plane near the arch
+    let tz = (z - ro.z) / rd.z;
+    let q = ro + rd * tz;
+    if (abs(rd.z) < 1e-5 || tz < 0.0 || abs(q.x) > hx + 3.0 || q.y > hh + 3.0 || (abs(q.x) < hx - 1.0 && q.y < hh - 1.0)) { continue; }
     h = closer(h, box_hit(ro, rd, vec3f(0.0, hh + 1.0, z), vec3f(hx + 1.4, 0.45, 0.6), steel, 0));
     h = closer(h, box_hit(ro, rd, vec3f(hx + 0.95, hh * 0.5, z), vec3f(0.45, hh * 0.5 + 1.4, 0.6), steel, 0));
     h = closer(h, box_hit(ro, rd, vec3f(-hx - 0.95, hh * 0.5, z), vec3f(0.45, hh * 0.5 + 1.4, 0.6), steel, 0));
@@ -608,6 +661,10 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   for (var e = -1.0; e <= 1.0; e += 2.0) {
     let col = select(BLUE, MAGENTA, e > 0.0) * 1.3;
     let z = e * (hz + 0.15);
+    // only a ray that passes the mouth's frame
+    let tz = (z - ro.z) / rd.z;
+    let q = ro + rd * tz;
+    if (abs(rd.z) < 1e-5 || tz < 0.0 || abs(q.x) > gw + 1.5 || q.y > gh + 1.5 || q.y < -0.5) { continue; }
     h = closer(h, box_hit(ro, rd, vec3f(-gw - 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col, 3));
     h = closer(h, box_hit(ro, rd, vec3f(gw + 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col, 3));
     h = closer(h, box_hit(ro, rd, vec3f(0.0, gh + 0.2, z), vec3f(gw + 0.4, 0.2, 0.2), col, 3));
@@ -641,6 +698,11 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
     let p = ro + rd * h.t;
     if (h.mat == 5) {
       c = h.col * 0.85 * shadow(p) + underglow(p);
+      // the blast's ring running out over the floor
+      if (u.blast.w >= 0.0) {
+        let ring = (length(p.xz - u.blast.xz) - blast_r(u.blast.w) * 1.1) / 1.2;
+        c += mix(team(u.blast2.x), vec3f(1.0), 0.3) * exp(-ring * ring) * blast_fade(u.blast.w) * 0.9;
+      }
       // the floor is polished: the ball, the cars, the frames and the boost in it
       let rr = vec3f(rd.x, -rd.y, rd.z);
       let q = p + vec3f(0.0, 0.002, 0.0);
@@ -662,6 +724,9 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   c += gl.add;
   // the boost flames, the cars' lights, the ribs' beacons
   c += flame(ro, rd, u.cars[0], h.t) + flame(ro, rd, u.cars[1], h.t);
+  c += trail(ro, rd, 0, h.t, u.ball.w * 0.75, vec3f(0.6, 0.85, 1.0));
+  c += trail(ro, rd, 1, h.t, 0.32, vec3f(0.45, 0.7, 1.0)) + trail(ro, rd, 2, h.t, 0.32, vec3f(0.45, 0.7, 1.0));
+  c += blast(ro, rd, h.t);
   c += lights(ro, rd, u.cars[0], h.t) + lights(ro, rd, u.cars[1], h.t);
   if (rd.y > 0.0 || h.t > 1e8) { c += rib_lights(ro, rd, h.t); }
   // zero-g: a cold tint; a goal: its team's flash

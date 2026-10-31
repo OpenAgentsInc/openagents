@@ -13,6 +13,8 @@
 //                             -> vertex count
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //   coaxial_golden(on)        optional: golden mode, its animated effects held at one moment
+//   coaxial_pixel_budget()    optional: the most pixels a frame draws (a page that traces every pixel);
+//                             the canvas draws fewer and is scaled up, never past verse.quality's cap
 // and, optionally, input and output, all drawn and decided by the app:
 //   coaxial_key(state, key, mods) -> used     a code point, or a named key < 0 (KEYS)
 //   coaxial_key_up(state, key, mods) -> used  the same key let go (a game holds keys)
@@ -1307,7 +1309,13 @@ function setQuality(name) {
 }
 // The share of the device pixels a frame draws.
 const drawn = (deviceWidth) => {
-  if (!gpu?.scene3d || golden || !canvas.clientWidth) return 1;
+  if (golden || !canvas.clientWidth) return 1;
+  const budget = engine?.exports.coaxial_pixel_budget?.() || 0;
+  if (budget > 0) {
+    const per = deviceWidth / canvas.clientWidth;
+    return Math.min(1, Math.sqrt(budget / (canvas.clientWidth * Math.max(1, canvas.clientHeight))) / per, QUALITY_CAP[quality] / per);
+  }
+  if (!gpu?.scene3d) return 1;
   return Math.min(1, QUALITY_CAP[quality] / (deviceWidth / canvas.clientWidth));
 };
 // Device pixels per CSS pixel, as the canvas is actually drawn.
