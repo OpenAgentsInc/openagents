@@ -37,6 +37,8 @@
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";
+#load "../../verse/figure.coax" as fig;   // the figures: you, the villagers, the characters
+#load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -112,7 +114,9 @@ HTTP_ANSWER_KIND :: 512;
 OUTBOX :: 640; URL :: 160; BODY :: 4096; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 MESHES :: 24; NAME :: 32;
-PIECES :: 900;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
+ROUND :: MESHES - 1;     // a round piece's mesh: none of the pack's, a round cone (myrealm.wgsl round_vertex)
+ROUND_BASE :: 16777216; ROUND_VERTICES :: 504;
+PIECES :: 1600;          // meshes drawn: features and placed things (a tree is two), then the actors each frame
 SOLIDS :: 260;           // circles you can't walk into
 HOUSES :: 5;
 INSTANCE_FLOATS :: 16;
@@ -155,7 +159,7 @@ MyRealm :: struct {
   held: int;
   stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
   turning: bool; turn_id: int; turn_x: f32;
-  walked: f32;
+  walked: f32; you_walked: f32; you_pace: f32;
   // which realm
   slug: [SLUG] u8; slug_n: int; asked_spec: bool; spec_ready: bool; spec_failed: bool; facts: bool; entered: bool;
   // the spec
@@ -173,7 +177,10 @@ MyRealm :: struct {
   trees: int; tree_kind: int; rocks: int; plants: int;
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool; owls: bool;
-  great: bool; great_kind: int;   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
+  great: bool; great_kind: int; great_x: f32; great_z: f32;
+  cover_from: int; cover_to: int;   // the ground's own look and the horizon (myrealm-shapes.coax), not features
+  slot_i: int; near_i: int;   // the next of the headline places ahead of you (SLOT_A)
+  perch_n: int; perch: [12] f32;   // where owls sit on the giant tree's branches: x, y, z, yaw   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
   props: [PROP_MOST] int; prop_n: int;   // PROPS
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
@@ -637,10 +644,29 @@ lay_out :: (s: [] MyRealm) {
     s[0].water_x = d * sin(a); s[0].water_z = -d * cos(a);
   }
   land_out(s, r[..]); glowing(s, 0);
-  // a giant tree, alone, off to one side ahead of you, so it stands over the realm from where you start
+  // the headline things first, in the places ahead of you (SLOT_A): what was asked for most is
+  // in frame and close from where you start, on a phone too
+  s[0].slot_i = 0; s[0].near_i = 0; s[0].perch_n = 0;
+  for i: 0..<s[0].building_n {
+    kind := s[0].building[i];
+    br := BUILDING_R[kind];
+    c := headline_spot(s, r[..], br);
+    if c.x > 90 { c = building_spot(s, r[..], br); }
+    if c.x > 90 { c = spot(s, r[..], 4, GROUND_R - 2, 0.6 * br); }
+    if c.x > 90 { continue; }
+    building_at(s, kind, c.x, c.z, turn_of(-c.x, 6 - c.z)); glowing(s, 0);
+  }
+  // a village with no houses or camp asked for: a few cottages round a well, its people among them
+  hamlet := Spot.{x = 99, z = 99};
+  if s[0].villagers > 0 && s[0].houses == 0 && s[0].dwellings == 0 {
+    hamlet = headline_spot(s, r[..], 5.5);
+    if hamlet.x < 90 { cottages(s, r[..], hamlet, 2 + hi_int(1, s[0].villagers / 3)); }
+  }
+  // a giant tree, a little further off, so it stands over the realm from where you start
   if s[0].great {
-    c := ifx free(s, -6, -11, 3.5) then Spot.{x = -6, z = -11} else spot(s, r[..], 9, GROUND_R - 6, 3.5);
-    if c.x < 90 { thing_at(s, 2, c.x, c.z, 0.7, GREAT_GROW, s[0].great_kind); }
+    c := headline_far(s, r[..], 3.5, 5);
+    if c.x > 90 { c = spot(s, r[..], 9, GROUND_R - 6, 3.5); }
+    if c.x < 90 { thing_at(s, 2, c.x, c.z, 0.7, GREAT_GROW, s[0].great_kind); great_branches(s, c.x, c.z); }
   }
   // the characters first, in a loose ring in front of you; then the lanterns round where you start
   for p: 0..<s[0].people {
@@ -657,23 +683,16 @@ lay_out :: (s: [] MyRealm) {
   // the houses first of what stands about: the first ahead of you, its door towards where you start
   for h: 0..<s[0].houses {
     w := HOUSE_W[s[0].house_size];
-    c := ifx h == 0 && free(s, 2.5, -3.5, 0.62 * w) then Spot.{x = 2.5, z = -3.5} else spot(s, r[..], 6, 16, 0.62 * w);
+    c := ifx h == 0 && free(s, 2.5, -3.5, 0.62 * w) then Spot.{x = 2.5, z = -3.5} else ifx h < 2 then headline_spot(s, r[..], 0.62 * w) else Spot.{x = 99, z = 99};
+    if c.x > 90 { c = spot(s, r[..], 6, 16, 0.62 * w); }
     if c.x > 90 { continue; }
     house(s, c.x, c.z, turn_of(-c.x, 6 - c.z), s[0].house_size, s[0].house_colour);
-  }
-  // the buildings, each its own kind, round you facing where you start
-  for i: 0..<s[0].building_n {
-    kind := s[0].building[i];
-    br := BUILDING_R[kind];
-    c := building_spot(s, r[..], br);
-    if c.x > 90 { c = spot(s, r[..], 4, GROUND_R - 2, 0.6 * br); }
-    if c.x > 90 { continue; }
-    building_at(s, kind, c.x, c.z, turn_of(-c.x, 6 - c.z)); glowing(s, 0);
   }
   // the dwellings in a loose camp round the first, their doors to its middle; the village about them
   camp := Spot.{x = 99, z = 99};
   if s[0].dwellings > 0 {
-    camp = spot(s, r[..], 7, 14, 4.5);
+    camp = headline_spot(s, r[..], 4.5);
+    if camp.x > 90 { camp = spot(s, r[..], 7, 14, 4.5); }
     if camp.x > 90 { camp = spot(s, r[..], 5, GROUND_R - 4, 2.0); }
   }
   if camp.x < 90 {
@@ -686,7 +705,7 @@ lay_out :: (s: [] MyRealm) {
     }
   }
   if s[0].villagers > 0 {
-    home := camp;
+    home := ifx hamlet.x < 90 then hamlet else camp;
     if home.x > 90 && s[0].houses > 0 { home = Spot.{x = 2.5, z = -3.5}; }
     if home.x > 90 { home = spot(s, r[..], 6, 14, 1.0); }
     if home.x > 90 { home = Spot.{x = 0, z = -4}; }
@@ -695,9 +714,18 @@ lay_out :: (s: [] MyRealm) {
       s[0].villager_x[i] = home.x + d * sin(a); s[0].villager_z[i] = home.z - d * cos(a);
     }
   }
-  // the herd spread over the land, each with its own patch to graze
+  // the herd together in a pasture ahead of you, each with its own patch of it to graze
+  pasture := Spot.{x = 99, z = 99};
   for i: 0..<s[0].herd {
-    c := spot(s, r[..], 6, GROUND_R - 3, 1.6);
+    if i == 0 || i == s[0].herd_split { pasture = near_spot(s, r[..], 2.5); }   // two herds, two fields
+    c := Spot.{x = 99, z = 99};
+    if pasture.x < 90 {
+      for tries: 0..<12 {
+        a := rand(r[..]) * 6.2831853; d := 0.8 + 3.2 * sqrt(rand(r[..]));
+        if free(s, pasture.x + d * sin(a), pasture.z - d * cos(a), 1.2) { c = Spot.{x = pasture.x + d * sin(a), z = pasture.z - d * cos(a)}; break; }
+      }
+    }
+    if c.x > 90 { c = spot(s, r[..], 6, GROUND_R - 3, 1.6); }
     if c.x > 90 { c = Spot.{x = 12 * sin(cast(f32) i * 2.4), z = -12 * cos(cast(f32) i * 2.4)}; }
     s[0].herd_x[i] = c.x; s[0].herd_z[i] = c.z;
   }
@@ -728,10 +756,11 @@ lay_out :: (s: [] MyRealm) {
     else { plant_at(s, s[0].plant_kind, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), i); glowing(s, 0); }
   }
   for i: 0..<s[0].placed_n { thing_at(s, s[0].placed_thing[i], s[0].placed_x[i], s[0].placed_z[i], s[0].placed_yaw[i], 1, 0); }
+  s[0].cover_from = s[0].piece_n; ground_cover(s, r[..]); horizon_out(s, r[..]); glowing(s, 0); s[0].cover_to = s[0].piece_n;
   // the characters, each a figure facing where you start
   for p: 0..<s[0].people {
     o := (p % 4) * 3;
-    pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false);
+    pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false, p + 1, 0, 0);
   }
   s[0].static_n = s[0].piece_n;
   actors(s);
@@ -776,22 +805,17 @@ lantern_post :: (s: [] MyRealm, x: f32, z: f32) {
   solid(s, x, z, 0.2);
 }
 
-// A figure: a body, shoulders and a head (the pack's barrel and crate, stretched), facing yaw;
-// seen from above (top-down) it is a disc on the ground, round shoulders and a head, a size larger.
+// A figure (myrealm-shapes.coax person_figure: a verse/figure.coax person, bone by bone) facing yaw;
+// seen from above (top-down) a size larger, and you on a bright ring. look picks its skin, hair and
+// trousers; pace 0 stands, 1 walks, phase is how far through its strides.
 PERSON_RGB :: [12] f32.[0.35, 0.55, 0.42,  0.62, 0.42, 0.78,  0.36, 0.5, 0.82,  0.8, 0.62, 0.3];
-YOU_RGB :: [3] f32.[0.86, 0.36, 0.16];
-pawn :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, big: f32, r: f32, g: f32, b: f32, you: bool) {
-  barrel := mesh_named(s, "Barrel"); crate := mesh_named(s, "Prop_Crate");
+YOU_RGB :: [3] f32.[0.2, 0.42, 0.74];
+pawn :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, big: f32, r: f32, g: f32, b: f32, you: bool, look: int, pace: f32, phase: f32) {
+  barrel := mesh_named(s, "Barrel");
   above := s[0].camera == CAM_TOP;
   k := big * (ifx above then 1.6f32 else 1.0f32);
-  // a mesh's own x runs along (cos a, -sin a) turned by a: -yaw puts it across the way you face
-  turn := -yaw;
   if above && you { sized(s, barrel, x, y + 0.01, z, 0, 0, 1.25 * k, 0.03, 1.25 * k, 1.9, 1.4, 0.6); }
-  sized(s, barrel, x, y, z, turn, 0, 0.44 * k, 1.08 * k, 0.38 * k, r, g, b);
-  sized(s, crate, x, y + 1.0 * k, z, turn, 0, 0.6 * k, 0.17 * k, 0.28 * k, r * 0.8, g * 0.8, b * 0.8);
-  sized(s, barrel, x, y + 1.2 * k, z, turn, 0, 0.3 * k, 0.32 * k, 0.3 * k, 0.93, 0.8, 0.66);
-  // which way it faces: a pack on the back (seen from above, the head is ahead of it)
-  sized(s, crate, x - 0.2 * k * sin(yaw), y + 0.55 * k, z + 0.2 * k * cos(yaw), turn, 0, 0.32 * k, 0.4 * k, 0.12 * k, r * 0.6, g * 0.6, b * 0.6);
+  person_figure(s, x, y, z, yaw, k, r, g, b, look, pace, phase);
 }
 
 // A dwelling (0079), its door towards yaw: a tepee (a tall cone of hide on poles, in stacked rings
@@ -846,6 +870,7 @@ dwelling :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int) {
 // shaggy body, the hump, a low heavy head with horns), deer (light, long legs, antlers) or a horse
 // (long neck and head, a mane). graze 0 to 1 lowers its head to the grass.
 animal :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
+  if kind != CHICKEN { animal_figure(s, x, z, yaw, kind, (1 - graze) * 0.7, s[0].time * 0.55 + x * 0.3, graze, cast(int) (x * 7)); return; }   // myrealm-shapes.coax
   if kind >= 3 { beast(s, x, z, yaw, kind, graze); glowing(s, 0); return; }   // the rest: myrealm-things.coax
   crate := mesh_named(s, "Prop_Crate");
   if crate < 0 { return; }
@@ -910,12 +935,15 @@ toned :: (palette: int, r: f32, g: f32, b: f32) -> Tone {
 actors :: (s: [] MyRealm) {
   s[0].piece_n = s[0].static_n; s[0].glow_pen = 0;
   mill_sails(s); weeds(s); glowing(s, 0);
-  if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true); }
+  // your pace: walking while you move, easing to a stand when you stop
+  moved := s[0].walked - s[0].you_walked; s[0].you_walked = s[0].walked;
+  s[0].you_pace += ((ifx moved > 0.0005 then 1.0f32 else 0.0f32) - s[0].you_pace) * 0.2;
+  if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true, 0, s[0].you_pace, s[0].walked / 1.3); }
   crate := mesh_named(s, "Prop_Crate");
   // the herd roams its patches, now and then stopping to graze; the village goes about its day
   for i: 0..<s[0].herd {
     t := s[0].time * (0.05 + 0.012 * cast(f32) (i % 4)) + cast(f32) i * 1.7;
-    rr := 2.2 + 0.8 * sin(cast(f32) i * 1.9);
+    rr := 1.3 + 0.5 * sin(cast(f32) i * 1.9);
     dir: f32 = ifx i % 2 == 0 then 1.0f32 else -1.0f32;
     x := s[0].herd_x[i] + rr * cos(dir * t); z := s[0].herd_z[i] + rr * sin(dir * t);
     yaw := turn_of(-dir * rr * sin(dir * t), -(dir * rr * cos(dir * t)));
@@ -928,10 +956,23 @@ actors :: (s: [] MyRealm) {
     x := s[0].villager_x[i] + rr * cos(t); z := s[0].villager_z[i] + 0.7 * rr * sin(t);
     yaw := turn_of(-rr * sin(t), -(0.7 * rr * cos(t)));
     o := (i % 6) * 3;
-    pawn(s, x, 0, z, yaw, 0.92 + 0.06 * cast(f32) (i % 3), VILLAGE_RGB[o], VILLAGE_RGB[o + 1], VILLAGE_RGB[o + 2], false);
+    // walking its loop at about a metre a second: its strides in step with that
+    pawn(s, x, 0, z, yaw, 0.92 + 0.06 * cast(f32) (i % 3), VILLAGE_RGB[o], VILLAGE_RGB[o + 1], VILLAGE_RGB[o + 2], false, i + 2, 1, t * rr / 1.3);
   }
   for i: 0..<s[0].birds {
     b := bird_at(s, i);
+    if s[0].owls {
+      // owls: the first few perched on the giant tree's branches, turning their heads; the rest flying
+      if i < s[0].perch_n {
+        o := i * 4;
+        look := ifx s[0].still then 0.0f32 else 0.5 * sin(s[0].time * 0.4 + cast(f32) i * 2.0);
+        owl_shape(s, s[0].perch[o], s[0].perch[o + 1], s[0].perch[o + 2], s[0].perch[o + 3] + look, 1.9, 0, true);
+      } else {
+        flap := ifx s[0].still then 0.3f32 else 0.6 * sin(s[0].time * 4.5 + cast(f32) i);
+        owl_shape(s, b.x, b.y - 0.3, b.z, b.yaw + 1.5707963, 1.3, flap, false);
+      }
+      continue;
+    }
     if flier_at(s, i, b) { continue; }
     span: f32 = ifx s[0].bats then 0.5f32 else ifx s[0].owls then 0.9f32 else 0.62f32;
     beat: f32 = ifx s[0].bats then 14.0f32 else ifx s[0].owls then 4.5f32 else 8.0f32;
@@ -1006,8 +1047,32 @@ build_draws :: (s: [] MyRealm) {
       s[0].draws[d + 2] = cast(u32) base; s[0].draws[d + 3] = cast(u32) (s[0].object_n - base);
       s[0].draw_n += 1;
     }
+  }  // the round pieces: each a round cone from (x, y, z), radius k, to (sx, sy, sz), radius roll
+  base := s[0].object_n;
+  for p: 0..<s[0].piece_n {
+    if s[0].piece_mesh[p] != ROUND || s[0].object_n >= PIECES { continue; }
+    t := s[0].object_n * INSTANCE_FLOATS;
+    s[0].objects[t] = s[0].piece_x[p]; s[0].objects[t + 1] = s[0].piece_y[p]; s[0].objects[t + 2] = s[0].piece_z[p]; s[0].objects[t + 3] = s[0].piece_k[p];
+    s[0].objects[t + 4] = s[0].piece_sx[p]; s[0].objects[t + 5] = s[0].piece_sy[p]; s[0].objects[t + 6] = s[0].piece_sz[p]; s[0].objects[t + 7] = s[0].piece_roll[p];
+    for q: 8..<12 { s[0].objects[t + q] = 0; }
+    tn := toned(s[0].palette, s[0].piece_tint[p * 3], s[0].piece_tint[p * 3 + 1], s[0].piece_tint[p * 3 + 2]);
+    s[0].objects[t + 12] = tn.r; s[0].objects[t + 13] = tn.g; s[0].objects[t + 14] = tn.b; s[0].objects[t + 15] = s[0].piece_glow[p];
+    s[0].object_n += 1;
+  }
+  if s[0].object_n > base {
+    // drawn in order from ROUND_BASE, no index buffer: the base instance's top bit (coax/web/host.js)
+    d := s[0].draw_n * 4;
+    s[0].draws[d] = cast(u32) ROUND_BASE; s[0].draws[d + 1] = cast(u32) ROUND_VERTICES;
+    s[0].draws[d + 2] = cast(u32) base + cast(u32) 2147483648; s[0].draws[d + 3] = cast(u32) (s[0].object_n - base);
+    s[0].draw_n += 1;
   }
 }
+// A round cone from a (radius ra) to b (radius rb), in this tint: a limb, a body, an owl's head
+// (a == b: a ball), a windmill's tapered tower.
+round_cone :: (s: [] MyRealm, ax: f32, ay: f32, az: f32, ra: f32, bx: f32, by: f32, bz: f32, rb: f32, r: f32, g: f32, b: f32) {
+  shaped(s, ROUND, ax, ay, az, 0, rb, ra, bx, by, bz, r, g, b);
+}
+ball :: (s: [] MyRealm, x: f32, y: f32, z: f32, radius: f32, r: f32, g: f32, b: f32) { round_cone(s, x, y, z, radius, x, y, z, radius, r, g, b); }
 realm_draw_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].draw_n else 0; }
 realm_object_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid then s[0].object_n else 0; }
 
@@ -1071,8 +1136,8 @@ realm_step :: (s: [] MyRealm, dt: f32) {
       p := walk_to(s, s[0].x, s[0].z, dx * speed * WALK * step, dz * speed * WALK * step);
       if s[0].camera == CAM_SIDE {
         // 2D: along the lane, to the realm's edge, stopped by what stands in it above your feet
-        e: f32 = GROUND_R - BODY_R; lim := sqrt(hi(e * e - s[0].z * s[0].z, 0));
-        p = Spot.{x = lane_walk(s, s[0].x, clamp(s[0].x + dx * speed * WALK * step, -lim, lim)), z = s[0].z};
+        e: f32 = GROUND_R - BODY_R; lane_lim := sqrt(hi(e * e - s[0].z * s[0].z, 0));
+        p = Spot.{x = lane_walk(s, s[0].x, clamp(s[0].x + dx * speed * WALK * step, -lane_lim, lane_lim)), z = s[0].z};
       }
       mx := p.x - s[0].x; mz := p.z - s[0].z;
       s[0].walked += sqrt(mx * mx + mz * mz);
@@ -1886,6 +1951,8 @@ SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.
 HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
 SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
 LAMP_SHARE :: [4] f32.[0, 0.25, 0.6, 1];
+PASTEL_SKY :: [3] f32.[0.12, 0.02, 0.06]; PASTEL_HORIZON :: [3] f32.[0.14, 0.0, 0.04];
+VIVID_SKY :: [3] f32.[0.7, 0.85, 1.12]; MUTED_HAZE :: [3] f32.[0.62, 0.64, 0.62];
 POOL_SHARE :: [4] f32.[0, 0.3, 0.7, 1.1];
 STARS :: [4] f32.[0, 0.1, 0.35, 1];
 
@@ -1940,6 +2007,13 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     uniforms[SKY_AT + i] = SKY_RGB[tod * 3 + i]; uniforms[HORIZON_AT + i] = HORIZON_RGB[tod * 3 + i];
     uniforms[GROUND_AT + i] = ifx snow_paint then PAINT_SNOW[tod * 3 + i] else GROUND_RGB[gr * 3 + i];
     uniforms[SUN_AT + i] = SUN[tod * 4 + i];
+  }
+  // the palette's mood in the sky (myrealm.wgsl sun_tint lights it): pastel a rosy horizon under a
+  // lilac sky, vivid a deeper blue, muted a grey haze
+  for i: 0..<3 {
+    if s[0].palette == 1 { uniforms[SKY_AT + i] += PASTEL_SKY[i]; uniforms[HORIZON_AT + i] += PASTEL_HORIZON[i]; }
+    if s[0].palette == 2 { uniforms[SKY_AT + i] *= VIVID_SKY[i]; }
+    if s[0].palette == 3 { uniforms[HORIZON_AT + i] = 0.6 * uniforms[HORIZON_AT + i] + 0.4 * MUTED_HAZE[i]; }
   }
   for at: 0..<3 {
     o := ifx at == 0 then SKY_AT else ifx at == 1 then HORIZON_AT else GROUND_AT;
@@ -2070,9 +2144,10 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
 #test "only what was checked is in it: an empty realm has nothing and no one" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "bare", EMPTY);
-  #assert s[0].spec_ready && s[0].laid && s[0].static_n == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
-  // nothing but you: one figure's pieces
-  #assert s[0].piece_n > 0 && s[0].piece_n <= 6;
+  // nothing laid out but the ground's own grass, flowers and stones and the hills round it
+  #assert s[0].spec_ready && s[0].laid && s[0].static_n == s[0].cover_to && s[0].cover_from == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
+  // and you: one figure, its bones, hair and eyes
+  #assert s[0].piece_n - s[0].static_n > 20 && s[0].piece_n - s[0].static_n <= 32;
   n := frame_of(s[..], t[..], 2560, 1600);
   #assert !s[0].shown[BTN_BUILD] && !s[0].shown[BTN_MAP] && !s[0].shown[BTN_FLY] && !s[0].shown[BTN_JUMP] && !s[0].ed[0].shown[RB_EDIT];
   #assert !realm_key(s[..], t[..], 'f', true) || !s[0].flying;
@@ -2091,7 +2166,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   for p: 0..<s[0].piece_n {
     wx := s[0].piece_x[p] - s[0].water_x; wz := s[0].piece_z[p] - s[0].water_z;
     #assert p == s[0].piece_n - 1 || sqrt(wx * wx + wz * wz) > s[0].water_r;
-    #assert sqrt(s[0].piece_x[p] * s[0].piece_x[p] + s[0].piece_z[p] * s[0].piece_z[p]) < GROUND_R;
+    #assert (p >= s[0].cover_from && p < s[0].cover_to) || sqrt(s[0].piece_x[p] * s[0].piece_x[p] + s[0].piece_z[p] * s[0].piece_z[p]) < GROUND_R;
   }
   q: [1] MyRealm; u: [1] Track;
   opened(q[..], u[..], "moonlit-marsh", SPEC);
@@ -2167,8 +2242,9 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert trees == 5 && biggest > 3 * next;
   q: [1] MyRealm; u: [1] Track;
   opened(q[..], u[..], "crows", "realm crows\nname Crows\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature flock crow 5\n");
-  // an owl has a head and a face as well as a crow's body and wings: two more pieces a bird
-  #assert !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) - (q[0].piece_n - q[0].static_n) == 5 * 2;
+  // three owls sit on the giant tree's branches; an owl is round: a body, a pale breast, a big
+  // head with a pale face, dark eyes, ear tufts and a beak, many more pieces than a crow's
+  #assert s[0].perch_n == 3 && !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) > (q[0].piece_n - q[0].static_n) + 5 * 10;
 }
 
 #test "0088's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {
@@ -2597,4 +2673,17 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   #assert q[0].talk_p == 0 && !may_voice(q[..]) && !q[0].shown[BTN_HOLD];
   talk_down(q[..]);
   #assert !q[0].voice_held;
+}
+
+#test "what was asked for stands ahead of you, close: a farm's barn, windmill and both herds" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "farm", "realm farm\nname Farm\nstyle lowpoly\nground meadow\ntime day\ncamera third\nowner 0\nfeature building barn\nfeature building windmill\nfeature herd horse 6\nfeature herd chicken 6\n");
+  #assert s[0].laid && s[0].herd == HERD && s[0].mill_n == 1 && s[0].piece_n < PIECES - 100 && s[0].object_n == s[0].piece_n;
+  for i: 0..<s[0].herd {
+    dx := s[0].herd_x[i]; dz := s[0].herd_z[i] - 6;
+    #assert sqrt(dx * dx + dz * dz) < 28 && dz < 0 && abs(dx) < -dz * 1.4;   // ahead, within a wide view
+  }
+  // the windmill's sails turn in front of its cap, clear of the tower
+  dx := s[0].mill_x[0]; dz := s[0].mill_z[0] - 6;
+  #assert sqrt(dx * dx + dz * dz) < 18 && dz < 0;
 }

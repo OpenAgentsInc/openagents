@@ -74,20 +74,7 @@ land_out :: (s: [] MyRealm, r: [] Seed) {
       sized(s, rock, d * sin(a), -0.5, -d * cos(a), -a, 0, 11, 6 + 3 * rand(r), 4, STONE_RGB[0], STONE_RGB[1] * 0.97, STONE_RGB[2] * 0.92);
     }
   }
-  if l == LAND_FLOATING {
-    // small islands floating out in the sky, a tree on some (past the edge is sky: myrealm.wgsl)
-    for i: 0..<5 {
-      a := cast(f32) i / 5.0 * 6.2831853 + 0.6 + rand(r) * 0.5; d := GROUND_R + 12 + 10 * rand(r);
-      x := d * sin(a); z := -d * cos(a); y := 3 + 7 * rand(r); w := 4 + 3 * rand(r);
-      sized(s, crate, x, y - 0.4, z, a, 0, w, 0.5, 0.8 * w, gr * 1.2, gg * 1.2, gb * 1.2);
-      sized(s, rock, x, y - 0.3, z, a, 3.1415926, w * 0.95, w * 0.9, 0.75 * w, 0.62, 0.48, 0.36);
-      if i % 2 == 0 && tree >= 0 {
-        k := 3.0 / hi(longest(s, tree), 0.01);
-        shaped(s, tree, x, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
-        shaped(s, leaves_of(s, tree), x, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
-      }
-    }
-  }
+  // a floating island's sky: myrealm-shapes.coax sky_islands
   if l == LAND_VOLCANO {
     x: f32 = 16; z: f32 = -60;
     sized(s, rock, x, -1, z, 0.3, 0, 44, 8, 36, 0.36, 0.31, 0.29);
@@ -131,25 +118,32 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
     return;
   }
   if kind == 2 {
-    // a windmill: a white tower in three steps, a dark cap; its sails turn (actors)
-    for k: 0..<3 { f := cast(f32) k; sized(s, round, x, 2.25 * f, z, yaw, 0, 2.7 - 0.4 * f, 2.35, 2.7 - 0.4 * f, 1.25, 1.2, 1.1); }
-    cone(s, round, x, 6.7, z, 2.3, 0.6, 1.6, 3, 0.5, 0.3, 0.24);
-    part_at(s, crate, x, z, yaw, 0, 1.33, 0, 0.8, 1.7, 0.08, 0.32, 0.2, 0.13);
+    // a windmill: a white tower narrowing as it rises, a dark cap over it, a door and two small
+    // windows; its sails turn on the cap's front (actors)
+    glowing(s, 0);
+    round_cone(s, x, 0, z, 2.1, x, 6.0, z, 1.3, 1.25, 1.2, 1.12);
+    round_cone(s, x, 6.5, z, 1.65, x, 8.7, z, 0.12, 0.42, 0.24, 0.18);
+    coat(s, 1);
+    part_at(s, crate, x, z, yaw, 0, 2.02, 0, 0.9, 1.8, 0.1, 0.32, 0.2, 0.13);
+    part_at(s, crate, x, z, yaw, 0, 1.62, 3.0, 0.5, 0.6, 0.1, 0.24, 0.2, 0.18);
+    part_at(s, crate, x, z, yaw, 0.5, 1.45, 4.6, 0.45, 0.55, 0.1, 0.24, 0.2, 0.18);
     if s[0].mill_n < MILLS { n := s[0].mill_n; s[0].mill_x[n] = x; s[0].mill_z[n] = z; s[0].mill_yaw[n] = yaw; s[0].mill_n = n + 1; }
     solid(s, x, z, 1.4);
     return;
   }
   if kind == 3 {
-    // a lighthouse: white and red bands narrowing as they rise, a gallery, the lamp lit, a red cap
-    for k: 0..<6 {
+    // a lighthouse: a tapering tower in white and red bands, a dark gallery, the lamp lit, a red cap
+    glowing(s, 0);
+    for k: 0..<5 {
       f := cast(f32) k; red := k % 2 == 1;
-      sized(s, round, x, 1.6 * f, z, yaw + 0.4 * f, 0, 2.4 - 0.18 * f, 1.62, 2.4 - 0.18 * f, ifx red then 1.3f32 else 1.3f32, ifx red then 0.28f32 else 1.28f32, ifx red then 0.24f32 else 1.22f32);
+      round_cone(s, x, 1.9 * f, z, 1.25 - 0.09 * f, x, 1.9 * f + 1.9, z, 1.16 - 0.09 * f, 1.25, ifx red then 0.28f32 else 1.22f32, ifx red then 0.24f32 else 1.16f32);
     }
-    sized(s, round, x, 9.6, z, yaw, 0, 2.0, 0.16, 2.0, 0.25, 0.25, 0.27);
+    round_cone(s, x, 9.55, z, 1.25, x, 9.6, z, 1.25, 0.25, 0.25, 0.27);
     glowing(s, 2.0);
-    sized(s, crate, x, 9.76, z, yaw, 0, 1.0, 1.0, 1.0, 1.5, 1.3, 0.6);
+    round_cone(s, x, 9.9, z, 0.62, x, 10.5, z, 0.62, 1.5, 1.3, 0.6);
+    glowing(s, 0);
+    round_cone(s, x, 11.1, z, 0.85, x, 12.2, z, 0.06, 1.2, 0.26, 0.22);
     coat(s, 1);
-    cone(s, round, x, 10.76, z, 1.3, 0.3, 0.9, 3, 1.2, 0.26, 0.22);
     part_at(s, crate, x, z, yaw, 0, 1.2, 0, 0.8, 1.7, 0.08, 0.3, 0.2, 0.14);
     s[0].beacon = true; s[0].beacon_x = x; s[0].beacon_z = z;
     solid(s, x, z, 1.3);
@@ -158,39 +152,48 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
   rock := mesh_named(s, "Rock_Medium_1");
   stone := ifx rock >= 0 then rock else crate;
   if kind == 4 {
-    // a castle: four stone walls, a gate in the front, a round tower at each corner with a roof, a keep
-    sr := STONE_RGB[0]; sg := STONE_RGB[1]; sb := STONE_RGB[2];
+    // a castle: four pale stone walls with battlements, a gate in the front, a round tower at each
+    // corner under a pointed slate roof, a taller round keep in the middle with a flag
+    sr := STONE_RGB[0] * 1.2; sg := STONE_RGB[1] * 1.2; sb := STONE_RGB[2] * 1.18;
     half: f32 = 4.6;
-    part_at(s, stone, x, z, yaw, 0, -half, 0, 2 * half, 3.4, 0.7, sr, sg, sb);
-    part_at(s, stone, x, z, yaw, -half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
-    part_at(s, stone, x, z, yaw, half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
-    part_at(s, stone, x, z, yaw, -2.5, half, 0, 3.6, 3.4, 0.7, sr, sg, sb);
-    part_at(s, stone, x, z, yaw, 2.5, half, 0, 3.6, 3.4, 0.7, sr, sg, sb);
-    part_at(s, stone, x, z, yaw, 0, half, 2.5, 1.5, 0.9, 0.7, sr, sg, sb);
-    part_at(s, crate, x, z, yaw, 0, half + 0.3, 0, 1.4, 2.5, 0.12, 0.3, 0.2, 0.13);   // the gate
+    part_at(s, crate, x, z, yaw, 0, -half, 0, 2 * half, 3.4, 0.7, sr, sg, sb);
+    part_at(s, crate, x, z, yaw, -half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
+    part_at(s, crate, x, z, yaw, half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
+    part_at(s, crate, x, z, yaw, -2.6, half, 0, 3.4, 3.4, 0.7, sr, sg, sb);
+    part_at(s, crate, x, z, yaw, 2.6, half, 0, 3.4, 3.4, 0.7, sr, sg, sb);
+    part_at(s, crate, x, z, yaw, 0, half, 2.6, 1.8, 0.8, 0.7, sr, sg, sb);
+    for k: 0..<5 {
+      u := (cast(f32) k - 2) * 1.9;
+      part_at(s, crate, x, z, yaw, u, half, 3.4, 0.6, 0.5, 0.72, sr, sg, sb);   // the battlements over the front
+    }
+    part_at(s, crate, x, z, yaw, 0, half + 0.3, 0, 1.6, 2.5, 0.12, 0.3, 0.2, 0.13);   // the gate
+    glowing(s, 0);
     for c: 0..<4 {
       u: f32 = ifx c % 2 == 0 then half else -half; v: f32 = ifx c < 2 then half else -half;
       tx := fr_x(x, yaw, u, v); tz := fr_z(z, yaw, u, v);
-      sized(s, stone, tx, 0, tz, yaw, 0, 2.2, 5.2, 2.2, sr * 1.04, sg * 1.04, sb * 1.04);
-      sized(s, stone, tx, 5.2, tz, yaw, 0, 2.6, 0.55, 2.6, sr * 0.9, sg * 0.9, sb * 0.9);
-      cone(s, round, tx, 5.75, tz, 2.4, 0.3, 2.2, 3, 0.36, 0.3, 0.6);
+      round_cone(s, tx, 0, tz, 1.3, tx, 5.0, tz, 1.2, sr * 1.02, sg * 1.02, sb * 1.02);
+      round_cone(s, tx, 5.5, tz, 1.6, tx, 8.0, tz, 0.08, 0.32, 0.36, 0.55);
     }
-    sized(s, stone, x, 0, z, yaw, 0, 3.6, 6.5, 3.6, sr * 0.92, sg * 0.92, sb * 0.92);   // the keep
-    sized(s, crate, x, 6.5, z, yaw, 0.25, 0.08, 1.8, 0.08, 0.3, 0.22, 0.16);
-    sized(s, crate, fr_x(x, yaw, 0.38, 0), 7.7, fr_z(z, yaw, 0.38, 0), yaw, 0, 0.7, 0.45, 0.04, 1.3, 0.25, 0.22);   // its flag
+    round_cone(s, x, 0, z, 2.0, x, 7.0, z, 1.85, sr * 0.96, sg * 0.96, sb * 0.96);   // the keep
+    round_cone(s, x, 7.6, z, 2.3, x, 10.6, z, 0.1, 0.32, 0.36, 0.55);
+    coat(s, 1);
+    sized(s, crate, x, 10.4, z, yaw, 0, 0.08, 1.6, 0.08, 0.3, 0.22, 0.16);    sized(s, crate, x, 6.5, z, yaw, 0.25, 0.08, 1.8, 0.08, 0.3, 0.22, 0.16);
+    sized(s, crate, fr_x(x, yaw, 0.38, 0), 11.4, fr_z(z, yaw, 0.38, 0), yaw, 0, 0.7, 0.45, 0.04, 1.3, 0.25, 0.22);   // its flag
     solid(s, x, z, half + 0.9);
     return;
   }
   if kind == 5 {
-    // a stone tower: banded stone, a crenellated top, a slit of a window, a door
-    for k: 0..<3 { sized(s, stone, x, 2.5 * cast(f32) k, z, yaw + 0.5 * cast(f32) k, 0, 2.5, 2.52, 2.5, STONE_RGB[0] * (1 - 0.04 * cast(f32) k), STONE_RGB[1], STONE_RGB[2]); }
-    sized(s, stone, x, 7.5, z, yaw, 0, 3.0, 0.6, 3.0, STONE_RGB[0] * 0.92, STONE_RGB[1] * 0.92, STONE_RGB[2] * 0.92);
-    for k: 0..<4 {
-      a := yaw + cast(f32) k * 1.5707963;
-      sized(s, stone, x + 1.2 * sin(a), 8.1, z + 1.2 * cos(a), a, 0, 0.6, 0.5, 0.5, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
+    // a stone tower: a round stone tower, a wider top ringed with battlements
+    glowing(s, 0);
+    round_cone(s, x, 0, z, 1.45, x, 7.4, z, 1.3, STONE_RGB[0] * 1.1, STONE_RGB[1] * 1.1, STONE_RGB[2] * 1.08);
+    round_cone(s, x, 7.6, z, 1.65, x, 7.7, z, 1.65, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
+    for k: 0..<6 {
+      a := yaw + cast(f32) k * 1.0471976;
+      round_cone(s, x + 1.45 * sin(a), 8.0, z + 1.45 * cos(a), 0.3, x + 1.45 * sin(a), 8.5, z + 1.45 * cos(a), 0.3, STONE_RGB[0] * 1.05, STONE_RGB[1] * 1.05, STONE_RGB[2] * 1.05);
     }
-    part_at(s, crate, x, z, yaw, 0, 1.25, 4.4, 0.25, 0.8, 0.06, 0.14, 0.12, 0.12);
-    part_at(s, crate, x, z, yaw, 0, 1.22, 0, 0.8, 1.7, 0.08, 0.3, 0.2, 0.14);
+    coat(s, 1);
+    part_at(s, crate, x, z, yaw, 0, 1.42, 4.4, 0.25, 0.8, 0.06, 0.14, 0.12, 0.12);
+    part_at(s, crate, x, z, yaw, 0, 1.48, 0, 0.8, 1.7, 0.08, 0.3, 0.2, 0.14);
     solid(s, x, z, 1.4);
     return;
   }
@@ -274,10 +277,13 @@ mill_sails :: (s: [] MyRealm) {
   a := ifx s[0].still then 0.4f32 else s[0].time * 0.7;
   for i: 0..<s[0].mill_n {
     yaw := s[0].mill_yaw[i];
-    hx := fr_x(s[0].mill_x[i], yaw, 0, 1.2); hz := fr_z(s[0].mill_z[i], yaw, 0, 1.2);
-    sized(s, crate, hx, 5.75, hz, yaw, 0, 0.4, 0.4, 0.5, 0.36, 0.26, 0.18);
+    hx := fr_x(s[0].mill_x[i], yaw, 0, 1.75); hz := fr_z(s[0].mill_z[i], yaw, 0, 1.75);
+    sized(s, crate, hx, 6.85, hz, yaw, 0, 0.4, 0.4, 0.5, 0.36, 0.26, 0.18);
     for k: 0..<4 {
-      sized(s, crate, fr_x(hx, yaw, 0, 0.3), 5.95, fr_z(hz, yaw, 0, 0.3), yaw, a + cast(f32) k * 1.5707963, 0.62, 3.3, 0.05, 1.05, 0.95, 0.8);
+      // a sail: a dark spar, and the pale sailcloth beside it
+      r := a + cast(f32) k * 1.5707963;
+      sized(s, crate, fr_x(hx, yaw, 0, 0.3), 7.05, fr_z(hz, yaw, 0, 0.3), yaw, r, 0.12, 3.6, 0.06, 0.4, 0.3, 0.22);
+      sized(s, crate, fr_x(hx, yaw, 0.35 * cos(r), 0.32) , 7.05 + 0.35 * sin(r), fr_z(hz, yaw, 0.35 * cos(r), 0.32), yaw, r, 0.6, 3.2, 0.04, 1.15, 1.08, 0.95);
     }
   }
 }

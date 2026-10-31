@@ -258,14 +258,29 @@ fn sky_of(ray: vec3f, p: vec2f) -> vec3f {
   let toward = max(dot(r, normalize(u.sun.xyz)), 0.0);
   c += vec3f(1.0, 0.85, 0.6) * pow(toward, 40.0) * u.sun.w * 0.6 + u.horizon.rgb * pow(toward, 6.0) * 0.25;
   c += vec3f(stars(p)) * u.horizon.w * smoothstep(0.0, 0.25, r.y);
+  // soft clouds drifting over the day, fewer at dawn and dusk, none at night (the stars' share)
+  if (r.y > 0.0) {
+    let q = r.xz / (r.y + 0.12) * 1.4 + vec2f(u.time * 0.015, 0.0);
+    let n = noise(q) * 0.6 + noise(q * 2.3 + vec2f(7.0)) * 0.3 + noise(q * 5.1 + vec2f(3.0)) * 0.1;
+    let cover = smoothstep(0.5, 0.78, n) * smoothstep(0.02, 0.3, r.y) * (1.0 - u.horizon.w);
+    c = mix(c, mix(u.horizon.rgb, sun_tint() * 1.05, 0.6), cover * 0.85);
+  }
   return c;
+}
+// The sun's colour by the realm's palette: natural warm white, pastel rosy, vivid golden, muted grey.
+fn sun_tint() -> vec3f {
+  let k = pal();
+  if (k > 0.5 && k < 1.5) { return vec3f(1.0, 0.88, 0.92); }
+  if (k > 1.5 && k < 2.5) { return vec3f(1.1, 0.95, 0.72); }
+  if (k > 2.5) { return vec3f(0.84, 0.86, 0.9); }
+  return vec3f(1.0, 0.94, 0.82);
 }
 // Sun and sky light on a surface.
 fn daylight(n: vec3f) -> vec3f {
   let key = max(0.0, dot(n, normalize(u.sun.xyz)));
   let soft = select(key, key * 0.6 + 0.25, u.sky.w > 0.5);
   let amb = mix(u.horizon.rgb, u.sky.rgb, 0.5 + 0.5 * n.y) * 0.55 + vec3f(0.04);
-  return amb + vec3f(1.0, 0.94, 0.82) * soft * u.sun.w;
+  return amb + sun_tint() * soft * u.sun.w;
 }
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = pos.xy;
@@ -292,7 +307,10 @@ fn daylight(n: vec3f) -> vec3f {
   let big = noise(hit.xz * 0.18); let fine = noise(hit.xz * 1.7);
   let brush = noise(vec2f(hit.x * 0.9 + hit.z * 0.4, hit.z * 3.2));
   let vary = select(0.82 + 0.22 * big + 0.08 * fine, 0.78 + 0.2 * big + 0.16 * brush, u.sky.w > 0.5);
-  var ground = u.ground.rgb * vary * daylight(vec3f(0.0, 1.0, 0.0));
+  // and broad patches of warmer, drier grass and cooler, lusher ground
+  let patches = noise(hit.xz * 0.06 + vec2f(3.1, 7.7));
+  let hue = mix(vec3f(1.12, 1.06, 0.78), vec3f(0.84, 1.0, 0.98), smoothstep(0.25, 0.75, patches));
+  var ground = u.ground.rgb * vary * hue * daylight(vec3f(0.0, 1.0, 0.0));
   // water: the sky in it, rippled, a pale rim where it meets the ground
   let wi = water_in(hit.xz);
   if (u.water.w > 0.5 && wi > 0.0) {
@@ -344,7 +362,45 @@ struct S {
   @location(4) @interpolate(flat) slice: u32,
   @location(5) @interpolate(flat) glow: f32,   // its own light (myrealm-things.coax glowing), or below 0 its paint (paint)
 }
+// A round piece (myrealm.coax ROUND, drawn from vertex ROUND_BASE on, no index): a round cone from
+// end a (r0: its place, its radius) to end b (r1), two half balls and the side between, twelve
+// round and three rings to a half (ROUND_VERTICES, 504), as Dead Gears and Hecate's draw their
+// figures' bones. Figures, owls, a windmill's tower: what the pack has no round mesh for.
+const ROUND_BASE: u32 = 16777216u;
+const AROUND: u32 = 12u;
+const RINGS: u32 = 3u;
+fn quad(v: u32) -> vec2f {
+  var q = array(vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 1.0));
+  return q[v];
+}
+struct Vert { p: vec3f, n: vec3f }
+fn round_vertex(m: Object, id: u32) -> Vert {
+  let q = id / 6u;
+  let c = quad(id % 6u);
+  let row = q / AROUND + u32(c.y);
+  let k = f32(q % AROUND + u32(c.x)) / f32(AROUND) * 6.2831853;
+  let a = m.r0.xyz; let b = m.r1.xyz;
+  let axis = normalize(b - a + vec3f(0.0, 0.00001, 0.0));
+  let side = normalize(cross(axis, select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), abs(axis.y) < 0.9)));
+  let other = cross(axis, side);
+  let out = side * cos(k) + other * sin(k);
+  let top = row > RINGS;
+  let step = f32(select(row, row - RINGS - 1u, top)) / f32(RINGS) * 1.5707963;
+  let phi = select(step - 1.5707963, step, top);
+  let n = out * cos(phi) + axis * sin(phi);
+  let r = select(m.r0.w, m.r1.w, top);
+  return Vert(select(a, b, top) + n * r, n);
+}
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
+  if (id >= ROUND_BASE) {
+    let m = objects[instance];
+    let v = round_vertex(m, id - ROUND_BASE);
+    var o: S;
+    o.pos = vec4f(dot(u.r0, vec4f(v.p, 1.0)), dot(u.r1, vec4f(v.p, 1.0)), dot(u.r2, vec4f(v.p, 1.0)), dot(u.r3, vec4f(v.p, 1.0)));
+    o.world = v.p; o.normal = v.n; o.uv = vec2f(0.0); o.tint = m.material.rgb * 0.8;
+    o.slice = 4096u; o.glow = m.material.w;
+    return o;
+  }
   let b = id * 12u;
   let p = vec4f(word(b), word(b + 1u), word(b + 2u), 1.0);
   let n = vec3f(word(b + 3u), word(b + 4u), word(b + 5u));
@@ -364,10 +420,16 @@ struct S {
 // A painted piece: its texture's grain kept as light and dark, its own colour all the tint's.
 fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t, vec3f(0.3, 0.59, 0.11))), clamp(-w, 0.0, 1.0)); }
 @fragment fn scene_fs(s: S) -> @location(0) vec4f {
-  let tex = vec4f(surfaced(textureSample(sheets, sheet, s.uv, s.slice).rgb, s.glow), textureSample(sheets, sheet, s.uv, s.slice).a);
+  // a round piece has no texture: its tint, a little lighter toward its top
+  let rounded = s.slice >= 4096u;
+  let layer = select(s.slice, 0u, rounded);
+  let sampled = textureSample(sheets, sheet, s.uv, layer);
+  let tex = select(vec4f(surfaced(sampled.rgb, s.glow), sampled.a), vec4f(1.0), rounded);
   // painterly leaves are blobs: their cutout from a nearer mip, so pinholes of sky close up
-  let cut = select(tex.a, textureSampleLevel(sheets, sheet, s.uv, s.slice, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5);
+  let cut = select(select(tex.a, textureSampleLevel(sheets, sheet, s.uv, layer, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5), 1.0, rounded);
   if (cut < 0.35) { discard; }
+  // nothing shows below the ground (a round piece's lower half ball, a rock's buried foot)
+  if (s.world.y < -0.04 && (length(s.world.xz) < u.eye.w || land() < 0.5 || land() > 1.5)) { discard; }
   let n = normalize(s.normal);
   if (styled()) {
     let d = normalize(s.world - u.eye.xyz);

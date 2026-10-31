@@ -82,11 +82,11 @@ and takes them into it.
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
 | flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0088) |
 | props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue (up to 8) | the fixture pack's props; a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088) |
-| character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
+| character | a name and a role (up to 4) | a figure (verse/figure.coax, drawn bone by bone as round cones: myrealm-shapes.coax) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |
 | herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079) |
 | dwellings | tepee, tent, hut; 1 to 8 | a camp, doors to its middle: tepees of hide on crossed poles, ridge tents, round thatched huts |
-| village | 3 to 8 people | its people walking about the dwellings or the house: plain figures in everyday colours, never a caricature |
+| village | 3 to 8 people | its people walking about the dwellings or the house (with neither, a few cottages round a well): plain figures in everyday colours, never a caricature |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
 
 Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coax`):
@@ -159,3 +159,17 @@ realm, and `release.sh` never copies staging's made realms over production's. `/
 `apps/openagents-web/builder.coax`, `builder-face.c`, `builder.wgsl`, `realms/new/`;
 `myrealm.coax`, `myrealm-face.c`, `myrealm.wgsl`, `realms/built/`; `coax/web/api/realms.c`,
 `migrations/0048_realm_builder.sql`, `0049_realm_builder_setup.sql`, `test_realm_builder.py`.
+
+## Composition (myrealm-shapes.coax)
+
+What was asked for stands where a first-time visitor sees it from where they start, on a phone
+too: buildings, a hamlet, the giant tree and a camp take the headline places ahead of you
+(`SLOT_A`, left and right, then straight ahead further off, then wider), and herds the near places
+between you and them (`NEAR_A`). The ground has its own look whatever was asked: tufts of grass,
+clumps of flowers and a few stones (dry tufts on sand and stone, stones on snow), broad patches of
+warmer and cooler ground, and soft hills on the horizon (a floating island instead has islands in
+sight and clouds at its edge). None of it is a feature or a listed line. People and animals are
+verse/figure.coax rigs drawn bone by bone as round cones (myrealm.wgsl `round_vertex`); owls are
+round with pale faces, three of them perched on the giant tree's branches. The palette sets the
+sun's colour and the sky's mood (pastel rosy, vivid deep blue and golden light, muted grey haze),
+and the day sky has drifting clouds.

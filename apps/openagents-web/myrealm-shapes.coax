@@ -1,0 +1,397 @@
+// A made realm's round things (myrealm.coax round_cone, myrealm.wgsl round_vertex): its people as
+// verse/figure.coax figures, bone by bone (as Hecate's Cemetery and Dead Gears draw theirs), and
+// owls with round bodies and pale faces, flying or perched.
+
+SKIN_RGB :: [12] f32.[0.96, 0.78, 0.64,  0.8, 0.58, 0.42,  0.6, 0.4, 0.28,  0.42, 0.28, 0.2];
+HAIR_RGB :: [15] f32.[0.22, 0.14, 0.09,  0.08, 0.07, 0.07,  0.62, 0.42, 0.2,  0.86, 0.76, 0.5,  0.5, 0.2, 0.1];
+LEGS_RGB :: [12] f32.[0.22, 0.24, 0.34,  0.36, 0.27, 0.18,  0.3, 0.32, 0.26,  0.2, 0.2, 0.22];
+BOOT_RGB :: [3] f32.[0.17, 0.11, 0.08];
+FIG_PI :: 3.14159265;
+
+// A person standing at (x, y, z) facing yaw (forward is (sin yaw, -cos yaw), a pawn's), size times a
+// grown-up, in a shirt of this colour; look picks the skin, hair and trousers; pace 0 stands, 1 walks,
+// phase is how far through its strides it is.
+person_figure :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, r: f32, g: f32, b: f32, look: int, pace: f32, phase: f32) {
+  shape := fig.Shape.{size = size, girth = 1.15, head = 1.2};
+  k := fig.verse_figure_skeleton(shape);
+  stand := fig.verse_figure_gait(fig.Rig.person, fig.Gait.stand, phase, s[0].time);
+  walk := fig.verse_figure_gait(fig.Rig.person, fig.Gait.walk, phase, s[0].time);
+  p := fig.verse_figure_blend(stand, walk, clamp(pace, 0, 1));
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  // a figure faces +z at yaw 0, turned by its yaw: (sin a, cos a); ours (sin yaw, -cos yaw)
+  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = x, y = y, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
+  // its lowest foot on the ground
+  low: f32 = 1000;
+  for q: 0..<2 {
+    foot := ifx q == 0 then fig.P_L_FOOT else fig.P_R_FOOT;
+    low = lo(low, lo(joints[foot].y - 0.045 * size, joints[foot + 1].y - 0.04 * size));
+  }
+  rise := y - low;
+  for j: 0..<k.joints { joints[j].y += rise; }
+  sk := (look % 4) * 3; hr := (look % 5) * 3; lg := ((look / 2) % 4) * 3;
+  for q: 0..<k.parts {
+    part := k.part[q];
+    a := joints[part.a]; e := joints[part.b];
+    cr := r; cg := g; cb := b;
+    leg := part.a == fig.P_L_HIP || part.a == fig.P_R_HIP || part.a == fig.P_L_KNEE || part.a == fig.P_R_KNEE || (part.a == fig.P_HIPS && part.b != fig.P_SPINE);
+    if leg { cr = LEGS_RGB[lg]; cg = LEGS_RGB[lg + 1]; cb = LEGS_RGB[lg + 2]; }
+    if part.a == fig.P_L_FOOT || part.a == fig.P_R_FOOT { cr = BOOT_RGB[0]; cg = BOOT_RGB[1]; cb = BOOT_RGB[2]; }
+    if part.region == fig.REGION_HEAD || part.a == fig.P_NECK || part.a == part.b { cr = SKIN_RGB[sk]; cg = SKIN_RGB[sk + 1]; cb = SKIN_RGB[sk + 2]; }
+    round_cone(s, a.x, a.y, a.z, part.ra, e.x, e.y, e.z, part.rb, cr, cg, cb);
+  }
+  // hair over the back and top of the head, and two dark eyes in front
+  hd := joints[fig.P_HEAD]; cw := joints[fig.P_CROWN];
+  fx := sin(yaw); fz := -cos(yaw); rx := cos(yaw); rz := sin(yaw);
+  h := 0.1 * 1.2 * size;
+  mx := 0.5 * (hd.x + cw.x); my := 0.5 * (hd.y + cw.y); mz := 0.5 * (hd.z + cw.z);
+  ball(s, mx - fx * 0.03 * size, my + 0.05 * size, mz - fz * 0.03 * size, h * 1.08, HAIR_RGB[hr], HAIR_RGB[hr + 1], HAIR_RGB[hr + 2]);
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    ex := mx + fx * h * 0.92 + rx * w * 0.042 * size; ez := mz + fz * h * 0.92 + rz * w * 0.042 * size;
+    ball(s, ex, my - 0.005 * size, ez, 0.018 * size, 0.06, 0.05, 0.05);
+  }
+}
+
+// An owl at (x, y, z) facing yaw (a bird's frame: forward (-sin yaw, cos yaw), its wings across
+// (cos yaw, sin yaw)): a round tawny body, a big round head with a pale face, two dark eyes, ear tufts.
+// flap is its wings' beat; perched, its wings fold at its sides.
+OWL_BODY :: [3] f32.[0.56, 0.4, 0.25];
+OWL_FACE :: [3] f32.[0.96, 0.9, 0.76];
+owl_shape :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, flap: f32, perched: bool) {
+  fx := -sin(yaw); fz := cos(yaw); ax := cos(yaw); az := sin(yaw);
+  k := size;
+  br := OWL_BODY[0]; bg := OWL_BODY[1]; bb := OWL_BODY[2];
+  // the body: upright perched, leaning forward in flight
+  lean: f32 = ifx perched then 0.0f32 else 0.6f32;
+  round_cone(s, x - fx * 0.1 * k * lean, y + 0.12 * k, z - fz * 0.1 * k * lean, 0.17 * k, x + fx * 0.05 * k * lean, y + 0.3 * k, z + fz * 0.05 * k * lean, 0.15 * k, br, bg, bb);
+  ball(s, x + fx * 0.06 * k, y + 0.2 * k, z + fz * 0.06 * k, 0.13 * k, 0.9, 0.82, 0.66);   // the pale breast
+  hy := y + 0.47 * k; hx := x + fx * 0.04 * k * lean; hz := z + fz * 0.04 * k * lean;
+  ball(s, hx, hy, hz, 0.15 * k, br * 1.05, bg * 1.05, bb * 1.05);
+  // the face: a pale disc of two halves, the eyes dark in it, a small beak
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    px := hx + fx * 0.09 * k + ax * w * 0.055 * k; pz := hz + fz * 0.09 * k + az * w * 0.055 * k;
+    ball(s, px, hy, pz, 0.075 * k, OWL_FACE[0], OWL_FACE[1], OWL_FACE[2]);
+    ball(s, px + fx * 0.06 * k, hy + 0.005 * k, pz + fz * 0.06 * k, 0.03 * k, 0.04, 0.03, 0.03);
+    // an ear tuft
+    round_cone(s, hx + ax * w * 0.09 * k, hy + 0.1 * k, hz + az * w * 0.09 * k, 0.035 * k, hx + ax * w * 0.13 * k, hy + 0.2 * k, hz + az * w * 0.13 * k, 0.012 * k, br * 0.8, bg * 0.8, bb * 0.8);
+  }
+  round_cone(s, hx + fx * 0.15 * k, hy - 0.03 * k, hz + fz * 0.15 * k, 0.025 * k, hx + fx * 0.19 * k, hy - 0.07 * k, hz + fz * 0.19 * k, 0.008 * k, 0.4, 0.36, 0.3);
+  // the wings
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sx := x + ax * w * 0.14 * k; sz := z + az * w * 0.14 * k; sy := y + 0.3 * k;
+    if perched {
+      round_cone(s, sx, sy, sz, 0.07 * k, sx - fx * 0.06 * k, y + 0.07 * k, sz - fz * 0.06 * k, 0.04 * k, br * 0.8, bg * 0.8, bb * 0.8);
+    } else {
+      // a broad wing: a soft shoulder, then a wide flat feathered blade beating from it
+      span := 0.62 * k;
+      ball(s, sx, sy, sz, 0.08 * k, br * 0.85, bg * 0.85, bb * 0.85);
+      coat(s, 1);
+      cx := 0.5 * span * cos(flap); cy := 0.5 * span * sin(flap);
+      sized(s, mesh_named(s, "Prop_Crate"), sx + w * cx * ax, sy + cy - 0.015 * k, sz + w * cx * az, -yaw, w * flap, span, 0.035 * k, 0.32 * k, br * 0.8, bg * 0.8, bb * 0.8);
+      glowing(s, 0);
+    }
+  }
+  // tail, and feet when perched
+  round_cone(s, x - fx * 0.12 * k, y + 0.1 * k, z - fz * 0.12 * k, 0.06 * k, x - fx * 0.22 * k, y + 0.02 * k, z - fz * 0.22 * k, 0.03 * k, br * 0.8, bg * 0.8, bb * 0.8);
+  if perched {
+    for side: 0..<2 { w: f32 = ifx side == 0 then 1.0f32 else -1.0f32; ball(s, x + ax * w * 0.06 * k + fx * 0.05 * k, y + 0.01 * k, z + az * w * 0.06 * k + fz * 0.05 * k, 0.035 * k, 0.5, 0.44, 0.3); }
+  }
+}
+
+// ---- where things go: the headline places ahead of you, and what fills the ground between
+
+// The places for what was asked for, in turn: left and right of straight ahead, then straight
+// ahead further off, then wider (a desktop's view), each turned this much from ahead (radians)
+// and this far from where you start (metres). Animals take the near places (NEAR_A), between
+// you and the buildings, small things close enough to see.
+SLOT_A :: [9] f32.[-0.34, 0.34, 0.0, -0.7, 0.7, -0.18, 0.2, -1.0, 1.0];
+SLOT_D :: [9] f32.[14, 14.5, 22, 12, 12.5, 26, 27, 13, 13];
+SLOTS :: 9;
+NEAR_A :: [4] f32.[-0.2, 0.22, -0.5, 0.5];
+NEAR_D :: [4] f32.[8.5, 9, 9, 9.5];
+near_spot :: (s: [] MyRealm, r: [] Seed, size: f32) -> Spot {
+  while s[0].near_i < 4 {
+    i := s[0].near_i; s[0].near_i = i + 1;
+    for tries: 0..<6 {
+      j := cast(f32) tries;
+      a := NEAR_A[i] + (rand(r) - 0.5) * 0.1 * j; d := NEAR_D[i] + (rand(r) - 0.3) * 0.8 * j;
+      x := d * sin(a); z := 6 - d * cos(a);
+      if free(s, x, z, size) { return Spot.{x = x, z = z}; }
+    }
+  }
+  return headline_spot(s, r, size);
+}
+headline_spot :: (s: [] MyRealm, r: [] Seed, size: f32) -> Spot { return headline_far(s, r, size, 0); }
+headline_far :: (s: [] MyRealm, r: [] Seed, size: f32, further: f32) -> Spot {
+  while s[0].slot_i < SLOTS {
+    i := s[0].slot_i; s[0].slot_i = i + 1;
+    for tries: 0..<6 {
+      j := cast(f32) tries;
+      a := SLOT_A[i] + (rand(r) - 0.5) * 0.08 * j; d := SLOT_D[i] + 0.5 * size + further + (rand(r) - 0.3) * 0.8 * j;
+      x := d * sin(a); z := 6 - d * cos(a);
+      if sqrt(x * x + z * z) + size < GROUND_R - 1 && free(s, x, z, size) { return Spot.{x = x, z = z}; }
+    }
+  }
+  return Spot.{x = 99, z = 99};
+}
+
+// A hamlet: n cottages in a loose ring round a well, their doors to it, in warm colours.
+COTTAGE_COLOURS :: [5] int.[0, 4, 5, 1, 0];
+cottages :: (s: [] MyRealm, r: [] Seed, at: Spot, n: int) {
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  // the well in the middle
+  coat(s, 1);
+  sized(s, barrel, at.x, 0, at.z, 0, 0, 1.3, 0.8, 1.3, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
+  glowing(s, 0);
+  for k: 0..<2 { w: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, at.x + 0.55 * w, 0.8, at.z, 0, 0, 0.1, 1.1, 0.1, WOOD_RGB[0], WOOD_RGB[1], WOOD_RGB[2]); }
+  sized(s, crate, at.x, 1.85, at.z, 0, 0, 1.5, 0.12, 1.0, 0.42, 0.24, 0.2);
+  solid(s, at.x, at.z, 0.8);
+  // the cottages round it: the first two either side of the way in, facing you
+  for i: 0..<n {
+    a := 3.1415926 + (cast(f32) i - 0.5 * cast(f32) (n - 1)) * (5.0 / cast(f32) hi_int(n, 2)) + (rand(r) - 0.5) * 0.3;
+    toward := turn_of(at.x, at.z - 6);   // from the well toward where you start
+    d := 5.2 + rand(r) * 0.8;
+    x := at.x + d * sin(toward + a); z := at.z - d * cos(toward + a);
+    if !free(s, x, z, 2.0) { continue; }
+    coat(s, 0.75); house(s, x, z, turn_of(at.x - x, at.z - z) + 3.1415926, 0, COTTAGE_COLOURS[i % 5]); glowing(s, 0);
+  }
+  // a path to it from where you start
+  for k: 0..<7 {
+    f := (cast(f32) k + 1) / 8.0;
+    x := at.x * f; z := 6 + (at.z - 6) * f;
+    coat(s, 1); sized(s, mesh_named(s, "Rock_Medium_1"), x + (rand(r) - 0.5) * 0.4, -0.05, z, rand(r) * 3, 0, 0.9, 0.1, 0.7, 0.95, 0.85, 0.66); glowing(s, 0);
+  }
+}
+
+// The giant tree's low branches, reaching toward where you start, an owl's perch at the end of each.
+great_branches :: (s: [] MyRealm, x: f32, z: f32) {
+  s[0].great_x = x; s[0].great_z = z;
+  toward := turn_of(-x, 6 - z);   // (sin, -cos) of this points from the tree to where you start
+  for k: 0..<3 {
+    a := toward + (cast(f32) k - 1) * 0.75;
+    h := 5.0 + 0.9 * cast(f32) ((k + 1) % 3);
+    reach := 3.4 - 0.4 * cast(f32) (k % 2);
+    ex := x + reach * sin(a); ez := z - reach * cos(a); ey := h + 0.5;
+    round_cone(s, x, h - 0.6, z, 0.45, ex, ey, ez, 0.16, 0.36, 0.25, 0.17);
+    if s[0].perch_n < 3 {
+      n := s[0].perch_n * 4;
+      // a little in from the tip, on top of the branch, facing out (a bird's yaw: forward (-sin, cos))
+      px := x + (reach - 0.5) * sin(a); pz := z - (reach - 0.5) * cos(a);
+      s[0].perch[n] = px; s[0].perch[n + 1] = h - 0.6 + (ey - h + 0.6) * (reach - 0.5) / reach + 0.2; s[0].perch[n + 2] = pz;
+      s[0].perch[n + 3] = a + 3.1415926; s[0].perch_n += 1;
+    }
+  }
+}
+
+// What fills the ground near you whatever was asked: tufts of grass, clumps of flowers, a few
+// stones (sand and stone grounds: dry tufts and more stones; snow: stones only). Not a feature:
+// never listed, only the ground's own look.
+ground_cover :: (s: [] MyRealm, r: [] Seed) {
+  if s[0].camera == CAM_SIDE { return; }
+  fern := mesh_named(s, "Fern_1"); rock := mesh_named(s, "Rock_Medium_1"); crate := mesh_named(s, "Prop_Crate");
+  gr := s[0].ground;
+  green := gr == 0 || gr == 1 || gr == 5;
+  dry := gr == 2 || gr == 4;
+  coat(s, 0);
+  for i: 0..<64 {
+    // most ahead of you, the rest round where you start and the camera behind you
+    near := i >= 40;
+    a := ifx near then rand(r) * 6.2831853 else (rand(r) - 0.5) * 2.6;
+    d := ifx near then 1.5 + 9.0 * rand(r) else 3.0 + 20.0 * rand(r);
+    x := d * sin(a) + (rand(r) - 0.5) * 2; z := 6 - d * cos(a);
+    if sqrt(x * x + z * z) > GROUND_R - 1.5 || !free(s, x, z, 0.3) { continue; }
+    if i % 9 == 4 || (!green && !dry) || (dry && i % 3 == 0) {
+      // a stone, half sunk
+      k := 0.3 + 0.5 * rand(r);
+      sized(s, rock, x, -0.1, z, rand(r) * 6, 0, 0.7 * k, 0.45 * k, 0.6 * k, 0.75, 0.73, 0.7);
+      continue;
+    }
+    if green && i % 3 == 1 {
+      // a clump of flowers: a few blooms of one colour on short stems
+      o := ((i / 3) % 4) * 3;
+      for b: 0..<3 {
+        bx := x + 0.22 * cos(cast(f32) b * 2.1 + a); bz := z + 0.22 * sin(cast(f32) b * 2.1 + a); bh := 0.28 + 0.08 * cast(f32) b;
+        coat(s, 1); sized(s, crate, bx, 0, bz, 0, 0, 0.03, bh, 0.03, 0.4, 0.75, 0.3); glowing(s, 0);
+        ball(s, bx, bh + 0.05, bz, 0.09, FLOWER_RGB[o] * 0.85, FLOWER_RGB[o + 1] * 0.85, FLOWER_RGB[o + 2] * 0.85);
+      }
+      continue;
+    }
+    // a tuft of grass (dry ground: straw-coloured)
+    k := 0.45 + 0.35 * rand(r);
+    if dry { coat(s, 1); }
+    sized(s, fern, x, 0, z, rand(r) * 6, 0, 1.1 * k, 0.7 * k, 1.1 * k, ifx dry then 0.95f32 else 0.95f32, ifx dry then 0.8f32 else 1.4f32, ifx dry then 0.45f32 else 0.6f32); glowing(s, 0);
+  }
+}
+
+// The horizon: soft hills all round past the edge, bluer the further they are (a land with its own
+// horizon, hills, mountains, cliffs, sea or sky, keeps it); a floating island has clouds at its
+// edge and islands floating near enough to see (land_out).
+horizon_out :: (s: [] MyRealm, r: [] Seed) {
+  l := s[0].land;
+  if l == LAND_FLOATING { sky_islands(s, r); return; }
+  if l != 0 && l != LAND_VOLCANO { return; }
+  gr := s[0].ground;
+  cr := GROUND_RGB[gr * 3]; cg := GROUND_RGB[gr * 3 + 1]; cb := GROUND_RGB[gr * 3 + 2];
+  if gr == 3 { cr = 0.75; cg = 0.8; cb = 0.88; }
+  for layer: 0..<2 {
+    n := ifx layer == 0 then 11 else 9;
+    for i: 0..<n {
+      a := (cast(f32) i + 0.5 * cast(f32) layer + 0.6 * rand(r)) / cast(f32) n * 6.2831853;
+      rad := ifx layer == 0 then 12 + 8 * rand(r) else 22 + 10 * rand(r);
+      d := GROUND_R + (ifx layer == 0 then 10.0f32 else 30.0f32) + 0.5 * rad;
+      sink := rad * (ifx layer == 0 then 0.72f32 else 0.6f32);
+      k := ifx layer == 0 then 0.8f32 else 0.62f32;
+      round_cone(s, d * sin(a), -sink, -d * cos(a), rad, d * sin(a) + rad * 0.6 * cos(a), -sink - 0.1 * rad, -d * cos(a) + rad * 0.6 * sin(a), rad * 0.9, cr * k + 0.05 * cast(f32) layer, cg * k + 0.06 * cast(f32) layer, cb * k + 0.12 * cast(f32) layer);
+    }
+  }
+}
+
+// A floating island's sky: islands floating in sight of where you start, each a grassy top over a
+// rock that narrows to a point, a tree on some, a waterfall off one; clouds round the edge.
+sky_islands :: (s: [] MyRealm, r: [] Seed) {
+  rock := mesh_named(s, "Rock_Medium_1"); tree := mesh_named(s, "CommonTree_3");
+  gr := s[0].ground;
+  tr := GROUND_RGB[gr * 3] * 1.25; tg := GROUND_RGB[gr * 3 + 1] * 1.25; tb := GROUND_RGB[gr * 3 + 2] * 1.25;
+  for i: 0..<6 {
+    a := ISLE_A[i] + (rand(r) - 0.5) * 0.1; d := ISLE_D[i];
+    x := d * sin(a); z := 6 - d * cos(a); y := ISLE_Y[i]; w := ISLE_W[i];
+    coat(s, 1);
+    sized(s, rock, x, y - 0.35 * w * 0.3, z, a, 0, w, 0.3 * w * 0.5, 0.85 * w, tr, tg, tb);   // its grassy top
+    glowing(s, 0);
+    top := 0.4 * w;
+    round_cone(s, x, y - top, z, top, x + 0.08 * w, y - 1.25 * w, z, 0.1 * w, 0.42, 0.29, 0.19);   // the rock under it
+    round_cone(s, x - 0.2 * w, y - 0.6 * w, z + 0.1 * w, 0.2 * w, x - 0.25 * w, y - 0.95 * w, z, 0.05 * w, 0.36, 0.25, 0.17);
+    if i % 2 == 0 && tree >= 0 {
+      k := 0.55 * w / hi(longest(s, tree), 0.01);
+      shaped(s, tree, x + 0.15 * w, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
+      shaped(s, leaves_of(s, tree), x + 0.15 * w, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
+    }
+  }
+  // clouds just past the edge, low, all round
+  for i: 0..<10 {
+    a := cast(f32) i / 10.0 * 6.2831853 + rand(r) * 0.4;
+    d := GROUND_R + 12 + 10 * rand(r);
+    x := d * sin(a); z := -d * cos(a); y := -2 + 5 * rand(r);
+    glowing(s, 0.25);
+    for b: 0..<3 {
+      f := cast(f32) b - 1;
+      ball(s, x + 2.6 * f * cos(a), y + (1 - f * f) * 0.7, z + 2.6 * f * sin(a), 1.8 + 0.7 * (1 - f * f), 1.15, 1.15, 1.2);
+    }
+    glowing(s, 0);
+  }
+}
+ISLE_A :: [6] f32.[0.12, -0.5, 0.58, -0.22, 2.4, -2.6];
+ISLE_D :: [6] f32.[44, 48, 50, 64, 46, 48];
+ISLE_Y :: [6] f32.[4.5, 3, 7.5, 11, 5, 7];
+ISLE_W :: [6] f32.[8, 6, 6, 8, 7, 6];
+
+// ---- the herd as verse/figure.coax animals, bone by bone (HERDS' order; a chicken keeps
+// myrealm-things.coax beast): each kind's build, coat and marks, and what it carries (horns,
+// antlers, a mane, a hump, wool).
+// size, legs, body, girth, head, snout, ears (0 pricked, 1 hanging), tail, fluff, tail curl, ruff
+BUILD :: [143] f32.[
+  2.5, 0.85, 1.05, 1.6, 1.25, 0.8, 0.6, 0.6, 1.4, 0, 1,     // bison
+  2.1, 1.55, 0.9, 0.85, 0.9, 1.1, 0, 0.25, 1.2, 0.4, 0,     // deer
+  2.8, 1.45, 1.15, 1.35, 1.05, 1.6, 0, 1.4, 1.6, 0, 0,      // horse
+  1.55, 0.75, 1.0, 1.6, 0.9, 0.7, 0.8, 0.3, 1.6, 0, 0.6,    // sheep
+  1.5, 1.0, 0.95, 1.05, 0.95, 1.0, 0.3, 0.3, 1.0, 0.6, 0,   // goat
+  2.5, 0.95, 1.2, 1.5, 1.1, 1.0, 0.5, 1.2, 0.9, 0, 0,       // cow
+  1.55, 0.55, 1.1, 1.6, 1.0, 0.65, 0.7, 0.3, 0.8, 1, 0,     // pig
+  1.65, 1.15, 1.05, 0.95, 1.05, 1.25, 0, 1.3, 1.6, 0.1, 0.8, // wolf
+  1.1, 0.9, 1.1, 0.8, 1.0, 1.35, 0, 1.5, 2.0, 0.15, 0.3,    // fox
+  1.25, 1.0, 1.0, 1.0, 1.05, 1.05, 0.8, 1.0, 1.0, 0.7, 0,   // dog
+  2.8, 1.6, 1.1, 1.1, 1.0, 1.25, 0.5, 0.7, 0.9, 0, 0,       // camel
+  1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0, 1.0, 1.0, 0, 0,          // chicken (beast)
+  3.8, 1.2, 1.3, 1.4, 1.3, 1.5, 0, 1.8, 2.0, 0, 0];         // dinosaur
+// coat, then its marks; and its pattern
+COATS :: [78] f32.[
+  0.3, 0.2, 0.13,  0.14, 0.1, 0.07,
+  0.7, 0.48, 0.3,  0.95, 0.9, 0.82,
+  0.5, 0.32, 0.2,  0.12, 0.09, 0.07,
+  0.95, 0.93, 0.86,  0.25, 0.22, 0.2,
+  0.82, 0.78, 0.7,  0.4, 0.36, 0.32,
+  0.95, 0.94, 0.9,  0.12, 0.11, 0.1,
+  0.98, 0.7, 0.68,  0.85, 0.55, 0.55,
+  0.55, 0.55, 0.58,  0.9, 0.88, 0.85,
+  0.88, 0.42, 0.15,  0.97, 0.95, 0.9,
+  0.6, 0.42, 0.25,  0.95, 0.9, 0.82,
+  0.8, 0.64, 0.42,  0.7, 0.55, 0.36,
+  1, 1, 1,  1, 1, 1,
+  0.36, 0.55, 0.28,  0.8, 0.75, 0.45];
+PATTERN :: [13] int.[2, 4, 2, 2, 0, 1, 0, 4, 2, 4, 0, 0, 4];
+DINO :: 12; CHICKEN :: 11;
+animal_shape :: (kind: int) -> fig.Shape {
+  b := kind * 11; c := kind * 6;
+  return fig.Shape.{rig = fig.Rig.animal, size = BUILD[b], legs = BUILD[b + 1], body = BUILD[b + 2], girth = BUILD[b + 3], head = BUILD[b + 4],
+    snout = BUILD[b + 5], ears = BUILD[b + 6], tail = BUILD[b + 7], fluff = BUILD[b + 8], tail_curl = BUILD[b + 9], ruff = BUILD[b + 10],
+    coat = fig.Fv.{x = COATS[c], y = COATS[c + 1], z = COATS[c + 2]}, marks = fig.Fv.{x = COATS[c + 3], y = COATS[c + 4], z = COATS[c + 5]}, pattern = PATTERN[kind]};
+}
+// One of the herd at (x, z) facing yaw (forward (sin yaw, -cos yaw)), walking at pace (0 to 1),
+// its head down to the grass by graze.
+animal_figure :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, pace: f32, phase: f32, graze: f32, i: int) {
+  sh := animal_shape(kind);
+  k := fig.verse_figure_skeleton(sh);
+  stand := fig.verse_figure_gait(fig.Rig.animal, fig.Gait.stand, phase, s[0].time);
+  walk := fig.verse_figure_gait(fig.Rig.animal, fig.Gait.walk, phase, s[0].time);
+  p := fig.verse_figure_blend(stand, walk, clamp(pace, 0, 1));
+  p.turn[fig.A_NECK].x += 0.9 * graze; p.turn[fig.A_HEAD].x += 0.5 * graze;
+  if kind == DINO { p.turn[fig.A_NECK].x -= 0.5; }   // a long neck held high
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = x, y = 0, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
+  low: f32 = 1000;
+  for leg: 0..<4 { top := fig.A_LF + leg * 5; low = lo(low, lo(joints[top + 3].y, joints[top + 4].y) - 0.032 * sh.size); }
+  for j: 0..<k.joints { joints[j].y -= low; }
+  c := sh.coat; m := sh.marks;
+  for q: 0..<k.parts {
+    part := k.part[q];
+    a := joints[part.a]; e := joints[part.b];
+    col := c;
+    g := part.region;
+    marked := (sh.pattern == fig.PATTERN_POINTS && (g == fig.REGION_EAR || g == fig.REGION_MUZZLE || g == fig.REGION_LOWER || g == fig.REGION_TAIL))
+      || (sh.pattern == fig.PATTERN_SOCKS && g == fig.REGION_LOWER && (part.a - fig.A_LF) % 5 >= 2)
+      || (sh.pattern == fig.PATTERN_PATCHES && g == fig.REGION_BODY && (q + i) % 2 == 0)
+      || (sh.pattern == fig.PATTERN_SOCKS && kind == 8 && g == fig.REGION_TAIL && part.b == fig.A_TAIL_TIP);
+    if marked { col = m; }
+    if g == fig.REGION_EYE { col = fig.Fv.{x = 0.04, y = 0.03, z = 0.03}; }
+    if g == fig.REGION_NOSE { col = ifx kind == 6 then fig.Fv.{x = 0.9, y = 0.5, z = 0.52} else fig.Fv.{x = 0.08, y = 0.06, z = 0.06}; }
+    round_cone(s, a.x, a.y, a.z, part.ra, e.x, e.y, e.z, part.rb, col.x, col.y, col.z);
+  }
+  hd := joints[fig.A_HEAD]; ck := joints[fig.A_CHEST]; nk := joints[fig.A_NECK]; sp := joints[fig.A_SPINE]; pv := joints[fig.A_PELVIS];
+  z0 := sh.size; hz := sh.head * z0;
+  ax := cos(yaw); az := sin(yaw);
+  if kind == 0 || kind == 4 || kind == 5 {
+    // horns
+    for side: 0..<2 {
+      w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      bx := hd.x + ax * w * 0.06 * hz; bz := hd.z + az * w * 0.06 * hz;
+      round_cone(s, bx, hd.y + 0.06 * hz, bz, 0.018 * hz, bx + ax * w * 0.07 * hz, hd.y + 0.14 * hz, bz + az * w * 0.07 * hz, 0.006 * hz, 0.85, 0.8, 0.7);
+    }
+  }
+  if kind == 1 {
+    // antlers: a beam each side and two tines on it
+    for side: 0..<2 {
+      w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      bx := hd.x + ax * w * 0.04 * hz; bz := hd.z + az * w * 0.04 * hz; by := hd.y + 0.07 * hz;
+      tx := bx + ax * w * 0.12 * hz; tz := bz + az * w * 0.12 * hz; ty := by + 0.2 * hz;
+      round_cone(s, bx, by, bz, 0.012 * hz, tx, ty, tz, 0.006 * hz, 0.75, 0.65, 0.5);
+      round_cone(s, 0.5 * (bx + tx), 0.5 * (by + ty), 0.5 * (bz + tz), 0.007 * hz, 0.5 * (bx + tx) - ax * w * 0.02 * hz, ty + 0.03 * hz, 0.5 * (bz + tz) - az * w * 0.02 * hz, 0.004 * hz, 0.75, 0.65, 0.5);
+    }
+  }
+  if kind == 2 {
+    // a mane down the neck, dark
+    round_cone(s, hd.x, hd.y + 0.05 * hz, hd.z, 0.03 * z0, ck.x, ck.y + 0.08 * z0, ck.z, 0.035 * z0, m.x, m.y, m.z);
+  }
+  if kind == 10 {
+    // a hump
+    ball(s, sp.x, sp.y + 0.11 * z0, sp.z, 0.085 * z0, c.x * 0.95, c.y * 0.95, c.z * 0.95);
+  }
+  if kind == 3 {
+    // wool: soft lumps over the back
+    for q: 0..<3 {
+      f := cast(f32) q * 0.5;
+      ball(s, pv.x + (ck.x - pv.x) * f, pv.y + (ck.y - pv.y) * f + 0.06 * z0, pv.z + (ck.z - pv.z) * f, 0.1 * z0, c.x, c.y, c.z);
+    }
+  }
+}
