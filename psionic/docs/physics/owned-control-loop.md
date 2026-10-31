@@ -95,6 +95,12 @@ The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
 now reuses the fixed FK profile, with separate metre/radian and angular-ratio
 blocks. Its numerical derivative qualification does not admit control commands. Compare small components with the SDK before
 running expensive whole episodes. A field layout alone is not embodiment parity.
+The separate [chapter167 position-only IK profile](../../book/ch167-command-a-robot.md)
+now uses the owned grip geometry for source-limited candidate coordinates,
+qualified by independent matrix trajectories without any simulator or policy.
+It does not supply orientation/nullspace objectives, collision planning, PD
+rollout or a compiler R14 certificate.
+
 6. Complete R18/R19 sensor age, command expiry/limits and a frozen fault corpus,
 then full R16 restore/replay with complete state inventory. Preserve held-out
 failures and compare uninterrupted/resumed episodes under the exact declared
@@ -134,8 +140,8 @@ physics engine. The next robot backend follows Aethyr's rigid branch: scene 17,
 bodies 18, articulation 19, broad/narrow contact 20–21 and contact solve 22;
 assets 35, batching 31, sensors 33, observation rendering 34 and world replay 36
 (Aethyr chapters), with Psionic chapter 167's control, supply the matching
-end-to-end path. Those chapter files are
-currently design drafts. Their numbering is a teaching order; dependencies
+end-to-end path. The Aethyr chapter files remain design drafts; chapter167 now has the
+separate runnable position-only profile. Their numbering is a teaching order; dependencies
 such as assets before rendered observations still determine implementation.
 
 The material solvers and their coupling can follow this rigid path. They do

@@ -272,6 +272,24 @@ nonfinite values before maxima. The proof does not differentiate rounding,
 refusal, saturation or soft joint-limit dynamics, and supplies no sensor stamp
 or generic typed transform chain.
 
+## Panda position IK keeps iteration and command meaning separate
+
+The pinned seven-hinge query admits source-range radian seeds and one F64
+world/metre grip target. Fixed DLS normalizes columns by one radian, uses the
+.05-metre damping basis, globally caps increments at .1 radians and projects
+source ranges. The caller update budget is 0..96 and the Euclidean tolerance
+is 1e-6 metres. One-step publication is an admitted geometric candidate;
+whole-solve publication requires convergence. Every non-OK path, including
+exhaustion, preserves the complete output. Nonconvergence is local to the
+seed/profile/budget and does not prove global unreachability.
+
+Independent homogeneous-matrix tangents and pivoted Gaussian solves retain
+all trajectories under frozen budgets; status/counters and owned-mode bytes
+are exact. The original49-case corpus and separate active-limit contract
+retain their identities. Trusted coefficient helpers stay source-visible,
+with no orientation/collision/physical command/dynamics or compiler-bounded
+control claim. Existing FK/Jacobian proofs are carried, not broadened.
+
 ## Panda finger coordinates preserve the arm contract and rigid branch order
 
 The separate `PffOutput` embeds the unchanged twelve-body `PfkOutput` and four

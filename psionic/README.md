@@ -335,6 +335,17 @@ SDK columns and independent matrix-based finite differences qualify it. The
 per second into grip-site metres per second. Run
 `psionic/check.sh --only robotics/panda-jacobian` for its focused gate.
 
+[Chapter 167](book/ch167-command-a-robot.md) now has a runnable fixed Panda
+grip-position IK profile over the owned FK/Jacobian. Typed source-limited
+radians and world/metre targets enter fixed-damping DLS with explicit step and
+iteration caps. A converged candidate is within one micrometre; exhausted
+queries preserve output. The [example](examples/panda-ik.coax) and
+`psionic/check.sh --only robotics/panda-ik` expose the two new authority roots
+and one offline Darwin-arm64 native gate. Fifty independent/native contexts
+retain 47 solutions and three nonconvergences, with no SDK calls or physics.
+Orientation/nullspace, PD rollout, collision planning/timing and R14 remain
+pending; a kinematic candidate is not command admission.
+
 The [owned moving-finger query](fixtures/robotics/panda-fingers/README.md) adds
 four BODY poses from two metre-valued slides while preserving the published
 arm output. Five new SDK forward queries and independent matrix/analytic

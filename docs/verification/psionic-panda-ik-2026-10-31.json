@@ -1,0 +1,110 @@
+{
+  "schema": "psionic.panda-ik.publication-binding.v1",
+  "passed": true,
+  "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+  "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
+  "compiler_guard_carried_sha256": "4a4541072af29cdb485c769b2d764ba35c773346dec9894881c031e7a0fe03c1",
+  "scope": "Only new IK debug/release emission binding; original source/native/oracle/example numerical proofs carried without repeated passing gates",
+  "numerical_reruns": 0,
+  "emissions": [
+    {
+      "mode": "debug",
+      "artifact": "panda-ik.c",
+      "sha256": "46cd344a88e40a2fbb711998607848c0b7352b8952c52e0c4ed4aeb5ccf8a5f5",
+      "bytes": 114891,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "942d9316a14967f6aa0f9479d40b822663c5a3f858a224c38b138d86f8754c18"
+    },
+    {
+      "mode": "debug",
+      "artifact": "panda-ik.h",
+      "sha256": "5c192d8ad9e65818390e0b5a9a8fc96fcda20a34a08b93492ca4c92e99e75716",
+      "bytes": 23180,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "942d9316a14967f6aa0f9479d40b822663c5a3f858a224c38b138d86f8754c18"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-ik.c",
+      "sha256": "9c8b9043a2a1f552dc0ac5b72b85cb5a44f07e797ebd7f6d7cb758a01bd2bddb",
+      "bytes": 113683,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "942d9316a14967f6aa0f9479d40b822663c5a3f858a224c38b138d86f8754c18"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-ik.h",
+      "sha256": "5c192d8ad9e65818390e0b5a9a8fc96fcda20a34a08b93492ca4c92e99e75716",
+      "bytes": 23180,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "942d9316a14967f6aa0f9479d40b822663c5a3f858a224c38b138d86f8754c18"
+    }
+  ],
+  "component_commit": "bdff40d3c0",
+  "original_component_commit": "d1f4edce31",
+  "native_qualification_sha256": "8e7fe078a21b86ba7e44671c4057fec23f275830cf7012a341c3f6166d467b64",
+  "source_checks_sha256": "62d7d5077eba83b81d88ccabf4b77bd5cf99aefc1feee78752c9503b7f999010",
+  "oracle_qualification_sha256": "cca71bc86ae3eadb98e6da8f6b747446c031b3723031d3993f3c43374acf4e74",
+  "book": {
+    "passed": true,
+    "programs": 122,
+    "source_linked_listings": 469,
+    "stdout_sha256": "37090bedb6d17efe27db47e8ebf9a364d2061ce871481b917a1f56751d4fca9e",
+    "stderr_bytes": 0,
+    "postrebase_stdout_sha256": "37090bedb6d17efe27db47e8ebf9a364d2061ce871481b917a1f56751d4fca9e",
+    "postrebase_stderr_bytes": 0
+  },
+  "book_integration_history": [
+    "First capability guard required reviewing the changed chapter167 SUMMARY status; two SUMMARY evidence bindings were refreshed after verifying their model/GPU claim scopes were unchanged.",
+    "Second structure guard required registry profile and README status wording to agree; aligned only chapter167 metadata before final passing static gate.",
+    "Rebased without conflict over incoming Aethyr session replay/strict-math invariants and reviewed native-GPU status/evidence. Both sides were preserved. The changed book context passed122programs/469listings; compilerFP remained000c and no numerical or old gates reran."
+  ],
+  "registration": {
+    "authority_roots": [
+      "panda-ik-math",
+      "panda-ik"
+    ],
+    "native_gate_count": 1,
+    "native_target": "Darwin-arm64",
+    "list_sha256": "538cf06e1c25fd128470595a60bbdd8db12f535ce90400531ae399ca20ec67e3",
+    "shell_syntax_passed": true
+  },
+  "qualification": {
+    "original_frozen_cases": 49,
+    "additional_separately_frozen_contract_cases": 1,
+    "solutions": 47,
+    "nonconvergences": 3,
+    "native_events": 363,
+    "trajectory_updates": 228,
+    "standalone_steps": 35,
+    "native_assertions_per_profile": 15507,
+    "root_scopes": [
+      {
+        "name": "panda-ik-math",
+        "mutants": 102,
+        "killed": 102,
+        "survived": 0
+      },
+      {
+        "name": "panda-ik",
+        "mutants": 152,
+        "killed": 152,
+        "survived": 0
+      }
+    ],
+    "source_groups": 12,
+    "source_cases": 38
+  },
+  "source_log_scope": "The earlier focused12-group/38-case log precedes one final observation-only zero-update bad-target check. Final root-mutation baselines execute current checks; no product/corpus/budget changes in that final observation followup.",
+  "chapter167_scope": "Runnable position-only source-bound Panda IK; orientation/nullspace,PD rollout,RRT/collision/path timing and compilerR14 remain pending. No physical command permission or wholechaptercompletion.",
+  "new_SDK_calls": 0,
+  "new_NN_calls": 0,
+  "new_physics_steps": 0,
+  "postrebase_compiler_guard": {
+    "schema": "psionic.panda-ik.postrebase-compiler-guard.v1",
+    "passed": true,
+    "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+    "root_head": "0e8e083505e78e16f57ce355904876b89854b173",
+    "expected_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3"
+  }
+}

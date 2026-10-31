@@ -184,7 +184,7 @@
 
 - [165. Sequences of observations](ch165-sequences-of-observations.md) — design draft
 - [166. One complete Cosmos3-Edge path](ch166-one-complete-cosmos3-edge-path.md) — design draft
-- [167. Command a robot](ch167-command-a-robot.md) — design draft
+- [167. Command a robot](ch167-command-a-robot.md) — runnable position-only Panda IK
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
 - [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — original GR00T drives a Panda through Coax control, with exact SDK physics replay
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 168–170, 172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
-table gives each one's exact status. Chapters 167 and 171 and every other
+Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 167–170, 172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+table gives each one's exact status. Chapter 171 and every other
 planned chapter without runnable code are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).
