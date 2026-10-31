@@ -120,6 +120,20 @@ qf_prepare :: (s:QfShape,input:[]f32,out:[]f32,overlap:bool)->QfResult #export_c
     mask[1]=0;r=qf_attend(s,2,input[..],mask[..],out[..],scratch[..],false);
     #assert r.status==QfStatus.ok && out[0]==1 && out[1]==2 && out[2]==1 && out[3]==2;
 }
+#forall "every nonempty three-token mask attends only to its allowed tokens; padding contents change nothing" m:1..<8 {
+    // One head, one key/value head, head_dim 1: query 1, gate 0 (sigmoid 1/2),
+    // keys 0,1,2 and values 1,10,100. A masked token is padding.
+    s:=QfShape.{heads=1,kv_heads=1,head_dim=1,rotary_dim=0,epsilon=1};
+    input:=[8]f32.[1,0, 0,1,2, 1,10,100];mask:[3]u8;
+    num:=0.0;den:=0.0;
+    for t:0..<3 {if (m>>t)&1==1 {mask[t]=1;num+=exp(f64(input[2+t]))*f64(input[5+t]);den+=exp(f64(input[2+t]));}}
+    out:=[1]f32.[-7];scratch:[1]f32;
+    r:=qf_attend(s,3,input[..],mask[..],out[..],scratch[..],false);
+    #assert r.status==QfStatus.ok && r.written==1 && abs(f64(out[0])-num/den/2)<=0.000001*abs(num/den);
+    first:=out[0];
+    for t:0..<3 {if mask[t]==0 {input[2+t]=50;input[5+t]=-1000;}}
+    #assert qf_attend(s,3,input[..],mask[..],out[..],scratch[..],false).status==QfStatus.ok && out[0]==first;
+}
 #test "empty and malformed masks and short views refuse before publication" {
     s:=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=0,epsilon=1};
     input:[8]f32;mask:=[1]u8.[0];out:=[2]f32.[-7,-7];scratch:=[2]f32.[-9,-9];

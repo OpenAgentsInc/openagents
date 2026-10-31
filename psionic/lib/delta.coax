@@ -38,6 +38,35 @@ PdResult :: struct { status:PdStatus; written:int; }
     #assert out[0]==-7 && state[0]==4;
     for i:0..<9 {#assert history[i]==f32(i+1);}
 }
+#test "chunked prefill and a resumed snapshot equal one straight run; reset is the zero state" {
+    s:=PdShape.{key_heads=1,value_heads=2,key_dim=2,value_dim=2,epsilon=0.000001f32};
+    n:=pd_input_count(s);#assert n==54 && pd_work_count(s)==44 && pd_states(s)==8 && 3*pd_channels(s)==24;
+    input:[270]f32;for t:0..<5 {for i:0..<54 {input[t*54+i]=f32((i*7+t*3)%11-5)/8;}}
+    work:[44]f32;
+    // One straight run over five tokens.
+    h1:[24]f32;s1:[8]f32;o1:[20]f32;
+    for t:0..<5 {r:=pd_step(s,input[t*54..<t*54+54],h1[..],s1[..],o1[t*4..<t*4+4],work[..],false);#assert r.status==PdStatus.ok && r.written==4;}
+    // Two tokens, a snapshot copied out (the state a fork or a resumed request
+    // carries), then the other three from the copy.
+    h2:[24]f32;s2:[8]f32;o2:[20]f32;
+    for t:0..<2 {r:=pd_step(s,input[t*54..<t*54+54],h2[..],s2[..],o2[t*4..<t*4+4],work[..],false);#assert r.status==PdStatus.ok;}
+    h3:=h2;s3:=s2;
+    for t:2..<5 {r:=pd_step(s,input[t*54..<t*54+54],h3[..],s3[..],o2[t*4..<t*4+4],work[..],false);#assert r.status==PdStatus.ok;}
+    for i:0..<20 {#assert f32_bits(o1[i])==f32_bits(o2[i]);}
+    for i:0..<24 {#assert f32_bits(h1[i])==f32_bits(h3[i]);}
+    for i:0..<8 {#assert f32_bits(s1[i])==f32_bits(s3[i]);}
+    // The snapshot was not touched by the resumed run.
+    for i:0..<8 {#assert f32_bits(s2[i])!=f32_bits(s3[i]) || s2[i]==0;}
+    // Reset is all-zero history and recurrence: it reproduces token zero exactly;
+    // the carried state does not, so the state is what the next token sees.
+    h4:[24]f32;s4:[8]f32;o4:[4]f32;
+    #assert pd_step(s,input[0..<54],h4[..],s4[..],o4[..],work[..],false).status==PdStatus.ok;
+    for i:0..<4 {#assert f32_bits(o4[i])==f32_bits(o1[i]);}
+    same:=true;
+    #assert pd_step(s,input[0..<54],h1[..],s1[..],o4[..],work[..],false).status==PdStatus.ok;
+    for i:0..<4 {if f32_bits(o4[i])!=f32_bits(o1[i]) {same=false;}}
+    #assert !same;
+}
 // book:begin layout
 pd_valid :: (s:PdShape)->bool {
     if s.key_heads<1 || s.key_heads>16 || s.value_heads<1 || s.value_heads>48 {return false;}

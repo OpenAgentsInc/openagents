@@ -22,9 +22,18 @@ int main(void) {
     assert(r.status==COAX_QhStatus_ok);near(out,fixture_ao,3);near(a,fixture_ac,12);
     r=psionic_qwen_decision_block(s,w,fv(fixture_xb,3),fv(fixture_rb,2),2,1,fv(b,12),fv(out,3),fv(work,110));
     assert(r.status==COAX_QhStatus_ok);near(out,fixture_bo,3);near(b,fixture_bc,12);assert(!memcmp(old,cache,sizeof old));
+    /* Sibling isolation by perturbation: B run on the cache A already wrote
+       (A's key at position 2, a different suffix) still gives B's own answer,
+       and A run on B's leftover cache gives A's, bit for bit. */
+    float bo[3],bc[12];memcpy(bo,out,sizeof bo);memcpy(bc,b,sizeof bc);
+    r=psionic_qwen_decision_block(s,w,fv(fixture_xb,3),fv(fixture_rb,2),2,1,fv(a,12),fv(out,3),fv(work,110));
+    assert(r.status==COAX_QhStatus_ok && !memcmp(out,bo,sizeof bo) && !memcmp(a,bc,sizeof bc));
+    r=psionic_qwen_decision_block(s,w,fv(fixture_xa,3),fv(fixture_ra,2),2,1,fv(b,12),fv(out,3),fv(work,110));
+    assert(r.status==COAX_QhStatus_ok);near(out,fixture_ao,3);near(b,fixture_ac,12);
     float old_out[3];memcpy(old_out,out,sizeof old_out);down[5]=INFINITY;
     r=psionic_qwen_decision_block(s,w,fv(fixture_xa,3),fv(fixture_ra,2),2,1,fv(cache,12),fv(out,3),fv(work,110));
     assert(r.status==COAX_QhStatus_number && !memcmp(old,cache,sizeof old) && !memcmp(old_out,out,sizeof old_out));
     puts("Qwen decision: bidirectional prefix and independent suffix forks match references");
+    puts("Qwen decision: a sibling suffix left in the cache changes no other branch");
     puts("Qwen decision: late failures preserve prefix cache and output");
 }
