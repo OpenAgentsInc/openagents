@@ -7,15 +7,55 @@
 #include "analytics-face.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+#define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
+IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
+IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
+IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 
 static uint8_t inbox[4096];
 static bool golden;
 
 static coax_t_Stair *game_at(uint32_t state) { return (coax_t_Stair *)(uintptr_t)state; }
 static coax_v_t_Stair at(uint32_t state) { return (coax_v_t_Stair){game_at(state), 1}; }
-static void drain(uint32_t state) { track_drain(&game_at(state)->track.e[0]); }
+// Co-op (stair-coop.coax): the game's bytes for a partner are everything before fx but the
+// analytics; a partner's come in over them, and the game keeps its own view (stair_snap_adopted).
+#define SNAP_A offsetof(coax_t_Stair, track)
+#define SNAP_B0 offsetof(coax_t_Stair, dice)
+#define SNAP_B1 offsetof(coax_t_Stair, fx)
+_Static_assert(SNAP_A + (SNAP_B1 - SNAP_B0) <= sizeof(((coax_t_Stair *)0)->snap.e), "the snapshot fits");
+static coax_t_Stair kept;
+static void snapshot(uint32_t state) {
+  coax_t_Stair *g = game_at(state);
+  if (g->lock.e[0].want_snap) {
+    uint8_t *to = g->snap.e;
+    memcpy(to, g, SNAP_A); memcpy(to + SNAP_A, (uint8_t *)g + SNAP_B0, SNAP_B1 - SNAP_B0);
+    stair_snap_taken(at(state), (int64_t)(SNAP_A + SNAP_B1 - SNAP_B0));
+  }
+  if (g->lock.e[0].adopt) {
+    kept = *g;
+    const uint8_t *from = kept.snap.e;
+    memcpy(g, from, SNAP_A); memcpy((uint8_t *)g + SNAP_B0, from + SNAP_A, SNAP_B1 - SNAP_B0);
+    stair_snap_adopted(at(state), (coax_v_t_Stair){&kept, 1});
+  }
+}
+// The analytics batch, the snapshot, then the pipe's socket commands in order; then the pipe is empty.
+static void drain(uint32_t state) {
+  track_drain(&game_at(state)->track.e[0]);
+  snapshot(state);
+  coax_t_Pipe *p = &game_at(state)->lock.e[0].pipe.e[0];
+  int64_t n = p->n;
+  for (int64_t k = 0; k < n; k++) {
+    uint32_t from = (uint32_t)(uintptr_t)&p->buf.e[p->from.e[k]], len = (uint32_t)p->len.e[k];
+    int32_t id = (int32_t)p->id.e[k];
+    if (p->op.e[k] == 1) stair_socket_opened(at(state), coaxial_socket_open(from, len));
+    else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
+    else if (p->op.e[k] == 3) coaxial_socket_close(id);
+  }
+  p->n = 0; p->used = 0;
+}
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Stair) * 1000003u + offsetof(coax_t_Stair, outbox) * 13u + 0x53544152u);

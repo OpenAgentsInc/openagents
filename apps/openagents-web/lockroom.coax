@@ -1,0 +1,481 @@
+// Lockstep through the room server's relay (coax/web/room/room-relay.coax), for any game that
+// plays the same seeded game on every client and sends only its players' orders. Two players: the
+// one in the room first (or still there) holds the game; the one who joins gets its state (a
+// snapshot), and from then both run the same ticks:
+//   - the game ticks at a fixed rate; a tick runs once the partner has committed to it (u N: "my
+//     orders for every tick below N are sent"), so each waits for the other, never runs ahead;
+//   - an order names the tick it takes effect on (o TICK TEXT), the sender's commit at the moment,
+//     so the partner hears it before it may run that tick; both apply a tick's orders seat 0 first;
+//   - every LR_CHECK ticks each sends its state's hash (h TICK HASH); two that differ are a desync:
+//     both show it, and the one holding the game sends its state again (s, c, e), which the other adopts.
+// The game owns the snapshot (its bytes, how they are taken and adopted) and the orders' text; this
+// file owns the socket, the ticks, the queue and the hashes. Frames over the relay:
+//   u N · o TICK TEXT · h TICK HASH · s TICK BYTES · c INDEX BASE64 · e · k (keep-alive)
+//   coax/bin/coax test apps/openagents-web/stair.coax --only lockroom
+
+#load "socket.coax";
+
+LR_OFF :: 0; LR_JOINING :: 1; LR_ALONE :: 2; LR_SYNC :: 3; LR_PLAY :: 4; LR_LOST :: 5; LR_FULL :: 6;
+LR_ORDER :: 80;          // an order's text, at most
+LR_QUEUE :: 64;
+LR_RING :: 16;           // hashes kept, each side
+LR_CHUNK :: 2700;        // snapshot bytes a frame (3600 in base64, under the relay's 4096)
+LR_CODE :: 8;
+LR_LEAD :: 0.2;          // seconds of ticks committed ahead: the latency a partner's order rides on
+LR_SEND :: 0.05;         // seconds between commits
+
+LockOrder :: struct { tick: int; seat: int; seq: int; n: int; text: [LR_ORDER] u8; }
+Lock :: struct {
+  state: int;
+  seat: int = -1; partner: int = -1;
+  sock: int = -1;
+  code: [LR_CODE] u8; code_n: int;
+  link: [200] u8; link_n: int;      // the page's address, for the invite: ?coop=CODE goes on it
+  origin: [120] u8; origin_n: int;
+  rate: f64;                        // ticks a second (the game's)
+  check: int;                       // ticks between hashes
+  tick: int;                        // the next tick to run
+  mine: int; theirs: int;           // commits: ticks below them are complete
+  seq: int;
+  q: [LR_QUEUE] LockOrder; q_n: int;
+  hk: [LR_RING] int; hv: [LR_RING] u64; tk: [LR_RING] int; tv: [LR_RING] u64;
+  since: f64; alive: f64;
+  // the snapshot: the game fills its buffer when want_snap, and adopts what came when adopt
+  want_snap: bool; snap_n: int; snap_sent: int; snap_tick: int;
+  rx_total: int; rx_got: int; rx_tick: int; adopt: bool;
+  desyncs: int; resyncs: int;
+  note: [48] u8; note_n: int; note_new: bool;
+  pipe: [1] Pipe;
+}
+
+lr_say :: (L: [] Lock, t: string) {
+  n := 0;
+  for b: t { if n < 48 { L[0].note[n] = b; n += 1; } }
+  L[0].note_n = n; L[0].note_new = true;
+}
+lr_put :: (buf: [] u8, at: int, t: string) -> int {
+  n := at;
+  for b: t { if n < buf.count { buf[n] = b; n += 1; } }
+  return n;
+}
+lr_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { n := lr_put(buf, at, "-"); return lr_put_int(buf, n, -v); }
+  d: [20] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  n := at;
+  while k > 0 { k -= 1; if n < buf.count { buf[n] = d[k]; n += 1; } }
+  return n;
+}
+lr_put_u64 :: (buf: [] u8, at: int, v: u64) -> int {
+  d: [24] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) ('0' + cast(int) (x % 10)); k += 1; x = x / 10; if x == 0 { break; } }
+  n := at;
+  while k > 0 { k -= 1; if n < buf.count { buf[n] = d[k]; n += 1; } }
+  return n;
+}
+// A number in text from at[0] (spaces before it skipped); at[0] moves past it. -1 when there is none.
+lr_int :: (t: string, at: [] int) -> int {
+  i := at[0];
+  while i < t.count && t[i] == ' ' { i += 1; }
+  neg := false;
+  if i < t.count && t[i] == '-' { neg = true; i += 1; }
+  if i >= t.count || t[i] < '0' || t[i] > '9' { at[0] = i; return -1; }
+  v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+lr_u64 :: (t: string, at: [] int) -> u64 {
+  i := at[0];
+  while i < t.count && t[i] == ' ' { i += 1; }
+  v: u64 = 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = mul_wrap(v, 10) + cast(u64) (t[i] - '0'); i += 1; }
+  at[0] = i;
+  return v;
+}
+
+// ---- base64, for the snapshot's bytes
+
+LR_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+lr_b64 :: (src: [] u8, out: [] u8, at: int) -> int {
+  n := at; i := 0;
+  while i < src.count {
+    a := cast(int) src[i]; b := ifx i + 1 < src.count then cast(int) src[i + 1] else 0; c := ifx i + 2 < src.count then cast(int) src[i + 2] else 0;
+    w := a * 65536 + b * 256 + c;
+    out[n] = LR_B64[(w >> 18) & 63]; out[n + 1] = LR_B64[(w >> 12) & 63];
+    out[n + 2] = ifx i + 1 < src.count then LR_B64[(w >> 6) & 63] else '=';
+    out[n + 3] = ifx i + 2 < src.count then LR_B64[w & 63] else '=';
+    n += 4; i += 3;
+  }
+  return n;
+}
+lr_b64_val :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
+  if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; }
+  if c == '+' { return 62; }
+  if c == '/' { return 63; }
+  return -1;
+}
+// Base64 text into out from at: the bytes written, or -1 when it isn't base64 or doesn't fit.
+lr_unb64 :: (t: string, out: [] u8, at: int) -> int {
+  if t.count % 4 != 0 { return -1; }
+  n := at; i := 0;
+  while i < t.count {
+    v: [4] int;
+    pad := 0;
+    for k: 0..<4 { if t[i + k] == '=' { v[k] = 0; pad += 1; } else { v[k] = lr_b64_val(t[i + k]); if v[k] < 0 { return -1; } } }
+    w := (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];
+    for k: 0..<3 - pad {
+      if n >= out.count { return -1; }
+      out[n] = cast(u8) ((w >> (16 - 8 * k)) & 255); n += 1;
+    }
+    i += 4;
+  }
+  return n - at;
+}
+
+// ---- joining
+
+// A room code from a seed: LR_CODE letters and digits that can't be misread.
+LR_LETTERS :: "abcdefghjkmnpqrstuvwxyz23456789";
+lr_make_code :: (L: [] Lock, seed: u64) {
+  x := seed;
+  for i: 0..<6 {
+    x = mul_wrap(x ^ (x >> 29), 6364136223846793005) + 1442695040888963407;
+    L[0].code[i] = LR_LETTERS[cast(int) ((x >> 33) % cast(u64) LR_LETTERS.count)];
+  }
+  L[0].code_n = 6;
+}
+// The code in ?coop=CODE: true when the page's address has one.
+lr_code_of :: (L: [] Lock, url: string) -> bool {
+  key := "coop=";
+  i := 0;
+  while i + key.count <= url.count {
+    if url[i..<i + key.count] == key && (i == 0 || url[i - 1] == '?' || url[i - 1] == '&') {
+      j := i + key.count; n := 0;
+      while j < url.count && n < LR_CODE {
+        c := url[j];
+        if c >= 'A' && c <= 'Z' { c += 32; }
+        if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { break; }
+        L[0].code[n] = c; n += 1; j += 1;
+      }
+      L[0].code_n = n;
+      return n > 0;
+    }
+    i += 1;
+  }
+  return false;
+}
+// The page's address: its origin for the socket, and itself without the query for the invite.
+lr_page :: (L: [] Lock, url: string) {
+  q := url.count;
+  for i: 0..<url.count { if url[i] == '?' || url[i] == '#' { q = i; break; } }
+  L[0].link_n = lr_put(L[0].link[..], 0, url[0..<q]);
+  sl := 0; k := 0;
+  while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
+  secure := url.count > 5 && url[0..<5] == "https";
+  o := lr_put(L[0].origin[..], 0, ifx secure then "wss://" else "ws://");
+  start := ifx secure then 8 else 7;
+  if start < k { o = lr_put(L[0].origin[..], o, url[start..<k]); }
+  L[0].origin_n = o;
+}
+// The invite: the page's address with ?coop=CODE, into buf.
+lr_invite :: (L: [] Lock, buf: [] u8) -> int {
+  n := lr_put(buf, 0, cast(string) L[0].link[0..<L[0].link_n]);
+  n = lr_put(buf, n, "?coop=");
+  return lr_put(buf, n, cast(string) L[0].code[0..<L[0].code_n]);
+}
+// Into the room for game: the socket opens to /api/room/relay/GAME/CODE.
+lr_join :: (L: [] Lock, game: string, rate: f64, check: int) {
+  if L[0].code_n == 0 || L[0].origin_n == 0 { return; }
+  L[0].rate = rate; L[0].check = check;
+  buf: [256] u8;
+  n := lr_put(buf[..], 0, cast(string) L[0].origin[0..<L[0].origin_n]);
+  n = lr_put(buf[..], n, "/api/room/relay/"); n = lr_put(buf[..], n, game); n = lr_put(buf[..], n, "/");
+  n = lr_put(buf[..], n, cast(string) L[0].code[0..<L[0].code_n]);
+  if pipe_open(L[0].pipe[..], cast(string) buf[0..<n]) { L[0].state = LR_JOINING; }
+}
+// The face tells which socket the open got.
+lr_opened :: (L: [] Lock, id: int) {
+  L[0].sock = id;
+  if id < 0 { L[0].state = LR_LOST; lr_say(L, "NO ROOM: PLAYING ALONE"); }
+}
+lr_send :: (L: [] Lock, t: string) { if L[0].sock >= 0 { ok := pipe_send(L[0].pipe[..], L[0].sock, t); } }
+lr_on :: (L: [] Lock) -> bool { return L[0].state != LR_OFF && L[0].state != LR_LOST && L[0].state != LR_FULL; }
+// With a partner, ticks wait for both.
+lr_together :: (L: [] Lock) -> bool { return L[0].state == LR_PLAY; }
+
+// ---- the ticks
+
+// May the game run its next tick? Alone, yes; with a partner, once they have committed to it.
+lr_may_step :: (L: [] Lock) -> bool {
+  if L[0].state == LR_PLAY { return L[0].tick < L[0].theirs && L[0].tick < L[0].mine; }
+  return L[0].state != LR_SYNC && L[0].state != LR_JOINING;
+}
+// An order from this player: with a partner it goes out for a tick both will run (true); alone it
+// is the game's to apply now (false).
+lr_order :: (L: [] Lock, text: string) -> bool {
+  if L[0].state != LR_PLAY || text.count > LR_ORDER { return false; }
+  t := L[0].mine;
+  lr_queue(L, t, L[0].seat, text);
+  buf: [LR_ORDER + 32] u8;
+  n := lr_put(buf[..], 0, "o "); n = lr_put_int(buf[..], n, t); n = lr_put(buf[..], n, " "); n = lr_put(buf[..], n, text);
+  lr_send(L, cast(string) buf[0..<n]);
+  return true;
+}
+lr_queue :: (L: [] Lock, tick: int, seat: int, text: string) {
+  if L[0].q_n >= LR_QUEUE { return; }
+  k := L[0].q_n;
+  L[0].q[k].tick = tick; L[0].q[k].seat = seat; L[0].q[k].seq = L[0].seq; L[0].seq += 1;
+  L[0].q[k].n = text.count;
+  for i: 0..<text.count { L[0].q[k].text[i] = text[i]; }
+  L[0].q_n += 1;
+}
+// The next order for tick (seat 0's first, each seat's in the order sent) into out, and its seat
+// into seat[0]: its length, or -1.
+lr_take :: (L: [] Lock, tick: int, out: [] u8, seat: [] int) -> int {
+  best := -1;
+  for k: 0..<L[0].q_n {
+    o := L[0].q[k];
+    if o.tick > tick { continue; }
+    if best < 0 || o.tick < L[0].q[best].tick || (o.tick == L[0].q[best].tick && (o.seat < L[0].q[best].seat || (o.seat == L[0].q[best].seat && o.seq < L[0].q[best].seq))) { best = k; }
+  }
+  if best < 0 { return -1; }
+  n := L[0].q[best].n;
+  for i: 0..<n { out[i] = L[0].q[best].text[i]; }
+  seat[0] = L[0].q[best].seat;
+  L[0].q[best] = L[0].q[L[0].q_n - 1]; L[0].q_n -= 1;
+  return n;
+}
+// The tick ran: true when its state's hash is due (then lr_hash).
+lr_ticked :: (L: [] Lock) -> bool {
+  L[0].tick += 1;
+  return L[0].state == LR_PLAY && L[0].check > 0 && L[0].tick % L[0].check == 0;
+}
+lr_hash :: (L: [] Lock, h: u64) {
+  t := L[0].tick;
+  r := (t / lr_hi(L[0].check, 1)) % LR_RING;
+  L[0].hk[r] = t; L[0].hv[r] = h;
+  buf: [64] u8;
+  n := lr_put(buf[..], 0, "h "); n = lr_put_int(buf[..], n, t); n = lr_put(buf[..], n, " "); n = lr_put_u64(buf[..], n, h);
+  lr_send(L, cast(string) buf[0..<n]);
+  for i: 0..<LR_RING { if L[0].tk[i] == t && L[0].tk[i] > 0 && L[0].tv[i] != h { lr_desync(L); } }
+}
+lr_heard_hash :: (L: [] Lock, t: int, h: u64) {
+  r := (t / lr_hi(L[0].check, 1)) % LR_RING;
+  L[0].tk[r] = t; L[0].tv[r] = h;
+  for i: 0..<LR_RING { if L[0].hk[i] == t && t > 0 && L[0].hv[i] != h { lr_desync(L); } }
+}
+lr_hi :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+// Out of step: both say so; the one holding the game sends it again.
+lr_desync :: (L: [] Lock) {
+  if L[0].state != LR_PLAY { return; }
+  L[0].desyncs += 1;
+  lr_say(L, "OUT OF STEP: RESYNCING");
+  if L[0].seat < L[0].partner { L[0].want_snap = true; } else { L[0].state = LR_SYNC; }
+}
+lr_clear :: (L: [] Lock) {
+  L[0].q_n = 0;
+  for i: 0..<LR_RING { L[0].hk[i] = 0; L[0].tk[i] = 0; }
+}
+
+// ---- each frame: commits, keep-alives and the snapshot's frames
+
+lr_frame :: (L: [] Lock, dt: f64) {
+  if !lr_on(L) || L[0].sock < 0 { return; }
+  L[0].since += dt; L[0].alive += dt;
+  buf: [LR_CHUNK * 2] u8;
+  if L[0].state == LR_PLAY && L[0].since >= LR_SEND {
+    L[0].since = 0;
+    lead := cast(int) (L[0].rate * LR_LEAD) + 2;
+    if L[0].tick + lead > L[0].mine {
+      L[0].mine = L[0].tick + lead;
+      n := lr_put(buf[..], 0, "u "); n = lr_put_int(buf[..], n, L[0].mine);
+      lr_send(L, cast(string) buf[0..<n]);
+      L[0].alive = 0;
+    }
+  }
+  if L[0].alive > 5.0 { L[0].alive = 0; lr_send(L, "k"); }
+}
+// The holder's snapshot is in snap (n bytes, taken between ticks): it goes out over the next frames.
+lr_snapshot_ready :: (L: [] Lock, n: int) {
+  L[0].want_snap = false; L[0].snap_n = n; L[0].snap_sent = 0; L[0].snap_tick = L[0].tick;
+  lr_clear(L);
+  L[0].mine = L[0].tick; L[0].theirs = L[0].tick;
+  buf: [64] u8;
+  m := lr_put(buf[..], 0, "s "); m = lr_put_int(buf[..], m, L[0].tick); m = lr_put(buf[..], m, " "); m = lr_put_int(buf[..], m, n);
+  lr_send(L, cast(string) buf[0..<m]);
+  L[0].state = LR_PLAY;
+  L[0].resyncs += 1;
+}
+// Its next frames, as many as the pipe takes (the face drains it after every call).
+lr_snapshot_send :: (L: [] Lock, snap: [] u8) {
+  buf: [LR_CHUNK * 2] u8;
+  while L[0].snap_n > 0 && L[0].snap_sent * LR_CHUNK < L[0].snap_n {
+    from := L[0].snap_sent * LR_CHUNK;
+    to := ifx from + LR_CHUNK < L[0].snap_n then from + LR_CHUNK else L[0].snap_n;
+    n := lr_put(buf[..], 0, "c "); n = lr_put_int(buf[..], n, L[0].snap_sent); n = lr_put(buf[..], n, " ");
+    n = lr_b64(snap[from..<to], buf[..], n);
+    if L[0].sock < 0 || !pipe_send(L[0].pipe[..], L[0].sock, cast(string) buf[0..<n]) { return; }
+    L[0].snap_sent += 1;
+  }
+  if L[0].snap_n > 0 && L[0].sock >= 0 && pipe_send(L[0].pipe[..], L[0].sock, "e") { L[0].snap_n = 0; }
+}
+// The game adopted the snapshot: both run from its tick.
+lr_adopted :: (L: [] Lock) {
+  L[0].adopt = false;
+  lr_clear(L);
+  L[0].tick = L[0].rx_tick; L[0].mine = L[0].rx_tick; L[0].theirs = L[0].rx_tick;
+  L[0].state = LR_PLAY;
+  L[0].since = LR_SEND;
+  lr_say(L, ifx L[0].resyncs == 0 && L[0].desyncs == 0 then "IN YOUR PARTNER'S GAME" else "BACK IN STEP");
+}
+
+// ---- what the relay says (the face's socket events): true when it was this socket's
+lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
+  e := socket_event(kind);
+  if e.id < 0 || e.id != L[0].sock { return e.id >= 0 && L[0].state != LR_OFF; }
+  if e.event == SOCKET_CLOSED || e.event == SOCKET_ERROR {
+    L[0].sock = -1;
+    if L[0].state != LR_FULL { L[0].state = LR_LOST; lr_say(L, "LOST THE ROOM: PLAYING ALONE"); }
+    return true;
+  }
+  if e.event != SOCKET_FRAME || text.count < 3 { return true; }
+  at: [1] int; at[0] = 2;
+  who := lr_int(text, at[..]);
+  if text[0] == 'y' {
+    L[0].seat = who;
+    others := lr_int(text, at[..]);
+    if others >= 2 || who >= 4 { L[0].state = LR_FULL; lr_say(L, "THAT ROOM HAS TWO PLAYERS"); ok := pipe_close(L[0].pipe[..], L[0].sock); L[0].sock = -1; return true; }
+    // the one already here holds the game; the one who came waits for it
+    L[0].state = ifx others > 0 then LR_SYNC else LR_ALONE;
+    return true;
+  }
+  if text[0] == 'j' {
+    if L[0].partner >= 0 && L[0].partner != who { return true; }   // a third: not ours
+    L[0].partner = who;
+    if L[0].state == LR_ALONE { L[0].want_snap = true; lr_say(L, "YOUR PARTNER JOINED"); }
+    return true;
+  }
+  if text[0] == 'l' {
+    if who == L[0].partner {
+      L[0].partner = -1;
+      if L[0].state == LR_PLAY || L[0].state == LR_SYNC { lr_say(L, "YOUR PARTNER LEFT"); }
+      L[0].state = LR_ALONE; lr_clear(L);
+    }
+    return true;
+  }
+  if text[0] != 'm' || who != L[0].partner { return true; }
+  body := text[at[0]..<text.count];
+  if body.count > 0 && body[0] == ' ' { body = body[1..<body.count]; }
+  if body.count == 0 { return true; }
+  b: [1] int; b[0] = 1;
+  c := body[0];
+  if c == 'u' && L[0].state == LR_PLAY { v := lr_int(body, b[..]); if v > L[0].theirs { L[0].theirs = v; } }
+  if c == 'o' && L[0].state == LR_PLAY {
+    t := lr_int(body, b[..]);
+    rest := ifx b[0] + 1 <= body.count then body[b[0] + 1..<body.count] else "";
+    if t >= L[0].tick { lr_queue(L, t, who, rest); }
+  }
+  if c == 'h' && L[0].state == LR_PLAY { t := lr_int(body, b[..]); h := lr_u64(body, b[..]); lr_heard_hash(L, t, h); }
+  if c == 's' { L[0].rx_tick = lr_int(body, b[..]); L[0].rx_total = lr_int(body, b[..]); L[0].rx_got = 0; L[0].state = LR_SYNC; lr_clear(L); }
+  if c == 'c' && L[0].state == LR_SYNC {
+    i := lr_int(body, b[..]);
+    data := ifx b[0] + 1 <= body.count then body[b[0] + 1..<body.count] else "";
+    if i >= 0 && i * LR_CHUNK < snap.count {
+      got := lr_unb64(data, snap, i * LR_CHUNK);
+      if got > 0 { L[0].rx_got += got; }
+    }
+  }
+  if c == 'e' && L[0].state == LR_SYNC && L[0].rx_got == L[0].rx_total && L[0].rx_total > 0 { L[0].adopt = true; }
+  return true;
+}
+
+// ---- the checks: two clients of a toy game (a number, and orders that add to it), the relay
+// between them played by lr_pump
+
+LrToy :: struct { v: int; L: [1] Lock; snap: [64] u8; }
+// What client a sent goes to b, as the relay says it (m SEAT TEXT); the pipe is then empty.
+lr_pump :: (a: [] LrToy, b: [] LrToy) {
+  p := a[0].L[0].pipe[..];
+  for k: 0..<p[0].n {
+    if p[0].op[k] != PIPE_SEND { continue; }
+    buf: [LR_CHUNK * 2 + 16] u8;
+    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].L[0].seat); n = lr_put(buf[..], n, " ");
+    n = lr_put(buf[..], n, pipe_bytes(p, k));
+    ok := lr_socket(b[0].L[..], SOCKET_KIND + 4 * b[0].L[0].sock + SOCKET_FRAME, cast(string) buf[0..<n], b[0].snap[..]);
+  }
+  pipe_drained(p);
+}
+lr_toy_frame :: (c: [] LrToy) {
+  L := c[0].L[..];
+  if L[0].want_snap {
+    x := c[0].v;
+    for i: 0..<8 { c[0].snap[i] = cast(u8) ((x >> (8 * i)) & 255); }
+    lr_snapshot_ready(L, 8);
+  }
+  if L[0].adopt {
+    x := 0;
+    for i: 0..<8 { x = x | (cast(int) c[0].snap[i] << (8 * i)); }
+    c[0].v = x; lr_adopted(L);
+  }
+  lr_frame(L, 1.0 / 60.0);
+  lr_snapshot_send(L, c[0].snap[..]);
+  // a frame runs what ticks it may: four a frame at most
+  for g: 0..<4 {
+    if !lr_may_step(L) { break; }
+    buf: [LR_ORDER] u8; who: [1] int;
+    while true {
+      n := lr_take(L, L[0].tick, buf[..], who[..]);
+      if n < 0 { break; }
+      at: [1] int; at[0] = 4;
+      c[0].v = c[0].v * 3 + lr_int(cast(string) buf[0..<n], at[..]);   // order matters: a different order is another number
+    }
+    c[0].v += 1;
+    if lr_ticked(L) { lr_hash(L, cast(u64) c[0].v); }
+  }
+}
+lr_toy_say :: (c: [] LrToy, t: string) { ok := lr_socket(c[0].L[..], SOCKET_KIND + 4 * c[0].L[0].sock + SOCKET_FRAME, t, c[0].snap[..]); }
+
+#test "lockroom: the one who joins gets the game; both then run the same ticks with each other's orders; a desync is seen by both and the holder's state mends it" {
+  a: [1] LrToy; b: [1] LrToy;
+  for c: 0..<2 {
+    x := ifx c == 0 then a[..] else b[..];
+    x[0].L[0].rate = 60; x[0].L[0].check = 30; x[0].L[0].sock = 0; x[0].L[0].state = LR_JOINING;
+  }
+  // a is alone and plays on its own
+  lr_toy_say(a[..], "y 0 0");
+  #assert a[0].L[0].state == LR_ALONE && lr_may_step(a[0].L[..]);
+  #assert !lr_order(a[0].L[..], "add 5");
+  for f: 0..<10 { lr_toy_frame(a[..]); pipe_drained(a[0].L[0].pipe[..]); }
+  #assert a[0].L[0].tick == 40 && a[0].v == 40;
+  // b comes: it waits; a sends its game
+  lr_toy_say(b[..], "y 1 1"); lr_toy_say(b[..], "j 0");
+  #assert b[0].L[0].state == LR_SYNC && !lr_may_step(b[0].L[..]);
+  lr_toy_say(a[..], "j 1");
+  #assert a[0].L[0].want_snap;
+  for f: 0..<200 {
+    lr_toy_frame(a[..]); lr_toy_frame(b[..]);
+    if f == 20 { ok := lr_order(a[0].L[..], "add 2"); }
+    if f == 20 { ok := lr_order(b[0].L[..], "add 7"); }
+    if f == 90 { ok := lr_order(b[0].L[..], "add 1"); }
+    lr_pump(a[..], b[..]); lr_pump(b[..], a[..]);
+  }
+  #assert a[0].L[0].state == LR_PLAY && b[0].L[0].state == LR_PLAY && b[0].L[0].note_new;
+  #assert a[0].L[0].tick > 300 && a[0].L[0].tick - b[0].L[0].tick < 30 && b[0].L[0].tick - a[0].L[0].tick < 30;
+  // the same game: at the tick both have run, the same number (compare at the slower one's tick)
+  #assert a[0].L[0].desyncs == 0 && b[0].L[0].desyncs == 0;
+  // b's number is nudged: both see it at the next hash, and a's game mends it
+  b[0].v += 1000;
+  for f: 0..<60 { lr_toy_frame(a[..]); lr_toy_frame(b[..]); lr_pump(a[..], b[..]); lr_pump(b[..], a[..]); }
+  #assert a[0].L[0].desyncs >= 1 && b[0].L[0].desyncs >= 1 && a[0].L[0].resyncs >= 2;
+  for f: 0..<120 { lr_toy_frame(a[..]); lr_toy_frame(b[..]); lr_pump(a[..], b[..]); lr_pump(b[..], a[..]); }
+  d := a[0].L[0].desyncs;
+  for f: 0..<120 { lr_toy_frame(a[..]); lr_toy_frame(b[..]); lr_pump(a[..], b[..]); lr_pump(b[..], a[..]); }
+  #assert a[0].L[0].desyncs == d && a[0].L[0].state == LR_PLAY && b[0].L[0].state == LR_PLAY;
+  // the partner leaves: a plays alone again
+  lr_toy_say(a[..], "l 1");
+  #assert a[0].L[0].state == LR_ALONE && lr_may_step(a[0].L[..]);
+  #assert lr_unb64("aGk=", b[0].snap[..], 0) == 2 && b[0].snap[0] == 'h' && b[0].snap[1] == 'i';
+}

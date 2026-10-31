@@ -5,7 +5,7 @@
 // step it takes effect on, and the state hash compared every so often finds a desync.
 //   coax/bin/coax test apps/openagents-web/stair.coax --only co-op
 
-CO_PLACE :: 0; CO_UPGRADE :: 1; CO_SELL :: 2; CO_START :: 3; CO_SLOW :: 4; CO_WALL :: 5;
+CO_PLACE :: 0; CO_UPGRADE :: 1; CO_SELL :: 2; CO_START :: 3; CO_SLOW :: 4; CO_WALL :: 5; CO_SPEED :: 6; CO_PAUSE :: 7; CO_MAP :: 8; CO_AGAIN :: 9;
 CoOrder :: struct { tick: int; seat: int; kind: int; cell: int; cls: int; k: int; }
 
 // This client's own defender (alone, every defender is).
@@ -15,16 +15,125 @@ coop_begin :: (s: [] Stair, me: int) { s[0].seats = 2; s[0].me = me % 2; }
 
 // An order, as its seat: what that seat's button does.
 coop_apply :: (s: [] Stair, o: CoOrder) {
-  was := s[0].me;
-  s[0].me = o.seat % 2;
+  was := s[0].me; busy := s[0].applying;
+  s[0].me = o.seat % 2; s[0].applying = true;
   if o.kind == CO_PLACE { ok := place(s, o.cell, o.cls); }
   if o.kind == CO_UPGRADE && o.k >= 0 && o.k < DEFENDERS && mine(s, o.k) { ok := upgrade(s, o.k); }
   if o.kind == CO_SELL && o.k >= 0 && o.k < DEFENDERS && mine(s, o.k) { sell(s, o.k); }
   if o.kind == CO_START { ok := start_wave(s); }
   if o.kind == CO_SLOW { spell_press(s, SPELL_SLOW); }
-  if o.kind == CO_WALL { s[0].spell_pick = o.cls; ok := cast_wall(s, o.cell); }
-  s[0].me = was;
+  if o.kind == CO_WALL { armed := s[0].spell_pick; s[0].spell_pick = o.cls; ok := cast_wall(s, o.cell); s[0].spell_pick = ifx armed == o.cls then -1 else armed; }
+  if o.kind == CO_SPEED && o.cls >= 1 && o.cls <= 8 { s[0].speed = o.cls; }
+  if o.kind == CO_PAUSE { s[0].paused = o.cls == 1; }
+  if o.kind == CO_MAP { set_map(s, o.cls); s[0].tracked_wave = 0; }
+  if o.kind == CO_AGAIN { stair_reset(s); s[0].tracked_wave = 0; }
+  s[0].me = was; s[0].applying = busy;
 }
+
+// ---- over the network (lockroom.coax): a room on the room server's relay, ?coop=CODE
+
+COOP_GAME :: "hold-the-stair";
+COOP_RATE :: 60.0;       // ticks a second: a tick is one STEP of the clock, and runs SPEED steps
+COOP_CHECK :: 120;       // ticks between hashes: two seconds
+
+// With a partner, an order goes out (true) for a tick both will run; alone it is the caller's to do.
+coop_send :: (s: [] Stair, o: CoOrder) -> bool {
+  if s[0].applying || !lr_together(s[0].lock[..]) { return false; }
+  buf: [64] u8;
+  n := lr_put_int(buf[..], 0, o.kind); n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, o.cell);
+  n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, o.cls); n = lr_put(buf[..], n, " "); n = lr_put_int(buf[..], n, o.k);
+  ok := lr_order(s[0].lock[..], cast(string) buf[0..<n]);
+  return true;
+}
+coop_order_of :: (t: string, seat: int) -> CoOrder {
+  at: [1] int; at[0] = 0;
+  o: CoOrder;
+  o.kind = lr_int(t, at[..]); o.cell = lr_int(t, at[..]); o.cls = lr_int(t, at[..]); o.k = lr_int(t, at[..]); o.seat = seat;
+  return o;
+}
+// A button's order: sent with a partner, else done now, as this seat.
+coop_do :: (s: [] Stair, o: CoOrder) {
+  if coop_send(s, o) { return; }
+  m := o; m.seat = s[0].me;
+  coop_apply(s, m);
+}
+// The page's address: ?coop=CODE joins that room (and ?desync=1 nudges this client's gold once, to see a desync mended).
+coop_page :: (s: [] Stair, url: string) {
+  L := s[0].lock[..];
+  lr_page(L, url);
+  if has_query(url, "desync=1") { s[0].nudge = true; }
+  if L[0].state == LR_OFF && lr_code_of(L, url) { lr_join(L, COOP_GAME, COOP_RATE, COOP_CHECK); }
+}
+has_query :: (url: string, pair: string) -> bool {
+  i := 0;
+  while i + pair.count <= url.count { if url[i..<i + pair.count] == pair && i > 0 && (url[i - 1] == '?' || url[i - 1] == '&') { return true; } i += 1; }
+  return false;
+}
+// INVITE: a room of your own, its link copied for your partner (again: the link again).
+coop_invite :: (s: [] Stair) {
+  L := s[0].lock[..];
+  if !lr_on(L) {
+    lr_make_code(L, cast(u64) (s[0].time * 1000003.0) ^ mul_wrap(s[0].seed, 31) ^ cast(u64) (s[0].mx * 977.0 + s[0].my * 131.0) ^ cast(u64) s[0].placed);
+    L[0].state = LR_OFF; L[0].sock = -1; L[0].partner = -1; L[0].seat = -1;
+    lr_join(L, COOP_GAME, COOP_RATE, COOP_CHECK);
+  }
+  if s[0].action != 0 { return; }
+  s[0].out_n = lr_invite(L, s[0].outbox[..]);
+  s[0].action = ACT_COPY;
+  say(s, "LINK COPIED: SEND IT TO YOUR PARTNER");
+}
+ACT_COPY :: 2;
+// The relay's frames for this page: true when the message was a socket's.
+coop_socket :: (s: [] Stair, kind: int, text: string) -> bool {
+  return lr_socket(s[0].lock[..], kind, text, s[0].snap[..]);
+}
+stair_socket_opened :: (s: [] Stair, id: int) #export_c { lr_opened(s[0].lock[..], id); }
+// The face took the game's bytes (n) for the partner, or put the partner's in (old: this client as it was).
+stair_snap_taken :: (s: [] Stair, n: int) #export_c { lr_snapshot_ready(s[0].lock[..], n); }
+stair_snap_adopted :: (s: [] Stair, old: [] Stair) #export_c { coop_keep(s, old); lr_adopted(s[0].lock[..]); }
+// What stays this client's when a partner's game comes in: the view, the hands, the seat.
+coop_keep :: (s: [] Stair, old: [] Stair) {
+  s[0].started = old[0].started; s[0].spell_pick = -1;
+  s[0].time = old[0].time; s[0].clock = old[0].clock; s[0].acc = 0;
+  s[0].width = old[0].width; s[0].height = old[0].height; s[0].dpr = old[0].dpr;
+  s[0].golden = old[0].golden; s[0].still = old[0].still; s[0].touch = old[0].touch; s[0].card_shot = old[0].card_shot;
+  s[0].portrait = old[0].portrait; s[0].ox = old[0].ox; s[0].oy = old[0].oy; s[0].tile = old[0].tile; s[0].scols = old[0].scols; s[0].srows = old[0].srows;
+  s[0].bx = old[0].bx; s[0].by = old[0].by; s[0].bt = old[0].bt; s[0].acx = old[0].acx; s[0].acy = old[0].acy; s[0].clip_y0 = old[0].clip_y0; s[0].clip_y1 = old[0].clip_y1;
+  s[0].zoom = old[0].zoom; s[0].fu = old[0].fu; s[0].fv = old[0].fv;
+  for i: 0..<2 { s[0].fingers[i] = old[0].fingers[i]; }
+  s[0].pinch = old[0].pinch; s[0].pinched = old[0].pinched; s[0].panning = old[0].panning; s[0].mx = old[0].mx; s[0].my = old[0].my;
+  s[0].me = old[0].me; s[0].seats = old[0].seats; s[0].pick = -1;
+}
+// A frame in a room: the relay's commits, then the ticks both have committed to.
+coop_frame :: (s: [] Stair, dt: f32) {
+  L := s[0].lock[..];
+  if L[0].seat >= 0 { s[0].me = L[0].seat % 2; s[0].seats = 2; }
+  lr_frame(L, f64(dt));
+  lr_snapshot_send(L, s[0].snap[..]);
+  if L[0].note_new { L[0].note_new = false; say(s, cast(string) L[0].note[0..<L[0].note_n]); }
+  s[0].tick_acc += dt;
+  guard := 0;
+  while s[0].tick_acc >= f32(STEP) && guard < 8 {
+    if !lr_may_step(L) { break; }
+    buf: [LR_ORDER] u8; who: [1] int;
+    while true {
+      n := lr_take(L, L[0].tick, buf[..], who[..]);
+      if n < 0 { break; }
+      coop_apply(s, coop_order_of(cast(string) buf[0..<n], who[0]));
+    }
+    if !s[0].paused { for i: 0..<s[0].speed { step(s, f32(STEP)); } }
+    if lr_ticked(L) { lr_hash(L, stair_hash(s)); }
+    s[0].tick_acc -= f32(STEP); guard += 1;
+  }
+  if s[0].tick_acc > 8 * f32(STEP) { s[0].tick_acc = 8 * f32(STEP); }
+  // ?desync=1: this client's gold nudged once, five seconds into a game together
+  if s[0].nudge && lr_together(L) {
+    s[0].nudge_t += dt;
+    if s[0].nudge_t > 5 { s[0].nudge = false; s[0].gold += 7; }
+  }
+}
+// Out of a room (lost, or full): you play alone, every defender yours.
+coop_alone :: (s: [] Stair) { if !lr_on(s[0].lock[..]) && s[0].seats > 1 { s[0].seats = 1; } }
 // A step of the shared game: the orders for it, in the order they were sent, then the step.
 coop_step :: (s: [] Stair, orders: [] CoOrder, n: int) {
   for i: 0..<n { if orders[i].tick == s[0].tick { coop_apply(s, orders[i]); } }
@@ -83,4 +192,80 @@ stair_hash :: (s: [] Stair) -> u64 {
   #assert stair_hash(a[..]) == stair_hash(b[..]);
   coop_apply(b[..], CoOrder.{seat = 1, kind = CO_UPGRADE, k = wb});
   #assert stair_hash(a[..]) != stair_hash(b[..]);
+}
+
+// Two pages and the relay between them, for the checks: what a's pipe sent, b hears.
+coop_pump :: (a: [] Stair, b: [] Stair) {
+  p := a[0].lock[0].pipe[..];
+  for k: 0..<p[0].n {
+    if p[0].op[k] != PIPE_SEND { continue; }
+    buf: [LR_CHUNK * 2 + 16] u8;
+    n := lr_put(buf[..], 0, "m "); n = lr_put_int(buf[..], n, a[0].lock[0].seat); n = lr_put(buf[..], n, " ");
+    n = lr_put(buf[..], n, pipe_bytes(p, k));
+    stair_message(b, SOCKET_KIND + 4 * b[0].lock[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
+  }
+  pipe_drained(p);
+}
+// The face's part, in the checks: the holder's game is taken whole; the joiner adopts it.
+coop_face :: (a: [] Stair, b: [] Stair) {
+  if a[0].lock[0].want_snap { stair_snap_taken(a, 1); }
+  if b[0].lock[0].adopt {
+    old: [1] Stair;
+    old[0] = b[0];
+    lock := b[0].lock[0];
+    b[0] = a[0];
+    // what the face leaves: everything from fx on (the lock, the nudge)
+    b[0].lock[0] = lock; b[0].nudge = old[0].nudge; b[0].nudge_t = old[0].nudge_t; b[0].tick_acc = old[0].tick_acc;
+    stair_snap_adopted(b, old[..]);
+  }
+}
+coop_say :: (s: [] Stair, t: string) { stair_message(s, SOCKET_KIND + 4 * s[0].lock[0].sock + SOCKET_FRAME, t); }
+
+#test "co-op over the relay: INVITE makes a room, the partner who joins gets the game, both play it in lockstep with each other's defenders, and a nudged client is mended" {
+  a: [1] Stair; b: [1] Stair;
+  stair_start(a[..]); stair_start(b[..]);
+  stair_message(a[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair\n");
+  stair_message(b[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?coop=abc234&desync=1\n");
+  // INVITE: a's room and its link
+  coop_invite(a[..]);
+  #assert a[0].action == ACT_COPY && lr_on(a[0].lock[..]) && a[0].lock[0].code_n == 6;
+  link := cast(string) a[0].outbox[0..<a[0].out_n];
+  #assert link.count > 40 && link[0..<47] == "https://openagents.com/realms/hold-the-stair?co";
+  #assert b[0].lock[0].state == LR_JOINING && cast(string) b[0].lock[0].code[0..<6] == "abc234" && b[0].nudge;
+  stair_socket_opened(a[..], 0); stair_socket_opened(b[..], 0);
+  coop_say(a[..], "y 0 0");
+  a[0].gold = 600;
+  // alone, a places a fighter at once
+  c0 := spot_near(a[..], 0.3);
+  a[0].pick = FIGHTER; drop(a[..], c0);
+  #assert defender_at(a[..], c0) >= 0;
+  for f: 0..<30 { stair_frame_step(a[..]); pipe_drained(a[0].lock[0].pipe[..]); }
+  // b comes in
+  coop_say(b[..], "y 1 1"); coop_say(b[..], "j 0"); coop_say(a[..], "j 1");
+  #assert b[0].lock[0].state == LR_SYNC && a[0].lock[0].want_snap;
+  c1 := spot_near(a[..], 0.6);
+  for f: 0..<700 {
+    coop_face(a[..], b[..]);
+    stair_frame_step(a[..]); stair_frame_step(b[..]);
+    if f == 30 { b[0].pick = WIZARD; drop(b[..], c1); }
+    if f == 60 { ok := start_wave(b[..]); }
+    if f == 100 { coop_do(a[..], CoOrder.{kind = CO_SPEED, cls = 2}); }
+    coop_pump(a[..], b[..]); coop_pump(b[..], a[..]);
+  }
+  #assert lr_together(a[0].lock[..]) && lr_together(b[0].lock[..]);
+  #assert a[0].wave == 1 && b[0].wave == 1 && a[0].speed == 2 && b[0].speed == 2;
+  wb := defender_at(a[..], c1);
+  #assert wb >= 0 && defender_at(b[..], c1) == wb && a[0].party[wb].seat == 1 && defender_at(b[..], c0) >= 0;
+  #assert !mine(a[..], wb) && mine(b[..], wb);
+  // the nudge (b's gold, five seconds in) was seen by both and mended from a's game
+  #assert a[0].lock[0].desyncs >= 1 && b[0].lock[0].desyncs >= 1 && a[0].lock[0].resyncs >= 2;
+  #assert !b[0].nudge;
+  // and they stay in step
+  d := a[0].lock[0].desyncs;
+  for f: 0..<300 { coop_face(a[..], b[..]); stair_frame_step(a[..]); stair_frame_step(b[..]); coop_pump(a[..], b[..]); coop_pump(b[..], a[..]); }
+  #assert a[0].lock[0].desyncs == d && b[0].lock[0].desyncs == d && a[0].gold == b[0].gold;
+}
+// One frame of the game's clock, as stair_frame runs it, without drawing.
+stair_frame_step :: (s: [] Stair) {
+  if lr_on(s[0].lock[..]) { coop_frame(s, 1.0 / 60.0); } else if !s[0].paused { step(s, f32(STEP)); }
 }

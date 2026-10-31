@@ -17,6 +17,7 @@
 #load "../../verse/rules/srd5-combat.coax";
 #load "stair-tables.coax";
 #load "stair-coop.coax";
+#load "lockroom.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 36000;
@@ -186,6 +187,7 @@ spell_press :: (s: [] Stair, sp: int) {
   if !spell_ready(s, sp) { say(s, "NOT ENOUGH GOLD"); return; }
   if sp == SPELL_SLOW {
     if live_beasts(s) == 0 { say(s, "NOTHING ON THE STAIR TO SLOW"); return; }
+    if coop_send(s, CoOrder.{kind = CO_SLOW}) { return; }
     spell_spend(s, sp); s[0].slow_t = SLOW_TIME;
     track_tally(s[0].track[..], "spell", "slow");
     return;
@@ -203,6 +205,7 @@ cast_wall :: (s: [] Stair, cell: int) -> bool {
   slot := -1;
   for i: 0..<WALLS { if slot < 0 && !s[0].walls[i].on { slot = i; } }
   if slot < 0 { say(s, "FOUR WALLS STAND ALREADY"); return false; }
+  if coop_send(s, CoOrder.{kind = CO_WALL, cell = cell, cls = sp}) { s[0].spell_pick = -1; return true; }
   // centred on its tile, as the stair runs through it
   s[0].walls[slot] = Wall.{on = true, kind = sp, path = at.path, d = at.d, hp = f32(WALL_HP), t = 0};
   spell_spend(s, sp); s[0].spell_pick = -1;
@@ -285,7 +288,7 @@ FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :
 
 // Buttons
 B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5;   // and on to B_FIGHTER + CLASSES - 1
-B_LAST_CLASS :: 9; B_SELL :: 10; B_CLOSE :: 11; B_AGAIN :: 12; B_PAUSE :: 13; B_UPGRADE :: 14; B_MAP :: 15; B_STONE :: 16; B_FIRE :: 17; B_SLOW :: 18; BUTTONS :: 19;
+B_LAST_CLASS :: 9; B_SELL :: 10; B_CLOSE :: 11; B_AGAIN :: 12; B_PAUSE :: 13; B_UPGRADE :: 14; B_MAP :: 15; B_STONE :: 16; B_FIRE :: 17; B_SLOW :: 18; B_INVITE :: 19; BUTTONS :: 20;
 
 OUTBOX_CAP :: 128;
 ACT_NAVIGATE :: 1;
@@ -388,7 +391,12 @@ Stair :: struct {
   tip_box: Rect; tip_shown: bool; tip_down: bool; tip_id: int; tip_hover: bool;
   facts: bool; tracked_wave: int;
   swarm: bool;   // ?stage=swarm: SWARM beasts climb round and round, for the frame-rate check
+  // co-op over the room server (stair-coop.coax, lockroom.coax); the face copies the game's bytes
+  // (all before fx but the analytics) into snap for a partner, and from snap when one arrives
+  lock: [1] Lock; tick_acc: f32; applying: bool; nudge: bool; nudge_t: f32;
+  snap: [SNAP_CAP] u8;
 }
+SNAP_CAP :: 80000;
 
 // ---- small things
 
@@ -1122,6 +1130,7 @@ wave_groups_done :: (s: [] Stair) -> bool {
 
 start_wave :: (s: [] Stair) -> bool {
   if s[0].phase != BUILD || s[0].wave >= waves_of(s) { return false; }
+  if coop_send(s, CoOrder.{kind = CO_START}) { return true; }
   s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0; s[0].banner = 1.6;
   for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = s[0].ct[0].delay[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { refresh(s, i); }
@@ -1209,6 +1218,7 @@ step :: (s: [] Stair, dt: f32) {
 
 place :: (s: [] Stair, cell: int, cls: int) -> bool {
   if !free_cell(s, cell) || s[0].gold < s[0].ct[0].cost[cls] || s[0].phase == WON || s[0].phase == LOST || round_left(s) <= 0 { return false; }
+  if coop_send(s, CoOrder.{kind = CO_PLACE, cell = cell, cls = cls}) { return true; }
   for i: 0..<DEFENDERS {
     if !s[0].party[i].live {
       d: Defender;
@@ -1241,6 +1251,7 @@ upgrade :: (s: [] Stair, k: int) -> bool {
   d := s[0].party[k];
   cost := next_cost(s, k);
   if cost <= 0 || s[0].gold < cost { return false; }
+  if coop_send(s, CoOrder.{kind = CO_UPGRADE, k = k}) { return true; }
   s[0].gold -= cost;
   if d.level >= MAX_LEVEL {
     s[0].party[k].magic += 1;
@@ -1260,6 +1271,7 @@ upgrade :: (s: [] Stair, k: int) -> bool {
 }
 sell :: (s: [] Stair, k: int) {
   if k < 0 || !s[0].party[k].live { return; }
+  if coop_send(s, CoOrder.{kind = CO_SELL, k = k}) { return; }
   s[0].gold += spent(s, k) * 7 / 10;
   s[0].party[k].live = false;
   s[0].placed_round = hi_i(s[0].placed_round - 1, 0);   // a sold defender gives its place in the round back
@@ -1341,6 +1353,11 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
   for b: 0..<BUTTONS { s[0].shown[b] = false; }
   over := s[0].phase == WON || s[0].phase == LOST;
   set_button(s, B_GALAXY, Rect.{x0 = 10 * k, y0 = 10 * k, x1 = (ifx s[0].portrait then 78 * k else 96 * k), y1 = 42 * k}, true);
+  // INVITE (co-op): on a phone under the map before the first wave, else in the top bar
+  if !s[0].card_shot && !s[0].golden && !over {
+    if s[0].portrait && s[0].phase == BUILD && s[0].wave == 0 { set_button(s, B_INVITE, Rect.{x0 = w - 150 * k, y0 = 50 * k, x1 = w - 10 * k, y1 = 82 * k}, true); }
+    else if !s[0].portrait { set_button(s, B_INVITE, Rect.{x0 = w - 466 * k, y0 = 10 * k, x1 = w - 316 * k, y1 = 42 * k}, true); }
+  }
   // the map, chosen before the first wave (a new map starts the game over)
   if s[0].phase == BUILD && s[0].wave == 0 && !s[0].card_shot {
     mw := ifx s[0].portrait then 92 * k else 260 * k;
@@ -1418,11 +1435,12 @@ button_at :: (s: [] Stair, x: f32, y: f32) -> int {
 press :: (s: [] Stair, b: int) {
   if !s[0].enabled[b] { return; }
   if b == B_START { if start_wave(s) { s[0].selected = -1; s[0].card = -1; } return; }
-  if b == B_FAST { s[0].speed = ifx s[0].speed >= 3 then 1 else s[0].speed + 1; return; }
-  if b == B_PAUSE { s[0].paused = !s[0].paused; return; }
+  if b == B_FAST { coop_do(s, CoOrder.{kind = CO_SPEED, cls = ifx s[0].speed >= 3 then 1 else s[0].speed + 1}); return; }
+  if b == B_PAUSE { coop_do(s, CoOrder.{kind = CO_PAUSE, cls = ifx s[0].paused then 0 else 1}); return; }
   if b == B_GALAXY { leave_to(s, "/verse/galaxy"); return; }
-  if b == B_MAP { set_map(s, s[0].map + 1); return; }
-  if b == B_AGAIN { stair_reset(s); s[0].tracked_wave = 0; return; }
+  if b == B_MAP { coop_do(s, CoOrder.{kind = CO_MAP, cls = s[0].map + 1}); return; }
+  if b == B_AGAIN { coop_do(s, CoOrder.{kind = CO_AGAIN}); return; }
+  if b == B_INVITE { coop_invite(s); return; }
   if b == B_SELL { sell(s, s[0].card); s[0].card = -1; s[0].selected = -1; return; }
   if b == B_UPGRADE { ok := upgrade(s, s[0].card); return; }
   if b >= B_FIGHTER && b <= B_LAST_CLASS { s[0].spell_pick = -1; pick(s, b - B_FIGHTER); return; }
@@ -1603,7 +1621,7 @@ stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
   if key == KEY_ESCAPE { s[0].selected = -1; s[0].card = -1; s[0].pick = -1; return true; }
   if key == 'p' || key == 'P' { press(s, B_PAUSE); return true; }
   if key == KEY_ENTER || key == ' ' {
-    if s[0].phase == WON || s[0].phase == LOST { stair_reset(s); return true; }
+    if s[0].phase == WON || s[0].phase == LOST { coop_do(s, CoOrder.{kind = CO_AGAIN}); return true; }
     ok := start_wave(s); if ok { s[0].selected = -1; s[0].card = -1; }
     return true;
   }
@@ -1622,6 +1640,7 @@ stair_cursor :: (s: [] Stair) -> int #export_c {
 
 stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
   stair_start(s);
+  if coop_socket(s, kind, t) { coop_alone(s); return; }
   if kind == HOST_PAGE {
     s[0].facts = true;
     url := fact_of(t, "url");
@@ -1639,6 +1658,7 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     if query_is(url, "stage", "highlight") { stage_highlight(s); }
     if query_is(url, "stage", "swarm") { stage_highlight(s); s[0].swarm = true; }
     if query_is(url, "card", "1") { s[0].card_shot = true; }
+    coop_page(s, url);
   }
   if kind == MAKER_KIND { take_maker(s, t); }
   ok := track_message(s[0].track[..], kind, t);
@@ -2111,6 +2131,11 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   }
   if b == B_PAUSE { return put(buf, 0, ifx s[0].paused then "RESUME" else "PAUSE"); }
   if b == B_AGAIN { return put(buf, 0, "AGAIN"); }
+  if b == B_INVITE {
+    if s[0].lock[0].code_n == 0 || !lr_on(s[0].lock[..]) { return put(buf, 0, "INVITE"); }
+    n := put(buf, 0, ifx lr_together(s[0].lock[..]) then "CO-OP " else "ROOM ");
+    return put(buf, n, cast(string) s[0].lock[0].code[0..<s[0].lock[0].code_n]);
+  }
   if b == B_SELL { n := put(buf, 0, "SELL +"); return put_int(buf, n, spent(s, s[0].card) * 7 / 10); }
   if b == B_UPGRADE {
     d := s[0].party[s[0].card];
@@ -2441,10 +2466,14 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].clock += step_dt;
   s[0].toast_t = hi(0, s[0].toast_t - step_dt);
   long_press(s);
-  if !s[0].paused { s[0].acc += step_dt * f32(s[0].speed); }
-  guard := 0;
-  while s[0].acc >= f32(STEP) && guard < 64 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
-  if guard >= 64 { s[0].acc = 0; }
+  if lr_on(s[0].lock[..]) {
+    coop_frame(s, step_dt);
+  } else {
+    if !s[0].paused { s[0].acc += step_dt * f32(s[0].speed); }
+    guard := 0;
+    while s[0].acc >= f32(STEP) && guard < 64 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
+    if guard >= 64 { s[0].acc = 0; }
+  }
   if s[0].wave != s[0].tracked_wave && s[0].phase == FIGHT {
     s[0].tracked_wave = s[0].wave;
     if track_begin(s[0].track[..], "wave") { track_int(s[0].track[..], "wave", s[0].wave); track_end(s[0].track[..]); }
