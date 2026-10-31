@@ -1,0 +1,85 @@
+// A realm's texture layers decoded and mipmapped in Coax (coax/lib/image), into the file the
+// GPU hosts upload as one 2D-array texture: level after level, each level's layers one after
+// another, RGBA8 (the layout verse/gpu/vk-passes.c's `layers` and pass-check's browser
+// decode use). LIST names the images, one a line, beside it; each SIDE by SIDE, or half that
+// (the browser resizes a smaller layer to the first one's size: here level 0 is it doubled
+// with image.coax's img_double, and the levels below are its own). Each level then takes the
+// browser's premultiplied round trip (img_premul_trip), as copyExternalImageToTexture gives it.
+//   coax/web/tool.sh verse/gpu/layers.coax LIST OUT SIDE
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/image/image.coax";
+
+LY_FILE :: 8388608;     // the largest image file
+LY_WORK :: 4194304;     // the largest decode work (a 1024 by 1024 RGBA PNG's rows)
+LY_SIDE :: 1024;        // the largest side
+LY_ALL :: 67108864;     // the largest layers file
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: layers LIST OUT SIDE"); return 2; }
+  list_path := args_at(a[..], 0); out_path := args_at(a[..], 1); side := args_whole(args_at(a[..], 2));
+  if side < 1 || side > LY_SIDE { tool_errln("layers: SIDE is 1 to 1024"); return 2; }
+  lb: [65536] u8;
+  ln := fs_read(list_path, lb[..]);
+  if ln < 0 { tool_errln("layers: cannot read the list"); return 1; }
+  list := cast(string) lb[0..<ln];
+  dir := fs_dir(list_path);
+  levels := img_levels(side, side);
+  n := 0;
+  for k: 0..<ly_lines(list) { if ly_line(list, k).count > 0 { n += 1; } }
+  size := 0;
+  for l: 0..<levels { size += img_side(side, l) * img_side(side, l) * 4 * n; }
+  if n == 0 || size > LY_ALL { tool_errln("layers: no layers, or too many"); return 1; }
+  all: [LY_ALL] u8; src: [LY_FILE] u8; work: [LY_WORK] u8; one: [LY_SIDE * LY_SIDE * 8] u8; pb: [2048] u8;
+  layer := 0;
+  for k: 0..<ly_lines(list) {
+    name := ly_line(list, k);
+    if name.count == 0 { continue; }
+    path := fs_join(dir, name, pb[..]);
+    sn := fs_read(path, src[..]);
+    if sn < 0 { tool_err("layers: cannot read "); tool_errln(path); return 1; }
+    info := img_info(src[0..<sn]);
+    half := info.w * 2 == side && info.h * 2 == side;
+    if info.status != IMG_OK || info.w != info.h || (info.w != side && !half) || info.work > LY_WORK {
+      tool_err("layers: not a square PNG or JPEG of side "); tool_err(args_at(a[..], 2)); tool_err(" or half it: "); tool_errln(path); return 1;
+    }
+    // this layer's levels, then each into its place: after the lower levels' layers and this level's earlier layers
+    at0 := ifx half then side * side * 4 else 0;
+    if img_decode(src[0..<sn], work[0..<info.work], one[at0..<at0 + info.w * info.h * 4]) != IMG_OK { tool_err("layers: cannot decode "); tool_errln(path); return 1; }
+    if half { img_double(one[at0..<at0 + info.w * info.h * 4], info.w, info.h, one[0..<at0]); }
+    mips := at0 + img_mips(one[at0..<at0 + info.w * info.h * 4], info.w, info.h, one[at0..<one.count]);
+    // every level as the browser's upload leaves it: premultiplied and divided out again
+    img_premul_trip(one[0..<mips]);
+    from := 0; at := 0;
+    for l: 0..<levels {
+      bytes := img_side(side, l) * img_side(side, l) * 4;
+      dst := at + layer * bytes;
+      for i: 0..<bytes { all[dst + i] = one[from + i]; }
+      from += bytes; at += bytes * n;
+    }
+    if from != mips { tool_errln("layers: the levels do not add up"); return 1; }
+    layer += 1;
+  }
+  if !fs_write(out_path, cast(string) all[0..<size]) { tool_errln("layers: cannot write the layers"); return 1; }
+  print("layers: % layers of %x%, % levels, decoded in Coax\n", n, side, side, levels);
+  return 0;
+}
+ly_lines :: (s: string) -> int {
+  n := 1;
+  for i: 0..<s.count { if s[i] == '\n' { n += 1; } }
+  return n;
+}
+ly_line :: (s: string, k: int) -> string {
+  at := 0; i := 0;
+  while i < k && at <= s.count {
+    while at < s.count && s[at] != '\n' { at += 1; }
+    at += 1; i += 1;
+  }
+  if at > s.count { return ""; }
+  e := at;
+  while e < s.count && s[e] != '\n' { e += 1; }
+  return s[at..<e];
+}
