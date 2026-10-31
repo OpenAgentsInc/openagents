@@ -810,13 +810,55 @@ next_order :: (s: [] Belt, k: int) -> bool {
   return false;
 }
 
+// MINE ICE. One ship: plan its trip to the ice rock it reaches soonest, for GO ECONOMY or GO FAST.
+// Several: each goes now on its own plan from where it is: a full hold flies home to unload,
+// a ship already mining keeps at it, one with no hold stays, the rest to their own soonest rock.
 mine_order :: (s: [] Belt) {
   k := first_selected(s);
   if k < 0 { return; }
-  if s[0].ships[k].cargo_cap <= 0.0 { say(s, "KITE CARRIES NO CARGO"); return; }
+  if selected_count(s) > 1 { fleet_mine(s); return; }
+  sh := s[0].ships[k];
+  if sh.cargo_cap <= 0.0 { say(s, "KITE CARRIES NO CARGO"); return; }
+  if hold_full(sh) { set_dest(s, P_STATION); say(s, "HOLD FULL: HOME TO UNLOAD"); return; }
   j := nearest_ice(s, k);
   if j < 0 { say(s, "NO ICE IN REACH"); return; }
   set_dest(s, j);
+}
+hold_full :: (sh: Ship) -> bool { return sh.cargo_cap > 0.0 && sh.cargo >= sh.cargo_cap - 0.001; }
+// A ship's own trip for a fleet order: the auto-miner's plan, or the fastest it can afford.
+send_ship :: (s: [] Belt, k: int, dest: int, work: int) -> bool {
+  p := plan_with(s, k, dest, true, 0.4);
+  if !p.ok || !p.enough { p = plan_for(s, k, dest, true); }
+  if !p.ok || !p.enough { p = plan_for(s, k, dest, false); }
+  if !launch(s, k, dest, p) { return false; }
+  verse_command_clear(s[0].cmd[..], k);
+  s[0].ships[k].work = work; s[0].ships[k].work_rock = dest;
+  return true;
+}
+fleet_mine :: (s: [] Belt) {
+  mining := 0; home := 0; stuck := 0;
+  for k: 0..<s[0].ship_n {
+    if !s[0].cmd[0].selected[k] { continue; }
+    sh := s[0].ships[k];
+    if sh.faction != FREE_BELT || sh.cargo_cap <= 0.0 { continue; }
+    if sh.mode == MINING && !hold_full(sh) { mining += 1; continue; }
+    if hold_full(sh) {
+      if sh.mode == FLYING && sh.at == P_STATION { home += 1; continue; }
+      if send_ship(s, k, P_STATION, WORK_MINE) { s[0].ships[k].work_rock = ifx is_ice(sh.at) then sh.at else sh.work_rock; home += 1; } else { stuck += 1; }
+      continue;
+    }
+    j := nearest_ice(s, k);
+    if j < 0 || !send_ship(s, k, j, WORK_MINE) { stuck += 1; continue; }
+    mining += 1;
+  }
+  buf: [96] u8;
+  n := 0;
+  if mining > 0 { n = put_count(buf[..], n, f64(mining)); n = put(buf[..], n, " TO ICE"); }
+  if home > 0 { if n > 0 { n = put(buf[..], n, " · "); } n = put_count(buf[..], n, f64(home)); n = put(buf[..], n, " HOME TO UNLOAD"); }
+  if stuck > 0 { if n > 0 { n = put(buf[..], n, " · "); } n = put_count(buf[..], n, f64(stuck)); n = put(buf[..], n, " SHORT OF PROPELLANT"); }
+  if n == 0 { n = put(buf[..], 0, "NO SHIP HERE CARRIES CARGO"); }
+  say(s, cast(string) buf[0..<n]);
+  s[0].dest = -1;
 }
 
 // A ship's state now, into its history.
@@ -2491,9 +2533,8 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   select_only(s[..], 1);
   #assert belt_key(s[..], '4', 0) && selected_count(s[..]) == 3;
   #assert belt_key(s[..], '2', 0) && s[0].speed == 2;   // 1-3 stay the clock
-  mine_order(s[..]);
-  rock := s[0].dest;
-  #assert is_ice(rock);
+  rock := P_ICE;
+  set_dest(s[..], rock);
   go(s[..], true);
   for k: 0..<3 { #assert s[0].ships[k].mode == FLYING && s[0].ships[k].at == rock; }
   // Shift and an order while RASP flies: home to Hearth once it gets there
@@ -2512,6 +2553,51 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert turned && verse_command_queued(s[0].cmd[..], 0) == 0;
 }
 
+#test "MINE ICE with several ships: each plans from where it is, and a full hold flies home to unload" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
+  // RASP full at a far rock, LANTERN empty at Hearth, KITE (no hold) at Hearth
+  far := P_ICE + 5;
+  s[0].ships[0].mode = MINING; s[0].ships[0].at = far; s[0].ships[0].work = WORK_MINE; s[0].ships[0].work_rock = far;
+  s[0].ships[0].cargo = s[0].ships[0].cargo_cap;
+  near := nearest_ice(s[..], 1);
+  verse_command_only(s[0].cmd[..], 0); verse_command_toggle(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 2);
+  mine_order(s[..]);
+  #assert s[0].ships[0].mode == FLYING && s[0].ships[0].at == P_STATION && s[0].ships[0].work_rock == far;
+  #assert s[0].ships[1].mode == FLYING && s[0].ships[1].at == near && s[0].ships[1].work == WORK_MINE;
+  #assert s[0].ships[2].mode == PARKED && s[0].dest < 0;
+  // one ship alone, full: it plans the trip home instead
+  b: [1] Belt;
+  belt_start(b[..]);
+  b[0].ships[1].cargo = b[0].ships[1].cargo_cap; b[0].ships[1].mode = MINING; b[0].ships[1].at = far;
+  select_only(b[..], 1);
+  mine_order(b[..]);
+  #assert b[0].dest == P_STATION;
+}
+
+#test "on a phone, a long-press on your ship adds it to the selection or takes it out; a short tap selects it alone" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 390; s[0].h = 844; s[0].dpr = 3;
+  // send LANTERN and KITE off so RASP stands alone at Hearth
+  verse_command_only(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 2);
+  set_dest(s[..], P_ICE); go(s[..], true);
+  for i: 0..<40 { s[0].t += DAY; step_ships(s[..], DAY); }
+  q := ship_screen(s[..], 0);
+  x := pix(q.x); y := pix(q.y);
+  #assert ship_at(s[..], x, y, 48, FREE_BELT) == 0;
+  verse_command_only(s[0].cmd[..], 1);
+  #assert belt_pointer(s[..], x, y, 0, 1, 7);
+  s[0].clock += 0.6;
+  #assert belt_pointer(s[..], x, y, 2, 1, 7);
+  #assert selected_count(s[..]) == 2 && s[0].cmd[0].selected[0] && s[0].cmd[0].selected[1];
+  #assert belt_pointer(s[..], x, y, 0, 1, 8); s[0].clock += 0.6; #assert belt_pointer(s[..], x, y, 2, 1, 8);
+  #assert selected_count(s[..]) == 1 && !s[0].cmd[0].selected[0];
+  #assert belt_pointer(s[..], x, y, 0, 1, 9); s[0].clock += 0.1; #assert belt_pointer(s[..], x, y, 2, 1, 9);
+  #assert selected_count(s[..]) == 1 && s[0].cmd[0].selected[0];
+}
+
 #test "Hearth refines its ice into reaction mass at the refinery's rate, a shift short while the crews are away, and an old save still reads" {
   s: [1] Belt;
   belt_start(s[..]);
@@ -2520,7 +2606,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   for i: 0..<5 { s[0].t += DAY; step_ships(s[..], DAY); }
   #assert s[0].station[0].away == 0 && abs(s[0].station[0].mass - m0 - 5.0 * REFINE_RATE * REFINE_MASS) < 0.01;
   box_select(s[..], -100000, -100000, 100000, 100000);
-  mine_order(s[..]);
+  set_dest(s[..], P_ICE);
   go(s[..], true);
   m1 := s[0].station[0].mass;
   s[0].t += DAY; step_ships(s[..], DAY);
