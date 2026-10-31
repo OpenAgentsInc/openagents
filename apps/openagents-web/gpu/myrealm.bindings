@@ -1,0 +1,6 @@
+# myrealm's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out.
+u 0 0 uniform 113
+vertices 1 0
+objects 1 1
+sheets 1 2
+sheet 1 3

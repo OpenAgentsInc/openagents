@@ -392,14 +392,8 @@ Every phase and native feature is a task in the Verse project
   generated blocks (belt's stars) loads their Coax instead and calls it by
   name. build.sh writes each `NAME.wgsl`, and golden-pages counts the
   source as the page's input. Every one matches its golden. Not yet:
-  - myrealm translates and compiles, but its painted clouds move: the
-    clouds' hash is `fract(sin(x) * 43758)`, and its input, computed through
-    `wg_*` component helpers rather than WGSL's vector operators, comes out
-    an ulp apart, which the hash turns into other clouds (everything else is
-    identical, A/B against the hand-written module in one stage). The fix is
-    in the lowering: vector arithmetic written as WGSL's vector operators.
-    Every page with a sin hash (the painterly, flat and fixture styles) waits
-    on it.
+  - myrealm (a made realm, the `built` golden) followed once dot stayed
+    dot: 0 blocks changed, where its painted clouds had moved.
   - fixture and realm stop the translator (builtins on vectors it does not
     know, indexing a vector, a vector from a struct's fields); waterlab
     writes `@builtin(frag_depth)`, which a Coax fragment cannot yet say.

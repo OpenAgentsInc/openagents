@@ -1,0 +1,3 @@
+--vertices myrealm_bg_vs,myrealm_scene_vs,myrealm_fx_vs
+--fragments myrealm_bg_fs,myrealm_scene_fs,myrealm_fx_fs
+--bindings apps/openagents-web/gpu/myrealm.bindings --strip myrealm_
