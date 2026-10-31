@@ -559,8 +559,11 @@ Every phase and native feature is a task in the Verse project
     neighbouring depths differ by 0.00001, which the bloom spreads), the
     sandbox 750 (allowed 800: its lights' brightest pixels 0.006 apart in
     the scene, each GPU's exp and pow, spread by the bloom, all within
-    0.010). The fixture's golden frame is not painterly, so its casters and
-    blades are drawn live only. check.sh runs each realm's game against its
+    0.010). scene-pass --facts FILE gives the page its facts: the fixture
+    opened with ?style=painterly (verse/native/painterly.facts) draws 8
+    casters and 5184 blades, 0 values past the tolerance against the
+    browser, and runs live as realm.sh's `painterly`, its 90th frame
+    vk-passes' to the bit, 1.9 ms at 3840x2160. check.sh runs each realm's game against its
     wasm, frame for frame. realm.sh ships the kms headers in kms/ (the realm
     module has a realm.h of its own), and vk-realm names its key calls
     vk_realm_key (the realm module has a Coax realm_key).
@@ -569,6 +572,12 @@ Every phase and native feature is a task in the Verse project
     galaxy opens the haunted house (REALM_PICK=1) and Dead Gears
     (REALM_PICK=4). GPU medians at 3840x2160: the haunted house 3.7 ms,
     the sandbox 1.5, the fixture 0.95, drop 0.64, built 0.65.
+  - The goldens, 2026-10-31 against production after release c47fadafcd:
+    every realm's golden matches (the fixture's five painterly frames
+    among them) once Orbit League's was approved with the Tesla Roadster
+    (fc8ac8c419); its golden predated the car. All 31 .wgsl files in
+    apps/openagents-web are `coax wgsl` output, and the site's build writes
+    them byte for byte: none is written by hand.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

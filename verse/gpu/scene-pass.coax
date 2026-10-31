@@ -59,17 +59,17 @@ SC_BLOOM :: [5] string.["q0 light 0 0 0 4", "q1 q0 1 0 1 1", "q0 q1 0 1 1 1", "e
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: scene-pass HOST REALM [--allow N] [--keep DIR] [--live] [--emit DIR]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: scene-pass HOST REALM [--allow N] [--keep DIR] [--live] [--emit DIR] [--facts FILE]"); return 2; }
   tb: [1024] u8;
   work := fs_temp("scene-pass-", tb[..]);
   if work.count == 0 { tool_errln("scene-pass: no temporary directory"); return 1; }
   emit := args_value(a[..], "--emit", "");
-  status := sc_run(args_at(a[..], 0), args_at(a[..], 1), work, args_value(a[..], "--allow", sc_allow(args_at(a[..], 1))), args_value(a[..], "--keep", ""), emit, emit.count == 0 && !args_has(a[..], "--live"), args_value(a[..], "--upto", ""));
+  status := sc_run(args_at(a[..], 0), args_at(a[..], 1), work, args_value(a[..], "--allow", sc_allow(args_at(a[..], 1))), args_value(a[..], "--keep", ""), emit, emit.count == 0 && !args_has(a[..], "--live"), args_value(a[..], "--upto", ""), args_value(a[..], "--facts", ""));
   r := fs_remove(work);
   return status;
 }
 
-sc_run :: (host: string, name: string, work: string, allow: string, keep: string, emit: string, int_hash: bool, upto: string) -> int {
+sc_run :: (host: string, name: string, work: string, allow: string, keep: string, emit: string, int_hash: bool, upto: string, facts: string) -> int {
   b: [12] [1024] u8; o: [65536] u8;
   dir := fs_join(work, "spec", b[0][..]);
   if !fs_mkdir(dir) { tool_errln("scene-pass: cannot make a directory"); return 1; }
@@ -104,8 +104,13 @@ sc_run :: (host: string, name: string, work: string, allow: string, keep: string
   libs := cast(string) lo[0..<ln];
   for k: 0..<sc_lines(libs) { l := sc_line(libs, k); if l.count > 0 && bn < 24 { build[bn] = l; bn += 1; } }
   if fp_step_into("the wasm", build[0..<bn], o[..]) < 0 { return 1; }
-  frame := [16] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--dump", dir, "--pack", pack];
-  if fp_step_into("the frame", frame[0..<ifx pack.count > 0 then 16 else 14], o[..]) < 0 { return 1; }
+  // the frame, with the page's facts when given (the fixture's ?style=painterly: its casters and grass)
+  frame: [18] string; fc := 14;
+  head := [14] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--dump", dir];
+  for k: 0..<14 { frame[k] = head[k]; }
+  if pack.count > 0 { frame[fc] = "--pack"; frame[fc + 1] = pack; fc += 2; }
+  if facts.count > 0 { frame[fc] = "--facts"; frame[fc + 1] = facts; fc += 2; }
+  if fp_step_into("the frame", frame[0..<fc], o[..]) < 0 { return 1; }
   // the modules the browser draws, the entries lowered
   gb: [1024] u8; wb: [1024] u8; pg: [1024] u8; pw: [1024] u8;
   gpu := cat(cat("apps/openagents-web/gpu/", realm, b[3][..]), ".coax", gb[..]);

@@ -7,7 +7,8 @@
 # (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit), deadgears (Dead Gears),
 # icecream (Ice Cream Man), villa (Hecate's Cemetery) or fairy (the Fairy Forest) (a scene with index
 # assets; scene-pass --emit), haunted-house or sandbox (the realm module, their separate assets made
-# one pack by verse/tools/pack-files.coax), fixture, drop or built (the fixture's pack) (scene-pass --emit).
+# one pack by verse/tools/pack-files.coax), fixture, drop or built (the fixture's pack), or painterly
+# (the fixture opened with ?style=painterly, verse/native/painterly.facts: its casters and grass) (scene-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen, each realm: 90 golden frames, the last
 #                                                    against vk-passes drawing the spec's own frame, and
 #                                                    the frame times at 320x180, 2560x1440 and 3840x2160;
@@ -50,6 +51,7 @@ module_of_realm() {
   case "$1" in
     haunted-house|sandbox) echo realm ;;
     drop) echo droprealm ;;
+    painterly) echo fixture ;;
     built) echo myrealm ;;
     *) echo "$1" ;;
   esac
@@ -61,6 +63,7 @@ given_of() {
     verse|newland) echo "- --page 1" ;;
     haunted-house|sandbox) echo "$1.pack" ;;
     fixture|drop|built) echo "fixture.pack" ;;
+    painterly) echo "fixture.pack --facts painterly.facts" ;;
     *) echo "-" ;;
   esac
 }
@@ -69,6 +72,7 @@ for realm in "${realms[@]}"; do
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
     verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     deadgears|icecream|villa|fairy|haunted-house|sandbox|fixture|drop|built) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
+    painterly) emit=(verse/gpu/scene-pass.coax "$host" fixture --facts "$root/verse/native/painterly.facts" --emit "$work/$realm/spec") ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
   "$root/verse/native/build.sh" "$(module_of_realm "$realm")" "$work/$realm/c" > /dev/null
@@ -85,6 +89,7 @@ for realm in "${realms[@]}"; do
   case "$realm" in
     haunted-house|sandbox) (cd "$root" && coax/web/tool.sh verse/tools/pack-files.coax "$realm" "$ship/$realm.pack") > /dev/null ;;
     fixture|drop|built) cp "$root/apps/openagents-web/realms/fixture/assets/fixture.pack" "$ship/" ;;
+    painterly) cp "$root/apps/openagents-web/realms/fixture/assets/fixture.pack" "$root/verse/native/painterly.facts" "$ship/" ;;
   esac
   echo "$(given_of "$realm")" > "$ship/given"
 done
