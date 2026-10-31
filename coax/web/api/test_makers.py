@@ -66,7 +66,7 @@ check("makers: the code is refused after", s == 409, (s, b))
 check("makers: and the maker stays", sql("select pubkey from makers.realms where realm = 'orbit-league'") == mk_maker_pk)
 
 s, b, _ = call("GET", "/api/playtest/makers/orbit-league")
-check("makers: anyone sees the maker's name, never the address", s == 200 and json.loads(b) == {"realm": "orbit-league", "name": "Topher", "pubkey": mk_maker_pk}, (s, b))
+check("makers: anyone sees the maker's name, never the address", s == 200 and json.loads(b) == {"realm": "orbit-league", "state": "claimed", "name": "Topher", "pubkey": mk_maker_pk}, (s, b))
 s, b, _ = call("GET", "/api/playtest/makers/orbit-league", None, {"Authorization": mk_signed(mk_maker_key, "GET", "/api/playtest/makers/orbit-league")})
 check("makers: the maker sees their own address", s == 200 and json.loads(b).get("lightning") == "topher@example.com" and json.loads(b).get("mine") is True, (s, b))
 
