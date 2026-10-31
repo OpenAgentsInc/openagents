@@ -7,8 +7,11 @@ Updated 2026-10-31. Baseline: the current compiler above, including source compo
 CPU layout reflection and the first R0 benchmark/source-debugging slice. This
 revision incorporates the follow-up technical review while retaining the
 evidence and compatibility limits of what has actually shipped. It adds the
-physical-world foundations (R11–R19) and numbers every phase with a single
-integer; [section 29](#29-earlier-phase-labels) maps the earlier labels.
+physical-world foundations (R11–R20), including the spacecraft and
+solar-system work planned from the
+[physics design reference](../docs/research/expanse-physics-and-simulation-design-reference.md),
+and numbers every phase with a single integer;
+[section 30](#30-earlier-phase-labels) maps the earlier labels.
 
 The goal is a systems language in which OpenAgents and Verse can express
 their computation, data, protocols, tools and build policy in Coax. Runtime
@@ -43,7 +46,7 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 | Protocols | Selected proto3 descriptor imports, bounded borrowed codecs and real app consumers | Remaining consumer/domain admission paths and consumer-justified schema features |
 | GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac/iOS integration; narrow Coaxial Wasm/WebGPU splash | Shared GPU resource declarations, general shader profiles, full engine browser vertical slice and evidence for other targets |
 | Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
-| Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 167 | Units and frames, typed clocks, bounded control, replay and snapshots, robot-model import, stamped sensors, supervised simulated actuators and fault scenarios |
+| Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 167; f64 space modules in `verse/` (rigid bodies, contacts, gravity fields including a spinning drum, thrusters and tanks, two-body orbits with a J2000 mean-element ephemeris, patched conics, Lambert transfers and RK4 finite burns, a floating-origin camera) used by Orbit League and Belt 2200 ([space primitives](../docs/verse/space.md)) | Units and frames with full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, deterministic integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
 and [reflection evidence](../docs/verification/coax-layout-reflection-2026-10-28.md)
@@ -60,11 +63,12 @@ Small conformance, evidence and tooling deliveries can proceed while helping
 close that gate; a missed timing budget must not be relabeled as a pass.
 R1–R8 build the language, compiler and tool infrastructure for the larger
 vision. Prove native GPU and browser integration in R9–R10 before committing to
-a new backend. R11–R19 make computation about the physical world checkable:
+a new backend. R11–R20 make computation about the physical world checkable:
 transitive effects, then units and frames, typed clocks, bounded control,
-strict math and jobs, replay, robot-model import, stamped sensors with
-supervised actuators, and fault scenarios. Complete compiler migration in R20
-and resident compilation/reload in R21–R22 on their own evidence. R23 remains
+strict math, integrators and jobs, replay, robot-model import, stamped sensors
+with supervised actuators, fault scenarios, and finally parameter provenance,
+fidelity profiles and typed rule modules. Complete compiler migration in R21
+and resident compilation/reload in R22–R23 on their own evidence. R24 remains
 conditional on measurements.
 
 Every phase depends only on lower-numbered phases. The numbers give the default
@@ -72,17 +76,21 @@ priority, not an instruction to block an independent experiment behind
 unrelated features. In particular, a browser feasibility test belongs in R1;
 the first GPU/browser slice does not require parallel jobs, full macros or a
 self-hosted compiler. Effects work starts with ownership in R3. Coax compiler
-migration can proceed in small pieces before R20 once each piece has its
-prerequisites. Restricted body replacement (R21) needs only R1's first
+migration can proceed in small pieces before R21 once each piece has its
+prerequisites. Restricted body replacement (R22) needs only R1's first
 delivery and can run early as an experiment; resident compilation also does
-not require completed self-hosting, so R20–R22 may overlap once their own
+not require completed self-hosting, so R21–R23 may overlap once their own
 dependencies and trust boundaries are satisfied.
 
-The physical-world phases share two continuous consumers: one running Verse
-world, and one small simulated robot, the closed loop of Psionic chapters
+The physical-world phases share three continuous consumers: one running Verse
+world; one small simulated robot, the closed loop of Psionic chapters
 [167](../psionic/book/ch167-imitation-before-robotics-scale.md)–169 (see the [plan](../psionic/book/PLAN.md)), built on its deterministic and
-differentiable solvers (chapters 109 and 111). Each of R12–R19 must improve one
-of them. These phases produce language, library and checking work for
+differentiable solvers (chapters 109 and 111); and one spacecraft scenario on
+the `verse/` space modules: a freighter that loads cargo, transfers to a moving
+destination, rides out a fault and docks, used by the Verse space games and by
+Psionic Part XXV (chapters 249–258). Each of R12–R20 must improve one of them,
+and a facility both the robot and the spacecraft need (frames, clocks,
+integrators, replay, stamps) is built once for both. These phases produce language, library and checking work for
 simulation. They do not authorize, drive or qualify real hardware; a hardware
 bridge, driver or real-time deployment profile needs its own authorization,
 safety review and target qualification outside this roadmap.
@@ -109,26 +117,27 @@ the first.
 | R9 — Target-specific GPU interfaces | R1 target ABI, R2/R3 host lifetimes and R5 layouts for the selected pipeline | Further resource kinds and shader profiles per consumer |
 | R10 — Browser vertical slice | R9 interfaces for the same pinned workload | R8 input manifests for reproducibility and broader target evidence |
 | R11 — Transitive effects | R1 lowering, R2 callbacks/cleanup, R3 regions and R4 instantiations | Reviewed foreign summaries and hot-replacement effect checks |
-| R12 — Units and coordinate frames | R4 type parameters and R5 annotations; built-in quantity, point, vector and transform operators | User operator overloads after R11 proves them pure, nonallocating and nonfallible |
-| R13 — Typed clocks and multirate ticks | R12 durations, R2 typed staleness errors and R11 clock effects | Recorded clock boundaries consumed by R16 |
+| R12 — Units and coordinate frames | R4 type parameters and R5 annotations; built-in quantity, point, vector and transform operators | Full-state, time-varying and rotating frames with precision tiers; user operator overloads after R11 proves them pure, nonallocating and nonfallible |
+| R13 — Typed clocks and multirate ticks | R12 durations, R2 typed staleness errors and R11 clock effects | Astronomical time scales and event-stopped time acceleration; recorded clock boundaries consumed by R16 |
 | R14 — Bounded control | R3 scratch/allocators, R4 generics and R11 effect summaries | Per-target stack evidence and bounded solver building blocks |
-| R15 — Strict math and deterministic jobs | R3 regions, R4 libraries, R11 effects and R1 target rules | Checked parallel execution and replay at 1/2/4/8 workers |
-| R16 — Deterministic replay and snapshots | R5 stable identities, R13 recorded clocks and R15 strict profiles | Rollback with committed effects and qualified replay profiles per target |
+| R15 — Strict math and deterministic jobs | R3 regions, R4 libraries, R11 effects and R1 target rules | Deterministic integrators and event location; checked parallel execution and replay at 1/2/4/8 workers |
+| R16 — Deterministic replay and snapshots | R5 stable identities, R13 recorded clocks and R15 strict profiles | Observation-level replay; rollback with committed effects and qualified replay profiles per target |
 | R17 — Robot-model import | R2 errors, R5 derivation and R12 frames/units; a published URDF subset | Further formats qualified separately |
-| R18 — Stamped sensors and actuator supervision | R12 frames, R13 freshness and R14 bounded control; simulated devices only | Calibration identities and richer supervision policies |
+| R18 — Stamped sensors and actuator supervision | R12 frames, R13 freshness and R14 bounded control; simulated devices only | Calibration identities, light-time emission/reception stamps and richer supervision policies |
 | R19 — Reproducible fault scenarios | R16 replay and R18 supervision | Larger scenario corpora on the same recorded format |
-| R20 — Complete compiler migration and distribution | The facilities each individual pass needs; retain independent oracles and seeds | Coax semantic passes/emitters, documented trust boundary and supported distributions |
-| R21 — Restricted procedure-body replacement | R1 interface/layout identities and a quiescent, restricted Mac host; unchanged-ABI procedure-body replacement | Measured edit-to-result value before R22 |
-| R22 — Resident semantics and transactional migration | R1/R8 cache inputs, R3 ownership and R5 stable state identities; R15 quiescence when workers exist | Migration and rollback using R16's snapshot inventory |
-| R23 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | Faster debug or optimized output conforming to the same semantic profiles |
+| R20 — Provenance, fidelity profiles and rule modules | R5 annotations, R12 quantities and R16 recorded inventories; provenance-typed parameters and checked fidelity profiles | R11 effect summaries for typed rule modules that declare what they change |
+| R21 — Complete compiler migration and distribution | The facilities each individual pass needs; retain independent oracles and seeds | Coax semantic passes/emitters, documented trust boundary and supported distributions |
+| R22 — Restricted procedure-body replacement | R1 interface/layout identities and a quiescent, restricted Mac host; unchanged-ABI procedure-body replacement | Measured edit-to-result value before R23 |
+| R23 — Resident semantics and transactional migration | R1/R8 cache inputs, R3 ownership and R5 stable state identities; R15 quiescence when workers exist | Migration and rollback using R16's snapshot inventory |
+| R24 — Additional backends | Earlier adoption/target evidence and a measured backend bottleneck | Faster debug or optimized output conforming to the same semantic profiles |
 
 ### How this relates to spec section 20
 
 The spec's existing stage numbers remain useful topic identifiers. Stages 0/1
 are the bootstrap foundation; unfinished stage 2 evidence is R0/R2/R3. Stage 3
 expands through R1/R4/R5/R6. Stage 4 is R7/R8. Stage 5 is R3/R11/R15. Stages
-6/7 are R5/R9/R10 and ongoing protocol adoption. Stage 8 is R21/R22, and stage
-9 is R23. Stage 10, physical-world foundations, is R12–R14 and R16–R19. R20 is
+6/7 are R5/R9/R10 and ongoing protocol adoption. Stage 8 is R22/R23, and stage
+9 is R24. Stage 10, physical-world foundations, is R12–R14 and R16–R20. R21 is
 an explicit compiler migration track across those topics.
 
 The coarse stage numbers are not a global dependency chain: the protocol
@@ -650,7 +659,7 @@ generic library routine. Fixtures include an allocation reached only through
 a generic instantiation, a callback, a cleanup path and a foreign call; each
 must surface in the summary with its path. Compare declared versus observed
 allocation and blocking on native runs. Mutating an effect source must change
-the summary. Hot replacement re-checks summaries in R21–R22.
+the summary. Hot replacement re-checks summaries in R22–R23.
 
 ## 15. R12 — Units and coordinate frames
 
@@ -676,11 +685,29 @@ Begin with built-in operators for these types. User-defined operator overloads
 wait until R11 effect checks can enforce that they are pure, nonallocating and
 nonfallible. Units of time are quantities here; clocks and timestamps are R13.
 
+The expansion covers moving and rotating frames. A full state transform maps
+position and velocity together, including the angular-velocity term
+(`v_world = v_frame + R (v_local + ω × r_local)`), and refuses a position-only
+transform applied to a velocity; this is the distinction JPL's
+[SPICE frames](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/frames.html)
+draw between position and state transforms. A frame may be time-varying, its
+transform supplied by a named source (an ephemeris or rotation model with a
+version and coverage) at an R13 instant. Derived dimensions check through
+products and quotients (W, J/K, W/(m²·K⁴), m³/s²), so a radiator law or a
+gravitational parameter is dimension-checked, not just labelled. Precision is
+part of the type: an astronomical frame holds f64 metres (at 1 AU f32 spacing
+is 16,384 m, f64 about 30.5 µm), and a local frame used for contacts or
+rendering is reached by an explicit, recorded origin change, as `verse/`'s
+floating-origin camera already does by hand.
+
 **Consumer/gate:** move one Verse camera/world transform path and the joint
 and pose values of the simulated robot (Psionic chapters 167–169) onto these
-types. Fixtures cover point/vector algebra, refused frame and unit mixing,
+types, then the spacecraft scenario's heliocentric, body-fixed, ship and
+drum-interior states (`verse/orbit.coax`, `verse/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
 composition through a frame chain, exact and rounded conversions, a jumping
-frame, and diagnostics that name the missing conversion. Generated code and
+frame, a refused position-only transform of a velocity, a rotating-frame state
+round trip against the inertial result, an f32 astronomical position refused
+where f64 is required, and diagnostics that name the missing conversion. Generated code and
 layouts must match the untagged version byte for byte where no conversion is
 written; measure any difference.
 
@@ -700,12 +727,23 @@ age. A read older than its maximum age is a typed R2 error, not a silently
 stale value. The schedule is deterministic: given rates and phases, the order
 of tasks within a tick is defined and inspectable.
 
+The expansion adds astronomical time scales as distinct instant types: TAI,
+TT, TDB (the argument of planetary ephemerides) and UTC, converted through
+pinned tables (leap seconds; the TT–TDB series) whose identity is part of the
+conversion, and refused outside the table's coverage. Time acceleration is a
+property of the simulation clock: a warp factor scales simulation time
+against steady time, and a scheduled event (a burn boundary, a signal arrival,
+a contact) caps the next step, so warping never moves an event. The clock owns
+this ordering rule; R15 adds event location on top of it.
+
 **Consumer/gate:** drive the simulated robot's physics and control steps at
 different rates, and Verse's fixed-step update, from declared schedules.
 Fixtures cover refused conversions between clock domains, simulated time
 paused and stepped while steady time advances, sample-and-hold reads, a read
 past its maximum age, and the exact task order over many ticks compared
-against an independent reference trace.
+against an independent reference trace. For the spacecraft scenario: a
+UTC–TDB conversion compared with published values, a refused instant outside
+the leap-second table, and the same event order at warp 1 and 10⁶.
 
 ## 17. R14 — Bounded control
 
@@ -743,11 +781,28 @@ iteration. Fixed-point types need exact scale, rounding and overflow vectors;
 they are not a drop-in proof of a different floating algorithm. Define SIMD
 behavior under those profiles before enabling faster lowerings.
 
+On those profiles, ship integrators as library code, not language features:
+fixed-step RK4, symplectic leapfrog/velocity Verlet and a higher-order
+symplectic composition for long gravitational coasts, and an adaptive embedded
+Runge–Kutta pair (Dormand–Prince 5(4)) whose step control is itself
+deterministic (pinned error norm, safety factor and step limits) and reports
+accepted and rejected steps. Each integrator is generic over an R12 state type
+and states what it conserves. Event location finds the earliest root of
+declared event functions inside a step (bracketing plus a bounded root
+finder) and splits the step there, with an iteration budget and a typed
+non-convergence result under R14's solver contract. A tolerance is chosen
+from an observable error budget (arrival position, closest approach, energy
+drift), not a tick rate.
+
 **Consumer/gate:** the selected ECS/simulation kernel replays with 1/2/4/8
 workers under stress, with forbidden effects/aliases rejected. Compare target
 results on the actual architectures claimed, including serialized state and
 reduction order. Host-libm equivalence on one Mac is not cross-platform
-determinism. Measure scheduler and validation overhead against the serial loop.
+determinism. Integrator fixtures: a Kepler orbit closed after many periods
+(bounded energy error for the symplectic method, measured drift for the
+others), step-halving convergence at the stated order, an adaptive run that
+reproduces its step sequence bit for bit, and an event (burn cutoff, swept
+contact) located to tolerance in a step that would otherwise jump past it. Measure scheduler and validation overhead against the serial loop.
 
 ## 19. R16 — Deterministic replay and snapshots
 
@@ -767,9 +822,17 @@ per-kernel tolerance is not an end-to-end trajectory guarantee. A qualified
 replay profile names its exact scope (build, worker count, target and
 architecture) and refuses operations outside it.
 
+The recorded inventory also names ephemeris and rotation-model versions,
+integrator and tolerance settings, and, once R20 defines them, the fidelity
+profile and active rule modules. Replay works at two levels: omniscient (the authoritative
+state) and observation (what each agent had received, R18, when it acted), so
+a debrief can ask what a controller knew when it issued a command.
+
 **Consumer/gate:** record and replay the simulated robot's closed loop,
 including the Psionic deterministic solver's state, and one Verse session.
-Restore from a mid-run snapshot and match the uninterrupted run. Fixtures omit
+Restore from a mid-run snapshot and match the uninterrupted run. Replay the
+spacecraft scenario at two warp factors and get the same events and final
+state. Fixtures omit
 each inventory item in turn and must show the divergence it causes; a replay
 under a different profile must be refused, not silently compared.
 
@@ -794,7 +857,14 @@ Give every sample a stamp: its R13 clock and instant, R12 frame, sequence
 number and calibration identity, with uncertainty where the source reports it.
 Freshness checks use maximum ages; extrapolation beyond a sample is explicit
 and bounded. A transform applied to a measurement must match its timestamp and
-calibration, not only its frame.
+calibration, not only its frame. A remote observation carries both its
+emission and reception instants; the light-time relation
+`t_receive − t_emit = |r_target(t_emit) − r_observer(t_receive)| / c` is
+solved by a bounded iteration, and geometric, light-time-corrected and
+aberration-corrected states are distinct types, after JPL's
+[aberration corrections](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/abcorr.html).
+Communication latency in the simulated world is this physics and is kept
+apart from network latency between the simulation and its clients.
 
 Add an actuator supervisor that validates each proposed command against
 freshness of the state it was computed from, joint and rate limits from the
@@ -810,12 +880,18 @@ qualification and real-time deployment profile; nothing here grants it.
 stamps and the supervisor. Fixtures include a stale sample, a frame or
 calibration mismatch, a command beyond a limit, a command from a revoked
 epoch, a reordered or duplicated sequence and an expired command; each is
-refused with its reason, and the refusals are R2 results, not traps.
+refused with its reason, and the refusals are R2 results, not traps. A
+spacecraft fixture checks a one-way light time of about 499.0 s at 1 AU, a
+round trip with moving geometry, and a controller refused when it reads a
+target's true state instead of a received one.
 
 ## 22. R19 — Reproducible fault scenarios
 
 Inject faults into simulated runs: sensor dropout, delayed or reordered
-samples, timing overruns, actuator saturation, disconnects and invalid values.
+samples, timing overruns, actuator saturation, disconnects and invalid values;
+for the spacecraft scenario also a failed thruster, a leaking tank, a damaged
+radiator and a drive cutoff mid-burn, which must leave a propagated trajectory
+rather than a frozen ship.
 A scenario is data, recorded with the R16 run format, so the same scenario,
 seed and build reproduce the same run and the same supervisor decisions.
 
@@ -824,7 +900,49 @@ fault produces the expected refusal, hold or safe stop from the R18
 supervisor, and the outcome replays exactly. Removing a supervisor check must
 make at least one scenario fail.
 
-## 23. R20 — Finish self-hosting and the supported toolchain
+## 23. R20 — Parameter provenance, fidelity profiles and rule modules
+
+A simulation mixes measured values, values inferred from them and values
+chosen for a scenario. Give every tunable parameter a provenance record, an
+ordinary checked type over R12 quantities: value and unit, kind (`explicit`,
+`inferred` or `invented`), source (a citation, dataset identity or scenario
+name), uncertainty where known, and the configuration it belongs to. The hot
+path reads the plain value at R12's layout cost; R5 reflection exposes the
+record to tools, interfaces and evidence reports, so a report or tooltip can
+say whether a number is measured, estimated or chosen. A profile that requires
+provenance refuses a value without it.
+
+A fidelity profile is checked configuration naming the models, rule modules,
+integrator settings and parameter sets a run uses: for example an engineering
+baseline (ordinary physics, explicit or inferred parameters only), a game
+profile (the same motion plus declared invented parameters and rule modules)
+and a presentation profile (time compression, enlarged markers, control
+assistance) that may change only what is drawn. The profile is part of R16's
+recorded inventory. Presentation code runs under an effect that cannot write
+authoritative state (R11), so a readability setting cannot alter a
+trajectory.
+
+The expansion adds typed rule modules: code that deliberately departs from
+ordinary physics (a hypothetical propulsion performance, a scenario-specific
+field, a region where a technology stops working) declares its scope (which
+objects, state fields and subsystems it changes) and its trigger, and each
+change it makes is an identifiable event in the run log. The checker derives
+what a module writes from R11 summaries and refuses a write outside its
+declaration. A module is active only in profiles that list it; an engineering
+profile lists none.
+
+**Consumer/gate:** the spacecraft scenario's drive, radiator and
+crew-tolerance parameters carry provenance into its report. Its engineering
+and game profiles give identical trajectories wherever no rule module or
+invented parameter differs, and a presentation-only change leaves the recorded
+state bit for bit identical. Fixtures: a parameter without provenance, and an
+invented one, refused under the engineering profile; a presentation procedure
+that writes a velocity refused with its path; a rule module writing a field
+outside its declaration refused; a module enabled in a profile that does not
+list it refused; replay under a different profile refused by R16. The
+simulated robot's calibrated parameters (R18) use the same records.
+
+## 24. R21 — Finish self-hosting and the supported toolchain
 
 Move the remaining semantic work into Coax in independently reviewable slices:
 verification/coverage and mutation policy; bounded evaluation; C/header/layout
@@ -854,7 +972,7 @@ dependencies. Library, diagnostics, ABI, mutation and conformance suites pass;
 the remaining trust boundary is explicit. This track can start earlier whenever
 R2–R8 provide enough facilities for the next compiler pass.
 
-## 24. R21 — Restricted procedure-body replacement
+## 25. R22 — Restricted procedure-body replacement
 
 Before semantic caching or general migration, use a deliberately restricted
 Mac host to replace bodies behind unchanged exports, calling conventions,
@@ -870,7 +988,7 @@ Retain the old callable table until candidate validation/publication succeeds.
 Measure edit-to-visible-result for an actual controller/world change. This
 experiment must show value before paying for general state migration.
 
-## 25. R22 — Resident semantics and transactional migration
+## 26. R23 — Resident semantics and transactional migration
 
 Use content/declaration dependencies to build a bounded resident cache. Test
 invalidation across targets, modules, descriptors, plugins, generics and build
@@ -892,7 +1010,7 @@ edit-to-observable-frame latency. This is Mac development reload; signed iOS
 device updates keep their signing/deployment rules. No arbitrary stack migration
 or device code-loading bypass is implied.
 
-## 26. R23 — Add backends only after profiling
+## 27. R24 — Add backends only after profiling
 
 The C backend stays a working reference. Add a fast native debug backend only
 if C compilation/linking dominates the measured loop after caching and generated
@@ -910,20 +1028,20 @@ not a mandatory runtime VM or a shortcut around semantics.
 tooling. Otherwise retain C output. Backend count is not the definition of the
 full vision.
 
-## 27. Feature coverage and completion policy
+## 28. Feature coverage and completion policy
 
 | Spec area | Phases that complete it |
 | --- | --- |
 | Representation, composition, strings, enums/unions and procedure forms (§4–9) | R2 basic forms; R3 ownership; R4 specialization; R6 storage transformations; R9/R15 vector and SIMD rules |
-| Compile-time execution and conditional work (§10) | Existing bounded evaluation retained; R1 dependencies/`#if`; R5 metadata/derivation; R6 typed code; R8 plugins; R20 evaluator migration |
+| Compile-time execution and conditional work (§10) | Existing bounded evaluation retained; R1 dependencies/`#if`; R5 metadata/derivation; R6 typed code; R8 plugins; R21 evaluator migration |
 | Memory, context and errors (§11) | R2 typed errors/cleanup; R3 explicit storage/context; R4 owning libraries; R11 transitive effects; R14 bounded contracts |
 | Jobs and determinism (§12–13) | R3 regions first; R10 target evidence; R11 effects; R15 math and schedules; R16 replay and snapshots |
 | Public protocols (§14) | Existing importer retained; R5 schema-aware derivation; R8 reproducible inputs; R10 consumer/domain/target expansion |
 | GPU programs (§15) | R5 target-aware metadata; R9 resources/MSL/WGSL pipeline; R15 deterministic restrictions where required |
-| Builds, iteration and reload (§16) | R0 measurements/debugging; R1 graph; R8 workspaces/capabilities; R21–R22 cache/reload; R23 conditional backends |
-| Modules, C/Swift interop and tooling (§17) | R1 namespaces/configuration; R2/R3 callback/ownership ABI; R7 formatter and safe compiler queries; R8 C-header import; R10 target matrix; R20 distribution |
-| Physical-world foundations (spec stage 10; semantics added to the spec with each phase) | R12 units and frames; R13 clocks and ticks; R14 bounded control; R16 replay; R17 robot-model import; R18 sensors and supervision; R19 fault scenarios |
-| Verification for human/agent development (§10, §17 and book chapters 11/23) | R0 independent gates/status; checks/oracles at every phase; R6 provenance; R7 safe analysis/evidence; R20 trusted-chain documentation |
+| Builds, iteration and reload (§16) | R0 measurements/debugging; R1 graph; R8 workspaces/capabilities; R22–R23 cache/reload; R24 conditional backends |
+| Modules, C/Swift interop and tooling (§17) | R1 namespaces/configuration; R2/R3 callback/ownership ABI; R7 formatter and safe compiler queries; R8 C-header import; R10 target matrix; R21 distribution |
+| Physical-world foundations (spec stage 10; semantics added to the spec with each phase) | R12 units and full-state frames; R13 clocks, time scales and ticks; R14 bounded control; R15 integrators and event location; R16 replay; R17 robot-model import; R18 sensors, light-time and supervision; R19 fault scenarios; R20 provenance, fidelity profiles and rule modules |
+| Verification for human/agent development (§10, §17 and book chapters 11/23) | R0 independent gates/status; checks/oracles at every phase; R6 provenance; R7 safe analysis/evidence; R21 trusted-chain documentation |
 
 C-header import in R8 should use a constrained importer with explicit handling
 of macros, inline-only symbols, variadics, allocator pairing and unsupported
@@ -969,7 +1087,7 @@ bound sufficiency explicitly. Continue only if one actual routine gets stronger
 coverage than enumeration at manageable cost. No solver/proof syntax, mandatory
 dependency or new milestone is justified before that result.
 
-## 28. Next implementation sequence
+## 29. Next implementation sequence
 
 This is a priority queue, not a serial barrier. Formatting, scoped evidence
 and simple escape diagnostics can start from current APIs while R0 measurements
@@ -1002,21 +1120,25 @@ and review remain open; every slice still needs its listed prerequisites.
    can proceed on their narrower prerequisites; owning libraries wait for R3's
    expansion.
 6. **Test platform and iteration assumptions early.** Extend Coaxial's existing
-   wasm32 probe and run R21's unchanged-layout Mac replacement experiment
+   wasm32 probe and run R22's unchanged-layout Mac replacement experiment
    once their exact prerequisites exist. Neither implies full browser support
    or general transactional migration.
 7. **Start the physical-world foundations on the simulated robot.** Once R4's
    type parameters ship, put the robot's joints and poses on R12 units and
    frames with built-in operators. Then add R11 effect summaries, R13 clocks
    and R14 bounded control step by step, each through the closed loop of
-   Psionic chapters 167–169. Replay (R16) follows R15's strict profiles.
+   Psionic chapters 167–169. Replay (R16) follows R15's strict profiles. Run
+   the spacecraft scenario on the same types as they land: full-state frames
+   and time scales first, then integrators and event location, light-time
+   stamps, and provenance with fidelity profiles (R20) before any rule
+   module.
 8. **Expand through consumers.** Complete richer generics/derivation, R8
    workspaces, GPU interfaces, jobs, robot-model import, supervision and fault
    scenarios using the dependency table. Continue self-hosting in reviewable
    slices; gate full migration/reload, optional proof tooling and extra
    backends on their own evidence.
 
-## 29. Earlier phase labels
+## 30. Earlier phase labels
 
 Earlier revisions used lettered sub-phases and a shorter list. Project queue
 tasks keep their original slugs (for example `r4a-type-parameters`,
@@ -1042,8 +1164,9 @@ earlier label to its phase now.
 | R8a | R9 — Target-specific GPU interfaces |
 | R8b | R10 — Browser vertical slice |
 | R9 | R11 — Transitive effects, and R15 — Strict math and deterministic jobs |
-| R10 | R20 — Self-hosting and the supported toolchain |
-| R11a | R21 — Restricted procedure-body replacement |
-| R11b | R22 — Resident semantics and transactional migration |
-| R12 | R23 — Additional backends |
+| R10 | R21 — Self-hosting and the supported toolchain |
+| R11a | R22 — Restricted procedure-body replacement |
+| R11b | R23 — Resident semantics and transactional migration |
+| R12 | R24 — Additional backends |
 | (new) | R12 units and frames, R13 clocks, R14 bounded control, R16 replay, R17 robot-model import, R18 sensors and supervision, R19 fault scenarios |
+| R20–R23 of the first integer revision (2026-10-31) | R21–R24; R20 is now provenance, fidelity profiles and rule modules |

@@ -606,7 +606,8 @@ moves onto these types as they ship. Chapters 168 and 169 are planned against
 them and do not start with hand-rolled clocks, frames or unchecked control
 loops. Real robot hardware is a separately authorized later integration, with
 its own safety review, device qualification and real-time profile; nothing in
-this part drives an actuator.
+this part drives an actuator. Part XXV builds its spacecraft on the same
+foundations rather than a parallel set.
 
 ## XIX. Host inference in production
 
@@ -819,6 +820,58 @@ routers, harness configuration); weight updates follow only when both the
 decision and probability gates pass, since the pre-reset fine-tuning raised
 accuracy while making confidence worse.
 
+## XXV. Spacecraft and the solar system
+
+One ordinary model of spacecraft and the solar system, built so the same state
+serves a game, a training environment and an engineering study. The planning
+input is the [physics and simulation design
+reference](../../docs/research/expanse-physics-and-simulation-design-reference.md);
+these chapters keep to generic physics and engineering and check against
+public references: JPL [Horizons](https://ssd.jpl.nasa.gov/horizons/manual.html)
+and NAIF [SPICE](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/frames.html),
+NASA's [rocket equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/ideal-rocket-equation/),
+[thermal control](https://www.nasa.gov/smallsat-institute/sst-soa/thermal-control/),
+[trajectory optimization](https://ntrs.nasa.gov/citations/20230006127),
+[occupant acceleration](https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-024-acceleration.pdf),
+[artificial gravity](https://ntrs.nasa.gov/citations/19740010644) and
+[hypervelocity shielding](https://hvit.jsc.nasa.gov/shield-development/).
+
+The starting point already runs in `verse/` ([space primitives](../../docs/verse/space.md)):
+f64 rigid bodies, swept contacts, gravity fields including a spinning drum,
+thrusters with tanks, two-body Kepler orbits, a J2000 mean-element ephemeris,
+spheres of influence and patched conics, Lambert and Hohmann transfers, RK4
+finite burns, and a floating-origin camera, used by Orbit League and Belt 2200.
+Those stay the game layer. This part adds what an engine needs on top: pinned
+oracles, stated error budgets, separated truth and observation, batched
+rollouts, learned surrogates and admitted environments. Each chapter moves its
+state onto Coax's checked forms (roadmap R12–R20) as they ship.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 249. Ephemerides, time scales and frames | Read a pinned ephemeris (Horizons vector tables first, then one SPICE SPK segment type) with its time scale, frame, centre, units, dataset version and coverage recorded; a query outside coverage is refused. TAI, TT, TDB and UTC through a pinned leap-second table. Full state transforms (position and velocity, with the ω × r term) between barycentric inertial, heliocentric and body-fixed rotating frames from pinned rotation models; geometric, light-time-corrected and aberration-corrected states kept distinct. Checks: states and corrections against independently retrieved Horizons/SPICE values, transform round trips, a refused out-of-coverage time, and `verse/orbit.coax`'s mean-element ephemeris measured against the pinned table so its error is a number. |
+| 250. Propagate with a stated error | Analytic two-body coasts, patched conics with sphere-of-influence handoff, and restricted n-body (249's bodies as sources, vessels as test particles), on fixed-step RK4, symplectic leapfrog and higher-order compositions, and adaptive Dormand–Prince 5(4) (Coax R15). Error budgets per observable (arrival position, closest approach, energy and angular-momentum drift) with tolerance, step count and cost reported. A relativistic envelope (v/c and potential thresholds) beyond which the Newtonian profile refuses, and an ideal constant-proper-acceleration segment as its own mode. Checks: two-body against Kepler; many-period closure with bounded symplectic energy error versus measured adaptive drift; n-body against the ephemeris over a span; patched-conic versus n-body difference reported; step-halving convergence at the stated order; an out-of-envelope case refused. |
+| 251. Burns consume mass | Finite-thrust, variable-mass flight: thrust from mass flow and exhaust speed; separate accounts for energy source, reaction mass, coolant and consumables; jet power P = F v_e / 2 tying thrust, exhaust speed and available power; torque from thrust that misses the centre of mass; attitude with inertia recomputed as mass moves; constant-thrust and constant-acceleration control histories. Checks: Δv against v_e ln(m₀/m_f) across burns; no propellant counted twice; momentum conserved only for ship plus exhaust; a displaced centre of mass producing the expected torque; a configuration whose thrust and exhaust speed exceed its declared power refused. |
+| 252. Reach a moving target | Rendezvous as a boundary-value problem: Lambert guesses from `verse/orbit.coax`, the ideal constant-acceleration benchmark (t = 2√(D/a), Δv = 2√(aD)), then finite-thrust direct shooting and collocation meeting arrival position and velocity, with path constraints on crew acceleration, propellant reserve and exclusion zones; shooting sensitivities from 107's `jvp`/`vjp`. Gravity assists as flybys whose energy change follows the encounter geometry. Checks: the benchmark's 1 AU values reproduced; a solved transfer arriving within position and velocity tolerances when re-propagated by 250; aiming at the target's present position shown to miss; a flyby's heliocentric energy change matching its planet-frame turn; an infeasible request refused with the binding constraint named. |
+| 253. Heat has to go somewhere | A lumped thermal network (drive, power, electronics, occupied spaces, heat sinks, radiators): C dT/dt = P + ΣQ − εσA(T⁴ − T_bg⁴) − P_expelled, with finite sinks, expendable coolant, conductances and failures. Heat from high-power propulsion is a declared, explicitly hypothetical model (absorbed fraction, radiator temperature and area, duty cycle) or a typed rule module (Coax R20), never an unstated assumption. Checks: radiator equilibrium against the closed form (49.03 GW at 1,000 K and ε = 0.9 needs about 0.961 km² of emitting area); energy balance per node; a damaged radiator or exhausted coolant producing the expected temperature rise and throttle-down; a configuration's required radiator area reported rather than hidden. |
+| 254. Inside a turning, accelerating ship | Interior frames: proper acceleration as the floor, rotating frames with Coriolis, centrifugal and Euler terms (or inertial integration with derived observations, never both), spin habitats (ω²r), foot-attachment constraints and loose objects through a turn; a compartment model of pressure, volume and leaks through an opening. Crew acceleration tolerance as a bounded, parameterized model (magnitude, body axis, duration, posture, restraint and accumulated exposure mapped to impairment states) whose parameters carry provenance; it is a simulation model, not medical guidance. Checks: a dropped object's curved path in a drum matching the inertial solution; 0.3 g at 500 m needing about 0.7325 rpm; a braking ship keeping its floor after the flip; rotating-frame and inertial integration agreeing, with double-counting detected; a leak emptying connected volumes on the expected time scale and leaving sealed ones alone. |
+| 255. Sensors that see the past | Truth, emitted signal, received measurement and estimated track as separate data. The light-time solution, round-trip radar and command latency, detection from sensitivity, geometry, background and emission, and a track filter whose uncertainty grows with age and target maneuverability. Agents and policies receive only received measurements (Coax R18 stamps). Checks: about 499.0 s one-way at 1 AU; iterated light-time and aberration corrections against 249's references; a round trip with moving geometry; covariance growth after an unexpected maneuver; a planted policy that reads the authoritative state refused by the observation interface. |
+| 256. Time warp that stops for every event | Time acceleration as scheduling: event functions for burn boundaries, propellant exhaustion, thermal limits, proximity, possible impacts (swept time-of-impact with curvature refinement), signal arrivals and domain transitions; a long step splits at the earliest root (Coax R13, R15). Replay at omniscient and observation levels: what a controller knew when it acted (Coax R16). Checks: a 1,200 km/s projectile cannot pass a target at any warp; identical event order and final state at warp 1 and 10⁶; a mid-run snapshot restoring the same run; a per-participant warp inside a shared encounter refused. |
+| 257. Hits through layers | Hypervelocity impacts as calibrated response models over a component graph, not a hydrocode: penetration through layers (sacrificial bumper, rear wall, structure, components) by relative velocity, projectile mass and shape, incidence and material, from tables fitted to published ballistic-limit equations; a hit removes or degrades graph edges (coolant line, power bus, pressure boundary), so failures propagate into 251, 253 and 254. Fragments with real collision risk become tracked bodies; small debris stays cosmetic. Checks: tables against their source equations at sampled points; a query outside the table refused; a severed coolant line raising drive temperature and cutting thrust; recoil and venting changing a docking solution. |
+| 258. One world at three fidelities | Fidelity profiles (engineering baseline, game, teaching presentation) over the same state; typed rule modules that declare which objects and laws they change; provenance (explicit, inferred or invented, with unit and source) on every tunable (Coax R20). Batched rollouts of 250–256 through 107's `vmap` on CPU and GPU; learned surrogates for propagation and thermal steps (109's method) with error reported against the solver and refusal outside their training envelope; the scenario admitted as a training environment through 240's checker and replayed with 232. Checks: presentation changes leaving trajectories bit for bit identical; a rule module changing only what it declares; engineering profile refusing invented parameters; a regression suite (two-body orbit, constant-acceleration segment, variable-mass rocket, off-centre thruster, rotating-frame release, docking frame change, one- and two-way signals, fast projectile, radiator equilibrium, compartment leak) passing at engineering fidelity. |
+
+Chapter 249 needs only Coax R12 and R13 forms and can start on plain f64
+fields; 250 needs 249 and the R15 integrators. 251 builds on 250; 252 needs
+250–251 and 107. 253, 254 and 255 each need 251 (255 also 249) and can run in
+any order. 256 collects their event functions and needs R16 replay; 257 needs
+251, 253 and 254. 258 needs the rest, plus 107, 109, 232 and 240. The frames,
+time scales, integrators, stamps, replay and environment records are the same
+ones chapters 167–169 use, so a robot and a spacecraft share one foundation.
+Engineering fidelity means agreement with the named public references within
+stated error; it is a study profile, not flight qualification, and no
+chapter commands real hardware. Hypothetical propulsion, fictional rules and
+crew tolerances stay in declared, inspectable modules and are never part of
+the engineering profile.
+
 ## A framework, not only engines
 
 Most of this plan teaches how to run and train particular architectures. To
@@ -909,6 +962,7 @@ Python to tooling. The stable C ABI and DLPack (8) let others build one.
 | Hybrid / MoE language | Shared dense inference, state-space 162 and exact profiles; router 61 (Part VII) for Lightning | Nano 163 → Lightning 164. |
 | World generation | Shared vision/codec, diffusion/flow 146 and temporal 165 | One Cosmos3-Edge path 166. |
 | Robot policies | Shared vision/language, training, flow 146 and imitation/embodiment 167; the solvers 109 and 111 and transforms 107; Coax R12–R19 units and frames, clocks, bounded control, replay, robot-model import, supervision and fault scenarios | GR00T 168 → simulated closed loop 169, conditional on artifact terms; real hardware only as a separately authorized integration. |
+| Spacecraft and the solar system | 107, 109, 232 and 240; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 249 → propagation with stated error 250 → burns 251 → rendezvous 252; heat 253, ship interiors 254 and delayed sensors 255 in any order → event-stopped time warp 256 → impacts 257 → three fidelities, batched rollouts, surrogates and an admitted environment 258. |
 | Production hosting | A qualified model, 33's measurements and a consumer contract | Benchmark 170 → server and clients 171–172 → batching and cache 173–174 → routing, scaling, rollout, metering 175–179. |
 | Large-scale serving | Measured need from 170 and 173; two or more devices | Disaggregation 180; tensor/expert parallelism 181. |
 | Voice / training scale | 16, 170 and the voice gate / a resumable trainer plus backend | Voice pipeline 182 and decision steering 183 / distributed training 132. |
@@ -940,6 +994,7 @@ their general language form remains planned.
 | General SIMD/vector/matrix types remain planned; selected lane/group loops and matrix primitives already ship | 33–35, 147–150 | Scalar or qualified cooperative kernels; measure before requesting another form. |
 | Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 33, 36 caches, 73, 96 and 189 expert paging, 120 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
 | Units and frames, typed clocks, bounded control, replay, robot-model import, stamped sensors and fault scenarios ([roadmap R12–R19](../../coax/ROADMAP.md)) remain planned | 167–169 | Chapter 167 states its units and step in a fixed profile over plain `f64` fields; later chapters wait for the checked forms. |
+| Full-state and rotating frames, astronomical time scales, integrators and event location, light-time stamps, parameter provenance, fidelity profiles and typed rule modules (roadmap R12, R13, R15, R16, R18 and R20) remain planned | 249–258 | The `verse/` space modules keep units and frames in comments over plain `f64` fields; the chapters start there and adopt each checked form as it ships. |
 | A broader qualified target matrix and general asynchronous language effects remain work | 20–26, 44, 132, 171–183, 184–197 | Recorded owned Linux/CUDA and Apple CPU/Metal runs retain their named hardware and numerical scopes; they do not qualify every Linux target or an asynchronous ownership model. |
 
 The framework track already has strided views (3), owned device storage (6),

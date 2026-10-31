@@ -207,7 +207,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
-      "text_sha256": "ca95d4e0a4eb4040c8791f6aa217f99acc56447b66af755cdf8f5b556cd1baad",
+      "text_sha256": "05b0d1a04e2055f2445a23c55d1cdf4038e87d4ca5ceb343c0e5c58210f91ef3",
       "features": [
         {
           "id": "generics.type-parameters",
