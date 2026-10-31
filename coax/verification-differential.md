@@ -298,7 +298,7 @@ when its original baseline fails.
 
 ## Independent semantics and retained artifact defects
 
-Since 0.43.0, the optional `native_semantics_execution.py` companion uses the
+Since 0.44.0, the optional `native_semantics_execution.py` companion uses the
 same strict original-source baseline gates and ABI 2 bodies. Independent literal
 expectations cover signed division/remainder, casts, guarded caller-buffer
 writes, exactly-once destination evaluation and reverse cleanup on ordinary,
