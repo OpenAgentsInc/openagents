@@ -319,7 +319,8 @@ take_pads :: (s: [] OrbitLeague, dt: f64) {
   for i: 0..<PADS { s[0].pad_wait[i] = fmax(0.0, s[0].pad_wait[i] - dt); }
   for c: 0..<2 {
     b := s[0].bodies[c + 1];
-    off := ifx s[0].drum then DRUM_R - drum_clearance(arena_drum(), b.pos) else b.pos.y;
+    // its height off the floor (in the drum: in from the rim)
+    off := ifx s[0].drum then drum_clearance(arena_drum(), b.pos) else b.pos.y;
     if off > 2.0 || s[0].tanks[c].fuel >= 100.0 { continue; }
     for i: 0..<PADS {
       if s[0].pad_wait[i] > 0.0 { continue; }
@@ -2248,4 +2249,22 @@ drum_game :: (s: [] OrbitLeague) {
   b: [1] OrbitLeague;
   game_reset(b[..]);
   #assert bot_recover(b[..]) == BOT_RECOVER && bot_recover(s[..]) == BOT_DRUM_RECOVER && BOT_DRUM_THROTTLE < BOT_THROTTLE;
+}
+
+#test "in the drum the pads lie up the walls too: a car on the wall takes one, and it comes back (ol-boost-pads)" {
+  s: [1] OrbitLeague;
+  drum_game(s[..]);
+  walls := 0;
+  for i: 0..<PADS { if abs(pad_at(i).x) / DRUM_R > 0.9 { walls += 1; } }
+  #assert walls >= 4;
+  // pad 5, round the curve 84 degrees: on the wall
+  a := pad_at(5).x / DRUM_R;
+  s[0].bodies[YOU].pos = drum_turn(d3(0.0, 0.9, pad_at(5).z), a);
+  s[0].bodies[YOU].orientation = dq_mul(dq_z(a), DQ.{}); s[0].bodies[YOU].vel = D3_ZERO;
+  s[0].tanks[0].fuel = 10.0;
+  run_for(s[..], 0.1);
+  #assert s[0].tanks[0].fuel > 99.0 && s[0].pad_wait[5] > PAD_BIG_WAIT - 0.5;
+  s[0].bodies[YOU].pos = d3(0.0, 0.9, 0.0);
+  run_for(s[..], PAD_BIG_WAIT);
+  #assert s[0].pad_wait[5] == 0.0;
 }
