@@ -9,7 +9,7 @@ qualified debug output, with its source/record identity frozen before execution.
 `experiment.json` freezes fifteen paired contexts, three7-value actions,
 twenty-five held controller calls per pair, source default home, all state
 updates and comparison budgets. Each action starts from a fresh `pc_reset` on
-both sides. The observation stays constant. `new_goal` is true only on call0;
+both sides. The controller sample stays constant. `new_goal` is true only on call0;
 subsequent calls retain that goal. The unchanged controller still advances its
 internal gripper target once per call. These are call counts, not simulated
 elapsed time, jaw trajectories or a500Hz/real-time qualification.
@@ -41,8 +41,9 @@ clipping decisions agree exactly. Complete transcripts match byte for byte
 between all three named Darwin-arm64 scalar-libm profiles.
 
 The ledger covers7torque+2gripper+21state values after every reset and held
-call, plus all refused siblings. Input samples, expected and actual output
-fields and exact transcript extents are checked finite before comparison.
+call, plus all refused siblings. Ordinary sample/expected values and decoded comparison fields are checked
+finite, with exact transcript extents, before comparison. The intentional NaN
+action is a declared refused fault input.
 Decoder self-checks reject a NaN or either infinity in the last state field
 and both truncated/extended transcripts. The complete event inventory checks
 sample, action, call, side and kind before field maxima. No paired event can
@@ -71,3 +72,13 @@ corpus only. It establishes no fresh observation timing, integration/contact,
 closed-loop stability/task success, physics replay, hardware safety, generic
 frame provenance, compiler typed clocks or `#bounded` result. No SDK, neural
 model, physics step or old controller gate runs in this qualification.
+
+The combined portable gate is
+`psionic/check.sh --only robotics/panda-owned-sample`. It runs the sample
+constructor's native gate once, then verifies the newly generated C/header and
+output bytes against this frozen profile. A metadata-only alias cache uses the
+exact committed historical receipt and owned bytes for the paired harness; it
+requires no original private directory. Differing C/header/output bytes fail
+explicitly and require a new profile. [Alias guard evidence](../panda-owned-sample/cache-alias-qualification.json)
+checks poisoned C/header, receipt, sample, mode and extent inputs without
+rerunning the generator or paired harness during publication.

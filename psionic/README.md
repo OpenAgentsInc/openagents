@@ -365,3 +365,12 @@ left-slide acceleration using the whole coupled mass column. Run
 `psionic/check.sh --only robotics/panda-mass-solve` for its three focused roots
 and single native/reference gate. Net-force assembly, integration and physical
 control remain separate qualifications.
+
+The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
+assembles the existing 144-word ABI from one admitted state. Its
+[example](examples/panda-owned-sample.coax) uses independently frozen SDK fields.
+A separate [paired controller proof](fixtures/robotics/panda-owned-controller/README.md)
+checks output/state/clipping at held observations; it is not a stepped episode.
+Run `psionic/check.sh --only robotics/panda-owned-sample` for the focused source,
+native-field and paired-controller gates. The SDK driver opt-in prefix remains
+the next adapter integration.

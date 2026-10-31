@@ -1,0 +1,73 @@
+{
+  "schema": "psionic.panda-owned-sample.cache-alias-qualification.v1",
+  "passed": true,
+  "checks": [
+    {
+      "name": "unchanged qualified artifacts",
+      "passed": true
+    },
+    {
+      "name": "poison debug/panda-owned-sample.c",
+      "refused": true
+    },
+    {
+      "name": "poison debug/panda-owned-sample.h",
+      "refused": true
+    },
+    {
+      "name": "poison release/panda-owned-sample.c",
+      "refused": true
+    },
+    {
+      "name": "poison release/panda-owned-sample.h",
+      "refused": true
+    },
+    {
+      "name": "poison debug/samples.f64",
+      "refused": true
+    },
+    {
+      "name": "poison historical record",
+      "refused": true
+    },
+    {
+      "name": "poison owned bundle",
+      "refused": true
+    },
+    {
+      "name": "poison frozen paired profile",
+      "refused": true
+    },
+    {
+      "name": "poison new record failed",
+      "refused": true
+    },
+    {
+      "name": "poison new record missingmode",
+      "refused": true
+    },
+    {
+      "name": "poison new record duplicatemode",
+      "refused": true
+    },
+    {
+      "name": "poison new record wrongCbinding",
+      "refused": true
+    },
+    {
+      "name": "poison new record wrongextent",
+      "refused": true
+    },
+    {
+      "name": "existing output directory",
+      "refused": true
+    }
+  ],
+  "alias_record_sha256": "fecf8a6c36b5eaf917bdf9c8e3527ed8d20e7c6fc3518b501a39d8dbb9a2f774",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_owned_sample_cache_alias.py": "39058aed91d5dbc57fd3610d96523b898f24ed66dfbe4dfe79be9a25aa4a0f3f",
+    "psionic/tests/robotics/panda_owned_sample_cache_alias_checks.py": "51535e2fb90d32b997b20317ea7ca3e70c40c41cbcdfbc2e9f2f089f9d7a6bf5"
+  },
+  "scope": "Only new metadata/copy guards and exact historical byte aliases; no sample generation, compiler, controller, native, SDK or numerical gate rerun.",
+  "executed_guard_receipt_sha256": "53e71bc1d7c5ef9196029eea2cd7c96e93d57961b42cdd25961470b3f4a7da44"
+}

@@ -1252,6 +1252,130 @@ assembly, integration, compiler bounded control and real hardware remain
 separate qualifications. Zero joint angles here are a numerical query, not
 an actuator-valid home.
 
+## Build the controller sample from one owned state
+
+The source controller consumes one published `PcSample`: 144 F64 words holding
+the grip SITE pose, arm coordinates/rates, arm mass block, both site Jacobians,
+world linear/angular velocity, nonzero-rate bias and source torque limits. The
+new `pcs_forward` constructs that existing record from seven radian positions,
+two metre slides and their matching rates. It does not change the ABI.
+
+One admitted owned finger/FK result feeds every calculation. The arm mass
+block includes the moving fingers; the bias uses both finger rates even though
+the grip site's seven-column velocity uses only arm rates. Zero-rate gravity
+cannot replace that bias. Position/rotation belong to the grip SITE, not the
+model observation's hand BODY attitude.
+
+The example uses matched SDK capture 13, whose rounded golden fields were
+fixed before the program was run:
+
+<!-- source: psionic/examples/panda-owned-sample.coax sample -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);w:[2]pfku.Quantity(PidLinearRate,f64);
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];w[i].value=rates[7+i];}
+ sample:[1]PcSample;#assert pcs_forward(q[..],s[..],v[..],w[..],sample[..])==PcStatus.ok;
+ #assert pc_sample(sample[0])==PcStatus.ok;
+ for i:0..<3 {print("position % (um): %\n",i,panda_sample_micro(sample[0].position[i]));}
+ for i:0..<3 {print("linear velocity % (um/s): %\n",i,panda_sample_micro(sample[0].velocity[i]));}
+ for i:0..<3 {print("angular velocity % (urad/s): %\n",i,panda_sample_micro(sample[0].velocity[3+i]));}
+ print("hinge 2 bias (uJ/rad): %\n",panda_sample_micro(sample[0].bias[1]));
+```
+
+The output retains F64 precision; only display values round to microunits.
+Shapes precede all values. Positions retain their numerical ±100rad/±1m box;
+rates admit inclusive ±20rad/s and ±2m/s. Refusal preserves the entire caller
+record. The source-visible packing/pose helpers still trust their inputs and
+do not turn writable PODs into provenance certificates. This pure query adds
+no sensor clock stamp or compiler runtime-bound proof.
+
+The [native qualification](../fixtures/robotics/panda-owned-sample/native-qualification.json)
+compares all 2,160 fields from fifteen matched SDK contexts and passes 9,811
+assertions in each debug, release and ASan/UBSan profile. Some contexts repeat
+q/v while acceleration changes; these are not fifteen independent states.
+Complete outputs agree byte for byte under the named Darwin-arm64 scalar-libm
+profile. Three source-unit refusals check the typed boundary.
+
+The initial mutation result was 100 emitted sites: 97 killed and 3 survivors,
+all in the constructor. A redundant delegated shape guard was removed and
+independent expected public q/qd checks strengthened. The exact changed
+`pcs_forward` scope then kills 29/29 sites. Five unchanged procedure bodies
+carry their initial zero-survivor evidence; their bodies and checks are bound
+explicitly. We do not invent an aggregate current count. These are actual
+compiler-emitted sites, not complete Quantity `+`/`*` token-provenance coverage;
+that lowering gap remains separate from the spatial-token work. Literal typed
+velocity checks and the 2,160 SDK-field comparisons qualify the arithmetic
+independently of that mutation limitation.
+
+```shell
+coax/bin/coax run psionic/examples/panda-owned-sample.coax
+psionic/check.sh --only robotics/panda-owned-sample
+```
+
+The focused gate checks the one constructor root and, when mutation is
+requested, materializes only the changed procedure while retaining every
+original check. It runs the sample native gate once, then uses verified byte
+aliases for the separately qualified paired-controller gate. The alias cache
+keeps the exact historical execution receipt required by that paired profile;
+it never relabels the old record as fresh execution. Newly generated C/header
+and owned sample bytes must match the frozen identities, or the gate refuses.
+No private cache is required, no second sample generation runs, and a future
+compiler change is not silently accepted under this old profile.
+
+## Does the owned sample preserve controller behavior?
+
+Matching sample fields is necessary, but the controller combines Jacobians,
+mass and bias through inverses, pseudoinverses and clipping. Small field errors
+could therefore change its output or decisions. We test that boundary directly
+with the unchanged Coax controller, using the original SDK samples on one side
+and the already qualified owned samples on the other.
+
+The experiment is frozen before execution: 15 paired sample contexts, three
+actions and 25 held calls per pair. Both sides reset to the exact source default
+home before each action. The controller sample stays fixed, and only call 0 creates
+a new pose goal. Subsequent calls keep the goal while the controller's internal
+gripper target still updates once per call. These are controller calls, not
+elapsed simulation time or physical jaw motion.
+
+The three actions are zero, a dense vector and a vector combining inclusive
+pose-command endpoints with two saturated components. Status, readiness and
+both clipping counts must agree exactly. We predeclare absolute bounds of
+2e-8 for torque, 2e-12 for gripper output and 1e-10 for all 21 floating-point state
+fields. Relative tolerance is zero. We compare logical fields after normal
+calls; padding bytes do not define state equivalence.
+
+All 45 paired resets and 1,125 paired held controller calls return success.
+The largest torque discrepancy is 6.54e-13, gripper outputs agree exactly, and
+the largest state-field discrepancy is 2.00e-15. Every readiness and clipping
+decision agrees. This success histogram is explicit rather than inferred from
+two sides returning the same refusal. The selected contexts include repeated
+q/v inputs and are not 45 independent physical states.
+
+Separate refused siblings exercise bad mass in reset and step, a NaN action,
+a short action span and a not-ready state. Their exact diagnoses agree, output
+torque/gripper/count values are zero, and all 150 failed actual calls preserve
+their initialized state byte snapshots. The main event ledger contains every
+reset, held call and refused sibling: 2,490 events per native mode. All ordinary sample/expected values and decoded comparison fields are finite,
+and extents are complete before numerical maxima; poison checks also target the final field to catch partial scans.
+
+The NEW harness passes debug, release and fail-fast ASan/UBSan with 86,679
+assertions per profile. Complete serialized event transcripts match byte for
+byte under the named Darwin-arm64 scalar-libm profile. It reuses the qualified
+Coax C/header and cached sample bytes; it does not rerun the sample generator,
+SDK, learned model, old controller gate or any physics step. Exact frozen
+source/input hashes and the ledger schema are recorded in
+[the paired receipt](../fixtures/robotics/panda-owned-controller/qualification.json).
+
+This establishes static-state compatibility of the owned controller sample
+boundary for the declared corpus. A new closed-loop episode still needs the
+owned or SDK integration backend, fresh observation timing, actuator/contact
+semantics and its own replay/task-result qualification. Held calls alone make
+no stability, real-time, hardware-safety or complete-simulator claim.
+
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

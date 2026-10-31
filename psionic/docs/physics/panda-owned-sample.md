@@ -1,9 +1,9 @@
 # Replace the fresh controller sample with owned queries
 
-Status: planned integration. The genuine GR00T/LIBERO evaluation remains on
-MuJoCo. This component replaces the fresh robot queries consumed by the Coax
-controller while keeping SDK integration, contacts and observations available.
-It does not claim a new policy episode result or an owned simulator.
+Status: owned sample construction and held-state paired-controller proofs are
+qualified. The opt-in SDK driver switch and recorded-command prefix remain
+planned. The genuine GR00T/LIBERO evaluation still uses MuJoCo; these proofs
+neither step a new policy episode nor qualify an owned simulator.
 
 The [FK](../../fixtures/robotics/panda-fk/README.md),
 [finger branches](../../fixtures/robotics/panda-fingers/README.md),
@@ -41,23 +41,40 @@ motion. `bias` is not zero-rate gravity when any rate is nonzero. The new
 adapter must not change the existing observation-before-forward order or
 reinterpret cached observation geometry as a fresh query.
 
+## Delivered evidence and remaining adapter work
+
+[The constructor](../../fixtures/robotics/panda-owned-sample/README.md) qualifies
+all 2,160 fields from fifteen matched capture contexts under frozen per-field
+budgets, with 9,811 native assertions per mode. The initial 100/97/3 emitted-site
+result is retained; only the changed constructor is requalified at 29/29, while
+five exact bodies carry earlier evidence. Quantity-token provenance remains a
+separate compiler gap, with typed literal and SDK-field math checks independent.
+
+[The paired-controller proof](../../fixtures/robotics/panda-owned-controller/README.md)
+qualifies 45 successful reset pairs and 1,125 successful held-call pairs, plus
+150 atomic intentional refused calls. It uses fixed observations and source
+home, not elapsed physics time. Exact status/readiness/clipping and bounded
+logical state/output comparisons are separate from field closeness. The
+portable gate checks historical C/header/sample byte aliases before reuse;
+its historical receipt is not a newly generated execution record.
+
 ## Qualify in small stages
 
-1. Before acquisition, freeze a separately versioned complete-sample record
+1. **Delivered:** before acquisition, freeze a separately versioned complete-sample record
    alongside the inverse-dynamics reference. Save its additional Jacobian,
    site velocity and actuator limits from the same new SDK forwards. Record
    each SDK call and exact q/v pairing. A repeated old M/gravity row retains
    its previous proof identity; newly measured sample fields give that capture
    a distinct purpose. No stepping, rendering or inference is required.
-2. Add a checks-first Coax producer over the owned queries. Compare every
+2. **Delivered:** add a checks-first Coax producer over the owned queries. Compare every
    `PcSample` field, including units, packing and all nonfinite/refusal paths,
    against the frozen complete samples. Declare tolerances before comparison.
    Keep exact-byte ABI/canary checks separate from numerical closeness.
-3. Feed paired SDK and owned samples into fresh Coax controller states with
+3. **Delivered:** feed paired SDK and owned samples into fresh Coax controller states with
    identical home, action and goal-update inputs. Freeze that corpus and its
    output/state budgets before running it. Preserve singular/refused cases;
    near-identical sample values are not themselves controller parity.
-4. Add an opt-in owned-query path to the existing SDK driver. The host reads
+4. **Pending:** add an opt-in owned-query path to the existing SDK driver. The host reads
    coordinates/rates and performs effects; Coax selects and assembles the
    sample. A bounded recorded-command prefix qualifies the changed adapter
    and its ordering. It is not a new learned-policy success score.

@@ -66,9 +66,10 @@ composition with inverse dynamics needs explicit conversion to its nominal units
 Applied-force/forward-dynamics assembly, contact and integration remain separate;
 a gravity-only query cannot replace the
 controller's nonzero-velocity bias sample. The
-[fresh controller-sample integration](panda-owned-sample.md) first replaces
-queries behind the existing SDK loop, with matched-state field and controller
-comparisons before any claim about an owned whole episode. The source-visible low-level
+[fresh controller-sample integration](panda-owned-sample.md) now has an owned
+144-field constructor and a separate held-state paired-controller proof. The
+next step is the opt-in SDK-query adapter and a short recorded-command prefix;
+no live driver switch, stepped prefix or new owned whole episode is yet claimed. The source-visible low-level
 profile/pose helpers remain trusted inputs rather than an arbitrary-POD admission
 API. Moving finger inertias cannot be omitted from the arm mass block.
 The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)

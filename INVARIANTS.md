@@ -264,6 +264,29 @@ per-scalar absolute-plus-relative budgets. The first failed native fault setup
 remains recorded. This query supplies no net-force assembly, contacts, integration,
 command admission, compiler bounded proof, sensor clock or hardware control.
 
+## The owned controller sample is one fresh query with a separate behavior proof
+
+The fixed-source constructor admits matching arm/finger positions and rates,
+then uses one owned pose result for mass, Jacobian, velocity and nonzero-rate
+bias. It preserves PcSample's published 144-F64 layout and grip SITE conventions;
+all fields publish together after admission. Source-visible helpers remain
+unsealed and trust their inputs. No sensor stamp or simulation step is inferred.
+
+Constructor mutation evidence retains the initial 100/97/3 result, the changed
+pcs_forward 29/29 result and exact carried bodies separately. Counts describe
+emitted sites, not complete Quantity-operator token provenance; typed literal
+velocity and independent SDK fields qualify arithmetic separately. Paired
+static-controller comparisons require successful reset/held-call histograms,
+exact status/readiness/clipping and separately bounded logical state/output.
+Intentional refusals preserve initialized state snapshots. Held calls do not
+establish elapsed simulation time, stability or a new policy episode.
+
+The portable paired gate aliases exact historical receipt/sample bytes only
+after newly emitted C/header and owned output match their frozen identities.
+Historical execution is not relabelled as fresh; differing compiler artifacts
+require a new qualification. Driver selection, SDK-stepped prefixes and whole
+closed-loop outcomes retain their separate evidence.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T
