@@ -5,6 +5,7 @@ A Verse realm at https://openagents.com/realms/hold-the-stair: a popping tower d
 ## How to play
 
 - Click or tap a floor tile beside the stair, then pick a class: FIGHTER (50 gold), WIZARD (85), CLERIC (65), ROGUE (60), RANGER (75), BARD (70) or PALADIN (80). Keys 1 to 7 pick them for the chosen tile.
+- MAP, before the first wave, picks the floor: THE WINDING STAIR, THE SPIRAL (a long climb) or THE FORK (two stairs from one door to one top; the beasts take them in turn). A new map starts the game over; `?map=1` to `?map=3` opens one.
 - START WAVE (or Space) sends the next wave. Ten waves hold the stair; lives are the tower's hit points, and each beast that reaches the top takes what it holds inside.
 - SPEED steps the game through 1, 2 and 3 times (F on a keyboard).
 - Click a defender, or long-press it on a phone, for its card: its attack, its last roll (the d20, its bonus and the armor class or DC it met) and its hits, misses and pops. SELL gives back 70% of its cost.
@@ -34,7 +35,7 @@ The red numbers rise over whatever is hit; MISS, SAVED and IMMUNE say why nothin
 ## How it is made
 
 - `apps/openagents-web/stair.coax` is the game: the stair, the waves, the party's turns and the drawing. The dice and attack rolls are `verse/rules/srd5.coax` and `verse/rules/srd5-combat.coax`, the same rules Everglade plays by. `stair-face.c` binds it for the browser and `stair.wgsl` draws it.
-- `stair-tables.coax` holds the content as text tables, a statement a line: the four layers, the three classes and their levels, the ten waves, the starting gold and lives, and the stair's corners. A table that breaks a rule is refused with its line and the reason.
+- `stair-tables.coax` holds the content as text tables, a statement a line: the four layers, the seven classes and their levels, the ten waves, the starting gold and lives, and the three maps' stairs. A table that breaks a rule is refused with its line and the reason.
 - The dice are seeded: a map's table names its seed (`seed N`), `?seed=N` picks another, and starting over rolls the same dice from the first roll, so a replay or a shared match rolls the same game. A bubble's wobble and the numbers' drift use dice of their own and never shift a roll. Pops and splits go into a rules log for replays and analytics.
 - The difficulty curve is checked by seeded players (`play_as` in `stair.coax`): one defender a round reaches wave 8 or later, and the best play holds the stair but loses lives to waves 9 and 10. `coax/bin/coax run apps/openagents-web/stair-sim.coax --release` plays them over many seeds.
 - The design is `docs/verse/game-ideas/hold-the-stair.md` in the OpenAgents repository; the page is written from `realms.json` by `coax/web/realms.ts` (`docs/verse/realm-host.md`).

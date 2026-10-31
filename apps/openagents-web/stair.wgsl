@@ -13,6 +13,7 @@ struct U {
   cells: array<vec4f, 32>,   // per cell: kind (+ the stair's progress as the fraction; 10 + class for a defender)
   unit: array<vec4f, 32>,    // per cell with a defender: facing (sign) × (1 + its attack flash); the last two: the map's band (y0, y1) when zoomed in
   plate: array<vec4f, 48>,
+  ends: array<vec4f, 2>,   // each stair's door (x, y) and top (z, w), in map tiles; -1 none
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -304,10 +305,14 @@ fn light_at(l: vec2f) -> vec3f {
     let b = l - vec2f(u.info.x + 0.2, y);
     c += vec3f(1.0, 0.84, 0.55) * flicker(f32(j) + 7.0) * 0.75 * (1.0 / (1.0 + dot(a, a) * 0.6) + 1.0 / (1.0 + dot(b, b) * 0.6));
   }
-  let door = l - to_local(0.5, 7.5);
-  c += vec3f(1.0, 0.12, 0.14) * (0.8 + 0.25 * sin(u.time * 2.7)) / (1.0 + dot(door, door) * 0.7);
-  let top = l - to_local(13.5, 1.5);
-  c += vec3f(1.0, 0.86, 0.45) * 0.9 / (1.0 + dot(top, top) * 0.6);
+  for (var e = 0; e < 2; e++) {
+    let en = u.ends[e];
+    if (en.x < 0.0) { continue; }
+    let door = l - to_local(en.x, en.y);
+    c += vec3f(1.0, 0.12, 0.14) * (0.8 + 0.25 * sin(u.time * 2.7)) / (1.0 + dot(door, door) * 0.7);
+    let top = l - to_local(en.z, en.w);
+    c += vec3f(1.0, 0.86, 0.45) * 0.9 / (1.0 + dot(top, top) * 0.6);
+  }
   return c;
 }
 

@@ -16,6 +16,7 @@
 //   start gold G lives L                      G 0-9999, L 1-999
 //   round R every E                           R 1-20 defenders a round, one more each E waves (1-10)
 //   stair C R C R ...                         the stair's corners from the cellar door to the top
+//   stair2 C R C R ...                        (optional) a second stair; the beasts take the two in turn
 //       (2 to 16 of them, column 0-13, row 0-8), each straight across or down from the last
 //   seed N                                    the dice's seed for the map (1-999999999; optional)
 //   # anything after a hash is a note
@@ -41,6 +42,7 @@ Content :: struct {
   start_gold: int; start_lives: int; round_base: int; round_every: int;
   seed: u64;   // the dice's seed for this map: the same seed rolls the same game
   way_n: int; way_c: [TABLE_CORNERS] int; way_r: [TABLE_CORNERS] int;
+  way2_n: int; way2_c: [TABLE_CORNERS] int; way2_r: [TABLE_CORNERS] int;   // a second stair (0: none)
   // what was given, to refuse a table missing a part
   had_layer: [TABLE_LAYERS] bool; had_class: [TABLE_CLASSES] bool; had_level: [TABLE_CLASSES] bool;
   had_wave: [TABLE_WAVES] bool; had_start: bool; had_round: bool;
@@ -79,7 +81,14 @@ STAIR_TABLES :: [32] string.[
   "wave 8 ember 6 gap 1.2 delay 0; wave 8 wisp 12 gap 0.5 delay 4",
   "wave 9 glimmer 20 gap 0.45 delay 0; wave 9 ember 8 gap 1.0 delay 3",
   "wave 10 ember 14 gap 0.8 delay 0; wave 10 glimmer 14 gap 0.5 delay 4; wave 10 ember 8 gap 0.6 delay 9",
-  "start gold 140 lives 100; round 3 every 2; stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1"];
+  "start gold 140 lives 100; round 3 every 2"];
+// The maps: each is the stair (or two) the tables above are played on.
+MAPS :: 3;
+STAIR_MAP_NAME :: [MAPS] string.["THE WINDING STAIR", "THE SPIRAL", "THE FORK"];
+STAIR_MAPS :: [MAPS] string.[
+  "stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1",
+  "stair 0 1 11 1 11 7 3 7 3 4 8 4",
+  "stair 0 4 2 4 2 0 5 0 5 2 8 2 8 0 11 0 11 4 13 4; stair2 0 4 2 4 2 8 5 8 5 6 8 6 8 8 11 8 11 4 13 4"];
 
 TableWord :: struct { at: int; end: int; }
 table_blank :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
@@ -250,7 +259,8 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
     c[0].round_base = cast(int) rb.v; c[0].round_every = cast(int) ev.v; c[0].had_round = true;
     return true;
   }
-  if head == "stair" {
+  if head == "stair" || head == "stair2" {
+    two := head == "stair2";
     m := n - 1;
     if m % 2 != 0 || m < 4 || m > TABLE_CORNERS * 2 { return table_refuse(c, line, "stair is 2 to 16 corners, a column and a row each", ""); }
     for j: 0..<m / 2 {
@@ -258,16 +268,17 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
       if !cc.ok || !cc.whole || !rr.ok || !rr.whole || cc.v < 0 || cc.v > 13 || rr.v < 0 || rr.v > 8 {
         return table_refuse(c, line, "a corner is a column 0 to 13 and a row 0 to 8", "");
       }
-      c[0].way_c[j] = cast(int) cc.v; c[0].way_r[j] = cast(int) rr.v;
+      if two { c[0].way2_c[j] = cast(int) cc.v; c[0].way2_r[j] = cast(int) rr.v; } else { c[0].way_c[j] = cast(int) cc.v; c[0].way_r[j] = cast(int) rr.v; }
       if j > 0 {
-        dc := c[0].way_c[j] - c[0].way_c[j - 1]; dr := c[0].way_r[j] - c[0].way_r[j - 1];
+        dc := ifx two then c[0].way2_c[j] - c[0].way2_c[j - 1] else c[0].way_c[j] - c[0].way_c[j - 1];
+        dr := ifx two then c[0].way2_r[j] - c[0].way2_r[j - 1] else c[0].way_r[j] - c[0].way_r[j - 1];
         if (dc != 0) == (dr != 0) { return table_refuse(c, line, "each corner is straight across or down from the last, and not on it", ""); }
       }
     }
-    c[0].way_n = m / 2;
+    if two { c[0].way2_n = m / 2; } else { c[0].way_n = m / 2; }
     return true;
   }
-  return table_refuse(c, line, "a statement is layer, class, level, wave, start, round or stair, not ", head);
+  return table_refuse(c, line, "a statement is layer, class, level, wave, start, round, stair or stair2, not ", head);
 }
 // Reads a whole table: true and every part filled, or false with c[0].error starting with the line.
 stair_tables_read :: (c: [] Content, text: string) -> bool {
@@ -317,9 +328,10 @@ stair_tables_read :: (c: [] Content, text: string) -> bool {
   return true;
 }
 // STAIR_TABLES, a line each, read into c (true unless the built-in table is broken).
-stair_tables_default :: (c: [] Content) -> bool {
+stair_tables_default :: (c: [] Content, map: int) -> bool {
   buf: [4096] u8;
   n := 0;
   for i: 0..<STAIR_TABLES.count { n = table_put(buf[..], n, STAIR_TABLES[i]); if n < buf.count { buf[n] = '\n'; n += 1; } }
+  n = table_put(buf[..], n, STAIR_MAPS[map]);
   return stair_tables_read(c, cast(string) buf[0..<n]);
 }
