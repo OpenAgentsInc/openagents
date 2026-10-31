@@ -1,0 +1,564 @@
+// A Chrome DevTools Protocol client for Coax tools (shot, clip, goldens,
+// perf...): launch headless Chrome with WebGPU, connect to its page over
+// the DevTools WebSocket, send commands and await their replies, and read
+// events. It replaces coax/web/chrome.ts and the per-tool copies of the
+// connection code.
+//   c: [1] Cdp;
+//   if !cdp_launch(c[..], 1280, 720, "coax-clip-") { tool_errln(cdp_error(c[..])); ... }
+//   r := cdp_call(c[..], "Page.navigate", "{\"url\":\"http://127.0.0.1:8080/\"}", CDP_CALL_MS);
+//   v := cdp_evaluate(c[..], "1 + 1");          // the value's node in cdp_doc(c[..]), or -1
+//   n := cdp_screenshot(c[..], png[..]);        // PNG bytes
+//   cdp_close(c[..]);                          // the browser, its profile and the socket go
+// Chrome is always headless (--headless=new), muted, on its own temporary
+// profile, and never opens a window or takes focus. CHROME names the
+// binary; otherwise Google Chrome.app on a Mac and the real Chromium on
+// Linux (never a launcher that opens a window, such as CoderOS's
+// coder-browser). WebGPU runs on Metal through ANGLE on a Mac and on Vulkan
+// elsewhere.
+//
+// Effects: coax/lib/sys/proc.coax and fs.coax, socket-native.c (TCP to
+// 127.0.0.1) and entropy-foreign.c (mask keys). ws.coax frames and checks
+// the handshake; relay_conn_rules.coax's rc_scan admits server frames (text
+// only). A message is at most CDP_MSG_MAX bytes. Build with coax/web/tool.sh.
+#load "relay_conn_rules.coax";
+#load "../json/json.coax";
+#load "../text/base64.coax";
+#load "../sys/tool.coax";
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+cxrand_fill :: (n: int) -> int #foreign;
+cxrand_byte :: (i: int) -> int #foreign;
+
+CDP_MSG_MAX :: 33554432;                  // the largest message taken from Chrome (a screenshot's base64), 32 MiB
+CDP_IN :: CDP_MSG_MAX + 14 + 65536;       // one partial frame plus one read
+CDP_REQ :: 1048576;                       // the largest command we send
+CDP_NODES :: 65536;                       // JSON nodes in one message
+CDP_IO_MS :: 5000;                        // connect, the opening handshake, each write
+CDP_CALL_MS :: 300000;                    // the default wait for a reply
+CDP_MAC_CHROME :: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+// cdp_poll results.
+CDP_NONE :: 0; CDP_GOT :: 1; CDP_CLOSED :: 2; CDP_FAIL :: 3;
+
+Cdp :: struct {
+  proc: int = -1;                                   // Chrome, or -1
+  profile: [1024] u8; profile_n: int;               // its temporary profile directory
+  h: int = -1;                                      // the DevTools socket, or -1
+  rd: [1] WsReader;
+  inb: [CDP_IN] u8; used: int;
+  msg: [CDP_MSG_MAX] u8; msg_n: int;                // the last message's text
+  nodes: [CDP_NODES] JvNode; doc: [1] Jv;           // ... parsed (cdp_doc)
+  req: [CDP_REQ] u8; out: [CDP_REQ + 14] u8;
+  id: int;                                          // the last command's id
+  events: int;                                      // events seen while awaiting replies
+  err: [512] u8; err_n: int;                        // what went wrong (cdp_error)
+}
+
+// ---- which Chrome, which flags (pure) ------------------------------------
+
+#test "a launcher script is not a headless Chrome" {
+  #assert cdp_launcher("#!/bin/sh\nexec coder-browser \"$@\"") && cdp_launcher("echo 'the session has not granted a browser'");
+  #assert !cdp_launcher("ELF...") && !cdp_launcher("");
+  #assert cdp_contains("abcdef", "cde") && !cdp_contains("abc", "abcd") && cdp_contains("x", "");
+}
+// Whether a program's first bytes say it hands off to a windowed browser.
+cdp_launcher :: (head: string) -> bool {
+  return cdp_contains(head, "coder-browser") || cdp_contains(head, "has not granted a browser");
+}
+cdp_contains :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "the real Chromium that coder-browser runs" {
+  t := "#!/bin/sh\nPATH=/nix/store/abc-coreutils/bin:/nix/store/xyz-chromium-131.0/bin:$PATH\nexec chromium \"$@\"";
+  #assert cdp_nix_chromium(t, 0) == "/nix/store/xyz-chromium-131.0/bin";
+  #assert cdp_nix_chromium("/nix/store/a-chromium/lib /nix/store/b-chromium-2/bin", 0) == "/nix/store/b-chromium-2/bin";
+  #assert cdp_nix_chromium("/nix/store/a-firefox/bin", 0) == "" && cdp_nix_chromium("\"/nix/store/q\"chromium/bin", 0) == "";
+}
+// The first /nix/store/<name with "chromium">/bin in text at or after from, or "".
+cdp_nix_chromium :: (text: string, from: int) -> string {
+  pre := "/nix/store/";
+  i := from;
+  while i + pre.count <= text.count {
+    if text[i..<i + pre.count] == pre {
+      j := i + pre.count;
+      while j < text.count && text[j] != '/' && text[j] != ':' && text[j] != '"' { j += 1; }
+      seg := text[i + pre.count..<j];
+      if cdp_contains(seg, "chromium") && j + 4 <= text.count && text[j..<j + 4] == "/bin" { return text[i..<j + 4]; }
+    }
+    i += 1;
+  }
+  return "";
+}
+#test "Chrome's flags: headless, muted, its own profile, WebGPU for the OS" {
+  a: [1] Args;
+  #assert cdp_flags(a[..], TOOL_MAC, "/c", "/tmp/p", 1280, 720);
+  #assert args_count(a[..]) == 13 && args_at(a[..], 0) == "/c" && args_at(a[..], 1) == "--headless=new" && args_at(a[..], 2) == "--mute-audio";
+  #assert args_at(a[..], 3) == "--user-data-dir=/tmp/p" && args_at(a[..], 4) == "--no-first-run" && args_at(a[..], 5) == "--hide-scrollbars";
+  #assert args_at(a[..], 6) == "--enable-unsafe-webgpu" && args_at(a[..], 7) == "--enable-features=Vulkan" && args_at(a[..], 8) == "--use-angle=metal";
+  #assert args_at(a[..], 9) == "--window-size=1280,720" && args_at(a[..], 10) == "--remote-debugging-port=0" && args_at(a[..], 11) == "about:blank";
+  #assert args_at(a[..], 12) == "";
+  b: [1] Args;
+  #assert cdp_flags(b[..], 2, "chromium", "/p", 64, 32) && args_at(b[..], 7) == "--enable-features=Vulkan,VulkanFromANGLE";
+  #assert args_at(b[..], 8) == "--use-angle=vulkan" && args_at(b[..], 9) == "--ignore-gpu-blocklist" && args_at(b[..], 10) == "--window-size=64,32";
+}
+// argv for Chrome (the program first), as chrome.ts and shot.ts gave it.
+// The empty argument at the end marks the list's end for cdp_spawn.
+cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: int) -> bool {
+  buf: [1200] u8; n: [1] int;
+  ok := args_add(a, chrome) && args_add(a, "--headless=new") && args_add(a, "--mute-audio");
+  ok = ok && args_add(a, cdp_cat2("--user-data-dir=", profile, buf[..])) && args_add(a, "--no-first-run") && args_add(a, "--hide-scrollbars");
+  ok = ok && args_add(a, "--enable-unsafe-webgpu");
+  if os == TOOL_MAC {
+    ok = ok && args_add(a, "--enable-features=Vulkan") && args_add(a, "--use-angle=metal");
+  } else {
+    ok = ok && args_add(a, "--enable-features=Vulkan,VulkanFromANGLE") && args_add(a, "--use-angle=vulkan") && args_add(a, "--ignore-gpu-blocklist");
+  }
+  size: [64] u8; k := ws_put(size[..], 0, "--window-size="); k = ws_digits(size[..], k, w); k = ws_put(size[..], k, ","); k = ws_digits(size[..], k, h);
+  ok = ok && k > 0 && args_add(a, cast(string) size[0..<k]);
+  return ok && args_add(a, "--remote-debugging-port=0") && args_add(a, "about:blank") && args_add(a, "");
+}
+// a then b in out, or "" when they do not fit.
+cdp_cat2 :: (a: string, b: string, out: [] u8) -> string {
+  if a.count + b.count > out.count { return ""; }
+  for i: 0..<a.count { out[i] = a[i]; }
+  for i: 0..<b.count { out[a.count + i] = b[i]; }
+  return cast(string) out[0..<a.count + b.count];
+}
+
+// ---- finding the page (pure) ---------------------------------------------
+
+#test "DevToolsActivePort: the port on its first line" {
+  #assert cdp_port_of("53412\n/devtools/browser/abc\n") == 53412 && cdp_port_of("9222") == 9222;
+  #assert cdp_port_of("") == -1 && cdp_port_of("x\n") == -1 && cdp_port_of("70000\n") == -1 && cdp_port_of("0\n") == -1 && cdp_port_of("12a\n") == -1;
+}
+cdp_port_of :: (text: string) -> int {
+  e := 0;
+  while e < text.count && text[e] != '\n' && text[e] != '\r' { e += 1; }
+  v := args_whole(text[0..<e]);
+  return ifx v >= 1 && v <= 65535 then v else -1;
+}
+CdpWs :: struct { ok: bool; host_from: int; host_to: int; port: int; path_from: int; }
+#test "the page's ws:// URL: host, port and path" {
+  u := "ws://127.0.0.1:53412/devtools/page/0F1E";
+  p := cdp_ws_parts(u);
+  #assert p.ok && u[p.host_from..<p.host_to] == "127.0.0.1" && p.port == 53412 && u[p.path_from..<u.count] == "/devtools/page/0F1E";
+  q := cdp_ws_parts("ws://localhost/x");
+  #assert q.ok && q.port == 80;
+  #assert !cdp_ws_parts("wss://h:1/x").ok && !cdp_ws_parts("ws://h:1").ok && !cdp_ws_parts("ws://:1/x").ok && !cdp_ws_parts("ws://h:0/x").ok && !cdp_ws_parts("ws://h:x/y").ok;
+}
+cdp_ws_parts :: (url: string) -> CdpWs {
+  r: CdpWs;
+  pre := "ws://";
+  if url.count < pre.count || url[0..<pre.count] != pre { return r; }
+  i := pre.count;
+  j := i;
+  while j < url.count && url[j] != ':' && url[j] != '/' { j += 1; }
+  if j == i || j >= url.count { return r; }
+  r.host_from = i; r.host_to = j; r.port = 80;
+  if url[j] == ':' {
+    k := j + 1;
+    while k < url.count && url[k] != '/' { k += 1; }
+    r.port = args_whole(url[j + 1..<k]);
+    if r.port < 1 || r.port > 65535 || k >= url.count { return r; }
+    j = k;
+  }
+  r.path_from = j; r.ok = true;
+  return r;
+}
+#test "the first page target in /json/list" {
+  nodes: [64] JvNode; d: [1] Jv;
+  t := "[{\"type\":\"service_worker\",\"webSocketDebuggerUrl\":\"ws://a/1\"},{\"type\":\"page\",\"url\":\"about:blank\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9/devtools/page/P\"},{\"type\":\"page\",\"webSocketDebuggerUrl\":\"ws://b/2\"}]";
+  #assert jv_parse(d[..], t, nodes[..]) && jv_raw(d[0], cdp_page_target(d[0])) == "ws://127.0.0.1:9/devtools/page/P";
+  #assert jv_parse(d[..], "[{\"type\":\"other\"}]", nodes[..]) && cdp_page_target(d[0]) == -1;
+  #assert jv_parse(d[..], "{}", nodes[..]) && cdp_page_target(d[0]) == -1;
+}
+// The webSocketDebuggerUrl node of the first "page" target, or -1.
+cdp_page_target :: (d: Jv) -> int {
+  for i: 0..<jv_len(d, 0) {
+    t := jv_at(d, 0, i);
+    if jv_raw(d, jv_get(d, t, "type")) == "page" { return jv_get(d, t, "webSocketDebuggerUrl"); }
+  }
+  return -1;
+}
+CdpHttp :: struct { status: int; from: int; to: int; done: bool; }
+#test "an HTTP/1.1 response: status and body by Content-Length or end of stream" {
+  r := cdp_http("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\ncontent-length: 2\r\n\r\n[]", false);
+  #assert r.done && r.status == 200 && r.from == 70 && r.to == 72;
+  #assert !cdp_http("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n[]", false).done;
+  #assert !cdp_http("HTTP/1.1 200 OK\r\n", false).done && !cdp_http("HTTP/1.1 200 OK\r\n\r\n[", false).done;
+  e := cdp_http("HTTP/1.1 404 Not Found\r\n\r\n[]x", true);
+  #assert e.done && e.status == 404 && e.to - e.from == 3;
+  #assert cdp_http("junk\r\n\r\n", true).status == -1 && cdp_http("HTTP/1.1 2x0 OK\r\n\r\n", true).status == -1;
+}
+// What is known of a response from the bytes so far; ended: the stream ended.
+cdp_http :: (b: string, ended: bool) -> CdpHttp {
+  r: CdpHttp; r.status = -1;
+  head := -1;
+  for i: 0..<b.count - 3 { if head < 0 && b[i] == '\r' && b[i + 1] == '\n' && b[i + 2] == '\r' && b[i + 3] == '\n' { head = i; } }
+  if head < 0 { r.done = ended; return r; }
+  if b.count >= 12 && b[0..<5] == "HTTP/" && b[8] == ' ' { r.status = args_whole(b[9..<12]); }
+  if r.status < 100 { r.status = -1; r.done = true; return r; }
+  r.from = head + 4; r.to = b.count;
+  length := -1;
+  i := 0;
+  while i < head {
+    e := i;
+    while e < head && b[e] != '\r' { e += 1; }
+    line := b[i..<e];
+    name := "content-length:";
+    if line.count > name.count && ws_ieq(line[0..<name.count], name) { length = args_whole(ws_trim(line[name.count..<line.count])); }
+    i = e + 2;
+  }
+  if length >= 0 {
+    if b.count - r.from >= length { r.to = r.from + length; r.done = true; }
+    return r;
+  }
+  r.done = ended;
+  return r;
+}
+
+// ---- commands and replies (pure) -----------------------------------------
+
+#test "a command's text" {
+  out: [128] u8;
+  #assert cdp_command(7, "Page.navigate", "{\"url\":\"x\"}", out[..]) == "{\"id\":7,\"method\":\"Page.navigate\",\"params\":{\"url\":\"x\"}}";
+  #assert cdp_command(1, "Page.enable", "", out[..]) == "{\"id\":1,\"method\":\"Page.enable\",\"params\":{}}";
+  #assert cdp_command(1, "Page.enable", "", out[0..<10]) == "";
+}
+cdp_command :: (id: int, method: string, params: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "id"); jo_int(o[..], id); jo_key(o[..], "method"); jo_str(o[..], method);
+  jo_key(o[..], "params"); jo_raw(o[..], ifx params.count == 0 then "{}" else params); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+#test "replies and events" {
+  nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"id\":3,\"result\":{\"frameId\":\"F\"}}", nodes[..]);
+  #assert cdp_reply_id(d[0]) == 3 && jv_raw(d[0], jv_get(d[0], cdp_reply_result(d[0]), "frameId")) == "F" && cdp_event_method(d[0]) == "";
+  #assert jv_parse(d[..], "{\"id\":4,\"error\":{\"code\":-32601,\"message\":\"'X' wasn't found\"}}", nodes[..]);
+  #assert cdp_reply_id(d[0]) == 4 && cdp_reply_result(d[0]) == -1 && jv_raw(d[0], jv_path(d[0], 0, "error.message")) == "'X' wasn't found";
+  #assert jv_parse(d[..], "{\"method\":\"Page.loadEventFired\",\"params\":{\"timestamp\":1.5}}", nodes[..]);
+  #assert cdp_reply_id(d[0]) == -1 && cdp_event_method(d[0]) == "Page.loadEventFired";
+}
+cdp_reply_id :: (d: Jv) -> int { return jv_int(d, jv_get(d, 0, "id"), -1); }
+cdp_reply_result :: (d: Jv) -> int { return jv_get(d, 0, "result"); }
+cdp_event_method :: (d: Jv) -> string { return ifx cdp_reply_id(d) < 0 then jv_raw(d, jv_get(d, 0, "method")) else ""; }
+
+// ---- effects -------------------------------------------------------------
+
+cdp_fail :: (c: [] Cdp, what: string, detail: string) -> bool {
+  n := 0;
+  for b: what { if n < c[0].err.count { c[0].err[n] = b; n += 1; } }
+  for b: detail { if n < c[0].err.count { c[0].err[n] = b; n += 1; } }
+  c[0].err_n = n;
+  return false;
+}
+// What the last failure was.
+cdp_error :: (c: [] Cdp) -> string { return cast(string) c[0].err[0..<c[0].err_n]; }
+// The last message, parsed.
+cdp_doc :: (c: [] Cdp) -> Jv { return c[0].doc[0]; }
+
+// The headless Chrome to run, into out; "" when there is none.
+cdp_chrome :: (out: [] u8) -> string {
+  env := proc_getenv("CHROME", out);
+  if env.count > 0 { return env; }
+  if cxtool_os() == TOOL_MAC { return cdp_cat2(CDP_MAC_CHROME, "", out); }
+  path: [16384] u8;
+  dirs := cdp_cat2(proc_getenv("PATH", path[..]), ":/run/current-system/sw/bin", path[..]);
+  names := [4] string.["chromium", "chromium-browser", "google-chrome-stable", "google-chrome"];
+  head: [8192] u8;
+  for pass: 0..<2 {
+    i := 0;
+    while i <= dirs.count {
+      j := i;
+      while j < dirs.count && dirs[j] != ':' { j += 1; }
+      dir := dirs[i..<j];
+      i = j + 1;
+      if dir.count == 0 { continue; }
+      if pass == 0 {
+        for name: names {
+          p := fs_join(dir, name, out);
+          if p.count > 0 && fs_kind(p) == FS_FILE && !cdp_launcher(cdp_head(p, head[..])) { return p; }
+        }
+      } else {
+        // CoderOS shadows every browser name with its launcher; the launcher names the real Chromium it runs.
+        p := fs_join(dir, "coder-browser", out);
+        if p.count == 0 || fs_kind(p) != FS_FILE { continue; }
+        text: [65536] u8;
+        n := fs_read(p, text[..]);
+        if n < 0 { continue; }
+        bin := cdp_nix_chromium(cast(string) text[0..<n], 0);
+        if bin.count == 0 { continue; }
+        q := fs_join(bin, "chromium", head[..]);
+        if q.count > 0 && fs_kind(q) == FS_FILE { return cdp_cat2(q, "", out); }
+      }
+    }
+  }
+  return "";
+}
+// A file's first bytes (up to out.count), or what marks it a launcher when it cannot be read.
+cdp_head :: (path: string, out: [] u8) -> string {
+  big: [262144] u8;
+  n := fs_read(path, big[..]);
+  if n < 0 {
+    // too big to take whole (a real browser binary), or unreadable
+    if fs_size(path) > big.count { return ""; }
+    return "has not granted a browser";
+  }
+  k := ifx n < out.count then n else out.count;
+  for i: 0..<k { out[i] = big[i]; }
+  return cast(string) out[0..<k];
+}
+
+// Starts headless Chrome at w x h on a new profile (a temporary directory
+// named prefix...) and connects to its first page. False with cdp_error
+// set; whatever was started is closed again.
+cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
+  c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0;
+  bin: [4096] u8;
+  chrome := cdp_chrome(bin[..]);
+  if chrome.count == 0 { return cdp_fail(c, "no headless Chromium on this machine; set CHROME", ""); }
+  profile := fs_temp(prefix, c[0].profile[..]);
+  c[0].profile_n = profile.count;
+  if profile.count == 0 { return cdp_fail(c, "could not make a temporary profile", ""); }
+  a: [1] Args;
+  if !cdp_flags(a[..], cxtool_os(), chrome, profile, w, h) { cdp_close(c); return cdp_fail(c, "the browser's arguments do not fit", ""); }
+  p := proc_new();
+  ok := p >= 0;
+  for i: 0..<args_count(a[..]) - 1 { ok = ok && proc_arg(p, args_at(a[..], i)); }
+  ok = ok && proc_quiet(p);
+  if !ok { r := proc_release(p); cdp_close(c); return cdp_fail(c, "could not set up the browser process", ""); }
+  e := proc_start(p);
+  if e != 0 { r := proc_release(p); cdp_close(c); return cdp_fail(c, "could not start ", chrome); }
+  c[0].proc = p;
+  portfile: [1100] u8;
+  pf := fs_join(profile, "DevToolsActivePort", portfile[..]);
+  for i: 0..<100 { if fs_kind(pf) == FS_FILE && fs_size(pf) > 0 { break; } proc_sleep(50); }
+  text: [4096] u8;
+  n := fs_read(pf, text[..]);
+  port := ifx n > 0 then cdp_port_of(cast(string) text[0..<n]) else -1;
+  if port < 0 { cdp_close(c); return cdp_fail(c, "the browser never opened its DevTools port", ""); }
+  // The page target, from /json/list.
+  body: [262144] u8;
+  r := cdp_get(c, port, "/json/list", body[..]);
+  if r < 0 { cdp_close(c); return false; }
+  d: [1] Jv; nodes: [4096] JvNode;
+  if !jv_parse(d[..], cast(string) body[0..<r], nodes[..]) { cdp_close(c); return cdp_fail(c, "/json/list is not JSON", ""); }
+  t := cdp_page_target(d[0]);
+  url: [2048] u8;
+  un := jv_str(d[0], t, url[..]);
+  if un < 0 { cdp_close(c); return cdp_fail(c, "the browser has no page target", ""); }
+  if !cdp_connect(c, cast(string) url[0..<un]) { cdp_close(c); return false; }
+  return true;
+}
+
+// GET path from 127.0.0.1:port: the body's length in out, or -1 (cdp_error set).
+cdp_get :: (c: [] Cdp, port: int, path: string, out: [] u8) -> int {
+  host := "127.0.0.1";
+  for b: host { r := cxsock_host_push(cast(int) b); }
+  s := cxsock_connect(port, CDP_IO_MS);
+  if s < 0 { e := cdp_fail(c, "could not connect to the DevTools port", ""); return -1; }
+  req: [512] u8;
+  k := ws_put(req[..], 0, "GET "); k = ws_put(req[..], k, path); k = ws_put(req[..], k, " HTTP/1.1\r\nHost: 127.0.0.1:");
+  k = ws_digits(req[..], k, port); k = ws_put(req[..], k, "\r\nConnection: close\r\n\r\n");
+  ok := k > 0;
+  for i: 0..<k { ok = ok && cxsock_write(s, cast(int) req[i]) == 0; }
+  ok = ok && cxsock_flush(s, CDP_IO_MS) == 0;
+  got: [262144] u8; n := 0; ended := false;
+  deadline := proc_now_ms() + CDP_IO_MS;
+  r := cdp_http("", false);
+  while ok {
+    r = cdp_http(cast(string) got[0..<n], ended);
+    if r.done || ended { break; }
+    m := cxsock_read(s, proc_left(deadline, proc_now_ms()));
+    if m == -1 { ended = true; continue; }
+    if m <= 0 || n + m > got.count { ok = false; break; }
+    for i: 0..<m { got[n + i] = cast,trunc(u8) cxsock_byte(s, i); }
+    n += m;
+  }
+  x := cxsock_close(s);
+  if !ok || !r.done || r.status != 200 || r.to - r.from > out.count { e := cdp_fail(c, "GET ", path); return -1; }
+  for i: r.from..<r.to { out[i - r.from] = got[i]; }
+  return r.to - r.from;
+}
+
+cdp_draw :: (n: int, out: [] u8) -> bool {
+  if out.count < n || cxrand_fill(n) != 0 { return false; }
+  for i: 0..<n {
+    b := cxrand_byte(i);
+    if b < 0 || b > 255 { return false; }
+    out[i] = cast(u8) b;
+  }
+  return true;
+}
+cdp_put :: (c: [] Cdp, bytes: string) -> bool {
+  for b: bytes { if cxsock_write(c[0].h, cast(int) b) != 0 { return false; } }
+  return cxsock_flush(c[0].h, CDP_IO_MS) == 0;
+}
+cdp_fill :: (c: [] Cdp, wait_ms: int) -> int {
+  n := cxsock_read(c[0].h, wait_ms);
+  if n <= 0 { return n; }
+  if !rc_room(c[0].used, n, CDP_IN) { return -3; }
+  for i: 0..<n { c[0].inb[c[0].used + i] = cast,trunc(u8) cxsock_byte(c[0].h, i); }
+  c[0].used += n;
+  return n;
+}
+cdp_drop_front :: (c: [] Cdp, k: int) {
+  for i: k..<c[0].used { c[0].inb[i - k] = c[0].inb[i]; }
+  c[0].used -= k;
+}
+cdp_shut :: (c: [] Cdp) {
+  if c[0].h >= 0 { r := cxsock_close(c[0].h); }
+  c[0].h = -1; c[0].used = 0; c[0].rd[0] = WsReader.{};
+}
+// Opens the DevTools WebSocket at url (ws://host:port/path).
+cdp_connect :: (c: [] Cdp, url: string) -> bool {
+  cdp_shut(c);
+  u := cdp_ws_parts(url);
+  if !u.ok { return cdp_fail(c, "not a ws:// URL: ", url); }
+  host := url[u.host_from..<u.host_to];
+  for b: host { r := cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(u.port, CDP_IO_MS);
+  if h < 0 { return cdp_fail(c, "could not connect to ", url); }
+  c[0].h = h;
+  nonce: [16] u8; key: [24] u8; req: [2600] u8;
+  if !cdp_draw(16, nonce[..]) || !ws_key(nonce[..], key[..]) { cdp_shut(c); return cdp_fail(c, "no entropy for the handshake", ""); }
+  n := ws_request(host, u.port, url[u.path_from..<url.count], cast(string) key[..], req[..]);
+  if n < 0 || !cdp_put(c, cast(string) req[0..<n]) { cdp_shut(c); return cdp_fail(c, "the opening handshake failed: ", url); }
+  deadline := proc_now_ms() + CDP_IO_MS;
+  while true {
+    hello := ws_response(cast(string) c[0].inb[0..<c[0].used], cast(string) key[..]);
+    if hello.status == WS_HELLO_OK { cdp_drop_front(c, hello.consumed); return true; }
+    wait := proc_left(deadline, proc_now_ms());
+    if hello.status != WS_HELLO_MORE || wait == 0 || cdp_fill(c, wait) <= 0 { cdp_shut(c); return cdp_fail(c, "the browser refused the WebSocket: ", url); }
+  }
+  return false;
+}
+// One masked text frame.
+cdp_frame :: (c: [] Cdp, op: int, payload: string) -> bool {
+  mask: [4] u8;
+  if c[0].h < 0 || !cdp_draw(4, mask[..]) { return false; }
+  n := ws_frame_write(op, true, payload, mask[..], c[0].out[..]);
+  return n > 0 && cdp_put(c, cast(string) c[0].out[0..<n]);
+}
+
+// Sends a command (params: a JSON object's text, "" for none): its id, or -1.
+cdp_send :: (c: [] Cdp, method: string, params: string) -> int {
+  if c[0].h < 0 { e := cdp_fail(c, "not connected", ""); return -1; }
+  c[0].id += 1;
+  text := cdp_command(c[0].id, method, params, c[0].req[..]);
+  if text.count == 0 { e := cdp_fail(c, "the command does not fit: ", method); return -1; }
+  if !cdp_frame(c, WS_OP_TEXT, text) { cdp_shut(c); e := cdp_fail(c, "the browser connection broke sending ", method); return -1; }
+  return c[0].id;
+}
+// The next message within timeout_ms (negative: for ever). CDP_GOT: it is
+// parsed in cdp_doc. Pings are answered on the way.
+cdp_poll :: (c: [] Cdp, timeout_ms: int) -> int {
+  if c[0].h < 0 { return CDP_CLOSED; }
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  while true {
+    s := rc_scan(c[0].rd[..], cast(string) c[0].inb[0..<c[0].used], c[0].msg[..]);
+    if s.kind == RC_S_TEXT {
+      cdp_drop_front(c, s.consumed); c[0].msg_n = c[0].rd[0].used;
+      if !jv_parse(c[0].doc[..], cast(string) c[0].msg[0..<c[0].msg_n], c[0].nodes[..]) { e := cdp_fail(c, "a message from the browser is not JSON (or too big)", ""); return CDP_FAIL; }
+      return CDP_GOT;
+    }
+    if s.kind == RC_S_PING {
+      ctl: [125] u8; k := s.to - s.from;
+      for i: 0..<k { ctl[i] = c[0].inb[s.from + i]; }
+      cdp_drop_front(c, s.consumed);
+      if !cdp_frame(c, WS_OP_PONG, cast(string) ctl[0..<k]) { cdp_shut(c); return CDP_FAIL; }
+      continue;
+    }
+    if s.kind == RC_S_PONG { cdp_drop_front(c, s.consumed); continue; }
+    if s.kind == RC_S_CLOSE || s.kind == RC_S_REFUSE { cdp_shut(c); e := cdp_fail(c, "the browser closed the connection", ""); return ifx s.kind == RC_S_CLOSE then CDP_CLOSED else CDP_FAIL; }
+    cdp_drop_front(c, s.consumed);
+    k := rc_read(cdp_fill(c, proc_left(deadline, proc_now_ms())));
+    if k == RC_CLOSED { cdp_shut(c); e := cdp_fail(c, "the browser closed the connection", ""); return CDP_CLOSED; }
+    if k == RC_FAIL { cdp_shut(c); e := cdp_fail(c, "the browser connection failed", ""); return CDP_FAIL; }
+    if k == RC_NONE && deadline >= 0 && proc_now_ms() >= deadline { return CDP_NONE; }
+  }
+  return CDP_FAIL;
+}
+// Sends a command and waits for its reply: the reply's "result" node in
+// cdp_doc, or -1 (an error reply, a timeout, a broken connection; cdp_error
+// says which). Events that come meanwhile are counted in events and passed over.
+cdp_call :: (c: [] Cdp, method: string, params: string, timeout_ms: int) -> int {
+  id := cdp_send(c, method, params);
+  if id < 0 { return -1; }
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  while true {
+    k := cdp_poll(c, proc_left(deadline, proc_now_ms()));
+    if k == CDP_NONE { e := cdp_fail(c, "no reply in time to ", method); return -1; }
+    if k != CDP_GOT { return -1; }
+    d := c[0].doc[0];
+    if cdp_reply_id(d) == id {
+      r := cdp_reply_result(d);
+      if r < 0 { e := cdp_fail(c, method, " failed"); }
+      return r;
+    }
+    if cdp_reply_id(d) < 0 { c[0].events += 1; }
+  }
+  return -1;
+}
+// Waits for an event called method: true when it came (its message is in
+// cdp_doc). Events before it, and replies, are passed over.
+cdp_wait_event :: (c: [] Cdp, method: string, timeout_ms: int) -> bool {
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  while true {
+    k := cdp_poll(c, proc_left(deadline, proc_now_ms()));
+    if k != CDP_GOT { return false; }
+    if cdp_event_method(c[0].doc[0]) == method { return true; }
+  }
+  return false;
+}
+// Runtime.evaluate with awaitPromise and returnByValue: the node of the
+// value in cdp_doc, or -1 when there is none (undefined, a thrown error, a
+// failed call), as `(await send(...))?.result?.result?.value` reads it.
+cdp_evaluate :: (c: [] Cdp, expression: string) -> int {
+  params: [CDP_REQ] u8;
+  o: [1] Jo; jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expression);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { e := cdp_fail(c, "the expression is too long", ""); return -1; }
+  r := cdp_call(c, "Runtime.evaluate", jo_text(o[..]), CDP_CALL_MS);
+  if r < 0 { return -1; }
+  return jv_path(c[0].doc[0], r, "result.value");
+}
+// Page.captureScreenshot as PNG, decoded into out: its size, or -1.
+cdp_screenshot :: (c: [] Cdp, out: [] u8) -> int {
+  r := cdp_call(c, "Page.captureScreenshot", "{\"format\":\"png\"}", CDP_CALL_MS);
+  d := c[0].doc[0];
+  data := jv_get(d, r, "data");
+  if jv_kind(d, data) != JV_STRING { if r >= 0 { e := cdp_fail(c, "a screenshot without data", ""); } return -1; }
+  n := b64_decode(jv_raw(d, data), out);
+  if n < 0 { e := cdp_fail(c, "the screenshot does not fit or is not base64", ""); }
+  return n;
+}
+// Closes the socket, kills the browser's process group and removes its profile.
+cdp_close :: (c: [] Cdp) {
+  if c[0].h >= 0 { sent := cdp_frame(c, WS_OP_CLOSE, ""); }
+  cdp_shut(c);
+  if c[0].proc >= 0 {
+    k := proc_kill(c[0].proc, PROC_SIGKILL);
+    w := proc_wait(c[0].proc, 5000);
+    r := proc_release(c[0].proc);
+    c[0].proc = -1;
+  }
+  if c[0].profile_n > 0 {
+    // Chrome's helpers may still be writing as they die: try again briefly.
+    p := cast(string) c[0].profile[0..<c[0].profile_n];
+    for i: 0..<20 { if fs_remove(p) && !fs_exists(p) { break; } proc_sleep(50); }
+    c[0].profile_n = 0;
+  }
+}
