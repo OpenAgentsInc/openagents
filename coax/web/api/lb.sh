@@ -146,6 +146,24 @@ for pm in m["pathMatchers"]:
     rules.sort(key=lambda r: r["priority"])
     changed = True
     print("url map: production /signin, /logout and /signup to /login")
+# The old site's pages that visitors still reach from old links (2026-10-31: one sat 27 minutes on
+# the /settings/api-keys 404): its settings go to /login, the account page now; its API docs
+# (/docs, /docs/api, /docs/api/models...) to the one docs page, Connect a Pylon.
+for pm in m["pathMatchers"]:
+    if pm["name"] != "production": continue
+    rules = pm.setdefault("routeRules", [])
+    for want, to in (([{"fullPathMatch": "/settings"}, {"prefixMatch": "/settings/"}], "/login"),
+                     ([{"fullPathMatch": "/docs"}, {"fullPathMatch": "/docs/"}, {"fullPathMatch": "/docs/api"}, {"prefixMatch": "/docs/api/"}],
+                      "/docs/connect-a-pylon/")):
+        go = {"pathRedirect": to, "stripQuery": True, "redirectResponseCode": "FOUND"}
+        rule = next((r for r in rules if r.get("matchRules") == want), None)
+        if rule and rule.get("urlRedirect") == go: continue
+        if rule: rules.remove(rule)
+        free = next(p for p in range(11, 40) if p not in {r["priority"] for r in rules})
+        rules.append({"priority": free, "matchRules": want, "urlRedirect": go})
+        rules.sort(key=lambda r: r["priority"])
+        changed = True
+        print("url map: production " + want[0]["fullPathMatch"] + " to " + to)
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:
