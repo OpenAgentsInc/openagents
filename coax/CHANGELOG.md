@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.39.0 — 2026-10-31
 
-Commit: pending
+Commit: [`26a9355c10e1471454f8c18b3da5cf788f70daef`](https://github.com/OpenAgentsInc/openagents/commit/26a9355c10e1471454f8c18b3da5cf788f70daef)
 
 - `coax checks-c FILE [--only SUBSTR] [-o checks.c]` emits verification-only
   C11 from the compiler's checked zero-argument `#test` procedures and their
