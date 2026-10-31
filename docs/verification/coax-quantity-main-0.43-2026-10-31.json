@@ -639,5 +639,30 @@
       }
     ],
     "main_changed_checker_procedures": "CK_instance and CK_earlier are outside the frozen own procedure set; their new interaction with quantities is covered by the integration check."
+  },
+  "publication_binding": {
+    "reachable_main_commit": "e6d4ab1bc0fc8d1644d27624b3cab60425187803",
+    "tested_snapshot": "1ea7f75fc694680f7f61ef5377a804cfaacbb667",
+    "compiler_input_inventory": "coax/provenance.sh directories and explicit file list",
+    "compared_paths": [
+      "coax/src",
+      "coax/bootstrap",
+      "coax/lib/compiler",
+      "coax/lib/proto",
+      "coax/build.sh",
+      "coax/bootstrap-build.sh",
+      "coax/check-proto-cap.sh",
+      "coax/provenance.sh",
+      "coax/provenance-bridge.c",
+      "coax/release.coax",
+      "coax/release-model.coax",
+      "coax/changelog.coax",
+      "coax/changelog-model.coax",
+      "coax/changelog-bridge.c",
+      "scripts/coax-release.sh"
+    ],
+    "compiler_input_files_byte_identical": true,
+    "method": "git diff --name-only between exact commits over the complete normal input inventory is empty; published commit is an ancestor of origin/main.",
+    "scope": "Resolves the pre-rebase snapshot label to publicly reachable identical compiler sources. Historical binary/command/fingerprint fields are preserved; no reconstruction or native proof reran."
   }
 }

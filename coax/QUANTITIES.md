@@ -182,7 +182,9 @@ no unchanged mutation scope reruns. The quantity native fixture and Psionic
 owned-plant bridge reproduce their prior qualified C and headers exactly,
 so their earlier numerical/native proofs carry. The current Grid compiles,
 and the private Basic consumer prints the recorded result. No SDK/model
-trial reruns.
+trial reruns. The receipt also binds publicly reachable main commit
+`e6d4ab1bc0`, whose complete normal compiler-input inventory is byte-identical
+to the tested pre-rebase snapshot.
 
 These private, focused results do not by themselves qualify or publish a
 normal release cache. The full normal bootstrap, release/provenance checks
