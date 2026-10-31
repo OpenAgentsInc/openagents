@@ -164,6 +164,11 @@ const ErrorInfo ERRORS[] = {
     {"E0829", "derived physical metadata is outside the profile", "Each intermediate unit must have mass/length/time/angle exponents -8..8 and reduced rational scale factors 1..1048576. Exact cancellation happens before the scale bound. Convert operands explicitly when needed."},
     {"E0830", "invalid derived unit type expression", "UnitOne takes no arguments; UnitProduct and UnitQuotient take two concrete unit types. These reserved forms are types, not runtime calls. Symbolic generic unit operands are a later profile."},
     {"E0831", "derived nominal unit expression is too complex", "Canonical forms contain at most eight nominal atoms with nonzero powers from -2147483647 through 2147483647. Matching atoms cancel before the capacity check; no partial unit is admitted."},
+    {"E0832", "invalid frame metadata or declaration", "Declare one empty nongeneric frame tag with explicit handedness, convention, continuity and minimum precision. Optical is right-handed X-right/Y-down/Z-forward."},
+    {"E0833", "invalid spatial type", "Point3 and Vector3 require an admitted concrete frame, unit and f32/f64; points require length units and all coordinates meet the frame precision floor."},
+    {"E0834", "spatial operation refused", "Use the admitted affine point/vector operations with identical frame, unit and carrier. Only matching raw f32/f64 values scale vectors; transforms and implicit conversions are not provided."},
+    {"E0835", "spatial reflection profile unavailable", "Schema1 does not describe spatial semantics. Use size_of, physical layout or type_name until versioned frame metadata is qualified."},
+    {"E0836", "spatial device profile unavailable", "The initial Point3/Vector3 representation and operator profile is qualified only for native C."},
 
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time resource budget exceeded", "Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N)."},

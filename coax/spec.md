@@ -488,8 +488,56 @@ existing power-of-two ratio profile and family preservation remain. Numerical
 values are never implicitly rescaled to base units. Type canonicalization does
 not reorder effects, reassociate floating arithmetic, change IEEE behavior, or
 remove the explicit `.value` boundary. Native layout is still the F32/F64
-carrier; device and schema1 quantity reflection refusals remain. Points,
-vectors, frames, clocks and the full R12 consumer gate remain pending.
+carrier; device and schema1 quantity reflection refusals remain. The initial
+affine point/vector/frame profile follows below; transforms, clocks and the
+full R12 consumer gate remain pending.
+
+### 7.1.3 Initial affine spatial types (authored-source milestone, unreleased)
+
+An empty nongeneric nominal frame tag states all four literal attributes:
+
+```jai
+World :: struct @frame(handedness=right, convention=cartesian,
+    continuity=continuous, min_precision=f32) {}
+```
+
+Handedness is `right` or `left`; convention is `cartesian`, `body` or
+`optical`; continuity is `continuous` or `jumping`; minimum precision is
+`f32` or `f64`. Optical means X-right/Y-down/Z-forward and requires right
+handedness. All attributes are required, without duplicates or value lookups.
+A frame cannot also be a unit/quantity role. Metadata does not establish a
+frame realization, correction epoch, inertial status, transform or coverage.
+
+Global type forms `Point3(Frame,Unit,R)` and `Vector3(Frame,Unit,R)` require
+concrete admitted frame/unit tags and `f32`/`f64`, meeting the frame's minimum
+precision. Point units have physical length dimension; vector units may have
+any admitted dimension. Their nominal identity includes kind, frame, resolved
+unit and representation. Equal frame metadata never merges declarations.
+These are ordinary three-field aggregates `x:R,y:R,z:R`, without stored tags
+or scalar-carrier erasure. The initial construction surface is a typed zero
+variable followed by explicit component assignment; intrinsic struct literals
+and generic constructor arguments are not included. Components are explicit
+raw escapes, not proof of sensor units or a valid physical frame assignment.
+
+With exact matching frame/unit/representation, point−point yields vector;
+point+vector, vector+point and point−vector yield point; vector±vector yields
+vector. Only vectors negate or scale by a matching raw floating scalar
+(including scalar-left multiplication and vector/scalar division). Ordinary
+untyped scalar literals can coerce to that carrier. A dimensionless Quantity
+is not a raw scalar. Whole operands evaluate once in source order. No point
+addition/scaling/negation, vector product, equality, ordering, dot or cross is
+included. No implicit frame, unit or precision conversion exists.
+
+The initial backend is native C; device use and schema1 semantic reflection
+are refused. `size_of`, physical layout and `type_name` remain available.
+Spatial types and private operator procedures share the existing 256-instance
+compiler budget with generic and generated-unit instances; pool refusal never
+publishes a partial cache entry. Compiler-generated private operator procedures
+may remain as calls in debug
+builds; release erasure/inlining and aggregate ABI require measured evidence.
+This does not complete R12: frame-chain/state transforms, angular roles,
+coverage, clock-stamped realizations, precision-origin records and full real
+Verse/Panda consumers remain pending.
 
 ### 7.2 Generics
 

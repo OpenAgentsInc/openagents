@@ -1,0 +1,10 @@
+#load "../../lib/quantity.coax" as u;
+#authority;
+MutationWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+spatial_indexed_difference :: (points:[]Point3(MutationWorld,u.Metre,f64))->Vector3(MutationWorld,u.Metre,f64) {
+ return points[1]-points[0];
+}
+#test "authored spatial operand indices remain visible through intrinsic lowering" {
+ points:[2]Point3(MutationWorld,u.Metre,f64);points[0].x=2;points[1].x=6;
+ delta:=spatial_indexed_difference(points[..]);#assert delta.x==4 && delta.y==0 && delta.z==0;
+}

@@ -124,6 +124,7 @@ static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nod
     const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
     n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.skip_authority=!file->src->units.empty() && !source_authority(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
     n.quantity=v.quantity;n.unit={v.unit.e[0],v.unit.e[1],v.unit.e[2],v.unit.e[3],v.unit.e[4],v.unit.e[5]};
+    n.frame_decl=v.frame_decl;n.frame={v.frame.e[0],(uint8_t)v.frame.e[1],(uint8_t)v.frame.e[2],v.frame.e[3]};
     n.scope=module_scope(input.get(),source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset}));
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
@@ -205,7 +206,7 @@ bool check(Arena *arena,File *file){
   std::vector<StructDecl*> structs,templates;for(auto *d:file->structs)(d->generic?templates:structs).push_back(d);
   for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){
     if(nodes[(size_t)id].kind==COAX_CK_Tag_struct_){auto *d=checked_ref<StructDecl>(objects,id);d->end=d->origin->end;if(!d->generic)structs.push_back(d);continue;}
-    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=o->authority;p->root_source=o->root_source;concrete.push_back(p);}
+    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;concrete.push_back(p);}
   file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);file->structs=to_slice(arena,structs);file->generic_structs=to_slice(arena,templates);
   file->check_input.reset();return true;
 }

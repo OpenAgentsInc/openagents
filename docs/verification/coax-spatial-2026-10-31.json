@@ -1,0 +1,252 @@
+{
+  "schema": "coax.spatial.focused-verification.v1",
+  "date": "2026-10-31",
+  "focused_passed": true,
+  "context": "Frozen pre-publication compiler 0.44 M3 source. Main 0.45 merged source reconstruction, integration and publication are separate parent-owned evidence; this receipt does not claim that later context.",
+  "scope": "R12 initial concrete Point3/Vector3 affine profile: nominal frame/unit, f32/f64, minimum precision, aggregate native C lowering. Full R12 remains pending.",
+  "source_sha256": {
+    "coax/lib/compiler/checker.coax": "98f533270e01adc145d9d3032686cabf829ef5c8ba808685735d52ae8cc97ed7",
+    "coax/src/check.cpp": "a9a2c2e4b4bd96a4694d0f359412358f5dda871f594ccb6c1b8abc8442d184fe",
+    "coax/src/errors.cpp": "932a825cc155c8d35f259f55032d49b159def3889f84a892dfa32e0feb2049cb",
+    "coax/bootstrap/checker.c": "5fa0084b2f689e0e9f63edc8f26b0f383b106fbc30f063bdf8f2b7f9515739a1",
+    "coax/bootstrap/checker.h": "5ca9d5651621e70d97f4d5388fae16d221df05dc9b96bcc279ed98fca8827293",
+    "coax/tests/checker.py": "1f14a8e93030121c948ce95ac9103f946a1ae21b5ea5e2757d3c4bbd9041dedf",
+    "coax/tests/spatial.py": "3d5f290f3e2a94ebd8f01288d01d897466a0e23c3f38e7dfcb5dc7d38fb7ee25",
+    "coax/tests/spatial_scope.py": "1d49958f345b1ac5bb765a2ec619df0a7a440adc6f0e1c57c541b425bd7ef5af",
+    "coax/tests/spatial/mutation-operands.coax": "c1d15c07f320cc9655c41cb4a5a97747d36d56a2aec42927df8587dbfa9dead2"
+  },
+  "product_policy": "Authored Coax calls the already-qualified SP policy, interns ordinary three-field aggregate types and private by-value arithmetic helpers. Type.carrier remains0. C++ transports frame literals and excludes self-origin helper procedures from authored authority/source roots; no new host arithmetic.",
+  "mutation": {
+    "schema": "coax-changed-procedure-mutation-scope-v1",
+    "original": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/compiler/checker.coax",
+    "source_sha256": "98f533270e01adc145d9d3032686cabf829ef5c8ba808685735d52ae8cc97ed7",
+    "root": "/private/tmp/r12-spatial-checker-third/root.coax",
+    "root_sha256": "b72213a7c205cc966b94aee0907a8af62524ecb28d2b0d71f111af00585dd8be",
+    "dependency_sha256": "de196392ff793f33f8cdd60fff016c5d46a769ba621aff85c96f6938c61e498c",
+    "procedure_count": 20,
+    "procedures": [
+      {
+        "name": "CK_spatial_constructor",
+        "first_line": 1018,
+        "sha256": "553cd4310475da67f8d0dadea3c91373d39f6ba94367f44b5c4449fb652cb449"
+      },
+      {
+        "name": "CK_frame_layout",
+        "first_line": 1021,
+        "sha256": "4d20aa0f9a023004973269d2b8fc4fea1d281fcfd2bb1307552402649cccbeba"
+      },
+      {
+        "name": "CK_spatial_intern",
+        "first_line": 1025,
+        "sha256": "4a6a2f7c632214bc8c4915563b86c98e042d8d08256fd9ce419fc20c8e27b9c2"
+      },
+      {
+        "name": "CK_spatial_type",
+        "first_line": 1043,
+        "sha256": "678a768cee3ce980b4a3b3abc1ee021e5471cb84b633fb0c6e88b98c8c5dd80c"
+      },
+      {
+        "name": "CK_spatial_descriptor",
+        "first_line": 1048,
+        "sha256": "def6fad3e938242fe0b58997cb268dc85ab5bf7701793a40ce79588f71790c4b"
+      },
+      {
+        "name": "CK_spatial_projection",
+        "first_line": 1051,
+        "sha256": "bac60d3a19c8cddf690cc4dcb6e39217310678ef46a417d8cc17d10afef9c264"
+      },
+      {
+        "name": "CK_spatial_helper",
+        "first_line": 1054,
+        "sha256": "fec84cb282b6afb56f80488f1a37b608e46a82192547a2bedcd2628ca8fb7241"
+      },
+      {
+        "name": "CK_spatial_call",
+        "first_line": 1068,
+        "sha256": "7bb70ca869bf2fa3cb1b4554e967af1a7df9bcf558552a95aeadf04bcba1c530"
+      },
+      {
+        "name": "CK_spatial_operation",
+        "first_line": 1074,
+        "sha256": "8d68095f7c79d6e8a10a0eac48cede55efbdd7d2dd462995528c74d3f783ed71"
+      },
+      {
+        "name": "CK_spatial_binary",
+        "first_line": 1077,
+        "sha256": "9914989c7c5410edf04f7b9002f5cea8642d963b7afcf21427dc46211f70d8d4"
+      },
+      {
+        "name": "CK_spatial_unary",
+        "first_line": 1086,
+        "sha256": "c013e34c8468f2e137f50abfc6fcef062fc33e5c2557502fa30de98bc03db4d1"
+      },
+      {
+        "name": "CK_builtin_name",
+        "first_line": 680,
+        "sha256": "33b3671a6f386ca46de966f9dc7a21bf966b4744e3fd7f6d0d4e78b3ad54d235"
+      },
+      {
+        "name": "CK_resolve",
+        "first_line": 743,
+        "sha256": "725c95a9ba59f8fcd19f756555caa10f92d4bdfa67c664d1a79153e6c274e833"
+      },
+      {
+        "name": "CK_layout",
+        "first_line": 863,
+        "sha256": "b298710e2338cc25906f860dc4a00b6fc50de12c39f66fcb2b1e3fb9bcf62bf1"
+      },
+      {
+        "name": "CK_binary",
+        "first_line": 1226,
+        "sha256": "5d225be75d97def7197adebdabd09591b3260928c655743c5d5c0644763b8132"
+      },
+      {
+        "name": "CK_prechecked",
+        "first_line": 1263,
+        "sha256": "19b264da07bd40be010a42f57008fcee8194b4c55a3c4a69b3cb357e77bc0472"
+      },
+      {
+        "name": "CK_expr_inner",
+        "first_line": 1266,
+        "sha256": "0d89584ad14ef7cbccddc04c10239aa9ca3531f0effc995de25e5d304d80e307"
+      },
+      {
+        "name": "CK_meta_query",
+        "first_line": 1611,
+        "sha256": "cfc20de31081f8cf20151e97702f40a2153e817aee5a30cc06280cb9c60560da"
+      },
+      {
+        "name": "CK_call",
+        "first_line": 1639,
+        "sha256": "b99523f03222526d673bdefc646d3ab2c71c843bbe98511ce41556d7882ec697"
+      },
+      {
+        "name": "CK_instantiate",
+        "first_line": 2044,
+        "sha256": "e1e5fc43ce3a0da077c9de41d3feaedb11b08eb9a24273bdea29b80dc5f729bc"
+      }
+    ],
+    "transformation": "Exact selected procedure bodies are root source. Every other body and every original check remain in dependency source. Only four policy load paths become absolute. No waiver or check filtering.",
+    "mutants": 1403,
+    "killed": 1403,
+    "survived": 0,
+    "retained_check_groups": 731,
+    "compiler": "/tmp/coax-quantity-m2-reconstruction-044/coax",
+    "compiler_sha256": "bd397cf4ba62539886e2e768436c7f8909da9a6dadcf2df4142b84b90f6be419",
+    "log": "/tmp/r12-spatial-checker-third/mutation.log",
+    "log_sha256": "a335cd16c07616e9682570e9e804a4bfd610576d7995a92f485067eac160d25d",
+    "equivalent_waivers": 0
+  },
+  "development_history": [
+    {
+      "scope": "18 changed procedures",
+      "retained_groups": 715,
+      "mutants": 1421,
+      "killed": 1305,
+      "survived": 116,
+      "log": "/tmp/r12-spatial-checker-first/mutation.log"
+    },
+    {
+      "scope": "20 changed procedures, before mark 2 source-call provenance refinement",
+      "retained_groups": 730,
+      "mutants": 1400,
+      "killed": 1398,
+      "survived": 2,
+      "log": "/tmp/r12-spatial-checker-second/mutation.log",
+      "closure": "Added an admitted point-point result-type allocation refusal at the shared256-instance boundary."
+    },
+    {
+      "scope": "final 20 procedures",
+      "retained_groups": 731,
+      "mutants": 1403,
+      "killed": 1403,
+      "survived": 0,
+      "log": "/tmp/r12-spatial-checker-third/mutation.log"
+    }
+  ],
+  "private_candidate": {
+    "path": "/tmp/coax-spatial-provenance/coax",
+    "sha256": "0d70ede6d122ec88ee9f0f4cd86d9181ffe5172f5300b57dfc3b27d465e41b76",
+    "qualification": "Focused generation/integration candidate only; not installed into a release cache."
+  },
+  "cli": {
+    "initial_methods": 10,
+    "initial_passed": true,
+    "new_methods": 2,
+    "new_passed": true,
+    "new_log": "/tmp/coax-spatial-provenance/new-cli.log",
+    "final_new_log_sha256": "42aab6218fb48679ff76aa86df27c94ffdb5a87fe3691a2f7c6b4765a78f7c3f",
+    "tests": "coax/tests/spatial.py",
+    "scope": "Ten initial source methods were qualified before the provenance-only change. Two new methods cover authored operand/index traversal and copyable-only constraints. Existing production C/headers are exact across that change."
+  },
+  "authored_operand_provenance": {
+    "fixture": "coax/tests/spatial/mutation-operands.coax",
+    "before_source_sites": 0,
+    "after_source_sites": 2,
+    "after_killed": 2,
+    "after_survived": 0,
+    "after_log_sha256": "311b1ca871af4724ccf297ef2129954a6a71c8713fe8aec1478c4ba2eeebf624",
+    "contract": "Source-lowered calls use prechecked mark 2 and retain cloned operand traversal. Synthetic helper expression nodes remain generated mark 1. Spatial operator-token swaps remain pending.",
+    "duplicate_execution_note": "The tiny 2-site probe was accidentally executed twice while capturing its detailed output after the unittest method. The result is counted once; no old broad or numerical gate was repeated."
+  },
+  "native_transport": {
+    "new_method": "Checker.test_spatial_graph_transport_and_device_option",
+    "passed": true,
+    "seconds": 19.486,
+    "receipt": "/tmp/coax-spatial-provenance/transport-probe.json",
+    "receipt_sha256": "fd68a5d01c832ad7c7f8b1e0ebe435ee7491647d0128cecfcf2fbd3244d977d2",
+    "observations": [
+      "raw parser frame4\u2192SP_Frame",
+      "canonical point/vector kind+rep+frame/unit",
+      "carrier = 0 and24-byte/alignment8 F64 layout",
+      "source mark 2 call retained",
+      "E0836 device refusal"
+    ]
+  },
+  "checked_seed_header_transport": {
+    "passed": true,
+    "seconds": 0.537,
+    "method": "TransportABI.test_generated_seed_headers_match_ctypes",
+    "log": "/tmp/coax-spatial-provenance/final-header-layout.log",
+    "log_sha256": "d6f54ad4cd18526cc2ca8f06e5b2e58568a755fc23484b3d31818f65a7e28e14",
+    "scope": "Header-only native size/alignment/all-field-offset probes against both current checked-in seeds; no old numerical checker corpus."
+  },
+  "independent_native_reuse": {
+    "public_record": "coax/tests/spatial/native-qualification.json",
+    "observations_per_mode": 84978,
+    "modes": [
+      "debug",
+      "release",
+      "fail-fast ASan+UBSan"
+    ],
+    "whole_operand_order_cases": 20,
+    "foreign_scalar_interruptions": 8,
+    "numeric_stream_sha256": "934d69a7703e04103e4fc892c7c171c00f7370824f3303a2ef66ae3632ec7754",
+    "provenance_emission_binding": "/tmp/spatial-native-provenance-emissions/receipt.json",
+    "binding_sha256": "7bd4a84fd40a510ae5b22f750bfe59d8a1c046fa0f4b06dbd2e628f910a01fb1",
+    "four_C_outputs_exact": true,
+    "two_headers_exact": true,
+    "native_modes_repeated": false,
+    "object_observation": "Release 30/30 raw symbol bytes equal; 28/30 also relocation-free. Debug 6/30 relocation-free exact; debug helper overhead remains. No universal zero-cost claim."
+  },
+  "reused_dependencies": {
+    "spatial_policy": "coax/tests/spatial-policy/qualification.json: 158/158 already-qualified mutations",
+    "parser": "coax/tests/spatial/frame-parser-qualification.json: 102/102 focused mutations and146 direct-token cases\u00d72024 assertions in each of3 native modes; owned separately",
+    "scalar_quantity_and_unit_algebra": "Existing unchanged M1/M2/UA/UF evidence reused; no old 942 mutation or scalar native corpus repeated."
+  },
+  "limits": [
+    "Concrete frame/unit/f32/f64 only; annotated zero variable plus component assignment construction.",
+    "No frame/state transforms, dot/cross, orientation/angular interpretation, equality, implicit unit/frame/precision conversion, symbolic generic spatial constructors or user overloads.",
+    "Schema1 semantic reflection and all device spatial-value profiles refused.",
+    "Compiler helpers and types share 256 instance slots and bounded caller-owned pools.",
+    "No source operator-token mutation swaps or blanket authored-spatial mutation qualification.",
+    "Tiny Spacecam migration is parent-owned; full Panda/Verse/frame consumer gate remains pending.",
+    "No #bounded/R13/whole-R12 completion claim."
+  ],
+  "publication_reconstruction": {
+    "status": "pending separate merged 0.45 receipt",
+    "seed_recipe": "From coax/: PRIVATE_COAX c lib/compiler/checker.coax --library --header OUTPUT/checker.h > OUTPUT/checker.c (normal non-release recipe).",
+    "builder": "coax/tests/quantity_bootstrap.py NEW_OUTPUT_DIR",
+    "policy": "Private source reconstruction only; no release-cache install or release-provenance claim."
+  }
+}

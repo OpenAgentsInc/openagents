@@ -16,20 +16,22 @@ import parser as PS
 ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
 class Unit(C.Structure):_fields_=[(n,C.c_int64) for n in ('mass','length','time','angle','numerator','denominator')]
+class Frame(C.Structure):_fields_=[('handedness',C.c_int64),('convention',C.c_uint8),('continuity',C.c_uint8),('min_rep',C.c_int64)]
+class Spatial(C.Structure):_fields_=[('kind',C.c_uint8),('frame',C.c_int64),('unit',C.c_int64),('rep',C.c_int64)]
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_uint64),('type',C.c_int64),('field_index',C.c_int64),('proc',C.c_int64),('constant',C.c_int64),('negative',C.c_bool),('folded',C.c_bool),('builtin_print',C.c_bool),('byte_intrinsic',C.c_uint32),('intrinsic',C.c_uint32),('mark',C.c_int64),('reached',C.c_bool),('metal_done',C.c_bool),('metal_active',C.c_bool),('skip_authority',C.c_bool),('scope',C.c_int64),('collides',C.c_bool),('clash',C.c_int64),('effects',C.c_uint8),('own_effects',C.c_uint8),('effects_known',C.c_bool),('generic',C.c_bool),('origin',C.c_int64),('pristine',C.c_int64),('chain',C.c_int64),('key',LX.Text)]
-    _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool)]
-class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]
+    _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool),('frame_decl',C.c_bool),('frame',Frame),('spatial_link',C.c_int64)]
+class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial)]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
-class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64)]
+class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64),('spatial_types',C.c_int64),('spatial_helpers',C.c_int64)]
 class Options(C.Structure):_fields_=[(n,C.c_bool) for n in ('library','metal','authority','quantity_device')]
 class Alias(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('target',C.c_int64)]
 class Export(C.Structure):_fields_=[('scope',C.c_int64),('name',LX.Text),('loc',Loc)]
 class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export))]
 
 def transport_records():
-    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_CK_Context',Context)]
+    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_SP_Frame',Frame),('coax_t_SP_Type',Spatial),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_CK_Context',Context)]
 
 class TransportABI(unittest.TestCase):
     def test_generated_seed_headers_match_ctypes(self):
@@ -67,6 +69,7 @@ class Checker(unittest.TestCase):
                 if field in ('loc','loc2'):value=Loc(value.line,value.column,value.offset)
                 if field=='floating':value=struct.unpack('Q',struct.pack('d',value))[0]
                 if field=='unit':value=Unit(*value.e)
+                if field=='frame':value=Frame(*value.e)
                 setattr(x,field,value)
 
             if v.kind==17:x.type=6 if v.width==32 else 7 if v.width==64 else 0
@@ -102,6 +105,25 @@ class Checker(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(state.quantity_device)
         self.assertIn('E0828',[LX.raw(e.code).decode() for e in errors[:state.error_count]])
+    def test_spatial_graph_transport_and_device_option(self):
+        source='World :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {} Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {} f :: (p:Point3(World,Metre,f64),v:Vector3(World,Metre,f64))->Point3(World,Metre,f64) {return p+v;}'
+        ok,nodes,types,errors,state,owners=self.check(source)
+        self.assertTrue(ok,[LX.raw(e.message) for e in errors[:state.error_count]])
+        frame=next(n for n in nodes[:state.used+1] if n.kind==66 and LX.raw(n.name)==b'World')
+        self.assertTrue(frame.frame_decl)
+        self.assertEqual(frame.quantity,0)
+        self.assertEqual((frame.frame.handedness,frame.frame.convention,frame.frame.continuity,frame.frame.min_rep),(1,1,1,64))
+        spaces=[t for t in types[:state.type_count] if t.space.kind]
+        self.assertEqual(sorted((t.space.kind,t.space.rep) for t in spaces),[(1,64),(2,64)])
+        self.assertTrue(all(t.space.frame==frame.type and t.carrier==0 and t.size==24 and t.alignment==8 for t in spaces))
+        self.assertEqual(len({t.space.unit for t in spaces}),1)
+        calls=[n for n in nodes[:state.used+1] if n.kind==21 and n.mark==2 and n.proc]
+        self.assertEqual(len(calls),1)
+        self.assertFalse(state.quantity_device)
+        ok,nodes,types,errors,state,owners=self.check(source,quantity_device=True)
+        self.assertFalse(ok)
+        self.assertTrue(state.quantity_device)
+        self.assertIn('E0836',[LX.raw(e.code).decode() for e in errors[:state.error_count]])
     def test_independent_policy_errors(self):
         cases=[('f :: () {x:u8=256;}','E0350'),('f :: () {x:=1/0;}','E0407'),
                ('f :: (x:int) {x=2;}','E0344'),('S :: struct {x:S;}','E0353'),
