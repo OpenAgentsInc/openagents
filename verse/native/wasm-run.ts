@@ -138,7 +138,7 @@ if (opt.dump) {
   // last draws are water, the grass's blades, the particles' quads, the frame's vertices and their floats, the pack's storage (vertices) and index buffers, and its layer images in order
   const draws = x.coaxial_draw_count?.(state) >>> 0;
   writeFileSync(`${opt.dump}/draws.bin`, draws ? bytesAt(x.coaxial_draws(state), draws * 16) : new Uint8Array(16));
-  writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0} ${x.coaxial_grass_instances?.(state) >>> 0} ${x.coaxial_particle_instances?.(state) >>> 0} ${hud} ${floats}\n`);
+  writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0} ${x.coaxial_grass_instances?.(state) >>> 0} ${x.coaxial_particle_instances?.(state) >>> 0} ${hud} ${floats} ${x.coaxial_surface_vertices?.(state) >>> 0}\n`);
   // the frame's own vertices (the HUD, host.js's fx pipeline after post), at least 16 bytes
   const hudBytes = new Uint8Array(Math.max(16, hud * floats * 4));
   hudBytes.set(bytesAt(vertices, hud * floats * 4));

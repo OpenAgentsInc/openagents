@@ -141,6 +141,7 @@ static void update(VkSpec *s) {
   memcpy(uniforms->map, rh_ptr(H.uniforms), (size_t)H.uniform_floats * 4);
   if (hud) memcpy(hud->map, rh_ptr(H.vertices), (size_t)hud_vertices * H.floats * 4);
   vk_spec_let(s, "hud", hud ? hud_vertices : 0);
+  vk_spec_let(s, "surface", coaxial_surface_vertices(H.state));   // the water lab's sea
   for (int k = 0; k < 4; k++) {
     Store *st = &stores[k];
     if (!st->buf) continue;

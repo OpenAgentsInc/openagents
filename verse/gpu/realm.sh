@@ -2,7 +2,7 @@
 # A realm drawn natively on HOST's GPU by verse/gpu/vk-realm.c (docs/verse/native-gpu.md,
 # gpu-realm-host): the realm's Coax as C (verse/native/build.sh), the live spec with its
 # modules (and Everglade's layers decoded in Coax), built there with gcc. REALM picks it:
-# everglade (the default; everglade-pass live --emit), stair (Hold the Stair) or belt (Belt 2200; no pack;
+# everglade (the default; everglade-pass live --emit), stair (Hold the Stair), belt (Belt 2200) or waterlab (no pack;
 # flat-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen: 90 golden frames, the last against
 #                                                    vk-passes drawing the spec's own frame, and the
@@ -35,7 +35,7 @@ realm="${REALM:-everglade}"
 case "$realm" in
   everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/spec")
     given="everglade.pack --facts everglade.facts --extra 9000" ;;
-  stair|belt) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/spec"); given="-" ;;
+  stair|belt|waterlab) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/spec"); given="-" ;;
   *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
 esac
 "$root/verse/native/build.sh" "$realm" "$work/realm" > /dev/null

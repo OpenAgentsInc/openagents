@@ -441,9 +441,14 @@ Every phase and native feature is a task in the Verse project
     flat-pass matches the browser (0 of 230400 past tolerance) once int-hash
     --page also swaps verse/stars.coax's starfield hash (an integer-hash copy
     loaded instead); vk-realm's 90th frame is vk-passes' to the bit, 0.84 ms
-    of GPU a frame at 3840x2160. The water lab's game matches the wasm too
-    (check.sh HOST waterlab; the host's actions optional, as it asks for
-    none); its surface pass and depth-writing background are next.
+    of GPU a frame at 3840x2160.
+  - The water lab runs natively (`REALM=waterlab`): its game matches the
+    wasm (the host's actions optional, as it asks for none), and flat-pass
+    draws it as host.js draws a traced page's surface: bg_fs writing its
+    depth (always), the clipmap sea's coaxial_surface_vertices tested less
+    and written, then the strokes; 0 of 230400 past tolerance against the
+    browser, vk-realm's 90th frame vk-passes' to the bit (vk-realm sets
+    $surface each frame), 2.4 ms of GPU a frame at 3840x2160.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
