@@ -20,7 +20,7 @@ for src in "$repo"/verse/voice.coax "$repo"/verse/voice-wire.coax "$repo"/verse/
   name="$(basename "$src" .coax)"
   base="$(printf '%s' "$name" | awk -F- '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')"
   [[ "$base" == "Voice" ]] && base=VoiceEngine
-  "$repo/coax/bin/coax" c "$src" --library --header "$work/$base.h" > "$work/$base.c"
+  (cd "$repo" && coax/bin/coax c "${src#"$repo"/}" --library --header "$work/$base.h") > "$work/$base.c"   # repo-relative: bytes don't depend on the checkout
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o"
   objects+=("$work/$base.o")
 done
