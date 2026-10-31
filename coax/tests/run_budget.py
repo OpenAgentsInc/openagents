@@ -84,9 +84,11 @@ class RunBudgetTests(unittest.TestCase):
                   "A :: #run make(); "
                   '#test "fails allocation" { big:[400000] u8; copy:=A; #assert big[0]==copy[0]; } '
                   '#test "later constant read" { #assert A[0]==0; } main :: () {}')
-        r = self.invoke(source, 'test', '--run-steps', '250000000')
+        # A compile's slot limit for the checks (they have a larger one of their own).
+        r = self.invoke(source, 'test', '--run-steps', '250000000', '--slots', '1572864')
         self.assertEqual(r.returncode, 1)
         self.assertIn('error[E0400]', r.stderr)
+        self.assertRegex(r.stderr, r'aggregate storage limit exceeded: \d+ value slots needed, the limit is 1572864')
         self.assertNotIn('error[E0402]', r.stderr)
         self.assertIn('ok   #test later constant read', r.stdout)
         self.assertIn('2 checks, 1 passed, 1 failed', r.stdout)
@@ -103,7 +105,7 @@ class RunBudgetTests(unittest.TestCase):
         # stage-zero seeds. ASan/UBSan detect invalid lifetime accounting.
         directory = Path(self.tmp.name)
         objects = []
-        for name in ('budget', 'mutation-schedule', 'lexer', 'parser', 'checker', 'sources'):
+        for name in ('budget', 'mutation-schedule', 'profiles', 'lexer', 'parser', 'checker', 'sources'):
             obj = directory / (name + '.o')
             subprocess.run(['cc', '-std=c11', '-O1', '-g', '-fsanitize=address,undefined',
                             '-c', str(ROOT / 'bootstrap' / (name + '.c')), '-o', str(obj)],

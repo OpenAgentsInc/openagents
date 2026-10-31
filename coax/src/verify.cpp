@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cerrno>
 #include <functional>
 #include <new>
@@ -37,15 +38,24 @@ static_assert((uint8_t)TypeKind::invalid == 0 && (uint8_t)TypeKind::string_ == 5
 static constexpr uint64_t TEST_STEPS = 20000000;
 
 // Runs every check in order. Failures print as diagnostics with the check's
-// name and, for a #forall, the counterexample. verbose: one line per check.
+// name and, for a #forall, the counterexample. verbose: one line per check,
+// written as each check ends, with its time. only: just the checks whose
+// name contains it (coax test --only); the #authority coverage check needs
+// every check, so a filtered run skips it.
 static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
-                           std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr) {
+                           std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr,
+                           const std::string *only = nullptr, int32_t *ran = nullptr) {
   bool ok = true;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
+  if (ran) *ran = 0;
   for (CheckDecl *c : file->checks) {
+    if (only && to_std(c->name).find(*only) == std::string::npos) continue;
+    if (ran) ++*ran;
     const auto slots = file->ct_memory->slots, containers = file->ct_memory->containers;
+    const auto began = std::chrono::steady_clock::now();
     CheckOutcome r = run_check(file, c, max_steps);
+    const long long ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (paths) paths->push_back(r.executed);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
@@ -53,15 +63,17 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     const char *kind = c->forall ? "#forall" : "#test";
     std::string name = to_std(c->name);
     if (r.passed) {
-      if (verbose)
-        printf("ok   %s %s (%llu case%s, %llu steps)\n", kind, name.c_str(), (unsigned long long)r.cases,
-               r.cases == 1 ? "" : "s", (unsigned long long)r.steps);
+      if (verbose) {
+        printf("ok   %s %s (%llu case%s, %llu steps, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases,
+               r.cases == 1 ? "" : "s", (unsigned long long)r.steps, ms);
+        fflush(stdout);
+      }
       continue;
     }
     ok = false;
     if (failures) ++*failures;
     if (verbose) {
-      printf("FAIL %s %s\n", kind, name.c_str());
+      printf("FAIL %s %s (%lld ms)\n", kind, name.c_str(), ms);
       fflush(stdout);
     }
     std::string message = r.message;
@@ -75,7 +87,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       if (!r.counterexample.empty()) fprintf(stderr, "  counterexample: %s\n", r.counterexample.c_str());
     }
   }
-  if (ok && file->authority) {
+  if (ok && file->authority && !only) {
     for (const ProcDecl *p : file->procs) {
       if (!SU_check_required(p->authority,p->root_source,false) || p->foreign || str_eq(p->name, "main")) continue;
       if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
@@ -88,16 +100,36 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
   return ok;
 }
 
-static int test_command(File *file, uint64_t max_steps) {
+// coax test [--only SUBSTR] [--list]: every check, or those whose name
+// contains SUBSTR; --list names them (kind and name, one a line) and runs none.
+static int test_command(File *file, uint64_t max_steps, const char *only, bool list) {
   if (!file->checks.count) {
     fprintf(stderr, "coax: %s has no #test or #forall to run\n", file->src->path.c_str());
     return 1;
   }
-  int32_t failed = 0;
-  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed);
+  const std::string filter = only ? only : "";
+  if (list) {
+    for (CheckDecl *c : file->checks) {
+      std::string name = to_std(c->name);
+      if (!only || name.find(filter) != std::string::npos) printf("%s %s\n", c->forall ? "#forall" : "#test", name.c_str());
+    }
+    return 0;
+  }
+  int32_t failed = 0, ran = 0;
+  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran);
   int32_t total = file->checks.count;
-  printf("%d check%s, %d passed, %d failed\n", total, total == 1 ? "" : "s", total - failed, failed);
-  if (!ok && !failed) printf("authority execution coverage failed\n");
+  if (only) {
+    if (!ran) {
+      fprintf(stderr, "coax: no check in %s has '%s' in its name (coax test --list names them)\n", file->src->path.c_str(), only);
+      return 1;
+    }
+    printf("%d of %d check%s (--only '%s'), %d passed, %d failed\n", ran, total, total == 1 ? "" : "s", only, ran - failed, failed);
+    if (file->authority) printf("authority execution coverage not checked: it needs every check (run coax test without --only)\n");
+  } else {
+    printf("%d check%s, %d passed, %d failed\n", total, total == 1 ? "" : "s", total - failed, failed);
+    if (!ok && !failed) printf("authority execution coverage failed\n");
+  }
+  fflush(stdout);
   return ok ? 0 : 1;
 }
 

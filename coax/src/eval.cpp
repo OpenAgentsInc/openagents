@@ -42,7 +42,7 @@ void CtMemory::dispose(CtStorage *storage) noexcept {
 
 void CtMemory::remember(const std::shared_ptr<CtStorage> &storage) {
   // Bound registry overhead even when a long run creates many short-lived arrays.
-  if (stores.size() >= max_containers() * 2) {
+  if (stores.size() >= container_limit * 2) {
     stores.erase(std::remove_if(stores.begin(), stores.end(),
                                 [](const auto &item) { return item.expired(); }), stores.end());
   }
@@ -57,7 +57,7 @@ void CtMemory::clear_cycles() noexcept {
 File::~File() { if (ct_memory) ct_memory->clear_cycles(); }
 
 void CtMemory::take_slots(size_t n) {
-  if (!CB_admit(slots, n, max_slots())) throw CtLimit{};
+  if (!CB_admit(slots, n, slot_limit)) throw CtLimit{"value slots", slots + (uint64_t)n, slot_limit};
   slots += n;
   if (slots > peak_slots) peak_slots = slots;
 }
@@ -67,7 +67,7 @@ void CtMemory::take_string(size_t n) {
   if (string_bytes > string_peak_bytes) string_peak_bytes = string_bytes;
 }
 void CtMemory::take_container() {
-  if (!CB_admit(containers, 1, max_containers())) throw CtLimit{};
+  if (!CB_admit(containers, 1, container_limit)) throw CtLimit{"arrays and structs", containers + 1, container_limit};
   ++containers;
   if (containers > peak_containers) peak_containers = containers;
 }
@@ -1077,6 +1077,17 @@ struct Evaluator {
 
 }  // namespace
 
+// E0400 for aggregate storage: which limit, what was asked for, the limit, and
+// where a larger one applies (checks have their own, budget.coax).
+static std::string storage_limit_message(const CtLimit &l) {
+  std::string m = "compile-time aggregate storage limit exceeded: " + std::to_string(l.needed) + " " + l.what +
+                  " needed, the limit is " + std::to_string(l.limit);
+  const bool slots = std::string(l.what) == "value slots";
+  const uint64_t test = slots ? CB_test_slot_limit() : CB_test_container_limit();
+  if (l.limit < test) m += " (" + std::to_string(test) + " in coax test)";
+  return m;
+}
+
 CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   Evaluator evaluator{file};
   evaluator.quiet = true;
@@ -1084,7 +1095,7 @@ CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
   try { return evaluator.check(check); }
   catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
   catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
-  catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
+  catch (const CtLimit &l) { evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l)); }
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc;
   out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
@@ -1098,7 +1109,7 @@ bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traverse
     return ok; }
   catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
   catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
-  catch (const CtLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate storage limit exceeded"); }
+  catch (const CtLimit &l) { evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l)); }
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
   if (used) *used = evaluator.steps;
   if (traversed) *traversed = evaluator.traversal_work;

@@ -72,7 +72,7 @@ coax/build.sh test
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
-| `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
+| `coax test FILE [--steps N] [--slots N] [--only SUBSTR] [--list]` | Run every `#test` and `#forall`; print counterexamples. Each check's line is written as it ends, with its steps and time. `--only SUBSTR` runs just the checks whose name contains SUBSTR (an `#authority` file's coverage check needs every check, so a filtered run skips it and says so); `--list` names the checks and runs none. Checks have their own aggregate storage limits (33554432 value slots, 2097152 arrays and structs; a compile has 1572864 and 131072; `--slots N` lowers the checks' slot limit) |
 | `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails. `--jobs N` (default: cores) runs mutants in parallel; `--shard I/N` and `--merge RECORD...` split a file across processes or machines. Optional `--root-only` mutates entry-source procedures while retaining all baseline checks; it reports a scoped result. The report is identical across worker/shard modes within one scope |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
 | `coax version` | Print the version |

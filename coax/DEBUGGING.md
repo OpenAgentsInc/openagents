@@ -4,6 +4,24 @@
 compiler, linker and debugger still supply machine code and debug information.
 This does not introduce an interpreter into the target program.
 
+## One check at a time
+
+`coax test FILE --list` names a file's checks; `coax test FILE --only SUBSTR`
+runs just those whose name contains SUBSTR. Each check's line is written (and
+flushed, so a piped run shows it) as the check ends, with its cases, steps and
+milliseconds. A filtered run of an `#authority` file skips the coverage check
+(every procedure executed by some check), which needs every check, and says so.
+
+```sh
+coax/bin/coax test apps/openagents-web/everglade.coax --list | grep bar
+coax/bin/coax test apps/openagents-web/everglade.coax --only "the bar: a swap"
+```
+
+An E0400 for storage names the limit (value slots or arrays and structs), what
+was needed and the limit. Checks have their own, larger limits than a compile
+(budget.coax: 33554432 value slots and 2097152 arrays and structs, against
+1572864 and 131072).
+
 ## Build and inspect
 
 From the repository root:

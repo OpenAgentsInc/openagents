@@ -47,6 +47,43 @@ class Verify(unittest.TestCase):
         self.assertIn("error[E0406]: assertion failed", r.stderr)
         self.assertIn("counterexample: a = 200, b = false", r.stderr)
 
+    def test_only_runs_the_named_checks_and_list_names_them(self):
+        path = self.write(
+            "#authority;\n"
+            "f :: (x: int) -> int { return x + 1; }\n"
+            "g :: (x: int) -> int { return x * 2; }\n"
+            "#test \"f adds one\" { #assert f(1) == 2; }\n"
+            "#test \"g doubles\" { #assert g(2) == 4; }\n"
+            "#forall x: 0..<4 { #assert f(x) > x; }\n"
+            "main :: () { }\n")
+        r = coax("test", path, "--list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines(), ["#test f adds one", "#test g doubles", "#forall x: 0..<4"])
+        self.assertEqual(coax("test", path, "--list", "--only", "g ").stdout, "#test g doubles\n")
+        # One check runs; g is never executed, but a filtered run doesn't judge coverage, and says so.
+        r = coax("test", path, "--only", "adds")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r"ok   #test f adds one \(1 case, \d+ steps, \d+ ms\)")
+        self.assertNotIn("g doubles", r.stdout)
+        self.assertIn("1 of 3 checks (--only 'adds'), 1 passed, 0 failed", r.stdout)
+        self.assertIn("authority execution coverage not checked", r.stdout)
+        r = coax("test", path, "--only", "nothing like it")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no check in", r.stderr)
+        self.assertIn("3 checks, 3 passed, 0 failed", coax("test", path).stdout)
+
+    def test_checks_have_larger_storage_limits_than_a_compile(self):
+        # 2,000,000 slots: over a compile's 1,572,864, inside a check's own limit.
+        path = self.write(
+            "#test \"big\" { a: [2000000] u8; a[1999999] = 7; #assert a[1999999] == 7; }\n"
+            "main :: () { }\n")
+        r = coax("test", path)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = coax("test", path, "--slots", "1572864")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("2000000 value slots needed, the limit is 1572864 (33554432 in coax test)", r.stderr)
+        self.assertEqual(coax("test", path, "--slots", "33554433").returncode, 1)
+
     def test_domains_cover_every_value(self):
         path = self.write(
             "E :: enum s8 { a = -1; b = 7; }\n"

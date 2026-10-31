@@ -176,6 +176,8 @@ _Bool CB_admit(uint64_t l_current, uint64_t l_extra, uint64_t l_maximum);
 uint64_t CB_default_steps(void);
 uint64_t CB_slot_limit(void);
 uint64_t CB_container_limit(void);
+uint64_t CB_test_slot_limit(void);
+uint64_t CB_test_container_limit(void);
 uint64_t CB_string_live_limit(void);
 uint64_t CB_string_work_limit(void);
 uint64_t CB_traversal_limit(void);
@@ -195,19 +197,19 @@ uint64_t CB_parse_steps(coax_string l_text) {
       {
         return UINT64_C(0);
       }
-      uint64_t l_digit = ((uint64_t)coax_cast_uu((uint64_t)(coax_sub_u8(l_c, ((uint8_t)UINT64_C(48)), 60)), UINT64_C(18446744073709551615), 60));
+      uint64_t l_digit = ((uint64_t)coax_cast_uu((uint64_t)(coax_sub_u8(l_c, ((uint8_t)UINT64_C(48)), 69)), UINT64_C(18446744073709551615), 69));
       if ((l_value > UINT64_C(25000000)) || ((l_value == UINT64_C(25000000)) && (l_digit > UINT64_C(0))))
       {
         return UINT64_C(0);
       }
-      l_value = coax_add_u64(coax_mul_u64(l_value, UINT64_C(10), 62), l_digit, 62);
+      l_value = coax_add_u64(coax_mul_u64(l_value, UINT64_C(10), 71), l_digit, 71);
     }
   }
   return l_value;
 }
 
 _Bool CB_admit(uint64_t l_current, uint64_t l_extra, uint64_t l_maximum) {
-  return ((l_current <= l_maximum) && (l_extra <= coax_sub_u64(l_maximum, l_current, 67)));
+  return ((l_current <= l_maximum) && (l_extra <= coax_sub_u64(l_maximum, l_current, 76)));
 }
 
 uint64_t CB_default_steps(void) {
@@ -220,6 +222,14 @@ uint64_t CB_slot_limit(void) {
 
 uint64_t CB_container_limit(void) {
   return UINT64_C(131072);
+}
+
+uint64_t CB_test_slot_limit(void) {
+  return UINT64_C(33554432);
+}
+
+uint64_t CB_test_container_limit(void) {
+  return UINT64_C(2097152);
 }
 
 uint64_t CB_string_live_limit(void) {

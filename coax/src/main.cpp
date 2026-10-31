@@ -11,7 +11,7 @@
 //   coax metal-compute file.coax [--release]         Metal compute kernels (the same subset)
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
-//   coax test    file.coax [--steps N]               run every #test and #forall
+//   coax test    file.coax [--steps N] [--only S] [--list]  run every #test and #forall (or those named with S; --list names them)
 //   coax mutate  file.coax [--jobs N] [--shard I/N] [--merge RECORD]...
 //                                                    mutate the code; every mutant must fail a check
 //   coax explain CODE | --all [--markdown]           what an error code means
@@ -407,7 +407,7 @@ static int usage() {
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
-          "       coax test    file.coax [--steps N]\n"
+          "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
           "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
@@ -489,6 +489,9 @@ static int main_impl(int argc, char **argv) {
   bool keep_c = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
+  const char *only = nullptr;
+  bool list = false;
+  uint64_t test_slots = 0;
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--release") request.legacy_release = true;
@@ -516,6 +519,20 @@ static int main_impl(int argc, char **argv) {
       }
       run_steps_seen = true;
       g_timings.run_steps = opts.run_steps;
+    }
+    else if (a == "--only" && i + 1 < argc && cmd == "test" && !only) only = argv[++i];
+    else if (a == "--list" && cmd == "test") list = true;
+    else if (a == "--slots" && i + 1 < argc && cmd == "test") {
+      // A smaller value-slot limit for the checks than the test limit (a shared machine's memory).
+      const char *value = argv[++i];
+      bool digits = *value != '\0';
+      for (const char *p = value; *p; p++) digits = digits && *p >= '0' && *p <= '9';
+      errno = 0;
+      test_slots = strtoull(value, nullptr, 10);
+      if (!digits || errno == ERANGE || !test_slots || test_slots > CB_test_slot_limit()) {
+        fprintf(stderr, "coax: --slots requires a positive count at most %llu\n", (unsigned long long)CB_test_slot_limit());
+        return 1;
+      }
     }
     else if (a == "--steps" && i + 1 < argc && cmd == "test") {
       const char *value = argv[++i];
@@ -606,7 +623,10 @@ static int main_impl(int argc, char **argv) {
     Arena arena;
     File file;
     if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return 1;
-    return cmd == "test" ? test_command(&file, steps) : mutate_command(&arena, &file, mutation);
+    // Checks get their own, larger storage limits (budget.coax): a test may hold a whole world.
+    file.ct_memory->slot_limit = test_slots ? test_slots : CB_test_slot_limit();
+    file.ct_memory->container_limit = CB_test_container_limit();
+    return cmd == "test" ? test_command(&file, steps, only, list) : mutate_command(&arena, &file, mutation);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;

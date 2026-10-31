@@ -166,7 +166,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `E0400` | compile-time resource budget exceeded | Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). |
+| `E0400` | compile-time resource budget exceeded | Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N). |
 | `E0401` | compile-time code cannot capture a runtime value | #run code and constants see only constants and their own locals. |
 | `E0402` | compile-time cycle | A constant, or a struct's field defaults, depend on themselves while being evaluated. |
 | `E0403` | compile-time depth exceeded | Compile-time calls and dependencies are bounded at depth 64. |

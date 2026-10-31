@@ -4,6 +4,10 @@ CB_MAX_RUN_STEPS :: 250000000;
 CB_DEFAULT_RUN_STEPS :: 100000;
 CB_MAX_SLOTS :: 1572864;
 CB_MAX_CONTAINERS :: 131072;
+// coax test and mutate: checks may hold a whole world (a test's `g: [1] Everglade`),
+// so they get their own, larger aggregate limits; a compile keeps the ones above.
+CB_MAX_TEST_SLOTS :: 33554432;
+CB_MAX_TEST_CONTAINERS :: 2097152;
 CB_MAX_STRING_LIVE :: 67108864;
 CB_MAX_STRING_WORK :: 268435456;
 CB_MAX_TRAVERSAL :: 134217728;
@@ -12,6 +16,11 @@ CB_MAX_TRAVERSAL :: 134217728;
  #assert CB_default_steps()==100000;
  #assert CB_slot_limit()==1572864;
  #assert CB_container_limit()==131072;
+}
+#test "checks have their own, larger storage limits" {
+ #assert CB_test_slot_limit()==33554432;
+ #assert CB_test_container_limit()==2097152;
+ #assert CB_test_slot_limit()>CB_slot_limit() && CB_test_container_limit()>CB_container_limit();
 }
 #test "string storage and materialization limits are finite" {
  #assert CB_string_live_limit()==67108864;
@@ -70,6 +79,8 @@ CB_admit :: (current:u64,extra:u64,maximum:u64)->bool #export_c {
 CB_default_steps :: ()->u64 #export_c {return CB_DEFAULT_RUN_STEPS;}
 CB_slot_limit :: ()->u64 #export_c {return CB_MAX_SLOTS;}
 CB_container_limit :: ()->u64 #export_c {return CB_MAX_CONTAINERS;}
+CB_test_slot_limit :: ()->u64 #export_c {return CB_MAX_TEST_SLOTS;}
+CB_test_container_limit :: ()->u64 #export_c {return CB_MAX_TEST_CONTAINERS;}
 
 CB_string_live_limit :: ()->u64 #export_c {return CB_MAX_STRING_LIVE;}
 CB_string_work_limit :: ()->u64 #export_c {return CB_MAX_STRING_WORK;}

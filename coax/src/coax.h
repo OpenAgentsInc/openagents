@@ -16,6 +16,8 @@
 extern "C" uint64_t CB_default_steps();
 extern "C" uint64_t CB_slot_limit();
 extern "C" uint64_t CB_container_limit();
+extern "C" uint64_t CB_test_slot_limit();
+extern "C" uint64_t CB_test_container_limit();
 
 namespace coax {
 
@@ -182,13 +184,16 @@ const std::vector<Type> &all_composite_types();  // arrays and views, in creatio
 // value never holds a host address, so nothing of the compiler's memory can
 // reach a target executable.
 
-struct CtLimit {};
+// Which aggregate limit a program passed: what it asked for and the limit.
+struct CtLimit { const char *what = "value slots"; uint64_t needed = 0, limit = 0; };
 struct CtStringLimit {};
 struct CtTraversalLimit {};
 struct CtStorage;
 struct CtString;
 struct CtMemory {
   // Counts vector capacity slots and aggregate containers, not total RSS.
+  // A compile's limits (budget.coax); coax test and mutate raise them to the test limits.
+  uint64_t slot_limit = CB_slot_limit(), container_limit = CB_container_limit();
   static uint64_t max_slots() { return CB_slot_limit(); }
   static uint64_t max_containers() { return CB_container_limit(); }
   uint64_t slots = 0, containers = 0, peak_slots = 0, peak_containers = 0;

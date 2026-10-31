@@ -25,6 +25,8 @@ _Bool CB_admit(uint64_t current, uint64_t extra, uint64_t maximum);
 uint64_t CB_default_steps(void);
 uint64_t CB_slot_limit(void);
 uint64_t CB_container_limit(void);
+uint64_t CB_test_slot_limit(void);
+uint64_t CB_test_container_limit(void);
 uint64_t CB_string_live_limit(void);
 uint64_t CB_string_work_limit(void);
 uint64_t CB_traversal_limit(void);
