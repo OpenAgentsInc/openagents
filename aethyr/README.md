@@ -5,6 +5,11 @@ holds its core: a small set of primitives each realm uses instead of keeping
 its own copy (GitHub #12609). Aethyrforge, the realm builder and
 world-creation tools, is built on top of it. `verse/` keeps realm content.
 
+The [Aethyr book](book/README.md) builds the engine from its smallest
+primitives, one checked piece per chapter. Each module below has a chapter,
+named by its task slug in the chapter's status block; fill the chapter in when
+the module lands.
+
 Each primitive is a module with its own checks and, where it decides
 behaviour, zero surviving mutants. One short section per primitive is in
 [docs/verse/engine-core.md](../docs/verse/engine-core.md).

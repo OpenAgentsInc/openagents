@@ -57,7 +57,9 @@ release builds on:
   ([Verse protocol](docs/verse/openagents-verse-protocol.md),
   [engine notes](docs/verse/engine.md)). It is web-first, so a realm is a
   link you can drop anywhere, and it is moving onto native GPUs too
-  ([native GPU plan](docs/verse/native-gpu.md)).
+  ([native GPU plan](docs/verse/native-gpu.md)). The engine is **Aethyr**
+  ([`aethyr/`](aethyr/)); its [book](aethyr/book/README.md) builds it from
+  its smallest primitives, one checked piece per chapter.
 - **The OpenAgents Protocol**
   ([spec](docs/protocol/openagents-protocol-spec.md), schemas in
   [`proto/`](proto/README.md)) defines the interchange for web, mobile,

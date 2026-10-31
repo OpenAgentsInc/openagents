@@ -90,6 +90,7 @@
 - [122. A checkpoint holds the whole experiment](ch122-a-checkpoint-holds-the-whole-experiment.md)
 - [123. Learn a tokenizer](ch123-learn-a-tokenizer.md)
 - [124. AdamW, Muon and explicit precision](ch124-adamw-and-explicit-precision.md)
+- [125. Execute the pinned nanochat GPT](ch125-execute-the-pinned-nanochat-gpt.md)
 
 
 - [167. Command a robot](ch167-command-a-robot.md) — design draft
