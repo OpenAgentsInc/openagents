@@ -542,7 +542,7 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
     // left of the whole row: EDIT (or BUILD) and TALK sit left of MAP for those who edit, and REPLY
     // drawn over EDIT took the owner's tap (everglade-edit.coax, everglade-voice.coax)
     edge := mb.x0 - 2 * k;
-    if eg_builder(s) { edge -= text_width(ifx s[0].ev.admin then "EDIT" else "BUILD", 9 * k) + 40 * k; }
+    if s[0].ev.admin { edge -= text_width("EDIT", 9 * k) + 40 * k; }   // EDIT is drawn for its owner and admins (everglade_voice_hud)
     tb := s[0].ev.button;
     low := tb.x1 > tb.x0 && tb.y0 > mb.y1;   // TALK moved under MAP (everglade-voice.coax)
     if tb.x1 > tb.x0 && !low && tb.x0 < edge { edge = tb.x0; }
