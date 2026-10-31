@@ -1,0 +1,386 @@
+// NIP-59 rumor, seal and gift wrap. Pinned spec:
+// coax/tests/vectors/upstream/nips/59.md (nips/official/59.md).
+//
+//   rumor  an unsigned event: id, pubkey, created_at, kind, tags, content
+//   seal   kind 13 by the rumor's author, tags [], content the rumor JSON
+//          NIP-44 v2 encrypted from the author to the recipient
+//   wrap   kind 1059 (or the ephemeral 21059) from a fresh one-time key,
+//          tags [["p",recipient]], content the seal JSON NIP-44 v2 encrypted
+//          from the fresh key to the recipient
+//
+// Seal and wrap times are the caller's now minus a host-random offset below
+// two days, as the NIP asks; the rumor keeps now.
+//
+// Sizes. An event's content is one JSON string of at most 65536 bytes
+// (event.coax's reader), so the largest seal a wrap carries is 40960 bytes
+// (NIP-44 pads it to a 54704-character payload) and the largest rumor that
+// fits a seal of that size is 28672 bytes. nip59_wrap_checked refuses a
+// larger rumor as NIP59_CAPACITY before it touches anything; the reader
+// refuses a wrap over NIP59_MAX_WRAP the same way. Every layer uses the
+// NIP44_COMPAT profile, which deployed readers (nostr-tools, NIP-07) share.
+//
+// Unwrapping checks, in order: the wrap is a NIP-01 event whose id is its own
+// and whose kind is 1059 or 21059; its signature; a ["p",recipient] tag; its
+// content decrypts for the recipient; the seal is a NIP-01 event with its own
+// id, kind 13 and empty tags; its signature; its content decrypts; the rumor
+// is an event with its own id and NO signature; the rumor's pubkey is the
+// seal's. Only then is the rumor JSON in out and the author the seal's key.
+//
+// The end-to-end checks (real ECDH, signatures and NIP-44 on every layer)
+// cost billions of interpreter steps, so they live in
+// coax/tests/nostr/nip59_checks.coax; the checks here need no curve work.
+//
+// Cleanup. Once the views are admitted, every return zeroes all of work (it
+// holds rumor and seal plaintext), the fresh secrets in `fresh`, and, on any
+// refusal, all of out. Conversation keys live in locals that are zeroed
+// before return. These are plain stores, as in nip44-key.coax: erasure the
+// compiler cannot drop is the host's platform contract (zeroize.coax).
+#load "nip44-key.coax";
+#load "event_sign.coax";
+#load "../../tests/nostr/nip59_keys.coax";
+#authority;
+
+NIP59_OK :: cast(u32)0;
+NIP59_INPUT :: cast(u32)1;          // a key or fresh view is not exactly one, a kind, time or tags not admitted
+NIP59_ALIAS :: cast(u32)2;
+NIP59_OUTPUT :: cast(u32)3;         // work below NIP59_WORK, or out too small for the result
+NIP59_CAPACITY :: cast(u32)4;       // rumor over NIP59_MAX_RUMOR, wrap over NIP59_MAX_WRAP
+NIP59_KEY :: cast(u32)5;            // the author's or recipient's secret, or the recipient's public key, is refused
+NIP59_FRESH :: cast(u32)6;          // the fresh wrap key is not a valid secret, or is the author's own
+NIP59_WRAP :: cast(u32)7;           // not an event with its own id, or not kind 1059/21059
+NIP59_WRAP_SIGNATURE :: cast(u32)8;
+NIP59_RECIPIENT :: cast(u32)9;      // no ["p", recipient] tag
+NIP59_WRAP_PAYLOAD :: cast(u32)10;  // the wrap's content does not decrypt for this recipient
+NIP59_SEAL :: cast(u32)11;          // not an event with its own id, not kind 13, or tags not empty
+NIP59_SEAL_SIGNATURE :: cast(u32)12;
+NIP59_SEAL_PAYLOAD :: cast(u32)13;
+NIP59_RUMOR :: cast(u32)14;         // not an unsigned event with its own id
+NIP59_IDENTITY :: cast(u32)15;      // the rumor's pubkey is not the seal's
+NIP59_INTERNAL :: cast(u32)16;      // an admitted primitive refused; unreachable by construction
+
+NIP59_SEAL_KIND :: 13;
+NIP59_WRAP_KIND :: 1059;
+NIP59_EPHEMERAL_KIND :: 21059;
+NIP59_WINDOW :: 172800;             // two days, in seconds
+NIP59_MAX_RUMOR :: 28672;
+NIP59_MAX_SEAL :: 40960;
+NIP59_MAX_WRAP :: 65536;
+NIP59_REGION :: 65536;
+NIP59_WORK :: 458752;               // seven regions; the NIP-44 work takes two
+
+// Host entropy for one wrap: 32-byte values from the platform's random source.
+// wrap_key is the one-time secret; *_back pick the seal and wrap times.
+Nip59Fresh :: struct {
+  wrap_key:[32]u8; seal_nonce:[32]u8; wrap_nonce:[32]u8; seal_aux:[32]u8; wrap_aux:[32]u8;
+  seal_back:u64; wrap_back:u64;
+}
+Nip59Wrapped :: struct { error:u32=NIP59_INPUT; written:int; rumor_id:[32]u8; seal_at:int; wrap_at:int; }
+// Spans index out, which holds the rumor JSON exactly as the seal carried it.
+Nip59Opened :: struct {
+  error:u32=NIP59_INPUT; written:int; author:[32]u8; rumor_id:[32]u8; wrap_key:[32]u8;
+  kind:int; created_at:int; tags_from:int; tags_to:int; tags:int; content_from:int; content_to:int;
+}
+
+#test "status values and limits are the host ABI" {
+  #assert NIP59_OK==0 && NIP59_INPUT==1 && NIP59_CAPACITY==4 && NIP59_IDENTITY==15 && NIP59_INTERNAL==16;
+  #assert NIP59_WORK==7*NIP59_REGION && NIP59_WINDOW==2*86400;
+  // The sizes in the header: the largest rumor pads into the largest seal, and
+  // that seal's payload is the largest content an event carries.
+  #assert nip44_payload_size(NIP44_COMPAT,NIP59_MAX_SEAL)==54704 && nip44_payload_size(NIP44_COMPAT,NIP59_MAX_SEAL+1)>65536;
+  #assert nip44_payload_size(NIP44_COMPAT,NIP59_MAX_RUMOR)+N59_SEAL_FIXED<=NIP59_MAX_SEAL;
+  #assert nip44_payload_size(NIP44_COMPAT,NIP59_MAX_RUMOR+1)+N59_SEAL_FIXED>NIP59_MAX_SEAL;
+  #assert nip44_encrypt_work_size(NIP44_COMPAT,NIP59_MAX_SEAL)<=2*NIP59_REGION;
+  #assert nip44_decrypt_work_size(NIP44_COMPAT,NIP59_MAX_WRAP)<=2*NIP59_REGION;
+}
+#forall "times go back less than two days" back:0..<6 {
+  r:=[6]u64.[0,1,172799,172800,172801,18446744073709551615];
+  at:=n59_back(1800000000,r[back]);
+  #assert at<=1800000000 && at>1800000000-NIP59_WINDOW;
+  #assert at==1800000000-cast(int)(r[back]%172800);
+}
+#test "the recipient tag must name this key exactly" {
+  me:=N59_BOB_PUB;
+  #assert n59_addressed("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",me[..]);
+  #assert n59_addressed("[[\"e\",\"x\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://r\"]]",me[..]);
+  #assert !n59_addressed("[]",me[..]);
+  #assert !n59_addressed("[[\"p\"]]",me[..]);
+  #assert !n59_addressed("[[\"P\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",me[..]);
+  #assert !n59_addressed("[[\"p\",\"DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659\"]]",me[..]);
+  #assert !n59_addressed("[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]",me[..]);
+  #assert !n59_addressed("[[\"x\",\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",me[..]);
+  #assert !n59_addressed("[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba65\"]]",me[..]);
+}
+#test "a rumor gets a zero signature appended before its last brace" {
+  out:[256]u8;
+  n:=n59_signed_copy("{\"a\":1} \n",out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="{\"a\":1,\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"} \n";
+  #assert n59_signed_copy("{\"a\":1} x",out[..])==-1 && n59_signed_copy("",out[..])==-1 && n59_signed_copy("   ",out[..])==-1;
+  #assert n59_signed_copy("{\"a\":1}",out[0..<143])==-1 && n59_signed_copy("{\"a\":1}",out[0..<144])==144;
+}
+
+#test "unwrap admits views first and refuses an oversized wrap" {
+  bob:=n59_bob();me:=N59_BOB_PUB;wrap:=N59_TS_WRAP;work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  for i:0..<out.count {out[i]=7;} for i:0..<64 {work[i]=7;}
+  #assert nip59_unwrap_checked(bob[0..<31],me[..],cast(string)wrap[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_unwrap_checked(bob[..],me[0..<31],cast(string)wrap[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_unwrap_checked(bob[..],me[..],cast(string)wrap[..],work[0..<NIP59_WORK-1],out[..],false).error==NIP59_OUTPUT;
+  #assert nip59_unwrap_checked(bob[..],me[..],cast(string)wrap[..],work[..],out[0..<0],false).error==NIP59_OUTPUT;
+  #assert nip59_unwrap_checked(bob[..],me[..],cast(string)wrap[..],work[..],out[..],true).error==NIP59_ALIAS;
+  for b:out {#assert b==7;} for i:0..<64 {#assert work[i]==7;}
+  big:[NIP59_MAX_WRAP+1]u8;for i:0..<big.count {big[i]=' ';}
+  #assert nip59_unwrap_checked(bob[..],me[..],cast(string)big[0..<NIP59_MAX_WRAP],work[..],out[..],false).error==NIP59_WRAP;
+  #assert nip59_unwrap_checked(bob[..],me[..],cast(string)big[..],work[..],out[..],false).error==NIP59_CAPACITY;
+  for b:out {#assert b==0;}
+}
+#test "content over the largest rumor refuses before any key work, clearing work, out and fresh" {
+  alice:=n59_alice();bob:=N59_BOB_PUB;fresh:=n59_fresh(1);work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  big:[NIP59_MAX_RUMOR+1]u8;for i:0..<64 {work[i]=7;out[i]=7;} work[NIP59_WORK-1]=7;
+  w:=nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]",cast(string)big[..],NIP59_WRAP_KIND,fresh[..],work[..],out[..],false);
+  #assert w.error==NIP59_CAPACITY && w.written==0 && w.seal_at==0;
+  for i:0..<64 {#assert work[i]==0 && out[i]==0;} #assert work[NIP59_WORK-1]==0;
+  for i:0..<32 {#assert fresh[0].wrap_key[i]==0 && fresh[0].seal_nonce[i]==0 && fresh[0].wrap_aux[i]==0;} #assert fresh[0].seal_back==0;
+}
+#test "a finished wrap keeps its result; a refused one returns nothing but the code" {
+  fresh:=n59_fresh(1);work:[NIP59_WORK]u8;out:[8]u8;for i:0..<8 {out[i]=7;} work[5]=7;
+  r:Nip59Wrapped;r.written=8;r.seal_at=5;r.rumor_id[0]=9;
+  ok:=n59_wrapped(r,NIP59_OK,fresh[..],work[..],out[..]);
+  #assert ok.error==NIP59_OK && ok.written==8 && ok.seal_at==5 && ok.rumor_id[0]==9 && out[0]==7 && work[5]==0 && fresh[0].wrap_key[0]==0;
+  bad:=n59_wrapped(r,NIP59_KEY,fresh[..],work[..],out[..]);
+  #assert bad.error==NIP59_KEY && bad.written==0 && bad.seal_at==0 && bad.rumor_id[0]==0;for b:out {#assert b==0;}
+  o:Nip59Opened;o.written=3;o.kind=14;
+  for i:0..<8 {out[i]=7;} work[5]=7;
+  good:=n59_opened(o,NIP59_OK,work[..],out[..]);#assert good.error==NIP59_OK && good.written==3 && good.kind==14 && out[0]==7 && work[5]==0;
+  fail:=n59_opened(o,NIP59_SEAL,work[..],out[..]);#assert fail.error==NIP59_SEAL && fail.written==0 && fail.kind==0;for b:out {#assert b==0;}
+}
+#test "the rumor writer makes nostr-effect's rumor byte for byte, with its id" {
+  pub:=N59_ALICE_PUB;pre:[1024]u8;out:[1024]u8;id:[32]u8;want:=N59_TS_RUMOR;
+  n:=n59_rumor(pub[..],N59_TS_RUMOR_AT,14,"[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]","Bob: the decision job is ready.",pre[..],out[..],id[..]);
+  #assert n==want.count && cast(string)out[0..<n]==cast(string)want[..];
+  for i:0..<32 {#assert id[i]==N59_TS_RUMOR_ID[i];}
+  // Too small for the preimage or for the JSON refuses.
+  #assert n59_rumor(pub[..],N59_TS_RUMOR_AT,14,"[]","x",pre[0..<80],out[..],id[..])==-1;
+  #assert n59_rumor(pub[..],N59_TS_RUMOR_AT,14,"[]","x",pre[..],out[0..<100],id[..])==-1;
+  #assert n59_rumor(pub[..],N59_TS_RUMOR_AT,14,"[]","x",pre[..],out[..],id[..])>100;
+}
+#test "conversation keys refuse malformed keys without curve work" {
+  k:[33]u8;out:[32]u8;out[0]=7;
+  #assert n59_ck(k[0..<31],k[0..<32],out[..])==NIP44_KEY && n59_ck(k[0..<32],k[0..<33],out[..])==NIP44_KEY && out[0]==7;
+}
+#test "the sign loop stops at the signer's refusal; same32 compares all 32 bytes" {
+  key:=n59_alice();aux:[32]u8;sw:[1]NostrSignWork;sw[0].stage=9;sw[0].id[0]=9;scratch:[64]u8;out:[64]u8;
+  #assert n59_sign(key[..],aux[..],0,1,"[]","",sw[..],scratch[..],out[..])==EVENT_REFUSED && sw[0].id[0]==0;
+  #assert n59_sign(key[0..<31],aux[..],0,1,"[]","",sw[..],scratch[..],out[..])==EVENT_REFUSED;
+  a:[32]u8;b:[32]u8;#assert n59_same32(a[..],b[..]);
+  for i:0..<32 {b[i]=1;#assert !n59_same32(a[..],b[..]);b[i]=0;}
+}
+#test "NIP-44 refusals map to capacity, output or the layer's own code" {
+  #assert n59_payload(NIP44_CAPACITY,NIP59_WRAP_PAYLOAD)==NIP59_CAPACITY && n59_payload(NIP44_OUTPUT,NIP59_SEAL_PAYLOAD)==NIP59_OUTPUT;
+  #assert n59_payload(NIP44_MAC,NIP59_WRAP_PAYLOAD)==NIP59_WRAP_PAYLOAD && n59_payload(NIP44_PADDING,NIP59_SEAL_PAYLOAD)==NIP59_SEAL_PAYLOAD;
+  #assert n59_payload(NIP44_OK,NIP59_SEAL_PAYLOAD)==NIP59_SEAL_PAYLOAD;
+}
+#test "wrap admits views, kinds, times and tags before it changes anything" {
+  alice:=n59_alice();bob:=N59_BOB_PUB;fresh:=n59_fresh(1);work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  for i:0..<64 {work[i]=7;out[i]=7;}
+  #assert nip59_wrap_checked(alice[0..<31],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[0..<31],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[0..<0],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,-1,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,65536,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],NIP59_WINDOW-1,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",1058,fresh[..],work[..],out[..],false).error==NIP59_INPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[0..<NIP59_WORK-1],out[..],false).error==NIP59_OUTPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[0..<0],false).error==NIP59_OUTPUT;
+  #assert nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[]","x",NIP59_WRAP_KIND,fresh[..],work[..],out[..],true).error==NIP59_ALIAS;
+  for i:0..<64 {#assert work[i]==7 && out[i]==7;} #assert fresh[0].wrap_key[0]!=0;
+}
+// ---- the implementation
+
+// {"id":"<64>","pubkey":"<64>","created_at":<10>,"kind":13,"tags":[],"content":"","sig":"<128>"}
+N59_SEAL_FIXED :: 343;
+// {"id":"<64>","pubkey":"<64>","created_at":1793300000,"kind":14,"tags":[["p","<64>"]],"content":""}
+// n59_wrap_text's rumor: the bytes around its content.
+N59_RUMOR_FIXED :: 278;
+N59_SIG_FIELD :: ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"";
+
+n59_back :: (now:int,r:u64)->int {return now-cast(int)(r%cast(u64)NIP59_WINDOW);}
+n59_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+n59_same32 :: (a:[]u8,b:[]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+
+// A ["p", <lowercase hex of recipient_x>] tag, as the wrap's routing tag.
+n59_addressed :: (tags:string,recipient_x:[]u8)->bool {
+  want:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,want[..],false);if h.error!=NC_OK {return false;}
+  decoded:[NIP59_REGION]u8;
+  j:[1]Json;json_start(j[..],tags);if json_next(j[..])!=JSON_ARRAY {return false;}
+  t:=json_next(j[..]);
+  while t==JSON_ARRAY {
+    k:=0;name_p:=false;found:=false;
+    v:=json_next(j[..]);
+    while v==JSON_STRING {
+      n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return false;}
+      if k==0 {name_p=n==1 && decoded[0]=='p';}
+      if k==1 && name_p && n==64 {found=cast(string)decoded[0..<64]==cast(string)want[..];}
+      k+=1;v=json_next(j[..]);
+    }
+    if found {return true;}
+    if v!=JSON_ARRAY_END {return false;}
+    t=json_next(j[..]);
+  }
+  return false;
+}
+// The rumor with a zero "sig" field before its closing brace, so the shared
+// NIP-01 reader can parse it and recompute its id. A rumor that already has a
+// "sig" (signed, which NIP-59 forbids) then repeats the key and is refused.
+// Returns the copy's length, or -1.
+n59_signed_copy :: (rumor:string,out:[]u8)->int {
+  end:=rumor.count-1;
+  while end>=0 && (rumor[end]==' ' || rumor[end]==9 || rumor[end]==10 || rumor[end]==13) {end-=1;}
+  if end<0 || rumor[end]!='}' {return -1;}
+  n:=json_raw(out,0,rumor[0..<end]);n=json_raw(out,n,N59_SIG_FIELD);
+  return json_raw(out,n,rumor[end..<rumor.count]);
+}
+// Signs one event to the end. The work starts where the caller left it.
+n59_sign :: (key:[]u8,aux:[]u8,at:int,kind:int,tags:string,content:string,sw:[]NostrSignWork,scratch:[]u8,out:[]u8)->int {
+  k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(key,aux,at,kind,tags,content,sw,scratch,out,false);}
+  return k;
+}
+// The rumor's JSON into out (its NIP-01 preimage in pre first), its id in id.
+n59_rumor :: (pub:[]u8,at:int,kind:int,tags:string,content:string,pre:[]u8,out:[]u8,id:[]u8)->int {
+  decoded:[NIP59_REGION]u8;hex:[64]u8;idhex:[64]u8;
+  h:=hex_encode_checked(cast(string)pub,hex[..],false);
+  n:=json_raw(pre,ne_writer_start(h.error),"[0,");n=json_write_string(pre,n,cast(string)hex[..]);
+  n=json_raw(pre,n,",");n=json_write_int(pre,n,at);n=json_raw(pre,n,",");n=json_write_int(pre,n,kind);
+  n=json_raw(pre,n,",");n=ne_write_tags(tags,pre,n,decoded[..]);n=json_raw(pre,n,",");
+  n=json_write_string(pre,n,content);n=json_raw(pre,n,"]");
+  if n==NE_WRITE_FAILED {return -1;}
+  if sha256_hash_checked(pre[0..<n],id,false)!=SHA_OK {return -1;}
+  hi:=hex_encode_checked(cast(string)id,idhex[..],false);
+  m:=json_raw(out,ne_writer_start(hi.error),"{\"id\":");m=json_write_string(out,m,cast(string)idhex[..]);
+  m=json_raw(out,m,",\"pubkey\":");m=json_write_string(out,m,cast(string)hex[..]);
+  m=json_raw(out,m,",\"created_at\":");m=json_write_int(out,m,at);
+  m=json_raw(out,m,",\"kind\":");m=json_write_int(out,m,kind);
+  m=json_raw(out,m,",\"tags\":");m=ne_write_tags(tags,out,m,decoded[..]);
+  m=json_raw(out,m,",\"content\":");m=json_write_string(out,m,content);
+  return json_raw(out,m,"}");
+}
+n59_ck :: (secret:[]u8,pub:[]u8,out:[]u8)->u32 {
+  work:[1]EcdhScratch;return nip44_conversation_key_from_keys_checked(secret,pub,work[..],out,false);
+}
+n59_wrapped :: (r:Nip59Wrapped,error:u32,fresh:[]Nip59Fresh,work:[]u8,out:[]u8)->Nip59Wrapped {
+  w:=r;w.error=error;
+  clean:Nip59Fresh;fresh[0]=clean;n59_zero(work[0..<NIP59_WORK]);
+  if error!=NIP59_OK {n59_zero(out);fail:Nip59Wrapped;fail.error=error;return fail;}
+  return w;
+}
+
+// Wraps a rumor of (now, kind, tags, content) by author for recipient_x.
+// tags is one JSON array of string arrays (event_sign.coax's admission).
+// wrap_kind is NIP59_WRAP_KIND or NIP59_EPHEMERAL_KIND. fresh is exactly one
+// record of new host entropy, consumed (zeroed) on every admitted return.
+// overlap is the host's truthful fact that any two views share memory.
+// Refused views and inputs change nothing.
+nip59_wrap_checked :: (author:[]u8,recipient_x:[]u8,now:int,kind:int,tags:string,content:string,wrap_kind:int,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->Nip59Wrapped #export_c {
+  r:Nip59Wrapped;
+  if author.count!=32 || recipient_x.count!=32 || fresh.count!=1 {return r;}
+  if !es_inputs(now,kind,tags) || now<NIP59_WINDOW || (wrap_kind!=NIP59_WRAP_KIND && wrap_kind!=NIP59_EPHEMERAL_KIND) {return r;}
+  if work.count<NIP59_WORK || out.count==0 {r.error=NIP59_OUTPUT;return r;}
+  if overlap {r.error=NIP59_ALIAS;return r;}
+  if content.count>NIP59_MAX_RUMOR {return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
+  rumor:=work[0..<NIP59_REGION];pre:=work[NIP59_REGION..<2*NIP59_REGION];
+  nwork:=work[2*NIP59_REGION..<4*NIP59_REGION];pay:=work[4*NIP59_REGION..<5*NIP59_REGION];
+  scratch:=work[5*NIP59_REGION..<6*NIP59_REGION];seal:=work[6*NIP59_REGION..<7*NIP59_REGION];
+  r.seal_at=n59_back(now,fresh[0].seal_back);r.wrap_at=n59_back(now,fresh[0].wrap_back);
+  // The seal's key stage gives the author's public key for the rumor; the
+  // message is not read until the next stage.
+  sw:[1]NostrSignWork;
+  if nostr_event_sign_step(author,fresh[0].seal_aux[..],r.seal_at,NIP59_SEAL_KIND,"[]","",sw[..],scratch,out,false)!=EVENT_MORE {
+    return n59_wrapped(r,NIP59_KEY,fresh,work,out);
+  }
+  author_pub:=sw[0].pub;
+  n:=n59_rumor(author_pub[..],now,kind,tags,content,pre,rumor,r.rumor_id[..]);
+  if n<0 || n>NIP59_MAX_RUMOR {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_CAPACITY,fresh,work,out);}
+  ck:[32]u8;
+  if n59_ck(author,recipient_x,ck[..])!=NIP44_OK {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_KEY,fresh,work,out);}
+  p:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],fresh[0].seal_nonce[..],rumor[0..<n],nwork,pay,false);
+  n59_zero(ck[..]);
+  if p.error!=NIP44_OK {clear:NostrSignWork;sw[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  s:=n59_sign(author,fresh[0].seal_aux[..],r.seal_at,NIP59_SEAL_KIND,"[]",cast(string)pay[0..<p.written],sw[..],scratch,seal);
+  if s<=0 || s>NIP59_MAX_SEAL {return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  // The one-time key: valid, and never the author's.
+  ww:[1]NostrSignWork;
+  if nostr_event_sign_step(fresh[0].wrap_key[..],fresh[0].wrap_aux[..],r.wrap_at,wrap_kind,"[]","",ww[..],scratch,out,false)!=EVENT_MORE {
+    return n59_wrapped(r,NIP59_FRESH,fresh,work,out);
+  }
+  if n59_same32(ww[0].pub[..],author_pub[..]) {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_FRESH,fresh,work,out);}
+  if n59_ck(fresh[0].wrap_key[..],recipient_x,ck[..])!=NIP44_OK {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  q:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],fresh[0].wrap_nonce[..],seal[0..<s],nwork,pay,false);
+  n59_zero(ck[..]);
+  if q.error!=NIP44_OK {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  hex:[64]u8;h:=hex_encode_checked(cast(string)recipient_x,hex[..],false);
+  routing:[80]u8;t:=json_raw(routing[..],ne_writer_start(h.error),"[[\"p\",\"");t=json_raw(routing[..],t,cast(string)hex[..]);t=json_raw(routing[..],t,"\"]]");
+  if t<0 {clear:NostrSignWork;ww[0]=clear;return n59_wrapped(r,NIP59_INTERNAL,fresh,work,out);}
+  k:=n59_sign(fresh[0].wrap_key[..],fresh[0].wrap_aux[..],r.wrap_at,wrap_kind,cast(string)routing[0..<t],cast(string)pay[0..<q.written],ww[..],scratch,out);
+  if k<=0 {return n59_wrapped(r,NIP59_OUTPUT,fresh,work,out);}
+  r.written=k;return n59_wrapped(r,NIP59_OK,fresh,work,out);
+}
+
+n59_opened :: (o:Nip59Opened,error:u32,work:[]u8,out:[]u8)->Nip59Opened {
+  n59_zero(work[0..<NIP59_WORK]);
+  if error!=NIP59_OK {n59_zero(out);fail:Nip59Opened;fail.error=error;return fail;}
+  r:=o;r.error=NIP59_OK;return r;
+}
+// A NIP-44 refusal of a layer's content: size is capacity, the rest the layer's.
+n59_payload :: (status:u32,layer:u32)->u32 {
+  if status==NIP44_CAPACITY {return NIP59_CAPACITY;}
+  if status==NIP44_OUTPUT {return NIP59_OUTPUT;}
+  return layer;
+}
+
+// Opens a gift wrap for recipient (its secret) whose public key is
+// recipient_x. On NIP59_OK out[0..<written] is the rumor JSON and the spans
+// index it; author is the seal's key. Refused views change nothing; every
+// other refusal clears work and out. overlap as in nip59_wrap_checked.
+nip59_unwrap_checked :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,out:[]u8,overlap:bool)->Nip59Opened #export_c {
+  o:Nip59Opened;
+  if recipient.count!=32 || recipient_x.count!=32 {return o;}
+  if work.count<NIP59_WORK || out.count==0 {o.error=NIP59_OUTPUT;return o;}
+  if overlap {o.error=NIP59_ALIAS;return o;}
+  if wrap.count>NIP59_MAX_WRAP {return n59_opened(o,NIP59_CAPACITY,work,out);}
+  wpre:=work[0..<NIP59_REGION];nwork:=work[NIP59_REGION..<3*NIP59_REGION];
+  seal:=work[3*NIP59_REGION..<4*NIP59_REGION];text:=work[4*NIP59_REGION..<5*NIP59_REGION];
+  copy:=work[5*NIP59_REGION..<6*NIP59_REGION];rpre:=work[6*NIP59_REGION..<7*NIP59_REGION];
+  w:=nostr_event_read(wrap,wpre,false);
+  if w.error!=NE_OK || (w.kind!=NIP59_WRAP_KIND && w.kind!=NIP59_EPHEMERAL_KIND) {return n59_opened(o,NIP59_WRAP,work,out);}
+  if !nostr_fast_verify_vartime(w.id[..],w.public_key[..],w.signature[..]) {return n59_opened(o,NIP59_WRAP_SIGNATURE,work,out);}
+  if !n59_addressed(wrap[w.tags_from..<w.tags_to],recipient_x) {return n59_opened(o,NIP59_RECIPIENT,work,out);}
+  o.wrap_key=w.public_key;
+  ck:[32]u8;
+  c:=n59_ck(recipient,w.public_key[..],ck[..]);
+  if c!=NIP44_OK {n59_zero(ck[..]);return n59_opened(o,ifx c==NIP44_SECRET then NIP59_KEY else NIP59_WRAP_PAYLOAD,work,out);}
+  tn:=json_unescape(wrap[w.content_from..<w.content_to],text);
+  if tn<0 {n59_zero(ck[..]);return n59_opened(o,NIP59_WRAP_PAYLOAD,work,out);}
+  d:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)text[0..<tn],nwork,seal,false);
+  n59_zero(ck[..]);
+  if d.error!=NIP44_OK {return n59_opened(o,n59_payload(d.error,NIP59_WRAP_PAYLOAD),work,out);}
+  sealed:=cast(string)seal[0..<d.written];
+  s:=nostr_event_read(sealed,copy,false);
+  if s.error!=NE_OK || s.kind!=NIP59_SEAL_KIND || s.tags!=0 {return n59_opened(o,NIP59_SEAL,work,out);}
+  if !nostr_fast_verify_vartime(s.id[..],s.public_key[..],s.signature[..]) {return n59_opened(o,NIP59_SEAL_SIGNATURE,work,out);}
+  c=n59_ck(recipient,s.public_key[..],ck[..]);
+  if c!=NIP44_OK {n59_zero(ck[..]);return n59_opened(o,NIP59_SEAL_PAYLOAD,work,out);}
+  tn=json_unescape(sealed[s.content_from..<s.content_to],text);
+  if tn<0 {n59_zero(ck[..]);return n59_opened(o,NIP59_SEAL_PAYLOAD,work,out);}
+  e:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)text[0..<tn],nwork,out,false);
+  n59_zero(ck[..]);
+  if e.error!=NIP44_OK {return n59_opened(o,n59_payload(e.error,NIP59_SEAL_PAYLOAD),work,out);}
+  rumor:=cast(string)out[0..<e.written];
+  m:=n59_signed_copy(rumor,copy);
+  if m<0 {return n59_opened(o,NIP59_RUMOR,work,out);}
+  r:=nostr_event_read(cast(string)copy[0..<m],rpre,false);
+  if r.error!=NE_OK {return n59_opened(o,NIP59_RUMOR,work,out);}
+  if !n59_same32(r.public_key[..],s.public_key[..]) {return n59_opened(o,NIP59_IDENTITY,work,out);}
+  o.written=e.written;o.author=s.public_key;o.rumor_id=r.id;o.kind=r.kind;o.created_at=r.created_at;
+  o.tags_from=r.tags_from;o.tags_to=r.tags_to;o.tags=r.tags;o.content_from=r.content_from;o.content_to=r.content_to;
+  return n59_opened(o,NIP59_OK,work,out);
+}

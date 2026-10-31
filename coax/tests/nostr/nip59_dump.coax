@@ -1,0 +1,20 @@
+// Gift wraps made by coax/lib/nostr/nip59.coax, one JSON line each, for
+// nip59_interop.ts to open with nostr-effect: a kind 14 chat rumor, an
+// ephemeral (21059) wrap of it, and the hidden test deck's kind 3188 artifact
+// rumor wrapped again in Coax. Test keys and fixed stand-in entropy only.
+#import "Basic";
+#load "../../lib/nostr/nip59.coax";
+
+dump :: (kind:int,tags:string,content:string,wrap_kind:int,seed:int) {
+  alice:=n59_alice();bob:=N59_BOB_PUB;fresh:=n59_fresh(seed);
+  work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  w:=nip59_wrap_checked(alice[..],bob[..],N59_NOW,kind,tags,content,wrap_kind,fresh[..],work[..],out[..],false);
+  if w.error!=NIP59_OK {print("{\"error\":%}\n",w.error);return;}
+  print("%\n",cast(string)out[0..<w.written]);
+}
+main :: () {
+  chat:="[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+  dump(14,chat,"Bob: the decision job is ready. \"quoted\", tab\t and é.",NIP59_WRAP_KIND,1);
+  dump(14,chat,"ephemeral",NIP59_EPHEMERAL_KIND,2);
+  dump(3188,N59_TS_DECK_TAGS,N59_TS_DECK_CONTENT,NIP59_WRAP_KIND,3);
+}

@@ -1,0 +1,28 @@
+// Test keys and stand-in entropy for nip59.coax's checks, nip59_checks.coax
+// and nip59_dump.coax. BIP-340 vector keys 0 and 1 (Alice k=3, Bob): never
+// production keys.
+#load "nip59_vectors.coax";
+N59_NOW :: 1793300000;
+n59_alice :: ()->[32]u8 {k:[32]u8;k[31]=3;return k;}
+n59_bob :: ()->[32]u8 {
+  k:=[32]u8.[0xb7,0xe1,0x51,0x62,0x8a,0xed,0x2a,0x6a,0xbf,0x71,0x58,0x80,0x9c,0xf4,0xf3,0xc7,0x62,0xe7,0x16,0x0f,0x38,0xb4,0xda,0x56,0xa7,0x84,0xd9,0x04,0x51,0x90,0xcf,0xef];
+  return k;
+}
+// Deterministic stand-ins for host entropy, distinct per seed.
+n59_fresh :: (seed:int)->[1]Nip59Fresh {
+  f:[1]Nip59Fresh;
+  for i:0..<32 {
+    f[0].wrap_key[i]=cast(u8)(seed*31+i+1);f[0].seal_nonce[i]=cast(u8)(seed*7+i);f[0].wrap_nonce[i]=cast(u8)(seed*11+i+3);
+    f[0].seal_aux[i]=cast(u8)(seed*13+i);f[0].wrap_aux[i]=cast(u8)(seed*17+i);
+  }
+  f[0].seal_back=cast(u64)(1000+seed);f[0].wrap_back=cast(u64)(1000000*seed);
+  return f;
+}
+n59_wrap_text :: (f:[]Nip59Fresh,content:string,work:[]u8,out:[]u8)->Nip59Wrapped {
+  alice:=n59_alice();bob:=N59_BOB_PUB;
+  return nip59_wrap_checked(alice[..],bob[..],N59_NOW,14,"[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",content,NIP59_WRAP_KIND,f,work,out,false);
+}
+n59_open :: (wrap:string,work:[]u8,out:[]u8)->Nip59Opened {
+  bob:=n59_bob();me:=N59_BOB_PUB;
+  return nip59_unwrap_checked(bob[..],me[..],wrap,work,out,false);
+}
