@@ -45,7 +45,10 @@ OBJECT_FLOATS :: 16;
 BOX_VERTICES :: 36;
 
 FX :: 64;
-FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10;
+FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10; FX_SHOT :: 11; FX_CHIP :: 12;
+// Your shots travel (#adba), each mode its own: SEVER a spinning blade,
+// HEAD a thin fast tracer, CORE a heavy slow bolt (metres a second).
+SHOT_SPEED :: [3] f32.[60, 150, 38];
 
 OUTBOX_CAP :: 256;
 MSG_KEPT :: 4;           // host.js: what the realm's slot kept, on each visit
@@ -770,10 +773,12 @@ turn_view :: (s: [] DeadGears, dt: f32) {
 
 // ---- the rules' events: the flash, the toasts, the effects, the saves
 
-effect :: (s: [] DeadGears, kind: int, at: Point, to: Point, life: f32, size: f32) {
+effect :: (s: [] DeadGears, kind: int, at: Point, to: Point, life: f32, size: f32) { later(s, kind, at, to, life, size, 0); }
+// An effect that starts after wait seconds (a hit's sparks when the shot arrives).
+later :: (s: [] DeadGears, kind: int, at: Point, to: Point, life: f32, size: f32, wait: f32) {
   if !redit_row_on(s[0].ed[..], "sparks") { return; }
   i := s[0].fx_next;
-  s[0].fx[i] = Fx.{kind = kind, at = at, to = to, t = 0, life = life, size = size};
+  s[0].fx[i] = Fx.{kind = kind, at = at, to = to, t = -wait, life = life, size = size};
   s[0].fx_next = (i + 1) % FX;
 }
 
@@ -787,11 +792,17 @@ heard :: (s: [] DeadGears, from: int) {
     dg_tally(s, e.kind, e.flag);
     if e.kind == EV_SHOT {
       s[0].shots += 1; s[0].fire_flash = 0.1; s[0].raised = f32(RAISED); s[0].kick = f32(KICK);
+      // The shot flies from the muzzle (#adba); what it does shows when it lands.
+      mode := g.st[0].mode;
+      fly := length(sub(e.to, e.at)) / SHOT_SPEED[mode];
+      effect(s, FX_SHOT, e.at, e.to, hi(fly, 0.01), f32(mode));
       if e.flag {
         s[0].hits += 1; s[0].hit_flash = 0.18; s[0].shot_who = e.who;
-        effect(s, FX_SPARK, e.to, e.at, 0.28, 1);
-        effect(s, FX_MARK, e.to, e.at, 0.5, 1);   // where it landed (#55e7)
-        effect(s, FX_FLUID, e.to, e.at, 0.55, 1);  // and what it spilled (#3f12)
+        later(s, FX_SPARK, e.to, e.at, 0.28, 1, fly);
+        later(s, FX_MARK, e.to, e.at, 0.5, 1, fly);   // where it landed (#55e7)
+        later(s, FX_FLUID, e.to, e.at, 0.55, 1, fly);  // and what it spilled (#3f12)
+      } else if e.n == -1 {
+        later(s, FX_CHIP, e.to, e.at, 0.3, 1, fly);    // it struck cover or a wall
       }
     } else if e.kind == EV_BEAMED && e.flag {
       effect(s, FX_SPARK, e.to, e.at, 0.2, 0.7);
@@ -1110,6 +1121,14 @@ draw_world :: (s: [] DeadGears) {
     if !ecs_match(g.e, i, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
     m := g.mutant[i];
     creature(s, m.kind, g.pos[i].x, g.pos[i].z, g.yaw[i], g.hp[i], m);
+    // A brute about to fire (#adba): a red charge swelling at its chest.
+    charge := dg_brute_charge(g, i);
+    if charge > 0 {
+      p := g.pos[i]; y := g.yaw[i];
+      c := v3(p.x + sin(y) * 0.75, 1.55, p.z + cos(y) * 0.75);
+      orb := 0.06 + charge * 0.2;
+      box(s, c, v3(orb, orb, orb), v3(1.0, 0.25, 0.25), 2 + charge * 6, s[0].clock * 5, s[0].clock * 7, 0);
+    }
   }
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_CARGO | C_POS, 0) { continue; }
@@ -1124,14 +1143,13 @@ draw_world :: (s: [] DeadGears) {
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_BOLT | C_POS, 0) { continue; }
     p := g.pos[i]; v := g.vel[i];
-    box(s, v3(p.x, 1, p.z), v3(0.16, 0.16, 0.4), v3(0.9, 0.4, 0.24), 2, 0, atan2(v.x, v.z), 0);
+    box(s, v3(p.x, 1, p.z), v3(0.22, 0.22, 0.5), v3(1.0, 0.25, 0.25), 4, 0, atan2(v.x, v.z), 0);
   }
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_BEAM, 0) { continue; }
     b := g.beam[i];
     fade := clamp(g.ttl[i] / 0.1, 0, 1);
-    if b.ally { beam_box(s, b.from, b.to, 0.035, v3(0.7, 0.85, 1.0), 3 * fade); }
-    else { beam_box(s, b.from, b.to, 0.05, v3(0.85, 0.95, 1.0), 5 * fade); }
+    if b.ally { beam_box(s, b.from, b.to, 0.035, v3(0.7, 0.85, 1.0), 3 * fade); }   // yours flies as a shot (#adba)
   }
   effects(s);
 }
@@ -1148,7 +1166,7 @@ effects :: (s: [] DeadGears) {
   g := game(s);
   for i: 0..<FX {
     f := s[0].fx[i];
-    if f.life <= 0 || f.t >= f.life { continue; }
+    if f.life <= 0 || f.t >= f.life || f.t < 0 { continue; }
     k := f.t / f.life;
     fade := 1 - k;
     if f.kind == FX_SPARK {
@@ -1183,6 +1201,31 @@ effects :: (s: [] DeadGears) {
       m := 0.09 * (1 - k * 0.5);
       box(s, f.at, v3(m * 2, 0.025, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
       box(s, f.at, v3(0.025, m * 2, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
+    } else if f.kind == FX_SHOT {
+      d := unit_or(sub(f.to, f.at), v3(0, 0, -1));
+      at := add(f.at, times(sub(f.to, f.at), k));
+      heading := atan2(d.x, d.z); tilt := -atan2(d.y, sqrt(d.x * d.x + d.z * d.z));
+      if f.size < 0.5 {
+        // SEVER: a flat blade spinning about its flight.
+        spin := s[0].clock * 45 + f32(i);
+        box(s, at, v3(0.34, 0.025, 0.07), v3(0.85, 0.92, 1.0), 3.5, tilt, heading, spin);
+        box(s, at, v3(0.07, 0.025, 0.34), v3(0.85, 0.92, 1.0), 3.5, tilt, heading, spin);
+      } else if f.size < 1.5 {
+        // HEAD: a thin tracer streak.
+        beam_box(s, sub(at, times(d, hi(0.05, lo(1.6, length(sub(at, f.at)))))), at, 0.018, v3(0.75, 0.95, 1.0), 6);
+      } else {
+        // CORE: a heavy glowing bolt with a short trail.
+        box(s, at, v3(0.16, 0.16, 0.26), v3(0.55, 0.65, 1.0), 5, tilt, heading, s[0].clock * 8);
+        beam_box(s, sub(at, times(d, hi(0.05, lo(0.7, length(sub(at, f.at)))))), at, 0.07, v3(0.45, 0.55, 1.0), 2.5 * fade + 0.5);
+      }
+    } else if f.kind == FX_CHIP {
+      // Chips off cover or the hull, thrown back toward you.
+      back := unit_or(sub(f.to, f.at), v3(0, 0, 1));
+      for q: 0..<5 {
+        a := f32(q) * 1.256 + f32(i);
+        r := k * 0.45;
+        box(s, v3(f.at.x + (back.x * 0.6 + cos(a) * 0.4) * r, f.at.y + sin(a * 1.3) * r * 0.5 + k * 0.08, f.at.z + (back.z * 0.6 + sin(a) * 0.4) * r), v3(0.035, 0.035, 0.035), v3(0.9, 0.95, 1.0), 3 * fade, a, a, 0);
+      }
     } else if f.kind == FX_FLUID {
       // Dark drops thrown back along the shot, falling to the deck.
       back := unit_or(sub(f.to, f.at), v3(0, 0, 1));
@@ -2130,6 +2173,36 @@ reticle_over :: (s: [] DeadGears) -> bool {
   #assert deadgears_key(s[..], 'w', 0);
   for f: 0..<60 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); if g.st[0].cover { break; } }
   #assert g.st[0].cover && s[0].feet.z > 3;
+}
+
+#test "each mode's shot flies from the muzzle its own way, and its hit shows when it lands (#adba)" {
+  speeds: [3] f32;
+  for mode: 0..<3 {
+    s: [1] DeadGears;
+    started(s[..]);
+    g := game(s[..]);
+    g.st[0].ally_time = 1000000;
+    i := -1;
+    for j: 0..<ecs_high(g.e) { if alive_mutant(g, j) && i < 0 { i = j; } }
+    g.pos[i] = v3(0, 0, 1); g.mutant[i].stun = 1000; g.hp[i] = 10000;
+    g.st[0].mode = mode;
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+    aim_bot(s[..], i);
+    n := frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+    used := deadgears_key(s[..], 'f', 0);
+    n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.004);
+    shot := -1; mark := -1;
+    for q: 0..<FX {
+      if s[0].fx[q].life > 0 && s[0].fx[q].kind == FX_SHOT { shot = q; }
+      if s[0].fx[q].life > 0 && s[0].fx[q].kind == FX_MARK { mark = q; }
+    }
+    #assert shot >= 0 && mark >= 0;
+    f := s[0].fx[shot];
+    #assert f.size == f32(mode) && flat(f.at, s[0].feet) < 1.2;   // from you
+    #assert s[0].fx[mark].t < 0;                                    // not landed yet
+    speeds[mode] = length(sub(f.to, f.at)) / f.life;
+  }
+  #assert speeds[HEAD] > speeds[SEVER] && speeds[SEVER] > speeds[CORE];
 }
 
 // p is on (or just by) one of mutant slot i's body parts.

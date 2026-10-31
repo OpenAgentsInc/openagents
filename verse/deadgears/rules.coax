@@ -548,7 +548,7 @@ dg_fire :: (g: Game) {
   t := hit.who;
   muzzle := v3(p.x, 1.35, p.z);
   add_beam(g, muzzle, hit.at, 0.1, false);
-  emit(g, Event.{kind = EV_SHOT, who = t, flag = t != ECS_NONE, n = hit.region, at = muzzle, to = hit.at});
+  emit(g, Event.{kind = EV_SHOT, who = t, flag = t != ECS_NONE, n = ifx t != ECS_NONE then hit.region else ifx hit.solid then -1 else -2, at = muzzle, to = hit.at});
   if t == ECS_NONE { return; }
   ti := slot_of(t);
   if hit.region == R_HEAD {
@@ -933,6 +933,22 @@ fire_system :: (g: Game, dt: f32) {
   if !g.st[0].skip && g.input[0].firing { dg_fire(g); }
 }
 
+// ---- the brute's bolt (#adba): it fires when its wind-up ends while it
+// can see you; the wind-up is the last BRUTE_WINDUP seconds of its wait.
+BRUTE_WINDUP :: 0.7;
+BRUTE_RANGE :: 19.0;
+dg_brute_aims :: (g: Game, i: int) -> bool {
+  m := g.mutant[i];
+  if m.kind != BRUTE || m.stun > 0 || g.hp[i] <= 0 { return false; }
+  p := dg_player_pos(g); e := g.pos[i];
+  return flat(e, p) < f32(BRUTE_RANGE) && flat(e, p) > 1.6 && !dg_wall_ray(g, e, p);
+}
+// How far through its wind-up brute slot i is: 0 resting, 1 about to fire.
+dg_brute_charge :: (g: Game, i: int) -> f32 {
+  if !dg_brute_aims(g, i) { return 0; }
+  return clamp(1 - g.mutant[i].attack / f32(BRUTE_WINDUP), 0, 1);
+}
+
 // ---- roles (#96d6)
 
 ROLE_CHASE :: 0;    // straight at you, round the covers
@@ -1053,7 +1069,7 @@ mutant_system :: (g: Game, dt: f32) {
       m.attack = ifx m.kind == SKITTER then 0.8f32 else 1.2f32;
       g.mutant[i] = m;
       if !g.input[0].dodging { dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e); }
-    } else if m.kind == BRUTE && d < 19 && m.attack <= 0 && !dg_wall_ray(g, e, p) {
+    } else if dg_brute_aims(g, i) && m.attack <= 0 {
       m.attack = 2.8;
       g.mutant[i] = m;
       b := dg_spawn_bolt(g, e, v3((p.x - e.x) / d * 7, 0, (p.z - e.z) / d * 7));
@@ -1806,6 +1822,27 @@ shot_hits :: (g: Game) -> int {
     }
     #assert (dg_health(g) == 100) == (dodge == 1);
   }
+}
+
+#test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  b := dg_spawn_mutant(g, BRUTE, 0, -2, -1);
+  i := slot_of(b);
+  g.mutant[i].attack = 2;
+  me := v3(0, 0, 8);
+  wound := 0.0f32; fired := false;
+  for f: 0..<80 {
+    if dg_brute_charge(g, i) > 0 { wound += 0.05; }
+    tick(g, me, false, false, 0, -1, 0.05);
+    if dg_events(g, EV_BOLT_FIRED) > 0 { fired = true; break; }
+  }
+  #assert fired && wound >= f32(BRUTE_WINDUP) - 0.11;   // seen coming for the whole wind-up
+  // Step 1.5 m aside as it flies: it passes.
+  aside := v3(1.5, 0, 8);
+  for f: 0..<60 { tick(g, aside, false, false, 0, -1, 0.05); }
+  #assert dg_health(g) == 100;
 }
 
 spawn_crowd :: (g: Game) {
