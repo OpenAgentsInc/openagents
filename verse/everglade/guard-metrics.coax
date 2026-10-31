@@ -1,0 +1,133 @@
+// Fixed per-visit, local-only shadow measurements. No body, user text, or
+// remote identity enters this ledger. Six starts bound every aggregate by six.
+#authority;
+GM_CAP :: 6;
+GM_TIME_MAX :: 9007199254740991;
+GM_HIST_BINS :: 11;
+GM_MS_CAP :: 30000;
+GM_LIMITS :: [10]int.[10,50,100,250,500,1000,2000,4000,8000,30000];
+GM_ADMITTED :: 1; GM_AUTH :: 2; GM_QUOTA :: 3; GM_NO_TRANSPORT :: 4;
+GM_TIMEOUT :: 5; GM_MALFORMED :: 6; GM_REVOKED :: 7; GM_STALE :: 8; GM_HTTP :: 9;
+GmCount :: struct {value:int;}
+GmLatency :: struct {value:int;clipped:bool;}
+GmEntry :: struct {sequence:int;started_ms:int;replied:bool;reply_ms:int;terminal:int;late_seen:bool;}
+GaMetrics :: struct {
+  entries:[GM_CAP]GmEntry;used:int;replies:int;terminals:int;late:int;last_reason:int;
+  outcomes:[9]GmCount;network:[GM_HIST_BINS]GmCount;queue:[GM_HIST_BINS]GmCount;total:[GM_HIST_BINS]GmCount;
+  last_network:int;last_queue:int;last_total:int;network_clipped:bool;queue_clipped:bool;total_clipped:bool;
+}
+#test "histogram boundaries are integer upper-exclusive thresholds with one overflow bin" {
+  #assert gm_bin(0)==0 && gm_bin(-1)==-1 && gm_bin(GM_TIME_MAX+1)==-1;
+  for i:0..<GM_LIMITS.count {#assert gm_bin(GM_LIMITS[i]-1)==i && gm_bin(GM_LIMITS[i])==i+1;}
+  #assert gm_bin(GM_TIME_MAX)==10 && gm_ms(0).value==0 && !gm_ms(29999).clipped && gm_ms(30000).value==30000 && gm_ms(30000).clipped && gm_ms(30001).value==30000;
+}
+#test "one request records one arrival and admission across three separate clocks" {
+  m:[1]GaMetrics;#assert gm_begin(m[..],1,100);
+  #assert gm_reply(m[..],1,350) && !gm_reply(m[..],1,351);
+  #assert m[0].replies==1 && m[0].network[4].value==1 && m[0].last_network==250;
+  #assert gm_admit(m[..],1,400) && !gm_admit(m[..],1,401);
+  #assert m[0].entries[0].terminal==GM_ADMITTED && m[0].terminals==1 && m[0].outcomes[0].value==1 && m[0].last_reason==GM_ADMITTED;
+  #assert m[0].queue[2].value==1 && m[0].total[4].value==1 && m[0].last_queue==50 && m[0].last_total==300;
+  #assert !gm_end(m[..],1,GM_REVOKED) && !gm_reply(m[..],1,500);
+  #assert gm_late(m[..],1) && !gm_late(m[..],1) && m[0].late==1 && m[0].terminals==1 && m[0].replies==1;
+}
+#test "unknown and duplicate sequence calls cannot consume ledger capacity or completion counts" {
+  m:[1]GaMetrics;
+  for i:1..<7 {
+    #assert !gm_reply(m[..],i,1) && !gm_end(m[..],i,GM_HTTP) && !gm_admit(m[..],i,1) && !gm_late(m[..],i);
+    #assert m[0].used==i-1 && gm_begin(m[..],i,i*100) && !gm_begin(m[..],i,i*100);
+    #assert !gm_late(m[..],i) && gm_end(m[..],i,GM_REVOKED) && !gm_end(m[..],i,GM_HTTP);
+    #assert gm_late(m[..],i) && !gm_late(m[..],i);
+  }
+  #assert !gm_begin(m[..],7,700) && m[0].used==6 && m[0].terminals==6 && m[0].late==6;
+  #assert m[0].outcomes[GM_REVOKED-1].value==6 && !gm_begin(m[..],1,100);
+}
+#test "invalid clocks and admission before a reply are observational refusals" {
+  m:[1]GaMetrics;
+  #assert !gm_begin(m[..],0,0) && !gm_begin(m[..],1,-1) && !gm_begin(m[..],1,GM_TIME_MAX+1) && m[0].used==0;
+  #assert gm_begin(m[..],1,10) && !gm_admit(m[..],1,11) && !gm_reply(m[..],1,9) && !gm_reply(m[..],1,GM_TIME_MAX+1);
+  #assert gm_reply(m[..],1,11) && !gm_admit(m[..],1,10) && !gm_admit(m[..],1,GM_TIME_MAX+1);
+  #assert gm_admit(m[..],1,11) && m[0].network[0].value==1 && m[0].queue[0].value==1 && m[0].total[0].value==1;
+  #assert gm_begin(m[..],2,GM_TIME_MAX) && gm_reply(m[..],2,GM_TIME_MAX) && gm_admit(m[..],2,GM_TIME_MAX);
+}
+#test "every nonadmission terminal has its own bounded count and cannot be rewritten" {
+  for reason:2..<10 {
+    m:[1]GaMetrics;#assert gm_begin(m[..],1,0);
+    #assert !gm_end(m[..],1,0) && !gm_end(m[..],1,1) && !gm_end(m[..],1,10);
+    #assert gm_end(m[..],1,reason) && m[0].last_reason==reason && m[0].outcomes[reason-1].value==1;
+    for other:1..<10 {#assert !gm_end(m[..],1,other);}
+    #assert m[0].terminals==1 && m[0].replies==0;
+  }
+}
+#test "overflow elapsed time stays in one bin and only clipped relative times are probed" {
+  m:[1]GaMetrics;#assert gm_begin(m[..],1,0) && gm_reply(m[..],1,GM_TIME_MAX-1) && gm_admit(m[..],1,GM_TIME_MAX);
+  #assert m[0].network[10].value==1 && m[0].queue[0].value==1 && m[0].total[10].value==1;
+  #assert gm_probe(m[..],13)==30000 && gm_probe(m[..],14)==1 && gm_probe(m[..],15)==30000 && gm_probe(m[..],16)==5;
+  #assert gm_probe(m[..],7)==1 && gm_probe(m[..],8)==1 && gm_probe(m[..],9)==1 && gm_probe(m[..],10)==1;
+  #assert gm_probe(m[..],11)==1 && gm_probe(m[..],12)==0 && gm_probe(m[..],20)==1;
+  for i:0..<11 {#assert gm_probe(m[..],40+i)==m[0].network[i].value && gm_probe(m[..],60+i)==m[0].queue[i].value && gm_probe(m[..],80+i)==m[0].total[i].value;}
+  for field:[12]int.[-1,0,6,17,19,29,39,51,59,71,79,91] {#assert gm_probe(m[..],field)==-1;}
+}
+#test "metric state capacity is exactly one on every mutating or probing entry" {
+  m:[2]GaMetrics;for n:[2]int.[0,2] {
+    #assert !gm_begin(m[0..<n],1,0) && !gm_reply(m[0..<n],1,1) && !gm_admit(m[0..<n],1,1);
+    #assert !gm_end(m[0..<n],1,GM_REVOKED) && !gm_late(m[0..<n],1) && gm_probe(m[0..<n],7)==-1;
+  }
+}
+
+gm_bin :: (ms:int)->int {
+  if ms<0 || ms>GM_TIME_MAX {return -1;}
+  for i:0..<GM_LIMITS.count {if ms<GM_LIMITS[i] {return i;}}return GM_HIST_BINS-1;
+}
+gm_ms :: (ms:int)->GmLatency {
+  if ms>=GM_MS_CAP {return GmLatency.{value=GM_MS_CAP,clipped=true};}return GmLatency.{value=ms};
+}
+gm_find :: (m:[]GaMetrics,sequence:int)->int {
+  for i:0..<m[0].used {if m[0].entries[i].sequence==sequence {return i;}}return -1;
+}
+gm_begin :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+  if m.count!=1 || sequence<=0 || now_ms<0 || now_ms>GM_TIME_MAX {return false;}
+  if m[0].used>=GM_CAP || gm_find(m,sequence)>=0 {return false;}
+  m[0].entries[m[0].used]=GmEntry.{sequence=sequence,started_ms=now_ms};m[0].used+=1;return true;
+}
+gm_reply :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+  if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 {return false;}e:=m[0].entries[i];
+  if e.terminal!=0 || e.replied || now_ms<e.started_ms || now_ms>GM_TIME_MAX {return false;}
+  elapsed:=now_ms-e.started_ms;bin:=gm_bin(elapsed);clip:=gm_ms(elapsed);
+  m[0].entries[i].replied=true;m[0].entries[i].reply_ms=now_ms;m[0].replies+=1;
+  m[0].network[bin].value+=1;m[0].last_network=clip.value;m[0].network_clipped=clip.clipped;return true;
+}
+gm_admit :: (m:[]GaMetrics,sequence:int,now_ms:int)->bool {
+  if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 {return false;}e:=m[0].entries[i];
+  if e.terminal!=0 || !e.replied || now_ms<e.reply_ms || now_ms>GM_TIME_MAX {return false;}
+  queue:=now_ms-e.reply_ms;total:=now_ms-e.started_ms;q:=gm_ms(queue);t:=gm_ms(total);
+  m[0].entries[i].terminal=GM_ADMITTED;m[0].terminals+=1;m[0].outcomes[GM_ADMITTED-1].value+=1;m[0].last_reason=GM_ADMITTED;
+  m[0].queue[gm_bin(queue)].value+=1;m[0].total[gm_bin(total)].value+=1;
+  m[0].last_queue=q.value;m[0].last_total=t.value;m[0].queue_clipped=q.clipped;m[0].total_clipped=t.clipped;return true;
+}
+gm_end :: (m:[]GaMetrics,sequence:int,reason:int)->bool {
+  if m.count!=1 || reason<GM_AUTH || reason>GM_HTTP {return false;}i:=gm_find(m,sequence);if i<0 || m[0].entries[i].terminal!=0 {return false;}
+  m[0].entries[i].terminal=reason;m[0].terminals+=1;m[0].outcomes[reason-1].value+=1;m[0].last_reason=reason;return true;
+}
+gm_late :: (m:[]GaMetrics,sequence:int)->bool {
+  if m.count!=1 {return false;}i:=gm_find(m,sequence);if i<0 || m[0].entries[i].terminal==0 || m[0].entries[i].late_seen {return false;}
+  m[0].entries[i].late_seen=true;m[0].late+=1;return true;
+}
+gm_probe :: (m:[]GaMetrics,field:int)->int #export_c {
+  if m.count!=1 {return -1;}s:=m[0];if field==7 {return 1;}if field==8 {return s.used;}if field==9 {return s.replies;}
+  if field==10 {return s.terminals;}if field==11 {return s.last_reason;}if field==12 {return s.late;}
+  if field==13 {return s.last_network;}if field==14 {return s.last_queue;}if field==15 {return s.last_total;}
+  if field==16 {bits:=0;if s.network_clipped {bits+=1;}if s.queue_clipped {bits+=2;}if s.total_clipped {bits+=4;}return bits;}
+  if field>=20 && field<29 {return s.outcomes[field-20].value;}
+  if field>=40 && field<51 {return s.network[field-40].value;}
+  if field>=60 && field<71 {return s.queue[field-60].value;}
+  if field>=80 && field<91 {return s.total[field-80].value;}
+  return -1;
+}
+
+#test "queue clipping flags are explicit and reset on the next admitted sample" {
+  m:[1]GaMetrics;#assert gm_begin(m[..],1,0) && gm_reply(m[..],1,0) && gm_admit(m[..],1,30000);
+  #assert gm_probe(m[..],14)==30000 && gm_probe(m[..],16)==6;
+  #assert gm_begin(m[..],2,60000) && gm_reply(m[..],2,60001) && gm_admit(m[..],2,60002);
+  #assert gm_probe(m[..],13)==1 && gm_probe(m[..],14)==1 && gm_probe(m[..],15)==2 && gm_probe(m[..],16)==0;
+}

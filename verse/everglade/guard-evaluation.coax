@@ -1,0 +1,129 @@
+// Authored before live outputs. All three choices are harmless in each eligible
+// context. Preferred/useful labels are editorial utility hypotheses, not
+// calibrated truth, observed player benefit, or a promotion criterion.
+#load "guard-decision.coax";
+#authority;
+// book:begin cohort
+GEV_ELIGIBLE :: 16;
+GEV_CASES :: 26;
+// day-major: night always quiet; clear daylight greeting; other daylight weather.
+GEV_PREFERRED :: [16]int.[1,1,1,1,2,4,4,4,2,4,4,4,2,4,4,4];
+GEV_USEFUL :: [16]int.[0,0,0,0,2,4,4,4,2,4,4,4,2,4,4,4];
+// book:end cohort
+GeCase :: struct {valid:bool;index:int=-1;observation:GaObservation;remote_mask:int;acceptable_mask:int;preferred_mask:int;useful_mask:int;fallback_mask:int=1;}
+GeResult :: struct {index:int=-1;valid:bool;contract:bool;deadline:bool;covered:bool;action:int=-1;disagree:bool;acceptable:bool;preferred:bool;useful:bool;forbidden:bool;}
+GeTotals :: struct {seen:int;observed:int;eligible:int;contract:int;deadline:int;covered:int;disagree:int;acceptable:int;preferred:int;useful:int;}
+
+#test "the frozen day-major labels predate observations and every harmless option stays acceptable" {
+    #assert GEV_ELIGIBLE==16 && GEV_CASES==26;
+    for i:0..<16 {
+        c:=gev_case(i);#assert c.valid && c.index==i && c.observation.day==i/4 && c.observation.weather==i%4;
+        #assert ga_eligible(c.observation) && c.remote_mask==7 && c.acceptable_mask==7 && c.fallback_mask==1;
+        expected:=ifx i<4 then 1 else ifx i%4==0 then 2 else 4;
+        #assert c.preferred_mask==expected && c.useful_mask==(ifx i<4 then 0 else expected);
+    }
+}
+#test "ineligible observations are a separate local-fallback suite, never a remote evaluation opportunity" {
+    b:[1024]u8;
+    for i:16..<26 {
+        c:=gev_case(i);o:=c.observation;
+        #assert c.valid && !ga_eligible(o) && c.remote_mask==0 && c.acceptable_mask==1 && c.preferred_mask==1 && c.useful_mask==0 && c.fallback_mask==1;
+        #assert o.calm==(i!=16) && o.alive==(i!=17) && o.near==(i!=18) && o.visible==(i!=19) && o.safe==(i!=20) && o.playable==(i!=21);
+        #assert o.day==(ifx i==22 then -1 else ifx i==23 then 4 else 1) && o.weather==(ifx i==24 then -1 else ifx i==25 then 4 else 0);
+        #assert gev_request(i,b[..])==-1;
+    }
+    #assert !gev_case(-1).valid && !gev_case(26).valid && !gev_case(9223372036854775807).valid;
+    #assert gev_request(-1,b[..])==-1 && gev_request(26,b[..])==-1;
+    #assert gev_request(0,b[0..<0])==-1;
+}
+#test "request bytes come from the product writer without adding editorial labels to the prompt" {
+    a:[1024]u8;b:[1024]u8;
+    for i:0..<16 {n:=gev_request(i,a[..]);m:=ga_request(b[..],gev_case(i).observation);#assert n>0 && n==m && cast(string)a[0..<n]==cast(string)b[0..<m] && json_valid(cast(string)a[0..<n]);}
+}
+#test "contract, deadline, coverage, local disagreement and editorial utility remain separate" {
+    r:=gev_evaluate(4,"200\n",GA_RESPONSE,7999);#assert r.valid && r.contract && r.deadline && r.covered && r.action==1 && r.disagree && r.acceptable && r.preferred && r.useful && !r.forbidden;
+    r=gev_evaluate(0,"200\n",GA_RESPONSE,0);#assert r.covered && r.acceptable && r.disagree && !r.preferred && !r.useful;
+    r=gev_evaluate(5,"200\n",GA_RESPONSE,1);#assert r.covered && r.acceptable && !r.preferred && !r.useful;
+    for elapsed:[4]int.[-1,8000,8001,9223372036854775807] {r=gev_evaluate(4,"200\n",GA_RESPONSE,elapsed);#assert r.contract && !r.deadline && !r.covered && !r.disagree && !r.useful;}
+    for status:[5]string.["0\n","401\n","429\n","503\n","200"] {r=gev_evaluate(4,status,GA_RESPONSE,1);#assert !r.contract && r.deadline && !r.covered;}
+    r=gev_evaluate(4,"200\n","{}",1);#assert !r.contract && !r.covered;
+    r=gev_evaluate(16,"200\n",GA_RESPONSE,1);#assert r.contract && r.deadline && r.forbidden && !r.covered && !r.acceptable;
+    #assert !gev_evaluate(-1,"200\n",GA_RESPONSE,1).valid;
+}
+#test "quiet stays an acceptable zero-cost baseline and weather can satisfy the editorial preference" {
+    a:[8192]u8;b:[8192]u8;d:[8192]u8;
+    for action:[2]int.[0,2] {
+        body:=ga_swap(a[..],GA_RESPONSE,"\"greeting\":0.8","\"greeting\":0.1");
+        body=ga_swap(b[..],body,ifx action==0 then "\"quiet\":0.1" else "\"weather\":0.1",ifx action==0 then "\"quiet\":0.8" else "\"weather\":0.8");
+        body=ga_swap(d[..],body,"\"choice\":\"greeting\"",ifx action==0 then "\"choice\":\"quiet\"" else "\"choice\":\"weather\"");
+        r:=gev_evaluate(ifx action==0 then 0 else 5,"200\n",body,0);
+        #assert r.covered && r.action==action && r.acceptable && r.preferred && r.disagree==(action==2) && r.useful==(action==2);
+    }
+}
+#test "aggregation counts unique observations and never calls missing cases coverage" {
+    totals:[1]GeTotals;r:=gev_evaluate(4,"200\n",GA_RESPONSE,1);
+    #assert gev_add(totals[..],r) && !gev_add(totals[..],r);
+    #assert totals[0].observed==1 && totals[0].eligible==1 && totals[0].covered==1 && totals[0].useful==1;
+    #assert !gev_complete(totals[0]);
+    for i:0..<16 {if i!=4 {#assert gev_add(totals[..],gev_evaluate(i,"503\n","",1));}}
+    #assert totals[0].observed==16 && totals[0].eligible==16 && totals[0].contract==1 && totals[0].deadline==16 && totals[0].covered==1 && totals[0].disagree==1 && totals[0].acceptable==1 && totals[0].preferred==1 && totals[0].useful==1 && gev_complete(totals[0]);
+    #assert !gev_add(totals[..],gev_evaluate(16,"503\n","",1));
+    #assert !gev_add(totals[0..<0],r) && !gev_add(totals[..],GeResult.{});
+    many:[2]GeTotals;#assert !gev_add(many[..],r);
+    for index:[4]int.[-1,16,26,9223372036854775807] {#assert !gev_add(totals[..],GeResult.{valid=true,index=index});}
+}
+#test "the published label manifest has stable identities and preserves inclusive output capacity" {
+    b:[1024]u8;
+    for i:0..<26 {
+        c:=gev_case(i);n:=gev_manifest(i,b[..]);text:=cast(string)b[0..<n];
+        #assert n>0 && json_valid(text) && json_int(ga_get(text,"case").text).value==i && ga_is(ga_get(text,"corpus"),"guard-editorial-v1");
+        p:=json_int(ga_get(text,"preferred_mask").text);u:=json_int(ga_get(text,"editorial_useful_mask").text);
+        #assert p.ok && p.value==c.preferred_mask && u.ok && u.value==c.useful_mask;
+    }
+    #assert gev_manifest(-1,b[..])==-1 && gev_manifest(26,b[..])==-1 && gev_manifest(0,b[0..<0])==-1;
+}
+
+gev_case :: (index:int)->GeCase #export_c {
+    if index<0 || index>=GEV_CASES {return GeCase.{};}
+    o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
+    if index<GEV_ELIGIBLE {
+        o.day=index/4;o.weather=index%4;
+        return GeCase.{valid=true,index=index,observation=o,remote_mask=7,acceptable_mask=7,preferred_mask=GEV_PREFERRED[index],useful_mask=GEV_USEFUL[index]};
+    }
+    if index==16 {o.calm=false;}if index==17 {o.alive=false;}if index==18 {o.near=false;}
+    if index==19 {o.visible=false;}if index==20 {o.safe=false;}if index==21 {o.playable=false;}
+    if index==22 {o.day=-1;}if index==23 {o.day=4;}if index==24 {o.weather=-1;}if index==25 {o.weather=4;}
+    return GeCase.{valid=true,index=index,observation=o,acceptable_mask=1,preferred_mask=1};
+}
+gev_request :: (index:int,out:[]u8)->int #export_c {
+    c:=gev_case(index);if !c.valid || c.remote_mask==0 {return -1;}return ga_request(out,c.observation);
+}
+// book:begin score
+gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c {
+    c:=gev_case(index);if !c.valid {return GeResult.{};}
+    r:=GeResult.{valid=true,index=index,deadline=elapsed_ms>=0 && elapsed_ms<GA_TIMEOUT,forbidden=c.remote_mask==0};
+    if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;
+    if !r.deadline || r.forbidden {return r;}
+    r.covered=true;r.disagree=a.action!=0;
+    // Every authored eligible option is harmless; acceptability is not a
+    // preference score. Keeping that fact explicit avoids a vacuous mask gate.
+    r.acceptable=true;bit:=1<<a.action;r.preferred=(c.preferred_mask&bit)!=0;r.useful=(c.useful_mask&bit)!=0;
+    return r;
+}
+// book:end score
+gev_add :: (totals:[]GeTotals,r:GeResult)->bool #export_c {
+    if totals.count!=1 || !r.valid || r.index<0 || r.index>=GEV_ELIGIBLE {return false;}
+    bit:=1<<r.index;if (totals[0].seen&bit)!=0 {return false;}totals[0].seen|=bit;totals[0].observed+=1;
+    totals[0].eligible+=1;if r.contract {totals[0].contract+=1;}if r.deadline {totals[0].deadline+=1;}
+    if r.covered {totals[0].covered+=1;}if r.disagree {totals[0].disagree+=1;}if r.acceptable {totals[0].acceptable+=1;}
+    if r.preferred {totals[0].preferred+=1;}if r.useful {totals[0].useful+=1;}return true;
+}
+gev_complete :: (totals:GeTotals)->bool #export_c {return (totals.seen&65535)==65535;}
+gev_manifest :: (index:int,out:[]u8)->int #export_c {
+    c:=gev_case(index);if !c.valid {return -1;}
+    n:=json_raw(out,0,"{\"corpus\":\"guard-editorial-v1\",\"case\":");n=json_write_int(out,n,index);
+    n=json_raw(out,n,",\"day\":");n=json_write_int(out,n,c.observation.day);n=json_raw(out,n,",\"weather\":");n=json_write_int(out,n,c.observation.weather);
+    n=json_raw(out,n,",\"remote_mask\":");n=json_write_int(out,n,c.remote_mask);n=json_raw(out,n,",\"acceptable_mask\":");n=json_write_int(out,n,c.acceptable_mask);
+    n=json_raw(out,n,",\"preferred_mask\":");n=json_write_int(out,n,c.preferred_mask);n=json_raw(out,n,",\"editorial_useful_mask\":");n=json_write_int(out,n,c.useful_mask);
+    return json_raw(out,n,",\"local_quiet_baseline\":0,\"fallback_mask\":1}");
+}

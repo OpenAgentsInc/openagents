@@ -63,14 +63,20 @@ cannot count an application in that callback.
 ```jai
 ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) {
   c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
-  if s[0].ticket[0].phase!=0 && (s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended || !gd_same_context(c,s[0].context) || now_ms>=s[0].ticket[0].ticket.expires_ms) {ga_invalidate(s);c.epoch=s[0].epoch;}
+  revoked:=s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended;
+  expired:=now_ms>=s[0].ticket[0].ticket.expires_ms;
+  if s[0].ticket[0].phase!=0 && (revoked || !gd_same_context(c,s[0].context) || expired) {
+    reason:=GM_STALE;if revoked {reason=GM_REVOKED;}if expired {reason=GM_TIMEOUT;}
+    _:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,reason);ga_invalidate(s);c.epoch=s[0].epoch;
+  }
   s[0].context=c;
   if s[0].ticket[0].phase==GD_READY {
     a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,7);
-    if a.code==GdCode.ok {s[0].accepted+=1;s[0].last_action=a.action;}else {ga_invalidate(s);}
+    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=a.action;}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
   }
   if s[0].mode!=1 || s[0].disabled || s[0].suspended || !ga_eligible(o) || s[0].ticket[0].phase!=0 || s[0].attempts>=6 || now_ms<s[0].due_ms {return;}
   b:=gd_begin(s[0].ticket[..],c,now_ms,GA_TIMEOUT);if b.code!=GdCode.ok {return;}
+  _:=gm_begin(s[0].metrics[..],b.ticket.sequence,now_ms);
   s[0].attempts+=1;s[0].due_ms=now_ms+GA_CADENCE;s[0].body_n=ga_request(s[0].body[..],o);
   // All sixteen admitted category pairs fit this fixed buffer (checked below).
   s[0].send=true;
@@ -124,6 +130,10 @@ The browser's `coaxial.guardProbe(field)` exposes only scalar diagnostics:
 | 4 | refused/revoked proposals |
 | 5 | last admitted enum: 0 quiet, 1 greeting, 2 weather; -1 none |
 | 6 | requests disabled for this visit |
+
+Additional bounded timing and terminal-reason probes are described in
+[chapter21d](ch021d-measure-a-guard-decision.md). They measure shadow outcomes
+without granting an action.
 
 Focused checks avoid real models and the unchanged world/crypto suites:
 

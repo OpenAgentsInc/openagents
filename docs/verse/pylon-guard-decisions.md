@@ -32,8 +32,9 @@ records real Elephant and Mammoth calls, approximately 5.6–6.0 seconds includi
 a deliberate five-second discovery wait. These are recorded observations, not
 a new latency or liveness measurement.
 
-The fleet retains a relay connection and peer table, but dispatch currently
-waits the discovery window on every request. Warm routing must first process
+At plan creation the fleet retained a relay connection and peer table but
+waited the discovery window on every request. M0 is now implemented on main;
+the measured public fleet still uses the older discovery wait. Warm routing must first process
 current-connection catch-up and withdrawals; a cached online beacon alone is
 insufficient after reconnect. Two learned provider keys share one Spot GPU VM,
 so current placement is not independent remote failover.
@@ -45,8 +46,8 @@ existing same-origin HttpOnly session; 401, 429 and unavailable capacity are
 ordinary fallbacks. Do not mint identities to escape limits or forward cookies
 to a Pylon. New access/budget policy is separate explicit work.
 
-The generic browser HTTP host currently has eight shared response slots and no
-cancellation/generation fence. A consumer timeout cannot simply free/reuse an
+At plan creation the browser HTTP host had eight shared response slots and no
+cancellation/generation fence. M1 now provides bounded cancellation and fencing. A consumer timeout cannot simply free/reuse an
 active slot: a late response could reach its successor. Deadline measurement
 must use a real monotonic effect, not game time, which pauses and changes speed.
 
@@ -150,8 +151,29 @@ actual-Wasm/headless synthetic-edge qualification. The book now has
 routing improvement. Independent review corrected both an empty-history
 routing regression and same-frame observation ordering before qualification.
 
-Next is M3: real signed-in shadow calls, bounded latency/outcome instrumentation
-and held-out guard contexts. M4 ambient lines remain disabled. Production
+M3 now has real signed-in shadow calls, bounded latency/outcome instrumentation
+and a fixed context corpus; its usefulness gate remains open (below).
+M4 ambient lines remain disabled. Production
 availability, remote cancellation and independent-provider failover remain M5;
 Belt still follows later. No live-model or production rollout claim follows
 from the local synthetic checks.
+
+## M3 measurement result (2026-10-30)
+
+[Chapter 21d](../../psionic/book/ch021d-measure-a-guard-decision.md) and the
+[measurement record](../verification/pylon-guard-shadow-2026-10-30.md) deliver
+bounded telemetry, Coax-owned evaluation and actual public/cookie evidence.
+The warm corpus has 16/16 timely pinned replies, median 5925 ms including CLI
+startup/signing. The normal cookie browser pilot admits in 5724 ms; pending blur
+revokes safely. The initial 503 is retained separately and remains unexplained.
+
+Every corpus answer was quiet. It has no observed usefulness gain over the free
+local quiet baseline, so M4 remains disabled. Measurement/contract mechanics are
+qualified; calibration and player benefit are not. Do not tune the request to
+these observed labels and present it as held-out improvement.
+
+Next work has two independent tracks: give a new candidate a meaningful bounded
+guard purpose and fresh held-out contexts; stage the existing M0 warm-fleet
+patch with real cold/catch-up/withdrawal qualification and compare public
+latency. The deployed fleet still waits five seconds per call. M5 continues to
+own independent providers, broader availability and remote cancellation.

@@ -1,0 +1,52 @@
+// Coax owns command selection, corpus identities, request bytes and evaluation.
+// The companion C file provides only argv/stdin/stdout effects and main entry.
+#load "../../../verse/everglade/guard-evaluation-wire.coax";
+gt_argc :: ()->int #foreign;
+gt_arg_len :: (index:int)->int #foreign;
+gt_arg_byte :: (index:int,offset:int)->int #foreign;
+gt_read_byte :: ()->int #foreign;
+gt_write_byte :: (byte:int)->bool #foreign;
+gt_read :: (out:[]u8)->int {n:=0;while true {b:=gt_read_byte();if b== -1 {return n;}if b<0 || n>=out.count {return -1;}out[n]=cast(u8)b;n+=1;}return -1;}
+gt_write :: (text:string)->bool {for b:text {if !gt_write_byte(cast(int)b) {return false;}}return true;}
+gt_arg :: (index:int,out:[]u8)->string {
+    n:=gt_arg_len(index);if n<0 || n>out.count {return "";}for i:0..<n {out[i]=cast(u8)gt_arg_byte(index,i);}return cast(string)out[0..<n];
+}
+gev_tool :: ()->int #export_c {
+    args:[256]u8;command:=gt_arg(1,args[..]);out:[16384]u8;input:[262144]u8;
+    if command=="manifest" {
+        for i:0..<GEV_CASES {n:=gev_manifest(i,out[..]);if n<0 || !gt_write(cast(string)out[0..<n]) || !gt_write("\n") {return 2;}}return 0;
+    }
+    if command=="request" {
+        index:=json_int(gt_arg(2,args[..]));if !index.ok {return 2;}n:=gev_request(index.value,out[..]);
+        if n<0 || !gt_write(cast(string)out[0..<n]) {return 2;}return 0;
+    }
+    if command=="summary" || command=="observation" {
+        n:=gt_read(input[..]);if n<0 {return 2;}text:=cast(string)input[0..<n];m:=-1;
+        if command=="summary" {m=gew_summary(text,out[..]);}else {r:=gew_observation(text);if !r.valid {return 2;}m=gew_result(r,out[..]);}
+        if m<0 || !gt_write(cast(string)out[0..<m]) || !gt_write("\n") {return 2;}return 0;
+    }
+    if command=="selfcheck" {if !gev_native_check(16) {return 1;}_:=gt_write("guard evaluation native checks passed\n");return 0;}
+    _:=gt_write("usage: guard-evaluation manifest | request INDEX | observation | summary | selfcheck\n");return 2;
+}
+#test "the native driver checks a small synthetic slice and the independent fallback fixture suite" {#assert gev_native_check(2);}
+gev_native_check :: (cohort:int)->bool {
+    if cohort<1 || cohort>16 {return false;}
+    totals:[1]GeTotals;buffer:[16384]u8;out:[4096]u8;records:[32768]u8;used:=0;
+    for i:0..<cohort {
+        if gev_request(i,buffer[..])<=0 {return false;}
+        n:=gew_record(i,1,200,GA_RESPONSE,buffer[..]);if n<0 {return false;}
+        r:=gew_observation(cast(string)buffer[0..<n]);if !gev_add(totals[..],r) {return false;}
+        used=json_raw(records[..],used,cast(string)buffer[0..<n]);used=json_raw(records[..],used,"\n");
+    }
+    t:=totals[0];preferred_count:=(cohort+3)/4-1;
+    if t.observed!=cohort || t.contract!=cohort || t.covered!=cohort || t.acceptable!=cohort || t.disagree!=cohort || t.preferred!=preferred_count || t.useful!=preferred_count || gev_complete(t)!=(cohort==16) {return false;}
+    report_n:=gew_summary(cast(string)records[0..<used],out[..]);if report_n<0 {return false;}
+    latency:=ga_get(cast(string)out[0..<report_n],"covered_latency_ms");if json_int(ga_get(latency.raw,"count").text).value!=cohort || ga_get(latency.raw,"median").text!="1" {return false;}
+    if gev_add(totals[..],gev_evaluate(0,"200\n",GA_RESPONSE,1)) || gev_add(totals[..],gev_evaluate(16,"503\n","",1)) {return false;}
+    for i:16..<26 {if gev_request(i,buffer[..])!=-1 || ga_eligible(gev_case(i).observation) {return false;}}
+    for line:[5]string.["{\"case\":0,\"elapsed_ms\":-1,\"status\":200,\"body\":\"\"}","{\"case\":\"0\",\"elapsed_ms\":1,\"status\":200,\"body\":\"\"}","{\"case\":0,\"elapsed_ms\":1.5,\"status\":200,\"body\":\"\"}","{\"case\":0,\"elapsed_ms\":1,\"status\":600,\"body\":\"\"}","{\"case\":0,\"elapsed_ms\":1,\"status\":200,\"body\":null}"] {if gew_observation(line).valid {return false;}}
+    large:[8193]u8;for i:0..<large.count {large[i]=' ';}k:=gew_record(0,1,200,cast(string)large[..],buffer[..]);if gew_observation(cast(string)buffer[0..<k]).valid {return false;}
+    if gev_manifest(0,out[0..<0])!=-1 || gev_request(0,out[0..<0])!=-1 {return false;}
+    n:=gew_totals(t,out[..]);if n<0 || !json_valid(cast(string)out[0..<n]) {return false;}
+    return gew_summary("{}",out[..])==-1 && !gev_evaluate(0,"200\n",GA_RESPONSE,8000).covered;
+}

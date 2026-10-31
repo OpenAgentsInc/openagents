@@ -1,0 +1,64 @@
+// Explicit live tool, never a product/default check. ONE caller-owned demo key
+// is reused for every case; the published helper owns NIP-98/network effects.
+#import "Basic";
+#load "public-probe-policy.coax";
+gp_argc :: ()->int #foreign;
+gp_arg_len :: (i:int)->int #foreign;
+gp_arg_byte :: (i:int,j:int)->int #foreign;
+gp_clock_ns :: ()->int #foreign;
+gp_pause :: ()->int #foreign;
+gp_store_path :: ()->int #foreign;
+gp_exit :: (code:int)->int #foreign;
+cxstore_load :: ()->int #foreign;
+cxstore_put :: (byte:int)->int #foreign;
+cxstore_truncate :: (size:int)->int #foreign;
+cxstore_commit :: ()->int #foreign;
+cxproc_new :: ()->int #foreign;
+cxproc_push :: (h:int,field:int,byte:int)->int #foreign;
+cxproc_end :: (h:int,field:int)->int #foreign;
+cxproc_spawn :: (h:int)->int #foreign;
+cxproc_close_stdin :: (h:int)->int #foreign;
+cxproc_read_line :: (h:int,wait:int)->int #foreign;
+cxproc_line_byte :: (h:int,i:int)->int #foreign;
+cxproc_stderr_count :: (h:int)->int #foreign;
+cxproc_stderr_byte :: (h:int,i:int)->int #foreign;
+cxproc_wait :: (h:int,wait:int)->int #foreign;
+cxproc_release :: (h:int)->int #foreign;
+gp_arg :: (index:int,out:[]u8)->string {n:=gp_arg_len(index);if n<0 || n>out.count {return "";}for i:0..<n {out[i]=cast(u8)gp_arg_byte(index,i);}return cast(string)out[0..<n];}
+gp_push :: (h:int,field:int,value:string)->bool {for b:value {if cxproc_push(h,field,cast(int)b)!=0 {return false;}}return cxproc_end(h,field)==0;}
+gp_environment :: (h:int,name:string,value:string)->bool {for b:name {if cxproc_push(h,1,cast(int)b)!=0 {return false;}}if cxproc_push(h,1,'=')!=0 {return false;}return gp_push(h,1,value);}
+gp_run :: () #export_c {
+    ignored:=0;
+    if gp_argc()!=6 {print("usage: guard-public KEY REQUEST_FILE START COUNT SIGNER\n");ignored=gp_exit(2);return;}
+    a:[4096]u8;b:[4096]u8;c:[32]u8;d:[32]u8;e:[4096]u8;
+    key:=gp_arg(1,a[..]);file:=gp_arg(2,b[..]);selector:=gp_arg(3,c[..]);control:=selector=="control";first:=json_int(selector);count:=json_int(gp_arg(4,d[..]));signer:=gp_arg(5,e[..]);
+    if key.count==0 || file.count==0 || signer.count==0 || !count.ok || (control && count.value!=1) || (!control && (!first.ok || !gp_range(first.value,count.value))) || gp_store_path()!=0 || cxstore_load()<0 {ignored=gp_exit(2);return;}
+    next:=0;if control {first.value=-1;}
+    for index:first.value..<first.value+count.value {
+        while gp_clock_ns()<next {ignored=gp_pause();}
+        request:[1024]u8;n:=ifx control then gp_control(request[..]) else gev_request(index,request[..]);if n<=0 || cxstore_truncate(0)!=0 {ignored=gp_exit(3);return;}
+        for i:0..<n {if cxstore_put(cast(int)request[i])!=0 {ignored=gp_exit(3);return;}}if cxstore_commit()!=0 {ignored=gp_exit(3);return;}
+        h:=cxproc_new();if h<0 {ignored=gp_exit(3);return;}
+        ok:=true;for arg:[4]string.["coax/web/api/mesh-client.sh","--key",key,file] {if !gp_push(h,0,arg) {ok=false;}}
+        if !gp_environment(h,"OA_MESH_SIGNER",signer) {ok=false;}
+        for variable:[6]string.["BASH_ENV","ENV","SHELLOPTS","BASHOPTS","PS4","SIGN_AGE"] {if !gp_push(h,2,variable) {ok=false;}}
+        begin:=gp_clock_ns();end:=begin+45000000000;next=begin+6000000000;
+        if !ok || cxproc_spawn(h)!=0 {ignored=cxproc_release(h);ignored=gp_exit(3);return;}ignored=cxproc_close_stdin(h);
+        body:[8192]u8;used:=0;exit:=-2;bad:=false;
+        while gp_clock_ns()<end {
+            m:=cxproc_read_line(h,100);
+            if m>=0 {if used+m+1>body.count {bad=true;break;}for i:0..<m {body[used+i]=cast(u8)cxproc_line_byte(h,i);}used+=m;body[used]='\n';used+=1;continue;}
+            if m==-1 {exit=cxproc_wait(h,1000);break;}if m!=-2 {bad=true;break;}
+        }
+        finished:=gp_clock_ns();elapsed:=(finished-begin+999999)/1000000;
+        error:[65536]u8;size:=cxproc_stderr_count(h);if size<0 || size>error.count {size=0;bad=true;}for i:0..<size {error[i]=cast(u8)cxproc_stderr_byte(h,i);}
+        status:=ifx bad || exit<0 then 0 else gp_status(exit,cast(string)error[0..<size]);
+        if status!=200 {used=0;if status>0 {marker:="\nmesh: HTTP";length:=size-marker.count-4;if length>=0 && length<=body.count {for i:0..<length {body[i]=error[i];}used=length;}}}
+        text:=cast(string)body[0..<used];pinned:=status==200 && (ifx control then ga_is(ga_get(ga_get(text,"service").raw,"identity"),GA_IDENTITY) && ga_is(ga_get(ga_get(text,"service").raw,"provider"),GP_PROVIDER) else gp_pin(text));
+        record:[32768]u8;r:=json_raw(record[..],0,"{\"case\":");r=json_write_int(record[..],r,index);r=json_raw(record[..],r,",\"elapsed_ms\":");r=json_write_int(record[..],r,elapsed);r=json_raw(record[..],r,",\"status\":");r=json_write_int(record[..],r,status);r=json_raw(record[..],r,",\"pinned\":");r=json_raw(record[..],r,ifx pinned then "true" else "false");r=json_raw(record[..],r,",\"body\":");r=json_write_string(record[..],r,text);r=json_raw(record[..],r,"}");
+        ignored=cxproc_release(h);if r<0 {ignored=gp_exit(3);return;}print("%\n",cast(string)record[0..<r]);
+        // An unavailable route/quota/auth/pin refusal ends this bounded cohort.
+        // It never retries, rotates identity, substitutes a model or bypasses quota.
+        if status!=200 || !pinned {ignored=gp_exit(1);return;}
+    }
+}

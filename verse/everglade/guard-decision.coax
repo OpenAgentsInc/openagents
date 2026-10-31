@@ -2,6 +2,7 @@
 // Unknown extra result fields are inert. Required fields are unique and exact.
 #load "../../coax/lib/nostr/json.coax";
 #load "guard-types.coax";
+#load "guard-metrics.coax";
 #load "guard-fixtures.coax";
 #load "../../psionic/lib/game/decision.coax";
 #authority;
@@ -99,14 +100,12 @@ ga_decode :: (text:string)->GaAnswer {
   return GaAnswer.{ok=true,action=best};
 }
 
-main :: () {}
-
 // One realm-wide flight, six attempts per visit, sixty seconds between starts.
 // Counters contain enums only; no question text, identity, or model prose.
 GA_CADENCE :: 60000;
 GA_TIMEOUT :: 8000;
 GaSession :: struct {
-  ticket:[1]GdState; mode:int; configured:bool; disabled:bool; suspended:bool;
+  metrics:[1]GaMetrics; ticket:[1]GdState; mode:int; configured:bool; disabled:bool; suspended:bool;
   epoch:int=1; page_epoch:int; initialized:bool; attempts:int; due_ms:int; send:bool; body:[1024]u8; body_n:int;
   accepted:int; refused:int; last_action:int=-1; context:GdContext;
 }
@@ -143,7 +142,7 @@ GaSession :: struct {
   #assert json_valid(cast(string)s[0].body[0..<s[0].body_n]);
 }
 ga_invalidate :: (s:[]GaSession) {
-  if s[0].ticket[0].phase!=0 {_:=gd_cancel(s[0].ticket[..],s[0].ticket[0].sequence);s[0].refused+=1;}
+  if s[0].ticket[0].phase!=0 {metric_ended:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_REVOKED);_:=gd_cancel(s[0].ticket[..],s[0].ticket[0].sequence);s[0].refused+=1;}
   s[0].send=false;if s[0].epoch<GD_SEQUENCE_MAX {s[0].epoch+=1;}else {s[0].disabled=true;}
 }
 // book:begin request
@@ -152,44 +151,61 @@ ga_request :: (out:[]u8,o:GaObservation)->int {
   n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
   n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
   return json_raw(out,n,".\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}");
-}// book:end request
+}
+// book:end request
 // book:begin frame
 ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) {
   c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
-  if s[0].ticket[0].phase!=0 && (s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended || !gd_same_context(c,s[0].context) || now_ms>=s[0].ticket[0].ticket.expires_ms) {ga_invalidate(s);c.epoch=s[0].epoch;}
+  revoked:=s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended;
+  expired:=now_ms>=s[0].ticket[0].ticket.expires_ms;
+  if s[0].ticket[0].phase!=0 && (revoked || !gd_same_context(c,s[0].context) || expired) {
+    reason:=GM_STALE;if revoked {reason=GM_REVOKED;}if expired {reason=GM_TIMEOUT;}
+    _:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,reason);ga_invalidate(s);c.epoch=s[0].epoch;
+  }
   s[0].context=c;
   if s[0].ticket[0].phase==GD_READY {
     a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,7);
-    if a.code==GdCode.ok {s[0].accepted+=1;s[0].last_action=a.action;}else {ga_invalidate(s);}
+    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=a.action;}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
   }
   if s[0].mode!=1 || s[0].disabled || s[0].suspended || !ga_eligible(o) || s[0].ticket[0].phase!=0 || s[0].attempts>=6 || now_ms<s[0].due_ms {return;}
   b:=gd_begin(s[0].ticket[..],c,now_ms,GA_TIMEOUT);if b.code!=GdCode.ok {return;}
+  _:=gm_begin(s[0].metrics[..],b.ticket.sequence,now_ms);
   s[0].attempts+=1;s[0].due_ms=now_ms+GA_CADENCE;s[0].body_n=ga_request(s[0].body[..],o);
   // All sixteen admitted category pairs fit this fixed buffer (checked below).
   s[0].send=true;
-}// book:end frame
+}
+// book:end frame
 ga_sent :: (s:[]GaSession,sequence:int,started:bool) #export_c {
-  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}s[0].send=false;if !started {ga_invalidate(s);}
+  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}s[0].send=false;if !started {_:=gm_end(s[0].metrics[..],sequence,GM_NO_TRANSPORT);ga_invalidate(s);}
 }
 ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) {
-  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}
-  if status=="401\n" || status=="429\n" {s[0].disabled=true;}
-  if status!="200\n" {ga_invalidate(s);return;}
-  a:=ga_decode(body);if !a.ok || gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {ga_invalidate(s);}
+  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {_:=gm_late(s[0].metrics[..],sequence);return;}
+  // Record one owned arrival, even when its eventual answer must be refused.
+  metric_replied:=gm_reply(s[0].metrics[..],sequence,now_ms);
+  if status=="401\n" || status=="429\n" {
+    s[0].disabled=true;reason:=ifx status=="401\n" then GM_AUTH else GM_QUOTA;
+    _:=gm_end(s[0].metrics[..],sequence,reason);ga_invalidate(s);return;
+  }
+  // Auth/quota disable keeps its existing precedence. Otherwise an expired
+  // lease is timed out, including status0; status0 before expiry is HTTP failure.
+  if now_ms>=s[0].ticket[0].ticket.expires_ms {_:=gm_end(s[0].metrics[..],sequence,GM_TIMEOUT);ga_invalidate(s);return;}
+  if status!="200\n" {_:=gm_end(s[0].metrics[..],sequence,GM_HTTP);ga_invalidate(s);return;}
+  a:=ga_decode(body);if !a.ok {_:=gm_end(s[0].metrics[..],sequence,GM_MALFORMED);ga_invalidate(s);return;}
+  if gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {_:=gm_end(s[0].metrics[..],sequence,GM_STALE);ga_invalidate(s);}
 }
 
 // The face forwards data and ticks. Only a page simulation boundary may apply/start.
 ga_page :: (s:[]GaSession,input:GaInput,now_ms:int) #export_c {
   if !s[0].initialized {s[0].initialized=true;s[0].epoch=1;s[0].last_action=-1;}
   if input.configured && !s[0].configured {s[0].configured=true;s[0].mode=ga_mode(input.url);}
-  if input.epoch!=s[0].page_epoch {ga_invalidate(s);s[0].page_epoch=input.epoch;}
+  if input.epoch!=s[0].page_epoch {ga_observed_revoke(s,now_ms);s[0].page_epoch=input.epoch;}
   s[0].suspended=input.suspended || input.blocked || !input.configured;
-  if s[0].suspended && s[0].ticket[0].phase!=0 {ga_invalidate(s);}
+  if s[0].suspended && s[0].ticket[0].phase!=0 {ga_observed_revoke(s,now_ms);}
   if input.boundary {ga_frame(s,input.observation,input.generation,input.revision,now_ms);}
 }
 ga_effect :: (s:[]GaSession,now_ms:int)->GaEffect #export_c {
   if !s[0].send {return GaEffect.{};}
-  remaining:=s[0].ticket[0].ticket.expires_ms-now_ms;if remaining<=0 {ga_invalidate(s);return GaEffect.{};}
+  remaining:=s[0].ticket[0].ticket.expires_ms-now_ms;if remaining<=0 {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_TIMEOUT);ga_invalidate(s);return GaEffect.{};}
   return GaEffect.{url="/api/v1/systemone",body=cast(string)s[0].body[0..<s[0].body_n],flags=5,timeout_ms=remaining};
 }
 ga_pending :: (s:[]GaSession,sequence:int)->bool #export_c {return s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
@@ -199,7 +215,7 @@ ga_receive :: (s:[]GaSession,sequence:int,now_ms:int,text:string) #export_c {
 }
 ga_probe :: (s:[]GaSession,field:int)->int #export_c {
   a:=s[0];if field==0 {return a.mode;}if field==1 {return a.attempts;}if field==2 {return a.ticket[0].phase;}
-  if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}return -1;
+  if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}return gm_probe(s[0].metrics[..],field);
 }
 
 #test "mode query boundaries and finite observation category edges are explicit" {
@@ -332,4 +348,75 @@ ga_probe :: (s:[]GaSession,field:int)->int #export_c {
   b:[8192]u8;n:=json_raw(b[..],0,"200\n");n=json_raw(b[..],n,GA_RESPONSE);ga_receive(s[..],1,1,cast(string)b[0..<n]);
   #assert s[0].ticket[0].phase==GD_READY;ga_frame(s[..],o,1,0,2);#assert s[0].accepted==1;
   ga_frame(s[..],o,1,0,60000);ga_receive(s[..],2,60001,"401\n");#assert ga_probe(s[..],6)==1 && !ga_pending(s[..],2);
+}
+
+#test "shadow metrics measure a reply once and admit only at the simulation boundary" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  ga_frame(s[..],o,1,0,100);#assert ga_probe(s[..],8)==1 && ga_probe(s[..],10)==0;
+  ga_reply(s[..],1,350,"200\n",GA_RESPONSE);#assert ga_probe(s[..],9)==1 && ga_probe(s[..],44)==1 && ga_probe(s[..],13)==250;
+  ga_reply(s[..],1,351,"200\n",GA_RESPONSE);#assert ga_probe(s[..],9)==1 && ga_probe(s[..],12)==0;
+  ga_frame(s[..],o,1,0,400);#assert ga_probe(s[..],10)==1 && ga_probe(s[..],20)==1 && ga_probe(s[..],62)==1 && ga_probe(s[..],84)==1;
+  #assert ga_probe(s[..],14)==50 && ga_probe(s[..],15)==300;
+  ga_reply(s[..],1,401,"200\n",GA_RESPONSE);ga_reply(s[..],1,402,"200\n",GA_RESPONSE);
+  #assert ga_probe(s[..],12)==1 && ga_probe(s[..],9)==1 && ga_probe(s[..],10)==1;
+}
+#test "terminal outcomes distinguish auth quota allocation deadline malformed revoke context and status" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for reason:2..<10 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
+    if reason==2 {ga_reply(s[..],1,1,"401\n","");}if reason==3 {ga_reply(s[..],1,1,"429\n","");}
+    if reason==4 {ga_sent(s[..],1,false);}if reason==5 {ga_frame(s[..],o,1,0,8000);}
+    if reason==6 {ga_reply(s[..],1,1,"200\n","{}");}if reason==7 {ga_invalidate(s[..]);}
+    if reason==8 {ga_frame(s[..],o,2,0,1);}if reason==9 {ga_receive(s[..],1,1,"0\n");}
+    #assert ga_probe(s[..],10)==1 && ga_probe(s[..],11)==reason && ga_probe(s[..],19+reason)==1;
+    ga_reply(s[..],1,2,"200\n",GA_RESPONSE);ga_reply(s[..],1,3,"200\n",GA_RESPONSE);
+    #assert ga_probe(s[..],10)==1 && ga_probe(s[..],12)==1 && ga_probe(s[..],11)==reason;
+  }
+}
+#test "at exact expiry timeout wins revocation but auth disable and quota remain explicit" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for k:0..<7 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
+    if k==0 {bad:=o;bad.calm=false;ga_frame(s[..],bad,2,0,8000);}
+    if k==1 {_:=ga_effect(s[..],8000);}
+    if k==2 {input:=GaInput.{configured=true,url="?guard-ai=shadow",epoch=1,suspended=true};s[0].initialized=true;s[0].configured=true;ga_page(s[..],input,8000);}
+    if k==3 {ga_receive(s[..],1,8000,"0\n");}if k==4 {ga_reply(s[..],1,8000,"200\n","{}");}
+    if k==5 {ga_reply(s[..],1,8000,"401\n","");}if k==6 {ga_reply(s[..],1,8000,"429\n","");}
+    want:=ifx k==5 then 2 else ifx k==6 then 3 else 5;
+    #assert ga_probe(s[..],10)==1 && ga_probe(s[..],11)==want;
+    #assert ga_probe(s[..],9)==(ifx k>=3 then 1 else 0);
+  }
+}
+
+// A known-clock lifecycle event classifies expiry before revocation, without
+// changing the gate: every path still performs the same local cancellation.
+ga_observed_revoke :: (s:[]GaSession,now_ms:int) {
+  reason:=ifx now_ms>=s[0].ticket[0].ticket.expires_ms then GM_TIMEOUT else GM_REVOKED;
+  _:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,reason);ga_invalidate(s);
+}
+
+#test "ordinary frame and page revocations retain their own reason before expiry" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for k:0..<3 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
+    if k==0 {bad:=o;bad.calm=false;ga_frame(s[..],bad,2,0,1);}
+    else {input:=GaInput.{configured=true,url="?guard-ai=shadow",epoch=1,suspended=k==1};s[0].initialized=true;s[0].configured=true;ga_page(s[..],input,1);}
+    #assert ga_probe(s[..],11)==GM_REVOKED && ga_probe(s[..],26)==1 && s[0].ticket[0].phase==0;
+  }
+}
+#test "an invalid staged enum and a broken reply clock end stale once without admission" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for k:0..<2 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
+    if k==0 {#assert gd_offer(s[0].ticket[..],1,1,4)==GdCode.ok;ga_frame(s[..],o,1,0,2);}
+    else {ga_reply(s[..],1,-1,"200\n",GA_RESPONSE);}
+    #assert ga_probe(s[..],11)==GM_STALE && ga_probe(s[..],27)==1 && ga_probe(s[..],10)==1;
+    #assert s[0].ticket[0].phase==0 && s[0].accepted==0 && s[0].refused==1;
+  }
+}
+#test "an expired reply revokes the transport lease immediately before another frame" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  ga_frame(s[..],o,1,0,0);ga_reply(s[..],1,8000,"200\n",GA_RESPONSE);
+  #assert !ga_pending(s[..],1) && s[0].ticket[0].phase==0 && s[0].refused==1;
+  #assert ga_probe(s[..],11)==GM_TIMEOUT && ga_probe(s[..],24)==1 && ga_probe(s[..],9)==1;
 }

@@ -1,0 +1,26 @@
+// Offline preparation probe: original tokenizer data only, no model or network.
+#import "Basic";
+#load "token-capacity-policy.coax";
+#load "../../../verse/everglade/guard-decision.coax";
+#load "../../lib/serve-request.coax";
+#load "../../lib/decision-prepare.coax";
+
+guard_token_probe :: (table:[]u8)->int #export_c {
+  if !guard_token_input_size(table.count) || !pt_admit(table) {print("pinned tokenizer refused\n");return 1;}
+  print("tokenizer_sha256=%\n",PT_QWEN_SHA);
+  prompt:[8192]u8;render:[8192]u8;normal:[16384]u8;body:[1024]u8;
+  candidate:[4096]int;full:[4096]int;stage:[4096]int;scalars:[16384]int;symbols:[8192]int;tokens:[4096]int;
+  work:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);minimum:=16384;maximum:=0;
+  for day:0..<4 {for weather:0..<4 {
+    n:=ga_request(body[..],GaObservation.{day=day,weather=weather});if n<0 {print("guard request refused\n");return 2;}
+    r:=sv_decode(cast(string)body[0..<n],pools);if r.code!=SvCode.none || r.questions!=1 {print("request decode refused\n");return 2;}
+    q:=pools.questions[0];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};options:=pools.options[q.first..<q.first+q.count];
+    prepared:=ps_prepare(table,r.state,question,options,tokens[..],work,false);
+    rendered:=pt_render_checked(r.state,question,options,prompt[..],render[..],false);
+    if prepared.status!=PrStatus.ok || rendered.status!=PtStatus.ok {print("token preparation refused\n");return 3;}
+    if prepared.written<minimum {minimum=prepared.written;}if prepared.written>maximum {maximum=prepared.written;}
+    print("day=% weather=% json_bytes=% tokens=% prefix=% suffix=% rendered_bytes=%\n",day,weather,n,prepared.written,prepared.prefix,prepared.written-prepared.prefix,rendered.written);
+  }}
+  print("minimum_context_tokens=% maximum_context_tokens=% cases=16\n",minimum,maximum);return 0;
+}

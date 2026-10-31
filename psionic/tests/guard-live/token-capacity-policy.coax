@@ -1,0 +1,8 @@
+// Offline file-read admission: only the fixed-size pinned tokenizer table.
+// Identity authentication remains pt_admit in the preparation probe.
+#authority;
+#test "offline tokenizer input size is the exact bounded pinned table size" {
+  #assert guard_token_input_size(8277996);
+  #assert !guard_token_input_size(-1) && !guard_token_input_size(0) && !guard_token_input_size(8277995) && !guard_token_input_size(8277997);
+}
+guard_token_input_size :: (bytes:int)->bool #export_c {return bytes==8277996;}

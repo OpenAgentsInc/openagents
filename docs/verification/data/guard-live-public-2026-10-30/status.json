@@ -1,0 +1,73 @@
+{
+  "schema": "guard-live-public-observation-v1",
+  "observed_date_utc": "2026-10-31",
+  "local_record_date": "2026-10-30",
+  "endpoint": "https://openagents.com/api/v1/systemone",
+  "api": {
+    "health_at": "2026-10-31T02:15:00Z",
+    "healthy": true,
+    "source": "32e61639b857778831ddf84c45c82cf5a0a13d6b",
+    "revision": "oa-api-00068-ktl",
+    "image": "sha256:9eb456810e2344a5232337f402e2088986135b111e208bff1f3085c4ffbddb84",
+    "migration": "0070_analytics_contract_orbit_belt.sql"
+  },
+  "fleet": {
+    "revision": "oa-mesh-elephant-00002-dgz",
+    "traffic_percent": 100,
+    "image": "sha256:48c948cef4297f850f8f8a9d4fd0bf5d98e6a2767d4a5fd3bf5c31cd09b33ec8",
+    "timeout_ms": 25000,
+    "attempt_ms": 20000,
+    "discovery_ms": 5000,
+    "min_instances": 1,
+    "max_instances": 1,
+    "cpu_throttling": false,
+    "m0_warm_routing_deployed": false
+  },
+  "provider": {
+    "key": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+    "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+    "door": "pylon:oct30-gcloud-elephant-rtx",
+    "vm": "psionic-rtx6000-pylon",
+    "vm_status": "RUNNING",
+    "provisioning": "SPOT",
+    "backend_active": true,
+    "pylon_active": true,
+    "capacity_tokens": 512
+  },
+  "cohort": {
+    "frozen_labels_sha256": "099bf141d90a6b85dd2666e7797682054efbcfa9263f3966ebc9f01e8c647141",
+    "initial_guard_attempts": 1,
+    "initial_guard_http": 503,
+    "initial_guard_elapsed_ms": 6377,
+    "initial_private_fleet_at": "2026-10-31T02:20:26.939247Z",
+    "initial_private_fleet_status": 503,
+    "initial_private_fleet_latency_ms": 5052.135034,
+    "initial_failure_cause": "unresolved; no matching Pylon job metadata in inspected narrow window",
+    "control_attempts": 1,
+    "control_http": 200,
+    "control_elapsed_ms": 6092,
+    "control_reported_backend_ms": 91,
+    "control_yes_probability": 0.757197863,
+    "warm_guard_attempts": 16,
+    "warm_guard_completed": 16,
+    "warm_guard_within_consumer_deadline": 16,
+    "total_guard_attempts_in_this_record": 17,
+    "same_demo_identity_model_attempts_in_this_record": 18,
+    "new_demo_identities_created": 1,
+    "remaining_cohort_start_spacing_ms": 6000,
+    "automatic_retries": 0,
+    "root_authorized_new_warm_cohort_after_initial_failure": true,
+    "secrets_or_authorization_saved_in_records": false
+  },
+  "qualification": {
+    "authored_probe_policy_checks": 5,
+    "checks_with_imported_baseline": 74,
+    "probe_policy_mutants_killed": 39,
+    "probe_policy_mutants_survived": 0,
+    "native_mode": "ASan and UBSan",
+    "native_sanitizer_findings": 0,
+    "public_probe_initial_binary_sha256": "e7353892a9e9b6b4c11fd1557f10bb0b9f0f86b1b6f2ecf44945be6251e2ec76",
+    "public_probe_control_and_warm_binary_sha256": "4b03df5be79704ae6b6cad202a747607d79cf4f21d4762adb692c6955212dbe0"
+  },
+  "scope": "owned synthetic guard categories; CLI attempt termination timing includes helper startup, NIP98 signing, HTTPS, edge, fleet, relay, Pylon and process completion; browser pilot is separate; no service mutation or deployment"
+}

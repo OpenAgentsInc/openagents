@@ -1,0 +1,24 @@
+#import "Basic";
+#load "../../verse/everglade/guard-evaluation.coax";
+
+// Synthetic decoder fixture only: no model, network, player outcome or
+// calibration measurement. Editorial preferences are fixed before live calls.
+// book:begin example
+main :: () {
+    print("eligible authored contexts: %\n",GEV_ELIGIBLE);
+    preferred:=gev_evaluate(4,"200\n",GA_RESPONSE,123);
+    print("daytime greeting covered: %\n",preferred.covered);
+    print("editorial preference matches: %\n",preferred.preferred);
+    night:=gev_evaluate(0,"200\n",GA_RESPONSE,123);
+    print("night greeting harmless: %\n",night.acceptable);
+    print("night greeting editorially useful: %\n",night.useful);
+    print("late response covered: %\n",gev_evaluate(4,"200\n",GA_RESPONSE,8000).covered);
+    totals:[1]GeTotals;counted:=gev_add(totals[..],preferred);
+    print("duplicate record counted: %\n",gev_add(totals[..],preferred));
+    body:[1024]u8;refused:=0;
+    for i:16..<GEV_CASES {if gev_request(i,body[..])==-1 {refused+=1;}}
+    print("local refusal fixtures: %\n",refused);
+    print("full remote cohort observed: %\n",gev_complete(totals[0]));
+    print("automatic promotion: false\n");
+}
+// book:end example

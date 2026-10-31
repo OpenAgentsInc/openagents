@@ -1,0 +1,40 @@
+// Descriptive elapsed-time statistics for at most sixteen owned observations.
+// Nearest-rank p95 is the maximum for 1..16 samples; it is not a tail estimate
+// for production traffic. Median retains half milliseconds without float math.
+#authority;
+GL_MAX_MS :: 9007199254740991;
+GlLatency :: struct {ok:bool;count:int;minimum_ms:int;median_twice_ms:int;p95_ms:int;maximum_ms:int;minimum_position:int;maximum_position:int;lower_median_position:int;upper_median_position:int;}
+
+#test "descriptive ranks cover odd and even cohorts without reordering caller storage" {
+    a:=[5]int.[9,1,5,3,7];r:=gl_latency(a[..]);#assert r.ok && r.count==5 && r.minimum_ms==1 && r.median_twice_ms==10 && r.p95_ms==9 && r.maximum_ms==9;
+    #assert r.minimum_position==1 && r.maximum_position==0 && r.lower_median_position==2 && r.upper_median_position==2;
+    #assert a[0]==9 && a[1]==1 && a[2]==5 && a[3]==3 && a[4]==7;
+    b:=[4]int.[10,1,6,5];r=gl_latency(b[..]);#assert r.ok && r.count==4 && r.minimum_ms==1 && r.median_twice_ms==11 && r.p95_ms==10 && r.maximum_ms==10;
+    #assert r.minimum_position==1 && r.maximum_position==0 && r.lower_median_position==3 && r.upper_median_position==2;
+    c:=[4]int.[5,5,5,5];r=gl_latency(c[..]);#assert r.ok && r.median_twice_ms==10 && r.minimum_ms==5 && r.maximum_ms==5;
+    #assert r.minimum_position==0 && r.maximum_position==3 && r.lower_median_position==1 && r.upper_median_position==2;
+}
+#test "every cohort capacity has the independently known ranks of a descending sequence" {
+    a:[17]int;for i:0..<17 {a[i]=17-i;}
+    for n:1..<17 {r:=gl_latency(a[0..<n]);#assert r.ok && r.count==n && r.minimum_ms==18-n && r.maximum_ms==17 && r.p95_ms==17 && r.median_twice_ms==35-n;}
+    #assert !gl_latency(a[0..<0]).ok && !gl_latency(a[..]).ok;
+}
+#test "zero and the largest exact millisecond are valid, while negative and overflow input refuse" {
+    a:=[2]int.[0,GL_MAX_MS];r:=gl_latency(a[..]);#assert r.ok && r.minimum_ms==0 && r.maximum_ms==GL_MAX_MS && r.median_twice_ms==GL_MAX_MS;
+    a[0]=GL_MAX_MS;r=gl_latency(a[..]);#assert r.ok && r.median_twice_ms==18014398509481982;
+    for bad:[4]int.[-9223372036854775807-1,-1,GL_MAX_MS+1,9223372036854775807] {a[0]=bad;#assert !gl_latency(a[..]).ok;}
+}
+
+gl_latency :: (values:[]int)->GlLatency #export_c {
+    if values.count<1 || values.count>16 {return GlLatency.{};}
+    sorted:[16]int;positions:[16]int;
+    for i:0..<values.count {if values[i]<0 || values[i]>GL_MAX_MS {return GlLatency.{};}sorted[i]=values[i];positions[i]=i;}
+    for i:1..<values.count {
+        value:=sorted[i];position:=positions[i];at:=i;
+        while at>0 && sorted[at-1]>value {sorted[at]=sorted[at-1];positions[at]=positions[at-1];at-=1;}
+        sorted[at]=value;positions[at]=position;
+    }
+    maximum:=sorted[values.count-1];
+    return GlLatency.{ok=true,count=values.count,minimum_ms=sorted[0],median_twice_ms=sorted[(values.count-1)/2]+sorted[values.count/2],p95_ms=maximum,maximum_ms=maximum,
+        minimum_position=positions[0],maximum_position=positions[values.count-1],lower_median_position=positions[(values.count-1)/2],upper_median_position=positions[values.count/2]};
+}

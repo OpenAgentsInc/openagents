@@ -2139,6 +2139,16 @@ Golden/clip/background and revoked local contexts cannot initiate/apply a guard
 proposal. Guests, quota failures and missing Pylons preserve ordinary play.
 See `docs/verse/pylon-guard-decisions.md` for limits and remaining rollout gates.
 
+Shadow measurements keep a fixed six-entry, local-only ledger with one callback
+sample and one terminal outcome per known sequence. Duplicate/unknown inputs
+cannot create capacity or counts. Metrics never expand game admission; histories
+of callback and admitted-frame latency remain separate. Corpus evaluation owns
+pre-authored labels, rejects duplicate/ineligible remote records, exposes
+missing observations, and never promotes from a confidence or editorial label.
+Actual public/cookie scope and remaining quality gates are recorded in
+`docs/verification/pylon-guard-shadow-2026-10-30.md`.
+
+
 ## A warm fleet route belongs to a caught-up current connection
 
 A cached beacon is eligible only after the current authenticated/subscribed

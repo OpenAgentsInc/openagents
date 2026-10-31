@@ -1,0 +1,12 @@
+be71169b077f38756065d88ba7517958bfdcc50691c1e07d320066031fdd6f9d  psionic/tests/guard-live/public-probe-policy.coax
+0f0aaa27c566c1fc01b1417a544d9621a9129be162ebfb8e9be7c3bb429b040d  psionic/tests/guard-live/public-probe.coax
+b29e699331bb5a3de9cd437a71c778fc3826c367edadd3118673292b3e967d8f  psionic/tests/guard-live/public-probe-host.c
+099bf141d90a6b85dd2666e7797682054efbcfa9263f3966ebc9f01e8c647141  psionic/fixtures/guard-evaluation-labels-v1.jsonl
+a170848380f9bf61cf98056c7af26501e6754d4d370da17e96ef9a07fed45ab8  docs/verification/data/guard-live-public-2026-10-30/initial-guard.jsonl
+bb4d84108b1186bbe0d4ee05271df1d0dbf97b88e3e4e14e3046745bed9c182f  docs/verification/data/guard-live-public-2026-10-30/control.jsonl
+23768b9cc6cfbcca7fe595c4e1d8ab6610922d0094fa4947d3cd00a4236b0d27  docs/verification/data/guard-live-public-2026-10-30/warm-cohort.jsonl
+e7353892a9e9b6b4c11fd1557f10bb0b9f0f86b1b6f2ecf44945be6251e2ec76  /tmp/guard-public-probe
+4b03df5be79704ae6b6cad202a747607d79cf4f21d4762adb692c6955212dbe0  /tmp/guard-public-probe-final
+cc484bed821076ad749b68568e592c44cbec9a39e53b19dbd14780ef7de44f6c  docs/verification/data/guard-live-public-2026-10-30/warm-summary.json
+845dc0a25564939f9e788e9a38b486d51cc8ad10b63fa1eb3b53c7042dd6cea8  docs/verification/data/guard-live-public-2026-10-30/initial-summary.json
+f26aee58e63a6ebb81f27137a3b4447549f1ea72b8bb36ce63815cd395906b01  docs/verification/data/guard-live-public-2026-10-30/status.json

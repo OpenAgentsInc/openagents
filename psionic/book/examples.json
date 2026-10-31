@@ -930,6 +930,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/guard-evaluation.coax",
+      "chapter": "psionic/book/ch021d-measure-a-guard-decision.md",
+      "stdout": "psionic/fixtures/guard-evaluation.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

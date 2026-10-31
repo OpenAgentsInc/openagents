@@ -1,0 +1,49 @@
+// Tool admission/recording only. This does not grant a game action.
+#load "../../../verse/everglade/guard-evaluation.coax";
+#authority;
+GP_PROVIDER :: "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7";
+#test "only a finite contiguous eligible cohort may issue live requests" {
+    #assert gp_range(0,1) && gp_range(0,16) && gp_range(1,15) && gp_range(15,1);
+    #assert !gp_range(0,17) && !gp_range(15,2) && !gp_range(16,1);
+    for start:[5]int.[-1,0,15,16,9223372036854775807] {for count:[5]int.[-1,0,1,16,9223372036854775807] {
+        expected:=(start==0 && (count==1 || count==16)) || (start==15 && count==1);
+        #assert gp_range(start,count)==expected;
+    }}
+}
+#test "published client status framing is exact and unknown failures stay transport failures" {
+    #assert gp_status(0,"")==200;
+    #assert gp_status(1,"{}\nmesh: HTTP100\n")==100 && gp_status(1,"{}\nmesh: HTTP599\n")==599;
+    #assert gp_status(1,"{}\nmesh: HTTP401\n")==401;
+    #assert gp_status(1,"{}\nmesh: HTTP429\n")==429;
+    #assert gp_status(1,"{}\nmesh: HTTP503\n")==503;
+    for text:[6]string.["","mesh: HTTP200","\nmesh: HTTP099\n","\nmesh: HTTP600\n","\nmesh: HTTP503x\n","\nmesh: HTTP503\nextra"] {#assert gp_status(1,text)==0;}
+}
+#test "a response must retain the original configured provider and checkpoint" {
+    #assert gp_pin(GA_RESPONSE);
+    b:[8192]u8;#assert !gp_pin(ga_swap(b[..],GA_RESPONSE,"59e443","000000"));
+    #assert !gp_pin(ga_swap(b[..],GA_RESPONSE,"elephant-1@sha256:","other@sha256:"));
+    #assert !gp_pin("{}");
+}
+gp_range :: (start:int,count:int)->bool {return start>=0 && count>=1 && count<=16-start;}
+gp_status :: (exit:int,error:string)->int {
+    if exit==0 {return 200;}marker:="\nmesh: HTTP";at:=error.count-marker.count-4;
+    if at<0 || error[at..<at+marker.count]!=marker || error[error.count-1]!='\n' {return 0;}
+    n:=json_int(error[at+marker.count..<error.count-1]);return ifx n.ok && n.value>=100 && n.value<=599 then n.value else 0;
+}
+gp_pin :: (body:string)->bool {return ga_decode(body).ok && ga_is(ga_get(ga_get(body,"service").raw,"provider"),GP_PROVIDER);}
+#test "HTTP endpoint codes and empty diagnostic bodies have exact boundaries" {
+    #assert gp_status(1,"\nmesh: HTTP503\n")==503;
+    #assert gp_status(1,"{}\nmesh: HTTP600\n")==0;
+    #assert gp_status(1,"{}\nmesh: HTTP-10\n")==0;
+    #assert gp_status(1,"{}\nmesh: HTTP099\n")==0;
+    #assert gp_status(1,"{}\nmesh: HTTP100\n")==100;
+    #assert gp_status(1,"{}\nmesh: HTTP599\n")==599;
+}
+#test "the one separately recorded control is the published small learned-model question" {
+    b:[1024]u8;n:=gp_control(b[..]);text:=cast(string)b[0..<n];
+    #assert json_valid(text) && ga_is(ga_get(text,"model"),GA_MODEL) && ga_is(ga_get(text,"state"),"Water is wet.");
+    question:=ga_get(ga_get(text,"questions").raw,"wet");#assert ga_is(ga_get(question.raw,"type"),"choice");
+    #assert ga_get(ga_get(question.raw,"criteria").raw,"yes").token==JSON_NULL && ga_get(ga_get(question.raw,"criteria").raw,"no").token==JSON_NULL;
+    #assert gp_control(b[0..<0])==-1;
+}
+gp_control :: (out:[]u8)->int {return json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}");}

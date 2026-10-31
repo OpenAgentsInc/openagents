@@ -1,4 +1,6 @@
 // Actual Everglade Wasm + shipped host, with a local synthetic SystemOne edge.
+// Firm reason: browser DOM/WebGPU and Chrome DevTools effects; admission,
+// measurements and quality evaluation are authored in Coax.
 // Build just this realm first; no real account, Pylon, keys or model required.
 // EVERGLADE_GUARD_WASM=/tmp/everglade.wasm bun test coax/web/everglade-guard.test.ts
 import {afterAll, beforeAll, describe, expect, test} from 'bun:test'
@@ -8,6 +10,10 @@ import {tmpdir} from 'node:os'
 import {chrome as chromePath, gpuFlags} from './chrome'
 
 const root = join(import.meta.dir, '../..'), wasm = process.env.EVERGLADE_GUARD_WASM
+const live = process.env.EVERGLADE_GUARD_LIVE === '1'
+const liveRevoke = live && process.env.EVERGLADE_GUARD_LIVE_REVOKE === '1'
+if(live&&!wasm)throw Error('Live browser pilot requires an explicit built Wasm artifact')
+const publicOrigin = 'https://openagents.com', publicDecision = publicOrigin+'/api/v1/systemone'
 if (wasm && !existsSync(wasm)) throw Error('EVERGLADE_GUARD_WASM does not exist')
 const profile = wasm ? mkdtempSync(join(tmpdir(), 'everglade-guard-')) : ''
 const identity = 'elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba'
@@ -35,6 +41,8 @@ async function until(predicate:()=>Promise<boolean>,why:string) {
   throw Error(why+' '+JSON.stringify(await evaluate('({ready:coaxial?.ready,scene:coaxial?.sceneReady,p:Array.from({length:7},(_,i)=>coaxial?.guardProbe(i))})'))+' '+errors.slice(-3).join('\n'))
 }
 const probe=()=>evaluate('Array.from({length:7},(_,i)=>coaxial.guardProbe(i))')
+const metrics=()=>evaluate('Array.from({length:10},(_,i)=>coaxial.guardProbe(7+i))')
+const bins=(first:number)=>evaluate(`Array.from({length:11},(_,i)=>coaxial.guardProbe(${first}+i))`)
 async function visit(query:string,next='good',code=200) {
   mode=next;status=code;calls=[];errors.length=0
   await cdp('Page.navigate',{url:`http://127.0.0.1:${server.port}/realms/everglade${query}`})
@@ -86,18 +94,22 @@ test('shadow uses exact bounded public request and admits only at a later game b
   expect(Object.keys(calls[0].body.questions.ambient.criteria)).toEqual(['quiet','greeting','weather'])
   expect(calls[0].player).toBeNull();expect(calls[0].authorization).toBeNull()
   expect(JSON.stringify(calls[0].body)).not.toContain('verse.player')
+  const m=await metrics();expect(m.slice(0,5)).toEqual([1,1,1,1,1])
+  for(const first of [40,60,80])expect((await bins(first)).reduce((a:number,b:number)=>a+b,0)).toBe(1)
   if(process.env.EVERGLADE_GUARD_SCREENSHOT){const shot=await cdp('Page.captureScreenshot',{format:'png'});writeFileSync(process.env.EVERGLADE_GUARD_SCREENSHOT,Buffer.from(shot.data,'base64'))}
 },60000)
 test('malformed and oversized successful bodies preserve fallback',async()=>{
   for(const next of ['bad','large']){
     await visit('?guard-ai=shadow',next);await until(async()=> (await probe())[4]>0,'invalid body not refused')
     const p=await probe();expect(p[3]).toBe(0);expect(p[2]).toBe(0);expect(p[1]).toBe(1)
+    expect((await metrics()).slice(1,5)).toEqual([1,1,1,next==='bad'?6:9])
   }
 },120000)
 test('guest and quota refusal disable further attempts for this visit',async()=>{
   for(const code of [401,429]){
     await visit('?guard-ai=shadow','good',code);await until(async()=> (await probe())[6]===1,'session refusal did not disable guard requests')
     expect((await probe())[3]).toBe(0);expect(calls.length).toBe(1)
+    expect((await metrics()).slice(1,5)).toEqual([1,1,1,code===401?2:3])
   }
 },120000)
 test('blur revokes a pending request before its delayed reply can apply',async()=>{
@@ -106,6 +118,8 @@ test('blur revokes a pending request before its delayed reply can apply',async()
   await until(async()=> (await probe())[2]===0,'blur did not revoke pending owner')
   const reply=held!;held=undefined;reply(new Response(JSON.stringify(response),{headers:{'content-type':'application/json'}}))
   await Bun.sleep(300);expect((await probe())[3]).toBe(0)
+  expect((await metrics()).slice(1,5)).toEqual([1,0,1,7])
+  expect((await bins(40)).reduce((a:number,b:number)=>a+b,0)).toBe(0)
   await cdp('Emulation.setFocusEmulationEnabled',{enabled:true})
 },60000)
 test('golden and clip views make no guard request',async()=>{
@@ -113,5 +127,101 @@ test('golden and clip views make no guard request',async()=>{
     await visit(query);await Bun.sleep(500);expect((await probe())[1]).toBe(0);expect(calls.length).toBe(0)
   }
 },120000)
+
+async function livePilot(revoke:boolean){
+  const key=process.env.EVERGLADE_GUARD_LIVE_KEY, signer=process.env.OA_MESH_SIGNER
+  if(!key||!signer)throw Error('Live pilot needs one explicit owned demo key and existing signer')
+  const recordPath=process.env.EVERGLADE_GUARD_LIVE_RECORD
+  if(!recordPath)throw Error('Live pilot needs an explicit private output path')
+  // The browser remains on the real TLS origin. Only page resources are
+  // replaced with this checkout's built module/host/assets. Auth and decision
+  // requests continue untouched; unrelated game APIs are suppressed.
+  let requestId='', started=0, requestBody='', responseBody='', wire:any={}
+  const intercept=async(e:MessageEvent)=>{
+    const event=JSON.parse(String(e.data)),p=event.params
+    if(event.method==='Fetch.requestPaused'){
+      const path=new URL(p.request.url).pathname
+      if(['/api/auth/key','/api/auth/logout','/api/auth/viewer','/api/v1/systemone'].includes(path)){
+        await cdp('Fetch.continueRequest',{requestId:p.requestId});return
+      }
+      if(path.startsWith('/api/')){
+        await cdp('Fetch.fulfillRequest',{requestId:p.requestId,responseCode:404,body:''});return
+      }
+      const source=await fetch(`http://127.0.0.1:${server.port}${path}`)
+      await cdp('Fetch.fulfillRequest',{requestId:p.requestId,responseCode:source.status,
+        responseHeaders:[{name:'Content-Type',value:source.headers.get('content-type')||'application/octet-stream'}],
+        body:Buffer.from(await source.arrayBuffer()).toString('base64')})
+    }
+    if(event.method==='Network.requestWillBeSent'&&p.request.url===publicDecision){
+      requestId=p.requestId;started=p.timestamp;requestBody=p.request.postData||''
+      wire.auth_header_sent=Object.keys(p.request.headers).some(k=>k.toLowerCase()==='authorization')
+    }
+    if(event.method==='Network.responseReceived'&&p.requestId===requestId){
+      wire={...wire,http:p.response.status,remote_ip:p.response.remoteIPAddress||'',from_service_worker:!!p.response.fromServiceWorker}
+    }
+    if(event.method==='Network.loadingFinished'&&p.requestId===requestId){
+      wire.elapsed_ms=Math.round((p.timestamp-started)*1000)
+      const body=await cdp('Network.getResponseBody',{requestId})
+      responseBody=body.base64Encoded?Buffer.from(body.body,'base64').toString('utf8'):body.body
+      wire.complete=true
+    }
+    if(event.method==='Network.loadingFailed'&&p.requestId===requestId){
+      wire={...wire,elapsed_ms:Math.round((p.timestamp-started)*1000),cancelled:!!p.canceled,complete:true}
+    }
+  }
+  const safeIntercept=(e:MessageEvent)=>{void intercept(e).catch(()=>errors.push('live browser transport interception failed'))}
+  ws.addEventListener('message',safeIntercept)
+  await cdp('Network.enable');await cdp('Network.setBypassServiceWorker',{bypass:true})
+  await cdp('Fetch.enable',{patterns:[{urlPattern:publicOrigin+'/*',requestStage:'Request'}]})
+  let loggedIn=false
+  try{
+    await cdp('Page.navigate',{url:publicOrigin+'/realms/everglade?guard-ai=off'})
+    await until(()=>evaluate('!!globalThis.coaxial?.sceneReady'),'live-origin local scene did not become ready')
+    const login=join(profile,'login.json');writeFileSync(login,'{"kind":"login"}',{mode:0o600})
+    const signed=Bun.spawnSync([signer,'--key',key,'POST',publicOrigin+'/api/auth/key',login],{stdout:'pipe',stderr:'ignore'})
+    if(signed.exitCode!==0)throw Error('Owned demo key signer failed')
+    const auth=new TextDecoder().decode(signed.stdout).trim()
+    const status=await evaluate(`(async()=>{const r=await fetch('/api/auth/key',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Authorization:${JSON.stringify('Nostr '+auth)}},body:'{"kind":"login"}'});await r.text();return r.status})()`)
+    if(status!==200)throw Error('Owned demo session login refused with HTTP'+status)
+    loggedIn=true
+    const cookieState=await cdp('Network.getCookies',{urls:[publicOrigin]})
+    const cookie=cookieState.cookies.find((c:any)=>c.name==='oa_session')
+    const session={present:!!cookie,http_only:!!cookie?.httpOnly,secure:!!cookie?.secure}
+    expect(session.present&&session.http_only&&session.secure).toBe(true)
+    expect(await evaluate("document.cookie.includes('oa_session=')")).toBe(false)
+    await cdp('Page.navigate',{url:publicOrigin+'/realms/everglade?guard-ai=shadow'})
+    if(revoke){
+      await until(async()=>requestId!==''&&(await probe())[2]===1,'live request did not start')
+      await Bun.sleep(100)
+      await evaluate("dispatchEvent(new Event('blur'))")
+      await until(async()=>(await metrics())[3]===1,'live blur did not terminate the ticket')
+      await Bun.sleep(7500) // observe beyond the measured warm reply interval
+    }else{
+      await until(async()=>await evaluate('!!globalThis.coaxial?.sceneReady')&&(await metrics())[3]===1,'live guard did not reach a terminal outcome')
+    }
+    await until(async()=>wire.complete===true,'live decision network did not terminate')
+    const output={at:new Date().toISOString(),scenario:revoke?'pending-blur':'admitted',upstream_cancellation_proven:false,scope:'current local page/module at production origin; real normal owned HttpOnly session and untouched public decision endpoint',
+      session,wire,probe:await probe(),metrics:await metrics(),histograms:{callback:await bins(40),stage:await bins(60),total:await bins(80)},request:requestBody,response:responseBody,
+      wasm_sha256:new Bun.CryptoHasher('sha256').update(readFileSync(wasm!)).digest('hex')}
+    // Only synthetic game observations and model results are retained. Never
+    // persist request headers, auth events, cookies or DevTools messages.
+    writeFileSync(recordPath,JSON.stringify(output,null,2)+'\n',{mode:0o600})
+    expect(wire.auth_header_sent).toBe(false)
+    if(revoke){
+      expect(wire.cancelled).toBe(true);expect(output.probe[3]).toBe(0)
+      expect(output.metrics.slice(0,5)).toEqual([1,1,0,1,7])
+      expect(output.histograms.callback.reduce((a:number,b:number)=>a+b,0)).toBe(0)
+    }else{
+      expect(wire.http).toBe(200);expect(wire.remote_ip.length).toBeGreaterThan(0);expect(wire.from_service_worker).toBe(false)
+      expect(output.probe[3]).toBe(1);expect(output.metrics.slice(0,5)).toEqual([1,1,1,1,1])
+    }
+  }finally{
+    if(loggedIn)await evaluate("fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.text()).then(()=>0)").catch(()=>{})
+    await cdp('Fetch.disable').catch(()=>{});ws.removeEventListener('message',safeIntercept)
+  }
+}
+
+test.skipIf(!live)('owned session reaches a live Pylon from the actual guard page',()=>livePilot(false),120000)
+test.skipIf(!liveRevoke)('owned session revokes a pending live Pylon request on blur',()=>livePilot(true),120000)
 
 })

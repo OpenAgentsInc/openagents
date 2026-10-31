@@ -1,0 +1,57 @@
+{
+  "base_head": "909194ec1baa23085b165ee3f1e9025016bb421b",
+  "scope": "M3 local native/sanitizer qualification, one pre-output frozen synthetic corpus, actual public model calls and normal owned-cookie browser pilots. No ambient promotion or production deployment.",
+  "notes": [
+    "Policy mutation-qualified logic is unchanged by later removal of unused empty main and source-marker formatting.",
+    "Actual browser pilots used everglade.wasm; final.wasm rebuilt after that metadata/unused-entry cleanup has its own targeted browser smoke.",
+    "Dated prior records are historical and unchanged.",
+    "Native public CLI timing includes helper startup/signing, unlike the separate browser callback/admission timing.",
+    "Trailing blank lines in three new Coax files were normalized after staging; no executable/mutated site changed. The final current source hashes include this whitespace cleanup."
+  ],
+  "sha256": {
+    "coax/bin/coax": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+    "coax/platform/process-native.c": "ab454241b2c2ed5a95f9f1982b027aa41a2b2509cbc71555e643f4842fbb6527",
+    "coax/platform/store-file-native.c": "13b60d1aed1e776fe91c86e9402a1811301b061fca9e0fe4aed63ad3a5ad3249",
+    "coax/web/everglade-guard.test.ts": "64507f077f49e940aa63d3472db7759e75c76fdcc18b031c3fe1424ac3df8cb2",
+    "verse/everglade/guard-decision.coax": "02046d61e021bdd334c6951a79c83ac67f245c8c5005e22580845a8e2e0e97f3",
+    "verse/everglade/guard-metrics.coax": "3d49a6a19d214e84da3bc555f126e63c06663b71fdbd494a9fab4e9197c53119",
+    "verse/everglade/guard-native.c": "b42610c36a8a1505675376b79d10fbffdc32e6435c47904225667c2bb9a58f33",
+    "verse/everglade/guard-evaluation.coax": "0831616fdcbef57bdeed1454d4a66f7a1441347cdfbbeb67985fb6def264dba3",
+    "verse/everglade/guard-evaluation-wire.coax": "53f705433d0210330bdac555a84fa88e5e344dbba28b12aabe5a13650311c8aa",
+    "verse/everglade/guard-latency.coax": "1b47b2fbe2898d1df826a45ceeba0183ccbb64c40ab1ccbf41f739bbdcb71ec4",
+    "psionic/fixtures/guard-evaluation-labels-v1.jsonl": "099bf141d90a6b85dd2666e7797682054efbcfa9263f3966ebc9f01e8c647141",
+    "psionic/fixtures/guard-evaluation.out": "6e8f6bc939a8812cb13c315eda5201254c6d6af81a00e32ee1c85cc4ef5dd96e",
+    "psionic/examples/guard-evaluation.coax": "39c9f04c556b38c10dc81105ab4abc038cb0568bcf9e076c21892b39d53c71f9",
+    "psionic/fixtures/text/ch05/qwen35.pst": "09eed4956d3394e254e92d9d2cc4cf83d31ac2cc92f5d9986090a1bff9b15223",
+    "psionic/tests/guard-live/PUBLIC-PROBE.md": "cdb02a2bc038349c40437e0b59b73260245e79f70fc4131d832710f6bb98d841",
+    "psionic/tests/guard-live/README.md": "f3f481884d4a02fed7e9a32f2d7462304b99baaca2ab1662889e6aac9884bd0d",
+    "psionic/tests/guard-live/build-token-capacity.sh": "944edd6d856c6d77b28d8ee5714f2e472c2fc4eac34e00c72ab525a3c7dc6ccd",
+    "psionic/tests/guard-live/build.sh": "8a9a3d30ec8bbad9418ac3e353dbe88d558309c732d59e55cd266f695e5cc9c2",
+    "psionic/tests/guard-live/effects.c": "f9e6d710a7d323a7a414b4a922b590f594fb6ea78751156f1ea0dac8d10fd110",
+    "psionic/tests/guard-live/public-probe-host.c": "b29e699331bb5a3de9cd437a71c778fc3826c367edadd3118673292b3e967d8f",
+    "psionic/tests/guard-live/public-probe-policy.coax": "be71169b077f38756065d88ba7517958bfdcc50691c1e07d320066031fdd6f9d",
+    "psionic/tests/guard-live/public-probe.coax": "0f0aaa27c566c1fc01b1417a544d9621a9129be162ebfb8e9be7c3bb429b040d",
+    "psionic/tests/guard-live/token-capacity-host.c": "04eb88c0613e576cee279458576c40d40b90bf0d10abe85d2de04dca31df8b72",
+    "psionic/tests/guard-live/token-capacity-policy.coax": "fa8bc08e9481ad2d4f89755ffece5b14f119bbb88356697acece8c9423cef51a",
+    "psionic/tests/guard-live/token-capacity.coax": "9caae4a311bb440958ce7af6983b6565fe99145219d90efc1aa48de803e455ed",
+    "psionic/tests/guard-live/tool.coax": "e138468088fc855b2acf5607f909d1406efbc29c2f48c54176cb5021dd9050a8",
+    "/tmp/everglade-guard-m3/everglade.wasm": "4eb03e9a98afc8f6cf89e42e621813f53df4baa610bc78c260b64a9bd809baa7",
+    "/tmp/everglade-guard-m3/final.wasm": "0b31088f0677a0c137744f95cc10ba1879aa47e5fcae744d1342f878dc8db49b",
+    "/tmp/guard-evaluation-debug/guard-evaluation": "28632596942258c9438fb6fc08a9452173db957c88428b86056210b35a333dd5",
+    "/tmp/guard-evaluation-release/guard-evaluation": "864fc9c35c9533623fe4c64ee01fc4257afbf48d6dcaade0ea2e85242ef8873c",
+    "/tmp/guard-token-capacity-final/guard-token-capacity": "b1689bed411411cb9ff0cbaf31a3333a6b5d3cce9af473bad3adcb479c0ed4d6",
+    "/tmp/everglade-guard-m3/rebased/public-probe": "dd17e95f6125f1e756ce54c2119b88711e97cee450b90c1e30c8efb373dad399"
+  },
+  "pre_rebase_platform_sha256": {
+    "coax/platform/process-native.c": "29d160361e7f3e5830ef8402566eb0a08d60f73ce5b95423c8e3a0955a7ef4c3",
+    "coax/platform/store-file-native.c": "9844e6b055e3fbc332d2025ad32b2371abc35ca022157465803084b5059199b6"
+  },
+  "integration_rebase": {
+    "onto": "39d04bbf0e",
+    "changed_dependencies": [
+      "coax/platform/process-native.c",
+      "coax/platform/store-file-native.c"
+    ],
+    "qualification": "Review found additive file APIs and optional quiet-process output, default unchanged. Rebuilt ASan/UBSan public probe passes invalid invocation and missing-key child refusal without any network/model call."
+  }
+}

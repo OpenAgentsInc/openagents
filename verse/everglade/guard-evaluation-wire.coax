@@ -1,0 +1,139 @@
+// Reproducible observation records and reports. Raw response bodies stay data;
+// record parsing, admission, distinct-case counts and serialization are Coax.
+#load "guard-evaluation.coax";
+#load "guard-latency.coax";
+#authority;
+
+#test "owned observation records retain exact response bytes and reject malformed scalar identities" {
+    b:[16384]u8;n:=gew_record(4,12,200,GA_RESPONSE,b[..]);line:=cast(string)b[0..<n];
+    r:=gew_observation(line);#assert r.valid && r.index==4 && r.covered && r.action==1 && r.useful;
+    #assert gew_record(0,0,0,"",b[0..<0])==-1;
+    for field:[3]string.["case","elapsed_ms","status"] {
+        for raw:[5]string.["null","\"1\"","[]","1.5","9223372036854775808"] {
+            c:[16384]u8;k:=json_raw(c[..],0,"{");k=json_write_string(c[..],k,field);k=json_raw(c[..],k,":");k=json_raw(c[..],k,raw);k=json_raw(c[..],k,",\"body\":\"\"}");
+            #assert !gew_observation(cast(string)c[0..<k]).valid;
+        }
+    }
+    #assert !gew_observation("{}").valid && !gew_observation("bad").valid;
+    n=gew_record(26,1,200,GA_RESPONSE,b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+    n=gew_record(0,-1,200,GA_RESPONSE,b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+    n=gew_record(0,9007199254740992,200,GA_RESPONSE,b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+    n=gew_record(0,1,-1,GA_RESPONSE,b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+    n=gew_record(0,1,600,GA_RESPONSE,b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+    n=gew_record(0,9007199254740991,599,"",b[..]);r=gew_observation(cast(string)b[0..<n]);#assert r.valid && !r.contract && !r.deadline;
+    n=gew_record(0,0,0,"",b[..]);r=gew_observation(cast(string)b[0..<n]);#assert r.valid && !r.contract && r.deadline;
+    n=gew_record(0,1,200,GA_RESPONSE,b[..]);#assert !gew_observation(ga_swap(b[n..<b.count],cast(string)b[0..<n],"\"body\":\"","\"body\":null,\"ignored\":\"")).valid;
+}
+#test "score reports preserve every independent admission and editorial flag" {
+    b:[4096]u8;r:=gev_evaluate(4,"200\n",GA_RESPONSE,1);n:=gew_result(r,b[..]);
+    #assert cast(string)b[0..<n]=="{\"case\":4,\"valid\":true,\"contract\":true,\"deadline\":true,\"covered\":true,\"action\":1,\"disagree\":true,\"acceptable\":true,\"preferred\":true,\"editorial_useful\":true,\"remote_forbidden\":false}";
+    r=GeResult.{};r.forbidden=true;n=gew_result(r,b[..]);
+    #assert cast(string)b[0..<n]=="{\"case\":-1,\"valid\":false,\"contract\":false,\"deadline\":false,\"covered\":false,\"action\":-1,\"disagree\":false,\"acceptable\":false,\"preferred\":false,\"editorial_useful\":false,\"remote_forbidden\":true}";
+    #assert gew_result(r,b[0..<0])==-1;
+}
+#test "JSONL summary never double counts, hides a missing cohort or calls preference proven utility" {
+    a:[16384]u8;b:[32768]u8;out:[4096]u8;
+    n:=gew_record(4,12,200,GA_RESPONSE,a[..]);m:=json_raw(b[..],0,cast(string)a[0..<n]);m=json_raw(b[..],m,"\n");m=json_raw(b[..],m,cast(string)a[0..<n]);
+    #assert gew_summary(cast(string)b[0..<m],out[..])==-1;
+    n=gew_summary("",out[..]);text:=cast(string)out[0..<n];#assert ga_get(text,"all_eligible_observed").text=="false" && json_int(ga_get(text,"observed").text).value==0;
+    n=gew_record(4,12,200,GA_RESPONSE,a[..]);n=gew_summary(cast(string)a[0..<n],out[..]);text=cast(string)out[0..<n];
+    #assert json_valid(text) && json_int(ga_get(text,"covered").text).value==1 && json_int(ga_get(text,"editorial_useful").text).value==1 && ga_get(text,"all_eligible_observed").text=="false";
+    #assert gew_summary("{}",out[..])==-1 && gew_summary("",out[0..<0])==-1;
+}
+#test "each required scalar gate is tested with every other field present" {
+    b:[16384]u8;c:[16384]u8;needle:[128]u8;fresh:[128]u8;n:=gew_record(4,12,200,GA_RESPONSE,b[..]);
+    for field:[3]string.["case","elapsed_ms","status"] {
+        k:=json_write_string(needle[..],0,field);k=json_raw(needle[..],k,":");k=json_raw(needle[..],k,ifx field=="case" then "4" else ifx field=="elapsed_ms" then "12" else "200");
+        for raw:[5]string.["null","\"1\"","[]","1.5","9223372036854775808"] {
+            m:=json_write_string(fresh[..],0,field);m=json_raw(fresh[..],m,":");m=json_raw(fresh[..],m,raw);
+            #assert !gew_observation(ga_swap(c[..],cast(string)b[0..<n],cast(string)needle[0..<k],cast(string)fresh[0..<m])).valid;
+        }
+    }
+    large:[8193]u8;for i:0..<large.count {large[i]=' ';}n=gew_record(0,1,200,cast(string)large[..],b[..]);#assert !gew_observation(cast(string)b[0..<n]).valid;
+}
+#test "local quiet preference counts only observed nighttime cases" {
+    b:[4096]u8;
+    for i:0..<16 {t:=GeTotals.{seen=1<<i,observed=1,eligible=1};n:=gew_totals(t,b[..]);v:=json_int(ga_get(cast(string)b[0..<n],"local_quiet_editorial_preferred").text);#assert v.ok && v.value==(ifx i<4 then 1 else 0);}
+    n:=gew_totals(GeTotals.{},b[..]);#assert json_int(ga_get(cast(string)b[0..<n],"local_quiet_editorial_preferred").text).value==0;
+}
+#test "JSONL scanning accepts complete distinct rows and rejects blank or forbidden-context rows" {
+    a:[16384]u8;b:[32768]u8;out:[4096]u8;
+    for pad:0..<2 {
+        n:=gew_record(0,1,200,GA_RESPONSE,a[..]);m:=json_raw(b[..],0,cast(string)a[0..<n]);if pad==1 {m=json_raw(b[..],m," ");}m=json_raw(b[..],m,"\n");
+        n=gew_record(4,1,200,GA_RESPONSE,a[..]);m=json_raw(b[..],m,cast(string)a[0..<n]);
+        for trailing:0..<2 {k:=m;if trailing==1 {k=json_raw(b[..],k,"\n");}n=gew_summary(cast(string)b[0..<k],out[..]);text:=cast(string)out[0..<n];#assert n>0 && json_int(ga_get(text,"observed").text).value==2 && json_int(ga_get(text,"local_quiet_editorial_preferred").text).value==1;}
+    }
+    #assert gew_summary("\n",out[..])==-1 && gew_summary("\n\n",out[..])==-1;
+    n:=gew_record(16,1,503,"",a[..]);#assert gew_summary(cast(string)a[0..<n],out[..])==-1;
+}
+#test "descriptive timing preserves exact half milliseconds and keeps failure timing out of success timing" {
+    a:[16384]u8;lines:[32768]u8;out:[4096]u8;
+    n:=gew_record(0,10,503,"",a[..]);k:=json_raw(lines[..],0,cast(string)a[0..<n]);k=json_raw(lines[..],k,"\n");
+    n=gew_record(4,1,200,GA_RESPONSE,a[..]);k=json_raw(lines[..],k,cast(string)a[0..<n]);n=gew_summary(cast(string)lines[0..<k],out[..]);text:=cast(string)out[0..<n];
+    all:=ga_get(text,"attempt_termination_latency_ms");covered:=ga_get(text,"covered_latency_ms");
+    #assert ga_get(all.raw,"median").text=="5.5" && ga_get(all.raw,"minimum").text=="1" && ga_get(all.raw,"maximum").text=="10" && ga_get(all.raw,"p95").text=="10" && ga_get(all.raw,"count").text=="2";
+    #assert ga_get(covered.raw,"median").text=="1" && ga_get(covered.raw,"count").text=="1" && ga_is(ga_get(covered.raw,"p95_method"),"nearest_rank");
+    n=gew_summary("",out[..]);empty:=ga_get(cast(string)out[0..<n],"covered_latency_ms");#assert ga_get(empty.raw,"count").text=="0" && ga_get(empty.raw,"minimum").token==JSON_NULL;
+    empty_all:=ga_get(cast(string)out[0..<n],"attempt_termination_latency_ms");#assert ga_get(empty_all.raw,"count").text=="0" && ga_get(empty_all.raw,"minimum").token==JSON_NULL;
+    times:=[4]int.[10,1,6,5];n=gew_latency(gl_latency(times[..]),out[..],0);#assert ga_get(cast(string)out[0..<n],"median").text=="5.5";
+    #assert gew_latency(GlLatency.{},out[0..<0],0)==-1;
+}
+
+gew_record :: (index:int,elapsed_ms:int,status:int,body:string,out:[]u8)->int #export_c {
+    n:=json_raw(out,0,"{\"case\":");n=json_write_int(out,n,index);n=json_raw(out,n,",\"elapsed_ms\":");n=json_write_int(out,n,elapsed_ms);
+    n=json_raw(out,n,",\"status\":");n=json_write_int(out,n,status);n=json_raw(out,n,",\"body\":");n=json_write_string(out,n,body);return json_raw(out,n,"}");
+}
+gew_observation :: (line:string)->GeResult #export_c {
+    index:=ga_get(line,"case");elapsed:=ga_get(line,"elapsed_ms");status:=ga_get(line,"status");body:=ga_get(line,"body");
+    i:=json_int(index.text);e:=json_int(elapsed.text);s:=json_int(status.text);
+    if index.token!=JSON_NUMBER || !i.ok || elapsed.token!=JSON_NUMBER || !e.ok || status.token!=JSON_NUMBER || !s.ok || body.token!=JSON_STRING {return GeResult.{};}
+    if e.value<0 || e.value>GD_TIME_MAX || s.value<0 || s.value>599 {return GeResult.{};}
+    raw:[8192]u8;n:=json_unescape(body.text,raw[..]);if n<0 {return GeResult.{};}
+    head:[16]u8;h:=json_write_int(head[..],0,s.value);h=json_raw(head[..],h,"\n");
+    return gev_evaluate(i.value,cast(string)head[0..<h],cast(string)raw[0..<n],e.value);
+}
+gew_bool :: (out:[]u8,at:int,value:bool)->int {return json_raw(out,at,ifx value then "true" else "false");}
+gew_result :: (r:GeResult,out:[]u8)->int #export_c {
+    n:=json_raw(out,0,"{\"case\":");n=json_write_int(out,n,r.index);n=json_raw(out,n,",\"valid\":");n=gew_bool(out,n,r.valid);
+    n=json_raw(out,n,",\"contract\":");n=gew_bool(out,n,r.contract);n=json_raw(out,n,",\"deadline\":");n=gew_bool(out,n,r.deadline);
+    n=json_raw(out,n,",\"covered\":");n=gew_bool(out,n,r.covered);n=json_raw(out,n,",\"action\":");n=json_write_int(out,n,r.action);
+    n=json_raw(out,n,",\"disagree\":");n=gew_bool(out,n,r.disagree);n=json_raw(out,n,",\"acceptable\":");n=gew_bool(out,n,r.acceptable);
+    n=json_raw(out,n,",\"preferred\":");n=gew_bool(out,n,r.preferred);n=json_raw(out,n,",\"editorial_useful\":");n=gew_bool(out,n,r.useful);
+    n=json_raw(out,n,",\"remote_forbidden\":");n=gew_bool(out,n,r.forbidden);return json_raw(out,n,"}");
+}
+gew_totals :: (t:GeTotals,out:[]u8)->int #export_c {
+    quiet_preferred:=0;for i:0..<4 {if (t.seen&(1<<i))!=0 {quiet_preferred+=1;}}
+    n:=json_raw(out,0,"{\"corpus\":\"guard-editorial-v1\",\"expected_eligible\":16,\"observed\":");n=json_write_int(out,n,t.observed);
+    n=json_raw(out,n,",\"eligible_observed\":");n=json_write_int(out,n,t.eligible);n=json_raw(out,n,",\"all_eligible_observed\":");n=gew_bool(out,n,gev_complete(t));
+    n=json_raw(out,n,",\"contract\":");n=json_write_int(out,n,t.contract);n=json_raw(out,n,",\"deadline\":");n=json_write_int(out,n,t.deadline);
+    n=json_raw(out,n,",\"covered\":");n=json_write_int(out,n,t.covered);n=json_raw(out,n,",\"disagreement_vs_quiet\":");n=json_write_int(out,n,t.disagree);
+    n=json_raw(out,n,",\"acceptable\":");n=json_write_int(out,n,t.acceptable);n=json_raw(out,n,",\"editorial_preferred\":");n=json_write_int(out,n,t.preferred);
+    n=json_raw(out,n,",\"editorial_useful\":");n=json_write_int(out,n,t.useful);
+    n=json_raw(out,n,",\"local_quiet_acceptable\":");n=json_write_int(out,n,t.eligible);n=json_raw(out,n,",\"local_quiet_editorial_preferred\":");n=json_write_int(out,n,quiet_preferred);
+    return json_raw(out,n,",\"local_quiet_remote_calls\":0,\"editorial_labels_are_ground_truth\":false,\"promote\":false}");
+}
+gew_latency :: (r:GlLatency,out:[]u8,at:int)->int {
+    if !r.ok {return json_raw(out,at,"{\"count\":0,\"minimum\":null,\"median\":null,\"p95\":null,\"maximum\":null,\"p95_method\":\"nearest_rank\",\"median_method\":\"mean_middle\"}");}
+    n:=json_raw(out,at,"{\"count\":");n=json_write_int(out,n,r.count);n=json_raw(out,n,",\"minimum\":");n=json_write_int(out,n,r.minimum_ms);
+    n=json_raw(out,n,",\"median\":");n=json_write_int(out,n,r.median_twice_ms/2);if r.median_twice_ms%2!=0 {n=json_raw(out,n,".5");}
+    n=json_raw(out,n,",\"p95\":");n=json_write_int(out,n,r.p95_ms);n=json_raw(out,n,",\"maximum\":");n=json_write_int(out,n,r.maximum_ms);
+    return json_raw(out,n,",\"p95_method\":\"nearest_rank\",\"median_method\":\"mean_middle\"}");
+}
+gew_report :: (totals:GeTotals,attempts:[]int,covered:[]int,out:[]u8)->int {
+    n:=gew_totals(totals,out);n=json_raw(out,n-1,",\"attempt_termination_latency_ms\":");n=gew_latency(gl_latency(attempts),out,n);
+    n=json_raw(out,n,",\"covered_latency_ms\":");n=gew_latency(gl_latency(covered),out,n);return json_raw(out,n,"}");
+}
+gew_summary :: (text:string,out:[]u8)->int #export_c {
+    totals:[1]GeTotals;at:=0;attempts:[16]int;covered:[16]int;covered_n:=0;
+    if text.count==0 {return gew_report(totals[0],attempts[0..<0],covered[0..<0],out);}
+    while true {
+        end:=at;while end<text.count && text[end]!='\n' {end+=1;}
+        line:=text[at..<end];r:=gew_observation(line);if !gev_add(totals[..],r) {return -1;}
+        elapsed:=json_int(ga_get(line,"elapsed_ms").text).value;attempts[totals[0].observed-1]=elapsed;
+        if r.covered {covered[covered_n]=elapsed;covered_n+=1;}
+        if end==text.count {break;}
+        at=end+1;
+        if at==text.count {break;}
+    }
+    return gew_report(totals[0],attempts[0..<totals[0].observed],covered[0..<covered_n],out);
+}
