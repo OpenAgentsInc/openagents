@@ -1,0 +1,34 @@
+#import "Basic";
+#load "../lib/robotics/panda-ik.coax";
+
+#test "Panda IK example display rounds independently frozen micrometre and microradian values" {
+ #assert pik_example_micro(-1.2036558811324911)== -1203656 && pik_example_micro(0.11059065150635836)==110591;
+ #assert pik_example_micro(1.0110438715851884)==1011044 && pik_example_micro(-2.5945400702041144)== -2594540;
+ #assert pik_example_micro(-0.00044227488063876887)== -442 && pik_example_micro(0)==0;
+}
+pik_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("position-only IK: source-bound grip SITE\n");
+// book:begin pik-query
+ // Typed radians and one explicit world/metre target. Joint1 starts exactly
+ // at its source upper limit; the target is displaced 1cm along world -X.
+ seed:=pik_home();seed[0].value=2.8973;
+ target:[1]Point3(PfkWorld,pfku.Metre,f64);
+ target[0].x= -1.2036558811324911;target[0].y=0.11059065150635836;target[0].z=1.0110438715851884;
+ solution:[1]PikOutput;
+ #assert pik_solve(seed[..],target[..],11,solution[..])==PikStatus.ok;
+ #assert solution[0].error_metres<=1e-6;
+ print("updates: %; projected coordinates: %\n",solution[0].updates,solution[0].projected_coordinates);
+ p:=solution[0].position;
+ print("grip xyz (um): % % %\n",pik_example_micro(p.x),pik_example_micro(p.y),pik_example_micro(p.z));
+ print("residual below 1 um\n");
+ q:=solution[0].angles;
+ print("candidate joints (urad): % % % % % % %\n",pik_example_micro(q[0].value),pik_example_micro(q[1].value),pik_example_micro(q[2].value),pik_example_micro(q[3].value),pik_example_micro(q[4].value),pik_example_micro(q[5].value),pik_example_micro(q[6].value));
+ // Exhaustion refuses publication; a previous candidate stays intact.
+ before:=solution[0];
+ #assert pik_solve(seed[..],target[..],0,solution[..])==PikStatus.not_converged;
+ pik_same(solution[0],before);
+ print("zero-update unsolved: not_converged; output unchanged\n");
+// book:end pik-query
+ print("candidate is kinematic; collision and command admission pending\n");
+}

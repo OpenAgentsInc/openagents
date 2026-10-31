@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-ik.coax";
+OtherWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+main :: () {q:=pik_home();t:[1]Point3(OtherWorld,pfku.Metre,f64);out:[1]PikOutput;status:=pik_solve(q[..],t[..],1,out[..]);}

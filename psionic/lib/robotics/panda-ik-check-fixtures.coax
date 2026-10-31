@@ -1,0 +1,4 @@
+#load "panda-ik-types.coax";
+pik_poison :: ()->PikOutput {p:PikOutput;for i:0..<7 {p.angles[i].value=101+f64(i);}p.position.x=101;p.position.y=102;p.position.z=103;p.error_metres=104;p.updates=105;p.projected_coordinates=106;return p;}
+pik_same :: (a:PikOutput,b:PikOutput) {for i:0..<7 {#assert f64_bits(a.angles[i].value)==f64_bits(b.angles[i].value);}#assert f64_bits(a.position.x)==f64_bits(b.position.x) && f64_bits(a.position.y)==f64_bits(b.position.y) && f64_bits(a.position.z)==f64_bits(b.position.z) && f64_bits(a.error_metres)==f64_bits(b.error_metres) && a.updates==b.updates && a.projected_coordinates==b.projected_coordinates;}
+pik_words :: ()->[10]u64 {h:=pik_home();w:[10]u64;for i:0..<7 {w[i]=f64_bits(h[i].value);}return w;}

@@ -1,0 +1,63 @@
+// Coefficient boundary: J times exactly one radian has metre coefficients;
+// lambda=0.05 metres and restored delta coefficients multiply one radian.
+// Helpers are source-visible trusted arithmetic, not sealed model admission.
+#load "panda-ik-types.coax";
+#load "panda-matrix.coax";
+#load "panda-ik-check-fixtures.coax";
+#authority;
+#test "Panda IK source ranges home and integer profile boundaries are exact" {
+ h:=pik_home();lo:=pik_lower();hi:=pik_upper();#assert h[3].value== -2.617993877991494 && h[5].value==2.941592653589793;
+ expected_lo:=[7]f64.[-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973];
+ expected_hi:=[7]f64.[2.8973,1.7628,2.8973,-0.0698,2.8973,3.7525,2.8973];for i:0..<7 {#assert lo[i]==expected_lo[i] && hi[i]==expected_hi[i];}
+ w:=pik_words();#assert pik_admit(w,0)==PikStatus.ok && pik_admit(w,96)==PikStatus.ok;
+ #assert pik_admit(w,-1)==PikStatus.range && pik_admit(w,97)==PikStatus.range;
+}
+#forall "Panda IK seed source limits and target box use inclusive index-ordered admission" axis:0..<7,side:bool {
+ lo:=pik_lower();hi:=pik_upper();w:=pik_words();v:=ifx side then hi[axis] else lo[axis];w[axis]=f64_bits(v);#assert pik_admit(w,1)==PikStatus.ok;
+ w[axis]=f64_bits(v+(ifx side then 1e-9 else -1e-9));#assert pik_admit(w,1)==PikStatus.limits;
+ w=pik_words();for i:7..<10 {w[i]=f64_bits(ifx side then 10.0 else -10.0);#assert pik_admit(w,1)==PikStatus.ok;w[i]=f64_bits(ifx side then 10.000000001 else -10.000000001);#assert pik_admit(w,1)==PikStatus.range;w[i]=0;}
+}
+#test "Panda IK diagonal DLS keeps damping null columns signs and global step cap" {
+ j:[21]f64;j[0]=1;j[8]=2;j[16]=3;e:=[3]f64.[0.03,-0.04,0.02];r:=pik_delta(j,e);#assert r.status==PikStatus.ok;
+ #assert abs(r.radians[0]-0.03/1.0025)<1e-14 && abs(r.radians[1]+0.08/4.0025)<1e-14 && abs(r.radians[2]-0.06/9.0025)<1e-14;
+ for i:3..<7 {#assert r.radians[i]==0;}
+ r=pik_delta(j,[3]f64.[10,10,10]);#assert r.status==PikStatus.ok && abs(r.radians[0]-0.1)<1e-14 && r.radians[1]<0.1 && r.radians[2]<0.1;
+ z:[21]f64;r=pik_delta(z,e);#assert r.status==PikStatus.ok;for x:r.radians {#assert x==0;}
+ j[20]=4.0000001;#assert pik_delta(j,e).status==PikStatus.range;j[20]=4;#assert pik_delta(j,e).status==PikStatus.ok;
+ e[2]=20.0000001;#assert pik_delta(j,e).status==PikStatus.range;e[2]=20;#assert pik_delta(j,e).status==PikStatus.ok;
+}
+#test "Panda IK project and distance distinguish exact boundaries and all three axes" {
+ #assert pik_clip(-2,-1,3)== -1 && pik_clip(-1,-1,3)== -1 && pik_clip(2,-1,3)==2 && pik_clip(3,-1,3)==3 && pik_clip(4,-1,3)==3;
+ p:Point3(PfkWorld,pfku.Metre,f64);p.x=1;p.y=2;p.z=3;t:Point3(PfkWorld,pfku.Metre,f64);t.x=4;t.y= -2;t.z=15;#assert pik_error(p,t)==13 && pik_error(p,p)==0;
+}
+
+pik_lower :: ()->[7]f64 #export_c {return [7]f64.[-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973];}
+pik_upper :: ()->[7]f64 #export_c {return [7]f64.[2.8973,1.7628,2.8973,-0.0698,2.8973,3.7525,2.8973];}
+pik_home :: ()->[7]pfku.Quantity(pfku.Radian,f64) #export_c {v:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];q:[7]pfku.Quantity(pfku.Radian,f64);for back:0..<7 {i:=6-back;q[i].value=v[i];}return q;}
+pik_admit :: (words:[10]u64,max_updates:int)->PikStatus {
+ if max_updates<0 || max_updates>96 {return PikStatus.range;}lo:=pik_lower();hi:=pik_upper();
+ for i:0..<7 {if (words[i]&0x7ff0000000000000)==0x7ff0000000000000 {return PikStatus.number;}v:=f64_from_bits(words[i]);if v<lo[i] || v>hi[i] {return PikStatus.limits;}}
+ for i:7..<10 {if (words[i]&0x7ff0000000000000)==0x7ff0000000000000 {return PikStatus.number;}if abs(f64_from_bits(words[i]))>10 {return PikStatus.range;}}return PikStatus.ok;
+}
+pik_delta :: (j:[21]f64,error:[3]f64)->PikDelta {
+ for x:j {if !pm_finite_bits(f64_bits(x)) {return PikDelta.{status=PikStatus.number};}if abs(x)>4 {return PikDelta.{status=PikStatus.range};}}
+ for x:error {if !pm_finite_bits(f64_bits(x)) {return PikDelta.{status=PikStatus.number};}if abs(x)>20 {return PikDelta.{status=PikStatus.range};}}
+ a:[49]f64;for row:0..<3 {for col:0..<3 {sum:f64=0;for k:0..<7 {sum+=j[row*7+k]*j[col*7+k];}if row==col {sum+=0.0025;}a[row*7+col]=sum;}}
+ inverse:=pm_inverse(3,a);if inverse.status!=PmCode.ok {return PikDelta.{status=PikStatus.solve};}
+ weighted:[3]f64;for row:0..<3 {for col:0..<3 {weighted[row]+=inverse.value[row*7+col]*error[col];}}
+ result:PikDelta;largest:f64=0;for k:0..<7 {for row:0..<3 {result.radians[k]+=j[row*7+k]*weighted[row];}if pik_greater(abs(result.radians[k]),largest) {largest=abs(result.radians[k]);}}
+ if pik_greater(largest,0.1) {for k:0..<7 {result.radians[k]*=0.1/largest;}}return result;
+}
+pik_clip :: (value:f64,lower:f64,upper:f64)->f64 {if pik_less(value,lower) {return lower;}if pik_greater(value,upper) {return upper;}return value;}
+pik_error :: (position:Point3(PfkWorld,pfku.Metre,f64),target:Point3(PfkWorld,pfku.Metre,f64))->f64 {x:=target.x-position.x;y:=target.y-position.y;z:=target.z-position.z;return sqrt(x*x+y*y+z*z);}
+
+pik_less :: (a:f64,b:f64)->bool {return a<b;}
+pik_greater :: (a:f64,b:f64)->bool {return a>b;}
+
+#test "Panda IK exact home tuple strict predicates and IEEE words expose all admission branches" {
+ h:=pik_home();expected:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];for i:0..<7 {#assert h[i].value==expected[i];}
+ #assert pik_less(-1,0) && !pik_less(0,0) && !pik_less(1,0) && pik_greater(1,0) && !pik_greater(0,0) && !pik_greater(-1,0);
+ for i:0..<10 {for bits:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {w:=pik_words();w[i]=bits;#assert pik_admit(w,1)==PikStatus.number;}}
+ w:=pik_words();w[0]=f64_bits(3.0);w[9]=0x7ff8000000000001;#assert pik_admit(w,1)==PikStatus.limits;
+ w=pik_words();w[7]=f64_bits(11.0);w[9]=0x7ff8000000000001;#assert pik_admit(w,1)==PikStatus.range;
+}

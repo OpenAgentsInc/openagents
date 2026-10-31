@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-ik.coax";
+consume_length :: (length:pfku.Quantity(pfku.Metre,f64)) {}
+main :: () {out:PikOutput;consume_length(out.angles[0]);}

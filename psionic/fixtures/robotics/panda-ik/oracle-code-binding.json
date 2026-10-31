@@ -1,0 +1,9 @@
+{
+  "schema": "psionic.panda-ik.oracle-code-binding.v1",
+  "passed": true,
+  "executed_oracle_source_sha256": "d90e1097e37c700962a35be36effc6190e089f84364a6373a7dbee74d27fd694",
+  "current_driver_sha256": "d8be6a960c776b90d304a50c165531ce99338887fee77c8e39fe2137057651a1",
+  "all_preparation_and_numeric_functions_AST_identical": true,
+  "only_main_replaced_and_native_helpers_added": true,
+  "oracle_recomputed": false
+}

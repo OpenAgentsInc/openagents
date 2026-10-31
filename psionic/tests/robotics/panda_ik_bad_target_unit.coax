@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-ik.coax";
+main :: () {q:=pik_home();t:[1]Point3(PfkWorld,pfku.HalfMetre,f64);out:[1]PikOutput;status:=pik_solve(q[..],t[..],1,out[..]);}

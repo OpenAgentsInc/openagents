@@ -1,0 +1,7 @@
+position-only IK: source-bound grip SITE
+updates: 11; projected coordinates: 11
+grip xyz (um): -1203656 110591 1011044
+residual below 1 um
+candidate joints (urad): 2897300 214544 4737 -2594540 -442 2950111 785398
+zero-update unsolved: not_converged; output unchanged
+candidate is kinematic; collision and command admission pending

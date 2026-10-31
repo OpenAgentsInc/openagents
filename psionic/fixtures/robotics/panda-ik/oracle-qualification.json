@@ -1,0 +1,59 @@
+{
+  "schema": "psionic.panda-ik.oracle-qualification.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "simulation_steps": 0,
+  "NN_calls": 0,
+  "events": 363,
+  "cases": 50,
+  "original_cases": 49,
+  "extra_native_cases": 1,
+  "standalone_steps": 35,
+  "trajectory_updates": 228,
+  "solve_status_histogram": {
+    "ok": 47,
+    "not_converged": 3
+  },
+  "projection_events": 11,
+  "max_Gaussian_residual_metres": 2.113864638886298e-13,
+  "max_reachable_target_generation_error_metres": 4.440892098500626e-16,
+  "extra_active_projection": {
+    "case": 49,
+    "name": "native-active-limit-success",
+    "status": 0,
+    "updates": 11,
+    "projected_total": 11,
+    "initial_error": 0.010000000000000009,
+    "final_error": 4.6571171154436766e-07
+  },
+  "expected_sha256": "e496f2548c42e7ebab5af2a95190796ddbb0a221e9308fe780ee8d0f139af849",
+  "trajectory_sha256": "e2da33e7495157e6a82470ddf30472925cdf9d14c716935769bc80404b8ff711",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_ik_reference.py": "d90e1097e37c700962a35be36effc6190e089f84364a6373a7dbee74d27fd694",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row0.pc-sample.f64": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row1.pc-sample.f64": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row2.pc-sample.f64": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row3.pc-sample.f64": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row64.pc-sample.f64": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row128.pc-sample.f64": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row232.pc-sample.f64": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca"
+  },
+  "experiment_sha256": "bad874b0f8eca3bd9d58814541f0849e293571e5213c43653c5cb238faa00b85",
+  "oracle_profile_sha256": "d37cf705a7c6230eb575ce03c03524bf5652601062de0c2a5cb4ae12f6ddb8d5",
+  "counts_exact": true,
+  "budgets": {
+    "trajectory_radians_atol": 2e-10,
+    "trajectory_position_metres_atol": 2e-10,
+    "trajectory_error_metres_atol": 2e-10,
+    "rtol": 0,
+    "solve_residual_metres": 1e-06
+  },
+  "seconds": 2.3234692090190947,
+  "executed_oracle_sha256": "d90e1097e37c700962a35be36effc6190e089f84364a6373a7dbee74d27fd694",
+  "private_record_sha256": "a231b44ad45c837ac7d90f388dc8561819bda15e449d0f9cee043364dd3c1ca5"
+}

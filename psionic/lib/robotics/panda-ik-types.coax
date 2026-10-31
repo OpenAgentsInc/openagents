@@ -1,0 +1,5 @@
+// One pinned seven-hinge/grip-SITE geometric query; no control permission.
+#load "panda-fk-types.coax";
+PikStatus :: enum u8 {ok;shape;number;range;limits;solve;not_converged;}
+PikOutput :: struct {angles:[7]pfku.Quantity(pfku.Radian,f64);position:Point3(PfkWorld,pfku.Metre,f64);error_metres:f64;updates:int;projected_coordinates:int;}
+PikDelta :: struct {status:PikStatus;radians:[7]f64;}

@@ -1,0 +1,89 @@
+// Fixed position-only DLS. Ordinary refusals, including exhausted solve,
+// preserve output. A successful one-step call publishes an admitted candidate.
+#load "panda-ik-math.coax";
+#load "panda-jacobian.coax";
+#authority;
+#test "Panda IK exact home target converges with zero work and raw typed results agree" {
+ q:=pik_home();fk:[1]PfkOutput;#assert pfk_forward(q[..],fk[..])==PfkStatus.ok;t:=[1]Point3(PfkWorld,pfku.Metre,f64).[fk[0].grip.position];a:[1]PikOutput;b:[1]PikOutput;
+ #assert pik_solve(q[..],t[..],0,a[..])==PikStatus.ok && a[0].updates==0 && a[0].error_metres==0 && a[0].projected_coordinates==0;
+ raw:[7]f64;for i:0..<7 {raw[i]=q[i].value;}target:=[3]f64.[t[0].x,t[0].y,t[0].z];#assert pik_solve_raw(raw[..],target[..],0,b[..])==PikStatus.ok;pik_same(a[0],b[0]);
+}
+#test "Panda IK one admitted update decreases nearby position error and solve publishes only a solution" {
+ q:=pik_home();fk:[1]PfkOutput;#assert pfk_forward(q[..],fk[..])==PfkStatus.ok;t:=[1]Point3(PfkWorld,pfku.Metre,f64).[fk[0].grip.position];t[0].x+=0.0001;t[0].y-=0.0002;t[0].z+=0.0003;a:[1]PikOutput;
+ #assert pik_step(q[..],t[..],a[..])==PikStatus.ok && a[0].updates==1 && a[0].error_metres<0.0003742;
+ raw:[7]f64;for i:0..<7 {raw[i]=q[i].value;}xyz:=[3]f64.[t[0].x,t[0].y,t[0].z];b:[1]PikOutput;#assert pik_step_raw(raw[..],xyz[..],b[..])==PikStatus.ok;pik_same(a[0],b[0]);
+ #assert pik_solve(q[..],t[..],8,a[..])==PikStatus.ok && a[0].error_metres<=1e-6 && a[0].updates>0 && a[0].updates<=8;
+ p:=[1]PikOutput.[pik_poison()];old:=p[0];#assert pik_solve(q[..],t[..],0,p[..])==PikStatus.not_converged;pik_same(p[0],old);
+}
+#test "Panda IK every span and budget refusal preserves complete outputs" {
+ q:=pik_home();t:[2]Point3(PfkWorld,pfku.Metre,f64);o:=[2]PikOutput.[pik_poison(),pik_poison()];old:=o[0];
+ #assert pik_solve(q[0..<6],t[0..<1],1,o[0..<1])==PikStatus.shape && pik_solve(q[..],t[0..<0],1,o[0..<1])==PikStatus.shape;
+ #assert pik_solve(q[..],t[..],1,o[0..<1])==PikStatus.shape && pik_solve(q[..],t[0..<1],1,o[..])==PikStatus.shape && pik_solve(q[..],t[0..<1],1,o[0..<0])==PikStatus.shape;
+ #assert pik_solve(q[..],t[0..<1],-1,o[0..<1])==PikStatus.range && pik_solve(q[..],t[0..<1],97,o[0..<1])==PikStatus.range;
+ q[3].value=0;#assert pik_solve(q[..],t[0..<1],1,o[0..<1])==PikStatus.limits && pik_step(q[..],t[0..<1],o[0..<1])==PikStatus.limits;
+ pik_same(o[0],old);pik_same(o[1],old);
+}
+
+pik_step :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),output:[]PikOutput)->PikStatus #export_c {
+ if seed.count!=7 || target.count!=1 || output.count!=1 {return PikStatus.shape;}
+ words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].x);words[8]=f64_bits(target[0].y);words[9]=f64_bits(target[0].z);status:=pik_admit(words,96);if status!=PikStatus.ok {return status;}
+ original:[1]PfkOutput;if pfk_forward(seed,original[..])!=PfkStatus.ok {return PikStatus.solve;}
+ jacobian:=pj_project_owned(original[0]);j:[21]f64;for i:0..<21 {j[i]=jacobian.linear[i].value;}
+ position:=original[0].grip.position;error:=[3]f64.[target[0].x-position.x,target[0].y-position.y,target[0].z-position.z];delta:=pik_delta(j,error);if delta.status!=PikStatus.ok {return delta.status;}
+ lo:=pik_lower();hi:=pik_upper();fresh:PikOutput;fresh.updates=1;for i:0..<7 {unprojected:=seed[i].value+delta.radians[i];fresh.angles[i].value=pik_clip(unprojected,lo[i],hi[i]);if pik_less(unprojected,lo[i]) || pik_greater(unprojected,hi[i]) {fresh.projected_coordinates+=1;}}
+ next:[1]PfkOutput;if pfk_forward(fresh.angles[..],next[..])!=PfkStatus.ok {return PikStatus.solve;}fresh.position=next[0].grip.position;fresh.error_metres=pik_error(fresh.position,target[0]);output[0]=fresh;return PikStatus.ok;
+}
+pik_solve :: (seed:[]pfku.Quantity(pfku.Radian,f64),target:[]Point3(PfkWorld,pfku.Metre,f64),max_updates:int,output:[]PikOutput)->PikStatus #export_c {
+ if seed.count!=7 || target.count!=1 || output.count!=1 {return PikStatus.shape;}
+ words:[10]u64;for i:0..<7 {words[i]=f64_bits(seed[i].value);}words[7]=f64_bits(target[0].x);words[8]=f64_bits(target[0].y);words[9]=f64_bits(target[0].z);status:=pik_admit(words,max_updates);if status!=PikStatus.ok {return status;}
+ fk:[1]PfkOutput;if pfk_forward(seed,fk[..])!=PfkStatus.ok {return PikStatus.solve;}fresh:PikOutput;for i:0..<7 {fresh.angles[i]=seed[i];}fresh.position=fk[0].grip.position;fresh.error_metres=pik_error(fresh.position,target[0]);
+ if pik_converged(fresh.error_metres) {output[0]=fresh;return PikStatus.ok;}
+ for update:0..<max_updates {candidate:[1]PikOutput;status=pik_step(fresh.angles[..],target,candidate[..]);if status!=PikStatus.ok {return status;}candidate[0].updates=fresh.updates+1;candidate[0].projected_coordinates+=fresh.projected_coordinates;fresh=candidate[0];if pik_converged(fresh.error_metres) {output[0]=fresh;return PikStatus.ok;}}
+ return PikStatus.not_converged;
+}
+pik_step_raw :: (radians:[]f64,target_xyz:[]f64,output:[]PikOutput)->PikStatus #export_c {
+ if radians.count!=7 || target_xyz.count!=3 || output.count!=1 {return PikStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=radians[i];}t:[1]Point3(PfkWorld,pfku.Metre,f64);t[0].x=target_xyz[0];t[0].y=target_xyz[1];t[0].z=target_xyz[2];return pik_step(q[..],t[..],output);
+}
+pik_solve_raw :: (radians:[]f64,target_xyz:[]f64,max_updates:int,output:[]PikOutput)->PikStatus #export_c {
+ if radians.count!=7 || target_xyz.count!=3 || output.count!=1 {return PikStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=radians[i];}t:[1]Point3(PfkWorld,pfku.Metre,f64);t[0].x=target_xyz[0];t[0].y=target_xyz[1];t[0].z=target_xyz[2];return pik_solve(q[..],t[..],max_updates,output);
+}
+
+#test "Panda IK dense matrix fixture checks all seed fields step geometry and every published coefficient" {
+ q:=pik_home();raw:=[7]f64.[0.23,0.15,0.14,-2.4,0.12,2.8,0.73];for i:0..<7 {q[i].value=raw[i];}
+ fk:[1]PfkOutput;#assert pfk_forward(q[..],fk[..])==PfkStatus.ok;t:=[1]Point3(PfkWorld,pfku.Metre,f64).[fk[0].grip.position];out:=[1]PikOutput.[pik_poison()];
+ #assert pik_solve(q[..],t[..],0,out[..])==PikStatus.ok;for i:0..<7 {#assert out[0].angles[i].value==raw[i];}#assert out[0].position.x==t[0].x && out[0].position.y==t[0].y && out[0].position.z==t[0].z && out[0].error_metres==0 && out[0].updates==0;
+ t[0].x= -0.21002946172396003;t[0].y=0.15828920146495926;t[0].z=1.1177163560862993;
+ expected:=[7]f64.[0.18800872735819862,0.13027981734723637,0.09719204633673609,-2.379656752040764,0.12105898757481315,2.8090701692016515,0.73];
+ #assert pik_step(q[..],t[..],out[..])==PikStatus.ok && out[0].updates==1 && out[0].projected_coordinates==0;
+ for i:0..<7 {#assert abs(out[0].angles[i].value-expected[i])<2e-12;}
+ #assert pfk_forward(out[0].angles[..],fk[..])==PfkStatus.ok && out[0].position.x==fk[0].grip.position.x && out[0].position.y==fk[0].grip.position.y && out[0].position.z==fk[0].grip.position.z && out[0].error_metres==pik_error(fk[0].grip.position,t[0]);
+ xyz:=[3]f64.[t[0].x,t[0].y,t[0].z];other:[1]PikOutput;#assert pik_step_raw(raw[..],xyz[..],other[..])==PikStatus.ok;pik_same(out[0],other[0]);
+ #assert pik_solve(q[..],t[..],96,out[..])==PikStatus.ok && pik_solve_raw(raw[..],xyz[..],96,other[..])==PikStatus.ok;pik_same(out[0],other[0]);
+}
+#forall "Panda IK exact source endpoints remain unprojected when already at their target" axis:0..<7,side:bool {
+ q:=pik_home();lo:=pik_lower();hi:=pik_upper();q[axis].value=ifx side then hi[axis] else lo[axis];fk:[1]PfkOutput;#assert pfk_forward(q[..],fk[..])==PfkStatus.ok;t:=[1]Point3(PfkWorld,pfku.Metre,f64).[fk[0].grip.position];out:[1]PikOutput;
+ #assert pik_step(q[..],t[..],out[..])==PikStatus.ok && out[0].projected_coordinates==0;for i:0..<7 {#assert out[0].angles[i].value==q[i].value;}
+}
+#test "Panda IK limit-active solve counts all eleven updates and projected coordinates" {
+ q:=pik_home();q[0].value=2.8973;t:[1]Point3(PfkWorld,pfku.Metre,f64);t[0].x= -1.2036558811324911;t[0].y=0.11059065150635836;t[0].z=1.0110438715851884;out:[1]PikOutput;
+ #assert pik_solve(q[..],t[..],10,out[..])==PikStatus.not_converged;
+ #assert pik_solve(q[..],t[..],11,out[..])==PikStatus.ok && out[0].updates==11 && out[0].projected_coordinates==11 && abs(out[0].error_metres-4.6571171154436766e-7)<2e-12;
+ #assert out[0].angles[0].value==2.8973 && out[0].angles[3].value>q[3].value;
+ #assert !pik_converged(1.0000000001e-6) && pik_converged(1e-6) && pik_converged(0);
+}
+#test "Panda IK step and raw adapter all span shapes and coordinate refusals are atomic" {
+ q:=pik_home();t:[2]Point3(PfkWorld,pfku.Metre,f64);out:=[2]PikOutput.[pik_poison(),pik_poison()];old:=out[0];raw:[8]f64;for i:0..<7 {raw[i]=q[i].value;}xyz:[4]f64;
+ #assert pik_step(q[0..<6],t[0..<1],out[0..<1])==PikStatus.shape && pik_step(q[..],t[0..<0],out[0..<1])==PikStatus.shape && pik_step(q[..],t[..],out[0..<1])==PikStatus.shape && pik_step(q[..],t[0..<1],out[0..<0])==PikStatus.shape && pik_step(q[..],t[0..<1],out[..])==PikStatus.shape;
+ for call:0..<2 {
+  a:=ifx call==0 then pik_step_raw(raw[..],xyz[0..<3],out[0..<1]) else pik_solve_raw(raw[..],xyz[0..<3],1,out[0..<1]);#assert a==PikStatus.shape;
+  a=ifx call==0 then pik_step_raw(raw[0..<6],xyz[0..<3],out[0..<1]) else pik_solve_raw(raw[0..<6],xyz[0..<3],1,out[0..<1]);#assert a==PikStatus.shape;
+  a=ifx call==0 then pik_step_raw(raw[0..<7],xyz[..],out[0..<1]) else pik_solve_raw(raw[0..<7],xyz[..],1,out[0..<1]);#assert a==PikStatus.shape;
+  a=ifx call==0 then pik_step_raw(raw[0..<7],xyz[0..<2],out[0..<1]) else pik_solve_raw(raw[0..<7],xyz[0..<2],1,out[0..<1]);#assert a==PikStatus.shape;
+  a=ifx call==0 then pik_step_raw(raw[0..<7],xyz[0..<3],out[..]) else pik_solve_raw(raw[0..<7],xyz[0..<3],1,out[..]);#assert a==PikStatus.shape;
+ }
+ for axis:0..<3 {t[0].x=0;t[0].y=0;t[0].z=0;if axis==0 {t[0].x=11;}if axis==1 {t[0].y=11;}if axis==2 {t[0].z=11;}
+  #assert pik_step(q[..],t[0..<1],out[0..<1])==PikStatus.range && pik_solve(q[..],t[0..<1],0,out[0..<1])==PikStatus.range;
+ }
+ q[0].value=3;#assert pik_step(q[..],t[0..<1],out[0..<1])==PikStatus.limits && pik_solve(q[..],t[0..<1],1,out[0..<1])==PikStatus.limits;pik_same(out[0],old);pik_same(out[1],old);
+}
+pik_converged :: (error_metres:f64)->bool {return error_metres<=1e-6;}

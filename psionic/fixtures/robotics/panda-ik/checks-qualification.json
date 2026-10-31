@@ -1,0 +1,223 @@
+{
+  "schema": "psionic.panda-ik.checks-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+    "normal_reconstruction_receipt_sha256": "18b1e516c14c7136d2f10891b2ffa5b60360a67db854991b25b0795e952069fc"
+  },
+  "experiment_sha256": "bad874b0f8eca3bd9d58814541f0849e293571e5213c43653c5cb238faa00b85",
+  "check_first": true,
+  "scope": "Only new IK source authority roots; imported arithmetic proofs carried, no old mutation sites selected. Counts describe actual emitted sites.",
+  "sources": {
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": {
+      "sha256": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9",
+      "bytes": 742
+    },
+    "psionic/lib/robotics/panda-ik-math.coax": {
+      "sha256": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7",
+      "bytes": 5810
+    },
+    "psionic/lib/robotics/panda-ik-types.coax": {
+      "sha256": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83",
+      "bytes": 392
+    },
+    "psionic/lib/robotics/panda-ik.coax": {
+      "sha256": "f1bd316e0c5c532fd6d82115b36a0e5e4df74e1cca05450d4ec2337523ad0dd5",
+      "bytes": 10221
+    },
+    "psionic/tests/robotics/panda_ik_bad_angle.coax": {
+      "sha256": "d7e672c421d789cd6e68a91889ffbd31e182e061b4b1cd42962101fa3d44db28",
+      "bytes": 186
+    },
+    "psionic/tests/robotics/panda_ik_bad_output.coax": {
+      "sha256": "7ac5ab0ca4afd93df5cebee05db5663f383b25c423734f7530786ce35bc3f23d",
+      "bytes": 160
+    },
+    "psionic/tests/robotics/panda_ik_bad_target_frame.coax": {
+      "sha256": "a94eaf06aa7929795c87a8db57f25ff961976b8f68d7f1a8c28360b876e05602",
+      "bytes": 277
+    },
+    "psionic/tests/robotics/panda_ik_bad_target_unit.coax": {
+      "sha256": "2896cd850ce65cc0c37704ecc1c2adf2dd9060eb518e44de33083b1b8301e972",
+      "bytes": 169
+    }
+  },
+  "focused_checks": {
+    "groups": 12,
+    "cases": 38,
+    "passed": true,
+    "log": {
+      "sha256": "7666dbb4fc6e3ec19466c890287eaa02667c353bbd28f940b3f6eb609d365286",
+      "bytes": 1603
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "mutation_roots": [
+    {
+      "source": "psionic/lib/robotics/panda-ik-math.coax",
+      "mutants": 102,
+      "killed": 102,
+      "survived": 0,
+      "scope": "root-only",
+      "stdout": {
+        "sha256": "209d8fbfa641537943e0c6edc14e3e2b24bb122f17cda18cfbcc90adbb06ac5b",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "source": "psionic/lib/robotics/panda-ik.coax",
+      "mutants": 152,
+      "killed": 152,
+      "survived": 0,
+      "scope": "root-only",
+      "stdout": {
+        "sha256": "e7cff40e5262e445605b9a6ce9702e945cc4941ebd52dabb1b9fe27491b5e15d",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "history": [
+    {
+      "kind": "initial syntax/coverage fixture setup",
+      "logs": [
+        {
+          "sha256": "b903c77c984fb48700c3ec81f1a44e1f57b7bc6e29faf78a3d7e3987d2c01b1a",
+          "bytes": 441
+        },
+        {
+          "sha256": "8354ccf47f3c202d68299deacaee81641c7532da5a3856aeb59d213bbc544565",
+          "bytes": 687
+        },
+        {
+          "sha256": "3219d3f0a92aee8d2ac9a9857bab5ca2efbfeeb371bc3ad796e51de0413e29d2",
+          "bytes": 853
+        },
+        {
+          "sha256": "2ae4f0c0ed4e91f90ca487765374dd5fdabd10e33f4b049f44923cffd82b94b9",
+          "bytes": 300
+        }
+      ]
+    },
+    {
+      "kind": "initial diagonal helper fixture exceeded declared20m coefficient bound; corrected fixture only",
+      "log": {
+        "sha256": "20835e6c8ec407c50724ba49e74885c1dd96e141096f2368e9f0e86ac3332f3f",
+        "bytes": 948
+      }
+    },
+    {
+      "kind": "math weak checks before strict predicate/home/IEEE-word observations",
+      "mutants": 102,
+      "killed": 93,
+      "survived": 9,
+      "stdout": {
+        "sha256": "ad8f019d2c0fcb656a0724ddb5949576d776e45a72435dac12187f82f7749128",
+        "bytes": 3070
+      }
+    },
+    {
+      "kind": "base weak observations before dense/projection/shape/zero-budget admission checks",
+      "mutants": 155,
+      "killed": 114,
+      "survived": 41,
+      "stdout": {
+        "sha256": "b9877d60163d51fa39913cf649635bd7effdad370d495aa7267d3e3dff742d88",
+        "bytes": 18308
+      }
+    },
+    {
+      "kind": "base five initial-target admission observations missing zero-update case; product unchanged, checks added",
+      "mutants": 152,
+      "killed": 147,
+      "survived": 5,
+      "stdout": {
+        "sha256": "b8c2861983afd090e78c5af6b0fe8028320fc1de2585c826f7786bf3d1af163c",
+        "bytes": 2182
+      }
+    }
+  ],
+  "unit_refusals": {
+    "schema": "psionic.panda-ik.unit-refusals.v1",
+    "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "checks": [
+      {
+        "name": "angle",
+        "source_sha256": "d7e672c421d789cd6e68a91889ffbd31e182e061b4b1cd42962101fa3d44db28",
+        "exit": 1,
+        "stderr_sha256": "faa6e19ebdb6d9b0ccd2a8b2b74d7d41986328c0f07652d068618b50f03bc07d",
+        "refused": true,
+        "reused_unchanged": true
+      },
+      {
+        "name": "target_unit",
+        "source_sha256": "2896cd850ce65cc0c37704ecc1c2adf2dd9060eb518e44de33083b1b8301e972",
+        "exit": 1,
+        "stderr_sha256": "877c22dda7ea55f4101ec23563d9e8c20131e14757f7efd9ff984c2e52e744c0",
+        "refused": true,
+        "previous_fixture_diagnostic": "E0833: nonlength Point3 rejected before call; replaced by valid HalfMetre Point3 to test argument identity"
+      },
+      {
+        "name": "target_frame",
+        "source_sha256": "a94eaf06aa7929795c87a8db57f25ff961976b8f68d7f1a8c28360b876e05602",
+        "exit": 1,
+        "stderr_sha256": "9f8f1feb2e32c754e7898002d55b3abe13e889f6b6f9155439e23ebbd915a898",
+        "refused": true,
+        "reused_unchanged": true
+      },
+      {
+        "name": "output",
+        "source_sha256": "7ac5ab0ca4afd93df5cebee05db5663f383b25c423734f7530786ce35bc3f23d",
+        "exit": 1,
+        "stderr_sha256": "9b744af57a8b07fb3d265f6a15ddb93efee8f35b2202b477342782e865f84ee3",
+        "refused": true,
+        "reused_unchanged": true
+      }
+    ],
+    "passed": true
+  },
+  "example": {
+    "schema": "psionic.panda-ik.example.v1",
+    "passed": true,
+    "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "source_sha256": "8431714598cf7921e1e020183c6779ef9334e72ac017730c676de020045197ba",
+    "golden_sha256": "db642acc14800aa02be8e9c559222abed8e3757ce44a59b924ebc956ba60b093",
+    "golden_origin": "Prewritten from independent homogeneous-matrix/tangent+Gaussian eleven-update fixture; no product output generation",
+    "commands": [
+      {
+        "name": "only-new-example-check",
+        "exit": 0,
+        "stdout_sha256": "138697fccbbeeee4c836840013d7e395e0771852e512d51cd5b898293ed9a851",
+        "stderr_bytes": 0
+      },
+      {
+        "name": "debug",
+        "exit": 0,
+        "stdout_sha256": "db642acc14800aa02be8e9c559222abed8e3757ce44a59b924ebc956ba60b093",
+        "stderr_bytes": 0
+      },
+      {
+        "name": "release",
+        "exit": 0,
+        "stdout_sha256": "db642acc14800aa02be8e9c559222abed8e3757ce44a59b924ebc956ba60b093",
+        "stderr_bytes": 0
+      }
+    ]
+  },
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "passing_old_gates_repeated": false,
+  "limits": "New authority-root arithmetic sites only; existing FK/Jacobian source proofs are dependencies, not a new mutation qualification or generic bounded-control certificate."
+}
