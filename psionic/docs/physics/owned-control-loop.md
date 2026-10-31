@@ -58,8 +58,13 @@ source armatures. Mixed-unit blocks preserve radians/metres; independent
 kinetic/potential differences and retained SDK values qualify the arithmetic.
 The [owned inverse query](../../fixtures/robotics/panda-inverse-dynamics/README.md)
 now qualifies velocity-dependent and acceleration force, including gyroscopic
-and slide Coriolis terms. Applied-force/forward-dynamics assembly, contact and
-integration remain separate; a gravity-only query cannot replace the
+and slide Coriolis terms. The separate [net-force mass solve](../../fixtures/robotics/panda-mass-solve/README.md)
+now qualifies nine-coordinate inertial response, with explicit coordinate bases,
+new Cholesky arithmetic and independent Gaussian/residual references. It accepts
+already assembled NETforce and restores formal angular/linear acceleration units;
+composition with inverse dynamics needs explicit conversion to its nominal units.
+Applied-force/forward-dynamics assembly, contact and integration remain separate;
+a gravity-only query cannot replace the
 controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) first replaces
 queries behind the existing SDK loop, with matched-state field and controller

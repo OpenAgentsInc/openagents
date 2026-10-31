@@ -1120,6 +1120,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/panda-mass-solve.coax",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
+      "stdout": "psionic/fixtures/panda-mass-solve.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1135,6 +1135,123 @@ keeps source, input, SDK, compiler and numerical-profile identities distinct.
 Forward integration, passive/actuator/contact forces and a whole owned-backend
 controller episode remain later work.
 
+## Turn a net force into an acceleration
+
+The owned metric can now answer a new question: given an already assembled
+net generalized force, which angular and linear accelerations does it imply?
+The new fixed-source query solves `M(q) * a = F_net`. It does not decide what
+an actuator command means or subtract gravity and velocity bias on our behalf.
+
+Seven coordinates use radians and two use metres. We first give every
+coordinate an explicit basis: one Radian or one Metre. Multiplying the mixed
+mass blocks on both sides by those bases gives coefficients in kg·m²;
+multiplying the force entries by the same bases gives joules:
+
+```jai
+D       = diag(1 Radian, ..., 1 Radian, 1 Metre, 1 Metre);
+M_basis = transpose(D) * M * D;       // kg*m²
+F_basis = transpose(D) * F_net;       // joules
+M_basis * a_basis = F_basis;          // a_basis has Second^-2
+acceleration = D * a_basis;
+```
+
+Coax owns a new nine-by-nine Cholesky factorization and both triangular
+substitutions. Quantity arithmetic performs the basis changes; only the
+normalized scalar coefficients cross into raw F64 factorization. The result
+crosses an explicit inverse-second-squared boundary and regains its radian or
+metre basis. There is no hidden angle erasure or square root of a quantity.
+
+Choose an acceleration of 2m/s² for just the left slide. Its effective diagonal
+is .1kg finger +.01kg tip +1kg armature =1.11kg, so the left slide needs 2.22N.
+To keep every other acceleration zero, apply the **whole** corresponding mass
+column, including its coupled arm forces:
+
+<!-- source: psionic/examples/panda-mass-solve.coax column -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);metric:[1]PmOutput;
+ #assert pm_forward(q[..],slides[..],metric[..])==PfkStatus.ok;
+ wanted:pfku.Quantity(UnitQuotient(pfku.Metre,UnitProduct(pfku.Second,pfku.Second)),f64);wanted.value=2;
+ h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
+ // Prescribe zero arm/right-slide acceleration by applying the WHOLE mass column.
+ for i:0..<7 {h[i]=convert_unit(PmHingeGravity,metric[0].hinge_slide[i*2]*wanted);}
+ for i:0..<2 {f[i]=convert_unit(PmSlideGravity,metric[0].slide_slide[i*2]*wanted);}
+ out:[1]PmsOutput;#assert pms_forward(q[..],slides[..],h[..],f[..],out[..])==PmsStatus.ok;
+ print("chosen left slide acceleration (um/s^2): %\n",pms_example_micro(wanted.value));
+ print("required left slide NET force (microN): %\n",pms_example_micro(f[0].value));
+ print("solved left/right slide acceleration (um/s^2): % %\n",pms_example_micro(out[0].slide[0].value),pms_example_micro(out[0].slide[1].value));
+```
+
+The golden transcript was written from that chosen solution and the 1.11kg
+source coefficient before execution. The example rounds display values only.
+Applying just 2.22N at the slide would generally move the coupled arm as well.
+
+Zero net force means zero inertial acceleration in this API:
+
+<!-- source: psionic/examples/panda-mass-solve.coax net -->
+```jai
+ for i:0..<7 {h[i].value=0;}for i:0..<2 {f[i].value=0;}
+ #assert pms_forward(q[..],slides[..],h[..],f[..],out[..])==PmsStatus.ok;
+ for a:out[0].hinge {#assert a.value==0;}for a:out[0].slide {#assert a.value==0;}
+ print("zero NET force -> zero acceleration (all 9 coordinates)\n");
+```
+
+That does not mean zero actuator force holds a physical robot still. A caller
+assembling total dynamics must account for gravity, velocity-dependent bias,
+passive and applied forces first. The next component can compose those
+contracts explicitly; this query does not infer them from a force's unit name.
+
+The public boundary accepts seven finite radian positions, two finite metre
+positions, seven net energy-per-radian forces and two net Newton forces. It
+keeps the position query's numerical ±100rad/±1m box and an inclusive force
+magnitude limit of 10000 per coordinate. Shape checks precede position and
+force admission. Refusal preserves all nine acceleration words:
+
+<!-- source: psionic/examples/panda-mass-solve.coax refusal -->
+```jai
+ before:=out[0];f[0].value=10000.000000000002;
+ #assert pms_forward(q[..],slides[..],h[..],f[..],out[..])==PmsStatus.range;pms_same(out[0],before);
+ print("force above 10000: range refusal; all 9 outputs unchanged\n");
+```
+
+The raw normalized matrix profile has inclusive 1e8 coefficient and 1e4 force
+limits, exact numerical symmetry and Cholesky Schur pivots at least .25.
+The bound source model's minimum armature is .714286 plus a positive
+semidefinite body metric; the .25 floor is conservative for this model, not
+a promise to accept every positive-definite matrix. Source-visible helpers
+still have trusted basis/force/profile preconditions and forgeable PODs. Only
+the fixed-source forward entry owns its admitted model/force path.
+
+```shell
+coax/bin/coax run psionic/examples/panda-mass-solve.coax
+coax/bin/coax run psionic/examples/panda-mass-solve.coax --release
+COAX=coax/bin/coax psionic/tests/robotics/panda_mass_solve_check.sh /tmp/panda-mass-solve-new
+```
+
+The [experiment](../fixtures/robotics/panda-mass-solve/experiment.json) and
+[qualification](../fixtures/robotics/panda-mass-solve/qualification.json)
+keep earlier component references distinct from the new solver proof.
+Two forces at each of 57 previously qualified metric configurations give 114
+new contexts. Five retained original SDK matrices times three independently
+chosen accelerations add 15; seven analytic raw profiles exercise the numerical
+helper. No previous M9/SDK/model gate is rerun.
+
+All 213 new-root mutants are killed. Debug, release and ASan/UBSan each pass
+10,028 ABI/refusal assertions and publish the same 1,224 F64 words byte for byte
+under the declared Darwin-arm64 scalar-libm profile. Independent row-pivoted
+Gaussian elimination differs by at most 3.64e-12; equation residuals reach
+9.10e-12. The fixed per-scalar allowances are `2e-10 + 2e-12*abs(reference)`
+for acceleration and `2e-9 + 2e-12*abs(force)` for residuals, in the explicit
+coordinate basis. All decoded actual/reference words are finite and complete
+before comparison. The failed first native fault setup and its repaired test
+harness remain recorded; the product and numerical references were unchanged.
+
+These outputs use formal Radian/Second² and Metre/Second² types. A future
+inverse-dynamics assembly using nominal acceleration units needs explicit
+`convert_unit`, with no loss of physical angle identity. Contacts, force
+assembly, integration, compiler bounded control and real hardware remain
+separate qualifications. Zero joint angles here are a numerical query, not
+an actuator-valid home.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

@@ -245,6 +245,25 @@ Christoffel differences qualify the result. Raw SDK RNE excludes armature and
 is compared only with the explicit correction. Passive, actuator, contact,
 integration, hardware and whole owned-episode claims remain separate.
 
+## Panda mass solve consumes net generalized force in an explicit basis
+
+The fixed-source public solver owns M(q), admits original force once before
+quantity arithmetic and stages all nine accelerations. One-radian/one-metre
+bases make the mixed mass blocks homogeneous kg*m² and RHS entries joules;
+raw F64 factorization returns inverse-second² coefficients, then the same bases
+restore formal Radian/Second² and Metre/Second² quantities. There is no implicit
+angle erasure or automatic gravity/velocity-bias subtraction.
+
+Its .25 inclusive Cholesky Schur-pivot floor belongs to the normalized fixed
+model profile, supported by the .714286 minimum armature plus PSD body metric;
+it is not generic SPD acceptance. Source-visible basis, factor and publication
+helpers have trusted preconditions and forgeable PODs. Cached earlier Coax
+metric outputs and original SDK matrices retain separate reference provenance.
+Independent Gaussian/residual comparisons use complete finite arrays and frozen
+per-scalar absolute-plus-relative budgets. The first failed native fault setup
+remains recorded. This query supplies no net-force assembly, contacts, integration,
+command admission, compiler bounded proof, sensor clock or hardware control.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

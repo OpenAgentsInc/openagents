@@ -356,3 +356,12 @@ same fixed model. A [typed example](examples/panda-inverse-dynamics.coax) uses a
 independently prewritten SDK force transcript. Its focused gate is
 `psionic/check.sh --only robotics/panda-inverse-dynamics`. Forward integration,
 passive/actuator forces and constraints remain separate work.
+
+The [net-force mass solver](fixtures/robotics/panda-mass-solve/README.md) turns
+already assembled generalized force into typed angular/linear accelerations.
+It normalizes one-radian/one-metre bases explicitly and uses owned nine-coordinate
+Cholesky arithmetic. The [example](examples/panda-mass-solve.coax) prescribes a
+left-slide acceleration using the whole coupled mass column. Run
+`psionic/check.sh --only robotics/panda-mass-solve` for its three focused roots
+and single native/reference gate. Net-force assembly, integration and physical
+control remain separate qualifications.
