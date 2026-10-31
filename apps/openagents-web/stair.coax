@@ -41,11 +41,13 @@ LAYER_NAME :: [4] string.["MOTE", "WISP", "GLIMMER", "EMBER"];
 // What each pops into: up to two inner layers (-1 none).
 
 // ---- the party (SRD 5.2.1 classes at level 1)
-FIGHTER :: 0; WIZARD :: 1; CLERIC :: 2; CLASSES :: 3;
-CLASS_NAME :: [3] string.["FIGHTER", "WIZARD", "CLERIC"];
-CLASS_R :: [3] f32.[0.85, 0.72, 1.0];
-CLASS_G :: [3] f32.[0.88, 0.55, 0.86];
-CLASS_B :: [3] f32.[0.95, 1.0, 0.42];
+FIGHTER :: 0; WIZARD :: 1; CLERIC :: 2; ROGUE :: 3; RANGER :: 4; BARD :: 5; PALADIN :: 6; CLASSES :: 7;
+CLASS_NAME :: [7] string.["FIGHTER", "WIZARD", "CLERIC", "ROGUE", "RANGER", "BARD", "PALADIN"];
+CLASS_R :: [7] f32.[0.85, 0.72, 1.0, 0.55, 0.5, 1.0, 0.92];
+CLASS_G :: [7] f32.[0.88, 0.55, 0.86, 0.85, 0.9, 0.5, 0.95];
+CLASS_B :: [7] f32.[0.95, 1.0, 0.42, 0.8, 0.45, 0.75, 1.0];
+CLASS_ATTACK :: [7] string.["LONGSWORD +5 · 1D8+3 SLASHING", "FIRE BOLT +5 · 1D10 FIRE", "SACRED FLAME · DEX DC 13 · 1D8 RADIANT",
+  "SHORTSWORD +5 · 1D6+3 PIERCING", "LONGBOW +5 · 1D8+3 PIERCING", "VICIOUS MOCKERY · WIS DC 13 · 1D6 PSYCHIC", "LONGSWORD +5 · 1D8+3 SLASHING"];
 // Fighter: Strength 16 (+3), proficiency +2: a longsword, +5 to hit, 1d8 + 3 slashing.
 STAIR_FIGHTER :: SrdCreature.{name = "Fighter", ac = 16, hp = 12, dex = 1, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_SLASHING};
 // Wizard: Intelligence 16 (+3), proficiency +2: Fire Bolt, a ranged spell attack +5, 1d10 fire.
@@ -54,6 +56,21 @@ STAIR_FIRE_BOLT :: SrdCreature.{name = "Fire Bolt", ac = 12, hp = 8, dex = 2, at
 MM_SLOTS :: 2;
 // Cleric: Wisdom 16 (+3), proficiency +2: Sacred Flame, a Dexterity save against DC 13, 1d8 radiant.
 SACRED_DC :: 13;
+// Rogue: Dexterity 16 (+3): a shortsword +5, 1d6 + 3 piercing, and Sneak Attack, +1d6 when another
+// of the party stands within 5 feet (a tile and a half here) of the target.
+STAIR_ROGUE :: SrdCreature.{name = "Rogue", ac = 14, hp = 9, dex = 3, attack = 5, dice = 1, sides = 6, bonus = 3, kind = DMG_PIERCING};
+SNEAK_REACH :: 1.5;
+// Ranger: Dexterity 16 (+3): a longbow +5, 1d8 + 3 piercing. Favoured Enemy: Hunter's Mark on the
+// layer it is placed against (the next wave's strongest), +1d6 on a hit, and it shoots those first.
+STAIR_RANGER :: SrdCreature.{name = "Ranger", ac = 14, hp = 11, dex = 3, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};
+// Bard: Charisma 16 (+3): Vicious Mockery, a Wisdom save against DC 13 (a bubble-beast's Wisdom is
+// +0), 1d6 psychic; and Bardic Inspiration each turn: the nearest of the party in its reach without
+// one adds a d6 to its next attack roll.
+MOCKERY_DC :: 13;
+// Paladin: Strength 16 (+3): a longsword +5, 1d8 + 3 slashing. Its aura (Aura of Protection, here
+// for the party's aim, not saves): the party within 10 feet (two tiles) adds +1 to attack rolls.
+STAIR_PALADIN :: SrdCreature.{name = "Paladin", ac = 18, hp = 12, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_SLASHING};
+AURA_REACH :: 2.0;
 
 // ---- levels 2 and 3 (SRD 5.2.1 class features and spell slots; proficiency stays +2)
 // Fighter 2: Action Surge, its turn takes two attacks once a wave. Fighter 3 (Champion): Improved
@@ -61,7 +78,10 @@ SACRED_DC :: 13;
 // 2nd-level slots a wave for Shatter: everything within 10 feet (a tile) of the target makes a
 // Constitution save against DC 13, 3d8 thunder, half on a success. Cleric 2: Bless, the party in
 // its reach adds a d4 to attack rolls. Cleric 3: Spiritual Weapon, a melee spell attack +5 each
-// turn too, 1d8 + 3 force.
+// turn too, 1d8 + 3 force. Rogue 2: Cunning Action, a turn a quarter sooner. Rogue 3: Sneak Attack 2d6.
+// Ranger 2: Hunter's Mark on whatever it hits. Ranger 3: a second arrow each turn. Bard 2: two
+// inspired a turn. Bard 3: Mockery 2d6. Paladin 2: Divine Smite, +2d8 radiant on its first hit of a
+// wave. Paladin 3: the aura reaches three tiles.
 MAX_LEVEL :: 3;
 SHATTER_SLOTS :: 2; SHATTER_RADIUS :: 1.0; SHATTER_DC :: 13; SHATTER_MIN :: 3;
 STAIR_SPIRIT :: SrdCreature.{name = "Spiritual Weapon", ac = 10, hp = 1, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_FORCE};
@@ -84,7 +104,8 @@ BUILD :: 0; FIGHT :: 1; WON :: 2; LOST :: 3;
 FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :: 6; FX_FLAME :: 7; FX_DART :: 8; FX_SAVED :: 9; FX_CRIT :: 10; FX_SHATTER :: 11; FX_SPIRIT :: 12; FX_LEVEL :: 13;
 
 // Buttons
-B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5; B_SELL :: 6; B_CLOSE :: 7; B_AGAIN :: 8; B_PAUSE :: 9; B_UPGRADE :: 10; BUTTONS :: 11;
+B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5;   // and on to B_FIGHTER + CLASSES - 1
+B_LAST_CLASS :: 9; B_SELL :: 10; B_CLOSE :: 11; B_AGAIN :: 12; B_PAUSE :: 13; B_UPGRADE :: 14; BUTTONS :: 15;
 
 OUTBOX_CAP :: 128;
 ACT_NAVIGATE :: 1;
@@ -101,7 +122,12 @@ Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; }
 Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
-  level: int; surge: bool; slots2: int; bless: int;   // bless: the d4 Bless added to its last roll (0 none)
+  level: int; surge: bool; slots2: int; bless: int;
+  fav: int;        // a ranger's favoured layer
+  inspired: int;   // a Bardic Inspiration die waiting for its next attack roll (its sides, 0 none)
+  smite: bool;     // a paladin's Divine Smite, ready this wave
+  aura: int;       // the +1 a paladin's aura added to its last roll (0 none)
+  insp: int;       // the inspiration die it added to its last roll (0 none)   // bless: the d4 Bless added to its last roll (0 none)
   hits: int; misses: int; pops: int;
   roll: int; total: int; vs: int; hit: bool; crit: bool; dealt: int; how: int;   // the last turn (how: 0 attack, 1 save, 2 auto)
   aim: f32; flash: f32;
@@ -417,6 +443,7 @@ refresh :: (s: [] Stair, k: int) {
   s[0].party[k].slots = ifx lv >= 2 then MM_SLOTS + 1 else MM_SLOTS;
   s[0].party[k].slots2 = ifx lv >= 3 then SHATTER_SLOTS else 0;
   s[0].party[k].surge = lv >= 2;
+  s[0].party[k].smite = s[0].party[k].cls == PALADIN && lv >= 2;
 }
 // A cleric of level 2 or more with this defender in its reach blesses it.
 blessed :: (s: [] Stair, k: int) -> bool {
@@ -436,7 +463,11 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
   a.roll = srd_roll(dice, 20);
   bless := ifx blessed(s, k) then srd_roll(dice, 4) else 0;
   s[0].party[k].bless = bless;
-  a.total = a.roll + c.attack + bless;
+  insp := 0;
+  if s[0].party[k].inspired > 0 { insp = srd_roll(dice, s[0].party[k].inspired); s[0].party[k].inspired = 0; }
+  aura := ifx in_aura(s, k) then 1 else 0;
+  s[0].party[k].aura = aura; s[0].party[k].insp = insp;
+  a.total = a.roll + c.attack + bless + insp + aura;
   a.crit = a.roll >= crit_on;
   a.hit = a.roll != 1 && (a.crit || a.total >= ac);
   if a.hit {
@@ -445,6 +476,82 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
   }
   return a;
 }
+// Seconds between a defender's turns (a rogue's Cunning Action makes them a quarter shorter).
+turn_of :: (s: [] Stair, k: int) -> f32 {
+  d := s[0].party[k];
+  t := s[0].ct[0].turn[d.cls];
+  return ifx d.cls == ROGUE && d.level >= 2 then t * 0.75 else t;
+}
+// Within a paladin's aura (its own included).
+in_aura :: (s: [] Stair, k: int) -> bool {
+  c := cell_xy(s[0].party[k].cell);
+  for i: 0..<DEFENDERS {
+    d := s[0].party[i];
+    if !d.live || d.cls != PALADIN { continue; }
+    e := cell_xy(d.cell);
+    r := f32(ifx d.level >= 3 then AURA_REACH + 1 else AURA_REACH);
+    if (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y) <= r * r { return true; }
+  }
+  return false;
+}
+// Another of the party within SNEAK_REACH of beast t (a rogue's Sneak Attack).
+ally_near :: (s: [] Stair, k: int, t: int) -> bool {
+  p := beast_xy(s, t);
+  for i: 0..<DEFENDERS {
+    d := s[0].party[i];
+    if i == k || !d.live { continue; }
+    e := cell_xy(d.cell);
+    if (e.x - p.x) * (e.x - p.x) + (e.y - p.y) * (e.y - p.y) <= f32(SNEAK_REACH * SNEAK_REACH) { return true; }
+  }
+  return false;
+}
+// The strongest layer in the coming wave (a ranger's favoured enemy).
+strongest_next :: (s: [] Stair) -> int {
+  w := lo_i(s[0].wave, WAVES - 1);
+  best := 0;
+  for g: 0..<GROUPS { kd := s[0].ct[0].kind[w * GROUPS + g]; if kd > best { best = kd; } }
+  return best;
+}
+// A weapon attack by defender k with creature c on beast t: the roll, the fx, the damage
+// (extra: dice of 6 added on a hit, doubled on a crit). False when t is gone.
+weapon_hit :: (s: [] Stair, k: int, c: SrdCreature, t: int, extra: int, how_fx: int) -> SrdAttack {
+  d := s[0].party[k];
+  e := cell_xy(d.cell);
+  b := s[0].beasts[t]; p := beast_xy(s, t);
+  a := stair_attack(s, k, c, s[0].ct[0].ac[b.kind], 20);
+  record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
+  add_fx(s, how_fx, e.x, e.y, p.x, p.y, 0.3, 0, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], a.crit);
+  if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
+  if a.hit {
+    dmg := a.damage;
+    if extra > 0 { dmg += srd_sum(s[0].dice[..], ifx a.crit then extra * 2 else extra, 6); }
+    s[0].party[k].dealt = dmg;
+    hurt_beast(s, t, dmg, c.kind, a.crit, k);
+  } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
+  return a;
+}
+// The beast furthest along in reach of a layer, else any (-1 none).
+first_of :: (s: [] Stair, cell: int, range: f32, kind: int) -> int {
+  c := cell_xy(cell);
+  best := -1; far := -1.0f32;
+  for i: 0..<BEASTS {
+    if !s[0].beasts[i].live || s[0].beasts[i].kind != kind { continue; }
+    p := beast_xy(s, i);
+    dx := p.x - c.x; dy := p.y - c.y;
+    if dx * dx + dy * dy <= range * range && s[0].beasts[i].d > far { far = s[0].beasts[i].d; best = i; }
+  }
+  return ifx best >= 0 then best else first_in_range(s, cell, range, -1);
+}
+ranger_shot :: (s: [] Stair, k: int) -> bool {
+  d := s[0].party[k];
+  range := s[0].ct[0].range[RANGER];
+  t := first_of(s, d.cell, range, d.fav);
+  if t < 0 { return false; }
+  marked := d.level >= 2 || s[0].beasts[t].kind == d.fav;
+  a := weapon_hit(s, k, STAIR_RANGER, t, ifx marked then 1 else 0, FX_DART);
+  return true;
+}
+
 // A fighter's attack on the beast furthest along in reach (false: nothing in reach).
 fighter_attack :: (s: [] Stair, k: int) -> bool {
   d := s[0].party[k];
@@ -536,6 +643,47 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     if a.hit { hurt_beast(s, t, a.damage, DMG_FIRE, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     return true;
   }
+  if d.cls == ROGUE {
+    t := first_in_range(s, d.cell, s[0].ct[0].range[ROGUE], -1);
+    if t < 0 { return false; }
+    sneak := ifx ally_near(s, k, t) then (ifx d.level >= 3 then 2 else 1) else 0;
+    a := weapon_hit(s, k, STAIR_ROGUE, t, sneak, FX_SLASH);
+    s[0].party[k].how = ifx sneak > 0 then 4 else 0;
+    return true;
+  }
+  if d.cls == RANGER {
+    if !ranger_shot(s, k) { return false; }
+    if d.level >= 3 { ok := ranger_shot(s, k); }
+    return true;
+  }
+  if d.cls == PALADIN {
+    t := first_in_range(s, d.cell, s[0].ct[0].range[PALADIN], -1);
+    if t < 0 { return false; }
+    b := s[0].beasts[t]; p := beast_xy(s, t);
+    a := stair_attack(s, k, STAIR_PALADIN, s[0].ct[0].ac[b.kind], 20);
+    record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
+    add_fx(s, FX_SLASH, c.x, c.y, p.x, p.y, 0.26, 0, 0.95, 0.95, 1.0, a.crit);
+    if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
+    if a.hit {
+      dmg := a.damage;
+      // Divine Smite: radiant on the first hit of the wave
+      if s[0].party[k].smite { s[0].party[k].smite = false; dmg += srd_sum(dice, ifx a.crit then 4 else 2, 8); s[0].party[k].how = 5; add_fx(s, FX_FLAME, p.x, p.y, c.x, c.y, 0.55, 0, 1.0, 0.95, 0.7, true); }
+      s[0].party[k].dealt = dmg;
+      hurt_beast(s, t, dmg, DMG_SLASHING, a.crit, k);
+    } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
+    return true;
+  }
+  if d.cls == BARD {
+    t := first_in_range(s, d.cell, s[0].ct[0].range[BARD], -1);
+    if t < 0 { return false; }
+    b := s[0].beasts[t]; p := beast_xy(s, t);
+    sv := srd_save(dice, 0, MOCKERY_DC);
+    record(s, k, sv.roll, sv.total, MOCKERY_DC, !sv.success, false, 1, p);
+    add_fx(s, FX_SPIRIT, p.x, p.y, c.x, c.y, 0.45, 0, CLASS_R[BARD], CLASS_G[BARD], CLASS_B[BARD], false);
+    if !sv.success { hurt_beast(s, t, srd_sum(dice, ifx d.level >= 3 then 2 else 1, 6), DMG_PSYCHIC, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
+    inspire(s, k, ifx d.level >= 2 then 2 else 1);
+    return true;
+  }
   // Cleric: Sacred Flame, the target saves (Dexterity) against DC 13 or takes 1d8 radiant
   t := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
   if t < 0 { return false; }
@@ -555,6 +703,25 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     }
   }
   return true;
+}
+// Bardic Inspiration to the n nearest of the party in the bard's reach without a die waiting.
+inspire :: (s: [] Stair, k: int, n: int) {
+  c := cell_xy(s[0].party[k].cell);
+  r := s[0].ct[0].range[BARD];
+  for m: 0..<n {
+    best := -1; bd := 0.0f32;
+    for i: 0..<DEFENDERS {
+      d := s[0].party[i];
+      if i == k || !d.live || d.inspired > 0 { continue; }
+      e := cell_xy(d.cell);
+      dd := (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y);
+      if dd <= r * r && (best < 0 || dd < bd) { best = i; bd = dd; }
+    }
+    if best < 0 { return; }
+    s[0].party[best].inspired = 6;
+    e := cell_xy(s[0].party[best].cell);
+    add_fx(s, FX_LEVEL, e.x, e.y, 0, 0, 0.6, 0, CLASS_R[BARD], CLASS_G[BARD], CLASS_B[BARD], false);
+  }
 }
 record :: (s: [] Stair, k: int, roll: int, total: int, vs: int, hit: bool, crit: bool, how: int, at: P2) {
   s[0].party[k].roll = roll; s[0].party[k].total = total; s[0].party[k].vs = vs;
@@ -640,7 +807,7 @@ step :: (s: [] Stair, dt: f32) {
     if !s[0].party[k].live { continue; }
     s[0].party[k].wait -= dt;
     if s[0].party[k].wait <= 0 {
-      if take_turn(s, k) { s[0].party[k].wait += s[0].ct[0].turn[s[0].party[k].cls]; } else { s[0].party[k].wait = 0; }
+      if take_turn(s, k) { s[0].party[k].wait += turn_of(s, k); } else { s[0].party[k].wait = 0; }
     }
   }
   if wave_groups_done(s) && live_beasts(s) == 0 {
@@ -663,6 +830,7 @@ place :: (s: [] Stair, cell: int, cls: int) -> bool {
       // initiative: a d20 sets where in the round its first turn falls
       d.wait = f32(srd_roll(s[0].dice[..], 20)) / 20 * s[0].ct[0].turn[cls];
       d.roll = -1;
+      if cls == RANGER { d.fav = strongest_next(s); }
       s[0].party[i] = d;
       s[0].gold -= s[0].ct[0].cost[cls];
       s[0].placed += 1; s[0].placed_round += 1;
@@ -688,7 +856,7 @@ upgrade :: (s: [] Stair, k: int) -> bool {
   s[0].gold -= up_cost(s, d.cls, d.level);
   s[0].party[k].level += 1;
   lv := s[0].party[k].level;
-  if lv == 2 { s[0].party[k].slots += 1; s[0].party[k].surge = true; }
+  if lv == 2 { s[0].party[k].slots += 1; s[0].party[k].surge = true; s[0].party[k].smite = d.cls == PALADIN; }
   if lv == 3 { s[0].party[k].slots2 = SHATTER_SLOTS; }
   c := cell_xy(d.cell);
   add_fx(s, FX_LEVEL, c.x, c.y, 0, 0, 0.9, lv, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], false);
@@ -708,7 +876,7 @@ sell :: (s: [] Stair, k: int) {
 layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   top := 52 * k;
-  bottom := ifx s[0].portrait then 184 * k else 118 * k;
+  bottom := ifx s[0].portrait then 216 * k else 118 * k;
   if s[0].card_shot { top = 0; bottom = 0; }   // no HUD: the stair fills the shot
   s[0].scols = ifx s[0].portrait then ROWS else COLS;
   s[0].srows = ifx s[0].portrait then COLS else ROWS;
@@ -792,10 +960,16 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
     set_button(s, B_FAST, Rect.{x0 = w - 86 * k, y0 = y0, x1 = w - 14 * k, y1 = y1}, true);
     ry1 := y0 - 12 * k; ry0 := ry1 - bh - 18 * k;
     if s[0].card < 0 {
-      bw := (w - 28 * k - 16 * k) / 3;
+      // the seven classes in two rows: four, then three
+      rh := 44 * k;
       for c: 0..<CLASSES {
-        x0 := 14 * k + f32(c) * (bw + 8 * k);
-        set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = ry0, x1 = x0 + bw, y1 = ry1}, can_pick(s, c));
+        row := ifx c < 4 then 0 else 1;
+        per := ifx row == 0 then 4 else 3;
+        col := ifx row == 0 then c else c - 4;
+        bw := (w - 28 * k - f32(per - 1) * 8 * k) / f32(per);
+        x0 := 14 * k + f32(col) * (bw + 8 * k);
+        yb := ry1 - f32(1 - row) * (rh + 8 * k);
+        set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = yb - rh, x1 = x0 + bw, y1 = yb}, can_pick(s, c));
       }
     }
     if s[0].card >= 0 {
@@ -809,7 +983,7 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
   set_button(s, B_PAUSE, Rect.{x0 = w - 186 * k, y0 = y0, x1 = w - 110 * k, y1 = y1}, true);
   set_button(s, B_FAST, Rect.{x0 = w - 100 * k, y0 = y0, x1 = w - 24 * k, y1 = y1}, true);
   if s[0].card < 0 {
-    bw := 170 * k;
+    bw := lo(170 * k, (w - 420 * k - f32(CLASSES - 1) * 10 * k) / f32(CLASSES));
     for c: 0..<CLASSES {
       x0 := 24 * k + f32(c) * (bw + 10 * k);
       set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y1}, can_pick(s, c));
@@ -840,7 +1014,7 @@ press :: (s: [] Stair, b: int) {
   if b == B_AGAIN { stair_reset(s); s[0].tracked_wave = 0; return; }
   if b == B_SELL { sell(s, s[0].card); s[0].card = -1; s[0].selected = -1; return; }
   if b == B_UPGRADE { ok := upgrade(s, s[0].card); return; }
-  if b >= B_FIGHTER && b <= B_CLERIC { pick(s, b - B_FIGHTER); return; }
+  if b >= B_FIGHTER && b <= B_LAST_CLASS { pick(s, b - B_FIGHTER); return; }
 }
 leave_to :: (s: [] Stair, url: string) {
   if s[0].action != 0 { return; }
@@ -1020,7 +1194,7 @@ stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
     ok := start_wave(s); if ok { s[0].selected = -1; s[0].card = -1; }
     return true;
   }
-  if key >= '1' && key <= '3' { pick(s, key - '1'); return true; }
+  if key >= '1' && key <= '7' { pick(s, key - '1'); return true; }
   if key == 'f' || key == 'F' { press(s, B_FAST); return true; }
   if (key == 'u' || key == 'U') && s[0].card >= 0 { ok := upgrade(s, s[0].card); return true; }
   return false;
@@ -1484,7 +1658,7 @@ maker_line :: (s: [] Stair, out: [] f32, at: int, w: f32, h: f32) -> int {
   s[0].tip_shown = false;
   if s[0].maker_n == 0 { return at; }
   k := hi(s[0].dpr, 0.5);
-  bottom := ifx s[0].portrait then 184 * k else 118 * k;
+  bottom := ifx s[0].portrait then 216 * k else 118 * k;
   map_y1 := s[0].by + (f32(s[0].srows) + f32(RIM_TILES)) * s[0].bt * f32(SQUASH);
   // the band it sits in: the gap over the panel, or the strip under its buttons
   y0 := map_y1; y1 := h - bottom;
@@ -1536,7 +1710,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   title := "HOLD THE STAIR";
   if !s[0].portrait && lx + text_width(title, cap) + 24 * k < w { n = say_at(out, n, title, w - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
   // the bottom panel
-  bottom := ifx s[0].portrait then 184 * k else 118 * k;
+  bottom := ifx s[0].portrait then 216 * k else 118 * k;
   plate(s, u, Rect.{x0 = 0, y0 = h - bottom, x1 = w, y1 = h}, 0.85, 0);
   // the defender card, or a hint
   if s[0].card >= 0 && s[0].party[s[0].card].live {
@@ -1554,7 +1728,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       lens[nl] = put(lines[nl][..], lens[nl], " · POPS "); lens[nl] = put_int(lines[nl][..], lens[nl], d.pops);
     }
     tones[nl] = 2; nl += 1;
-    attack := ifx d.cls == FIGHTER then "LONGSWORD +5 · 1D8+3 SLASHING" else ifx d.cls == WIZARD then "FIRE BOLT +5 · 1D10 FIRE" else "SACRED FLAME · DEX DC 13 · 1D8 RADIANT";
+    attack := CLASS_ATTACK[d.cls];
     lens[nl] = put(lines[nl][..], 0, attack); tones[nl] = 0; nl += 1;
     if d.cls == WIZARD {
       lens[nl] = put(lines[nl][..], 0, "MAGIC MISSILE 3 X 1D4+1 · "); lens[nl] = put_int(lines[nl][..], lens[nl], d.slots); lens[nl] = put(lines[nl][..], lens[nl], " LEFT");
@@ -1566,6 +1740,15 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     if d.cls == FIGHTER { feat = ifx d.level >= 3 then "ACTION SURGE · CRITS ON 19-20" else ifx d.level == 2 then "ACTION SURGE: 2 ATTACKS ONCE A WAVE" else "NEXT: ACTION SURGE, 2 ATTACKS ONCE A WAVE"; }
     if d.cls == WIZARD { feat = ifx d.level >= 3 then "SHATTER: 3D8 THUNDER WHERE 3 CROWD" else ifx d.level == 2 then "NEXT: SHATTER, 3D8 THUNDER ON A CROWD" else "NEXT: A THIRD MAGIC MISSILE"; }
     if d.cls == CLERIC { feat = ifx d.level >= 3 then "BLESS +1D4 IN REACH · SPIRITUAL WEAPON" else ifx d.level == 2 then "BLESS: +1D4 TO HIT IN REACH · NEXT: SPIRITUAL WEAPON" else "NEXT: BLESS, +1D4 TO HIT IN REACH"; }
+    if d.cls == ROGUE { feat = ifx d.level >= 3 then "SNEAK ATTACK 2D6 BESIDE AN ALLY · CUNNING ACTION" else ifx d.level == 2 then "SNEAK ATTACK 1D6 · CUNNING ACTION: FASTER TURNS" else "SNEAK ATTACK +1D6 WHEN AN ALLY IS BESIDE ITS TARGET"; }
+    if d.cls == RANGER {
+      fl := put(buf[..], 0, "FAVOURED: "); fl = put(buf[..], fl, LAYER_NAME[d.fav]); fl = put(buf[..], fl, "S +1D6");
+      if d.level >= 2 { fl = put(buf[..], fl, " · MARKS ALL"); }
+      if d.level >= 3 { fl = put(buf[..], fl, " · TWO ARROWS"); }
+      feat = cast(string) buf[0..<fl];
+    }
+    if d.cls == BARD { feat = ifx d.level >= 3 then "INSPIRES 2 IN REACH +1D6 · MOCKERY 2D6" else ifx d.level == 2 then "INSPIRES 2 IN REACH: +1D6 TO HIT" else "BARDIC INSPIRATION: AN ALLY ADDS 1D6 TO ITS NEXT ROLL"; }
+    if d.cls == PALADIN { feat = ifx d.level >= 3 then "AURA +1 TO HIT, 3 TILES · DIVINE SMITE 2D8" else ifx d.level == 2 then "AURA +1 TO HIT, 2 TILES · DIVINE SMITE 2D8 A WAVE" else "AURA: THE PARTY WITHIN 2 TILES +1 TO HIT"; }
     lens[nl] = put(lines[nl][..], 0, feat); tones[nl] = 2; nl += 1;
     m = 0;
     if d.roll < 0 && d.how != 3 { m = put(buf[..], 0, "NO TURN YET"); }
@@ -1577,8 +1760,12 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     } else {
       m = put(buf[..], 0, "LAST: D20 "); m = put_int(buf[..], m, d.roll); m = put(buf[..], m, " + 5");
       if d.bless > 0 { m = put(buf[..], m, " + BLESS "); m = put_int(buf[..], m, d.bless); }
+      if d.insp > 0 { m = put(buf[..], m, " + INSPIRED "); m = put_int(buf[..], m, d.insp); }
+      if d.aura > 0 { m = put(buf[..], m, " + AURA 1"); }
       m = put(buf[..], m, " = "); m = put_int(buf[..], m, d.total);
       m = put(buf[..], m, " VS AC "); m = put_int(buf[..], m, d.vs); m = put(buf[..], m, ifx d.crit then " CRIT" else ifx d.hit then " HIT" else " MISS");
+      if d.how == 4 { m = put(buf[..], m, " · SNEAK"); }
+      if d.how == 5 { m = put(buf[..], m, " · SMITE"); }
     }
     lens[nl] = put(lines[nl][..], 0, cast(string) buf[0..<m]); tones[nl] = 1; nl += 1;
     ly := y0;
@@ -1631,9 +1818,9 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   for b: 0..<BUTTONS {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
-    armed := (b >= B_FIGHTER && b <= B_CLERIC && s[0].pick == b - B_FIGHTER) || (b == B_PAUSE && s[0].paused);
+    armed := (b >= B_FIGHTER && b <= B_LAST_CLASS && s[0].pick == b - B_FIGHTER) || (b == B_PAUSE && s[0].paused);
     style := ifx armed then 2.0f32 else ifx !s[0].enabled[b] then 3.0f32 else ifx s[0].press == b || s[0].hover_b == b then 2.0f32 else 1.0f32;
-    cls := ifx b >= B_FIGHTER && b <= B_CLERIC then b - B_FIGHTER else -1;
+    cls := ifx b >= B_FIGHTER && b <= B_LAST_CLASS then b - B_FIGHTER else -1;
     plate_icon(s, u, r, 1, style, cls);
     if cls >= 0 {
       // the class's portrait (stair.wgsl), its name, its cost
@@ -1657,7 +1844,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     while tw > r.x1 - r.x0 - 10 * k && bc > 7 * k { bc -= 1 * k; tw = text_width(lab, bc); }
     light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
     cr: f32 = INK_R; cg: f32 = INK_G; cb: f32 = INK_B;
-    if b >= B_FIGHTER && b <= B_CLERIC { cr = CLASS_R[b - B_FIGHTER]; cg = CLASS_G[b - B_FIGHTER]; cb = CLASS_B[b - B_FIGHTER]; }
+    if b >= B_FIGHTER && b <= B_LAST_CLASS { cr = CLASS_R[b - B_FIGHTER]; cg = CLASS_G[b - B_FIGHTER]; cb = CLASS_B[b - B_FIGHTER]; }
     if (b == B_START && s[0].phase == BUILD) || b == B_UPGRADE { cr = GOLD_R; cg = GOLD_G; cb = GOLD_B; }
     n = say_at(out, n, lab, (r.x0 + r.x1) / 2 - tw / 2, (r.y0 + r.y1) / 2 + bc / 2, bc, ink(k, light, cr, cg, cb));
   }
@@ -1808,7 +1995,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s: [1] Stair;
   stair_start(s[..]);
   #assert s[0].lives == c[0].start_lives && s[0].gold == c[0].start_gold && s[0].path_len == path_length(s[..]);
-  good := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside - -\nlayer wisp ac 11 hp 4 dex 1 con 0 speed 1.2 size 0.24 gold 2 lives 3 colour 0 1 0 inside mote mote\nlayer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6 size 0.26 gold 3 lives 7 colour 1 1 0 inside wisp wisp\nlayer ember ac 12 hp 7 dex 1 con 2 speed 1.4 size 0.3 gold 3 lives 11 colour 1 0 0 inside glimmer wisp\nclass fighter cost 50 range 1.6 turn 0.9; class wizard cost 85 range 3.4 turn 1.4; class cleric cost 65 range 3 turn 1.3\nlevel fighter 30 50; level wizard 50 80; level cleric 40 65\nwave 1 mote 5 gap 1 delay 0; wave 2 mote 5 gap 1 delay 0; wave 3 mote 5 gap 1 delay 0; wave 4 mote 5 gap 1 delay 0; wave 5 mote 5 gap 1 delay 0\nwave 6 wisp 5 gap 1 delay 0; wave 7 wisp 5 gap 1 delay 0; wave 8 wisp 5 gap 1 delay 0; wave 9 wisp 5 gap 1 delay 0; wave 10 ember 5 gap 1 delay 0\nstart gold 200 lives 30 # a note\nround 2 every 3\nstair 0 4 13 4";
+  good := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside - -\nlayer wisp ac 11 hp 4 dex 1 con 0 speed 1.2 size 0.24 gold 2 lives 3 colour 0 1 0 inside mote mote\nlayer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6 size 0.26 gold 3 lives 7 colour 1 1 0 inside wisp wisp\nlayer ember ac 12 hp 7 dex 1 con 2 speed 1.4 size 0.3 gold 3 lives 11 colour 1 0 0 inside glimmer wisp\nclass fighter cost 50 range 1.6 turn 0.9; class wizard cost 85 range 3.4 turn 1.4; class cleric cost 65 range 3 turn 1.3\nclass rogue cost 60 range 1.6 turn 0.8; class ranger cost 75 range 4 turn 1.3; class bard cost 70 range 3 turn 1.4; class paladin cost 80 range 1.6 turn 1\nlevel fighter 30 50; level wizard 50 80; level cleric 40 65; level rogue 35 55; level ranger 45 70; level bard 40 60; level paladin 50 75\nwave 1 mote 5 gap 1 delay 0; wave 2 mote 5 gap 1 delay 0; wave 3 mote 5 gap 1 delay 0; wave 4 mote 5 gap 1 delay 0; wave 5 mote 5 gap 1 delay 0\nwave 6 wisp 5 gap 1 delay 0; wave 7 wisp 5 gap 1 delay 0; wave 8 wisp 5 gap 1 delay 0; wave 9 wisp 5 gap 1 delay 0; wave 10 ember 5 gap 1 delay 0\nstart gold 200 lives 30 # a note\nround 2 every 3\nstair 0 4 13 4";
   #assert stair_tables_read(c[..], good) && c[0].way_n == 2 && c[0].start_lives == 30;
   // a straight stair across the middle row: the game lays it
   s[0].ct[0] = c[0];
@@ -2059,6 +2246,65 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   before := s[0].gold;
   sell(s[..], f);
   #assert s[0].gold == before + (50 + 30 + 50) * 7 / 10;
+}
+
+#test "the new classes: Sneak Attack beside an ally, Cunning Action, the ranger's favoured layer, Bardic Inspiration, the paladin's aura and Smite" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].gold = 5000;
+  t := spawn(s[..], EMBER, 12.0);
+  far := spawn(s[..], MOTE, 12.4);
+  p := beast_xy(s[..], t);
+  // free tiles beside the ember, and one a few tiles off
+  near: [8] int; nn := 0; off := -1;
+  for y: 0..<ROWS {
+    for x: 0..<COLS {
+      c := cell_of(x, y);
+      if !free_cell(s[..], c) { continue; }
+      q := cell_xy(c);
+      dd := (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+      if dd <= 1.4 * 1.4 && nn < 8 { near[nn] = c; nn += 1; }
+      if dd >= 3.2 * 3.2 && dd <= 3.8 * 3.8 && off < 0 { off = c; }
+    }
+  }
+  #assert nn >= 3 && off >= 0;
+  s[0].placed_round = 0;
+  #assert place(s[..], near[0], ROGUE);
+  r := defender_at(s[..], near[0]);
+  #assert !ally_near(s[..], r, t);
+  s[0].placed_round = 0;
+  #assert place(s[..], near[1], PALADIN);
+  pl := defender_at(s[..], near[1]);
+  // Sneak Attack: an ally beside the target
+  #assert ally_near(s[..], r, t) && take_turn(s[..], r) && s[0].party[r].how == 4;
+  // the aura: the paladin's own roll and any of the party within two tiles add 1
+  #assert in_aura(s[..], pl) && in_aura(s[..], r);
+  a := stair_attack(s[..], r, STAIR_ROGUE, 30, 20);
+  #assert a.total == a.roll + 5 + 1 && s[0].party[r].aura == 1;
+  // a defender three tiles off is outside it
+  s[0].placed_round = 0;
+  #assert place(s[..], off, BARD);
+  bd := defender_at(s[..], off);
+  #assert !in_aura(s[..], bd);
+  // Bardic Inspiration: the rogue's next roll adds a d6, then it is spent
+  s[0].party[bd].cell = near[2]; lay_cells(s[..]);
+  inspire(s[..], bd, 1);
+  #assert s[0].party[r].inspired == 6 || s[0].party[pl].inspired == 6;
+  if s[0].party[r].inspired == 6 {
+    b := stair_attack(s[..], r, STAIR_ROGUE, 30, 20);
+    #assert b.total - b.roll - 5 - 1 >= 1 && b.total - b.roll - 5 - 1 <= 6 && s[0].party[r].inspired == 0;
+  }
+  // the ranger shoots its favoured layer first, though another is further along
+  s[0].placed_round = 0;
+  #assert place(s[..], off, RANGER);
+  rg := defender_at(s[..], off);
+  #assert s[0].party[rg].fav == strongest_next(s[..]);
+  s[0].party[rg].fav = EMBER;
+  #assert s[0].beasts[far].d > s[0].beasts[t].d && first_of(s[..], off, s[0].ct[0].range[RANGER], EMBER) == t;
+  // Cunning Action: a level-2 rogue's turns come a quarter sooner; a level-2 paladin has Divine Smite
+  #assert !s[0].party[pl].smite;
+  #assert upgrade(s[..], r) && turn_of(s[..], r) < s[0].ct[0].turn[ROGUE] * 0.8;
+  #assert upgrade(s[..], pl) && s[0].party[pl].smite;
 }
 
 #test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {

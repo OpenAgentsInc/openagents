@@ -153,6 +153,88 @@ fn figure(q0: vec2f, cls: i32, face: f32, flash: f32, aa: f32, seed: f32) -> Pen
     let oc = vec3f(0.62, 0.78, 1.0);
     paint(&pen, orb, mix(oc, vec3f(1.0), 0.35 + 0.4 * flash), aa, line * 0.6);
     glow_at(&pen, orb, oc * (0.55 + 1.2 * flash + 0.15 * sin(u.time * 3.0 + seed)), 0.05 + 0.04 * flash);
+  } else if (cls == 3) {
+    // ROGUE: a dark hooded cloak with a sea-green lining, a short blade low and quick
+    let cloak = vec3f(0.2, 0.23, 0.27);
+    paint(&pen, sd_box(q, vec2f(-0.05, 0.07), vec2f(0.03, 0.075), 0.02), vec3f(0.16, 0.15, 0.17), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.05, 0.07), vec2f(0.03, 0.075), 0.02), vec3f(0.16, 0.15, 0.17), aa, line);
+    paint(&pen, sd_trap(q, vec2f(-0.01, 0.25), 0.15, 0.08, 0.15), lit_col(cloak, q, vec2f(0.0, 0.27), 0.15), aa, line);
+    paint(&pen, max(sd_trap(q, vec2f(-0.01, 0.25), 0.15, 0.08, 0.15), -q.x - 0.02), lit_col(vec3f(0.3, 0.62, 0.55), q, vec2f(0.05, 0.25), 0.12), aa, line * 0.5);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.2), vec2f(0.1, 0.014), 0.006), vec3f(0.42, 0.3, 0.22), aa, line * 0.6);
+    let ang = mix(-0.2, 0.55, flash);
+    let dir = vec2f(cos(ang), sin(ang));
+    let hand = vec2f(0.13, 0.22) + dir * 0.04 * flash;
+    let blade = sd_seg(q, hand + dir * 0.03, hand + dir * 0.2, 0.016);
+    paint(&pen, blade, mix(vec3f(0.78, 0.86, 0.88), vec3f(1.0), flash), aa, line);
+    if (flash > 0.05) { glow_at(&pen, blade, vec3f(0.45, 0.95, 0.8) * flash, 0.04); }
+    paint(&pen, sd_circle(q, hand, 0.03), SKIN * 0.9, aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.015, 0.47), 0.085), lit_col(SKIN, q, vec2f(0.015, 0.47), 0.085), aa, line);
+    paint(&pen, max(sd_circle(q, vec2f(-0.01, 0.49), 0.11), -(q.x - 0.055) * 1.0 - (0.44 - q.y) * 0.0 + 0.0 - 0.0 + min(0.0, q.y - 0.44)), lit_col(cloak * 1.1, q, vec2f(0.0, 0.52), 0.11), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.05, 0.45), vec2f(0.04, 0.012), 0.006), vec3f(0.12, 0.13, 0.15), aa, 0.0);
+    paint(&pen, sd_circle(q, vec2f(0.06, 0.47), 0.012), vec3f(0.6, 1.0, 0.85), aa, 0.0);
+  } else if (cls == 4) {
+    // RANGER: a forest-green cloak and hood, a longbow drawn on its turn
+    let green = vec3f(0.22, 0.48, 0.24);
+    paint(&pen, sd_box(q, vec2f(-0.05, 0.07), vec2f(0.032, 0.075), 0.02), vec3f(0.36, 0.26, 0.18), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.05, 0.07), vec2f(0.032, 0.075), 0.02), vec3f(0.36, 0.26, 0.18), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.26), vec2f(0.1, 0.12), 0.04), lit_col(vec3f(0.5, 0.38, 0.25), q, vec2f(0.0, 0.26), 0.12), aa, line);
+    paint(&pen, sd_trap(q, vec2f(-0.06, 0.28), 0.09, 0.05, 0.16), lit_col(green, q, vec2f(-0.06, 0.3), 0.14), aa, line);
+    // the quiver
+    paint(&pen, sd_seg(q, vec2f(-0.11, 0.24), vec2f(-0.05, 0.44), 0.025), vec3f(0.42, 0.28, 0.18), aa, line);
+    paint(&pen, sd_seg(q, vec2f(-0.05, 0.44), vec2f(-0.03, 0.5), 0.008), vec3f(0.9, 0.9, 0.85), aa, 0.0);
+    // the bow: an arc held out front, the string pulled back on its turn
+    let bc = vec2f(0.18, 0.32);
+    let bd = length((q - bc) * vec2f(1.6, 1.0));
+    let bow = max(abs(bd - 0.2) - 0.012, bc.x - q.x + 0.02);
+    paint(&pen, bow, vec3f(0.55, 0.36, 0.2), aa, line);
+    let pull = 0.03 + 0.07 * flash;
+    paint(&pen, sd_seg(q, vec2f(0.19, 0.13), vec2f(0.19 - pull, 0.32), 0.006), vec3f(0.95, 0.95, 0.9), aa, 0.0);
+    paint(&pen, sd_seg(q, vec2f(0.19, 0.51), vec2f(0.19 - pull, 0.32), 0.006), vec3f(0.95, 0.95, 0.9), aa, 0.0);
+    if (flash > 0.05) { glow_at(&pen, sd_seg(q, vec2f(0.19 - pull, 0.32), vec2f(0.42, 0.32), 0.008), vec3f(0.6, 1.0, 0.55) * flash, 0.03); }
+    paint(&pen, sd_circle(q, vec2f(0.19 - pull, 0.32), 0.03), SKIN, aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.01, 0.48), 0.085), lit_col(SKIN, q, vec2f(0.01, 0.48), 0.085), aa, line);
+    paint(&pen, max(sd_circle(q, vec2f(-0.01, 0.5), 0.105), 0.47 - q.y - (q.x + 0.06) * 0.6), lit_col(green, q, vec2f(0.0, 0.54), 0.1), aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.055, 0.47), 0.013), INK, aa, 0.0);
+  } else if (cls == 5) {
+    // BARD: a rose doublet and a feathered cap, a lute that rings on its turn
+    let rose = vec3f(0.78, 0.25, 0.48);
+    paint(&pen, sd_box(q, vec2f(-0.05, 0.07), vec2f(0.03, 0.075), 0.02), vec3f(0.95, 0.9, 0.8), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.05, 0.07), vec2f(0.03, 0.075), 0.02), vec3f(0.95, 0.9, 0.8), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.26), vec2f(0.11, 0.12), 0.05), lit_col(rose, q, vec2f(0.0, 0.26), 0.13), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.26), vec2f(0.018, 0.11), 0.008), vec3f(0.98, 0.86, 0.5), aa, line * 0.5);
+    // the lute across the body
+    let lb = sd_circle(q, vec2f(0.05, 0.2), 0.085);
+    paint(&pen, sd_seg(q, vec2f(0.08, 0.24), vec2f(0.26, 0.42), 0.02), vec3f(0.45, 0.28, 0.16), aa, line);
+    paint(&pen, lb, lit_col(vec3f(0.78, 0.55, 0.3), q, vec2f(0.05, 0.2), 0.085), aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.05, 0.2), 0.022), vec3f(0.2, 0.12, 0.08), aa, 0.0);
+    if (flash > 0.05) { glow_at(&pen, abs(length(q - vec2f(0.05, 0.2)) - 0.14 - 0.08 * flash) - 0.004, vec3f(1.0, 0.6, 0.85) * flash, 0.03); }
+    paint(&pen, sd_circle(q, vec2f(0.13, 0.24 + 0.02 * flash), 0.03), SKIN, aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.0, 0.47), 0.085), lit_col(SKIN, q, vec2f(0.0, 0.47), 0.085), aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.045, 0.475), 0.013), INK, aa, 0.0);
+    paint(&pen, sd_box(q, vec2f(-0.01, 0.56), vec2f(0.11, 0.035), 0.03), lit_col(rose * 0.8, q, vec2f(0.0, 0.57), 0.1), aa, line);
+    paint(&pen, sd_seg(q, vec2f(-0.08, 0.58), vec2f(-0.2, 0.7), 0.016), vec3f(0.98, 0.95, 0.9), aa, line * 0.6);
+  } else if (cls == 6) {
+    // PALADIN: bright plate, a white tabard with a pale-blue sun, a longsword raised high
+    let plate = vec3f(0.84, 0.87, 0.94);
+    paint(&pen, sd_box(q, vec2f(-0.055, 0.07), vec2f(0.035, 0.075), 0.02), lit_col(plate * 0.8, q, vec2f(-0.05, 0.08), 0.08), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.055, 0.07), vec2f(0.035, 0.075), 0.02), lit_col(plate * 0.8, q, vec2f(0.05, 0.08), 0.08), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.27), vec2f(0.125, 0.13), 0.05), lit_col(plate, q, vec2f(0.0, 0.27), 0.14), aa, line);
+    paint(&pen, sd_box(q, vec2f(0.0, 0.22), vec2f(0.065, 0.13), 0.02), lit_col(vec3f(0.97, 0.97, 0.95), q, vec2f(0.0, 0.24), 0.12), aa, line);
+    let mark = sd_circle(q, vec2f(0.0, 0.27), 0.03);
+    paint(&pen, mark, vec3f(0.55, 0.78, 1.0), aa, line * 0.5);
+    let ang = mix(1.45, -0.2, flash);
+    let dir = vec2f(cos(ang), sin(ang));
+    let hand = vec2f(0.15, 0.3);
+    let blade = sd_seg(q, hand + dir * 0.05, hand + dir * 0.4, 0.024);
+    paint(&pen, blade, vec3f(0.92, 0.95, 1.0), aa, line);
+    glow_at(&pen, blade, vec3f(0.7, 0.85, 1.0) * (0.15 + flash), 0.04 + 0.03 * flash);
+    let nrm = vec2f(-dir.y, dir.x);
+    paint(&pen, sd_seg(q, hand + dir * 0.05 - nrm * 0.06, hand + dir * 0.05 + nrm * 0.06, 0.015), vec3f(0.95, 0.85, 0.45), aa, line);
+    paint(&pen, sd_circle(q, hand, 0.032), plate, aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.01, 0.5), 0.092), lit_col(SKIN, q, vec2f(0.01, 0.5), 0.092), aa, line);
+    paint(&pen, max(sd_circle(q, vec2f(0.0, 0.52), 0.106), 0.5 - q.y), lit_col(plate, q, vec2f(0.0, 0.56), 0.1), aa, line);
+    paint(&pen, sd_circle(q, vec2f(0.055, 0.48), 0.014), INK, aa, 0.0);
+    glow_at(&pen, length((q - vec2f(0.0, 0.3)) * vec2f(1.0, 0.8)) - 0.25, vec3f(0.55, 0.75, 1.0) * (0.12 + 0.06 * sin(u.time * 2.0 + seed)), 0.06);
   } else {
     // CLERIC: a pale robe with a gold sun, a hood, a mace, a halo that flares on its turn
     let robe = vec3f(0.9, 0.88, 0.8);
@@ -191,7 +273,8 @@ fn stand(c: vec3f, local: vec2f, sc: vec2f, t: f32) -> vec3f {
   let level = i32(fract(cell_raw(i)) * 100.0 + 0.5);
   if (level >= 3 && !ghost) {
     let cls = k - 10;
-    let lc = select(select(vec3f(1.0, 0.86, 0.45), vec3f(0.62, 0.5, 1.0), cls == 1), vec3f(0.6, 0.75, 1.0), cls == 0);
+    var lcs = array<vec3f, 7>(vec3f(0.6, 0.75, 1.0), vec3f(0.62, 0.5, 1.0), vec3f(1.0, 0.86, 0.45), vec3f(0.45, 0.95, 0.8), vec3f(0.5, 0.95, 0.45), vec3f(1.0, 0.5, 0.78), vec3f(0.8, 0.9, 1.0));
+    let lc = lcs[clamp(cls, 0, 6)];
     let g = length(q * vec2f(1.0, 2.6));
     pen.glow += lc * (1.0 - smoothstep(0.12, 0.3, g)) * smoothstep(0.08, 0.2, g) * (0.35 + 0.15 * sin(u.time * 3.0));
   }
