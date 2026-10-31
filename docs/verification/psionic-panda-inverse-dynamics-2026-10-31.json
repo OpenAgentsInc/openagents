@@ -1,0 +1,79 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.publication-binding.v1",
+  "passed": true,
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "compiler_input_fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "implementation_commit": "b0492ce5f9",
+  "reference_commit": "0ddf3eb17e",
+  "example_commit": "d09ab5e19f",
+  "source_and_reference_exact": {
+    "source_sha256": {
+      "psionic/tests/robotics/panda_inverse_dynamics_bad_acceleration.coax": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_bad_force.coax": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_bad_rate.coax": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_check.sh": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_native.c": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_power_reference.py": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_reference.py": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_sdk_collect.c": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_sdk_reference.py": true,
+      "psionic/tests/robotics/panda_inverse_dynamics_unit_checks.coax": true
+    },
+    "product_source_sha256": {
+      "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-force.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-math.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-types.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics.coax": true
+    },
+    "immutable_reference_artifact_sha256": {
+      "psionic/fixtures/robotics/panda-inverse-dynamics/cases.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/experiment.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/power-qualification.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-force.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-mass-bias.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-model.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-sample-profile.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-sample-reference.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-samples.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-profile.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-reference.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-rne-body.f64": true
+    }
+  },
+  "qualification_sha256": "b61aab1d0af170dc8b27481924025869c72deff4f398e0018de45cda5b05bb83",
+  "inventory_sha256": "d2255c02a9adb081ece8f6f4d5f50dc8a1811b678a64cc878e3ab57ace46e4a4",
+  "example_qualification": {
+    "schema": "psionic.panda-inverse-dynamics.example-qualification.v1",
+    "passed": true,
+    "compiler": "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+    "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "example_sha256": "8bc55077774b7c5b8524d7d72750de5f6803f8ef1f40aaab7b34ad41c4983317",
+    "golden_sha256": "86dd5c71679f17f834bfba28b6fe0f33d61ad077bb3db92908789f0cb5f39dcb",
+    "reference_manifest_sha256": "0c8f41fa48374cac449158c4c59a406589e93c019562699230b25bb14c7a162c",
+    "new_selected_checks": 2,
+    "debug_stdout_sha256": "86dd5c71679f17f834bfba28b6fe0f33d61ad077bb3db92908789f0cb5f39dcb",
+    "release_stdout_sha256": "86dd5c71679f17f834bfba28b6fe0f33d61ad077bb3db92908789f0cb5f39dcb",
+    "scope": "Two new example checks and original debug/release runs against an independently prewritten SDK row13 display. No old library checks/mutations/native/reference or SDK gate repeated."
+  },
+  "source_proof": {
+    "new_check_groups": 17,
+    "cases": 136,
+    "new_root_mutants": 250,
+    "survivors": 0,
+    "waivers": 0
+  },
+  "registry_scope": "Four new math/motion/force/entry roots; native and typed unit check once on entry.",
+  "scope": "Read-only identity binding to the same qualified normal compiler and exact source/reference inputs already executed. No passing native/FD/SDK/mutation/VM/example result repeated; no full release/cache or whole simulator claim.",
+  "upstream_capability_review": {
+    "evidence": "docs/verse/native-gpu.md",
+    "sha256": "2cb9f1db28ae7c39c0a88a377a73ec6ca529f56b2bb3d865e868af2c437a39aa",
+    "claims": [
+      "psionic.language.current",
+      "coax.wgsl.current"
+    ],
+    "finding": "Incoming additions document native Grid export/clock/storage/atlas parity and native scene-realm library/musl-math parity. They add no general WGSL or Psionic browser compute claim. Both bounded-graphics claim texts are unchanged. Reviewed both deltas and refreshed only the two evidence hashes after failed book gates; Darwin scalar-libm model qualifications are not broadened."
+  }
+}

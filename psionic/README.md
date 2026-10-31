@@ -341,7 +341,8 @@ arm output. Five new SDK forward queries and independent matrix/analytic
 geometry qualify it. The [example](examples/panda-fingers.coax) shows branch
 motion and atomic refusal; `psionic/check.sh --only robotics/panda-fingers`
 runs its two focused roots and self-contained native gate. Saved inertial/mass
-reference facts support the next dynamics slice; dynamics itself remains pending.
+reference facts support the owned queries below; this geometric query itself
+does not advance dynamics.
 
 The [owned mass and gravity query](fixtures/robotics/panda-inertia/README.md)
 computes the fixed sixteen-body Panda's nine-coordinate metric and zero-rate
@@ -349,5 +350,9 @@ gravity. Typed mass blocks preserve radian/metre distinctions; the
 [energy example](examples/panda-inertia.coax) gives 222 microjoules for the left
 slide at 20mm/s. Retained SDK values and independent kinetic/potential differences
 qualify this pure query. Run `psionic/check.sh --only robotics/panda-inertia`.
-Velocity-dependent bias, applied forces, constraints and integration remain
-separate work.
+The [owned inverse-dynamics query](fixtures/robotics/panda-inverse-dynamics/README.md)
+now computes velocity-dependent, gravitational and acceleration forces for the
+same fixed model. A [typed example](examples/panda-inverse-dynamics.coax) uses an
+independently prewritten SDK force transcript. Its focused gate is
+`psionic/check.sh --only robotics/panda-inverse-dynamics`. Forward integration,
+passive/actuator forces and constraints remain separate work.

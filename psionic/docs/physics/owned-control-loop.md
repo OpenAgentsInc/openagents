@@ -56,9 +56,11 @@ mass/bias reference. The [owned nine-coordinate metric and zero-rate gravity](..
 now qualify the same fixed sixteen-body model, including finger inertias and
 source armatures. Mixed-unit blocks preserve radians/metres; independent
 kinetic/potential differences and retained SDK values qualify the arithmetic.
-The next component is velocity-dependent bias and applied-force/forward-dynamics
-assembly, followed by contact and integration; a gravity-only query cannot
-replace the controller's nonzero-velocity bias sample. The
+The [owned inverse query](../../fixtures/robotics/panda-inverse-dynamics/README.md)
+now qualifies velocity-dependent and acceleration force, including gyroscopic
+and slide Coriolis terms. Applied-force/forward-dynamics assembly, contact and
+integration remain separate; a gravity-only query cannot replace the
+controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) first replaces
 queries behind the existing SDK loop, with matched-state field and controller
 comparisons before any claim about an owned whole episode. The source-visible low-level

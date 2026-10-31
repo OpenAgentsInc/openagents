@@ -1008,6 +1008,133 @@ finger state and a new whole-loop qualification. See the
 [qualification receipt](../fixtures/robotics/panda-inertia/qualification.json) for exact source,
 reference, compiler, numerical-profile and failure-history records.
 
+## Forces for a requested acceleration
+
+A mass matrix tells us how acceleration enters the force balance. A moving
+robot also needs velocity-dependent and gravitational terms. Our next pure
+query computes all three for the fixed source model:
+
+```jai
+required_force(q, v, a) = M(q)*a + velocity_bias(q, v) + gravity(q);
+```
+
+The requested acceleration is an input. The query does not integrate the arm,
+choose that acceleration, resolve contact or send torques to hardware.
+
+The source robot has 16 selected bodies. Base and link 0 are fixed before the
+nine coordinates. The 14 remaining descendants move with the arm or slides;
+this includes the rigid hand/gripper and all four finger bodies, not just the
+nine bodies with joints. Massless frames still carry geometry but add no
+wrench. Exact simulation inertials and their principal-frame orientations
+remain source constants rather than manufacturer identification.
+
+We propagate physical world velocity and acceleration from a parent's BODY
+origin to the next origin. If r is the current world offset, the fixed-part
+motion is:
+
+```jai
+v_child = v_parent + omega_parent cross r;
+a_child = a_parent + alpha_parent cross r
+         + omega_parent cross (omega_parent cross r);
+```
+
+A hinge adds `axis*joint_rate` to angular velocity. Its angular acceleration
+also needs `axis*joint_acceleration` and the moving-axis contribution
+`(omega_parent cross axis)*joint_rate`. A slide adds axis times slide rate to
+linear velocity, axis times slide acceleration to linear acceleration, and
+the Coriolis term `2*(omega_parent cross axis)*slide_rate`. Omitting that factor
+or using a BODY axis as though it were already world-oriented changes bias.
+
+Each COM then adds its rotated offset's angular-acceleration and centripetal
+terms. Its required force is mass times COM acceleration minus gravity; its
+torque about the COM is `I_world*alpha + omega cross (I_world*omega)`. We project
+these wrenches through the world COM columns and sum every descendant. The
+nine source armatures add `armature*joint_acceleration` once. This is world
+Newton–Euler body arithmetic with Jacobian projection; we are not claiming a
+generic importer or complete CRBA/RNEA simulator.
+
+The public typed query accepts seven radian positions and two metre positions,
+the corresponding seven/two rate and acceleration spans, and one output.
+All shapes are checked first; positions, rates and accelerations then follow
+their documented order, each coordinate checking number before range. Finite
+numerical domains are ±100rad/±1m,±20rad/s/±2m/s and±200rad/s²/±20m/s². Those
+bounds are query admission, not hardware or source soft limits. Refusal leaves
+the output intact. Seven energy-per-radian and two force quantities preserve
+mixed coordinate dimensions and turn force times rate into watts under the
+explicit one-radian generator convention.
+
+Low-level source-visible motion/profile helpers require trusted valid poses
+and source constants. Their PODs are writable and unsealed; absence from the
+C header does not make them provenance certificates. The exported fixed-source
+query constructs its own profile and performs its own admission.
+
+The independent SDK target is its nine-by-nine mass block times the explicitly
+chosen acceleration plus qfrc_bias. This is separate from passive damping,
+friction/fluid, actuator and contact/constraint forces. Public `mj_rne(...,1)`
+returns body inertial force without joint armature acceleration force. The
+separately recorded raw RNE therefore needs `armature*a` exactly once; using
+qfrc_inverse would introduce different passive/constraint contracts.
+
+Before observing results we froze 24 input rows,15 SDK contexts, tolerances and
+the finite-difference sweep. The 15 contexts have 12 nonzero-velocity states and
+three zero-rate baselines. One baseline carries previously observed mass/
+gravity subfields while providing a NEW matched site Jacobian/velocity/limit
+observation. All new measurements use the same forward generation: no physics
+step, renderer or neural inference occurs. Fresh PcSample 144 records remain
+independent raw reference facts for a later owned-controller adapter.
+
+The second oracle propagates analytic derivatives of full-angle homogeneous
+matrices, computes kinetic metrics in principal coordinates, then differences
+only that independent metric for Christoffel terms. It does not reuse the
+product's quaternion/cross recursion or its owned mass matrix as an oracle.
+The primary h=1e-5 passes; the complete 1e-3…1e-7 sweep remains visible, including
+the coarse step outside the primary budget. These differentiate the smooth
+geometric model, not floating-point rounding or refused inputs.
+
+All 135 SDK force coefficients agree within 2.49e-14 under the predeclared 5e-10
+absolute bound. All 216 independent-primary force coefficients agree within
+2.97e-10 under 3e-7. Seventeen new Coax groups,250 focused mutants with zero
+survivors, source unit checks and three native modes qualify the query. The
+native modes serialize the same 216 force words bit for bit under the stated
+Darwin-arm 64 scalar-libm profile; that is not cross-target determinism.
+
+A separate cache-only power witness checks
+`v dot velocity_bias = .5*v transpose*Mdot*v` using a predeclared directional
+time difference. Its maximum discrepancy is 6.80e-10W under 2e-6W, with no repeat
+SDK/native/coordinate-FD execution. This connects the gyroscopic and moving-axis
+terms to kinetic energy rather than checking dimensions alone.
+
+The [runnable example](../examples/panda-inverse-dynamics.coax) uses the frozen
+SDK dense/dense-acceleration state. Its display golden was written from the
+independently captured SDK force row before the Coax example. Values are
+rounded only for display; the query returns full F64 generalized forces.
+
+<!-- source: psionic/examples/panda-inverse-dynamics.coax inverse -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);w:[2]pfku.Quantity(PidLinearRate,f64);
+ a:[7]pfku.Quantity(PidAngularAcceleration,f64);b:[2]pfku.Quantity(PidLinearAcceleration,f64);
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ accelerations:=[9]f64.[1.3,-2.1,0.7,-1.1,0.9,0.4,-0.8,0.2,-0.15];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];a[i].value=accelerations[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];w[i].value=rates[7+i];b[i].value=accelerations[7+i];}
+ force:[1]PidOutput;#assert pid_inverse(q[..],s[..],v[..],w[..],a[..],b[..],force[..])==PfkStatus.ok;
+ for i:0..<7 {print("hinge % (uJ/rad): %\n",i+1,panda_inverse_micro(force[0].hinge[i].value));}
+ for i:0..<2 {print("slide % (uN): %\n",i+1,panda_inverse_micro(force[0].slide[i].value));}
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-inverse-dynamics.coax
+coax/bin/coax run psionic/examples/panda-inverse-dynamics.coax --release
+psionic/check.sh --only robotics/panda-inverse-dynamics
+```
+
+The [qualification](../fixtures/robotics/panda-inverse-dynamics/qualification.json)
+keeps source, input, SDK, compiler and numerical-profile identities distinct.
+Forward integration, passive/actuator/contact forces and a whole owned-backend
+controller episode remain later work.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

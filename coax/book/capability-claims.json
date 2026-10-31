@@ -142,7 +142,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "6c4283795daac90007da46595a5f56554fb50f235a705dddb214cb726b9b323c"
+          "sha256": "ef00fb09499ad5abd696eaaaa4454e7b6b7f0aba39e00da98ad20c617bf256f1"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -187,7 +187,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "6c4283795daac90007da46595a5f56554fb50f235a705dddb214cb726b9b323c"
+          "sha256": "ef00fb09499ad5abd696eaaaa4454e7b6b7f0aba39e00da98ad20c617bf256f1"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -273,7 +273,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "938a92f1b1929933ff7ca15d49a3012854fa6d99e8eb46d1b9bd68c64986682f"
+          "sha256": "2cb9f1db28ae7c39c0a88a377a73ec6ca529f56b2bb3d865e868af2c437a39aa"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -381,7 +381,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "938a92f1b1929933ff7ca15d49a3012854fa6d99e8eb46d1b9bd68c64986682f"
+          "sha256": "2cb9f1db28ae7c39c0a88a377a73ec6ca529f56b2bb3d865e868af2c437a39aa"
         },
         {
           "path": "verse/everglade/gpu.module",

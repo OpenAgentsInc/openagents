@@ -9,8 +9,8 @@ The [FK](../../fixtures/robotics/panda-fk/README.md),
 [finger branches](../../fixtures/robotics/panda-fingers/README.md),
 [grip Jacobian](../../fixtures/robotics/panda-jacobian/README.md) and
 [mass/zero-rate gravity](../../fixtures/robotics/panda-inertia/README.md) are
-qualified separately. Velocity-dependent inverse dynamics is the next
-prerequisite. A mass solve supplies a separate inertial response to an already
+qualified separately. The [velocity-dependent inverse query](../../fixtures/robotics/panda-inverse-dynamics/README.md)
+now supplies the remaining force prerequisite. A mass solve supplies a separate inertial response to an already
 assembled net force; it cannot supply the missing bias by itself.
 
 ## Preserve the existing boundary

@@ -228,6 +228,23 @@ biases qualify gravity only, not velocity-dependent bias, passive/actuator force
 contacts, integration, a simulator replacement or hardware. The earlier failed
 sanitizer harness record remains separate from its repaired qualification.
 
+## Panda inverse force preserves moving-axis and armature terms
+
+The fixed-source inverse query propagates physical world velocities and
+accelerations, including hinge-axis derivatives and the slide Coriolis factor
+two. COM wrenches use world principal inertia, gyroscopic torque and gravity;
+all fourteen moving descendants contribute, including the four finger bodies.
+The sixteen-body profile retains the two fixed bodies, whose generalized
+columns are zero. Nine armatures contribute acceleration force exactly once.
+
+Typed seven/two coordinate, rate and acceleration spans precede atomic output
+publication. Hinges return energy per radian and slides return force. Trusted
+source-visible pose/profile helpers are unsealed and do not admit arbitrary
+caller PODs. SDK mass-times-acceleration plus bias and independent matrix/
+Christoffel differences qualify the result. Raw SDK RNE excludes armature and
+is compared only with the explicit correction. Passive, actuator, contact,
+integration, hardware and whole owned-episode claims remain separate.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T
