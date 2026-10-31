@@ -33,8 +33,10 @@ updates and eight executed action rows per model request. Simulation currently p
 inference; a real steady-time deadline needs its own measurement and policy.
 3. Close the R3 storage and R11 effect facts required by R14. Unknown foreign,
 borrowed-region or intrinsic resources must remain refusals for `#bounded`.
-Prove fixed scratch/stack and loop/call bounds, including error/cleanup paths,
-and compare target stack bounds to native measurement.
+The [controller-specific gap audit](panda-bounded-control.md) identifies the
+35-procedure numeric closure, borrowed storage, primitive resources and trap
+paths. Prove fixed scratch/stack and loop/call bounds, including error/cleanup
+paths, and compare target stack bounds to native measurement.
 4. Qualify the own smooth control loop, numeric profile and stamped command
 supervision. Use the physical solver for publication, 107 for local sensitivity
 checks, and 111 for parameter calibration. Admission/refusal and saturation are
