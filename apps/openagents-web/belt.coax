@@ -137,6 +137,8 @@ Belt :: struct {
   claim: [ICE_ROCKS] bool; stock: [ICE_ROCKS] f64;   // a miner leaves a rig at each rock it works; its ice waits for haulers
   engaged: [SHIPS] int;  // the hostile ship each is in combat range of, -1 none (b22-intercepts)
   engage_t: [SHIPS] f64; // when it came in range
+  order_t: [SHIPS] f64;  // an order on its way from Hearth at light speed: when it reaches the ship, 0 none (b22-order-delay)
+  order_dest: [SHIPS] int; order_fast: [SHIPS] bool;
   building: f64;         // days until the yard's freighter is done, 0 none
   station: [1] Station;  // Hearth Station's stores, refinery and people (belt-station.coax)
   delivered: f64;
@@ -396,7 +398,7 @@ belt_reset :: (s: [] Belt) {
   s[0].speed = 2;
   s[0].station[0] = station_new();
   s[0].building = 0.0;
-  for j: 0..<SHIPS { s[0].engaged[j] = -1; s[0].engage_t[j] = 0.0; }
+  for j: 0..<SHIPS { s[0].engaged[j] = -1; s[0].engage_t[j] = 0.0; s[0].order_t[j] = 0.0; }
   for j: 0..<ICE_ROCKS { s[0].claim[j] = false; s[0].stock[j] = 0.0; }
   s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
   s[0].reach_ship = -1;
@@ -597,6 +599,7 @@ step_ships :: (s: [] Belt, dt: f64) {
   t := s[0].t;
   for k: 0..<s[0].ship_n { sight_record(s, k); }
   intercepts(s, dt);
+  orders_arrive(s);
   // The refinery, worked by whoever is home.
   away := 0;
   for k: 0..<s[0].ship_n {
@@ -794,7 +797,7 @@ set_dest :: (s: [] Belt, p: int) {
 
 go :: (s: [] Belt, fast: bool) {
   if s[0].dest < 0 { return; }
-  sent := 0; queued := 0;
+  sent := 0; queued := 0; lagged := 0; late := 0.0;
   for k: 0..<s[0].ship_n {
     if !s[0].cmd[0].selected[k] { continue; }
     if s[0].shift && s[0].ships[k].mode == FLYING {
@@ -803,6 +806,14 @@ go :: (s: [] Belt, fast: bool) {
       continue;
     }
     if !s[0].shift { verse_command_clear(s[0].cmd[..], k); }
+    lag := order_lag(s, k);
+    if lag > ORDER_LAG_MIN {
+      // far from Hearth: the order goes out at light speed; until it arrives the ship keeps to what it was doing
+      s[0].order_t[k] = s[0].t + lag; s[0].order_dest[k] = s[0].dest; s[0].order_fast[k] = fast;
+      if lag > late { late = lag; }
+      lagged += 1;
+      continue;
+    }
     p := plan_for(s, k, s[0].dest, fast);
     if launch(s, k, s[0].dest, p) {
       sent += 1;
@@ -816,6 +827,11 @@ go :: (s: [] Belt, fast: bool) {
     n = put(buf[..], n, " BURNING FOR "); n = put(buf[..], n, place_name(s[0].dest));
     say(s, cast(string) buf[0..<n]);
     if track_begin(s[0].track[..], "order") { track_str(s[0].track[..], "to", place_name(s[0].dest)); track_bool(s[0].track[..], "fast", fast); track_int(s[0].track[..], "ships", sent); track_end(s[0].track[..]); }
+  } else if lagged > 0 {
+    n := put(buf[..], 0, "ORDER REACHES ");
+    n = put(buf[..], n, ifx lagged == 1 then s[0].ships[first_selected(s)].name else "THEM");
+    n = put(buf[..], n, " IN "); n = put_count(buf[..], n, fmax(1.0, floor(late / 60.0 + 0.5))); n = put(buf[..], n, " MIN");
+    say(s, cast(string) buf[0..<n]);
   } else if queued > 0 {
     n := put(buf[..], 0, ifx queued == 1 then "NEXT: " else "THEN ALL TO ");
     n = put(buf[..], n, place_name(s[0].dest));
@@ -840,6 +856,35 @@ next_order :: (s: [] Belt, k: int) -> bool {
     }
   }
   return false;
+}
+
+// ---- orders at light speed: Hearth's orders reach a far ship d/c later
+ORDER_LAG_MIN :: 30.0;  // s: within 30 light-seconds (the rocks round Ceres), an order is there at once
+// Seconds for an order sent now from Hearth to reach ship k where it will be when it gets there.
+order_lag :: (s: [] Belt, k: int) -> f64 {
+  home := place_state(s, P_STATION, s[0].t).r;
+  lag := d3_dist(ship_state(s, k, s[0].t).r, home) / C_LIGHT;
+  for i: 0..<3 { lag = d3_dist(ship_state(s, k, s[0].t + lag).r, home) / C_LIGHT; }
+  return lag;
+}
+// Orders whose light has reached their ships: each plans from where its ship is now.
+orders_arrive :: (s: [] Belt) {
+  for k: 0..<s[0].ship_n {
+    if s[0].order_t[k] <= 0.0 || s[0].t < s[0].order_t[k] { continue; }
+    s[0].order_t[k] = 0.0;
+    dest := s[0].order_dest[k];
+    p := plan_for(s, k, dest, s[0].order_fast[k]);
+    buf: [96] u8;
+    n := put(buf[..], 0, s[0].ships[k].name);
+    if launch(s, k, dest, p) {
+      s[0].ships[k].work = ifx is_ice(dest) && s[0].ships[k].cargo_cap > 0.0 then WORK_MINE else WORK_NONE;
+      s[0].ships[k].work_rock = dest;
+      n = put(buf[..], n, " GOT ITS ORDER: BURNING FOR "); n = put(buf[..], n, place_name(dest));
+    } else {
+      n = put(buf[..], n, " GOT ITS ORDER: NOT ENOUGH PROPELLANT");
+    }
+    say(s, cast(string) buf[0..<n]);
+  }
 }
 
 // ---- intercepts: two hostile ships in flight whose paths bring them within COMBAT_RANGE engage
@@ -2877,6 +2922,35 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   // a straight pass: the closest approach and when
   c := closest_pass(d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), d3(10.0, 5.0, 0.0), d3(-1.0, 0.0, 0.0), 100.0);
   #assert abs(c.tau - 5.0) < 0.0001 && abs(c.dist - 5.0) < 0.0001;
+}
+
+#test "an order to a ship 20 light-minutes from Hearth takes effect 20 minutes later; meanwhile it keeps to its course" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  home := place_state(s[..], P_STATION, s[0].t);
+  // RASP coasting 20 light-minutes out, moving with Hearth
+  out := d3_scale(d3_sub(home.r, d3(0.0, 0.0, 0.0)), 1.0 / d3_len(home.r));
+  far := d3_add(home.r, d3_scale(out, 1200.0 * C_LIGHT));
+  sh := s[0].ships[0];
+  sh.mode = FLYING; sh.t0 = s[0].t; sh.tof = 900.0 * DAY; sh.dep_body = 0; sh.arr_body = 0; sh.at = BODY_JUPITER;
+  sh.arc = orbit_from_state(orbit_state_of(far, d3_scale(home.v, sqrt(d3_len(home.r) / d3_len(far)))), GM_SUN, s[0].t);
+  s[0].ships[0] = sh;
+  lag := order_lag(s[..], 0);
+  #assert abs(lag - 1200.0) < 5.0;
+  select_only(s[..], 0);
+  set_dest(s[..], P_STATION);
+  go(s[..], false);
+  #assert s[0].order_t[0] > 0.0 && s[0].ships[0].at == BODY_JUPITER;
+
+  for i: 0..<19 { s[0].t += 60.0; step_ships(s[..], 60.0); }
+  #assert s[0].ships[0].at == BODY_JUPITER && s[0].ships[0].t0 == sh.t0;   // 19 minutes: still on its old course
+  for i: 0..<2 { s[0].t += 60.0; step_ships(s[..], 60.0); }
+  #assert s[0].order_t[0] == 0.0 && s[0].ships[0].at == P_STATION;
+  // a ship at Hearth gets its order at once
+  select_only(s[..], 1);
+  set_dest(s[..], P_ICE);
+  go(s[..], true);
+  #assert s[0].order_t[1] == 0.0 && s[0].ships[1].mode == FLYING;
 }
 
 #test "Hearth refines its ice into reaction mass at the refinery's rate, a shift short while the crews are away, and an old save still reads" {
