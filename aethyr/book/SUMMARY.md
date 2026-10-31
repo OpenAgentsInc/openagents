@@ -71,7 +71,7 @@
 **VI. Making worlds: Aethyrforge**
 
 - [51. A realm is a document](ch051-a-realm-is-a-document.md) — design draft
-- [52. Edit a realm in place](ch052-edit-a-realm-in-place.md) — design draft
+- [52. Edit a realm in place](ch052-edit-a-realm-in-place.md) — partly implemented
 - [53. Bring in assets](ch053-bring-in-assets.md) — design draft
 - [54. Publish a realm](ch054-publish-a-realm.md) — design draft
 - [55. Fork a realm](ch055-fork-a-realm.md) — design draft
