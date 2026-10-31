@@ -2308,7 +2308,8 @@ std::string emit_header(const File *file) {
     if (used) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   }
   for (const ProcDecl *p : file->procs) {
-    if (!p->export_c) continue;
+    // A #foreign prototype below names its view parameters' types too.
+    if (!p->export_c && !p->foreign) continue;
     types.need(p->ret);
     for (const Param &prm : p->params) types.need(prm.type);
   }

@@ -20,8 +20,7 @@ int64_t cxtls_host_push(int64_t b){return cxsock_host_push(b);}
 int64_t cxsock_connect(int64_t p,int64_t wait){(void)p;(void)wait;return -1;}
 int64_t cxtls_connect(int64_t p,int64_t wait){return cxsock_connect(p,wait);}
 int64_t cxsock_now_ms(void){return 0;}
-int64_t cxrand_fill(int64_t n){(void)n;return 0;}
-int64_t cxrand_byte(int64_t i){(void)i;return 0;}
+int64_t cxrand_draw(coax_v_u8 out,int64_t n){(void)out;(void)n;return 0;}
 
 static coax_t_RelayConn state;
 static coax_v_t_RelayConn reset(void){memset(&state,0,sizeof state);state.h=4;closes=reads=deliver=0;return (coax_v_t_RelayConn){&state,1};}

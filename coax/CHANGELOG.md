@@ -13,6 +13,19 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.38.0 — 2026-10-31
+
+Commit: [`e18f99cfabaadaaacd1c5bd5038044413e7c9e2f`](https://github.com/OpenAgentsInc/openagents/commit/e18f99cfabaadaaacd1c5bd5038044413e7c9e2f)
+
+- `#foreign` parameters may be borrowed views of integers, floats and `bool`
+  (`[] u8`, `[] s16`, `[] f32`, `[] bool`, ...), passed as the `{data, count}`
+  struct `#export_c` uses and declared in the generated header. The host reads
+  and writes the view during the call only: no retention, ownership transfer or
+  asynchronous use; views may overlap and an empty view may have a null `data`.
+  Views of strings, structs or views, fixed arrays and view results stay E0376.
+- The entropy bridge gains `cxrand_draw(out, n)`: one call writes the caller's
+  view; `relay_conn.coax` and `cdp.coax` use it instead of n + 1 per-byte calls.
+
 ## 0.37.0 — 2026-10-31
 
 Commit: [`6132cbaf0a0dddccbb1d3d9ae32a9659c5bf6644`](https://github.com/OpenAgentsInc/openagents/commit/6132cbaf0a0dddccbb1d3d9ae32a9659c5bf6644)

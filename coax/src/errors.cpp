@@ -122,7 +122,7 @@ const ErrorInfo ERRORS[] = {
     {"E0373", "enum base must be an integer", "An enum's underlying type is one of s8..s64 or u8..u64."},
     {"E0374", "constant index out of bounds", "An index written as a constant must be inside a fixed array's length. Indexes computed at run time are checked when they run."},
     {"E0375", "math or string intrinsic misused", "sin cos tan exp log sqrt floor abs take one float, pow two floats of one type; len takes a string, array or view; byte_at takes a string and an index. Convert integers first: f64(x)."},
-    {"E0376", "procedure cannot cross the C boundary", "A #foreign procedure passes only integers, floats and bool, and its name must be a valid C symbol that is not main and does not start with coax_."},
+    {"E0376", "procedure cannot cross the C boundary", "A #foreign procedure passes integers, floats, bool and borrowed views of them, returns a scalar or nothing, and its name must be a valid C symbol that is not main and does not start with coax_."},
     {"E0377", "outside the Metal scalar profile", "coax metal accepts f32 and bool values, if/else, locals and acyclic calls. Loops, strings, integers, f64, print, #assert and #foreign calls stay in the C library."},
 
     {"E0378", "byte intrinsic argument mismatch", "bytes_overlap takes byte views or strings. Float bit conversions take their matching f32/u32 or f64/u64 type."},

@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.37.0";
+IMPLEMENTATION_VERSION :: "0.38.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [115]ReleaseFeature.[
+CATALOGUE :: [116]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -38,7 +38,7 @@ CATALOGUE :: [115]ReleaseFeature.[
   ReleaseFeature.{id="directives.forall-a-t-b-lo-hi",section="Directives",name="`#forall a: T, b: lo..<hi { }` (optionally `#forall \"name\" ...`)",meaning="A check over every combination of its bindings",status="works",introduced="0.5.0"},
   ReleaseFeature.{id="directives.authority",section="Directives",name="`#authority;`",meaning="Every procedure in the file needs a check; checks run on every build",status="works",introduced="0.5.0"},
   ReleaseFeature.{id="directives.export-c",section="Directives",name="`#export_c`",meaning="After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`)",status="works",introduced=""},
-  ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool`",status="works",introduced=""},
+  ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes integers, floats, `bool` and borrowed views of them (read/written during the call only, never retained), returning a scalar or nothing",status="works",introduced=""},
   ReleaseFeature.{id="directives.import-proto-file-pb-as-prefix",section="Directives",name="`#import_proto \"file.pb\" as Prefix;`",meaning="Generate types and bounded codecs from a protobuf descriptor set (CPU code only)",status="works",introduced=""},
   ReleaseFeature.{id="directives.load-part-coax",section="Directives",name="`#load \"part.coax\";`",meaning="Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority",status="works",introduced="0.11.0"},
   ReleaseFeature.{id="directives.module",section="Directives",name="`#module \"a.b\";`",meaning="Claim a logical owner for a source unit; its #load members share it; declarations get nominal IDs and a module scope for qualified lookup",status="works",introduced="0.26.0"},
@@ -103,6 +103,7 @@ CATALOGUE :: [115]ReleaseFeature.[
   ReleaseFeature.{id="generics.instantiation",section="Capabilities",name="Generic instantiation",meaning="Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no constraints yet",status="partial",introduced="0.35.0"},
   ReleaseFeature.{id="generics.value-parameters",section="Capabilities",name="`$N` value parameters",meaning="[$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted",status="partial",introduced="0.36.0"},
   ReleaseFeature.{id="generics.structs",section="Capabilities",name="Generic structs",meaning="Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; fixed-storage bindings only (no views or aggregates containing views); each instance is laid out and emitted (E0800-E0804, E0223)",status="partial",introduced="0.37.0"},
+  ReleaseFeature.{id="foreign.views",section="Capabilities",name="Borrowed views across `#foreign`",meaning="A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404)",status="partial",introduced="0.38.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

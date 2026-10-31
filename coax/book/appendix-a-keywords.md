@@ -1,7 +1,7 @@
 # Appendix A. Keywords, directives, types and current status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.38.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -54,7 +54,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#forall a: T, b: lo..<hi { }` (optionally `#forall "name" ...`) | A check over every combination of its bindings | works | 0.5.0 |
 | `#authority;` | Every procedure in the file needs a check; checks run on every build | works | 0.5.0 |
 | `#export_c` | After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`) | works | — |
-| `#foreign` | After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool` | works | — |
+| `#foreign` | After a procedure's signature, with no body: import a C function that passes integers, floats, `bool` and borrowed views of them (read/written during the call only, never retained), returning a scalar or nothing | works | — |
 | `#import_proto "file.pb" as Prefix;` | Generate types and bounded codecs from a protobuf descriptor set (CPU code only) | works | — |
 | `#load "part.coax";` | Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority | works | 0.11.0 |
 | `#module "a.b";` | Claim a logical owner for a source unit; its #load members share it; declarations get nominal IDs and a module scope for qualified lookup | works | 0.26.0 |
@@ -144,6 +144,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Generic instantiation | Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no constraints yet | partial | 0.35.0 |
 | `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted | partial | 0.36.0 |
 | Generic structs | Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; fixed-storage bindings only (no views or aggregates containing views); each instance is laid out and emitted (E0800-E0804, E0223) | partial | 0.37.0 |
+| Borrowed views across `#foreign` | A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404) | partial | 0.38.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

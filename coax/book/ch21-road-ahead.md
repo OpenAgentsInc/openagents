@@ -1,7 +1,7 @@
 # 21. The road ahead
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.38.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 Release/status generation now ships: one Coax catalogue supplies the CLI,
@@ -34,7 +34,7 @@ declared width, fixed arrays and views; `for`, `defer` and `ifx`; checked
 casts and left-to-right evaluation; constants, `#run` and `#assert` with
 bounded compile-time evaluation; checks with `#test`, `#forall`,
 `#authority`, `coax test` and `coax mutate`; and the C boundary: `#export_c`
-with generated headers, `#foreign` for scalar C functions, and `coax metal`
+with generated headers, `#foreign` for C functions taking scalars and borrowed views, and `coax metal`
 for a small f32/bool subset as Metal Shading Language. It imports protobuf
 descriptors with `#import_proto` and generates bounded codecs for the
 supported proto3 subset. Schema-1 `type_info`, `field_info` and `enum_info`
@@ -126,7 +126,7 @@ Two things are done. `coax/examples/pulse` links a Coax pulse kernel into a
 C host and matches a C reference byte for byte on every frame, and
 the iOS home runs its scene and HUD logic in Coax over the scalar C ABI.
 
-C-header import remains unimplemented; `#foreign` declares scalar C functions
+C-header import remains unimplemented; `#foreign` declares C functions (scalars and borrowed numeric views)
 one at a time. R0 now measures a real engine path: the app's 65-joint cast
 pose against a pinned historical native evaluator, plus robot/body capsules
 and player collision. The separate native MRC1 reader and f32 adaptation are

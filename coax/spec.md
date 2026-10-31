@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.38.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -21,7 +21,7 @@ evaluation; immutable top-level constants, bounded `#run` (including
 aggregate results), `#assert` and `type_name(expression)`; checks (`#test`,
 `#forall`, `#authority`, `coax test`, `coax mutate`) and always-on `#assert`
 statements; math intrinsics; and the C boundary:
-`#export_c` with a generated C header, `#foreign` scalar imports, and a
+`#export_c` with a generated C header, `#foreign` scalar and borrowed-view imports, and a
 restricted f32/bool Metal library emitter. It generates C11 and uses a host C compiler to
 produce executables and object files. Other
 syntax below is a target design unless explicitly marked implemented. The
@@ -395,6 +395,22 @@ Struct, array and view parameters are passed by value; a view parameter's
 elements may be written, since they belong to the caller's array.
 `name :: (...) -> T #export_c { }` gives a procedure its own C name and the C
 calling convention for `coax lib` and `coax header`.
+
+`name :: (...) -> T #foreign;` declares a host C procedure. Its parameters
+are integers, floats, `bool` or **borrowed views** of them (`[] u8`,
+`[] s16`, `[] f32`, `[] bool`, ...); its result is one of those scalars or
+nothing (E0376 otherwise: views of strings, structs or views, fixed arrays,
+strings and view results are refused). A view crosses by value as the
+same `{T *data; int64_t count;}` struct `#export_c` uses (`coax_v_u8`,
+declared in the generated header): the host may read and write
+`data[0..count)` during the call and must not keep the pointer after it
+returns; there is no retention, ownership transfer or asynchronous use. An
+empty view has count 0 and may have a null `data`. Two view arguments may
+overlap (two slices of one array), so the host must allow aliasing. Coax
+checks the slice bounds before the call; the host is trusted not to go past
+`count`, and a failure is a scalar result the caller tests. Operands are
+evaluated left to right before the call, as for any call. Compile-time
+execution and checks never run a host procedure (E0404).
 
 Multiple returns, named/default arguments, overloads, variadics, callbacks and
 explicit pointer mutation are planned. Passing a large value by an optimized
@@ -1541,7 +1557,7 @@ engine remains unmeasured.
 | --- | --- | --- |
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
-| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports scalar C symbols. Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The follow-up pose rewrite passes the proposed median budget; device/tail, full-loop and independent review gates remain open. |
+| 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports C symbols taking scalars and borrowed numeric views (0.38.0). Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The follow-up pose rewrite passes the proposed median budget; device/tail, full-loop and independent review gates remain open. |
 | 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Verse derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |

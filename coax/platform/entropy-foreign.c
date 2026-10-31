@@ -1,4 +1,4 @@
-/* Scalar #foreign bridge over coax_entropy_native; see entropy-foreign.h. */
+/* #foreign bridge over coax_entropy_native; see entropy-foreign.h. */
 #include "entropy-foreign.h"
 #include "entropy-native.h"
 #include <string.h>
@@ -20,4 +20,10 @@ int64_t cxrand_fill(int64_t n) {
 int64_t cxrand_byte(int64_t i) {
   if (i < 0 || i >= cxrand_have) return -1;
   return cxrand_out[i];
+}
+
+int64_t cxrand_draw(coax_v_u8 out, int64_t n) {
+  /* The policy admits n against out.count and the scratch; output commits to
+     out only on full success. Nothing here is decided or kept. */
+  return (int64_t)coax_entropy_native(out.data, out.count, cxrand_scratch, CXRAND_MAX, n).error;
 }

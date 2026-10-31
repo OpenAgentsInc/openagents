@@ -22,7 +22,7 @@ and `ch17_path.coax`), and the C, C++ and Swift hosts are in
 `examples/ch17_interop`, whose `run.sh` builds and runs all of them.
 
 > Note: On `coax0` 0.10.0, `#export_c`, `coax lib`, `coax header`,
-> `coax c --library`, scalar `#foreign` imports and `coax metal` all work,
+> `coax c --library`, `#foreign` imports of scalars and borrowed views and `coax metal` all work,
 > and everything in this chapter was run to produce the output shown.
 > Importing C headers, ownership and nullability annotations in headers,
 > and pointers across `#foreign` are designs (spec §17.2), and C++ will
@@ -691,21 +691,40 @@ meter_bad.c:8:7: error: conflicting types for 'host_sample'
 1 error generated.
 ```
 
-`#foreign` is deliberately narrow for now. Parameters and results must be
-integers, floats or `bool`:
+`#foreign` is deliberately narrow. Parameters are integers, floats, `bool`
+or *borrowed views* of them; results are scalars or nothing. A view crosses
+as the same `{data, count}` struct the exports use, so a host can sum a
+buffer Coax owns:
+
+```coax
+host_sum :: (xs: [] f32) -> f32 #foreign;
+```
+
+```c
+float host_sum(coax_v_f32 xs) {
+  float s = 0;
+  for (int64_t i = 0; i < xs.count; i++) s += xs.data[i];
+  return s;
+}
+```
+
+The view is borrowed for the call only: the host may read and write
+`data[0..count)` and must not keep the pointer after it returns. Two view
+arguments can be slices of one array, so the host must allow them to
+overlap, and an empty view can have a null `data`. Anything else is refused:
 
 ```shell
 $ coax check bad.coax
-bad.coax:1:14: error[E0376]: parameter 'xs' is [] f32; #foreign procedures pass integers, floats and bool
-  host_sum :: (xs: [] f32) -> f32 #foreign;
+bad.coax:1:14: error[E0376]: parameter 'xs' is [] string; #foreign procedures pass integers, floats, bool and views of them
+  host_all :: (xs: [] string) -> int #foreign;
                ^
 1 error
 ```
 
-Strings are refused the same way. There's no agreed rule yet for who owns
-memory passed from Coax to C, so the compiler won't let a pointer cross in
-that direction. That's why the meter uses a handle: the host keeps the
-buffer, and Coax only ever holds a number that names it.
+Strings, structs and views of them don't cross, and nothing transfers
+ownership: there's no agreed rule yet for memory C keeps. That's why the
+meter still uses a handle for buffers the host owns: the host keeps them,
+and Coax only ever holds a number that names one.
 
 Compile-time code can't call the host either, because there's no host
 while the compiler runs (Chapter 9):
@@ -1066,7 +1085,7 @@ header, `coax lib` compiles an object without a C `main`, and
 `coax c --library --header` produces C source for toolchains like Xcode
 that build for several targets. Structs cross as `coax_t_Name` with their
 layout asserted, views as `{data, count}`, and enums as an integer type
-with one macro per member. `#foreign` lets Coax call scalar C functions,
+with one macro per member. `#foreign` lets Coax call C functions with scalars and borrowed views,
 with the shared header making the C compiler check both sides.
 
 We also met the boundary's sharp edges: a failed check aborts the host,

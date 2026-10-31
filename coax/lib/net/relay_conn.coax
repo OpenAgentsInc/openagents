@@ -44,8 +44,7 @@ cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
 cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
 cxtls_byte :: (h: int, i: int) -> int #foreign;
 cxtls_close :: (h: int) -> int #foreign;
-cxrand_fill :: (n: int) -> int #foreign;
-cxrand_byte :: (i: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
 
 RC_MSG_MAX :: 131072;                    // the largest message (and frame) taken from a relay, 128 KiB
 RC_READ_MAX :: 65536;                    // the most one transport read returns (CXSOCK_MAX_IN)
@@ -75,13 +74,8 @@ RelayConn :: struct {
 
 // n bytes from the OS into out, through the entropy contract.
 rc_draw :: (n: int, out: [] u8) -> bool {
-  if out.count < n || cxrand_fill(n) != 0 { return false; }
-  for i: 0..<n {
-    b := cxrand_byte(i);
-    if b < 0 || b > 255 { return false; }
-    out[i] = cast(u8) b;
-  }
-  return true;
+  // One call: the host writes out[0..<n] in place or nothing (entropy-foreign.h).
+  return out.count >= n && cxrand_draw(out, n) == 0;
 }
 // Closes the transport at once (no closing handshake) and clears the stream state.
 rc_shut :: (c: [] RelayConn) {

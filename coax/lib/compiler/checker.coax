@@ -2029,9 +2029,15 @@ CK_defaults :: (c:CK_Context,id:int) {
   }field=f.next;}
 }
 CK_foreign_scalar :: (c:CK_Context,t:int)->bool {return t==CK_NONE || CK_numeric(c,t) || t==2;}
+// A #foreign parameter is a scalar or a borrowed view of integers, floats or
+// bool (spec 7.1): the host reads and writes its elements during the call only.
+CK_foreign_param :: (c:CK_Context,t:int)->bool {
+  if c.types[t].kind==CK_Kind.view {e:=c.types[t].elem;return CK_numeric(c,e) || e==2;}
+  return CK_foreign_scalar(c,t);
+}
 CK_foreign :: (c:CK_Context,id:int) {
-  p:=c.nodes[id];if !CK_foreign_scalar(c,p.type) && p.type!=1 {parts:=[4] string.["'",p.name,"' returns ",CK_join2(c,c.types[p.type].name,"; #foreign procedures pass integers, floats and bool")];CK_error(c,p.loc,"E0376",CK_text(c,parts[..]),"");}
-  param:=p.head;while param!=CK_NONE {prm:=c.nodes[param];if !CK_foreign_scalar(c,prm.type) {parts:=[5] string.["parameter '",prm.name,"' is ",c.types[prm.type].name,"; #foreign procedures pass integers, floats and bool"];CK_error(c,prm.loc,"E0376",CK_text(c,parts[..]),"");}param=prm.next;}
+  p:=c.nodes[id];if !CK_foreign_scalar(c,p.type) && p.type!=1 {parts:=[4] string.["'",p.name,"' returns ",CK_join2(c,c.types[p.type].name,"; #foreign procedures return integers, floats, bool or nothing")];CK_error(c,p.loc,"E0376",CK_text(c,parts[..]),"");}
+  param:=p.head;while param!=CK_NONE {prm:=c.nodes[param];if !CK_foreign_param(c,prm.type) {parts:=[5] string.["parameter '",prm.name,"' is ",c.types[prm.type].name,"; #foreign procedures pass integers, floats, bool and views of them"];CK_error(c,prm.loc,"E0376",CK_text(c,parts[..]),"");}param=prm.next;}
   if CK_c_keyword(p.name) || p.name=="main" {CK_error(c,p.loc,"E0376",CK_join3(c,"'",p.name,"' cannot be a C symbol name"),"");}
   else if p.name.count>=5 && p.name[0..<5]=="coax_" {CK_error(c,p.loc,"E0376","foreign names cannot start with 'coax_', which the runtime uses","");}
 }
@@ -11881,6 +11887,45 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
     #assert a.metal_active==b.metal_active;
   }
 }
+#test "checker: #foreign takes borrowed views of integers, floats and bool, nothing else" {
+  // host :: (a: [] u8, f: [] f64, k: [] bool, s: [] string, v: [] [] u8, n: [4] u8, i: int) -> int #foreign;
+  initial:=[26] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=2},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="host",a=25,head=3,tail=23,flag2=true},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=10,offset=9},name="a",a=4,next=6},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=13,offset=12},b=5},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=16,offset=15},name="u8"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=20,offset=19},name="f",a=7,next=9},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=23,offset=22},b=8},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=26,offset=25},name="f64"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=31,offset=30},name="k",a=10,next=12},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=34,offset=33},b=11},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=37,offset=36},name="bool"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=43,offset=42},name="s",a=13,next=15},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=46,offset=45},b=14},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=49,offset=48},name="string"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=57,offset=56},name="v",a=16,next=19},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=60,offset=59},b=17},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=1,column=63,offset=62},b=18},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=66,offset=65},name="u8"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=70,offset=69},name="n",a=20,next=23},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=1,column=73,offset=72},a=21,b=22},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=1,column=74,offset=73},value=4},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=77,offset=76},name="u8"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=81,offset=80},name="i",a=24},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=84,offset=83},name="int"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=92,offset=91},name="int"}];
+  nodes:[80] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[80] CK_Type;locals:[40] CK_Local;errors:[160] CK_Error;bytes:[16000] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false;
+  #assert state[0].error_count==3;
+  #assert errors[0].code=="E0376" && errors[0].loc.column==43 && errors[0].message=="parameter 's' is [] string; #foreign procedures pass integers, floats, bool and views of them";
+  #assert errors[1].code=="E0376" && errors[1].loc.column==57 && errors[1].message=="parameter 'v' is [] [] u8; #foreign procedures pass integers, floats, bool and views of them";
+  #assert errors[2].code=="E0376" && errors[2].loc.column==70 && errors[2].message=="parameter 'n' is [4] u8; #foreign procedures pass integers, floats, bool and views of them";
+}
 #test "checker: error 93" {
   initial:=[6] CK_Node.[
     CK_Node.{},
@@ -11899,7 +11944,7 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==206;
+  #assert state[0].byte_count==241;
   #assert state[0].error_count==2;
   #assert state[0].current==0;
   #assert state[0].constant_depth==0;
@@ -11911,8 +11956,8 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0376" && errors[0].loc.line==1 && errors[0].loc.column==1 && errors[0].message=="'host' returns string; #foreign procedures pass integers, floats and bool" && errors[0].fix=="";
-  #assert errors[1].code=="E0376" && errors[1].loc.line==1 && errors[1].loc.column==10 && errors[1].message=="parameter 's' is string; #foreign procedures pass integers, floats and bool" && errors[1].fix=="";
+  #assert errors[0].code=="E0376" && errors[0].loc.line==1 && errors[0].loc.column==1 && errors[0].message=="'host' returns string; #foreign procedures return integers, floats, bool or nothing" && errors[0].fix=="";
+  #assert errors[1].code=="E0376" && errors[1].loc.line==1 && errors[1].loc.column==10 && errors[1].message=="parameter 's' is string; #foreign procedures pass integers, floats, bool and views of them" && errors[1].fix=="";
   expected:=[6] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=2},

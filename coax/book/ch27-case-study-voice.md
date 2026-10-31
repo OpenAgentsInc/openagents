@@ -1425,26 +1425,19 @@ has to own that memory. That's the C face's first job: it defines an
 opaque `oa_voice`, tells the caller its size (195,768 bytes, as the test
 run reports later), and wraps each call.
 
-The second job is the boundary Coax can't cross yet in the other
-direction. A view can come *into* an exported procedure, but `#foreign`
-imports pass only scalars. Here's what happens if we try to declare an
-Opus encoder that takes sample buffers:
+The second job was a boundary Coax couldn't cross when the engine was
+written: a view could come *into* an exported procedure, but `#foreign`
+imports passed only scalars. Since 0.38.0 they also take borrowed views of
+numbers, so an Opus encoder that takes sample buffers can be declared:
 
-```shell
-$ coax c opus.coax --library
-opus.coax:1:17: error[E0376]: parameter 'pcm' is [] s16; #foreign procedures pass integers, floats and bool
-  opus_encode :: (pcm: [] s16, out: [] u8) -> int #foreign;
-                  ^
-opus.coax:1:30: error[E0376]: parameter 'out' is [] u8; #foreign procedures pass integers, floats and bool
-  opus_encode :: (pcm: [] s16, out: [] u8) -> int #foreign;
-                               ^
-2 errors
+```coax
+opus_encode :: (pcm: [] s16, out: [] u8) -> int #foreign;
 ```
 
-That's why the design puts codecs in host C, and why `#foreign` imports
-that take views are one of the two language additions the voice design
-asked for. Until then, Coax code can't call out with audio buffers; the
-host calls in with them.
+The host reads `pcm` and writes `out` during the call and keeps neither.
+The engine still keeps its codecs in host C and lets the host call in with
+audio buffers; moving a codec call behind this boundary is a separate change
+with its own measurements.
 
 The third job is a contract that doesn't move. The generated headers name
 things after Coax (`coax_t_VoiceDecision`, `coax_v_t_VoiceState`) and

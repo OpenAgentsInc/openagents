@@ -34,8 +34,7 @@ cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
 cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
 cxsock_byte :: (h: int, i: int) -> int #foreign;
 cxsock_close :: (h: int) -> int #foreign;
-cxrand_fill :: (n: int) -> int #foreign;
-cxrand_byte :: (i: int) -> int #foreign;
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
 
 CDP_MSG_MAX :: 33554432;                  // the largest message taken from Chrome (a screenshot's base64), 32 MiB
 CDP_IN :: CDP_MSG_MAX + 14 + 65536;       // one partial frame plus one read
@@ -393,13 +392,8 @@ cdp_get :: (c: [] Cdp, port: int, path: string, out: [] u8) -> int {
 }
 
 cdp_draw :: (n: int, out: [] u8) -> bool {
-  if out.count < n || cxrand_fill(n) != 0 { return false; }
-  for i: 0..<n {
-    b := cxrand_byte(i);
-    if b < 0 || b > 255 { return false; }
-    out[i] = cast(u8) b;
-  }
-  return true;
+  // One call: the host writes out[0..<n] in place or nothing (entropy-foreign.h).
+  return out.count >= n && cxrand_draw(out, n) == 0;
 }
 cdp_put :: (c: [] Cdp, bytes: string) -> bool {
   for b: bytes { if cxsock_write(c[0].h, cast(int) b) != 0 { return false; } }
