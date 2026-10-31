@@ -1,0 +1,6 @@
+#load "operator-types.coax";
+#authority;
+#test "zero alone fails to distinguish multiplication from division" {
+ v:Vector3(World,u.Metre,f64);r:=weak_scale(v,2);#assert r.x==0 && r.y==0 && r.z==0;
+}
+weak_scale :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v*s;}

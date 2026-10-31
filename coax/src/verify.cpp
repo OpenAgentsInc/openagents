@@ -187,12 +187,16 @@ struct Mutant {
   std::string what;
   std::function<void()> apply, undo;
   const ProcDecl *owner = nullptr;
+  bool spatial = false;
+  Tok from = Tok::eof, to = Tok::eof;
 };
 
 struct Mutator {
   Arena *arena;
   std::vector<Mutant> mutants;
   std::vector<const ProcDecl *> reached;
+  size_t spatial_eligible = 0, spatial_no_alternative = 0, spatial_unsupported = 0;
+  bool invalid_spatial = false;
 
   static Tok swap_of(Tok op) {
     switch (op) {
@@ -261,6 +265,18 @@ struct Mutator {
     // The Coax checker identifies synthetic metadata. Mutation targets source
     // behavior; dynamic selector expressions remain outside these subtrees.
     if (!e || e->compiler_generated) return;
+    if(e->lowering) {
+      if(e->kind!=ExprKind::call || (e->lowering!=1 && e->lowering!=2)) invalid_spatial=true;
+      else if(e->lowering==2 && e->mutation_status==3) ++spatial_unsupported;
+      else if(e->lowering==1 && e->mutation_status==2) ++spatial_no_alternative;
+      else if(e->lowering==1 && e->mutation_status==1) {
+        auto *from=e->proc,*to=e->mutation_proc;
+        bool shape=from && to && from!=to && to->ret==e->type && from->ret==e->type && to->params.count==e->args.count && from->params.count==e->args.count && e->mutation_op!=Tok::eof && e->mutation_op!=e->op;
+        if(shape)for(int i=0;i<e->args.count;i++)shape=shape && e->args[i] && to->params[i].type==e->args[i]->type && from->params[i].type==e->args[i]->type;
+        if(!shape)invalid_spatial=true;
+        else {++spatial_eligible;mutants.push_back({e->loc,"spatial source '"+spell(e->op)+"' became '"+spell(e->mutation_op)+"'",[e,to]{e->proc=to;},[e,from]{e->proc=from;},nullptr,true,e->op,e->mutation_op});}
+      }else invalid_spatial=true;
+    }
     if (e->kind == ExprKind::binary) {
       Tok from = e->op, to = swap_of(from);
       bool ints_only = from == Tok::percent;
@@ -564,6 +580,7 @@ static std::string mutation_fingerprint(const File *file, const std::vector<Muta
   // Keep default receipts unchanged; a selected scope must never merge with
   // an unfiltered receipt, even if that graph has the same mutation sites.
   if (root_only) mix("scope:root-only:v1");
+  for(const auto &mu:mutants)if(mu.spatial){mix("lowered-spatial-source-token:v1");break;}
   mix(COAX_RELEASE_VERSION);
   mix("execution-profile:v1:" + file->execution_profile);
   mix(file->src->text);
@@ -703,6 +720,9 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     m.stmt(p->body);
     for (size_t i = first; i < m.mutants.size(); ++i) m.mutants[i].owner = p;
   }
+  if(m.invalid_spatial) {g_evidence.infrastructure=true;fprintf(stderr,"coax: incomplete or inconsistent spatial mutation metadata\n");return 1;}
+  if(m.spatial_eligible || m.spatial_no_alternative || m.spatial_unsupported)
+    fprintf(stderr,"spatial operators: %zu eligible token mutations, %zu no admitted alternate, %zu unsupported unary operations\n",m.spatial_eligible,m.spatial_no_alternative,m.spatial_unsupported);
   size_t total = m.mutants.size();
   std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only) : "";
   MutationFacts facts;

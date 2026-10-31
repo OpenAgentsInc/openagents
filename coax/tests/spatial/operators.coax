@@ -1,0 +1,59 @@
+#load "operator-types.coax";
+#load "operator-native-wrappers.coax";
+#authority;
+
+#test "spatial token baseline 32 checks every coordinate and ineligible role" {
+ p:Point3(World,u.Metre,f32);p.x=10;p.y=20;p.z=30;
+ q:Point3(World,u.Metre,f32);q.x=1;q.y=2;q.z=3;
+ v:Vector3(World,u.Metre,f32);v.x=8;v.y=16;v.z=32;
+ w:Vector3(World,u.Metre,f32);w.x=1;w.y=2;w.z=4;
+ s:f32=2;
+ r0:=pv_add32(p,v);#assert r0.x==18;#assert r0.y==36;#assert r0.z==62;
+ r1:=pv_sub32(p,v);#assert r1.x==2;#assert r1.y==4;#assert r1.z==-2;
+ r2:=vv_add32(v,w);#assert r2.x==9;#assert r2.y==18;#assert r2.z==36;
+ r3:=vv_sub32(v,w);#assert r3.x==7;#assert r3.y==14;#assert r3.z==28;
+ r4:=scale32(v,s);#assert r4.x==16;#assert r4.y==32;#assert r4.z==64;
+ r5:=unscale32(v,s);#assert r5.x==4;#assert r5.y==8;#assert r5.z==16;
+ r6:=difference32(p,q);#assert r6.x==9;#assert r6.y==18;#assert r6.z==27;
+ r7:=vp_add32(v,p);#assert r7.x==18;#assert r7.y==36;#assert r7.z==62;
+ r8:=left_scale32(s,v);#assert r8.x==16;#assert r8.y==32;#assert r8.z==64;
+ r9:=negate32(v);#assert r9.x==-8;#assert r9.y==-16;#assert r9.z==-32;
+}
+pv_add32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return p+v;}
+pv_sub32 :: (p:Point3(World,u.Metre,f32),v:Vector3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return p-v;}
+vv_add32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return v+w;}
+vv_sub32 :: (v:Vector3(World,u.Metre,f32),w:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return v-w;}
+scale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) {return v*s;}
+unscale32 :: (v:Vector3(World,u.Metre,f32),s:f32)->Vector3(World,u.Metre,f32) {return v/s;}
+difference32 :: (p:Point3(World,u.Metre,f32),q:Point3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return p-q;}
+vp_add32 :: (v:Vector3(World,u.Metre,f32),p:Point3(World,u.Metre,f32))->Point3(World,u.Metre,f32) {return v+p;}
+left_scale32 :: (s:f32,v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return s*v;}
+negate32 :: (v:Vector3(World,u.Metre,f32))->Vector3(World,u.Metre,f32) {return -v;}
+
+#test "spatial token baseline 64 checks every coordinate and ineligible role" {
+ p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;
+ q:Point3(World,u.Metre,f64);q.x=1;q.y=2;q.z=3;
+ v:Vector3(World,u.Metre,f64);v.x=8;v.y=16;v.z=32;
+ w:Vector3(World,u.Metre,f64);w.x=1;w.y=2;w.z=4;
+ s:f64=2;
+ r0:=pv_add64(p,v);#assert r0.x==18;#assert r0.y==36;#assert r0.z==62;
+ r1:=pv_sub64(p,v);#assert r1.x==2;#assert r1.y==4;#assert r1.z==-2;
+ r2:=vv_add64(v,w);#assert r2.x==9;#assert r2.y==18;#assert r2.z==36;
+ r3:=vv_sub64(v,w);#assert r3.x==7;#assert r3.y==14;#assert r3.z==28;
+ r4:=scale64(v,s);#assert r4.x==16;#assert r4.y==32;#assert r4.z==64;
+ r5:=unscale64(v,s);#assert r5.x==4;#assert r5.y==8;#assert r5.z==16;
+ r6:=difference64(p,q);#assert r6.x==9;#assert r6.y==18;#assert r6.z==27;
+ r7:=vp_add64(v,p);#assert r7.x==18;#assert r7.y==36;#assert r7.z==62;
+ r8:=left_scale64(s,v);#assert r8.x==16;#assert r8.y==32;#assert r8.z==64;
+ r9:=negate64(v);#assert r9.x==-8;#assert r9.y==-16;#assert r9.z==-32;
+}
+pv_add64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}
+pv_sub64 :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p-v;}
+vv_add64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return v+w;}
+vv_sub64 :: (v:Vector3(World,u.Metre,f64),w:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return v-w;}
+scale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v*s;}
+unscale64 :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v/s;}
+difference64 :: (p:Point3(World,u.Metre,f64),q:Point3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return p-q;}
+vp_add64 :: (v:Vector3(World,u.Metre,f64),p:Point3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return v+p;}
+left_scale64 :: (s:f64,v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return s*v;}
+negate64 :: (v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return -v;}

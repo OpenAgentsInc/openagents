@@ -1,0 +1,2 @@
+#load "../../lib/quantity.coax" as u;
+World :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f32) {}

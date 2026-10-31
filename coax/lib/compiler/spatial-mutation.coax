@@ -1,0 +1,70 @@
+#load "spatial-policy.coax";
+#authority;
+// Paired, type-preserving source-token edits. No coordinate arithmetic.
+SOM_Status :: enum u8 {eligible;no_alternative;metadata;}
+SOM_Candidate :: struct {status:SOM_Status;operation:SP_Op=SP_Op.invalid;}
+
+#forall "paired spatial operator profile is exact and closed" n:0..<10 {
+ ops:=[10]SP_Op.[SP_Op.add,SP_Op.sub,SP_Op.mul,SP_Op.div,SP_Op.eq,SP_Op.ne,SP_Op.lt,SP_Op.dot,SP_Op.cross,SP_Op.invalid];
+ expected:=[10]SP_Op.[SP_Op.sub,SP_Op.add,SP_Op.div,SP_Op.mul,SP_Op.invalid,SP_Op.invalid,SP_Op.invalid,SP_Op.invalid,SP_Op.invalid,SP_Op.invalid];
+ #assert SOM_pair(ops[n])==expected[n];
+}
+#forall "full logical descriptor equality keeps every field" field:0..<4 {
+ a:=SP_Type.{kind=SP_Kind.vector,frame=1,unit=2,rep=32};b:=a;
+ #assert SOM_same(a,b);if field==0 {b.kind=SP_Kind.point;}if field==1 {b.frame=3;}if field==2 {b.unit=4;}if field==3 {b.rep=64;}
+ #assert !SOM_same(a,b) && !SOM_same(b,a);
+}
+#forall "source candidates follow an independent affine table and exact result identity" op:0..<4,left:0..<3,right:0..<3,facts:0..<8,width:0..<2 {
+ a:=SP_Type.{kind=cast(SP_Kind)left,frame=1,unit=2,rep=ifx width==0 then 32 else 64};b:=a;b.kind=cast(SP_Kind)right;
+ if left==0 {a.frame=0;a.unit=0;}if right==0 {b.frame=0;b.unit=0;}
+ if (facts&1)!=0 {b.rep=ifx width==0 then 64 else 32;}if right!=0 && (facts&2)!=0 {b.frame=3;}if right!=0 && (facts&4)!=0 {b.unit=4;}
+ add:=[9]int.[0,0,0,0,0,1,0,1,2];sub:=[9]int.[0,0,0,0,2,1,0,0,2];mul:=[9]int.[0,0,2,0,0,0,2,0,0];div:=[9]int.[0,0,0,0,0,0,2,0,0];
+ index:=left*3+right;kind:=add[index];other:=sub[index];paired:=SP_Op.sub;
+ if op==1 {kind=sub[index];other=add[index];paired=SP_Op.add;}if op==2 {kind=mul[index];other=div[index];paired=SP_Op.div;}if op==3 {kind=div[index];other=mul[index];paired=SP_Op.mul;}
+ result:=a;if left==0 {result=b;}result.kind=SP_Kind.vector;if kind!=0 {result.kind=cast(SP_Kind)kind;}
+ valid:=kind!=0 && a.rep==b.rep && (left==0 || right==0 || (a.frame==b.frame && a.unit==b.unit));
+ r:=SOM_candidate(cast(SP_Op)op,a,b,result);
+ if !valid {#assert r.status==SOM_Status.metadata && r.operation==SP_Op.invalid;}
+ else if other==kind {#assert r.status==SOM_Status.eligible && r.operation==paired;}
+ else {#assert r.status==SOM_Status.no_alternative && r.operation==SP_Op.invalid;}
+}
+#forall "wrong result facts are refused before candidate publication" field:0..<4 {
+ a:=SP_Type.{kind=SP_Kind.vector,frame=1,unit=2,rep=32};bad:=a;
+ if field==0 {bad.kind=SP_Kind.point;}if field==1 {bad.frame=3;}if field==2 {bad.unit=4;}if field==3 {bad.rep=64;}
+ r:=SOM_candidate(SP_Op.add,a,a,bad);#assert r.status==SOM_Status.metadata && r.operation==SP_Op.invalid;
+}
+#forall "invalid source descriptors and unsupported original operations are explicit" n:0..<9 {
+ a:=SP_Type.{kind=SP_Kind.vector,frame=1,unit=2,rep=64};bad:=a;op:=SP_Op.add;
+ if n==0 {bad.kind=SP_Kind.invalid;}if n==1 {bad.frame=0;}if n==2 {bad.unit=0;}if n==3 {bad.rep=31;}
+ if n==4 {op=SP_Op.eq;}if n==5 {op=SP_Op.ne;}if n==6 {op=SP_Op.dot;}if n==7 {op=SP_Op.cross;}if n==8 {op=SP_Op.invalid;}
+ x:=SOM_candidate(op,bad,a,a);y:=SOM_candidate(op,a,bad,a);
+ #assert x.status==SOM_Status.metadata && x.operation==SP_Op.invalid && y.status==SOM_Status.metadata && y.operation==SP_Op.invalid;
+}
+
+#forall "selection independently validates original and alternate result facts" field:0..<4,stage:0..<4 {
+ t:=SP_Type.{kind=SP_Kind.vector,frame=1,unit=2,rep=32};other:=t;
+ if field==0 {other.kind=SP_Kind.point;}if field==1 {other.frame=3;}if field==2 {other.unit=4;}if field==3 {other.rep=64;}
+ original:=SP_Result.{result=t};alternate:=original;expected:=SOM_Status.eligible;
+ if stage==0 {original.status=SP_Status.operation;expected=SOM_Status.metadata;}
+ if stage==1 {original.result=other;expected=SOM_Status.metadata;}
+ if stage==2 {alternate.status=SP_Status.operation;expected=SOM_Status.no_alternative;}
+ if stage==3 {alternate.result=other;expected=SOM_Status.no_alternative;}
+ #assert SOM_select(original,alternate,t)==expected && SOM_select(SP_Result.{result=t},SP_Result.{result=t},t)==SOM_Status.eligible;
+}
+
+SOM_pair :: (operation:SP_Op)->SP_Op #export_c {
+ from:=[4]SP_Op.[SP_Op.add,SP_Op.sub,SP_Op.mul,SP_Op.div];to:=[4]SP_Op.[SP_Op.sub,SP_Op.add,SP_Op.div,SP_Op.mul];
+ for i:0..<4 {if operation==from[i] {return to[i];}}return SP_Op.invalid;
+}
+SOM_same :: (a:SP_Type,b:SP_Type)->bool #export_c {return a.kind==b.kind && a.frame==b.frame && a.unit==b.unit && a.rep==b.rep;}
+SOM_select :: (original:SP_Result,alternate:SP_Result,result:SP_Type)->SOM_Status #export_c {
+ if original.status!=SP_Status.ok || !SOM_same(original.result,result) {return SOM_Status.metadata;}
+ if alternate.status!=SP_Status.ok || !SOM_same(alternate.result,result) {return SOM_Status.no_alternative;}
+ return SOM_Status.eligible;
+}
+SOM_candidate :: (operation:SP_Op,left:SP_Type,right:SP_Type,result:SP_Type)->SOM_Candidate #export_c {
+ alternate:=SOM_pair(operation);status:=SOM_select(SP_binary(operation,left,right),SP_binary(alternate,left,right),result);
+ if status!=SOM_Status.eligible {return SOM_Candidate.{status=status};}
+ return SOM_Candidate.{status=SOM_Status.eligible,operation=alternate};
+
+}

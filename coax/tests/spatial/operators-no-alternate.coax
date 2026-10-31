@@ -1,0 +1,6 @@
+#load "operator-types.coax";
+#authority;
+#test "a point difference has no admitted paired token mutation" {
+ p:Point3(World,u.Metre,f64);p.x=10;r:=difference_only(p,p);#assert r.x==0 && r.y==0 && r.z==0;
+}
+difference_only :: (p:Point3(World,u.Metre,f64),q:Point3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return p-q;}

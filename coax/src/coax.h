@@ -325,6 +325,9 @@ struct Expr {
   bool folded = false;        // untyped int_lit computed from an operation, not written
   int32_t field_index = -1;   // field
   struct ProcDecl *proc = nullptr;      // call: resolved target (null for builtins)
+  uint8_t lowering = 0, mutation_status = 0; // checked lowering origin and preparation status
+  Tok mutation_op = Tok::eof;
+  struct ProcDecl *mutation_proc = nullptr; // site-local admitted alternate callee
   struct ConstDecl *constant = nullptr; // ident: resolved global constant
   bool builtin_print = false;
   ByteIntrinsic byte_intrinsic = ByteIntrinsic::none;
@@ -476,7 +479,7 @@ bool parse(Arena *arena, const Source *src, const std::vector<Token> &tokens, Fi
 
 // ---- Checker, evaluator and C emitter ----
 
-bool check(Arena *arena, File *file);
+bool check(Arena *arena, File *file, bool mutation_lowering = false);
 // Bounded, side-effect-free AST evaluation; no host I/O or foreign calls.
 bool evaluate(File *file, uint64_t max_steps, uint64_t *used = nullptr, uint64_t *traversed = nullptr);
 // Whether an expression contains a procedure call (whose effects order can observe).

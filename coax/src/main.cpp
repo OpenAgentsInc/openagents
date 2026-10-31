@@ -754,7 +754,7 @@ static std::string declarations_report(const Source *src, const File *file) {
 // An #authority file's checks run on every compile: a failing check fails
 // the build. run_checks is false for coax test and mutate, which run them.
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
-                      bool run_checks = true) {
+                      bool run_checks = true, bool mutation_lowering = false) {
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
   std::vector<Token> tokens;
@@ -781,7 +781,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->metal = opts.metal;
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
-    {TimedPhase phase{"check"};ok=check(arena,file);}
+    {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
     if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
   if (ok) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
@@ -1254,7 +1254,7 @@ static int main_impl(int argc, char **argv) {
     auto record = [&](int status, bool checked) {
       return write_evidence(cmd, input, &src, opts, checked, status, steps, slots, only, list, mutation);
     };
-    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false)) return record(1, false);
+    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false, cmd == "mutate")) return record(1, false);
     // Checks get their own, larger storage limits (budget.coax): a test may hold a whole world.
     file.ct_memory->slot_limit = slots;
     file.ct_memory->container_limit = CB_test_container_limit();

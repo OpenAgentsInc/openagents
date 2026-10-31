@@ -1,0 +1,10 @@
+#load "operator-types.coax";
+#authority;
+#test "unrelated baseline stays a separate execution path" {#assert untouched()==7;}
+#test "the source operator is checked after the unrelated check" {
+ p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;
+ v:Vector3(World,u.Metre,f64);v.x=1;v.y=2;v.z=3;
+ r:=step(p,v);#assert r.x==11 && r.y==22 && r.z==33;
+}
+untouched :: ()->f64 {return 7;}
+step :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}

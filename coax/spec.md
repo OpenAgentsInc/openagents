@@ -975,6 +975,27 @@ refund_ok :: (paid: int, refund: int) -> bool {
   when no input can observe the change; surviving mutants there are counted
   apart. Exemptions require human justification; they are not solver results.
 
+For lowered spatial source calls, the Coax-owned initial binary profile proposes
+`+ ↔ -` and `* ↔ /`, then admits a candidate only when the original and
+alternate affine operations have the exact same point/vector kind, nominal
+frame, nominal unit and carrier. This covers point ± vector, vector ± vector,
+and vector ×/÷ matching raw scalar. A point difference, vector + point and
+raw scalar × vector have no admitted paired alternate; unary negation is
+explicitly outside this binary profile. Their separate textual inventory is
+not a check kill or an equivalence waiver. A file with no eligible or other
+reachable sites still fails the existing zero-site criterion.
+
+Mutation-only preparation retains the original operator location and argument
+trees and constructs an alternate private helper in Coax. Each mutant redirects
+one source call's callee and restores it afterward. Synthesized scalar helper
+expressions stay excluded; source operand/index mutations remain visible.
+The enclosing authored procedure owns scheduling. Additional helpers consume
+the existing node/byte pools and shared 256-instance ceiling; exhausted
+preparation refuses the run before typed-tree publication rather than silently
+dropping sites. Normal product compilation does not construct alternate helpers.
+This profile does not qualify quantity/derived-unit operator provenance or all
+possible spatial defects. Its version binds mixed-profile shard compatibility.
+
 Mutation starts by running every check and recording which procedures it actually
 entered. For a graph whose checks can be isolated, a mutant runs the checks
 that entered its owning procedure; all statically reachable mutation sites

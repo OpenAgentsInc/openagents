@@ -1,0 +1,6 @@
+#load "operator-types.coax";
+#authority;
+#test "unary negation remains explicitly outside the binary token profile" {
+ v:Vector3(World,u.Metre,f64);v.x=8;r:=negative_only(v);#assert r.x== -8;
+}
+negative_only :: (v:Vector3(World,u.Metre,f64))->Vector3(World,u.Metre,f64) {return -v;}

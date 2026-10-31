@@ -1,0 +1,38 @@
+#load "operator-types.coax";
+// Native-only observers; all arithmetic stays in the source operator procedures.
+
+sm_sample32 :: (out:[]f32) #export_c {
+ p:Point3(World,u.Metre,f32);p.x=10;p.y=20;p.z=30;
+ q:Point3(World,u.Metre,f32);q.x=1;q.y=2;q.z=3;
+ v:Vector3(World,u.Metre,f32);v.x=8;v.y=16;v.z=32;
+ w:Vector3(World,u.Metre,f32);w.x=1;w.y=2;w.z=4;
+ s:f32=2;
+ r0:=pv_add32(p,v);out[0]=r0.x;out[1]=r0.y;out[2]=r0.z;
+ r1:=pv_sub32(p,v);out[3]=r1.x;out[4]=r1.y;out[5]=r1.z;
+ r2:=vv_add32(v,w);out[6]=r2.x;out[7]=r2.y;out[8]=r2.z;
+ r3:=vv_sub32(v,w);out[9]=r3.x;out[10]=r3.y;out[11]=r3.z;
+ r4:=scale32(v,s);out[12]=r4.x;out[13]=r4.y;out[14]=r4.z;
+ r5:=unscale32(v,s);out[15]=r5.x;out[16]=r5.y;out[17]=r5.z;
+ r6:=difference32(p,q);out[18]=r6.x;out[19]=r6.y;out[20]=r6.z;
+ r7:=vp_add32(v,p);out[21]=r7.x;out[22]=r7.y;out[23]=r7.z;
+ r8:=left_scale32(s,v);out[24]=r8.x;out[25]=r8.y;out[26]=r8.z;
+ r9:=negate32(v);out[27]=r9.x;out[28]=r9.y;out[29]=r9.z;
+}
+
+sm_sample64 :: (out:[]f64) #export_c {
+ p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;
+ q:Point3(World,u.Metre,f64);q.x=1;q.y=2;q.z=3;
+ v:Vector3(World,u.Metre,f64);v.x=8;v.y=16;v.z=32;
+ w:Vector3(World,u.Metre,f64);w.x=1;w.y=2;w.z=4;
+ s:f64=2;
+ r0:=pv_add64(p,v);out[0]=r0.x;out[1]=r0.y;out[2]=r0.z;
+ r1:=pv_sub64(p,v);out[3]=r1.x;out[4]=r1.y;out[5]=r1.z;
+ r2:=vv_add64(v,w);out[6]=r2.x;out[7]=r2.y;out[8]=r2.z;
+ r3:=vv_sub64(v,w);out[9]=r3.x;out[10]=r3.y;out[11]=r3.z;
+ r4:=scale64(v,s);out[12]=r4.x;out[13]=r4.y;out[14]=r4.z;
+ r5:=unscale64(v,s);out[15]=r5.x;out[16]=r5.y;out[17]=r5.z;
+ r6:=difference64(p,q);out[18]=r6.x;out[19]=r6.y;out[20]=r6.z;
+ r7:=vp_add64(v,p);out[21]=r7.x;out[22]=r7.y;out[23]=r7.z;
+ r8:=left_scale64(s,v);out[24]=r8.x;out[25]=r8.y;out[26]=r8.z;
+ r9:=negate64(v);out[27]=r9.x;out[28]=r9.y;out[29]=r9.z;
+}

@@ -1,0 +1,10 @@
+#load "operator-types.coax";
+#authority;
+#forall "alternate math preserves left to right whole operand evaluation" seed:0..<2 {
+ counter:[1]int;counter[0]=seed;r:=ordered_scale(counter[..]);#assert counter[0]==seed*100+12;#assert r.x==16 && r.y==32 && r.z==64;
+}
+left_value :: (counter:[]int)->Vector3(World,u.Metre,f64) {
+ counter[0]=counter[0]*10+1;v:Vector3(World,u.Metre,f64);v.x=8;v.y=16;v.z=32;return v;
+}
+right_value :: (counter:[]int)->f64 {counter[0]=counter[0]*10+2;return 2;}
+ordered_scale :: (counter:[]int)->Vector3(World,u.Metre,f64) {return left_value(counter)*right_value(counter);}

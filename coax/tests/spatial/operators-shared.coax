@@ -1,0 +1,12 @@
+#load "operator-types.coax";
+#authority;
+#test "first source site has its own result" {
+ p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;v:Vector3(World,u.Metre,f64);v.x=1;v.y=2;v.z=3;
+ r:=first_site(p,v);#assert r.x==11 && r.y==22 && r.z==33;
+}
+#test "second source site shares the helper without sharing mutation" {
+ p:Point3(World,u.Metre,f64);p.x=10;p.y=20;p.z=30;v:Vector3(World,u.Metre,f64);v.x=1;v.y=2;v.z=3;
+ r:=second_site(p,v);#assert r.x==11 && r.y==22 && r.z==33;
+}
+first_site :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}
+second_site :: (p:Point3(World,u.Metre,f64),v:Vector3(World,u.Metre,f64))->Point3(World,u.Metre,f64) {return p+v;}
