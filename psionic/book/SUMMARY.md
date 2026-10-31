@@ -59,7 +59,7 @@
 
 - [52. Tokenizers and chat templates](ch052-tokenizers-and-chat-templates.md)
 - [53. Choosing the next token](ch053-choosing-the-next-token.md) — design draft
-- [54. Search the Coax book](ch054-search-the-coax-book.md) — design draft
+- [54. Search the Coax book](ch054-search-the-coax-book.md)
 - [55. Search without scanning everything](ch055-search-without-scanning-everything.md) — design draft
 - [56. Rerank the candidates](ch056-rerank-the-candidates.md) — design draft
 - [57. Answer from current sources](ch057-answer-from-current-sources.md) — design draft

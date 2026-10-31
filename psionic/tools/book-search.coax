@@ -376,14 +376,19 @@ freshness :: (held: Bs, now: Bs, quiet: bool) -> BsFresh {
   r := bs_freshness(hp[0..<held.file_n], hh[0..<held.file_n], np[0..<now.file_n], nh[0..<now.file_n]);
   if !r.fresh && !quiet {
     ib: [32] u8;
-    tool_err("book-search: stale index: it holds the books at revision "); rb: [40] u8; tool_err(revision(held, 12, rb[..]));
-    tool_err(", and the books at "); tool_err(revision(now, 12, rb[..])); tool_errln(" differ:");
+    edited := 0; for f: 0..<now.file_n { if now.files[f].edited { edited += 1; } }
+    rb: [40] u8; tool_err("book-search: stale index: it holds the books at revision "); tool_err(revision(held, 12, rb[..]));
+    tool_err(", and the books now (revision "); tool_err(revision(now, 12, rb[..]));
+    if edited > 0 { tool_err(", uncommitted edits in chapter files: "); tool_err(itoa(edited, ib[..])); }
+    tool_errln(") differ:");
     print_err3("  changed files: ", itoa(r.changed, ib[..]), "");
     print_err3("  added files:   ", itoa(r.added, ib[..]), "");
     print_err3("  removed files: ", itoa(r.removed, ib[..]), "");
     if r.first >= 0 {
       print_err3("  first: ", hp[r.first], "");
       print_err3("    held content sha256 ", cast(string) hh[r.first][0..<16], "");
+      j := find_file(now, hp[r.first]);
+      if j >= 0 { print_err3("    now  content sha256 ", cast(string) nh[j][0..<16], ""); } else { tool_errln("    now: removed"); }
     }
   }
   return r;
