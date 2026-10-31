@@ -353,3 +353,120 @@
   n := s[0].n;
   #assert read_transcript(s[..], COAX_RELAY) == 5 && s[0].n == n;
 }
+
+// ---- the fold's tag rules are the typed readers' (#b8cd): small made-up
+// transcripts where the old ad hoc matching and the readers disagree.
+
+FT_A :: "aaaa000000000000000000000000000000000000000000000000000000000000";
+FT_B :: "bbbb000000000000000000000000000000000000000000000000000000000000";
+FT_C :: "cccc000000000000000000000000000000000000000000000000000000000000";
+FT_D :: "dddd000000000000000000000000000000000000000000000000000000000000";
+FT_COORD :: "30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax";
+FT_OTHER :: "30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:other";
+// One event by the test key, as the relay frames it: its index, or -1.
+ft_event :: (s: [] Store, id: string, at: int, kind: int, tags: string, content: string) -> int {
+  buf: [4096] u8;
+  n := json_raw(buf[..], 0, "[\"EVENT\",\"t\",{\"id\":\""); n = json_raw(buf[..], n, id);
+  n = json_raw(buf[..], n, "\",\"pubkey\":\""); n = json_raw(buf[..], n, FOLD_TEST_KEY);
+  n = json_raw(buf[..], n, "\",\"created_at\":"); n = json_write_int(buf[..], n, at);
+  n = json_raw(buf[..], n, ",\"kind\":"); n = json_write_int(buf[..], n, kind);
+  n = json_raw(buf[..], n, ",\"tags\":"); n = json_raw(buf[..], n, tags);
+  n = json_raw(buf[..], n, ",\"content\":\""); n = json_raw(buf[..], n, content); n = json_raw(buf[..], n, "\"}]");
+  return read_frame(s, cast(string) buf[0..<n], FOLD_TEST_KEY).kept;
+}
+// A tags array: an issue under FT_COORD with slug and subject, then extra.
+ft_issue :: (out: [] u8, slug: string, subject: string, extra: string) -> string {
+  n := json_raw(out, 0, "[[\"a\",\""); n = json_raw(out, n, FT_COORD); n = json_raw(out, n, "\"],[\"slug\",\"");
+  n = json_raw(out, n, slug); n = json_raw(out, n, "\"],[\"subject\",\""); n = json_raw(out, n, subject); n = json_raw(out, n, "\"]");
+  n = json_raw(out, n, extra); n = json_raw(out, n, "]");
+  return cast(string) out[0..<n];
+}
+// A comment's tags with root E id and root kind, then extra.
+ft_comment :: (out: [] u8, id: string, kind: string, extra: string) -> string {
+  n := json_raw(out, 0, "[[\"E\",\""); n = json_raw(out, n, id); n = json_raw(out, n, "\"],[\"K\",\""); n = json_raw(out, n, kind);
+  n = json_raw(out, n, "\"],[\"e\",\""); n = json_raw(out, n, id); n = json_raw(out, n, "\"],[\"k\",\""); n = json_raw(out, n, kind); n = json_raw(out, n, "\"]");
+  n = json_raw(out, n, extra); n = json_raw(out, n, "]");
+  return cast(string) out[0..<n];
+}
+ft_issue_of :: (s: [] Store, f: [] Fold, id: string) -> int { return fold_issue_of(s, f, id); }
+
+#test "the fold's addresses are first d tags, and a project with two d tags is refused" {
+  s: [1] Store; f: [1] Fold; store_clear(s[..]);
+  two := ft_event(s[..], "e100000000000000000000000000000000000000000000000000000000000000", 300, 30621, "[[\"d\",\"coax\"],[\"d\",\"other\"]]", "");
+  one := ft_event(s[..], "e200000000000000000000000000000000000000000000000000000000000000", 100, 30621, "[[\"d\",\"coax\"]]", "");
+  // an order addressed "other" that also carries a d "coax" is not coax's order
+  far := ft_event(s[..], "e300000000000000000000000000000000000000000000000000000000000000", 300, 30623, "[[\"d\",\"other\"],[\"d\",\"coax\"]]", "");
+  near := ft_event(s[..], "e400000000000000000000000000000000000000000000000000000000000000", 100, 30623, "[[\"d\",\"coax\"]]", "");
+  #assert two >= 0 && one >= 0 && far >= 0 && near >= 0;
+  fold(s[..], f[..], "coax");
+  #assert f[0].project == one && f[0].order == near;
+  fold(s[..], f[..], "other");
+  #assert f[0].project == -1 && f[0].order == far;
+}
+#test "statuses hang off their root-marked e tag, comments off their NIP-22 root scope" {
+  s: [1] Store; f: [1] Fold; store_clear(s[..]); b: [1024] u8;
+  #assert ft_event(s[..], "e200000000000000000000000000000000000000000000000000000000000000", 100, 30621, "[[\"d\",\"coax\"]]", "") >= 0;
+  #assert ft_event(s[..], FT_A, 101, 1621, ft_issue(b[..], "a", "A", ""), "") >= 0;
+  #assert ft_event(s[..], FT_B, 102, 1621, ft_issue(b[..], "b", "B", ""), "") >= 0;
+  // NIP-34: the root is the e tag marked root, wherever it is; the old fold took the first known issue
+  n := json_raw(b[..], 0, "[[\"e\",\""); n = json_raw(b[..], n, FT_B); n = json_raw(b[..], n, "\",\"\",\"reply\"],[\"e\",\"");
+  n = json_raw(b[..], n, FT_A); n = json_raw(b[..], n, "\",\"\",\"root\"]]");
+  #assert ft_event(s[..], "f100000000000000000000000000000000000000000000000000000000000000", 200, 1631, cast(string) b[0..<n], "") >= 0;
+  // NIP-22: a claim scoped to B claims B
+  #assert ft_event(s[..], "f200000000000000000000000000000000000000000000000000000000000000", 201, 1111, ft_comment(b[..], FT_B, "1621", ",[\"claim\",\"w1\"]"), "") >= 0;
+  // refused: no K and k; a root kind that isn't an issue; an escaped spelling of the id
+  #assert ft_event(s[..], "f300000000000000000000000000000000000000000000000000000000000000", 202, 1111, "[[\"E\",\"aaaa000000000000000000000000000000000000000000000000000000000000\"],[\"claim\",\"w2\"]]", "") >= 0;
+  #assert ft_event(s[..], "f400000000000000000000000000000000000000000000000000000000000000", 203, 1111, ft_comment(b[..], FT_A, "1111", ",[\"claim\",\"w3\"]"), "") >= 0;
+  #assert ft_event(s[..], "f500000000000000000000000000000000000000000000000000000000000000", 204, 1111, ft_comment(b[..], "\\u0061aaa000000000000000000000000000000000000000000000000000000000000", "1621", ",[\"claim\",\"w4\"]"), "") >= 0;
+  fold(s[..], f[..], "coax");
+  a := ft_issue_of(s[..], f[..], FT_A); bb := ft_issue_of(s[..], f[..], FT_B);
+  #assert f[0].n == 2 && a >= 0 && bb >= 0;
+  #assert f[0].status[a] == ST_RESOLVED && f[0].status[bb] == ST_OPEN;
+  #assert str(s[..], f[0].claimed[bb]) == "w1" && f[0].claimed[a].len == 0;
+}
+#test "an issue the NIP-34 reader refuses is not on the page; one in two projects is on both; escapes read unescaped" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; store_clear(s[..]); b: [1024] u8;
+  #assert ft_event(s[..], "e200000000000000000000000000000000000000000000000000000000000000", 100, 30621, "[[\"d\",\"coax\"]]", "") >= 0;
+  #assert ft_event(s[..], FT_A, 101, 1621, ft_issue(b[..], "a", "Say \\\"hi\\\" \\u00e9", ",[\"t\",\"x\\u0079\"]"), "") >= 0;
+  // a blocked-by that isn't an issue id: refused whole
+  #assert ft_event(s[..], FT_C, 102, 1621, ft_issue(b[..], "c", "C", ",[\"blocked-by\",\"xyz\"]"), "") >= 0;
+  // under another project first, then this one
+  n := json_raw(b[..], 0, "[[\"a\",\""); n = json_raw(b[..], n, FT_OTHER); n = json_raw(b[..], n, "\"],[\"a\",\""); n = json_raw(b[..], n, FT_COORD);
+  n = json_raw(b[..], n, "\"],[\"slug\",\"d\"],[\"subject\",\"D\"]]");
+  #assert ft_event(s[..], FT_D, 103, 1621, cast(string) b[0..<n], "") >= 0;
+  fold(s[..], f[..], "coax");
+  a := ft_issue_of(s[..], f[..], FT_A);
+  #assert f[0].n == 2 && a >= 0 && ft_issue_of(s[..], f[..], FT_C) < 0 && ft_issue_of(s[..], f[..], FT_D) >= 0;
+  #assert str(s[..], f[0].subject[a]) == "Say \"hi\" é" && str(s[..], f[0].slug[a]) == "a" && slug_of(s[..], f[0].root[a]) == "a";
+  write_tables(s[..], f[..], t[..]);
+  #assert t[0].complete && starts(cast(string) t[0].items[0..<t[0].items_n], "aaaa|task|open|Say \"hi\"|xy|");
+  fold(s[..], f[..], "other");
+  #assert f[0].n == 1 && ft_issue_of(s[..], f[..], FT_D) >= 0;
+}
+#test "an order the NIP-34 reader refuses ranks nothing; a revision it refuses revises nothing" {
+  s: [1] Store; f: [1] Fold; store_clear(s[..]); b: [1024] u8;
+  #assert ft_event(s[..], "e200000000000000000000000000000000000000000000000000000000000000", 100, 30621, "[[\"d\",\"coax\"]]", "") >= 0;
+  #assert ft_event(s[..], FT_A, 101, 1621, ft_issue(b[..], "a", "A", ""), "") >= 0;
+  n := json_raw(b[..], 0, "[[\"d\",\"coax\"],[\"item\",\""); n = json_raw(b[..], n, FT_A); n = json_raw(b[..], n, "\",\"0a\"],[\"item\",\"zz\",\"0b\"]]");
+  #assert ft_event(s[..], "e400000000000000000000000000000000000000000000000000000000000000", 300, 30623, cast(string) b[0..<n], "") >= 0;
+  n = json_raw(b[..], 0, "[[\"d\",\"coax\"],[\"item\",\""); n = json_raw(b[..], n, FT_A); n = json_raw(b[..], n, "\",\"0c\"]]");
+  older_order := ft_event(s[..], "e500000000000000000000000000000000000000000000000000000000000000", 200, 30623, cast(string) b[0..<n], "");
+  // the newer revision's reward isn't a number: the older one stands
+  #assert ft_event(s[..], "f100000000000000000000000000000000000000000000000000000000000000", 201, 1111, ft_comment(b[..], FT_A, "1621", ",[\"revision\",\"openagents.issue-revision.v1\"],[\"subject\",\"A2\"]"), "") >= 0;
+  #assert ft_event(s[..], "f200000000000000000000000000000000000000000000000000000000000000", 202, 1111, ft_comment(b[..], FT_A, "1621", ",[\"revision\",\"openagents.issue-revision.v1\"],[\"subject\",\"A3\"],[\"reward\",\"x\"]"), "") >= 0;
+  fold(s[..], f[..], "coax");
+  a := ft_issue_of(s[..], f[..], FT_A);
+  #assert f[0].order == older_order && str(s[..], f[0].rank[a]) == "0c";
+  #assert str(s[..], f[0].subject[a]) == "A2" && f[0].revised[a] >= 0;
+}
+#test "a reader's span finds its unescaped element, and an absent tag's finds none" {
+  s: [1] Store; store_clear(s[..]);
+  e := ft_event(s[..], FT_A, 1, 1621, "[[\"a\",\"x\"],[],[\"s\\u006cug\",\"\\\"q\\\"\",\"z\"]]", "");
+  #assert e >= 0;
+  ev := store_nt(s[..], e);
+  t := nt_tag(ev, "slug", 0);
+  #assert t.n == 1 && span_str(s[..], e, t.v[0]) == "\"q\"" && span_str(s[..], e, t.v[1]) == "z";
+  #assert span_ref(s[..], e, nt_tag(ev, "none", 0).v[0]).len == -1 && span_val(s[..], e, nt_tag(ev, "none", 0).v[0]).len == 0;
+  bare := ft_event(s[..], FT_B, 1, 1621, "[[]]", "");
+  #assert bare >= 0 && span_ref(s[..], bare, NtSpan.{from = 1, to = 1}).len == -1;
+}

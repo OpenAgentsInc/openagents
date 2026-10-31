@@ -6,14 +6,32 @@
 // format). Its test checks the tables against model.ts's for a captured
 // relay transcript, byte for byte.
 //
+// Which events the fold reads, and which tag of each, is decided by the
+// typed readers, not here: nip34.coax for repositories, projects, orders,
+// issues, an issue's fields and statuses, nip22.coax for comments (#b8cd).
+// The store keeps each event's tags array verbatim, so a reader reads the
+// relay's original bytes; the store's unescaped copy of every element is
+// only where the fold gets the bytes a reader selected (span_ref). An event
+// a reader refuses is not part of the project. The tag rules, from the NIP
+// text (docs/verification/2026-10-31-project-fold-typed.md):
+// - an addressable event's address is its first d tag (NIP-01; model.ts and
+//   the relay read the same), and a project with more than one d tag is
+//   refused (NIP-MP rule d-cardinality);
+// - a comment hangs off the issue its root scope names: the first of E, A
+//   and I, which must be an E whose K is 1621 (NIP-22);
+// - a status hangs off its e tag marked root, else its first e (NIP-34);
+// - an issue is under the project when any of its a tags is the project's
+//   coordinate (NIP-34 allows several, as the relay's #a filter matches).
+//
 // Signatures: until Coax verifies BIP-340 Schnorr signatures (task
 // project-page-verify), the page trusts relay.openagents.com's signature
 // check and keeps only events whose pubkey is the project's.
 
 #load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/nostr/nip22.coax";
 
 STORE_EVENTS :: 8192;
-STORE_BYTES :: 4194304;
+STORE_BYTES :: 6291456;   // the strings, unescaped, and every event's tags array verbatim
 STORE_TAGS :: 65536;
 STORE_ELEMS :: 131072;
 FOLD_ISSUES :: 320;
@@ -44,9 +62,49 @@ Store :: struct {
   tag_el: [STORE_TAGS] int; tag_len: [STORE_TAGS] int;
   el_from: [STORE_ELEMS] int; el_len: [STORE_ELEMS] int;
   bytes: [STORE_BYTES] u8;
+  // the tags array as the relay sent it (in bytes, raw_n[e] of them from
+  // raw_at[e]), and where each element's raw bytes start in it, for the readers
+  raw_at: [STORE_EVENTS] int; raw_n: [STORE_EVENTS] int;
+  el_raw: [STORE_ELEMS] int;
 }
 
 store_clear :: (s: [] Store) { s[0].n = 0; s[0].used = 0; s[0].tag_n = 0; s[0].el_n = 0; s[0].dropped = 0; s[0].last = -1; s[0].overflow = false; }
+
+// Event e as the typed readers read it: its original tags array.
+store_nt :: (s: [] Store, e: int) -> NtEvent {
+  t := cast(string) s[0].bytes[s[0].raw_at[e]..<s[0].raw_at[e] + s[0].raw_n[e]];
+  return NtEvent.{ok = true, kind = s[0].kind[e], original = t, tags_from = 0, tags_to = t.count};
+}
+// The unescaped element whose raw bytes a reader's span of event e selects;
+// len -1 when the span is no element's (an absent tag's empty span).
+span_ref :: (s: [] Store, e: int, sp: NtSpan) -> Ref {
+  none := Ref.{from = 0, len = -1};
+  if s[0].tags[e] == 0 { return none; }
+  last := s[0].tag0[e] + s[0].tags[e] - 1;
+  below := s[0].tag_el[s[0].tag0[e]]; end := s[0].tag_el[last] + s[0].tag_len[last]; above := end;
+  // elements start further into the array as they go
+  while below < above {
+    mid := below + (above - below) / 2;
+    if s[0].el_raw[mid] < sp.from { below = mid + 1; } else { above = mid; }
+  }
+  if below >= end || s[0].el_raw[below] != sp.from { return none; }
+  return Ref.{from = s[0].el_from[below], len = s[0].el_len[below]};
+}
+// Whether event e's address (its first d tag, NIP-01) is d.
+addressed :: (s: [] Store, e: int, d: string) -> bool {
+  ev := store_nt(s, e); t := nt_tag(ev, "d", 0);
+  return t.n > 0 && t.values > 0 && json_is(nt_raw(ev, t.v[0]), d);
+}
+// span_ref, but the empty string when the span is no element's.
+span_val :: (s: [] Store, e: int, sp: NtSpan) -> Ref {
+  r := span_ref(s, e, sp);
+  return ifx r.len < 0 then Ref.{} else r;
+}
+// The bytes a reader's span selects, unescaped; "" when it selects nothing.
+span_str :: (s: [] Store, e: int, sp: NtSpan) -> string {
+  r := span_ref(s, e, sp);
+  return ifx r.len <= 0 then "" else str(s, r);
+}
 
 // A string in the arena.
 Ref :: struct { from: int; len: int; }
@@ -143,9 +201,17 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
     } else if json_is(k, "tags") {
       if v != JSON_ARRAY { ok = false; break; }
       s[0].tag0[e] = s[0].tag_n;
+      tags_start := j[0].from;
       while ok {
         a := json_next(j);
-        if a == JSON_ARRAY_END { break; }
+        if a == JSON_ARRAY_END {
+          // the array verbatim, for the readers
+          n := j[0].to - tags_start;
+          if s[0].used + n > STORE_BYTES { s[0].overflow = true; ok = false; break; }
+          for i: 0..<n { s[0].bytes[s[0].used + i] = j[0].text[tags_start + i]; }
+          s[0].raw_at[e] = s[0].used; s[0].raw_n[e] = n; s[0].used += n;
+          break;
+        }
         if s[0].tag_n >= STORE_TAGS { s[0].overflow = true; }
         if a != JSON_ARRAY || s[0].tag_n >= STORE_TAGS { ok = false; break; }
         tg := s[0].tag_n; s[0].tag_n += 1;
@@ -155,6 +221,7 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
           if b == JSON_ARRAY_END { break; }
           if s[0].el_n >= STORE_ELEMS { s[0].overflow = true; }
           if b != JSON_STRING || s[0].el_n >= STORE_ELEMS { ok = false; break; }
+          s[0].el_raw[s[0].el_n] = j[0].from - tags_start;
           r := store_string(s, j);
           if r.len < 0 { ok = false; break; }
           s[0].el_from[s[0].el_n] = r.from; s[0].el_len[s[0].el_n] = r.len;
@@ -190,6 +257,9 @@ author_of :: (s: [] Store, e: int) -> string {
 
 // ---------------------------------------------------------------- tags
 
+// The page's other readers (project-live.coax, project-links.coax,
+// project.coax, landing-fold.coax) still look tags up here, by the unescaped
+// copy; the fold itself reads through the typed readers above.
 // The first tag named name: its index, or -1 (model.ts tags.find).
 tag_named :: (s: [] Store, e: int, name: string) -> int {
   for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
@@ -267,7 +337,18 @@ Fold :: struct {
   // isn't a claim, release or plan), oldest first: note_from[r] on, note_cnt[r] of them
   note_from: [FOLD_ISSUES] int; note_cnt: [FOLD_ISSUES] int;
   notes_n: int; notes_ev: [FOLD_LOG] int; notes_by: [FOLD_LOG] Ref;
+  // what the readers said: per comment its C_* marks and values (the
+  // NIP-22 reader's), per issue its slug and fields (the NIP-34 reader's
+  // over the root or its revision), and the order's items
+  c_marks: [STORE_EVENTS] int; c_by: [STORE_EVENTS] Ref; c_claim: [STORE_EVENTS] Ref; c_commit: [STORE_EVENTS] Ref;
+  slug: [FOLD_ISSUES] Ref; subject: [FOLD_ISSUES] Ref; size: [FOLD_ISSUES] Ref; parent: [FOLD_ISSUES] Ref;
+  items_n: int; items: [ORDER_ITEMS] N34Item;
 }
+ORDER_ITEMS :: 4096;
+FOLD_LABELS :: 256;    // an item's labels the items table shows; more marks the tables incomplete   // an order with more items is refused (N34_OUTPUT), not cut
+// A comment's marks: its reader admitted it, it revises its issue's fields,
+// it has a revision tag at all, it is a plan, it claims, releases, finishes.
+C_OK :: 1; C_REVISED :: 2; C_REVISION :: 4; C_PLANNED :: 8; C_CLAIM :: 16; C_RELEASE :: 32; C_COMMIT :: 64;
 
 fold_issue_of :: (s: [] Store, f: [] Fold, id: string) -> int {
   if id.count != 64 { return -1; }
@@ -332,36 +413,44 @@ plan_step :: (content: string, k: int) -> Step {
 }
 
 fold :: (s: [] Store, f: [] Fold, slug: string) {
-  f[0].n = 0; f[0].log_n = 0; f[0].notes_n = 0; f[0].project = -1; f[0].repo = -1; f[0].order = -1;
-  // the project, its order, its repository: the latest of each
+  f[0].n = 0; f[0].log_n = 0; f[0].notes_n = 0; f[0].project = -1; f[0].repo = -1; f[0].order = -1; f[0].items_n = 0;
+  // the project and its order: the latest of each whose address is the slug
   for e: 0..<s[0].n {
     f[0].under[e] = -1;
     k := s[0].kind[e];
-    if k == KIND_PROJECT && tag_has(s, e, "d", slug) && newer(s, e, f[0].project) { f[0].project = e; }
-    if k == KIND_ORDER && tag_has(s, e, "d", slug) && newer(s, e, f[0].order) { f[0].order = e; }
+    if k == KIND_PROJECT {
+      ev := store_nt(s, e); p := n34_project(ev);
+      if p.status == N34_OK && p.d.n == 1 && json_is(nt_raw(ev, p.d.v[0]), slug) && newer(s, e, f[0].project) { f[0].project = e; }
+    }
+    if k == KIND_ORDER {
+      ev := store_nt(s, e); o := n34_order(ev, f[0].items[..]);
+      if o.status == N34_OK && json_is(nt_raw(ev, o.d.v[0]), slug) && newer(s, e, f[0].order) { f[0].order = e; }
+    }
   }
-  // the repository the project names in its "a" tag (30617:KEY:D), else any
+  if f[0].order >= 0 { f[0].items_n = n34_order(store_nt(s, f[0].order), f[0].items[..]).items; }
+  // the repository the project names in its first a tag (30617:KEY:D), else any
   repo_d := "";
   if f[0].project >= 0 {
-    for t: s[0].tag0[f[0].project]..<s[0].tag0[f[0].project] + s[0].tags[f[0].project] {
-      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), "a") && starts(element(s, t, 1), "30617:") {
-        a := element(s, t, 1);
-        if a.count > 6 + 65 { repo_d = a[6 + 65..<a.count]; }
-        break;
-      }
+    ev := store_nt(s, f[0].project); p := n34_project(ev);
+    if p.a.n > 0 {
+      // the coordinate's kind and key are plain bytes, so its d starts at the same place unescaped
+      c := nt_coord(nt_raw(ev, p.a.v[0])); a := span_str(s, f[0].project, p.a.v[0]);
+      if c.kind == KIND_REPO && c.d <= a.count { repo_d = a[c.d..<a.count]; }
     }
   }
   for e: 0..<s[0].n {
-    if s[0].kind[e] == KIND_REPO && (repo_d.count == 0 || tag_has(s, e, "d", repo_d)) && newer(s, e, f[0].repo) { f[0].repo = e; }
+    if s[0].kind[e] != KIND_REPO { continue; }
+    ev := store_nt(s, e); r := n34_repo(ev);
+    if r.status == N34_OK && (repo_d.count == 0 || equal(span_str(s, e, r.d.v[0]), repo_d)) && newer(s, e, f[0].repo) { f[0].repo = e; }
   }
-  // the issues: kind 1621 with ["a", 30621:KEY:SLUG], oldest first, one per slug
+  // the issues: kind 1621 with an a tag 30621:KEY:SLUG, oldest first, one per slug
   roots: [FOLD_ISSUES] int; rn := 0;
   for e: 0..<s[0].n {
     if s[0].kind[e] != KIND_ISSUE || rn >= FOLD_ISSUES { continue; }
+    ev := store_nt(s, e); i := n34_issue(ev);
+    if i.status != N34_OK { continue; }
     under := false;
-    for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
-      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), "a") && is_coord(element(s, t, 1), slug) { under = true; }
-    }
+    for k: 0..<i.a { if is_coord(nt_raw(ev, nt_tag(ev, "a", k).v[0]), slug) { under = true; } }
     if !under { continue; }
     k := rn; rn += 1;
     while k > 0 && older(s, e, roots[k - 1]) { roots[k] = roots[k - 1]; k -= 1; }
@@ -369,23 +458,36 @@ fold :: (s: [] Store, f: [] Fold, slug: string) {
   }
   for k: 0..<rn {
     e := roots[k];
-    sl := slug_of(s, e);
+    ev := store_nt(s, e); i := n34_issue(ev);
+    sl := ifx i.slug.n > 0 then span_ref(s, e, i.slug.v[0]) else Ref.{from = s[0].id[e], len = 8};
+    if sl.len < 0 { sl = Ref.{}; }
     taken := false;
-    for r: 0..<f[0].n { if equal(slug_of(s, f[0].root[r]), sl) { taken = true; } }
+    for r: 0..<f[0].n { if equal(str(s, f[0].slug[r]), str(s, sl)) { taken = true; } }
     if taken { continue; }
     r := f[0].n; f[0].n += 1;
-    f[0].root[r] = e;
+    f[0].root[r] = e; f[0].slug[r] = sl;
   }
-  // what hangs off each issue: comments by "E", statuses by "e"
+  // what hangs off each issue: a comment by its NIP-22 root scope, a status by its NIP-34 root
   for e: 0..<s[0].n {
     k := s[0].kind[e];
-    name := ifx k == KIND_COMMENT then "E" else "e";
-    if k != KIND_COMMENT && !(k >= 1630 && k <= 1633) { continue; }
-    for t: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
-      if s[0].tag_len[t] > 1 && equal(element(s, t, 0), name) {
-        r := fold_issue_of(s, f, element(s, t, 1));
-        if r >= 0 { f[0].under[e] = r; break; }
-      }
+    if k == KIND_COMMENT {
+      f[0].c_marks[e] = 0; f[0].c_by[e] = Ref.{}; f[0].c_claim[e] = Ref.{}; f[0].c_commit[e] = Ref.{};
+      ev := store_nt(s, e); c := n22_comment(ev);
+      if c.status != N34_OK || c.root.at != 'E' || c.root.kind_value != KIND_ISSUE { continue; }
+      f[0].under[e] = fold_issue_of(s, f, nt_raw(ev, c.root.ref.v[0]));
+      m := C_OK;
+      if c.revised { m |= C_REVISED; }
+      if c.revision.n > 0 { m |= C_REVISION; }
+      if c.planned { m |= C_PLANNED; }
+      if c.claim.n > 0 { m |= C_CLAIM; f[0].c_claim[e] = span_val(s, e, c.claim.v[0]); }
+      if c.release > 0 { m |= C_RELEASE; }
+      if c.commit.n > 0 { m |= C_COMMIT; f[0].c_commit[e] = span_val(s, e, c.commit.v[0]); }
+      // by: the by tag, else the claim (model.ts); len -1 when neither
+      f[0].c_by[e] = ifx c.by.n > 0 then span_ref(s, e, c.by.v[0]) else ifx c.claim.n > 0 then f[0].c_claim[e] else Ref.{from = 0, len = -1};
+      f[0].c_marks[e] = m;
+    } else if k >= 1630 && k <= 1633 {
+      ev := store_nt(s, e); st := n34_status(ev);
+      if st.status == N34_OK { f[0].under[e] = fold_issue_of(s, f, nt_raw(ev, st.root.v[0])); }
     }
   }
   for r: 0..<f[0].n { fold_one(s, f, r); }
@@ -407,29 +509,46 @@ is_coord :: (a: string, slug: string) -> bool {
   return a.count == 6 + 64 + 1 + slug.count && starts(a, "30621:") && a[70] == ':' && equal(a[71..<a.count], slug);
 }
 
+// An issue root's slug, as the NIP-34 reader selects it, else its id's first 8 digits.
 slug_of :: (s: [] Store, e: int) -> string {
-  v := tag_value(s, e, "slug");
-  if v.ok { return str(s, v.ref); }
+  ev := store_nt(s, e); i := n34_issue(ev);
+  if i.slug.n > 0 { return span_str(s, e, i.slug.v[0]); }
   return event_id(s, e)[0..<8];
+}
+// The fields of event e (an issue or a revision over one), when its reader admits them.
+Fields :: struct { ok: bool; kind: int; subject: Ref; size: Ref; parent: Ref; }
+fields_of :: (s: [] Store, e: int) -> Fields {
+  out: Fields;
+  ev := store_nt(s, e); fd := n34_fields(ev);
+  if fd.status != N34_OK { return out; }
+  out.ok = true;
+  out.kind = ifx fd.item == N34_INITIATIVE then FK_INITIATIVE else ifx fd.item == N34_MILESTONE then FK_MILESTONE else FK_TASK;
+  if fd.subject.n > 0 { out.subject = span_val(s, e, fd.subject.v[0]); }
+  if fd.size.n > 0 { out.size = span_val(s, e, fd.size.v[0]); }
+  if fd.parent.n > 0 { out.parent = span_val(s, e, fd.parent.v[0]); }
+  return out;
 }
 
 
 // One issue: its fields, status, comments and log lines, as model.ts.
 fold_one :: (s: [] Store, f: [] Fold, r: int) {
   root := f[0].root[r];
-  revision := -1; status := -1;
+  revision := -1; status := -1; fields: Fields;
   for e: 0..<s[0].n {
     if f[0].under[e] != r { continue; }
     k := s[0].kind[e];
-    if k == KIND_COMMENT && tag_has(s, e, "revision", ISSUE_REVISION) && newer(s, e, revision) { revision = e; }
+    // a revision whose fields its reader refuses revises nothing
+    if k == KIND_COMMENT && (f[0].c_marks[e] & C_REVISED) != 0 && newer(s, e, revision) {
+      fe := fields_of(s, e);
+      if fe.ok { revision = e; fields = fe; }
+    }
     if k >= 1630 && k <= 1633 && newer(s, e, status) { status = e; }
   }
   f[0].revised[r] = revision;
   f[0].fields[r] = ifx revision >= 0 then revision else root;
-  f[0].kind[r] = FK_TASK;
-  fe := f[0].fields[r];
-  if tag_has(s, fe, "t", "milestone") { f[0].kind[r] = FK_MILESTONE; }
-  if tag_has(s, fe, "t", "initiative") { f[0].kind[r] = FK_INITIATIVE; }
+  if revision < 0 { fields = fields_of(s, root); }
+  f[0].kind[r] = fields.kind;
+  f[0].subject[r] = fields.subject; f[0].size[r] = fields.size; f[0].parent[r] = fields.parent;
   f[0].status[r] = ifx status >= 0 then s[0].kind[status] - 1630 else ST_OPEN;
   f[0].status_at[r] = ifx status >= 0 then s[0].at[status] else s[0].at[root];
   f[0].status_ev[r] = status;
@@ -437,11 +556,10 @@ fold_one :: (s: [] Store, f: [] Fold, r: int) {
   f[0].plan[r] = -1; f[0].plan_by[r] = Ref.{}; f[0].note[r] = -1;
   f[0].note_from[r] = f[0].notes_n; f[0].note_cnt[r] = 0;
   f[0].rank[r] = Ref.{from = 0, len = -1};
-  if f[0].order >= 0 {
-    o := f[0].order;
-    for t: s[0].tag0[o]..<s[0].tag0[o] + s[0].tags[o] {
-      if s[0].tag_len[t] > 2 && equal(element(s, t, 0), "item") && equal(element(s, t, 1), event_id(s, root)) { f[0].rank[r] = element_ref(s, t, 2); }
-    }
+  // its rank: the order's last item for it (model.ts's Map keeps the last)
+  for k: 0..<f[0].items_n {
+    ev := store_nt(s, f[0].order);
+    if equal(nt_raw(ev, f[0].items[k].id), event_id(s, root)) { f[0].rank[r] = span_val(s, f[0].order, f[0].items[k].rank); }
   }
   log_push(f, s[0].at[root], LOG_OPEN, r, root, Ref.{});
   if revision >= 0 { log_push(f, s[0].at[revision], LOG_REVISE, r, revision, Ref.{}); }
@@ -449,35 +567,32 @@ fold_one :: (s: [] Store, f: [] Fold, r: int) {
   // the workers' comments, oldest first
   comments: [STORE_EVENTS] int; cn := 0;
   for e: 0..<s[0].n {
-    if f[0].under[e] != r || s[0].kind[e] != KIND_COMMENT || has_tag(s, e, "revision") { continue; }
+    if f[0].under[e] != r || s[0].kind[e] != KIND_COMMENT || (f[0].c_marks[e] & C_REVISION) != 0 { continue; }
     k := cn; cn += 1;
     while k > 0 && older(s, e, comments[k - 1]) { comments[k] = comments[k - 1]; k -= 1; }
     comments[k] = e;
   }
   for c: 0..<cn {
     e := comments[c];
-    by := f[0].claimed[r];
-    bv := tag_value(s, e, "by"); cv := tag_value(s, e, "claim");
-    if bv.ok { by = bv.ref; } else if cv.ok { by = cv.ref; }
+    m := f[0].c_marks[e];
+    by := ifx f[0].c_by[e].len >= 0 then f[0].c_by[e] else f[0].claimed[r];
     text := trimmed(content_of(s, e));
-    pv := tag_value(s, e, "plan");
-    if pv.ok && equal(str(s, pv.ref), TASK_PLAN) {
+    if (m & C_PLANNED) != 0 {
       f[0].plan[r] = e; f[0].plan_by[r] = by;
       // one plan line in the log per task: the latest
       for k: 0..<f[0].log_n { if f[0].log_issue[k] == r && f[0].log_type[k] == LOG_PLAN { f[0].log_dead[k] = true; } }
       log_push(f, s[0].at[e], LOG_PLAN, r, e, by);
       continue;
     }
-    claim := has_tag(s, e, "claim"); release := has_tag(s, e, "release");
+    claim := (m & C_CLAIM) != 0; release := (m & C_RELEASE) != 0;
     if claim {
-      f[0].claimed[r] = ifx cv.ok then cv.ref else Ref.{}; f[0].claimed_at[r] = s[0].at[e];
+      f[0].claimed[r] = f[0].c_claim[e]; f[0].claimed_at[r] = s[0].at[e];
       log_push(f, s[0].at[e], LOG_CLAIM, r, e, f[0].claimed[r]);
     } else if release {
       log_push(f, s[0].at[e], LOG_RELEASE, r, e, f[0].claimed[r]);
       f[0].claimed[r] = Ref.{}; f[0].claimed_at[r] = 0;
-    } else if has_tag(s, e, "commit") {
-      mv := tag_value(s, e, "commit");
-      f[0].commit[r] = ifx mv.ok then mv.ref else Ref.{};
+    } else if (m & C_COMMIT) != 0 {
+      f[0].commit[r] = f[0].c_commit[e];
       log_push(f, s[0].at[e], LOG_DONE, r, e, by);
     } else if text.count > 0 {
       log_push(f, s[0].at[e], LOG_NOTE, r, e, by);
@@ -683,28 +798,25 @@ write_tables :: (s: [] Store, f: [] Fold, t: [] Tables) {
     m = alias_into(s, f, out, m, r);
     m = json_raw(out, m, "|"); m = json_raw(out, m, KIND_NAMES[f[0].kind[r]]);
     m = json_raw(out, m, "|"); m = json_raw(out, m, STATUS_NAME[f[0].status[r]]);
-    m = json_raw(out, m, "|"); title := tag_value(s, fe, "subject"); m = cell_into(out, m, ifx title.ok then str(s, title.ref) else "");
-    // the labels: every t tag but initiative and milestone, joined by spaces, then as a cell
-    sn := 0; first := true;
-    for tg: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
-      if s[0].tag_len[tg] < 2 || !equal(element(s, tg, 0), "t") { continue; }
-      l := element(s, tg, 1);
-      if equal(l, "initiative") || equal(l, "milestone") { continue; }
-      if !first { sn = json_raw(t[0].scratch[..], sn, " "); }
-      sn = json_raw(t[0].scratch[..], sn, l); first = false;
+    m = json_raw(out, m, "|"); m = cell_into(out, m, str(s, f[0].subject[r]));
+    // the labels: the reader's (every t but initiative and milestone), joined by spaces, then as a cell
+    ev := store_nt(s, fe);
+    labels: [FOLD_LABELS] NtSpan; ln := n34_labels(ev, labels[..]);
+    sn := 0;
+    for q: 0..<ln {
+      if q > 0 { sn = json_raw(t[0].scratch[..], sn, " "); }
+      sn = json_raw(t[0].scratch[..], sn, span_str(s, fe, labels[q]));
     }
+    if ln < 0 { t[0].complete = false; }
     m = json_raw(out, m, "|"); m = cell_into(out, m, ifx sn > 0 then cast(string) t[0].scratch[0..<sn] else "");
-    size := tag_value(s, fe, "size");
-    m = json_raw(out, m, "|"); m = cell_into(out, m, ifx size.ok then str(s, size.ref) else "");
+    m = json_raw(out, m, "|"); m = cell_into(out, m, str(s, f[0].size[r]));
     m = json_raw(out, m, "|"); m = cell_into(out, m, str(s, f[0].claimed[r]));
     m = json_raw(out, m, "|");
-    parent := tag_value(s, fe, "parent");
-    if parent.ok { p := fold_issue_of(s, f, str(s, parent.ref)); if p >= 0 { m = alias_into(s, f, out, m, p); } }
+    if f[0].parent[r].len > 0 { p := fold_issue_of(s, f, str(s, f[0].parent[r])); if p >= 0 { m = alias_into(s, f, out, m, p); } }
     m = json_raw(out, m, "|");
-    first = true;
-    for tg: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
-      if s[0].tag_len[tg] < 2 || !equal(element(s, tg, 0), "blocked-by") { continue; }
-      b := fold_issue_of(s, f, element(s, tg, 1));
+    first := true;
+    for q: 0..<nt_tags(ev, "blocked-by") {
+      b := fold_issue_of(s, f, nt_raw(ev, nt_tag(ev, "blocked-by", q).v[0]));
       if b < 0 { continue; }
       if !first { m = json_raw(out, m, " "); }
       m = alias_into(s, f, out, m, b); first = false;
@@ -766,8 +878,7 @@ write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
       n = json_raw(w, n, trimmed(content_of(s, e)));
     } else if ty == LOG_DONE {
       // Historical rows describe this event, not the issue's latest commit.
-      commit := tag_value(s, e, "commit");
-      c := ifx commit.ok then str(s, commit.ref) else "";
+      c := str(s, f[0].c_commit[e]);
       n = json_raw(w, n, "DONE IN "); n = json_raw(w, n, c[0..<(ifx c.count > 10 then 10 else c.count)]);
       if who.count > 0 { n = json_raw(w, n, " BY "); n = json_raw(w, n, who); }
     } else if ty == LOG_CLAIM {
@@ -782,8 +893,7 @@ write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
       n = json_raw(w, n, " OF "); n = int_into(w, n, f[0].steps[r], 1); n = json_raw(w, n, " DONE");
     }
     n = json_raw(w, n, " - ");
-    title := tag_value(s, f[0].fields[r], "subject");
-    n = cell_into(w, n, ifx title.ok then str(s, title.ref) else "");
+    n = cell_into(w, n, str(s, f[0].subject[r]));
     if n < 0 { t[0].complete = false; continue; }
     m = chicago_into(out, m, f[0].log_at[best], true);
     m = json_raw(out, m, "|");

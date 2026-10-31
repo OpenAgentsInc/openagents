@@ -26,7 +26,7 @@ for(let i=0;i<155;i++) {
   else tags.push(['parent',issues[1].id])
   const issue=sign(1621,1000+i,tags,`Body ${i}.\n\n## Acceptance\n- Check ${i}`);issues.push(issue);events.push(issue)
 }
-const comment=(at:number,index:number,tags:string[][],body:string)=>sign(1111,at,[['E',issues[index].id],['K','1621'],['P',pk],...tags],body)
+const comment=(at:number,index:number,tags:string[][],body:string)=>sign(1111,at,[['E',issues[index].id],['K','1621'],['P',pk],['e',issues[index].id],['k','1621'],['p',pk],...tags],body)
 events.push(comment(2000,2,[['claim','old-worker'],['by','old-worker']],'Taking it'),comment(2001,2,[['plan',TASK_PLAN],['by','old-worker']],'- [x] read\n- [>] implement'),sign(1631,2002,[['e',issues[3].id,'','root']]))
 for(let i=0;i<180;i++)events.push(comment(10000+i,4+i%151,[['by','notes-worker']],`Note ${i}`))
 for(let i=0;i<120;i++)events.push(sign(1630,11000+i,[['e',issues[4+i%151].id,'','root']]))
@@ -195,7 +195,7 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     expect(Buffer.byteLength(current.tables[1])).toBe(45*1024)
     expect(Buffer.byteLength(current.tables[1])).toBeGreaterThan(16384)
     expect(Buffer.byteLength(current.tables[1])).toBeLessThanOrEqual(65536)
-    const update=sign(1111,60000,[['E',fixture.roots[4].id],['K','1621'],['P',pk],['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
+    const update=sign(1111,60000,[['E',fixture.roots[4].id],['K','1621'],['P',pk],['e',fixture.roots[4].id],['k','1621'],['p',pk],['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
     fixtureRows.push(update)
     for(const socket of sockets)for(const request of socket.data.subs.values()){const lines=answer(request,[update],{cap:37});if(lines.length>1)socket.send(lines[0])}
     await waitFor(2)
@@ -275,7 +275,7 @@ function capacityInventory(count:number) {
     // still occupy inventory rows and retain their complete signed history.
     if(i>=112)rows.push(sign(i%2===0?1631:1632,10000+i,[['e',issue.id,'','root']]))
   }
-  const onFirst=(at:number,tags:string[][],body:string)=>sign(1111,at,[['E',roots[2].id],['K','1621'],['P',pk],...tags],body)
+  const onFirst=(at:number,tags:string[][],body:string)=>sign(1111,at,[['E',roots[2].id],['K','1621'],['P',pk],['e',roots[2].id],['k','1621'],['p',pk],...tags],body)
   rows.push(onFirst(20000,[['claim','capacity-worker'],['by','capacity-worker']],'Taking the inventory task'))
   rows.push(onFirst(20001,[['plan',TASK_PLAN],['by','capacity-worker']],'- [x] read\n- [>] implement\n- [ ] verify'))
   rows.push(onFirst(20002,[['by','capacity-worker']],'The completed history remains present.'))
@@ -318,7 +318,7 @@ function planProjectionInventory(targetBytes:number) {
   if(padding<fields.length)throw Error('plan fixture target is too small for meaningful step text')
   const each=Math.floor(padding/fields.length),remainder=padding%fields.length
   const texts=fields.map((field,index)=>field.prefix+'x'.repeat(each+(index<remainder?1:0)))
-  const plans=planned.map((issue,i)=>sign(1111,50000+i,[['E',issue.id],['K','1621'],['P',pk],['plan',TASK_PLAN],['by','history-worker']],
+  const plans=planned.map((issue,i)=>sign(1111,50000+i,[['E',issue.id],['K','1621'],['P',pk],['e',issue.id],['k','1621'],['p',pk],['plan',TASK_PLAN],['by','history-worker']],
     texts.slice(i*4,i*4+4).map(text=>'- [x] '+text).join('\n')))
   const rows=[...base.rows,...plans],oracle=expected(rows)
   const independentlySized=Buffer.byteLength(initial.plans)+fields.reduce((n,field,index)=>n+initial.alias.get(field.issue.id)!.length+4+Buffer.byteLength(texts[index]),0)

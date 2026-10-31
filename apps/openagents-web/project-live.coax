@@ -169,7 +169,7 @@ live_scoped_issue :: (l: [] Live, e: int) -> bool {
 live_collect_known :: (l: [] Live) -> bool {
   st := l[0].store[..]; order := -1; roots := 0;
   for e: 0..<st[0].n {
-    if st[0].kind[e] == KIND_ORDER && tag_has(st, e, "d", live_slug(l)) && newer(st, e, order) { order = e; }
+    if st[0].kind[e] == KIND_ORDER && addressed(st, e, live_slug(l)) && newer(st, e, order) { order = e; }
     if live_scoped_issue(l, e) { roots += 1; if roots > FOLD_ISSUES || !live_known_add(l, event_id(st, e)) { return false; } }
   }
   if order < 0 { return false; }

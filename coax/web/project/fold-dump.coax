@@ -1,0 +1,55 @@
+// What project-fold.coax makes of a relay transcript: every issue's folded
+// state (task, kind, status, claim, plan, rank, commit, notes), the log, and
+// the five tables, as text. Two builds of it over the same frames (an older
+// fold and a newer one) diff the folds; see
+// docs/verification/2026-10-31-project-fold-typed.md.
+//   coax/web/tool.sh coax/web/project/fold-dump.coax FRAMES.jsonl PUBKEY SLUG
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../../apps/openagents-web/project-fold.coax";
+
+FD_INPUT :: 33554432;
+
+fd_ref :: (s: [] Store, r: Ref) -> string { return ifx r.len <= 0 then "" else str(s, r); }
+fd_ev :: (s: [] Store, e: int) -> string { return ifx e < 0 then "-" else event_id(s, e); }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: fold-dump FRAMES.jsonl PUBKEY SLUG"); return 2; }
+  text: [FD_INPUT] u8;
+  n := fs_read(args_at(a[..], 0), text[..]);
+  if n < 0 { tool_errln("fold-dump: cannot read the frames"); return 1; }
+  pubkey := args_at(a[..], 1); slug := args_at(a[..], 2);
+  s: [1] Store; f: [1] Fold; t: [1] Tables;
+  store_clear(s[..]);
+  frames := 0; eose := 0; i := 0; all := cast(string) text[0..<n];
+  while i < all.count {
+    e := i; while e < all.count && all[e] != 10 { e += 1; }
+    if e > i { fr := read_frame(s[..], all[i..<e], pubkey); frames += 1; if fr.type == FRAME_EOSE { eose += 1; } }
+    i = e + 1;
+  }
+  print("frames % eose % events % dropped % overflow %\n", frames, eose, s[0].n, s[0].dropped, s[0].overflow);
+  fold(s[..], f[..], slug);
+  print("project % order % repo %\n", fd_ev(s[..], f[0].project), fd_ev(s[..], f[0].order), fd_ev(s[..], f[0].repo));
+  print("issues %\n", f[0].n);
+  for r: 0..<f[0].n {
+    print("issue % slug % kind % status % at % status_ev % revision % fields %\n", event_id(s[..], f[0].root[r]), slug_of(s[..], f[0].root[r]),
+      f[0].kind[r], STATUS_NAME[f[0].status[r]], f[0].status_at[r], fd_ev(s[..], f[0].status_ev[r]), fd_ev(s[..], f[0].revised[r]), event_id(s[..], f[0].fields[r]));
+    print("  claimed '%' at % commit '%' rank '%' alias %\n", fd_ref(s[..], f[0].claimed[r]), f[0].claimed_at[r], fd_ref(s[..], f[0].commit[r]),
+      ifx f[0].rank[r].len < 0 then "<none>" else fd_ref(s[..], f[0].rank[r]), f[0].alias[r]);
+    print("  plan % by '%' steps % done % note % notes %\n", fd_ev(s[..], f[0].plan[r]), fd_ref(s[..], f[0].plan_by[r]), f[0].steps[r], f[0].steps_done[r],
+      fd_ev(s[..], f[0].note[r]), f[0].note_cnt[r]);
+    for c: 0..<f[0].note_cnt[r] { j := f[0].note_from[r] + c; print("    note % by '%'\n", event_id(s[..], f[0].notes_ev[j]), fd_ref(s[..], f[0].notes_by[j])); }
+  }
+  print("log %\n", f[0].log_n);
+  for k: 0..<f[0].log_n {
+    print("  % type % issue % ev % who '%' dead %\n", f[0].log_at[k], f[0].log_type[k], f[0].log_issue[k], fd_ev(s[..], f[0].log_ev[k]), fd_ref(s[..], f[0].log_who[k]), f[0].log_dead[k]);
+  }
+  write_tables(s[..], f[..], t[..]);
+  print("complete %\n", t[0].complete);
+  print("=====\nITEMS\n%=====\nLOG\n%=====\nPLANS\n%=====\nINFO\n%=====\nDETAILS\n%", cast(string) t[0].items[0..<t[0].items_n],
+    cast(string) t[0].log[0..<t[0].log_n], cast(string) t[0].plans[0..<t[0].plans_n], cast(string) t[0].info[0..<t[0].info_n],
+    cast(string) t[0].details[0..<t[0].details_n]);
+  return 0;
+}
