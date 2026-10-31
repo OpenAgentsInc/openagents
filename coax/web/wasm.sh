@@ -10,6 +10,20 @@ set -euo pipefail
 coax_file="$1"; face="$2"; out="$3"; shift 3
 libraries=("$@")
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
+# Coax sources by their path in the repository (apps/openagents-web/x.coax),
+# never the checkout's absolute path: the C embeds source paths for its
+# runtime messages, so a module built in any checkout or temporary release
+# tree has the same bytes and the same content-named URL (2026-10-30: every
+# release renamed every engine and players downloaded them again).
+relative() {
+  local p; p="$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")"
+  local r; r="$(cd "$repo" && pwd -P)"
+  [[ "$p" == "$r"/* ]] && echo "${p#"$r"/}" || echo "$p"
+}
+coax_file="$(relative "$coax_file")"
+for i in ${libraries[@]+"${!libraries[@]}"}; do libraries[i]="$(relative "${libraries[i]}")"; done
+face="$(cd "$(dirname "$face")" && pwd)/$(basename "$face")"
+mkdir -p "$(dirname "$out")"; out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
 source "$repo/coax/web/toolchain.sh"
 clang="$COAXIAL_CLANG"; sysroot="$COAXIAL_SYSROOT"; resources="$COAXIAL_RESOURCES"
 name="$(basename "$coax_file" .coax)"
@@ -22,7 +36,7 @@ trap 'rm -rf "$work"' EXIT
 # COAXIAL_RUN_STEPS: a larger compile-time budget (coax --run-steps) for libraries whose
 # tables are computed at compile time (secp256k1 signing, for /login's words account).
 run_steps=(); [[ -n "${COAXIAL_RUN_STEPS:-}" ]] && run_steps=(--run-steps "$COAXIAL_RUN_STEPS")
-"$repo/coax/bin/coax" c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"} > "$work/$name.c"
+(cd "$repo" && coax/bin/coax c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$name.c"
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
 # links without the optimizer pass, for the fastest edit-to-screen loop;
@@ -37,7 +51,7 @@ objects=("$work/$name.o" "$work/$name.face.o")
 pids=()
 for library in ${libraries[@]+"${libraries[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-  "$repo/coax/bin/coax" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"} > "$work/$base.c"
+  (cd "$repo" && coax/bin/coax c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c"
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o" & pids+=($!)
   objects+=("$work/$base.o")
 done
