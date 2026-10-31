@@ -1,9 +1,11 @@
 # Replace the fresh controller sample with owned queries
 
-Status: owned sample construction and held-state paired-controller proofs are
-qualified. The opt-in SDK driver switch and recorded-command prefix remain
-planned. The genuine GR00T/LIBERO evaluation still uses MuJoCo; these proofs
-neither step a new policy episode nor qualify an owned simulator.
+Status: owned construction, held-state paired controllers, and the
+[explicit query selector with two recorded-action SDK prefixes](../../fixtures/robotics/panda-query-source/README.md)
+are qualified. The full neural runner retains its original SDK query path and
+needs separate provider wiring. The new prefixes recompute every control and
+step the SDK 500 times in total; they run no NN or renderer and qualify no owned
+integrator, contact backend, task-success score or hardware command.
 
 The [FK](../../fixtures/robotics/panda-fk/README.md),
 [finger branches](../../fixtures/robotics/panda-fingers/README.md),
@@ -74,13 +76,19 @@ its historical receipt is not a newly generated execution record.
    identical home, action and goal-update inputs. Freeze that corpus and its
    output/state budgets before running it. Preserve singular/refused cases;
    near-identical sample values are not themselves controller parity.
-4. **Pending:** add an opt-in owned-query path to the existing SDK driver. The host reads
-   coordinates/rates and performs effects; Coax selects and assembles the
-   sample. A bounded recorded-command prefix qualifies the changed adapter
-   and its ordering. It is not a new learned-policy success score.
+4. **Delivered first shadow profile:** the additive `PandaRobotStateV1` effect
+   reads nine named qpos and nine separately named DOF velocities. Coax selects
+   the sample and refuses without fallback. Two 250-step recorded-action SDK
+   prefixes qualify fresh control queries after forward and cached requests
+   before forward, with all 1,000 selected/shadow controller calls successful.
+   Telemetry stays unchanged; SDK geometry, integration and contact remain.
+5. **Pending:** wire the explicit selector into the full neural runner, retaining
+   its declared observation, clock and command contracts. This needs its own
+   changed-context learned-policy qualification, not a repeated old episode.
 
-Only then use the mass solve and velocity-dependent bias to qualify owned
-forward dynamics, followed by the declared integrator/passive-force and
-contact contracts. Observation rendering, full snapshots, typed clocks and
+The [unconstrained applied-force query](../../fixtures/robotics/panda-forward-dynamics/README.md)
+separately composes the mass solve and velocity-dependent bias. It does not
+convert controller finger-position targets to force. The declared integrator,
+passive-force, actuator-mapping and contact contracts remain future work. Observation rendering, full snapshots, typed clocks and
 compiler-enforced bounded control keep their separate gates in the
 [remaining sequence](owned-control-loop.md).

@@ -307,6 +307,25 @@ Historical execution is not relabelled as fresh; differing compiler artifacts
 require a new qualification. Driver selection, SDK-stepped prefixes and whole
 closed-loop outcomes retain their separate evidence.
 
+## Query selection preserves the SDK ABI and the two observation generations
+
+The admitted Coax selector explicitly chooses SDK or owned controller math,
+requires both effects and finite full shadow transports, then validates only
+the selected mathematical sample. Owned refusal never falls back. SDK sample
+admission checks numbers, pose and actuator limits; it is not an SPD proof.
+Published 173-word Telemetry remains unchanged; additive RobotStateV1 copies
+nine named qpos and independently addressed DOF velocities without forwarding.
+
+Cached request observations precede explicit forward. Selected/shadow controller
+samples follow successful forward, use the same current state and maintain
+separate controller state. The two new recorded-action prefixes recompute every
+control; they never copy old actuator words. Their 500 SDK steps, 1000 successful
+normal controller calls and exact scheduling fields have separate frozen
+numerical budgets. Full neural provider wiring is still pending. SDK shadow
+geometry, integration/contact and scene effects remain, with no owned simulator,
+passive/fluid solver, hardware or compiler boundedness claim. The actual SDK
+prefix is explicit opt-in with authenticated assets, never a default gate.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

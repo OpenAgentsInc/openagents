@@ -1454,6 +1454,94 @@ semantics and its own replay/task-result qualification. Held calls alone make
 no stability, real-time, hardware-safety or complete-simulator claim.
 
 
+## Choosing the owned query source without changing the plant
+
+The control loop can now choose the sample computed by our fixed Coax Panda
+model. A new versioned platform effect copies all nine named coordinates and
+rates. Coax owns the source choice, finite/shape/effect admission and sample
+construction. The two modes are explicit; an owned refusal stops the path
+instead of quietly using SDK geometry.
+
+Both SDK telemetry and the additive `PandaRobotStateV1` effect remain required.
+All 173 telemetry words and 18 coordinate/rate words must be finite; only the
+selected sample then receives mathematical admission. SDK `pc_sample` checks
+number bounds, rotation and actuator limits; it does not prove mass positive
+definiteness. Matrix inversion is checked later by controller reset/step.
+The published `PandaTelemetry` layout stays unchanged.
+
+The first profile deliberately retains the SDK as integrator and shadow
+query provider. It collects cached request observations before forwarding,
+then obtains fresh control data after the explicit forward. Keeping those
+stages preserves the existing mixed-age observation contract. This first
+integration does not remove the SDK geometry queries.
+
+The teaching example queries a geometric zero pose. The first hinge turns
+at 0.5 rad/s, with a 0.088 m world-X grip lever arm: world-Y speed is
+0.044 m/s and world-Z angular rate is 0.5 rad/s.
+Joint4=0 is outside its physical soft range. This is geometry, not a motor
+command or a hardware-valid configuration.
+
+<!-- source: psionic/examples/panda-query-source.coax select -->
+```jai
+ // Version1transport: seven arm radians, two finger metres; matching rates.
+ sdk:[173]u64;q:[9]u64;v:[9]u64;v[0]=f64_bits(0.5);sample:[1]PcSample;
+ // Zero SDK telemetry is finite but its zero rotation is invalid. Owned
+ // selection admits only its own mathematical sample after common checks.
+ r:=pqs_select(1,sdk[..],q[..],v[..],0,0,sample[..]);#assert r.code==PqsCode.ok;
+ #assert abs(sample[0].velocity[1]-0.044)<0.000000000000002 && abs(sample[0].velocity[5]-0.5)<0.000000000000002;
+ print("grip SITE world Y (um/s): %\n",panda_query_micro(sample[0].velocity[1]));
+ print("world angular Z (urad/s): %\n",panda_query_micro(sample[0].velocity[5]));
+ r=pqs_select(0,sdk[..],q[..],v[..],0,0,sample[..]);#assert r.code==PqsCode.sample;
+ print("SDK invalid rotation: refused\n");
+ r=pqs_select(1,sdk[..],q[..],v[..],0,1,sample[..]);#assert r.code==PqsCode.effect;
+ print("failed robot effect: refused\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-query-source.coax
+psionic/check.sh --only robotics/panda-query-source
+```
+
+A frozen, independently prewritten transcript checks those rates. New native
+selector checks matched 4,320 SDK/owned field words in each of debug, release and fail-fast
+ASan+UBSan builds, with 5,595 assertions per mode; all 97 actual emitted new root
+mutants were killed. The native numerical profile is Darwin arm64 scalar libm,
+with no fast math or contraction; unsupported targets refuse rather than skip.
+The original sample and controller gates were carried from their existing
+receipts rather than rerun.
+
+The meaningful integration check uses the same authenticated reset and
+recorded actions twice, recomputing all controller outputs. One new 250-step
+prefix uses SDK samples; the other uses owned samples. At each actual state,
+the opposite-source controller runs as an independent shadow. All 1,000
+selected/shadow calls returned OK. The independent trajectories agreed to
+1.87e-12 in applied arm torque, 1.34e-15 across qpos words and 7.25e-14 across
+qvel words; gripper commands and request F32 observations were bit-identical.
+The predeclared budgets were 1e-6, 1e-8 and 1e-7 respectively. Clock/action/flag
+records, source stamps, ready state and clip counts matched exactly.
+
+These 500 new SDK steps are a short controlled prefix with no NN, renderer, task
+success or hardware claim. The full neural host still needs explicit wiring
+to select this provider. SDK integration/contact and geometry effects remain;
+removing those needs separate owned-backend work. Source-visible low-level
+helpers still have trusted preconditions; only the exported selector supplies
+this admission contract. Full records and frozen budgets are in
+[the query-source fixtures](../fixtures/robotics/panda-query-source/README.md).
+
+The SDK prefix is an explicit opt-in gate, never part of the default selector
+check. Supply the exact authenticated scene/reset pair, recorded action trace
+and a new persistent output directory. Preparation freezes source/C/header/binary
+identities before the execution phase. The current proof pins its qualified
+compiler and MuJoCo 3.3.1 SDK identities; a changed profile needs new qualification.
+
+```shell
+PSIONIC_PANDA_SCENE="$PANDA_SCENE" \
+PSIONIC_PANDA_INITIAL_STATE="$PANDA_INITIAL" \
+PSIONIC_PANDA_QUERY_TRACE="$PANDA_TRACE" \
+PSIONIC_PANDA_QUERY_OUTPUT=/tmp/NEW-panda-query-prefix \
+  psionic/check.sh --only robotics/panda-query-source-sdk
+```
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

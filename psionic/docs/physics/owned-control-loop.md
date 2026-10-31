@@ -71,8 +71,14 @@ Passive forces, contacts, actuator mapping and integration remain separate;
 a gravity-only query cannot replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The
-next step is the opt-in SDK-query adapter and a short recorded-command prefix;
-no live driver switch, stepped prefix or new owned whole episode is yet claimed. The source-visible low-level
+[explicit query selector and opt-in adapter](../../fixtures/robotics/panda-query-source/README.md)
+now qualify two 250-step recorded-action prefixes: SDK-selected and owned-selected,
+with independent opposite-source controller state at every actual state. All
+1,000 normal controller calls succeed. Cached observations still precede forward;
+fresh control queries follow it. SDK shadow geometry, integration and contact
+remain. The next step is explicit provider wiring into the full neural runner,
+which still uses its original SDK path; no new neural or owned-solver episode
+is yet claimed. The source-visible low-level
 profile/pose helpers remain trusted inputs rather than an arbitrary-POD admission
 API. Moving finger inertias cannot be omitted from the arm mass block.
 The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)

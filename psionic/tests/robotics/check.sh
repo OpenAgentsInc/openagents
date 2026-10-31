@@ -4,8 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
-units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian panda-fingers-profile panda-fingers-chain panda-inertia-profile panda-inertia-math panda-inertia panda-inverse-dynamics-math panda-inverse-dynamics-motion panda-inverse-dynamics-force panda-inverse-dynamics panda-mass-solve-math panda-mass-solve-basis panda-mass-solve panda-forward-dynamics-net panda-forward-dynamics panda-owned-sample)
-optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-loop-metal)
+units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian panda-fingers-profile panda-fingers-chain panda-inertia-profile panda-inertia-math panda-inertia panda-inverse-dynamics-math panda-inverse-dynamics-motion panda-inverse-dynamics-force panda-inverse-dynamics panda-mass-solve-math panda-mass-solve-basis panda-mass-solve panda-forward-dynamics-net panda-forward-dynamics panda-owned-sample panda-query-source)
+optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-query-source-sdk panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
     --jobs) [[ $# -ge 2 && $2 =~ ^[1-9][0-9]*$ ]] || exit 2;jobs=$2;shift 2;;
@@ -29,14 +29,14 @@ if [[ ${#requested[@]} == 0 ]];then requested=(robotics);fi
 for unit in "${units[@]}";do for pick in "${requested[@]}";do if [[ $pick == robotics || $pick == "$unit" ]];then chosen+=("$unit");break;fi;done;done
 for unit in "${optins[@]}";do for pick in "${requested[@]}";do if [[ $pick == "$unit" ]];then explicit+=("$unit");break;fi;done;done
 if [[ $list == 1 ]];then
-  for unit in "${chosen[@]}";do if [[ $unit == panda-forward-dynamics ]];then echo "Darwin-arm64-native: $unit";else echo "portable: $unit";fi;done
+  for unit in "${chosen[@]}";do if [[ $unit == panda-forward-dynamics || $unit == panda-query-source ]];then echo "Darwin-arm64-native: $unit";else echo "portable: $unit";fi;done
   for unit in "${explicit[@]}";do echo "opt-in: $unit";done
   exit 0
 fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/psionic-robotics.XXXXXXXX");trap 'rm -rf "$work"' EXIT
 core=0;example=0;metal=0;vision=0;text=0;action=0;action_plan=0;native_groups=0;optin_gates=0
 for unit in "${chosen[@]}";do
-  unit_flags=();if [[ $unit == panda-owned-sample || $unit == panda-forward-dynamics* || $unit == panda-mass-solve* || $unit == panda-inverse-dynamics* || $unit == panda-jacobian-math || $unit == panda-inertia || $unit == panda-inertia-math || $unit == panda-inertia-profile ]];then unit_flags=(--library);fi
+  unit_flags=();if [[ $unit == panda-owned-sample || $unit == panda-query-source || $unit == panda-forward-dynamics* || $unit == panda-mass-solve* || $unit == panda-inverse-dynamics* || $unit == panda-jacobian-math || $unit == panda-inertia || $unit == panda-inertia-math || $unit == panda-inertia-profile ]];then unit_flags=(--library);fi
   "$coax" test "psionic/lib/robotics/$unit.coax" "${unit_flags[@]}"
   "$coax" test "psionic/lib/robotics/$unit.coax" --release "${unit_flags[@]}"
   if [[ $mutate == 1 ]];then
@@ -62,6 +62,7 @@ for unit in "${chosen[@]}";do
       python3 psionic/tests/robotics/panda_owned_sample_cache_alias_checks.py --qualified "$work/panda-owned-sample" --output "$work/panda-owned-sample-alias"
       CC="${COAX_CC:-${CC:-cc}}" python3 psionic/tests/robotics/panda_owned_controller_reference.py --qualified-samples "$work/panda-owned-sample-alias/alias" --output "$work/panda-owned-controller"
       native_groups=$((native_groups+2));;
+    panda-query-source) CC="${COAX_CC:-${CC:-cc}}" python3 psionic/tests/robotics/panda_query_source_native_reference.py --compiler "$coax" --output "$work/panda-query-source";native_groups=$((native_groups+1));;
     panda-forward-dynamics) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_forward_dynamics_check.sh "$work/panda-forward-dynamics";native_groups=$((native_groups+1));;
     panda-mass-solve) python3 psionic/tests/robotics/panda_mass_solve_guard_checks.py;COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_mass_solve_check.sh "$work/panda-mass-solve";native_groups=$((native_groups+1));;
     panda-inverse-dynamics) "$coax" test psionic/tests/robotics/panda_inverse_dynamics_unit_checks.coax --only "Panda inverse force dimensions";COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_inverse_dynamics_check.sh "$work/panda-inverse-dynamics";native_groups=$((native_groups+1));;
@@ -88,9 +89,15 @@ if [[ $example == 1 ]];then
   cmp psionic/fixtures/imitation-before-robotics-scale.out "$work/example-release.out"
 fi
 for unit in "${explicit[@]}";do
+  if [[ $unit == panda-query-source-sdk && ( $(uname -s) != Darwin || $(uname -m) != arm64 ) ]];then echo "$unit requires its qualified Darwin-arm64 SDK profile; it is not skipped" >&2;exit 2;fi
   if [[ $unit != groot-linear-original && $unit != panda-control-original && $(uname -s) != Darwin ]];then echo "$unit requires a compatible Apple Metal GPU; it is not skipped" >&2;exit 2;fi
   case "$unit" in
     panda-control-original) COAX="$coax" COAX_CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-control.sh "${PSIONIC_PANDA_CONTROLLER_FIXTURES:?set PSIONIC_PANDA_CONTROLLER_FIXTURES to source PcSample captures}" "$work/panda-control-original";;
+    panda-query-source-sdk)
+      query_args=(--compiler "$coax" --xml "${PSIONIC_PANDA_SCENE:?set PSIONIC_PANDA_SCENE to the authenticated scene XML}" --initial "${PSIONIC_PANDA_INITIAL_STATE:?set PSIONIC_PANDA_INITIAL_STATE to the matching45F64 reset}" --trace "${PSIONIC_PANDA_QUERY_TRACE:?set PSIONIC_PANDA_QUERY_TRACE to the authenticated original action trace}" --output "${PSIONIC_PANDA_QUERY_OUTPUT:?set PSIONIC_PANDA_QUERY_OUTPUT to a NEW persistent output directory}")
+      if [[ -n ${PSIONIC_PANDA_QUERY_SDK:-} ]];then query_args+=(--SDK "$PSIONIC_PANDA_QUERY_SDK");fi
+      CC="${COAX_CC:-${CC:-cc}}" python3 psionic/tests/robotics/panda_query_source_prefix_reference.py "${query_args[@]}" --prepare-only
+      CC="${COAX_CC:-${CC:-cc}}" python3 psionic/tests/robotics/panda_query_source_prefix_reference.py "${query_args[@]}" --execute-prepared;;
     panda-env-sdk) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-env-sdk.sh "${PSIONIC_PANDA_SCENE:?set PSIONIC_PANDA_SCENE to an audited original XML}" "${PSIONIC_PANDA_INITIAL_STATE:?set PSIONIC_PANDA_INITIAL_STATE to its matching45F64 state}" "$work/panda-env-sdk";;
     panda-loop-metal)
       read -r -a panda_demo_ids <<< "${PSIONIC_PANDA_DEMOS:-001}"

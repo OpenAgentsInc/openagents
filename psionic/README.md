@@ -383,5 +383,11 @@ assembles the existing 144-word ABI from one admitted state. Its
 A separate [paired controller proof](fixtures/robotics/panda-owned-controller/README.md)
 checks output/state/clipping at held observations; it is not a stepped episode.
 Run `psionic/check.sh --only robotics/panda-owned-sample` for the focused source,
-native-field and paired-controller gates. The SDK driver opt-in prefix remains
-the next adapter integration.
+native-field and paired-controller gates. The [query-source selector](fixtures/robotics/panda-query-source/README.md)
+now chooses SDK or owned samples without fallback, with a [teaching example](examples/panda-query-source.coax)
+and `psionic/check.sh --only robotics/panda-query-source`. Two explicit opt-in
+250-step SDK prefixes recompute controls from recorded actions; all 1,000 selected
+and shadow calls succeed within frozen budgets. The unchanged Telemetry ABI and
+additive named q/rate effect preserve cached observations before fresh forward.
+The full neural runner still uses its previous SDK query path; wiring that
+selector is next. SDK geometry, integration and contact remain in this profile.
