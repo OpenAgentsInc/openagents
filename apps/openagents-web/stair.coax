@@ -37,8 +37,11 @@ CELL_FLOOR :: 0; CELL_PATH :: 1; CELL_DEFENDER :: 2; CELL_DOOR :: 3; CELL_TOP ::
 // The stair: waypoints (column, row) from the cellar door to the tower top.
 
 // ---- the bubble-beasts (original creatures, stat blocks in the SRD's terms)
-MOTE :: 0; WISP :: 1; GLIMMER :: 2; EMBER :: 3; LAYERS :: 4;
-LAYER_NAME :: [4] string.["MOTE", "WISP", "GLIMMER", "EMBER"];
+MOTE :: 0; WISP :: 1; GLIMMER :: 2; EMBER :: 3; FROSTLING :: 4; IRONSKIN :: 5; SHADOW :: 6; HULK :: 7; LAYERS :: 8;
+LAYER_NAME :: [8] string.["MOTE", "WISP", "GLIMMER", "EMBER", "FROSTLING", "IRONSKIN", "SHADOW", "HULK"];
+// A wisp resists cold; an ember is immune to fire, a frostling to cold; an ironskin resists slashing,
+// piercing and bludgeoning from non-magical attacks (every weapon here is); a hulk regenerates.
+HULK_REGEN :: 2.0;   // hit points a second
 // What each pops into: up to two inner layers (-1 none).
 
 // ---- the party (SRD 5.2.1 classes at level 1)
@@ -120,7 +123,7 @@ MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; path: int; }
+Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; path: int; regen: f32; }
 Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
   level: int; surge: bool; slots2: int; bless: int;
@@ -440,15 +443,25 @@ spawn :: (s: [] Stair, kind: int, d: f32) -> int {
   }
   return -1;
 }
+// A hulk knits back up to its full hit points.
+regen :: (s: [] Stair, i: int, dt: f32) {
+  if s[0].beasts[i].kind != HULK { return; }
+  s[0].beasts[i].regen += dt * f32(HULK_REGEN);
+  while s[0].beasts[i].regen >= 1 {
+    s[0].beasts[i].regen -= 1;
+    s[0].beasts[i].hp = lo_i(s[0].beasts[i].hp + 1, s[0].ct[0].hp[HULK]);
+  }
+}
 live_beasts :: (s: [] Stair) -> int { n := 0; for i: 0..<BEASTS { if s[0].beasts[i].live { n += 1; } } return n; }
 
 // A beast loses `amount` of `kind` damage: immunities and resistances first; at 0 it pops.
 hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int) {
   b := s[0].beasts[i];
   p := beast_xy(s, i);
-  if b.kind == EMBER && kind == DMG_FIRE { add_fx(s, FX_IMMUNE, p.x, p.y, 0, 0, 0.9, 0, 1, 0.45, 0.45, false); return; }
+  if (b.kind == EMBER && kind == DMG_FIRE) || (b.kind == FROSTLING && kind == DMG_COLD) { add_fx(s, FX_IMMUNE, p.x, p.y, 0, 0, 0.9, 0, 1, 0.45, 0.45, false); return; }
   dealt := amount;
   if b.kind == WISP && kind == DMG_COLD { dealt = amount / 2; }
+  if b.kind == IRONSKIN && (kind == DMG_SLASHING || kind == DMG_PIERCING || kind == DMG_BLUDGEONING) { dealt = amount / 2; }
   if by >= 0 { s[0].party[by].dealt = dealt; }
   add_fx(s, FX_NUM, p.x, p.y, 0, 0, 0.9, dealt, 1, 0.16, 0.1, crit);
   s[0].beasts[i].hp -= dealt;
@@ -461,6 +474,9 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
   r := Rule.{what = RULE_POP, wave = s[0].wave, kind = b.kind, d = b.d, by = by};
   if s[0].ct[0].inner_a[b.kind] >= 0 { r.a = spawn(s, s[0].ct[0].inner_a[b.kind], b.d + 0.12); r.what = RULE_SPLIT; if r.a >= 0 { s[0].beasts[r.a].path = b.path; } }
   if s[0].ct[0].inner_b[b.kind] >= 0 { r.b = spawn(s, s[0].ct[0].inner_b[b.kind], hi(b.d - 0.12, 0)); r.what = RULE_SPLIT; if r.b >= 0 { s[0].beasts[r.b].path = b.path; } }
+  // a hulk's four
+  if s[0].ct[0].inner_c[b.kind] >= 0 { j := spawn(s, s[0].ct[0].inner_c[b.kind], b.d + 0.36); if j >= 0 { s[0].beasts[j].path = b.path; } }
+  if s[0].ct[0].inner_d[b.kind] >= 0 { j := spawn(s, s[0].ct[0].inner_d[b.kind], hi(b.d - 0.36, 0)); if j >= 0 { s[0].beasts[j].path = b.path; } }
   s[0].rules[s[0].rules_n % RULES_LOG] = r; s[0].rules_n += 1;
 }
 
@@ -901,6 +917,7 @@ step :: (s: [] Stair, dt: f32) {
     s[0].beasts[i].d += s[0].ct[0].speed[s[0].beasts[i].kind] * dt;
     s[0].beasts[i].wob += dt * 3;
     s[0].beasts[i].age += dt;
+    regen(s, i, dt);
     if s[0].beasts[i].d >= beast_len(s, i) && s[0].swarm { s[0].beasts[i].d -= beast_len(s, i); continue; }
     if s[0].beasts[i].d >= beast_len(s, i) {
       s[0].beasts[i].live = false;
@@ -910,7 +927,7 @@ step :: (s: [] Stair, dt: f32) {
     }
   }
   s[0].area[0].ok = false;
-  if s[0].swarm { for j: live_beasts(s)..<SWARM { b := spawn(s, j % LAYERS, srd_unit(s[0].dice[..]) * s[0].path_len); } }
+  if s[0].swarm { for j: live_beasts(s)..<SWARM { b := spawn(s, j % 4, srd_unit(s[0].dice[..]) * s[0].path_len); } }
   if s[0].lives <= 0 {
     s[0].lives = 0; s[0].phase = LOST; s[0].selected = -1; s[0].card = -1;
     for i: 0..<BEASTS { s[0].beasts[i].live = false; }
@@ -1511,6 +1528,42 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
         n = seg(out, n, sx, sy - tw, sx, sy + tw, hi(0.6, rad * 0.035), 1.0, rad * 0.08, 1.0, 0.95, 0.6);
       }
     }
+    if b.kind == FROSTLING {
+      // ice spikes on its crown
+      for j: 0..<3 {
+        fx := q.x + f32(j - 1) * rad * 0.4;
+        fy := y - rad * (0.8 - 0.1 * abs(f32(j - 1)));
+        n = seg(out, n, fx, fy, fx + f32(j - 1) * rad * 0.12, fy - rad * (0.34 - 0.1 * abs(f32(j - 1))), rad * 0.07, 1.0, rad * 0.14, 0.75, 0.92, 1.0);
+      }
+    }
+    if b.kind == IRONSKIN {
+      // riveted bands round it
+      n = ring(out, n, q.x, y, rad * 0.98, hi(1, rad * 0.1), 0.9, 0.42, 0.44, 0.5, 0);
+      for j: 0..<4 {
+        a := f32(j) * 1.5708 + 0.785;
+        n = bubble(out, n, q.x + cos(a) * rad * 0.98, y + sin(a) * rad * 0.98, rad * 0.11, 1.0, 0.85, 0.86, 0.9, 0, 0, 0, 0);
+      }
+    }
+    if b.kind == SHADOW {
+      // a trail of dark smoke behind it
+      for j: 1..<4 {
+        sx := q.x - lx * rad * 0.7 * f32(j); sy := y - ly * rad * 0.7 * f32(j) + sin(b.wob + f32(j)) * rad * 0.2;
+        n = bubble(out, n, sx, sy, rad * (0.5 - 0.1 * f32(j)), 0.5 - 0.12 * f32(j), 0.16, 0.12, 0.24, 0, 0, 0, 0);
+      }
+    }
+    if b.kind == HULK {
+      // horns, and its hit points as a bar while hurt
+      for j: 0..<2 {
+        sx := ifx j == 0 then -1.0f32 else 1.0f32;
+        n = seg(out, n, q.x + sx * rad * 0.5, y - rad * 0.75, q.x + sx * rad * 0.85, y - rad * 1.2, rad * 0.09, 1.0, rad * 0.16, 0.95, 0.88, 0.75);
+      }
+      full := f32(s[0].ct[0].hp[HULK]);
+      if f32(b.hp) < full {
+        bw2 := rad * 1.6; by2 := y - rad * 1.35;
+        n = seg(out, n, q.x - bw2 / 2, by2, q.x + bw2 / 2, by2, rad * 0.07, 0.7, rad * 0.1, 0.15, 0.1, 0.2);
+        n = seg(out, n, q.x - bw2 / 2, by2, q.x - bw2 / 2 + bw2 * f32(b.hp) / full, by2, rad * 0.07, 1.0, rad * 0.1, 0.95, 0.4, 1.0);
+      }
+    }
     if b.kind == WISP {
       tx := q.x - lx * rad * 1.0; ty := y - ly * rad * 1.0 + rad * 0.3;
       curl := sin(b.wob * 1.5) * rad * 0.4;
@@ -1831,8 +1884,11 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, GOLD_R, GOLD_G, GOLD_B));
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
   m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, WAVES);
-  n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
-  lx += text_width(cast(string) buf[0..<m], cap) + sp;
+  // on a phone, MAP (before the first wave) takes the wave count's place
+  if !(s[0].portrait && s[0].shown[B_MAP] && lx + text_width(cast(string) buf[0..<m], cap) > s[0].boxes[B_MAP].x0 - 6 * k) {
+    n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
+    lx += text_width(cast(string) buf[0..<m], cap) + sp;
+  }
   title := "HOLD THE STAIR";
   if !s[0].portrait && !s[0].shown[B_MAP] && lx + text_width(title, cap) + 24 * k < w { n = say_at(out, n, title, w - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
   // the bottom panel
@@ -2139,7 +2195,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s: [1] Stair;
   stair_start(s[..]);
   #assert s[0].lives == c[0].start_lives && s[0].gold == c[0].start_gold && s[0].path_len == path_length(s[..]);
-  good := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside - -\nlayer wisp ac 11 hp 4 dex 1 con 0 speed 1.2 size 0.24 gold 2 lives 3 colour 0 1 0 inside mote mote\nlayer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6 size 0.26 gold 3 lives 7 colour 1 1 0 inside wisp wisp\nlayer ember ac 12 hp 7 dex 1 con 2 speed 1.4 size 0.3 gold 3 lives 11 colour 1 0 0 inside glimmer wisp\nclass fighter cost 50 range 1.6 turn 0.9; class wizard cost 85 range 3.4 turn 1.4; class cleric cost 65 range 3 turn 1.3\nclass rogue cost 60 range 1.6 turn 0.8; class ranger cost 75 range 4 turn 1.3; class bard cost 70 range 3 turn 1.4; class paladin cost 80 range 1.6 turn 1\nlevel fighter 30 50; level wizard 50 80; level cleric 40 65; level rogue 35 55; level ranger 45 70; level bard 40 60; level paladin 50 75\nwave 1 mote 5 gap 1 delay 0; wave 2 mote 5 gap 1 delay 0; wave 3 mote 5 gap 1 delay 0; wave 4 mote 5 gap 1 delay 0; wave 5 mote 5 gap 1 delay 0\nwave 6 wisp 5 gap 1 delay 0; wave 7 wisp 5 gap 1 delay 0; wave 8 wisp 5 gap 1 delay 0; wave 9 wisp 5 gap 1 delay 0; wave 10 ember 5 gap 1 delay 0\nstart gold 200 lives 30 # a note\nround 2 every 3\nstair 0 4 13 4";
+  good := "layer mote ac 10 hp 2 dex 0 con 0 speed 1 size 0.2 gold 2 lives 1 colour 1 1 1 inside - -\nlayer wisp ac 11 hp 4 dex 1 con 0 speed 1.2 size 0.24 gold 2 lives 3 colour 0 1 0 inside mote mote\nlayer glimmer ac 13 hp 5 dex 3 con 1 speed 1.6 size 0.26 gold 3 lives 7 colour 1 1 0 inside wisp wisp\nlayer ember ac 12 hp 7 dex 1 con 2 speed 1.4 size 0.3 gold 3 lives 11 colour 1 0 0 inside glimmer wisp\nlayer frostling ac 12 hp 8 dex 1 con 2 speed 1.3 size 0.3 gold 4 lives 15 colour 1 1 1 inside glimmer glimmer\nlayer ironskin ac 15 hp 10 dex 0 con 3 speed 1 size 0.34 gold 5 lives 23 colour 0.6 0.6 0.6 inside ember ember\nlayer shadow ac 13 hp 9 dex 3 con 1 speed 1.5 size 0.3 gold 5 lives 31 colour 0.2 0.2 0.3 inside frostling frostling\nlayer hulk ac 17 hp 60 dex -1 con 5 speed 0.6 size 0.44 gold 20 lives 93 colour 0.6 0.3 0.9 inside ironskin ironskin ironskin ironskin\nclass fighter cost 50 range 1.6 turn 0.9; class wizard cost 85 range 3.4 turn 1.4; class cleric cost 65 range 3 turn 1.3\nclass rogue cost 60 range 1.6 turn 0.8; class ranger cost 75 range 4 turn 1.3; class bard cost 70 range 3 turn 1.4; class paladin cost 80 range 1.6 turn 1\nlevel fighter 30 50; level wizard 50 80; level cleric 40 65; level rogue 35 55; level ranger 45 70; level bard 40 60; level paladin 50 75\nwave 1 mote 5 gap 1 delay 0; wave 2 mote 5 gap 1 delay 0; wave 3 mote 5 gap 1 delay 0; wave 4 mote 5 gap 1 delay 0; wave 5 mote 5 gap 1 delay 0\nwave 6 wisp 5 gap 1 delay 0; wave 7 wisp 5 gap 1 delay 0; wave 8 wisp 5 gap 1 delay 0; wave 9 wisp 5 gap 1 delay 0; wave 10 ember 5 gap 1 delay 0\nstart gold 200 lives 30 # a note\nround 2 every 3\nstair 0 4 13 4";
   #assert stair_tables_read(c[..], good) && c[0].way_n == 2 && c[0].start_lives == 30;
   // a straight stair across the middle row: the game lays it
   s[0].ct[0] = c[0];
@@ -2532,6 +2588,49 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   #assert start_wave(s[..]);
   layout(s[..], 1280, 800, 1); buttons(s[..], 1280, 800, 1);
   #assert !s[0].shown[B_MAP];
+}
+
+// What each layer pops into, from the design (docs/verse/game-ideas/hold-the-stair.md), for its test.
+LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1,  GLIMMER, WISP, -1, -1,
+  GLIMMER, GLIMMER, -1, -1,  EMBER, EMBER, -1, -1,  FROSTLING, FROSTLING, -1, -1,  IRONSKIN, IRONSKIN, IRONSKIN, IRONSKIN];
+#test "all eight bubble-beasts: each pops into what the design says, fire does nothing to an ember nor cold to a frostling, an ironskin halves a weapon's damage, a hulk regenerates" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  // what each pops into (docs/verse/game-ideas/hold-the-stair.md)
+  for l: 0..<LAYERS {
+    #assert s[0].ct[0].inner_a[l] == LAYER_INTO[l * 4] && s[0].ct[0].inner_b[l] == LAYER_INTO[l * 4 + 1] && s[0].ct[0].inner_c[l] == LAYER_INTO[l * 4 + 2] && s[0].ct[0].inner_d[l] == LAYER_INTO[l * 4 + 3];
+    // and a layer's lives are its own and its insides'
+    held := 1;
+    for j: 0..<4 { if LAYER_INTO[l * 4 + j] >= 0 { held += s[0].ct[0].lives[LAYER_INTO[l * 4 + j]]; } }
+    #assert s[0].ct[0].lives[l] == held;
+  }
+  for l: 0..<LAYERS { s[0].beasts[l].live = false; }
+  e := spawn(s[..], EMBER, 6);
+  hurt_beast(s[..], e, 50, DMG_FIRE, false, -1);
+  #assert s[0].beasts[e].live && s[0].beasts[e].hp == s[0].ct[0].hp[EMBER];
+  f := spawn(s[..], FROSTLING, 7);
+  hurt_beast(s[..], f, 50, DMG_COLD, false, -1);
+  #assert s[0].beasts[f].live && s[0].beasts[f].hp == s[0].ct[0].hp[FROSTLING];
+  pops := s[0].pops;
+  hurt_beast(s[..], f, 50, DMG_FIRE, false, -1);
+  #assert s[0].pops == pops + 1;
+  ir := spawn(s[..], IRONSKIN, 8);
+  hurt_beast(s[..], ir, 6, DMG_SLASHING, false, -1);
+  #assert s[0].beasts[ir].hp == s[0].ct[0].hp[IRONSKIN] - 3;
+  hurt_beast(s[..], ir, 6, DMG_FORCE, false, -1);
+  #assert s[0].beasts[ir].hp == s[0].ct[0].hp[IRONSKIN] - 9;
+  // a hulk: down 20, two seconds later 4 back; never past its full
+  for i: 0..<BEASTS { s[0].beasts[i].live = false; }
+  h := spawn(s[..], HULK, 9);
+  hurt_beast(s[..], h, 20, DMG_FORCE, false, -1);
+  for t: 0..<120 { regen(s[..], h, f32(STEP)); }
+  #assert s[0].beasts[h].hp >= s[0].ct[0].hp[HULK] - 17 && s[0].beasts[h].hp <= s[0].ct[0].hp[HULK] - 15;
+  for t: 0..<6000 { regen(s[..], h, f32(STEP)); }
+  #assert s[0].beasts[h].hp == s[0].ct[0].hp[HULK];
+  hurt_beast(s[..], h, 999, DMG_FORCE, false, -1);
+  irons := 0;
+  for i: 0..<BEASTS { if s[0].beasts[i].live && s[0].beasts[i].kind == IRONSKIN { irons += 1; } }
+  #assert irons == 4;
 }
 
 #test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {
