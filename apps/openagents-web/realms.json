@@ -286,9 +286,10 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realms/ice-cream-man/assets/IceCream.indices"]
       } },
-    { "id": "villa", "name": "PLANETARY VILLA", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 5.6, "size": 0.034 },
+    { "id": "villa", "name": "HECATE'S CEMETERY", "kind": "open", "listed": true, "orbit": { "r": 0.46, "a": 3.9, "size": 0.03 },
       "realm": {
         "slug": "hecates-cemetery",
+        "added": "2026-10-31T02:06", "line": "A moonlit memorial garden you walk with your dog",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
             {"id": "flight", "label": "The flight in from space", "says": "the flight in from space at the start of a visit; off, a visit starts at the gate"},

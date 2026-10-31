@@ -2,6 +2,7 @@
 
 Worlds on the Verse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.
 
+- [Hecate's Cemetery](https://openagents.com/realms/hecates-cemetery): A moonlit memorial garden you walk with your dog. Opened Oct 31, 2026.
 - [Orbit League](https://openagents.com/realms/orbit-league): Rocket roadster ball in a glass arena in orbit. Opened Oct 30, 2026.
 - [Belt 2200](https://openagents.com/realms/belt-2200): Hard sci-fi strategy on the real orbits of 2200. Opened Oct 30, 2026.
 - [Hold the Stair](https://openagents.com/realms/hold-the-stair): Tower defense on the SRD 5e rules. Opened Oct 30, 2026.
