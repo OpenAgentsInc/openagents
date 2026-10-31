@@ -122,6 +122,17 @@ export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
 secs() { printf '%d.%d' $(( $1 / 1000000 )) $(( $1 % 1000000 / 100000 )); }
 lap() { printf '  %-10s %5s s\n' "$1" "$(secs $(( $(now) - $2 )))"; }
+# Run a check for at most $1 seconds: a hung headless browser fails it instead of
+# holding the release lock (2026-10-30: one hung live-home check held every release for two hours).
+bounded() {
+  local limit=$1; shift
+  "$@" & local pid=$!
+  ( sleep "$limit" && kill -TERM "$pid" 2>/dev/null && sleep 5 && kill -KILL "$pid" 2>/dev/null ) & local dog=$!
+  local status=0; wait "$pid" || status=$?
+  kill "$dog" 2>/dev/null; wait "$dog" 2>/dev/null || true
+  (( status != 143 && status != 137 )) || echo "  $(basename "$2" 2>/dev/null || echo check) passed its ${limit} s limit" >&2
+  return "$status"
+}
 start=$(now)
 
 # The release compiler: a checked coax build whose provenance record matches
@@ -250,7 +261,7 @@ if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
   if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]]; then
-    t=$(now); bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; lap "live home" "$t"
+    t=$(now); bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; lap "live home" "$t"
   fi
   t=$(now)
   if ! $gated; then
@@ -348,7 +359,7 @@ if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via; then
   "$here/rollback.sh" "$stamp"
   exit 1
 fi
-if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]] && ! bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com; then
+if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]] && ! bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com; then
   echo "release $commit: production live homepage failed; rolling back" >&2
   "$here/rollback.sh" "$stamp"
   exit 1
