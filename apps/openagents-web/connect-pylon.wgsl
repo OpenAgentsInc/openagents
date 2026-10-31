@@ -8,7 +8,7 @@
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, count: f32, vignette: f32, pad1: f32,
-  panels: array<vec4f, 10>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0
+  panels: array<vec4f, 26>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0 (newland.coax PANELS + EDIT_PANELS)
 }
 @group(0) @binding(0) var<uniform> u: U;
 // The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").
@@ -55,8 +55,11 @@ const BITCOIN = vec3f(1.0, 0.55, 0.12);
   let r2 = q.x * q.x + q.y * q.y * 1.3;
   c *= mix(1.0, clamp(1.18 - 1.25 * r2, 0.0, 1.0), u.vignette);
   c = c * u.fade;
-  for (var k = 0; k < 4; k++) {
+  // the page's first four (the card's glass, the fifth, stays as it was: its strokes are the card), then
+  // the Grid's edit layer's plates after the page's five
+  for (var k = 0; k < 13; k++) {
     if (f32(k) >= u.count) { break; }
+    if (k == 4) { continue; }
     c = panel(pos.xy, c, u.panels[k * 2], u.panels[k * 2 + 1]);
   }
   return vec4f(c, 1.0);
