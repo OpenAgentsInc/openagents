@@ -444,6 +444,39 @@
         "hts-waves"
       ],
       "blocks": []
+    },
+    {
+      "slug": "hts-fp-next-threat",
+      "parent": "hts-tower",
+      "title": "The NEXT preview shows each beast's threat (lives it takes, speed)",
+      "size": "S",
+      "labels": [],
+      "body": "Playtest #9041: NEXT shows only colour and count, so wave 5's glimmers (7 lives each) arrive unannounced. Show the lives each beast takes (a small heart count) and mark fast ones, from the waves table.",
+      "files": [
+        "apps/openagents-web/stair.coax"
+      ],
+      "acceptance": [
+        "NEXT before wave 5 shows that glimmers take 7 lives each"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "hts-fp-wave5-spike",
+      "parent": "hts-tower",
+      "title": "Smooth the wave 5-6 spike for players who hoard gold",
+      "size": "S",
+      "labels": [],
+      "body": "Playtest #9041: a run that placed 3 defenders and kept 322 gold lost all 50 lives by wave 6. Either nudge when gold sits unspent at START WAVE (\"322 GOLD UNSPENT\") or ease wave 5's glimmer count; keep the play_through test winning.",
+      "files": [
+        "apps/openagents-web/stair.coax"
+      ],
+      "acceptance": [
+        "A run that places one defender per round reaches wave 8 in the play_through AI test",
+        "Unspent gold over 150 at START WAVE is named on the button's hint"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
