@@ -1,0 +1,359 @@
+{
+  "schema": "psionic-inverse-qualification-v1",
+  "identity": {
+    "oracle_sha256": "93b0ac521495df5f3ff487c0f206c8fa7a88733bacf58ccf1c93f9335865abfc",
+    "experiment_sha256": "b432768c07d9c92cfeca0b4e6fc4a3d6a62bef2222873450c486fdab9f7337dc"
+  },
+  "independent_data_values": 1554,
+  "analytic_gradient_cases": 35,
+  "finite_difference_estimates": 252,
+  "fitted_and_grid_variants": 7,
+  "data_max_absolute": 4.440892098500626e-16,
+  "analytic_loss_max_absolute": 1.1102230246251565e-16,
+  "analytic_gradient_max_absolute": 2.7755575615628914e-16,
+  "parameter_fit_max_absolute": 5.551115123125783e-16,
+  "fit_loss_max_absolute": 5.55653613398821e-19,
+  "heldout_metric_max_absolute": 1.8207657603852567e-14,
+  "finite_difference_max_absolute_by_step": {
+    "0.01": 4.344140160900123e-06,
+    "0.001": 4.344081737384098e-08,
+    "0.0001": 4.3483318334924803e-10,
+    "1e-05": 3.996622477409062e-12,
+    "1e-06": 3.3205729832452846e-11,
+    "1e-07": 1.979058514289811e-10
+  },
+  "native": {
+    "assertions_before_final_close": 9325,
+    "bit_identical_original_states": 2520,
+    "gradient_cases": 35,
+    "central_difference_estimates": 252,
+    "nonfinite_data_cases": 666,
+    "nonfinite_parameter_cases": 6,
+    "fit_variants": 7
+  },
+  "fits": [
+    {
+      "mode": 0,
+      "nodes": 3687,
+      "observations": 72,
+      "gradient": {
+        "spring": 2.399999994918215,
+        "damping": 0.5499999949120348,
+        "loss": 8.499189046430434e-19,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 6.053258926154836e-16,
+        "v_square": 1.3059666155004626e-15,
+        "max_q": 2.4397396325426257e-09,
+        "max_v": 3.584417929136663e-09
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 3.402121896926805e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 1,
+      "nodes": 3255,
+      "observations": 18,
+      "gradient": {
+        "spring": 2.399999999107332,
+        "damping": 0.5499999991855462,
+        "loss": 2.6539111552751146e-20,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 1.6114837111795887e-17,
+        "v_square": 3.5108271980980445e-17,
+        "max_q": 3.9888092828732624e-10,
+        "max_v": 5.878104669676532e-10
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 3.745658783996822e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 2,
+      "nodes": 3687,
+      "observations": 72,
+      "gradient": {
+        "spring": 2.4008375818128034,
+        "damping": 0.5505947306789569,
+        "loss": 1.3938202534736413e-06,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 1.0001438627267958e-05,
+        "v_square": 2.2437798505328142e-05,
+        "max_q": 0.0003161789101570889,
+        "max_v": 0.00047065880964097806
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 3.698420141420545e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 3,
+      "nodes": 3255,
+      "observations": 18,
+      "gradient": {
+        "spring": 2.401312702842804,
+        "damping": 0.5492667272271111,
+        "loss": 1.3268114720513533e-06,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 3.560065608281286e-05,
+        "v_square": 7.787634244975445e-05,
+        "max_q": 0.0006219294829854227,
+        "max_v": 0.0009205132168460528
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 3.974402981172449e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 4,
+      "nodes": 3687,
+      "observations": 72,
+      "gradient": {
+        "spring": 2.404191157925225,
+        "damping": 0.5529717653376884,
+        "loss": 3.48457915725789e-05,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.0002487077878303737,
+        "v_square": 0.0005582032919113036,
+        "max_q": 0.0015763601189463239,
+        "max_v": 0.0023485335674742203
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 7.70736615274622e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 5,
+      "nodes": 3255,
+      "observations": 18,
+      "gradient": {
+        "spring": 2.4065660669990137,
+        "damping": 0.5463378617234437,
+        "loss": 3.31696937398008e-05,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.0008924172165202307,
+        "v_square": 0.0019563169968630075,
+        "max_q": 0.0031146152991241016,
+        "max_v": 0.0046092804887357675
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 0.52,
+        "loss": 7.739205540089703e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 0.023444855873832642,
+        "v_square": 0.05104775694480952,
+        "max_q": 0.015259933130573528,
+        "max_v": 0.022317233005260895
+      }
+    },
+    {
+      "mode": 6,
+      "nodes": 3687,
+      "observations": 72,
+      "gradient": {
+        "spring": 2.4,
+        "damping": 0.9,
+        "loss": 0,
+        "forward": 256,
+        "reverse": 255,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 1.6527763870854197,
+        "v_square": 3.260905903525822,
+        "max_q": 0.13023969164564947,
+        "max_v": 0.192945372491587
+      },
+      "grid": {
+        "spring": 2.3666666666666667,
+        "damping": 1,
+        "loss": 2.2550378325856326e-05,
+        "forward": 256,
+        "reverse": 0,
+        "projected": 0,
+        "rows": 384,
+        "q_square": 2.483451151540496,
+        "v_square": 4.8262822979103275,
+        "max_q": 0.1656070442886501,
+        "max_v": 0.23829294062937587
+      }
+    }
+  ],
+  "payload_sha256": {
+    "data.f64": "a75c9876bd6f96dee5be02b62eaca9921dae3ca96f011c3957e2e26692eb11ac",
+    "states.f64": "868bf8fbde6627f4aab02dd1ba14884c34dc96a2ce85f38608aff7b471293334",
+    "gradients.json": "66380cfd8730beb03c0391dc38a95393a67727b45d78dc8e5bbaaee9b13555a7",
+    "fits.json": "8bb42de31754bcd6a68cd61566d076b33f7551eb970339f46ed8118b15452328"
+  },
+  "date": "2026-10-31",
+  "profile": "inverse-rk4-tape-f64-v1",
+  "source_sha256": {
+    "psionic/lib/physics/inverse-physics-types.coax": "b2fca5d9cbe0cb9484d87659efceadcdd7c209816772f974b2c07cb0aede08d3",
+    "psionic/lib/physics/inverse-data.coax": "4c2a253d58bdb300d1a2a78a2fef1d59f7ae77faca724f08a187f65adae14f83",
+    "psionic/lib/physics/inverse-physics.coax": "d296c94b4b6b8e4c319547b42aa29e6568267ee5636e0f2b9539d470ac9fa9cb",
+    "psionic/lib/physics/inverse-fit.coax": "82c230ce69b39f05681b340fd171f2500aaf20d88c1366896779f0e586e8b6d3",
+    "psionic/lib/physics/inverse-evaluate.coax": "bf92d171afc90bd8ddd0939a0c815fb23b468e8a42d971f0cc83e8dc9dda10d0",
+    "psionic/tests/physics/inverse_native.c": "d3c8d529cdf5ea980c5677fba62806dd7c07dc1870cdb3db430bc7fdf6ea7cd7",
+    "psionic/tests/physics/inverse_reference.py": "f43db490e4aabda6f4e7f5d36b0313bcf67712141a7d61a53c0de2e10591d360",
+    "psionic/tests/physics/inverse_coverage.py": "179b083d9f9452b01bf124749aa351dd6c3ec811887005ed7ba82a784ddf7c84",
+    "psionic/tests/physics/check-inverse.sh": "4060aea20401307488ce45ee99b3d22a3aa8a9d260730c924cd5d86bdd63d92a",
+    "psionic/examples/recover-the-physics.coax": "e4b63b603defdb6c3fde000d7844f3b077bdb392bbf9f4aa1301f851bdae926e",
+    "psionic/fixtures/recover-the-physics.out": "c20c9cb0bb2fe024d6bf4a07ad00257f2649841003730daeff2e717ce4cf8133",
+    "psionic/tests/physics/INVERSE.md": "49d1e12a57345b54a04e4894ad6ed685906f078908b09d475bfffaf6e001b396",
+    "psionic/book/ch111-recover-the-physics-from-the-motion.md": "9b63a8b0351b44b0e723da20b6a07b7177107415ccb5e061318367b426d89946"
+  },
+  "changed_root_mutants": {
+    "inverse-data": 101,
+    "inverse-physics": 124,
+    "inverse-fit": 96,
+    "inverse-evaluate": 33
+  },
+  "authored_checks": {
+    "inverse-data": 3,
+    "inverse-physics": 5,
+    "inverse-fit": 5,
+    "inverse-evaluate": 2
+  },
+  "mutants_survived": 0,
+  "native_modes": [
+    "debug",
+    "release",
+    "ASan+UBSan"
+  ],
+  "mode_payloads_bit_identical": true,
+  "native_assertions_total_per_mode": 9326,
+  "native_receipt_counter_excludes_final_close_assertion": true,
+  "example_modes": [
+    "debug",
+    "release"
+  ],
+  "example_stdout": "psionic/fixtures/recover-the-physics.out",
+  "example_golden_origin": "Independent analytic-sensitivity projectedGD/grid and matrix-polynomial forecasts, not copied stdout",
+  "gradient_budget": {
+    "forward_objectives": 256,
+    "completed_reverse_passes": 255
+  },
+  "grid_budget": {
+    "forward_objectives": 256,
+    "completed_reverse_passes": 0
+  },
+  "independent_state_values": 5040,
+  "independent_state_max_absolute": 5.551115123125783e-16,
+  "coverage_hardening": "Exact35/7/mode/point/FD coverage guards and five negative transcript cases were added after numerical qualification. Prior numerical records were reused: identical numeric-function ASTs and payload hashes are proven in each coverage receipt. No unchanged numeric/native/mutation gate rerun.",
+  "scope": [
+    "Explicit exact109RK4 scalar program on104F64 reverse tape",
+    "Only stiffness/damping inferred; mass/initialstates/forcing/dt fixed",
+    "Six fixed noise/sampling experiments; one noise stream, no statistical robustness claim",
+    "Equilibrium demonstrates damping nonidentifiability; no global uniqueness proof",
+    "Matched forward-objective count, extra AD reverse work explicitly disclosed",
+    "No surrogate substitution, articulated/contact solver, Panda replacement, generic107 transforms, compiler boundedness/typed clocks, GPU, hardware or real-world parameter recovery"
+  ],
+  "mode_records": {
+    "debug": {
+      "numeric_reference_sha256": "38de04815f3836027a0ba1cb56f6fe2725f79f162080eda948ba61ad32868bc8",
+      "coverage_reference_sha256": "9af1da8e8801228ddd9b2fdf3ae0d8c6c8c1eff6b5f7d8e2718bf436e7261c32",
+      "generated_c_sha256": "219045c71242f31a743578f4c1de552ca538cb31aadbee0ad49348393dd4d7a2"
+    },
+    "release": {
+      "numeric_reference_sha256": "38de04815f3836027a0ba1cb56f6fe2725f79f162080eda948ba61ad32868bc8",
+      "coverage_reference_sha256": "9af1da8e8801228ddd9b2fdf3ae0d8c6c8c1eff6b5f7d8e2718bf436e7261c32",
+      "generated_c_sha256": "3ddab1a3406ed3fb3aa89c7d61ed56f9ffdfc4f9cf3d053c021ca18794c898ad"
+    },
+    "sanitized": {
+      "numeric_reference_sha256": "38de04815f3836027a0ba1cb56f6fe2725f79f162080eda948ba61ad32868bc8",
+      "coverage_reference_sha256": "9af1da8e8801228ddd9b2fdf3ae0d8c6c8c1eff6b5f7d8e2718bf436e7261c32",
+      "generated_c_sha256": "219045c71242f31a743578f4c1de552ca538cb31aadbee0ad49348393dd4d7a2"
+    }
+  },
+  "coverage_receipt": {
+    "schema": "psionic-inverse-coverage-v1",
+    "gradient_records": 35,
+    "closed_mode_point_pairs": 35,
+    "closed_fd_pairs": 252,
+    "fit_records": 7,
+    "negative_coverage_cases": 5,
+    "independent_state_values": 5040,
+    "state_max_absolute": 5.551115123125783e-16,
+    "current_oracle_sha256": "f43db490e4aabda6f4e7f5d36b0313bcf67712141a7d61a53c0de2e10591d360",
+    "coverage_oracle_sha256": "179b083d9f9452b01bf124749aa351dd6c3ec811887005ed7ba82a784ddf7c84",
+    "numeric_function_ast_sha256": "3092144024c380e32b99483c43039603e85e58994da8d62ef6e3033930e3082c",
+    "reused_numeric_reference_sha256": "38de04815f3836027a0ba1cb56f6fe2725f79f162080eda948ba61ad32868bc8",
+    "reused_numeric_oracle_sha256": "93b0ac521495df5f3ff487c0f206c8fa7a88733bacf58ccf1c93f9335865abfc",
+    "numerical_algorithms_unchanged": true
+  },
+  "reused_teacher_source_sha256": {
+    "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+    "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema":"psionic-inverse-physics-experiment-v1",
+  "status":"Frozen before fitting",
+  "profile":"inverse-rk4-tape-f64-v1",
+  "teacher":"oscillator-rk4-f64-v1, exact operation order unrolled on chapter104 F64 tape",
+  "parameters":{"mass":1,"truth_spring":2.4,"truth_damping":0.55,"spring_bounds":[0.5,4],"damping_bounds":[0.1,1]},
+  "training":{"episodes":3,"steps":24,"dt":0.05,"initial_position":[0.8,0,-0.6],"initial_velocity":[0,0.8,-0.4],"force":"[0,.5,-.5][(tick//6+episode)%3]","observed":"next position and velocity; known exact initial state","objective":"mean .5*((q_error/1m)^2+(v_error/(1m/s))^2) over sampled times"},
+  "variants":[
+    {"id":0,"noise":0,"stride":1},
+    {"id":1,"noise":0,"stride":4},
+    {"id":2,"noise":0.002,"stride":1},
+    {"id":3,"noise":0.002,"stride":4},
+    {"id":4,"noise":0.01,"stride":1},
+    {"id":5,"noise":0.01,"stride":4}
+  ],
+  "noise":{"seed":11100,"distribution":"bounded uniform[-amplitude,+amplitude] independently for each coordinate","counter":"2*(episode*24+tick)+axis","sampling":"same frozen noisy observations before selecting every stride-th next state"},
+  "gradient_fit":{"initial_spring":1,"initial_damping":0.9,"rate":2,"updates":255,"projection":"inclusive physical parameter bounds","forward_objective_evaluations":256,"reverse_evaluations":255,"selection":"fixed final iterate; no heldout selection or retuning"},
+  "grid":{"side":16,"endpoints":"inclusive bounds, row-major spring then damping, first minimum on ties","forward_objective_evaluations":256,"reverse_evaluations":0},
+  "cost_scope":"Matched forward-objective evaluation count; AD's additional reverse passes and graph work reported separately, not called equal arithmetic cost.",
+  "heldout":{"episodes":3,"steps":128,"dt":0.05,"initial_position":[0.7,-0.5,0],"initial_velocity":[-0.15,0.35,-0.7],"force":"phase=(tick+5*episode)%20; .4 if phase<5, -.2 if phase<12, else0","observations":"clean exact109RK4; no heldout observations used by fitting or grid selection"},
+  "ambiguity":{"initial_position":0.5,"initial_velocity":0,"force":1.2,"spring":2.4,"damping_choices":[0.2,0.9],"fit_initial_spring":2.4,"fit_initial_damping":0.9,"meaning":"Nonzero equilibrium fixes spring through force/spring but supplies no damping information; distinct damping choices yield exactly identical motion."},
+  "budgets":{"tape_vs_original_solver":"every active state F64 word identical","analytic_gradient_absolute":0.00000000001,"central_difference_step_sweep":[0.01,0.001,0.0001,0.00001,0.000001,0.0000001],"central_difference_at_1e_minus5_absolute":0.0000001,"independent_fit_parameter_absolute":0.000000001,"independent_loss_absolute":0.00000000001,"clean_full_sampling_recovery_each_parameter_absolute":0.02,"other_variants":"Report all noise/sampling outcomes, refusals and final losses honestly; no post-result retuning."}
+}

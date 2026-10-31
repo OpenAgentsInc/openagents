@@ -1,0 +1,85 @@
+#load "inverse-physics.coax";
+#authority;
+
+#test "fit makes one projected update from the checked tape gradient" {
+  #assert OI_RATE==2 && OI_UPDATES==255;
+  d:=oi_dataset(0);d.episodes=1;d.steps=1;d.stride=1;p:=oi_program(d);start:=OsParams.{spring=1,damping=0.9};g:=oi_value(p,1,0.9,true);
+  zero:=oi_fit(p,start,0);#assert zero.status==OsStatus.ok && zero.params.mass==1 && zero.params.spring==1 && zero.params.damping==0.9 && zero.forward==1 && zero.reverse==0 && zero.projected==0;
+  one:=oi_fit(p,start,1);#assert one.status==OsStatus.ok && one.forward==2 && one.reverse==1 && one.projected==0;
+  #assert one.params.spring==1-OI_RATE*g.gradient[0] && one.params.damping==0.9-OI_RATE*g.gradient[1];
+  #assert one.loss==oi_value(p,one.params.spring,one.params.damping,false).loss;
+  d.observed[0].velocity=4;p=oi_program(d);one=oi_fit(p,OsParams.{spring=0.5,damping=0.1},1);#assert one.status==OsStatus.ok && one.params.spring==0.5 && one.projected==1;
+  d.observed[0].velocity=-4;p=oi_program(d);one=oi_fit(p,OsParams.{spring=4,damping=0.1},1);#assert one.status==OsStatus.ok && one.params.spring==4 && one.params.damping==0.1 && one.projected==2;
+}
+#test "projection includes both endpoints and preserves an input word on a tie" {
+  #assert oi_clamp(-1,0.5,4)==0.5 && oi_clamp(5,0.5,4)==4 && oi_clamp(0.5,0.5,4)==0.5 && oi_clamp(4,0.5,4)==4 && oi_clamp(2,0.5,4)==2;
+  negative_zero:=f64_from_bits(cast(u64)0x8000000000000000);
+  #assert f64_bits(oi_clamp(negative_zero,0,1))==0x8000000000000000 && f64_bits(oi_clamp(negative_zero,-1,0))==0x8000000000000000;
+}
+#test "constant evidence cannot recover a parameter and grid ties keep their first candidate" {
+  p:=oi_constant_program();#assert p.count==1 && p.states==1 && p.observations==1;
+  f:=oi_fit(p,OsParams.{spring=1,damping=0.9},1);#assert f.status==OsStatus.ok && f.params.spring==1 && f.params.damping==0.9 && f.loss==0 && f.forward==2 && f.reverse==1 && f.projected==0;
+  for side:2..<3 {g:=oi_grid(p,side);#assert g.status==OsStatus.ok && g.params.mass==1 && g.params.spring==0.5 && g.params.damping==0.1 && g.loss==0 && g.forward==side*side && g.reverse==0 && g.projected==0;}
+  #assert oi_fit_count_ok(0) && oi_fit_count_ok(255) && !oi_fit_count_ok(-1) && !oi_fit_count_ok(256);
+  #assert oi_grid_side_ok(2) && oi_grid_side_ok(16) && !oi_grid_side_ok(1) && !oi_grid_side_ok(17);
+  for side:2..<17 {#assert oi_grid_k(0,side)==0.5 && oi_grid_k(side-1,side)==4 && oi_grid_c(0,side)==0.1 && oi_grid_c(side-1,side)==1;}
+  #assert oi_grid_k(1,3)==2.25 && oi_grid_c(1,3)==0.55;
+  p.count=2;p.nodes[1]=tp_c(1e100);large:=oi_grid(p,2);#assert large.status==OsStatus.ok && large.loss==1e100 && large.params.spring==0.5 && large.params.damping==0.1;p=oi_constant_program();
+  #assert oi_fit(p,OsParams.{spring=1,damping=0.5},-1).status==OsStatus.shape && oi_fit(p,OsParams.{spring=1,damping=0.5},256).status==OsStatus.shape;
+  #assert oi_grid(p,1).status==OsStatus.shape && oi_grid(p,17).status==OsStatus.shape;
+  #assert oi_fit(p,OsParams.{mass=2,spring=1,damping=0.5},1).status==OsStatus.parameters;
+  p.count=0;#assert oi_fit(p,OsParams.{spring=1,damping=0.5},1).status==OsStatus.shape && oi_grid(p,2).status==OsStatus.shape;
+}
+#test "a real equilibrium leaves damping indistinguishable at two different values" {
+  p:=oi_program(oi_dataset(6));a:=oi_value(p,2.4,0.2,true);b:=oi_value(p,2.4,0.9,true);
+  #assert a.status==OsStatus.ok && b.status==OsStatus.ok && a.loss==0 && b.loss==0 && a.gradient[0]==0 && a.gradient[1]==0 && b.gradient[0]==0 && b.gradient[1]==0;
+  f:=oi_fit(p,OsParams.{spring=2.4,damping=0.9},1);#assert f.status==OsStatus.ok && f.params.spring==2.4 && f.params.damping==0.9 && f.loss==0;
+}
+
+
+#test "late physical refusal rolls back fitted parameters and preserves completed work counts" {
+  p:=OiProgram.{count=8,states=1,observations=1};p.nodes[0]=tp_p(0);p.nodes[1]=tp_p(1);p.nodes[2]=tp_c(0);p.nodes[3]=tp_c(3);p.nodes[4]=tp_b(TpOp.sub,0,3);p.nodes[5]=tp_u(TpOp.square,4);p.nodes[6]=tp_c(0.5);p.nodes[7]=tp_b(TpOp.mul,5,6);p.q_node[0]=0;p.v_node[0]=2;
+  for updates:1..<3 {f:=oi_fit(p,OsParams.{spring=1,damping=0.5},updates);#assert f.status==OsStatus.state && f.params.spring==1 && f.params.damping==0.5 && f.forward==2 && f.reverse==1;}
+  p=oi_constant_program();f:=oi_fit(p,OsParams.{spring=0.4,damping=0.5},1);#assert f.status==OsStatus.parameters && f.forward==0 && f.reverse==0;
+  p.nodes[0]=tp_c(3);g:=oi_grid(p,2);#assert g.status==OsStatus.state && g.forward==1;
+}
+
+oi_clamp :: (x:f64,lo:f64,hi:f64)->f64 {if x<lo {return lo;}if x>hi {return hi;}return x;}
+// book:begin fit
+oi_fit :: (program:OiProgram,initial:OsParams,updates:int)->OiFit #export_c {
+  if !oi_fit_count_ok(updates) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape,params=initial};}
+  if initial.mass!=1 {return OiFit.{status=OsStatus.parameters,params=initial};}
+  fit:=OiFit.{params=initial};
+  for iteration:0..<updates {
+    g:=oi_value(program,fit.params.spring,fit.params.damping,true);if g.forward {fit.forward+=1;}if g.reverse {fit.reverse+=1;}
+    if g.status!=OsStatus.ok {fit.status=g.status;fit.params=initial;return fit;}
+    raw_k:=fit.params.spring-OI_RATE*g.gradient[0];raw_c:=fit.params.damping-OI_RATE*g.gradient[1];
+    k:=oi_clamp(raw_k,0.5,4);c:=oi_clamp(raw_c,0.1,1);
+    if k!=raw_k {fit.projected+=1;}if c!=raw_c {fit.projected+=1;}
+    fit.params.spring=k;fit.params.damping=c;
+  }
+  last:=oi_value(program,fit.params.spring,fit.params.damping,false);if last.forward {fit.forward+=1;}if last.reverse {return OiFit.{status=OsStatus.shape,params=initial};}
+  if last.status!=OsStatus.ok {fit.status=last.status;fit.params=initial;return fit;}
+  fit.loss=last.loss;return fit;
+}
+// book:end fit
+// book:begin grid
+oi_grid :: (program:OiProgram,side:int)->OiFit #export_c {
+  if !oi_grid_side_ok(side) || !oi_program_ok(program) {return OiFit.{status=OsStatus.shape};}
+  fit:OiFit;best:f64;
+  for row:0..<side {for column:0..<side {
+    k:=oi_grid_k(row,side);c:=oi_grid_c(column,side);
+    value:=oi_value(program,k,c,false);if value.forward {fit.forward+=1;}if value.reverse {return OiFit.{status=OsStatus.shape};}
+    if value.status!=OsStatus.ok {return OiFit.{status=value.status,forward=fit.forward};}
+    if fit.forward==1 || value.loss<best {best=value.loss;fit.params=OsParams.{spring=k,damping=c};}
+  }}
+  fit.loss=best;return fit;
+}
+// book:end grid
+oi_constant_program :: ()->OiProgram {p:=OiProgram.{count=1,states=1,observations=1};p.nodes[0]=tp_c(0);return p;}
+
+oi_fit_count_ok :: (updates:int)->bool {return updates>=0 && updates<=255;}
+oi_grid_side_ok :: (side:int)->bool {return side>=2 && side<=16;}
+// Divide the integer coordinate first so the last coordinate is exactly1.
+oi_grid_k :: (index:int,side:int)->f64 {return 0.5+3.5*(f64(index)/f64(side-1));}
+oi_grid_c :: (index:int,side:int)->f64 {return 0.1+0.9*(f64(index)/f64(side-1));}

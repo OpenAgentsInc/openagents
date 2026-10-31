@@ -1030,6 +1030,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/recover-the-physics.coax",
+      "chapter": "psionic/book/ch111-recover-the-physics-from-the-motion.md",
+      "stdout": "psionic/fixtures/recover-the-physics.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

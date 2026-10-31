@@ -83,6 +83,7 @@
 - [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md)
 - [107. Transform functions, not just tensors](ch107-transform-functions-not-just-tensors.md) — composable graph-function derivatives and batching
 - [109. Learn a physical system](ch109-learn-a-physical-system.md) — own RK4 dynamics, learned surrogate and held-out rollouts
+- [111. Recover the physics from the motion](ch111-recover-the-physics-from-the-motion.md) — exact-solver gradients and identifiable motion
 - [112. Bytes and a small language model](ch112-bytes-and-a-small-language-model.md)
 - [113. Differentiate a decoder](ch113-differentiate-a-decoder.md)
 
@@ -134,5 +135,5 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 112, 123, 124, 167–170, 213–219, 222–235, 237–242 and 245–247 have runnable code; the [introduction](README.md)
+Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 167–170, 213–219, 222–235, 237–242 and 245–247 have runnable code; the [introduction](README.md)
 table gives each one's exact status. The remaining outlines remain proposed.

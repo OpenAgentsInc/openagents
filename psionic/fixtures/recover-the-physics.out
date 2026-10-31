@@ -1,0 +1,25 @@
+profile: inverse-rk4-tape-f64-v1
+truth k/c millionths: 2400000 550000; mass 1kg
+each method: 256 forward objectives; gradient adds 255 reverse passes
+case 0: noise micro 0, stride 1, observations 72
+  gradient: k/c millionths 2400000 550000; loss pico 0; heldout q/v um 0 0
+  grid: k/c millionths 2366667 520000; loss pico 34021219; heldout q/v um 7814 11530
+case 1: noise micro 0, stride 4, observations 18
+  gradient: k/c millionths 2400000 550000; loss pico 0; heldout q/v um 0 0
+  grid: k/c millionths 2366667 520000; loss pico 37456588; heldout q/v um 7814 11530
+case 2: noise micro 2000, stride 1, observations 72
+  gradient: k/c millionths 2400838 550595; loss pico 1393820; heldout q/v um 161 242
+  grid: k/c millionths 2366667 520000; loss pico 36984201; heldout q/v um 7814 11530
+case 3: noise micro 2000, stride 4, observations 18
+  gradient: k/c millionths 2401313 549267; loss pico 1326811; heldout q/v um 304 450
+  grid: k/c millionths 2366667 520000; loss pico 39744030; heldout q/v um 7814 11530
+case 4: noise micro 10000, stride 1, observations 72
+  gradient: k/c millionths 2404191 552972; loss pico 34845792; heldout q/v um 805 1206
+  grid: k/c millionths 2366667 520000; loss pico 77073662; heldout q/v um 7814 11530
+case 5: noise micro 10000, stride 4, observations 18
+  gradient: k/c millionths 2406566 546338; loss pico 33169694; heldout q/v um 1524 2257
+  grid: k/c millionths 2366667 520000; loss pico 77392055; heldout q/v um 7814 11530
+case 6: noise micro 0, stride 1, observations 72
+  gradient: k/c millionths 2400000 900000; loss pico 0; heldout q/v um 65606 92152
+  grid: k/c millionths 2366667 1000000; loss pico 22550378; heldout q/v um 80420 112109
+equilibrium: damping 0.2 and 0.9 fit exactly; it is unidentified

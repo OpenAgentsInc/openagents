@@ -1,0 +1,52 @@
+#load "inverse-physics-types.coax";
+#authority;
+
+#test "inverse experiments freeze all parameters noise levels sampling and initial states" {
+  truth:=oi_truth();#assert truth.mass==1 && truth.spring==2.4 && truth.damping==0.55;
+  for mode:0..<7 {d:=oi_dataset(mode);#assert d.status==OsStatus.ok && d.episodes==3 && d.steps==24 && d.stride==(ifx mode%2==1 then 4 else 1);#assert oi_data_ok(d)==OsStatus.ok;
+    if mode<6 {#assert d.initial[0].position==0.8 && d.initial[1].velocity==0.8 && d.initial[2].position== -0.6 && d.initial[2].velocity== -0.4;}
+  }
+  #assert oi_dataset(-1).status==OsStatus.shape && oi_dataset(7).status==OsStatus.shape;
+  #assert oi_noise(0)==0 && oi_noise(1)==0 && oi_noise(2)==0.002 && oi_noise(3)==0.002 && oi_noise(4)==0.01 && oi_noise(5)==0.01;
+}
+#test "observations are original RK4 transitions with a source named frozen noise stream" {
+  clean:=oi_dataset(0);low:=oi_dataset(2);high:=oi_dataset(4);down:=oi_dataset(5);
+  for episode:0..<3 {s:=clean.initial[episode];for tick:0..<24 {at:=episode*24+tick;r:=os_step(oi_truth(),s,clean.forces[at],OS_DT);#assert r.status==OsStatus.ok && f64_bits(clean.observed[at].position)==f64_bits(r.state.position) && f64_bits(clean.observed[at].velocity)==f64_bits(r.state.velocity);s=r.state;
+    nq:=2*tb_uniform(11100,cast(u64)(2*at))-1;nv:=2*tb_uniform(11100,cast(u64)(2*at+1))-1;
+    #assert low.observed[at].position==s.position+0.002*nq && low.observed[at].velocity==s.velocity+0.002*nv;
+    #assert high.observed[at].position==s.position+0.01*nq && high.observed[at].velocity==s.velocity+0.01*nv;
+    #assert f64_bits(down.observed[at].position)==f64_bits(high.observed[at].position) && f64_bits(down.observed[at].velocity)==f64_bits(high.observed[at].velocity);
+  }}
+  #assert clean.forces[0]==0 && clean.forces[6]==0.5 && clean.forces[12]== -0.5 && clean.forces[18]==0 && clean.forces[24]==0.5 && clean.forces[48]== -0.5;
+  eq:=oi_dataset(6);for s:eq.observed {#assert s.position==0.5 && s.velocity==0;}for f:eq.forces {#assert f==1.2;}
+}
+#test "inverse data admission bounds every active state force and descriptor" {
+  d:=oi_dataset(0);#assert oi_data_ok(d)==OsStatus.ok;
+  for mode:0..<15 {x:=d;if mode==0 {x.status=OsStatus.number;}if mode==1 {x.episodes=0;}if mode==2 {x.episodes=4;}if mode==3 {x.steps=0;}if mode==4 {x.steps=25;}if mode==5 {x.stride=0;}if mode==6 {x.stride=25;}if mode==7 {x.stride=5;}if mode==8 {x.initial[2].position=2.001;}if mode==9 {x.initial[2].velocity=4.001;}if mode==10 {x.forces[71]=2.001;}if mode==11 {x.observed[71].velocity=-4.001;}if mode==12 {x.initial[0].position=2.001;}if mode==13 {x.forces[0]=-2.001;}if mode==14 {x.observed[0].position=-2.001;}#assert oi_data_ok(x)!=OsStatus.ok;}
+  d.episodes=1;d.steps=1;d.stride=1;d.initial[0]=OsState.{position=2,velocity=-4};d.forces[0]=2;d.observed[0]=OsState.{position=-2,velocity=4};#assert oi_data_ok(d)==OsStatus.ok;
+}
+
+oi_truth :: ()->OsParams #export_c {return OsParams.{spring=2.4,damping=0.55};}
+oi_noise :: (mode:int)->f64 {return ifx mode<2 then 0 else (ifx mode<4 then 0.002 else 0.01);}
+oi_force :: (episode:int,tick:int)->f64 {phase:=(tick/6+episode)%3;return ifx phase==0 then 0 else (ifx phase==1 then 0.5 else -0.5);}
+oi_dataset :: (mode:int)->OiData #export_c {
+  if mode<0 || mode>6 {return OiData.{status=OsStatus.shape};}
+  d:=OiData.{episodes=3,steps=24,stride=ifx mode%2==1 then 4 else 1};noise:=oi_noise(mode);
+  q:=[3]f64.[0.8,0,-0.6];v:=[3]f64.[0,0.8,-0.4];
+  for episode:0..<3 {
+    s:=OsState.{position=q[episode],velocity=v[episode]};if mode==6 {s=OsState.{position=0.5};}d.initial[episode]=s;
+    for tick:0..<24 {at:=episode*24+tick;u:=ifx mode==6 then 1.2 else oi_force(episode,tick);r:=os_step(oi_truth(),s,u,OS_DT);if r.status!=OsStatus.ok {return OiData.{status=r.status};}s=r.state;d.forces[at]=u;d.observed[at]=s;
+      if mode!=6 {d.observed[at].position+=noise*(2*tb_uniform(11100,cast(u64)(2*at))-1);d.observed[at].velocity+=noise*(2*tb_uniform(11100,cast(u64)(2*at+1))-1);}
+    }
+  }
+  return d;
+}
+oi_data_ok :: (d:OiData)->OsStatus #export_c {
+  if d.status!=OsStatus.ok || d.episodes<1 || d.episodes>3 || d.steps<1 || d.steps>24 || d.stride<1 || d.stride>d.steps {return OsStatus.shape;}
+  if d.steps%d.stride!=0 {return OsStatus.shape;}
+  for episode:0..<d.episodes {
+    s:=d.initial[episode];initial_numbers:=[2]f64.[s.position,s.velocity];for x:initial_numbers {if !os_finite(x) {return OsStatus.number;}}if !os_state_ok(s) {return OsStatus.state;}
+    for tick:0..<d.steps {at:=episode*24+tick;u:=d.forces[at];v:=d.observed[at];numbers:=[3]f64.[u,v.position,v.velocity];for x:numbers {if !os_finite(x) {return OsStatus.number;}}if abs(u)>2 {return OsStatus.force;}if !os_state_ok(v) {return OsStatus.state;}}
+  }
+  return OsStatus.ok;
+}

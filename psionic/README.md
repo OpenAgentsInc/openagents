@@ -281,3 +281,9 @@ mapped batching on the bounded CPU tensor-IR profile. Public outputs commit
 atomically after finite-value and storage admission. It does not differentiate
 arbitrary Coax procedures or device graphs. Run `psionic/check.sh --only functions`
 for its focused gate.
+
+[Chapter 111](book/ch111-recover-the-physics-from-the-motion.md) infers spring
+stiffness and damping through the exact owned F64 RK4 solver. Frozen noise/
+sampling cases and new-motion forecasts accompany a zero-loss equilibrium
+counterexample where damping cannot be identified. Run
+`psionic/check.sh --only physics/inverse` for its focused gate.

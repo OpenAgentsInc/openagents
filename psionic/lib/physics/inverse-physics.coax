@@ -1,0 +1,93 @@
+#load "inverse-data.coax";
+#authority;
+
+#test "inverse graph unrolls original RK4 without changing a single sampled state" {
+  d:=oi_dataset(0);p:=oi_program(d);#assert p.status==OsStatus.ok && p.count==3687 && p.states==72 && p.observations==72 && oi_program_ok(p);
+  z:=oi_value(p,2.4,0.55,true);#assert z.status==OsStatus.ok && z.loss==0 && z.gradient[0]==0 && z.gradient[1]==0;
+  #assert f64_bits(z.end.position)==f64_bits(d.observed[71].position) && f64_bits(z.end.velocity)==f64_bits(d.observed[71].velocity);
+  down:=oi_program(oi_dataset(1));#assert down.status==OsStatus.ok && down.count==3255 && down.states==72 && down.observations==18;
+  bad:=d;bad.stride=0;#assert oi_program(bad).status==OsStatus.shape;
+}
+#test "one step gives a nonzero reverse gradient and a central difference oracle" {
+  d:=oi_dataset(0);d.episodes=1;d.steps=1;d.stride=1;p:=oi_program(d);#assert p.count==62 && p.states==1 && p.observations==1;
+  a:=oi_value(p,1,0.9,true);b:=oi_value(p,1,0.9,false);#assert a.status==OsStatus.ok && a.loss>0 && a.gradient[0]!=0 && a.gradient[1]!=0 && a.loss==b.loss && a.forward && a.reverse && b.forward && !b.reverse && b.gradient[0]==0 && b.gradient[1]==0;
+  h:=0.00001;dk:=(oi_value(p,1+h,0.9,false).loss-oi_value(p,1-h,0.9,false).loss)/(2*h);dc:=(oi_value(p,1,0.9+h,false).loss-oi_value(p,1,0.9-h,false).loss)/(2*h);
+  #assert abs(dk-a.gradient[0])<1e-10 && abs(dc-a.gradient[1])<1e-10;
+}
+#test "sampling selects the declared next-state times and loss averages all observations" {
+  strides:=[2]int.[1,4];for stride:strides {d:=oi_dataset(0);d.episodes=1;d.steps=4;d.stride=stride;p:=oi_program(d);value:=oi_value(p,1,0.9,false);s:=d.initial[0];sum:f64;count:=0;
+    for tick:0..<4 {s=os_step(OsParams.{spring=1,damping=0.9},s,d.forces[tick],OS_DT).state;if (tick+1)%stride==0 {q:=s.position-d.observed[tick].position;v:=s.velocity-d.observed[tick].velocity;sum+=q*q+v*v;count+=1;}}
+    #assert value.status==OsStatus.ok && p.observations==count && abs(value.loss-0.5*sum/f64(count))<1e-14;
+  }
+}
+#test "program storage admission covers every descriptor endpoint and active node ID" {
+  p:OiProgram;p.count=1;p.states=1;p.observations=1;p.nodes[0]=tp_c(0);#assert oi_program_ok(p) && oi_value(p,0.5,0.1,false).status==OsStatus.ok && oi_value(p,4,1,false).status==OsStatus.ok;
+  p.count=4096;p.states=72;p.observations=72;#assert oi_program_ok(p);
+  for mode:0..<13 {b:=p;if mode==0 {b.status=OsStatus.state;}if mode==1 {b.count=0;}if mode==2 {b.count=4097;}if mode==3 {b.states=0;}if mode==4 {b.states=73;}if mode==5 {b.observations=0;}if mode==6 {b.observations=73;}if mode==7 {b.q_node[0]=-1;}if mode==8 {b.q_node[71]=4096;}if mode==9 {b.v_node[0]=-1;}if mode==10 {b.v_node[71]=4096;}if mode==11 {b.nodes[2]=tp_p(2);}if mode==12 {b.nodes[1]=tp_b(TpOp.add,1,0);}#assert !oi_program_ok(b) && oi_value(b,2,0.5,true).status==OsStatus.shape;}
+  for mode:0..<4 {k:f64=2;c:f64=0.5;if mode==0 {k=0.499;}if mode==1 {k=4.001;}if mode==2 {c=0.099;}if mode==3 {c=1.001;}#assert oi_value(p,k,c,true).status==OsStatus.parameters;}
+  q:[1]OiProgram;q[0].count=4096;#assert oi_push(q[..],tp_c(2))== -1 && q[0].status==OsStatus.capacity;#assert oi_push(q[..],tp_c(3))== -1;
+}
+#test "physical bound or malformed arithmetic refuses a gradient result" {
+  d:=oi_dataset(0);d.episodes=1;d.steps=1;d.stride=1;d.initial[0]=OsState.{position=2,velocity=4};p:=oi_program(d);bad:=oi_value(p,2,0.5,true);#assert p.status==OsStatus.ok && bad.status==OsStatus.state && bad.forward && !bad.reverse;
+  p=oi_program(oi_dataset(0));p.nodes[p.count-1]=tp_c(1e101);#assert oi_value(p,2,0.5,true).status==OsStatus.shape;
+  p=OiProgram.{count=2,states=1,observations=1};p.nodes[0]=tp_c(0);p.nodes[1]=tp_b(TpOp.div,0,0);bad=oi_value(p,1,0.5,true);#assert bad.status==OsStatus.number && !bad.forward && !bad.reverse;
+  p=OiProgram.{count=5,states=1,observations=1};p.nodes[0]=tp_p(0);p.nodes[1]=tp_c(0);p.nodes[2]=tp_c(1e100);p.nodes[3]=tp_b(TpOp.mul,0,2);p.nodes[4]=tp_b(TpOp.add,3,3);p.q_node[0]=1;p.v_node[0]=1;
+  bad=oi_value(p,0.5,0.1,true);#assert bad.status==OsStatus.number && bad.forward && !bad.reverse;
+
+}
+
+oi_push :: (p:[]OiProgram,node:TpNode)->int {
+  if p[0].status!=OsStatus.ok {return -1;}
+  n:=tp_push(p[0].nodes[..],p[0].count,node);if n== -1 {p[0].status=OsStatus.capacity;return -1;}p[0].count=n;return n-1;
+}
+oi_binary :: (p:[]OiProgram,op:TpOp,a:int,b:int)->int {return oi_push(p,tp_b(op,a,b));}
+oi_rhs :: (p:[]OiProgram,s:OiPair,u:int)->OiPair {
+  cv:=oi_binary(p,TpOp.mul,1,s.v);kq:=oi_binary(p,TpOp.mul,0,s.q);left:=oi_binary(p,TpOp.sub,u,cv);return OiPair.{q=s.v,v=oi_binary(p,TpOp.sub,left,kq)};
+}
+oi_shift :: (p:[]OiProgram,s:OiPair,k:OiPair,h:int)->OiPair {
+  hq:=oi_binary(p,TpOp.mul,h,k.q);hv:=oi_binary(p,TpOp.mul,h,k.v);return OiPair.{q=oi_binary(p,TpOp.add,s.q,hq),v=oi_binary(p,TpOp.add,s.v,hv)};
+}
+// book:begin step
+// Node order exactly follows os_step, including its left-associated sums.
+oi_rk4 :: (p:[]OiProgram,s:OiPair,u:int,two:int,half:int,full:int,sixth:int)->OiPair {
+  a:=oi_rhs(p,s,u);b:=oi_rhs(p,oi_shift(p,s,a,half),u);c:=oi_rhs(p,oi_shift(p,s,b,half),u);
+  d:=oi_rhs(p,oi_shift(p,s,c,full),u);
+  bq:=oi_binary(p,TpOp.mul,two,b.q);cq:=oi_binary(p,TpOp.mul,two,c.q);
+  bv:=oi_binary(p,TpOp.mul,two,b.v);cv:=oi_binary(p,TpOp.mul,two,c.v);
+  qs:=oi_binary(p,TpOp.add,a.q,bq);qs=oi_binary(p,TpOp.add,qs,cq);qs=oi_binary(p,TpOp.add,qs,d.q);
+  vs:=oi_binary(p,TpOp.add,a.v,bv);vs=oi_binary(p,TpOp.add,vs,cv);vs=oi_binary(p,TpOp.add,vs,d.v);
+  dq:=oi_binary(p,TpOp.mul,sixth,qs);dv:=oi_binary(p,TpOp.mul,sixth,vs);
+  return OiPair.{q=oi_binary(p,TpOp.add,s.q,dq),v=oi_binary(p,TpOp.add,s.v,dv)};
+}
+// book:end step
+oi_program :: (data:OiData)->OiProgram #export_c {
+  admitted:=oi_data_ok(data);if admitted!=OsStatus.ok {return OiProgram.{status=admitted};}
+  arena:[1]OiProgram;g:=arena[..];k_index:=oi_push(g,tp_p(0));c_index:=oi_push(g,tp_p(1));two:=oi_push(g,tp_c(2));half:=oi_push(g,tp_c(OS_DT/2));full:=oi_push(g,tp_c(OS_DT));sixth:=oi_push(g,tp_c(OS_DT/6));total:=oi_push(g,tp_c(0));
+  for episode:0..<data.episodes {
+    s:=OiPair.{q=oi_push(g,tp_c(data.initial[episode].position)),v=oi_push(g,tp_c(data.initial[episode].velocity))};
+    for tick:0..<data.steps {at:=episode*24+tick;u:=oi_push(g,tp_c(data.forces[at]));s=oi_rk4(g,s,u,two,half,full,sixth);ix:=g[0].states;g[0].q_node[ix]=s.q;g[0].v_node[ix]=s.v;g[0].states+=1;
+      if (tick+1)%data.stride==0 {
+        yq:=oi_push(g,tp_c(data.observed[at].position));yv:=oi_push(g,tp_c(data.observed[at].velocity));eq:=oi_binary(g,TpOp.sub,s.q,yq);ev:=oi_binary(g,TpOp.sub,s.v,yv);sq:=oi_push(g,tp_u(TpOp.square,eq));sv:=oi_push(g,tp_u(TpOp.square,ev));pair:=oi_binary(g,TpOp.add,sq,sv);total=oi_binary(g,TpOp.add,total,pair);g[0].observations+=1;
+      }
+    }
+  }
+  scale:=oi_push(g,tp_c(0.5/f64(g[0].observations)));output:=oi_binary(g,TpOp.mul,total,scale);return arena[0];
+}
+oi_program_ok :: (program:OiProgram)->bool #export_c {
+  if program.status!=OsStatus.ok || program.count<1 || program.count>4096 || program.states<1 || program.states>72 || program.observations<1 || program.observations>program.states {return false;}
+  for i:0..<program.states {if program.q_node[i]<0 || program.q_node[i]>=program.count || program.v_node[i]<0 || program.v_node[i]>=program.count {return false;}}
+  nodes:=program.nodes;return tp_admit(nodes[0..<program.count],2)==TpStatus.ok;
+}
+// book:begin objective
+oi_value :: (program:OiProgram,spring:f64,damping:f64,gradient:bool)->OiValue #export_c {
+  if !oi_program_ok(program) {return OiValue.{status=OsStatus.shape};}
+  params:=[2]f64.[spring,damping];for x:params {if !os_finite(x) {return OiValue.{status=OsStatus.number};}}
+  if spring<0.5 || spring>4 || damping<0.1 || damping>1 {return OiValue.{status=OsStatus.parameters};}
+  nodes:=program.nodes;values:[4096]f64;
+  if tp_forward(nodes[0..<program.count],params[..],values[..],false)!=TpStatus.ok {return OiValue.{status=OsStatus.number};}
+  for i:0..<program.states {s:=OsState.{position=values[program.q_node[i]],velocity=values[program.v_node[i]]};if !os_state_ok(s) {return OiValue.{status=OsStatus.state,forward=true};}}
+  result:=OiValue.{forward=true,loss=values[program.count-1],end=OsState.{position=values[program.q_node[program.states-1]],velocity=values[program.v_node[program.states-1]]}};
+  if gradient {g:[2]f64;if tp_backward(nodes[0..<program.count],values[0..<program.count],g[..],false)!=TpStatus.ok {return OiValue.{status=OsStatus.number,forward=true};}result.gradient=g;result.reverse=true;}
+  return result;
+}
+// book:end objective

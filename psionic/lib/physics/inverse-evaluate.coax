@@ -1,0 +1,32 @@
+#load "inverse-fit.coax";
+#authority;
+
+#test "heldout prediction starts once from new initial conditions and applies independent forcing" {
+  exact:=oi_forecast(oi_truth());#assert exact.status==OsStatus.ok && exact.rows==384 && exact.q_square==0 && exact.v_square==0 && exact.max_q==0 && exact.max_v==0;
+  base:=oi_forecast(OsParams.{spring=1,damping=0.9});#assert base.status==OsStatus.ok && base.rows==384 && base.q_square>0 && base.v_square>0 && base.max_q>0.1 && base.max_v>0.1;
+  #assert abs(base.q_square-16.82337882172866)<1e-11 && abs(base.v_square-25.05957798243381)<1e-11 && abs(base.max_q-0.48436266887155516)<1e-12 && abs(base.max_v-0.5634206529297647)<1e-12;
+  #assert oi_holdout_force(0,0)==0.4 && oi_holdout_force(0,4)==0.4 && oi_holdout_force(0,5)== -0.2 && oi_holdout_force(0,11)== -0.2 && oi_holdout_force(0,12)==0 && oi_holdout_force(0,20)==0.4 && oi_holdout_force(1,0)== -0.2 && oi_holdout_force(2,0)== -0.2;
+  #assert oi_forecast(OsParams.{mass=2,spring=1,damping=0.9}).status==OsStatus.parameters;
+  #assert oi_forecast(OsParams.{spring=0.4,damping=0.9}).status==OsStatus.parameters;
+}
+#test "peak errors preserve the second word on ties" {
+  #assert oi_peak(2,3)==3 && oi_peak(3,2)==3 && f64_bits(oi_peak(f64_from_bits(cast(u64)0x8000000000000000),0))==0;
+}
+
+oi_holdout_force :: (episode:int,tick:int)->f64 {phase:=(tick+5*episode)%20;return ifx phase<5 then 0.4 else (ifx phase<12 then -0.2 else 0);}
+oi_peak :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}
+// book:begin forecast
+oi_forecast :: (params:OsParams)->OiEval #export_c {
+  result:OiEval;qs:=[3]f64.[0.7,-0.5,0];vs:=[3]f64.[-0.15,0.35,-0.7];
+  for episode:0..<3 {
+    truth:=OsState.{position=qs[episode],velocity=vs[episode]};own:=truth;
+    for tick:0..<128 {
+      u:=oi_holdout_force(episode,tick);next:=os_step(oi_truth(),truth,u,OS_DT);predicted:=os_step(params,own,u,OS_DT);
+      if next.status!=OsStatus.ok {return OiEval.{status=next.status};}if predicted.status!=OsStatus.ok {return OiEval.{status=predicted.status};}
+      truth=next.state;own=predicted.state;q:=own.position-truth.position;v:=own.velocity-truth.velocity;
+      result.q_square+=q*q;result.v_square+=v*v;result.max_q=oi_peak(result.max_q,abs(q));result.max_v=oi_peak(result.max_v,abs(v));result.rows+=1;
+    }
+  }
+  return result;
+}
+// book:end forecast

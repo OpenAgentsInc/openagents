@@ -1,0 +1,10 @@
+#load "oscillator.coax";
+#load "../tape.coax";
+OiData :: struct {status:OsStatus;episodes:int;steps:int;stride:int;initial:[3]OsState;forces:[72]f64;observed:[72]OsState;}
+OiProgram :: struct {status:OsStatus;count:int;states:int;observations:int;nodes:[4096]TpNode;q_node:[72]int;v_node:[72]int;}
+OiPair :: struct {q:int;v:int;}
+OiValue :: struct {status:OsStatus;forward:bool;reverse:bool;loss:f64;gradient:[2]f64;end:OsState;}
+OiFit :: struct {status:OsStatus;params:OsParams;loss:f64;forward:int;reverse:int;projected:int;}
+OiEval :: struct {status:OsStatus;rows:int;q_square:f64;v_square:f64;max_q:f64;max_v:f64;}
+OI_RATE :: 2.0;
+OI_UPDATES :: 255;

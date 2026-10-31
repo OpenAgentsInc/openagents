@@ -1,5 +1,23 @@
 # Invariants
 
+## Inverse physics differentiates the owned solver and exposes ambiguity
+
+`psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated
+F64 RK4 transition on chapter 104’s scalar reverse tape, not its learned
+surrogate. Mass, step, forces and initial states are known; only spring and
+damping are inferred. Sparse observations thin the loss, not the integration.
+The frozen experiment keeps optimizer rates, starts, noise streams, sampling,
+box constraints and held-out forecasts fixed before fitting.
+
+The 255-update fit plus final objective uses 256 forward/255 reverse passes;
+the 16×16 grid uses 256 forward/zero reverse. Equal forward count is not equal
+arithmetic cost. Public fit refusal rolls back to admitted parameters.
+Equilibrium data admits different damping values at zero loss; empirical clean
+recovery does not prove global identifiability or noise robustness. Independent
+analytic sensitivities, optimizer/forecast calculations, exact transcript
+coverage and all 5,040 serialized state words are qualified separately in
+`psionic/fixtures/physics/inverse/qualification.json`.
+
 ## Owned oscillator dynamics and learned surrogates keep their roles distinct
 
 `psionic/lib/physics/oscillator*.coax` owns a fixed-mass F64 damped forced

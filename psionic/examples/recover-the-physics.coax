@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/physics/inverse-evaluate.coax";
+oi_example_integer :: (value:f64,scale:f64)->int {return cast(int)floor(value*scale+0.5);}
+oi_example_show :: (name:string,fit:OiFit,e:OiEval) {
+    #assert fit.status==OsStatus.ok && e.status==OsStatus.ok && e.rows==384;
+    print("  %: k/c millionths % %; loss pico %; heldout q/v um % %\n",name,oi_example_integer(fit.params.spring,1e6),oi_example_integer(fit.params.damping,1e6),oi_example_integer(fit.loss,1e12),oi_example_integer(sqrt(e.q_square/f64(e.rows)),1e6),oi_example_integer(sqrt(e.v_square/f64(e.rows)),1e6));
+}
+// book:begin example
+main :: () {
+    print("profile: inverse-rk4-tape-f64-v1\n");
+    print("truth k/c millionths: 2400000 550000; mass 1kg\n");
+    print("each method: 256 forward objectives; gradient adds 255 reverse passes\n");
+    for mode:0..<7 {
+        data:=oi_dataset(mode);program:=oi_program(data);
+        start:=OsParams.{spring=ifx mode==6 then 2.4 else 1,damping=0.9};
+        learned:=oi_fit(program,start,255);grid:=oi_grid(program,16);
+        #assert learned.status==OsStatus.ok && grid.status==OsStatus.ok;
+        #assert learned.forward==256 && learned.reverse==255 && grid.forward==256 && grid.reverse==0;
+        if mode==0 {#assert abs(learned.params.spring-2.4)<0.02 && abs(learned.params.damping-0.55)<0.02;}
+        print("case %: noise micro %, stride %, observations %\n",mode,oi_example_integer(ifx mode==6 then 0 else oi_noise(mode),1e6),data.stride,program.observations);
+        oi_example_show("gradient",learned,oi_forecast(learned.params));
+        oi_example_show("grid",grid,oi_forecast(grid.params));
+        if mode==6 {
+            a:=oi_value(program,2.4,0.2,true);b:=oi_value(program,2.4,0.9,true);
+            #assert a.loss==0 && b.loss==0 && a.gradient[1]==0 && b.gradient[1]==0 && learned.params.damping==0.9;
+            print("equilibrium: damping 0.2 and 0.9 fit exactly; it is unidentified\n");
+        }
+    }
+}
+// book:end example
