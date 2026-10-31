@@ -568,6 +568,7 @@ villa_live :: (s: [] Villa) -> Shot #export_c { return s[0].live; }
 // doing act, moving vx, vz.
 villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
   if !s[0].started { villa_start(s); }
+  if s[0].golden { golden_alone(s); }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   s[0].time += f64(t);
   redit_start(s[0].ed[..], "hecates-cemetery");
@@ -620,10 +621,15 @@ near_stone :: (s: [] Villa) {
   }
 }
 
+// Golden mode's shot is the same every walk: nobody else is here, nothing
+// they said is in the chat box and only your own stones stand (pet_stones).
+golden_alone :: (s: [] Villa) { s[0].room[0].others = 0; s[0].room[0].lines = 0; }
+
 // Everyone's pets' tombstones, in their plots; yours with a small light on it.
 pet_stones :: (s: [] Villa) {
   p := s[0].pet[..];
   for i: 0..<p[0].garden {
+    if s[0].golden && !p[0].g_mine[i] { continue; }
     q := p[0].g_plot[i];
     x := plot_x(q); z := plot_z(q) + 0.62;
     tombstone(s, q % 4, x, z, 1);
@@ -1462,6 +1468,24 @@ fly :: (s: [] Villa, t: f32) {
   n := villa_draw(g[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
   #assert !villa_fly_wanted(g[..]) && u[U_MOON + 3] == f32(GOLDEN_PHASE) && n > 0;
 }
+
+#test "golden mode is alone: no one else, no one's chat lines, only your own stones" {
+  a: [1] Villa; g: [1] Villa;
+  golden_fixture(a[..], false); golden_fixture(g[..], true);
+  #assert a[0].room[0].others == 2 && a[0].room[0].lines == 3;
+  #assert g[0].room[0].others == 0 && g[0].room[0].lines == 0;
+  #assert shapes(a[..]) > shapes(g[..]) && shapes(g[..]) > 0;   // both stones; golden, only yours (and its light)
+}
+golden_fixture :: (s: [] Villa, golden: bool) {
+  villa_start(s);
+  s[0].golden = golden;
+  s[0].pet[0].garden = 2; s[0].pet[0].g_plot[0] = 1; s[0].pet[0].g_plot[1] = 5; s[0].pet[0].g_mine[1] = true;
+  s[0].room[0].others = 2; s[0].room[0].lines = 3;
+  villa_step(s, 0.016, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  for k: 0..<KINDS { s[0].counts[k] = 0; }
+  pet_stones(s);
+}
+shapes :: (s: [] Villa) -> int { n := 0; for k: 0..<KINDS { n += s[0].counts[k]; } return n; }
 
 #test "the real flight: from space it lands at the south gate and hands the camera to you" {
   s: [1] Villa;
