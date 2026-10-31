@@ -10,6 +10,7 @@ RIVAL_HOME :: BODY_CERES;
 RIVAL_SHIPS :: 4;             // miners the Union's yard builds, on top of the first
 RIVAL_SHIP_METAL :: 600.0;    // t of metal a miner takes (as our freighter does)
 RIVAL_SHIP_DAYS :: 30.0;
+RIVAL_STORE_CAP :: 2000.0;    // t of ice its yard keeps; the rest goes on to Mars, so cutting its loads starves it
 RIVAL_REST :: 6.0;            // days a miner spends at home between trips
 RIVAL_AHEAD :: 1.15;          // delivered more than this times ours: rest RIVAL_SLOW days instead
 RIVAL_SLOW :: 60.0;
@@ -89,11 +90,15 @@ rival_arrive :: (s: [] Belt, k: int) {
     return;
   }
   if is_rival_miner(sh) && sh.at == RIVAL_HOME {
-    if sh.cargo > 0.0 { s[0].rival[0] = station_deliver(s[0].rival[0], sh.cargo); s[0].rdelivered += sh.cargo; s[0].ships[k].cargo = 0.0; }
+    if sh.cargo > 0.0 {
+      s[0].rival[0] = station_deliver(s[0].rival[0], sh.cargo); s[0].rdelivered += sh.cargo; s[0].ships[k].cargo = 0.0;
+      s[0].rival[0].ice = fmin(s[0].rival[0].ice, RIVAL_STORE_CAP);   // the rest goes on to Mars
+    }
     s[0].ships[k].idle_until = s[0].t + (ifx rival_ahead(s) then RIVAL_SLOW else RIVAL_REST) * DAY;
     return;
   }
-  s[0].ships[k].idle_until = s[0].t + 25.0 * DAY;
+  // the Unknown: it stays to hold it (belt-win.coax)
+  s[0].ships[k].idle_until = s[0].t + (ifx sh.at == P_UNKNOWN then 100000.0 else 25.0) * DAY;
 }
 // The Union's yard: a miner laid down when the metal is there, launched RIVAL_SHIP_DAYS later.
 rival_yard_step :: (s: [] Belt, days: f64) {
