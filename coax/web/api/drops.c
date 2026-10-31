@@ -1173,6 +1173,10 @@ bool drops_site_write(const char *name, const char *type, const char *data) {
   char tok[4096];
   return token(tok, sizeof tok) && site_put(tok, name, type, data);
 }
+bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n) {
+  char tok[4096];
+  return token(tok, sizeof tok) && site_put_bytes(tok, name, type, data, n);
+}
 bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap) {
   return open_upload(object, type, bytes, from, out, cap);
 }

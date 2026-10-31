@@ -15,7 +15,7 @@ Checked with `curl` against openagents.com and the staged site (67 pages).
 | `/realms/new`, `/realms/characters` | yes | none | small or none | A text-only preview. |
 | Homepage, `/projects` and its 9 project pages, `/pylon`, `/download`, `/docs/connect-a-pylon`, `/nip` and its 22 NIP pages | none | none | none | Chat apps fell back to the `<title>` and description, with no picture. `/download` had no description either. |
 | `/login`, `/chat`, `/admin/*`, `/new-land`, the 404, private and demo project pages | none | none | none | All `noindex`; they still get shared. |
-| Made realms (`/realms/<slug>` from `/realms/new`, written by oa-api, `0048_realm_builder.sql`) | title, url | the Haunted House picture | none | No description tag. |
+| Made realms (`/realms/<slug>` from `/realms/new`, written by oa-api, `0048_realm_builder.sql`) | title, url | the Haunted House picture | none | No description tag. Fixed by `0071_made_realm_share.sql` (below). |
 | A project's first realm (`0040_project_realm.sql`) | yes | its drop's cover, when there is one | large or small | Fine. |
 
 How they were made: realm pages are written by `coax/web/realms.ts` from
@@ -69,6 +69,28 @@ committed in `apps/openagents-web/og/`):
 Each card is `/og#card=PATH` (the workbench's own app, `og.coax`, drawing one
 page's card at 1200x630) captured headless and saved as a JPEG under 300 KB.
 
+## Realms players make (`/realms/new`)
+
+Their pages are written by oa-api into the site's bucket, not by a release
+(`coax/web/api/realms.c`, `migrations/0071_made_realm_share.sql`), with every
+tag above:
+
+- **line**: the one the player wrote on the builder's board (tap the line
+  under the name) or later (`POST /api/playtest/realms/<slug>/describe`), else
+  one written from what is in it ("A forest at night with 20 dead trees and a
+  flock of bats, where Old Mott lives. A realm built on the Verse."). Every
+  player word is escaped.
+- **image**: its own card, `/realms/<slug>/card.jpg?v=<when>`. When its owner
+  opens it (right after MAKE IT), the page (`coax/web/card.js`, through the
+  host) takes one frame once the scene is drawn, puts it under the name and
+  line in the cards' look, and sends a 1200x630 JPEG under 300 KB back
+  (`POST .../card`; the server checks the size and the JPEG's frame). A
+  browser without WebGPU sends the name and line alone. It is taken again
+  when the realm changes. Until the first one, the branded card: never another
+  realm's picture.
+- Pages written with an older template are written again when the API starts.
+- `/og` lists the newest 60 after the site's pages (`GET /api/playtest/realms/made`).
+
 ## Adding a page, a realm or a project
 
 - **A page**: give it a `<title>` and a `<meta name="description">`. That's
@@ -87,10 +109,8 @@ page's preview from the sources, without a build.
 
 ## Next
 
-- Made realms (`/realms/<slug>` from the builder) and private project pages
-  are written by oa-api, not the site build: they should take the same rules
-  (a description tag, twitter tags, and a card that isn't the Haunted
-  House's). That is a migration replacing `verse.builder_page`.
+- Private project pages are written by oa-api, not the site build: they should
+  take the same rules.
 - `?card=1` (no HUD) in the walking realms too, so their cards need no crop,
   and a `highlight` stage for each of them.
 - Render cards at release time instead of committing them, once the release

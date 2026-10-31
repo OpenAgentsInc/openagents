@@ -4,8 +4,10 @@
 // missing, too long or the wrong size under it. The rows are og/pages.txt,
 // which coax/web/og.ts writes when a release is staged, fetched once:
 //   path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress
-// ALL shows every page, PROBLEMS only the ones with an error or a warning. A
-// card opens its page.
+// Then the realms players made at /realms/new, newest first (coax/web/api, GET
+// /api/playtest/realms/made, the same columns): the API writes their pages, not a
+// release. ALL shows every page, PROBLEMS only the ones with an error or a
+// warning. A card opens its page.
 //
 // The same app draws one page's own card (#card=PATH, at 1200x630): what
 // coax/web/og-render.ts captures for a page with no hand-made card. A realm's
@@ -37,6 +39,7 @@ OgState :: struct {
   filter: int;
   card: [512] u8; card_n: int; // #card=PATH: that page's card alone
   ask: [64] u8; ask_n: int;
+  made: bool;                  // the made realms' rows were asked for
   outbox: [512] u8; out_n: int; action: int;
   media: [OG_MEDIA] u8; media_n: int;
   row_at: [OG_ROWS] int; row_end: [OG_ROWS] int; row_n: int;
@@ -135,10 +138,21 @@ og_ask :: (s: [] OgState) {
   s[0].status = 0;
 }
 coaxial_og_asked :: (s: [] OgState) #export_c { s[0].ask_n = 0; }
+OG_MADE_URL :: "/api/playtest/realms/made";
 og_answer :: (s: [] OgState, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  if s[0].made {   // the made realms' rows, after the site's (none is no problem)
+    s[0].made = false;
+    if code != 200 || s[0].status != 200 { return; }
+    n := s[0].data_n;
+    if n > 0 && n < s[0].data.count && s[0].data[n - 1] != '\n' { s[0].data[n] = '\n'; n += 1; }
+    for k: i..<bytes.count { if n >= s[0].data.count { break; } s[0].data[n] = bytes[k]; n += 1; }
+    s[0].data_n = n;
+    og_index(s);
+    return;
+  }
   s[0].status = ifx code == 0 then 503 else code;
   s[0].data_n = 0; s[0].row_n = 0;
   if code != 200 { return; }
@@ -147,6 +161,10 @@ og_answer :: (s: [] OgState, bytes: string) {
   for k: 0..<n { s[0].data[k] = bytes[i + k]; }
   s[0].data_n = n;
   og_index(s);
+  if s[0].card_n == 0 {   // then the made realms'
+    s[0].ask_n = put_text(s[0].ask[..], 0, OG_MADE_URL);
+    s[0].made = true;
+  }
 }
 
 // ---- the pictures (host.js coaxial_media)
@@ -535,6 +553,18 @@ OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|w
   #assert og_shown(s[..], order[..]) == 3;
   og_act(s[..], OG_HIT_PROBLEMS);
   #assert og_shown(s[..], order[..]) == 1 && order[0] == 1;
+}
+
+#test "then the realms players made come after the site's pages" {
+  s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
+  og_answer(s[..], OG_FIXTURE);
+  #assert s[0].made && cast(string) s[0].ask[0..<s[0].ask_n] == OG_MADE_URL;
+  og_answer(s[..], "200\n/realms/moss-keep|made||Moss Keep|A forest at dusk. A realm built on the Verse.|https://openagents.com/realms/moss-keep|/realms/moss-keep/card.jpg?v=9|Moss Keep|made|1200|630|88|||\n");
+  #assert !s[0].made && s[0].status == 200 && s[0].row_n == 4 && og_cell(s[..], 3, O_TITLE) == "Moss Keep" && og_cell(s[..], 3, O_IMAGE) == "/realms/moss-keep/card.jpg?v=9";
+  q: [1] OgState; qd: [OG_TEST_DATA] u8; q[0].data = qd[..];
+  og_answer(q[..], OG_FIXTURE);
+  og_answer(q[..], "503\n");
+  #assert q[0].status == 200 && q[0].row_n == 3;
 }
 
 #test "a card opens its page; the phone gets one column, the wide screen several" {

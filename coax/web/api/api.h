@@ -57,3 +57,5 @@ long npc_ask_model(const char *url_env, const char *model, const char *request, 
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);
 // A page, list or file written into the site's bucket (drops.c, OA_SITE_BUCKET), no-cache.
 bool drops_site_write(const char *name, const char *type, const char *data);
+bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n);
+void realms_refresh_pages(void);   // realms.c: on start, made realms' pages written with an older template

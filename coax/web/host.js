@@ -156,6 +156,7 @@
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
+import { startCard } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
@@ -1462,6 +1463,7 @@ function draw(now) {
   const texture = context.getCurrentTexture();
   const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown
   if (draws && shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
     let nonempty = false;
     for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) { nonempty = true; break; }
@@ -1545,6 +1547,23 @@ globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(are
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
 if (script?.dataset.uploads) startUploads({ send, accept: script.dataset.uploads });
+// A page's own share card (card.js, docs/web/og-tags.md): the next frame drawn, copied in its own task.
+function snapshot() {
+  return new Promise((resolve) => {
+    if (!gpu) { resolve(null); return; }
+    const timer = setTimeout(() => { if (gpu) gpu.snap = null; resolve(null); }, 5000);
+    gpu.snap = () => {
+      clearTimeout(timer);
+      try {
+        const c = document.createElement("canvas");
+        c.width = canvas.width; c.height = canvas.height;
+        c.getContext("2d").drawImage(canvas, 0, 0);
+        resolve(c);
+      } catch { resolve(null); }
+    };
+  });
+}
+if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady });
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 const voice = script?.dataset.voice
   ? startVoice({ send, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;

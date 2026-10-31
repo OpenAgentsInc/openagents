@@ -13,7 +13,9 @@
 // art style, the ground and the time of day. Each is a tap, or SAY IT (the words go to
 // POST /api/playtest/realms/pick, where the model picks one of that question's words), or SKIP
 // (the model picks from the prompt). What was answered goes with every plan and MAKE IT as fixed
-// fields; the board's CHANGE goes through the questions again.
+// fields; the board's CHANGE goes through the questions again. The board's line under the name is
+// the realm's one-line description, what a shared link shows (docs/web/og-tags.md): tap it to write
+// your own, else the server writes one from what is in it; it goes with MAKE IT.
 //
 // The page draws everything (plates and words are verse.coax's look); builder.wgsl draws the sky,
 // the plates and the strokes; builder-face.c sends the page's requests and the analytics batches.
@@ -110,7 +112,9 @@ FEATS :: 28; KIND :: 12; LABEL :: 48; NAME :: 40; WORD :: 16;
 TYPED :: 400; CAPTION :: 200; NOTE :: 120; OUTBOX :: 512; BODY :: 1024; URL :: 128;
 BTN_TALK :: 0; BTN_TYPE :: 1; BTN_MAKE :: 2; BTN_BACK :: 3; BTN_SEND :: 4;
 BTN_SKIP :: 5; BTN_PREV :: 6; BTN_SETUP :: 7; BTN_CHOICE :: 8;   // BTN_CHOICE + i: a setup question's choice i
-BUTTONS :: BTN_CHOICE + CHOICES;
+BTN_DESC :: BTN_CHOICE + CHOICES;   // the board's description line
+BUTTONS :: BTN_DESC + 1;
+DESC :: 200;               // a description's most characters (the server's too)
 ROW :: 34.0;              // CSS pixels a feature's row takes
 WAIT :: 40.0;             // seconds a request may take before the page gives up on it
 QUIET_SEND :: 4.0;        // TALK on: seconds of quiet after words are heard before they go on their own
@@ -126,6 +130,8 @@ Builder :: struct {
   has_player: bool; asked_player: bool;
   // typing
   typing: bool; typed: [TYPED] u8; typed_n: int;
+  typing_desc: bool;        // what is typed is the description, not words for the planner
+  desc: [DESC] u8; desc_n: int;
   field: [4] f32;
   // voice: the page's data-voice. TALK is a toggle: held is "on" (the microphone open), the heard
   // sentences gather in got until it's tapped off (or a quiet spell), then they go as one prompt.
@@ -170,6 +176,7 @@ note_text :: (s: [] Builder) -> string { return cast(string) s[0].note[0..<s[0].
 typed_text :: (s: [] Builder) -> string { return cast(string) s[0].typed[0..<s[0].typed_n]; }
 caption_text :: (s: [] Builder) -> string { return cast(string) s[0].caption[0..<s[0].caption_n]; }
 said_text :: (s: [] Builder) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+desc_text :: (s: [] Builder) -> string { return cast(string) s[0].desc[0..<s[0].desc_n]; }
 set_note :: (s: [] Builder, text: string) { s[0].note_n = put(s[0].note[..], 0, text[0..<least(text.count, NOTE)]); }
 on_count :: (s: [] Builder) -> int { n := 0; for i: 0..<s[0].feat_n { if s[0].on[i] { n += 1; } } return n; }
 is_tool :: (s: [] Builder, i: int) -> bool { return kind_of(s, i) == "tool"; }
@@ -262,6 +269,7 @@ make_it :: (s: [] Builder, t: [] Track) {
   n = put_int(s[0].req_body[..], n, s[0].plan);
   n = put(s[0].req_body[..], n, ",\"on\":"); n = put_switches(s, s[0].req_body[..], n);
   n = put_setup(s, s[0].req_body[..], n);
+  if s[0].desc_n > 0 && n > 0 { n = put(s[0].req_body[..], n, ",\"description\":"); n = json_quote(s[0].req_body[..], n, desc_text(s), DESC); }
   n = put(s[0].req_body[..], n, "}");
   request(s, REQ_MAKE, MAKE_URL, n);
   s[0].phase = PH_MAKING; s[0].note_n = 0;
@@ -500,8 +508,27 @@ talk_tick :: (s: [] Builder, t: [] Track) {
   }
   if s[0].stopping && (!mid_sentence(s) || s[0].time - s[0].stop_at > STOP_WAIT) { finish_talk(s, t); }
 }
-open_typing :: (s: [] Builder) { if s[0].phase != PH_MAKING && s[0].phase != PH_GOING { s[0].typing = true; s[0].note_n = 0; } }
+open_typing :: (s: [] Builder) {
+  if s[0].phase != PH_MAKING && s[0].phase != PH_GOING {
+    if s[0].typing_desc { s[0].typing_desc = false; s[0].typed_n = 0; }
+    s[0].typing = true; s[0].note_n = 0;
+  }
+}
+// The description line: typing it, the one there to change.
+open_desc :: (s: [] Builder) {
+  if s[0].phase != PH_BOARD { return; }
+  s[0].typing = true; s[0].typing_desc = true; s[0].note_n = 0;
+  s[0].typed_n = copy_into(s[0].typed[..], desc_text(s));
+}
 send_typed :: (s: [] Builder, t: [] Track) {
+  if s[0].typing_desc {
+    w := typed_text(s);
+    w = w[trim_from(w)..<trim_to(w)];
+    s[0].desc_n = copy_into(s[0].desc[..], w[0..<least(w.count, DESC)]);
+    s[0].typing = false; s[0].typing_desc = false; s[0].typed_n = 0;
+    if track_begin(t, "builder-describe") { track_int(t, "chars", s[0].desc_n); track_end(t); }
+    return;
+  }
   if s[0].typed_n == 0 { return; }
   ask_plan(s, t, typed_text(s), "typed");
   if s[0].phase == PH_PLANNING { s[0].typing = false; s[0].typed_n = 0; }
@@ -518,7 +545,7 @@ builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> 
   if s[0].typing {
     if !down { return false; }
     if key == KEY_ENTER { send_typed(s, t); return true; }
-    if key == KEY_ESCAPE { s[0].typing = false; return true; }
+    if key == KEY_ESCAPE { s[0].typing = false; if s[0].typing_desc { s[0].typing_desc = false; s[0].typed_n = 0; } return true; }
     if key == KEY_BACKSPACE { s[0].typed_n = pop(s[0].typed[..], s[0].typed_n); return true; }
     return false;
   }
@@ -554,6 +581,7 @@ builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
   if b == BTN_TALK { return "talk"; } if b == BTN_TYPE { return "type"; } if b == BTN_MAKE { return "make"; }
   if b == BTN_BACK { return "galaxy"; } if b == BTN_SEND { return "send"; }
   if b == BTN_SKIP { return "skip"; } if b == BTN_PREV { return "back"; } if b == BTN_SETUP { return "setup"; }
+  if b == BTN_DESC { return "description"; }
   if b >= BTN_CHOICE { return "choice"; }
   if row_at(s, x, y) >= 0 { return "feature"; }
   return "";
@@ -579,7 +607,8 @@ builder_pointer :: (s: [] Builder, t: [] Track, x: f32, y: f32, phase: int, kind
       if b == BTN_MAKE { make_it(s, t); }
       if b == BTN_BACK { go_back(s); }
       if b == BTN_SEND { send_typed(s, t); }
-      if b >= BTN_CHOICE && !busy(s) && !s[0].held { choose(s, t, b - BTN_CHOICE, "tap"); }
+      if b == BTN_DESC { open_desc(s); }
+      if b >= BTN_CHOICE && b < BTN_CHOICE + CHOICES && !busy(s) && !s[0].held { choose(s, t, b - BTN_CHOICE, "tap"); }
       if b == BTN_SKIP && !busy(s) && !s[0].held && s[0].phase == PH_SETUP && s[0].q < QUESTIONS { s[0].chosen[s[0].q] = -1; choose_skip(s, t); }
       if b == BTN_PREV { prev_question(s); }
       if b == BTN_SETUP { open_setup(s); }
@@ -775,8 +804,18 @@ draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
   n = write(d, out, n, line, area.x0 + pad, area.y0 + 50 * k, fit_cap(line, 7.5 * k, room), GAP, SPACE, bronze(k, 0.9), false, false);
   n = write(d, out, n, change, area.x1 - pad - cw, area.y0 + 50 * k, 7.5 * k, GAP, SPACE, ember(k, ifx s[0].hover == BTN_SETUP then 1.0f32 else 0.8f32), false, false);
   s[0].boxes[BTN_SETUP] = Box.{x0 = area.x0, y0 = area.y0 + 36 * k, x1 = area.x1, y1 = area.y0 + 60 * k}; s[0].shown[BTN_SETUP] = true;
+  // its one-line description: what a shared link shows; tap to write it
+  dl: [DESC + 8] u8;
+  dn := ifx s[0].desc_n > 0 then put(dl[..], 0, desc_text(s)) else put(dl[..], 0, "TAP TO WRITE ITS ONE-LINE DESCRIPTION");
+  upper(dl[..], dn);
+  dline := cast(string) dl[0..<dn];
+  dcap := 7.5 * k; droom := area.x1 - area.x0 - 2 * pad;
+  dfrom := 0; while dfrom < dline.count && measure(dline[0..<dline.count - dfrom], GAP, SPACE, false) * dcap > droom { dfrom += 1; }
+  n = write(d, out, n, dline[0..<dline.count - dfrom], area.x0 + pad, area.y0 + 74 * k, dcap, GAP, SPACE,
+            white(k, ifx s[0].hover == BTN_DESC then 0.95f32 else (ifx s[0].desc_n > 0 then 0.8f32 else 0.45f32)), false, false);
+  s[0].boxes[BTN_DESC] = Box.{x0 = area.x0, y0 = area.y0 + 60 * k, x1 = area.x1, y1 = area.y0 + 84 * k}; s[0].shown[BTN_DESC] = s[0].phase == PH_BOARD;
   // the list, scrolled inside its box
-  s[0].list = Box.{x0 = area.x0, y0 = area.y0 + 64 * k, x1 = area.x1, y1 = area.y1 - 8 * k};
+  s[0].list = Box.{x0 = area.x0, y0 = area.y0 + 88 * k, x1 = area.x1, y1 = area.y1 - 8 * k};
   row := ROW * k; y := s[0].list.y0 - s[0].scroll;
   heads := 0;
   for pass: 0..<2 {
@@ -848,7 +887,8 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     // the end of a long line stays in view
     from := 0; while from < shown.count && measure(shown[from..<shown.count], GAP, SPACE, false) * cap > room { from += 1; }
     n = write(d, out, n, shown[from..<shown.count], fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, cap, GAP, SPACE, white(k, 1), false, false);
-    if s[0].typed_n == 0 { n = write(d, out, n, "TYPE THE WORLD YOU WANT", fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, fit_cap("TYPE THE WORLD YOU WANT", cap, room), GAP, SPACE, white(k, 0.4), false, false); }
+    hint := ifx s[0].typing_desc then "TYPE ITS ONE-LINE DESCRIPTION" else "TYPE THE WORLD YOU WANT";
+    if s[0].typed_n == 0 { n = write(d, out, n, hint, fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, fit_cap(hint, cap, room), GAP, SPACE, white(k, 0.4), false, false); }
     blink := s[0].still || sin(s[0].time * 6) > 0;
     if blink {
       cxr := fb.x0 + 14 * k + measure(shown[from..<shown.count], GAP, SPACE, false) * cap + 2 * k;
@@ -1118,6 +1158,32 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
   answer(q[..], u[..], "200\nslug moonlit-marsh\npath /realms/moonlit-marsh\npage 0\n");
   a1 := builder_action(q[..]);
   #assert outbox_is(q[..], "/realms/built#moonlit-marsh");
+}
+
+#test "the board's description line: tap it, type, Enter keeps it, and it goes with MAKE IT" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 780, 1688, 2);
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a dark marsh");
+  answer(s[..], t[..], BOARD);
+  m := frame_of(s[..], t[..], 780, 1688, 2);
+  #assert s[0].shown[BTN_DESC] && s[0].boxes[BTN_DESC].y1 <= s[0].list.y0;
+  tap(s[..], t[..], s[0].boxes[BTN_DESC]);
+  #assert builder_wants_text(s[..]) && s[0].typing_desc;
+  builder_message(s[..], t[..], MSG_TEXT, "  A drowned marsh where \"Old Mott\" waits  ");
+  #assert builder_key(s[..], t[..], KEY_ENTER, 0, true) && !s[0].typing && s[0].phase == PH_BOARD && desc_text(s[..]) == "A drowned marsh where \"Old Mott\" waits";
+  m2 := frame_of(s[..], t[..], 780, 1688, 2);
+  make_it(s[..], t[..]);
+  #assert body_is(s[..], "{\"plan\":41,\"on\":[true,true,false,true,true,false],\"description\":\"A drowned marsh where \\\"Old Mott\\\" waits\"}");
+  // TYPE after it types words for the planner again
+  q: [1] Builder; u: [1] Track;
+  ready(q[..], u[..], true);
+  n2 := frame_of(q[..], u[..], 780, 1688, 2);
+  builder_message(q[..], u[..], MSG_VOICE, "heard|x");
+  answer(q[..], u[..], BOARD);
+  m3 := frame_of(q[..], u[..], 780, 1688, 2);
+  tap(q[..], u[..], q[0].boxes[BTN_DESC]);
+  #assert builder_key(q[..], u[..], KEY_ESCAPE, 0, true) && !q[0].typing && !q[0].typing_desc && q[0].desc_n == 0;
 }
 
 #test "an error is said in the server's words, and the board stays" {

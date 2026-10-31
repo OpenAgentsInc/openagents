@@ -12,6 +12,11 @@
 //   POST /api/playtest/realms/<slug>/settings {tools}  -> 200 {tools}; 403 not an owner or admin
 //   POST /api/playtest/realms/<slug>/switch {row, on}  -> 200 {row, on}; 403, 404 (one row of the board)
 //   POST /api/playtest/realms/<slug>/revise {prompt}   -> 200 {plan, changed}; 400, 403, 429, 502, 503
+// Its link preview (migrations/0071_made_realm_share.sql, docs/web/og-tags.md): its line and its own picture.
+//   POST /api/playtest/realms/<slug>/describe {description}   -> 200 {description}; 400, 403, 404
+//   GET  /api/playtest/realms/<slug>/card              -> text/plain "want" (take its picture) or "no"
+//   POST /api/playtest/realms/<slug>/card  (image/jpeg) -> 200 {image}; 400 not a 1200x630 JPEG, 413, 403, 404
+//   GET  /api/playtest/realms/made                     -> text/plain, the newest made realms as /og's rows
 // Any realm: a made one or a hand-built one from realms.json (migrations/0050_realm_edit.sql decides
 // who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
@@ -191,8 +196,93 @@ static bool write_page(PGconn *c, const char *slug) {
   ok = ok && drops_site_write(name, "text/markdown; charset=utf-8", md);
   ok = ok && drops_site_write("realms/made-slugs.txt", "text/plain; charset=utf-8", list);
   free(page); free(md); free(list);
+  if (ok) { PGresult *r = PQexecParams(c, "SELECT verse.builder_page_written($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r); }
   return ok;
 }
+
+// On start: every made realm's page written with an older template is written again, in a child
+// (any instance may; each page is claimed by one, verse.builder_page_stale).
+void realms_refresh_pages(void) {
+  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) return;
+  signal(SIGCHLD, SIG_IGN);
+  if (fork() != 0) return;
+  PGconn *db = api_db_new();
+  int n = 0, failed = 0;
+  for (char *slug; db && n < 5000 && (slug = sql_one(db, "SELECT verse.builder_page_stale()", 0, NULL)); n++) {
+    if (!write_page(db, slug)) failed++;
+    free(slug);
+  }
+  if (n) api_log("realms: %d made pages written again, %d failed", n, failed);
+  if (db) PQfinish(db);
+  _exit(0);
+}
+
+// ---- its picture: a 1200x630 baseline or progressive JPEG under 300 KB, as the page's own frame
+// (coax/web/card.js) or anything else its owner sends. Only the frame header is read.
+#define CARD_MAX (300 * 1024)
+static bool jpeg_1200x630(const unsigned char *b, size_t n) {
+  if (n < 4 || b[0] != 0xFF || b[1] != 0xD8) return false;
+  size_t i = 2;
+  while (i + 4 <= n) {
+    if (b[i] != 0xFF) return false;
+    unsigned char m = b[i + 1];
+    if (m == 0xFF) { i++; continue; }
+    if (m == 0xD9 || m == 0xDA) return false;          // the image or its end before a frame header
+    size_t len = ((size_t)b[i + 2] << 8) | b[i + 3];
+    if (len < 2 || i + 2 + len > n) return false;
+    if ((m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) || (m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF)) {
+      if (len < 7) return false;
+      unsigned h = ((unsigned)b[i + 5] << 8) | b[i + 6], w = ((unsigned)b[i + 7] << 8) | b[i + 8];
+      return w == 1200 && h == 630;
+    }
+    i += 2 + len;
+  }
+  return false;
+}
+static void card(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool post) {
+  const char *v[3] = {slug, key, admin};
+  if (!post) {
+    char *want = sql_one(db, "SELECT verse.builder_card_want($1, $2, $3::boolean)", 3, v);
+    if (!want) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return; }
+    api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, want, strlen(want));
+    free(want);
+    return;
+  }
+  char *may = sql_one(db, "SELECT verse.builder_card_may($1, $2, $3::boolean)", 3, v);
+  int status = may ? atoi(may) : 500;
+  free(may);
+  if (status == 404) { api_json(q->fd, 404, "{\"error\":\"no such realm\"}"); return; }
+  if (status != 200) { api_json(q->fd, status == 403 ? 403 : 500, status == 403 ? "{\"error\":\"only its owner and admins\"}" : "{\"error\":\"not kept\"}"); return; }
+  if (q->body_len > CARD_MAX) { api_json(q->fd, 413, "{\"error\":\"a card is under 300 KB\"}"); return; }
+  if (!jpeg_1200x630((const unsigned char *)q->body, q->body_len)) { api_json(q->fd, 400, "{\"error\":\"a 1200x630 JPEG\"}"); return; }
+  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) { api_json(q->fd, 503, "{\"error\":\"no bucket here\"}"); return; }
+  // the bucket's part in a child, as making one is
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid < 0) { api_json(q->fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid > 0) return;
+  char name[120], kb[16], out[200];
+  snprintf(name, sizeof name, "realms/%s/card.jpg", slug);
+  snprintf(kb, sizeof kb, "%zu", (q->body_len + 1023) / 1024);
+  PGconn *c = api_db_new();
+  if (!c || !drops_site_write_bytes(name, "image/jpeg", (const unsigned char *)q->body, q->body_len)) { api_json(q->fd, 502, "{\"error\":\"not kept\"}"); _exit(0); }
+  const char *w[2] = {slug, kb};
+  char *at = sql_one(c, "SELECT verse.builder_card_kept($1, $2::int)", 2, w);
+  bool paged = at && write_page(c, slug);
+  snprintf(out, sizeof out, "{\"image\":\"/realms/%s/card.jpg?v=%s\",\"page\":%s}", slug, at ? at : "0", paged ? "true" : "false");
+  api_json(q->fd, 200, out);
+  _exit(0);
+}
+
+// The page again after its line changed, in a child.
+static void rewrite_page(const char *slug) {
+  signal(SIGCHLD, SIG_IGN);
+  if (fork() != 0) return;
+  PGconn *c = api_db_new();
+  if (c) write_page(c, slug);
+  _exit(0);
+}
+
 
 static void make_answer(int fd, const char *answer, const char *slug, bool lines) {
   PGconn *db = api_db_new();
@@ -242,6 +332,15 @@ static void make(const request *q, PGconn *db, const char *key) {
   }
   char *answer = strdup(PQgetvalue(r, 0, 1)), *slug = strdup(PQgetvalue(r, 0, 2));
   PQclear(r);
+  // its own line, when MAKE IT sends one ({description}); else the line is written from what is in it
+  char *again = body_of(q);
+  if (again) {
+    const char *d[2] = {slug, again};
+    r = PQexecParams(db, "UPDATE verse.made_realms SET description = nullif(verse.builder_one_line($2::jsonb->'description', 200), '') "
+                         "WHERE slug = $1 AND jsonb_typeof($2::jsonb->'description') = 'string'", 2, NULL, d, NULL, NULL, 0);
+    PQclear(r);
+    free(again);
+  }
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { make_answer(q->fd, answer, slug, lines); _exit(0); }
@@ -335,6 +434,14 @@ bool realms_route(const request *q) {
     plan(q, db, key, !strcmp(rest, "pick"));
     return true;
   }
+  if (!strcmp(rest, "made")) {   // /og's rows ("made" is a reserved address: no realm has it)
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the rows\"}"); return true; }
+    char *rows = sql_one(db, "SELECT verse.builder_og_rows(60)", 0, NULL);
+    if (rows) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, rows, strlen(rows));
+    else api_json(q->fd, 500, "{\"error\":\"not read\"}");
+    free(rows);
+    return true;
+  }
   const char *slash = strchr(rest, '/');
   size_t n = slash ? (size_t)(slash - rest) : strlen(rest);
   char slug[49];
@@ -371,7 +478,28 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
+  if (!strcmp(what, "card")) { card(q, db, slug, key, admin, post); return true; }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
+  if (!strcmp(what, "describe")) {
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {slug, body, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.builder_describe($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    free(body);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      int status = atoi(PQgetvalue(r, 0, 0));
+      if (status == 200) rewrite_page(slug);   // the page says its new line at once
+      api_json(q->fd, status, PQgetvalue(r, 0, 1));
+    }
+    else {
+      const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+      bool theirs = state && !strncmp(state, "22", 2);
+      if (!theirs) api_log("realms: describe: %s", PQerrorMessage(db));
+      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    }
+    PQclear(r);
+    return true;
+  }
   if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin); return true; }
   if (!strcmp(what, "lore") || !strcmp(what, "quest")) {
     char *body = body_of(q);

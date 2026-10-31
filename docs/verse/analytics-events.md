@@ -32,7 +32,7 @@ session.
 - **ice-cream-man** (icecream-face.c): round-start, objective, round-end, tool, difficulty, settings (first-person, timer, jumpscares), visit (room), walk; tally hits, melted, hurt, hide, scare.
 - **fairy-forest** (fairy-face.c, fairyroom.coax): visit (40 m square), walk, talk, map, maker, quest-step, quest-done, skill, chat, presence; tally flap, swim.
 - **hecates-cemetery** (villa-face.c): the villa-* steps, villa-flight, visit (20 m square), walk.
-- **realm-builder** (builder.coax): builder-prompt, setup, board, toggle, make, realm-made, `fail builder-plan|builder-make`.
+- **realm-builder** (builder.coax): builder-prompt, setup, board, toggle, describe, make, realm-made, `fail builder-plan|builder-make`.
 - **realm-made** (myrealm.coax): world-enter, edits, walk.
 - **app** (apps/openagents-ios, AppAnalytics.swift): app-launch, app-foreground, app-background (seconds), grid-fallback, login-open, login-approved, wallet-open, voice-on, gyro (once a foreground), world-enter, fail. The app's web pages carry `OpenAgentsApp/<build>` in the User-Agent and count as app traffic.
 

@@ -136,6 +136,48 @@ def realm_builder_checks():
           and "<title>Moonlit Marsh" in page, page[:300])
     md = site.get("realms/moonlit-marsh/index.md", {}).get("data", b"").decode()
     check("its text says what is there and what visitors may do", "- 20 dead trees" in md and "Large pond" not in md and "- Talk" in md and "Build" not in md, md)
+    # its link preview (0071): every tag, its line written from what is in it, never the Haunted House's picture
+    check("its page has every preview tag, its line from what is in it, and the branded card until its own",
+          '<meta property="og:description" content="A forest at night with 20 dead trees, 4 rocks, a flock of bats and a wagon, where Old Mott lives. A realm built on the Verse.">' in page
+          and '<meta name="twitter:card" content="summary_large_image">' in page and '<meta property="og:image:width" content="1200">' in page
+          and "og-verse.jpg" not in page and '/og/default.jpg"' in page and 'data-card="/api/playtest/realms/" + slug + "/card"' not in page
+          and 's.dataset.card = "/api/playtest/realms/" + slug + "/card"' in page and "ff8c1f" not in page, page[:1600])
+    visitor0 = b_player()
+    check("its owner is asked for its picture; a visitor isn't",
+          b_call("GET", "/api/playtest/realms/moonlit-marsh/card", key=owner)[1] == "want" and b_call("GET", "/api/playtest/realms/moonlit-marsh/card", key=visitor0)[1] == "no")
+    jpeg = b"\xff\xd8\xff\xe0\x00\x04ab\xff\xc0\x00\x11\x08\x02\x76\x04\xb0\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01\xff\xda\x00\x02" + b"\x00--x" * 10 + b"\xff\xd9"
+    def put_card(body, key):
+        hh = {"Content-Type": "image/jpeg"}
+        if key:
+            hh["X-Verse-Player"] = key
+        return call("POST", "/api/playtest/realms/moonlit-marsh/card", body, hh)
+    check("only its owner (or an admin) keeps its picture", put_card(jpeg, visitor0)[0] == 403 and put_card(jpeg, None)[0] == 403)
+    small = jpeg.replace(b"\x02\x76\x04\xb0", b"\x01\x00\x01\x00")
+    check("a picture that isn't a 1200x630 JPEG is refused", put_card(small, owner)[0] == 400 and put_card(b"GIF89a....", owner)[0] == 400
+          and put_card(b"\xff\xd8" + b"\x00" * (301 * 1024), owner)[0] == 413)
+    st, raw, _ = put_card(jpeg, owner)
+    kept = json.loads(raw) if st == 200 else {}
+    time.sleep(0.3)
+    page = site.get("realms/moonlit-marsh", {}).get("data", b"").decode()
+    check("its own picture is kept in the bucket and the page names it",
+          st == 200 and site.get("realms/moonlit-marsh/card.jpg", {}).get("data") == jpeg and site["realms/moonlit-marsh/card.jpg"]["meta"]["contentType"] == "image/jpeg"
+          and kept.get("image", "").startswith("/realms/moonlit-marsh/card.jpg?v=") and kept.get("page") is True
+          and '/realms/moonlit-marsh/card.jpg?v=' in page and '<meta name="twitter:image" content="' in page
+          and "/og/default.jpg" not in page, (st, raw, page[:1400]))
+    check("once it has one, its owner isn't asked again until it changes", b_call("GET", "/api/playtest/realms/moonlit-marsh/card", key=owner)[1] == "no")
+    check("a visitor can't change its line", b_call("POST", "/api/playtest/realms/moonlit-marsh/describe", {"description": "mine"}, visitor0)[0] == 403)
+    st, dsc = b_call("POST", "/api/playtest/realms/moonlit-marsh/describe", {"description": "A <b>drowned</b> marsh where \"Old Mott\" keeps the bridge |\n over bats."}, owner)
+    time.sleep(0.5)
+    page = site.get("realms/moonlit-marsh", {}).get("data", b"").decode()
+    check("its owner writes its line: one line, escaped in the page, and the page says it at once",
+          st == 200 and dsc["description"] == 'A <b>drowned</b> marsh where "Old Mott" keeps the bridge over bats.'
+          and 'content="A &lt;b&gt;drowned&lt;/b&gt; marsh where &quot;Old Mott&quot; keeps the bridge over bats."' in page and "<b>drowned" not in page, (dsc, page[:900]))
+    check("a changed line asks its owner for a new picture", b_call("GET", "/api/playtest/realms/moonlit-marsh/card", key=owner)[1] == "want")
+    st, rows = b_call("GET", "/api/playtest/realms/made")
+    row = next((r for r in rows.split("\n") if r.startswith("/realms/moonlit-marsh|")), "") if isinstance(rows, str) else ""
+    cells = row.split("|")
+    check("/og's rows list the made realms with their line and picture", len(cells) == 15 and cells[1] == "made" and cells[3] == "Moonlit Marsh"
+          and cells[6].startswith("/realms/moonlit-marsh/card.jpg?v=") and cells[12] == "" and "|" not in cells[4], rows[:600])
     st, spec = b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)
     lines = spec.split("\n") if isinstance(spec, str) else []
     check("the spec: only what was checked, the typed rocks (not the words sent), characters only those checked",
@@ -147,13 +189,17 @@ def realm_builder_checks():
     check("an unknown realm is a 404", b_call("GET", "/api/playtest/realms/no-such-place")[0] == 404)
     check("the realm is a world its owner owns", sql("select owner_player is not null from verse.worlds where id = 'made-moonlit-marsh'") == "t")
     st, made2 = b_call("POST", "/api/playtest/realms", {"board": {"name": "Moonlit Marsh", "features": []}}, owner)
+    page2 = site.get("realms/moonlit-marsh-2", {}).get("data", b"").decode()
+    check("an empty realm's line still says what it is", 'content="A meadow by day. A realm built on the Verse."' in page2, page2[:900])
     check("a second realm of the same name gets its own address", st == 200 and made2["slug"] == "moonlit-marsh-2", made2)
     st, made3 = b_call("POST", "/api/playtest/realms", {"board": {"name": "Haunted House", "features": []}}, owner)
     check("a made realm never takes a built-in realm's address", st == 200 and made3["slug"] == "haunted-house-2", made3)
     st, empty = b_call("GET", "/api/playtest/realms/moonlit-marsh-2")
     check("a realm made with nothing checked is empty", st == 200 and "feature" not in empty and "character" not in empty, empty)
     for i in range(3):
-        b_call("POST", "/api/playtest/realms", {"board": {"name": "Spare %d" % i, "features": []}}, owner)
+        b_call("POST", "/api/playtest/realms", {"board": {"name": "Spare %d" % i, "features": []}, "description": "Our camp by the sea, under three moons."}, owner)
+    time.sleep(0.3)
+    check("MAKE IT may send its own line", 'content="Our camp by the sea, under three moons."' in site.get("realms/spare-0", {}).get("data", b"").decode())
     check("a player makes at most OA_BUILDER_PER_DAY realms a day", b_call("POST", "/api/playtest/realms", {"board": {"name": "One more", "features": []}}, owner)[0] == 429)
 
     # the owner decides what visitors get

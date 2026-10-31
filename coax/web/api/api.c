@@ -317,6 +317,7 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   admin_init();
   if (!migrate()) api_log("migrations did not all apply; serving anyway (health shows the last applied)");
+  realms_refresh_pages();
 
   char host[256] = "127.0.0.1"; int port = 8810;
   const char *env_port = getenv("PORT");

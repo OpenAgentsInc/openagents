@@ -108,7 +108,7 @@ Made-realm slugs never take a built-in realm's address (`verse.builder_reserved`
 ## Analytics
 
 The builder's page is `realm-builder`: `builder-prompt` (via voice or typed, its length only,
-revise), `builder-board` (rows, rows on), `builder-toggle` (feature, on), `builder-make`,
+revise), `builder-board` (rows, rows on), `builder-toggle` (feature, on), `builder-describe` (chars), `builder-make`,
 `realm-made` (slug, page). The made realm's page is `realm-made`: `realm-enter` (slug, owner), `realm-talk-open` (owner), `realm-talk` (owner, voice),
 `realm-setting`, `realm-place`, `realm-decide`. The team and admins are filtered out as on every
 playtest page.
