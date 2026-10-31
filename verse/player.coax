@@ -33,6 +33,7 @@
 #load "stand.coax";
 #load "../aethyr/loop.coax";
 #load "../aethyr/input.coax";
+#load "../aethyr/query.coax";   // the ground under you: one query for every walking realm
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -66,8 +67,8 @@ BODY :: 7;              // numbers per body: one end, the other, the radius
 PASSES :: 3;            // push-outs per step, for bodies that touch
 CAM_CLEAR :: 0.2;       // how far the camera keeps from a body
 WALL :: 6;              // numbers per wall: min x, y, z, max x, y, z
-STEP_UP :: 0.55;        // the highest top you walk onto
-FLOOR_PAD :: 0.15;      // how far past a floor's edge your middle may be and it still holds you
+STEP_UP :: QUERY_STEP_UP;     // the highest top you walk onto (aethyr/query.coax holds it)
+FLOOR_PAD :: QUERY_FLOOR_PAD; // how far past a floor's edge your middle may be and it still holds you
 SLIDE_GRIP :: 0.1;      // the share of your feet's push you keep on a slope too steep to stand on
 
 Vec3 :: struct { x: f32; y: f32; z: f32; }
@@ -174,25 +175,21 @@ edge :: (b: Box, x: f32, z: f32) -> Edge {
   return e;
 }
 
-// The floor under feet at (x, z): the ground, or the highest wall top your
-// capsule is over or floor you are over that is no more than STEP_UP above
-// your feet.
+// The world as Aethyr's colliders: the ground, the walls as boxes, the bodies as capsules and
+// the floors (aethyr/query.coax).
+colliders :: (w: World) -> Colliders {
+  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors};
+}
+// The floor under feet at (x, z): what they stand on (query_stand), the ground or the highest
+// wall top your capsule is over or floor you are over that is no more than STEP_UP above them.
 floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return floor_under(w, x, z, feet).y; }
 // The same with its slope (a wall's top and the ground are level).
+// book:begin ground
 floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
-  out := StandHit.{y = w.ground};
-  for i: 0..<w.walls.count / WALL {
-    b := wall(w, i);
-    if !b.ok || b.hi.y > feet + f32(STEP_UP) || b.hi.y <= out.y { continue; }
-    if edge(b, x, z).d < f32(RADIUS) { out.y = b.hi.y; }
-  }
-  n := w.floors.count / STAND_FLOATS;
-  if n > 0 {
-    h := stand_top(w.floors, n, x, z, feet + f32(STEP_UP), f32(FLOOR_PAD));
-    if h.y > out.y && finite(h.y) { out = h; }
-  }
-  return out;
+  g := query_stand(colliders(w), x, z, feet, f32(RADIUS));
+  return StandHit.{y = g.y, gx = g.gx, gz = g.gz};
 }
+// book:end ground
 // Whether a floor's surface at (x, z) would cut through you with your feet at `feet`: over a step
 // and under your head.
 floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool {
@@ -1409,6 +1406,48 @@ desk :: (out: [] f32) {
   // Off its far side you fall back to the ground.
   #assert floor_at(w, 0, 4.8, 1) == 0;
 }
+
+// One ground question for every realm (aethyr/query.coax, #12609 ec-query): the same course of
+// a run, a jump onto a 0.5 m ledge, a walk across it and off its far side gives the same states
+// whichever way a realm hands the walker its colliders: walls alone (the Grid, Fairy Forest,
+// the garden, Hecate's Cemetery) or walls among far bodies and floors (Everglade, the realm
+// host, Dead Gears). Built as a floor (a level quad) the ledge holds you the same way until you
+// walk off it: a box's top holds you while your capsule is over it, a floor while your middle is
+// within FLOOR_PAD of its edge, so you drop off the floor first.
+// book:begin course
+#test "jumping onto, landing on and walking off a ledge is the same in every realm" {
+  ledge := [6] f32.[-2, 0, 1.5, 2, 0.5, 3.5];
+  among := [12] f32.[-2, 0, 1.5, 2, 0.5, 3.5,   40, 0, 40, 41, 3, 41];
+  bodies := [7] f32.[-40, 0, -40, -40, 1.5, -40, 0.4];
+  floors: [2 * STAND_FLOATS] f32;
+  stand_put_box(floors[..], 0, 30, 30, 34, 34, 1);
+  as_floor: [STAND_FLOATS] f32;
+  stand_put_box(as_floor[..], 0, -2, 1.5, 2, 3.5, 0.5);
+  a: World; a.walls = ledge[..];
+  b: World; b.walls = among[..]; b.bodies = bodies[..]; b.floors = floors[..];
+  c: World; c.floors = as_floor[..];
+  pa := held(verse_player_place(0, 0, 0, 0), 0, 1, false);
+  pb := pa; pc := pa;
+  landed := -1; off_a := -1; off_c := -1;
+  for i: 0..<220 {
+    jump := i == 12;
+    pa = step(a, verse_player_input(pa, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    pb = step(b, verse_player_input(pb, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    pc = step(c, verse_player_input(pc, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    #assert same_step(pa, pb) && pa.pos.y == pb.pos.y && pa.pos.z == pb.pos.z;
+    if landed < 0 && i > 12 && pa.on_ground { landed = i; #assert pa.pos.y == 0.5 && pa.pos.z > 2; }
+    if off_a < 0 && landed >= 0 && !pa.on_ground { off_a = i; }
+    if off_c < 0 && landed >= 0 && !pc.on_ground { off_c = i; }
+    if off_c < 0 { #assert same_step(pa, pc) && pa.pos.y == pc.pos.y; }
+  }
+  // it landed on the ledge, walked off it, and came down on the ground: the floor first
+  #assert landed > 12 && off_a > landed && off_c > landed && off_c < off_a;
+  #assert pa.on_ground && pc.on_ground && pa.pos.y == 0 && pc.pos.y == 0 && pa.pos.z > 6;
+  // a realm whose ground is not at 0 stands you on it, and on the ledge's top over it
+  higher: World; higher.ground = 0.25; higher.walls = ledge[..];
+  #assert floor_at(higher, 0, 0, 0.25) == 0.25 && floor_at(higher, 0, 2, 0.25) == 0.5 && floor_at(higher, 0, 2, -1) == 0.25;
+}
+// book:end course
 
 #test "the camera stops short of the desk" {
   walls: [12] f32;

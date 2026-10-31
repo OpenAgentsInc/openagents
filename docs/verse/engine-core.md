@@ -86,3 +86,33 @@ separate model names, over 64 random runs of 200 frames with frames of zero
 to eight steps; a keyboard session and the same touch session give the same
 `Intent` and the same player states; a press in a frame with no step jumps
 on the next. Mutation: 126 of 126 killed (`input.coax`).
+
+## Query (`aethyr/query.coax`)
+
+A realm's colliders are one `Colliders` value in world space: a flat ground,
+boxes, capsules and floors (`verse/stand.coax`). Four queries read it:
+
+- `query_ground` (and `query_stand` for feet): the highest surface at or
+  below a height, its slope, whether it is too steep (`QUERY_STEEP`, 55
+  degrees) and which collider it is. The step height (0.55 m) and the floor
+  pad (0.15 m) are defined here once.
+- `query_ray`: the first hit in [0, far], with its point and outward normal.
+- `query_overlap`: the colliders a sphere overlaps, in collider order.
+- `query_sweep`: a moving sphere's first touch in [0, 1], as a ray against
+  the colliders grown by its radius (a box grown by r is three boxes, each
+  grown along one axis, and twelve edge capsules).
+
+Every shape is solid, so a ray or sweep that starts inside one hits it at
+t = 0, and ties go to the earlier collider. The walking controller's
+`floor_under` is one `query_stand` call, so every walking realm asks the same
+ground question. Checks: rays and sweeps agree with an oracle that marches by
+containment (`aethyr/tests/query-oracle.coax`) over 48 random scenes each, to
+1 mm and on the collider; overlaps agree with separate distance code; the
+walker's run, jump onto a 0.5 m ledge, walk across and walk off give the same
+states whether a realm passes walls alone or walls among far bodies and
+floors. Mutation: 307 of 312 killed; the five left are boundaries no input
+reaches differently (the capsule rim and `t = 0`, and a face-edge tie), under
+independent review. Heightfields, rays against floors and the
+realms' own `ground_at` copies move with ec-migrate; the camera's
+`camera_room` moves with ec-camera.
+

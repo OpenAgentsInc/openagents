@@ -1,0 +1,24 @@
+// book:begin example
+#load "../query.coax";
+#import "Basic";
+
+// One scene and the four questions: a 0.5 m step and a 0.6 m wall on the ground, and a post
+// (a capsule). Feet step onto the step but not the wall, a ray finds the wall's face, a sphere
+// set down by the post overlaps it, and a ball thrown at the wall touches it short of its face.
+main :: () {
+  boxes := [12] f32.[0, 0, 0, 1, 0.5, 1,   2, 0, 0, 3, 0.6, 1];
+  posts := [7] f32.[5, 0, 0.5, 5, 2, 0.5, 0.25];
+  c := Colliders.{boxes = boxes[..], capsules = posts[..]};
+  for x: [3] f32.[0.5, 2.5, 4] {
+    g := query_stand(c, x, 0.5, 0, 0.3);
+    print("stand at x %: y %, on %, index %\n", x, g.y, g.shape, g.index);
+  }
+  h := query_ray(c, world_point(-1, 0.3, 0.5), world_point(1, 0, 0), 10);
+  print("ray along +x: t %, on %, index %, normal (%, %, %)\n", h.t, h.shape, h.index, h.normal.x, h.normal.y, h.normal.z);
+  got: [4] QueryId;
+  n := query_overlap(c, world_point(5.4, 1, 0.5), 0.2, got[..]);
+  print("overlap by the post: % (%, index %)\n", n, got[0].shape, got[0].index);
+  s := query_sweep(c, world_point(1.5, 2, 0.5), 0.1, world_point(0.5, -2, 0));
+  print("sweep of a 0.1 m ball: t %, centre (%, %), on %, index %\n", s.t, s.point.x, s.point.y, s.shape, s.index);
+}
+// book:end example

@@ -1,0 +1,143 @@
+// The oracles for aethyr/query.coax's checks: separate code that answers by containment and
+// marching, never by the closed forms query.coax uses. Only the checks call it.
+
+
+// Whether p is in or on collider (shape, i), read straight from the arrays.
+oracle_inside :: (c: Colliders, shape: QueryShape, i: int, p: WorldPoint) -> bool {
+  if shape == QueryShape.ground { return p.y <= c.ground; }
+  if shape == QueryShape.box {
+    v := c.boxes;
+    return p.x >= v[6*i] && p.x <= v[6*i+3] && p.y >= v[6*i+1] && p.y <= v[6*i+4] && p.z >= v[6*i+2] && p.z <= v[6*i+5];
+  }
+  v := c.capsules;
+  a := world_point(v[7*i], v[7*i+1], v[7*i+2]); b := world_point(v[7*i+3], v[7*i+4], v[7*i+5]);
+  return oracle_segment_distance(a, b, p) <= v[7*i+6];
+}
+// Distance from p to segment a-b: past either end, to that end; between, |ap x ab| / |ab|.
+oracle_segment_distance :: (a: WorldPoint, b: WorldPoint, p: WorldPoint) -> f32 {
+  ab := world_sub(b, a); ap := world_sub(p, a); bp := world_sub(p, b);
+  if world_dot(ap, ab) <= 0 { return sqrt(world_dot(ap, ap)); }
+  if world_dot(bp, ab) >= 0 { return sqrt(world_dot(bp, bp)); }
+  x := world_cross(ap, ab);
+  return sqrt(world_dot(x, x) / world_dot(ab, ab));
+}
+// Distance from p to box i's solid.
+oracle_box_distance :: (c: Colliders, i: int, p: WorldPoint) -> f32 {
+  v := c.boxes;
+  dx := stand_hi(stand_hi(v[6*i] - p.x, p.x - v[6*i+3]), 0);
+  dy := stand_hi(stand_hi(v[6*i+1] - p.y, p.y - v[6*i+4]), 0);
+  dz := stand_hi(stand_hi(v[6*i+2] - p.z, p.z - v[6*i+5]), 0);
+  return sqrt(dx * dx + dy * dy + dz * dz);
+}
+// Whether a sphere at p of radius r touches collider (shape, i).
+oracle_touches :: (c: Colliders, shape: QueryShape, i: int, p: WorldPoint, r: f32) -> bool {
+  if shape == QueryShape.ground { return p.y - r <= c.ground; }
+  if shape == QueryShape.box { return oracle_box_distance(c, i, p) <= r; }
+  v := c.capsules;
+  return oracle_segment_distance(world_point(v[7*i], v[7*i+1], v[7*i+2]), world_point(v[7*i+3], v[7*i+4], v[7*i+5]), p) <= r + v[7*i+6];
+}
+// The first collider (in collider order) at p, for a sphere of radius r (0: a point).
+OracleFound :: struct { hit: bool; shape: QueryShape; index: int; }
+oracle_first :: (c: Colliders, p: WorldPoint, r: f32) -> OracleFound {
+  for k: 0..<3 {
+    shape := ifx k == 0 then QueryShape.ground else ifx k == 1 then QueryShape.box else QueryShape.capsule;
+    n := ifx k == 0 then 1 else ifx k == 1 then query_boxes(c) else query_capsules(c);
+    for i: 0..<n {
+      if (r == 0 && oracle_inside(c, shape, i, p)) || (r > 0 && oracle_touches(c, shape, i, p, r)) { return OracleFound.{hit = true, shape = shape, index = i}; }
+    }
+  }
+  return OracleFound.{};
+}
+// March o + t d from 0 to far in steps of h, then halve the last step 40 times: the first t
+// at which a point (r = 0) or a sphere is in or on a collider, and which.
+OracleMarch :: struct { found: OracleFound; t: f32; }
+oracle_at :: (c: Colliders, o: WorldPoint, d: WorldPoint, r: f32, t: f32) -> OracleFound { return oracle_first(c, world_add(o, world_scale(d, t)), r); }
+oracle_march :: (c: Colliders, o: WorldPoint, d: WorldPoint, r: f32, far: f32, h: f32) -> OracleMarch {
+  if oracle_at(c, o, d, r, 0).hit { return OracleMarch.{found = oracle_at(c, o, d, r, 0)}; }
+  t := 0.0f32;
+  while t < far {
+    next := stand_lo(t + h, far);
+    if oracle_at(c, o, d, r, next).hit {
+      a := t; b := next;
+      for k: 0..<40 { m := (a + b) / 2; if oracle_at(c, o, d, r, m).hit { b = m; } else { a = m; } }
+      return OracleMarch.{found = oracle_at(c, o, d, r, b), t = b};
+    }
+    t = next;
+  }
+  return OracleMarch.{};
+}
+
+// A random scene: a ground below 0, three boxes and three capsules about the middle.
+oracle_next :: (rng: int) -> int { return (rng * 1103515245 + 12345) % 2147483648; }
+oracle_unit :: (rng: int) -> f32 { return f32((rng / 65536) % 10000) / 10000; }
+OracleDraw :: struct { rng: int; }
+oracle_draw :: (d: [] OracleDraw) -> f32 { d[0].rng = oracle_next(d[0].rng); return oracle_unit(d[0].rng); }
+OracleScene :: struct { boxes: [18] f32; capsules: [21] f32; ground: f32; }
+oracle_scene :: (r: [] OracleDraw) -> OracleScene {
+  s: OracleScene;
+  s.ground = -oracle_draw(r);
+  for i: 0..<3 {
+    x := oracle_draw(r) * 6 - 3; y := oracle_draw(r) * 2 - 0.5; z := oracle_draw(r) * 6 - 3;
+    s.boxes[6*i] = x; s.boxes[6*i+1] = y; s.boxes[6*i+2] = z;
+    s.boxes[6*i+3] = x + 0.2 + oracle_draw(r) * 1.5; s.boxes[6*i+4] = y + 0.2 + oracle_draw(r) * 1.5; s.boxes[6*i+5] = z + 0.2 + oracle_draw(r) * 1.5;
+  }
+  for i: 0..<3 {
+    for k: 0..<6 { s.capsules[7*i+k] = oracle_draw(r) * 6 - 3; }
+    s.capsules[7*i+1] = oracle_draw(r) * 2; s.capsules[7*i+4] = oracle_draw(r) * 2;
+    s.capsules[7*i+6] = 0.15 + oracle_draw(r) * 0.6;
+  }
+  return s;
+}
+// A random point in the scene's middle, and a unit direction from o toward one.
+oracle_point :: (r: [] OracleDraw) -> WorldPoint { return world_point(oracle_draw(r) * 8 - 4, oracle_draw(r) * 4, oracle_draw(r) * 8 - 4); }
+
+// book:begin oracle
+// Two rays into scene `seed`: each first hit is where marching by containment first finds a
+// collider, within a millimetre, and is the same collider; the normal faces the ray and points
+// out of the solid it hit.
+oracle_rays :: (seed: int) {
+  r := [1] OracleDraw.[OracleDraw.{rng = seed * 7919 + 12345}];
+  s := oracle_scene(r[..]);
+  c := Colliders.{ground = s.ground, boxes = s.boxes[..], capsules = s.capsules[..]};
+  for k: 0..<2 {
+    o := oracle_point(r[..]);
+    d := world_unit(world_sub(oracle_point(r[..]), o));
+    if k == 1 && seed % 3 == 0 { d = world_unit(world_point(d.x, abs(d.y) + 0.1, d.z)); }   // some rays up: they may reach nothing
+    q := query_ray(c, o, d, 10);
+    m := oracle_march(c, o, d, 0, 10, 0.02);
+    #assert q.hit == m.found.hit;
+    if q.hit {
+      #assert abs(q.t - m.t) <= 0.001 && q.shape == m.found.shape && q.index == m.found.index;
+      #assert world_distance(q.point, world_add(o, world_scale(d, q.t))).value < 0.0001;
+      #assert abs(world_dot(q.normal, q.normal) - 1) < 0.001;
+      if q.t > 0 {
+        #assert world_dot(q.normal, d) < 0;
+        #assert oracle_inside(c, q.shape, q.index, world_sub(q.point, world_scale(q.normal, 0.01)));
+        #assert !oracle_inside(c, q.shape, q.index, world_add(q.point, world_scale(q.normal, 0.01)));
+      } else {
+        #assert world_distance(q.normal, world_scale(d, -1)).value < 0.0001;
+      }
+    }
+  }
+}
+// book:end oracle
+// Two sweeps in scene `seed`: each first touch is where marching the sphere first finds a
+// collider, within 2 mm along the path, and is the same collider.
+oracle_sweeps :: (seed: int) {
+  r := [1] OracleDraw.[OracleDraw.{rng = seed * 104729 + 7}];
+  s := oracle_scene(r[..]);
+  c := Colliders.{ground = s.ground, boxes = s.boxes[..], capsules = s.capsules[..]};
+  for k: 0..<2 {
+    from := oracle_point(r[..]);
+    by := world_scale(world_sub(oracle_point(r[..]), from), 1.5);
+    radius := 0.1 + oracle_draw(r[..]) * 0.5;
+    q := query_sweep(c, from, radius, by);
+    m := oracle_march(c, from, by, radius, 1, 0.004);
+    #assert q.hit == m.found.hit;
+    if q.hit {
+      #assert abs(q.t - m.t) * sqrt(world_dot(by, by)) <= 0.002 && q.shape == m.found.shape && q.index == m.found.index;
+      #assert world_distance(q.point, world_add(from, world_scale(by, q.t))).value < 0.0001;
+      if q.t > 0 { #assert world_dot(q.normal, by) < 0; }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+stand at x 0.5: y 0.5, on box, index 0
+stand at x 2.5: y 0.0, on ground, index 0
+stand at x 4.0: y 0.0, on ground, index 0
+ray along +x: t 1.0, on box, index 0, normal (-1.0, 0.0, 0.0)
+overlap by the post: 1 (capsule, index 0)
+sweep of a 0.1 m ball: t 0.79999995, centre (1.9, 0.4000001), on box, index 1

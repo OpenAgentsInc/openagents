@@ -90,7 +90,7 @@ world_to_grid :: (mid: GridPoint, w: WorldPoint) -> GridPoint {
   return GridPoint.{x = mid.x + w.x * GRID_PER_METRE, y = mid.y + w.y * GRID_PER_METRE, z = mid.z + w.z * GRID_PER_METRE};
 }
 grid_to_world :: (mid: GridPoint, g: GridPoint) -> WorldPoint {
-  return world((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
+  return world_point((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
 }
 ```
 
@@ -126,15 +126,15 @@ converts a figure's feet at the top of a jump into every space:
 
 // A figure at the top of its jump, 1.17 m up, followed through every space by name.
 main :: () {
-  feet := world(2, 1.17, -4);
-  room := Placement.{origin = world(2, 0, -4), yaw = 0};
+  feet := world_point(2, 1.17, -4);
+  room := Placement.{origin = world_point(2, 0, -4), yaw = 0};
   local := world_to_local(room, feet);
   print("world  (%, %, %) m\n", feet.x, feet.y, feet.z);
   print("local  (%, %, %) m in a room at (2, 0, -4)\n", local.x, local.y, local.z);
   mid := GridPoint.{x = 4, y = 0, z = -6};
   g := world_to_grid(mid, feet);
   print("grid   (%, %, %) units: the height scales as the ground does\n", g.x, g.y, g.z);
-  lens := lens_at(world(2, 3, -10), world(2, 1, -4), 400, 300, 500, 0.05);
+  lens := lens_at(world_point(2, 3, -10), world_point(2, 1, -4), 400, 300, 500, 0.05);
   v := world_to_view(lens, feet);
   s := view_to_screen(lens, v);
   print("view   depth % m; screen (%, %) px, drawn %\n", v.z, s.at.x, s.at.y, s.ok);
@@ -142,7 +142,7 @@ main :: () {
   print("back from the grid (%, %, %) m\n", back.x, back.y, back.z);
   d := grid_distance(GridPoint.{x = 0, y = 0, z = 0}, GridPoint.{x = 3, y = 0, z = 4});
   print("5 grid units are % m\n", grid_metres(d).value);
-  behind := world_to_screen(lens, world(2, 1, -12));
+  behind := world_to_screen(lens, world_point(2, 1, -12));
   print("a point behind the eye is drawn %\n", behind.ok);
 }
 ```

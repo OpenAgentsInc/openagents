@@ -2,9 +2,9 @@
 #load "../../space.coax";
 f :: () -> f32 {
   mid := GridPoint.{x = 0, y = 0, z = 0};
-  w := world(1, 2, 3);
+  w := world_point(1, 2, 3);
   g := world_to_grid(mid, w);
-  l := lens_at(world(0, 0, -10), world(0, 0, 0), 0, 0, 100, 0.05);
+  l := lens_at(world_point(0, 0, -10), world_point(0, 0, 0), 0, 0, 100, 0.05);
   s := view_to_screen(l, world_to_view(l, grid_to_world(mid, g)));
   d := world_distance(w, w) + grid_metres(grid_distance(g, g));
   return s.at.x + d.value;

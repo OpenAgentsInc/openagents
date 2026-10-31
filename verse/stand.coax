@@ -26,6 +26,9 @@
 // Only builtins are used here, so any file may load it.
 //   coax/bin/coax test --library verse/stand.coax
 
+#module "verse.stand";   // its own module: the walker and aethyr/query.coax both load it
+
+
 STAND_FLOATS :: 10;
 STAND_QUAD :: 1; STAND_CONE :: 2; STAND_DOME :: 3; STAND_RING :: 4;
 STAND_NONE :: -1000000.0;

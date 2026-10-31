@@ -51,15 +51,15 @@ Lens :: struct {
 Seen :: struct { at: ScreenPoint; depth: f32; ok: bool; }
 // book:end types
 
-world :: (x: f32, y: f32, z: f32) -> WorldPoint { return WorldPoint.{x = x, y = y, z = z}; }
-world_add :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.x + b.x, a.y + b.y, a.z + b.z); }
-world_sub :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.x - b.x, a.y - b.y, a.z - b.z); }
-world_scale :: (a: WorldPoint, k: f32) -> WorldPoint { return world(a.x * k, a.y * k, a.z * k); }
+world_point :: (x: f32, y: f32, z: f32) -> WorldPoint { return WorldPoint.{x = x, y = y, z = z}; }
+world_add :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world_point(a.x + b.x, a.y + b.y, a.z + b.z); }
+world_sub :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world_point(a.x - b.x, a.y - b.y, a.z - b.z); }
+world_scale :: (a: WorldPoint, k: f32) -> WorldPoint { return world_point(a.x * k, a.y * k, a.z * k); }
 world_dot :: (a: WorldPoint, b: WorldPoint) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
-world_cross :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+world_cross :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world_point(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 world_unit :: (a: WorldPoint) -> WorldPoint {
   l := sqrt(world_dot(a, a));
-  if !(l > 0) { return world(0, 0, 1); }
+  if !(l > 0) { return world_point(0, 0, 1); }
   return world_scale(a, 1 / l);
 }
 
@@ -79,7 +79,7 @@ grid_metres :: (d: units.Quantity(GridUnit, f32)) -> units.Quantity(units.Metre,
 // A local point in the world, and back: rotate by the placement's yaw, then move to its origin.
 local_to_world :: (p: Placement, q: LocalPoint) -> WorldPoint {
   c := cos(p.yaw); s := sin(p.yaw);
-  return world(p.origin.x + q.x * c + q.z * s, p.origin.y + q.y, p.origin.z - q.x * s + q.z * c);
+  return world_point(p.origin.x + q.x * c + q.z * s, p.origin.y + q.y, p.origin.z - q.x * s + q.z * c);
 }
 world_to_local :: (p: Placement, w: WorldPoint) -> LocalPoint {
   c := cos(p.yaw); s := sin(p.yaw);
@@ -94,16 +94,16 @@ world_to_grid :: (mid: GridPoint, w: WorldPoint) -> GridPoint {
   return GridPoint.{x = mid.x + w.x * GRID_PER_METRE, y = mid.y + w.y * GRID_PER_METRE, z = mid.z + w.z * GRID_PER_METRE};
 }
 grid_to_world :: (mid: GridPoint, g: GridPoint) -> WorldPoint {
-  return world((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
+  return world_point((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
 }
 // book:end grid
 
 // A lens at `eye` looking at `at`, with +Y up.
-lens_at :: (eye: WorldPoint, at: WorldPoint, cx: f32, cy: f32, focal: f32, near: f32) -> Lens {
+lens_at :: (eye: WorldPoint, at: WorldPoint, cx: f32, cy: f32, focal: f32, near_plane: f32) -> Lens {
   ahead := world_unit(world_sub(at, eye));
-  right := world_unit(world_cross(ahead, world(0, 1, 0)));
+  right := world_unit(world_cross(ahead, world_point(0, 1, 0)));
   up := world_cross(right, ahead);
-  return Lens.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = focal, near = near};
+  return Lens.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = focal, near = near_plane};
 }
 // book:begin screen
 world_to_view :: (l: Lens, w: WorldPoint) -> ViewPoint {
@@ -126,64 +126,64 @@ near_to :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
 same_world :: (a: WorldPoint, b: WorldPoint, t: f32) -> bool { return near_to(a.x, b.x, t) && near_to(a.y, b.y, t) && near_to(a.z, b.z, t); }
 
 #test "world arithmetic" {
-  a := world(1, 2, 3); b := world(-2, 0.5, 4);
-  #assert world_dot(a, b) == 11 && same_world(world_sub(a, b), world(3, 1.5, -1), 0) && same_world(world_add(a, b), world(-1, 2.5, 7), 0);
-  #assert same_world(world_cross(world(1, 0, 0), world(0, 1, 0)), world(0, 0, 1), 0);
-  #assert same_world(world_scale(a, 2), world(2, 4, 6), 0);
-  #assert same_world(world_unit(world(0, 3, 4)), world(0, 0.6, 0.8), 0.000001);
-  #assert same_world(world_unit(world(0, 0, 0)), world(0, 0, 1), 0) && same_world(world_unit(world(0, 0.00001, 0)), world(0, 1, 0), 0.0001);
-  #assert same_world(world_cross(world(1, 2, 3), world(4, 5, 6)), world(-3, 6, -3), 0);
+  a := world_point(1, 2, 3); b := world_point(-2, 0.5, 4);
+  #assert world_dot(a, b) == 11 && same_world(world_sub(a, b), world_point(3, 1.5, -1), 0) && same_world(world_add(a, b), world_point(-1, 2.5, 7), 0);
+  #assert same_world(world_cross(world_point(1, 0, 0), world_point(0, 1, 0)), world_point(0, 0, 1), 0);
+  #assert same_world(world_scale(a, 2), world_point(2, 4, 6), 0);
+  #assert same_world(world_unit(world_point(0, 3, 4)), world_point(0, 0.6, 0.8), 0.000001);
+  #assert same_world(world_unit(world_point(0, 0, 0)), world_point(0, 0, 1), 0) && same_world(world_unit(world_point(0, 0.00001, 0)), world_point(0, 1, 0), 0.0001);
+  #assert same_world(world_cross(world_point(1, 2, 3), world_point(4, 5, 6)), world_point(-3, 6, -3), 0);
   // the checks' own comparison: each axis counts
-  #assert !same_world(world(1, 0, 0), world(0, 0, 0), 0.5) && !same_world(world(0, 1, 0), world(0, 0, 0), 0.5) && !same_world(world(0, 0, 1), world(0, 0, 0), 0.5);
+  #assert !same_world(world_point(1, 0, 0), world_point(0, 0, 0), 0.5) && !same_world(world_point(0, 1, 0), world_point(0, 0, 0), 0.5) && !same_world(world_point(0, 0, 1), world_point(0, 0, 0), 0.5);
 }
 
 #test "distances keep their units, and grid units convert exactly" {
-  d := world_distance(world(0, 0, 0), world(3, 0, 4));
+  d := world_distance(world_point(0, 0, 0), world_point(3, 0, 4));
   #assert d.value == 5;
   g := grid_distance(GridPoint.{x = 1, y = 1, z = 2}, GridPoint.{x = 3, y = 4, z = 8});
   #assert g.value == 7 && grid_metres(g).value == 14;
 }
 
 #forall "a local point goes to the world and back" k: 0..<16 {
-  p := Placement.{origin = world(3, 1, -2), yaw = f32(k) * 0.4};
+  p := Placement.{origin = world_point(3, 1, -2), yaw = f32(k) * 0.4};
   q := LocalPoint.{x = 1.5, y = 0.25, z = -0.75};
   b := world_to_local(p, local_to_world(p, q));
   #assert near_to(b.x, q.x, 0.00001) && near_to(b.y, q.y, 0.00001) && near_to(b.z, q.z, 0.00001);
 }
 
 #test "a placement turns with its yaw: a quarter turn takes local +Z to world +X" {
-  p := Placement.{origin = world(10, 2, 0), yaw = 1.5707963};
-  #assert same_world(local_to_world(p, LocalPoint.{x = 0, y = 0, z = 1}), world(11, 2, 0), 0.00001);
-  #assert same_world(local_to_world(p, LocalPoint.{x = 1, y = 3, z = 0}), world(10, 5, -1), 0.00001);
-  o := Placement.{origin = world(0, 0, 0), yaw = 0};
-  #assert same_world(local_to_world(o, LocalPoint.{x = 1, y = 2, z = 3}), world(1, 2, 3), 0);
+  p := Placement.{origin = world_point(10, 2, 0), yaw = 1.5707963};
+  #assert same_world(local_to_world(p, LocalPoint.{x = 0, y = 0, z = 1}), world_point(11, 2, 0), 0.00001);
+  #assert same_world(local_to_world(p, LocalPoint.{x = 1, y = 3, z = 0}), world_point(10, 5, -1), 0.00001);
+  o := Placement.{origin = world_point(0, 0, 0), yaw = 0};
+  #assert same_world(local_to_world(o, LocalPoint.{x = 1, y = 2, z = 3}), world_point(1, 2, 3), 0);
 }
 
 #test "the Grid draws a metre as half a unit, heights too" {
   mid := GridPoint.{x = 4, y = 0, z = -6};
-  g := world_to_grid(mid, world(2, 1.2, -4));
+  g := world_to_grid(mid, world_point(2, 1.2, -4));
   #assert g.x == 5 && g.y == 0.6 && g.z == -8;
-  raised := GridPoint.{x = 1, y = 2, z = 3};
-  #assert same_world(grid_to_world(raised, GridPoint.{x = 2, y = 3, z = 4}), world(2, 2, 2), 0);
-  #assert same_world(grid_to_world(mid, g), world(2, 1.2, -4), 0.000001);
+  lifted_mid := GridPoint.{x = 1, y = 2, z = 3};
+  #assert same_world(grid_to_world(lifted_mid, GridPoint.{x = 2, y = 3, z = 4}), world_point(2, 2, 2), 0);
+  #assert same_world(grid_to_world(mid, g), world_point(2, 1.2, -4), 0.000001);
   // A jump's feet 1.17 m up are drawn 0.585 units up: at the physics height, not the floor's.
-  #assert world_to_grid(mid, world(0, 1.17, 0)).y == 0.585;
+  #assert world_to_grid(mid, world_point(0, 1.17, 0)).y == 0.585;
   up := GridPoint.{x = 0, y = 3, z = 0};
-  #assert world_to_grid(up, world(0, 0, 0)).y == 3;
+  #assert world_to_grid(up, world_point(0, 0, 0)).y == 3;
 }
 
 #test "the lens sees ahead, right, up, and nothing behind its near plane" {
-  l := lens_at(world(0, 0, -10), world(0, 0, 0), 400, 300, 500, 0.05);
-  #assert same_world(l.ahead, world(0, 0, 1), 0.000001) && same_world(l.right, world(-1, 0, 0), 0.000001) && same_world(l.up, world(0, 1, 0), 0.000001);
-  s := world_to_screen(l, world(0, 0, 0));
+  l := lens_at(world_point(0, 0, -10), world_point(0, 0, 0), 400, 300, 500, 0.05);
+  #assert same_world(l.ahead, world_point(0, 0, 1), 0.000001) && same_world(l.right, world_point(-1, 0, 0), 0.000001) && same_world(l.up, world_point(0, 1, 0), 0.000001);
+  s := world_to_screen(l, world_point(0, 0, 0));
   #assert s.ok && s.at.x == 400 && s.at.y == 300 && s.depth == 10;
-  r := world_to_screen(l, world(-1, 2, 0));       // to the right and up
+  r := world_to_screen(l, world_point(-1, 2, 0));       // to the right and up
   #assert r.ok && r.at.x == 450 && r.at.y == 200;
-  #assert !world_to_screen(l, world(0, 0, -10)).ok;   // at the eye
-  #assert !world_to_screen(l, world(0, 0, -20)).ok;   // behind
-  m := lens_at(world(0, 0, -10), world(0, 0, 0), 400, 300, 500, 0.5);
-  edge := world_to_screen(m, world(0, 0, -9.5));      // exactly at the near plane: drawn
-  #assert edge.ok && edge.depth == 0.5 && !world_to_screen(m, world(0, 0, -9.75)).ok;
-  v := world_to_view(l, world(3, -1, 5));
-  #assert same_world(view_to_world(l, v), world(3, -1, 5), 0.00001);
+  #assert !world_to_screen(l, world_point(0, 0, -10)).ok;   // at the eye
+  #assert !world_to_screen(l, world_point(0, 0, -20)).ok;   // behind
+  m := lens_at(world_point(0, 0, -10), world_point(0, 0, 0), 400, 300, 500, 0.5);
+  at_near := world_to_screen(m, world_point(0, 0, -9.5));   // exactly at the near plane: drawn
+  #assert at_near.ok && at_near.depth == 0.5 && !world_to_screen(m, world_point(0, 0, -9.75)).ok;
+  v := world_to_view(l, world_point(3, -1, 5));
+  #assert same_world(view_to_world(l, v), world_point(3, -1, 5), 0.00001);
 }

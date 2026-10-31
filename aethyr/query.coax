@@ -1,0 +1,608 @@
+// Aethyr's spatial queries (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md):
+// one set of colliders a realm, and four questions about it, asked by movement, the camera,
+// AI, picking and placement.
+//
+//   query_ground   the highest surface at or below a height: where feet stand (one meaning
+//                  of "on the ground", one step height, one steep slope, one floor pad)
+//   query_ray      the first point a ray reaches, in [0, far]
+//   query_overlap  the colliders a sphere overlaps, in collider order
+//   query_sweep    the first touch of a sphere moving along a vector, in [0, 1]
+//
+// Colliders are in world space (aethyr/space.coax): a flat ground at a height, boxes (min and
+// max corners), capsules (two ends and a radius) and floors (verse/stand.coax: quads, cones,
+// domes, rings). Floors answer query_ground; rays, overlaps and sweeps cover the ground, the
+// boxes and the capsules. Every shape is solid: a ray or sweep that starts inside one hits it at
+// t = 0. Ties go to the earlier collider (the ground, then boxes, then capsules, each by index),
+// so an answer depends on the scene, not on float noise in the search. Nothing here changes
+// the colliders.
+//   coax/bin/coax test aethyr/query.coax --library
+//   coax/bin/coax mutate aethyr/query.coax
+
+#module "aethyr.query";
+#load "space.coax";
+#load "../verse/stand.coax";
+#load "tests/query-oracle.coax";   // the checks' oracles
+
+// book:begin rules
+QUERY_STEP_UP :: STAND_STEP;     // 0.55 m: the highest top a walker steps onto
+QUERY_STEEP :: STAND_STEEP;      // tan 55 degrees: a steeper surface doesn't hold you
+QUERY_FLOOR_PAD :: 0.15;         // how far past a floor's edge your middle may be and it holds you
+QUERY_BOX :: 6;                  // numbers a box: min x, y, z, max x, y, z
+QUERY_CAPSULE :: 7;              // numbers a capsule: one end, the other, the radius
+QUERY_TOO_BIG :: 1000000.0;      // a coordinate this large is not one
+
+QueryShape :: enum u8 { none; ground; box; capsule; floor; }
+
+// One realm's colliders. The arrays are the realm's own; a partial last entry is ignored.
+Colliders :: struct {
+  ground: f32;
+  boxes: [] f32;
+  capsules: [] f32;
+  floors: [] f32;      // STAND_FLOATS numbers each (verse/stand.coax)
+}
+// book:end rules
+
+query_finite :: (a: f32) -> bool { return a == a && a < QUERY_TOO_BIG && a > -QUERY_TOO_BIG; }
+query_point_finite :: (p: WorldPoint) -> bool { return query_finite(p.x) && query_finite(p.y) && query_finite(p.z); }
+query_axes :: (p: WorldPoint) -> [3] f32 { return [3] f32.[p.x, p.y, p.z]; }
+
+// Box i, if it is whole, finite and not inside out; capsule i, if it is whole, finite and has a radius.
+QueryBox :: struct { low: WorldPoint; high: WorldPoint; ok: bool; }
+query_box :: (c: Colliders, i: int) -> QueryBox {
+  out: QueryBox;
+  k := i * QUERY_BOX;
+  for j: 0..<QUERY_BOX { if !query_finite(c.boxes[k + j]) { return out; } }
+  out.low = world_point(c.boxes[k], c.boxes[k + 1], c.boxes[k + 2]);
+  out.high = world_point(c.boxes[k + 3], c.boxes[k + 4], c.boxes[k + 5]);
+  out.ok = out.low.x <= out.high.x && out.low.y <= out.high.y && out.low.z <= out.high.z;
+  return out;
+}
+QueryCapsule :: struct { a: WorldPoint; b: WorldPoint; r: f32; ok: bool; }
+query_capsule :: (c: Colliders, i: int) -> QueryCapsule {
+  out: QueryCapsule;
+  k := i * QUERY_CAPSULE;
+  for j: 0..<QUERY_CAPSULE { if !query_finite(c.capsules[k + j]) { return out; } }
+  out.a = world_point(c.capsules[k], c.capsules[k + 1], c.capsules[k + 2]);
+  out.b = world_point(c.capsules[k + 3], c.capsules[k + 4], c.capsules[k + 5]);
+  out.r = c.capsules[k + 6];
+  out.ok = out.r > 0;
+  return out;
+}
+query_boxes :: (c: Colliders) -> int { return c.boxes.count / QUERY_BOX; }
+query_capsules :: (c: Colliders) -> int { return c.capsules.count / QUERY_CAPSULE; }
+
+// How far (x, z) is outside a box's footprint.
+query_footprint :: (b: QueryBox, x: f32, z: f32) -> f32 {
+  dx := x - stand_clamp(x, b.low.x, b.high.x); dz := z - stand_clamp(z, b.low.z, b.high.z);
+  return sqrt(dx * dx + dz * dz);
+}
+// The point of segment a-b nearest p.
+query_nearest :: (a: WorldPoint, b: WorldPoint, p: WorldPoint) -> WorldPoint {
+  ab := world_sub(b, a);
+  size := world_dot(ab, ab);
+  if !(size > 0) { return a; }
+  return world_add(a, world_scale(ab, stand_clamp(world_dot(world_sub(p, a), ab) / size, 0, 1)));
+}
+
+// ---- ground
+
+// book:begin ground
+// The surface under (x, z): its height, its slope (dy/dx, dy/dz), whether it is too steep to
+// stand on, and which collider it is.
+QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape = QueryShape.ground; index: int; }
+
+// The highest surface at (x, z) at or below `below`: the ground, a box's top whose footprint is
+// less than `reach` away (a walker's radius), or a floor (within QUERY_FLOOR_PAD of its edge).
+// A surface only as high as one already found doesn't replace it.
+query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround {
+  out := QueryGround.{y = c.ground};
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if !b.ok || b.high.y > below || b.high.y <= out.y { continue; }
+    if query_footprint(b, x, z) < reach { out.y = b.high.y; out.shape = QueryShape.box; out.index = i; }
+  }
+  h := stand_top(c.floors, c.floors.count / STAND_FLOATS, x, z, below, f32(QUERY_FLOOR_PAD));
+  if h.y > out.y && query_finite(h.y) {
+    out = QueryGround.{y = h.y, gx = h.gx, gz = h.gz, shape = QueryShape.floor, index = h.id};
+  }
+  out.steep = stand_steep(StandHit.{gx = out.gx, gz = out.gz});
+  return out;
+}
+// What feet at `feet` stand on: the highest surface they can step onto.
+query_stand :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround {
+  return query_ground(c, x, z, feet + f32(QUERY_STEP_UP), reach);
+}
+// book:end ground
+
+// ---- rays
+
+// book:begin ray
+// Where a ray first reaches a collider: t along the direction (in its lengths), the point, the
+// outward normal there, and which collider. A ray that starts inside one hits it at t = 0,
+// with the normal facing back along the ray.
+QueryHit :: struct { hit: bool; t: f32; point: WorldPoint; normal: WorldPoint; shape: QueryShape; index: int = -1; }
+
+// The first t in [0, far] at which o + t d enters box low-high (slabs), and the face it enters by.
+QueryEntry :: struct { hit: bool; t: f32; normal: WorldPoint; }
+query_enter_box :: (low: WorldPoint, high: WorldPoint, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+  out: QueryEntry;
+  enter := -f32(QUERY_TOO_BIG); leave := f32(QUERY_TOO_BIG);
+  face: int; side: f32;   // the axis entered by, and the sign of its outward normal
+  ov := query_axes(o); dv := query_axes(d); lv := query_axes(low); hv := query_axes(high);
+  for k: 0..<3 {
+    if dv[k] == 0 {
+      if ov[k] < lv[k] || ov[k] > hv[k] { return out; }
+      continue;
+    }
+    t0 := (lv[k] - ov[k]) / dv[k]; t1 := (hv[k] - ov[k]) / dv[k];
+    nearer := stand_lo(t0, t1);
+    if nearer > enter { enter = nearer; face = k; side = -dv[k] / abs(dv[k]); }
+    leave = stand_lo(leave, stand_hi(t0, t1));
+  }
+  if leave < stand_hi(enter, 0) || enter > far { return out; }
+  out.hit = true;
+  if enter <= 0 { out.normal = world_scale(world_unit(d), -1); return out; }   // inside
+  out.t = enter;
+  n: [3] f32;
+  n[face] = side;
+  out.normal = world_point(n[0], n[1], n[2]);
+  return out;
+}
+// The first t in [0, far] at which o + t d enters the capsule a-b of radius r: its side, or a
+// sphere at either end.
+query_enter_capsule :: (a: WorldPoint, b: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+  out: QueryEntry;
+  gap := world_sub(o, query_nearest(a, b, o));
+  if world_dot(gap, gap) <= r * r { out.hit = true; out.normal = world_scale(world_unit(d), -1); return out; }
+  best := f32(QUERY_TOO_BIG);
+  // the side: o + t d at r from the axis' line, between the ends. A capsule that is one point
+  // (size 0), or a ray along its axis (qa 0), gives no number here, and only the ends count.
+  ab := world_sub(b, a); size := world_dot(ab, ab);
+  m := world_sub(o, a);
+  dp := world_sub(d, world_scale(ab, world_dot(d, ab) / size));
+  mp := world_sub(m, world_scale(ab, world_dot(m, ab) / size));
+  qa := world_dot(dp, dp); qb := world_dot(mp, dp); qc := world_dot(mp, mp) - r * r;
+  disc := qb * qb - qa * qc;
+  if disc >= 0 {
+    t := (-qb - sqrt(disc)) / qa;
+    s := (world_dot(m, ab) + t * world_dot(d, ab)) / size;
+    if t >= 0 && s >= 0 && s <= 1 { best = t; }
+  }
+  // the ends
+  ends := [2] WorldPoint.[a, b];
+  for e: 0..<2 {
+    me := world_sub(o, ends[e]);
+    ea := world_dot(d, d); eb := world_dot(me, d); ec := world_dot(me, me) - r * r;
+    ed := eb * eb - ea * ec;
+    if ed >= 0 {
+      t := (-eb - sqrt(ed)) / ea;
+      if t >= 0 { best = stand_lo(best, t); }
+    }
+  }
+  if best > far { return out; }
+  out.hit = true; out.t = best;
+  p := world_add(o, world_scale(d, best));
+  out.normal = world_unit(world_sub(p, query_nearest(a, b, p)));
+  return out;
+}
+// The first t in [0, far] at which o + t d reaches height y from above (the ground is solid below).
+query_enter_ground :: (y: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+  out: QueryEntry;
+  if o.y < y { out.hit = true; out.normal = world_scale(world_unit(d), -1); return out; }
+  if !(d.y < 0) { return out; }
+  t := (y - o.y) / d.y;
+  if t > far { return out; }
+  out.hit = true; out.t = t; out.normal = world_point(0, 1, 0);
+  return out;
+}
+query_keep :: (best: QueryHit, e: QueryEntry, shape: QueryShape, index: int) -> QueryHit {
+  if !e.hit || (best.hit && e.t >= best.t) { return best; }
+  return QueryHit.{hit = true, t = e.t, normal = e.normal, shape = shape, index = index};
+}
+query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit {
+  best: QueryHit;
+  if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return best; }
+  reach := stand_hi(far, 0);
+  best = query_keep(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0);
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if b.ok { best = query_keep(best, query_enter_box(b.low, b.high, o, d, reach), QueryShape.box, i); }
+  }
+  for i: 0..<query_capsules(c) {
+    k := query_capsule(c, i);
+    if k.ok { best = query_keep(best, query_enter_capsule(k.a, k.b, k.r, o, d, reach), QueryShape.capsule, i); }
+  }
+  if best.hit { best.point = world_add(o, world_scale(d, best.t)); }
+  return best;
+}
+// book:end ray
+
+// ---- overlaps and sweeps
+
+// book:begin overlap
+QueryId :: struct { shape: QueryShape; index: int; }
+
+// The colliders a sphere overlaps (closer than its radius), in collider order: the ground,
+// then boxes, then capsules, each by index. It writes as many as fit in `out` and returns how
+// many there are.
+query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> int {
+  n := 0;
+  if !query_point_finite(centre) || !query_finite(r) || !(r > 0) { return 0; }
+  if centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if !b.ok { continue; }
+    q := world_point(stand_clamp(centre.x, b.low.x, b.high.x), stand_clamp(centre.y, b.low.y, b.high.y), stand_clamp(centre.z, b.low.z, b.high.z));
+    g := world_sub(centre, q);
+    if world_dot(g, g) < r * r { n = query_put(out, n, QueryShape.box, i); }
+  }
+  for i: 0..<query_capsules(c) {
+    k := query_capsule(c, i);
+    if !k.ok { continue; }
+    g := world_sub(centre, query_nearest(k.a, k.b, centre));
+    if world_dot(g, g) < (r + k.r) * (r + k.r) { n = query_put(out, n, QueryShape.capsule, i); }
+  }
+  return n;
+}
+query_put :: (out: [] QueryId, n: int, shape: QueryShape, index: int) -> int {
+  if n < out.count { out[n] = QueryId.{shape = shape, index = index}; }
+  return n + 1;
+}
+// book:end overlap
+
+// book:begin sweep
+// A sphere of radius r moving from `from` by `by` first touches a collider at t in [0, 1]: the
+// ray from its centre against each collider grown by r. A box grown by r is three boxes, each
+// grown by r along one axis, and its twelve edges as capsules of radius r.
+query_enter_grown_box :: (low: WorldPoint, high: WorldPoint, r: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryEntry {
+  best: QueryEntry;
+  for k: 0..<3 {
+    g: [3] f32;
+    g[k] = r;
+    gl := world_point(low.x - g[0], low.y - g[1], low.z - g[2]);
+    gh := world_point(high.x + g[0], high.y + g[1], high.z + g[2]);
+    best = query_sooner(best, query_enter_box(gl, gh, o, d, far));
+  }
+  for e: 0..<12 {
+    k := e / 4;   // the edges along x, then y, then z
+    u := f32(e % 2); v := f32((e / 2) % 2);
+    a := query_corner(low, high, k, u, v, 0); b := query_corner(low, high, k, u, v, 1);
+    best = query_sooner(best, query_enter_capsule(a, b, r, o, d, far));
+  }
+  return best;
+}
+// An end of the edge along axis k, at the low (0) or high (1) side of each other axis.
+query_corner :: (low: WorldPoint, high: WorldPoint, k: int, u: f32, v: f32, end: int) -> WorldPoint {
+  side := [3] f32.[0, 0, 0];
+  side[k] = f32(end);
+  side[(k + 1) % 3] = u; side[(k + 2) % 3] = v;
+  return world_point(low.x + (high.x - low.x) * side[0], low.y + (high.y - low.y) * side[1], low.z + (high.z - low.z) * side[2]);
+}
+query_sooner :: (a: QueryEntry, b: QueryEntry) -> QueryEntry {
+  if !b.hit || (a.hit && b.t >= a.t) { return a; }
+  return b;
+}
+query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit {
+  best: QueryHit;
+  if !query_point_finite(from) || !query_point_finite(by) || !query_finite(r) || !(r > 0) { return best; }
+  if !(world_dot(by, by) > 0) {
+    // not moving: a touch at 0, or none
+    hits: [1] QueryId;
+    if query_overlap(c, from, r, hits[..]) == 0 { return best; }
+    return QueryHit.{hit = true, point = from, normal = world_point(0, 1, 0), shape = hits[0].shape, index = hits[0].index};
+  }
+  best = query_keep(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0);
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if b.ok { best = query_keep(best, query_enter_grown_box(b.low, b.high, r, from, by, 1), QueryShape.box, i); }
+  }
+  for i: 0..<query_capsules(c) {
+    k := query_capsule(c, i);
+    if k.ok { best = query_keep(best, query_enter_capsule(k.a, k.b, k.r + r, from, by, 1), QueryShape.capsule, i); }
+  }
+  if best.hit { best.point = world_add(from, world_scale(by, best.t)); }
+  return best;
+}
+// book:end sweep
+
+// ---- checks
+
+#test "the ground is the highest surface you can step onto, and only a higher one replaces it" {
+  c := Colliders.{ground = 0.25};
+  g := query_stand(c, 3, 4, 0.25, 0.3);
+  #assert g.y == 0.25 && g.shape == QueryShape.ground && g.index == 0 && !g.steep && g.gx == 0 && g.gz == 0;
+  // boxes: a 0.55 m top is a step, a 0.6 m one is a wall; the higher of two steps is taken
+  boxes := [24] f32.[0, 0, 0, 1, 0.55, 1,   0, 0, 0, 1, 0.6, 1,   0, 0, 0, 1, 0.4, 1,   0, 0, 0, 1, 0.5, 1];
+  c = Colliders.{boxes = boxes[..]};
+  g = query_stand(c, 0.5, 0.5, 0, 0.3);
+  #assert g.y == 0.55 && g.shape == QueryShape.box && g.index == 0;
+  g = query_ground(c, 0.5, 0.5, 0.6, 0.3);
+  #assert g.y == 0.6 && g.index == 1;
+  g = query_ground(c, 0.5, 0.5, 0.59, 0.3);
+  #assert g.y == 0.55 && g.index == 0;
+  // the footprint holds you while your middle is less than `reach` past it
+  #assert query_stand(c, 1.29, 0.5, 0, 0.3).y == 0.55 && query_stand(c, 1.31, 0.5, 0, 0.3).y == 0;
+  #assert query_stand(c, -0.29, 0.5, 0, 0.3).y == 0.55 && query_stand(c, 1.25, 1.25, 0, 0.3).y == 0;
+  // the same height twice: the earlier collider
+  twins := [12] f32.[0, 0, 0, 1, 0.5, 1,   0, 0, 0, 1, 0.5, 1];
+  c = Colliders.{boxes = twins[..]};
+  #assert query_stand(c, 0.5, 0.5, 0, 0.3).index == 0;
+  // a top level with the ground is the ground; a broken or inside-out box is no box; a partial one is ignored
+  odd := [20] f32.[0, -1, 0, 1, 0, 1,   0, 0, 0, 1, 0.3, 1,   1, 0, 1, 0, 0.3, 0,   0, 0];
+  odd[7] = 0.0 / 0.0;
+  c = Colliders.{boxes = odd[..]};
+  g = query_stand(c, 0.5, 0.5, 0, 0.3);
+  #assert g.y == 0 && g.shape == QueryShape.ground && query_boxes(c) == 3;
+}
+
+#test "floors: their height, slope and steepness, and they replace a q_box only when higher" {
+  floors: [3 * STAND_FLOATS] f32;
+  stand_put_box(floors[..], 0, 0, 0, 2, 2, 0.4);                 // a level slab
+  stand_put_quad(floors[..], 1, 4, 0, 2, 0, 0, 2, 0, 3, 0);     // rising 1.5 in x: steep
+  stand_put_quad(floors[..], 2, 8, 0, 2, 0, 0, 2, 0, 2.8, 0);   // rising 1.4 in x: not
+  c := Colliders.{floors = floors[..]};
+  g := query_stand(c, 1, 1, 0, 0.3);
+  #assert g.y == 0.4 && g.shape == QueryShape.floor && g.index == 0 && !g.steep;
+  g = query_ground(c, 5, 1, 10, 0.3);
+  #assert g.shape == QueryShape.floor && g.index == 1 && g.steep && abs(g.gx - 1.5) < 0.0001 && abs(g.y - 1.5) < 0.0001;
+  g = query_ground(c, 9, 1, 10, 0.3);
+  #assert g.index == 2 && !g.steep && abs(g.gx - 1.4) < 0.0001;
+  // the floor pad: your middle 0.14 m past the slab's edge stands on it, 0.16 m doesn't
+  #assert query_stand(c, 2.14, 1, 0, 0.3).y == 0.4 && query_stand(c, 2.16, 1, 0, 0.3).y == 0;
+  // against a box: the higher one; at the same height, the box
+  boxes := [6] f32.[0, 0, 0, 2, 0.3, 2];
+  c.boxes = boxes[..];
+  #assert query_stand(c, 1, 1, 0, 0.3).shape == QueryShape.floor;
+  boxes[4] = 0.5;
+  #assert query_stand(c, 1, 1, 0, 0.3).shape == QueryShape.box;
+  boxes[4] = 0.4;
+  g = query_stand(c, 1, 1, 0, 0.3);
+  #assert g.shape == QueryShape.box && g.index == 0;
+  // no floor under you, over a ground too low to be a number: still the ground
+  far := Colliders.{ground = -2000000, floors = floors[..]};
+  #assert query_stand(far, 50, 50, 0, 0.3).shape == QueryShape.ground;
+}
+
+// The oracles (aethyr/tests/query-oracle.coax) march each ray and sweep in small steps and test
+// containment at each one. Each check takes a share of the scenes, to stay in a check's budget.
+#forall "rays: the first hit is where marching by containment first finds a collider (1 of 3)" seed: 0..<16 { oracle_rays(seed); }
+#forall "rays: the first hit is where marching by containment first finds a collider (2 of 3)" seed: 16..<32 { oracle_rays(seed); }
+#forall "rays: the first hit is where marching by containment first finds a collider (3 of 3)" seed: 32..<48 { oracle_rays(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (1 of 3)" seed: 0..<16 { oracle_sweeps(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (2 of 3)" seed: 16..<32 { oracle_sweeps(seed); }
+#forall "sweeps: the first touch is where marching the sphere first finds a collider (3 of 3)" seed: 32..<48 { oracle_sweeps(seed); }
+
+#forall "an overlap lists exactly the colliders the sphere is closer to than its radius, in order" seed: 0..<32 {
+  r := [1] OracleDraw.[OracleDraw.{rng = seed * 31337 + 1}];
+  s := oracle_scene(r[..]);
+  c := Colliders.{ground = s.ground, boxes = s.boxes[..], capsules = s.capsules[..]};
+  for k: 0..<8 {
+    p := oracle_point(r[..]);
+    radius := 0.05 + oracle_draw(r[..]) * 1.5;
+    got: [7] QueryId;
+    n := query_overlap(c, p, radius, got[..]);
+    want := 0;
+    if p.y - radius < c.ground { #assert got[want].shape == QueryShape.ground; want += 1; }
+    for i: 0..<3 {
+      if oracle_box_distance(c, i, p) < radius { #assert got[want].shape == QueryShape.box && got[want].index == i; want += 1; }
+    }
+    for i: 0..<3 {
+      v := s.capsules;
+      if oracle_segment_distance(world_point(v[7*i], v[7*i+1], v[7*i+2]), world_point(v[7*i+3], v[7*i+4], v[7*i+5]), p) < radius + v[7*i+6] {
+        #assert got[want].shape == QueryShape.capsule && got[want].index == i; want += 1;
+      }
+    }
+    #assert n == want;
+  }
+}
+
+#test "rays: closed forms, starts inside, ties, and inputs that aren't a ray" {
+  boxes := [12] f32.[1, 0, -1, 3, 2, 1,   1, 0, -1, 3, 2, 1];
+  caps := [14] f32.[6, 1, -2, 6, 1, 2, 0.5,   9, 1, 0, 9, 1, 0, 0.5];
+  c := Colliders.{ground = -1, boxes = boxes[..], capsules = caps[..]};
+  // along +x at y = 1: the box's face at x = 1 (the first of the twins)
+  h := query_ray(c, world_point(0, 1, 0), world_point(1, 0, 0), 20);
+  #assert h.hit && h.t == 1 && h.shape == QueryShape.box && h.index == 0 && h.normal.x == -1 && h.point.x == 1;
+  // from inside the box: t = 0, the normal back along the ray
+  h = query_ray(c, world_point(2, 1, 0), world_point(0, 0, 2), 20);
+  #assert h.hit && h.t == 0 && h.index == 0 && h.normal.z == -1 && h.point.z == 0;
+  // past the box at z = 1.5: the capsule's side at x = 5.5, then a capsule that is one sphere
+  h = query_ray(c, world_point(0, 1, 1.5), world_point(1, 0, 0), 20);
+  #assert h.hit && h.shape == QueryShape.capsule && h.index == 0 && abs(h.t - 5.5) < 0.0001 && abs(h.normal.x + 1) < 0.0001;
+  h = query_ray(c, world_point(0, 1, 2.3), world_point(1, 0, 0), 20);
+  #assert h.hit && h.index == 0 && abs(h.t - 5.6) < 0.0001;  // the end sphere at z = 2: x = 6 - sqrt(0.25 - 0.09)
+  h = query_ray(c, world_point(0, 1, 2.3), world_point(2, 0, 0), 20);
+  #assert abs(h.t - 2.8) < 0.0001;                          // t is in the direction's lengths
+  h = query_ray(c, world_point(12, 1, 0), world_point(-1, 0, 0), 20);
+  #assert h.hit && h.shape == QueryShape.capsule && h.index == 1 && abs(h.t - 2.5) < 0.0001;
+  // from inside a capsule
+  h = query_ray(c, world_point(6, 1, 0.2), world_point(0, 1, 0), 20);
+  #assert h.hit && h.t == 0 && h.shape == QueryShape.capsule && h.normal.y == -1;
+  // down to the ground; from under it; level with it and along it; up and away
+  h = query_ray(c, world_point(-5, 3, 0), world_point(0, -1, 0), 20);
+  #assert h.hit && h.t == 4 && h.shape == QueryShape.ground && h.normal.y == 1 && h.point.y == -1;
+  #assert !query_ray(c, world_point(-5, 3, 0), world_point(0, -1, 0), 3.9).hit && query_ray(c, world_point(-5, 3, 0), world_point(0, -1, 0), 4).hit;
+  h = query_ray(c, world_point(-5, -2, 0), world_point(1, 0, 0), 20);
+  #assert h.hit && h.t == 0 && h.shape == QueryShape.ground;
+  #assert !query_ray(c, world_point(-5, 3, 0), world_point(-1, 0, 0), 20).hit && !query_ray(c, world_point(-5, 3, 0), world_point(0, 1, 0), 20).hit;
+  // a box beyond `far`, or behind the ray, isn't reached; a negative far reaches only what you are in
+  #assert !query_ray(c, world_point(0, 1, 0), world_point(1, 0, 0), 0.9).hit && !query_ray(c, world_point(4, 1, 0), world_point(1, 0, 0), 1).hit;
+  #assert !query_ray(c, world_point(0, 1, 0), world_point(1, 0, 0), -5).hit && query_ray(c, world_point(2, 1, 0), world_point(1, 0, 0), -5).hit;
+  // parallel to a box's faces and outside them: no hit
+  #assert !query_ray(c, world_point(0, 3, 0), world_point(1, 0, 0), 5).hit && !query_ray(c, world_point(0, 1, 3), world_point(1, 0, 0), 5).hit;
+  // not a ray
+  nan := 0.0f32 / 0.0f32;
+  #assert !query_ray(c, world_point(nan, 1, 0), world_point(1, 0, 0), 20).hit && !query_ray(c, world_point(0, 1, 0), world_point(1, nan, 0), 20).hit;
+  #assert !query_ray(c, world_point(0, 1, 0), world_point(0, 0, 0), 20).hit && !query_ray(c, world_point(0, 1, 0), world_point(1, 0, 0), nan).hit;
+  #assert query_ray(c, world_point(0, 1, 0), world_point(1, 0, 0), 20).index == 0;
+  // broken shapes are skipped: a box with no number, a capsule with no radius
+  boxes[0] = nan; boxes[6] = nan; caps[6] = 0;
+  h = query_ray(c, world_point(0, 1, 1.5), world_point(1, 0, 0), 20);
+  #assert !(h.shape == QueryShape.box) && !(h.shape == QueryShape.capsule && h.index == 0);
+  caps[6] = 0.5; caps[13] = nan;
+  #assert query_ray(c, world_point(12, 1, 0), world_point(-1, 0, 0), 20).shape == QueryShape.capsule && query_ray(c, world_point(12, 1, 0), world_point(-1, 0, 0), 20).index == 0;
+}
+
+#test "overlaps and sweeps: closed forms, touching at the start, standing still, and bad input" {
+  boxes := [12] f32.[0, 0, 0, 1, 1, 1,   3, 0, 0, 4, 1, 1];
+  caps := [7] f32.[0, 0.5, 5, 0, 0.5, 6, 0.25];
+  c := Colliders.{ground = -1, boxes = boxes[..], capsules = caps[..]};
+  // a sphere of 0.5 sliding along +x at the boxes' middle height: it touches the first face at x = -0.5
+  h := query_sweep(c, world_point(-2, 0.5, 0.5), 0.5, world_point(4, 0, 0));
+  #assert h.hit && abs(h.t - 0.375) < 0.0001 && h.shape == QueryShape.box && h.index == 0 && h.normal.x == -1 && abs(h.point.x + 0.5) < 0.0001;
+  // over the box's top edge: it touches the edge, rounded (1.2 above the top's edge at x = 0: sqrt(0.25 - 0.04) short)
+  h = query_sweep(c, world_point(-2, 1.2, 0.5), 0.5, world_point(4, 0, 0));
+  #assert h.hit && abs(h.point.x + sqrt(0.21f32)) < 0.0002 && h.normal.x < 0 && h.normal.y > 0;
+  // down onto the ground, grown by the radius
+  h = query_sweep(c, world_point(-3, 2, 0), 0.5, world_point(0, -4, 0));
+  #assert h.hit && h.shape == QueryShape.ground && abs(h.t - 0.625) < 0.0001 && h.normal.y == 1;
+  // into the capsule's side
+  h = query_sweep(c, world_point(-2, 0.5, 5.5), 0.5, world_point(4, 0, 0));
+  #assert h.hit && h.shape == QueryShape.capsule && abs(h.point.x + 0.75) < 0.0001;
+  // already touching: t = 0; standing still: touching or not
+  h = query_sweep(c, world_point(1.2, 0.5, 0.5), 0.5, world_point(1, 0, 0));
+  #assert h.hit && h.t == 0 && h.index == 0;
+  h = query_sweep(c, world_point(1.2, 0.5, 0.5), 0.5, world_point(0, 0, 0));
+  #assert h.hit && h.t == 0 && h.shape == QueryShape.box && h.index == 0 && h.point.x == 1.2;
+  h = query_sweep(c, world_point(2, 0.5, 5.5), 0.5, world_point(0, 0, 0));
+  #assert !h.hit;
+  // a sweep that stops short; and not a sweep
+  #assert !query_sweep(c, world_point(-2, 0.5, 0.5), 0.5, world_point(1, 0, 0)).hit;
+  nan := 0.0f32 / 0.0f32;
+  #assert !query_sweep(c, world_point(nan, 0.5, 0.5), 0.5, world_point(4, 0, 0)).hit && !query_sweep(c, world_point(-2, 0.5, 0.5), 0.5, world_point(nan, 0, 0)).hit;
+  #assert !query_sweep(c, world_point(-2, 0.5, 0.5), 0, world_point(4, 0, 0)).hit && !query_sweep(c, world_point(-2, 0.5, 0.5), nan, world_point(4, 0, 0)).hit;
+  // overlaps: in collider order, as many as fit, and the count of all
+  got: [2] QueryId;
+  n := query_overlap(c, world_point(2, 0.5, 0.5), 1.1, got[..]);
+  #assert n == 2 && got[0].index == 0 && got[1].index == 1 && got[0].shape == QueryShape.box;
+  n = query_overlap(c, world_point(2, -0.6, 0.5), 1.2, got[..]);
+  #assert n == 3 && got[0].shape == QueryShape.ground && got[1].index == 0;
+  one: [1] QueryId;
+  #assert query_overlap(c, world_point(0.5, 0.5, 5.5), 0.3, one[..]) == 1 && one[0].shape == QueryShape.capsule;
+  #assert query_overlap(c, world_point(0.5, 0.5, 5.5), 0.24, one[..]) == 0;   // 0.25 + 0.24 short of 0.5
+  #assert query_overlap(c, world_point(1.5, 0.5, 0.5), 0.5, one[..]) == 0;    // touching the face is no overlap
+  #assert query_overlap(c, world_point(nan, 0, 0), 1, one[..]) == 0 && query_overlap(c, world_point(0.5, 0.5, 0.5), 0, one[..]) == 0 && query_overlap(c, world_point(0.5, 0.5, 0.5), nan, one[..]) == 0;
+  boxes[1] = nan; caps[6] = -1;
+  #assert query_overlap(c, world_point(0.5, 0.5, 0.5), 0.2, one[..]) == 0 && query_overlap(c, world_point(0.5, 0.5, 5.5), 0.3, one[..]) == 0;
+  #assert !query_sweep(c, world_point(-2, 0.5, 0.5), 0.5, world_point(1.8, 0, 0)).hit && !query_sweep(c, world_point(-2, 0.5, 5.5), 0.5, world_point(4, 0, 0)).hit;
+}
+
+#test "exact boundaries: what is a number, a q_box, a touch and a tie" {
+  inf := 1.0f32 / 0.0f32;
+  // a coordinate that is infinite, or a million, is not one: in a box's first number, a capsule's
+  // first number, an origin, a direction, `far` and a radius
+  boxes := [6] f32.[0, 0, 0, 2, 2, 2];
+  caps := [7] f32.[5, 0, 0, 5, 2, 0, 0.5];
+  c := Colliders.{ground = -1, boxes = boxes[..], capsules = caps[..]};
+  one: [1] QueryId;
+  #assert query_overlap(c, world_point(1, 1, 1), 0.5, one[..]) == 1;
+  boxes[0] = -inf;
+  #assert !query_box(c, 0).ok && query_overlap(c, world_point(1, 1, 1), 0.5, one[..]) == 0;
+  boxes[0] = -1000000;
+  #assert !query_box(c, 0).ok;
+  boxes[0] = -999999;
+  #assert query_box(c, 0).ok;
+  boxes[0] = 0;
+  caps[0] = inf;
+  #assert !query_capsule(c, 0).ok;
+  caps[0] = 1000000;
+  #assert !query_capsule(c, 0).ok;
+  caps[0] = 5;
+  #assert !query_ray(c, world_point(-inf, 1, 1), world_point(1, 0, 0), 9).hit && !query_ray(c, world_point(-3, 1, 1), world_point(inf, 0, 0), 9).hit;
+  #assert !query_ray(c, world_point(-3, 1, 1), world_point(1, 0, 0), inf).hit && query_ray(c, world_point(-3, 1, 1), world_point(1, 0, 0), 9).hit;
+  #assert !query_sweep(c, world_point(-3, 1, 1), inf, world_point(1, 0, 0)).hit && !query_sweep(c, world_point(-3, 1, -inf), 0.1, world_point(1, 0, 0)).hit;
+  #assert query_overlap(c, world_point(1, -inf, 1), 0.5, one[..]) == 0 && query_overlap(c, world_point(1, 1, 1), inf, one[..]) == 0;
+  #assert query_overlap(c, world_point(1, -3, 1), 0, one[..]) == 0;          // no radius, even below the ground
+  // a box flat on one axis is a box; inside out on one axis is not
+  for k: 0..<3 {
+    q_flat := [6] f32.[0, 0, 0, 2, 2, 2];
+    q_flat[3 + k] = 0;
+    f := Colliders.{ground = -5, boxes = q_flat[..]};
+    #assert query_box(f, 0).ok && query_overlap(f, world_point(0.1, 0.1, 0.1), 0.2, one[..]) == 1;
+    q_flat[3 + k] = -0.5;
+    #assert !query_box(f, 0).ok;
+  }
+  // footprints: off the z side too, and exactly `reach` away is not held
+  low_step := [6] f32.[0, 0, 0, 1, 0.5, 1];
+  t := Colliders.{boxes = low_step[..]};
+  #assert query_stand(t, 0.5, 1.29, 0, 0.3).y == 0.5 && query_stand(t, 0.5, 1.31, 0, 0.3).y == 0;
+  #assert query_stand(t, 1.25, 0.5, 0, 0.25).y == 0 && query_stand(t, 1.25, 0.5, 0, 0.2501).y == 0.5;
+  // a single floor; steepness along z
+  fl: [STAND_FLOATS] f32;
+  stand_put_quad(fl[..], 0, 0, 0, 2, 0, 0, 2, 0, 0, 3);           // rising 1.5 in z
+  one_floor := Colliders.{floors = fl[..]};
+  g := query_ground(one_floor, 1, 1, 10, 0.3);
+  #assert g.shape == QueryShape.floor && g.steep && abs(g.gz - 1.5) < 0.0001;
+  stand_put_quad(fl[..], 0, 0, 0, 2, 0, 0, 2, 0, 1, 2.8);         // 0.5 in x and 1.4 in z: 1.48 together, steep
+  #assert query_ground(one_floor, 1, 1, 10, 0.3).steep;
+  stand_put_quad(fl[..], 0, 0, 0, 2, 0, 0, 2, 0, 0.6, 2.6);       // 0.3 in x, 1.3 in z: 1.334, not steep
+  #assert !query_ground(one_floor, 1, 1, 10, 0.3).steep;
+  // rays on a box's face planes, at an edge, at a corner, at `far` exactly, and from a face
+  q_box := [6] f32.[1, 0, -1, 3, 2, 1];
+  b := Colliders.{ground = -1, boxes = q_box[..]};
+  h := query_ray(b, world_point(0, 0, 0), world_point(2, 0, 0), 5);
+  #assert h.hit && h.t == 0.5 && h.normal.x == -1 && h.normal.y == 0 && h.normal.z == 0;   // along its bottom face, d not unit
+  h = query_ray(b, world_point(0, 2, 0), world_point(1, 0, 0), 5);
+  #assert h.hit && h.t == 1;                                                                // along its top face
+  #assert query_ray(b, world_point(2, 0, -3), world_point(0, 0, 1), 5).hit && query_ray(b, world_point(2, 0, 3), world_point(0, 0, -1), 5).normal.z == 1;
+  h = query_ray(b, world_point(0, 3, 0), world_point(1, -1, 0), 5);
+  #assert h.hit && h.t == 1 && h.normal.x == -1 && h.normal.y == 0;                        // an edge: x and y at once, the first axis
+  h = query_ray(b, world_point(2, 3, 0), world_point(1, -1, 0), 5);
+  #assert h.hit && h.t == 1 && h.normal.y == 1;                                            // touching the corner line only
+  #assert query_ray(b, world_point(0, 1, 0), world_point(1, 0, 0), 1).hit && !query_ray(b, world_point(0, 1, 0), world_point(1, 0, 0), 0.99).hit;
+  h = query_ray(b, world_point(1, 1, 0), world_point(3, 4, 0), 5);
+  #assert h.hit && h.t == 0 && abs(h.normal.x + 0.6) < 0.0001 && abs(h.normal.y + 0.8) < 0.0001;   // from its face, in
+  h = query_ray(b, world_point(0, -3, 0), world_point(0, 1, 0), 5);
+  #assert h.hit && h.t == 0 && h.shape == QueryShape.ground && h.normal.y == -1;           // from under the ground
+  h = query_ray(b, world_point(0, -1, 0), world_point(1, -1, 0), 5);
+  #assert h.hit && h.t == 0 && h.normal.y == 1 && h.normal.x == 0;                         // on the ground, going down
+  #assert !query_ray(b, world_point(2, 1, 0), world_point(0, 0, 0), 5).hit;                // no direction, even inside
+  // capsules: starting on the surface, tangent to the side and to an end, hit at `far` exactly
+  cap := [14] f32.[6, 1, -2, 6, 1, 2, 0.5,   9, 1, 0, 9, 1, 0, 0.5];
+  k := Colliders.{ground = -5, capsules = cap[..]};
+  h = query_ray(k, world_point(6, 1.5, 0), world_point(0, 1, 0), 5);
+  #assert h.hit && h.t == 0;
+  h = query_ray(k, world_point(0, 1.5, 0), world_point(1, 0, 0), 20);
+  #assert h.hit && h.t == 6 && h.index == 0;
+  h = query_ray(k, world_point(12, 1.5, 0), world_point(-1, 0, 0), 20);
+  #assert h.hit && h.t == 3 && h.index == 1;
+  #assert query_ray(k, world_point(0, 1, 0), world_point(1, 0, 0), 5.5).hit && !query_ray(k, world_point(0, 1, 0), world_point(1, 0, 0), 5.49).hit;
+  h = query_ray(k, world_point(6, 1, -5), world_point(0, 0, 1), 20);
+  #assert h.hit && abs(h.t - 2.5) < 0.0001 && abs(h.normal.z + 1) < 0.0001;               // along its axis: the end
+  h = query_ray(k, world_point(6, 1, 5), world_point(0, 0, -1), 20);
+  #assert h.hit && abs(h.t - 2.5) < 0.0001 && abs(h.normal.z - 1) < 0.0001;               // and the other end
+  // overlaps: touching the ground, a box or a capsule exactly is not overlapping
+  got: [4] QueryId;
+  #assert query_overlap(k, world_point(0, -4.5, 0), 0.5, got[..]) == 0 && query_overlap(k, world_point(0, -4.5, 0), 0.5001, got[..]) == 1 && got[0].index == 0;
+  #assert query_overlap(k, world_point(7, 1, 0), 0.5, got[..]) == 0 && query_overlap(k, world_point(7, 1, 0), 0.5001, got[..]) == 1 && got[0].shape == QueryShape.capsule;
+}
+
+#test "sweeps into every face and every edge of a q_box" {
+  q_box := [6] f32.[0, 0, 0, 1, 1, 1];
+  c := Colliders.{ground = -10, boxes = q_box[..]};
+  // each face from 2 m out, along its normal: the touch is 1.5 m on, t = 0.75
+  for k: 0..<6 {
+    out: [3] f32;
+    out[k % 3] = ifx k < 3 then -1.0f32 else 1.0f32;
+    n := world_point(out[0], out[1], out[2]);
+    face := world_add(world_point(0.5, 0.5, 0.5), world_scale(n, 0.5));
+    h := query_sweep(c, world_add(face, world_scale(n, 2)), 0.5, world_scale(n, -2));
+    #assert h.hit && abs(h.t - 0.75) < 0.0001 && world_distance(h.normal, n).value < 0.0001;
+  }
+  // each edge from 2 m out, along the diagonal between its two faces: rounded, so the touch is
+  // at 0.5 m from the edge (t = 0.75), not at the faces' corner
+  for e: 0..<12 {
+    k := e / 4;
+    side: [3] f32;
+    side[(k + 1) % 3] = f32(e % 2) * 2 - 1; side[(k + 2) % 3] = f32((e / 2) % 2) * 2 - 1;
+    n := world_unit(world_point(side[0], side[1], side[2]));
+    mid: [3] f32;
+    for j: 0..<3 { mid[j] = ifx side[j] > 0 then 1.0f32 else ifx side[j] < 0 then 0.0f32 else 0.5f32; }
+    edge_mid := world_point(mid[0], mid[1], mid[2]);
+    h := query_sweep(c, world_add(edge_mid, world_scale(n, 2)), 0.5, world_scale(n, -2));
+    #assert h.hit && abs(h.t - 0.75) < 0.0001 && world_distance(h.normal, n).value < 0.001;
+  }
+  // standing still and touching: a touch at 0, its normal up
+  h := query_sweep(c, world_point(1.2, 0.5, 0.5), 0.5, world_point(0, 0, 0));
+  #assert h.hit && h.t == 0 && h.normal.y == 1 && h.normal.x == 0;
+}

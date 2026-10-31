@@ -39,7 +39,7 @@ drops the marker and shows its code the way the Psionic book does: listings
 copied from source between `// book:begin` and `// book:end` markers, and
 runnable programs in `aethyr/examples/` with exact transcripts.
 
-Chapters 1–4 and 65–67 are written; every other chapter, through chapter 86, is a design draft.
+Chapters 1–4, 7 and 65–67 are written; every other chapter, through chapter 86, is a design draft.
 
 ## Writing style
 

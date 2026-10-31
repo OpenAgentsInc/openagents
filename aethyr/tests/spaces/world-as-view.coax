@@ -1,4 +1,4 @@
 // expect: E0317 a world point where a view point is wanted (it must go through world_to_view)
 #load "../../space.coax";
-f :: (l: Lens) -> Seen { return view_to_screen(l, world(1, 2, 3)); }
+f :: (l: Lens) -> Seen { return view_to_screen(l, world_point(1, 2, 3)); }
 main :: () {}
