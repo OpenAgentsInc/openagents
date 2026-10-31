@@ -1852,6 +1852,24 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   #assert play_through(s[..], true) == WON && s[0].wave == WAVES;
 }
 
+#test "turns are deterministic: two runs on the same seed end the same, turn by turn" {
+  a: [1] Stair; b: [1] Stair;
+  stair_start(a[..]); stair_start(b[..]);
+  #assert play_through(a[..], true) == play_through(b[..], true);
+  #assert a[0].wave == b[0].wave && a[0].lives == b[0].lives && a[0].gold == b[0].gold && a[0].pops == b[0].pops && a[0].leaked == b[0].leaked;
+  for i: 0..<DEFENDERS {
+    #assert a[0].party[i].live == b[0].party[i].live && a[0].party[i].hits == b[0].party[i].hits && a[0].party[i].misses == b[0].party[i].misses && a[0].party[i].pops == b[0].party[i].pops;
+  }
+  // another seed plays another game
+  c: [1] Stair;
+  stair_start(c[..]);
+  c[0].dice[0] = srd_dice(7);
+  ended := play_through(c[..], true);
+  differs := c[0].lives != a[0].lives || c[0].gold != a[0].gold;
+  for i: 0..<DEFENDERS { if c[0].party[i].hits != a[0].party[i].hits { differs = true; } }
+  #assert differs;
+}
+
 #test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {
   s: [1] Stair;
   stair_start(s[..]);
