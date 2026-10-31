@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../lib/robotics/panda-forward-dynamics.coax";
+#test "Panda forward example formats independent positive zero and negative micro coefficients" {
+ #assert pfd_example_micro(1.25)==1250000 && pfd_example_micro(-1.25)== -1250000 && pfd_example_micro(0)==0;
+}
+pfd_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("Panda9 unconstrained forward query\n");
+// book:begin pfd-query
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ // Retained original SDK M*a+bias, experiment context13; not motor targets.
+ applied:=[9]f64.[10.97794424270289, -19.859397263891573, 0.9544918198938825, 16.59200521881249, -1.1636592449850924, 2.503706256966014, -0.8899579105213928, 0.9824336240405068, 0.59784382475265];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];h[i].value=applied[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];f[i].value=applied[7+i];}
+ acceleration:[1]PmsOutput;
+ #assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],acceleration[..])==PmsStatus.ok;
+ for i:0..<7 {print("hinge % (micro-rad/s^2): %\n",i+1,pfd_example_micro(acceleration[0].hinge[i].value));}
+ for i:0..<2 {print("slide % (micro-m/s^2): %\n",i+1,pfd_example_micro(acceleration[0].slide[i].value));}
+// book:end pfd-query
+ print("Query only: no actuator mapping, contact or integration.\n");
+}

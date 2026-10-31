@@ -1,0 +1,25 @@
+// Matching physical force quantities are subtracted before the explicit basis.
+// This arithmetic helper trusts admitted applied forces and an owned bias; its
+// writable PODs do not attest model provenance or admit caller-written models.
+#load "panda-inverse-dynamics-types.coax";
+#authority;
+#test "forward dynamics all nine typed NETforce lanes have independent literal differences" {
+ a:PidOutput;b:PidOutput;
+ for i:0..<7 {a.hinge[i].value=10+f64(i);b.hinge[i].value=f64(i)/4-0.5;}
+ for i:0..<2 {a.slide[i].value= -2-f64(i);b.slide[i].value=0.5+f64(i)/4;}
+ net:=pfd_subtract(a,b);
+ for i:0..<7 {#assert net.hinge[i].value==10.5+3*f64(i)/4;}
+ for i:0..<2 {#assert net.slide[i].value== -2.5-5*f64(i)/4;}
+}
+#forall "forward dynamics force word collection preserves each lane and exact finite representation" lane:0..<9,negative:bool {
+ value:PidOutput;bits:=0x3ff0000000000000+u64(lane);if negative {bits=bits|0x8000000000000000;}
+ if lane<7 {value.hinge[lane].value=f64_from_bits(bits);}else {value.slide[lane-7].value=f64_from_bits(bits);}
+ words:=pfd_words(value);for i:0..<9 {#assert words[i]==(ifx i==lane then bits else 0);}
+}
+
+pfd_subtract :: (applied:PidOutput,bias:PidOutput)->PidOutput {
+ net:PidOutput;for i:0..<7 {net.hinge[i]=applied.hinge[i]-bias.hinge[i];}for i:0..<2 {net.slide[i]=applied.slide[i]-bias.slide[i];}return net;
+}
+pfd_words :: (force:PidOutput)->[9]u64 {
+ words:[9]u64;for i:0..<7 {words[i]=f64_bits(force.hinge[i].value);}for i:0..<2 {words[7+i]=f64_bits(force.slide[i].value);}return words;
+}

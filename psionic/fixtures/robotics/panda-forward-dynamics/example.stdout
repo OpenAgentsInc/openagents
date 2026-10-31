@@ -1,0 +1,11 @@
+Panda9 unconstrained forward query
+hinge 1 (micro-rad/s^2): 1300000
+hinge 2 (micro-rad/s^2): -2100000
+hinge 3 (micro-rad/s^2): 700000
+hinge 4 (micro-rad/s^2): -1100000
+hinge 5 (micro-rad/s^2): 900000
+hinge 6 (micro-rad/s^2): 400000
+hinge 7 (micro-rad/s^2): -800000
+slide 1 (micro-m/s^2): 200000
+slide 2 (micro-m/s^2): -150000
+Query only: no actuator mapping, contact or integration.

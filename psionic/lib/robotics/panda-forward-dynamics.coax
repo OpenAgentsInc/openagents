@@ -1,0 +1,68 @@
+// Fresh unconstrained fixed-source acceleration query, not a simulation step.
+// Applied finger forces are N, not the controller's position targets in metres.
+#load "panda-forward-dynamics-net.coax";
+#load "panda-inverse-dynamics.coax";
+#load "panda-mass-solve.coax";
+#authority;
+#forall "forward dynamics all typed span shapes precede every numerical refusal and preserve complete output" field:0..<8 {
+ q:[8]pfku.Quantity(pfku.Radian,f64);s:[3]pfku.Quantity(pfku.Metre,f64);v:[8]pfku.Quantity(PidAngularRate,f64);sv:[3]pfku.Quantity(PidLinearRate,f64);h:[8]pfku.Quantity(PmHingeGravity,f64);f:[3]pfku.Quantity(PmSlideGravity,f64);out:=[2]PmsOutput.[pms_poison(),pms_poison()];old:=out[0];
+ qs:=q[0..<7];ss:=s[0..<2];vs:=v[0..<7];ws:=sv[0..<2];hs:=h[0..<7];fs:=f[0..<2];os:=out[0..<1];
+ if field==0 {qs=q[0..<6];}if field==1 {ss=s[0..<1];}if field==2 {vs=v[0..<6];}if field==3 {ws=sv[0..<1];}if field==4 {hs=h[0..<6];}if field==5 {fs=f[0..<1];}if field==6 {os=out[0..<0];}if field==7 {os=out[..];}
+ q[0].value=101;v[0].value=21;h[0].value=10001;#assert pfd_forward(qs,ss,vs,ws,hs,fs,os)==PmsStatus.shape;pms_same(out[0],old);pms_same(out[1],old);
+}
+#forall "forward dynamics all coordinate rate and APPLIEDforce endpoints refuse the next outside word" role:0..<3,lane:0..<9,negative:bool {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:=[1]PmsOutput.[pms_poison()];old:=out[0];
+ limit:=ifx role==0 then (ifx lane<7 then 100.0 else 1.0) else ifx role==1 then (ifx lane<7 then 20.0 else 2.0) else 10000.0;bits:=f64_bits(limit)+1;if negative {bits=bits|0x8000000000000000;}value:=f64_from_bits(bits);
+ if role==0 {if lane<7 {q[lane].value=value;}else {s[lane-7].value=value;}}
+ if role==1 {if lane<7 {v[lane].value=value;}else {sv[lane-7].value=value;}}
+ if role==2 {if lane<7 {h[lane].value=value;}else {f[lane-7].value=value;}}
+ #assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],out[..])==PmsStatus.range;pms_same(out[0],old);
+}
+#forall "forward dynamics public coordinate and rate bounds are inclusive" role:0..<2,lane:0..<9,negative:bool {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:[1]PmsOutput;
+ limit:=ifx role==0 then (ifx lane<7 then 100.0 else 1.0) else (ifx lane<7 then 20.0 else 2.0);value:=ifx negative then -limit else limit;
+ if role==0 {if lane<7 {q[lane].value=value;}else {s[lane-7].value=value;}}else {if lane<7 {v[lane].value=value;}else {sv[lane-7].value=value;}}
+ #assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],out[..])==PmsStatus.ok;
+}
+#forall "forward dynamics packed input shapes and delegated output shape precede invalid values" field:0..<6 {
+ q:[10]f64;v:[10]f64;f:[10]f64;q[0]=101;v[0]=21;f[0]=10001;out:=[2]PmsOutput.[pms_poison(),pms_poison()];old:=out[0];
+ qs:=q[0..<9];vs:=v[0..<9];fs:=f[0..<9];os:=out[0..<1];if field==0 {qs=q[0..<8];}if field==1 {vs=v[0..<8];}if field==2 {fs=f[0..<8];}if field==3 {os=out[0..<0];}if field==4 {os=out[..];}if field==5 {qs=q[..];}
+ #assert pfd_forward_raw(qs,vs,fs,os)==PmsStatus.shape;pms_same(out[0],old);pms_same(out[1],old);
+}
+#test "forward dynamics moving source inverse force recovers all accelerations and preserves raw ABI and spare output" {
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];wanted:=[9]f64.[1.3,-2.1,0.7,-1.1,0.9,0.4,-0.8,0.2,-0.15];
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];a[i].value=wanted[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];sa[i].value=wanted[7+i];}
+ applied:[1]PidOutput;#assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],applied[..])==PfkStatus.ok;
+ out:=[2]PmsOutput.[pms_poison(),pms_poison()];old:=out[1];#assert pfd_forward(q[..],s[..],v[..],sv[..],applied[0].hinge[..],applied[0].slide[..],out[0..<1])==PmsStatus.ok;
+ for i:0..<7 {#assert abs(out[0].hinge[i].value-wanted[i])<2e-10;}for i:0..<2 {#assert abs(out[0].slide[i].value-wanted[7+i])<2e-10;}pms_same(out[1],old);
+ force:[9]f64;for i:0..<7 {force[i]=applied[0].hinge[i].value;}for i:0..<2 {force[7+i]=applied[0].slide[i].value;}raw:[1]PmsOutput;#assert pfd_forward_raw(coordinates[..],rates[..],force[..],raw[..])==PmsStatus.ok;pms_same(raw[0],out[0]);
+ zeroa:[7]pfku.Quantity(PidAngularAcceleration,f64);zerosa:[2]pfku.Quantity(PidLinearAcceleration,f64);#assert pid_inverse(q[..],s[..],v[..],sv[..],zeroa[..],zerosa[..],applied[..])==PfkStatus.ok;
+ #assert pfd_forward(q[..],s[..],v[..],sv[..],applied[0].hinge[..],applied[0].slide[..],raw[..])==PmsStatus.ok;for x:raw[0].hinge {#assert x.value==0;}for x:raw[0].slide {#assert x.value==0;}
+}
+#test "forward dynamics APPLIEDcap and NETcap are separate refusals without hidden clipping" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);bias:[1]PidOutput;
+ #assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],bias[..])==PfkStatus.ok;observed:int=0;
+ for axis:0..<7 {b:=bias[0].hinge[axis].value;if abs(b)>1e-6 {
+  h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:=[1]PmsOutput.[pms_poison()];old:=out[0];
+  h[axis].value=ifx b>0 then -10000.0 else 10000.0;#assert abs(h[axis].value-b)>10000;#assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],out[..])==PmsStatus.range;pms_same(out[0],old);
+  h[axis].value=ifx b>0 then 10000.000000000002 else -10000.000000000002;#assert abs(h[axis].value-b)<10000;#assert pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],out[..])==PmsStatus.range;pms_same(out[0],old);observed+=1;
+ }}#assert observed>0;
+}
+
+pfd_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),applied_hinge:[]pfku.Quantity(PmHingeGravity,f64),applied_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c {
+ if hinge_rates.count!=7 || slide_rates.count!=2 || applied_hinge.count!=7 || applied_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
+ poses:[1]PffOutput;model:=pff_forward(angles,slides,poses[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
+ velocities:[9]f64;words:[9]u64;for i:0..<7 {velocities[i]=hinge_rates[i].value;words[i]=f64_bits(velocities[i]);}for i:0..<2 {velocities[7+i]=slide_rates[i].value;words[7+i]=f64_bits(velocities[7+i]);}
+ rates:=pid_admit(words,20,2);if rates!=PfkStatus.ok {return pms_model_status(rates);}
+ applied:PidOutput;for i:0..<7 {applied.hinge[i]=applied_hinge[i];}for i:0..<2 {applied.slide[i]=applied_slide[i];}
+ admission:=pms_forces_admit(pfd_words(applied));if admission!=PmsStatus.ok {return admission;}
+ profile:=pm_profile();metric:=pm_sum_owned(poses[0],profile);zero_acceleration:[9]f64;bias:=pid_sum_owned(poses[0],profile,velocities,zero_acceleration);
+ net:=pfd_subtract(applied,bias);admission=pms_forces_admit(pfd_words(net));if admission!=PmsStatus.ok {return admission;}
+ problem:=pms_basis(metric,net.hinge,net.slide);return pms_publish(pms_solve_force_admitted(problem.mass,problem.force),output);
+}
+pfd_forward_raw :: (coordinates:[]f64,rates:[]f64,applied:[]f64,output:[]PmsOutput)->PmsStatus #export_c {
+ if coordinates.count!=9 || rates.count!=9 || applied.count!=9 {return PmsStatus.shape;}
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];h[i].value=applied[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];f[i].value=applied[7+i];}return pfd_forward(q[..],s[..],v[..],sv[..],h[..],f[..],output);
+}

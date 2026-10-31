@@ -1,0 +1,91 @@
+{
+  "schema": "psionic.panda-forward-dynamics.coax-checks.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "normal_source_reconstruction_record": "/tmp/coax-spatial-fixture-fixes-reconstruction/receipt.json",
+  "new_product_check_groups": 8,
+  "new_product_cases": 125,
+  "focused_mutants": 85,
+  "killed": 85,
+  "survived": 0,
+  "equivalent_waivers": 0,
+  "old_mutation_gates_rerun": false,
+  "mutation_scope_limit": "Existing scalar-quantity lowering does not enumerate all authored quantity operator tokens. Literal lane and independent SDK-equation checks qualify typed subtraction; actual supported focused mutation scope is reported without equivalent waivers.",
+  "logs": [
+    {
+      "path": "/tmp/panda-forward-dynamics-VM-first.log",
+      "sha256": "ebd17f756627b39e1fed1e06ab56064cfd21ed29cf20c7f7ce1a2af6b3f6ee07",
+      "text": "ok   #forall forward dynamics all typed span shapes precede every numerical refusal and preserve complete output (8 cases, 5842 steps, 0 ms)\nok   #forall forward dynamics all coordinate rate and APPLIEDforce endpoints refuse the next outside word (54 cases, 737660 steps, 35 ms)\nok   #forall forward dynamics packed input shapes and delegated output shape precede invalid values (6 cases, 4614 steps, 0 ms)\nok   #test forward dynamics moving source inverse force recovers all accelerations and preserves raw ABI and spare output (1 case, 1411172 steps, 44 ms)\nok   #test forward dynamics APPLIEDcap and NETcap are separate refusals without hidden clipping (1 case, 1341085 steps, 40 ms)\nok   #test forward dynamics all nine typed NETforce lanes have independent literal differences (1 case, 569 steps, 0 ms)\nok   #forall forward dynamics force word collection preserves each lane and exact finite representation (18 cases, 4708 steps, 0 ms)\n7 of 61 checks (--only 'forward dynamics'), 7 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    },
+    {
+      "path": "/tmp/panda-forward-dynamics-inclusive-VM-first.log",
+      "sha256": "5d460534231536d429ac6990150d850b6213c02ecd1b957d9ed099afa744ff46",
+      "text": "ok   #forall forward dynamics public coordinate and rate bounds are inclusive (36 cases, 14740706 steps, 505 ms)\n1 of 62 checks (--only 'forward dynamics public coordinate and rate bounds'), 1 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    },
+    {
+      "path": "/tmp/panda-forward-dynamics-example-test-first.log",
+      "sha256": "515e0c7557bcce2c54699a570aa642736eb8ca910062e3baf951f66713b3ac12",
+      "text": "ok   #test Panda forward example formats independent positive zero and negative micro coefficients (1 case, 43 steps, 0 ms)\n1 of 63 checks (--only 'Panda forward example'), 1 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+    }
+  ],
+  "mutation_scopes": [
+    {
+      "source": "psionic/lib/robotics/panda-forward-dynamics-net.coax",
+      "source_sha256": "37cc3cdc321bba9e5a46f4570f4bddf26ff99b2abbe31123d030818e9b634365",
+      "log_path": "/tmp/panda-forward-dynamics-net-mutation-first.log",
+      "log_sha256": "9eadfebc9ca8ad7a3eadd87d517e1edd57f1c7c1cf1771604a3aa3e54b83ff4d",
+      "log": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n14 mutants, 14 killed, 0 survived\n",
+      "mutants": 14,
+      "killed": 14,
+      "survived": 0,
+      "all_dependency_checks_retained": true
+    },
+    {
+      "source": "psionic/lib/robotics/panda-forward-dynamics.coax",
+      "source_sha256": "c6fa01c7b366425bcf2dd8bfc985135e136411e08d29d15587652522820298d0",
+      "log_path": "/tmp/panda-forward-dynamics-mutation-first.log",
+      "log_sha256": "c17aa6b449052dab1d0cdc54453df4667f56db315b728f5e9780dac9a8a30da1",
+      "log": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n71 mutants, 71 killed, 0 survived\n",
+      "mutants": 71,
+      "killed": 71,
+      "survived": 0,
+      "all_dependency_checks_retained": true
+    }
+  ],
+  "native_qualification_sha256": "3cff867cc848946db145448999b30d13a0d889b5d36c69d4f79137681d51ee2b",
+  "example": {
+    "source": "psionic/examples/panda-forward-dynamics.coax",
+    "source_sha256": "be72ba73a104ad4d1dfa59736ef4aaf6007197ca1a6cdca3da866544f7d0d525",
+    "golden": "psionic/fixtures/robotics/panda-forward-dynamics/example.stdout",
+    "golden_sha256": "9c8649ff08192d85f675035ceb48df41b96ea438e90da82a62a8c13efde3cea8",
+    "reference": "Original preselected acceleration of retained SDK context13, formatted as integer micro coefficients",
+    "profiles": [
+      {
+        "mode": "debug",
+        "argv": [
+          "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+          "run",
+          "psionic/examples/panda-forward-dynamics.coax"
+        ],
+        "stdout_sha256": "9c8649ff08192d85f675035ceb48df41b96ea438e90da82a62a8c13efde3cea8",
+        "stdout_path": "/tmp/panda-forward-dynamics-example-debug-first.stdout",
+        "golden_exact": true
+      },
+      {
+        "mode": "release",
+        "argv": [
+          "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+          "run",
+          "psionic/examples/panda-forward-dynamics.coax",
+          "--release"
+        ],
+        "stdout_sha256": "9c8649ff08192d85f675035ceb48df41b96ea438e90da82a62a8c13efde3cea8",
+        "stdout_path": "/tmp/panda-forward-dynamics-example-release-first.stdout",
+        "golden_exact": true
+      }
+    ],
+    "formatter_check_groups": 1,
+    "formatter_cases": 1
+  }
+}
