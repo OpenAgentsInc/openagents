@@ -372,7 +372,9 @@ struct ProcDecl {
   bool authority = false; // obligation belongs to the authored source unit
   bool export_c = false;
   bool foreign = false;  // #foreign: a C symbol the host provides; no body
-  bool generic = false;  // has $T type parameters: checked, but no instance is emitted yet
+  bool generic = false;  // has $T type parameters: checked; only its instances are emitted
+  Str key;  // an instance: its bindings, length-prefixed, appended to the template's C name
+  const ProcDecl *origin = nullptr;  // an instance: the generic procedure it was made from
 };
 
 struct Field {
@@ -489,6 +491,7 @@ struct EmitOptions {
   bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
+extern size_t g_instance_c_bytes;  // C text of generic instances in the last emit_c, for --timings
 // A C header for the file's #export_c procedures and the types they use,
 // with layout assertions the C compiler checks.
 std::string emit_header(const File *file);

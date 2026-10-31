@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.34.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.35.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -418,11 +418,29 @@ explained code: a `$T` only in the result (E0392); a `$T` first written in a
 body, or anywhere outside a procedure signature (E0393); a nested generic
 type such as `[4] $T` or `[] [] $T` (E0394); a `$T` in a struct field
 (E0395); a generic procedure calling itself (E0396); `#export_c` on a generic
-procedure (E0398). Instantiation does not exist yet: every call of a generic
-procedure is E0397 at the call, and a generic procedure is never emitted, so
-it cannot miscompile. Programs without `$T` compile to identical C. An
-`#authority` file cannot hold a generic procedure yet, because no check can
-call it (E0380).
+procedure (E0398). Programs without `$T` compile to identical C, and an
+uncalled generic procedure is never emitted.
+
+**Instantiation (0.35.0).** A call of a generic procedure deduces its
+bindings from the arguments, left to right: a `$T` parameter binds `$T` to
+the argument's type (an untyped literal defaults to `int` or `f64`), a
+`[] $T` parameter binds `$T` to the element type of a view argument
+(E0349 otherwise, with the `name[..]` fix for an array), and a later
+argument must have the bound type (E0348). An argument with no value cannot
+bind (E0397). Concrete parameters beside `$T` are checked as before. The
+result type is the template's with each binding substituted. Each distinct
+(procedure, bindings) pair is one instance: a copy of the template's parsed
+signature and body, kept pristine before checking and then checked under
+its bindings like any concrete procedure. Calls inside a generic body type
+the call but make no instance; an instance's own calls may make more. A
+program may make at most 256 instances (E0339). Instances are evaluated by
+`#run` and checks, emitted to C as the template's name followed by
+`__` and the bindings, each length-prefixed (`coax_p_first__3f64`,
+`coax_p_pick__4n0_P` for struct `P` in module scope 0), and mutated and
+covered like other procedures: under `#authority` a check that calls a
+template through an instance covers it. `coax deps --declarations` lists
+templates, not instances; `--timings` reports `instances` and
+`instance_generated_bytes`.
 
 The remainder of this section is the plan.
 

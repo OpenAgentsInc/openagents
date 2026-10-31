@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.34.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.35.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -125,6 +125,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0336` | no main | A program needs main :: () { }. A file whose procedures are #export_c can be built as a library with coax lib instead. |
 | `E0337` | main has the wrong signature | main takes no parameters and returns nothing in coax0. |
 | `E0338` | missing return | Some path reaches the end of a procedure that must return a value. |
+| `E0339` | too many generic instances | A program may make at most 256 instances of generic procedures, one per procedure and distinct binding of its type parameters. A chain of generic calls that binds ever larger types never ends; break it with a concrete procedure. |
 | `E0340` | constant dependency cycle | Constants may refer to each other in any order, but not in a circle. |
 | `E0341` | constant has no value | A constant or #run must produce a value; a call returning nothing cannot. |
 | `E0342` | name is a constant, type or intrinsic | A local cannot take the name of a constant, struct, enum or intrinsic. |
@@ -133,6 +134,8 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0345` | duplicate or conflicting constant | The constant's name is already a constant, procedure or intrinsic. |
 | `E0346` | #assert needs bool | The asserted expression must be a bool, at the top level and in a statement. |
 | `E0347` | constant dependencies too deep | Constant type resolution is bounded at depth 64. |
+| `E0348` | type parameter bound twice | The arguments of one call bind each $T once: the first argument whose type uses $T binds it, and every later one must have that same type. Pass the same type, or convert one with cast. |
+| `E0349` | argument is not a view | A parameter written [] $T binds $T to the element type of a view, so its argument must be a view. Pass a view of an array with name[..]. |
 | `E0350` | value does not fit its type | Untyped literals take the type their use needs, if the value fits: x: u8 = 300 does not. A float literal cannot become an integer. Use a wider type, or cast,trunc to keep the low bits. |
 | `E0351` | no such field or member | The struct has no field, or the enum no member, with this name. Arrays, views and strings have .count. |
 | `E0352` | duplicate field or member | A field or member name appears twice in a declaration or a literal. |
@@ -177,7 +180,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0394` | nested generic type | A type parameter is accepted as $T or as a view [] $T. A fixed array [N] $T needs value parameters ($N), and views of views such as [] [] $T are not supported yet. |
 | `E0395` | type parameter in a struct field | Struct fields have concrete types. Generic structs such as Pair :: struct($T) are planned; until then give the field a concrete type. |
 | `E0396` | recursion through a generic procedure | A generic procedure cannot call itself: each instance would need a bounded specialization budget, which is not implemented. Write the recursion in a concrete procedure. |
-| `E0397` | generic instantiation not yet supported | A procedure with $T parameters is checked, but coax0 does not instantiate it yet, so a call is refused here rather than compiled for one guessed type. Call a procedure with concrete types. |
+| `E0397` | argument has no value to bind a type parameter | A call's argument binds $T to its type, and a call that returns nothing has none. Pass a value of the type the procedure should work on. |
 | `E0398` | generic procedure cannot be exported | #export_c gives a procedure one C name and signature, which a procedure with type parameters does not have. Export a concrete procedure. |
 | `E0399` | query depends on the instance | size_of, type_info, field_info, enum_info and type_name of a type parameter (or a view of one) depend on the type each call binds, and generic instantiation is not supported yet. |
 | `E0387` | C cannot spell a module collision | Two modules may each declare a name, and their private C spellings are qualified. An #export_c or #foreign symbol, or a type in a C library header, is one global C name, so a collision there is refused, never merged. Rename one. |

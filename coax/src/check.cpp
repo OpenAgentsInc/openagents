@@ -140,7 +140,7 @@ bool check(Arena *arena,File *file){
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
   auto &nodes=input->nodes;auto &objects=input->objects;const size_t old_size=objects.size();objects.resize((size_t)state.used+1,nullptr);
-  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=5)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);}
+  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=5)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);else if(k>=40 && k<=52)objects[id]=make<Stmt>(arena);else if(k==COAX_CK_Tag_proc)objects[id]=make<ProcDecl>(arena);else if(k==COAX_CK_Tag_param)objects[id]=make<Param>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);}
   std::vector<TypeInfo*> types={&T_INVALID,&T_VOID,&T_BOOL,&T_STRING,&T_UNTYPED_INT,&T_UNTYPED_FLOAT,&T_F32,&T_F64,&T_S8,&T_S16,&T_S32,&T_S64,&T_U8,&T_U16,&T_U32,&T_U64};
   for(int64_t i=16;i<state.type_count;i++)types.push_back(make<TypeInfo>(arena));
   g_composite_list.clear();
@@ -164,7 +164,7 @@ bool check(Arena *arena,File *file){
       else if(v.kind==COAX_CK_Tag_stmt_assign){p->target=checked_ref<Expr>(objects,v.c);p->op=(Tok)v.op;}
       else {p->then_=checked_ref<Stmt>(objects,v.c);p->else_=checked_ref<Stmt>(objects,v.d);}}
     else switch(v.kind){
-      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;break;}
+      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}
@@ -192,9 +192,11 @@ bool check(Arena *arena,File *file){
     case COAX_CK_Tag_struct_:checked_ref<StructDecl>(objects,id)->fields=checked_values<Field>(arena,nodes,objects,v.head);break;
     case COAX_CK_Tag_enum_:checked_ref<EnumDecl>(objects,id)->members=checked_values<EnumMember>(arena,nodes,objects,v.head);break;
   }}
-  // Generic procedures have no instances yet (every call is E0397): only
-  // declaration listings see them; emitters, the evaluator and checks do not.
+  // Generic procedures are templates: only declaration listings see them.
+  // Their instances (new proc nodes the checker made) are the procedures that
+  // emitters, the evaluator and checks see, after the authored ones.
   std::vector<ProcDecl*> concrete,generic;for(auto *p:file->procs)(p->generic?generic:concrete).push_back(p);
+  for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=o->authority;p->root_source=o->root_source;concrete.push_back(p);}
   file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);
   file->check_input.reset();return true;
 }

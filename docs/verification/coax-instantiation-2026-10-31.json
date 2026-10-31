@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-instantiation",
+  "parent": "r4a-generic-values (#76ba), kept open",
+  "baseline_commit": "1cc85cf74f",
+  "compiler_version": "0.35.0",
+  "scope": "Calls of $T procedures deduce bindings and get one checked instance per (procedure, bindings): a pristine copy of the template's parsed signature and body, cloned before checking and checked under the bindings. Instances are evaluated, emitted under their own C names, tested, covered and mutated like concrete procedures.",
+  "kernels": {
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_templates / CK_clone: pristine copies of procedures with $T in a parameter type, made before any check",
+        "CK_instance: argument count (E0316), deduction (CK_bind: E0348 bound twice, E0349 not a view, E0397 no value), concrete parameters (CK_argument, E0317), sharing by CK_same, budget of 256 instances (E0339), result by CK_subst",
+        "calls inside a generic body make symbolic (never expanded) instances",
+        "CK_instantiate / CK_expand: after the checks, each instance resolves and checks its own copy; its calls may add instances",
+        "CK_key / CK_mangle: length-prefixed binding names for C",
+        "CK_reach marks the template when a check reaches an instance (#authority coverage)",
+        "CK_metal checks each instance's signature and body"
+      ],
+      "checks": "596 checks, 596 passed (fixtures generated from real parser output plus unit #test/#forall)",
+      "mutation": "4538 mutants, 4538 killed, 0 survived (4 shards)"
+    },
+    "lexer_parser": "unchanged from 0.34.0",
+    "seeds": "bootstrap/checker.{c,h} regenerated with the trusted 0.34.0 compiler after the checks and mutation passed; coax/build.sh bootstrapped 0.35.0 from it"
+  },
+  "native_transport": [
+    "src/check.cpp: ProcDecl/Param/Stmt objects for checker-made nodes; instances follow the authored procedures in File::procs and copy the template's span, authority and root_source",
+    "src/emit_c.cpp: an instance's C name is its template's + '__' + key",
+    "src/main.cpp: declarations, references and lowering records skip instances; --timings reports instances and instance_generated_bytes"
+  ],
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "class": "Instantiation",
+    "tests": 5,
+    "covers": [
+      "int, f64 and struct/enum programs print the same results natively at -O0 and -O2 and through #run and coax test",
+      "14 instances under their own C names; --timings counts them and their bytes",
+      "deps --declarations lists templates once; references point at templates",
+      "#authority coverage through instances; coax mutate runs over instance bodies",
+      "257 distinct bindings are E0339; 256 check"
+    ]
+  },
+  "limits": [
+    "no value parameters ($N) or constraints yet; placeholders still refuse operators",
+    "a generic procedure still cannot call itself (E0396)",
+    "the arithmetic profile is one per compile, so instance keys do not carry it",
+    "coax deps --lowering does not report instances yet"
+  ],
+  "legacy_codegen": {
+    "compared_with": "coax0 0.34.0 (1cc85cf74f cached build)",
+    "corpus": "every .coax file in the repo outside coax/tests: 988 compile under 0.34.0 and emit byte-identical C under 0.35.0 (the proto header's compiler stamp aside); 160 do not compile standalone under either"
+  }
+}

@@ -172,7 +172,7 @@ static int run_process(const std::vector<std::string> &args,bool *started=nullpt
 struct NativeTimings {
   std::string path,source_map;
   std::map<std::string,double> seconds;
-  size_t generated_bytes=0;
+  size_t generated_bytes=0,instances=0,instance_bytes=0;
   uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
 } g_timings;
@@ -231,7 +231,7 @@ struct TimedPhase {
 static int finish_profile(int status) {
   status=finish_semantic_report(status);
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
@@ -556,7 +556,7 @@ static std::string modules_report(const Source *src, const File *file, const Emi
   for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
-  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->procs) if (!d->origin) decl(0, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->generics) decl(0, d->name, d->loc, d->end);
   std::string legacy_units;
   for (size_t i = 0; i < n; i++) if (src->units[i]->module.empty())
@@ -680,6 +680,7 @@ static std::string lowering_report(const Source *src, const File *file, const Em
                     json_string(opts.wrapping ? "wrapping" : "checked") + ",\"procedures\":[";
   bool first = true;
   for (const ProcDecl *p : file->procs) {
+    if (p->origin) continue;  // instances share their template's name; not reported yet
     if (!g_lower_proc.empty() && to_std(p->name) != g_lower_proc) continue;
     std::string id = declaration_id(src, 0, p->name, p->loc);
     std::string row = "{\"name\":" + json_string(to_std(p->name)) + ",\"id\":" + (id.empty() ? "null" : json_string(id)) + "," +
@@ -720,7 +721,7 @@ static std::string declarations_report(const Source *src, const File *file) {
   for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
-  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->procs) if (!d->origin) decl(0, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->generics) decl(0, d->name, d->loc, d->end);
   for (const StructDecl *d : file->structs) {
     std::string from = refs.id_json(1, d->name, d->loc);
@@ -732,6 +733,7 @@ static std::string declarations_report(const Source *src, const File *file) {
   }
   for (const ConstDecl *d : file->constants) { std::string from = refs.id_json(3, d->name, d->loc); refs.type(from, d->type, d->loc); refs.expr(from, d->expr); }
   for (const ProcDecl *d : file->procs) {
+    if (d->origin) continue;  // an instance's uses are its template's
     std::string from = refs.id_json(0, d->name, d->loc);
     for (const Param &p : d->params) refs.type(from, p.type, p.loc);
     refs.type(from, d->ret, d->loc);
@@ -789,7 +791,8 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (opts.cuda || opts.metal_compute) {file.cuda=opts.cuda;if(!compute_admit(&file,opts.metal_compute)) {if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");return false;}}
   TimedPhase phase{"emit"};
   if(!g_timings.source_map.empty() && !write_file(g_timings.source_map,emit_debug_map(&file))) {fprintf(stderr,"coax: cannot write source map '%s'\n",g_timings.source_map.c_str());return false;}
-  if (what == Output::c) {*text=emit_c(&file,opts);g_timings.generated_bytes=text->size();}
+  for(const ProcDecl *p:file.procs)if(p->origin)g_timings.instances++;
+  if (what == Output::c) {*text=emit_c(&file,opts);g_timings.generated_bytes=text->size();g_timings.instance_bytes=g_instance_c_bytes;}
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
   else if (what == Output::declarations) *text = declarations_report(&src, &file);
