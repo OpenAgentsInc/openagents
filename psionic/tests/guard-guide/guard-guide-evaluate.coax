@@ -1,0 +1,20 @@
+// Coax CLI; the shared sys host supplies only argv/file/process effects.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../verse/everglade/guard-guide-eval-wire.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}command:=args_at(a[..],0);out:[16384]u8;
+  if command=="manifest" {for i:0..<13 {n:=gge_manifest(i,out[..]);if n<0 {return 2;}print("%\n",cast(string)out[0..<n]);}return 0;}
+  if command=="request" {
+    nodes:[2]JvNode;d:[1]Jv;if !jv_parse(d[..],args_at(a[..],1),nodes[..]) {return 2;}
+    n:=ggew_request(jv_int(d[0],0,-1),out[..]);if n<0 {return 2;}print("%",cast(string)out[0..<n]);return 0;
+  }
+  if command=="observation" || command=="summary" {
+    input:[262144]u8;n:=fs_read(args_at(a[..],1),input[..]);if n<0 {tool_errln("observation file missing or too large");return 2;}
+    k:=-1;if command=="summary" {k=ggew_summary(cast(string)input[0..<n],out[..]);}
+    else {k=ggew_result(ggew_observation(cast(string)input[0..<n]),out[..]);}
+    if k<0 {tool_errln("invalid, duplicate, mismatched or unscorable capture");return 2;}print("%\n",cast(string)out[0..<k]);return 0;
+  }
+  tool_errln("usage: guard-guide-evaluate manifest | request INDEX | observation FILE | summary FILE");return 2;
+}

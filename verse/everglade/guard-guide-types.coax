@@ -1,0 +1,18 @@
+// Candidate only; the existing ambient policy and frozen v1 corpus are unchanged.
+GG_POLICY :: "everglade-directions-v1";
+GG_MODEL :: "elephant-1";
+GG_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+GG_TIMEOUT :: 8000;
+GG_OPTIONS :: [5]string.["quiet","quest_board","east_gate","north_trail","west_gate"];
+GG_GOALS :: [6]string.["none","find_work","waystone","ruins","river","return_to_board"];
+GG_LINES :: [5]string.["","The quest board is beside the commons fountain.","The East Gate leads toward the Deep Wood and the waystone.","Follow the North Trail toward the old ruins.","The West Gate leads toward the river crossing."];
+// Only the current visible selected objective is projected. No saved quest
+// stages/history, player identifiers, speech, coordinates or private context.
+// help_requested is a separate authored Directions interaction, never talk_to.
+// destination_available means a known reachable canonical route after edits;
+// first integration may refuse whenever any edits exist. hint_visible refers
+// to an existing guide tip/cooldown, not the ordinary quest tracker.
+GgObservation :: struct {help_requested:bool;goal:int;destination_available:bool;at_destination:bool;hint_visible:bool;eligible:bool;}
+GgAnswer :: struct {ok:bool;action:int=-1;}
+GgAdmit :: struct {ok:bool;action:int=-1;}
+GgNumber :: struct {ok:bool;units:int;}

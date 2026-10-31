@@ -1,0 +1,22 @@
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91mcp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91mcp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91mcp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91mcp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91mcp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+cp: cannot make directory '/nix/store/0kvbvili3hqbrmdclh24w98fdx25ilk6-psionic-fleet-image-root/nix': Permission denied
+[0m[91merror: builder for '/nix/store/ikdgz352kcr5695741bb7mnv5rsgi5c0-psionic-fleet-image-root.drv' failed with exit code 1
+The command '/bin/sh -c nix-build --option sandbox false --cores 2 --max-jobs 2 default.nix -A imageRoot --out-link /fleet-root &&     nix-build --option sandbox false default.nix -A nativeTools --out-link /fleet-tools &&     mkdir /runtime && cp -a /fleet-root/. /runtime/ && chmod 1777 /runtime/tmp' returned a non-zero code: 100
+ERROR
+ERROR: build step 0 "gcr.io/cloud-builders/gcb-internal" failed: step exited with non-zero status: 100
+[0m
+--------------------------------------------------------------------------------

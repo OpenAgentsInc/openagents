@@ -940,6 +940,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/guard-directions.coax",
+      "chapter": "psionic/book/ch021e-directions-on-request.md",
+      "stdout": "psionic/fixtures/guard-directions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

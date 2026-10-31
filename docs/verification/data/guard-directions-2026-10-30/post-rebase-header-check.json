@@ -1,0 +1,15 @@
+{
+  "upstream_header_commit": "789fb4909a",
+  "compiler_kind": "temporary C++ host using committed bootstrap seeds; plain Coax modules only",
+  "compiler_sha256": "a36a5734950c78e3bad5cd3013410b1f49aad80f24a869d273c03cb04a4592bc",
+  "emitter_sha256": "f91fc098c7f512f4ea697655333b5d707824f12fbdc889561b0b21fe565ea0bf",
+  "installed_compiler_replaced": false,
+  "c11_forward_and_repeated_include": true,
+  "c11_reverse_and_repeated_include": true,
+  "example_release_c_byte_identical": true,
+  "native_debug_cases": 126,
+  "native_release_cases": 126,
+  "native_asan_ubsan_cases": 126,
+  "target_policy_mutation_suites_repeated": false,
+  "default_bootstrap_attempt": "started, stopped before publication; results not counted"
+}

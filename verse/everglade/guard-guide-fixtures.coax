@@ -1,0 +1,12 @@
+// Synthetic response serialization for local checks only; never live evidence.
+#load "../../coax/lib/json/json.coax";
+GGE_OPTIONS :: [5]string.["quiet","quest_board","east_gate","north_trail","west_gate"];
+gge_fixture :: (action:int,out:[]u8)->string #export_c {
+  if action<0 || action>4 {return "";}j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);
+  jo_key(j[..],"model");jo_str(j[..],"elephant-1");jo_key(j[..],"answers");jo_obj(j[..]);jo_key(j[..],"guide");jo_obj(j[..]);
+  jo_key(j[..],"type");jo_str(j[..],"choice");jo_key(j[..],"choice");jo_str(j[..],GGE_OPTIONS[action]);jo_key(j[..],"confidence");jo_raw(j[..],"0.6");jo_key(j[..],"probabilities");jo_obj(j[..]);
+  for i:0..<5 {jo_key(j[..],GGE_OPTIONS[i]);jo_raw(j[..],ifx i==action then "0.6" else "0.1");}jo_end(j[..]);jo_end(j[..]);jo_end(j[..]);
+  jo_key(j[..],"service");jo_obj(j[..]);jo_key(j[..],"version");jo_str(j[..],"psionic-pylon-v1");jo_key(j[..],"door");jo_str(j[..],"pylon:test");
+  jo_key(j[..],"identity");jo_str(j[..],"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba");
+  jo_key(j[..],"provider");jo_str(j[..],"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7");jo_end(j[..]);jo_end(j[..]);return jo_text(j[..]);
+}

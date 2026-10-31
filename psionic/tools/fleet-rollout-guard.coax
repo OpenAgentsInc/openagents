@@ -1,0 +1,30 @@
+// Effects-only frontend: authenticated SDK files become observations for the
+// checked snapshot admission policy. No cloud mutation or credential output.
+#import "Basic";
+#load "fleet-rollout-snapshot-policy.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args[0].n!=11 {tool_errln("usage: fleet-rollout-guard candidate|promoted SERVICE TARGET OLD IMAGE BEFORE AFTER REVISION IAM_BEFORE IAM_AFTER OLD_REVISION");return 2;}
+    mode:=args_at(args[..],0);phase:=ifx mode=="candidate" then 0 else ifx mode=="promoted" then 1 else -1;
+    service:=args_at(args[..],1);target:=args_at(args[..],2);old:=args_at(args[..],3);image:=args_at(args[..],4);
+    raw:[6][131072]u8;docs:[6]Jv;nodes:[6][4096]JvNode;
+    for i:0..<6 {n:=fs_read(args_at(args[..],5+i),raw[i][..]);if n<0 || !jv_parse(docs[i..<i+1],cast(string)raw[i][0..<n],nodes[i][..]) {tool_errln("fleet guard: invalid/missing snapshot");return 1;}}
+    before:=docs[0];after:=docs[1];revision:=docs[2];previous:=docs[5];f:FrFacts;
+    f.requested_service=service;f.before_service=fr_text(before,"metadata.name");f.after_service=fr_text(after,"metadata.name");
+    f.before_namespace=fr_text(before,"metadata.namespace");f.after_namespace=fr_text(after,"metadata.namespace");f.revision_namespace=fr_text(revision,"metadata.namespace");f.old_namespace=fr_text(previous,"metadata.namespace");
+    f.before_url=fr_text(before,"status.url");f.after_url=fr_text(after,"status.url");f.revision_name=fr_text(revision,"metadata.name");f.old_name=fr_text(previous,"metadata.name");
+    f.revision_service=jv_raw(revision,jv_get(revision,jv_path(revision,0,"metadata.labels"),"serving.knative.dev/service"));f.old_service=jv_raw(previous,jv_get(previous,jv_path(previous,0,"metadata.labels"),"serving.knative.dev/service"));
+    f.revision_image=fr_text(revision,"status.imageDigest");f.before_image=fr_text(before,"spec.template.spec.containers[0].image");f.old_image=fr_text(previous,"status.imageDigest");
+    f.identity=fr_env(before,"OA_MESH_IDENTITY");f.provider=fr_env(before,"OA_MESH_PROVIDER");
+    f.generation=jv_int(after,jv_path(after,0,"metadata.generation"),-1);f.observed=jv_int(after,jv_path(after,0,"status.observedGeneration"),-2);f.service_ready=fr_ready(after);f.revision_ready=fr_ready(revision);
+    f.service_spec=fr_spec(fr_text(before,"spec.template.spec"),fr_text(after,"spec.template.spec"),image);f.revision_spec=fr_spec(fr_text(previous,"spec"),fr_text(revision,"spec"),image);f.image_valid=fr_image(image);
+    f.annotations_before=fr_text(before,"spec.template.metadata.annotations");f.annotations_after=fr_text(after,"spec.template.metadata.annotations");
+    keys:=[3]string.["run.googleapis.com/ingress","run.googleapis.com/invoker-iam-disabled","run.googleapis.com/default-url-disabled"];
+    for i:0..<keys.count {a:=jv_get(before,jv_path(before,0,"metadata.annotations"),keys[i]);b:=jv_get(after,jv_path(after,0,"metadata.annotations"),keys[i]);f.security_before[i]=jv_raw(before,a);f.security_after[i]=jv_raw(after,b);f.security_kind_before[i]=jv_kind(before,a);f.security_kind_after[i]=jv_kind(after,b);}
+    f.iam_before=fr_text(docs[3],"bindings");f.iam_after=fr_text(docs[4],"bindings");f.iam_version_before=jv_int(docs[3],jv_get(docs[3],0,"version"),-1);f.iam_version_after=jv_int(docs[4],jv_get(docs[4],0,"version"),-2);f.iam_private=fr_private(docs[4]);
+    traffic:=jv_path(after,0,"status.traffic");count:=jv_len(after,traffic);names:[32]string;percent:[32]int;
+    if count>=1 && count<=32 {for i:0..<count {entry:=jv_at(after,traffic,i);names[i]=jv_raw(after,jv_get(after,entry,"revisionName"));percent[i]=jv_int(after,jv_get(after,entry,"percent"),0);}f.traffic=fr_traffic(phase,old,target,fr_text(after,"status.latestReadyRevisionName"),names[0..<count],percent[0..<count]);}
+    if !fr_admit(f,target,old,image) {tool_errln("fleet guard: snapshot admission refused");return 1;}
+    print("{\"verified\":true,\"phase\":\"%\",\"service\":\"%\",\"revision\":\"%\",\"immutable_image\":\"%\",\"template_spec_image_only\":true,\"resolved_revision_spec_image_only\":true,\"template_annotations_preserved\":true,\"selected_service_security_annotations_preserved\":true,\"provider_checkpoint_pinned\":true,\"IAM_unchanged_private\":true,\"traffic_verified\":true}\n",mode,service,target,image);return 0;
+}

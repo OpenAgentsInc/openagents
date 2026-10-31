@@ -1,0 +1,171 @@
+// Frozen before candidate calls: finite editorial route labels, not gameplay
+// outcome measurements. Labels/reference actions never enter model requests.
+#load "guard-guide.coax";
+#load "guard-guide-fixtures.coax";
+#load "guard-latency.coax";
+#authority;
+GGE_CORPUS :: "guard-guide-editorial-v1";
+GGE_CANDIDATE :: "everglade-directions-v1";
+GGE_LABEL_SHA :: "fb63e7861e32e6c42178f9405ac7bcf96d845df306cb27fbc44dfea0a426efee";
+GGE_REMOTE :: 5; GGE_CASES :: 13;
+GGE_EXPECTED :: [5]int.[1,2,3,4,1];
+GGE_SPLIT :: [5]int.[0,0,1,1,0];
+GGE_NAMES :: [13]string.["ask-for-work-at-the-gate","current-waystone-objective","current-ruins-objective","current-river-objective","current-return-to-board-objective","no-directions-request","gameplay-gate-refuses","route-not-known-available","already-at-destination","guide-tip-already-visible","no-current-visible-objective","negative-goal-refuses","unknown-goal-refuses"];
+GgeCase :: struct {valid:bool;index:int=-1;name:string;split:int=2;observation:GgObservation;remote:bool;legal_mask:int=1;reference:int;}
+GgeResult :: struct {valid:bool;index:int=-1;split:int;elapsed_ms:int;contract:bool;deadline:bool;legal:bool;admitted:bool;covered:bool;raw_action:int=-1;effective_action:int;raw_correct:bool;raw_quiet:bool;raw_wrong:bool;model_useful:bool;effective_correct:bool;rule_correct:bool;quiet_correct:bool;forbidden:bool;}
+GgeTotals :: struct {seen:int;observed:int;contract:int;deadline:int;legal:int;admitted:int;covered:int;raw_correct:int;raw_quiet:int;raw_wrong:int;model_useful:int;effective_correct:int;rule_correct:int;quiet_correct:int;forbidden:int;development:int;development_useful:int;heldout:int;heldout_useful:int;elapsed:[5]int;covered_elapsed:[5]int;}
+
+#test "fresh goal labels and splits are independent of the product baseline" {
+  for i:0..<5 {c:=gge_case(i);#assert c.valid && c.remote && c.index==i && c.name==GGE_NAMES[i] && c.observation.goal==i+1;
+    expected:=ifx i==4 then 1 else i+1;#assert c.reference==expected && c.legal_mask==(1|(1<<expected));
+    #assert c.split==(ifx i==2 || i==3 then 1 else 0) && gg_baseline(c.observation)==expected && gg_ready(c.observation);
+  }
+  for i:5..<13 {c:=gge_case(i);#assert c.valid && !c.remote && c.reference==0 && c.legal_mask==1 && c.split==2 && !gg_ready(c.observation) && gg_baseline(c.observation)==0;}
+  #assert !gge_case(-1).valid && !gge_case(13).valid && !gge_case(9223372036854775807).valid;
+}
+#test "all authored choices distinguish raw accuracy, semantic rejection and fallback" {
+  b:[8192]u8;
+  for i:0..<5 {for action:0..<5 {
+    r:=gge_evaluate(i,"200\n",gge_fixture(action,b[..]),7999);correct:=action==GGE_EXPECTED[i];legal:=action==0 || correct;
+    #assert r.valid && r.contract && r.deadline && r.raw_action==action && r.legal==legal && r.admitted==legal && r.covered==legal;
+    #assert r.raw_correct==correct && r.raw_quiet==(action==0) && r.raw_wrong==(!legal) && r.model_useful==correct;
+    #assert r.effective_action==(ifx legal then action else 0) && r.effective_correct==correct && r.rule_correct && !r.quiet_correct && !r.forbidden;
+  }}
+}
+#test "late correct responses never become served useful tips or local-baseline credit" {
+  b:[8192]u8;body:=gge_fixture(1,b[..]);
+  for elapsed:[4]int.[-1,8000,8001,GL_MAX_MS] {r:=gge_evaluate(0,"200\n",body,elapsed);#assert r.contract && r.raw_correct && !r.deadline && !r.admitted && !r.covered && !r.model_useful && r.effective_action==0 && !r.effective_correct && r.rule_correct;}
+  for status:[5]string.["0\n","401\n","429\n","503\n","200"] {r:=gge_evaluate(0,status,body,1);#assert !r.contract && !r.raw_correct && r.deadline && !r.admitted && !r.covered && r.raw_action==-1;}
+  #assert !gge_evaluate(0,"200\n","{}",1).contract && !gge_evaluate(-1,"200\n",body,1).valid;
+}
+#test "local suppression cases cannot admit even a well-formed quiet model response" {
+  b:[8192]u8;out:[2048]u8;
+  for i:5..<13 {for action:0..<5 {r:=gge_evaluate(i,"200\n",gge_fixture(action,b[..]),1);#assert r.valid && r.contract && !r.admitted && !r.covered && !r.model_useful && r.effective_action==0 && r.effective_correct && r.quiet_correct && !r.forbidden;}
+    #assert gge_request(i,out[..])==-1;
+  }
+  #assert gge_request(-1,out[..])==-1 && gge_request(13,out[..])==-1 && gge_request(0,out[0..<0])==-1;
+}
+#test "the request writer receives observation facts without labels, split or case identity" {
+  a:[4096]u8;b:[4096]u8;for i:0..<5 {n:=gge_request(i,a[..]);m:=gg_request(gge_case(i).observation,b[..]);#assert n>0 && n==m && cast(string)a[0..<n]==cast(string)b[0..<m];}
+}
+#test "aggregation retains missing and held-out cases, rejecting duplicates and bad records" {
+  t:[1]GgeTotals;b:[8192]u8;
+  for i:0..<5 {r:=gge_evaluate(i,"200\n",gge_fixture(GGE_EXPECTED[i],b[..]),i*10);#assert gge_add(t[..],r) && !gge_add(t[..],r);}
+  #assert t[0].seen==31 && t[0].observed==5 && t[0].contract==5 && t[0].legal==5 && t[0].admitted==5 && t[0].effective_correct==5 && t[0].covered==5 && t[0].raw_correct==5 && t[0].model_useful==5 && t[0].rule_correct==5 && t[0].quiet_correct==0 && t[0].raw_wrong==0 && t[0].raw_quiet==0;
+  #assert t[0].development==3 && t[0].development_useful==3 && t[0].heldout==2 && t[0].heldout_useful==2 && t[0].forbidden==0;
+  #assert gl_latency(t[0].elapsed[..]).median_twice_ms==40 && gl_latency(t[0].covered_elapsed[..]).p95_ms==40;
+  many:[2]GgeTotals;#assert !gge_add(many[..],gge_evaluate(0,"503\n","",1)) && !gge_add(t[0..<0],gge_evaluate(0,"503\n","",1));
+  for index:[4]int.[-1,5,13,9223372036854775807] {#assert !gge_add(t[..],GgeResult.{valid=true,index=index});}
+  fresh:[1]GgeTotals;#assert !gge_add(fresh[..],GgeResult.{}) && !gge_add(fresh[..],gge_evaluate(0,"503\n","",-1)) && !gge_add(fresh[..],gge_evaluate(0,"503\n","",GL_MAX_MS+1));
+}
+
+// End of pre-implementation checks.
+
+gge_case :: (index:int)->GgeCase #export_c {
+  if index<0 || index>=GGE_CASES {return GgeCase.{};}
+  o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=1};
+  c:=GgeCase.{valid=true,index=index,name=GGE_NAMES[index],observation=o};
+  if index<5 {c.remote=true;c.observation.goal=index+1;c.reference=GGE_EXPECTED[index];c.legal_mask=1|(1<<c.reference);c.split=GGE_SPLIT[index];}
+  else {
+    if index==5 {c.observation.help_requested=false;}if index==6 {c.observation.eligible=false;}
+    if index==7 {c.observation.destination_available=false;}if index==8 {c.observation.at_destination=true;}if index==9 {c.observation.hint_visible=true;}
+    if index==10 {c.observation.goal=0;}if index==11 {c.observation.goal=-1;}if index==12 {c.observation.goal=6;}
+  }return c;
+}
+gge_request :: (index:int,out:[]u8)->int #export_c {
+  c:=gge_case(index);if !c.remote {return -1;}return gg_request(c.observation,out);
+}
+gge_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GgeResult #export_c {
+  c:=gge_case(index);if !c.valid {return GgeResult.{};}
+  a:=gg_decode(body);contract:=gge_contract(status,a.ok,body.count);
+  raw:=ifx contract then a.action else -1;
+  admission:=gg_admit(c.observation,GgAnswer.{ok=contract,action=raw},elapsed_ms);
+  return gge_score(c,contract,raw,elapsed_ms,admission);
+}
+// Independent score seam also detects a regressed candidate admission result.
+gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)->GgeResult {
+  deadline:=elapsed_ms>=0 && elapsed_ms<8000;
+  legal:=raw>=0 && raw<5 && (c.legal_mask&(1<<raw))!=0;
+  covered:=c.remote && contract && deadline && legal && admission.ok && admission.action==raw;
+  effective:=ifx admission.ok then admission.action else 0;
+  return GgeResult.{valid=c.valid,index=c.index,split=c.split,elapsed_ms=elapsed_ms,contract=contract,deadline=deadline,legal=legal,admitted=admission.ok,covered=covered,raw_action=raw,effective_action=effective,
+    raw_correct=contract && raw==c.reference,raw_quiet=contract && raw==0,raw_wrong=contract && raw!=0 && raw!=c.reference,
+    model_useful=covered && raw==c.reference && raw!=0 && effective==raw,effective_correct=effective==c.reference,
+    rule_correct=gg_baseline(c.observation)==c.reference,quiet_correct=c.reference==0,
+    forbidden=admission.ok && (!c.remote || !contract || !deadline || !legal || effective!=raw)};
+}
+gge_add :: (s:[]GgeTotals,r:GgeResult)->bool #export_c {
+  if s.count!=1 || !r.valid || r.index<0 || r.index>=5 || r.elapsed_ms<0 || r.elapsed_ms>GL_MAX_MS {return false;}
+  bit:=1<<r.index;if (s[0].seen&bit)!=0 {return false;}s[0].seen|=bit;
+  s[0].elapsed[s[0].observed]=r.elapsed_ms;s[0].observed+=1;
+  if r.contract {s[0].contract+=1;}if r.deadline {s[0].deadline+=1;}if r.legal {s[0].legal+=1;}if r.admitted {s[0].admitted+=1;}
+  if r.covered {s[0].covered_elapsed[s[0].covered]=r.elapsed_ms;s[0].covered+=1;}
+  if r.raw_correct {s[0].raw_correct+=1;}if r.raw_quiet {s[0].raw_quiet+=1;}if r.raw_wrong {s[0].raw_wrong+=1;}if r.model_useful {s[0].model_useful+=1;}
+  if r.effective_correct {s[0].effective_correct+=1;}if r.rule_correct {s[0].rule_correct+=1;}if r.forbidden {s[0].forbidden+=1;}
+  if GGE_SPLIT[r.index]==1 {s[0].heldout+=1;if r.model_useful {s[0].heldout_useful+=1;}}
+  else {s[0].development+=1;if r.model_useful {s[0].development_useful+=1;}}return true;
+}
+gge_manifest :: (index:int,out:[]u8)->int #export_c {
+  c:=gge_case(index);if !c.valid {return -1;}w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);
+  jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);jo_key(w[..],"case");jo_int(w[..],index);
+  jo_key(w[..],"name");jo_str(w[..],c.name);jo_key(w[..],"split");jo_str(w[..],ifx c.split==0 then "development" else ifx c.split==1 then "heldout" else "local");
+  jo_key(w[..],"observation");jo_obj(w[..]);jo_key(w[..],"help_requested");jo_bool(w[..],c.observation.help_requested);jo_key(w[..],"goal");jo_int(w[..],c.observation.goal);
+  jo_key(w[..],"destination_available");jo_bool(w[..],c.observation.destination_available);jo_key(w[..],"at_destination");jo_bool(w[..],c.observation.at_destination);
+  jo_key(w[..],"hint_visible");jo_bool(w[..],c.observation.hint_visible);jo_key(w[..],"eligible");jo_bool(w[..],c.observation.eligible);jo_end(w[..]);
+  jo_key(w[..],"remote");jo_bool(w[..],c.remote);jo_key(w[..],"legal_mask");jo_int(w[..],c.legal_mask);jo_key(w[..],"preferred_action");jo_int(w[..],c.reference);
+  jo_key(w[..],"useful_mask");jo_int(w[..],ifx c.remote then 1<<c.reference else 0);jo_key(w[..],"quiet_action");jo_int(w[..],0);jo_key(w[..],"reference_action");jo_int(w[..],c.reference);jo_end(w[..]);
+  return ifx w[0].bad then -1 else w[0].n;
+}
+
+#test "the manifest is bounded structured data with exact frozen labels and capacity" {
+  b:[2048]u8;nodes:[64]JvNode;d:[1]Jv;
+  for i:0..<13 {c:=gge_case(i);n:=gge_manifest(i,b[..]);#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);v:=d[0];
+    #assert jv_len(v,0)==12 && jv_int(v,jv_get(v,0,"case"),-1)==i && jv_int(v,jv_get(v,0,"preferred_action"),-1)==c.reference && jv_int(v,jv_get(v,0,"reference_action"),-1)==c.reference;
+    #assert jv_raw_eq(jv_raw(v,jv_get(v,0,"corpus")),GGE_CORPUS) && jv_raw_eq(jv_raw(v,jv_get(v,0,"candidate")),GGE_CANDIDATE) && jv_raw_eq(jv_raw(v,jv_get(v,0,"name")),GGE_NAMES[i]);
+    #assert jv_raw_eq(jv_raw(v,jv_get(v,0,"split")),ifx i>=5 then "local" else ifx i==2 || i==3 then "heldout" else "development");
+    #assert jv_int(v,jv_get(v,0,"legal_mask"),-1)==c.legal_mask && jv_int(v,jv_get(v,0,"useful_mask"),-1)==(ifx i<5 then 1<<c.reference else 0) && jv_int(v,jv_get(v,0,"quiet_action"),-1)==0 && jv_bool(v,jv_get(v,0,"remote"))==(i<5);
+    o:=jv_get(v,0,"observation");#assert jv_len(v,o)==6 && jv_int(v,jv_get(v,o,"goal"),-9)==c.observation.goal;
+    #assert jv_bool(v,jv_get(v,o,"help_requested"))==c.observation.help_requested && jv_bool(v,jv_get(v,o,"eligible"))==c.observation.eligible && jv_bool(v,jv_get(v,o,"destination_available"))==c.observation.destination_available;
+    #assert jv_bool(v,jv_get(v,o,"at_destination"))==c.observation.at_destination && jv_bool(v,jv_get(v,o,"hint_visible"))==c.observation.hint_visible;
+    #assert gge_manifest(i,b[0..<n])==n && gge_manifest(i,b[0..<n-1])==-1;
+  }
+  #assert gge_manifest(-1,b[..])==-1 && gge_manifest(13,b[..])==-1 && gge_manifest(0,b[0..<0])==-1;
+}
+#test "independent scoring exposes impossible or unsafe admission results instead of giving fallback model credit" {
+  c:=gge_case(0);
+  for k:0..<7 {
+    changed:=c;contract:=true;raw:=1;elapsed:=1;accepted:=1;
+    if k==0 {changed.remote=false;}if k==1 {contract=false;}if k==2 {elapsed=8000;}
+    if k==3 {raw=2;accepted=2;}if k==4 {accepted=4;}if k==5 {raw=-1;accepted=-1;}if k==6 {raw=5;accepted=5;}
+    r:=gge_score(changed,contract,raw,elapsed,GgAdmit.{ok=true,action=accepted});#assert r.forbidden && !r.covered && !r.model_useful;
+    t:[1]GgeTotals;#assert gge_add(t[..],r) && t[0].forbidden==1 && t[0].admitted==1 && t[0].covered==0;
+  }
+}
+#test "quiet wrong-route error and late cohorts remain distinct from raw model success and the local rule" {
+  b:[8192]u8;
+  for cohort:0..<4 {
+    t:[1]GgeTotals;
+    for i:0..<5 {
+      action:=ifx cohort==0 then 0 else ifx cohort==1 then (ifx GGE_EXPECTED[i]==4 then 1 else GGE_EXPECTED[i]+1) else GGE_EXPECTED[i];
+      r:=gge_evaluate(i,ifx cohort==2 then "503\n" else "200\n",gge_fixture(action,b[..]),ifx cohort==3 then 8000 else i);
+      #assert gge_add(t[..],r);
+    }
+    #assert t[0].observed==5 && t[0].model_useful==0 && t[0].effective_correct==0 && t[0].rule_correct==5 && t[0].quiet_correct==0 && t[0].forbidden==0;
+    #assert t[0].raw_quiet==(ifx cohort==0 then 5 else 0) && t[0].raw_wrong==(ifx cohort==1 then 5 else 0) && t[0].raw_correct==(ifx cohort==3 then 5 else 0);
+    #assert t[0].covered==(ifx cohort==0 then 5 else 0) && t[0].contract==(ifx cohort==2 then 0 else 5) && t[0].deadline==(ifx cohort==3 then 0 else 5);
+  }
+}
+
+#test "local case facts keep the frozen goal values rather than just a refusal result" {
+  goals:=[8]int.[1,1,1,1,1,0,-1,6];
+  for i:5..<13 {o:=gge_case(i).observation;#assert o.goal==goals[i-5] && o.help_requested==(i!=5) && o.eligible==(i!=6) && o.destination_available==(i!=7) && o.at_destination==(i==8) && o.hint_visible==(i==9);}
+}
+#test "the independent contract-size and action-domain checks survive faulty decoder or label outputs" {
+  #assert gge_contract("200\n",true,8192) && !gge_contract("200\n",true,8193) && !gge_contract("200\n",true,-1);
+  #assert !gge_contract("503\n",true,10) && !gge_contract("200\n",false,10);
+  c:=gge_case(0);c.legal_mask=32;c.reference=5;r:=gge_score(c,true,5,1,GgAdmit.{ok=true,action=5});#assert !r.legal && r.forbidden && !r.covered;
+  c=gge_case(0);c.observation.help_requested=false;r=gge_score(c,true,1,1,GgAdmit.{});t:[1]GgeTotals;#assert gge_add(t[..],r) && t[0].rule_correct==0 && t[0].legal==1;
+  fresh:[1]GgeTotals;#assert gge_add(fresh[..],gge_evaluate(0,"503\n","",GL_MAX_MS));
+}
+gge_contract :: (status:string,decoded:bool,bytes:int)->bool {return status=="200\n" && decoded && bytes>=0 && bytes<=8192;}
+#test "zero bytes stays the inclusive independent size-bound edge" {#assert gge_contract("200\n",true,0);}

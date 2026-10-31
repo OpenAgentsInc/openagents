@@ -1,0 +1,158 @@
+// Records bind the frozen request hash to one response. Raw bodies remain
+// input evidence; reports expose only enums, counts and bounded timing data.
+#load "guard-guide-eval.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+GGE_REQUEST_SHA :: [5]string.["20e1e73063819ef195b71d05f4a851005dc69a26b3855561c1c4bdb4c14c501c","f1cd74cd6fa39c01e8562d3ecebf6258a8b4316d402820c4a0f91e0d92ee69ad","ae9d34e90e2f9034956cf3f1a423c93bac14baab755991a9654b1fd91a838f8c","7621a9d1697cc81319688a6b7736b6e0c0b5715373b3e8e1bd96e6e584566367","8a73362b06c8468afd33dd2bcaed8a1b2c0a72fa68584247e20f503b4dae170a"];
+GgeObservation :: struct {valid:bool;status:int;result:GgeResult;}
+#test "frozen request hashes bind actual product bytes and local refusal cases cannot be emitted" {
+  b:[4096]u8;h:[64]u8;for i:0..<5 {n:=ggew_request(i,b[..]);#assert n>0 && ggew_hash(cast(string)b[0..<n],h[..]) && cast(string)h[..]==GGE_REQUEST_SHA[i];}
+  #assert !ggew_hash("abc",h[0..<63]);#assert ggew_hash("abc",h[..]) && cast(string)h[..]=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert ggew_request(-1,b[..])==-1 && ggew_request(5,b[..])==-1 && ggew_request(0,b[0..<0])==-1;
+}
+#test "observation scalars and frozen hashes are unique required values, never coerced" {
+  body:[8192]u8;b:[16384]u8;c:[32768]u8;good:=gge_fixture(1,body[..]);n:=ggew_record(0,GGE_REQUEST_SHA[0],10,200,good,b[..]);text:=cast(string)b[0..<n];
+  r:=ggew_observation(text);#assert r.valid && r.status==200 && r.result.index==0 && r.result.covered && r.result.model_useful;
+  bad:=[8]string.["\"case\":\"0\"","\"case\":5","\"case\":-1","\"elapsed_ms\":-1","\"elapsed_ms\":9007199254740992","\"status\":600","\"status\":\"200\"","\"body\":null"];
+  old:=[8]string.["\"case\":0","\"case\":0","\"case\":0","\"elapsed_ms\":10","\"elapsed_ms\":10","\"status\":200","\"status\":200","\"body\":\""];
+  for i:0..<bad.count {#assert !ggew_observation(gg_test_replace(c[..],text,old[i],bad[i])).valid;}
+  for key:[5]string.["case","request_sha256","elapsed_ms","status","body"] {
+    patch:[128]u8;j:[1]Jo;jo_start(j[..],patch[..]);jo_obj(j[..]);jo_key(j[..],key);jo_null(j[..]);jo_end(j[..]);
+    patch[j[0].n-1]=',';changed:=gg_test_replace(c[..],text,"{",cast(string)patch[0..<j[0].n]);#assert !ggew_observation(changed).valid;
+  }
+  #assert !ggew_observation("{}").valid && !ggew_observation("[]").valid && !ggew_observation("bad").valid;
+  n=ggew_record(0,GGE_REQUEST_SHA[1],1,200,good,b[..]);#assert !ggew_observation(cast(string)b[0..<n]).valid;
+  n=ggew_record(0,GGE_REQUEST_SHA[0],GL_MAX_MS,599,"",b[..]);#assert ggew_observation(cast(string)b[0..<n]).valid;
+  n=ggew_record(0,GGE_REQUEST_SHA[0],0,0,"",b[..]);#assert ggew_observation(cast(string)b[0..<n]).valid;
+}
+#test "reports separate raw quiet and wrong choice from useful tips and honest baseline counts" {
+  body:[8192]u8;b:[16384]u8;out:[16384]u8;
+  n:=ggew_record(2,GGE_REQUEST_SHA[2],25,200,gge_fixture(0,body[..]),b[..]);r:=ggew_observation(cast(string)b[0..<n]);k:=ggew_result(r,out[..]);nodes:[128]JvNode;d:[1]Jv;
+  #assert k>0 && jv_parse(d[..],cast(string)out[0..<k],nodes[..]);v:=d[0];#assert jv_raw_eq(jv_raw(v,jv_get(v,0,"raw_choice")),"quiet") && !jv_bool(v,jv_get(v,0,"model_useful"));
+  #assert jv_int(v,jv_get(v,0,"effective_action"),-1)==0 && jv_bool(v,jv_get(v,0,"local_rule_correct"));
+  #assert ggew_result(r,out[0..<k])==k && ggew_result(r,out[0..<k-1])==-1 && ggew_result(GgeObservation.{},out[..])==-1;
+  n=ggew_record(0,GGE_REQUEST_SHA[0],1,503,"",b[..]);r=ggew_observation(cast(string)b[0..<n]);k=ggew_result(r,out[..]);#assert jv_parse(d[..],cast(string)out[0..<k],nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"raw_choice"))==JV_NULL;
+}
+#test "JSONL rejects duplicates and local rows, preserves missing cases and exact descriptive ranks" {
+  lines:[65536]u8;record:[16384]u8;body:[8192]u8;out:[16384]u8;j:[1]Jo;used:=0;
+  for i:0..<5 {n:=ggew_record(i,GGE_REQUEST_SHA[i],i*10,200,gge_fixture(GGE_EXPECTED[i],body[..]),record[..]);for k:0..<n {lines[used+k]=record[k];}used+=n;lines[used]='\n';used+=1;}
+  k:=ggew_summary(cast(string)lines[0..<used],out[..]);nodes:[128]JvNode;d:[1]Jv;#assert k>0 && jv_parse(d[..],cast(string)out[0..<k],nodes[..]);v:=d[0];
+  #assert jv_int(v,jv_get(v,0,"observed"),-1)==5 && jv_int(v,jv_get(v,0,"model_useful"),-1)==5 && jv_int(v,jv_get(v,0,"local_rule_correct"),-1)==5 && jv_int(v,jv_get(v,0,"always_quiet_correct"),-1)==0 && jv_bool(v,jv_get(v,0,"all_observed"));
+  held:=jv_get(v,0,"heldout");#assert jv_int(v,jv_get(v,held,"observed"),-1)==2 && jv_int(v,jv_get(v,held,"model_useful"),-1)==2;
+  timing:=jv_get(v,0,"attempt_latency_ms");#assert jv_int(v,jv_get(v,timing,"median"),-1)==20 && jv_int(v,jv_get(v,timing,"p95"),-1)==40;
+  #assert ggew_summary(cast(string)lines[0..<used],out[0..<0])==-1 && ggew_summary("\n",out[..])==-1 && ggew_summary("{}",out[..])==-1;
+  n:=ggew_record(0,GGE_REQUEST_SHA[0],1,503,"",record[..]);for i:0..<n {lines[i]=record[i];lines[n+1+i]=record[i];}lines[n]='\n';#assert ggew_summary(cast(string)lines[0..<2*n+1],out[..])==-1;
+  #assert ggew_summary("",out[..])>0;
+}
+
+ggew_hash :: (text:string,out:[]u8)->bool #export_c {
+  if text.count>4096 || out.count<64 {return false;}bytes:[4096]u8;for i:0..<text.count {bytes[i]=text[i];}digest:[32]u8;
+  hashed:=sha256_hash_checked(bytes[0..<text.count],digest[..],false);hex:="0123456789abcdef";
+  for i:0..<32 {out[2*i]=hex[cast(int)(digest[i]>>4)];out[2*i+1]=hex[cast(int)(digest[i]&15)];}return true;
+}
+ggew_request :: (index:int,out:[]u8)->int #export_c {
+  n:=gge_request(index,out);if n==-1 {return -1;}return ggew_frozen_length(index,cast(string)out[0..<n]);
+}
+ggew_frozen_length :: (index:int,text:string)->int {
+  if index<0 || index>=5 {return -1;}hash:[64]u8;if !ggew_hash(text,hash[..]) || cast(string)hash[..]!=GGE_REQUEST_SHA[index] {return -1;}return text.count;
+}
+ggew_member :: (d:Jv,key:string)->int {
+  if jv_kind(d,0)!=JV_OBJECT {return -1;}found:=-1;
+  for i:0..<jv_len(d,0) {child:=jv_at(d,0,i);if jv_raw_eq(jv_key(d,child),key) {if found!=-1 {return -1;}found=child;}}return found;
+}
+ggew_observation :: (text:string)->GgeObservation #export_c {
+  if text.count>65536 {return GgeObservation.{};}nodes:[64]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return GgeObservation.{};}
+  v:=d[0];index:=jv_int(v,ggew_member(v,"case"),-1);elapsed:=jv_int(v,ggew_member(v,"elapsed_ms"),-1);status:=jv_int(v,ggew_member(v,"status"),-1);
+  if index<0 || index>=5 || elapsed<0 || elapsed>GL_MAX_MS || status<0 || status>599 {return GgeObservation.{};}
+  hash:[64]u8;h:=jv_str(v,ggew_member(v,"request_sha256"),hash[..]);if h!=64 || cast(string)hash[..]!=GGE_REQUEST_SHA[index] {return GgeObservation.{};}
+  body:[8192]u8;n:=jv_str(v,ggew_member(v,"body"),body[..]);if n<0 {return GgeObservation.{};}
+  r:=gge_evaluate(index,ifx status==200 then "200\n" else "",cast(string)body[0..<n],elapsed);return GgeObservation.{valid=true,status=status,result=r};
+}
+ggew_record :: (index:int,hash:string,elapsed:int,status:int,body:string,out:[]u8)->int #export_c {
+  w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);jo_key(w[..],"case");jo_int(w[..],index);jo_key(w[..],"request_sha256");jo_str(w[..],hash);
+  jo_key(w[..],"elapsed_ms");jo_int(w[..],elapsed);jo_key(w[..],"status");jo_int(w[..],status);jo_key(w[..],"body");jo_str(w[..],body);jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
+}
+ggew_choice :: (w:[]Jo,action:int) {
+  if action>=0 && action<5 {jo_str(w,GGE_OPTIONS[action]);}else {jo_null(w);}
+}
+ggew_result :: (r:GgeObservation,out:[]u8)->int #export_c {
+  e:=r.result;if !r.valid || e.index<0 || e.index>=5 {return -1;}w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);
+  jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);jo_key(w[..],"case");jo_int(w[..],e.index);
+  jo_key(w[..],"split");jo_str(w[..],ifx e.split==1 then "heldout" else "development");jo_key(w[..],"request_sha256");jo_str(w[..],GGE_REQUEST_SHA[e.index]);
+  jo_key(w[..],"status");jo_int(w[..],r.status);jo_key(w[..],"elapsed_ms");jo_int(w[..],e.elapsed_ms);jo_key(w[..],"contract");jo_bool(w[..],e.contract);
+  jo_key(w[..],"deadline");jo_bool(w[..],e.deadline);jo_key(w[..],"semantic_legal");jo_bool(w[..],e.legal);jo_key(w[..],"admitted");jo_bool(w[..],e.admitted);
+  jo_key(w[..],"covered");jo_bool(w[..],e.covered);jo_key(w[..],"raw_action");jo_int(w[..],e.raw_action);jo_key(w[..],"raw_choice");ggew_choice(w[..],e.raw_action);
+  jo_key(w[..],"raw_correct");jo_bool(w[..],e.raw_correct);jo_key(w[..],"raw_quiet");jo_bool(w[..],e.raw_quiet);jo_key(w[..],"raw_wrong_nonquiet");jo_bool(w[..],e.raw_wrong);
+  jo_key(w[..],"effective_action");jo_int(w[..],e.effective_action);jo_key(w[..],"effective_choice");ggew_choice(w[..],e.effective_action);jo_key(w[..],"model_useful");jo_bool(w[..],e.model_useful);
+  jo_key(w[..],"effective_correct");jo_bool(w[..],e.effective_correct);jo_key(w[..],"reference_action");jo_int(w[..],GGE_EXPECTED[e.index]);
+  jo_key(w[..],"local_rule_correct");jo_bool(w[..],e.rule_correct);jo_key(w[..],"always_quiet_correct");jo_bool(w[..],e.quiet_correct);jo_key(w[..],"forbidden");jo_bool(w[..],e.forbidden);
+  jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
+}
+ggew_latency :: (w:[]Jo,r:GlLatency) {
+  jo_obj(w);jo_key(w,"count");jo_int(w,r.count);jo_key(w,"minimum");if r.ok {jo_int(w,r.minimum_ms);}else {jo_null(w);}
+  jo_key(w,"median");if !r.ok {jo_null(w);}else if r.median_twice_ms%2==0 {jo_int(w,r.median_twice_ms/2);}else {
+    b:[64]u8;t:[1]Jo;jo_start(t[..],b[..]);jo_int(t[..],r.median_twice_ms/2);jo_put(t[..],".5");jo_raw(w,jo_text(t[..]));
+  }
+  jo_key(w,"p95");if r.ok {jo_int(w,r.p95_ms);}else {jo_null(w);}jo_key(w,"maximum");if r.ok {jo_int(w,r.maximum_ms);}else {jo_null(w);}jo_end(w);
+}
+ggew_totals :: (t:GgeTotals,out:[]u8)->int {
+  all:=t.elapsed;covered_times:=t.covered_elapsed;
+  w:[1]Jo;jo_start(w[..],out);jo_obj(w[..]);jo_key(w[..],"corpus");jo_str(w[..],GGE_CORPUS);jo_key(w[..],"candidate");jo_str(w[..],GGE_CANDIDATE);
+  jo_key(w[..],"labels_sha256");jo_str(w[..],GGE_LABEL_SHA);jo_key(w[..],"expected");jo_int(w[..],5);jo_key(w[..],"observed");jo_int(w[..],t.observed);
+  jo_key(w[..],"all_observed");jo_bool(w[..],t.observed==5);jo_key(w[..],"contract_valid");jo_int(w[..],t.contract);jo_key(w[..],"within_deadline");jo_int(w[..],t.deadline);
+  jo_key(w[..],"semantic_legal");jo_int(w[..],t.legal);jo_key(w[..],"admitted");jo_int(w[..],t.admitted);jo_key(w[..],"covered");jo_int(w[..],t.covered);
+  jo_key(w[..],"raw_correct");jo_int(w[..],t.raw_correct);jo_key(w[..],"raw_quiet");jo_int(w[..],t.raw_quiet);jo_key(w[..],"raw_wrong_nonquiet");jo_int(w[..],t.raw_wrong);
+  jo_key(w[..],"model_useful");jo_int(w[..],t.model_useful);jo_key(w[..],"effective_correct");jo_int(w[..],t.effective_correct);jo_key(w[..],"local_rule_correct");jo_int(w[..],t.rule_correct);
+  jo_key(w[..],"always_quiet_correct");jo_int(w[..],0);jo_key(w[..],"local_rule_remote_calls");jo_int(w[..],0);jo_key(w[..],"forbidden");jo_int(w[..],t.forbidden);
+  jo_key(w[..],"development");jo_obj(w[..]);jo_key(w[..],"expected");jo_int(w[..],3);jo_key(w[..],"observed");jo_int(w[..],t.development);jo_key(w[..],"model_useful");jo_int(w[..],t.development_useful);jo_end(w[..]);
+  jo_key(w[..],"heldout");jo_obj(w[..]);jo_key(w[..],"expected");jo_int(w[..],2);jo_key(w[..],"observed");jo_int(w[..],t.heldout);jo_key(w[..],"model_useful");jo_int(w[..],t.heldout_useful);jo_end(w[..]);
+  jo_key(w[..],"automatic_promotion");jo_bool(w[..],false);jo_key(w[..],"attempt_latency_ms");ggew_latency(w[..],gl_latency(all[0..<t.observed]));
+  jo_key(w[..],"admitted_latency_ms");ggew_latency(w[..],gl_latency(covered_times[0..<t.covered]));jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
+}
+ggew_summary :: (text:string,out:[]u8)->int #export_c {
+  if text.count>262144 {return -1;}totals:[1]GgeTotals;at:=0;
+  while at<text.count {end:=at;while end<text.count && text[end]!='\n' {end+=1;}if end==at {return -1;}
+    r:=ggew_observation(text[at..<end]);if !r.valid || !gge_add(totals[..],r.result) {return -1;}at=end+1;
+  }return ggew_totals(totals[0],out);
+}
+
+#test "request drift and helper boundaries cannot bypass frozen case identity" {
+  #assert ggew_frozen_length(0,"abc")==-1 && ggew_frozen_length(-1,"")==-1 && ggew_frozen_length(5,"")==-1;
+  big:[4097]u8;for i:0..<big.count {big[i]=' ';}hash:[65]u8;hash[64]=123;
+  #assert ggew_hash(cast(string)big[0..<4096],hash[..]) && hash[64]==123 && !ggew_hash(cast(string)big[..],hash[..]);
+  #assert ggew_frozen_length(0,cast(string)big[..])==-1;
+}
+#test "valid duplicate aliases and typed capture bounds are refused before evaluation" {
+  nodes:[8]JvNode;d:[1]Jv;#assert jv_parse(d[..],"{\"case\":0,\"\\u0063ase\":0}",nodes[..]) && ggew_member(d[0],"case")==-1;
+  b:[65537]u8;c:[65537]u8;n:=ggew_record(0,GGE_REQUEST_SHA[0],1,200,"",b[..]);text:=cast(string)b[0..<n];
+  #assert !ggew_observation(gg_test_replace(c[..],text,"\"case\":0","\"case\":0,\"\\u0063ase\":0")).valid;
+  #assert !ggew_observation(gg_test_replace(c[..],text,"\"body\":\"\"","\"body\":null")).valid;
+  #assert !ggew_observation(gg_test_replace(c[..],text,"\"status\":200","\"status\":-1")).valid;
+  for i:n..<b.count {b[i]=' ';}#assert ggew_observation(cast(string)b[0..<65536]).valid && !ggew_observation(cast(string)b[..]).valid;
+  large:[8193]u8;for i:0..<large.count {large[i]=' ';}
+  n=ggew_record(0,GGE_REQUEST_SHA[0],1,200,cast(string)large[0..<8192],b[..]);#assert ggew_observation(cast(string)b[0..<n]).valid;
+  n=ggew_record(0,GGE_REQUEST_SHA[0],1,200,cast(string)large[..],b[..]);#assert !ggew_observation(cast(string)b[0..<n]).valid;
+  #assert ggew_record(0,GGE_REQUEST_SHA[0],1,200,"",b[0..<0])==-1;
+}
+#test "reports retain half-millisecond medians, empty ranks and invalid admitted enum evidence" {
+  b:[16384]u8;w:[1]Jo;jo_start(w[..],b[..]);values:=[4]int.[10,1,6,5];ggew_latency(w[..],gl_latency(values[..]));nodes:[128]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],jo_text(w[..]),nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"median"))=="5.5";
+  n:=ggew_summary("",b[..]);#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);v:=d[0];timing:=jv_get(v,0,"attempt_latency_ms");
+  #assert jv_int(v,jv_get(v,0,"observed"),-1)==0 && !jv_bool(v,jv_get(v,0,"all_observed")) && jv_kind(v,jv_get(v,timing,"minimum"))==JV_NULL && jv_kind(v,jv_get(v,timing,"median"))==JV_NULL && jv_kind(v,jv_get(v,timing,"p95"))==JV_NULL && jv_kind(v,jv_get(v,timing,"maximum"))==JV_NULL;
+  r:=GgeObservation.{valid=true,status=200,result=gge_score(gge_case(0),true,5,1,GgAdmit.{ok=true,action=5})};n=ggew_result(r,b[..]);#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"effective_choice"))==JV_NULL && jv_bool(d[0],jv_get(d[0],0,"forbidden"));
+  r.result.index=-1;#assert ggew_result(r,b[..])==-1;r.result.index=5;#assert ggew_result(r,b[..])==-1;
+}
+#test "complete-record whitespace stays within inclusive JSONL capacity" {
+  b:[262145]u8;one:[1024]u8;out:[16384]u8;for i:0..<b.count {b[i]=' ';}
+  for i:0..<5 {n:=ggew_record(i,GGE_REQUEST_SHA[i],1,503,"",one[..]);for k:0..<n {b[i*52429+k]=one[k];}if i<4 {b[i*52429+52428]='\n';}}
+  #assert ggew_summary(cast(string)b[0..<262144],out[..])>0 && ggew_summary(cast(string)b[..],out[..])==-1;
+}
+
+#test "record splits and report expectations stay exact even when no model is useful" {
+  body:[8192]u8;record:[16384]u8;out:[16384]u8;nodes:[128]JvNode;d:[1]Jv;
+  for i:0..<5 {n:=ggew_record(i,GGE_REQUEST_SHA[i],1,200,gge_fixture(0,body[..]),record[..]);r:=ggew_observation(cast(string)record[0..<n]);k:=ggew_result(r,out[..]);#assert jv_parse(d[..],cast(string)out[0..<k],nodes[..]) && jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"split")),ifx i==2 || i==3 then "heldout" else "development");}
+  k:=ggew_summary("",out[..]);#assert jv_parse(d[..],cast(string)out[0..<k],nodes[..]);v:=d[0];dev:=jv_get(v,0,"development");held:=jv_get(v,0,"heldout");
+  #assert jv_int(v,jv_get(v,0,"expected"),-1)==5 && jv_int(v,jv_get(v,0,"local_rule_remote_calls"),-1)==0 && !jv_bool(v,jv_get(v,0,"automatic_promotion"));
+  #assert jv_int(v,jv_get(v,dev,"expected"),-1)==3 && jv_int(v,jv_get(v,held,"expected"),-1)==2;
+  #assert jv_parse(d[..],"[]",nodes[..]) && ggew_member(d[0],"case")==-1;
+}

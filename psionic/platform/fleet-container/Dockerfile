@@ -1,15 +1,21 @@
-FROM debian:bookworm-slim AS build
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+# Official Nix 2.24.9 amd64 builder, pinned by image digest. No APT TLS input.
+FROM nixos/nix@sha256:f6f7814c2224dad18b14479fed5f0620be65d54625a4b97ae8b24b407e1b43a2 AS build
 WORKDIR /src
 COPY . .
-RUN sha256sum -c SOURCES.sha256 >/dev/null && \
-    gcc -std=c11 -O1 -g -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Dmain=coax_fleet_main -c fleet.c -o fleet.o && \
-    gcc -std=c11 -O1 -g -I. -Iplatform fleet-host.c platform/socket-native.c platform/tls-native.c platform/entropy-native.c platform/entropy-foreign.c platform/process-native.c fleet.o -lssl -lcrypto -lm -lpthread -o /psionic-fleet
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends libssl3 ca-certificates && rm -rf /var/lib/apt/lists/* && useradd --system --uid 10001 --no-create-home fleet
-COPY --from=build /psionic-fleet /usr/local/bin/psionic-fleet
-COPY start.sh /usr/local/bin/start-fleet
-COPY SOURCE_COMMIT COAX_SHA256 SOURCES.sha256 /usr/share/psionic-fleet/
+RUN nix-build --option sandbox false --cores 2 --max-jobs 2 default.nix -A imageRoot --out-link /fleet-root && \
+    nix-build --option sandbox false default.nix -A nativeTools --out-link /fleet-tools && \
+    mkdir /runtime && cp -a /fleet-root/. /runtime/ && chmod 1777 /runtime/tmp
+RUN /fleet-tools/bin/chroot --userspec=10001:10001 /runtime /bin/sh -c 'test -x /usr/local/bin/psionic-fleet && test -r /etc/passwd && test -r /etc/group && test -r /etc/nsswitch.conf && test -r /etc/ssl/certs/ca-certificates.crt && : > /tmp/fleet-build-write-check' && \
+    rm /runtime/tmp/fleet-build-write-check && \
+    /fleet-tools/bin/chroot /runtime /bin/sh -n /usr/local/bin/start-fleet
+RUN /fleet-tools/bin/chroot /runtime /usr/local/bin/psionic-fleet --identity invalid > /fleet-native-usage-check.log 2>&1; test "$?" -eq 2
+RUN cat /runtime/usr/share/psionic-fleet/NIX_TLS_PROVENANCE && \
+    cat /runtime/usr/share/psionic-fleet/ELF_INTERPRETER && \
+    cat /runtime/usr/share/psionic-fleet/ELF_DYNAMIC && \
+    cat /runtime/usr/share/psionic-fleet/ELF_LDD && \
+    cat /runtime/usr/share/psionic-fleet/RUNTIME_CLOSURE
+FROM scratch
+COPY --from=build /runtime/ /
 USER 10001:10001
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/start-fleet"]

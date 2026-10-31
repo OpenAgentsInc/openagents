@@ -1,0 +1,29 @@
+// Native compiler/ABI check only; no model, service or product effects.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../verse/everglade/guard-guide.coax";
+
+#test "the native driver has an independently expected development smoke case" {#assert guide_native_check(1);}
+guide_native_check :: (count:int)->bool {
+    expected:=[5]int.[1,2,3,4,1];out:[1024]u8;
+    for index:0..<count {
+        o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=index+1};
+        if gg_baseline(o)!=expected[index] || gg_legal(o)!=(1|(1<<expected[index])) || gg_line(expected[index]).count==0 {return false;}
+        n:=gg_request(o,out[..]);nodes:[96]JvNode;d:[1]Jv;if n<0 || n>=1024 || !jv_parse(d[..],cast(string)out[0..<n],nodes[..]) {return false;}
+        if !gg_admit(o,GgAnswer.{ok=true,action=expected[index]},7999).ok || gg_admit(o,GgAnswer.{ok=true,action=expected[index]},8000).ok {return false;}
+        for action:0..<5 {admitted:=gg_admit(o,GgAnswer.{ok=true,action=action},1).ok;if admitted!=(action==0 || action==expected[index]) {return false;}}
+        for flag:0..<5 {
+            changed:=o;if flag==0 {changed.help_requested=false;}if flag==1 {changed.eligible=false;}if flag==2 {changed.destination_available=false;}if flag==3 {changed.at_destination=true;}if flag==4 {changed.hint_visible=true;}
+            if gg_request(changed,out[..])!=-1 || gg_admit(changed,GgAnswer.{ok=true,action=0},1).ok || gg_admit(changed,GgAnswer.{ok=true,action=expected[index]},1).ok {return false;}
+        }
+    }
+    decoded:=gg_decode(GG_RESPONSE);if !decoded.ok || decoded.action!=2 {return false;}
+    bytes:[8193]u8;for i:0..<bytes.count {bytes[i]=' ';}for i:0..<GG_RESPONSE.count {bytes[i]=GG_RESPONSE[i];}
+    if !gg_decode(cast(string)bytes[0..<8192]).ok || gg_decode(cast(string)bytes[..]).ok {return false;}
+    if gg_decode("{}").ok || gg_decode("{\"model\":\"elephant-1\"}").ok {return false;}
+    return true;
+}
+tool_main :: ()->int #export_c {
+    if !guide_native_check(5) {tool_errln("guard guide native check failed");return 1;}
+    print("guard guide native: requested routes, quiet, current need, bounds and decoder checks passed\n");return 0;
+}

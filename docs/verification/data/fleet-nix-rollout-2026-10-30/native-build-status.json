@@ -1,0 +1,116 @@
+{
+  "finishTime": "2026-10-31T03:36:19.262209Z",
+  "id": "1fbd9684-e283-4474-8528-9d9b19669d7c",
+  "startTime": "2026-10-31T03:36:01.284496885Z",
+  "status": "FAILURE",
+  "steps": [
+    {
+      "args": [
+        "pull",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb"
+      ],
+      "name": "gcr.io/cloud-builders/docker",
+      "pullTiming": {
+        "endTime": "2026-10-31T03:36:02.329278410Z",
+        "startTime": "2026-10-31T03:36:02.321398647Z"
+      },
+      "status": "SUCCESS",
+      "timing": {
+        "endTime": "2026-10-31T03:36:06.043350853Z",
+        "startTime": "2026-10-31T03:36:02.321398647Z"
+      }
+    },
+    {
+      "args": [
+        "image",
+        "inspect",
+        "--format",
+        "{\"id\":{{json .Id}},\"size\":{{.Size}},\"user\":{{json .Config.User}},\"env\":{{json .Config.Env}},\"entrypoint\":{{json .Config.Entrypoint}},\"workdir\":{{json .Config.WorkingDir}}}",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb"
+      ],
+      "name": "gcr.io/cloud-builders/docker",
+      "pullTiming": {
+        "endTime": "2026-10-31T03:36:06.044937340Z",
+        "startTime": "2026-10-31T03:36:06.043486343Z"
+      },
+      "status": "SUCCESS",
+      "timing": {
+        "endTime": "2026-10-31T03:36:06.793001665Z",
+        "startTime": "2026-10-31T03:36:06.043486343Z"
+      }
+    },
+    {
+      "args": [
+        "run",
+        "--rm",
+        "--network=none",
+        "--entrypoint",
+        "/bin/sh",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "-c",
+        "test -r /etc/passwd && test -r /etc/group && test -r /etc/nsswitch.conf && test -r /etc/ssl/certs/ca-certificates.crt && test ! -w /nix/store && : > /tmp/fleet-native-uid-check && /usr/local/bin/psionic-fleet --identity invalid >/dev/null 2>&1; test \"$?\" -eq 2"
+      ],
+      "name": "gcr.io/cloud-builders/docker",
+      "pullTiming": {
+        "endTime": "2026-10-31T03:36:06.794813275Z",
+        "startTime": "2026-10-31T03:36:06.793169671Z"
+      },
+      "status": "SUCCESS",
+      "timing": {
+        "endTime": "2026-10-31T03:36:07.958309566Z",
+        "startTime": "2026-10-31T03:36:06.793169671Z"
+      }
+    },
+    {
+      "args": [
+        "run",
+        "--rm",
+        "--network=none",
+        "--entrypoint",
+        "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "version",
+        "-d"
+      ],
+      "exitCode": 127,
+      "name": "gcr.io/cloud-builders/docker",
+      "pullTiming": {
+        "endTime": "2026-10-31T03:36:07.959952572Z",
+        "startTime": "2026-10-31T03:36:07.958458261Z"
+      },
+      "status": "FAILURE",
+      "timing": {
+        "endTime": "2026-10-31T03:36:09.047595985Z",
+        "startTime": "2026-10-31T03:36:07.958458261Z"
+      }
+    },
+    {
+      "args": [
+        "run",
+        "--rm",
+        "--network=none",
+        "--entrypoint",
+        "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "version",
+        "-m"
+      ],
+      "name": "gcr.io/cloud-builders/docker",
+      "status": "QUEUED"
+    },
+    {
+      "args": [
+        "run",
+        "--rm",
+        "--network=none",
+        "--entrypoint",
+        "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl",
+        "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "version",
+        "-e"
+      ],
+      "name": "gcr.io/cloud-builders/docker",
+      "status": "QUEUED"
+    }
+  ]
+}

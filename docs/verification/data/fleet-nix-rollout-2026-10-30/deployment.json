@@ -1,0 +1,46 @@
+{
+  "phase": "final-nix-packaging",
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "service": "oa-mesh-elephant",
+  "revision": "oa-mesh-elephant-m0nix-20261031a",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+  "production_traffic_percent": 100,
+  "retained_tag": "m0-nix",
+  "removed_owned_tag": "m0-warm",
+  "emitted_C_source_commit": "d6f9d6fd1134e32bae3bf7688fb24ec60e7ce8bd",
+  "coax_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+  "build_id": "a50d3a8f-4cad-40d4-b98c-3598132735ec",
+  "builder_image": "nixos/nix@sha256:f6f7814c2224dad18b14479fed5f0620be65d54625a4b97ae8b24b407e1b43a2",
+  "runtime": {
+    "openssl_version": "3.5.9",
+    "openssl_output": "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9",
+    "compiler_version": "16.2.0",
+    "user": "10001:10001",
+    "docker_uncompressed_image_size_bytes": 52477724,
+    "registry_image_size_bytes": 18599930,
+    "store_roots": 11,
+    "full_compiler_or_dev_headers_retained": false
+  },
+  "retained_intermediate_rollback": {
+    "revision": "oa-mesh-elephant-m0warm-20261031a",
+    "digest": "sha256:bafefc65363c2f658a385444a663441545908e934638ded8925142a751517f9b",
+    "tls_packaging": "Debian APT; historical intermediate does not satisfy Nix TLS requirement"
+  },
+  "retained_original_rollback": {
+    "revision": "oa-mesh-elephant-00002-dgz",
+    "digest": "sha256:48c948cef4297f850f8f8a9d4fd0bf5d98e6a2767d4a5fd3bf5c31cd09b33ec8"
+  },
+  "public_paired_case_count_per_phase": 3,
+  "public_old_median_ms": 5830,
+  "public_intermediate_APT_M0_median_ms": 937,
+  "public_final_Nix_M0_median_ms": 736,
+  "private_candidate_http": 200,
+  "private_candidate_seconds": 0.473839,
+  "unauthenticated_http": 403,
+  "API_auth_routes_quotas_unchanged": true,
+  "private_IAM_config_pins_preserved": true,
+  "GPU_provider_restarted_or_reconfigured": false,
+  "mammoth_rolled_out": false,
+  "demo_key_deleted": true
+}

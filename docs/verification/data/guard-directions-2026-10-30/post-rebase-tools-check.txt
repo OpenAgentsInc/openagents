@@ -1,0 +1,6 @@
+new non-Coax tool with no Firm reason: line and not on the port list: coax/tests/semantic_profiles.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/makers.sh
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_makers.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/api/test_makers_tips.py
+new non-Coax tool with no Firm reason: line and not on the port list: coax/web/card.js
+tools-check: 900 tracked tool files, 5 new without a reason

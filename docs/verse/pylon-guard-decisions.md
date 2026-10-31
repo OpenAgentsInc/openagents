@@ -59,6 +59,7 @@ must use a real monotonic effect, not game time, which pauses and changes speed.
 | M1. A decision arrives while play continues (21b) | A reusable Coax ticket/lifecycle gate and generic HTTP cancellation/deadline/late-response fencing. Fixed capacity, one pending guard request, exactly-once consumption and explicit refusal reasons. | Authored Coax checks; focused authority mutation; native debug/release and sanitizer checks; controlled asynchronous browser/effect tests. |
 | M2. An Everglade guard asks (21c) | A small Coax observation/request/response adapter, exact model/question/options validation, and an opt-in shadow integration at the existing guard-frame boundary. | Synthetic responses and actual emitted Wasm exercise request, callback, invalidation and fallback; default/golden modes make no model calls. |
 | M3. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 156–158 and 164 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
+| M3b. Requested directions (21e) | A separate explicit-help candidate, current visible goal and fixed authored routes; new frozen labels/requests and strong deterministic reference. Keep it isolated from the existing ambient policy. | 5/5 finite live smoke contexts match both the authored labels and the instant local rule. Actual page integration, player benefit and any remote-model advantage remain open. |
 | M4. Ambient application | Explicit opt-in ambient mode displays one authored line after the same admission gate; normal patrol and combat retain priority. No default activation from a confidence number alone. | Calm acceptance, alarm/death/edit/leave invalidation, late/duplicate/old callbacks, malformed answers and service refusals. Browser behavior and frame-time checks on the changed path. |
 | M5. Operational reliability | A narrow consumer-focused slice of 117/120/124: service cancellation, bounded scheduling, capacity budgets and separately hosted qualified same-checkpoint providers with explicit route admission. | Kill/disconnect/overload drills, no stale application, independent-provider recovery and no frame stalls. Provider errors retain useful typed causes. |
 | M6. Other consumers | Other Everglade ambient characters, then discrete decisions in other games. Voice uses its existing epoch gate; continuous vehicle control stays local. | Each consumer has its own legal action set, observation scope, validity conditions, fallback and quality gate. |
@@ -172,8 +173,43 @@ local quiet baseline, so M4 remains disabled. Measurement/contract mechanics are
 qualified; calibration and player benefit are not. Do not tune the request to
 these observed labels and present it as held-out improvement.
 
-Next work has two independent tracks: give a new candidate a meaningful bounded
-guard purpose and fresh held-out contexts; stage the existing M0 warm-fleet
-patch with real cold/catch-up/withdrawal qualification and compare public
-latency. The deployed fleet still waits five seconds per call. M5 continues to
-own independent providers, broader availability and remote cancellation.
+## Warm rollout and a new bounded purpose (2026-10-30)
+
+Those two tracks now have separate records. The first
+[Elephant warm-fleet rollout](../verification/fleet-warm-rollout-2026-10-30.md)
+reduced median public CLI attempt time from 5830 to 937 ms on its first three
+paired requests with the same checkpoint, provider and probabilities. The final
+Nix-built image is now live and measured 631–770 ms, median 736 ms, on three
+fresh paired requests. These small cohorts are observed warm timings, not an
+availability or latency SLO. The record names both immutable revisions,
+private candidate qualification, preserved config/IAM, rollback and the Nix TLS
+packaging correction. Mammoth's fleet remains
+on its earlier revision. Cold/catch-up/withdrawal rules retain their prior
+focused native qualification; this does not claim production fault tolerance.
+
+[Chapter 21e](../../psionic/book/ch021e-directions-on-request.md) and the
+[directions record](../verification/guard-directions-2026-10-30.md) add an explicit
+help candidate with five fixed choices. Fresh labels and request bytes precede
+calls; development 0/1/4 and held-out 2/3 all chose the expected tip through the
+normal cookie-authenticated API. Fetch times were 600–652 ms. The existing ambient-v1 actual-page consumer also
+measured 762 ms total admission on the first warm image, with pending blur
+revoking safely; its exact artifact and request scope are recorded separately.
+The quiet baseline
+is unhelpful in those requested contexts; the finite local goal-to-tip rule is
+also perfect and immediate. There is no demonstrated remote-model advantage,
+calibration or measured player benefit.
+
+Directions remains an isolated prototype and runnable lifecycle example. No new
+page interaction or remote-selected line is enabled. The next game slice should
+project only the current visible objective, add a separate explicit Directions
+intent and show the cheap local reference immediately. An optional remote shadow
+path must bind each new intent, goal/world/actor/cooldown revision and HTTP slot
+through Gd, including same-goal cancel/re-request. Refuse edited-world routes
+until reachability is qualified. Do not reuse `talk_to` and its quest/dialogue
+side effects for this intent.
+
+Any player-facing remote selection needs a richer independently labeled purpose
+where the model can add value over a strong local rule, plus real frame and
+cancellation evidence for that consumer. M4 ambient behavior remains disabled.
+M5 continues to own independent providers, broader availability and remote
+cancellation; Belt still waits for those reliability gates.

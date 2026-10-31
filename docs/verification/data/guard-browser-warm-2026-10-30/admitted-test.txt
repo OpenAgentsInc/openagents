@@ -1,0 +1,10 @@
+bun test v1.4.0 (34cbb9a40)
+
+coax/web/everglade-guard.test.ts:
+(pass) actual Everglade guard consumer (set EVERGLADE_GUARD_WASM) > owned session reaches a live Pylon from the actual guard page [10747.67ms]
+
+ 1 pass
+ 7 filtered out
+ 0 fail
+ 8 expect() calls
+Ran 1 test across 1 file. [13.37s]

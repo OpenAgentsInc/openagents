@@ -1,0 +1,60 @@
+// Operator probe admission only; never grants a game action or model trust.
+#load "../../../verse/everglade/guard-guide.coax"; // qualified duplicate-aware JSON readers
+#authority;
+CP_ORIGIN :: "https://openagents.com";
+CP_URL :: "https://openagents.com/api/v1/systemone";
+CP_LOGIN :: "{\"kind\":\"login\"}";
+CP_REQUEST_MAX :: 16384;
+CP_BODY_MAX :: 8192;
+CP_TIMEOUT :: 8000;
+CP_TIME_MAX :: 9007199254740991;
+
+#test "cookie probe requires a bounded canonical request and never treats a key as a request" {
+    good:="{\"model\":\"elephant-1\",\"state\":\"s\",\"questions\":{}}";
+    #assert cp_request(good);
+    #assert cp_request("{\"questions\":{},\"state\":{},\"model\":\"mammoth-1\"}");
+    for bad:[11]string.["","abcdef0123456789","null","[]","{}",
+      "{\"model\":\"other\",\"state\":\"s\",\"questions\":{}}",
+      "{\"model\":\"elephant-1\",\"state\":0,\"questions\":{}}",
+      "{\"model\":\"elephant-1\",\"state\":\"s\",\"questions\":[]}",
+      "{\"model\":\"elephant-1\",\"state\":\"s\",\"questions\":{},\"extra\":0}",
+      "{\"model\":\"elephant-1\",\"model\":\"elephant-1\",\"questions\":{}}",
+      "{\"model\":\"elephant-1\",\"state\":\"s\",\"state\":\"s\"}"] {#assert !cp_request(bad);}
+    b:[CP_REQUEST_MAX+1]u8;
+    for i:0..<b.count {b[i]=' ';}for i:0..<good.count {b[i]=good[i];}
+    #assert cp_request(cast(string)b[0..<CP_REQUEST_MAX]);
+    #assert !cp_request(cast(string)b[..]);
+}
+#test "capture bounds preserve HTTP refusals and the exact deadline is late" {
+    #assert CP_REQUEST_MAX==16384 && CP_BODY_MAX==8192 && CP_TIMEOUT==8000;
+    #assert cp_capture(0,0,0) && cp_capture(599,CP_TIME_MAX,8192);
+    #assert !cp_capture(-1,0,0) && !cp_capture(600,0,0);
+    #assert !cp_capture(200,-1,0) && !cp_capture(200,CP_TIME_MAX+1,0);
+    #assert !cp_capture(200,0,-1) && !cp_capture(200,0,8193);
+    #assert cp_deadline(0) && cp_deadline(7999) && !cp_deadline(8000) && !cp_deadline(-1);
+}
+cp_request :: (text:string)->bool #export_c {
+    if text.count>CP_REQUEST_MAX {return false;}
+    nodes:[4096]JvNode;d:[1]Jv;
+    if !jv_parse(d[..],text,nodes[..]) {return false;}
+    model:=gg_member(d[0],0,"model");state:=gg_member(d[0],0,"state");questions:=gg_member(d[0],0,"questions");
+    kind:=jv_kind(d[0],state);
+    return jv_len(d[0],0)==3 && (gg_is(d[0],model,"elephant-1") || gg_is(d[0],model,"mammoth-1")) && (kind==JV_STRING || kind==JV_OBJECT) && jv_kind(d[0],questions)==JV_OBJECT;
+}
+cp_capture :: (status:int,elapsed:int,bytes:int)->bool #export_c {
+    return status>=0 && status<=599 && elapsed>=0 && elapsed<=CP_TIME_MAX && bytes>=0 && bytes<=CP_BODY_MAX;
+}
+cp_deadline :: (elapsed:int)->bool #export_c {return elapsed>=0 && elapsed<CP_TIMEOUT;}
+#test "a normal browser session must be HttpOnly, secure and unreadable by page script" {
+    #assert cp_cookie(200,true,true,false);
+    #assert !cp_cookie(199,true,true,false) && !cp_cookie(201,true,true,false);
+    #assert !cp_cookie(200,false,true,false) && !cp_cookie(200,true,false,false) && !cp_cookie(200,true,true,true);
+}
+#test "frozen case identifiers are exact decimal words, not coerced numbers" {
+    #assert cp_case("0")==0 && cp_case("1")==1 && cp_case("2")==2 && cp_case("3")==3 && cp_case("4")==4;
+    for s:[8]string.["","00","-1","5","1.0","1x","true"," 1"] {#assert cp_case(s)== -1;}
+}
+cp_cookie :: (status:int,http_only:bool,secure:bool,script_readable:bool)->bool #export_c {return status==200 && http_only && secure && !script_readable;}
+cp_case :: (s:string)->int #export_c {
+    for i:0..<5 {if s==[5]string.["0","1","2","3","4"][i] {return i;}}return -1;
+}

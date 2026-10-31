@@ -1,0 +1,48 @@
+#import "Basic";
+#load "../../verse/everglade/guard-guide.coax";
+#load "../lib/game/decision.coax";
+
+// Synthetic response and timestamps only. No model request or game mutation.
+// book:begin example
+main :: () {
+    need:=GgObservation.{help_requested=true,goal=2,destination_available=true,eligible=true};
+    context:=GdContext.{epoch=1,actor=0,generation=1,revision=1,policy=2,options=2};
+    pending:[1]GdState;
+    first:=gd_begin(pending[..],context,100,GG_TIMEOUT);
+    answer:=gg_decode(GG_RESPONSE);
+    staged:=GdCode.stale;
+    if answer.ok {staged=gd_offer(pending[..],first.ticket.sequence,101,answer.action);}
+    print("synthetic contract: %\n",answer.ok);
+    print("staged before frame: %\n",staged==GdCode.ok && pending[0].phase==GD_READY);
+
+    // One frame: current semantic permission, then current ticket ownership.
+    taken:=GdChoice.{code=GdCode.waiting};
+    if gg_admit(need,answer,2).ok {
+        taken=gd_take(pending[..],first.ticket.sequence,context,102,gg_legal(need));
+    }
+    if taken.code!=GdCode.ok {ignored:=gd_cancel(pending[..],first.ticket.sequence);}
+    print("frame action: %\n",taken.action);
+    print("authored line: %\n",gg_line(taken.action));
+    print("duplicate applies: %\n",gd_take(pending[..],first.ticket.sequence,context,103,gg_legal(need)).code==GdCode.ok);
+
+    old:=gd_begin(pending[..],context,200,GG_TIMEOUT);
+    canceled:=gd_cancel(pending[..],old.ticket.sequence);
+    context.revision+=1; // a NEW Directions intent, even for the same goal
+    current:=gd_begin(pending[..],context,201,GG_TIMEOUT);
+    print("old intent stages: %\n",gd_offer(pending[..],old.ticket.sequence,202,answer.action)==GdCode.ok);
+    staged=gd_offer(pending[..],current.ticket.sequence,203,answer.action); // new callback, same synthetic bytes
+
+    changed:=need;changed.goal=3;context.revision+=1; // the visible objective moved
+    print("current objective admits old tip: %\n",gg_admit(changed,answer,3).ok);
+    print("changed ticket consumes: %\n",gd_take(pending[..],current.ticket.sequence,context,204,gg_legal(changed)).code==GdCode.ok);
+    canceled=gd_cancel(pending[..],current.ticket.sequence);
+
+    changed.hint_visible=true;
+    print("quiet after guide already shown: %\n",gg_admit(changed,GgAnswer.{ok=true,action=0},1).ok);
+    changed=need;context.revision+=1; // a fresh eligible intent, now allowed to expire
+    last:=gd_begin(pending[..],context,300,GG_TIMEOUT);
+    print("at expiry stages: %\n",gd_offer(pending[..],last.ticket.sequence,8300,answer.action)==GdCode.ok);
+    expired:=gd_expire(pending[..],8300);
+    print("cheap reference action: %\n",gg_baseline(need));
+}
+// book:end example

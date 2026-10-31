@@ -1,0 +1,27 @@
+// Offline tokenizer/preparation only: no model opening or network effects.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../guard-live/token-capacity-policy.coax";
+#load "token-policy.coax";
+#load "../../../verse/everglade/guard-guide-eval-wire.coax";
+#load "../../lib/serve-request.coax";
+#load "../../lib/decision-prepare.coax";
+tool_main :: ()->int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 2;}path:=args_at(args[..],0);
+  if !guard_token_input_size(fs_size(path)) {tool_errln("pinned tokenizer file size refused");return 2;}
+  table:[8277996]u8;n:=fs_read(path,table[..]);if n!=table.count || !pt_admit(table[..]) {tool_errln("pinned tokenizer identity refused");return 2;}
+  prompt:[8192]u8;render:[8192]u8;normal:[16384]u8;body:[4096]u8;hash:[64]u8;
+  candidate:[4096]int;full:[4096]int;stage:[4096]int;scalars:[16384]int;symbols:[8192]int;tokens:[4096]int;
+  work:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+  print("tokenizer_sha256=% capacity=512\n",PT_QWEN_SHA);
+  for i:0..<5 {
+    size:=ggew_request(i,body[..]);if size<0 || !ggew_hash(cast(string)body[0..<size],hash[..]) {return 3;}
+    request:=sv_decode(cast(string)body[0..<size],pools);if request.code!=SvCode.none || request.questions!=1 {return 3;}
+    q:=pools.questions[0];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};options:=pools.options[q.first..<q.first+q.count];
+    prepared:=ps_prepare(table[..],request.state,question,options,tokens[..],work,false);rendered:=pt_render_checked(request.state,question,options,prompt[..],render[..],false);
+    if prepared.status!=PrStatus.ok || rendered.status!=PtStatus.ok || !guide_tokens_fit(prepared.written) {tool_errln("frozen request exceeds prepared profile or resident capacity");return 3;}
+    print("case=% request_sha256=% json_bytes=% tokens=% prefix=% suffix=% rendered_bytes=% context_fits=true\n",i,cast(string)hash[..],size,prepared.written,prepared.prefix,prepared.written-prepared.prefix,rendered.written);
+  }return 0;
+}

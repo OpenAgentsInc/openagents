@@ -1,0 +1,11 @@
+// A recorded candidate answer must pass the actual guard decoder and the
+// deployment's exact original-Elephant provider/checkpoint pins. No model call.
+#import "Basic";
+#load "../tests/guard-live/public-probe-policy.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args[0].n!=1 {tool_errln("usage: fleet-answer-check RESPONSE.json");return 2;}
+    data:[8192]u8;n:=fs_read(args_at(args[..],0),data[..]);if n<0 || !gp_pin(cast(string)data[0..<n]) {tool_errln("fleet answer: contract or deployment pin refused");return 1;}
+    print("{\"verified\":true,\"model\":\"elephant-1\",\"question\":\"ambient\",\"provider\":\"%\",\"identity\":\"%\"}\n",GP_PROVIDER,GA_IDENTITY);return 0;
+}

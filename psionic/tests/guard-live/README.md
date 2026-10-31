@@ -123,3 +123,41 @@ not model inference or quality evidence.
 coax/bin/coax test psionic/tests/guard-live/token-capacity-policy.coax
 coax/bin/coax mutate psionic/tests/guard-live/token-capacity-policy.coax --root-only --jobs 4
 ```
+
+## API-only browser cookie probe
+
+[`cookie-probe.coax`](cookie-probe.coax) measures a real browser fetch at the
+production TLS origin without loading a game module. It requires explicit
+`--live`, one already-owned demo identity and signer, a bounded request file and
+a new writable output path. Missing opt-in or malformed outer request shape
+refuses before signing/network. Keep one caller active and respect normal
+quotas; do not rotate identities after refusal.
+
+```shell
+coax/web/tool.sh psionic/tests/guard-live/cookie-probe.coax --live --key /private/owned-demo.key --signer /private/sign --request psionic/fixtures/guard-guide-requests-v1/case0.json --case 0 --out /private/new-case0.json
+coax/web/tool.sh psionic/tests/guard-guide/guard-guide-evaluate.coax observation /private/new-case0.json
+```
+
+The headless browser is muted and has its own disposable profile. NIP-98 login
+uses the signer output in memory; the decision fetch supplies only the normal
+session cookie. The tool checks HttpOnly/Secure and script unreadability,
+streams at most 8192 response bytes, uses an 8000 ms abort timer and retains
+bounded HTTP/transport failures. It logs out and removes its browser profile.
+Only whitelisted synthetic response metadata is written; auth events, signatures,
+headers, cookie values and raw DevTools messages are never captured.
+
+The probe checks the outer request shape for the two known model names, not
+frozen-case identity or model quality. It hashes the exact supplied request.
+The guide evaluator must match that SHA to the selected case before any result
+counts. Extra probe metadata does not expand model admission. Timings use
+`performance.now()` around fetch/body completion and exclude login/startup and
+frame queueing. Use the existing actual-page test for game-frame measurements.
+
+```shell
+coax/bin/coax test psionic/tests/guard-live/cookie-probe-policy.coax --library
+coax/bin/coax mutate psionic/tests/guard-live/cookie-probe-policy.coax --root-only --jobs 4
+```
+
+The first [directions record](../../../docs/verification/guard-directions-2026-10-30.md)
+contains the five frozen captures, strong local reference and explicit scope.
+This probe does not enable a game feature or grant ambient rollout.

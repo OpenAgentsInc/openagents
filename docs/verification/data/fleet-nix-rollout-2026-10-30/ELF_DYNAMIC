@@ -1,0 +1,35 @@
+Dynamic section at offset 0x7e9f8 contains 33 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libssl.so.3]
+ 0x0000000000000001 (NEEDED)             Shared library: [libcrypto.so.3]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000001d (RUNPATH)            Library runpath: [/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/lib:/nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib]
+ 0x000000000000000c (INIT)               0x5000
+ 0x000000000000000d (FINI)               0x68c78
+ 0x0000000000000019 (INIT_ARRAY)         0x7dff0
+ 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x7dff8
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x0000000000000004 (HASH)               0x370
+ 0x000000006ffffef5 (GNU_HASH)           0x6d0
+ 0x0000000000000005 (STRTAB)             0x11f0
+ 0x0000000000000006 (SYMTAB)             0x6f8
+ 0x000000000000000a (STRSZ)              1768 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000015 (DEBUG)              0x0
+ 0x0000000000000003 (PLTGOT)             0x7fc48
+ 0x0000000000000002 (PLTRELSZ)           2568 (bytes)
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000017 (JMPREL)             0x3de8
+ 0x0000000000000007 (RELA)               0x1aa8
+ 0x0000000000000008 (RELASZ)             9024 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE
+ 0x000000006ffffffe (VERNEED)            0x19c8
+ 0x000000006fffffff (VERNEEDNUM)         3
+ 0x000000006ffffff0 (VERSYM)             0x18d8
+ 0x000000006ffffff9 (RELACOUNT)          368
+ 0x0000000000000000 (NULL)               0x0

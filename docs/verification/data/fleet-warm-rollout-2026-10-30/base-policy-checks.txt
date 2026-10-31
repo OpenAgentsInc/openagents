@@ -1,0 +1,13 @@
+ok   #test only exact immutable fleet image references are admitted (1 case, 289320 steps)
+ok   #test a candidate keeps old production traffic; promotion serves only the candidate (1 case, 1227 steps)
+ok   #test the complete ordered service spec changes only the single image leaf (1 case, 140371 steps)
+ok   #test one route and one-byte revision labels remain valid; percentages are individually bounded (1 case, 162 steps)
+ok   #test structural counterexamples do not hide behind equal node counts (1 case, 42306 steps)
+ok   #test parse: scalars, nesting, ranges and links (1 case, 14583 steps)
+ok   #test parse refuses what is not JSON (1 case, 26372 steps)
+ok   #test whitespace and token ends (1 case, 2841 steps)
+ok   #test paths: keys and indexes (1 case, 8750 steps)
+ok   #test unescape: every escape, surrogate pairs and UTF-8 (1 case, 3532 steps)
+ok   #test writing: objects, arrays, escapes and commas (1 case, 10186 steps)
+ok   #test a node written back compactly, strings escaped as JSON.stringify does (1 case, 15349 steps)
+12 checks, 12 passed, 0 failed

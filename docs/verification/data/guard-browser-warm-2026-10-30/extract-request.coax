@@ -1,0 +1,12 @@
+// Offline evidence extraction only. No network, signer, cookie or model effects.
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/json/json.coax";
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+    input:[16384]u8;n:=fs_read(args_at(args[..],0),input[..]);if n<0 {return 2;}
+    nodes:[256]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)input[0..<n],nodes[..]) {return 2;}
+    request:[8192]u8;k:=jv_str(d[0],jv_get(d[0],0,"request"),request[..]);if k<0 {return 2;}
+    print("%",cast(string)request[0..<k]);return 0;
+}

@@ -1,0 +1,10 @@
+bun test v1.4.0 (34cbb9a40)
+
+coax/web/everglade-guard.test.ts:
+(pass) actual Everglade guard consumer (set EVERGLADE_GUARD_WASM) > owned session revokes a pending live Pylon request on blur [17160.15ms]
+
+ 1 pass
+ 7 filtered out
+ 0 fail
+ 7 expect() calls
+Ran 1 test across 1 file. [21.06s]

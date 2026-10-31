@@ -1,0 +1,19 @@
+{
+  "finishTime": "2026-10-31T03:34:46.802477Z",
+  "id": "a50d3a8f-4cad-40d4-b98c-3598132735ec",
+  "results": {
+    "images": [
+      {
+        "artifactRegistryPackage": "projects/openagentsgemini/locations/us-central1/repositories/cloud-run-source-deploy/packages/psionic-fleet/versions/sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "digest": "sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb",
+        "name": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet:m0-nix-d6f9d6f-20261031b",
+        "pushTiming": {
+          "endTime": "2026-10-31T03:34:46.100643645Z",
+          "startTime": "2026-10-31T03:34:42.129374289Z"
+        }
+      }
+    ]
+  },
+  "startTime": "2026-10-31T03:32:08.492221155Z",
+  "status": "SUCCESS"
+}

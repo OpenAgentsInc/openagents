@@ -1,0 +1,83 @@
+// Explicit API-only browser measurement. CDP/DOM/HTTP are effects; request,
+// session, deadline and record bounds live in cookie-probe-policy.coax.
+// Never emits headers, auth events, cookies, signer output or raw CDP messages.
+#import "Basic";
+#load "cookie-probe-policy.coax";
+#load "../../../coax/lib/net/cdp.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+
+// Generic bounded browser HTTP effect. Coax supplies URL, body, optional
+// authorization, deadline and capacity. No model or game admission lives here.
+CP_FETCH :: "(async(d)=>{const start=performance.now(),a=new AbortController(),t=setTimeout(()=>a.abort(),d.timeout_ms);let status=0,body='',fault=0;try{const headers={'Content-Type':'application/json'};if(d.authorization)headers.Authorization=d.authorization;const r=await fetch(d.url,{method:'POST',credentials:'same-origin',headers,body:d.body,signal:a.signal});status=r.status;if(r.body){const reader=r.body.getReader(),parts=[];let n=0;for(;;){const v=await reader.read();if(v.done)break;if(n+v.value.length>d.max_bytes){fault=2;await reader.cancel();a.abort();break;}parts.push(v.value);n+=v.value.length;}if(!fault){const bytes=new Uint8Array(n);let at=0;for(const p of parts){bytes.set(p,at);at+=p.length;}body=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}}}catch{fault=1;}finally{clearTimeout(t);}return{status,elapsed_ms:Math.ceil(performance.now()-start),body,fault};})(";
+
+cp_eval :: (c:[]Cdp,expression:string)->int {
+    buf:[524288]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+    jo_key(o[..],"expression");jo_str(o[..],expression);jo_key(o[..],"awaitPromise");jo_bool(o[..],true);
+    jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);
+    if o[0].bad {return -1;}r:=cdp_call(c,"Runtime.evaluate",jo_text(o[..]),15000);
+    return ifx r<0 then -1 else jv_path(cdp_doc(c),r,"result.value");
+}
+cp_fetch :: (c:[]Cdp,url:string,body:string,authorization:string)->int {
+    buf:[131072]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+    jo_key(o[..],"url");jo_str(o[..],url);jo_key(o[..],"body");jo_str(o[..],body);
+    jo_key(o[..],"authorization");jo_str(o[..],authorization);
+    jo_key(o[..],"timeout_ms");jo_int(o[..],CP_TIMEOUT);jo_key(o[..],"max_bytes");jo_int(o[..],CP_BODY_MAX);jo_end(o[..]);
+    if o[0].bad {return -1;}script:[131072]u8;n:=ws_put(script[..],0,CP_FETCH);
+    n=ws_put(script[..],n,jo_text(o[..]));n=ws_put(script[..],n,")");
+    return ifx n<0 then -1 else cp_eval(c,cast(string)script[0..<n]);
+}
+cp_sign :: (signer:string,key:string,login:string,out:[]u8)->int {
+    h:=proc_new();if h<0 {return -1;}
+    argv:=[6]string.[signer,"--key",key,"POST","https://openagents.com/api/auth/key",login];ok:=proc_unset(h,"SIGN_AGE");
+    for a:argv {if !proc_arg(h,a) {ok=false;}}
+    if !ok || proc_start(h)!=0 {released:=proc_release(h);return -1;}
+    raw:[4096]u8;n:=proc_line(h,5000,raw[..]);status:=proc_wait(h,5000);released:=proc_release(h);
+    if n<=0 || status!=0 {return -1;}at:=ws_put(out,0,"Nostr ");return ws_put(out,at,cast(string)raw[0..<n]);
+}
+cp_browser :: (c:[]Cdp,request:string,authorization:string,case_id:int,request_sha:string,out:string)->bool {
+    if cdp_call(c,"Network.enable","{}",5000)<0 || cdp_call(c,"Network.setBypassServiceWorker","{\"bypass\":true}",5000)<0 {return false;}
+    if cdp_call(c,"Page.navigate","{\"url\":\"https://openagents.com/robots.txt\"}",5000)<0 {return false;}
+    origin:=false;end:=proc_now_ms()+5000;
+    while proc_now_ms()<end {v:=cp_eval(c,"location.origin === 'https://openagents.com'");if v>=0 && jv_bool(cdp_doc(c),v) {origin=true;break;}proc_sleep(50);}
+    if !origin {return false;}
+    login:=cp_fetch(c,"https://openagents.com/api/auth/key",CP_LOGIN,authorization);
+    status:=jv_int(cdp_doc(c),jv_get(cdp_doc(c),login,"status"),0);
+    cookies:=cdp_call(c,"Network.getCookies","{\"urls\":[\"https://openagents.com\"]}",5000);d:=cdp_doc(c);
+    list:=jv_get(d,cookies,"cookies");http_only:=false;secure:=false;
+    for i:0..<jv_len(d,list) {cookie:=jv_at(d,list,i);if gg_is(d,jv_get(d,cookie,"name"),"oa_session") {http_only=jv_bool(d,jv_get(d,cookie,"httpOnly"));secure=jv_bool(d,jv_get(d,cookie,"secure"));}}
+    visible:=cp_eval(c,"document.cookie.includes('oa_session=')");script_readable:=jv_kind(cdp_doc(c),visible)!=JV_FALSE;
+    if !cp_cookie(status,http_only,secure,script_readable) {return false;}
+    // Empty authorization: this request uses only the browser's normal session.
+    reply:=cp_fetch(c,CP_URL,request,"");d=cdp_doc(c);
+    status=jv_int(d,jv_get(d,reply,"status"),-1);elapsed:=jv_int(d,jv_get(d,reply,"elapsed_ms"),-1);
+    fault:=jv_int(d,jv_get(d,reply,"fault"),-1);body:[CP_BODY_MAX]u8;n:=jv_str(d,jv_get(d,reply,"body"),body[..]);
+    if !cp_capture(status,elapsed,n) {return false;}
+    record:[65536]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);
+    jo_key(o[..],"schema");jo_str(o[..],"guard-cookie-probe-v1");jo_key(o[..],"case");jo_int(o[..],case_id);
+    jo_key(o[..],"request_sha256");jo_str(o[..],request_sha);jo_key(o[..],"status");jo_int(o[..],status);
+    jo_key(o[..],"elapsed_ms");jo_int(o[..],elapsed);jo_key(o[..],"body");jo_str(o[..],cast(string)body[0..<n]);
+    jo_key(o[..],"transport_fault");jo_int(o[..],fault);jo_key(o[..],"deadline_met");jo_bool(o[..],cp_deadline(elapsed));
+    jo_key(o[..],"session_http_only");jo_bool(o[..],http_only);jo_key(o[..],"session_secure");jo_bool(o[..],secure);
+    jo_key(o[..],"session_script_readable");jo_bool(o[..],script_readable);jo_key(o[..],"decision_authorization_header");jo_bool(o[..],false);jo_end(o[..]);
+    return !o[0].bad && fs_write(out,jo_text(o[..]));
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=11 || !args_has(a[..],"--live") {tool_errln("usage: cookie-probe --live --key FILE --signer FILE --request FILE --case 0..4 --out NEW_FILE");return 2;}
+    key:=args_value(a[..],"--key","");signer:=args_value(a[..],"--signer","");request_path:=args_value(a[..],"--request","");out:=args_value(a[..],"--out","");case_id:=cp_case(args_value(a[..],"--case",""));
+    if case_id<0 || fs_kind(key)!=FS_FILE || fs_kind(signer)!=FS_FILE || fs_kind(out)!=FS_NONE {tool_errln("cookie probe: invalid paths/case or existing output");return 2;}
+    request:[CP_REQUEST_MAX]u8;n:=fs_read(request_path,request[..]);
+    if n<0 || !cp_request(cast(string)request[0..<n]) {tool_errln("cookie probe: canonical request refused before signing");return 2;}
+    hash:[32]u8;hex:[64]u8;if sha256_hash_checked(request[0..<n],hash[..],false)!=SHA_OK {return 2;}
+    for i:0..<32 {b:=cast(int)hash[i];hex[2*i]="0123456789abcdef"[b>>4];hex[2*i+1]="0123456789abcdef"[b&15];}
+    folder:[4096]u8;dir:=fs_temp("guard-cookie-",folder[..]);path:[4096]u8;login:=fs_join(dir,"login.json",path[..]);
+    if dir.count==0 {tool_errln("cookie probe: private login folder unavailable");return 1;}
+    if !fs_write(login,CP_LOGIN) {removed:=fs_remove(dir);return 1;}
+    if !fs_write(out,"") {removed:=fs_remove(dir);tool_errln("cookie probe: output is not writable");return 2;}
+    auth:[8192]u8;auth_n:=cp_sign(signer,key,login,auth[..]);removed:=fs_remove(dir);
+    if auth_n<0 {tool_errln("cookie probe: signer failed");return 1;}
+    c:[1]Cdp;if !cdp_launch(c[..],800,600,"guard-cookie-browser-") {tool_errln("cookie probe: headless transport unavailable");cdp_close(c[..]);return 1;}
+    ok:=cp_browser(c[..],cast(string)request[0..<n],cast(string)auth[0..<auth_n],case_id,cast(string)hex[..],out);
+    ignored:=cp_fetch(c[..],"https://openagents.com/api/auth/logout","{}","");cdp_close(c[..]);
+    if !ok {tool_errln("cookie probe: session or capture failed; no record admitted");return 1;}
+    print("cookie probe: bounded API record saved; replay determines decision admission\n");return 0;
+}

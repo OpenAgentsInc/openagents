@@ -1,0 +1,84 @@
+{
+  "at": "2026-10-31T03:17:04.308Z",
+  "scenario": "admitted",
+  "upstream_cancellation_proven": false,
+  "scope": "current local page/module at production origin; real normal owned HttpOnly session and untouched public decision endpoint",
+  "session": {
+    "present": true,
+    "http_only": true,
+    "secure": true
+  },
+  "wire": {
+    "auth_header_sent": false,
+    "http": 200,
+    "remote_ip": "136.69.24.60",
+    "from_service_worker": false,
+    "elapsed_ms": 671,
+    "complete": true
+  },
+  "probe": [
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0
+  ],
+  "metrics": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    676,
+    86,
+    762,
+    0
+  ],
+  "histograms": {
+    "callback": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stage": [
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "total": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "request": "{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: afternoon. Weather: rain.\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}",
+  "response": "{\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"quiet\",\"confidence\":0.595990452,\"probabilities\":{\"quiet\":0.595990452,\"greeting\":0.182850504,\"weather\":0.221159045}}},\"latency_ms\":140,\"model\":\"elephant-1\",\"service\":{\"door\":\"pylon:oct30-gcloud-elephant-rtx\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\",\"version\":\"psionic-pylon-v1\"},\"usage\":null}",
+  "wasm_sha256": "0b31088f0677a0c137744f95cc10ba1879aa47e5fcae744d1342f878dc8db49b"
+}

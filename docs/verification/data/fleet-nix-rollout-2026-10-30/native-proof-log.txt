@@ -1,0 +1,29 @@
+
+starting build "1fbd9684-e283-4474-8528-9d9b19669d7c" using release legacy
+
+FETCHSOURCE
+BUILD
+Starting Step #0
+Step #0: Already have image (with digest): gcr.io/cloud-builders/docker
+Step #0: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb: Pulling from openagentsgemini/cloud-run-source-deploy/psionic-fleet
+Step #0: 830d953f3b63: Pulling fs layer
+Step #0: 830d953f3b63: Verifying Checksum
+Step #0: 830d953f3b63: Download complete
+Step #0: 830d953f3b63: Pull complete
+Step #0: Digest: sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb
+Step #0: Status: Downloaded newer image for us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb
+Step #0: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb
+Finished Step #0
+Starting Step #1
+Step #1: Already have image (with digest): gcr.io/cloud-builders/docker
+Step #1: {"id":"sha256:e7719d01769114e2a79c5a02fcdc5272c2bccba66168931406e8de7259847bb7","size":52477724,"user":"10001:10001","env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"],"entrypoint":["/bin/sh","/usr/local/bin/start-fleet"],"workdir":""}
+Finished Step #1
+Starting Step #2
+Step #2: Already have image (with digest): gcr.io/cloud-builders/docker
+Finished Step #2
+Starting Step #3
+Step #3: Already have image (with digest): gcr.io/cloud-builders/docker
+Step #3: docker: Error response from daemon: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl": stat /nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl: no such file or directory: unknown.
+Finished Step #3
+ERROR
+ERROR: build step 3 "gcr.io/cloud-builders/docker" failed: step exited with non-zero status: 127

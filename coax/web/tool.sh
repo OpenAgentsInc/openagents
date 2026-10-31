@@ -14,7 +14,11 @@ here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 src="$here/$1.coax"; [[ "$1" == *.coax ]] && src="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 shift
 name="$(basename "$src" .coax)"; bin="$here/build/tools/$name"; p="$repo/coax/platform"
-if [[ ! -x "$bin" || -n "$(find "$src" "$repo/coax/lib" "$p" "$repo/coax/bin/coax" -newer "$bin" -print -quit)" ]]; then
+# Imports may live beside web tools or in Verse, Psionic, apps and protocol
+# sources. Conservatively watch those Coax trees as well as the entry/native
+# inputs; a cached executable must not silently retain an older #load.
+if [[ ! -x "$bin" || -n "$(find "$src" "$repo/coax/lib" "$p" "$repo/coax/bin/coax" -newer "$bin" -print -quit)" ||
+      -n "$(find "$repo/coax" "$repo/verse" "$repo/psionic" "$repo/apps" "$repo/proto" -name '*.coax' -newer "$bin" -print -quit)" ]]; then
   if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); fi
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
   "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"

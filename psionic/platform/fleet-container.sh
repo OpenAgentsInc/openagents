@@ -13,7 +13,7 @@ cp "${FLEET_HOST:-psionic/platform/fleet-host.c}" "$out/fleet-host.c"
 for name in socket-native tls-native entropy-native entropy-foreign process-native; do
   cp "coax/platform/$name.c" "coax/platform/$name.h" "$out/platform/"
 done
-cp psionic/platform/fleet-container/Dockerfile psionic/platform/fleet-container/start.sh "$out/"
+cp psionic/platform/fleet-container/Dockerfile psionic/platform/fleet-container/start.sh psionic/platform/fleet-container/default.nix psionic/platform/fleet-container/nixpkgs-pin.json "$out/"
 git rev-parse HEAD > "$out/SOURCE_COMMIT"
 shasum -a 256 "$coax" | cut -d ' ' -f1 > "$out/COAX_SHA256"
 (cd "$out"; find . -type f ! -name SOURCES.sha256 -exec shasum -a 256 {} \; | LC_ALL=C sort > SOURCES.sha256)

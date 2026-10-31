@@ -1,0 +1,82 @@
+{
+  "at": "2026-10-31T03:17:47.586Z",
+  "scenario": "pending-blur",
+  "upstream_cancellation_proven": false,
+  "scope": "current local page/module at production origin; real normal owned HttpOnly session and untouched public decision endpoint",
+  "session": {
+    "present": true,
+    "http_only": true,
+    "secure": true
+  },
+  "wire": {
+    "auth_header_sent": false,
+    "elapsed_ms": 150,
+    "cancelled": true,
+    "complete": true
+  },
+  "probe": [
+    1,
+    1,
+    0,
+    0,
+    1,
+    -1,
+    0
+  ],
+  "metrics": [
+    1,
+    1,
+    0,
+    1,
+    7,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "histograms": {
+    "callback": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stage": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "total": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "request": "{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: afternoon. Weather: rain.\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}",
+  "response": "",
+  "wasm_sha256": "0b31088f0677a0c137744f95cc10ba1879aa47e5fcae744d1342f878dc8db49b"
+}

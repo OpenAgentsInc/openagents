@@ -1,0 +1,71 @@
+// Authenticated Cloud Run snapshot admission for a fleet image-only rollout.
+#load "../../coax/lib/json/json.coax";
+#authority;
+FR_PREFIX :: "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:";
+#test "only exact immutable fleet image references are admitted" {
+    a:="us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    b:="us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    #assert fr_image(a) && fr_image(b) && !fr_image("") && !fr_image("image:latest") && !fr_image(a[0..<a.count-1]);
+    out:[256]u8;for i:0..<a.count {out[i]=a[i];}
+    for byte:0..<256 {out[a.count-1]=cast(u8)byte;expected:=false;for c:"0123456789abcdef" {if byte==cast(int)c {expected=true;}}#assert fr_image(cast(string)out[0..<a.count])==expected;}
+    out[a.count]='0';#assert !fr_image(cast(string)out[0..<a.count+1]);out[0]='X';#assert !fr_image(cast(string)out[0..<a.count]);
+}
+#test "a candidate keeps old production traffic; promotion serves only the candidate" {
+    names:=[2]string.["old","new"];p:=[2]int.[100,0];#assert fr_traffic(0,"old","new","new",names[..],p[..]);
+    #assert !fr_traffic(1,"old","new","new",names[..],p[..]);p[0]=0;p[1]=100;#assert fr_traffic(1,"old","new","new",names[..],p[..]);
+    #assert !fr_traffic(0,"old","new","new",names[..],p[..]);p[0]=1;p[1]=99;#assert !fr_traffic(1,"old","new","new",names[..],p[..]);
+    p[0]=0;p[1]=99;#assert !fr_traffic(1,"old","new","new",names[..],p[..]);p[1]=101;#assert !fr_traffic(1,"old","new","new",names[..],p[..]);p[0]=-1;p[1]=100;#assert !fr_traffic(1,"old","new","new",names[..],p[..]);
+    p[0]=0;#assert !fr_traffic(-1,"old","new","new",names[..],p[..]) && !fr_traffic(2,"old","new","new",names[..],p[..]);
+    #assert !fr_traffic(1,"old","new","old",names[..],p[..]) && !fr_traffic(1,"new","new","new",names[..],p[..]);
+    #assert !fr_traffic(1,"old","","",names[..],p[..]) && !fr_traffic(1,"","new","new",names[..],p[..]);
+    #assert !fr_traffic(1,"old","new","new",names[0..<0],p[0..<0]) && !fr_traffic(1,"old","new","new",names[..],p[0..<1]);
+}
+#test "the complete ordered service spec changes only the single image leaf" {
+    a:="{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"old\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}";
+    b:="{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}";
+    #assert fr_spec(a,b,"new") && !fr_spec(a,b,"wrong") && !fr_spec("{}",b,"new") && !fr_spec(a,"{}","new") && !fr_spec("bad",b,"new") && !fr_spec(a,"bad","new");
+    for bad:[5]string.["{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"other\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"2\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"foreign\",\"timeoutSeconds\":30}","{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"fixed\"}],\"image\":\"new\",\"resources\":{\"cpu\":\"1\"}}],\"serviceAccountName\":\"acct\",\"timeoutSeconds\":31}","{\"containers\":[]}"] {#assert !fr_spec(a,bad,"new");}
+}
+fr_image :: (image:string)->bool {
+    if image.count!=FR_PREFIX.count+64 || image[0..<FR_PREFIX.count]!=FR_PREFIX {return false;}
+    for i:FR_PREFIX.count..<image.count {c:=image[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}
+fr_traffic :: (phase:int,old:string,target:string,latest:string,names:[]string,percent:[]int)->bool {
+    if phase<0 || phase>1 || old.count==0 || target.count==0 || old==target || latest!=target || names.count==0 || names.count!=percent.count {return false;}
+    sum:=0;expected:=ifx phase==0 then old else target;
+    for i:0..<names.count {p:=percent[i];if !fr_percent(p) || (p>0 && names[i]!=expected) {return false;}sum+=p;}
+    return sum==100;
+}
+fr_spec :: (before:string,after:string,image:string)->bool {
+    an:[512]JvNode;bn:[512]JvNode;a:[1]Jv;b:[1]Jv;
+    if !jv_parse(a[..],before,an[..]) {return false;}
+    if !jv_parse(b[..],after,bn[..]) {return false;}
+    ac:=jv_get(a[0],0,"containers");bc:=jv_get(b[0],0,"containers");if jv_len(a[0],ac)!=1 {return false;}
+    if jv_len(b[0],bc)!=1 {return false;}
+    ai:=jv_get(a[0],jv_at(a[0],ac,0),"image");bi:=jv_get(b[0],jv_at(b[0],bc,0),"image");
+    if ai!=bi {return false;}
+    if jv_kind(b[0],bi)!=JV_STRING {return false;}
+    if jv_raw(b[0],bi)!=image {return false;}
+    for i:0..<a[0].count {
+        if an[i].kind!=bn[i].kind {return false;}
+        if an[i].count!=bn[i].count {return false;}
+        if jv_key(a[0],i)!=jv_key(b[0],i) {return false;}
+        if i==ai || an[i].kind==JV_ARRAY || an[i].kind==JV_OBJECT {continue;}
+        if jv_raw(a[0],i)!=jv_raw(b[0],i) {return false;}
+    }return true;
+}
+main :: () {}
+#test "one route and one-byte revision labels remain valid; percentages are individually bounded" {
+    names:=[1]string.["N"];p:=[1]int.[100];#assert fr_traffic(1,"O","N","N",names[..],p[..]);
+    #assert fr_percent(0) && fr_percent(100) && !fr_percent(-1) && !fr_percent(101) && !fr_percent(9223372036854775807);
+}
+fr_percent :: (p:int)->bool {return p>=0 && p<=100;}
+#test "structural counterexamples do not hide behind equal node counts" {
+    #assert !fr_spec("{\"containers\":[]}","{\"containers\":[]}","new");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\"}]}","{\"containers\":[],\"x\":0,\"y\":0}","new");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\"}],\"x\":0}","{\"x\":0,\"containers\":[{\"image\":\"new\"}]}","new");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\"}]}","{\"containers\":[{\"image\":7}]}","7");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\"}]}","{\"containers\":[{\"image\":\"new\"}],\"extra\":0}","new");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\",\"cpu\":\"1\"}]}","{\"containers\":[{\"image\":\"new\",\"cpu\":1}]}","new");
+    #assert !fr_spec("{\"containers\":[{\"image\":\"old\",\"cpu\":\"1\"}]}","{\"containers\":[{\"image\":\"new\",\"cpv\":\"1\"}]}","new");
+}

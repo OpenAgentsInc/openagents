@@ -1,0 +1,8 @@
+2c384c9bfd40132083b9c90fe8c40e808b9832591ba77bc2bd3dbcb25981cdb2  /tmp/fleet-m0-rollout-20261030/elephant-before.json
+fd93438a220b8c49d27f4c4dd40f7298547c3cc89eb6e31249118f3513a60bc6  /tmp/fleet-m0-rollout-20261030/elephant-before-revision.json
+793f5c47c6bd421e1489b84dcf03847e8ff8c23b57297940ed19ef6982cb35e6  /tmp/fleet-m0-rollout-20261030/elephant-candidate.json
+01404202fa4a4527229c580e1b6da95ed5351683282cc59478c42aa75d2d6d51  /tmp/fleet-m0-rollout-20261030/elephant-candidate-revision.json
+d1c3851daa4a5dfe9f9c2f2fd7099fea2c87c51dddb1cbea127677ffc9fe6ed4  /tmp/fleet-m0-rollout-20261030/elephant-iam-before.json
+d1c3851daa4a5dfe9f9c2f2fd7099fea2c87c51dddb1cbea127677ffc9fe6ed4  /tmp/fleet-m0-rollout-20261030/elephant-iam-candidate.json
+5e1a43b24a8c17443fda0308aa3d11ae21c415068f2e91e2535ad3cd49e9a0e1  /tmp/fleet-m0-rollout-20261030/elephant-promoted.json
+d1c3851daa4a5dfe9f9c2f2fd7099fea2c87c51dddb1cbea127677ffc9fe6ed4  /tmp/fleet-m0-rollout-20261030/elephant-iam-promoted.json

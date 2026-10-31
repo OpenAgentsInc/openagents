@@ -1,0 +1,38 @@
+[
+  {
+    "httpRequest": {
+      "latency": "0.257034171s",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "oa-mesh-elephant-m0warm-20261031a"
+      }
+    },
+    "timestamp": "2026-10-31T03:08:09.891284Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.265479301s",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "oa-mesh-elephant-m0warm-20261031a"
+      }
+    },
+    "timestamp": "2026-10-31T03:08:03.910310Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.324536931s",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "oa-mesh-elephant-m0warm-20261031a"
+      }
+    },
+    "timestamp": "2026-10-31T03:07:57.882870Z"
+  }
+]

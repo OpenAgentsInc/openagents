@@ -1,0 +1,7 @@
+// Synthetic wire fixtures only; never model outputs or utility labels.
+GG_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"guide\":{\"type\":\"choice\",\"choice\":\"east_gate\",\"confidence\":0.6,\"probabilities\":{\"quiet\":0.1,\"quest_board\":0.1,\"east_gate\":0.6,\"north_trail\":0.1,\"west_gate\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:fixture\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+gg_test_replace :: (out:[]u8,text:string,old:string,fresh:string)->string {
+    at:=-1;for i:0..<text.count-old.count+1 {if text[i..<i+old.count]==old {at=i;break;}}
+    if at<0 {return "";}n:=text.count-old.count+fresh.count;if n>out.count {return "";}k:=0;
+    for i:0..<at {out[k]=text[i];k+=1;}for b:fresh {out[k]=b;k+=1;}for i:at+old.count..<text.count {out[k]=text[i];k+=1;}return cast(string)out[0..<k];
+}

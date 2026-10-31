@@ -1,0 +1,8 @@
+	linux-vdso.so.1
+	libssl.so.3 => /nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/lib/libssl.so.3
+	libcrypto.so.3 => /nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/lib/libcrypto.so.3
+	libm.so.6 => /nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib/libm.so.6
+	libpthread.so.0 => /nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib/libpthread.so.0
+	libc.so.6 => /nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib/libc.so.6
+	libdl.so.2 => /nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib/libdl.so.2
+	/nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib/ld-linux-x86-64.so.2 => /nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57/lib64/ld-linux-x86-64.so.2

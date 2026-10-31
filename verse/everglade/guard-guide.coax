@@ -1,0 +1,181 @@
+// Requested directions candidate. Nothing here mutates quests, movement,
+// combat, crime, rewards or dialogue. A caller still owns current Gd lifecycle
+// tickets and the page frame boundary; an enum is not game authority by itself.
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json.coax"; // shared UTF-8 lexical helper only
+#load "guard-guide-types.coax";
+#load "guard-guide-check-fixtures.coax";
+#authority;
+GG_UNIT :: 1000000000;
+GG_TOL :: 1000;
+GG_BODY_MAX :: 8192;
+
+#test "only a requested unmet current orientation need permits a remote request" {
+    for bits:0..<64 {
+        o:=GgObservation.{help_requested=(bits&1)!=0,eligible=(bits&2)!=0,destination_available=(bits&4)!=0,at_destination=(bits&8)!=0,hint_visible=(bits&16)!=0,goal=ifx (bits&32)!=0 then 2 else 0};
+        #assert gg_ready(o)==(bits==39);
+    }
+    o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=2};
+    for bad:[5]int.[-9223372036854775807-1,-1,0,6,9223372036854775807] {o.goal=bad;#assert !gg_ready(o) && gg_target(bad)==0 && gg_baseline(o)==0 && gg_legal(o)==1;}
+}
+#test "the cheap canonical rule maps existing destinations without inventing a new objective" {
+    o:=GgObservation.{help_requested=true,eligible=true,destination_available=true};
+    for goal:1..<6 {o.goal=goal;target:=ifx goal==5 then 1 else goal;#assert gg_target(goal)==target && gg_baseline(o)==target && gg_legal(o)==(1|(1<<target));#assert gg_line(target)==GG_LINES[target];}
+    #assert gg_line(0)=="" && gg_line(-1)=="" && gg_line(5)=="";
+    o.help_requested=false;#assert gg_baseline(o)==0;
+}
+#test "the fixed request encodes only authored help facts and the current goal with five exact options" {
+    out:[4096]u8;nodes:[96]JvNode;d:[1]Jv;
+    o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=2};
+    for goal:1..<6 {o.goal=goal;n:=gg_request(o,out[..]);#assert n>0 && n<4096 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+        state:=jv_get(d[0],0,"state");#assert jv_raw_eq(jv_raw(d[0],jv_get(d[0],state,"current_goal")),GG_GOALS[goal]);
+        #assert jv_kind(d[0],jv_get(d[0],state,"canonical_route_available"))==JV_TRUE && jv_kind(d[0],jv_get(d[0],state,"at_destination"))==JV_FALSE && jv_kind(d[0],jv_get(d[0],state,"guide_tip_visible"))==JV_FALSE;
+        questions:=jv_get(d[0],0,"questions");q:=jv_get(d[0],questions,"guide");#assert jv_len(d[0],questions)==1 && jv_len(d[0],jv_get(d[0],q,"criteria"))==5;
+    }
+    #assert gg_request(o,out[0..<0])==-1;o.help_requested=false;#assert gg_request(o,out[..])==-1;
+}
+#test "unit decimals have independent exact bounds and typed profiles" {
+    #assert gg_probability("0").ok && gg_probability("1").units==GG_UNIT && gg_probability("0.000000001").units==1 && gg_probability("0.123456789").units==123456789;
+    for bad:[12]string.["","-0.1","1.000000001","2","01",".1","1.","1e0","0.0000000001","NaN","\"0.5\"","0x1"] {#assert !gg_probability(bad).ok;}
+}
+#test "unique decoded object keys and exact string types are required" {
+    nodes:[24]JvNode;d:[1]Jv;
+    #assert jv_parse(d[..],"{\"x\":1,\"\\u0078\":2}",nodes[..]) && gg_member(d[0],0,"x")==-1;
+    #assert jv_parse(d[..],"{\"x\":\"yes\",\"other\":[{}]}",nodes[..]) && gg_is(d[0],gg_member(d[0],0,"x"),"yes") && gg_member(d[0],0,"missing")==-1;
+    #assert !gg_is(d[0],-1,"yes");#assert gg_member(d[0],gg_member(d[0],0,"other"),"x")==-1;
+}
+#test "synthetic original-checkpoint answers bind exact guide question and option distribution" {
+    a:=gg_decode(GG_RESPONSE);#assert a.ok && a.action==2;
+    out:[8192]u8;
+    old:=[12]string.["\"elephant-1\"","\"guide\":","\"choice\",\"choice\"","\"east_gate\",\"confidence\"","\"confidence\":0.6","\"east_gate\":0.6","\"quiet\":0.1","\"west_gate\":0.1","psionic-pylon-v1","elephant-1@sha256:","pylon:fixture","59e443"];
+    fresh:=[12]string.["\"mammoth-1\"","\"ambient\":","\"score\",\"choice\"","\"quiet\",\"confidence\"","\"confidence\":1.000000001","\"east_gate\":\"0.6\"","\"quiet\":-0.1","\"west_gate\":0.2","psionic-pylon-v2","mammoth-1@sha256:","direct:fixture","Z9e443"];
+    for i:0..<old.count {#assert !gg_decode(gg_test_replace(out[..],GG_RESPONSE,old[i],fresh[i])).ok;}
+    #assert !gg_decode("{}").ok && !gg_decode("{} trailing").ok;
+    #assert !gg_decode(gg_test_replace(out[..],GG_RESPONSE,"\"quiet\":0.1","\"quiet\":0.1,\"quiet\":0.1")).ok;
+    #assert !gg_decode(gg_test_replace(out[..],GG_RESPONSE,"\"guide\":{","\"other\":{},\"guide\":{")).ok;
+}
+#test "current context, exact deadline and relevant route are rechecked independently of the decoder" {
+    o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=2};a:=gg_decode(GG_RESPONSE);
+    #assert gg_admit(o,a,0).ok && gg_admit(o,a,7999).action==2;
+    for time:[4]int.[-1,8000,8001,9223372036854775807] {#assert !gg_admit(o,a,time).ok;}
+    for action:[5]int.[-9223372036854775807-1,-1,1,5,9223372036854775807] {#assert !gg_admit(o,GgAnswer.{ok=true,action=action},1).ok;}
+    #assert gg_admit(o,GgAnswer.{ok=true,action=0},1).ok && !gg_admit(o,GgAnswer.{action=2},1).ok;
+    o.help_requested=false;#assert !gg_admit(o,GgAnswer.{ok=true,action=0},1).ok && !gg_admit(o,a,1).ok;
+}
+#test "metadata alphabets and UTF-8 are bounded before contract use" {
+    #assert gg_provider("59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7") && !gg_provider("a");
+    #assert gg_door("pylon:a-1_2") && !gg_door("pylon:") && !gg_door("direct:a") && !gg_door("pylon:a b");
+    #assert gg_utf8("plain") && gg_utf8("é");bad:=[1]u8.[255];#assert !gg_utf8(cast(string)bad[..]);
+}
+#test "decimal and metadata byte classes include their exact edges only" {
+    digit:=[3]u8.['0','.',0];provider:[64]u8;for i:0..<64 {provider[i]='a';}door:=[7]u8.['p','y','l','o','n',':',0];
+    for byte:0..<256 {
+        digit[2]=cast(u8)byte;number:=gg_probability(cast(string)digit[..]);#assert number.ok==(byte>='0' && byte<='9');
+        provider[0]=cast(u8)byte;#assert gg_provider(cast(string)provider[..])==((byte>='0' && byte<='9') || (byte>='a' && byte<='f'));
+        door[6]=cast(u8)byte;#assert gg_door(cast(string)door[..])==((byte>='a' && byte<='z') || (byte>='0' && byte<='9') || byte=='-' || byte=='_');
+    }
+    #assert gg_probability("1.0").ok && gg_probability("1.000000000").ok;
+    long:[87]u8;for i:0..<87 {long[i]='a';}for i:0..<6 {long[i]="pylon:"[i];}
+    #assert gg_door(cast(string)long[0..<86]) && !gg_door(cast(string)long[..]);
+}
+#test "every authored choice and lexical tie has an independently constructed valid wire" {
+    a:[8192]u8;b:[8192]u8;c:[8192]u8;key:[64]u8;part:[128]u8;
+    for action:[4]int.[0,1,3,4] {
+        body:=gg_test_replace(a[..],GG_RESPONSE,"\"east_gate\":0.6","\"east_gate\":0.1");
+        w:[1]Jo;jo_start(w[..],key[..]);jo_str(w[..],GG_OPTIONS[action]);needle:=jo_text(w[..]);
+        p:=json_raw(part[..],0,needle);p=json_raw(part[..],p,":0.1");fresh:[128]u8;q:=json_raw(fresh[..],0,needle);q=json_raw(fresh[..],q,":0.6");
+        body=gg_test_replace(b[..],body,cast(string)part[0..<p],cast(string)fresh[0..<q]);
+        p=json_raw(part[..],0,"\"choice\":");p=json_raw(part[..],p,needle);body=gg_test_replace(c[..],body,"\"choice\":\"east_gate\"",cast(string)part[0..<p]);
+        answer:=gg_decode(body);#assert answer.ok && answer.action==action;
+    }
+    choices:=[4]string.["east_gate","north_trail","quest_board","quiet"];
+    for chosen:choices {
+        w:[1]Jo;jo_start(w[..],a[..]);jo_obj(w[..]);for option:GG_OPTIONS {jo_key(w[..],option);jo_raw(w[..],ifx option==chosen || option=="west_gate" then "0.5" else "0");}jo_end(w[..]);
+        body:=gg_test_replace(b[..],GG_RESPONSE,"{\"quiet\":0.1,\"quest_board\":0.1,\"east_gate\":0.6,\"north_trail\":0.1,\"west_gate\":0.1}",jo_text(w[..]));
+        body=gg_test_replace(c[..],body,"\"confidence\":0.6","\"confidence\":0.5");jo_start(w[..],key[..]);jo_str(w[..],chosen);p:=json_raw(part[..],0,"\"choice\":");p=json_raw(part[..],p,jo_text(w[..]));body=gg_test_replace(a[..],body,"\"choice\":\"east_gate\"",cast(string)part[0..<p]);
+        #assert gg_decode(body).ok;
+    }
+}
+#test "confidence normalization body size and complete UTF8 have independent closed boundaries" {
+    a:[8193]u8;b:[8192]u8;for i:0..<a.count {a[i]=' ';}for i:0..<GG_RESPONSE.count {a[i]=GG_RESPONSE[i];}
+    #assert gg_decode(cast(string)a[0..<8192]).ok && !gg_decode(cast(string)a[..]).ok;
+    for fresh:[2]string.["\"confidence\":0.599999","\"confidence\":0.600001"] {#assert gg_decode(gg_test_replace(b[..],GG_RESPONSE,"\"confidence\":0.6",fresh)).ok;}
+    for fresh:[2]string.["\"confidence\":0.599998999","\"confidence\":0.600001001"] {#assert !gg_decode(gg_test_replace(b[..],GG_RESPONSE,"\"confidence\":0.6",fresh)).ok;}
+    for fresh:[2]string.["\"quiet\":0.099999","\"quiet\":0.100001"] {#assert gg_decode(gg_test_replace(b[..],GG_RESPONSE,"\"quiet\":0.1",fresh)).ok;}
+    for fresh:[2]string.["\"quiet\":0.099998999","\"quiet\":0.100001001"] {#assert !gg_decode(gg_test_replace(b[..],GG_RESPONSE,"\"quiet\":0.1",fresh)).ok;}
+    for fresh:[3]string.["\"confidence\":\"0.6\"","\"confidence\":1.5","\"quiet\":0.1,\"extra\":0"] {
+        old:=ifx fresh=="\"quiet\":0.1,\"extra\":0" then "\"quiet\":0.1" else "\"confidence\":0.6";#assert !gg_decode(gg_test_replace(b[..],GG_RESPONSE,old,fresh)).ok;
+    }
+    n:=json_raw(a[..],0,"{\"ignored\":\"");a[n]=255;n+=1;n=json_raw(a[..],n,"\",");n=json_raw(a[..],n,GG_RESPONSE[1..<GG_RESPONSE.count]);#assert !gg_decode(cast(string)a[0..<n]).ok;
+    #assert gg_decode(gg_test_replace(b[..],GG_RESPONSE,"pylon:fixture","pylon:a")).ok;
+}
+#test "all relevant directions and quiet stay legal only while a request is current" {
+    o:=GgObservation.{help_requested=true,eligible=true,destination_available=true};
+    for goal:1..<6 {o.goal=goal;for action:0..<5 {#assert gg_admit(o,GgAnswer.{ok=true,action=action},1).ok==((gg_legal(o)&(1<<action))!=0);}}
+}
+
+gg_target :: (goal:int)->int #export_c {if goal<1 || goal>5 {return 0;}return ifx goal==5 then 1 else goal;}
+gg_ready :: (o:GgObservation)->bool #export_c {return o.help_requested && o.eligible && o.destination_available && !o.at_destination && !o.hint_visible && gg_target(o.goal)!=0;}
+gg_baseline :: (o:GgObservation)->int #export_c {return ifx gg_ready(o) then gg_target(o.goal) else 0;}
+gg_legal :: (o:GgObservation)->int #export_c {return 1|(1<<gg_baseline(o));}
+gg_line :: (action:int)->string #export_c {if action<1 || action>4 {return "";}return GG_LINES[action];}
+gg_request :: (o:GgObservation,out:[]u8)->int #export_c {
+    if !gg_ready(o) {return -1;}w:[1]Jo;jo_start(w[..],out);
+    jo_obj(w[..]);jo_key(w[..],"model");jo_str(w[..],GG_MODEL);jo_key(w[..],"state");jo_obj(w[..]);
+    jo_key(w[..],"policy");jo_str(w[..],GG_POLICY);jo_key(w[..],"help");jo_str(w[..],"requested_directions");
+    jo_key(w[..],"current_goal");jo_str(w[..],GG_GOALS[o.goal]);jo_key(w[..],"canonical_route_available");jo_bool(w[..],true);
+    jo_key(w[..],"at_destination");jo_bool(w[..],false);jo_key(w[..],"guide_tip_visible");jo_bool(w[..],false);jo_end(w[..]);
+    jo_key(w[..],"questions");jo_obj(w[..]);jo_key(w[..],"guide");jo_obj(w[..]);jo_key(w[..],"type");jo_str(w[..],"choice");
+    jo_key(w[..],"instructions");jo_str(w[..],"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.");
+    jo_key(w[..],"criteria");jo_obj(w[..]);
+    labels:=[5]string.["No relevant requested orientation remains.","Commons board: find_work or return_to_board.","East Gate to Deep Wood/waystone: waystone.","North Trail to old ruins: ruins.","West Gate to river crossing: river."];
+    for i:0..<5 {jo_key(w[..],GG_OPTIONS[i]);jo_str(w[..],labels[i]);}
+    jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
+}
+gg_probability :: (text:string)->GgNumber {
+    if text.count<1 || (text[0]!='0' && text[0]!='1') {return GgNumber.{};}
+    units:=cast(int)(text[0]-'0')*GG_UNIT;if text.count==1 {return GgNumber.{ok=true,units=units};}
+    if text.count<3 || text.count>11 || text[1]!='.' {return GgNumber.{};}scale:=100000000;
+    for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GgNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
+    return GgNumber.{ok=units<=GG_UNIT,units=units};
+}
+gg_member :: (d:Jv,object:int,key:string)->int {
+    if jv_kind(d,object)!=JV_OBJECT {return -1;}found:=-1;
+    for i:0..<jv_len(d,object) {child:=jv_at(d,object,i);if jv_raw_eq(jv_key(d,child),key) {if found!= -1 {return -1;}found=child;}}
+    return found;
+}
+gg_is :: (d:Jv,node:int,text:string)->bool {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),text);}
+gg_provider :: (text:string)->bool {
+    if text.count!=64 {return false;}for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}
+gg_door :: (text:string)->bool {
+    if text.count<7 || text.count>86 || text[0..<6]!="pylon:" {return false;}
+    for i:6..<text.count {c:=text[i];if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}}return true;
+}
+gg_utf8 :: (text:string)->bool {i:=0;while i<text.count {n:=json_utf8(text,i);if n==0 {return false;}i+=n;}return true;}
+gg_decode :: (text:string)->GgAnswer #export_c {
+    bad:GgAnswer;if text.count>GG_BODY_MAX || !gg_utf8(text) {return bad;}
+    nodes:[128]JvNode;parsed:[1]Jv;if !jv_parse(parsed[..],text,nodes[..]) {return bad;}d:=parsed[0];
+    if !gg_is(d,gg_member(d,0,"model"),GG_MODEL) {return bad;}
+    service:=gg_member(d,0,"service");
+    if !gg_is(d,gg_member(d,service,"version"),"psionic-pylon-v1") || !gg_is(d,gg_member(d,service,"identity"),GG_IDENTITY) {return bad;}
+    provider:[64]u8;door:[86]u8;p:=jv_str(d,gg_member(d,service,"provider"),provider[..]);q:=jv_str(d,gg_member(d,service,"door"),door[..]);
+    if p!=64 {return bad;}if q<7 {return bad;}
+    if !gg_provider(cast(string)provider[..]) || !gg_door(cast(string)door[0..<q]) {return bad;}
+    answers:=gg_member(d,0,"answers");if jv_kind(d,answers)!=JV_OBJECT || jv_len(d,answers)!=1 {return bad;}
+    answer:=gg_member(d,answers,"guide");if !gg_is(d,gg_member(d,answer,"type"),"choice") {return bad;}
+    probs:=gg_member(d,answer,"probabilities");if jv_kind(d,probs)!=JV_OBJECT || jv_len(d,probs)!=5 {return bad;}
+    units:[5]int;sum:=0;
+    for i:0..<5 {field:=gg_member(d,probs,GG_OPTIONS[i]);number:=gg_probability(jv_raw(d,field));if jv_kind(d,field)!=JV_NUMBER || !number.ok {return bad;}units[i]=number.units;sum+=number.units;}
+    confidence:=gg_member(d,answer,"confidence");c:=gg_probability(jv_raw(d,confidence));
+    if jv_kind(d,confidence)!=JV_NUMBER || !c.ok || sum<GG_UNIT-GG_TOL || sum>GG_UNIT+GG_TOL {return bad;}
+    best:=2;for i:[4]int.[3,1,0,4] {if units[i]>units[best] {best=i;}}
+    if !gg_is(d,gg_member(d,answer,"choice"),GG_OPTIONS[best]) || c.units<units[best]-GG_TOL || c.units>units[best]+GG_TOL {return bad;}
+    return GgAnswer.{ok=true,action=best};
+}
+gg_admit :: (o:GgObservation,a:GgAnswer,elapsed_ms:int)->GgAdmit #export_c {
+    if !gg_ready(o) || !a.ok || elapsed_ms<0 || elapsed_ms>=GG_TIMEOUT {return GgAdmit.{};}
+    // Compare bounded authored identities directly; never shift by an untrusted
+    // answer integer. Quiet is abstention, not a bypass of request eligibility.
+    if a.action!=0 && a.action!=gg_baseline(o) {return GgAdmit.{};}return GgAdmit.{ok=true,action=a.action};
+}

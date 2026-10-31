@@ -1,0 +1,16 @@
+steps:
+- name: gcr.io/cloud-builders/docker
+  args: ['pull', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb']
+- name: gcr.io/cloud-builders/docker
+  args: ['image', 'inspect', '--format', '{"id":{{json .Id}},"size":{{.Size}},"user":{{json .Config.User}},"env":{{json .Config.Env}},"entrypoint":{{json .Config.Entrypoint}},"workdir":{{json .Config.WorkingDir}}}', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb']
+- name: gcr.io/cloud-builders/docker
+  args: ['run', '--rm', '--network=none', '--entrypoint', '/bin/sh', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb', '-c', 'test -r /etc/passwd && test -r /etc/group && test -r /etc/nsswitch.conf && test -r /etc/ssl/certs/ca-certificates.crt && test ! -w /nix/store && : > /tmp/fleet-native-uid-check && /usr/local/bin/psionic-fleet --identity invalid >/dev/null 2>&1; test "$$?" -eq 2']
+- name: gcr.io/cloud-builders/docker
+  args: ['run', '--rm', '--network=none', '--entrypoint', '/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb', 'version', '-d']
+- name: gcr.io/cloud-builders/docker
+  args: ['run', '--rm', '--network=none', '--entrypoint', '/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb', 'version', '-m']
+- name: gcr.io/cloud-builders/docker
+  args: ['run', '--rm', '--network=none', '--entrypoint', '/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9/bin/openssl', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:d3a7f0a62e034b5b8baf48fd06106a2894d96d727829839cb03bf9554d938dcb', 'version', '-e']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 240s

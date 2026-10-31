@@ -2199,6 +2199,26 @@ Actual public/cookie scope and remaining quality gates are recorded in
 `docs/verification/pylon-guard-shadow-2026-10-30.md`.
 
 
+The separate `everglade-directions-v1` candidate in
+`verse/everglade/guard-guide.coax` requires an explicit authored help intent,
+a current unmet goal, eligible gameplay and a known available route. It selects
+only fixed authored tips. Its decoder pins the checkpoint/provider and complete
+choice contract; semantic admission rejects a route for another goal, expired
+answers and revoked requests, including quiet. It is stateless: a page must
+still bind new intents, current world/goal/actor/cooldown revisions and transport
+ownership through Gd before applying anything at a simulation boundary. The
+runnable example composes those gates; the game page has no Directions consumer
+yet and default/ambient model behavior remains disabled.
+
+Directions evaluation binds every remote record to its case's frozen request
+SHA-256, keeps development and held-out observations separate, and exposes
+missing, wrong, refused, late and quiet answers. Quiet fallback never earns raw
+model accuracy. The deterministic goal-to-tip reference is perfect for this
+finite task; matching it does not establish a remote-model advantage or player
+benefit. Labels, split and exact request bytes precede live calls; existing
+ambient-v1 records remain unchanged.
+
+
 ## A warm fleet route belongs to a caught-up current connection
 
 A cached beacon is eligible only after the current authenticated/subscribed
@@ -2209,3 +2229,17 @@ eligible route skips the full window. Fleet text/byte and additive transport-ste
 exhaustion, never report false empty input. Existing connect/flush ceilings
 remain separate from bounded processing work. Focused signed-peer and sanitizer
 evidence is in `docs/verification/pylon-guard-decisions-2026-10-30.md`.
+
+The fleet container recipe pins its Nix builder and Nixpkgs source/hash, links
+OpenSSL from Nix and ships the complete measured runtime closure, including
+loader, TLS libraries, CA bundle and shell. Its numeric runtime user retains a
+writable `/tmp`; the Coax-emitted protocol code stays separate from packaging.
+The context exporter hashes those Nix inputs alongside emitted C and host effects.
+A recipe change alone makes no claim about an already deployed revision.
+
+Image promotion checks authenticated cloud observations through Coax authority:
+template and resolved revision specs change only their image, template and selected
+service security annotations are preserved, model/provider pins and private IAM
+match, and the exact ready candidate digest owns the required traffic phase.
+The old revision remains available for rollback. Snapshot files are operator
+observations, not cloud attestations; credentials and raw snapshots stay private.

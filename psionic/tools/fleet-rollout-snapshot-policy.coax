@@ -1,0 +1,92 @@
+#load "fleet-rollout-policy.coax";
+#authority;
+// Observations from authenticated SDK snapshots. Every admission decision stays
+// here; the CLI only parses/loads fields and calls these checked predicates.
+FR_NAMESPACE :: "157437760789";
+FrFacts :: struct {
+    requested_service:string;before_service:string;after_service:string;
+    before_namespace:string;after_namespace:string;revision_namespace:string;old_namespace:string;
+    before_url:string;after_url:string;revision_name:string;old_name:string;revision_service:string;old_service:string;
+    revision_image:string;before_image:string;old_image:string;
+    identity:string;provider:string;
+    generation:int;observed:int;service_ready:bool;revision_ready:bool;
+    service_spec:bool;revision_spec:bool;traffic:bool;image_valid:bool;
+    annotations_before:string;annotations_after:string;
+    security_before:[3]string;security_after:[3]string;security_kind_before:[3]int;security_kind_after:[3]int;
+    iam_before:string;iam_after:string;iam_version_before:int;iam_version_after:int;iam_private:bool;
+}
+fr_text :: (d:Jv,path:string)->string {return jv_raw(d,jv_path(d,0,path));}
+fr_ready :: (d:Jv)->bool {
+    list:=jv_path(d,0,"status.conditions");for i:0..<jv_len(d,list) {entry:=jv_at(d,list,i);if jv_raw(d,jv_get(d,entry,"type"))=="Ready" && jv_raw(d,jv_get(d,entry,"status"))=="True" {return true;}}return false;
+}
+fr_env :: (d:Jv,name:string)->string {
+    list:=jv_path(d,0,"spec.template.spec.containers[0].env");value:="";found:=0;
+    for i:0..<jv_len(d,list) {entry:=jv_at(d,list,i);if jv_raw(d,jv_get(d,entry,"name"))==name {value=jv_raw(d,jv_get(d,entry,"value"));found+=1;}}
+    return ifx found==1 then value else "";
+}
+fr_private :: (d:Jv)->bool {
+    bindings:=jv_get(d,0,"bindings");if jv_kind(d,bindings)!=JV_ARRAY {return false;}
+    if jv_len(d,bindings)==0 {return false;}
+    for i:0..<jv_len(d,bindings) {
+        members:=jv_get(d,jv_at(d,bindings,i),"members");if jv_kind(d,members)!=JV_ARRAY {return false;}
+        if jv_len(d,members)==0 {return false;}
+        for k:0..<jv_len(d,members) {
+            member:=jv_at(d,members,k);if jv_kind(d,member)!=JV_STRING {return false;}
+            who:=jv_raw(d,member);if who=="allUsers" || who=="allAuthenticatedUsers" || who.count==0 {return false;}
+        }
+    }return true;
+}
+fr_pins :: (service:string,identity:string,provider:string)->bool {
+    if service=="oa-mesh-elephant" {return identity=="elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba" && provider=="59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7";}
+    if service=="oa-mesh-mammoth" {return identity=="mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019" && provider=="d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829";}return false;
+}
+fr_admit :: (f:FrFacts,target:string,old:string,image:string)->bool {
+    if !f.service_spec || !f.revision_spec || !f.traffic || !f.image_valid || !f.service_ready || !f.revision_ready || !f.iam_private {return false;}
+    if f.before_service!=f.requested_service || f.after_service!=f.requested_service || f.revision_service!=f.requested_service || f.old_service!=f.requested_service {return false;}
+    if f.before_namespace!=FR_NAMESPACE || f.after_namespace!=FR_NAMESPACE || f.revision_namespace!=FR_NAMESPACE || f.old_namespace!=FR_NAMESPACE {return false;}
+    if f.before_url.count==0 || f.before_url!=f.after_url || f.revision_name!=target || f.old_name!=old || f.revision_image!=image || f.before_image!=f.old_image {return false;}
+    if f.generation<1 || f.observed!=f.generation || f.annotations_before!=f.annotations_after || f.iam_before!=f.iam_after || f.iam_version_before!=f.iam_version_after {return false;}
+    for i:0..<3 {if f.security_before[i]!=f.security_after[i] || f.security_kind_before[i]!=f.security_kind_after[i] {return false;}}
+    return fr_pins(f.requested_service,f.identity,f.provider);
+}
+FR_EXAMPLE :: FrFacts.{requested_service="oa-mesh-elephant",before_service="oa-mesh-elephant",after_service="oa-mesh-elephant",revision_service="oa-mesh-elephant",old_service="oa-mesh-elephant",before_namespace=FR_NAMESPACE,after_namespace=FR_NAMESPACE,revision_namespace=FR_NAMESPACE,old_namespace=FR_NAMESPACE,before_url="https://private",after_url="https://private",revision_name="new",old_name="old",revision_image="image",before_image="previous",old_image="previous",identity="elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",provider="59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",generation=1,observed=1,service_ready=true,revision_ready=true,service_spec=true,revision_spec=true,traffic=true,image_valid=true,annotations_before="fixed",annotations_after="fixed",iam_before="fixed",iam_after="fixed",iam_version_before=1,iam_version_after=1,iam_private=true};
+#test "every observed admission fact is required independently" {
+    #assert fr_admit(FR_EXAMPLE,"new","old","image");
+    for bits:0..<128 {f:=FR_EXAMPLE;f.service_spec=(bits&1)!=0;f.revision_spec=(bits&2)!=0;f.traffic=(bits&4)!=0;f.image_valid=(bits&8)!=0;f.service_ready=(bits&16)!=0;f.revision_ready=(bits&32)!=0;f.iam_private=(bits&64)!=0;#assert fr_admit(f,"new","old","image")== (bits==127);}
+    for field:0..<27 {
+        f:=FR_EXAMPLE;
+        if field==0 {f.before_service="foreign";}if field==1 {f.after_service="foreign";}if field==2 {f.revision_service="foreign";}if field==3 {f.old_service="foreign";}
+        if field==4 {f.before_namespace="foreign";}if field==5 {f.after_namespace="foreign";}if field==6 {f.revision_namespace="foreign";}if field==7 {f.old_namespace="foreign";}
+        if field==8 {f.before_url="";}if field==9 {f.after_url="other";}if field==10 {f.revision_name="other";}if field==11 {f.old_name="other";}if field==12 {f.revision_image="other";}if field==13 {f.old_image="other";}
+        if field==14 {f.generation=0;f.observed=0;}if field==15 {f.generation=-1;f.observed=-1;}if field==16 {f.observed=2;}
+        if field==17 {f.annotations_after="changed";}if field==18 {f.iam_after="changed";}if field==19 {f.iam_version_after=2;}
+        if field==20 {f.identity="other";}if field==21 {f.provider="other";}if field==22 {f.requested_service="unknown";}
+        if field>=23 {slot:=(field-23)%3;if field<26 {f.security_after[slot]="changed";}else {f.security_kind_after[slot]=5;}}
+        #assert !fr_admit(f,"new","old","image");
+    }
+    for i:0..<3 {f:=FR_EXAMPLE;f.security_kind_after[i]=5;#assert !fr_admit(f,"new","old","image");}
+}
+#test "readiness and environment extraction come from exact unique snapshot fields" {
+    nodes:[128]JvNode;d:[1]Jv;
+    for i:0..<6 {text:=[6]string.["{}","{\"status\":{\"conditions\":[]}}","{\"status\":{\"conditions\":[{\"type\":\"Ready\",\"status\":\"False\"}]}}","{\"status\":{\"conditions\":[{\"type\":\"ConfigurationsReady\",\"status\":\"True\"}]}}","{\"status\":{\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\"}]}}","{\"status\":{\"conditions\":[{\"type\":\"Other\",\"status\":\"False\"},{\"type\":\"Ready\",\"status\":\"True\"}]}}"];
+        #assert jv_parse(d[..],text[i],nodes[..]);#assert fr_ready(d[0])==(i>=4);
+    }
+    #assert jv_parse(d[..],"{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"env\":[{\"name\":\"X\",\"value\":\"wrong\"},{\"name\":\"PIN\",\"value\":\"correct\"}]}]}}}}",nodes[..]);
+    #assert fr_env(d[0],"PIN")=="correct" && fr_env(d[0],"missing")=="" && fr_text(d[0],"missing")=="";
+    #assert jv_parse(d[..],"{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"env\":[{\"name\":\"PIN\",\"value\":\"a\"},{\"name\":\"PIN\",\"value\":\"b\"}]}]}}}}",nodes[..]);#assert fr_env(d[0],"PIN")=="";
+    #assert jv_parse(d[..],"{\"x\":\"value\"}",nodes[..]);#assert fr_text(d[0],"x")=="value";
+}
+#test "private unchanged IAM cannot contain anonymous or malformed grants" {
+    nodes:[128]JvNode;d:[1]Jv;
+    #assert jv_parse(d[..],"{\"bindings\":[{\"members\":[\"serviceAccount:api\",\"user:operator\"]},{\"members\":[\"serviceAccount:watch\"]}]}",nodes[..]);#assert fr_private(d[0]);
+    for text:[8]string.["{}","{\"bindings\":[]}","{\"bindings\":[{\"members\":[]}]}","{\"bindings\":[{}]}","{\"bindings\":[{\"members\":[1]}]}","{\"bindings\":[{\"members\":[\"\"]}]}","{\"bindings\":[{\"members\":[\"allUsers\"]}]}","{\"bindings\":[{\"members\":[\"serviceAccount:api\"]},{\"members\":[\"allAuthenticatedUsers\"]}]}"] {#assert jv_parse(d[..],text,nodes[..]);#assert !fr_private(d[0]);}
+}
+#test "both existing checkpoint provider pairs stay exact" {
+    e:=FR_EXAMPLE;#assert fr_pins(e.requested_service,e.identity,e.provider);
+    #assert !fr_pins("unknown",e.identity,e.provider) && !fr_pins(e.requested_service,"wrong",e.provider) && !fr_pins(e.requested_service,e.identity,"wrong");
+    identity:="mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019";provider:="d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829";
+    #assert fr_pins("oa-mesh-mammoth",identity,provider) && !fr_pins("oa-mesh-mammoth","wrong",provider) && !fr_pins("oa-mesh-mammoth",identity,"wrong");
+}
+#test "a nonempty one-byte stable URL is a valid observation" {
+    f:=FR_EXAMPLE;f.before_url="u";f.after_url="u";#assert fr_admit(f,"new","old","image");
+}
