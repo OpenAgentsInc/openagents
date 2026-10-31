@@ -20,7 +20,7 @@ else
   cp "$root/verse/realm-template/starcatch.coax" "$root/apps/openagents-web/font.coax" "$here/starcatch-kms.coax" "$stage/"
   (cd "$stage" && "$coax" test starcatch-kms.coax > /dev/null && "$coax" c starcatch-kms.coax --library --header "$out/starcatch.h" > "$out/starcatch.c")
   "$coax" c "$here/starcatch-light.coax" --library --header "$out/starcatch-light.h" > "$out/starcatch-light.c"
-  cp "$here/kms.c" "$here/realm.h" "$here/starcatch-native.c" "$out/"
+  cp "$here/kms.c" "$here/realm.h" "$here/keys.h" "$here/starcatch-native.c" "$out/"
 fi
 [[ -n "${VERSE_KMS_GEN_ONLY:-}" ]] && exit 0
 cc="${CC:-cc}"

@@ -31,6 +31,8 @@ typedef struct {
 extern int vkc_validation_errors, vkc_validation_warnings;
 
 void vkc_open(Vkc *v);
+// The same, with instance and device extensions (a window's surface and swapchain).
+void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const char *const *device_exts, uint32_t nd);
 VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size);
 // One dispatch of a compute module's `main`: buffers at set 0, bindings
 // 0..n-1, push constants, groups by gx and gy. Waits for it to finish.
@@ -48,6 +50,23 @@ typedef struct {
   uint32_t stride, vertex_count;
   int additive;  // blend one plus one, else replace
 } VkcPass;
+// A w by h RGBA f32 image and the passes' pipelines, kept across frames:
+// record draws the passes in order into it (cleared to 0) and leaves it in
+// TRANSFER_SRC_OPTIMAL for a copy or a blit.
+typedef struct {
+  VkImage image;
+  VkDeviceMemory mem;
+  VkImageView view;
+  VkRenderPass pass;
+  VkFramebuffer fb;
+  VkShaderModule modules[8];
+  VkPipelineLayout layouts[8];
+  VkPipeline pipelines[8];
+  uint32_t n, w, h;
+} VkcTarget;
+void vkc_target_open(Vkc *v, VkcTarget *t, uint32_t w, uint32_t h, const VkcPass *passes, uint32_t n);
+void vkc_target_record(VkcTarget *t, VkCommandBuffer cmd, const VkcPass *passes);
+void vkc_target_close(Vkc *v, VkcTarget *t);
 // The passes in order into a w by h RGBA f32 image cleared to 0, read back
 // into rgba (w*h*4 floats, rows top to bottom). Waits for it to finish.
 void vkc_render(Vkc *v, uint32_t w, uint32_t h, const VkcPass *passes, uint32_t n, float *rgba);

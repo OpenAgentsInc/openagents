@@ -100,3 +100,22 @@ Every phase and native feature is a task in the Verse project
   exact, 2,342 within 1/255, 0 further, and 0 errors and 0 warnings under the
   validation layers. The window and the boot session are the next tasks
   (gpu-window, gpu-display-session).
+- 2026-10-31: G2 window: `verse/gpu/vk-window.c`, run by `verse/gpu/window.sh
+  HOST [--fullscreen] [--seconds N]`. An xdg-shell window (server-side
+  decorations, resize, full screen) with a FIFO swapchain. Each frame it draws
+  the offscreen pipeline (`vkc_target`, the passes frame-check uses) and blits
+  it to the swapchain image. Keys come from the seat (evdev codes through
+  `verse/kms/keys.h`, which kms.c now shares), and the pointer is hidden over
+  the window. On `coderos-4080`'s desktop (coder-compositor, DP-1 at 59.951 Hz),
+  Star Catcher ran windowed at 1271x1428 for 60 s: 3,599 frames (59.97 a
+  second), 0 dropped where presented, 0 of 3,598 compositor frame callbacks
+  late (longest interval 21.3 ms), and validation 0/0. Full screen at
+  2560x1440 runs at about 59.2-59.7 a second, with a late frame (26-55 ms)
+  about once a second. On those frames our own work is 0.2 ms, and the wait is
+  for the GPU (the fence, 16-29 ms), which suggests another process's GPU work.
+  The one candidate seen is Everglade's Chromium, which uses 24-40% of the GPU
+  and is hidden behind a full-screen window. It was left running, so this is
+  not confirmed. A high-priority queue (`VK_KHR_global_priority`) is not
+  permitted for this user. The full-screen check is the boot session's job
+  (gpu-display-session), where nothing else shares the display.
+

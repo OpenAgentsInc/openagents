@@ -27,6 +27,7 @@
 #ifdef __linux__
 #include <dirent.h>
 #include <fcntl.h>
+#include "keys.h"
 #include <linux/input.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -213,27 +214,6 @@ static void demo_keys(double t) {
 #define MAX_KEYBOARDS 16
 static int keyboards[MAX_KEYBOARDS], keyboard_count;
 
-static int key_of(int code) {
-  switch (code) {
-    case KEY_ESC: return REALM_ESCAPE;
-    case KEY_ENTER: case KEY_KPENTER: return REALM_ENTER;
-    case KEY_BACKSPACE: return REALM_BACKSPACE;
-    case KEY_LEFT: return REALM_LEFT;
-    case KEY_RIGHT: return REALM_RIGHT;
-    case KEY_UP: return REALM_UP;
-    case KEY_DOWN: return REALM_DOWN;
-    case KEY_SPACE: return ' ';
-  }
-  static const struct { int code; char c; } letters[] = {
-    {KEY_A,'a'},{KEY_B,'b'},{KEY_C,'c'},{KEY_D,'d'},{KEY_E,'e'},{KEY_F,'f'},{KEY_G,'g'},{KEY_H,'h'},{KEY_I,'i'},
-    {KEY_J,'j'},{KEY_K,'k'},{KEY_L,'l'},{KEY_M,'m'},{KEY_N,'n'},{KEY_O,'o'},{KEY_P,'p'},{KEY_Q,'q'},{KEY_R,'r'},
-    {KEY_S,'s'},{KEY_T,'t'},{KEY_U,'u'},{KEY_V,'v'},{KEY_W,'w'},{KEY_X,'x'},{KEY_Y,'y'},{KEY_Z,'z'},
-    {KEY_1,'1'},{KEY_2,'2'},{KEY_3,'3'},{KEY_4,'4'},{KEY_5,'5'},{KEY_6,'6'},{KEY_7,'7'},{KEY_8,'8'},{KEY_9,'9'},{KEY_0,'0'}};
-  for (size_t i = 0; i < sizeof letters / sizeof letters[0]; i++)
-    if (letters[i].code == code) return letters[i].c;
-  return 0;
-}
-
 // Every device that has a space bar is a keyboard. Grab it, so keys reach
 // the realm and not the console under it.
 static void open_keyboards(void) {
@@ -265,7 +245,7 @@ static void read_keys(void) {
     while ((n = read(keyboards[i], ev, sizeof ev)) > 0) {
       for (size_t j = 0; j < (size_t)n / sizeof ev[0]; j++) {
         if (ev[j].type != EV_KEY || ev[j].value == 2) continue;
-        int k = key_of(ev[j].code);
+        int k = realm_key_of(ev[j].code);
         if (!k) continue;
         if (ev[j].value == 1) realm_key(state, k);
         else realm_key_up(state, k);
