@@ -126,7 +126,7 @@ half_bits :: (v: f32) -> u32 {
 }
 pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bits(b) << 16)); }
 // A signed byte for v in [-1, 1].
-snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(clamp_f(v, -1, 1) * 127 + 0.5) & 0xff); }
+snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(wsp_clamp(v, -1, 1) * 127 + 0.5) & 0xff); }
 
 // The beach as waterlab.wgsl draws it (ground, surf_phase), for the streamed cells.
 fract_l :: (v: f32) -> f32 { return v - floor(v); }
@@ -206,16 +206,16 @@ waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f
   phone := s[0].phone_forced || width / hi_f32(dpr, 0.5) < 600;
   if !s[0].built || s[0].built_phone != phone { lab_build(s, phone); }
   if !s[0].built { return 0; }
-  step := clamp_f(dt, 0, 0.1);
+  step := wsp_clamp(dt, 0, 0.1);
   if s[0].fixed >= 0 { s[0].time = s[0].fixed; } else if !(still || s[0].golden) { s[0].time += f64(step); }
   if s[0].golden && s[0].fixed < 0 { s[0].time = 12.0; }
   turn := 1.2 * step;
   if s[0].held & 1 != 0 { s[0].yaw -= turn; }
   if s[0].held & 2 != 0 { s[0].yaw += turn; }
-  if s[0].held & 4 != 0 { s[0].dist = clamp_f(s[0].dist * (1 - step), 3, 120); }
-  if s[0].held & 8 != 0 { s[0].dist = clamp_f(s[0].dist * (1 + step), 3, 120); }
-  if s[0].held & 16 != 0 { s[0].sink = clamp_f(s[0].sink + step, 0, 12); }
-  if s[0].held & 32 != 0 { s[0].sink = clamp_f(s[0].sink - step, 0, 12); }
+  if s[0].held & 4 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 - step), 3, 120); }
+  if s[0].held & 8 != 0 { s[0].dist = wsp_clamp(s[0].dist * (1 + step), 3, 120); }
+  if s[0].held & 16 != 0 { s[0].sink = wsp_clamp(s[0].sink + step, 0, 12); }
+  if s[0].held & 32 != 0 { s[0].sink = wsp_clamp(s[0].sink - step, 0, 12); }
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
   u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32; u[U_MODE + 3] = dpr;
@@ -348,14 +348,14 @@ waterlab_pointer :: (s: [] Waterlab, x: f32, y: f32, phase: int, kind: int, id: 
   if phase == 0 { s[0].dragging = true; s[0].last_x = x; s[0].last_y = y; return true; }
   if phase == 1 && s[0].dragging {
     s[0].yaw -= (x - s[0].last_x) * 0.004;
-    s[0].pitch = clamp_f(s[0].pitch + (y - s[0].last_y) * 0.003, -0.6, 1.2);
+    s[0].pitch = wsp_clamp(s[0].pitch + (y - s[0].last_y) * 0.003, -0.6, 1.2);
     s[0].last_x = x; s[0].last_y = y;
     return true;
   }
   if phase >= 2 { s[0].dragging = false; }
   return false;
 }
-waterlab_wheel :: (s: [] Waterlab, dy: f32) #export_c { s[0].dist = clamp_f(s[0].dist * (1 + dy * 0.001), 3, 120); }
+waterlab_wheel :: (s: [] Waterlab, dy: f32) #export_c { s[0].dist = wsp_clamp(s[0].dist * (1 + dy * 0.001), 3, 120); }
 waterlab_golden :: (s: [] Waterlab, on: bool) #export_c { if !s[0].started { waterlab_reset(s); } s[0].golden = on; }
 
 // The page facts (message 600): the URL's query.

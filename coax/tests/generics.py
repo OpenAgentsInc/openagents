@@ -415,6 +415,52 @@ class Constraints(unittest.TestCase):
             self.assertEqual(self.coax("explain", code).returncode, 0, code)
 
 
+class LiteralArguments(unittest.TestCase):
+    """0.43.0: typed arguments bind $T first, then literals take the bound type."""
+    setUp = TypeParameters.setUp
+    write = TypeParameters.write
+    coax = TypeParameters.coax
+    codes = TypeParameters.codes
+
+    def test_literals_take_the_type_a_typed_argument_bound(self):
+        source = ('#import "Basic";\n'
+                  "clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T { if v < lo { return lo; } if v > hi { return hi; } return v; }\n"
+                  "calc :: () -> int { x: f32 = 1.75; n: u8 = 250; a := clamp(x, 0, 1); b := clamp(0, x, 1.5); c := clamp(n, 1, 200);\n"
+                  "  d := clamp(7, 2, 3); e := clamp(0.25, 0, 1); return cast(int) (a * 1000) + cast(int) (b * 100) + cast(int) c * 10 + d + cast(int) (e * 4); }\n")
+        program = self.write("l.coax", source + 'main :: () { print("%\\n", calc()); }\n')
+        checked = self.write("l_ct.coax", source + "K :: #run calc();\n"
+                             'main :: () { print("%\\n", K); }\n#test "literals" { #assert calc() == 3179; }\n')
+        for path in (program, checked):
+            for opt in ("0", "2"):
+                r = self.coax("run", path, "--opt", opt)
+                self.assertEqual((r.returncode, r.stdout), (0, "3179\n"), r.stderr)
+        self.assertEqual(self.coax("test", checked).returncode, 0)
+
+    def test_literals_that_cannot_take_the_bound_type(self):
+        cases = [
+            ("clamp :: (v: $T: ordered, lo: $T, hi: $T) -> $T { return v; } g :: () { n: u8 = 1; a := clamp(n, 0, 300); }", ["E0350"]),
+            ("pick :: (a: $T, b: $T) -> $T { return a; } g :: () { b := pick(true, 1); }", ["E0348"]),
+            ("pick :: (a: $T, b: $T) -> $T { return a; } g :: () { c := pick(2, 1.5); }", ["E0350"]),
+        ]
+        for i, (source, want) in enumerate(cases):
+            with self.subTest(source=source):
+                code, codes = self.codes(self.write(f"l{i}.coax", source + "\nmain :: () {}\n"))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(codes, want)
+
+    def test_the_water_clamp_consumer(self):
+        """r4a-generic-consumer: verse/water-spectrum.coax's one wsp_clamp serves int and f32."""
+        spectrum = (ROOT.parent / "verse/water-spectrum.coax").resolve()
+        head = f'#import "Basic";\n#load "{spectrum}";\n'
+        ok = self.write("w.coax", head + "main :: () { x: f32 = 1.5; print(\"% % %\\n\", wsp_clamp(x, 0, 1), wsp_clamp(7, 1, 4), wsp_clamp(-0.25, -0.5, 0.5)); }\n")
+        r = self.coax("run", ok)
+        self.assertEqual((r.returncode, r.stdout), (0, "1.0 4 -0.25\n"), r.stderr)
+        for i, call in enumerate(("wsp_clamp(true, false, true)", "wsp_clamp(\"b\", \"a\", \"c\")")):
+            with self.subTest(call=call):
+                code, codes = self.codes(self.write(f"w{i}.coax", head + f"main :: () {{ v := {call}; }}\n"))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(codes, ["E0806"])
+
 
 if __name__ == "__main__":
     unittest.main()

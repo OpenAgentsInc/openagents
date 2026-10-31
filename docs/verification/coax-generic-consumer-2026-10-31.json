@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-generic-consumer (#e033)",
+  "parent": "r4a-generic-values (#76ba)",
+  "compiler_version": "0.43.0",
+  "consumer": {
+    "before": "verse/water-spectrum.coax carried clamp_i (int) and clamp_f (f32), the same bounded clamp written once per element type; apps/openagents-web/waterlab.coax called clamp_f at 7 sites",
+    "after": "one wsp_clamp :: (v: $T: ordered, low: $T, high: $T) -> $T; 3 water-spectrum calls (int and f32) and waterlab's 7 calls use it, with literal bounds taking the bound type (wsp_clamp(dt, 0, 0.1))",
+    "language_gap_fixed": "0.43.0: a literal argument for a bare $T takes the type a typed argument bound (two-pass bind in CK_instance); before it, wsp_clamp(x_f32, 0, 1) failed with E0348"
+  },
+  "checker_kernel": {
+    "checks": "613 checks, 613 passed",
+    "mutation": "5071 mutants, 5071 killed, 0 survived (6 shards, merged)"
+  },
+  "before_after": {
+    "compilers": "before: coax0 0.40.0 on the original sources; after: the two-pass checker (built as 0.41.0 locally, released as 0.43.0 after rebasing over the native-execution 0.41.0 and finite-property 0.42.0) on the consumer sources",
+    "generated_c_bytes": {
+      "waterlab.coax --library": [
+        403345,
+        403465
+      ],
+      "water-spectrum.coax --library": [
+        311896,
+        311952
+      ]
+    },
+    "compile_peak_rss_bytes": {
+      "waterlab.coax": [
+        103677952,
+        101908480
+      ],
+      "water-spectrum.coax": [
+        86802432,
+        84410368
+      ]
+    },
+    "checks_water_spectrum": {
+      "result": [
+        "30 checks, 30 passed",
+        "30 checks, 30 passed"
+      ],
+      "evaluator_steps": [
+        4904770253,
+        4904770253
+      ],
+      "peak_rss_bytes": [
+        453001216,
+        458244096
+      ]
+    },
+    "c_equivalence": "with clamp_f/wsp_clamp__3f32 and clamp_i/wsp_clamp__3int identified and 3-5 digit site/line numbers masked, the multisets of nonblank C lines of both files are identical: the two instances' bodies are the hand-written ones. The byte growth is the instance names and the moved source-map ranges.",
+    "peak_memory_note": "compile and check peak RSS differ by under 3%, within run-to-run noise on a loaded host",
+    "instances": "waterlab emits 2 instances (wsp_clamp__3int, wsp_clamp__3f32) of the 256-instance budget; the budget itself is covered by Instantiation.test_instance_budget"
+  },
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "tests": [
+      "LiteralArguments.test_literals_take_the_type_a_typed_argument_bound: native -O0/-O2, #run and coax test agree (3179)",
+      "LiteralArguments.test_literals_that_cannot_take_the_bound_type: E0350 300 into u8, E0348 a literal for a bool binding, E0350 1.5 into int",
+      "LiteralArguments.test_the_water_clamp_consumer: wsp_clamp over f32, int and f64 from verse/water-spectrum.coax; bool and string bindings refused with E0806 (not ordered)"
+    ]
+  },
+  "page": "the waterlab golden is checked with coax/web/golden-check.sh on the consumer commit",
+  "legacy_codegen": {
+    "compared_with": "coax0 0.40.0 (build of 0a53b43267)",
+    "corpus": "1092 compilable repo sources outside coax/tests (the three water files on their pre-consumer text) emit byte-identical C under the two-pass checker, compiler stamp aside; 182 do not compile standalone under either; 0 differ"
+  }
+}

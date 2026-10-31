@@ -543,6 +543,15 @@ is an available refactoring path, not a claim that these consumers have
 been migrated. Preserve each helper's comparison order, NaN and signed-zero
 behavior, and qualify the actual call sites before replacing them.
 
+The water code has taken that path for its own copies.
+`verse/water-spectrum.coax` carried `clamp_i` for `int` and `clamp_f` for
+`f32`; one `wsp_clamp :: (v: $T: ordered, low: $T, high: $T) -> $T`
+replaced both, with the same comparison order, and the water lab's seven
+calls use it. Since 0.43.0 a literal argument takes the type a typed
+argument bound, so `wsp_clamp(dt, 0, 0.1)` instantiates at `f32`. The
+water checks and the generated C, apart from the instance names, were
+unchanged.
+
 ## Summary
 
 We started with a duplicated loop and removed it the usual way, by

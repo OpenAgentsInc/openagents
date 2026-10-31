@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.42.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.43.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -144,7 +144,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Original-source native execution companion | Optional native_check_execution.py host tooling runs one checked-AST C artifact at checked O0/O2 with a complete original evaluator baseline, Coax-owned EP1 protocol/verdict policy and bounded isolated native processes. execution.v1 records exact selected identities, source/artifact/compiler/SDK observations. Default ABI1 covers ordinary checks; opt-in ABI2 adds finite properties in execution.v2. Broader trap semantics and real-consumer qualification remain separate | works | 0.41.0 |
 | Finite authored native properties | Opt-in checks-c verification ABI2 and execution.v2 use shared Coax finite-domain admission/traversal for bool, small integers, sparse enums and int ranges, preserving original identities and last-binding-fastest order. Bounded per-property processes publish Coax-validated case progress and named witnesses; original unfiltered baselines remain mandatory. Native arity is limited to 64; ABI1 and execution.v1 remain unchanged | works | 0.42.0 |
 | `$T` type parameters | A $T binds from procedure parameters or an explicit generic-struct parameter list; unbound/result-only uses and unsupported nesting are refused (E0392-E0395); recursive or C-exported generic procedures are refused (E0396, E0398) | partial | 0.34.0 |
-| Generic instantiation | Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; built-in constraints restrict admitted types and operations | partial | 0.35.0 |
+| Generic instantiation | Each call deduces its bindings, typed arguments first and then literals for a bare $T (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; built-in constraints restrict admitted types and operations | partial | 0.35.0 |
 | `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted | partial | 0.36.0 |
 | Generic structs | Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; fixed-storage bindings only (no views or aggregates containing views); each instance is laid out and emitted (E0800-E0804, E0223) | partial | 0.37.0 |
 | Borrowed views across `#foreign` | A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404) | partial | 0.38.0 |

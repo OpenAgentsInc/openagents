@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.42.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.43.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -440,11 +440,15 @@ procedure (E0398). Programs without `$T` compile to identical C, and an
 uncalled generic procedure is never emitted.
 
 **Instantiation (0.35.0).** A call of a generic procedure deduces its
-bindings from the arguments, left to right: a `$T` parameter binds `$T` to
-the argument's type (an untyped literal defaults to `int` or `f64`), a
-`[] $T` parameter binds `$T` to the element type of a view argument
-(E0349 otherwise, with the `name[..]` fix for an array), and a later
-argument must have the bound type (E0348). An argument with no value cannot
+bindings from the arguments: a `$T` parameter binds `$T` to the argument's
+type, a `[] $T` parameter binds `$T` to the element type of a view argument
+(E0349 otherwise, with the `name[..]` fix for an array), and another
+argument must have the bound type (E0348). Typed arguments bind first, left
+to right; then an untyped literal for a bare `$T` takes the type they bound,
+or defaults to `int` or `f64` when none did, as a generic struct literal's
+fields do (0.43.0): `clamp(x, 0, 1)` with `x: f32` binds `$T = f32`, and a
+literal that cannot take the bound type is refused (E0350 when it does not
+fit, E0348 for a non-numeric binding). An argument with no value cannot
 bind (E0397). Concrete parameters beside `$T` are checked as before. The
 result type is the template's with each binding substituted. Each distinct
 (procedure, bindings) pair is one instance: a copy of the template's parsed

@@ -94,7 +94,7 @@ const ErrorInfo ERRORS[] = {
     {"E0345", "duplicate or conflicting constant", "The constant's name is already a constant, procedure or intrinsic."},
     {"E0346", "#assert needs bool", "The asserted expression must be a bool, at the top level and in a statement."},
     {"E0347", "constant dependencies too deep", "Constant type resolution is bounded at depth 64."},
-    {"E0348", "type parameter bound twice", "The arguments of one call bind each $T once: the first argument whose type uses $T binds it, and every later one must have that same type. Pass the same type, or convert one with cast."},
+    {"E0348", "type parameter bound twice", "The arguments of one call bind each $T once: the first typed argument whose type uses $T binds it, and every other one must have that same type; an untyped literal for a bare $T takes the bound type. Pass the same type, or convert one with cast."},
     {"E0349", "argument does not have the parameter's shape", "A parameter written [] $T binds $T from a view, so its argument must be a view (pass name[..] for an array); one written [$N] T or [4] T binds or checks a fixed array's length, so its argument must be a fixed array of that length."},
     {"E0350", "value does not fit its type", "Untyped literals take the type their use needs, if the value fits: x: u8 = 300 does not. A float literal cannot become an integer. Use a wider type, or cast,trunc to keep the low bits."},
     {"E0351", "no such field or member", "The struct has no field, or the enum no member, with this name. Arrays, views and strings have .count."},

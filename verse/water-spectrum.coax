@@ -209,7 +209,7 @@ wsp_significant_height :: (s: Spectrum) -> f64 {
 // Cascade c of `count`: cascade 0 the gameplay band at 64 texels, each next
 // WSP_RATIO times smaller at `size`, the last running to its Nyquist limit.
 wsp_cascade :: (s: Spectrum, count_in: int, size: int, c: int) -> Cascade {
-  count := clamp_i(count_in, 1, WSP_MAX_CASCADES);
+  count := wsp_clamp(count_in, 1, WSP_MAX_CASCADES);
   patch := wsp_patch(s);
   low := 0.0;
   out: Cascade;
@@ -223,7 +223,9 @@ wsp_cascade :: (s: Spectrum, count_in: int, size: int, c: int) -> Cascade {
   return out;
 }
 
-clamp_i :: (v: int, low: int, high: int) -> int { if v < low { return low; } if v > high { return high; } return v; }
+// One clamp for every ordered type (cascade counts, foam, the water lab's
+// camera); it was written once for int and once for f32.
+wsp_clamp :: (v: $T: ordered, low: $T, high: $T) -> $T { if v < low { return low; } if v > high { return high; } return v; }
 
 wsp_tick_at :: (s: Spectrum, time: f64) -> u64 { return cast(u64) fmax(floor(time / s.tick + 0.000001), 0.0); }
 
@@ -368,7 +370,7 @@ wsp_in_band :: (c: Cascade, n: int, m: int) -> bool {
 wsp_synth :: (out: [] Synth, s: Spectrum, count_in: int, size: int) {
   out[0].ok = false;
   if !wsp_valid(s) || size < 16 || size > WSP_MAX_SIZE || (size & (size - 1)) != 0 { return; }
-  count := clamp_i(count_in, 1, WSP_MAX_CASCADES);
+  count := wsp_clamp(count_in, 1, WSP_MAX_CASCADES);
   out[0].spectrum = s;
   out[0].count = count;
   span := f64(s.period) * s.tick;
@@ -598,12 +600,11 @@ wsp_foam_step :: (foam: [] f32, t: [] Tile, threshold: f32, decay: f32, dt: f32)
   nn := t[0].size * t[0].size;
   keep := exp(-decay * dt);
   for i: 0..<nn {
-    made := clamp_f((threshold - t[0].jacobian[i]) * 10, 0, 1);
+    made := wsp_clamp((threshold - t[0].jacobian[i]) * 10, 0, 1);
     v := foam[i] * keep;
     foam[i] = ifx made > v then made else v;
   }
 }
-clamp_f :: (v: f32, low: f32, high: f32) -> f32 { if v < low { return low; } if v > high { return high; } return v; }
 
 // Shallow water and surf: the wave's shoaling gain and whether it breaks.
 // Over depth h a wave of wavenumber k (deep water) shortens to

@@ -13,6 +13,20 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.43.0 — 2026-10-31
+
+Commit: pending
+
+- A generic call binds its typed arguments first, then gives an untyped
+  literal for a bare `$T` the type they bound, or its `int`/`f64` default
+  when none did, as generic struct literals already did. `clamp(x, 0, 1)`
+  with `x: f32` now instantiates `clamp` at `f32` instead of failing with
+  E0348; a literal that cannot take the bound type is E0350 (does not fit)
+  or E0348 (non-numeric binding).
+- E0348 says the binding came "from another argument" (or field), since the
+  binding argument may now come later.
+- Programs that compiled before emit identical C.
+
 ## 0.42.0 — 2026-10-31
 
 Commit: [`b9ed63a38faa74fee5557b506b2d2c042f77e4ef`](https://github.com/OpenAgentsInc/openagents/commit/b9ed63a38faa74fee5557b506b2d2c042f77e4ef)
