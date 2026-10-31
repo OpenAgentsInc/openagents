@@ -1330,7 +1330,7 @@ let clipNow = 0;
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
-  return engine ? 1 : 0;
+  return engine && gpu?.bg ? 1 : 0;
 };
 function frame(now) {
   requestAnimationFrame(frame);

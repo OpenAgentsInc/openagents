@@ -49,14 +49,14 @@ try {
   // a clip never counts as a visit
   await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })" })
   await send("Page.navigate", { url })
-  // the engine is up when a step draws (the page's assets keep loading in real time)
+  // Ready when a step draws and the loading card is gone. Until then each step is a
+  // thousandth of a millisecond of game time, so loading never eats the lead-up.
   let up = false
-  for (let i = 0; i < 300 && !up; i++) {
+  for (let i = 0; i < 600 && !up; i++) {
     await Bun.sleep(100)
-    up = (await run("typeof coaxialClipStep === 'function' ? coaxialClipStep(1) : 0")) === 1
+    up = (await run("typeof coaxialClipStep === 'function' ? coaxialClipStep(1, 1e6).then(d => d && !document.getElementById('coaxial-load')) : false")) === true
   }
-  if (!up) throw new Error("the page never started (no WebGPU, or the engine failed)")
-  await Bun.sleep(1500)   // packs and textures that load in the first moments
+  if (!up) throw new Error("the page never finished loading (no WebGPU, or the engine failed)")
   if (script) await run(script)
   for (let left = Math.round(skip * fps); left > 0; left -= 30) await run(`coaxialClipStep(${Math.min(30, left)}, ${fps})`)
   const total = Math.round(seconds * fps)

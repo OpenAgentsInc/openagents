@@ -921,9 +921,52 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     wv := query_number(url, "wave");
     if wv >= 1 && wv <= WAVES { s[0].wave = cast(int) wv - 1; }
     if fact_of(t, "coarse") == "1" { s[0].touch = true; }
+    if query_is(url, "stage", "highlight") { stage_highlight(s); }
   }
   ok := track_message(s[0].track[..], kind, t);
   if kind == HOST_PAGE { track_world(s[0].track[..], "hold-the-stair"); }
+}
+// ?KEY=VALUE in a page's URL, exactly.
+query_is :: (url: string, key: string, value: string) -> bool {
+  at := 0;
+  while at + key.count + 1 + value.count <= url.count {
+    before := ifx at == 0 then cast(u8) 63 else url[at - 1];
+    if (before == 63 || before == 38) && url[at..<at + key.count] == key && url[at + key.count] == 61 {
+      i := at + key.count + 1;
+      after := i + value.count;
+      return url[i..<after] == value && (after == url.count || url[after] == 38 || url[after] == 35);
+    }
+    at += 1;
+  }
+  return false;
+}
+// A staged moment for clips (?stage=highlight, docs/verse/clips.md): the last wave against
+// a full party at level 3, the stair crowded and every class firing.
+// The free tile beside the stair nearest a point part of the way up it.
+spot_near :: (s: [] Stair, along: f32) -> int {
+  best := -1; bd := 1000.0f32;
+  m := path_at(s[0].path_len * along);
+  for cell: 0..<CELLS {
+    if !free_cell(s, cell) || !beside_path(s, cell) { continue; }
+    c := cell_xy(cell);
+    dd := (c.x - m.x) * (c.x - m.x) + (c.y - m.y) * (c.y - m.y);
+    if dd < bd { bd = dd; best = cell; }
+  }
+  return best;
+}
+stage_highlight :: (s: [] Stair) {
+  stair_reset(s);
+  s[0].gold = 99999; s[0].wave = WAVES - 1;
+  for i: 0..<20 {
+    s[0].placed_round = 0;
+    spot := spot_near(s, 0.08 + 0.8 * f32(i) / 19);   // spread up the whole climb
+    if spot < 0 || !place(s, spot, AI_CLASSES[i % 6]) { break; }
+  }
+  for k: 0..<DEFENDERS { while s[0].party[k].live && upgrade(s, k) {} }
+  for i: 0..<FX { s[0].fx[i].life = 0; }
+  s[0].gold = 1260; s[0].placed_round = 0;
+  ok := start_wave(s);
+  s[0].toast_t = 0;
 }
 stair_golden :: (s: [] Stair, on: bool) #export_c { s[0].golden = on; }
 stair_action :: (s: [] Stair) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
@@ -1678,4 +1721,15 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   s[0].enabled[B_PAUSE] = true; press(s[..], B_PAUSE);
   n = stair_frame(s[..], out[..], u[..], 1440, 900, 1, 0.05, false);
   #assert s[0].wave_t > t0;
+}
+
+#test "the staged highlight is the last wave against a full party at level 3, and the stair is busy" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=highlight");
+  #assert s[0].phase == FIGHT && s[0].wave == WAVES && s[0].placed >= 16;
+  for k: 0..<DEFENDERS { if s[0].party[k].live { #assert s[0].party[k].level == MAX_LEVEL; } }
+  for i: 0..<720 { step(s[..], f32(STEP)); }
+  #assert live_beasts(s[..]) >= 8 && s[0].pops >= 10;
+  #assert !query_is("https://x/y?stage=highlights", "stage", "highlight") && query_is("https://x/y?a=1&stage=highlight#z", "stage", "highlight");
 }
