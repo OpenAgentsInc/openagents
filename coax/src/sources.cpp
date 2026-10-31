@@ -34,12 +34,26 @@ bool source_authority(const Source *src, Loc loc) {
     if (loc.offset >= unit->begin && loc.offset < unit->end) return unit->authority;
   return false;
 }
+const SourceUnit *source_unit_at(const Source *src, Loc loc) {
+  loc = diagnostic_loc(src, loc);
+  for (const auto &unit : src->units)
+    if (loc.offset >= unit->begin && loc.offset < unit->end) return unit.get();
+  return nullptr;
+}
+// The checked tuple encoding (SU_decl_id); native code only transports it.
+std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc) {
+  const SourceUnit *unit = source_unit_at(src, loc);
+  if (!unit || unit->module.empty()) return "";
+  uint8_t out[512];
+  int64_t n = SU_decl_id({unit->module.data(), (int64_t)unit->module.size()}, kind, {name.data, name.count}, {out, (int64_t)sizeof out});
+  return n < 0 ? "" : std::string((const char *)out, (size_t)n);
+}
 
 // Validate complete physical units with the existing Coax grammar kernel.
 // Source/proto directives are already parsed by their checked Coax scanners;
 // this bridge removes only those token spans, never parses declarations itself.
 static bool source_unit_syntax(const Source *source,const std::vector<Token> &tokens,
-                               const std::vector<coax_t_SU_Load> &loads,int64_t load_count) {
+                               const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit) {
   auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
   std::vector<coax_t_PS_Import> imports((size_t)caps.imports);
   auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
@@ -51,6 +65,7 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
   for (const auto &token:tokens) {
     bool suppressed=false;
     for(int64_t n=0;n<load_count;n++)suppressed=suppressed || (token.loc.offset>=loads[(size_t)n].begin && token.loc.offset<loads[(size_t)n].end);
+    suppressed=suppressed || (unit.claims && token.loc.offset>=unit.owner_begin && token.loc.offset<unit.owner_end);
     for(int64_t n=0;n<scan.count;n++)suppressed=suppressed || (token.loc.offset>=imports[(size_t)n].loc.offset && token.loc.offset<imports[(size_t)n].end);
     if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
   }
@@ -71,13 +86,15 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     std::string masked;
     uint8_t state = 1;
     bool balanced = true;
+    std::vector<std::pair<int64_t,int64_t>> loaders; // (loading unit, directive offset there)
   };
   std::vector<std::shared_ptr<Unit>> units;
   int64_t total = 0;
   bool composition = false;
+  std::vector<int64_t> finished; // units in the order their loads completed
   src->path = path;
-  std::function<bool(const std::string &, int64_t, const Source *, Loc)> visit;
-  visit = [&](const std::string &display, int64_t depth, const Source *parent, Loc directive) {
+  std::function<bool(const std::string &, int64_t, const Source *, Loc, int64_t)> visit;
+  visit = [&](const std::string &display, int64_t depth, const Source *parent, Loc directive, int64_t from) {
     std::error_code ec;
     auto canonical = std::filesystem::canonical(display, ec);
     if (ec || !std::filesystem::is_regular_file(canonical, ec)) {
@@ -88,7 +105,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     std::vector<coax_string> names; std::vector<uint8_t> states;
     for (const auto &u : units) {names.push_back({u->source->canonical.data(),(int64_t)u->source->canonical.size()});states.push_back(u->state);}
     auto found = SU_visit({names.data(),(int64_t)names.size()}, {states.data(),(int64_t)states.size()}, {key.data(),(int64_t)key.size()});
-    if (found.action == 1) return true;
+    if (found.action == 1) {units[(size_t)found.index]->loaders.push_back({from,directive.offset});return true;}
     if (found.action == 2) {
       error_at(parent,directive,"E0602","source cycle loads active unit '" + display + "'");
       return false;
@@ -112,6 +129,8 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     bool read_ok=!ferror(f);fclose(f);
     if (!read_ok) {error_at(parent,directive,"E0601","failed reading source unit '"+display+"'");return false;}
     total+=(int64_t)u->source->text.size();units.push_back(u);
+    const int64_t self=(int64_t)units.size()-1;
+    if (from>=0) u->loaders.push_back({from,directive.offset});
     Source local;local.path=display;local.text=u->source->text;
     std::vector<Token> tokens;
     if (!lex(arena,&local,&tokens)) return false;
@@ -125,15 +144,30 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     if (scan.error) {
       Loc at{1,1,(int32_t)scan.offset};
       for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
-      error_at(&local,at,scan.error==2?"E0603":"E0600",scan.error==2?"too many source loads in one unit":"#load requires a top-level nonempty NUL-free string path followed by ';'");
+      if (scan.error==3) error_at(&local,at,"E0605","#module requires one top-level lowercase dotted ID string followed by ';'","write #module \"engine.hud\"; once, at file scope");
+      else error_at(&local,at,scan.error==2?"E0603":"E0600",scan.error==2?"too many source loads in one unit":"#load requires a top-level nonempty NUL-free string path followed by ';'");
       return false;
+    }
+    if (scan.claims) {
+      std::vector<coax_string> claims;
+      for (const auto &other:units) claims.push_back({other->source->module.data(),other->source->claims?(int64_t)other->source->module.size():0});
+      claims.back()={nullptr,0};
+      const std::string id(scan.owner.data,(size_t)scan.owner.count);
+      auto prior=SU_claim_index({claims.data(),(int64_t)claims.size()},{id.data(),(int64_t)id.size()});
+      if (prior>=0) {
+        Loc at{1,1,(int32_t)scan.owner_begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
+        error_at(&local,at,"E0606","logical module '"+id+"' is already claimed by '"+units[(size_t)prior]->source->path+"'");
+        return false;
+      }
+      u->source->claims=true;u->source->module=id;
     }
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
     composition=composition || scan.count!=0;
     if (composition && !u->balanced) {
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return false;
     }
-    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count)) return false;
+    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan)) return false;
+    if (scan.claims) for (int64_t at=scan.owner_begin;at<scan.owner_end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
     // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
     for (int64_t i=0;i<scan.count;i++) {
       const auto &r=loads[(size_t)i];
@@ -141,11 +175,11 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
       std::filesystem::path next(std::string(r.path.data,(size_t)r.path.count));
       if (next.is_relative()) next=std::filesystem::path(display).parent_path()/next;
       Loc at{1,1,(int32_t)r.begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
-      if (!visit(next.lexically_normal().string(),depth+1,&local,at)) return false;
+      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self)) return false;
     }
-    u->state=2;return true;
+    u->state=2;finished.push_back(self);return true;
   };
-  if (!visit(path,0,src,{1,1,0})) return false;
+  if (!visit(path,0,src,{1,1,0},-1)) return false;
   int32_t line=1;
   for (const auto &u:units) {
     u->source->begin=(int32_t)src->text.size();u->source->first_line=line;
@@ -155,6 +189,30 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     line+=(int32_t)std::count(src->text.begin()+u->source->begin,src->text.end(),'\n');
     u->source->end=(int32_t)src->text.size();src->units.push_back(u->source);
   }
+  // Owners in topological order (a loader finishes after what it loads): a
+  // claim owns itself; an unclaimed member joins its loaders' owners, which
+  // SU_owner_join keeps independent of load and traversal order.
+  std::vector<int64_t> owner(units.size(),-1);
+  for (auto it=finished.rbegin();it!=finished.rend();++it) {
+    const auto &u=units[(size_t)*it];
+    if (u->source->claims) {owner[(size_t)*it]=*it;continue;}
+    int64_t joined=-1;
+    for (const auto &edge:u->loaders) {
+      int64_t before=joined;joined=SU_owner_join(joined,owner[(size_t)edge.first]);
+      if (joined==-2) {
+        const auto &from=units[(size_t)edge.first]->source;
+        int32_t offset=from->begin+(int32_t)edge.second;
+        Loc at{1,1,offset};
+        for (int32_t i=0;i<offset;i++) if (src->text[(size_t)i]=='\n') {at.line++;at.col=1;} else at.col++;
+        error_at(src,at,"E0607","source unit '"+u->source->path+"' has no #module of its own and is loaded under two logical modules, '"+
+                 units[(size_t)before]->source->module+"' and '"+units[(size_t)owner[(size_t)edge.first]]->source->module+"'",
+                 "give the shared unit its own #module, or load it under one module only");
+        return false;
+      }
+    }
+    owner[(size_t)*it]=joined;
+  }
+  for (size_t i=0;i<units.size();i++) if (owner[i]>=0) units[i]->source->module=units[(size_t)owner[i]]->source->module;
   return true;
 }
 } // namespace coax

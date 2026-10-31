@@ -2,7 +2,7 @@
 #authority;
 SU_Token :: struct {kind:u32;text:string;begin:int;end:int;}
 SU_Load :: struct {path:string;begin:int;end:int;}
-SU_Scan :: struct {count:int;authority:bool;error:u32;offset:int;balanced:bool=true;}
+SU_Scan :: struct {count:int;authority:bool;error:u32;offset:int;balanced:bool=true;claims:bool;owner:string;owner_begin:int;owner_end:int;}
 SU_Visit :: struct {index:int= -1;action:u8;}
 
 #test "a top-level load retains its path and source span" {
@@ -79,6 +79,105 @@ SU_Visit :: struct {index:int= -1;action:u8;}
  r:=SU_visit(paths[..],states[..],"x");#assert r.action==3 && r.index==0;
 }
 
+// Logical modules (schema 1). `#module "a.b";` claims an authored owner for
+// its physical unit; #load members without their own claim share the owner
+// of the units that load them. Identity is (module, kind, name), never a
+// path, line, flattening ordinal or C spelling.
+#test "a top-level module claim retains its ID and directive span" {
+ t:=[4] SU_Token.[SU_Token.{kind=6,text="module",begin=1,end=8},SU_Token.{kind=5,text="verse.hud",begin=9,end=20},SU_Token.{kind=15,begin=20,end=21},SU_Token.{}];
+ out:[1] SU_Load;r:=SU_scan(t[..],out[..]);
+ #assert r.error==0 && r.claims && r.owner=="verse.hud" && r.owner_begin==1 && r.owner_end==21 && r.count==0 && r.balanced;
+ t[0].text="modules";r=SU_scan(t[..],out[..]);#assert r.error==0 && !r.claims && r.owner=="";
+}
+#forall "module syntax requires a valid string ID and a terminator" kind:0..<17 {
+ t:=[4] SU_Token.[SU_Token.{kind=6,text="module",begin=4},SU_Token.{kind=cast(u32)kind,text="a.b"},SU_Token.{kind=15},SU_Token.{}];out:[1] SU_Load;
+ r:=SU_scan(t[..],out[..]);
+ if kind==5 {#assert r.error==0 && r.claims;}else {#assert r.error==3 && r.offset==4 && !r.claims;}
+ t[1].kind=5;t[2].kind=cast(u32)kind;r=SU_scan(t[..],out[..]);
+ if kind==15 {#assert r.error==0;}else {#assert r.error==3 && !r.claims;}
+ t[2].kind=15;t[1].text="A.b";#assert SU_scan(t[..],out[..]).error==3;
+}
+#test "one claim per unit, at file scope, never truncated" {
+ t:=[6] SU_Token.[SU_Token.{kind=6,text="module"},SU_Token.{kind=5,text="a"},SU_Token.{kind=15},SU_Token.{kind=6,text="module",begin=9},SU_Token.{kind=5,text="a"},SU_Token.{kind=15}];out:[1] SU_Load;
+ r:=SU_scan(t[..],out[..]);#assert r.error==3 && r.offset==9;
+ #assert SU_scan(t[0..<3],out[..]).error==0;
+ #assert SU_scan(t[0..<1],out[..]).error==3;#assert SU_scan(t[0..<2],out[..]).error==3;
+ nested:=[5] SU_Token.[SU_Token.{kind=10},SU_Token.{kind=6,text="module",begin=2},SU_Token.{kind=5,text="a"},SU_Token.{kind=15},SU_Token.{kind=11}];
+ r=SU_scan(nested[..],out[..]);#assert r.error==3 && r.offset==2;
+}
+#test "a claim and loads share one unit scan" {
+ t:=[6] SU_Token.[SU_Token.{kind=6,text="load",begin=0},SU_Token.{kind=5,text="part.coax"},SU_Token.{kind=15,end=5},SU_Token.{kind=6,text="module",begin=6},SU_Token.{kind=5,text="engine.hud"},SU_Token.{kind=15,end=30}];
+ out:[1] SU_Load;r:=SU_scan(t[..],out[..]);
+ #assert r.error==0 && r.count==1 && r.claims && r.owner=="engine.hud" && r.owner_begin==6 && r.owner_end==30;
+}
+#forall "module IDs: lowercase dotted segments" c:u8 {
+ first:=[1] u8.[c];rest:=[2] u8.['a',c];
+ lower:=c>='a' && c<='z';
+ #assert SU_module_valid(cast(string) first[..])==lower;
+ #assert SU_module_valid(cast(string) rest[..])==(lower || (c>='0' && c<='9') || c=='_');
+}
+#test "module ID segments, dots and length bounds" {
+ #assert !SU_module_valid("");#assert !SU_module_valid(".");#assert !SU_module_valid("a.");
+ #assert !SU_module_valid(".a");#assert !SU_module_valid("a..b");#assert !SU_module_valid("a.9b");
+ #assert !SU_module_valid("a._b");#assert !SU_module_valid("a b");
+ #assert SU_module_valid("a");#assert SU_module_valid("verse.everglade.guard_types");#assert SU_module_valid("x9.y_2.z");
+ long:[129] u8;for i:0..<129 {long[i]='a';}
+ #assert SU_module_valid(cast(string) long[0..<128]);#assert !SU_module_valid(cast(string) long[..]);
+}
+#forall "declaration names are identifiers" c:u8 {
+ first:=[1] u8.[c];rest:=[2] u8.['_',c];
+ alpha:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';
+ #assert SU_ident_valid(cast(string) first[..])==alpha;
+ #assert SU_ident_valid(cast(string) rest[..])==(alpha || (c>='0' && c<='9'));
+}
+#test "identifier length bounds" {
+ #assert !SU_ident_valid("");#assert SU_ident_valid("Vec2");#assert !SU_ident_valid("2v");
+ long:[256] u8;for i:0..<256 {long[i]='Z';}
+ #assert SU_ident_valid(cast(string) long[0..<255]);#assert !SU_ident_valid(cast(string) long[..]);
+}
+#test "membership: a claim is its own owner; members join their loaders' owners" {
+ // -1: no owner yet (or an unowned loader); -2: two different owners.
+ #assert SU_owner_join(-1,-1)== -1;#assert SU_owner_join(-1,3)==3;#assert SU_owner_join(3,3)==3;
+ #assert SU_owner_join(3,-1)==3;#assert SU_owner_join(3,4)== -2;#assert SU_owner_join(4,3)== -2;
+ #assert SU_owner_join(-2,3)== -2;#assert SU_owner_join(-2,-1)== -2;#assert SU_owner_join(0,0)==0;
+ #assert SU_owner_join(-1,0)==0;#assert SU_owner_join(0,1)== -2;#assert SU_owner_join(0,-2)==0;
+}
+#forall "membership never depends on load or traversal order" a:-1..<3, b:-1..<3, c:-1..<3 {
+ abc:=SU_owner_join(SU_owner_join(SU_owner_join(-1,a),b),c);
+ #assert abc==SU_owner_join(SU_owner_join(SU_owner_join(-1,c),a),b);
+ #assert abc==SU_owner_join(SU_owner_join(SU_owner_join(-1,b),c),a);
+ #assert abc==SU_owner_join(SU_owner_join(SU_owner_join(-1,c),b),a);
+}
+#test "two canonical units may not claim one logical module" {
+ claims:=[3] string.["","engine.hud","verse.guard"];
+ #assert SU_claim_index(claims[..],"verse.guard")==2;#assert SU_claim_index(claims[..],"engine.hud")==1;
+ #assert SU_claim_index(claims[..],"engine")== -1;#assert SU_claim_index(claims[..],"")== -1;
+ #assert SU_claim_index(claims[0..<0],"engine.hud")== -1;
+}
+#test "canonical declaration tuples" {
+ out:[96] u8;
+ n:=SU_decl_id("verse.hud",1,"HudSlot",out[..]);
+ #assert n==37 && cast(string) out[0..<n]=="coax.decl.v1:verse.hud:struct:HudSlot";
+ n=SU_decl_id("verse.hud",0,"hud_slot",out[..]);#assert cast(string) out[0..<n]=="coax.decl.v1:verse.hud:proc:hud_slot";
+ n=SU_decl_id("a",2,"E",out[..]);#assert cast(string) out[0..<n]=="coax.decl.v1:a:enum:E";
+ n=SU_decl_id("a",3,"K",out[..]);#assert cast(string) out[0..<n]=="coax.decl.v1:a:const:K";
+ #assert SU_decl_id("a",4,"K",out[..])== -1;#assert SU_decl_id("A",3,"K",out[..])== -1;
+ #assert SU_decl_id("a",3,"1K",out[..])== -1;#assert SU_decl_id("",3,"K",out[..])== -1;
+}
+#forall "a tuple fits exactly or is refused" room:20..<24 {
+ out:[24] u8;
+ // "coax.decl.v1:a:const:K" is 22 bytes.
+ n:=SU_decl_id("a",3,"K",out[0..<room]);
+ if room>=22 {#assert n==22 && out[21]=='K' && out[14]==':';}else {#assert n== -1;}
+}
+#forall "kind, name and module each change the ID" k:0..<4, j:0..<4 {
+ a:[64] u8;b:[64] u8;
+ n:=SU_decl_id("m.x",cast(u8)k,"Name",a[..]);m:=SU_decl_id("m.x",cast(u8)j,"Name",b[..]);
+ #assert (cast(string) a[0..<n]==cast(string) b[0..<m])==(k==j);
+ m=SU_decl_id("m.y",cast(u8)k,"Name",b[..]);#assert cast(string) a[0..<n]!=cast(string) b[0..<m];
+ m=SU_decl_id("m.x",cast(u8)k,"Namf",b[..]);#assert cast(string) a[0..<n]!=cast(string) b[0..<m];
+}
+
 #forall "execution and mutation obligations retain source ownership" authority:bool, entry:bool, mutation:bool {
  #assert SU_check_required(authority,entry,mutation)==(authority || (entry && mutation));
 }
@@ -97,6 +196,13 @@ SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
    for c:path.text {if c==0 {r.error=1;return r;}}
    if r.count>=out.count {r.error=2;return r;}
    out[r.count]=SU_Load.{path=path.text,begin=t.begin,end=end.end};r.count+=1;i+=3;continue;
+  }
+  if t.kind==6 && t.text=="module" {
+   r.offset=t.begin;
+   if depth!=0 || r.claims || i+2>=tokens.count {r.error=3;return r;}
+   id:=tokens[i+1];end:=tokens[i+2];
+   if id.kind!=5 || end.kind!=15 || !SU_module_valid(id.text) {r.error=3;return r;}
+   r.claims=true;r.owner=id.text;r.owner_begin=t.begin;r.owner_end=end.end;i+=3;continue;
   }
   if t.kind==6 && t.text=="authority" && depth==0 {r.authority=true;}
   if t.kind==8 || t.kind==10 || t.kind==12 {
@@ -125,4 +231,47 @@ SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c {
   }
  }
  return SU_Visit.{};
+}
+SU_module_valid :: (id:string)->bool #export_c {
+ if id.count==0 || id.count>128 {return false;}
+ start:=true;
+ for c:id {
+  if c=='.' {if start {return false;}start=true;continue;}
+  lower:=c>='a' && c<='z';
+  if start {if !lower {return false;}start=false;continue;}
+  if !lower && !(c>='0' && c<='9') && c!='_' {return false;}
+ }
+ return !start;
+}
+SU_ident_valid :: (name:string)->bool #export_c {
+ if name.count==0 || name.count>255 {return false;}
+ for c, i:name {
+  alpha:=(c>='a' && c<='z') || (c>='A' && c<='Z') || c=='_';
+  if !alpha && (i==0 || !(c>='0' && c<='9')) {return false;}
+ }
+ return true;
+}
+SU_owner_join :: (current:int,reaching:int)->int #export_c {
+ if current== -2 || reaching<0 || current==reaching {return current;}
+ if current== -1 {return reaching;}
+ return -2;
+}
+SU_claim_index :: (claims:[] string,id:string)->int #export_c {
+ for c, i:claims {if c.count!=0 && c==id {return i;}}
+ return -1;
+}
+SU_DECL_PREFIX :: "coax.decl.v1:";
+SU_DECL_KINDS :: [4] string.["proc","struct","enum","const"];
+SU_decl_id :: (module:string,kind:u8,name:string,out:[] u8)->int #export_c {
+ if !SU_module_valid(module) || kind>=4 || !SU_ident_valid(name) {return -1;}
+ k:=SU_DECL_KINDS[kind];
+ if out.count<SU_DECL_PREFIX.count+module.count+k.count+name.count+2 {return -1;}
+ n:=0;
+ for c:SU_DECL_PREFIX {out[n]=c;n+=1;}
+ for c:module {out[n]=c;n+=1;}
+ out[n]=':';n+=1;
+ for c:k {out[n]=c;n+=1;}
+ out[n]=':';n+=1;
+ for c:name {out[n]=c;n+=1;}
+ return n;
 }

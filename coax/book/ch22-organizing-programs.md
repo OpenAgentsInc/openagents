@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.26.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -10,8 +10,10 @@ replace together.
 
 The current compiler provides source-unit composition with `#load`. You can share
 actual declarations and keep diagnostics and checks tied to their physical
-files. General directory modules, visibility and package management remain
-planned. A source graph today has one declaration namespace.
+files. A unit can claim a logical owner with `#module`, which gives its
+declarations stable nominal identities. Qualified names, visibility and
+package management remain planned. A source graph today has one declaration
+namespace.
 
 ## Load another source unit
 
@@ -156,6 +158,40 @@ identity in a shared declaration. The capstone loads the same checked
 request policy used by Chapter 23. The frontend book example also uses a
 source graph instead of shell concatenation.
 
+## Name a logical owner
+
+A path says where a file is today; it is not who owns a declaration. Give a
+group of files an owner by claiming a logical module in one of them:
+
+```coax
+#module "engine.hud";
+#load "hud/types.coax";
+#load "hud/frame.coax";
+```
+
+The claiming unit owns itself. `hud/types.coax` and `hud/frame.coax` have no
+claim of their own, so they are members of `engine.hud`. Each declaration
+then has the nominal ID `coax.decl.v1:engine.hud:struct:HudSlot`: the module,
+the declaration kind and its name. Moving the checkout, reordering loads or
+moving `HudSlot` into another member keeps that ID; renaming it, changing its
+kind or claiming a different module changes it.
+
+```shell
+coax/bin/coax deps main.coax --declarations
+```
+
+prints `coax.declarations.v1` JSON: every unit and its owner, every
+declaration's ID, file and line, and every resolved reference from one
+declaration to another. A declaration in a unit with no owner reports
+`"id": null`: the compiler does not invent identity from a path or a line.
+
+The rules are strict so the answer never depends on traversal order. Two
+files claiming one ID is E0606. A file without its own claim that two
+different modules load is E0607; give it its own `#module` instead. A bad
+claim is E0605. A claim is identity only: lookup is still one flat
+namespace, two `Vec` declarations in one graph still collide, and the
+generated C is unchanged.
+
 ## Keep source, ABI and protocol identity distinct
 
 A Coax type name identifies a declaration in a compiled source graph. A C
@@ -167,8 +203,9 @@ Independently compiling two `Vec3` declarations still does not make their
 native headers compatible. Use descriptive prefixes for exported structs
 and procedures, preserve generated layout assertions, and inspect the
 actual bridging header when composing independent libraries. Shared source
-solves duplicate declarations within a graph; stable cross-library ABI
-identity and module visibility are separate work.
+solves duplicate declarations within a graph; `#module` names who owns
+them. Stable cross-library ABI identity and module visibility are separate
+work.
 
 Keep pure decisions in Coax, representation adapters at protocol
 boundaries, and lifecycle/effects in the host. A useful API documents what

@@ -83,6 +83,10 @@ struct SourceUnit {
   std::string path, canonical, text;
   int32_t begin = 0, end = 0, first_line = 1;
   bool authority = false;
+  // Logical module (schema 1): `claims` when this unit declares #module;
+  // `module` is its owner's ID, or empty when no owner is available (legacy).
+  bool claims = false;
+  std::string module;
 };
 struct SourcePoint { std::string path; Loc loc; };
 struct Source {
@@ -97,6 +101,10 @@ struct Source {
 Loc diagnostic_loc(const Source *src, Loc loc);
 SourcePoint source_point(const Source *src, Loc loc);
 bool source_authority(const Source *src, Loc loc);
+const SourceUnit *source_unit_at(const Source *src, Loc loc);
+// The nominal declaration ID "coax.decl.v1:MODULE:KIND:NAME" (kind 0 proc,
+// 1 struct, 2 enum, 3 const), or "" when the declaring unit has no owner.
+std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc);
 
 // Prints "path:line:col: error[Exxxx]: message", the source line, a caret,
 // and "fix: ..." when there is one; or one JSON object per line with

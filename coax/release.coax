@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.25.0";
+IMPLEMENTATION_VERSION :: "0.26.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [103]ReleaseFeature.[
+CATALOGUE :: [105]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -41,6 +41,7 @@ CATALOGUE :: [103]ReleaseFeature.[
   ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes only integers, floats and `bool`",status="works",introduced=""},
   ReleaseFeature.{id="directives.import-proto-file-pb-as-prefix",section="Directives",name="`#import_proto \"file.pb\" as Prefix;`",meaning="Generate types and bounded codecs from a protobuf descriptor set (CPU code only)",status="works",introduced=""},
   ReleaseFeature.{id="directives.load-part-coax",section="Directives",name="`#load \"part.coax\";`",meaning="Add a once-only source unit with relative paths, cycle/budget checks and physical-file authority",status="works",introduced="0.11.0"},
+  ReleaseFeature.{id="directives.module",section="Directives",name="`#module \"a.b\";`",meaning="Claim a logical owner for a source unit; its #load members share it and declarations get nominal IDs. Identity only: lookup stays flat",status="works",introduced="0.26.0"},
   ReleaseFeature.{id="directives.if",section="Directives",name="`#if`",meaning="BUILD_DEBUG field/statement blocks; general conditions and top-level declarations remain planned",status="partial",introduced="0.17.0"},
   ReleaseFeature.{id="directives.insert",section="Directives",name="`#insert` `#expand` `#text` `#location`",meaning="Typed code and macros",status="reserved",introduced=""},
   ReleaseFeature.{id="directives.derive",section="Directives",name="`#derive(...)`",meaning="Generate operations from fields",status="reserved",introduced=""},
@@ -91,6 +92,7 @@ CATALOGUE :: [103]ReleaseFeature.[
   ReleaseFeature.{id="types.any",section="Types",name="`Any`",meaning="(E0301); planned for tools and logging only",status="reserved",introduced=""},
   ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `T?`, `Handle(T)`, lane types",meaning="",status="designed",introduced=""},
   ReleaseFeature.{id="source.units",section="Capabilities",name="`#load` / `coax deps`",meaning="Bounded source composition and input inventory",status="works",introduced="0.11.0"},
+  ReleaseFeature.{id="source.declarations",section="Capabilities",name="`coax deps --declarations`",meaning="Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph",status="works",introduced="0.26.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

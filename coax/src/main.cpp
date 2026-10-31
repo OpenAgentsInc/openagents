@@ -279,7 +279,97 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout, deps };
+enum class Output : uint8_t { none, c, header, layout, deps, declarations };
+
+// `coax deps --declarations` (schema coax.declarations.v1): each unit's
+// logical owner, every top-level declaration's nominal ID and every resolved
+// reference between declarations, from the checked graph. IDs come from the
+// checked tuple encoding (lib/compiler/sources.coax); null means the
+// declaring unit has no #module owner, so no stable identity is claimed.
+struct DeclarationReport {
+  const Source *src;
+  std::string text;
+  bool first = true;
+  std::string id_json(uint8_t kind, Str name, Loc loc) const {
+    std::string id = declaration_id(src, kind, name, loc);
+    return id.empty() ? "null" : json_string(id);
+  }
+  std::string unit_json(Loc loc) const {
+    const SourceUnit *unit = source_unit_at(src, loc);
+    return unit ? json_string(unit->canonical) : "null";
+  }
+  void reference(const std::string &from, uint8_t kind, Str name, Loc decl, Loc at) {
+    static const char *KINDS[] = {"proc", "struct", "enum", "const"};
+    text += std::string(first ? "" : ",") + "{\"from\":" + from + ",\"to\":" + id_json(kind, name, decl) +
+            ",\"kind\":\"" + KINDS[kind] + "\",\"name\":" + json_string(to_std(name)) +
+            ",\"unit\":" + unit_json(at) + ",\"line\":" + std::to_string(source_point(src, at).loc.line) + "}";
+    first = false;
+  }
+  void type(const std::string &from, Type t, Loc at) {
+    while (t && (t->kind == TypeKind::array || t->kind == TypeKind::view)) t = t->elem;
+    if (!t) return;
+    if (t->kind == TypeKind::struct_ && t->struct_decl) reference(from, 1, t->struct_decl->name, t->struct_decl->loc, at);
+    if (t->kind == TypeKind::enum_ && t->enum_decl) reference(from, 2, t->enum_decl->name, t->enum_decl->loc, at);
+  }
+  void expr(const std::string &from, const Expr *e) {
+    if (!e) return;
+    if (e->kind == ExprKind::call && e->proc) reference(from, 0, e->proc->name, e->proc->loc, e->loc);
+    if (e->kind == ExprKind::ident && e->constant) reference(from, 3, e->constant->name, e->constant->loc, e->loc);
+    if (e->kind == ExprKind::struct_lit || e->kind == ExprKind::cast || e->kind == ExprKind::enum_value || e->kind == ExprKind::array_lit) type(from, e->type, e->loc);
+    expr(from, e->lhs); expr(from, e->rhs); expr(from, e->third);
+    for (const Expr *a : e->args) expr(from, a);
+    for (const FieldInit &f : e->fields) expr(from, f.value);
+  }
+  void stmt(const std::string &from, const Stmt *s) {
+    if (!s) return;
+    if (s->kind == StmtKind::var || s->kind == StmtKind::for_range || s->kind == StmtKind::for_each) type(from, s->type, s->loc);
+    expr(from, s->expr); expr(from, s->expr2); expr(from, s->target);
+    for (const Stmt *b : s->body) stmt(from, b);
+    stmt(from, s->then_); stmt(from, s->else_);
+  }
+};
+
+static std::string declarations_report(const Source *src, const File *file) {
+  std::string out = "{\"schema\":\"coax.declarations.v1\",\"units\":[";
+  bool first = true;
+  for (const auto &unit : src->units) {
+    out += std::string(first ? "" : ",") + "{\"path\":" + json_string(unit->canonical) + ",\"module\":" +
+           (unit->module.empty() ? "null" : json_string(unit->module)) + ",\"claims\":" + (unit->claims ? "true" : "false") + "}";
+    first = false;
+  }
+  DeclarationReport refs{src};
+  out += "],\"declarations\":[";
+  first = true;
+  auto decl = [&](uint8_t kind, Str name, Loc loc) {
+    static const char *KINDS[] = {"proc", "struct", "enum", "const"};
+    bool generated = false;
+    for (const GeneratedRegion &region : src->generated) generated = generated || (loc.offset >= region.start && loc.offset < region.end);
+    out += std::string(first ? "" : ",") + "{\"kind\":\"" + KINDS[kind] + "\",\"name\":" + json_string(to_std(name)) +
+           ",\"id\":" + refs.id_json(kind, name, loc) + ",\"unit\":" + refs.unit_json(loc) +
+           ",\"line\":" + std::to_string(source_point(src, loc).loc.line) + ",\"generated\":" + (generated ? "true" : "false") + "}";
+    first = false;
+  };
+  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc);
+  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc);
+  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc);
+  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc);
+  for (const StructDecl *d : file->structs) {
+    std::string from = refs.id_json(1, d->name, d->loc);
+    for (const Field &f : d->fields) { refs.type(from, f.type, f.loc); refs.expr(from, f.init); }
+  }
+  for (const EnumDecl *d : file->enums) {
+    std::string from = refs.id_json(2, d->name, d->loc);
+    for (const EnumMember &m : d->members) refs.expr(from, m.value);
+  }
+  for (const ConstDecl *d : file->constants) { std::string from = refs.id_json(3, d->name, d->loc); refs.type(from, d->type, d->loc); refs.expr(from, d->expr); }
+  for (const ProcDecl *d : file->procs) {
+    std::string from = refs.id_json(0, d->name, d->loc);
+    for (const Param &p : d->params) refs.type(from, p.type, p.loc);
+    refs.type(from, d->ret, d->loc);
+    refs.stmt(from, d->body);
+  }
+  return out + "],\"references\":[" + refs.text + "]}\n";
+}
 
 // lex, parse, check and evaluate; then produce the requested text.
 // library: no main is required (lib, header, and check of a file that exports).
@@ -333,6 +423,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (what == Output::c) {*text=emit_c(&file,opts);g_timings.generated_bytes=text->size();}
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
+  else if (what == Output::declarations) *text = declarations_report(&src, &file);
   else if (what == Output::deps) {
     *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
@@ -411,6 +502,7 @@ static int usage() {
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
+          "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
           "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
@@ -491,6 +583,7 @@ static int main_impl(int argc, char **argv) {
   std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
+  bool declarations = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
@@ -575,6 +668,7 @@ static int main_impl(int argc, char **argv) {
     }
     else if (a == "--merge" && cmd == "mutate" && i + 1 < argc) mutation.merge.push_back(argv[++i]);
     else if (a == "--keep-c") keep_c = true;
+    else if (a == "--declarations" && cmd == "deps" && !declarations) declarations = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
@@ -656,7 +750,7 @@ static int main_impl(int argc, char **argv) {
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout" || cmd == "deps") {
-    if (!compile(input, opts, cmd == "deps" ? Output::deps : Output::layout, &text, 2)) return 1;
+    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : Output::deps) : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }

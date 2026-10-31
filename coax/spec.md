@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.25.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.26.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1154,9 +1154,34 @@ path inventory, not a content-hashed lockfile, native-toolchain manifest or
 cache key. Normal compilation and dependency listing invoke no Python,
 preprocessor or protoc helper.
 
+Since 0.26.0, logical owners (schema 1, opt-in): `#module "engine.hud";` at file scope
+claims a logical module ID for its physical unit: 1 to 128 bytes of
+lowercase dotted segments, each starting a-z and continuing a-z, 0-9 or
+`_`; at most one claim per unit (E0605). A unit without a claim is a member
+of the owners of the units that load it; unowned loaders contribute nothing,
+so membership does not depend on load or traversal order. A member reached
+under two different owners is E0607; two canonical units claiming one ID
+are E0606; a canonical diamond is one unit with one owner. A declaration's
+nominal ID is the tuple encoding `coax.decl.v1:MODULE:KIND:NAME` (KIND is
+`proc`, `struct`, `enum` or `const`): relocating the checkout, reordering
+loads or declarations, and moving a declaration between members of one owner
+keep it; changing its module, kind or name changes it. Declarations in
+unowned units have no stable identity, reported as null rather than derived
+from a path, line, flattening ordinal or C spelling. The ID rules, membership
+join and tuple encoding are checked in `lib/compiler/sources.coax`.
+`coax deps FILE --declarations` emits `coax.declarations.v1` JSON from the
+checked graph: each unit's owner, each top-level declaration's ID, physical
+unit, line and generated origin, and each resolved reference between
+declarations (calls, typed constants, and struct/enum types in signatures,
+fields, locals and literals; the checker inlines untyped literal constants,
+so their uses are not references). A claim does not create a namespace:
+lookup stays flat, duplicate spellings in one graph remain errors, C
+spellings and generated code are unchanged, and `#authority` and
+diagnostics stay with each physical unit.
+
 `#import "Basic";` remains the only named built-in module, providing checked
-`print`. General directory modules with `module.coax`, explicit visibility,
-separate namespaces, locked packages and conditional module parameters remain
+`print`. Qualified lookup, explicit visibility, separate namespaces, content
+revisions, locked packages and conditional module parameters remain
 planned. Vendored/locked sources are explicit inputs; import does not download
 code. Future conditional compilation and module parameters must be represented
 in cache keys and editor analysis.

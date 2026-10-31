@@ -24,13 +24,13 @@ typedef struct coax_t_SU_Load coax_t_SU_Load;
 typedef struct coax_t_SU_Scan coax_t_SU_Scan;
 typedef struct coax_t_SU_Visit coax_t_SU_Visit;
 #ifdef COAX_coax_t_SU_Scan_DEFINED
-#ifndef COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3332313a38313a35353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234
+#ifndef COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3634313a38313a39353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234363a636c61696d73353a5f426f6f6c323a3235353a6f776e657231313a636f61785f737472696e67323a333231313a6f776e65725f626567696e373a696e7436345f74323a3438393a6f776e65725f656e64373a696e7436345f74323a3536
 #error "incompatible Coax C type coax_t_SU_Scan"
 #endif
 #else
 #define COAX_coax_t_SU_Scan_DEFINED
-#define COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3332313a38313a35353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234
-struct coax_t_SU_Scan { int64_t count; _Bool authority; uint32_t error; int64_t offset; _Bool balanced; };
+#define COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3634313a38313a39353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234363a636c61696d73353a5f426f6f6c323a3235353a6f776e657231313a636f61785f737472696e67323a333231313a6f776e65725f626567696e373a696e7436345f74323a3438393a6f776e65725f656e64373a696e7436345f74323a3536
+struct coax_t_SU_Scan { int64_t count; _Bool authority; uint32_t error; int64_t offset; _Bool balanced; _Bool claims; coax_string owner; int64_t owner_begin; int64_t owner_end; };
 #endif
 #ifdef COAX_coax_t_SU_Token_DEFINED
 #ifndef COAX_SCHEMA_coax_t_SU_Token_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f53555f546f6b656e323a3430313a38313a34343a6b696e64383a75696e7433325f74313a30343a7465787431313a636f61785f737472696e67313a38353a626567696e373a696e7436345f74323a3234333a656e64373a696e7436345f74323a3332
@@ -104,12 +104,16 @@ COAX_LAYOUT(sizeof(coax_t_SU_Load) == 32 && COAX_ALIGNOF(coax_t_SU_Load) == 8, "
 COAX_LAYOUT(offsetof(coax_t_SU_Load, path) == 0, "offset of SU_Load.path");
 COAX_LAYOUT(offsetof(coax_t_SU_Load, begin) == 16, "offset of SU_Load.begin");
 COAX_LAYOUT(offsetof(coax_t_SU_Load, end) == 24, "offset of SU_Load.end");
-COAX_LAYOUT(sizeof(coax_t_SU_Scan) == 32 && COAX_ALIGNOF(coax_t_SU_Scan) == 8, "layout of SU_Scan");
+COAX_LAYOUT(sizeof(coax_t_SU_Scan) == 64 && COAX_ALIGNOF(coax_t_SU_Scan) == 8, "layout of SU_Scan");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, count) == 0, "offset of SU_Scan.count");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, authority) == 8, "offset of SU_Scan.authority");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, error) == 12, "offset of SU_Scan.error");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, offset) == 16, "offset of SU_Scan.offset");
 COAX_LAYOUT(offsetof(coax_t_SU_Scan, balanced) == 24, "offset of SU_Scan.balanced");
+COAX_LAYOUT(offsetof(coax_t_SU_Scan, claims) == 25, "offset of SU_Scan.claims");
+COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner) == 32, "offset of SU_Scan.owner");
+COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner_begin) == 48, "offset of SU_Scan.owner_begin");
+COAX_LAYOUT(offsetof(coax_t_SU_Scan, owner_end) == 56, "offset of SU_Scan.owner_end");
 COAX_LAYOUT(sizeof(coax_t_SU_Visit) == 16 && COAX_ALIGNOF(coax_t_SU_Visit) == 8, "layout of SU_Visit");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, index) == 0, "offset of SU_Visit.index");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, action) == 8, "offset of SU_Visit.action");
@@ -118,6 +122,11 @@ _Bool SU_check_required(_Bool authority, _Bool entry, _Bool mutation);
 coax_t_SU_Scan SU_scan(coax_v_t_SU_Token tokens, coax_v_t_SU_Load out);
 _Bool SU_admit(int64_t units, int64_t depth, int64_t total, int64_t bytes);
 coax_t_SU_Visit SU_visit(coax_v_string paths, coax_v_u8 states, coax_string path);
+_Bool SU_module_valid(coax_string id);
+_Bool SU_ident_valid(coax_string name);
+int64_t SU_owner_join(int64_t current, int64_t reaching);
+int64_t SU_claim_index(coax_v_string claims, coax_string id);
+int64_t SU_decl_id(coax_string, uint8_t kind, coax_string name, coax_v_u8 out);
 
 #ifdef __cplusplus
 }

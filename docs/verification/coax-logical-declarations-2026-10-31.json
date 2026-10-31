@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r1a-logical-declarations",
+  "alias": "#7648",
+  "parent": "r1a-identities (#963b), kept open",
+  "baseline_commit": "6ddd22eac00a7718035d7fe5eca3fe72092df415",
+  "compiler_version": "0.26.0",
+  "scope": "Opt-in `#module \"a.b\";` logical owners, order-independent #load membership, schema-1 nominal declaration tuples (module, kind, name) and an opt-in `coax deps --declarations` report (coax.declarations.v1) of unit owners, declaration IDs and resolved references from the checked graph. Identity only: lookup stays flat, C spellings and generated code are unchanged.",
+  "policy": {
+    "file": "coax/lib/compiler/sources.coax",
+    "authority": true,
+    "new_rules": [
+      "SU_scan #module directive (E0605 cases)",
+      "SU_module_valid",
+      "SU_ident_valid",
+      "SU_owner_join",
+      "SU_claim_index",
+      "SU_decl_id"
+    ],
+    "checks": "27 checks, 27 passed (11 new for module IDs, claims, membership order independence and tuple encoding)",
+    "mutation": "308 mutants, 308 killed, 0 survived",
+    "seed": "coax/bootstrap/sources.c and sources.h refreshed with coax/refresh-sources-seed.sh; the bootstrap regenerates them byte for byte"
+  },
+  "native_transport": {
+    "files": [
+      "coax/src/sources.cpp",
+      "coax/src/coax.h",
+      "coax/src/main.cpp",
+      "coax/src/errors.cpp"
+    ],
+    "owners": "Computed after the load traversal in reverse finishing order (topological): a claim owns itself, an unclaimed unit folds SU_owner_join over its loaders' owners, so the result never depends on load or traversal order.",
+    "errors": {
+      "E0605": "invalid #module directive",
+      "E0606": "two canonical units claim one module ID",
+      "E0607": "an unclaimed unit reached under two owners"
+    },
+    "masking": "The directive bytes are blanked in the composed input like #load, so line numbers and generated code are unchanged."
+  },
+  "fixtures": {
+    "file": "coax/tests/modules.py",
+    "class": "ModuleIdentity",
+    "tests": 11,
+    "covers": [
+      "owner and members share one module; legacy identities are null; references carry target IDs",
+      "relocation into another directory and reordering loads/declarations preserve every ID",
+      "moving a declaration between members of one owner preserves its ID",
+      "module, kind and name changes change IDs",
+      "independent same-spelling equal-layout declarations have distinct IDs; one graph still has one flat namespace",
+      "two canonical units claiming one ID fail (E0606) at the second claim",
+      "an unclaimed member under two owners fails (E0607) at the second load; its own claim resolves it",
+      "a canonical diamond and an unowned extra loader keep one owner",
+      "invalid, nested, repeated or truncated claims fail (E0605); comments and strings never claim",
+      "member diagnostics and #authority checks stay with the member unit",
+      "a claim changes no generated C or line numbers; deps schema 1 is unchanged"
+    ]
+  },
+  "regressions": {
+    "tests/sources.py": "17 passed",
+    "tests/release.py": "10 passed",
+    "tests/tools.py": "15 passed",
+    "tests/parser.py": "7 passed",
+    "tests/debugging.py": "9 passed",
+    "tests/run.sh fixtures (pass, fail, examples, pulse)": "98 passed, 0 failed",
+    "bootstrap": "coax/build.sh bootstrapped the snapshot and verified provenance; the sources seed regenerated identically"
+  },
+  "legacy_corpus": {
+    "baseline_compiler": "coax0 0.25.0, checked build 9f1f223c514a from the release cache",
+    "corpus": "coax/tests/pass/*.coax, coax/examples/*.coax, coax/book/examples/*.coax, verse/hud.coax, verse/everglade/guard-types.coax, each as program and --library",
+    "result": "236 non-empty `coax c` outputs from 120 files are byte-identical between the 0.25.0 baseline and this compiler before the version bump; 4 inputs fail identically in both"
+  },
+  "limits": [
+    "No qualified imports, private/public boundaries, reexports, content revisions, target manifests, cache keys or persistent engine/protocol identity (separate r1a children).",
+    "The checker inlines untyped literal constants (CK_copy_expr), so their uses are not reported as references; typed constants are.",
+    "Declarations in units without an owner report a null ID rather than a derived one.",
+    "Generated (#import_proto) declarations take the owner of their importing unit and are marked generated."
+  ],
+  "golden_gate": {
+    "command": "coax/web/golden-check.sh --commit afe9526f35",
+    "pages_walked_as_compiler_dependents": true,
+    "failed": [
+      "the-grid",
+      "everglade",
+      "sandbox",
+      "haunted-house",
+      "galaxy",
+      "hecates-cemetery",
+      "home-phone",
+      "home"
+    ],
+    "attribution": "Not caused by this change: the shots differ from goldens in authored page content (sandbox and haunted-house now draw a GALAXY button their goldens lack; home pages differ in live relay content). The compiler change emits byte-identical C for the legacy corpus. No goldens were approved; they belong to the pages' authors."
+  }
+}

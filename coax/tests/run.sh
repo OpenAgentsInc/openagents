@@ -75,7 +75,7 @@ python3 tests/semantic_profiles.py
 semantic_profiles_rc=$?
 python3 tests/checker.py
 checker_rc=$?
-python3 tests/sources.py
+python3 tests/sources.py && python3 tests/modules.py
 sources_rc=$?
 python3 tests/reflection.py
 reflection_rc=$?
