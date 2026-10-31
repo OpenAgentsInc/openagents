@@ -32,6 +32,18 @@ analytic sensitivities, optimizer/forecast calculations, exact transcript
 coverage and all 5,040 serialized state words are qualified separately in
 `psionic/fixtures/physics/inverse/qualification.json`.
 
+## Aethyr realms step on one fixed clock whatever the frame rate
+
+A realm's simulation advances only in whole fixed steps from `aethyr/loop.coax`'s
+`FrameClock`, which keeps time in integer nanoseconds. A frame's time is refused
+when it is not a time, clamped to `max_frame_ns`, and at most `max_steps` run;
+the backlog past that is dropped and counted, never carried into later frames.
+Drawing mixes the last two steps by `loop_alpha` and never steps physics. So
+the same per-step inputs give the same states, bit for bit, at any frame rate.
+Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
+144 FPS; mutation 0 survivors) and `verse/player.coax` ("a run and jump has the
+same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
+
 ## Simulation steps and supplied wall clocks keep their domains
 
 The step-clock precursor uses integer simulation steps and distinct nominal
