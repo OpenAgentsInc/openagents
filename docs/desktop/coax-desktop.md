@@ -52,10 +52,12 @@ How it works:
   the frame loop: one long-lived session per conversation, cwd `$HOME` or
   `--cwd PATH`. Like the old Backend it injects no key (ANTHROPIC_API_KEY is
   removed), takes PATH from your login shell plus `~/.local/bin` and the
-  Homebrew dirs, and shows a chip with the install line
+  Homebrew dirs, and shows a notice with the install line
   (`curl -fsSL https://claude.ai/install.sh | bash`, Install runs it in
-  Terminal) when claude is missing, or Log in (`claude /login` in Terminal)
-  when the run errors as signed out. Events fold into parts and parts into
+  Terminal) when claude is missing, at once in an empty Claude chat and again
+  on a send; when the run answers logged out, a "Logged out" notice with the
+  login line (`claude /login`, Log in runs it in Terminal) in place of the
+  CLI's bare "Please run /login". Events fold into parts and parts into
   transcript rows the way Zeron does (`harness/src/claude/normalize.rs`
   decode_tool_use, `doc/src/parts.rs`, `proto/src/view.rs` chip labels and
   group summaries, `ui/src/transcript.rs` grouping and the working trailer
@@ -306,7 +308,9 @@ Checks (from a clean checkout: `coax/build.sh`, then):
 `apps/openagents-desktop/check.sh` builds the app and draws each case
 offscreen against its golden in `apps/openagents-desktop/goldens/` (the demo
 transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
-in the composer), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
+in the composer; the app with claude off PATH, and with a logged-out Claude
+Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
+does), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
 pixels off by more than 48 of 255. `--update` rewrites the goldens; look at
 them before committing. `OpenAgents --fps SECS` opens the window and prints
 its presented frames per second (60.2 on this Mac's Retina display,

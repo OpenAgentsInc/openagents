@@ -53,7 +53,7 @@ H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4; H_ACTION :: 5;
 
 // A notice row: Zeron's ErrorChip (notice.rs notice_chip_with_action, the
 // transcript's tile) for a failed turn, labelled as run_errors.rs reads the
-// message ("Signed out" and "Limit reached" carry "Log in"); the same chip
+// message ("Logged out" and "Limit reached" carry "Log in"); the same chip
 // in Zeron's warning palette asking to approve a tool call (Allow, Deny);
 // Claude Code missing (Install); and a quiet "Stopped" line under a turn
 // the user stopped.
@@ -730,7 +730,7 @@ t_fit :: (t: [] Transcript, a: [] Atlas, font: int, s: string, w: f32) -> string
 // A notice (notice.rs, the tile): the wash, the header (the triangle's tile,
 // the label, copy at the right), the wrapped message, the actions under it.
 t_notice_label :: (kind: int) -> string {
-  if kind == N_SIGNED_OUT { return "Signed out"; }
+  if kind == N_SIGNED_OUT { return "Logged out"; }
   if kind == N_LIMIT { return "Limit reached"; }
   if kind == N_INSTALL { return "Claude Code isn't installed"; }
   if kind == N_CODEX_INSTALL { return "Codex isn't installed"; }

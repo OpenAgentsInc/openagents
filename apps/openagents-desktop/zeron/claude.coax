@@ -68,6 +68,7 @@ Session :: struct {
   asking: int;              // the part asking to approve a call, or -1
   cost: f64;                // the conversation's cost so far (USD), from the last result
   turn_ms: int;             // the last turn's duration (ms)
+  hint: bool;               // its one part is a notice shown before any message (Claude Code missing), gone at the first
 }
 
 s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
@@ -120,6 +121,7 @@ s_append :: (s: [] Session, k: int, text: string) {
 
 // A message the user sent: a new turn.
 s_user :: (s: [] Session, text: string) {
+  if s[0].hint { s[0].n = 0; s[0].np = 0; s[0].hint = false; }
   k := s_part(s, P_USER);
   if k >= 0 { s_append(s, k, text); }
   s[0].live = true; s[0].stopping = false; s[0].noticed = false; s[0].secs = 0; s[0].turns += 1;
@@ -294,7 +296,7 @@ s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
       kind := s_problem(text);
       if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed { kind = N_SIGNED_OUT; }
       if e == ClAssistantError.rate_limit || e == ClAssistantError.billing_error { kind = N_LIMIT; }
-      s_notice(s, kind, ifx text.count > 0 then text else "Claude Code answered with an error.");
+      s_notice(s, kind, ifx kind == N_SIGNED_OUT then LOGIN_TEXT else ifx text.count > 0 then text else "Claude Code answered with an error.");
     }
     return;
   }
@@ -311,8 +313,26 @@ s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
     if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
     c := cl_num(l, "total_cost_usd"); if c.ok { s[0].cost = c.value; }
     d := cl_int(l, "duration_ms"); if d.ok { s[0].turn_ms = d.value; }
-    s_turn_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
+    s_claude_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
   }
+}
+// A Claude turn's end: signed out, the notice gives the login line its Log in button runs, never the CLI's bare "/login".
+LOGIN_TEXT :: "Log in to Claude Code in Terminal, then send again: claude /login";
+INSTALL_TEXT :: "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash";
+HINT_TEXT :: "Install it in Terminal, then send your message: curl -fsSL https://claude.ai/install.sh | bash";
+s_claude_end :: (s: [] Session, failed: bool, why: string) {
+  if failed && s[0].live && !s[0].stopping && !s[0].noticed && s_problem(why) == N_SIGNED_OUT { s_notice(s, N_SIGNED_OUT, LOGIN_TEXT); }
+  s_turn_end(s, failed, why);
+}
+// Before any message in a Claude chat: when the probe found no claude, the install line, with Install.
+s_hint_install :: (s: [] Session) {
+  if s[0].n != 0 || s[0].live { return; }
+  s_notice(s, N_INSTALL, HINT_TEXT);
+  s[0].hint = true; s[0].noticed = false;
+}
+s_drop_hint :: (s: [] Session) {
+  if !s[0].hint { return; }
+  s[0].n = 0; s[0].np = 0; s[0].hint = false; s[0].changed = true;
 }
 
 // ---------------------------------------------------------------- into the transcript
@@ -857,11 +877,12 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
     e[0].p[0].handle = -1;
     if warm { return false; }
     if why == "claude executable not found" || e[0].claude_n == 0 && why == "failed to spawn claude process" {
-      s_notice(s, N_INSTALL, "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash");
+      s_notice(s, N_INSTALL, INSTALL_TEXT);
     } else { s_notice(s, N_ERROR, why); }
     s_turn_end(s, false, "");
     return false;
   }
+  if e[0].claude_n == 0 { e[0].claude_n = e_set(e[0].claude[..], 0, "claude"); }   // installed since the probe: found on PATH
   e[0].running = true; e[0].ready = false; e[0].run_n = e_effort_key(e, e[0].run_effort[..]);
   return true;
 }
@@ -1057,7 +1078,7 @@ e_pump :: (e: [] Engine, s: [] Session) {
       e_close(e);
       e[0].pend = -1;
       if !s[0].live { return; }          // the warm CLI went (signed out, say): the first message starts it again and says why
-      s_turn_end(s, !s[0].stopping, why);
+      s_claude_end(s, !s[0].stopping, why);
       return;
     }
   }
@@ -1242,6 +1263,28 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   t_pointer(t[..], a[..], h.x + 4, h.y + t[0].offset + 4, 0, 1, false);
   t_pointer(t[..], a[..], h.x + 4, h.y + t[0].offset + 4, 2, 1, false);
   #assert t[0].action == A_LOGIN;
+}
+
+#test "signed out, the notice is the login line; missing, the empty chat shows the install line until a message goes" {
+  s: [1] Session; pool: [4096] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "hi");
+  s_claude_end(s[..], true, "Not logged in · Please run /login");
+  #assert !s[0].live && s[0].n == 2 && s[0].parts[1].notice == N_SIGNED_OUT && s_text_of(s[..], 1) == LOGIN_TEXT;
+  s_user(s[..], "again");
+  s_claude_end(s[..], true, "exit status 2");
+  #assert s[0].parts[s[0].n - 1].notice == N_ERROR && s_text_of(s[..], s[0].n - 1) == "exit status 2";
+  s_init(s[..], pool[..]);
+  s_hint_install(s[..]);
+  #assert s[0].hint && s[0].n == 1 && s[0].parts[0].notice == N_INSTALL && s_text_of(s[..], 0) == HINT_TEXT;
+  s_hint_install(s[..]);
+  #assert s[0].n == 1;
+  s_user(s[..], "hello");
+  #assert !s[0].hint && s[0].n == 1 && s[0].parts[0].kind == P_USER && s_text_of(s[..], 0) == "hello";
+  s_init(s[..], pool[..]);
+  s_hint_install(s[..]);
+  s_drop_hint(s[..]);
+  #assert s[0].n == 0 && !s[0].hint;
 }
 
 #test "tool calls decode as Zeron's harness decodes them" {

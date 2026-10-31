@@ -132,9 +132,9 @@ zr_open_menu :: (s: [] ZeronState, which: int) {
   if p[0].kind == kind { pk_close(p); c[0].open = -1; return; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
   cat := s[0].cats[s[0].mode..<s[0].mode + 1];
-  pk_open(p, kind, cat, zr_sel(s, s[0].mode), c[0].chip_x[which], c[0].chip_y[which], c[0].chip_w[which], c[0].chip_h[which], s[0].height / d, zr_empty(s));
-  pk_tabs(p, ifx zr_empty(s) then MODE_COUNT else 1, ifx zr_empty(s) then s[0].mode else 0);
-  if zr_empty(s) { for m: 0..<MODE_COUNT { pk_tab(p, m, mode_tab_icon(m), mode_tab_tint(m)); } }
+  pk_open(p, kind, cat, zr_sel(s, s[0].mode), c[0].chip_x[which], c[0].chip_y[which], c[0].chip_w[which], c[0].chip_h[which], s[0].height / d, zr_fresh(s));
+  pk_tabs(p, ifx zr_fresh(s) then MODE_COUNT else 1, ifx zr_fresh(s) then s[0].mode else 0);
+  if zr_fresh(s) { for m: 0..<MODE_COUNT { pk_tab(p, m, mode_tab_icon(m), mode_tab_tint(m)); } }
   else { pk_tab(p, 0, mode_tab_icon(s[0].mode), mode_tab_tint(s[0].mode)); }
   c[0].open = which;
 }
@@ -161,7 +161,7 @@ zr_take_picks :: (s: [] ZeronState) {
 }
 // Changes an empty chat's mode (a conversation keeps its own); whether it changed.
 zr_set_mode :: (s: [] ZeronState, mode: int) -> bool {
-  if mode < 0 || mode >= MODE_COUNT || (!zr_empty(s) && mode != s[0].mode) || s[0].demo { return false; }
+  if mode < 0 || mode >= MODE_COUNT || (!zr_fresh(s) && mode != s[0].mode) || s[0].demo { return false; }
   s[0].mode = mode;
   zr_labels(s);
   return true;
@@ -267,6 +267,8 @@ zr_demo :: (s: [] ZeronState) {
 }
 // Whether the screen shows Zeron's empty new chat (no message yet).
 zr_empty :: (s: [] ZeronState) -> bool { return !s[0].demo && s[0].session[0].n == 0; }
+// Whether no message has been sent yet (the mode can still change): empty, or only the install hint.
+zr_fresh :: (s: [] ZeronState) -> bool { return zr_empty(s) || !s[0].demo && s[0].session[0].hint; }
 // A chip or Send pressed in the composer.
 zr_chip :: (s: [] ZeronState, which: int) {
   c := s[0].composer[..]; e := s[0].engine[..]; ss := s[0].session[..];
@@ -328,6 +330,9 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   s[0].atlas[0].frame += 1;
   // the engines: what Claude Code (or curl, for Psionic) wrote since the last frame
   e_pump(e, ss);
+  // Claude Code isn't installed: an empty Claude chat says so at once, with the install line and Install
+  if s[0].mode == MODE_CLAUDE && !s[0].demo && e[0].on && e[0].probed && e[0].claude_n == 0 { s_hint_install(ss); }
+  else if ss[0].hint { s_drop_hint(ss); s[0].transcript[0].nr = 0; }
   if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
   s[0].psionic[0].access = e[0].access;
   ps_pump(s[0].psionic[..], ss, dt1);
@@ -769,7 +774,7 @@ coaxial_zeron_option_selected :: (s: [] ZeronState, which: int) -> int #export_c
 }
 // The chat's mode (MODE_*), and whether it can still change (the chat is empty).
 coaxial_zeron_mode :: (s: [] ZeronState) -> int #export_c { if s.count < 1 { return 0; } return s[0].mode; }
-coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_empty(s); }
+coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c { return s.count > 0 && zr_fresh(s); }
 // Each mode's mark (an icon index; 0 the Claude mark in its brand tone).
 coaxial_zeron_mode_brand :: (mode: int) -> int #export_c { brands := MODE_BRANDS; return ifx mode >= 0 && mode < MODE_COUNT then brands[mode] else 0; }
 // Whether a turn is running (the --shot steps wait on it).
