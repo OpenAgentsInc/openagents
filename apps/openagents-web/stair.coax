@@ -105,6 +105,119 @@ LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FI
 
 CLASS_PAD :: 14;   // a class button's text keeps this far (in CSS px) from its right edge
 
+// ---- your spells: the tower's wizard (you) has a few a map. Wall of Stone across the stair: the
+// beasts stop at it and break it (SRD panels, AC 15; WALL_HP between them), then climb on. Wall of
+// Fire across it for a minute: a beast going through makes a Dexterity save against DC 15 or takes
+// 5d8 fire, half on a success. Slow: every beast on the stair at half speed for SLOW_TIME seconds.
+YOUR_SPELLS :: 3; SPELL_STONE :: 0; SPELL_FIRE :: 1; SPELL_SLOW :: 2;
+SPELL_CASTS :: [YOUR_SPELLS] int.[2, 2, 2];
+SPELL_NAME :: [YOUR_SPELLS] string.["STONE", "FIRE", "SLOW"];
+WALLS :: 4;
+WALL_HP :: 120; WALL_CHEW :: 4.0;   // hit points a beast pressed against it takes off a second
+WALL_FIRE_TIME :: 60.0; WALL_FIRE_DC :: 15;
+SLOW_TIME :: 12.0;
+Wall :: struct { on: bool; kind: int; path: int; d: f32; hp: f32; t: f32; }
+// Where a stair tile is along a stair: its path and its distance (-1 path: not on a stair).
+PathSpot :: struct { path: int; d: f32; }
+path_spot :: (s: [] Stair, cell: int) -> PathSpot {
+  for p: 0..<2 {
+    l := path_len_of(s, p);
+    if l <= 0 { continue; }
+    d := 0.5f32;
+    while d < l - 0.5 {
+      q := path_on(s, p, d);
+      if cell_of(cast(int) floor(q.x), cast(int) floor(q.y)) == cell { return PathSpot.{path = p, d = d}; }
+      d += 0.25;
+    }
+  }
+  return PathSpot.{path = -1, d = 0};
+}
+// Arm a wall (again to put it down), or cast Slow.
+spell_press :: (s: [] Stair, sp: int) {
+  if s[0].spells[sp] <= 0 { say(s, "NO CASTS LEFT THIS MAP"); return; }
+  if sp == SPELL_SLOW {
+    if live_beasts(s) == 0 { say(s, "NOTHING ON THE STAIR TO SLOW"); return; }
+    s[0].spells[sp] -= 1; s[0].slow_t = SLOW_TIME;
+    track_tally(s[0].track[..], "spell", "slow");
+    return;
+  }
+  s[0].spell_pick = ifx s[0].spell_pick == sp then -1 else sp;
+  s[0].pick = -1; s[0].selected = -1; s[0].card = -1;
+  if s[0].spell_pick >= 0 { say(s, "TAP A STAIR TILE FOR THE WALL"); }
+}
+// The armed wall, across the stair at this tile.
+cast_wall :: (s: [] Stair, cell: int) -> bool {
+  sp := s[0].spell_pick;
+  if sp < 0 || s[0].spells[sp] <= 0 { return false; }
+  at := path_spot(s, cell);
+  if at.path < 0 || at.d < 1.0 { say(s, "A WALL GOES ON THE STAIR"); return false; }
+  slot := -1;
+  for i: 0..<WALLS { if slot < 0 && !s[0].walls[i].on { slot = i; } }
+  if slot < 0 { say(s, "FOUR WALLS STAND ALREADY"); return false; }
+  // centred on its tile, as the stair runs through it
+  s[0].walls[slot] = Wall.{on = true, kind = sp, path = at.path, d = at.d, hp = f32(WALL_HP), t = 0};
+  s[0].spells[sp] -= 1; s[0].spell_pick = -1;
+  track_tally(s[0].track[..], "spell", ifx sp == SPELL_STONE then "stone" else "fire");
+  return true;
+}
+// A beast's step up the stair, through the walls: stopped by stone (and chewing it), burnt crossing fire.
+wall_step :: (s: [] Stair, i: int, from: f32, dt: f32) {
+  for w: 0..<WALLS {
+    wl := s[0].walls[w];
+    if !wl.on || wl.path != s[0].beasts[i].path || !s[0].beasts[i].live { continue; }
+    if wl.kind == SPELL_STONE {
+      stop := wl.d - 0.45;
+      if from <= stop + 0.001 && s[0].beasts[i].d > stop {
+        s[0].beasts[i].d = stop;
+        s[0].walls[w].hp -= WALL_CHEW * dt;
+        if s[0].walls[w].hp <= 0 {
+          s[0].walls[w].on = false;
+          p := path_on(s, wl.path, wl.d);
+          add_fx(s, FX_SHATTER, p.x, p.y, p.x, p.y, 0.6, 0, 0.7, 0.7, 0.72, false);
+        }
+      }
+    } else if from < wl.d && s[0].beasts[i].d >= wl.d {
+      sv := srd_save(s[0].dice[..], s[0].ct[0].dex[s[0].beasts[i].kind], WALL_FIRE_DC);
+      dmg := srd_sum(s[0].dice[..], 5, 8);
+      p := beast_xy(s, i);
+      add_fx(s, FX_FLAME, p.x, p.y, p.x, p.y - 0.4, 0.4, 0, 1.0, 0.3, 0.15, false);
+      hurt_beast(s, i, ifx sv.success then dmg / 2 else dmg, DMG_FIRE, false, -1);
+    }
+  }
+}
+walls_tick :: (s: [] Stair, dt: f32) {
+  s[0].slow_t = hi(0, s[0].slow_t - dt);
+  for w: 0..<WALLS {
+    if !s[0].walls[w].on { continue; }
+    s[0].walls[w].t += dt;
+    if s[0].walls[w].kind == SPELL_FIRE && s[0].walls[w].t >= WALL_FIRE_TIME { s[0].walls[w].on = false; }
+  }
+}
+
+// The walls across the stair: stone a grey bar (dimmer as it breaks), fire a flickering red one.
+draw_walls :: (s: [] Stair, out: [] f32, n0: int, t: f32) -> int {
+  n := n0;
+  for w: 0..<WALLS {
+    wl := s[0].walls[w];
+    if !wl.on { continue; }
+    a := path_on(s, wl.path, wl.d - 0.1); b := path_on(s, wl.path, wl.d + 0.1);
+    dx := b.x - a.x; dy := b.y - a.y;
+    l := hi(0.0001, sqrt(dx * dx + dy * dy));
+    c := path_on(s, wl.path, wl.d);
+    px := -dy / l * 0.45; py := dx / l * 0.45;
+    p0 := to_screen(s, c.x + px, c.y + py); p1 := to_screen(s, c.x - px, c.y - py);
+    if wl.kind == SPELL_STONE {
+      left := clamp(wl.hp / f32(WALL_HP), 0, 1);
+      n = seg(out, n, p0.x, p0.y, p1.x, p1.y, t * 0.16, 0.5 + 0.5 * left, t * 0.05, 0.62, 0.6, 0.58);
+    } else {
+      fl := 0.75 + 0.25 * sin(wl.t * 13);
+      n = seg(out, n, p0.x, p0.y, p1.x, p1.y, t * 0.09, fl, t * 0.22, 1.0, 0.22, 0.12);
+      n = seg(out, n, p0.x, p0.y, p1.x, p1.y, t * 0.03, fl, t * 0.06, 1.0, 0.92, 0.5);
+    }
+  }
+  return n;
+}
+
 // ---- the waves: up to three groups each (layer, count, seconds between, delay)
 GROUPS :: 3;
 waves_of :: (s: [] Stair) -> int { return s[0].ct[0].waves; }
@@ -123,7 +236,7 @@ FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :
 
 // Buttons
 B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5;   // and on to B_FIGHTER + CLASSES - 1
-B_LAST_CLASS :: 9; B_SELL :: 10; B_CLOSE :: 11; B_AGAIN :: 12; B_PAUSE :: 13; B_UPGRADE :: 14; B_MAP :: 15; BUTTONS :: 16;
+B_LAST_CLASS :: 9; B_SELL :: 10; B_CLOSE :: 11; B_AGAIN :: 12; B_PAUSE :: 13; B_UPGRADE :: 14; B_MAP :: 15; B_STONE :: 16; B_FIRE :: 17; B_SLOW :: 18; BUTTONS :: 19;
 
 OUTBOX_CAP :: 128;
 ACT_NAVIGATE :: 1;
@@ -167,6 +280,10 @@ ZOOM_MAX :: 3.0;
 
 Stair :: struct {
   started: bool;
+  spells: [YOUR_SPELLS] int;    // the tower wizard's (your) casts left this map: Wall of Stone, Wall of Fire, Slow
+  spell_pick: int;         // the wall armed for a tap on the stair (-1 none)
+  walls: [WALLS] Wall;
+  slow_t: f32;             // seconds of Slow left on the stair
   area: [1] Area;          // where every beast is, a tile a bucket, for area queries
   ct: [1] Content;   // the layers, classes, levels, waves and stair (stair-tables.coax)
   track: [1] Track;
@@ -411,6 +528,9 @@ stair_reset :: (s: [] Stair) {
   s[0].dice[0] = srd_dice(s[0].seed); s[0].looks[0] = srd_dice(s[0].seed ^ 0x5DEECE66D);
   s[0].rules_n = 0;
   s[0].pick = -1; s[0].paused = false;
+  for i: 0..<YOUR_SPELLS { s[0].spells[i] = SPELL_CASTS[i]; }
+  s[0].spell_pick = -1; s[0].slow_t = 0;
+  for i: 0..<WALLS { s[0].walls[i].on = false; }
   s[0].selected = -1; s[0].card = -1; s[0].hurt = 0;
   s[0].path_len = path_length(s); s[0].path_len2 = path_len_of(s, 1); s[0].next_path = 0;
   lay_cells(s);
@@ -965,9 +1085,13 @@ step :: (s: [] Stair, dt: f32) {
     }
   }
   // the climb
+  walls_tick(s, dt);
   for i: 0..<BEASTS {
     if !s[0].beasts[i].live { continue; }
-    s[0].beasts[i].d += s[0].ct[0].speed[s[0].beasts[i].kind] * dt;
+    from := s[0].beasts[i].d;
+    s[0].beasts[i].d += s[0].ct[0].speed[s[0].beasts[i].kind] * dt * (ifx s[0].slow_t > 0 then 0.5f32 else 1.0f32);
+    wall_step(s, i, from, dt);
+    if !s[0].beasts[i].live { continue; }
     s[0].beasts[i].wob += dt * 3;
     s[0].beasts[i].age += dt;
     regen(s, i, dt);
@@ -1133,6 +1257,13 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
   if s[0].phase == BUILD && s[0].wave == 0 && !s[0].card_shot {
     mw := ifx s[0].portrait then 92 * k else 260 * k;
     set_button(s, B_MAP, Rect.{x0 = w - mw - 10 * k, y0 = 10 * k, x1 = w - 10 * k, y1 = 42 * k}, true);
+  } else if !over {
+    // your spells, top right
+    sw := ifx s[0].portrait then 58 * k else 96 * k;
+    for i: 0..<YOUR_SPELLS {
+      x1 := w - 10 * k - f32(YOUR_SPELLS - 1 - i) * (sw + 4 * k);
+      set_button(s, B_STONE + i, Rect.{x0 = x1 - sw, y0 = 10 * k, x1 = x1, y1 = 42 * k}, s[0].spells[i] > 0 && !(i == SPELL_SLOW && s[0].slow_t > 0));
+    }
   }
   if over {
     cx := w / 2; cy := h / 2;
@@ -1204,7 +1335,8 @@ press :: (s: [] Stair, b: int) {
   if b == B_AGAIN { stair_reset(s); s[0].tracked_wave = 0; return; }
   if b == B_SELL { sell(s, s[0].card); s[0].card = -1; s[0].selected = -1; return; }
   if b == B_UPGRADE { ok := upgrade(s, s[0].card); return; }
-  if b >= B_FIGHTER && b <= B_LAST_CLASS { pick(s, b - B_FIGHTER); return; }
+  if b >= B_FIGHTER && b <= B_LAST_CLASS { s[0].spell_pick = -1; pick(s, b - B_FIGHTER); return; }
+  if b >= B_STONE && b <= B_SLOW { spell_press(s, b - B_STONE); return; }
 }
 leave_to :: (s: [] Stair, url: string) {
   if s[0].action != 0 { return; }
@@ -1214,6 +1346,7 @@ leave_to :: (s: [] Stair, url: string) {
 
 tap_cell :: (s: [] Stair, cell: int) {
   if s[0].phase == WON || s[0].phase == LOST { return; }
+  if s[0].spell_pick >= 0 { ok := cast_wall(s, cell); return; }
   d := defender_at(s, cell);
   if d >= 0 { s[0].card = ifx s[0].card == d then -1 else d; s[0].selected = -1; return; }
   s[0].card = -1;
@@ -1646,6 +1779,7 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
         n = seg(out, n, px, py - pr * 1.4, px + pr, py, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
       }
     }
+    if i == 0 { n = draw_walls(s, out, n, t); }
     if d.daylight {
       // Daylight: a warm pool round the cleric
       c := cell_xy(d.cell);
@@ -1874,6 +2008,11 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   }
   if b == B_FAST { n := put(buf, 0, "SPEED "); return put_int(buf, n, s[0].speed); }
   if b == B_GALAXY { return put(buf, 0, "GALAXY"); }
+  if b >= B_STONE && b <= B_SLOW {
+    sp := b - B_STONE;
+    if sp == SPELL_SLOW && s[0].slow_t > 0 { n := put(buf, 0, "SLOW "); n = put_int(buf, n, cast(int) floor(s[0].slow_t + 0.999)); return put(buf, n, "S"); }
+    n := put(buf, 0, SPELL_NAME[sp]); n = put(buf, n, " "); return put_int(buf, n, s[0].spells[sp]);
+  }
   if b == B_MAP {
     n := put(buf, 0, "MAP "); n = put_int(buf, n, s[0].map + 1); n = put(buf, n, "/"); n = put_int(buf, n, MAPS);
     return ifx s[0].portrait then n else put(buf, put(buf, n, " · "), STAIR_MAP_NAME[s[0].map]);
@@ -1946,12 +2085,13 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
   m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, waves_of(s));
   // on a phone, MAP (before the first wave) takes the wave count's place
-  if !(s[0].portrait && s[0].shown[B_MAP] && lx + text_width(cast(string) buf[0..<m], cap) > s[0].boxes[B_MAP].x0 - 6 * k) {
+  right := ifx s[0].shown[B_MAP] then s[0].boxes[B_MAP].x0 else ifx s[0].shown[B_STONE] then s[0].boxes[B_STONE].x0 else w;
+  if lx + text_width(cast(string) buf[0..<m], cap) <= right - 6 * k {
     n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
     lx += text_width(cast(string) buf[0..<m], cap) + sp;
   }
   title := "HOLD THE STAIR";
-  if !s[0].portrait && !s[0].shown[B_MAP] && lx + text_width(title, cap) + 24 * k < w { n = say_at(out, n, title, w - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
+  if !s[0].portrait && lx + text_width(title, cap) + 24 * k < right - 12 * k { n = say_at(out, n, title, right - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
   // the bottom panel
   bottom := ifx s[0].portrait then 216 * k else 118 * k;
   plate(s, u, Rect.{x0 = 0, y0 = h - bottom, x1 = w, y1 = h}, 0.85, 0);
@@ -2788,6 +2928,56 @@ LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1
   // a new wave: Daylight again
   refresh(s[..], c);
   #assert !s[0].party[c].daylight;
+}
+
+// A fight with nothing more to spawn (for the tests' own beasts).
+quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GROUPS { s[0].spawned[g] = 999; } }
+#test "your spells: Wall of Stone blocks the stair until the beasts break it, Wall of Fire burns what crosses it, Slow halves the climb, and each has its casts a map" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  // a stair tile about a third of the way up
+  q := path_on(s[..], 0, 9.0);
+  cell := cell_of(cast(int) floor(q.x), cast(int) floor(q.y));
+  at := path_spot(s[..], cell);
+  #assert at.path == 0 && abs(at.d - 9.0) < 0.8;
+  // a tile beside the stair takes no wall
+  spell_press(s[..], SPELL_STONE);
+  #assert s[0].spell_pick == SPELL_STONE;
+  #assert !cast_wall(s[..], cell_of(4, 4)) && s[0].spells[SPELL_STONE] == 2;
+  tap_cell(s[..], cell);
+  #assert s[0].walls[0].on && s[0].walls[0].kind == SPELL_STONE && s[0].spells[SPELL_STONE] == 1 && s[0].spell_pick == -1;
+  // a mote climbs to it and stops there, chewing, until it breaks, then climbs on
+  m := spawn(s[..], MOTE, s[0].walls[0].d - 2.0);
+  quiet_fight(s[..]);
+  for i: 0..<40 { step(s[..], 0.1); }
+  #assert s[0].beasts[m].live && s[0].beasts[m].d <= s[0].walls[0].d - 0.44 && s[0].walls[0].hp < f32(WALL_HP);
+  for i: 0..<400 { if s[0].walls[0].on { s[0].beasts[m].hp = 99; step(s[..], 0.1); } }
+  #assert !s[0].walls[0].on;
+  for i: 0..<10 { s[0].beasts[m].hp = 99; step(s[..], 0.1); }
+  #assert s[0].beasts[m].d > at.d;
+  // Wall of Fire: a glimmer crossing it is burnt (or popped)
+  stair_reset(s[..]);
+  spell_press(s[..], SPELL_FIRE);
+  #assert cast_wall(s[..], cell);
+  g := spawn(s[..], FROSTLING, s[0].walls[0].d - 0.2);
+  hp := s[0].beasts[g].hp;
+  quiet_fight(s[..]);
+  for i: 0..<4 { step(s[..], 0.1); }
+  #assert !s[0].beasts[g].live || s[0].beasts[g].hp < hp;
+  // Slow: half the climb, for SLOW_TIME
+  stair_reset(s[..]);
+  b := spawn(s[..], MOTE, 2.0);
+  quiet_fight(s[..]);
+  spell_press(s[..], SPELL_SLOW);
+  #assert s[0].slow_t == f32(SLOW_TIME) && s[0].spells[SPELL_SLOW] == 1;
+  d0 := s[0].beasts[b].d;
+  step(s[..], 0.1);
+  #assert abs((s[0].beasts[b].d - d0) - s[0].ct[0].speed[MOTE] * 0.05) < 0.001;
+  spell_press(s[..], SPELL_SLOW); spell_press(s[..], SPELL_SLOW);
+  #assert s[0].spells[SPELL_SLOW] == 0;
+  // a new game, the casts back
+  stair_reset(s[..]);
+  #assert s[0].spells[SPELL_SLOW] == 2 && !s[0].walls[0].on;
 }
 
 #test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {

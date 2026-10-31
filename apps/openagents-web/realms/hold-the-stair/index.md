@@ -6,6 +6,7 @@ A Verse realm at https://openagents.com/realms/hold-the-stair: a popping tower d
 
 - Click or tap a floor tile beside the stair, then pick a class: FIGHTER (50 gold), WIZARD (85), CLERIC (65), ROGUE (60), RANGER (75), BARD (70) or PALADIN (80). Keys 1 to 7 pick them for the chosen tile.
 - MAP, before the first wave, picks the floor: THE WINDING STAIR, THE SPIRAL (a long climb) or THE FORK (two stairs from one door to one top; the beasts take them in turn). A new map starts the game over; `?map=1` to `?map=3` opens one.
+- Your spells, top right once the first wave is under way, two casts each a map: STONE then a stair tile puts a Wall of Stone across it (the beasts stop and break it, 120 hit points between them); FIRE puts a Wall of Fire there for a minute (a beast going through saves against DC 15 or takes 5d8 fire, half on a success); SLOW halves every beast's climb for twelve seconds.
 - START WAVE (or Space) sends the next wave. Forty waves hold the stair: the first ten bring the four lighter layers, from 11 the frostlings, ironskins and shadows join, and a hulk comes every ten from wave 20; lives are the tower's hit points, and each beast that reaches the top takes what it holds inside.
 - SPEED steps the game through 1, 2 and 3 times (F on a keyboard).
 - Click a defender, or long-press it on a phone, for its card: its attack, its last roll (the d20, its bonus and the armor class or DC it met) and its hits, misses and pops. SELL gives back 70% of its cost.
