@@ -1,8 +1,8 @@
 // GPU time per frame (a timestamp query on every render pass) and the frames' spacing, in headless
 // Chrome, for a page's water and the like (docs/verse/water.md, W11):
-//   bun coax/web/frametime.ts URL [WxH] [DPR] [SECONDS] [--phone] [--eval JS] [--skip PASSES] [--vsync]
+//   bun coax/web/frametime.ts URL [WxH] [DPR] [SECONDS] [--phone] [--eval JS] [--before JS] [--skip PASSES] [--vsync]
 // Frames run unthrottled unless --vsync. --phone emulates a touch phone; --eval runs JS (an async
-// IIFE) before measuring; --skip drops the draws of the numbered passes (0 first) to cost them.
+// IIFE) before measuring; --before runs JS before the page's own scripts (e.g. a fetch stand-in); --skip drops the draws of the numbered passes (0 first) to cost them.
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,6 +10,7 @@ import { launch as launchChrome } from "./chrome"
 const [url, size = "1280x800", dprS = "1", secS = "8"] = process.argv.slice(2)
 const evalAt = process.argv.indexOf("--eval"); const script = evalAt > 0 ? process.argv[evalAt + 1] : ""
 const phone = process.argv.includes("--phone")
+const beforeAt = process.argv.indexOf("--before"); const before = beforeAt > 0 ? process.argv[beforeAt + 1] : ""
 const skipAt = process.argv.indexOf("--skip"); const skip = skipAt > 0 ? process.argv[skipAt + 1] : ""
 const [w, h] = size.split("x").map(Number), dpr = Number(dprS)
 const profile = mkdtempSync(join(tmpdir(), "coax-ft-"))
@@ -63,6 +64,7 @@ try {
   await send("Page.enable"); await send("Runtime.enable")
   if (phone) await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 })
   await send("Page.addScriptToEvaluateOnNewDocument", { source: inject })
+  if (before) await send("Page.addScriptToEvaluateOnNewDocument", { source: before })
   await send("Page.navigate", { url })
   await Bun.sleep(7000)
   if (script) { await send("Runtime.evaluate", { expression: script, awaitPromise: true }); await Bun.sleep(1000) }

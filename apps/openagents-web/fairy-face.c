@@ -349,7 +349,6 @@ static void ask_out(uint32_t state) {
   if (ask_id < 0) { ask_id = -1; fairy_answer(at(state), (coax_string){"0\n", 2}); }
 }
 // ---- the others, the chat room and the inbox (fairyroom.coax)
-#define ROOM_EVERY 1.0
 #define ROOM_WAIT 10.0
 #define INBOX_EVERY 15.0
 static int32_t room_ask = -1, social_ask = -1;
@@ -420,7 +419,7 @@ static void social_frame(uint32_t state, float dt) {
     }
   }
   if (room_ask >= 0 && now - room_asked_at < ROOM_WAIT) return;
-  if (now - room_at < ROOM_EVERY) return;
+  if (now - room_at < ffs_room_every()) return;
   room_at = now;
   int64_t un = room_url(ffs_room(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
   coax_t_Vec3 feet = verse_player_feet(player);

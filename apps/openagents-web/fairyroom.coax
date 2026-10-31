@@ -30,7 +30,8 @@ INBOX_TEXT :: 500;
 INBOX_MET :: 30;
 INBOX_BLOCKED :: 30;
 SOCIAL_BUTTONS :: 40;
-OTHERS_DRAWN :: 6;          // others drawn as fairies, the nearest; the rest by name only
+OTHERS_DRAWN :: 10;         // others drawn as fairies, the nearest; the rest by name only (a phone keeps 60 FPS with ten)
+FF_ROOM_EVERY :: 0.25;      // seconds between presence posts: another fairy's move shows within a second (ev-ff-shared)
 OTHERS_NEAR :: 90.0;        // metres
 NAME_NEAR :: 45.0;          // their names, this near
 SOCIAL_TOAST_TIME :: 4.0;
@@ -250,6 +251,9 @@ ffs_next :: (s: [] Fairy) -> int #export_c {
 }
 ffs_chat_line :: (s: [] Fairy) -> string #export_c { return cast(string) s[0].social[0].line[0..<s[0].social[0].line_n]; }
 ffs_room :: () -> string #export_c { return FF_ROOM; }
+// How often the face posts where you are and hears where the others are. A move shows on another
+// screen after at most two of these (yours posted, theirs asked) and a round trip each.
+ffs_room_every :: () -> f32 #export_c { return f32(FF_ROOM_EVERY); }
 // The face asks the inbox now and then, and right after the pane opens.
 ffs_ask_inbox :: (s: [] Fairy) #export_c { s[0].social[0].ask_inbox = true; }
 
@@ -756,6 +760,12 @@ ffs_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
   if redit_open(s[0].ed[..]) { g[0].typing = false; return n; }   // the edit board has the screen
   if g[0].inbox_open { return ffs_inbox(s, out, u, n); }
   return ffs_chat(s, out, u, n, above);
+}
+
+#test "another fairy's move shows within a second, and ten are drawn" {
+  #assert 2 * ffs_room_every() + 2 * 0.15 < 1.0;   // two waits and two round trips of 150 ms
+  #assert ffs_room_every() >= 0.2;                 // and no faster than the Grid's, so the server's cost stays small
+  #assert OTHERS_DRAWN >= 10 && OTHERS_DRAWN <= ROOM_OTHERS;
 }
 
 #test "the inbox answer: messages, who you have met, blocks and admin" {

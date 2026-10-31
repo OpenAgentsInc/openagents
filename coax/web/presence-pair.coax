@@ -1,0 +1,232 @@
+// Two players in one realm, in two headless Chromes: does each see the other move, and how soon?
+// (ev-ff-shared: "two headless sessions see each other's fairy move within a second").
+//   coax/web/tool.sh presence-pair URL [--trials 6] [--budget 1000] [--size 800x600] [--shots PREFIX]
+// Both sessions carry one fresh automation mark "pair-<hex>" (the cookie verse-automation), so the
+// room shows them to each other and to nobody else (migrations/0074_room_presence_pairs.sql), and
+// analytics leaves them out. Each page's presence answers are noted as they arrive. A trial: one
+// session holds W (or S) and the other's page is watched for the first answer that has the mover
+// somewhere new; the time from the key going down to that answer is the latency. The sessions take
+// turns. It prints each trial, the median and the largest, and exits 1 when any trial is over the
+// budget (ms) or never shows. --shots writes PREFIX-a.png and PREFIX-b.png at the end. Nothing opens
+// on screen and no sound plays.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+PAIR_SHOT :: 25165824;
+PAIR_TRIALS_MAX :: 64;
+
+// Notes each presence answer (when it came, who was in it and where), before the page's own code.
+pair_watch :: (o: [] Buf) {
+  bput(o, "(() => {\n");
+  bput(o, "  const f = globalThis.fetch; window.__pp = []; window.__me = ''; window.__them = ''; window.__bx = 0; window.__bz = 0;\n");
+  bput(o, "  globalThis.fetch = function (u, o) {\n");
+  bput(o, "    const r = f.apply(this, arguments);\n");
+  bput(o, "    try {\n");
+  bput(o, "      if (String(u && u.url || u).includes('/api/playtest/presence/') && o && o.method === 'POST') {\n");
+  bput(o, "        r.then((a) => a.clone().json()).then((j) => {\n");
+  bput(o, "          if (j.you) window.__me = j.you.id;\n");
+  bput(o, "          window.__pp.push({ t: Date.now(), o: (j.others || []).map((p) => [p.id, p.x, p.z]) });\n");
+  bput(o, "          if (window.__pp.length > 600) window.__pp.shift();\n");
+  bput(o, "        }).catch(() => {});\n");
+  bput(o, "      }\n");
+  bput(o, "    } catch {}\n");
+  bput(o, "    return r;\n");
+  bput(o, "  };\n");
+  bput(o, "  window.__see = () => { const l = window.__pp[window.__pp.length - 1]; const p = l && l.o.find((o) => o[0] === window.__them);\n");
+  bput(o, "    if (!p) return 0; window.__bx = p[1]; window.__bz = p[2]; return 1; };\n");
+  bput(o, "  window.__moved = (t0) => { for (const e of window.__pp) if (e.t >= t0) { const p = e.o.find((o) => o[0] === window.__them);\n");
+  bput(o, "    if (p && Math.hypot(p[1] - window.__bx, p[2] - window.__bz) > 0.05) return Math.max(0, e.t - t0); } return -1; };\n");
+  bput(o, "})();\n");
+}
+
+Buf :: struct { b: [4096] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+// scheme://host[:port] of a URL, "" when it has none.
+pair_origin :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count || i == 0 { return ""; }
+  j := i + 3;
+  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
+  return ifx j > i + 3 then url[0..<j] else "";
+}
+// A player's id is safe to put in a script: letters, digits, - and _.
+pair_id_ok :: (id: string) -> bool {
+  if id.count == 0 || id.count > 64 { return false; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// The middle of n sorted times (the upper one of two), and the largest.
+pair_sort :: (t: [] int, n: int) {
+  for i: 1..<n { v := t[i]; j := i - 1; while j >= 0 && t[j] > v { t[j + 1] = t[j]; j -= 1; } t[j + 1] = v; }
+}
+pair_median :: (t: [] int, n: int) -> int { if n <= 0 { return -1; } s: [PAIR_TRIALS_MAX] int; for i: 0..<n { s[i] = t[i]; } pair_sort(s[..], n); return s[n / 2]; }
+pair_max :: (t: [] int, n: int) -> int { m := -1; for i: 0..<n { if t[i] > m { m = t[i]; } } return m; }
+// Every trial showed, within the budget.
+pair_within :: (t: [] int, n: int, budget: int) -> bool {
+  if n <= 0 { return false; }
+  for i: 0..<n { if t[i] < 0 || t[i] > budget { return false; } }
+  return true;
+}
+
+#test "a pair check's pieces" {
+  #assert pair_origin("https://openagents.com/realms/fairy-forest?x=1") == "https://openagents.com";
+  #assert pair_origin("http://127.0.0.1:8080/") == "http://127.0.0.1:8080" && pair_origin("nope") == "" && pair_origin("https://") == "";
+  #assert pair_id_ok("p-1a2b_C") && !pair_id_ok("p'1") && !pair_id_ok("");
+  t: [5] int; t[0] = 400; t[1] = 120; t[2] = 900; t[3] = 300; t[4] = 610;
+  #assert pair_median(t[..], 5) == 400 && pair_max(t[..], 5) == 900 && t[0] == 400;   // the trials keep their order
+  #assert pair_within(t[..], 5, 1000) && !pair_within(t[..], 5, 800);
+  t[1] = -1;
+  #assert !pair_within(t[..], 5, 1000) && !pair_within(t[..], 0, 1000);
+  b: [1] Buf; bput(b[..], "__moved("); bint(b[..], 1761880000123); bput(b[..], ")");
+  #assert btext(b[..]) == "__moved(1761880000123)";
+}
+
+pair_eval_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+pair_eval_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+pair_key :: (c: [] Cdp, down: bool, back: bool) -> bool {
+  params: [512] u8; o: [1] Jo; jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], ifx down then "keyDown" else "keyUp");
+  jo_key(o[..], "key"); jo_str(o[..], ifx back then "s" else "w"); jo_key(o[..], "code"); jo_str(o[..], ifx back then "KeyS" else "KeyW");
+  jo_key(o[..], "windowsVirtualKeyCode"); jo_int(o[..], ifx back then 83 else 87); jo_end(o[..]);
+  return cdp_call(c, "Input.dispatchKeyEvent", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+pair_open :: (c: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize) -> bool {
+  params: [8192] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], false); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], mark);
+  jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
+  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  w: [1] Buf; pair_watch(w[..]);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], btext(w[..])); jo_end(o[..]);
+  if w[0].bad { return false; }
+  if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if !ok || url.count == 0 || url[0] == '-' {
+    tool_errln("usage: coax/web/tool.sh presence-pair URL [--trials N] [--budget MS] [--size WxH] [--shots PREFIX]");
+    return 2;
+  }
+  trials_n := args_number(args_value(a[..], "--trials", "6"));
+  budget_n := args_number(args_value(a[..], "--budget", "1000"));
+  wh := args_size(args_value(a[..], "--size", "800x600"));
+  shots := args_value(a[..], "--shots", "");
+  origin := pair_origin(url);
+  if !trials_n.ok || !budget_n.ok || !wh.ok || origin.count == 0 || trials_n.value < 1.0 || trials_n.value > f64(PAIR_TRIALS_MAX) {
+    tool_errln("presence-pair: an http(s) URL, --trials 1..64, --budget in ms, --size WxH"); return 2;
+  }
+  trials := cast(int) trials_n.value; budget := cast(int) budget_n.value;
+  // one fresh mark for the pair
+  rnd: [8] u8;
+  if !cdp_draw(8, rnd[..]) { tool_errln("presence-pair: no entropy"); return 1; }
+  hex := "0123456789abcdef";
+  mb: [1] Buf; bput(mb[..], "pair-check-");
+  for b: rnd { h: [2] u8; h[0] = hex[b / 16]; h[1] = hex[b % 16]; bput(mb[..], cast(string) h[..]); }
+  mark := btext(mb[..]);
+  ca: [1] Cdp; cb: [1] Cdp;
+  if !cdp_launch(ca[..], wh.w, wh.h, "coax-pair-a-") { tool_err("presence-pair: "); tool_errln(cdp_error(ca[..])); return 1; }
+  if !cdp_launch(cb[..], wh.w, wh.h, "coax-pair-b-") { tool_err("presence-pair: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }
+  status := pair_run(ca[..], cb[..], url, origin, mark, wh, trials, budget, shots);
+  cdp_close(ca[..]); cdp_close(cb[..]);
+  return status;
+}
+
+pair_fail :: (c: [] Cdp, what: string) -> int { tool_err("presence-pair: "); tool_err(what); tool_err(": "); tool_errln(cdp_error(c)); return 1; }
+
+pair_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize, trials: int, budget: int, shots: string) -> int {
+  if !pair_open(ca, url, origin, mark, wh) { return pair_fail(ca, "opening A"); }
+  if !pair_open(cb, url, origin, mark, wh) { return pair_fail(cb, "opening B"); }
+  print("mark %\n", mark);
+  // both in the room (each has its player id from an answer)
+  ida: [80] u8; idb: [80] u8; a := ""; b := "";
+  deadline := proc_now_ms() + 60000;
+  while (a.count == 0 || b.count == 0) && proc_now_ms() < deadline {
+    proc_sleep(500);
+    if a.count == 0 { a = pair_eval_str(ca, "window.__me || ''", ida[..]); }
+    if b.count == 0 { b = pair_eval_str(cb, "window.__me || ''", idb[..]); }
+  }
+  if !pair_id_ok(a) || !pair_id_ok(b) {
+    dbg: [512] u8;
+    print("A notes %; B notes %\n", pair_eval_str(ca, "typeof window.__pp + ' ' + (window.__pp || []).length", dbg[..]), pair_eval_str(cb, "typeof window.__pp + ' ' + (window.__pp || []).length", dbg[..]));
+    tool_errln("presence-pair: a session never joined the room"); return 1; }
+  print("A % and B % are in the room\n", a, b);
+  sa: [1] Buf; bput(sa[..], "window.__them = '"); bput(sa[..], b); bput(sa[..], "'; 1");
+  sb: [1] Buf; bput(sb[..], "window.__them = '"); bput(sb[..], a); bput(sb[..], "'; 1");
+  _ := pair_eval_int(ca, btext(sa[..]), 0); _ = pair_eval_int(cb, btext(sb[..]), 0);
+  // each sees the other
+  seen := false;
+  deadline = proc_now_ms() + 20000;
+  while !seen && proc_now_ms() < deadline {
+    proc_sleep(250);
+    seen = pair_eval_int(ca, "window.__see()", 0) == 1 && pair_eval_int(cb, "window.__see()", 0) == 1;
+  }
+  if !seen { tool_errln("presence-pair: the two sessions never saw each other"); return 1; }
+  print("each sees the other\n");
+  took: [PAIR_TRIALS_MAX] int;
+  for k: 0..<trials {
+    mover := ifx k % 2 == 0 then ca else cb; watcher := ifx k % 2 == 0 then cb else ca;
+    back := (k / 2) % 2 == 1;
+    proc_sleep(1500);   // both still, the watcher's last answer where the mover stands
+    _ = pair_eval_int(watcher, "window.__see()", 0);
+    t0 := pair_eval_int(mover, "Date.now()", -1);
+    if t0 < 0 || !pair_key(mover, true, back) { return pair_fail(mover, "pressing a key"); }
+    q: [1] Buf; bput(q[..], "window.__moved("); bint(q[..], t0); bput(q[..], ")");
+    pressed := proc_now_ms(); got := -1; up := false;
+    while got < 0 && proc_now_ms() < pressed + 5000 {
+      proc_sleep(40);
+      got = pair_eval_int(watcher, btext(q[..]), -1);
+      if !up && proc_now_ms() > pressed + 1200 { up = pair_key(mover, false, back); }   // a short walk
+    }
+    if !up { up = pair_key(mover, false, back); }
+    took[k] = got;
+    print("% moves, % sees it: % ms\n", ifx k % 2 == 0 then "A" else "B", ifx k % 2 == 0 then "B" else "A", got);
+  }
+  med := pair_median(took[..], trials); most := pair_max(took[..], trials);
+  fine := pair_within(took[..], trials, budget);
+  print("% trials: median % ms, largest % ms, budget % ms: %\n", trials, med, most, budget, ifx fine then "within" else "OVER");
+  if shots.count > 0 {
+    proc_sleep(1000);
+    png: [PAIR_SHOT] u8;
+    for s: 0..<2 {
+      c := ifx s == 0 then ca else cb;
+      p: [1] Buf; bput(p[..], shots); bput(p[..], ifx s == 0 then "-a.png" else "-b.png");
+      n := cdp_screenshot(c, png[..]);
+      if n > 0 && fs_write(btext(p[..]), cast(string) png[0..<n]) { print("%\n", btext(p[..])); }
+    }
+  }
+  return ifx fine then 0 else 1;
+}
