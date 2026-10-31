@@ -73,7 +73,7 @@ function stubs(module: WebAssembly.Module, memory: WebAssembly.Memory) {
   return imports as WebAssembly.Imports
 }
 // The browser's boot: a zeroed state above the module's data, then coaxial_state_init.
-async function booted(wasm: string) {
+async function booted(wasm: string, init = true) {
   const module = await WebAssembly.compile(readFileSync(wasm))
   const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }) // the host's
   for (let pages = 128; pages <= 1024; pages *= 2) {
@@ -87,12 +87,12 @@ async function booted(wasm: string) {
   const need = base + size + 65536
   if (need > memory.buffer.byteLength) memory.grow(Math.ceil((need - memory.buffer.byteLength) / 65536))
   new Uint8Array(memory.buffer, base, size).fill(0)
-  x.coaxial_state_init?.(base)
+  if (init) x.coaxial_state_init?.(base)
   return { x, bytes: (at: number, n: number) => new Uint8Array(memory.buffer, base + at, n) }
 }
 
 test("every engine boots from zeroed memory with native's struct defaults", async () => {
-  const list = engines(), failures: string[] = [], checked: string[] = [], globals: string[] = []
+  const list = engines(), failures: string[] = [], checked: string[] = [], globals: string[] = [], sharp: string[] = []
   expect(list.length).toBeGreaterThan(20)
   for (let i = 0; i < list.length; i += 6) {
     await Promise.all(list.slice(i, i + 6).map(async e => {
@@ -104,18 +104,28 @@ test("every engine boots from zeroed memory with native's struct defaults", asyn
       const refs = plan.state.map(([, type]: [string, string]) => native(plan.units[type], type))
       const { x, bytes } = await booted(e.wasm)
       if (!x.coaxial_state_init) { failures.push(`${e.name}: no coaxial_state_init export (built before defaults.py?)`); return }
+      const differs = (got: (at: number, n: number) => Uint8Array, k: number) => {
+        const ref = refs[k], have = got(x.coaxial_state_default(k), ref.length)
+        for (let b = 0; b < ref.length; b++) if (have[b] !== ref[b]) return b
+        return -1
+      }
       plan.state.forEach(([member, type]: [string, string], k: number) => {
-        const at = x.coaxial_state_default(k), ref = refs[k], got = bytes(at, ref.length)
-        let bad = -1
-        for (let b = 0; b < ref.length; b++) if (got[b] !== ref[b]) { bad = b; break }
+        const bad = differs(bytes, k)
         if (bad >= 0) failures.push(`${e.name}: ${type}${member ? " " + member : ""} differs from native at byte ${bad}`)
         else checked.push(`${e.name} ${type}`)
       })
+      // The check is sharp (Aethyr engine core, ec-state): the same state left zeroed, as the
+      // host hands it, must differ from native somewhere, or a realm that skipped its defaults
+      // would pass. Every defaulted state has at least one non-zero default.
+      const zeroed = await booted(e.wasm, false)
+      if (plan.state.every((_: unknown, k: number) => differs(zeroed.bytes, k) < 0)) failures.push(`${e.name}: a zeroed state passes the comparison`)
+      else sharp.push(e.name)
     }))
   }
   console.log(`states with defaults: ${checked.sort().join(", ")}\nface globals with defaults: ${globals.sort().join("; ")}`)
   expect(failures).toEqual([])
   // Orbit League's gravity is the case that shipped broken; it must be among them.
   expect(checked.some(c => c.startsWith("orbitleague "))).toBe(true)
+  expect(sharp).toContain("orbitleague")
   rmSync(work, { recursive: true, force: true })
 }, 900_000)

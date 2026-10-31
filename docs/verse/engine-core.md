@@ -46,3 +46,18 @@ refused with (E0317 a world point given for a view point or a grid point for
 a world one, E0325 a local point stored as a world one, E0822 metres plus
 grid units), against a control that must compile. Mutation: 78 of 78 killed
 (`space.coax`), 47 of 47 (`refusals.coax`).
+
+## State (`coax/web/defaults.py`, `coax/web/state-defaults.test.ts`)
+
+Every realm's state gets its declared field defaults by construction, natively
+(`s: [1] T`) and in the browser, where the host hands an engine zeroed memory:
+the build runs `defaults.py` over the generated C, which exports
+`coaxial_state_init` for the host to call on a fresh state and defaults the
+face's globals (the player, the thumbs) in a constructor. The check boots
+every engine `build.sh` makes, and the Grid, from zeroed memory and compares
+each defaulted part with native `coax_init`, byte for byte. It is sharp: the
+same state left zeroed must differ, or the realm fails. 16 realm states pass
+(Belt, Dead Gears, Everglade, Fairy Forest, Garden, Ice Cream Man, Memorial,
+Orbit League, Hold the Stair, the villa and the pages with state defaults);
+a realm with no defaults has nothing to apply. `aethyr/loop.coax`'s clock
+also takes its default step on its first frame if it was zeroed.
