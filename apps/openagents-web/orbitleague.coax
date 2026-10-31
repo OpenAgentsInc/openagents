@@ -11,6 +11,7 @@
 // comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
 // Shift boosts, C is ball cam, Escape goes back to the galaxy. On a phone
 // the left thumb steers and drives; JUMP and BOOST are on the right.
+// ?stage=highlight plays a staged goal for clips (docs/verse/clips.md).
 //
 // orbitleague.wgsl traces the arena, the cars, the ball and the space round
 // them from the uniforms written here; the HUD is strokes over it.
@@ -185,6 +186,7 @@ OrbitLeague :: struct {
   wheel_spin: [2] f64;        // each car's wheels' turn, radians
   pads_taken: int;
   track: [1] Track;
+  stage: int;                 // a staged moment (?stage=NAME) running: STAGE_*
 }
 
 // ---- the arena
@@ -269,6 +271,7 @@ kickoff :: (s: [] OrbitLeague) {
   clear_trails(s);
   s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
   s[0].cam_ready = false;
+  s[0].stage = STAGE_NONE;
 }
 
 new_match :: (s: [] OrbitLeague) {
@@ -381,6 +384,43 @@ you_drive :: (s: [] OrbitLeague) -> Drive {
   return out;
 }
 
+// ---- staged moments (?stage=NAME, docs/verse/clips.md): a seeded scene that
+// plays the same way every time, for a clip
+
+STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1;
+
+// The highlight: 2-2 late on, you boosting in on a dropping ball as the bot
+// slides across its goal to block; the hit, the ball past it into the net
+// and the blast.
+stage_highlight :: (s: [] OrbitLeague) {
+  new_match(s);
+  s[0].stage = STAGE_HIGHLIGHT;
+  s[0].score[0] = 2; s[0].score[1] = 2;
+  s[0].clock = 24.0; s[0].played = 30.0;
+  s[0].phase = PHASE_PLAY; s[0].phase_t = 2.0;
+  s[0].bodies[BALL].pos = STAGE_BALL_AT; s[0].bodies[BALL].vel = STAGE_BALL_V;
+  s[0].bodies[BALL].omega = d3(4.0, 0.0, 1.0);
+  s[0].bodies[YOU].pos = STAGE_YOU_AT; s[0].bodies[YOU].vel = STAGE_YOU_V;
+  s[0].bodies[YOU].orientation = dq_y(atan2_d(STAGE_YOU_V.x, STAGE_YOU_V.z));
+  s[0].bodies[BOT].pos = STAGE_BOT_AT; s[0].bodies[BOT].vel = STAGE_BOT_V;
+  s[0].bodies[BOT].orientation = dq_y(atan2_d(STAGE_BOT_V.x, STAGE_BOT_V.z));
+  s[0].tanks[0].fuel = 100.0; s[0].tanks[1].fuel = 60.0;
+  s[0].ball_cam = true;
+  s[0].cam_ready = false;
+  s[0].seed = 7.0;
+}
+STAGE_BALL_AT :: D3.{x = 0.0, y = 2.5, z = 8.0};
+STAGE_BALL_V :: D3.{x = 0.0, y = 0.0, z = 0.0};
+STAGE_YOU_AT :: D3.{x = -1.2, y = 1.0, z = -8.0};
+STAGE_YOU_V :: D3.{x = 0.0, y = 0.0, z = 15.0};
+STAGE_BOT_AT :: D3.{x = 8.0, y = 1.0, z = 37.0};
+STAGE_BOT_V :: D3.{x = -9.0, y = 0.0, z = -3.6};
+
+// The staged player: full throttle and boost until the goal.
+stage_hold :: (s: [] OrbitLeague) {
+  if s[0].stage == STAGE_HIGHLIGHT { s[0].held = ifx s[0].phase == PHASE_PLAY then HOLD_UP | HOLD_BOOST else 0; }
+}
+
 // ---- one physics step
 
 physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
@@ -473,6 +513,7 @@ goal_scored :: (s: [] OrbitLeague, team: int) {
   s[0].last_goal = team;
   s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0;
   s[0].blast = s[0].bodies[BALL].pos; s[0].blast_t = 0.0; s[0].blast_team = team;
+  if s[0].stage != STAGE_NONE { s[0].stage = STAGE_NONE; s[0].held = 0; }
   burst(s, s[0].blast, D3_ZERO, 26.0, 100, team, 1.6, 3.5);
   s[0].shake = 1.0;
   // the goal knocks every car back from the ball
@@ -509,6 +550,7 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
         else { s[0].phase = PHASE_OVER; s[0].phase_t = 0.0; end_tracked(s); }
       }
     }
+    stage_hold(s);
     drives: [2] Drive;
     drives[0] = you_drive(s);
     drives[1] = bot_drive(s);
@@ -652,6 +694,7 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if !s[0].started { game_reset(s); }
   if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_FACTS { track_world(s[0].track[..], "orbit-league"); }
 }
@@ -1145,6 +1188,25 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 5.0);
   #assert d3_len(s[0].bodies[BALL].vel) > 0.5 || d3_len(d3_sub(s[0].bodies[BALL].pos, d3(0.0, BALL_R, 0.0))) > 1.0;
+}
+
+#test "?stage=highlight sets up the shot: a hard hit, then a goal for blue within 2 s; without it, a plain kickoff" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league\n");
+  #assert s[0].stage == STAGE_NONE && s[0].phase == PHASE_KICKOFF && !s[0].ball_cam;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?stage=highlight\n");
+  #assert s[0].stage == STAGE_HIGHLIGHT && s[0].phase == PHASE_PLAY && s[0].score[0] == 2 && s[0].score[1] == 2;
+  top := 0.0; goal := -1.0; near := 99.0;
+  for k: 0..<cast(int) (2.0 / STEP) {
+    game_step(s[..], STEP);
+    top = fmax(top, d3_len(s[0].bodies[BALL].vel));
+    if goal < 0.0 && s[0].touches > 0 { near = fmin(near, d3_dist(s[0].bodies[BOT].pos, s[0].bodies[BALL].pos)); }
+    if goal < 0.0 && s[0].score[0] == 3 { goal = cast(f64) k * STEP; }
+  }
+  // past the bot by a few metres, at the ball's top speed, the blast going off
+  #assert goal > 0.8 && goal < 2.0 && s[0].score[1] == 2 && top > BALL_MAX - 1.0 && near < 5.0;
+  #assert s[0].blast_t >= 0.0 && s[0].blast_team == BLUE && s[0].stage == STAGE_NONE && s[0].held == 0;
 }
 
 #test "a frame draws the HUD and keys and thumbs drive" {
