@@ -1322,8 +1322,19 @@ const drawn = (deviceWidth) => {
 const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.clientWidth : devicePixelRatio || 1);
 
 // ---- the frame
+// Clip mode (clip.ts sets coaxialClip before the page loads): the page draws only when
+// coaxialClipStep says so, each frame one fixed step of game time, so a recording has
+// every frame at its exact moment however slowly the machine draws or captures.
+const clipping = globalThis.coaxialClip === true;
+let clipNow = 0;
+if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
+  for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); }
+  if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
+  return engine ? 1 : 0;
+};
 function frame(now) {
   requestAnimationFrame(frame);
+  if (clipping) return;
   if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
   const t0 = performance.now();
   try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
