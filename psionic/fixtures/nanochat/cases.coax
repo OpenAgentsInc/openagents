@@ -1,0 +1,80 @@
+// Check helpers for psionic/lib/nanochat/checkpoint.coax: the fixture
+// configuration and the cases its #test blocks run. Tooling for the checks only.
+
+// Two blocks (value embedding on layer 1 only), vocabulary 2 padded to 64.
+NC_LOAD :: NcConfig.{sequence_len=8,vocab=2,layers=2,heads=2,kv_heads=1,width=24,pattern=1,pattern_len=2,context=8};
+NC_LOAD_PATTERN :: ",\"window_pattern\":\"SL\"";
+NcCase :: struct {bytes:int;text:int;}
+// The digest the checks claim for their files (nc_admit compares, nc_load hashes).
+NC_CLAIM :: [32]u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+nc_case :: (c:NcConfig,p:[]f64,b:NcBuild,t:NcText,real_digest:bool,file:[]u8,identity:[]u8)->NcCase {
+    k:NcCase;k.bytes=nc_write_safetensors(c,p,b,file);claim:=NC_CLAIM;
+    hex:[66]u8;#assert nc_hex(claim[..],hex[..])==66;if !real_digest {hex[64]='1';}
+    u:=t;if u.digest.count==0 {u.digest=cast(string)hex[..];}k.text=nc_write_identity(c,u,identity);return k;
+}
+nc_try :: (file:[]u8,identity:[]u8,params:[]f64)->NcLoad {
+    inv:[NC_TENSORS_MAX]PwTensor;draft:[NC_TENSORS_MAX]PwTensor;claim:=NC_CLAIM;
+    return nc_admit_export(cast(string)identity,claim[..],file,params,inv[..],draft[..],false);
+}
+nc_exact :: (bf:bool)->bool {
+    c:=NC_LOAD;n:=nc_parameter_count(c);p:[16554]f64;#assert n==16554;nc_formula(c,0.5,p[..]);file:[70000]u8;ident:[4200]u8;
+    b:=NcBuild.{bf16=bf};k:=nc_case(c,p[..],b,nc_text(c,NC_LOAD_PATTERN,""),true,file[..],ident[..]);
+    got:[16554]f64;r:=nc_try(file[0..<k.bytes],ident[0..<k.text],got[..]);#assert r.status==NcLoadStatus.ok && r.written==n && r.step==0;
+    #assert r.config.sequence_len==8 && r.config.vocab==2 && r.config.layers==2 && r.config.heads==2 && r.config.kv_heads==1 && r.config.width==24;
+    #assert r.config.pattern==1 && r.config.pattern_len==2 && r.config.context==8;
+    inv:[NC_TENSORS_MAX]NcTensor;m:=nc_inventory(c,inv[..]);
+    for i:0..<m {t:=inv[i];for e:0..<nc_elements(t) {#assert got[t.offset+e]==nc_stored(b,t.kind,p[t.offset+e]);}}
+    if bf {#assert got[nc_wte(c)+5]!=cast(f64)cast(f32)p[nc_wte(c)+5];}
+    tokens:=[3]int.[1,0,1];cache:[2*2*8*12+24]f64;work:[6*3*24+6*24+8]f64;#assert nc_cache_count(NC_LOAD)==cache.count && nc_work_count(NC_LOAD,3)==work.count;logits:[6]f64;none:[1]f64;
+    return nc_forward(r.config,got[..],tokens[..],cache[..],work[..],logits[..],none[0..<0],false).status==NcStatus.ok;
+}
+// One edited identity field per case; the file is written once.
+nc_identity_refusals :: (first:int,last:int)->bool {
+    c:=NC_LOAD;p:[16554]f64;nc_formula(c,0.5,p[..]);file:[70000]u8;ident:[4200]u8;bad:="\"x\"";del:=[4]u8.[34,97,127,34];
+    k:=nc_case(c,p[..],NcBuild.{},nc_text(c,NC_LOAD_PATTERN,""),true,file[..],ident[..]);got:[16554]f64;for i:0..<16554 {got[i]=-9;}
+    claim:=NC_CLAIM;hex:[66]u8;#assert nc_hex(claim[..],hex[..])==66;
+    for f:first..<last {t:=nc_text(c,NC_LOAD_PATTERN,cast(string)hex[..]);cc:=c;want:=NcLoadStatus.schema;wrong:=hex;
+        if f==0 {t.schema="\"psionic.nanochat-export.v2\"";}if f==1 {t.repo="\"karpathy/nanogpt\"";want=NcLoadStatus.source;}
+        if f==2 {t.revision="\"92d63d4e8bb4df75c3b71618f31ddde2378b2bce\"";want=NcLoadStatus.source;}if f==3 {t.gpt=t.manager;want=NcLoadStatus.source;}
+        if f==4 {t.manager=t.gpt;want=NcLoadStatus.source;}if f==5 {t.config="";want=NcLoadStatus.historical;}
+        if f==6 {t.config=",\"window_pattern\":\"SX\"";want=NcLoadStatus.config;}if f==7 {t.config=",\"window_pattern\":\"\"";want=NcLoadStatus.config;}
+        if f==8 {t.config=",\"window_pattern\":\"SLSLSLSLSLSLSLSLS\"";want=NcLoadStatus.config;}if f==9 {t.config=",\"window_pattern\":\"SL\",\"rope\":1";}
+        if f==10 {t.config=",\"window_pattern\":\"SL\",\"window_pattern\":\"SL\"";}if f==11 {t.pad="128";want=NcLoadStatus.config;}
+        if f==12 {t.format="\"\"";want=NcLoadStatus.tokenizer;}if f==13 {t.tokenizer="\"abc\"";want=NcLoadStatus.tokenizer;}
+        if f==14 {t.vocab="3";want=NcLoadStatus.tokenizer;}if f==15 {t.vocab="-1";want=NcLoadStatus.tokenizer;}
+        if f==16 {t.pt="\"zz\"";}if f==17 {t.step="-1";}if f==18 {t.prefix="\"x.\"";}if f==19 {wrong[64]='1';t.digest=cast(string)wrong[..];want=NcLoadStatus.digest;}
+        if f==20 {t.digest="\"12\"";}if f==21 {t.extra=",\"x\":1";}if f==22 {t.extra=",\"schema\":\"psionic.nanochat-export.v1\"";}
+        if f==23 {cc.width=23;want=NcLoadStatus.config;}if f==24 {t.step="1000000001";}
+        if f==25 {t.format="\"a\\nb\"";want=NcLoadStatus.tokenizer;}if f==26 {t.format=cast(string)del[..];want=NcLoadStatus.tokenizer;}
+        if f==27 {t.config=",\"window_pattern\":3";}if f==28 {t.pad="\"64\"";want=NcLoadStatus.config;}
+        if f==29 {t.vocab="1048577";want=NcLoadStatus.tokenizer;}if f==30 {t.meta=bad;}if f==31 {t.repo="3";}
+        if f==32 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09a/\"";want=NcLoadStatus.tokenizer;}
+        if f==33 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09a:\"";want=NcLoadStatus.tokenizer;}
+        if f==34 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09a`\"";want=NcLoadStatus.tokenizer;}
+        if f==35 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09ag\"";want=NcLoadStatus.tokenizer;}
+        if f==36 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09aA\"";want=NcLoadStatus.tokenizer;}
+        if f==37 {t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af0\"";want=NcLoadStatus.tokenizer;}
+        if f==38 {t.extra=",\"source\":{}";}if f==40 {wrong[1]='1';t.digest=cast(string)wrong[..];want=NcLoadStatus.digest;}if f==41 {wrong[2]='1';t.digest=cast(string)wrong[..];want=NcLoadStatus.digest;}if f==39 {t.config=",\"window_pattern\":\"L\",\"n_embd\":24";}
+        n:=nc_write_identity(cc,t,ident[..]);
+        r:=nc_try(file[0..<k.bytes],ident[0..<n],got[..]);#assert r.status==want && r.written==0;
+    }
+    for i:0..<16554 {#assert got[i]==-9;}return true;
+}
+nc_file_refusals :: (first:int,last:int)->bool {
+    c:=NC_LOAD;p:[16554]f64;nc_formula(c,0.5,p[..]);file:[70000]u8;ident:[4200]u8;inv:[NC_TENSORS_MAX]NcTensor;#assert nc_inventory(c,inv[..])==21;
+    got:[16554]f64;for i:0..<16554 {got[i]=-9;}
+    for f:first..<last {b:=NcBuild.{};q:=p;want:=NcLoadStatus.manifest;
+        if f==0 {b.fault=NcFault.skip;b.at=0;want=NcLoadStatus.historical;}if f==1 {b.fault=NcFault.skip;b.at=1;want=NcLoadStatus.historical;}
+        if f==2 {b.fault=NcFault.skip;b.at=4;}if f==3 {b.fault=NcFault.extra;}if f==4 {b.fault=NcFault.rename;b.at=19;}
+        if f==5 {b.fault=NcFault.rows;b.at=0;want=NcLoadStatus.shape;}if f==6 {b.fault=NcFault.rank;b.at=2;want=NcLoadStatus.shape;}
+        if f==7 {b.fault=NcFault.rows;b.at=5;want=NcLoadStatus.shape;}if f==8 {b.fault=NcFault.cols;b.at=5;want=NcLoadStatus.shape;}
+        if f==9 {b.fault=NcFault.rank;b.at=5;want=NcLoadStatus.shape;}if f==10 {b.fault=NcFault.f16;b.at=3;want=NcLoadStatus.format;}
+        if f==11 {q[inv[20].offset+3]=1.0/0.0;want=NcLoadStatus.number;}if f==12 {q[2]=0.0/0.0;want=NcLoadStatus.number;}
+        if f==13 {q[inv[18].offset]=1048577;want=NcLoadStatus.number;}if f==14 {q[inv[19].offset+1]=-1048577;want=NcLoadStatus.number;}
+        if f==15 {b.fault=NcFault.skip;b.at=20;}if f==16 {b.fault=NcFault.rename;b.at=1;want=NcLoadStatus.historical;}
+        if f==17 {b.fault=NcFault.rename;b.at=0;want=NcLoadStatus.historical;}if f==18 {b.fault=NcFault.rename;b.at=12;}
+        k:=nc_case(c,q[..],b,nc_text(c,NC_LOAD_PATTERN,""),true,file[..],ident[..]);
+        r:=nc_try(file[0..<k.bytes],ident[0..<k.text],got[..]);#assert r.status==want && r.written==0;
+    }
+    for i:0..<16554 {#assert got[i]==-9;}return true;
+}

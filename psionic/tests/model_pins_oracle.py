@@ -17,7 +17,7 @@ SHA = re.compile(r'^[0-9a-f]{64}$')
 REFUSALS = ['psionic.pin.' + n for n in ('target', 'path', 'bytes', 'digest', 'scope', 'length', 'options', 'score')]
 ROLES = {'weights', 'index', 'config', 'tokenizer', 'readout', 'renderer', 'reference', 'card', 'license'}
 UNITS = {'model-io/weights', 'ops', 'qwen-block', 'qwen-matvec', 'delta', 'qwen-rope', 'qwen-attention',
-         'qwen-decision', 'qwen-prefix', 'readout', 'bpe-train'}
+         'qwen-decision', 'qwen-prefix', 'readout', 'bpe-train', 'nanochat/gpt'}
 
 
 def sha(path):

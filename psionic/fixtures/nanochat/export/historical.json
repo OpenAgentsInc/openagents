@@ -1,0 +1,30 @@
+{
+ "checkpoint": {
+  "key_prefix": "",
+  "meta_json_sha256": "32985313a5bf1674944b39f262f5a2b1906a32293d8041f21de24d5f59eaaeea",
+  "model_pt_sha256": "192ded24e6e6cbc23e4c98ea5a1c81ad2e5e597300c72844cc00885db9e321c6",
+  "step": 0
+ },
+ "model_config": {
+  "n_embd": 32,
+  "n_head": 2,
+  "n_kv_head": 1,
+  "n_layer": 2,
+  "sequence_len": 64,
+  "vocab_size": 329
+ },
+ "pad_vocab_size_to": 64,
+ "safetensors_sha256": "3d15476e7b4a08fd5d509a8acdd4c251a0b8c4e6d00b7a26601cf3d40807d53e",
+ "schema": "psionic.nanochat-export.v1",
+ "source": {
+  "checkpoint_manager_py_sha256": "aa63399ddaf2a0412dc099287bf0dc879f9cb0cce00f861db50eeec58746f3ba",
+  "gpt_py_sha256": "8cdedc2e418b9d4dc45884e07f59904fcdec066bb3d76664b2adf2d415f704e3",
+  "repo": "karpathy/nanochat",
+  "revision": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd"
+ },
+ "tokenizer": {
+  "format": "psionic-pst5+nanochat-specials",
+  "sha256": "dd2b37ce759ede8fcff1777a6a97dce5d75267c807a6c5ae25827b5c305c0f39",
+  "vocab_size": 329
+ }
+}

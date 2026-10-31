@@ -1,0 +1,71 @@
+// Test fixtures for psionic/lib/nanochat/checkpoint.coax: an export identity
+// record and a safetensors file written from a config and binary64 weights,
+// each with one optional defect. Tooling for the checks only.
+NcFault :: enum u8 {none;skip;extra;rank;rows;cols;f16;rename;}
+NcBuild :: struct {fault:NcFault;at:int;bf16:bool;}
+// Text of every identity field; a check edits one of them.
+NcText :: struct {schema:string;repo:string;revision:string;gpt:string;manager:string;config:string;pad:string;format:string;tokenizer:string;vocab:string;pt:string;meta:string;step:string;prefix:string;digest:string;extra:string;}
+nc_text :: (c:NcConfig,pattern:string,digest:string)->NcText {
+    t:NcText;t.schema="\"psionic.nanochat-export.v1\"";t.repo="\"karpathy/nanochat\"";t.revision="\"92d63d4e8bb4df75c3b71618f31ddde2378b2bcd\"";
+    t.gpt="\"8cdedc2e418b9d4dc45884e07f59904fcdec066bb3d76664b2adf2d415f704e3\"";t.manager="\"aa63399ddaf2a0412dc099287bf0dc879f9cb0cce00f861db50eeec58746f3ba\"";
+    t.config=pattern;t.pad="64";t.format="\"psionic-pst5+nanochat-specials\"";t.tokenizer="\"dd2b37ce759ede8fcff1777a6a97dce5d75267c807a6c5ae25827b5c305c0f39\"";
+    t.vocab="";t.pt="\"192ded24e6e6cbc23e4c98ea5a1c81ad2e5e597300c72844cc00885db9e321c6\"";t.meta="\"a1ee5cdd463324ed5a283b57033c800ff81e736b9e9dde785a8b8c2b022f5021\"";
+    t.step="0";t.prefix="\"\"";t.digest=digest;t.extra="";return t;
+}
+nc_write_identity :: (c:NcConfig,t:NcText,out:[]u8)->int {
+    at:=json_raw(out,0,"{\"schema\":");at=json_raw(out,at,t.schema);
+    at=json_raw(out,at,",\"source\":{\"repo\":");at=json_raw(out,at,t.repo);at=json_raw(out,at,",\"revision\":");at=json_raw(out,at,t.revision);
+    at=json_raw(out,at,",\"gpt_py_sha256\":");at=json_raw(out,at,t.gpt);at=json_raw(out,at,",\"checkpoint_manager_py_sha256\":");at=json_raw(out,at,t.manager);
+    at=json_raw(out,at,"},\"model_config\":{\"sequence_len\":");at=json_write_int(out,at,c.sequence_len);
+    at=json_raw(out,at,",\"vocab_size\":");at=json_write_int(out,at,c.vocab);at=json_raw(out,at,",\"n_layer\":");at=json_write_int(out,at,c.layers);
+    at=json_raw(out,at,",\"n_head\":");at=json_write_int(out,at,c.heads);at=json_raw(out,at,",\"n_kv_head\":");at=json_write_int(out,at,c.kv_heads);
+    at=json_raw(out,at,",\"n_embd\":");at=json_write_int(out,at,c.width);at=json_raw(out,at,t.config);
+    at=json_raw(out,at,"},\"pad_vocab_size_to\":");at=json_raw(out,at,t.pad);
+    at=json_raw(out,at,",\"tokenizer\":{\"format\":");at=json_raw(out,at,t.format);at=json_raw(out,at,",\"sha256\":");at=json_raw(out,at,t.tokenizer);
+    at=json_raw(out,at,",\"vocab_size\":");if t.vocab.count>0 {at=json_raw(out,at,t.vocab);}else {at=json_write_int(out,at,c.vocab);}
+    at=json_raw(out,at,"},\"checkpoint\":{\"model_pt_sha256\":");at=json_raw(out,at,t.pt);at=json_raw(out,at,",\"meta_json_sha256\":");at=json_raw(out,at,t.meta);
+    at=json_raw(out,at,",\"step\":");at=json_raw(out,at,t.step);at=json_raw(out,at,",\"key_prefix\":");at=json_raw(out,at,t.prefix);
+    at=json_raw(out,at,"},\"safetensors_sha256\":");at=json_raw(out,at,t.digest);at=json_raw(out,at,t.extra);at=json_raw(out,at,"}");
+    return at;
+}
+nc_stored_bf16 :: (kind:NcKind)->bool {return kind==NcKind.wte || kind==NcKind.value;}
+// The value a stored weight decodes to: binary32, or BF16 by truncation.
+nc_stored :: (b:NcBuild,kind:NcKind,x:f64)->f64 {
+    bits:=f32_bits(cast(f32)x);if b.bf16 && nc_stored_bf16(kind) {bits=bits&0xffff0000;}return cast(f64)f32_from_bits(bits);
+}
+nc_write_safetensors :: (c:NcConfig,p:[]f64,b:NcBuild,out:[]u8)->int {
+    inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,inv[..]);text:[4096]u8;name:[64]u8;at:=json_raw(text[..],0,"{");data:=0;
+    for k:0..<n {t:=inv[k];if b.fault==NcFault.skip && b.at==k {continue;}
+        if at>1 {at=json_raw(text[..],at,",");}
+        m:=nc_tensor_name(t,name[..]);at=json_raw(text[..],at,"\"");
+        if b.fault==NcFault.rename && b.at==k {at=json_raw(text[..],at,"x");}
+        at=json_raw(text[..],at,cast(string)name[0..<m]);at=json_raw(text[..],at,"\":{\"dtype\":");
+        width:=4;if b.fault==NcFault.f16 && b.at==k {at=json_raw(text[..],at,"\"F16\"");}else if b.bf16 && nc_stored_bf16(t.kind) {width=2;at=json_raw(text[..],at,"\"BF16\"");}else {at=json_raw(text[..],at,"\"F32\"");}
+        at=json_raw(text[..],at,",\"shape\":[");rows:=t.rows;if b.fault==NcFault.rows && b.at==k {rows+=1;}
+        at=json_write_int(text[..],at,rows);
+        cols:=t.cols;if b.fault==NcFault.cols && b.at==k {cols+=1;}
+        if t.cols>0 && !(b.fault==NcFault.rank && b.at==k) {at=json_raw(text[..],at,",");at=json_write_int(text[..],at,cols);}
+        if t.cols==0 && b.fault==NcFault.rank && b.at==k {at=json_raw(text[..],at,",1");}
+        count:=rows*cols;if t.cols==0 {count=rows;}if b.fault==NcFault.rank && b.at==k && t.cols>0 {count=rows;}
+        at=json_raw(text[..],at,"],\"data_offsets\":[");at=json_write_int(text[..],at,data);at=json_raw(text[..],at,",");
+        at=json_write_int(text[..],at,data+count*width);at=json_raw(text[..],at,"]}");data+=count*width;
+    }
+    if b.fault==NcFault.extra {at=json_raw(text[..],at,",\"extra.weight\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[");at=json_write_int(text[..],at,data);
+        at=json_raw(text[..],at,",");at=json_write_int(text[..],at,data+4);at=json_raw(text[..],at,"]}");data+=4;}
+    at=json_raw(text[..],at,"}");
+    for i:0..<8 {out[i]=cast(u8)((cast(u64)at>>(i*8))&255);}for i:0..<at {out[8+i]=text[i];}
+    w:=8+at;
+    for k:0..<n {t:=inv[k];if b.fault==NcFault.skip && b.at==k {continue;}
+        count:=nc_elements(t);if b.fault==NcFault.rows && b.at==k {count+=nc_elements(t)/t.rows;}if b.fault==NcFault.cols && b.at==k {count+=t.rows;}if b.fault==NcFault.rank && b.at==k && t.cols>0 {count=t.rows;}
+        for e:0..<count {x:=0.0;if e<nc_elements(t) {x=p[t.offset+e];}bits:=f32_bits(cast(f32)x);
+            if b.bf16 && nc_stored_bf16(t.kind) {out[w]=cast(u8)((bits>>16)&255);out[w+1]=cast(u8)((bits>>24)&255);w+=2;}
+            else {for i:0..<4 {out[w+i]=cast(u8)((bits>>cast(u32)(8*i))&255);}w+=4;}
+        }
+    }
+    if b.fault==NcFault.extra {for i:0..<4 {out[w+i]=0;}w+=4;}
+    return w;
+}
+nc_hex :: (bytes:[]u8,out:[]u8)->int {
+    digits:="0123456789abcdef";out[0]='"';for i:0..<bytes.count {out[1+2*i]=digits[cast(int)(bytes[i]>>4)];out[2+2*i]=digits[cast(int)(bytes[i]&15)];}
+    out[1+2*bytes.count]='"';return 2+2*bytes.count;
+}

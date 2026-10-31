@@ -107,16 +107,16 @@ MP_OPS :: [33]MpOp.[
     MpOp.{target=1,name="gqa-gated-attention",unit="qwen-attention"},MpOp.{target=1,name="block-bidirectional-mask",unit="qwen-decision"},
     MpOp.{target=1,name="swiglu-ffn",unit="qwen-block"},MpOp.{target=1,name="hybrid-prefix-fork",unit="qwen-prefix"},
     MpOp.{target=1,name="slot-lm-readout",unit="readout"},
-    MpOp.{target=2,name="byte-bpe-nanochat2",unit="bpe-train"},MpOp.{target=2,name="rotary",unit="planned:nanochat-forward"},
-    MpOp.{target=2,name="qk-rmsnorm-causal-window-attention",unit="planned:nanochat-forward"},MpOp.{target=2,name="relu-squared-mlp",unit="planned:nanochat-forward"},
-    MpOp.{target=2,name="value-embeddings-smear-backout",unit="planned:nanochat-forward"},MpOp.{target=2,name="softcap-untied-head",unit="planned:nanochat-forward"},
+    MpOp.{target=2,name="byte-bpe-nanochat2",unit="bpe-train"},MpOp.{target=2,name="rotary",unit="nanochat/gpt"},
+    MpOp.{target=2,name="qk-rmsnorm-causal-window-attention",unit="nanochat/gpt"},MpOp.{target=2,name="relu-squared-mlp",unit="nanochat/gpt"},
+    MpOp.{target=2,name="value-embeddings-smear-backout",unit="nanochat/gpt"},MpOp.{target=2,name="softcap-untied-head",unit="nanochat/gpt"},
     MpOp.{target=3,name="slot-lm-readout",unit="readout"}];
 
 MP_STATUS_NAMES :: [9]string.["ok","psionic.pin.target","psionic.pin.path","psionic.pin.bytes","psionic.pin.digest","psionic.pin.scope","psionic.pin.length","psionic.pin.options","psionic.pin.score"];
 // The committed manifests' digests: any change to a pin changes its bytes.
 MP_MANIFEST_SHA :: [4]string.["7b402750100c28af8a394f645d552130f14d3bba3d4b9737a1bfa593d0a51dbb",
     "bca3bd550067608e56c8a7287be29d809568ccaecb7200555700ab2c1212c559",
-    "60c4659ca2b3df199f01966e463e814c12fd3bc0638754dcaa0218684af6a5c1",
+    "086b62a36ac322fbda5639f7cfc788253b4192085d406fdb867f0b457ef29b17",
     "39b5e874356a5e904a492a630d15e286040f261162f07de0417944705e4291c8"];
 MP_TOY_READOUT :: "{\"readout\":\"slot_lm\",\"head_dim\":4,\"n_slots\":2}\n";
 

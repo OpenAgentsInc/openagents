@@ -1,0 +1,229 @@
+// Chapter 125: admit an inert nanochat checkpoint export.
+// psionic/tools/export/nanochat_export.py turns a torch.save model_<step>.pt
+// into model.safetensors without executing its pickle, and writes an identity
+// record (psionic.nanochat-export.v1). This module decides: the pinned source
+// revision and gpt.py digest, the exact seven GPTConfig keys, the tokenizer's
+// vocabulary against the model's, the safetensors digest, and every tensor's
+// name, rank and shape against the configuration. checkpoint_manager.py's
+// historical defaults (a missing window_pattern patched to "L", missing
+// resid_lambdas/x0_lambdas patched to ones/zeros) refuse as `historical`
+// rather than being patched. All or nothing: a refusal writes no parameter.
+#load "gpt.coax";
+#load "../model-io/weights.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../fixtures/nanochat/build.coax";
+#load "../../fixtures/nanochat/cases.coax";
+#authority;
+NcLoadStatus :: enum u8 {ok;json;schema;source;config;historical;tokenizer;digest;format;manifest;shape;number;capacity;alias;}
+NcIdentity :: struct {status:NcLoadStatus;config:NcConfig;digest:string;step:int;}
+NcLoad :: struct {status:NcLoadStatus;config:NcConfig;written:int;step:int;}
+NC_SCHEMA :: "psionic.nanochat-export.v1";
+NC_REPO :: "karpathy/nanochat";
+NC_REVISION :: "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd";
+NC_GPT_PY :: "8cdedc2e418b9d4dc45884e07f59904fcdec066bb3d76664b2adf2d415f704e3";
+NC_CHECKPOINT_MANAGER_PY :: "aa63399ddaf2a0412dc099287bf0dc879f9cb0cce00f861db50eeec58746f3ba";
+NC_IDENTITY_MAX :: 4096;
+NC_STEP_MAX :: 1000000000;
+
+// book:begin names
+nc_raw :: (out:[]u8,at:int,s:string)->int {for i:0..<s.count {out[at+i]=s[i];}return at+s.count;}
+// The state_dict name of one inventory entry (layers are single digits).
+nc_tensor_name :: (t:NcTensor,out:[]u8)->int {
+    if t.kind==NcKind.resid {return nc_raw(out,0,"resid_lambdas");}if t.kind==NcKind.x0 {return nc_raw(out,0,"x0_lambdas");}
+    if t.kind==NcKind.smear_lambda {return nc_raw(out,0,"smear_lambda");}if t.kind==NcKind.backout {return nc_raw(out,0,"backout_lambda");}
+    if t.kind==NcKind.wte {return nc_raw(out,0,"transformer.wte.weight");}if t.kind==NcKind.head {return nc_raw(out,0,"lm_head.weight");}
+    if t.kind==NcKind.smear_gate {return nc_raw(out,0,"smear_gate.weight");}
+    digit:=cast(u8)('0'+t.layer);
+    if t.kind==NcKind.value {at:=nc_raw(out,0,"value_embeds.");out[at]=digit;return nc_raw(out,at+1,".weight");}
+    at:=nc_raw(out,0,"transformer.h.");out[at]=digit;at+=1;
+    if t.kind==NcKind.q {return nc_raw(out,at,".attn.c_q.weight");}if t.kind==NcKind.k {return nc_raw(out,at,".attn.c_k.weight");}
+    if t.kind==NcKind.v {return nc_raw(out,at,".attn.c_v.weight");}if t.kind==NcKind.proj {return nc_raw(out,at,".attn.c_proj.weight");}
+    if t.kind==NcKind.gate {return nc_raw(out,at,".attn.ve_gate.weight");}if t.kind==NcKind.fc {return nc_raw(out,at,".mlp.c_fc.weight");}
+    return nc_raw(out,at,".mlp.c_proj.weight");
+}
+// book:end names
+nc_hex_digest :: (s:string)->bool {
+    if s.count!=64 {return false;}for ch:s {if !((ch>='0' && ch<='9') || (ch>='a' && ch<='f')) {return false;}}return true;
+}
+nc_digest_is :: (bytes:[]u8,s:string)->bool {
+    digits:="0123456789abcdef";
+    for i:0..<32 {if s[2*i]!=digits[cast(int)(bytes[i]>>4)] || s[2*i+1]!=digits[cast(int)(bytes[i]&15)] {return false;}}return true;
+}
+NcText1 :: struct {ok:bool;text:string;}
+NcInt1 :: struct {ok:bool;value:int;}
+NcRead :: struct {status:NcLoadStatus;config:NcConfig;value:int;}
+NcMember :: struct {status:NcLoadStatus;bit:int;index:int;}
+NC_SOURCE_KEYS :: [4]string.["repo","revision","gpt_py_sha256","checkpoint_manager_py_sha256"];
+NC_SOURCE_VALUES :: [4]string.[NC_REPO,NC_REVISION,NC_GPT_PY,NC_CHECKPOINT_MANAGER_PY];
+NC_CONFIG_KEYS :: [7]string.["sequence_len","vocab_size","n_layer","n_head","n_kv_head","n_embd","window_pattern"];
+NC_TOKENIZER_KEYS :: [3]string.["format","sha256","vocab_size"];
+NC_CHECKPOINT_KEYS :: [4]string.["model_pt_sha256","meta_json_sha256","step","key_prefix"];
+NC_TOP_KEYS :: [7]string.["schema","source","model_config","pad_vocab_size_to","tokenizer","checkpoint","safetensors_sha256"];
+// A printable string without escapes.
+nc_string :: (j:[]Json)->NcText1 {
+    if json_next(j)!=JSON_STRING {return NcText1.{};}t:=json_text(j);for ch:t {if ch<32 || ch>126 || ch=='\\' {return NcText1.{};}}return NcText1.{ok=true,text=t};
+}
+// A non-negative JSON integer (json_int keeps it within 2^53).
+nc_int :: (j:[]Json)->NcInt1 {
+    if json_next(j)!=JSON_NUMBER {return NcInt1.{};}n:=json_int(json_text(j));if !n.ok || n.value<0 {return NcInt1.{};}return NcInt1.{ok=true,value=n.value};
+}
+// One object member's key: its bit among names; unknown and repeated keys refuse.
+nc_member :: (j:[]Json,t:int,names:[]string,seen:int)->NcMember {
+    if t!=JSON_STRING {return NcMember.{status=NcLoadStatus.json};}key:=json_text(j);
+    for i:0..<names.count {if key==names[i] {bit:=1<<i;if (seen&bit)!=0 {return NcMember.{status=NcLoadStatus.schema};}return NcMember.{bit=bit,index=i};}}
+    return NcMember.{status=NcLoadStatus.schema};
+}
+nc_source :: (j:[]Json)->NcLoadStatus {
+    if json_next(j)!=JSON_OBJECT {return NcLoadStatus.schema;}seen:=0;keys:=NC_SOURCE_KEYS;want:=NC_SOURCE_VALUES;t:=json_next(j);
+    while t!=JSON_OBJECT_END {m:=nc_member(j,t,keys[..],seen);if m.status!=NcLoadStatus.ok {return m.status;}seen|=m.bit;
+        v:=nc_string(j);if !v.ok {return NcLoadStatus.schema;}
+        if v.text!=want[m.index] {return NcLoadStatus.source;}
+        t=json_next(j);
+    }
+    if seen!=15 {return NcLoadStatus.schema;}return NcLoadStatus.ok;
+}
+// book:begin config
+// GPTConfig's seven keys. window_pattern is upper-cased as gpt.py does; a
+// missing one is checkpoint_manager's historical "L" patch and refuses.
+nc_model_config :: (j:[]Json)->NcRead {
+    if json_next(j)!=JSON_OBJECT {return NcRead.{status=NcLoadStatus.schema};}seen:=0;keys:=NC_CONFIG_KEYS;c:NcConfig;t:=json_next(j);
+    while t!=JSON_OBJECT_END {m:=nc_member(j,t,keys[..],seen);if m.status!=NcLoadStatus.ok {return NcRead.{status=m.status};}seen|=m.bit;
+        if m.bit==64 {
+            v:=nc_string(j);if !v.ok {return NcRead.{status=NcLoadStatus.schema};}if v.text.count>16 {return NcRead.{status=NcLoadStatus.config};}
+            bits:u16;for i:0..<v.text.count {ch:=v.text[i];if ch=='S' || ch=='s' {bits|=cast(u16)1<<cast(u16)i;}else if ch!='L' && ch!='l' {return NcRead.{status=NcLoadStatus.config};}}
+            c.pattern=cast(u32)bits;c.pattern_len=v.text.count;
+        } else {
+            v:=nc_int(j);if !v.ok {return NcRead.{status=NcLoadStatus.schema};}
+            if m.bit==1 {c.sequence_len=v.value;}if m.bit==2 {c.vocab=v.value;}if m.bit==4 {c.layers=v.value;}
+            if m.bit==8 {c.heads=v.value;}if m.bit==16 {c.kv_heads=v.value;}if m.bit==32 {c.width=v.value;}
+        }
+        t=json_next(j);
+    }
+    if seen==63 {return NcRead.{status=NcLoadStatus.historical};}if seen!=127 {return NcRead.{status=NcLoadStatus.schema};}
+    c.context=c.sequence_len;if !nc_valid(c) {return NcRead.{status=NcLoadStatus.config};}return NcRead.{config=c};
+}
+// book:end config
+nc_tokenizer :: (j:[]Json)->NcRead {
+    if json_next(j)!=JSON_OBJECT {return NcRead.{status=NcLoadStatus.schema};}seen:=0;keys:=NC_TOKENIZER_KEYS;vocab:int;t:=json_next(j);
+    while t!=JSON_OBJECT_END {m:=nc_member(j,t,keys[..],seen);if m.status!=NcLoadStatus.ok {return NcRead.{status=m.status};}seen|=m.bit;
+        if m.bit==4 {v:=nc_int(j);if !v.ok {return NcRead.{status=NcLoadStatus.tokenizer};}vocab=v.value;}
+        else {v:=nc_string(j);if !v.ok || (m.bit==1 && v.text.count==0) || (m.bit==2 && !nc_hex_digest(v.text)) {return NcRead.{status=NcLoadStatus.tokenizer};}}
+        t=json_next(j);
+    }
+    if seen!=7 {return NcRead.{status=NcLoadStatus.schema};}return NcRead.{value=vocab};
+}
+nc_checkpoint :: (j:[]Json)->NcRead {
+    if json_next(j)!=JSON_OBJECT {return NcRead.{status=NcLoadStatus.schema};}seen:=0;keys:=NC_CHECKPOINT_KEYS;step:int;t:=json_next(j);
+    while t!=JSON_OBJECT_END {m:=nc_member(j,t,keys[..],seen);if m.status!=NcLoadStatus.ok {return NcRead.{status=m.status};}seen|=m.bit;
+        if m.bit==4 {v:=nc_int(j);if !v.ok || v.value>NC_STEP_MAX {return NcRead.{status=NcLoadStatus.schema};}step=v.value;}
+        else {v:=nc_string(j);if !v.ok {return NcRead.{status=NcLoadStatus.schema};}
+            if m.bit==8 {if v.text!="" && v.text!="_orig_mod." {return NcRead.{status=NcLoadStatus.schema};}}
+            else if !nc_hex_digest(v.text) {return NcRead.{status=NcLoadStatus.schema};}}
+        t=json_next(j);
+    }
+    if seen!=15 {return NcRead.{status=NcLoadStatus.schema};}return NcRead.{value=step};
+}
+// book:begin identity
+nc_identity :: (text:string)->NcIdentity {
+    if text.count>NC_IDENTITY_MAX {return NcIdentity.{status=NcLoadStatus.json};}
+    j:[1]Json;json_start_bounded(j[..],text,text.count,text.count);
+    if json_next(j[..])!=JSON_OBJECT {return NcIdentity.{status=NcLoadStatus.json};}
+    id:NcIdentity;seen:=0;keys:=NC_TOP_KEYS;vocab:int;t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {m:=nc_member(j[..],t,keys[..],seen);if m.status!=NcLoadStatus.ok {return NcIdentity.{status=m.status};}seen|=m.bit;status:=NcLoadStatus.ok;
+        if m.bit==1 {v:=nc_string(j[..]);if !v.ok || v.text!=NC_SCHEMA {status=NcLoadStatus.schema;}}
+        if m.bit==2 {status=nc_source(j[..]);}
+        if m.bit==4 {r:=nc_model_config(j[..]);status=r.status;id.config=r.config;}
+        if m.bit==8 {v:=nc_int(j[..]);if !v.ok || v.value!=NC_PAD {status=NcLoadStatus.config;}}
+        if m.bit==16 {r:=nc_tokenizer(j[..]);status=r.status;vocab=r.value;}
+        if m.bit==32 {r:=nc_checkpoint(j[..]);status=r.status;id.step=r.value;}
+        if m.bit==64 {v:=nc_string(j[..]);if !v.ok || !nc_hex_digest(v.text) {status=NcLoadStatus.schema;}id.digest=v.text;}
+        if status!=NcLoadStatus.ok {return NcIdentity.{status=status};}
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return NcIdentity.{status=NcLoadStatus.json};}
+    if seen!=127 {return NcIdentity.{status=NcLoadStatus.schema};}
+    // build_model's own assert: the tokenizer and the model agree on the vocabulary.
+    if vocab!=id.config.vocab {return NcIdentity.{status=NcLoadStatus.tokenizer};}
+    return id;
+}
+// book:end identity
+nc_find :: (tensors:[]PwTensor,name:string)->int {for i:0..<tensors.count {if tensors[i].name==name {return i;}}return -1;}
+// book:begin load
+// digest is the SHA-256 of file; nc_load computes it.
+nc_admit_export :: (identity:string,digest:[]u8,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c {
+    if overlap {return NcLoad.{status=NcLoadStatus.alias};}
+    id:=nc_identity(identity);if id.status!=NcLoadStatus.ok {return NcLoad.{status=id.status};}c:=id.config;
+    if params.count!=nc_parameter_count(c) {return NcLoad.{status=NcLoadStatus.capacity};}
+    if digest.count!=32 || !nc_digest_is(digest,id.digest) {return NcLoad.{status=NcLoadStatus.digest};}
+    r:=pw_inspect_checked(file,inventory,draft,false);if r.status!=PwStatus.ok {return NcLoad.{status=NcLoadStatus.format};}
+    tensors:=inventory[0..<r.written];want:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,want[..]);name:[64]u8;
+    if nc_find(tensors,"resid_lambdas")==-1 || nc_find(tensors,"x0_lambdas")==-1 {return NcLoad.{status=NcLoadStatus.historical};}
+    if r.written!=n {return NcLoad.{status=NcLoadStatus.manifest};}
+    for k:0..<n {t:=want[k];m:=nc_tensor_name(t,name[..]);at:=nc_find(tensors,cast(string)name[0..<m]);
+        if at<0 {return NcLoad.{status=NcLoadStatus.manifest};}s:=tensors[at].shape;
+        if t.cols==0 {if s.rank!=1 || s.dims[0]!=t.rows {return NcLoad.{status=NcLoadStatus.shape};}}
+        else if s.rank!=2 || s.dims[0]!=t.rows || s.dims[1]!=t.cols {return NcLoad.{status=NcLoadStatus.shape};}
+        width:=pw_width(tensors[at].dtype);
+        for e:0..<nc_elements(t) {bits:=pw_float_bits(file,tensors[at].begin+e*width,tensors[at].dtype);
+            if !psionic_tensor_finite_bits(bits) || abs(cast(f64)f32_from_bits(bits))>NC_NUMBER {return NcLoad.{status=NcLoadStatus.number};}}
+    }
+    for k:0..<n {t:=want[k];m:=nc_tensor_name(t,name[..]);tensor:=tensors[nc_find(tensors,cast(string)name[0..<m])];width:=pw_width(tensor.dtype);
+        for e:0..<nc_elements(t) {params[t.offset+e]=cast(f64)f32_from_bits(pw_float_bits(file,tensor.begin+e*width,tensor.dtype));}}
+    return NcLoad.{config=c,written=params.count,step=id.step};
+}
+nc_load :: (identity:string,file:[]u8,params:[]f64,inventory:[]PwTensor,draft:[]PwTensor,overlap:bool)->NcLoad #export_c {
+    digest:[32]u8;if sha256_hash_checked(file,digest[..],false)!=SHA_OK {return NcLoad.{status=NcLoadStatus.digest};}
+    return nc_admit_export(identity,digest[..],file,params,inventory,draft,overlap);
+}
+// book:end load
+#test "an export with BF16 embeddings loads every tensor exactly and runs" {#assert nc_exact(true);}
+#test "an all-F32 export loads every tensor exactly and runs" {#assert nc_exact(false);}
+#test "accepted edges: lower-case pattern, largest step, compile prefix, hex digits, largest weight, 4096 bytes" {
+    c:=NC_LOAD;p:[16554]f64;nc_formula(c,0.5,p[..]);file:[70000]u8;ident:[4200]u8;got:[16554]f64;
+    t:=nc_text(c,",\"window_pattern\":\"sl\"","");t.step="1000000000";t.prefix="\"_orig_mod.\"";t.tokenizer="\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\"";t.format="\" ~\"";
+    q:=p;q[0]=1048576;q[nc_wte(c)]=-1048576;k:=nc_case(c,q[..],NcBuild.{},t,true,file[..],ident[..]);
+    r:=nc_try(file[0..<k.bytes],ident[0..<k.text],got[..]);#assert r.status==NcLoadStatus.ok && r.step==1000000000 && r.config.pattern==1 && got[0]==1048576 && got[nc_wte(c)]==-1048576;
+    pad:[4096]u8;for i:0..<4096 {pad[i]=' ';}claim:=NC_CLAIM;hex:[66]u8;#assert nc_hex(claim[..],hex[..])==66;
+    t=nc_text(c,NC_LOAD_PATTERN,cast(string)hex[..]);base:=nc_write_identity(c,t,ident[..]);t.extra=cast(string)pad[0..<4096-base];
+    m:=nc_write_identity(c,t,ident[..]);#assert m==4096 && nc_try(file[0..<k.bytes],ident[0..<m],got[..]).status==NcLoadStatus.ok;
+    t=nc_text(c,",\"window_pattern\":\"LSLLLLLLLLLLLLLs\"",cast(string)hex[..]);m=nc_write_identity(c,t,ident[..]);
+    r=nc_try(file[0..<k.bytes],ident[0..<m],got[..]);#assert r.status==NcLoadStatus.ok && r.config.pattern==0x8002 && r.config.pattern_len==16;
+}
+#test "identity refusals: schema and pinned source" {#assert nc_identity_refusals(0,5);}
+#test "identity refusals: configuration and the historical window default" {#assert nc_identity_refusals(5,12);}
+#test "identity refusals: tokenizer, checkpoint and digest fields" {#assert nc_identity_refusals(12,24);}
+#test "identity refusals: bounds, characters and duplicate objects" {#assert nc_identity_refusals(24,40);}
+#test "identity refusals: the first digest byte" {#assert nc_identity_refusals(40,42);}
+#test "identity text: malformed JSON, size, alias, capacity and workspace" {
+    c:=NC_LOAD;p:[16554]f64;nc_formula(c,0.5,p[..]);file:[70000]u8;ident:[4200]u8;
+    k:=nc_case(c,p[..],NcBuild.{},nc_text(c,NC_LOAD_PATTERN,""),true,file[..],ident[..]);
+    got:[16554]f64;inv:[NC_TENSORS_MAX]PwTensor;draft:[NC_TENSORS_MAX]PwTensor;claim:=NC_CLAIM;
+    #assert nc_admit_export("{",claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.json;
+    #assert nc_admit_export("{}",claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.schema;
+    #assert nc_admit_export("[1,2]",claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.json;
+    #assert nc_admit_export("{\"schema\":1",claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.schema;
+    text:[4200]u8;for i:0..<k.text {text[i]=ident[i];}text[k.text]=' ';text[k.text+1]='1';
+    #assert nc_admit_export(cast(string)text[0..<k.text+2],claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.json;
+    for i:k.text..<4097 {text[i]=' ';}
+    #assert nc_admit_export(cast(string)text[0..<4097],claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],false).status==NcLoadStatus.json;
+    #assert nc_admit_export(cast(string)text[0..<k.text],claim[..],file[0..<k.bytes],got[..],inv[..],draft[..],true).status==NcLoadStatus.alias;
+    #assert nc_admit_export(cast(string)text[0..<k.text],claim[..],file[0..<k.bytes],got[0..<16553],inv[..],draft[..],false).status==NcLoadStatus.capacity;
+    #assert nc_admit_export(cast(string)text[0..<k.text],claim[..],file[0..<k.bytes],got[..],inv[0..<10],draft[..],false).status==NcLoadStatus.format;
+    k.bytes-=1;#assert nc_try(file[0..<k.bytes],ident[0..<k.text],got[..]).status==NcLoadStatus.format;
+}
+#test "file refusals: historical tensors, manifest and vector shapes" {#assert nc_file_refusals(0,7);}
+#test "file refusals: matrix shapes, dtype and numbers" {#assert nc_file_refusals(7,13);}
+#test "file refusals: number bounds, missing and renamed tensors" {#assert nc_file_refusals(13,19);}
+#test "every inventory entry has its state_dict name" {
+    want:=[21]string.["resid_lambdas","x0_lambdas","smear_lambda","backout_lambda","transformer.wte.weight","transformer.h.0.attn.c_q.weight","transformer.h.0.attn.c_k.weight","transformer.h.0.attn.c_v.weight","transformer.h.0.attn.c_proj.weight","transformer.h.0.mlp.c_fc.weight","transformer.h.0.mlp.c_proj.weight","transformer.h.1.attn.c_q.weight","transformer.h.1.attn.c_k.weight","transformer.h.1.attn.c_v.weight","transformer.h.1.attn.c_proj.weight","transformer.h.1.attn.ve_gate.weight","transformer.h.1.mlp.c_fc.weight","transformer.h.1.mlp.c_proj.weight","lm_head.weight","smear_gate.weight","value_embeds.1.weight"];
+    inv:[NC_TENSORS_MAX]NcTensor;#assert nc_inventory(NC_LOAD,inv[..])==21;
+    for i:0..<21 {name:[64]u8;for e:0..<64 {name[e]='#';}m:=nc_tensor_name(inv[i],name[..]);#assert cast(string)name[0..<m]==want[i] && name[m]=='#';}
+}
+#test "nc_load hashes the file it admits" {
+    c:=NC_LOAD;bytes:=[16]u8.[8,0,0,0,0,0,0,0,123,125,32,32,32,32,32,32];digest:[32]u8;#assert sha256_hash_checked(bytes[..],digest[..],false)==SHA_OK;
+    hex:[66]u8;#assert nc_hex(digest[..],hex[..])==66;ident:[4200]u8;n:=nc_write_identity(c,nc_text(c,NC_LOAD_PATTERN,cast(string)hex[..]),ident[..]);
+    got:[16554]f64;inv:[NC_TENSORS_MAX]PwTensor;draft:[NC_TENSORS_MAX]PwTensor;
+    #assert nc_load(cast(string)ident[0..<n],bytes[..],got[..],inv[..],draft[..],false).status==NcLoadStatus.format;
+    bytes[15]='\n';#assert nc_load(cast(string)ident[0..<n],bytes[..],got[..],inv[..],draft[..],false).status==NcLoadStatus.digest;
+    claim:=NC_CLAIM;#assert nc_admit_export(cast(string)ident[0..<n],claim[0..<31],bytes[..],got[..],inv[..],draft[..],false).status==NcLoadStatus.digest;
+}

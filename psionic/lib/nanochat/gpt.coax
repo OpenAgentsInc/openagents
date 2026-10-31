@@ -1,0 +1,248 @@
+// Chapter 125: the pinned nanochat GPT, forward and KV-cache decode.
+// karpathy/nanochat 92d63d4e8bb4df75c3b71618f31ddde2378b2bcd nanochat/gpt.py
+// (sha256 8cdedc2e...04e3) and the SDPA fallback in nanochat/flash_attention.py
+// (sha256 a10b0b10...2c2f), read and never executed. Binary64 on the CPU
+// (cpu-f64-nanochat-v1): normalized token embedding and smear, per-layer
+// residual and x0 scalars, causal grouped-query attention with half-split
+// rotary (base 100000, rotated by -theta), QK RMSNorm scaled by 1.2, value
+// embeddings with 3*sigmoid gates on alternating layers, the S/L window
+// pattern, a squared-ReLU MLP, backout of the middle residual, a final
+// parameterless RMSNorm, an untied head over the padded vocabulary cropped to
+// the real one, and a 15*tanh(z/15) logit softcap.
+NcStatus :: enum u8 {ok;config;shape;token;capacity;number;alias;position;}
+// book:begin config
+// GPTConfig's seven fields; window_pattern is bit i = 1 for 'S' at character
+// i, over pattern_len characters. context is the KV cache's capacity.
+NcConfig :: struct {sequence_len:int;vocab:int;layers:int;heads:int;kv_heads:int;width:int;pattern:u32;pattern_len:int;context:int;}
+// book:end config
+NcKind :: enum u8 {resid;x0;smear_lambda;backout;wte;q;k;v;proj;gate;fc;mlp;head;smear_gate;value;}
+NcTensor :: struct {kind:NcKind;layer:int;rows:int;cols:int;offset:int;}
+NcBlock :: struct {q:int;k:int;v:int;proj:int;gate:int;fc:int;mlp:int;value:int;}
+NcResult :: struct {status:NcStatus;written:int;loss:f64;}
+NC_EPS :: 0.0000000000000002220446049250313; // finfo(float64).eps = 2^-52, F.rms_norm's eps=None
+NC_BASE :: 100000.0;
+NC_SOFTCAP :: 15.0;
+NC_QK :: 1.2;
+NC_GATE :: 12;   // ve_gate_channels
+NC_SMEAR :: 24;  // smear_gate input channels
+NC_PAD :: 64;    // GPT(pad_vocab_size_to=64)
+NC_NUMBER :: 1048576.0;
+NC_TENSORS_MAX :: 40;
+
+// book:begin layout
+nc_valid :: (c:NcConfig)->bool {
+    if c.sequence_len<2 || c.sequence_len>256 || c.vocab<2 || c.vocab>512 || c.layers<1 || c.layers>4 {return false;}
+    if c.heads<1 || c.heads>8 || c.kv_heads<1 || c.kv_heads>c.heads || c.heads%c.kv_heads!=0 {return false;}
+    if c.width<NC_SMEAR || c.width>64 || c.width%c.heads!=0 {return false;}
+    hd:=c.width/c.heads;if hd<2 || hd%2!=0 {return false;}
+    if c.pattern_len<1 || c.pattern_len>16 || c.pattern>=(cast(u32)1<<c.pattern_len) {return false;}
+    return c.context>=1 && c.context<=320 && c.context<=10*c.sequence_len;
+}
+nc_padded :: (c:NcConfig)->int {return (c.vocab+NC_PAD-1)/NC_PAD*NC_PAD;}
+nc_head_dim :: (c:NcConfig)->int {return c.width/c.heads;}
+nc_kv_width :: (c:NcConfig)->int {return c.kv_heads*nc_head_dim(c);}
+nc_has_ve :: (c:NcConfig,l:int)->bool {return l%2==(c.layers-1)%2;}
+// -(-sequence_len // 4 // 128) * 128: a quarter of the context rounded up to 128.
+nc_short :: (c:NcConfig)->int {return ((c.sequence_len+3)/4+127)/128*128;}
+// The left window of layer l; the final layer is always L.
+nc_window :: (c:NcConfig,l:int)->int {
+    if l==c.layers-1 {return c.sequence_len;}
+    if ((c.pattern>>cast(u32)(l%c.pattern_len))&1)==1 {return nc_short(c);}
+    return c.sequence_len;
+}
+nc_block_size :: (c:NcConfig,l:int)->int {
+    d:=c.width;kv:=nc_kv_width(c);n:=2*d*d+2*kv*d+8*d*d;if nc_has_ve(c,l) {n+=c.kv_heads*NC_GATE;}return n;
+}
+// Flat binary64 parameters in GPT.state_dict() order: resid_lambdas,
+// x0_lambdas, smear_lambda, backout_lambda, wte, each block's c_q, c_k, c_v,
+// c_proj, [ve_gate], c_fc, mlp c_proj, then lm_head, smear_gate and the value
+// embeddings of the layers that have one.
+nc_wte :: (c:NcConfig)->int {return 2*c.layers+2;}
+nc_block :: (c:NcConfig,l:int)->NcBlock {
+    d:=c.width;kv:=nc_kv_width(c);at:=nc_wte(c)+nc_padded(c)*d;for i:0..<l {at+=nc_block_size(c,i);}
+    b:NcBlock;b.q=at;b.k=b.q+d*d;b.v=b.k+kv*d;b.proj=b.v+kv*d;b.gate=-1;at=b.proj+d*d;
+    if nc_has_ve(c,l) {b.gate=at;at+=c.kv_heads*NC_GATE;}b.fc=at;b.mlp=b.fc+4*d*d;b.value=-1;
+    if nc_has_ve(c,l) {before:=0;for i:0..<l {if nc_has_ve(c,i) {before+=1;}}b.value=nc_smear_gate(c)+NC_SMEAR+before*nc_padded(c)*kv;}
+    return b;
+}
+nc_head :: (c:NcConfig)->int {at:=nc_wte(c)+nc_padded(c)*c.width;for i:0..<c.layers {at+=nc_block_size(c,i);}return at;}
+nc_smear_gate :: (c:NcConfig)->int {return nc_head(c)+nc_padded(c)*c.width;}
+nc_ve_layers :: (c:NcConfig)->int {n:=0;for l:0..<c.layers {if nc_has_ve(c,l) {n+=1;}}return n;}
+nc_parameter_count :: (c:NcConfig)->int #export_c {return nc_smear_gate(c)+NC_SMEAR+nc_ve_layers(c)*nc_padded(c)*nc_kv_width(c);}
+nc_tensor_count :: (c:NcConfig)->int {return 5+6*c.layers+2*nc_ve_layers(c)+2;}
+// book:end layout
+nc_put :: (out:[]NcTensor,at:int,kind:NcKind,layer:int,rows:int,cols:int,offset:int)->int {
+    out[at]=NcTensor.{kind=kind,layer=layer,rows=rows,cols=cols,offset=offset};return at+1;
+}
+// Every tensor with its shape and offset; out must hold nc_tensor_count.
+nc_inventory :: (c:NcConfig,out:[]NcTensor)->int {
+    if !nc_valid(c) || out.count<nc_tensor_count(c) {return 0;}
+    d:=c.width;kv:=nc_kv_width(c);v:=nc_padded(c);L:=c.layers;n:=0;
+    n=nc_put(out,n,NcKind.resid,-1,L,0,0);n=nc_put(out,n,NcKind.x0,-1,L,0,L);
+    n=nc_put(out,n,NcKind.smear_lambda,-1,1,0,2*L);n=nc_put(out,n,NcKind.backout,-1,1,0,2*L+1);
+    n=nc_put(out,n,NcKind.wte,-1,v,d,nc_wte(c));
+    for l:0..<L {b:=nc_block(c,l);
+        n=nc_put(out,n,NcKind.q,l,d,d,b.q);n=nc_put(out,n,NcKind.k,l,kv,d,b.k);n=nc_put(out,n,NcKind.v,l,kv,d,b.v);n=nc_put(out,n,NcKind.proj,l,d,d,b.proj);
+        if b.gate>=0 {n=nc_put(out,n,NcKind.gate,l,c.kv_heads,NC_GATE,b.gate);}
+        n=nc_put(out,n,NcKind.fc,l,4*d,d,b.fc);n=nc_put(out,n,NcKind.mlp,l,d,4*d,b.mlp);
+    }
+    n=nc_put(out,n,NcKind.head,-1,v,d,nc_head(c));n=nc_put(out,n,NcKind.smear_gate,-1,1,NC_SMEAR,nc_smear_gate(c));
+    for l:0..<L {b:=nc_block(c,l);if b.value>=0 {n=nc_put(out,n,NcKind.value,l,v,kv,b.value);}}
+    return n;
+}
+nc_elements :: (t:NcTensor)->int {if t.cols==0 {return t.rows;}return t.rows*t.cols;}
+
+// KV cache: per layer keys then values for `context` positions, then the
+// previous position's normalized embedding (pre-smear) for decode.
+nc_keys :: (c:NcConfig,l:int)->int {return l*2*c.context*nc_kv_width(c);}
+nc_values :: (c:NcConfig,l:int)->int {return nc_keys(c,l)+c.context*nc_kv_width(c);}
+nc_prev :: (c:NcConfig)->int {return c.layers*2*c.context*nc_kv_width(c);}
+nc_cache_count :: (c:NcConfig)->int {return nc_prev(c)+c.width;}
+// Work for n new positions: x, x0, the backout copy, raw embeddings, queries,
+// attention outputs (n*width each), then one position's scratch.
+nc_work_count :: (c:NcConfig,n:int)->int {return 6*n*c.width+6*c.width+c.context;}
+
+nc_sigmoid :: (z:f64)->f64 {if z< -700 {return exp(z);}return 1/(1+exp(-z));}
+nc_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);if a<0 {return -v;}return v;}
+nc_rms :: (x:[]f64,xo:int,n:int,y:[]f64,yo:int) {
+    s:=0.0;for i:0..<n {s+=x[xo+i]*x[xo+i];}r:=sqrt(s/f64(n)+NC_EPS);for i:0..<n {y[yo+i]=x[xo+i]/r;}
+}
+nc_mv :: (p:[]f64,wo:int,rows:int,cols:int,x:[]f64,xo:int,y:[]f64,yo:int) {
+    for r:0..<rows {acc:=0.0;for i:0..<cols {acc+=p[wo+r*cols+i]*x[xo+i];}y[yo+r]=acc;}
+}
+// book:begin rotary
+// apply_rotary_emb: first and second halves of each head, rotated by -theta.
+nc_rotary :: (x:[]f64,xo:int,heads:int,hd:int,pos:int) {
+    half:=hd/2;
+    for h:0..<heads {for i:0..<half {
+        angle:=f64(pos)*(1/exp(log(NC_BASE)*f64(2*i)/f64(hd)));co:=cos(angle);si:=sin(angle);
+        a:=xo+h*hd+i;x1:=x[a];x2:=x[a+half];x[a]=x1*co+x2*si;x[a+half]=x1*(-si)+x2*co;
+    }}
+}
+// book:end rotary
+nc_qk_norm :: (x:[]f64,xo:int,heads:int,hd:int) {for h:0..<heads {nc_rms(x,xo+h*hd,hd,x,xo+h*hd);for i:0..<hd {x[xo+h*hd+i]*=NC_QK;}}}
+
+// book:begin run
+// Positions filled..filled+n-1 through every layer; keys and values of
+// earlier positions come from the cache. Layer by layer, as the training path.
+nc_run :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,tokens:[]int,work:[]f64,logits:[]f64,blocks:[]f64) {
+    n:=tokens.count;d:=c.width;hd:=nc_head_dim(c);kv:=nc_kv_width(c);group:=c.heads/c.kv_heads;heads:=c.heads;kvh:=c.kv_heads;vocab:=c.vocab;
+    X:=0;X0:=n*d;XB:=2*n*d;RAW:=3*n*d;Q:=4*n*d;Y:=5*n*d;S:=6*n*d;XN:=S;HID:=S+d;TMP:=S+5*d;SC:=S+6*d;
+    lam:=p[2*c.layers];sg:=nc_smear_gate(c);PREV:=nc_prev(c);W:=nc_wte(c);L:=c.layers;
+    for i:0..<n {nc_rms(p,W+tokens[i]*d,d,work,RAW+i*d);}
+    // Smear: the previous position's normalized embedding, gated by its own first 24 channels.
+    for i:0..<n {before:=-1;if i>0 {before=RAW+(i-1)*d;}
+        if before>=0 || filled>0 {
+            z:=0.0;for j:0..<NC_SMEAR {z+=p[sg+j]*work[RAW+i*d+j];}gate:=lam*nc_sigmoid(z);
+            for j:0..<d {prior:=0.0;if before>=0 {prior=work[before+j];}else {prior=cache[PREV+j];}work[X+i*d+j]=work[RAW+i*d+j]+gate*prior;}
+        } else {for j:0..<d {work[X+i*d+j]=work[RAW+i*d+j];}}
+        for j:0..<d {work[X0+i*d+j]=work[X+i*d+j];}
+    }
+    for l:0..<c.layers {b:=nc_block(c,l);window:=nc_window(c,l);K:=nc_keys(c,l);V:=nc_values(c,l);
+        for i:0..<n {t:=filled+i;key:=K+t*kv;value:=V+t*kv;
+            for j:0..<d {work[X+i*d+j]=p[l]*work[X+i*d+j]+p[L+l]*work[X0+i*d+j];}
+            nc_rms(work,X+i*d,d,work,XN);nc_mv(p,b.q,d,d,work,XN,work,Q+i*d);nc_mv(p,b.k,kv,d,work,XN,cache,key);nc_mv(p,b.v,kv,d,work,XN,cache,value);
+            if b.gate>=0 {
+                for g:0..<kvh {z:=0.0;for j:0..<NC_GATE {z+=p[b.gate+g*NC_GATE+j]*work[XN+j];}gate:=3*nc_sigmoid(z);
+                    for x:0..<hd {cache[value+g*hd+x]=cache[value+g*hd+x]+gate*p[b.value+tokens[i]*kv+g*hd+x];}}
+            }
+            nc_rotary(work,Q+i*d,heads,hd,t);nc_rotary(cache,key,kvh,hd,t);
+            nc_qk_norm(work,Q+i*d,heads,hd);nc_qk_norm(cache,key,kvh,hd);
+        }
+        for i:0..<n {t:=filled+i;first:=0;if t-window>0 {first=t-window;}
+            for h:0..<heads {g:=h/group;top:=0.0;
+                for j:first..<t+1 {s:=0.0;for x:0..<hd {s+=work[Q+i*d+h*hd+x]*cache[K+j*kv+g*hd+x];}s=s/sqrt(f64(hd));work[SC+j-first]=s;if j==first || s>top {top=s;}}
+                total:=0.0;for j:first..<t+1 {work[SC+j-first]=exp(work[SC+j-first]-top);total+=work[SC+j-first];}
+                for x:0..<hd {acc:=0.0;for j:first..<t+1 {acc+=work[SC+j-first]/total*cache[V+j*kv+g*hd+x];}work[Y+i*d+h*hd+x]=acc;}
+            }
+        }
+        for i:0..<n {
+            nc_mv(p,b.proj,d,d,work,Y+i*d,work,TMP);for j:0..<d {work[X+i*d+j]=work[X+i*d+j]+work[TMP+j];}
+            nc_rms(work,X+i*d,d,work,XN);nc_mv(p,b.fc,4*d,d,work,XN,work,HID);for f:0..<4*d {z:=work[HID+f];if z<0 {z=0;}work[HID+f]=z*z;}
+            nc_mv(p,b.mlp,d,4*d,work,HID,work,TMP);for j:0..<d {work[X+i*d+j]=work[X+i*d+j]+work[TMP+j];}
+            if blocks.count>0 {for j:0..<d {blocks[(l*n+i)*d+j]=work[X+i*d+j];}}
+            if l==L/2 {for j:0..<d {work[XB+i*d+j]=work[X+i*d+j];}}
+        }
+    }
+    back:=p[2*c.layers+1];H:=nc_head(c);
+    for i:0..<n {for j:0..<d {work[TMP+j]=work[X+i*d+j]-back*work[XB+i*d+j];}nc_rms(work,TMP,d,work,XN);
+        for v:0..<vocab {acc:=0.0;for j:0..<d {acc+=p[H+v*d+j]*work[XN+j];}logits[i*vocab+v]=NC_SOFTCAP*nc_tanh(acc/NC_SOFTCAP);}
+    }
+    for j:0..<d {cache[PREV+j]=work[RAW+(n-1)*d+j];}
+}
+// book:end run
+nc_admit :: (c:NcConfig,p:[]f64,cache:[]f64)->NcStatus {
+    if !nc_valid(c) {return NcStatus.config;}if p.count!=nc_parameter_count(c) {return NcStatus.shape;}
+    if cache.count<nc_cache_count(c) {return NcStatus.capacity;}
+    for x:p {if !(x>=-NC_NUMBER && x<=NC_NUMBER) {return NcStatus.number;}}return NcStatus.ok;
+}
+nc_loss :: (c:NcConfig,logits:[]f64,tokens:[]int)->f64 {
+    total:=0.0;
+    for t:0..<tokens.count-1 {z:=t*c.vocab;top:=logits[z];for v:1..<c.vocab {if logits[z+v]>top {top=logits[z+v];}}
+        sum:=0.0;for v:0..<c.vocab {sum+=exp(logits[z+v]-top);}total+=top+log(sum)-logits[z+tokens[t+1]];}
+    return total/f64(tokens.count-1);
+}
+// book:begin api
+// The training path over a whole sequence (the reference asserts T > 1). It
+// also fills the cache, so it doubles as the prefill. blocks, when not empty,
+// receives each layer's residual output per position.
+nc_forward :: (c:NcConfig,p:[]f64,tokens:[]int,cache:[]f64,work:[]f64,logits:[]f64,blocks:[]f64,overlap:bool)->NcResult #export_c {
+    status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
+    n:=tokens.count;if n<2 || n>c.context {return NcResult.{status=NcStatus.shape};}
+    for x:tokens {if x<0 || x>=c.vocab {return NcResult.{status=NcStatus.token};}}
+    if work.count<nc_work_count(c,n) || logits.count<n*c.vocab || (blocks.count>0 && blocks.count<c.layers*n*c.width) {return NcResult.{status=NcStatus.capacity};}
+    if overlap {return NcResult.{status=NcStatus.alias};}
+    nc_run(c,p,cache,0,tokens,work,logits,blocks);
+    return NcResult.{written=n*c.vocab,loss=nc_loss(c,logits,tokens)};
+}
+// One token at position `filled` of a cache that holds positions 0..filled-1.
+nc_decode :: (c:NcConfig,p:[]f64,cache:[]f64,filled:int,token:int,work:[]f64,logits:[]f64,overlap:bool)->NcResult #export_c {
+    status:=nc_admit(c,p,cache);if status!=NcStatus.ok {return NcResult.{status=status};}
+    if filled<0 || filled>=c.context {return NcResult.{status=NcStatus.position};}if token<0 || token>=c.vocab {return NcResult.{status=NcStatus.token};}
+    if work.count<nc_work_count(c,1) || logits.count<c.vocab {return NcResult.{status=NcStatus.capacity};}if overlap {return NcResult.{status=NcStatus.alias};}
+    one:=[1]int.[token];none:[1]f64;nc_run(c,p,cache,filled,one[..],work,logits,none[0..<0]);
+    return NcResult.{written=filled+1};
+}
+// book:end api
+
+// Deterministic weights, per tensor k of the inventory and element e:
+// scale*sin(0.61e + 1.3k + 0.25) + offset; psionic/tests/nanochat_oracle.py
+// builds the same values by state_dict name.
+nc_formula :: (c:NcConfig,head:f64,p:[]f64) #export_c {
+    inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,inv[..]);
+    for k:0..<n {t:=inv[k];scale:=0.0;offset:=0.0;
+        if t.kind==NcKind.resid {scale=0.1;offset=1;}if t.kind==NcKind.x0 {scale=0.2;offset=0.1;}
+        if t.kind==NcKind.smear_lambda {scale=0.2;offset=0.6;}if t.kind==NcKind.backout {scale=0.1;offset=0.2;}
+        if t.kind==NcKind.wte {scale=0.8;}if t.kind==NcKind.q || t.kind==NcKind.k || t.kind==NcKind.v || t.kind==NcKind.fc {scale=0.3;}
+        if t.kind==NcKind.proj || t.kind==NcKind.mlp {scale=0.2;}if t.kind==NcKind.gate {scale=0.4;}if t.kind==NcKind.head {scale=head;}
+        if t.kind==NcKind.smear_gate || t.kind==NcKind.value {scale=0.5;}
+        for e:0..<nc_elements(t) {p[t.offset+e]=scale*sin(0.61*f64(e)+1.3*f64(k)+0.25)+offset;}
+    }
+}
+NC_TINY :: NcConfig.{sequence_len=8,vocab=5,layers=1,heads=4,kv_heads=2,width=24,pattern=0,pattern_len=1,context=8};
+// "SL": bit 0 is S.
+NC_WINDOW :: NcConfig.{sequence_len=256,vocab=7,layers=3,heads=2,kv_heads=1,width=24,pattern=1,pattern_len=2,context=140};
+
+#test "configuration bounds, window rule and the flat layout" {
+    c:=NC_TINY;#assert nc_valid(c) && nc_padded(c)==64 && nc_parameter_count(c)==10228 && nc_tensor_count(c)==15 && nc_cache_count(c)==8*2*12+24;
+    w:=NC_WINDOW;#assert nc_valid(w) && nc_parameter_count(w)==23672 && nc_tensor_count(w)==29;
+    #assert nc_short(w)==128 && nc_window(w,0)==128 && nc_window(w,1)==256 && nc_window(w,2)==256;
+    k:=NcConfig.{sequence_len=64,vocab=329,layers=2,heads=2,kv_heads=1,width=32,pattern=7,pattern_len=4,context=64};
+    #assert nc_valid(k) && nc_padded(k)==384 && nc_parameter_count(k)==53290 && nc_window(k,0)==128 && nc_window(k,1)==64;
+    s:=w;s.sequence_len=200;#assert nc_short(s)==128;s.sequence_len=129;#assert nc_short(s)==128;
+    big:=NcConfig.{sequence_len=256,vocab=512,layers=4,heads=8,kv_heads=1,width=64,pattern=0,pattern_len=16,context=320};#assert nc_valid(big);
+    for f:0..<16 {bad:=c;
+        if f==0 {bad.sequence_len=1;}if f==1 {bad.sequence_len=257;}if f==2 {bad.vocab=1;}if f==3 {bad.vocab=513;}
+        if f==4 {bad.layers=0;}if f==5 {bad.layers=5;}if f==6 {bad.heads=0;}if f==7 {bad.heads=9;bad.width=72;}
+        if f==8 {bad.kv_heads=3;}if f==9 {bad.width=23;}if f==10 {bad.width=26;bad.heads=2;bad.kv_heads=1;}if f==11 {bad.heads=12;bad.kv_heads=1;}
+        if f==12 {bad.pattern_len=0;}if f==13 {bad.pattern=2;}if f==14 {bad.context=0;}if f==15 {bad.context=81;}
+        #assert !nc_valid(bad);
+    }
+    b:=nc_block(w,0);#assert b.q==2*3+2+64*24 && b.k==b.q+576 && b.v==b.k+288 && b.proj==b.v+288 && b.gate==b.proj+576 && b.fc==b.gate+12 && b.mlp==b.fc+2304;
+    b1:=nc_block(w,1);#assert b1.gate==-1 && b1.value==-1 && b1.q==b.mlp+2304 && b1.fc==b1.proj+576;
+    b2:=nc_block(w,2);#assert b2.value==b.value+64*12 && b.value==nc_smear_gate(w)+24 && nc_head(w)==b2.mlp+2304;
+    inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(w,inv[..]);#assert n==29;total:=0;at:=0;
+    for i:0..<n {#assert inv[i].offset==at;at+=nc_elements(inv[i]);total+=nc_elements(inv[i]);}#assert total==23672;
+    #assert inv[4].kind==NcKind.wte && inv[9].kind==NcKind.gate && inv[26].kind==NcKind.smear_gate && inv[28].kind==NcKind.value && inv[28].layer==2;
+    #assert nc_inventory(w,inv[0..<28])==0;bad:=w;bad.layers=0;#assert nc_inventory(bad,inv[..])==0;
+}

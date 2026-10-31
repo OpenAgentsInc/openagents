@@ -1,0 +1,83 @@
+// Chapter 125's checks against the independent oracle
+// (psionic/tests/nanochat_oracle.py): one block, three blocks over 140
+// positions with the S window, cached against full decoding, feature
+// sensitivity and refusals. Kept apart from gpt.coax so the checkpoint
+// module that loads gpt.coax does not rerun them under mutation.
+#load "gpt.coax";
+#load "../../fixtures/nanochat/oracle.coax";
+NC_WINDOW_LOGIT_POSITIONS :: [8]int.[0,1,2,127,128,129,130,139];
+NC_WINDOW_BLOCK_POSITIONS :: [3]int.[1,129,139];
+nc_window_tokens :: (out:[]int) {for i:0..<out.count {out[i]=(3*i*i+i)%7;}}
+nc_close :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-12*(1+abs(b));}
+#test "one block: logits, residual and loss match the independent oracle" {
+    c:=NC_TINY;p:[10228]f64;nc_formula(c,0.5,p[..]);tokens:=[6]int.[1,3,0,2,4,1];
+    cache:[216]f64;work:[1024]f64;logits:[30]f64;blocks:[144]f64;
+    r:=nc_forward(c,p[..],tokens[..],cache[..],work[..],logits[..],blocks[..],false);#assert r.status==NcStatus.ok && r.written==30;
+    for i:0..<30 {#assert nc_close(logits[i],NC_ORACLE_TINY_LOGITS[i]);}for i:0..<144 {#assert nc_close(blocks[i],NC_ORACLE_TINY_BLOCK[i]);}
+    #assert nc_close(r.loss,NC_ORACLE_TINY_LOSS);
+}
+#test "three blocks over 140 positions: windowed logits and every block match the oracle" {
+    c:=NC_WINDOW;p:[23672]f64;nc_formula(c,0.5,p[..]);tokens:[140]int;nc_window_tokens(tokens[..]);
+    cache:[10104]f64;work:[20480]f64;logits:[980]f64;blocks:[10080]f64;
+    r:=nc_forward(c,p[..],tokens[..],cache[..],work[..],logits[..],blocks[..],false);#assert r.status==NcStatus.ok;
+    for k:0..<8 {t:=NC_WINDOW_LOGIT_POSITIONS[k];for v:0..<7 {#assert nc_close(logits[t*7+v],NC_ORACLE_WINDOW_LOGITS[k*7+v]);}}
+    for l:0..<3 {for k:0..<3 {t:=NC_WINDOW_BLOCK_POSITIONS[k];for j:0..<24 {#assert nc_close(blocks[(l*140+t)*24+j],NC_ORACLE_WINDOW_BLOCKS[(l*3+k)*24+j]);}}}
+    #assert nc_close(r.loss,NC_ORACLE_WINDOW_LOSS);
+}
+#test "decoding one token at a time and prefill-then-decode equal the full pass bit for bit" {
+    c:=NC_WINDOW;p:[23672]f64;nc_formula(c,0.5,p[..]);tokens:[140]int;nc_window_tokens(tokens[..]);
+    cache:[10104]f64;work:[20480]f64;full:[980]f64;none:[1]f64;
+    #assert nc_forward(c,p[..],tokens[..],cache[..],work[..],full[..],none[0..<0],false).status==NcStatus.ok;
+    step:[7]f64;fresh:[10104]f64;
+    for t:0..<140 {r:=nc_decode(c,p[..],fresh[..],t,tokens[t],work[..],step[..],false);#assert r.status==NcStatus.ok && r.written==t+1;for v:0..<7 {#assert step[v]==full[t*7+v];}}
+    for i:0..<nc_cache_count(c) {#assert fresh[i]==cache[i];}
+    split:[10104]f64;head:[700]f64;
+    #assert nc_forward(c,p[..],tokens[0..<100],split[..],work[..],head[..],none[0..<0],false).status==NcStatus.ok;
+    for i:0..<700 {#assert head[i]==full[i];}
+    for t:100..<140 {#assert nc_decode(c,p[..],split[..],t,tokens[t],work[..],step[..],false).status==NcStatus.ok;for v:0..<7 {#assert step[v]==full[t*7+v];}}
+    #assert nc_decode(c,p[..],split[..],140,0,work[..],step[..],false).status==NcStatus.position;
+}
+#test "every enabled feature changes the logits where, and only where, it should" {
+    c:=NC_WINDOW;p:[23672]f64;nc_formula(c,0.5,p[..]);tokens:[140]int;nc_window_tokens(tokens[..]);
+    cache:[10104]f64;work:[20480]f64;base:[980]f64;z:[980]f64;none:[1]f64;
+    #assert nc_forward(c,p[..],tokens[..],cache[..],work[..],base[..],none[0..<0],false).status==NcStatus.ok;
+    // All-L windows: identical through position 128, different from 129 (key 0 leaves layer 0's window).
+    full:=c;full.pattern=0;#assert nc_forward(full,p[..],tokens[..],cache[..],work[..],z[..],none[0..<0],false).status==NcStatus.ok;
+    for i:0..<129*7 {#assert z[i]==base[i];}same:=true;for v:0..<7 {if z[129*7+v]!=base[129*7+v] {same=false;}}#assert !same;
+    // Each scalar, gate and embedding table, over the first 12 positions: perturb it and the logits move.
+    b0:=nc_block(c,0);b1:=nc_block(c,1);
+    #assert nc_forward(c,p[..],tokens[0..<12],cache[..],work[..],base[..],none[0..<0],false).status==NcStatus.ok;
+    for f:0..<11 {q:=p;at:=0;
+        if f==0 {at=0;}if f==1 {at=c.layers+1;}if f==2 {at=2*c.layers;}if f==3 {at=2*c.layers+1;}if f==4 {at=nc_smear_gate(c)+3;}
+        if f==5 {at=b0.gate+1;}if f==6 {at=b0.value+tokens[5]*12+2;}if f==7 {at=nc_wte(c)+tokens[5]*24+1;}if f==8 {at=b1.q+7;}
+        if f==9 {at=nc_head(c)+3*24+5;}if f==10 {at=b1.mlp+40;}
+        q[at]+=0.25;#assert nc_forward(c,q[..],tokens[0..<12],cache[..],work[..],z[..],none[0..<0],false).status==NcStatus.ok;
+        moved:=false;for i:0..<84 {if z[i]!=base[i] {moved=true;}}#assert moved;
+        if f==2 || f==4 {for v:0..<7 {#assert z[v]==base[v];}} // smear never reaches position 0
+    }
+}
+#test "refusals leave logits, blocks and cache untouched" {
+    c:=NC_TINY;p:[10228]f64;nc_formula(c,0.5,p[..]);tokens:=[6]int.[1,3,0,2,4,1];
+    for f:0..<11 {cache:[216]f64;for i:0..<216 {cache[i]=-3;}work:[1024]f64;logits:[30]f64;for i:0..<30 {logits[i]=-5;}blocks:[144]f64;for i:0..<144 {blocks[i]=-7;}
+        cc:=c;q:=p;t:=tokens;n:=6;wn:=1024;ln:=30;bn:=144;cn:=216;alias:=false;want:=NcStatus.ok;
+        if f==0 {cc.width=23;want=NcStatus.config;}if f==1 {n=1;want=NcStatus.shape;}if f==2 {t[2]=5;want=NcStatus.token;}
+        if f==3 {wn=nc_work_count(c,6)-1;want=NcStatus.capacity;}if f==4 {ln=29;want=NcStatus.capacity;}if f==5 {bn=143;want=NcStatus.capacity;}
+        if f==6 {cn=215;want=NcStatus.capacity;}if f==7 {alias=true;want=NcStatus.alias;}if f==8 {q[100]=0.0/0.0;want=NcStatus.number;}
+        if f==9 {q[5]=2*NC_NUMBER;want=NcStatus.number;}if f==10 {t[0]=-1;want=NcStatus.token;}
+        r:=nc_forward(cc,q[..],t[0..<n],cache[0..<cn],work[0..<wn],logits[0..<ln],blocks[0..<bn],alias);#assert r.status==want && r.written==0;
+        for i:0..<216 {#assert cache[i]==-3;}for i:0..<30 {#assert logits[i]==-5;}for i:0..<144 {#assert blocks[i]==-7;}
+    }
+    short:=[2]int.[1,3];cache:[216]f64;work:[1024]f64;logits:[10]f64;none:[1]f64;
+    #assert nc_forward(c,p[..],short[..],cache[..],work[..],logits[..],none[0..<0],false).status==NcStatus.ok;
+    nine:[9]int;#assert nc_forward(c,p[..],nine[..],cache[..],work[..],logits[..],none[0..<0],false).status==NcStatus.shape;
+    step:[5]f64;
+    #assert nc_decode(c,p[..],cache[..],-1,0,work[..],step[..],false).status==NcStatus.position;
+    #assert nc_decode(c,p[..],cache[..],8,0,work[..],step[..],false).status==NcStatus.position;
+    #assert nc_decode(c,p[..],cache[..],2,5,work[..],step[..],false).status==NcStatus.token;
+    #assert nc_decode(c,p[..],cache[..],2,0,work[0..<nc_work_count(c,1)-1],step[..],false).status==NcStatus.capacity;
+    #assert nc_decode(c,p[..],cache[..],2,0,work[..],step[0..<4],false).status==NcStatus.capacity;
+    #assert nc_decode(c,p[..],cache[..],2,0,work[..],step[..],true).status==NcStatus.alias;
+    #assert nc_decode(c,p[0..<10227],cache[..],2,0,work[..],step[..],false).status==NcStatus.shape;
+    #assert nc_decode(c,p[..],cache[0..<215],2,0,work[..],step[..],false).status==NcStatus.capacity;
+    #assert nc_decode(c,p[..],cache[..],7,0,work[..],step[..],false).status==NcStatus.ok;
+}
