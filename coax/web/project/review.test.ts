@@ -27,6 +27,7 @@ test("checks moved into an unmarked helper are flagged, into an #authority file 
 
 test("equivalence marks, invariants and gate lines are weakenings; docs alone are not code", () => {
   expect(weakenings([diff("lib/a.coax", [], ["x<=lo // mutant: equivalent"])], noAuthority)[0].why).toContain("equivalent")
+  expect(weakenings([diff("coax/web/project/QUEUE.md", [], ["adds a `mutant: equivalent` mark"]), diff("x/review.ts", [], ["// \"mutant: equivalent\" mark"])], noAuthority)).toEqual([])
   expect(weakenings([diff("coax/INVARIANTS.md", ["- every mutant is killed"])], noAuthority).length).toBe(1)
   expect(weakenings([diff("coax/tests/run.sh", ["python3 tests/evidence.py"])], noAuthority).length).toBe(1)
   expect(weakenings([diff("coax/tests/run.sh", ["[[ $a_rc -eq 0 ]]"], ["[[ $a_rc -eq 0 && $b_rc -eq 0 ]]"])], noAuthority)).toEqual([])

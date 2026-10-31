@@ -67,7 +67,8 @@ export function weakenings(files: FileDiff[], hasAuthority: (path: string) => bo
       for (const l of f.removed) if (l.trim() && gateDropped(l, f.added)) out.push({ file: f.path, why: "a gate dropped from tests/run.sh", line: l.trim() })
       continue
     }
-    for (const l of f.added) if (/mutant:\s*equivalent/.test(l)) out.push({ file: f.path, why: "new 'mutant: equivalent' mark", line: l.trim() })
+    // The mark is a Coax comment; the words elsewhere (docs, this tool) are not one.
+    if (f.path.endsWith(".coax")) for (const l of f.added) if (/\/\/\s*mutant:\s*equivalent/.test(l)) out.push({ file: f.path, why: "new 'mutant: equivalent' mark", line: l.trim() })
     const pattern = f.path.endsWith(".coax") ? CHECK_LINE : isTest(f.path) ? TEST_LINE : null
     if (!pattern) continue
     const added = new Set(f.added.map((l) => l.trim()))
