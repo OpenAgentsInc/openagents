@@ -425,12 +425,12 @@ The first `$T` in parameter order binds a placeholder type owned by that
 procedure; every other `$T` in its signature and body is that same type, so
 each use is checked against it like any other type (`return 1` from a
 `-> $T` procedure is E0330; passing a `$T` where `int` is wanted is E0317).
-A placeholder supports what every type supports: copying, assignment,
-parameters, locals, views, indexing a `[] $T` and iterating it. It has no
-operators, comparisons, casts or layout until constraints arrive (§7.2
-constraints, r4a-constraints): `a < b`, `a == b`, `cast(int) a` and `a + b`
-are refused with their usual codes, and `size_of`, `type_info` and
-`type_name` of a placeholder are E0399. Refused forms, each with its own
+An unconstrained placeholder supports copying, assignment, parameters, locals,
+views, indexing a `[] $T` and iterating it. Arithmetic, ordering and equality
+require the corresponding built-in constraint described below; unconstrained
+`a < b`, `a == b` and `a + b` are refused with their usual codes. Placeholder
+casts and layout remain restricted: `cast(int) a` is refused, and `size_of`,
+`type_info` and `type_name` of a placeholder are E0399. Refused forms, each with its own
 explained code: a `$T` only in the result (E0392); a `$T` first written in a
 body, or anywhere outside a procedure signature (E0393); a nested generic
 type such as `[] [] $T` (E0394; fixed arrays of `$T` are accepted since 0.36.0); a `$T` in a struct field
@@ -489,7 +489,7 @@ Each instance is a struct of its own, laid out, checked and emitted once
 template. Instances hold fixed storage only: binding a view, or a struct or
 array holding one, is E0802, so no instance carries a borrow past a view's
 lifetime rule. Struct and procedure instances share the 256-instance budget
-(E0339). Arithmetic on `$T` values still needs constraints (r4a-constraints).
+(E0339). Arithmetic on `$T` values requires the `numeric` constraint below.
 
 **Constraints (0.40.0).** A type parameter may state what its body needs,
 where it is bound: `max :: (a: $T: ordered, b: $T) -> $T` or
@@ -537,9 +537,10 @@ every call is permitted; that would hide code-size and compilation costs.
 A future semantic customization hook may calculate a result type from
 resolved argument types, for example combining physical dimensions. It must
 be a pure, bounded type computation with an explicit input/output contract,
-not permission to mutate arbitrary compiler state. Establish ordinary generic
-constraints and diagnostics before deciding whether a separate `#modify`
-surface is necessary. None of these facilities exists in the bootstrap.
+not permission to mutate arbitrary compiler state. Build on the existing
+built-in constraints and instantiation diagnostics before deciding whether a
+separate `#modify` surface is necessary. These proposed rewriting facilities
+do not exist in the bootstrap.
 
 ### 7.3 Evaluation order
 

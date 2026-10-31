@@ -936,7 +936,7 @@ their general language form remains planned.
 | Bounded direct WGSL graphics modules are shipped; a qualified Psionic WebGPU compute path remains work | 59 | Use CPU references until the compute workload has its own admitted lowering, binding and device evidence; graphics emission does not qualify it. |
 | Language jobs, threads and a memory model ([ch14](../../coax/book/ch14-jobs.md)) remain planned | 35, 36, 99, 171–175, 184–193 | Host workers may call Coax on disjoint ranges under their explicit replay and lifetime gates. |
 | Native `f16`/`bf16`, FP8 and FP4 scalar types remain planned | 33, 50, 60, 82, 95, every BF16 kernel | Packed storage, casts and format decoders already run in the declared Psionic profiles. |
-| Bounded generic copyable procedures and fixed-storage structs are shipped; numeric operation constraints ([ch08](../../coax/book/ch08-generics.md)) remain planned | Every multi-dtype kernel, 50 | Use admitted generic copying and storage; arithmetic kernels still use concrete numeric types until their constraints are implemented. |
+| Bounded generic procedures and fixed-storage structs ship with built-in `equatable`, `ordered`, `numeric` and `copyable` constraints ([ch08](../../coax/book/ch08-generics.md)); general user-defined constraints and operators remain planned | Every multi-dtype kernel, 50 | Shared numeric helpers are now a language option, with actual kernel adoption and native/device qualification still required. Generic struct bindings still reject views and view-containing values. |
 | General SIMD/vector/matrix types remain planned; selected lane/group loops and matrix primitives already ship | 33–35, 147–150 | Scalar or qualified cooperative kernels; measure before requesting another form. |
 | Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 33, 36 caches, 73, 96 and 189 expert paging, 120 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
 | Units and frames, typed clocks, bounded control, replay, robot-model import, stamped sensors and fault scenarios ([roadmap R12–R19](../../coax/ROADMAP.md)) remain planned | 167–169 | Chapter 167 states its units and step in a fixed profile over plain `f64` fields; later chapters wait for the checked forms. |
@@ -946,9 +946,12 @@ The framework track already has strided views (3), owned device storage (6),
 a typed tensor IR (38), bounded specialization (39), registered operators
 (40) and bounded CPU autodiff (106). The tensor IR is explicitly authored
 Psionic data; automatic extraction and transformation of arbitrary Coax
-functions remain separate work. Language ownership, results, constraints for
-generic numerical code, narrow scalar types, additional cooperative forms, asynchronous effects
-and broader target qualification should extend those real consumers. A general
+functions remain separate work. Built-in constraints now permit shared
+numerical helpers; migrating actual multi-dtype kernels and qualifying their
+native/device profiles remain consumer work. Language ownership, results,
+user-defined constraints and operators, narrow scalar types, additional
+cooperative forms, asynchronous effects and broader target qualification
+should extend those real consumers. A general
 GPU training backend is not implied by the existing inference or CPU backward
 profiles.
 <!-- /capability-claim -->

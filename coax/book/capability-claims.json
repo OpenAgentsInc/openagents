@@ -5,8 +5,8 @@
     {
       "id": "coax.generics.current",
       "document": "coax/book/ch08-generics.md",
-      "scope": "Copyable generic procedures, fixed-array value parameters, fixed-storage generic structs and the built-in copyable/equatable/ordered/numeric constraints; user constraints/operators, generic casts/layout queries and view-containing bindings remain separate.",
-      "text_sha256": "1ec3b6ecbb125467157b288c41d8f7a2eeff47d717190523b48cd48270452de0",
+      "scope": "Bounded generic procedures, fixed-array value parameters and fixed-storage generic structs with built-in equatable/ordered/numeric/copyable constraints and instantiation diagnostics; user-defined traits/operators and view-containing struct bindings remain outside this subset.",
+      "text_sha256": "863fce7e0179d0712763438a46d2f9bc7dc15331911bc4c7bf2dd7989dcfa283",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -14,7 +14,7 @@
         },
         {
           "id": "generics.instantiation",
-          "sha256": "d51df53405a2db73168d2ecc5c78c752db555a1b59c9450fe7e11e1c24723702"
+          "sha256": "953b9baae6e184279d5c89dfd90e453d3d2f710b2a33b7a2ffeecb009915192a"
         },
         {
           "id": "generics.value-parameters",
@@ -23,6 +23,10 @@
         {
           "id": "generics.structs",
           "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+        },
+        {
+          "id": "generics.constraints",
+          "sha256": "5dbbc386ff458215f412d4d42c0ea4d56def3536481f9346d8f3a10da7ff1b86"
         }
       ],
       "evidence": [
@@ -203,7 +207,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
-      "text_sha256": "42eda05eba5bb1f09956af238c90ac0fcea764a988e43cbe89ec8340793fe413",
+      "text_sha256": "ca95d4e0a4eb4040c8791f6aa217f99acc56447b66af755cdf8f5b556cd1baad",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -211,7 +215,7 @@
         },
         {
           "id": "generics.instantiation",
-          "sha256": "d51df53405a2db73168d2ecc5c78c752db555a1b59c9450fe7e11e1c24723702"
+          "sha256": "953b9baae6e184279d5c89dfd90e453d3d2f710b2a33b7a2ffeecb009915192a"
         },
         {
           "id": "generics.value-parameters",
@@ -240,6 +244,10 @@
         {
           "id": "generics.structs",
           "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+        },
+        {
+          "id": "generics.constraints",
+          "sha256": "5dbbc386ff458215f412d4d42c0ea4d56def3536481f9346d8f3a10da7ff1b86"
         }
       ],
       "evidence": [

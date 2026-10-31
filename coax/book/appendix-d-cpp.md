@@ -252,7 +252,7 @@ explain each current limit and the remaining design.
 
 | C++ | Coax design | Status in `coax0` |
 | --- | --- | --- |
-| Templates | `$T` procedure and fixed-storage struct instances with `$N` lengths; view-containing struct bindings are refused (Chapter 8) | bounded instances work; constraints planned |
+| Templates | `$T` procedure and fixed-storage struct instances with `$N` lengths; view-containing struct bindings are refused (Chapter 8) | bounded instances and four built-in constraints work; user-defined constraints planned |
 | Classes, inheritance, `virtual` | Structs, `using` for composition, explicit function tables where needed; no hidden vtables | structs work; the rest planned |
 | Exceptions | Error values with `try` and `or_else`; traps for bugs (Chapter 7) | traps work; error values planned |
 | `std::vector<T>` | `[..] T` with an allocator from the context (Chapter 6) | planned |

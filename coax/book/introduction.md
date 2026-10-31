@@ -102,9 +102,10 @@ preprocessor, and the compiler can run your code while compiling.
 **C++.** Coax deliberately leaves out most of what makes C++ big:
 classes, inheritance, constructors and destructors, exceptions,
 templates as a separate language. Cleanup is written with `defer` at
-the place you acquire something, so you can see it. Generic code is
-planned with explicit constraints instead of templates that fail deep
-inside their expansion.
+the place you acquire something, so you can see it. Generic procedures
+and fixed-storage structs support four built-in constraints, with errors
+that name an incompatible binding. General user-defined constraints remain
+planned.
 
 **Jai.** Coax is a descendant of Jai, and if you know Jai most of the
 syntax will look familiar: `name :: value`, `:=`, `#run`, `print` with
@@ -165,7 +166,7 @@ This table maps what Coax adds to the chapters that cover it:
 | --- | --- | --- |
 | Runtime checks | Overflow, division, bounds, cast and shift checks today; handle checks planned | [1](ch01-getting-started.md), [3](ch03-common-concepts.md) |
 | Diagnostics | Stable codes, the source line, and a fix | [4](ch04-reading-errors.md) |
-| Equality and hashing | `#derive(eq, hash)` and explicit constraints (planned) | [5](ch05-structs-enums-unions.md), [8](ch08-generics.md) |
+| Equality and hashing | Built-in `equatable` bounds today; `#derive(eq, hash)` and user-defined constraints planned | [5](ch05-structs-enums-unions.md), [8](ch08-generics.md) |
 | Compile time | Bounded `#run` and `#assert` today; typed code generation later | [9](ch09-compile-time.md) |
 | Checks | `#test`, `#forall`, `#authority` and `coax mutate` today | [11](ch11-writing-checks.md) |
 | Parallelism | A job's capture list is its effects (planned) | [14](ch14-jobs.md) |

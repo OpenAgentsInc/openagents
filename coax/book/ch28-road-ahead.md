@@ -59,9 +59,11 @@ inputs and results. The evaluator and C emitter remain C++.
 Logical module owners, qualified names, explicit exports, original source
 spans and bounded lowering reports now ship. Generic procedures and
 fixed-storage struct templates instantiate type and length parameters.
-Constraints remain planned, and generic struct bindings reject views and
-view-containing values. Chapters 8 and 10 and the generated status
-catalogue describe the exact subset and its limits.
+Built-in `equatable`, `ordered`, `numeric` and `copyable` constraints check
+generic bodies and their concrete bindings. General user-defined traits
+and operator overloading remain planned, and generic struct bindings
+still reject views and view-containing values. Chapters 8 and 10 and the
+generated status catalogue describe the exact subset and its limits.
 
 Pointers and dynamic arrays, tagged unions and `switch`, `try` and
 optionals, the context and allocators, richer reflection and macros, jobs

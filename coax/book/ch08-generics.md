@@ -10,22 +10,23 @@ is used rather than somewhere deep inside it.
 
 In this chapter we'll start with a comparison algorithm that runs today
 and has exactly that duplication problem. We'll remove its first layer
-with an ordinary procedure, distinguish the generic operations that
-already work from those that need constraints, and then look at the
+with an ordinary procedure, add the built-in constraint that allows a
+generic comparison, and then distinguish that working subset from the
 remaining design.
 
 <!-- capability-claim: coax.generics.current -->
-Generic procedures work: `$T` binds a type from a parameter, calls instantiate
-checked copies, and `[$N] T` binds a fixed array’s length. Unconstrained type
-parameters support copying, assignment, indexing and iteration. Coax 0.40.0
-also implements the built-in `copyable`, `equatable`, `ordered` and `numeric`
-constraints, written on the first binding as `$T: ordered`, for example.
-A comparison needs `ordered`; arithmetic needs `numeric`. Generic structs
-instantiate type and length parameters into fixed-storage records and support
-these built-in constraints too. View-containing type arguments remain refused
-with E0802. Generic casts/layout queries, user-defined constraints, slash-form
-`$T/Ordered` constraints and user operators remain outside this subset.
-The unconstrained `largest` below still needs `: ordered` to admit comparison.
+Generic procedures bind `$T` from parameters, instantiate checked copies,
+and bind fixed-array lengths through `[$N] T`. Unconstrained parameters
+support copying, assignment, indexing and iteration. Since 0.40.0, built-in `equatable`,
+`ordered`, `numeric` and `copyable` constraints now state additional
+operations where a type parameter binds, in procedures and generic structs.
+The compiler checks bodies against those bounds, rejects incompatible
+bindings at their use, and reports concrete instance failures with a trace.
+Generic structs still hold fixed storage: a view type, or an array or
+struct containing one, is refused as a struct binding with E0802. This is
+not general ownership safety, and `copyable` does not lift that restriction.
+User-defined constraints, operator overloading and placeholder layout
+queries remain outside the current subset.
 <!-- /capability-claim -->
 
 ## Removing duplication by extracting a procedure
@@ -115,8 +116,8 @@ type*.
 Our program grows. Now we also want the warmest temperature reading,
 which is an `f64`, and the largest byte in a buffer, which is a `u8`.
 `largest_int` won't take either: Coax has no implicit conversions, and
-a `[] f64` isn't a `[] int`. So today we write it out again, for each
-type:
+a `[] f64` isn't a `[] int`. Writing a concrete version for each type
+would look like this:
 
 Filename: examples/ch08_largest3.coax
 
@@ -197,8 +198,8 @@ the type as a parameter.
 
 A type parameter can already abstract over copying and indexing. To
 abstract over `largest`, we also need a rule that permits comparison.
-Here is the intended algorithm; its `>` remains outside today's
-unconstrained generic subset:
+Here is the unconstrained form. It is an intentional rejected example:
+`>` needs the built-in `ordered` bound shown below.
 
 ```jai
 #import "Basic";
@@ -220,7 +221,7 @@ main :: () {
 }
 ```
 
-*Listing 8-4: Unconstrained `largest`; add `: ordered` to its first `$T` binding to permit comparison*
+*Listing 8-4: Unconstrained `largest`; add `: ordered` at its first `$T` binding*
 
 The first `$T` in the parameter list declares a *type parameter* and says
 "bind it from the argument here". With a `[] int` argument, `$T` binds to
@@ -230,16 +231,16 @@ The current compiler already implements those binding rules.
 
 For each distinct `T`, the compiler produces a *specialized* procedure,
 compiled exactly like `largest_int` would be. There's no runtime
-dispatch, no boxed value and no table of function pointers. The program
-in Listing 8-4 would contain two procedures, one for `int` and one for
-`f64`, and nothing else.
+dispatch, no boxed value and no table of function pointers. After adding
+the bound in Listing 8-6, these calls produce two instances, one for `int`
+and one for `f64`.
 
 Today, the type parameter is accepted, but `n > result` is refused: an
 unconstrained `$T` does not promise that comparison exists. This keeps
 valid copy/index algorithms usable without pretending that every type
-is ordered. The current spelling is `values: [] $T: ordered`. Built-in
-constraints are checked both when the body is declared and when a call binds
-a concrete type; see the [0.40.0 record](../../docs/verification/coax-generic-constraints-2026-10-31.json).
+is ordered. The current spelling is `values: [] $T: ordered`; the next
+section explains its bound. The retained [0.40.0 verification record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-generic-constraints-2026-10-31.json)
+records the initial built-in constraint delivery.
 
 > Note: This is the Jai syntax, and Jai programmers will recognize it. In
 > C++ terms, `$T` is a template parameter that's deduced from the
@@ -288,26 +289,17 @@ That's a good error: it names the operator and the type that can't
 handle it. There's no obvious answer to "which of two points is larger",
 so Coax doesn't invent one.
 
-Now picture the same mistake with a generic. The caller writes
-`largest(points[..])`, one line that looks perfectly fine. The `>` that
-fails is inside `largest`, in code the caller didn't write and may never
-have read. If the compiler reports the error there, the caller gets a
-message pointing into someone else's library, at an operator they never
-typed. That's the experience C++ templates are famous for, where one
-wrong call produces pages of errors from deep inside a header.
+A generic needs two checks: its declaration must justify the operations
+in its body, and each call must bind a type that meets that requirement.
+That keeps an invalid body from hiding until a caller first instantiates
+it, and gives the caller a diagnostic that names the bound it cannot meet.
 
-## Constraints
+## Built-in constraints
 
-The built-in form now works: `max :: (a: $T: ordered, b: $T) -> $T`
-permits comparison, and `$T: numeric` permits arithmetic. A rejected concrete
-binding reports E0806 at its use and names the declaration. User-defined
-constraints and the slash notation in the design below remain planned.
-
-The fix is to put the assumption into the signature, where the caller
-can see it. A *constraint* names the operations a type must have:
+The current signature puts that assumption where the caller can see it:
 
 ```jai
-largest :: (values: [] $T/Ordered) -> T {
+largest :: (values: [] $T: ordered) -> $T {
   result := values[0];
   for n: values {
     if n > result { result = n; }
@@ -316,20 +308,38 @@ largest :: (values: [] $T/Ordered) -> T {
 }
 ```
 
-*Listing 8-6: `largest` constrained to types that can be ordered (design)*
+*Listing 8-6: The implemented `ordered` signature (illustrative fragment)*
 
-`$T/Ordered` reads "a type `T` that is `Ordered`". Now the signature
-tells you everything `largest` needs from its type, and the compiler
-checks it at each call. When `largest(points[..])` is compiled, the
-constraint is checked first, and per spec §7.2 the error is reported
-*at the call*, naming the call and the missing operation (here, that
-`Vec2` has no ordering). The body of `largest` is never involved.
+`$T: ordered` reads "bind a type `T` that supports built-in number
+comparisons". It belongs where `$T` is bound. The current built-ins are:
 
-> The following user-defined constraint design is distinct from today’s
-> built-in constraint diagnostics. The current tests retain E0805–E0808
-> cases for unknown names, invalid bindings and instantiation traces.
+| Constraint | Operations it permits | Concrete types admitted |
+| --- | --- | --- |
+| `copyable` | Assignment, passing and returning | Every current type, subject to existing binding restrictions |
+| `equatable` | `==` and `!=` | Scalars, strings and enums |
+| `ordered` | Equality and `<`, `<=`, `>` and `>=` | Integers and floats |
+| `numeric` | Ordering, `+`, `-`, `*`, `/`, their compound assignments and integer literals | Integers and floats |
 
-A constraint is written like a small list of required procedures:
+These are compiler-defined bounds. `ordered` does not derive an order for
+`Vec2`, or promise a total order for floating-point NaNs. A body using
+arithmetic with only `ordered` is refused at its declaration. Calling a
+constrained procedure or instantiating a constrained struct with an
+incompatible type is E0806 at the use, naming the generic declaration and
+its requirement. Unknown bounds are E0805; writing a bound away from the
+parameter's binding position is E0808. If a concrete instance exposes a
+further error, such as adding `300` with `$T` bound to `u8`, its errors are
+followed by an instantiation trace at the first call (E0807).
+
+The executable coverage is the `CONSTRAINED` fixture and `Constraints`
+checks in [the compiler's generic regression suite](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/generics.py),
+including ordered maxima, numeric sums, string and enum equality, and a
+constrained `Range` struct. Listing 8-6 is an explanatory fragment, not an
+additional runnable book example.
+
+## User-defined constraints (later)
+
+General user-defined requirements remain planned. A future constraint
+could list required procedures, for example:
 
 ```jai
 Hashable :: constraint ($T) {
@@ -340,20 +350,16 @@ Hashable :: constraint ($T) {
 Table :: struct ($K: Type/Hashable, $V: Type) { ... }
 ```
 
-A `Table` keyed by some type works only if that type can be hashed and
-compared for equality, and the constraint says so up front. If you try
-to build a `Table` keyed by a struct with no `hash`, the error names the
-struct and the missing `hash`, at the line where you wrote the table's
-type.
+This is design syntax: `constraint` declarations, slash-form `$T/Ordered`
+bounds, custom `Hashable` requirements and user-defined operators are not
+implemented. The design
+would let a table require hashing and equality together, with errors at
+its use. The four current built-ins do not provide hashing or an owning
+container implementation.
 
-A constraint is a compile-time requirement only. It never becomes a
-runtime interface object, a vtable or a box; it just decides whether a
-specialization is allowed.
-
-> Note: Jai has constraints too (`$T/Base`, `$T/interface Matchable`),
-> but they're optional and many Jai generics go without. Coax makes them
-> the normal way to write a generic. Rust programmers will recognize the
-> idea from trait bounds, without the trait objects.
+Both current built-in bounds and the planned richer constraints are
+compile-time requirements. They do not introduce runtime interface
+objects, vtables or boxed values.
 
 ## Values as parameters
 
@@ -415,9 +421,10 @@ same call binding does not make another copy. `--timings` reports total
 `instances` and `instance_generated_bytes`; use those observations when a
 generic increases build time or output size.
 
-Recursive generic calls are currently refused. Richer specialization
-controls and source-level instantiation traces remain planned. The design
-keeps target and relevant semantic options in
+Recursive generic calls are currently refused. Constraint failures now
+name the declaration and bound, and concrete body failures carry the
+E0807 instantiation trace described above. Richer specialization controls
+remain planned; target and relevant semantic options must stay part of
 specialization identity as those facilities grow.
 
 ## Baking arguments
@@ -489,14 +496,14 @@ b.cents}`. The design lets a type define its own operators:
 operator + :: (a: Money, b: Money) -> Money pure { ... }
 ```
 
-User types can define arithmetic, comparison and indexing operators.
+The planned user operators cover arithmetic, comparison and indexing.
 Forrest Smith's Jai code shows how much a small vector type gains from
 them: `a + b * t` reads like the math it is. In Coax an operator must be
 `pure`, which means no allocation, no I/O and no failure, so math
 syntax costs what math costs. Assignment, field access, `&&`, `||` and
-calls can't be overloaded. Defining `>` for a type is also how it would
-come to satisfy a constraint like `Ordered`, which ties this section
-back to Listing 8-6.
+calls can't be overloaded. A future user-defined ordering requirement
+could connect such operators to generic code. Today's built-in `ordered`
+bound admits integers and floats; it does not admit custom struct operators.
 
 > Note: The built-in math types `v2 v3 v4 quat m3 m4` are planned to come
 > with their operators. Neither they nor `operator` declarations exist in
@@ -509,9 +516,9 @@ inspection to compute result types from physical dimensions, so that
 metres divided by seconds has the type metres-per-second. That's real
 expressive power. Coax may add a hook like it: a pure, bounded type
 computation with an explicit input and output, not permission to change
-arbitrary compiler state. Ordinary constraints and their diagnostics
-come first, and a separate `#modify` will have to show it's needed
-before it's added.
+arbitrary compiler state. Built-in constraints and their diagnostics now
+ship; user-defined requirements and a separate `#modify` still need to
+show that the existing facilities are insufficient.
 
 ## In the real world: five copies of `clamp`
 
@@ -529,19 +536,24 @@ clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 three again for `f64`, named `minimum`, `maximum` and `clamp`. A
 tolerance check, `near :: (a: f32, b: f32, tolerance: f32) -> bool`,
 appears in four files. Source loading, logical modules and explicit
-exports now let those files share a concrete helper (Chapter 10). The
-`f32` versus `f64` split can now use an `ordered` generic helper. Sharing
-those helpers should preserve their existing floating-point behavior, including
-the chosen comparison order for NaN and signed zero.
+exports now let those files share a helper (Chapter 10). The built-in
+`ordered` bound now permits a generic comparison-based `clamp` over both
+`f32` and `f64`; arithmetic helpers can state `numeric` when needed. This
+is an available refactoring path, not a claim that these consumers have
+been migrated. Preserve each helper's comparison order, NaN and signed-zero
+behavior, and qualify the actual call sites before replacing them.
 
 ## Summary
 
 We started with a duplicated loop and removed it the usual way, by
-extracting a procedure. Copying, assignment and indexing use type parameters (`$T`) and fixed-array
-length parameters (`$N`), specialized without runtime dispatch. Built-in
-`ordered` and `numeric` constraints now admit comparison and arithmetic in
-checked generic bodies. User-defined slash-form constraints such as
-`$T/Ordered`, argument baking, overloads and user operators remain planned.
+extracting a procedure. Type parameters (`$T`) and fixed-array length
+parameters (`$N`) remove type and capacity duplication without runtime
+dispatch. The built-in `equatable`, `ordered`, `numeric` and `copyable`
+bounds state the operations a generic body may use, with diagnostics at
+its declaration or the incompatible call. General user-defined
+constraints, argument baking, procedure overloading and user operators
+remain planned; generic
+structs still reject view-containing bindings.
 
 In [Chapter 9](ch09-compile-time.md) we'll look at the part of Coax that
 does run today and that much of the rest of the language leans on:

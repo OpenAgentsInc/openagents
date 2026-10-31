@@ -206,9 +206,10 @@ Chapter 11 covers them.
 
 Generic procedures already bind `$T` and fixed-array lengths `$N`, with
 bounded checked instantiation and instance-count reporting. Fixed-storage
-generic structs also instantiate type and length parameters; view type
-arguments are refused. Constraints remain planned. Chapter 8 explains
-those separate scopes.
+generic structs also instantiate type and length parameters; their view
+type arguments are refused. The built-in `equatable`, `ordered`, `numeric`
+and `copyable` constraints check bodies and bindings. General user-defined
+constraints remain planned. Chapter 8 explains those separate scopes.
 
 ## Remaining design differences
 
@@ -218,8 +219,8 @@ Jai with an explicit rule changed:
 | Jai | Coax design | Why |
 | --- | --- | --- |
 | `union` overlays storage | `union` is tagged, and `switch` over it must be exhaustive | The safe form should be the default |
-| Equality and hashing found by name; `#poke_name` to make a procedure visible | `#derive(eq, hash)` and named constraints | Errors at the use site, with a fix |
-| `$T/interface` constraints are available | Named constraints are planned; current unconstrained generic procedures support copying, assignment and indexing | A generic's signature should state its additional required operations |
+| Equality and hashing found by name; `#poke_name` to make a procedure visible | `#derive(eq, hash)` and user-defined constraints remain planned | Errors at the use site, with a fix |
+| `$T/interface` constraints are available | Four built-in bounds ship; general user-defined constraints remain planned | A generic's signature should state its additional required operations |
 | Macro backticks reach into the caller | The caller variables a macro can touch are listed in its signature | Reading a call should show what it can change |
 | `using` and `#as` | The same split: `using` for naming, `#as` for a declared conversion | Kept as Jai has it |
 | `context` and `push_context` | The same idea, with allocation as a tracked effect | Allocation should be visible to the checker |
