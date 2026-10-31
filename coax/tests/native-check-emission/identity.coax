@@ -1,0 +1,3 @@
+#load "imported.coax";
+#test "duplicate name" { #assert 2 + 3 == 5; }
+  #test "punctuation [x]; quote\" slash\\ nul\0 lambda λ" { #assert 7 * 6 == 42; }

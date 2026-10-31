@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.38.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.39.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -205,6 +205,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0410` | compile-time index out of bounds | An index or slice evaluated while compiling is outside its array, view or string. |
 | `E0411` | compile-time cast or shift out of range | A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range. |
 | `E0412` | compile-time math has no finite result | A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite. |
+| `E0413` | native check emission is not qualified | The verification-only checks-c command supports selected zero-argument #test bodies and their admitted checked callees. Selected #forall bodies, host effects, product main and unsupported representation/lifetime forms refuse at their original source location. This does not change ordinary product emission or waive authority checks. |
 
 ## E05xx: proto imports
 

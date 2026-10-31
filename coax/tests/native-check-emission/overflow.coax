@@ -1,0 +1,6 @@
+#test "checked native addition must trap" {
+  value := maximum();
+  value += 1;
+  #assert value > 0;
+}
+maximum :: () -> int { return 9223372036854775807; }

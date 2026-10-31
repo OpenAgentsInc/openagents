@@ -1,0 +1,2 @@
+// The identical display name in the entry file is a different declaration.
+#test "duplicate name" { #assert 9 - 4 == 5; }

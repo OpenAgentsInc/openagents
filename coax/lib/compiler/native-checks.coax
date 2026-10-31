@@ -1,0 +1,260 @@
+// Native-check C emission policy. ABI1 facts describe an already checked tree;
+// native code transports them, while this unit selects roots and their closure.
+// Callers own valid, stable fact/name buffers. The supplied overlap fact
+// describes writable-mask overlap with other masks or input storage; pure
+// checks exercise this policy over facts, not a native pointer observation.
+#authority;
+
+NC_PROC_LIMIT :: 4096;
+NC_CHECK_LIMIT :: 4096;
+NC_EDGE_LIMIT :: 65536;
+NC_TEXT_LIMIT :: 4096;
+
+NC_Proc :: struct {
+ name:string; parameter_count:int; returns_void:bool; has_body:bool;
+ foreign:bool; product_main:bool; hazards:u32;
+}
+NC_Check :: struct {name:string; kind:u32; procedure:int;}
+NC_Edge :: struct {from:int; to:int;}
+NC_Result :: struct {reason:u32; index:int = -1;}
+
+#test "reason text identifies every refusal and the unknown fallback" {
+ texts:=[17]string.["","an incompatible native-check profile","graph or mask capacity",
+  "an invalid procedure fact","an invalid check fact","an invalid call edge",
+  "no selected checks","a selected check that is not an ordinary #test",
+  "a selected check without a zero-argument void body","reachable product main",
+  "a reachable foreign procedure","a reachable declaration without a body",
+  "a reachable host effect","a reachable dynamic view-to-string conversion",
+  "a reachable unsupported borrow or escape","a reachable unsupported type or form",
+  "an invalid selection query"];
+ for i:0..<texts.count {#assert NC_reason_text(cast(u32)i)==texts[i];}
+ #assert NC_reason_text(17)=="an unknown native-check refusal";
+ #assert NC_reason_text(4294967295)=="an unknown native-check refusal";
+}
+
+#forall "capacity uses exact output extents and independent graph limits" a:0..<8,b:0..<8,c:0..<8 {
+ counts:=[8]int.[-1,0,1,4095,4096,4097,65536,65537];
+ p:=counts[a];n:=counts[b];e:=counts[c];
+ expected:=p>=0 && p<=4096 && n>=0 && n<=4096 && e>=0 && e<=65536;
+ #assert nc_capacity(p,n,e,p,n)==expected;
+ #assert !nc_capacity(p,n,e,p+1,n);
+ #assert !nc_capacity(p,n,e,p,n+1);
+}
+
+#forall "text extent admission includes empty and the exact upper boundary" i:0..<6 {
+ counts:=[6]int.[-1,0,1,4095,4096,4097];
+ #assert nc_text_count(counts[i])==(i>=1 && i<=4);
+}
+
+#test "substring selection is byte-exact and includes the final position" {
+ #assert nc_contains("","") && nc_contains("alpha","");
+ #assert nc_contains("alpha","alpha") && nc_contains("alpha","a");
+ #assert nc_contains("alphabet","abet") && nc_contains("x beta y","beta");
+ #assert nc_contains("aaaab","aaab") && nc_contains("a\0b","\0b");
+ #assert !nc_contains("","a") && !nc_contains("a","alpha");
+ #assert !nc_contains("alphabet","Beta") && !nc_contains("aaaa","aaab");
+ #assert !nc_contains("beta","zeta") && !nc_contains("bbb","ab");
+}
+
+#test "selection computes a transitive closure with cycles and ignores unrelated host nodes" {
+ p:=[5]NC_Proc.[
+  NC_Proc.{name="first",has_body=true,returns_void=true},
+  NC_Proc.{name="helper",has_body=true,parameter_count=2},
+  NC_Proc.{name="leaf",has_body=true},
+  NC_Proc.{name="main",has_body=true,product_main=true,hazards=15},
+  NC_Proc.{name="foreign",foreign=true}];
+ checks:=[2]NC_Check.[NC_Check.{name="first root",kind=1,procedure=0},NC_Check.{name="other forall",kind=2,procedure=3}];
+ edges:=[3]NC_Edge.[NC_Edge.{from=1,to=2},NC_Edge.{from=2,to=1},NC_Edge.{from=0,to=1}];
+ pm:=[7]u8.[91,8,8,8,8,8,92];cm:=[4]u8.[81,7,7,82];
+ result:=NC_plan(p[..],checks[..],edges[..],"first",true,0,false,pm[1..<6],cm[1..<3]);
+ #assert result.reason==0 && result.index== -1;
+ #assert pm[0]==91 && pm[1]==1 && pm[2]==1 && pm[3]==1 && pm[4]==0 && pm[5]==0 && pm[6]==92;
+ #assert cm[0]==81 && cm[1]==1 && cm[2]==0 && cm[3]==82;
+ result=NC_plan(p[..],checks[..],edges[..],"absent",true,0,false,pm[1..<6],cm[1..<3]);
+ #assert result.reason==6 && result.index== -1;
+ for i:1..<6 {#assert pm[i]==0;}
+ #assert cm[1]==0 && cm[2]==0 && pm[0]==91 && pm[6]==92 && cm[0]==81 && cm[3]==82;
+ result=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<6],cm[1..<3]);
+ #assert result.reason==7 && result.index==1;
+ for i:1..<6 {#assert pm[i]==0;}
+ #assert cm[1]==0 && cm[2]==0;
+}
+
+#test "all matching ordinary roots get their own check mask positions" {
+ p:=[3]NC_Proc.[NC_Proc.{has_body=true,returns_void=true},NC_Proc.{has_body=true},NC_Proc.{has_body=true,returns_void=true}];
+ checks:=[2]NC_Check.[NC_Check.{name="same",kind=1,procedure=2},NC_Check.{name="same",kind=1,procedure=0}];
+ edges:=[2]NC_Edge.[NC_Edge.{from=2,to=1},NC_Edge.{from=1,to=0}];pm:[3]u8;cm:[2]u8;
+ r:=NC_plan(p[..],checks[..],edges[..],"",true,0,false,pm[..],cm[..]);
+ #assert r.reason==0 && pm[0]==1 && pm[1]==1 && pm[2]==1 && cm[0]==1 && cm[1]==1;
+}
+
+#forall "selected root bodies receive the same effect and borrow refusals" hazards:0..<32 {
+ p:=[1]NC_Proc.[NC_Proc.{has_body=true,returns_void=true,hazards=cast(u32)hazards}];
+ checks:=[1]NC_Check.[NC_Check.{name="root",kind=1,procedure=0}];edges:[1]NC_Edge;pm:[1]u8;cm:[1]u8;
+ r:=NC_plan(p[..],checks[..],edges[0..<0],"",false,0,false,pm[..],cm[..]);
+ expected:u32=0;
+ if (hazards&1)!=0 {expected=12;}else if (hazards&2)!=0 {expected=13;}else if (hazards&4)!=0 {expected=14;}else if hazards!=0 {expected=15;}
+ #assert r.reason==expected && r.index==(ifx expected==0 then -1 else 0);
+ #assert pm[0]==cast(u8)(ifx expected==0 then 1 else 0) && cm[0]==cast(u8)(ifx expected==0 then 1 else 0);
+}
+
+#forall "nonzero profiles and observed overlap never obtain an emitted plan" profile:0..<32,overlap:bool {
+ p:=[1]NC_Proc.[NC_Proc.{has_body=true,returns_void=true}];
+ checks:=[1]NC_Check.[NC_Check.{name="root",kind=1,procedure=0}];edges:[1]NC_Edge;
+ pm:=[1]u8.[9];cm:=[1]u8.[8];
+ r:=NC_plan(p[..],checks[..],edges[0..<0],"",false,cast(u32)profile,overlap,pm[..],cm[..]);
+ #assert r.reason==cast(u32)(ifx profile!=0 then 1 else ifx overlap then 2 else 0);
+ #assert pm[0]==cast(u8)(ifx profile==0 && !overlap then 1 else 9) && cm[0]==cast(u8)(ifx profile==0 && !overlap then 1 else 8);
+}
+
+#forall "selected roots have ordinary kind and a zero-argument void body" kind:0..<4,parameters:-1..<3,void:bool,body:bool {
+ p:=[1]NC_Proc.[NC_Proc.{has_body=body,returns_void=void,parameter_count=parameters}];
+ checks:=[1]NC_Check.[NC_Check.{name="root",kind=cast(u32)kind,procedure=0}];edges:[1]NC_Edge;pm:[1]u8;cm:[1]u8;
+ r:=NC_plan(p[..],checks[..],edges[0..<0],"",false,0,false,pm[..],cm[..]);
+ expected:u32=0;
+ if parameters<0 {expected=3;}else if kind<1 || kind>2 {expected=4;}else if kind!=1 {expected=7;}else if parameters!=0 || !void || !body {expected=8;}
+ #assert r.reason==expected;
+ #assert r.index==(ifx expected==0 then -1 else 0);
+ #assert pm[0]==cast(u8)(ifx expected==0 then 1 else 0) && cm[0]==cast(u8)(ifx expected==0 then 1 else 0);
+}
+
+#forall "only reached procedures can refuse a closure" reached:bool,main:bool,foreign:bool,body:bool,hazards:0..<32 {
+ p:=[2]NC_Proc.[NC_Proc.{has_body=true,returns_void=true},NC_Proc.{has_body=body,product_main=main,foreign=foreign,hazards=cast(u32)hazards}];
+ checks:=[1]NC_Check.[NC_Check.{name="root",kind=1,procedure=0}];edges:=[1]NC_Edge.[NC_Edge.{from=0,to=1}];pm:[2]u8;cm:[1]u8;
+ count:=ifx reached then 1 else 0;
+ r:=NC_plan(p[..],checks[..],edges[0..<count],"",false,0,false,pm[..],cm[..]);
+ expected:u32=0;
+ if reached {
+  if main {expected=9;}else if foreign {expected=10;}else if !body {expected=11;}
+  else if (hazards&1)!=0 {expected=12;}else if (hazards&2)!=0 {expected=13;}
+  else if (hazards&4)!=0 {expected=14;}else if (hazards&8)!=0 || hazards>=16 {expected=15;}
+ }
+ #assert r.reason==expected && r.index==(ifx expected==0 then -1 else 1);
+ #assert pm[0]==cast(u8)(ifx expected==0 then 1 else 0) && cm[0]==cast(u8)(ifx expected==0 then 1 else 0);
+ #assert pm[1]==cast(u8)(ifx expected==0 && reached then 1 else 0);
+}
+
+#test "invalid facts, query and output shapes refuse without escaping output guards" {
+ p:=[2]NC_Proc.[NC_Proc.{has_body=true,returns_void=true},NC_Proc.{has_body=true}];
+ checks:=[1]NC_Check.[NC_Check.{name="root",kind=1,procedure=0}];edges:=[1]NC_Edge.[NC_Edge.{from=0,to=1}];
+ pm:=[4]u8.[91,9,9,92];cm:=[3]u8.[81,8,82];
+ r:=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<2],cm[1..<2]);
+ #assert r.reason==2 && pm[0]==91 && pm[1]==9 && pm[2]==9 && pm[3]==92 && cm[1]==8;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,true,pm[1..<3],pm[1..<2]);
+ #assert r.reason==2 && pm[1]==9 && pm[2]==9;
+ r=NC_plan(p[..],checks[..],edges[..],"root",false,0,false,pm[1..<3],cm[1..<2]);
+ #assert r.reason==16 && r.index== -1 && pm[1]==0 && pm[2]==0 && cm[1]==0;
+ checks[0].procedure=2;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==4 && r.index==0;
+ checks[0].procedure= -1;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==4 && r.index==0;
+ checks[0].procedure=0;edges[0].from=2;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==5 && r.index==0;
+ edges[0].from= -1;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==5;
+ edges[0].from=0;edges[0].to=2;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==5;
+ edges[0].to= -1;
+ r=NC_plan(p[..],checks[..],edges[..],"",false,0,false,pm[1..<3],cm[1..<2]);#assert r.reason==5;
+ #assert pm[0]==91 && pm[3]==92 && cm[0]==81 && cm[2]==82;
+}
+
+nc_capacity :: (p:int,c:int,e:int,pm:int,cm:int)->bool {
+ return p>=0 && p<=NC_PROC_LIMIT && c>=0 && c<=NC_CHECK_LIMIT && e>=0 && e<=NC_EDGE_LIMIT && pm==p && cm==c;
+}
+nc_text_count :: (n:int)->bool {return n>=0 && n<=NC_TEXT_LIMIT;}
+nc_contains :: (text:string,query:string)->bool {
+ if query.count>text.count {return false;}
+ for start:0..<text.count-query.count+1 {
+  match:=true;
+  for i:0..<query.count {if text[start+i]!=query[i] {match=false;break;}}
+  if match {return true;}
+ }
+ return false;
+}
+nc_clear :: (procedures:[]u8,checks:[]u8) {
+ for i:0..<procedures.count {procedures[i]=0;}
+ for i:0..<checks.count {checks[i]=0;}
+}
+nc_refuse :: (reason:u32,index:int,procedures:[]u8,checks:[]u8)->NC_Result {
+ nc_clear(procedures,checks);
+ return NC_Result.{reason=reason,index=index};
+}
+nc_procedure_reason :: (p:NC_Proc)->u32 {
+ if p.product_main {return 9;}
+ if p.foreign {return 10;}
+ if !p.has_body {return 11;}
+ if p.hazards%2!=0 {return 12;}
+ if (p.hazards/2)%2!=0 {return 13;}
+ if (p.hazards/4)%2!=0 {return 14;}
+ if p.hazards!=0 {return 15;}
+ return 0;
+}
+
+NC_reason_text :: (reason:u32)->string #export_c {
+ texts:=[17]string.["","an incompatible native-check profile","graph or mask capacity",
+  "an invalid procedure fact","an invalid check fact","an invalid call edge",
+  "no selected checks","a selected check that is not an ordinary #test",
+  "a selected check without a zero-argument void body","reachable product main",
+  "a reachable foreign procedure","a reachable declaration without a body",
+  "a reachable host effect","a reachable dynamic view-to-string conversion",
+  "a reachable unsupported borrow or escape","a reachable unsupported type or form",
+  "an invalid selection query"];
+ if reason>=17 {return "an unknown native-check refusal";}
+ return texts[cast(int)reason];
+}
+
+// Profile and output-capacity refusal leave outputs untouched. Every later
+// refusal clears both exact output views, including partially selected roots.
+// Check kinds:1 ordinary #test,2 #forall. Hazard bits:1 host/effect,
+// 2 dynamic view->string,4 unsupported borrow/escape,8 unsupported type/form.
+// Any other hazard bit is conservatively an unsupported type/form.
+NC_plan :: (procedures:[]NC_Proc,checks:[]NC_Check,edges:[]NC_Edge,only:string,only_set:bool,profile:u32,overlap:bool,procedure_mask:[]u8,check_mask:[]u8)->NC_Result #export_c {
+ if profile!=0 {return NC_Result.{reason=1};}
+ if !nc_capacity(procedures.count,checks.count,edges.count,procedure_mask.count,check_mask.count) || overlap {
+  return NC_Result.{reason=2};
+ }
+ nc_clear(procedure_mask,check_mask);
+ if !nc_text_count(only.count) || (!only_set && only.count!=0) {return nc_refuse(16,-1,procedure_mask,check_mask);}
+ for i:0..<procedures.count {
+  if procedures[i].parameter_count<0 {return nc_refuse(3,i,procedure_mask,check_mask);}
+ }
+ for i:0..<checks.count {
+  c:=checks[i];
+  if c.kind<1 || c.kind>2 || c.procedure<0 || c.procedure>=procedures.count || !nc_text_count(c.name.count) {
+   return nc_refuse(4,i,procedure_mask,check_mask);
+  }
+ }
+ for i:0..<edges.count {
+  e:=edges[i];
+  if e.from<0 || e.from>=procedures.count || e.to<0 || e.to>=procedures.count {return nc_refuse(5,i,procedure_mask,check_mask);}
+ }
+ selected:=false;
+ for i:0..<checks.count {
+  c:=checks[i];
+  if !only_set || nc_contains(c.name,only) {
+   if c.kind!=1 {return nc_refuse(7,i,procedure_mask,check_mask);}
+   p:=procedures[c.procedure];
+   if p.parameter_count!=0 || !p.returns_void || !p.has_body {return nc_refuse(8,i,procedure_mask,check_mask);}
+   procedure_mask[c.procedure]=1;check_mask[i]=1;selected=true;
+  }
+ }
+ if !selected {return nc_refuse(6,-1,procedure_mask,check_mask);}
+ // Every changed pass adds a previously absent procedure, so at most the
+ // admitted procedure count can grow the closure. Cycles stabilize as well.
+ changed:=true;
+ while changed {
+  changed=false;
+  for i:0..<edges.count {
+   e:=edges[i];
+   if procedure_mask[e.from]!=0 && procedure_mask[e.to]==0 {procedure_mask[e.to]=1;changed=true;}
+  }
+ }
+ for i:0..<procedures.count {
+  if procedure_mask[i]!=0 {
+   reason:=nc_procedure_reason(procedures[i]);
+   if reason!=0 {return nc_refuse(reason,i,procedure_mask,check_mask);}
+  }
+ }
+ return NC_Result.{};
+}

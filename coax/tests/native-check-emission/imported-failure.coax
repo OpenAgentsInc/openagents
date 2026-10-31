@@ -1,0 +1,2 @@
+// This name deliberately matches a passing check in the entry source.
+#test "duplicate physical body" { #assert 3 * 7 == 22; }

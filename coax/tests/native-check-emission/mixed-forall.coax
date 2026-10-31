@@ -1,0 +1,2 @@
+#forall "quantified unsupported" i: 0..<3 { #assert i < 3; }
+#test "selected ordinary check" { #assert 21 * 2 == 42; }

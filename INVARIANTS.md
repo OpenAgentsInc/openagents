@@ -1685,6 +1685,27 @@ generation, native descriptor ASan/UBSan fuzzing and the real iOS simulator
 flow in `coax/tests/proto_import.py` and app tests.
 
 
+## Native check C comes from checked bodies and Coax-owned selection
+
+`coax/lib/compiler/native-checks.coax` owns bounded eligibility, substring
+selection and the callee closure for `coax checks-c`. C++ transports resolved
+AST facts and emits the admitted procedures through the ordinary C backend;
+it does not rewrite source, resolve names again or copy/mutate `File` ownership.
+All existing authority checks run before selection and remain unfiltered.
+
+The first command emits verification-only checked C11 for selected zero-argument
+`#test` bodies, with length-delimited names, original physical locations and a
+versioned C table. It emits no product `main`. Selected finite properties,
+foreign effects and unsupported representation/lifetime forms refuse rather
+than disappearing. Wrapping arithmetic and standalone source maps refuse;
+normal product C/profile behavior is unchanged. The stage0 driver explicitly
+refuses this command while testing and compiling its authoritative Coax policy.
+
+Emission alone is not execution evidence. Bounded native execution, shared
+finite-domain traversal and broader semantic/consumer qualification remain
+separate work. Existing `coax.evidence.v1` continues to describe evaluator runs.
+
+
 ## Compiler profile selection preserves legacy defaults and authority
 
 `coax/lib/compiler/profiles.coax` is `#authority` and owns command admission,

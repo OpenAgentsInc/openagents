@@ -33,9 +33,9 @@ committed. Original learned-network qualification is recorded in chapter 168; si
 
 Resolved visual review: the original author reviewed and updated the `built`
 golden in main commit `21dc5da9ca` ("looked at"). No further owner sign-off is
-pending. The targeted validation against that approved image is recorded with
-the language verification follow-up; this audit did not approve or change a
-snapshot.
+pending. The targeted check against that approved image passed (0 changed blocks)
+in `/tmp/coax-native-baseline-approved-built-golden.log`; this audit did not
+approve or change a snapshot.
 
 The earlier check of incoming `59347994ba` drew without errors but differed
 from its old golden by 4,127 blocks (6 allowed). Its failed result remains

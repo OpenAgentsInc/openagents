@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.38.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.39.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -66,6 +66,7 @@ coax/build.sh test
 | `coax lib FILE [-o out.o] [--release]` | Build an object file of the `#export_c` procedures |
 | `coax header FILE [-o out.h]` | Write the C header for those procedures, with layout assertions |
 | `coax c FILE [--release] [--library [--header out.h]]` | Print the generated C, optionally as a library with its header |
+| `coax checks-c FILE [--only SUBSTR] [-o checks.c]` | Emit verification-only checked C11 from admitted checked `#test` bodies and callees, with original metadata and no product main; this does not execute the checks |
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |

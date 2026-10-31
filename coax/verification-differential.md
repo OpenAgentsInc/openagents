@@ -124,6 +124,63 @@ slice. The generator, model, renderer and comparison code are reviewable trust
 inputs; shared mistakes can still agree. This is a small differential corpus
 with an independent state oracle, not a general fuzzer or proof system.
 
+## Checked-AST native-check C emission
+
+`coax checks-c FILE [--only SUBSTR] [-o checks.c]` emits a separate,
+verification-only C11 translation unit. It uses the original checked `#test`
+procedures and resolved callees, rather than copying check source into new
+procedures or replacing assertions. Ordinary `coax c` continues to omit checks.
+The new command emits no `main` and does not execute a check or produce native
+execution evidence. The legacy comparison and strict baseline companion below
+retain their existing contracts.
+
+Normal compilation and unfiltered authority validation happen before emission.
+`--only` selects emitted checks by a byte substring of the original display
+name; an empty substring selects all. It cannot filter authority validation.
+No match, no checks, or a selected `#forall` is a refusal. Unrelated product
+`main` and foreign declarations may remain in the file, but a selected check
+cannot reach them. The Coax-owned policy in `lib/compiler/native-checks.coax`
+selects roots, closes their resolved call graph and refuses unsupported facts;
+the native bridge transports checked-tree and address observations.
+
+This first slice admits zero-argument, void `#test` bodies using supported C
+types, checked arithmetic, scalar/aggregate operations, caller-buffer writes,
+compile-time values and ordinary cleanup. Reachable host effects, foreign
+calls, product main, dynamic view-to-string conversions and unsupported
+borrow/escape or type forms refuse with source-located `E0413`. Graphs are
+bounded to 4,096 procedures/checks and 65,536 edges; check names and selection
+queries are bounded to 4,096 bytes. These are verification-emission limits,
+not new limits on ordinary Coax programs. Wrapping arithmetic and standalone
+source-map output refuse; checked release build profiles and native `#line`
+debug information are independent choices. Build-only stage0 explicitly
+refuses this command.
+
+The emitted native LP64 C interface is versioned:
+
+```c
+typedef struct Coax_VerificationCheck_v1 {
+    int64_t declaration_index;
+    const char *name; int64_t name_count;
+    const char *source; int64_t source_count;
+    int64_t line, column;
+    void (*run)(void);
+} Coax_VerificationCheck_v1;
+
+const Coax_VerificationCheck_v1 *
+coax_verification_checks_v1(int64_t *count);
+```
+
+Each row preserves its index in the original checked file's check inventory,
+its physical source location, original name and actual body. Names are byte
+spans: punctuation, duplicates and embedded NUL bytes remain distinct from
+private generated C identifiers. String/table storage has static lifetime;
+callers borrow it. A null count pointer is permitted. A passing body returns
+normally; assertions and runtime traps retain the ordinary emitted C runtime's
+behavior. An executing host must isolate faults and account for execution
+itself. Neither obtaining this table nor compiling it establishes that its
+checks pass. The focused independent C-table tests are in
+`tests/native_check_emission.py`.
+
 ## Legacy authored-check comparison
 
 `python3 coax/tools/native_checks.py --selection coax/tests/native-checks.json`

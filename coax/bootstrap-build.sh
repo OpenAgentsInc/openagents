@@ -71,6 +71,8 @@ cmp bootstrap/mutation-schedule.c "$work/mutation-schedule.c"
 cmp bootstrap/mutation-schedule.h "$work/mutation-schedule.h"
 gate "$work/stage0" test lib/compiler/compute.coax
 gate "$work/stage0" mutate lib/compiler/compute.coax
+gate "$work/stage0" test lib/compiler/native-checks.coax
+gate "$work/stage0" mutate lib/compiler/native-checks.coax
 gate "$work/stage0" test lib/compiler/spirv.coax
 gate "$work/stage0" mutate lib/compiler/spirv.coax
 gate "$work/stage0" test lib/compiler/shader.coax
@@ -137,6 +139,7 @@ gate "$work/coax" test lib/compiler/lexer.coax
 gate "$work/coax" test lib/compiler/parser.coax
 gate "$work/coax" test lib/compiler/checker.coax
 gate "$work/coax" test lib/compiler/sources.coax
+gate "$work/coax" test lib/compiler/native-checks.coax
 "$work/coax" c lib/compiler/lexer.coax --library --header "$work/final-lexer.h" > "$work/final-lexer.c"
 cmp bootstrap/lexer.c "$work/final-lexer.c"
 "$work/coax" c lib/compiler/parser.coax --library --header "$work/final-parser.h" > "$work/final-parser.c"

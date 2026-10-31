@@ -9,6 +9,7 @@
 #load "../proto/fingerprint.coax";
 #load "../proto/importer.coax";
 #load "compute.coax";
+#load "native-checks.coax";
 #load "spirv.coax";
 #load "shader.coax";
 #load "wgsl.coax";

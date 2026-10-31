@@ -1,0 +1,2 @@
+#load "imported-failure.coax";
+#test "duplicate physical body" { #assert 3 * 7 == 21; }

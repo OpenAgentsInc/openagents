@@ -14,6 +14,14 @@ you state a rule and let the compiler try all of them. Both run inside
 the compiler, in the same sealed evaluator as `#run` from Chapter 9, and
 neither ends up in the program you ship.
 
+For a bounded native verification artifact, `coax checks-c FILE` separately
+emits admitted checked `#test` bodies and their callees as C11, with a table
+of original names and source locations. It emits no product `main`, does not
+execute the checks, and currently refuses selected `#forall` bodies and
+unsupported effects or borrows. Ordinary `coax c` still omits checks. See the
+[native-check emission contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md#checked-ast-native-check-c-emission)
+for its supported scope and verification-only C interface.
+
 In this chapter we'll write checks for a small procedure that splits a
 payment between people. We'll start with one example, watch it fail when
 we break the code, and then grow it into rules that cover hundreds of

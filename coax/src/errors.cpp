@@ -165,6 +165,7 @@ const ErrorInfo ERRORS[] = {
     {"E0410", "compile-time index out of bounds", "An index or slice evaluated while compiling is outside its array, view or string."},
     {"E0411", "compile-time cast or shift out of range", "A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range."},
     {"E0412", "compile-time math has no finite result", "A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite."},
+    {"E0413", "native check emission is not qualified", "The verification-only checks-c command supports selected zero-argument #test bodies and their admitted checked callees. Selected #forall bodies, host effects, product main and unsupported representation/lifetime forms refuse at their original source location. This does not change ordinary product emission or waive authority checks."},
     // ---- E05xx: proto imports ----
     {"E0501", "invalid proto import", "Use #import_proto \"profile.pb\" as Prefix; with an exact FileDescriptorSet path relative to the source file."},
     {"E0502", "proto descriptor rejected", "The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated."},

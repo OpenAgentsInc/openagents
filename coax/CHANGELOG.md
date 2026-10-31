@@ -13,6 +13,22 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.39.0 — 2026-10-31
+
+Commit: pending
+
+- `coax checks-c FILE [--only SUBSTR] [-o checks.c]` emits verification-only
+  C11 from the compiler's checked zero-argument `#test` procedures and their
+  admitted callees. A versioned C table preserves check ordinals, byte-length
+  names and original physical locations. It emits no product `main`.
+- Coax owns eligibility, selection and closure; ordinary authority admission
+  remains mandatory. Check emission requires checked arithmetic and refuses
+  selected `#forall`, host effects and unsupported representation/lifetime
+  forms. Ordinary product C emission retains its existing behavior.
+- This is C emission, not native execution evidence. Bounded execution,
+  finite-domain properties and broader semantic/consumer qualification remain
+  separate work.
+
 ## 0.38.0 — 2026-10-31
 
 Commit: [`0b82a1587a56a4eed8ead255dd32300efe49fc30`](https://github.com/OpenAgentsInc/openagents/commit/0b82a1587a56a4eed8ead255dd32300efe49fc30)

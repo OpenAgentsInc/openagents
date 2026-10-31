@@ -1,0 +1,4 @@
+#authority;
+#test "selected passing check" { #assert 1 == 1; }
+#test "unselected failing baseline" { #assert policy() == 0; }
+policy :: () -> int { return 9; }

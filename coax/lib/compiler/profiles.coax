@@ -10,6 +10,7 @@ CP_Error :: enum u8 {
  none; command; arithmetic_count; arithmetic_value;
  optimization_count; optimization_value; optimization_command;
  build_profile_count; build_profile_value; debug_count; debug_value; debug_command; source_map_debug;
+ check_arithmetic; check_source_map;
 }
 
 CP_Request :: struct {
@@ -32,6 +33,43 @@ CP_Profile :: struct {
 }
 
 CP_COMMANDS :: [14]string.["run","build","lib","c","header","check","layout","deps","test","mutate","metal","cuda","metal-compute","spirv"];
+
+#test "checks-c obtains its own checked non-native C profile" {
+ request:CP_Request;
+ profile:=CP_resolve("checks-c",request);
+ #assert profile.error==CP_Error.none && !profile.native;
+ #assert profile.arithmetic==CP_CHECKED && profile.development && !profile.debug_info;
+ #assert profile.optimization==0 && profile.identity==8;
+ request.debug_info=1;request.debug_count=1;
+ profile=CP_resolve("checks-c",request);
+ #assert profile.error==CP_Error.none && profile.debug_info && profile.identity==24;
+}
+
+#forall "checks-c axes preserve C defaults while requiring checked arithmetic" release:bool,arithmetic:0..<3,development:bool,debug:-1..<2 {
+ request:CP_Request;request.legacy_release=release;
+ choices:=[3]string.["","checked","wrapping"];
+ request.arithmetic=choices[arithmetic];request.arithmetic_count=ifx arithmetic==0 then 0 else 1;
+ request.build_profile=ifx development then "development" else "release";request.build_profile_count=1;
+ request.debug_info=debug;request.debug_count=ifx debug== -1 then 0 else 1;
+ profile:=CP_resolve("checks-c",request);
+ wrapping:=arithmetic==2 || (arithmetic==0 && release);
+ #assert profile.error==(ifx wrapping then CP_Error.check_arithmetic else CP_Error.none);
+ if wrapping {#assert profile.identity== -1;}
+ else {
+  #assert !profile.native && profile.arithmetic==CP_CHECKED;
+  #assert profile.optimization==(ifx release then 2 else 0) && profile.development==development && profile.debug_info==(debug==1);
+  #assert profile.identity==(ifx release then 4 else 0)+(ifx development then 8 else 0)+(ifx debug==1 then 16 else 0);
+ }
+}
+
+#forall "checks-c refuses native optimization and incomplete standalone debug maps" release:bool,debug:-1..<2 {
+ request:CP_Request;request.legacy_release=release;request.arithmetic="checked";request.arithmetic_count=1;
+ request.optimization="2";request.optimization_count=1;
+ profile:=CP_resolve("checks-c",request);#assert profile.error==CP_Error.optimization_command && profile.identity== -1;
+ request.optimization="";request.optimization_count=0;request.source_map=true;
+ request.debug_info=debug;request.debug_count=ifx debug== -1 then 0 else 1;
+ profile=CP_resolve("checks-c",request);#assert profile.error==CP_Error.check_source_map && profile.identity== -1;
+}
 
 #forall "default and legacy choices retain every source command's old bundle" command:0..<14, release:bool {
  request:CP_Request;request.legacy_release=release;
@@ -197,12 +235,12 @@ CP_COMMANDS :: [14]string.["run","build","lib","c","header","check","layout","de
 }
 
 #forall "each error carries its own stable explanatory message" error:CP_Error {
- messages:=[13]string.["","semantic profiles require a source command","--arithmetic may be supplied once","--arithmetic requires checked or wrapping","--opt may be supplied once","--opt requires one of 0, 1, 2, or 3","--opt is supported only by run, build, or lib","--build-profile may be supplied once","--build-profile requires development or release","debug information may be selected once","debug-info selection must be unset, off, or on","native debug information is supported only by c, run, build, or lib","--source-map conflicts with disabled debug information"];
+ messages:=[15]string.["","semantic profiles require a source command","--arithmetic may be supplied once","--arithmetic requires checked or wrapping","--opt may be supplied once","--opt requires one of 0, 1, 2, or 3","--opt is supported only by run, build, or lib","--build-profile may be supplied once","--build-profile requires development or release","debug information may be selected once","debug-info selection must be unset, off, or on","native debug information is supported only by c, checks-c, run, build, or lib","--source-map conflicts with disabled debug information","checks-c requires checked arithmetic; use --arithmetic checked with --release","checks-c does not emit a standalone source map; use ABI locations and #line"];
  #assert CP_message(error)==messages[cast(int)error];
 }
 
 cp_source :: (command:string)->bool {
- return command=="run" || command=="build" || command=="lib" || command=="c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute" || command=="spirv";
+ return command=="run" || command=="build" || command=="lib" || command=="c" || command=="checks-c" || command=="header" || command=="check" || command=="layout" || command=="deps" || command=="test" || command=="mutate" || command=="metal" || command=="cuda" || command=="metal-compute" || command=="spirv";
 }
 cp_native :: (command:string)->bool {return command=="run" || command=="build" || command=="lib";}
 cp_choice :: (text:string,count:int)->bool {return count>=0 && count<=1 && (count==1 || text.count==0);}
@@ -229,7 +267,8 @@ CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c {
  if request.debug_info< -1 || request.debug_info>1 || (request.debug_count==1 && request.debug_info== -1) {return cp_refuse(CP_Error.debug_value);}
  native:=cp_native(command);
  if request.optimization_count==1 && !native {return cp_refuse(CP_Error.optimization_command);}
- if (request.debug_count==1 || request.source_map) && !native && command!="c" {return cp_refuse(CP_Error.debug_command);}
+ if (request.debug_count==1 || request.source_map) && !native && command!="c" && command!="checks-c" {return cp_refuse(CP_Error.debug_command);}
+ if command=="checks-c" && request.source_map {return cp_refuse(CP_Error.check_source_map);}
  if request.source_map && request.debug_info==0 {return cp_refuse(CP_Error.source_map_debug);}
 
  profile:CP_Profile;
@@ -245,6 +284,7 @@ CP_resolve :: (command:string,request:CP_Request)->CP_Profile #export_c {
  if request.build_profile_count==1 {profile.development=request.build_profile=="development";}
  if request.debug_count==1 {profile.debug_info=request.debug_info==1;}
  if request.source_map {profile.debug_info=true;}
+ if command=="checks-c" && profile.arithmetic!=CP_CHECKED {return cp_refuse(CP_Error.check_arithmetic);}
  profile.identity=cp_identity(profile.arithmetic,profile.optimization,profile.development,profile.debug_info,profile.native);
  return profile;
 }
@@ -261,6 +301,8 @@ CP_message :: (error:CP_Error)->string #export_c {
  if error==CP_Error.build_profile_value {return "--build-profile requires development or release";}
  if error==CP_Error.debug_count {return "debug information may be selected once";}
  if error==CP_Error.debug_value {return "debug-info selection must be unset, off, or on";}
- if error==CP_Error.debug_command {return "native debug information is supported only by c, run, build, or lib";}
- return "--source-map conflicts with disabled debug information";
+ if error==CP_Error.debug_command {return "native debug information is supported only by c, checks-c, run, build, or lib";}
+ if error==CP_Error.source_map_debug {return "--source-map conflicts with disabled debug information";}
+ if error==CP_Error.check_arithmetic {return "checks-c requires checked arithmetic; use --arithmetic checked with --release";}
+ return "checks-c does not emit a standalone source map; use ABI locations and #line";
 }

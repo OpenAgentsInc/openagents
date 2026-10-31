@@ -186,11 +186,14 @@ typedef uint8_t coax_t_CP_Error;
 #define COAX_CP_Error_debug_value ((coax_t_CP_Error)UINT64_C(10))
 #define COAX_CP_Error_debug_command ((coax_t_CP_Error)UINT64_C(11))
 #define COAX_CP_Error_source_map_debug ((coax_t_CP_Error)UINT64_C(12))
+#define COAX_CP_Error_check_arithmetic ((coax_t_CP_Error)UINT64_C(13))
+#define COAX_CP_Error_check_source_map ((coax_t_CP_Error)UINT64_C(14))
 struct coax_t_CP_Profile { coax_t_CP_Error error; int64_t arithmetic; int64_t optimization; _Bool development; _Bool debug_info; int64_t identity; _Bool native; };
 typedef struct { coax_string e[14]; } coax_a14_string;
+typedef struct { coax_string e[3]; } coax_a3_string;
 typedef struct { coax_string e[4]; } coax_a4_string;
 typedef struct { coax_string e[8]; } coax_a8_string;
-typedef struct { coax_string e[13]; } coax_a13_string;
+typedef struct { coax_string e[15]; } coax_a15_string;
 COAX_LAYOUT(sizeof(coax_t_CP_Request) == 104 && _Alignof(coax_t_CP_Request) == 8, "layout of CP_Request");
 COAX_LAYOUT(offsetof(coax_t_CP_Request, legacy_release) == 0, "offset of CP_Request.legacy_release");
 COAX_LAYOUT(offsetof(coax_t_CP_Request, arithmetic) == 8, "offset of CP_Request.arithmetic");
@@ -230,9 +233,10 @@ static void coax_show_t_CP_Profile(const coax_t_CP_Profile *v);
 static void coax_show_t_CP_Error(coax_t_CP_Error v);
 static coax_t_CP_Error coax_to_t_CP_Error(int64_t s, uint64_t u, int is_signed, int32_t l);
 static void coax_show_a14_string(const coax_a14_string *v);
+static void coax_show_a3_string(const coax_a3_string *v);
 static void coax_show_a4_string(const coax_a4_string *v);
 static void coax_show_a8_string(const coax_a8_string *v);
-static void coax_show_a13_string(const coax_a13_string *v);
+static void coax_show_a15_string(const coax_a15_string *v);
 static void coax_show_t_CP_Request(const coax_t_CP_Request *v) {
   fputs("CP_Request.{", stdout);
   fputs("legacy_release = ", stdout); coax_print_bool(v->legacy_release);
@@ -273,6 +277,8 @@ static void coax_show_t_CP_Error(coax_t_CP_Error v) {
     case ((coax_t_CP_Error)UINT64_C(10)): fputs("debug_value", stdout); return;
     case ((coax_t_CP_Error)UINT64_C(11)): fputs("debug_command", stdout); return;
     case ((coax_t_CP_Error)UINT64_C(12)): fputs("source_map_debug", stdout); return;
+    case ((coax_t_CP_Error)UINT64_C(13)): fputs("check_arithmetic", stdout); return;
+    case ((coax_t_CP_Error)UINT64_C(14)): fputs("check_source_map", stdout); return;
     default: break;
   }
   fputs("CP_Error(", stdout); coax_print_uint((uint64_t)v); fputc(')', stdout);
@@ -291,12 +297,22 @@ static coax_t_CP_Error coax_to_t_CP_Error(int64_t s, uint64_t u, int is_signed, 
   if (is_signed ? (s >= 0 && (uint64_t)s == UINT64_C(10)) : u == UINT64_C(10)) return ((coax_t_CP_Error)UINT64_C(10));
   if (is_signed ? (s >= 0 && (uint64_t)s == UINT64_C(11)) : u == UINT64_C(11)) return ((coax_t_CP_Error)UINT64_C(11));
   if (is_signed ? (s >= 0 && (uint64_t)s == UINT64_C(12)) : u == UINT64_C(12)) return ((coax_t_CP_Error)UINT64_C(12));
+  if (is_signed ? (s >= 0 && (uint64_t)s == UINT64_C(13)) : u == UINT64_C(13)) return ((coax_t_CP_Error)UINT64_C(13));
+  if (is_signed ? (s >= 0 && (uint64_t)s == UINT64_C(14)) : u == UINT64_C(14)) return ((coax_t_CP_Error)UINT64_C(14));
   coax_trap("value is not a member of enum CP_Error", l);
   return 0;
 }
 static void coax_show_a14_string(const coax_a14_string *v) {
   fputc('[', stdout);
   for (int64_t i = 0; i < 14; i++) {
+    if (i) fputs(", ", stdout);
+    coax_show_string(v->e[i]);
+  }
+  fputc(']', stdout);
+}
+static void coax_show_a3_string(const coax_a3_string *v) {
+  fputc('[', stdout);
+  for (int64_t i = 0; i < 3; i++) {
     if (i) fputs(", ", stdout);
     coax_show_string(v->e[i]);
   }
@@ -318,9 +334,9 @@ static void coax_show_a8_string(const coax_a8_string *v) {
   }
   fputc(']', stdout);
 }
-static void coax_show_a13_string(const coax_a13_string *v) {
+static void coax_show_a15_string(const coax_a15_string *v) {
   fputc('[', stdout);
-  for (int64_t i = 0; i < 13; i++) {
+  for (int64_t i = 0; i < 15; i++) {
     if (i) fputs(", ", stdout);
     coax_show_string(v->e[i]);
   }
@@ -336,7 +352,7 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
 coax_string CP_message(coax_t_CP_Error l_error);
 
 static _Bool coax_p_cp_source(coax_string l_command) {
-  return ((((((((((((((coax_string_eq(l_command, COAX_STR("run", 3))) || (coax_string_eq(l_command, COAX_STR("build", 5)))) || (coax_string_eq(l_command, COAX_STR("lib", 3)))) || (coax_string_eq(l_command, COAX_STR("c", 1)))) || (coax_string_eq(l_command, COAX_STR("header", 6)))) || (coax_string_eq(l_command, COAX_STR("check", 5)))) || (coax_string_eq(l_command, COAX_STR("layout", 6)))) || (coax_string_eq(l_command, COAX_STR("deps", 4)))) || (coax_string_eq(l_command, COAX_STR("test", 4)))) || (coax_string_eq(l_command, COAX_STR("mutate", 6)))) || (coax_string_eq(l_command, COAX_STR("metal", 5)))) || (coax_string_eq(l_command, COAX_STR("cuda", 4)))) || (coax_string_eq(l_command, COAX_STR("metal-compute", 13)))) || (coax_string_eq(l_command, COAX_STR("spirv", 5))));
+  return (((((((((((((((coax_string_eq(l_command, COAX_STR("run", 3))) || (coax_string_eq(l_command, COAX_STR("build", 5)))) || (coax_string_eq(l_command, COAX_STR("lib", 3)))) || (coax_string_eq(l_command, COAX_STR("c", 1)))) || (coax_string_eq(l_command, COAX_STR("checks-c", 8)))) || (coax_string_eq(l_command, COAX_STR("header", 6)))) || (coax_string_eq(l_command, COAX_STR("check", 5)))) || (coax_string_eq(l_command, COAX_STR("layout", 6)))) || (coax_string_eq(l_command, COAX_STR("deps", 4)))) || (coax_string_eq(l_command, COAX_STR("test", 4)))) || (coax_string_eq(l_command, COAX_STR("mutate", 6)))) || (coax_string_eq(l_command, COAX_STR("metal", 5)))) || (coax_string_eq(l_command, COAX_STR("cuda", 4)))) || (coax_string_eq(l_command, COAX_STR("metal-compute", 13)))) || (coax_string_eq(l_command, COAX_STR("spirv", 5))));
 }
 
 static _Bool coax_p_cp_native(coax_string l_command) {
@@ -354,7 +370,7 @@ static coax_t_CP_Profile coax_p_cp_refuse(coax_t_CP_Error l_error) {
 }
 
 static int64_t coax_p_cp_identity(int64_t l_arithmetic, int64_t l_optimization, _Bool l_development, _Bool l_debug, _Bool l_native) {
-  return coax_add_s64(coax_add_s64(coax_add_s64(coax_add_s64(l_arithmetic, coax_mul_s64(INT64_C(2), l_optimization, 214), 214), (l_development ? INT64_C(8) : INT64_C(0)), 214), (l_debug ? INT64_C(16) : INT64_C(0)), 214), (l_native ? INT64_C(32) : INT64_C(0)), 214);
+  return coax_add_s64(coax_add_s64(coax_add_s64(coax_add_s64(l_arithmetic, coax_mul_s64(INT64_C(2), l_optimization, 252), 252), (l_development ? INT64_C(8) : INT64_C(0)), 252), (l_debug ? INT64_C(16) : INT64_C(0)), 252), (l_native ? INT64_C(32) : INT64_C(0)), 252);
 }
 
 coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request) {
@@ -388,7 +404,7 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
     {
       return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(5)));
     }
-    if ((coax_byte((l_request).optimization, INT64_C(0), 226) < ((uint8_t)UINT64_C(48))) || (coax_byte((l_request).optimization, INT64_C(0), 226) > ((uint8_t)UINT64_C(51))))
+    if ((coax_byte((l_request).optimization, INT64_C(0), 264) < ((uint8_t)UINT64_C(48))) || (coax_byte((l_request).optimization, INT64_C(0), 264) > ((uint8_t)UINT64_C(51))))
     {
       return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(5)));
     }
@@ -406,9 +422,13 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
   {
     return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(6)));
   }
-  if (((((l_request).debug_count == INT64_C(1)) || (l_request).source_map) && (!l_native)) && (!coax_string_eq(l_command, COAX_STR("c", 1))))
+  if ((((((l_request).debug_count == INT64_C(1)) || (l_request).source_map) && (!l_native)) && (!coax_string_eq(l_command, COAX_STR("c", 1)))) && (!coax_string_eq(l_command, COAX_STR("checks-c", 8))))
   {
     return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(11)));
+  }
+  if ((coax_string_eq(l_command, COAX_STR("checks-c", 8))) && (l_request).source_map)
+  {
+    return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(14)));
   }
   if ((l_request).source_map && ((l_request).debug_info == INT64_C(0)))
   {
@@ -426,7 +446,7 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
   }
   if ((l_request).optimization_count == INT64_C(1))
   {
-    (l_profile).optimization = ((int64_t)coax_cast_us((uint64_t)(coax_sub_u8(coax_byte((l_request).optimization, INT64_C(0), 244), ((uint8_t)UINT64_C(48)), 244)), INT64_C(9223372036854775807), 244));
+    (l_profile).optimization = ((int64_t)coax_cast_us((uint64_t)(coax_sub_u8(coax_byte((l_request).optimization, INT64_C(0), 283), ((uint8_t)UINT64_C(48)), 283)), INT64_C(9223372036854775807), 283));
   }
   if ((l_request).build_profile_count == INT64_C(1))
   {
@@ -439,6 +459,10 @@ coax_t_CP_Profile CP_resolve(coax_string l_command, coax_t_CP_Request l_request)
   if ((l_request).source_map)
   {
     (l_profile).debug_info = 1;
+  }
+  if ((coax_string_eq(l_command, COAX_STR("checks-c", 8))) && ((l_profile).arithmetic != INT64_C(0)))
+  {
+    return coax_p_cp_refuse(((coax_t_CP_Error)UINT64_C(13)));
   }
   (l_profile).identity = coax_p_cp_identity((l_profile).arithmetic, (l_profile).optimization, (l_profile).development, (l_profile).debug_info, (l_profile).native);
   return l_profile;
@@ -491,7 +515,15 @@ coax_string CP_message(coax_t_CP_Error l_error) {
   }
   if (l_error == ((coax_t_CP_Error)UINT64_C(11)))
   {
-    return COAX_STR("native debug information is supported only by c, run, build, or lib", 67);
+    return COAX_STR("native debug information is supported only by c, checks-c, run, build, or lib", 77);
   }
-  return COAX_STR("--source-map conflicts with disabled debug information", 54);
+  if (l_error == ((coax_t_CP_Error)UINT64_C(12)))
+  {
+    return COAX_STR("--source-map conflicts with disabled debug information", 54);
+  }
+  if (l_error == ((coax_t_CP_Error)UINT64_C(13)))
+  {
+    return COAX_STR("checks-c requires checked arithmetic; use --arithmetic checked with --release", 77);
+  }
+  return COAX_STR("checks-c does not emit a standalone source map; use ABI locations and #line", 75);
 }

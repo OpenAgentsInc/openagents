@@ -1,0 +1,6 @@
+#test "borrow-containing return" {
+  values := [2]int.[3, 5];
+  view := borrowed(values[..]);
+  #assert view.count == 2;
+}
+borrowed :: (values: []int) -> []int { return values; }

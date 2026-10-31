@@ -38,6 +38,7 @@
 #include "errors.cpp"
 #include "eval.cpp"
 #include "emit_c.cpp"
+#include "native_checks.cpp"
 #include "compute.cpp"
 #include "spirv.cpp"
 #include "shader.cpp"
@@ -871,6 +872,7 @@ static int usage() {
           "       coax lib     file.coax [-o out.o] [--release] [--keep-c]\n"
           "       coax header  file.coax [-o out.h]\n"
           "       coax c       file.coax [--release] [--library [--header out.h]]\n"
+          "       coax checks-c file.coax [--only SUBSTR] [-o checks.c]  verification-only checked C, no main\n"
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
@@ -954,7 +956,7 @@ static int main_impl(int argc, char **argv) {
     return 0;
   }
   if (cmd == "explain") return explain(argc, argv);
-  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
+  if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
       cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
@@ -1000,7 +1002,7 @@ static int main_impl(int argc, char **argv) {
       run_steps_seen = true;
       g_timings.run_steps = opts.run_steps;
     }
-    else if (a == "--only" && i + 1 < argc && cmd == "test" && !only) only = argv[++i];
+    else if (a == "--only" && i + 1 < argc && (cmd == "test" || cmd == "checks-c") && !only) only = argv[++i];
     else if (a == "--list" && cmd == "test") list = true;
     else if (a == "--slots" && i + 1 < argc && cmd == "test") {
       // A smaller value-slot limit for the checks than the test limit (a shared machine's memory).
@@ -1088,6 +1090,7 @@ static int main_impl(int argc, char **argv) {
     return 1;
   }
 #ifdef COAX_BOOTSTRAP_IMPORTER
+  if(cmd=="checks-c"){fprintf(stderr,"coax: native check emission requires the final compiler, not build-only stage0\n");return 1;}
   if(!g_timings.source_map.empty()){fprintf(stderr,"coax: source maps require the final compiler, not build-only stage0\n");return 1;}
   if(!g_semantic.path.empty()){fprintf(stderr,"coax: profile reports require the final compiler, not build-only stage0\n");return 1;}
   if(modules){fprintf(stderr,"coax: module revisions require the final compiler, not build-only stage0\n");return 1;}
@@ -1107,7 +1110,7 @@ static int main_impl(int argc, char **argv) {
     opts.wrapping=profile.arithmetic==1;opts.optimization=(int)profile.optimization;
     opts.development=profile.development;opts.debug_info=profile.debug_info;opts.profile_identity=(int)profile.identity;
     g_semantic.selection=profile;g_semantic.command=cmd;g_semantic.resolved=true;
-    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="spirv" || cmd=="wgsl"?"spirv":cmd=="c" || cmd=="header"?"c11":"evaluator";
+    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="spirv" || cmd=="wgsl"?"spirv":cmd=="c" || cmd=="checks-c" || cmd=="header"?"c11":"evaluator";
   }
   for(const auto &name:{std::string(input),out,header,g_timings.source_map,g_timings.path})if(!profile_destination_disjoint(name))return 1;
   if (cmd == "proto") {
@@ -1165,6 +1168,52 @@ static int main_impl(int argc, char **argv) {
       if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
       return 1;
     }
+    if (out.empty()) fwrite(text.data(), 1, text.size(), stdout);
+    else if (!write_file(out, text)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
+      return 1;
+    }
+    return 0;
+  }
+  if (cmd == "checks-c") {
+    opts.library = true;
+    Source src;
+    Arena arena;
+    File file;
+    if (!front_end(input, &src, &arena, &file, opts, 1)) return 1;
+    // Output paths are effects: never overwrite a consumed source/descriptor.
+    if (!out.empty()) {
+      auto aliases_output = [&](const std::string &path) {
+        std::error_code first_error, second_error, equivalent_error;
+        auto output_path = std::filesystem::weakly_canonical(out, first_error);
+        auto input_path = std::filesystem::weakly_canonical(path, second_error);
+        return (!first_error && !second_error && output_path == input_path) ||
+               std::filesystem::equivalent(out, path, equivalent_error);
+      };
+      for (const auto &unit : src.units) if (aliases_output(unit->canonical)) {
+        fprintf(stderr, "coax: check C output aliases source '%s'\n", unit->canonical.c_str());
+        return 1;
+      }
+      for (const auto &path : src.descriptor_inputs) if (aliases_output(path)) {
+        fprintf(stderr, "coax: check C output aliases descriptor '%s'\n", path.c_str());
+        return 1;
+      }
+    }
+    std::string text;
+    {
+      TimedPhase phase{"emit"};
+      if (!emit_native_checks_c(&file, opts, only, &text)) {
+        if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
+        return 1;
+      }
+    }
+    std::string provenance;
+    for (const std::string &line : src.import_provenance) provenance += line + "\n";
+    text = provenance + text;
+    g_timings.generated_bytes = text.size();
+    for (const ProcDecl *proc : file.procs) if (proc->origin) ++g_timings.instances;
+    g_timings.instance_bytes = g_instance_c_bytes;
+    if (!g_semantic.path.empty()) g_semantic.emitted = debug_source_hash(text);
     if (out.empty()) fwrite(text.data(), 1, text.size(), stdout);
     else if (!write_file(out, text)) {
       fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());

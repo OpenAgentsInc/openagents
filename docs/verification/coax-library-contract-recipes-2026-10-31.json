@@ -368,9 +368,15 @@
       "snapshot_changed": false,
       "resolution": {
         "author_approval_commit": "21dc5da9ca",
-        "meaning": "Original author reviewed and updated the expected image; failed593 result remains historical, with no audit-approved snapshot.",
-        "targeted_validation": "/tmp/coax-native-baseline-approved-built-golden-result.json",
-        "validation_status": "pending"
+        "targeted_validation": {
+          "command": "coax/web/golden-check.sh --commit 21dc5da9ca",
+          "exit_code": 0,
+          "seconds": 348.1091000420274,
+          "log": "/tmp/coax-native-baseline-approved-built-golden.log",
+          "scope": "Only built after original-author-approved golden changed; unrelated60 journeys not rerun."
+        },
+        "validation_status": "passed",
+        "meaning": "Original author approved/updated image; targeted built now matches0blocks. Historical failure is not relabeled as a pass."
       }
     }
   },

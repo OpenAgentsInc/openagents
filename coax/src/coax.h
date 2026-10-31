@@ -431,9 +431,9 @@ struct ConstDecl {
 };
 
 // #test "name" { ... } and #forall a: u8, b: 0..<10 { ... }: checks the
-// evaluator runs (coax test), never emitted. A check is a procedure with no
-// name in the program's namespace; a #forall's bindings are its parameters,
-// enumerated over their whole domain.
+// evaluator runs (coax test), excluded from ordinary product emission. A check
+// is a procedure with no name in the program's namespace; a #forall's bindings
+// are its parameters, enumerated over their whole domain.
 struct Binding {
   Expr *lo = nullptr, *hi = nullptr;  // a lo..<hi range of int; null for a type domain
 };
@@ -495,6 +495,21 @@ struct EmitOptions {
   bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
 };
 std::string emit_c(const File *file, const EmitOptions &opts);
+// Verification emission borrows the original checked graph. Its procedure
+// and check lists are a separate admitted plan, never a copied or rewritten File.
+struct NativeCheckCEntry {
+  int64_t declaration_index = -1;
+  const CheckDecl *check = nullptr;
+};
+struct NativeCheckCPlan {
+  std::vector<const ProcDecl *> procedures;
+  std::vector<NativeCheckCEntry> checks;
+};
+std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan);
+// On refusal, emits original-source diagnostics and leaves text unchanged.
+// only is null for the complete check selection; authority admission belongs
+// to the driver's normal, unfiltered front_end before this entry point.
+bool emit_native_checks_c(const File *file, const EmitOptions &opts, const char *only, std::string *text);
 extern size_t g_instance_c_bytes;  // C text of generic instances in the last emit_c, for --timings
 // A C header for the file's #export_c procedures and the types they use,
 // with layout assertions the C compiler checks.

@@ -548,6 +548,9 @@ std::string debug_line(const File *file, Loc loc) {
 struct Emitter {
   const File *file;
   EmitOptions opts;
+  bool verification = false;
+  std::map<const ProcDecl *, std::string> verification_names;
+  std::map<const Expr *, int32_t> verification_ct_ids;
   std::string out;          // the current function body
   int32_t indent = 0;
   int32_t temp_count = 0;
@@ -627,6 +630,10 @@ struct Emitter {
     return name + (e->type == &T_F32 ? "f" : "");
   }
   std::string proc_name(const ProcDecl *p) {
+    if (verification) {
+      auto found = verification_names.find(p);
+      if (found != verification_names.end()) return found->second;
+    }
     if (device() && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
     if (p->export_c || p->foreign) return to_std(p->name);
     std::string base = p->scope ? "coax_q" + std::to_string(p->scope) + "p_" + to_std(p->name) : "coax_p_" + to_std(p->name);
@@ -682,6 +689,16 @@ struct Emitter {
   }
 
   std::string ct_name(const Expr *e) {
+    if (verification) {
+      auto found = verification_ct_ids.find(e);
+      if (found == verification_ct_ids.end()) {
+        int32_t id = (int32_t)ct_values.size();
+        verification_ct_ids.emplace(e, id);
+        ct_values.push_back(e);
+        return "coax_k" + std::to_string(id);
+      }
+      return "coax_k" + std::to_string(found->second);
+    }
     Expr *m = (Expr *)e;
     if (m->ct_id < 0) {
       m->ct_id = (int32_t)ct_values.size();
@@ -1331,7 +1348,7 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || p->export_c ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
+    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
@@ -2295,6 +2312,73 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   bool has_main = false;
   for (const ProcDecl *p : file->procs) has_main = has_main || str_eq(p->name, "main");
   if (!opts.library && has_main) s += "\nint main(void) {\n  coax_p_main();\n  return 0;\n}\n";
+  return s;
+}
+
+std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan) {
+  Emitter em{file, opts};
+  em.verification = true;
+  // Every definition in this verification unit has a generated private name.
+  // Authored export names and arbitrary check display names cannot collide
+  // with the table ABI or inject identifiers into emitted C.
+  for (size_t i = 0; i < plan.procedures.size(); ++i)
+    em.verification_names.emplace(plan.procedures[i], "coax_verification_body_" + std::to_string(i));
+  std::string functions;
+  g_instance_c_bytes = 0;
+  for (const ProcDecl *p : plan.procedures) {
+    std::string function = em.function(p);
+    if (p->origin) g_instance_c_bytes += function.size();
+    functions += function;
+  }
+  std::string inits = init_functions(file, em);
+  std::string shows = show_functions(file, em);
+  TypeWriter types;
+  types.forward_structs(file);
+  std::vector<Type> all;
+  collect_types(file, &all);
+  for (Type type : all) types.need(type);
+  types.layout_asserts(file);
+
+  std::string s = "/* Checked-AST verification bodies. Not product emission. */\n";
+  s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
+  s += source_runtime(file);
+  if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.wrapping) s += WRAP_RUNTIME;
+  s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
+  s += "\n/* Types */\n" + types.out;
+  if (em.wide) s += WIDE_RUNTIME;
+  s += view_helpers();
+  if (!em.ct_values.empty()) {
+    s += "\n/* Values computed at compile time */\n";
+    for (size_t i = 0; i < em.ct_values.size(); ++i) {
+      const Expr *e = em.ct_values[i];
+      s += "static const " + c_type(e->type) + " coax_k" + std::to_string(i) + " = " + em.init_list(*e->ct) + ";\n";
+    }
+  }
+  s += "\n" + inits + shows + "\n";
+  for (const ProcDecl *p : plan.procedures) s += em.prototype(p) + ";\n";
+  s += functions;
+  s += "\n/* Verification-only ABI v1: display strings are byte spans, not C identifiers. */\n"
+       "typedef struct Coax_VerificationCheck_v1 {\n"
+       "  int64_t declaration_index;\n"
+       "  const char *name; int64_t name_count;\n"
+       "  const char *source; int64_t source_count;\n"
+       "  int64_t line, column;\n"
+       "  void (*run)(void);\n"
+       "} Coax_VerificationCheck_v1;\n"
+       "static const Coax_VerificationCheck_v1 coax_verification_table_v1[] = {\n";
+  for (const NativeCheckCEntry &entry : plan.checks) {
+    const CheckDecl *check = entry.check;
+    auto point = source_point(file->src, check->loc);
+    // Admitted filesystem paths fit Str's bounded count; the ABI fields are int64_t.
+    Str path{point.path.data(), (int32_t)point.path.size()};
+    s += "  {" + std::to_string(entry.declaration_index) + ", " + c_string_text(check->name) + ", " +
+         std::to_string(check->name.count) + ", " + c_string_text(path) + ", " + std::to_string(path.count) + ", " +
+         std::to_string(point.loc.line) + ", " + std::to_string(point.loc.col) + ", " + em.proc_name(check->proc) + "},\n";
+  }
+  s += "};\nconst Coax_VerificationCheck_v1 *coax_verification_checks_v1(int64_t *count) {\n"
+       "  if (count) *count = " + std::to_string(plan.checks.size()) + ";\n"
+       "  return coax_verification_table_v1;\n}\n";
   return s;
 }
 

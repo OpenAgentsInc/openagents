@@ -1,0 +1,3 @@
+#import "Basic";
+#test "reachable print effect" { side_effect(); }
+side_effect :: () { print("not a native verification effect"); }

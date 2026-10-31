@@ -1,0 +1,1 @@
+#test "actual native assertion must fail" { #assert 2 + 2 == 5; }

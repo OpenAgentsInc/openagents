@@ -129,8 +129,10 @@
     "Normal evaluator budgets are used; explicit smaller caps qualify resource exhaustion."
   ],
   "push": {
-    "outcome": "ready_to_push",
-    "target": "origin/main"
+    "outcome": "pushed",
+    "commit": "3b103e7e6e8a4d8c057455b97719a712d5ab7e89",
+    "target": "origin/main",
+    "issue": "r0-native-check-baseline-verdict resolved"
   },
   "source_sha256": {
     "coax/tools/native_check_baseline.py": "3a7b50468e853cbd580b5eec85a4165d6134bcc99c8e8bdef13b571a69595825",
@@ -178,9 +180,15 @@
     "mapping": "/tmp/coax-browser-late-made-realm-audit.json",
     "resolution": {
       "author_approval_commit": "21dc5da9ca",
-      "targeted_check": "/tmp/coax-native-baseline-approved-built-golden-result.json",
-      "status": "pending",
-      "scope": "Incoming app work is separate from S host-tool code; no blanket current-main browser pass is claimed."
+      "targeted_check": {
+        "command": "coax/web/golden-check.sh --commit 21dc5da9ca",
+        "exit_code": 0,
+        "seconds": 348.1091000420274,
+        "log": "/tmp/coax-native-baseline-approved-built-golden.log",
+        "scope": "Only built after original-author-approved golden changed; unrelated60 journeys not rerun."
+      },
+      "status": "passed",
+      "scope": "Only the affected built journey was rerun against its approved changed image; historical failed593 result is retained."
     }
   }
 }

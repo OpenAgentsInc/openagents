@@ -1,0 +1,15 @@
+#test "generic callee retains frozen owned aggregate" {
+  copy := identity(FROZEN);
+  #assert copy.value == 17;
+  #assert copy.items[0] == 2;
+  #assert copy.items[1] == 3;
+  #assert copy.items[2] == 5;
+  #assert identity(41) + 1 == 42;
+}
+
+Fixed :: struct { value: int; items: [3]int; }
+make_fixed :: () -> Fixed {
+  return Fixed.{value = 17, items = [3]int.[2, 3, 5]};
+}
+FROZEN :: #run make_fixed();
+identity :: (value: $T) -> $T { return value; }
