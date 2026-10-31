@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-value-parameters (first half: $N lengths; generic structs follow)",
+  "parent": "r4a-generic-values (#76ba), kept open",
+  "baseline_commit": "b75820e208",
+  "compiler_version": "0.36.0",
+  "scope": "$N value parameters as fixed array lengths ([$N] T, [$N] $T), bound from fixed-array arguments, substituted into instance signatures, bodies and results; fixed arrays of a placeholder ([4] $T) accepted.",
+  "kernels": {
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "new_rules": [
+        "PS_type: [$N] makes a type_param length node"
+      ],
+      "checks": "184 checks, 184 passed",
+      "mutation": "1205 mutants, 1205 killed, 0 survived"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_param / CK_param_record: one placeholder search and site rule for $T and $N (bits 1)",
+        "CK_type_param / CK_length_param / CK_kind_clash (E0368)",
+        "CK_resolve: [$N] T as an array whose length is minus its placeholder record; CK_intern names it [$N] T; CK_generic sees it",
+        "CK_bind: fixed-array arguments bind or check lengths (CK_bind_length E0348, E0349); concrete parts checked after substitution (CK_mismatch, E0317)",
+        "CK_subst substitutes array lengths; CK_key spells lengths i<value>"
+      ],
+      "checks": "600 checks, 600 passed",
+      "mutation": "4642 mutants, 4642 killed, 0 survived (4 shards)"
+    },
+    "seeds": "bootstrap/parser.{c,h} and checker.{c,h} regenerated with the trusted 0.35.0 compiler after checks and mutation"
+  },
+  "native_transport": [
+    "src/parse.cpp, src/check.cpp: a $N length has no length Expr; composites over a placeholder length stay out of the emitted type list",
+    "src/main.cpp: coax explain --markdown gives E06xx and E07xx their own sections (they were listed under E05xx)"
+  ],
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "class": "ValueParameters",
+    "tests": 2,
+    "covers": [
+      "sum/last/rev/dot/fourth over [$N] int, [$N] $T and [4] $T agree natively at -O0/-O2, under #run and coax test",
+      "instance C names carry lengths (coax_p_sum__2i3, coax_p_rev__2i53int)",
+      "E0348, E0349 (view and wrong length), E0368 both orders, E0392/E0393 for an unbound $N, E0394 for [] [$N] int"
+    ]
+  },
+  "limits": [
+    "$N appears only as an array length, not as a value in expressions",
+    "generic structs (Pair :: struct($T)) are the second half of this task"
+  ],
+  "legacy_codegen": {
+    "compared_with": "coax0 0.35.0 (b75820e208 cached build)",
+    "corpus": "992 compilable repo sources outside coax/tests emit byte-identical C (compiler stamp aside); 163 do not compile standalone under either"
+  }
+}

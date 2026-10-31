@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.35.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -416,7 +416,7 @@ are refused with their usual codes, and `size_of`, `type_info` and
 `type_name` of a placeholder are E0399. Refused forms, each with its own
 explained code: a `$T` only in the result (E0392); a `$T` first written in a
 body, or anywhere outside a procedure signature (E0393); a nested generic
-type such as `[4] $T` or `[] [] $T` (E0394); a `$T` in a struct field
+type such as `[] [] $T` (E0394; fixed arrays of `$T` are accepted since 0.36.0); a `$T` in a struct field
 (E0395); a generic procedure calling itself (E0396); `#export_c` on a generic
 procedure (E0398). Programs without `$T` compile to identical C, and an
 uncalled generic procedure is never emitted.
@@ -441,6 +441,18 @@ covered like other procedures: under `#authority` a check that calls a
 template through an instance covers it. `coax deps --declarations` lists
 templates, not instances; `--timings` reports `instances` and
 `instance_generated_bytes`.
+
+**Value parameters (0.36.0).** `$N` as a fixed array length binds a
+compile-time length: `sum :: (a: [$N] int) -> int`, `rev :: (a: [$N] $T) ->
+[$N] $T`. A call binds `$N` to its fixed-array argument's length; a later
+argument must have the same length (E0348), and an argument that is not a
+fixed array, or a `[4] $T` argument of another length, is E0349. Concrete
+parts of a parameter are checked against the argument after substitution
+(E0317). The same name cannot be both a type and a length in one procedure
+(E0368). Fixed arrays of a placeholder (`[4] $T`, `[$N] $T`) are now
+accepted; views and arrays of composites that hold a placeholder are still
+E0394. Instance keys spell a length as `i` and its value
+(`coax_p_sum__2i3`).
 
 The remainder of this section is the plan.
 

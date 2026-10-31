@@ -39,7 +39,7 @@ REFUSED = [
     ("f :: (a: $T) { b: $U; }", ["E0393"]),
     ("K :: size_of($T);", ["E0393"]),
     ('#test "t" { x: $T; }', ["E0393"]),
-    ("f :: (a: [4] $T) {}", ["E0394"]),
+    ("f :: (a: [4] [] $T) {}", ["E0394"]),
     ("f :: (a: [] [] $T) {}", ["E0394"]),
     ("S :: struct { x: $T; }", ["E0395"]),
     ("f :: (a: $T) -> $T { return f(a); }", ["E0396"]),
@@ -134,7 +134,7 @@ class TypeParameters(unittest.TestCase):
                 self.assertEqual(codes, want)
 
     def test_every_new_code_is_explained(self):
-        for code in ("E0339", "E0348", "E0349", "E0392", "E0393", "E0394", "E0395", "E0396", "E0397", "E0398", "E0399"):
+        for code in ("E0339", "E0348", "E0349", "E0368", "E0392", "E0393", "E0394", "E0395", "E0396", "E0397", "E0398", "E0399"):
             r = self.coax("explain", code)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertTrue(r.stdout.startswith(code + ": "), r.stdout)
@@ -232,6 +232,55 @@ class Instantiation(unittest.TestCase):
         self.assertEqual(codes, ["E0339"])
         fits = self.write("fits.coax", "id :: (a: $T) -> $T { return a; }\n" + types + "main :: () { " + calls.rsplit("x256", 1)[0] + " }\n")
         self.assertEqual(self.coax("check", fits).returncode, 0, self.coax("check", fits).stderr)
+
+
+VALUES = (
+    "sum :: (a: [$N] int) -> int { s := 0; for x: a { s += x; } return s; }\n"
+    "last :: (a: [$N] $T) -> $T { return a[a.count - 1]; }\n"
+    "rev :: (a: [$N] $T) -> [$N] $T { b := a; for i: 0..<a.count { b[i] = a[a.count - 1 - i]; } return b; }\n"
+    "dot :: (a: [$N] f64, b: [$N] f64) -> f64 { s := 0.0; for x, i: a { s += x * b[i]; } return s; }\n"
+    "fourth :: (a: [4] $T) -> $T { return a[3]; }\n"
+    "result :: () -> int { x := [3] int.[1, 2, 3]; y := [5] int.[1, 2, 3, 4, 5]; r := rev(y); return sum(x) * 100 + sum(y) + last(r) * 1000 + fourth([4] int.[0, 0, 0, 9]) * 10000; }\n"
+    "fresult :: () -> f64 { a := [2] f64.[1.5, 2.0]; return dot(a, rev(a)) + last(a); }\n"
+)
+
+
+class ValueParameters(unittest.TestCase):
+    setUp = TypeParameters.setUp
+    write = TypeParameters.write
+    coax = TypeParameters.coax
+    codes = TypeParameters.codes
+
+    def test_fixed_array_lengths_bind_and_agree_with_the_evaluator(self):
+        program = self.write("values.coax", '#import "Basic";\n' + VALUES + 'main :: () { print("% %\\n", result(), fresult()); }\n')
+        compile_time = self.write("values_ct.coax", '#import "Basic";\n' + VALUES + "R :: #run result();\nF :: #run fresult();\n"
+                                  'main :: () { print("% %\\n", R, F); }\n#test "values" { #assert result() == 91615 && fresult() == 8.0; }\n')
+        for path in (program, compile_time):
+            for opt in ("0", "2"):
+                r = self.coax("run", path, "--opt", opt)
+                self.assertEqual((r.returncode, r.stdout), (0, "91615 8.0\n"), r.stderr)
+        r = self.coax("test", compile_time)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        c = self.coax("c", program).stdout
+        for name in ("coax_p_sum__2i3", "coax_p_sum__2i5", "coax_p_rev__2i53int", "coax_p_rev__2i23f64", "coax_p_last__2i53int",
+                     "coax_p_last__2i23f64", "coax_p_dot__2i2", "coax_p_fourth__3int"):
+            self.assertIn(name + "(", c)
+
+    def test_refused_value_parameter_forms(self):
+        cases = [
+            ("two :: (a: [$N] int, b: [$N] int) {} g :: () { x := [3] int.[1, 2, 3]; y := [2] int.[1, 2]; two(x, y); }", ["E0348"]),
+            ("f :: (a: [$N] int) {} g :: () { x := [3] int.[1, 2, 3]; f(x[..]); }", ["E0349"]),
+            ("f :: (a: [4] $T) {} g :: () { x := [3] int.[1, 2, 3]; f(x); }", ["E0349"]),
+            ("f :: (a: [$T] int, b: $T) {}", ["E0368"]),
+            ("f :: (a: $T, b: [$T] int) {}", ["E0368"]),
+            ("f :: () -> [$N] int { x: [$N] int; return x; }", ["E0392", "E0393"]),
+            ("f :: (a: [] [$N] int) {}", ["E0394"]),
+        ]
+        for i, (source, want) in enumerate(cases):
+            with self.subTest(source=source):
+                code, codes = self.codes(self.write(f"v{i}.coax", source + "\nmain :: () {}\n"))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(codes, want)
 
 
 if __name__ == "__main__":

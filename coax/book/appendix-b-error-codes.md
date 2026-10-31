@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.35.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -135,7 +135,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0346` | #assert needs bool | The asserted expression must be a bool, at the top level and in a statement. |
 | `E0347` | constant dependencies too deep | Constant type resolution is bounded at depth 64. |
 | `E0348` | type parameter bound twice | The arguments of one call bind each $T once: the first argument whose type uses $T binds it, and every later one must have that same type. Pass the same type, or convert one with cast. |
-| `E0349` | argument is not a view | A parameter written [] $T binds $T to the element type of a view, so its argument must be a view. Pass a view of an array with name[..]. |
+| `E0349` | argument does not have the parameter's shape | A parameter written [] $T binds $T from a view, so its argument must be a view (pass name[..] for an array); one written [$N] T or [4] T binds or checks a fixed array's length, so its argument must be a fixed array of that length. |
 | `E0350` | value does not fit its type | Untyped literals take the type their use needs, if the value fits: x: u8 = 300 does not. A float literal cannot become an integer. Use a wider type, or cast,trunc to keep the low bits. |
 | `E0351` | no such field or member | The struct has no field, or the enum no member, with this name. Arrays, views and strings have .count. |
 | `E0352` | duplicate field or member | A field or member name appears twice in a declaration or a literal. |
@@ -154,6 +154,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0365` | ifx branches differ | Both branches of ifx produce a value of the same type. |
 | `E0366` | a view needs a variable array | A view borrows an array's storage and may write through it, so the array must be a local variable. Copy a parameter or temporary into a local first. |
 | `E0367` | field or element has the wrong type | The value given for a struct field, field default or array element has a different type. |
+| `E0368` | type and value parameters share a name | A $NAME is either a type parameter ($T, written as a type) or a value parameter ($N, written as a fixed array length [$N] T) in one procedure, not both. Give the length its own name. |
 | `E0369` | invalid export | main cannot be exported, and exported names cannot start with coax_, which the generated runtime uses. |
 | `E0370` | bit operation needs integers | & \| ^ need two integers of one type; << >> shift an integer by an integer amount from 0 to its width minus one. |
 | `E0371` | field name is reserved in C | Struct fields keep their names in generated C and headers, so they cannot be C or C++ keywords or start with '_'. |
@@ -177,7 +178,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0391` | name exported twice | List each exported name once across a module's #export lists. |
 | `E0392` | type parameter appears only in the result | A $T in a procedure's result type must first appear in one of its parameter types, which binds it at each call. Add a parameter whose type uses $T, or return a concrete type. |
 | `E0393` | type parameter is not bound here | Only a procedure's parameter types bind a type parameter. A $T first written in a procedure body, or in a constant, check or other declaration outside a procedure signature, has nothing to bind it. |
-| `E0394` | nested generic type | A type parameter is accepted as $T or as a view [] $T. A fixed array [N] $T needs value parameters ($N), and views of views such as [] [] $T are not supported yet. |
+| `E0394` | nested generic type | A placeholder is accepted as $T, as a view [] $T and as a fixed array [N] $T or [$N] $T. A view or array of a composite that holds a placeholder, such as [] [] $T, [] [$N] T or [4] [] $T, is not supported yet. |
 | `E0395` | type parameter in a struct field | Struct fields have concrete types. Generic structs such as Pair :: struct($T) are planned; until then give the field a concrete type. |
 | `E0396` | recursion through a generic procedure | A generic procedure cannot call itself: each instance would need a bounded specialization budget, which is not implemented. Write the recursion in a concrete procedure. |
 | `E0397` | argument has no value to bind a type parameter | A call's argument binds $T to its type, and a call that returns nothing has none. Pass a value of the type the procedure should work on. |
@@ -212,6 +213,11 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0502` | proto descriptor rejected | The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated. |
 | `E0503` | retired in 0.6.0 | Was: external proto importer unavailable. The compiled Coax descriptor parser, generator and wire runtime are linked into coax0. |
 | `E0504` | proto imports are CPU-only | Generated binary codecs are CPU code and cannot be compiled as Metal shaders. |
+
+## E06xx: source units
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
 | `E0600` | invalid source load | Use #load "part.coax"; at file scope with a nonempty, NUL-free path, or #load "part.coax" as name; to bind its module to an alias. Loads are literal source inputs, never compile-time effects. |
 | `E0601` | source unit cannot be read | The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load. |
 | `E0602` | source load cycle | A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once. |
@@ -228,6 +234,11 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0613` | malformed export list | #export takes file-scope identifiers separated by ',' and ends with ';': #export hud_slot, HudRect; |
 | `E0614` | reexport in an export list | An export list names only its module's own declarations; alias.Name is a reexport, which is not supported. |
 | `E0615` | export outside a logical module | #export belongs to a unit under a logical module. Claim one with #module, or load the file from a unit that does. |
+
+## E07xx: device code
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
 | `E0700` | outside the CUDA compute subset | coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break, continue and acyclic calls. Strings, structs, enums, while loops, defer, #assert, print and #foreign calls stay in the C library. Every #export_c procedure is a kernel: it returns nothing and its first parameter is its int work item. A kernel with for thread: 0..<T loops (T a multiple of 32 up to 1024) runs T threads per item: a thread loop writes a shared array only at the elements its thread owns, code between thread loops never writes one, and shared arrays fit in 32 KiB. |
 | `E0701` | CUDA module has no kernel | coax cuda compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0702` | outside the Metal compute subset | coax metal-compute accepts what coax cuda accepts (E0700). Apple GPUs have no binary64, so f64 is a float-float pair: f64_bits, f64_from_bits, sin, cos, tan and pow of an f64 and conversion of an f64 to an integer are refused. A view points into device memory, so a slice of a kernel's fixed array is refused except as a whole argument to a device primitive. The Apple matrix primitives (am_sg_mma_64x32x32, am_sg_spill_64x32, am_matmul_bf16) belong to group kernels of 128 threads (64, 128 or 256 for am_matmul_bf16), called between thread loops. |

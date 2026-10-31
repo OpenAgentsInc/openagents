@@ -151,12 +151,13 @@ bool check(Arena *arena,File *file){
   }
   // A composite over a type parameter ([] $T) belongs to a generic procedure's check only.
   for(int64_t i=16;i<state.type_count;i++){const auto &r=records[(size_t)i];if(r.kind!=COAX_CK_Kind_array && r.kind!=COAX_CK_Kind_view)continue;
-    auto at=r.elem;while(records[(size_t)at].kind==COAX_CK_Kind_array || records[(size_t)at].kind==COAX_CK_Kind_view)at=records[(size_t)at].elem;
-    if(records[(size_t)at].kind!=COAX_CK_Kind_param)g_composite_list.push_back(types[(size_t)i]);}
+    // ... and so does a fixed array whose length is a value parameter ([$N] T).
+    bool placeholder=r.length<0;auto at=r.elem;while(records[(size_t)at].kind==COAX_CK_Kind_array || records[(size_t)at].kind==COAX_CK_Kind_view){placeholder=placeholder || records[(size_t)at].length<0;at=records[(size_t)at].elem;}
+    if(!placeholder && records[(size_t)at].kind!=COAX_CK_Kind_param)g_composite_list.push_back(types[(size_t)i]);}
   // Populate all scalar/reference fields before copying aggregate value lists.
   for(int64_t id=1;id<=state.used;id++){
     const auto &v=nodes[(size_t)id];const auto loc=checked_loc(v.loc);const auto name=checked_string(arena,v.name);const auto ty=types[(size_t)v.type];
-    if(v.kind>=1 && v.kind<=5){auto *p=checked_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->length=checked_ref<Expr>(objects,v.a);p->elem=checked_ref<TypeExpr>(objects,v.b);}
+    if(v.kind>=1 && v.kind<=5){auto *p=checked_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->length=v.a && nodes[(size_t)v.a].kind==COAX_CK_Tag_type_param?nullptr:checked_ref<Expr>(objects,v.a);p->elem=checked_ref<TypeExpr>(objects,v.b);}
     else if(v.kind>=16 && v.kind<=33){auto *p=checked_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->type=ty;p->int_value=v.value;memcpy(&p->float_value,&v.floating,8);p->op=(Tok)v.op;
       p->effects=v.effects;p->own_effects=v.own_effects;p->lhs=checked_ref<Expr>(objects,v.a);p->rhs=checked_ref<Expr>(objects,v.b);p->third=checked_ref<Expr>(objects,v.c);p->type_expr=checked_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;p->negative=v.negative;p->folded=v.folded;p->compiler_generated=CK_generated(v.mark);p->field_index=(int32_t)v.field_index;p->proc=checked_ref<ProcDecl>(objects,v.proc);p->constant=checked_ref<ConstDecl>(objects,v.constant);p->builtin_print=v.builtin_print;p->byte_intrinsic=(ByteIntrinsic)v.byte_intrinsic;p->intrinsic=(Intrinsic)v.intrinsic;p->args={};p->fields={};}
     else if(v.kind>=40 && v.kind<=52){auto *p=checked_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->own_effects=v.own_effects;p->loc=loc;p->name=name;p->name2=checked_string(arena,v.name2);p->name2_loc=checked_loc(v.loc2);p->type=ty;p->expr=checked_ref<Expr>(objects,v.a);p->expr2=checked_ref<Expr>(objects,v.b);p->target=nullptr;p->type_expr=nullptr;p->then_=nullptr;p->else_=nullptr;p->uninit=v.flag;

@@ -94,7 +94,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
     const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
     if(v.kind>=1 && v.kind<=5) {
       auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;
-      p->length=parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
+      p->length=v.a && nodes[(size_t)v.a].kind==COAX_PS_Tag_type_param?nullptr:parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
     }else if(v.kind>=16 && v.kind<=31) {
       auto *p=parser_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->int_value=v.value;p->float_value=v.floating;
       if(v.width) p->type=v.width==32?&T_F32:&T_F64;

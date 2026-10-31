@@ -909,7 +909,8 @@ static int explain(int argc, char **argv) {
     for (int32_t i = 0; i < ERROR_COUNT; i++) {
       const ErrorInfo &e = ERRORS[i];
       const char *s = e.code[2] == '1' ? "E01xx: lexer" : e.code[2] == '2' ? "E02xx: parser"
-                    : e.code[2] == '3' ? "E03xx: checker" : e.code[2] == '4' ? "E04xx: compile-time evaluation" : "E05xx: proto imports";
+                    : e.code[2] == '3' ? "E03xx: checker" : e.code[2] == '4' ? "E04xx: compile-time evaluation"
+                    : e.code[2] == '5' ? "E05xx: proto imports" : e.code[2] == '6' ? "E06xx: source units" : "E07xx: device code";
       if (strcmp(s, stage) != 0) {
         printf("\n## %s\n\n| Code | Meaning | What to do |\n| --- | --- | --- |\n", s);
         stage = s;

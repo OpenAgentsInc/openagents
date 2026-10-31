@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.35.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -141,7 +141,8 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Effect-ordered native lowering | CK_effects classifies each checked expression (call, trap, checked-overflow trap); native C sequences two trapping operands and a trapping place and value, so the first trap in source order is reported at -O0 and -O2 as in the evaluator; coax deps --lowering (0.32.0) prints the coax.lowering.v1 record of those decisions for the eligible subset | partial | 0.31.0 |
 | `coax test/mutate --evidence FILE` | Schema coax.evidence.v1: each check, authority-coverage and mutation claim bound to sources, compiler, evaluator target, profile, selection and budgets, ending passed, counterexample, inconclusive, infrastructure-error or not-checked; the verdict is the worst, so missing execution is never a pass | works | 0.33.0 |
 | `$T` type parameters | A $T in a procedure's parameter types binds a placeholder type at its first use; every other use is checked against it; only-in-result (E0392), unbound (E0393), nested (E0394), struct-field (E0395), recursive (E0396) and exported (E0398) forms are refused | partial | 0.34.0 |
-| Generic instantiation | Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no value parameters or constraints yet | partial | 0.35.0 |
+| Generic instantiation | Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no constraints yet | partial | 0.35.0 |
+| `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted; no generic structs yet | partial | 0.36.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

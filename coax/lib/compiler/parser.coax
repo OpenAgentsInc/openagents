@@ -126,7 +126,11 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     PS_skip(t,s);
     if PS_at(t,s,13) {PS_skip(t,s);n[id].kind=PS_Tag.type_view;}
     else if PS_at(t,s,21) {PS_skip(t,s);PS_expect(t,s,out,13,"after '[..'");n[id].kind=PS_Tag.type_dynamic;}
-    else {n[id].kind=PS_Tag.type_array;n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,13,"after the array length");}
+    else {n[id].kind=PS_Tag.type_array;
+      // [$N] T: a value parameter, bound by the checker (r4a-value-parameters).
+      if PS_at(t,s,53) {v=PS_peek(t,s,0);p:=PS_new(n,s,out,PS_Tag.type_param,v.loc);n[p].name=PS_take(t,s).text;n[id].a=p;}
+      else {n[id].a=PS_expression(t,n,s,out);}
+      PS_expect(t,s,out,13,"after the array length");}
     n[id].b=PS_type(t,n,s,out);return PS_valid(s,id);
   }
   // $T: a type parameter, bound and checked by the checker (r4a-type-parameters).
@@ -3948,6 +3952,21 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   if variant==2 {#assert nodes[id].kind==PS_Tag.type_array && state[0].pos==4;at=nodes[id].b;}
   #assert nodes[at].kind==PS_Tag.type_param && nodes[at].name=="T" && nodes[at].name2=="" && nodes[at].loc.line==2 && nodes[at].loc.column==7 && nodes[at].loc.offset==12;
   if variant==0 || variant==3 {#assert id==1 && state[0].pos==1 && state[0].used==1;}
+}
+#forall "a $ name as an array length is one value-parameter node" variant:0..<3 {
+  // [$N] int ; [$N] $T ; [$N + 1] int is still refused as an expression
+  tokens:=[8] PS_Token.[PS_Token.{kind=12},PS_Token.{kind=53,text="N",loc=PS_Loc.{line=3,column=2,offset=20}},PS_Token.{kind=13},PS_Token.{kind=1,text="int"},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[3]=PS_Token.{kind=53,text="T"};}
+  if variant==2 {tokens[2]=PS_Token.{kind=34};tokens[3]=PS_Token.{kind=3,value=1};tokens[4]=PS_Token.{kind=13};tokens[5]=PS_Token.{kind=1,text="int"};}
+  nodes:[8] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_type(tokens[..],nodes[..],state[..],message[..]);
+  if variant==2 {#assert state[0].code!="";}
+  else {
+    #assert state[0].code=="" && state[0].depth==0 && state[0].pos==4 && state[0].used==3 && id==1 && nodes[1].kind==PS_Tag.type_array;
+    a:=nodes[1].a;#assert a==2 && nodes[a].kind==PS_Tag.type_param && nodes[a].name=="N" && nodes[a].loc.line==3 && nodes[a].loc.column==2 && nodes[a].loc.offset==20;
+    if variant==0 {#assert nodes[nodes[1].b].kind==PS_Tag.type_named && nodes[nodes[1].b].name=="int";}
+    else {#assert nodes[nodes[1].b].kind==PS_Tag.type_param && nodes[nodes[1].b].name=="T";}
+  }
 }
 #test "a $ name is a type, not an expression or a name" {
   #assert PS_label(53)=="'$' name";
