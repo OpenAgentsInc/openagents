@@ -260,14 +260,14 @@ retained; routine checks do not rerun it.
 
 [Chapter 124](book/ch124-adamw-and-explicit-precision.md): AdamW over a binary64 master copy with parameter groups, declared compute precision, all-or-nothing admission, a skip policy and exact resume, checked against an independent oracle. Run `psionic/check.sh --only adamw`.
 
-[Chapter 190](book/ch190-execute-a-groot-policy.md) executes the original
+[Chapter 169](book/ch169-execute-a-groot-policy.md) executes the original
 GR00T-N1.7-LIBERO learned policy on Metal: both cameras, the retained language
 backbone and all four flow steps. The first profile accepts a prepared
 140-token observation; same-input component checks and original decoded action
 endpoints pass. Its separate global hidden-trace diagnostic remains outside
 its frozen bound. The [verification record](../docs/verification/psionic-ch113-2026-10-31.md)
 states the numerical profile, exact scope and reproduction commands. Simulator
-control and task outcomes are now exercised in [chapter 191](book/ch191-close-the-simulated-control-loop.md): the genuine Panda loop uses original scene/state pairs, a resident Coax GPU policy, an own Coax controller and MuJoCo 3.3.1 as the evaluation backend. The chapter distinguishes exact controls-only physics replay, measured task outcomes, recovered declared faults and the remaining own-solver/compiler/differentiability work.
+control and task outcomes are now exercised in [chapter 170](book/ch170-close-the-simulated-control-loop.md): the genuine Panda loop uses original scene/state pairs, a resident Coax GPU policy, an own Coax controller and MuJoCo 3.3.1 as the evaluation backend. The chapter distinguishes exact controls-only physics replay, measured task outcomes, recovered declared faults and the remaining own-solver/compiler/differentiability work.
 
 [Chapter 109](book/ch109-learn-a-physical-system.md) supplies an owned F64
 forced-oscillator RK4 solver and learned surrogate. Whole parameter/initial

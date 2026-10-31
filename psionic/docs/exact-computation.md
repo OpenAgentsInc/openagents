@@ -1,6 +1,6 @@
 # Programs compiled into weights: what the pre-reset work teaches
 
-Planning note, 2026-10-29, for Part XXV of the [book plan](../book/PLAN.md).
+Planning note, 2026-10-29, for Part XXIII of the [book plan](../book/PLAN.md).
 Before the reset this idea was called Tassadar, after Percepta's published
 construction. Sources, readable with `git show 0b401561a0^:<path>` unless
 noted:
@@ -65,7 +65,7 @@ replaying it.
   verified pair.
 - It verified only one trivial program, so it built machinery rather than
   capability. The worker's self-test, separate validator devices, owner caps
-  and receipt-first settlement are kept in chapter 269.
+  and receipt-first settlement are kept in chapter 238.
 
 **Status.**
 - Retired in July 2026 until cash-flow positive.
@@ -86,7 +86,7 @@ replaying it.
 6. **Curricula can erase what worked.** Full-trace supervision destroyed
    first-token accuracy.
 7. **Differential harnesses pay off.** The first one found two compiler bugs on
-   its first run; chapter 261 keeps them as planted mutants.
+   its first run; chapter 230 keeps them as planted mutants.
 8. **Keep fixtures small and regenerable.** The import carried 737 MB of
    fixtures, and most of their paths were missing.
 9. **Count only real work and real payments.** One program verified forever,

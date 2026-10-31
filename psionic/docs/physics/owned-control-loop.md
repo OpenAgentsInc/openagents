@@ -79,12 +79,13 @@ not infer wall-clock throughput from nominal simulation rates.
 
 ## Fit the expanded physics book without delaying the rigid path
 
-Main now places imitation, GR00T and this loop at chapters 189–191. The
-[Genesis parity plan](../genesis-parity.md) and Part XVIII add the owned
-physics engine. The next robot backend follows the rigid branch: scene 165,
-bodies 166, articulation 167, broad/narrow contact 168–169 and contact solve 170;
-assets 183, batching 179, sensors 181, observation rendering 182, world replay 184
-and control 188 supply the matching end-to-end path. Those chapter files are
+Main now places imitation, GR00T and this loop at chapters 168–170. The
+[Genesis parity plan](../genesis-parity.md) and Aethyr Part IV add the owned
+physics engine. The next robot backend follows Aethyr's rigid branch: scene 17,
+bodies 18, articulation 19, broad/narrow contact 20–21 and contact solve 22;
+assets 35, batching 31, sensors 33, observation rendering 34 and world replay 36
+(Aethyr chapters), with Psionic chapter 167's control, supply the matching
+end-to-end path. Those chapter files are
 currently design drafts. Their numbering is a teaching order; dependencies
 such as assets before rendered observations still determine implementation.
 

@@ -12,7 +12,7 @@ us :: (seconds:f64)->f64 {return r2(seconds*1e6);}
 
 // book:begin live
 // One implementation over every case on this CPU: pass 0's items, then pass
-// 1's, in order, then chapter 280's contract.
+// 1's, in order, then chapter 249's contract.
 Impl :: enum u8 {ch30;tuned;winner;}
 Live :: struct {passed:int;failed:[10]bool;}
 live :: (impl:Impl,knob:int,x:[]f32,scale:[]f32,out:[]f32,work:[]f64)->Live {

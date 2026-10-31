@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Chapter 280's evaluator: admit one norm implementation to the CUDA compute
-# subset, run chapter 280's cases on the CPU, then on the L4 with timings, and
+# Chapter 249's evaluator: admit one norm implementation to the CUDA compute
+# subset, run chapter 249's cases on the CPU, then on the L4 with timings, and
 # keep the whole result in the ledger. The evaluator, the cases and the
 # ledger are outside any candidate's writable directory.
 #   psionic/tests/kernel_search_eval.sh FILE PREFIX [cpu]

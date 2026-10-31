@@ -1,4 +1,4 @@
-/* Chapter 246 against calibrate_oracle.py, which found the temperature by a
+/* Chapter 215 against calibrate_oracle.py, which found the temperature by a
    different search (over the bit patterns of doubles), pooled isotonic steps
    with exact fractions and measured in exactly rounded sums. Tolerances were
    frozen before comparison: chosen kinds, gate verdicts, knot counts, step

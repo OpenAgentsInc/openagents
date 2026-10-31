@@ -8,7 +8,7 @@ state from examples, and then run on their own predictions.
 This is a useful first plant for later control experiments. It gives us known
 physics, exact reset, repeatable forcing and an independent analytic reference.
 It does not replace the articulated Panda and contact simulation in
-[chapter 191](ch191-close-the-simulated-control-loop.md).
+[chapter 170](ch170-close-the-simulated-control-loop.md).
 
 ```shell
 coax/bin/coax run psionic/examples/learn-a-physical-system.coax

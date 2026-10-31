@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 271's independent reference, written from the chapter's specification.
+"""Chapter 240's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/noise.coax. Sums use math.fsum (exactly
 rounded) where the library uses chapter 4's compensated accumulator. The

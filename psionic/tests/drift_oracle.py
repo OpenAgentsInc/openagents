@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 248's independent reference, written from the chapter's specification.
+"""Chapter 217's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/drift.coax. Sums use math.fsum (exactly
 rounded) where the library uses chapter 4's compensated accumulator. Maps are
-fitted with chapter 246's oracle. The run is computed in closed form rather
+fitted with chapter 215's oracle. The run is computed in closed form rather
 than by stepping time: every outcome that isn't lost joins at its arrival, and
 a refit sees exactly the records decided in its windows that weren't lost,
 since all of their outcomes arrive before it. `--header` writes the C

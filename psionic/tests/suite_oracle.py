@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 270's independent reference, written from the chapter's specification.
+"""Chapter 239's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/suite.coax: digests come from Python's
 hashlib over the canonical encoding, and the suite is read from chapter 16's

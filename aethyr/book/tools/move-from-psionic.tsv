@@ -1,0 +1,69 @@
+# Mapping for move-from-psionic.py. Tab-separated.
+# chapters <old first> <old last> <book> <new first>: every old Psionic chapter number, planned or written.
+chapters	1	164	psionic	1
+chapters	165	185	aethyr	17
+chapters	186	192	psionic	165
+chapters	193	202	aethyr	39
+chapters	203	281	psionic	172
+# part <old Psionic numeral> <book> <new numeral>
+part	XVIII	aethyr	IV
+part	XIX	psionic	XVIII
+part	XX	aethyr	V
+part	XXI	psionic	XIX
+part	XXII	psionic	XX
+part	XXIII	psionic	XXI
+part	XXIV	psionic	XXII
+part	XXV	psionic	XXIII
+part	XXVI	psionic	XXIV
+# literal <path regex> <old> <new>: final text no rule rewrites (\n is a newline).
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	## The design in Psionic	## The design in Aethyr
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	`psionic/lib/sim/	`aethyr/sim/
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	psionic/lib/sim/	aethyr/sim/
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	the Psionic solver	the Aethyr solver
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	the Psionic kernel	the Aethyr kernel
+literal	psionic/book/README.md	Sketches in it are illustrative only.\nPart XVIII, the physics engine, is written this way first; see the\n[Genesis parity plan](../docs/genesis-parity.md).	Sketches in it are illustrative only.\nThe physics engine and the spacecraft chapters, first drafted here this way,\nare now Parts IV and V of [the Aethyr book](../../aethyr/book/README.md).
+literal	psionic/book/README.md	motion, speech, physics, a physics engine (Part XVIII), world models and robot\npolicies, spacecraft and the solar system (Part XX), production hosting,	motion, speech, physics, world models and robot policies (in worlds\nsimulated by [Aethyr](../../aethyr/book/README.md)), production hosting,
+literal	psionic/book/PLAN.md	\n## XIX. World models and embodied policies\n\n	\n## XVIII. World models and embodied policies\n\nThe worlds these policies act and learn in come from the [Aethyr book](../../aethyr/book/README.md):\nbatched environments (Aethyr chapter 31), differentiable simulation (32),\nsensors (33), observation pictures (34), robot import (35) and replay (36).\nThis part uses them and does not repeat them.\n\n
+literal	psionic/book/PLAN.md	\n## XXI. Host inference in production\n\n	\n## XIX. Host inference in production\n\n
+literal	psionic/book/PLAN.md	\n## XXII. Inference across a mesh\n\n	\n## XX. Inference across a mesh\n\n
+literal	psionic/book/PLAN.md	\n## XXIII. A harness for Psionic models\n\n	\n## XXI. A harness for Psionic models\n\n
+literal	psionic/book/PLAN.md	\n## XXIV. Decisions in production\n\n	\n## XXII. Decisions in production\n\n
+literal	psionic/book/PLAN.md	\n## XXV. Programs compiled into weights\n\n	\n## XXIII. Programs compiled into weights\n\n
+literal	psionic/book/PLAN.md	\n## XXVI. Measure, then improve\n\n	\n## XXIV. Measure, then improve\n\n
+literal	psionic/tests/core_interface_oracle.py	chapter\n235's checks	chapter\n237's checks
+literal	psionic/tests/verdict_oracle.py	chapter\n214's	chapter\n216's
+# keep <path regex> <phrase>: counts that look like chapter numbers.
+keep	psionic/book/(PLAN|README)\.md	170 exact F32
+keep	psionic/book/PLAN\.md	all 237 recorded events
+keep	psionic/book/PLAN\.md	219 real-signature
+keep	psionic/docs/roadmap\.md	256 one-token slot
+# dropline <path regex> <line prefix>: rows for parts that moved to Aethyr.
+dropline	psionic/docs/roadmap\.md	| XVIII. A physics engine |
+dropline	psionic/docs/roadmap\.md	| XX. Spacecraft and the solar system |
+literal	psionic/docs/roadmap\.md	| XIX. World models and policies |	| XVIII. World models and policies |
+literal	psionic/docs/roadmap\.md	| XXI. Host inference in production |	| XIX. Host inference in production |
+literal	psionic/docs/roadmap\.md	| XXII. Inference across a mesh |	| XX. Inference across a mesh |
+literal	psionic/docs/roadmap\.md	| XXIII. A harness for Psionic models |	| XXI. A harness for Psionic models |
+literal	psionic/docs/roadmap\.md	| XXIV. Decisions in production |	| XXII. Decisions in production |
+literal	psionic/docs/roadmap\.md	| XXV. Programs compiled into weights |	| XXIII. Programs compiled into weights |
+literal	psionic/docs/roadmap\.md	| XXVI. Measure, then improve |	| XXIV. Measure, then improve |
+literal	coax/ROADMAP\.md	the closed loop of Psionic chapters\n[189](../psionic/book/ch189-imitation-before-robotics-scale.md)–169 (see	the closed loop of Psionic chapters\n[168](../psionic/book/ch168-imitation-before-robotics-scale.md)–170 (see
+literal	coax/ROADMAP\.md	consumer, the Psionic physics engine (Psionic Part XVIII, chapters 165–185,	consumer, the Aethyr physics engine ([Aethyr book](../aethyr/book/README.md) Part IV, chapters 17–37,
+literal	coax/ROADMAP\.md	Psionic Part XX (chapters 193–202).	Aethyr Part V (chapters 39–48).
+literal	psionic/docs/genesis-parity\.md	- **Aethyr**, the engine realms run on (`verse/`), keeps its own game-layer\n  rigid bodies and contacts; they serve as independent references for the\n  Psionic solvers and later consume them.\n- **Psionic** supplies the solvers and the physics engine: solvers, coupling, batching, sensors,\n  rendering hooks, assets, replay and validation, as book Part XVIII\n  (chapters 165–185), with classical control in 188 and batched policy\n  learning in 192.	- **Aethyr**, the engine realms run on, owns the physics engine: solvers,\n  coupling, batching, sensors, rendering hooks, assets, replay and validation,\n  as Part IV of the [Aethyr book](../../aethyr/book/README.md) (chapters\n  17–37). The game-layer rigid bodies and contacts already in `verse/` serve\n  as independent references for those solvers and later consume them.\n- **Psionic** supplies the tensor programs, compute subset, transforms and\n  kernels the solvers are written on, and the learning that uses the engine:\n  classical control in [Psionic chapter 167](../book/ch167-command-a-robot.md)\n  and batched policy learning in [Psionic chapter 171](../book/ch171-learn-a-gait-in-many-worlds.md).
+literal	psionic/docs/genesis-parity\.md	| Genesis capability | Psionic chapter | Coax phase |	| Genesis capability | Aethyr chapter (Psionic where marked) | Coax phase |
+literal	psionic/docs/genesis-parity\.md	| PD control, IK, RRT-Connect planning | [188](../book/ch188-command-a-robot.md) |	| PD control, IK, RRT-Connect planning | [Psionic 167](../book/ch167-command-a-robot.md) |
+literal	psionic/docs/genesis-parity\.md	| Locomotion with PPO in thousands of environments | [192](../book/ch192-learn-a-gait-in-many-worlds.md) |	| Locomotion with PPO in thousands of environments | [Psionic 171](../book/ch171-learn-a-gait-in-many-worlds.md) |
+literal	psionic/docs/genesis-parity\.md	Rigid first: 165–170, then 179 (batching), 183 (assets), 184 (replay) and 188\n(control), which together replace MuJoCo as the simulator behind chapter 191.\nThen the particle and mesh solvers 171–176 in any order after 171, coupling\n177–178, gradients 180, sensors and observations 181–182, and 185 throughout.	Rigid first: Aethyr chapters 17–22, then 31 (batching), 35 (assets) and 36\n(replay), with Psionic chapter 167 (control); together they replace MuJoCo as\nthe simulator behind Psionic chapter 170. Then the particle and mesh solvers\n23–28 in any order after 23, coupling 29–30, gradients 32, sensors and\nobservations 33–34, and 37 throughout.
+literal	psionic/book/PLAN\.md	Chapters 165–185, 188 and 192 are design drafts:	Chapters 167 and 171 are design drafts:
+literal	psionic/book/SUMMARY\.md	Chapters 165–185, 188 and 192 are design\ndrafts with no runnable code.	Chapters 167 and 171 are design\ndrafts with no runnable code. The physics engine and spacecraft chapters\nare in the [Aethyr book](../../aethyr/book/README.md).
+literal	psionic/book/SUMMARY\.md	ML, a physics engine, world generation, robot policies, spacecraft, production\nhosting	ML, world generation, robot policies, production\nhosting
+dropline	psionic/book/PLAN\.md	| Physics engine | 4, 37–38 and 107;
+dropline	psionic/book/PLAN\.md	| Spacecraft and the solar system | 107, 109,
+dropline	psionic/docs/roadmap\.md	| Physics engine | Dense CPU numerics,
+dropline	psionic/docs/roadmap\.md	| Spacecraft and the solar system | The `verse/` space modules,
+literal	psionic/book/ch180-differentiate-a-simulation\.md	Chapters 106, 107, 109 and 111 (tapes, transforms, adjoints), 166 to 175.	Psionic chapters 106, 107, 109 and 111 (tapes, transforms, adjoints) and\nchapters 18 to 27.
+literal	psionic/book/ch183-bring-in-robots-and-meshes\.md	Psionic adds the physical checks above,	Aethyr adds the physical checks above,
+literal	psionic/book/ch185-measure-the-engine-honestly\.md	verification evidence like the rest of Psionic's.	verification evidence, like Psionic's.
+literal	psionic/book/ch165-a-scene-owns-the-state\.md	Every chapter so far has owned one kind of state: a tensor, a model's cache,\na decision's prefix.	Every chapter so far has owned one kind of state: a clock, a figure, a\ncamera, a realm's colliders.
+literal	psionic/docs/physics/owned-control-loop\.md	The next robot backend follows the rigid branch: scene 165,\nbodies 166, articulation 167, broad/narrow contact 168–169 and contact solve 170;\nassets 183, batching 179, sensors 181, observation rendering 182, world replay 184\nand control 188 supply the matching end-to-end path.	The next robot backend follows Aethyr's rigid branch: scene 17,\nbodies 18, articulation 19, broad/narrow contact 20–21 and contact solve 22;\nassets 35, batching 31, sensors 33, observation rendering 34 and world replay 36\n(Aethyr chapters), with Psionic chapter 167's control, supply the matching\nend-to-end path.

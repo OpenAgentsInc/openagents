@@ -39,7 +39,7 @@ QUESTIONS :: [12]string.["How warm is the water in the kettle?","How did Maya pa
     "Which room is the meeting in now?","On which day was the parcel delivered?","Which team should handle this message?",
     "Is the kitchen window open?","Is Sam taller than Lee?","Is the shop open at 20:00?","The capital of France is Paris.",
     "How positive is the review?","How positive is the review?","How severe is the issue?"];
-// Chapter 272's decision gate, with chapter 247's limits.
+// Chapter 241's decision gate, with chapter 216's limits.
 GATE :: SuGate.{kind=0,clear=40,min_tasks=10,replicates=1000,seed=7,cost_limit=1,seconds_limit=30};
 
 show :: (name:string,s:SuSuite) {print("%: items ",name);short(s.items);print(", questions ");short(s.questions);print(", gate ");short(s.gate);print("\n");}

@@ -1,4 +1,4 @@
-/* Chapter 247 against threshold_oracle.py, which derived the records by a
+/* Chapter 216 against threshold_oracle.py, which derived the records by a
    different search (over the bit patterns of doubles) and ran the experiment
    in exactly rounded sums. Tolerances were frozen before comparison: rho,
    band counts, edges, actions, decisions and every tally exactly; means,

@@ -1,7 +1,7 @@
 # The Panda adapter consumes runtime clocks
 
 `panda-runtime-clock-500-20-v1` connects the nominal runtime clock precursor to
-the genuine Panda SDK adapter used by [chapter 191](../../book/ch191-close-the-simulated-control-loop.md).
+the genuine Panda SDK adapter used by [chapter 170](../../book/ch170-close-the-simulated-control-loop.md).
 It preserves the existing `PlState` command supervisor, controller arithmetic
 and `PTR1` trace contract. A new Coax sidecar gates effects and checks that the
 action-row and physical-step views stay aligned.

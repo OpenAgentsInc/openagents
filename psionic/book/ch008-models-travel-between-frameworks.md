@@ -50,7 +50,7 @@ scale architecture and validates its expected parameter inventory.
 | Inference parameters | Named F32/BF16 tensors in an inert Safetensors file |
 | A live tensor | An explicit leased contiguous CPU f32 DLPack carrier |
 | Optimizer, step, RNG and data cursor | Not included in this inference artifact; resumable checkpoints belong to 122 |
-| A portable graph | A bounded ONNX graph: read in [251](ch251-read-a-bounded-onnx-graph.md), written in [252](ch252-write-a-bounded-onnx-graph.md) |
+| A portable graph | A bounded ONNX graph: read in [220](ch220-read-a-bounded-onnx-graph.md), written in [221](ch221-write-a-bounded-onnx-graph.md) |
 
 Further training here starts from the imported parameter with the original
 [chapter 1 trainer](../lib/learn.coax). It does not pretend that a weights file

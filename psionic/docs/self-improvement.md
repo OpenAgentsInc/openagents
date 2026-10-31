@@ -1,6 +1,6 @@
 # Measure, then improve: the Gym, self-improvement and prompt optimization
 
-Planning note, 2026-10-29, for Part XXVI of the [book plan](../book/PLAN.md).
+Planning note, 2026-10-29, for Part XXIV of the [book plan](../book/PLAN.md).
 It condenses pre-reset work, readable with `git show 0b401561a0^:<path>`:
 
 - **The Gym:** `crates/gym`, `docs/gym/README.md`, `docs/text-optimization.md`.
@@ -37,7 +37,7 @@ Its answers to those faults:
 
 Measuring the noise floor between two identical doors (0.056 accuracy at 2σ)
 retired two published findings. A partition already at 0.975 cannot show a
-gain, so headroom is measured first. That becomes chapters 270–272.
+gain, so headroom is measured first. That becomes chapters 239–241.
 
 ## Self-improvement: designed, partly built, never closed
 
@@ -65,7 +65,7 @@ What the audits found:
 - **A retraining script wrote the production model with no gate,** training on
   its evaluation cases.
 - **All 41 replayed traces came from groups reserved for calibration or
-  development.** Hence the exposure ledger in chapter 278.
+  development.** Hence the exposure ledger in chapter 247.
 - **A LoRA adapter raised accuracy from 0.77 to 0.90 but worsened log loss from
   1.952 to 2.323,** and did not transfer to another suite.
 
@@ -111,7 +111,7 @@ widen tool grants or lower thresholds.
 
 ## How it fits Psionic
 
-- **The Gym is library code.** Chapters 16, 17, 139, 140, 242, 246 and 266 report
+- **The Gym is library code.** Chapters 16, 17, 139, 140, 211, 215 and 235 report
   through one comparison rule (178–180), whose gates are `#authority` Coax with
   zero surviving mutants.
 - **Optimization runs on Psionic's own models.** With Elephant at about 237 ms a
@@ -122,9 +122,9 @@ widen tool grants or lower thresholds.
   only kind of optimization that produced a result before.
 - **Model judges are components** (185), measured against real outcomes and
   never allowed to grade their own work.
-- **Outcomes close the loop** (186). Part XXIV's outcome joins feed calibration
+- **Outcomes close the loop** (186). Part XXII's outcome joins feed calibration
   refits, settings fitting and post-training rows, each through its own gate.
-  Verified traces from Part XXV are admitted only with replay verdicts.
+  Verified traces from Part XXIII are admitted only with replay verdicts.
 - **Weights change last.** Improve settings, prompts, routers and harness
   configuration first; update weights only when both decision and probability
   gates pass.

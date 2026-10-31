@@ -174,7 +174,7 @@ py_config :: (c:[]PyConfig)->bool {
         else {print("pylon: unknown option %\n",name);return false;}
     }
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
-    if (!c[0].text && c[0].references.count==0) || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 249)\n");py_usage();return false;}
+    if (!c[0].text && c[0].references.count==0) || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 218)\n");py_usage();return false;}
     if c[0].model.count==0 {py_usage();return false;}
     if c[0].doctor {return true;}
     if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
@@ -691,7 +691,7 @@ py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
     }
     return false;
 }
-// ---- chapter 249: the self-check and the doctor -----------------------------
+// ---- chapter 218: the self-check and the doctor -----------------------------
 
 // One named file through the host: its bytes into out, the length, -1 when it
 // can't be read, -2 when it is missing.

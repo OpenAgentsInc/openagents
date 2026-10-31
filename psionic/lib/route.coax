@@ -1,4 +1,4 @@
-// Chapter 256: learn which model to call. A simulator of tasks and three
+// Chapter 225: learn which model to call. A simulator of tasks and three
 // models whose true success probabilities only it knows, published prices,
 // a router that picks the best expected reward, an old logging policy, and
 // the naive, direct, inverse-propensity and doubly robust estimates of a new
@@ -17,7 +17,7 @@ RT_TASKS_MAX :: 4096;
 RT_COEF_MAX :: 64.0;
 RT_PER_SECOND :: 0.02;
 
-// Checks precede the implementation. Expected values are derived in chapter 256.
+// Checks precede the implementation. Expected values are derived in chapter 225.
 #test "tasks are 1 to 4,096 rows of four features, or triples per task" {
     x:[16392]f64;
     #assert rt_tasks(x[0..<4])==1 && rt_tasks(x[0..<16384])==4096 && rt_tasks(x[0..<8])==2;

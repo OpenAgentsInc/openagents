@@ -293,7 +293,7 @@
     },
     {
       "source": "psionic/examples/exact-trace.coax",
-      "chapter": "psionic/book/ch257-a-machine-whose-state-is-a-trace.md",
+      "chapter": "psionic/book/ch226-a-machine-whose-state-is-a-trace.md",
       "stdout": "psionic/fixtures/exact-trace.out",
       "exit_status": 0,
       "modes": [
@@ -313,7 +313,7 @@
     },
     {
       "source": "psionic/examples/softmax-limits.coax",
-      "chapter": "psionic/book/ch264-from-hard-max-to-softmax.md",
+      "chapter": "psionic/book/ch233-from-hard-max-to-softmax.md",
       "stdout": "psionic/fixtures/softmax-limits.out",
       "exit_status": 0,
       "modes": [
@@ -323,7 +323,7 @@
     },
     {
       "source": "psionic/examples/relu-gadgets.coax",
-      "chapter": "psionic/book/ch259-arithmetic-and-branches-from-relu.md",
+      "chapter": "psionic/book/ch228-arithmetic-and-branches-from-relu.md",
       "stdout": "psionic/fixtures/relu-gadgets.out",
       "exit_status": 0,
       "modes": [
@@ -333,7 +333,7 @@
     },
     {
       "source": "psionic/examples/gate-block.coax",
-      "chapter": "psionic/book/ch260-compile-a-gate-graph-into-a-block.md",
+      "chapter": "psionic/book/ch229-compile-a-gate-graph-into-a-block.md",
       "stdout": "psionic/fixtures/gate-block.out",
       "exit_status": 0,
       "modes": [
@@ -353,7 +353,7 @@
     },
     {
       "source": "psionic/examples/catch-the-compiler.coax",
-      "chapter": "psionic/book/ch261-a-harness-that-catches-the-compiler.md",
+      "chapter": "psionic/book/ch230-a-harness-that-catches-the-compiler.md",
       "stdout": "psionic/fixtures/catch-the-compiler.out",
       "exit_status": 0,
       "modes": [
@@ -433,7 +433,7 @@
     },
     {
       "source": "psionic/examples/model-router.coax",
-      "chapter": "psionic/book/ch256-learn-which-model-to-call.md",
+      "chapter": "psionic/book/ch225-learn-which-model-to-call.md",
       "stdout": "psionic/fixtures/model-router.out",
       "exit_status": 0,
       "modes": [
@@ -453,7 +453,7 @@
     },
     {
       "source": "psionic/examples/cost-thresholds.coax",
-      "chapter": "psionic/book/ch247-thresholds-from-written-costs.md",
+      "chapter": "psionic/book/ch216-thresholds-from-written-costs.md",
       "stdout": "psionic/fixtures/cost-thresholds.out",
       "exit_status": 0,
       "modes": [
@@ -463,7 +463,7 @@
     },
     {
       "source": "psionic/examples/calibration.coax",
-      "chapter": "psionic/book/ch246-fit-our-own-calibration.md",
+      "chapter": "psionic/book/ch215-fit-our-own-calibration.md",
       "stdout": "psionic/fixtures/calibration.out",
       "exit_status": 0,
       "modes": [
@@ -473,7 +473,7 @@
     },
     {
       "source": "psionic/examples/watch-drift.coax",
-      "chapter": "psionic/book/ch248-record-readings-join-outcomes-watch-drift.md",
+      "chapter": "psionic/book/ch217-record-readings-join-outcomes-watch-drift.md",
       "stdout": "psionic/fixtures/watch-drift.out",
       "exit_status": 0,
       "modes": [
@@ -493,7 +493,7 @@
     },
     {
       "source": "psionic/examples/noise-floor.coax",
-      "chapter": "psionic/book/ch271-how-far-a-metric-moves-by-itself.md",
+      "chapter": "psionic/book/ch240-how-far-a-metric-moves-by-itself.md",
       "stdout": "psionic/fixtures/noise-floor.out",
       "exit_status": 0,
       "modes": [
@@ -523,7 +523,7 @@
     },
     {
       "source": "psionic/examples/verdicts.coax",
-      "chapter": "psionic/book/ch272-gates-that-can-say-unverifiable.md",
+      "chapter": "psionic/book/ch241-gates-that-can-say-unverifiable.md",
       "stdout": "psionic/fixtures/verdicts.out",
       "exit_status": 0,
       "modes": [
@@ -533,7 +533,7 @@
     },
     {
       "source": "psionic/examples/suite-digests.coax",
-      "chapter": "psionic/book/ch270-a-suite-is-three-digests.md",
+      "chapter": "psionic/book/ch239-a-suite-is-three-digests.md",
       "stdout": "psionic/fixtures/suite-digests.out",
       "exit_status": 0,
       "modes": [
@@ -553,7 +553,7 @@
     },
     {
       "source": "psionic/examples/stall-settings.coax",
-      "chapter": "psionic/book/ch274-fit-settings-on-recorded-answers.md",
+      "chapter": "psionic/book/ch243-fit-settings-on-recorded-answers.md",
       "stdout": "psionic/fixtures/stall-settings.out",
       "exit_status": 0,
       "modes": [
@@ -613,7 +613,7 @@
     },
     {
       "source": "psionic/examples/bench-service.coax",
-      "chapter": "psionic/book/ch203-benchmark-a-service-not-a-kernel.md",
+      "chapter": "psionic/book/ch172-benchmark-a-service-not-a-kernel.md",
       "stdout": "psionic/fixtures/bench-service.out",
       "exit_status": 0,
       "modes": [
@@ -623,7 +623,7 @@
     },
     {
       "source": "psionic/examples/policy-search.coax",
-      "chapter": "psionic/book/ch275-search-a-policy-cheapest-first.md",
+      "chapter": "psionic/book/ch244-search-a-policy-cheapest-first.md",
       "stdout": "psionic/fixtures/policy-search.out",
       "exit_status": 0,
       "modes": [
@@ -633,7 +633,7 @@
     },
     {
       "source": "psionic/examples/honest-distance.coax",
-      "chapter": "psionic/book/ch250-how-far-apart-may-two-honest-answers-be.md",
+      "chapter": "psionic/book/ch219-how-far-apart-may-two-honest-answers-be.md",
       "stdout": "psionic/fixtures/honest-distance.out",
       "exit_status": 0,
       "modes": [
@@ -653,7 +653,7 @@
     },
     {
       "source": "psionic/examples/checked-environments.coax",
-      "chapter": "psionic/book/ch273-environments-with-checkers.md",
+      "chapter": "psionic/book/ch242-environments-with-checkers.md",
       "stdout": "psionic/fixtures/checked-environments.out",
       "exit_status": 0,
       "modes": [
@@ -733,7 +733,7 @@
     },
     {
       "source": "psionic/examples/pylon-self-check.coax",
-      "chapter": "psionic/book/ch249-a-pylon-checks-itself-before-serving.md",
+      "chapter": "psionic/book/ch218-a-pylon-checks-itself-before-serving.md",
       "stdout": "psionic/fixtures/pylon-self-check.out",
       "exit_status": 0,
       "modes": [
@@ -783,7 +783,7 @@
     },
     {
       "source": "psionic/examples/exact-replay.coax",
-      "chapter": "psionic/book/ch265-exact-replay-as-a-verification-class.md",
+      "chapter": "psionic/book/ch234-exact-replay-as-a-verification-class.md",
       "stdout": "psionic/fixtures/exact-replay.out",
       "exit_status": 0,
       "modes": [
@@ -793,7 +793,7 @@
     },
     {
       "source": "psionic/examples/hull-decode.coax",
-      "chapter": "psionic/book/ch263-decode-in-logarithmic-time.md",
+      "chapter": "psionic/book/ch232-decode-in-logarithmic-time.md",
       "stdout": "psionic/fixtures/hull-decode.out",
       "exit_status": 0,
       "modes": [
@@ -803,7 +803,7 @@
     },
     {
       "source": "psionic/examples/link-modules.coax",
-      "chapter": "psionic/book/ch268-composable-weight-modules.md",
+      "chapter": "psionic/book/ch237-composable-weight-modules.md",
       "stdout": "psionic/fixtures/link-modules.out",
       "exit_status": 0,
       "modes": [
@@ -823,7 +823,7 @@
     },
     {
       "source": "psionic/examples/training-rows.coax",
-      "chapter": "psionic/book/ch278-outcomes-become-training-rows.md",
+      "chapter": "psionic/book/ch247-outcomes-become-training-rows.md",
       "stdout": "psionic/fixtures/training-rows.out",
       "exit_status": 0,
       "modes": [
@@ -833,7 +833,7 @@
     },
     {
       "source": "psionic/examples/loop.coax",
-      "chapter": "psionic/book/ch279-is-the-loop-improving.md",
+      "chapter": "psionic/book/ch248-is-the-loop-improving.md",
       "stdout": "psionic/fixtures/loop.out",
       "exit_status": 0,
       "modes": [
@@ -843,7 +843,7 @@
     },
     {
       "source": "psionic/examples/onnx-read.coax",
-      "chapter": "psionic/book/ch251-read-a-bounded-onnx-graph.md",
+      "chapter": "psionic/book/ch220-read-a-bounded-onnx-graph.md",
       "stdout": "psionic/fixtures/onnx-read.out",
       "exit_status": 0,
       "modes": [
@@ -853,7 +853,7 @@
     },
     {
       "source": "psionic/examples/onnx-write.coax",
-      "chapter": "psionic/book/ch252-write-a-bounded-onnx-graph.md",
+      "chapter": "psionic/book/ch221-write-a-bounded-onnx-graph.md",
       "stdout": "psionic/fixtures/onnx-write.out",
       "exit_status": 0,
       "modes": [
@@ -863,7 +863,7 @@
     },
     {
       "source": "psionic/examples/shadow.coax",
-      "chapter": "psionic/book/ch255-shadow-a-new-model-then-promote-it.md",
+      "chapter": "psionic/book/ch224-shadow-a-new-model-then-promote-it.md",
       "stdout": "psionic/fixtures/shadow.out",
       "exit_status": 0,
       "modes": [
@@ -873,7 +873,7 @@
     },
     {
       "source": "psionic/examples/students.coax",
-      "chapter": "psionic/book/ch266-can-gradient-descent-learn-exact-execution.md",
+      "chapter": "psionic/book/ch235-can-gradient-descent-learn-exact-execution.md",
       "stdout": "psionic/fixtures/students.out",
       "exit_status": 0,
       "modes": [
@@ -883,7 +883,7 @@
     },
     {
       "source": "psionic/examples/core-interface.coax",
-      "chapter": "psionic/book/ch267-a-frozen-exact-core-with-a-learned-interface.md",
+      "chapter": "psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md",
       "stdout": "psionic/fixtures/core-interface.out",
       "exit_status": 0,
       "modes": [
@@ -903,7 +903,7 @@
     },
     {
       "source": "psionic/examples/kernel-search.coax",
-      "chapter": "psionic/book/ch280-an-agent-optimizes-a-psionic-kernel.md",
+      "chapter": "psionic/book/ch249-an-agent-optimizes-a-psionic-kernel.md",
       "stdout": "psionic/fixtures/kernel-search.out",
       "exit_status": 0,
       "modes": [
@@ -913,7 +913,7 @@
     },
     {
       "source": "psionic/examples/interpreter-weights.coax",
-      "chapter": "psionic/book/ch262-an-interpreter-in-weights-or-one-program-in-weights.md",
+      "chapter": "psionic/book/ch231-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",
       "exit_status": 0,
       "modes": [
@@ -993,7 +993,7 @@
     },
     {
       "source": "psionic/examples/imitation-before-robotics-scale.coax",
-      "chapter": "psionic/book/ch189-imitation-before-robotics-scale.md",
+      "chapter": "psionic/book/ch168-imitation-before-robotics-scale.md",
       "stdout": "psionic/fixtures/imitation-before-robotics-scale.out",
       "exit_status": 0,
       "modes": [
@@ -1003,7 +1003,7 @@
     },
     {
       "source": "psionic/examples/panda-supervisor.coax",
-      "chapter": "psionic/book/ch191-close-the-simulated-control-loop.md",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
       "stdout": "psionic/fixtures/panda-supervisor.out",
       "exit_status": 0,
       "modes": [
@@ -1053,7 +1053,7 @@
     },
     {
       "source": "psionic/examples/own-plant-sensitivities.coax",
-      "chapter": "psionic/book/ch191-close-the-simulated-control-loop.md",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
       "stdout": "psionic/fixtures/own-plant-sensitivities.out",
       "exit_status": 0,
       "modes": [
@@ -1063,7 +1063,7 @@
     },
     {
       "source": "psionic/examples/step-clock.coax",
-      "chapter": "psionic/book/ch191-close-the-simulated-control-loop.md",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
       "stdout": "psionic/fixtures/step-clock.out",
       "exit_status": 0,
       "modes": [

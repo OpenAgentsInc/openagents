@@ -1,18 +1,18 @@
 # GR00T: exact LIBERO target and source contract
 
 Source audit and execution status, 2026-10-31.
-[Chapter 190](../../book/ch190-execute-a-groot-policy.md) now executes this
+[Chapter 169](../../book/ch169-execute-a-groot-policy.md) now executes this
 original learned VLA on Metal for one prepared 140-token observation. Its
 [composed receipt](../../fixtures/robotics/groot-libero/composed-policy-qualification.json)
 qualifies same-input components, unchanged original action endpoints and the
 16×7 adapter. The separately recorded global hidden-trace diagnostic remains
 failed; source-default BF16 identity and arbitrary request lengths are not
-claimed by that earlier fixture. Chapter 191 adds the matching original
+claimed by that earlier fixture. Chapter 170 adds the matching original
 LIBERO/Panda control loop using an explicitly selected MuJoCo 3.3.1 evaluation
 backend. Its current resident launcher uses the genuine task's 152-token
 request; wider graph-helper bounds do not qualify every possible request or
 observation. [Panda source/evaluation records](../../fixtures/robotics/libero-panda/README.md)
-keep this scope separate from chapter 189's gantry and SingleArm excerpt.
+keep this scope separate from chapter 168's gantry and SingleArm excerpt.
 The [completed loop receipt](../../fixtures/robotics/libero-panda/closed-loop-qualification.json)
 records 3/6 task successes and exact replay of all 68,325 physics steps, plus
 four declared fault prefixes. Three timeouts remain task failures. The
@@ -72,7 +72,7 @@ The base `GR00T-N1.7-3B@2fc962b973bccdd5d8ce4f67cc63b264d6886495`
 does **not** supply this LIBERO processor profile. Its processor supports eight
 pretrain embodiment tags. Merely finding `libero_sim: 2` in its ID map does not
 make it support Panda/LIBERO. The official policy documentation requires a
-fine-tuned checkpoint for posttrain tags. Chapter 189's joint-action SingleArm
+fine-tuned checkpoint for posttrain tags. Chapter 168's joint-action SingleArm
 data is also a different embodiment and cannot be relabeled as LIBERO input.
 
 ## License evidence stays attached to each artifact
@@ -222,7 +222,7 @@ For this selected profile:
 
 The exact action controller scale, episode reset state, rendering, observation
 timing and success predicate must remain tied to the selected LIBERO reference
-for chapter 191. Chapter 189's fixed `0.1 s`/`0.5 m/s` Cartesian profile is not
+for chapter 170. Chapter 168's fixed `0.1 s`/`0.5 m/s` Cartesian profile is not
 a substitute for those conventions.
 
 The bounded Coax adapter now lives in
@@ -439,7 +439,7 @@ vision features into Coax text and all four Coax flow steps, then decodes the
 actions. An independent head reference consumes the same actual Coax backbone;
 the unchanged full-network reference separately checks observable action
 endpoints. This does not relabel the failed accumulated global hidden trace.
-Chapter 191 adds the matching simulated loop described below. Its measured
+Chapter 170 adds the matching simulated loop described below. Its measured
 outcomes and recovery behavior require their own records; the gantry cannot
 substitute for that qualification.
 

@@ -27,7 +27,7 @@ Resolved: the owner accepted terms and signed in locally. Authorized retrieval
 now succeeds for pinned Cosmos revision
 `9ce19a195e423419c349abfc86fd07178b230561`; tokenizer/image processor assets
 are available in the normal Hugging Face cache. No credential was printed or
-committed. Original learned-network qualification is recorded in chapter 190; simulator integration remains separate.
+committed. Original learned-network qualification is recorded in chapter 169; simulator integration remains separate.
 
 ## Made-realm golden after the incoming renderer change (2026-10-31)
 
@@ -114,7 +114,7 @@ blocked if not.
 ## Review Claude's first blog post
 
 `docs/blog/2026-10-29-attention-that-cannot-miss.md` is a draft post by Claude
-about Psionic chapters 257 and 258 (exact memory by attention, and traces as
+about Psionic chapters 226 and 227 (exact memory by attention, and traces as
 receipts). Read it and approve, edit or reject it. Publishing it needs a blog
 route on openagents.com; the steps are in `docs/blog/README.md`.
 

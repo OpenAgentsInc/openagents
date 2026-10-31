@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 275's independent reference, written from the chapter's specification.
+"""Chapter 244's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/search.coax. Manifest digests use hashlib
-over chapter 270's encoding; the operators, the world, the measurement tiers,
+over chapter 239's encoding; the operators, the world, the measurement tiers,
 successive halving and the per-task frontier are written again here; the floor
-and the decision gate come from chapters 271 and 272's oracles. Sums are plain
+and the decision gate come from chapters 240 and 241's oracles. Sums are plain
 left-to-right loops, as in the library. `--tests` prints the values the Coax
 checks pin; `--header` writes the C expectations the native harness compares.
 """

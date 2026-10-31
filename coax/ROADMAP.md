@@ -49,7 +49,7 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 | GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac/iOS integration; narrow Coaxial Wasm/WebGPU splash | Shared GPU resource declarations, general shader profiles, full engine browser vertical slice and evidence for other targets |
 | Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
 | Simulation compute | Bounded CUDA/Metal compute kernels, Psionic's library-level CUDA graph replay and leased DLPack views | Logical shapes separate from physical layouts and placement, visible specialization, measured compile and startup budgets with a correct kernel cache, device graphs and device-side loops as language forms, zero-copy buffer imports with explicit transfers, and kernel differentiation with custom adjoints |
-| Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 189; f64 space modules in `verse/` (rigid bodies, contacts, gravity fields including a spinning drum, thrusters and tanks, two-body orbits with a J2000 mean-element ephemeris, patched conics, Lambert transfers and RK4 finite burns, a floating-origin camera) used by Orbit League and Belt 2200 ([space primitives](../docs/verse/space.md)) | Units and frames with full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, deterministic integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
+| Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 168; f64 space modules in `verse/` (rigid bodies, contacts, gravity fields including a spinning drum, thrusters and tanks, two-body orbits with a J2000 mean-element ephemeris, patched conics, Lambert transfers and RK4 finite burns, a floating-origin camera) used by Orbit League and Belt 2200 ([space primitives](../docs/verse/space.md)) | Units and frames with full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, deterministic integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
 and [reflection evidence](../docs/verification/coax-layout-reflection-2026-10-28.md)
@@ -89,14 +89,14 @@ dependencies and trust boundaries are satisfied.
 
 The physical-world phases share three continuous consumers: one running Verse
 world; one small simulated robot, the closed loop of Psionic chapters
-[189](../psionic/book/ch189-imitation-before-robotics-scale.md)–169 (see the [plan](../psionic/book/PLAN.md)), built on its deterministic and
+[168](../psionic/book/ch168-imitation-before-robotics-scale.md)–170 (see the [plan](../psionic/book/PLAN.md)), built on its deterministic and
 differentiable solvers (chapters 109 and 111); and one spacecraft scenario on
 the `verse/` space modules: a freighter that loads cargo, transfers to a moving
 destination, rides out a fault and docks, used by the Verse space games and by
-Psionic Part XX (chapters 193–202). Each of R12–R20 must improve one of them,
+Aethyr Part V (chapters 39–48). Each of R12–R20 must improve one of them,
 and a facility both the robot and the spacecraft need (frames, clocks,
 integrators, replay, stamps) is built once for both. R21–R24 have one more
-consumer, the Psionic physics engine (Psionic Part XVIII, chapters 165–185,
+consumer, the Aethyr physics engine ([Aethyr book](../aethyr/book/README.md) Part IV, chapters 17–37,
 planned in psionic/docs/genesis-parity.md: rigid and articulated bodies, contact,
 particle and mesh materials, coupling and batched worlds), whose solvers are
 the first kernels to need layouts, budgets, device graphs and derivatives. These phases produce language, library and checking work for
@@ -715,7 +715,7 @@ rendering is reached by an explicit, recorded origin change, as `verse/`'s
 floating-origin camera already does by hand.
 
 **Consumer/gate:** move one Verse camera/world transform path and the joint
-and pose values of the simulated robot (Psionic chapters 189–191) onto these
+and pose values of the simulated robot (Psionic chapters 168–170) onto these
 types, then the spacecraft scenario's heliocentric, body-fixed, ship and
 drum-interior states (`verse/orbit.coax`, `verse/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
 composition through a frame chain, exact and rounded conversions, a jumping
@@ -1229,7 +1229,7 @@ and review remain open; every slice still needs its listed prerequisites.
    type parameters ship, put the robot's joints and poses on R12 units and
    frames with built-in operators. Then add R11 effect summaries, R13 clocks
    and R14 bounded control step by step, each through the closed loop of
-   Psionic chapters 189–191. Replay (R16) follows R15's strict profiles. Run
+   Psionic chapters 168–170. Replay (R16) follows R15's strict profiles. Run
    the spacecraft scenario on the same types as they land: full-state frames
    and time scales first, then integrators and event location, light-time
    stamps, and provenance with fidelity profiles (R20) before any rule

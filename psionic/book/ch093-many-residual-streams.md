@@ -92,7 +92,7 @@ match the independent uninterrupted reference. Resetting the carry at an
 intermediate boundary is an explicit failing negative control.
 
 This chapter's handoff is in-memory F32 state. BF16 stage transport, complete
-model-boundary state, identity, fencing and recovery are chapter 228's gates.
+model-boundary state, identity, fencing and recovery are chapter 197's gates.
 
 ## Run the component
 

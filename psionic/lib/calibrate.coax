@@ -1,4 +1,4 @@
-// Chapter 246: fit our own calibration, and refuse a stale one. Per-question
+// Chapter 215: fit our own calibration, and refuse a stale one. Per-question
 // maps (a temperature, ten equal-count bins, or isotonic steps) are fitted on
 // a calibration split, gated on a second split, and reported on a third, with
 // reliability, expected calibration error, Brier, log loss and confident
@@ -27,7 +27,7 @@ CF_FLOOR :: 0.000001;
 CF_SLOPE_MIN :: 0.05;
 CF_SLOPE_MAX :: 20.0;
 
-// Checks precede the implementation. Expected values are derived in chapter 246.
+// Checks precede the implementation. Expected values are derived in chapter 215.
 #test "clamping and logits" {
     #assert cf_clamp(0)==CF_FLOOR && cf_clamp(1)==1-CF_FLOOR && cf_clamp(0.5)==0.5 && cf_clamp(CF_FLOOR)==CF_FLOOR && cf_clamp(1-CF_FLOOR)==1-CF_FLOOR;
     #assert cf_logit(0.5)==0 && cf_logit(0.75)==log(3.0) && cf_logit(0)==log(CF_FLOOR/(1-CF_FLOOR));

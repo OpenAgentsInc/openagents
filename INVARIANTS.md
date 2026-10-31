@@ -121,7 +121,7 @@ are recorded in `psionic/fixtures/physics/oscillator/qualification.json`.
 
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
-The chapter 191 profile uses the original LIBERO/Panda scene, selected GR00T
+The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T
 weights and MuJoCo 3.3.1 as an independent evaluation backend. Coax owns
 observation conversion, OSC arithmetic, gripper targets, bounded request and
 action scheduling, success predicates and canonical trace admission. C performs
@@ -165,7 +165,7 @@ those executions are not relabeled as having used the later live guard.
 
 `psionic/lib/robotics/groot-*` executes the pinned GR00T-N1.7-LIBERO
 `libero_10` category-2 learned network through its 16×7 action adapter. The
-chapter 190 qualification covers one 140-token prepared-observation profile:
+chapter 169 qualification covers one 140-token prepared-observation profile:
 two packed camera streams, normalized state and explicit initial noise.
 Coax owns tensor bindings, shapes, numerical operations, masks, every GPU
 launch argument/order, completion receipts and finite publication. Native C
@@ -185,7 +185,7 @@ This is not source-default BF16 identity or a task-success claim.
 Raw-image, ASCII request and state normalization operators have separate
 qualified boundaries. A raw simulator adapter, quaternion conversion, broader
 whole-model request lengths, observation timing, resets and physical control
-remain outside chapter 190. Evidence:
+remain outside chapter 169. Evidence:
 `docs/verification/psionic-ch113-2026-10-31.md`.
 
 ## Robotics imitation keeps its simulated embodiment and recorded data distinct

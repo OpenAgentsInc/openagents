@@ -1,4 +1,4 @@
-/* Chapters 259 and 260 against the independent oracle in gate_oracle.py. */
+/* Chapters 228 and 229 against the independent oracle in gate_oracle.py. */
 #include "gate-spans.h"
 #include "gate-oracle.h"
 #include <assert.h>

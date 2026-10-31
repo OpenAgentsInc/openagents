@@ -1,12 +1,12 @@
-// Chapter 262: an interpreter in weights, or one program in weights. A tiny
+// Chapter 231: an interpreter in weights, or one program in weights. A tiny
 // register machine has an accumulator, a second register and up to five
 // instructions. Its interpreter is one step written as a gate graph, which
-// chapter 260 compiles into weights once, for every program: the program is
+// chapter 229 compiles into weights once, for every program: the program is
 // part of the input. A partial evaluator over gate graphs then folds a
 // program's instructions into the interpreter (the first Futamura
 // projection), leaving one block per program whose inputs are only the state.
-// Profile iw-v1: chapter 260's blocks in binary64; machine values within
-// 2^24, so every value inside a step stays within chapter 259's 2^26.
+// Profile iw-v1: chapter 229's blocks in binary64; machine values within
+// 2^24, so every value inside a step stays within chapter 228's 2^26.
 #load "gate-graph.coax";
 #authority;
 

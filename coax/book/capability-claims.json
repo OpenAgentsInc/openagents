@@ -138,11 +138,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "fdcf6aa9a41f48a31dd2b150c56ff4cb5697ebd3f83158e03017913cfe986ea8"
+          "sha256": "206f1c55fce237ee67bf8cb9d42db5091240c9a4f3c406bcd922d2e4bcc1b978"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "02ce4faa93094c32f8bc58b4175fe57ae94be7fbf3887cf62754fb0d090280cd"
+          "sha256": "6921f37e5daf74be3c72f1d8661ba6f2163a3bc62ac9b6f01f94b7caf2e0579e"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -183,11 +183,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "fdcf6aa9a41f48a31dd2b150c56ff4cb5697ebd3f83158e03017913cfe986ea8"
+          "sha256": "206f1c55fce237ee67bf8cb9d42db5091240c9a4f3c406bcd922d2e4bcc1b978"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "02ce4faa93094c32f8bc58b4175fe57ae94be7fbf3887cf62754fb0d090280cd"
+          "sha256": "6921f37e5daf74be3c72f1d8661ba6f2163a3bc62ac9b6f01f94b7caf2e0579e"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -207,7 +207,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal derived f32/f64 scalar units on native C; frame forms, compiler clock syntax, other targets and plain-f64 robot migrations remain separate.",
-      "text_sha256": "76c6754be7eb32788f865dbc4b3782368485fa9a456a135b06280260059d4085",
+      "text_sha256": "aac4d607fca2760f8197096b2aeb93117f40190b0b8357705866b5a84a097317",
       "features": [
         {
           "id": "generics.type-parameters",

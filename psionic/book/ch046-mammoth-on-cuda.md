@@ -186,7 +186,7 @@ tensor cores round some partial sums differently. With the 4080's budget the
 same plan streams at about 57 GB/s instead of 24, so the link is still the
 bound, just a faster one. The cold open is the checkpoint hash on one CPU core;
 the upload of 47.7 GiB takes 1.8 s. The server does not place Mammoth yet, so
-chapter 203's load generator was not run. Elephant on the same card answers in
+chapter 172's load generator was not run. Elephant on the same card answers in
 90.5 ms. The [RTX PRO 6000 record](../../docs/verification/psionic-rtx6000-mammoth-2026-10-30.md)
 has the rest.
 

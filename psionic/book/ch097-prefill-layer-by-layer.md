@@ -47,7 +47,7 @@ records actual chunk duration alongside the prediction; small chunks can
 exceed it because of estimation error or concurrent work. A deployed engine
 must maintain its calibration and account for attention/context length, I/O,
 fixed work, model/device memory and scheduling overhead. This component does
-not replace chapter 208's scheduler or assert a whole-model latency bound.
+not replace chapter 177's scheduler or assert a whole-model latency bound.
 
 ## Run each layer before advancing
 
