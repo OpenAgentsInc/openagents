@@ -38,6 +38,7 @@
 #load "villaplay.coax";
 #load "villaroom.coax";
 #load "villatips.coax";
+#load "villaguide.coax";   // the example stone, and the way to yours
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
@@ -160,6 +161,8 @@ Villa :: struct {
   chat: [1] Chat;
   // The first visit's tips (villatips.coax).
   tips: [1] Tips;
+  // The example stone and the way to your stone (villaguide.coax).
+  guide: [1] Guide;
   // The shared edit layer: its board switches the flight in, fireflies, the trail, the tips and other visitors.
   ed: [1] RealmEdit;
 }
@@ -362,6 +365,7 @@ build_scenery :: (s: [] Villa) {
     x := plot_x(p); z := plot_z(p);
     add_block(s, x - 0.42, z + 0.45, x + 0.42, z + 0.8, 1.0, true);
   }
+  example_block(s);
   s[0].block_n = s[0].wall_n;
   // The wall round the garden, with its two gateways.
   w := 0.35f32; h := 1.0f32;
@@ -593,6 +597,7 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   pet_tick(s[0].pet[..], t);
   near_stone(s);
   play_step(s, t);
+  guide_step(s, t);
   tips_step(s, t);
 }
 
@@ -1048,6 +1053,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     old_stones(s);
     pet_stones(s);
     play_draw(s);
+    guide_draw(s);
     if redit_row_on(s[0].ed[..], "others") { room_draw(s); }
     if redit_row_on(s[0].ed[..], "tips") && !redit_open(s[0].ed[..]) { tips_draw(s); }
   }
@@ -1078,7 +1084,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   paths(u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y);
   if !villa_busy(s) {
-    n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = room_hud(s, out, u, n);
+    n = play_hud(s, out, u, n); n = pet_draw(s, out, u, n); n = example_hud(s, out, u, n); n = room_hud(s, out, u, n);
     s[0].tips[0].bottom = 0;
     if redit_row_on(s[0].ed[..], "tips") && !redit_open(s[0].ed[..]) { n = tips_hud(s, out, u, n); }
     // EDIT, left of YOUR PET, for its owner and admins (verse/edit/edit.coax); the pet's pane closes it

@@ -1,0 +1,270 @@
+// Two guides in Hecate's Cemetery (villa.coax loads this):
+//
+// The example tombstone: one well-kept stone just inside the south gate,
+// beside the avenue, with fresh flowers, for a first visit to walk up to
+// (the tips' second step lights the way). It is nobody's pet: it stands on
+// grass between the avenue and the plots, never in a plot, and walking up
+// to it shows a card of what a memorial holds, with BRING YOUR DOG.
+//
+// The way to your tombstone: when your dog's stone goes into the garden, a
+// glowing line runs on the ground from you to it, along the garden paths
+// (verse/terrain.coax verse_route_points), and fades when you get there.
+// WALK TO THEIR STONE in YOUR DOG lights it again.
+
+EXAMPLE_X :: -15.15; EXAMPLE_Z :: -16.0;   // the stone, facing south down the avenue
+EXAMPLE_REACH :: 2.4;                      // metres: standing this near, its card shows
+EXAMPLE_NAME :: "MOSS";
+EXAMPLE_DATES :: "2009 TO 2024 · AN EXAMPLE";
+EXAMPLE_LINE :: "Every dog here gets a stone like this, and a memorial page with their story, photos and notes from friends.";
+
+GUIDE_POINTS :: 24;
+GUIDE_ARRIVE :: 2.2;     // metres from the stone: you're there
+GUIDE_DASH :: 0.7;       // metres between the line's lights
+GUIDE_DASHES :: 64;      // at most this many drawn
+GUIDE_NEAR :: 1.3;       // the line ends this far in front of the stone, off its bed
+DO_GUIDE :: 11;          // B_DO: YOUR DOG's WALK TO THEIR STONE
+
+Guide :: struct {
+  on: bool;              // showing the way
+  fade: f32;             // 0 gone to 1 shown
+  pts: [GUIDE_POINTS * 2] f32; n: int;
+  near_example: bool;
+}
+
+// Your dog's stone's plot, or -1.
+guide_plot :: (s: [] Villa) -> int {
+  p := s[0].pet[..];
+  if p[0].placed && p[0].plot >= 0 && p[0].plot < PLOTS { return p[0].plot; }
+  return tips_stone(s);
+}
+guide_stone :: (plot: int) -> Point { return v3(plot_x(plot), 0, plot_z(plot) + 0.62); }
+guide_end :: (plot: int) -> Point { return v3(plot_x(plot), 0, plot_z(plot) - f32(GUIDE_NEAR)); }
+
+guide_show :: (s: [] Villa) {
+  p := s[0].pet[..];
+  if guide_plot(s) < 0 { pet_toast(p, "Put their stone in the garden first"); return; }
+  s[0].guide[0].on = true;
+  p[0].view = PV_NONE;
+}
+
+// The way from where you stand: by the paths to the one nearest the stone,
+// then across the grass in front of its bed.
+guide_route :: (s: [] Villa, plot: int) {
+  g := s[0].guide[..];
+  nodes := NODE_XZ; links := LINK_AB;
+  end := guide_end(plot);
+  close := verse_path_nearest(nodes[..], links[..], end.x, end.z);
+  onto := v3(close.x, 0, close.z);
+  from := v3(s[0].feet.x, 0, s[0].feet.z);
+  n := verse_route_points(nodes[..], links[..], f32(PATH_HALF), from, onto, g[0].pts[0..<(GUIDE_POINTS - 1) * 2]);
+  if n < 2 { g[0].n = 0; return; }
+  if flat_length(sub(onto, end)) > 0.05 { g[0].pts[n * 2] = end.x; g[0].pts[n * 2 + 1] = end.z; n += 1; }
+  g[0].n = n;
+}
+
+// Once a frame, after the tips.
+guide_step :: (s: [] Villa, dt: f32) {
+  g := s[0].guide[..]; p := s[0].pet[..];
+  g[0].near_example = flat_length(sub(s[0].feet, v3(f32(EXAMPLE_X), 0, f32(EXAMPLE_Z) - 0.5))) < f32(EXAMPLE_REACH);
+  if p[0].just_placed { p[0].just_placed = false; g[0].on = true; }
+  plot := guide_plot(s);
+  if plot < 0 { g[0].on = false; }
+  if g[0].on && flat_length(sub(s[0].feet, guide_stone(plot))) < f32(GUIDE_ARRIVE) { g[0].on = false; }
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  g[0].fade = ifx g[0].on then lo(1, g[0].fade + t * 2) else hi(0, g[0].fade - t * 0.8);
+  if g[0].fade > 0 && plot >= 0 { guide_route(s, plot); } else { g[0].n = 0; }
+}
+
+// The line: small lights on the ground every GUIDE_DASH metres, drifting
+// toward the stone, and a column of light over it.
+guide_draw :: (s: [] Villa) {
+  g := s[0].guide[..];
+  t := effect_time(s);
+  plot := guide_plot(s);
+  if g[0].fade > 0 && g[0].n >= 2 && plot >= 0 {
+    f := g[0].fade;
+    drift := (t * 1.1) - floor(t * 1.1);
+    along := (1 - drift) * f32(GUIDE_DASH);   // the first light's distance in
+    drawn := 0;
+    for i: 0..<g[0].n - 1 {
+      ax := g[0].pts[i * 2]; az := g[0].pts[i * 2 + 1]; bx := g[0].pts[i * 2 + 2]; bz := g[0].pts[i * 2 + 3];
+      size := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+      while along < size && drawn < GUIDE_DASHES {
+        x := ax + (bx - ax) * along / size; z := az + (bz - az) * along / size;
+        y := ground_at(s, x, z);
+        shape(s, SHAPE_CYLINDER, LOOK_BLOOM, v3(x, y + 0.03, z), 0, 0, 0.22 * f, 0.02, 0.22 * f, 0.6 * f, 0.72 * f, 1.0 * f);
+        drawn += 1;
+        along += f32(GUIDE_DASH);
+      }
+      along -= size;
+    }
+    st := guide_stone(plot);
+    gy := ground_at(s, st.x, st.z);
+    pulse := 0.75 + 0.25 * sin(t * 2.4);
+    shape(s, SHAPE_CYLINDER, LOOK_BLOOM, v3(st.x, gy + 2.6, st.z), 0, 0, 0.05, 4.2, 0.05, 0.55 * pulse * f, 0.62 * pulse * f, 0.9 * pulse * f);
+  }
+  example_draw(s);
+}
+
+// The example stone: a slab with a round top, kept clean, a vase of the
+// field's three flowers at its foot.
+example_draw :: (s: [] Villa) {
+  x := f32(EXAMPLE_X); z := f32(EXAMPLE_Z);
+  tombstone(s, 0, x, z, 1.08);
+  g := ground_at(s, x, z);
+  vx := x + 0.3; vz := z - 0.35;
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(vx, g + 0.13, vz), 0, 0, 0.18, 0.26, 0.18, 0.5, 0.52, 0.6);
+  for k: 0..<3 {
+    a := f32(PI) * (0.25 + 0.25 * f32(k));
+    top := v3(vx - cos(a) * 0.13, g + 0.52, vz - sin(a) * 0.08);
+    limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(vx, g + 0.27, vz), top, 0.012, 0.12, 0.3, 0.18);
+    ball(s, LOOK_BLOOM, top, 0.055, FLOWER_RGB[k * 3], FLOWER_RGB[k * 3 + 1], FLOWER_RGB[k * 3 + 2]);
+  }
+}
+
+// Its card, when you stand by it (and by no real stone).
+example_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  p := s[0].pet[..];
+  if !s[0].guide[0].near_example || p[0].near >= 0 || p[0].view != PV_NONE { return n; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; gt := 16 * k;
+  m := n;
+  cw := lo(420 * k, w - 2 * gt);
+  bot := h - 112 * k;   // over the play buttons and the hint
+  cb := Box.{x0 = (w - cw) / 2, y0 = bot - 124 * k, x1 = (w + cw) / 2, y1 = bot};
+  plate(s, u, cb, 0.82, 0);
+  m = pt(out, m, EXAMPLE_NAME, cb.x0 + 14 * k, cb.y0 + 24 * k, 12 * k, k, 1);
+  m = pt_dim(out, m, EXAMPLE_DATES, cb.x0 + 14 * k + text_width(EXAMPLE_NAME, 12 * k) + 12 * k, cb.y0 + 24 * k, 7 * k, k);
+  yb: [1] f32;
+  m = wrapped(out, m, EXAMPLE_LINE, cb.x0 + 14 * k, cb.y0 + 46 * k, cb.x1 - cb.x0 - 28 * k, 8 * k, k, 3, 0.85, yb[..]);
+  word := ifx p[0].has then "YOUR DOG" else "BRING YOUR DOG";
+  m = btn(s, out, m, Box.{x0 = cb.x0 + 14 * k, y0 = cb.y1 - 40 * k, x1 = cb.x1 - 14 * k, y1 = cb.y1 - 10 * k}, word, B_OPEN, 0, true);
+  return m;
+}
+
+// Its footprint for the walls and the camera, with the scenery's.
+example_block :: (s: [] Villa) {
+  x := f32(EXAMPLE_X); z := f32(EXAMPLE_Z);
+  add_block(s, x - 0.42, z - 0.1, x + 0.42, z + 0.12, 1.0, true);
+}
+
+// ---- checks
+
+#test "the example stone stands off the paths, out of every plot, and isn't anyone's pet" {
+  nodes := NODE_XZ; links := LINK_AB;
+  x := f32(EXAMPLE_X); z := f32(EXAMPLE_Z);
+  #assert in_garden(x, z);
+  #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.5;
+  #assert verse_path_nearest(nodes[..], links[..], x + 0.3, z - 0.35).d > f32(PATH_HALF) + 0.2;   // its vase too
+  for p: 0..<PLOTS {
+    #assert abs(plot_x(p) - x) > 1.2 || abs(plot_z(p) - z) > 2.0;
+  }
+  s: [1] Villa;
+  villa_start(s[..]);
+  #assert !villa_place_open(s[..], x, z);   // you walk round it
+  #assert s[0].pet[0].garden == 0 && guide_plot(s[..]) < 0;
+  // standing in front of it: its card, BRING YOUR DOG on it, and no real stone's
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].tips[0].been = true;
+  villa_step(s[..], 1.0 / 60.0, x, 0, z - 1.4, 0, 0, 0, 0);
+  #assert s[0].guide[0].near_example && s[0].pet[0].near < 0;
+  drew1 := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  open := -1;
+  for b: 0..<s[0].pet[0].buttons { if s[0].pet[0].button_kind[b] == B_OPEN && s[0].pet[0].button[b].y0 > 500 { open = b; } }
+  #assert open >= 0;
+  ob := s[0].pet[0].button[open];
+  for b: 0..<s[0].pet[0].buttons { if s[0].pet[0].button_kind[b] == B_DO && s[0].pet[0].button[b].y0 > 400 { #assert s[0].pet[0].button[b].y0 > ob.y1 + 20; } }   // clear of the play buttons
+  #assert villa_pointer(s[..], (ob.x0 + ob.x1) / 2, (ob.y0 + ob.y1) / 2, 0, 0, 1) && s[0].pet[0].view == PV_PET;
+  // walked away: no card
+  s[0].pet[0].view = PV_NONE;
+  villa_step(s[..], 1.0 / 60.0, x, 0, z - 6, 0, 0, 0, 0);
+  #assert !s[0].guide[0].near_example;
+}
+
+#test "the tips' second step lights the way to the example stone, and moves on when you get there" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_LOOK;
+  // its beacon: a column of light over the example stone
+  for k: 0..<KINDS { s[0].counts[k] = 0; }
+  tips_draw(s[..]);
+  #assert s[0].counts[SHAPE_CYLINDER] == 1 && s[0].counts[SHAPE_BALL] == 1;
+  s[0].tips[0].step = TIP_PET;
+  for k: 0..<KINDS { s[0].counts[k] = 0; }
+  tips_draw(s[..]);
+  #assert s[0].counts[SHAPE_CYLINDER] == 0;
+  s[0].tips[0].step = TIP_LOOK;
+  villa_step(s[..], 1.0 / 60.0, f32(EXAMPLE_X), 0, f32(EXAMPLE_Z) - 1.4, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_PET;
+}
+
+// A placed pet in plot q, as the server answers.
+guide_placed :: (s: [] Villa, q: int) {
+  p := s[0].pet[..];
+  p[0].has = true; p[0].placed = true; p[0].plot = q;
+  p[0].just_placed = true;
+}
+
+#test "your stone placed: a line from you along the paths to it, gone when you get there, back from YOUR DOG" {
+  s: [1] Villa;
+  villa_start(s[..]);
+  s[0].tips[0].step = TIPS_DONE; s[0].tips[0].been = true;
+  nodes := NODE_XZ; links := LINK_AB;
+  for c: 0..<3 {
+    q := ifx c == 0 then 27 else ifx c == 1 then 4 else 61;
+    s[0].guide[0] = Guide.{};
+    guide_placed(s[..], q);
+    from := ifx c == 2 then v3(20, 0, 5) else v3(f32(SPAWN_X), 0, f32(SPAWN_Z));   // the field, or the gate
+    villa_step(s[..], 1.0 / 60.0, from.x, 0, from.z, 0, 0, 0, 0);
+    g := s[0].guide[..];
+    #assert g[0].on && !s[0].pet[0].just_placed && g[0].n >= 3;
+    // it starts where you stand and ends in front of the stone, off its bed
+    #assert near(g[0].pts[0], from.x, 0.001) && near(g[0].pts[1], from.z, 0.001);
+    e := guide_end(q);
+    #assert near(g[0].pts[(g[0].n - 1) * 2], e.x, 0.001) && near(g[0].pts[(g[0].n - 1) * 2 + 1], e.z, 0.001);
+    #assert flat_length(sub(guide_stone(q), e)) < f32(GUIDE_ARRIVE);
+    // between, it keeps to the paths: every point but the first and last on one, and each leg
+    // but the first and last along one (its middle on a path's strip)
+    for i: 1..<g[0].n - 1 {
+      #assert verse_path_nearest(nodes[..], links[..], g[0].pts[i * 2], g[0].pts[i * 2 + 1]).d < 0.01;
+      if i < g[0].n - 2 {
+        mx := (g[0].pts[i * 2] + g[0].pts[i * 2 + 2]) / 2; mz := (g[0].pts[i * 2 + 1] + g[0].pts[i * 2 + 3]) / 2;
+        #assert verse_path_nearest(nodes[..], links[..], mx, mz).d < f32(PATH_HALF);   // on it (a short cut stays on its strip)
+      }
+    }
+    // the last leg, from the path to the stone, crosses no other plot's bed
+    lx := g[0].pts[(g[0].n - 2) * 2]; lz := g[0].pts[(g[0].n - 2) * 2 + 1];
+    for a: 0..<11 {
+      x := lerp(lx, e.x, f32(a) / 10); z := lerp(lz, e.z, f32(a) / 10);
+      for p: 0..<PLOTS { #assert !(abs(plot_x(p) - x) < 0.5 && z > plot_z(p) - 1.1 && z < plot_z(p) + 0.75); }
+    }
+    // drawn as lights on the ground
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+    u: [UNIFORM_FLOATS] f32;
+    for i: 0..<20 { villa_step(s[..], 0.05, from.x, 0, from.z, 0, 0, 0, 0); }
+    drew4 := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+    with := s[0].counts[SHAPE_CYLINDER];
+    #assert with < SLOTS[SHAPE_CYLINDER];
+    // there: it switches off and fades out
+    st := guide_stone(q);
+    villa_step(s[..], 1.0 / 60.0, st.x, 0, st.z - 1.5, 0, 0, 0, 0);
+    #assert !g[0].on;
+    for i: 0..<40 { villa_step(s[..], 0.1, st.x, 0, st.z - 1.5, 0, 0, 0, 0); }
+    #assert g[0].fade == 0 && g[0].n == 0;
+    drew5 := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+    #assert s[0].counts[SHAPE_CYLINDER] < with - 5;
+  }
+  // YOUR DOG's WALK TO THEIR STONE lights it again and closes the panel
+  s[0].pet[0].view = PV_PET;
+  s[0].pet[0].doing = DO_GUIDE;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert s[0].guide[0].on && s[0].pet[0].view == PV_NONE;
+  // no stone yet: it says so, and shows nothing
+  t: [1] Villa;
+  villa_start(t[..]);
+  t[0].pet[0].doing = DO_GUIDE;
+  villa_step(t[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  #assert !t[0].guide[0].on && t[0].pet[0].toast_n > 0;
+}

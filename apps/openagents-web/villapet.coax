@@ -88,6 +88,7 @@ PetUi :: struct {
   tab: int;                                  // 0 about them, 1 their look
   asks: int;
   has: bool; placed: bool; plot: int;
+  just_placed: bool;                         // its stone went into the garden just now: the way there lights (villaguide.coax)
   id: [24] u8; id_n: int;
   slug: [12] u8; slug_n: int;
   text: [PET_FIELDS * FIELD_BYTES] u8; text_n: [PET_FIELDS] int;
@@ -708,7 +709,8 @@ pet_answer :: (p: [] PetUi, kind: int, status: int, t: string) {
   if kind == ASK_SAVE { p[0].dirty = false; }
   if kind == ASK_PLACE {
     p[0].asks = p[0].asks | ASK_GARDEN;
-    pet_toast(p, "Their tombstone is in the garden now");
+    pet_toast(p, "Their tombstone is in the garden now: follow the light to it");
+    p[0].just_placed = true;
     pet_ev(p, EV_PLACED, 0);
   }
 }
@@ -1077,8 +1079,14 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   y += bh + 8 * k;
   if p[0].agent == AGENT_FAILED && p[0].note_n > 0 { m = pt_dim(out, m, pet_s(p[0].note[..], p[0].note_n), x0, y + 6 * k, 7 * k, k); y += 16 * k; }
   if p[0].agent == AGENT_READY { m = pt_dim(out, m, "THEIR LOOK: WHAT WE SAW, AND CHANGE ANY OF IT", x0, y + 6 * k, 7 * k, k); y += 16 * k; }
-  play := ifx p[0].placed then "VISIT THEIR MEMORIAL" else "PLAY: PUT THEIR STONE IN THE GARDEN";
-  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, play, ifx p[0].placed then B_MEMORIAL else B_PLAY, -1, true);
+  if p[0].placed {   // their memorial, and the way to their stone in the garden
+    hw := (x1 - x0 - 8 * k) / 2;
+    roomy := text_width("VISIT THEIR MEMORIAL", 8 * k) < hw - 20 * k;   // a phone's half is narrow: the short words
+    m = btn(s, out, m, Box.{x0 = x1 - hw, y0 = y, x1 = x1, y1 = y + bh}, ifx roomy then "WALK TO THEIR STONE" else "WALK TO STONE", B_DO, DO_GUIDE, false);
+    m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x0 + hw, y1 = y + bh}, ifx roomy then "VISIT THEIR MEMORIAL" else "MEMORIAL", B_MEMORIAL, -1, true);
+    return m;
+  }
+  m = btn(s, out, m, Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + bh}, "PLAY: PUT THEIR STONE IN THE GARDEN", B_PLAY, -1, true);
   return m;
 }
 

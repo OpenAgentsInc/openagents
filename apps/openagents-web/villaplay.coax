@@ -81,6 +81,7 @@ play_do :: (s: [] Villa, what: int) {
     pet_ev(p, EV_FLOWER, flower_kind(i));
     return;
   }
+  if what == DO_GUIDE { guide_show(s); return; }
   if what == DO_TIP_NEXT { tips_go(s, s[0].tips[0].step + 1); return; }
   if what == DO_TIPS_SKIP { tips_go(s, TIPS_DONE); return; }
   if what == DO_CHAT { s[0].chat[0].typing = true; s[0].held = 0; return; }

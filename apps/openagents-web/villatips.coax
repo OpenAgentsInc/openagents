@@ -1,5 +1,5 @@
 // The first visit's tips (hc-tutorial): one at a time, in the realm's plate
-// under the place's name, from your first steps to your pet, fetch, the
+// under the place's name, from your first steps and the example stone to your pet, fetch, the
 // field's flowers and the vase left by their tombstone. Each moves on when
 // you've done it (NEXT skips one, SKIP TIPS all of them); a light shows the
 // way to the field gate and to your pet's tombstone. How far you got is kept
@@ -7,7 +7,7 @@
 // starts where you left off; "tips=Nf" also keeps that the flight in has
 // played (or was skipped), so later visits start at the gate (qa-villa-flight-once).
 
-TIP_WALK :: 0; TIP_PET :: 1; TIP_FETCH :: 2; TIP_FIELD :: 3; TIP_VASE :: 4; TIP_LEAVE :: 5; TIP_END :: 6; TIPS_DONE :: 7;
+TIP_WALK :: 0; TIP_LOOK :: 1; TIP_PET :: 2; TIP_FETCH :: 3; TIP_FIELD :: 4; TIP_VASE :: 5; TIP_LEAVE :: 6; TIP_END :: 7; TIPS_DONE :: 8;
 DO_TIP_NEXT :: 9; DO_TIPS_SKIP :: 10;
 TIP_END_SECONDS :: 9.0;
 
@@ -25,6 +25,7 @@ tips_text :: (s: [] Villa, step: int) -> string {
   ph := phone(s);
   p := s[0].pet[..];
   if step == TIP_WALK { return ifx ph then "Welcome to Hecate's Cemetery. Walk with your left thumb" else "Welcome to Hecate's Cemetery. Walk with WASD, and drag to look around"; }
+  if step == TIP_LOOK { return "This tombstone is an example of a memorial: follow the light to it"; }
   if step == TIP_PET { return ifx ph then "Bring your dog: tap BRING YOUR DOG and tell us about them" else "Bring your dog: click BRING YOUR DOG and tell us about them"; }
   if step == TIP_FETCH { return ifx ph then "Play fetch: tap BALL to take the ball, and again to throw it" else "Play fetch: press F to take the ball, and F again to throw it"; }
   if step == TIP_FIELD { return ifx ph then "Glowing flowers grow in the field, through the east gate. Walk up to one and tap PICK" else "Glowing flowers grow in the field, through the east gate. Walk up to one and press E"; }
@@ -68,7 +69,9 @@ tips_step :: (s: [] Villa, dt: f32) {
   q := s[0].tips[..]; p := s[0].pet[..];
   if !q[0].placed { q[0].placed = true; q[0].from_x = s[0].feet.x; q[0].from_z = s[0].feet.z; }
   st := q[0].step;
-  if st == TIP_WALK && flat_length(sub(s[0].feet, v3(q[0].from_x, 0, q[0].from_z))) > 4 { tips_go(s, TIP_PET); }
+  if st == TIP_WALK && flat_length(sub(s[0].feet, v3(q[0].from_x, 0, q[0].from_z))) > 4 { tips_go(s, TIP_LOOK); }
+  st = q[0].step;
+  if st == TIP_LOOK && s[0].guide[0].near_example { tips_go(s, TIP_PET); }
   st = q[0].step;
   if st == TIP_PET && p[0].has && p[0].view == PV_NONE { tips_go(s, TIP_FETCH); }
   st = q[0].step;
@@ -90,12 +93,13 @@ tips_step :: (s: [] Villa, dt: f32) {
   }
 }
 
-// The light that shows the way: over the field gate, then over your pet's tombstone.
+// The light that shows the way: over the example stone, the field gate, then over your pet's tombstone.
 tips_draw :: (s: [] Villa) {
   q := s[0].tips[..];
   t := effect_time(s);
   x := 0.0f32; z := 0.0f32; on := false;
   if q[0].step == TIP_FIELD && s[0].feet.x < f32(GARDEN_X1) + 2 { x = f32(GARDEN_X1) + 1.2; z = f32(FIELD_GATE_Z); on = true; }
+  if q[0].step == TIP_LOOK { x = f32(EXAMPLE_X); z = f32(EXAMPLE_Z); on = true; }
   plot := tips_stone(s);
   if q[0].step == TIP_LEAVE && plot >= 0 { x = plot_x(plot); z = plot_z(plot) + 0.62; on = true; }
   if !on { return; }
@@ -149,8 +153,11 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
   #assert s[0].tips[0].step == TIP_WALK;
   villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
-  #assert s[0].tips[0].step == TIP_PET && s[0].pet[0].action == 4 && cast(string) s[0].pet[0].outbox[0..<6] == "tips=1";
+  #assert s[0].tips[0].step == TIP_LOOK && s[0].pet[0].action == 4 && cast(string) s[0].pet[0].outbox[0..<6] == "tips=1";
   s[0].pet[0].action = 0;
+  s[0].pet[0].doing = DO_TIP_NEXT;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
+  #assert s[0].tips[0].step == TIP_PET;
   s[0].pet[0].doing = DO_TIP_NEXT;
   villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
   #assert s[0].tips[0].step == TIP_FETCH;
@@ -161,8 +168,8 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z) + 5, 0, 0, 0, 0);
   #assert s[0].tips[0].step == TIPS_DONE;
   t: [1] Villa;
-  villa_kept(t[..], "tips=4");
-  #assert t[0].tips[0].step == TIP_VASE && t[0].tips[0].kept == 4;
+  villa_kept(t[..], "tips=5");
+  #assert t[0].tips[0].step == TIP_VASE && t[0].tips[0].kept == 5;
   villa_kept(t[..], "tips=x");
   #assert t[0].tips[0].step == TIP_VASE;
 }
@@ -182,7 +189,7 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   villa_step(t[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
   #assert !t[0].fl_flying && !verse_flight_active(t[0].flight, t[0].time) && t[0].pet[0].action == 0;
   r: [1] Villa;
-  villa_kept(r[..], "tips=3");
+  villa_kept(r[..], "tips=4");
   #assert !r[0].tips[0].been && villa_fly_wanted(r[..]) && r[0].tips[0].step == TIP_FIELD;
 }
 

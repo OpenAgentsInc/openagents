@@ -302,6 +302,25 @@ verse_route_next :: (nodes: [] f32, links: [] int, half: f32, from: Point, to: P
   return node_at(nodes, pick);
 }
 
+// The whole way from `from` to `to`, as a guide line draws it: from, the
+// path nodes verse_route_next walks through, then `to`; x, z pairs into out.
+// Returns how many points (at least 2 when out has room for them).
+verse_route_points :: (nodes: [] f32, links: [] int, half: f32, from: Point, to: Point, out: [] f32) -> int #export_c {
+  most := out.count / 2;
+  if most < 2 { return 0; }
+  out[0] = from.x; out[1] = from.z;
+  n := 1;
+  at := from;
+  while n < most - 1 {
+    next := verse_route_next(nodes, links, half, at, to);
+    if flat_gap(next, to) < 0.001 { break; }
+    out[n * 2] = next.x; out[n * 2 + 1] = next.z; n += 1;
+    at = next;
+  }
+  out[n * 2] = to.x; out[n * 2 + 1] = to.z;
+  return n + 1;
+}
+
 Follower :: struct {
   pos: Point;           // its feet, on the ground
   vel: Point;           // flat
@@ -568,6 +587,24 @@ built :: (heights: [] f32) -> bool {
   #assert d < 40 && p.y >= verse_terrain_height(g, h[..], p.x, p.z) - 0.001 && p.y - verse_terrain_height(g, h[..], p.x, p.z) < 0.05;
   // Starting under it: no room.
   #assert verse_terrain_ray(g, h[..], v3(0, -5, 0), v3(0, 1, 0), 10) == 0;
+}
+
+#test "the whole route: from where you stand, by the path's nodes, to the end" {
+  n := TEST_NODES; l := TEST_LINKS;
+  pts: [64] f32;
+  c := verse_route_points(n[..], l[..], 0.9, v3(0, 0, -24), v3(10, 0, 10), pts[..]);
+  #assert c >= 3 && pts[0] == 0 && pts[1] == -24 && pts[(c - 1) * 2] == 10 && pts[(c - 1) * 2 + 1] == 10;
+  #assert pts[2] == -10 && pts[3] == -10;   // up the south path to node 0 first
+  // every middle point is a node
+  for i: 1..<c - 1 {
+    hit := false;
+    for k: 0..<n.count / 2 { if n[k * 2] == pts[i * 2] && n[k * 2 + 1] == pts[i * 2 + 1] { hit = true; } }
+    #assert hit;
+  }
+  // near: straight there, two points
+  #assert verse_route_points(n[..], l[..], 0.9, v3(0, 0, -9), v3(2, 0, -9), pts[..]) == 2;
+  small: [2] f32;
+  #assert verse_route_points(n[..], l[..], 0.9, v3(0, 0, -9), v3(2, 0, -9), small[..]) == 0;
 }
 
 #test "the route goes by the paths when that is shorter, and straight when near" {
