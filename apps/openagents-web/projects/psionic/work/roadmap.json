@@ -1196,6 +1196,28 @@
       "blocked_by": []
     },
     {
+      "slug": "psionic-tensor-ops-mutants",
+      "title": "Kill every surviving mutant in the tensor operator contract, operators and views",
+      "parent": "psionic-foundations",
+      "size": "M",
+      "labels": [
+        "mutation"
+      ],
+      "body": "Mutating tensor-ops-backward.coax across its loaded graph leaves 218 of 1602 mutants alive, all in psionic/lib/tensor-ops-contract.coax (83), tensor-ops.coax (82) and tensor-view.coax (53). Add real checks (exact small cases, every bound at and past its limit, every refusal and its precedence) until none survive. Restructure code only where a mutant truly cannot change behaviour; never mark mutants equivalent.",
+      "files": [
+        "psionic/lib/tensor-ops-contract.coax",
+        "psionic/lib/tensor-ops.coax",
+        "psionic/lib/tensor-view.coax"
+      ],
+      "acceptance": [
+        "coax mutate psionic/lib/tensor-ops-backward.coax reports 0 survivors in tensor-ops-contract, tensor-ops and tensor-view.",
+        "psionic/check.sh --only tensor-ops passes."
+      ],
+      "blocked_by": [
+        "psionic-backward-mutants"
+      ]
+    },
+    {
       "slug": "psionic-serve-run-mutants",
       "title": "Put serve-run.coax under zero-survivor mutation",
       "parent": "psionic-integration",
