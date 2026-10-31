@@ -1,0 +1,379 @@
+// Signer requests: one contract for the local test slot, a NIP-07 browser
+// signer and (later) the phone over NIP-46. See coax/nostr.md section 5.
+//
+// A request names its target signer, its scope, the identity that must sign
+// and the whole body (kind, created_at, tags, content). From those it fixes
+// the NIP-01 event id the reply must have, so the id alone binds identity and
+// body: a reply is accepted only if it is a NIP-01 event whose id is its own,
+// whose pubkey is the requested identity, whose id is the expected one, and
+// whose BIP-340 signature verifies. Anything else is refused by name.
+//
+// Lifecycle of a slot, the same for every target:
+//   ASKED     recorded; nothing is sent to a signer yet
+//   APPROVED  the person approved it on the page; now it may be dispatched
+//   SIGNED    a verified reply was accepted (terminal)
+//   DENIED    the person or the signer said no (terminal)
+//   CANCELLED the page withdrew it (terminal)
+//   EXPIRED   its deadline passed first (terminal)
+// A reply to a terminal slot is DUPLICATE, LATE or CLOSED and changes
+// nothing; one to an ASKED slot is UNAPPROVED. Ids are never reused, so a
+// reply for a forgotten request is UNKNOWN. Deadlines are at most
+// SIGNER_MAX_WAIT seconds after the request.
+//
+// The local test slot holds a key in memory only, for tests and explicit
+// ephemeral use: nothing here stores a key, and nothing loads one by default
+// (nostr.md: no persistent browser nsec). It signs through event_sign.coax,
+// and its output goes through the same reply check as any other signer's.
+// The NIP-07 adapter is coax/web/host.js's coaxial_nip07_sign: the page
+// hands it signer_template's JSON for an APPROVED request, and the host sends
+// the extension's answer back as message SIGNER_NIP07_KIND, "id\nevent" or
+// "id\n" for a refusal, which the page passes to signer_reply/signer_deny.
+//
+// Pure decisions: no clock, storage or network. All inputs are public;
+// verification is variable-time. Only the local slot handles a secret.
+#load "event_sign.coax";
+#authority;
+
+SIGNER_LOCAL :: 1; SIGNER_NIP07 :: 2; SIGNER_PHONE :: 3;
+// Scopes: what a request may ask to be signed.
+SCOPE_RELAY_AUTH :: 1;  // NIP-42 kind 22242 only
+SCOPE_HTTP_AUTH :: 2;   // NIP-98 kind 27235 only
+SCOPE_EVENT :: 3;       // any other kind; never an auth event
+NIP42_AUTH_KIND :: 22242; NIP98_AUTH_KIND :: 27235;
+
+SLOT_FREE :: 0; SLOT_ASKED :: 1; SLOT_APPROVED :: 2; SLOT_SIGNED :: 3;
+SLOT_DENIED :: 4; SLOT_CANCELLED :: 5; SLOT_EXPIRED :: 6;
+
+SR_OK :: 0;
+SR_INPUT :: 1;       // target, scope, kind, time, tags or a view not admitted
+SR_SCOPE :: 2;       // the kind is not one the scope allows
+SR_FULL :: 3;        // every slot holds a live request
+SR_UNKNOWN :: 4;     // no request has this id
+SR_UNAPPROVED :: 5;  // not approved yet
+SR_DUPLICATE :: 6;   // already signed
+SR_LATE :: 7;        // its deadline passed
+SR_CLOSED :: 8;      // denied or cancelled
+SR_MALFORMED :: 9;   // the reply is not a NIP-01 event
+SR_TAMPERED :: 10;   // the reply's id is not its own
+SR_IDENTITY :: 11;   // signed by another key
+SR_BODY :: 12;       // the requested key, but another kind, time, tags or content
+SR_SIGNATURE :: 13;
+SR_TARGET :: 14;     // the operation is not for this request's target
+SR_STATE :: 15;      // the request is not in a state this operation accepts
+
+SIGNER_SLOTS :: 8;
+SIGNER_MAX_WAIT :: 120;
+SIGNER_MAX_ID :: 4294967295;   // ids cross the host ABI as u32
+SIGNER_NIP07_KIND :: 609;      // the host's reply message (host.js)
+
+SignerRequest :: struct {
+  id:int; state:int; target:int; scope:int; identity:[32]u8; expect:[32]u8;
+  kind:int; created_at:int; deadline:int;
+}
+SignerTable :: struct { issued:int; slots:[SIGNER_SLOTS]SignerRequest; }
+SignerAsk :: struct { status:int=SR_INPUT; id:int; }
+// A local slot: one key in memory, wiped by signer_local_forget.
+SignerLocal :: struct { loaded:bool; key:[32]u8; aux:[32]u8; work:[1]NostrSignWork; id:int; }
+
+#test "status values, slots and the reply kind are the host ABI" {
+  #assert SR_OK==0 && SR_SIGNATURE==13 && SR_STATE==15 && SIGNER_SLOTS==8 && SIGNER_NIP07_KIND==609;
+  #assert SLOT_FREE==0 && SLOT_EXPIRED==6 && SIGNER_LOCAL==1 && SIGNER_PHONE==3;
+}
+#forall "a scope admits only its own kinds" scope:0..<5,which:0..<4 {
+  kinds:=[4]int.[NIP42_AUTH_KIND,NIP98_AUTH_KIND,1,65535];
+  k:=kinds[which];
+  want:=(scope==SCOPE_RELAY_AUTH && k==NIP42_AUTH_KIND) || (scope==SCOPE_HTTP_AUTH && k==NIP98_AUTH_KIND)
+    || (scope==SCOPE_EVENT && k!=NIP42_AUTH_KIND && k!=NIP98_AUTH_KIND);
+  #assert sk_scope_allows(scope,k)==want;
+}
+#test "a request fixes the event id its reply must have" {
+  t:[1]SignerTable;pub:=ES_PUB;tags:=ES_TAGS;content:=ES_CONTENT;scratch:[1024]u8;
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]);
+  #assert a.status==SR_OK && a.id==1;
+  s:=t[0].slots[0];#assert s.id==1 && s.state==SLOT_ASKED && s.deadline==ES_CREATED+60 && s.kind==ES_KIND && s.created_at==ES_CREATED;
+  for i:0..<32 {#assert s.expect[i]==ES_ID[i] && s.identity[i]==ES_PUB[i];}
+  b:=signer_ask(t[..],SIGNER_LOCAL,SCOPE_RELAY_AUTH,pub[..],NIP42_AUTH_KIND,ES_CREATED,"[]","",ES_CREATED,1,scratch[..]);
+  #assert b.status==SR_OK && b.id==2 && t[0].slots[1].state==SLOT_ASKED;
+}
+#test "asks refuse targets, scopes, kinds, times, waits, tags and views before changing the table" {
+  t:[1]SignerTable;pub:=ES_PUB;scratch:[1024]u8;
+  #assert signer_ask(t[..],0,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],4,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,0,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_SCOPE;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],NIP98_AUTH_KIND,10,"[]","",10,5,scratch[..]).status==SR_SCOPE;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],65536,10,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,-1,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[[\"a\",1]]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,0,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,SIGNER_MAX_WAIT+1,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",-1,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[0..<31],1,10,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[0..<10]).status==SR_INPUT;
+  #assert signer_ask(t[0..<0],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_INPUT;
+  #assert t[0].issued==0;for s:t[0].slots {#assert s.state==SLOT_FREE;}
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,SIGNER_MAX_WAIT,scratch[..]).status==SR_OK;
+  t[0].issued=SIGNER_MAX_ID;
+  #assert signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_FULL;
+}
+#test "live requests fill the table; terminal ones are reused, oldest first" {
+  t:[1]SignerTable;pub:=ES_PUB;scratch:[1024]u8;
+  for i:0..<SIGNER_SLOTS {#assert signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).id==i+1;}
+  #assert signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]).status==SR_FULL;
+  #assert signer_cancel(t[..],5)==SR_OK && signer_deny(t[..],3)==SR_OK;
+  // id 3 and id 5 are terminal; the lower id (older) slot goes first.
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",10,5,scratch[..]);
+  #assert a.status==SR_OK && a.id==9 && t[0].slots[2].id==9 && t[0].slots[4].id==5;
+  #assert signer_cancel(t[..],3)==SR_UNKNOWN && signer_state(t[..],3)==SLOT_FREE && signer_state(t[..],5)==SLOT_CANCELLED;
+}
+#test "approve, deny, cancel and expire follow the lifecycle" {
+  t:[1]SignerTable;pub:=ES_PUB;scratch:[1024]u8;
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",100,10,scratch[..]).id;
+  #assert signer_approve(t[..],a,105)==SR_OK && signer_state(t[..],a)==SLOT_APPROVED;
+  #assert signer_approve(t[..],a,105)==SR_STATE;
+  #assert signer_approve(t[..],77,105)==SR_UNKNOWN && signer_approve(t[..],0,105)==SR_UNKNOWN;
+  #assert signer_expire(t[..],110)==0 && signer_state(t[..],a)==SLOT_APPROVED;
+  #assert signer_expire(t[..],111)==1 && signer_state(t[..],a)==SLOT_EXPIRED;
+  #assert signer_deny(t[..],a)==SR_LATE && signer_cancel(t[..],a)==SR_LATE && signer_approve(t[..],a,100)==SR_LATE;
+  b:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",100,10,scratch[..]).id;
+  #assert signer_approve(t[..],b,111)==SR_LATE && signer_state(t[..],b)==SLOT_EXPIRED;
+  c:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,10,"[]","",100,10,scratch[..]).id;
+  #assert signer_deny(t[..],c)==SR_OK && signer_deny(t[..],c)==SR_CLOSED && signer_cancel(t[..],c)==SR_CLOSED && signer_approve(t[..],c,100)==SR_CLOSED;
+  #assert signer_expire(t[..],1000)==0 && signer_state(t[..],c)==SLOT_DENIED;
+  #assert signer_state(t[..],999)==SLOT_FREE && signer_state(t[0..<0],1)==SLOT_FREE;
+  #assert signer_approve(t[0..<0],c,1)==SR_INPUT && signer_deny(t[0..<0],c)==SR_INPUT && signer_cancel(t[0..<0],c)==SR_INPUT && signer_expire(t[0..<0],1)==0;
+}
+#test "replies before approval, after the end, or to unknown ids change nothing" {
+  t:[1]SignerTable;pub:=ES_PUB;tags:=ES_TAGS;content:=ES_CONTENT;event:=ES_EVENT;scratch:[1024]u8;
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]).id;
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED,scratch[..])==SR_UNAPPROVED && signer_state(t[..],a)==SLOT_ASKED;
+  #assert signer_reply(t[..],a+1,cast(string)event[..],ES_CREATED,scratch[..])==SR_UNKNOWN;
+  #assert signer_approve(t[..],a,ES_CREATED)==SR_OK;
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED+61,scratch[..])==SR_LATE && signer_state(t[..],a)==SLOT_EXPIRED;
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED,scratch[..])==SR_LATE;
+  b:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]).id;
+  #assert signer_cancel(t[..],b)==SR_OK && signer_reply(t[..],b,cast(string)event[..],ES_CREATED,scratch[..])==SR_CLOSED;
+  #assert signer_reply(t[0..<0],b,cast(string)event[..],ES_CREATED,scratch[..])==SR_INPUT;
+  c:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]).id;
+  #assert signer_approve(t[..],c,ES_CREATED)==SR_OK && signer_reply(t[..],c,cast(string)event[..],ES_CREATED,scratch[0..<0])==SR_INPUT && signer_state(t[..],c)==SLOT_APPROVED;
+}
+#test "malformed, tampered, other-identity and other-body replies refuse before any signature work" {
+  t:[1]SignerTable;pub:=ES_PUB;tags:=ES_TAGS;content:=ES_CONTENT;scratch:[1024]u8;
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]).id;
+  #assert signer_approve(t[..],a,ES_CREATED)==SR_OK;
+  #assert signer_reply(t[..],a,"{}",ES_CREATED,scratch[..])==SR_MALFORMED;
+  #assert signer_reply(t[..],a,"not json",ES_CREATED,scratch[..])==SR_MALFORMED;
+  event:=ES_EVENT;e:=ne_parse(cast(string)event[..]);
+  c:=e.content_from;event[c]=ifx event[c]=='l' then 'L' else 'l';
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED,scratch[..])==SR_TAMPERED;
+  // A different body under the same key: ask for other content, reply with the vector.
+  b:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],ES_KIND,ES_CREATED,cast(string)tags[..],"other",ES_CREATED,60,scratch[..]).id;
+  #assert signer_approve(t[..],b,ES_CREATED)==SR_OK;
+  good:=ES_EVENT;
+  #assert signer_reply(t[..],b,cast(string)good[..],ES_CREATED,scratch[..])==SR_BODY;
+  // Another identity: ask for key x=G, reply with the vector's key.
+  g:=[32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62,0x95,0xce,0x87,0x0b,0x07,0x02,0x9b,0xfc,0xdb,0x2d,0xce,0x28,0xd9,0x59,0xf2,0x81,0x5b,0x16,0xf8,0x17,0x98];
+  d:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,g[..],ES_KIND,ES_CREATED,cast(string)tags[..],cast(string)content[..],ES_CREATED,60,scratch[..]).id;
+  #assert signer_approve(t[..],d,ES_CREATED)==SR_OK;
+  #assert signer_reply(t[..],d,cast(string)good[..],ES_CREATED,scratch[..])==SR_IDENTITY;
+  // None of these refusals closed a request: the right reply can still come.
+  #assert signer_state(t[..],a)==SLOT_APPROVED && signer_state(t[..],b)==SLOT_APPROVED && signer_state(t[..],d)==SLOT_APPROVED;
+}
+#test "the NIP-07 template is the approved request's body, and only for NIP-07" {
+  t:[1]SignerTable;pub:=ES_PUB;scratch:[1024]u8;out:[256]u8;
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_RELAY_AUTH,pub[..],NIP42_AUTH_KIND,1800000000,"[[\"relay\",\"wss://r\"],[\"challenge\",\"c\"]]","",1800000000,30,scratch[..]).id;
+  #assert signer_template(t[..],a,"[[\"relay\",\"wss://r\"],[\"challenge\",\"c\"]]","",out[..])==-SR_UNAPPROVED;
+  #assert signer_approve(t[..],a,1800000000)==SR_OK;
+  n:=signer_template(t[..],a,"[[\"relay\",\"wss://r\"],[\"challenge\",\"c\"]]","",out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="{\"kind\":22242,\"created_at\":1800000000,\"tags\":[[\"relay\",\"wss://r\"],[\"challenge\",\"c\"]],\"content\":\"\"}";
+  #assert signer_template(t[..],a,"[[\"relay\",\"wss://r\"],[\"challenge\",\"c\"]]","",out[0..<20])==-SR_INPUT;
+  #assert signer_template(t[..],a+1,"[]","",out[..])==-SR_UNKNOWN;
+  b:=signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,1,"[]","",1,30,scratch[..]).id;
+  #assert signer_approve(t[..],b,1)==SR_OK && signer_template(t[..],b,"[]","",out[..])==-SR_TARGET;
+  #assert signer_template(t[0..<0],b,"[]","",out[..])==-SR_INPUT;
+}
+#test "the local slot loads, refuses other targets and states, and forgets" {
+  t:[1]SignerTable;pub:=ES_PUB;scratch:[1024]u8;out:[1024]u8;local:[1]SignerLocal;key:=ES_KEY;aux:=ES_AUX;
+  #assert signer_local_step(t[..],local[..],1,"[]","",1,scratch[..],out[..])==-SR_INPUT;
+  #assert signer_local_load(local[..],key[0..<31],aux[..])==SR_INPUT && !local[0].loaded;
+  #assert signer_local_load(local[..],key[..],aux[..])==SR_OK && local[0].loaded && local[0].key[0]==key[0];
+  a:=signer_ask(t[..],SIGNER_NIP07,SCOPE_EVENT,pub[..],1,1,"[]","",1,30,scratch[..]).id;
+  #assert signer_approve(t[..],a,1)==SR_OK && signer_local_step(t[..],local[..],a,"[]","",1,scratch[..],out[..])==-SR_TARGET;
+  b:=signer_ask(t[..],SIGNER_LOCAL,SCOPE_EVENT,pub[..],1,1,"[]","",1,30,scratch[..]).id;
+  #assert signer_local_step(t[..],local[..],b,"[]","",1,scratch[..],out[..])==-SR_UNAPPROVED;
+  #assert signer_local_step(t[..],local[..],99,"[]","",1,scratch[..],out[..])==-SR_UNKNOWN;
+  // A corrupt signing workspace refuses and is cleared; the request stays.
+  #assert signer_approve(t[..],b,1)==SR_OK;
+  local[0].work[0].stage=9;local[0].id=b;
+  #assert signer_local_step(t[..],local[..],b,"[]","",1,scratch[..],out[..])==-SR_SIGNATURE && local[0].work[0].stage==0 && local[0].id==0;
+  #assert signer_state(t[..],b)==SLOT_APPROVED;
+  signer_local_forget(local[..]);
+  #assert !local[0].loaded;for i:0..<32 {#assert local[0].key[i]==0 && local[0].aux[i]==0;}
+  #assert signer_local_step(t[..],local[..],b,"[]","",1,scratch[..],out[..])==-SR_INPUT;
+  signer_local_forget(local[0..<0]);
+}
+
+sk_scope_allows :: (scope:int,kind:int)->bool {
+  if scope==SCOPE_RELAY_AUTH {return kind==NIP42_AUTH_KIND;}
+  if scope==SCOPE_HTTP_AUTH {return kind==NIP98_AUTH_KIND;}
+  if scope==SCOPE_EVENT {return kind!=NIP42_AUTH_KIND && kind!=NIP98_AUTH_KIND;}
+  return false;
+}
+sk_find :: (t:[]SignerTable,id:int)->int {
+  if t.count!=1 || id<=0 {return -1;}
+  for i:0..<SIGNER_SLOTS {if t[0].slots[i].state!=SLOT_FREE && t[0].slots[i].id==id {return i;}}
+  return -1;
+}
+// The slot for a new request: a free one, else the terminal one with the lowest id.
+sk_room :: (t:[]SignerTable)->int {
+  best:=-1;
+  for i:0..<SIGNER_SLOTS {
+    s:=t[0].slots[i].state;
+    if s==SLOT_FREE {return i;}
+    if s>=SLOT_SIGNED && (best<0 || t[0].slots[i].id<t[0].slots[best].id) {best=i;}
+  }
+  return best;
+}
+// The NIP-01 id of [0,identity,created_at,kind,tags,content], as event_sign.coax writes it.
+sk_expect :: (identity:[]u8,created_at:int,kind:int,tags:string,content:string,scratch:[]u8,out:[]u8)->bool {
+  decoded:[65536]u8;pub:[64]u8;
+  h:=hex_encode_checked(cast(string)identity,pub[..],false);
+  n:=json_raw(scratch,ne_writer_start(h.error),"[0,");n=json_write_string(scratch,n,cast(string)pub[..]);
+  n=json_raw(scratch,n,",");n=json_write_int(scratch,n,created_at);
+  n=json_raw(scratch,n,",");n=json_write_int(scratch,n,kind);n=json_raw(scratch,n,",");
+  n=ne_write_tags(tags,scratch,n,decoded[..]);n=json_raw(scratch,n,",");
+  n=json_write_string(scratch,n,content);n=json_raw(scratch,n,"]");
+  if n==NE_WRITE_FAILED {return false;}
+  return sha256_hash_checked(scratch[0..<n],out,false)==SHA_OK;
+}
+// Why a slot in this state can't take an operation that needs live (ASKED or APPROVED).
+sk_ended :: (state:int)->int {
+  if state==SLOT_SIGNED {return SR_DUPLICATE;}
+  if state==SLOT_EXPIRED {return SR_LATE;}
+  if state==SLOT_DENIED || state==SLOT_CANCELLED {return SR_CLOSED;}
+  return SR_OK;
+}
+
+// Records a request. The page shows it to the person, who approves it with
+// signer_approve before anything is sent. scratch holds the id preimage.
+signer_ask :: (t:[]SignerTable,target:int,scope:int,identity:[]u8,kind:int,created_at:int,tags:string,content:string,now:int,wait:int,scratch:[]u8)->SignerAsk #export_c {
+  r:SignerAsk;
+  if t.count!=1 || identity.count!=32 || scratch.count==0 || scratch.count>NE_MAX_OUTPUT {return r;}
+  if target<SIGNER_LOCAL || target>SIGNER_PHONE || now<0 || wait<1 || wait>SIGNER_MAX_WAIT || !es_inputs(created_at,kind,tags) {return r;}
+  if !sk_scope_allows(scope,kind) {r.status=SR_SCOPE;return r;}
+  expect:[32]u8;
+  if !sk_expect(identity,created_at,kind,tags,content,scratch,expect[..]) {return r;}
+  slot:=sk_room(t);
+  if slot<0 || t[0].issued>=SIGNER_MAX_ID {r.status=SR_FULL;return r;}
+  t[0].issued+=1;
+  q:SignerRequest;q.id=t[0].issued;q.state=SLOT_ASKED;q.target=target;q.scope=scope;
+  for i:0..<32 {q.identity[i]=identity[i];}
+  q.expect=expect;q.kind=kind;q.created_at=created_at;q.deadline=now+wait;
+  t[0].slots[slot]=q;
+  r.status=SR_OK;r.id=q.id;return r;
+}
+// A request's state, or SLOT_FREE when no request has this id.
+signer_state :: (t:[]SignerTable,id:int)->int #export_c {
+  i:=sk_find(t,id);if i<0 {return SLOT_FREE;}return t[0].slots[i].state;
+}
+// Marks every live request past its deadline EXPIRED; returns how many.
+signer_expire :: (t:[]SignerTable,now:int)->int #export_c {
+  if t.count!=1 {return 0;}
+  n:=0;
+  for i:0..<SIGNER_SLOTS {
+    s:=t[0].slots[i].state;
+    if (s==SLOT_ASKED || s==SLOT_APPROVED) && now>t[0].slots[i].deadline {t[0].slots[i].state=SLOT_EXPIRED;n+=1;}
+  }
+  return n;
+}
+// The person approved an ASKED request; past its deadline it expires instead.
+signer_approve :: (t:[]SignerTable,id:int,now:int)->int #export_c {
+  if t.count!=1 {return SR_INPUT;}
+  i:=sk_find(t,id);if i<0 {return SR_UNKNOWN;}
+  ended:=sk_ended(t[0].slots[i].state);if ended!=SR_OK {return ended;}
+  if t[0].slots[i].state!=SLOT_ASKED {return SR_STATE;}
+  if now>t[0].slots[i].deadline {t[0].slots[i].state=SLOT_EXPIRED;return SR_LATE;}
+  t[0].slots[i].state=SLOT_APPROVED;return SR_OK;
+}
+sk_close :: (t:[]SignerTable,id:int,state:int)->int {
+  if t.count!=1 {return SR_INPUT;}
+  i:=sk_find(t,id);if i<0 {return SR_UNKNOWN;}
+  ended:=sk_ended(t[0].slots[i].state);if ended!=SR_OK {return ended;}
+  t[0].slots[i].state=state;return SR_OK;
+}
+// The person or the signer refused a live request.
+signer_deny :: (t:[]SignerTable,id:int)->int #export_c {return sk_close(t,id,SLOT_DENIED);}
+// The page withdrew a live request; a reply that still comes is CLOSED.
+signer_cancel :: (t:[]SignerTable,id:int)->int #export_c {return sk_close(t,id,SLOT_CANCELLED);}
+
+// A signer's answer to request id: the signed event's JSON. Accepted (the
+// request becomes SIGNED) only when it is exactly the requested event,
+// signed. Refusals of the reply itself leave the request live, so the
+// right answer can still arrive before the deadline. scratch holds the
+// reader's preimage.
+signer_reply :: (t:[]SignerTable,id:int,event:string,now:int,scratch:[]u8)->int #export_c {
+  if t.count!=1 || scratch.count==0 || scratch.count>NE_MAX_OUTPUT {return SR_INPUT;}
+  i:=sk_find(t,id);if i<0 {return SR_UNKNOWN;}
+  ended:=sk_ended(t[0].slots[i].state);if ended!=SR_OK {return ended;}
+  if t[0].slots[i].state!=SLOT_APPROVED {return SR_UNAPPROVED;}
+  if now>t[0].slots[i].deadline {t[0].slots[i].state=SLOT_EXPIRED;return SR_LATE;}
+  e:=nostr_event_read(event,scratch,false);
+  if e.error==NE_ID {return SR_TAMPERED;}
+  if e.error!=NE_OK {return SR_MALFORMED;}
+  q:=t[0].slots[i];
+  for k:0..<32 {if e.public_key[k]!=q.identity[k] {return SR_IDENTITY;}}
+  for k:0..<32 {if e.id[k]!=q.expect[k] {return SR_BODY;}}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return SR_SIGNATURE;}
+  t[0].slots[i].state=SLOT_SIGNED;return SR_OK;
+}
+// What the NIP-07 adapter passes to window.nostr.signEvent for an APPROVED
+// NIP-07 request: {"kind","created_at","tags","content"}. Pass the request's
+// own tags and content; a different body is caught when the reply comes.
+// Returns the length, or minus an SR_ code.
+signer_template :: (t:[]SignerTable,id:int,tags:string,content:string,out:[]u8)->int #export_c {
+  if t.count!=1 {return -SR_INPUT;}
+  i:=sk_find(t,id);if i<0 {return -SR_UNKNOWN;}
+  q:=t[0].slots[i];
+  if q.target!=SIGNER_NIP07 {return -SR_TARGET;}
+  if q.state!=SLOT_APPROVED {return -SR_UNAPPROVED;}
+  decoded:[65536]u8;
+  n:=json_raw(out,0,"{\"kind\":");n=json_write_int(out,n,q.kind);
+  n=json_raw(out,n,",\"created_at\":");n=json_write_int(out,n,q.created_at);
+  n=json_raw(out,n,",\"tags\":");n=ne_write_tags(tags,out,n,decoded[..]);
+  n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,content);n=json_raw(out,n,"}");
+  if n==NE_WRITE_FAILED {return -SR_INPUT;}
+  return n;
+}
+
+// Loads a key into the local slot (memory only) with 32 fresh aux bytes.
+signer_local_load :: (local:[]SignerLocal,key:[]u8,aux:[]u8)->int #export_c {
+  if local.count!=1 || key.count!=32 || aux.count!=32 {return SR_INPUT;}
+  signer_local_forget(local);
+  for i:0..<32 {local[0].key[i]=key[i];local[0].aux[i]=aux[i];}
+  local[0].loaded=true;return SR_OK;
+}
+signer_local_forget :: (local:[]SignerLocal) #export_c {
+  if local.count!=1 {return;}
+  clean:SignerLocal;local[0]=clean;
+}
+// One step of the local slot signing APPROVED local request id. Call with
+// the request's tags and content until the result is not 0: a positive
+// result is the event's length in out, already accepted by signer_reply
+// (the request is SIGNED); a negative one is minus an SR_ code. A refused
+// signature clears the slot's signing work but leaves the request live.
+signer_local_step :: (t:[]SignerTable,local:[]SignerLocal,id:int,tags:string,content:string,now:int,scratch:[]u8,out:[]u8)->int #export_c {
+  if t.count!=1 || local.count!=1 || !local[0].loaded {return -SR_INPUT;}
+  i:=sk_find(t,id);if i<0 {return -SR_UNKNOWN;}
+  q:=t[0].slots[i];
+  if q.target!=SIGNER_LOCAL {return -SR_TARGET;}
+  ended:=sk_ended(q.state);if ended!=SR_OK {return -ended;}
+  if q.state!=SLOT_APPROVED {return -SR_UNAPPROVED;}
+  if local[0].id!=id {fresh:NostrSignWork;local[0].work[0]=fresh;local[0].id=id;}
+  k:=nostr_event_sign_step(local[0].key[..],local[0].aux[..],q.created_at,q.kind,tags,content,local[0].work[..],scratch,out,false);
+  if k==EVENT_MORE {return 0;}
+  local[0].id=0;
+  if k<0 {return -SR_SIGNATURE;}
+  status:=signer_reply(t,id,cast(string)out[0..<k],now,scratch);
+  if status!=SR_OK {for b:0..<out.count {out[b]=0;}return -status;}
+  return k;
+}

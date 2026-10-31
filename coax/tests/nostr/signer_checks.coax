@@ -1,0 +1,61 @@
+// Signer requests with real signatures (coax/lib/nostr/keys.coax). The
+// independent signer is the pure-Python event in event_sign_vectors.coax
+// (BIP-340 vector key 1, TEST ONLY); the local slot signs the same request
+// in Coax. Each verification costs tens of millions of interpreter steps:
+//   coax/bin/coax test coax/tests/nostr/signer_checks.coax --steps 2000000000 --run-steps 250000000
+#load "../../lib/nostr/keys.coax";
+
+main :: () {}
+
+sc_ask :: (t:[]SignerTable,target:int,identity:[32]u8,content:string)->int {
+  tags:=ES_TAGS;scratch:[1024]u8;id:=identity;
+  a:=signer_ask(t,target,SCOPE_EVENT,id[..],ES_KIND,ES_CREATED,cast(string)tags[..],content,ES_CREATED,60,scratch[..]);
+  ok:=a.status==SR_OK && signer_approve(t,a.id,ES_CREATED)==SR_OK;#assert ok;
+  return a.id;
+}
+sc_local :: (t:[]SignerTable,local:[]SignerLocal,id:int,content:string,out:[]u8)->int {
+  tags:=ES_TAGS;scratch:[1024]u8;k:=0;
+  while k==0 {k=signer_local_step(t,local,id,cast(string)tags[..],content,ES_CREATED+1,scratch[..],out);}
+  return k;
+}
+
+#test "an independent signer's event for the request is accepted once" {
+  t:[1]SignerTable;content:=ES_CONTENT;event:=ES_EVENT;scratch:[1024]u8;
+  a:=sc_ask(t[..],SIGNER_NIP07,ES_PUB,cast(string)content[..]);
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED+1,scratch[..])==SR_OK && signer_state(t[..],a)==SLOT_SIGNED;
+  #assert signer_reply(t[..],a,cast(string)event[..],ES_CREATED+1,scratch[..])==SR_DUPLICATE;
+  #assert signer_deny(t[..],a)==SR_DUPLICATE && signer_cancel(t[..],a)==SR_DUPLICATE;
+}
+#test "a forged signature refuses and leaves the request open for the real one" {
+  t:[1]SignerTable;content:=ES_CONTENT;scratch:[1024]u8;
+  a:=sc_ask(t[..],SIGNER_NIP07,ES_PUB,cast(string)content[..]);
+  forged:=ES_EVENT;s:=forged.count-10;forged[s]=ifx forged[s]=='0' then '1' else '0';
+  #assert signer_reply(t[..],a,cast(string)forged[..],ES_CREATED+1,scratch[..])==SR_SIGNATURE && signer_state(t[..],a)==SLOT_APPROVED;
+  real:=ES_EVENT;
+  #assert signer_reply(t[..],a,cast(string)real[..],ES_CREATED+1,scratch[..])==SR_OK;
+}
+#test "the local slot makes the same event as the independent signer, through the same check" {
+  t:[1]SignerTable;local:[1]SignerLocal;key:=ES_KEY;aux:=ES_AUX;content:=ES_CONTENT;out:[1024]u8;
+  #assert signer_local_load(local[..],key[..],aux[..])==SR_OK;
+  a:=sc_ask(t[..],SIGNER_LOCAL,ES_PUB,cast(string)content[..]);
+  n:=sc_local(t[..],local[..],a,cast(string)content[..],out[..]);
+  #assert n==ES_EVENT.count && signer_state(t[..],a)==SLOT_SIGNED;
+  for i:0..<n {#assert out[i]==ES_EVENT[i];}
+  #assert sc_local(t[..],local[..],a,cast(string)content[..],out[..])==-SR_DUPLICATE;
+  signer_local_forget(local[..]);for b:local[0].key {#assert b==0;}
+}
+#test "a local key that is not the requested identity refuses, clearing out" {
+  t:[1]SignerTable;local:[1]SignerLocal;key:=ES_KEY;aux:=ES_AUX;content:=ES_CONTENT;out:[1024]u8;
+  g:=[32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62,0x95,0xce,0x87,0x0b,0x07,0x02,0x9b,0xfc,0xdb,0x2d,0xce,0x28,0xd9,0x59,0xf2,0x81,0x5b,0x16,0xf8,0x17,0x98];
+  #assert signer_local_load(local[..],key[..],aux[..])==SR_OK;
+  a:=sc_ask(t[..],SIGNER_LOCAL,g,cast(string)content[..]);
+  #assert sc_local(t[..],local[..],a,cast(string)content[..],out[..])==-SR_IDENTITY;
+  for b:out {#assert b==0;} #assert signer_state(t[..],a)==SLOT_APPROVED;
+}
+#test "a signer that signs another body with the right key is refused" {
+  t:[1]SignerTable;local:[1]SignerLocal;key:=ES_KEY;aux:=ES_AUX;content:=ES_CONTENT;out:[1024]u8;
+  #assert signer_local_load(local[..],key[..],aux[..])==SR_OK;
+  a:=sc_ask(t[..],SIGNER_LOCAL,ES_PUB,cast(string)content[..]);
+  #assert sc_local(t[..],local[..],a,"something else",out[..])==-SR_BODY && signer_state(t[..],a)==SLOT_APPROVED;
+  #assert sc_local(t[..],local[..],a,cast(string)content[..],out[..])==ES_EVENT.count;
+}

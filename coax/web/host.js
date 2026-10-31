@@ -275,7 +275,7 @@ async function loadEngine(bytes, generation) {
   const random = prepareRandomImport(memory, module, randomScratch);
   const imports = Object.create(null);
   imports.env = Object.assign(Object.create(null), { memory, coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
-    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), ...socketImports, ...httpImports, ...random.imports, ...storageImports });
+    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
@@ -599,6 +599,25 @@ const byteStorage = makeByteStorage({
   },
 });
 const storageImports = byteStorage.imports;
+
+// ---- NIP-07: the browser's Nostr signer, for coax/lib/nostr/keys.coax's signer requests.
+// The page calls this only for a request the person approved, with signer_template's JSON
+// ({kind, created_at, tags, content}). The answer comes back as message SIGNER_NIP07_KIND:
+// "id\n" and the extension's signed event, or "id\n" alone when there is no signer or it
+// refused. Nothing here judges the event; Coax's signer_reply checks it.
+const SIGNER_NIP07_KIND = 609;
+const nip07Imports = {
+  coaxial_nip07_sign: (id, ptr, len) => {
+    if (!Number.isInteger(id) || id <= 0 || len <= 0 || len > 65536 || ptr < 0 || ptr + len > memory.buffer.byteLength) return -1;
+    let template;
+    try { template = JSON.parse(new TextDecoder().decode(new Uint8Array(memory.buffer, ptr, len))); } catch { return -1; }
+    const signer = globalThis.nostr;
+    if (!signer || typeof signer.signEvent !== "function") { queueMicrotask(() => send(SIGNER_NIP07_KIND, `${id}\n`)); return 0; }
+    Promise.resolve().then(() => signer.signEvent(template))
+      .then((ev) => send(SIGNER_NIP07_KIND, `${id}\n${ev ? JSON.stringify(ev) : ""}`), () => send(SIGNER_NIP07_KIND, `${id}\n`));
+    return 0;
+  },
+};
 
 // ---- the page: what the browser knows about this visit, for the app
 const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606;
