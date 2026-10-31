@@ -20,12 +20,15 @@
 #module "aethyr.space";
 #load "../coax/lib/quantity.coax" as units;
 
+// book:begin units
 // A grid unit is two metres (the Grid draws a metre as half a unit, newland-walkers.coax
 // WALK_SCALE): a power of two, so converting is exact.
 GridUnit :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=2,denominator=1) {}
 GRID_PER_METRE :: 0.5;
 aethyr_grid_per_metre :: () -> f32 #export_c { return GRID_PER_METRE; }   // for a C face
+// book:end units
 
+// book:begin types
 WorldPoint :: struct { x: f32; y: f32; z: f32; }
 LocalPoint :: struct { x: f32; y: f32; z: f32; }
 ViewPoint :: struct { x: f32; y: f32; z: f32; }
@@ -46,6 +49,7 @@ Lens :: struct {
 
 // A point on screen, with its depth, or none (ok false) when it is behind the near plane.
 Seen :: struct { at: ScreenPoint; depth: f32; ok: bool; }
+// book:end types
 
 world :: (x: f32, y: f32, z: f32) -> WorldPoint { return WorldPoint.{x = x, y = y, z = z}; }
 world_add :: (a: WorldPoint, b: WorldPoint) -> WorldPoint { return world(a.x + b.x, a.y + b.y, a.z + b.z); }
@@ -83,6 +87,7 @@ world_to_local :: (p: Placement, w: WorldPoint) -> LocalPoint {
   return LocalPoint.{x = dx * c - dz * s, y = w.y - p.origin.y, z = dx * s + dz * c};
 }
 
+// book:begin grid
 // The world as the Grid draws it: `mid` is the places' middle in grid units, and grid
 // heights are metres times GRID_PER_METRE too, so a figure's feet are drawn at its physics height.
 world_to_grid :: (mid: GridPoint, w: WorldPoint) -> GridPoint {
@@ -91,6 +96,7 @@ world_to_grid :: (mid: GridPoint, w: WorldPoint) -> GridPoint {
 grid_to_world :: (mid: GridPoint, g: GridPoint) -> WorldPoint {
   return world((g.x - mid.x) / GRID_PER_METRE, (g.y - mid.y) / GRID_PER_METRE, (g.z - mid.z) / GRID_PER_METRE);
 }
+// book:end grid
 
 // A lens at `eye` looking at `at`, with +Y up.
 lens_at :: (eye: WorldPoint, at: WorldPoint, cx: f32, cy: f32, focal: f32, near: f32) -> Lens {
@@ -99,6 +105,7 @@ lens_at :: (eye: WorldPoint, at: WorldPoint, cx: f32, cy: f32, focal: f32, near:
   up := world_cross(right, ahead);
   return Lens.{eye = eye, right = right, up = up, ahead = ahead, cx = cx, cy = cy, focal = focal, near = near};
 }
+// book:begin screen
 world_to_view :: (l: Lens, w: WorldPoint) -> ViewPoint {
   v := world_sub(w, l.eye);
   return ViewPoint.{x = world_dot(v, l.right), y = world_dot(v, l.up), z = world_dot(v, l.ahead)};
@@ -111,6 +118,7 @@ view_to_screen :: (l: Lens, v: ViewPoint) -> Seen {
   return Seen.{at = ScreenPoint.{x = l.cx + v.x / v.z * l.focal, y = l.cy - v.y / v.z * l.focal}, depth = v.z, ok = true};
 }
 world_to_screen :: (l: Lens, w: WorldPoint) -> Seen { return view_to_screen(l, world_to_view(l, w)); }
+// book:end screen
 
 // ---- Checks ----
 

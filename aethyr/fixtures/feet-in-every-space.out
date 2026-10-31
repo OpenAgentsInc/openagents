@@ -1,0 +1,7 @@
+world  (2.0, 1.17, -4.0) m
+local  (0.0, 1.17, 0.0) m in a room at (2, 0, -4)
+grid   (5.0, 0.585, -8.0) units: the height scales as the ground does
+view   depth 6.2707963 m; screen (400.0, 287.1407) px, drawn true
+back from the grid (2.0, 1.17, -4.0) m
+5 grid units are 10.0 m
+a point behind the eye is drawn false

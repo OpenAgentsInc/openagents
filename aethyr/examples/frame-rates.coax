@@ -1,0 +1,27 @@
+// book:begin example
+#load "../loop.coax";
+#import "Basic";
+
+// Five seconds fed at four frame rates, then a three-second stall: how many fixed steps
+// each runs, the most one frame runs, and the time drawn against the time fed.
+main :: () {
+  rates := [4] int.[30, 60, 120, 144];
+  for r: 0..<4 {
+    fps := rates[r];
+    c: FrameClock;
+    most := 0;
+    for f: 0..<fps * 5 {
+      k := loop_frame(c, 1.0 / cast(f64) fps);
+      c = k.clock;
+      if k.steps > most { most = k.steps; }
+    }
+    drawn := (cast(f64) c.ticks + cast(f64) loop_alpha(c)) * loop_step(c);
+    print("% FPS: % frames, % steps, at most % a frame, drawn at % s\n", fps, c.frames, c.ticks, most, drawn);
+  }
+  c: FrameClock;
+  k := loop_frame(c, 3.0);
+  print("a 3 s stall: % steps, % ns dropped, overlong %, stalls %\n", k.steps, k.clock.dropped_ns, k.clock.overlong, k.clock.stalls);
+  n := loop_frame(k.clock, 1.0 / 60.0);
+  print("the next frame: % step\n", n.steps);
+}
+// book:end example

@@ -1,0 +1,5 @@
+constructed: on_ground true, camera 4.4 m out at phi 1.1071488, pace 1.0, grip 1.0
+constructed clock: step 15625000 ns, clamp 250000000 ns, at most 8 steps
+one 1/64 s frame, constructed clock: steps 1, clamp 250000000 ns
+one 1/64 s frame, zeroed clock:      steps 1, clamp 250000000 ns
+a 3 s stall on the zeroed clock: steps 8, overlong 1

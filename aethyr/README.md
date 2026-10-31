@@ -28,4 +28,8 @@ migration (ec-migrate).
 coax/bin/coax test aethyr/loop.coax --library
 coax/bin/coax mutate aethyr/loop.coax
 coax/web/tool.sh aethyr/refusals.coax      # mixing spaces fails to compile
+python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax   # the book and its examples
 ```
+
+The book's runnable programs are in `examples/`, with their exact output in
+`fixtures/`.

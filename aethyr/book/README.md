@@ -36,7 +36,7 @@ drops the marker and shows its code the way the Psionic book does: listings
 copied from source between `// book:begin` and `// book:end` markers, and
 runnable programs in `aethyr/examples/` with exact transcripts.
 
-Every chapter is currently a design draft.
+Chapters 1–3 are written; every other chapter is a design draft.
 
 ## Checking the book
 
@@ -85,9 +85,9 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [1. A frame has a fixed step](ch001-a-frame-has-a-fixed-step.md) | Unimplemented: design draft (`ec-loop`) | One owner of time: a fixed 1/64 s step with an accumulator, a declared frame cap and backlog rule, and drawing interpolated between the last two states, so physics is identical at 30, 60, 120 and 144 FPS. |
-| [2. Spaces and units](ch002-spaces-and-units.md) | Unimplemented: design draft (`ec-space`) | Typed world, local, camera, screen and grid-cell positions over `coax.quantity` units, crossing spaces only through named transforms, with one authoritative drawn position per figure. |
-| [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md) | Unimplemented: design draft (`ec-state`) | Every realm's state built by one constructor on native and browser hosts, never left as zeroed memory, with byte-identical initial-state digests on both. |
+| [1. A frame has a fixed step](ch001-a-frame-has-a-fixed-step.md) | Written (`ec-loop`) | One owner of time: a fixed 1/64 s step counted in whole nanoseconds, a frame clamp, at most eight steps a frame with the backlog dropped, and drawing interpolated between the last two steps, so physics is identical at 30, 60, 120 and 144 FPS and a jump at 60 FPS moves smoothly (7.0 mm against 76.2 mm). |
+| [2. Spaces and units](ch002-spaces-and-units.md) | Written (`ec-space`; the per-realm feet check lands with `ec-migrate`) | Typed world, local, view, screen and grid points, crossing spaces only through named functions, with metres and grid units as `quantity` units; mixing them is a compile error, checked by six fixtures. |
+| [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md) | Written (`ec-state`) | Every realm's state built from the compiler's own initializers on native and browser hosts, checked byte for byte against native for 16 realm states, with the check proven sharp and a clock that can't freeze from zeroed memory. |
 | [4. Input becomes typed actions](ch004-input-becomes-typed-actions.md) | Unimplemented: design draft (`ec-input`) | Keys, touch, pads and tilt mapped by a table to typed actions (move, look, jump, run, act, zoom), sampled once per fixed step, so no press is lost or doubled and desktop and phone drive the same stream. |
 | [5. Replay a session exactly](ch005-replay-a-session-exactly.md) | Unimplemented: design draft (`ec-replay`) | A session record (identities, seed, initial digest, one action sample per step, periodic digests) that replays bit-identically natively and in the browser, with counter-based random streams and bisection to the first divergent step. |
 

@@ -1,0 +1,38 @@
+// book:begin example
+#load "../../verse/player.coax";
+#import "Basic";
+
+// A running jump drawn at 60 FPS on the 64 Hz step. Each frame, how much the drawn
+// height's per-frame move changes from the last frame's: drawn interpolated between the
+// last two steps, and drawn at the last step. Feet and camera, worst over the flight.
+// Tenths of a millimetre, rounded.
+tenths :: (metres: f32) -> int { return cast(int) (metres * 10000 + 0.5); }
+show :: (what: string, a: f32, b: f32) {
+  print("%: interpolated %.% mm, last step %.% mm\n", what, tenths(a) / 10, tenths(a) % 10, tenths(b) / 10, tenths(b) % 10);
+}
+main :: () {
+  w: World;
+  frame := cast(f32) (1.0 / 60.0);
+  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  q := p;
+  feet := 0.0f32; eye := 0.0f32; last_feet := 0.0f32; last_eye := 0.0f32;
+  py := 0.0f32; pdy := 0.0f32; pe := 0.0f32; pde := 0.0f32;
+  qy := 0.0f32; qdy := 0.0f32; qe := 0.0f32; qde := 0.0f32;
+  for k: 0..<40 {
+    p = advance_in(w, p, frame);
+    q = advance_in(w, q, frame);
+    y := verse_player_feet(p).y; e := verse_player_eye(p).y;                   // interpolated
+    ly := q.pos.y; le := q.target.y + orbit_offset(q).y * q.dist;             // the last step
+    if k >= 2 && !p.on_ground {
+      feet = hi(feet, abs((y - py) - pdy)); eye = hi(eye, abs((e - pe) - pde));
+      last_feet = hi(last_feet, abs((ly - qy) - qdy)); last_eye = hi(last_eye, abs((le - qe) - qde));
+    }
+    pdy = y - py; py = y; pde = e - pe; pe = e;
+    qdy = ly - qy; qy = ly; qde = le - qe; qe = le;
+  }
+  g := tenths(f32(GRAVITY) * frame * frame);
+  print("gravity alone changes a frame's move by %.% mm\n", g / 10, g % 10);
+  show("feet", feet, last_feet);
+  show("camera", eye, last_eye);
+}
+// book:end example

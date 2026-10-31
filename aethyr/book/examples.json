@@ -1,4 +1,45 @@
 {
   "schema": 1,
-  "examples": []
+  "examples": [
+    {
+      "source": "aethyr/examples/frame-rates.coax",
+      "chapter": "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+      "stdout": "aethyr/fixtures/frame-rates.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/jump-at-60.coax",
+      "chapter": "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+      "stdout": "aethyr/fixtures/jump-at-60.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/feet-in-every-space.coax",
+      "chapter": "aethyr/book/ch002-spaces-and-units.md",
+      "stdout": "aethyr/fixtures/feet-in-every-space.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/state-defaults.coax",
+      "chapter": "aethyr/book/ch003-state-starts-from-its-defaults.md",
+      "stdout": "aethyr/fixtures/state-defaults.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    }
+  ]
 }

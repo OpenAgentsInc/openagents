@@ -84,6 +84,7 @@ World :: struct {
 // host reads it as verse_player_act's number.
 Act :: enum u8 { idle; walking; running; airborne; }
 
+// book:begin state
 Player :: struct {
   pos: Vec3;            // feet, after the last step
   vel: Vec3;
@@ -119,6 +120,7 @@ Player :: struct {
   grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
   sliding: bool;       // on a floor too steep to stand on, sliding down it
 }
+// book:end state
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -575,6 +577,7 @@ step :: (w: World, p: Player, dt: f32) -> Player {
   return next;
 }
 
+// book:begin advance
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
 // the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
 // dropped, so a stall never makes a frame slower.
@@ -598,6 +601,7 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
   }
   return next;
 }
+// book:end advance
 
 verse_player_advance :: (p: Player, frame: f32) -> Player #export_c {
   w: World;
@@ -625,6 +629,7 @@ verse_player_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32
 // How far this frame is between the last two steps, in [0, 1].
 alpha :: (p: Player) -> f32 { return loop_alpha(p.clock); }
 
+// book:begin drawn
 // The feet and facing to draw this frame.
 verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.pos, alpha(p)); }
 verse_player_face :: (p: Player) -> f32 #export_c {
@@ -639,6 +644,7 @@ verse_player_eye :: (p: Player) -> Vec3 #export_c {
   d := lo(mix(p.prev_dist, p.dist, alpha(p)), p.dist);
   return Vec3.{x = at.x + o.x * d, y = at.y + o.y * d, z = at.z + o.z * d};
 }
+// book:end drawn
 verse_player_act :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.act; }
 
 // ---- Checks ----
@@ -1035,6 +1041,7 @@ same_step :: (a: Player, b: Player) -> bool {
   return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
     && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.target.y == b.target.y && a.dist == b.dist;
 }
+// book:begin stutter
 // No stutter at 60 FPS: the 64 Hz steps do not land one to a frame (some frames run two),
 // yet what is drawn moves smoothly. Through a jump's flight the feet drawn each frame change
 // speed by no more than gravity does in a frame plus the interpolation's error (measured
@@ -1074,6 +1081,7 @@ same_step :: (a: Player, b: Player) -> bool {
   }
   #assert worst > 3 * bound && worst_eye > 3 * eye_bound;
 }
+// book:end stutter
 
 #forall "a run and jump has the same states at 30, 60, 120 and 144 FPS" r: 0..<4 {
   fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;

@@ -60,4 +60,4 @@ same state left zeroed must differ, or the realm fails. 16 realm states pass
 (Belt, Dead Gears, Everglade, Fairy Forest, Garden, Ice Cream Man, Memorial,
 Orbit League, Hold the Stair, the villa and the pages with state defaults);
 a realm with no defaults has nothing to apply. `aethyr/loop.coax`'s clock
-also takes its default step on its first frame if it was zeroed.
+also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.

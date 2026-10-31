@@ -1,0 +1,23 @@
+// book:begin example
+#load "../../verse/player.coax";
+#import "Basic";
+
+// A player constructed natively takes its declared defaults. WebAssembly memory starts
+// zeroed instead, which coaxial_state_init fixes before the first frame. The clock is also
+// safe on its own: read from zeroed memory (no step, no clamp, no cap), it takes its
+// declared defaults on its first frame and steps as a constructed one does.
+main :: () {
+  made: [1] Player;
+  p := made[0];
+  print("constructed: on_ground %, camera % m out at phi %, pace %, grip %\n", p.on_ground, p.dist, p.phi, p.pace, p.grip);
+  print("constructed clock: step % ns, clamp % ns, at most % steps\n", p.clock.step_ns, p.clock.max_frame_ns, p.clock.max_steps);
+  zeroed := p.clock;
+  zeroed.step_ns = 0; zeroed.max_frame_ns = 0; zeroed.max_steps = 0;   // as zeroed memory reads it
+  k := loop_frame(zeroed, 1.0 / 64.0);
+  ok := loop_frame(p.clock, 1.0 / 64.0);
+  print("one 1/64 s frame, constructed clock: steps %, clamp % ns\n", ok.steps, ok.clock.max_frame_ns);
+  print("one 1/64 s frame, zeroed clock:      steps %, clamp % ns\n", k.steps, k.clock.max_frame_ns);
+  s := loop_frame(zeroed, 3.0);
+  print("a 3 s stall on the zeroed clock: steps %, overlong %\n", s.steps, s.clock.overlong);
+}
+// book:end example

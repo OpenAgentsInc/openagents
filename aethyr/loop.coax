@@ -17,6 +17,7 @@
 
 #module "aethyr.loop";
 
+// book:begin clock
 LOOP_SECOND :: 1000000000;        // nanoseconds
 LOOP_STEP_NS :: 15625000;         // 1/64 s, exact: the walking realms' step
 LOOP_MAX_FRAME_NS :: 250000000;   // the longest frame that counts
@@ -36,6 +37,7 @@ FrameClock :: struct {
   stalls: int;       // frames owed more than max_steps
   dropped_ns: int;   // backlog thrown away on those
 }
+// book:end clock
 
 // A clock stepping `step_ns` at a time (the default for none), with the default clamps.
 loop_clock :: (step_ns: int) -> FrameClock #export_c {
@@ -54,26 +56,32 @@ loop_ns :: (seconds: f64) -> int #export_c {
 // Accept one frame's time: refused if it is no time, clamped to the clock's longest frame,
 // then owed to the steps. The steps due are the whole steps owed, at most max_steps; a
 // backlog past that is dropped, keeping the part of a step it leaves.
+// book:begin accept
 loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock #export_c {
   next := c;
+  // A clock read from zeroed memory takes the defaults it was declared with.
   if c.step_ns <= 0 { next.step_ns = LOOP_STEP_NS; }
+  if c.max_frame_ns <= 0 { next.max_frame_ns = LOOP_MAX_FRAME_NS; }
+  if c.max_steps <= 0 { next.max_steps = LOOP_MAX_STEPS; }
   next.frames += 1;
   f := frame_ns;
   if f < 0 { next.refused += 1; f = 0; }
-  if f > c.max_frame_ns { next.overlong += 1; f = c.max_frame_ns; }
+  if f > next.max_frame_ns { next.overlong += 1; f = next.max_frame_ns; }
   next.carry_ns += f;
   next.due = next.carry_ns / next.step_ns;
-  if next.due > c.max_steps {
-    drop := (next.due - c.max_steps) * next.step_ns;
+  if next.due > next.max_steps {
+    drop := (next.due - next.max_steps) * next.step_ns;
     next.stalls += 1;
     next.dropped_ns += drop;
     next.carry_ns -= drop;
-    next.due = c.max_steps;
+    next.due = next.max_steps;
   }
   return next;
 }
+// book:end accept
 loop_accept :: (c: FrameClock, frame: f64) -> FrameClock #export_c { return loop_accept_ns(c, loop_ns(frame)); }
 
+// book:begin ran
 // How many steps to run now.
 loop_due :: (c: FrameClock) -> int #export_c { return c.due; }
 
@@ -98,6 +106,7 @@ loop_frame :: (c: FrameClock, frame: f64) -> FrameTick #export_c {
 loop_alpha :: (c: FrameClock) -> f32 #export_c {
   return cast(f32) (cast(f64) (c.carry_ns - c.due * c.step_ns) / cast(f64) c.step_ns);
 }
+// book:end ran
 
 // One step's time, and the simulation's time so far, in seconds.
 loop_step :: (c: FrameClock) -> f64 #export_c { return cast(f64) c.step_ns / f64(LOOP_SECOND); }
@@ -152,6 +161,24 @@ loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
   #assert loop_clock(1).step_ns == 1 && loop_clock(1000).step_ns == 1000;
 }
 
+#test "a clock read from zeroed memory steps as a constructed one does" {
+  c: FrameClock;
+  z := c; z.step_ns = 0; z.max_frame_ns = 0; z.max_steps = 0;
+  a := loop_accept_ns(z, LOOP_STEP_NS);
+  #assert a.step_ns == LOOP_STEP_NS && a.max_frame_ns == LOOP_MAX_FRAME_NS && a.max_steps == LOOP_MAX_STEPS;
+  #assert a.due == 1 && a.overlong == 0 && a.stalls == 0;
+  s := loop_accept_ns(z, 3 * LOOP_SECOND);
+  #assert s.overlong == 1 && s.due == LOOP_MAX_STEPS && s.stalls == 1;
+  #assert s.carry_ns + s.dropped_ns == LOOP_MAX_FRAME_NS;
+  // a negative clamp or cap is no clamp or cap either; a declared one is kept
+  n := c; n.max_frame_ns = -1; n.max_steps = -2;
+  #assert loop_accept_ns(n, LOOP_STEP_NS).max_frame_ns == LOOP_MAX_FRAME_NS && loop_accept_ns(n, LOOP_STEP_NS).max_steps == LOOP_MAX_STEPS;
+  d := c; d.max_frame_ns = 1; d.max_steps = 1;
+  #assert loop_accept_ns(d, 5).max_frame_ns == 1 && loop_accept_ns(d, 5).carry_ns == 1 && loop_accept_ns(d, 5).overlong == 1;
+  e := c; e.max_steps = 1;
+  #assert loop_accept_ns(e, 3 * LOOP_STEP_NS).due == 1 && loop_accept_ns(e, 3 * LOOP_STEP_NS).max_steps == 1;
+}
+
 #test "running pays the steps due" {
   c: FrameClock;
   a := loop_accept_ns(c, 2 * LOOP_STEP_NS + 7);
@@ -189,6 +216,7 @@ loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
   d.ticks = 120; #assert abs(loop_time(d) - 0.99999996) < 0.0000001;
 }
 
+// book:begin rates
 // The contract: a run's steps are the same whatever the frame rate. Fed five seconds in
 // frames of 30, 60, 120 or 144 a second, the clock has run floor(time / step) steps after
 // every frame, never more, and the time drawn, (ticks + alpha) * step, is the time fed.
@@ -207,3 +235,4 @@ loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
   }
   #assert c.frames == fps * 5 && c.ticks >= 319 && c.ticks <= 320;
 }
+// book:end rates

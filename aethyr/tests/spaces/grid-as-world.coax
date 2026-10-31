@@ -1,4 +1,6 @@
 // expect: E0317 a grid point where a world point is wanted: the figure drawn at floor height (grid_to_world)
+// book:begin fixture
 #load "../../space.coax";
 f :: (l: Lens, g: GridPoint) -> Seen { return world_to_screen(l, g); }
 main :: () {}
+// book:end fixture
