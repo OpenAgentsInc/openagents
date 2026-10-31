@@ -104,6 +104,8 @@ Input :: struct {
   // Aim assist (#8703): how far (radians) a shot may bend toward a creature
   // it nearly hit. A phone sets it; with a mouse it is 0 and shots never bend.
   assist: f32;
+  // Mid-dodge (#cf81): bolts and claws pass you by.
+  dodging: bool;
 }
 
 State :: struct {
@@ -559,6 +561,15 @@ dg_fire :: (g: Game) {
   } else {
     n := ifx g.mutant[ti].kind == BRUTE && !g.mutant[ti].severed then 18.0f32 else 40.0f32;
     dg_hit(g, t, ifx s.mode == CORE then n * 1.5 else n);
+  }
+  // It recoils along the shot (#3f12): hit on its left, it staggers right.
+  if ecs_alive(g.e, t) && ecs_has(g.e, t, C_MUTANT) {
+    d := dg_shot_dir(g);
+    l := sqrt(d.x * d.x + d.z * d.z);
+    if l > 0.01 {
+      push: f32 = ifx g.mutant[ti].kind == BRUTE then 0.12f32 else 0.3f32;
+      walk_body(g, ti, d.x / l * push, d.z / l * push, mutant_radius(g.mutant[ti]));
+    }
   }
 }
 
@@ -1041,7 +1052,7 @@ mutant_system :: (g: Game, dt: f32) {
     } else if d < 1.6 && m.attack <= 0 {
       m.attack = ifx m.kind == SKITTER then 0.8f32 else 1.2f32;
       g.mutant[i] = m;
-      dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e);
+      if !g.input[0].dodging { dg_damage(g, m.damage * (ifx g.st[0].cover && !firing then 0.35f32 else 1.0f32), e); }
     } else if m.kind == BRUTE && d < 19 && m.attack <= 0 && !dg_wall_ray(g, e, p) {
       m.attack = 2.8;
       g.mutant[i] = m;
@@ -1069,7 +1080,7 @@ bolt_system :: (g: Game, dt: f32) {
     walled := t <= 1;
     k := ifx walled then t else 1.0f32;
     end := v3(from.x + motion.x * k, from.y, from.z + motion.z * k);
-    if segment_distance(from, end, p) < 0.6 {
+    if segment_distance(from, end, p) < 0.6 && !g.input[0].dodging {
       g.pos[i] = end;
       emit(g, Event.{kind = EV_BOLT_STRUCK, at = end, flag = true});
       dg_damage(g, ifx g.st[0].cover && !firing then 4.0f32 else 17.0f32, end);
@@ -1765,6 +1776,36 @@ shot_hits :: (g: Game) -> int {
   aim_at(g, me, v3(0, 1.35, 20));
   g.input[0].assist = 0.07;
   #assert dg_shot(g).who == ECS_NONE;
+}
+
+#test "a creature hit on its left recoils to its right (#3f12)" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := dg_spawn_mutant(g, HOUND, 0, 0, -1);
+  i := slot_of(e);
+  g.yaw[i] = 0; g.mutant[i].stun = 1000;   // facing +z: its right is +x
+  before := g.pos[i];
+  aim_at(g, v3(-6, 0, 0), dg_part_at(g, i, 0));   // from its left
+  dg_fire(g);
+  #assert g.hp[i] < TYPE_HP[HOUND] || !ecs_alive(g.e, e);
+  #assert g.pos[i].x > before.x + 0.2 && abs(g.pos[i].z - before.z) < 0.05;
+}
+
+#test "dodging through a brute's bolt avoids it (#cf81)" {
+  for dodge: 0..<2 {
+    st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+    g.st[0].ally_time = 1000000;
+    clear_mutants(g);
+    me := v3(0, 0, 6);
+    g.pos[slot_of(dg_player(g))] = me;
+    b := dg_spawn_bolt(g, v3(0, 1.2, -2), v3(0, 0, 16));
+    for f: 0..<20 {
+      g.input[0] = Input.{aim_x = 0, aim_z = -1, dodging = dodge == 1};
+      dg_frame(g, 0.05);
+    }
+    #assert (dg_health(g) == 100) == (dodge == 1);
+  }
 }
 
 spawn_crowd :: (g: Game) {

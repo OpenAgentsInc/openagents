@@ -45,7 +45,7 @@ OBJECT_FLOATS :: 16;
 BOX_VERTICES :: 36;
 
 FX :: 64;
-FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9;
+FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10;
 
 OUTBOX_CAP :: 256;
 MSG_KEPT :: 4;           // host.js: what the realm's slot kept, on each visit
@@ -61,7 +61,7 @@ HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 
 HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024; HOLD_JUMP :: 2048;
 
 BTN_FIRE :: 0; BTN_RELOAD :: 1; BTN_COVER :: 2; BTN_MODE :: 3; BTN_LIFT :: 4; BTN_STUN :: 5;
-BTN_PAUSE :: 6; BTN_AGAIN :: 7; BTN_GALAXY :: 8; BTN_RESUME :: 9; BTN_JUMP :: 10; BUTTONS :: 11;
+BTN_PAUSE :: 6; BTN_AGAIN :: 7; BTN_GALAXY :: 8; BTN_RESUME :: 9; BTN_JUMP :: 10; BTN_DODGE :: 11; BUTTONS :: 12;
 
 LOOK_DRAG :: 0.0055;
 STICK :: 54.0;           // CSS pixels: the move stick's reach
@@ -72,7 +72,13 @@ RAISED :: 1.2;
 // Aim assist on touch (#8703): a shot bends at most this far (4 degrees)
 // toward a creature it nearly hit, and dragging the view slows to
 // ASSIST_SLOW while the crosshair crosses one.
-ASSIST :: 0.07; ASSIST_SLOW :: 0.65;           // seconds the cutter stays up after a shot: you face the crosshair
+ASSIST :: 0.07; ASSIST_SLOW :: 0.65;
+// Hit feel (#3f12): a kill holds the action HITSTOP seconds (under 80 ms);
+// each shot kicks the camera up KICK radians, settling at KICK_EASE a second.
+HITSTOP :: 0.06; KICK :: 0.022; KICK_EASE :: 0.2;           // seconds the cutter stays up after a shot: you face the crosshair
+// A dodge (#cf81): a short burst at DODGE_PACE of a run, bolts and claws
+// passing you by, then DODGE_WAIT before the next.
+DODGE_TIME :: 0.32; DODGE_WAIT :: 0.9; DODGE_PACE :: 1.5;
 COVER_PACE :: 0.43;      // crouched at cover you move at this share of a walk
 DG_WALLS :: 24; DG_BODIES :: 96;
 BODY_NEAR :: 8.0;        // creatures further than this from you can't touch you or the camera this frame
@@ -100,6 +106,7 @@ DeadGears :: struct {
   face: f32;                // the way you face: the crosshair with the cutter up, else the way you walk
   raised: f32;              // seconds the cutter stays up after a shot
   jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
+  dodge: f32; dodge_wait: f32; dodge_x: f32; dodge_y: f32;   // a dodge's time left, the wait, its way
   // What the controller walks among this frame: the hull, the cover, the
   // reactor and the crates at rest (pc.WALL numbers each), and the creatures
   // and the support engineer (pc.BODY numbers each).
@@ -118,6 +125,8 @@ DeadGears :: struct {
   fire_flash: f32; shots: int; hits: int; hit_flash: f32; hurt: f32;
   kill_flash: f32;          // your shot just killed (#55e7): the crosshair's ticks go red
   shot_who: int;            // what your last shot hit
+  hitstop: f32;             // a kill holds the action this long (#3f12)
+  kick: f32;                // the camera's kick from the last shot, radians
   toast: [64] u8; toast_n: int; toast_t: f32;
   alarm: f32;
   deck_hour: f32; pinned_hour: f32; spawn_n: int; spawned: bool;
@@ -474,6 +483,7 @@ deadgears_key :: (s: [] DeadGears, key: int, mods: int) -> bool #export_c {
   if key == 'q' || key == 'Q' { done := act(s, BTN_MODE); return true; }
   if key == 'g' || key == 'G' { done := act(s, BTN_LIFT); return true; }
   if key == 't' || key == 'T' { done := act(s, BTN_STUN); return true; }
+  if key == 'v' || key == 'V' { done := start_dodge(s); return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -522,6 +532,7 @@ deadgears_pointer :: (s: [] DeadGears, x: f32, y: f32, phase: int, kind: int, id
       return true;
     }
     if b == BTN_JUMP { s[0].jump_tap = playing(s); return true; }   // a jump goes on the touch, not the let-go
+    if b == BTN_DODGE { done := start_dodge(s); return true; }      // so does a dodge
     if b >= 0 { s[0].press = b; s[0].press_id = id; return true; }
     if !playing(s) { return false; }
     if kind == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
@@ -623,6 +634,7 @@ aim :: (s: [] DeadGears) {
   g.input[0].from = shoulder_at(s);
   g.input[0].dir = view_dir(s);
   g.input[0].assist = ifx s[0].touch then f32(ASSIST) else 0.0f32;   // thumbs only (#8703)
+  g.input[0].dodging = s[0].dodge > 0;
 }
 
 // Stands you at p facing yaw, the camera behind you (a start, Again, a save).
@@ -694,16 +706,22 @@ walk :: (s: [] DeadGears, dt: f32) {
   g := game(s);
   h := s[0].held;
   cover := g.st[0].cover;
+  dodging := s[0].dodge > 0;
   pad := sqrt(s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y);
-  run := pc.verse_runs(h & HOLD_RUN != 0, pad > 0.8, s[0].pad_x, s[0].pad_y) && !cover;
-  jump := (h & HOLD_JUMP != 0 || s[0].jump_tap) && !cover;
+  run := (pc.verse_runs(h & HOLD_RUN != 0, pad > 0.8, s[0].pad_x, s[0].pad_y) && !cover) || dodging;
+  jump := (h & HOLD_JUMP != 0 || s[0].jump_tap) && !cover && !dodging;
   s[0].jump_tap = false;
-  s[0].pl = pc.verse_player_input(s[0].pl, hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
-                                  s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
+  if dodging {
+    s[0].pl = pc.verse_player_input(s[0].pl, s[0].dodge_x, s[0].dodge_y, 0, 0, true, false, 0, 0);
+  } else {
+    s[0].pl = pc.verse_player_input(s[0].pl, hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
+                                    s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
+  }
   s[0].pl.theta = wrap_angle(s[0].yaw + f32(PI));   // it walks by the camera
-  s[0].pl.pace = ifx cover then f32(COVER_PACE) else 1.0f32;
+  s[0].pl.pace = ifx dodging then f32(DODGE_PACE) else ifx cover then f32(COVER_PACE) else 1.0f32;
   gather_world(s);
   from := s[0].feet;
+  going := s[0].pl.vel;
   s[0].pl = pc.advance_in(the_world(s), s[0].pl, dt);
   f := pc.verse_player_feet(s[0].pl);
   if finite(f.x) && finite(f.y) && finite(f.z) { s[0].feet = v3(f.x, f.y, f.z); }
@@ -711,10 +729,33 @@ walk :: (s: [] DeadGears, dt: f32) {
   s[0].face = pc.verse_player_face(s[0].pl);
   moved := flat(from, s[0].feet);
   s[0].walking = ifx dt > 0 then moved / dt else 0.0f32;
+  // Run into cover and you crouch behind it (#cf81).
+  speed := sqrt(going.x * going.x + going.z * going.z);
+  if !cover && !dodging && speed > 1.5 && dg_near_cover(g, s[0].feet) {
+    ahead := v3(s[0].feet.x + going.x / speed * 0.55, 0, s[0].feet.z + going.z / speed * 0.55);
+    if dg_blocked(g, ahead.x, ahead.z, 0.25) && dg_toggle_cover(g) { track_tally(s[0].track[..], "cover", ""); }
+  }
   track_walk(s[0].track[..], cast(f64) moved);
   g.pos[me_slot(g)] = s[0].feet;
   g.yaw[me_slot(g)] = s[0].face;
 }
+// A dodge (#cf81) the way you are moving, or back when you stand still;
+// it takes you out of cover. False while the last one is still settling.
+start_dodge :: (s: [] DeadGears) -> bool {
+  g := game(s);
+  if !playing(s) || s[0].dodge_wait > 0 || !s[0].pl.on_ground { return false; }
+  h := s[0].held;
+  x := hold_axis(h, HOLD_RIGHT, HOLD_LEFT) + s[0].pad_x;
+  y := hold_axis(h, HOLD_FORWARD, HOLD_BACK) + s[0].pad_y;
+  l := sqrt(x * x + y * y);
+  if l < 0.2 { x = 0; y = -1; l = 1; }
+  s[0].dodge_x = x / l; s[0].dodge_y = y / l;
+  s[0].dodge = f32(DODGE_TIME); s[0].dodge_wait = f32(DODGE_TIME + DODGE_WAIT);
+  g.st[0].cover = false;
+  track_tally(s[0].track[..], "dodge", "");
+  return true;
+}
+
 // The cutter is up: fire held, or a shot in the last RAISED seconds.
 raised :: (s: [] DeadGears) -> bool { return s[0].raised > 0 || s[0].held & HOLD_FIRE != 0 || s[0].fire_touch >= 0; }
 
@@ -745,18 +786,19 @@ heard :: (s: [] DeadGears, from: int) {
     e := g.events[i];
     dg_tally(s, e.kind, e.flag);
     if e.kind == EV_SHOT {
-      s[0].shots += 1; s[0].fire_flash = 0.1; s[0].raised = f32(RAISED);
+      s[0].shots += 1; s[0].fire_flash = 0.1; s[0].raised = f32(RAISED); s[0].kick = f32(KICK);
       if e.flag {
         s[0].hits += 1; s[0].hit_flash = 0.18; s[0].shot_who = e.who;
         effect(s, FX_SPARK, e.to, e.at, 0.28, 1);
         effect(s, FX_MARK, e.to, e.at, 0.5, 1);   // where it landed (#55e7)
+        effect(s, FX_FLUID, e.to, e.at, 0.55, 1);  // and what it spilled (#3f12)
       }
     } else if e.kind == EV_BEAMED && e.flag {
       effect(s, FX_SPARK, e.to, e.at, 0.2, 0.7);
     } else if e.kind == EV_HURT {
       s[0].hurt = hi(s[0].hurt, lo(1, 0.35 + e.amount / 25));
     } else if e.kind == EV_KILLED {
-      if e.who == s[0].shot_who && s[0].hit_flash > 0 { s[0].kill_flash = 0.4; }
+      if e.who == s[0].shot_who && s[0].hit_flash > 0 { s[0].kill_flash = 0.4; s[0].hitstop = f32(HITSTOP); }
       effect(s, FX_DOWN, v3(e.at.x, 0.02, e.at.z), e.at, 0.7, 1);
     } else if e.kind == EV_WAVE {
       s[0].alarm = 4;
@@ -1063,7 +1105,7 @@ draw_world :: (s: [] DeadGears) {
     duck := s[0].ally_speed < 0.3 && ((dg_near_cover(g, g.pos[a]) && dg_alive_mutants(g) > 0) || dg_support_repairing(g));
     engineer(s, g.pos[a], g.yaw[a], duck, s[0].ally_speed, true, 100);
   }
-  engineer(s, s[0].feet, s[0].face, st.cover, s[0].walking, false, dg_health(g));
+  engineer(s, s[0].feet, s[0].face, st.cover || s[0].dodge > 0, s[0].walking, false, dg_health(g));
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
     m := g.mutant[i];
@@ -1141,6 +1183,18 @@ effects :: (s: [] DeadGears) {
       m := 0.09 * (1 - k * 0.5);
       box(s, f.at, v3(m * 2, 0.025, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
       box(s, f.at, v3(0.025, m * 2, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
+    } else if f.kind == FX_FLUID {
+      // Dark drops thrown back along the shot, falling to the deck.
+      back := unit_or(sub(f.to, f.at), v3(0, 0, 1));
+      for q: 0..<6 {
+        a := f32(q) * 1.047 + f32(i);
+        sp := 0.6 + f32(q % 3) * 0.25;
+        x := f.at.x + (back.x * 0.5 + cos(a) * 0.35) * sp * k;
+        z := f.at.z + (back.z * 0.5 + sin(a) * 0.35) * sp * k;
+        y := hi(0.02, f.at.y + 0.9 * k - 4.9 * k * k * 0.3);
+        d := 0.045 * (1 - k * 0.4);
+        box(s, v3(x, y, z), v3(d, d, d), v3(0.32, 0.03, 0.05), 0.3 * fade, a, a, 0);
+      }
     } else if f.kind == FX_LIFT {
       for q: 0..<6 {
         a := f32(q) * 1.047 + k * 3;
@@ -1287,6 +1341,7 @@ camera :: (s: [] DeadGears, w: f32, h: f32) {
   eye := add(at, back);
   eye.x = clamp(eye.x, -15.6, 15.6); eye.z = clamp(eye.z, -23.6, 13.6);
   s[0].eye = eye; s[0].at = add(at, times(f, 4));
+  s[0].at.y += s[0].kick * 4;   // the shot's kick (#3f12): the view only, not the aim
 }
 
 view :: (s: [] DeadGears, width: f32, height: f32, u: [] f32) {
@@ -1517,6 +1572,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     n = hud_button(s, u, out, n, BTN_COVER, Rect.{x0 = col, y0 = fire.y1 - sb, x1 = col + sb, y1 = fire.y1}, "COVER", 6 * k, st.cover, true);
     jc := col - gap - sb;
     n = hud_button(s, u, out, n, BTN_JUMP, Rect.{x0 = jc, y0 = fire.y1 - sb, x1 = jc + sb, y1 = fire.y1}, "JUMP", 6 * k, false, !st.cover && s[0].pl.on_ground);
+    n = hud_button(s, u, out, n, BTN_DODGE, Rect.{x0 = jc, y0 = fire.y0, x1 = jc + sb, y1 = fire.y0 + sb}, "DODGE", 6 * k, s[0].dodge > 0, s[0].dodge_wait <= 0 && s[0].pl.on_ground);
     n = hud_button(s, u, out, n, BTN_RELOAD, Rect.{x0 = col, y0 = fire.y0, x1 = col + sb, y1 = fire.y0 + sb}, "RELOAD", 5.5 * k, false, st.reload <= 0 && st.ammo < 12);
     row := fire.y0 - gap - sb;
     holding := dg_held_alive(g);
@@ -1540,7 +1596,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
     mn := put(mline[..], 0, "CUTTER · ");
     mn = put(mline[..], mn, mode_word(st.mode));
     n = words(s, out, n, cast(string) mline[0..<mn], ab.x0 + 16 * k, ab.y1 - 12 * k, 7 * k, 0.8, AMBER_R, AMBER_G, AMBER_B);
-    keys := ifx in_repair then "WASD MOVE · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD MOVE · SPACE JUMP · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
+    keys := ifx in_repair then "WASD MOVE · DRAG TURNS · HOLD E AT THE REACTOR TO REPAIR · ESC PAUSE" else "WASD MOVE · SPACE JUMP · V DODGE · DRAG TURNS · F FIRE · R RELOAD · C COVER · Q MODE · G LIFT · T STUN · ESC PAUSE";
     hs := 7 * k;
     room := ab.x0 - 2 * gut - 24 * k;
     lw := text_width(keys, hs);
@@ -1593,7 +1649,10 @@ step_fight :: (s: [] DeadGears, t: f32) {
     g.input[0].repairing = (s[0].held & HOLD_REPAIR != 0 || s[0].repair_touch >= 0) && g.st[0].phase == REPAIR;
     ally := dg_support(g);
     before := ifx ally != ECS_NONE then g.pos[slot_of(ally)] else v3(0, 0, 0);
-    dg_frame(g, t);
+    // A kill holds the action a moment (#3f12); you still look and move.
+    rules_dt := t;
+    if s[0].hitstop > 0 { s[0].hitstop = hi(0, s[0].hitstop - t); rules_dt = 0; }
+    dg_frame(g, rules_dt);
     heard(s, 0);
     if ally != ECS_NONE && t > 0 {
       now := g.pos[slot_of(ally)];
@@ -1605,6 +1664,9 @@ step_fight :: (s: [] DeadGears, t: f32) {
     s[0].raised = hi(0, s[0].raised - t);
     s[0].hit_flash = hi(0, s[0].hit_flash - t);
     s[0].kill_flash = hi(0, s[0].kill_flash - t);
+    s[0].kick = hi(0, s[0].kick - t * f32(KICK_EASE));
+    s[0].dodge = hi(0, s[0].dodge - t);
+    s[0].dodge_wait = hi(0, s[0].dodge_wait - t);
     s[0].hurt = hi(0, s[0].hurt - t * 1.6);
     s[0].alarm = hi(0, s[0].alarm - t);
     for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += t; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
@@ -2014,6 +2076,62 @@ reticle_over :: (s: [] DeadGears) -> bool {
   n = deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
   #assert s[0].kill_flash > 0;
 }
+#test "a kill holds the action under 80 ms, and a shot kicks the view (#3f12)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  g.st[0].ally_time = 1000000;
+  i := -1;
+  for j: 0..<ecs_high(g.e) { if alive_mutant(g, j) && i < 0 { i = j; } }
+  g.pos[i] = v3(0, 0, 3); g.mutant[i].stun = 1000; g.hp[i] = 1;
+  aim_bot(s[..], i);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  used := deadgears_key(s[..], 'f', 0);
+  n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  #assert s[0].hitstop > 0 && s[0].hitstop < 0.08 && s[0].kick > 0;
+  // Held: another creature does not move while it lasts.
+  o := -1;
+  for j: 0..<ecs_high(g.e) { if alive_mutant(g, j) && o < 0 { o = j; } }
+  at := g.pos[o];
+  stopped := 0.0f32;
+  while s[0].hitstop > 0 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016); stopped += 0.016; }
+  #assert stopped < 0.08 && flat(g.pos[o], at) < 0.001;
+  for q: 0..<5 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016); }
+  #assert flat(g.pos[o], at) > 0.01;   // and then the fight goes on
+  // Drops at the hit.
+  fluid := false;
+  for q: 0..<FX { if s[0].fx[q].kind == FX_FLUID { fluid = true; } }
+  #assert fluid;
+}
+
+#test "V dodges a short way, then waits; running into cover crouches you behind it (#cf81)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  stand_at(s[..], v3(8, 0, 6), f32(PI));   // facing -z, open deck to your right
+  n := frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  from := s[0].feet;
+  #assert deadgears_key(s[..], 'd', 0) && deadgears_key(s[..], 'v', 0);
+  #assert s[0].dodge > 0;
+  n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016);
+  #assert g.input[0].dodging;
+  for f: 0..<20 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.016); }
+  #assert s[0].dodge == 0 && !g.input[0].dodging;
+  #assert s[0].feet.x - from.x < -1.5 || s[0].feet.x - from.x > 1.5;   // well to the side
+  #assert !start_dodge(s[..]);   // not again so soon
+  #assert deadgears_key_up(s[..], 'd', 0);
+  // Run at the low cover at (-5, 3): you crouch behind it.
+  stand_at(s[..], v3(-5, 0, 7), f32(PI));
+  #assert !g.st[0].cover;
+  #assert deadgears_key(s[..], 'w', 0);
+  for f: 0..<60 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); if g.st[0].cover { break; } }
+  #assert g.st[0].cover && s[0].feet.z > 3;
+}
+
 // p is on (or just by) one of mutant slot i's body parts.
 dg_part_box_near :: (g: Game, i: int, p: Point) -> bool {
   for k: 0..<PARTS {
