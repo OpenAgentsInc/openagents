@@ -1,0 +1,558 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "verse-native-gpu",
+    "title": "Native GPU Verse: Coax everything",
+    "body": "Verse as a native desktop app on the GPU, with Coax writing all of it, shaders included: no browser, no WGSL, no outside shader toolchain. Owner decision 2026-10-30.",
+    "spec": "docs/verse/native-gpu.md",
+    "labels": [
+      "engine",
+      "native-gpu"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "native-gpu-foundation",
+      "title": "Coax on the GPU through Vulkan",
+      "body": "SPIR-V from Coax, compute then graphics, a window and a boot session, and the realm contract on Vulkan (phases G0 to G4).",
+      "parent": "verse-native-gpu"
+    },
+    {
+      "slug": "everglade-native",
+      "title": "Everglade native",
+      "body": "Everglade's shaders in Coax and the realm playable natively at 60 fps (phase G5).",
+      "parent": "verse-native-gpu"
+    },
+    {
+      "slug": "one-shader-source",
+      "title": "One shader source",
+      "body": "Coax emits WGSL too, and every realm leaves hand-written WGSL behind (phase G6).",
+      "parent": "verse-native-gpu"
+    },
+    {
+      "slug": "native-features",
+      "title": "What only native can do",
+      "body": "Ray tracing, tensor-core denoising and upscaling, mesh shaders, bindless resources, streaming, async compute, HDR and VRR, native threads, Psionic in-process, and the Mac app.",
+      "parent": "verse-native-gpu"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "gpu-spirv-writer",
+      "parent": "native-gpu-foundation",
+      "title": "A SPIR-V writer in Coax, and the first module built with it",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "verse/gpu/spirv.coax: append SPIR-V instructions to a [] u32, hand out ids, fill the header's bound, refuse (never truncate) a module that doesn't fit. The first module is a compute kernel (a grade with a disc) with the same pixel computed on the CPU in Coax for the host's check. No outside shader compiler.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "coax/bin/coax test verse/gpu/spirv.coax passes",
+        "The module's instructions walk exactly to its end (sp_walk)"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-vulkan-compute",
+      "parent": "native-gpu-foundation",
+      "title": "Headless Vulkan compute on the RTX 4080 from Coax-built SPIR-V",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "verse/gpu/vk.c: a C host that creates a Vulkan device with no display, builds the shader module from vg_grade_module's words, dispatches over an image, reads the buffer back and compares every pixel with vg_grade_pixel. Runs with the Khronos validation layers on when they are present (a test aid only).\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "verse/gpu/build.sh and verse/gpu/vk-check on coderos-4080 print 0 mismatched pixels over a 1920x1080 image",
+        "The run with VK_LAYER_KHRONOS_validation reports no validation errors",
+        "No display, VT or DRM master is touched"
+      ],
+      "blocked_by": [
+        "gpu-spirv-writer"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-coax-spirv",
+      "parent": "native-gpu-foundation",
+      "title": "coax spirv: the scalar f32/bool subset lowered to SPIR-V by Coax",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "The subset coax metal accepts (scalar f32/bool, locals, if/else, return, choices, calls without recursion, the math intrinsics through GLSL.std.450) lowered to SPIR-V functions. The lowering is Coax in coax/lib/compiler/, using the writer; the C++ driver only hands over the checked tree and writes the words, as for coax cuda. Refusals name what is outside the subset.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "coax/lib/compiler/",
+        "coax/src/",
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "coax/bin/coax spirv verse/light.coax writes a module that passes validation",
+        "Every #export_c function of verse/light.coax, run on the GPU over a 64x64 grid of inputs, agrees with its C build within 2 ulp",
+        "coax/build.sh test passes"
+      ],
+      "blocked_by": [
+        "gpu-vulkan-compute"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-vulkan-graphics",
+      "parent": "native-gpu-foundation",
+      "title": "Vulkan graphics offscreen: vertex and fragment entry points from Coax",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Vertex and fragment entry points in the SPIR-V lowering (inputs, outputs, builtins), and a host path that renders a full-screen pass and an instanced stroke pass into an offscreen image and reads it back.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "coax/lib/compiler/"
+      ],
+      "acceptance": [
+        "A frame of Star Catcher's sky (verse/kms/starcatch-light.coax) drawn on the GPU matches the CPU frame from verse/kms --headless within 1/255 per channel",
+        "Validation layers report no errors"
+      ],
+      "blocked_by": [
+        "gpu-coax-spirv"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-window",
+      "parent": "native-gpu-foundation",
+      "title": "The desktop app: a Vulkan window on Wayland",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "A Wayland surface and swapchain in the C host (xdg-shell, full screen and windowed, resize), presenting the offscreen pipeline's frames; keyboard and pointer from the seat.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "On coderos-4080 the window runs at the display's rate (60 Hz on DP-1) for 60 s with no dropped frames reported by the host",
+        "Run only when the owner asks; it opens a window on his desktop"
+      ],
+      "blocked_by": [
+        "gpu-vulkan-graphics"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-display-session",
+      "parent": "native-gpu-foundation",
+      "title": "A boot session: Vulkan straight to the screen (VK_KHR_display)",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "The same host presenting with VK_KHR_display and input from evdev, as a CoderOS session that boots into Verse with no desktop. Proved on a screen nobody is using.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "A capture of the presented image (not a DevTools screenshot) shows the realm",
+        "Escape and a time limit always return the screen"
+      ],
+      "blocked_by": [
+        "gpu-window"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-realm-host",
+      "parent": "native-gpu-foundation",
+      "title": "The realm contract on Vulkan: the WebGPU half of host.js in C",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Vertex and uniform buffers, textures and samplers, asset packs from disk, frame pacing, input, audio and the inbox/outbox of the realm faces, so a realm's -face.c runs natively.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "Star Catcher runs natively on the GPU with its light in Coax at 60 fps on coderos-4080",
+        "Its #test checks still pass"
+      ],
+      "blocked_by": [
+        "gpu-window"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-shader-language",
+      "parent": "native-gpu-foundation",
+      "title": "What shaders need from Coax: vectors, sampling, declared GPU resources",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Vector types or a checked vector library, texture sampling intrinsics and GPU resource declarations (spec section 15), in the spec, grammar and checker, each with checks and refusals, lowered by coax spirv and coax metal.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "coax/"
+      ],
+      "acceptance": [
+        "coax/spec.md and coax/grammar.ebnf describe them",
+        "coax/build.sh test passes with new #test cases for each form",
+        "verse/light.coax or a realm light uses them"
+      ],
+      "blocked_by": [
+        "gpu-coax-spirv"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "everglade-native-world",
+      "parent": "everglade-native",
+      "title": "Everglade's world pass in Coax",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "everglade.wgsl's world shading (ground, water, foliage, characters, sky, fog) rewritten as Coax procedures, pass by pass, drawn by the Vulkan realm host.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Each ported pass matches a headless-Chrome golden frame of the web build within a stated tolerance",
+        "coax test passes on the new light files"
+      ],
+      "blocked_by": [
+        "gpu-realm-host",
+        "gpu-shader-language"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "everglade-native-fx",
+      "parent": "everglade-native",
+      "title": "Everglade's effects pass in Coax",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "everglade-fx.wgsl (spells, rain, particles, HUD strokes) as Coax procedures on the Vulkan host.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "Golden frames with spells and rain match the web build within tolerance"
+      ],
+      "blocked_by": [
+        "everglade-native-world"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "everglade-native-play",
+      "parent": "everglade-native",
+      "title": "Everglade native and playable at 60 fps",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "The whole realm natively: input, audio, the character chat and world list over the network (sockets and the approved TLS), the saved place, at 60 fps on the 4080.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "The owner plays it on coderos-4080 in place of the browser kiosk",
+        "Frame times stay under 16.7 ms p95 over a 5 minute walk"
+      ],
+      "blocked_by": [
+        "everglade-native-fx"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-coax-wgsl",
+      "parent": "one-shader-source",
+      "title": "Coax emits WGSL: one shader source for web and native",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "WGSL from the same checked Coax as SPIR-V and Metal, replacing coax/web/wgsl.py, so the web build draws with the Coax light.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "coax/",
+        "coax/web/"
+      ],
+      "acceptance": [
+        "Star Catcher and Everglade on openagents.com draw from Coax-emitted WGSL with unchanged golden frames",
+        "coax/web/wgsl.py is deleted"
+      ],
+      "blocked_by": [
+        "gpu-coax-spirv"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "realms-native",
+      "parent": "one-shader-source",
+      "title": "Every realm native, with no hand-written WGSL left",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Move the remaining realms' WGSL into Coax light files, realm by realm; split into one task per realm when started.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "apps/openagents-web/",
+        "verse/"
+      ],
+      "acceptance": [
+        "No *.wgsl written by hand remains in apps/openagents-web/",
+        "Each realm's golden frames are unchanged"
+      ],
+      "blocked_by": [
+        "gpu-coax-wgsl",
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-ray-tracing",
+      "parent": "native-features",
+      "title": "Hardware ray tracing: shadows and reflections in Everglade's water",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Ray queries on the RT cores (VK_KHR_ray_query, acceleration structures built by the host from the realm's geometry) for sharp-to-soft shadows and water reflections, written in Coax and lowered by coax spirv.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "coax/lib/compiler/",
+        "apps/openagents-web/"
+      ],
+      "acceptance": [
+        "Everglade's water reflects the town and its shadows come from rays, at 60 fps on the 4080",
+        "A golden frame shows it; the web build keeps its current look"
+      ],
+      "blocked_by": [
+        "everglade-native-play"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-tensor-denoise-upscale",
+      "parent": "native-features",
+      "title": "Tensor cores in the frame: a Coax denoiser and upscaler",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Cooperative-matrix shaders written in Coax for a ray-tracing denoiser and a temporal upscaler (render lower, show sharp at full resolution), sharing kernels with Psionic where they fit.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "psionic/"
+      ],
+      "acceptance": [
+        "Everglade at 2560x1440 renders internally at 1280x720 and upscales, with a measured image difference against native resolution",
+        "Frame time drops by a measured amount"
+      ],
+      "blocked_by": [
+        "gpu-ray-tracing"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-mesh-shaders",
+      "parent": "native-features",
+      "title": "Mesh shaders for dense geometry",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Task and mesh shader entry points in coax spirv and a meshlet path in the host, so forests and towns draw many times the geometry at the same frame time.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "coax/lib/compiler/"
+      ],
+      "acceptance": [
+        "A dense Everglade forest scene draws at least 4x the triangles of the web build at 60 fps"
+      ],
+      "blocked_by": [
+        "everglade-native-play"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-bindless",
+      "parent": "native-features",
+      "title": "Bindless textures and materials",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Descriptor indexing so a scene binds thousands of textures and materials at once.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "A realm draws with more than 1,000 distinct textures in one frame"
+      ],
+      "blocked_by": [
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-streaming",
+      "parent": "native-features",
+      "title": "All the video memory, streamed from disk",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Asset packs streamed from disk into the 16 GB of video memory as you move, with budgets and eviction.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "A walk across Everglade loads high-resolution packs without a hitch over 16.7 ms"
+      ],
+      "blocked_by": [
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-async-compute",
+      "parent": "native-features",
+      "title": "Async compute: simulation beside drawing",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "A second queue for physics, particles and water simulation running while the frame draws.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "Particle or water simulation moves to the compute queue with a measured frame-time gain"
+      ],
+      "blocked_by": [
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-hdr-vrr",
+      "parent": "native-features",
+      "title": "HDR, variable refresh and our own frame pacing",
+      "size": "M",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "HDR swapchains where the display supports them, VRR and high refresh, and frame pacing owned by the host.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/"
+      ],
+      "acceptance": [
+        "On an HDR or VRR display the host reports the mode and holds its pacing target"
+      ],
+      "blocked_by": [
+        "gpu-window"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-native-threads",
+      "parent": "native-features",
+      "title": "The realm's CPU work on every core",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "Coax jobs (spec section 12) on native threads for simulation and animation, deterministic across worker counts.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "coax/",
+        "verse/"
+      ],
+      "acceptance": [
+        "The same replay with 1, 2, 4 and 8 workers gives identical results",
+        "A realm's simulation step is measurably faster on 28 cores"
+      ],
+      "blocked_by": [
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-psionic-shared",
+      "parent": "native-features",
+      "title": "Psionic and the renderer in one process, on one GPU",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "A model's output written into a GPU buffer the renderer reads (characters' speech, animation or hand tracking), with no copy and no network hop.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "psionic/"
+      ],
+      "acceptance": [
+        "A character in a native realm is driven by a Psionic model in the same process, with the shared buffer measured as copy-free"
+      ],
+      "blocked_by": [
+        "everglade-native-play"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "gpu-metal-desktop",
+      "parent": "native-features",
+      "title": "The Mac desktop app over Metal",
+      "size": "L",
+      "labels": [
+        "engine",
+        "native-gpu"
+      ],
+      "body": "The same realm host contract over Metal on macOS, from coax metal, so realms run natively on Macs.\n\nPlan: docs/verse/native-gpu.md",
+      "files": [
+        "verse/gpu/",
+        "apps/"
+      ],
+      "acceptance": [
+        "Star Catcher and Everglade run natively on a Mac at the display's rate"
+      ],
+      "blocked_by": [
+        "gpu-realm-host"
+      ],
+      "blocks": []
+    }
+  ]
+}

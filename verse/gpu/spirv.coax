@@ -1,0 +1,253 @@
+// SPIR-V from Coax (docs/verse/native-gpu.md, phase G0): a writer for the
+// binary form Vulkan takes, and the first module built with it. The host
+// (verse/gpu/vk.c) asks for the words and hands them to the driver; no
+// outside shader compiler is involved.
+//
+// The writer appends instructions to a caller's [] u32 and hands out ids.
+// A full view or a bad operand count turns `ok` off; the module is then
+// refused, never truncated. The header's id bound is filled in by sp_end.
+//   coax/bin/coax test verse/gpu/spirv.coax
+
+SP_MAGIC :: 0x07230203;
+SP_VERSION :: 0x00010300;   // SPIR-V 1.3: Vulkan 1.1 and later
+
+// Opcodes this file uses (SPIR-V 1.3 specification, section 3.49).
+OP_CAPABILITY :: 17; OP_MEMORY_MODEL :: 14; OP_ENTRY_POINT :: 15; OP_EXECUTION_MODE :: 16;
+OP_DECORATE :: 71; OP_MEMBER_DECORATE :: 72;
+OP_TYPE_VOID :: 19; OP_TYPE_BOOL :: 20; OP_TYPE_INT :: 21; OP_TYPE_FLOAT :: 22; OP_TYPE_VECTOR :: 23;
+OP_TYPE_RUNTIME_ARRAY :: 29; OP_TYPE_STRUCT :: 30; OP_TYPE_POINTER :: 32; OP_TYPE_FUNCTION :: 33;
+OP_CONSTANT :: 43; OP_VARIABLE :: 59;
+OP_FUNCTION :: 54; OP_FUNCTION_END :: 56; OP_LABEL :: 248; OP_RETURN :: 253;
+OP_LOAD :: 61; OP_STORE :: 62; OP_ACCESS_CHAIN :: 65; OP_COMPOSITE_EXTRACT :: 81;
+OP_CONVERT_F_TO_U :: 109; OP_CONVERT_U_TO_F :: 112;
+OP_IADD :: 128; OP_IMUL :: 132; OP_FADD :: 129; OP_FSUB :: 131; OP_FMUL :: 133; OP_FDIV :: 136;
+OP_LOGICAL_AND :: 167; OP_ULESS_THAN :: 176; OP_SELECT :: 169; OP_FORD_LESS_THAN :: 184;
+OP_SHIFT_LEFT_LOGICAL :: 196; OP_BITWISE_OR :: 197;
+OP_SELECTION_MERGE :: 247; OP_BRANCH :: 249; OP_BRANCH_CONDITIONAL :: 250;
+
+// Enumerants.
+CAP_SHADER :: 1;
+ADDRESSING_LOGICAL :: 0; MEMORY_GLSL450 :: 1;
+MODEL_GL_COMPUTE :: 5; MODE_LOCAL_SIZE :: 17;
+DEC_BLOCK :: 2; DEC_ARRAY_STRIDE :: 6; DEC_BUILTIN :: 11; DEC_BINDING :: 33; DEC_DESCRIPTOR_SET :: 34; DEC_OFFSET :: 35;
+BUILTIN_GLOBAL_INVOCATION_ID :: 28;
+SC_INPUT :: 1; SC_PUSH_CONSTANT :: 9; SC_STORAGE_BUFFER :: 12;
+
+Spv :: struct { n: int; next: u32; ok: bool; }
+
+sp_w :: (s: [] Spv, out: [] u32, w: u32) {
+  if s[0].n < 0 || s[0].n >= out.count { s[0].ok = false; return; }
+  out[s[0].n] = w;
+  s[0].n += 1;
+}
+sp_id :: (s: [] Spv) -> u32 { id := s[0].next; s[0].next += 1; return id; }
+// An instruction's first word: its word count and its opcode.
+sp_head :: (s: [] Spv, out: [] u32, op: u32, words: int) {
+  if words < 1 || words > 65535 { s[0].ok = false; return; }
+  sp_w(s, out, (cast(u32) words << 16) | op);
+}
+sp1 :: (s: [] Spv, out: [] u32, op: u32, a: u32) { sp_head(s, out, op, 2); sp_w(s, out, a); }
+sp2 :: (s: [] Spv, out: [] u32, op: u32, a: u32, b: u32) { sp_head(s, out, op, 3); sp_w(s, out, a); sp_w(s, out, b); }
+sp3 :: (s: [] Spv, out: [] u32, op: u32, a: u32, b: u32, c: u32) {
+  sp_head(s, out, op, 4); sp_w(s, out, a); sp_w(s, out, b); sp_w(s, out, c);
+}
+sp4 :: (s: [] Spv, out: [] u32, op: u32, a: u32, b: u32, c: u32, d: u32) {
+  sp_head(s, out, op, 5); sp_w(s, out, a); sp_w(s, out, b); sp_w(s, out, c); sp_w(s, out, d);
+}
+sp5 :: (s: [] Spv, out: [] u32, op: u32, a: u32, b: u32, c: u32, d: u32, e: u32) {
+  sp_head(s, out, op, 6); sp_w(s, out, a); sp_w(s, out, b); sp_w(s, out, c); sp_w(s, out, d); sp_w(s, out, e);
+}
+// A literal string's words: its bytes, little-endian, with at least one zero after.
+sp_str_words :: (t: string) -> int { return t.count / 4 + 1; }
+sp_str :: (s: [] Spv, out: [] u32, t: string) {
+  words := sp_str_words(t);
+  for i: 0..<words {
+    w: u32 = 0;
+    for b: 0..<4 {
+      at := i * 4 + b;
+      if at < t.count { w |= cast(u32) t[at] << cast(u32) (8 * b); }
+    }
+    sp_w(s, out, w);
+  }
+}
+// A result id from a fresh instruction: `op type result a...`.
+sp_r1 :: (s: [] Spv, out: [] u32, op: u32, ty: u32, a: u32) -> u32 { r := sp_id(s); sp3(s, out, op, ty, r, a); return r; }
+sp_r2 :: (s: [] Spv, out: [] u32, op: u32, ty: u32, a: u32, b: u32) -> u32 { r := sp_id(s); sp4(s, out, op, ty, r, a, b); return r; }
+
+sp_begin :: (s: [] Spv, out: [] u32) {
+  s[0].n = 0; s[0].next = 1; s[0].ok = true;
+  sp_w(s, out, SP_MAGIC); sp_w(s, out, SP_VERSION);
+  sp_w(s, out, 0);   // generator: none registered
+  sp_w(s, out, 0);   // the id bound, filled in by sp_end
+  sp_w(s, out, 0);   // schema
+}
+// The module's word count, or 0 when it was refused.
+sp_end :: (s: [] Spv, out: [] u32) -> int {
+  if !s[0].ok || s[0].n < 5 { return 0; }
+  out[3] = s[0].next;
+  return s[0].n;
+}
+
+// ---- the first module: a grade, one pixel per invocation
+//
+// A compute kernel over an image of w by h pixels (push constants), 8 by 8
+// invocations a group, each writing one RGBA8 word into a storage buffer
+// (set 0, binding 0): red across, green down, a fixed blue, and a disc
+// in the middle a quarter of the height across, lit white.
+GRADE_GROUP :: 8;
+GRADE_BLUE :: 0.5;
+
+// The same pixel on the CPU, for the host's check: what the GPU must write.
+grade_channel :: (v: f32) -> u32 { return cast(u32) (v * 255); }
+vg_grade_pixel :: (x: u32, y: u32, w: u32, h: u32) -> u32 #export_c {
+  fx := f32(x); fy := f32(y); fw := f32(w); fh := f32(h);
+  r := fx / fw; g := fy / fh; b := f32(GRADE_BLUE);
+  dx := fx - fw * 0.5; dy := fy - fh * 0.5;
+  rr := fh * 0.125;
+  if dx * dx + dy * dy < rr * rr { r = 1; g = 1; b = 1; }
+  return grade_channel(r) | (grade_channel(g) << 8) | (grade_channel(b) << 16) | 0xFF000000;
+}
+
+vg_grade_module :: (out: [] u32) -> int #export_c {
+  st: [1] Spv; s := st[..];
+  sp_begin(s, out);
+  t_void := sp_id(s); t_fn := sp_id(s); t_bool := sp_id(s); t_uint := sp_id(s); t_float := sp_id(s);
+  t_v3 := sp_id(s); p_in_v3 := sp_id(s); gid := sp_id(s);
+  t_rta := sp_id(s); t_buf := sp_id(s); p_sb_buf := sp_id(s); pixels := sp_id(s); p_sb_uint := sp_id(s);
+  t_pc := sp_id(s); p_pc := sp_id(s); push := sp_id(s); p_pc_uint := sp_id(s);
+  main := sp_id(s);
+  c0 := sp_id(s); c1 := sp_id(s); c8 := sp_id(s); c16 := sp_id(s); c_alpha := sp_id(s);
+  f255 := sp_id(s); f_blue := sp_id(s); f_half := sp_id(s); f_eighth := sp_id(s); f_one := sp_id(s);
+
+  sp1(s, out, OP_CAPABILITY, CAP_SHADER);
+  sp2(s, out, OP_MEMORY_MODEL, ADDRESSING_LOGICAL, MEMORY_GLSL450);
+  sp_head(s, out, OP_ENTRY_POINT, 3 + sp_str_words("main") + 1);
+  sp_w(s, out, MODEL_GL_COMPUTE); sp_w(s, out, main); sp_str(s, out, "main"); sp_w(s, out, gid);
+  sp5(s, out, OP_EXECUTION_MODE, main, MODE_LOCAL_SIZE, GRADE_GROUP, GRADE_GROUP, 1);
+
+  sp3(s, out, OP_DECORATE, gid, DEC_BUILTIN, BUILTIN_GLOBAL_INVOCATION_ID);
+  sp3(s, out, OP_DECORATE, t_rta, DEC_ARRAY_STRIDE, 4);
+  sp2(s, out, OP_DECORATE, t_buf, DEC_BLOCK);
+  sp4(s, out, OP_MEMBER_DECORATE, t_buf, 0, DEC_OFFSET, 0);
+  sp3(s, out, OP_DECORATE, pixels, DEC_DESCRIPTOR_SET, 0);
+  sp3(s, out, OP_DECORATE, pixels, DEC_BINDING, 0);
+  sp2(s, out, OP_DECORATE, t_pc, DEC_BLOCK);
+  sp4(s, out, OP_MEMBER_DECORATE, t_pc, 0, DEC_OFFSET, 0);
+  sp4(s, out, OP_MEMBER_DECORATE, t_pc, 1, DEC_OFFSET, 4);
+
+  sp1(s, out, OP_TYPE_VOID, t_void);
+  sp2(s, out, OP_TYPE_FUNCTION, t_fn, t_void);
+  sp1(s, out, OP_TYPE_BOOL, t_bool);
+  sp3(s, out, OP_TYPE_INT, t_uint, 32, 0);
+  sp2(s, out, OP_TYPE_FLOAT, t_float, 32);
+  sp3(s, out, OP_TYPE_VECTOR, t_v3, t_uint, 3);
+  sp3(s, out, OP_TYPE_POINTER, p_in_v3, SC_INPUT, t_v3);
+  sp3(s, out, OP_VARIABLE, p_in_v3, gid, SC_INPUT);
+  sp2(s, out, OP_TYPE_RUNTIME_ARRAY, t_rta, t_uint);
+  sp2(s, out, OP_TYPE_STRUCT, t_buf, t_rta);
+  sp3(s, out, OP_TYPE_POINTER, p_sb_buf, SC_STORAGE_BUFFER, t_buf);
+  sp3(s, out, OP_VARIABLE, p_sb_buf, pixels, SC_STORAGE_BUFFER);
+  sp3(s, out, OP_TYPE_POINTER, p_sb_uint, SC_STORAGE_BUFFER, t_uint);
+  sp3(s, out, OP_TYPE_STRUCT, t_pc, t_uint, t_uint);
+  sp3(s, out, OP_TYPE_POINTER, p_pc, SC_PUSH_CONSTANT, t_pc);
+  sp3(s, out, OP_VARIABLE, p_pc, push, SC_PUSH_CONSTANT);
+  sp3(s, out, OP_TYPE_POINTER, p_pc_uint, SC_PUSH_CONSTANT, t_uint);
+  sp3(s, out, OP_CONSTANT, t_uint, c0, 0);
+  sp3(s, out, OP_CONSTANT, t_uint, c1, 1);
+  sp3(s, out, OP_CONSTANT, t_uint, c8, 8);
+  sp3(s, out, OP_CONSTANT, t_uint, c16, 16);
+  sp3(s, out, OP_CONSTANT, t_uint, c_alpha, 0xFF000000);
+  sp3(s, out, OP_CONSTANT, t_float, f255, f32_bits(255));
+  sp3(s, out, OP_CONSTANT, t_float, f_blue, f32_bits(f32(GRADE_BLUE)));
+  sp3(s, out, OP_CONSTANT, t_float, f_half, f32_bits(0.5));
+  sp3(s, out, OP_CONSTANT, t_float, f_eighth, f32_bits(0.125));
+  sp3(s, out, OP_CONSTANT, t_float, f_one, f32_bits(1));
+
+  sp4(s, out, OP_FUNCTION, t_void, main, 0, t_fn);
+  sp1(s, out, OP_LABEL, sp_id(s));
+  id3 := sp_r1(s, out, OP_LOAD, t_v3, gid);
+  x := sp_id(s); sp4(s, out, OP_COMPOSITE_EXTRACT, t_uint, x, id3, 0);
+  y := sp_id(s); sp4(s, out, OP_COMPOSITE_EXTRACT, t_uint, y, id3, 1);
+  w := sp_r1(s, out, OP_LOAD, t_uint, sp_r2(s, out, OP_ACCESS_CHAIN, p_pc_uint, push, c0));
+  h := sp_r1(s, out, OP_LOAD, t_uint, sp_r2(s, out, OP_ACCESS_CHAIN, p_pc_uint, push, c1));
+  inside := sp_r2(s, out, OP_LOGICAL_AND, t_bool, sp_r2(s, out, OP_ULESS_THAN, t_bool, x, w), sp_r2(s, out, OP_ULESS_THAN, t_bool, y, h));
+  body := sp_id(s); merge := sp_id(s);
+  sp2(s, out, OP_SELECTION_MERGE, merge, 0);
+  sp3(s, out, OP_BRANCH_CONDITIONAL, inside, body, merge);
+
+  sp1(s, out, OP_LABEL, body);
+  at := sp_r2(s, out, OP_IADD, t_uint, sp_r2(s, out, OP_IMUL, t_uint, y, w), x);
+  fx := sp_r1(s, out, OP_CONVERT_U_TO_F, t_float, x);
+  fy := sp_r1(s, out, OP_CONVERT_U_TO_F, t_float, y);
+  fw := sp_r1(s, out, OP_CONVERT_U_TO_F, t_float, w);
+  fh := sp_r1(s, out, OP_CONVERT_U_TO_F, t_float, h);
+  r := sp_r2(s, out, OP_FDIV, t_float, fx, fw);
+  g := sp_r2(s, out, OP_FDIV, t_float, fy, fh);
+  dx := sp_r2(s, out, OP_FSUB, t_float, fx, sp_r2(s, out, OP_FMUL, t_float, fw, f_half));
+  dy := sp_r2(s, out, OP_FSUB, t_float, fy, sp_r2(s, out, OP_FMUL, t_float, fh, f_half));
+  rr := sp_r2(s, out, OP_FMUL, t_float, fh, f_eighth);
+  d2 := sp_r2(s, out, OP_FADD, t_float, sp_r2(s, out, OP_FMUL, t_float, dx, dx), sp_r2(s, out, OP_FMUL, t_float, dy, dy));
+  disc := sp_r2(s, out, OP_FORD_LESS_THAN, t_bool, d2, sp_r2(s, out, OP_FMUL, t_float, rr, rr));
+  r2 := sp_id(s); sp5(s, out, OP_SELECT, t_float, r2, disc, f_one, r);
+  g2 := sp_id(s); sp5(s, out, OP_SELECT, t_float, g2, disc, f_one, g);
+  b2 := sp_id(s); sp5(s, out, OP_SELECT, t_float, b2, disc, f_one, f_blue);
+  ri := sp_r1(s, out, OP_CONVERT_F_TO_U, t_uint, sp_r2(s, out, OP_FMUL, t_float, r2, f255));
+  gi := sp_r1(s, out, OP_CONVERT_F_TO_U, t_uint, sp_r2(s, out, OP_FMUL, t_float, g2, f255));
+  bi := sp_r1(s, out, OP_CONVERT_F_TO_U, t_uint, sp_r2(s, out, OP_FMUL, t_float, b2, f255));
+  rg := sp_r2(s, out, OP_BITWISE_OR, t_uint, ri, sp_r2(s, out, OP_SHIFT_LEFT_LOGICAL, t_uint, gi, c8));
+  rgb := sp_r2(s, out, OP_BITWISE_OR, t_uint, rg, sp_r2(s, out, OP_SHIFT_LEFT_LOGICAL, t_uint, bi, c16));
+  word := sp_r2(s, out, OP_BITWISE_OR, t_uint, rgb, c_alpha);
+  slot := sp_id(s); sp5(s, out, OP_ACCESS_CHAIN, p_sb_uint, slot, pixels, c0, at);
+  sp2(s, out, OP_STORE, slot, word);
+  sp1(s, out, OP_BRANCH, merge);
+
+  sp1(s, out, OP_LABEL, merge);
+  sp_head(s, out, OP_RETURN, 1);
+  sp_head(s, out, OP_FUNCTION_END, 1);
+  return sp_end(s, out);
+}
+
+// Walks a module's instructions: each word count is at least one and they
+// end exactly at the module's end. Returns the instruction count, or -1.
+sp_walk :: (m: [] u32, n: int) -> int {
+  if n < 5 || n > m.count || m[0] != SP_MAGIC { return -1; }
+  at := 5; count := 0;
+  while at < n {
+    words := cast(int) (m[at] >> 16);
+    if words < 1 || at + words > n { return -1; }
+    at += words; count += 1;
+  }
+  return count;
+}
+
+#test "the grade module is whole: header, bound, and instructions that end at its end" {
+  m: [512] u32;
+  n := vg_grade_module(m[..]);
+  #assert n > 100 && n < 512;
+  #assert m[0] == SP_MAGIC && m[1] == SP_VERSION && m[4] == 0;
+  #assert m[3] > 40 && m[3] < 100;
+  #assert sp_walk(m[..], n) > 60;
+  #assert m[5] == (2 << 16 | OP_CAPABILITY) && m[6] == CAP_SHADER;
+}
+
+#test "a module too big for its buffer is refused, not cut short" {
+  m: [64] u32;
+  #assert vg_grade_module(m[..]) == 0;
+}
+
+#test "a literal string is its bytes, little-endian, and always ends in a zero" {
+  st: [1] Spv; s := st[..];
+  out: [8] u32;
+  sp_begin(s, out[..]);
+  sp_str(s, out[..], "main");
+  #assert s[0].n == 7 && out[5] == 0x6E69616D && out[6] == 0;
+  sp_str(s, out[..], "ab");
+  #assert s[0].n == 8 && out[7] == 0x6261;
+}
+
+#test "the CPU grade: red across, green down, a white disc in the middle" {
+  #assert vg_grade_pixel(0, 0, 256, 256) == (0xFF000000 | (127 << 16));
+  #assert vg_grade_pixel(128, 128, 256, 256) == 0xFFFFFFFF;
+  right := vg_grade_pixel(255, 0, 256, 256);
+  #assert right & 255 == 254 && (right >> 8) & 255 == 0;
+}
