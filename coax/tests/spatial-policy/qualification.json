@@ -1,0 +1,96 @@
+{
+  "schema": "coax-spatial-policy-qualification-v1",
+  "seed": 6003370133546945587,
+  "rows": 98064,
+  "dispatch_counts": {
+    "frame_valid": 5264,
+    "admit": 25536,
+    "type_valid": 2432,
+    "negate": 14432,
+    "binary": 50400
+  },
+  "status_counts": {
+    "ok": 19589,
+    "metadata": 10656,
+    "precision": 1811,
+    "type": 6160,
+    "operation": 55461,
+    "unit": 4051,
+    "frame": 336
+  },
+  "oracle": "Independent finite relation table, explicit allowed frame set and arbitrary-precision metadata validation; no producer imports or coordinate arithmetic.",
+  "scope": "Pure M3 metadata/operator producer only, no parser/checker/source operators, physical coordinates, ABI of points/vectors, transforms or temporal epochs.",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "compiler_sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31",
+  "compiler_version": "coax0 0.43.0",
+  "c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "input_sha256": "22a51918d25a942e16ba29587a753d005d22bff545f46a266e5f50b2527001fd",
+  "expected_sha256": "d3540052dcae0b62ddcc75a3ebc4a6b034d52899a12a62c2e8ad28b99fa3bfda",
+  "source_sha256": {
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/tests/spatial-policy-native.c": "7c0f4d093bd6912c8bfde61f0288ff158d6c1c5eccf58e3a91b7bd69a169d838",
+    "coax/tests/spatial_policy.py": "a1eb189481fb9b8173c50d7325ef112e26864ff0aa41018eeac32b163ba65599",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "passed": true,
+      "exact_results": 98064,
+      "exact_words": 588384,
+      "output_sha256": "d3540052dcae0b62ddcc75a3ebc4a6b034d52899a12a62c2e8ad28b99fa3bfda",
+      "stderr_bytes": 0
+    },
+    {
+      "mode": "release",
+      "passed": true,
+      "exact_results": 98064,
+      "exact_words": 588384,
+      "output_sha256": "d3540052dcae0b62ddcc75a3ebc4a6b034d52899a12a62c2e8ad28b99fa3bfda",
+      "stderr_bytes": 0
+    },
+    {
+      "mode": "sanitized",
+      "passed": true,
+      "exact_results": 98064,
+      "exact_words": 588384,
+      "output_sha256": "d3540052dcae0b62ddcc75a3ebc4a6b034d52899a12a62c2e8ad28b99fa3bfda",
+      "stderr_bytes": 0
+    }
+  ],
+  "generated_c_sha256": "2cf410947c6813ef9d9d80d13c2d8f65fb9395592e966275ac2a728abb501437",
+  "generated_header_sha256": "2fcde624b7325f40378fba9d6e98434ff2c9c689c10f16141577b5c4a9ffa780",
+  "passed": true,
+  "coax_checks": {
+    "authored_families": 8,
+    "authored_cases": 1404,
+    "loaded_unchanged_policy_families": 6,
+    "log_sha256": "7b5d4209a6a66d2e282004de25e5024a1a0e1f21c96c722724001874bf32aff9"
+  },
+  "changed_root_mutation": {
+    "mutants": 158,
+    "killed": 158,
+    "survived": 0,
+    "log_sha256": "cf142d89a697240bc2a27aa1bd7cdb471567e40a647940ece55e84b375de390c"
+  },
+  "initial_vm_attempt": "Three intended invalid-enum tests trapped on casts to undeclared enum values; added explicit invalid255 poison members before the first passing numerical/native qualification. Admission decisions unchanged.",
+  "sanitizer_flags": [
+    "-fsanitize=address,undefined",
+    "-fno-sanitize-recover=all",
+    "-fno-omit-frame-pointer"
+  ],
+  "not_qualified": [
+    "parser/checker/source operator integration",
+    "physical coordinate arithmetic",
+    "actual Point3/Vector3 layout or ABI",
+    "registry/source authentication",
+    "transforms or angular representations",
+    "jump realization epochs or temporal freshness",
+    "Panda/Verse/spacecraft migration",
+    "R13/R14",
+    "full R12",
+    "whole compiler correctness",
+    "cross-architecture behavior"
+  ]
+}
