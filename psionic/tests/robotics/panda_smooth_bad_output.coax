@@ -1,0 +1,5 @@
+#load "../../lib/robotics/panda-smooth.coax";
+psf_require_linear_acceleration :: (value:pfku.Quantity(PidLinearAcceleration,f64)) {}
+main :: () {
+ out:PsfOutput;psf_require_linear_acceleration(out.acceleration.hinge[0]);
+}

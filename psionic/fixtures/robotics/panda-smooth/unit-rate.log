@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_smooth_bad_rate.coax:4:34: error[E0317]: argument 3 of 'psf_forward' is [] Quantity(PidAngularRate, f64), given [] Quantity(PidLinearRate, f64)
+   _:=psf_forward(q[..],s[..],wrong[..],sv[..],h[..],s[..],h[..],f[..],out[..]);
+                                   ^
+1 error

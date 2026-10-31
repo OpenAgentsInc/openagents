@@ -1,0 +1,1042 @@
+{
+  "schema": "psionic.panda-smooth.experiment.v1",
+  "frozen_before_implementation_or_comparison": true,
+  "task_start_UTC": "2026-10-31T23:13:24Z",
+  "deadline_UTC": "2026-11-01T01:13:24Z",
+  "API": "psf_forward(q7[Rad],s2[M],v7[Rad/s],sv2[M/s],u7[J/rad],target2[M],external_h7[J/rad],external_s2[N],out1[PsfOutput])->PmsStatus; packed q/v/ctrl/external9 counterpart",
+  "output": "PsfOutput{applied:PidOutput,acceleration:PmsOutput,control_clipped:int,force_clipped:int}; applied=(actuator+external)+passive, acceleration solves M*a=applied-bias",
+  "admission": "All nine typed span shapes before values; external9 finite and abs<=1e4 first, then PFL q/v admission+math, then Pa control admission+math, then PFD applied/net bounds and atomic complete output. No effects or clipping of external/net forces.",
+  "case_count": 20,
+  "direct_SDK_contexts": 18,
+  "derived_paired_force_targets": 2,
+  "cases": [
+    {
+      "name": "A-zero",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 0,
+      "SDK_smooth_target_row": 0,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "A-dense",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 1,
+      "SDK_smooth_target_row": 1,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "A-upper-lower",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 2,
+      "SDK_smooth_target_row": 2,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "A-lower-upper",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.03,
+        -0.03
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 3,
+      "SDK_smooth_target_row": 3,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "B-zero",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 4,
+      "SDK_smooth_target_row": 4,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "B-dense",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 5,
+      "SDK_smooth_target_row": 5,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "B-upper-lower",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 6,
+      "SDK_smooth_target_row": 6,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "B-lower-upper",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.01,
+        -0.01
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 7,
+      "SDK_smooth_target_row": 7,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "C-zero",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 8,
+      "SDK_smooth_target_row": 8,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "C-dense",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 9,
+      "SDK_smooth_target_row": 9,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "C-upper-lower",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 10,
+      "SDK_smooth_target_row": 10,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "C-lower-upper",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        -100,
+        100,
+        -100,
+        100,
+        -100,
+        20,
+        -20,
+        -0.01,
+        0.01
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 11,
+      "SDK_smooth_target_row": 11,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-zero-q-exact",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 12,
+      "SDK_smooth_target_row": 12,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-zero-q-inside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.019999999999999997,
+        -0.019999999999999997
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 13,
+      "SDK_smooth_target_row": 13,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-zero-q-outside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.020000000000000004,
+        -0.020000000000000004
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 14,
+      "SDK_smooth_target_row": 14,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-opposite-exact",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.04,
+        -0.04
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 15,
+      "SDK_smooth_target_row": 15,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-opposite-inside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.039999999999999994,
+        -0.039999999999999994
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 16,
+      "SDK_smooth_target_row": 16,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "force-cap-opposite-outside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.04000000000000001,
+        -0.04000000000000001
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "SDK_force_target_row": 17,
+      "SDK_smooth_target_row": 17,
+      "external_target_kind": "Direct original zero-applied-force SDK context"
+    },
+    {
+      "name": "paired-external-8-to-9",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "external": [
+        7.0,
+        -9.0,
+        11.0,
+        -13.0,
+        15.0,
+        -3.0,
+        4.0,
+        13.0,
+        -20.0
+      ],
+      "SDK_force_target_row": 9,
+      "SDK_smooth_target_row": 9,
+      "external_target_kind": "Derived equal-total-force target from two retained SDK rows at EXACT equal q/v. The SDK did not execute a new external-force case."
+    },
+    {
+      "name": "paired-external-9-to-8",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        -0.7,
+        0.4,
+        -0.3,
+        0.6,
+        -0.5,
+        0.2,
+        -0.1,
+        -0.03,
+        0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ],
+      "external": [
+        -7.0,
+        9.0,
+        -11.0,
+        13.0,
+        -15.0,
+        3.0,
+        -4.0,
+        -13.0,
+        20.0
+      ],
+      "SDK_force_target_row": 8,
+      "SDK_smooth_target_row": 8,
+      "external_target_kind": "Derived equal-total-force target from two retained SDK rows at EXACT equal q/v. The SDK did not execute a new external-force case."
+    }
+  ],
+  "cases_sha256": "d76bb23104d73471c22dddb2e9ff7517a4cbaffd25152a6594558ff45d34249e",
+  "targets_sha256": "275bb5bd16524a710475a63e73265610a0fe314c2a4a8d31002d14872b086091",
+  "dependencies": {
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+    "psionic/fixtures/robotics/panda-actuation/sdk-reference.json": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da",
+    "psionic/fixtures/robotics/panda-actuation/sdk-values.f64": "3db8fa7e7bfda7c00e0be75c543ee095d812c2f77925eaa3a03a17363e32d0b0"
+  },
+  "source_profile": "Same fixed robot9 source as Pa/PFL/PFD. Source SDK reset qfrc_applied/xfrc_applied are zero; the20 targets do NOT represent20 new simulator queries. qacc_smooth excludes constraints and integration.",
+  "paired_force_argument": "At identical q/v, source M,bias,passive are identical. Replacing actuator control change with exactly its recorded generalized force difference leaves the unconstrained total force unchanged. Actuator clipping counters still belong to the actual base controls, not the paired target controls.",
+  "budgets": {
+    "applied_force": {
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "smooth_acceleration": {
+      "atol": 5e-09,
+      "rtol": 0
+    }
+  },
+  "refusal_witnesses": [
+    "External force next word beyond+/-1e4, nonfinite late lane, shape drift",
+    "Combined applied cap: zero fingerposition,targetleft.04m and externalleft10000N give10020N and refuse without output publication",
+    "Net cap: zero q/v/control, external hinge2 +/-10000J/rad; independent gravity makes one signed case exceed the NETcap",
+    "Every raw input lane is observable through out-of-box admission; all outputs retain poison on refusal; native aliases are tested"
+  ],
+  "SDK_calls": 0,
+  "old_passed_gates_rerun": false,
+  "scope": "Own source smooth force/acceleration composition, no constraint/contact/frictionloss solve, discrete implicit damping/integration, policy episode, hardware or compiler bounded control."
+}

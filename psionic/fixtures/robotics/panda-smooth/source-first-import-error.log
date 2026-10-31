@@ -1,0 +1,4 @@
+psionic/lib/robotics/panda-smooth.coax:48:29: error[E0315]: procedure 'pa_forward' is not declared
+   actuator:[1]PaOutput;model=pa_forward(angles,slides,hinge_rates,slide_rates,arm_control,finger_target,actuator[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
+                              ^
+1 error

@@ -1,0 +1,3 @@
+ok   #test smooth combined applied and bias-subtracted net force caps refuse atomically (1 case, 1197449 steps, 18 ms)
+1 of 93 checks (--only 'smooth combined'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

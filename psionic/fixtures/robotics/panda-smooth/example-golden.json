@@ -1,0 +1,9 @@
+{
+  "schema": "psionic.panda-smooth.example-golden.v1",
+  "frozen_before_example_execution": true,
+  "source": "Original SDK row9 qacc_smooth9, already frozen in targets.f64; no values collected from this example.",
+  "source_targets_sha256": "275bb5bd16524a710475a63e73265610a0fe314c2a4a8d31002d14872b086091",
+  "output_sha256": "dfa5495038105dfd1d12a2edd19315144de7e2b23fa15380c21fd1791f8309f7",
+  "rounding": "nearest micro-unit, ties away from zero",
+  "smallest_distance_to_rounding_boundary_micro": 0.021779334405437112
+}

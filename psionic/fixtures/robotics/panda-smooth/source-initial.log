@@ -1,0 +1,18 @@
+ok   #forall smooth all typed shapes precede every numerical refusal and preserve all output (18 cases, 22790 steps, 0 ms)
+ok   #forall smooth packed shapes refuse before bad numbers and leave spare output unchanged (10 cases, 12880 steps, 0 ms)
+ok   #forall smooth each packed transport lane is independently observed by its numerical domain (36 cases, 1337220 steps, 27 ms)
+FAIL #forall smooth nonfinite last lanes preserve caller output in every input role (0 ms)
+psionic/lib/robotics/panda-smooth.coax:22:160: error[E0412]: non-finite compile-time bit conversion
+   q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PsfOutput.[psf_poison()];old:=out[0];bits:=[3]u64.[0x7ff8000000000001,0x7ff0000000000000,0xfff0000000000000];bad:=f64_from_bits(bits[bad_index]);if role==0 {q[8]=bad;}if role==1 {v[8]=bad;}if role==2 {c[8]=bad;}if role==3 {e[8]=bad;}
+                                                                                                                                                                 ^
+  note: in #forall smooth nonfinite last lanes preserve caller output in every input role
+  counterexample: role = 0, bad_index = 0
+ok   #test smooth dense original total force and acceleration match an independent retained SDK row (1 case, 533435 steps, 8 ms)
+ok   #test smooth external generalized forces reproduce paired SDK totals without changing actuator clip meaning (1 case, 1067099 steps, 15 ms)
+FAIL #test smooth combined applied and bias-subtracted net force caps refuse atomically (17 ms)
+psionic/lib/robotics/panda-smooth.coax:37:23: error[E0412]: non-finite compile-time bit conversion
+   q[0]=101;e[1]=0;e[8]=f64_from_bits(0x7ff8000000000001);out[0]=old;#assert psf_forward_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.number;psf_same(out[0],old);
+                        ^
+  note: in #test smooth combined applied and bias-subtracted net force caps refuse atomically
+7 of 94 checks (--only 'smooth'), 5 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

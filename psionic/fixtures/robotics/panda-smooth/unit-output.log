@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_smooth_bad_output.coax:4:70: error[E0317]: argument 1 of 'psf_require_linear_acceleration' is Quantity(PidLinearAcceleration, f64), given Quantity(UnitForm(Second^-2,Radian^1), f64)
+   out:PsfOutput;psf_require_linear_acceleration(out.acceleration.hinge[0]);
+                                                                       ^
+1 error

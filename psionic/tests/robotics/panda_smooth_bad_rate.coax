@@ -1,0 +1,5 @@
+#load "../../lib/robotics/panda-smooth.coax";
+main :: () {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);wrong:[7]pfku.Quantity(PidLinearRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:[1]PsfOutput;
+ _:=psf_forward(q[..],s[..],wrong[..],sv[..],h[..],s[..],h[..],f[..],out[..]);
+}

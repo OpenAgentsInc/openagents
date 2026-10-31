@@ -1,0 +1,6 @@
+// Smooth fixed-source dynamics only: no constraints or time integration.
+#load "panda-fluid.coax";
+#load "panda-actuation.coax";
+#load "panda-forward-dynamics.coax";
+PsfOutput :: struct {applied:PidOutput;acceleration:PmsOutput;control_clipped:int;force_clipped:int;}
+PsfInput :: struct {q:[9]f64;v:[9]f64;control:[9]f64;external:[9]f64;}

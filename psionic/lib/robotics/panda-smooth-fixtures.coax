@@ -1,0 +1,16 @@
+#load "panda-smooth-types.coax";
+psf_fixture :: ()->PsfInput {
+ return PsfInput.{q=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.013,-0.027],v=[9]f64.[-0.7,0.4,-0.3,0.6,-0.5,0.2,-0.1,-0.03,0.02],control=[9]f64.[7,-9,11,-13,15,-3,4,0.013,-0.027]};
+}
+psf_poison :: ()->PsfOutput {
+ out:PsfOutput;for i:0..<7 {out.applied.hinge[i].value=100+f64(i);out.acceleration.hinge[i].value= -50-f64(i);}for i:0..<2 {out.applied.slide[i].value=200+f64(i);out.acceleration.slide[i].value= -60-f64(i);}out.control_clipped=91;out.force_clipped=92;return out;
+}
+psf_same :: (a:PsfOutput,b:PsfOutput) {
+ for i:0..<7 {#assert a.applied.hinge[i].value==b.applied.hinge[i].value && a.acceleration.hinge[i].value==b.acceleration.hinge[i].value;}for i:0..<2 {#assert a.applied.slide[i].value==b.applied.slide[i].value && a.acceleration.slide[i].value==b.acceleration.slide[i].value;}#assert a.control_clipped==b.control_clipped && a.force_clipped==b.force_clipped;
+}
+// Independent retained SDK rows9 and8, not values recomputed by this library.
+psf_golden :: (out:PsfOutput,dense:bool) {
+ force:=ifx dense then [9]f64.[11.324007058337383,-5.884741071044013,15.49413171251537,-15.647731741853244,17.447360555706982,-2.3867403830506615,-0.700012241052554,2.3621464905795233,-2.80559286610429] else [9]f64.[4.324007058337384,3.1152589289559867,4.494131712515371,-2.6477317418532444,2.4473605557069815,0.6132596169493384,-4.700012241052554,-10.637853509420477,17.19440713389571];
+ accel:=ifx dense then [9]f64.[0.6615914782206656,-3.2150241069007817,4.921437095385594,-13.36585139550008,12.511869936890413,-1.4920357818518317,2.3242150255491305,2.10891510593804,-2.5497840918141605] else [9]f64.[0.3481968009963763,0.4071520502629292,2.269123814557163,-6.750977981098369,2.4488118924123565,0.5978804959701064,-3.610538802811986,-9.99413120555288,15.076899326424662];
+ for i:0..<7 {#assert abs(out.applied.hinge[i].value-force[i])<5e-10 && abs(out.acceleration.hinge[i].value-accel[i])<5e-9;}for i:0..<2 {#assert abs(out.applied.slide[i].value-force[7+i])<5e-10 && abs(out.acceleration.slide[i].value-accel[7+i])<5e-9;}
+}

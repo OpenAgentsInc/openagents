@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_smooth_bad_target.coax:4:53: error[E0317]: argument 6 of 'psf_forward' is [] Quantity(Metre, f64), given [] Quantity(PmSlideGravity, f64)
+   _:=psf_forward(q[..],s[..],v[..],sv[..],h[..],wrong[..],h[..],f[..],out[..]);
+                                                      ^
+1 error

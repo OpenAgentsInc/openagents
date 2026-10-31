@@ -1,0 +1,57 @@
+// All shapes precede values; external admission precedes owned q/v queries.
+// SDK qacc_smooth target, never the constrained acceleration or a time step.
+#load "panda-smooth-fixtures.coax";
+#authority;
+#forall "smooth all typed shapes precede every numerical refusal and preserve all output" field:0..<9,large:bool {
+ q:[8]pfku.Quantity(pfku.Radian,f64);s:[3]pfku.Quantity(pfku.Metre,f64);v:[8]pfku.Quantity(PidAngularRate,f64);sv:[3]pfku.Quantity(PidLinearRate,f64);u:[8]pfku.Quantity(PmHingeGravity,f64);t:[3]pfku.Quantity(pfku.Metre,f64);eh:[8]pfku.Quantity(PmHingeGravity,f64);es:[3]pfku.Quantity(PmSlideGravity,f64);out:=[2]PsfOutput.[psf_poison(),psf_poison()];old:=out[0];
+ qs:=q[0..<7];ss:=s[0..<2];vs:=v[0..<7];ws:=sv[0..<2];us:=u[0..<7];ts:=t[0..<2];hs:=eh[0..<7];fs:=es[0..<2];os:=out[0..<1];
+ if field==0 {qs=ifx large then q[..] else q[0..<6];}if field==1 {ss=ifx large then s[..] else s[0..<1];}if field==2 {vs=ifx large then v[..] else v[0..<6];}if field==3 {ws=ifx large then sv[..] else sv[0..<1];}if field==4 {us=ifx large then u[..] else u[0..<6];}if field==5 {ts=ifx large then t[..] else t[0..<1];}if field==6 {hs=ifx large then eh[..] else eh[0..<6];}if field==7 {fs=ifx large then es[..] else es[0..<1];}if field==8 {os=ifx large then out[..] else out[0..<0];}
+ q[0].value=101;eh[0].value=10001;#assert psf_forward(qs,ss,vs,ws,us,ts,hs,fs,os)==PmsStatus.shape;psf_same(out[0],old);psf_same(out[1],old);
+}
+#forall "smooth packed shapes refuse before bad numbers and leave spare output unchanged" field:0..<5,large:bool {
+ q:[10]f64;v:[10]f64;c:[10]f64;e:[10]f64;out:=[2]PsfOutput.[psf_poison(),psf_poison()];old:=out[0];qs:=q[0..<9];vs:=v[0..<9];cs:=c[0..<9];es:=e[0..<9];os:=out[0..<1];
+ if field==0 {qs=ifx large then q[..] else q[0..<8];}if field==1 {vs=ifx large then v[..] else v[0..<8];}if field==2 {cs=ifx large then c[..] else c[0..<8];}if field==3 {es=ifx large then e[..] else e[0..<8];}if field==4 {os=ifx large then out[..] else out[0..<0];}q[0]=101;e[0]=10001;
+ #assert psf_forward_raw(qs,vs,cs,es,os)==PmsStatus.shape;psf_same(out[0],old);psf_same(out[1],old);
+}
+#forall "smooth each packed transport lane is independently observed by its numerical domain" role:0..<4,lane:0..<9 {
+ q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PsfOutput.[psf_poison()];old:=out[0];bound:=ifx role==0 then (ifx lane<7 then 100.0 else 1.0) else ifx role==1 then (ifx lane<7 then 20.0 else 2.0) else ifx role==2 then (ifx lane<7 then 10000.0 else 1.0) else 10000.0;bad:=f64_from_bits(f64_bits(bound)+1);
+ if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+ #assert psf_forward_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.range;psf_same(out[0],old);
+}
+#forall "smooth nonfinite last lanes preserve caller output in every input role" role:0..<4,bad_index:0..<3 {
+ q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PsfOutput.[psf_poison()];old:=out[0];bits:=[3]u64.[0x7ff8000000000001,0x7ff0000000000000,0xfff0000000000000];bad:=f64_from_bits(bits[bad_index]);if role==0 {q[8]=bad;}if role==1 {v[8]=bad;}if role==2 {c[8]=bad;}if role==3 {e[8]=bad;}
+ #assert psf_forward_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.number;psf_same(out[0],old);
+}
+#test "smooth dense original total force and acceleration match an independent retained SDK row" {
+ x:=psf_fixture();out:[1]PsfOutput;#assert psf_forward_raw(x.q[..],x.v[..],x.control[..],x.external[..],out[..])==PmsStatus.ok;psf_golden(out[0],true);#assert out[0].control_clipped==0 && out[0].force_clipped==0;
+}
+#test "smooth external generalized forces reproduce paired SDK totals without changing actuator clip meaning" {
+ x:=psf_fixture();delta:=[9]f64.[7,-9,11,-13,15,-3,4,13,-20];for i:0..<9 {x.control[i]=0;x.external[i]=delta[i];}out:[1]PsfOutput;
+ #assert psf_forward_raw(x.q[..],x.v[..],x.control[..],x.external[..],out[..])==PmsStatus.ok;psf_golden(out[0],true);#assert out[0].control_clipped==0 && out[0].force_clipped==1;
+ x=psf_fixture();for i:0..<9 {x.external[i]= -delta[i];}#assert psf_forward_raw(x.q[..],x.v[..],x.control[..],x.external[..],out[..])==PmsStatus.ok;psf_golden(out[0],false);#assert out[0].control_clipped==0 && out[0].force_clipped==0;
+}
+#test "smooth combined applied and bias-subtracted net force caps refuse atomically" {
+ q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PsfOutput.[psf_poison()];old:=out[0];c[7]=0.04;e[7]=10000;
+ #assert psf_forward_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.range;psf_same(out[0],old);
+ c[7]=0;e[7]=0;refused:int=0;for sign:[2]f64.[-1,1] {e[1]=sign*10000;out[0]=old;status:=psf_forward_raw(q[..],v[..],c[..],e[..],out[..]);if status==PmsStatus.range {refused+=1;psf_same(out[0],old);}else {#assert status==PmsStatus.ok;#assert out[0].applied.hinge[1].value==sign*10000;}}#assert refused==1;
+ q[0]=101;e[1]=0;e[8]=f64_from_bits(0x7ff8000000000001);out[0]=old;#assert psf_forward_raw(q[..],v[..],c[..],e[..],out[..])==PmsStatus.number;psf_same(out[0],old);
+}
+
+psf_applied :: (actuator:PidOutput,external:PidOutput,passive:PidOutput)->PidOutput {
+ out:PidOutput;for i:0..<7 {driven:=actuator.hinge[i]+external.hinge[i];out.hinge[i]=driven+passive.hinge[i];}for i:0..<2 {driven:=actuator.slide[i]+external.slide[i];out.slide[i]=driven+passive.slide[i];}return out;
+}
+psf_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),arm_control:[]pfku.Quantity(PmHingeGravity,f64),finger_target:[]pfku.Quantity(pfku.Metre,f64),external_hinge:[]pfku.Quantity(PmHingeGravity,f64),external_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PsfOutput)->PmsStatus #export_c {
+ if angles.count!=7 || slides.count!=2 || hinge_rates.count!=7 || slide_rates.count!=2 || arm_control.count!=7 || finger_target.count!=2 || external_hinge.count!=7 || external_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
+ external:PidOutput;for i:0..<7 {external.hinge[i]=external_hinge[i];}for i:0..<2 {external.slide[i]=external_slide[i];}
+ status:=pms_forces_admit(pfd_words(external));if status!=PmsStatus.ok {return status;}
+ ambient:[1]PflOutput;model:=pfl_forward(angles,slides,hinge_rates,slide_rates,ambient[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
+ actuator:[1]PaOutput;model=pa_forward(angles,slides,hinge_rates,slide_rates,arm_control,finger_target,actuator[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
+ applied:=psf_applied(actuator[0].actuator,external,ambient[0].passive);acceleration:[1]PmsOutput;
+ status=pfd_forward(angles,slides,hinge_rates,slide_rates,applied.hinge[..],applied.slide[..],acceleration[..]);if status!=PmsStatus.ok {return status;}
+ fresh:=PsfOutput.{applied=applied,acceleration=acceleration[0],control_clipped=actuator[0].control_clipped,force_clipped=actuator[0].force_clipped};output[0]=fresh;return PmsStatus.ok;
+}
+psf_forward_raw :: (coordinates:[]f64,rates:[]f64,controls:[]f64,external:[]f64,output:[]PsfOutput)->PmsStatus #export_c {
+ if coordinates.count!=9 || rates.count!=9 || controls.count!=9 || external.count!=9 {return PmsStatus.shape;}
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);u:[7]pfku.Quantity(PmHingeGravity,f64);t:[2]pfku.Quantity(pfku.Metre,f64);eh:[7]pfku.Quantity(PmHingeGravity,f64);es:[2]pfku.Quantity(PmSlideGravity,f64);
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];eh[i].value=external[i];}for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];t[i].value=controls[7+i];es[i].value=external[7+i];}return psf_forward(q[..],s[..],v[..],sv[..],u[..],t[..],eh[..],es[..],output);
+}

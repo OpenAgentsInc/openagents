@@ -1,0 +1,136 @@
+{
+  "schema": "psionic.panda-smooth.checks.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "check_groups": 6,
+  "cases": 67,
+  "emitted_mutation": {
+    "scope": "root-only; all dependency baseline checks retained in the new entrypoint mutation context",
+    "mutants": 88,
+    "killed": 88,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "execution": {
+      "schema": "psionic.panda-smooth.emitted-mutation.v1",
+      "exit": 0,
+      "source_sha256": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+      "source_unchanged": true,
+      "seconds": 0.8567590829916298,
+      "log_sha256": "a8cde234e400b215add7467217f06317f717bb716e45328ab15d4134a0114e5f",
+      "scope": "Onlynewpanda-smooth.coax emittedsites; required importedbaselinechecks run as partofthis newentrypointmutation context; no oldmutation sites or numeric/SDK gates."
+    }
+  },
+  "source_followup": {
+    "schema": "psionic.panda-smooth.source-followup.v1",
+    "unchanged_product_suffix_sha256": "2c774ef36c7cfbdd02d6c0097351d904a8b95b5a79416ca550fabd7ec4f07ce3",
+    "initial_source_sha256": "d23dd3dce5d351ad86b56900d76a611b7f0b0329ef7908e5cfed0cb9fa4acd51",
+    "final_source_sha256": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+    "initial_log_sha256": "3bf48472f7e09a5e720b0d03e6ab6691c031c50a3271ad4f687da8a2e54d3d9c",
+    "initial_result": "5groups passed;2groups failed because compile-time nonfinite f64_from_bits construction is refused, before the intended number admission. Product code unchanged.",
+    "followup_log_sha256": "9d3156f30468c1333a21053ea97a8f12f76a86671d5122117c550fd9f91498cf",
+    "followup_exit": 0,
+    "changed_scope": "Remove the impossible raw-nonfinite VM group; cover all those values in native. Re-run only the failed cap group after removing its one impossible nonfinite setup. Other five passing groups not rerun."
+  },
+  "source_failure_scope": "Initial missing Pa public-procedure import was fixed before any checks executed. Then five numerical/shape groups passed; two failed during attempted nonfinite F64 construction (E0412), not an observed incorrect result. Such C-boundary payloads are now native probes. Only the failed cap group was separately repeated after removing its impossible setup; three production bodies stayed byte-identical.",
+  "unit_refusals": {
+    "schema": "psionic.panda-smooth.source-units.v1",
+    "passed": true,
+    "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "checks": [
+      {
+        "name": "target",
+        "source": "psionic/tests/robotics/panda_smooth_bad_target.coax",
+        "source_sha256": "ae1aac55a873f7f586257e37331d65096f673ab6b6b80165a8d3833ae3d02b5e",
+        "diagnostic": "E0317",
+        "refused": true,
+        "exit": 1,
+        "log": "psionic/fixtures/robotics/panda-smooth/unit-target.log",
+        "log_sha256": "1ab864a728404f70ced66bbea68267b9d33e859f9cec551dab57e734fb9a9fb2",
+        "carried_prior_pass": true
+      },
+      {
+        "name": "external",
+        "source": "psionic/tests/robotics/panda_smooth_bad_external.coax",
+        "source_sha256": "e5169670b89f9115e9c0881601e34a3eaf247ea68845dc35520a68d0c10a5538",
+        "diagnostic": "E0317",
+        "refused": true,
+        "exit": 1,
+        "log": "psionic/fixtures/robotics/panda-smooth/unit-external.log",
+        "log_sha256": "f792edb914676e6eb418f295244fc5aa344eae298a4bc9901136b93f67a81d5a",
+        "carried_prior_pass": true
+      },
+      {
+        "name": "rate",
+        "source": "psionic/tests/robotics/panda_smooth_bad_rate.coax",
+        "source_sha256": "1e922396fb692dd6abb88fea9f75aa57739750fbdb15f97aa307d0af9a7dee2b",
+        "diagnostic": "E0317",
+        "refused": true,
+        "exit": 1,
+        "log": "psionic/fixtures/robotics/panda-smooth/unit-rate.log",
+        "log_sha256": "8d53fd20cf72ec6f1f7827d92eae0828478dd383c0840a15d913bd8803075bac",
+        "carried_prior_pass": true
+      },
+      {
+        "name": "output",
+        "source": "psionic/tests/robotics/panda_smooth_bad_output.coax",
+        "source_sha256": "b869f259e7c858072ddd810994fd4eddad7eaad8a5b6332d574ab4b3267448e1",
+        "diagnostic": "E0317",
+        "refused": true,
+        "exit": 1,
+        "log": "psionic/fixtures/robotics/panda-smooth/unit-output.log",
+        "log_sha256": "f526e9bc12f40f3bd3bf31f6a2d059e86e71d755c16108cc1066d892823a5f73",
+        "carried_prior_pass": false
+      }
+    ],
+    "initial_receipt_sha256": "465ff78c6ed311a3a8324b0488cf7ae601368244e63816481e473142830e2c30",
+    "followup": "Three precise argument type-refusals carried by fixture/log identity. Output fixture already had legitimate Quantity initialization E0325 plus unrelated missing Basic import E0313; replace only that fixture with a direct angular-to-linear acceleration call, then run only changed fixture. No production code or previous three checks rerun."
+  },
+  "example": {
+    "schema": "psionic.panda-smooth.example.v1",
+    "passed": true,
+    "prewritten_golden_sha256": "dfa5495038105dfd1d12a2edd19315144de7e2b23fa15380c21fd1791f8309f7",
+    "commands": [
+      {
+        "mode": "debug",
+        "argv": [
+          "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+          "run",
+          "psionic/examples/panda-smooth.coax"
+        ],
+        "exit": 0,
+        "stdout_sha256": "dfa5495038105dfd1d12a2edd19315144de7e2b23fa15380c21fd1791f8309f7",
+        "stderr_bytes": 0
+      },
+      {
+        "mode": "release",
+        "argv": [
+          "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+          "run",
+          "psionic/examples/panda-smooth.coax",
+          "--release"
+        ],
+        "exit": 0,
+        "stdout_sha256": "dfa5495038105dfd1d12a2edd19315144de7e2b23fa15380c21fd1791f8309f7",
+        "stderr_bytes": 0
+      }
+    ]
+  },
+  "quantity_token_scope": "88 actual emitted sites only. Typed additions in psf_applied and earlier Quantity arithmetic are lowered without complete authored operator-token provenance; no complete Quantity-token mutation claim or equivalence waiver. Independent SDK/paired force targets and native tests qualify their numerical behavior.",
+  "nonclaims": "No contacts/constraint/frictionloss solver, discrete implicit damping/integration, physical episode, hardware, timing guarantees or compiler bounded proof.",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-smooth.coax": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+    "psionic/lib/robotics/panda-smooth-types.coax": "faba3149108fd931971ff269670250ae64f2b564b414cc162364c7aa6f18eec1",
+    "psionic/lib/robotics/panda-smooth-fixtures.coax": "578663cd2d716a9faef982e680c41974d17f3974385a16747d210320fed93935",
+    "psionic/examples/panda-smooth.coax": "3a9795ee7202a53a040c2bc6b9c59acf349dd87683a6f0229125540e36768b54"
+  },
+  "evidence": {
+    "psionic/fixtures/robotics/panda-smooth/source-initial.txt": "d23dd3dce5d351ad86b56900d76a611b7f0b0329ef7908e5cfed0cb9fa4acd51",
+    "psionic/fixtures/robotics/panda-smooth/source-initial.log": "3bf48472f7e09a5e720b0d03e6ab6691c031c50a3271ad4f687da8a2e54d3d9c",
+    "psionic/fixtures/robotics/panda-smooth/source-cap-followup.log": "9d3156f30468c1333a21053ea97a8f12f76a86671d5122117c550fd9f91498cf",
+    "psionic/fixtures/robotics/panda-smooth/mutation.log": "a8cde234e400b215add7467217f06317f717bb716e45328ab15d4134a0114e5f",
+    "psionic/fixtures/robotics/panda-smooth/source-first-import-error.log": "a4b77c7cd31359a1a8a26fe40bcad941599f1740397be70590e438375e41096b"
+  },
+  "repeat_for_confirmation": false,
+  "old_model_SDK_or_dependency_mutation_gates_repeated": false
+}
