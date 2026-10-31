@@ -4,6 +4,9 @@
 #include "panda-session.h"
 #include "panda-env.h"
 #include "panda_loop_provider.h"
+#ifdef PANDA_OWNED_QUERY_V1
+#include "panda_query_runtime.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +48,11 @@ static int panda_loop_cases(int argc,char**argv,const PandaLoopProvider*provider
     path(xml,argv[c],"scene.xml");path(filename,argv[c],"init.f64");size_t init_bytes;unsigned char *init_raw=read_file(filename,&init_bytes);REQUIRE(init_bytes==45*8);double initial[45];uint64_t initial_words[45];memcpy(initial,init_raw,sizeof(initial));memcpy(initial_words,init_raw,sizeof(initial_words));REQUIRE(ps_initial((coax_v_u64){initial_words,45}));
     PandaEnv *env=panda_env_open(xml,bindings,error,sizeof(error));if(!env)fprintf(stderr,"%s\n",error);REQUIRE(env);PandaDimensions dims;REQUIRE(panda_env_dimensions(env,&dims)&&pe_profile(dims.nq,dims.nv,dims.nu,dims.na,dims.state_count,dims.physics_dt));
     REQUIRE(panda_env_reset(env,initial,45));PandaTelemetry t;REQUIRE(panda_env_sample(env,&t));REQUIRE(pe_ranges((coax_v_f64){t.torque_min,7},(coax_v_f64){t.torque_max,7},(coax_v_f64){t.finger_lower,2},(coax_v_f64){t.finger_upper,2}));
+#ifdef PANDA_OWNED_QUERY_V1
+    coax_t_PcSample initial_sample;REQUIRE(panda_query_current_v1(env,&t,1,&initial_sample));coax_t_PcState controller={0};coax_a7_f64 home=pc_default_home();REQUIRE(!pc_reset((coax_v_t_PcState){&controller,1},initial_sample,(coax_v_f64){home.e,7}));
+#else
     coax_t_PcState controller={0};coax_a7_f64 home=pc_default_home();REQUIRE(!pc_reset((coax_v_t_PcState){&controller,1},sample(&t),(coax_v_f64){home.e,7}));
+#endif
     unsigned char identities[128],seed[32],digest[32];size_t xml_bytes;unsigned char *xml_raw=read_file(xml,&xml_bytes);hash(xml_raw,xml_bytes,identities);hash(init_raw,init_bytes,identities+32);hash(noise_raw,noise_bytes,identities+64);coax_string identity={provider->profile,(int64_t)strlen(provider->profile)};hash(identity.data,identity.count,identities+96);hash(identities,sizeof(identities),seed);memcpy(digest,seed,32);free(xml_raw);free(init_raw);
     char trace[4096];path(trace,dir,"physics.ptr");FILE *log=fopen(trace,"wb");REQUIRE(log&&fwrite(seed,1,32,log)==32);
     coax_t_PkResult begun=pk_begin(initial[0],0);REQUIRE(!begun.status);coax_t_PkState clock=begun.state;coax_t_PlState h=clock.supervisor;coax_t_PlAction actions[8]={0},work[8]={0};coax_t_PlTag pending_tag={0};uint32_t pending_words[112]={0};int pending=0,steps=0,calls=0,clipped=0;double gpu=0,total_infer=0,max_infer=0;double start=now();
@@ -64,10 +71,15 @@ static int panda_loop_cases(int argc,char**argv,const PandaLoopProvider*provider
       }
       coax_t_PkResult selected=pk_select(clock,effect==COAX_PsEffect_hold);h=clock_adopt(&clock,selected);coax_t_PlAction chosen={0};if(!selected.fallback){REQUIRE(selected.slot>=0&&selected.slot<8);chosen=actions[selected.slot];}coax_a7_f64 action=ps_action(chosen);int actual_steps=0,io_status=0;
       for(int substep=0;substep<ps_substeps();substep++){
+#ifdef PANDA_OWNED_QUERY_V1
+        coax_t_PkResult stage;coax_t_PcSample measured;if(!panda_query_control_v1(env,&t,&clock,scenario,substep,&measured)){h=clock.supervisor;io_status=1;break;}h=clock.supervisor;
+        coax_t_PcOutput out=ps_control((coax_v_t_PcState){&controller,1},measured,(coax_v_f64){action.e,7},substep);if(out.status){fprintf(stderr,"Controller refused %u at tick %lld substep %d\n",out.status,(long long)h.tick,substep);clock=pk_abort(clock).state;h=clock.supervisor;io_status=1;break;}
+#else
         coax_t_PkResult stage=pk_forward(clock,panda_env_forward(env)?0:1);clock=stage.state;h=clock.supervisor;if(stage.status){io_status=1;break;}
         stage=pk_sample(clock,panda_env_sample(env,&t)?0:1);clock=stage.state;h=clock.supervisor;if(stage.status){io_status=1;break;}
         stage=pk_control(clock,substep);clock=stage.state;h=clock.supervisor;if(stage.status){io_status=1;break;}
         coax_t_PcSample measured=ps_sample(scenario,h.tick,substep,sample(&t));coax_t_PcOutput out=ps_control((coax_v_t_PcState){&controller,1},measured,(coax_v_f64){action.e,7},substep);if(out.status){fprintf(stderr,"Controller refused %u at tick %lld substep %d\n",out.status,(long long)h.tick,substep);clock=pk_abort(clock).state;h=clock.supervisor;io_status=1;break;}
+#endif
         double ctrl[9],state[45];memcpy(ctrl,out.torque.e,7*8);memcpy(ctrl+7,out.gripper.e,2*8);int integrated=panda_env_step(env,ctrl,9)&&panda_env_state(env,state,45);uint64_t clock_word=0;if(integrated){actual_steps++;memcpy(&clock_word,state,8);}stage=pk_receipt(clock,h.tick,substep+1,clock_word,integrated?0:1);clock=stage.state;h=clock.supervisor;if(stage.status){io_status=1;break;}steps++;clipped+=out.torque_clipped;
         coax_t_PrSample record={.epoch=h.epoch,.serial=h.serial,.tick=h.tick,.substep=substep+1,.flags=ps_flags(selected.fallback,out.torque_clipped,0)};memcpy(record.action.e,chosen.v.e,7*4);memcpy(record.control.e,ctrl,sizeof(ctrl));memcpy(record.state.e,state,sizeof(state));unsigned char encoded[512];REQUIRE(!pr_encode(record,(coax_v_u8){encoded,512},0)&&fwrite(encoded,1,512,log)==512);chain(digest,encoded);
       }
@@ -76,7 +88,13 @@ static int panda_loop_cases(int argc,char**argv,const PandaLoopProvider*provider
       int sampled=panda_env_sample(env,&t);if(!sampled){clock=pk_abort(clock).state;h=clock.supervisor;}REQUIRE(sampled);coax_t_PeSuccess outcome=success(&t);if(outcome.status){clock=pk_abort(clock).state;h=clock.supervisor;}REQUIRE(!outcome.status);if(outcome.success)h=clock_adopt(&clock,pk_finish(clock,1));
     }
     double wall=now()-start;REQUIRE(fwrite(digest,1,32,log)==32&&!fclose(log));int exact=replay(env,initial,trace,steps,seed,digest);REQUIRE(exact);
-    path(filename,dir,"record.json");FILE *r=fopen(filename,"w");REQUIRE(r);coax_string profile={provider->profile,(int64_t)strlen(provider->profile)};char gpu_text[64];if(provider->gpu_timing_measured)snprintf(gpu_text,sizeof(gpu_text),"%.9g",gpu);else strcpy(gpu_text,"null");fprintf(r,"{\n  \"schema\": \"%s\",\n  \"profile\": \"%.*s\",\n  \"case\": \"%s\",\n  \"scenario\": %d,\n  \"model_calls\": %d,\n  \"ticks\": %lld,\n  \"physics_steps\": %d,\n  \"success\": %s,\n  \"fallbacks\": %lld,\n  \"refusals\": %lld,\n  \"torques_clipped\": %d,\n  \"physics_replay_exact\": %s,\n  \"wall_seconds\": %.9g,\n  \"model_context_open_seconds\": %.9g,\n  \"inference_seconds\": %.9g,\n  \"inference_max_seconds\": %.9g,\n  \"gpu_seconds\": %s,\n  \"trace_records\": %d,\n  \"trace_seed_sha256\": \"",provider->schema,(int)profile.count,profile.data,base,scenario,calls,(long long)h.tick,steps,h.success?"true":"false",(long long)h.fallbacks,(long long)h.refusals,clipped,exact?"true":"false",wall,open_seconds,total_infer,max_infer,gpu_text,steps);hex(r,seed,32);fprintf(r,"\",\n  \"trace_final_sha256\": \"");hex(r,digest,32);fprintf(r,"\"\n}\n");REQUIRE(!fclose(r));printf("%s fault%d: ticks=%lld calls=%d success=%d holds=%lld refusals=%lld clip=%d exact-replay=%d wall=%.3fs\n",base,scenario,(long long)h.tick,calls,h.success,(long long)h.fallbacks,(long long)h.refusals,clipped,exact,wall);fflush(stdout);panda_env_close(env);
+    path(filename,dir,"record.json");FILE *r=fopen(filename,"w");REQUIRE(r);coax_string profile={provider->profile,(int64_t)strlen(provider->profile)};char gpu_text[64];if(provider->gpu_timing_measured)snprintf(gpu_text,sizeof(gpu_text),"%.9g",gpu);else strcpy(gpu_text,"null");fprintf(r,"{\n  \"schema\": \"%s\",\n  \"profile\": \"%.*s\",\n  \"case\": \"%s\",\n  \"scenario\": %d,\n  \"model_calls\": %d,\n  \"ticks\": %lld,\n  \"physics_steps\": %d,\n  \"success\": %s,\n  \"fallbacks\": %lld,\n  \"refusals\": %lld,\n  \"torques_clipped\": %d,\n  \"physics_replay_exact\": %s,\n  \"wall_seconds\": %.9g,\n  \"model_context_open_seconds\": %.9g,\n  \"inference_seconds\": %.9g,\n  \"inference_max_seconds\": %.9g,\n  \"gpu_seconds\": %s,\n  \"trace_records\": %d,\n  \"trace_seed_sha256\": \"",provider->schema,(int)profile.count,profile.data,base,scenario,calls,(long long)h.tick,steps,h.success?"true":"false",(long long)h.fallbacks,(long long)h.refusals,clipped,exact?"true":"false",wall,open_seconds,total_infer,max_infer,gpu_text,steps);hex(r,seed,32);fprintf(r,"\",\n  \"trace_final_sha256\": \"");hex(r,digest,32);
+#ifdef PANDA_OWNED_QUERY_V1
+    coax_string qp=pqs_name(1),pp=ps_profile();fprintf(r,"\",\n  \"query_profile\": \"%.*s\",\n  \"policy_profile\": \"%.*s\",\n  \"SDK_geometry_retained\": true,\n  \"owned_model_scope\": \"exact-demo000-scene-reset-assets\"\n}\n",(int)qp.count,qp.data,(int)pp.count,pp.data);
+#else
+    fprintf(r,"\"\n}\n");
+#endif
+REQUIRE(!fclose(r));printf("%s fault%d: ticks=%lld calls=%d success=%d holds=%lld refusals=%lld clip=%d exact-replay=%d wall=%.3fs\n",base,scenario,(long long)h.tick,calls,h.success,(long long)h.fallbacks,(long long)h.refusals,clipped,exact,wall);fflush(stdout);panda_env_close(env);
   }
   return 0;
 }

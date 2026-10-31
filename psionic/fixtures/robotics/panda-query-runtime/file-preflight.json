@@ -1,0 +1,65 @@
+{
+  "schema": "psionic.panda-query-runtime.file-preflight.v1",
+  "passed": true,
+  "commands": [
+    {
+      "name": "compile",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-D_DARWIN_C_SOURCE",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/tmp/panda-query-runtime-hash-native-final/sanitized",
+        "-I/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics",
+        "-I/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/platform",
+        "-I/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/include",
+        "/tmp/panda-query-runtime-hash-native-final/sanitized/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_preflight.c",
+        "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/libmujoco.3.3.1.dylib",
+        "-lm",
+        "-o",
+        "/tmp/panda-query-runtime-preflight-final/preflight"
+      ],
+      "exit": 0,
+      "seconds": 2.4438592920196243,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run",
+      "argv": [
+        "/tmp/panda-query-runtime-preflight-final/preflight",
+        "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000"
+      ],
+      "exit": 0,
+      "seconds": 1.409978416049853,
+      "stderr_bytes": 0
+    }
+  ],
+  "previous_failed_receipt_sha256": "1530f15e131e1f16a3b2f7064509bd5fc6ff3b01bf59e41e94745a17c2d3157b",
+  "fix": "NewCoaxstreamingwrapper replaces1MiBone-shotfor16MiB-admittedfiles; oldcrypto unchanged.",
+  "source_sha256": {
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_preflight.c": "8ebd5a35824dcd036b5592347352126d700d1e4a7f6beae9f83de44bf99347e4",
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime.h": "f5e3ec8b94460789dffbdd3a5cb43d7ffb706e5cab1bef58fb3cfe50b4ac4abe",
+    "/tmp/panda-query-runtime-hash-native-final/sanitized/panda-session.c": "b1a9094f1ceeaa1850aa3f227ad4632c24a85b3bd8db61e466a08bf371d6e9b1",
+    "/tmp/panda-query-runtime-hash-native-final/sanitized/panda-session.h": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6"
+  },
+  "SDK_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "result": {
+    "passed": true,
+    "assets": 85,
+    "file_hashes": 88,
+    "SDK_API_calls": 0,
+    "NN_calls": 0,
+    "policy_open_calls": 0,
+    "profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-owned-query-shadow-v1"
+  },
+  "binary_sha256": "5e89bf888fb37cd5b36457a685a19a4d0f2fc56a9f72c955f22c5c4837d80c71"
+}

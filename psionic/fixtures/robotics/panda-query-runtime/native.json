@@ -1,0 +1,235 @@
+{
+  "schema": "psionic.panda-query-runtime.native-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_query_runtime_reference.py": "a770aaf9b322d1ab981e951142ffad993d1e2c4fcf5bd81b3abd278db3de0504",
+    "psionic/tests/robotics/panda_query_runtime_native.c": "17977aa5c337ed074913b102cb86eac1c15c22bb764bdd2737131cd40be19962",
+    "psionic/tests/robotics/panda-query-runtime-assets.coax": "e6672dc424b867855d364d0256be835a3c8b21cc3b6d0b7fd6817360c4f4ff7d",
+    "psionic/tests/robotics/panda-query-runtime-fixtures.coax": "392c3a966a6b718cd500c67c02f2cbf994575d552c793e07dc06074f9c758b06",
+    "psionic/tests/robotics/panda-query-runtime.coax": "f917099bcb4c58cbe56996806240810b4c32037619bd3e5d481b6ad86533a3e0"
+  },
+  "public_asset_manifest_sha256": "f0035183510d6c9ebd74bcda8f04433c1e93fe2b96ac082cc57d0002aee25d09",
+  "asset_profile_sha256": "1b49f7f0530ceea08dbe4885a1e03cfd3bc6df6e1afa0f74d06aa9c8a0b232e8",
+  "input_sha256": "bb4eb287e587068a424783832b8d8ea692feea062b603fbeffc15887759d58b8",
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "passed": true,
+        "assertions": 3217,
+        "asset_paths": 85,
+        "digest_bitflips": 2816,
+        "SDK_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "1d0dfe696d95f6f99dc19fd8ea386f26e398f2568869e337288fb0202eaa6698",
+      "header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+      "binary_sha256": "a06ab2ad527b5fc243711ae0f738c434eef5c5dde4f6bafaa4ed8e4a1802272c"
+    },
+    {
+      "mode": "release",
+      "native": {
+        "passed": true,
+        "assertions": 3217,
+        "asset_paths": 85,
+        "digest_bitflips": 2816,
+        "SDK_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "f16a456c8d9f097b82b5ad90c31785cd97a078928a0d2fdc2073947c1f235fba",
+      "header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+      "binary_sha256": "160e8953c5360778e3d58f98b84bd639d26f3d9dc20ba8e83075256c17557bfb"
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "passed": true,
+        "assertions": 3217,
+        "asset_paths": 85,
+        "digest_bitflips": 2816,
+        "SDK_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "1d0dfe696d95f6f99dc19fd8ea386f26e398f2568869e337288fb0202eaa6698",
+      "header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+      "binary_sha256": "06686f27050a4517c5620b2978ab98e1fedd94fa3413391f03c134df72606c9c",
+      "native_source_sha256": "00aebbdd2e236ace73e66de95d3b814f7d466b16447d66d0583d83681a8feca3"
+    }
+  ],
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/tests/robotics/panda-query-runtime.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-query-runtime-native-first/debug/panda-session.h"
+      ],
+      "exit": 0,
+      "seconds": 0.6747928749537095,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-native-first/debug",
+        "/private/tmp/panda-query-runtime-native-first/debug/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-native-first/debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.2018676670268178,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-query-runtime-native-first/debug/native",
+        "/private/tmp/panda-query-runtime-native-first/input.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.2926719579845667,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/tests/robotics/panda-query-runtime.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-query-runtime-native-first/release/panda-session.h"
+      ],
+      "exit": 0,
+      "seconds": 0.6657361250254326,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-native-first/release",
+        "/private/tmp/panda-query-runtime-native-first/release/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-native-first/release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.6873514580074698,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-query-runtime-native-first/release/native",
+        "/private/tmp/panda-query-runtime-native-first/input.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.16824149998137727,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-sanitized",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/tests/robotics/panda-query-runtime.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-query-runtime-native-first/sanitized/panda-session.h"
+      ],
+      "exit": 0,
+      "seconds": 0.6743539580493234,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-native-first/sanitized",
+        "/private/tmp/panda-query-runtime-native-first/sanitized/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-native-first/sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 1.283021082985215,
+      "stderr_bytes": 1317
+    },
+    {
+      "name": "compile-sanitized-followup",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/tmp/panda-query-runtime-native-first/sanitized",
+        "/tmp/panda-query-runtime-native-first/sanitized/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_native.c",
+        "-lm",
+        "-o",
+        "/tmp/panda-query-runtime-native-first/sanitized/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-sanitized-followup",
+      "argv": [
+        "/tmp/panda-query-runtime-native-first/sanitized/native",
+        "/tmp/panda-query-runtime-native-first/input.bin"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    }
+  ],
+  "initial_attempt_failure": "RuntimeError(('compile-sanitized', b'', b'/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_native.c:10:70: warning: \\'sprintf\\' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead. [-Wdeprecated-declarations]\\n   10 | static void hex(const uint8_t b[32],char s[65]){for(int i=0;i<32;i++)sprintf(s+2*i,\"%02x\",b[i]);s[64]=0;}\\n      |                                                                      ^\\n/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_stdio.h:278:1: note: \\'sprintf\\' has been explicitly marked deprecated here\\n  278 | __deprecated_msg(\"This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.\")\\n      | ^\\n/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/cdefs.h:227:48: note: expanded from macro \\'__deprecated_msg\\'\\n  227 |         #define __deprecated_msg(_msg) __attribute__((__deprecated__(_msg)))\\n      |                                                       ^\\n1 warning generated.\\n'))",
+  "harness_followup": {
+    "change": "Replace deprecated tooling-only sprintf with bounded snprintf. ProductgeneratedC/header/inputbytes unchanged; debug/release proof reused, only sanitized phase rebuilt/run.",
+    "initial_native_source_sha256": "17977aa5c337ed074913b102cb86eac1c15c22bb764bdd2737131cd40be19962",
+    "current_native_source_sha256": "00aebbdd2e236ace73e66de95d3b814f7d466b16447d66d0583d83681a8feca3",
+    "initial_partial_receipt_sha256": "22640f9983c474ee1cf778b3dd7fc5fae45354fcc38d91dbb47376a7bdd5cd8e"
+  }
+}

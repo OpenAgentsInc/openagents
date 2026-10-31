@@ -1,0 +1,23 @@
+{
+  "schema": "psionic.panda-query-runtime.SDK-build-inputs.v1",
+  "source_receipt": "psionic/fixtures/robotics/panda-fingers/sdk-reference.json",
+  "source_receipt_sha256": "51fd49e3eeb68df0cc8c4246dfe167c5fa1e281ac112cad0e155445e5c536346",
+  "SDK_public_headers_reused": {
+    "include/mujoco/mjdata.h": "9179d65ccf24f3841515f2092ab14c1f3982bdc358c6abe2c390d8b845f819c2",
+    "include/mujoco/mjexport.h": "2d0ec44615ce9e0dd3d80ce9ca2a8bcad1906840d2ab6b5a9af785f7be989f8b",
+    "include/mujoco/mjmacro.h": "067e74ccb1a17c3ca555d46cbae5cd86778220e5238706e40ea9bc7139cb7012",
+    "include/mujoco/mjmodel.h": "a314eca14b6abf5d74039b111741f61c3ec7555e09db1e0ae05b5a07ccc81ce8",
+    "include/mujoco/mjplugin.h": "f317d8f663b998630e814f80a5c0751ded173849c845ae2af211b24ddb1d934b",
+    "include/mujoco/mjrender.h": "497b9bd11971be5e79d68110b87d775787cf37a33aec51c11df47fea936999d8",
+    "include/mujoco/mjsan.h": "42389c4d645fe6f4c5d1195d72556f1238c126f979d05e56d86772949dc6b818",
+    "include/mujoco/mjspec.h": "e93670339ab514a76fe9ead833def33adf9093b06d82b7e4f6c94b24b98f2694",
+    "include/mujoco/mjthread.h": "f6bf0b51ed63049f0e6a04b19e97b76d36b261d27344a23c11b532640e94f0d7",
+    "include/mujoco/mjtnum.h": "23e59bf6fe00d62509f5e4f75ffe2d53877cb5e913731675092fa46c21abb738",
+    "include/mujoco/mjui.h": "74d8d97ce4777646f41589d870c754ed6e05cd6ac2350f2be1435c8405ed8ada",
+    "include/mujoco/mjvisualize.h": "05f84fbf86a061365600c0f03f43f0c39b6d3a6e27b3e21640515c5f460307ec",
+    "include/mujoco/mjxmacro.h": "d7858844b5800dcfcb9083a3b8c66d0b06bea911edb15b858ec398866ef33efc",
+    "include/mujoco/mujoco.h": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a"
+  },
+  "loaded_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "scope": "Same qualified headers used by the recorded C compilation; no SDK API or original SDK numerical gate executed."
+}

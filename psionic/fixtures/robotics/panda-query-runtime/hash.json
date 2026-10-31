@@ -1,0 +1,194 @@
+{
+  "schema": "psionic.panda-query-runtime.hash-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_query_runtime_hash_reference.py": "c1123b28bd251f4c480a363db03c2f454cd1791e8502ac615a792119cbde2007",
+    "psionic/tests/robotics/panda_query_runtime_hash_native.c": "21fd5e738fcd7f3f4a2a2f527a58eb3b592db87f1036dc0d8389594717a9eca9",
+    "psionic/tests/robotics/panda-query-runtime-hash.coax": "e8de9b07066fbdb7597fc2f307ce306fdf426d592fbf50910586711b28288106"
+  },
+  "lengths": [
+    0,
+    1,
+    63,
+    64,
+    65,
+    1048575,
+    1048576,
+    1048577,
+    2097169,
+    16777216
+  ],
+  "expected_hex": [
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "29af2686fd53374a36b0846694cc342177e428d1647515f078784d69cdb9e488",
+    "fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108",
+    "4bfd2c8b6f1eec7a2afeb48b934ee4b2694182027e6d0fc075074f2fabb31781",
+    "d8222d77ac43a9391cb348ce3a3bb3c0221a4a666e907b5bc77de56a41f37848",
+    "fbbab289f7f94b25736c58be46a994c441fd02552cc6022352e3d86d2fab7c83",
+    "607deb6eccbc844880b9d7b523751a4cdba0452727b885c74264bfe1fb7843e2",
+    "6f8b1421035dcde6d517143914932e7996c17ae9a6c30042b1142b1b8b5f0557",
+    "341aacac661ccb210720bedaa9ead5d668fe5ea41a73532fc147c71e34040df1"
+  ],
+  "input_sha256": "f10e23c0f79344f3bd61500e2a02b0a01b5cb983e04c4395f977c14db6d37ee6",
+  "commands": [
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-hash-native-final/debug",
+        "/private/tmp/panda-query-runtime-hash-native-final/debug/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_hash_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-hash-native-final/debug/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-query-runtime-hash-native-final/debug/native",
+        "/private/tmp/panda-query-runtime-hash-native-final/input.bin"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/tests/robotics/panda-query-runtime.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-query-runtime-hash-native-final/release/panda-session.h"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-hash-native-final/release",
+        "/private/tmp/panda-query-runtime-hash-native-final/release/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_hash_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-hash-native-final/release/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-query-runtime-hash-native-final/release/native",
+        "/private/tmp/panda-query-runtime-hash-native-final/input.bin"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-runtime-hash-native-final/sanitized",
+        "/private/tmp/panda-query-runtime-hash-native-final/sanitized/panda-session.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_runtime_hash_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-runtime-hash-native-final/sanitized/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-query-runtime-hash-native-final/sanitized/native",
+        "/private/tmp/panda-query-runtime-hash-native-final/input.bin"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "passed": true,
+        "vectors": 10,
+        "max_file_bytes": 16777216,
+        "assertions": 29,
+        "SDK_API_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "b1a9094f1ceeaa1850aa3f227ad4632c24a85b3bd8db61e466a08bf371d6e9b1",
+      "header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "binary_sha256": "baa2be0050599bbcff07c61ac573325ebd8db18e716ffac80476b250a9dda41e"
+    },
+    {
+      "mode": "release",
+      "native": {
+        "passed": true,
+        "vectors": 10,
+        "max_file_bytes": 16777216,
+        "assertions": 29,
+        "SDK_API_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "6c74d970d6c71a556f0ca502da9cd28260f5c3ed9c23980a6b568a73fa62a0fb",
+      "header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "binary_sha256": "d70b784f94c8c25f3ea72c8a4b7bffefb4a380f5cc23ffbdc7217c197d569a06"
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "passed": true,
+        "vectors": 10,
+        "max_file_bytes": 16777216,
+        "assertions": 29,
+        "SDK_API_calls": 0,
+        "NN_calls": 0
+      },
+      "C_sha256": "b1a9094f1ceeaa1850aa3f227ad4632c24a85b3bd8db61e466a08bf371d6e9b1",
+      "header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "binary_sha256": "ac60822774430e06272fdb2b986063911a306f66d3182e0182a1644be8dd392c"
+    }
+  ],
+  "SDK_API_calls": 0,
+  "NN_calls": 0,
+  "reused_partial_emission": {
+    "source": "/tmp/panda-query-runtime-hash-native-first",
+    "receipt_sha256": "8b794c7503daeb863d731b5ecb86fbf98dc91e9b7adfa5392e87063b385db0db",
+    "scope": "Test-tool SHA status constants corrected; unchanged product emission reused, no passed numerical mode previously existed."
+  }
+}

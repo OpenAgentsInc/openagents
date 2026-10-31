@@ -20,7 +20,11 @@ python="${GROOT_REFERENCE_PYTHON:-$HOME/.cache/psionic/groot-reference-env/bin/p
 sdk="${MUJOCO_ROOT:-$("$python" -c 'import importlib.util,pathlib;print(pathlib.Path(importlib.util.find_spec("mujoco").origin).parent)')}"
 build="$output/build"
 mkdir -p "$build/shaders"
+if [[ -n "${PANDA_QUERY_SOURCE:-}" ]];then
+  "$coax" c psionic/tests/robotics/panda-query-runtime.coax --library --release --header "$build/panda-session.h" > "$build/panda-session.c"
+else
 "$coax" c psionic/tests/robotics/panda-clock-session.coax --library --release --header "$build/panda-session.h" > "$build/panda-session.c"
+fi
 "$coax" c psionic/lib/robotics/panda-policy.coax --library --release --header "$build/panda-policy-generated.h" > "$build/panda-policy-generated.c"
 if [[ -n "${PANDA_SHADER_CACHE:-}" ]];then
   for module in tile device vision wide text action;do cp "$PANDA_SHADER_CACHE/$module.metal" "$build/shaders/$module.metal";done
@@ -37,8 +41,13 @@ case "${PANDA_NATIVE_MODE:-release}" in
   release) flags+=(-O2);;
   *) echo "PANDA_NATIVE_MODE must be debug,release,sanitize" >&2;exit 2;;
 esac
+if [[ -n "${PANDA_QUERY_SOURCE:-}" ]];then
+  flags+=(-DPANDA_OWNED_QUERY_V1=1 -D_DARWIN_C_SOURCE -fno-builtin-sin -fno-builtin-cos)
+  if [[ "${PANDA_NATIVE_MODE:-release}" == sanitize ]];then flags+=(-fno-sanitize-recover=all -fno-omit-frame-pointer);fi
+fi
 "$compiler" "${flags[@]}" -I"$build" -I"$sdk/include" -Ipsionic/platform -Ipsionic/tests/robotics "$build/panda-session.c" "$build/panda-policy-generated.c" psionic/platform/panda-policy.c psionic/platform/panda-env.c psionic/tests/robotics/panda_loop_metal.c "$build/metal-host.o" -L"$sdk" -lmujoco.3.3.1 -framework Metal -framework Foundation -framework OpenGL -lm -o "$build/panda-loop"
 cases=()
 for id in "${ids[@]}";do [[ "$id" =~ ^[0-9][0-9][0-9]$ ]] || exit 2;cases+=("$pairs/demo_$id");done
 export DYLD_LIBRARY_PATH="$sdk${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+if [[ "${PANDA_BUILD_ONLY:-0}" == 1 ]];then echo "Panda build only: no policy/SDK open, NN or rendering";exit 0;fi
 "$build/panda-loop" "$shards" "$pst" "$noise" "$build/shaders" "$output" 'pick up the book and place it in the back compartment of the caddy' "$ticks" "$scenario" "${cases[@]}"

@@ -1,0 +1,45 @@
+// Streaming calls use private fixed-size state and separate output.
+// Input ownership and admitted spans exclude overlap with that state.
+// The internal SHA statuses are fixed by these checked preconditions.
+// Private16MiB file profile, using the qualified streaming SHA contract.
+// Low-level sized helper is source-visible and requires admitted input/output
+// and1..1MiB chunk metadata; it is not a separate arbitrary-input gate.
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+PqhPlan :: struct {status:u32;full:int;tail:int;}
+#test "owned runtime file hash admission and integer chunk plan have exact boundaries" {
+ #assert pqn_file_chunk_bytes()==1048576;
+ #assert pqn_file_request(0,32,false)==SHA_OK && pqn_file_request(16777216,32,false)==SHA_OK;
+ #assert pqn_file_request(-1,31,true)==SHA_BAD_INPUT && pqn_file_request(16777217,31,true)==SHA_BAD_INPUT;
+ #assert pqn_file_request(0,31,true)==SHA_BAD_OUTPUT && pqn_file_request(0,33,true)==SHA_BAD_OUTPUT && pqn_file_request(0,32,true)==SHA_ALIAS;
+ totals:=[8]int.[0,1,1048575,1048576,1048577,16777215,16777216,3];full:=[8]int.[0,0,0,1,1,15,16,0];tail:=[8]int.[0,1,1048575,0,1,1048575,0,3];
+ for i:0..<8 {p:=pqn_file_plan(totals[i],1048576);#assert p.status==SHA_OK && p.full==full[i] && p.tail==tail[i];}
+ p:=pqn_file_plan(3,2);#assert p.status==SHA_OK && p.full==1 && p.tail==1;p=pqn_file_plan(3,1);#assert p.full==3 && p.tail==0;
+ for t:[2]int.[-1,16777217] {p=pqn_file_plan(t,1);#assert p.status==SHA_BAD_INPUT && p.full==0 && p.tail==0;}for c:[2]int.[0,1048577] {p=pqn_file_plan(1,c);#assert p.status==SHA_BAD_INPUT && p.full==0 && p.tail==0;}
+}
+#test "owned runtime file hash matches independent abc and empty digests atomically" {
+ input:=[3]u8.[97,98,99];out:[33]u8;for i:0..<33 {out[i]=0xa5;}
+ #assert pqn_file_hash(input[..],out[0..<31],false)==SHA_BAD_OUTPUT && pqn_file_hash(input[..],out[..],false)==SHA_BAD_OUTPUT && pqn_file_hash(input[..],out[0..<32],true)==SHA_ALIAS;
+ for i:0..<33 {#assert out[i]==0xa5;}
+ expected:=[32]u8.[0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad];
+ for mode:0..<3 {status:=ifx mode==0 then pqn_file_hash(input[..],out[0..<32],false) else pqn_hash_sized(input[..],out[0..<32],mode);#assert status==SHA_OK && out[32]==0xa5;for i:0..<32 {#assert out[i]==expected[i];}}
+ #assert pqn_file_hash(input[0..<0],out[0..<32],false)==SHA_OK;empty:=[32]u8.[0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55];for i:0..<32 {#assert out[i]==empty[i];}
+}
+pqn_file_chunk_bytes :: ()->int #export_c {return 1048576;}
+pqn_file_request :: (input:int,output:int,overlap:bool)->u32 #export_c {
+ if input<0 || input>16777216 {return SHA_BAD_INPUT;}if output!=32 {return SHA_BAD_OUTPUT;}if overlap {return SHA_ALIAS;}return SHA_OK;
+}
+pqn_file_plan :: (total:int,chunk:int)->PqhPlan #export_c {
+ if total<0 || total>16777216 || chunk<1 || chunk>1048576 {return PqhPlan.{status=SHA_BAD_INPUT};}return PqhPlan.{full=total/chunk,tail=total%chunk};
+}
+pqn_hash_sized :: (input:[]u8,out:[]u8,chunk:int)->u32 {
+ state:[112]u8;_:=sha256_init(state[..]);plan:=pqn_file_plan(input.count,chunk);
+ for i:0..<plan.full {at:=i*chunk;_=sha256_update_checked(state[..],input[at..<at+chunk],false);}
+ at:=plan.full*chunk;_=sha256_update_checked(state[..],input[at..<at+plan.tail],false);
+ // Private state, valid fixed spans, bounded updates and total<=16MiB satisfy
+ // every streaming precondition. Internal status is necessarily SHA_OK.
+ stage:[32]u8;_=sha256_final_checked(state[..],stage[..],false);for i:0..<32 {out[i]=stage[i];}return SHA_OK;
+}
+pqn_file_hash :: (input:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+ status:=pqn_file_request(input.count,out.count,overlap);if status!=SHA_OK {return status;}return pqn_hash_sized(input,out,pqn_file_chunk_bytes());
+}

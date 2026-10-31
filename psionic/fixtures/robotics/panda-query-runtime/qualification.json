@@ -1,0 +1,92 @@
+{
+  "actual_positive_NN_calls": 0,
+  "actual_positive_SDK_API_calls": 0,
+  "actual_positive_file_hashes": 88,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "current_binding_function_variants": 553,
+  "current_binding_new_hash_and_display_functions": 6,
+  "evidence": {
+    "SDK-build-inputs.json": "2e30165981adf6d78000face3265bc606bb0fba32b11ff1650c3b8f64b3e7e67",
+    "build.json": "df25eab9f307bc09c53123a0b0f7227a6ab6d739053889dbcf955243a4f4a2cd",
+    "current-binding.json": "e8cc5263425a6e936314c252246199abaf4ea37650f41fa4a1541b795ca7993b",
+    "file-preflight.json": "2ef86f74147b143bd3cc42ffd4f00a6e57e86128e8b9dd4d14ff637918077ee0",
+    "hash-header-binding.json": "b8fbae508f1821044cd443e13828e7d433297f22f13440c3da84b1a06bde3dc4",
+    "hash.json": "a9fbf4627bd9ee4d18ab583bfb98bd7a3dbbc09f6b1fc4712b5e07cd8c2e24aa",
+    "native.json": "9438a7eb8697e965cc4034e5503104f52820097fa035600db8d0da7a138851c2",
+    "wiring.json": "9d66eab99d21ae0278bb0ca2b7fc77027b58b552d7dd58b180fc9bcd448e7548"
+  },
+  "file_hash_profiles": [
+    "debug",
+    "release",
+    "fail-fastASan+UBSan"
+  ],
+  "historical_nonpassing_attempts": [
+    {
+      "path": "/tmp/panda-query-runtime-preflight-first/record.json",
+      "reason": "One-shot SHA1MiBcap refused original SDK/assetfiles; fixed with bounded Coaxstreaming wrapper.",
+      "sha256": "1530f15e131e1f16a3b2f7064509bd5fc6ff3b01bf59e41e94745a17c2d3157b"
+    },
+    {
+      "path": "/tmp/panda-query-runtime-hash-native-first/record.json",
+      "reason": "New C test expected wrong existing SHAstatus constants; no completed numeric phase; corrected tooling and reused unchanged oracle/emittedC.",
+      "sha256": "8b794c7503daeb863d731b5ecb86fbf98dc91e9b7adfa5392e87063b385db0db"
+    },
+    {
+      "path": "/tmp/panda-query-runtime-current-binding-first/record.json",
+      "reason": "Binding tool initially treated platformconditional duplicate function as invalid; fixed tool to bind both variants.",
+      "sha256": "39bfcc19654d996bd58a896506ad9ef3efb05065d42d022f5431696947ef2c8c"
+    }
+  ],
+  "largest_hash_vector_bytes": 16777216,
+  "linked_full_neural_binary_executed": false,
+  "mutants_total": 329,
+  "native_metadata_assertions_each_profile": 3217,
+  "native_metadata_profiles": [
+    "debug",
+    "release",
+    "fail-fastASan+UBSan"
+  ],
+  "new_file_hash_vectors": 10,
+  "new_hash_source_location_followup": {
+    "change": "Three documentation lines prepended to hash unit; runtime new#load replaces an existing comment line, retaining original63line source extent. Existing method source/code unchanged; currentCbindings prove oldbody/global equality and newhash bodies exact.",
+    "comment_only_relation": true,
+    "current_hash_unit_sha256": "db74c7418af6027ed8dd8930208fa8a1527aad4b7b03e023b81d61c9e4534f3a",
+    "executed_hash_unit_sha256": "e8de9b07066fbdb7597fc2f307ce306fdf426d592fbf50910586711b28288106",
+    "hash_new_header_exact": true
+  },
+  "passed": true,
+  "prior_selector_sample_controller_crypto_model_SDK_gates_repeated": false,
+  "private_symbol_binding": "Exactlyone source-private spatialhelper identifier rename, verified identical concrete signature/body and itsonecaller. No numeric/diagnostic/string normalization.",
+  "profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-owned-query-shadow-v1",
+  "root_mock_assertions_each_profile": 551,
+  "root_mock_contexts_each_profile": 15,
+  "root_mock_receipt": "effect-order.json",
+  "root_mutations": [
+    {
+      "file": "panda-query-runtime.coax",
+      "killed": 102,
+      "log_sha256": "209d8fbfa641537943e0c6edc14e3e2b24bb122f17cda18cfbcc90adbb06ac5b",
+      "survived": 0,
+      "total": 102
+    },
+    {
+      "file": "panda-query-runtime-assets.coax",
+      "killed": 186,
+      "log_sha256": "f69466fc71b0753a12fc50875de95e134e72421370c327d75279b475ff21877e",
+      "survived": 0,
+      "total": 186
+    },
+    {
+      "file": "panda-query-runtime-hash.coax",
+      "killed": 41,
+      "log_sha256": "8d09e97cd02bb414730c2e4028c0afc55998e1d3dddcab5e3fcdded91f5d01d9",
+      "survived": 0,
+      "total": 41
+    }
+  ],
+  "schema": "psionic.panda-query-runtime.qualification.v1",
+  "schema_owned_cases": "psionic-panda-owned-query-closed-loop-v1",
+  "scope": "Explicit wrapper/build opt-in, exact immutable scene/reset/SDK/85assets. C effectstage wired, built, and mocked; no new neural+owned-query execution or episode result. Existing default SDKprofile/ABI/numericflags preserved.",
+  "source_private_spatial_symbol_occurrences_each": 3,
+  "unsealed_helpers": "PODs, descriptors and source-visible lowlevel functions are not model-provenance certificates. Entry preflight owns fixed model digest admission."
+}

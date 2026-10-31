@@ -1,0 +1,222 @@
+{
+  "schema": "psionic.panda-query-runtime.wiring-qualification.v1",
+  "passed": true,
+  "base_commit": "0afcc8196b",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_loop_effects.h": "2628cef17553f7b1f203409dc3e66b539bea9cf2f406ad28feed80b4e1938d0b",
+    "psionic/tests/robotics/panda_loop_metal.c": "2ed76a170c4daad692cc9d8ee02e689207666f89aa9d7c227a224157a824cb13",
+    "psionic/tests/robotics/run-panda-loop-metal.sh": "d2a4c0582e848abf9aca18ca21349741f051f276080e14009b26b8090a3dee93",
+    "psionic/tests/robotics/panda_query_runtime_wiring.py": "70c92b90f13b30fbba9ee26466af1989e6312bc75027c4d10780c4cc8b04db71"
+  },
+  "legacy_bindings": [
+    {
+      "file": "psionic/tests/robotics/panda_loop_effects.h",
+      "base_bytes_sha256": "046ffc6fdb9980c914ca4887077cd3fdb561b64b9b67f825cc6f327f2c3d6280",
+      "current_bytes_sha256": "2628cef17553f7b1f203409dc3e66b539bea9cf2f406ad28feed80b4e1938d0b",
+      "tokens": 3910,
+      "token_sha256": "ae14c1b9bf9ae38298394fc01d220aeccf979e5b00c39ccc9eaffa02fcb91101",
+      "equal": true
+    },
+    {
+      "file": "psionic/tests/robotics/panda_loop_metal.c",
+      "base_bytes_sha256": "e75e195e56d873c2d01b9a676e065220f17d46375fcdf90d2a9da835c19c7bc5",
+      "current_bytes_sha256": "2ed76a170c4daad692cc9d8ee02e689207666f89aa9d7c227a224157a824cb13",
+      "tokens": 466,
+      "token_sha256": "3ab45213a173e5189426b3296c5f4f7d7bfb7c9a63a771b55241efdc25b25fb2",
+      "equal": true
+    }
+  ],
+  "shell_mocks": [
+    {
+      "owned": false,
+      "aggregate": "panda-clock-session.coax",
+      "flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-deprecated-declarations",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined"
+      ],
+      "calls": [
+        {
+          "program": "mock-coax",
+          "argv": [
+            "c",
+            "psionic/tests/robotics/panda-clock-session.coax",
+            "--library",
+            "--release",
+            "--header",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/panda-session.h"
+          ]
+        },
+        {
+          "program": "mock-coax",
+          "argv": [
+            "c",
+            "psionic/lib/robotics/panda-policy.coax",
+            "--library",
+            "--release",
+            "--header",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/panda-policy-generated.h"
+          ]
+        },
+        {
+          "program": "mock-cc",
+          "argv": [
+            "-fobjc-arc",
+            "-mmacosx-version-min=15.0",
+            "-O2",
+            "-c",
+            "psionic/platform/metal-host.m",
+            "-o",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/metal-host.o"
+          ]
+        },
+        {
+          "program": "mock-cc",
+          "argv": [
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-Wno-deprecated-declarations",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-I/private/tmp/panda-query-runtime-wiring-first/legacy/build",
+            "-I/unused-mock-SDK/include",
+            "-Ipsionic/platform",
+            "-Ipsionic/tests/robotics",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/panda-session.c",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/panda-policy-generated.c",
+            "psionic/platform/panda-policy.c",
+            "psionic/platform/panda-env.c",
+            "psionic/tests/robotics/panda_loop_metal.c",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/metal-host.o",
+            "-L/unused-mock-SDK",
+            "-lmujoco.3.3.1",
+            "-framework",
+            "Metal",
+            "-framework",
+            "Foundation",
+            "-framework",
+            "OpenGL",
+            "-lm",
+            "-o",
+            "/private/tmp/panda-query-runtime-wiring-first/legacy/build/panda-loop"
+          ]
+        }
+      ],
+      "result_stdout_sha256": "5ee55b99e0310df9d53e6c7d5022d981447fa75055a3a6a5c8734cf38938f511",
+      "model_or_SDK_or_binary_execution": false
+    },
+    {
+      "owned": true,
+      "aggregate": "panda-query-runtime.coax",
+      "flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-deprecated-declarations",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-DPANDA_OWNED_QUERY_V1=1",
+        "-D_DARWIN_C_SOURCE",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer"
+      ],
+      "calls": [
+        {
+          "program": "mock-coax",
+          "argv": [
+            "c",
+            "psionic/tests/robotics/panda-query-runtime.coax",
+            "--library",
+            "--release",
+            "--header",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/panda-session.h"
+          ]
+        },
+        {
+          "program": "mock-coax",
+          "argv": [
+            "c",
+            "psionic/lib/robotics/panda-policy.coax",
+            "--library",
+            "--release",
+            "--header",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/panda-policy-generated.h"
+          ]
+        },
+        {
+          "program": "mock-cc",
+          "argv": [
+            "-fobjc-arc",
+            "-mmacosx-version-min=15.0",
+            "-O2",
+            "-c",
+            "psionic/platform/metal-host.m",
+            "-o",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/metal-host.o"
+          ]
+        },
+        {
+          "program": "mock-cc",
+          "argv": [
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-Wno-deprecated-declarations",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-DPANDA_OWNED_QUERY_V1=1",
+            "-D_DARWIN_C_SOURCE",
+            "-fno-builtin-sin",
+            "-fno-builtin-cos",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
+            "-I/private/tmp/panda-query-runtime-wiring-first/owned/build",
+            "-I/unused-mock-SDK/include",
+            "-Ipsionic/platform",
+            "-Ipsionic/tests/robotics",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/panda-session.c",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/panda-policy-generated.c",
+            "psionic/platform/panda-policy.c",
+            "psionic/platform/panda-env.c",
+            "psionic/tests/robotics/panda_loop_metal.c",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/metal-host.o",
+            "-L/unused-mock-SDK",
+            "-lmujoco.3.3.1",
+            "-framework",
+            "Metal",
+            "-framework",
+            "Foundation",
+            "-framework",
+            "OpenGL",
+            "-lm",
+            "-o",
+            "/private/tmp/panda-query-runtime-wiring-first/owned/build/panda-loop"
+          ]
+        }
+      ],
+      "result_stdout_sha256": "5ee55b99e0310df9d53e6c7d5022d981447fa75055a3a6a5c8734cf38938f511",
+      "model_or_SDK_or_binary_execution": false
+    }
+  ],
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "legacy_scope": "Exact token streams before macro expansion, retaining all string/number literals. Whitespace/comments and disabled NEW branch are excluded. Physical source positions/expanded diagnostic __LINE__ values can differ; no executable-byte equality claim.",
+  "real_owned_build": {
+    "directory": "/tmp/panda-query-runtime-build-only-first",
+    "C_sha256": "f16a456c8d9f097b82b5ad90c31785cd97a078928a0d2fdc2073947c1f235fba",
+    "header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+    "binary_sha256": "cf884ea0394fda47f559b7f1c0d3f787df6cfecd5338cf9ddcead4983501d88a",
+    "session_matches_qualified_release": true,
+    "binary_executed": false
+  }
+}

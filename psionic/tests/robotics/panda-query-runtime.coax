@@ -1,0 +1,63 @@
+// Versioned optional runner profile. These observed digests are local inputs,
+// not remote attestations; the C effect must hash the actual immutable files.
+#load "panda-query-session.coax";
+#load "panda-query-runtime-assets.coax";
+#authority;
+PqnStatus :: enum u8 {ok;mode;shape;effect;identity;}
+PqnDescriptorV1 :: struct {status:PqnStatus;query_kind:int;assets:int;scalar_libm:bool;profile:string;schema:string;query_profile:string;policy_profile:string;}
+#test "owned runtime profile is explicit and legacy neural identity is unchanged" {
+ d:=pqn_descriptor("owned-shadow-v1");#assert d.status==PqnStatus.ok && d.query_kind==1 && d.assets==85 && d.scalar_libm;
+ #assert d.profile=="panda-libero-mujoco331-gr00t-wide-fixed-noise-owned-query-shadow-v1" && d.schema=="psionic-panda-owned-query-closed-loop-v1" && d.query_profile==pqs_name(1) && d.policy_profile==ps_profile();
+ for bad:[4]string.["","sdk","owned","owned-shadow-v2"] {r:=pqn_descriptor(bad);#assert r.status==PqnStatus.mode && r.assets==0 && r.query_kind==0 && !r.scalar_libm && r.profile=="" && r.schema=="" && r.query_profile=="" && r.policy_profile=="";}
+ #assert ps_profile()=="panda-libero-mujoco331-gr00t-wide-fixed-noise-v1";
+}
+#test "owned runtime hexadecimal digest has exact length nibble and byte admission" {
+ bytes:[33]u8;for i:0..<32 {bytes[i]=cast(u8)i;}
+ text:="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+ #assert pqn_equal_digest(bytes[0..<32],text) && !pqn_equal_digest(bytes[..],text) && !pqn_equal_digest(bytes[0..<31],text) && !pqn_equal_digest(bytes[0..<32],"short");
+ for i:0..<32 {bytes[i]^=1;#assert !pqn_equal_digest(bytes[0..<32],text);bytes[i]^=1;}
+ bytes[0]=15;#assert !pqn_equal_digest(bytes[0..<32],"1g0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");bytes[0]=0;
+ #assert !pqn_equal_digest(bytes[0..<32],"g00102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") && !pqn_equal_digest(bytes[0..<32],"0g0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+}
+#forall "owned runtime hexadecimal characters have independent alphabet values" value:0..<256 {
+ alphabet:="0123456789abcdef";expected:=-1;for i:0..<16 {if value==int(alphabet[i]) {expected=i;}}#assert pqn_hex(cast(u8)value)==expected;
+}
+#test "owned runtime fixed scene reset SDK and all assets admit only matching observations" {
+ xml:[33]u8;initial:[33]u8;sdk:[33]u8;assets:[2721]u8;
+ pqn_fill(pqn_expected(0),xml[0..<32]);pqn_fill(pqn_expected(1),initial[0..<32]);pqn_fill(pqn_expected(2),sdk[0..<32]);for i:0..<85 {pqn_fill(pqn_asset_digest(i),assets[i*32..<i*32+32]);}
+ #assert pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[0..<2720],0)==PqnStatus.ok;
+ #assert pqn_expected(-1)=="" && pqn_expected(3)=="";
+ #assert pqn_admit(xml[..],initial[0..<32],sdk[0..<32],assets[0..<2720],1)==PqnStatus.shape && pqn_admit(xml[0..<31],initial[0..<32],sdk[0..<32],assets[0..<2720],1)==PqnStatus.shape;
+ #assert pqn_admit(xml[0..<32],initial[..],sdk[0..<32],assets[0..<2720],1)==PqnStatus.shape && pqn_admit(xml[0..<32],initial[0..<31],sdk[0..<32],assets[0..<2720],1)==PqnStatus.shape;
+ #assert pqn_admit(xml[0..<32],initial[0..<32],sdk[..],assets[0..<2720],1)==PqnStatus.shape && pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<31],assets[0..<2720],1)==PqnStatus.shape;
+ #assert pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[..],1)==PqnStatus.shape && pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[0..<2719],1)==PqnStatus.shape;
+ xml[0]^=1;#assert pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[0..<2720],1)==PqnStatus.effect;xml[0]^=1;
+ for role:0..<3 {for i:0..<32 {if role==0 {xml[i]^=1;}if role==1 {initial[i]^=1;}if role==2 {sdk[i]^=1;}#assert pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[0..<2720],0)==PqnStatus.identity;if role==0 {xml[i]^=1;}if role==1 {initial[i]^=1;}if role==2 {sdk[i]^=1;}}}
+ for i:0..<85 {at:=i*32+i%32;assets[at]^=1;#assert pqn_admit(xml[0..<32],initial[0..<32],sdk[0..<32],assets[0..<2720],0)==PqnStatus.identity;assets[at]^=1;}
+}
+// Test-only filler metadata is checked independently against acquisition.
+#load "panda-query-runtime-hash.coax";
+pqn_fill :: (text:string,out:[]u8) {for i:0..<32 {out[i]=cast(u8)(16*pqn_hex(text[2*i])+pqn_hex(text[2*i+1]));}}
+pqn_descriptor :: (choice:string)->PqnDescriptorV1 #export_c {
+ if choice!="owned-shadow-v1" {return PqnDescriptorV1.{status=PqnStatus.mode};}
+ return PqnDescriptorV1.{query_kind=1,assets=85,scalar_libm=true,profile="panda-libero-mujoco331-gr00t-wide-fixed-noise-owned-query-shadow-v1",schema="psionic-panda-owned-query-closed-loop-v1",query_profile=pqs_name(1),policy_profile=ps_profile()};
+}
+pqn_hex :: (value:u8)->int {if value>='0' && value<='9' {return int(value)-int('0');}if value>='a' && value<='f' {return int(value)-int('a')+10;}return -1;}
+pqn_equal_digest :: (bytes:[]u8,expected:string)->bool {
+ if bytes.count!=32 || expected.count!=64 {return false;}
+ for i:0..<32 {hi:=pqn_hex(expected[2*i]);lo:=pqn_hex(expected[2*i+1]);if lo<0 || int(bytes[i])!=16*hi+lo {return false;}}return true;
+}
+pqn_expected :: (role:int)->string #export_c {
+ if role==0 {return "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f";}
+ if role==1 {return "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc";}
+ if role==2 {return "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4";}return "";
+}
+pqn_model :: (xml:[]u8,initial:[]u8,sdk:[]u8,effect:int)->PqnStatus #export_c {
+ if xml.count!=32 || initial.count!=32 || sdk.count!=32 {return PqnStatus.shape;}
+ if effect!=0 {return PqnStatus.effect;}
+ if !pqn_equal_digest(xml,pqn_expected(0)) || !pqn_equal_digest(initial,pqn_expected(1)) || !pqn_equal_digest(sdk,pqn_expected(2)) {return PqnStatus.identity;}return PqnStatus.ok;
+}
+pqn_admit :: (xml:[]u8,initial:[]u8,sdk:[]u8,assets:[]u8,effect:int)->PqnStatus #export_c {
+ if assets.count!=2720 {return PqnStatus.shape;}status:=pqn_model(xml,initial,sdk,effect);if status!=PqnStatus.ok {return status;}
+ for i:0..<85 {if !pqn_equal_digest(assets[i*32..<i*32+32],pqn_asset_digest(i)) {return PqnStatus.identity;}}return PqnStatus.ok;
+}

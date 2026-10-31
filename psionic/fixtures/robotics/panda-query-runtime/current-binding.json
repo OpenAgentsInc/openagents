@@ -1,0 +1,111 @@
+{
+  "schema": "psionic.panda-query-runtime.current-binding.v1",
+  "passed": true,
+  "normalization": "One private identifier rename only; no numeric, diagnostic, string or expression normalization.",
+  "private_identifier": {
+    "old": "coax_q3p_CoaxSpatialOp__o34a146b277r146",
+    "new": "coax_q3p_CoaxSpatialOp__o34a147b278r147"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "old_C_sha256": "1d0dfe696d95f6f99dc19fd8ea386f26e398f2568869e337288fb0202eaa6698",
+      "current_C_sha256": "83f320c14d0003cd88681263a8466bf0d6ce0dff2b8cf642e160319498cefe0f",
+      "old_header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+      "current_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "old_functions": 553,
+      "current_functions": 559,
+      "exact_bound_function_inventory_sha256": "3f8981ae157661ed296a629674b2a72481254dd66ea415301b4edf3dbdbf9f6f",
+      "new_functions": [
+        "coax_p_pqn_hash_sized",
+        "coax_show_t_PqhPlan",
+        "pqn_file_chunk_bytes",
+        "pqn_file_hash",
+        "pqn_file_plan",
+        "pqn_file_request"
+      ],
+      "all_old_globals_and_preamble_exact": true,
+      "all_old_header_declarations_and_layouts_exact": true,
+      "private_helper_signature_old": [
+        "static",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "coax_q3p_CoaxSpatialOp__o34a146b277r146",
+        "(",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "l_left",
+        ",",
+        "coax_q3t_CoaxVector3__f73u80r7",
+        "l_right",
+        ")"
+      ],
+      "private_helper_signature_new": [
+        "static",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "coax_q3p_CoaxSpatialOp__o34a147b278r147",
+        "(",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "l_left",
+        ",",
+        "coax_q3t_CoaxVector3__f73u80r7",
+        "l_right",
+        ")"
+      ]
+    },
+    {
+      "mode": "release",
+      "old_C_sha256": "f16a456c8d9f097b82b5ad90c31785cd97a078928a0d2fdc2073947c1f235fba",
+      "current_C_sha256": "b681d601cc328029882ae0dc677a76aff02c70f70bbaaab8b62e085ae4e8acbc",
+      "old_header_sha256": "543a783683cf3aa45fe3edf4ac1c37cbc78077651e7b5b831dd64934586e43df",
+      "current_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "old_functions": 553,
+      "current_functions": 559,
+      "exact_bound_function_inventory_sha256": "8503a21f91b4c222e5931f067cc4f02044110c7cde172c0bd25558384f31c91c",
+      "new_functions": [
+        "coax_p_pqn_hash_sized",
+        "coax_show_t_PqhPlan",
+        "pqn_file_chunk_bytes",
+        "pqn_file_hash",
+        "pqn_file_plan",
+        "pqn_file_request"
+      ],
+      "all_old_globals_and_preamble_exact": true,
+      "all_old_header_declarations_and_layouts_exact": true,
+      "private_helper_signature_old": [
+        "static",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "coax_q3p_CoaxSpatialOp__o34a146b277r146",
+        "(",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "l_left",
+        ",",
+        "coax_q3t_CoaxVector3__f73u80r7",
+        "l_right",
+        ")"
+      ],
+      "private_helper_signature_new": [
+        "static",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "coax_q3p_CoaxSpatialOp__o34a147b278r147",
+        "(",
+        "coax_q3t_CoaxPoint3__f73u80r7",
+        "l_left",
+        ",",
+        "coax_q3t_CoaxVector3__f73u80r7",
+        "l_right",
+        ")"
+      ]
+    }
+  ],
+  "root_mock_carry": {
+    "historical_helper_sha256": "a526d091766774644d70977e6f1c4b4ab16dea63958df7fb09c92ecf48a99c47",
+    "current_helper_sha256": "f5e3ec8b94460789dffbdd3a5cb43d7ffb706e5cab1bef58fb3cfe50b4ac4abe",
+    "exact_control_functions": [
+      "panda_query_current_v1",
+      "panda_query_control_v1"
+    ],
+    "changed_helpers_only": [
+      "panda_query_read_v1: call admitted16MiB length before allocation",
+      "panda_query_hash_v1: call Coaxstreaming wrapper"
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "schema": "psionic.panda-query-runtime.refreshed-build.v1",
+  "passed": true,
+  "binary_executed": false,
+  "SDK_API_calls": 0,
+  "NN_calls": 0,
+  "reused": {
+    "panda-policy-generated.c": {
+      "source": "/tmp/panda-query-runtime-build-only-first/build/panda-policy-generated.c",
+      "sha256": "e537539fa2973f4c3640b6a632111ea1b6e85db598447b45eab6323ea925aec3"
+    },
+    "panda-policy-generated.h": {
+      "source": "/tmp/panda-query-runtime-build-only-first/build/panda-policy-generated.h",
+      "sha256": "771a64d35ec18a38cfa1ccfbe8c4601abab69ca739bee8e4e5b7c378bd03e8cd"
+    },
+    "metal-host.o": {
+      "source": "/tmp/panda-query-runtime-build-only-first/build/metal-host.o",
+      "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+    },
+    "shaders": {
+      "tile.metal": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0",
+      "device.metal": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d",
+      "action.metal": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31",
+      "text.metal": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7",
+      "wide.metal": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822",
+      "vision.metal": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+    }
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/panda_query_runtime.h": "f5e3ec8b94460789dffbdd3a5cb43d7ffb706e5cab1bef58fb3cfe50b4ac4abe",
+    "psionic/tests/robotics/panda_loop_effects.h": "2628cef17553f7b1f203409dc3e66b539bea9cf2f406ad28feed80b4e1938d0b",
+    "psionic/tests/robotics/panda_loop_metal.c": "2ed76a170c4daad692cc9d8ee02e689207666f89aa9d7c227a224157a824cb13",
+    "psionic/tests/robotics/run-panda-loop-metal.sh": "d2a4c0582e848abf9aca18ca21349741f051f276080e14009b26b8090a3dee93",
+    "psionic/platform/panda-policy.c": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0",
+    "psionic/platform/panda-env.c": "6224a6be7cd742654c2ab45eea40ee0625e86a8c08c2a8daacdd22a3e12c9f8e",
+    "psionic/platform/metal-host.m": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6"
+  },
+  "command": {
+    "argv": [
+      "cc",
+      "-std=c11",
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-Wno-deprecated-declarations",
+      "-O1",
+      "-g",
+      "-fsanitize=address,undefined",
+      "-DPANDA_OWNED_QUERY_V1=1",
+      "-D_DARWIN_C_SOURCE",
+      "-fno-builtin-sin",
+      "-fno-builtin-cos",
+      "-fno-sanitize-recover=all",
+      "-fno-omit-frame-pointer",
+      "-I/tmp/panda-query-runtime-build-only-final/build",
+      "-I/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/include",
+      "-Ipsionic/platform",
+      "-Ipsionic/tests/robotics",
+      "/tmp/panda-query-runtime-build-only-final/build/panda-session.c",
+      "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.c",
+      "psionic/platform/panda-policy.c",
+      "psionic/platform/panda-env.c",
+      "psionic/tests/robotics/panda_loop_metal.c",
+      "/tmp/panda-query-runtime-build-only-final/build/metal-host.o",
+      "-L/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco",
+      "-lmujoco.3.3.1",
+      "-framework",
+      "Metal",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "OpenGL",
+      "-lm",
+      "-o",
+      "/tmp/panda-query-runtime-build-only-final/build/panda-loop"
+    ],
+    "exit": 0,
+    "stderr_bytes": 0,
+    "seconds": 2.7525108749978244
+  },
+  "C_sha256": "b681d601cc328029882ae0dc677a76aff02c70f70bbaaab8b62e085ae4e8acbc",
+  "header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+  "binary_sha256": "e42e44510708cad102db08f64dbd7e1d1acf5e0a9e04f542c6e243c51b6ba779"
+}

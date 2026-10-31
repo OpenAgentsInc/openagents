@@ -1,0 +1,19 @@
+{
+  "schema": "psionic.panda-query-runtime.header-binding.v1",
+  "passed": true,
+  "scope": "Cache-only new fullheader equality, including added PqhPlan layout; no execution/emission/gate repeated.",
+  "modes": [
+    {
+      "mode": "debug",
+      "executed_hash_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "current_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "exact": true
+    },
+    {
+      "mode": "release",
+      "executed_hash_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "current_header_sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6",
+      "exact": true
+    }
+  ]
+}
