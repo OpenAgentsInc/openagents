@@ -23,3 +23,12 @@ prefix/native results without executing those old corpora. The current book
 uses 189–191 and dated historical receipt filenames retain their identities.
 Only focused reconstruction is claimed; complete release/cache installation,
 full R12 and robot unit/frame migration remain pending.
+
+
+The final book gate held publication for the changed quantity evidence.
+Review extends the native scalar profile to formal derived units, keeps the
+frame/compiler-clock/device boundaries, and adds the focused derived tests
+and merged proof as evidence. The old unsupported q*q example becomes a raw
+scalar/q refusal because quantity products now work. That changed refusal
+method passes on the exact 0.44 candidate; no old suite reruns. Only the two
+changed evidence hashes and the new supporting paths are updated.

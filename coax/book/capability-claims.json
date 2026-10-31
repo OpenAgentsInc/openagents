@@ -206,7 +206,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal f32/f64 scalar quantities on native C; frames, typed clocks, other targets and existing plain-f64 consumer migrations remain separate.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal derived f32/f64 scalar units on native C; frame forms, compiler clock syntax, other targets and plain-f64 robot migrations remain separate.",
       "text_sha256": "76c6754be7eb32788f865dbc4b3782368485fa9a456a135b06280260059d4085",
       "features": [
         {
@@ -277,7 +277,7 @@
         },
         {
           "path": "coax/QUANTITIES.md",
-          "sha256": "82670d388fd8912b9d7f6bd4737d42fd0908205cb3ba036e3834cb7fa5f0386c"
+          "sha256": "b9407cd2d32bc98457a5092cf5a8c7738333c167155d2387538242819005bbc6"
         },
         {
           "path": "coax/lib/quantity.coax",
@@ -289,11 +289,19 @@
         },
         {
           "path": "coax/tests/quantity.py",
-          "sha256": "d2a14588c3f5718e47fd675ff0933f4860207a31821d10bf5b678392e56fa956"
+          "sha256": "eb0b3b4b671f9cb707e48e4c140c1ee81e69255cb8737fda44d355969c0fae9b"
         },
         {
           "path": "docs/verification/coax-quantity-psionic-compatibility-2026-10-31.json",
           "sha256": "0f1d23d18d2fdf909b10f8233bc715bf469fb818c7d0269e19f34537cf4c6907"
+        },
+        {
+          "path": "coax/tests/quantity_derived.py",
+          "sha256": "8dc911767db5ba5beecaef64be4e8018a06a2d106a3828bd88c0eea6d2923389"
+        },
+        {
+          "path": "docs/verification/coax-quantity-derived-merged-2026-10-31.json",
+          "sha256": "ee36c71c192701cd9d7cab3cf0d425e6e092ecd88c1a37205186718c97de27d5"
         }
       ]
     },
