@@ -1,19 +1,34 @@
 # OpenAgents
 
-OpenAgents.com is a playtest, not a slide deck: a 3D web world where you
-walk among the projects we're building, play realms that people dream up,
-and pay or get paid in Bitcoin
+OpenAgents builds open agents that people can own, inspect, improve and
+earn from, on open protocols and Bitcoin.
+
+Since November 2023, in public and on video
+([290 episodes](docs/transcripts/README.md)), we have built and tested the
+pieces this needs:
+- coding agents, from issue-to-change loops to Coder;
+- plugin registries, an agent store and revenue sharing;
+- Lightning payments and wallets;
+- Nostr identity and markets;
+- Pylons, a network that sells spare compute;
+- Psionic, our machine-learning framework for inference and training;
+- verification, so accepted work can be checked;
+- web, desktop and mobile apps.
+
+That research and infrastructure is now coming together into product
+releases anchored by **the Verse**: a real-time 3D world on the open web.
+In it you walk among the projects we're building, play and make realms,
+put agents to work, and pay or get paid in Bitcoin
 ([Episode 290: Enter the Verse](docs/transcripts/290.md)).
 
-We are rebuilding OpenAgents from a small, checked core. The repository was
-reset on 2026-10-27. What is here now is the base everything else will be
-built on:
+The repository was reset on 2026-10-27 to a small, checked core that every
+release builds on:
 
 - **Coax**, the language;
 - **Verse**, the real-time engine, written in it;
 - **one protocol** that every OpenAgents surface speaks;
 - **openagents.com**, drawn in Coax in the browser;
-- **a native iOS app** that runs Coax today.
+- **native desktop and iOS apps**.
 
 ## What we're building
 
@@ -85,7 +100,7 @@ built on:
     ([protocol](docs/protocol/2026-10-28-projects.md),
     [how to work the queue](coax/web/project/QUEUE.md)).
     [`/projects/verse`](https://openagents.com/projects/verse/index.md) tracks the
-    port of the playtest infrastructure.
+    Verse engine and realms.
   - Each page has an `index.md` beside it for agents.
   - Releases go through `coax/web/release.sh`: a clean build of `origin/main`
     goes to staging, is smoked and walked, promoted to production and
