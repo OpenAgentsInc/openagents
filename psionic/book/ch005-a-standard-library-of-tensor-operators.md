@@ -261,6 +261,15 @@ actual float/integer/metadata aliases, exact work ceilings and late forward or
 gradient overflow without partial public publication. Debug/release and
 ASan/UBSan accompany the authored Coax checks and exact runnable transcript.
 
+Inside Coax, the VJP file checks itself the same way: for 61 small cases
+across every differentiable family and several axes, it nudges each input by
+`±1/64`, runs the forward operator, and requires the central difference of
+`dy · y` to match the analytical gradient within `1e-3` relative. Exact
+boundary cases pin each family's derivative work ceiling and every capacity
+refusal. `coax mutate --root-only` on
+[tensor-ops-backward.coax](../lib/tensor-ops-backward.coax) leaves no
+surviving mutant.
+
 The [dated record](../../docs/verification/psionic-ch003a-2026-10-29.md) binds
 those results to the tested build. Chapter 6 can add dtype/device placement
 without treating an unlisted backend or operator as silently available.

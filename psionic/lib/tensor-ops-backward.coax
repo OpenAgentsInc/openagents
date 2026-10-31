@@ -20,7 +20,7 @@ ToGradient :: struct {status:ToStatus;written_a:int;written_b:int;}
     #assert r.status==ToStatus.ok && ga[0]==1 && ga[1]==2 && ga[2]==3;
 }
 #test "comparisons have no VJP and derivative work has its own limit" {
-    a:=TvShape.{rank=2,dims=[4]int.[64,64,0,0]};p:=to_plan(ToRequest.{op=ToOp.matmul},a,a,0);#assert p.status==ToStatus.ok && !to_vjp_work(ToRequest.{op=ToOp.matmul},p,a,0);
+    a:=TvShape.{rank=2,dims=[4]int.[64,64,0,0]};p:=to_plan(ToRequest.{op=ToOp.matmul},a,a,0);#assert p.status==ToStatus.ok && !to_vjp_work(ToRequest.{op=ToOp.matmul},p,a);
     owners:=[2]TvStorage.[tv_owner(1,1,1).storage,tv_owner(2,1,1).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{},false).view,tv_contiguous(owners[1],TvShape.{},false).view];
     x:=[1]f32.[2];dy:=[1]f32.[1];ga:=[1]f32.[-7];gb:=[1]f32.[-8];sa:=[1]f32.[-9];sb:=[1]f32.[-10];idx:[1]int;
     r:=to_vjp_checked(ToRequest.{op=ToOp.less},owners[..],views[..],x[..],x[..],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
@@ -34,12 +34,235 @@ ToGradient :: struct {status:ToStatus;written_a:int;written_b:int;}
     a=[3]f32.[2,2,1];r=to_vjp_checked(ToRequest.{op=ToOp.maximum},owners[..],views[..],a[..],none[0..<0],idx[0..<0],dy[0..<1],ga[..],gb[0..<0],sa[..],sb[0..<0],false);#assert r.status==ToStatus.ok && ga[0]==1 && ga[1]==0 && ga[2]==0;
 }
 
-to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape,indices:int)->bool {
+#test "elementwise VJPs equal central differences of the forward operators" {
+    for k:0..<17 {
+        r:ToRequest;ash:TvShape;bsh:=TvShape.{rank=1};idx:[8]int;ni:=0;pa:=false;pb:=false;
+        if k==0 {r=ToRequest.{op=ToOp.add};ash=TvShape.{rank=2,dims=[4]int.[2,1,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};}
+        if k==1 {r=ToRequest.{op=ToOp.add};ash=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==2 {r=ToRequest.{op=ToOp.add};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{};}
+        if k==3 {r=ToRequest.{op=ToOp.subtract};ash=TvShape.{rank=2,dims=[4]int.[2,1,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};}
+        if k==4 {r=ToRequest.{op=ToOp.subtract};ash=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==5 {r=ToRequest.{op=ToOp.subtract};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{};}
+        if k==6 {r=ToRequest.{op=ToOp.multiply};ash=TvShape.{rank=2,dims=[4]int.[2,1,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};}
+        if k==7 {r=ToRequest.{op=ToOp.multiply};ash=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==8 {r=ToRequest.{op=ToOp.multiply};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{};}
+        if k==9 {r=ToRequest.{op=ToOp.divide};ash=TvShape.{rank=2,dims=[4]int.[2,1,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};pb=true;}
+        if k==10 {r=ToRequest.{op=ToOp.divide};ash=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};pb=true;}
+        if k==11 {r=ToRequest.{op=ToOp.divide};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{};pb=true;}
+        if k==12 {r=ToRequest.{op=ToOp.negate};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==13 {r=ToRequest.{op=ToOp.relu};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==14 {r=ToRequest.{op=ToOp.exponential};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==15 {r=ToRequest.{op=ToOp.logarithm};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};pa=true;}
+        if k==16 {r=ToRequest.{op=ToOp.mse};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        na:=tv_elements(ash).elements;nb:=tv_elements(bsh).elements;p:=to_plan(r,ash,bsh,ni);n:=p.n;#assert p.status==ToStatus.ok && na<=96 && nb<=96 && n<=96;
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];views:=[2]TvView.[tv_contiguous(owners[0],ash,false).view,tv_contiguous(owners[1],bsh,false).view];
+        a:[96]f32;b:[96]f32;dy:[96]f32;for i:0..<na {a[i]=f32((i*37+11)%97-48)/16+0.03125;if pa {a[i]=1+f32((i*7)%13)/4;}}
+        for i:0..<nb {b[i]=f32((i*53+5)%97-48)/16+0.03125;if pb {b[i]=1+f32((i*5+3)%11)/4;}}for j:0..<n {dy[j]=f32((j*29+3)%17-8)/4+0.125;}
+        ga:[96]f32;gb:[96]f32;sa:[96]f32;sb:[96]f32;
+        g:=to_vjp_checked(r,owners[..],views[..],a[0..<na],b[0..<nb],idx[0..<ni],dy[0..<n],ga[..],gb[..],sa[..],sb[..],false);
+        #assert g.status==ToStatus.ok && g.written_a==na && g.written_b==nb;
+        for operand:0..<2 {count:=na;if operand==1 {count=nb;}
+            for i:0..<count {total:f64=0;
+                for side:0..<2 {xa:=a;xb:=b;step:f32=0.015625;if side==1 {step=-step;}if operand==0 {xa[i]+=step;}else {xb[i]+=step;}
+                    out:[96]f32;scratch:[96]f32;aux:[96]int;stage:[96]int;
+                    f:=to_forward_checked(r,owners[..],views[..],xa[0..<na],xb[0..<nb],idx[0..<ni],out[..],scratch[..],aux[..],stage[..],false);#assert f.status==ToStatus.ok;
+                    for j:0..<n {term:=f64(out[j])*f64(dy[j]);if side==0 {total+=term;}else {total-=term;}}
+                }
+                fd:=total/0.03125;exact:=f64(ga[i]);if operand==1 {exact=f64(gb[i]);}#assert abs(fd-exact)<=0.001*(1+abs(fd));
+            }
+        }
+    }
+}
+#test "reduction and softmax VJPs equal central differences on every axis" {
+    for k:0..<13 {
+        r:ToRequest;ash:TvShape;bsh:=TvShape.{rank=1};idx:[8]int;ni:=0;pa:=false;pb:=false;
+        if k==0 {r=ToRequest.{op=ToOp.sum,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==1 {r=ToRequest.{op=ToOp.sum,axis=2,keep=true};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==2 {r=ToRequest.{op=ToOp.sum,axis=0};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==3 {r=ToRequest.{op=ToOp.mean,axis=1,keep=true};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==4 {r=ToRequest.{op=ToOp.mean,axis=0};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==5 {r=ToRequest.{op=ToOp.mean,axis=1};ash=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};}
+        if k==6 {r=ToRequest.{op=ToOp.maximum,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==7 {r=ToRequest.{op=ToOp.maximum,axis=2,keep=true};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==8 {r=ToRequest.{op=ToOp.maximum,axis=0};ash=TvShape.{rank=2,dims=[4]int.[3,4,0,0]};}
+        if k==9 {r=ToRequest.{op=ToOp.maximum,axis=1};ash=TvShape.{rank=2,dims=[4]int.[2,5,0,0]};}
+        if k==10 {r=ToRequest.{op=ToOp.softmax,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==11 {r=ToRequest.{op=ToOp.softmax,axis=2};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==12 {r=ToRequest.{op=ToOp.softmax,axis=0};ash=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};}
+        na:=tv_elements(ash).elements;nb:=tv_elements(bsh).elements;p:=to_plan(r,ash,bsh,ni);n:=p.n;#assert p.status==ToStatus.ok && na<=96 && nb<=96 && n<=96;
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];views:=[2]TvView.[tv_contiguous(owners[0],ash,false).view,tv_contiguous(owners[1],bsh,false).view];
+        a:[96]f32;b:[96]f32;dy:[96]f32;for i:0..<na {a[i]=f32((i*37+11)%97-48)/16+0.03125;if pa {a[i]=1+f32((i*7)%13)/4;}}
+        for i:0..<nb {b[i]=f32((i*53+5)%97-48)/16+0.03125;if pb {b[i]=1+f32((i*5+3)%11)/4;}}for j:0..<n {dy[j]=f32((j*29+3)%17-8)/4+0.125;}
+        ga:[96]f32;gb:[96]f32;sa:[96]f32;sb:[96]f32;
+        g:=to_vjp_checked(r,owners[..],views[..],a[0..<na],b[0..<nb],idx[0..<ni],dy[0..<n],ga[..],gb[..],sa[..],sb[..],false);
+        #assert g.status==ToStatus.ok && g.written_a==na && g.written_b==nb;
+        for operand:0..<2 {count:=na;if operand==1 {count=nb;}
+            for i:0..<count {total:f64=0;
+                for side:0..<2 {xa:=a;xb:=b;step:f32=0.015625;if side==1 {step=-step;}if operand==0 {xa[i]+=step;}else {xb[i]+=step;}
+                    out:[96]f32;scratch:[96]f32;aux:[96]int;stage:[96]int;
+                    f:=to_forward_checked(r,owners[..],views[..],xa[0..<na],xb[0..<nb],idx[0..<ni],out[..],scratch[..],aux[..],stage[..],false);#assert f.status==ToStatus.ok;
+                    for j:0..<n {term:=f64(out[j])*f64(dy[j]);if side==0 {total+=term;}else {total-=term;}}
+                }
+                fd:=total/0.03125;exact:=f64(ga[i]);if operand==1 {exact=f64(gb[i]);}#assert abs(fd-exact)<=0.001*(1+abs(fd));
+            }
+        }
+    }
+}
+#test "indexed concatenation and ordering VJPs equal central differences" {
+    for k:0..<15 {
+        r:ToRequest;ash:TvShape;bsh:=TvShape.{rank=1};idx:[8]int;ni:=0;pa:=false;pb:=false;
+        if k==0 {r=ToRequest.{op=ToOp.take,axis=0};ash=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};idx[0]=2;idx[1]=0;idx[2]=2;idx[3]=1;ni=4;}
+        if k==1 {r=ToRequest.{op=ToOp.take,axis=1};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};idx[0]=1;idx[1]=2;ni=2;}
+        if k==2 {r=ToRequest.{op=ToOp.take,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};idx[0]=2;idx[1]=2;idx[2]=0;ni=3;}
+        if k==3 {r=ToRequest.{op=ToOp.update,axis=0};ash=TvShape.{rank=2,dims=[4]int.[4,2,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};idx[0]=3;idx[1]=1;ni=2;}
+        if k==4 {r=ToRequest.{op=ToOp.update,axis=0};ash=TvShape.{rank=2,dims=[4]int.[4,2,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};idx[0]=1;idx[1]=1;ni=2;}
+        if k==5 {r=ToRequest.{op=ToOp.update,axis=1};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};idx[0]=2;idx[1]=0;ni=2;}
+        if k==6 {r=ToRequest.{op=ToOp.concat,axis=1};ash=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==7 {r=ToRequest.{op=ToOp.concat,axis=0};ash=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};}
+        if k==8 {r=ToRequest.{op=ToOp.concat,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,1,2,0]};bsh=TvShape.{rank=3,dims=[4]int.[2,2,2,0]};}
+        if k==9 {r=ToRequest.{op=ToOp.sort,axis=1};ash=TvShape.{rank=2,dims=[4]int.[2,4,0,0]};}
+        if k==10 {r=ToRequest.{op=ToOp.sort,axis=0,descending=false};ash=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};}
+        if k==11 {r=ToRequest.{op=ToOp.sort,axis=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        if k==12 {r=ToRequest.{op=ToOp.topk,axis=1,k=2};ash=TvShape.{rank=2,dims=[4]int.[2,4,0,0]};}
+        if k==13 {r=ToRequest.{op=ToOp.topk,axis=0,k=2,descending=false};ash=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};}
+        if k==14 {r=ToRequest.{op=ToOp.topk,axis=1,k=1};ash=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        na:=tv_elements(ash).elements;nb:=tv_elements(bsh).elements;p:=to_plan(r,ash,bsh,ni);n:=p.n;#assert p.status==ToStatus.ok && na<=96 && nb<=96 && n<=96;
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];views:=[2]TvView.[tv_contiguous(owners[0],ash,false).view,tv_contiguous(owners[1],bsh,false).view];
+        a:[96]f32;b:[96]f32;dy:[96]f32;for i:0..<na {a[i]=f32((i*37+11)%97-48)/16+0.03125;if pa {a[i]=1+f32((i*7)%13)/4;}}
+        for i:0..<nb {b[i]=f32((i*53+5)%97-48)/16+0.03125;if pb {b[i]=1+f32((i*5+3)%11)/4;}}for j:0..<n {dy[j]=f32((j*29+3)%17-8)/4+0.125;}
+        ga:[96]f32;gb:[96]f32;sa:[96]f32;sb:[96]f32;
+        g:=to_vjp_checked(r,owners[..],views[..],a[0..<na],b[0..<nb],idx[0..<ni],dy[0..<n],ga[..],gb[..],sa[..],sb[..],false);
+        #assert g.status==ToStatus.ok && g.written_a==na && g.written_b==nb;
+        for operand:0..<2 {count:=na;if operand==1 {count=nb;}
+            for i:0..<count {total:f64=0;
+                for side:0..<2 {xa:=a;xb:=b;step:f32=0.015625;if side==1 {step=-step;}if operand==0 {xa[i]+=step;}else {xb[i]+=step;}
+                    out:[96]f32;scratch:[96]f32;aux:[96]int;stage:[96]int;
+                    f:=to_forward_checked(r,owners[..],views[..],xa[0..<na],xb[0..<nb],idx[0..<ni],out[..],scratch[..],aux[..],stage[..],false);#assert f.status==ToStatus.ok;
+                    for j:0..<n {term:=f64(out[j])*f64(dy[j]);if side==0 {total+=term;}else {total-=term;}}
+                }
+                fd:=total/0.03125;exact:=f64(ga[i]);if operand==1 {exact=f64(gb[i]);}#assert abs(fd-exact)<=0.001*(1+abs(fd));
+            }
+        }
+    }
+}
+#test "matrix and convolution VJPs equal central differences" {
+    for k:0..<4 {
+        r:ToRequest;ash:TvShape;bsh:=TvShape.{rank=1};idx:[8]int;ni:=0;pa:=false;pb:=false;
+        if k==0 {r=ToRequest.{op=ToOp.matmul};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[3,4,0,0]};}
+        if k==1 {r=ToRequest.{op=ToOp.matmul};ash=TvShape.{rank=2,dims=[4]int.[3,1,0,0]};bsh=TvShape.{rank=2,dims=[4]int.[1,2,0,0]};}
+        if k==2 {r=ToRequest.{op=ToOp.conv2d};ash=TvShape.{rank=4,dims=[4]int.[2,2,3,3]};bsh=TvShape.{rank=4,dims=[4]int.[2,2,2,2]};}
+        if k==3 {r=ToRequest.{op=ToOp.conv2d};ash=TvShape.{rank=4,dims=[4]int.[1,1,3,4]};bsh=TvShape.{rank=4,dims=[4]int.[3,1,2,3]};}
+        na:=tv_elements(ash).elements;nb:=tv_elements(bsh).elements;p:=to_plan(r,ash,bsh,ni);n:=p.n;#assert p.status==ToStatus.ok && na<=96 && nb<=96 && n<=96;
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];views:=[2]TvView.[tv_contiguous(owners[0],ash,false).view,tv_contiguous(owners[1],bsh,false).view];
+        a:[96]f32;b:[96]f32;dy:[96]f32;for i:0..<na {a[i]=f32((i*37+11)%97-48)/16+0.03125;if pa {a[i]=1+f32((i*7)%13)/4;}}
+        for i:0..<nb {b[i]=f32((i*53+5)%97-48)/16+0.03125;if pb {b[i]=1+f32((i*5+3)%11)/4;}}for j:0..<n {dy[j]=f32((j*29+3)%17-8)/4+0.125;}
+        ga:[96]f32;gb:[96]f32;sa:[96]f32;sb:[96]f32;
+        g:=to_vjp_checked(r,owners[..],views[..],a[0..<na],b[0..<nb],idx[0..<ni],dy[0..<n],ga[..],gb[..],sa[..],sb[..],false);
+        #assert g.status==ToStatus.ok && g.written_a==na && g.written_b==nb;
+        for operand:0..<2 {count:=na;if operand==1 {count=nb;}
+            for i:0..<count {total:f64=0;
+                for side:0..<2 {xa:=a;xb:=b;step:f32=0.015625;if side==1 {step=-step;}if operand==0 {xa[i]+=step;}else {xb[i]+=step;}
+                    out:[96]f32;scratch:[96]f32;aux:[96]int;stage:[96]int;
+                    f:=to_forward_checked(r,owners[..],views[..],xa[0..<na],xb[0..<nb],idx[0..<ni],out[..],scratch[..],aux[..],stage[..],false);#assert f.status==ToStatus.ok;
+                    for j:0..<n {term:=f64(out[j])*f64(dy[j]);if side==0 {total+=term;}else {total-=term;}}
+                }
+                fd:=total/0.03125;exact:=f64(ga[i]);if operand==1 {exact=f64(gb[i]);}#assert abs(fd-exact)<=0.001*(1+abs(fd));
+            }
+        }
+    }
+}
+#test "pooling interpolation and loss VJPs equal central differences" {
+    for k:0..<12 {
+        r:ToRequest;ash:TvShape;bsh:=TvShape.{rank=1};idx:[8]int;ni:=0;pa:=false;pb:=false;
+        if k==0 {r=ToRequest.{op=ToOp.maxpool2d,height=2,width=2};ash=TvShape.{rank=4,dims=[4]int.[2,2,3,3]};}
+        if k==1 {r=ToRequest.{op=ToOp.maxpool2d,height=2,width=3,stride=2};ash=TvShape.{rank=4,dims=[4]int.[1,1,4,5]};}
+        if k==2 {r=ToRequest.{op=ToOp.avgpool2d,height=2,width=1,stride=2};ash=TvShape.{rank=4,dims=[4]int.[2,2,4,4]};}
+        if k==3 {r=ToRequest.{op=ToOp.avgpool2d,height=2,width=3,stride=2};ash=TvShape.{rank=4,dims=[4]int.[1,1,4,5]};}
+        if k==4 {r=ToRequest.{op=ToOp.avgpool2d,height=2,width=2};ash=TvShape.{rank=4,dims=[4]int.[1,2,3,3]};}
+        if k==5 {r=ToRequest.{op=ToOp.nearest2d,height=2,width=5};ash=TvShape.{rank=4,dims=[4]int.[2,2,3,2]};}
+        if k==6 {r=ToRequest.{op=ToOp.nearest2d,height=3,width=2};ash=TvShape.{rank=4,dims=[4]int.[1,1,2,3]};}
+        if k==7 {r=ToRequest.{op=ToOp.bilinear2d,height=3,width=3};ash=TvShape.{rank=4,dims=[4]int.[2,2,2,2]};}
+        if k==8 {r=ToRequest.{op=ToOp.bilinear2d,height=2,width=3};ash=TvShape.{rank=4,dims=[4]int.[1,1,3,4]};}
+        if k==9 {r=ToRequest.{op=ToOp.bilinear2d,height=3,width=5};ash=TvShape.{rank=4,dims=[4]int.[1,1,2,3]};}
+        if k==10 {r=ToRequest.{op=ToOp.cross_entropy};ash=TvShape.{rank=2,dims=[4]int.[3,4,0,0]};idx[0]=2;idx[1]=0;idx[2]=3;ni=3;}
+        if k==11 {r=ToRequest.{op=ToOp.cross_entropy};ash=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};idx[0]=1;idx[1]=1;ni=2;}
+        na:=tv_elements(ash).elements;nb:=tv_elements(bsh).elements;p:=to_plan(r,ash,bsh,ni);n:=p.n;#assert p.status==ToStatus.ok && na<=96 && nb<=96 && n<=96;
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];views:=[2]TvView.[tv_contiguous(owners[0],ash,false).view,tv_contiguous(owners[1],bsh,false).view];
+        a:[96]f32;b:[96]f32;dy:[96]f32;for i:0..<na {a[i]=f32((i*37+11)%97-48)/16+0.03125;if pa {a[i]=1+f32((i*7)%13)/4;}}
+        for i:0..<nb {b[i]=f32((i*53+5)%97-48)/16+0.03125;if pb {b[i]=1+f32((i*5+3)%11)/4;}}for j:0..<n {dy[j]=f32((j*29+3)%17-8)/4+0.125;}
+        ga:[96]f32;gb:[96]f32;sa:[96]f32;sb:[96]f32;
+        g:=to_vjp_checked(r,owners[..],views[..],a[0..<na],b[0..<nb],idx[0..<ni],dy[0..<n],ga[..],gb[..],sa[..],sb[..],false);
+        #assert g.status==ToStatus.ok && g.written_a==na && g.written_b==nb;
+        for operand:0..<2 {count:=na;if operand==1 {count=nb;}
+            for i:0..<count {total:f64=0;
+                for side:0..<2 {xa:=a;xb:=b;step:f32=0.015625;if side==1 {step=-step;}if operand==0 {xa[i]+=step;}else {xb[i]+=step;}
+                    out:[96]f32;scratch:[96]f32;aux:[96]int;stage:[96]int;
+                    f:=to_forward_checked(r,owners[..],views[..],xa[0..<na],xb[0..<nb],idx[0..<ni],out[..],scratch[..],aux[..],stage[..],false);#assert f.status==ToStatus.ok;
+                    for j:0..<n {term:=f64(out[j])*f64(dy[j]);if side==0 {total+=term;}else {total-=term;}}
+                }
+                fd:=total/0.03125;exact:=f64(ga[i]);if operand==1 {exact=f64(gb[i]);}#assert abs(fd-exact)<=0.001*(1+abs(fd));
+            }
+        }
+    }
+}
+
+#test "derivative work admits each family's exact ceiling and refuses one past it" {
+    none:=TvShape.{rank=1};
+    // pairs = (na+nb)*n against TV_LIMIT/factor; the factor is each family's inner Jacobian walk.
+    a:=TvShape.{rank=1,dims=[4]int.[1023,0,0,0]};r:=ToRequest.{};p:=to_plan(r,a,TvShape.{},0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[0]=1024;p=to_plan(r,a,TvShape.{},0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[4,256,0,0]};r=ToRequest.{op=ToOp.maximum,axis=1};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[1]=257;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[2,64,0,0]};r=ToRequest.{op=ToOp.sort,axis=1};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[1]=65;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[4,256,0,0]};r=ToRequest.{op=ToOp.topk,axis=1,k=1};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[1]=257;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[1,80,0,0]};r=ToRequest.{op=ToOp.softmax,axis=1};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[1]=81;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=4,dims=[4]int.[1,1,1,724]};r=ToRequest.{op=ToOp.maxpool2d,height=1,width=2};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[3]=725;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=1,dims=[4]int.[723,0,0,0]};b:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};r=ToRequest.{op=ToOp.update};p=to_plan(r,a,b,2);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[0]=724;p=to_plan(r,a,b,2);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a.dims[0]=1024;p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[1,1024,0,0]};r=ToRequest.{op=ToOp.cross_entropy};p=to_plan(r,a,none,1);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+    a.dims[1]=1025;p=to_plan(r,a,none,1);#assert p.status==ToStatus.ok && !to_vjp_work(r,p,a);
+    a=TvShape.{rank=2,dims=[4]int.[1,1025,0,0]};r=ToRequest.{op=ToOp.mean,axis=1};p=to_plan(r,a,none,0);#assert p.status==ToStatus.ok && to_vjp_work(r,p,a);
+}
+#test "the checked VJP measures work on the differentiated operand" {
+    owners:=[2]TvStorage.[tv_owner(1,1,1028).storage,tv_owner(2,1,0).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[4,257,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    a:[1028]f32;none:[1]f32;dy:[4]f32;ga:[1028]f32;sa:[1028]f32;idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.maximum,axis=1},owners[..],views[..],a[..],none[0..<0],idx[0..<0],dy[..],ga[..],none[0..<0],sa[..],none[0..<0],false);
+    #assert r.status==ToStatus.limit && r.written_a==0;
+}
+#test "every gradient capacity is checked on its own and refusals keep destinations" {
+    owners:=[2]TvStorage.[tv_owner(1,1,2).storage,tv_owner(2,1,2).storage];shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};views:=[2]TvView.[tv_contiguous(owners[0],shape,false).view,tv_contiguous(owners[1],shape,false).view];
+    a:=[2]f32.[1,2];b:=[2]f32.[3,4];dy:=[3]f32.[1,1,1];ga:=[2]f32.[-7,-7];gb:=[2]f32.[-8,-8];sa:=[2]f32.[-9,-9];sb:=[2]f32.[-6,-6];idx:[1]int;m:=ToRequest.{op=ToOp.multiply};
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<1],ga[..],gb[..],sa[..],sb[..],false).status==ToStatus.capacity;
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false).status==ToStatus.capacity;
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<2],ga[0..<1],gb[..],sa[..],sb[..],false).status==ToStatus.capacity;
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<2],ga[..],gb[0..<1],sa[..],sb[..],false).status==ToStatus.capacity;
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<2],ga[..],gb[..],sa[0..<1],sb[..],false).status==ToStatus.capacity;
+    #assert to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<2],ga[..],gb[..],sa[..],sb[0..<1],false).status==ToStatus.capacity;
+    #assert ga[0]==-7 && gb[1]==-8 && sa[0]==-9 && sb[1]==-6;
+    r:=to_vjp_checked(m,owners[..],views[..],a[..],b[..],idx[0..<0],dy[0..<2],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.ok && r.written_a==2 && r.written_b==2 && ga[0]==3 && ga[1]==4 && gb[0]==1 && gb[1]==2;
+}
+#test "a forward value the profile refuses has no derivative" {
+    owners:=[2]TvStorage.[tv_owner(1,1,1).storage,tv_owner(2,1,1).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{},false).view,tv_contiguous(owners[1],TvShape.{},false).view];
+    big:=[1]f32.[1e30];dy:=[1]f32.[1];ga:=[1]f32.[-7];gb:=[1]f32.[-8];sa:=[1]f32.[-9];sb:=[1]f32.[-10];idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.multiply},owners[..],views[..],big[..],big[..],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.arithmetic && ga[0]==-7 && gb[0]==-8 && sa[0]==-9;
+    owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;none:[1]f32;
+    x:=[1]f32.[-1];r=to_vjp_checked(ToRequest.{op=ToOp.logarithm},owners[..],views[..],x[..],none[0..<0],idx[0..<0],dy[..],ga[..],gb[0..<0],sa[..],sb[0..<0],false);
+    #assert r.status==ToStatus.arithmetic && ga[0]==-7 && sa[0]==-9;
+}
+
+// The plan's inner width is the pooling window and update's search (at least one).
+to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape)->bool {
     n:=p.na+p.nb;if !to_work_fits(n,p.n) {return false;}pairs:=n*p.n;factor:=1;
     if r.op==ToOp.maximum || r.op==ToOp.sort || r.op==ToOp.topk {factor=a.dims[r.axis];}
     else if r.op==ToOp.softmax {factor=2*a.dims[r.axis];}
-    else if r.op==ToOp.maxpool2d {factor=p.inner;}
-    else if r.op==ToOp.update {factor=indices;if factor<1 {factor=1;}}
+    else if r.op==ToOp.maxpool2d || r.op==ToOp.update {factor=p.inner;}
     else if r.op==ToOp.cross_entropy {factor=a.dims[1];}
     return to_work_fits(pairs,factor);
 }
@@ -53,7 +276,7 @@ to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices
     if op==ToOp.negate || op==ToOp.relu || op==ToOp.exponential || op==ToOp.logarithm {if input!=output {return 0;}x:=to_at(av,a,input);if op==ToOp.negate {return -1;}if op==ToOp.relu {if x>0 {return 1;}return 0;}if op==ToOp.exponential {return exp(x);}return 1/x;}
     c:=to_coords(p.shape,output);shape:=av.shape;if operand==1 {shape=bv.shape;}ic:=to_coords(shape,input);
     if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum {point:=to_reduce_coords(av.shape,p,r,output);for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=point[axis] {return 0;}}
-        if op==ToOp.sum {return 1;}if op==ToOp.mean {return 1/f64(av.shape.dims[r.axis]);}point[r.axis]=0;maximum:=to_read(av,a,point);best:=0;
+        if op==ToOp.sum {return 1;}if op==ToOp.mean {return 1/f64(av.shape.dims[r.axis]);}maximum:=to_read(av,a,point);best:=0;
         for j:1..<av.shape.dims[r.axis] {point[r.axis]=j;x:=to_read(av,a,point);if x>maximum {maximum=x;best=j;}}if ic[r.axis]==best {return 1;}return 0;
     }
     if op==ToOp.softmax {for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=c[axis] {return 0;}}y:=to_soft(av,a,c,r.axis);x:=to_soft(av,a,ic,r.axis);diagonal:f64=0;if ic[r.axis]==c[r.axis] {diagonal=1;}return y*(diagonal-x);}
@@ -65,7 +288,7 @@ to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices
         point[r.axis]-=av.shape.dims[r.axis];if operand==1 && input==to_flat(bv.shape,point) {return 1;}return 0;
     }
     if op==ToOp.sort || op==ToOp.topk {for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=c[axis] {return 0;}}if to_rank(av,a,ic,r.axis,r.descending)==c[r.axis] {return 1;}return 0;}
-    if op==ToOp.matmul {if operand==0 {if ic[0]==c[0] {return to_read(bv,b,[4]int.[ic[1],c[1],0,0]);}return 0;}if ic[1]==c[1] {return to_read(av,a,[4]int.[c[0],ic[0],0,0]);}return 0;}
+    if op==ToOp.matmul {point:=c;if operand==0 {if ic[0]==c[0] {point[0]=ic[1];return to_read(bv,b,point);}return 0;}if ic[1]==c[1] {point[1]=ic[0];return to_read(av,a,point);}return 0;}
     if op==ToOp.conv2d {if operand==0 {h:=ic[2]-c[2];w:=ic[3]-c[3];if ic[0]!=c[0] || h<0 || h>=bv.shape.dims[2] || w<0 || w>=bv.shape.dims[3] {return 0;}return to_read(bv,b,[4]int.[c[1],ic[1],h,w]);}
         if ic[0]!=c[1] {return 0;}return to_read(av,a,[4]int.[c[0],ic[1],c[2]+ic[2],c[3]+ic[3]]);
     }
@@ -84,7 +307,7 @@ to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices
 to_vjp_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,dy:[]f32,ga:[]f32,gb:[]f32,sa:[]f32,sb:[]f32,overlap:bool)->ToGradient #export_c {
     p:=to_admit(r,owners,views,a,b,indices);if p.status!=ToStatus.ok {return ToGradient.{status=p.status};}
     if !to_differentiable(r.op) {return ToGradient.{status=ToStatus.nondiff};}
-    if !to_vjp_work(r,p,views[0].shape,indices.count) {return ToGradient.{status=ToStatus.limit};}
+    if !to_vjp_work(r,p,views[0].shape) {return ToGradient.{status=ToStatus.limit};}
     if dy.count!=p.n || ga.count<p.na || gb.count<p.nb || sa.count<p.na || sb.count<p.nb {return ToGradient.{status=ToStatus.capacity};}
     if overlap {return ToGradient.{status=ToStatus.alias};}for x:dy {if !tv_finite(x) {return ToGradient.{status=ToStatus.number};}}
     // A derivative is admitted only where this forward profile succeeds.

@@ -24,5 +24,7 @@ for mode in debug release;do
     "$coax" run psionic/examples/tensor-operators.coax "${flags[@]}" > "$out/example.out"
     cmp psionic/fixtures/tensor-operators.out "$out/example.out"
 done
+# The VJP authority root: every mutant must fail its own checks.
+"$coax" mutate psionic/lib/tensor-ops-backward.coax --root-only --jobs "${PSIONIC_JOBS:-4}"
 python3 -I psionic/tests/book.py
-echo 'Tensor operators: all 27 families/entries, scalar/finite-difference references, strided layouts, debug/release, native plain/ASan/UBSan and exact book output pass'
+echo 'Tensor operators: all 27 families/entries, scalar/finite-difference references, strided layouts, debug/release, native plain/ASan/UBSan, zero-survivor VJP mutation and exact book output pass'
