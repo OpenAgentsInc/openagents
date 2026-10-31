@@ -113,8 +113,8 @@ BOT_KICKOFF_CALM :: 3.0; // and how long after it drives in without boost
 BOT_RECOVER :: 1.5;      // seconds the bot coasts after it hits the ball before it chases again
 BOT_THROTTLE :: 0.6;     // its share of the drive: slower than you without boost
 BOT_BOOST_FAR :: 26.0;   // it boosts only from further than this
-BOT_MISS :: 11.0;        // metres its aim misses by at kickoff, shrinking to BOT_MISS_LATE by full time
-BOT_MISS_LATE :: 3.0;
+BOT_MISS :: 15.0;        // metres its aim misses by at kickoff, shrinking to BOT_MISS_LATE by full time
+BOT_MISS_LATE :: 6.0;
 // In the drum a miss wide still rolls down the curve toward the middle, and
 // a beginner spends longer finding the ball on the curve: the bot drives
 // slower there and waits longer after a hit (ol-drum-bot).
@@ -139,7 +139,9 @@ BOOST_FORCE :: 12000.0;  // N
 BOOST_RATE :: 33.0;      // of 100 a second at full boost
 BOOST_START :: 34.0;
 BOOST_REGEN :: 7.0;      // a second while the wheels touch
-HIT_KICK :: 0.35;        // the share of the closing speed added to the ball on a car's hit
+HIT_KICK :: 0.35;
+HIT_FLATTEN :: 0.65;
+HIT_SPIN :: 0.6;         // the share of the car's spin speed across the contact that the ball takes     // how much of the up-down part of a hit's line the kick drops (ol-hit-feel)        // the share of the closing speed added to the ball on a car's hit
 STEP :: 0.008333333333333333;   // physics at 120 Hz
 MAX_STEPS :: 12;
 BLUE :: 0; MAGENTA :: 1;
@@ -435,6 +437,31 @@ steer_to :: (b: RigidBody, target: D3) -> f64 {
   return a;
 }
 
+// The ball after a car's hit (the game's and the room's): the contact's
+// bounce, then a kick of a share of the closing speed, which includes the
+// car's spin at the contact point. The kick goes along the line from the
+// car's middle to the ball with most of its up-down part (in the car's own
+// frame) taken out: a hit with the nose drives the ball low and along, a
+// corner sends it off at the corner's angle, the roof pops it up, and a
+// side dodge's spin adds its own sideways push.
+ball_hit :: (ball: RigidBody, car: RigidBody, spec: VehicleSpec, ct: Contact) -> RigidBody {
+  closing := -d3_dot(d3_sub(ball.vel, rigid_point_velocity(car, ct.point)), ct.normal);
+  out := contact_resolve(ball, car, ct, 0.55, 0.3).a;
+  if closing <= 1.0 { return out; }
+  up := rigid_axis(car, D3_Y);
+  line := d3_sub(ball.pos, car.pos);
+  line = d3_sub(line, d3_scale(up, d3_dot(line, up) * HIT_FLATTEN));
+  dir := d3_unit_or(line, ct.normal);
+  // never into the car
+  if d3_dot(dir, ct.normal) < 0.2 { dir = d3_unit_or(d3_add(dir, ct.normal), ct.normal); }
+  out.vel = d3_add(out.vel, d3_scale(dir, closing * HIT_KICK));
+  // the car's spin at the contact drags the ball across its face
+  turn := d3_sub(rigid_point_velocity(car, ct.point), car.vel);
+  turn = d3_sub(turn, d3_scale(ct.normal, d3_dot(turn, ct.normal)));
+  out.vel = d3_add(out.vel, d3_scale(turn, HIT_SPIN));
+  return out;
+}
+
 bot_drive :: (s: [] OrbitLeague) -> Drive {
   me := s[0].bodies[BOT]; bl := s[0].bodies[BALL];
   goal := d3(0.0, 0.0, -ARENA_HZ - 2.0);     // it attacks your goal, at -z
@@ -524,7 +551,7 @@ stage_highlight :: (s: [] OrbitLeague) {
 }
 STAGE_BALL_AT :: D3.{x = 0.0, y = 2.5, z = 8.0};
 STAGE_BALL_V :: D3.{x = 0.0, y = 0.0, z = 0.0};
-STAGE_YOU_AT :: D3.{x = -1.2, y = 1.0, z = -8.0};
+STAGE_YOU_AT :: D3.{x = 1.0, y = 1.0, z = -8.0};   // just right of the ball: the kick goes up the left, past the bot
 STAGE_YOU_V :: D3.{x = 0.0, y = 0.0, z = 15.0};
 STAGE_BOT_AT :: D3.{x = 8.0, y = 1.0, z = 37.0};
 STAGE_BOT_V :: D3.{x = -9.0, y = 0.0, z = -3.6};
@@ -598,10 +625,10 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
     ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
     if ct.hit {
       closing := -d3_dot(d3_sub(s[0].bodies[BALL].vel, rigid_point_velocity(car, ct.point)), ct.normal);
-      pair := contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3);
+      pair: BodyPair;
+      pair.a = ball_hit(s[0].bodies[BALL], car, s[0].spec, ct);
+      pair.b = contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3).b;
       if closing > 1.0 {
-        // a car's hit is a kick: the ball takes a share more of the closing speed
-        pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK));
         if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
         if c == 1 && s[0].played - s[0].bot_touch_t > bot_recover(s) { bot_hit(s); }
       }
@@ -969,10 +996,7 @@ room_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
     car := cars[c];
     ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
     if !ct.hit { continue; }
-    closing := -d3_dot(d3_sub(s[0].bodies[BALL].vel, rigid_point_velocity(car, ct.point)), ct.normal);
-    pair := contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3);
-    if closing > 1.0 { pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK)); }
-    s[0].bodies[BALL] = pair.a;
+    s[0].bodies[BALL] = ball_hit(s[0].bodies[BALL], car, s[0].spec, ct);
   }
   sp := d3_len(s[0].bodies[BALL].vel);
   if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
@@ -2267,4 +2291,32 @@ drum_game :: (s: [] OrbitLeague) {
   s[0].bodies[YOU].pos = d3(0.0, 0.9, 0.0);
   run_for(s[..], PAD_BIG_WAIT);
   #assert s[0].pad_wait[5] == 0.0;
+}
+
+// The way the ball leaves a hit (the ol-hit-feel check).
+hit_way :: (spec: VehicleSpec, car: RigidBody, ball_at: D3, ball_vel: D3) -> D3 {
+  ball := rigid_body(BALL_MASS, d3_scale(d3(1.0, 1.0, 1.0), 0.4 * BALL_MASS * BALL_R * BALL_R), ball_at, DQ.{});
+  ball.vel = ball_vel;
+  ct := contact_sphere_box(ball.pos, BALL_R, car.pos, car.orientation, spec.half);
+  #assert ct.hit;
+  return d3_unit_or(ball_hit(ball, car, spec, ct).vel, D3_ZERO);
+}
+
+#test "the nose, a corner and the roof send the ball three different ways, and a side dodge's spin pushes it sideways (ol-hit-feel)" {
+  spec := vehicle_roadster(); h := spec.half;
+  car := vehicle_body(spec, CAR_MASS, d3(0.0, 1.0, 0.0), DQ.{});
+  car.vel = d3(0.0, 0.0, 15.0);
+  nose := hit_way(spec, car, d3(0.0, 1.0, h.z + BALL_R - 0.05), D3_ZERO);
+  corner := hit_way(spec, car, d3(h.x + BALL_R * 0.6, 1.0, h.z + BALL_R * 0.6), D3_ZERO);
+  still := vehicle_body(spec, CAR_MASS, d3(0.0, 1.0, 0.0), DQ.{});
+  roof := hit_way(spec, still, d3(0.0, 1.0 + h.y + BALL_R - 0.05, 0.3), d3(0.0, -8.0, 0.0));
+  // the nose drives it along and low, the corner off to its side, the roof up
+  #assert nose.z > 0.95 && abs(nose.y) < 0.3;
+  #assert corner.x > 0.35 && corner.z > 0.35;
+  #assert roof.y > 0.8;
+  #assert d3_dot(nose, corner) < 0.9 && d3_dot(nose, roof) < 0.5 && d3_dot(corner, roof) < 0.5;
+  // the same nose hit, but the car spinning about its up axis (a side dodge's turn): the ball goes off sideways
+  spun := car; spun.omega = d3(0.0, 6.0, 0.0);
+  side := hit_way(spec, spun, d3(0.0, 1.0, h.z + BALL_R - 0.05), D3_ZERO);
+  #assert abs(side.x) > 0.15 && d3_dot(side, nose) < 0.99;
 }
