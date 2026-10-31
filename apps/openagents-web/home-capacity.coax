@@ -1,0 +1,4 @@
+// The homepage's room for one project's rows. The live fold (project-fold.coax)
+// hands it up to FOLD_ISSUES rows, so the two must agree: landing-fold.coax
+// asserts it, and a project past the page's room would never be ready.
+HOME_ISSUES :: 320;

@@ -2,6 +2,8 @@
 // has a flat procedure namespace. The linked Coax verifier receives the
 // same immutable original before any field enters this owned store.
 #load "../../../apps/openagents-web/project-fold.coax";
+#load "../../../apps/openagents-web/home-capacity.coax";
+#assert HOME_ISSUES == FOLD_ISSUES; // the homepage takes every row the fold hands up (newland-network.coax hn_project)
 LF_TEST_KEY :: "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
 
 #test "landing fold identities have explicit key and slug bounds" {

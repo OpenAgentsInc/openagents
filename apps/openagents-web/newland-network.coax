@@ -3,6 +3,7 @@
 #load "socket.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "newland-targets.coax";
+#load "home-capacity.coax";
 home_clear :: (slot:int)->int #foreign;
 home_push :: (slot:int,byte:int)->int #foreign;
 home_output_size :: ()->int #foreign;
@@ -32,6 +33,18 @@ HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:str
   before:=s[0].plot[0].tasks;#assert !hn_project(s[..],0,"{}",100) && s[0].plot[0].tasks==before;
   #assert hn_field("{\"nested\":{\"x\":1}}","nested")=="{\"x\":1}";
   #assert hn_number("{\"n\":12}","n")==12 && hn_string("{\"s\":\"hi\"}","s")=="hi";
+}
+#test "a project with as many rows as the live fold hands up is ready, one more is refused" {
+  // 2026-10-31: coax (264 rows) and verse (284) passed the old 256-row room and the homepage readied no project
+  s:[1]LandState;read_tables(s[..]);text:[65536]u8;
+  for extra:0..<2 {held:=HOME_ISSUES+extra;
+    n:=json_raw(text[..],0,"{\"issues\":[");
+    for i:0..<held {if i>0 {n=json_raw(text[..],n,",");}n=json_raw(text[..],n,"{\"id\":\"");n=json_write_int(text[..],n,i);
+      n=json_raw(text[..],n,"\",\"kind\":\"task\",\"status\":\"open\",\"title\":\"t\",\"claimed_by\":\"\",\"status_at\":10}");}
+    n=json_raw(text[..],n,"]}");#assert n>0;
+    ok:=hn_project(s[..],0,cast(string)text[0..<n],100);#assert ok==(held==HOME_ISSUES);
+    #assert s[0].plot[0].tasks==HOME_ISSUES;
+  }
 }
 #test "live beacons replace only newer observations and provider events update real counters" {
   #assert hn_newer(8,1,7,2) && hn_newer(7,3,7,2) && !hn_newer(7,2,7,2) && !hn_newer(6,9,7,2);
@@ -119,12 +132,12 @@ hn_merge :: (s:[]LandState) {
 }
 hn_project :: (s:[]LandState,k:int,text:string,now:int)->bool {
   if k<0 || k>=HOME_PROJECTS {return false;}arr:=hn_field(text,"issues");j:[1]Json;json_start(j[..],arr);if json_next(j[..])!=JSON_ARRAY {return false;}
-  issues:[256]HomeIssue;count:=0;
+  issues:[HOME_ISSUES]HomeIssue;count:=0;
   while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT || count>=issues.count {return false;}
     raw:=hn_raw(j[..],t);issues[count]=HomeIssue.{id=hn_string(raw,"id"),kind=hn_string(raw,"kind"),status=hn_string(raw,"status"),title=hn_string(raw,"title"),parent=hn_string(raw,"parent"),rank=hn_string(raw,"rank"),worker=hn_string(raw,"claimed_by"),claimed=hn_number(raw,"claimed_at"),at=hn_number(raw,"status_at"),commit=hn_string(raw,"commit")};count+=1;
   }
   if json_next(j[..])!=JSON_END {return false;}p:=s[0].plot[k];p.tasks=0;p.done=0;p.working=0;p.mdone=0;p.mtotal=0;p.milestone_n=0;
-  claim:[256]int;done_rows:[256]int;cn:=0;dn:=0;milestone:= -1;
+  claim:[HOME_ISSUES]int;done_rows:[HOME_ISSUES]int;cn:=0;dn:=0;milestone:= -1;
   for i:0..<count {item:=issues[i];if item.kind=="task" {p.tasks+=1;if hn_done(item.status) {p.done+=1;done_rows[dn]=i;dn+=1;}else if item.worker.count>0 {p.working+=1;claim[cn]=i;cn+=1;}}
     if item.kind=="milestone" && !hn_done(item.status) {total:=0;done:=0;for b:0..<count {if issues[b].kind=="task" && issues[b].parent==item.id {total+=1;if hn_done(issues[b].status) {done+=1;}}}if total>done && (milestone<0 || hn_before(item.rank,issues[milestone].rank)) {milestone=i;p.mdone=done;p.mtotal=total;}}
   }
