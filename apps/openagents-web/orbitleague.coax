@@ -197,9 +197,13 @@ HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_JUMP :: 16; 
 KEY_SHIFT :: -13;
 OUTBOX :: 16384;         // a clip's link (ol-clips) is the longest
 HOST_FACTS :: 600;
+HOST_KEPT :: 4;          // host.js: what this realm kept in this browser (your paint)
+ACT_KEEP :: 4;           // host.js: keep the outbox's text in this realm's slot
+// ol-paint: a car's paint is a colour (0 the team's own, then these) + 8 x a decal
+PAINT_COLOURS :: 8; PAINT_DECALS :: 4;
 MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
-BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BTN_QUICK :: 7; BTN_CLIP :: 8; BUTTONS :: 9;
+BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BTN_QUICK :: 7; BTN_CLIP :: 8; BTN_PAINT :: 9; BTN_PCOL :: 10; BTN_PDEC :: 11; BTN_PDONE :: 12; BUTTONS :: 13;
 
 SBox :: struct { c: D3; h: D3; }
 // A spark: a short-lived streak of light (a hit's, a goal's).
@@ -223,6 +227,8 @@ OrbitLeague :: struct {
   // ol-clips: a replay saved as a link (#clip=...), and playing one
   clip_play: bool; clip_key: PhysState; clip_skip: int; clip_hold: f64; copied_t: f32 = -100.0;
   origin_url: [128] u8; origin_url_n: int;
+  // ol-paint: your paint, each car's as drawn (online: the others' as the room relays them), the picker
+  paint: int; paints: [CARS] int; paint_open: bool;
   cars_n: int = 2;            // 2: 1v1; 4: 2v2 (?mode=2v2, and a phone's default)
   mode_set: bool;             // ?mode= chose it
   boxes: [BOXES] SBox;
@@ -1162,6 +1168,7 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=pro") { s[0].bot_smart = true; s[0].bot_miss_k = 0.3; }
   if kind == HOST_FACTS { s[0].lag = cast(f64) url_number(fact_of(text, "url"), "lag=") / 1000.0; }
   if kind == HOST_FACTS { keep_origin(s, fact_of(text, "url")); }
+  if kind == HOST_KEPT { paint_kept(s, text); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "#clip=") { opened := clip_open(s, fact_of(text, "url")); }
   if kind == HOST_FACTS && !s[0].online && (has_text(fact_of(text, "url"), "room=") || has_text(fact_of(text, "url"), "quick=")) { room_join(s, fact_of(text, "url")); }
   if room_socket(s, kind, text) { return; }
@@ -1368,7 +1375,7 @@ room_state_echo :: (s: [] OrbitLeague, tick: int, seat: int, cars: [] RigidBody,
   k = room_put_int(buf, k, players - 1);
   k = room_put_body(buf, k, s[0].bodies[BALL]);
   for i: 0..<players {
-    if seats[i] == seat { continue; }
+    if seats[i] % 8 == seat { continue; }
     k = room_put_int(buf, k, seats[i]);
     k = room_put_body(buf, k, cars[i]);
   }
@@ -1382,6 +1389,14 @@ room_report_clock :: (text: string) -> int {
   b := room_body(text, at[..], ok[..], RigidBody.{});
   v := room_int(text, at[..], ok[..]);
   return ifx ok[0] && v >= 0 then v else -1;
+}
+// The paint a player's report ends with (ol-paint), or 0.
+room_report_paint :: (text: string) -> int {
+  if text.count < 2 || text[0] != 'c' { return 0; }
+  at: [1] int; at[0] = 1; ok: [1] bool; ok[0] = true;
+  b := room_body(text, at[..], ok[..], RigidBody.{});
+  v := room_int(text, at[..], ok[..]); p := room_int(text, at[..], ok[..]);
+  return ifx ok[0] && p >= 0 && p < PAINT_COLOURS * PAINT_DECALS then p else 0;
 }
 // What a player reported: its car, or the old one if the frame is bad.
 room_report :: (text: string, old: RigidBody) -> RigidBody {
@@ -1467,15 +1482,19 @@ room_take :: (s: [] OrbitLeague, text: string) {
   // opponent the other magenta car. A seat nobody has is parked under the floor.
   opp := 0; mated := false;
   for k: 0..<others {
+    // its seat, + 8 x its paint (ol-paint)
     other_seat := room_int(text, at[..], ok[..]);
     car := room_body(text, at[..], ok[..], s[0].bodies[BOT]);
     if !ok[0] { break; }
     b := room_view(car, seat);
+    their_paint := ifx other_seat >= 8 && other_seat / 8 < PAINT_COLOURS * PAINT_DECALS then other_seat / 8 else 0;
     if other_seat % 2 == mine {
-      if !mated { s[0].bodies[MATE] = b; mated = true; }
+      if !mated { s[0].bodies[MATE] = b; s[0].paints[2] = their_paint; mated = true; }
       continue;
     }
+    if opp == 1 { s[0].paints[3] = their_paint; }
     if opp == 0 {
+      s[0].paints[1] = their_paint;
       s[0].bodies[BOT] = b;
       gap := s[0].net_t - s[0].oth_at;
       if s[0].oth_n > 0 && gap > 0.0 && gap < 0.5 { s[0].oth_gap += (gap - s[0].oth_gap) * 0.1; }
@@ -1523,6 +1542,7 @@ room_send :: (s: [] OrbitLeague, dt: f64) {
   buf[k] = 'c'; k += 1;
   k = room_put_body(buf[..], k, room_view(s[0].bodies[YOU], s[0].seat));
   k = room_put_int(buf[..], k, cast(int) (s[0].net_t * 1000.0));
+  k = room_put_int(buf[..], k, s[0].paint);
   if s[0].lag <= 0.0 { ok := pipe_send(s[0].pipe[..], s[0].sock, cast(string) buf[0..<k]); return; }
   if s[0].lag_on >= LAG_FRAMES { return; }
   slot := (s[0].lag_ohead + s[0].lag_on) % LAG_FRAMES;
@@ -1804,6 +1824,34 @@ clip_step :: (s: [] OrbitLeague) {
 play_realm :: (s: [] OrbitLeague) {
   if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/orbit-league/"); s[0].action = ACT_NAVIGATE; }
 }
+// ---- paint (ol-paint): your car's colour and decal, kept in this browser
+// and sent with your car online, so the others see it.
+
+paint_set :: (s: [] OrbitLeague, p: int) {
+  s[0].paint = p;
+  if s[0].action == 0 {
+    n := put(s[0].outbox[..], 0, "paint ");
+    s[0].out_n = put_int(s[0].outbox[..], n, p); s[0].action = ACT_KEEP;
+  }
+  track_tally(s[0].track[..], "paint", "");
+}
+paint_kept :: (s: [] OrbitLeague, text: string) {
+  if text.count < 7 || text[0..<6] != "paint " { return; }
+  p := 0;
+  for i: 6..<text.count { if text[i] < '0' || text[i] > '9' || p > 1000 { return; } p = p * 10 + cast(int) (text[i] - '0'); }
+  if p < PAINT_COLOURS * PAINT_DECALS { s[0].paint = p; }
+}
+paint_name :: (p: int) -> string {
+  c := p % PAINT_COLOURS;
+  if c == 1 { return "WHITE"; } if c == 2 { return "GRAPHITE"; } if c == 3 { return "SILVER"; }
+  if c == 4 { return "FOREST"; } if c == 5 { return "LIME"; } if c == 6 { return "TEAL"; } if c == 7 { return "YELLOW"; }
+  return "TEAM COLOUR";
+}
+decal_name :: (p: int) -> string {
+  d := p / PAINT_COLOURS;
+  if d == 1 { return "STRIPES"; } if d == 2 { return "CHECKS"; } if d == 3 { return "NOSE"; }
+  return "NO DECAL";
+}
 // QUICK MATCH: this mode's queue on the room server (ol-quick-match).
 quick_match :: (s: [] OrbitLeague) {
   if s[0].action != 0 { return; }
@@ -1895,6 +1943,10 @@ game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: i
       if b == BTN_CAM { toggle_cam(s); }
       if b == BTN_AGAIN { play_again(s); }
       if b == BTN_QUICK { quick_match(s); }
+      if b == BTN_PAINT { s[0].paint_open = !s[0].paint_open; }
+      if b == BTN_PDONE { s[0].paint_open = false; }
+      if b == BTN_PCOL { paint_set(s, (s[0].paint % PAINT_COLOURS + 1) % PAINT_COLOURS + (s[0].paint / PAINT_COLOURS) * PAINT_COLOURS); }
+      if b == BTN_PDEC { paint_set(s, s[0].paint % PAINT_COLOURS + ((s[0].paint / PAINT_COLOURS + 1) % PAINT_DECALS) * PAINT_COLOURS); }
       if b == BTN_CLIP { if s[0].clip_play { play_realm(s); } else { clip_save(s); } }
       if b == BTN_MODE { set_mode(s, ifx s[0].cars_n == CARS then 2 else CARS); track_tally(s[0].track[..], ifx s[0].cars_n == CARS then "2v2" else "1v1", ""); }
       if b == BTN_ARENA { set_arena_kind(s, (arena_kind(s) + 1) % 3); track_tally(s[0].track[..], ifx s[0].sphere then "sphere" else ifx s[0].drum then "drum" else "box", ""); }
@@ -2232,6 +2284,20 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   // GALAXY, top left
   bb := Box.{x0 = g, y0 = g, x1 = g + 96 * k, y1 = g + 34 * k};
   v = hud_button(s, out, v, BTN_BACK, bb, "GALAXY", 8 * k);
+  // PAINT, under it, before a kickoff and at the end; it opens the picker
+  if (s[0].phase == PHASE_KICKOFF || s[0].phase == PHASE_OVER || s[0].paint_open) && !s[0].clip_play {
+    pb := Box.{x0 = g, y0 = bb.y1 + 10 * k, x1 = g + 96 * k, y1 = bb.y1 + 44 * k};
+    v = hud_button(s, out, v, BTN_PAINT, pb, "PAINT", 8 * k);
+    if s[0].paint_open {
+      cw := 170 * k;
+      c1 := Box.{x0 = g, y0 = pb.y1 + 10 * k, x1 = g + cw, y1 = pb.y1 + 44 * k};
+      v = hud_button(s, out, v, BTN_PCOL, c1, paint_name(s[0].paint), 7.5 * k);
+      c2 := Box.{x0 = g, y0 = c1.y1 + 8 * k, x1 = g + cw, y1 = c1.y1 + 42 * k};
+      v = hud_button(s, out, v, BTN_PDEC, c2, decal_name(s[0].paint), 7.5 * k);
+      c3 := Box.{x0 = g, y0 = c2.y1 + 8 * k, x1 = g + 96 * k, y1 = c2.y1 + 42 * k};
+      v = hud_button(s, out, v, BTN_PDONE, c3, "DONE", 7.5 * k);
+    }
+  }
   // the station's spin
   sc := spin_clock(s[0].played, s[0].spin_every);
   if s[0].phase != PHASE_OVER && sc > 0.0 {
@@ -2408,9 +2474,10 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   q := bl.orientation;
   u[MISC_AT] = cast(f32) d3_len(bl.vel);
   u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
-  put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now, s[0].wheel_spin[0]);
-  put_car(u, CAR_AT + CAR_FLOATS, room_other(s), s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now, s[0].wheel_spin[1]);
-  for c: 2..<CARS { put_car(u, CARS2_AT + (c - 2) * CAR_FLOATS, s[0].bodies[c + 1], s[0].boosting[c], c % 2, s[0].cars[c].steer_now, s[0].wheel_spin[c]); }
+  s[0].paints[0] = s[0].paint;
+  put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE + 2 * s[0].paints[0], s[0].cars[0].steer_now, s[0].wheel_spin[0]);
+  put_car(u, CAR_AT + CAR_FLOATS, room_other(s), s[0].boosting[1], MAGENTA + 2 * s[0].paints[1], s[0].cars[1].steer_now, s[0].wheel_spin[1]);
+  for c: 2..<CARS { put_car(u, CARS2_AT + (c - 2) * CAR_FLOATS, s[0].bodies[c + 1], s[0].boosting[c], c % 2 + 2 * s[0].paints[c], s[0].cars[c].steer_now, s[0].wheel_spin[c]); }
   u[MISC_AT + 1] = cast(f32) s[0].cars_n;
   u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
   u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D; u[GOAL_AT + 2] = ifx s[0].sphere then cast(f32) -SPHERE_R else ifx s[0].drum then cast(f32) DRUM_R else 0;
@@ -3328,4 +3395,24 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   // it plays again from its start
   for i: 0..<cast(int) (1.6 / STEP) { clip_step(q[..]); }
   #assert q[0].rp_step >= q[0].clip_skip && q[0].rp_step <= q[0].clip_skip + cast(int) (0.1 / STEP) + 2;
+}
+
+// ---- paint (ol-paint)
+
+#test "PAINT picks a colour and a decal, keeps them in this browser and draws them on your car; the kept paint comes back (ol-paint)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  paint_set(s[..], (s[0].paint % PAINT_COLOURS + 1) % PAINT_COLOURS);
+  #assert s[0].paint == 1 && s[0].action == ACT_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "paint 1";
+  s[0].action = 0;
+  paint_set(s[..], s[0].paint % PAINT_COLOURS + ((s[0].paint / PAINT_COLOURS + 1) % PAINT_DECALS) * PAINT_COLOURS);
+  #assert s[0].paint == 9 && paint_name(s[0].paint) == "WHITE" && decal_name(s[0].paint) == "STRIPES";
+  u: [UNIFORM_FLOATS] f32; out: [65536] f32;
+  n := game_frame(s[..], out[..], u[..], 1280, 720, 1, 0.016, false);
+  #assert u[CAR_AT + 7] == 18.0;
+  q: [1] OrbitLeague; game_reset(q[..]);
+  game_message(q[..], HOST_KEPT, "paint 26");
+  #assert q[0].paint == 26;
+  game_message(q[..], HOST_KEPT, "paint 999");
+  #assert q[0].paint == 26;
 }

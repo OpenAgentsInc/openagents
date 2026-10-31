@@ -67,6 +67,23 @@ const MAGENTA = vec3f(1.0, 0.22, 0.72);
 const SUN = vec3f(-0.5, 0.62, -0.45);   // normalised in sun(): high, behind the blue end
 fn sun() -> vec3f { return normalize(SUN); }
 fn team(t: f32) -> vec3f { return select(BLUE, MAGENTA, t > 0.5); }
+// A car's x.w: its team (0 blue, 1 magenta) + 2 x its paint (ol-paint: a
+// colour 0-7, + 8 x a decal 0-3; 0 is the team's own colour, no decal).
+fn car_side(c: Car) -> f32 { return c.x.w - 2.0 * floor(c.x.w * 0.5); }
+fn car_paint(c: Car) -> i32 { return i32(floor(c.x.w * 0.5 + 0.25)); }
+// The paints a player picks from: none a team's colour, none orange.
+fn paint_colour(k: i32, side: f32) -> vec3f {
+  switch k {
+    case 1: { return vec3f(0.9, 0.92, 0.95); }      // white
+    case 2: { return vec3f(0.16, 0.17, 0.2); }      // graphite
+    case 3: { return vec3f(0.55, 0.58, 0.62); }     // silver
+    case 4: { return vec3f(0.08, 0.38, 0.18); }     // forest
+    case 5: { return vec3f(0.55, 0.9, 0.12); }      // lime
+    case 6: { return vec3f(0.05, 0.75, 0.7); }      // teal
+    case 7: { return vec3f(0.95, 0.88, 0.15); }     // yellow
+    default: { return team(side); }
+  }
+}
 fn moving() -> f32 { return select(1.0, 0.0, u.still > 0.5); }
 // Flat light: three bands of the sun, and a sky fill.
 fn flat_light(n: vec3f) -> f32 {
@@ -314,7 +331,11 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
   let bq = dot(o, d);
   let oo = dot(o, o);
   if (oo - bq * bq > 6.8 || (bq > 0.0 && oo > 6.8)) { return miss(); }
-  let paint = team(c.x.w);
+  let side = car_side(c);
+  let accent = team(side);
+  let pk = car_paint(c);
+  let paint = paint_colour(pk % 8, side);
+  let decal = pk / 8;
   var h = miss();
   // the body: a wedge with a dark sill, a cockpit, a stripe, headlights and a tail bar
   let b = hull_cast(o, d, 0, 18);
@@ -322,11 +343,15 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
     let p = o + d * b.t;
     let n = b.n;
     var col = paint; var mat = 1;
+    // the decal, in the team's colour: twin stripes, side checks, or the nose
+    if (decal == 1 && n.y > 0.5 && abs(abs(p.x) - 0.26) < 0.07) { col = accent; }
+    if (decal == 2 && abs(n.x) > 0.5 && (i32(floor(p.z * 3.0) + floor(p.y * 3.0 + 10.0)) & 1) == 0) { col = accent; }
+    if (decal == 3 && p.z > 0.35) { col = accent; }
     if (p.y < -0.2 && n.y < 0.5) { col = vec3f(0.05, 0.055, 0.07); mat = 0; }
     if (n.y > 0.9 && abs(p.x) < 0.6 && p.z > -1.0 && p.z < 0.55) { col = vec3f(0.035, 0.04, 0.055); mat = 0; }
     if (n.y > 0.5 && abs(p.x) < 0.13 && p.z > 0.6) { col = vec3f(0.92, 0.94, 1.0); }
     if (n.z > 0.3 && p.z > 1.7 && p.y > -0.17 && p.y < -0.05 && abs(p.x) > 0.2) { col = vec3f(0.85, 0.93, 1.0) * 1.8; mat = 3; }
-    if (n.z < -0.8 && abs(p.y) < 0.035 && abs(p.x) < 0.8) { col = mix(paint, vec3f(1.0), 0.45) * 1.8; mat = 3; }
+    if (n.z < -0.8 && abs(p.y) < 0.035 && abs(p.x) < 0.8) { col = mix(accent, vec3f(1.0), 0.45) * 1.8; mat = 3; }
     h = Hit(b.t, n, col, b.edge, mat);
   }
   // the fender pods over the wheels
@@ -351,12 +376,12 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
     let n = normalize(o + d * ht - hc);
     var col = vec3f(0.92, 0.93, 0.95); var mat = 0;
     if (n.z > 0.3 && n.y < 0.5 && n.y > -0.35) { col = vec3f(0.03, 0.06, 0.12); mat = 2; }
-    else if (abs(n.x) < 0.12 && n.y > 0.0) { col = paint; mat = 1; }
+    else if (abs(n.x) < 0.12 && n.y > 0.0) { col = accent; mat = 1; }
     h = Hit(ht, n, col, 0.0, mat);
   }
   // the rear wing on two struts
   h = closer(h, box_hit(o, d, vec3f(0.0, 0.43, -1.86), vec3f(0.9, 0.03, 0.17), vec3f(0.07, 0.075, 0.09), 1));
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.405, -1.86), vec3f(0.92, 0.01, 0.175), paint, 1));
+  h = closer(h, box_hit(o, d, vec3f(0.0, 0.405, -1.86), vec3f(0.92, 0.01, 0.175), accent, 1));
   h = closer(h, box_hit(o, d, vec3f(-0.5, 0.26, -1.86), vec3f(0.03, 0.15, 0.07), vec3f(0.07, 0.075, 0.09), 0));
   h = closer(h, box_hit(o, d, vec3f(0.5, 0.26, -1.86), vec3f(0.03, 0.15, 0.07), vec3f(0.07, 0.075, 0.09), 0));
   let steer = c.z.w;
@@ -385,7 +410,7 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
 // The boost: a blue-white cone out of the rear bumper, and its glow.
 fn flame(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   if (c.p.w < 0.5) { return vec3f(0.0); }
-  let flick = 1.0 + moving() * 0.12 * sin(u.time * 57.0 + c.x.w * 3.0);
+  let flick = 1.0 + moving() * 0.12 * sin(u.time * 57.0 + car_side(c) * 3.0);
   let a = c.p.xyz - c.z.xyz * 2.12 - c.y.xyz * 0.05;
   let b = a - c.z.xyz * (2.2 * flick);
   // the closest approach of the ray and the segment
@@ -421,7 +446,7 @@ fn lights(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
     o += vec3f(0.75, 0.88, 1.0) * halo(ro, rd, hp, tmax, 0.25) * front * front * 1.2;
   }
   let tp = c.p.xyz - f * 2.1;
-  o += mix(team(c.x.w), vec3f(1.0), 0.3) * halo(ro, rd, tp, tmax, 0.35) * back * 0.5;
+  o += mix(team(car_side(c)), vec3f(1.0), 0.3) * halo(ro, rd, tp, tmax, 0.35) * back * 0.5;
   return o;
 }
 
@@ -701,7 +726,7 @@ fn underglow(p: vec3f) -> vec3f {
     let c = car(i);
     let q = p - c.p.xyz;
     let lx = dot(q, c.x.xyz); let lz = dot(q, c.z.xyz);
-    o += team(c.x.w) * exp(-(lx * lx / 1.1 + lz * lz / 5.0)) * clamp(1.8 - over_floor(c.p.xyz), 0.0, 1.0) * 0.4;
+    o += team(car_side(c)) * exp(-(lx * lx / 1.1 + lz * lz / 5.0)) * clamp(1.8 - over_floor(c.p.xyz), 0.0, 1.0) * 0.4;
   }
   return o;
 }
