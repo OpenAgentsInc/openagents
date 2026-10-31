@@ -1153,16 +1153,22 @@ press_button :: (s: [] Belt, i: int) {
 screen_of :: (s: [] Belt, p: D3) -> D2 { return spacecam_screen(s[0].cam, p, f64(s[0].w), f64(s[0].h)); }
 
 // The ship of a faction (or any, -1) nearest a pixel, within reach.
+// The ship nearest (x, y) within reach, or within its hull's ring when it is drawn bigger.
 ship_at :: (s: [] Belt, x: f32, y: f32, reach: f32, faction: int) -> int {
-  best := -1; bd := reach * reach;
+  best := -1; bd := 0.0f32;
   for k: 0..<s[0].ship_n {
     if faction >= 0 && s[0].ships[k].faction != faction { continue; }
     q := ship_screen(s, k);
     dx := pix(q.x) - x; dy := pix(q.y) - y;
     d := dx * dx + dy * dy;
-    if d < bd { bd = d; best = k; }
+    r := hi(reach, ship_hull_px(s, k) * 0.625);
+    if d < r * r && (best < 0 || d < bd) { bd = d; best = k; }
   }
   return best;
+}
+// The hull's length on the screen, as draw_ship draws it.
+ship_hull_px :: (s: [] Belt, k: int) -> f32 {
+  return hi(pix(spacecam_pixels(s[0].cam, ifx s[0].ships[k].dry > 400.0 then 180.0 else 120.0)), stage_hull(s, k));
 }
 // The place nearest a pixel, within reach (or inside a world's disc).
 place_at :: (s: [] Belt, x: f32, y: f32, reach: f32) -> int {
@@ -1718,9 +1724,8 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
     if burn < 0 { heading += 3.1415927; }
   }
   ch := cos(heading); shd := sin(heading);
-  hull := pix(spacecam_pixels(s[0].cam, ifx sh.dry > 400.0 then 180.0 else 120.0));
   // a staged moment keeps its ship's hull readable however far the view pulls back
-  hull = hi(hull, stage_hull(s, k));
+  hull := ship_hull_px(s, k);
   if hull > 22 * u {
     // the hull, in metres
     hl := hull / 2;
