@@ -1,8 +1,8 @@
 // A guest's own realm from the galaxy (pt-planets), on a live host in
-// headless Chrome (no window opens): with no player key, MAKE YOUR REALM, a
-// name and ENTER mint a key, keep it, set the realm up and open its world;
-// the server lists it; after a reload YOUR REALM reopens it. Requests carry
-// the automation mark galaxy-flow.
+// headless Chrome (no window opens): with no realm, MAKE YOUR REALM opens the
+// realm builder (/realms/new); with one (made through the API as this
+// browser's player), the server lists it and YOUR REALM reopens it. Requests
+// carry the automation mark galaxy-flow.
 //   bun coax/web/api/galaxy-flow.ts ORIGIN [SHOTS_DIR]
 import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -59,48 +59,38 @@ try {
     const s = await send("Page.captureScreenshot", { format: "png" })
     writeFileSync(join(shots, name + ".png"), Buffer.from(s.result.data, "base64"))
   }
-  // Opens the realm as this player: the browser keeps the key as the landing does.
-  const open = async (player: any, world: string) => {
-    await send("Page.navigate", { url: origin + "/404.html" })
-    await Bun.sleep(800)
-    await js(`localStorage.setItem("verse.player", ${JSON.stringify(JSON.stringify(player))}); document.cookie = "verse-automation=galaxy-flow; path=/"; 1`)
-    await send("Page.navigate", { url: origin + "/realms/haunted-house#" + world })
-    await Bun.sleep(9000)
-  }
-
-  const type = async (text: string) => { await send("Input.insertText", { text }); await Bun.sleep(250) }
   const galaxy = async () => { await send("Page.navigate", { url: origin + "/verse/galaxy" }); await Bun.sleep(5000) }
 
-  // A guest with no key: MAKE YOUR REALM, a name, ENTER.
+  // A guest with no realm: MAKE YOUR REALM opens the builder.
   await send("Page.navigate", { url: origin + "/404.html" })
   await Bun.sleep(800)
   await js(`localStorage.removeItem("verse.player"); document.cookie = "verse-automation=galaxy-flow; path=/"; 1`)
   await galaxy()
   await shot("1-galaxy")
   await click(W / 2, 110)
-  await type("Flow Den")
-  await shot("2-setup")
-  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" })
-  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 })
-  await Bun.sleep(300)
-  await shot("2b-entered")
-  await Bun.sleep(3700)
-  const url = await js("location.href")
-  const kept = JSON.parse((await js(`localStorage.getItem("verse.player")`)) || "null")
-  const pid = String(url).split("#")[1] ?? ""
-  check("a guest sets up a realm and its world opens", String(url).includes("/realms/haunted-house#planet-") && kept?.key, url)
-  const mine = await api("GET", "planets/mine", undefined, kept?.key)
-  check("the server keeps it as theirs, named as typed", mine.body.planet?.id === pid && mine.body.planet?.name === "Flow Den", mine.body)
-  const list = await api("GET", "planets?after=" + Math.max(0, mine.body.planet.n - 1))
-  check("the galaxy lists the new realm", list.body.planets?.some((p: any) => p.id === pid), list.body)
-  await shot("3-world")
+  await Bun.sleep(3000)
+  check("MAKE YOUR REALM opens the realm builder", new URL(String(await js("location.href"))).pathname === "/realms/new", await js("location.href"))
+  await shot("2-builder")
 
-  // After a reload the galaxy shows YOUR REALM, and it reopens the same world.
+  // A player with a realm: the server lists it, and YOUR REALM reopens it.
+  const made = await api("POST", "player", {})
+  const playerKey = made.body?.key
+  const planet = await api("POST", "planets", { user: { id: made.body?.id, name: "Guest" },
+    settings: { name: "Flow Den", kind: "forest", art: "Low poly", cam: "Third person", cycle: "Always day" } }, playerKey)
+  const pid = planet.body?.id ?? ""
+  check("a guest's realm is made", planet.status === 200 && String(pid).startsWith("planet-"), planet)
+  const mine = await api("GET", "planets/mine", undefined, playerKey)
+  check("the server keeps it as theirs, named as asked", mine.body.planet?.id === pid && mine.body.planet?.name === "Flow Den", mine.body)
+  const list = await api("GET", "planets?after=" + Math.max(0, (mine.body.planet?.n ?? 1) - 1))
+  check("the galaxy lists the new realm", list.body.planets?.some((p: any) => p.id === pid), list.body)
+  await send("Page.navigate", { url: origin + "/404.html" })
+  await Bun.sleep(800)
+  await js(`localStorage.setItem("verse.player", ${JSON.stringify(JSON.stringify(made.body))}); document.cookie = "verse-automation=galaxy-flow; path=/"; 1`)
   await galaxy()
-  await shot("4-galaxy-again")
+  await shot("3-galaxy-yours")
   await click(W / 2, 110)
   await Bun.sleep(3000)
-  check("YOUR REALM reopens it after a reload", String(await js("location.href")).endsWith("#" + pid), await js("location.href"))
+  check("YOUR REALM reopens it", String(await js("location.href")).endsWith("#" + pid), await js("location.href"))
   ws.close()
 } finally {
   proc.kill()
