@@ -29,7 +29,7 @@ novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool, glass: [] f6
     s[0].held = h; game_step(s, STEP);
     for c: 0..<2 {
       b := s[0].bodies[c + 1];
-      if !s[0].drum && rigid_axis(b, D3_Y).y < 0.5 && b.pos.y > 1.2 && s[0].field.scale > 0.5 { glass[c] += STEP; } else { glass[c] = 0.0; }
+      if !s[0].drum && rigid_axis(b, D3_Y).y < 0.5 && b.pos.y > 1.2 && s[0].spin_now > 0.5 { glass[c] += STEP; } else { glass[c] = 0.0; }
       glass[2] = fmax(glass[2], glass[c]);
     }
   }
@@ -55,7 +55,7 @@ arena :: (drum: bool, glass: [] f64) -> bool {
   game_reset(t[..]); set_arena(t[..], drum);
   for i: 0..<cast(int) (120.0 / STEP) { game_step(t[..], STEP); }
   print("%: twelve novices: you % bot %, the bot's most in a match %, in a first minute %, in the first 15 s %; against a still player in 2 min: %\n", name, you, bot, worst, first, early, t[0].score[1]);
-  return worst <= 5 && first <= 2 && early == 0 && bot <= you * 2 + 4 && t[0].score[1] >= 2;
+  return worst <= 5 && first <= 2 && early == 0 && bot * 2 <= you * 3 + 8 && t[0].score[1] >= 2;
 }
 
 main :: () {

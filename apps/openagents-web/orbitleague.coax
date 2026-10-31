@@ -129,9 +129,10 @@ PINNED_TURN :: 1.4;      // rad/s
 SPAWN_Z :: 28.0;
 FULL_SPIN_G :: G_EARTH;  // the station at full spin: 1 g toward the floor
 MATCH_TIME :: 300.0;     // seconds
-SPIN_CYCLE :: 90.0;      // a spin-down starts every this many seconds of play
-SPIN_DOWN :: 30.0;       // and lasts this long: RAMP down, zero-g, RAMP up
-RAMP :: 3.0;
+SPIN_EVERY :: 90.0;      // a spin-down starts after this many seconds at spin (?spin=60, ?spin=off)
+SPIN_DOWN :: 15.0;       // and lasts this long: RAMP down, zero-g, RAMP up; every tank fills at its start
+RAMP :: 2.0;
+HALF_SPIN :: 0.4;        // ?spin=half: the station turns slower, 0.4 g
 KICKOFF :: 3.0;          // the countdown
 CELEBRATE :: 3.0;        // after a goal, before the next kickoff
 BOOST_FORCE :: 12000.0;  // N
@@ -210,6 +211,9 @@ OrbitLeague :: struct {
   bot_aim: f64;               // its aim's miss on this approach, metres across the goal
   no_bot: bool;               // ?bot=0: practice alone
   drum: bool;                 // ?arena=drum: the drum, not the box
+  spin_every: f64 = SPIN_EVERY;   // seconds at spin between spin-downs; 0: never (ol-spin-down)
+  spin_g: f64 = 1.0;              // the spin's gravity in g: 1, or HALF_SPIN
+  spin_now: f64 = 1.0;            // the spin now, 0 to 1 (spin_share)
   // ?room=NAME: online (ol-room): the room server owns the ball, the clock and the score
   online: bool; room: [ROOM_NAME] u8; room_n: int; origin: [128] u8; origin_n: int;
   pipe: [1] Pipe; sock: int = -1; sock_open: bool; sock_state: int;   // ROOM_*
@@ -369,22 +373,34 @@ game_reset :: (s: [] OrbitLeague) {
   track_init(s[0].track[..], "orbit-league");
 }
 
-// The station's spin, 0 to 1, after `played` seconds of play: full, then
-// every SPIN_CYCLE a spin-down of SPIN_DOWN seconds (RAMP down, zero, RAMP up).
-spin_share :: (played: f64) -> f64 {
-  k := played - floor(played / SPIN_CYCLE) * SPIN_CYCLE;
-  into := k - (SPIN_CYCLE - SPIN_DOWN);
+// The station's spin, 0 to 1, after `played` seconds of play: full for
+// `every` seconds, then a spin-down of SPIN_DOWN (RAMP down, zero-g, RAMP
+// up), and again. every 0: it never spins down.
+spin_share :: (played: f64, every: f64) -> f64 {
+  if every <= 0.0 { return 1.0; }
+  into := spin_clock(played, every);
   if into < 0.0 { return 1.0; }
+  into = SPIN_DOWN - into;
   if into < RAMP { return 1.0 - into / RAMP; }
   if into > SPIN_DOWN - RAMP { return (into - (SPIN_DOWN - RAMP)) / RAMP; }
   return 0.0;
 }
-// Seconds of zero-g left, or until the next spin-down (negative).
-spin_clock :: (played: f64) -> f64 {
-  k := played - floor(played / SPIN_CYCLE) * SPIN_CYCLE;
-  into := k - (SPIN_CYCLE - SPIN_DOWN);
+// Seconds of the spin-down left, or until the next one (negative; -1e9 when off).
+spin_clock :: (played: f64, every: f64) -> f64 {
+  if every <= 0.0 { return -1000000000.0; }
+  cycle := every + SPIN_DOWN;
+  k := played - floor(played / cycle) * cycle;
+  into := k - every;
   if into < 0.0 { return into; }
   return SPIN_DOWN - into;
+}
+// The spin for this step: the field's strength, and every tank full as a spin-down starts.
+set_spin :: (s: [] OrbitLeague) {
+  was := spin_clock(s[0].played - STEP, s[0].spin_every);
+  now := spin_clock(s[0].played, s[0].spin_every);
+  if was < 0.0 && now >= 0.0 && s[0].played > STEP { for c: 0..<2 { s[0].tanks[c].fuel = 100.0; } }
+  s[0].spin_now = spin_share(s[0].played, s[0].spin_every);
+  s[0].field.scale = s[0].spin_now * s[0].spin_g;
 }
 
 ceil_d :: (x: f64) -> f64 { return -floor(-x); }
@@ -447,7 +463,8 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_KICKOFF_CALM { out.boost = false; out.input.throttle = fmin(out.input.throttle, 0.85); }
   near_ball := d3_dist(me.pos, bl.pos);
   // in zero-g the boost is how it gets anywhere
-  if s[0].cars[1].wheels == 0 && spin_share(s[0].played) < 0.2 { out.boost = abs(a) < 0.6; out.input.throttle = 0.0; }
+  // (in bursts, half of each second: a full tank at the spin-down doesn't make it a rocket)
+  if s[0].cars[1].wheels == 0 && s[0].spin_now < 0.2 { out.boost = abs(a) < 0.4 && s[0].played - floor(s[0].played) < 0.5; out.input.throttle = 0.0; }
   out.input.jump = near_ball < 6.0 && bl.pos.y > 3.0 && bl.pos.y < 7.0 && s[0].played - s[0].bot_jump_t > 1.5;
   if out.input.jump { s[0].bot_jump_t = s[0].played; }
   return out;
@@ -541,7 +558,7 @@ ball_arena :: (s: [] OrbitLeague) {
 
 physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   dt := STEP;
-  s[0].field.scale = spin_share(s[0].played);
+  set_spin(s);
   cp := car_planes();
   bp := ball_planes();
   dm := arena_drum();
@@ -620,7 +637,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
     // the count holds while it tumbles fast, and starts over once it is back on its wheels
     up := up_at(s, s[0].bodies[i].pos);
     tipped := d3_dot(rigid_axis(s[0].bodies[i], D3_Y), up) < 0.5 && s[0].cars[c].wheels < 3;
-    if (vehicle_stuck(s[0].bodies[i], s[0].cars[c], up) || leaning(s, s[0].bodies[i], s[0].cars[c])) && s[0].field.scale > 0.5 { s[0].stuck_for[c] += dt; } else if !tipped { s[0].stuck_for[c] = 0.0; }
+    if (vehicle_stuck(s[0].bodies[i], s[0].cars[c], up) || leaning(s, s[0].bodies[i], s[0].cars[c])) && s[0].spin_now > 0.5 { s[0].stuck_for[c] += dt; } else if !tipped { s[0].stuck_for[c] = 0.0; }
     if s[0].stuck_for[c] > STUCK_TIME {
       b := s[0].bodies[i];
       // set down where it is, facing the way it faced, on the floor under it
@@ -829,6 +846,9 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if !s[0].started { game_reset(s); }
   if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "arena=drum") { set_arena(s, true); }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=60") { s[0].spin_every = 60.0; }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=off") { s[0].spin_every = 0.0; }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=half") { s[0].spin_g = HALF_SPIN; }
   if kind == HOST_FACTS && !s[0].online && has_text(fact_of(text, "url"), "room=") { room_join(s, fact_of(text, "url")); }
   if room_socket(s, kind, text) { return; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
@@ -936,7 +956,7 @@ room_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
     // full time: a pause like a goal's, then a new match
     if s[0].clock <= 0.0 { s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0; s[0].last_goal = -1; }
   }
-  s[0].field.scale = spin_share(s[0].played);
+  s[0].spin_now = spin_share(s[0].played, s[0].spin_every); s[0].field.scale = s[0].spin_now * s[0].spin_g;
   bl := s[0].bodies[BALL];
   bl.force = d3_add(d3_scale(gravity_at(s[0].field, bl.pos), bl.mass), d3_scale(bl.vel, -bl.mass * BALL_DRAG));
   one: [1] RigidBody; one[0] = bl;
@@ -1467,7 +1487,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   bb := Box.{x0 = g, y0 = g, x1 = g + 96 * k, y1 = g + 34 * k};
   v = hud_button(s, out, v, BTN_BACK, bb, "GALAXY", 8 * k);
   // the station's spin
-  sc := spin_clock(s[0].played);
+  sc := spin_clock(s[0].played, s[0].spin_every);
   if s[0].phase != PHASE_OVER && sc > 0.0 {
     n = put(buf[..], 0, "SPIN-DOWN  ZERO-G  "); n = clock_text(buf[..], n, sc);
     v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y1 + 26 * k, 9 * k, ink(0.6 * k, 1, 2 * k, 0.6, 0.95, 1.0));
@@ -1609,7 +1629,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = ifx still || s[0].golden then 20.0f32 else s[0].time;
   u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32; u[6] = s[0].dpr;
-  u[7] = cast(f32) (1.0 - s[0].field.scale);
+  u[7] = cast(f32) (1.0 - s[0].spin_now);
   for i: 0..<16 { u[VIEW_AT + i] = s[0].view[i]; }
   for i: 0..<3 { u[EYE_AT + i] = s[0].eye[i]; u[FWD_AT + i] = s[0].fwd[i]; u[RX_AT + i] = s[0].right[i]; u[UY_AT + i] = s[0].up[i]; }
   // the goal's flash: its share, then the team
@@ -1754,11 +1774,32 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   }
 }
 
-#test "the station spins down every 90 s for 30 s" {
-  #assert spin_share(10.0) == 1.0 && spin_share(59.0) == 1.0;
-  #assert near_d(spin_share(61.5), 0.5, 0.000001);
-  #assert spin_share(70.0) == 0.0 && spin_share(88.5) > 0.4 && spin_share(91.0) == 1.0;
-  #assert near_d(spin_clock(70.0), 20.0, 0.000001) && near_d(spin_clock(50.0), -10.0, 0.000001);
+#test "the station spins down at 90 s for 15 s, at 60 s with ?spin=60, never with ?spin=off; half spin is 0.4 g; every tank fills as it starts (ol-spin-down)" {
+  #assert spin_share(10.0, 90.0) == 1.0 && spin_share(89.9, 90.0) == 1.0;
+  #assert near_d(spin_share(91.0, 90.0), 0.5, 0.000001);
+  #assert spin_share(97.0, 90.0) == 0.0 && spin_share(104.0, 90.0) > 0.4 && spin_share(105.5, 90.0) == 1.0;
+  #assert near_d(spin_clock(97.0, 90.0), 8.0, 0.000001) && near_d(spin_clock(80.0, 90.0), -10.0, 0.000001);
+  // the second one: 90 s more at spin
+  #assert spin_share(180.0, 90.0) == 1.0 && spin_share(200.0, 90.0) == 0.0;
+  #assert spin_share(67.0, 60.0) == 0.0 && spin_share(67.0, 90.0) == 1.0;
+  #assert spin_share(97.0, 0.0) == 1.0 && spin_clock(97.0, 0.0) < -1000.0;
+  s: [1] OrbitLeague;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=60\n");
+  #assert s[0].spin_every == 60.0;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=off\n");
+  #assert s[0].spin_every == 0.0;
+  t: [1] OrbitLeague;
+  game_message(t[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?spin=half\n");
+  t[0].phase = PHASE_PLAY; t[0].played = 10.0; set_spin(t[..]);
+  #assert t[0].spin_every == SPIN_EVERY && near_d(t[0].field.scale, HALF_SPIN, 0.000001) && t[0].spin_now == 1.0;
+  // the tanks fill as the spin-down starts
+  u: [1] OrbitLeague;
+  game_reset(u[..]);
+  u[0].tanks[0].fuel = 5.0; u[0].tanks[1].fuel = 20.0;
+  u[0].played = 90.0 - 0.5 * STEP; set_spin(u[..]);
+  #assert u[0].tanks[0].fuel == 5.0;
+  u[0].played = 90.0 + 0.5 * STEP; set_spin(u[..]);
+  #assert u[0].tanks[0].fuel == 100.0 && u[0].tanks[1].fuel == 100.0;
 }
 
 #test "a kickoff while you sit still doesn't fly the ball into your goal" {
