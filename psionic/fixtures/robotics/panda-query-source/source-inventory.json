@@ -1,0 +1,28 @@
+{
+  "README_sha256": "8edf1467602e5f054b00411cd1b6c7067ae2d0f41d9773dc209fa239acf9c566",
+  "book_draft": {
+    "path": "/tmp/panda-query-source-book-section.md",
+    "sha256": "5b4d5dde714a6a9f93072964c814148671f2733a3969b4e0aad94e981e307374"
+  },
+  "executed_receipts": {
+    "/tmp/panda-query-source-example-first/record.json": "6f3a813326abbef91cb42e22998ab55d1af268c6208efff1126a61e65bb8aef4",
+    "/tmp/panda-query-source-native-first/record.json": "ca4838323018bf8c72497dece3fc3d3dc3b8ba6549c7b726d576dc5d683d45d8",
+    "/tmp/panda-query-source-prefix-first/record.json": "1c3f48c931a75b7d46fef65e8e268cabe70805b2183e05117df78882319bab04"
+  },
+  "files": {
+    "psionic/examples/panda-query-source.coax": "1fc3ca38285fef9ffb4d17159e55b10015ad5265bfb6d79a645eb97e3138bdd6",
+    "psionic/fixtures/robotics/panda-query-source.out": "9d52405b31ac3195e063b6408c827225973baed516cd4341300a966c15e7328f",
+    "psionic/lib/robotics/panda-query-source-fixtures.coax": "7ff8403f58634a2da9eead21fb5c84a636ac7a37ba035c9629739a6967de9d9c",
+    "psionic/lib/robotics/panda-query-source-types.coax": "d6838d028acac7ae3178275587a96da3738f83044c9fea3f5410c200d7de6d9a",
+    "psionic/lib/robotics/panda-query-source.coax": "cf1ea3e086ee86dc5f9ecd27f0ee2076ec10f095562d52724191cd82348d0e31",
+    "psionic/platform/panda-env.c": "6224a6be7cd742654c2ab45eea40ee0625e86a8c08c2a8daacdd22a3e12c9f8e",
+    "psionic/platform/panda-env.h": "fd07afc9c529c44cefc7de766db82e970a6d380313f705b62aa616784ab404a9",
+    "psionic/tests/robotics/panda-query-session.coax": "86e0627dd558b775cdad477a808f47fe0f0b117bb89bbd30fe3abc4fd2f5d3aa",
+    "psionic/tests/robotics/panda_query_source_native.c": "8531a546fb5f18fcbd8c6efde73a801f2458392e73598815c9360b0cc977a96a",
+    "psionic/tests/robotics/panda_query_source_native_reference.py": "820659e993976c4a00e10b52d555f954b5d0f41df28bcae917af895bd2f30af6",
+    "psionic/tests/robotics/panda_query_source_prefix.c": "ee5ac4cf5bcf031d0aa97bd7a07f19f634a16d07645a291eb12d7178981c68ab",
+    "psionic/tests/robotics/panda_query_source_prefix_reference.py": "ec1e4af1965d66305c4dad93ff094836b22a049647ca514969d5bf14c8317902"
+  },
+  "prefix_full_aggregate_dependency_inventory": "prefix-qualification.json:source_sha256",
+  "schema": "psionic.panda-query-source.source-inventory.v1"
+}

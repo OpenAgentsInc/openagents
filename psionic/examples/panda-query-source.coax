@@ -1,0 +1,26 @@
+#import "Basic";
+#load "../lib/robotics/panda-query-source.coax";
+#test "query source example displays independently known leverarm speed" {
+ #assert panda_query_micro(0.044)==44000 && panda_query_micro(0.5)==500000 && panda_query_micro(-0.044)== -44000;
+}
+panda_query_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("owned query source: fixed Panda9, no physics step\n");
+// book:begin select
+ // Version1transport: seven arm radians, two finger metres; matching rates.
+ sdk:[173]u64;q:[9]u64;v:[9]u64;v[0]=f64_bits(0.5);sample:[1]PcSample;
+ // Zero SDK telemetry is finite but its zero rotation is invalid. Owned
+ // selection admits only its own mathematical sample after common checks.
+ r:=pqs_select(1,sdk[..],q[..],v[..],0,0,sample[..]);#assert r.code==PqsCode.ok;
+ #assert abs(sample[0].velocity[1]-0.044)<0.000000000000002 && abs(sample[0].velocity[5]-0.5)<0.000000000000002;
+ print("grip SITE world Y (um/s): %\n",panda_query_micro(sample[0].velocity[1]));
+ print("world angular Z (urad/s): %\n",panda_query_micro(sample[0].velocity[5]));
+ r=pqs_select(0,sdk[..],q[..],v[..],0,0,sample[..]);#assert r.code==PqsCode.sample;
+ print("SDK invalid rotation: refused\n");
+ r=pqs_select(1,sdk[..],q[..],v[..],0,1,sample[..]);#assert r.code==PqsCode.effect;
+ print("failed robot effect: refused\n");
+// book:end select
+ // Mathematical q4=0 lies outside the source physical soft range. This
+ // example issues no control, steps no simulator and claims no hardware pose.
+ print("SDK geometry retained in the shadow integration profile\n");
+}

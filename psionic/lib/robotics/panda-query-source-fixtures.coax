@@ -1,0 +1,7 @@
+#load "panda-query-source-types.coax";
+// Trusted test conversion only; neither this helper nor raw words attest age.
+pqs_fixture :: ()->[173]u64 {
+ s:=pc_fixture();w:[173]u64;for i:0..<3 {w[106+i]=f64_bits(s.position[i]);}for i:0..<9 {w[109+i]=f64_bits(s.rotation[i]);}
+ for i:0..<7 {w[1+i]=f64_bits(s.q[i]);w[8+i]=f64_bits(s.qd[i]);w[134+i]=f64_bits(s.bias[i]);w[141+i]=f64_bits(s.lower[i]);w[148+i]=f64_bits(s.upper[i]);}
+ for i:0..<49 {w[15+i]=f64_bits(s.mass[i]);}for i:0..<21 {w[64+i]=f64_bits(s.jp[i]);w[85+i]=f64_bits(s.jr[i]);}for i:0..<6 {w[118+i]=f64_bits(s.velocity[i]);}return w;
+}

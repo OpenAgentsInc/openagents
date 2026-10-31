@@ -1,0 +1,203 @@
+{
+  "schema": "psionic.panda-query-source.native-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-query-source-fixtures.coax": "7ff8403f58634a2da9eead21fb5c84a636ac7a37ba035c9629739a6967de9d9c",
+    "psionic/lib/robotics/panda-query-source-types.coax": "d6838d028acac7ae3178275587a96da3738f83044c9fea3f5410c200d7de6d9a",
+    "psionic/lib/robotics/panda-query-source.coax": "cf1ea3e086ee86dc5f9ecd27f0ee2076ec10f095562d52724191cd82348d0e31",
+    "psionic/tests/robotics/panda_query_source_native.c": "8531a546fb5f18fcbd8c6efde73a801f2458392e73598815c9360b0cc977a96a",
+    "psionic/tests/robotics/panda_query_source_native_reference.py": "820659e993976c4a00e10b52d555f954b5d0f41df28bcae917af895bd2f30af6"
+  },
+  "input_sha256": "cc6a68ec754122ec6b4efc23ce9305eb0759c3b30cc01f33a7675952d608d582",
+  "expected_sha256": "96cbab7421c8eeec8d7a501dd2349597e7145ecad184d101d3a018bb853ad117",
+  "cases": 15,
+  "output_words": 4320,
+  "SDK_calls": 0,
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "passed": true,
+        "cases": 15,
+        "sources": 2,
+        "output_words": 4320,
+        "assertions": 5595
+      },
+      "C_sha256": "6c5ebd1cc48401273b76c390f3c02a5aa362ed7a33deeaf37ed522c13017fd04",
+      "header_sha256": "d68a3062541350ab87933ef439e18dfaeb18a830365ccf80e137503896b5da7e",
+      "binary_sha256": "c6b5dfbdd8c9140df1e1bfad49c04219252d5d2b0e688f2284ad2aefff9e2a12",
+      "output_sha256": "96cbab7421c8eeec8d7a501dd2349597e7145ecad184d101d3a018bb853ad117",
+      "all4320words_bitexact": true
+    },
+    {
+      "mode": "release",
+      "native": {
+        "passed": true,
+        "cases": 15,
+        "sources": 2,
+        "output_words": 4320,
+        "assertions": 5595
+      },
+      "C_sha256": "78fc8e4df618d3a473ea6f3de8514b2643a374bf3f528d1a6be38ad89081d579",
+      "header_sha256": "d68a3062541350ab87933ef439e18dfaeb18a830365ccf80e137503896b5da7e",
+      "binary_sha256": "b969c946e54da5ebad1e324a903adff862d8615a18e9f5a1dd4eb2b81622b26b",
+      "output_sha256": "96cbab7421c8eeec8d7a501dd2349597e7145ecad184d101d3a018bb853ad117",
+      "all4320words_bitexact": true
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "passed": true,
+        "cases": 15,
+        "sources": 2,
+        "output_words": 4320,
+        "assertions": 5595
+      },
+      "C_sha256": "6c5ebd1cc48401273b76c390f3c02a5aa362ed7a33deeaf37ed522c13017fd04",
+      "header_sha256": "d68a3062541350ab87933ef439e18dfaeb18a830365ccf80e137503896b5da7e",
+      "binary_sha256": "78c5f08bda9e3aa58f782d4e6afec3628a584c3fc85be9428029b112d5f7990f",
+      "output_sha256": "96cbab7421c8eeec8d7a501dd2349597e7145ecad184d101d3a018bb853ad117",
+      "all4320words_bitexact": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-query-source.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-query-source-native-first/debug/panda-query-source.h"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-source-native-first/debug",
+        "/private/tmp/panda-query-source-native-first/debug/panda-query-source.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_source_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-source-native-first/debug/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-query-source-native-first/debug/native",
+        "/private/tmp/panda-query-source-native-first/input.bin",
+        "/private/tmp/panda-query-source-native-first/debug/sources.f64"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-query-source.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-query-source-native-first/release/panda-query-source.h"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-source-native-first/release",
+        "/private/tmp/panda-query-source-native-first/release/panda-query-source.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_source_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-source-native-first/release/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-query-source-native-first/release/native",
+        "/private/tmp/panda-query-source-native-first/input.bin",
+        "/private/tmp/panda-query-source-native-first/release/sources.f64"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-sanitized",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-query-source.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-query-source-native-first/sanitized/panda-query-source.h"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-query-source-native-first/sanitized",
+        "/private/tmp/panda-query-source-native-first/sanitized/panda-query-source.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_query_source_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-query-source-native-first/sanitized/native"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-query-source-native-first/sanitized/native",
+        "/private/tmp/panda-query-source-native-first/input.bin",
+        "/private/tmp/panda-query-source-native-first/sanitized/sources.f64"
+      ],
+      "exit": 0,
+      "stderr_bytes": 0
+    }
+  ],
+  "scope": "NEW selector fixture transport. The173word SDK testinput is reconstructed from independent144field SDK data with explicit zero unused lanes, not a captured fulltelemetry record.",
+  "seconds": 3.9514319580048323
+}

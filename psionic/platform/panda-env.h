@@ -21,6 +21,9 @@ typedef struct {
   double bias[7],torque_min[7],torque_max[7];
   double target_pos[3],target_mat[9],target_size[3],book_pos[3];
 } PandaTelemetry;
+/* Additive V1 raw state effect: named arm7 then finger2, independently bound
+   qpos and DOF addresses. It copies current q/qvel only, without forwarding. */
+typedef struct { double q[9],qd[9]; } PandaRobotStateV1;
 
 /* Caller supplies24 Coax-selected semantic names: arm joints7,arm actuators7,
    finger joints2,EEFsite,EEFbody,targetsite,bookbody,cameras2,finger actuators2. */
@@ -31,6 +34,7 @@ int panda_env_dimensions(PandaEnv *env,PandaDimensions *out);
 int panda_env_reset(PandaEnv *env,const double *state,size_t count);
 /* Exact flattened SDK state copy; no forward or integration. */
 int panda_env_state(PandaEnv *env,double *state,size_t count);
+int panda_env_robot_state(PandaEnv *env,PandaRobotStateV1 *out);
 int panda_env_forward(PandaEnv *env);
 /* Neither sample nor render implicitly calls mj_forward. */
 int panda_env_sample(PandaEnv *env,PandaTelemetry *out);

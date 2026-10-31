@@ -1,0 +1,105 @@
+{
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "completion_scope": "Opt-in source selector plus NEW recomputed recorded-action clock prefix; existing fullneural host still its prior SDK querypath until explicitlyintegrated. SDKowns integration/contact and still supplies cached observations/shadowgeometry.",
+  "example": {
+    "debug_release_exact": true,
+    "prewritten_golden": true,
+    "receipt": "example-qualification.json",
+    "receipt_sha256": "6f3a813326abbef91cb42e22998ab55d1af268c6208efff1126a61e65bb8aef4"
+  },
+  "native": {
+    "SDK_calls": 0,
+    "all_words_bitexact": true,
+    "assertions_each": 5595,
+    "cases": 15,
+    "field_words_each": 4320,
+    "modes": [
+      "debug",
+      "release",
+      "ASan+UBSan fail-fast"
+    ],
+    "receipt": "native-qualification.json",
+    "receipt_sha256": "ca4838323018bf8c72497dece3fc3d3dc3b8ba6549c7b726d576dc5d683d45d8",
+    "sources_per_case": 2
+  },
+  "not_claimed": [
+    "SDK geometry elimination",
+    "new neural-policy episode",
+    "task success",
+    "hardware command validity",
+    "wholeR12/R13/R18 orcompilerboundedness",
+    "cross-architecture determinism",
+    "solver or contact replacement"
+  ],
+  "passed": true,
+  "prefix": {
+    "NN_calls": 0,
+    "SDK_geometry_retained": true,
+    "clock_action_flags_status_ready_clipcounts_exact": true,
+    "controller_calls_selected": 500,
+    "controller_calls_shadow": 500,
+    "cross_run_max_abs": {
+      "gripper_control": 0.0,
+      "qpos23": 1.3322676295501878e-15,
+      "qvel21": 7.240522939608525e-14,
+      "request_F32observation": 0.0,
+      "snapshot_geometry": 5.551115123125783e-16,
+      "torque": 1.8633983245308627e-12
+    },
+    "new_SDK_steps": 500,
+    "normal_controller_calls_all_ok": true,
+    "old_passing_gates_or_originalepisodes_repeated": false,
+    "receipt": "prefix-qualification.json",
+    "receipt_sha256": "1c3f48c931a75b7d46fef65e8e268cabe70805b2183e05117df78882319bab04",
+    "render_calls": 0,
+    "request_F32_words_each": 24,
+    "request_F32bits_equal": true,
+    "request_origin_each": [
+      0,
+      25,
+      225
+    ],
+    "request_payload_sha256": "99d3bfa64522d0dfaa3054ba7549010731402e6715fe160c368cfce0fd96b794",
+    "runs": 2,
+    "same_state_shadow_max_abs_each": [
+      {
+        "PcState_goal_home_grip": 4.3298697960381105e-15,
+        "gripper": 0.0,
+        "torque": 1.3606893389805919e-12
+      },
+      {
+        "PcState_goal_home_grip": 4.3298697960381105e-15,
+        "gripper": 0.0,
+        "torque": 1.3713474800169934e-12
+      }
+    ],
+    "single_fallback_row_each": true,
+    "stale_refusal_each": 1,
+    "steps_each": 250
+  },
+  "prior_nonpassing_development": {
+    "incorrect_test_expectation": "InitialtesttreatednegativeSDKmassaspc_samplerefusal. pc_sampledoesnotinvertmass. TestchangedtoinvalidfiniteSDKrotation; productunchanged.",
+    "logs": {
+      "/tmp/panda-query-source-checks-first.log": "47eab0d6a142f639a64fdab1f54e4d9303885070a89b2e63137bd0b3d9940ce1",
+      "/tmp/panda-query-source-mutation-final.log": "1725833b1fa0eb94a1e3bccb458b7c2d47fe73de8436690adcf77df3bde68256",
+      "/tmp/panda-query-source-mutation-first.log": "ff568b17f479803913018ddffc5f0f4e29d9234c2b3c368325bc3e24a536acb3"
+    }
+  },
+  "product_boundary": "pqs_select gates shape/kind/effects/allfinite/selectedsample, outputatomic. Lowlevel pqs_sdk and other Coax helpers remain source-visible and assume valid inputs, not sealedprovenance APIs.",
+  "profile": "panda-owned-query-shadow-v1",
+  "publication_compiler_binding": "parent scope; this receipt pins actualexecuted a429 compiler and artifacts",
+  "root_mutants": {
+    "first_attempt": "96/97killed; valid nonzero rate fixture added. No equivalent waiver.",
+    "killed": 97,
+    "log_sha256": "1725833b1fa0eb94a1e3bccb458b7c2d47fe73de8436690adcf77df3bde68256",
+    "scope": "NEW entry-source procedures only; dependency baseline checks retained",
+    "survived": 0,
+    "test_title_only_followup": {
+      "after_sha256": "cf1ea3e086ee86dc5f9ecd27f0ee2076ec10f095562d52724191cd82348d0e31",
+      "before_sha256": "442a0bca505a14a1c872444e51c4c5a862413522ee1687e10ebbb6b7e07541f4",
+      "change": "One test title only: eighteen transported q/rate words, not nineteen. All source procedure bodies/check expressions identical; passingmutation not repeated."
+    },
+    "total": 97
+  },
+  "schema": "psionic.panda-query-source.qualification.v1"
+}

@@ -1,0 +1,6 @@
+{
+  "schema": "psionic.panda-query-source.example-reference.v1",
+  "prewritten_before_example_source": true,
+  "basis": "Pinnedzero-angle armhasgripSITEleverarm0.088metres onworldX; firsthingerate0.5rad/s givesvy0.044m/s andworldomegaZ0.5rad/s. SDKzerorotationisnotvalidrotation; effectfailureprecedesmath. q4=0isgeometricoutsidephysicalsoftlimit.",
+  "golden_sha256": "9d52405b31ac3195e063b6408c827225973baed516cd4341300a966c15e7328f"
+}

@@ -1,0 +1,3 @@
+#load "panda-owned-sample.coax";
+PqsCode :: enum u8 {ok;shape;kind;effect;number;sample;}
+PqsResult :: struct {code:PqsCode;detail:PcStatus;}

@@ -1,0 +1,6 @@
+owned query source: fixed Panda9, no physics step
+grip SITE world Y (um/s): 44000
+world angular Z (urad/s): 500000
+SDK invalid rotation: refused
+failed robot effect: refused
+SDK geometry retained in the shadow integration profile

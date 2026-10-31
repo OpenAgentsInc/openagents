@@ -1,0 +1,117 @@
+{
+  "CSDK_effect_calls_perrun": {
+    "NN": 0,
+    "explicit_forward": 250,
+    "open": 1,
+    "primary_control": 250,
+    "query_source_pair": 251,
+    "render": 0,
+    "reset_with_internal_forward": 1,
+    "robot_state_nullrefusal_probes": 2,
+    "robot_state_success": 251,
+    "sample": 254,
+    "shadow_control": 250,
+    "step": 250
+  },
+  "action_fixture": "Only copied canonical F32 selected ACTION words from authenticated original PTR1, first8 prospective rows;16-row storage unconsumed tail explicitlyzero. Oldcontrol/state/flags NOT reused.",
+  "action_rows": 10,
+  "case": {
+    "case": "demo_000",
+    "expected_requests": [
+      0,
+      25,
+      225
+    ],
+    "files": {
+      "init.f64": {
+        "bytes": 360,
+        "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+      },
+      "original.xml": {
+        "bytes": 60702,
+        "sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5"
+      },
+      "scene.xml": {
+        "bytes": 66846,
+        "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+      }
+    },
+    "original_case_ledger": {
+      "bytes": 697,
+      "sha256": "74685948bd575c57af4022495d6afb80b85a178f64594455f5b39547ecff4940"
+    },
+    "recorded_trace": {
+      "bytes": 204864,
+      "sha256": "c7257ad9963c9c0876a3c8cf7095df2c04f60599d54d7614f703f900f1bb00ff"
+    },
+    "rows": 10,
+    "scenario": 2,
+    "steps": 250
+  },
+  "control_sample": "ExplicitSDKforward, then SDK173+RobotStateV1; Coaxselected sample controls and other source computes shadowcontroller; both share current physicalstate",
+  "controller_home": "pc_default_home exact source, pc_reset fresh perrun, firstof25call updatesgoal; gripper updates eachcall",
+  "cross_run_budgets_abs": {
+    "gripper_control": 2e-12,
+    "qpos23": 1e-08,
+    "qvel21": 1e-07,
+    "request_F32observation": 1e-06,
+    "snapshot_geometry": 1e-08,
+    "torque": 1e-06
+  },
+  "exact_comparisons": [
+    "SDKtimebits",
+    "clock/epoch/serial/tick/substep/action/flags",
+    "request/fresh-stamp tags",
+    "controllerstatuses/ready/clipcounts within eachsame-state shadow"
+  ],
+  "fallback_rows": 1,
+  "first_request_delayed": true,
+  "frozen_before_SDK_execution": true,
+  "kind_names": [
+    "panda-sdk-query-shadow-v1",
+    "panda-owned-query-shadow-v1"
+  ],
+  "no_fallback": true,
+  "numeric_profile": "IEEEF64,no-fast-math,no-contract,scalar-libm",
+  "physics_dt_seconds": 0.002,
+  "request_observation": "SDKcached geometry BEFOREforward, each run independently; no owned fresh geometry substitution",
+  "request_origins": [
+    0,
+    25,
+    225
+  ],
+  "runs": [
+    {
+      "kind": 0,
+      "steps": 250
+    },
+    {
+      "kind": 1,
+      "steps": 250
+    }
+  ],
+  "same_state_shadow_budgets_abs": {
+    "PcState_goal_home_grip": 1e-08,
+    "gripper": 2e-12,
+    "torque": 2e-08
+  },
+  "schema": "psionic.panda-query-source.prefix-experiment.v1",
+  "sdk_clock_tolerance_seconds": 1.4901161193847656e-08,
+  "shadow_scope": "SDKgeometry retained throughout, SDKstillowns integration/contact/schedulingeffects. Not an elimination of SDKgeometry queries, a newNNepisode, tasksuccess or hardwareproof.",
+  "source_admission_precedence": [
+    "shape",
+    "kind",
+    "effect",
+    "ALLSDKandrobotfinite",
+    "selectedsamplemath"
+  ],
+  "source_integrator": "Euler in previouslyqualified pinned compiledmodel; request stamps name last explicit forward, not a temporal type proof",
+  "source_shape_counts": [
+    173,
+    9,
+    9,
+    1
+  ],
+  "stale_refusals": 1,
+  "substeps_per_row": 25
+}

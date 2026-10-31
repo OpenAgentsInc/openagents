@@ -12,7 +12,7 @@ struct PandaEnv {
   mjModel *model;
   mjData *data;
   mjtNum *dense,*jacp,*jacr;
-  int joints[7],qpos[7],qvel[7],actuators[7],fingers[2],finger_actuators[2];
+  int joints[7],qpos[7],qvel[7],actuators[7],fingers[2],finger_qvel[2],finger_actuators[2];
   int site,body,target,book,cameras[2];
   CGLContextObj gl;
   CGLPixelFormatObj pixel;
@@ -59,7 +59,7 @@ PandaEnv *panda_env_open(const char *path,const char *const bindings[24],char *e
   for(int i=0;i<2;i++){
     int id=panda_name(e,mjOBJ_JOINT,bindings[14+i]);e->finger_actuators[i]=panda_name(e,mjOBJ_ACTUATOR,bindings[22+i]);
     if(id<0||e->finger_actuators[i]<0){panda_error(error,size,"missing finger handle");panda_env_close(e);return NULL;}
-    e->fingers[i]=e->model->jnt_qposadr[id];
+    e->fingers[i]=e->model->jnt_qposadr[id];e->finger_qvel[i]=e->model->jnt_dofadr[id];
   }
   e->site=panda_name(e,mjOBJ_SITE,bindings[16]);e->body=panda_name(e,mjOBJ_BODY,bindings[17]);
   e->target=panda_name(e,mjOBJ_SITE,bindings[18]);e->book=panda_name(e,mjOBJ_BODY,bindings[19]);
@@ -87,6 +87,12 @@ int panda_env_state(PandaEnv *e,double *state,size_t count) {
   if(e->model->na)memcpy(state+1+e->model->nq+e->model->nv,e->data->act,(size_t)e->model->na*sizeof(double));return 1;
 }
 int panda_env_forward(PandaEnv *e){if(!e)return 0;mj_forward(e->model,e->data);return 1;}
+int panda_env_robot_state(PandaEnv *e,PandaRobotStateV1 *out) {
+  if(!e||!out)return 0;PandaRobotStateV1 state;
+  for(int i=0;i<7;i++){state.q[i]=e->data->qpos[e->qpos[i]];state.qd[i]=e->data->qvel[e->qvel[i]];}
+  for(int i=0;i<2;i++){state.q[7+i]=e->data->qpos[e->fingers[i]];state.qd[7+i]=e->data->qvel[e->finger_qvel[i]];}
+  *out=state;return 1;
+}
 int panda_env_sample(PandaEnv *e,PandaTelemetry *out) {
   if(!e||!out)return 0;PandaTelemetry s={0};const mjModel *m=e->model;const mjData *d=e->data;
   mj_fullM(m,e->dense,d->qM);mj_jacSite(m,d,e->jacp,e->jacr,e->site);s.time=d->time;

@@ -1,0 +1,3 @@
+// Additive query-provider aggregate; published Ps/Pk/Pe/Pc/Pr retain identity.
+#load "panda-clock-session.coax";
+#load "../../lib/robotics/panda-query-source.coax";
