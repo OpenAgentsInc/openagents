@@ -1,0 +1,87 @@
+{
+  "schema": "psionic.panda-inertia.publication-emission-binding.v1",
+  "passed": true,
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "compiler_input_fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "executed_native_compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+  "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+  "product_source_sha256": {
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/tests/robotics/panda_inertia_reference.py": "07e01179064f940158c6de4f10b2c087d93c60057750a79f1518025e32850bc5",
+    "psionic/tests/robotics/panda_inertia_native.c": "96f625c647adfee10099eb6c738fd215122ccb773bbb747ad58e53c566f12617",
+    "psionic/fixtures/robotics/panda-inertia/experiment.json": "2fb53296d3916943007f53c38e66a67c3400b9c3d6ca116ecfe35f1b798b4de6",
+    "psionic/tests/robotics/panda_fingers_reference.py": "1fc68b7ab30b32b4ed3631d62f88ba39e65809011e0ea8d56880b90c8397bfd1",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+    "psionic/tests/robotics/panda_inertia_bad_angle.coax": "f6f12842e992a34ac99bb55a2ccbfbd3e9e5db39f9a4fcc69d7b88cef298b4b5",
+    "psionic/tests/robotics/panda_inertia_bad_slide.coax": "3585b2b0441a8756dc4effe7469e86379057acb85721bb7059c425b300323bbc",
+    "psionic/tests/robotics/panda_inertia_bad_mass.coax": "e6e33b87bac9eb22cddd1c7117a9c8089184cbaca687846767b42f6ae671a1d1",
+    "psionic/tests/robotics/panda_inertia_bad_gravity.coax": "847d054d65f28d766bc1729ff800af9917bd7bfed0ba3cd739d2e3cfd0570858"
+  },
+  "commands": [
+    {
+      "mode": "debug",
+      "argv": [
+        "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-inertia.coax",
+        "--library",
+        "--header",
+        "/tmp/panda-inertia-publication-emissions/debug/panda-inertia.h"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+      "exit": 0,
+      "stderr_bytes": 0,
+      "C_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "C_exact": true,
+      "header_exact": true,
+      "passed": true
+    },
+    {
+      "mode": "release",
+      "argv": [
+        "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-inertia.coax",
+        "--library",
+        "--header",
+        "/tmp/panda-inertia-publication-emissions/release/panda-inertia.h",
+        "--release"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+      "exit": 0,
+      "stderr_bytes": 0,
+      "C_sha256": "f99c34e1122d730c27faf974975a04f99a9112fe8b6180235709561097f64e50",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "C_exact": true,
+      "header_exact": true,
+      "passed": true
+    }
+  ],
+  "seconds": 0.14954395801760256,
+  "scope": "Two new-context program/header emissions. Default/debug source supplies the already qualified sanitizer path. No source checks, mutations, numerical/reference/native/SDK or example execution repeated. No full compiler release/cache/install claim.",
+  "new_authority_mutation": {
+    "profile": 38,
+    "math": 244,
+    "wrapper": 56,
+    "survivors": 0,
+    "waivers": 0
+  },
+  "retained_reference_values": {
+    "SDK_mass": 405,
+    "SDK_gravity_qvel_zero": 45,
+    "new_SDK_calls": 0
+  },
+  "independent_review": {
+    "reviewers": [
+      "robotics_core",
+      "robotics_flow"
+    ],
+    "remaining_blockers": [],
+    "guard_hardening": "Explicit arm-profile identity admission and complete decoded finite/extent admission qualified on cached artifacts and poisoned controls; historical numeric/driver records retained."
+  }
+}
