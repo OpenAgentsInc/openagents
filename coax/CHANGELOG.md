@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.40.0 — 2026-10-31
 
-Commit: [`2e857e5e73b1531bf7873c27992919a56ce82c06`](https://github.com/OpenAgentsInc/openagents/commit/2e857e5e73b1531bf7873c27992919a56ce82c06)
+Commit: [`49e92d76ede39c1810c000f3878134243eebdcd8`](https://github.com/OpenAgentsInc/openagents/commit/49e92d76ede39c1810c000f3878134243eebdcd8)
 
 - A type parameter may state the built-in constraint its body needs, where it
   is bound: `max :: (a: $T: ordered, b: $T) -> $T` or
