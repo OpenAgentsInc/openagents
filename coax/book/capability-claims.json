@@ -113,7 +113,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "6bb09dd6be49ffac8bd8d09de8d164d0f06de7866781dc9dcf7ad28204b05df9"
+          "sha256": "66b4689a6aa375738635930d1e15bcb9bd68504941515fe1e70ca37bb02412b9"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -257,7 +257,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "6bb09dd6be49ffac8bd8d09de8d164d0f06de7866781dc9dcf7ad28204b05df9"
+          "sha256": "66b4689a6aa375738635930d1e15bcb9bd68504941515fe1e70ca37bb02412b9"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
@@ -265,7 +265,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "fe5be2abcca78b74e8cbadd261b5f25bda278046c124d082d34150e745a845e6"
+          "sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff"
         }
       ]
     },
@@ -317,7 +317,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "fe5be2abcca78b74e8cbadd261b5f25bda278046c124d082d34150e745a845e6"
+          "sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff"
         },
         {
           "path": "verse/everglade/gpu.module",

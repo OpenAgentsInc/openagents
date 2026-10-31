@@ -307,15 +307,20 @@
     "canonical_gate_wiring": "coax/tests/run.sh includes the already-qualified focused regression suites, sequence authority checks/mutation and current native profiles. Shell syntax was checked; the unchanged full compiler suite was not repeated."
   },
   "push": {
-    "outcome": "ready_to_push",
-    "target": "origin/main"
+    "outcome": "pushed",
+    "commit": "dbd924cc75c93078d305631f859ee0583479542a",
+    "target": "origin/main",
+    "pushed_utc": "2026-10-31 14:42:54 UTC",
+    "issue": "coax-library-contract-recipes resolved",
+    "project_data": "Refreshed production/staging Markdown; /tmp/coax-library-closed-project-data.log"
   },
   "limits": [
     "Raw views remain caller-owned; no general ownership or lifetime analysis is introduced.",
     "No network, credentials, model download, original-weight inference or new GPU qualification is needed or claimed.",
     "A fixed WebSocket mask is offline fixture data, not a live-client randomness policy.",
     "Psionic metadata/predict recipes do not exercise a fake overlap observation or pretend to copy tensors.",
-    "Helper call counts, source scratch removal and actual measured native costs must remain distinct."
+    "Helper call counts, source scratch removal and actual measured native costs must remain distinct.",
+    "The final incoming made-realm commit has a separately recorded built visual baseline failure; this is never reported as a passing golden."
   ],
   "outcome": "passed",
   "visual_gate": {
@@ -329,7 +334,7 @@
     "exit_code": 0,
     "seconds": 264.09690762503305,
     "log": "/tmp/coax-library-merged-golden.log",
-    "scope": "Executed at 8f242171cf, then retained as browser-runtime evidence after source-scoped review of the later rebase. This is not a new-HEAD automated golden pass or a measured binary-identity claim.",
+    "scope": "Executed at 8f242171cf; retained for 60 unchanged registered journeys after final incoming 59347994ba. That commit affects built, whose separate actual check failed against its old golden. No new-HEAD blanket pass or binary equality is claimed.",
     "later_rebase_retention": {
       "outcome": "supported",
       "audit": "/tmp/coax-browser-source-graph-audit.json",
@@ -338,8 +343,35 @@
       "successful_roots": 65,
       "source_paths": 330,
       "changed_consumed_paths": 0,
-      "scope": "Declared browser wasm links, homepage/voice and shader roots. Linked compiler language/emission components, Verse, browser tooling and app build inputs are unchanged. Changed Psionic ML/robotics files are outside those closures.",
+      "scope": "Historical source-graph audit through e6c, before incoming593. It supports earlier retention only; the separate late audit narrows final retention to60 pages.",
       "caveat": "project.coax needs absent generated projects/baked.coax; project pages are outside the current 61-page golden registry. Source-scope retention is explicit; no fresh execution or binary equality is inferred."
+    },
+    "late_made_realm_audit": {
+      "path": "/tmp/coax-browser-late-made-realm-audit.json",
+      "sha256": "b51829235520570a530c23bf5b05ca7b152f37b35eb5497a04c07f450e5599a5",
+      "affected_registered_pages": [
+        "built"
+      ],
+      "retained_unaffected_pages": 60
+    },
+    "incoming_built_baseline": {
+      "command": "coax/web/golden-check.sh --commit 59347994ba",
+      "exit_code": 1,
+      "seconds": 115.10732462495798,
+      "log": "/tmp/coax-library-final-parent-built-golden.log",
+      "scope": "Only the built journey selected by the final incoming made-realm commit; other60 retain their passing gate.",
+      "outcome": "failed",
+      "changed_blocks": 4127,
+      "allowed_blocks": 6,
+      "attribution": "Incoming parent59347994ba; all four changed made-realm runtime files belong to built. Coax library/native-check changes are outside that browser source closure.",
+      "owner_record": "NEEDS_OWNER.md",
+      "snapshot_changed": false,
+      "resolution": {
+        "author_approval_commit": "21dc5da9ca",
+        "meaning": "Original author reviewed and updated the expected image; failed593 result remains historical, with no audit-approved snapshot.",
+        "targeted_validation": "/tmp/coax-native-baseline-approved-built-golden-result.json",
+        "validation_status": "pending"
+      }
     }
   },
   "issue_followup": {

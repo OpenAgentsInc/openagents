@@ -200,10 +200,16 @@ def line_of(src: str, offset: int) -> int:
 
 # ---- running things
 
-def execute(command, cwd=None, timeout=None):
+def execute(command, cwd=None, timeout=None, *, expected_fault=False):
     timeout = TIMEOUT if timeout is None else min(timeout, TIMEOUT)
+    command = [str(c) for c in command]
+    if expected_fault and sys.platform == "darwin":
+        # The launcher execs the target, preserving real signals and diagnostics.
+        command = [sys.executable, str(ROOT / "tests/quiet_crash.py"), "--", *command]
     try:
-        r = subprocess.run([str(c) for c in command], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        if expected_fault and sys.platform == "darwin" and r.returncode in (125, 127) and r.stderr.startswith("quiet_crash:"):
+            return {"returncode": r.returncode, "stdout": r.stdout, "stderr": r.stderr, "unavailable": True}
         return {"returncode": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
     except subprocess.TimeoutExpired:
         return {"returncode": None, "stdout": "", "stderr": "timeout", "timeout": True}
@@ -215,16 +221,17 @@ RESULT = re.compile(r"^(ok  |FAIL) #test (.*) \(")
 DIAG = re.compile(r"^(.*?):(\d+):\d+: error\[(E\d+)\]")
 
 
-def evaluate(path: Path, src: str, tests, seed: str):
+def evaluate(path: Path, src: str, tests, seed: str, *, observation=None):
     """Per test name: ("passed",) | ("assert", N) | ("trap", code) | ("inconclusive", why)."""
     probe = path
-    if not re.search(r"(?m)^main\s*::", src):
+    if observation is None and not re.search(r"(?m)^main\s*::", src):
         fd, name = tempfile.mkstemp(prefix=".native-check-eval-", suffix=".coax", dir=path.parent)
         os.close(fd)
         probe = Path(name)
         probe.write_text(src.rstrip("\n") + "\nmain :: () {}\n")
     try:
-        r = execute([compiler(), "test", probe.name, "--steps", str(EVALUATOR_STEPS)], cwd=path.parent)
+        r = observation if observation is not None else execute(
+            [compiler(), "test", probe.name, "--steps", str(EVALUATOR_STEPS)], cwd=path.parent)
     finally:
         if probe != path:
             probe.unlink(missing_ok=True)
@@ -321,10 +328,14 @@ def native(path: Path, code: str, checks, seed: str, keep: Path):
             b = execute([*CC, "-std=c11", opt, "-ffp-contract=off", str(csrc), "-lm", "-o", str(binary)])
             if b.get("unavailable"):
                 return None, "infrastructure-error", f"no C compiler: {b['stderr']}", identities
+            if b.get("timeout"):
+                return None, "inconclusive", "the C compiler ran past its time limit", identities
             if b["returncode"] != 0:
                 return None, "rejected", "the emitted C doesn't compile: " + b["stderr"].strip().splitlines()[0][:200], identities
             identities.setdefault(opt, []).append({"c_sha256": sha(c.encode()), "binary_sha256": sha(binary.read_bytes())})
-            run = execute([binary], timeout=120)
+            run = execute([binary], timeout=120, expected_fault=True)
+            if run.get("unavailable"):
+                return None, "infrastructure-error", "the native target did not start: " + run["stderr"], identities
             if run.get("timeout"):
                 return None, "inconclusive", f"check {start} ran past its time limit at {opt}", identities
             got = []
@@ -335,6 +346,8 @@ def native(path: Path, code: str, checks, seed: str, keep: Path):
                     got.append(("passed",) if v == 0 else ("assert", v))
             results[opt].extend(got)
             start += len(got)
+            if run["returncode"] != 0 and start >= len(checks):
+                return None, "infrastructure-error", "the native process failed after all reported results", identities
             if run["returncode"] != 0 and start < len(checks):
                 results[opt].append(("trap", run["returncode"]))
                 start += 1
@@ -361,7 +374,7 @@ def minimise(code: str, name: str, body: str, upto: int, keep: Path, stem: str) 
     return out
 
 
-def check_file(path: Path, seed: str = "", keep: Path | None = None) -> dict:
+def check_file(path: Path, seed: str = "", keep: Path | None = None, *, observation=None) -> dict:
     path = path.resolve()
     src = path.read_text()
     keep = keep or Path(tempfile.mkdtemp(prefix="native-checks-"))
@@ -386,7 +399,7 @@ def check_file(path: Path, seed: str = "", keep: Path | None = None) -> dict:
     if not eligible:
         rec["outcome"] = "not-checked" if not rec["checks"] else "rejected"
         return rec
-    ev, outcome, why = evaluate(path, src, tests, seed)
+    ev, outcome, why = evaluate(path, src, tests, seed, observation=observation)
     if ev is None:
         rec.update(outcome=outcome, why=why)
         for name, _, _ in eligible:
@@ -420,13 +433,22 @@ def check_file(path: Path, seed: str = "", keep: Path | None = None) -> dict:
     return rec
 
 
-def run(files, seed="", keep=None) -> dict:
+def run(files, seed="", keep=None, *, evaluator_observations=None) -> dict:
     c = compiler()
     record = {"schema": SCHEMA, "compiler": str(c), "compiler_sha256": sha(c.read_bytes()) if c.exists() else None,
               "target": f"{platform.system()}-{platform.machine()}", "profiles": {"arithmetic": "checked", "c": list(OPTS), "cc": CC,
               "c_flags": ["-std=c11", "-ffp-contract=off"]}, "seed": seed or None, "files": []}
     for f in files:
-        record["files"].append(check_file(Path(f), seed, keep))
+        path = Path(f).resolve()
+        if evaluator_observations is not None and str(path) not in evaluator_observations:
+            record["files"].append({
+                "file": str(path.relative_to(REPO)) if path.is_relative_to(REPO) else str(path),
+                "checks": [], "outcome": "infrastructure-error",
+                "why": "the supplied evaluator observations omit this source; no evaluator was rerun",
+            })
+        else:
+            observation = None if evaluator_observations is None else evaluator_observations[str(path)]
+            record["files"].append(check_file(path, seed, keep, observation=observation))
         if os.environ.get("NATIVE_CHECKS_PROGRESS"):
             print(f"{record['files'][-1]['outcome']:20} {f}", file=sys.stderr, flush=True)
     outs = {f["outcome"] if f["outcome"] != "rejected" else "not-checked" for f in record["files"]}

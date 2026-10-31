@@ -124,19 +124,26 @@ slice. The generator, model, renderer and comparison code are reviewable trust
 inputs; shared mistakes can still agree. This is a small differential corpus
 with an independent state oracle, not a general fuzzer or proof system.
 
-## Authored checks on native code
+## Legacy authored-check comparison
 
 `python3 coax/tools/native_checks.py --selection coax/tests/native-checks.json`
 runs real authored `#test` checks three ways: the evaluator (`coax test`), and
 the same bodies emitted with `coax c --arithmetic checked` and compiled by the
 host C compiler at `-O0` and at `-O2` (`-std=c11 -ffp-contract=off -lm`). Each
-check's outcome is "passed", "assertion N failed" (counting its `#assert`s from
-one, so the evaluator's failing line and the native return name the same
-assertion) or "trap" (checked arithmetic, bounds, any signal). All three must
+eligible check's outcome is "passed", "assertion N failed" (counting its
+`#assert`s from one, matching the evaluator failure to the native assertion
+number) or "trap" (checked arithmetic, bounds, any signal). All three must
 agree; a disagreement is a counterexample, minimised to that test alone, cut
-after its first disagreeing assertion, and written to `--keep DIR`. Fixed
-counterexamples are kept in `coax/tests/native-checks/` and must agree on every
-run of `coax/tests/native_checks.py`.
+after its first disagreeing assertion, and written to `--keep DIR`.
+`coax/tests/native_checks.py` exercises this host runner and its seeded defects.
+
+The published `coax.native-checks.v1` record measures agreement for the eligible
+subset. A file or run can have `outcome: "passed"` when all compared checks
+agree on an assertion failure (`agreed-assert`) or a trap (`agreed-trap`). It
+can also pass while some source checks are rejected from that subset. Agreement
+is useful compiler evidence; it does not mean the original file's checks pass
+or that every authored claim ran natively. The strict companion below keeps
+these meanings intact and adds separate observations.
 
 The native harness is a temporary source beside the checked file (so `#load`
 resolves): the file unchanged, each eligible body as `__native_check_K ::
@@ -148,23 +155,104 @@ product C: the tests check that `coax c` of the product has no
 `defer` cleanup are compared through the checks' own assertions, each assertion
 separately.
 
-A check is eligible when its body uses no directive but statement `#assert`
-(`#forall`, `#run`, `#expect` and asserts inside expressions are "rejected").
+The runner distinguishes execution from transport failure. An unavailable
+native binary is an infrastructure error, not an agreed trap. A nonzero exit
+after all result rows is also an infrastructure error; it cannot be assigned
+to an unreported check. C compiler timeouts are inconclusive. For an actual
+executing check, legacy trap agreement still groups signals without requiring
+the evaluator and native trap reasons to match. Expected-fault native children
+use the quiet crash launcher so these probes do not open macOS crash dialogs.
+
+A `#test` is eligible when its body uses no directive but statement `#assert`
+(`#run`, `#expect` and asserts inside expressions are "rejected"). Standalone
+`#forall` blocks are outside this runner's lifted `#test` subset.
 Files with their own `main` are rejected rather than replaced. A file the
 evaluator or emitter refuses, a missing compiler and a timeout make its checks
 "not-checked", "infrastructure-error" or "inconclusive": none is ever
 "passed", and the run exits nonzero. The record names the compiler SHA-256, C
-compiler, target and per-profile C and binary SHA-256s, every check in each
-selected file with its outcome, and (with `--selection`) every `#test` under
-`verse/` and `psionic/` the selection doesn't run.
+compiler, target and per-profile C and binary SHA-256s, every lifted `#test` in
+each selected file with its outcome, and (with `--selection`) the lifted
+`#test`s under `verse/` and `psionic/` the selection doesn't run.
 
 `--seed emitter` swaps the emitted checked multiply for a checked add;
 `--seed evaluator` reports the evaluator's first passing check as failing at
 its first assertion. Both produce counterexamples (the tests require it).
 
 On arm64 macOS with Apple clang 21, the selection of 18 files (10 Verse, 8
-Psionic) runs 62 checks, all agreeing at `-O0` and `-O2`. This runner is a host
-tool, not compiler-owned policy: the children of `r0-native-check-exe`
-(compiler-emitted check wrappers, finite `#forall` domains, output-exhaustion
-bounds and companion evidence) remain open, and agreement here does not
-establish general compiler correctness.
+Psionic) ran 62 checks, all agreeing at `-O0` and `-O2`. This is the recorded
+selection result, not a qualification of every later source or compiler.
+
+## Strict original-source baseline companion
+
+`tools/native_check_baseline.py` adds the versioned
+`coax.native-checks.baseline.v1` companion. It is optional host maintenance
+tooling around the legacy source lifting and comparison above. It does not
+change `coax.native-checks.v1` or the evaluator-only `coax.evidence.v1` contract.
+
+Run from the repository root:
+
+```sh
+python3 coax/tools/native_check_baseline.py verse/look.coax --json --out /tmp/coax-native-baseline.json --keep /tmp/coax-native-artifacts
+python3 coax/tools/native_check_baseline.py --selection coax/tests/native-checks.json --json --out /tmp/coax-native-selection.json
+```
+
+The second command requests strict accounting for the named selection. A
+coverage gap or a nonpassing original baseline produces a nonzero exit, even
+when the nested legacy differential result reports agreement. It is not a
+command that promises every selected file is currently supported. Selection
+scopes the gate; a pass does not cover unselected repository files. `--seed
+emitter|evaluator` retains the deliberate-defect modes. `--steps N` sets an
+explicit lower baseline check budget; without it the compiler's normal
+20,000,000 steps per check apply. Zero, negative or larger values are refused.
+The companion never raises that budget to the legacy runner's 400,000,000
+steps. Subprocesses share an 840-second command budget and retain their shorter
+individual limits.
+
+For each file, the companion invokes the compiler on the **original source**
+with `test`, `--library` and `--evidence`, without `--only` or an added `main`.
+It retains that complete compiler-authored evidence record and the process
+observation. A valid passing baseline supplies the same observation to the
+legacy comparison; an invalid or nonpassing baseline stops before native
+comparison. There is one original-source evaluator invocation, rather than a
+second evaluator run on a rewritten source. Normal authority admission during
+C emission still applies to the temporary native harness; it is never bypassed.
+
+Read the companion's observations separately:
+
+| Field | Meaning |
+| --- | --- |
+| `files[].baseline` | The original `coax.evidence.v1` record, or `null` if none was obtained. Its claims, source hashes, compiler identity, selection, budgets and evaluator target retain their original meanings. |
+| `files[].baseline_execution` | The original evaluator process observation, including `argv`, `cwd`, exit status, evidence path and its hash when available. A process exit alone does not replace valid complete evidence. |
+| `differential` | The unchanged `coax.native-checks.v1` comparison, including eligible outcomes and native C/binary identities at `-O0` and `-O2`. Matching assertion failures or traps remain agreement, not successful authored checks. |
+| `files[].native_coverage` | Each original authored `#test`/`#forall` claim and its native support status. Quantified, imported, indented, duplicate-name and otherwise unsupported bodies remain explicit gaps. `#authority` remains evaluator-only in `baseline`, not a native body. |
+| `files[].validated_sources` | Original source paths and hashes checked against the complete baseline. Sources and compiler are checked again after native comparison; these observations do not freeze the filesystem. |
+| `files[].outcome` / `outcome` | The strict file/run verdict. A pass requires a valid complete passing original baseline, legacy agreement, and unambiguous native coverage for every original authored check body. |
+
+A failed check, an exhausted evaluator budget, missing or invalid evidence,
+missing claim results, unsupported native coverage, tool failure, or native
+disagreement cannot become a strict pass. The legacy runner can report
+`agreed-assert` or `agreed-trap`; the companion stops at the failed original
+baseline before requesting those comparisons. A passing evaluator `#forall`
+cannot supply its missing native coverage. Authority execution coverage remains
+an evaluator claim, preserved without inventing a native check body. An
+unchanged-looking check name does not establish original source,
+imported-source or compiler identity.
+A baseline `counterexample` is a failed authored check; the nested records
+distinguish that from evaluator/native disagreement. Neither label alone proves
+a compiler defect.
+
+Focused regressions live in [tests/native_check_baseline.py](tests/native_check_baseline.py):
+original-source and budget identity, incomplete or invalid evidence, unsupported
+physical claims, authority refusals and CLI output protection. The separate
+[legacy tests](tests/native_checks.py) retain agreement, seeded-defect and
+transport-failure coverage.
+
+This companion still rewrites a bounded subset of source text into a temporary
+harness. It does not emit checks from the compiler's resolved AST, enumerate
+native finite-property domains, establish complete native authority execution
+coverage, or implement a bounded native output/evidence protocol. Those
+`r0-native-check-exe` children remain open. Its strict verdict is limited to the
+recorded sources, compiler, host C profiles and observations; it grants no
+broader language, ABI, Wasm, Metal, WGSL, device or mutation qualification.
+Evaluator authority coverage remains an evaluator claim and does not authorize
+a native product build or replace zero-survivor authority mutation.

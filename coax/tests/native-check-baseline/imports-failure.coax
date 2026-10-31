@@ -1,0 +1,2 @@
+#load "loaded-failure.coax";
+#test "root passing check" { #assert true; }

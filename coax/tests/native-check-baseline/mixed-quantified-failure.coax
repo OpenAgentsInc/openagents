@@ -1,0 +1,2 @@
+#test "ordinary passing check" { #assert 1 == 1; }
+#forall "failing quantified baseline" i: 0..<1 { #assert i == 2; }

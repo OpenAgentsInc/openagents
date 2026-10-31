@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "issue": "r0-native-check-baseline-verdict",
+  "issue_alias": "a81ca15d",
+  "started_utc": "2026-10-31 14:43 UTC",
+  "deadline_utc": "2026-10-31 16:43 UTC",
+  "baseline_commit": "dbd924cc75c93078d305631f859ee0583479542a",
+  "outcome": "passed",
+  "scope": "A versioned complete-baseline companion to the existing host native comparison tool, plus narrow native process-transport fixes. No compiler AST execution or product authority bypass is introduced.",
+  "contracts": {
+    "legacy": "coax.native-checks.v1 retains eligible-subset differential agreement, including agreed assertion failures/traps.",
+    "companion": "coax.native-checks.baseline.v1",
+    "evaluator": "coax.evidence.v1 remains evaluator-only evidence."
+  },
+  "compiler_provenance": [
+    "coax-provenance-v1",
+    "076d90d9b011b60786e2a858ab71b47f62300fcff17a4a402ba3694f49459678",
+    "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+    "198e3276e13399000358a03d5a96e8779d62411adb13011e4cc4bb52ed1c9509"
+  ],
+  "check_first": {
+    "mixed_quantified_baseline": {
+      "log": "/tmp/coax-native-baseline-semantic-red.log",
+      "record": "/tmp/coax-native-baseline-semantic-red.json",
+      "meaning": "The legacy-forwarding stub passed the ordinary check while omitting the real failed quantified baseline; the new strict expectation failed semantically."
+    },
+    "observation_transport": {
+      "red": "/tmp/coax-native-baseline-transport-red.log",
+      "green": "/tmp/coax-native-baseline-transport-green.log",
+      "cases": 3
+    },
+    "execution_transport": {
+      "red": "/tmp/coax-native-baseline-execution-red.log",
+      "green": "/tmp/coax-native-baseline-execution-green.log",
+      "cases": 3,
+      "observed_failures": [
+        "Deleted native target incorrectly agreed with an evaluator trap.",
+        "Nonzero process exit after all result rows incorrectly passed.",
+        "C compiler timeout was classified as not-checked instead of inconclusive."
+      ]
+    },
+    "authored_count_shape": {
+      "record": "/tmp/coax-native-baseline-count-shape-red.json",
+      "scope": "A missing authored cases observation incorrectly strict-passed; exact typed nonnegative counts are now required, with positive case count for passed authored checks."
+    }
+  },
+  "qualification": {
+    "legacy_suite": {
+      "command": "python3 coax/tests/native_checks.py",
+      "exit_code": 0,
+      "seconds": 39.94879158295225,
+      "log": "/tmp/coax-native-baseline-legacy-suite.log"
+    },
+    "legacy_methods": 14,
+    "strict_initial": {
+      "record": "/tmp/coax-native-check-baseline-qualification.json",
+      "sha256": "86cb107aecebf0f41b9b0bb59faba8e526901f90e5e182539d2c7c13db3ecc33",
+      "scope": "18 methods with exact retained/focused attribution; earlier raw failing authority expectation was corrected to the actual compiler evidence."
+    },
+    "strict_final": {
+      "record": "/tmp/coax-native-check-baseline-count-shape-qualification.json",
+      "sha256": "812c95291b18d65db5c4683445be1f4c32343774c019ec2f9d85f77c4362a211",
+      "methods_qualified": 20,
+      "malformed_authored_count_variants": 18,
+      "fixtures": 16,
+      "scope": "Earlier unaffected methods retained; new successful authority receipt and focused malformed-counter follow-up. Authority aggregate zero counts/null location remain valid."
+    },
+    "cli": {
+      "outcome": "passed",
+      "scope": "New CLI serialization/output/exit-status workflow; unchanged source bytes checked. No repeated broad suite.",
+      "folder": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-native-baseline-cli-final-tphidmti",
+      "runs": [
+        {
+          "source": "coax/tests/native-check-baseline/simple-pass.coax",
+          "exit_status": 0,
+          "outcome": "passed",
+          "seconds": 2.028035833965987,
+          "record": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-native-baseline-cli-final-tphidmti/simple-pass.json",
+          "sha256": "055daa34d0b5a928bc6e2d1f5d700c3ac51d8cd07a5ff85ebc26218275c5e69b"
+        },
+        {
+          "source": "coax/tests/native-check-baseline/mixed-quantified-failure.coax",
+          "exit_status": 1,
+          "outcome": "counterexample",
+          "seconds": 0.44885475002229214,
+          "record": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-native-baseline-cli-final-tphidmti/mixed-quantified-failure.json",
+          "sha256": "82e1aefe37743e2203a07e29d10b389e2c806005d8166da0b5fae19a471eba13"
+        }
+      ]
+    },
+    "canonical_gate": "New native suites and upstream foreign-buffer gate preserved in coax/tests/run.sh; shell syntax checked. The whole compiler gate was not repeated.",
+    "compiler_provenance": "verified against the recorded checked cache",
+    "selected_claim_bindings": "passed /tmp/coax-native-baseline-current-claims.log",
+    "current_compiler": {
+      "outcome": "passed",
+      "reason": "Compiler/checker/C emitter changed to0.38 borrowed foreign views; new inputs justify this fresh qualification.",
+      "compiler_provenance": [
+        "coax-provenance-v1",
+        "076d90d9b011b60786e2a858ab71b47f62300fcff17a4a402ba3694f49459678",
+        "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+        "198e3276e13399000358a03d5a96e8779d62411adb13011e4cc4bb52ed1c9509"
+      ],
+      "suites": [
+        {
+          "command": "python3 coax/tests/native_checks.py",
+          "exit_code": 0,
+          "seconds": 68.36983608402079,
+          "log": "/tmp/coax-native-baseline-038-legacy.log"
+        },
+        {
+          "command": "python3 coax/tests/native_check_baseline.py",
+          "exit_code": 0,
+          "seconds": 8.149218958977144,
+          "log": "/tmp/coax-native-baseline-038-strict.log"
+        }
+      ]
+    },
+    "current_claim_bindings": {
+      "log": "/tmp/coax-native-baseline-038-claims.log",
+      "review": "/tmp/coax-capability-bindings-review-038.json",
+      "scope": "Exactly four reviewed evidence hashes refreshed; marked prose and unrelated bindings remain unchanged."
+    }
+  },
+  "limits": [
+    "This remains host maintenance using legacy source lifting; compiler-owned checked-AST wrappers, shared finite domains and stronger native protocol bounds remain separate open tasks.",
+    "Complete evaluator baseline evidence does not establish native memory validity, broader targets or runtime authority.",
+    "Real executing-check trap agreement retains the documented v1 meaning; infrastructure failures are distinguished from execution.",
+    "Normal evaluator budgets are used; explicit smaller caps qualify resource exhaustion."
+  ],
+  "push": {
+    "outcome": "ready_to_push",
+    "target": "origin/main"
+  },
+  "source_sha256": {
+    "coax/tools/native_check_baseline.py": "3a7b50468e853cbd580b5eec85a4165d6134bcc99c8e8bdef13b571a69595825",
+    "coax/tests/native_check_baseline.py": "b28462a495ae5fc00654f3f45568891971296e178f5fde5822638559bcdf7299",
+    "coax/tools/native_checks.py": "9a12fd8661fed0550c1b118ddf8d58dee9f43626efc96ab70c14e6208a761dae",
+    "coax/tests/native_checks.py": "d748cf4a6be64ccc0cf6ae65a59894fcfa099cdab60b4f3d0f38d808415a1bb1",
+    "coax/tests/run.sh": "a7aa70cd342944f931cb5ea26e71691a0900ffc85695ae95f02b2f09ada1f10d",
+    "coax/verification-differential.md": "7f924ff4b216a7db3e935b5d21a7c959bb28c9ab972ebea9abefd43b76911258",
+    "coax/tests/native-check-baseline/authority-dead-reference.coax": "28ee3fc6378c3b8e062b272ecd0da87cbed4abfb4820ab59ef751dac2b27ecf1",
+    "coax/tests/native-check-baseline/authority-uncovered.coax": "e36ef3c6e4aae61d70d559c3a813707d9a335d2d6c3cdaddbc8a97f1065be99c",
+    "coax/tests/native-check-baseline/duplicate-names.coax": "93a88ca2a7e5137617a4ccb42a4cf1080e8c41879be1c85f40b3d51b35e50d58",
+    "coax/tests/native-check-baseline/empty.coax": "f61ecbd3b887677edffe3ce6fa7e900d30cd0201d25ab56cc54fbc0a7ff977e5",
+    "coax/tests/native-check-baseline/imports-failure.coax": "51f0a08ec41f07eb4f84156bcce1b4c74f7e419a630def743efcb86481f0ea1c",
+    "coax/tests/native-check-baseline/imports-pass.coax": "532ff1744abbd4c27a2d6395bfa2d604c5138ac34bfdb273ddac0196c209a961",
+    "coax/tests/native-check-baseline/indented.coax": "e1e0733997d58b1aceaa6d6f778749eb37566a9abd018b3953f42510e6de299f",
+    "coax/tests/native-check-baseline/loaded-failure.coax": "bba18191f228e583b82ad89792b0dafca1cbac7f85b21e6d6e0338ecf0d4cb50",
+    "coax/tests/native-check-baseline/loaded-pass.coax": "a93e585bf60e6e59e2f618ec598b51fce303d6ef6cbf892b5c943fbdfccd43b7",
+    "coax/tests/native-check-baseline/mixed-quantified-failure.coax": "317218a3086427a7cf25ed5627eeff8b7eec414f8eae1cb8ba2c9ca2a4f7c976",
+    "coax/tests/native-check-baseline/own-main.coax": "90fbc3f426ad1e7fe8e538171ee041e23310345cb40344959647f2dec7108e6d",
+    "coax/tests/native-check-baseline/quantified-only.coax": "4ecfc7d7b510219c4f2a2034a44bc8d6de9c76a4c2198d7cd8dfd25d25f2555f",
+    "coax/tests/native-check-baseline/simple-pass.coax": "1880d7cb5016ffea231b762a6962fd989a052cb46963c67775ce5641ee24e9a9",
+    "coax/tests/native-check-baseline/step-limit.coax": "c42cb3e27a557a54e08423d41265ae433ff3ec0ac119ccdb672891b40f2575a3",
+    "coax/tests/native-check-baseline/successful-authority.coax": "a30cb2e30db5218a9c78bd0b0f0f58784ac7a3a1b4c26a40e2f0b4643a12596e",
+    "coax/tests/native-check-baseline/unsupported-run.coax": "bfa15d99104d44937c125807aab58888d0411759f1bf2d7772e6f705f993a96e",
+    "coax/book/capability-claims.json": "7d9f336a63d89c48e62883dbe6a6ed07984461ca245cb2fd85f8737d0d9725e6"
+  },
+  "updated_utc": "2026-10-31T15:21:22.427421+00:00",
+  "historical_compiler_provenance": [
+    "coax-provenance-v1",
+    "841eca107cc9c5a7601550a11568407ab1ddbfaf7b7cdf4f4b71f20ae8f05f50",
+    "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+    "49a6e667634109e0c1c7efb4c8119ad5b97d48f44db3f1a8b5c7840e083d8878"
+  ],
+  "historical_book_browser_followup": {
+    "own_changes": "No browser/compiler-language/runtime source changed; existing applicable passing journeys are retained.",
+    "incoming_built": {
+      "command": "coax/web/golden-check.sh --commit 59347994ba",
+      "exit_code": 1,
+      "seconds": 115.10732462495798,
+      "log": "/tmp/coax-library-final-parent-built-golden.log",
+      "scope": "Only the built journey selected by the final incoming made-realm commit; other60 retain their passing gate."
+    },
+    "scope": "Incoming parent593 changed only the built journey; that separate check failed its old image. Other60 retain the8f gate. No snapshot changed.",
+    "owner_record": "NEEDS_OWNER.md",
+    "mapping": "/tmp/coax-browser-late-made-realm-audit.json",
+    "resolution": {
+      "author_approval_commit": "21dc5da9ca",
+      "targeted_check": "/tmp/coax-native-baseline-approved-built-golden-result.json",
+      "status": "pending",
+      "scope": "Incoming app work is separate from S host-tool code; no blanket current-main browser pass is claimed."
+    }
+  }
+}

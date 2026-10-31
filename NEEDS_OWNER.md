@@ -1,5 +1,18 @@
 # Owner actions
 
+## Made-realm golden after the incoming renderer change (2026-10-31)
+
+Resolved visual review: the original author reviewed and updated the `built`
+golden in main commit `21dc5da9ca` ("looked at"). No further owner sign-off is
+pending. The targeted validation against that approved image is recorded with
+the language verification follow-up; this audit did not approve or change a
+snapshot.
+
+The earlier check of incoming `59347994ba` drew without errors but differed
+from its old golden by 4,127 blocks (6 allowed). Its failed result remains
+historical evidence: `/tmp/coax-library-final-parent-built-golden.log` and
+`/tmp/coax-golden-bRJX2B/built.png`. It is not reported as a pass.
+
 ## Coax header composition: existing visual baseline failures (2026-10-30)
 
 The `r1a-header-composition` issue (`#9bdc`) has a prepared compiler fix:

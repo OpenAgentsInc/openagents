@@ -13,11 +13,13 @@ Psionic checks (coax/tests/native-checks.json).
 import importlib.util
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("coax_native_checks", ROOT / "tools/native_checks.py")
@@ -69,6 +71,77 @@ class NativeChecks(unittest.TestCase):
 
     def by_name(self, rec: dict) -> dict:
         return {c["name"]: c for f in rec["files"] for c in f["checks"]}
+
+    def test_captured_original_observation_is_reused_without_another_evaluator(self):
+        source = '#test "original observation" { #assert 6 * 7 == 42; }\n'
+        path = self.fixture(source)
+        observed = subprocess.run([str(nc.compiler()), 'test', str(path), '--library'],
+                                  capture_output=True, text=True, timeout=30)
+        self.assertEqual(observed.returncode, 0, observed.stderr)
+        observation = {'returncode': observed.returncode, 'stdout': observed.stdout,
+                       'stderr': observed.stderr}
+        _, checks = nc.lift(source)
+        with patch.object(nc, 'execute', side_effect=AssertionError('evaluator was repeated')):
+            values, outcome, why = nc.evaluate(path, source, checks, '', observation=observation)
+        self.assertEqual(values, {'original observation': ('passed',)})
+        self.assertIsNone(outcome)
+        self.assertIsNone(why)
+        self.assertEqual(path.read_text(), source)
+        self.assertEqual(list(self.dir.iterdir()), [path], 'no synthetic-main probe was created')
+
+    def test_missing_captured_observation_cannot_fall_back_to_another_evaluator(self):
+        path = self.fixture('#test "original" { #assert 1 == 1; }\n')
+        with patch.object(nc, 'execute', side_effect=AssertionError('missing observation was rerun')):
+            record = nc.run([path], evaluator_observations={})
+        self.assertEqual(record['outcome'], 'infrastructure-error')
+        self.assertNotEqual(record['files'][0]['outcome'], 'passed')
+
+    def test_expected_native_fault_transport_preserves_real_signal_and_diagnostic(self):
+        result = nc.execute([sys.executable, '-c',
+                             'import ctypes,sys; print("native guard",file=sys.stderr,flush=True); '
+                             'ctypes.CDLL(None).abort()'], timeout=10, expected_fault=True)
+        self.assertEqual(result['returncode'], -signal.SIGABRT)
+        self.assertEqual(result['stdout'], '')
+        self.assertEqual(result['stderr'], 'native guard\n')
+
+    def test_unavailable_native_target_cannot_impersonate_an_agreed_trap(self):
+        path = self.fixture('#test "overflow" { n := 9223372036854775807; #assert n * 2 > 0; }\n')
+        execute = nc.execute
+
+        def removed_target(command, *args, **kwargs):
+            if kwargs.get('expected_fault'):
+                Path(command[0]).unlink()
+            return execute(command, *args, **kwargs)
+
+        with patch.object(nc, 'execute', side_effect=removed_target):
+            record = nc.run([path], keep=self.dir / 'keep')
+        self.assertEqual(record['outcome'], 'infrastructure-error')
+
+    def test_c_compiler_timeout_is_inconclusive(self):
+        path = self.fixture('#test "sum" { #assert 20 + 22 == 42; }\n')
+        execute = nc.execute
+
+        def compile_timeout(command, *args, **kwargs):
+            if '-std=c11' in command:
+                return {'returncode': None, 'stdout': '', 'stderr': 'timeout', 'timeout': True}
+            return execute(command, *args, **kwargs)
+
+        with patch.object(nc, 'execute', side_effect=compile_timeout):
+            record = nc.run([path], keep=self.dir / 'keep')
+        self.assertEqual(record['outcome'], 'inconclusive')
+
+    def test_failure_after_all_result_rows_is_not_an_agreement(self):
+        path = self.fixture('#test "sum" { #assert 20 + 22 == 42; }\n')
+        execute = nc.execute
+
+        def trailing_failure(command, *args, **kwargs):
+            if kwargs.get('expected_fault'):
+                return {'returncode': 9, 'stdout': '0 0\n', 'stderr': 'late native failure'}
+            return execute(command, *args, **kwargs)
+
+        with patch.object(nc, 'execute', side_effect=trailing_failure):
+            record = nc.run([path], keep=self.dir / 'keep')
+        self.assertEqual(record['outcome'], 'infrastructure-error')
 
     def test_authored_checks_agree_across_the_evaluator_and_both_profiles(self):
         rec = nc.run([self.fixture(AGREE)], keep=self.dir / "keep")

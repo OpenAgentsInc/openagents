@@ -1,0 +1,1 @@
+#forall "only quantified coverage" i:0..<3 { #assert i<3; }

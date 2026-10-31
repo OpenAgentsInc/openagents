@@ -1,0 +1,3 @@
+#authority;
+unused :: ()->int { return 1; }
+#test "ordinary passing authority check" { #assert true; }

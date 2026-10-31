@@ -1,0 +1,2 @@
+scale :: (a:int,b:int)->int { return a*b; }
+#test "supported product" { #assert scale(6,7)==42; }

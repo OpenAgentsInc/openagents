@@ -1,0 +1,2 @@
+one :: ()->int { return 1; }
+#test "compile-time directive" { #assert #run one()==1; }

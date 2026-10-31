@@ -1,0 +1,3 @@
+#authority;
+unused :: ()->int { return 1; }
+#test "dead authority reference" { #assert true || unused()==1; }

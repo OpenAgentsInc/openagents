@@ -1,0 +1,2 @@
+#test "ordinary small baseline" { #assert 1==1; }
+#forall "bounded work exceeds tiny budget" i:0..<128 { #assert i>=0; }

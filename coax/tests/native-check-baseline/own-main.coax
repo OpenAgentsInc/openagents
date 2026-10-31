@@ -1,0 +1,2 @@
+main :: () {}
+#test "original main remains" { #assert 4==4; }
