@@ -75,3 +75,7 @@ Every phase and native feature is a task in the Verse project
 ## Status
 
 - 2026-10-30: plan written. G0 started: `verse/gpu/`.
+- 2026-10-30: G0 compute passes on `coderos-4080`, headless. `verse/gpu/build.sh`
+  then `vk-check 1920x1080` runs the 393-word Coax module on the RTX 4080:
+  2,060,582 pixels exact, 13,018 one rounding step off (f32 to u8), 0 wrong,
+  and 0 errors and 0 warnings under `VK_LAYER_KHRONOS_validation`.
