@@ -1467,7 +1467,10 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     m = put(buf[..], 0, "PLACE "); m = put_int(buf[..], m, left); m = put(buf[..], m, " MORE THIS ROUND (");
     m = put_int(buf[..], m, round_allowance(s[0].wave)); m = put(buf[..], m, " A ROUND)");
     hint := "PICK A DEFENDER, THEN A TILE BESIDE THE STAIR";
+    cheapest := CLASS_COST[FIGHTER];
+    for c: 0..<CLASSES { if CLASS_COST[c] < cheapest { cheapest = CLASS_COST[c]; } }
     if left <= 0 { hint = ifx s[0].phase == BUILD then "START THE WAVE FOR MORE" else "MORE WHEN THE NEXT WAVE STARTS"; }
+    else if s[0].pick < 0 && s[0].gold < cheapest { hint = "NOT ENOUGH GOLD YET · POP BEASTS FOR MORE"; }
     else if s[0].pick >= 0 {
       if s[0].touch { hint = ifx aim_cell(s) >= 0 then "TAP IT AGAIN TO PLACE · TAP OFF THE MAP TO STOP" else "TAP A TILE TO SEE ITS REACH"; }
       else { hint = "CLICK A TILE TO PLACE · ESC TO STOP"; }
