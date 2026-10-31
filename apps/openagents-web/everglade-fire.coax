@@ -103,7 +103,8 @@ fi_drop :: (s: [] Everglade, k: int) {
 // Flame reaches `at`, `r` round it (and from a little under it to a storey and a half over it): what
 // burns there may catch, at the odds of what lit it (FI_*). How many caught; a crime when a spell did it.
 fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
-  if s[0].sp.dm.count < 1 || !s[0].sp.ready { return 0; }
+  trees := tf_catch(s, at, r, how);   // and the trees outside the city (everglade-forest.coax)
+  if s[0].sp.dm.count < 1 || !s[0].sp.ready { return trees; }
   w := sp_dm(s);
   odds := FI_ODDS[clamp_i(how, 0, 4)] * (1 - 0.6 * clamp(cast(f32) s[0].sky.rain, 0, 1));
   n := 0;
@@ -122,15 +123,16 @@ fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
   if n > 0 && (how <= FI_MEGA || v[0].time - v[0].crime_at >= f32(FI_CRIME_EVERY)) { v[0].crime_at = v[0].time; gv_crime(s, at, f32(FI_HEAR)); }
   // the dome: stone, it does not catch, but the flame wears it (halved)
   if how == FI_SPELL || how == FI_GRASS { if fi_dome_gap(s, at) < r { fi_dome_hurt(s, srd_object_damage(fi_dome_object(), srd_sum(s[0].sp.dice[..], 4, 6), DMG_FIRE), at); } }
-  return n;
+  return n + trees;
 }
 
 // Water or cold over `at`, `r` round: what burns there goes out in a hiss of steam. How many.
 fi_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
-  if s[0].sp.dm.count < 1 { return 0; }
+  trees := tf_douse(s, at, r, 0);   // the trees burning there too (everglade-forest.coax)
+  if s[0].sp.dm.count < 1 { return trees; }
   w := sp_dm(s);
   v := fi_of(s);
-  n := 0;
+  n := trees;
   k := 0;
   while k < v[0].n {
     p := w[0].pieces[v[0].burn[k].piece];
@@ -147,10 +149,11 @@ fi_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
 }
 // Cone of Cold's cone from `from` along the unit `d` (everglade-polar.coax po_in_cone): what burns in it goes out.
 fi_douse_cone :: (s: [] Everglade, from: Point, d: Point) -> int {
-  if s[0].sp.dm.count < 1 { return 0; }
+  trees := tf_douse_cone(s, from, d);   // the trees in it too, rimed (everglade-forest.coax)
+  if s[0].sp.dm.count < 1 { return trees; }
   w := sp_dm(s);
   v := fi_of(s);
-  n := 0;
+  n := trees;
   k := 0;
   while k < v[0].n {
     p := w[0].pieces[v[0].burn[k].piece];
@@ -284,7 +287,7 @@ fi_frame :: (s: [] Everglade, dt: f32) {
 // Whoever stands in or against a burning piece burns, once a round.
 fi_people :: (s: [] Everglade) {
   v := fi_of(s);
-  if v[0].n == 0 || !watch_on(s) { return; }
+  if (v[0].n == 0 && tf_count(s) == 0) || !watch_on(s) { return; }
   w := watch_w(s);
   d := s[0].sp.dice[..];
   you := ab_you(s);
@@ -300,6 +303,7 @@ fi_people :: (s: [] Everglade) {
   }
 }
 fi_by_fire :: (s: [] Everglade, at: Point) -> bool {
+  if tf_by_fire(s, at) { return true; }   // a burning tree (everglade-forest.coax)
   w := sp_dm(s);
   v := fi_of(s);
   for k: 0..<v[0].n {
@@ -322,6 +326,7 @@ fi_restore :: (s: [] Everglade, g: int) {
     k += 1;
   }
   for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { v[0].soot[i] = 0; } }
+  if g < 0 { tf_restore(s); }   // and the forest (everglade-forest.coax)
   if g < 0 || g == EG_OBSERVATORY {
     v[0].dome_dmg = 0; v[0].dome_gone = false;
     for q: 0..<FI_SHARDS { v[0].shards[q].live = false; }
@@ -543,6 +548,7 @@ fi_draw :: (s: [] Everglade) {
       shape(s, SHAPE_BOX, LOOK_STONE, sh.at, sh.yaw, sh.tilt, sh.sx, sh.sy, sh.sz, 0.74, 0.74, 0.78);
     }
   }
+  tf_draw_fire(s);   // the burning trees (everglade-forest.coax)
 }
 mix_f :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
 // The fires' light on the town: the three biggest, flickering.
@@ -556,7 +562,7 @@ fi_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
     p := w[0].pieces[e.piece];
     n = sp_lamp(u, n, most, v3(p.cx, p.y1 + 0.5, p.cz), 12, FI_RGB, 1.8 * clamp(e.t / 1.2, 0, 1) * fi_flick(v[0].time, f32(q)));
   }
-  return n;
+  return tf_lamps(s, u, n, most);
 }
 
 // ---- checks

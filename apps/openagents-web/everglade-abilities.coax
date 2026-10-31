@@ -1114,6 +1114,7 @@ ab_gust :: (s: [] Everglade) {
   demo_rouse(w, v3(lo(g.x, e.x), g.y - 1, lo(g.z, e.z)), v3(hi(g.x, e.x), g.y + 4, hi(g.z, e.z)), f32(AB_GUST_WIDE));
   for b: 0..<DEMO_BITS { if w[0].bits[b].live { w[0].bits[b].resting = false; } }
   n := ab_gust_people(s);
+  _ := tf_push(s, g, a[0].gust_dir, 6, f32(AB_GUST_LEN));   // the trees in its line bend and sway (everglade-forest.coax)
   if n > 0 { sp_say(s, "GUST OF WIND", n, "PUSHED"); } else { sp_say(s, "GUST OF WIND", -1, ""); }
 }
 // Where p is in the gust's line: how far along it and how far off its middle (along < 0, outside).
@@ -1215,6 +1216,8 @@ ab_thunder :: (s: [] Everglade) {
     }
     if hit > 0 || loosened > 0 || moved > 0 { _ := watch_crime(ww, mid, f32(AB_HEAR_TW), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   }
+  // the trees in it: 2d8 thunder on their trunks, a sway or a lean (everglade-forest.coax)
+  bent := tf_push(s, you, f, f32(srd_sum(s[0].sp.dice[..], 2, 8)) * 1.5, f32(AB_TW_CUBE) + 1);
   // the wave: a ring of pale light out across the cube, its dust kicked up
   sp_add_shock(s, add(you, v3(f.x * half, 0.9, f.z * half)), f32(AB_TW_CUBE) * 0.9, 0.45, v3(0.55, 0.75, 1.0));
   for k: 0..<10 {

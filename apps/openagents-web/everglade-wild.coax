@@ -345,6 +345,7 @@ wd_cl_strike :: (s: [] Everglade, to: Point) {
   for q: 0..<3 { sp_add_puff(s, add(to, v3(0, 0.2, 0)), times(sp_spray(s, 0.8), 1.0), 0.5, 1.6, 0.45); }
   if !fr_wet(s, to.x, to.z) { sp_add_scorch(s, to, 0.7, false); wd_light(s, to, WD_GEN - 4); }
   wd_debris_catch_by(s, to, 1.5, FI_BOLT);
+  if tf_bolt(s, to, 0.5) { tf_crime(s, to); }   // a tree by it draws the bolt (everglade-forest.coax)
   fr_melt(s, to, 1.0);
   s[0].sp.shake = hi(s[0].sp.shake, ifx flat_gap(you, to) < 12 then 0.35f32 else 0.15f32);
 }

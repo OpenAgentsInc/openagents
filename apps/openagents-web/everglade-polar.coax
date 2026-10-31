@@ -103,6 +103,7 @@ po_rf_at :: (s: [] Everglade, i: int) {
   v[0].rf_a = gv_hand(s); v[0].rf_b = at;
   v[0].rf_hit = false;
   _ := fi_douse(s, at, 1.5);   // a fire where it strikes goes out
+  tf_frost(s, at, 1.0, 0.7);   // a tree it strikes rimes (everglade-forest.coax)
   if !watch_on(s) { return; }
   w := watch_w(s);
   d := s[0].sp.dice[..];

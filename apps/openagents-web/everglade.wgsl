@@ -542,6 +542,11 @@ fn place(id: u32, instance: u32) -> S {
         v.n = canopy_n(v.n, unpack4x8snorm(blob).xyz);
         share = f32(blob >> 24u) / 255.0;
         canopy = true;
+        // its leaves burnt away (everglade-forest.coax tf_kit: the share gone over the kind word): all
+        // gone, nothing drawn; part gone, the fragment cuts holes where they were (leaf_gone)
+        let bare = f32(u32(m.colour.w) / 256u) / 255.0;
+        if (bare >= 0.99) { v.p = vec3f(0.0); share = 0.0; }
+        o.dye.z = bare;
       }
       glass = vertices[b + 10u] == 1u;   // a window's glass (pack_realm.py glass_pane)
       if ((u32(m.colour.w) / 8u) % 32u == LOOK_SHARD) { o.shard = instance - n * n + 1u; }
@@ -666,7 +671,13 @@ fn shadow_place(w: vec3f, k: Light) -> vec3f {
     verse_style_shadow_depth(dot(w - vec3f(k.mx * k.ax + k.my * k.ay), k.l), k.reach));
 }
 struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) slice: u32, @location(2) @interpolate(flat) cut: u32,
-               @location(3) local: vec3f, @location(4) @interpolate(flat) shard: u32 }
+               @location(3) local: vec3f, @location(4) @interpolate(flat) shard: u32, @location(5) @interpolate(flat) bare: f32 }
+// A burning tree's leaves (dye.z of a canopy: the share gone) gone in clumps from its crown, the same
+// in its shadow, in its mesh's own space so they hold as it falls.
+fn leaf_gone(local: vec3f, bare: f32) -> bool {
+  if (bare <= 0.0) { return false; }
+  return noise(local.xz * 1.7 + vec2f(local.y * 1.3, -local.y * 0.9)) < bare * 1.15 - 0.08;
+}
 @vertex fn shadow_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> Shade {
   var o: Shade;
   let n = u32(u.ground.x);
@@ -677,11 +688,13 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice; o.local = v.local; o.shard = v.shard;
   o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER || v.look == LOOK_ROCK || v.look == LOOK_WINDOW);
+  o.bare = select(0.0, v.dye.z, v.look == LOOK_CANOPY);
   return o;
 }
 @fragment fn shadow_fs(v: Shade) {
   if (v.cut == 1u && textureSampleLevel(sheets, sheet, v.uv, v.slice, 0.0).a < 0.35) { discard; }
   if (v.shard != 0u && shard_inside(v.shard, v.local) < 0.0) { discard; }
+  if (leaf_gone(v.local, v.bare)) { discard; }
 }
 // ---- the debris (verse/demolish.coax's fracture; everglade-spells.coax sp_shards): a chunk is its
 // piece's own mesh, drawn whole where its body is and cut here to its cell, up to 8 planes in the
@@ -918,6 +931,7 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
       var bayer = array(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
       let px = vec2u(s.pos.xy) % vec2u(4u);
       if ((bayer[px.y * 4u + px.x] + 0.5) / 16.0 >= keep) { discard; }
+      if (leaf_gone(s.local, s.dye.z)) { discard; }
     }
     base = person_dye(tex.rgb, s.dye) * s.tint;
     if (!front && s.look != LOOK_CANOPY) { n = -n; }

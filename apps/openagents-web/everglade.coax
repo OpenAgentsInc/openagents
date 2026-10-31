@@ -357,7 +357,7 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + FOREST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you
+  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
@@ -809,7 +809,7 @@ forest_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int 
     count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
     if list > 0 && !rocks { continue; }
     for t: 0..<count {
-      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      g := ifx list == 0 then tf_girth(s, t, tree_girth(s, s[0].trees[..], t)) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
       if g.r <= 0 { continue; }
       dx := g.x - x; dz := g.z - z; reach := g.r + f32(FOREST_NEAR);
       if abs(dx) > reach || abs(dz) > reach { continue; }
@@ -831,7 +831,7 @@ forest_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int 
     put7(out, at + kept, gb.x, y - 1, gb.z, gb.x, y + hi(gb.top - gb.r, 0), gb.z, gb.r);
     kept += 1;
   }
-  return kept;
+  return kept + tf_bodies(s, out, at + kept, x, z);   // and the trees lying felled (everglade-forest.coax)
 }
 
 // ---- the pack (verse/tools/pack_realm.py): its catalog, a line each; the
@@ -978,7 +978,7 @@ everglade_walk_open :: (s: [] Everglade, grid: [] u8) {
     count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
     if list > 0 && !rocks { continue; }
     for t: 0..<count {
-      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      g := ifx list == 0 then tf_girth(s, t, tree_girth(s, s[0].trees[..], t)) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
       if g.r > 0 { stamp_round(grid, g.x, g.z, g.r + pad); }
     }
   }
@@ -2483,16 +2483,17 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
     if kit_on && d < reach && (b < cut[kind] || (b == cut[kind] && taken[kind] < cap)) {
       pick[t] = b; pick_y[t] = base; taken[kind] += 1;
     } else {
-      far_tree(s, x, base, z, size, yaw, kind);
+      tf_far(s, t, base);   // as it stands now: felled, burnt (everglade-forest.coax)
     }
   }
   for b: 0..<KIT_BUCKETS {
     for t: 0..<s[0].tree_n {
       if pick[t] != b { continue; }
       o := t * TREE_FLOATS;
-      kit(s, cast(int) s[0].trees[o + 4], s[0].trees[o], pick_y[t] - 0.1, s[0].trees[o + 1], s[0].trees[o + 3], s[0].trees[o + 2]);
+      tf_kit(s, t, pick_y[t]);
     }
   }
+  tf_stumps(s, eye);
   if !kit_on { return; }
   // the thicket at the world's edge, the nearest first, whatever the undergrowth row says
   brush := ifx phone(s) then f32(THICKET_NEAR) * 0.6 else f32(THICKET_NEAR);
@@ -2970,7 +2971,7 @@ trunks_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
     count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
     if list > 0 && !rocks { continue; }
     for t: 0..<count {
-      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      g := ifx list == 0 then tf_girth(s, t, tree_girth(s, s[0].trees[..], t)) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
       if g.r <= 0 { continue; }
       dx := g.x - r.from.x; dz := g.z - r.from.z; reach := r.far + g.r + 1;
       if abs(dx) > reach || abs(dz) > reach { continue; }

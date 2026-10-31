@@ -1,0 +1,1065 @@
+// The trees outside the city (eg-trees), loaded by everglade-spells.coax after everglade-fire.coax: the
+// forest of plant_forest's TREES answers the spells as the town's pieces do.
+//
+// A tree is a Huge wooden object, which the SRD treats as Large sections: a size-1 trunk has a Large
+// resilient section's 27 hit points, a bigger one more (TF_HP times its size squared, as a trunk's
+// cross-section). A blast's force on it (Meteor Swarm's bludgeoning, a Thunderbolt's or a Mega
+// Thunderbolt's lightning, the Water Orb's water, Thunderwave's thunder; never the fire, which burns)
+// falls off with the distance as the town's does (srd_object_takes), out to TF_REACH times the blast's
+// radius:
+//  - under 0.4 of its hit points it sways, whipping on its roots and settling back;
+//  - from 0.4 it leans, its roots part torn, and stays leaning;
+//  - from its hit points it falls away from the blast: torn up by its roots near the blast (its root
+//    plate turned up), snapped above its foot further off (a jagged stump left standing). It pivots at
+//    its foot under gravity (a rod's fall, its weight in its crown: TF_MASS_AT), strikes the ground,
+//    bounces and settles where its crown props it, on the slope it fell down;
+//  - from TF_SPLINTER times its hit points (the big spells, near) it is thrown, splintered off its stump.
+// A lying trunk is a body you walk round, or jump over.
+//
+// Lightning seeks the tallest thing: a bolt striking within TF_BOLT_NEAR of a tree strikes the tree,
+// splits it high on its trunk and may set it alight (a Thunderbolt, a Mega Thunderbolt, Call Lightning
+// about half the time, Storm of Vengeance's bolts).
+//
+// Fire (everglade-fire.coax fi_catch: Produce Flame, Meteor Swarm, Fire Storm, Wall of Fire, Sunburst,
+// a bolt, the grass fire, burning debris) catches a tree whose trunk or crown it reaches, at the odds of
+// what lit it, less in the rain and less for green wood (TF_GREEN). A burning tree flames and smokes,
+// its leaves burn away and it goes black; every few seconds it may catch a tree whose crown it touches
+// and the grass at its foot; it takes 1d6 fire a second, and burnt through (TF_BURN_THROUGH times its
+// hit points) it falls. At most TF_BURN burn at once (half on a phone), sharing the spells' particles.
+// The rain may put one out, and water and cold do (fi_douse, fi_douse_cone); cold frosts the trees it
+// reaches (Ray of Frost, Cone of Cold, Ice Storm, Sleet Storm), a rime that thaws in a minute or so.
+//
+// Felling or burning the trees near the city (TF_CITY of the palisade) is a crime the watch answers;
+// out in the deep woods nobody hears. R, or a long rest, stands the forest again with the town
+// (fi_restore). Nothing grows back by itself. Like the town's breaking, it is each page's own: the
+// shared room (everglade-room.coax) does not carry it.
+//
+// The near trees (the kit's) and the far ones (their cones) draw the same state, so a fallen or burnt
+// tree stays down and black past KIT_NEAR.
+
+TF_POOL :: 192;            // trees off how they were planted at once (a record each; the stillest give theirs up)
+TF_LIVE :: 96;             // trees moving at once: swaying, falling, thrown
+TF_BURN :: 24;             // trees burning at once (a phone half)
+TF_HP :: 27.0;             // a size-1 trunk's hit points (a Large resilient section, 5d10)
+TF_TALL :: 9.0;            // m a size-1 tree stands, foot to crown
+TF_MASS_AT :: 0.62;        // its weight's middle, a share of its height (the crown's)
+TF_GRAVITY :: 9.81;
+TF_STIFF :: 6.5;           // 1/s², past gravity: its roots' spring (a sway of about 0.4 Hz)
+TF_DAMP :: 0.9;            // 1/s
+TF_KICK :: 0.7;            // rad/s a blow its hit points' worth starts it swaying
+TF_LEAN :: 0.4;            // of its hit points: it leans from here
+TF_SPLINTER :: 2.2;        // of its hit points: thrown, splintered off its stump
+TF_BOUNCE :: 0.28;         // its fall's speed kept striking the ground
+TF_REACH :: [4] f32.[2.2, 1.6, 2.0, 1.2];   // a blast's reach on the trees, times its radius (meteor, bolt, mega, orb)
+TF_TRUNK :: [4] f32.[0.36, 0.36, 0.48, 0.52];   // the trunks' radii (everglade.coax TRUNK_RADIUS)
+TF_CROWN :: [4] f32.[1.7, 1.7, 2.5, 2.7];       // m a crown's radius at size 1
+TF_PROP :: [4] f32.[0.1, 0.1, 0.2, 0.22];       // rad its crown props it off the ground, lying
+TF_BOLT_NEAR :: 3.0;       // m a bolt jumps to a tree from
+TF_GREEN :: 0.7;           // green wood catches at this share of the odds
+TF_KINDLE :: 3.0;          // s a tree burns before the fire eats into it
+TF_SPREAD :: 2.2;          // s, about, between its tries at the crowns it touches
+TF_CATCH :: 0.4;           // the odds a try catches one
+TF_TO_GRASS :: 0.4;        // and the grass at its foot
+TF_SOOT :: 16.0;           // s to burn black
+TF_LEAVES :: 12.0;         // s its leaves burn away in, once caught
+TF_BURN_THROUGH :: 5.0;    // of its hit points in fire: it falls (the small ones; the big stand, black snags)
+TF_BURN_OUT :: 34.0;       // s, about, a crown fire lasts; then it smoulders out, a black snag
+TF_GEN :: 5;               // crowns a fire passes through from where it was lit, then it dies down (as the grass fire's WD_GEN)
+TF_CROWN_FIRE :: 0.8;      // a crown burns on to the next while this much of its leaves is left
+TF_THAW :: 75.0;           // s a full rime takes to thaw
+TF_CITY :: 25.0;           // m of the palisade: the watch hears a tree fall or burn
+TF_HEAR :: 30.0;
+TF_BODIES :: 6;            // lying trunks round you, as bodies
+TF_STUMPS :: 18;           // stumps and root plates drawn, the nearest (a phone half)
+TF_STUMP_NEAR :: 50.0;
+TF_UP :: 0; TF_FALL :: 1; TF_DOWN :: 2;
+TF_BARK :: Point.{x = 0.3, y = 0.21, z = 0.13};
+TF_HEART :: Point.{x = 0.78, y = 0.64, z = 0.44};   // the pale wood of a break
+TF_CHAR :: Point.{x = 0.085, y = 0.075, z = 0.065};
+TF_RIME :: Point.{x = 1.3, y = 1.42, z = 1.6};
+TF_LEAF :: Point.{x = 0.32, y = 0.46, z = 0.16};
+
+TfBurn :: struct { tree: int; t: f32; tick: f32; spread: f32; out: f32; gen: int; }
+Timber :: struct {
+  time: f32;
+  touched: bool;                         // a tree is off how it was planted (else the forest draws as it always did)
+  // a tree off how it was planted has a record here (tf_own): slot[t], 0 none; record 0 stays as
+  // planted, what every other tree reads
+  slot: [TREES] int; owner: [TF_POOL] int;   // a record's tree, plus 1 (0 free)
+  mode: [TF_POOL] int;                   // TF_UP, TF_FALL, TF_DOWN
+  ax: [TF_POOL] f32; az: [TF_POOL] f32;      // its tilt: toward (ax, az), by their length in radians
+  wx: [TF_POOL] f32; wz: [TF_POOL] f32;      // how fast, rad/s
+  lx: [TF_POOL] f32; lz: [TF_POOL] f32;      // the lean its roots hold it at
+  rest: [TF_POOL] f32;                     // rad from upright it lies at, down
+  pivot: [TF_POOL] f32;                    // m up its trunk it broke (0: torn up by its roots)
+  ox: [TF_POOL] f32; oy: [TF_POOL] f32; oz: [TF_POOL] f32;   // its foot thrown this far (oy over the ground)
+  vx: [TF_POOL] f32; vy: [TF_POOL] f32; vz: [TF_POOL] f32;
+  hurt: [TF_POOL] f32;                     // damage taken: blows, then fire
+  soot: [TF_POOL] f32;                     // how black it has burnt, 0 to 1
+  bare: [TF_POOL] f32;                     // how much of its leaves are gone, 0 to 1
+  frost: [TF_POOL] f32;                    // its rime, 0 to 1
+  live: [TF_LIVE] int; live_n: int;
+  burn: [TF_BURN] TfBurn; n: int;
+  lit: int; felled: int; split: int;     // trees caught, felled, split by lightning so far (the checks count them)
+}
+tf_of :: (s: [] Everglade) -> [] Timber { return s[0].sp.tf[..]; }
+// Tree t's record (0, as planted, when it has none).
+tf_k :: (s: [] Everglade, t: int) -> int { if t < 0 || t >= TREES { return 0; } return s[0].sp.tf[0].slot[t]; }
+tf_clear :: (v: [] Timber, k: int) {
+  v[0].mode[k] = TF_UP;
+  v[0].ax[k] = 0; v[0].az[k] = 0; v[0].wx[k] = 0; v[0].wz[k] = 0; v[0].lx[k] = 0; v[0].lz[k] = 0;
+  v[0].rest[k] = 0; v[0].pivot[k] = 0;
+  v[0].ox[k] = 0; v[0].oy[k] = 0; v[0].oz[k] = 0; v[0].vx[k] = 0; v[0].vy[k] = 0; v[0].vz[k] = 0;
+  v[0].hurt[k] = 0; v[0].soot[k] = 0; v[0].bare[k] = 0; v[0].frost[k] = 0;
+}
+// Tree t gets a record of its own, if it has none: a free one, else the stillest's (a tree standing
+// as planted again, only swayed, gives its record up and forgets the blows it took). False: none.
+tf_own :: (s: [] Everglade, t: int) -> bool {
+  v := tf_of(s);
+  if t < 0 || t >= TREES { return false; }
+  if v[0].slot[t] > 0 { return true; }
+  pick := -1;
+  for k: 1..<TF_POOL { if v[0].owner[k] == 0 { pick = k; break; } }
+  if pick < 0 {
+    for k: 1..<TF_POOL {
+      u := v[0].owner[k] - 1;
+      if v[0].mode[k] != TF_UP || v[0].soot[k] > 0 || v[0].bare[k] > 0 || v[0].frost[k] > 0 || v[0].lx[k] != 0 || v[0].lz[k] != 0 { continue; }
+      if v[0].wx[k] != 0 || v[0].wz[k] != 0 || v[0].ax[k] != 0 || v[0].az[k] != 0 || tf_burning(s, u) { continue; }
+      moving := false;
+      for m: 0..<v[0].live_n { if v[0].live[m] == u { moving = true; } }
+      if moving { continue; }
+      v[0].slot[u] = 0;
+      pick = k; break;
+    }
+  }
+  if pick < 0 { return false; }
+  tf_clear(v, pick);
+  v[0].owner[pick] = t + 1;
+  v[0].slot[t] = pick;
+  return true;
+}
+tf_cap :: (s: [] Everglade) -> int { return ifx phone(s) then TF_BURN / 2 else TF_BURN; }
+
+tf_size :: (s: [] Everglade, t: int) -> f32 { return s[0].trees[t * TREE_FLOATS + 2]; }
+tf_kind :: (s: [] Everglade, t: int) -> int { return clamp_i(cast(int) s[0].trees[t * TREE_FLOATS + 4], 0, KIT_TREES - 1); }
+tf_hp :: (s: [] Everglade, t: int) -> f32 { z := tf_size(s, t); return f32(TF_HP) * z * z; }
+tf_tall :: (s: [] Everglade, t: int) -> f32 { return f32(TF_TALL) * tf_size(s, t); }
+tf_trunk :: (s: [] Everglade, t: int) -> f32 { return TF_TRUNK[tf_kind(s, t)] * tf_size(s, t); }
+tf_crown :: (s: [] Everglade, t: int) -> f32 { return TF_CROWN[tf_kind(s, t)] * tf_size(s, t) * (1 - 0.6 * tf_of(s)[0].bare[tf_k(s, t)]); }
+tf_smooth :: (a: f32, b: f32, x: f32) -> f32 { k := clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); }
+tf_burning :: (s: [] Everglade, t: int) -> bool {
+  v := tf_of(s);
+  for k: 0..<v[0].n { if v[0].burn[k].tree == t { return true; } }
+  return false;
+}
+tf_count :: (s: [] Everglade) -> int { return tf_of(s)[0].n; }
+
+// Tree t's tilt from upright (rad) and the way it leans (a unit along the ground).
+tf_angle :: (s: [] Everglade, t: int) -> f32 { v := tf_of(s); return sqrt(v[0].ax[tf_k(s, t)] * v[0].ax[tf_k(s, t)] + v[0].az[tf_k(s, t)] * v[0].az[tf_k(s, t)]); }
+tf_way :: (s: [] Everglade, t: int) -> Point {
+  v := tf_of(s);
+  a := tf_angle(s, t);
+  if a < 0.00001 { return v3(1, 0, 0); }
+  return v3(v[0].ax[tf_k(s, t)] / a, 0, v[0].az[tf_k(s, t)] / a);
+}
+// Its foot, where it pivots: over the ground by how high it broke, sliding off its stump as it goes
+// down (a snapped butt drops to the ground beside it; a torn-up one lies on its root plate).
+tf_lift :: (s: [] Everglade, t: int) -> f32 {
+  v := tf_of(s);
+  if v[0].mode[tf_k(s, t)] == TF_UP { return 0; }
+  p := v[0].pivot[tf_k(s, t)];
+  rest := hi(v[0].rest[tf_k(s, t)], 0.9);
+  return mix_f(p, tf_trunk(s, t) * 0.8, tf_smooth(0.55, rest, tf_angle(s, t))) + v[0].oy[tf_k(s, t)];
+}
+tf_foot :: (s: [] Everglade, t: int) -> Point {
+  v := tf_of(s);
+  o := t * TREE_FLOATS;
+  x := s[0].trees[o] + v[0].ox[tf_k(s, t)]; z := s[0].trees[o + 1] + v[0].oz[tf_k(s, t)];
+  return v3(x, ground_at(s, x, z) + tf_lift(s, t), z);
+}
+// Its axis, foot to crown (a unit): leaning by its tilt.
+tf_up :: (s: [] Everglade, t: int) -> Point {
+  a := tf_angle(s, t); d := tf_way(s, t);
+  return v3(d.x * sin(a), cos(a), d.z * sin(a));
+}
+
+// The palisade's rectangle (plan.coax everglade_in_woods), and how far (x, z) is outside it.
+tf_city_gap :: (x: f32, z: f32) -> f32 {
+  dx := hi(hi(-65.25 - x, x - 65.25), 0); dz := hi(hi(-57.5 - z, z - 61.25), 0);
+  return sqrt(dx * dx + dz * dz);
+}
+tf_crime :: (s: [] Everglade, at: Point) { if tf_city_gap(at.x, at.z) < f32(TF_CITY) { gv_crime(s, at, f32(TF_HEAR)); } }
+
+// Tree t moves (it sways, falls or flies): on the list stepped each frame, if there is room.
+tf_wake :: (s: [] Everglade, t: int) -> bool {
+  v := tf_of(s);
+  v[0].touched = true;
+  for k: 0..<v[0].live_n { if v[0].live[k] == t { return true; } }
+  if v[0].live_n >= TF_LIVE { return false; }
+  v[0].live[v[0].live_n] = t; v[0].live_n += 1;
+  return true;
+}
+// Where it comes to lie, falling the way it leans: down the slope there, propped by its crown.
+tf_rest_angle :: (s: [] Everglade, t: int) -> f32 {
+  v := tf_of(s);
+  o := t * TREE_FLOATS;
+  x := s[0].trees[o] + v[0].ox[tf_k(s, t)]; z := s[0].trees[o + 1] + v[0].oz[tf_k(s, t)];
+  d := tf_way(s, t);
+  reach := tf_tall(s, t) * 0.7;
+  slope := atan2(ground_at(s, x + d.x * reach, z + d.z * reach) - ground_at(s, x, z), reach);
+  prop := TF_PROP[tf_kind(s, t)] * (1 - 0.8 * v[0].bare[tf_k(s, t)]);
+  return clamp(f32(PI) / 2 - slope - prop, 0.9, 1.75);
+}
+// It goes over, the way `d` (a unit along the ground), at `spin` rad/s, broken `pivot` m up its trunk.
+tf_topple :: (s: [] Everglade, t: int, d: Point, spin: f32, pivot: f32) {
+  v := tf_of(s);
+  if v[0].mode[tf_k(s, t)] != TF_UP || !tf_own(s, t) { return; }
+  a := hi(tf_angle(s, t), 0.03);
+  v[0].mode[tf_k(s, t)] = TF_FALL;
+  v[0].ax[tf_k(s, t)] = d.x * a; v[0].az[tf_k(s, t)] = d.z * a;
+  v[0].wx[tf_k(s, t)] = d.x * spin; v[0].wz[tf_k(s, t)] = d.z * spin;
+  v[0].lx[tf_k(s, t)] = 0; v[0].lz[tf_k(s, t)] = 0;
+  v[0].pivot[tf_k(s, t)] = pivot;
+  v[0].rest[tf_k(s, t)] = tf_rest_angle(s, t);
+  v[0].felled += 1;
+  if !tf_wake(s, t) {
+    // no room to fall: it lies where it would have
+    v[0].mode[tf_k(s, t)] = TF_DOWN;
+    r := v[0].rest[tf_k(s, t)];
+    v[0].ax[tf_k(s, t)] = d.x * r; v[0].az[tf_k(s, t)] = d.z * r; v[0].wx[tf_k(s, t)] = 0; v[0].wz[tf_k(s, t)] = 0; v[0].vx[tf_k(s, t)] = 0; v[0].vy[tf_k(s, t)] = 0; v[0].vz[tf_k(s, t)] = 0; v[0].oy[tf_k(s, t)] = 0;
+  }
+}
+
+// A blow of `takes` (damage, of its force) on tree t from the way `d` points (a unit along the ground,
+// away from the blow), `share` of the blast's strength where it stands (1 at its heart).
+tf_hit :: (s: [] Everglade, t: int, takes: f32, d: Point, share: f32) -> bool {
+  v := tf_of(s);
+  if takes <= 0 || !tf_own(s, t) { return false; }
+  v[0].hurt[tf_k(s, t)] += takes;
+  if v[0].mode[tf_k(s, t)] != TF_UP { return false; }
+  hp := tf_hp(s, t);
+  ratio := takes / hp;
+  z := tf_size(s, t);
+  o := t * TREE_FLOATS;
+  foot := v3(s[0].trees[o], ground_at(s, s[0].trees[o], s[0].trees[o + 1]), s[0].trees[o + 1]);
+  if ratio >= f32(TF_SPLINTER) && share > 0.45 {
+    // thrown: splintered off its stump, flying out from the blast, turning over
+    snap := (0.5 + 0.5 * sp_rand(s)) * z;
+    tf_topple(s, t, d, 1.6 + 0.8 * lo(ratio - f32(TF_SPLINTER), 2), snap);
+    out := 2.5 + 2.5 * lo(ratio - f32(TF_SPLINTER), 2);
+    v[0].vx[tf_k(s, t)] = d.x * out; v[0].vz[tf_k(s, t)] = d.z * out; v[0].vy[tf_k(s, t)] = 1.5 + 1.5 * share;
+    v[0].oy[tf_k(s, t)] = 0.01;
+    v[0].bare[tf_k(s, t)] = hi(v[0].bare[tf_k(s, t)], 0.35 + 0.25 * sp_rand(s));
+    tf_splinters(s, add(foot, v3(0, snap, 0)), d, 10);
+    tf_leaves(s, add(foot, times(v3(0, 1, 0), tf_tall(s, t) * 0.6)), d, 10);
+    return true;
+  }
+  if ratio >= 1 {
+    // it falls: torn up by its roots near the blast, snapped above its foot further off
+    torn := share > 0.55 || sp_rand(s) < 0.3;
+    snap := ifx torn then 0.0f32 else (0.6 + 1.0 * sp_rand(s)) * z;
+    tf_topple(s, t, d, 0.25 + 0.3 * lo(ratio, 3), snap);
+    if !torn { tf_splinters(s, add(foot, v3(0, snap, 0)), d, 5); }
+    tf_leaves(s, add(foot, times(v3(0, 1, 0), tf_tall(s, t) * 0.6)), d, 5);
+    return true;
+  }
+  if ratio >= f32(TF_LEAN) {
+    // its roots part torn: it leans away, and stays leaning
+    lean := (0.05 + 0.2 * (ratio - f32(TF_LEAN)) / (1 - f32(TF_LEAN)));
+    lx := v[0].lx[tf_k(s, t)] + d.x * lean; lz := v[0].lz[tf_k(s, t)] + d.z * lean;
+    l := sqrt(lx * lx + lz * lz);
+    if l > 0.32 { lx = lx / l * 0.32; lz = lz / l * 0.32; }
+    v[0].lx[tf_k(s, t)] = lx; v[0].lz[tf_k(s, t)] = lz;
+  }
+  kick := f32(TF_KICK) * lo(ratio, 1) * (0.8 + 0.4 * sp_rand(s));
+  v[0].wx[tf_k(s, t)] += d.x * kick; v[0].wz[tf_k(s, t)] += d.z * kick;
+  _ := tf_wake(s, t);
+  if ratio > 0.25 { tf_leaves(s, add(foot, times(v3(0, 1, 0), tf_tall(s, t) * 0.6)), d, 2); }
+  return false;
+}
+
+// What a blast's force does to tree t: the part of `dmg` that is force, not fire, scaled by `share`.
+tf_force :: (dmg: SrdDamage, share: f32) -> f32 {
+  o := srd_object(MAT_WOOD, SIZE_LARGE, true);
+  k := clamp(share, 0, 1);
+  a := ifx dmg.kind == DMG_FIRE || dmg.kind == DMG_NONE then 0 else srd_object_damage(o, cast(int) (f32(dmg.amount) * k + 0.5), dmg.kind);
+  b := ifx dmg.kind2 == DMG_FIRE || dmg.kind2 == DMG_NONE then 0 else srd_object_damage(o, cast(int) (f32(dmg.amount2) * k + 0.5), dmg.kind2);
+  return f32(a + b);
+}
+// A blast (everglade-spells.coax sp_blast) of `slot` at `at`: the trees it reaches sway, lean, fall or
+// fly, away from it; a bolt strikes the tree it lands by. How many fell.
+tf_blast :: (s: [] Everglade, at: Point, slot: int) -> int {
+  v := tf_of(s);
+  reach := SP_BLAST[slot] * TF_REACH[clamp_i(slot, 0, 3)];
+  fell := 0;
+  // a bolt strikes the tree it lands by first (the blast then finds it split)
+  if slot == SP_BOLT || slot == SP_MEGA { if tf_bolt(s, at, 1.0) { fell += 1; } }
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    x := s[0].trees[o]; z := s[0].trees[o + 1];
+    dx := x - at.x; dz := z - at.z;
+    if abs(dx) > reach || abs(dz) > reach { continue; }
+    g := ground_at(s, x, z);
+    if at.y < g - 3 || at.y > g + tf_tall(s, t) + 3 { continue; }
+    d := sqrt(dx * dx + dz * dz);
+    if d >= reach { continue; }
+    share := 1 - d / reach;
+    away := ifx d > 0.05 then v3(dx / d, 0, dz / d) else v3(cos(f32(t)), 0, sin(f32(t)));
+    if tf_hit(s, t, tf_force(s[0].sp.dmg, share), away, share) { fell += 1; }
+  }
+  if fell > 0 { tf_crime(s, at); }
+  return fell;
+}
+// A bolt of lightning striking `at`: the tallest tree within TF_BOLT_NEAR draws it, `odds` of the time.
+// It splits high on its trunk, its halves torn apart, black at the break; it may catch.
+tf_bolt :: (s: [] Everglade, at: Point, odds: f32) -> bool {
+  v := tf_of(s);
+  best := -1; tall := 0.0f32;
+  for t: 0..<s[0].tree_n {
+    if v[0].mode[tf_k(s, t)] != TF_UP { continue; }
+    o := t * TREE_FLOATS;
+    dx := s[0].trees[o] - at.x; dz := s[0].trees[o + 1] - at.z;
+    if dx * dx + dz * dz > f32(TF_BOLT_NEAR) * f32(TF_BOLT_NEAR) { continue; }
+    h := ground_at(s, s[0].trees[o], s[0].trees[o + 1]) + tf_tall(s, t) * cos(tf_angle(s, t));
+    if h > tall { tall = h; best = t; }
+  }
+  if best < 0 || sp_rand(s) >= odds || !tf_own(s, best) { return false; }
+  t := best;
+  o := t * TREE_FLOATS;
+  foot := v3(s[0].trees[o], ground_at(s, s[0].trees[o], s[0].trees[o + 1]), s[0].trees[o + 1]);
+  z := tf_size(s, t);
+  high := (2.2 + 1.8 * sp_rand(s)) * z;
+  a := f32(TAU) * sp_rand(s);
+  d := v3(cos(a), 0, sin(a));
+  tf_topple(s, t, d, 0.35, high);
+  v[0].soot[tf_k(s, t)] = hi(v[0].soot[tf_k(s, t)], 0.35);
+  v[0].split += 1;
+  tf_splinters(s, add(foot, v3(0, high, 0)), d, 12);
+  sp_add_smoke(s, add(foot, v3(0, high, 0)), v3(0, 1.2, 0), 0.9, 3.0, 0.25, 0.4, 0.6, 0.5);
+  if sp_rand(s) < FI_ODDS[FI_BOLT] { _ := tf_ignite(s, t); }
+  return true;
+}
+// A push along the ground (Thunderwave, Gust of Wind) from `from` the way `way`, `span` m long and half
+// as wide: each tree in it takes `takes` (less further along), swaying or leaning. How many fell.
+tf_push :: (s: [] Everglade, from: Point, way: Point, takes: f32, span: f32) -> int {
+  n := 0;
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    x := s[0].trees[o]; z := s[0].trees[o + 1];
+    dx := x - from.x; dz := z - from.z;
+    along := dx * way.x + dz * way.z;
+    if along < 0 || along > span { continue; }
+    off := abs(dx * way.z - dz * way.x);
+    if off > span * 0.5 + tf_crown(s, t) { continue; }
+    if tf_hit(s, t, takes * (1 - 0.5 * along / span), way, 0) { n += 1; }
+  }
+  return n;
+}
+
+// ---- fire
+
+// Tree t catches: not burning yet, with wood or leaves left to burn, not stood in water, room for another.
+tf_ignite :: (s: [] Everglade, t: int) -> bool { return tf_ignite_gen(s, t, 0); }
+// The same, `gen` crowns from where the fire was lit.
+tf_ignite_gen :: (s: [] Everglade, t: int, gen: int) -> bool {
+  v := tf_of(s);
+  if t < 0 || t >= s[0].tree_n || v[0].n >= tf_cap(s) || tf_burning(s, t) { return false; }
+  if v[0].soot[tf_k(s, t)] >= 1 && v[0].bare[tf_k(s, t)] >= 1 { return false; }
+  o := t * TREE_FLOATS;
+  if fr_wet(s, s[0].trees[o], s[0].trees[o + 1]) || !tf_own(s, t) { return false; }
+  v[0].burn[v[0].n] = TfBurn.{tree = t, t = 0, tick = f32(TF_KINDLE), spread = f32(TF_SPREAD) * (0.6 + 0.8 * sp_rand(s)), out = f32(TF_BURN_OUT) * (0.8 + 0.4 * sp_rand(s)), gen = gen};
+  v[0].n += 1;
+  v[0].lit += 1;
+  v[0].frost[tf_k(s, t)] = 0;
+  v[0].touched = true;
+  return true;
+}
+tf_drop :: (s: [] Everglade, k: int) {
+  v := tf_of(s);
+  v[0].n -= 1;
+  v[0].burn[k] = v[0].burn[v[0].n];
+}
+// How far `at` is from tree t's wood or leaves along the ground: its trunk low down, its crown up in
+// it; a lying tree along where it lies.
+tf_gap :: (s: [] Everglade, t: int, at: Point) -> f32 {
+  foot := tf_foot(s, t);
+  up := tf_up(s, t);
+  tall := tf_tall(s, t);
+  // the nearest point of its axis, foot to top
+  rel := sub(at, foot);
+  k := clamp(dot(rel, up), 0, tall);
+  p := add(foot, times(up, k));
+  q := sub(at, p);
+  far := sqrt(dot(q, q));
+  girth := ifx k > tall * 0.3 && tf_of(s)[0].bare[tf_k(s, t)] < 0.9 then tf_crown(s, t) * tf_smooth(0.25, 0.55, k / tall) else tf_trunk(s, t);
+  return hi(far - hi(girth, tf_trunk(s, t)), 0);
+}
+// Flame reaches `at`, `r` round it: the trees there may catch, at the odds of what lit it (FI_*). How many.
+tf_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
+  if !s[0].started || s[0].tree_n == 0 { return 0; }
+  v := tf_of(s);
+  odds := FI_ODDS[clamp_i(how, 0, 4)] * f32(TF_GREEN) * (1 - 0.6 * clamp(cast(f32) s[0].sky.rain, 0, 1));
+  n := 0;
+  reach := r + 12;
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    dx := s[0].trees[o] - at.x; dz := s[0].trees[o + 1] - at.z;
+    if abs(dx) > reach || abs(dz) > reach || tf_burning(s, t) { continue; }
+    if tf_gap(s, t, at) > r { continue; }
+    if sp_rand(s) >= odds { continue; }
+    if tf_ignite(s, t) { n += 1; }
+  }
+  if n > 0 && how <= FI_MEGA { tf_crime(s, at); }
+  return n;
+}
+// Water or cold over `at`, `r` round: the trees burning there go out in a hiss of steam; cold
+// (`cold` above 0) frosts the trees it reaches too. How many went out.
+tf_douse :: (s: [] Everglade, at: Point, r: f32, cold: f32) -> int {
+  if !s[0].started { return 0; }
+  v := tf_of(s);
+  n := 0;
+  k := 0;
+  while k < v[0].n {
+    t := v[0].burn[k].tree;
+    if tf_gap(s, t, at) <= r {
+      if n < 6 { f := tf_foot(s, t); sp_add_puff(s, add(f, times(tf_up(s, t), tf_tall(s, t) * 0.5)), v3(0, 1.0, 0), 1.0, 2.2, 0.88); }
+      tf_drop(s, k);
+      n += 1;
+      continue;
+    }
+    k += 1;
+  }
+  if cold > 0 { tf_frost(s, at, r, cold); }
+  return n;
+}
+// Cone of Cold's cone from `from` along the unit `d` (everglade-polar.coax po_in_cone): what burns in it
+// goes out, and what stands in it is rimed.
+tf_douse_cone :: (s: [] Everglade, from: Point, d: Point) -> int {
+  if !s[0].started { return 0; }
+  v := tf_of(s);
+  n := 0;
+  k := 0;
+  while k < v[0].n {
+    t := v[0].burn[k].tree;
+    f := tf_foot(s, t);
+    if po_in_cone(from, d, v3(f.x, from.y, f.z)) {
+      if n < 6 { sp_add_puff(s, add(f, v3(0, 3, 0)), v3(0, 1.0, 0), 1.0, 2.2, 0.9); }
+      tf_drop(s, k);
+      n += 1;
+      continue;
+    }
+    k += 1;
+  }
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    if po_in_cone(from, d, v3(s[0].trees[o], from.y, s[0].trees[o + 1])) && tf_own(s, t) { v[0].frost[tf_k(s, t)] = 1; v[0].touched = true; }
+  }
+  return n;
+}
+// Rime on the trees within `r` of `at`, as much as `amount` (0 to 1).
+tf_frost :: (s: [] Everglade, at: Point, r: f32, amount: f32) {
+  v := tf_of(s);
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    dx := s[0].trees[o] - at.x; dz := s[0].trees[o + 1] - at.z;
+    reach := r + tf_crown(s, t);
+    if dx * dx + dz * dz > reach * reach || tf_burning(s, t) || !tf_own(s, t) { continue; }
+    v[0].frost[tf_k(s, t)] = hi(v[0].frost[tf_k(s, t)], clamp(amount, 0, 1));
+    v[0].touched = true;
+  }
+}
+// Whether `at` (someone's feet) is in or against a burning tree.
+tf_by_fire :: (s: [] Everglade, at: Point) -> bool {
+  v := tf_of(s);
+  for k: 0..<v[0].n {
+    e := v[0].burn[k];
+    if e.t < 1 { continue; }
+    if tf_gap(s, e.tree, add(at, v3(0, 0.9, 0))) <= f32(EG_RADIUS) + 0.4 { return true; }
+  }
+  return false;
+}
+
+// Burning tree k tries to catch a tree whose crown it touches, and the grass at its foot.
+tf_spread_from :: (s: [] Everglade, k: int) {
+  v := tf_of(s);
+  t := v[0].burn[k].tree;
+  foot := tf_foot(s, t);
+  top := add(foot, times(tf_up(s, t), tf_tall(s, t) * 0.6));
+  r := tf_crown(s, t) + 0.6;
+  pick := -1; seen := 0;
+  crowning := v[0].bare[tf_k(s, t)] < f32(TF_CROWN_FIRE) && v[0].burn[k].gen < TF_GEN;
+  for j: 0..<(ifx crowning then s[0].tree_n else 0) {
+    if j == t { continue; }
+    o := j * TREE_FLOATS;
+    dx := s[0].trees[o] - top.x; dz := s[0].trees[o + 1] - top.z;
+    if abs(dx) > 10 || abs(dz) > 10 || tf_burning(s, j) { continue; }
+    if v[0].soot[tf_k(s, j)] >= 1 && v[0].bare[tf_k(s, j)] >= 1 { continue; }
+    if tf_gap(s, j, top) > r { continue; }
+    seen += 1;
+    if sp_rand(s) * f32(seen) < 1 { pick = j; }
+  }
+  fuel := 1 - 0.6 * v[0].bare[tf_k(s, t)];
+  if pick >= 0 && sp_rand(s) < f32(TF_CATCH) * fuel { _ := tf_ignite_gen(s, pick, v[0].burn[k].gen + 1); }
+  if sp_rand(s) < f32(TF_TO_GRASS) {
+    a := f32(TAU) * sp_rand(s);
+    g := v3(foot.x + cos(a) * 1.3, ground_at(s, foot.x + cos(a) * 1.3, foot.z + sin(a) * 1.3), foot.z + sin(a) * 1.3);
+    wd_light(s, g, WD_GEN - 3);
+  }
+  // the town's wood its crown hangs over
+  if s[0].sp.dm.count > 0 && tf_city_gap(top.x, top.z) < 4 { _ := fi_catch(s, top, r, FI_EMBER); }
+}
+
+// ---- each frame
+
+tf_frame :: (s: [] Everglade, dt: f32) {
+  v := tf_of(s);
+  v[0].time += dt;
+  if !v[0].touched { return; }
+  h := lo(dt, 0.05);
+  // the trees moving: swaying on their roots, falling, flying
+  k := 0;
+  while k < v[0].live_n {
+    t := v[0].live[k];
+    if tf_step(s, t, h) { k += 1; continue; }
+    v[0].live_n -= 1;
+    v[0].live[k] = v[0].live[v[0].live_n];
+  }
+  // the fires
+  rain := clamp(cast(f32) s[0].sky.rain, 0, 1);
+  d := s[0].sp.dice[..];
+  k = 0;
+  while k < v[0].n {
+    v[0].burn[k].t += dt;
+    e := v[0].burn[k];
+    t := e.tree;
+    v[0].soot[tf_k(s, t)] = lo(v[0].soot[tf_k(s, t)] + dt / f32(TF_SOOT), 1);
+    v[0].bare[tf_k(s, t)] = hi(v[0].bare[tf_k(s, t)], clamp((e.t - 2) / f32(TF_LEAVES), 0, 1));
+    if e.t >= e.tick {
+      v[0].burn[k].tick = e.tick + 1;
+      if rain > 0.05 && sp_rand(s) < 0.1 * rain { tf_drop(s, k); continue; }
+      v[0].hurt[tf_k(s, t)] += f32(srd_sum(d, 1, 6));
+      if v[0].mode[tf_k(s, t)] == TF_UP && v[0].hurt[tf_k(s, t)] >= f32(TF_BURN_THROUGH) * tf_hp(s, t) {
+        // burnt through low on its trunk, it goes over (the way the wind blows, else the way it leans)
+        wx := cast(f32) s[0].sky.wind_x; wz := cast(f32) s[0].sky.wind_z;
+        wl := sqrt(wx * wx + wz * wz);
+        a := f32(TAU) * sp_rand(s);
+        way := ifx wl > 0.5 then v3(wx / wl, 0, wz / wl) else ifx tf_angle(s, t) > 0.01 then tf_way(s, t) else v3(cos(a), 0, sin(a));
+        tf_topple(s, t, way, 0.12, (0.7 + 0.8 * sp_rand(s)) * tf_size(s, t));
+        tf_crime(s, tf_foot(s, t));
+      }
+    }
+    if e.t >= e.spread {
+      v[0].burn[k].spread = e.spread + f32(TF_SPREAD) * (0.6 + 0.8 * sp_rand(s)) * (1 + 3 * rain);
+      tf_spread_from(s, k);
+    }
+    // its crown burnt away, the fire smoulders out: a black snag
+    if e.t >= e.out && v[0].bare[tf_k(s, t)] >= 1 { tf_drop(s, k); continue; }
+    k += 1;
+  }
+  // the rime thaws
+  for q: 1..<TF_POOL { if v[0].frost[q] > 0 { v[0].frost[q] = hi(v[0].frost[q] - dt / f32(TF_THAW), 0); } }
+}
+// Tree t's motion over `dt`: false once it is still.
+tf_step :: (s: [] Everglade, t: int, dt: f32) -> bool {
+  v := tf_of(s);
+  if tf_k(s, t) == 0 { return false; }   // its record given up: it stands as planted
+  L := tf_tall(s, t);
+  fall := f32(TF_GRAVITY) / (L * f32(TF_MASS_AT));   // its weight about its foot, over its turning inertia
+  steps := 2;
+  h := dt / f32(steps);
+  for q: 0..<steps {
+    if v[0].mode[tf_k(s, t)] == TF_UP {
+      // a rod on a spring: gravity tips it, its roots hold it toward its lean, its boughs drag
+      ax := v[0].ax[tf_k(s, t)]; az := v[0].az[tf_k(s, t)];
+      a := sqrt(ax * ax + az * az);
+      sinc := ifx a > 0.0001 then sin(a) / a else 1.0f32;
+      k := f32(TF_STIFF) + fall;
+      v[0].wx[tf_k(s, t)] += (fall * sinc * ax - k * (ax - v[0].lx[tf_k(s, t)]) - f32(TF_DAMP) * v[0].wx[tf_k(s, t)]) * h;
+      v[0].wz[tf_k(s, t)] += (fall * sinc * az - k * (az - v[0].lz[tf_k(s, t)]) - f32(TF_DAMP) * v[0].wz[tf_k(s, t)]) * h;
+      v[0].ax[tf_k(s, t)] += v[0].wx[tf_k(s, t)] * h; v[0].az[tf_k(s, t)] += v[0].wz[tf_k(s, t)] * h;
+      continue;
+    }
+    if v[0].mode[tf_k(s, t)] != TF_FALL { return false; }
+    // falling: it turns about its foot under its own weight; thrown, its foot flies too
+    a := tf_angle(s, t); d := tf_way(s, t);
+    w := v[0].wx[tf_k(s, t)] * d.x + v[0].wz[tf_k(s, t)] * d.z;
+    w += fall * sin(a) * h;
+    a += w * h;
+    if v[0].oy[tf_k(s, t)] > 0 || v[0].vy[tf_k(s, t)] > 0 {
+      v[0].vy[tf_k(s, t)] -= f32(TF_GRAVITY) * h;
+      v[0].ox[tf_k(s, t)] += v[0].vx[tf_k(s, t)] * h; v[0].oz[tf_k(s, t)] += v[0].vz[tf_k(s, t)] * h; v[0].oy[tf_k(s, t)] += v[0].vy[tf_k(s, t)] * h;
+      if v[0].oy[tf_k(s, t)] <= 0 { v[0].oy[tf_k(s, t)] = 0; v[0].vy[tf_k(s, t)] = 0; tf_thud(s, t, 0.4); }
+    } else {
+      // sliding to a stop along the ground
+      slow := 1 - lo(6 * h, 1);
+      v[0].vx[tf_k(s, t)] *= slow; v[0].vz[tf_k(s, t)] *= slow;
+      v[0].ox[tf_k(s, t)] += v[0].vx[tf_k(s, t)] * h; v[0].oz[tf_k(s, t)] += v[0].vz[tf_k(s, t)] * h;
+    }
+    rest := v[0].rest[tf_k(s, t)];
+    if a >= rest {
+      a = rest;
+      if w > 0.6 { if w > 1.2 { tf_thud(s, t, lo(w / 2.5, 1)); } w = -w * f32(TF_BOUNCE); }
+      else if v[0].oy[tf_k(s, t)] <= 0 && abs(v[0].vx[tf_k(s, t)]) + abs(v[0].vz[tf_k(s, t)]) < 0.1 {
+        v[0].mode[tf_k(s, t)] = TF_DOWN; w = 0;
+        v[0].vx[tf_k(s, t)] = 0; v[0].vz[tf_k(s, t)] = 0;
+      } else { w = 0; }
+    }
+    if a < 0.02 { a = 0.02; w = hi(w, 0); }
+    v[0].ax[tf_k(s, t)] = d.x * a; v[0].az[tf_k(s, t)] = d.z * a;
+    v[0].wx[tf_k(s, t)] = d.x * w; v[0].wz[tf_k(s, t)] = d.z * w;
+  }
+  if v[0].mode[tf_k(s, t)] == TF_UP {
+    // still again, at its lean
+    dx := v[0].ax[tf_k(s, t)] - v[0].lx[tf_k(s, t)]; dz := v[0].az[tf_k(s, t)] - v[0].lz[tf_k(s, t)];
+    if dx * dx + dz * dz < 0.000004 && v[0].wx[tf_k(s, t)] * v[0].wx[tf_k(s, t)] + v[0].wz[tf_k(s, t)] * v[0].wz[tf_k(s, t)] < 0.00002 {
+      v[0].ax[tf_k(s, t)] = v[0].lx[tf_k(s, t)]; v[0].az[tf_k(s, t)] = v[0].lz[tf_k(s, t)]; v[0].wx[tf_k(s, t)] = 0; v[0].wz[tf_k(s, t)] = 0;
+      return false;
+    }
+  }
+  return v[0].mode[tf_k(s, t)] != TF_DOWN;
+}
+// It strikes the ground, `hard` 0 to 1: dust thrown up along it, leaves and twigs, and the ground
+// shaking you if you are near.
+tf_thud :: (s: [] Everglade, t: int, hard: f32) {
+  foot := tf_foot(s, t);
+  up := tf_up(s, t);
+  L := tf_tall(s, t);
+  few := phone(s);
+  for q: 0..<(ifx few then 3 else 6) {
+    k := 0.25 + 0.7 * (f32(q) + sp_rand(s)) / 6;
+    at := add(foot, times(up, L * k));
+    at.y = ground_at(s, at.x, at.z) + 0.3;
+    sp_add_smoke(s, at, v3((sp_rand(s) - 0.5) * 2.5, 0.5 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 2.5), (0.9 + 0.6 * sp_rand(s)) * (0.5 + 0.5 * hard), 2.4, 0.3, 0, 0.45, 0);
+  }
+  tf_leaves(s, add(foot, times(up, L * 0.65)), v3(0, 1, 0), ifx few then 4 else 8);
+  close := clamp(1 - flat_gap(foot, s[0].feet) / 40, 0, 1);
+  s[0].sp.shake = lo(s[0].sp.shake + 0.35 * hard * close, 1);
+}
+// Splinters of pale wood thrown out of a break at `at`, the way `d`.
+tf_splinters :: (s: [] Everglade, at: Point, d: Point, n: int) {
+  if s[0].sp.dm.count < 1 { return; }
+  w := sp_dm(s);
+  for q: 0..<(ifx phone(s) then n / 2 else n) {
+    vel := add(times(d, 2 + 5 * sp_rand(s)), add(times(sp_spray(s, 0.4), 3), v3(0, 2 + 3 * sp_rand(s), 0)));
+    c := ifx sp_rand(s) < 0.5 then TF_HEART else TF_BARK;
+    demo_bit(w, add(at, v3((sp_rand(s) - 0.5) * 0.4, (sp_rand(s) - 0.5) * 0.4, (sp_rand(s) - 0.5) * 0.4)), vel, c);
+  }
+}
+// Leaves and twigs shaken out of a crown at `at`.
+tf_leaves :: (s: [] Everglade, at: Point, d: Point, n: int) {
+  if s[0].sp.dm.count < 1 { return; }
+  w := sp_dm(s);
+  for q: 0..<(ifx phone(s) then n / 2 else n) {
+    vel := add(times(d, 1 + 2 * sp_rand(s)), times(sp_spray(s, 0.2), 1.5 + 1.5 * sp_rand(s)));
+    demo_bit(w, add(at, times(sp_spray(s, 0), 1.6)), vel, ifx sp_rand(s) < 0.75 then TF_LEAF else TF_BARK);
+  }
+}
+
+// R, a long rest (everglade-fire.coax fi_restore): every tree stands again as it was planted.
+tf_restore :: (s: [] Everglade) {
+  v := tf_of(s);
+  for k: 0..<TF_POOL { tf_clear(v, k); v[0].owner[k] = 0; }
+  for t: 0..<TREES { v[0].slot[t] = 0; }
+  v[0].live_n = 0; v[0].n = 0;
+  v[0].touched = false;
+}
+
+// ---- in the way: a stump, a lying trunk
+
+// Tree t's standing girth (everglade.coax forest_bodies, the camera, the reach check): the trunk as it
+// was planted standing; a stump's short one once it fell; none where it was torn up.
+tf_girth :: (s: [] Everglade, t: int, g: Girth) -> Girth {
+  v := tf_of(s);
+  out := g;
+  if !v[0].touched || v[0].mode[tf_k(s, t)] == TF_UP { return out; }
+  if v[0].pivot[tf_k(s, t)] <= 0 { out.r = 0; return out; }
+  out.top = v[0].pivot[tf_k(s, t)];
+  return out;
+}
+// The trunks lying within FOREST_NEAR of (x, z), the nearest TF_BODIES, after `at` in out: each a
+// round body along its trunk. How many.
+tf_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
+  v := tf_of(s);
+  if !v[0].touched { return 0; }
+  pick: [TF_BODIES] int; far: [TF_BODIES] f32; n := 0;
+  for t: 0..<s[0].tree_n {
+    if v[0].mode[tf_k(s, t)] == TF_UP { continue; }
+    foot := tf_foot(s, t); up := tf_up(s, t);
+    L := tf_tall(s, t) * 0.72;
+    rel := sub(v3(x, foot.y, z), foot);
+    k := clamp(dot(rel, up), 0, L);
+    p := add(foot, times(up, k));
+    d := flat_gap(p, v3(x, 0, z)) - tf_trunk(s, t);
+    if d > f32(FOREST_NEAR) + 1 { continue; }
+    if n < TF_BODIES { pick[n] = t; far[n] = d; n += 1; continue; }
+    worst := 0; for q: 1..<TF_BODIES { if far[q] > far[worst] { worst = q; } }
+    if d < far[worst] { pick[worst] = t; far[worst] = d; }
+  }
+  kept := 0;
+  for q: 0..<n {
+    if (at + kept + 1) * 7 > out.count { break; }
+    t := pick[q];
+    foot := tf_foot(s, t); up := tf_up(s, t);
+    r := tf_trunk(s, t);
+    a := add(foot, times(up, r));
+    b := add(foot, times(up, tf_tall(s, t) * 0.72));
+    put7(out, at + kept, a.x, a.y, a.z, b.x, b.y, b.z, r);
+    kept += 1;
+  }
+  return kept;
+}
+// Whether the ray o + t d strikes a standing trunk before `best`: where (else `best`).
+tf_ray :: (s: [] Everglade, o: Point, d: Point, best: f32) -> f32 {
+  v := tf_of(s);
+  out := best;
+  for t: 0..<s[0].tree_n {
+    if v[0].mode[tf_k(s, t)] != TF_UP && v[0].pivot[tf_k(s, t)] <= 0 { continue; }
+    q := t * TREE_FLOATS;
+    x := s[0].trees[q]; z := s[0].trees[q + 1];
+    r := tf_trunk(s, t) + 0.15;
+    // off the ray's line along the ground: it cannot be struck
+    hx := x - o.x; hz := z - o.z;
+    hd := d.x * d.x + d.z * d.z;
+    if hd > 0.0001 {
+      along := (hx * d.x + hz * d.z) / hd;
+      if along < 0 { continue; }
+      px := hx - d.x * along; pz := hz - d.z * along;
+      if px * px + pz * pz > (r + 0.1) * (r + 0.1) { continue; }
+    }
+    g := ground_at(s, x, z);
+    top := g + ifx v[0].mode[tf_k(s, t)] == TF_UP then tf_tall(s, t) * 0.5 else v[0].pivot[tf_k(s, t)];
+    p: DemoPiece;
+    p.x0 = x - r; p.x1 = x + r; p.z0 = z - r; p.z1 = z + r; p.y0 = g - 0.2; p.y1 = top;
+    h := sp_ray_box(o, d, p);
+    if h.ok && h.t > 0.3 && h.t < out { out = h.t; }
+  }
+  return out;
+}
+
+// ---- drawing
+
+// Tree t as the kit's (everglade.coax forest), its foot on the ground at y: turned by its tilt, its own
+// yaw and size; blackened, rimed, its leaves going.
+tf_kit :: (s: [] Everglade, t: int, y: f32) {
+  v := tf_of(s);
+  o := t * TREE_FLOATS;
+  kind := cast(int) s[0].trees[o + 4];
+  x := s[0].trees[o]; z := s[0].trees[o + 1]; size := s[0].trees[o + 2]; yaw := s[0].trees[o + 3];
+  if !v[0].touched { kit(s, kind, x, y - 0.1, z, yaw, size); return; }
+  a := tf_angle(s, t);
+  if a < 0.0005 && v[0].soot[tf_k(s, t)] <= 0 && v[0].bare[tf_k(s, t)] <= 0 && v[0].frost[tf_k(s, t)] <= 0 { kit(s, kind, x, y - 0.1, z, yaw, size); return; }
+  foot := tf_foot(s, t);
+  d := tf_way(s, t);
+  // its yaw and size, then turned over about the axis across the way it leans (Rodrigues)
+  c := cos(yaw) * size; sn := sin(yaw) * size;
+  m := [9] f32.[c, 0, sn,   0, size, 0,   -sn, 0, c];
+  kx := d.z; kz := -d.x;
+  ca := cos(a); sa := sin(a); va := 1 - ca;
+  r := [9] f32.[ca + va * kx * kx,  -sa * kz,  va * kx * kz,
+                sa * kz,            ca,        -sa * kx,
+                va * kz * kx,       sa * kx,   ca + va * kz * kz];
+  rows: [12] f32;
+  for i: 0..<3 {
+    for j: 0..<3 { rows[i * 4 + j] = r[i * 3] * m[j] + r[i * 3 + 1] * m[3 + j] + r[i * 3 + 2] * m[6 + j]; }
+  }
+  rows[3] = foot.x; rows[7] = foot.y - 0.1; rows[11] = foot.z;
+  group := group_of(kind * 2);
+  n := s[0].kit_used[group];
+  kit_rows(s, group, rows[..]);
+  if s[0].kit_used[group] == n { return; }
+  q := (s[0].group_at[group] + n) * OBJECT_FLOATS;
+  tint := tf_tint(s, t);
+  s[0].objects[q + 12] = tint.x; s[0].objects[q + 13] = tint.y; s[0].objects[q + 14] = tint.z;
+  // its leaves' share gone rides over the kind word (everglade.wgsl: a canopy's vertex reads it)
+  s[0].objects[q + 15] = f32(SHAPE_MESH + 8 * LOOK_KIT + 256 * clamp_i(cast(int) (v[0].bare[tf_k(s, t)] * 255 + 0.5), 0, 255));
+}
+// Its tint: soot toward black (the leaves scorched brown on the way), rime toward white.
+tf_tint :: (s: [] Everglade, t: int) -> Point {
+  v := tf_of(s);
+  k := v[0].soot[tf_k(s, t)];
+  scorch := tf_smooth(0, 0.5, k) * (1 - tf_smooth(0.5, 1, k));
+  c := mix(v3(1, 1, 1), v3(0.95, 0.62, 0.32), scorch);
+  c = mix(c, TF_CHAR, tf_smooth(0.2, 1, k));
+  return mix(c, TF_RIME, v[0].frost[tf_k(s, t)] * 0.6);
+}
+// Tree t far off (everglade.coax far_tree's cone), standing on the ground at `base`, as it stands now:
+// tipped or lying, its crown thinned and blackened as it burns, a bare black snag burnt out.
+tf_far :: (s: [] Everglade, t: int, base: f32) {
+  v := tf_of(s);
+  o := t * TREE_FLOATS;
+  x := s[0].trees[o]; z := s[0].trees[o + 1]; size := s[0].trees[o + 2]; yaw := s[0].trees[o + 3];
+  kind := cast(int) s[0].trees[o + 4];
+  if !v[0].touched { far_tree(s, x, base, z, size, yaw, kind); return; }
+  a := tf_angle(s, t);
+  bare := v[0].bare[tf_k(s, t)]; soot := v[0].soot[tf_k(s, t)];
+  if a < 0.0005 && soot <= 0 && bare <= 0 && v[0].frost[tf_k(s, t)] <= 0 { far_tree(s, x, base, z, size, yaw, kind); return; }
+  foot := tf_foot(s, t);
+  up := tf_up(s, t);
+  d := tf_way(s, t);
+  turn := atan2(d.x, d.z);
+  pine := kind < 2;
+  w := (ifx pine then 4.6f32 else 5.4f32) * (1 - 0.75 * bare);
+  h := (ifx pine then 8.0f32 else 6.6f32) * (1 - 0.3 * bare);
+  lift := ifx pine then 1.4f32 else 2.6f32;
+  k := kind * 3;
+  kit_rgb := s[0].canopy_rgb[k] + s[0].canopy_rgb[k + 1] + s[0].canopy_rgb[k + 2] > 0;
+  leaf := v3(ifx kit_rgb then s[0].canopy_rgb[k] else ifx pine then 0.16f32 else 0.26f32,
+             ifx kit_rgb then s[0].canopy_rgb[k + 1] else ifx pine then 0.32f32 else 0.42f32,
+             ifx kit_rgb then s[0].canopy_rgb[k + 2] else ifx pine then 0.2f32 else 0.17f32);
+  tint := tf_tint(s, t);
+  if bare < 0.92 {
+    c := v3(leaf.x * tint.x, leaf.y * tint.y, leaf.z * tint.z);
+    at := add(foot, times(up, (lift + h / 2) * size));
+    shape(s, SHAPE_CONE, LOOK_LEAVES, at, turn, a, w * size, h * size, w * size, c.x, c.y, c.z);
+  } else {
+    // a snag: its bare black trunk, a narrow spire
+    at := add(foot, times(up, f32(TF_TALL) * 0.42 * size));
+    shape(s, SHAPE_CONE, LOOK_MATTE, at, turn, a, 0.7 * size, f32(TF_TALL) * 0.84 * size, 0.7 * size, TF_CHAR.x, TF_CHAR.y, TF_CHAR.z);
+  }
+}
+// The stumps of the trees that broke, and the root plates of those torn up, the nearest to `eye`.
+tf_stumps :: (s: [] Everglade, eye: Point) {
+  v := tf_of(s);
+  if !v[0].touched { return; }
+  cap := ifx phone(s) then TF_STUMPS / 2 else TF_STUMPS;
+  drawn := 0;
+  for t: 0..<s[0].tree_n {
+    if drawn >= cap { break; }
+    if v[0].mode[tf_k(s, t)] == TF_UP { continue; }
+    o := t * TREE_FLOATS;
+    x := s[0].trees[o]; z := s[0].trees[o + 1];
+    if (x - eye.x) * (x - eye.x) + (z - eye.z) * (z - eye.z) > f32(TF_STUMP_NEAR) * f32(TF_STUMP_NEAR) { continue; }
+    g := ground_at(s, x, z);
+    r := tf_trunk(s, t);
+    k := v[0].soot[tf_k(s, t)];
+    bark := mix(TF_BARK, TF_CHAR, k);
+    p := v[0].pivot[tf_k(s, t)];
+    if p > 0 {
+      // the stump, and the pale wood of its jagged break over it
+      shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + p / 2 - 0.05, z), s[0].trees[o + 3], 0, r * 2.1, p + 0.1, r * 2.1, bark.x, bark.y, bark.z);
+      heart := mix(TF_HEART, TF_CHAR, k);
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(x, g + p + 0.12, z), s[0].trees[o + 3] + 0.7, 0.25, r * 1.6, 0.34, r * 1.4, heart.x, heart.y, heart.z);
+    } else {
+      // its root plate turned up with it, earth in its roots
+      foot := tf_foot(s, t); up := tf_up(s, t); d := tf_way(s, t);
+      a := tf_angle(s, t);
+      turf := add(foot, times(up, -0.15));
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, turf, atan2(d.x, d.z), a, r * 4.2, 0.4, r * 4.2, 0.3, 0.23, 0.15);
+      // and the hole it left
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x, g - 0.1, z), 0, 0, r * 3.8, 0.25, r * 3.8, 0.24, 0.18, 0.12);
+    }
+    drawn += 1;
+  }
+}
+// The fires: licks in each burning crown (along the trunk once it is bare), billows thrown off it,
+// a column of smoke; on a phone fewer (fi_draw's budget, shared).
+tf_draw_fire :: (s: [] Everglade) {
+  v := tf_of(s);
+  few := phone(s);
+  t0 := v[0].time;
+  budget := ifx few then 4 else 10;
+  for k: 0..<v[0].n {
+    e := v[0].burn[k];
+    t := e.tree;
+    on := clamp(e.t / 1.5, 0, 1) * clamp((e.out - e.t) / 4 + 0.35, 0.35, 1);
+    foot := tf_foot(s, t); up := tf_up(s, t);
+    L := tf_tall(s, t);
+    bare := v[0].bare[tf_k(s, t)];
+    cr := TF_CROWN[tf_kind(s, t)] * tf_size(s, t);
+    licks := ifx few then 2 else 4;
+    for q: 0..<licks {
+      hx := sp_noise(f32(t) * 0.37 + f32(q), 1.3) - 0.5; hz := sp_noise(f32(t) * 0.53 + f32(q), 7.1) - 0.5;
+      hy := sp_noise(f32(t) * 0.71 + f32(q), 3.9);
+      // in the crown while it has leaves, down the trunk once they are gone
+      crown := bare < 0.7;
+      up_k := ifx crown then 0.45 + 0.4 * hy else 0.1 + 0.7 * hy;
+      spread := ifx crown then cr * 1.2 else 0.5;
+      at := add(add(foot, times(up, L * up_k)), v3(hx * spread, 0, hz * spread));
+      fl := fi_flick(t0, f32(t * 3 + q));
+      sp_fx(s, FX_FIRE, at, (ifx crown then 0.9f32 else 0.5f32) * on * fl * (0.7 + 0.3 * tf_size(s, t)), v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t0 * 2.6 + f32(t + q) * 0.37);
+    }
+    sp_glow(s, add(foot, times(up, L * 0.55)), (2.2 + 1.2 * (1 - bare)) * on * fi_flick(t0, f32(t)), v3(0.45, 0.17, 0.04));
+    if budget > 0 && sp_rand(s) < 0.45 {
+      budget -= 1;
+      at := add(add(foot, times(up, L * (0.35 + 0.5 * sp_rand(s)))), v3((sp_rand(s) - 0.5) * cr, 0, (sp_rand(s) - 0.5) * cr));
+      sp_add_flame(s, at, v3((sp_rand(s) - 0.5) * 0.5, 1.2 + 0.8 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), (0.45 + 0.25 * sp_rand(s)) * (1 - 0.5 * bare), 2.0, 0.5 + 0.3 * sp_rand(s), 3.4, ifx sp_rand(s) < 0.4 then 1.0f32 else 0.0f32);
+    }
+    if budget > 0 && sp_rand(s) < (ifx few then 0.05f32 else 0.1f32) {
+      budget -= 1;
+      top := add(foot, times(up, L * 0.95));
+      sp_add_smoke(s, top, v3((sp_rand(s) - 0.5) * 0.6, 1.3 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 0.6), 1.2 + 0.6 * sp_rand(s), 5.0, 0.22, 0.65, 0.65, 0.35);
+    }
+  }
+}
+// The burning trees' light on the woods: the two biggest fires, flickering.
+tf_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := tf_of(s);
+  n := k;
+  for q: 0..<lo_i(v[0].n, 2) {
+    e := v[0].burn[q * v[0].n / lo_i(v[0].n, 2)];
+    at := add(tf_foot(s, e.tree), times(tf_up(s, e.tree), tf_tall(s, e.tree) * 0.5));
+    n = sp_lamp(u, n, most, at, 16, FI_RGB, 2.0 * clamp(e.t / 1.5, 0, 1) * fi_flick(v[0].time, f32(q + 5)));
+  }
+  return n;
+}
+
+// ---- checks
+
+// The standing tree nearest (x, z), -1 none.
+tf_test_tree :: (g: [] Everglade, x: f32, z: f32) -> int {
+  best := -1; most := 1.0e9f32;
+  for t: 0..<g[0].tree_n {
+    if g[0].sp.tf[0].mode[tf_k(g[..], t)] != TF_UP { continue; }
+    o := t * TREE_FLOATS;
+    d := (g[0].trees[o] - x) * (g[0].trees[o] - x) + (g[0].trees[o + 1] - z) * (g[0].trees[o + 1] - z);
+    if d < most { most = d; best = t; }
+  }
+  return best;
+}
+#test "trees: a meteor beside the tree line fells the trees away from the blast; they lie where they fell, near and far; R stands them again" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a meteor bursting on the ground among the trees west of the palisade
+  t := tf_test_tree(g[..], -78, 0);
+  #assert t >= 0;
+  o := t * TREE_FLOATS;
+  tx := g[0].trees[o]; tz := g[0].trees[o + 1];
+  at := v3(tx + 1.0, ground_at(g[..], tx + 1.0, tz), tz);
+  g[0].sp.dmg = SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  felled := tf_blast(g[..], at, SP_METEOR);
+  #assert felled >= 1;
+  #assert v[0].mode[tf_k(g[..], t)] != TF_UP;
+  #assert felled >= 2;
+  // each that fell falls away from the blast
+  for k: 0..<g[0].tree_n {
+    if v[0].mode[tf_k(g[..], k)] == TF_UP { continue; }
+    q := k * TREE_FLOATS;
+    away := v3(g[0].trees[q] - at.x, 0, g[0].trees[q + 1] - at.z);
+    w := tf_way(g[..], k);
+    #assert w.x * away.x + w.z * away.z > 0;
+  }
+  // far from it, the trees still stand, untouched
+  far := tf_test_tree(g[..], 80, -80);
+  #assert far >= 0 && tf_angle(g[..], far) == 0;
+  // they come down over a few seconds: under gravity, a bounce, and lie still
+  half := 0.0f32;
+  for k: 0..<240 {
+    tf_frame(g[..], 1.0 / 60.0);
+    if k == 6 { half = tf_angle(g[..], t); #assert v[0].mode[tf_k(g[..], t)] == TF_FALL; }
+  }
+  #assert half > 0.03 && half < 1.0;
+  for k: 0..<g[0].tree_n {
+    if v[0].mode[tf_k(g[..], k)] == TF_UP { continue; }
+    #assert v[0].mode[tf_k(g[..], k)] == TF_DOWN && tf_angle(g[..], k) > 1.0 && tf_angle(g[..], k) < 1.8;
+  }
+  // and stay down: a minute on, nothing has stood back up
+  for k: 0..<60 { tf_frame(g[..], 1.0); }
+  #assert v[0].mode[tf_k(g[..], t)] == TF_DOWN && tf_angle(g[..], t) > 1.0;
+  // a lying trunk is in your way: a body along it
+  f := tf_foot(g[..], t);
+  bodies: [FOREST_BODIES * 7 + TF_BODIES * 7] f32;
+  #assert tf_bodies(g[..], bodies[..], 0, f.x, f.z) >= 1;
+  // the far trees draw it lying too: from far off, its cone is turned over
+  g[0].counts[SHAPE_CONE] = 0;
+  tf_far(g[..], t, ground_at(g[..], tx, tz));
+  c := (SLOT_AT[SHAPE_CONE]) * OBJECT_FLOATS;
+  #assert g[0].counts[SHAPE_CONE] == 1;
+  // its up axis (the second column) lies near the ground
+  #assert abs(g[0].objects[c + 5]) < 0.5 * hi(abs(g[0].objects[c + 1]) + abs(g[0].objects[c + 9]), 0.01) + 0.01;
+  // and the kit's mesh the same, its up axis lying
+  g[0].kit_used[group_of(tf_kind(g[..], t) * 2)] = 0;
+  tf_kit(g[..], t, ground_at(g[..], tx, tz));
+  ko := (g[0].group_at[group_of(tf_kind(g[..], t) * 2)]) * OBJECT_FLOATS;
+  #assert abs(g[0].objects[ko + 5]) < 0.6 * tf_size(g[..], t);
+  // R: the forest stands again as it was
+  _ = sp_restore(g[..], -1);
+  #assert !v[0].touched && v[0].mode[tf_k(g[..], t)] == TF_UP && tf_angle(g[..], t) == 0;
+}
+
+#test "trees: flame lights a tree; it burns black, its leaves go, it spreads to the crowns by it; water puts it out; nothing grows back" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a tree out in the woods whose crown touches another's
+  t := -1;
+  for k: 0..<g[0].tree_n {
+    if t >= 0 { break; }
+    o := k * TREE_FLOATS;
+    if tf_city_gap(g[0].trees[o], g[0].trees[o + 1]) < 10 || g[0].trees[o + 2] < 0.9 { continue; }
+    top := add(tf_foot(g[..], k), v3(0, tf_tall(g[..], k) * 0.6, 0));
+    for j: 0..<g[0].tree_n {
+      q := j * TREE_FLOATS;
+      if j == k || t >= 0 || abs(g[0].trees[q] - top.x) > 6 || abs(g[0].trees[q + 1] - top.z) > 6 { continue; }
+      if tf_gap(g[..], j, top) < tf_crown(g[..], k) * 0.5 { t = k; }
+    }
+  }
+  #assert t >= 0;
+  f := tf_foot(g[..], t);
+  // Produce Flame's flame on its trunk: it catches (spell fire, at green wood's odds: a few tries)
+  caught := false;
+  for k: 0..<12 { if !caught && fi_catch(g[..], add(f, v3(0.3, 1.2, 0)), 0.6, FI_SPELL) > 0 { caught = tf_burning(g[..], t); } }
+  #assert caught;
+  // it burns: black, its leaves gone, and the fire reaches the trees whose crowns touch it
+  for k: 0..<160 { tf_frame(g[..], 0.25); }
+  #assert v[0].soot[tf_k(g[..], t)] > 0.95 && v[0].bare[tf_k(g[..], t)] > 0.95;
+  #assert v[0].lit >= 2;
+  // the far trees draw it black and bare
+  g[0].counts[SHAPE_CONE] = 0;
+  tf_far(g[..], t, ground_at(g[..], f.x, f.z));
+  c := SLOT_AT[SHAPE_CONE] * OBJECT_FLOATS;
+  #assert g[0].objects[c + 12] < 0.15 && g[0].objects[c + 13] < 0.15;
+  // water over the fires: they go out
+  if v[0].n > 0 {
+    e := v[0].burn[0].tree;
+    ef := tf_foot(g[..], e);
+    #assert tf_douse(g[..], add(ef, v3(0, 2, 0)), 3, 0) >= 1 && !tf_burning(g[..], e);
+  }
+  // nothing grows back by itself: ten minutes on, still black
+  for k: 0..<600 { tf_frame(g[..], 1.0); }
+  #assert v[0].soot[tf_k(g[..], t)] > 0.95 && v[0].bare[tf_k(g[..], t)] > 0.95;
+  // cold rimes the trees and puts fire out
+  w := tf_test_tree(g[..], -80, 80);
+  #assert tf_ignite(g[..], w);
+  wf := tf_foot(g[..], w);
+  #assert tf_douse(g[..], add(wf, v3(0, 2, 0)), 2, 1) == 1 && v[0].frost[tf_k(g[..], w)] > 0.9;
+  // R: green again
+  _ = sp_restore(g[..], -1);
+  #assert v[0].soot[tf_k(g[..], t)] == 0 && v[0].bare[tf_k(g[..], t)] == 0 && v[0].n == 0;
+}
+
+#test "trees: a bolt by a tree strikes it and splits it; fire deep in the woods is no crime, by the palisade the watch hears it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a tree deep in the woods, well clear of the palisade
+  t := -1;
+  for k: 0..<g[0].tree_n {
+    o := k * TREE_FLOATS;
+    if t < 0 && tf_city_gap(g[0].trees[o], g[0].trees[o + 1]) > f32(TF_CITY) + 15 { t = k; }
+  }
+  #assert t >= 0;
+  f := tf_foot(g[..], t);
+  #assert tf_bolt(g[..], v3(f.x + 1.2, f.y, f.z), 1.0);
+  // the tallest by it took the bolt: split high on its trunk, going over
+  t = -1;
+  for k: 0..<g[0].tree_n { if v[0].mode[tf_k(g[..], k)] != TF_UP { t = k; } }
+  #assert v[0].split == 1 && t >= 0 && v[0].mode[tf_k(g[..], t)] == TF_FALL && v[0].pivot[tf_k(g[..], t)] > 1.5;
+  // its stump stands in your way still, to where it broke
+  girth := tf_girth(g[..], t, tree_girth(g[..], g[0].trees[..], t));
+  #assert girth.r > 0 && girth.top > 1.5;
+  #assert tf_city_gap(f.x, f.z) > f32(TF_CITY);
+  #assert tf_city_gap(-70, 0) < f32(TF_CITY);
+}

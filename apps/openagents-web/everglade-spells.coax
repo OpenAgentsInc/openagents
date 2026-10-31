@@ -55,6 +55,7 @@
 #load "everglade-grove.coax";
 #load "everglade-wild.coax";
 #load "everglade-fire.coax";
+#load "everglade-forest.coax";
 #load "everglade-circle.coax";
 #load "everglade-marks.coax";
 #load "everglade-storm.coax";
@@ -205,6 +206,7 @@ Spells :: struct {
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
   fi: [1] Fire;                // fire on the town's pieces and the dome's breaking (everglade-fire.coax)
+  tf: [1] Timber;              // the trees outside the city: felled, burnt, rimed (everglade-forest.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
@@ -542,6 +544,9 @@ sp_aim :: (s: [] Everglade) {
     h := sp_ray_box(r.from, r.dir, w[0].pieces[i]);
     if h.ok && h.t > 0.3 && h.t < best { best = h.t; ground = true; n = h.n; }
   }
+  // a tree's trunk (everglade-forest.coax): the spell meets it, facing you
+  trunk := tf_ray(s, r.from, r.dir, best);
+  if trunk < best { best = trunk; ground = true; n = unit_or(v3(-r.dir.x, 0, -r.dir.z), v3(0, 0, 1)); }
   s[0].sp.aim = add(r.from, times(r.dir, best));
   // over water, a spell meets its surface, not the bed under it
   if ground && r.dir.y < -0.01 {
@@ -772,6 +777,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   s[0].sp.walls_dirty = true;
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
   fi_blast(s, at, radius, kind, slot == SP_MEGA);   // what burns catches or goes out; the dome takes its share (everglade-fire.coax)
+  felled := tf_blast(s, at, slot);   // the trees it reaches sway, lean, fall or fly (everglade-forest.coax)
   if kind == 0 { fr_melt(s, at, radius); }   // fire melts the ice it reaches (everglade-frost.coax)
   if slot == SP_ORB {
     // the water puts out what burns where it splashes: a fireball still burning ends, a char steams
@@ -1089,6 +1095,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
   if s[0].sp.on { ab_after_step(s); }
   sp_dome(s, dt);
+  tf_frame(s, dt);   // the trees sway, fall and burn (everglade-forest.coax)
   for e: 0..<w[0].event_n {
     ev := w[0].events[e];
     // falling into the water: a splash, not dust

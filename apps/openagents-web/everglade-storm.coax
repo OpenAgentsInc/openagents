@@ -315,6 +315,7 @@ st_sv_bolts :: (s: [] Everglade) {
     b := v[0].bolts[q];
     if !fr_wet(s, b.x, b.z) { sp_add_scorch(s, b, 0.9, false); wd_light(s, b, WD_GEN - 3); }
     _ := fi_catch(s, b, 1.5, FI_BOLT);
+    if tf_bolt(s, b, 0.5) { tf_crime(s, b); }   // a tree by it draws the bolt (everglade-forest.coax)
     for e: 0..<(ifx phone(s) then 4 else 8) { sp_add_spark(s, add(b, v3(0, 0.2, 0)), times(sp_spray(s, 0.3), 5), 0.4 + 0.3 * sp_rand(s), 0.025, v3(1.2, 1.4, 1.8), 9.81); }
   }
   s[0].sp.shake = hi(s[0].sp.shake, 0.45f32);
