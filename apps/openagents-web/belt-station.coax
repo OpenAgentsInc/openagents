@@ -1,0 +1,75 @@
+// Hearth Station's stores and its refinery (b22-resources). Miners bring rock from the ice rocks:
+// mostly water ice, the rest metal-bearing regolith. The refinery melts and splits the ice: most
+// becomes reaction mass (ships' tanks fill from it), some drinking and wash water, and some is
+// electrolysed for air. It runs at its rate only with its shifts worked: the station's people work
+// it, less the crews away on ships.
+//   coax/bin/coax test apps/openagents-web/belt.coax
+
+ROCK_ICE :: 0.88;          // of a tonne mined at an ice rock, the ice; the rest is metal-bearing rock
+REFINE_RATE :: 40.0;       // tonnes of ice a day with every shift worked
+REFINE_MASS :: 0.80;       // of a tonne refined: reaction mass,
+REFINE_WATER :: 0.15;      // water,
+REFINE_AIR :: 0.05;        // and air (oxygen split from it)
+STATION_SHIFTS :: 30;      // people to work every shift
+
+Station :: struct {
+  ice: f64; metal: f64;              // tonnes delivered and not yet refined; metal kept
+  mass: f64; water: f64; air: f64;   // refined, tonnes
+  people: int;                       // who live aboard, crews included
+  away: int;                         // of them, crewing ships away from the station
+}
+
+station_new :: () -> Station {
+  return Station.{ice = 400.0, metal = 0.0, mass = 800.0, water = 120.0, air = 40.0, people = 46, away = 0};
+}
+station_workers :: (st: Station) -> int { w := st.people - st.away; return ifx w < 0 then 0 else w; }
+// The share of the refinery's shifts worked, 0 to 1.
+station_staffed :: (st: Station) -> f64 {
+  w := station_workers(st);
+  if w >= STATION_SHIFTS { return 1.0; }
+  return f64(w) / f64(STATION_SHIFTS);
+}
+// Tonnes of ice a day it refines now.
+station_rate :: (st: Station) -> f64 { return REFINE_RATE * station_staffed(st); }
+// A load delivered: tonnes of rock, split into ice and metal.
+station_deliver :: (st: Station, tonnes: f64) -> Station {
+  r := st;
+  if tonnes <= 0.0 { return r; }
+  r.ice += tonnes * ROCK_ICE; r.metal += tonnes * (1.0 - ROCK_ICE);
+  return r;
+}
+// days of refining.
+station_step :: (st: Station, days: f64) -> Station {
+  r := st;
+  if days <= 0.0 { return r; }
+  melt := station_rate(st) * days;
+  if melt > r.ice { melt = r.ice; }
+  r.ice -= melt;
+  r.mass += melt * REFINE_MASS; r.water += melt * REFINE_WATER; r.air += melt * REFINE_AIR;
+  return r;
+}
+// Fill a tank from the reaction mass: the tonnes it gave.
+station_fuel :: (st: [] Station, need: f64) -> f64 {
+  take := need;
+  if take > st[0].mass { take = st[0].mass; }
+  if take < 0.0 { take = 0.0; }
+  st[0].mass -= take;
+  return take;
+}
+
+#test "the refinery: ice into reaction mass, water and air at its rate, slower with crews away, and never more than it has" {
+  st := station_new();
+  st.ice = 1000.0; st.mass = 0.0; st.water = 0.0; st.air = 0.0;
+  a := station_step(st, 10.0);   // ten days, every shift worked: 400 t of ice
+  #assert abs(a.ice - 600.0) < 0.001 && abs(a.mass - 320.0) < 0.001 && abs(a.water - 60.0) < 0.001 && abs(a.air - 20.0) < 0.001;
+  st.away = st.people - 15;      // half the shifts: half the rate
+  #assert abs(station_rate(st) - REFINE_RATE / 2.0) < 0.001;
+  b := station_step(st, 10.0);
+  #assert abs(b.mass - 160.0) < 0.001;
+  c := station_step(st, 1000.0); // it runs out of ice, not into debt
+  #assert c.ice == 0.0 && abs(c.mass - 800.0) < 0.001;
+  d := station_deliver(st, 600.0);
+  #assert abs(d.ice - (1000.0 + 528.0)) < 0.001 && abs(d.metal - 72.0) < 0.001;
+  e: [1] Station; e[0] = st; e[0].mass = 50.0;
+  #assert station_fuel(e[..], 80.0) == 50.0 && e[0].mass == 0.0;
+}
