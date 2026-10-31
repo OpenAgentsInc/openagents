@@ -106,8 +106,8 @@ LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FI
 CLASS_PAD :: 14;   // a class button's text keeps this far (in CSS px) from its right edge
 
 // ---- the waves: up to three groups each (layer, count, seconds between, delay)
-WAVES :: 10;
 GROUPS :: 3;
+waves_of :: (s: [] Stair) -> int { return s[0].ct[0].waves; }
 
 // How many defenders go on the field in one round: three, and one more every two waves.
 BEASTS :: 512;
@@ -137,17 +137,17 @@ MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; path: int; regen: f32; }
+Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; path: int; regen: f32; seen: bool; }   // seen: a shadow Daylight has shown
 Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
-  level: int; surge: bool; slots2: int; bless: int;
+  level: int; surge: bool; slots2: int; bless: int;   // bless: the d4 Bless added to its last roll (0 none)
   fav: int;        // a ranger's favoured layer
   inspired: int;   // a Bardic Inspiration die waiting for its next attack roll (its sides, 0 none)
   smite: bool;     // a paladin's Divine Smite, ready this wave
   aura: int;       // the +1 a paladin's aura added to its last roll (0 none)
   insp: int;       // the inspiration die it added to its last roll (0 none)
   swings: int;     // fighter attacks made, all told
-  daylight: bool;  // a cleric's Daylight, lit this wave   // bless: the d4 Bless added to its last roll (0 none)
+  daylight: bool;  // a cleric's Daylight, lit this wave
   hits: int; misses: int; pops: int;
   roll: int; total: int; vs: int; hit: bool; crit: bool; dealt: int; how: int;   // the last turn (how: 0 attack, 1 save, 2 auto)
   aim: f32; flash: f32;
@@ -497,15 +497,16 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
 }
 
 // The beast furthest along within range of a cell (-1 none); skip: a layer to pass over (-1 none).
-// A beast the party can target: anything but a shadow, and a shadow in a cleric's Daylight.
+// A beast the party can target: anything but a shadow, and a shadow that has passed through a
+// cleric's Daylight (once shown, it stays seen).
 shadow_seen :: (s: [] Stair, i: int) -> bool {
-  if s[0].beasts[i].kind != SHADOW { return true; }
+  if s[0].beasts[i].kind != SHADOW || s[0].beasts[i].seen { return true; }
   p := beast_xy(s, i);
   for k: 0..<DEFENDERS {
     d := s[0].party[k];
     if !d.live || !d.daylight { continue; }
     c := cell_xy(d.cell);
-    if (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) <= f32(DAYLIGHT_REACH * DAYLIGHT_REACH) { return true; }
+    if (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) <= f32(DAYLIGHT_REACH * DAYLIGHT_REACH) { s[0].beasts[i].seen = true; return true; }
   }
   return false;
 }
@@ -593,7 +594,7 @@ ally_near :: (s: [] Stair, k: int, t: int) -> bool {
 }
 // The strongest layer in the coming wave (a ranger's favoured enemy).
 strongest_next :: (s: [] Stair) -> int {
-  w := lo_i(s[0].wave, WAVES - 1);
+  w := lo_i(s[0].wave, waves_of(s) - 1);
   best := 0;
   for g: 0..<GROUPS { kd := s[0].ct[0].kind[w * GROUPS + g]; if kd > best { best = kd; } }
   return best;
@@ -928,7 +929,7 @@ wave_groups_done :: (s: [] Stair) -> bool {
 }
 
 start_wave :: (s: [] Stair) -> bool {
-  if s[0].phase != BUILD || s[0].wave >= WAVES { return false; }
+  if s[0].phase != BUILD || s[0].wave >= waves_of(s) { return false; }
   s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0; s[0].banner = 1.6;
   for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = s[0].ct[0].delay[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { refresh(s, i); }
@@ -996,7 +997,7 @@ step :: (s: [] Stair, dt: f32) {
   if wave_groups_done(s) && live_beasts(s) == 0 {
     bonus := 30 + s[0].wave * 8;
     s[0].gold += bonus;
-    if s[0].wave >= WAVES { s[0].phase = WON; s[0].selected = -1; s[0].card = -1; return; }
+    if s[0].wave >= waves_of(s) { s[0].phase = WON; s[0].selected = -1; s[0].card = -1; return; }
     s[0].phase = BUILD;
     buf: [48] u8;
     n := put(buf[..], 0, "WAVE "); n = put_int(buf[..], n, s[0].wave); n = put(buf[..], n, " HELD · +"); n = put_int(buf[..], n, bonus); n = put(buf[..], n, " GOLD");
@@ -1406,7 +1407,7 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     g := query_number(url, "gold");
     if g >= 0 && g <= 99999 { s[0].gold = cast(int) g; }
     wv := query_number(url, "wave");
-    if wv >= 1 && wv <= WAVES { s[0].wave = cast(int) wv - 1; }
+    if wv >= 1 && wv <= f32(waves_of(s)) { s[0].wave = cast(int) wv - 1; }
     if fact_of(t, "coarse") == "1" { s[0].touch = true; }
     mp := query_number(url, "map");
     if mp >= 1 && mp <= MAPS { set_map(s, cast(int) mp - 1); }
@@ -1479,7 +1480,7 @@ spot_near :: (s: [] Stair, along: f32) -> int {
 SWARM :: 500;
 stage_highlight :: (s: [] Stair) {
   stair_reset(s);
-  s[0].gold = 99999; s[0].wave = WAVES - 1;
+  s[0].gold = 99999; s[0].wave = waves_of(s) - 1;
   for i: 0..<20 {
     s[0].placed_round = 0;
     spot := spot_near(s, 0.08 + 0.8 * f32(i) / 19);   // spread up the whole climb
@@ -1943,7 +1944,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   lx += coin * 2 + 6 * k;
   n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, GOLD_R, GOLD_G, GOLD_B));
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
-  m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, WAVES);
+  m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, waves_of(s));
   // on a phone, MAP (before the first wave) takes the wave count's place
   if !(s[0].portrait && s[0].shown[B_MAP] && lx + text_width(cast(string) buf[0..<m], cap) > s[0].boxes[B_MAP].x0 - 6 * k) {
     n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
@@ -2101,7 +2102,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     n = say_at(out, n, lab, (r.x0 + r.x1) / 2 - tw / 2, (r.y0 + r.y1) / 2 + bc / 2, bc, ink(k, light, cr, cg, cb));
   }
   // the next wave, on the back wall: a bubble of each layer and how many
-  if s[0].phase == BUILD && s[0].wave < WAVES && s[0].bt > 0 {
+  if s[0].phase == BUILD && s[0].wave < waves_of(s) && s[0].bt > 0 {
     wy := s[0].by - f32(WALL_ROWS) * s[0].bt * f32(SQUASH) * 0.5;
     wh := f32(WALL_ROWS) * s[0].bt * f32(SQUASH);
     pc := lo(wh * 0.42, 13 * k);
@@ -2172,7 +2173,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     head := ifx won then "THE STAIR HOLDS" else "THE TOWER FALLS";
     hc := lo(22 * k, (2 * half - 40 * k) / hi(measure(head, GAP, SPACE, false), 1));
     n = say_mid(out, n, head, cx, cy - 48 * k, hc, ink(k, 1, ifx won then GOLD_R else 1.0f32, ifx won then GOLD_G else 0.4f32, ifx won then GOLD_B else 0.35f32));
-    m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, " OF "); m = put_int(buf[..], m, WAVES);
+    m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, " OF "); m = put_int(buf[..], m, waves_of(s));
     m = put(buf[..], m, " · "); m = put_int(buf[..], m, s[0].pops); m = put(buf[..], m, " POPPED · "); m = put_int(buf[..], m, s[0].lives); m = put(buf[..], m, " LIVES");
     sc := lo(11 * k, (2 * half - 24 * k) / hi(measure(cast(string) buf[0..<m], GAP, SPACE, false), 1));
     n = say_mid(out, n, cast(string) buf[0..<m], cx, cy - 6 * k, sc, ink(k, 0.9, INK_R, INK_G, INK_B));
@@ -2252,7 +2253,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
 
 #test "the game's content is its tables: they read whole, and a broken one is refused with its line and why" {
   c: [1] Content;
-  #assert stair_tables_default(c[..], 0) && c[0].hp[EMBER] == 7 && c[0].cost[WIZARD] == 85 && c[0].count[9 * GROUPS + 2] == 8 && c[0].way_n == 8;
+  #assert stair_tables_default(c[..], 0) && c[0].hp[EMBER] == 7 && c[0].cost[WIZARD] == 85 && c[0].count[9 * GROUPS + 2] == 6 && c[0].way_n == 8 && c[0].waves == 40;
   // the game plays them
   s: [1] Stair;
   stair_start(s[..]);
@@ -2268,7 +2269,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   #assert !stair_tables_read(c[..], bad) && c[0].line == 1 && stair_tables_error(c[..]) == "line 1: a layer pops into lower layers (or -), not wisp";
   #assert !stair_tables_read(c[..], "# fine\nclass wizard cost 85 range 30 turn 1.4") && c[0].line == 2 && stair_tables_error(c[..]) == "line 2: range is a number from 0.5 to 8";
   #assert !stair_tables_read(c[..], "stair 0 4 3 5") && stair_tables_error(c[..]) == "line 1: each corner is straight across or down from the last, and not on it";
-  #assert !stair_tables_read(c[..], "wave 11 mote 5 gap 1 delay 0") && stair_tables_error(c[..]) == "line 1: a wave is numbered 1 to 10";
+  #assert !stair_tables_read(c[..], "wave 41 mote 5 gap 1 delay 0") && stair_tables_error(c[..]) == "line 1: a wave is numbered 1 to 40";
   #assert !stair_tables_read(c[..], "\n\ntower 3") && c[0].line == 3;
   #assert !stair_tables_read(c[..], "start gold 1 lives 1") && stair_tables_error(c[..]) == "line 1: no layer mote";
 }
@@ -2359,12 +2360,14 @@ level_all :: (s: [] Stair, keep: int) {
     if d.live && d.level < MAX_LEVEL && s[0].gold - up_cost(s[..], d.cls, d.level) >= keep { ok := upgrade(s, q); }
   }
 }
-play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
+play_as :: (s: [] Stair, who: int, seed: u64) -> Played { return play_until(s, who, seed, waves_of(s)); }
+// The same, stopping once the first `until` waves are held (won: they were).
+play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   s[0].seed = seed;
   stair_reset(s);
   r: Played;
   guard := 0;
-  while s[0].phase != WON && s[0].phase != LOST && guard < 800000 {
+  while s[0].phase != WON && s[0].phase != LOST && guard < 3200000 && !(s[0].phase == BUILD && s[0].wave >= until) {
     if who == BEST && s[0].phase == FIGHT {
       place_rotation(s, 99);
       if round_left(s) <= 0 { for i: 0..<3 { level_all(s, 0); } }
@@ -2378,18 +2381,19 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
     }
     before := s[0].lives;
     step(s, f32(STEP));
-    if s[0].wave >= WAVES - 1 { r.lost_late += before - s[0].lives; }
+    if s[0].wave >= 8 { r.lost_late += before - s[0].lives; }   // from wave 9 on
     guard += 1;
   }
-  r.won = s[0].phase == WON; r.wave = s[0].wave; r.lives = s[0].lives; r.placed = s[0].placed;
+  r.won = s[0].phase == WON || (s[0].phase == BUILD && s[0].wave >= until); r.wave = s[0].wave; r.lives = s[0].lives; r.placed = s[0].placed;
   return r;
 }
-#test "with no party the tower falls; a party that builds as gold allows holds the stair" {
+#test "with no party the tower falls; a party that builds as gold allows holds the first ten waves" {
   s: [1] Stair;
   stair_start(s[..]);
   #assert play_through(s[..], false) == LOST;
   stair_reset(s[..]);
-  #assert play_through(s[..], true) == WON && s[0].wave == WAVES;
+  s[0].ct[0].waves = 10;   // the first ten (the full forty: the forty-wave test and stair-sim.coax)
+  #assert play_through(s[..], true) == WON && s[0].wave == 10;
 }
 
 #test "a popped glimmer splits into two wisps where it was on the stair, and the split is in the rules log" {
@@ -2442,20 +2446,53 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
 #test "the curve: a new player placing one a round reaches wave 8" {
   s: [1] Stair;
   stair_start(s[..]);
-  r := play_as(s[..], NEW_PLAYER, 7919);
+  r := play_until(s[..], NEW_PLAYER, 7919, 10);
   #assert r.wave >= 8;
 }
 #test "the curve: a player who keeps their gold and places three falls by wave 7" {
   s: [1] Stair;
   stair_start(s[..]);
-  r := play_as(s[..], HOARDER, 7919);
+  r := play_until(s[..], HOARDER, 7919, 10);
   #assert !r.won && r.wave <= 7;
 }
-#test "the curve: the best play holds the stair, but waves 9 and 10 take lives" {
+#test "the curve: the best play holds the first ten waves (all forty: stair-sim.coax)" {
   s: [1] Stair;
   stair_start(s[..]);
-  r := play_as(s[..], BEST, 7919);   // it wins about three seeds in five (stair-sim.coax)
-  #assert r.won && r.lost_late >= 20 && r.lives < s[0].ct[0].start_lives / 2;
+  r := play_until(s[..], BEST, 7919, 10);
+  #assert r.won && r.wave == 10 && r.lives > s[0].ct[0].start_lives / 2;
+}
+
+#test "forty waves: a hulk every ten from 20, the other four layers after 10, and a seeded full party at level 5 holds the last three to the top" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  #assert waves_of(s[..]) == 40;
+  for w: 0..<40 {
+    hulk := false; late := false;
+    for g: 0..<GROUPS {
+      kd := s[0].ct[0].kind[w * GROUPS + g];
+      if kd == HULK { hulk = true; }
+      if kd >= FROSTLING { late = true; }
+    }
+    #assert hulk == (w + 1 >= 20 && (w + 1) % 10 == 0);
+    #assert late == (w + 1 > 10);
+  }
+  s[0].seed = 7919;
+  stair_reset(s[..]);
+  s[0].gold = 99999; s[0].wave = 37;
+  for i: 0..<40 {
+    s[0].placed_round = 0;
+    spot := ai_spot(s[..]);
+    if spot < 0 || !place(s[..], spot, AI_CLASSES[i % 6]) { break; }
+  }
+  for k: 0..<DEFENDERS { while s[0].party[k].live && upgrade(s[..], k) {} }
+  s[0].gold = 0;
+  guard := 0;
+  while s[0].phase != WON && s[0].phase != LOST && guard < 400000 {
+    if s[0].phase == BUILD { ok := start_wave(s[..]); }
+    step(s[..], f32(STEP));
+    guard += 1;
+  }
+  #assert s[0].phase == WON && s[0].wave == 40 && s[0].lives > 0;
 }
 
 #test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {
@@ -2639,15 +2676,15 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   #assert most < live / 2 && found > 40;
 }
 
-#test "three maps: each plays a full run to the top of the tower, the fork sends the beasts up both stairs, and MAP picks one before the first wave" {
+#test "three maps: each holds its first ten waves, the fork sends the beasts up both stairs, and MAP picks one before the first wave" {
   s: [1] Stair;
   stair_start(s[..]);
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   for m: 0..<MAPS {
     set_map(s[..], m);
     #assert s[0].ct[0].ok && s[0].map == m && s[0].path_len > 20;
-    r := play_as(s[..], BEST, 7919);
-    #assert r.won && r.wave == WAVES;
+    r := play_until(s[..], BEST, 7919, 10);
+    #assert r.won && r.wave == 10;
     n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
     #assert n > 0;
   }
@@ -2814,7 +2851,7 @@ LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1
   s: [1] Stair;
   stair_start(s[..]);
   stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=highlight");
-  #assert s[0].phase == FIGHT && s[0].wave == WAVES && s[0].placed >= 16;
+  #assert s[0].phase == FIGHT && s[0].wave == waves_of(s[..]) && s[0].placed >= 16;
   for k: 0..<DEFENDERS { if s[0].party[k].live { #assert s[0].party[k].level == MAX_LEVEL; } }
   for i: 0..<720 { step(s[..], f32(STEP)); }
   #assert live_beasts(s[..]) >= 8 && s[0].pops >= 10;

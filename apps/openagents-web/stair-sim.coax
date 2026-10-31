@@ -1,7 +1,8 @@
 // Hold the Stair's difficulty curve over many seeds, natively (the #tests in stair.coax take one):
 //   coax/bin/coax run apps/openagents-web/stair-sim.coax --release
 // Each map, then each line: a player (stair.coax's play_as), WON or LOST, the wave it ended on, lives left,
-// defenders placed and the lives waves 9 and 10 took.
+// defenders placed and the lives the waves from 9 on took. 2026-10-31, forty waves: BEST wins every map
+// on seeds 7919 and 15838 (the fork the hardest, about thirty lives lost); a run takes a minute or two.
 #import "Basic";
 #load "stair.coax";
 

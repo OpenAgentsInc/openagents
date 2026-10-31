@@ -1,5 +1,5 @@
 // Hold the Stair's content as text tables (hts-content-tables): the bubble-beasts' layers, the
-// party's classes and levels, the ten waves, the start and the stair itself, a statement a line,
+// party's classes and levels, the forty waves, the start and the stair itself, a statement a line,
 // that an agent can write and stair_tables_read checks. A table that breaks a rule is refused
 // whole with its line and the reason, never bent to fit; the game plays STAIR_TABLES.
 //
@@ -23,7 +23,7 @@
 // Every layer, class, level, wave, start, round and stair must be there.
 //   coax/bin/coax test apps/openagents-web/stair.coax
 
-TABLE_LAYERS :: 8; TABLE_CLASSES :: 7; TABLE_WAVES :: 10; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
+TABLE_LAYERS :: 8; TABLE_CLASSES :: 7; TABLE_WAVES :: 40; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
 TABLE_ERROR :: 160;
 STAIR_SEED :: 20261030;   // the dice's seed when a table names none
 TABLE_LAYER_NAMES :: [8] string.["mote", "wisp", "glimmer", "ember", "frostling", "ironskin", "shadow", "hulk"];
@@ -45,11 +45,12 @@ Content :: struct {
   way2_n: int; way2_c: [TABLE_CORNERS] int; way2_r: [TABLE_CORNERS] int;   // a second stair (0: none)
   // what was given, to refuse a table missing a part
   had_layer: [TABLE_LAYERS] bool; had_class: [TABLE_CLASSES] bool; had_level: [TABLE_CLASSES] bool;
+  waves: int;   // how many, 1 to TABLE_WAVES
   had_wave: [TABLE_WAVES] bool; had_start: bool; had_round: bool;
 }
 
 // The first playable's content.
-STAIR_TABLES :: [36] string.[
+STAIR_TABLES :: [67] string.[
   "# the bubble-beasts: original creatures, stat blocks in the SRD's terms",
   "layer mote    ac 10 hp 2 dex 0 con 0 speed 1.0  size 0.19 gold 2 lives 1  colour 0.55 0.8 1.0   inside - -",
   "layer wisp    ac 11 hp 4 dex 1 con 0 speed 1.25 size 0.24 gold 2 lives 3  colour 0.35 1.0 0.45  inside mote mote",
@@ -74,7 +75,7 @@ STAIR_TABLES :: [36] string.[
   "level ranger  45 70 150 220",
   "level bard    40 60 130 190",
   "level paladin 50 75 160 230",
-  "# the waves: light to wave 8, heavy at 9 and 10 (stair.coax's play_as players check the curve)",
+  "# the waves: light to wave 8, heavy at 9 and 10, then thirty more (stair.coax's play_as players check the curve)",
   "wave 1 mote 12 gap 0.9 delay 0",
   "wave 2 mote 20 gap 0.55 delay 0",
   "wave 3 wisp 6 gap 1.0 delay 0;  wave 3 mote 12 gap 0.5 delay 2",
@@ -83,8 +84,39 @@ STAIR_TABLES :: [36] string.[
   "wave 6 glimmer 6 gap 1.0 delay 0; wave 6 wisp 8 gap 0.6 delay 3",
   "wave 7 ember 3 gap 2.0 delay 0; wave 7 glimmer 6 gap 0.9 delay 2",
   "wave 8 ember 6 gap 1.2 delay 0; wave 8 wisp 12 gap 0.5 delay 4",
-  "wave 9 glimmer 20 gap 0.45 delay 0; wave 9 ember 8 gap 1.0 delay 3",
-  "wave 10 ember 14 gap 0.8 delay 0; wave 10 glimmer 14 gap 0.5 delay 4; wave 10 ember 8 gap 0.6 delay 9",
+  "wave 9 glimmer 16 gap 0.5 delay 0; wave 9 ember 6 gap 1.1 delay 3",
+  "wave 10 ember 10 gap 0.9 delay 0; wave 10 glimmer 12 gap 0.55 delay 4; wave 10 ember 6 gap 0.7 delay 9",
+  "# from 11 the other four layers; a hulk every ten from 20",
+  "wave 11 frostling 4 gap 1.6 delay 0; wave 11 wisp 16 gap 0.4 delay 2",
+  "wave 12 frostling 8 gap 1.0 delay 0; wave 12 glimmer 10 gap 0.5 delay 3",
+  "wave 13 shadow 3 gap 2.0 delay 0; wave 13 ember 8 gap 0.9 delay 2",
+  "wave 14 ironskin 3 gap 2.2 delay 0; wave 14 frostling 8 gap 0.8 delay 3",
+  "wave 15 shadow 4 gap 1.6 delay 0; wave 15 glimmer 16 gap 0.45 delay 2",
+  "wave 16 ironskin 4 gap 1.8 delay 0; wave 16 ember 8 gap 0.8 delay 4",
+  "wave 17 frostling 12 gap 0.7 delay 0; wave 17 shadow 4 gap 1.4 delay 5",
+  "wave 18 ironskin 6 gap 1.2 delay 0; wave 18 shadow 5 gap 1.2 delay 4",
+  "wave 19 ember 18 gap 0.5 delay 0; wave 19 ironskin 6 gap 1.1 delay 5",
+  "wave 20 hulk 1 gap 1 delay 0; wave 20 ironskin 6 gap 1.2 delay 4; wave 20 frostling 12 gap 0.6 delay 8",
+  "wave 21 shadow 8 gap 0.8 delay 0; wave 21 frostling 11 gap 0.6 delay 4",
+  "wave 22 ironskin 10 gap 0.8 delay 0; wave 22 ember 13 gap 0.5 delay 4",
+  "wave 23 shadow 11 gap 0.6 delay 0; wave 23 ironskin 6 gap 1.0 delay 5",
+  "wave 24 frostling 19 gap 0.4 delay 0; wave 24 shadow 8 gap 0.7 delay 5",
+  "wave 25 ironskin 11 gap 0.7 delay 0; wave 25 glimmer 24 gap 0.3 delay 4",
+  "wave 26 shadow 14 gap 0.5 delay 0; wave 26 ironskin 8 gap 0.9 delay 5",
+  "wave 27 ironskin 14 gap 0.6 delay 0; wave 27 frostling 16 gap 0.4 delay 6",
+  "wave 28 shadow 16 gap 0.5 delay 0; wave 28 ember 19 gap 0.4 delay 5",
+  "wave 29 ironskin 16 gap 0.5 delay 0; wave 29 shadow 13 gap 0.6 delay 6",
+  "wave 30 hulk 2 gap 6 delay 0; wave 30 shadow 13 gap 0.6 delay 4; wave 30 ironskin 10 gap 0.8 delay 10",
+  "wave 31 shadow 18 gap 0.45 delay 0; wave 31 frostling 19 gap 0.35 delay 6",
+  "wave 32 ironskin 19 gap 0.5 delay 0; wave 32 shadow 11 gap 0.6 delay 6",
+  "wave 33 shadow 21 gap 0.4 delay 0; wave 33 ironskin 14 gap 0.6 delay 7",
+  "wave 34 frostling 29 gap 0.3 delay 0; wave 34 ironskin 16 gap 0.5 delay 6",
+  "wave 35 ironskin 16 gap 0.5 delay 0; wave 35 shadow 16 gap 0.5 delay 6",
+  "wave 36 ironskin 18 gap 0.5 delay 0; wave 36 shadow 16 gap 0.5 delay 7",
+  "wave 37 shadow 18 gap 0.45 delay 0; wave 37 frostling 21 gap 0.35 delay 7",
+  "wave 38 ironskin 18 gap 0.45 delay 0; wave 38 shadow 18 gap 0.45 delay 8",
+  "wave 39 shadow 19 gap 0.45 delay 0; wave 39 ironskin 18 gap 0.45 delay 8",
+  "wave 40 hulk 3 gap 5 delay 0; wave 40 shadow 16 gap 0.5 delay 6; wave 40 ironskin 14 gap 0.5 delay 14",
   "start gold 140 lives 100; round 3 every 2"];
 // The maps: each is the stair (or two) the tables above are played on.
 MAPS :: 3;
@@ -225,10 +257,10 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
   if head == "wave" {
     if n != 8 { return table_refuse(c, line, "wave N KIND COUNT gap G delay D", ""); }
     wv := table_number(table_word(k, 1));
-    if !wv.ok || !wv.whole || wv.v < 1 || wv.v > f32(TABLE_WAVES) { return table_refuse(c, line, "a wave is numbered 1 to 10", ""); }
+    if !wv.ok || !wv.whole || wv.v < 1 || wv.v > f32(TABLE_WAVES) { return table_refuse(c, line, "a wave is numbered 1 to 40", ""); }
     w := cast(int) wv.v - 1;
     l := table_layer(table_word(k, 2));
-    if l < 0 { return table_refuse(c, line, "a wave's beasts are mote, wisp, glimmer or ember, not ", table_word(k, 2)); }
+    if l < 0 { return table_refuse(c, line, "a wave's beasts are one of the layers, not ", table_word(k, 2)); }
     cnt := table_number(table_word(k, 3));
     if !cnt.ok || !cnt.whole || cnt.v < 1 || cnt.v > 200 { return table_refuse(c, line, "a wave's count is a whole number from 1 to 200", ""); }
     gp := table_num(c, k, line, 5, "gap", false, 0.05, 10); if !gp.ok { return false; }
@@ -326,7 +358,11 @@ stair_tables_read :: (c: [] Content, text: string) -> bool {
   for l: 0..<TABLE_LAYERS { if !c[0].had_layer[l] { return table_refuse(c, line, "no layer ", TABLE_LAYER_NAMES[l]); } }
   for q: 0..<TABLE_CLASSES { if !c[0].had_class[q] { return table_refuse(c, line, "no class ", TABLE_CLASS_NAMES[q]); } }
   for q: 0..<TABLE_CLASSES { if !c[0].had_level[q] { return table_refuse(c, line, "no level for ", TABLE_CLASS_NAMES[q]); } }
-  for w: 0..<TABLE_WAVES { if !c[0].had_wave[w] { return table_refuse(c, line, "a wave is missing: every one of 1 to 10 has a group", ""); } }
+  // the waves run from 1 to the last with none missing
+  c[0].waves = 0;
+  for w: 0..<TABLE_WAVES { if c[0].had_wave[w] { c[0].waves = w + 1; } }
+  if c[0].waves == 0 { return table_refuse(c, line, "no wave", ""); }
+  for w: 0..<c[0].waves { if !c[0].had_wave[w] { return table_refuse(c, line, "a wave is missing: every one from 1 to the last has a group", ""); } }
   if !c[0].had_start { return table_refuse(c, line, "no start", ""); }
   if !c[0].had_round { return table_refuse(c, line, "no round", ""); }
   if c[0].way_n < 2 { return table_refuse(c, line, "no stair", ""); }
@@ -336,7 +372,7 @@ stair_tables_read :: (c: [] Content, text: string) -> bool {
 }
 // STAIR_TABLES, a line each, read into c (true unless the built-in table is broken).
 stair_tables_default :: (c: [] Content, map: int) -> bool {
-  buf: [4096] u8;
+  buf: [8192] u8;
   n := 0;
   for i: 0..<STAIR_TABLES.count { n = table_put(buf[..], n, STAIR_TABLES[i]); if n < buf.count { buf[n] = '\n'; n += 1; } }
   n = table_put(buf[..], n, STAIR_MAPS[map]);
