@@ -7,6 +7,7 @@ PS_Tag :: enum u32 {
   type_array = 2;
   type_view = 3;
   type_dynamic = 4;
+  type_param = 5;
   expr_int_lit = 16;
   expr_float_lit = 17;
   expr_bool_lit = 18;
@@ -74,12 +75,13 @@ PS_fail :: (s:[] PS_State,out:[] u8,loc:PS_Loc,code:string,message:string,fix:st
   parts:=[1] string.[message];PS_error(s,out,loc,code,fix,parts[..]);
 }
 PS_label :: (kind:u32)->string {
-  words:=[53] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'"];
+  words:=[54] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name"];
   return words[cast(int)kind];
 }
 PS_Description :: struct {open:string;word:string;close:string;}
 PS_describe :: (v:PS_Token)->PS_Description {
-  if v.kind==1 || v.kind==2 {return PS_Description.{open="'",word=v.text,close="'"};}return PS_Description.{word=PS_label(v.kind)};
+  if v.kind==1 || v.kind==2 {return PS_Description.{open="'",word=v.text,close="'"};}
+  if v.kind==53 {return PS_Description.{open="'$",word=v.text,close="'"};}return PS_Description.{word=PS_label(v.kind)};
 }
 PS_expect :: (t:[] PS_Token,s:[] PS_State,out:[] u8,kind:u32,what:string) {
   if PS_at(t,s,kind) {PS_skip(t,s);return;}
@@ -127,6 +129,8 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     else {n[id].kind=PS_Tag.type_array;n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,13,"after the array length");}
     n[id].b=PS_type(t,n,s,out);return PS_valid(s,id);
   }
+  // $T: a type parameter, bound and checked by the checker (r4a-type-parameters).
+  if v.kind==53 {n[id].kind=PS_Tag.type_param;n[id].name=PS_take(t,s).text;return PS_valid(s,id);}
   if v.kind!=1 && v.kind!=2 {parts:=[2] string.["expected a type, found ",PS_label(v.kind)];PS_error(s,out,v.loc,"E0202","",parts[..]);return 0;}
   n[id].name=PS_take(t,s).text;
   // alias.Name: a module-qualified type (name2 is the alias), exactly one alias deep.
@@ -3930,6 +3934,41 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   #assert r.ok;first:=nodes[nodes[r.root].head];second:=nodes[first.next];
   #assert first.loc.offset==0 && first.end==7 && second.kind==PS_Tag.decl_struct_ && second.loc.offset==15 && second.end==35;
   #assert nodes[r.root].end==0;
+}
+#forall "a $ name in a type position is one type-parameter node" variant:0..<4 {
+  // $T ; [] $T ; [4] $T ; $T.U stays one node and leaves the '.'
+  tokens:=[7] PS_Token.[PS_Token.{kind=53,text="T",loc=PS_Loc.{line=2,column=7,offset=12}},PS_Token.{kind=15},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[0]=PS_Token.{kind=12,loc=PS_Loc.{line=2,column=4,offset=9}};tokens[1]=PS_Token.{kind=13};tokens[2]=PS_Token.{kind=53,text="T",loc=PS_Loc.{line=2,column=7,offset=12}};}
+  if variant==2 {tokens[0]=PS_Token.{kind=12};tokens[1]=PS_Token.{kind=3,value=4};tokens[2]=PS_Token.{kind=13};tokens[3]=PS_Token.{kind=53,text="T",loc=PS_Loc.{line=2,column=7,offset=12}};}
+  if variant==3 {tokens[1]=PS_Token.{kind=20};tokens[2]=PS_Token.{kind=1,text="U"};}
+  nodes:[8] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_type(tokens[..],nodes[..],state[..],message[..]);
+  #assert state[0].code=="" && state[0].depth==0;
+  at:=id;if variant==1 {#assert nodes[id].kind==PS_Tag.type_view && state[0].pos==3;at=nodes[id].b;}
+  if variant==2 {#assert nodes[id].kind==PS_Tag.type_array && state[0].pos==4;at=nodes[id].b;}
+  #assert nodes[at].kind==PS_Tag.type_param && nodes[at].name=="T" && nodes[at].name2=="" && nodes[at].loc.line==2 && nodes[at].loc.column==7 && nodes[at].loc.offset==12;
+  if variant==0 || variant==3 {#assert id==1 && state[0].pos==1 && state[0].used==1;}
+}
+#test "a $ name is a type, not an expression or a name" {
+  #assert PS_label(53)=="'$' name";
+  d:=PS_describe(PS_Token.{kind=53,text="T"});#assert d.open=="'$" && d.word=="T" && d.close=="'";
+  tokens:=[3] PS_Token.[PS_Token.{kind=53,text="T",loc=PS_Loc.{line=1,column=3,offset=2}},PS_Token.{},PS_Token.{}];
+  nodes:[8] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_expression(tokens[..],nodes[..],state[..],message[..]);
+  #assert id==0 && state[0].code=="E0205" && state[0].loc.column==3 && cast(string)message[0..<state[0].length]=="expected an expression, found '$' name";
+  state[0]=PS_State.{};name:=PS_ident(tokens[..],state[..],message[..],"a parameter name");
+  #assert name.kind==0 && state[0].code=="E0208" && cast(string)message[0..<state[0].length]=="expected a parameter name, found '$T'";
+}
+#test "a generic procedure signature parses its $ parameters in place" {
+  // f :: (a: [] $T, b: $T) -> $T {}
+  tokens:=[18] PS_Token.[PS_Token.{kind=1,text="f"},PS_Token.{kind=17},PS_Token.{kind=8},PS_Token.{kind=1,text="a"},PS_Token.{kind=16},PS_Token.{kind=12},PS_Token.{kind=13},PS_Token.{kind=53,text="T",loc=PS_Loc.{line=1,column=13,offset=12}},
+    PS_Token.{kind=14},PS_Token.{kind=1,text="b"},PS_Token.{kind=16},PS_Token.{kind=53,text="T",loc=PS_Loc.{line=1,column=20,offset=19}},PS_Token.{kind=9},PS_Token.{kind=19},PS_Token.{kind=53,text="T",loc=PS_Loc.{line=1,column=26,offset=25}},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
+  nodes:[40] PS_Node;state:[1] PS_State;message:[256] u8;
+  r:=PS_parse("",tokens[..],nodes[..],state[..],message[..]);#assert r.ok;
+  proc:=nodes[nodes[r.root].head];#assert proc.kind==PS_Tag.decl_proc && nodes[proc.a].kind==PS_Tag.type_param && nodes[proc.a].loc.column==26;
+  a:=nodes[proc.head];b:=nodes[a.next];
+  #assert nodes[a.a].kind==PS_Tag.type_view && nodes[nodes[a.a].b].kind==PS_Tag.type_param && nodes[nodes[a.a].b].loc.column==13;
+  #assert nodes[b.a].kind==PS_Tag.type_param && nodes[b.a].name=="T" && nodes[b.a].loc.column==20;
 }
 #forall "a type is one name or one alias-qualified name" variant:0..<5 {
   tokens:=[7] PS_Token.[PS_Token.{kind=1,text="hud",loc=PS_Loc.{line=2,column=5,offset=9}},PS_Token.{kind=20},PS_Token.{kind=1,text="V"},PS_Token.{kind=15},PS_Token.{},PS_Token.{},PS_Token.{}];

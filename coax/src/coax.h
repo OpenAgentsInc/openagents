@@ -139,7 +139,7 @@ enum class Tok : uint8_t {
   equal, plus_equal, minus_equal, star_equal, slash_equal, percent_equal,
   amp_equal, pipe_equal, caret_equal, shl_equal, shr_equal,
   plus, minus, star, slash, percent, amp, pipe, caret, shl, shr,
-  eqeq, noteq, lt, le, gt, ge, andand, oror, bang,
+  eqeq, noteq, lt, le, gt, ge, andand, oror, bang, dollar,
 };
 
 struct Token {
@@ -162,6 +162,7 @@ const char *tok_name(Tok t);
 enum class TypeKind : uint8_t {
   invalid, void_, integer, floating, bool_, string_, untyped_int, untyped_float,
   struct_, enum_, array, view,
+  param,  // a type parameter's placeholder ($T): checked, never laid out or emitted
 };
 
 struct StructDecl;
@@ -275,7 +276,7 @@ struct Value {
 struct Expr;
 
 struct TypeExpr {
-  enum Kind : uint8_t { named, array, view, dynamic } kind = named;
+  enum Kind : uint8_t { named, array, view, dynamic, param } kind = named;
   Loc loc;
   Str name;                  // named
   Expr *length = nullptr;    // array
@@ -371,6 +372,7 @@ struct ProcDecl {
   bool authority = false; // obligation belongs to the authored source unit
   bool export_c = false;
   bool foreign = false;  // #foreign: a C symbol the host provides; no body
+  bool generic = false;  // has $T type parameters: checked, but no instance is emitted yet
 };
 
 struct Field {
@@ -448,7 +450,8 @@ struct File {
   std::string execution_profile; // resolved semantic selection binds mutation receipts
   const Source *src = nullptr;
   Slice<Import> imports;
-  Slice<ProcDecl *> procs;
+  Slice<ProcDecl *> procs;     // procedures with instances: every emitter and evaluator walks these
+  Slice<ProcDecl *> generics;  // checked generic procedures (declaration spans only, nothing emitted)
   Slice<ConstDecl *> constants;
   Slice<StructDecl *> structs;
   Slice<EnumDecl *> enums;

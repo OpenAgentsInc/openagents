@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-type-parameters",
+  "alias": "#ccab",
+  "parent": "r4a-generic-values (#76ba), kept open",
+  "baseline_commit": "0b94665f99",
+  "compiler_version": "0.34.0",
+  "scope": "$T type parameters on procedure signatures: lexed as one token, parsed as a type node, bound by the checker at the first parameter use as a placeholder type owned by the procedure and checked at every other use. Refused forms have their own explained codes. No instantiation: every call is E0397 and generic procedures are never emitted.",
+  "kernels": {
+    "lexer": {
+      "file": "coax/lib/compiler/lexer.coax",
+      "new_rules": ["LX_Kind.k_dollar (53): '$' followed by a name, text is the name", "LX_name \"'$' name\""],
+      "checks": "224 checks, 224 passed",
+      "mutation": "1076 mutants, 1076 killed, 0 survived"
+    },
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "new_rules": ["PS_Tag.type_param (5) in PS_type", "PS_label/PS_describe for '$T'"],
+      "checks": "183 checks, 183 passed",
+      "mutation": "1199 mutants, 1199 killed, 0 survived"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_Kind.param placeholder type (decl = owning procedure)",
+        "CK_Site and CK_State.generic/site: which procedure owns $T and whether a position may bind it",
+        "CK_type_param (E0392 only in result, E0393 unbound, E0395 struct field)",
+        "CK_generic / CK_nested (E0394 nested generic types)",
+        "CK_call_bound (E0396 recursion, E0397 instantiation not yet supported)",
+        "E0398 #export_c generic, E0399 size_of/type_info/type_name of a placeholder",
+        "== and != refuse placeholders (E0311); Metal profile skips generic procedures"
+      ],
+      "checks": "587 checks, 587 passed (11 fixtures generated from real parser output plus unit #forall/#test)",
+      "mutation": "4287 mutants, 4287 killed, 0 survived"
+    },
+    "seeds": "bootstrap/lexer.{c,h}, parser.{c,h} and checker.{c,h} refreshed with refresh-*-seed.sh (checks and mutation first); coax/build.sh bootstrapped 0.34.0 from them"
+  },
+  "native_transport": [
+    "src/lex.cpp, src/coax.h: Tok::dollar, TypeKind::param, TypeExpr::param with ABI static_asserts",
+    "src/parse.cpp, src/check.cpp: tag 5 is a TypeExpr; composites over a placeholder stay out of the emitted type list",
+    "src/check.cpp: generic procedures move from File::procs to File::generics, so emitters, evaluator, checks and mutation never see them",
+    "src/main.cpp: coax deps --declarations lists generic procedures"
+  ],
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "class": "TypeParameters",
+    "tests": 6,
+    "covers": [
+      "a program with uncalled generic procedures checks, runs and emits the same C as without them",
+      "deps --declarations lists generic procedures with module IDs",
+      "coax test, coax mutate and coax metal ignore generic procedures; #authority still demands coverage (E0380)",
+      "20 refused or mismatched forms report their codes (E0392-E0399, E0330, E0327, E0317, E0311, E0310, E0309, E0108, E0205)",
+      "coax explain documents E0392-E0399"
+    ]
+  },
+  "legacy_codegen": {
+    "compared_with": "coax0 0.33.0 (e4aabbb79896 cached build)",
+    "corpus": "every .coax file in the repo outside coax/tests: 984 compile under 0.33.0; 966 emit byte-identical C and 18 #import_proto users differ only in the compiler=coax0-0.34.0 stamp of the proto header; 158 do not compile standalone under either"
+  },
+  "limits": [
+    "no instantiation or emission (r4a-instantiation)",
+    "only $T and [] $T; [N] $T waits for value parameters (r4a-value-parameters)",
+    "placeholders have no operators or comparisons until constraints (r4a-constraints)",
+    "generic procedures cannot sit in #authority files until a check can call one"
+  ]
+}

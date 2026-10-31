@@ -557,6 +557,7 @@ static std::string modules_report(const Source *src, const File *file, const Emi
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->generics) decl(0, d->name, d->loc, d->end);
   std::string legacy_units;
   for (size_t i = 0; i < n; i++) if (src->units[i]->module.empty())
     legacy_units += std::string(legacy_units.empty() ? "" : ",") + "{\"path\":" + json_string(src->units[i]->canonical) + ",\"sha256\":" + json_string(hash[i]) + "}";
@@ -720,6 +721,7 @@ static std::string declarations_report(const Source *src, const File *file) {
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc, d->end);
+  for (const ProcDecl *d : file->generics) decl(0, d->name, d->loc, d->end);
   for (const StructDecl *d : file->structs) {
     std::string from = refs.id_json(1, d->name, d->loc);
     for (const Field &f : d->fields) { refs.type(from, f.type, f.loc); refs.expr(from, f.init); }

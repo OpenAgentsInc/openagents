@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.33.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.34.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -400,7 +400,31 @@ Multiple returns, named/default arguments, overloads, variadics, callbacks and
 explicit pointer mutation are planned. Passing a large value by an optimized
 physical convention must not silently make it a mutable reference.
 
-### 7.2 Planned generics
+### 7.2 Generics
+
+**Type parameters (0.34.0).** `$T` in a procedure's parameter types makes it
+generic: `first :: (v: [] $T) -> $T`, `swap :: (a: [] $T, i: int, j: int)`.
+The first `$T` in parameter order binds a placeholder type owned by that
+procedure; every other `$T` in its signature and body is that same type, so
+each use is checked against it like any other type (`return 1` from a
+`-> $T` procedure is E0330; passing a `$T` where `int` is wanted is E0317).
+A placeholder supports what every type supports: copying, assignment,
+parameters, locals, views, indexing a `[] $T` and iterating it. It has no
+operators, comparisons, casts or layout until constraints arrive (§7.2
+constraints, r4a-constraints): `a < b`, `a == b`, `cast(int) a` and `a + b`
+are refused with their usual codes, and `size_of`, `type_info` and
+`type_name` of a placeholder are E0399. Refused forms, each with its own
+explained code: a `$T` only in the result (E0392); a `$T` first written in a
+body, or anywhere outside a procedure signature (E0393); a nested generic
+type such as `[4] $T` or `[] [] $T` (E0394); a `$T` in a struct field
+(E0395); a generic procedure calling itself (E0396); `#export_c` on a generic
+procedure (E0398). Instantiation does not exist yet: every call of a generic
+procedure is E0397 at the call, and a generic procedure is never emitted, so
+it cannot miscompile. Programs without `$T` compile to identical C. An
+`#authority` file cannot hold a generic procedure yet, because no check can
+call it (E0380).
+
+The remainder of this section is the plan.
 
 `$T` binds a type; `$N` binds a compile-time value. A constraint such as
 `Hashable` describes the operations a specialization needs. Constraints are

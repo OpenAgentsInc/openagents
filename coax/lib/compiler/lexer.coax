@@ -147,6 +147,7 @@ LX_Kind :: enum u8 {
   k_andand = 50;
   k_oror = 51;
   k_bang = 52;
+  k_dollar = 53;
 }
 LX_Loc :: struct {line:int;column:int;offset:int;}
 LX_Token :: struct {kind:LX_Kind;text_begin:int;text_end:int;loc:LX_Loc;int_value:u64;float_value:u64;float_bits:int;decoded:bool;decoded_count:int;}
@@ -159,7 +160,7 @@ LX_keyword :: (t:string)->bool {
   for w:words {if t==w {return true;}}return false;
 }
 LX_name :: (kind:u32)->string #export_c {
-  words:=[53] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'"];
+  words:=[54] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name"];
   index:=cast(int)kind;if index>=words.count {return "?";}return words[index];
 }
 LX_source :: (count:int)->bool {return count>=0 && count<=2147483646;}
@@ -294,9 +295,10 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
     }
     if LX_alpha(c) {while s[0].pos<text.count && LX_ident(text[s[0].pos]) {s[0].pos+=1;}
       r:=LX_item(s,LX_Kind.k_ident);if LX_keyword(text[r.token.text_begin..<r.token.text_end]) {r.token.kind=LX_Kind.k_keyword;}return r;}
-    if (c==35 || c==64) && LX_alpha(LX_at(text,s[0].pos+1)) {
+    // #directive, @annotation and $parameter: the token's text is the name after the sigil.
+    if (c==35 || c==64 || c==36) && LX_alpha(LX_at(text,s[0].pos+1)) {
       s[0].pos+=1;begin:=s[0].pos;while s[0].pos<text.count && LX_ident(text[s[0].pos]) {s[0].pos+=1;}
-      kind:=LX_Kind.k_directive;if c==64 {kind=LX_Kind.k_annotation;}r:=LX_item(s,kind);r.token.text_begin=begin;return r;
+      kind:=LX_Kind.k_directive;if c==64 {kind=LX_Kind.k_annotation;}if c==36 {kind=LX_Kind.k_dollar;}r:=LX_item(s,kind);r.token.text_begin=begin;return r;
     }
     if LX_digit(c) {return LX_number(text,s);}
     if c==39 {return LX_character(text,s);}
@@ -652,6 +654,25 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
 
 #test "punctuation bang" {p:=LX_punctuation("!",0);#assert p.kind==LX_Kind.k_bang && p.text_end==1;}
 
+#test "token spelling dollar" {#assert LX_name(cast(u32)LX_Kind.k_dollar)=="'$' name" && LX_name(54)=="?";}
+
+#test "a $ before a name is one type-parameter token whose text is the name" {
+  text:="($T $Elem_2) $ $1 $$U";
+  state:=[1] LX_State.[LX_begin(text.count)];decoded:[64] u8;message:[64] u8;
+  r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_lparen;
+  r=LX_next(text,state[..],decoded[..],message[..]);
+  #assert r.has_token && r.diagnostic.code=="" && r.token.kind==LX_Kind.k_dollar && text[r.token.text_begin..<r.token.text_end]=="T";
+  #assert r.token.loc.column==2 && r.token.loc.offset==1 && state[0].pos==3;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_dollar && text[r.token.text_begin..<r.token.text_end]=="Elem_2" && r.token.loc.column==5;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_rparen;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert !r.has_token && r.diagnostic.code=="E0108" && r.diagnostic.message=="unexpected character '$'" && r.diagnostic.loc.column==14;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert !r.has_token && r.diagnostic.code=="E0108" && r.diagnostic.loc.column==16;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_int_lit && r.token.int_value==1;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.code=="E0108" && r.diagnostic.loc.column==19;
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_dollar && text[r.token.text_begin..<r.token.text_end]=="U";
+  r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_eof;
+}
+
 #test "reserved struct" {#assert LX_keyword("struct") && !LX_keyword("struct_");}
 
 #test "reserved union" {#assert LX_keyword("union") && !LX_keyword("union_");}
@@ -781,7 +802,7 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
   r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f32";
   r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f64";
   #assert LX_value_digit(71,16)== -1;
-  #assert LX_name(53)=="?";
+  #assert LX_name(54)=="?";
 }
 
 #test "nonempty source cannot resume after a resource failure" {

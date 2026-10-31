@@ -74,6 +74,12 @@ class Lexer(unittest.TestCase):
         self.assertEqual(tokens[2][5],b'a\0\n');self.assertEqual(tokens[3][2],16)
         self.assertEqual(tokens[4][3:5],(float_bits(1.25),32))
 
+    def test_type_parameter_sigil(self):
+        tokens,errors=self.tokens(b'(a:[] $T) $ $9')
+        self.assertEqual([t[0] for t in tokens],[b"'('",b'identifier',b"':'",b"'['",b"']'",b"'$' name",b"')'",b'integer',b'end of file'])
+        self.assertEqual(tokens[5][1],b'T');self.assertEqual(tokens[5][-1],(1,7,6))
+        self.assertEqual([(e[0],e[3]) for e in errors],[(b'E0108',(1,11,10)),(b'E0108',(1,13,12))])
+
     def test_recovery_and_longest_match(self):
         tokens,errors=self.tokens(b'/*/**/*/ ?A 2..<3 "a\\qb"')
         self.assertEqual([e[0] for e in errors],[b'E0108',b'E0105'])
@@ -121,7 +127,7 @@ static void inspect(uint8_t *input,int n){
  uint8_t decoded[258],message[64];coax_t_LX_State state=LX_begin(n);
  for(int i=0;i<n+3;i++){
   coax_t_LX_Item item=LX_next((coax_string){(char*)input,n},(coax_v_t_LX_State){&state,1},(coax_v_u8){decoded,n+1},(coax_v_u8){message,64});
-  if(item.has_token){assert(item.token.kind<=COAX_LX_Kind_k_bang);assert(item.token.text_begin>=0&&item.token.text_end>=item.token.text_begin&&item.token.text_end<=n);assert(item.token.decoded_count<=n);
+  if(item.has_token){assert(item.token.kind<=COAX_LX_Kind_k_dollar);assert(item.token.text_begin>=0&&item.token.text_end>=item.token.text_begin&&item.token.text_end<=n);assert(item.token.decoded_count<=n);
    if(item.token.kind==COAX_LX_Kind_k_eof)return;}
   else assert(item.diagnostic.code.count>0);
  }assert(0&&"lexer failed to make progress");

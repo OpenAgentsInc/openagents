@@ -12,6 +12,7 @@ static_assert((uint32_t)TypeExpr::named == COAX_PS_Tag_type_named-1, "type AST A
 static_assert((uint32_t)TypeExpr::array == COAX_PS_Tag_type_array-1, "type AST ABI: array");
 static_assert((uint32_t)TypeExpr::view == COAX_PS_Tag_type_view-1, "type AST ABI: view");
 static_assert((uint32_t)TypeExpr::dynamic == COAX_PS_Tag_type_dynamic-1, "type AST ABI: dynamic");
+static_assert((uint32_t)TypeExpr::param == COAX_PS_Tag_type_param-1, "type AST ABI: param");
 static_assert((uint32_t)ExprKind::int_lit == COAX_PS_Tag_expr_int_lit-16, "expression AST ABI: int_lit");
 static_assert((uint32_t)ExprKind::float_lit == COAX_PS_Tag_expr_float_lit-16, "expression AST ABI: float_lit");
 static_assert((uint32_t)ExprKind::bool_lit == COAX_PS_Tag_expr_bool_lit-16, "expression AST ABI: bool_lit");
@@ -76,7 +77,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
   // Allocate first so all subsequent reference copies are independent of order.
   for(int64_t id=1;id<=state.used;id++) {
     const auto k=nodes[(size_t)id].kind;void *p=nullptr;
-    if(k>=1 && k<=4) p=make<TypeExpr>(arena);
+    if(k>=1 && k<=5) p=make<TypeExpr>(arena);
     else if(k>=16 && k<=31) p=make<Expr>(arena);
     else if(k>=40 && k<=52) p=make<Stmt>(arena);
     else switch(k) {
@@ -91,7 +92,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
   // Scalar and reference fields; list value copies happen after this pass.
   for(int64_t id=1;id<=state.used;id++) {
     const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
-    if(v.kind>=1 && v.kind<=4) {
+    if(v.kind>=1 && v.kind<=5) {
       auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;
       p->length=parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
     }else if(v.kind>=16 && v.kind<=31) {

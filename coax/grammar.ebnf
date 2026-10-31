@@ -39,8 +39,10 @@ check = "#test", string, block
 binding = identifier, ":", ( type | expression, "..<", expression ) ;
 
 type = identifier | reserved-type-name
+     | type-parameter                    (* $T: generic procedures only, spec 7.2 *)
      | "[", expression, "]", type        (* fixed array; length known while checking *)
      | "[", "]", type ;                   (* view *)
+type-parameter = "$", identifier ;       (* one token: no space after '$' *)
 
 block = "{", { statement }, "}" ;
 statement = block | declaration | assignment, ";" | return | if | while | for |
@@ -103,4 +105,8 @@ arguments = expression, { ",", expression }, [ "," ] ;
    only f32/bool values, no loops, strings or foreign calls, and acyclic
    calls. A #forall binding is bool, an enum, an integer of at most 16 bits
    or an int range with constant bounds. In an #authority file every
-   procedure except main and #foreign ones is reached from a check. *)
+   procedure except main and #foreign ones is reached from a check.
+   A $T type parameter is bound by its first use among a procedure's
+   parameter types and means that one type everywhere else in the
+   procedure; only $T and [] $T are accepted, never in struct fields or
+   outside a procedure, and a generic procedure is not yet callable. *)

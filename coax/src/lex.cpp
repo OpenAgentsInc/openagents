@@ -61,6 +61,7 @@ static_assert((uint8_t)Tok::ge == COAX_LX_Kind_k_ge, "lexer token ABI: ge");
 static_assert((uint8_t)Tok::andand == COAX_LX_Kind_k_andand, "lexer token ABI: andand");
 static_assert((uint8_t)Tok::oror == COAX_LX_Kind_k_oror, "lexer token ABI: oror");
 static_assert((uint8_t)Tok::bang == COAX_LX_Kind_k_bang, "lexer token ABI: bang");
+static_assert((uint8_t)Tok::dollar == COAX_LX_Kind_k_dollar, "lexer token ABI: dollar");
 const char *tok_name(Tok kind) {return LX_name((uint32_t)kind).data;}
 bool lex(Arena *arena,const Source *src,std::vector<Token> *out) {
   const auto input=coax_string{src->text.data(),(int64_t)src->text.size()};
