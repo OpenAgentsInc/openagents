@@ -80,13 +80,17 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   const char *dexts[8] = {VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME};
   if (nd > 7) { fprintf(stderr, "vkc: at most 7 device extensions\n"); exit(1); }
   for (uint32_t i = 0; i < nd; i++) dexts[1 + i] = device_exts[i];
+  // Shaders from coax spirv --vertex/--fragment use 64-bit integers for Coax's int.
+  VkPhysicalDeviceFeatures has, want = {0};
+  vkGetPhysicalDeviceFeatures(v->gpu, &has);
+  want.shaderInt64 = has.shaderInt64;
   VkDeviceCreateInfo dci = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
-                            .enabledExtensionCount = 1 + nd, .ppEnabledExtensionNames = dexts};
+                            .enabledExtensionCount = 1 + nd, .ppEnabledExtensionNames = dexts, .pEnabledFeatures = &want};
   CHECK(vkCreateDevice(v->gpu, &dci, NULL, &v->dev));
   vkGetDeviceQueue(v->dev, v->family, 0, &v->queue);
 }
 
-static VkDeviceMemory allocate(Vkc *v, VkMemoryRequirements req, VkMemoryPropertyFlags want) {
+VkDeviceMemory vkc_memory(Vkc *v, VkMemoryRequirements req, VkMemoryPropertyFlags want) {
   VkPhysicalDeviceMemoryProperties mem;
   vkGetPhysicalDeviceMemoryProperties(v->gpu, &mem);
   uint32_t type = UINT32_MAX;
@@ -102,11 +106,11 @@ static VkDeviceMemory allocate(Vkc *v, VkMemoryRequirements req, VkMemoryPropert
 VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size) {
   VkcBuffer b = {.size = size};
   VkBufferCreateInfo bci = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
-                            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+                            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
   CHECK(vkCreateBuffer(v->dev, &bci, NULL, &b.buf));
   VkMemoryRequirements req;
   vkGetBufferMemoryRequirements(v->dev, b.buf, &req);
-  b.mem = allocate(v, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  b.mem = vkc_memory(v, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   CHECK(vkBindBufferMemory(v->dev, b.buf, b.mem, 0));
   CHECK(vkMapMemory(v->dev, b.mem, 0, size, 0, &b.map));
   memset(b.map, 0, size);
@@ -239,7 +243,7 @@ void vkc_target_open(Vkc *v, VkcTarget *t, uint32_t w, uint32_t h, const VkcPass
   CHECK(vkCreateImage(dev, &ici, NULL, &t->image));
   VkMemoryRequirements req;
   vkGetImageMemoryRequirements(dev, t->image, &req);
-  t->mem = allocate(v, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  t->mem = vkc_memory(v, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   CHECK(vkBindImageMemory(dev, t->image, t->mem, 0));
   VkImageViewCreateInfo ivi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = t->image, .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = format,
     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};

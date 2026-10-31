@@ -1,0 +1,164 @@
+// The shader library (docs/verse/native-gpu.md, G4): what a shader written
+// in Coax works with. Vectors and a 4x4 matrix are structs of f32, so a
+// shader is ordinary checked Coax that runs on the CPU, with #test checks,
+// and `coax spirv --vertex V --fragment F` lowers the same procedures to
+// SPIR-V (coax/lib/compiler/shader.coax), where V2, V3 and V4 become vectors.
+//
+// Textures and samplers are structs too. On the GPU they are bindings, and
+// gpu_sample and the rest are their instructions; here they hold texels on
+// the CPU and the procedures read them, so a check can run a shader whole.
+// On the CPU, sampling is nearest or bilinear over texel centers, clamped
+// to the edge; the GPU's own filter is what the host's sampler says.
+//   coax/bin/coax test verse/gpu/shader.coax
+
+V2 :: struct {x:f32; y:f32;}
+V3 :: struct {x:f32; y:f32; z:f32;}
+V4 :: struct {x:f32; y:f32; z:f32; w:f32;}
+// Columns, as WGSL's mat4x4f: m4_apply(m, v) is m * v.
+M4 :: struct {c0:V4; c1:V4; c2:V4; c3:V4;}
+
+v2 :: (x:f32,y:f32)->V2 {return V2.{x=x,y=y};}
+v3 :: (x:f32,y:f32,z:f32)->V3 {return V3.{x=x,y=y,z=z};}
+v4 :: (x:f32,y:f32,z:f32,w:f32)->V4 {return V4.{x=x,y=y,z=z,w=w};}
+v3_of :: (v:V4)->V3 {return V3.{x=v.x,y=v.y,z=v.z};}
+v4_of :: (v:V3,w:f32)->V4 {return V4.{x=v.x,y=v.y,z=v.z,w=w};}
+
+add2 :: (a:V2,b:V2)->V2 {return V2.{x=a.x+b.x,y=a.y+b.y};}
+sub2 :: (a:V2,b:V2)->V2 {return V2.{x=a.x-b.x,y=a.y-b.y};}
+mul2 :: (a:V2,b:V2)->V2 {return V2.{x=a.x*b.x,y=a.y*b.y};}
+scale2 :: (a:V2,k:f32)->V2 {return V2.{x=a.x*k,y=a.y*k};}
+dot2 :: (a:V2,b:V2)->f32 {return a.x*b.x+a.y*b.y;}
+length2 :: (a:V2)->f32 {return sqrt(dot2(a,a));}
+
+add3 :: (a:V3,b:V3)->V3 {return V3.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+sub3 :: (a:V3,b:V3)->V3 {return V3.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+mul3 :: (a:V3,b:V3)->V3 {return V3.{x=a.x*b.x,y=a.y*b.y,z=a.z*b.z};}
+scale3 :: (a:V3,k:f32)->V3 {return V3.{x=a.x*k,y=a.y*k,z=a.z*k};}
+dot3 :: (a:V3,b:V3)->f32 {return a.x*b.x+a.y*b.y+a.z*b.z;}
+length3 :: (a:V3)->f32 {return sqrt(dot3(a,a));}
+cross3 :: (a:V3,b:V3)->V3 {return V3.{x=a.y*b.z-a.z*b.y,y=a.z*b.x-a.x*b.z,z=a.x*b.y-a.y*b.x};}
+// WGSL's normalize: a / length(a) (a zero vector stays NaN, as there).
+normalize3 :: (a:V3)->V3 {return scale3(a,1.0f32/length3(a));}
+mix3 :: (a:V3,b:V3,t:f32)->V3 {return V3.{x=mix(a.x,b.x,t),y=mix(a.y,b.y,t),z=mix(a.z,b.z,t)};}
+// The reflection of the incident i about the normal n: i - 2 dot(n, i) n.
+reflect3 :: (i:V3,n:V3)->V3 {return sub3(i,scale3(n,2.0f32*dot3(n,i)));}
+
+add4 :: (a:V4,b:V4)->V4 {return V4.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z,w=a.w+b.w};}
+scale4 :: (a:V4,k:f32)->V4 {return V4.{x=a.x*k,y=a.y*k,z=a.z*k,w=a.w*k};}
+dot4 :: (a:V4,b:V4)->f32 {return a.x*b.x+a.y*b.y+a.z*b.z+a.w*b.w;}
+mix4 :: (a:V4,b:V4,t:f32)->V4 {return V4.{x=mix(a.x,b.x,t),y=mix(a.y,b.y,t),z=mix(a.z,b.z,t),w=mix(a.w,b.w,t)};}
+
+m4_apply :: (m:M4,v:V4)->V4 {return add4(add4(scale4(m.c0,v.x),scale4(m.c1,v.y)),add4(scale4(m.c2,v.z),scale4(m.c3,v.w)));}
+// A matrix from 16 floats in column order, as a uniform buffer holds one.
+m4_at :: (u:[]f32,at:int)->M4 {
+  return M4.{c0=v4(u[at],u[at+1],u[at+2],u[at+3]),c1=v4(u[at+4],u[at+5],u[at+6],u[at+7]),
+             c2=v4(u[at+8],u[at+9],u[at+10],u[at+11]),c3=v4(u[at+12],u[at+13],u[at+14],u[at+15])};
+}
+
+// WGSL's scalar builtins.
+mix :: (a:f32,b:f32,t:f32)->f32 {return a+(b-a)*t;}
+fmin :: (a:f32,b:f32)->f32 {if b<a {return b;} return a;}
+fmax :: (a:f32,b:f32)->f32 {if b>a {return b;} return a;}
+clampf :: (x:f32,lo:f32,hi:f32)->f32 {return fmin(fmax(x,lo),hi);}
+saturate :: (x:f32)->f32 {return clampf(x,0.0f32,1.0f32);}
+fract :: (x:f32)->f32 {return x-floor(x);}
+smoothstep :: (a:f32,b:f32,x:f32)->f32 {t:=saturate((x-a)/(b-a));return t*t*(3.0f32-2.0f32*t);}
+stepf :: (edge:f32,x:f32)->f32 {if x<edge {return 0.0f32;} return 1.0f32;}
+
+// Resources. Fields are the CPU's; on the GPU each is a binding.
+Tex2D :: struct {width:int; height:int; texels:[]V4;}
+Tex2DArray :: struct {width:int; height:int; layers:int; texels:[]V4;}
+TexDepth :: struct {width:int; height:int; depth:[]f32;}
+Sampler :: struct {linear:bool;}
+SamplerCompare :: struct {linear:bool;}
+
+clamp_texel :: (i:int,n:int)->int {if i<0 {return 0;} if i>=n {return n-1;} return i;}
+texel :: (texels:[]V4,width:int,height:int,base:int,x:int,y:int)->V4 {
+  return texels[base+clamp_texel(y,height)*width+clamp_texel(x,width)];
+}
+// A layer's texel at uv: the nearest center, or the four around uv blended.
+sample_layer :: (texels:[]V4,width:int,height:int,base:int,linear:bool,uv:V2)->V4 {
+  fx:=uv.x*cast(f32)width-0.5f32;fy:=uv.y*cast(f32)height-0.5f32;
+  if !linear {return texel(texels,width,height,base,cast(int)floor(fx+0.5f32),cast(int)floor(fy+0.5f32));}
+  x0:=floor(fx);y0:=floor(fy);tx:=fx-x0;ty:=fy-y0;ix:=cast(int)x0;iy:=cast(int)y0;
+  top:=mix4(texel(texels,width,height,base,ix,iy),texel(texels,width,height,base,ix+1,iy),tx);
+  bottom:=mix4(texel(texels,width,height,base,ix,iy+1),texel(texels,width,height,base,ix+1,iy+1),tx);
+  return mix4(top,bottom,ty);
+}
+
+// The GPU's procedures. The lowering emits each one's instruction; these
+// bodies are the CPU's. A level or bias picks a mip, and the CPU has level
+// 0 only, so they read level 0.
+// discard: the fragment writes nothing. The CPU has no fragment to drop; a
+// check that needs to know asks its own condition.
+gpu_discard :: () {}
+gpu_sample :: (t:Tex2D,s:Sampler,uv:V2)->V4 {return sample_layer(t.texels,t.width,t.height,0,s.linear,uv);}
+gpu_sample_level :: (t:Tex2D,s:Sampler,uv:V2,level:f32)->V4 {return sample_layer(t.texels,t.width,t.height,0,s.linear,uv);}
+gpu_sample_layer :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32)->V4 {
+  return sample_layer(t.texels,t.width,t.height,clamp_texel(cast(int)layer,t.layers)*t.width*t.height,s.linear,uv);
+}
+gpu_sample_layer_level :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32,level:f32)->V4 {return gpu_sample_layer(t,s,uv,layer);}
+gpu_sample_layer_bias :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32,bias:f32)->V4 {return gpu_sample_layer(t,s,uv,layer);}
+gpu_load :: (t:Tex2D,x:s32,y:s32,level:s32)->V4 {return texel(t.texels,t.width,t.height,0,cast(int)x,cast(int)y);}
+gpu_load_depth :: (t:TexDepth,x:s32,y:s32,level:s32)->f32 {
+  return t.depth[clamp_texel(cast(int)y,t.height)*t.width+clamp_texel(cast(int)x,t.width)];
+}
+// A comparison: 1 where the reference is at most the stored depth (less-equal), else 0;
+// bilinear over the four results when the sampler is linear.
+depth_pass :: (t:TexDepth,x:int,y:int,ref:f32)->f32 {
+  if ref<=t.depth[clamp_texel(y,t.height)*t.width+clamp_texel(x,t.width)] {return 1.0f32;}
+  return 0.0f32;
+}
+gpu_compare :: (t:TexDepth,s:SamplerCompare,uv:V2,ref:f32)->f32 {
+  fx:=uv.x*cast(f32)t.width-0.5f32;fy:=uv.y*cast(f32)t.height-0.5f32;
+  if !s.linear {return depth_pass(t,cast(int)floor(fx+0.5f32),cast(int)floor(fy+0.5f32),ref);}
+  x0:=floor(fx);y0:=floor(fy);tx:=fx-x0;ty:=fy-y0;ix:=cast(int)x0;iy:=cast(int)y0;
+  return mix(mix(depth_pass(t,ix,iy,ref),depth_pass(t,ix+1,iy,ref),tx),mix(depth_pass(t,ix,iy+1,ref),depth_pass(t,ix+1,iy+1,ref),tx),ty);
+}
+gpu_width :: (t:Tex2D)->u32 {return cast(u32)t.width;}
+gpu_height :: (t:Tex2D)->u32 {return cast(u32)t.height;}
+
+#test "vectors are their components' arithmetic" {
+  a:=v3(1,2,3);b:=v3(4,5,6);
+  #assert dot3(a,b)==32 && length3(v3(3,4,0))==5 && cross3(v3(1,0,0),v3(0,1,0)).z==1;
+  r:=reflect3(v3(1,-1,0),v3(0,1,0));
+  #assert r.x==1 && r.y==1 && mix3(a,b,0.5f32).y==3.5f32 && normalize3(v3(0,0,2)).z==1;
+  #assert dot2(sub2(v2(3,4),v2(1,1)),mul2(v2(1,1),v2(2,0)))==4 && length2(scale2(add2(v2(3,0),v2(0,4)),2))==10;
+  #assert add3(a,b).z==9 && sub3(b,a).x==3 && mul3(a,b).y==10 && v3_of(v4_of(a,7)).z==3 && v4_of(a,7).w==7;
+}
+#test "a matrix applies by columns" {
+  u:[17] f32;
+  for i:0..<16 {u[i+1]=cast(f32)i;}
+  m:=m4_at(u[..],1);
+  v:=m4_apply(m,v4(1,0,0,0));
+  #assert v.x==0 && v.y==1 && v.w==3;
+  v=m4_apply(m,v4(0,0,0,1));
+  #assert v.x==12 && v.z==14 && dot4(v,v4(1,1,1,1))==54;
+}
+#test "the scalar builtins are WGSL's" {
+  #assert mix(2,4,0.25f32)==2.5f32 && fmin(1,2)==1 && fmax(1,2)==2 && clampf(5,0,3)==3 && saturate(-1)==0;
+  #assert fract(2.25f32)==0.25f32 && fract(-0.25f32)==0.75f32 && smoothstep(0,1,0.5f32)==0.5f32;
+  #assert stepf(1,0.5f32)==0 && stepf(1,1)==1;
+}
+#test "sampling reads texel centers, clamped to the edge" {
+  px:=[4] V4.[v4(0,0,0,1),v4(1,0,0,1),v4(0,1,0,1),v4(1,1,0,1)];
+  t:=Tex2D.{width=2,height=2,texels=px[..]};
+  near:=Sampler.{linear=false};smooth:=Sampler.{linear=true};
+  #assert gpu_sample(t,near,v2(0.75f32,0.25f32)).x==1 && gpu_sample(t,near,v2(0.25f32,0.75f32)).y==1;
+  c:=gpu_sample(t,smooth,v2(0.5f32,0.5f32));
+  #assert c.x==0.5f32 && c.y==0.5f32 && gpu_sample_level(t,smooth,v2(-1,-1),3).x==0;
+  #assert gpu_load(t,1,1,0).y==1 && gpu_load(t,9,-9,0).x==1 && gpu_width(t)==2 && gpu_height(t)==2;
+  layers:=[8] V4.[v4(0,0,0,0),v4(0,0,0,0),v4(0,0,0,0),v4(0,0,0,0),v4(5,0,0,0),v4(5,0,0,0),v4(5,0,0,0),v4(5,0,0,0)];
+  a:=Tex2DArray.{width=2,height=2,layers=2,texels=layers[..]};
+  #assert gpu_sample_layer(a,near,v2(0.5f32,0.5f32),1).x==5 && gpu_sample_layer_level(a,smooth,v2(0,0),7,0).x==5;
+  #assert gpu_sample_layer_bias(a,near,v2(0,0),0,1).x==0;
+  gpu_discard();
+}
+#test "comparison sampling counts the texels the reference is not behind" {
+  d:=[4] f32.[0.5f32,0.5f32,1,1];
+  t:=TexDepth.{width=2,height=2,depth=d[..]};
+  #assert gpu_compare(t,SamplerCompare.{linear=false},v2(0.25f32,0.25f32),0.75f32)==0;
+  #assert gpu_compare(t,SamplerCompare.{linear=false},v2(0.25f32,0.75f32),0.75f32)==1;
+  #assert gpu_compare(t,SamplerCompare.{linear=true},v2(0.5f32,0.5f32),0.75f32)==0.5f32;
+  #assert gpu_load_depth(t,0,1,0)==1;
+}

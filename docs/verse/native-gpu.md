@@ -53,6 +53,62 @@ so they never disturb a session someone is using.
 The Mac desktop app follows the same host contract over Metal; `coax metal`
 already emits the shading for the iPhone. Windows comes after, over Vulkan.
 
+## G4 and G5: the shader subset, and Everglade in it
+
+Everglade's shaders are 3,491 lines of WGSL (`everglade.wgsl`,
+`everglade-fx.wgsl`). They use vectors and a 4x4 matrix, u32 math and
+bitcasts, `for` and `while` loops, structs, storage buffers (u32, f32, a
+struct, vec4f), a 2D-array texture, a depth texture with a comparison
+sampler, explicit-level sampling, `textureLoad`, `discard` and
+`front_facing`. Their entry points are bg, scene, shadow, grass, water
+(transmit and emit), bloom, post and fx, plus the particles in
+`everglade-fx.wgsl`. The plan keeps the language as it is (no new types in
+the checker) and grows the lowering:
+
+- **Vectors are a checked library**, `verse/gpu/shader.coax`: `V2 V3 V4 M4`
+  as structs of f32, and procedures (`add3`, `dot3`, `mix3`, `m4_mul`...).
+  They run on the CPU like any Coax, so every shader procedure keeps `#test`
+  checks. Built-in `v2 v3 v4 m4` with operators (spec section 6.2) can
+  replace them later without changing what the shaders compute.
+- **`coax spirv` admits a shader subset** the way `coax cuda` admits its
+  own: the lowering refuses what it cannot lower (E0704), and the checker
+  runs its ordinary rules (no Metal profile). It is f32, bool, s32 and u32,
+  structs and fixed arrays of those, views of numbers, if/else, `for` and
+  `while` with break and continue, and acyclic calls. `int` is s64 (the
+  `Int64` capability) so `.count` and loop counters need no casts, and it
+  converts to u32 or s32 where a shader stores it.
+- **Resources are parameters.** Coax has no globals, so an entry point's
+  view parameters are its bindings, in order (storage buffers; the uniforms
+  are a `[]f32`), and a helper takes the views it reads. The lowering binds
+  each helper's view parameters to the entry's bindings at each call site,
+  making a copy of the helper when two call sites bind it differently.
+  Textures and samplers are small structs the library declares. Sampling,
+  `textureLoad`, comparison sampling and `discard` are library procedures:
+  they have CPU bodies for checks, and the lowering emits the GPU
+  instruction instead.
+- **Entry points are named on the command line**, as `--fill` is:
+  `coax spirv FILE --vertex NAME --fragment NAME`. Builtins are positions,
+  not names. A vertex procedure takes the vertex and instance index (u32),
+  then optionally a struct of vertex attributes (locations in order), then
+  its resources. It returns the clip position (a V4), or a struct whose
+  first field is that V4 and whose other fields are the varyings, at
+  locations in order. An integer varying is flat. A fragment procedure takes
+  that V4 or struct (the first field is then the fragment position),
+  optionally a bool (front facing), then its resources. It returns nothing,
+  a V4, or a struct of one to eight V4s (its color targets). `--tree` prints
+  the checked tree the driver hands the lowering, as decimal words.
+- **G5 ports one pass at a time**: bg, then scene and shadow, grass, water,
+  bloom and post, fx and particles. Each pass is a Coax file beside
+  everglade.coax with `#test` checks. It is compared with a headless-Chrome
+  frame of the web build: the same pack, page facts, clock and golden mode,
+  and the same frame through `verse/native` (realm-host), so both draw the
+  same scene.
+- **The scene host** (`verse/gpu`) does host.js's loadShaders, bindScene,
+  postTargets and draw over Vulkan: the shadow map, the light and aux
+  targets, the water copies, the bloom chain and post, then the HUD. The
+  pack's texture layers are 27 JPEGs and 9 PNGs, so the decoders come too,
+  in Coax.
+
 ## Rules for this work
 
 - Shaders are Coax. A realm's light is a Coax procedure with `#test`
@@ -157,4 +213,17 @@ Every phase and native feature is a task in the Verse project
   particles are the same bytes. Of the uniforms and stores, 206 of 238,394
   words differ, all within libm's rounding (largest 4.8e-7): glibc's
   `sinf`/`cosf` against wasi-libc's.
-
+- 2026-10-31: G4: `coax spirv FILE --vertex V --fragment F`. The C++ driver
+  hands the checked tree (code v2) to `coax/lib/compiler/shader.coax`, which
+  lowers the subset above to a two-entry module. It passes 29 `#test` checks
+  and the zero-survivor mutation gate. Every module the checks pin passes
+  `spirv-val --target-env vulkan1.1`. It covers the interfaces, views of
+  structs and arrays, conversions, loops, calls with per-binding copies, and
+  each GPU procedure. `verse/gpu/shader.coax` is the vector, matrix and
+  texture library, with CPU bodies and `#test` checks.
+  `verse/gpu/shaders/quad.coax` uses every operator, conversion, GPU procedure
+  and binding kind. `verse/gpu/vks.c` draws it: pipelines, textures,
+  samplers, targets and depth. `verse/gpu/shader-check.sh coderos-4080` draws
+  it on the RTX 4080 against the same procedures run on the CPU: 40,960
+  pixels exact, 24,576 within 1e-6, 0 wrong (largest difference 2.98e-8),
+  and validation 0/0.

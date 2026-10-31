@@ -9,7 +9,7 @@
 //   coax c       file.coax [--release] [--lib]       print the generated C
 //   coax cuda    file.coax [--release]               CUDA C for NVRTC (the compute subset)
 //   coax metal-compute file.coax [--release]         Metal compute kernels (the same subset)
-//   coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME] [-o out.spv]
+//   coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME | --vertex V --fragment F [--tree]] [-o out.spv]
 //                                                    SPIR-V for Vulkan (the Metal scalar profile)
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
@@ -37,6 +37,7 @@
 #include "emit_c.cpp"
 #include "compute.cpp"
 #include "spirv.cpp"
+#include "shader.cpp"
 #include "lex.cpp"
 #include "parse.cpp"
 #include "verify.cpp"
@@ -617,7 +618,7 @@ static int usage() {
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
-          "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME] [-o out.spv]\n"
+          "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME | --vertex V --fragment F [--tree]] [-o out.spv]\n"
           "       coax check   file.coax\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
@@ -698,7 +699,8 @@ static int main_impl(int argc, char **argv) {
     return usage();
 
   const char *input = nullptr;
-  std::string out, header, proto_prefix, kernel, fill, stroke;
+  std::string out, header, proto_prefix, kernel, fill, stroke, vertex, fragment;
+  bool shader_tree = false;
   EmitOptions opts;
   coax_t_CP_Request request{};request.debug_info=-1;
   std::string arithmetic,optimization,build_profile;
@@ -767,6 +769,9 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--kernel" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) kernel = argv[++i];
     else if (a == "--fill" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) fill = argv[++i];
     else if (a == "--stroke" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) stroke = argv[++i];
+    else if (a == "--vertex" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && vertex.empty()) vertex = argv[++i];
+    else if (a == "--tree" && cmd == "spirv") shader_tree = true;
+    else if (a == "--fragment" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
     else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
@@ -843,13 +848,20 @@ static int main_impl(int argc, char **argv) {
   if (cmd == "cuda") opts.library = opts.cuda = true;
   if (cmd == "metal-compute") opts.library = opts.metal_compute = true;
   if (cmd == "spirv") {
-    // The Metal scalar profile, checked as for coax metal, then lowered.
-    opts.library = opts.metal = true;
+    // A shader (--vertex/--fragment): the ordinary rules, then the shader
+    // subset's lowering. Otherwise the Metal scalar profile, checked as for
+    // coax metal, then lowered.
+    bool shader = !vertex.empty() || !fragment.empty();
+    opts.library = true;
+    opts.metal = !shader;
     Source src;
     Arena arena;
     File file;
-    std::string words;
-    if (!front_end(input, &src, &arena, &file, opts, 1) || !emit_spirv(&file, kernel, fill, stroke, &words)) {
+    std::string words, report;
+    bool lowered = front_end(input, &src, &arena, &file, opts, 1) &&
+                   (shader ? emit_shader(&file, vertex, fragment, shader_tree, &words, &report) : emit_spirv(&file, kernel, fill, stroke, &words));
+    if (lowered && shader) fputs(report.c_str(), stderr);
+    if (!lowered) {
       if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
       return 1;
     }

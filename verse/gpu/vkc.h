@@ -34,6 +34,8 @@ void vkc_open(Vkc *v);
 // The same, with instance and device extensions (a window's surface and swapchain).
 void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const char *const *device_exts, uint32_t nd);
 VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size);
+// Device memory for req with the wanted properties.
+VkDeviceMemory vkc_memory(Vkc *v, VkMemoryRequirements req, VkMemoryPropertyFlags want);
 // One dispatch of a compute module's `main`: buffers at set 0, bindings
 // 0..n-1, push constants, groups by gx and gy. Waits for it to finish.
 void vkc_dispatch(Vkc *v, const uint32_t *words, size_t count, const VkcBuffer *buffers, uint32_t n,

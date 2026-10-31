@@ -1,0 +1,76 @@
+// The shader subset in two pairs of entries, for the checks in
+// coax/lib/compiler/shader.coax: its trees come from
+//   coax spirv coax/tests/shader/sample.coax --vertex a_vs --fragment a_fs --tree
+//   coax spirv coax/tests/shader/sample.coax --vertex b_vs --fragment b_fs --tree
+// and the modules pass spirv-val --target-env vulkan1.1.
+#load "../../../verse/gpu/shader.coax";
+
+Attr :: struct {p:V3; tint:V4; id:u32; k:s32;}
+Point :: struct {at:V3; size:f32; tags:[2]u32;}
+AOut :: struct {position:V4; uv:V2; tint:V4; id:u32; k:s32; f:f32;}
+Targets :: struct {color:V4; aux:V4;}
+
+// A helper bound twice, to two views, so it lowers twice.
+pick :: (v:[]f32,i:int)->f32 {
+  if i>=v.count {return 0;}
+  return v[i];
+}
+a_vs :: (vid:u32,iid:u32,attrs:Attr,points:[]Point,uniforms:[]f32)->AOut {
+  pt:=points[cast(int)iid];
+  at:=add3(attrs.p,scale3(pt.at,pt.size));
+  tag:=pt.tags[1]+pt.tags[0];
+  return AOut.{position=v4(at.x,at.y,at.z,1),uv=v2(cast(f32)vid,pick(uniforms,1)),tint=attrs.tint,id=attrs.id^tag,k=attrs.k,f=-at.z};
+}
+ops_f :: (a:f32,b:f32)->f32 {
+  r:=a+b-a*b/b;
+  if a<b || a<=b && !(a>b) || a>=b || a==b || a!=b {r-=1;}
+  return r+sin(a)+cos(a)+tan(a)+exp(a)+log(b)+sqrt(b)+floor(a)+abs(a)+pow(a,b);
+}
+ops_i :: (a:s32,b:s32,u:u32,v:u32,n:int,m:u64)->u32 {
+  x:=a+b-a*b/b%b;
+  x=(x&b)|(x^a);
+  x=x<<1;x=x>>1;
+  y:=u/v%v;
+  y=y>>2;
+  ok:=a<b && u<v && n<cast(int)a && m>cast(u64)0 && a<=b && u<=v && a>b && u>v && a>=b && u>=v && a==b && a!=b && true==ok0();
+  if ok {y+=1;}
+  z:=-n;
+  z=z/2;
+  return y+cast(u32)x+cast(u32)z+cast(u32)m+cast(u32)-a+cast(u32)(cast(f32)u)+cast(u32)(cast(f32)a);
+}
+ok0 :: ()->bool {return false;}
+bits :: (a:f32,b:u32,c:s32)->f32 {
+  return f32_from_bits(f32_bits(a)^b)+cast(f32)cast(s32)b+cast(f32)cast(u32)c+cast(f32)cast(int)c+cast(f32)cast(u64)b+cast(f32)cast(s32)cast(int)a;
+}
+a_fs :: (in:AOut,front:bool,colors:[]V4,uniforms:[]f32,words:[]u32,weights:[]f32,sky:Tex2D,layers:Tex2DArray,shadow:TexDepth,smooth:Sampler,cmp:SamplerCompare)->Targets {
+  if !front {gpu_discard();}
+  c:=colors[cast(int)in.id%colors.count];
+  t:=gpu_sample(sky,smooth,in.uv);
+  t=add4(t,gpu_sample_level(sky,smooth,in.uv,2));
+  t=add4(t,gpu_sample_layer(layers,smooth,in.uv,in.k));
+  t=add4(t,gpu_sample_layer_level(layers,smooth,in.uv,in.k,1));
+  t=add4(t,gpu_sample_layer_bias(layers,smooth,in.uv,1,0.5f32));
+  t=add4(t,gpu_load(sky,1,2,0));
+  d:=gpu_load_depth(shadow,cast(s32)in.position.x,0,0)+gpu_compare(shadow,cmp,in.uv,in.f);
+  size:=cast(f32)(gpu_width(sky)+gpu_height(sky));
+  acc:[4] f32;
+  for i:0..<4 {
+    if i==1 {continue;}
+    acc[i]=pick(uniforms,i)+pick(weights,i);
+    if acc[i]>8 {break;}
+  }
+  n:=0;
+  while n<3 {n+=1;}
+  table:=[3] f32.[1,2,3];
+  m:=table[n-1]+acc[2];
+  g:=ifx front then ops_f(m,d) else bits(m,words[0],in.k);
+  q:=cast(f32)ops_i(in.k,2,in.id,3,cast(int)n,cast(u64)words.count);
+  tint:=Targets.{color=v4(c.x+g,t.y,size,q),aux=in.tint};
+  tint.aux.w=1;
+  return tint;
+  tint.color.x=0;
+}
+b_vs :: (vid:u32,iid:u32)->V4 {return v4(cast(f32)vid,cast(f32)iid,0,1);}
+b_fs :: (pos:V4) {
+  if pos.x>1 {gpu_discard();return;} else {return;}
+}

@@ -10,3 +10,4 @@
 #load "../proto/importer.coax";
 #load "compute.coax";
 #load "spirv.coax";
+#load "shader.coax";

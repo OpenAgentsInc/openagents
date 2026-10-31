@@ -1,0 +1,1881 @@
+// The shader subset for `coax spirv --vertex V --fragment F`: a checked
+// tree (the ordinary rules, not the Metal profile) lowered to a SPIR-V 1.3
+// module with a Vertex entry point `vs` and a Fragment entry point `fs`
+// (docs/verse/native-gpu.md, G4). Native code observes the checked tree
+// and hands it here as words (tree code v2); this file decides every
+// instruction, refuses what it cannot lower, and native code writes the
+// words it returns.
+//
+// Values are bool, f32, s32, u32 and int (s64), structs and fixed arrays of
+// them. A struct of two to four f32 fields is a vector (V2, V3 and V4 of
+// verse/gpu/shader.coax), so its fields are its components. A view is a
+// storage buffer: only a parameter can be one, and only reading it (an
+// element, a field of one, its count) is lowered. Textures and samplers
+// are the structs Tex2D, Tex2DArray, TexDepth, Sampler and SamplerCompare,
+// also only parameters. These resources bind to the entry points: each
+// entry parameter that is a resource is a binding of descriptor set 0, in
+// the order their names first appear (vertex first), a name shared by both
+// entries being one binding. A procedure that takes resources is lowered
+// once for each set of bindings it is called with.
+//
+// A vertex entry takes the vertex index and the instance index (u32), then
+// optionally a struct of vertex attributes (each field at a location, in
+// order), then resources. It returns a V4, the clip position, or a struct
+// whose first field is that V4 and whose others are varyings, at locations
+// in order (an integer one flat). A fragment entry takes a V4, the
+// fragment's position, or such a struct (its first field the fragment's
+// position, the others the varyings), then optionally a bool (whether the
+// triangle faces the viewer), then resources. It returns nothing, a V4
+// (color target 0) or a struct of V4s (targets in order). The GPU
+// procedures (gpu_discard, gpu_sample...) of verse/gpu/shader.coax become
+// their instructions.
+//
+// Tree code, version 2:
+//   module: 2 types procs entries
+//   types: n type*, the first six always 0 void, 1 bool, 2 f32, 3 s32, 4 u32, 5 int
+//     type: 0 void | 1 bool | 2 f32 | 3 s32 | 4 u32 | 5 s64 | 6 u64
+//         | 7 struct n (type offset)*n size | 8 array elem length stride | 9 view elem
+//         | 10 image dim (0 2D, 1 2D array, 2 depth 2D) | 11 sampler compare
+//     (a part's type is an earlier index; offsets and sizes are the C layout)
+//   procs: n (ret params type* locals type* length stmt)*
+//     parameters are the first locals; length is the statement's words
+//   entries: n (stage proc name*)*   stage 0 vertex, 1 fragment; a name id per parameter
+//   stmt: 1 block n stmt* | 2 expr e | 3 store place e | 4 return e | 5 return
+//       | 6 if has_else e stmt [stmt] | 7 while e stmt | 8 for local e e stmt | 9 break | 10 continue
+//   place: 40 local id | 41 field place i | 42 index place e
+//   expr: 16 const type word [word] | 17 zero type | 18 local id | 19 binary op e e
+//       | 20 negate e | 21 not e | 22 call proc n e* | 23 math fn n e* | 24 select e e e
+//       | 25 field e i | 27 load place | 29 convert type e | 30 bitcast type e
+//       | 31 construct type n e* | 32 count place | 33 gpu fn type n e*
+//   op: 1 + 2 - 3 * 4 / 5 % 6 < 7 <= 8 > 9 >= 10 == 11 != 12 && 13 || 14 & 15 | 16 ^ 17 << 18 >>
+//   math: 1 sin 2 cos 3 tan 4 exp 5 log 6 sqrt 7 floor 8 abs 9 pow
+//   gpu: 1 discard 2 sample 3 sample_level 4 sample_layer 5 sample_layer_level
+//       6 sample_layer_bias 7 load 8 load_depth 9 compare 10 width 11 height
+#authority;
+
+SH_VOID :: 0; SH_BOOL :: 1; SH_F32 :: 2; SH_S32 :: 3; SH_U32 :: 4; SH_INT :: 5;
+SH_TYPES :: 512; SH_PROCS :: 512; SH_INSTS :: 1024; SH_BINDS :: 64; SH_CONSTS :: 4096;
+SH_FTYPES :: 512; SH_LOCALS :: 2048; SH_LOOPS :: 16; SH_EDGES :: 2048; SH_RES :: 11;
+// Loops nest at most SH_LOOPS deep and a module makes at most SH_EDGES
+// calls (their tables keep room for 64 and 16384).
+// The work view: the report, then the tables, then three streams (decorations,
+// types and globals, code), which the module joins after its preamble. The
+// code takes the rest of the view.
+SH_W_REPORT :: 0; SH_W_TYPE :: 256; SH_W_PROC :: 4352; SH_W_INST :: 4864; SH_W_BIND :: 21248;
+SH_W_CONST :: 21504; SH_W_FTYPE :: 37888; SH_W_LOCAL :: 56320; SH_W_LOOP :: 60416;
+SH_W_EDGE :: 60544; SH_W_ADJ :: 94336; SH_W_D :: 98432; SH_W_T :: 131200; SH_W_C :: 262272;
+SH_D_WORDS :: 32768; SH_T_WORDS :: 131072;
+SH_out_words :: ()->int #export_c {return 4194304;}
+SH_work_words :: ()->int #export_c {return 4194304;}
+
+ShState :: struct {
+  at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int;
+  nd:int; nt:int; nc:int; types:int; procs:int; insts:int; binds:int; consts:int; ftypes:int; loops:int; edges:int;
+  locals:int; inst:int; ret:u32; fragment:bool; int64:bool; query:bool; glsl:u32;
+  c_true:u32; c_false:u32; u32_0:u32;
+}
+ShVal :: struct {id:u32; ty:u32;}
+// A place: a pointer and its type, in Function storage or a storage buffer;
+// or a view itself (ptr 0), not yet indexed, by its binding.
+ShPlace :: struct {ptr:u32; ty:u32; storage:bool; bind:u32;}
+
+// Reasons. 0 lowers; each other value names what is refused.
+SH_reason_text :: (reason:u32)->string #export_c {
+  texts:=[12] string.["","a malformed tree","a module larger than its buffers",
+    "more types, procedures, lowered procedures, bindings, constants, locals or loops than it holds",
+    "an operation on these types","a view, texture or sampler other than as a parameter or argument",
+    "a write to a storage buffer","an entry point whose parameters or result are not a vertex's or a fragment's",
+    "a recursive call","a view of something other than numbers and structs of them",
+    "break or continue outside a loop","a GPU procedure with the wrong arguments"];
+  if reason>=12 {return "this reason";}
+  return texts[cast(int)reason];
+}
+
+// Opcodes (SPIR-V 1.3 specification, section 3.49).
+SH_OP_EXTENSION :: 10; SH_OP_EXT_IMPORT :: 11; SH_OP_EXT_INST :: 12; SH_OP_MEMORY_MODEL :: 14;
+SH_OP_ENTRY_POINT :: 15; SH_OP_EXECUTION_MODE :: 16; SH_OP_CAPABILITY :: 17;
+SH_OP_TYPE_VOID :: 19; SH_OP_TYPE_BOOL :: 20; SH_OP_TYPE_INT :: 21; SH_OP_TYPE_FLOAT :: 22; SH_OP_TYPE_VECTOR :: 23;
+SH_OP_TYPE_IMAGE :: 25; SH_OP_TYPE_SAMPLER :: 26; SH_OP_TYPE_SAMPLED_IMAGE :: 27; SH_OP_TYPE_ARRAY :: 28;
+SH_OP_TYPE_RUNTIME_ARRAY :: 29; SH_OP_TYPE_STRUCT :: 30; SH_OP_TYPE_POINTER :: 32; SH_OP_TYPE_FUNCTION :: 33;
+SH_OP_CONSTANT_TRUE :: 41; SH_OP_CONSTANT_FALSE :: 42; SH_OP_CONSTANT :: 43; SH_OP_CONSTANT_NULL :: 46;
+SH_OP_FUNCTION :: 54; SH_OP_FUNCTION_PARAMETER :: 55; SH_OP_FUNCTION_END :: 56; SH_OP_FUNCTION_CALL :: 57;
+SH_OP_VARIABLE :: 59; SH_OP_LOAD :: 61; SH_OP_STORE :: 62; SH_OP_ACCESS_CHAIN :: 65; SH_OP_ARRAY_LENGTH :: 68;
+SH_OP_DECORATE :: 71; SH_OP_MEMBER_DECORATE :: 72; SH_OP_COMPOSITE_CONSTRUCT :: 80; SH_OP_COMPOSITE_EXTRACT :: 81;
+SH_OP_SAMPLED_IMAGE :: 86; SH_OP_SAMPLE_IMPLICIT :: 87; SH_OP_SAMPLE_EXPLICIT :: 88; SH_OP_SAMPLE_DREF_EXPLICIT :: 90;
+SH_OP_IMAGE_FETCH :: 95; SH_OP_IMAGE :: 100; SH_OP_QUERY_SIZE_LOD :: 103;
+SH_OP_CONVERT_F_TO_U :: 109; SH_OP_CONVERT_F_TO_S :: 110; SH_OP_CONVERT_S_TO_F :: 111; SH_OP_CONVERT_U_TO_F :: 112;
+SH_OP_U_CONVERT :: 113; SH_OP_S_CONVERT :: 114; SH_OP_BITCAST :: 124; SH_OP_S_NEGATE :: 126; SH_OP_F_NEGATE :: 127;
+SH_OP_LOGICAL_NOT :: 168; SH_OP_SELECT :: 169;
+SH_OP_LOOP_MERGE :: 246; SH_OP_SELECTION_MERGE :: 247; SH_OP_LABEL :: 248; SH_OP_BRANCH :: 249;
+SH_OP_BRANCH_CONDITIONAL :: 250; SH_OP_KILL :: 252; SH_OP_RETURN :: 253; SH_OP_RETURN_VALUE :: 254; SH_OP_UNREACHABLE :: 255;
+SH_SC_UNIFORM_CONSTANT :: 0; SH_SC_INPUT :: 1; SH_SC_OUTPUT :: 3; SH_SC_FUNCTION :: 7; SH_SC_STORAGE_BUFFER :: 12;
+// Streams.
+SH_D :: 0; SH_T :: 1; SH_C :: 2;
+
+sh_fail :: (s:[]ShState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+// What a refused step hands back: nothing reads it, since the first refusal is the result.
+sh_refused :: ()->ShVal {return ShVal.{id=0,ty=0};} // mutant: equivalent (no value is read after a refusal)
+sh_nothing :: ()->u32 {return 0;} // mutant: equivalent (no value is read after a refusal)
+sh_id :: (s:[]ShState)->u32 {id:=s[0].next;s[0].next+=1;return id;}
+
+// A word to a stream; code is dropped while muted (after a block ends).
+sh_word :: (s:[]ShState,w:[]u32,stream:int,word:u32) {
+  if stream==SH_C {
+    if s[0].mute>0 {return;}
+    at:=SH_W_C+s[0].nc;
+    if at>=w.count {sh_fail(s,2);return;}
+    w[at]=word;s[0].nc+=1;return;
+  }
+  if stream==SH_D {
+    if s[0].nd>=SH_D_WORDS {sh_fail(s,2);return;}
+    w[SH_W_D+s[0].nd]=word;s[0].nd+=1;return;
+  }
+  if s[0].nt>=SH_T_WORDS {sh_fail(s,2);return;}
+  w[SH_W_T+s[0].nt]=word;s[0].nt+=1;
+}
+sh_op :: (s:[]ShState,w:[]u32,stream:int,op:u32,words:int) {sh_word(s,w,stream,(cast(u32)words<<16)|op);}
+sh1 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32) {sh_op(s,w,st,op,2);sh_word(s,w,st,a);}
+sh2 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32) {sh_op(s,w,st,op,3);sh_word(s,w,st,a);sh_word(s,w,st,b);}
+sh3 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32) {sh_op(s,w,st,op,4);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);}
+sh4 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32) {
+  sh_op(s,w,st,op,5);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);sh_word(s,w,st,d);
+}
+sh5 :: (s:[]ShState,w:[]u32,st:int,op:u32,a:u32,b:u32,c:u32,d:u32,e:u32) {
+  sh_op(s,w,st,op,6);sh_word(s,w,st,a);sh_word(s,w,st,b);sh_word(s,w,st,c);sh_word(s,w,st,d);sh_word(s,w,st,e);
+}
+// An instruction with a result, in the code: its id.
+sh_r1 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32)->u32 {r:=sh_id(s);sh3(s,w,SH_C,op,ty,r,a);return r;}
+sh_r2 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32)->u32 {r:=sh_id(s);sh4(s,w,SH_C,op,ty,r,a,b);return r;}
+sh_r3 :: (s:[]ShState,w:[]u32,op:u32,ty:u32,a:u32,b:u32,c:u32)->u32 {r:=sh_id(s);sh5(s,w,SH_C,op,ty,r,a,b,c);return r;}
+sh_label :: (s:[]ShState,w:[]u32,id:u32) {sh1(s,w,SH_C,SH_OP_LABEL,id);s[0].open=true;}
+sh_end_block :: (s:[]ShState,w:[]u32,op:u32) {sh_op(s,w,SH_C,op,1);s[0].open=false;}
+sh_branch :: (s:[]ShState,w:[]u32,to:u32) {sh1(s,w,SH_C,SH_OP_BRANCH,to);s[0].open=false;}
+sh_next :: (s:[]ShState,tree:[]u32)->u32 {
+  if s[0].at>=tree.count {sh_fail(s,1);return sh_nothing();}
+  v:=tree[s[0].at];s[0].at+=1;return v;
+}
+
+// ---- types
+//
+// The type table: per type, 8 words: its code's place in the tree, its id,
+// and pointers to it (Function, StorageBuffer to its laid-out form, Input,
+// Output, UniformConstant), then its laid-out id.
+sh_tw :: (t:u32,k:int)->int {return SH_W_TYPE+8*cast(int)t+k;}
+sh_kind :: (tree:[]u32,w:[]u32,t:u32)->u32 {return tree[cast(int)w[sh_tw(t,0)]];}
+sh_part :: (tree:[]u32,w:[]u32,t:u32,k:int)->u32 {return tree[cast(int)w[sh_tw(t,0)]+k];}
+sh_type_ok :: (s:[]ShState,t:u32)->bool {
+  if cast(int)t>=s[0].types {sh_fail(s,1);return false;} // mutant: equivalent (the refusal stands whatever is lowered after it)
+  return true;
+}
+// A struct of two to four f32 fields is a vector: its width, else 0.
+sh_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
+  if sh_kind(tree,w,t)!=7 {return 0;}
+  n:=cast(int)sh_part(tree,w,t,1);
+  if n<2 || n>4 {return 0;}
+  for i:0..<n {if sh_part(tree,w,t,2+2*i)!=SH_F32 {return 0;}}
+  return n;
+}
+// Which resource a type is: 1 a view, 2 an image, 3 a sampler, else 0.
+sh_resource :: (tree:[]u32,w:[]u32,t:u32)->u32 {
+  k:=sh_kind(tree,w,t);
+  if k==9 {return 1;}
+  if k==10 {return 2;}
+  if k==11 {return 3;}
+  return 0;
+}
+sh_int :: (tree:[]u32,w:[]u32,t:u32)->bool {k:=sh_kind(tree,w,t);return k>=3 && k<=6;}
+sh_wide :: (tree:[]u32,w:[]u32,t:u32)->bool {k:=sh_kind(tree,w,t);return k==5 || k==6;}
+
+// Types that are one SPIR-V type, which may be declared once: structs of
+// as many f32 (vectors), and the two samplers. The first such type stands for the rest.
+sh_canon :: (tree:[]u32,w:[]u32,t:u32)->u32 {
+  n:=sh_vector(tree,w,t);
+  if n==0 && sh_kind(tree,w,t)!=11 {return t;}
+  for u:0..<cast(int)t { // mutant: equivalent (type 0 is void)
+    if (n>0 && sh_vector(tree,w,cast(u32)u)==n) || (n==0 && sh_kind(tree,w,cast(u32)u)==11) {return cast(u32)u;} // mutant: equivalent (a vector is two to four wide)
+  }
+  return t;
+}
+// The type's id, declared on first use, its parts first.
+sh_tid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
+  if !sh_type_ok(s,t) {return sh_nothing();}
+  if w[sh_tw(t,1)]!=0 {return w[sh_tw(t,1)];}
+  c:=sh_canon(tree,w,t);
+  if c!=t {w[sh_tw(t,1)]=sh_tid(s,tree,w,c);return w[sh_tw(t,1)];}
+  k:=sh_kind(tree,w,t);
+  id:u32;
+  if k==0 {id=sh_id(s);sh1(s,w,SH_T,SH_OP_TYPE_VOID,id);}
+  else if k==1 {id=sh_id(s);sh1(s,w,SH_T,SH_OP_TYPE_BOOL,id);}
+  else if k==2 {id=sh_id(s);sh2(s,w,SH_T,SH_OP_TYPE_FLOAT,id,32);}
+  else if k>=3 && k<=5 {
+    if k==5 {s[0].int64=true;}
+    id=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_INT,id,ifx k==5 then 64 else 32,ifx k==4 then 0 else 1);
+  } else if k==6 {id=sh_u64(s,w);}
+  else if k==7 {
+    n:=sh_vector(tree,w,t);
+    if n!=0 {f:=sh_tid(s,tree,w,SH_F32);id=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,f,cast(u32)n);}
+    else {
+      // At most 64, as the type scan checks.
+      fields:=cast(int)sh_part(tree,w,t,1);
+      parts:[64] u32;
+      for i:0..<fields {parts[i]=sh_tid(s,tree,w,sh_part(tree,w,t,2+2*i));}
+      id=sh_id(s);
+      sh_op(s,w,SH_T,SH_OP_TYPE_STRUCT,2+fields);sh_word(s,w,SH_T,id);
+      for i:0..<fields {sh_word(s,w,SH_T,parts[i]);}
+    }
+  } else if k==8 {
+    e:=sh_tid(s,tree,w,sh_part(tree,w,t,1));n:=sh_const(s,tree,w,SH_U32,sh_part(tree,w,t,2),0);
+    id=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_ARRAY,id,e,n);
+  } else if k==10 {
+    // Image: f32, 2D, depth or not, arrayed or not, single-sampled, sampled, no format.
+    dim:=sh_part(tree,w,t,1);f:=sh_tid(s,tree,w,SH_F32);id=sh_id(s);
+    sh_op(s,w,SH_T,SH_OP_TYPE_IMAGE,9);sh_word(s,w,SH_T,id);sh_word(s,w,SH_T,f);sh_word(s,w,SH_T,1);
+    sh_word(s,w,SH_T,ifx dim==2 then 1 else 0);sh_word(s,w,SH_T,ifx dim==1 then 1 else 0);
+    sh_word(s,w,SH_T,0);sh_word(s,w,SH_T,1);sh_word(s,w,SH_T,0);
+  } else if k==11 {id=sh_id(s);sh1(s,w,SH_T,SH_OP_TYPE_SAMPLER,id);}
+  else {sh_fail(s,1);return sh_nothing();}
+  w[sh_tw(t,1)]=id;
+  return id;
+}
+// The unsigned 64-bit type, which a tree need not have: kept in void's
+// Output pointer word (void has no pointers), and the id of any u64 type.
+sh_u64 :: (s:[]ShState,w:[]u32)->u32 {
+  at:=sh_tw(SH_VOID,5); // mutant: equivalent (any slot no pointer of void uses)
+  if w[at]==0 {s[0].int64=true;w[at]=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_INT,w[at],64,0);}
+  return w[at];
+}
+// Whether a value of type t loaded from a storage buffer needs rebuilding as
+// its Function form: a struct that is not a vector, or an array.
+sh_laid_apart :: (tree:[]u32,w:[]u32,t:u32)->bool {
+  k:=sh_kind(tree,w,t);
+  return (k==7 && sh_vector(tree,w,t)==0) || k==8;
+}
+// Its storage-buffer form: offsets on struct members, strides on arrays (the C
+// layout, with scalar alignment). A bool has none.
+sh_laid :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32)->u32 {
+  if !sh_type_ok(s,t) {return sh_nothing();}
+  if !sh_laid_apart(tree,w,t) {
+    k:=sh_kind(tree,w,t);
+    if k==1 || k>=9 {sh_fail(s,9);return sh_nothing();}
+    return sh_tid(s,tree,w,t);
+  }
+  if w[sh_tw(t,7)]!=0 {return w[sh_tw(t,7)];}
+  id:u32;
+  if sh_kind(tree,w,t)==8 {
+    e:=sh_laid(s,tree,w,sh_part(tree,w,t,1));n:=sh_const(s,tree,w,SH_U32,sh_part(tree,w,t,2),0);
+    id=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_ARRAY,id,e,n);
+    sh3(s,w,SH_D,SH_OP_DECORATE,id,6,sh_part(tree,w,t,3));
+  } else {
+    fields:=cast(int)sh_part(tree,w,t,1);
+    parts:[64] u32;
+    for i:0..<fields {parts[i]=sh_laid(s,tree,w,sh_part(tree,w,t,2+2*i));}
+    id=sh_id(s);
+    sh_op(s,w,SH_T,SH_OP_TYPE_STRUCT,2+fields);sh_word(s,w,SH_T,id);
+    for i:0..<fields {sh_word(s,w,SH_T,parts[i]);}
+    for i:0..<fields {sh4(s,w,SH_D,SH_OP_MEMBER_DECORATE,id,cast(u32)i,35,sh_part(tree,w,t,3+2*i));}
+  }
+  w[sh_tw(t,7)]=id;
+  return id;
+}
+// A pointer type to t: k 2 Function, 3 StorageBuffer (to its laid-out form),
+// 4 Input, 5 Output, 6 UniformConstant.
+sh_ptr :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int)->u32 {
+  if !sh_type_ok(s,t) {return sh_nothing();}
+  if w[sh_tw(t,k)]!=0 {return w[sh_tw(t,k)];}
+  c:=sh_canon(tree,w,t);
+  if c!=t {w[sh_tw(t,k)]=sh_ptr(s,tree,w,c,k);return w[sh_tw(t,k)];}
+  classes:=[5] u32.[SH_SC_FUNCTION,SH_SC_STORAGE_BUFFER,SH_SC_INPUT,SH_SC_OUTPUT,SH_SC_UNIFORM_CONSTANT];
+  to:=ifx k==3 then sh_laid(s,tree,w,t) else sh_tid(s,tree,w,t);
+  id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_POINTER,id,classes[k-2],to);
+  w[sh_tw(t,k)]=id;
+  return id;
+}
+
+// One constant per (type, bits), kept in a table; bool as true or false; a
+// null constant of any type with `zeroed`.
+sh_const_entry :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32,zeroed:bool)->u32 {
+  tag:=t|(ifx zeroed then cast(u32)0x80000000 else cast(u32)0);
+  for k:0..<s[0].consts {at:=SH_W_CONST+4*k;if w[at]==tag && w[at+1]==lo && w[at+2]==hi {return w[at+3];}}
+  if s[0].consts>=SH_CONSTS {sh_fail(s,3);return sh_nothing();}
+  ty:=sh_tid(s,tree,w,t);id:=sh_id(s);
+  if zeroed {sh2(s,w,SH_T,SH_OP_CONSTANT_NULL,ty,id);}
+  else if sh_kind(tree,w,t)==1 {sh2(s,w,SH_T,ifx lo!=0 then SH_OP_CONSTANT_TRUE else SH_OP_CONSTANT_FALSE,ty,id);}
+  else if sh_wide(tree,w,t) {sh4(s,w,SH_T,SH_OP_CONSTANT,ty,id,lo,hi);}
+  else {sh3(s,w,SH_T,SH_OP_CONSTANT,ty,id,lo);}
+  at:=SH_W_CONST+4*s[0].consts;w[at]=tag;w[at+1]=lo;w[at+2]=hi;w[at+3]=id;s[0].consts+=1;
+  return id;
+}
+sh_const :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,lo:u32,hi:u32)->u32 {return sh_const_entry(s,tree,w,t,lo,hi,false);}
+sh_u32 :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32)->u32 {return sh_const(s,tree,w,SH_U32,v,0);}
+sh_f32 :: (s:[]ShState,tree:[]u32,w:[]u32,bits:u32)->u32 {return sh_const(s,tree,w,SH_F32,bits,0);}
+
+// A function type: the result and the parameters that are not resources,
+// kept by their ids (two types of one id are one function type).
+sh_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,ret:u32,params:[]u32)->u32 {
+  // At most 32 parameters, as every procedure has.
+  ids:[32] u32;
+  r:=sh_tid(s,tree,w,ret);
+  for i:0..<params.count {ids[i]=sh_tid(s,tree,w,params[i]);}
+  for k:0..<s[0].ftypes {
+    at:=SH_W_FTYPE+36*k;
+    if w[at+1]!=r || cast(int)w[at+2]!=params.count {continue;}
+    same:=true;
+    for i:0..<params.count {if w[at+3+i]!=ids[i] {same=false;}}
+    if same {return w[at];}
+  }
+  if s[0].ftypes>=SH_FTYPES {sh_fail(s,3);return sh_nothing();}
+  id:=sh_id(s);
+  sh_op(s,w,SH_T,SH_OP_TYPE_FUNCTION,3+params.count);sh_word(s,w,SH_T,id);sh_word(s,w,SH_T,r);
+  for i:0..<params.count {sh_word(s,w,SH_T,ids[i]);}
+  at:=SH_W_FTYPE+36*s[0].ftypes;w[at]=id;w[at+1]=r;w[at+2]=cast(u32)params.count;
+  for i:0..<params.count {w[at+3+i]=ids[i];}
+  s[0].ftypes+=1;
+  return id;
+}
+
+// ---- procedures and their lowered copies
+//
+// Per procedure, its signature's place in the tree. A procedure's words:
+// ret params type* locals type* length body.
+sh_sig :: (w:[]u32,p:int)->int {return cast(int)w[SH_W_PROC+p];}
+sh_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[sh_sig(w,p)+1];}
+sh_param :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 {return tree[sh_sig(w,p)+2+i];}
+sh_locals_at :: (tree:[]u32,w:[]u32,p:int)->int {return sh_sig(w,p)+2+sh_params(tree,w,p);}
+sh_body_at :: (tree:[]u32,w:[]u32,p:int)->int {at:=sh_locals_at(tree,w,p);return at+1+cast(int)tree[at]+1;}
+// A lowered copy: 16 words, its procedure, function id, done, then the
+// binding of each resource parameter, in order.
+sh_iw :: (k:int,j:int)->int {return SH_W_INST+16*k+j;}
+// The copy of p with these bindings, made if it is new.
+sh_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,binds:[]u32)->int {
+  for k:0..<s[0].insts {
+    if cast(int)w[sh_iw(k,0)]!=p {continue;}
+    same:=true;
+    for i:0..<binds.count {if w[sh_iw(k,3+i)]!=binds[i] {same=false;}}
+    if same {return k;}
+  }
+  if s[0].insts>=SH_INSTS || binds.count>SH_RES {sh_fail(s,3);return cast(int)sh_nothing();}
+  k:=s[0].insts;s[0].insts+=1;
+  w[sh_iw(k,0)]=cast(u32)p;w[sh_iw(k,1)]=sh_id(s);w[sh_iw(k,2)]=0;
+  for i:0..<binds.count {w[sh_iw(k,3+i)]=binds[i];}
+  return k;
+}
+// The parameters that are values (not resources), as types.
+sh_value_params :: (tree:[]u32,w:[]u32,p:int,into:[]u32)->int {
+  n:=0;
+  for i:0..<sh_params(tree,w,p) {t:=sh_param(tree,w,p,i);if sh_resource(tree,w,t)==0 {into[n]=t;n+=1;}}
+  return n;
+}
+sh_proc_ftype :: (s:[]ShState,tree:[]u32,w:[]u32,p:int)->u32 {
+  vals:[32] u32;
+  n:=sh_value_params(tree,w,p,vals[..]);
+  return sh_ftype(s,tree,w,tree[sh_sig(w,p)],vals[0..<n]);
+}
+
+// ---- bindings
+//
+// Per binding, 4 words: its name id, its kind (1 storage, 2 image, 3 sampler),
+// its variable and its type.
+sh_bw :: (b:int,k:int)->int {return SH_W_BIND+4*b+k;}
+sh_binding :: (s:[]ShState,tree:[]u32,w:[]u32,name:u32,t:u32)->u32 {
+  for b:0..<s[0].binds {
+    if w[sh_bw(b,0)]==name {
+      if w[sh_bw(b,3)]!=t {sh_fail(s,7);return sh_nothing();}
+      return cast(u32)b;
+    }
+  }
+  // There are fewer than SH_BINDS: two entries of at most 32 parameters, three of them not resources.
+  b:=s[0].binds;s[0].binds+=1;
+  kind:=sh_resource(tree,w,t);
+  var:=sh_id(s);
+  if kind==1 {
+    // A block of one runtime array of the laid-out element, read only.
+    elem:=sh_part(tree,w,t,1);
+    e:=sh_laid(s,tree,w,elem);
+    // sh_laid refused an element that is a bool or a resource.
+    k:=sh_kind(tree,w,elem);
+    size:u32=ifx k==7 || k==8 then sh_part(tree,w,elem,ifx k==7 then 2+2*cast(int)sh_part(tree,w,elem,1) else 3) else (ifx sh_wide(tree,w,elem) then 8 else 4);
+    if k==8 {size=size*sh_part(tree,w,elem,2);}
+    rt:=sh_id(s);sh2(s,w,SH_T,SH_OP_TYPE_RUNTIME_ARRAY,rt,e);
+    sh3(s,w,SH_D,SH_OP_DECORATE,rt,6,size);
+    block:=sh_id(s);sh2(s,w,SH_T,SH_OP_TYPE_STRUCT,block,rt);
+    sh2(s,w,SH_D,SH_OP_DECORATE,block,2);sh4(s,w,SH_D,SH_OP_MEMBER_DECORATE,block,0,35,0);
+    ptr:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_POINTER,ptr,SH_SC_STORAGE_BUFFER,block);
+    sh3(s,w,SH_T,SH_OP_VARIABLE,ptr,var,SH_SC_STORAGE_BUFFER);
+    sh2(s,w,SH_D,SH_OP_DECORATE,var,24);
+  } else {
+    sh3(s,w,SH_T,SH_OP_VARIABLE,sh_ptr(s,tree,w,t,6),var,SH_SC_UNIFORM_CONSTANT);
+  }
+  sh3(s,w,SH_D,SH_OP_DECORATE,var,34,0);sh3(s,w,SH_D,SH_OP_DECORATE,var,33,cast(u32)b);
+  w[sh_bw(b,0)]=name;w[sh_bw(b,1)]=kind;w[sh_bw(b,2)]=var;w[sh_bw(b,3)]=t;
+  return cast(u32)b;
+}
+
+// ---- values
+//
+// Locals of the copy being lowered: 2 words each, the variable (or, for a
+// resource, its binding) and the type.
+sh_lw :: (i:int,k:int)->int {return SH_W_LOCAL+2*i+k;}
+sh_local :: (s:[]ShState,tree:[]u32)->int {
+  id:=cast(int)sh_next(s,tree);
+  if id>=s[0].locals {sh_fail(s,1);return cast(int)sh_nothing();}
+  return id;
+}
+sh_load :: (s:[]ShState,tree:[]u32,w:[]u32,p:ShPlace)->ShVal {
+  if p.ptr==0 {sh_fail(s,5);return sh_refused();}
+  if !p.storage {return ShVal.{id=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,p.ty),p.ptr),ty=p.ty};}
+  v:=sh_r1(s,w,SH_OP_LOAD,sh_laid(s,tree,w,p.ty),p.ptr);
+  return ShVal.{id=sh_unlay(s,tree,w,v,p.ty),ty=p.ty};
+}
+// A value read from a storage buffer, rebuilt in its Function form.
+sh_unlay :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32)->u32 {
+  if !sh_laid_apart(tree,w,t) {return v;}
+  array:=sh_kind(tree,w,t)==8;
+  n:=cast(int)sh_part(tree,w,t,ifx array then 2 else 1);
+  if n>4096 {sh_fail(s,3);return sh_nothing();}
+  parts:[4096] u32;
+  for i:0..<n {
+    pt:=ifx array then sh_part(tree,w,t,1) else sh_part(tree,w,t,2+2*i);
+    parts[i]=sh_unlay(s,tree,w,sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_laid(s,tree,w,pt),v,cast(u32)i),pt);
+  }
+  r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,3+n);sh_word(s,w,SH_C,sh_tid(s,tree,w,t));sh_word(s,w,SH_C,r);
+  for i:0..<n {sh_word(s,w,SH_C,parts[i]);}
+  return r;
+}
+// An index as an array index: a 32-bit integer.
+sh_index :: (s:[]ShState,tree:[]u32,w:[]u32,v:ShVal)->u32 {
+  if !sh_int(tree,w,v.ty) {sh_fail(s,4);return sh_nothing();}
+  if sh_wide(tree,w,v.ty) {return sh_r1(s,w,SH_OP_U_CONVERT,sh_tid(s,tree,w,SH_U32),v.id);}
+  return v.id;
+}
+// A place behind a pointer, and a view not yet indexed (its binding).
+sh_at :: (ptr:u32,ty:u32,storage:bool)->ShPlace {p:ShPlace;p.ptr=ptr;p.ty=ty;p.storage=storage;return p;}
+sh_view :: (ty:u32,bind:u32)->ShPlace {p:ShPlace;p.ty=ty;p.bind=bind;return p;}
+sh_place :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShPlace {
+  k:=sh_next(s,tree);
+  // What a refused place hands back: nothing reads it, since the first refusal is the result.
+  none:ShPlace;
+  if !s[0].ok {return none;}
+  if k==40 {
+    id:=sh_local(s,tree);
+    if !s[0].ok {return none;}
+    t:=w[sh_lw(id,1)];
+    if sh_resource(tree,w,t)!=0 {return sh_view(t,w[sh_lw(id,0)]);}
+    return sh_at(w[sh_lw(id,0)],t,false);
+  }
+  if k==41 {
+    p:=sh_place(s,tree,out,w);i:=sh_next(s,tree);
+    // A view has no fields: its kind is not a struct's.
+    if !s[0].ok {return none;}
+    if sh_kind(tree,w,p.ty)!=7 || i>=sh_part(tree,w,p.ty,1) {sh_fail(s,1);return none;}
+    ft:=sh_part(tree,w,p.ty,2+2*cast(int)i);
+    ptr:=sh_r2(s,w,SH_OP_ACCESS_CHAIN,sh_ptr(s,tree,w,ft,ifx p.storage then 3 else 2),p.ptr,sh_u32(s,tree,w,i));
+    return sh_at(ptr,ft,p.storage);
+  }
+  if k==42 {
+    p:=sh_place(s,tree,out,w);i:=sh_index(s,tree,w,sh_expr(s,tree,out,w));
+    if !s[0].ok {return none;}
+    if p.ptr==0 {
+      // An image or a sampler is no place; whatever uses it refuses it.
+      if sh_resource(tree,w,p.ty)!=1 {return none;}
+      et:=sh_part(tree,w,p.ty,1);
+      ptr:=sh_r3(s,w,SH_OP_ACCESS_CHAIN,sh_ptr(s,tree,w,et,3),w[sh_bw(cast(int)p.bind,2)],sh_u32(s,tree,w,0),i);
+      return sh_at(ptr,et,true);
+    }
+    if sh_kind(tree,w,p.ty)!=8 {sh_fail(s,1);return none;}
+    et:=sh_part(tree,w,p.ty,1);
+    ptr:=sh_r2(s,w,SH_OP_ACCESS_CHAIN,sh_ptr(s,tree,w,et,ifx p.storage then 3 else 2),p.ptr,i);
+    return sh_at(ptr,et,p.storage);
+  }
+  sh_fail(s,1);return none;
+}
+
+// Two values combined. Arithmetic and order on numbers, bits and shifts on
+// integers, logic on bool, equality on all three.
+sh_binary :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:ShVal,b:ShVal)->ShVal {
+  // FAdd FSub FMul FDiv (Coax has no f32 %); FOrdLessThan ...LessThanEqual ...GreaterThan ...GreaterThanEqual FOrdEqual FUnordNotEqual
+  float_ops:=[18] u32.[129,131,133,136,0,184,188,186,190,180,183,0,0,0,0,0,0,0];
+  // IAdd ISub IMul SDiv SRem; SLessThan SLessThanEqual SGreaterThan SGreaterThanEqual IEqual INotEqual; and or xor shl sar
+  signed_ops:=[18] u32.[128,130,132,135,138,177,179,173,175,170,171,0,0,199,197,198,196,195];
+  // ... UDiv UMod; ULessThan ...; ... shr
+  unsigned_ops:=[18] u32.[128,130,132,134,137,176,178,172,174,170,171,0,0,199,197,198,196,194];
+  // LogicalEqual LogicalNotEqual LogicalAnd LogicalOr
+  bool_ops:=[18] u32.[0,0,0,0,0,0,0,0,0,164,165,167,166,0,0,0,0,0];
+  if a.ty!=b.ty || op<1 || op>18 {sh_fail(s,4);return sh_refused();}
+  k:=sh_kind(tree,w,a.ty);
+  code:u32=0;
+  if k==2 {code=float_ops[cast(int)op-1];}
+  else if k==1 {code=bool_ops[cast(int)op-1];}
+  else if k==3 || k==5 {code=signed_ops[cast(int)op-1];}
+  else if k==4 || k==6 {code=unsigned_ops[cast(int)op-1];}
+  if code==0 {sh_fail(s,4);return sh_refused();}
+  ty:=ifx op<=5 || op>=14 then a.ty else SH_BOOL;
+  return ShVal.{id=sh_r2(s,w,code,sh_tid(s,tree,w,ty),a.id,b.id),ty=ty};
+}
+// A GLSL.std.450 instruction on f32.
+sh_ext :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,args:[]u32)->u32 {
+  r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_EXT_INST,5+args.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,SH_F32));sh_word(s,w,SH_C,r);
+  sh_word(s,w,SH_C,s[0].glsl);sh_word(s,w,SH_C,inst);
+  for i:0..<args.count {sh_word(s,w,SH_C,args[i]);}
+  return r;
+}
+sh_ext1 :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,a:u32)->u32 {x:=[1] u32.[a];return sh_ext(s,tree,w,inst,x[..]);}
+sh_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {return sh_r3(s,w,SH_OP_SELECT,sh_tid(s,tree,w,t),c,a,b);}
+sh_fcmp :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:u32,b:u32)->u32 {return sh_r2(s,w,op,sh_tid(s,tree,w,SH_BOOL),a,b);}
+// pow as C's powf, where GLSL's Pow leaves x<0 and x==0 undefined:
+// |x|^y, negated for x<0 and an odd whole y, NaN for x<0 and a fractional y;
+// 0 or infinity for x==0 as y is above or below 0; and 1 whenever y==0.
+sh_pow :: (s:[]ShState,tree:[]u32,w:[]u32,x:u32,y:u32)->u32 {
+  zero:=sh_f32(s,tree,w,0);one:=sh_f32(s,tree,w,0x3F800000);half:=sh_f32(s,tree,w,0x3F000000);
+  nan:=sh_f32(s,tree,w,0x7FC00000);inf:=sh_f32(s,tree,w,0x7F800000);f:=sh_tid(s,tree,w,SH_F32);
+  xy:=[2] u32.[sh_ext1(s,tree,w,4,x),y];
+  r:=sh_ext(s,tree,w,26,xy[..]);
+  whole:=sh_fcmp(s,tree,w,180,sh_ext1(s,tree,w,8,y),y);
+  odd:=sh_fcmp(s,tree,w,183,sh_ext1(s,tree,w,10,sh_r2(s,w,133,f,y,half)),zero);
+  negative:=sh_select(s,tree,w,SH_F32,whole,sh_select(s,tree,w,SH_F32,odd,sh_r1(s,w,SH_OP_F_NEGATE,f,r),r),nan);
+  r=sh_select(s,tree,w,SH_F32,sh_fcmp(s,tree,w,184,x,zero),negative,r);
+  r=sh_select(s,tree,w,SH_F32,sh_fcmp(s,tree,w,180,x,zero),sh_select(s,tree,w,SH_F32,sh_fcmp(s,tree,w,186,y,zero),zero,inf),r);
+  return sh_select(s,tree,w,SH_F32,sh_fcmp(s,tree,w,180,y,zero),one,r);
+}
+// A number as another number's type: conversions between floats and
+// integers, and integer widths and signs as C converts them.
+sh_convert :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:ShVal)->ShVal {
+  if !sh_type_ok(s,to) {return sh_refused();}
+  ft:=sh_kind(tree,w,v.ty);tt:=sh_kind(tree,w,to);
+  if ft<2 || ft>6 || tt<2 || tt>6 {sh_fail(s,4);return sh_refused();}
+  id:=sh_tid(s,tree,w,to);
+  if ft==tt {return ShVal.{id=v.id,ty=to};}
+  if tt==2 {return ShVal.{id=sh_r1(s,w,ifx ft==3 || ft==5 then SH_OP_CONVERT_S_TO_F else SH_OP_CONVERT_U_TO_F,id,v.id),ty=to};}
+  if ft==2 {return ShVal.{id=sh_r1(s,w,ifx tt==3 || tt==5 then SH_OP_CONVERT_F_TO_S else SH_OP_CONVERT_F_TO_U,id,v.id),ty=to};}
+  wide:=sh_wide(tree,w,to);
+  if sh_wide(tree,w,v.ty)==wide {return ShVal.{id=sh_r1(s,w,SH_OP_BITCAST,id,v.id),ty=to};}
+  // Narrower: the low bits, whatever the signs. Wider: sign-extended from a
+  // signed value, else zero-extended (to u64, then as the type's bits).
+  signed_to:=tt==3;
+  if !wide {return ShVal.{id=sh_r1(s,w,ifx signed_to then SH_OP_S_CONVERT else SH_OP_U_CONVERT,id,v.id),ty=to};}
+  if ft==3 {return ShVal.{id=sh_r1(s,w,SH_OP_S_CONVERT,id,v.id),ty=to};}
+  return ShVal.{id=sh_widen(s,tree,w,to,v.id),ty=to};
+}
+// A u32 zero-extended to a 64-bit type.
+sh_widen :: (s:[]ShState,tree:[]u32,w:[]u32,to:u32,v:u32)->u32 {
+  r:=sh_r1(s,w,SH_OP_U_CONVERT,sh_u64(s,w),v);
+  if sh_kind(tree,w,to)==6 {return r;}
+  return sh_r1(s,w,SH_OP_BITCAST,sh_tid(s,tree,w,to),r);
+}
+
+// A call: values for the value parameters, bindings for the resource ones.
+sh_call :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+  p:=cast(int)sh_next(s,tree);n:=cast(int)sh_next(s,tree);
+  // At most 32, as every procedure's parameters are.
+  if p>=s[0].procs || n!=sh_params(tree,w,p) {sh_fail(s,1);return sh_refused();}
+  vals:[32] u32;binds:[32] u32;nv:=0;nb:=0;
+  for i:0..<n {
+    t:=sh_param(tree,w,p,i);
+    if sh_resource(tree,w,t)!=0 {
+      // A resource argument is a resource local of the caller: its binding.
+      if sh_next(s,tree)!=18 {sh_fail(s,5);return sh_refused();}
+      id:=sh_local(s,tree);
+      if !s[0].ok {return sh_refused();}
+      if w[sh_lw(id,1)]!=t {sh_fail(s,4);return sh_refused();}
+      binds[nb]=w[sh_lw(id,0)];nb+=1;
+      continue;
+    }
+    a:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return sh_refused();}
+    if a.ty!=t {sh_fail(s,4);return sh_refused();}
+    vals[nv]=a.id;nv+=1;
+  }
+  k:=sh_instance(s,tree,w,p,binds[0..<nb]);
+  if !s[0].ok {return sh_refused();}
+  // The edge from the copy being lowered to this one, for the recursion check.
+  if s[0].edges>=SH_EDGES {sh_fail(s,3);return sh_refused();}
+  w[SH_W_EDGE+2*s[0].edges]=cast(u32)s[0].inst;w[SH_W_EDGE+2*s[0].edges+1]=cast(u32)k;s[0].edges+=1;
+  ret:=tree[sh_sig(w,p)];
+  r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_FUNCTION_CALL,4+nv);sh_word(s,w,SH_C,sh_tid(s,tree,w,ret));sh_word(s,w,SH_C,r);sh_word(s,w,SH_C,w[sh_iw(k,1)]);
+  for i:0..<nv {sh_word(s,w,SH_C,vals[i]);}
+  return ShVal.{id=r,ty=ret};
+}
+
+// A resource argument of a GPU procedure: the resource's binding variable, loaded.
+sh_resource_arg :: (s:[]ShState,tree:[]u32,w:[]u32,want:u32)->u32 {
+  if sh_next(s,tree)!=18 {sh_fail(s,11);return sh_nothing();}
+  id:=sh_local(s,tree);
+  if !s[0].ok {return sh_nothing();}
+  t:=w[sh_lw(id,1)];k:=sh_kind(tree,w,t);
+  if k!=10 && k!=11 {sh_fail(s,11);return sh_nothing();}
+  // want: 0 2D, 1 2D array, 2 depth (images); 10 a sampler, 11 a comparison sampler.
+  if (want<10 && (k!=10 || sh_part(tree,w,t,1)!=want)) || (want>=10 && (k!=11 || sh_part(tree,w,t,1)!=want-10)) {sh_fail(s,11);return sh_nothing();}
+  b:=cast(int)w[sh_lw(id,0)];
+  return sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_bw(b,2)]);
+}
+sh_value_arg :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,want:u32)->u32 {
+  v:=sh_expr(s,tree,out,w);
+  if !s[0].ok {return sh_nothing();}
+  ok:=ifx want<16 then v.ty==want else sh_vector(tree,w,v.ty)==cast(int)(want-16); // mutant: equivalent (no argument wants a vector of no f32)
+  if !ok {sh_fail(s,11);return sh_nothing();}
+  return v.id;
+}
+// A vector type of n f32 for an image's coordinates or texel: the V2..V4
+// the program declares if it has one, else its own.
+sh_vec :: (s:[]ShState,tree:[]u32,w:[]u32,n:int)->u32 {
+  // Every caller holds a value of such a vector, so the program has one.
+  r:u32;
+  for t:0..<s[0].types {if sh_vector(tree,w,cast(u32)t)==n {r=sh_tid(s,tree,w,cast(u32)t);}} // mutant: equivalent (type 0 is void)
+  return r;
+}
+sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+  // An s32 vector of two, kept in s32's UniformConstant pointer word (s32 is never a resource).
+  if w[sh_tw(SH_S32,6)]!=0 {return w[sh_tw(SH_S32,6)];}
+  id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,sh_tid(s,tree,w,SH_S32),2);
+  w[sh_tw(SH_S32,6)]=id;
+  return id;
+}
+sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+  g:=sh_next(s,tree);ty:=sh_next(s,tree);n:=sh_next(s,tree);
+  // How many arguments each takes.
+  counts:=[11] u32.[0,3,4,4,5,5,4,4,4,1,1];
+  if g<1 || g>11 {sh_fail(s,11);return sh_refused();}
+  if n!=counts[cast(int)g-1] {sh_fail(s,11);return sh_refused();}
+  if !sh_type_ok(s,ty) {return sh_refused();}
+  if g==1 {
+    if !s[0].fragment {sh_fail(s,11);return sh_refused();}
+    sh_end_block(s,w,SH_OP_KILL);
+    // Nothing: discard is a statement.
+    return sh_refused();
+  }
+  f:=sh_tid(s,tree,w,SH_F32);
+  if g>=2 && g<=6 {
+    array:=g>=4;
+    img:=sh_resource_arg(s,tree,w,ifx array then 1 else 0);smp:=sh_resource_arg(s,tree,w,10);uv:=sh_value_arg(s,tree,out,w,18);
+    coord:=uv;
+    if array {
+      layer:=sh_value_arg(s,tree,out,w,SH_S32);
+      if !s[0].ok {return sh_refused();}
+      parts:=[3] u32.[sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,f,uv,0),sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,f,uv,1),sh_r1(s,w,SH_OP_CONVERT_S_TO_F,f,layer)];
+      coord=sh_id(s);
+      sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,6);sh_word(s,w,SH_C,sh_vec(s,tree,w,3));sh_word(s,w,SH_C,coord);
+      sh_word(s,w,SH_C,parts[0]);sh_word(s,w,SH_C,parts[1]);sh_word(s,w,SH_C,parts[2]);
+    }
+    extra:u32;
+    if g==3 || g==5 || g==6 {extra=sh_value_arg(s,tree,out,w,SH_F32);}
+    if !s[0].ok {return sh_refused();}
+    if sh_vector(tree,w,ty)!=4 {sh_fail(s,11);return sh_refused();}
+    sampled:=sh_id(s);
+    sh_ptr_sampled:=sh_sampled_type(s,tree,w,ifx array then 1 else 0);
+    sh4(s,w,SH_C,SH_OP_SAMPLED_IMAGE,sh_ptr_sampled,sampled,img,smp);
+    r:=sh_id(s);
+    explicit:=g==3 || g==5;
+    if g==2 || g==4 {
+      if !s[0].fragment {sh_fail(s,11);return sh_refused();}
+      sh4(s,w,SH_C,SH_OP_SAMPLE_IMPLICIT,sh_tid(s,tree,w,ty),r,sampled,coord);
+    } else {
+      if !explicit && !s[0].fragment {sh_fail(s,11);return sh_refused();}
+      // Bias (1) or Lod (2), then its value.
+      sh_op(s,w,SH_C,ifx explicit then SH_OP_SAMPLE_EXPLICIT else SH_OP_SAMPLE_IMPLICIT,7);
+      sh_word(s,w,SH_C,sh_tid(s,tree,w,ty));sh_word(s,w,SH_C,r);sh_word(s,w,SH_C,sampled);sh_word(s,w,SH_C,coord);
+      sh_word(s,w,SH_C,ifx explicit then 2 else 1);sh_word(s,w,SH_C,extra);
+    }
+    return ShVal.{id=r,ty=ty};
+  }
+  if g==7 || g==8 {
+    img:=sh_resource_arg(s,tree,w,ifx g==7 then 0 else 2);
+    x:=sh_value_arg(s,tree,out,w,SH_S32);y:=sh_value_arg(s,tree,out,w,SH_S32);lod:=sh_value_arg(s,tree,out,w,SH_S32);
+    if !s[0].ok {return sh_refused();}
+    // A texel is a V4; a depth an f32.
+    if (ifx g==7 then sh_vector(tree,w,ty)!=4 else ty!=SH_F32) {sh_fail(s,11);return sh_refused();}
+    xy:=sh_id(s);
+    sh4(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,sh_ivec2(s,tree,w),xy,x,y);
+    v4:=sh_vec(s,tree,w,4);
+    r:=sh_id(s);
+    sh_op(s,w,SH_C,SH_OP_IMAGE_FETCH,7);sh_word(s,w,SH_C,v4);sh_word(s,w,SH_C,r);sh_word(s,w,SH_C,img);sh_word(s,w,SH_C,xy);
+    sh_word(s,w,SH_C,2);sh_word(s,w,SH_C,lod);
+    if g==8 {return ShVal.{id=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,f,r,0),ty=ty};}
+    return ShVal.{id=r,ty=ty};
+  }
+  if g==9 {
+    img:=sh_resource_arg(s,tree,w,2);smp:=sh_resource_arg(s,tree,w,11);uv:=sh_value_arg(s,tree,out,w,18);ref:=sh_value_arg(s,tree,out,w,SH_F32);
+    if !s[0].ok {return sh_refused();}
+    if ty!=SH_F32 {sh_fail(s,11);return sh_refused();}
+    sampled:=sh_id(s);
+    sh4(s,w,SH_C,SH_OP_SAMPLED_IMAGE,sh_sampled_type(s,tree,w,2),sampled,img,smp);
+    r:=sh_id(s);
+    sh_op(s,w,SH_C,SH_OP_SAMPLE_DREF_EXPLICIT,8);sh_word(s,w,SH_C,f);sh_word(s,w,SH_C,r);sh_word(s,w,SH_C,sampled);
+    sh_word(s,w,SH_C,uv);sh_word(s,w,SH_C,ref);sh_word(s,w,SH_C,2);sh_word(s,w,SH_C,sh_f32(s,tree,w,0));
+    return ShVal.{id=r,ty=ty};
+  }
+  // width and height of a 2D texture, at level 0, as u32
+  if sh_next(s,tree)!=18 {sh_fail(s,11);return sh_refused();}
+  id:=sh_local(s,tree);
+  if !s[0].ok {return sh_refused();}
+  t:=w[sh_lw(id,1)];
+  if sh_kind(tree,w,t)!=10 || sh_part(tree,w,t,1)!=0 || ty!=SH_U32 {sh_fail(s,11);return sh_refused();}
+  s[0].query=true;
+  img:=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_bw(cast(int)w[sh_lw(id,0)],2)]);
+  size:=sh_r2(s,w,SH_OP_QUERY_SIZE_LOD,sh_ivec2(s,tree,w),img,sh_const(s,tree,w,SH_S32,0,0));
+  part:=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_tid(s,tree,w,SH_S32),size,ifx g==10 then 0 else 1);
+  return ShVal.{id=sh_r1(s,w,SH_OP_BITCAST,sh_tid(s,tree,w,SH_U32),part),ty=ty};
+}
+// The sampled-image type of an image kind (0 2D, 1 array, 2 depth), kept in
+// the pointer words of void, which has no pointers.
+sh_sampled_type :: (s:[]ShState,tree:[]u32,w:[]u32,dim:u32)->u32 {
+  at:=sh_tw(SH_VOID,2+cast(int)dim);
+  if w[at]!=0 {return w[at];}
+  // The image argument's own type is of this kind: the library declares one of each.
+  img:u32;
+  for t:0..<s[0].types {if sh_kind(tree,w,cast(u32)t)==10 && sh_part(tree,w,cast(u32)t,1)==dim {img=sh_tid(s,tree,w,cast(u32)t);}} // mutant: equivalent (type 0 is void)
+  id:=sh_id(s);sh2(s,w,SH_T,SH_OP_TYPE_SAMPLED_IMAGE,id,img);
+  w[at]=id;
+  return id;
+}
+
+sh_expr :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
+  k:=sh_next(s,tree);
+  if !s[0].ok {return sh_refused();}
+  if k==16 {
+    t:=sh_next(s,tree);
+    if !sh_type_ok(s,t) {return sh_refused();}
+    kind:=sh_kind(tree,w,t);
+    if kind<1 || kind>6 {sh_fail(s,1);return sh_refused();}
+    lo:=sh_next(s,tree);hi:u32=0;
+    if sh_wide(tree,w,t) {hi=sh_next(s,tree);}
+    // One constant for true, whatever its word.
+    if kind==1 {lo=ifx lo!=0 then 1 else 0;} // mutant: equivalent (any one word for true keys it alike)
+    return ShVal.{id=sh_const(s,tree,w,t,lo,hi),ty=t};
+  }
+  if k==17 {
+    t:=sh_next(s,tree);
+    if !sh_type_ok(s,t) {return sh_refused();}
+    if sh_resource(tree,w,t)!=0 || t==SH_VOID {sh_fail(s,4);return sh_refused();}
+    return ShVal.{id=sh_const_entry(s,tree,w,t,0,0,true),ty=t}; // mutant: equivalent (a null's words only key it)
+  }
+  if k==18 {
+    id:=sh_local(s,tree);
+    if !s[0].ok {return sh_refused();}
+    t:=w[sh_lw(id,1)];
+    if sh_resource(tree,w,t)!=0 {sh_fail(s,5);return sh_refused();}
+    return ShVal.{id=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_lw(id,0)]),ty=t};
+  }
+  if k==19 {
+    op:=sh_next(s,tree);a:=sh_expr(s,tree,out,w);b:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return sh_refused();}
+    return sh_binary(s,tree,w,op,a,b);
+  }
+  if k==20 || k==21 {
+    a:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return sh_refused();}
+    kind:=sh_kind(tree,w,a.ty);
+    code:u32=0;
+    if k==21 && kind==1 {code=SH_OP_LOGICAL_NOT;}
+    if k==20 && kind==2 {code=SH_OP_F_NEGATE;}
+    if k==20 && kind>=3 && kind<=6 {code=SH_OP_S_NEGATE;}
+    if code==0 {sh_fail(s,4);return sh_refused();}
+    return ShVal.{id=sh_r1(s,w,code,sh_tid(s,tree,w,a.ty),a.id),ty=a.ty};
+  }
+  if k==22 {return sh_call(s,tree,out,w);}
+  if k==23 {
+    // GLSL.std.450: Sin Cos Tan Exp Log Sqrt Floor FAbs, and pow as C has it.
+    insts:=[8] u32.[13,14,15,27,28,31,8,4];
+    fn:=sh_next(s,tree);n:=sh_next(s,tree);
+    want:u32=ifx fn==9 then 2 else 1;
+    if fn<1 || fn>9 || n!=want {sh_fail(s,1);return sh_refused();}
+    args:[2] u32;
+    for i:0..<cast(int)n {
+      a:=sh_expr(s,tree,out,w);
+      if !s[0].ok {return sh_refused();}
+      if a.ty!=SH_F32 {sh_fail(s,4);return sh_refused();}
+      args[i]=a.id;
+    }
+    if fn==9 {return ShVal.{id=sh_pow(s,tree,w,args[0],args[1]),ty=SH_F32};}
+    return ShVal.{id=sh_ext1(s,tree,w,insts[cast(int)fn-1],args[0]),ty=SH_F32};
+  }
+  if k==24 {
+    c:=sh_expr(s,tree,out,w);a:=sh_expr(s,tree,out,w);b:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return sh_refused();}
+    if c.ty!=SH_BOOL || a.ty!=b.ty || sh_resource(tree,w,a.ty)!=0 {sh_fail(s,4);return sh_refused();}
+    return ShVal.{id=sh_select(s,tree,w,a.ty,c.id,a.id,b.id),ty=a.ty};
+  }
+  if k==25 {
+    v:=sh_expr(s,tree,out,w);i:=sh_next(s,tree);
+    if !s[0].ok {return sh_refused();}
+    if sh_kind(tree,w,v.ty)!=7 || i>=sh_part(tree,w,v.ty,1) {sh_fail(s,1);return sh_refused();}
+    ft:=sh_part(tree,w,v.ty,2+2*cast(int)i);
+    return ShVal.{id=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_tid(s,tree,w,ft),v.id,i),ty=ft};
+  }
+  if k==27 {p:=sh_place(s,tree,out,w);if !s[0].ok {return sh_refused();}return sh_load(s,tree,w,p);}
+  if k==29 {t:=sh_next(s,tree);v:=sh_expr(s,tree,out,w);if !s[0].ok {return sh_refused();}return sh_convert(s,tree,w,t,v);}
+  if k==30 {
+    t:=sh_next(s,tree);v:=sh_expr(s,tree,out,w);
+    if !s[0].ok || !sh_type_ok(s,t) {return sh_refused();}
+    a:=sh_kind(tree,w,v.ty);b:=sh_kind(tree,w,t);
+    if a<2 || a>4 || b<2 || b>4 || a==b {sh_fail(s,4);return sh_refused();}
+    return ShVal.{id=sh_r1(s,w,SH_OP_BITCAST,sh_tid(s,tree,w,t),v.id),ty=t};
+  }
+  if k==31 {
+    t:=sh_next(s,tree);n:=cast(int)sh_next(s,tree);
+    if !sh_type_ok(s,t) {return sh_refused();}
+    kind:=sh_kind(tree,w,t);
+    if (kind!=7 && kind!=8) || n>4096 {sh_fail(s,1);return sh_refused();}
+    want:=cast(int)sh_part(tree,w,t,ifx kind==7 then 1 else 2);
+    if n!=want {sh_fail(s,1);return sh_refused();}
+    parts:[4096] u32;
+    for i:0..<n {
+      a:=sh_expr(s,tree,out,w);
+      if !s[0].ok {return sh_refused();}
+      pt:=ifx kind==7 then sh_part(tree,w,t,2+2*i) else sh_part(tree,w,t,1);
+      if a.ty!=pt || sh_resource(tree,w,pt)!=0 {sh_fail(s,4);return sh_refused();}
+      parts[i]=a.id;
+    }
+    r:=sh_id(s);
+    sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,3+n);sh_word(s,w,SH_C,sh_tid(s,tree,w,t));sh_word(s,w,SH_C,r);
+    for i:0..<n {sh_word(s,w,SH_C,parts[i]);}
+    return ShVal.{id=r,ty=t};
+  }
+  if k==32 {
+    p:=sh_place(s,tree,out,w);
+    if !s[0].ok {return sh_refused();}
+    if p.ptr!=0 || sh_resource(tree,w,p.ty)!=1 {sh_fail(s,5);return sh_refused();}
+    n:=sh_r2(s,w,SH_OP_ARRAY_LENGTH,sh_tid(s,tree,w,SH_U32),w[sh_bw(cast(int)p.bind,2)],0);
+    return ShVal.{id=sh_widen(s,tree,w,SH_INT,n),ty=SH_INT};
+  }
+  if k==33 {return sh_gpu(s,tree,out,w);}
+  sh_fail(s,1);return sh_refused();
+}
+
+// ---- statements
+//
+// A statement after a block ends (return, break, continue, discard) is
+// checked like any other and writes no code.
+sh_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
+  dead:=!s[0].open;
+  if dead {s[0].mute+=1;}
+  sh_live_stmt(s,tree,out,w);
+  if dead {s[0].mute-=1;s[0].open=false;}
+}
+sh_loop_push :: (s:[]ShState,w:[]u32,merge:u32,next:u32)->bool {
+  if s[0].loops>=SH_LOOPS {sh_fail(s,3);return false;}
+  w[SH_W_LOOP+2*s[0].loops]=merge;w[SH_W_LOOP+2*s[0].loops+1]=next;s[0].loops+=1;
+  return true;
+}
+sh_live_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
+  k:=sh_next(s,tree);
+  if !s[0].ok {return;}
+  if k==1 {n:=sh_next(s,tree);for i:0..<cast(int)n {if !s[0].ok {return;}sh_stmt(s,tree,out,w);}return;}
+  if k==2 {v:=sh_expr(s,tree,out,w);return;}
+  if k==3 {
+    p:=sh_place(s,tree,out,w);v:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return;}
+    if p.ptr==0 {sh_fail(s,5);return;}
+    if p.storage {sh_fail(s,6);return;}
+    if v.ty!=p.ty {sh_fail(s,4);return;}
+    sh2(s,w,SH_C,SH_OP_STORE,p.ptr,v.id);return;
+  }
+  if k==4 {
+    v:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return;}
+    if v.ty!=s[0].ret || s[0].ret==SH_VOID {sh_fail(s,4);return;}
+    sh1(s,w,SH_C,SH_OP_RETURN_VALUE,v.id);s[0].open=false;return;
+  }
+  if k==5 {if s[0].ret!=SH_VOID {sh_fail(s,4);return;}sh_end_block(s,w,SH_OP_RETURN);return;}
+  if k==6 {
+    has_else:=sh_next(s,tree)!=0;c:=sh_expr(s,tree,out,w);
+    if !s[0].ok {return;}
+    if c.ty!=SH_BOOL {sh_fail(s,4);return;}
+    merge:=sh_id(s);then_:=sh_id(s);else_:=ifx has_else then sh_id(s) else merge;
+    sh2(s,w,SH_C,SH_OP_SELECTION_MERGE,merge,0);
+    sh3(s,w,SH_C,SH_OP_BRANCH_CONDITIONAL,c.id,then_,else_);
+    sh_label(s,w,then_);sh_stmt(s,tree,out,w);
+    open:=s[0].open;
+    if open {sh_branch(s,w,merge);}
+    if has_else {
+      sh_label(s,w,else_);sh_stmt(s,tree,out,w);
+      if s[0].open {sh_branch(s,w,merge);open=true;}
+    } else {open=true;}
+    sh_label(s,w,merge);
+    if !open {sh_end_block(s,w,SH_OP_UNREACHABLE);}
+    return;
+  }
+  if k==7 || k==8 {
+    // header: the merge and continue; test: the condition; body; next: the step, then back.
+    counter:int;hi:ShVal;
+    if k==8 {
+      counter=sh_local(s,tree);lo:=sh_expr(s,tree,out,w);hi=sh_expr(s,tree,out,w);
+      if !s[0].ok {return;}
+      t:=w[sh_lw(counter,1)];
+      // The bound's type is checked by the comparison with the counter.
+      if lo.ty!=t || !sh_int(tree,w,t) {sh_fail(s,4);return;}
+      sh2(s,w,SH_C,SH_OP_STORE,w[sh_lw(counter,0)],lo.id);
+    }
+    header:=sh_id(s);test:=sh_id(s);body:=sh_id(s);next:=sh_id(s);merge:=sh_id(s);
+    sh_branch(s,w,header);
+    sh_label(s,w,header);
+    sh3(s,w,SH_C,SH_OP_LOOP_MERGE,merge,next,0);
+    sh_branch(s,w,test);
+    sh_label(s,w,test);
+    c:ShVal;
+    if k==7 {c=sh_expr(s,tree,out,w);}
+    else {
+      t:=w[sh_lw(counter,1)];
+      i:=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_lw(counter,0)]);
+      c=sh_binary(s,tree,w,6,ShVal.{id=i,ty=t},hi);
+    }
+    if !s[0].ok {return;}
+    if c.ty!=SH_BOOL {sh_fail(s,4);return;}
+    sh3(s,w,SH_C,SH_OP_BRANCH_CONDITIONAL,c.id,body,merge);
+    if !sh_loop_push(s,w,merge,next) {return;}
+    sh_label(s,w,body);sh_stmt(s,tree,out,w);
+    s[0].loops-=1;
+    if s[0].open {sh_branch(s,w,next);}
+    sh_label(s,w,next);
+    if k==8 {
+      t:=w[sh_lw(counter,1)];
+      i:=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_lw(counter,0)]);
+      one:=sh_const(s,tree,w,t,1,0);
+      sh2(s,w,SH_C,SH_OP_STORE,w[sh_lw(counter,0)],sh_r2(s,w,128,sh_tid(s,tree,w,t),i,one));
+    }
+    sh_branch(s,w,header);
+    sh_label(s,w,merge);
+    return;
+  }
+  if k==9 || k==10 {
+    if s[0].loops==0 {sh_fail(s,10);return;}
+    at:=SH_W_LOOP+2*(s[0].loops-1);
+    sh_branch(s,w,w[at+ifx k==9 then 0 else 1]);
+    return;
+  }
+  sh_fail(s,1);
+}
+
+// One lowered copy: its function, parameters stored in their locals, its body.
+sh_lower_instance :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,k:int) {
+  p:=cast(int)w[sh_iw(k,0)];
+  s[0].inst=k;
+  la:=sh_locals_at(tree,w,p);locals:=cast(int)tree[la];params:=sh_params(tree,w,p);
+  if locals>SH_LOCALS {sh_fail(s,3);return;}
+  if params>locals {sh_fail(s,1);return;}
+  s[0].locals=locals;
+  for i:0..<locals {
+    t:=tree[la+1+i];
+    if !sh_type_ok(s,t) {return;}
+    if t==SH_VOID || (i<params && t!=sh_param(tree,w,p,i)) {sh_fail(s,1);return;}
+    if i>=params && sh_resource(tree,w,t)!=0 {sh_fail(s,5);return;}
+    w[sh_lw(i,1)]=t;
+  }
+  s[0].ret=tree[sh_sig(w,p)];
+  if !sh_type_ok(s,s[0].ret) || sh_resource(tree,w,s[0].ret)!=0 {sh_fail(s,5);return;}
+  sh4(s,w,SH_C,SH_OP_FUNCTION,sh_tid(s,tree,w,s[0].ret),w[sh_iw(k,1)],0,sh_proc_ftype(s,tree,w,p));
+  // Value parameters arrive as function parameters; resource ones are the copy's bindings.
+  vals:[32] u32;nv:=0;nb:=0;
+  for i:0..<params {
+    t:=w[sh_lw(i,1)];
+    if sh_resource(tree,w,t)!=0 {w[sh_lw(i,0)]=w[sh_iw(k,3+nb)];nb+=1;continue;}
+    vals[nv]=sh_id(s);sh2(s,w,SH_C,SH_OP_FUNCTION_PARAMETER,sh_tid(s,tree,w,t),vals[nv]);nv+=1;
+  }
+  sh_label(s,w,sh_id(s));
+  for i:0..<locals {
+    t:=w[sh_lw(i,1)];
+    if sh_resource(tree,w,t)!=0 {continue;}
+    v:=sh_id(s);w[sh_lw(i,0)]=v;sh3(s,w,SH_C,SH_OP_VARIABLE,sh_ptr(s,tree,w,t,2),v,SH_SC_FUNCTION);
+  }
+  nv=0;
+  for i:0..<params {
+    if sh_resource(tree,w,w[sh_lw(i,1)])!=0 {continue;}
+    sh2(s,w,SH_C,SH_OP_STORE,w[sh_lw(i,0)],vals[nv]);nv+=1;
+  }
+  s[0].at=sh_body_at(tree,w,p);
+  sh_stmt(s,tree,out,w);
+  if s[0].ok && s[0].at!=sh_body_at(tree,w,p)+cast(int)tree[sh_body_at(tree,w,p)-1] {sh_fail(s,1);}
+  if s[0].open {sh_end_block(s,w,ifx s[0].ret==SH_VOID then SH_OP_RETURN else SH_OP_UNREACHABLE);}
+  sh_op(s,w,SH_C,SH_OP_FUNCTION_END,1);
+  w[sh_iw(k,2)]=1; // mutant: equivalent (any word but 0 marks it lowered)
+}
+
+// ---- entry points
+//
+// What can cross between stages or out to a target: f32, an integer of 32
+// bits (flat) or a vector.
+sh_varying :: (tree:[]u32,w:[]u32,t:u32)->bool {
+  k:=sh_kind(tree,w,t);
+  return k==2 || k==3 || k==4 || sh_vector(tree,w,t)!=0;
+}
+// An entry's interface structs have at most SH_IO fields.
+SH_IO :: 32;
+// The types an interface value is made of: a V4 is itself, a struct its fields.
+sh_fields :: (tree:[]u32,w:[]u32,t:u32,into:[]u32)->int {
+  if sh_vector(tree,w,t)==4 {into[0]=t;return 1;}
+  n:=cast(int)sh_part(tree,w,t,1);
+  for i:0..<n {into[i]=sh_part(tree,w,t,2+2*i);}
+  return n;
+}
+// A struct (not a vector) of at most SH_IO fields: how many, else 0.
+sh_struct :: (tree:[]u32,w:[]u32,t:u32)->int {
+  if sh_kind(tree,w,t)!=7 || sh_vector(tree,w,t)!=0 {return 0;}
+  n:=cast(int)sh_part(tree,w,t,1);
+  if n>SH_IO {return 0;}
+  return n;
+}
+// A position and varyings: a V4, or a struct whose first field is a V4 and
+// whose others can vary. How many fields (1 for a V4), else 0.
+sh_staged :: (tree:[]u32,w:[]u32,t:u32)->int {
+  if sh_vector(tree,w,t)==4 {return 1;}
+  n:=sh_struct(tree,w,t);
+  if n==0 || sh_vector(tree,w,sh_part(tree,w,t,2))!=4 {return 0;}
+  for i:1..<n {if !sh_varying(tree,w,sh_part(tree,w,t,2+2*i)) {return 0;}}
+  return n;
+}
+// Vertex attributes: a struct of fields that can vary. How many, else 0.
+sh_attrs :: (tree:[]u32,w:[]u32,t:u32)->int {
+  n:=sh_struct(tree,w,t);
+  for i:0..<n {if !sh_varying(tree,w,sh_part(tree,w,t,2+2*i)) {return 0;}}
+  return n;
+}
+// Color targets: a V4, or a struct of one to eight V4s. How many, else 0.
+sh_targets :: (tree:[]u32,w:[]u32,t:u32)->int {
+  if sh_vector(tree,w,t)==4 {return 1;}
+  n:=sh_struct(tree,w,t);
+  if n>8 {return 0;}
+  for i:0..<n {if sh_vector(tree,w,sh_part(tree,w,t,2+2*i))!=4 {return 0;}}
+  return n;
+}
+// An interface variable of type t in storage k (4 Input, 5 Output), listed
+// for the entry point (at most 2+SH_IO+SH_IO, a vertex's).
+sh_io :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,k:int,vars:[]u32,nvars:[]int)->u32 {
+  v:=sh_id(s);
+  sh3(s,w,SH_T,SH_OP_VARIABLE,sh_ptr(s,tree,w,t,k),v,ifx k==4 then SH_SC_INPUT else SH_SC_OUTPUT);
+  vars[nvars[0]]=v;nvars[0]+=1;
+  return v;
+}
+sh_flat :: (s:[]ShState,tree:[]u32,w:[]u32,v:u32,t:u32) {if sh_int(tree,w,t) {sh2(s,w,SH_D,SH_OP_DECORATE,v,14);}}
+// A value from fields loaded from interface variables: the V4, or the struct.
+sh_gather :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,parts:[]u32)->u32 {
+  if sh_vector(tree,w,t)==4 {return parts[0];}
+  r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,3+parts.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,t));sh_word(s,w,SH_C,r);
+  for i:0..<parts.count {sh_word(s,w,SH_C,parts[i]);}
+  return r;
+}
+// The fields of an entry's result, each stored to its output, and the end of the entry's function.
+sh_entry_end :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,r:u32,outs:[]u32,types:[]u32) {
+  for i:0..<outs.count {
+    v:=r;
+    if sh_vector(tree,w,t)!=4 {v=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_tid(s,tree,w,types[i]),r,cast(u32)i);}
+    sh2(s,w,SH_C,SH_OP_STORE,outs[i],v);
+  }
+  sh_end_block(s,w,SH_OP_RETURN);sh_op(s,w,SH_C,SH_OP_FUNCTION_END,1);
+}
+// The entry's resources: the copy of p bound to the bindings its parameter names have.
+sh_entry_instance :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32)->int {
+  // sh_instance refuses more than SH_RES.
+  binds:[32] u32;nb:=0;
+  for i:0..<sh_params(tree,w,p) { // mutant: equivalent (an entry's first parameter is a u32 or a V4)
+    t:=sh_param(tree,w,p,i);
+    if sh_resource(tree,w,t)==0 {continue;}
+    binds[nb]=sh_binding(s,tree,w,names[i],t);nb+=1;
+  }
+  return sh_instance(s,tree,w,p,binds[0..<nb]);
+}
+// Whether parameters from `first` on are all resources.
+sh_resources_from :: (tree:[]u32,w:[]u32,p:int,first:int)->bool {
+  for i:first..<sh_params(tree,w,p) {if sh_resource(tree,w,sh_param(tree,w,p,i))==0 {return false;}}
+  return true;
+}
+// The entry's function: it loads its inputs, calls the copy and stores its outputs.
+sh_entry_begin :: (s:[]ShState,tree:[]u32,w:[]u32,entry:u32) {
+  none:[1] u32;
+  sh4(s,w,SH_C,SH_OP_FUNCTION,sh_tid(s,tree,w,SH_VOID),entry,0,sh_ftype(s,tree,w,SH_VOID,none[0..<0]));
+  sh_label(s,w,sh_id(s));
+}
+sh_call_entry :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,k:int,args:[]u32)->u32 {
+  r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_FUNCTION_CALL,4+args.count);sh_word(s,w,SH_C,sh_tid(s,tree,w,tree[sh_sig(w,p)]));sh_word(s,w,SH_C,r);
+  sh_word(s,w,SH_C,w[sh_iw(k,1)]);
+  for i:0..<args.count {sh_word(s,w,SH_C,args[i]);}
+  return r;
+}
+sh_builtin :: (s:[]ShState,w:[]u32,v:u32,b:u32) {sh3(s,w,SH_D,SH_OP_DECORATE,v,11,b);}
+sh_location :: (s:[]ShState,w:[]u32,v:u32,at:int) {sh3(s,w,SH_D,SH_OP_DECORATE,v,30,cast(u32)at);}
+// Inputs or outputs at locations from 0.
+sh_ios_at :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,k:int,into:[]u32,vars:[]u32,nvars:[]int) {
+  for i:0..<types.count {into[i]=sh_io(s,tree,w,types[i],k,vars,nvars);sh_location(s,w,into[i],i);}
+}
+// A position and varyings: the first the builtin `builtin`, the others at
+// locations from 0, flat when integers.
+sh_ios_staged :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,k:int,builtin:u32,into:[]u32,vars:[]u32,nvars:[]int) {
+  for i:0..<types.count {
+    into[i]=sh_io(s,tree,w,types[i],k,vars,nvars);
+    if i==0 {sh_builtin(s,w,into[i],builtin);continue;}
+    sh_location(s,w,into[i],i-1);sh_flat(s,tree,w,into[i],types[i]);
+  }
+}
+// Loads of input variables.
+sh_loads :: (s:[]ShState,tree:[]u32,w:[]u32,types:[]u32,vars:[]u32,into:[]u32) {
+  for i:0..<types.count {into[i]=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,types[i]),vars[i]);}
+}
+// The vertex entry `vs`: the indices and attributes in, the position and varyings out.
+sh_vertex :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) {
+  n:=sh_params(tree,w,p);ret:=tree[sh_sig(w,p)];
+  if n<2 || sh_param(tree,w,p,0)!=SH_U32 || sh_param(tree,w,p,1)!=SH_U32 || sh_staged(tree,w,ret)==0 {sh_fail(s,7);return;}
+  // Attributes are a third parameter that is not a resource.
+  first:=2;
+  if n>2 && sh_resource(tree,w,sh_param(tree,w,p,2))==0 {
+    first=3;
+    if sh_attrs(tree,w,sh_param(tree,w,p,2))==0 {sh_fail(s,7);return;}
+  }
+  if !sh_resources_from(tree,w,p,first) {sh_fail(s,7);return;}
+  k:=sh_entry_instance(s,tree,w,p,names);
+  vid:=sh_io(s,tree,w,SH_U32,4,vars,nvars);sh_builtin(s,w,vid,42);
+  iid:=sh_io(s,tree,w,SH_U32,4,vars,nvars);sh_builtin(s,w,iid,43);
+  at_types:[SH_IO] u32;ins:[SH_IO] u32;out_types:[SH_IO] u32;outs:[SH_IO] u32;
+  na:=0;
+  if first==3 {na=sh_fields(tree,w,sh_param(tree,w,p,2),at_types[..]);}
+  sh_ios_at(s,tree,w,at_types[0..<na],4,ins[..],vars,nvars);
+  no:=sh_fields(tree,w,ret,out_types[..]);
+  sh_ios_staged(s,tree,w,out_types[0..<no],5,0,outs[..],vars,nvars);
+  if !s[0].ok {return;}
+  sh_entry_begin(s,tree,w,entry);
+  u:=sh_tid(s,tree,w,SH_U32);
+  args:[3] u32;
+  args[0]=sh_r1(s,w,SH_OP_LOAD,u,vid);args[1]=sh_r1(s,w,SH_OP_LOAD,u,iid);
+  loads:[SH_IO] u32;
+  sh_loads(s,tree,w,at_types[0..<na],ins[..],loads[..]);
+  if first==3 {args[2]=sh_gather(s,tree,w,sh_param(tree,w,p,2),loads[0..<na]);}
+  sh_entry_end(s,tree,w,ret,sh_call_entry(s,tree,w,p,k,args[0..<first]),outs[0..<no],out_types[..]);
+}
+// The fragment entry `fs`: the position and varyings, and whether the
+// triangle faces the viewer, in; the color targets out.
+sh_fragment :: (s:[]ShState,tree:[]u32,w:[]u32,p:int,names:[]u32,entry:u32,vars:[]u32,nvars:[]int) {
+  n:=sh_params(tree,w,p);ret:=tree[sh_sig(w,p)];
+  if n<1 || sh_staged(tree,w,sh_param(tree,w,p,0))==0 || (ret!=SH_VOID && sh_targets(tree,w,ret)==0) {sh_fail(s,7);return;}
+  first:=ifx n>1 && sh_param(tree,w,p,1)==SH_BOOL then 2 else 1;
+  if !sh_resources_from(tree,w,p,first) {sh_fail(s,7);return;}
+  k:=sh_entry_instance(s,tree,w,p,names);
+  t:=sh_param(tree,w,p,0);
+  in_types:[SH_IO] u32;ins:[SH_IO] u32;out_types:[SH_IO] u32;outs:[SH_IO] u32;
+  ni:=sh_fields(tree,w,t,in_types[..]);
+  sh_ios_staged(s,tree,w,in_types[0..<ni],4,15,ins[..],vars,nvars);
+  front:[1] u32;
+  if first==2 {front[0]=sh_io(s,tree,w,SH_BOOL,4,vars,nvars);sh_builtin(s,w,front[0],17);}
+  no:=0;
+  if ret!=SH_VOID {no=sh_fields(tree,w,ret,out_types[..]);}
+  sh_ios_at(s,tree,w,out_types[0..<no],5,outs[..],vars,nvars);
+  if !s[0].ok {return;}
+  sh_entry_begin(s,tree,w,entry);
+  loads:[SH_IO] u32;
+  sh_loads(s,tree,w,in_types[0..<ni],ins[..],loads[..]);
+  args:[2] u32;
+  args[0]=sh_gather(s,tree,w,t,loads[0..<ni]);
+  if first==2 {args[1]=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,SH_BOOL),front[0]);}
+  sh_entry_end(s,tree,w,ret,sh_call_entry(s,tree,w,p,k,args[0..<first]),outs[0..<no],out_types[..]);
+}
+// Whether the copies call each other in a cycle: each copy's level is
+// raised past every caller's, round by round. Without a cycle the longest
+// chain of calls is shorter than the number of copies, so the levels stop
+// rising within that many rounds; with one they never stop.
+sh_recursive :: (s:[]ShState,w:[]u32)->bool {
+  // Any start works: from any levels, a copy k calls deep settles within k rounds.
+  for k:0..<s[0].insts {w[SH_W_ADJ+k]=0;} // mutant: equivalent (the levels may start anywhere)
+  // Calls are found as copies are lowered, in the order they were made, so a
+  // chain is never found wholly last to first and settles a round early.
+  for round:0..<s[0].insts { // mutant: equivalent (a round fewer still settles)
+    raised:=false;
+    // The first call is an entry's, and no cycle passes through an entry, which nothing calls.
+    for e:0..<s[0].edges { // mutant: equivalent (the first call is in no cycle)
+      from:=SH_W_ADJ+cast(int)w[SH_W_EDGE+2*e];to:=SH_W_ADJ+cast(int)w[SH_W_EDGE+2*e+1];
+      if w[to]<=w[from] {
+        w[to]=w[from]+1; // mutant: equivalent (any rise past the caller works)
+        raised=true;
+      }
+    }
+    if !raised {return false;}
+  }
+  return true;
+}
+
+// The module's word count, or minus the reason it was refused. At the start
+// of the work view it leaves the bindings: a count, then name id, binding and
+// kind (1 storage, 2 image, 3 sampler) for each.
+SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
+  st:[1] ShState;s:=st[..];w:=work;
+  s[0].next=1;s[0].ok=true;
+  if w.count<SH_W_C {return -2;} // mutant: equivalent (a view of about SH_W_C words holds no code, which sh_word refuses for the same reason)
+  if sh_next(s,tree)!=2 {return -1;}
+  // The types: where each one's code starts, its parts checked to be earlier types.
+  types:=cast(int)sh_next(s,tree);
+  if types>SH_TYPES {return -3;}
+  if types<6 {return -1;}
+  for t:0..<types {
+    w[sh_tw(cast(u32)t,0)]=cast(u32)s[0].at;
+    // The type table is read for ids not made yet; every other table is written before it is read.
+    for j:1..<8 {w[sh_tw(cast(u32)t,j)]=0;} // mutant: equivalent (a word more is the next type's place in the tree, written next)
+    k:=sh_next(s,tree);
+    // Its parts: a struct's count, (type offset) pairs and size; an array's element, length and stride; one word for the rest.
+    parts:=ifx k==8 then 3 else (ifx k>=9 then 1 else 0);
+    if k>11 {return -1;}
+    if k==7 {
+      n:=cast(int)sh_next(s,tree);s[0].at-=1;
+      // A struct has at most 64 fields.
+      if n>64 {return -1;}
+      parts=2+2*n;
+    }
+    if s[0].at+parts>tree.count {return -1;} // mutant: equivalent (procedures and entries follow the types, so the last type never ends the tree)
+    if k==7 {for i:0..<(parts-2)/2 {if tree[s[0].at+1+2*i]>=cast(u32)t {return -1;}}}
+    if (k==8 || k==9) && tree[s[0].at]>=cast(u32)t {return -1;}
+    s[0].at+=parts;
+  }
+  if !s[0].ok {return -1;}
+  fixed:=[6] u32.[0,1,2,3,4,5];
+  for t:0..<6 {if tree[cast(int)w[sh_tw(cast(u32)t,0)]]!=fixed[t] {return -1;}}
+  s[0].types=types;
+  // The procedures: where each signature starts; bodies are passed over by length.
+  procs:=cast(int)sh_next(s,tree);
+  if procs>SH_PROCS {return -3;}
+  s[0].procs=procs;
+  for p:0..<procs {
+    w[SH_W_PROC+p]=cast(u32)s[0].at;
+    s[0].at+=1;params:=cast(int)sh_next(s,tree);
+    if params>32 {return -3;}
+    s[0].at+=params;
+    s[0].at+=cast(int)sh_next(s,tree);
+    s[0].at+=cast(int)sh_next(s,tree);
+  }
+  // The entries: a stage each, at most one of each.
+  entries:=cast(int)sh_next(s,tree);
+  // A tree cut short reads as 0 from where it ends, so it has no entries.
+  if entries<1 || entries>2 {return -1;}
+  eat:[2] int;estage:[2] u32;eproc:[2] int;
+  for e:0..<entries {
+    estage[e]=sh_next(s,tree);eproc[e]=cast(int)sh_next(s,tree);
+    if estage[e]>1 || eproc[e]>=procs || (e==1 && estage[1]==estage[0]) {return -1;}
+    eat[e]=s[0].at;s[0].at+=sh_params(tree,w,eproc[e]);
+  }
+  if s[0].at!=tree.count {return -1;}
+  s[0].glsl=sh_id(s);
+  // The entries' functions, their interfaces, then every copy they reach.
+  mains:=[2] u32.[sh_id(s),sh_id(s)];
+  vars:[2][2+2*SH_IO] u32;nvars:[2][1] int;
+  for e:0..<entries {
+    names:=tree[eat[e]..<eat[e]+sh_params(tree,w,eproc[e])];
+    s[0].fragment=estage[e]==1;
+    if estage[e]==0 {sh_vertex(s,tree,w,eproc[e],names,mains[e],vars[e][..],nvars[e][..]);}
+    else {sh_fragment(s,tree,w,eproc[e],names,mains[e],vars[e][..],nvars[e][..]);}
+    if !s[0].ok {return -cast(int)s[0].reason;}
+    // The copies this entry reaches lower in its stage (discard and implicit sampling are a fragment's).
+    k:=0;
+    while k<s[0].insts {
+      if w[sh_iw(k,2)]==0 {sh_lower_instance(s,tree,out,w,k);}
+      if !s[0].ok {return -cast(int)s[0].reason;}
+      k+=1;
+    }
+  }
+  if sh_recursive(s,w) {return -8;}
+  // The module: header, capabilities, GLSL.std.450, memory model, entry
+  // points and modes, then the decorations, the types and globals, and the code.
+  size:=5+2+6+3+s[0].nd+s[0].nt+s[0].nc;
+  if s[0].int64 {size+=2;}
+  if s[0].query {size+=2;}
+  for e:0..<entries {size+=4+nvars[e][0]+(ifx estage[e]==1 then 3 else 0);}
+  if size>out.count {return -2;}
+  head:=[16] u32.[0x07230203,0x00010300,0,s[0].next,0,(2<<16)|SH_OP_CAPABILITY,1,
+    // OpExtInstImport "GLSL.std.450", OpMemoryModel Logical GLSL450
+    (6<<16)|SH_OP_EXT_IMPORT,s[0].glsl,0x4C534C47,0x6474732E,0x3035342E,0,(3<<16)|SH_OP_MEMORY_MODEL,0,1];
+  n:=0;
+  for i:0..<16 {
+    out[n]=head[i];n+=1;
+    // Int64 and ImageQuery after Shader, as they are used.
+    if i==6 && s[0].int64 {out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=11;n+=2;}
+    if i==6 && s[0].query {out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=50;n+=2;}
+  }
+  for e:0..<entries {
+    nv:=nvars[e][0];
+    out[n]=(cast(u32)(4+nv)<<16)|SH_OP_ENTRY_POINT;out[n+1]=ifx estage[e]==0 then 0 else 4;out[n+2]=mains[e];
+    // "vs" or "fs", NUL-terminated in one word.
+    out[n+3]=ifx estage[e]==0 then 0x7376 else 0x7366;n+=4;
+    for i:0..<nv {out[n]=vars[e][i];n+=1;}
+    if estage[e]==1 {out[n]=(3<<16)|SH_OP_EXECUTION_MODE;out[n+1]=mains[e];out[n+2]=7;n+=3;}
+  }
+  for i:0..<s[0].nd {out[n]=w[SH_W_D+i];n+=1;}
+  for i:0..<s[0].nt {out[n]=w[SH_W_T+i];n+=1;}
+  for i:0..<s[0].nc {out[n]=w[SH_W_C+i];n+=1;}
+  // The bindings, for the host.
+  w[SH_W_REPORT]=cast(u32)s[0].binds;
+  for b:0..<s[0].binds {w[1+3*b]=w[sh_bw(b,0)];w[2+3*b]=cast(u32)b;w[3+3*b]=w[sh_bw(b,1)];}
+  return n;
+}
+
+// ---- checks
+//
+// A tree as text: decimal words with one space between.
+sh_parse :: (text:string,into:[]u32)->int {
+  n:=0;at:=0;
+  while at<text.count {
+    end:=at;
+    while end<text.count && text[end]!=' ' {end+=1;}
+    v:u32=0;
+    for i:at..<end {v=v*10+cast(u32)(text[i]-'0');}
+    into[n]=v;n+=1;at=end+1;
+  }
+  return n;
+}
+#test "a tree's text is its words" {
+  t:[8] u32;
+  #assert sh_parse("",t[..])==0 && sh_parse("12 7 0",t[..])==3 && t[0]==12 && t[1]==7 && t[2]==0;
+}
+SH_CHECK_WORK :: 270000;
+// A module's words digested, so a check can pin all of them.
+sh_digest :: (words:[]u32,n:int)->u64 {
+  h:u64=17;
+  for i:0..<n {h=(h*31+cast(u64)words[i])%4294967291;}
+  return h;
+}
+sh_text :: (text:string,out:[]u32,work:[]u32)->int {t:[4096] u32;return SH_lower(t[0..<sh_parse(text,t[..])],out,work);}
+sh_try :: (text:string)->int {out:[8192] u32;work:[SH_CHECK_WORK] u32;return sh_text(text,out[..],work[..]);}
+
+// coax/tests/shader/sample.coax: a_vs and a_fs use every statement, operator,
+// conversion, GPU procedure and kind of binding; b_vs and b_fs are the
+// smallest entries (a V4 out, a V4 in and no targets).
+SH_SAMPLE_A :: "2 26 0 1 2 3 4 5 7 3 2 0 2 4 2 8 12 7 4 2 0 2 4 2 8 2 12 16 7 4 6 0 7 12 4 28 3 32 36 8 4 2 4 7 3 6 0 2 12 9 16 24 9 10 9 2 7 2 2 0 2 4 8 7 6 7 0 13 16 7 24 4 40 3 44 2 48 52 9 7 9 4 10 0 10 1 10 2 11 0 11 1 8 2 4 4 8 2 3 4 6 7 2 7 0 7 16 32 12 14 5 4 4 8 11 12 8 4 4 8 11 12 10 6 4 128 1 4 3 40 5 27 42 40 3 29 5 18 1 3 40 6 22 2 2 27 41 40 2 0 22 3 2 27 41 40 5 0 27 41 40 5 1 3 40 7 19 1 27 42 41 40 5 2 16 5 1 0 27 42 41 40 5 2 16 5 0 0 4 31 14 6 22 4 4 27 41 40 6 0 27 41 40 6 1 27 41 40 6 2 16 2 1065353216 22 5 2 29 2 18 0 22 6 2 18 4 16 5 1 0 27 41 40 2 1 19 16 27 41 40 2 2 18 7 27 41 40 2 3 20 27 41 40 6 2 25 11 14 1 15 12 16 12 17 18 19 20 21 23 14 1 15 12 16 12 17 18 19 20 21 7 7 2 2 22 5 5 23 2 2 2 25 496 1 22 6 0 21 18 1 1 1 2 33 1 0 0 3 40 11 27 42 40 2 19 5 29 5 27 41 40 0 3 32 40 2 3 40 12 33 2 7 3 18 6 18 9 27 41 40 0 1 3 40 12 22 7 2 18 12 33 3 7 4 18 6 18 9 27 41 40 0 1 16 2 1073741824 3 40 12 22 7 2 18 12 33 4 7 4 18 7 18 9 27 41 40 0 1 27 41 40 0 4 3 40 12 22 7 2 18 12 33 5 7 5 18 7 18 9 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 12 22 7 2 18 12 33 6 7 5 18 7 18 9 27 41 40 0 1 16 3 1 16 2 1056964608 3 40 12 22 7 2 18 12 33 7 7 4 18 6 16 3 1 16 3 2 16 3 0 3 40 13 19 1 33 8 2 4 18 8 29 3 27 41 41 40 0 0 0 16 3 0 16 3 0 33 9 2 4 18 8 18 10 27 41 40 0 1 27 41 40 0 5 3 40 14 29 2 19 1 33 10 4 1 18 6 33 11 4 1 18 6 3 40 15 17 22 8 16 16 5 0 0 16 5 4 0 1 3 6 0 19 10 18 16 16 5 1 0 1 1 10 3 42 40 15 18 16 19 1 22 6 2 18 3 18 16 22 6 2 18 5 18 16 6 0 19 8 27 42 40 15 18 16 16 2 1090519040 1 1 9 3 40 17 16 5 0 0 7 19 6 18 17 16 5 3 0 1 1 3 40 17 19 1 27 40 17 16 5 1 0 3 40 18 31 23 3 16 2 1065353216 16 2 1073741824 16 2 1077936128 3 40 19 19 1 27 42 40 18 19 2 18 17 16 5 1 0 27 42 40 15 16 5 2 0 3 40 20 24 18 1 22 8 2 18 19 18 13 22 9 3 18 19 27 42 40 4 16 5 0 0 27 41 40 0 4 3 40 21 29 2 22 10 6 27 41 40 0 4 16 3 2 27 41 40 0 3 16 4 3 18 17 29 24 32 40 4 3 40 22 31 25 2 22 4 4 19 1 27 41 40 11 0 18 20 27 41 40 12 1 18 14 18 21 27 41 40 0 2 3 41 41 40 22 1 3 16 2 1065353216 4 18 22 3 41 41 40 22 0 0 16 2 0 6 2 6 6 2 6 6 42 1 1 4 31 6 3 19 1 27 41 40 0 0 27 41 40 1 0 19 1 27 41 40 0 1 27 41 40 1 1 19 1 27 41 40 0 2 27 41 40 1 2 6 2 6 2 2 6 2 33 1 1 4 31 6 3 19 3 27 41 40 0 0 18 1 19 3 27 41 40 0 1 18 1 19 3 27 41 40 0 2 18 1 7 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 7 4 18 0 18 1 18 2 18 3 13 2 2 2 2 2 2 10 1 1 4 31 13 2 18 0 18 1 2 2 12 5 2 12 5 24 1 2 6 0 19 9 18 1 32 40 0 1 1 4 16 2 0 4 27 42 40 0 18 1 7 2 7 7 2 7 7 54 1 1 4 31 7 4 19 1 27 41 40 0 0 27 41 40 1 0 19 1 27 41 40 0 1 27 41 40 1 1 19 1 27 41 40 0 2 27 41 40 1 2 19 1 27 41 40 0 3 27 41 40 1 3 2 2 2 2 3 2 2 2 153 1 3 3 40 2 19 2 19 1 18 0 18 1 19 4 19 3 18 0 18 1 18 1 6 0 19 13 19 13 19 13 19 13 19 6 18 0 18 1 19 12 19 7 18 0 18 1 21 19 8 18 0 18 1 19 9 18 0 18 1 19 10 18 0 18 1 19 11 18 0 18 1 1 1 3 40 2 19 2 27 40 2 16 2 1065353216 4 19 1 19 1 19 1 19 1 19 1 19 1 19 1 19 1 19 1 18 2 23 1 1 18 0 23 2 1 18 0 23 3 1 18 0 23 4 1 18 0 23 5 1 18 1 23 6 1 18 1 23 7 1 18 0 23 8 1 18 0 23 9 2 18 0 18 1 2 3 2 4 3 3 2 4 3 55 1 1 4 19 1 19 1 19 1 19 1 19 1 30 2 19 16 30 4 18 0 18 1 29 2 29 3 18 1 29 2 29 4 18 2 29 2 29 5 18 2 29 2 29 24 18 1 29 2 29 3 29 5 18 0 4 6 3 3 4 4 5 24 10 3 3 4 4 5 24 3 4 1 5 276 1 11 3 40 6 19 2 19 1 18 0 18 1 19 5 19 4 19 3 18 0 18 1 18 1 18 1 3 40 6 19 15 19 14 18 6 18 1 19 16 18 6 18 0 3 40 6 19 17 18 6 16 3 1 3 40 6 19 18 18 6 16 3 1 3 40 7 19 5 19 4 18 2 18 3 18 3 3 40 7 19 18 18 7 16 4 2 3 40 8 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 12 19 6 18 0 18 1 19 6 18 2 18 3 19 6 18 4 29 5 18 0 19 8 18 5 16 24 0 0 19 7 18 0 18 1 19 7 18 2 18 3 19 8 18 0 18 1 19 8 18 2 18 3 19 9 18 0 18 1 19 9 18 2 18 3 19 10 18 0 18 1 19 11 18 0 18 1 19 10 16 1 1 22 11 0 6 0 18 8 1 1 3 40 7 19 1 27 40 7 16 4 1 3 40 9 20 18 4 3 40 9 19 4 18 9 16 5 2 0 4 19 1 19 1 19 1 19 1 19 1 19 1 18 7 29 4 18 6 29 4 18 9 29 4 18 5 29 4 20 18 0 29 4 29 2 18 2 29 4 29 2 18 0 1 0 0 6 1 1 4 16 1 0 2 0 0 0 1 2 3 4 1 1 5 6 7 4 8 9 10 11 12 13 14";
+SH_SAMPLE_B :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 3 6 2 4 4 2 4 4 20 1 1 4 22 2 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 0 1 6 1 6 25 1 1 6 1 19 8 27 41 40 0 0 16 2 1065353216 1 2 2 33 1 0 0 5 1 1 5 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 0 0 0 1 1 1 2";
+
+#test "every refusal reason has its own text" {
+  #assert SH_reason_text(0)=="" && SH_reason_text(1)=="a malformed tree" && SH_reason_text(2)=="a module larger than its buffers";
+  #assert SH_reason_text(3)=="more types, procedures, lowered procedures, bindings, constants, locals or loops than it holds";
+  #assert SH_reason_text(4)=="an operation on these types" && SH_reason_text(5)=="a view, texture or sampler other than as a parameter or argument";
+  #assert SH_reason_text(6)=="a write to a storage buffer" && SH_reason_text(8)=="a recursive call";
+  #assert SH_reason_text(7)=="an entry point whose parameters or result are not a vertex's or a fragment's";
+  #assert SH_reason_text(9)=="a view of something other than numbers and structs of them";
+  #assert SH_reason_text(10)=="break or continue outside a loop" && SH_reason_text(11)=="a GPU procedure with the wrong arguments";
+  #assert SH_reason_text(12)=="this reason" && SH_reason_text(4000000000)=="this reason";
+  #assert SH_out_words()==4194304 && SH_work_words()==4194304;
+}
+#test "the samples lower to the words spirv-val accepts" {
+  out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_text(SH_SAMPLE_A,out[..],work[..]);
+  #assert n==4245 && out[0]==0x07230203 && out[1]==0x00010300 && out[2]==0 && out[4]==0 && sh_digest(out[..],n)==2572472636;
+  // The bindings, in the order their names first appear: points, uniforms, colors, words, weights, sky, layers, shadow, smooth, cmp.
+  kinds:=[10] u32.[1,1,1,1,1,2,2,2,3,3];
+  #assert work[0]==10;
+  for b:0..<10 {#assert work[2+3*b]==cast(u32)b && work[3+3*b]==kinds[b];}
+  // Name ids count every parameter name of both entries: points is 3, uniforms 4, colors 7.
+  #assert work[1]==3 && work[4]==4 && work[7]==7 && work[28]==14;
+  n=sh_text(SH_SAMPLE_B,out[..],work[..]);
+  #assert n==352 && sh_digest(out[..],n)==719049802 && work[0]==0;
+}
+#test "a cut, padded or unknown tree is refused" {
+  #assert sh_try("")==-1 && sh_try("3")==-1 && sh_try(SH_SAMPLE_B[0..<SH_SAMPLE_B.count-2])==-1;
+  #assert sh_try(SH_SAMPLE_A[0..<900])==-1 && sh_try("2 5 0 1 2 3 4")==-1;
+}
+// A module of two entries, `vs` returning a zero V4 and `fs` taking a V4,
+// with more types after the first seven (0 void, 1 bool, 2 f32, 3 s32, 4 u32,
+// 5 int, 6 V4), fs's other locals and its body: the lowering's result.
+sh_frag :: (extra:int,types:string,ret:u32,locals:string,body:string)->int {return sh_calls(extra,types,ret,locals,body,0,"");}
+// The same with more procedures after fs (2, 3...), each in its tree words.
+sh_calls :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string)->int {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_parse("2 0 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
+  t[1]=cast(u32)(7+extra);
+  n+=sh_parse(types,t[n..<t.count]);
+  t[n]=cast(u32)(2+procs);n+=1;
+  n+=sh_parse("6 2 4 4 2 4 4 5 1 1 4 17 6",t[n..<t.count]);
+  t[n]=ret;t[n+1]=1;t[n+2]=6;t[n+4]=6;
+  nl:=sh_parse(locals,t[n+5..<t.count]);
+  t[n+3]=cast(u32)(1+nl);
+  n+=5+nl;
+  nb:=sh_parse(body,t[n+1..<t.count]);
+  t[n]=cast(u32)nb;n+=1+nb;
+  n+=sh_parse(more,t[n..<t.count]);
+  n+=sh_parse("2 0 0 0 1 1 1 2",t[n..<t.count]);
+  return SH_lower(t[0..<n],out[..],work[..]);
+}
+sh_body :: (locals:string,body:string)->int {return sh_frag(0,"",0,locals,body);}
+#test "the template lowers" {
+  #assert sh_body("","5")>0 && sh_body("2 4","3 40 1 16 2 0")>0 && sh_frag(1,"8 2 3 12",0,"7","3 42 40 1 16 3 1 16 2 0")>0 && sh_frag(1,"8 2 3 4",0,"7","5")>0;
+}
+#test "operations take values of their own types" {
+  #assert sh_body("","2 19 1 16 2 0 16 3 0")==-4 && sh_body("","2 19 19 16 2 0 16 2 0")==-4 && sh_body("","2 19 0 16 2 0 16 2 0")==-4;
+  #assert sh_body("","2 19 5 16 2 0 16 2 0")==-4 && sh_body("","2 19 1 16 1 0 16 1 0")==-4 && sh_body("","2 19 14 16 2 0 16 2 0")==-4;
+  #assert sh_body("","2 20 16 1 1")==-4 && sh_body("","2 21 16 2 0")==-4 && sh_body("","2 20 17 6")==-4;
+  #assert sh_body("","2 23 1 2 16 2 0 16 2 0")==-1 && sh_body("","2 23 10 1 16 2 0")==-1 && sh_body("","2 23 0 1 16 2 0")==-1;
+  #assert sh_body("","2 23 9 1 16 2 0")==-1 && sh_body("","2 23 1 1 16 3 0")==-4 && sh_body("","2 23 9 2 16 2 0 16 3 0")==-4;
+  #assert sh_body("","2 24 16 2 0 16 2 0 16 2 0")==-4 && sh_body("","2 24 16 1 1 16 2 0 16 3 0")==-4;
+  #assert sh_body("","2 25 16 2 0 0")==-1 && sh_body("","2 25 17 6 4")==-1;
+  #assert sh_body("","2 29 2 16 1 1")==-4 && sh_body("","2 29 1 16 2 0")==-4 && sh_body("","2 29 9 16 2 0")==-1;
+  #assert sh_body("","2 30 2 16 2 0")==-4 && sh_body("","2 30 1 16 2 0")==-4 && sh_body("","2 30 2 16 1 0")==-4 && sh_body("","2 30 2 16 5 0 0")==-4;
+  #assert sh_body("","2 30 9 16 2 0")==-1;
+  #assert sh_body("","2 31 2 0")==-1 && sh_body("","2 31 6 3 16 2 0 16 2 0 16 2 0")==-1 && sh_body("","2 31 6 4 16 2 0 16 2 0 16 2 0 16 3 0")==-4;
+  #assert sh_body("","2 31 9 0")==-1;
+  #assert sh_body("","2 17 0")==-4 && sh_body("","2 17 9")==-1 && sh_body("","2 16 0 0")==-1 && sh_body("","2 16 9 0")==-1 && sh_body("","2 16 6 0")==-1;
+  #assert sh_body("","2 18 5")==-1 && sh_body("","2 99")==-1 && sh_body("","99")==-1;
+}
+#test "statements take values of their own types" {
+  #assert sh_body("","3 40 0 16 2 0")==-4 && sh_body("","4 16 2 0")==-4 && sh_frag(0,"",6,"","5")==-4 && sh_frag(0,"",2,"","5")==-7;
+  #assert sh_body("","6 0 16 2 0 5")==-4 && sh_body("","7 16 2 0 9")==-4 && sh_body("2","8 1 16 2 0 16 2 0 9")==-4;
+  #assert sh_body("4","8 1 16 4 0 16 3 9 9")==-4 && sh_body("","9")==-10 && sh_body("","10")==-10;
+  #assert sh_frag(0,"",6,"","4 16 3 0")==-4 && sh_frag(0,"",6,"","4 17 6")>0;
+}
+#test "calls are acyclic" {
+  #assert sh_calls(0,"",0,"","2 22 2 0",1,"0 0 0 4 2 22 2 0")==-8;
+  #assert sh_calls(0,"",0,"","2 22 2 0",2,"0 0 0 4 2 22 3 0 0 0 0 4 2 22 2 0")==-8;
+  #assert sh_calls(0,"",0,"","2 22 2 0",3,"0 0 0 4 2 22 3 0 0 0 0 4 2 22 4 0 0 0 0 4 2 22 2 0")==-8;
+  // A chain whose calls are found last to first, and a procedure called twice.
+  more:="0 0 0 4 2 22 3 0 0 0 0 4 2 22 4 0 0 0 0 4 2 22 5 0 0 0 0 1 5";
+  #assert sh_calls(0,"",0,"","1 4 2 22 5 0 2 22 4 0 2 22 3 0 2 22 2 0",4,more)>0;
+  #assert sh_calls(0,"",0,"","1 2 2 22 2 0 2 22 2 0",1,"0 0 0 1 5")>0;
+}
+// SH_SAMPLE_B with the word at `at` set to v (at past the end appends it).
+// Its words: 0 version, 1 types, 2..7 the fixed six, 8..18 the V4, 19 procs,
+// 20 b_vs (21 params, 24 locals, 27 length), 48 b_fs, 79 v4 (80 params,
+// 85 locals, 90 length), 105 entries: 106 stage 107 proc 108..109 names,
+// 110 stage 111 proc 112 name.
+sh_poke :: (at:int,v:u32)->int {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_parse(SH_SAMPLE_B,t[..]);
+  t[at]=v;
+  return SH_lower(t[0..<ifx at<n then n else at+1],out[..],work[..]); // mutant: equivalent (any padding is refused alike)
+}
+// SH_SAMPLE_B with words from `at` cut and replaced by `with`.
+sh_splice :: (at:int,cut:int,with:string)->int {return sh_spliced(at,cut,with,0,8192);}
+// SH_SAMPLE_B with `more` types after its seven.
+sh_types :: (more:int,with:string)->int {return sh_spliced(19,0,with,more,8192);}
+// ... with `words` of output room.
+sh_spliced :: (at:int,cut:int,with:string,more:int,words:int)->int {
+  t:[4096] u32;u:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_parse(SH_SAMPLE_B,t[..]);
+  for i:0..<at {u[i]=t[i];}
+  m:=at+sh_parse(with,u[at..<u.count]);
+  for i:at+cut..<n {u[m]=t[i];m+=1;}
+  u[1]+=cast(u32)more;
+  return SH_lower(u[0..<m],out[0..<words],work[..]);
+}
+#test "a tree's tables are checked as they are read" {
+  #assert sh_poke(0,1)==-1 && sh_poke(1,513)==-3 && sh_poke(1,512)==-1 && sh_poke(1,5)==-1;
+  #assert sh_try("2 6 0 1 2 3 4 5 1 0 0 0 1 5 1 0 0")==-7 && sh_try("2 7 0 1 2")==-1;
+  for t:2..<8 {#assert sh_poke(t,cast(u32)(t-1))==-1;}
+  // A struct's parts and an array's or view's element are earlier types; kinds stop at 11.
+  #assert sh_poke(16,6)==-1 && sh_poke(10,6)==-1 && sh_poke(8,12)==-1 && sh_poke(8,11)==-1;
+  #assert sh_types(4,"8 7 4 4 9 6 10 0 11 1")==-1 && sh_types(1,"12 0")==-1 && sh_types(1,"11 0")>0 && sh_types(4,"8 6 4 16 9 8 10 0 11 1")==-1;
+  #assert sh_types(4,"8 6 4 16 9 6 10 0 11 1")>0 && sh_types(1,"7 2 6 0 7 16 32")==-1 && sh_types(1,"7 2 6 0 6 16 32")>0;
+  #assert sh_types(1,"7 2 6 0 2 16 32")>0 && sh_types(1,"7 2 2 0 6 16 32")>0 && sh_types(1,"7 2 2 0 7 16 32")==-1;
+  #assert sh_try("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12")==-1 && sh_try("2 7 0 1 2 3 4 5 8 2 3")==-1 && sh_try("2 7 0 1 2 3 4 5 9")==-1;
+  // Procedures: at most SH_PROCS, of at most 32 parameters, then the entries.
+  #assert sh_poke(19,513)==-3 && sh_poke(19,512)==-1 && sh_poke(80,33)==-3 && sh_poke(80,32)==-1 && sh_poke(90,15)==-1;
+  #assert sh_poke(105,0)==-1 && sh_poke(105,3)==-1 && sh_splice(105,8,"1 0 0 0 1")>0 && sh_splice(105,8,"1 1 1 2")>0;
+  #assert sh_poke(106,2)==-1 && sh_poke(107,3)==-1 && sh_poke(110,0)==-1 && sh_poke(111,3)==-1 && sh_poke(113,0)==-1;
+  #assert sh_splice(105,8,"1 0 2 0 1 2 3")==-7 && sh_try(SH_SAMPLE_B[0..<218])==-1;
+  // An entry past the procedures, with as many names as the word before the tree's types.
+  #assert sh_splice(105,8,"1 0 3 0 0 0 0 0 0 0")==-1;
+  // One entry, a vertex: its module's words exactly.
+  n:=sh_splice(105,8,"1 0 0 0 1");
+  #assert sh_spliced(105,8,"1 0 0 0 1",0,n)==n && sh_spliced(105,8,"1 0 0 0 1",0,n-1)==-2;
+}
+#test "a module is refused when its words or its work do not fit" {
+  out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_text(SH_SAMPLE_A,out[..],work[..]);
+  #assert sh_text(SH_SAMPLE_A,out[0..<n],work[..])==n && sh_text(SH_SAMPLE_A,out[0..<n-1],work[..])==-2;
+  m:=sh_text(SH_SAMPLE_B,out[..],work[..]);
+  #assert sh_text(SH_SAMPLE_B,out[0..<m],work[..])==m && sh_text(SH_SAMPLE_B,out[0..<m-1],work[..])==-2;
+  #assert sh_text(SH_SAMPLE_B,out[..],work[0..<SH_W_C-1])==-2 && sh_text(SH_SAMPLE_B,out[..],work[0..<SH_W_C+4])==-2;
+  // The same work again, after a larger module: what that one left behind is not read.
+  #assert sh_text(SH_SAMPLE_A,out[..],work[..])==n && sh_text(SH_SAMPLE_B,out[..],work[..])==m && sh_text(SH_SAMPLE_A,out[..],work[..])==n;
+}
+
+// Modules from procedures written with their bodies' lengths left out: a
+// procedure is its signature, `|`, its body and `;`. Their types are the
+// first seven and SH_MORE, 7 to 26:
+//   7 []f32, 8 Tex2D, 9 Tex2DArray, 10 TexDepth, 11 Sampler, 12 SamplerCompare,
+//   13 u64, 14 {f32 u32}, 15 []14, 16 [2]f32, 17 []bool, 18 {V4 V4},
+//   19 V2, 20 [][2]f32, 21 []u64, 22 [][]f32, 23 {V4 u32}, 24 {V4 bool},
+//   25 V3, 26 {f32}, 27 {V4}, 28 {V4 u32 V2 f32 s32}, 29 [3]V2, 30 [][3]V2
+SH_MORE :: "9 2 10 0 10 1 10 2 11 0 11 1 6 7 2 2 0 4 4 8 9 14 8 2 2 4 9 1 7 2 6 0 6 16 32 7 2 2 0 2 4 8 9 16 9 13 9 7 7 2 6 0 4 16 20 7 2 6 0 1 16 20 7 3 2 0 2 4 2 8 12 7 1 2 0 4 7 1 6 0 16 7 5 6 0 4 16 19 20 2 28 3 32 36 8 19 3 8 9 29";
+// The vertex entry and fragment entry most checks need beside the one they make.
+SH_VS :: "6 2 4 4 2 4 4 | 1 1 4 17 6 ;";
+SH_FS :: "0 1 6 1 6 | 5 ;";
+sh_procs :: (text:string,into:[]u32,count:[]int)->int {
+  n:=0;at:=0;mark:int;
+  while at<text.count {
+    c:=text[at];
+    if c=='|' {mark=n;n+=1;}
+    if c==';' {into[mark]=cast(u32)(n-mark-1);count[0]+=1;}
+    if c>='0' && c<='9' { // mutant: equivalent (the texts hold no ':')
+      v:u32=0;
+      while at<text.count && text[at]>='0' && text[at]<='9' { // mutant: equivalent (the texts end with ';' and hold no ':')
+        v=v*10+cast(u32)(text[at]-'0');at+=1;
+      }
+      into[n]=v;n+=1;
+    } else {at+=1;}
+  }
+  return n;
+}
+#test "procedures are written without their lengths" {
+  t:[16] u32;c:=[1] int.[0];
+  #assert sh_procs("0 0 0 | 2 22 2 0 ; 0 1 6 | 5 ;",t[..],c[..])==13 && c[0]==2 && t[3]==4 && t[11]==1 && t[12]==5;
+}
+// The tree of procedures a, b and more and the entries, into t: its length.
+sh_tree :: (a:string,b:string,more:string,entries:string,t:[]u32)->int {
+  c:[1] int;
+  n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t);
+  n+=sh_parse(SH_MORE,t[n..<t.count]);
+  at:=n;n+=1;
+  n+=sh_procs(a,t[n..<t.count],c[..]);n+=sh_procs(b,t[n..<t.count],c[..]);n+=sh_procs(more,t[n..<t.count],c[..]);
+  t[at]=cast(u32)c[0];
+  return n+sh_parse(entries,t[n..<t.count]);
+}
+// Their lowering's result.
+sh_build :: (a:string,b:string,more:string,entries:string)->int {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  return SH_lower(t[0..<sh_tree(a,b,more,entries,t[..])],out[..],work[..]);
+}
+// The digest of their module, or 0 when it is refused.
+sh_pin :: (a:string,b:string,more:string,entries:string)->u64 {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  // A refused tree's digest is the empty module's.
+  return sh_digest(out[..],SH_lower(t[0..<sh_tree(a,b,more,entries,t[..])],out[..],work[..]));
+}
+// A fragment entry with SH_VS: its names are 2, 3... after vs's 0 and 1.
+sh_fs :: (fs:string,more:string,names:string)->int {return sh_build(SH_VS,fs,more,names);}
+// A vertex entry with SH_FS.
+sh_vs :: (vs:string,more:string,names:string)->int {return sh_build(vs,SH_FS,more,names);}
+#test "the builder lowers" {
+  #assert sh_fs("0 1 6 1 6 | 5 ;","","2 0 0 0 1 1 1 2")>0 && sh_vs("6 2 4 4 2 4 4 | 4 17 6 ;","","2 0 0 0 1 1 1 2")>0;
+}
+
+// The opcode sh_binary picks for op on two values of type t, with its
+// result type in the high half; 0 when it refuses or its operands are not
+// the two values. The tree and work are a lowered module's.
+sh_opcode :: (tree:[]u32,w:[]u32,op:u32,t:u32)->u32 {
+  st:[1] ShState;s:=st[..];sh_state(s,tree);
+  v:=sh_binary(s,tree,w,op,ShVal.{id=7,ty=t},ShVal.{id=9,ty=t});
+  if !s[0].ok || w[SH_W_C+3]!=7 || w[SH_W_C+4]!=9 {return 0;}
+  return (w[SH_W_C]&0xFFFF)|(v.ty<<16);
+}
+// A fresh state over a tree whose types are in the work.
+// Ids start at 1, as the lowering's do (0 marks a type not declared yet).
+sh_state :: (s:[]ShState,tree:[]u32) {
+  z:ShState;s[0]=z;s[0].ok=true;s[0].types=cast(int)tree[1];
+  s[0].next=1; // mutant: equivalent (ids may start anywhere past 0)
+}
+// A lowered module of SH_VS and SH_FS, for checks of single steps: its tree's length.
+sh_module :: (tree:[]u32,out:[]u32,w:[]u32)->int {
+  n:=sh_tree(SH_VS,SH_FS,"","2 0 0 0 1 1 1 2",tree);
+  #assert SH_lower(tree[0..<n],out,w)>0; // mutant: equivalent (it lowers to hundreds of words)
+  return n;
+}
+sh_expect :: (tree:[]u32,w:[]u32,op:int,t:u32,codes:[]u32)->bool {
+  got:=sh_opcode(tree,w,cast(u32)op,t);
+  if codes[op-1]==0 {return got==0;}
+  ty:=ifx op>=6 && op<=13 then SH_BOOL else t; // mutant: equivalent (&& and || take bools, so give one either way)
+  return got==(codes[op-1]|(ty<<16));
+}
+#test "each operator is its SPIR-V instruction on the types it is defined on" {
+  // FAdd FSub FMul FDiv, -, FOrdLessThan FOrdLessThanEqual FOrdGreaterThan FOrdGreaterThanEqual FOrdEqual FUnordNotEqual
+  f:=[18] u32.[129,131,133,136,0,184,188,186,190,180,183,0,0,0,0,0,0,0];
+  // IAdd ISub IMul SDiv SRem, SLessThan SLessThanEqual SGreaterThan SGreaterThanEqual IEqual INotEqual, -, -,
+  // BitwiseAnd BitwiseOr BitwiseXor ShiftLeftLogical ShiftRightArithmetic
+  i:=[18] u32.[128,130,132,135,138,177,179,173,175,170,171,0,0,199,197,198,196,195];
+  // ... UDiv UMod, ULessThan ULessThanEqual UGreaterThan UGreaterThanEqual ... ShiftRightLogical
+  u:=[18] u32.[128,130,132,134,137,176,178,172,174,170,171,0,0,199,197,198,196,194];
+  // LogicalEqual LogicalNotEqual LogicalAnd LogicalOr
+  b:=[18] u32.[0,0,0,0,0,0,0,0,0,164,165,167,166,0,0,0,0,0];
+  tree:[4096] u32;out:[8192] u32;w:[SH_CHECK_WORK] u32;
+  t:=tree[0..<sh_module(tree[..],out[..],w[..])];
+  for op:1..<19 {
+    #assert sh_expect(t,w[..],op,SH_F32,f[..]) && sh_expect(t,w[..],op,SH_S32,i[..]) && sh_expect(t,w[..],op,SH_INT,i[..]);
+    #assert sh_expect(t,w[..],op,SH_U32,u[..]) && sh_expect(t,w[..],op,13,u[..]) && sh_expect(t,w[..],op,SH_BOOL,b[..]);
+    #assert sh_opcode(t,w[..],cast(u32)op,6)==0 && sh_opcode(t,w[..],cast(u32)op,7)==0;
+  }
+  #assert sh_opcode(t,w[..],0,SH_F32)==0 && sh_opcode(t,w[..],19,SH_F32)==0;
+}
+// Type t made, at `at` in a lowered module's tree, a struct of n fields:
+// `first` then `rest` (offsets and size left out: nothing here reads them).
+sh_patch :: (tree:[]u32,at:int,w:[]u32,t:u32,n:int,first:u32,rest:u32)->int {
+  w[sh_tw(t,0)]=cast(u32)at;
+  tree[at]=7;tree[at+1]=cast(u32)n;
+  for i:0..<n {tree[at+2+2*i]=ifx i==0 then first else rest;}
+  return at+3+2*n; // mutant: equivalent (any gap between the types works)
+}
+// An interface helper (0 sh_staged, 1 sh_attrs, 2 sh_targets, 3 sh_vector)
+// on type t of a lowered module's tree and work, where types 31 to 34 become
+// structs of n fields: V4s, a V4 then f32, f32, and a bool then f32.
+sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int {
+  at:=sh_patch(tree,end,w,31,n,6,6);
+  at=sh_patch(tree,at,w,32,n,6,SH_F32); // mutant: equivalent (any scalar that varies serves)
+  at=sh_patch(tree,at,w,33,n,SH_F32,SH_F32);
+  last:=sh_patch(tree,at,w,34,n,SH_BOOL,SH_F32); // mutant: equivalent (the bool comes first)
+  if which==0 {return sh_staged(tree,w,t);}
+  if which==1 {return sh_attrs(tree,w,t);}
+  if which==2 {return sh_targets(tree,w,t);}
+  if which==3 {return sh_vector(tree,w,t);}
+  return cast(int)sh_kind(tree,w,t);
+}
+#test "entries' interfaces are V4s and structs of what can vary" {
+  // Types 0..30: staged, attributes and targets.
+  staged:=[31] int.[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,2,0,0,0,1,5,0,0];
+  attrs:=[31] int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,2,0,0,0,0,2,0,0,1,1,5,0,0];
+  targets:=[31] int.[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1,0,0,0];
+  tree:[4096] u32;out:[8192] u32;w:[SH_CHECK_WORK] u32;
+  n:=sh_module(tree[..],out[..],w[..]);
+  for t:0..<31 {
+    u:=cast(u32)t;
+    #assert sh_iface(tree[..],n,w[..],0,u,2)==staged[t] && sh_iface(tree[..],n,w[..],1,u,2)==attrs[t] && sh_iface(tree[..],n,w[..],2,u,2)==targets[t];
+  }
+  // At most SH_IO fields, and eight targets.
+  #assert sh_iface(tree[..],n,w[..],0,32,32)==32 && sh_iface(tree[..],n,w[..],0,32,33)==0;
+  #assert sh_iface(tree[..],n,w[..],1,32,32)==32 && sh_iface(tree[..],n,w[..],1,32,33)==0;
+  #assert sh_iface(tree[..],n,w[..],2,31,8)==8 && sh_iface(tree[..],n,w[..],2,31,9)==0;
+  #assert sh_iface(tree[..],n,w[..],0,31,32)==32 && sh_iface(tree[..],n,w[..],2,32,2)==0;
+  #assert sh_iface(tree[..],n,w[..],1,34,2)==0 && sh_iface(tree[..],n,w[..],0,34,2)==0 && sh_iface(tree[..],n,w[..],4,34,2)==7;
+  // Vectors: two to four f32.
+  #assert sh_iface(tree[..],n,w[..],3,33,4)==4 && sh_iface(tree[..],n,w[..],3,33,5)==0 && sh_iface(tree[..],n,w[..],3,33,1)==0;
+  #assert sh_iface(tree[..],n,w[..],3,33,2)==2 && sh_iface(tree[..],n,w[..],3,34,2)==0 && sh_iface(tree[..],n,w[..],3,32,2)==0;
+}
+#test "entries take and give what a vertex and a fragment have" {
+  #assert sh_fs("0 0 0 | 5 ;","","2 0 0 0 1 1 1")==-7 && sh_fs("0 1 2 1 2 | 5 ;","","2 0 0 0 1 1 1 2")==-7;
+  #assert sh_fs("2 1 6 1 6 | 4 16 2 0 ;","","2 0 0 0 1 1 1 2")==-7 && sh_fs("19 1 6 1 6 | 4 17 19 ;","","2 0 0 0 1 1 1 2")==-7;
+  #assert sh_fs("23 1 6 1 6 | 4 17 23 ;","","2 0 0 0 1 1 1 2")==-7 && sh_fs("6 1 6 1 6 | 4 17 6 ;","","2 0 0 0 1 1 1 2")>0;
+  #assert sh_fs("0 2 6 1 2 6 1 | 5 ;","","2 0 0 0 1 1 1 2 3")>0 && sh_fs("0 3 6 1 2 3 6 1 2 | 5 ;","","2 0 0 0 1 1 1 2 3 4")==-7;
+  #assert sh_fs("0 2 6 2 2 6 2 | 5 ;","","2 0 0 0 1 1 1 2 3")==-7 && sh_fs("0 3 6 1 7 3 6 1 7 | 5 ;","","2 0 0 0 1 1 1 2 3 4")>0;
+  #assert sh_vs("6 1 4 1 4 | 4 17 6 ;","","2 0 0 0 1 1 9")==-7 && sh_vs("6 2 2 4 2 2 4 | 4 17 6 ;","","2 0 0 0 1 1 1 9")==-7;
+  #assert sh_vs("6 2 4 2 2 4 2 | 4 17 6 ;","","2 0 0 0 1 1 1 9")==-7 && sh_vs("2 2 4 4 2 4 4 | 4 16 2 0 ;","","2 0 0 0 1 1 1 9")==-7;
+  #assert sh_vs("6 3 4 4 23 3 4 4 23 | 4 17 6 ;","","2 0 0 0 1 2 1 1 9")>0 && sh_vs("6 3 4 4 6 3 4 4 6 | 4 17 6 ;","","2 0 0 0 1 2 1 1 9")==-7;
+  #assert sh_vs("6 3 4 4 2 3 4 4 2 | 4 17 6 ;","","2 0 0 0 1 2 1 1 9")==-7 && sh_vs("6 3 4 4 24 3 4 4 24 | 4 17 6 ;","","2 0 0 0 1 2 1 1 9")==-7;
+  #assert sh_vs("6 4 4 4 23 2 4 4 4 23 2 | 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-7 && sh_vs("6 4 4 4 7 2 4 4 4 7 2 | 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-7;
+  #assert sh_vs("6 4 4 4 23 7 4 4 4 23 7 | 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")>0;
+}
+#test "entries' inputs and outputs" {
+  // A vertex's attributes are its varyings, to two targets; a struct of one V4 in and out.
+  #assert sh_pin("28 3 4 4 28 3 4 4 28 | 4 18 2 ;","18 2 28 1 2 28 1 | 4 17 18 ;","","2 0 0 0 1 2 1 1 3 4")==PIN_IO1;
+  #assert sh_pin("27 2 4 4 2 4 4 | 4 17 27 ;","27 1 27 1 27 | 4 17 27 ;","","2 0 0 0 1 1 1 2")==PIN_IO2;
+  #assert sh_pin("6 2 4 4 2 4 4 | 4 17 6 ;","6 1 6 1 6 | 4 17 6 ;","","2 0 0 0 1 1 1 2")==PIN_IO3;
+}
+#test "places: locals, fields and elements" {
+  #assert sh_fs("0 2 6 7 2 6 7 | 2 27 41 40 1 0 ;","","2 0 0 0 1 1 1 2 3")==-1 && sh_fs("0 1 6 2 6 2 | 2 27 41 40 1 0 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_body("","2 27 41 40 0 4")==-1 && sh_fs("0 2 6 8 2 6 8 | 2 27 42 40 1 16 3 0 ;","","2 0 0 0 1 1 1 2 3")==-5;
+  #assert sh_fs("0 1 6 2 6 2 | 2 27 42 40 1 16 3 0 ;","","2 0 0 0 1 1 1 2")==-1 && sh_body("","2 27 43")==-1;
+  #assert sh_fs("0 2 6 7 2 6 7 | 2 27 42 40 1 16 2 0 ;","","2 0 0 0 1 1 1 2 3")==-4;
+  #assert sh_fs("0 2 6 7 2 6 7 | 3 40 1 16 2 0 ;","","2 0 0 0 1 1 1 2 3")==-5 && sh_fs("0 2 6 7 2 6 7 | 3 42 40 1 16 3 0 16 2 0 ;","","2 0 0 0 1 1 1 2 3")==-6;
+  #assert sh_fs("0 1 6 1 6 | 2 17 7 ;","","2 0 0 0 1 1 1 2")==-4 && sh_fs("0 2 6 7 2 6 7 | 2 18 1 ;","","2 0 0 0 1 1 1 2 3")==-5;
+  #assert sh_body("","2 32 40 0")==-5 && sh_fs("0 2 6 8 2 6 8 | 2 32 40 1 ;","","2 0 0 0 1 1 1 2 3")==-5;
+  // Elements of views of f32, of a struct (and a field of one), of an array and of u64, and a count.
+  #assert sh_pin(SH_VS,SH_T_VIEWS,"","2 0 0 0 1 1 1 2 3 4 5 6 7")==PIN_VIEWS;
+  // A field of a value, and of a local struct; an element of a local array.
+  #assert sh_pin(SH_VS,SH_T_FIELDS,"","2 0 0 0 1 1 1 2")==PIN_FIELDS && sh_fs("0 1 6 1 6 | 2 25 17 14 2 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 2 6 2 | 3 40 1 25 17 14 1 ;","","2 0 0 0 1 1 1 2")==-4;
+}
+#test "values: constants, conversions and math" {
+  #assert sh_body("","1 2 2 16 1 1 2 16 1 5")==sh_body("","1 2 2 16 1 1 2 16 1 1") && sh_body("","2 16 1 5")>0;
+  #assert sh_pin(SH_VS,"0 1 6 1 6 | 1 3 2 16 13 5 0 2 20 16 13 1 0 2 20 16 5 1 0 ;","","2 0 0 0 1 1 1 2")==PIN_WIDE;
+  #assert sh_body("","2 23 10 0")==-1 && sh_body("","2 16 6 0")==-1;
+  #assert sh_pin(SH_VS,SH_T_CONV,"","2 0 0 0 1 1 1 2")==PIN_CONV;
+}
+#test "statements: branches, loops and what follows a return" {
+  #assert sh_pin(SH_VS,SH_T_FLOW,"","2 0 0 0 1 1 1 2")==PIN_FLOW;
+  // Running off the end: OpReturn without a value, OpUnreachable with one.
+  #assert sh_pin(SH_VS,"0 1 6 1 6 | 1 2 2 16 2 0 2 22 2 0 ;","2 0 0 | 2 16 2 0 ;","2 0 0 0 1 1 1 2")==PIN_END;
+  #assert sh_body("","8 1 16 3 0 16 4 9 9")==-1 && sh_body("4","8 1 16 3 0 16 4 9 9")==-4;
+}
+#test "procedures: their locals, calls and copies" {
+  #assert sh_fs("0 1 6 0 | 5 ;","","2 0 0 0 1 1 1 2")==-1 && sh_fs("0 1 6 1 2 | 5 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 2 6 7 | 5 ;","","2 0 0 0 1 1 1 2")==-5 && sh_fs("0 1 6 1 6 | 2 22 2 0 ;","7 0 0 | 5 ;","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 1 6 | 5 5 ;","","2 0 0 0 1 1 1 2")==-1 && sh_fs("0 1 6 1 6 | 2 22 2 0 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 1 6 | 2 22 2 1 16 2 0 ;","0 0 0 | 5 ;","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 2 6 7 2 6 7 | 2 22 2 1 17 7 ;","0 1 7 1 7 | 5 ;","2 0 0 0 1 1 1 2 3")==-5;
+  #assert sh_fs("0 2 6 8 2 6 8 | 2 22 2 1 18 1 ;","0 1 7 1 7 | 5 ;","2 0 0 0 1 1 1 2 3")==-4;
+  #assert sh_fs("0 1 6 1 6 | 2 22 2 1 16 3 0 ;","0 1 2 1 2 | 5 ;","2 0 0 0 1 1 1 2")==-4;
+  // A helper of two views, bound both ways round: two copies.
+  #assert sh_pin(SH_VS,SH_T_TWO,"0 2 7 7 2 7 7 | 1 2 2 27 42 40 0 16 3 0 2 27 42 40 1 16 3 1 ;","2 0 0 0 1 1 1 2 3 4")==PIN_TWO;
+}
+#test "bindings: one per name, of views of numbers" {
+  #assert sh_pin("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 7 2 6 7 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==PIN_SHARED;
+  #assert sh_build("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 8 2 6 8 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==-7;
+  #assert sh_fs("0 2 6 17 2 6 17 | 5 ;","","2 0 0 0 1 1 1 2 3")==-9 && sh_fs("0 2 6 22 2 6 22 | 5 ;","","2 0 0 0 1 1 1 2 3")==-9;
+}
+// A fragment entry of a 2D texture, an array, a depth texture, a sampler and a comparison sampler (locals 1..5).
+SH_GPU :: "0 6 6 8 9 10 11 12 6 6 8 9 10 11 12";
+sh_gpu_fs :: (body:string)->int {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
+  n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
+  n+=sh_parse(SH_MORE,t[n..<t.count]);
+  t[n]=2;n+=1;
+  n+=sh_procs(SH_VS,t[n..<t.count],c[..]);
+  n+=sh_parse(SH_GPU,t[n..<t.count]);
+  nb:=sh_parse(body,t[n+1..<t.count]);
+  t[n]=cast(u32)nb;n+=1+nb;
+  n+=sh_parse("2 0 0 0 1 1 1 2 3 4 5 6 7",t[n..<t.count]);
+  return SH_lower(t[0..<n],out[..],work[..]);
+}
+#test "GPU procedures take their resources and give their texels" {
+  #assert sh_gpu_fs("2 33 2 6 3 18 1 18 4 17 19")>0 && sh_gpu_fs("2 33 2 2 3 18 1 18 4 17 19")==-11;
+  #assert sh_gpu_fs("2 33 0 0 0")==-11 && sh_gpu_fs("2 33 12 0 0")==-11 && sh_gpu_fs("2 33 10 4 2 18 1 18 1")==-11;
+  #assert sh_gpu_fs("2 33 10 99 1 18 1")==-1;
+  #assert sh_gpu_fs("2 33 7 2 4 18 1 16 3 0 16 3 0 16 3 0")==-11 && sh_gpu_fs("2 33 8 6 4 18 3 16 3 0 16 3 0 16 3 0")==-11;
+  #assert sh_gpu_fs("2 33 9 6 4 18 3 18 5 17 19 16 2 0")==-11 && sh_gpu_fs("2 33 10 4 1 17 8")==-11;
+  #assert sh_gpu_fs("2 33 10 4 1 18 4")==-11 && sh_gpu_fs("2 33 10 4 1 18 2")==-11 && sh_gpu_fs("2 33 10 2 1 18 1")==-11;
+  #assert sh_vs("6 2 4 4 2 4 4 | 1 2 2 33 1 0 0 4 17 6 ;","","2 0 0 0 1 1 1 9")==-11;
+  #assert sh_vs("6 4 4 4 8 11 4 4 4 8 11 | 1 2 2 33 2 6 3 18 2 18 3 17 19 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;
+  #assert sh_vs("6 4 4 4 9 11 4 4 4 9 11 | 1 2 2 33 6 6 5 18 2 18 3 17 19 16 3 0 16 2 0 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;
+  #assert sh_vs("6 4 4 4 9 11 4 4 4 9 11 | 1 2 2 33 5 6 5 18 2 18 3 17 19 16 3 0 16 2 0 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")>0;
+}
+// Modules too large for a limit: 0 an fs of n locals, 1 n loops in each
+// other, 2 n calls, 3 an array of n f32 made, 4 one read from a view.
+sh_big :: (mode:int,n:int)->int {
+  t:[70000] u32;out:[200000] u32;work:[SH_W_C+200000] u32;c:[1] int;
+  m:=sh_parse("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 8 2 0 4 9 7 3",t[..]);
+  t[21]=cast(u32)n;
+  m+=sh_procs(SH_VS,t[m..<t.count],c[..]);
+  m+=sh_parse(ifx mode==4 then "0 2 6 8" else "0 1 6",t[m..<t.count]);
+  locals:int;
+  if mode==0 {locals=n;}
+  extra:int;
+  if mode==4 {extra=1;}
+  t[m]=cast(u32)(1+locals+extra);t[m+1]=6;m+=2;
+  if mode==4 {t[m]=8;m+=1;}
+  for i:0..<locals {t[m]=SH_F32;m+=1;} // mutant: equivalent (any value type serves)
+  at:=m;m+=1;
+  if mode==0 {t[m]=5;m+=1;}
+  if mode==1 {for i:0..<n {m+=sh_parse("7 16 1 1",t[m..<t.count]);} t[m]=5;m+=1;}
+  if mode==2 {t[m]=1;t[m+1]=cast(u32)n;m+=2;for i:0..<n {m+=sh_parse("2 22 2 0",t[m..<t.count]);}}
+  if mode==3 {m+=sh_parse("2 31 7",t[m..<t.count]);t[m]=cast(u32)n;m+=1;for i:0..<n {t[m]=17;t[m+1]=2;m+=2;}}
+  if mode==4 {m+=sh_parse("2 27 42 40 1 16 3 0",t[m..<t.count]);}
+  t[at]=cast(u32)(m-at-1);
+  m+=sh_parse("0 0 0 1 5",t[m..<t.count]);
+  m+=sh_parse(ifx mode==4 then "2 0 0 0 1 1 1 2 3" else "2 0 0 0 1 1 1 2",t[m..<t.count]);
+  return SH_lower(t[0..<m],out[..],work[..]);
+}
+#test "a module fits its limits: locals, loops, calls and parts" {
+  #assert sh_big(0,SH_LOCALS-1)>0 && sh_big(0,SH_LOCALS)==-3;
+  #assert sh_big(1,SH_LOOPS)>0 && sh_big(1,SH_LOOPS+1)==-3;
+}
+#test "a module fits its limit of calls" {
+  #assert sh_big(2,SH_EDGES)>0 && sh_big(2,SH_EDGES+1)==-3;
+  #assert sh_big(3,4096)>0 && sh_big(3,4097)==-1 && sh_big(4,4096)>0 && sh_big(4,4097)==-3;
+}
+PIN_IO1 :: cast(u64)1871394927;
+PIN_IO2 :: cast(u64)2264871360;
+PIN_IO3 :: cast(u64)1959316470;
+PIN_VIEWS :: cast(u64)320524080;
+PIN_FIELDS :: cast(u64)4097409012;
+PIN_WIDE :: cast(u64)2492858813;
+PIN_CONV :: cast(u64)1636486121;
+PIN_FLOW :: cast(u64)913751554;
+PIN_END :: cast(u64)3305081801;
+PIN_TWO :: cast(u64)2808506733;
+PIN_SHARED :: cast(u64)852192670;
+SH_T_VIEWS :: "0 6 6 7 15 20 21 30 6 6 7 15 20 21 30 | 1 6 2 27 42 40 1 16 3 0 2 27 42 40 2 16 3 1 2 27 41 42 40 2 16 3 0 1 2 27 42 42 40 3 16 3 0 16 3 1 2 27 42 40 4 16 3 0 2 32 40 1 ;";
+SH_T_FIELDS :: "0 1 6 4 6 4 2 16 | 1 5 3 40 1 25 17 23 1 3 40 1 25 17 14 1 3 40 2 25 17 14 0 3 41 40 0 2 27 41 40 0 1 3 42 40 3 16 3 1 16 2 0 ;";
+SH_T_CONV :: "0 1 6 1 6 | 1 8 2 29 13 16 3 7 2 29 5 16 4 7 2 29 3 16 13 7 0 2 29 4 16 5 7 0 2 29 13 16 5 7 0 2 29 2 16 13 7 0 2 29 13 16 2 0 2 30 4 16 3 7 ;";
+SH_T_FLOW :: "0 1 6 4 6 5 5 2 | 1 10 7 16 1 1 1 2 7 16 1 1 1 2 6 0 16 1 0 10 9 9 6 1 16 1 1 5 2 16 2 0 6 1 16 1 0 2 16 2 0 5 7 16 1 1 1 2 7 16 1 0 1 2 10 9 6 0 16 1 1 9 8 2 16 5 0 0 16 5 3 0 1 1 10 7 16 1 1 9 5 2 16 2 0 6 0 16 1 1 5 2 16 2 0 ;";
+SH_T_TWO :: "0 3 6 7 7 3 6 7 7 | 1 2 2 22 2 2 18 1 18 2 2 22 2 2 18 2 18 1 ;";
+#test "tables refuse what does not fit" {
+  tree:[4096] u32;out:[8192] u32;w:[SH_CHECK_WORK] u32;
+  n:=sh_module(tree[..],out[..],w[..]);t:=tree[0..<n];
+  st:[1] ShState;s:=st[..];
+  // Constants: one per (type, bits).
+  sh_state(s,t);s[0].consts=SH_CONSTS-2;
+  a:=sh_const(s,t,w[..],SH_U32,77,0);b:=sh_const(s,t,w[..],SH_U32,78,0);
+  #assert s[0].ok && s[0].consts==SH_CONSTS && a!=b && sh_const(s,t,w[..],SH_U32,77,0)==a;
+  r1:=sh_const(s,t,w[..],SH_U32,79,0);
+  #assert !s[0].ok && s[0].reason==3;
+  // Function types: one per result and parameters.
+  sh_state(s,t);s[0].ftypes=SH_FTYPES-3;
+  u:=[2] u32.[SH_U32,SH_S32];v:=[2] u32.[SH_U32,SH_F32];y:=[2] u32.[SH_S32,SH_F32];x:=[1] u32.[SH_S32];
+  f1:=sh_ftype(s,t,w[..],SH_F32,u[..]);f2:=sh_ftype(s,t,w[..],SH_F32,v[..]);f3:=sh_ftype(s,t,w[..],SH_F32,y[..]);
+  #assert s[0].ok && f1!=f2 && f2!=f3 && sh_ftype(s,t,w[..],SH_F32,u[..])==f1 && sh_ftype(s,t,w[..],SH_F32,y[..])==f3;
+  r2:=sh_ftype(s,t,w[..],SH_F32,x[..]);
+  #assert !s[0].ok && s[0].reason==3;
+  // Copies: one per procedure and bindings, at most SH_RES of them.
+  sh_state(s,t);s[0].insts=2;
+  none:[1] u32;
+  #assert sh_instance(s,t,w[..],0,none[0..<0])==0 && s[0].insts==2;
+  b1:=[2] u32.[5,6];b2:=[2] u32.[5,0];
+  #assert sh_instance(s,t,w[..],1,b1[..])==2 && sh_instance(s,t,w[..],1,b2[..])==3 && sh_instance(s,t,w[..],1,b1[..])==2;
+  many:[12] u32;
+  for i:0..<12 {many[i]=9;}
+  #assert sh_instance(s,t,w[..],1,many[0..<SH_RES])==4 && s[0].ok;
+  r3:=sh_instance(s,t,w[..],1,many[..]);
+  #assert !s[0].ok && s[0].reason==3;
+  sh_state(s,t);s[0].insts=SH_INSTS-1;
+  b3:=[1] u32.[7];b4:=[1] u32.[8];
+  r4:=sh_instance(s,t,w[..],1,b3[..]);
+  #assert s[0].ok;
+  r5:=sh_instance(s,t,w[..],1,b4[..]);
+  #assert !s[0].ok && s[0].reason==3;
+  // The streams of decorations and of types.
+  sh_state(s,t);s[0].nd=SH_D_WORDS-1;s[0].nt=SH_T_WORDS-1;
+  sh_word(s,w[..],SH_D,1);sh_word(s,w[..],SH_T,1);
+  #assert s[0].ok && s[0].nd==SH_D_WORDS && s[0].nt==SH_T_WORDS;
+  sh_word(s,w[..],SH_D,1);
+  #assert !s[0].ok && s[0].reason==2;
+  sh_state(s,t);s[0].nt=SH_T_WORDS;
+  #assert s[0].nd==0 && s[0].ok;
+  sh_word(s,w[..],SH_T,1);
+  #assert !s[0].ok && s[0].reason==2;
+  // Loops: where each breaks to and continues from.
+  sh_state(s,t);
+  #assert sh_loop_push(s,w[..],7,8) && sh_loop_push(s,w[..],9,10);
+  #assert w[SH_W_LOOP]==7 && w[SH_W_LOOP+1]==8 && w[SH_W_LOOP+2]==9 && w[SH_W_LOOP+3]==10;
+  s[0].loops=SH_LOOPS-1;
+  #assert sh_loop_push(s,w[..],1,2) && !sh_loop_push(s,w[..],1,2) && s[0].reason==3;
+  // Reading past the tree.
+  sh_state(s,t);s[0].at=n;
+  r6:=sh_next(s,t);
+  #assert !s[0].ok && s[0].reason==1;
+  // A call of procedure 1 (fs, with a zero V4), when there are two procedures and when there is one.
+  tree[n]=1;tree[n+1]=1;tree[n+2]=17;tree[n+3]=6;
+  c:=tree[0..<n+4];
+  sh_state(s,c);s[0].procs=2;s[0].at=n;
+  r7:=sh_call(s,c,out[..],w[..]);
+  #assert s[0].ok;
+  sh_state(s,c);s[0].procs=1;s[0].at=n;
+  r8:=sh_call(s,c,out[..],w[..]);
+  #assert !s[0].ok && s[0].reason==1;
+}
+// A module whose type 7 is a struct of n f32: the lowering's result.
+sh_fields_lower :: (n:int)->int {
+  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
+  // Its fields are voids at offset 0 and its size 0: no check reads them.
+  m:=sh_parse("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7",t[..]);
+  t[m]=cast(u32)n;m+=2+2*n;
+  t[m]=2;m+=1;
+  m+=sh_procs(SH_VS,t[m..<t.count],c[..]);m+=sh_procs(SH_FS,t[m..<t.count],c[..]);
+  m+=sh_parse("2 0 0 0 1 1 1 2",t[m..<t.count]);
+  return SH_lower(t[0..<m],out[..],work[..]);
+}
+#test "more refusals: types, values, places and resources" {
+  #assert sh_fields_lower(64)==SH_SMALLEST && sh_fields_lower(65)==-1;
+  // A constant of a type past the last; one of a V4; a bitcast of an int; a struct of too few parts.
+  #assert sh_body("","2 16 7 0")==-1 && sh_body("6","3 40 1 16 6 0")==-1 && sh_body("","2 30 2 16 5 1 0")==-4;
+  #assert sh_body("","2 30 5 16 2 0")==-4 && sh_body("","2 29 2 17 25")==-1;
+  #assert sh_fs("0 1 6 1 6 | 2 29 2 17 25 ;","","2 0 0 0 1 1 1 2")==-4 && sh_fs("0 1 6 1 6 | 2 29 25 16 2 0 ;","","2 0 0 0 1 1 1 2")==-4;
+  #assert sh_fs("0 1 6 1 6 | 2 31 14 0 ;","","2 0 0 0 1 1 1 2")==-1 && sh_fs("0 1 6 1 6 | 2 16 31 0 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 1 6 | 2 25 17 26 1 ;","","2 0 0 0 1 1 1 2")==-1;
+  // Loading a view; a field past the last of a place and of a value; an index of u64.
+  #assert sh_fs("0 2 6 7 2 6 7 | 2 27 40 1 ;","","2 0 0 0 1 1 1 2 3")==-5 && sh_fs("0 1 6 2 6 14 | 2 27 41 40 1 2 ;","","2 0 0 0 1 1 1 2")==-1;
+  #assert sh_fs("0 1 6 1 6 | 2 25 17 23 2 ;","","2 0 0 0 1 1 1 2")==-1 && sh_fs("0 2 6 7 2 6 7 | 2 27 42 40 1 16 13 3 0 ;","","2 0 0 0 1 1 1 2 3")>0;
+  // A void local; a helper returning an image; an entry of SH_RES resources, and of one more.
+  #assert sh_fs("0 1 6 2 6 0 | 5 ;","","2 0 0 0 1 1 1 2")==-1 && sh_fs("0 1 6 1 6 | 2 22 2 0 ;","8 0 0 | 5 ;","2 0 0 0 1 1 1 2")==-5;
+  #assert sh_fs("0 12 6 7 7 7 7 7 7 7 7 7 7 7 12 6 7 7 7 7 7 7 7 7 7 7 7 | 5 ;","","2 0 0 0 1 1 1 2 3 4 5 6 7 8 9 10 11 12 13")>0;
+  #assert sh_fs("0 13 6 7 7 7 7 7 7 7 7 7 7 7 7 13 6 7 7 7 7 7 7 7 7 7 7 7 7 | 5 ;","","2 0 0 0 1 1 1 2 3 4 5 6 7 8 9 10 11 12 13 14")==-3;
+  // The smallest module, in words.
+  #assert sh_body("","5")==SH_SMALLEST;
+}
+#test "GPU procedures' resources are the kinds they take" {
+  #assert sh_gpu_fs("2 33 2 6 3 16 3 0 18 4 17 19")==-11 && sh_gpu_fs("2 33 2 6 3 18 0 18 4 17 19")==-11;
+  #assert sh_gpu_fs("2 33 2 6 3 18 2 18 4 17 19")==-11 && sh_gpu_fs("2 33 2 6 3 18 1 18 5 17 19")==-11;
+  #assert sh_gpu_fs("2 33 2 6 3 18 1 18 1 17 19")==-11 && sh_gpu_fs("2 33 2 6 3 18 4 18 4 17 19")==-11;
+  #assert sh_gpu_fs("2 33 9 2 4 18 3 18 4 17 19 16 2 0")==-11 && sh_gpu_fs("2 33 2 6 3 18 1 18 4 16 2 0")==-11;
+  #assert sh_gpu_fs("2 33 9 2 4 18 3 18 5 17 19 16 2 0")==SH_GPU_COMPARE && sh_gpu_fs("2 27 42 40 1 16 3 0")==-5;
+}
+#test "pinned modules: constants and a u64 view" {
+  #assert sh_pin(SH_VS,"0 1 6 4 6 5 2 3 | 1 4 3 40 1 16 5 7 1 3 40 1 16 5 7 0 3 40 2 17 2 3 40 3 17 3 ;","","2 0 0 0 1 1 1 2")==PIN_CONSTS;
+  #assert sh_pin(SH_VS,"0 2 6 21 2 6 21 | 5 ;","","2 0 0 0 1 1 1 2 3")==PIN_U64;
+}
+PIN_CONSTS :: cast(u64)3010344692;
+PIN_U64 :: cast(u64)1848749222;
+SH_SMALLEST :: 204;
+#test "the tables tile the work" {
+  #assert sh_tw(0,0)==SH_W_TYPE && sh_tw(SH_TYPES-1,7)==SH_W_PROC-1;
+  #assert sh_iw(0,0)==SH_W_INST && sh_iw(SH_INSTS-1,15)==SH_W_BIND-1;
+  #assert sh_bw(0,0)==SH_W_BIND && sh_bw(SH_BINDS-1,3)==SH_W_CONST-1;
+  #assert sh_lw(0,0)==SH_W_LOCAL && sh_lw(SH_LOCALS-1,1)==SH_W_LOOP-1;
+}
+SH_GPU_COMPARE :: 344;
