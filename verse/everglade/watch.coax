@@ -274,6 +274,7 @@ Actor :: struct {
   heal_to: int;                   // a priest's: who the healing is for
   temp: int;                      // Temporary Hit Points (a beast's shape: Polymorph), lost first
   blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
+  role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, verse/everglade/captain.coax) and how long it holds
 }
 
 Watch :: struct {
@@ -316,6 +317,7 @@ Watch :: struct {
   aa_cool: f32;                   // till the company's next Magic Missile or Earthbind (AA_GAP)
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
+  call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
 }
 WATCH_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
@@ -350,6 +352,7 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].level = 0; w[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
   for k: 0..<MISSILES { w[0].missiles[k].live = false; }
   w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
+  w[0].call_cool = 0;
   w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0; w[0].aa_cool = 0;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
@@ -367,6 +370,7 @@ watch_revive :: (w: [] Watch, i: int) {
   a[0].casting = -1; a[0].cast_cool = 1.0; a[0].fireball_cool = 0; a[0].hold_cool = 2.0; a[0].weapon_cool = 0; a[0].heal_to = -1;
   a[0].mm_cool = 0; a[0].bind_cool = 3.0;
   a[0].temp = 0; a[0].blind = false;
+  a[0].role = ROLE_PRESS; a[0].role_t = 0;
   a[0].ready = true;
 }
 
@@ -1238,6 +1242,7 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
   }
   if w[0].slow_t > 0 { w[0].slow_t = hi(w[0].slow_t - t, 0); }
   w[0].aa_cool -= t;
+  w[0].call_cool -= t;
   // how you move, for their lead (a warp is no motion)
   if t > 0 {
     if w[0].you_seen && length(sub(you, w[0].you_last)) < 4 {
@@ -1357,9 +1362,101 @@ watch_stand_down :: (w: [] Watch) {
   }
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i..<i + 1];
+    a[0].role = ROLE_PRESS; a[0].role_t = 0;
     if a[0].mode == WM_CHASE || a[0].mode == WM_FIGHT { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; }
     if a[0].mode == WM_DOWN && (a[0].after == WM_CHASE || a[0].after == WM_FIGHT) { a[0].after = WM_BACK; }
   }
+}
+
+// ---- the captain's roles (eg-guards-coordinate). The plan, which guard takes which role, is a
+// typed decision (verse/everglade/captain.coax); how each one moves in it is this game code. With
+// no plan every guard presses (ROLE_PRESS): the watch as it always was.
+ROLE_PRESS :: 0;       // straight at you (or under you), as before
+ROLE_FLANK_L :: 1;     // round to your left side, then in
+ROLE_FLANK_R :: 2;     // round to your right
+ROLE_CALL :: 3;        // stand off and call for help: GUARDS! TO ME! brings one more guard in by the nearest gate
+ROLE_CUT :: 4;         // between you and the gate nearest you: your way out
+ROLE_UNDER :: 5;       // under where you will be, levitating (on the ground: press)
+ROLES_N :: 6;
+ROLE_HOLD :: 10.0;     // s a role holds before they press on (a fresh plan renews it)
+FLANK_OUT :: 3.2;      // m to your side a flanker makes for
+FLANK_IN :: 1.0;       // m from that spot: there, and in they come
+CUT_OUT :: 7.0;        // m from you toward the gate a cutter stands
+CALL_FOR :: 3.0;       // s a call takes before help comes
+CALL_NEAR :: 6.0;      // m: nearer you than this, a caller fights instead
+CALL_EVERY :: 30.0;    // s between calls from the whole watch
+UNDER_LEAD :: 1.2;     // s of your drift they lead, waiting under you
+ROLE_STALL :: 1.5;     // s a guard blocked on the way to their role's spot keeps it
+RoleGoal :: struct { on: bool; at: Point; stop: f32; }
+// The gate nearest (x, z): its index in WATCH_GATE.
+watch_gate_near :: (x: f32, z: f32) -> int {
+  gate := 0; best := 100000.0f32;
+  for g: 0..<4 {
+    d := flat_gap(v3(WATCH_GATE[g * 2], 0, WATCH_GATE[g * 2 + 1]), v3(x, 0, z));
+    if d < best { best = d; gate = g; }
+  }
+  return gate;
+}
+// Where guard i makes for in their role, you at `you` and `up` m above their reach; off: as before.
+watch_role_goal :: (w: [] Watch, i: int, you: Point, up: f32) -> RoleGoal {
+  a := w[0].actors[i];
+  r := a.role;
+  if r == ROLE_FLANK_L || r == ROLE_FLANK_R {
+    // your sides by the way you face; a flanker there comes in (on the ground) or stays (you up)
+    side := ifx r == ROLE_FLANK_L then -1.0f32 else 1.0f32;
+    at := v3(you.x + cos(w[0].face) * side * f32(FLANK_OUT), 0, you.z - sin(w[0].face) * side * f32(FLANK_OUT));
+    if up <= 0.3 && flat_gap(v3(a.x, 0, a.z), at) < f32(FLANK_IN) { w[0].actors[i].role = ROLE_PRESS; w[0].actors[i].role_t = 0; return RoleGoal.{}; }
+    if !watch_open(w, at.x, at.z) { return RoleGoal.{}; }
+    return RoleGoal.{on = true, at = at, stop = 0.3};
+  }
+  if r == ROLE_CUT {
+    g := watch_gate_near(you.x, you.z);
+    gate := v3(WATCH_GATE[g * 2], 0, WATCH_GATE[g * 2 + 1]);
+    d := flat_gap(gate, you);
+    out := lo(f32(CUT_OUT), d);
+    at := ifx d > 0.01 then v3(you.x + (gate.x - you.x) / d * out, 0, you.z + (gate.z - you.z) / d * out) else gate;
+    if !watch_open(w, at.x, at.z) { return RoleGoal.{}; }
+    return RoleGoal.{on = true, at = at, stop = 0.5};
+  }
+  if r == ROLE_UNDER && up > 0.3 {
+    at := v3(you.x + w[0].you_v.x * f32(UNDER_LEAD), 0, you.z + w[0].you_v.z * f32(UNDER_LEAD));
+    if !watch_open(w, at.x, at.z) { at = v3(you.x, 0, you.z); }
+    return RoleGoal.{on = true, at = at, stop = 0.3};
+  }
+  return RoleGoal.{};
+}
+// A caller (ROLE_CALL) for dt: stands off and shouts; after CALL_FOR one more guard comes in by the
+// gate nearest you (within HUNTERS_MAX), then they press on. False: they fight instead (you close).
+watch_calling :: (w: [] Watch, i: int, dt: f32, you: Point, toward: f32) -> bool {
+  a := w[0].actors[i..<i + 1];
+  if flat_gap(v3(a[0].x, 0, a[0].z), you) < f32(CALL_NEAR) || w[0].call_cool > 0 { a[0].role = ROLE_PRESS; a[0].role_t = 0; return false; }
+  a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
+  a[0].clip = PEOPLE_IDLE;
+  if a[0].shout != 2 { a[0].shout = 2; a[0].shout_t = 0; }   // GUARDS! TO ME!
+  if a[0].role_t > f32(ROLE_HOLD) - f32(CALL_FOR) { return true; }
+  a[0].role = ROLE_PRESS; a[0].role_t = 0;
+  w[0].call_cool = f32(CALL_EVERY);
+  if watch_hunters(w) < HUNTERS_MAX { _ := watch_help(w, you); }
+  return true;
+}
+// One guard in by the gate nearest you, after you: the first free reinforcement place. Whether one came.
+watch_help :: (w: [] Watch, you: Point) -> bool {
+  k := -1;
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { if k < 0 && !w[0].actors[i].homed { k = i; } }
+  if k < 0 { return false; }
+  g := watch_gate_near(you.x, you.z);
+  a := w[0].actors[k..<k + 1];
+  inx := ifx g == 1 then 1.0f32 else ifx g == 2 then -1.0f32 else 0.0f32;
+  inz := ifx g == 0 then 1.0f32 else ifx g == 3 then -1.0f32 else 0.0f32;
+  a[0].rank = RANK_GUARD;
+  a[0].home_x = WATCH_GATE[g * 2]; a[0].home_z = WATCH_GATE[g * 2 + 1]; a[0].home_yaw = atan2(inx, inz); a[0].home_in = false;
+  watch_revive(w, k);
+  a[0].homed = true;
+  a[0].mode = WM_CHASE; a[0].t = 0;
+  a[0].seen_x = you.x; a[0].seen_z = you.z;
+  a[0].shout = 3; a[0].shout_t = 0;   // SEIZE THEM!
+  w[0].spawned += 1;
+  return true;
 }
 
 // One of the town for dt seconds.
@@ -1455,9 +1552,12 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
         a[0].clip = PEOPLE_SLASH; a[0].hold = true;
         return;
       }
-      if gap <= f32(REACH) * 0.8 { a[0].clip = PEOPLE_IDLE; return; }
+      if gap <= f32(REACH) * 0.8 && a[0].role != ROLE_UNDER { a[0].clip = PEOPLE_IDLE; return; }
     }
     if up <= 0.3 { a[0].up_shouted = false; }
+    // the captain's plan (captain.coax): a role holds a while, then they press on as before
+    if a[0].role != ROLE_PRESS { a[0].role_t -= dt; if a[0].role_t <= 0 || !guard { a[0].role = ROLE_PRESS; a[0].role_t = 0; } }
+    if a[0].role == ROLE_CALL && watch_calling(w, i, dt, you, toward) { return; }
     if reach3 <= f32(REACH) && a[0].sees {
       a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
       a[0].clip = ifx guard then PEOPLE_IDLE else PEOPLE_IDLE;
@@ -1468,10 +1568,17 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     // to you while they see you, else to where they last did, and there they look about
     goal := ifx a[0].sees then you else v3(a[0].seen_x, 0, a[0].seen_z);
     left := flat_gap(v3(a[0].x, 0, a[0].z), goal) - (ifx a[0].sees then f32(REACH) * 0.8 else 0.3f32);
+    rg := watch_role_goal(w, i, you, up);
+    if rg.on {
+      goal = rg.at; left = flat_gap(v3(a[0].x, 0, a[0].z), goal) - rg.stop;
+      if left <= 0.05 { a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt); left = 0; }
+    }
     // over the river by the bridge, round a fence
     by := watch_bridge_way(a[0].x, a[0].z, goal.x, goal.z);
     step := lo(run * dt, hi(left, 0));
     if step > 0 && watch_stride(w, a, watch_way(w, a[0].x, a[0].z, by.x, by.z), step) { a[0].speed = step / hi(dt, 0.0001); }
+    // a role's spot they can't get to (a house in the way): its time runs out fast, then they press on
+    else if rg.on && step > 0 { a[0].role_t = lo(a[0].role_t, f32(ROLE_STALL)); }
     a[0].clip = ifx a[0].speed > 0.1 then PEOPLE_RUN else (ifx guard then PEOPLE_IDLE else PEOPLE_IDLE);
     return;
   }

@@ -724,6 +724,28 @@ sight long enough: 18 s at level 1, plus 9 s for each level above it
 (54 s at level 5). Then the reinforcements walk back out
 of their gate.
 
+### The captain's plan (eg-guards-coordinate)
+
+While you are wanted, the guard captain decides who of the (up to four)
+nearest melee hunters does what: **press** (as before), **flank left** or
+**flank right** (round to your side, then in), **call** (stand off and shout
+GUARDS! TO ME!; after 3 s one more guard comes in by the gate nearest you,
+at most once every 30 s), **cut off** (stand between you and the gate
+nearest you) or **under** (wait under where you will come down, levitating).
+The plan is a typed decision through our Decisions API: the decision.v1
+contract at `/api/v1/systemone` (the route the guards' ambient choice uses;
+`/api/v1/decisions` is not served on openagents.com), one choice question
+per guard over those six roles, read as the enum its probabilities pick.
+It is asked at most every 8 s (8 a hunt, 24 a visit), one at a time, with a
+4 s deadline on the page's monotonic clock. A role holds 10 s; a guard who
+gets no nearer its spot for 1.5 s presses on. No answer, a late, refused or
+malformed one, a 401/429 (no more this visit) or a new hunt leaves every
+guard pressing: the escalation above, unchanged. Clips never ask; the
+`#PLACE+float+captain` hash stages a hunt with you levitating and rehearses
+the plan in the page. Code: `verse/everglade/captain.coax` (request,
+decoder, lifecycle, checks), `watch.coax` (`watch_role_goal`,
+`watch_calling`), `everglade-guard-ai.coax` and the face's `captain_out`.
+
 Hostility is your page's alone, like a broken building: each player has
 their own watch, and the beats are a function of the shared clock, so
 everyone sees the guards in the same place until one of them is hunted.

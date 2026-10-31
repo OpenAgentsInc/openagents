@@ -1,0 +1,519 @@
+// Everglade's guard captain (eg-guards-coordinate): when you break the town, who of the
+// hunting guards flanks, who calls for help, who cuts off your way out and who waits under
+// where you float is a typed decision through our Decisions API: the decision.v1 contract
+// (openagents.systemone.v1, docs/protocol/openagents-protocol-spec.md 16.1) at
+// /api/v1/systemone, the route the guards' ambient choice already uses. One choice
+// question per guard (g0..g3), each over the fixed roles of CAP_OPTIONS; the answer is
+// read as the enum the probabilities pick, never as free text.
+//
+// How each guard moves in a role is game code (watch.coax watch_role_goal, watch_calling).
+// At most one request is out, asked at most every CAP_EVERY ms (monotonic, the page's
+// clock, not game time), answered within CAP_TIMEOUT or dropped. No answer, a late one, a
+// refusal or a malformed one leaves every guard pressing on: today's escalation.
+// A rehearsal (the page's "+captain" hash, for clips) answers each request locally with
+// CAP_STAGED through the same decoder; nothing leaves the page.
+#load "../../coax/lib/nostr/json.coax";
+#load "watch.coax";
+
+CAP_URL :: "/api/v1/systemone";
+CAP_MODEL :: "elephant-1";
+CAP_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+CAP_OPTIONS :: [6] string.["press", "flank_left", "flank_right", "call", "cut_off", "under"];   // ROLE_* in order
+CAP_CRITERIA :: [6] string.[
+  "Keep pressing straight at the lawbreaker",
+  "Circle round to the lawbreaker's left side, then close in",
+  "Circle round to the lawbreaker's right side, then close in",
+  "Stand off and call for reinforcements (only one guard should)",
+  "Run to block the lawbreaker's way out of town by the nearest gate",
+  "Wait under where the floating lawbreaker will come down"
+];
+CAP_SLOTS :: 4;            // the guards a plan names, nearest you first
+CAP_EVERY :: 8000;         // ms between requests
+CAP_TIMEOUT :: 4000;       // ms an answer has to arrive
+CAP_BACKOFF :: 30000;      // ms after a refusal (503, 504, no transport) before the next
+CAP_HUNT :: 8;             // requests at most while you are wanted once
+CAP_VISIT :: 24;           // and in all on this page
+CAP_BODY :: 4096;
+CAP_REPLY_MAX :: 16384;
+CAP_UNIT :: 1000000000;
+CAP_TOL :: 1000;
+CAP_STAGED :: [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_UNDER, ROLE_CUT];   // the rehearsal's plan
+CAP_OFF :: 0; CAP_REMOTE :: 1; CAP_REHEARSE :: 2;
+
+Captain :: struct {
+  mode: int;                       // CAP_OFF, CAP_REMOTE, CAP_REHEARSE
+  blocked: bool;                   // a clip or a golden: no request leaves the page
+  suspended: bool;                 // hidden or out of focus
+  disabled: bool;                  // 401 or 429: not again this visit
+  episode: int; hunting: bool;     // which time you are wanted (a new one fences old answers)
+  phase: int; sequence: int;       // 1: a request out
+  expires_ms: int; due_ms: int;
+  attempts: int; hunt_attempts: int;
+  asked: [CAP_SLOTS] int; asked_n: int; asked_episode: int;
+  body_n: int; send: bool;        // the request is written into the caller's buffer (the face's)
+  accepted: int; refused: int; timeouts: int; late: int;
+  roles: [CAP_SLOTS] int;          // the last plan applied, for the checks
+}
+CapPlan :: struct { ok: bool; n: int; roles: [CAP_SLOTS] int; }
+CapField :: struct { ok: bool; token: int; raw: string; text: string; }
+CapNumber :: struct { ok: bool; units: int; }
+
+// ---- who is asked about
+
+// The melee guards hunting you, nearest first, into out (actor indices). How many.
+cap_slots :: (w: [] Watch, you: Point, out: [] int) -> int {
+  n := 0;
+  gaps: [CAP_SLOTS] f32;
+  for i: 0..<WATCH_ACTORS {
+    if !cap_can_take(w, i) { continue; }
+    d := flat_gap(v3(w[0].actors[i].x, 0, w[0].actors[i].z), you);
+    // insert by distance, dropping the farthest past CAP_SLOTS
+    k := n;
+    while k > 0 && gaps[k - 1] > d { if k < CAP_SLOTS { gaps[k] = gaps[k - 1]; out[k] = out[k - 1]; } k -= 1; }
+    if k < CAP_SLOTS { gaps[k] = d; out[k] = i; }
+    if n < CAP_SLOTS { n += 1; }
+  }
+  return n;
+}
+// Guard i can take a role now: here, after you, on their feet, not a caster.
+cap_can_take :: (w: [] Watch, i: int) -> bool {
+  if i < 0 || i >= WATCH_ACTORS || !watch_here(w, i) || !watch_is_guard(i) || watch_caster(w, i) { return false; }
+  a := w[0].actors[i];
+  return a.mode == WM_CHASE && !a.body.on;
+}
+
+// ---- the request: bounded, game-authored categories only
+
+cap_way :: (dx: f32, dz: f32) -> string {
+  if abs(dx) > abs(dz) { return ifx dx > 0 then "east" else "west"; }
+  return ifx dz > 0 then "north" else "south";
+}
+// up: you are out of a sword's reach above them (levitating, on a roof).
+cap_request :: (out: [] u8, w: [] Watch, you: Point, up: bool, asked: [] int, n: int) -> int {
+  floating := up;
+  moving := length(w[0].you_v) > 1.0;
+  b := json_raw(out, 0, "{\"model\":\"elephant-1\",\"state\":\"The town watch are hunting a lawbreaker. WANTED level ");
+  b = json_write_int(out, b, clamp_w(w[0].level, 1, WANTED_LEVELS));
+  b = json_raw(out, b, " of 5. The lawbreaker is ");
+  b = json_raw(out, b, ifx floating then "floating out of sword reach" else "on the ground");
+  b = json_raw(out, b, ifx moving then " and moving." else " and standing still.");
+  b = json_raw(out, b, " Guards hunting: ");
+  b = json_write_int(out, b, watch_hunters(w));
+  b = json_raw(out, b, ".");
+  for k: 0..<n {
+    a := w[0].actors[asked[k]];
+    d := flat_gap(v3(a.x, 0, a.z), you);
+    b = json_raw(out, b, " g");
+    b = json_write_int(out, b, k);
+    b = json_raw(out, b, ": ");
+    b = json_raw(out, b, ifx d < 5 then "close" else ifx d < 15 then "near" else "far");
+    b = json_raw(out, b, ", ");
+    b = json_raw(out, b, cap_way(a.x - you.x, a.z - you.z));
+    b = json_raw(out, b, " of the lawbreaker, ");
+    b = json_raw(out, b, ifx a.sees then "sees them." else "lost sight of them.");
+  }
+  b = json_raw(out, b, "\",\"questions\":{");
+  for k: 0..<n {
+    if k > 0 { b = json_raw(out, b, ","); }
+    b = json_raw(out, b, "\"g");
+    b = json_write_int(out, b, k);
+    b = json_raw(out, b, "\":{\"type\":\"choice\",\"instructions\":\"The guard captain's plan: choose the role for guard g");
+    b = json_write_int(out, b, k);
+    b = json_raw(out, b, ".\",\"criteria\":{");
+    for o: 0..<ROLES_N {
+      if o > 0 { b = json_raw(out, b, ","); }
+      b = json_write_string(out, b, CAP_OPTIONS[o]);
+      b = json_raw(out, b, ":");
+      b = json_write_string(out, b, CAP_CRITERIA[o]);
+    }
+    b = json_raw(out, b, "}}");
+  }
+  return json_raw(out, b, "}}");
+}
+
+// ---- the answer: exact model, every asked question, every option, the declared choice
+
+cap_get :: (text: string, key: string) -> CapField {
+  f: CapField;
+  if !json_valid(text) { return f; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return f; }
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END || t == JSON_ERROR || t == JSON_END { break; }
+    name := json_text(j[..]);
+    t = json_next(j[..]);
+    value := json_text(j[..]); raw := value;
+    if t == JSON_OBJECT || t == JSON_ARRAY { start := j[0].from; _ := json_skip(j[..]); raw = text[start..<j[0].at]; }
+    if json_is(name, key) { if f.ok { return CapField.{}; } f = CapField.{ok = true, token = t, raw = raw, text = value}; }
+  }
+  return f;
+}
+cap_count :: (text: string) -> int {
+  if !json_valid(text) { return -1; }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return -1; }
+  n := 0;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END || t == JSON_ERROR || t == JSON_END { break; }
+    t = json_next(j[..]);
+    if t == JSON_ARRAY || t == JSON_OBJECT { _ := json_skip(j[..]); }
+    n += 1;
+  }
+  return n;
+}
+cap_is :: (f: CapField, text: string) -> bool { return f.ok && f.token == JSON_STRING && json_is(f.text, text); }
+cap_probability :: (text: string) -> CapNumber {
+  if text.count < 1 || (text[0] != '0' && text[0] != '1') { return CapNumber.{}; }
+  units := cast(int) (text[0] - '0') * CAP_UNIT;
+  if text.count == 1 { return CapNumber.{ok = true, units = units}; }
+  if text.count < 3 || text.count > 11 || text[1] != '.' { return CapNumber.{}; }
+  scale := 100000000;
+  for i: 2..<text.count { if text[i] < '0' || text[i] > '9' { return CapNumber.{}; } units += cast(int) (text[i] - '0') * scale; scale /= 10; }
+  return CapNumber.{ok = units <= CAP_UNIT, units = units};
+}
+cap_hex :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+CAP_KEYS :: [4] string.["g0", "g1", "g2", "g3"];
+cap_key :: (k: int) -> string { return CAP_KEYS[k]; }
+// One answer: the role its probabilities pick (ties to the lower role, ROLE_PRESS first), or -1.
+cap_choice :: (raw: string) -> int {
+  if !cap_is(cap_get(raw, "type"), "choice") { return -1; }
+  choice := cap_get(raw, "choice"); confidence := cap_get(raw, "confidence");
+  c := cap_probability(confidence.text);
+  if confidence.token != JSON_NUMBER || !c.ok { return -1; }
+  probs := cap_get(raw, "probabilities");
+  if probs.token != JSON_OBJECT || cap_count(probs.raw) != ROLES_N { return -1; }
+  sum := 0; best := 0; best_units := -1;
+  for o: 0..<ROLES_N {
+    f := cap_get(probs.raw, CAP_OPTIONS[o]); v := cap_probability(f.text);
+    if f.token != JSON_NUMBER || !v.ok { return -1; }
+    sum += v.units;
+    if v.units > best_units { best = o; best_units = v.units; }
+  }
+  if sum < CAP_UNIT - CAP_TOL || sum > CAP_UNIT + CAP_TOL { return -1; }
+  if !cap_is(choice, CAP_OPTIONS[best]) || c.units < best_units - CAP_TOL || c.units > best_units + CAP_TOL { return -1; }
+  return best;
+}
+cap_decode :: (text: string, n: int) -> CapPlan {
+  bad: CapPlan;
+  if n < 1 || n > CAP_SLOTS || text.count > CAP_REPLY_MAX || !json_valid(text) { return bad; }
+  if !cap_is(cap_get(text, "model"), CAP_MODEL) { return bad; }
+  service := cap_get(text, "service");
+  if service.token != JSON_OBJECT || !cap_is(cap_get(service.raw, "version"), "psionic-pylon-v1") || !cap_is(cap_get(service.raw, "identity"), CAP_IDENTITY) { return bad; }
+  provider := cap_get(service.raw, "provider"); door := cap_get(service.raw, "door");
+  if provider.token != JSON_STRING || !cap_hex(provider.text) || door.token != JSON_STRING || door.text.count < 7 || door.text.count > 86 || door.text[0..<6] != "pylon:" { return bad; }
+  answers := cap_get(text, "answers");
+  if answers.token != JSON_OBJECT || cap_count(answers.raw) != n { return bad; }
+  p := CapPlan.{ok = true, n = n};
+  for k: 0..<n {
+    a := cap_get(answers.raw, cap_key(k));
+    if a.token != JSON_OBJECT { return bad; }
+    r := cap_choice(a.raw);
+    if r < 0 { return bad; }
+    p.roles[k] = r;
+  }
+  return p;
+}
+// The rehearsal's answer for n guards: CAP_STAGED, in the service's own shape.
+cap_fixture :: (out: [] u8, n: int) -> int {
+  b := json_raw(out, 0, "{\"model\":\"elephant-1\",\"answers\":{");
+  for k: 0..<n {
+    if k > 0 { b = json_raw(out, b, ","); }
+    r := CAP_STAGED[k];
+    b = json_raw(out, b, "\""); b = json_raw(out, b, cap_key(k));
+    b = json_raw(out, b, "\":{\"type\":\"choice\",\"choice\":"); b = json_write_string(out, b, CAP_OPTIONS[r]);
+    b = json_raw(out, b, ",\"confidence\":0.7,\"probabilities\":{");
+    for o: 0..<ROLES_N {
+      if o > 0 { b = json_raw(out, b, ","); }
+      b = json_write_string(out, b, CAP_OPTIONS[o]);
+      b = json_raw(out, b, ifx o == r then ":0.7" else ":0.06");
+    }
+    b = json_raw(out, b, "}}");
+  }
+  b = json_raw(out, b, "},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:rehearsal\",\"identity\":\"");
+  b = json_raw(out, b, CAP_IDENTITY);
+  return json_raw(out, b, "\",\"provider\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}");
+}
+
+// ---- the plan applied: the game checks every role is still legal
+
+// At most one caller (and none while the watch's last call cools); a guard no longer able to
+// take a role keeps pressing. How many roles were set.
+cap_apply :: (w: [] Watch, asked: [] int, p: CapPlan) -> int {
+  set := 0; calls := 0;
+  for k: 0..<p.n {
+    i := asked[k];
+    if !cap_can_take(w, i) { continue; }
+    r := p.roles[k];
+    if r < 0 || r >= ROLES_N { r = ROLE_PRESS; }
+    if r == ROLE_CALL { if calls > 0 || w[0].call_cool > 0 { r = ROLE_PRESS; } else { calls += 1; } }
+    w[0].actors[i].role = r;
+    w[0].actors[i].role_t = ifx r == ROLE_PRESS then 0.0f32 else f32(ROLE_HOLD);
+    set += 1;
+  }
+  return set;
+}
+
+// ---- the lifecycle, at the page's boundary with a monotonic clock
+
+cap_drop :: (c: [] Captain) { c[0].phase = 0; c[0].send = false; }
+// Once a frame: a new hunt fences what is out; an expired request is dropped; a new one starts
+// when it may. The rehearsal answers at once.
+cap_frame :: (c: [] Captain, w: [] Watch, you: Point, up: bool, now_ms: int, out: [] u8) {
+  hunting := w[0].on && w[0].wanted && !w[0].dead;
+  if !hunting && c[0].hunting { c[0].episode += 1; c[0].hunt_attempts = 0; if c[0].phase != 0 { c[0].refused += 1; cap_drop(c); } }
+  c[0].hunting = hunting;
+  if c[0].phase != 0 && now_ms >= c[0].expires_ms { c[0].timeouts += 1; cap_drop(c); }
+  if c[0].mode == CAP_OFF || c[0].disabled || c[0].suspended || !hunting || c[0].phase != 0 { return; }
+  if c[0].mode == CAP_REMOTE && c[0].blocked { return; }
+  if now_ms < c[0].due_ms || c[0].attempts >= CAP_VISIT || c[0].hunt_attempts >= CAP_HUNT { return; }
+  n := cap_slots(w, you, c[0].asked[..]);
+  if n < 1 { return; }
+  body := cap_request(out, w, you, up, c[0].asked[..], n);
+  if body < 0 { return; }
+  c[0].asked_n = n; c[0].asked_episode = c[0].episode;
+  c[0].sequence += 1; c[0].phase = 1;
+  c[0].expires_ms = now_ms + CAP_TIMEOUT; c[0].due_ms = now_ms + CAP_EVERY;
+  c[0].attempts += 1; c[0].hunt_attempts += 1;
+  c[0].body_n = body;
+  if c[0].mode == CAP_REHEARSE {
+    reply: [CAP_BODY] u8;
+    m := cap_fixture(reply[..], n);
+    cap_reply(c, w, c[0].sequence, now_ms, "200\n", cast(string) reply[0..<m]);
+    return;
+  }
+  c[0].send = true;
+}
+// The face started the request (or could not).
+cap_sent :: (c: [] Captain, sequence: int, started: bool) {
+  if c[0].phase != 1 || sequence != c[0].sequence { return; }
+  c[0].send = false;
+  if !started { c[0].refused += 1; c[0].due_ms += CAP_BACKOFF - CAP_EVERY; cap_drop(c); }
+}
+// Its answer ("STATUS\n" then the body). Only the one out, before its deadline, in the same hunt.
+cap_reply :: (c: [] Captain, w: [] Watch, sequence: int, now_ms: int, status: string, body: string) {
+  if c[0].phase != 1 || sequence != c[0].sequence { c[0].late += 1; return; }
+  cap_drop(c);
+  if status == "401\n" || status == "429\n" { c[0].disabled = true; c[0].refused += 1; return; }
+  if now_ms >= c[0].expires_ms { c[0].timeouts += 1; return; }
+  if status != "200\n" { c[0].refused += 1; c[0].due_ms = hi_w(c[0].due_ms, now_ms + CAP_BACKOFF); return; }
+  if c[0].asked_episode != c[0].episode || !c[0].hunting { c[0].refused += 1; return; }
+  p := cap_decode(body, c[0].asked_n);
+  if !p.ok { c[0].refused += 1; return; }
+  _ := cap_apply(w, c[0].asked[..], p);
+  for k: 0..<CAP_SLOTS { c[0].roles[k] = ifx k < p.n then p.roles[k] else -1; }
+  c[0].accepted += 1;
+}
+cap_receive :: (c: [] Captain, w: [] Watch, sequence: int, now_ms: int, text: string) {
+  status := ""; body := "";
+  if text.count >= 4 { status = text[0..<4]; body = text[4..<text.count]; }
+  cap_reply(c, w, sequence, now_ms, status, body);
+}
+
+// ---- checks
+
+// The town with the hunt on: guards a, b, c, d turned on you at `you`, standing round you.
+cap_test_hunt :: (w: [] Watch, heights: [] f32, you: Point) {
+  watch_test_town(w, heights);
+  for k: 0..<4 {
+    i := EG_SPOTS + k;
+    watch_alarm(w, i, you, you);
+    w[0].actors[i].x = you.x - 12 + f32(k) * 1.5; w[0].actors[i].z = you.z - 10;
+  }
+  w[0].wanted = true; w[0].hp = 100000; w[0].max = 100000;
+}
+cap_answer :: (out: [] u8, roles: [] int) -> int {
+  b := json_raw(out, 0, "{\"model\":\"elephant-1\",\"answers\":{");
+  for k: 0..<roles.count {
+    if k > 0 { b = json_raw(out, b, ","); }
+    b = json_raw(out, b, "\""); b = json_raw(out, b, cap_key(k));
+    b = json_raw(out, b, "\":{\"type\":\"choice\",\"choice\":"); b = json_write_string(out, b, CAP_OPTIONS[roles[k]]);
+    b = json_raw(out, b, ",\"confidence\":0.5,\"probabilities\":{");
+    for o: 0..<ROLES_N {
+      if o > 0 { b = json_raw(out, b, ","); }
+      b = json_write_string(out, b, CAP_OPTIONS[o]);
+      b = json_raw(out, b, ifx o == roles[k] then ":0.5" else ":0.1");
+    }
+    b = json_raw(out, b, "}}");
+  }
+  b = json_raw(out, b, "},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"");
+  b = json_raw(out, b, CAP_IDENTITY);
+  return json_raw(out, b, "\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}");
+}
+
+#test "the request names the four nearest hunting guards and asks each a choice over the six roles" {
+  heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
+  w: [1] Watch; you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
+  cap_test_hunt(w[..], heights[..], you);
+  asked: [CAP_SLOTS] int;
+  n := cap_slots(w[..], you, asked[..]);
+  #assert n == 4;
+  for k: 1..<n { #assert flat_gap(v3(w[0].actors[asked[k - 1]].x, 0, w[0].actors[asked[k - 1]].z), you) <= flat_gap(v3(w[0].actors[asked[k]].x, 0, w[0].actors[asked[k]].z), you); }
+  out: [CAP_BODY] u8;
+  b := cap_request(out[..], w[..], you, false, asked[..], n);
+  #assert b > 0 && json_valid(cast(string) out[0..<b]);
+  body := cast(string) out[0..<b];
+  #assert cap_is(cap_get(body, "model"), "elephant-1");
+  q := cap_get(body, "questions");
+  #assert cap_count(q.raw) == 4;
+  for k: 0..<4 {
+    g := cap_get(q.raw, cap_key(k));
+    #assert cap_is(cap_get(g.raw, "type"), "choice") && cap_count(cap_get(g.raw, "criteria").raw) == ROLES_N;
+  }
+  // a caster or one knocked down is never asked about
+  w[0].actors[asked[0]].mode = WM_DOWN;
+  #assert cap_slots(w[..], you, asked[..]) == 3;
+}
+
+#test "an answer binds its model, its service, every asked guard and every role; anything else is refused" {
+  out: [CAP_BODY] u8;
+  roles := [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_CALL, ROLE_UNDER];
+  m := cap_answer(out[..], roles[..]);
+  good := cast(string) out[0..<m];
+  p := cap_decode(good, 4);
+  #assert p.ok && p.roles[0] == ROLE_FLANK_L && p.roles[1] == ROLE_FLANK_R && p.roles[2] == ROLE_CALL && p.roles[3] == ROLE_UNDER;
+  #assert !cap_decode(good, 3).ok && !cap_decode(good, 0).ok && !cap_decode("{}", 4).ok && !cap_decode("not json", 4).ok;
+  // a free-text answer naming a role is not an answer
+  #assert !cap_decode("{\"model\":\"elephant-1\",\"answers\":{\"g0\":\"flank_left\"}}", 1).ok;
+  swap: [CAP_BODY] u8;
+  olds := [6] string.["\"elephant-1\",\"answers\"", "\"choice\":\"flank_left\"", "\"flank_left\":0.5", "psionic-pylon-v1", "pylon:test", "\"confidence\":0.5"];
+  news := [6] string.["\"mammoth-1\",\"answers\"", "\"choice\":\"press\"", "\"flank_left\":0.6", "psionic-pylon-v2", "psionic:x", "\"confidence\":0.9"];
+  for k: 0..<6 {
+    at := -1;
+    for i: 0..<good.count - olds[k].count { if at < 0 && good[i..<i + olds[k].count] == olds[k] { at = i; } }
+    #assert at >= 0;
+    b := json_raw(swap[..], 0, good[0..<at]); b = json_raw(swap[..], b, news[k]); b = json_raw(swap[..], b, good[at + olds[k].count..<good.count]);
+    #assert !cap_decode(cast(string) swap[0..<b], 4).ok;
+  }
+  // the rehearsal's own answer reads as CAP_STAGED
+  f := cap_fixture(out[..], 4);
+  r := cap_decode(cast(string) out[0..<f], 4);
+  #assert r.ok;
+  for k: 0..<4 { #assert r.roles[k] == CAP_STAGED[k]; }
+}
+
+#test "with a fake decision the guards take the assigned roles: they flank you, one calls for help, one waits under you" {
+  cap_buf: [CAP_BODY] u8;
+  heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
+  w: [1] Watch; nob: [6] f32;
+  ground := watch_ground_y(heights[..], EG_SPOT[0] + 6, EG_SPOT[1] - 6);
+  you := v3(EG_SPOT[0] + 6, ground + 6, EG_SPOT[1] - 6);   // levitating 6 m up
+  cap_test_hunt(w[..], heights[..], you);
+  c: [1] Captain; c[0].mode = CAP_REMOTE;
+  cap_frame(c[..], w[..], you, true, 1000, cap_buf[..]);
+  #assert c[0].send && c[0].phase == 1 && c[0].asked_n == 4;
+  cap_sent(c[..], c[0].sequence, true);
+  out: [CAP_BODY] u8;
+  roles := [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_CALL, ROLE_UNDER];
+  m := cap_answer(out[..], roles[..]);
+  text: [CAP_BODY] u8; t := json_raw(text[..], 0, "200\n"); t = json_raw(text[..], t, cast(string) out[0..<m]);
+  cap_receive(c[..], w[..], c[0].sequence, 2000, cast(string) text[0..<t]);
+  #assert c[0].accepted == 1;
+  asked := c[0].asked;
+  for k: 0..<4 { #assert w[0].actors[asked[k]].role == roles[k]; }
+  called := false;
+  for f: 0..<60 * 8 {
+    watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+    if w[0].actors[asked[2]].shout == 2 { called = true; }
+  }
+  // the flankers stand to either side of you, apart; the caller called and help came in; one is under you
+  left := w[0].actors[asked[0]]; right := w[0].actors[asked[1]];
+  #assert abs(flat_gap(v3(left.x, 0, left.z), you) - f32(FLANK_OUT)) < 0.8 && abs(flat_gap(v3(right.x, 0, right.z), you) - f32(FLANK_OUT)) < 0.8;
+  #assert flat_gap(v3(left.x, 0, left.z), v3(right.x, 0, right.z)) > f32(FLANK_OUT) * 1.6;
+  #assert called && w[0].spawned == 1;
+  #assert flat_gap(v3(w[0].actors[asked[3]].x, 0, w[0].actors[asked[3]].z), you) < 0.8;
+  // and once the plan lapses they press on as before
+  for f: 0..<60 * 10 { watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  for k: 0..<4 { #assert w[0].actors[asked[k]].role == ROLE_PRESS; }
+}
+
+#test "a cutter stands between you and the gate nearest you" {
+  heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
+  w: [1] Watch; nob: [6] f32;
+  you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
+  cap_test_hunt(w[..], heights[..], you);
+  asked: [CAP_SLOTS] int; n := cap_slots(w[..], you, asked[..]);
+  p := CapPlan.{ok = true, n = 1}; p.roles[0] = ROLE_CUT;
+  #assert cap_apply(w[..], asked[..], p) == 1;
+  for f: 0..<60 * 6 { watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  g := watch_gate_near(you.x, you.z);
+  gate := v3(WATCH_GATE[g * 2], 0, WATCH_GATE[g * 2 + 1]);
+  a := w[0].actors[asked[0]];
+  at := v3(a.x, 0, a.z);
+  #assert flat_gap(at, gate) < flat_gap(you, gate) && abs(flat_gap(at, you) - lo(f32(CUT_OUT), flat_gap(you, gate))) < 1.0;
+}
+
+#test "with no decision, a late one, a refusal or a malformed one, the current escalation runs unchanged" {
+  cap_buf: [CAP_BODY] u8;
+  heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
+  nob: [6] f32;
+  ground := watch_ground_y(heights[..], EG_SPOT[0] + 6, EG_SPOT[1] - 6);
+  you := v3(EG_SPOT[0] + 6, ground + 6, EG_SPOT[1] - 6);
+  // the reference: no captain at all
+  base: [1] Watch; cap_test_hunt(base[..], heights[..], you);
+  for f: 0..<60 * 10 { watch_tick(base[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  for k: 0..<5 {
+    w: [1] Watch; cap_test_hunt(w[..], heights[..], you);
+    c: [1] Captain; c[0].mode = CAP_REMOTE;
+    now := 0;
+    for f: 0..<60 * 10 {
+      cap_frame(c[..], w[..], you, true, now, cap_buf[..]);
+      if c[0].send {
+        cap_sent(c[..], c[0].sequence, k != 0);   // k 0: no transport
+        out: [CAP_BODY] u8; roles := [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_CALL, ROLE_UNDER];
+        m := cap_answer(out[..], roles[..]);
+        good := cast(string) out[0..<m];
+        if k == 1 { cap_reply(c[..], w[..], c[0].sequence, now + CAP_TIMEOUT, "200\n", good); }   // too late
+        if k == 2 { cap_reply(c[..], w[..], c[0].sequence, now + 1, "503\n", ""); }
+        if k == 3 { cap_reply(c[..], w[..], c[0].sequence, now + 1, "200\n", good[0..<good.count - 2]); }
+        // k 4: never answered (the deadline drops it)
+      }
+      watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+      now += 16;
+    }
+    #assert c[0].accepted == 0 && c[0].attempts >= 1;
+    if k == 4 { #assert c[0].timeouts >= 1; }
+    for i: 0..<WATCH_ACTORS {
+      #assert w[0].actors[i].role == ROLE_PRESS;
+      #assert w[0].actors[i].x == base[0].actors[i].x && w[0].actors[i].z == base[0].actors[i].z && w[0].actors[i].mode == base[0].actors[i].mode;
+    }
+    #assert w[0].level == base[0].level && w[0].spawned == base[0].spawned && w[0].spear_hits == base[0].spear_hits;
+  }
+}
+
+#test "requests are bounded: one out, every CAP_EVERY at most, CAP_HUNT a hunt; 401 stops them; a new hunt fences an old answer" {
+  cap_buf: [CAP_BODY] u8;
+  heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
+  w: [1] Watch; you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
+  cap_test_hunt(w[..], heights[..], you);
+  c: [1] Captain; c[0].mode = CAP_REMOTE;
+  cap_frame(c[..], w[..], you, false, 0, cap_buf[..]); #assert c[0].attempts == 1;
+  cap_frame(c[..], w[..], you, false, 100, cap_buf[..]); #assert c[0].attempts == 1;   // one out
+  cap_frame(c[..], w[..], you, false, CAP_TIMEOUT, cap_buf[..]); #assert c[0].timeouts == 1 && c[0].phase == 0;
+  cap_frame(c[..], w[..], you, false, CAP_EVERY - 1, cap_buf[..]); #assert c[0].attempts == 1;
+  for k: 1..<CAP_HUNT + 3 { cap_frame(c[..], w[..], you, false, k * CAP_EVERY, cap_buf[..]); cap_drop(c[..]); }
+  #assert c[0].attempts == CAP_HUNT;
+  // the hunt ends and another starts: a fresh budget, and the old answer is fenced
+  w[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000000, cap_buf[..]); w[0].wanted = true;
+  cap_frame(c[..], w[..], you, false, 1000001, cap_buf[..]); #assert c[0].phase == 1 && c[0].hunt_attempts == 1;
+  seq := c[0].sequence;
+  w[0].wanted = false; cap_frame(c[..], w[..], you, false, 1000002, cap_buf[..]); w[0].wanted = true;
+  out: [CAP_BODY] u8; roles := [4] int.[ROLE_FLANK_L, ROLE_FLANK_R, ROLE_CALL, ROLE_UNDER];
+  m := cap_answer(out[..], roles[..]);
+  cap_reply(c[..], w[..], seq, 1000003, "200\n", cast(string) out[0..<m]);
+  #assert c[0].accepted == 0 && c[0].late == 1;
+  // 401: not again this visit; a clip never asks, a rehearsal answers itself
+  cap_frame(c[..], w[..], you, false, 2000000, cap_buf[..]); cap_reply(c[..], w[..], c[0].sequence, 2000001, "401\n", "");
+  #assert c[0].disabled;
+  cap_frame(c[..], w[..], you, false, 3000000, cap_buf[..]); #assert c[0].phase == 0 && !c[0].send;
+  d: [1] Captain; d[0].mode = CAP_REMOTE; d[0].blocked = true;
+  cap_frame(d[..], w[..], you, false, 0, cap_buf[..]); #assert d[0].attempts == 0;
+  e: [1] Captain; e[0].mode = CAP_REHEARSE; e[0].blocked = true;
+  cap_frame(e[..], w[..], you, false, 0, cap_buf[..]); #assert e[0].accepted == 1 && !e[0].send;
+  for k: 0..<4 { #assert e[0].roles[k] == CAP_STAGED[k]; }
+}

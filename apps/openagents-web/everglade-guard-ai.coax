@@ -1,6 +1,11 @@
 // Opt-in shadow consumer: proposals are counted, never rendered or applied.
 #load "../../verse/everglade/guard-types.coax";
-EgGuardAi :: struct {input:GaInput;url:[2048]u8;url_n:int;generation:int=1;hidden:bool;focused:bool;}
+#load "../../verse/everglade/captain.coax";
+// The guard captain's plan (verse/everglade/captain.coax) is asked while you are wanted; its state
+// is the face's (as the ambient session is). The "+captain" hash rehearses it locally (for clips),
+// "+float" starts you levitating.
+EgGuardAi :: struct {input:GaInput;url:[2048]u8;url_n:int;generation:int=1;hidden:bool;focused:bool;
+  cap_rehearse:bool;cap_you:Point;cap_up:bool;stage_hunt:bool;float_up:bool;}
 
 everglade_guard_invalidate :: (s:[]Everglade) #export_c {s[0].guard_ai.input.epoch+=1;}
 everglade_guard_message :: (s:[]Everglade,kind:int,text:string) #export_c {
@@ -39,4 +44,48 @@ everglade_guard_take :: (s:[]Everglade)->GaInput #export_c {
 everglade_guard_focus :: (s:[]Everglade,focused:bool) #export_c {
   if !focused {everglade_guard_invalidate(s);}
   s[0].guard_ai.focused=focused;s[0].guard_ai.input.suspended=s[0].guard_ai.hidden || !focused;
+}
+
+// ---- the guard captain (eg-guards-coordinate): the page's half; the face moves the bytes.
+CapEffect :: struct {url:string;body:string;timeout_ms:int;sequence:int;}
+// Each frame, from watch_frame: where you are for the next request, and a staged moment's setup.
+everglade_captain_frame :: (s:[]Everglade,you:Point) {
+  w:=watch_w(s);
+  s[0].guard_ai.cap_you=you;s[0].guard_ai.cap_up=you.y-ground_at(s,you.x,you.z)>1.0;
+  if s[0].warp {return;}
+  if s[0].guard_ai.float_up {s[0].guard_ai.float_up=false;a:=ab_of(s);a[0].lev_on=true;a[0].lev_up=false;a[0].lev_sink=false;a[0].lev_t=0;a[0].lev_hold=you.y+5;}
+  if s[0].guard_ai.stage_hunt && w[0].on {
+    // the staged hunt: the four guards nearest you turn on you
+    s[0].guard_ai.stage_hunt=false;
+    for q:0..<4 {
+      best:=-1;bd:=100000.0f32;
+      for i:0..<WATCH_ACTORS {
+        if !watch_here(w,i) || !watch_is_guard(i) || watch_is_rein(i) || w[0].actors[i].mode==WM_CHASE {continue;}
+        d:=flat_gap(v3(w[0].actors[i].x,0,w[0].actors[i].z),you);if d<bd {bd=d;best=i;}
+      }
+      if best>=0 {watch_alarm(w,best,you,you);}
+    }
+    w[0].wanted=true;w[0].unseen=0;
+  }
+}
+// out: the face's buffer the request is written into.
+everglade_captain_effect :: (s:[]Everglade,c:[]Captain,now_ms:int,out:[]u8)->CapEffect #export_c {
+  if s[0].guard_ai.cap_rehearse {c[0].mode=CAP_REHEARSE;}else if s[0].guard_ai.input.configured && c[0].mode==CAP_OFF {c[0].mode=CAP_REMOTE;}
+  c[0].blocked=s[0].guard_ai.input.blocked;
+  c[0].suspended=c[0].mode==CAP_REMOTE && (s[0].guard_ai.input.suspended || !s[0].guard_ai.input.configured);
+  if !s[0].wv.started {return CapEffect.{};}
+  cap_frame(c,watch_w(s),s[0].guard_ai.cap_you,s[0].guard_ai.cap_up,now_ms,out);
+  if !c[0].send {return CapEffect.{};}
+  return CapEffect.{url=CAP_URL,body=cast(string)out[0..<c[0].body_n],timeout_ms=hi_w(c[0].expires_ms-now_ms,1),sequence=c[0].sequence};
+}
+everglade_captain_sent :: (c:[]Captain,sequence:int,started:bool) #export_c {cap_sent(c,sequence,started);}
+everglade_captain_pending :: (c:[]Captain,sequence:int)->bool #export_c {return c[0].phase==1 && c[0].sequence==sequence;}
+everglade_captain_receive :: (s:[]Everglade,c:[]Captain,sequence:int,now_ms:int,text:string) #export_c {
+  if !s[0].wv.started {return;}
+  cap_receive(c,watch_w(s),sequence,now_ms,text);
+}
+everglade_captain_probe :: (cs:[]Captain,field:int)->int #export_c {
+  c:=cs[0];
+  if field==0 {return c.mode;}if field==1 {return c.attempts;}if field==2 {return c.accepted;}if field==3 {return c.refused;}
+  if field==4 {return c.timeouts;}if field==5 {return ifx c.disabled then 1 else 0;}return 0;
 }

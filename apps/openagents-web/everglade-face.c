@@ -66,6 +66,13 @@ __attribute__((import_module("env"), import_name("coaxial_now_ms"))) extern int6
 __attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
 __attribute__((import_module("env"), import_name("coaxial_http_cancel"))) extern int32_t guard_cancel(int32_t);
 static void room_out(uint32_t state, float dt);
+// the guard captain's plan (verse/everglade/captain.coax): one request at most, Coax decides when
+static void captain_out(uint32_t state);
+static int32_t captain_id = -1;
+static int64_t captain_sequence;
+static uint8_t captain_body[4096];
+static coax_t_Captain captain_state;
+static coax_v_t_Captain cs(void) { return (coax_v_t_Captain){&captain_state, 1}; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
 static bool river_built;
@@ -305,6 +312,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     }
   }
   guard_out(state);
+  captain_out(state);
   ask_out(state);
   room_out(state, dt);
   edit_out(state);
@@ -494,6 +502,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     ga_receive(gs(), guard_sequence, guard_now_ms(), (coax_string){(const char *)inbox, length});
     return;
   }
+  if (captain_id >= 0 && kind == 512 + captain_id) {
+    captain_id = -1;
+    everglade_captain_receive(at(state), cs(), captain_sequence, guard_now_ms(), (coax_string){(const char *)inbox, length});
+    return;
+  }
   if (place_message(state, kind, inbox, length)) return;
   if (kind == BAR_ACTION) { if (!golden) everglade_bar_kept(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (bar_ask_id >= 0 && kind == 512 + bar_ask_id) { bar_ask_id = -1; everglade_bar_server(at(state), (coax_string){(const char *)inbox, length}); return; }
@@ -597,4 +610,16 @@ static void guard_out(uint32_t state) {
                        (uint32_t)effect.flags, effect.timeout_ms);
   ga_sent(gs(), guard_sequence, guard_id >= 0);
 }
+// The captain's request: Coax owns the body, cadence and deadline; a dropped one is aborted.
+static void captain_out(uint32_t state) {
+  int64_t monotonic_ms = guard_now_ms();
+  if (captain_id >= 0 && !everglade_captain_pending(cs(), captain_sequence)) { guard_cancel(captain_id); captain_id = -1; }
+  coax_t_CapEffect effect = everglade_captain_effect(at(state), cs(), monotonic_ms, (coax_v_u8){captain_body, sizeof captain_body});
+  if (!effect.body.count || captain_id >= 0) return;
+  captain_sequence = effect.sequence;
+  captain_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+                          (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count, 5u, effect.timeout_ms);
+  everglade_captain_sent(cs(), captain_sequence, captain_id >= 0);
+}
+EXPORT("coaxial_captain_probe") int32_t coaxial_captain_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)everglade_captain_probe(cs(), field); }
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)ga_probe(gs(), field); }
