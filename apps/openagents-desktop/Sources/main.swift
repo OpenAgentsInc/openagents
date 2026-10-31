@@ -252,10 +252,10 @@ final class App: NSObject, NSApplicationDelegate {
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
   // Claude Code's process group goes with the app.
-  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { zr_quit(v.state) } }
+  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { dsk_quit(v.desk) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
-  // app menu, File (New Chat, Cmd+N), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
+  // app menu, File (New Session Cmd+N, New Session in Folder… Shift+Cmd+N, Close Tab Cmd+W), View (Toggle Sidebar Cmd+S), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
   // by their native selectors through the responder chain; AppKit adds
   // Dictation and Emoji & Symbols to a menu titled Edit), and Window.
   static func menus() -> NSMenu {
@@ -280,7 +280,9 @@ final class App: NSObject, NSApplicationDelegate {
       item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
       item("Quit OpenAgents", #selector(NSApplication.terminate(_:)), "q"),
     ])
-    menu("File", [item("New Chat", #selector(ZeronView.newChat(_:)), "n")])
+    menu("File", [item("New Session", #selector(ZeronView.newChat(_:)), "n"),
+                  item("New Session in Folder…", #selector(ZeronView.newSessionInFolder(_:)), "n", [.command, .shift]), .separator(),
+                  item("Close Tab", #selector(ZeronView.closeTab(_:)), "w")])
     menu("Edit", [
       item("Undo", #selector(ZeronView.undo(_:)), "z"),
       item("Redo", #selector(ZeronView.redo(_:)), "z", [.command, .shift]), .separator(),
@@ -289,9 +291,10 @@ final class App: NSObject, NSApplicationDelegate {
       item("Paste", #selector(ZeronView.paste(_:)), "v"), .separator(),
       item("Select All", #selector(ZeronView.selectAll(_:)), "a"),
     ])
+    menu("View", [item("Toggle Sidebar", #selector(ZeronView.toggleSidebar(_:)), "s")])
     let window = [item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
                   item("Zoom", #selector(NSWindow.performZoom(_:))), .separator(),
-                  item("Close Window", #selector(NSWindow.performClose(_:)), "w")]
+                  item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift])]
     menu("Window", window)
     NSApp.windowsMenu = bar.items.last?.submenu
     return bar

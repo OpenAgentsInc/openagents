@@ -300,8 +300,9 @@ Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
 `build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT] [--do STEPS]`,
 where STEPS drive the keyboard, mouse, menus and IME (`Sources/Zeron.swift`
 `shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
-`--do "click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
-Zeron capture does. A shot has a pasteboard of its own (`clip TEXT` puts text
+`--do "sidebar ; click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
+Zeron capture does (its sidebar collapsed). Shot steps for the desk: `folder PATH` (a new
+session there), `sidebar` (Cmd+S), `closetab`, `desk` (prints the sessions and tabs). A shot has a pasteboard of its own (`clip TEXT` puts text
 on it), so scripted Copy and Paste never touch yours.
 
 Checks (from a clean checkout: `coax/build.sh`, then):
@@ -310,7 +311,9 @@ offscreen against its golden in `apps/openagents-desktop/goldens/` (the demo
 transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
 in the composer; the app with claude off PATH, and with a logged-out Claude
 Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
-does), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
+does; three sessions in two folders with the sidebar open at 1320x880 and
+900x600, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
+Sidebar and New Session whose result it reads from the `desk` step), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
 pixels off by more than 48 of 255. `--update` rewrites the goldens; look at
 them before committing. `OpenAgents --fps SECS` opens the window and prints
 its presented frames per second (60.2 on this Mac's Retina display,
@@ -439,6 +442,27 @@ component is ported.
     (working, waiting for you, idle, error) and the time.
 - **Tabs** across the top for open sessions, plus a **ROOM** tab that shows the
   messages between agents.
+- Built (2026-10-31, `zeron/desk.coax`): the desk holds every session, each
+  a whole chat (its own composer, transcript and engines, running while
+  another is shown: a chat's frame is `zr_tick` then `zr_paint`, and only
+  the shown one paints, laid out right of the sidebar and its vertices moved
+  over). The sidebar (Zeron Dark's `bg`, a hairline at its edge) has New
+  session (the folder picker, starting at the shown session's folder), then
+  the sessions grouped by folder (folders by their newest session, sessions
+  newest first), each row the harness mark, the first message's first line
+  ("New session" before one), the status dot (accent working, amber waiting
+  for you, red error, faint idle) and the time since its last activity (now,
+  5m, 3h, 2d); it scrolls, is resized by dragging its edge (208 to 400 px,
+  256 by default) and collapses with Cmd+S (View > Toggle Sidebar), the tabs
+  then starting after the traffic lights. Tabs: one per open session, its
+  mark, title and a dot when not idle; a press or a sidebar row shows a
+  session (opening its tab after the shown one). File > New Session (Cmd+N,
+  the shown session's folder), New Session in Folder… (Shift+Cmd+N), Close
+  Tab (Cmd+W; the last tab closes the window, Close Window is Shift+Cmd+W);
+  Cmd+1..9 a tab (9 the last); Shift+Up/Down the session above or below in
+  the sidebar while the composer is empty (with text they select). Each
+  session has its own atlas in the host (its glyph cache is its own). Not
+  yet: the ROOM tab, settings and restoring sessions at launch.
 - **Transcript:**
   - your messages, and each agent's text as it streams;
   - tool calls folded to one line, opening to show the input and result;

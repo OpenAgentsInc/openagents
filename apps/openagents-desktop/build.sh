@@ -19,7 +19,7 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$work/c/router.c" -o "$work/c/router.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/route-face.c" -o "$work/c/route-face.o"
 /usr/bin/clang "${cflags[@]}" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
-"$repo/coax/bin/coax" c "$here/zeron/screen.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
+"$repo/coax/bin/coax" c "$here/zeron/desk.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
 /usr/bin/clang "${cflags[@]}" -c "$work/c/zeron.c" -o "$work/c/zeron.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/zeron-face.c" -o "$work/c/zeron-face.o"
 # The Lab's NIP-98 signer for our inference route, a unit of its own (lab-sign.coax); its crypto's checks need the larger step budget.

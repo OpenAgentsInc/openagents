@@ -1,0 +1,643 @@
+// The desk (docs/desktop/coax-desktop.md, "The UI, first version"): every
+// session in the window, each a whole chat (screen.coax: its own composer,
+// transcript and engines, running whether shown or not), the sidebar that
+// lists them by folder (each row its harness mark, title, status dot and
+// time; "New session" on top) and the tabs of the open ones across the top.
+// The shown session draws in the space right of the sidebar: it is laid out
+// at that width and its vertices moved over (dsk_shift); the pointer goes to
+// it moved back. The sidebar is 208 to 400 px (256 by default), resized by
+// dragging its edge and collapsed with Cmd+S. Keys: Cmd+1..9 a tab (9 the
+// last), Shift+Up/Down the session above or below in the sidebar (while the
+// composer is empty: there they would select). The host makes each
+// session's chat (zr_new, zr_attach) and hands it over (dsk_add); New
+// session, Cmd+N and Cmd+W come from its menus. Based on Zeron by Wing, MIT.
+
+#load "screen.coax";
+
+DSK_MAX :: 64;
+DSK_SIDEBAR_MIN :: 208.0; DSK_SIDEBAR_MAX :: 400.0; DSK_SIDEBAR_DEFAULT :: 256.0;
+DSK_ROW :: 29.0;            // a session row (Zeron's compact sidebar row)
+DSK_GAP :: 2.0;             // between rows (SIDEBAR_LIST_GAP)
+DSK_HEADER :: 28.0;         // a folder's header (SIDEBAR_DISCLOSURE_HEADER_HEIGHT)
+DSK_SECTION_GAP :: 12.0;
+DSK_PAD :: 8.0;             // the sidebar's side padding
+DSK_MARK :: 13.0;           // a harness mark (SIDEBAR_ACTIVE_HARNESS_ICON_SIZE)
+DSK_LIGHTS :: 80.0;         // the traffic lights' width, where tabs start with the sidebar collapsed
+DSK_TAB_H :: 28.0; DSK_TAB_MAX :: 200.0; DSK_TAB_MIN :: 96.0;
+DSK_EDGE :: 4.0;            // the resize handle's half width
+DSK_TITLE :: 160;           // bytes of a title kept
+// What the host is asked to do (dsk_take_action).
+DSK_HOST_NONE :: 0; DSK_HOST_PICK_FOLDER :: 1;
+// A session's status.
+DSK_IDLE :: 0; DSK_WORKING :: 1; DSK_WAITING :: 2; DSK_ERROR :: 3;
+// What a press is on.
+DSK_ON_NONE :: 0; DSK_ON_NEW :: 1; DSK_ON_ROW :: 2; DSK_ON_TAB :: 3; DSK_ON_EDGE :: 4;
+
+DskChat :: struct {
+  s: [] ZeronState;
+  cwd: [1024] u8; cwd_n: int;
+  active_at: f32;           // the desk's clock at its last activity
+  seen_n: int;              // its session's parts at that time
+  opened: f32;              // the desk's clock when it was made (its order among equals)
+}
+DskHit :: struct { kind: int; i: int; x: f32; y: f32; w: f32; h: f32; }
+
+Desk :: struct {
+  chats: [DSK_MAX] DskChat; n: int;
+  active: int;
+  tabs: [DSK_MAX] int; ntabs: int;
+  width: f32;               // the sidebar's width when open
+  collapsed: bool;
+  clock: f32;
+  w: f32; h: f32; d: f32;   // the window, logical px, and its scale
+  lx: f32; ly: f32;         // the pointer, logical px
+  press: int;               // DSK_ON_* of the press in progress
+  chat_press: bool;         // the press went to the shown chat (its drag and release follow)
+  drag_x: f32; drag_w: f32;
+  scroll: f32;              // the sidebar list scrolled up, px
+  list_h: f32;              // the list's height last frame
+  order: [DSK_MAX] int; norder: int;    // the sessions as the sidebar lists them, top down
+  hits: [DSK_MAX * 2 + 8] DskHit; nhit: int;
+  host_action: int;
+  cursor: int;              // 0 arrow, 1 I-beam, 2 pointing hand, 3 resize left-right
+  text: [256] u8;           // a label fitted to its width
+}
+
+dsk_init :: (k: [] Desk) {
+  if k[0].width < DSK_SIDEBAR_MIN { k[0].width = DSK_SIDEBAR_DEFAULT; }
+}
+// The sidebar's width as drawn (0 collapsed).
+dsk_side :: (k: [] Desk) -> f32 { return ifx k[0].collapsed then 0.0f32 else k[0].width; }
+
+// A chat joins the desk, opened in a tab and shown. Its index, or -1 when full.
+dsk_add :: (k: [] Desk, s: [] ZeronState, cwd: string) -> int {
+  dsk_init(k);
+  if k[0].n >= DSK_MAX || s.count < 1 { return -1; }
+  i := k[0].n; k[0].n += 1;
+  k[0].chats[i] = DskChat.{s = s, active_at = k[0].clock, opened = k[0].clock};
+  n := 0;
+  for c: cwd { if n < k[0].chats[i].cwd.count { k[0].chats[i].cwd[n] = c; n += 1; } }
+  k[0].chats[i].cwd_n = n;
+  dsk_show(k, i);
+  return i;
+}
+dsk_chat :: (k: [] Desk) -> [] ZeronState { return k[0].chats[k[0].active].s; }
+dsk_tab_of :: (k: [] Desk, i: int) -> int { for t: 0..<k[0].ntabs { if k[0].tabs[t] == i { return t; } } return -1; }
+// Shows a session, opening its tab after the shown one's when it has none.
+dsk_show :: (k: [] Desk, i: int) {
+  if i < 0 || i >= k[0].n { return; }
+  if dsk_tab_of(k, i) < 0 && k[0].ntabs < DSK_MAX {
+    at := dsk_tab_of(k, k[0].active) + 1;
+    if at <= 0 || at > k[0].ntabs { at = k[0].ntabs; }
+    j := k[0].ntabs;
+    while j > at { k[0].tabs[j] = k[0].tabs[j - 1]; j -= 1; }
+    k[0].tabs[at] = i; k[0].ntabs += 1;
+  }
+  k[0].active = i;
+  dsk_reveal(k, i);
+}
+// Cmd+W: the shown tab closes and its neighbour shows (the session stays in
+// the sidebar, still running). False for the last tab (the host closes the window).
+dsk_close_tab :: (k: [] Desk) -> bool {
+  t := dsk_tab_of(k, k[0].active);
+  if t < 0 || k[0].ntabs <= 1 { return false; }
+  for j: t..<k[0].ntabs - 1 { k[0].tabs[j] = k[0].tabs[j + 1]; }
+  k[0].ntabs -= 1;
+  next := ifx t < k[0].ntabs then t else k[0].ntabs - 1;
+  k[0].active = k[0].tabs[next];
+  dsk_reveal(k, k[0].active);
+  return true;
+}
+// Cmd+1..9: tab n (1-based); 9 the last.
+dsk_pick_tab :: (k: [] Desk, n: int) -> bool {
+  if n < 1 || n > 9 || k[0].ntabs == 0 { return false; }
+  t := ifx n == 9 || n > k[0].ntabs then k[0].ntabs - 1 else n - 1;
+  if n != 9 && n > k[0].ntabs { return false; }
+  k[0].active = k[0].tabs[t];
+  dsk_reveal(k, k[0].active);
+  return true;
+}
+// Shift+Up/Down: the session above or below in the sidebar.
+dsk_step :: (k: [] Desk, by: int) -> bool {
+  dsk_sort(k);
+  at := -1;
+  for j: 0..<k[0].norder { if k[0].order[j] == k[0].active { at = j; } }
+  to := at + by;
+  if at < 0 || to < 0 || to >= k[0].norder { return false; }
+  dsk_show(k, k[0].order[to]);
+  return true;
+}
+dsk_toggle :: (k: [] Desk) { dsk_init(k); k[0].collapsed = !k[0].collapsed; }
+
+// ---------------------------------------------------------------- a session's face
+
+dsk_cwd :: (k: [] Desk, i: int) -> string { return cast(string) k[0].chats[i].cwd[0..<k[0].chats[i].cwd_n]; }
+// The folder's last path component ("~" for the home folder's own name would hide it: the name as it is).
+dsk_folder_name :: (path: string) -> string {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  start := end;
+  while start > 0 && path[start - 1] != '/' { start -= 1; }
+  if start >= end { return "/"; }
+  return cast(string) path[start..<end];
+}
+dsk_same_folder :: (k: [] Desk, a: int, b: int) -> bool { return dsk_cwd(k, a) == dsk_cwd(k, b); }
+// Its title: the first message, on one line; "New session" before one.
+dsk_title :: (k: [] Desk, i: int) -> string {
+  s := k[0].chats[i].s;
+  if s[0].demo { return "Zeron's demo conversation"; }
+  ss := s[0].session[..];
+  for p: 0..<ss[0].n {
+    if ss[0].parts[p].kind == P_USER {
+      t := s_text_of(ss, p);
+      e := 0;
+      while e < t.count && t[e] != '\n' && e < DSK_TITLE { e += 1; }
+      while e > 0 && e < t.count && (t[e] & 0xC0) == 0x80 { e -= 1; }
+      return cast(string) t[0..<e];
+    }
+  }
+  return "New session";
+}
+dsk_status :: (k: [] Desk, i: int) -> int {
+  s := k[0].chats[i].s; ss := s[0].session[..];
+  if s[0].demo { return DSK_IDLE; }
+  if ss[0].asking >= 0 { return DSK_WAITING; }
+  if ss[0].live { return DSK_WORKING; }
+  if ss[0].n > 0 && !ss[0].hint {
+    p := ss[0].parts[ss[0].n - 1];
+    if p.kind == P_NOTICE && p.notice != N_STOPPED && p.notice != N_META { return DSK_ERROR; }
+  }
+  return DSK_IDLE;
+}
+dsk_dot :: (status: int) -> Rgba {
+  th := zeron_dark();
+  if status == DSK_WORKING { return th.accent; }
+  if status == DSK_WAITING { return hex(WARNING, 1); }
+  if status == DSK_ERROR { return hex(DANGER, 1); }
+  return opacity(th.faint, 0.5);
+}
+// Its time since its last activity: now, 5m, 3h, 2d.
+dsk_age :: (secs: f32, out: [] u8) -> string {
+  if secs < 60 { return "now"; }
+  v := 0; unit: u8 = 'm';
+  if secs < 3600 { v = cast(int) (secs / 60); }
+  else if secs < 86400 { v = cast(int) (secs / 3600); unit = 'h'; }
+  else { v = cast(int) (secs / 86400); unit = 'd'; }
+  digits: [12] u8; nd := 0;
+  while v > 0 || nd == 0 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
+  n := 0;
+  while nd > 0 && n < out.count - 1 { nd -= 1; out[n] = digits[nd]; n += 1; }
+  out[n] = unit; n += 1;
+  return cast(string) out[0..<n];
+}
+dsk_mark :: (k: [] Desk, i: int) -> int {
+  s := k[0].chats[i].s;
+  return mode_tab_icon(ifx s[0].demo then MODE_CLAUDE else s[0].mode);
+}
+dsk_mark_tint :: (k: [] Desk, i: int) -> Rgba {
+  s := k[0].chats[i].s;
+  return mode_tab_tint(ifx s[0].demo then MODE_CLAUDE else s[0].mode);
+}
+
+// The sidebar's order: folders by their newest session, sessions newest first.
+dsk_newer :: (k: [] Desk, a: int, b: int) -> bool {
+  x := k[0].chats[a]; y := k[0].chats[b];
+  if x.active_at != y.active_at { return x.active_at > y.active_at; }
+  if x.opened != y.opened { return x.opened > y.opened; }
+  return a > b;
+}
+dsk_sort :: (k: [] Desk) {
+  // the sessions newest first
+  idx: [DSK_MAX] int;
+  for i: 0..<k[0].n { idx[i] = i; }
+  for i: 1..<k[0].n {
+    j := i;
+    while j > 0 && dsk_newer(k, idx[j], idx[j - 1]) { tmp := idx[j]; idx[j] = idx[j - 1]; idx[j - 1] = tmp; j -= 1; }
+  }
+  // then grouped: each folder where its newest session falls, its sessions after it
+  taken: [DSK_MAX] bool;
+  m := 0;
+  for a: 0..<k[0].n {
+    if taken[idx[a]] { continue; }
+    for b: a..<k[0].n {
+      if !taken[idx[b]] && dsk_same_folder(k, idx[a], idx[b]) { taken[idx[b]] = true; k[0].order[m] = idx[b]; m += 1; }
+    }
+  }
+  k[0].norder = m;
+}
+
+// ---------------------------------------------------------------- the frame
+
+// Every session's frame; the shown one drawn right of the sidebar, then the sidebar and tabs over it.
+dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  dsk_init(k);
+  if k[0].n == 0 { return 0; }
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  k[0].d = d; k[0].w = width / d; k[0].h = height / d;
+  dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  k[0].clock += dt1;
+  side := dsk_side(k);
+  // the chat's width: the window's less the sidebar, in device px (at least a column's worth)
+  cw := width - side * d;
+  if cw < 320 * d { cw = 320 * d; }
+  for i: 0..<k[0].n {
+    s := k[0].chats[i].s;
+    zr_tick(s, cw, height, dpr, dt1);
+    ss := s[0].session[..];
+    if ss[0].live || ss[0].n != k[0].chats[i].seen_n { k[0].chats[i].active_at = k[0].clock; k[0].chats[i].seen_n = ss[0].n; }
+  }
+  s := dsk_chat(k);
+  v := zr_paint(s, out);
+  dsk_shift(out, 0, v, side * d);
+  a := s[0].atlas[..];
+  if !a[0].ready { return v; }
+  dsk_sort(k);
+  k[0].nhit = 0;
+  if !k[0].collapsed { v = dsk_paint_sidebar(k, out, v, a); }
+  v = dsk_paint_tabs(k, out, v, a);
+  dsk_update_cursor(k);
+  return v;
+}
+// Moves vertices from..<to right by dx device px: positions, bounds, an elbow's ends, content masks.
+dsk_shift :: (out: [] f32, from: int, to: int, dx: f32) {
+  if dx == 0 { return; }
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    out[o] += dx; out[o + 4] += dx;
+    if out[o + 2] == GP_ELBOW { out[o + 7] += dx; }
+    if out[o + 20] > -GP_NO_CLIP { out[o + 20] += dx; }
+    if out[o + 22] < GP_NO_CLIP { out[o + 22] += dx; }
+  }
+}
+dsk_hit :: (k: [] Desk, kind: int, i: int, x: f32, y: f32, w: f32, h: f32) {
+  if k[0].nhit < k[0].hits.count { k[0].hits[k[0].nhit] = DskHit.{kind = kind, i = i, x = x, y = y, w = w, h = h}; k[0].nhit += 1; }
+}
+dsk_over :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32) -> bool { return k[0].lx >= x && k[0].lx < x + w && k[0].ly >= y && k[0].ly < y + h; }
+// text cut to w with "…" (on a character boundary)
+dsk_fit :: (k: [] Desk, a: [] Atlas, font: int, text: string, w: f32) -> string {
+  if text_width(a, font, text) <= w { return text; }
+  dots := "…";
+  n := text.count;
+  if n > k[0].text.count - dots.count { n = k[0].text.count - dots.count; }
+  while n > 0 {
+    n -= 1;
+    while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; }
+    for j: 0..<n { k[0].text[j] = text[j]; }
+    for j: 0..<dots.count { k[0].text[n + j] = dots[j]; }
+    s := cast(string) k[0].text[0..<n + dots.count];
+    if text_width(a, font, s) <= w { return s; }
+  }
+  return dots;
+}
+
+dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
+  th := zeron_dark(); d := k[0].d;
+  w := k[0].width; h := k[0].h;
+  v := paint_quad(out, at, d, 0, 0, w, h, 0, 0, th.bg, th.bg);
+  v = paint_quad(out, v, d, w - 1, 0, 1, h, 0, 0, th.border, th.border);
+  y: f32 = TITLEBAR_HEIGHT + 4;
+  // New session
+  x: f32 = DSK_PAD; rw := w - 2 * DSK_PAD;
+  if dsk_over(k, x, y, rw, DSK_ROW) { v = paint_quad(out, v, d, x, y, rw, DSK_ROW, 6, 0, rgba(1, 1, 1, 0.06), rgba(1, 1, 1, 0.06)); }
+  v = paint_icon(out, v, a, d, ICON_PEN, x + 8, y + (DSK_ROW - 14) / 2, 14, 14, th.muted);
+  v = paint_text(out, v, a, d, FONT_MENU, "New session", x + 8 + 14 + 8, y, DSK_ROW, th.text);
+  dsk_hit(k, DSK_ON_NEW, -1, x, y, rw, DSK_ROW);
+  y += DSK_ROW + DSK_SECTION_GAP;
+  // the list, scrolled, under New session
+  top := y;
+  first := v;
+  total: f32 = 0;
+  ly := top - k[0].scroll;
+  prev := -1;
+  age: [16] u8;
+  for j: 0..<k[0].norder {
+    i := k[0].order[j];
+    if prev < 0 || !dsk_same_folder(k, prev, i) {
+      if prev >= 0 { ly += DSK_SECTION_GAP; total += DSK_SECTION_GAP; }
+      v = paint_icon(out, v, a, d, ICON_FOLDER, x + 8, ly + (DSK_HEADER - DSK_MARK) / 2, DSK_MARK, DSK_MARK, th.faint);
+      v = paint_text(out, v, a, d, FONT_CHIP, dsk_fit(k, a, FONT_CHIP, dsk_folder_name(dsk_cwd(k, i)), rw - 16 - DSK_MARK - 8), x + 8 + DSK_MARK + 8, ly, DSK_HEADER, th.faint);
+      ly += DSK_HEADER; total += DSK_HEADER;
+    }
+    prev = i;
+    shown := i == k[0].active;
+    hover := dsk_over(k, x, ly, rw, DSK_ROW) && k[0].ly >= top;
+    if shown || hover { fill := rgba(1, 1, 1, ifx shown then 0.08f32 else 0.05f32); v = paint_quad(out, v, d, x, ly, rw, DSK_ROW, 6, 0, fill, fill); }
+    v = paint_icon(out, v, a, d, dsk_mark(k, i), x + 8, ly + (DSK_ROW - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
+    when := dsk_age(k[0].clock - k[0].chats[i].active_at, age[..]);
+    tw := text_width(a, FONT_SMALL, when);
+    tx := x + rw - 8 - tw;
+    v = paint_text(out, v, a, d, FONT_SMALL, when, tx, ly, DSK_ROW, th.faint);
+    dot := 6.0f32; dx := tx - 8 - dot;
+    v = paint_quad(out, v, d, dx, ly + (DSK_ROW - dot) / 2, dot, dot, dot / 2, 0, dsk_dot(dsk_status(k, i)), dsk_dot(dsk_status(k, i)));
+    title_x := x + 8 + DSK_MARK + 8;
+    v = paint_text(out, v, a, d, FONT_MENU, dsk_fit(k, a, FONT_MENU, dsk_title(k, i), dx - 8 - title_x), title_x, ly, DSK_ROW, ifx shown then th.text else th.muted);
+    if ly + DSK_ROW > top && ly < h { dsk_hit(k, DSK_ON_ROW, i, x, ly, rw, DSK_ROW); }
+    ly += DSK_ROW + DSK_GAP; total += DSK_ROW + DSK_GAP;
+  }
+  k[0].list_h = total;
+  gp_clip(out, first, v, d, 0, top, w, h - top);
+  // the edge: drag to resize
+  dsk_hit(k, DSK_ON_EDGE, -1, w - DSK_EDGE, 0, 2 * DSK_EDGE, h);
+  return v;
+}
+
+dsk_paint_tabs :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
+  th := zeron_dark(); d := k[0].d;
+  x0: f32 = DSK_LIGHTS;
+  if !k[0].collapsed { x0 = k[0].width + DSK_PAD; }
+  avail := k[0].w - x0 - DSK_PAD;
+  if k[0].ntabs == 0 || avail <= 0 { return at; }
+  tw := avail / cast(f32) k[0].ntabs;
+  if tw > DSK_TAB_MAX { tw = DSK_TAB_MAX; }
+  if tw < DSK_TAB_MIN { tw = DSK_TAB_MIN; }
+  tw = round_layout(tw);
+  y := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
+  v := at;
+  first := v;
+  for t: 0..<k[0].ntabs {
+    i := k[0].tabs[t];
+    x := x0 + cast(f32) t * (tw + 4);
+    if x >= x0 + avail { break; }
+    shown := i == k[0].active;
+    hover := dsk_over(k, x, y, tw, DSK_TAB_H);
+    if shown || hover {
+      fill := rgba(1, 1, 1, ifx shown then 0.08f32 else 0.04f32);
+      v = paint_quad(out, v, d, x, y, tw, DSK_TAB_H, 6, ifx shown then 1.0f32 else 0.0f32, fill, th.border);
+    }
+    v = paint_icon(out, v, a, d, dsk_mark(k, i), x + 10, y + (DSK_TAB_H - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
+    right := x + tw - 10;
+    status := dsk_status(k, i);
+    if status != DSK_IDLE {
+      dot := 6.0f32;
+      v = paint_quad(out, v, d, right - dot, y + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, 0, dsk_dot(status), dsk_dot(status));
+      right -= dot + 8;
+    }
+    lx := x + 10 + DSK_MARK + 8;
+    v = paint_text(out, v, a, d, FONT_CHIP, dsk_fit(k, a, FONT_CHIP, dsk_title(k, i), right - lx), lx, y, DSK_TAB_H, ifx shown then th.text else th.muted);
+    dsk_hit(k, DSK_ON_TAB, i, x, y, tw, DSK_TAB_H);
+  }
+  gp_clip(out, first, v, d, x0, 0, avail, TITLEBAR_HEIGHT);
+  return v;
+}
+
+dsk_at :: (k: [] Desk, x: f32, y: f32) -> int {
+  j := k[0].nhit - 1;
+  while j >= 0 {
+    h := k[0].hits[j];
+    if x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h { return j; }
+    j -= 1;
+  }
+  return -1;
+}
+dsk_update_cursor :: (k: [] Desk) {
+  j := dsk_at(k, k[0].lx, k[0].ly);
+  if k[0].press == DSK_ON_EDGE || j >= 0 && k[0].hits[j].kind == DSK_ON_EDGE { k[0].cursor = 3; return; }
+  if j >= 0 { k[0].cursor = 0; return; }
+  if k[0].lx < dsk_side(k) { k[0].cursor = 0; return; }
+  k[0].cursor = -1;     // the chat's own
+}
+
+// ---------------------------------------------------------------- input
+
+// The pointer, device px (phase 0 down, 1 move, 2 up). A press on the sidebar
+// or a tab is the desk's; any other goes to the shown chat, moved left by the
+// sidebar, as do its drag and release. Whether the chat's composer took it.
+dsk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool {
+  if k[0].n == 0 { return false; }
+  d := ifx k[0].d < 1 then 1.0f32 else k[0].d;
+  k[0].lx = x / d; k[0].ly = y / d;
+  side := dsk_side(k);
+  s := dsk_chat(k);
+  if phase == 0 {
+    j := dsk_at(k, k[0].lx, k[0].ly);
+    if j >= 0 || k[0].lx < side {
+      k[0].chat_press = false;
+      k[0].press = ifx j >= 0 then k[0].hits[j].kind else DSK_ON_NONE;
+      if j >= 0 {
+        h := k[0].hits[j];
+        if h.kind == DSK_ON_NEW { k[0].host_action = DSK_HOST_PICK_FOLDER; }
+        else if h.kind == DSK_ON_ROW || h.kind == DSK_ON_TAB { dsk_show(k, h.i); }
+        else if h.kind == DSK_ON_EDGE { k[0].drag_x = k[0].lx; k[0].drag_w = k[0].width; }
+      }
+      dsk_update_cursor(k);
+      return false;
+    }
+    k[0].chat_press = true; k[0].press = DSK_ON_NONE;
+    return coaxial_zeron_pointer(s, x - side * d, y, phase, clicks, mods);
+  }
+  if k[0].press == DSK_ON_EDGE {
+    w := k[0].drag_w + k[0].lx - k[0].drag_x;
+    k[0].width = ifx w < DSK_SIDEBAR_MIN then DSK_SIDEBAR_MIN else ifx w > DSK_SIDEBAR_MAX then DSK_SIDEBAR_MAX else w;
+    if phase == 2 { k[0].press = DSK_ON_NONE; }
+    dsk_update_cursor(k);
+    return false;
+  }
+  if phase == 2 && !k[0].chat_press { k[0].press = DSK_ON_NONE; dsk_update_cursor(k); return false; }
+  took := false;
+  // a move over the sidebar or the tabs is the desk's hover; the chat sees it only while it holds a press
+  if k[0].chat_press || (k[0].lx >= side && dsk_at(k, k[0].lx, k[0].ly) < 0) { took = coaxial_zeron_pointer(s, x - side * d, y, phase, clicks, mods); }
+  if phase == 2 { k[0].chat_press = false; }
+  dsk_update_cursor(k);
+  return took;
+}
+// The wheel over the sidebar scrolls its list; elsewhere the chat's.
+dsk_wheel :: (k: [] Desk, dy: f32) -> bool {
+  if k[0].n == 0 { return false; }
+  if k[0].lx < dsk_side(k) {
+    room := k[0].h - (TITLEBAR_HEIGHT + 4 + DSK_ROW + DSK_SECTION_GAP);
+    most := k[0].list_h - room;
+    if most < 0 { most = 0; }
+    was := k[0].scroll;
+    k[0].scroll -= dy;
+    if k[0].scroll < 0 { k[0].scroll = 0; }
+    if k[0].scroll > most { k[0].scroll = most; }
+    return k[0].scroll != was;
+  }
+  return coaxial_zeron_wheel(dsk_chat(k), dy);
+}
+// A key the desk binds: Cmd+1..9 and Cmd+S; Shift+Up/Down while the composer is empty.
+dsk_key :: (k: [] Desk, key: int, mods: int) -> bool {
+  if k[0].n == 0 { return false; }
+  if mods == MOD_CMD && key >= '1' && key <= '9' { return dsk_pick_tab(k, key - '0'); }
+  if mods == MOD_CMD && (key == 's' || key == 'S') { dsk_toggle(k); return true; }
+  if mods == MOD_SHIFT && (key == KEY_UP || key == KEY_DOWN) {
+    s := dsk_chat(k);
+    if s[0].composer[0].n > 0 || pk_is_open(s[0].picker[..]) { return false; }
+    return dsk_step(k, ifx key == KEY_UP then -1 else 1);
+  }
+  return false;
+}
+// Before the scroll is clamped, a shown row stays in view.
+dsk_reveal :: (k: [] Desk, i: int) {
+  dsk_sort(k);
+  y: f32 = 0; prev := -1;
+  for j: 0..<k[0].norder {
+    c := k[0].order[j];
+    if prev < 0 || !dsk_same_folder(k, prev, c) { if prev >= 0 { y += DSK_SECTION_GAP; } y += DSK_HEADER; }
+    prev = c;
+    if c == i {
+      room := k[0].h - (TITLEBAR_HEIGHT + 4 + DSK_ROW + DSK_SECTION_GAP);
+      if y < k[0].scroll { k[0].scroll = y; }
+      if room > 0 && y + DSK_ROW > k[0].scroll + room { k[0].scroll = y + DSK_ROW - room; }
+      return;
+    }
+    y += DSK_ROW + DSK_GAP;
+  }
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+coaxial_desk_add :: (k: [] Desk, s: [] ZeronState, cwd: string) -> int #export_c { if k.count < 1 { return -1; } return dsk_add(k, s, cwd); }
+coaxial_desk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+  if k.count < 1 || width < 1 || height < 1 { return 0; }
+  return dsk_frame(k, out, width, height, dpr, dt);
+}
+coaxial_desk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c { return k.count > 0 && dsk_pointer(k, x, y, phase, clicks, mods); }
+coaxial_desk_wheel :: (k: [] Desk, dy: f32) -> bool #export_c { return k.count > 0 && dsk_wheel(k, dy); }
+coaxial_desk_key :: (k: [] Desk, key: int, mods: int) -> bool #export_c { return k.count > 0 && dsk_key(k, key, mods); }
+coaxial_desk_close_tab :: (k: [] Desk) -> bool #export_c { return k.count > 0 && dsk_close_tab(k); }
+coaxial_desk_toggle :: (k: [] Desk) #export_c { if k.count > 0 { dsk_toggle(k); } }
+coaxial_desk_active :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].active else -1; }
+coaxial_desk_count :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].n else 0; }
+coaxial_desk_tabs :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].ntabs else 0; }
+coaxial_desk_tab :: (k: [] Desk, t: int) -> int #export_c { return ifx k.count > 0 && t >= 0 && t < k[0].ntabs then k[0].tabs[t] else -1; }
+coaxial_desk_collapsed :: (k: [] Desk) -> bool #export_c { return k.count > 0 && k[0].collapsed; }
+// The sidebar's width as drawn, logical px (the host moves IME rectangles by it).
+coaxial_desk_side :: (k: [] Desk) -> f32 #export_c { return ifx k.count > 0 then dsk_side(k) else 0.0f32; }
+// -1: the chat's own cursor; else 0 arrow, 3 resize left-right.
+coaxial_desk_cursor :: (k: [] Desk) -> int #export_c { return ifx k.count > 0 then k[0].cursor else -1; }
+coaxial_desk_take_action :: (k: [] Desk) -> int #export_c {
+  if k.count < 1 { return 0; }
+  a := k[0].host_action; k[0].host_action = DSK_HOST_NONE;
+  return a;
+}
+// The shown session's folder, for the folder picker's start and Cmd+N.
+coaxial_desk_cwd :: (k: [] Desk, out: [] u8) -> int #export_c {
+  if k.count < 1 || k[0].n == 0 { return 0; }
+  c := dsk_cwd(k, k[0].active);
+  n := 0;
+  for b: c { if n < out.count { out[n] = b; n += 1; } }
+  return n;
+}
+coaxial_desk_quit :: (k: [] Desk) #export_c {
+  if k.count < 1 { return; }
+  for i: 0..<k[0].n { coaxial_zeron_quit(k[0].chats[i].s); }
+}
+
+// ---------------------------------------------------------------- checks
+
+dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
+
+#test "sessions: each added one shows in a tab; Cmd+W closes the tab, never the last; Cmd+1..9 picks; Shift+Up/Down walks the sidebar" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState; c: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]); dsk_test_chat(c[..]);
+  out: [200000] f32;
+  #assert dsk_add(k[..], a[..], "/Users/me/work/openagents") == 0;
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert n > 0 && k[0].ntabs == 1 && k[0].active == 0;
+  #assert dsk_add(k[..], b[..], "/Users/me/work/openagents") == 1;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 1);
+  #assert dsk_add(k[..], c[..], "/Users/me/zeron") == 2;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 1);
+  #assert k[0].ntabs == 3 && k[0].active == 2 && k[0].tabs[2] == 2;
+  // the sidebar: the newest folder first, its sessions newest first
+  #assert k[0].norder == 3 && k[0].order[0] == 2 && k[0].order[1] == 1 && k[0].order[2] == 0;
+  #assert dsk_folder_name(dsk_cwd(k[..], 2)) == "zeron" && dsk_folder_name("/Users/me/work/openagents/") == "openagents";
+  #assert dsk_title(k[..], 0) == "New session";
+  // Cmd+1, Cmd+9 (the last)
+  #assert dsk_key(k[..], '1', MOD_CMD) && k[0].active == 0;
+  #assert dsk_key(k[..], '9', MOD_CMD) && k[0].active == 2;
+  #assert !dsk_key(k[..], '5', MOD_CMD) && k[0].active == 2;
+  // Shift+Down from the top row: the next session in the sidebar
+  #assert dsk_key(k[..], KEY_DOWN, MOD_SHIFT) && k[0].active == 1;
+  #assert dsk_key(k[..], KEY_UP, MOD_SHIFT) && k[0].active == 2;
+  #assert !dsk_key(k[..], KEY_UP, MOD_SHIFT);
+  // not while the composer has text (Shift+Up selects there)
+  coaxial_zeron_text(c[..], "hi");
+  #assert !dsk_key(k[..], KEY_DOWN, MOD_SHIFT) && k[0].active == 2;
+  // Cmd+W: the tab closes, its neighbour shows, the session stays listed
+  #assert dsk_close_tab(k[..]) && k[0].ntabs == 2 && k[0].active == 1 && k[0].n == 3;
+  #assert dsk_close_tab(k[..]) && k[0].ntabs == 1 && k[0].active == 0;
+  #assert !dsk_close_tab(k[..]) && k[0].ntabs == 1;
+  // a closed session's row opens it again in a tab
+  dsk_show(k[..], 2);
+  #assert k[0].ntabs == 2 && k[0].active == 2 && k[0].tabs[1] == 2;
+}
+
+#test "the sidebar: rows and tabs take presses, the edge resizes within 208..400, Cmd+S collapses it, the chat gets the rest" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one");
+  i = dsk_add(k[..], b[..], "/w/two");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  // the chat is laid out right of the 256px sidebar: its composer's column centred in 1064px
+  #assert a[0].width == 2640 - 512 && b[0].width == 2640 - 512;
+  #assert b[0].composer[0].x == round_layout((1064 - 736) / 2);
+  // New session asks the host for a folder
+  nh := -1; row := -1; tab := -1;
+  for j: 0..<k[0].nhit {
+    if k[0].hits[j].kind == DSK_ON_NEW { nh = j; }
+    if k[0].hits[j].kind == DSK_ON_ROW && k[0].hits[j].i == 0 { row = j; }
+    if k[0].hits[j].kind == DSK_ON_TAB && k[0].hits[j].i == 0 { tab = j; }
+  }
+  #assert nh >= 0 && row >= 0 && tab >= 0;
+  h := k[0].hits[nh];
+  took := dsk_pointer(k[..], (h.x + 4) * 2, (h.y + 4) * 2, 0, 1, 0);
+  took = dsk_pointer(k[..], (h.x + 4) * 2, (h.y + 4) * 2, 2, 1, 0);
+  #assert coaxial_desk_take_action(k[..]) == DSK_HOST_PICK_FOLDER && coaxial_desk_take_action(k[..]) == DSK_HOST_NONE;
+  h = k[0].hits[row];
+  took = dsk_pointer(k[..], (h.x + 4) * 2, (h.y + 4) * 2, 0, 1, 0);
+  #assert k[0].active == 0;
+  took = dsk_pointer(k[..], (h.x + 4) * 2, (h.y + 4) * 2, 2, 1, 0);
+  // the edge: dragged far right stops at 400, far left at 208
+  took = dsk_pointer(k[..], 256 * 2, 400 * 2, 0, 1, 0);
+  #assert k[0].press == DSK_ON_EDGE && coaxial_desk_cursor(k[..]) == 3;
+  took = dsk_pointer(k[..], 900 * 2, 400 * 2, 1, 1, 0);
+  #assert k[0].width == DSK_SIDEBAR_MAX;
+  took = dsk_pointer(k[..], 10 * 2, 400 * 2, 2, 1, 0);
+  #assert k[0].width == DSK_SIDEBAR_MIN && k[0].press == DSK_ON_NONE;
+  // Cmd+S: collapsed, the chat takes the whole width and the tabs start after the traffic lights
+  #assert dsk_key(k[..], 's', MOD_CMD) && k[0].collapsed;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert a[0].width == 2640;
+  for j: 0..<k[0].nhit { #assert k[0].hits[j].kind == DSK_ON_TAB && k[0].hits[j].x >= DSK_LIGHTS; }
+  // a press in the chat goes to it, moved by the sidebar: the composer takes it
+  #assert dsk_key(k[..], 's', MOD_CMD) && !k[0].collapsed;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  c := a[0].composer[..];
+  px := (DSK_SIDEBAR_MIN + c[0].x + 40) * 2; py := (c[0].y + 20) * 2;
+  #assert dsk_pointer(k[..], px, py, 0, 1, 0);
+  took = dsk_pointer(k[..], px, py, 2, 1, 0);
+}
+
+#test "a session's face: its title is its first message's first line, its dot its state, its time since it was last busy" {
+  age: [16] u8;
+  #assert dsk_age(5, age[..]) == "now" && dsk_age(125, age[..]) == "2m" && dsk_age(7300, age[..]) == "2h" && dsk_age(200000, age[..]) == "2d";
+  k: [1] Desk;
+  a: [1] ZeronState;
+  dsk_test_chat(a[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  ss := a[0].session[..];
+  s_user(ss, "Fix the sidebar\nand the tabs");
+  #assert dsk_title(k[..], 0) == "Fix the sidebar" && dsk_status(k[..], 0) == DSK_WORKING;
+  ss[0].asking = 0;
+  #assert dsk_status(k[..], 0) == DSK_WAITING;
+  ss[0].asking = -1;
+  s_turn_end(ss, true, "exit status 2");
+  #assert dsk_status(k[..], 0) == DSK_ERROR;
+  s_user(ss, "again"); s_turn_end(ss, false, "");
+  #assert dsk_status(k[..], 0) == DSK_IDLE;
+  // shifted vertices: positions, bounds and masks move; a clip at infinity stays
+  v: [56] f32;
+  v[0] = 10; v[4] = 10; v[20] = -GP_NO_CLIP; v[22] = 50;
+  v[28] = 1; v[30] = GP_ELBOW; v[32] = 2; v[35] = 3; v[48] = 4; v[50] = GP_NO_CLIP;
+  dsk_shift(v[..], 0, 2, 100);
+  #assert v[0] == 110 && v[4] == 110 && v[20] == -GP_NO_CLIP && v[22] == 150;
+  #assert v[28] == 101 && v[32] == 102 && v[35] == 103 && v[48] == 104 && v[50] == GP_NO_CLIP;
+}

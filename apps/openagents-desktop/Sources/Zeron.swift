@@ -213,10 +213,16 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
 }
 
 final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemValidation {
-  let state = zr_new()!
+  // The desk (zeron/desk.coax): every session's chat; the input and the frame go through it.
+  let desk = dsk_new()!
+  let first = zr_new()!
+  // The shown session's chat: the text input, the menus and the host's actions are its.
+  var state: UnsafeMutableRawPointer { dsk_active(desk) ?? first }
   var queue: MTLCommandQueue!
   var pipeline: MTLRenderPipelineState!
-  var atlas: ZeronAtlas?, atlasDpr: CGFloat = 0
+  // each chat's atlas (a chat's glyph cache is its own), made when it is first shown
+  var atlases: [UnsafeMutableRawPointer: ZeronAtlas] = [:]
+  var atlas: ZeronAtlas? { atlases[state] }
   var vertices: [MTLBuffer] = [], slot = 0
   let inflight = DispatchSemaphore(value: 2)
   var last = CACurrentMediaTime()
@@ -271,15 +277,18 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
 
   func render(_ pass: MTLRenderPassDescriptor, size: CGSize, dpr: CGFloat, done: ((MTLCommandBuffer) -> Void)? = nil) {
-    if atlas == nil || atlasDpr != dpr { atlas = zeronAtlas(device!, state: state, dpr: dpr); atlasDpr = dpr }
+    let shown = state
+    if atlases[shown] == nil || atlases[shown]!.dpr != dpr { atlases[shown] = zeronAtlas(device!, state: shown, dpr: dpr) }
     let now = CACurrentMediaTime(), dt = Float(now - last); last = now
     inflight.wait()
     slot = (slot + 1) % 2
     let buf = vertices[slot]
-    let n = zr_frame(state, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
+    let n = dsk_frame(desk, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
     // the graphemes and cells this frame wanted, for the next
-    atlas!.serve(state)
-    let want = zr_cursor(state)
+    atlases[shown]!.serve(shown)
+    if dsk_take_action(desk) == 1 { pickFolder() }
+    let own = dsk_cursor(desk)
+    let want = own >= 0 ? own : zr_cursor(state)
     if want != cursorKind { cursorKind = want; cursorFor(want).set() }
     // a code block's Copy, pressed
     // a notice's Log in or Install: Terminal runs it (the CLI's own sign-in, the install line)
@@ -304,8 +313,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       enc.setRenderPipelineState(pipeline)
       enc.setVertexBuffer(buf, offset: 0, index: 0)
       enc.setVertexBytes(&viewport, length: 8, index: 1)
-      enc.setFragmentTexture(atlas!.mono, index: 0)
-      enc.setFragmentTexture(atlas!.color, index: 1)
+      enc.setFragmentTexture(atlases[shown]!.mono, index: 0)
+      enc.setFragmentTexture(atlases[shown]!.color, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
     enc.endEncoding()
@@ -322,12 +331,43 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   // the chat's mode (zeron/modes.coax; set first, the model and effort are then its own).
   func configure(_ args: [String]) {
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
-    if args.contains("--demo") { zr_demo(state); return }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
-    Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(state, $0.baseAddress, Int32($0.count)) }
+    if args.contains("--demo") { zr_demo(first); add(first, cwd: cwd); return }
+    Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(first, $0.baseAddress, Int32($0.count)) }
+    add(first, cwd: cwd)
     if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic", "lab", "codex"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
     for (flag, which) in [("--model", Int32(1)), ("--effort", Int32(2))] { if let v = value(flag) { named(which, v) } }
     if let v = value("--access")?.lowercased(), let i = ["full", "edits", "supervised"].firstIndex(of: v) { zr_choose(state, 3, Int32(i)) }
+  }
+  func add(_ chat: UnsafeMutableRawPointer, cwd: String) {
+    _ = Array(cwd.utf8).withUnsafeBufferPointer { dsk_add(desk, chat, $0.baseAddress, Int32($0.count)) }
+  }
+  // A new session: its own chat (and engines) in a folder, shown in a new tab.
+  func newSession(cwd: String) {
+    guard let chat = zr_new() else { return }
+    Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(chat, $0.baseAddress, Int32($0.count)) }
+    add(chat, cwd: cwd)
+    needsDisplay = true
+  }
+  func coaxActive() -> Int32 { (0..<dsk_count(desk)).first { dsk_chat(desk, $0) == state } ?? -1 }
+  func shownFolder() -> String {
+    var bytes = [UInt8](repeating: 0, count: 1024)
+    let n = Int(dsk_cwd(desk, &bytes, Int32(bytes.count)))
+    return n > 0 ? String(decoding: bytes[0..<n], as: UTF8.self) : NSHomeDirectory()
+  }
+  // New session: the folder it works in, picked (starting at the shown session's).
+  func pickFolder() {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = true
+    panel.message = "The folder the new session works in"
+    panel.prompt = "New Session"
+    panel.directoryURL = URL(fileURLWithPath: shownFolder())
+    let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+      guard r == .OK, let self, let url = panel.url else { return }
+      self.newSession(cwd: url.path)
+    }
+    if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
   }
   @discardableResult func named(_ which: Int32, _ name: String) -> Bool {
     Array(name.utf8).withUnsafeBufferPointer { zr_choose_named(state, which, $0.baseAddress, Int32($0.count)) } != 0
@@ -431,7 +471,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them; plan on|off)
   //   open model|access   a chip's menu, as a press on it opens it
   //   attach PATH     the file staged and attached, as the paperclip's panel or a drop would
-  //   wait SECS       let the frames run    waitidle [SECS]  until the running turn ends (at most SECS, 300)
+  //   folder PATH     a new session in PATH (as the folder picker makes one)    sidebar  Cmd+S    desk  print the sessions and tabs
+//   wait SECS       let the frames run    waitidle [SECS]  until the running turn ends (at most SECS, 300)
   // Without --frames the shot is taken 12 frames after the last step.
   func shot(_ path: String, width: Int, height: Int) {
     let args = CommandLine.arguments
@@ -449,7 +490,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       frames += 1
       if frames == 30, let i = args.firstIndex(of: "--click"), i + 1 < args.count {
         let xy = args[i + 1].split(separator: ",").compactMap { Float($0) }
-        if xy.count == 2 { _ = zr_pointer(self.state, xy[0], xy[1], 0, 1, 0); _ = zr_pointer(self.state, xy[0], xy[1], 2, 1, 0) }
+        if xy.count == 2 { _ = dsk_pointer(self.desk, xy[0], xy[1], 0, 1, 0); _ = dsk_pointer(self.desk, xy[0], xy[1], 2, 1, 0) }
       }
       if frames == 45, let i = args.firstIndex(of: "--type"), i + 1 < args.count { self.typed(args[i + 1]) }
       if let h = hold {
@@ -469,7 +510,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
                               bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
             let rep = NSBitmapImageRep(cgImage: g.makeImage()!)
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
-            zr_quit(self.state); exit(0)
+            dsk_quit(self.desk); exit(0)
           }
         }
       }
@@ -483,17 +524,23 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     switch verb {
     case "click" where nums.count >= 2:
       let n = nums.count > 2 ? Int32(nums[2]) : 1
-      _ = zr_pointer(state, nums[0], nums[1], 0, n, 0); _ = zr_pointer(state, nums[0], nums[1], 2, n, 0)
+      _ = dsk_pointer(desk, nums[0], nums[1], 0, n, 0); _ = dsk_pointer(desk, nums[0], nums[1], 2, n, 0)
     case "shiftclick" where nums.count >= 2:
-      _ = zr_pointer(state, nums[0], nums[1], 0, 1, 1); _ = zr_pointer(state, nums[0], nums[1], 2, 1, 1)
+      _ = dsk_pointer(desk, nums[0], nums[1], 0, 1, 1); _ = dsk_pointer(desk, nums[0], nums[1], 2, 1, 1)
     case "drag" where nums.count == 4:
-      _ = zr_pointer(state, nums[0], nums[1], 0, 1, 0)
-      for k in 1...8 { let t = Float(k) / 8; _ = zr_pointer(state, nums[0] + (nums[2] - nums[0]) * t, nums[1] + (nums[3] - nums[1]) * t, 1, 1, 0) }
-      _ = zr_pointer(state, nums[2], nums[3], 2, 1, 0)
-    case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
-    case "move" where nums.count == 2: _ = zr_pointer(state, nums[0], nums[1], 1, 1, 0)
+      _ = dsk_pointer(desk, nums[0], nums[1], 0, 1, 0)
+      for k in 1...8 { let t = Float(k) / 8; _ = dsk_pointer(desk, nums[0] + (nums[2] - nums[0]) * t, nums[1] + (nums[3] - nums[1]) * t, 1, 1, 0) }
+      _ = dsk_pointer(desk, nums[2], nums[3], 2, 1, 0)
+    case "wheel" where nums.count == 1: _ = dsk_wheel(desk, nums[0])
+    case "move" where nums.count == 2: _ = dsk_pointer(desk, nums[0], nums[1], 1, 1, 0)
     case "fixture": zr_fixture(state, arg == "closed" ? 0 : arg == "table" ? 2 : 1)
     case "newchat": zr_new_chat(state)
+    case "folder": newSession(cwd: (arg as NSString).expandingTildeInPath)   // a new session in that folder, as the folder picker makes it
+    case "sidebar": dsk_toggle(desk)
+    case "desk":   // the desk as the scripted checks read it
+      let tabs = (0..<dsk_tabs(desk)).map { String(dsk_tab(desk, $0)) }.joined(separator: ",")
+      print("desk: active=\(dsk_count(desk) > 0 ? Int(coaxActive()) : -1) tabs=\(tabs) sessions=\(dsk_count(desk)) collapsed=\(dsk_collapsed(desk))")
+    case "closetab": if dsk_close_tab(desk) == 0 { print("closetab: the last tab stays") }
     case "send": typed(arg); _ = zr_key(state, -2, 0)
     case "stop": _ = zr_key(state, -1, 0)
     case "model", "effort": if !named(verb == "model" ? 1 : 2, arg) { print("no \(verb) named \(arg)") }
@@ -572,7 +619,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   func pointer(_ e: NSEvent, _ phase: Int32) -> Bool {
     let (x, y) = place(e)
-    return zr_pointer(state, x, y, phase, Int32(max(e.clickCount, 1)), mods(e)) != 0
+    return dsk_pointer(desk, x, y, phase, Int32(max(e.clickCount, 1)), mods(e)) != 0
   }
   override func mouseDown(with e: NSEvent) {
     window?.makeFirstResponder(self)
@@ -585,9 +632,9 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   override func scrollWheel(with e: NSEvent) {
     // GPUI's pixel delta: precise deltas as they come, lines times the line height
     let dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75
-    if zr_wheel(state, Float(dy)) == 0 { super.scrollWheel(with: e) }
+    if dsk_wheel(desk, Float(dy)) == 0 { super.scrollWheel(with: e) }
   }
-  func cursorFor(_ kind: Int32) -> NSCursor { kind == 1 ? .iBeam : kind == 2 ? .pointingHand : .arrow }
+  func cursorFor(_ kind: Int32) -> NSCursor { kind == 1 ? .iBeam : kind == 2 ? .pointingHand : kind == 3 ? .resizeLeftRight : .arrow }
   override func cursorUpdate(with event: NSEvent) { cursorFor(cursorKind).set() }
 
   // ---- the keyboard: Zeron's keymap first, then the input context (IME, dead keys, plain typing)
@@ -605,6 +652,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   // cmd-/ctrl- chords. Ctrl+C, X and V go to the pasteboard as Cmd's do
   // (through the menu). Whether it was bound.
   func binding(code: Int32, char: String?, mods: Int32) -> Bool {
+    if deskKey(code: code, char: char, mods: mods) { return true }
     if code != 0 { return zr_key(state, code, mods) != 0 }
     guard let c = char?.unicodeScalars.first, mods & (2 | 8) != 0 else { return false }
     let letter = String(c).lowercased()
@@ -620,7 +668,14 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     }
     return zr_key(state, Int32(c.value), mods) != 0
   }
+  // The desk's keys (Cmd+1..9, Cmd+S, Shift+Up/Down) before the chat's.
+  func deskKey(code: Int32, char: String?, mods: Int32) -> Bool {
+    if code != 0 { return dsk_key(desk, code, mods) != 0 }
+    guard let c = char?.lowercased().unicodeScalars.first else { return false }
+    return dsk_key(desk, Int32(c.value), mods) != 0
+  }
   override func keyDown(with e: NSEvent) {
+    if !hasMarkedText(), deskKey(code: ZeronView.named[e.keyCode] ?? 0, char: e.charactersIgnoringModifiers, mods: mods(e)) { needsDisplay = true; return }
     guard zr_wants_text(state) != 0 else {
       // unfocused: Zeron's composer only takes keys when focused; Copy and Select All reach the transcript
       if e.modifierFlags.contains(.command), let c = e.charactersIgnoringModifiers?.lowercased() {
@@ -639,7 +694,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
 
   // ---- the Edit menu (and Cmd+C/X/V/A/Z, its key equivalents)
 
-  @objc func newChat(_ sender: Any?) { zr_new_chat(state); needsDisplay = true }
+  @objc func newChat(_ sender: Any?) { newSession(cwd: shownFolder()) }
+  @objc func newSessionInFolder(_ sender: Any?) { pickFolder() }
+  @objc func closeTab(_ sender: Any?) { if dsk_close_tab(desk) == 0 { window?.performClose(sender) } }
+  @objc func toggleSidebar(_ sender: Any?) { dsk_toggle(desk) }
   @objc func undo(_ sender: Any?) { zr_undo(state) }
   @objc func redo(_ sender: Any?) { zr_redo(state) }
   @objc override func selectAll(_ sender: Any?) { zr_select_all(state) }
@@ -716,13 +774,13 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     var r = [Float](repeating: 0, count: 4)
     guard zr_rect16(state, Int32(range.location == NSNotFound ? 0 : range.location), &r) != 0, let window else { return .zero }
     actualRange?.pointee = range
-    let local = NSRect(x: CGFloat(r[0]), y: bounds.height - CGFloat(r[1]) - CGFloat(r[3]), width: CGFloat(r[2]), height: CGFloat(r[3]))
+    let local = NSRect(x: CGFloat(r[0]) + CGFloat(dsk_side(desk)), y: bounds.height - CGFloat(r[1]) - CGFloat(r[3]), width: CGFloat(r[2]), height: CGFloat(r[3]))
     return window.convertToScreen(convert(local, to: nil))
   }
   func characterIndex(for point: NSPoint) -> Int {
     guard let window else { return NSNotFound }
     let p = convert(window.convertPoint(fromScreen: point), from: nil), d = window.backingScaleFactor
-    return Int(zr_index16(state, Float(p.x * d), Float((bounds.height - p.y) * d)))
+    return Int(zr_index16(state, Float((p.x - CGFloat(dsk_side(desk))) * d), Float((bounds.height - p.y) * d)))
   }
   // Commands the IME sends for keys Zeron's keymap doesn't bind do nothing, as in GPUI.
   override func doCommand(by selector: Selector) {}

@@ -303,6 +303,13 @@ zr_update_cursor :: (s: [] ZeronState) {
 }
 
 zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  zr_tick(s, width, height, dpr, dt);
+  return zr_paint(s, out);
+}
+// A frame's work without its drawing: the engines pumped, sends and the
+// notice's buttons taken, the transcript rebuilt (a chat in the background
+// of the desk, desk.coax, runs only this).
+zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
   t := s[0].transcript[..]; c := s[0].composer[..]; e := s[0].engine[..]; ss := s[0].session[..];
   if !s[0].ready {
     s[0].ready = true; c[0].focused = true; c[0].clicked = -1;
@@ -385,8 +392,13 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   t[0].working = ss[0].live && !s[0].demo;
   t[0].work_secs = ss[0].secs; t[0].spin += dt1;
   c[0].running = ss[0].live && !s[0].demo;
+}
+// The chat drawn at the size zr_tick last saw.
+zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
+  t := s[0].transcript[..]; c := s[0].composer[..]; ss := s[0].session[..];
+  d := s[0].d;
   th := zeron_dark();
-  w := width / d; h := height / d;
+  w := s[0].width / d; h := s[0].height / d;
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
   if !s[0].atlas[0].ready { return v; }
   column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;

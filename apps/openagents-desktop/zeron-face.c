@@ -128,3 +128,35 @@ void zr_choose(void *state, int32_t which, int32_t index) { coaxial_zeron_choose
 int32_t zr_live(void *state) { return coaxial_zeron_live(at(state)) ? 1 : 0; }
 int32_t zr_take_action(void *state) { return (int32_t)coaxial_zeron_take_action(at(state)); }
 void zr_quit(void *state) { coaxial_zeron_quit(at(state)); }
+
+// The desk (zeron/desk.coax): every session's chat, the sidebar and the tabs.
+static coax_v_t_Desk desk_at(void *desk) { return (coax_v_t_Desk){(coax_t_Desk *)desk, 1}; }
+void *dsk_new(void) { return calloc(1, sizeof(coax_t_Desk)); }
+int32_t dsk_add(void *desk, void *state, const uint8_t *cwd, int32_t length) { return (int32_t)coaxial_desk_add(desk_at(desk), at(state), str(cwd, length)); }
+void *dsk_active(void *desk) {
+  coax_t_Desk *k = desk;
+  return k->n > 0 ? (void *)k->chats.e[k->active].s.data : NULL;
+}
+void *dsk_chat(void *desk, int32_t i) {
+  coax_t_Desk *k = desk;
+  return i >= 0 && i < k->n ? (void *)k->chats.e[i].s.data : NULL;
+}
+int32_t dsk_count(void *desk) { return (int32_t)coaxial_desk_count(desk_at(desk)); }
+int32_t dsk_frame(void *desk, float *vertices, float width, float height, float dpr, float dt) {
+  coax_v_f32 out = {vertices, coaxial_zeron_max_vertices() * coaxial_zeron_vertex_floats()};
+  int64_t n = coaxial_desk_frame(desk_at(desk), out, width, height, dpr, dt);
+  return n < 0 ? 0 : (int32_t)n;
+}
+int32_t dsk_pointer(void *desk, float x, float y, int32_t phase, int32_t clicks, int32_t mods) { return coaxial_desk_pointer(desk_at(desk), x, y, phase, clicks, mods) ? 1 : 0; }
+int32_t dsk_wheel(void *desk, float dy) { return coaxial_desk_wheel(desk_at(desk), dy) ? 1 : 0; }
+int32_t dsk_key(void *desk, int32_t key, int32_t mods) { return coaxial_desk_key(desk_at(desk), key, mods) ? 1 : 0; }
+int32_t dsk_close_tab(void *desk) { return coaxial_desk_close_tab(desk_at(desk)) ? 1 : 0; }
+void dsk_toggle(void *desk) { coaxial_desk_toggle(desk_at(desk)); }
+float dsk_side(void *desk) { return coaxial_desk_side(desk_at(desk)); }
+int32_t dsk_cursor(void *desk) { return (int32_t)coaxial_desk_cursor(desk_at(desk)); }
+int32_t dsk_take_action(void *desk) { return (int32_t)coaxial_desk_take_action(desk_at(desk)); }
+int32_t dsk_cwd(void *desk, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_cwd(desk_at(desk), (coax_v_u8){out, cap}); }
+void dsk_quit(void *desk) { coaxial_desk_quit(desk_at(desk)); }
+int32_t dsk_tabs(void *desk) { return (int32_t)coaxial_desk_tabs(desk_at(desk)); }
+int32_t dsk_tab(void *desk, int32_t t) { return (int32_t)coaxial_desk_tab(desk_at(desk), t); }
+int32_t dsk_collapsed(void *desk) { return coaxial_desk_collapsed(desk_at(desk)) ? 1 : 0; }

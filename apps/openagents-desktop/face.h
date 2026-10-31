@@ -92,6 +92,26 @@ void zr_choose(void *state, int32_t which, int32_t index);
 int32_t zr_live(void *state);
 int32_t zr_take_action(void *state);
 void zr_quit(void *state);
+// The desk (zeron/desk.coax, zeron-face.c): the sessions, sidebar and tabs.
+void *dsk_new(void);
+int32_t dsk_add(void *desk, void *state, const uint8_t *cwd, int32_t length);
+void *dsk_active(void *desk);
+void *dsk_chat(void *desk, int32_t i);
+int32_t dsk_count(void *desk);
+int32_t dsk_frame(void *desk, float *vertices, float width, float height, float dpr, float dt);
+int32_t dsk_pointer(void *desk, float x, float y, int32_t phase, int32_t clicks, int32_t mods);
+int32_t dsk_wheel(void *desk, float dy);
+int32_t dsk_key(void *desk, int32_t key, int32_t mods);
+int32_t dsk_close_tab(void *desk);
+void dsk_toggle(void *desk);
+float dsk_side(void *desk);
+int32_t dsk_cursor(void *desk);
+int32_t dsk_take_action(void *desk);
+int32_t dsk_cwd(void *desk, uint8_t *out, int32_t cap);
+void dsk_quit(void *desk);
+int32_t dsk_tabs(void *desk);
+int32_t dsk_tab(void *desk, int32_t t);
+int32_t dsk_collapsed(void *desk);
 // The composer's menus and attachments (zeron/picker.coax, attachments.coax):
 // choose_named picks a model or effort by id or name (1 model, 2 effort),
 // open_menu opens a chip's menu (1 model, 3 access); take_action 3 asks for
