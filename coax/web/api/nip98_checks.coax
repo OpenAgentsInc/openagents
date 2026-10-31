@@ -1,0 +1,8 @@
+// nip98.coax end to end on every signed case, with real BIP-340 (too heavy
+// for the authority checks' budget).
+//   coax/bin/coax test coax/web/api/nip98_checks.coax --steps 2000000000 --run-steps 250000000
+#load "nip98.coax";
+main :: () {}
+#forall "every case answers as C did" i:0..<N98_T_COUNT {
+  if n98t_heavy(N98_T_WANT[i]) {#assert n98t(i)==N98_T_WANT[i];}
+}

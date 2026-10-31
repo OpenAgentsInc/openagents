@@ -11,7 +11,7 @@ cc=${COAX_CC:-/usr/bin/clang}
 secp=$(brew --prefix secp256k1)
 ssl=$(brew --prefix openssl@3)
 flags=(-std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$pg/include" -I"$secp/include" -I"$ssl/include")
-"$cc" "${flags[@]}" -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nostr.c "$here"/relay.c -L"$pg/lib" -lpq -L"$secp/lib" -lsecp256k1 -L"$ssl/lib" -lssl -lcrypto -lcurl -lz -lm
+"$cc" "${flags[@]}" -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/relay.c -L"$pg/lib" -lpq -L"$secp/lib" -lsecp256k1 -L"$ssl/lib" -lssl -lcrypto -lcurl -lz -lm
 "$cc" "${flags[@]}" -o "$work/sign" "$here/sign.c" -L"$secp/lib" -lsecp256k1 -L"$ssl/lib" -lcrypto
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000)); export MESH_PORT=$((58000 + RANDOM % 1000))

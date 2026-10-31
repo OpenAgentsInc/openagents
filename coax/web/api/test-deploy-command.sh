@@ -47,6 +47,7 @@ case "${1:-} ${2:-}" in
     mkdir -p "$4/coax/web/api"
     cp -R "$DEPLOY_FIXTURE_API"/. "$4/coax/web/api/" ;;
   'worktree remove') ;;
+  'ls-files -z') ;;
   *) exit 93 ;;
 esac
 MOCK

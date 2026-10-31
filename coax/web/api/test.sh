@@ -6,6 +6,14 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 "$here/mesh-policy.sh" --check-inputs
+"$here/nip98.sh" --check-inputs
+# NIP-98 is Coax (nip98.coax): with a compiler here, its checks and its C cache.
+repo_root="$(cd "$here/../../.." && pwd)"
+if [[ -x "$repo_root/coax/bin/coax" ]]; then
+  "$here/nip98.sh" --check || echo 'nip98: the C cache differs from this compiler'"'"'s output (the image builds from source; regenerate with nip98.sh --generate)' >&2
+  (cd "$repo_root" && coax/bin/coax test coax/web/api/nip98.coax --run-steps 250000000 | tail -1)
+  (cd "$repo_root" && coax/bin/coax test coax/web/api/nip98_checks.coax --steps 4000000000 --run-steps 250000000 | tail -1)
+fi
 "$here/test-deploy-command.sh"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_verify_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
@@ -16,8 +24,14 @@ cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nostr.c "$here"/relay.c \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/relay.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
+# The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
+$cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/nip98_diff" \
+  "$here/nip98_diff.c" "$here/nip98_reference.c" "$here/nostr.c" "$here/nip98.generated.c" \
+  ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lcrypto
+"$work/nip98_diff" "$here/nip98_corpus.tsv" 400
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
 port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))
 "$pg/bin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null

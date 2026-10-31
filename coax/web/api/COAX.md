@@ -1,18 +1,22 @@
-# Coax API bridge: work in progress
+# Coax in the API service
 
-`coax_probe.coax` exercises the shared Nostr JSON parser on fixed public
-fixtures. It does not verify signatures, authorize requests, or replace the
-service's existing NIP-98 implementation. It is not yet linked into the API.
+The API (`api.c` and its handlers) is C, and Coax emits C, so Coax modules
+link straight into it:
 
-On 2026-10-29 the module passed 21 Coax checks. An experimental service
-integration passed 923 local service checks against throwaway Postgres,
-including existing NIP-98 and phone sign-in/link/replay cases, and correctly
-returned 503 for a deliberately failing probe. That experimental integration
-is not shipped. A Linux cloud image build from source exceeded its 900-second
-limit during the full compiler bootstrap (Cloud Build
-`565a0656-481f-4949-bf92-b87a2ae373c3`); no image was deployed.
+- `nip98.coax` is the API's NIP-98 check. `nostr.c` keeps the old
+  `nip98_check` signature, so every route answers as it did, and calls
+  `nip98_check_coax`. The decisions and refusal words are the former C check's
+  (`nip98_reference.c`, kept for comparison only). `nip98_diff.c` compares the
+  two on the signed corpus (`nip98_corpus.tsv`, from `nip98_fixtures.ts`) and
+  on seeded random mutations. `test.sh` runs it on every API test.
+- `mesh-policy.coax` is the mesh route policy (`mesh.c`).
 
-The next step is a reproducible Linux build that completes within the build
-limit without weakening or repeating established compiler checks unnecessarily,
-then the actual linked service integration and deployment. Preserve the
-existing authentication behavior and the independently owned phone endpoints.
+The image build (`Dockerfile`) compiles these from source. Its first stage
+bootstraps the Coax compiler from its own sources with the unchanged
+`coax/build.sh`, checks included. It takes about six minutes on the 32-core
+builder that `deploy.sh` asks for. Then it emits each module's C, and the
+service is built from that C. The committed `*.generated.c` and `*.generated.h`
+files are checked caches (`nip98.sh`, `mesh-policy.sh`) for local builds
+without a compiler.
+
+`coax_probe.coax` is an earlier parser probe and is not linked.
