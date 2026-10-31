@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r1a-module-revisions",
+  "alias": "#8119",
+  "parent": "r1a-identities (#963b), kept open",
+  "baseline_commit": "9150d202ad932fc4a94254114b6d032468ba1e41",
+  "compiler_version": "0.27.0",
+  "scope": "Opt-in `coax deps --modules` (coax.modules.v1): conservative module-scoped content and dependency revisions, separate from nominal IDs, physical source hashes and the selected profile. verse/everglade/guard-types.coax claims verse.everglade.guard_types; lookup stays the flat #load behavior.",
+  "policy": {
+    "file": "coax/lib/compiler/sources.coax",
+    "new_rules": [
+      "SU_digest_valid",
+      "SU_digest_cmp",
+      "SU_digests_sorted",
+      "SU_revision_text"
+    ],
+    "checks": "33 checks, 33 passed",
+    "mutation": "412 mutants, 412 killed, 0 survived",
+    "seed": "bootstrap/sources.c and .h refreshed; the bootstrap regenerates them byte for byte"
+  },
+  "consumers": {
+    "policy": {
+      "entry": "verse/everglade/guard-decision.coax",
+      "checks": "62 checks, 62 passed",
+      "modules": [
+        [
+          "verse.everglade.guard_types",
+          "456c35b8361005351083b3fb5b86628bfdf47dda27cb34397989d7c5d6bd397c",
+          "b330c23dbeb21457804c41c69188e6de473df0d7f5d456f0cbe2420cbdf4e58a"
+        ]
+      ],
+      "legacy_units": 7,
+      "legacy_declarations": 134
+    },
+    "page": {
+      "entry": "apps/openagents-web/everglade.coax (loads everglade-guard-ai.coax)",
+      "modules": [
+        [
+          "verse.everglade.guard_types",
+          "456c35b8361005351083b3fb5b86628bfdf47dda27cb34397989d7c5d6bd397c",
+          "b330c23dbeb21457804c41c69188e6de473df0d7f5d456f0cbe2420cbdf4e58a"
+        ]
+      ],
+      "legacy_units": 75,
+      "legacy_declarations": 4515
+    },
+    "shared_declarations": {
+      "coax.decl.v1:verse.everglade.guard_types:struct:GaObservation": "b330c23dbeb21457804c41c69188e6de473df0d7f5d456f0cbe2420cbdf4e58a",
+      "coax.decl.v1:verse.everglade.guard_types:struct:GaInput": "b330c23dbeb21457804c41c69188e6de473df0d7f5d456f0cbe2420cbdf4e58a",
+      "coax.decl.v1:verse.everglade.guard_types:struct:GaEffect": "b330c23dbeb21457804c41c69188e6de473df0d7f5d456f0cbe2420cbdf4e58a"
+    },
+    "same_ids_and_revisions": true,
+    "generated_c_unchanged": "The claim sits on the existing GaEffect line, so `coax c --library` output for both entries is byte-identical with and without it (line maps included); C ABI and authored behavior unchanged."
+  },
+  "fixtures": {
+    "file": "coax/tests/modules.py",
+    "class": "ModuleRevisions",
+    "tests": 4,
+    "covers": [
+      "two independently compiled consumers share IDs and revisions",
+      "relocation, unrelated graph changes and load order keep the shared module's revision; a reordered owner file changes its own conservatively",
+      "layout edits change content and revision but not the nominal ID; dependents' revisions change, their content does not; member body and comment edits change the member's module",
+      "unowned units and declarations, generated proto declarations, descriptor dependencies and declaration ranges are named as unavailable or dependencies, never invented"
+    ],
+    "module_identity_tests": 11
+  },
+  "regressions": {
+    "tests/sources.py": "pass",
+    "tests/release.py": "pass",
+    "tests/tools.py": "pass",
+    "tests/debugging.py": "pass",
+    "fixtures (pass, fail, examples, pulse)": "98 passed, 0 failed",
+    "scripts/coax-release.sh --check": "pass"
+  },
+  "limits": [
+    "Revisions are module-scoped: any admitted change to a module's members invalidates all of its declarations; exact declaration ranges are r1a-target-spans.",
+    "Not a cache key, lockfile or toolchain manifest; build-only stage0 refuses the report.",
+    "No qualified lookup or visibility (r1a-qualified-lookup, r1a-public-hud-module)."
+  ],
+  "golden_gate": {
+    "command": "coax/web/golden-check.sh --commit 76a321976f",
+    "failed": [
+      "the-grid",
+      "everglade",
+      "sandbox",
+      "haunted-house",
+      "galaxy",
+      "hecates-cemetery",
+      "home",
+      "home-phone"
+    ],
+    "attribution": "The same pages with the same changed-block counts failed for 9150d202ad before this change (see coax-logical-declarations-2026-10-31.json): authored page content that differs from the goldens (e.g. a GALAXY button), not this change, whose generated C is byte-identical. No goldens approved."
+  }
+}

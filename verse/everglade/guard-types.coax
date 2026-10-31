@@ -1,4 +1,4 @@
 // Data-only ABI shared by independently compiled page and policy libraries.
 GaObservation :: struct {calm:bool;alive:bool;near:bool;visible:bool;safe:bool;playable:bool;day:int;weather:int;}
 GaInput :: struct {observation:GaObservation;generation:int;revision:int;epoch:int;blocked:bool;suspended:bool;configured:bool;url:string;boundary:bool;}
-GaEffect :: struct {url:string;body:string;flags:int;timeout_ms:int;}
+GaEffect :: struct {url:string;body:string;flags:int;timeout_ms:int;} #module "verse.everglade.guard_types";   // one logical owner for both consumers (coax deps --modules)

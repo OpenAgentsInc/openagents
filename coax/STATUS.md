@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.26.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -134,6 +134,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | --- | --- | --- | --- |
 | `#load` / `coax deps` | Bounded source composition and input inventory | works | 0.11.0 |
 | `coax deps --declarations` | Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph | works | 0.26.0 |
+| `coax deps --modules` | Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no exact declaration ranges or cache key | partial | 0.27.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

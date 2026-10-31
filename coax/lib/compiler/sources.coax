@@ -178,6 +178,60 @@ SU_Visit :: struct {index:int= -1;action:u8;}
  m=SU_decl_id("m.x",cast(u8)k,"Namf",b[..]);#assert cast(string) a[0..<n]!=cast(string) b[0..<m];
 }
 
+// Conservative revisions (schema 1). A revision is SHA-256 over a canonical
+// text of lowercase hex digests listed in ascending order, so it never
+// depends on paths, load order or traversal. Kind 0 is a module's content
+// (its member units' hashes), kind 1 its revision (its content revision, then
+// the revisions and unowned unit hashes it depends on).
+#forall "a digest is 64 lowercase hex bytes" c:u8 {
+ d:[64] u8;for i:0..<64 {d[i]='0';}
+ d[17]=c;hex:=(c>='0' && c<='9') || (c>='a' && c<='f');
+ #assert SU_digest_valid(cast(string) d[..])==hex;
+ #assert !SU_digest_valid(cast(string) d[0..<63]);
+}
+#test "digest order is bytewise and total" {
+ a:[64] u8;b:[64] u8;for i:0..<64 {a[i]='0';b[i]='0';}
+ #assert SU_digest_cmp(cast(string) a[..],cast(string) b[..])==0;
+ b[63]='1';#assert SU_digest_cmp(cast(string) a[..],cast(string) b[..])== -1;#assert SU_digest_cmp(cast(string) b[..],cast(string) a[..])==1;
+ a[0]='f';#assert SU_digest_cmp(cast(string) a[..],cast(string) b[..])==1;
+ #assert SU_digest_cmp("ab","abc")== -1;#assert SU_digest_cmp("abc","ab")==1;#assert SU_digest_cmp("","")==0;
+}
+#test "revision inputs are ascending sets of valid digests" {
+ lo:[64] u8;hi:[64] u8;for i:0..<64 {lo[i]='1';hi[i]='e';}
+ l:=cast(string) lo[..];h:=cast(string) hi[..];
+ up:=[2] string.[l,h];down:=[2] string.[h,l];same:=[2] string.[l,l];bad:=[2] string.[l,"x"];
+ #assert SU_digests_sorted(up[..]);#assert !SU_digests_sorted(down[..]);#assert SU_digests_sorted(same[..]);
+ #assert !SU_digests_sorted(bad[..]);#assert SU_digests_sorted(up[0..<0]);#assert SU_digests_sorted(down[0..<1]);
+ one:=[1] string.["x"];#assert !SU_digests_sorted(one[..]);
+}
+#test "canonical revision text" {
+ a:[64] u8;b:[64] u8;for i:0..<64 {a[i]='a';b[i]='b';}
+ own:=[1] string.[cast(string) a[..]];deps:=[1] string.[cast(string) b[..]];out:[256] u8;
+ n:=SU_revision_text(1,own[..],deps[..],out[..]);
+ // "coax.revision.v1:module\n" (24) + 65 + "-\n" (2) + 65
+ #assert n==156;
+ t:=cast(string) out[0..<n];
+ #assert cast(string) out[0..<24]=="coax.revision.v1:module\n" && out[88]=='\n' && out[89]=='-' && out[90]=='\n' && out[155]=='\n' && out[91]=='b' && out[24]=='a' && out[87]=='a';
+ n=SU_revision_text(0,own[..],deps[0..<0],out[..]);
+ #assert n==92 && cast(string) out[0..<25]=="coax.revision.v1:content\n" && out[89]=='\n' && out[90]=='-' && out[91]=='\n';
+ #assert SU_revision_text(2,own[..],deps[..],out[..])== -1;
+ rev:=[2] string.[cast(string) b[..],cast(string) a[..]];
+ #assert SU_revision_text(0,rev[..],deps[0..<0],out[..])== -1;
+ #assert SU_revision_text(1,own[..],rev[..],out[..])== -1;
+ #assert t!=cast(string) out[0..<n];
+}
+#forall "revision text fits exactly or is refused" room:154..<158 {
+ a:[64] u8;for i:0..<64 {a[i]='c';}own:=[1] string.[cast(string) a[..]];deps:=[1] string.[cast(string) a[..]];out:[160] u8;
+ n:=SU_revision_text(1,own[..],deps[..],out[0..<room]);
+ if room>=156 {#assert n==156 && out[155]=='\n';}else {#assert n== -1;}
+}
+#test "own and dependency digests are kept apart" {
+ a:[64] u8;b:[64] u8;for i:0..<64 {a[i]='a';b[i]='b';}
+ both:=[2] string.[cast(string) a[..],cast(string) b[..]];x:[200] u8;y:[200] u8;
+ n:=SU_revision_text(1,both[..],both[0..<0],x[..]);m:=SU_revision_text(1,both[0..<1],both[1..<2],y[..]);
+ #assert n>0 && m>0 && cast(string) x[0..<n]!=cast(string) y[0..<m];
+}
+
 #forall "execution and mutation obligations retain source ownership" authority:bool, entry:bool, mutation:bool {
  #assert SU_check_required(authority,entry,mutation)==(authority || (entry && mutation));
 }
@@ -273,5 +327,40 @@ SU_decl_id :: (module:string,kind:u8,name:string,out:[] u8)->int #export_c {
  for c:k {out[n]=c;n+=1;}
  out[n]=':';n+=1;
  for c:name {out[n]=c;n+=1;}
+ return n;
+}
+SU_digest_valid :: (d:string)->bool #export_c {
+ if d.count!=64 {return false;}
+ for c:d {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
+SU_digest_cmp :: (a:string,b:string)->int #export_c {
+ for c, i:a {
+  if i>=b.count {return 1;}
+  if c<b[i] {return -1;}
+  if c>b[i] {return 1;}
+ }
+ if a.count<b.count {return -1;}
+ return 0;
+}
+SU_digests_sorted :: (ds:[] string)->bool #export_c {
+ for d, i:ds {
+  if !SU_digest_valid(d) {return false;}
+  if i>0 && SU_digest_cmp(ds[i-1],d)>0 {return false;}
+ }
+ return true;
+}
+SU_REVISION_KINDS :: [2] string.["content","module"];
+SU_revision_text :: (kind:u8,own:[] string,deps:[] string,out:[] u8)->int #export_c {
+ if kind>=2 || !SU_digests_sorted(own) || !SU_digests_sorted(deps) {return -1;}
+ head:="coax.revision.v1:";k:=SU_REVISION_KINDS[kind];
+ if out.count<head.count+k.count+1+65*own.count+2+65*deps.count {return -1;}
+ n:=0;
+ for c:head {out[n]=c;n+=1;}
+ for c:k {out[n]=c;n+=1;}
+ out[n]='\n';n+=1;
+ for d:own {for c:d {out[n]=c;n+=1;}out[n]='\n';n+=1;}
+ out[n]='-';out[n+1]='\n';n+=2;
+ for d:deps {for c:d {out[n]=c;n+=1;}out[n]='\n';n+=1;}
  return n;
 }

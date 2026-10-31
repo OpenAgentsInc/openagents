@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.26.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -191,6 +191,16 @@ different modules load is E0607; give it its own `#module` instead. A bad
 claim is E0605. A claim is identity only: lookup is still one flat
 namespace, two `Vec` declarations in one graph still collide, and the
 generated C is unchanged.
+
+An ID says which declaration; a revision says whether it may have changed.
+`coax deps main.coax --modules` prints each module's `content_revision`
+(its own files) and `revision` (its files plus the revisions of the modules
+it loads). Revisions are module-scoped and conservative: editing any member,
+even a comment, changes every declaration's revision in that module, while
+their IDs stay. Everglade's page and its guard policy are compiled
+separately and both load `verse/everglade/guard-types.coax`, which claims
+`verse.everglade.guard_types`; both report the same IDs and revisions for
+`GaObservation`, `GaInput` and `GaEffect`.
 
 ## Keep source, ABI and protocol identity distinct
 

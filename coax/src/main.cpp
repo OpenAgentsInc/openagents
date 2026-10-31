@@ -279,7 +279,7 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout, deps, declarations };
+enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules };
 
 // `coax deps --declarations` (schema coax.declarations.v1): each unit's
 // logical owner, every top-level declaration's nominal ID and every resolved
@@ -328,6 +328,125 @@ struct DeclarationReport {
     stmt(from, s->then_); stmt(from, s->else_);
   }
 };
+
+// `coax deps --modules` (schema coax.modules.v1): conservative module-scoped
+// revisions, separate from nominal IDs, physical source hashes and the
+// selected profile. A module's content revision covers its member units; its
+// revision adds what it depends on: other modules' revisions, the hashes of
+// unowned units it loads (transitively) and, when a member imports a
+// protobuf descriptor, every descriptor input. Canonical revision text and
+// digest order are checked in lib/compiler/sources.coax (SU_revision_text).
+static std::string read_bytes(const std::string &path) {
+  FILE *f = fopen(path.c_str(), "rb");
+  if (!f) return "";
+  std::string out; char buffer[65536]; size_t n;
+  while ((n = fread(buffer, 1, sizeof buffer, f)) > 0) out.append(buffer, n);
+  fclose(f);
+  return out;
+}
+static std::string modules_report(const Source *src, const File *file, const EmitOptions &opts) {
+  const size_t n = src->units.size();
+  std::vector<std::string> hash(n);
+  for (size_t i = 0; i < n; i++) hash[i] = debug_source_hash(src->units[i]->text);
+  auto revision_of = [&](uint8_t kind, std::vector<std::string> own, std::vector<std::string> deps) {
+    std::sort(own.begin(), own.end()); std::sort(deps.begin(), deps.end());
+    std::vector<coax_string> a, b;
+    for (const auto &d : own) a.push_back({d.data(), (int64_t)d.size()});
+    for (const auto &d : deps) b.push_back({d.data(), (int64_t)d.size()});
+    std::vector<uint8_t> out(64 + 65 * (own.size() + deps.size()));
+    int64_t len = SU_revision_text(kind, {a.data(), (int64_t)a.size()}, {b.data(), (int64_t)b.size()}, {out.data(), (int64_t)out.size()});
+    return len < 0 ? std::string() : debug_source_hash(std::string((const char *)out.data(), (size_t)len));
+  };
+  std::vector<std::string> descriptor_hashes;
+  for (const auto &path : src->descriptor_inputs) descriptor_hashes.push_back(debug_source_hash(read_bytes(path)));
+  std::map<std::string, size_t> owner_unit;
+  for (size_t i = 0; i < n; i++) if (src->units[i]->claims) owner_unit[src->units[i]->module] = i;
+  std::map<std::string, bool> generated_in;
+  for (const GeneratedRegion &region : src->generated) {
+    const SourceUnit *u = source_unit_at(src, region.directive);
+    if (u && !u->module.empty()) generated_in[u->module] = true;
+  }
+  std::map<std::string, std::string> content, revision;
+  std::map<std::string, std::vector<std::string>> dep_json;
+  std::map<std::string, int> state;
+  std::function<std::string(const std::string &)> module_revision = [&](const std::string &m) -> std::string {
+    if (state[m] == 2) return revision[m];
+    if (state[m] == 1) return "";  // unreachable: a module graph cannot cycle (E0602, E0606, E0607)
+    state[m] = 1;
+    std::vector<std::string> own, deps, rows;
+    std::vector<bool> seen(n, false);
+    std::function<void(size_t)> walk = [&](size_t u) {
+      for (int32_t c : src->units[u]->loads) {
+        const SourceUnit *child = src->units[(size_t)c].get();
+        if (child->module == m || seen[(size_t)c]) continue;
+        seen[(size_t)c] = true;
+        if (!child->module.empty()) {
+          std::string r = module_revision(child->module);
+          deps.push_back(r);
+          rows.push_back("{\"module\":" + json_string(child->module) + ",\"revision\":" + json_string(r) + "}");
+        } else {
+          deps.push_back(hash[(size_t)c]);
+          rows.push_back("{\"unit\":" + json_string(child->canonical) + ",\"sha256\":" + json_string(hash[(size_t)c]) + "}");
+          walk((size_t)c);
+        }
+      }
+    };
+    for (size_t i = 0; i < n; i++) if (src->units[i]->module == m) { own.push_back(hash[i]); walk(i); }
+    if (generated_in[m]) for (size_t i = 0; i < descriptor_hashes.size(); i++) {
+      deps.push_back(descriptor_hashes[i]);
+      rows.push_back("{\"descriptor\":" + json_string(src->descriptor_inputs[i]) + ",\"sha256\":" + json_string(descriptor_hashes[i]) + "}");
+    }
+    content[m] = revision_of(0, own, {});
+    revision[m] = revision_of(1, {content[m]}, deps);
+    std::sort(rows.begin(), rows.end());
+    dep_json[m] = rows;
+    state[m] = 2;
+    return revision[m];
+  };
+  std::string out = "{\"schema\":\"coax.modules.v1\",\"profile\":{\"execution_profile\":" + json_string(file->execution_profile) +
+                    ",\"run_steps\":" + std::to_string(opts.run_steps) + "},\"modules\":[";
+  bool first = true;
+  for (const auto &entry : owner_unit) {
+    const std::string &m = entry.first;
+    module_revision(m);
+    out += std::string(first ? "" : ",") + "{\"id\":" + json_string(m) + ",\"owner_unit\":" + json_string(src->units[entry.second]->canonical) + ",\"members\":[";
+    first = false;
+    bool f2 = true;
+    for (size_t i = 0; i < n; i++) if (src->units[i]->module == m) {
+      out += std::string(f2 ? "" : ",") + "{\"path\":" + json_string(src->units[i]->canonical) + ",\"sha256\":" + json_string(hash[i]) + "}";
+      f2 = false;
+    }
+    out += "],\"content_revision\":" + json_string(content[m]) + ",\"dependencies\":[";
+    f2 = true;
+    for (const auto &row : dep_json[m]) { out += std::string(f2 ? "" : ",") + row; f2 = false; }
+    out += "],\"revision\":" + json_string(revision[m]) + "}";
+  }
+  out += "],\"declarations\":[";
+  std::string legacy, generated;
+  first = true;
+  auto decl = [&](uint8_t kind, Str name, Loc loc) {
+    static const char *KINDS[] = {"proc", "struct", "enum", "const"};
+    const SourceUnit *u = source_unit_at(src, loc);
+    bool gen = false;
+    for (const GeneratedRegion &region : src->generated) gen = gen || (loc.offset >= region.start && loc.offset < region.end);
+    std::string row = "{\"kind\":\"" + std::string(KINDS[kind]) + "\",\"name\":" + json_string(to_std(name));
+    if (gen) generated += std::string(generated.empty() ? "" : ",") + row + ",\"origin\":" + (u ? json_string(u->canonical) : "null") + "}";
+    std::string id = declaration_id(src, kind, name, loc);
+    if (id.empty()) { legacy += std::string(legacy.empty() ? "" : ",") + row + ",\"unit\":" + (u ? json_string(u->canonical) : "null") + "}"; return; }
+    out += std::string(first ? "" : ",") + "{\"id\":" + json_string(id) + ",\"module\":" + json_string(u->module) +
+           ",\"revision\":" + json_string(revision[u->module]) + ",\"generated\":" + (gen ? "true" : "false") + "}";
+    first = false;
+  };
+  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc);
+  for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc);
+  for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc);
+  for (const ProcDecl *d : file->procs) decl(0, d->name, d->loc);
+  std::string legacy_units;
+  for (size_t i = 0; i < n; i++) if (src->units[i]->module.empty())
+    legacy_units += std::string(legacy_units.empty() ? "" : ",") + "{\"path\":" + json_string(src->units[i]->canonical) + ",\"sha256\":" + json_string(hash[i]) + "}";
+  return out + "],\"unavailable\":{\"declaration_ranges\":\"declaration revisions are module-scoped; exact declaration ranges are not tracked\"" +
+         ",\"legacy_units\":[" + legacy_units + "],\"legacy_declarations\":[" + legacy + "],\"generated_declarations\":[" + generated + "]}}\n";
+}
 
 static std::string declarations_report(const Source *src, const File *file) {
   std::string out = "{\"schema\":\"coax.declarations.v1\",\"units\":[";
@@ -424,6 +543,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::header) *text = emit_header(&file);
   else if (what == Output::layout) *text = layout_report(&file);
   else if (what == Output::declarations) *text = declarations_report(&src, &file);
+  else if (what == Output::modules) *text = modules_report(&src, &file, opts);
   else if (what == Output::deps) {
     *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
@@ -503,6 +623,7 @@ static int usage() {
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
+          "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
           "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
@@ -583,7 +704,7 @@ static int main_impl(int argc, char **argv) {
   std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
-  bool declarations = false;
+  bool declarations = false, modules = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
@@ -668,7 +789,8 @@ static int main_impl(int argc, char **argv) {
     }
     else if (a == "--merge" && cmd == "mutate" && i + 1 < argc) mutation.merge.push_back(argv[++i]);
     else if (a == "--keep-c") keep_c = true;
-    else if (a == "--declarations" && cmd == "deps" && !declarations) declarations = true;
+    else if (a == "--declarations" && cmd == "deps" && !declarations && !modules) declarations = true;
+    else if (a == "--modules" && cmd == "deps" && !declarations && !modules) modules = true;
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
@@ -684,6 +806,7 @@ static int main_impl(int argc, char **argv) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
   if(!g_timings.source_map.empty()){fprintf(stderr,"coax: source maps require the final compiler, not build-only stage0\n");return 1;}
   if(!g_semantic.path.empty()){fprintf(stderr,"coax: profile reports require the final compiler, not build-only stage0\n");return 1;}
+  if(modules){fprintf(stderr,"coax: module revisions require the final compiler, not build-only stage0\n");return 1;}
 #endif
   request.arithmetic={arithmetic.data(),(int64_t)arithmetic.size()};
   request.optimization={optimization.data(),(int64_t)optimization.size()};
@@ -750,7 +873,7 @@ static int main_impl(int argc, char **argv) {
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout" || cmd == "deps") {
-    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : Output::deps) : Output::layout, &text, 2)) return 1;
+    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : Output::deps) : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }

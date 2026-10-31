@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.26.0";
+IMPLEMENTATION_VERSION :: "0.27.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [105]ReleaseFeature.[
+CATALOGUE :: [106]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -93,6 +93,7 @@ CATALOGUE :: [105]ReleaseFeature.[
   ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `T?`, `Handle(T)`, lane types",meaning="",status="designed",introduced=""},
   ReleaseFeature.{id="source.units",section="Capabilities",name="`#load` / `coax deps`",meaning="Bounded source composition and input inventory",status="works",introduced="0.11.0"},
   ReleaseFeature.{id="source.declarations",section="Capabilities",name="`coax deps --declarations`",meaning="Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph",status="works",introduced="0.26.0"},
+  ReleaseFeature.{id="source.revisions",section="Capabilities",name="`coax deps --modules`",meaning="Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no exact declaration ranges or cache key",status="partial",introduced="0.27.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

@@ -222,5 +222,102 @@ class ModuleIdentity(unittest.TestCase):
         self.assertEqual(line, 2)
 
 
+GUARD = {
+    "types.coax": '#module "game.guard_types";\nGaObservation :: struct { calm: bool; day: int; }\nGaEffect :: struct { flags: int; }\n',
+    "util.coax": "ga_clamp :: (x: int) -> int { return ifx x < 0 then 0 else x; }\n",
+    "policy.coax": '#module "game.guard_policy";\n#load "types.coax";\n#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c { return GaEffect.{flags=ga_clamp(o.day)}; }\n',
+    "page.coax": '#load "types.coax";\npage_frame :: (o: GaObservation) -> int #export_c { return o.day; }\n',
+}
+
+
+class ModuleRevisions(unittest.TestCase):
+    """Conservative module-scoped revisions, kept apart from nominal IDs."""
+    setUp = ModuleIdentity.setUp
+    tree = ModuleIdentity.tree
+    run_coax = ModuleIdentity.run_coax
+
+    def modules(self, main):
+        p = self.run_coax("deps", main, "--modules", "--library")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        r = json.loads(p.stdout)
+        self.assertEqual(r["schema"], "coax.modules.v1")
+        return r
+
+    def revs(self, main):
+        r = self.modules(main)
+        return ({m["id"]: (m["content_revision"], m["revision"]) for m in r["modules"]},
+                {d["id"]: d["revision"] for d in r["declarations"]})
+
+    def test_two_consumers_share_ids_and_revisions(self):
+        root = self.tree(GUARD)
+        page, policy = self.revs(root / "page.coax"), self.revs(root / "policy.coax")
+        for name in ["GaObservation", "GaEffect"]:
+            key = PREFIX + "game.guard_types:struct:" + name
+            self.assertEqual(page[1][key], policy[1][key])
+        self.assertEqual(page[0]["game.guard_types"], policy[0]["game.guard_types"])
+        r = self.modules(root / "policy.coax")
+        self.assertTrue(all(len(m["revision"]) == 64 for m in r["modules"]))
+        self.assertIn("execution_profile", r["profile"])
+
+    def test_relocation_and_traversal_keep_revisions(self):
+        a = self.revs(self.tree(GUARD, "a") / "policy.coax")
+        self.assertEqual(self.revs(self.tree(GUARD, "x/y/b") / "policy.coax"), a)
+        moved = dict(GUARD)
+        moved["policy.coax"] = '#load "util.coax";\nga_decide :: (o: GaObservation) -> GaEffect #export_c { return GaEffect.{flags=ga_clamp(o.day)}; }\n#load "types.coax";\n#module "game.guard_policy";\n'
+        c = self.revs(self.tree(moved, "c") / "policy.coax")
+        self.assertEqual(c[0]["game.guard_types"], a[0]["game.guard_types"])
+        self.assertEqual(c[1][PREFIX + "game.guard_types:struct:GaEffect"], a[1][PREFIX + "game.guard_types:struct:GaEffect"])
+        # The policy's own source changed (reordered lines), so its revision changes, conservatively.
+        self.assertNotEqual(c[0]["game.guard_policy"], a[0]["game.guard_policy"])
+        unrelated = dict(GUARD)
+        unrelated["extra.coax"] = "unrelated :: () -> int { return 7; }\n"
+        unrelated["page.coax"] = '#load "extra.coax";\n' + GUARD["page.coax"]
+        d = self.revs(self.tree(unrelated, "d") / "page.coax")
+        self.assertEqual(d[0]["game.guard_types"], a[0]["game.guard_types"])
+
+    def test_content_layout_and_dependency_edits(self):
+        base = self.revs(self.tree(GUARD, "a") / "policy.coax")
+        key = PREFIX + "game.guard_types:struct:GaObservation"
+        layout = dict(GUARD)
+        layout["types.coax"] = GUARD["types.coax"].replace("day: int;", "day: int; weather: int;")
+        r = self.revs(self.tree(layout, "b") / "policy.coax")
+        self.assertIn(key, r[1])  # the nominal ID is unchanged
+        self.assertNotEqual(r[1][key], base[1][key])
+        self.assertNotEqual(r[0]["game.guard_types"][0], base[0]["game.guard_types"][0])
+        # A dependency's change reaches its dependents' revisions, not their content.
+        self.assertEqual(r[0]["game.guard_policy"][0], base[0]["game.guard_policy"][0])
+        self.assertNotEqual(r[0]["game.guard_policy"][1], base[0]["game.guard_policy"][1])
+        body = dict(GUARD)
+        body["util.coax"] = GUARD["util.coax"].replace("then 0", "then 1")
+        r = self.revs(self.tree(body, "c") / "policy.coax")
+        # util.coax has no claim, so it is a member of the policy: a body edit
+        # changes the policy's content and revision, never the types module.
+        self.assertEqual(r[0]["game.guard_types"], base[0]["game.guard_types"])
+        self.assertNotEqual(r[0]["game.guard_policy"][0], base[0]["game.guard_policy"][0])
+        self.assertNotEqual(r[0]["game.guard_policy"][1], base[0]["game.guard_policy"][1])
+        comment = dict(GUARD)
+        comment["policy.coax"] = "// a comment is content too\n" + GUARD["policy.coax"]
+        r = self.revs(self.tree(comment, "d") / "policy.coax")
+        self.assertNotEqual(r[0]["game.guard_policy"][0], base[0]["game.guard_policy"][0])
+
+    def test_unavailable_identities_are_named_not_invented(self):
+        root = self.tree(GUARD)
+        r = self.modules(root / "page.coax")
+        un = r["unavailable"]
+        self.assertIn("declaration_ranges", un)
+        self.assertEqual([Path(u["path"]).name for u in un["legacy_units"]], ["page.coax"])
+        self.assertEqual([d["name"] for d in un["legacy_declarations"]], ["page_frame"])
+        self.assertNotIn("page_frame", json.dumps(r["declarations"]))
+        (root / "proto").mkdir()
+        shutil.copy(ROOT.parent / "proto/descriptors/ios-home.pb", root / "proto/types.pb")
+        (root / "proto/codec.coax").write_text('#module "game.wire";\n#import_proto "types.pb" as Wire;\nwire_rev :: () -> u64 { return Wire_HudInvocation_get_revision(Wire_HudInvocation_new()).value; }\n')
+        (root / "wire.coax").write_text('#load "proto/codec.coax";\nmain :: () {}\n')
+        r = self.modules(root / "wire.coax")
+        wire = next(m for m in r["modules"] if m["id"] == "game.wire")
+        self.assertTrue(any("descriptor" in d for d in wire["dependencies"]))
+        self.assertTrue(r["unavailable"]["generated_declarations"])
+        self.assertTrue(all(d["generated"] for d in r["declarations"] if "Wire_" in d["id"]))
+
+
 if __name__ == "__main__":
     unittest.main()

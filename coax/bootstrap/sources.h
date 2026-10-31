@@ -127,6 +127,10 @@ _Bool SU_ident_valid(coax_string name);
 int64_t SU_owner_join(int64_t current, int64_t reaching);
 int64_t SU_claim_index(coax_v_string claims, coax_string id);
 int64_t SU_decl_id(coax_string, uint8_t kind, coax_string name, coax_v_u8 out);
+_Bool SU_digest_valid(coax_string d);
+int64_t SU_digest_cmp(coax_string a, coax_string b);
+_Bool SU_digests_sorted(coax_v_string ds);
+int64_t SU_revision_text(uint8_t kind, coax_v_string own, coax_v_string deps, coax_v_u8 out);
 
 #ifdef __cplusplus
 }

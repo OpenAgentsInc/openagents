@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.26.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.27.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1178,6 +1178,21 @@ so their uses are not references). A claim does not create a namespace:
 lookup stays flat, duplicate spellings in one graph remain errors, C
 spellings and generated code are unchanged, and `#authority` and
 diagnostics stay with each physical unit.
+
+Since 0.27.0, `coax deps FILE --modules` emits `coax.modules.v1` JSON:
+conservative module-scoped revisions kept apart from nominal IDs. A module's
+content revision is SHA-256 over the canonical text of its member units'
+source hashes; its revision adds the revisions of the modules it loads and,
+when a member imports a protobuf descriptor, every descriptor input. Both
+lists are sorted digest sets, so paths, load order and traversal never
+change a revision; any change to admitted module content (bodies, layouts,
+comments) changes every member declaration's revision while its nominal ID
+stays. The report carries member source hashes and the selected execution
+profile separately, and names what remains unavailable: unowned units and
+their declarations, generated declarations, and exact declaration ranges
+(not tracked). The canonical revision text and digest order are checked in
+`lib/compiler/sources.coax` (`SU_revision_text`). It is not a cache key,
+lockfile or toolchain manifest; build-only stage0 refuses it.
 
 `#import "Basic";` remains the only named built-in module, providing checked
 `print`. Qualified lookup, explicit visibility, separate namespaces, content

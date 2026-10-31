@@ -87,6 +87,7 @@ struct SourceUnit {
   // `module` is its owner's ID, or empty when no owner is available (legacy).
   bool claims = false;
   std::string module;
+  std::vector<int32_t> loads; // indices in Source::units this unit #loads, in written order
 };
 struct SourcePoint { std::string path; Loc loc; };
 struct Source {

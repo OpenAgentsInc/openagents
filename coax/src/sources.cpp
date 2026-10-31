@@ -105,7 +105,11 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     std::vector<coax_string> names; std::vector<uint8_t> states;
     for (const auto &u : units) {names.push_back({u->source->canonical.data(),(int64_t)u->source->canonical.size()});states.push_back(u->state);}
     auto found = SU_visit({names.data(),(int64_t)names.size()}, {states.data(),(int64_t)states.size()}, {key.data(),(int64_t)key.size()});
-    if (found.action == 1) {units[(size_t)found.index]->loaders.push_back({from,directive.offset});return true;}
+    if (found.action == 1) {
+      units[(size_t)found.index]->loaders.push_back({from,directive.offset});
+      if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)found.index);
+      return true;
+    }
     if (found.action == 2) {
       error_at(parent,directive,"E0602","source cycle loads active unit '" + display + "'");
       return false;
@@ -131,6 +135,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     total+=(int64_t)u->source->text.size();units.push_back(u);
     const int64_t self=(int64_t)units.size()-1;
     if (from>=0) u->loaders.push_back({from,directive.offset});
+    if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)self);
     Source local;local.path=display;local.text=u->source->text;
     std::vector<Token> tokens;
     if (!lex(arena,&local,&tokens)) return false;
