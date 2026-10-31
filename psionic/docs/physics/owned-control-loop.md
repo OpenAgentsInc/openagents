@@ -58,7 +58,10 @@ source armatures. Mixed-unit blocks preserve radians/metres; independent
 kinetic/potential differences and retained SDK values qualify the arithmetic.
 The next component is velocity-dependent bias and applied-force/forward-dynamics
 assembly, followed by contact and integration; a gravity-only query cannot
-replace the controller's nonzero-velocity bias sample. The source-visible low-level
+replace the controller's nonzero-velocity bias sample. The
+[fresh controller-sample integration](panda-owned-sample.md) first replaces
+queries behind the existing SDK loop, with matched-state field and controller
+comparisons before any claim about an owned whole episode. The source-visible low-level
 profile/pose helpers remain trusted inputs rather than an arbitrary-POD admission
 API. Moving finger inertias cannot be omitted from the arm mass block.
 The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
