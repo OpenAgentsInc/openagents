@@ -502,6 +502,26 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "ol-drum-bot",
+      "parent": "ol-space",
+      "title": "The bot in the drum gives a new player a first minute",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Played on production (desktop and phone, ?arena=drum): the bot scores within the first five to seven seconds after the opening kickoff, before a new player has found the ball. In the box, orbitleague-sim.coax holds the bot to at most two goals in the first minute against scripted novices; the drum isn't simulated. Run the same novices in the drum and tune the bot's drum play (its miss, its recovery after a hit, its line up the curve) until they hold there too.",
+      "files": [
+        "apps/openagents-web/orbitleague.coax",
+        "apps/openagents-web/orbitleague-sim.coax"
+      ],
+      "acceptance": [
+        "orbitleague-sim.coax runs its novices in the drum too and holds there: at most two bot goals in the first minute, the still player still concedes",
+        "Played on production in the drum, the bot doesn't score in the first 15 seconds against a player who drives at the ball"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }

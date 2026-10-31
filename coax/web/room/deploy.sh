@@ -7,7 +7,7 @@
 #
 # One instance at most, so a room is one room: its rooms live in memory. None
 # while nobody plays (min 0); a WebSocket keeps one up, for an hour at most
-# (the backend's and the service's timeout), and the game joins again.
+# (the service's timeout), and the game joins again.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
@@ -30,11 +30,11 @@ g run deploy "$service" --image "$image" --region "$region" \
 url="$(g run services describe "$service" --region "$region" --format 'value(status.url)')"
 [[ "$(curl -s -m 20 "$url/health")" == ok* ]] || { echo "room: $url/health is not ok" >&2; exit 1; }
 echo "room: $url/health ok"
-# The load balancer: a serverless backend with an hour's timeout (a WebSocket lives that long), and the rule.
+# The load balancer: a serverless backend (a WebSocket lives as long as the service's timeout), and the rule.
 g compute network-endpoint-groups describe "$service-neg" --region "$region" >/dev/null 2>&1 ||
   g compute network-endpoint-groups create "$service-neg" --region "$region" --network-endpoint-type serverless --cloud-run-service "$service"
 if ! g compute backend-services describe "$service" --global >/dev/null 2>&1; then
-  g compute backend-services create "$service" --global --load-balancing-scheme EXTERNAL_MANAGED --protocol HTTP --timeout 3600
+  g compute backend-services create "$service" --global --load-balancing-scheme EXTERNAL_MANAGED --protocol HTTP
   g compute backend-services add-backend "$service" --global --network-endpoint-group "$service-neg" --network-endpoint-group-region "$region"
 fi
 tmp="$stage/map.json"
