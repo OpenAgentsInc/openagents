@@ -83,6 +83,10 @@ Beam :: struct { from: Point; to: Point; ally: bool; }
 Input :: struct {
   aim_x: f32; aim_z: f32 = -1;   // where the camera looks, on the deck
   firing: bool; repairing: bool;
+  // The crosshair's ray (#84a2): from the camera, abreast of you, through
+  // the screen's centre (yaw and pitch). Without it a shot goes level from
+  // your chest along aim_x, aim_z.
+  ray: bool; from: Point; dir: Point;
 }
 
 State :: struct {
@@ -331,7 +335,8 @@ dg_head_hit :: (g: Game, e: int) {
   }
 }
 
-// The mutant the cutter would hit along aim from p, or ECS_NONE.
+// The mutant the cutter would hit along aim from p, or ECS_NONE. Lift's
+// throw still leads its crate at a mutant this way; the cutter does not.
 dg_target :: (g: Game, p: Point, ax: f32, az: f32, range: f32, spread: f32) -> int {
   dir := direction(ax, az);
   best := ECS_NONE; best_score: f32 = 1000000000;
@@ -349,6 +354,135 @@ dg_target :: (g: Game, p: Point, ax: f32, az: f32, range: f32, spread: f32) -> i
   return best;
 }
 
+// ---- where a shot lands (#84a2): a ray, and the creatures' bodies as boxes
+
+// Regions of a body a shot can land on.
+R_CORE :: 0; R_HEAD :: 1; R_LIMB :: 2;
+PARTS :: 6;          // most boxes a body has
+SHOT_RANGE :: 30.0;
+
+// One box of a creature's body, in its own frame (x right, z ahead, y up
+// from its feet), as the page draws it.
+Part :: struct { at: Point; half: Point; region: int; on: bool; }
+part_box :: (x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32, region: int) -> Part {
+  return Part.{at = v3(x, y, z), half = v3(hx, hy, hz), region = region, on = true};
+}
+
+// Box k (0 ..< PARTS) of mutant m; on is false past its last box, or for a
+// head or leg it has lost.
+mutant_part :: (m: Mutant, k: int) -> Part {
+  none: Part;
+  if m.kind == SKITTER {
+    if k == 0 { return part_box(0, 0.22, 0, 0.26, 0.2, 0.26, ifx m.part == 1 then R_HEAD else R_CORE); }
+    return none;
+  }
+  if m.kind == CRAWLER {
+    if k == 0 { return part_box(0, 0.45, 0, 0.33, 0.3, 0.45, R_CORE); }
+    if k == 1 { return part_box(0, 0.36, 0.6, 0.2, 0.16, 0.2, R_HEAD); }
+    if k == 2 { return part_box(-0.48, 0.25, 0, 0.12, 0.25, 0.5, R_LIMB); }
+    if k == 3 { return part_box(0.48, 0.25, 0, 0.12, 0.25, 0.5, R_LIMB); }
+    return none;
+  }
+  if m.kind == HOUND {
+    if k == 0 { return part_box(0, 0.88, 0, 0.33, 0.36, 0.66, R_CORE); }
+    if k == 1 { return part_box(0, 0.95, 0.95, 0.25, 0.27, 0.3, R_HEAD); }
+    if k == 2 { return part_box(-0.37, 0.4, 0, 0.1, 0.4, 0.58, R_LIMB); }
+    if k == 3 { return part_box(0.37, 0.4, 0, 0.1, 0.4, 0.58, R_LIMB); }
+    return none;
+  }
+  // The walkers (reaver, brute): torso, head, two legs, two arms.
+  sc := m.size;
+  body := sc * (ifx m.severed then 0.65f32 else 1.1f32);
+  if k == 0 { return part_box(0, body, 0, sc * 0.35, sc * 0.43, sc * 0.25, R_CORE); }
+  if k == 1 {
+    if m.headless { return none; }
+    return part_box(0, body + sc * 0.6, 0.1, sc * 0.2, sc * 0.22, sc * 0.2, R_HEAD);
+  }
+  if k == 2 || k == 3 {
+    side: f32 = ifx k == 2 then -1.0f32 else 1.0f32;
+    if m.severed && side < 0 { return none; }
+    return part_box(side * sc * 0.25, body * 0.4, 0, sc * 0.11, body * 0.4, sc * 0.12, R_LIMB);
+  }
+  if k == 4 || k == 5 {
+    side: f32 = ifx k == 4 then -1.0f32 else 1.0f32;
+    return part_box(side * sc * 0.6, body + 0.05, 0, sc * 0.12, sc * 0.45, sc * 0.12, R_LIMB);
+  }
+  return none;
+}
+
+// Where part k of mutant slot i is in the world (its centre).
+dg_part_at :: (g: Game, i: int, k: int) -> Point {
+  q := mutant_part(g.mutant[i], k);
+  p := g.pos[i]; sn := sin(g.yaw[i]); cs := cos(g.yaw[i]);
+  return v3(p.x + cs * q.at.x + sn * q.at.z, p.y + g.mutant[i].air + q.at.y, p.z - sn * q.at.x + cs * q.at.z);
+}
+
+RayHit :: struct {
+  t: f32;            // metres along the ray
+  at: Point;
+  who: int = -1;     // the mutant hit (an entity), or ECS_NONE
+  region: int;
+  solid: bool;       // it met cover, a wall, the reactor or the deck
+}
+
+// The first thing on the ray from `from` along unit dir, out to range: a
+// creature's part, cover, a hull wall, the reactor or the deck.
+dg_ray :: (g: Game, from: Point, dir: Point, range: f32) -> RayHit {
+  hit: RayHit;
+  hit.who = ECS_NONE;
+  hit.t = range;
+  reach := times(dir, range);
+  wall := arena_sweep(g.arena, from, 0, reach);
+  if wall <= 1 { hit.t = wall * range; hit.solid = true; }
+  r := dg_reactor(g);
+  if r != ECS_NONE {
+    rp := g.pos[slot_of(r)];
+    t := enter(Box.{lo = v3(rp.x - 1.9, -0.2, rp.z - 1.4), hi = v3(rp.x + 1.9, 1.35, rp.z + 1.4)}, 0, from, reach);
+    if t <= 1 && t * range < hit.t { hit.t = t * range; hit.solid = true; }
+  }
+  if dir.y < -0.000001 && from.y > 0 {
+    t := -from.y / dir.y;
+    if t < hit.t { hit.t = t; hit.solid = true; }
+  }
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    p := g.pos[i];
+    // Far off the ray: skip the boxes.
+    v := sub(p, from);
+    along := dot(v, dir);
+    if along < -2 || along > hit.t + 2 { continue; }
+    sn := sin(g.yaw[i]); cs := cos(g.yaw[i]);
+    for k: 0..<PARTS {
+      q := mutant_part(g.mutant[i], k);
+      if !q.on { continue; }
+      c := dg_part_at(g, i, k);
+      o := sub(from, c);
+      // Into the creature's frame: x right (cs, 0, -sn), z ahead (sn, 0, cs).
+      lp := v3(cs * o.x - sn * o.z, o.y, sn * o.x + cs * o.z);
+      ld := v3(cs * reach.x - sn * reach.z, reach.y, sn * reach.x + cs * reach.z);
+      t := enter(Box.{lo = times(q.half, -1), hi = q.half}, 0, lp, ld);
+      if t <= 1 && t * range < hit.t {
+        hit.t = t * range; hit.solid = false; hit.who = ecs_at(g.e, i); hit.region = q.region;
+      }
+    }
+  }
+  hit.at = add(from, times(dir, hit.t));
+  return hit;
+}
+
+// The ray a shot takes now: the crosshair's, or level from your chest.
+dg_shot_from :: (g: Game) -> Point {
+  if g.input[0].ray { return g.input[0].from; }
+  p := dg_player_pos(g);
+  return v3(p.x, 1.35, p.z);
+}
+dg_shot_dir :: (g: Game) -> Point {
+  if g.input[0].ray { return unit_or(g.input[0].dir, v3(0, 0, -1)); }
+  return direction(g.input[0].aim_x, g.input[0].aim_z);
+}
+// What the crosshair is on now.
+dg_aimed :: (g: Game) -> RayHit { return dg_ray(g, dg_shot_from(g), dg_shot_dir(g), f32(SHOT_RANGE)); }
+
 dg_begin_reload :: (g: Game) -> bool {
   s := g.st[0];
   if s.reload != 0 || s.ammo == 12 || s.reserve == 0 || s.phase != FIGHT { return false; }
@@ -357,7 +491,11 @@ dg_begin_reload :: (g: Game) -> bool {
   return true;
 }
 
-// Fires once if ready (also what holding Fire does each step).
+// Fires once if ready (also what holding Fire does each step). The shot
+// lands where the crosshair's ray first meets something (#84a2), and what
+// it does comes from where on the body it lands: the head pops heads, a
+// limb severs it, the core takes the damage. The cutter's mode doubles
+// down on its own region.
 dg_fire :: (g: Game) {
   s := g.st[0];
   if s.paused || s.phase != FIGHT || s.reload != 0 || s.cooldown != 0 { return; }
@@ -371,24 +509,23 @@ dg_fire :: (g: Game) {
   g.st[0].ammo -= 1;
   g.st[0].cooldown = 0.24;
   p := dg_player_pos(g);
-  dir := direction(g.input[0].aim_x, g.input[0].aim_z);
-  t := dg_target(g, p, g.input[0].aim_x, g.input[0].aim_z, 29, 0.25);
-  end := v3(p.x + dir.x * 24, 1.3, p.z + dir.z * 24);
-  if t != ECS_NONE {
-    m := g.mutant[slot_of(t)];
-    tp := g.pos[slot_of(t)];
-    end = v3(tp.x, m.size * (ifx s.mode == HEAD then 1.7f32 else ifx s.mode == SEVER then 0.55f32 else 1.3f32), tp.z);
-  }
-  add_beam(g, v3(p.x, 1.35, p.z), end, 0.1, false);
-  emit(g, Event.{kind = EV_SHOT, flag = t != ECS_NONE, at = v3(p.x, 1.35, p.z), to = end});
+  hit := dg_aimed(g);
+  t := hit.who;
+  muzzle := v3(p.x, 1.35, p.z);
+  add_beam(g, muzzle, hit.at, 0.1, false);
+  emit(g, Event.{kind = EV_SHOT, flag = t != ECS_NONE, n = hit.region, at = muzzle, to = hit.at});
   if t == ECS_NONE { return; }
   ti := slot_of(t);
-  if s.mode == HEAD { dg_head_hit(g, t); }
-  else if s.mode == SEVER && !g.mutant[ti].severed {
+  if hit.region == R_HEAD {
+    dg_head_hit(g, t);
+    if s.mode == HEAD && ecs_alive(g.e, t) { dg_head_hit(g, t); }
+  } else if hit.region == R_LIMB {
+    first := !g.mutant[ti].severed;
     g.mutant[ti].severed = true;
-    dg_hit(g, t, 30);
+    dg_hit(g, t, ifx s.mode == SEVER then 30.0f32 else ifx first then 15.0f32 else 20.0f32);
   } else {
-    dg_hit(g, t, ifx g.mutant[ti].kind == BRUTE && !g.mutant[ti].severed then 18.0f32 else 40.0f32);
+    n := ifx g.mutant[ti].kind == BRUTE && !g.mutant[ti].severed then 18.0f32 else 40.0f32;
+    dg_hit(g, t, ifx s.mode == CORE then n * 1.5 else n);
   }
 }
 
@@ -1074,9 +1211,24 @@ kill_all :: (g: Game) {
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { dg_hit(g, ecs_at(g.e, i), 999); } }
 }
 dist_to :: (g: Game, e: int, p: Point) -> f32 { return flat(g.pos[slot_of(e)], p); }
-// The first live mutant you can see, as the demo's tests aimed.
+// Aims the crosshair from your chest at p toward a point.
+aim_at :: (g: Game, p: Point, to: Point) {
+  g.pos[slot_of(dg_player(g))] = p;
+  g.input[0].ray = true;
+  g.input[0].from = v3(p.x, 1.35, p.z);
+  g.input[0].dir = unit_or(sub(to, g.input[0].from), v3(0, 0, -1));
+  g.input[0].aim_x = g.input[0].dir.x; g.input[0].aim_z = g.input[0].dir.z;
+}
+// The part a test aims at: the head in HEAD mode while it has one, else the core.
+aim_part :: (g: Game, i: int) -> int { return ifx g.st[0].mode == HEAD && mutant_part(g.mutant[i], 1).on then 1 else 0; }
+// The first live mutant a shot from p at its aimed part would hit.
 visible :: (g: Game, p: Point) -> int {
-  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) && !dg_wall_ray(g, p, g.pos[i]) { return ecs_at(g.e, i); } }
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    from := v3(p.x, 1.35, p.z);
+    hit := dg_ray(g, from, unit_or(sub(dg_part_at(g, i, aim_part(g, i)), from), v3(0, 0, -1)), f32(SHOT_RANGE));
+    if hit.who == ecs_at(g.e, i) { return hit.who; }
+  }
   return ECS_NONE;
 }
 fight_wave :: (g: Game, p: Point) -> int {
@@ -1084,8 +1236,12 @@ fight_wave :: (g: Game, p: Point) -> int {
   for k: 0..<2400 {
     if g.st[0].phase != FIGHT { break; }
     e := visible(g, p);
-    if e != ECS_NONE { tick(g, p, true, false, g.pos[slot_of(e)].x - p.x, g.pos[slot_of(e)].z - p.z, 0.05); }
-    else { tk(g, p); }
+    if e != ECS_NONE {
+      i := slot_of(e);
+      g.input[0] = Input.{firing = true};
+      aim_at(g, p, dg_part_at(g, i, aim_part(g, i)));
+      dg_frame(g, 0.05);
+    } else { tk(g, p); }
     if dg_mutants(g) > most { most = dg_mutants(g); }
   }
   return most;
@@ -1106,7 +1262,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   b := slot_of(brute);
   #assert g.mutant[b].kind == BRUTE;
   g.pos[b] = v3(0, 0, 0);
-  place(g, ME, 0, -1);
+  aim_at(g, ME, dg_part_at(g, b, 3));   // its right leg
   dg_fire(g);
   #assert g.mutant[b].severed && g.hp[b] == 150;
   before := g.pos[b].z;
@@ -1115,8 +1271,9 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   g.st[0].cooldown = 0;
   g.st[0].mode = CORE;
   hp := g.hp[b];
+  aim_at(g, ME, dg_part_at(g, b, 0));
   dg_fire(g);
-  #assert g.hp[b] == hp - 40;
+  #assert g.hp[b] == hp - 60;   // CORE mode on the core: half as much again
 }
 
 #test "ammo, reload, cover and pause" {
@@ -1185,7 +1342,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   clear_mutants(g);
   parent := dg_spawn_mutant(g, REAVER, 0, 3, -1);
   g.st[0].mode = HEAD;
-  place(g, ME, 0, -1);
+  aim_at(g, ME, dg_part_at(g, slot_of(parent), 1));
   dg_fire(g);
   p := slot_of(parent);
   #assert g.hp[p] == 0 && g.mutant[p].headless && g.st[0].phase == FIGHT;
@@ -1283,6 +1440,96 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
     repair(g);
   }
   #assert g.st[0].phase == WON && g.st[0].kills > 21;
+}
+
+// ---- free aim (#84a2): the shot goes where the crosshair is
+
+shot_hits :: (g: Game) -> int {
+  n := 0;
+  for i: 0..<g.ev[0] { if g.events[i].kind == EV_SHOT && g.events[i].flag { n += 1; } }
+  return n;
+}
+
+#test "a shot at empty floor hits nothing, even with a mutant a metre to the side" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000;
+  clear_mutants(g);
+  e := dg_spawn_mutant(g, REAVER, 1, 4, -1);
+  i := slot_of(e);
+  aim_at(g, ME, v3(0, 0, 4));
+  // The old cone would have snapped to it (1 m off a 5 m shot).
+  #assert dg_target(g, ME, g.input[0].aim_x, g.input[0].aim_z, 29, 0.25) == e;
+  hit := dg_aimed(g);
+  #assert hit.who == ECS_NONE && hit.solid && abs(hit.at.y) < 0.01 && abs(hit.at.z - 4) < 0.01;
+  g.ev[0] = 0;
+  dg_fire(g);
+  #assert g.hp[i] == TYPE_HP[REAVER] && !g.mutant[i].severed && dg_events(g, EV_SHOT) == 1 && shot_hits(g) == 0;
+  // A metre over, on it, it hits.
+  g.st[0].cooldown = 0;
+  aim_at(g, ME, dg_part_at(g, i, 0));
+  dg_fire(g);
+  #assert g.hp[i] < TYPE_HP[REAVER];
+}
+
+#test "tilting the view up and down moves where the shot lands" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  g.input[0].ray = true; g.input[0].from = v3(0, 1.35, 9);
+  g.input[0].dir = v3(0, sin(-0.35f32), -cos(-0.35f32));
+  steep := dg_aimed(g);
+  g.input[0].dir = v3(0, sin(-0.15f32), -cos(-0.15f32));
+  shallow := dg_aimed(g);
+  #assert steep.solid && shallow.solid && steep.at.z > shallow.at.z + 3;
+  // On a reaver 5 m off: pitch up for the head, down for the legs (in
+  // line with its right leg).
+  g.input[0].from = v3(0.18, 1.35, 9);
+  e := dg_spawn_mutant(g, REAVER, 0, 4, -1);
+  i := slot_of(e);
+  regions: [3] int;
+  pitches := [3] f32.[0.08, -0.07, -0.16];
+  for k: 0..<3 {
+    g.input[0].dir = v3(0, sin(pitches[k]), -cos(pitches[k]));
+    hit := dg_aimed(g);
+    #assert hit.who == e;
+    regions[k] = hit.region;
+  }
+  #assert regions[0] == R_HEAD && regions[1] == R_CORE && regions[2] == R_LIMB;
+  // And the regions do what they say: a leg severs, the head pops.
+  g.input[0].dir = v3(0, sin(-0.16f32), -cos(-0.16f32));
+  dg_fire(g);
+  #assert g.mutant[i].severed && !g.mutant[i].headless;
+}
+
+#test "a shot through a gap in cover hits the mutant behind it; one at cover hits the cover" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000;
+  clear_mutants(g);
+  // The two low covers at (-5, 3) and (5, 3) leave a gap from x -3.4 to 3.4.
+  e := dg_spawn_mutant(g, CRAWLER, 0, -1, -1);
+  i := slot_of(e);
+  aim_at(g, ME, dg_part_at(g, i, 0));
+  hit := dg_aimed(g);
+  #assert hit.who == e;
+  dg_fire(g);
+  #assert g.hp[i] < TYPE_HP[CRAWLER];
+  // At the cover's face: the shot stops there.
+  g.st[0].cooldown = 0;
+  aim_at(g, v3(-5, 0, 9), v3(-5, 0.6, 3.65));
+  hit = dg_aimed(g);
+  #assert hit.solid && hit.who == ECS_NONE && abs(hit.at.z - 3.65) < 0.02;
+  // A crawler crouched behind the cover, aimed at: the cover takes it.
+  f := dg_spawn_mutant(g, CRAWLER, -5, 1.6, -1);
+  aim_at(g, v3(-5, 0, 9), dg_part_at(g, slot_of(f), 0));
+  hit = dg_aimed(g);
+  #assert hit.solid && hit.who == ECS_NONE && hit.at.z > 3.6;
+  hp := g.hp[slot_of(f)];
+  dg_fire(g);
+  #assert g.hp[slot_of(f)] == hp;
+  // A reaver standing there shows over the low cover: its head can be hit.
+  r := dg_spawn_mutant(g, REAVER, 5, 1.6, -1);
+  aim_at(g, v3(5, 0, 9), dg_part_at(g, slot_of(r), 1));
+  hit = dg_aimed(g);
+  #assert hit.who == r && hit.region == R_HEAD;
 }
 
 spawn_crowd :: (g: Game) {

@@ -534,11 +534,30 @@ hold_axis :: (held: int, plus: int, minus: int) -> f32 {
 }
 
 forward :: (s: [] DeadGears) -> Point { return v3(sin(s[0].yaw), 0, cos(s[0].yaw)); }
-// The cutter, lift and stun aim where the camera looks.
+// Where the camera looks (yaw and pitch).
+view_dir :: (s: [] DeadGears) -> Point {
+  return v3(sin(s[0].yaw) * cos(s[0].pitch), sin(s[0].pitch), cos(s[0].yaw) * cos(s[0].pitch));
+}
+// The point at your shoulder the camera hangs behind: the crosshair's ray
+// passes through it along view_dir(s), so a shot starts abreast of you and
+// nothing behind you can take it (#84a2).
+shoulder_at :: (s: [] DeadGears) -> Point {
+  g := game(s);
+  head := add(s[0].feet, v3(0, ifx g.st[0].cover then 1.1f32 else 1.55f32, 0));
+  f := view_dir(s);
+  right := unit_or(v3(-f.z, 0, f.x), v3(1, 0, 0));
+  w := hi(s[0].width, 1); h := hi(s[0].height, 1);
+  return add(head, times(right, 0.72 * lo(1, w / h / 0.9)));
+}
+// The cutter fires along the crosshair's ray; lift and stun aim where the
+// camera looks on the deck.
 aim :: (s: [] DeadGears) {
   g := game(s);
   f := forward(s);
   g.input[0].aim_x = f.x; g.input[0].aim_z = f.z;
+  g.input[0].ray = true;
+  g.input[0].from = shoulder_at(s);
+  g.input[0].dir = view_dir(s);
 }
 
 // You walk among the hull, the covers and the reactor, round every other
@@ -1112,12 +1131,8 @@ lights :: (s: [] DeadGears, u: [] f32) {
 NEAR :: 0.05; FAR :: 100.0;
 camera :: (s: [] DeadGears, w: f32, h: f32) {
   g := game(s);
-  cover := g.st[0].cover;
-  head := add(s[0].feet, v3(0, ifx cover then 1.1f32 else 1.55f32, 0));
-  f := v3(sin(s[0].yaw) * cos(s[0].pitch), sin(s[0].pitch), cos(s[0].yaw) * cos(s[0].pitch));
-  right := unit_or(v3(-f.z, 0, f.x), v3(1, 0, 0));
-  shoulder := 0.72 * lo(1, w / hi(h, 1) / 0.9);
-  at := add(head, times(right, shoulder));
+  f := view_dir(s);
+  at := shoulder_at(s);
   back := times(f, -f32(CAMERA_DIST));
   room := arena_sweep(g.arena, at, 0.2, back);
   if room < 1 { back = times(back, hi(0.15, room - 0.05)); }
@@ -1555,6 +1570,28 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert s[0].feet.x > 5 + 1.6 + 0.29;
 }
 
+#test "the shot's ray runs through the crosshair, and tilting the view moves it (#84a2)" {
+  for size: 0..<2 {
+    w: f32 = ifx size == 0 then 1280.0f32 else 390.0f32; h: f32 = ifx size == 0 then 800.0f32 else 844.0f32;
+    s: [1] DeadGears;
+    started(s[..]);
+    u: [UNIFORM_FLOATS] f32;
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+    s[0].pitch = -0.3;
+    n := deadgears_frame(s[..], out[..], u[..], w, h, 1, 0.016, false);
+    g := game(s[..]);
+    #assert g.input[0].ray;
+    far := add(g.input[0].from, times(g.input[0].dir, 12));
+    c := on_screen(u[..], far, w, h);
+    #assert c.ok && abs(c.x - w / 2) < 1 && abs(c.y - h / 2) < 1;
+    low := dg_aimed(g);
+    s[0].pitch = -0.12;
+    n = deadgears_frame(s[..], out[..], u[..], w, h, 1, 0.016, false);
+    high := dg_aimed(g);
+    #assert low.solid && low.at.z > high.at.z + 2;
+  }
+}
+
 #test "the thumbs: the left half walks, the right half looks, FIRE holds" {
   s: [1] DeadGears;
   started(s[..]);
@@ -1637,13 +1674,25 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
 // (F, E), through the thumbs' buttons on a phone (FIRE, REPAIR).
 bot_turn :: (s: [] DeadGears) {
   g := game(s);
-  best := -1; most: f32 = 1000000;
+  best := -1; most: f32 = 1000000; clear := false;
   for i: 0..<ecs_high(g.e) {
     if !alive_mutant(g, i) { continue; }
     d := flat(g.pos[i], s[0].feet);
-    if d < most { most = d; best = i; }
+    from := shoulder_at(s);
+    open := dg_ray(g, from, unit_or(sub(dg_part_at(g, i, 0), from), v3(0, 0, -1)), f32(SHOT_RANGE)).who == ecs_at(g.e, i);
+    if (open && !clear) || (open == clear && d < most) { most = d; best = i; clear = open; }
   }
-  if best >= 0 { p := g.pos[best]; s[0].yaw = atan2(p.x - s[0].feet.x, p.z - s[0].feet.z); }
+  if best >= 0 { aim_bot(s, best); }
+}
+// Turns the view so the crosshair is on mutant slot i's core.
+aim_bot :: (s: [] DeadGears, i: int) {
+  g := game(s);
+  to := dg_part_at(g, i, 0);
+  for k: 0..<3 {
+    d := sub(to, shoulder_at(s));
+    s[0].yaw = atan2(d.x, d.z);
+    s[0].pitch = clamp(atan2(d.y, flat_length(d)), -0.62, 0.45);
+  }
 }
 play_out :: (s: [] DeadGears, phone_size: bool, fight: bool, frames: int) -> int {
   g := game(s);
