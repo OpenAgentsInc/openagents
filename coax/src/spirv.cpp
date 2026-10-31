@@ -24,7 +24,7 @@ struct SpirvTree {
   }
   static uint32_t type_code(Type t) { return t == &T_VOID ? 0 : t == &T_BOOL ? 1 : t == &T_F32 ? 2 : 99; }
   uint32_t proc_index(const ProcDecl *p) {
-    for (uint32_t i = 0; i < file->procs.count; i++) if (file->procs[i] == p) return i;
+    for (uint32_t i = 0; i < (uint32_t)file->procs.count; i++) if (file->procs[i] == p) return i;
     return 0;
   }
   uint32_t declare(Str name, Type t) {
@@ -138,22 +138,46 @@ struct SpirvTree {
 };
 #endif
 
-bool emit_spirv(const File *file, const std::string &kernel, std::string *out) {
+// kernel names one procedure for a compute kernel; fill names one to four
+// (comma-separated) for a full-screen pass; stroke names one for a stroke
+// pass. At most one of them is set; none makes a library.
+bool emit_spirv(const File *file, const std::string &kernel, const std::string &fill, const std::string &stroke, std::string *out) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
-  (void)file; (void)kernel; (void)out;
+  (void)file; (void)kernel; (void)fill; (void)stroke; (void)out;
   fprintf(stderr, "coax: coax spirv requires the final compiler, not build-only stage0\n");
   return false;
 #else
   SpirvTree t{file};
-  uint32_t entry = 0xFFFFFFFFu;
-  for (uint32_t i = 0; i < file->procs.count; i++)
-    if (!kernel.empty() && std::string(file->procs[i]->name.data, file->procs[i]->name.count) == kernel) entry = i;
-  if (!kernel.empty() && entry == 0xFFFFFFFFu) {
-    error_at(file->src, {1, 1, 0}, "E0704", "no procedure named '" + kernel + "' to make a kernel of",
-             "--kernel names one procedure of the file");
+  auto index = [&](const std::string &name, const char *flag, uint32_t *at) {
+    for (uint32_t i = 0; i < (uint32_t)file->procs.count; i++)
+      if (std::string(file->procs[i]->name.data, file->procs[i]->name.count) == name) { *at = i; return true; }
+    error_at(file->src, {1, 1, 0}, "E0704", "no procedure named '" + name + "' for " + flag,
+             std::string(flag) + " names procedures of the file");
     return false;
+  };
+  t.words = {(uint32_t)file->procs.count, 0xFFFFFFFFu};
+  if (!kernel.empty() && !index(kernel, "--kernel", &t.words[1])) return false;
+  if (!stroke.empty()) {
+    uint32_t p = 0;
+    if (!index(stroke, "--stroke", &p)) return false;
+    t.words[1] = 0xFFFFFFFDu;
+    t.words.push_back(p);
   }
-  t.words = {(uint32_t)file->procs.count, entry};
+  if (!fill.empty()) {
+    std::vector<uint32_t> ps;
+    size_t at = 0;
+    for (;;) {
+      size_t end = fill.find(',', at);
+      uint32_t p = 0;
+      if (!index(fill.substr(at, end == std::string::npos ? std::string::npos : end - at), "--fill", &p)) return false;
+      ps.push_back(p);
+      if (end == std::string::npos) break;
+      at = end + 1;
+    }
+    t.words[1] = 0xFFFFFFFEu;
+    t.words.push_back((uint32_t)ps.size());
+    t.words.insert(t.words.end(), ps.begin(), ps.end());
+  }
   for (const ProcDecl *p : file->procs) {
     t.words.push_back(SpirvTree::type_code(p->ret));
     t.words.push_back((uint32_t)p->params.count);

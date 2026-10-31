@@ -86,3 +86,17 @@ Every phase and native feature is a task in the Verse project
   meaning for a negative or zero base. `verse/gpu/light-check.sh coderos-4080`
   runs all 18 procedures of `verse/light.coax` on the RTX 4080 against the C
   build over 65,536 rows each, under the validation layers.
+- 2026-10-31: G2 offscreen: `coax spirv --fill` (a full-screen pass) and
+  `--stroke` (triangles from the realm's vertices, blended one plus one),
+  drawn by `vkc_render` into an RGBA f32 image. Star Catcher's sky
+  (`verse/kms/starcatch-light.coax`) is now three scalar channel procedures
+  that the CPU and the GPU both call. Its star hash was `fract(sin(..)*43758)`,
+  which scales sin's last-bit error by about 43,758 and put stars in different
+  cells on the GPU (13,748 pixels off by up to 232/255). It is now the mod-289
+  permutation over whole numbers, exact in f32 on any hardware. The sky has
+  a different star field, equally random. `verse/gpu/frame-check.sh
+  coderos-4080` steps the realm 120 frames at 1920x1080, as
+  `verse-kms --headless` does, and draws it on the RTX 4080: 2,071,258 pixels
+  exact, 2,342 within 1/255, 0 further, and 0 errors and 0 warnings under the
+  validation layers. The window and the boot session are the next tasks
+  (gpu-window, gpu-display-session).

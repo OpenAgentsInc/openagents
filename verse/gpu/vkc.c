@@ -1,4 +1,4 @@
-// The headless Vulkan compute device (vkc.h).
+// The headless Vulkan device (vkc.h).
 #include "vkc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +47,7 @@ void vkc_open(Vkc *v) {
     if (make) CHECK(make(v->inst, &mci, NULL, &v->messenger));
   }
 
-  // The first discrete GPU with a compute queue, else any GPU with one.
+  // The first discrete GPU with a graphics and compute queue, else any GPU with one.
   uint32_t ndev = 0;
   CHECK(vkEnumeratePhysicalDevices(v->inst, &ndev, NULL));
   VkPhysicalDevice devs[16];
@@ -63,14 +63,14 @@ void vkc_open(Vkc *v) {
       if (nq > 32) nq = 32;
       vkGetPhysicalDeviceQueueFamilyProperties(devs[i], &nq, q);
       for (uint32_t f = 0; f < nq; f++)
-        if (q[f].queueFlags & VK_QUEUE_COMPUTE_BIT) { v->gpu = devs[i]; v->family = f; break; }
+        if ((q[f].queueFlags & (VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT)) == (VK_QUEUE_COMPUTE_BIT | VK_QUEUE_GRAPHICS_BIT)) { v->gpu = devs[i]; v->family = f; break; }
     }
-  if (!v->gpu) { fprintf(stderr, "vkc: no GPU with a compute queue\n"); exit(1); }
+  if (!v->gpu) { fprintf(stderr, "vkc: no GPU with a graphics and compute queue\n"); exit(1); }
   vkGetPhysicalDeviceProperties(v->gpu, &v->props);
 
   float priority = 1;
   VkDeviceQueueCreateInfo qci = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = v->family, .queueCount = 1, .pQueuePriorities = &priority};
-  // Kernels from coax spirv keep f32 NaN, infinity and signed zero (float controls).
+  // Kernels and draws from coax spirv keep f32 NaN, infinity and signed zero (float controls).
   const char *dexts[] = {VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME};
   VkDeviceCreateInfo dci = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
                             .enabledExtensionCount = 1, .ppEnabledExtensionNames = dexts};
@@ -78,21 +78,27 @@ void vkc_open(Vkc *v) {
   vkGetDeviceQueue(v->dev, v->family, 0, &v->queue);
 }
 
-VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size) {
-  VkcBuffer b = {.size = size};
-  VkBufferCreateInfo bci = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-  CHECK(vkCreateBuffer(v->dev, &bci, NULL, &b.buf));
-  VkMemoryRequirements req;
-  vkGetBufferMemoryRequirements(v->dev, b.buf, &req);
+static VkDeviceMemory allocate(Vkc *v, VkMemoryRequirements req, VkMemoryPropertyFlags want) {
   VkPhysicalDeviceMemoryProperties mem;
   vkGetPhysicalDeviceMemoryProperties(v->gpu, &mem);
   uint32_t type = UINT32_MAX;
-  VkMemoryPropertyFlags want = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
   for (uint32_t i = 0; i < mem.memoryTypeCount; i++)
     if ((req.memoryTypeBits & (1u << i)) && (mem.memoryTypes[i].propertyFlags & want) == want) { type = i; break; }
-  if (type == UINT32_MAX) { fprintf(stderr, "vkc: no host-visible memory\n"); exit(1); }
+  if (type == UINT32_MAX) { fprintf(stderr, "vkc: no memory of type %#x\n", (unsigned)want); exit(1); }
   VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = type};
-  CHECK(vkAllocateMemory(v->dev, &mai, NULL, &b.mem));
+  VkDeviceMemory m;
+  CHECK(vkAllocateMemory(v->dev, &mai, NULL, &m));
+  return m;
+}
+
+VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size) {
+  VkcBuffer b = {.size = size};
+  VkBufferCreateInfo bci = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
+                            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+  CHECK(vkCreateBuffer(v->dev, &bci, NULL, &b.buf));
+  VkMemoryRequirements req;
+  vkGetBufferMemoryRequirements(v->dev, b.buf, &req);
+  b.mem = allocate(v, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   CHECK(vkBindBufferMemory(v->dev, b.buf, b.mem, 0));
   CHECK(vkMapMemory(v->dev, b.mem, 0, size, 0, &b.map));
   memset(b.map, 0, size);
@@ -168,6 +174,148 @@ void vkc_dispatch(Vkc *v, const uint32_t *words, size_t count, const VkcBuffer *
   vkDestroyPipelineLayout(dev, layout, NULL);
   vkDestroyDescriptorSetLayout(dev, dsl, NULL);
   vkDestroyShaderModule(dev, module, NULL);
+}
+
+// ---- draws
+
+static VkShaderModule shader(Vkc *v, const VkcPass *p) {
+  VkShaderModuleCreateInfo smi = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = p->count * 4, .pCode = p->words};
+  VkShaderModule m;
+  CHECK(vkCreateShaderModule(v->dev, &smi, NULL, &m));
+  return m;
+}
+
+static VkPipeline pipeline(Vkc *v, const VkcPass *p, VkShaderModule m, VkRenderPass rp, VkPipelineLayout layout, uint32_t w, uint32_t h) {
+  VkPipelineShaderStageCreateInfo stages[2] = {
+    {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = m, .pName = "vs"},
+    {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = m, .pName = "fs"}};
+  // A stroke vertex: position, place, shape, tint (spirv.coax, SV_STROKE).
+  VkVertexInputBindingDescription bind = {.binding = 0, .stride = p->stride, .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+  VkVertexInputAttributeDescription attrs[4] = {
+    {.location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 0},
+    {.location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 8},
+    {.location = 2, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = 16},
+    {.location = 3, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = 32}};
+  VkPipelineVertexInputStateCreateInfo vin = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+    .vertexBindingDescriptionCount = p->vertices ? 1u : 0u, .pVertexBindingDescriptions = &bind,
+    .vertexAttributeDescriptionCount = p->vertices ? 4u : 0u, .pVertexAttributeDescriptions = attrs};
+  VkPipelineInputAssemblyStateCreateInfo ia = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
+  VkViewport vp = {0, 0, (float)w, (float)h, 0, 1};
+  VkRect2D sc = {{0, 0}, {w, h}};
+  VkPipelineViewportStateCreateInfo vps = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, .viewportCount = 1, .pViewports = &vp, .scissorCount = 1, .pScissors = &sc};
+  VkPipelineRasterizationStateCreateInfo rs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+    .polygonMode = VK_POLYGON_MODE_FILL, .cullMode = VK_CULL_MODE_NONE, .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE, .lineWidth = 1};
+  VkPipelineMultisampleStateCreateInfo ms = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
+  // Additive: the color plus what is there, as kms.c adds strokes.
+  VkPipelineColorBlendAttachmentState blend = {.blendEnable = p->additive ? VK_TRUE : VK_FALSE,
+    .srcColorBlendFactor = VK_BLEND_FACTOR_ONE, .dstColorBlendFactor = VK_BLEND_FACTOR_ONE, .colorBlendOp = VK_BLEND_OP_ADD,
+    .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE, .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE, .alphaBlendOp = VK_BLEND_OP_ADD,
+    .colorWriteMask = 0xF};
+  VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, .attachmentCount = 1, .pAttachments = &blend};
+  VkGraphicsPipelineCreateInfo gpi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = 2, .pStages = stages,
+    .pVertexInputState = &vin, .pInputAssemblyState = &ia, .pViewportState = &vps, .pRasterizationState = &rs,
+    .pMultisampleState = &ms, .pColorBlendState = &cb, .layout = layout, .renderPass = rp, .subpass = 0};
+  VkPipeline pl;
+  CHECK(vkCreateGraphicsPipelines(v->dev, VK_NULL_HANDLE, 1, &gpi, NULL, &pl));
+  return pl;
+}
+
+void vkc_render(Vkc *v, uint32_t w, uint32_t h, const VkcPass *passes, uint32_t n, float *rgba) {
+  VkDevice dev = v->dev;
+  const VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = format,
+    .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+    .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+  VkImage image;
+  CHECK(vkCreateImage(dev, &ici, NULL, &image));
+  VkMemoryRequirements req;
+  vkGetImageMemoryRequirements(dev, image, &req);
+  VkDeviceMemory image_mem = allocate(v, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  CHECK(vkBindImageMemory(dev, image, image_mem, 0));
+  VkImageViewCreateInfo ivi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = image, .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = format,
+    .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+  VkImageView view;
+  CHECK(vkCreateImageView(dev, &ivi, NULL, &view));
+
+  // One subpass; the image ends ready to copy out.
+  VkAttachmentDescription att = {.format = format, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+    .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, .finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
+  VkAttachmentReference ref = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+  VkSubpassDescription sub = {.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS, .colorAttachmentCount = 1, .pColorAttachments = &ref};
+  VkSubpassDependency after = {.srcSubpass = 0, .dstSubpass = VK_SUBPASS_EXTERNAL,
+    .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, .dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
+    .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT};
+  VkRenderPassCreateInfo rpi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, .attachmentCount = 1, .pAttachments = &att,
+    .subpassCount = 1, .pSubpasses = &sub, .dependencyCount = 1, .pDependencies = &after};
+  VkRenderPass rp;
+  CHECK(vkCreateRenderPass(dev, &rpi, NULL, &rp));
+  VkFramebufferCreateInfo fbi = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = rp, .attachmentCount = 1, .pAttachments = &view,
+    .width = w, .height = h, .layers = 1};
+  VkFramebuffer fb;
+  CHECK(vkCreateFramebuffer(dev, &fbi, NULL, &fb));
+
+  if (n > 8) { fprintf(stderr, "vkc: at most 8 passes\n"); exit(1); }
+  VkShaderModule modules[8];
+  VkPipelineLayout layouts[8];
+  VkPipeline pipelines[8];
+  for (uint32_t i = 0; i < n; i++) {
+    modules[i] = shader(v, &passes[i]);
+    VkPushConstantRange range = {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, .offset = 0, .size = passes[i].push_size};
+    VkPipelineLayoutCreateInfo pli = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                      .pushConstantRangeCount = passes[i].push_size ? 1u : 0u, .pPushConstantRanges = &range};
+    CHECK(vkCreatePipelineLayout(dev, &pli, NULL, &layouts[i]));
+    pipelines[i] = pipeline(v, &passes[i], modules[i], rp, layouts[i], w, h);
+  }
+  VkcBuffer readback = vkc_buffer(v, (VkDeviceSize)w * h * 16);
+
+  VkCommandPoolCreateInfo cpci = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, .queueFamilyIndex = v->family};
+  VkCommandPool cmdpool;
+  CHECK(vkCreateCommandPool(dev, &cpci, NULL, &cmdpool));
+  VkCommandBufferAllocateInfo cbai = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, .commandPool = cmdpool, .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = 1};
+  VkCommandBuffer cmd;
+  CHECK(vkAllocateCommandBuffers(dev, &cbai, &cmd));
+  VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+  CHECK(vkBeginCommandBuffer(cmd, &begin));
+  VkClearValue clear = {.color = {{0, 0, 0, 0}}};
+  VkRenderPassBeginInfo rbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = rp, .framebuffer = fb,
+                               .renderArea = {{0, 0}, {w, h}}, .clearValueCount = 1, .pClearValues = &clear};
+  vkCmdBeginRenderPass(cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+  for (uint32_t i = 0; i < n; i++) {
+    if (!passes[i].vertex_count) continue;
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[i]);
+    if (passes[i].push_size)
+      vkCmdPushConstants(cmd, layouts[i], VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, passes[i].push_size, passes[i].push);
+    if (passes[i].vertices) { VkDeviceSize zero = 0; vkCmdBindVertexBuffers(cmd, 0, 1, &passes[i].vertices->buf, &zero); }
+    vkCmdDraw(cmd, passes[i].vertex_count, 1, 0, 0);
+  }
+  vkCmdEndRenderPass(cmd);
+  VkBufferImageCopy copy = {.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {w, h, 1}};
+  vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback.buf, 1, &copy);
+  VkMemoryBarrier barrier = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT};
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &barrier, 0, NULL, 0, NULL);
+  CHECK(vkEndCommandBuffer(cmd));
+  VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+  VkFence fence;
+  CHECK(vkCreateFence(dev, &fci, NULL, &fence));
+  VkSubmitInfo si = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &cmd};
+  CHECK(vkQueueSubmit(v->queue, 1, &si, fence));
+  CHECK(vkWaitForFences(dev, 1, &fence, VK_TRUE, 10ull * 1000 * 1000 * 1000));
+  memcpy(rgba, readback.map, (size_t)w * h * 16);
+
+  vkDestroyFence(dev, fence, NULL);
+  vkDestroyCommandPool(dev, cmdpool, NULL);
+  vkc_free(v, &readback);
+  for (uint32_t i = 0; i < n; i++) {
+    vkDestroyPipeline(dev, pipelines[i], NULL);
+    vkDestroyPipelineLayout(dev, layouts[i], NULL);
+    vkDestroyShaderModule(dev, modules[i], NULL);
+  }
+  vkDestroyFramebuffer(dev, fb, NULL);
+  vkDestroyRenderPass(dev, rp, NULL);
+  vkDestroyImageView(dev, view, NULL);
+  vkDestroyImage(dev, image, NULL);
+  vkFreeMemory(dev, image_mem, NULL);
 }
 
 void vkc_free(Vkc *v, VkcBuffer *b) {

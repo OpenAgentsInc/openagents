@@ -29,8 +29,9 @@ int realm_action(void *state) {
 
 // The uniforms: size (0, 1), time (2), fade (3), the ground's top (4), the flash (5).
 void realm_bg(const float *u, float x, float y, float rgb[3]) {
-  coax_t_Rgb c = starcatch_bg(x, y, u[0], u[1], u[2], u[4], u[5]);
-  rgb[0] = c.r; rgb[1] = c.g; rgb[2] = c.b;
+  rgb[0] = starcatch_sky_r(x, y, u[0], u[1], u[2], u[4], u[5]);
+  rgb[1] = starcatch_sky_g(x, y, u[0], u[1], u[2], u[4], u[5]);
+  rgb[2] = starcatch_sky_b(x, y, u[0], u[1], u[2], u[4], u[5]);
 }
 // (px, py): the fragment in the stroke's frame; shape: length, core, light, glow.
 float realm_fx(const float *u, float px, float py, const float *shape) {

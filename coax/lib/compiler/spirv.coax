@@ -8,12 +8,26 @@
 // invocations a group): invocation x below the push constant count reads its
 // arguments from storage buffer 0 (set 0, binding 0) at x*parameters+k and
 // writes its result to storage buffer 1 (binding 1) at x, a bool as 1.0 or 0.0.
-// A kernel keeps f32 NaN, infinity and signed zero (SPV_KHR_float_controls),
-// so the device needs shaderSignedZeroInfNanPreserveFloat32.
+// A draw is two entry points, `vs` and `fs`, for one graphics pipeline:
+//   SV_FILL n p1..pn (n 1 to 4): a full-screen pass. `vs` makes one triangle
+//     over the screen from the vertex index (draw 3 vertices); `fs` calls
+//     each pi(x, y, u...) at the pixel centre (origin at the top left) for
+//     channel i of the color at location 0, a missing channel 0 and a
+//     missing alpha 1. u is the push constant block, f32 members in order.
+//   SV_STROKE p: triangles from vertices of four attributes, vec2 position
+//     in pixels (location 0), vec2 place (1), vec4 shape (2) and vec4 tint
+//     (3). The push constants are the width and height, then u. `fs` calls
+//     p(place.x, place.y, shape.x, shape.y, shape.z, shape.w, u...), place
+//     interpolated and shape and tint flat, and writes (tint.rgb*k, 0) to
+//     location 0, for blending one plus one.
+// A kernel or a draw keeps f32 NaN, infinity and signed zero
+// (SPV_KHR_float_controls), so the device needs
+// shaderSignedZeroInfNanPreserveFloat32.
 //
 // Tree code, version 1:
 //   module: procs kernel (ret params type*)*procs (locals type* stmt)*procs
-//     kernel is a procedure index or SV_NO_KERNEL; parameters are the first locals
+//     kernel is a procedure index, SV_NO_KERNEL, SV_FILL n p*n or SV_STROKE p;
+//     parameters are the first locals
 //   type: 0 void, 1 bool, 2 f32
 //   stmt: 1 block n stmt* | 2 expr e | 3 assign local op e | 4 return e | 5 return
 //       | 6 if has_else e stmt [stmt]
@@ -23,7 +37,7 @@
 //   math: 1 sin 2 cos 3 tan 4 exp 5 log 6 sqrt 7 floor 8 abs 9 pow
 #authority;
 
-SV_NO_KERNEL :: 0xFFFFFFFF;
+SV_NO_KERNEL :: 0xFFFFFFFF; SV_FILL :: 0xFFFFFFFE; SV_STROKE :: 0xFFFFFFFD;
 SV_PROCS :: 256; SV_LOCALS :: 1024; SV_CONSTS :: 512; SV_ARGS :: 32;
 // The work view: per procedure, then per local, then the constants (type,
 // bits and id each), then code.
@@ -36,6 +50,9 @@ SvState :: struct {
   t_void:u32; t_bool:u32; t_f32:u32; t_u32:u32; p_bool:u32; p_f32:u32; glsl:u32; c_true:u32; c_false:u32;
   k_main:u32; k_fn:u32; k_v3:u32; k_pv3:u32; k_gid:u32; k_rt:u32; k_buf:u32; k_pbuf:u32; k_in:u32; k_out:u32;
   k_pf:u32; k_pcs:u32; k_ppc:u32; k_pc:u32; k_ppu:u32;
+  g_vs:u32; g_fs:u32; g_v2:u32; g_v4:u32; g_iu:u32; g_iv2:u32; g_iv4:u32; g_ov2:u32; g_ov4:u32; g_ppf:u32;
+  g_vid:u32; g_pos:u32; g_fc:u32; g_col:u32; g_ipos:u32; g_iplace:u32; g_ishape:u32; g_itint:u32;
+  g_oplace:u32; g_oshape:u32; g_otint:u32; g_fplace:u32; g_fshape:u32; g_ftint:u32;
 }
 SvVal :: struct {id:u32; ty:u32;}
 
@@ -45,14 +62,16 @@ SvVal :: struct {id:u32; ty:u32;}
   #assert SV_reason_text(3)=="more than 256 procedures" && SV_reason_text(4)=="more than 1024 locals in one procedure";
   #assert SV_reason_text(5)=="more than 512 constants" && SV_reason_text(7)=="an operation on these types";
   #assert SV_reason_text(6)=="a kernel that is not a procedure of f32 parameters returning f32 or bool";
-  #assert SV_reason_text(8)=="a call with more than 32 arguments" && SV_reason_text(9)=="this reason" && SV_reason_text(4000000000)=="this reason";
+  #assert SV_reason_text(8)=="a call with more than 32 arguments";
+  #assert SV_reason_text(9)=="a draw whose procedures are not f32 parameters, at least its own, returning f32";
+  #assert SV_reason_text(10)=="this reason" && SV_reason_text(4000000000)=="this reason";
 }
 SV_reason_text :: (reason:u32)->string #export_c {
-  texts:=[9] string.["","a malformed tree","a module larger than its buffer","more than 256 procedures",
+  texts:=[10] string.["","a malformed tree","a module larger than its buffer","more than 256 procedures",
     "more than 1024 locals in one procedure","more than 512 constants",
     "a kernel that is not a procedure of f32 parameters returning f32 or bool","an operation on these types",
-    "a call with more than 32 arguments"];
-  if reason>=9 {return "this reason";}
+    "a call with more than 32 arguments","a draw whose procedures are not f32 parameters, at least its own, returning f32"];
+  if reason>=10 {return "this reason";}
   return texts[cast(int)reason];
 }
 
@@ -63,11 +82,12 @@ SV_OP_TYPE_VECTOR :: 23; SV_OP_TYPE_RUNTIME_ARRAY :: 29; SV_OP_TYPE_STRUCT :: 30
 SV_OP_TYPE_FUNCTION :: 33; SV_OP_CONSTANT_TRUE :: 41; SV_OP_CONSTANT_FALSE :: 42; SV_OP_CONSTANT :: 43;
 SV_OP_FUNCTION :: 54; SV_OP_FUNCTION_PARAMETER :: 55; SV_OP_FUNCTION_END :: 56; SV_OP_FUNCTION_CALL :: 57;
 SV_OP_VARIABLE :: 59; SV_OP_LOAD :: 61; SV_OP_STORE :: 62; SV_OP_ACCESS_CHAIN :: 65; SV_OP_DECORATE :: 71;
-SV_OP_MEMBER_DECORATE :: 72; SV_OP_COMPOSITE_EXTRACT :: 81; SV_OP_FNEGATE :: 127; SV_OP_IADD :: 128; SV_OP_IMUL :: 132;
+SV_OP_MEMBER_DECORATE :: 72; SV_OP_COMPOSITE_CONSTRUCT :: 80; SV_OP_COMPOSITE_EXTRACT :: 81; SV_OP_FNEGATE :: 127;
+SV_OP_IADD :: 128; SV_OP_FSUB :: 131; SV_OP_IMUL :: 132; SV_OP_FMUL :: 133; SV_OP_FDIV :: 136; SV_OP_IEQUAL :: 170;
 SV_OP_LOGICAL_NOT :: 168; SV_OP_SELECT :: 169; SV_OP_ULESS_THAN :: 176;
 SV_OP_SELECTION_MERGE :: 247; SV_OP_LABEL :: 248; SV_OP_BRANCH :: 249; SV_OP_BRANCH_CONDITIONAL :: 250;
 SV_OP_RETURN :: 253; SV_OP_RETURN_VALUE :: 254; SV_OP_UNREACHABLE :: 255;
-SV_SC_INPUT :: 1; SV_SC_PUSH_CONSTANT :: 9; SV_SC_STORAGE_BUFFER :: 12; SV_SC_FUNCTION :: 7;
+SV_SC_INPUT :: 1; SV_SC_OUTPUT :: 3; SV_SC_PUSH_CONSTANT :: 9; SV_SC_STORAGE_BUFFER :: 12; SV_SC_FUNCTION :: 7;
 
 sv_fail :: (s:[]SvState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
 // What a refused step hands back: nothing reads it, since the first refusal is the result.
@@ -314,6 +334,12 @@ sv_element :: (s:[]SvState,out:[]u32,w:[]u32,buffer:u32,u0:u32,at:u32)->u32 {
   sv_word(s,out,w,true,buffer);sv_word(s,out,w,true,u0);sv_word(s,out,w,true,at);
   return r;
 }
+sv_call :: (s:[]SvState,out:[]u32,w:[]u32,ty:u32,fn:u32,args:[]u32)->u32 {
+  v:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_FUNCTION_CALL,4+args.count);sv_word(s,out,w,true,ty);sv_word(s,out,w,true,v);sv_word(s,out,w,true,fn);
+  for i:0..<args.count {sv_word(s,out,w,true,args[i]);}
+  return v;
+}
 // The kernel's entry point: one invocation per argument row.
 sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
   sig:=cast(int)w[SV_W_SIG+p];ret:=tree[sig];params:=cast(int)tree[sig+1];
@@ -334,9 +360,7 @@ sv_kernel :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
     at:=sv_r2(s,out,w,SV_OP_IADD,s[0].t_u32,base,sv_const(s,out,w,SV_T_U32,cast(u32)i));
     args[i]=sv_r1(s,out,w,SV_OP_LOAD,s[0].t_f32,sv_element(s,out,w,s[0].k_in,u0,at));
   }
-  v:=sv_id(s);
-  sv_op(s,out,w,true,SV_OP_FUNCTION_CALL,4+params);sv_word(s,out,w,true,sv_type(s,ret));sv_word(s,out,w,true,v);sv_word(s,out,w,true,w[SV_W_FN+p]);
-  for i:0..<params {sv_word(s,out,w,true,args[i]);}
+  v:=sv_call(s,out,w,sv_type(s,ret),w[SV_W_FN+p],args[0..<params]);
   if ret==SV_T_BOOL {v=sv_select(s,out,w,v,sv_const(s,out,w,SV_T_F32,0x3F800000),sv_const(s,out,w,SV_T_F32,0));}
   sv2(s,out,w,true,SV_OP_STORE,sv_element(s,out,w,s[0].k_out,u0,x),v);
   sv1(s,out,w,true,SV_OP_BRANCH,merge);
@@ -382,6 +406,156 @@ sv_kernel_types :: (s:[]SvState,out:[]u32,w:[]u32) {
   sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_ppu,SV_SC_PUSH_CONSTANT,s[0].t_u32);
 }
 
+// ---- draws: a vertex and a fragment entry point
+//
+// Whether procedure p can serve a draw: f32 parameters, at least `least` of them, returning f32.
+sv_draws :: (tree:[]u32,w:[]u32,procs:int,p:u32,least:int)->bool {
+  if cast(int)p>=procs {return false;}
+  sig:=cast(int)w[SV_W_SIG+cast(int)p];
+  if tree[sig]!=SV_T_F32 || cast(int)tree[sig+1]<least {return false;}
+  for i:0..<cast(int)tree[sig+1] {if tree[sig+2+i]!=SV_T_F32 {return false;}}
+  return true;
+}
+sv_entry :: (s:[]SvState,out:[]u32,w:[]u32,model:u32,id:u32,name:string,vars:[]u32) {
+  sv_op(s,out,w,false,SV_OP_ENTRY_POINT,4+vars.count);sv_word(s,out,w,false,model);sv_word(s,out,w,false,id);sv_name(s,out,w,name);
+  for i:0..<vars.count {sv_word(s,out,w,false,vars[i]);}
+}
+sv_located :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,at:u32,flat:bool) {
+  sv3(s,out,w,false,SV_OP_DECORATE,v,30,at);
+  if flat {sv2(s,out,w,false,SV_OP_DECORATE,v,14);}
+}
+// The draw's interface: ids, entry points, modes and decorations, before any
+// type; m f32 push constants.
+sv_draw_interface :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
+  s[0].g_vs=sv_id(s);s[0].g_fs=sv_id(s);s[0].k_fn=sv_id(s);s[0].k_pcs=sv_id(s);s[0].k_ppc=sv_id(s);s[0].k_pc=sv_id(s);
+  s[0].g_v2=sv_id(s);s[0].g_v4=sv_id(s);s[0].g_iu=sv_id(s);s[0].g_iv2=sv_id(s);s[0].g_iv4=sv_id(s);s[0].g_ov2=sv_id(s);
+  s[0].g_ov4=sv_id(s);s[0].g_ppf=sv_id(s);s[0].g_vid=sv_id(s);s[0].g_pos=sv_id(s);s[0].g_fc=sv_id(s);s[0].g_col=sv_id(s);
+  s[0].g_ipos=sv_id(s);s[0].g_iplace=sv_id(s);s[0].g_ishape=sv_id(s);s[0].g_itint=sv_id(s);s[0].g_oplace=sv_id(s);
+  s[0].g_oshape=sv_id(s);s[0].g_otint=sv_id(s);s[0].g_fplace=sv_id(s);s[0].g_fshape=sv_id(s);s[0].g_ftint=sv_id(s);
+  // Vertex 0 and Fragment 4, with the variables each reads and writes.
+  if stroke {
+    vs:=[8] u32.[s[0].g_ipos,s[0].g_iplace,s[0].g_ishape,s[0].g_itint,s[0].g_pos,s[0].g_oplace,s[0].g_oshape,s[0].g_otint];
+    fs:=[4] u32.[s[0].g_fplace,s[0].g_fshape,s[0].g_ftint,s[0].g_col];
+    sv_entry(s,out,w,0,s[0].g_vs,"vs",vs[..]);sv_entry(s,out,w,4,s[0].g_fs,"fs",fs[..]);
+  } else {
+    vs:=[2] u32.[s[0].g_vid,s[0].g_pos];fs:=[2] u32.[s[0].g_fc,s[0].g_col];
+    sv_entry(s,out,w,0,s[0].g_vs,"vs",vs[..]);sv_entry(s,out,w,4,s[0].g_fs,"fs",fs[..]);
+  }
+  // OriginUpperLeft; SignedZeroInfNanPreserve 32 on both.
+  sv2(s,out,w,false,SV_OP_EXECUTION_MODE,s[0].g_fs,7);
+  sv3(s,out,w,false,SV_OP_EXECUTION_MODE,s[0].g_vs,4461,32);sv3(s,out,w,false,SV_OP_EXECUTION_MODE,s[0].g_fs,4461,32);
+  // BuiltIn Position; Location 0 for the color; Block, member i at 4i.
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_pos,11,0);
+  sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_col,30,0);
+  sv2(s,out,w,false,SV_OP_DECORATE,s[0].k_pcs,2);
+  for i:0..<m {sv4(s,out,w,false,SV_OP_MEMBER_DECORATE,s[0].k_pcs,cast(u32)i,35,cast(u32)(4*i));}
+  if stroke {
+    sv_located(s,out,w,s[0].g_ipos,0,false);sv_located(s,out,w,s[0].g_iplace,1,false);
+    sv_located(s,out,w,s[0].g_ishape,2,false);sv_located(s,out,w,s[0].g_itint,3,false);
+    sv_located(s,out,w,s[0].g_oplace,0,false);sv_located(s,out,w,s[0].g_oshape,1,true);sv_located(s,out,w,s[0].g_otint,2,true);
+    sv_located(s,out,w,s[0].g_fplace,0,false);sv_located(s,out,w,s[0].g_fshape,1,true);sv_located(s,out,w,s[0].g_ftint,2,true);
+  } else {
+    // BuiltIn VertexIndex and FragCoord.
+    sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_vid,11,42);sv3(s,out,w,false,SV_OP_DECORATE,s[0].g_fc,11,15);
+  }
+}
+sv_draw_types :: (s:[]SvState,out:[]u32,w:[]u32,stroke:bool,m:int) {
+  sv2(s,out,w,false,SV_OP_TYPE_FUNCTION,s[0].k_fn,s[0].t_void);
+  sv3(s,out,w,false,SV_OP_TYPE_VECTOR,s[0].g_v4,s[0].t_f32,4);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_iv4,SV_SC_INPUT,s[0].g_v4);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_ov4,SV_SC_OUTPUT,s[0].g_v4);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_ov4,s[0].g_pos,SV_SC_OUTPUT);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_ov4,s[0].g_col,SV_SC_OUTPUT);
+  sv_op(s,out,w,false,SV_OP_TYPE_STRUCT,2+m);sv_word(s,out,w,false,s[0].k_pcs);
+  for i:0..<m {sv_word(s,out,w,false,s[0].t_f32);}
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].k_ppc,SV_SC_PUSH_CONSTANT,s[0].k_pcs);
+  sv3(s,out,w,false,SV_OP_VARIABLE,s[0].k_ppc,s[0].k_pc,SV_SC_PUSH_CONSTANT);
+  sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_ppf,SV_SC_PUSH_CONSTANT,s[0].t_f32);
+  if stroke {
+    sv3(s,out,w,false,SV_OP_TYPE_VECTOR,s[0].g_v2,s[0].t_f32,2);
+    sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_iv2,SV_SC_INPUT,s[0].g_v2);
+    sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_ov2,SV_SC_OUTPUT,s[0].g_v2);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv2,s[0].g_ipos,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv2,s[0].g_iplace,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_ishape,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_itint,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_ov2,s[0].g_oplace,SV_SC_OUTPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_ov4,s[0].g_oshape,SV_SC_OUTPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_ov4,s[0].g_otint,SV_SC_OUTPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv2,s[0].g_fplace,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_fshape,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_ftint,SV_SC_INPUT);
+  } else {
+    sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].g_iu,SV_SC_INPUT,s[0].t_u32);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iu,s[0].g_vid,SV_SC_INPUT);
+    sv3(s,out,w,false,SV_OP_VARIABLE,s[0].g_iv4,s[0].g_fc,SV_SC_INPUT);
+  }
+}
+sv_begin :: (s:[]SvState,out:[]u32,w:[]u32,id:u32) {sv4(s,out,w,true,SV_OP_FUNCTION,s[0].t_void,id,0,s[0].k_fn);sv_label(s,out,w,sv_id(s));}
+sv_finish :: (s:[]SvState,out:[]u32,w:[]u32) {sv_end_block(s,out,w,SV_OP_RETURN);sv_op(s,out,w,true,SV_OP_FUNCTION_END,1);}
+sv_part :: (s:[]SvState,out:[]u32,w:[]u32,v:u32,i:u32)->u32 {return sv_r2(s,out,w,SV_OP_COMPOSITE_EXTRACT,s[0].t_f32,v,i);}
+sv_push :: (s:[]SvState,out:[]u32,w:[]u32,i:int)->u32 {
+  return sv_r1(s,out,w,SV_OP_LOAD,s[0].t_f32,sv_r2(s,out,w,SV_OP_ACCESS_CHAIN,s[0].g_ppf,s[0].k_pc,sv_const(s,out,w,SV_T_U32,cast(u32)i)));
+}
+sv_v4 :: (s:[]SvState,out:[]u32,w:[]u32,a:u32,b:u32,c:u32,d:u32)->u32 {
+  r:=sv_id(s);
+  sv_op(s,out,w,true,SV_OP_COMPOSITE_CONSTRUCT,7);sv_word(s,out,w,true,s[0].g_v4);sv_word(s,out,w,true,r);
+  sv_word(s,out,w,true,a);sv_word(s,out,w,true,b);sv_word(s,out,w,true,c);sv_word(s,out,w,true,d);
+  return r;
+}
+sv_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[cast(int)w[SV_W_SIG+p]+1];}
+// A full-screen pass: the triangle (-1,-1) (3,-1) (-1,3), then a call per channel.
+sv_fill :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,draw:[]u32) {
+  f0:=sv_const(s,out,w,SV_T_F32,0);f1:=sv_const(s,out,w,SV_T_F32,0x3F800000);
+  far:=sv_const(s,out,w,SV_T_F32,0x40400000);near:=sv_const(s,out,w,SV_T_F32,0xBF800000);
+  sv_begin(s,out,w,s[0].g_vs);
+  i:=sv_r1(s,out,w,SV_OP_LOAD,s[0].t_u32,s[0].g_vid);
+  x:=sv_select(s,out,w,sv_r2(s,out,w,SV_OP_IEQUAL,s[0].t_bool,i,sv_const(s,out,w,SV_T_U32,1)),far,near);
+  y:=sv_select(s,out,w,sv_r2(s,out,w,SV_OP_IEQUAL,s[0].t_bool,i,sv_const(s,out,w,SV_T_U32,2)),far,near);
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_pos,sv_v4(s,out,w,x,y,f0,f1));
+  sv_finish(s,out,w);
+  sv_begin(s,out,w,s[0].g_fs);
+  fc:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v4,s[0].g_fc);
+  args:[32] u32;args[0]=sv_part(s,out,w,fc,0);args[1]=sv_part(s,out,w,fc,1);
+  c:=[4] u32.[f0,f0,f0,f1];
+  for k:0..<draw.count {
+    p:=cast(int)draw[k];n:=sv_params(tree,w,p);
+    for a:2..<n {args[a]=sv_push(s,out,w,a-2);}
+    c[k]=sv_call(s,out,w,s[0].t_f32,w[SV_W_FN+p],args[0..<n]);
+  }
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_col,sv_v4(s,out,w,c[0],c[1],c[2],c[3]));
+  sv_finish(s,out,w);
+}
+// Strokes: pixels to clip space by the push constant size; shape and tint flat.
+sv_stroke :: (s:[]SvState,tree:[]u32,out:[]u32,w:[]u32,p:int) {
+  f0:=sv_const(s,out,w,SV_T_F32,0);f1:=sv_const(s,out,w,SV_T_F32,0x3F800000);f2:=sv_const(s,out,w,SV_T_F32,0x40000000);
+  sv_begin(s,out,w,s[0].g_vs);
+  pos:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v2,s[0].g_ipos);
+  clip:[2] u32;
+  for d:0..<2 {
+    q:=sv_r2(s,out,w,SV_OP_FDIV,s[0].t_f32,sv_part(s,out,w,pos,cast(u32)d),sv_push(s,out,w,d));
+    clip[d]=sv_r2(s,out,w,SV_OP_FSUB,s[0].t_f32,sv_r2(s,out,w,SV_OP_FMUL,s[0].t_f32,q,f2),f1);
+  }
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_pos,sv_v4(s,out,w,clip[0],clip[1],f0,f1));
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_oplace,sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v2,s[0].g_iplace));
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_oshape,sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v4,s[0].g_ishape));
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_otint,sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v4,s[0].g_itint));
+  sv_finish(s,out,w);
+  sv_begin(s,out,w,s[0].g_fs);
+  place:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v2,s[0].g_fplace);
+  shape:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v4,s[0].g_fshape);
+  tint:=sv_r1(s,out,w,SV_OP_LOAD,s[0].g_v4,s[0].g_ftint);
+  args:[32] u32;n:=sv_params(tree,w,p);
+  for a:0..<2 {args[a]=sv_part(s,out,w,place,cast(u32)a);}
+  for a:2..<6 {args[a]=sv_part(s,out,w,shape,cast(u32)(a-2));}
+  for a:6..<n {args[a]=sv_push(s,out,w,a-4);}
+  k:=sv_call(s,out,w,s[0].t_f32,w[SV_W_FN+p],args[0..<n]);
+  rgb:[3] u32;
+  for c:0..<3 {rgb[c]=sv_r2(s,out,w,SV_OP_FMUL,s[0].t_f32,sv_part(s,out,w,tint,cast(u32)c),k);}
+  sv2(s,out,w,true,SV_OP_STORE,s[0].g_col,sv_v4(s,out,w,rgb[0],rgb[1],rgb[2],f0));
+  sv_finish(s,out,w);
+}
+
 // Whether procedures a and b have the same signature (one function type serves both).
 sv_same_sig :: (tree:[]u32,a:int,b:int)->bool {
   if tree[a]!=tree[b] || tree[a+1]!=tree[b+1] {return false;}
@@ -397,6 +571,11 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
   if w.count<SV_W_CODE {return -2;}
   procs:=cast(int)sv_next(s,tree);kernel:=sv_next(s,tree);
   if procs>SV_PROCS {return -3;}
+  // A draw's procedures: SV_FILL's count and its own, or SV_STROKE's one.
+  stroke:=kernel==SV_STROKE;graphics:=stroke || kernel==SV_FILL;
+  draw:[4] u32;n:=ifx stroke then 1 else 0;
+  if kernel==SV_FILL {n=cast(int)sv_next(s,tree);if n<1 || n>4 {return -9;}}
+  for k:0..<n {draw[k]=sv_next(s,tree);}
   s[0].procs=procs;
   for p:0..<procs {
     w[SV_W_SIG+p]=cast(u32)s[0].at;w[SV_W_RET+p]=sv_next(s,tree);
@@ -405,7 +584,14 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
     s[0].at+=params;
   }
   if !s[0].ok || s[0].at>tree.count {return -1;}
-  if kernel!=SV_NO_KERNEL {
+  // m push constants: a stroke's size and a procedure's parameters past its own.
+  least:=ifx stroke then 6 else 2;m:=1;
+  for k:0..<n {
+    if !sv_draws(tree,w,procs,draw[k],least) {return -9;}
+    need:=sv_params(tree,w,cast(int)draw[k])-least+(ifx stroke then 2 else 0);
+    if need>m {m=need;} // mutant: equivalent (>= sets m to the m it has)
+  }
+  if kernel!=SV_NO_KERNEL && !graphics {
     ok:=cast(int)kernel<procs && (w[SV_W_RET+cast(int)kernel]==SV_T_F32 || w[SV_W_RET+cast(int)kernel]==SV_T_BOOL);
     if ok {sig:=cast(int)w[SV_W_SIG+cast(int)kernel];for i:0..<cast(int)tree[sig+1] {ok=ok && tree[sig+2+i]==SV_T_F32;}}
     if !ok {return -6;}
@@ -426,7 +612,8 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
   s[0].glsl=sv_id(s);
   sv_op(s,out,w,false,SV_OP_EXT_IMPORT,6);sv_word(s,out,w,false,s[0].glsl);sv_name(s,out,w,"GLSL.std.450");
   sv2(s,out,w,false,SV_OP_MEMORY_MODEL,0,1);
-  if kernel!=SV_NO_KERNEL {sv_kernel_interface(s,out,w);}
+  if graphics {sv_draw_interface(s,out,w,stroke,m);}
+  else if kernel!=SV_NO_KERNEL {sv_kernel_interface(s,out,w);}
   // Types: void, bool, f32, u32, the Function pointers, the bool constants.
   s[0].t_void=sv_id(s);sv1(s,out,w,false,SV_OP_TYPE_VOID,s[0].t_void);
   s[0].t_bool=sv_id(s);sv1(s,out,w,false,SV_OP_TYPE_BOOL,s[0].t_bool);
@@ -436,7 +623,8 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
   s[0].p_f32=sv_id(s);sv3(s,out,w,false,SV_OP_TYPE_POINTER,s[0].p_f32,SV_SC_FUNCTION,s[0].t_f32);
   s[0].c_true=sv_id(s);sv2(s,out,w,false,SV_OP_CONSTANT_TRUE,s[0].t_bool,s[0].c_true);
   s[0].c_false=sv_id(s);sv2(s,out,w,false,SV_OP_CONSTANT_FALSE,s[0].t_bool,s[0].c_false);
-  if kernel!=SV_NO_KERNEL {sv_kernel_types(s,out,w);}
+  if graphics {sv_draw_types(s,out,w,stroke,m);}
+  else if kernel!=SV_NO_KERNEL {sv_kernel_types(s,out,w);}
   // One function type per signature, one id per procedure.
   for p:0..<procs {
     w[SV_W_FN+p]=sv_id(s);
@@ -450,7 +638,9 @@ SV_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
     for i:0..<params {sv_word(s,out,w,false,sv_type(s,tree[sig+2+i]));}
   }
   for p:0..<procs {if s[0].ok {sv_proc(s,tree,out,w,p);}}
-  if s[0].ok && kernel!=SV_NO_KERNEL {sv_kernel(s,tree,out,w,cast(int)kernel);}
+  if s[0].ok && kernel==SV_FILL {sv_fill(s,tree,out,w,draw[0..<n]);}
+  if s[0].ok && stroke {sv_stroke(s,tree,out,w,cast(int)draw[0]);}
+  if s[0].ok && kernel!=SV_NO_KERNEL && !graphics {sv_kernel(s,tree,out,w,cast(int)kernel);}
   if s[0].ok && s[0].at!=tree.count {sv_fail(s,1);}
   // The code follows the types and constants.
   for i:0..<s[0].c {if s[0].ok {sv_word(s,out,w,false,w[SV_W_CODE+i]);}}
@@ -510,7 +700,9 @@ sv_lower_sample :: (kernel:u32,out:[]u32)->int {
   #assert SV_reason_text(3)=="more than 256 procedures" && SV_reason_text(4)=="more than 1024 locals in one procedure";
   #assert SV_reason_text(5)=="more than 512 constants" && SV_reason_text(7)=="an operation on these types";
   #assert SV_reason_text(6)=="a kernel that is not a procedure of f32 parameters returning f32 or bool";
-  #assert SV_reason_text(8)=="a call with more than 32 arguments" && SV_reason_text(9)=="this reason" && SV_reason_text(4000000000)=="this reason";
+  #assert SV_reason_text(8)=="a call with more than 32 arguments";
+  #assert SV_reason_text(9)=="a draw whose procedures are not f32 parameters, at least its own, returning f32";
+  #assert SV_reason_text(10)=="this reason" && SV_reason_text(4000000000)=="this reason";
 }
 #test "the sample lowers to the same words, with and without a kernel" {
   out:[4096] u32;
@@ -524,6 +716,51 @@ sv_lower_sample :: (kernel:u32,out:[]u32)->int {
   #assert n==1001 && sv_digest(out[..],n)==46208011;
   n=sv_lower_sample(8,out[..]);
   #assert n==975 && sv_digest(out[..],n)==2074098404;
+}
+// Draws over seven procedures:
+//   0 a(x:f32,y:f32,u:f32)->f32 {return x+u;}
+//   1 b(x:f32,y:f32,s0:f32,s1:f32,s2:f32,s3:f32,u:f32)->f32 {return y*u;}
+//   2 c(x:f32,y:f32)->f32 {return x;}
+//   3 d(x:f32,y:f32,s0:f32,s1:f32,s2:f32,s3:f32)->f32 {return s3;}
+//   4 e(x:f32,y:bool)->f32 {return x;}   5 f(x:f32,y:f32)->bool {return true;}   6 g(x:f32)->f32 {return x;}
+//   7 h(x:bool,y:f32,z:f32)->f32 {return y;}   8 k(x:f32,y:f32,z:bool)->f32 {return x;}
+// The tree after its head (the procedure count and the draw).
+SV_DRAWS :: "2 3 2 2 2 2 7 2 2 2 2 2 2 2 2 2 2 2 2 6 2 2 2 2 2 2 2 2 2 1 1 2 2 2 2 1 2 2 3 1 2 2 2 3 2 2 1 3 2 2 2 4 19 1 18 0 18 2 7 2 2 2 2 2 2 2 4 19 3 18 1 18 6 2 2 2 4 18 0 6 2 2 2 2 2 2 4 18 5 2 2 1 4 18 0 2 2 2 4 17 1 1 2 4 18 0 3 1 2 2 4 18 1 3 2 2 1 4 18 0";
+sv_draw_text :: (head:string,out:[]u32)->int {
+  t:[256] u32;work:[8192] u32;
+  hn:=sv_parse(head,t[..]);n:=sv_parse(SV_DRAWS,t[hn..<256]);
+  return SV_lower(t[0..<hn+n],out,work[..]);
+}
+#test "a draw is a fill of one to four procedures or a stroke of one" {
+  out:[4096] u32;
+  n:=sv_draw_text("9 4294967294 3 0 0 0",out[..]);
+  #assert n==787 && sv_digest(out[..],n)==1107562709;
+  n=sv_draw_text("9 4294967294 1 2",out[..]);
+  #assert n==741 && sv_digest(out[..],n)==3916134872;
+  n=sv_draw_text("9 4294967294 4 0 2 0 2",out[..]);
+  #assert n==783 && sv_digest(out[..],n)==1582741036;
+  n=sv_draw_text("9 4294967294 2 0 2",out[..]);
+  #assert n==761 && sv_digest(out[..],n)==805411361;
+  n=sv_draw_text("9 4294967294 1 1",out[..]);
+  #assert n==827 && sv_digest(out[..],n)==979082221;
+  n=sv_draw_text("9 4294967293 1",out[..]);
+  #assert n==974 && sv_digest(out[..],n)==2346324384;
+  n=sv_draw_text("9 4294967293 3",out[..]);
+  #assert n==954 && sv_digest(out[..],n)==3037470803;
+}
+#test "a draw's procedures take f32, at least their own, and return f32" {
+  out:[4096] u32;
+  #assert sv_draw_text("9 4294967294 0",out[..])== -9 && sv_draw_text("9 4294967294 5 0 0 0 0 0",out[..])== -9;
+  #assert sv_draw_text("9 4294967294 1 9",out[..])== -9 && sv_draw_text("9 4294967294 1 4",out[..])== -9;
+  #assert sv_draw_text("9 4294967294 1 5",out[..])== -9 && sv_draw_text("9 4294967294 1 6",out[..])== -9;
+  #assert sv_draw_text("9 4294967294 1 7",out[..])== -9 && sv_draw_text("9 4294967294 1 8",out[..])== -9;
+  #assert sv_draw_text("9 4294967293 0",out[..])== -9 && sv_draw_text("9 4294967293 2",out[..])== -9;
+  #assert sv_draw_text("9 4294967293 9",out[..])== -9;
+  // One past the procedures, with a signature table beyond them that would admit it (as c).
+  t:[256] u32;work:[8192] u32;
+  hn:=sv_parse("9 4294967294 1 9",t[..]);n:=sv_parse(SV_DRAWS,t[hn..<256]);
+  work[SV_W_SIG+9]=18;
+  #assert SV_lower(t[0..<hn+n],out[..],work[..])== -9;
 }
 #test "a kernel is a procedure of f32 parameters returning f32 or bool" {
   out:[4096] u32;

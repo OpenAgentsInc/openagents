@@ -68,7 +68,7 @@ coax/build.sh test
 | `coax metal FILE` | Print the file's f32/bool procedures as Metal Shading Language |
 | `coax cuda FILE` | Print the file's `#export_c` kernels, and what they call, as CUDA C for NVRTC |
 | `coax metal-compute FILE` | Print the same kernels as Metal Shading Language compute kernels for Apple GPUs |
-| `coax spirv FILE [--kernel NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
+| `coax spirv FILE [--kernel NAME \| --fill A[,B,C,D] \| --stroke NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
@@ -331,6 +331,16 @@ apps/openagents-ios/build.sh
   base, which GLSL's `Pow` leaves undefined. Refusals are E0704.
   `verse/gpu/light-check.sh` runs every procedure of `verse/light.coax`
   against the C build on a Vulkan GPU.
+  `--fill A,B,C` and `--stroke NAME` write a draw instead: entry points `vs`
+  and `fs` for one graphics pipeline. A fill is one full-screen triangle
+  whose fragment calls procedure i (x, y, u...) at the pixel centre for
+  channel i (one to four; a missing channel is 0 and a missing alpha 1),
+  where u is the push constant block of f32. A stroke takes vertices of
+  vec2 position in pixels, vec2 place, vec4 shape and vec4 tint, with the
+  width and height first in the push constants; its fragment calls
+  NAME(place.x, place.y, shape.x..w, u...) and writes (tint.rgb*k, 0) for
+  one-plus-one blending. `verse/gpu/frame-check.sh` draws a Star Catcher
+  frame this way and compares it with the CPU frame of `verse/kms`.
 
 ## Compile-time contract
 

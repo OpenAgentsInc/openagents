@@ -9,7 +9,8 @@
 //   coax c       file.coax [--release] [--lib]       print the generated C
 //   coax cuda    file.coax [--release]               CUDA C for NVRTC (the compute subset)
 //   coax metal-compute file.coax [--release]         Metal compute kernels (the same subset)
-//   coax spirv   file.coax [--kernel NAME] [-o out.spv]  SPIR-V for Vulkan (the Metal scalar profile)
+//   coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME] [-o out.spv]
+//                                                    SPIR-V for Vulkan (the Metal scalar profile)
 //   coax check   file.coax                           check without invoking C
 //   coax layout  file.coax                           struct and enum layouts
 //   coax test    file.coax [--steps N] [--only S] [--list]  run every #test and #forall (or those named with S; --list names them)
@@ -405,7 +406,7 @@ static int usage() {
           "       coax metal   file.coax\n"
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
-          "       coax spirv   file.coax [--kernel NAME] [-o out.spv]\n"
+          "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME] [-o out.spv]\n"
           "       coax check   file.coax\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
@@ -484,7 +485,7 @@ static int main_impl(int argc, char **argv) {
     return usage();
 
   const char *input = nullptr;
-  std::string out, header, proto_prefix, kernel;
+  std::string out, header, proto_prefix, kernel, fill, stroke;
   EmitOptions opts;
   coax_t_CP_Request request{};request.debug_info=-1;
   std::string arithmetic,optimization,build_profile;
@@ -549,7 +550,9 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
-    else if (a == "--kernel" && i + 1 < argc && cmd == "spirv" && kernel.empty()) kernel = argv[++i];
+    else if (a == "--kernel" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) kernel = argv[++i];
+    else if (a == "--fill" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) fill = argv[++i];
+    else if (a == "--stroke" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) stroke = argv[++i];
     else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
@@ -629,7 +632,7 @@ static int main_impl(int argc, char **argv) {
     Arena arena;
     File file;
     std::string words;
-    if (!front_end(input, &src, &arena, &file, opts, 1) || !emit_spirv(&file, kernel, &words)) {
+    if (!front_end(input, &src, &arena, &file, opts, 1) || !emit_spirv(&file, kernel, fill, stroke, &words)) {
       if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
       return 1;
     }
