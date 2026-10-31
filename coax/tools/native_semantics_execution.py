@@ -43,24 +43,12 @@ def get_policy(compiler=None, directory=None, deadline=None, _runner=None):
         for name in SemanticsPolicy.input_names), os.environ.get('COAX_EXECUTION_HOST_CC'),
         os.environ.get('CC'), os.environ.get('SDKROOT'))
     cached = _POLICIES.get(key)
-    if cached is None or not all(path.exists() for path in (cached.c, cached.header, cached.library)):
+    if cached is None:
         target = Path(tempfile.mkdtemp(prefix='coax-semantics-policy-')) / 'policy'
         cached = SemanticsPolicy(compiler, target, deadline,
             runner=_runner or common.Session(deadline).run)
         _POLICIES[key] = cached
-    if directory is None:
-        return cached
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    result = copy.copy(cached)
-    result.directory, result.identity = directory, dict(cached.identity)
-    for name in ('c', 'header', 'library'):
-        destination = directory / getattr(cached, name).name
-        shutil.copyfile(getattr(cached, name), destination)
-        setattr(result, name, destination)
-        result.identity[name] = str(destination)
-    result.identity['retained_bootstrap'] = dict(cached.identity)
-    return result
+    return common._retained_policy(cached, directory)
 
 
 def _raw(value):
@@ -95,10 +83,7 @@ def run(files, *, keep=None, compiler=None, steps=None, only=None,
 def _artifact_codes(policy, artifact, chain):
     codes = [policy.integrity(expected, common._sha(path))
              for path, expected in artifact.items()]
-    codes += [policy.integrity(chain.get('program_sha256') or '',
-                              common._sha(chain.get('resolved_program') or ''))]
-    for fact in chain.get('sdk', {}).get('settings_files', []):
-        codes.append(policy.integrity(fact['sha256'], common._sha(fact.get('resolved_path') or fact['path'])))
+    codes += common._toolchain_integrity(policy, chain)
     return codes
 
 
@@ -119,6 +104,8 @@ def _observe_one(binary, check, expected, session, policy, directory,
     admitted = policy.capture(session.remaining_bytes, reserved)
     if admitted:
         return {'outcome': OUTCOMES[admitted], 'recognized_trap': False,
+            'native_outcome': OUTCOMES[admitted], 'native_outcome_code': admitted,
+            'valid': False, 'trap': None,
             'baseline_qualified': False, 'process': None,
             'progress_capture_admission': {'outcome': OUTCOMES[admitted],
                 'remaining_bytes': session.remaining_bytes, 'requested_bytes': reserved}}
@@ -208,7 +195,18 @@ def run_trap(source, expected, *, keep, compiler=None, steps=None,
             artifact_parity_admission=failed)
         codes = [failed['outcome'], policy.failed_inputs(validation, baseline, inputs, baseline_process, version_text)]
         selection = policy.select(baseline, None)
-        result['selection'] = common._record(selection)
+        result['failed_claim_selection'] = common._record(selection)
+        # Failed evaluator claims point at the fault, which may be inside an
+        # imported helper. They are not declaration-location observations.
+        # Named negative experiments therefore require an independent oracle;
+        # the raw evidence and its selected identities remain untouched.
+        declaration = expected['declaration']
+        native_expected = copy.deepcopy(selection['expected'])
+        for check in native_expected:
+            check['identity'].update(source=str(Path(declaration['source']).resolve()),
+                line=declaration['line'], column=declaration['column'])
+        result['authored_declaration_oracle'] = common._record(declaration)
+        result['native_expected'] = common._record(native_expected)
         diagnostics = _diagnostics(baseline_process)
         result['evaluator_diagnostics'] = diagnostics
         # Coax owns both failed-original admission and exact diagnostic matching.
@@ -238,8 +236,8 @@ def run_trap(source, expected, *, keep, compiler=None, steps=None,
         if chain['sdk'].get('environment'):
             session.environment = {**os.environ, **chain['sdk']['environment']}
         protected = {**result['transport_sources'], **policy.identity['sources'],
-            str(source_c): common._sha(source_c), str(policy.c): common._sha(policy.c),
-            str(policy.header): common._sha(policy.header), str(policy.library): common._sha(policy.library)}
+            str(source_c): common._sha(source_c), str(policy.c): policy.identity['c_sha256'],
+            str(policy.header): policy.identity['header_sha256'], str(policy.library): policy.identity['library_sha256']}
         result['artifact_inputs'] = protected
         for optimization in ('0', '2'):
             binary = work / ('native-O' + optimization)
@@ -251,7 +249,7 @@ def run_trap(source, expected, *, keep, compiler=None, steps=None,
                 metadata = session.run([str(binary), 'metadata'], timeout_s=policy.limits.metadata_ms / 1000,
                                        max_output_bytes=policy.limits.metadata_bytes)
                 profile['metadata'] = common._record(metadata)
-                phase = policy.metadata(selection['expected'], metadata['stdout'], metadata)
+                phase = policy.metadata(native_expected, metadata['stdout'], metadata)
                 if not phase:
                     catalog = policy.decode_catalog(metadata['stdout'])
                     profile['catalog'] = common._record(catalog)
@@ -273,12 +271,45 @@ def run_trap(source, expected, *, keep, compiler=None, steps=None,
         result['outcome'] = OUTCOMES[policy.aggregate(codes)]
     except PolicyUnavailable as error:
         result.update(why=str(error), policy_loaded=False, policy_bootstrap=common._record(error.observations))
-    except (OSError, ValueError, UnicodeError) as error:
+    except (OSError, ValueError, UnicodeError, KeyError, TypeError) as error:
         result.update(why=str(error), startup_or_transport_error=type(error).__name__)
     finally:
         result['elapsed_s'] = time.monotonic() - start
         result['compiler_sha256_after'] = common._sha(compiler)
     return result
+
+
+def _qualified_original(policy, record):
+    """Revalidate retained facts and raw observations without rerunning bodies."""
+    item = record['files'][0]
+    baseline, process = item['baseline'], item['baseline_execution']
+    version = record['compiler_version']
+    steps = baseline['budgets']['check_steps']
+    validation = policy.baseline(baseline, process, item['file'], item['source_sha256'],
+        record['compiler_sha256'], version, steps)
+    codes = [validation['outcome'], policy.baseline_inputs(baseline,
+        item['baseline_input_manifest'], process, version),
+        policy.emission(item['emission_manifest'], baseline, item['emission_execution'],
+            version, item['artifact']['c_sha256']),
+        policy.input_descriptors(item['baseline_input_manifest'], item['emission_manifest'])]
+    selection = policy.select(baseline, record['selection']['only'])
+    codes.append(selection['outcome'])
+    catalogs = {}
+    for level in ('-O0', '-O2'):
+        profile = item['profiles'][level]
+        metadata = profile['metadata']
+        code = policy.metadata(selection['expected'], metadata['stdout'], metadata)
+        codes.append(code)
+        if code:
+            continue
+        catalog = policy.decode_catalog(metadata['stdout'])
+        catalogs[level] = catalog
+        observations = profile['execution']['checks']
+        if len(catalog) != len(observations):
+            raise ValueError('Retained property observations have the wrong extent')
+        for check, observation in zip(catalog, observations):
+            codes.append(policy.observe(check, observation['progress'], observation['process'])['outcome'])
+    return item, selection, catalogs, validation, codes
 
 
 def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_id='mul-add',
@@ -290,7 +321,9 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
     work.mkdir(parents=True, exist_ok=False)
     result = {'schema': SCHEMA, 'outcome': 'infrastructure-error', 'artifact_only': True,
         'baseline_qualified': False, 'source_minimization': 'not-supported',
-        'seed_id': seed_id, 'optimization': optimization, 'replays': []}
+        'seed_id': seed_id, 'optimization': optimization, 'replays': [],
+        'qualified_record_sha256': hashlib.sha256(json.dumps(common._record(qualified_record),
+            sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()}
     session = common.Session(deadline)
     try:
         policy = get_policy(record['compiler'], work / 'policy', deadline, session.run)
@@ -301,7 +334,13 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
         if not policy.seed_id(seed_id) or not policy.budget(timeout_s, max_output_bytes):
             result['why'] = 'Coax refused the seed identity or execution bounds'
             return result
-        item = record['files'][0]
+        item, selection, original_catalogs, validation, admission_codes = _qualified_original(policy, record)
+        result['retained_original_validation'] = validation
+        result['retained_original_admission'] = OUTCOMES[policy.aggregate(admission_codes)]
+        if policy.aggregate(admission_codes):
+            result['outcome'] = OUTCOMES[policy.aggregate(admission_codes)]
+            result['why'] = 'The retained complete original baseline or native observations were refused'
+            return result
         profile = item['profiles']['-O' + optimization]
         artifact = item['artifact']
         protected = {**record['transport_sources'], **record['policy']['sources'],
@@ -309,7 +348,10 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
             record['policy']['c']: record['policy']['c_sha256'],
             record['policy']['header']: record['policy']['header_sha256'],
             record['policy']['library']: record['policy']['library_sha256'],
-            profile['binary']: profile['binary_sha256']}
+            **{item['profiles'][level]['binary']: item['profiles'][level]['binary_sha256']
+               for level in ('-O0', '-O2')}}
+        protected.update({fact['path']: fact['sha256'] for fact in [
+            *item['baseline']['sources'], *item['baseline_input_manifest']['descriptors']]})
         chain = record['toolchain']
         if policy.aggregate(_artifact_codes(policy, protected, chain)):
             result['why'] = 'Qualified artifact inputs changed before seeding'
@@ -330,7 +372,11 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
             str(policy.library): policy.identity['library_sha256']})
         if chain['sdk'].get('environment'):
             session.environment = {**os.environ, **chain['sdk']['environment']}
-        native_cc = record['native_cc']
+        # Use the executable whose bytes were qualified, regardless of later
+        # PATH or relative-command resolution. Preserve its recorded arguments.
+        native_cc = [chain['resolved_program'], *record['native_cc'][1:]]
+        result['native_cc'] = native_cc
+        result['toolchain'] = common._record(chain)
         codes = []
         catalogs = {}
         for level in ('0', '2'):
@@ -343,9 +389,7 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
                 metadata = session.run([str(binary), 'metadata'], timeout_s=policy.limits.metadata_ms / 1000,
                     max_output_bytes=policy.limits.metadata_bytes)
                 current['metadata'] = common._record(metadata)
-                phase = policy.metadata(item['native_selection_expected'] if 'native_selection_expected' in item else
-                    [{'identity': {key: check[key] for key in ('ordinal','declaration_index','name','source','line','column')},
-                      'kind':check['kind'],'cases':check['cases']} for check in profile['catalog']], metadata['stdout'], metadata)
+                phase = policy.metadata(selection['expected'], metadata['stdout'], metadata)
                 if not phase:
                     catalog = policy.decode_catalog(metadata['stdout'])
                     catalogs[level] = catalog
@@ -368,6 +412,9 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
             state = policy.reduce_start(check, values, 32)
             result['initial_values'] = values
             binary = Path(result['profiles']['-O' + optimization]['binary'])
+            accepted_observation = first
+            accepted_reference = {'profile': '-O' + optimization, 'check': 0, 'replay': None}
+            accepted_index = None
             while not state['done'] and not state['reason']:
                 candidate = policy.reduce_next(state, check, values)
                 state = candidate['state']
@@ -376,15 +423,38 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
                 replay = _observe_one(binary, check, expected, session, policy,
                     work / ('replay-' + str(state['attempts'])), timeout_s, max_output_bytes,
                     index=candidate['ordinal'])
+                probe_code = policy.probe(replay['native_outcome'])
+                codes.append(probe_code)
+                if probe_code or replay['process'] is None:
+                    result['replays'].append({'candidate': candidate, 'observation': replay, 'accepted': False})
+                    result['reduction_interruption'] = replay
+                    break
                 trap = _raw(replay['trap'])
                 actual = {**signature, 'kind': trap['kind'], 'line': trap['line'], 'source': trap['source']}
                 accepted = policy.accept(signature, actual, replay)
                 result['replays'].append({'candidate': candidate, 'observation': replay, 'accepted': accepted})
                 if accepted:
                     values = candidate['values']
+                    accepted_observation = _raw(replay)
+                    accepted_reference = {'profile': '-O' + optimization, 'check': 0,
+                                          'replay': len(result['replays']) - 1}
+                    accepted_index = candidate['ordinal']
+            # Revalidate the retained accepted observation; never promote a
+            # proposed tuple that was not observed in the bound executable.
+            verified = policy.classify(check, expected, accepted_observation['progress'],
+                accepted_observation['process'], replay_index=accepted_index)
+            actual = {**signature, 'kind': verified['trap']['kind'],
+                      'line': verified['trap']['line'], 'source': verified['trap']['source']}
+            accepted_final = policy.accept(signature, actual, verified)
+            codes += [policy.reduce_status(state, len(check['bindings'])),
+                      0 if accepted_final else 3]
+            values = verified['values']
             result.update(reduced_values=values, reduction_state=state, signature=common._record(signature))
+            result['reduced_witness'] = {'observation': accepted_reference,
+                'coax_signature_accepted': accepted_final, 'case_index': verified['case_index'],
+                'witness': policy.witness(check, values), 'values': values,
+                'classification': common._record(verified)}
             result['seeded_native_outcome'] = first['native_outcome']
-            codes += [policy.probe(replay['observation']['native_outcome']) for replay in result['replays']]
         codes += _artifact_codes(policy, protected, chain)
         codes += [policy.integrity(profile['binary_sha256'], common._sha(profile['binary']))
                   for profile in result.get('profiles', {}).values()]
@@ -392,7 +462,7 @@ def seed_and_reduce(qualified_record, *, expected, keep, optimization='2', seed_
         result['outcome'] = OUTCOMES[policy.aggregate(codes)]
     except PolicyUnavailable as error:
         result.update(why=str(error), policy_loaded=False, policy_bootstrap=common._record(error.observations))
-    except (OSError, ValueError, UnicodeError, KeyError) as error:
+    except (OSError, ValueError, UnicodeError, KeyError, IndexError, TypeError) as error:
         result.update(why=str(error), startup_or_transport_error=type(error).__name__)
     finally:
         result['elapsed_s'] = time.monotonic() - start

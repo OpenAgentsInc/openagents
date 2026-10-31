@@ -104,6 +104,29 @@ class Session:
         return result
 
 
+def _retained_policy(cached, directory):
+    # The loaded library and retained inputs must still name the same bytes.
+    # In particular, do not bless changed cached C while using the old DLL.
+    for name in ('c', 'header', 'library'):
+        if cached.integrity(cached.identity[name + '_sha256'], _sha(getattr(cached, name))):
+            raise PolicyUnavailable('Retained execution policy artifact changed: ' + name, cached.observations)
+    if directory is None:
+        return cached
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=False)
+    result = copy.copy(cached)
+    result.directory, result.identity = directory, dict(cached.identity)
+    for name in ('c', 'header', 'library'):
+        destination = directory / getattr(cached, name).name
+        shutil.copyfile(getattr(cached, name), destination)
+        setattr(result, name, destination)
+        result.identity[name] = str(destination)
+        if cached.integrity(cached.identity[name + '_sha256'], _sha(destination)):
+            raise PolicyUnavailable('Copied execution policy artifact changed: ' + name, cached.observations)
+    result.identity['retained_bootstrap'] = dict(cached.identity)
+    return result
+
+
 def get_policy(compiler=None, directory=None, deadline=None, _runner=None):
     compiler = _compiler(compiler)
     deadline = deadline if deadline is not None else time.monotonic() + 840
@@ -112,26 +135,11 @@ def get_policy(compiler=None, directory=None, deadline=None, _runner=None):
     key = (_sha(compiler), tuple(_sha(p) for p in inputs),
            os.environ.get("COAX_EXECUTION_HOST_CC"), os.environ.get("CC"), os.environ.get("SDKROOT"))
     cached = _POLICIES.get(key)
-    if cached is None or not all(p.exists() for p in (cached.c, cached.header, cached.library)):
+    if cached is None:
         cache = Path(tempfile.mkdtemp(prefix="coax-execution-policy-")) / "policy"
         cached = Policy(compiler, cache, deadline, runner=_runner or Session(deadline).run)
         _POLICIES[key] = cached
-    if directory is None:
-        return cached
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    result = copy.copy(cached)
-    result.directory = directory
-    for name in ("c", "header", "library"):
-        original = getattr(cached, name)
-        destination = directory / original.name
-        shutil.copyfile(original, destination)
-        setattr(result, name, destination)
-    result.identity = dict(cached.identity)
-    for name in ("c", "header", "library"):
-        result.identity[name] = str(getattr(result, name))
-    result.identity["retained_bootstrap"] = dict(cached.identity)
-    return result
+    return _retained_policy(cached, directory)
 
 
 def get_forall_policy(compiler=None, directory=None, deadline=None):
@@ -201,6 +209,15 @@ def _toolchain_outcomes(policy, chain):
             observations.append(observation)
     return [policy.phase(value) for value in observations] + [
         policy.integrity(chain.get("program_sha256") or "", _sha(chain.get("resolved_program") or ""))]
+
+
+def _toolchain_integrity(policy, chain):
+    codes = [policy.integrity(chain.get('program_sha256') or '',
+                              _sha(chain.get('resolved_program') or ''))]
+    for fact in chain.get('sdk', {}).get('settings_files', []):
+        codes.append(policy.integrity(fact.get('sha256') or '',
+            _sha(fact.get('resolved_path') or fact.get('path') or '')))
+    return codes
 
 
 def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
@@ -353,7 +370,7 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                       policy.integrity(policy.identity["source_sha256"], _sha(policy.source))]
             codes += [policy.integrity(expected_sha, _sha(path)) for path, expected_sha in policy.identity["sources"].items()]
             codes.append(policy.integrity(policy.identity["library_sha256"], _sha(policy.library)))
-            codes.append(policy.integrity(chain.get("program_sha256") or "", _sha(chain.get("resolved_program") or "")))
+            codes += _toolchain_integrity(policy, chain)
             item["outcome"] = OUTCOMES[policy.aggregate(codes)]
         result["outcome"] = OUTCOMES[policy.aggregate([item["outcome"] for item in result["files"]])]
     except PolicyUnavailable as error:

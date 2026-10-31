@@ -25,24 +25,11 @@ def get_policy(compiler=None, directory=None, deadline=None, _runner=None):
     key = (common._sha(compiler), tuple(common._sha(path) for path in inputs),
            os.environ.get('COAX_EXECUTION_HOST_CC'), os.environ.get('CC'), os.environ.get('SDKROOT'))
     cached = _POLICIES.get(key)
-    if cached is None or not all(path.exists() for path in (cached.c, cached.header, cached.library)):
+    if cached is None:
         target = Path(tempfile.mkdtemp(prefix='coax-quantified-policy-')) / 'policy'
         cached = ForallPolicy(compiler, target, deadline, runner=_runner or common.Session(deadline).run)
         _POLICIES[key] = cached
-    if directory is None:
-        return cached
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=False)
-    result = copy.copy(cached)
-    result.directory = directory
-    result.identity = dict(cached.identity)
-    for name in ('c', 'header', 'library'):
-        destination = directory / getattr(cached, name).name
-        shutil.copyfile(getattr(cached, name), destination)
-        setattr(result, name, destination)
-        result.identity[name] = str(destination)
-    result.identity['retained_bootstrap'] = dict(cached.identity)
-    return result
+    return common._retained_policy(cached, directory)
 
 
 def _observe(binary, checks, session, policy, timeout_s, output_bytes, directory):
@@ -251,7 +238,7 @@ def _run_profile(files, *, keep, steps, only, timeout_s, max_output_bytes, cc,
             codes += [policy.integrity(expected, common._sha(path)) for path, expected in policy.identity['sources'].items()]
             codes.append(policy.integrity(policy.identity['library_sha256'], common._sha(policy.library)))
             codes += [policy.integrity(expected, common._sha(path)) for path, expected in result['transport_sources'].items()]
-            codes.append(policy.integrity(chain.get('program_sha256') or '', common._sha(chain.get('resolved_program') or '')))
+            codes += common._toolchain_integrity(policy, chain)
             item['outcome'] = OUTCOMES[policy.aggregate(codes)]
         result['outcome'] = OUTCOMES[policy.aggregate([item['outcome'] for item in result['files']])]
     except PolicyUnavailable as error:

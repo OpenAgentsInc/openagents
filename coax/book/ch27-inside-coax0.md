@@ -871,7 +871,7 @@ IEEE, layout and policy expectations plus native sanitizer coverage.
 This book's `check-examples.sh` runs its examples in debug and release,
 executes authored checks, and exercises the native boundary examples.
 
-The optional [native verification companions](../verification-differential.md)
+The optional [native verification companions](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md)
 also run original checked bodies at O0/O2. Finite properties share the
 evaluator's domain planner. Independent values, guarded writes and cleanup
 expectations exercise the emitted code; a separate semantic experiment can

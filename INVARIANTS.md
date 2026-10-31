@@ -1942,11 +1942,14 @@ callback or check harness. Existing ABI 1/2 tables, EP1/QP1 and execution.v1/v2
 keep their meanings. The semantics observer calls original checked procedures.
 
 Strict positive qualification retains the complete original baseline. A
-negative original stays a counterexample: matching its exact evaluator
-diagnostic and structured native fault is an artifact-only parity experiment,
+negative original stays a counterexample: matching its expected evaluator
+code family/location and structured native fault is an artifact-only parity experiment,
 with `baseline_qualified=false`. Recognition requires a valid begun case,
 known reason, original physical location, expected abort and complete transport;
 arbitrary crashes or stderr text cannot become recognized Coax traps.
+Failed claim locations remain fault locations. Named negative fixtures supply
+separate declaration oracles; exact native-table admission never rewrites the
+original evidence or infers a declaration from its fault.
 
 The multiplication-to-addition seed changes exactly one admitted helper anchor
 in a retained copy of verification C. Original sources, original C and their

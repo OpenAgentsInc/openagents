@@ -52,15 +52,21 @@ def reduction_copy(value):
 
 
 def expected_fact(arena, check, expected):
-    return Expected(arena.identity(check), integer(expected['kind']),
+    return Expected(arena.identity(check), u32(expected['kind']),
                     integer(expected['line']), arena.string(str(expected['source'])
                         if not isinstance(expected['source'], bytes) else expected['source']))
 
 
 def signature_fact(arena, value):
-    return Signature(integer(value['optimization']), arena.identity(value['identity']),
-        integer(value['kind']), integer(value['line']), arena.string(value['source']),
+    return Signature(u32(value['optimization']), arena.identity(value['identity']),
+        u32(value['kind']), integer(value['line']), arena.string(value['source']),
         arena.string(value['seed_id']))
+
+
+def u32(value):
+    # Preserve malformed host representations instead of modulo-narrowing them
+    # into a valid Coax reason/profile. UINT32_MAX is outside those vocabularies.
+    return value if type(value) is int and 0 <= value < 4294967295 else 4294967295
 
 
 class SemanticsPolicy(ForallPolicy):
@@ -83,6 +89,7 @@ class SemanticsPolicy(ForallPolicy):
                 ('SM_ordinal', [Domains, Words], Ordinal),
                 ('SM_reduce_start', [Domains, Words, I], Reduction),
                 ('SM_reduce_next', [Reduction, Domains, Words, Words], Candidate),
+                ('SM_reduce_status', [Reduction, I], U),
                 ('SM_accept', [Signature, Signature, U, B], B),
                 ('SM_replay', [Check, Domains, L, Bytes, Process], Observation),
                 ('SM_seed', [Bytes, Bytes], I),
@@ -92,7 +99,8 @@ class SemanticsPolicy(ForallPolicy):
             raise PolicyUnavailable(str(error), self.observations) from error
 
     def qualified(self, outcome, baseline_passed, artifact_only):
-        return bool(self.dll.SM_qualified(OUTCOMES.index(outcome), baseline_passed, artifact_only))
+        return bool(self.dll.SM_qualified(OUTCOMES.index(outcome),
+            baseline_passed is True, artifact_only is not False))
 
     def seed_id(self, value):
         arena = Arena()
@@ -186,6 +194,9 @@ class SemanticsPolicy(ForallPolicy):
         return {'state': reduction_copy(result.state), 'offered': bool(result.offered),
             'ordinal': int(result.ordinal),
             'values': [int(output.data[i]) for i in range(output.count)]}
+
+    def reduce_status(self, state, count):
+        return int(self.dll.SM_reduce_status(Reduction(**state), integer(count)))
 
     def accept(self, expected, actual, observation):
         arena = Arena()

@@ -197,11 +197,45 @@ class PositiveSemanticsTests(RecordedTests):
 
 
 class TrapParityTests(RecordedTests):
+    def oracle_controls(self,result,facts):
+        tool=self.tool();policy=tool.get_policy(COMPILER);raw=tool._raw(result)
+        authored=raw['native_expected']
+        self.assertEqual(authored[0]['identity']['source'],str(Path(facts['declaration']['source']).resolve()))
+        self.assertEqual(authored[0]['identity']['line'],facts['declaration']['line'])
+        self.assertEqual(authored[0]['identity']['column'],facts['declaration']['column'])
+        for profile in raw['profiles'].values():
+            metadata=profile['metadata']
+            self.assertEqual(policy.metadata(authored,metadata['stdout'],metadata),0)
+            for field,value in (('line',facts['declaration']['line']+1),('column',2),
+                                ('source',str(self.dir/'wrong-original-source.coax'))):
+                changed=copy.deepcopy(authored);changed[0]['identity'][field]=value
+                self.assertNotEqual(policy.metadata(changed,metadata['stdout'],metadata),0)
+            self.assertNotEqual(policy.metadata([],metadata['stdout'],metadata),0)
+        class RetainedOriginalSession:
+            remaining_bytes=67108864
+            environment=None
+            def run(inner,argv,**options):
+                if len(argv)>1 and argv[1]=='version':return raw['compiler_version_execution']
+                if len(argv)>1 and argv[1]=='test':return raw['baseline_execution']
+                raise AssertionError('missing declaration oracle reached a new compiler/native effect')
+        missing=dict(facts);missing.pop('declaration')
+        with mock.patch.object(tool.common,'Session',return_value=RetainedOriginalSession()):
+            refused=tool.run_trap(FIXTURES/Path(raw['file']).name,missing,
+                                  keep=self.dir/'missing-oracle',compiler=COMPILER)
+        self.observations.append({'scope':'Retained original version/baseline replay and metadata-only oracle controls; no new process',
+                                  'missing_oracle':refused})
+        self.assertNotEqual(refused['outcome'],'passed')
+        self.assertFalse(refused['baseline_qualified'])
+        self.assertFalse(refused['profiles'])
+
     def trap(self,name):
         expected=next(value for value in json.loads((FIXTURES/'manifest.json').read_text())['traps']
                       if value['fixture']==name)
         facts={'kind':expected['kind'],'source':FIXTURES/expected['source'],'line':expected['line'],
-               'evaluator_code':expected['code'].encode()}
+               'evaluator_code':expected['code'].encode(),
+               'declaration':{'source':str((FIXTURES/expected['declaration']['source']).resolve()),
+                              'line':expected['declaration']['line'],
+                              'column':expected['declaration']['column']}}
         result=self.tool().run_trap(FIXTURES/(name+'.coax'),facts,keep=self.dir/'artifacts',compiler=COMPILER)
         self.observations.append(result)
         self.assertEqual(result['schema'],'coax.native-checks.semantics.v1')
@@ -211,6 +245,9 @@ class TrapParityTests(RecordedTests):
         self.assertEqual(result['source_minimization'],'not-supported')
         self.assertEqual(result['baseline']['verdict'],'counterexample')
         self.assertEqual(result['baseline_validation']['outcome'],'counterexample')
+        self.assertEqual(Path(result['baseline']['claims'][0]['at']['file']).resolve(),
+                         (FIXTURES/expected['source']).resolve())
+        self.assertEqual(result['baseline']['claims'][0]['at']['line'],expected['line'])
         diagnostic=next(d for d in result['evaluator_diagnostics'] if d['code']==expected['code'])
         projection={key:diagnostic[key] for key in ('code','line','col','message')}
         projection['file']=Path(diagnostic['file']).name
@@ -228,6 +265,7 @@ class TrapParityTests(RecordedTests):
             self.assertEqual(check['trap']['line'],expected['line'])
             self.assertEqual(raw_bytes(check['trap']['source']),str((FIXTURES/expected['source']).resolve()).encode())
             self.assertEqual(check['process']['returncode'],-signal.SIGABRT)
+        self.oracle_controls(result,facts)
     def test_dynamic_assertion(self):self.trap('trap-assert')
     def test_dynamic_add_overflow(self):self.trap('trap-overflow')
     def test_dynamic_division_by_zero(self):self.trap('trap-divzero')
@@ -275,9 +313,19 @@ class SeedReductionTests(RecordedTests):
         self.assertEqual(seeded,original.replace(anchor,replacement,1))
         self.assertEqual(source.read_bytes(),before)
         self.assertTrue(any(replay['accepted'] for replay in result['replays']))
+        self.assertEqual(result['signature']['optimization'],2)
+        self.assertEqual(result['signature']['seed_id'],'mul-add')
+        self.assertEqual(result['signature']['kind'],1)
+        self.assertEqual(result['signature']['line'],expected['line'])
         for replay in result['replays']:
             self.assertIn(replay['observation']['native_outcome'],('passed','counterexample'))
             self.assertFalse(replay['observation'].get('baseline_qualified',False))
+            self.assertLessEqual(replay['observation']['completed_cases'],1,
+                                 'single-tuple replay must not fabricate earlier traversal')
+            if replay['accepted']:
+                self.assertEqual(replay['observation']['trap']['kind'],1)
+                self.assertEqual(replay['observation']['trap']['line'],expected['line'])
+                self.assertEqual(raw_bytes(replay['observation']['trap']['source']),str(source.resolve()).encode())
 
 
 class ProtocolPolicyTests(RecordedTests):
@@ -335,7 +383,9 @@ class ProtocolPolicyTests(RecordedTests):
                 {'name':b'offset','type_name':b'int','members':[],
                  'domain':{'kind':5,'bits':64,'is_signed':True,'first':-2,'count':3,'values':[]}}]}
         process={'started':True,'returncode':-signal.SIGABRT,'read_errno':None,'stdout_eof':True,
-                 'stderr_eof':True,'stdout':bytes.fromhex(vectors['trap_assert']),'stderr':b''}
+                 'stderr_eof':True,'timeout':False,'deadline_exhausted':False,'output_limit':False,
+                 'stdout_limit':False,'stderr_limit':False,
+                 'stdout':bytes.fromhex(vectors['trap_assert']),'stderr':b''}
         for kind in (4294967297,-4294967295,-1):
             with self.subTest(kind=kind):
                 result=self.policy.classify(check,{'kind':kind,'source':b'abc','line':11},bytes(region),process,replay_index=5)
@@ -346,7 +396,7 @@ class ProtocolPolicyTests(RecordedTests):
     def test_signature_optimization_never_wraps_into_the_valid_o2_identity(self):
         identity={'ordinal':2,'declaration_index':7,'name':b'declared replay','source':b'abc','line':1,'column':1}
         valid={'optimization':2,'identity':identity,'kind':1,'line':11,'source':b'abc','seed_id':'mul-add'}
-        observation={'native_outcome':'counterexample','recognized_trap':True}
+        observation={'native_outcome':'counterexample','native_outcome_code':1,'recognized_trap':True}
         for optimization in (4294967298,-4294967294,-1):
             with self.subTest(optimization=optimization):
                 accepted=self.policy.accept({**valid,'optimization':optimization},valid,observation)
@@ -388,6 +438,28 @@ class HostAdmissionTests(RecordedTests):
                 self.assertIsNotNone(denied)
                 run.assert_not_called();copied.assert_not_called()
 
+    def test_deleted_cached_header_never_silently_rebootstraps(self):
+        execution=self.execution;key=next(key for key,value in execution._POLICIES.items() if value is self.policy)
+        clone=copy.copy(self.policy);clone.identity=copy.deepcopy(self.policy.identity)
+        directory=self.dir/'deleted-header';directory.mkdir()
+        for field in ('c','header','library'):
+            original=Path(getattr(self.policy,field));destination=directory/original.name
+            destination.write_bytes(original.read_bytes());setattr(clone,field,destination)
+            clone.identity[field]=str(destination)
+        clone.directory=directory;Path(clone.header).unlink()
+        run=mock.Mock(side_effect=AssertionError('deleted cached header reached rebootstrap process'))
+        copied=mock.Mock(side_effect=AssertionError('deleted cached header reached copy'))
+        denied=None
+        with mock.patch.dict(execution._POLICIES,{key:clone}), \
+             mock.patch.object(execution.common.Session,'run',run), \
+             mock.patch.object(execution.shutil,'copyfile',copied):
+            try:execution.get_policy(COMPILER,self.dir/'must-not-publish')
+            except execution.PolicyUnavailable as error:denied=str(error)
+        self.observations.append({'scope':'Deleted cached artifact, no allowed process/copy',
+                                  'denied':denied,'process_calls':run.call_count,'copy_calls':copied.call_count})
+        self.assertIsNotNone(denied)
+        run.assert_not_called();copied.assert_not_called()
+
     def test_prelaunch_capture_refusal_has_total_non_native_result_shape(self):
         session=mock.Mock();session.remaining_bytes=32769
         session.run=mock.Mock(side_effect=AssertionError('capture refusal must not launch'))
@@ -406,6 +478,21 @@ class HostAdmissionTests(RecordedTests):
         self.assertNotIn('timeout',result)
         self.assertNotIn('stdout_limit',result)
 
+    def test_sdk_settings_change_is_rejected_by_actual_coax_integrity(self):
+        executable=self.dir/'declared-cc';settings=self.dir/'SDKSettings.json'
+        executable.write_bytes(b'Declared file identity only; never executed.\n')
+        settings.write_bytes(b'{"declared":"first"}\n')
+        chain={'resolved_program':str(executable),'program_sha256':sha(executable),
+               'sdk':{'settings_files':[{'path':str(settings),'resolved_path':str(settings),
+                                         'sha256':sha(settings),'error':None}]}}
+        valid=self.execution.common._toolchain_integrity(self.policy,chain)
+        self.assertEqual(self.policy.aggregate(valid),0)
+        settings.write_bytes(b'{"declared":"changed"}\n')
+        changed=self.execution.common._toolchain_integrity(self.policy,chain)
+        self.observations.append({'scope':'Declared local file integrity; no compiler/native effect',
+                                  'valid':valid,'changed':changed})
+        self.assertNotEqual(self.policy.aggregate(changed),0)
+
 
 class SeedAdmissionTests(RecordedTests):
     def test_real_multiply_qualification_is_retained_for_seed_admission(self):qualified_multiply(self)
@@ -417,6 +504,12 @@ class SeedAdmissionTests(RecordedTests):
                    ('profile-source',lambda r:r['files'][0]['baseline_input_manifest']['sources'][0].__setitem__('sha256','0'*64)),
                    ('descriptors',lambda r:r['files'][0]['baseline_input_manifest'].__setitem__('descriptors',None))]
         expected={'kind':1,'source':str((FIXTURES/'multiply.coax').resolve()),'line':6}
+        class StopAtCompile(Exception):pass
+        control=mock.Mock(side_effect=StopAtCompile('untampered admission reached compiler boundary'))
+        with mock.patch.object(tool,'_compile',control):
+            with self.assertRaises(StopAtCompile):
+                tool.seed_and_reduce(copy.deepcopy(qualified),expected=expected,keep=self.dir/'untampered-control')
+        self.assertEqual(control.call_count,1,'negative admission tests require a valid positive control')
         for name,mutate in mutations:
             with self.subTest(field=name):
                 record=copy.deepcopy(qualified);mutate(record)
@@ -427,6 +520,19 @@ class SeedAdmissionTests(RecordedTests):
                 self.assertNotEqual(result['outcome'],'passed')
                 self.assertFalse(result['baseline_qualified'])
                 compile_spy.assert_not_called()
+
+    def test_seed_uses_retained_resolved_native_compiler_with_original_suffix_arguments(self):
+        qualified=qualified_multiply(self);tool=self.tool();captured=[]
+        class StopAtCompile(Exception):pass
+        def stop(policy,source,session,native_cc,*args,**kwargs):
+            captured.append(list(native_cc));raise StopAtCompile('no actual native compiler launch')
+        with mock.patch.dict(os.environ,{'PATH':str(self.dir/'untrusted-search-path')}), \
+             mock.patch.object(tool,'_compile',side_effect=stop):
+            with self.assertRaises(StopAtCompile):
+                tool.seed_and_reduce(qualified,expected={'kind':1,'source':str((FIXTURES/'multiply.coax').resolve()),
+                    'line':6},keep=self.dir/'resolved-compiler')
+        self.assertEqual(captured,[[qualified['toolchain']['resolved_program'],*qualified['native_cc'][1:]]])
+        self.observations.append({'scope':'Compiler-boundary spy, no native launch','captured_argv':captured})
 
 
 class NativeProtocolNegativeTests(RecordedTests):

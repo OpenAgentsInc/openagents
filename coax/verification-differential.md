@@ -313,9 +313,15 @@ signals, spoofed diagnostic text and malformed frames remain unrecognized.
 The checked reason subset covers assertions, integer overflow, division by
 zero, shifts, indices, slices and numeric casts.
 
-A negative fixture keeps its failed original evaluator evidence. Exact JSON
-diagnostic and native-trap parity is an explicitly artifact-only experiment,
+A negative fixture keeps its failed original evaluator evidence. Its named
+fixture has one intended fallible operation on the tagged line. The policy
+matches evaluator code family and physical location; independent fixture
+checks also pin the exact JSON diagnostic. Native-trap parity is an explicitly artifact-only experiment,
 with `baseline_qualified=false`; it never becomes execution.v1/v2 qualification.
+Failed evidence retains the fault location. The negative API separately requires
+an independently authored declaration oracle and validates the actual native
+table against it before a body runs. The supplied named fixtures do not provide
+general failed-check discovery.
 The new `coax.native-checks.semantics.v1` record distinguishes experiment outcome
 from the actual native counterexample and original baseline outcome.
 

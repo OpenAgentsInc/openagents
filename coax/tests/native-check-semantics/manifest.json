@@ -13,6 +13,11 @@
         "col": 3,
         "message": "assertion failed [#test dynamic assertion trap]",
         "file": "trap-assert.coax"
+      },
+      "declaration": {
+        "source": "trap-assert.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -27,6 +32,11 @@
         "col": 14,
         "message": "integer overflow in s8 during compile-time evaluation [#test dynamic overflow trap]",
         "file": "trap-overflow.coax"
+      },
+      "declaration": {
+        "source": "trap-overflow.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -41,6 +51,11 @@
         "col": 14,
         "message": "division by zero during compile-time evaluation [#test dynamic division trap]",
         "file": "trap-divzero.coax"
+      },
+      "declaration": {
+        "source": "trap-divzero.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -55,6 +70,11 @@
         "col": 16,
         "message": "index 2 is out of bounds for 2 elements [#test dynamic bounds trap]",
         "file": "trap-bounds.coax"
+      },
+      "declaration": {
+        "source": "trap-bounds.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -69,6 +89,11 @@
         "col": 17,
         "message": "slice 0..<3 is out of bounds for 2 elements [#test dynamic slice trap]",
         "file": "trap-slice.coax"
+      },
+      "declaration": {
+        "source": "trap-slice.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -83,6 +108,11 @@
         "col": 10,
         "message": "cast to u8 is out of range [#test dynamic cast trap]",
         "file": "trap-cast.coax"
+      },
+      "declaration": {
+        "source": "trap-cast.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -97,6 +127,11 @@
         "col": 12,
         "message": "shift by 64 is out of range for int [#test dynamic shift trap]",
         "file": "trap-shift.coax"
+      },
+      "declaration": {
+        "source": "trap-shift.coax",
+        "line": 1,
+        "column": 1
       }
     },
     {
@@ -111,6 +146,11 @@
         "col": 3,
         "message": "assertion failed [#test physical loaded source trap]",
         "file": "loaded-trap.coax"
+      },
+      "declaration": {
+        "source": "trap-loaded.coax",
+        "line": 2,
+        "column": 1
       }
     }
   ],
