@@ -56,6 +56,7 @@ W :: struct {
   fs: [4096] int; fe: [4096] int; fy: [4096] int; ft: [4096] int; nf: int;
   fflat: [4096] bool; flat: bool;   // a field written @interpolate(flat); the last attributes held one
   ms: [128] int; me: [128] int; my: [128] int; mk: [128] int; mt: [128] int; nm: int;
+  mx: [128] int;    // a private variable's initializer, at its first token (0: none)
   mh: [128] bool;   // a private variable some procedure other than an entry writes
   ks: [1024] int; ke: [1024] int; kx: [1024] int; kxe: [1024] int; kt: [1024] int; nk: int;
   gs: [2048] int; ge: [2048] int; gr: [2048] int; gp: [2048] int; gpn: [2048] int; gb: [2048] int; gbe: [2048] int;
@@ -380,6 +381,7 @@ declare :: (w: []W) {
       }
       m := w[0].nm; w[0].ms[m] = w[0].ts[w[0].p]; w[0].me[m] = w[0].te[w[0].p]; w[0].mt[m] = w[0].p; w[0].mk[m] = kind; w[0].p += 1;
       expect(w, ":"); w[0].my[m] = ptype(w); w[0].nm = m + 1;
+      w[0].mx[m] = ifx is_at(w, "=") then w[0].p + 1 else 0;
       skip_to(w, ";"); w[0].p += 1;
       continue;
     }
@@ -577,7 +579,27 @@ mat :: (w: []W, v: Val) -> Val {
   name := srx(w, w[0].ms[v.um - 1], w[0].me[v.um - 1]);
   if is_sc(w, t) { ap(w, name); apc(w, '['); off(w, v, 0); apc(w, ']'); }
   else if is_vec(w, t) { ap(w, "wg_at"); apn(w, vlen(w, t)); apc(w, '('); ap(w, name); apc(w, ','); off(w, v, 0); apc(w, ')'); }
-  else { err(w, "a whole uniform struct or array as a value"); }
+  else if w[0].yk[t] == YK_ST || w[0].yk[t] == YK_ARR {
+    // a whole struct or array: each field or element read where the block keeps it
+    st := w[0].yk[t] == YK_ST; sid := w[0].ye[t];
+    n := ifx st then w[0].sc[sid] else w[0].yn[t];
+    if n > 64 { err(w, "a uniform array of more than 64 as a value"); return mka(w, b, t); }
+    parts: [64] Val;
+    for i: 0..<n {
+      e := v;
+      if st { e.ty = w[0].fy[w[0].sf[sid] + i]; e.k = v.k + ufield(w, sid, i); }
+      else { e.ty = w[0].ye[t]; e.k = v.k + i * ustride(w, w[0].ye[t]); }
+      parts[i] = mat(w, e);
+    }
+    b = w[0].an; ytx(w, t); ap(w, ifx st then ".{" else ".[");
+    for i: 0..<n {
+      if i > 0 { apc(w, ','); }
+      if st { f := w[0].sf[sid] + i; field(w, srx(w, w[0].fs[f], w[0].fe[f])); apc(w, '='); }
+      apv(w, parts[i]);
+    }
+    apc(w, ifx st then '}' else ']');
+  }
+  else { err(w, "a uniform value of this type"); }
   r := mka(w, b, t); r.path = is_sc(w, t);
   return r;
 }
@@ -846,6 +868,7 @@ args :: (w: []W, a: []Val) -> int {
   expect(w, "(");
   n := 0;
   while !is_at(w, ")") && w[0].tk[w[0].p] != TK_EOF {
+    if n == a.count { err(w, "more arguments than this holds"); return n; }
     a[n] = ex(w); n += 1;
     if is_at(w, ",") { w[0].p += 1; }
   }
@@ -944,7 +967,7 @@ const_type :: (w: []W, c: int) -> int {
 }
 // A constructor of type t at '(' (t -2: an array of what it holds; -3-n: vecN of what it holds).
 construct :: (w: []W, t0: int) -> Val {
-  a: [32] Val; n := args(w, a[..]);
+  a: [256] Val; n := args(w, a[..]);
   for i: 0..<n { a[i] = mat(w, a[i]); }
   t := t0;
   if t == -2 { t = ty_find(w, YK_ARR, n, ifx n > 0 then conc_ty(w, a[0].ty) else Y_F); }
@@ -1051,7 +1074,7 @@ call :: (w: []W, name: string) -> Val {
     b := w[0].an; ap(w, "cast(u32) "); apv(w, v); ap(w, ".count");
     return mkv(w, b, Y_U);
   }
-  a: [32] Val; n := args(w, a[..]);
+  a: [256] Val; n := args(w, a[..]);
   if name == "all" || name == "any" {
     v := a[0];
     if v.cop == 0 { err(w, "all() or any() of other than a comparison"); return Val.{ty = Y_B}; }
@@ -1365,6 +1388,13 @@ emit_struct :: (w: []W, sid: int) {
   }
   o(w, "}\n");
 }
+// A private variable's initializer, as its type, written out (WGSL starts each invocation with it).
+private_init :: (w: []W, m: int) {
+  save := w[0].p; sb := w[0].an; w[0].p = w[0].mx[m];
+  v := convert_ty(w, mat(w, ex(w)), w[0].my[m]);
+  ov(w, v);
+  w[0].p = save; w[0].an = sb;
+}
 emit_const :: (w: []W, c: int) {
   save := w[0].p; w[0].p = w[0].kx[c];
   v := ex(w);
@@ -1444,8 +1474,13 @@ emit_fn :: (w: []W, g: int) {
     for i: 0..<w[0].nm {
       if (w[0].gm[g] & (cast(u64) 1 << cast(u64) i)) == 0 || w[0].mk[i] != MV_PRIVATE { continue; }
       name_ := srx(w, w[0].ms[i], w[0].me[i]);
-      if by_value(w, i) { o(w, "  "); o(w, name_); o(w, ":"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b)); o(w, ";\n"); continue; }
+      if by_value(w, i) {
+        o(w, "  "); o(w, name_); o(w, ":"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b));
+        if w[0].mx[i] > 0 { o(w, "="); private_init(w, i); }
+        o(w, ";\n"); continue;
+      }
       o(w, "  "); o(w, name_); o(w, "_store:[1]"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b)); o(w, ";\n");
+      if w[0].mx[i] > 0 { o(w, "  "); o(w, name_); o(w, "_store[0]="); private_init(w, i); o(w, ";\n"); }
       o(w, "  "); o(w, name_); o(w, ":="); o(w, name_); o(w, "_store[..];\n");
     }
   }

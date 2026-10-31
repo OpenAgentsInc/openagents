@@ -85,6 +85,9 @@ wg_atan2 :: (y:f32,x:f32)->f32 {
   return r;
 }
 wg_atan :: (x:f32)->f32 {return wg_atan2(x,1.0f32);}
+// asin and acos on [-1, 1] by atan2 of the other leg (outside it WGSL's are undefined; these clamp).
+wg_asin :: (x:f32)->f32 {return wg_atan2(x,sqrt(fmax(1.0f32-x*x,0.0f32)));}
+wg_acos :: (x:f32)->f32 {return wg_atan2(sqrt(fmax(1.0f32-x*x,0.0f32)),x);}
 wg_min_i :: (a:s32,b:s32)->s32 {if b<a {return b;} return a;}
 wg_max_i :: (a:s32,b:s32)->s32 {if b>a {return b;} return a;}
 wg_clamp_i :: (x:s32,lo:s32,hi:s32)->s32 {return wg_min_i(wg_max_i(x,lo),hi);}
@@ -150,6 +153,8 @@ wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c
   #assert wg_tanh(20)==1 && wg_tanh(-20)== -1 && wg_tanh(0)==0 && abs(wg_tanh(0.5f32)-0.46211716f32)<0.000001f32;
   #assert abs(wg_atan2(1,1)-WG_PI/4)<0.000001f32 && abs(wg_atan2(1,-1)-3*WG_PI/4)<0.000001f32 && abs(wg_atan2(-1,-1)+3*WG_PI/4)<0.000001f32;
   #assert abs(wg_atan2(2,1)-1.10714872f32)<0.000001f32 && wg_atan2(0,0)==0 && abs(wg_atan2(0,-1)-WG_PI)<0.000001f32 && abs(wg_atan(1)-WG_PI/4)<0.000001f32;
+  #assert abs(wg_asin(0.5f32)-WG_PI/6)<0.000001f32 && abs(wg_asin(-1)+WG_PI/2)<0.000001f32 && wg_asin(0)==0;
+  #assert abs(wg_acos(0.5f32)-WG_PI/3)<0.000001f32 && abs(wg_acos(-1)-WG_PI)<0.000001f32 && wg_acos(1)==0;
   #assert wg_min_i(-2,3)== -2 && wg_max_i(-2,3)==3 && wg_clamp_i(9,0,4)==4 && wg_clamp_i(-9,0,4)==0 && wg_abs_i(-3)==3 && wg_abs_i(3)==3;
   #assert wg_sign_i(-4)== -1 && wg_sign_i(4)==1 && wg_sign_i(0)==0 && wg_min_u(2,3)==2 && wg_max_u(2,3)==3 && wg_clamp_u(9,1,4)==4 && wg_clamp_u(0,1,4)==1;
 }

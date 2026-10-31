@@ -2,10 +2,10 @@
 // clock refusal (docs/verse/art-styles.md, The style field) is a refusal.
 //   bun test coax/web/realms.test.ts
 import { expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK, STYLE_MODULE } from "./realms"
+import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -62,6 +62,17 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   // or a whole module from Coax, the style its own functions
   writeFileSync(join(site, "everglade.wgsl"), `// ---- generated: verse/everglade/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
+  // or a module whose Coax source loads the presets, though it calls none of them
+  const root = mkdtempSync(join(tmpdir(), "realms-root-"))
+  mkdirSync(join(root, "gpu"))
+  writeFileSync(join(root, "gpu/a.coax"), '#load "../verse/style.coax";\n')
+  writeFileSync(join(root, "gpu/b.coax"), '#load "../verse/look.coax";\n')
+  const header = (src: string) => `// ---- generated: ${src} (the module) by coax wgsl; do not edit\nfn x() {}\n`
+  expect(styled(header("gpu/a.coax"), root)).toBe(true)
+  expect(styled(header("gpu/b.coax"), root)).toBe(false)
+  expect(styled(header("gpu/none.coax"), root)).toBe(false)
+  expect(styled(header("../gpu/a.coax"), root)).toBe(false)
+  expect(styled("fn x() {}\n", root)).toBe(false)
   // a flat realm needs it as well
   writeFileSync(join(site, "fairy.wgsl"), "// no block\n")
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/fairy.wgsl has no style block/)

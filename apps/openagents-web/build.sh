@@ -40,7 +40,7 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
 # and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden belt droprealm villa fairy; do
+for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague; do
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
@@ -52,7 +52,7 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
 # (Fairy Forest, fairy.wgsl, loads them in its Coax: gpu/fairy.coax.)
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)
+# (Orbit League, orbitleague.wgsl, loads them in its Coax: gpu/orbitleague.coax.)
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.

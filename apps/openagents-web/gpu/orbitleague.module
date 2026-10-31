@@ -1,0 +1,3 @@
+--vertices orbitleague_bg_vs,orbitleague_fx_vs
+--fragments orbitleague_bg_fs,orbitleague_fx_fs
+--bindings apps/openagents-web/gpu/orbitleague.bindings --strip orbitleague_

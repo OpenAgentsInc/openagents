@@ -45,6 +45,16 @@ export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
 export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
 // A module coax wgsl writes whole carries the style as its own functions (coax/web/wgsl-module.coax).
 export const STYLE_MODULE = "fn coax_p_verse_style_"
+// Or the module's Coax source (its first line names it, from the repo root) loads the presets,
+// for a flat realm that draws with its own light and calls none of them (Orbit League).
+const MODULE_SOURCE = /^\/\/ ---- generated: (\S+\.coax) \(the module\)/
+export function styled(text: string, root = join(import.meta.dir, "../..")): boolean {
+  if (text.includes(STYLE_BLOCK) || text.includes(STYLE_MODULE)) return true
+  const m = MODULE_SOURCE.exec(text)
+  if (!m || m[1].includes("..")) return false
+  const src = join(root, m[1])
+  return existsSync(src) && /#load "[^"]*verse\/style\.coax";/.test(readFileSync(src, "utf8"))
+}
 const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
 const PACKS = join(import.meta.dir, "../../verse/packs")
 // Painterly realms whose pack isn't painted yet: each leaves this set with its pack task
@@ -78,7 +88,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
     if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat")) {
       const wgsl = join(site, `${r.module}.wgsl`)
-      if (!existsSync(wgsl) || ![STYLE_BLOCK, STYLE_MODULE].some((mark) => readFileSync(wgsl, "utf8").includes(mark))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
+      if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
     }
     // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
     for (const a of r.assets) {

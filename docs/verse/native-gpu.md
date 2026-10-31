@@ -400,7 +400,7 @@ Every phase and native feature is a task in the Verse project
     in the lowering: vector arithmetic written as WGSL's vector operators.
     Every page with a sin hash (the painterly, flat and fixture styles) waits
     on it.
-  - waterlab, fixture, orbitleague and realm stop the translator
+  - waterlab, fixture and realm stop the translator
     (a whole uniform struct as a value, builtins on vectors it does not
     know, indexing a vector, a vector from a struct's fields); stair too
     (`&` pointers).
@@ -422,6 +422,13 @@ Every phase and native feature is a task in the Verse project
   fairy (Fairy Forest) follows, 0 blocks changed: the translator now reads
   `arrayLength(&buffer)` as the view's count, and gives the wrapping
   intrinsics a u32 for a `2u`. It drops an unread `post_depth` too.
+  orbitleague (Orbit League) follows, 0 blocks changed: a whole uniform
+  struct or array is a value now (each field read where the block keeps
+  it), a `var<private>`'s initializer is the entry's (its hull planes were
+  zero without it, and the car vanished), the library has `wg_asin` and
+  `wg_acos`, and a constructor takes up to 256 arguments. Its module calls
+  none of verse/style.coax's functions, though the hand WGSL carried their
+  block, so realms.ts takes a module whose Coax source loads the presets.
 - 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
   one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
   (this site's paths only; the player key, an Authorization line, the
