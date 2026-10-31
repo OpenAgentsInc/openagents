@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/robotics/panda-fluid.coax";
+PflExamplePower :: struct @unit(mass=1,length=2,time=-3,angle=0,numerator=1,denominator=1) {}
+#test "Panda fluid example formats positive zero and negative micro coefficients" {#assert pfl_example_micro(1.25)==1250000 && pfl_example_micro(-1.25)== -1250000 && pfl_example_micro(0)==0;}
+pfl_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("Panda fixed-source fluid and complete passive query\n");
+// book:begin pfl-query
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ coordinates:=[9]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483,0.01,-0.01];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}for i:0..<2 {s[i].value=coordinates[i+7];sv[i].value=rates[i+7];}
+ forces:[1]PflOutput;#assert pfl_forward(q[..],s[..],v[..],sv[..],forces[..])==PfkStatus.ok;
+ fluid_power:pfku.Quantity(PflExamplePower,f64);passive_power:pfku.Quantity(PflExamplePower,f64);
+ for i:0..<7 {fluid_power=fluid_power+convert_unit(PflExamplePower,forces[0].fluid.hinge[i]*v[i]);passive_power=passive_power+convert_unit(PflExamplePower,forces[0].passive.hinge[i]*v[i]);print("hinge % fluid/joint/passive (micro-J/rad): % % %\n",i+1,pfl_example_micro(forces[0].fluid.hinge[i].value),pfl_example_micro(forces[0].joint_passive.hinge[i].value),pfl_example_micro(forces[0].passive.hinge[i].value));}
+ for i:0..<2 {fluid_power=fluid_power+convert_unit(PflExamplePower,forces[0].fluid.slide[i]*sv[i]);passive_power=passive_power+convert_unit(PflExamplePower,forces[0].passive.slide[i]*sv[i]);print("slide % fluid/joint/passive (micro-N): % % %\n",i+1,pfl_example_micro(forces[0].fluid.slide[i].value),pfl_example_micro(forces[0].joint_passive.slide[i].value),pfl_example_micro(forces[0].passive.slide[i].value));}
+ print("fluid/passive power (micro-W): % %\n",pfl_example_micro(fluid_power.value),pfl_example_micro(passive_power.value));
+// book:end pfl-query
+ print("No friction constraints, contact or integration.\n");
+}

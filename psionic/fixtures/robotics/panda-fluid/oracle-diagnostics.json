@@ -1,0 +1,254 @@
+[
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": -2.061316150103506,
+    "projected_power": -2.061316150103506,
+    "passive_power": -2.3268161501035056,
+    "virtual_work_error": 1.1102230246251565e-16
+  },
+  {
+    "body_power": -2.061316150103506,
+    "projected_power": -2.061316150103506,
+    "passive_power": -2.3268161501035056,
+    "virtual_work_error": 1.1102230246251565e-16
+  },
+  {
+    "body_power": -2.061316150103506,
+    "projected_power": -2.061316150103506,
+    "passive_power": -2.3268161501035056,
+    "virtual_work_error": 1.1102230246251565e-16
+  },
+  {
+    "body_power": -2.061316150103506,
+    "projected_power": -2.061316150103506,
+    "passive_power": -2.3268161501035056,
+    "virtual_work_error": 1.1102230246251565e-16
+  },
+  {
+    "body_power": -5.210083310518118,
+    "projected_power": -5.210083310518118,
+    "passive_power": -5.475583310518118,
+    "virtual_work_error": 6.938893903907228e-18
+  },
+  {
+    "body_power": -5.210083310518118,
+    "projected_power": -5.210083310518118,
+    "passive_power": -5.475583310518118,
+    "virtual_work_error": 6.938893903907228e-18
+  },
+  {
+    "body_power": -5.210083310518118,
+    "projected_power": -5.210083310518118,
+    "passive_power": -5.475583310518118,
+    "virtual_work_error": 6.938893903907228e-18
+  },
+  {
+    "body_power": -5.210083310518118,
+    "projected_power": -5.210083310518118,
+    "passive_power": -5.475583310518118,
+    "virtual_work_error": 6.938893903907228e-18
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": 0.0,
+    "projected_power": 0.0,
+    "passive_power": 0.0,
+    "virtual_work_error": 0.0
+  },
+  {
+    "body_power": -168.87577011166078,
+    "projected_power": -168.87577011166078,
+    "passive_power": -171.0400817554245,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -42.60949911378852,
+    "projected_power": -42.60949911378852,
+    "passive_power": -45.626071011205326,
+    "virtual_work_error": 3.552713678800501e-15
+  },
+  {
+    "body_power": -37.645342796602534,
+    "projected_power": -37.64534279660253,
+    "passive_power": -42.27454192325354,
+    "virtual_work_error": 7.105427357601002e-15
+  },
+  {
+    "body_power": -39.23538519527202,
+    "projected_power": -39.235385195272016,
+    "passive_power": -43.2237209836245,
+    "virtual_work_error": 7.105427357601002e-15
+  },
+  {
+    "body_power": -3.3956467769400183,
+    "projected_power": -3.3956467769400187,
+    "passive_power": -4.309273782319614,
+    "virtual_work_error": 4.440892098500626e-16
+  },
+  {
+    "body_power": -6.039179046505084,
+    "projected_power": -6.039179046505082,
+    "passive_power": -8.106693770816282,
+    "virtual_work_error": 1.7763568394002505e-15
+  },
+  {
+    "body_power": -7.610191196480336,
+    "projected_power": -7.610191196480337,
+    "passive_power": -14.572594676765338,
+    "virtual_work_error": 8.881784197001252e-16
+  },
+  {
+    "body_power": -24.985886965805257,
+    "projected_power": -24.985886965805257,
+    "passive_power": -25.731206034793384,
+    "virtual_work_error": 5.551115123125783e-17
+  },
+  {
+    "body_power": -4.017845974738266,
+    "projected_power": -4.017845974738266,
+    "passive_power": -4.216240998759563,
+    "virtual_work_error": 2.220446049250313e-16
+  },
+  {
+    "body_power": -65.54556231126266,
+    "projected_power": -65.54556231126266,
+    "passive_power": -67.2702863791209,
+    "virtual_work_error": 3.552713678800501e-15
+  },
+  {
+    "body_power": -132.62527908647527,
+    "projected_power": -132.62527908647527,
+    "passive_power": -133.88138386845492,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -201.60971442440365,
+    "projected_power": -201.60971442440365,
+    "passive_power": -207.12989585036152,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -74.95470085857711,
+    "projected_power": -74.95470085857711,
+    "passive_power": -76.09193271434901,
+    "virtual_work_error": 7.105427357601002e-15
+  },
+  {
+    "body_power": -44.50096262879706,
+    "projected_power": -44.50096262879707,
+    "passive_power": -47.08634929335313,
+    "virtual_work_error": 7.105427357601002e-15
+  },
+  {
+    "body_power": -259.0796402544639,
+    "projected_power": -259.0796402544639,
+    "passive_power": -263.28799438405633,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -35.34825653491915,
+    "projected_power": -35.34825653491915,
+    "passive_power": -41.541251370926496,
+    "virtual_work_error": 3.552713678800501e-15
+  },
+  {
+    "body_power": -39.95657709641189,
+    "projected_power": -39.95657709641188,
+    "passive_power": -41.65460213692968,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -55.89361684877342,
+    "projected_power": -55.89361684877341,
+    "passive_power": -58.28466051879959,
+    "virtual_work_error": 7.105427357601002e-15
+  },
+  {
+    "body_power": -88.2975094137511,
+    "projected_power": -88.29750941375111,
+    "passive_power": -90.4802423950069,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -11.671808814497691,
+    "projected_power": -11.67180881449769,
+    "passive_power": -14.50375450745796,
+    "virtual_work_error": 1.7763568394002505e-15
+  },
+  {
+    "body_power": -114.34455331602913,
+    "projected_power": -114.34455331602912,
+    "passive_power": -118.37051444220383,
+    "virtual_work_error": 1.4210854715202004e-14
+  },
+  {
+    "body_power": -143.31793378081008,
+    "projected_power": -143.31793378081008,
+    "passive_power": -145.75916248404238,
+    "virtual_work_error": 4.440892098500626e-16
+  },
+  {
+    "body_power": -328.47431101523625,
+    "projected_power": -328.4743110152362,
+    "passive_power": -330.09187566266075,
+    "virtual_work_error": 5.684341886080802e-14
+  },
+  {
+    "body_power": -98.440548696419,
+    "projected_power": -98.44054869641903,
+    "passive_power": -105.16020934218794,
+    "virtual_work_error": 2.842170943040401e-14
+  }
+]

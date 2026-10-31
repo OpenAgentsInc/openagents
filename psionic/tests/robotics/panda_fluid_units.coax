@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-fluid.coax";
+PflTestPower :: struct @unit(mass=1,length=2,time=-3,angle=0,numerator=1,denominator=1) {}
+#test "fluid explicit one-radian physical moment dual preserves watts" {one:pfku.Quantity(pfku.Radian,f64);one.value=1;moment:pfku.Quantity(PflMoment,f64);moment.value=6;rate:pfku.Quantity(PidAngularRate,f64);rate.value=2;frequency:=convert_unit(PflFrequency,rate/one);hinge:=convert_unit(PmHingeGravity,moment/one);power:=convert_unit(PflTestPower,hinge*rate);same:=convert_unit(PflTestPower,moment*frequency);#assert power.value==12 && same.value==12;}

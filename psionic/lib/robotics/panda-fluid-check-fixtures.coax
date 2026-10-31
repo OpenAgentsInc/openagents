@@ -1,0 +1,4 @@
+#load "panda-fluid-types.coax";
+#load "panda-inverse-dynamics-check-fixtures.coax";
+pfl_poison :: ()->PflOutput {p:PflOutput;p.fluid=pid_poison();p.joint_passive=pid_poison();p.passive=pid_poison();return p;}
+pfl_same :: (a:PflOutput,b:PflOutput) {pid_same(a.fluid,b.fluid);pid_same(a.joint_passive,b.joint_passive);pid_same(a.passive,b.passive);}

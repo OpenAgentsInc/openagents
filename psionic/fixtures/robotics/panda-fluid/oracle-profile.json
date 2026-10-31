@@ -1,0 +1,169 @@
+{
+  "schema": "psionic.panda-fluid.independent-oracle-profile.v1",
+  "frozen_before_new_oracle_comparison": true,
+  "frozen_UTC": "2026-10-31T23:14:40.407161+00:00",
+  "experiment_sha256": "165382c310c8ed28025d378e413efa1fdfa190426be5f5f6d7e2e50da533f297",
+  "case_shape": [
+    42,
+    18
+  ],
+  "expected_shape": [
+    42,
+    27
+  ],
+  "output_order": [
+    "fluid9",
+    "joint_passive9",
+    "passive9"
+  ],
+  "force_atol": 5e-10,
+  "force_rtol": 0,
+  "power_atol_W": 5e-09,
+  "pm_normalized_quaternion_atol": 2e-15,
+  "SDK_calls": 0,
+  "Coax_product_calls": 0,
+  "method": "Independent4x4 full-angle homogeneous matrices and analytic product-rule tangents. Principal COM twist; scalar inertia-box resistance; world-wrench dual projection. math.fsum, full quaternion squared-diagonal matrix; no product pose/axis-recursion or SDK calls.",
+  "definition_imports": [
+    "panda_inverse_dynamics_matrix.body_tangents",
+    "panda_inverse_dynamics_matrix.fixed",
+    "panda_inverse_dynamics_matrix.multiply"
+  ],
+  "frozen_definition_and_profile_hashes": {
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-model.json": "6ad64e3c8c9045e8f0b664f2cf99fd9743e7d6bd2eb2c2a3ef34529cf76fc47d",
+    "psionic/fixtures/robotics/panda-inertia/qualification.json": "a87497a57a4126e125451aaae802094ab6b6fa597c60701990af9b82bfb2ef41",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618"
+  },
+  "literal_cases": [
+    {
+      "name": "density anisotropic box",
+      "box": [
+        2,
+        4,
+        6
+      ],
+      "density": 2,
+      "viscosity": 0,
+      "linear_velocity": [
+        -1,
+        2,
+        3
+      ],
+      "angular_velocity": [
+        1,
+        -2,
+        3
+      ],
+      "force": [
+        24,
+        -48,
+        -72
+      ],
+      "moment": [
+        -97,
+        656,
+        -459
+      ]
+    },
+    {
+      "name": "viscosity anisotropic box",
+      "box": [
+        2,
+        4,
+        6
+      ],
+      "density": 0,
+      "viscosity": "1/pi",
+      "linear_velocity": [
+        -1,
+        2,
+        3
+      ],
+      "angular_velocity": [
+        1,
+        -2,
+        3
+      ],
+      "force": [
+        12,
+        -24,
+        -36
+      ],
+      "moment": [
+        -64,
+        128,
+        -192
+      ]
+    },
+    {
+      "name": "rotated COM dual projection",
+      "body_translation": [
+        4,
+        5,
+        6
+      ],
+      "body_R": "Rz(pi/2)",
+      "local_COM": [
+        1,
+        2,
+        3
+      ],
+      "inertial_R": "Rx(pi/2)",
+      "hinge_Z_rate": 1,
+      "mass": 12,
+      "principal_inertia": [
+        52,
+        40,
+        20
+      ],
+      "box": [
+        2,
+        4,
+        6
+      ],
+      "density": 2,
+      "viscosity": 0,
+      "expected_COM_world": [
+        2,
+        6,
+        9
+      ],
+      "expected_COM_velocity_world": [
+        -1,
+        -2,
+        0
+      ],
+      "expected_linear_principal": [
+        -2,
+        0,
+        -1
+      ],
+      "expected_angular_principal": [
+        0,
+        1,
+        0
+      ],
+      "expected_world_force": [
+        8,
+        96,
+        0
+      ],
+      "expected_world_moment": [
+        0,
+        0,
+        -164
+      ],
+      "expected_generalized_hinge_and_power": -364
+    }
+  ],
+  "boundary_fixtures": "mass0/below1e-15 skipped, mass exactly1e-15 active; negative/at-floor triangle uses source max(1e-15,...); pure helper semantics only, not new source models",
+  "properties": [
+    "zero-rate zero force",
+    "fixedq velocity-negation oddness",
+    "COM world/principal virtual-work duality",
+    "nonpositive generalized fluid/passive power in frozen zero wind"
+  ],
+  "carried_evidence": "Existing source-table/profile and retained SDKfacts are read only. The new42-input oracle is its own qualification; no prior numerical gate/main is invoked."
+}

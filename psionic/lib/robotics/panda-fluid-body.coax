@@ -1,0 +1,41 @@
+// Owned16-body COM/principal projection. Source-visible helper PODs are trusted.
+#load "panda-fluid-math.coax";
+#authority;
+#test "fluid COM lever and BODY times inertial frame reproduce an independent density literal" {
+ poses:PffOutput;p:PfkPose;p.position.x=4;p.position.y=5;p.position.z=6;p.rotation=[9]f64.[0,-1,0,1,0,0,0,0,1];poses.arm.links[2]=p;
+ body:PmBody;body.mass=3;body.principal=[3]f64.[13,10,5];body.com=[3]f64.[1,2,3];body.inertial=[4]f64.[sqrt(0.5),sqrt(0.5),0,0];body.ancestors=1;
+ com:=pm_com(p,body.com);#assert com[0]==2 && com[1]==6 && com[2]==9;c:=pm_columns(com,body.ancestors,poses);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);v[0].value=1;rho:pfku.Quantity(PflDensity,f64);rho.value=2;mu:pfku.Quantity(PflViscosity,f64);
+ world:=pfl_body(p,body,c,v,sv,rho,mu);#assert abs(world.force[0].value-8)<1e-12 && abs(world.force[1].value-96)<1e-12 && abs(world.force[2].value)<1e-12;
+ #assert abs(world.moment[0].value)<1e-12 && abs(world.moment[1].value)<1e-12 && abs(world.moment[2].value+164)<1e-12;g:=pfl_project(c,world);#assert abs(g.hinge[0].value+364)<1e-12;
+}
+#test "fluid source mass skip is strict at the exact minimum including zero-mass EEF" {
+ p:PfkPose;p.rotation=[9]f64.[1,0,0,0,1,0,0,0,1];b:PmBody;b.inertial=[4]f64.[1,0,0,0];b.principal=[3]f64.[1e-15,1e-15,1e-15];c:PmColumns;c.linear[0]=1;
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);v[0].value=1;rho:pfku.Quantity(PflDensity,f64);rho.value=1.2;mu:pfku.Quantity(PflViscosity,f64);mu.value=2e-5;
+ for kind:0..<3 {b.mass=ifx kind==0 then 0.0 else ifx kind==1 then f64_from_bits(f64_bits(1e-15)-1) else 1e-15;w:=pfl_body(p,b,c,v,sv,rho,mu);if kind<2 {for i:0..<3 {#assert w.force[i].value==0 && w.moment[i].value==0;}}else {#assert w.force[0].value< -3.5;}}
+}
+#test "fluid fixed source cached SDK projection case 0 includes hand and moving fingers" {
+ q:=[9]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.03,-0.03];v:=[9]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];expected:=[9]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);
+ for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}poses:[1]PffOutput;#assert pff_forward(angles[..],slides[..],poses[..])==PfkStatus.ok;g:=pfl_sum_owned(poses[0],pm_profile(),rates,srates);
+ for i:0..<7 {#assert abs(g.hinge[i].value-expected[i])<5e-10;}for i:0..<2 {#assert abs(g.slide[i].value-expected[i+7])<5e-10;}
+}
+#test "fluid fixed source cached SDK projection case 4 includes hand and moving fingers" {
+ q:=[9]f64.[0.0,0.19634954084936207,0.0,-2.617993877991494,0.0,2.941592653589793,0.7853981633974483,0.01,-0.01];v:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];expected:=[9]f64.[-2.0072736701313403,-1.272289852324723,-2.127941435340713,1.4653506870763273,0.9815026830000195,1.2195762399456531,1.022302002458731,0.6857209975235413,0.8592801387959963];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);
+ for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}poses:[1]PffOutput;#assert pff_forward(angles[..],slides[..],poses[..])==PfkStatus.ok;g:=pfl_sum_owned(poses[0],pm_profile(),rates,srates);
+ for i:0..<7 {#assert abs(g.hinge[i].value-expected[i])<5e-10;}for i:0..<2 {#assert abs(g.slide[i].value-expected[i+7])<5e-10;}
+}
+#test "fluid fixed source cached SDK projection case 8 includes hand and moving fingers" {
+ q:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.013,-0.027];v:=[9]f64.[-0.7,0.4,-0.3,0.6,-0.5,0.2,-0.1,-0.03,0.02];expected:=[9]f64.[4.2540070583373835,3.1552589289559867,4.46413171251537,-2.5877317418532444,2.3973605557069817,0.6152596169493384,-4.701012241052554,-0.6378535094204766,-0.8055928661042898];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);
+ for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}poses:[1]PffOutput;#assert pff_forward(angles[..],slides[..],poses[..])==PfkStatus.ok;g:=pfl_sum_owned(poses[0],pm_profile(),rates,srates);
+ for i:0..<7 {#assert abs(g.hinge[i].value-expected[i])<5e-10;}for i:0..<2 {#assert abs(g.slide[i].value-expected[i+7])<5e-10;}
+}
+
+pfl_body :: (pose:PfkPose,body:PmBody,columns:PmColumns,hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64),rho:pfku.Quantity(PflDensity,f64),mu:pfku.Quantity(PflViscosity,f64))->PflWrench {
+ if body.mass<1e-15 {empty:PflWrench;return empty;}r:=pfl_principal(pose,body.inertial);local:=pfl_local(columns,r,hinge,slide);box:=pfl_box(body.mass,body.principal);return pfl_world(r,pfl_drag(box.side,local,rho,mu));
+}
+pfl_sum_owned :: (poses:PffOutput,profile:PmProfile,hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PidOutput {
+ out:PidOutput;rho:pfku.Quantity(PflDensity,f64);rho.value=1.2;mu:pfku.Quantity(PflViscosity,f64);mu.value=0.00002;
+ // Bodies0/1 are fixed and have zero columns; body11 is the mass-zero EEF.
+ for i:2..<16 {body:=profile.bodies[i];pose:=pid_pose(poses,i);c:=pm_columns(pm_com(pose,body.com),body.ancestors,poses);part:=pfl_project(c,pfl_body(pose,body,c,hinge,slide,rho,mu));for j:0..<7 {out.hinge[j]=out.hinge[j]+part.hinge[j];}for j:0..<2 {out.slide[j]=out.slide[j]+part.slide[j];}}
+ return out;
+}

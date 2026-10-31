@@ -1,0 +1,38 @@
+{
+  "schema": "psionic.panda-fluid.preflight-failure-binding.v1",
+  "passed": false,
+  "failure_phase": "metadata admission before numerical cases",
+  "reason": "Overstrong assumption that only body2..17 share root2; fixed mount18..22 also share root2 but no ancestor robotDOFs.",
+  "source": {
+    "bytes": 18080,
+    "sha256": "cc0e94e0e426ab0fbba7fdea08c39059233fd821a498f842b45dd2c61d001f88"
+  },
+  "profile": {
+    "bytes": 4276,
+    "sha256": "9cab0574d1540d3b0626397fe72824d85c256d1744903104f45a75ca1569fb52"
+  },
+  "record": {
+    "bytes": 288,
+    "sha256": "d9005908f3685edc4d1a6c576cf1cb74e323d4e556d7f366ff343697011abd98"
+  },
+  "stderr": {
+    "bytes": 1512,
+    "sha256": "8a1ae0bef94b3eefb4054e2a89b0ed5cbd6707e0b268be357174c32d3599cfed"
+  },
+  "SDK_calls": 0,
+  "Coax_product_calls": 0,
+  "numerical_oracle_cases_evaluated": 0,
+  "source_record": {
+    "schema": "psionic.panda-fluid.independent-oracle-qualification.v1",
+    "passed": false,
+    "SDK_calls": 0,
+    "Coax_product_calls": 0,
+    "NN_calls": 0,
+    "steps": 0,
+    "render_calls": 0,
+    "failure": "RuntimeError('complete robot tree and66geoms')",
+    "seconds": 0.004611207987181842
+  },
+  "stderr_text": "Traceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_fluid_oracle.py\", line 143, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_fluid_oracle.py\", line 125, in main\n    model=json.loads((ROOT/'psionic/fixtures/robotics/panda-actuation/sdk-model.json').read_text());record['source_admission']=validate_source(model,e);record['synthetic_checks']=synthetic_checks()\n                                                                                                                               ~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_fluid_oracle.py\", line 47, in validate_source\n    require(geoms==list(range(21,87)) and [b['id'] for b in model['bodies'] if b['root_id']==2]==list(range(2,18)),'complete robot tree and66geoms')\n    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_fluid_oracle.py\", line 14, in require\n    if not value:raise RuntimeError(message)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: complete robot tree and66geoms\n",
+  "corrective_scope": "Metadata admission only: full omitted-body ancestry/DOF proof plus separately versioned support addendum. Original experiment/cases/drag arithmetic/budgets unchanged. First numerical oracle run passed after this correction."
+}

@@ -1,0 +1,71 @@
+{
+  "schema": "psionic.panda-fluid.checks-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "new_groups": 17,
+  "new_cases": 74,
+  "roots": [
+    {
+      "label": "math",
+      "source": "psionic/lib/robotics/panda-fluid-math.coax",
+      "source_sha256": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb",
+      "mutants": 130,
+      "killed": 130,
+      "survived": 0,
+      "log_sha256": "26af225ee5a422a31eddf62206a23cdf19dd5b4dd8e0ecfa18ac434d03c2085b",
+      "command": [
+        "<qualified-compiler>",
+        "mutate",
+        "psionic/lib/robotics/panda-fluid-math.coax",
+        "--root-only",
+        "--jobs",
+        "8"
+      ]
+    },
+    {
+      "label": "body",
+      "source": "psionic/lib/robotics/panda-fluid-body.coax",
+      "source_sha256": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7",
+      "mutants": 12,
+      "killed": 12,
+      "survived": 0,
+      "log_sha256": "28b8f39515d5c02675da54bbfea58fcef0695d137368b94e80a2a348179cee3c",
+      "command": [
+        "<qualified-compiler>",
+        "mutate",
+        "psionic/lib/robotics/panda-fluid-body.coax",
+        "--root-only",
+        "--jobs",
+        "8"
+      ]
+    },
+    {
+      "label": "public",
+      "source": "psionic/lib/robotics/panda-fluid.coax",
+      "source_sha256": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39",
+      "mutants": 53,
+      "killed": 53,
+      "survived": 0,
+      "log_sha256": "65d14157c70027e4f457d543ace2e5458416fabab109cc9e89d439a84d0a848b",
+      "command": [
+        "<qualified-compiler>",
+        "mutate",
+        "psionic/lib/robotics/panda-fluid.coax",
+        "--root-only",
+        "--jobs",
+        "8"
+      ]
+    }
+  ],
+  "equivalent_waivers": 0,
+  "repeated_passing_gates": 0,
+  "scope": "Each new entry root only; dependency checks retained. Baseline authority coverage included. Every actual emitted mutant killed; scalar Quantity lowered operator tokens are not all enumerated. Types/fixture helper source is source-visible trusted support.",
+  "all_owned_Coax_sources": {
+    "psionic/lib/robotics/panda-fluid-body.coax": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7",
+    "psionic/lib/robotics/panda-fluid-check-fixtures.coax": "4211371dd6d5ea584cf3b3f783ed77efd507b8a4d579f7b74045aa31838addda",
+    "psionic/lib/robotics/panda-fluid-math.coax": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb",
+    "psionic/lib/robotics/panda-fluid-types.coax": "ef46794ed2297b0487e28506c3aa9b440b1c1cf527ae8f69ab48cf5b57fb90ea",
+    "psionic/lib/robotics/panda-fluid.coax": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39"
+  }
+}

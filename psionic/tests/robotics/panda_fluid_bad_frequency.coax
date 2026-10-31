@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-fluid.coax";
+pfl_refusal_probe_frequency :: ()->PfkStatus {v:pfku.Quantity(PidAngularRate,f64);x:pfku.Quantity(PflFrequency,f64)=v;return PfkStatus.ok;}

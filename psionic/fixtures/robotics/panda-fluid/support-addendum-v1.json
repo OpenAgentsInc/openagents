@@ -1,0 +1,259 @@
+{
+  "schema": "psionic.panda-fluid.support-addendum.v1",
+  "frozen_before_numerical_comparison": true,
+  "UTC": "2026-10-31T23:19:27.842946+00:00",
+  "original_experiment_sha256": "165382c310c8ed28025d378e413efa1fdfa190426be5f5f6d7e2e50da533f297",
+  "cases_sha256": "010df95b03428879d047a5c38793ba72e12ecabf9a07f2f63fdcda924e7e20df",
+  "budgets": {
+    "fluid": {
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "joint_passive": {
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "passive": {
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "power_W": {
+      "atol": 5e-09,
+      "rtol": 0
+    }
+  },
+  "model_sha256": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01",
+  "correction": "Original other_bodies phrase omitted fixed mount bodies18..22 sharing root2. Root equality alone never proves moving-robot ancestry. All omitted bodies are admitted only by full ancestry to world with no overlap of DOF ranges with robot0..8. Fixed mounts18..22 each have0DOFs and ancestor18\u21922\u21920 (or2\u21920) has0DOFs. Original bytes and first failed oracle preflight are retained; cases, force mathematics, units and budgets unchanged.",
+  "omitted_body_ancestry": [
+    {
+      "body_id": 0,
+      "root_id": 0,
+      "ancestor_chain_to_world": [
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 1,
+      "root_id": 1,
+      "ancestor_chain_to_world": [
+        {
+          "id": 1,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 18,
+      "root_id": 2,
+      "ancestor_chain_to_world": [
+        {
+          "id": 18,
+          "parent_id": 2,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 2,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 19,
+      "root_id": 2,
+      "ancestor_chain_to_world": [
+        {
+          "id": 19,
+          "parent_id": 18,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 18,
+          "parent_id": 2,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 2,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 20,
+      "root_id": 2,
+      "ancestor_chain_to_world": [
+        {
+          "id": 20,
+          "parent_id": 18,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 18,
+          "parent_id": 2,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 2,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 21,
+      "root_id": 2,
+      "ancestor_chain_to_world": [
+        {
+          "id": 21,
+          "parent_id": 18,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 18,
+          "parent_id": 2,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 2,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 22,
+      "root_id": 2,
+      "ancestor_chain_to_world": [
+        {
+          "id": 22,
+          "parent_id": 18,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 18,
+          "parent_id": 2,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 2,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 23,
+      "root_id": 23,
+      "ancestor_chain_to_world": [
+        {
+          "id": 23,
+          "parent_id": 0,
+          "dof_adr": 9,
+          "dof_count": 6
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 24,
+      "root_id": 24,
+      "ancestor_chain_to_world": [
+        {
+          "id": 24,
+          "parent_id": 0,
+          "dof_adr": 15,
+          "dof_count": 6
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    },
+    {
+      "body_id": 25,
+      "root_id": 25,
+      "ancestor_chain_to_world": [
+        {
+          "id": 25,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        },
+        {
+          "id": 0,
+          "parent_id": 0,
+          "dof_adr": -1,
+          "dof_count": 0
+        }
+      ]
+    }
+  ],
+  "numerical_recipe_or_case_changes": false,
+  "SDK_calls": 0
+}

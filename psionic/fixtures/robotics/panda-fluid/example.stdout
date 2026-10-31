@@ -1,0 +1,12 @@
+Panda fixed-source fluid and complete passive query
+hinge 1 fluid/joint/passive (micro-J/rad): -2007274 -70000 -2077274
+hinge 2 fluid/joint/passive (micro-J/rad): -1272290 40000 -1232290
+hinge 3 fluid/joint/passive (micro-J/rad): -2127941 -30000 -2157941
+hinge 4 fluid/joint/passive (micro-J/rad): 1465351 60000 1525351
+hinge 5 fluid/joint/passive (micro-J/rad): 981503 -50000 931503
+hinge 6 fluid/joint/passive (micro-J/rad): 1219576 2000 1221576
+hinge 7 fluid/joint/passive (micro-J/rad): 1022302 -1000 1021302
+slide 1 fluid/joint/passive (micro-N): 685721 -3000000 -2314279
+slide 2 fluid/joint/passive (micro-N): 859280 2000000 2859280
+fluid/passive power (micro-W): -2061316 -2326816
+No friction constraints, contact or integration.

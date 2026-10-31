@@ -1,0 +1,357 @@
+{
+  "schema": "psionic.panda-fluid.independent-oracle-qualification.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_product_calls": 0,
+  "NN_calls": 0,
+  "steps": 0,
+  "render_calls": 0,
+  "source_admission": {
+    "passed": true,
+    "robot_bodies": 16,
+    "SDK_body_ids": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "root": 2,
+    "robot_geom_ids": [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86
+    ],
+    "joint_damping": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.01,
+      0.01,
+      100.0,
+      100.0
+    ],
+    "PmProfile_body_source_carried": true,
+    "principal_frame": "inertial COM and normalized body*inertial rotation",
+    "omitted_bodies_have_no_robotDOF_ancestry": [
+      0,
+      1,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ],
+    "fixed_mounts_sharing_root2": [
+      18,
+      19,
+      20,
+      21,
+      22
+    ]
+  },
+  "synthetic_checks": {
+    "passed": true,
+    "metrics": {
+      "density_literal": {
+        "passed": true,
+        "values": 6,
+        "max_abs_error": 0.0,
+        "atol": 5e-10,
+        "rtol": 0
+      },
+      "viscosity_literal": {
+        "passed": true,
+        "values": 6,
+        "max_abs_error": 0.0,
+        "atol": 5e-10,
+        "rtol": 0
+      },
+      "rotated_COM_literal": {
+        "passed": true,
+        "values": 27,
+        "max_abs_error": 2.8421709430404007e-13,
+        "atol": 5e-10,
+        "rtol": 0
+      },
+      "rotated_power_literal": {
+        "passed": true,
+        "values": 3,
+        "max_abs_error": 2.8421709430404007e-13,
+        "atol": 5e-09,
+        "rtol": 0
+      }
+    },
+    "mass_threshold_and_triangle_floor": true
+  },
+  "oddness": {
+    "passed": true,
+    "values": 1134,
+    "max_abs_error": 0.0,
+    "atol": 5e-10,
+    "rtol": 0
+  },
+  "power": {
+    "passed": true,
+    "max_virtual_work_error_W": 5.684341886080802e-14,
+    "max_fluid_power_W": 0.0,
+    "max_passive_power_W": 0.0,
+    "atol_W": 5e-09
+  },
+  "cached_SDK_comparisons": {
+    "fluid": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 4.973799150320701e-14,
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "joint_passive": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 0.0,
+      "atol": 5e-10,
+      "rtol": 0
+    },
+    "passive": {
+      "passed": true,
+      "values": 162,
+      "max_abs_error": 4.973799150320701e-14,
+      "atol": 5e-10,
+      "rtol": 0
+    }
+  },
+  "zero_rate": {
+    "passed": true,
+    "values": 27,
+    "max_abs_error": 0.0,
+    "atol": 0,
+    "rtol": 0
+  },
+  "cases": 42,
+  "cached_SDK_contexts": 18,
+  "cached_unique_qv": 7,
+  "cached_unique_moving": 2,
+  "new_owned_contexts": 24,
+  "output_shape": [
+    42,
+    27
+  ],
+  "output_sha256": "98d023fc4f7cde12dafc37e6acb4cb5d869eccb0d58dbfffc3da7c73ef672e68",
+  "diagnostics_sha256": "c2444860c4409473be62511259997b8b92f2756b6610407e59d7b951b206058a",
+  "source_sha256": {
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+    "psionic/fixtures/robotics/panda-actuation/cases.f64": "6ed8ec4e5394c5ba9d041229a43b6efafd08f10b5d9c2a0bcb219a142cff3bf0",
+    "psionic/fixtures/robotics/panda-actuation/sdk-model.json": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01",
+    "psionic/fixtures/robotics/panda-actuation/sdk-values.f64": "3db8fa7e7bfda7c00e0be75c543ee095d812c2f77925eaa3a03a17363e32d0b0",
+    "psionic/fixtures/robotics/panda-actuation/sdk-reference.json": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da",
+    "psionic/fixtures/robotics/panda-actuation/sdk-capture-profile.json": "46bfd0d803242cedf2fc2bd8d193c9fe3f74cb9ea7d1de0773e670dd9943a440",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-model.json": "6ad64e3c8c9045e8f0b664f2cf99fd9743e7d6bd2eb2c2a3ef34529cf76fc47d",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-inertia/qualification.json": "a87497a57a4126e125451aaae802094ab6b6fa597c60701990af9b82bfb2ef41",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/tests/robotics/panda_fluid_oracle.py": "d6da97eaeb0bcf7730a0cba8d632d17c53db5d38fbdb928f1026c75bf14bc985",
+    "psionic/fixtures/robotics/panda-fluid/experiment.json": "165382c310c8ed28025d378e413efa1fdfa190426be5f5f6d7e2e50da533f297",
+    "psionic/fixtures/robotics/panda-fluid/support-addendum-v1.json": "773c3a35e3cb0e2a8073653ca163295081fd5bbd03a50d2b07e48b0a59c225ef",
+    "psionic/fixtures/robotics/panda-fluid/oracle-profile.json": "9cab0574d1540d3b0626397fe72824d85c256d1744903104f45a75ca1569fb52",
+    "psionic/fixtures/robotics/panda-fluid/cases.f64": "010df95b03428879d047a5c38793ba72e12ecabf9a07f2f63fdcda924e7e20df"
+  },
+  "seconds": 0.1626017089583911,
+  "private_execution_record": {
+    "bytes": 5942,
+    "sha256": "5d24c248af3fb86362979d4c8a2855772361eec3f5e52d1f1804729f30cff6a2"
+  },
+  "first_preflight_failure": {
+    "receipt": "oracle-preflight-failure.json",
+    "bytes": 2977,
+    "sha256": "d0a6ea13431f5d0520959347d06e40e9be15d630a13e79f0d1981cbd5ac1e7d2"
+  },
+  "support_guard_negatives": {
+    "passed": true,
+    "negative_cases": 15,
+    "names": [
+      "density",
+      "viscosity",
+      "wind",
+      "ellipsoid",
+      "mass",
+      "principal",
+      "inertialframe",
+      "COM",
+      "callback",
+      "damping",
+      "spring",
+      "gravcomp",
+      "fixed_mount_parent",
+      "fixed_mount_root",
+      "fixed_mount_robotDOF"
+    ],
+    "SDK_calls": 0,
+    "Coax_product_calls": 0,
+    "new_numerical_oracle_cases_evaluated": 0
+  },
+  "cached_SDK_comparisons_by_coordinate_unit": {
+    "fluid.hinge": {
+      "values": 126,
+      "max_abs_error": 4.973799150320701e-14,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "energy/radian",
+      "passed": true
+    },
+    "fluid.slide": {
+      "values": 36,
+      "max_abs_error": 6.661338147750939e-16,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "newton",
+      "passed": true
+    },
+    "passive.hinge": {
+      "values": 126,
+      "max_abs_error": 4.973799150320701e-14,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "energy/radian",
+      "passed": true
+    },
+    "passive.slide": {
+      "values": 36,
+      "max_abs_error": 4.440892098500626e-16,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "newton",
+      "passed": true
+    },
+    "joint_passive.hinge": {
+      "values": 126,
+      "max_abs_error": 0.0,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "energy/radian",
+      "passed": true
+    },
+    "joint_passive.slide": {
+      "values": 36,
+      "max_abs_error": 0.0,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "newton",
+      "passed": true
+    }
+  },
+  "artifacts": {
+    "oracle-profile.json": {
+      "bytes": 4276,
+      "sha256": "9cab0574d1540d3b0626397fe72824d85c256d1744903104f45a75ca1569fb52"
+    },
+    "oracle-expected.f64": {
+      "bytes": 9072,
+      "sha256": "98d023fc4f7cde12dafc37e6acb4cb5d869eccb0d58dbfffc3da7c73ef672e68"
+    },
+    "oracle-diagnostics.json": {
+      "bytes": 6931,
+      "sha256": "c2444860c4409473be62511259997b8b92f2756b6610407e59d7b951b206058a"
+    },
+    "oracle-preflight-failure.json": {
+      "bytes": 2977,
+      "sha256": "d0a6ea13431f5d0520959347d06e40e9be15d630a13e79f0d1981cbd5ac1e7d2"
+    },
+    "support-addendum-v1.json": {
+      "bytes": 5473,
+      "sha256": "773c3a35e3cb0e2a8073653ca163295081fd5bbd03a50d2b07e48b0a59c225ef"
+    },
+    "experiment.json": {
+      "bytes": 28357,
+      "sha256": "165382c310c8ed28025d378e413efa1fdfa190426be5f5f6d7e2e50da533f297"
+    },
+    "cases.f64": {
+      "bytes": 6048,
+      "sha256": "010df95b03428879d047a5c38793ba72e12ecabf9a07f2f63fdcda924e7e20df"
+    }
+  },
+  "expected_values_generated_without_product_or_SDK": true,
+  "interpretation": "Independent oracle data and its own retained-SDK/literal/power qualification; NOT a Coax/native product qualification. First18cached contexts have7unique q/v pairs and2unique moving pairs. SDK/scalar equivalence is numerical, not bit parity.",
+  "new_guard_followup": "15NEW source-admission poisons over existing immutable metadata; no passed oracle/numerical computation repeated."
+}

@@ -1,0 +1,12 @@
+// Fixed zero-wind, inertia-box fluid specialization. Raw matrices/columns are
+// trusted world-COM/principal-frame coefficients, not a generic frame importer.
+#load "panda-inverse-dynamics-motion.coax";
+#load "panda-actuation-math.coax";
+PflDensity :: struct @unit(mass=1,length=-3,time=0,angle=0,numerator=1,denominator=1) {}
+PflViscosity :: struct @unit(mass=1,length=-1,time=-1,angle=0,numerator=1,denominator=1) {}
+PflFrequency :: struct @unit(mass=0,length=0,time=-1,angle=0,numerator=1,denominator=1) {}
+PflMoment :: struct @unit(mass=1,length=2,time=-2,angle=0,numerator=1,denominator=1) {}
+PflTwist :: struct {linear:[3]pfku.Quantity(PidLinearRate,f64);angular:[3]pfku.Quantity(PflFrequency,f64);}
+PflWrench :: struct {force:[3]pfku.Quantity(PmSlideGravity,f64);moment:[3]pfku.Quantity(PflMoment,f64);}
+PflOutput :: struct {fluid:PidOutput;joint_passive:PidOutput;passive:PidOutput;}
+PflBox :: struct {side:[3]pfku.Quantity(pfku.Metre,f64);floored:[3]bool;}

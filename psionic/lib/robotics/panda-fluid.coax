@@ -1,0 +1,47 @@
+// Robot9 fluid and complete passive for the pinned zero-wind source model.
+// Omitted spring/gravcomp/tendon/flex/plugin/callback contributions are zero.
+// Frictionloss remains a constraint; no contact, integration or hardware path.
+#load "panda-fluid-body.coax";
+#load "panda-fluid-check-fixtures.coax";
+#authority;
+#forall "fluid typed malformed span counts precede numerical admission and preserve output" field:0..<5,delta:0..<3 {
+ q:[8]pfku.Quantity(pfku.Radian,f64);s:[3]pfku.Quantity(pfku.Metre,f64);v:[8]pfku.Quantity(PidAngularRate,f64);sv:[3]pfku.Quantity(PidLinearRate,f64);out:=[2]PflOutput.[pfl_poison(),pfl_poison()];old:=out[0];n:=[5]int.[7,2,7,2,1];n[field]+=delta-1;q[0].value=101;
+ expected:=ifx delta==1 then PfkStatus.range else PfkStatus.shape;#assert pfl_forward(q[0..<n[0]],s[0..<n[1]],v[0..<n[2]],sv[0..<n[3]],out[0..<n[4]])==expected;pfl_same(out[0],old);pfl_same(out[1],old);
+}
+#forall "fluid packed malformed span counts are atomic before coordinates" field:0..<3,delta:0..<3 {
+ q:[10]f64;v:[10]f64;out:=[2]PflOutput.[pfl_poison(),pfl_poison()];old:=out[0];n:=[3]int.[9,9,1];n[field]+=delta-1;q[0]=101;
+ #assert pfl_forward_raw(q[0..<n[0]],v[0..<n[1]],out[0..<n[2]])==(ifx delta==1 then PfkStatus.range else PfkStatus.shape);pfl_same(out[0],old);pfl_same(out[1],old);
+}
+#forall "fluid each packed position and rate outside neighbor is independently refused" role:0..<2,axis:0..<9,negative:bool {
+ q:[9]f64;v:[9]f64;out:=[1]PflOutput.[pfl_poison()];old:=out[0];bound:=ifx role==0 then (ifx axis<7 then 100.0 else 1.0) else (ifx axis<7 then 20.0 else 2.0);bits:=f64_bits(bound)+1;if negative {bits=bits|0x8000000000000000;}value:=f64_from_bits(bits);if role==0 {q[axis]=value;}else {v[axis]=value;}
+ #assert pfl_forward_raw(q[..],v[..],out[..])==PfkStatus.range;pfl_same(out[0],old);
+}
+#test "fluid complete public cached SDK case 0 preserves every force field and spare output" {
+ q:=[9]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.03,-0.03];v:=[9]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];want:=[27]f64.[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0];raw:[1]PflOutput;out:=[2]PflOutput.[pfl_poison(),pfl_poison()];old:=out[1];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}
+ #assert pfl_forward(angles[..],slides[..],rates[..],srates[..],out[0..<1])==PfkStatus.ok;#assert pfl_forward_raw(q[..],v[..],raw[..])==PfkStatus.ok;pfl_same(out[0],raw[0]);pfl_same(out[1],old);
+ for i:0..<7 {#assert abs(out[0].fluid.hinge[i].value-want[i])<5e-10;#assert abs(out[0].joint_passive.hinge[i].value-want[i+9])<5e-10;#assert abs(out[0].passive.hinge[i].value-want[i+18])<5e-10;}for i:0..<2 {#assert abs(out[0].fluid.slide[i].value-want[i+7])<5e-10;#assert abs(out[0].joint_passive.slide[i].value-want[i+16])<5e-10;#assert abs(out[0].passive.slide[i].value-want[i+25])<5e-10;}
+}
+#test "fluid complete public cached SDK case 4 preserves every force field and spare output" {
+ q:=[9]f64.[0.0,0.19634954084936207,0.0,-2.617993877991494,0.0,2.941592653589793,0.7853981633974483,0.01,-0.01];v:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];want:=[27]f64.[-2.0072736701313403,-1.272289852324723,-2.127941435340713,1.4653506870763273,0.9815026830000195,1.2195762399456531,1.022302002458731,0.6857209975235413,0.8592801387959963,-0.06999999999999999,0.04000000000000001,-0.03,0.06,-0.05,0.002,-0.001,-3.0,2.0,-2.07727367013134,-1.232289852324723,-2.157941435340713,1.5253506870763274,0.9315026830000195,1.2215762399456531,1.0213020024587312,-2.3142790024764586,2.859280138795996];raw:[1]PflOutput;out:=[2]PflOutput.[pfl_poison(),pfl_poison()];old:=out[1];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}
+ #assert pfl_forward(angles[..],slides[..],rates[..],srates[..],out[0..<1])==PfkStatus.ok;#assert pfl_forward_raw(q[..],v[..],raw[..])==PfkStatus.ok;pfl_same(out[0],raw[0]);pfl_same(out[1],old);
+ for i:0..<7 {#assert abs(out[0].fluid.hinge[i].value-want[i])<5e-10;#assert abs(out[0].joint_passive.hinge[i].value-want[i+9])<5e-10;#assert abs(out[0].passive.hinge[i].value-want[i+18])<5e-10;}for i:0..<2 {#assert abs(out[0].fluid.slide[i].value-want[i+7])<5e-10;#assert abs(out[0].joint_passive.slide[i].value-want[i+16])<5e-10;#assert abs(out[0].passive.slide[i].value-want[i+25])<5e-10;}
+}
+#test "fluid complete public cached SDK case 8 preserves every force field and spare output" {
+ q:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.013,-0.027];v:=[9]f64.[-0.7,0.4,-0.3,0.6,-0.5,0.2,-0.1,-0.03,0.02];want:=[27]f64.[4.2540070583373835,3.1552589289559867,4.46413171251537,-2.5877317418532444,2.3973605557069817,0.6152596169493384,-4.701012241052554,-0.6378535094204766,-0.8055928661042898,0.06999999999999999,-0.04000000000000001,0.03,-0.06,0.05,-0.002,0.001,3.0,-2.0,4.324007058337384,3.1152589289559867,4.494131712515371,-2.6477317418532444,2.4473605557069815,0.6132596169493384,-4.700012241052554,2.3621464905795233,-2.80559286610429];raw:[1]PflOutput;out:=[2]PflOutput.[pfl_poison(),pfl_poison()];old:=out[1];angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rates:[7]pfku.Quantity(PidAngularRate,f64);srates:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {angles[i].value=q[i];rates[i].value=v[i];}for i:0..<2 {slides[i].value=q[i+7];srates[i].value=v[i+7];}
+ #assert pfl_forward(angles[..],slides[..],rates[..],srates[..],out[0..<1])==PfkStatus.ok;#assert pfl_forward_raw(q[..],v[..],raw[..])==PfkStatus.ok;pfl_same(out[0],raw[0]);pfl_same(out[1],old);
+ for i:0..<7 {#assert abs(out[0].fluid.hinge[i].value-want[i])<5e-10;#assert abs(out[0].joint_passive.hinge[i].value-want[i+9])<5e-10;#assert abs(out[0].passive.hinge[i].value-want[i+18])<5e-10;}for i:0..<2 {#assert abs(out[0].fluid.slide[i].value-want[i+7])<5e-10;#assert abs(out[0].joint_passive.slide[i].value-want[i+16])<5e-10;#assert abs(out[0].passive.slide[i].value-want[i+25])<5e-10;}
+}
+
+pfl_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),hinge_rates:[]pfku.Quantity(PidAngularRate,f64),slide_rates:[]pfku.Quantity(PidLinearRate,f64),output:[]PflOutput)->PfkStatus #export_c {
+ if hinge_rates.count!=7 || slide_rates.count!=2 || output.count!=1 {return PfkStatus.shape;}
+ // Pff owns coordinate shapes/numbers/boxes; all work remains private on refusal.
+ poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
+ words:[9]u64;hinge:[7]pfku.Quantity(PidAngularRate,f64);slide:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {words[i]=f64_bits(hinge_rates[i].value);hinge[i]=hinge_rates[i];}for i:0..<2 {words[i+7]=f64_bits(slide_rates[i].value);slide[i]=slide_rates[i];}status=pid_admit(words,20,2);if status!=PfkStatus.ok {return status;}
+ fresh:PflOutput;fresh.fluid=pfl_sum_owned(poses[0],pm_profile(),hinge,slide);fresh.joint_passive=pa_damping(hinge,slide);
+ for i:0..<7 {fresh.passive.hinge[i]=fresh.joint_passive.hinge[i]+fresh.fluid.hinge[i];}for i:0..<2 {fresh.passive.slide[i]=fresh.joint_passive.slide[i]+fresh.fluid.slide[i];}
+ output[0]=fresh;return PfkStatus.ok;
+}
+pfl_forward_raw :: (coordinates:[]f64,rates:[]f64,output:[]PflOutput)->PfkStatus #export_c {
+ if coordinates.count!=9 || rates.count!=9 {return PfkStatus.shape;}
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}for i:0..<2 {s[i].value=coordinates[i+7];sv[i].value=rates[i+7];}return pfl_forward(q[..],s[..],v[..],sv[..],output);
+}

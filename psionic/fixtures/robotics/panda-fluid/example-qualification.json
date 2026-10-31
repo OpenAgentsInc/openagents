@@ -1,0 +1,33 @@
+{
+  "schema": "psionic.panda-fluid.example-proof.v1",
+  "passed": true,
+  "golden_source": "independent frozen oracle case4, nearest micro presentation",
+  "commands": [
+    {
+      "argv": [
+        "<qualified-compiler>",
+        "run",
+        "psionic/examples/panda-fluid.coax"
+      ],
+      "exit": 0,
+      "seconds": 1.5100690830149688
+    },
+    {
+      "argv": [
+        "<qualified-compiler>",
+        "run",
+        "psionic/examples/panda-fluid.coax",
+        "--release"
+      ],
+      "exit": 0,
+      "seconds": 2.227594666997902
+    }
+  ],
+  "source_sha256": "46ab19a96cf47f4652f1412f50568a60073a591735a2b15f05912ea019af70b5",
+  "golden_sha256": "cc24ba5383966cc645d31d9f0111000ad048f4f13a212f21df66ac1a1ff92678",
+  "format_check": {
+    "passed": true,
+    "cases": 1,
+    "log_sha256": "18d9accd90acdb9b37b3981718fdd589106ff22e31b578153d975ddcbc3839b9"
+  }
+}

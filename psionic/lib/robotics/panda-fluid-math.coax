@@ -1,0 +1,71 @@
+// Pinned MuJoCo3.3.1 inertia-box arithmetic, with an explicit radian basis.
+#load "panda-fluid-types.coax";
+#authority;
+#test "fluid inertia boxes preserve each triangle and exact source floor" {
+ b:=pfl_box(3,[3]f64.[5,10,13]);#assert b.side[0].value==6 && b.side[1].value==4 && b.side[2].value==2;
+ b=pfl_box(6,[3]f64.[4,1,1]);#assert b.side[0].value==sqrt(1e-15) && b.side[1].value==2 && b.side[2].value==2;
+ b=pfl_box(6,[3]f64.[0,0,0]);for i:0..<3 {#assert b.side[i].value==sqrt(1e-15);}
+}
+#test "fluid independent density and viscosity literals observe every principal axis" {
+ box:[3]pfku.Quantity(pfku.Metre,f64);box[0].value=2;box[1].value=4;box[2].value=6;t:PflTwist;
+ v:=[3]f64.[-1,2,3];w:=[3]f64.[1,-2,3];for i:0..<3 {t.linear[i].value=v[i];t.angular[i].value=w[i];}
+ rho:pfku.Quantity(PflDensity,f64);mu:pfku.Quantity(PflViscosity,f64);rho.value=2;r:=pfl_drag(box,t,rho,mu);
+ f:=[3]f64.[24,-48,-72];m:=[3]f64.[-97,656,-459];for i:0..<3 {#assert r.force[i].value==f[i] && r.moment[i].value==m[i];}
+ rho.value=0;mu.value=1/3.141592653589793;r=pfl_drag(box,t,rho,mu);f=[3]f64.[12,-24,-36];m=[3]f64.[-64,128,-192];for i:0..<3 {#assert abs(r.force[i].value-f[i])<2e-13 && abs(r.moment[i].value-m[i])<2e-13;}
+}
+#test "fluid dense Jacobian twist has explicit angular normalization and inertial transpose" {
+ c:PmColumns;for i:0..<27 {c.linear[i]=f64(i+1);c.angular[i]=f64(i)-13;}
+ h:[7]pfku.Quantity(PidAngularRate,f64);s:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {h[i].value=f64(i+1);}s[0].value=8;s[1].value=9;
+ // A proper dense orthogonal world-from-principal matrix.
+ r:=[9]f64.[-10.0/15,2.0/15,11.0/15,10.0/15,-5.0/15,10.0/15,5.0/15,14.0/15,2.0/15];t:=pfl_local(c,r,h,s);
+ want_v:=[3]f64.[635,830,815];want_w:=[3]f64.[425,368,-151];
+ for i:0..<3 {#assert abs(t.linear[i].value-want_v[i])<1e-12 && abs(t.angular[i].value-want_w[i])<1e-12;}
+}
+#test "fluid dense wrench rotation and all nine dual columns preserve literal forces" {
+ r:=[9]f64.[-10.0/15,2.0/15,11.0/15,10.0/15,-5.0/15,10.0/15,5.0/15,14.0/15,2.0/15];local:PflWrench;
+ f:=[3]f64.[2,-3,5];m:=[3]f64.[-7,11,13];for i:0..<3 {local.force[i].value=f[i];local.moment[i].value=m[i];}w:=pfl_world(r,local);
+ wf:=[3]f64.[29.0/15,85.0/15,-22.0/15];wm:=[3]f64.[235.0/15,5.0/15,145.0/15];for i:0..<3 {#assert abs(w.force[i].value-wf[i])<1e-13 && abs(w.moment[i].value-wm[i])<1e-13;}
+ c:PmColumns;for i:0..<27 {c.linear[i]=f64(i+1);c.angular[i]=f64(i)-13;}g:=pfl_project(c,local);
+ want:=[9]f64.[179,200,221,242,263,284,305,326,347];for i:0..<7 {#assert g.hinge[i].value==want[i];}for i:0..<2 {#assert g.slide[i].value==want[i+7];}
+}
+
+#test "fluid principal rotation uses normalized inertial attitude after BODY rotation" {
+ pose:PfkPose;pose.rotation=[9]f64.[-10.0/15,2.0/15,11.0/15,10.0/15,-5.0/15,10.0/15,5.0/15,14.0/15,2.0/15];r:=pfl_principal(pose,[4]f64.[0.5,1,1.5,2]);want:=[9]f64.[7.0/9,124.0/225,-68.0/225,-4.0/9,37.0/45,16.0/45,4.0/9,-32.0/225,199.0/225];for i:0..<9 {#assert abs(r[i]-want[i])<1e-14;}
+}
+#test "fluid triangle floor reports strict numerical clipping at both adjacent words" {
+ n:f64=1e-15;for delta:0..<2 {v:=f64_from_bits(f64_bits(n)-u64(delta));b:=pfl_box(6,[3]f64.[v,v,v]);for i:0..<3 {#assert b.floored[i]==(delta==1);#assert b.side[i].value==sqrt(n);}}
+}
+
+pfl_box :: (mass:f64,inertia:[3]f64)->PflBox {
+ // Trusted mass >=1e-15; source principal moments are finite and nonnegative.
+ sides:=[6]int.[1,2,0,2,0,1];box:PflBox;
+ for i:0..<3 {triangle:=inertia[sides[2*i]]+inertia[sides[2*i+1]]-inertia[i];box.floored[i]=triangle<1e-15;box.side[i].value=sqrt((ifx box.floored[i] then 1e-15 else triangle)/mass*6.0);}return box;
+}
+pfl_principal :: (pose:PfkPose,inertial:[4]f64)->[9]f64 {
+ local:=pfk_matrix(pfk_normalize(inertial).value);world:[9]f64;for i:0..<3 {for j:0..<3 {world[i*3+j]=pose.rotation[i*3]*local[j]+pose.rotation[i*3+1]*local[3+j]+pose.rotation[i*3+2]*local[6+j];}}return world;
+}
+pfl_local :: (columns:PmColumns,world:[9]f64,hinge:[7]pfku.Quantity(PidAngularRate,f64),slide:[2]pfku.Quantity(PidLinearRate,f64))->PflTwist {
+ linear:[3]pfku.Quantity(PidLinearRate,f64);angular:[3]pfku.Quantity(PidAngularRate,f64);one:pfku.Quantity(pfku.Radian,f64);one.value=1;
+ for row:0..<3 {
+  for i:0..<7 {v:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);v.value=columns.linear[row*9+i];w:pfku.Quantity(UnitOne,f64);w.value=columns.angular[row*9+i];linear[row]=linear[row]+convert_unit(PidLinearRate,v*hinge[i]);angular[row]=angular[row]+convert_unit(PidAngularRate,w*hinge[i]);}
+  for i:0..<2 {v:pfku.Quantity(UnitOne,f64);v.value=columns.linear[row*9+7+i];w:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Metre),f64);w.value=columns.angular[row*9+7+i];linear[row]=linear[row]+convert_unit(PidLinearRate,v*slide[i]);angular[row]=angular[row]+convert_unit(PidAngularRate,w*slide[i]);}
+ }
+ t:PflTwist;for i:0..<3 {for j:0..<3 {t.linear[i]=t.linear[i]+world[j*3+i]*linear[j];t.angular[i]=t.angular[i]+world[j*3+i]*convert_unit(PflFrequency,angular[j]/one);}}return t;
+}
+pfl_drag :: (box:[3]pfku.Quantity(pfku.Metre,f64),t:PflTwist,density:pfku.Quantity(PflDensity,f64),viscosity:pfku.Quantity(PflViscosity,f64))->PflWrench {
+ sides:=[6]int.[1,2,0,2,0,1];diam:=(box[0]+box[1]+box[2])/3.0;w:PflWrench;
+ for i:0..<3 {a:=box[sides[2*i]];b:=box[sides[2*i+1]];speed:=t.linear[i];speed.value=abs(speed.value);spin:=t.angular[i];spin.value=abs(spin.value);
+  w.force[i]=convert_unit(PmSlideGravity,(-3.0*3.141592653589793*diam*viscosity)*t.linear[i]);w.moment[i]=convert_unit(PflMoment,(-3.141592653589793*diam*diam*diam*viscosity)*t.angular[i]);
+  w.force[i]=w.force[i]-convert_unit(PmSlideGravity,0.5*density*a*b*speed*t.linear[i]);w.moment[i]=w.moment[i]-convert_unit(PflMoment,density*box[i]*(a*a*a*a+b*b*b*b)*spin*t.angular[i]/64.0);
+ }return w;
+}
+pfl_world :: (rotation:[9]f64,local:PflWrench)->PflWrench {
+ world:PflWrench;for i:0..<3 {for j:0..<3 {world.force[i]=world.force[i]+rotation[i*3+j]*local.force[j];world.moment[i]=world.moment[i]+rotation[i*3+j]*local.moment[j];}}return world;
+}
+pfl_project :: (columns:PmColumns,w:PflWrench)->PidOutput {
+ out:PidOutput;one:pfku.Quantity(pfku.Radian,f64);one.value=1;
+ for row:0..<3 {moment:=convert_unit(PmHingeGravity,w.moment[row]/one);
+  for i:0..<7 {v:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Radian),f64);v.value=columns.linear[row*9+i];out.hinge[i]=out.hinge[i]+convert_unit(PmHingeGravity,v*w.force[row])+columns.angular[row*9+i]*moment;}
+  for i:0..<2 {wcol:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Metre),f64);wcol.value=columns.angular[row*9+7+i];out.slide[i]=out.slide[i]+columns.linear[row*9+7+i]*w.force[row]+convert_unit(PmSlideGravity,wcol*moment);}
+ }return out;
+}

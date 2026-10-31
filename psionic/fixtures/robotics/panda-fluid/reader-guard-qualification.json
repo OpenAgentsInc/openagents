@@ -1,0 +1,17 @@
+{
+  "schema": "psionic.panda-fluid.reader-guard-followup.v1",
+  "passed": true,
+  "guard": {
+    "passed": true,
+    "negative_cases": 10,
+    "late_last_force_word": true,
+    "expected_and_actual": true
+  },
+  "no_native_Coax_SDK_or_oracle_reruns": true,
+  "earlier_driver_sha256": "258c5fd44b1adc59f5253e08ac31e45b202291ee227c24ee0ffbc9702f999965",
+  "current_driver_sha256": "f48402daa7f327b571a45a738fb0ff049878960f53841313fd2be2d7b548e0bc",
+  "only_guard_function_and_one_argument_changed": true,
+  "all_other_functions_AST_identical": true,
+  "cached_actual_sha256": "16a7b07e54e834a707c01ba271b19a651b44001633222ef39296c5ca7f316340",
+  "cached_expected_sha256": "98d023fc4f7cde12dafc37e6acb4cb5d869eccb0d58dbfffc3da7c73ef672e68"
+}
