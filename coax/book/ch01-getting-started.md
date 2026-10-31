@@ -1,4 +1,4 @@
-# Getting started
+# 1. Getting started
 
 <!-- coax-release:current:start -->
 Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.

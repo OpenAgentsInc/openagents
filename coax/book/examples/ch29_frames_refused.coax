@@ -1,0 +1,14 @@
+#import "Basic";
+#load "../../lib/quantity.coax" as u;
+
+World :: struct @frame(handedness=right, convention=cartesian,
+    continuity=continuous, min_precision=f64) {}
+Ship :: struct @frame(handedness=right, convention=body,
+    continuity=continuous, min_precision=f64) {}
+
+main :: () {
+  a: Point3(World, u.Metre, f64);
+  b: Point3(Ship, u.Metre, f64);
+  wrong := b - a;   // refused: the points are in different frames
+  print("%\n", wrong.x);
+}

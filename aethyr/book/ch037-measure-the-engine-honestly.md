@@ -41,7 +41,7 @@ supported, refused (with reason) or untested. Chapter 17's admission code
 reads it; the book's tables are generated from it; a cell may be marked
 supported only if the acceptance suite has a passing case for it.
 
-**Suite.** The acceptance checks of chapters 17 to 184 run on each backend
+**Suite.** The acceptance checks of chapters 17 to 36 run on each backend
 in each profile, with their tolerances. Results are retained as
 verification evidence, like Psionic's.
 
@@ -53,7 +53,7 @@ on the same hardware, or are not made.
 
 ## What it builds
 
-- `psionic/sim/matrix.json` (generated tables), the suite runner, the
+- `aethyr/sim/matrix.json` (generated tables), the suite runner, the
   benchmark scenes and a results ledger.
 
 ## Acceptance checks and oracles
@@ -76,4 +76,6 @@ figure.
 
 ## Dependencies
 
-All of Part XVIII. From Coax: R0 measurements, R22 budgets.
+All of Part IV, chapters [17](ch017-a-scene-owns-the-state.md) to
+[36](ch036-record-and-replay-a-world.md). From Coax: R0 measurements, R22
+budgets.

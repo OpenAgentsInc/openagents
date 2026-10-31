@@ -21,7 +21,7 @@ The Coax files in this chapter are in `coax/book/examples` (`ch20_ease.coax`
 and `ch20_path.coax`), and the C, C++ and Swift hosts are in
 `examples/ch20_interop`, whose `run.sh` builds and runs all of them.
 
-> Note: On `coax0` 0.10.0, `#export_c`, `coax lib`, `coax header`,
+> Note: On the current `coax0`, `#export_c`, `coax lib`, `coax header`,
 > `coax c --library`, `#foreign` imports of scalars and borrowed views and `coax metal` all work,
 > and everything in this chapter was run to produce the output shown.
 > Importing C headers, ownership and nullability annotations in headers,

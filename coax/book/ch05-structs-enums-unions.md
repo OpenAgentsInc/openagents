@@ -10,7 +10,7 @@ named fields into one value. An *enum* names a fixed set of choices. A
 we'll look at how each one is laid out in memory, because in Coax that
 layout is part of the type's meaning, not an accident of the compiler.
 
-> Note: Structs and enums run on `coax0` 0.10.0, and every program in this
+> Note: Structs and enums run on the current `coax0`, and every program in this
 > chapter that prints something has its output checked. Unions, `switch`,
 > `using`, `enum_flags` and `#derive` are planned: `coax0` reserves those
 > words and refuses them with error `E0204` (or `E0210` for `#derive`).

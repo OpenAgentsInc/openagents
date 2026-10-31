@@ -38,7 +38,7 @@ cases. After that we'll look at how to control the way checks run, how to
 organize them, what `#authority` adds for code that guards money, and
 finally how `coax mutate` checks the checks themselves.
 
-> Note: the payment examples run on `coax0` 0.10.0. Checks arrived in 0.5.0;
+> Note: the payment examples run on the current `coax0`. Checks arrived in 0.5.0;
 > the optional native companion arrived in 0.41.0 and ABI 2 in 0.42.0.
 > The language rules are specified in `coax/spec.md` (section 10.1.1).
 

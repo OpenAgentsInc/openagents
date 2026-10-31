@@ -1,0 +1,4 @@
+examples/ch29_frames_refused.coax:12:14: error[E0834]: nominal frames differ: Point3(Ship,Metre,f64) and Point3(World,Metre,f64)
+    wrong := b - a;   // refused: the points are in different frames
+               ^
+1 error

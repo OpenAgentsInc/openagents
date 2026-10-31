@@ -1,4 +1,4 @@
-# The protocol boundary
+# 18. The protocol boundary
 
 OpenAgents surfaces talk to each other in a public protocol: protobuf
 messages for agents, payments, decisions, the HUD and the Verse, plus
@@ -16,7 +16,7 @@ it. We'll build a message, look at its bytes, read it back, learn the
 one rule about buffers that matters most, and then write an admission
 function that refuses bad input the way the real home screen does.
 
-> Note: Everything in this chapter runs on `coax0` 0.10.0. The importer
+> Note: Everything in this chapter runs on the current `coax0`. The importer
 > handles a defined subset of proto3, listed near the end of the
 > chapter, and the version table at the end describes rules rather than
 > features. The full contract is in `coax/proto.md`.

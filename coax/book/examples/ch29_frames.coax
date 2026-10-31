@@ -1,0 +1,39 @@
+#import "Basic";
+#load "../../lib/quantity.coax" as u;
+
+// A frame is an empty tag. All four attributes are required.
+World :: struct @frame(handedness=right, convention=cartesian,
+    continuity=continuous, min_precision=f64) {}
+
+// The point halfway between two points in the same frame.
+midpoint :: (a: Point3(World, u.Metre, f64), b: Point3(World, u.Metre, f64)) -> Point3(World, u.Metre, f64) {
+  offset := b - a;          // point - point is a vector
+  half := offset / 2.0;     // vector / raw scalar is a vector
+  return a + half;          // point + vector is a point
+}
+
+main :: () {
+  // One astronomical unit, in metres, along x.
+  earth: Point3(World, u.Metre, f64);
+  earth.x = 149597870700.0;
+  ship: Point3(World, u.Metre, f64);
+  ship.x = 149597870760.0;
+  ship.y = 8.0;
+
+  offset := ship - earth;
+  middle := midpoint(earth, ship);
+  print("offset % % %\n", offset.x, offset.y, offset.z);
+  print("middle minus earth: % % %\n", middle.x - earth.x, middle.y - earth.y, middle.z - earth.z);
+}
+
+// An independent check: the same midpoint from plain f64 arithmetic.
+#test "the typed midpoint matches plain arithmetic" {
+  a: Point3(World, u.Metre, f64);
+  a.x = 149597870700.0; a.y = -3.0; a.z = 0.5;
+  b: Point3(World, u.Metre, f64);
+  b.x = 149597870760.0; b.y = 5.0; b.z = 0.25;
+  m := midpoint(a, b);
+  #assert m.x == a.x + (b.x - a.x) / 2.0;
+  #assert m.y == 1.0;
+  #assert m.z == 0.375;
+}

@@ -19,7 +19,7 @@ prove almost nothing, fix that, and then watch the build stop a plausible
 
 > Note: Stable error codes, fix lines, `--json`, `coax explain`,
 > `coax check`, `coax test`, `#authority`, `coax mutate`, `coax layout`
-> and readable C output all work in `coax0` 0.10.0. A first formatter
+> and readable C output all work in the current `coax0`. A first formatter
 > slice works (below). A compiler server that answers queries and expansion
 > traces are designed (spec §17.3) and marked where they come up.
 
@@ -162,8 +162,8 @@ E0325: initializer has the wrong type
   The variable's declared type and its initializer differ. There are no implicit conversions.
 ```
 
-`coax explain --all` prints every code (126 of them in 0.10.0, three
-retired), and `coax explain --all --markdown` prints them as the tables
+`coax explain --all` prints every code, including the three retired
+ones, and `coax explain --all --markdown` prints them as the tables
 in Appendix B, which is how that appendix is produced. An unknown code is
 an error with exit status 1, so a tool can tell "no such code" from an
 explanation:

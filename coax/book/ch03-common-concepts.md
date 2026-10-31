@@ -17,7 +17,7 @@ go through them one at a time.
 > Note: Every program in this chapter that runs is in `examples/` next
 > to the book source, named with a `ch03_` prefix (`variables.coax` is
 > `examples/ch03_variables.coax`), and every output shown is what
-> `coax0` 0.10.0 prints. A few
+> the current `coax0` prints. A few
 > things the language plans aren't in `coax0` yet: local constants,
 > global variables, `switch`, loop labels and doc comments. Each one is
 > marked where it comes up, along with what the compiler says if you
