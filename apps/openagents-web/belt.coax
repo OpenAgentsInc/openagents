@@ -3199,6 +3199,25 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert abs(c.tau - 5.0) < 0.0001 && abs(c.dist - 5.0) < 0.0001;
 }
 
+#test "the ship cards fit a phone: at 390x844 and 320x568, every card's box is inside the canvas, with a full yard" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  // a full yard: seven Free Belt ships, as many cards as there can be
+  for j: 0..<s[0].ship_n { s[0].ships[j].faction = FREE_BELT; }
+  cards := s[0].ship_n;
+  #assert cards >= 7;
+  sizes := [4] f32.[390, 844, 320, 568];
+  for q: 0..<2 {
+    w := sizes[q * 2]; h := sizes[q * 2 + 1];
+    l := card_layout(s[..], w, h, 1, true);
+    for c: 0..<cards {
+      x0 := l.x0 + f32(c % l.per_row) * (l.cw + 8); y0 := l.y0 + f32(c / l.per_row) * (l.ch + 8);
+      #assert x0 >= 0 && x0 + l.cw <= w && y0 >= 60 && y0 + l.ch <= h;
+    }
+    #assert l.cw >= 90;   // room for a name, its fuel and its ice
+  }
+}
+
 #test "trip toasts fold into one count, never cover a toast that matters, and a hull at 100% lost no crew" {
   s: [1] Belt;
   belt_start(s[..]);
