@@ -44,6 +44,8 @@ Lock :: struct {
   want_snap: bool; snap_n: int; snap_sent: int; snap_tick: int;
   rx_total: int; rx_got: int; rx_tick: int; adopt: bool;
   desyncs: int; resyncs: int;
+  game: [24] u8; game_n: int;       // the room's game, for joining again
+  retry_t: f64; retries: int;       // a room full (a page just left may still hold its seat): tries again
   note: [48] u8; note_n: int; note_new: bool;
   pipe: [1] Pipe;
 }
@@ -190,6 +192,7 @@ lr_invite :: (L: [] Lock, buf: [] u8) -> int {
 lr_join :: (L: [] Lock, game: string, rate: f64, check: int) {
   if L[0].code_n == 0 || L[0].origin_n == 0 { return; }
   L[0].rate = rate; L[0].check = check;
+  L[0].game_n = lr_put(L[0].game[..], 0, game);
   buf: [256] u8;
   n := lr_put(buf[..], 0, cast(string) L[0].origin[0..<L[0].origin_n]);
   n = lr_put(buf[..], n, "/api/room/relay/"); n = lr_put(buf[..], n, game); n = lr_put(buf[..], n, "/");
@@ -282,6 +285,17 @@ lr_clear :: (L: [] Lock) {
 
 // ---- each frame: commits, keep-alives and the snapshot's frames
 
+// A full room: a page that just left keeps its seat until the relay hears it gone (twenty seconds
+// at most), so a reload tries again every few seconds for a while. The games call this every frame.
+LR_RETRIES :: 8;
+lr_idle :: (L: [] Lock, dt: f64) {
+  if L[0].state != LR_FULL || L[0].retries >= LR_RETRIES { return; }
+  L[0].retry_t += dt;
+  if L[0].retry_t < 3.0 { return; }
+  L[0].retry_t = 0; L[0].retries += 1;
+  L[0].partner = -1; L[0].seat = -1;
+  lr_join(L, cast(string) L[0].game[0..<L[0].game_n], L[0].rate, L[0].check);
+}
 lr_frame :: (L: [] Lock, dt: f64) {
   if !lr_on(L) || L[0].sock < 0 { return; }
   L[0].since += dt; L[0].alive += dt;
@@ -347,7 +361,11 @@ lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
   if text[0] == 'y' {
     L[0].seat = who;
     others := lr_int(text, at[..]);
-    if others >= 2 || who >= 4 { L[0].state = LR_FULL; lr_say(L, "THAT ROOM HAS TWO PLAYERS"); ok := pipe_close(L[0].pipe[..], L[0].sock); L[0].sock = -1; return true; }
+    if others >= 2 || who >= 4 {
+      L[0].state = LR_FULL; ok := pipe_close(L[0].pipe[..], L[0].sock); L[0].sock = -1; L[0].retry_t = 0;
+      lr_say(L, ifx L[0].retries < LR_RETRIES then "THE ROOM IS FULL: TRYING AGAIN" else "THAT ROOM HAS TWO PLAYERS");
+      return true;
+    }
     // the one already here holds the game; the one who came waits for it
     L[0].state = ifx others > 0 then LR_SYNC else LR_ALONE;
     return true;
@@ -388,7 +406,7 @@ lr_socket :: (L: [] Lock, kind: int, text: string, snap: [] u8) -> bool {
       if got > 0 { L[0].rx_got += got; }
     }
   }
-  if c == 'e' && L[0].state == LR_SYNC && L[0].rx_got == L[0].rx_total && L[0].rx_total > 0 { L[0].adopt = true; }
+  if c == 'e' && L[0].state == LR_SYNC && L[0].rx_got == L[0].rx_total && L[0].rx_total > 0 { L[0].adopt = true; L[0].retries = 0; }
   return true;
 }
 
@@ -474,6 +492,13 @@ lr_toy_say :: (c: [] LrToy, t: string) { ok := lr_socket(c[0].L[..], SOCKET_KIND
   d := a[0].L[0].desyncs;
   for f: 0..<120 { lr_toy_frame(a[..]); lr_toy_frame(b[..]); lr_pump(a[..], b[..]); lr_pump(b[..], a[..]); }
   #assert a[0].L[0].desyncs == d && a[0].L[0].state == LR_PLAY && b[0].L[0].state == LR_PLAY;
+  // a third finds it full and tries again a few seconds on
+  t: [1] LrToy; t[0].L[0].sock = 0; t[0].L[0].state = LR_JOINING; t[0].L[0].code_n = 2; t[0].L[0].origin_n = 3; t[0].L[0].game_n = 1;
+  lr_toy_say(t[..], "y 2 2");
+  #assert t[0].L[0].state == LR_FULL && !lr_on(t[0].L[..]);
+  pipe_drained(t[0].L[0].pipe[..]);
+  for f: 0..<200 { lr_idle(t[0].L[..], 1.0 / 60.0); }
+  #assert t[0].L[0].state == LR_JOINING && t[0].L[0].retries == 1 && t[0].L[0].pipe[0].n == 1 && t[0].L[0].pipe[0].op[0] == PIPE_OPEN;
   // the partner leaves: a plays alone again
   lr_toy_say(a[..], "l 1");
   #assert a[0].L[0].state == LR_ALONE && lr_may_step(a[0].L[..]);

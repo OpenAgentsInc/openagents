@@ -2207,6 +2207,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, waves_of(s));
   // on a phone, MAP (before the first wave) takes the wave count's place
   right := ifx s[0].shown[B_MAP] then s[0].boxes[B_MAP].x0 else ifx s[0].shown[B_STONE] && !s[0].portrait then s[0].boxes[B_STONE].x0 else w;
+  if s[0].shown[B_INVITE] && !s[0].portrait { right = lo(right, s[0].boxes[B_INVITE].x0); }
   if lx + text_width(cast(string) buf[0..<m], cap) <= right - 6 * k {
     n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
     lx += text_width(cast(string) buf[0..<m], cap) + sp;
@@ -2466,6 +2467,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].clock += step_dt;
   s[0].toast_t = hi(0, s[0].toast_t - step_dt);
   long_press(s);
+  lr_idle(s[0].lock[..], f64(dt));
   if lr_on(s[0].lock[..]) {
     coop_frame(s, step_dt);
   } else {

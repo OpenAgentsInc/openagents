@@ -2760,6 +2760,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   // Time: game days a real second, stepped in pieces of at most two days so arrivals and mining are seen in order.
   game := ifx s[0].golden then 0.0 else SPEEDS[s[0].speed] * DAY * real;
   if s[0].stage == STAGE_HIGHLIGHT { game = stage_game(s, real); }
+  lr_idle(s[0].lock[..], real);
   if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
   if s[0].tac[0].on && !lr_on(s[0].lock[..]) {
     game = 0.0;
