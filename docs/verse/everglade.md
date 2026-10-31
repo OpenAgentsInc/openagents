@@ -250,6 +250,13 @@ the step you are on show under the title with how far it is, and a QUEST
 mark with the distance stands over where it sends you. Several can be under
 way at once; the HUD follows the one you last moved on.
 
+**The first goal** (`apps/openagents-web/everglade-guide.coax` `eg_first_*`): until
+a quest is taken, the same place under the title shows the first thing to do:
+TALK TO BRAM AT THE SOUTH GATE (a BRAM mark with the distance over him), then
+CALL DOWN A METEOR SWARM, then READ THE QUEST BOARD ON THE COMMONS (marked over
+the board). Each is done when you do it, in any order, and is not asked again
+this visit; a quest taken ends it.
+
 Progress is a stage per quest, kept in this browser for its playtest player
 (the host's save slot `everglade`, IndexedDB else localStorage) as
 `eg-quests 1`, `player=ID` and `q=S,S,S`. A save made for another player
@@ -587,7 +594,11 @@ numbers), along the bottom over the hint, five slots at most:
 
 Desktop: press 1 to 4 (or click a slot), a ring follows the pointer onto
 the ground or whatever it points at, click to cast; the same key again or
-Esc puts the spell away; a drag still turns the camera. Phone: tap a slot,
+Esc puts the spell away; a drag still turns the camera. Phone: one row of
+slots over the thumbs (as many as the width holds, seven at 390 and 320 px
+wide) and the switcher at its end, which opens the rest above it and shuts
+them again; a spell picked from the open tray shuts it and takes the row's
+last place while it is picked. Tap a slot,
 then tap where it lands; tap the slot again to put it away. Casts reach
 140 m (the city is 127 m across); past that the ring goes dull red and the
 line says TOO FAR. One line over the bar says how to cast, then what the

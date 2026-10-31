@@ -200,7 +200,8 @@ Spells :: struct {
   pushed: int;               // pieces the orb's water shoved loose
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
-  row: int;                  // the row a phone's bar shows
+  row: int;                  // (unused since the phone's bar became one row and a tray: open)
+  open: bool;                // a phone's tray is open: every slot, in rows over the one row it keeps
   ar: Arrange;               // where its player moved the slots, and a slot in hand (everglade-arrange.coax)
   po: [1] Polar;               // and the last four: Ray of Frost, Fog Cloud, Hold Person, Cone of Cold (everglade-polar.coax)
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
@@ -445,20 +446,32 @@ spells_key_up :: (s: [] Everglade, key: int, mods: int) -> bool {
   return ab_key_up(s, ifx p >= 0 then p % HB_COLS else -1, key);
 }
 sp_press :: (s: [] Everglade, slot: int) {
-  if slot == SP_SWITCH { sp_next_row(s); return; }
+  if slot == SP_SWITCH { s[0].sp.open = !s[0].sp.open; return; }
+  s[0].sp.open = false;   // a slot picked from the open tray shuts it: the view is clear to aim
   if slot == SP_REBUILD { sp_rebuild(s); return; }
   if slot >= SP_SLOTS { ab_press(s, slot - SP_SLOTS); return; }
   if ci_no_casting(s, slot) { return; }   // a beast casts no spells (everglade-circle.coax)
   ab_cancel(s);
   s[0].sp.armed = ifx s[0].sp.armed == slot then -1 else slot;
 }
-// A phone's switcher: the next row that holds a slot.
-sp_next_row :: (s: [] Everglade) {
-  r := s[0].sp.row;
-  for k: 0..<HB_ROWS {
-    r = (r + 1) % HB_ROWS;
-    if sp_row_used(s, r) > 0 { s[0].sp.row = r; return; }
-  }
+// A phone's bar (owner QA, October 31: three rows of slots covered the middle of a 390x844 view):
+// one row over the thumbs, as many slots as the width holds, and at its end the switcher, which
+// opens the tray (every other slot, in rows as wide, over that one) and shuts it again.
+// How many slots a phone's row holds, the switcher's place among them.
+sp_phone_per :: (s: [] Everglade) -> int {
+  un := sp_unit(s);
+  room := s[0].width - (2 * f32(HB_MARGIN) + 2 * f32(HB_PAD) + f32(HB_ICON)) * un;
+  return clamp_i(cast(int) floor(room / (f32(HB_STEP) * un)) + 1, 3, HB_COLS);
+}
+// Every slot on the bar in its order (row by row, as its player arranged them); how many.
+sp_phone_list :: (s: [] Everglade, list: [] int) -> int {
+  n := 0;
+  for p: 0..<HB_ROWS * HB_COLS { b := sp_at_place(s, p); if b >= 0 && n < list.count { list[n] = b; n += 1; } }
+  return n;
+}
+// A slot shows as picked: its spell aimed or casting, its ability on, or the target of a slot in hand.
+sp_slot_on :: (s: [] Everglade, b: int) -> bool {
+  return s[0].sp.armed == b || (b < SP_SLOTS && s[0].sp.casting == b) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS)) || ar_lit(s, b);
 }
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
 // R: the town stands again, and you take a Long Rest (everglade-storm.coax st_long_rest).
@@ -1812,6 +1825,7 @@ HB_ICON :: 36.0; HB_STEP :: 42.0; HB_PAD :: 8.0; HB_MARGIN :: 8.0;
 HB_HOVER :: 0.35; HB_LONG :: 0.45; HB_WARM :: 0.3;   // tooltip.rs HOVER_DELAY, LONG_PRESS, WARM
 HB_PHONE_BOTTOM :: 136.0;    // CSS px: the old phone app's hotbar_bottom, over its sticks
 HB_RESERVE :: 22.0;          // CSS px over the tray for its line
+HB_PHONE_TOP :: 176.0;       // CSS px at a phone's top the open tray keeps clear: the title, HP, the chat line and REPLY
 HB_URL :: "/realms/everglade/hotbar/";
 // everglade.wgsl hud_rect's looks: the tray's bevel, a slot's frame, a picked slot's, a meter and its fill
 PLATE_TRAY :: 3.0; PLATE_SLOT :: 4.0; PLATE_SLOT_ON :: 5.0; PLATE_METER :: 6.0; PLATE_FILL :: 7.0; PLATE_SHADE :: 8.0;
@@ -1866,7 +1880,6 @@ sp_desk :: (s: [] Everglade) -> SpDesk {
   return SpDesk.{pair = pair, per = per, cols = cols, block_w = block_w, tray_h = tray_h};
 }
 HB_GAP :: 4.0;             // units between a wide screen's stacked rows (the old Grove's GAP)
-HB_PHONE_ROW :: 6;         // slots in a row of the tray on a phone
 // Slots shown: the four spells, the abilities, and Rebuild and Long Rest.
 sp_count :: (s: [] Everglade) -> int { return SP_REBUILD + 1; }
 
@@ -1918,8 +1931,8 @@ sp_tip_shown :: (s: [] Everglade, now: f64) -> int {
 SpBarTop :: struct { n: int; top: f32; }
 // The tray, its slots, their pictures and the card shown; where its top is, device pixels. A wide
 // screen stacks every row that holds a slot, the first at the bottom, as the old Grove's Full
-// layout; a phone shows one row and the switcher at its end (Compact), the row in lines of six, the
-// first on top, over the thumbs' sticks.
+// layout; a phone shows one row over the thumbs' sticks and the switcher at its end, which opens the
+// rest over it (sp_phone_per).
 sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   ar_frame(s);
   k := hi(s[0].dpr, 0.5);
@@ -1930,43 +1943,49 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   used: [HB_ROWS] int;
   cols := 0;
   for r: 0..<HB_ROWS { used[r] = sp_row_used(s, r); cols = hi_int(cols, used[r]); }
-  if compact && used[clamp_i(s[0].sp.row, 0, HB_ROWS - 1)] == 0 { s[0].sp.row = 0; }
-  row := clamp_i(s[0].sp.row, 0, HB_ROWS - 1);
-  // the rows shown, bottom first, and where each one's tray is (its line of slots, its order up)
-  shown: [HB_ROWS] int; shown_n := 0;
-  if compact { shown[0] = row; shown_n = 1; cols = used[row] + 1; }
-  else { for r: 0..<HB_ROWS { if used[r] > 0 { shown[shown_n] = r; shown_n += 1; } } }
-  if shown_n == 0 { shown[0] = 0; shown_n = 1; }
-  if !compact { return sp_bar_desk(s, u, at, shown[..], shown_n); }
-  per := ifx compact then lo_int(cols, HB_PHONE_ROW) else cols;
-  lines := (cols + per - 1) / per;
-  width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(per - 1) + f32(HB_ICON)) * un;
+  if !compact {
+    shown: [HB_ROWS] int; shown_n := 0;
+    for r: 0..<HB_ROWS { if used[r] > 0 { shown[shown_n] = r; shown_n += 1; } }
+    if shown_n == 0 { shown[0] = 0; shown_n = 1; }
+    return sp_bar_desk(s, u, at, shown[..], shown_n);
+  }
+  // a phone: the one row, the switcher at its end, and while open the tray's rows over it
+  per := sp_phone_per(s);
+  list: [SP_BAR] int; ln := sp_phone_list(s, list[..]);
+  more := ln > per;
+  first := ifx more then per - 1 else ln;
+  if !more { s[0].sp.open = false; }
+  // shut, a slot picked from the tray takes the row's last place, so what you hold stays in sight
+  keep := -1;
+  if !s[0].sp.open { for i: first..<ln { if sp_slot_on(s, list[i]) { keep = list[i]; } } }
+  rest := ifx s[0].sp.open then ln - first else 0;
+  lines := 1 + (rest + per - 1) / per;
+  across := ifx more then per else hi_int(ln, 1);
+  width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(across - 1) + f32(HB_ICON)) * un;
   tray := (f32(HB_ICON) + 2 * f32(HB_PAD) + f32(HB_STEP) * f32(lines - 1)) * un;
   left := sp_round((w - width) / 2);
   bottom := h - sp_bar_bottom(s) - f32(HB_MARGIN) * un;
-  top := bottom;
+  // open on a short screen, the tray comes down toward the bottom edge rather than up over the
+  // title, HP and REPLY (the top HB_PHONE_TOP CSS px), which would take its taps
+  if bottom - tray < f32(HB_PHONE_TOP) * k { bottom = lo(h - f32(HB_MARGIN) * un, f32(HB_PHONE_TOP) * k + tray); }
+  top := sp_round(bottom - tray);
   icon := sp_round(f32(HB_ICON) * un);
-  size := sp_icon_size(icon);
   edge := sp_round(k);
-  for q: 0..<shown_n {
-    y0 := sp_round(bottom - tray - f32(q) * (tray + f32(HB_GAP) * un));
-    top = y0;
-    sp_plate(s, u, Box.{x0 = left, y0 = y0, x1 = left + sp_round(width), y1 = y0 + sp_round(tray)}, PLATE_TRAY, un);
-    r := shown[q];
-    for c: 0..<cols {
-      b := -1;
-      if compact && c == used[r] { b = SP_SWITCH; }
-      else { b = sp_at_place(s, r * HB_COLS + c); }
-      if b < 0 { continue; }
-      x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(c % per)) * un);
-      y := sp_round(y0 + (f32(HB_PAD) + f32(HB_STEP) * f32(c / per)) * un);
-      s[0].sp.boxes[b] = Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
-      on := s[0].sp.armed == b || (b < SP_SLOTS && s[0].sp.casting == b) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS)) || ar_lit(s, b);
-      sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
-      // a picked slot's gold frame is two pixels, its inner one over the icon's edge
-      inset := ifx on then edge else 0.0f32;
-      ar_icon(s, b, icon, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
-    }
+  sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + sp_round(width), y1 = top + sp_round(tray)}, PLATE_TRAY, un);
+  // the row's places first (line 0, at the bottom), then the tray's, line by line up
+  for i: 0..<first + 1 + rest {
+    b := -1; c := 0; line := 0;
+    if i < first { b = list[i]; c = i; if keep >= 0 && i == first - 1 { b = keep; } }
+    else if i == first { if !more { continue; } b = SP_SWITCH; c = per - 1; }
+    else { j := i - first - 1; b = list[first + j]; c = j % per; line = 1 + j / per; }
+    x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(c)) * un);
+    y := sp_round(top + (f32(HB_PAD) + f32(HB_STEP) * f32(lines - 1 - line)) * un);
+    s[0].sp.boxes[b] = Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
+    on := ifx b == SP_SWITCH then s[0].sp.open else sp_slot_on(s, b);
+    sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
+    // a picked slot's gold frame is two pixels, its inner one over the icon's edge
+    inset := ifx on then edge else 0.0f32;
+    ar_icon(s, b, icon, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
   }
   return sp_bar_card(s, at, top);
 }
@@ -2396,6 +2415,9 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   u: [UNIFORM_FLOATS] f32;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
+  // the first goal's line (everglade-guide.coax) is drawn every frame otherwise: this walk of 56
+  // frames is the camera's check, and the line's text took it past compile-time traversal
+  g[0].guide.first_done = (1 << EG_FIRST_STEPS) - 1;
   inn := EG_INN * EG_BOX;
   ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
   // standing still, the camera settles where the player left it
@@ -2501,11 +2523,9 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   p1 := g[0].sp.boxes[SP_BOLT];
   pu := 2 * 844.0f32 / 768;
-  // in rows of six, the first on top: the first row's twelve and its switcher make three, Thunderbolt's
-  // over the bottom one by two steps
-  r1 := g[0].sp.boxes[HB_PHONE_ROW];
-  #assert abs(r1.x0 - g[0].sp.boxes[0].x0) < 1 && abs(r1.y0 - g[0].sp.boxes[0].y0 - 42 * pu) < 1.5;
-  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu - 2 * 42 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
+  // one row over the thumbs: Thunderbolt's beside Meteor Swarm's, a step on, its bottom the tray's padding over the sticks
+  #assert abs(p1.y0 - g[0].sp.boxes[0].y0) < 1 && abs(p1.x0 - g[0].sp.boxes[0].x0 - 42 * pu) < 1.5;
+  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
   // a finger held on the slot picks it and shows the card (at 2x) until it lifts
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
   for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
@@ -2539,13 +2559,56 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   // Shift+1 casts the second row's first; its key up, Shift let go first, is still its column's
   #assert spells_key(g[..], '1', 1) && ab_active(g[..], AB_STONE);
   #assert spells_key_up(g[..], '1', 0) && !g[0].sp.ab[0].keys[AB_STONE];
-  // a phone: the first row and the switcher; tapped, the second row
+  // a phone: one row and the switcher; tapped, the tray opens over it
   g[0].touch = true;
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   sw := g[0].sp.boxes[SP_SWITCH];
-  #assert sw.x1 > 0 && g[0].sp.boxes[SP_SLOTS + AB_STONE].x1 == 0 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "next-row-96.jpg");
+  // the second row's slots are in the tray, but Wall of Stone, still on, keeps the row's last place in sight
+  st := g[0].sp.boxes[SP_SLOTS + AB_STONE];
+  #assert sw.x1 > 0 && g[0].sp.boxes[SP_SLOTS + AB_TK].x1 == 0 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "next-row-96.jpg");
+  #assert sp_slot_on(g[..], SP_SLOTS + AB_STONE) && st.x1 > 0 && abs(st.y0 - sw.y0) < 1 && st.x1 < sw.x0;
   #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 0, 1, 4);
-  #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 2, 1, 4) && g[0].sp.row == 1;
+  #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 2, 1, 4) && g[0].sp.open;
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].sp.boxes[SP_SLOTS + AB_TK].x1 > 0 && g[0].sp.boxes[SP_METEOR].x1 == 0;
+  #assert g[0].sp.boxes[SP_SLOTS + AB_TK].x1 > 0 && g[0].sp.boxes[SP_METEOR].x1 > 0 && g[0].sp.boxes[SP_SLOTS + AB_TK].y0 < g[0].sp.boxes[SP_METEOR].y0;
+}
+#test "spells: on a phone the bar is one row low on the screen, the rest a tap away in the tray, every slot reachable" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].touch = true;
+  sizes := [2] f32.[844, 568]; widths := [2] f32.[390, 320];
+  for z: 0..<2 {
+    W := widths[z] * 2; H := sizes[z] * 2;
+    g[0].sp.open = false;
+    _ := everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    // shut: one row, every shown slot on one line, inside the screen, the tray's top low on it (at 390x844 below 70%)
+    top := H; y := -1.0f32; shown := 0;
+    for b: 0..<SP_BAR + 1 {
+      bx := g[0].sp.boxes[b];
+      if bx.x1 <= 0 { continue; }
+      shown += 1; top = lo(top, bx.y0);
+      #assert bx.x0 >= 0 && bx.x1 <= W;
+      if y < 0 { y = bx.y0; } else { #assert abs(bx.y0 - y) < 1; }
+    }
+    #assert shown == sp_phone_per(g[..]) && shown >= 6 && g[0].sp.boxes[SP_SWITCH].x1 > 0;
+    if z == 0 { #assert top > 0.7 * H; }
+    #assert top > 0.6 * H;
+    // open: every slot has a place on screen, and a tap on one picks it and shuts the tray
+    sw := g[0].sp.boxes[SP_SWITCH];
+    #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 0, 1, 4) && everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 2, 1, 4);
+    _ = everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    list: [SP_BAR] int; ln := sp_phone_list(g[..], list[..]);
+    #assert ln == SP_BAR;
+    for i: 0..<ln { bx := g[0].sp.boxes[list[i]]; #assert bx.x1 > bx.x0 && bx.x0 >= 0 && bx.x1 <= W && bx.y0 >= f32(HB_PHONE_TOP) * 2 && bx.y1 <= H; }
+    last := list[ln - 1]; lb := g[0].sp.boxes[last];
+    #assert everglade_pointer(g[..], (lb.x0 + lb.x1) / 2, (lb.y0 + lb.y1) / 2, 0, 1, 5) && !g[0].sp.open;
+    #assert everglade_pointer(g[..], (lb.x0 + lb.x1) / 2, (lb.y0 + lb.y1) / 2, 2, 1, 5);
+    _ = everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    // a spell picked from the tray stays in sight on the one row
+    if last < SP_SLOTS || sp_slot_on(g[..], last) { #assert g[0].sp.boxes[last].x1 > 0 && abs(g[0].sp.boxes[last].y0 - y) < 1; }
+    g[0].sp.armed = -1; ab_cancel(g[..]);
+  }
 }
