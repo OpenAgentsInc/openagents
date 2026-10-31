@@ -106,7 +106,7 @@ VkDeviceMemory vkc_memory(Vkc *v, VkMemoryRequirements req, VkMemoryPropertyFlag
 VkcBuffer vkc_buffer(Vkc *v, VkDeviceSize size) {
   VkcBuffer b = {.size = size};
   VkBufferCreateInfo bci = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
-                            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+                            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
   CHECK(vkCreateBuffer(v->dev, &bci, NULL, &b.buf));
   VkMemoryRequirements req;
   vkGetBufferMemoryRequirements(v->dev, b.buf, &req);

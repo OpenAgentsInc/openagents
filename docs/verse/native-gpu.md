@@ -251,3 +251,17 @@ Every phase and native feature is a task in the Verse project
   the live sin hashes, 11,749 are, all in the ridge and cloud band. The same
   Coax run on the CPU differs from the 4080 there too, so it is the
   platforms' sin, not the port.
+- 2026-10-31: G5, the scene pass. A private variable only an entry writes
+  (`paint_leaf_far`) is translated as the entry's own local, handed down by
+  value. `verse/gpu/vk-passes.c` draws a spec of passes: buffers, the index
+  buffer and the wasm's draw list, a mipmapped layer array, samplers, and a
+  depth map one pass draws and the next samples. vks gained mip levels, draw
+  lists, depth bias and a `less` comparison sampler. `golden/pass.js` draws
+  the same spec. The browser decodes and mipmaps the pack's 36 layers as
+  host.js does, and both sides sample those texels, with one linear sampler
+  and no anisotropy (host.js's 8x is each GPU's own).
+  `everglade-pass.coax coderos-4080 scene` draws the shadow map (2048
+  square, bias 2, 2), then the scene's 189 draws, on the RTX 4080:
+  validation 0/0, and 313 of 460,800 values past the tolerance, on
+  silhouettes and one roof's mip edge (400 allowed). With the live sin
+  hashes, 91,456 are past it, since the painterly noise hashes everywhere.

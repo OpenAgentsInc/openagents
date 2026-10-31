@@ -1,73 +1,116 @@
-// One shader pass, ported to Coax, against the browser (docs/verse/native-gpu.md,
-// G5): the WGSL pass drawn by headless Chrome's WebGPU (verse/gpu/golden,
-// served by coax/web/serve.sh for a secure origin) and the Coax pass, lowered
-// by `coax spirv`, drawn on HOST's GPU by verse/gpu/vk-pass.c, from the same
-// uniform bytes, into rgba16float targets. It prints how far apart they are
-// and fails past the tolerance: an f16's rounding (|a-b| <= 2e-3 * max(1,|a|)).
-//   coax/web/tool.sh verse/gpu/pass-check.coax HOST WGSL VS FS PASS.spv UNIFORMS.bin
-//       [--size WxH] [--targets N] [--vertices K] [--keep DIR] [--against FILE] [--allow N]
+// Passes of a shader ported to Coax against the browser (docs/verse/native-gpu.md,
+// G5). DIR holds a spec (verse/gpu/vk-passes.c documents its directives) and
+// every file it names: the WGSL, the Coax passes' SPIR-V from `coax spirv`
+// with their bindings, buffers, the index buffer and the draw list. Headless
+// Chrome draws the WGSL (verse/gpu/golden/pass.js, served from DIR by
+// coax/web/serve.sh for a secure origin) and HOST's GPU draws the SPIR-V
+// (vk-passes, built there under the validation layers). A layers file the
+// spec names that DIR lacks is made first: FILE.list names the images, which
+// the browser decodes and mipmaps as host.js does, so both sides sample the
+// same texels. The last pass's rgba16float targets are compared, failing
+// past an f16's rounding (|a-b| <= 2e-3 * max(1,|a|)) on more than N values.
+//   coax/web/tool.sh verse/gpu/pass-check.coax HOST DIR SPEC [--allow N] [--keep DIR2]
+//       [--against FILE]
 // --allow N passes with up to N values past the tolerance (pixels on an edge
-// whose test lands within the two sides' float rounding).
-// --against compares the browser with FILE (float32 RGBA rows, as --keep
-// writes them, e.g. the pass run on the CPU) instead of drawing on HOST.
-// --keep writes golden.f32 and native.f32 (float32 RGBA rows, target after target).
+// whose test lands within the two sides' float rounding). --keep writes
+// golden.f32 and native.f32 (float32 RGBA rows, target after target) to DIR2.
+// --against compares the browser with FILE (as --keep writes them, e.g. the
+// pass run on the CPU) instead of drawing on HOST.
 #import "Basic";
 #load "../../coax/lib/net/cdp.coax";
 
-PC_PORT :: "18731";
 PC_FILE :: 4194304;
+PC_BIG :: 67108864;          // the largest file it reads whole (a layers file)
 PC_FLOATS :: 33554432;
 PC_TOL :: 0.002;
+PC_PORT :: "18731";
+
+// What the spec says the comparison needs: the size, and the last pass's targets.
+PcSpec :: struct { ok: bool; w: int; h: int; nt: int; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 6 {
-    tool_errln("usage: pass-check HOST WGSL VS FS PASS.spv UNIFORMS.bin [--size WxH] [--targets N] [--vertices K] [--keep DIR] [--against FILE] [--allow N]");
+  if !args_load(a[..]) || args_count(a[..]) < 3 {
+    tool_errln("usage: pass-check HOST DIR SPEC [--allow N] [--keep DIR2] [--against FILE]");
     return 2;
   }
-  host := args_at(a[..], 0); wgsl_path := args_at(a[..], 1); vs := args_at(a[..], 2); fs_ := args_at(a[..], 3);
-  spv := args_at(a[..], 4); upath := args_at(a[..], 5);
-  wh := args_size(args_value(a[..], "--size", "320x180"));
-  nt := args_whole(args_value(a[..], "--targets", "1"));
-  nv := args_whole(args_value(a[..], "--vertices", "3"));
+  host := args_at(a[..], 0); dir := args_at(a[..], 1); spec_name := args_at(a[..], 2);
   keep := args_value(a[..], "--keep", "");
   allow := args_whole(args_value(a[..], "--allow", "0"));
-  if !wh.ok || nt < 1 || nt > 8 || nv < 1 { tool_errln("pass-check: --size WxH, --targets 1 to 8, --vertices at least 1"); return 2; }
-  floats := wh.w * wh.h * 4 * nt;
-
-  // the golden: the WGSL in the browser
-  golden: [PC_FLOATS] f32;
-  if !browser(a[..], wgsl_path, vs, fs_, upath, wh, nt, nv, golden[0..<floats]) { return 1; }
-  // the port: the Coax pass on the GPU host
-  native: [PC_FLOATS] f32;
   against := args_value(a[..], "--against", "");
+  b: [1024] u8;
+  text: [PC_FILE] u8;
+  n := fs_read(fs_join(dir, spec_name, b[..]), text[..]);
+  if n < 0 { tool_errln("pass-check: cannot read the spec"); return 1; }
+  spec := pc_spec(cast(string) text[0..<n]);
+  if !spec.ok || allow < 0 { tool_errln("pass-check: the spec needs a size and a last pass with colour targets; --allow a whole number"); return 2; }
+  floats := spec.w * spec.h * 4 * spec.nt;
+  if floats > PC_FLOATS { tool_errln("pass-check: the targets are too large"); return 2; }
+  golden: [PC_FLOATS] f32;
+  if !browser(dir, spec_name, cast(string) text[0..<n], floats / spec.nt, golden[0..<floats]) { return 1; }
+  native: [PC_FLOATS] f32;
   if against.count > 0 {
     if !read_f32(against, native[0..<floats]) { return 1; }
-  } else if !gpu(host, spv, upath, wh, nt, nv, native[0..<floats]) { return 1; }
+  } else if !gpu(host, dir, spec_name, native[0..<floats]) { return 1; }
   if keep.count > 0 {
-    b: [1024] u8; bytes: [PC_FLOATS * 4] u8;
-    ok := fs_write(fs_join(keep, "golden.f32", b[..]), f32_bytes(golden[0..<floats], bytes[..]));
-    ok = ok && fs_write(fs_join(keep, "native.f32", b[..]), f32_bytes(native[0..<floats], bytes[..]));
+    k: [1024] u8; bytes: [PC_FLOATS * 4] u8;
+    ok := fs_write(fs_join(keep, "golden.f32", k[..]), f32_bytes(golden[0..<floats], bytes[..]));
+    ok = ok && fs_write(fs_join(keep, "native.f32", k[..]), f32_bytes(native[0..<floats], bytes[..]));
     if !ok { tool_errln("pass-check: could not write to --keep"); }
   }
-  return compare(golden[0..<floats], native[0..<floats], wh.w, wh.h, nt, allow);
+  return compare(golden[0..<floats], native[0..<floats], spec.w, spec.h, spec.nt, allow);
 }
 
-// Floats as little-endian bytes, in out.
-f32_bytes :: (f: [] f32, out: [] u8) -> string {
-  for i: 0..<f.count {
-    b := f32_bits(f[i]);
-    for k: 0..<4 { out[i * 4 + k] = cast,trunc(u8) (b >> cast(u32) (k * 8)); }
+// ---- the spec (pure)
+// Word k (from 0) of a line, split on spaces and tabs, or "".
+pc_word :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < line.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') { i += 1; }
+    if i >= line.count { break; }
+    j := i;
+    while j < line.count && line[j] != ' ' && line[j] != '\t' && line[j] != '\r' { j += 1; }
+    if n == k { return line[i..<j]; }
+    n += 1; i = j;
   }
-  return cast(string) out[0..<f.count * 4];
+  return "";
 }
-put_int :: (o: [] Jo, v: int) {
-  d: [24] u8; n := 0; x := v;
-  if x == 0 { jo_put(o, "0"); return; }
-  while x > 0 { d[n] = cast,trunc(u8) (48 + x % 10); x /= 10; n += 1; }
-  for i: 0..<n { jo_byte(o, d[n - 1 - i]); }
+// Line k (from 0) of text, or "" past its end; pc_lines counts them.
+pc_lines :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  return ifx text.count > 0 && text[text.count - 1] != '\n' then n + 1 else n;
+}
+pc_line :: (text: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if n == k { return text[i..<j]; }
+    n += 1; i = j + 1;
+  }
+  return "";
+}
+pc_spec :: (text: string) -> PcSpec {
+  s: PcSpec;
+  for k: 0..<pc_lines(text) {
+    l := pc_line(text, k);
+    d := pc_word(l, 0);
+    if d == "size" { s.w = args_whole(pc_word(l, 1)); s.h = args_whole(pc_word(l, 2)); }
+    if d == "pass" { s.nt = args_whole(pc_word(l, 4)); }
+  }
+  s.ok = s.w > 0 && s.h > 0 && s.nt > 0 && s.nt <= 8;
+  return s;
+}
+#test "the spec's size and its last pass's targets" {
+  #assert pc_word("  pass a.spv vs  fs 2", 4) == "2" && pc_word("pass", 1) == "" && pc_word("", 0) == "" && pc_word("a\tb\r", 1) == "b";
+  #assert pc_lines("a\nb\n") == 2 && pc_lines("a\nb") == 2 && pc_lines("") == 0 && pc_line("a\nbc\n", 1) == "bc" && pc_line("a", 3) == "";
+  s := pc_spec("size 320 180\npass s.spv a b 0 sm 2 2 draws\npass t.spv c d 2 own 0 0 draws\n");
+  #assert s.ok && s.w == 320 && s.h == 180 && s.nt == 2;
+  #assert !pc_spec("size 320 180\npass s.spv a b 0 sm 2 2 draws\n").ok && !pc_spec("pass t.spv c d 2 own 0 0 3\n").ok && !pc_spec("size 4 4\npass t c d 9 - 0 0 3").ok;
 }
 
+// ---- the comparison (pure)
 // Within an f16's rounding of the golden.
 pc_close :: (g: f32, n: f32) -> bool {
   m := abs(g); if m < 1 { m = 1; }
@@ -94,102 +137,155 @@ compare :: (g: [] f32, n: [] f32, w: int, h: int, nt: int, allow: int) -> int {
   if bad > allow { print("pass-check: more than the % allowed\n", allow); }
   return ifx bad <= allow && nan == 0 then 0 else 1;
 }
-
-// ---- the browser
-browser :: (a: [] Args, wgsl_path: string, vs: string, fs_: string, upath: string, wh: ArgsSize, nt: int, nv: int, out: [] f32) -> bool {
-  wgsl: [PC_FILE] u8; ub: [PC_FILE] u8;
-  wn := fs_read(wgsl_path, wgsl[..]); un := fs_read(upath, ub[..]);
-  if wn < 0 || un < 0 { tool_errln("pass-check: cannot read the WGSL or the uniforms"); return false; }
-  b64: [PC_FILE] u8;
-  bn := b64_encode(cast(string) ub[0..<un], b64[..]);
-  // the page, on a local origin (WebGPU needs a secure context)
-  server := proc_new();
-  ok := proc_arg(server, "coax/web/serve.sh") && proc_arg(server, "verse/gpu/golden") && proc_arg(server, "--listen") && proc_arg(server, "127.0.0.1:18731") && proc_quiet(server);
-  if !ok || proc_start(server) != 0 { tool_errln("pass-check: could not start coax/web/serve.sh (run from the repo root)"); return false; }
-  defer { k := proc_kill(server, PROC_SIGKILL); r := proc_wait(server, 2000); d := proc_release(server); }
-  proc_sleep(1500);
-  c: [1] Cdp;
-  if !cdp_launch(c[..], 800, 600, "coax-pass-") { tool_err("pass-check: "); tool_errln(cdp_error(c[..])); return false; }
-  defer cdp_close(c[..]);
-  if cdp_call(c[..], "Page.navigate", "{\"url\":\"http://127.0.0.1:18731/\"}", CDP_CALL_MS) < 0 { tool_errln(cdp_error(c[..])); return false; }
-  proc_sleep(1500);
-  // runPass({...}) with the WGSL as a JSON string
-  expr: [CDP_REQ] u8; o: [1] Jo; jo_start(o[..], expr[..]);
-  jo_put(o[..], "runPass(");
-  jo_obj(o[..]);
-  jo_key(o[..], "wgsl"); jo_str(o[..], cast(string) wgsl[0..<wn]);
-  jo_key(o[..], "vs"); jo_str(o[..], vs); jo_key(o[..], "fs"); jo_str(o[..], fs_);
-  jo_key(o[..], "uniforms"); jo_str(o[..], cast(string) b64[0..<bn]);
-  jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h); jo_key(o[..], "vertices"); jo_int(o[..], nv);
-  jo_key(o[..], "targets"); jo_arr(o[..]); for i: 0..<nt { jo_str(o[..], "rgba16float"); } jo_end(o[..]);
-  jo_end(o[..]);
-  jo_put(o[..], ")");
-  if o[0].bad { tool_errln("pass-check: the WGSL is too long for one command"); return false; }
-  v := cdp_evaluate(c[..], jo_text(o[..]));
-  if v < 0 { tool_errln(cdp_error(c[..])); return false; }
-  d := cdp_doc(c[..]);
-  if !jv_bool(d, jv_get(d, v, "ok")) {
-    msg: [65536] u8; m := jv_str(d, jv_get(d, v, "error"), msg[..]);
-    tool_err("pass-check: the browser's pass failed: "); tool_errln(ifx m >= 0 then cast(string) msg[0..<m] else "?");
-    return false;
+// Floats as little-endian bytes, in out.
+f32_bytes :: (f: [] f32, out: [] u8) -> string {
+  for i: 0..<f.count {
+    b := f32_bits(f[i]);
+    for k: 0..<4 { out[i * 4 + k] = cast,trunc(u8) (b >> cast(u32) (k * 8)); }
   }
-  ts := jv_get(d, v, "targets");
-  per := wh.w * wh.h * 4;
-  raw: [PC_FILE * 2] u8;
-  for i: 0..<nt {
-    n := b64_decode(jv_raw(d, jv_at(d, ts, i)), raw[..]);
-    if n != per * 4 { tool_errln("pass-check: the browser returned a target of the wrong size"); return false; }
-    for k: 0..<per { out[i * per + k] = f32_from_bits(le32(raw[..], k * 4)); }
-  }
-  print("pass-check: the browser drew %x%\n", wh.w, wh.h);
-  return true;
-}
-read_f32 :: (path: string, out: [] f32) -> bool {
-  raw: [PC_FLOATS * 4] u8;
-  n := fs_read(path, raw[..]);
-  if n != out.count * 4 { tool_err("pass-check: not the pass's size: "); tool_errln(path); return false; }
-  for i: 0..<out.count { out[i] = f32_from_bits(le32(raw[..], i * 4)); }
-  return true;
+  return cast(string) out[0..<f.count * 4];
 }
 le32 :: (b: [] u8, at: int) -> u32 {
   return cast(u32) b[at] | (cast(u32) b[at + 1] << 8) | (cast(u32) b[at + 2] << 16) | (cast(u32) b[at + 3] << 24);
 }
-
-// ---- the GPU host
-gpu :: (host: string, spv: string, upath: string, wh: ArgsSize, nt: int, nv: int, out: [] f32) -> bool {
-  tmp: [1024] u8;
-  work := fs_temp("pass-check-", tmp[..]);
-  if work.count == 0 { tool_errln("pass-check: no temporary directory"); return false; }
-  defer { r := fs_remove(work); }
-  buf: [PC_FILE] u8; p: [1024] u8;
-  files := [7] string.["verse/gpu/vk-pass.c", "verse/gpu/vks.c", "verse/gpu/vks.h", "verse/gpu/vkc.c", "verse/gpu/vkc.h", "", ""];
-  for f: files {
-    if f.count == 0 { continue; }
-    n := fs_read(f, buf[..]);
-    if n < 0 || !fs_write(fs_join(work, fs_base(f), p[..]), cast(string) buf[0..<n]) { tool_err("pass-check: cannot copy "); tool_errln(f); return false; }
-  }
-  n := fs_read(spv, buf[..]);
-  if n < 0 || !fs_write(fs_join(work, "pass.spv", p[..]), cast(string) buf[0..<n]) { tool_errln("pass-check: cannot copy the SPIR-V"); return false; }
-  n = fs_read(upath, buf[..]);
-  if n < 0 || !fs_write(fs_join(work, "u.bin", p[..]), cast(string) buf[0..<n]) { tool_errln("pass-check: cannot copy the uniforms"); return false; }
-  // built and run there, under the validation layers; the floats come back on stdout
-  script: [8192] u8; s: [1] Jo; jo_start(s[..], script[..]);
-  jo_put(s[..], "cd '"); jo_put(s[..], work); jo_put(s[..], "' && COPYFILE_DISABLE=1 tar --no-xattrs -cf - . | ssh -o BatchMode=yes ");
-  jo_put(s[..], host);
-  jo_put(s[..], " 'set -e; d=$(mktemp -d); trap \"rm -rf $d\" EXIT; tar -x -C $d 2>/dev/null; cd $d; export VK_DRIVER_FILES=${VK_DRIVER_FILES:-/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json}; ");
-  jo_put(s[..], "nix-shell -p gcc vulkan-headers vulkan-loader vulkan-validation-layers --run \"set -e; gcc -std=c11 -O2 -I. vk-pass.c vks.c vkc.c -lvulkan -lm -o vk-pass; ");
-  jo_put(s[..], "export VK_ADD_LAYER_PATH=\\$(dirname \\$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \\\"*validation-layers*\\\" | head -1)); export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation; ");
-  jo_put(s[..], "./vk-pass pass.spv ");
-  put_int(s[..], wh.w); jo_put(s[..], " "); put_int(s[..], wh.h); jo_put(s[..], " "); put_int(s[..], nt); jo_put(s[..], " u.bin out.f32 "); put_int(s[..], nv);
-  jo_put(s[..], " >&2\"; cat out.f32' > native.f32");
-  argv := [3] string.["bash", "-c", jo_text(s[..])];
-  o: [65536] u8; e: [65536] u8;
-  r := proc_run(argv[..], 600000, o[..], e[..]);
-  tool_err(cast(string) e[0..<r.err_n]);
-  if r.started != 0 || r.status != 0 { tool_errln("pass-check: the GPU host's pass failed"); return false; }
-  raw: [PC_FILE * 2] u8;
-  m := fs_read(fs_join(work, "native.f32", p[..]), raw[..]);
-  if m != out.count * 4 { tool_errln("pass-check: the GPU host returned the wrong size"); return false; }
+#test "floats to bytes and back" {
+  f := [2] f32.[1.5, -0.25]; o: [8] u8;
+  bytes := f32_bytes(f[..], o[..]);
+  #assert bytes.count == 8 && f32_from_bits(le32(o[..], 0)) == 1.5 && f32_from_bits(le32(o[..], 4)) == -0.25 && o[3] == 0x3f;
+}
+read_f32 :: (path: string, out: [] f32) -> bool {
+  raw: [PC_FLOATS * 4] u8;
+  n := fs_read(path, raw[..]);
+  if n != out.count * 4 { tool_err("pass-check: not the targets' size: "); tool_errln(path); return false; }
   for i: 0..<out.count { out[i] = f32_from_bits(le32(raw[..], i * 4)); }
   return true;
+}
+// a then b in out, or "".
+cat :: (x: string, y: string, out: [] u8) -> string {
+  if x.count + y.count > out.count { return ""; }
+  for i: 0..<x.count { out[i] = x[i]; }
+  for i: 0..<y.count { out[x.count + i] = y[i]; }
+  return cast(string) out[0..<x.count + y.count];
+}
+
+// ---- the browser
+browser :: (dir: string, spec_name: string, spec: string, per: int, out: [] f32) -> bool {
+  b: [4] [1024] u8; page: [PC_FILE] u8;
+  // the page beside the spec's files
+  for f: [2] string.["verse/gpu/golden/index.html", "verse/gpu/golden/pass.js"] {
+    n := fs_read(f, page[..]);
+    if n < 0 || !fs_write(fs_join(dir, fs_base(f), b[0][..]), cast(string) page[0..<n]) { tool_errln("pass-check: cannot copy the page (run from the repo root)"); return false; }
+  }
+  server := proc_new();
+  ok := proc_arg(server, "coax/web/serve.sh") && proc_arg(server, dir) && proc_arg(server, "--listen") && proc_arg(server, cat("127.0.0.1:", PC_PORT, b[0][..])) && proc_quiet(server);
+  if !ok || proc_start(server) != 0 { tool_errln("pass-check: could not start coax/web/serve.sh"); return false; }
+  proc_sleep(1500);
+  c: [1] Cdp;
+  done := false;
+  if cdp_launch(c[..], 800, 600, "coax-pass-") {
+    done = drive(c[..], dir, spec_name, spec, per, out);
+    cdp_close(c[..]);
+  } else { tool_err("pass-check: "); tool_errln(cdp_error(c[..])); }
+  k := proc_kill(server, PROC_SIGKILL); r := proc_wait(server, 2000); rel := proc_release(server);
+  return done;
+}
+drive :: (c: [] Cdp, dir: string, spec_name: string, spec: string, per: int, out: [] f32) -> bool {
+  b: [4] [1024] u8;
+  url := cat(cat("http://127.0.0.1:", PC_PORT, b[0][..]), "/", b[1][..]);
+  nav: [2048] u8; o: [1] Jo; jo_start(o[..], nav[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  if cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { tool_errln(cdp_error(c)); return false; }
+  proc_sleep(1500);
+  // layers files the directory lacks, decoded by the browser
+  for k: 0..<pc_lines(spec) {
+    l := pc_line(spec, k);
+    if pc_word(l, 0) != "layers" { continue; }
+    file := pc_word(l, 2);
+    if fs_exists(fs_join(dir, file, b[0][..])) { continue; }
+    if !layers(c, dir, file, args_whole(pc_word(l, 3)), args_whole(pc_word(l, 4)), args_whole(pc_word(l, 5)), args_whole(pc_word(l, 6))) { return false; }
+  }
+  e: [4096] u8; x: [1] Jo; jo_start(x[..], e[..]);
+  jo_put(x[..], "runSpec("); jo_str(x[..], spec_name); jo_put(x[..], ")");
+  v := cdp_evaluate(c, jo_text(x[..]));
+  if !answer_ok(c, v) { return false; }
+  d := cdp_doc(c);
+  ts := jv_get(d, v, "targets");
+  raw: [PC_FILE * 4] u8;
+  for i: 0..<jv_len(d, ts) {
+    if (i + 1) * per > out.count { break; }
+    n := b64_decode(jv_raw(d, jv_at(d, ts, i)), raw[..]);
+    if n != per * 4 { tool_errln("pass-check: the browser returned a target of the wrong size"); return false; }
+    for k: 0..<per { out[i * per + k] = f32_from_bits(le32(raw[..], k * 4)); }
+  }
+  if jv_len(d, ts) * per != out.count { tool_errln("pass-check: the browser returned the wrong number of targets"); return false; }
+  print("pass-check: the browser drew the spec\n");
+  return true;
+}
+answer_ok :: (c: [] Cdp, v: int) -> bool {
+  if v < 0 { tool_errln(cdp_error(c)); return false; }
+  d := cdp_doc(c);
+  if jv_bool(d, jv_get(d, v, "ok")) { return true; }
+  msg: [65536] u8; m := jv_str(d, jv_get(d, v, "error"), msg[..]);
+  tool_err("pass-check: the browser failed: "); tool_errln(ifx m >= 0 then cast(string) msg[0..<m] else "?");
+  return false;
+}
+// FILE from FILE.list: each layer's levels from the browser, laid out level after level.
+layers :: (c: [] Cdp, dir: string, file: string, w: int, h: int, n: int, levels: int) -> bool {
+  b: [2] [1024] u8; e: [4096] u8; x: [1] Jo;
+  jo_start(x[..], e[..]);
+  jo_put(x[..], "decodeLayers("); jo_str(x[..], cat(file, ".list", b[0][..])); jo_put(x[..], ","); jo_int(x[..], w); jo_put(x[..], ","); jo_int(x[..], h); jo_put(x[..], ")");
+  v := cdp_evaluate(c, jo_text(x[..]));
+  if !answer_ok(c, v) { return false; }
+  d := cdp_doc(c);
+  if jv_int(d, jv_get(d, v, "levels"), -1) != levels || jv_int(d, jv_get(d, v, "n"), -1) != n { tool_errln("pass-check: the layers are not the spec's"); return false; }
+  all: [PC_BIG] u8; one: [PC_FILE * 2] u8;
+  size := 0;
+  for l: 0..<levels { lw := ifx w >> l > 0 then w >> l else 1; lh := ifx h >> l > 0 then h >> l else 1; size += lw * lh * 4 * n; }
+  if size > all.count { tool_errln("pass-check: the layers are too large"); return false; }
+  for layer: 0..<n {
+    jo_start(x[..], e[..]); jo_put(x[..], "layerBytes("); jo_int(x[..], layer); jo_put(x[..], ")");
+    r := cdp_evaluate(c, jo_text(x[..]));
+    if r < 0 { tool_errln(cdp_error(c)); return false; }
+    got := b64_decode(jv_raw(cdp_doc(c), r), one[..]);
+    // level l of this layer goes after all of the lower levels' layers and this level's earlier layers
+    src := 0; at := 0;
+    for l: 0..<levels {
+      lw := ifx w >> l > 0 then w >> l else 1; lh := ifx h >> l > 0 then h >> l else 1;
+      bytes := lw * lh * 4;
+      if src + bytes > got { tool_errln("pass-check: a short layer from the browser"); return false; }
+      dst := at + layer * bytes;
+      for i: 0..<bytes { all[dst + i] = one[src + i]; }
+      src += bytes; at += bytes * n;
+    }
+  }
+  if !fs_write(fs_join(dir, file, b[1][..]), cast(string) all[0..<size]) { tool_errln("pass-check: cannot write the layers"); return false; }
+  print("pass-check: the browser decoded % layers of %x%, % levels\n", n, w, h, levels);
+  return true;
+}
+
+// ---- the GPU host
+gpu :: (host: string, dir: string, spec_name: string, out: [] f32) -> bool {
+  b: [4] [1024] u8; buf: [PC_FILE] u8;
+  for f: [5] string.["verse/gpu/vk-passes.c", "verse/gpu/vks.c", "verse/gpu/vks.h", "verse/gpu/vkc.c", "verse/gpu/vkc.h"] {
+    n := fs_read(f, buf[..]);
+    if n < 0 || !fs_write(fs_join(dir, fs_base(f), b[0][..]), cast(string) buf[0..<n]) { tool_err("pass-check: cannot copy "); tool_errln(f); return false; }
+  }
+  // built and run there under the validation layers; the floats come back
+  script: [8192] u8; s: [1] Jo; jo_start(s[..], script[..]);
+  jo_put(s[..], "cd '"); jo_put(s[..], dir); jo_put(s[..], "' && COPYFILE_DISABLE=1 tar --no-xattrs --exclude native.f32 -cf - . | ssh -o BatchMode=yes ");
+  jo_put(s[..], host);
+  jo_put(s[..], " 'set -e; d=$(mktemp -d); trap \"rm -rf $d\" EXIT; tar -x -C $d 2>/dev/null; cd $d; export VK_DRIVER_FILES=${VK_DRIVER_FILES:-/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json}; ");
+  jo_put(s[..], "nix-shell -p gcc vulkan-headers vulkan-loader vulkan-validation-layers --run \"set -e; gcc -std=c11 -O2 -I. vk-passes.c vks.c vkc.c -lvulkan -lm -o vk-passes; ");
+  jo_put(s[..], "export VK_ADD_LAYER_PATH=\\$(dirname \\$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \\\"*validation-layers*\\\" | head -1)); export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation; ");
+  jo_put(s[..], "./vk-passes "); jo_put(s[..], spec_name); jo_put(s[..], " out.f32 >&2\"; cat out.f32' > native.f32");
+  argv := [3] string.["bash", "-c", jo_text(s[..])];
+  o: [65536] u8; e: [65536] u8;
+  r := proc_run(argv[..], 900000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 { tool_err(cast(string) e[0..<r.err_n]); tool_errln("pass-check: the GPU host's passes failed"); return false; }
+  // vk-passes's own line (the GPU, the passes, validation) on stdout; the build's warnings stay out
+  for k: 0..<pc_lines(cast(string) e[0..<r.err_n]) {
+    l := pc_line(cast(string) e[0..<r.err_n], k);
+    if l.count > 10 && l[0..<10] == "vk-passes:" { print("%\n", l); }
+  }
+  return read_f32(fs_join(dir, "native.f32", b[1][..]), out);
 }

@@ -1,67 +1,190 @@
 // Firm reason: 1 (it runs in the browser and talks to WebGPU)
-// One shader pass drawn by the browser's WebGPU, for the native port's
-// per-pass check (docs/verse/native-gpu.md, G5): the WGSL, a vertex and a
-// fragment entry, the uniform block's bytes at group 0 binding 0, and the
-// pass's colour targets, cleared to zero and read back as float32 RGBA rows.
-// verse/gpu/pass-check.coax calls window.runPass over the Chrome DevTools
-// protocol and compares what it returns with the same pass natively.
-//   runPass({wgsl, vs, fs, uniforms: base64, width, height, targets: ["rgba16float", ...], vertices: 3})
-//   -> {ok: true, targets: [base64 of float32 RGBA, ...]} or {ok: false, error}
+// Passes of Everglade's WGSL drawn by the browser's WebGPU, for the native
+// port's per-pass check (docs/verse/native-gpu.md, G5). verse/gpu/pass-check.coax
+// serves a directory with this page and the spec's files, and calls these over
+// the Chrome DevTools protocol; verse/gpu/vk-passes.c draws the same spec natively
+// (its header documents the directives). Here `wgsl FILE` names the WGSL, and
+// a pass's bindings (SPV.bindings, by name) are found in it by their
+// @group/@binding. Each pass clears its colour targets (rgba16float, made once
+// at the size) to 0 and its depth to 1, tests less and writes depth.
+//   runSpec(SPEC_FILE) -> {ok: true, targets: [base64 of float32 RGBA rows, ...]} or {ok: false, error}
+//   decodeLayers(LIST_FILE, W, H) -> {ok, levels}; then layerBytes(i) -> base64 of layer i's
+//     rgba8 texels, level after level: the pack's images as host.js layerTexture uploads them
+//     (createImageBitmap, each level resized with resizeQuality "high"), read back raw.
 
-const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-function toB64(bytes) {
+const toB64 = (bytes) => {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(s);
-}
-// IEEE half to float.
-function half(h) {
+};
+const half = (h) => {
   const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023;
   if (e === 0) return s * m * 2 ** -24;
   if (e === 31) return m ? NaN : s * Infinity;
   return s * (1 + m / 1024) * 2 ** (e - 15);
+};
+const bytesOf = async (name) => {
+  const r = await fetch(name);
+  if (!r.ok) throw new Error(`${name}: ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+};
+const textOf = async (name) => new TextDecoder().decode(await bytesOf(name));
+let device;
+const gpu = async () => {
+  if (!device) {
+    const adapter = await navigator.gpu.requestAdapter();
+    device = await adapter.requestDevice({ requiredLimits: { maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } });
+  }
+  return device;
+};
+// The texels of a texture's level 0 layer `layer`, as bytes (rows tightly packed).
+async function readLayer(d, texture, w, h, bpp, layer, level, aspect) {
+  const row = Math.ceil(w * bpp / 256) * 256;
+  const buf = d.createBuffer({ size: row * h, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  const enc = d.createCommandEncoder();
+  enc.copyTextureToBuffer({ texture, mipLevel: level, origin: [0, 0, layer], ...(aspect ? { aspect } : {}) }, { buffer: buf, bytesPerRow: row }, [w, h]);
+  d.queue.submit([enc.finish()]);
+  await buf.mapAsync(GPUMapMode.READ);
+  const src = new Uint8Array(buf.getMappedRange()), out = new Uint8Array(w * h * bpp);
+  for (let y = 0; y < h; y++) out.set(src.subarray(y * row, y * row + w * bpp), y * w * bpp);
+  buf.destroy();
+  return out;
 }
 
-window.runPass = async function (o) {
+let layers = null;
+window.decodeLayers = async function (list, w, h) {
   try {
-    const adapter = await navigator.gpu.requestAdapter();
-    const device = await adapter.requestDevice();
+    const d = await gpu();
+    const names = (await textOf(list)).split("\n").filter(Boolean);
+    const images = await Promise.all(names.map(async (n) => createImageBitmap(new Blob([await bytesOf(n)]))));
+    const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
+    const texture = d.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT });
+    for (const [layer, image] of images.entries())
+      for (let level = 0; level < levels; level++) {
+        const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
+        const source = level === 0 && image.width === w && image.height === h ? image
+          : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+        d.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
+      }
+    layers = { texture, w, h, levels, n: images.length };
+    return { ok: true, levels, n: images.length };
+  } catch (e) { return { ok: false, error: String(e && e.stack || e) }; }
+};
+window.layerBytes = async function (layer) {
+  const d = await gpu(), parts = [];
+  for (let level = 0; level < layers.levels; level++)
+    parts.push(await readLayer(d, layers.texture, Math.max(1, layers.w >> level), Math.max(1, layers.h >> level), 4, layer, level));
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return toB64(out);
+};
+
+window.runSpec = async function (specFile) {
+  try {
+    const d = await gpu();
     const errors = [];
-    device.addEventListener("uncapturederror", (e) => errors.push(e.error.message));
-    const module = device.createShaderModule({ code: o.wgsl });
-    const info = await module.getCompilationInfo();
-    const bad = info.messages.filter((m) => m.type === "error");
-    if (bad.length) return { ok: false, error: bad.map((m) => `${m.lineNum}: ${m.message}`).join("\n") };
-    const ubytes = b64(o.uniforms);
-    const ubuf = device.createBuffer({ size: Math.ceil(ubytes.length / 16) * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    device.queue.writeBuffer(ubuf, 0, ubytes);
-    const pipeline = await device.createRenderPipelineAsync({
-      layout: "auto",
-      vertex: { module, entryPoint: o.vs },
-      fragment: { module, entryPoint: o.fs, targets: o.targets.map((format) => ({ format })) },
-      primitive: { topology: "triangle-list" },
-    });
-    const group = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }] });
-    const textures = o.targets.map((format) => device.createTexture({ size: [o.width, o.height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }));
-    const enc = device.createCommandEncoder();
-    const pass = enc.beginRenderPass({ colorAttachments: textures.map((t) => ({ view: t.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] })) });
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, group);
-    pass.draw(o.vertices ?? 3);
-    pass.end();
-    const row = Math.ceil(o.width * 8 / 256) * 256;
-    const reads = textures.map(() => device.createBuffer({ size: row * o.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ }));
-    textures.forEach((t, i) => enc.copyTextureToBuffer({ texture: t }, { buffer: reads[i], bytesPerRow: row }, [o.width, o.height]));
-    device.queue.submit([enc.finish()]);
+    d.addEventListener("uncapturederror", (e) => errors.push(e.error.message));
+    d.pushErrorScope("validation");
+    const res = new Map();
+    let wgsl = "", module = null, w = 0, h = 0, index = null, draws = null, ndraws = 0;
+    const targets = [];
+    let lastTargets = 0;
+    for (const raw of (await textOf(specFile)).split("\n")) {
+      const a = raw.trim().split(/\s+/);
+      if (!a[0] || a[0].startsWith("#")) continue;
+      if (a[0] === "wgsl") {
+        wgsl = await textOf(a[1]);
+        module = d.createShaderModule({ code: wgsl });
+        const bad = (await module.getCompilationInfo()).messages.filter((m) => m.type === "error");
+        if (bad.length) return { ok: false, error: bad.map((m) => `${m.lineNum}: ${m.message}`).join("\n") };
+      } else if (a[0] === "size") { w = +a[1]; h = +a[2]; }
+      else if (a[0] === "buffer" || a[0] === "index") {
+        const bytes = await bytesOf(a[0] === "index" ? a[1] : a[2]);
+        const b = d.createBuffer({ size: Math.max(16, Math.ceil(bytes.length / 16) * 16),
+          usage: (a[0] === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
+        const whole = new Uint8Array(Math.ceil(bytes.length / 4) * 4); whole.set(bytes);
+        d.queue.writeBuffer(b, 0, whole);
+        if (a[0] === "index") index = b; else res.set(a[1], { buffer: b });
+      } else if (a[0] === "draws") { draws = new Uint32Array((await bytesOf(a[1])).buffer); ndraws = +a[2]; }
+      else if (a[0] === "layers") {
+        const [lw, lh, n, levels] = a.slice(3, 7).map(Number), bytes = await bytesOf(a[2]);
+        const t = d.createTexture({ size: [lw, lh, n], format: "rgba8unorm-srgb", mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+        let at = 0;
+        for (let level = 0; level < levels; level++) {
+          const xw = Math.max(1, lw >> level), xh = Math.max(1, lh >> level);
+          d.queue.writeTexture({ texture: t, mipLevel: level }, bytes.subarray(at, at + xw * xh * 4 * n), { bytesPerRow: xw * 4, rowsPerImage: xh }, [xw, xh, n]);
+          at += xw * xh * 4 * n;
+        }
+        res.set(a[1], t.createView({ dimension: "2d-array" }));
+      } else if (a[0] === "sampler") {
+        const f = a[2] === "linear" ? "linear" : "nearest", wrap = a[3] === "repeat" ? "repeat" : "clamp-to-edge";
+        res.set(a[1], d.createSampler({ magFilter: f, minFilter: f, mipmapFilter: a[4] === "mip" ? "linear" : "nearest",
+          addressModeU: wrap, addressModeV: wrap, addressModeW: wrap, ...(a[5] === "less" ? { compare: "less" } : {}) }));
+      } else if (a[0] === "depth") {
+        const t = d.createTexture({ size: [+a[2], +a[3]], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+        res.set(a[1], { texture: t, view: t.createView() });
+      } else if (a[0] === "pass") {
+        const [spv, vs, fs] = a.slice(1, 4), nt = +a[4], depthName = a[5], bias = +a[6], slope = +a[7], calls = a[8];
+        while (targets.length < nt) targets.push(d.createTexture({ size: [w, h], format: "rgba16float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }));
+        lastTargets = nt;
+        let depth = null;
+        if (depthName === "own") depth = d.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView();
+        else if (depthName !== "-") depth = res.get(depthName).view;
+        const pipeline = await d.createRenderPipelineAsync({
+          layout: "auto",
+          vertex: { module, entryPoint: vs },
+          fragment: { module, entryPoint: fs, targets: Array.from({ length: nt }, () => ({ format: "rgba16float" })) },
+          primitive: { topology: "triangle-list", cullMode: "none" },
+          ...(depth ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: bias, depthBiasSlopeScale: slope } } : {}),
+        });
+        // the bindings by name, at the group and binding the WGSL declares them
+        const groups = new Map();
+        for (const line of (await textOf(`${spv}.bindings`)).split("\n")) {
+          const m = line.match(/^binding \d+ \S+ (\S+)/);
+          if (!m) continue;
+          const name = m[1], decl = wgsl.match(new RegExp(`@group\\((\\d+)\\)\\s*@binding\\((\\d+)\\)\\s*var(?:<[^>]*>)?\\s+${name}\\s*:`));
+          if (!decl) throw new Error(`the WGSL does not declare ${name}`);
+          const r = res.get(name);
+          if (!r) throw new Error(`the spec has no ${name}`);
+          const g = +decl[1];
+          if (!groups.has(g)) groups.set(g, []);
+          groups.get(g).push({ binding: +decl[2], resource: r.view ?? r });
+        }
+        const enc = d.createCommandEncoder();
+        const pass = enc.beginRenderPass({
+          colorAttachments: targets.slice(0, nt).map((t) => ({ view: t.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] })),
+          ...(depth ? { depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } } : {}),
+        });
+        pass.setPipeline(pipeline);
+        const top = Math.max(-1, ...groups.keys());
+        for (let g = 0; g <= top; g++) pass.setBindGroup(g, d.createBindGroup({ layout: pipeline.getBindGroupLayout(g), entries: groups.get(g) ?? [] }));
+        if (calls === "draws") {
+          if (index) pass.setIndexBuffer(index, "uint32");
+          for (let i = 0; i < ndraws; i++) {
+            const [first, count, base, instances] = draws.subarray(i * 4, i * 4 + 4);
+            if (!count || !instances) continue;
+            if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
+            else pass.drawIndexed(count, instances, first, 0, base);
+          }
+        } else {
+          const [v, n] = calls.split(":").map(Number);
+          pass.draw(v, n || 1);
+        }
+        pass.end();
+        d.queue.submit([enc.finish()]);
+      } else throw new Error(`no directive ${a[0]}`);
+    }
     const out = [];
-    for (const r of reads) {
-      await r.mapAsync(GPUMapMode.READ);
-      const halves = new Uint16Array(r.getMappedRange());
-      const f = new Float32Array(o.width * o.height * 4);
-      for (let y = 0; y < o.height; y++)
-        for (let x = 0; x < o.width * 4; x++) f[y * o.width * 4 + x] = half(halves[y * row / 2 + x]);
+    for (const t of targets.slice(0, lastTargets)) {
+      const halves = new Uint16Array((await readLayer(d, t, w, h, 8, 0, 0)).buffer);
+      const f = new Float32Array(w * h * 4);
+      for (let i = 0; i < f.length; i++) f[i] = half(halves[i]);
       out.push(toB64(new Uint8Array(f.buffer)));
     }
+    const scoped = await d.popErrorScope();
+    if (scoped) errors.push(scoped.message);
     if (errors.length) return { ok: false, error: errors.join("\n") };
     return { ok: true, targets: out };
   } catch (e) {

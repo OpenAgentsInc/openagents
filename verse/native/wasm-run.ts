@@ -116,4 +116,14 @@ if (opt.dump) {
   writeFileSync(`${opt.dump}/u.bin`, bytesAt(uniforms, uniformFloats * 4));
   for (let k = 0; k < Math.min(4, x.coaxial_stores()); k++)
     writeFileSync(`${opt.dump}/s${k}.bin`, bytesAt(x.coaxial_store(state, k), (x.coaxial_store_bytes(state, k) >>> 0) & ~3));
+  // what a pass check draws the scene from (verse/gpu/everglade-pass.coax): the draw list and how many of
+  // its last draws are water, the pack's storage (vertices) and index buffers, and its layer images in order
+  const draws = x.coaxial_draw_count(state) >>> 0;
+  writeFileSync(`${opt.dump}/draws.bin`, draws ? bytesAt(x.coaxial_draws(state), draws * 16) : new Uint8Array(16));
+  writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0}\n`);
+  if (of(2)) writeFileSync(`${opt.dump}/vertices.bin`, of(2)!.bytes);
+  if (of(3)) writeFileSync(`${opt.dump}/index.bin`, of(3)!.bytes);
+  const images = entries.filter((e) => e.kind === 4);
+  images.forEach((e, i) => writeFileSync(`${opt.dump}/layer-${i}.img`, e.bytes));
+  writeFileSync(`${opt.dump}/layers.bin.list`, images.map((_, i) => `layer-${i}.img\n`).join(""));
 }

@@ -918,7 +918,7 @@ eg_shard_cap :: (shard:u32,p:V3,u:[]f32,objects:[]EgObj)->V3 {
 // every opaque layer is shaded, so the crowns ringing the ponds were a third of a phone's frame there
 // (art-styles.md 14); at that distance the taps' penumbra is under a pixel, so the picture is the same.
 EG_LEAF_FAR :: 24.0f32;
-eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->f32 {
+eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->f32 {
   if (eg_st(21,u).x<1.0f32) {
     return 1.0f32;
   }
@@ -926,7 +926,7 @@ eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,p
   uv:V2=v2(0.5f32+(0.5f32*q.x),0.5f32-(0.5f32*q.y));
   texel_2:f32=1.0f32/(cast(f32)(wg_dims_depth(shadow_map).x));
   phone:f32=eg_st(31,u).z;
-  taps:f32=ifx paint_leaf_far[0] then 1.0f32 else eg_st(21,u).y;
+  taps:f32=ifx paint_leaf_far then 1.0f32 else eg_st(21,u).y;
   r:f32=eg_st(21,u).z;
   // the taps' disc 1.6 times the preset's: the penumbra spans several texels, so the map's stair-steps
   // melt into a soft edge; the average then firmed (smoothstep) so a thin caster's shade keeps its depth
@@ -1118,8 +1118,7 @@ eg_person_dye :: (t:V3,dye:V4)->V3 {
   return wg_max_f3f3(wg_mix_f3f3f(t,dyed,mask*share),v3(0.0f32,0.0f32,0.0f32));
 }
 eg_scene_fs :: (s:EgS,front:bool,u:[]f32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
-  paint_leaf_far_store:[1]bool;
-  paint_leaf_far:=paint_leaf_far_store[..];
+  paint_leaf_far:bool;
   // a character's skin and cloth flat (spec 11): sampled two mip levels coarser, so stitching, pores
   // and the fabric's grain go and two or three colour masses stay
   tex:V4=gpu_sample_layer_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
@@ -1256,7 +1255,7 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,heights:[]f32,objects:[]EgObj,water_nod
   if ((s.look==EG_LOOK_WINDOW)&&(s.dye.y>0.75f32)) {
     return eg_glass(s,front,u);
   }
-  paint_leaf_far[0]=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
+  paint_leaf_far=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
   lit:f32=verse_style_contact(eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far),1.0f32-shadow,eg_st(4,u).w);
   res:EgLit=eg_paint(base,n,s.world,lit,(s.look==EG_LOOK_CHARACTER)||(s.look==3),s.look!=99,u,heights,water_nodes,paint_leaf_far);
   if ((mark_ice>0.0f32)||(mark_glow.x>0.0f32)) {
@@ -1307,7 +1306,7 @@ eg_glass :: (s:EgS,front:bool,u:[]f32)->EgLit {
 // see-through, a screen door of 4 by 4 (the scene pass draws no blend), so what's behind shows.
 // A spell's fire, smoke or shockwave (LOOK_FIRE, LOOK_SMOKE, LOOK_RING): an ordered dither drops the
 // pixels it doesn't cover, thinning to its feathered, churning edge, and the bloom blurs what stays.
-eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:[]bool)->EgLit {
+eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:bool)->EgLit {
   n:V3=wg_normalize3(s.normal);
   v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
   facing:f32=abs(wg_dot3(n,v));
@@ -1395,7 +1394,7 @@ eg_room_warm :: (k:f32)->V3 {
 // the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
 // cool tinted ambient, the warm rim along silhouettes (not on a blade: a field edge on would all be
 // rim), then the haze; with the share that blooms and the glow a hazed surface passes the shafts.
-eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:[]bool)->EgLit {
+eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:bool)->EgLit {
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   v:V3=wg_normalize3(wg_sub_f3f3(world,v3(u[24],u[25],u[26])));
   base:V3=eg_weather_wet_base(dry,n,character,u); // rain darkens what it wets (W9)
@@ -1416,7 +1415,7 @@ eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,height
   if (rim&&(rs>0.0f32)) {
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(2,u)),verse_style_rim(wg_dot3(n,wg_neg_f3(v)),wg_dot3(n,l),eg_st(3,u).y,eg_st(3,u).z,rs)),lit));
   } // (none without outlines: verse_style_no_outlines)
-  if (!paint_leaf_far[0]) {
+  if (!paint_leaf_far) {
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f3(wg_mul_ff3(eg_water_caustics(world,n,u,water_nodes),base),key),lit));
   } // light the water focuses on what lies under it
   c=eg_weather_surface(c,base,n,world,v,lit,character,u,heights); // wet sheen, puddles, lightning (W9)
@@ -1562,12 +1561,12 @@ eg_water_host_sun :: (u:[]f32)->V4 {
 eg_water_host_sun_light :: (u:[]f32)->V3 {
   return wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),EG_WATER_SUN_E);
 }
-eg_water_host_light :: (world:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->V3 {
+eg_water_host_light :: (world:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->V3 {
   return eg_water_host_light_shaded(world,n,eg_shade_shadows(v2(world.x,world.z),u),u,shadow_map,shadow_cmp,paint_leaf_far);
 }
 // The same with the soft shadows at world already worked out (sh), so a caller that needs them twice
 // sums the 16 of them once.
-eg_water_host_light_shaded :: (world:V3,n:V3,sh:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->V3 {
+eg_water_host_light_shaded :: (world:V3,n:V3,sh:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->V3 {
   amb:V3=v3(verse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
   return wg_add_f3f3(amb,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),fmax(wg_dot3(n,wg_sw_xyz_f4(eg_st(1,u))),0.0f32)),eg_map_lit(world,n,u,shadow_map,shadow_cmp,paint_leaf_far)),sh));
 }
@@ -2162,7 +2161,7 @@ eg_pond_vertex :: (id:u32,f:u32,u:[]f32,heights:[]f32)->EgWaterOut {
   o.extra=v4(cast(f32)(EG_POND_PART),0.0f32,r,0.0f32);
   return o;
 }
-eg_pond_shade :: (i:EgWaterOut,v:V3,eye_distance:f32,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+eg_pond_shade :: (i:EgWaterOut,v:V3,eye_distance:f32,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32)->EgWaterShade {
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
   // a pond is calmer than the river: half its detail waves, and the rings you leave
@@ -2262,7 +2261,7 @@ eg_fountain_vertex :: (id:u32,f:u32,u:[]f32)->EgWaterOut {
 }
 // Spray, a stream or a jet: a streaked, broken sheet of white-shot teal, the painted sky in its
 // Fresnel rim, its streaks running down at the water's speed.
-eg_fountain_fall_shade :: (i:EgWaterOut,part:u32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->EgWaterShade {
+eg_fountain_fall_shade :: (i:EgWaterOut,part:u32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->EgWaterShade {
   o:EgWaterShade;
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   n:V3=wg_normalize3(v3(i.rest_flow.x,i.rest_flow.y,i.rest_flow.z));
@@ -2339,7 +2338,7 @@ eg_weir_vertex :: (id:u32,u:[]f32)->EgWaterOut {
 }
 // The sheet: glassy teal at the lip with the sky in it, streaks running down it, breaking white toward
 // its foot, its sides torn.
-eg_weir_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->EgWaterShade {
+eg_weir_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->EgWaterShade {
   o:EgWaterShade;
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   n:V3=wg_normalize3(v3(i.rest_flow.x,i.rest_flow.y,i.rest_flow.z));
@@ -2400,7 +2399,7 @@ eg_fx_vertex :: (id:u32,f:u32,u:[]f32)->EgWaterOut {
 }
 // A particle: spray and drips a bright bead, mist and steam a soft white puff, faded where it meets what
 // stands behind it (soft particles, from the scene's depth: W5) and close to the eye.
-eg_fx_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,water_scene_depth:TexDepth)->EgWaterShade {
+eg_fx_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,water_scene_depth:TexDepth)->EgWaterShade {
   o:EgWaterShade;
   kind:u32=wg_u32_f(i.extra.y+0.5f32);
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
@@ -2818,7 +2817,7 @@ eg_water_below :: (n:V3,v:V3,path:f32,slope:f32,u:[]f32)->EgWaterShade {
 // A fountain's pool: still water bent by the detail waves and by rings running out from where the
 // falls strike, in the painted look. The basin is shallow, so its bands are read at 1.2 times its
 // depth (the bowl's 1.4): bright teal at the rim, deepening toward the column, never the river's blue.
-eg_fountain_pool_shade :: (i:EgWaterOut,part:u32,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+eg_fountain_pool_shade :: (i:EgWaterOut,part:u32,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32)->EgWaterShade {
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
   flow:V2=v2(i.rest_flow.z,i.rest_flow.w);
@@ -2853,12 +2852,12 @@ eg_water_paint_ramp :: (edge:f32,x:f32)->f32 {
 eg_water_paint_sparkle :: (rdl:f32)->f32 {
   return smoothstep(0.99756f32,0.99939f32,rdl);
 }
-eg_water_painted :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+eg_water_painted :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32)->EgWaterShade {
   return eg_water_painted_teal(world,rest,flow,depth,shore,white,n,v,footprint,0.0f32,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
 }
 // A fountain's clear water over pale stone: the bands warmed toward a bright teal (teal 1 all of it).
 EG_W_TEAL :: ()->V3 {return v3(0.12f32,0.70f32,0.64f32);}
-eg_water_painted_teal :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,teal:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+eg_water_painted_teal :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,teal:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32)->EgWaterShade {
   o:EgWaterShade;
   l:V3=wg_sw_xyz_f4(eg_water_host_sun(u));
   // the bands, in the light the land has (its shadows fall on the water too)
@@ -2917,7 +2916,7 @@ eg_water_painted_teal :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32
   o.mirror=v4(refl.x,refl.y,refl.z,(fresnel*edge)*(1.0f32-foam));
   return o;
 }
-eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
+eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
   part:u32=wg_u32_f(i.extra.x+0.5f32);
   if (part==EG_WEIR_PART) {
     return eg_weir_shade(i,u,shadow_map,shadow_cmp,paint_leaf_far);
@@ -2985,7 +2984,7 @@ eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sample
   return o;
 }
 // The fogged surface, with the HUD's plates over it, as the two halves blend it.
-eg_water_halves :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
+eg_water_halves :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
   s:EgWaterShade=eg_water_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth);
   d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),v3(i.world_depth.x,i.world_depth.y,i.world_depth.z)));
   fog:f32=eg_haze_share(d,i.world_depth.y,u);
@@ -3058,7 +3057,7 @@ eg_water_ssr :: (p:V3,dir:V3,u:[]f32,water_scene:Tex2D,water_scene_depth:TexDept
   }
   return v4(0.0f32,0.0f32,0.0f32,0.0f32);
 }
-eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene:Tex2D,water_scene_depth:TexDepth)->V3 {
+eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool,wake_foam:[]f32,water_scene:Tex2D,water_scene_depth:TexDepth)->V3 {
   world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
   px:I2=wg_cvt_i2f2(v2(i.clip.x,i.clip.y));
   // inside a rowboat's hull the water isn't drawn
@@ -3109,8 +3108,7 @@ eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCo
   return wg_max_f3f3(out,v3(0.0f32,0.0f32,0.0f32));
 }
 eg_water_transmit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene_depth:TexDepth)->V4 {
-  paint_leaf_far_store:[1]bool;
-  paint_leaf_far:=paint_leaf_far_store[..];
+  paint_leaf_far:bool;
   wake_foam_store:[1]f32;
   wake_foam:=wake_foam_store[..];
   // a surface draws whole in the light half (water_whole): this half clears what lies behind it
@@ -3120,8 +3118,7 @@ eg_water_transmit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sam
   return wg_make_f4_f3f(wg_clamp_f3f3f3(eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth).transmit,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),1.0f32);
 }
 eg_water_emit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene:Tex2D,water_scene_depth:TexDepth)->V4 {
-  paint_leaf_far_store:[1]bool;
-  paint_leaf_far:=paint_leaf_far_store[..];
+  paint_leaf_far:bool;
   wake_foam_store:[1]f32;
   wake_foam:=wake_foam_store[..];
   if eg_water_surface_part(wg_u32_f(i.extra.x+0.5f32)) {
@@ -3379,8 +3376,7 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
   return o;
 }
 eg_grass_fs :: (g:EgG,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
-  paint_leaf_far_store:[1]bool;
-  paint_leaf_far:=paint_leaf_far_store[..];
+  paint_leaf_far:bool;
   res:EgLit=eg_paint(g.albedo,wg_normalize3(g.n),g.world,eg_map_lit(g.world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far),false,false,u,heights,water_nodes,paint_leaf_far);
   res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(g.glow,0.18f32)),res.light.w);
   return res;

@@ -55,6 +55,7 @@ W :: struct {
   ss: [256] int; se: [256] int; sf: [256] int; sc: [256] int; ns: int;
   fs: [4096] int; fe: [4096] int; fy: [4096] int; ft: [4096] int; nf: int;
   ms: [128] int; me: [128] int; my: [128] int; mk: [128] int; mt: [128] int; nm: int;
+  mh: [128] bool;   // a private variable some procedure other than an entry writes
   ks: [1024] int; ke: [1024] int; kx: [1024] int; kxe: [1024] int; kt: [1024] int; nk: int;
   gs: [2048] int; ge: [2048] int; gr: [2048] int; gp: [2048] int; gpn: [2048] int; gb: [2048] int; gbe: [2048] int;
   gst: [2048] int; gd: [2048] int; gm: [2048] u64; gk: [2048] bool; ng: int;
@@ -401,6 +402,19 @@ declare :: (w: []W) {
 mv_find :: (w: []W, name: string) -> int { for i: 0..<w[0].nm { if srx(w, w[0].ms[i], w[0].me[i]) == name { return i; } } return -1; }
 fn_find :: (w: []W, name: string) -> int { for i: 0..<w[0].ng { if srx(w, w[0].gs[i], w[0].ge[i]) == name { return i; } } return -1; }
 k_find :: (w: []W, name: string) -> int { for i: 0..<w[0].nk { if srx(w, w[0].ks[i], w[0].ke[i]) == name { return i; } } return -1; }
+// An assignment's operator: = or a compound one, not a comparison.
+assigns :: (t: string) -> bool {
+  if t == "=" { return true; }
+  if t.count < 2 || t[t.count - 1] != '=' { return false; }
+  return !(t == "==" || t == "<=" || t == ">=" || t == "!=");
+}
+#test "assignments, not comparisons" {
+  #assert assigns("=") && assigns("+=") && assigns(">>=") && !assigns("==") && !assigns("<=") && !assigns(">=") && !assigns("!=") && !assigns("+") && !assigns("");
+}
+// A private variable only entries write is a plain local of the entry, handed
+// to its procedures by value; one a procedure writes is the entry's one
+// element, its procedures given the view.
+by_value :: (w: []W, m: int) -> bool { return w[0].mk[m] == MV_PRIVATE && !w[0].mh[m]; }
 // Which bindings each procedure reads, with what it calls.
 closure :: (w: []W) {
   for g: 0..<w[0].ng {
@@ -411,6 +425,7 @@ closure :: (w: []W) {
       if i > 0 && tt(w, i - 1) == "." { continue; }
       v := mv_find(w, name);
       if v >= 0 { m = m | (cast(u64) 1 << cast(u64) v); }
+      if v >= 0 && w[0].gst[g] == 0 && w[0].mk[v] == MV_PRIVATE && assigns(tt(w, i + 1)) { w[0].mh[v] = true; }
       f := fn_find(w, name);
       if f >= 0 && tt(w, i + 1) == "(" { e := w[0].ne; w[0].ea[e] = g; w[0].eb[e] = f; w[0].ne = e + 1; }
     }
@@ -898,7 +913,7 @@ primary :: (w: []W) -> Val {
   if m >= 0 {
     if w[0].mk[m] == MV_UNIFORM { return Val.{ty = w[0].my[m], um = m + 1, path = true, atom = true}; }
     b := w[0].an; ap(w, name);
-    if w[0].mk[m] == MV_PRIVATE { ap(w, "[0]"); }
+    if w[0].mk[m] == MV_PRIVATE && !by_value(w, m) { ap(w, "[0]"); }
     v := mka(w, b, w[0].my[m]); v.path = true; return v;
   }
   c := k_find(w, name);
@@ -1402,7 +1417,7 @@ emit_fn :: (w: []W, g: int) {
     o(w, srx(w, w[0].ms[i], w[0].me[i])); o(w, ":");
     t := w[0].my[i];
     if w[0].mk[i] == MV_UNIFORM { o(w, "[]f32"); }
-    else if w[0].mk[i] == MV_PRIVATE { o(w, "[]"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); }
+    else if w[0].mk[i] == MV_PRIVATE && !by_value(w, i) { o(w, "[]"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); }
     else { b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); }
   }
   o(w, ")");
@@ -1413,6 +1428,7 @@ emit_fn :: (w: []W, g: int) {
     for i: 0..<w[0].nm {
       if (w[0].gm[g] & (cast(u64) 1 << cast(u64) i)) == 0 || w[0].mk[i] != MV_PRIVATE { continue; }
       name_ := srx(w, w[0].ms[i], w[0].me[i]);
+      if by_value(w, i) { o(w, "  "); o(w, name_); o(w, ":"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b)); o(w, ";\n"); continue; }
       o(w, "  "); o(w, name_); o(w, "_store:[1]"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b)); o(w, ";\n");
       o(w, "  "); o(w, name_); o(w, ":="); o(w, name_); o(w, "_store[..];\n");
     }

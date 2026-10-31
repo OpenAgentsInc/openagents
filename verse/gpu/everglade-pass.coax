@@ -1,109 +1,258 @@
 // One of Everglade's passes, ported to Coax, against the browser (G5,
-// docs/verse/native-gpu.md). A frame's uniforms come from the browser's wasm
+// docs/verse/native-gpu.md). A frame comes from the browser's wasm
 // (verse/native/wasm-run.ts: the pack, page facts, golden mode, clock 0, 90
-// frames). The WGSL and verse/style.coax get one integer hash for their sin
-// hashes (verse/gpu/int-hash.coax: sin of large arguments is each GPU's own),
-// coax/web/wgsl-coax.coax translates that WGSL to Coax as it does the live
-// file, and `coax spirv` lowers the pass. verse/gpu/pass-check.coax then
-// draws the WGSL in headless Chrome and the Coax on HOST's GPU and compares.
-// With --live it also compares the live shaders (the sin hashes), reported
-// only: those differ where the ridges and clouds are.
-//   coax/web/tool.sh verse/gpu/everglade-pass.coax HOST PASS [--live]     (from the repo root; PASS: bg)
+// frames): its uniforms, stores and draw list, with the pack's vertices,
+// indices and layer images. The WGSL and verse/style.coax get one integer
+// hash for their sin hashes (verse/gpu/int-hash.coax: sin of large arguments
+// is each GPU's own), coax/web/wgsl-coax.coax translates that WGSL to Coax as
+// it does the live file, and `coax spirv` lowers the pass's entries.
+// verse/gpu/pass-check.coax then draws the spec below in headless Chrome and
+// on HOST's GPU and compares. With --live it also compares the live shaders
+// (the sin hashes), reported only: those differ where hashes draw.
+//   coax/web/tool.sh verse/gpu/everglade-pass.coax HOST PASS [--live] [--keep DIR]   (from the repo root)
+// The passes:
+//   bg      the sky, ridges and weather into light and aux
+//   scene   the shadow map from the key light, then the scene (every draw but the water's) with it
+// Both sides sample one linear sampler without anisotropy (host.js asks for 8x, which is each
+// GPU's own), and the layers the browser decoded and mipmapped.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 
-// A pass: its entries, colour targets, vertices, and the values allowed past
-// the tolerance (edge pixels; bg measured 15 at 320x180).
-EpPass :: struct { name: string; vs: string; fs: string; targets: string; vertices: string; allow: string; }
-EP_PASSES :: [1] EpPass.[EpPass.{name = "bg", vs = "bg_vs", fs = "bg_fs", targets = "2", vertices = "3", allow = "40"}];
 EP_PACK :: "apps/openagents-web/realms/everglade/assets/everglade.pack";
+EP_SIZE :: "320 180";
+EP_SHADOW :: 2048;          // the shadow map's side on a desktop (host.js shadowLayout)
+// A pass: the entries it lowers (vertex, fragment; a second pair, or ""), and the values
+// allowed past the tolerance (edge pixels; bg measured 15 at 320x180).
+EpPass :: struct { name: string; vs: string; fs: string; vs2: string; fs2: string; allow: string; }
+EP_PASSES :: [2] EpPass.[
+  EpPass.{name = "bg", vs = "bg_vs", fs = "bg_fs", vs2 = "", fs2 = "", allow = "40"},
+  EpPass.{name = "scene", vs = "shadow_vs", fs = "shadow_fs", vs2 = "scene_vs", fs2 = "scene_fs", allow = "400"}];
 
 ep_find :: (name: string) -> int {
   for i: 0..<EP_PASSES.count { if EP_PASSES[i].name == name { return i; } }
   return -1;
 }
-#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == -1 && ep_find("") == -1; }
+#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("water") == -1 && ep_find("") == -1; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: everglade-pass HOST PASS [--live]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: everglade-pass HOST PASS [--live] [--keep DIR]"); return 2; }
   host := args_at(a[..], 0);
   k := ep_find(args_at(a[..], 1));
   if k < 0 { tool_err("everglade-pass: no pass "); tool_errln(args_at(a[..], 1)); return 2; }
-  p := EP_PASSES[k];
   if !fs_exists(EP_PACK) { tool_errln("everglade-pass: no Everglade pack (verse/tools/pack_realm.py builds it); run from the repo root"); return 1; }
   tb: [1024] u8;
   work := fs_temp("everglade-pass-", tb[..]);
   if work.count == 0 { tool_errln("everglade-pass: no temporary directory"); return 1; }
-  status := run(host, p, work, args_has(a[..], "--live"));
+  status := run(host, EP_PASSES[k], work, args_has(a[..], "--live"), args_value(a[..], "--keep", ""));
   r := fs_remove(work);
   return status;
 }
 
-run :: (host: string, p: EpPass, work: string, live: bool) -> int {
-  b: [8] [1024] u8;
-  wasm := fs_join(work, "everglade.wasm", b[0][..]);
-  build := [12] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
-    "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax", "", "", "", ""];
-  if !step("the wasm", build[0..<8], false) { return 1; }
+run :: (host: string, p: EpPass, work: string, live: bool, keep: string) -> int {
+  b: [4] [1024] u8; o: [65536] u8;
+  frame_dir := fs_join(work, "frame", b[0][..]);
+  if !fs_mkdir(frame_dir) { tool_errln("everglade-pass: cannot make a directory"); return 1; }
+  wasm := fs_join(work, "everglade.wasm", b[1][..]);
+  build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
+    "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
+  if step("the wasm", build[..], o[..]) < 0 { return 1; }
   frame := [20] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
-    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", work];
-  if !step("the frame", frame[..], false) { return 1; }
-  int_dir := fs_join(work, "int", b[1][..]);
+    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", frame_dir];
+  if step("the frame", frame[..], o[..]) < 0 { return 1; }
+  int_dir := fs_join(work, "int", b[2][..]);
   ih := [3] string.["coax/web/tool.sh", "verse/gpu/int-hash.coax", int_dir];
-  if !step("the integer hash", ih[..], false) { return 1; }
+  if step("the integer hash", ih[..], o[..]) < 0 { return 1; }
   print("everglade-pass: %, one integer hash on both sides\n", p.name);
-  ok := check(host, p, work, fs_join(int_dir, "everglade.wgsl", b[2][..]), fs_join(int_dir, "style.coax", b[3][..]), "int", p.allow);
+  i1: [1024] u8; i2: [1024] u8;
+  ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "style.coax", i2[..]), p.allow, keep);
   if live {
     print("everglade-pass: %, the live sin hashes (reported only)\n", p.name);
-    lr := check(host, p, work, "apps/openagents-web/everglade.wgsl", "verse/style.coax", "live", "9999999");
+    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "verse/style.coax", "9999999", "");
   }
   return ifx ok then 0 else 1;
 }
 
-// The WGSL through wgsl-coax and coax spirv, then pass-check against the browser.
-check :: (host: string, p: EpPass, work: string, wgsl: string, style: string, tag: string, allow: string) -> bool {
-  b: [8] [1024] u8;
-  coax_out := fs_join(work, cat(tag, ".coax", b[0][..]), b[1][..]);
-  spv := fs_join(work, cat(tag, ".spv", b[2][..]), b[3][..]);
-  cwd := fs_cwd(b[4][..]);
-  loads := cat(cat(cwd, "/verse/gpu/wgsl.coax,", b[5][..]), ifx style[0] == '/' then style else cat(cat(cwd, "/", b[6][..]), style, b[7][..]), b[4][..]);
-  vs: [64] u8; fs_: [64] u8;
-  tr := [8] string.["coax/web/tool.sh", "wgsl-coax", coax_out, "eg", wgsl, "--stop", "---- generated: verse/style.coax", "--loads"];
-  tr2: [9] string;
-  for i: 0..<8 { tr2[i] = tr[i]; }
-  tr2[8] = loads;
-  if !step("the translation", tr2[..], false) { return false; }
-  low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat("eg_", p.vs, vs[..]), "--fragment", cat("eg_", p.fs, fs_[..])];
-  low2: [9] string;
-  for i: 0..<7 { low2[i] = low[i]; }
-  low2[7] = "-o"; low2[8] = spv;
-  if !step("the lowering", low2[..], false) { return false; }
-  pc := [17] string.["coax/web/tool.sh", "verse/gpu/pass-check.coax", host, wgsl, p.vs, p.fs, spv, fs_join(work, "u.bin", b[5][..]),
-    "--size", "320x180", "--targets", p.targets, "--vertices", p.vertices, "--allow", allow, ""];
-  return step("the comparison", pc[0..<16], true);
+// A directory of the spec and its files, then pass-check on it.
+check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string, wgsl: string, style: string, allow: string, keep: string) -> bool {
+  b: [8] [1024] u8; o: [262144] u8;
+  dir := fs_join(work, tag, b[0][..]);
+  if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("everglade-pass: cannot make a directory"); return false; }
+  // the frame's files, and the WGSL
+  files := [11] string.["u.bin", "s0.bin", "s1.bin", "s2.bin", "s3.bin", "draws.bin", "draws.txt", "vertices.bin", "index.bin", "layers.bin.list", ""];
+  for f: files { if f.count > 0 && !copy(fs_join(frame_dir, f, b[1][..]), fs_join(dir, f, b[2][..])) { return false; } }
+  if !copy(wgsl, fs_join(dir, "everglade.wgsl", b[1][..])) { return false; }
+  list: [8192] u8;
+  ln := fs_read(fs_join(frame_dir, "layers.bin.list", b[1][..]), list[..]);
+  nlayers := 0;
+  for k: 0..<ep_lines(cast(string) list[0..<ln]) {
+    name := ep_line(cast(string) list[0..<ln], k);
+    if name.count == 0 { continue; }
+    if !copy(fs_join(frame_dir, name, b[1][..]), fs_join(dir, name, b[2][..])) { return false; }
+    nlayers += 1;
+  }
+  // the Coax: the WGSL translated, its entries lowered, their bindings kept beside them
+  cwd := fs_cwd(b[3][..]);
+  coax_out := fs_join(dir, "gpu.coax", b[4][..]);
+  sb: [2048] u8;
+  style_abs := ifx style.count > 0 && style[0] == '/' then style else cat(cat(cwd, "/", b[5][..]), style, b[6][..]);
+  loads := cat(cat(cwd, "/verse/gpu/wgsl.coax,", sb[..]), style_abs, b[7][..]);
+  tr := [9] string.["coax/web/tool.sh", "wgsl-coax", coax_out, "eg", wgsl, "--stop", "---- generated: verse/style.coax", "--loads", loads];
+  if step("the translation", tr[..], o[..]) < 0 { return false; }
+  if !lower(dir, coax_out, p.vs, p.fs) { return false; }
+  if p.vs2.count > 0 && !lower(dir, coax_out, p.vs2, p.fs2) { return false; }
+  // the spec
+  dt: [256] u8;
+  dn := fs_read(fs_join(dir, "draws.txt", b[1][..]), dt[..]);
+  words := cast(string) dt[0..<ifx dn > 0 then dn else 0];
+  draws := args_whole(ep_word(words, 0)) - args_whole(ep_word(words, 1));
+  side := ep_image_side(dir, nlayers);
+  sp: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
+  put(s, "wgsl everglade.wgsl\nsize "); put(s, EP_SIZE); put(s, "\nbuffer u u.bin\n");
+  if p.name == "bg" { put(s, "pass bg_vs.spv bg_vs bg_fs 2 - 0 0 3\n"); }
+  else {
+    if draws <= 0 || side <= 0 { tool_errln("everglade-pass: the frame has no draws or no layers"); return false; }
+    put(s, "buffer vertices vertices.bin\nbuffer heights s0.bin\nbuffer objects s1.bin\nbuffer pose s2.bin\nbuffer water_nodes s3.bin\n");
+    put(s, "index index.bin\ndraws draws.bin "); put_int(s, draws); put(s, "\n");
+    put(s, "layers sheets layers.bin "); put_int(s, side); put(s, " "); put_int(s, side); put(s, " "); put_int(s, nlayers); put(s, " "); put_int(s, ep_levels(side)); put(s, "\n");
+    put(s, "sampler sheet linear repeat mip none\n");
+    put(s, "depth shadow_map "); put_int(s, EP_SHADOW); put(s, " "); put_int(s, EP_SHADOW); put(s, "\n");
+    put(s, "sampler shadow_cmp linear clamp flat less\n");
+    put(s, "pass shadow_vs.spv shadow_vs shadow_fs 0 shadow_map 2 2 draws\n");
+    put(s, "pass scene_vs.spv scene_vs scene_fs 2 own 0 0 draws\n");
+  }
+  if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[1][..]), cast(string) sp[0..<s[0].n]) { tool_errln("everglade-pass: cannot write the spec"); return false; }
+  pc := [9] string.["coax/web/tool.sh", "verse/gpu/pass-check.coax", host, dir, "spec.txt", "--allow", allow, "--keep", keep];
+  n := step("the comparison", pc[0..<ifx keep.count > 0 then 9 else 7], o[..]);
+  if n >= 0 { print("%\n", cast(string) o[0..<n]); }
+  return n >= 0;
 }
 
+// vs and fs of the translation, as VS.spv with VS.spv.bindings (coax spirv's report).
+lower :: (dir: string, coax_out: string, vs: string, fs_: string) -> bool {
+  b: [4] [1024] u8; o: [65536] u8; v: [128] u8; f: [128] u8; nb: [256] u8;
+  spv := fs_join(dir, cat(vs, ".spv", nb[..]), b[0][..]);
+  low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat("eg_", vs, v[..]), "--fragment", cat("eg_", fs_, f[..])];
+  argv: [9] string;
+  for i: 0..<7 { argv[i] = low[i]; }
+  argv[7] = "-o"; argv[8] = spv;
+  // coax spirv reports the bindings on stderr
+  err: [65536] u8;
+  r := proc_run(argv[..], 900000, o[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err(cast(string) err[0..<r.err_n]); tool_errln("everglade-pass: the lowering failed"); return false; }
+  return fs_write(cat(spv, ".bindings", b[1][..]), cast(string) err[0..<r.err_n]);
+}
+
+copy :: (from: string, to: string) -> bool {
+  buf: [16777216] u8;
+  n := fs_read(from, buf[..]);
+  if n < 0 || !fs_write(to, cast(string) buf[0..<n]) { tool_err("everglade-pass: cannot copy "); tool_errln(from); return false; }
+  return true;
+}
+
+// The first layer image's width (host.js sizes every layer to it), from its header: PNG's IHDR or JPEG's SOF.
+ep_image_side :: (dir: string, n: int) -> int {
+  if n <= 0 { return -1; }
+  b: [1024] u8; img: [16777216] u8;
+  m := fs_read(fs_join(dir, "layer-0.img", b[..]), img[..]);
+  if m < 0 { return -1; }
+  return ep_width(cast(string) img[0..<m]);
+}
+ep_width :: (img: string) -> int {
+  if img.count >= 24 && img[0] == 0x89 && img[1] == 'P' && img[2] == 'N' && img[3] == 'G' {
+    return (cast(int) img[16] << 24) | (cast(int) img[17] << 16) | (cast(int) img[18] << 8) | cast(int) img[19];
+  }
+  if img.count < 4 || img[0] != 0xff || img[1] != 0xd8 { return -1; }
+  i := 2;
+  while i + 9 <= img.count && img[i] == 0xff {
+    marker := img[i + 1];
+    if marker == 0xc0 || marker == 0xc1 || marker == 0xc2 { return (cast(int) img[i + 7] << 8) | cast(int) img[i + 8]; }
+    i += 2 + ((cast(int) img[i + 2] << 8) | cast(int) img[i + 3]);
+  }
+  return -1;
+}
+ep_levels :: (side: int) -> int { n := 1; s := side; while s > 1 { s /= 2; n += 1; } return n; }
+#test "an image's width and its mip levels" {
+  png := [24] u8.[0x89, 'P', 'N', 'G', 13, 10, 0x1a, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 2, 0, 0, 0, 2, 0];
+  jpg := [17] u8.[0xff, 0xd8, 0xff, 0xe0, 0, 4, 'a', 'b', 0xff, 0xc0, 0, 17, 8, 1, 0, 1, 0];
+  soi := [2] u8.[0xff, 0xd8];
+  #assert ep_width(cast(string) png[..]) == 512 && ep_width(cast(string) jpg[..]) == 256 && ep_width("") == -1;
+  #assert ep_width(cast(string) soi[..]) == -1 && ep_width("GIF89a") == -1;
+  #assert ep_levels(512) == 10 && ep_levels(1) == 1 && ep_levels(2) == 2 && ep_levels(3) == 2;
+}
+
+// ---- text (pure)
+Sp :: struct { buf: [] u8; n: int; bad: bool; }
+put :: (s: [] Sp, t: string) {
+  if s[0].n + t.count > s[0].buf.count { s[0].bad = true; return; }
+  for i: 0..<t.count { s[0].buf[s[0].n + i] = t[i]; }
+  s[0].n += t.count;
+}
+put_int :: (s: [] Sp, v: int) {
+  d: [24] u8; n := 0; x := ifx v < 0 then -v else v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast,trunc(u8) (48 + x % 10); x /= 10; n += 1; }
+  if v < 0 { put(s, "-"); }
+  r: [24] u8;
+  for i: 0..<n { r[i] = d[n - 1 - i]; }
+  put(s, cast(string) r[0..<n]);
+}
 cat :: (x: string, y: string, out: [] u8) -> string {
   if x.count + y.count > out.count { return ""; }
   for i: 0..<x.count { out[i] = x[i]; }
   for i: 0..<y.count { out[x.count + i] = y[i]; }
   return cast(string) out[0..<x.count + y.count];
 }
-#test "cat" { o: [4] u8; #assert cat("ab", "cd", o[..]) == "abcd" && cat("abc", "de", o[..]) == ""; }
+ep_word :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < line.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\n' || line[i] == '\t') { i += 1; }
+    if i >= line.count { break; }
+    j := i;
+    while j < line.count && line[j] != ' ' && line[j] != '\n' && line[j] != '\t' { j += 1; }
+    if n == k { return line[i..<j]; }
+    n += 1; i = j;
+  }
+  return "";
+}
+ep_lines :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  return ifx text.count > 0 && text[text.count - 1] != '\n' then n + 1 else n;
+}
+ep_line :: (text: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if n == k { return text[i..<j]; }
+    n += 1; i = j + 1;
+  }
+  return "";
+}
+#test "text" {
+  o: [32] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  put(s, "a "); put_int(s, 2048); put(s, " "); put_int(s, 0); put(s, " "); put_int(s, -7);
+  #assert cast(string) o[0..<s[0].n] == "a 2048 0 -7" && !s[0].bad;
+  t: [2] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; s2 := sb[..]; put(s2, "abc");
+  #assert s2[0].bad && cat("a", "b", o[..]) == "ab" && cat("abc", "d", t[..]) == "";
+  #assert ep_word("190 1\n", 0) == "190" && ep_word("190 1\n", 1) == "1" && ep_word("", 0) == "";
+  #assert ep_lines("a\nb\n") == 2 && ep_lines("a") == 1 && ep_line("x\ny", 1) == "y" && ep_line("x", 2) == "";
+}
 
-// Runs argv; its lines are printed when show is set or it fails.
-step :: (what: string, argv: [] string, show: bool) -> bool {
-  out: [262144] u8; err: [65536] u8;
-  r := proc_run(argv, 900000, out[..], err[..]);
+// Runs argv: the length of its stdout in out, or -1 (printed with its stderr) when it fails.
+step :: (what: string, argv: [] string, out: [] u8) -> int {
+  err: [65536] u8;
+  r := proc_run(argv, 900000, out, err[..]);
   ok := r.started == 0 && r.status == 0 && !r.timed_out;
-  if show || !ok {
+  if !ok {
     if r.out_n > 0 { print("%\n", cast(string) out[0..<r.out_n]); }
     tool_err(cast(string) err[0..<r.err_n]);
+    tool_err("everglade-pass: "); tool_err(what); tool_errln(" failed");
+    return -1;
   }
-  if !ok { tool_err("everglade-pass: "); tool_err(what); tool_errln(" failed"); }
-  return ok;
+  return r.out_n;
 }

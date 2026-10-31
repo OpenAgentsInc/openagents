@@ -10,11 +10,14 @@ static int is_depth(VkFormat f) { return f == VK_FORMAT_D32_SFLOAT || f == VK_FO
 static VkImageAspectFlags aspect(const VksImage *t) { return t->depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT; }
 
 VksImage vks_image(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int array, VkFormat format, int use) {
-  VksImage t = {.format = format, .w = w, .h = h, .layers = layers, .depth = is_depth(format)};
+  return vks_image_levels(v, w, h, layers, array, format, use, 1);
+}
+VksImage vks_image_levels(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int array, VkFormat format, int use, uint32_t levels) {
+  VksImage t = {.format = format, .w = w, .h = h, .layers = layers, .levels = levels ? levels : 1, .depth = is_depth(format)};
   VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   if (use & VKS_TARGET) usage |= t.depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = format,
-    .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = layers, .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+    .extent = {w, h, 1}, .mipLevels = t.levels, .arrayLayers = layers, .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
     .usage = usage, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
   CHECK(vkCreateImage(v->dev, &ici, NULL, &t.image));
   VkMemoryRequirements req;
@@ -23,7 +26,7 @@ VksImage vks_image(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int array, V
   CHECK(vkBindImageMemory(v->dev, t.image, t.mem, 0));
   VkImageViewCreateInfo ivi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = t.image,
     .viewType = layers > 1 || array ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D, .format = format,
-    .subresourceRange = {aspect(&t), 0, 1, 0, layers}};
+    .subresourceRange = {aspect(&t), 0, t.levels, 0, layers}};
   CHECK(vkCreateImageView(v->dev, &ivi, NULL, &t.view));
   return t;
 }
@@ -61,14 +64,23 @@ static void barrier(VkCommandBuffer cmd, const VksImage *t, VkImageLayout from, 
                     VkAccessFlags src, VkAccessFlags dst, VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage) {
   VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = src, .dstAccessMask = dst,
     .oldLayout = from, .newLayout = to, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-    .image = t->image, .subresourceRange = {aspect(t), 0, 1, 0, t->layers}};
+    .image = t->image, .subresourceRange = {aspect(t), 0, t->levels, 0, t->layers}};
   vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
-typedef struct { VksImage *t; VkcBuffer *staging; int read; } Copy;
+typedef struct { VksImage *t; VkcBuffer *staging; int read; uint32_t texel; } Copy;
 static void record_copy(VkCommandBuffer cmd, void *user) {
   Copy *c = user;
-  VkBufferImageCopy region = {.imageSubresource = {aspect(c->t), 0, 0, c->read ? 1 : c->t->layers}, .imageExtent = {c->t->w, c->t->h, 1}};
+  // reading: layer 0 of level 0; writing: every level, each with all its layers
+  VkBufferImageCopy regions[16];
+  uint32_t nr = c->read ? 1 : c->t->levels;
+  VkDeviceSize at = 0;
+  for (uint32_t l = 0; l < nr && l < 16; l++) {
+    uint32_t lw = c->t->w >> l ? c->t->w >> l : 1, lh = c->t->h >> l ? c->t->h >> l : 1;
+    regions[l] = (VkBufferImageCopy){.bufferOffset = at, .imageSubresource = {aspect(c->t), l, 0, c->read ? 1 : c->t->layers}, .imageExtent = {lw, lh, 1}};
+    at += (VkDeviceSize)lw * lh * c->t->layers * c->texel;
+  }
+  VkBufferImageCopy region = regions[0];
   if (c->read) {
     barrier(cmd, c->t, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_READ_BIT,
             VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -80,7 +92,7 @@ static void record_copy(VkCommandBuffer cmd, void *user) {
   } else {
     barrier(cmd, c->t, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-    vkCmdCopyBufferToImage(cmd, c->staging->buf, c->t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    vkCmdCopyBufferToImage(cmd, c->staging->buf, c->t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, nr, regions);
     barrier(cmd, c->t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
             VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
   }
@@ -89,25 +101,32 @@ static void record_copy(VkCommandBuffer cmd, void *user) {
 void vks_upload(Vkc *v, VksImage *t, const void *bytes, size_t size) {
   VkcBuffer staging = vkc_buffer(v, size);
   memcpy(staging.map, bytes, size);
-  Copy c = {t, &staging, 0};
+  // the bytes a texel takes, from what level 0's layers would take without mips
+  uint64_t px = 0;
+  for (uint32_t l = 0; l < t->levels; l++) { uint64_t lw = t->w >> l ? t->w >> l : 1, lh = t->h >> l ? t->h >> l : 1; px += lw * lh * t->layers; }
+  if (t->levels > 16 || size % px) { fprintf(stderr, "vks: %zu bytes are not whole texels of %u levels\n", size, t->levels); exit(1); }
+  Copy c = {t, &staging, 0, (uint32_t)(size / px)};
   vks_submit(v, record_copy, &c);
   vkc_free(v, &staging);
 }
 
 void vks_read(Vkc *v, VksImage *t, void *bytes, size_t size) {
   VkcBuffer staging = vkc_buffer(v, size);
-  Copy c = {t, &staging, 1};
+  Copy c = {t, &staging, 1, 0};
   vks_submit(v, record_copy, &c);
   memcpy(bytes, staging.map, size);
   vkc_free(v, &staging);
 }
 
 VkSampler vks_sampler(Vkc *v, int filter, int repeat, int compare) {
+  return vks_sampler_with(v, filter, repeat, compare, VK_COMPARE_OP_LESS_OR_EQUAL, 0);
+}
+VkSampler vks_sampler_with(Vkc *v, int filter, int repeat, int compare, VkCompareOp op, int mip) {
   VkFilter f = filter == VKS_LINEAR ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
   VkSamplerAddressMode mode = repeat ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
   VkSamplerCreateInfo sci = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .magFilter = f, .minFilter = f,
-    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST, .addressModeU = mode, .addressModeV = mode, .addressModeW = mode,
-    .compareEnable = compare ? VK_TRUE : VK_FALSE, .compareOp = VK_COMPARE_OP_LESS_OR_EQUAL, .maxLod = VK_LOD_CLAMP_NONE};
+    .mipmapMode = mip ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST, .addressModeU = mode, .addressModeV = mode, .addressModeW = mode,
+    .compareEnable = compare ? VK_TRUE : VK_FALSE, .compareOp = op, .maxLod = VK_LOD_CLAMP_NONE};
   VkSampler s;
   CHECK(vkCreateSampler(v->dev, &sci, NULL, &s));
   return s;
@@ -222,7 +241,8 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
   VkRect2D sc = {{0, 0}, {p->w, p->h}};
   VkPipelineViewportStateCreateInfo vps = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, .viewportCount = 1, .pViewports = &vp, .scissorCount = 1, .pScissors = &sc};
   VkPipelineRasterizationStateCreateInfo rs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, .polygonMode = VK_POLYGON_MODE_FILL,
-    .cullMode = pass->cull_back ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE, .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE, .lineWidth = 1};
+    .cullMode = pass->cull_back ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE, .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE, .lineWidth = 1,
+    .depthBiasEnable = pass->depth_bias != 0 || pass->depth_slope != 0, .depthBiasConstantFactor = pass->depth_bias, .depthBiasSlopeFactor = pass->depth_slope};
   VkPipelineMultisampleStateCreateInfo ms = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
   VkPipelineDepthStencilStateCreateInfo ds = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
     .depthTestEnable = pass->depth_test ? VK_TRUE : VK_FALSE, .depthWriteEnable = pass->depth_write ? VK_TRUE : VK_FALSE,
@@ -256,6 +276,17 @@ void vks_pipe_record(VksPipe *p, VkCommandBuffer cmd, const VksPass *pass) {
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 0, 1, &p->set, 0, NULL);
     if (pass->nattrs) { VkDeviceSize zero = 0; vkCmdBindVertexBuffers(cmd, 0, 1, &pass->vertices->buf, &zero); }
     vkCmdDraw(cmd, pass->vertex_count, pass->instance_count ? pass->instance_count : 1, 0, 0);
+  }
+  if (pass->ndraws) {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->pipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, p->layout, 0, 1, &p->set, 0, NULL);
+    if (pass->index) vkCmdBindIndexBuffer(cmd, pass->index->buf, 0, VK_INDEX_TYPE_UINT32);
+    for (uint32_t i = 0; i < pass->ndraws; i++) {
+      const uint32_t *d = pass->draws + i * 4;
+      if (!d[1] || !d[3]) continue;
+      if (d[2] & 0x80000000u) vkCmdDraw(cmd, d[1], d[3], d[0], d[2] & 0x7fffffffu);
+      else if (pass->index) vkCmdDrawIndexed(cmd, d[1], d[3], d[0], 0, d[2]);
+    }
   }
   vkCmdEndRenderPass(cmd);
 }

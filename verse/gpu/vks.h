@@ -13,7 +13,7 @@ typedef struct {
   VkDeviceMemory mem;
   VkImageView view;
   VkFormat format;
-  uint32_t w, h, layers;
+  uint32_t w, h, layers, levels;
   int depth;
 } VksImage;
 
@@ -21,8 +21,10 @@ enum { VKS_TEXTURE = 1, VKS_TARGET = 2 };
 // A w by h image of `layers` layers (a 2D array view when layers > 1, or
 // when `array` is set) for VKS_TEXTURE or VKS_TARGET use, or both.
 VksImage vks_image(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int array, VkFormat format, int use);
-// All of a texture's layers from bytes (tightly packed, layer after layer);
-// it is left ready to sample.
+// The same with `levels` mip levels (a texture; level 0 is w by h, each next half, at least 1).
+VksImage vks_image_levels(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int array, VkFormat format, int use, uint32_t levels);
+// All of a texture's levels and layers from bytes (tightly packed: level
+// after level, each layer after layer); it is left ready to sample.
 void vks_upload(Vkc *v, VksImage *t, const void *bytes, size_t size);
 // Layer 0 of an image that is ready to sample, into bytes (tightly packed).
 void vks_read(Vkc *v, VksImage *t, void *bytes, size_t size);
@@ -32,6 +34,9 @@ enum { VKS_NEAREST = 0, VKS_LINEAR = 1 };
 // A sampler: clamped to the edge, or repeating; with `compare`, a
 // comparison sampler (less-or-equal, as gpu_compare).
 VkSampler vks_sampler(Vkc *v, int filter, int repeat, int compare);
+// The same with the comparison's op (VK_COMPARE_OP_*, used when compare is
+// set) and, with `mip`, linear filtering between mip levels.
+VkSampler vks_sampler_with(Vkc *v, int filter, int repeat, int compare, VkCompareOp op, int mip);
 
 enum { VKS_STORAGE = 1, VKS_IMAGE = 2, VKS_SAMPLER = 3 };
 typedef struct {
@@ -52,6 +57,13 @@ typedef struct {
   uint32_t stride, nattrs;
   VkVertexInputAttributeDescription attrs[8];
   uint32_t vertex_count, instance_count;
+  // Or a draw list, host.js's: u32 first, count, base instance, instances each; a base
+  // with its top bit set draws its vertices in order (first vertex, base & 0x7fffffff
+  // the first instance), else `index` (u32) from first with that base instance.
+  const uint32_t *draws;
+  uint32_t ndraws;
+  const VkcBuffer *index;
+  float depth_bias, depth_slope;   // WebGPU's depthBias (in units of the depth format's precision) and depthBiasSlopeScale
   VksImage *targets[8];
   uint32_t ntargets;
   VksImage *depth;
