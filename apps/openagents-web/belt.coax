@@ -1333,7 +1333,7 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   ch := cos(heading); shd := sin(heading);
   hull := pix(spacecam_pixels(s[0].cam, ifx sh.dry > 400.0 then 180.0 else 120.0));
   // a staged moment keeps its ship's hull readable however far the view pulls back
-  if s[0].stage != STAGE_NONE && k == s[0].stage_ship { hull = hi(hull, 64 * u); }
+  hull = hi(hull, stage_hull(s, k));
   if hull > 22 * u {
     // the hull, in metres
     hl := hull / 2;
@@ -1449,8 +1449,9 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     }
   }
   draw_station(s, out, d, place_state(s, P_STATION, t).r);
-  // Coasting ships' arcs, from where they are on.
+  // Coasting ships' arcs, from where they are on (not in a staged close-up, where they are stray lines).
   for j: 0..<s[0].ship_n {
+    if s[0].stage != STAGE_NONE { break; }
     sh := s[0].ships[j];
     if sh.mode != FLYING { continue; }
     col := faction_rgb(sh.faction);
@@ -1781,6 +1782,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   d: [1] Draw;
   d[0].k = hi(dpr, 0.5); d[0].w = width; d[0].h = height;
   draw_map(s, out, u, d[..]);
+  if s[0].stage != STAGE_NONE { stage_rocks(s, u, d[..]); }
   // The box being drawn.
   if s[0].boxing && s[0].dragging {
     x0 := s[0].dx0; y0 := s[0].dy0; x1 := s[0].mx; y1 := s[0].my; kk := d[0].k;
@@ -1819,14 +1821,27 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
 // ---- staged moments (?stage=NAME, docs/verse/clips.md): a fixed scene to record a clip of.
 // A staged page never reads or writes the player's save (autosave and HOST_KEPT skip it), and
 // without the parameter nothing here runs.
-//   highlight: LANTERN braking into Saturn, its drive burning against its fall, the view on its
-// hull and then pulling back, twelve decades out, until Saturn and its rings fill the sky beside it.
+//   highlight: LANTERN braking hard into Saturn just outside the rings, its drive burning against
+// its fall, the Mars Union's IRONWAKE on its tail, ring ice tumbling past the lens, and the view
+// drifting in with them. The ships are drawn bigger than life (as the map draws far worlds), so a
+// hull reads beside a planet.
 STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1;
 STAGE_SECONDS :: 3.0;            // the dolly's length in real seconds; after it the view holds
-STAGE_RATE :: 3000.0;            // game seconds a real second (50 minutes), so the swing is seen
-STAGE_LEAD :: 2.5 * 3600.0 + 900.0;   // game seconds before periapsis the moment starts
+STAGE_RATE :: 700.0;             // game seconds a real second, so the swing past the rings is seen
+STAGE_LEAD :: 2400.0;            // game seconds before periapsis the moment starts
 STAGE_STOP :: 120.0;             // and the clock stops this long before it, so the ship never parks
 STAGE_SHIP :: 1;                 // LANTERN, the big hull
+STAGE_RIVAL :: 3;                // IRONWAKE, made to fly LANTERN's arrival this far behind it
+STAGE_TRAIL :: 500.0;
+STAGE_SWING :: 0.3;              // radians
+STAGE_ROCKS :: 5;
+// ring ice near the lens, in screen fractions and per second: x, y, dx, dy, radius (of the short side), spin
+STAGE_ROCK :: [30] f64.[
+  1.08, 0.05, -0.24, 0.0, 0.055, 1.3,
+  -0.10, 0.84, 0.13, -0.025, 0.085, -0.9,
+  0.86, 1.10, -0.05, -0.07, 0.032, 2.1,
+  0.30, -0.06, 0.09, 0.05, 0.022, -2.6,
+  1.04, 0.62, -0.16, 0.0, 0.018, 3.0];
 
 query_word :: (url: string, pair: string) -> bool {
   i := 0;
@@ -1856,9 +1871,19 @@ stage_highlight :: (s: [] Belt) {
   p.enough = true;
   if !launch(s, k, BODY_SATURN, p) { return; }
   s[0].ships[k].fuel = 0.35 * s[0].ships[k].fuel_cap;
+  // the rival: the same arrival, STAGE_TRAIL later, in the Mars Union's colours
+  r := s[0].ships[k];
+  was := s[0].ships[STAGE_RIVAL];
+  r.faction = MARS_UNION; r.name = was.name; r.dry = was.dry; r.isp = was.isp; r.fuel = was.fuel; r.fuel_cap = was.fuel_cap;
+  r.cargo = 0.0; r.cargo_cap = 0.0; r.mine_rate = 0.0; r.route = was.route; r.route_n = was.route_n; r.route_k = 0;
+  r.t0 += STAGE_TRAIL; r.arc.epoch += STAGE_TRAIL; r.work = WORK_NONE;
+  s[0].ships[STAGE_RIVAL] = r;
+  ship_hyperbolas(s, STAGE_RIVAL);
+  // and swung about Saturn a little, so it comes in on its own line, over the rings
+  s[0].ships[STAGE_RIVAL].arr.node += STAGE_SWING;
   sh := s[0].ships[k];
   s[0].t = sh.t0 + sh.tof - STAGE_LEAD;
-  // the rivals' standing routes start from here, not years before
+  // the other rivals' standing routes start from here, not years before
   for j: 0..<s[0].ship_n { if s[0].ships[j].faction != FREE_BELT { s[0].ships[j].idle_until = s[0].t + 30.0 * DAY; } }
   s[0].follow = -1; s[0].follow_place = -1; s[0].cam.following = false; s[0].cam.tilt = 0.0;
   stage_camera(s);
@@ -1873,28 +1898,40 @@ stage_game :: (s: [] Belt, real: f64) -> f64 {
 }
 
 stage_ease :: (x: f64) -> f64 { y := fclamp(x, 0.0, 1.0); return y * y * (3.0 - 2.0 * y); }
-// The dolly: on the hull a moment, then out in log scale to Saturn, the ship sliding off
-// centre only once the planet is near enough to share the frame.
+// The dolly: Saturn big from the first frame, the view centred a third of the way from it to the
+// ship (so it rides along as the ship swings in) and pushing in slowly.
 stage_camera :: (s: [] Belt) {
   if s[0].w <= 0 || s[0].h <= 0 { return; }
-  k := s[0].stage_ship;
-  f := fclamp(s[0].stage_t / STAGE_SECONDS, 0.0, 1.0);
-  // a slow push on the hull, a fast pull through the empty decades, then a slow settle on Saturn
-  out := fclamp((f - 0.4) / 0.6, 0.0, 1.0);
-  z := 0.05 * stage_ease(f / 0.25) + 0.88 * stage_ease((f - 0.18) / 0.27) + 0.07 * (1.0 - (1.0 - out) * (1.0 - out) * (1.0 - out));
-  u := f64(hi(s[0].dpr, 0.5));
-  ship := ship_state(s, k, s[0].t).r;
+  f := stage_ease(s[0].stage_t / STAGE_SECONDS);
+  ship := ship_state(s, s[0].stage_ship, s[0].t).r;
   sat := orbit_body_position(BODY_SATURN, s[0].t);
-  short := f64(lo(s[0].w, s[0].h));
-  s0 := short * 0.42 / 180.0;                 // the hull across two fifths of the frame
-  s1 := fmin(short * 0.2, f64(s[0].w) * 0.13) / BODY_RADIUS[BODY_SATURN];   // the rings and the ship both fit across
-  scale := exp(log(s0) + (log(s1) - log(s0)) * z);
-  // the share of the way to Saturn the centre moves: the ship's offset on screen grows as z^3
-  w := 0.5 * z * z * z * s1 / scale;
-  c := d3_add(ship, d3_scale(d3_sub(sat, ship), fclamp(w, 0.0, 0.5)));
+  // Saturn's radius on screen: big, with the rings and the ship both across the frame
+  big := fmin(f64(s[0].h) * 0.27, f64(s[0].w) * 0.18) * (1.0 + 0.14 * f);
+  scale := big / BODY_RADIUS[BODY_SATURN];
+  c := d3_add(sat, d3_scale(d3_sub(ship, sat), 0.3 + 0.06 * f));
   s[0].cam.center = c; s[0].cam.goal_center = c;
   s[0].cam.scale = scale; s[0].cam.goal_scale = scale;
   s[0].cam.following = false;
+}
+// The least a staged ship's hull is drawn, in pixels (LANTERN big, the rival behind it smaller).
+stage_hull :: (s: [] Belt, k: int) -> f32 {
+  if s[0].stage == STAGE_NONE { return 0; }
+  // by Saturn's radius on screen, so the shot keeps its proportions in any frame
+  big := pix(spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SATURN]));
+  if k == s[0].stage_ship { return big * 0.85; }
+  if k == STAGE_RIVAL { return big * 0.53; }
+  return 0;
+}
+// Ring ice tumbling past near the lens: lumpy icy discs (belt.wgsl kind 10) drifting across.
+stage_rocks :: (s: [] Belt, u: [] f32, d: [] Draw) {
+  short := f64(lo(s[0].w, s[0].h));
+  t := s[0].stage_t;
+  for i: 0..<STAGE_ROCKS {
+    o := i * 6;
+    x := (STAGE_ROCK[o] + STAGE_ROCK[o + 2] * t) * f64(s[0].w);
+    y := (STAGE_ROCK[o + 1] + STAGE_ROCK[o + 3] * t) * f64(s[0].h);
+    disc(s, u, d, d2(x, y), STAGE_ROCK[o + 4] * short, 10, f32(i) * 0.73 + 0.4, f32(STAGE_ROCK[o + 5] * t));
+  }
 }
 
 // A staged moment's only HUD: the title and the date.
@@ -2007,39 +2044,42 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert c[0].t == t0;
 }
 
-#test "the highlight stage: LANTERN braking into Saturn on its hull, the view pulling back to the rings, and the save untouched" {
+#test "the highlight stage: LANTERN braking hard past Saturn's rings with IRONWAKE on its tail, Saturn big in every frame, and the save untouched" {
   // without the parameter nothing is staged
   #assert stage_of("https://openagents.com/realms/belt-2200") == STAGE_NONE;
   #assert stage_of("https://openagents.com/realms/belt-2200?stage=other") == STAGE_NONE;
   #assert stage_of("https://openagents.com/realms/belt-2200?x=1&stage=highlight#a") == STAGE_HIGHLIGHT;
   s: [1] Belt;
   belt_start(s[..]);
+  #assert stage_hull(s[..], STAGE_SHIP) == 0;
   s[0].w = 1280; s[0].h = 720; s[0].dpr = 1;
   belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?stage=highlight");
   #assert s[0].stage == STAGE_HIGHLIGHT;
   k := s[0].stage_ship;
   sh := s[0].ships[k];
   #assert sh.mode == FLYING && sh.at == BODY_SATURN && sh.arr_body == BODY_SATURN;
-  #assert ship_burn(s[..], k) == -1;
+  rv := s[0].ships[STAGE_RIVAL];
+  #assert rv.faction == MARS_UNION && rv.mode == FLYING && rv.arr_body == BODY_SATURN;
   // a save the browser gives back after staging is not read
   t0 := s[0].t;
   belt_message(s[..], HOST_KEPT, "BELT2200 1|6311433600000|2|1200000000|0|7");
   #assert s[0].t == t0;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  first := true;
-  for i: 0..<150 {
+  for i: 0..<90 {
     n := belt_frame(s[..], out[..], u[..], 1280, 720, 1, 1.0 / 30.0, false);
     #assert n > 0;
-    c := ship_screen(s[..], k);
-    // the ship is in frame the whole way and burning
-    #assert c.x > 0.0 && c.x < 1280.0 && c.y > 0.0 && c.y < 720.0;
-    #assert ship_burn(s[..], k) == -1;
-    if first { first = false; #assert spacecam_pixels(s[0].cam, 180.0) > 250.0; }
+    // both ships in frame and burning, Saturn big and in frame, the rocks drawn: every frame
+    for j: 0..<2 {
+      q := ship_screen(s[..], ifx j == 0 then k else STAGE_RIVAL);
+      #assert q.x > 0.0 && q.x < 1280.0 && q.y > 0.0 && q.y < 720.0;
+    }
+    #assert ship_burn(s[..], k) == -1 && ship_burn(s[..], STAGE_RIVAL) == -1;
+    sat := screen_of(s[..], orbit_body_position(BODY_SATURN, s[0].t));
+    #assert sat.x > 0.0 && sat.x < 1280.0 && sat.y > 0.0 && sat.y < 720.0;
+    #assert spacecam_pixels(s[0].cam, BODY_RADIUS[BODY_SATURN]) > 180.0;
+    #assert u[11] >= f32(1 + STAGE_ROCKS) - 2.0;
   }
-  // at the end Saturn shares the frame
-  sat := screen_of(s[..], orbit_body_position(BODY_SATURN, s[0].t));
-  #assert sat.x > 0.0 && sat.x < 1280.0 && sat.y > 0.0 && sat.y < 720.0;
   #assert s[0].ships[k].mode == FLYING && s[0].t > t0 + 2.5 * STAGE_RATE;
   // and nothing was kept in the browser
   #assert s[0].action == 0 && s[0].out_n == 0;
