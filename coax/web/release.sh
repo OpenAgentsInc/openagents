@@ -82,7 +82,8 @@
 # the checkout's coax/bin when it matches, and otherwise builds one with
 # coax/build.sh (the full bootstrap and all its gates, mutation included:
 # ~11-15 min) from the commit's coax/, before queueing for the lock so no
-# release waits behind a bootstrap; one builder per fingerprint at a time.
+# release waits behind a bootstrap; build.sh takes one builder per
+# fingerprint at a time and keeps what it builds in the same cache.
 # The cached record is the bootstrap's own, verified again on the release's
 # clean tree; nothing is skipped or rewritten. The fingerprint names the C and C++
 # compilers and the build environment, so the release fixes them: CC=cc,
@@ -164,34 +165,29 @@ cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
 # compiler ROOT TARGET: ROOT holds coax/ and scripts/ at the commit; the
 # checked build is installed into TARGET/coax/bin (verified against TARGET).
 compiler() {
-  local root="$1" target="$2" fingerprint cache building builder into
+  local root="$1" target="$2" fingerprint cache into
   fingerprint="$(compiler_env "$root/coax/provenance.sh" fingerprint "$root")" || return 1
   cache="$cache_root/$fingerprint"
   install_from() { [[ -d "$1" ]] && compiler_env "$root/coax/provenance.sh" install "$target" "$1" 2> /dev/null; }
   keep() {   # a checked build into the cache, whole or not at all
     into="$(mktemp -d "$cache_root/.keep.XXXXXXXX")"
     cp "$1/coax" "$1/provenance-check" "$1/provenance.record" "$into/"
+    for n in lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h; do
+      [[ ! -f "$1/$n" ]] || cp "$1/$n" "$into/"
+    done
     compiler_env "$root/coax/provenance.sh" verify "$target" "$into/coax" "$into/provenance-check" "$into/provenance.record" || { rm -rf "$into"; return 1; }
     rm -rf "$cache"; mv "$into" "$cache"
   }
   mkdir -p "$cache_root"
   if install_from "$cache"; then echo "  compiler   cached build ${fingerprint:0:12}"; return; fi
   if install_from "$repo/coax/bin"; then keep "$target/coax/bin"; echo "  compiler   the checkout's build ${fingerprint:0:12}, now cached"; return; fi
-  # One builder per fingerprint; one left by a dead builder is taken over.
-  building="$cache_root/$fingerprint.building"
-  until mkdir "$building" 2>/dev/null; do
-    builder="$(cat "$building/pid" 2>/dev/null || true)"
-    if [[ -n "$builder" ]] && ! kill -0 "$builder" 2>/dev/null; then rm -rf "$building"; continue; fi
-    echo "release: waiting for compiler build ${fingerprint:0:12} (pid ${builder:-?})"; sleep 10
-  done
-  echo $$ > "$building/pid"
-  if ! install_from "$cache"; then
-    echo "  compiler   no checked build for these compiler inputs (${fingerprint:0:12}); bootstrapping one (coax/build.sh, about 15 min)"
-    if ! compiler_env "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 || ! keep "$root/coax/bin" || ! install_from "$cache"; then
-      rm -rf "$building"; echo "release: coax/build.sh failed (log: $cache_root/$fingerprint.log)" >&2; return 1
-    fi
+  # coax/build.sh takes one builder per fingerprint, keeps the checked build
+  # in the cache, and installs one already there instead of building again.
+  echo "  compiler   no checked build for these compiler inputs (${fingerprint:0:12}); bootstrapping one (coax/build.sh, about 15 min)"
+  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 ||
+     ! { install_from "$cache" || { keep "$root/coax/bin" && install_from "$cache"; }; }; then
+    echo "release: coax/build.sh failed (log: $cache_root/$fingerprint.log)" >&2; return 1
   fi
-  rm -rf "$building"
 }
 
 # Production's newest release, when it went live: "<commit> <time> staged|unstaged fast|thorough"

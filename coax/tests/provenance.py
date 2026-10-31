@@ -81,14 +81,17 @@ if 'rev-parse' in a: print('abcdef12')
 elif 'log' in a: print('fixture')
 elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a[-2])
 """);git.chmod(0o755)
-  cloud=fake/'gcloud';cloud.write_text("#!/bin/sh\ntouch \"$CLOUD_MARKER\"\nexit 99\n");cloud.chmod(0o755)
+  cloud=fake/'gcloud';cloud.write_text("#!/bin/sh\necho \"$*\" >> \"$CLOUD_MARKER\"\nexit 99\n");cloud.chmod(0o755)
   marker=Path(self.tmp.name)/'cloud-used';tmp=Path(self.tmp.name)/'release-temp';tmp.mkdir()
   env={**os.environ,'PATH':str(fake)+os.pathsep+os.environ['PATH'], 'TARGET_TREE':str(self.tree),
-       'CLOUD_MARKER':str(marker),'TMPDIR':str(tmp)}
+       'CLOUD_MARKER':str(marker),'TMPDIR':str(tmp),'COAX_RELEASE_CACHE':str(Path(self.tmp.name)/'release-cache')}
   result=subprocess.run([str(caller/'coax/web/release.sh')],capture_output=True,text=True,timeout=120,env=env)
   self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
-  self.assertIn('compiler inputs or binary differ',result.stderr)
-  self.assertFalse(marker.exists())
+  # The stale build is refused; a fresh bootstrap of the changed source fails too.
+  self.assertTrue('compiler inputs or binary differ' in result.stderr or 'coax/build.sh failed' in result.stderr,result.stderr)
+  # Reading which release is live may happen first; nothing is written to a bucket.
+  calls=marker.read_text() if marker.exists() else ''
+  self.assertNotRegex(calls,r'(^|\s)(cp|rsync|rm|mv)\s',calls)
  def test_cap_guard_changes_invalidate_build_record(self):
   self.verify()
   guard=self.tree/'coax/check-proto-cap.sh'
@@ -122,8 +125,9 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
 """);bootstrap.chmod(0o755)
   ready=Path(self.tmp.name)/'ready';start=Path(self.tmp.name)/'start';read=Path(self.tmp.name)/'read';finish=Path(self.tmp.name)/'finish'
   source=self.tree/'coax/src/eval.cpp';original=source.read_bytes()
+  cache=Path(self.tmp.name)/'cache'
   env={**os.environ,'TEST_READY':str(ready),'TEST_START':str(start),'TEST_READ':str(read),
-       'TEST_FINISH':str(finish),'TEST_HELPER':str(self.helper_copy)}
+       'TEST_FINISH':str(finish),'TEST_HELPER':str(self.helper_copy),'COAX_RELEASE_CACHE':str(cache)}
   proc=subprocess.Popen([str(self.tree/'coax/build.sh')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                         text=True,env=env,start_new_session=True)
   try:
@@ -138,6 +142,23 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
    stdout,stderr=proc.communicate(timeout=20)
    self.assertEqual(proc.returncode,0,stdout+stderr)
    self.assertTrue((self.tree/'coax/bin/coax').read_bytes().endswith(original))
+   # The checked build was kept: another tree with the same inputs installs it, verified, without a bootstrap.
+   identity=self.run_script('fingerprint',self.tree,success=True).stdout.strip()
+   self.assertTrue((cache/identity/'provenance.record').exists())
+   other=Path(self.tmp.name)/'other-tree';shutil.copytree(self.tree,other,ignore=shutil.ignore_patterns('bin'))
+   ready.unlink()
+   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=30,env=env)
+   self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+   self.assertFalse(ready.exists(),'a cached build was bootstrapped again')
+   self.assertEqual((other/'coax/bin/coax').read_bytes(),(self.tree/'coax/bin/coax').read_bytes())
+   self.assertTrue((other/'coax/bin/proto_importer.c').exists())
+   # A cached compiler that doesn't match its record is refused, and the tree is built instead.
+   (cache/identity/'coax').write_bytes(b'substituted')
+   shutil.rmtree(other/'coax/bin')
+   result=subprocess.run([str(other/'coax/build.sh')],capture_output=True,text=True,timeout=30,env=env)
+   self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+   self.assertTrue(ready.exists(),'a substituted cached compiler was installed')
+   self.assertTrue((other/'coax/bin/coax').read_bytes().endswith(original))
   finally:
    source.write_bytes(original)
    if proc.poll() is None:
