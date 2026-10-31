@@ -1,0 +1,144 @@
+// Belt 2200's rival economy (b22-ai): the Mars Union mines the Belt from its yard at Vesta, by a
+// fixed script with no model calls, so a seeded game plays the same every time. Its miners fly to
+// an ice rock, mine a hold full, leave a rig there and fly home; the yard turns the metal in the rock
+// into more miners; and when it is behind it goes for the rocks with our rigs on them, taking the ice
+// they have drilled. It keeps within a band of our economy: well ahead, its miners rest longer at
+// home; behind, they go out again at once.
+//   coax/bin/coax test apps/openagents-web/belt.coax --only rival
+
+RIVAL_HOME :: BODY_CERES;
+RIVAL_SHIPS :: 4;             // miners the Union's yard builds, on top of the first
+RIVAL_SHIP_METAL :: 600.0;    // t of metal a miner takes (as our freighter does)
+RIVAL_SHIP_DAYS :: 30.0;
+RIVAL_REST :: 6.0;            // days a miner spends at home between trips
+RIVAL_AHEAD :: 1.15;          // delivered more than this times ours: rest RIVAL_SLOW days instead
+RIVAL_SLOW :: 60.0;
+RIVAL_FLOOR :: 3000.0;        // t: the band starts once there is this much to compare
+RIVAL_NAMES :: [5] string.["RUST HARROW", "OCHRE", "THARSIS", "DUSTLINE", "REDSHIFT"];
+
+rival_miner_new :: (i: int) -> Ship {
+  sh := ship_new(MARS_UNION, RIVAL_NAMES[i % 5], RIVAL_HOME, 500.0, 900.0, 8000.0, 1200.0, 50.0);
+  sh.crew = 8;
+  return sh;
+}
+// Where a faction's ships unload: Hearth for ours, Vesta for the Union.
+home_of :: (faction: int) -> int { return ifx faction == FREE_BELT then P_STATION else RIVAL_HOME; }
+is_rival_miner :: (sh: Ship) -> bool { return sh.faction == MARS_UNION && sh.cargo_cap > 0.0; }
+rival_count :: (s: [] Belt) -> int {
+  n := 0;
+  for k: 0..<s[0].ship_n { if is_rival_miner(s[0].ships[k]) { n += 1; } }
+  return n;
+}
+// Its economy against ours: the ice each has brought home.
+rival_ahead :: (s: [] Belt) -> bool {
+  return s[0].rdelivered > RIVAL_FLOOR && s[0].rdelivered > RIVAL_AHEAD * s[0].delivered;
+}
+rival_behind :: (s: [] Belt) -> bool { return s[0].rdelivered < s[0].delivered; }
+
+// The rock a Union miner goes for, by the script: behind, the rock with our rig holding the most ice
+// (contested); else a rock no other of its miners works, the one it reaches soonest; else any.
+rival_rock :: (s: [] Belt, k: int) -> int {
+  if rival_behind(s) {
+    best := -1; most := 200.0;
+    for j: 0..<ICE_ROCKS {
+      if !s[0].claim[j] || rival_working(s, k, P_ICE + j) || s[0].stock[j] <= most { continue; }
+      p := plan_for(s, k, P_ICE + j, true);
+      if p.ok { best = P_ICE + j; most = s[0].stock[j]; }
+    }
+    if best >= 0 { return best; }
+  }
+  best := -1; best_t := 0.0; any := -1;
+  for j: 0..<ICE_ROCKS {
+    p := plan_for(s, k, P_ICE + j, true);
+    if !p.ok { continue; }
+    if any < 0 { any = P_ICE + j; }
+    if rival_working(s, k, P_ICE + j) { continue; }
+    if best < 0 || p.tr.tof < best_t { best = P_ICE + j; best_t = p.tr.tof; }
+  }
+  return ifx best >= 0 then best else any;
+}
+// Another Union miner works rock p, or is on its way there.
+rival_working :: (s: [] Belt, k: int, p: int) -> bool {
+  for q: 0..<s[0].ship_n {
+    sh := s[0].ships[q];
+    if q != k && is_rival_miner(sh) && sh.at == p && (sh.mode == MINING || sh.mode == FLYING) { return true; }
+  }
+  return false;
+}
+// A Union miner home and rested goes out again.
+rival_send :: (s: [] Belt, k: int) {
+  dest := rival_rock(s, k);
+  if dest < 0 { s[0].ships[k].idle_until = s[0].t + 10.0 * DAY; return; }
+  p := plan_for(s, k, dest, true);
+  if !launch(s, k, dest, p) { s[0].ships[k].idle_until = s[0].t + 10.0 * DAY; return; }
+  s[0].ships[k].work = WORK_MINE; s[0].ships[k].work_rock = dest;
+}
+// A Union ship arriving: at a rock a miner sets to work (and rigs it); at home it unloads and rests.
+rival_arrive :: (s: [] Belt, k: int) {
+  sh := s[0].ships[k];
+  if is_rival_miner(sh) && is_ice(sh.at) {
+    s[0].ships[k].mode = MINING;
+    j := sh.at - P_ICE;
+    s[0].rclaim[j] = true;
+    if s[0].claim[j] {
+      s[0].rcontest += 1;
+      buf: [96] u8;
+      n := put(buf[..], 0, "MARS UNION MINING AT "); n = put(buf[..], n, place_name(sh.at)); n = put(buf[..], n, ", OUR RIG'S ROCK");
+      say(s, cast(string) buf[0..<n]);
+    }
+    return;
+  }
+  if is_rival_miner(sh) && sh.at == RIVAL_HOME {
+    if sh.cargo > 0.0 { s[0].rival[0] = station_deliver(s[0].rival[0], sh.cargo); s[0].rdelivered += sh.cargo; s[0].ships[k].cargo = 0.0; }
+    s[0].ships[k].idle_until = s[0].t + (ifx rival_ahead(s) then RIVAL_SLOW else RIVAL_REST) * DAY;
+    return;
+  }
+  s[0].ships[k].idle_until = s[0].t + 25.0 * DAY;
+}
+// The Union's yard: a miner laid down when the metal is there, launched RIVAL_SHIP_DAYS later.
+rival_yard_step :: (s: [] Belt, days: f64) {
+  if s[0].rbuilding > 0.0 {
+    s[0].rbuilding -= days;
+    if s[0].rbuilding > 0.0 { return; }
+    s[0].rbuilding = 0.0;
+    if s[0].ship_n >= SHIPS { return; }
+    k := s[0].ship_n;
+    s[0].ships[k] = rival_miner_new(rival_count(s));
+    s[0].ships[k].idle_until = s[0].t;
+    s[0].ship_n += 1;
+    s[0].ships[k].slot = berth(s, k, RIVAL_HOME);
+    s[0].dirty = true;
+    return;
+  }
+  if rival_count(s) >= RIVAL_SHIPS + 1 || s[0].ship_n >= SHIPS || s[0].rival[0].metal < RIVAL_SHIP_METAL || rival_ahead(s) { return; }
+  s[0].rival[0].metal -= RIVAL_SHIP_METAL;
+  s[0].rbuilding = RIVAL_SHIP_DAYS;
+}
+
+#test "rival: over two seeded years the Mars Union expands, mines, builds miners and contests our rocks, its ice within a band of ours" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
+  // a player who keeps its miners on MINE ICE and builds what the yard offers (belt-pace.coax's)
+  verse_command_only(s[0].cmd[..], 0); verse_command_toggle(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 3);
+  mine_order(s[..]);
+  for d: 0..<730 {
+    s[0].t += DAY; step_ships(s[..], DAY);
+    s[0].tac[0].on = false;   // battles broken off at once: this is the economy
+    for k: 0..<s[0].ship_n { if s[0].ships[k].faction == FREE_BELT && s[0].ships[k].cargo_cap > 0.0 && s[0].ships[k].mode == PARKED && s[0].ships[k].work == WORK_NONE { verse_command_only(s[0].cmd[..], k); mine_order(s[..]); if s[0].dest >= 0 { go(s[..], true); } } }
+    if yard_can(s[..]) == YARD_OK { ok := yard_build(s[..]); }
+  }
+  rigs := 0;
+  for j: 0..<ICE_ROCKS { if s[0].rclaim[j] { rigs += 1; } }
+  #assert rival_count(s[..]) >= 3 && rigs >= 3 && s[0].rcontest >= 1;
+  #assert s[0].delivered > 10000.0 && s[0].rdelivered > 0.5 * s[0].delivered && s[0].rdelivered < 1.5 * s[0].delivered;
+  // and the save keeps it: its miners among our freighters, its yard and its rigs
+  buf: [OUTBOX_CAP] u8;
+  n := save_game(s[..], buf[..]);
+  b: [1] Belt;
+  belt_start(b[..]);
+  #assert load_game(b[..], cast(string) buf[0..<n]) && b[0].ship_n == s[0].ship_n && rival_count(b[..]) == rival_count(s[..]) && freighters(b[..]) == freighters(s[..]);
+  #assert b[0].rdelivered == s[0].rdelivered && b[0].rcontest == s[0].rcontest && abs(b[0].rival[0].metal - s[0].rival[0].metal) < 0.01;
+  for k: 0..<s[0].ship_n { #assert b[0].ships[k].name == s[0].ships[k].name && b[0].ships[k].faction == s[0].ships[k].faction; }
+  for j: 0..<ICE_ROCKS { #assert b[0].rclaim[j] == s[0].rclaim[j]; }
+}

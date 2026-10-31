@@ -453,16 +453,17 @@
     {
       "slug": "b22-ai",
       "parent": "b22-rivals",
-      "title": "AI factions: plain code for tactics, the Decisions API for strategy",
+      "title": "The Mars Union: a scripted rival economy",
       "size": "L",
       "labels": [],
-      "body": "Tactics (intercepts, point defense, routes) in plain code; strategy (which route to open, when to attack) through our Decisions API (/v1/decisions, Clef first), with every choice logged.",
+      "body": "A deterministic scripted rival with no model calls (the owner: no Pylon decisions in Belt for now). The Mars Union mines from its yard on Ceres: miners fly to ice rocks, mine, leave rigs and fly home; its yard turns the metal into more miners; behind us it goes for the rocks with our rigs on them; well ahead, its miners rest longer, so its economy stays within a band of ours.",
       "files": [
         "apps/openagents-web/realms/belt-2200/"
       ],
       "acceptance": [
-        "A match against two AI factions plays to a win condition",
-        "Every strategic choice is in the match log"
+        "Over a seeded multi-year run the rival expands (rigs more rocks), mines, builds ships and contests our ice rocks",
+        "Its ice brought home stays within a band of the player's (half to one and a half times)",
+        "No model or Decisions API call"
       ],
       "blocked_by": [
         "b22-tactical",
