@@ -1,0 +1,4 @@
+cpu-adamw-v1: binary64 master and compute; 2 groups
+loss: 1.875 -> 0.000013346072076387128
+weight 1.9936224039818187, bias 0.9992007752846681
+steps applied 399, skipped 1

@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../lib/optim/adamw.coax";
+// book:begin example
+// Fit y = 2x + 1 on eight points. The weight decays; the bias does not.
+loss_and_gradient :: (p:[]f64,g:[]f64)->f64 {
+    loss:=0.0;g[0]=0;g[1]=0;
+    for i:0..<8 {x:=f64(i)/4-1;e:=p[0]*x+p[1]-(2*x+1);loss+=e*e/8;g[0]+=2*e*x/8;g[1]+=2*e/8;}
+    return loss;
+}
+main :: () {
+    groups:=[2]AwGroup.[AwGroup.{first=0,count=1,lr=0.05,beta1=0.9,beta2=0.999,eps=1e-8,decay=0.01},AwGroup.{first=1,count=1,lr=0.05,beta1=0.9,beta2=0.999,eps=1e-8,decay=0}];
+    policy:=AwPolicy.{overflow=AwOverflow.skip};p:[2]f64;g:[2]f64;m:[2]f64;v:[2]f64;none:[1]f32;state:=AwState.{};
+    first:=loss_and_gradient(p[..],g[..]);last:=first;
+    for k:0..<400 {
+        last=loss_and_gradient(p[..],g[..]);if k==200 {g[0]=0.0/0.0;}
+        r:=aw_step(groups[..],policy,state,p[..],g[..],m[..],v[..],none[0..<0],false);
+        #assert r.status==AwStatus.ok || (k==200 && r.status==AwStatus.skipped);state=r.state;
+    }
+    last=loss_and_gradient(p[..],g[..]);#assert last<first/1000;
+    print("cpu-adamw-v1: binary64 master and compute; 2 groups\n");
+    print("loss: % -> %\n",first,last);
+    print("weight %, bias %\n",p[0],p[1]);
+    print("steps applied %, skipped %\n",state.step,state.skipped);
+}
+// book:end example

@@ -1,0 +1,257 @@
+// AdamW over caller-owned binary64 master state (cpu-adamw-v1). Parameters,
+// first and second moments are binary64; gradients arrive at the declared
+// compute precision, and a binary32 compute copy is written when declared.
+// The whole step is admitted before anything is written: refused and skipped
+// steps leave every view and the step counter unchanged.
+#load "../../fixtures/adamw/reference.coax";
+#authority;
+AwStatus :: enum u8 {ok;skipped;shape;group;number;state;precision;nonfinite;overflow;alias;}
+AwCompute :: enum u8 {binary64;binary32;}
+AwOverflow :: enum u8 {refuse;skip;}
+AwGroup :: struct {first:int;count:int;lr:f64;beta1:f64;beta2:f64;eps:f64;decay:f64;}
+AwPolicy :: struct {compute:AwCompute;overflow:AwOverflow;}
+AwState :: struct {step:int;skipped:int;}
+AwResult :: struct {status:AwStatus;state:AwState;written:int;}
+AwCell :: struct {p:f64;m:f64;v:f64;ok:bool;}
+AW_PARAMETERS :: 16777216;
+AW_GROUPS :: 16;
+AW_STEPS :: 1099511627776;
+AW_F32_MAX :: 340282346638528859811704183484516925440.0;
+AW_F64_MAX :: 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0;
+
+aw_parameters :: (n:int)->bool {return n>=1 && n<=AW_PARAMETERS;}
+aw_groups :: (n:int)->bool {return n>=1 && n<=AW_GROUPS;}
+aw_finite :: (x:f64)->bool {return x>=-AW_F64_MAX && x<=AW_F64_MAX;}
+aw_narrow :: (x:f64)->bool {return x>=-AW_F32_MAX && x<=AW_F32_MAX;}
+aw_rate :: (x:f64)->bool {return x>0 && x<=1;}
+aw_beta :: (x:f64)->bool {return x>=0 && x<1;}
+aw_eps :: (x:f64)->bool {return x>0 && x<=1;}
+aw_decay :: (lr:f64,x:f64)->bool {return x>=0 && x<=1 && lr*x<1;}
+aw_hyper :: (g:AwGroup)->bool {return aw_rate(g.lr) && aw_beta(g.beta1) && aw_beta(g.beta2) && aw_eps(g.eps) && aw_decay(g.lr,g.decay);}
+aw_state :: (s:AwState)->bool {return s.step>=0 && s.step<AW_STEPS && s.skipped>=0 && s.skipped<AW_STEPS;}
+// Groups cover 0..<n exactly once, in order, none empty.
+aw_cover :: (groups:[]AwGroup,n:int)->bool {
+    next:=0;for g:groups {if g.first!=next || g.count<1 || g.count>n {return false;}next+=g.count;}return next==n;
+}
+// A binary32 compute gradient is a binary32 value carried in binary64.
+aw_precise :: (c:AwCompute,x:f64)->bool {if c==AwCompute.binary64 {return true;}return aw_narrow(x) && f64(f32(x))==x;}
+
+// book:begin update
+// One element at step t (1-based): decoupled decay of the incoming value,
+// then the moments, then the bias-corrected step with eps outside the root.
+// ok is false when a moment is not representable; the step is then refused.
+aw_cell :: (g:AwGroup,t:int,p:f64,grad:f64,m:f64,v:f64)->AwCell {
+    decayed:=p*(1-g.lr*g.decay);
+    m2:=g.beta1*m+(1-g.beta1)*grad;
+    v2:=g.beta2*v+(1-g.beta2)*grad*grad;
+    if !aw_finite(m2) || !aw_finite(v2) {return AwCell.{p=decayed,m=m2,v=v2};}
+    c1:=1-pow(g.beta1,f64(t));c2:=1-pow(g.beta2,f64(t));
+    return AwCell.{p=decayed-(g.lr/c1)*(m2/(sqrt(v2)/sqrt(c2)+g.eps)),m=m2,v=v2,ok=true};
+}
+// book:end update
+
+// book:begin step
+aw_step :: (groups:[]AwGroup,policy:AwPolicy,state:AwState,params:[]f64,grads:[]f64,m:[]f64,v:[]f64,compute:[]f32,overlap:bool)->AwResult #export_c {
+    if overlap {return AwResult.{status=AwStatus.alias,state=state};}
+    n:=params.count;wide:=policy.compute==AwCompute.binary64;
+    if !aw_parameters(n) || grads.count!=n || (wide && compute.count!=0) || (!wide && compute.count!=n) {return AwResult.{status=AwStatus.shape,state=state};}
+    if !aw_groups(groups.count) || !aw_cover(groups,n) {return AwResult.{status=AwStatus.group,state=state};}
+    for g:groups {if !aw_hyper(g) {return AwResult.{status=AwStatus.number,state=state};}}
+    if m.count!=n || v.count!=n || !aw_state(state) {return AwResult.{status=AwStatus.state,state=state};}
+    for i:0..<n {if !aw_finite(params[i]) || !aw_finite(m[i]) || !aw_finite(v[i]) || v[i]<0 {return AwResult.{status=AwStatus.state,state=state};}}
+    for x:grads {if aw_finite(x) && !aw_precise(policy.compute,x) {return AwResult.{status=AwStatus.precision,state=state};}}
+    // Admission: every gradient finite and every new value representable.
+    bad:=AwStatus.ok;t:=state.step+1;
+    for g:groups {for i:g.first..<g.first+g.count {
+        if !aw_finite(grads[i]) {bad=AwStatus.nonfinite;break;}
+        c:=aw_cell(g,t,params[i],grads[i],m[i],v[i]);
+        if !c.ok || !aw_finite(c.p) || (!wide && !aw_narrow(c.p)) {bad=AwStatus.overflow;}
+    }if bad==AwStatus.nonfinite {break;}}
+    if bad!=AwStatus.ok {
+        if policy.overflow==AwOverflow.skip {return AwResult.{status=AwStatus.skipped,state=AwState.{step=state.step,skipped=state.skipped+1}};}
+        return AwResult.{status=bad,state=state};
+    }
+    for g:groups {for i:g.first..<g.first+g.count {
+        c:=aw_cell(g,t,params[i],grads[i],m[i],v[i]);params[i]=c.p;m[i]=c.m;v[i]=c.v;if !wide {compute[i]=f32(c.p);}
+    }}
+    return AwResult.{state=AwState.{step=t,skipped=state.skipped},written=n};
+}
+// book:end step
+
+#forall "admission bounds are exact" k:0..<40 {
+    x:=f64(k)/32-0.25;
+    #assert aw_rate(x)==(x>0 && x<=1) && aw_beta(x)==(x>=0 && x<1) && aw_eps(x)==(x>0 && x<=1);
+    #assert aw_decay(0.5,x)==(x>=0 && x<=1) && aw_decay(1,x)==(x>=0 && x<1);
+    #assert aw_groups(k-20)==(k-20>=1 && k-20<=16) && aw_parameters(k-1)==(k>=2);
+}
+#test "admission boundaries" {
+    #assert aw_parameters(16777216) && !aw_parameters(16777217) && !aw_parameters(0);
+    #assert aw_finite(AW_F64_MAX) && aw_finite(-AW_F64_MAX) && !aw_finite(AW_F64_MAX*2) && !aw_finite(-AW_F64_MAX*2) && !aw_finite(0.0/0.0);
+    #assert aw_narrow(AW_F32_MAX) && aw_narrow(-AW_F32_MAX) && !aw_narrow(AW_F32_MAX*1.0000001) && !aw_narrow(-AW_F32_MAX*1.0000001);
+    #assert aw_rate(1) && !aw_rate(1.0000001) && !aw_rate(0) && aw_rate(0.0000001);
+    #assert aw_beta(0) && !aw_beta(-0.0000001) && aw_beta(0.9999999) && !aw_beta(1);
+    #assert aw_eps(1) && !aw_eps(1.0000001) && !aw_eps(0);
+    #assert aw_decay(0.5,1) && !aw_decay(0.5,1.0000001) && !aw_decay(0.5,-0.0000001) && aw_decay(0.5,0) && !aw_decay(1,1) && aw_decay(1,0.9999999);
+    #assert aw_state(AwState.{}) && aw_state(AwState.{step=AW_STEPS-1,skipped=AW_STEPS-1}) && !aw_state(AwState.{step=AW_STEPS}) && !aw_state(AwState.{skipped=AW_STEPS}) && !aw_state(AwState.{step=-1}) && !aw_state(AwState.{skipped=-1});
+    #assert aw_precise(AwCompute.binary32,0.5) && aw_precise(AwCompute.binary32,AW_F32_MAX) && !aw_precise(AwCompute.binary32,1e300) && !aw_precise(AwCompute.binary32,0.1) && aw_precise(AwCompute.binary64,0.1);
+    g:=[3]AwGroup.[AwGroup.{first=0,count=2},AwGroup.{first=2,count=1},AwGroup.{first=3,count=1}];
+    #assert aw_cover(g[0..<2],3) && aw_cover(g[..],4) && !aw_cover(g[..],3) && !aw_cover(g[..],5) && !aw_cover(g[1..<3],2) && !aw_cover(g[0..<1],3) && aw_cover(g[0..<1],2);
+    g[1].count=0;g[2].first=2;#assert !aw_cover(g[..],3);
+    g[1].count=2;#assert !aw_cover(g[0..<2],3) && aw_cover(g[0..<2],4);
+    g[1].count=9223372036854775807;#assert !aw_cover(g[0..<2],4);
+    h:=AwGroup.{lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0.5};#assert aw_hyper(h);
+    h.lr=0;#assert !aw_hyper(h);h.lr=0.5;h.beta1=1;#assert !aw_hyper(h);h.beta1=0.5;h.beta2=1;#assert !aw_hyper(h);h.beta2=0.5;h.eps=0;#assert !aw_hyper(h);h.eps=0.5;h.decay=-1;#assert !aw_hyper(h);
+}
+#test "two hand-derived steps fix the decay order and bias correction" {
+    g:=AwGroup.{first=0,count=1,lr=0.5,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5};
+    c:=aw_cell(g,1,1,2,0,0);#assert c.m==1 && c.v==1 && c.p==0.75-0.4;
+    // Decay after the Adam step would give (1-0.4)*0.75 = 0.45.
+    d:=aw_cell(g,2,c.p,2,c.m,c.v);#assert d.m==1.5 && d.v==1.75 && d.p==c.p*0.75-(0.5/0.75)*(1.5/2.5);
+    // Without bias correction the first step would move 0.5*1/(1+0.5).
+    #assert abs(c.p-(0.75-0.5/1.5))>0.06;
+    z:=aw_cell(AwGroup.{lr=0.25,beta1=0,beta2=0.5,eps=0.25,decay=0},3,1,-3,5,7);#assert z.m==-3 && z.v==8 && z.p==1-0.25*(-3/(sqrt(8.0)/sqrt(0.875)+0.25));
+}
+// Check helpers. Every comparison they make is itself checked below.
+aw_close :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-15*(1+abs(b));}
+aw_close_all :: (x:[]f64,ref:[]f64,step:int)->bool {n:=x.count;for i:0..<n {if !aw_close(x[i],ref[step*n+i]) {return false;}}return true;}
+aw_same :: (p:[]f64,q:[]f64)->bool {if p.count!=q.count {return false;}for i:0..<p.count {if p[i]!=q[i] {return false;}}return true;}
+// Runs a reference case through aw_step from its start and checks every step
+// against the oracle. At step `cut` the run moves to fresh buffers holding a
+// copy of the saved parameters and moments, as a resumed process would.
+// resumed is -1 on any mismatch, else how many times it resumed; kept counts
+// the first buffers (parameters, moments) that still hold the state of the
+// last step run on them: 3 when the resumed run never touched them again.
+AwReplay :: struct {resumed:int;kept:int;}
+aw_replay :: (groups:[]AwGroup,policy:AwPolicy,start:[]f64,grads:[]f64,ps:[]f64,ms:[]f64,vs:[]f64,cs:[]f64,cut:int)->AwReplay {
+    n:=start.count;steps:=ps.count/n;wide:=policy.compute==AwCompute.binary64;narrow:=n*steps;cn:=n;if wide {narrow=0;cn=0;}
+    if grads.count!=n*steps || ms.count!=n*steps || vs.count!=n*steps || cs.count!=narrow {return AwReplay.{resumed=-1};}
+    pa:[16]f64;ma:[16]f64;va:[16]f64;pb:[16]f64;mb:[16]f64;vb:[16]f64;c:[16]f32;state:=AwState.{};resumed:=0;ran:=steps;
+    for i:0..<n {pa[i]=start[i];}
+    p:=pa[0..<n];m:=ma[0..<n];v:=va[0..<n];
+    for s:0..<steps {
+        if s==cut {for i:0..<n {pb[i]=pa[i];mb[i]=ma[i];vb[i]=va[i];}p=pb[0..<n];m=mb[0..<n];v=vb[0..<n];resumed+=1;ran=s;}
+        r:=aw_step(groups,policy,state,p,grads[s*n..<s*n+n],m,v,c[0..<cn],false);
+        if r.status!=AwStatus.ok {return AwReplay.{resumed=-1};}state=r.state;
+        for i:0..<n {if !aw_close(p[i],ps[s*n+i]) || !aw_close(m[i],ms[s*n+i]) || !aw_close(v[i],vs[s*n+i]) {return AwReplay.{resumed=-1};}}
+        if !wide {for i:0..<n {if f64(c[i])!=cs[s*n+i] {return AwReplay.{resumed=-1};}}}
+    }
+    kept:=0;
+    if aw_close_all(pa[0..<n],ps,ran-1) {kept+=1;}
+    if aw_close_all(ma[0..<n],ms,ran-1) {kept+=1;}
+    if aw_close_all(va[0..<n],vs,ran-1) {kept+=1;}
+    return AwReplay.{resumed=resumed,kept=kept};
+}
+aw_two :: ()->[2]AwGroup {return [2]AwGroup.[AwGroup.{first=0,count=8,lr=0.01,beta1=0.9,beta2=0.999,eps=1e-8,decay=0.1},AwGroup.{first=8,count=4,lr=0.05,beta1=0.8,beta2=0.95,eps=1e-6,decay=0}];}
+aw_matrix :: (groups:[]AwGroup,cut:int)->AwReplay {
+    a:=AW_MATRIX_START;g:=AW_MATRIX_GRADS;p:=AW_MATRIX_PARAMS;m:=AW_MATRIX_M;v:=AW_MATRIX_V;none:[1]f64;
+    return aw_replay(groups,AwPolicy.{},a[..],g[..],p[..],m[..],v[..],none[0..<0],cut);
+}
+aw_narrow_group :: ()->[1]AwGroup {return [1]AwGroup.[AwGroup.{first=0,count=3,lr=0.125,beta1=0.5,beta2=0.75,eps=0.001,decay=0.25}];}
+aw_scalar :: (groups:[]AwGroup)->AwReplay {
+    a:=AW_SCALAR_START;g:=AW_SCALAR_GRADS;p:=AW_SCALAR_PARAMS;m:=AW_SCALAR_M;v:=AW_SCALAR_V;none:[1]f64;
+    return aw_replay(groups,AwPolicy.{},a[..],g[..],p[..],m[..],v[..],none[0..<0],-1);
+}
+#test "independent multi-step references: two groups, binary32 compute and beta1 zero" {
+    two:=aw_two();q1:=aw_matrix(two[..],-1);#assert q1.resumed==0 && q1.kept==3;
+    narrow:=aw_narrow_group();a:=AW_NARROW_START;g:=AW_NARROW_GRADS;p:=AW_NARROW_PARAMS;m:=AW_NARROW_M;v:=AW_NARROW_V;c:=AW_NARROW_COMPUTE;
+    q2:=aw_replay(narrow[..],AwPolicy.{compute=AwCompute.binary32},a[..],g[..],p[..],m[..],v[..],c[..],-1);#assert q2.resumed==0 && q2.kept==3;
+    one:=[1]AwGroup.[AwGroup.{first=0,count=1,lr=0.3,beta1=0,beta2=0.5,eps=0.01,decay=0.5}];q3:=aw_scalar(one[..]);#assert q3.resumed==0 && q3.kept==3;
+    // Grouping matters: one group with the first group's settings diverges,
+    // and so does the second group's rate alone (it moves parameters, not moments).
+    same:=[1]AwGroup.[AwGroup.{first=0,count=12,lr=0.01,beta1=0.9,beta2=0.999,eps=1e-8,decay=0.1}];#assert aw_matrix(same[..],-1).resumed==-1;
+    two[1].lr=0.04;#assert aw_matrix(two[..],-1).resumed==-1;
+}
+#test "resume from copied state continues the uninterrupted stream" {
+    two:=aw_two();for cut:1..<5 {q4:=aw_matrix(two[..],cut);#assert q4.resumed==1 && q4.kept==3;}
+    // Resuming with a reset step counter repeats bias correction and diverges.
+    p:=AW_MATRIX_START;x:=AW_MATRIX_GRADS;want:=AW_MATRIX_PARAMS;m:[12]f64;v:[12]f64;c:[1]f32;
+    r:=aw_step(two[..],AwPolicy.{},AwState.{},p[..],x[0..<12],m[..],v[..],c[0..<0],false);#assert r.status==AwStatus.ok && r.state.step==1;
+    r=aw_step(two[..],AwPolicy.{},AwState.{},p[..],x[12..<24],m[..],v[..],c[0..<0],false);#assert r.status==AwStatus.ok && r.state.step==1 && !aw_close(p[0],want[12]);
+}
+#test "the check helpers see every single difference" {
+    #assert aw_close(1e-15,0) && !aw_close(2e-15,0) && aw_close(1,1+2e-15) && !aw_close(1,1+4e-15);
+    a:=[2]f64.[1,2];b:=[2]f64.[1,2];#assert aw_same(a[..],b[..]) && !aw_same(a[..],b[0..<1]) && !aw_same(a[0..<1],b[..]);
+    b[0]=0;#assert !aw_same(a[..],b[..]);b[0]=1;b[1]=0;#assert !aw_same(a[..],b[..]);
+    r4:=[4]f64.[0,0,1,2];#assert aw_close_all(a[..],r4[..],1) && !aw_close_all(a[..],r4[..],0);r4[2]=0;#assert !aw_close_all(a[..],r4[..],1);r4[2]=1;r4[3]=0;#assert !aw_close_all(a[..],r4[..],1);
+    s:=AwState.{step=2,skipped=1};r:=AwResult.{status=AwStatus.state,state=s};
+    #assert aw_refused(r,AwStatus.state,s) && !aw_refused(r,AwStatus.shape,s) && !aw_refused(r,AwStatus.state,AwState.{step=3,skipped=1}) && !aw_refused(r,AwStatus.state,AwState.{step=2});
+    r.written=1;#assert !aw_refused(r,AwStatus.state,s);
+    keep:=[9]f64.[1,2,3,4,5,6,7,8,9];k:=keep;c:=[3]f32.[-1,-1,-1];#assert aw_kept(k[0..<3],k[3..<6],k[6..<9],c[..],keep[..]);
+    for i:0..<9 {k[i]=0;#assert !aw_kept(k[0..<3],k[3..<6],k[6..<9],c[..],keep[..]);k[i]=keep[i];}
+    for i:0..<3 {c[i]=0;#assert !aw_kept(k[0..<3],k[3..<6],k[6..<9],c[..],keep[..]);c[i]=-1;}
+    // A replay notices a refused step, each perturbed expected value and a
+    // missing compute record.
+    two:=aw_two();a0:=AW_MATRIX_START;g:=AW_MATRIX_GRADS;p:=AW_MATRIX_PARAMS;m:=AW_MATRIX_M;v:=AW_MATRIX_V;none:[1]f64;
+    #assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[..],none[0..<1],-1).resumed==-1 && aw_replay(two[..],AwPolicy.{},a0[..],g[0..<59],p[..],m[..],v[..],none[0..<0],-1).resumed==-1;
+    #assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[0..<59],v[..],none[0..<0],-1).resumed==-1 && aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[0..<59],none[0..<0],-1).resumed==-1;
+    for at:0..<2 {i:=at*59;
+        p[i]+=1e-9;#assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[..],none[0..<0],-1).resumed==-1;p[i]=AW_MATRIX_PARAMS[i];
+        m[i]+=1e-9;#assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[..],none[0..<0],-1).resumed==-1;m[i]=AW_MATRIX_M[i];
+        v[i]+=1e-9;#assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[..],none[0..<0],-1).resumed==-1;v[i]=AW_MATRIX_V[i];
+    }
+    g[30]=0.0/0.0;#assert aw_replay(two[..],AwPolicy.{},a0[..],g[..],p[..],m[..],v[..],none[0..<0],-1).resumed==-1;
+    narrow:=aw_narrow_group();na:=AW_NARROW_START;ng:=AW_NARROW_GRADS;np:=AW_NARROW_PARAMS;nm:=AW_NARROW_M;nv:=AW_NARROW_V;nc:=AW_NARROW_COMPUTE;
+    N:=AwPolicy.{compute=AwCompute.binary32};
+    #assert aw_replay(narrow[..],N,na[..],ng[..],np[..],nm[..],nv[..],nc[0..<8],-1).resumed==-1;
+    for i:0..<9 {nc[i]=0;#assert aw_replay(narrow[..],N,na[..],ng[..],np[..],nm[..],nv[..],nc[..],-1).resumed==-1;nc[i]=AW_NARROW_COMPUTE[i];}
+}
+aw_refused :: (r:AwResult,want:AwStatus,s:AwState)->bool {return r.status==want && r.state.step==s.step && r.state.skipped==s.skipped && r.written==0;}
+aw_kept :: (p:[]f64,m:[]f64,v:[]f64,c:[]f32,keep:[]f64)->bool {return aw_same(p,keep[0..<3]) && aw_same(m,keep[3..<6]) && aw_same(v,keep[6..<9]) && c[0]==-1 && c[1]==-1 && c[2]==-1;}
+#test "refusals write nothing and skips advance only the skip counter" {
+    g:=[1]AwGroup.[AwGroup.{first=0,count=2,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0.5}];
+    p:=[3]f64.[1,2,-7];m:=[3]f64.[0,0,-8];v:=[3]f64.[0,0,-9];c:=[3]f32.[-1,-1,-1];x:=[3]f64.[1,-1,5];s:=AwState.{step=4,skipped=2};
+    keep:=[9]f64.[1,2,-7,0,0,-8,0,0,-9];
+    W:=AwPolicy.{};N:=AwPolicy.{compute=AwCompute.binary32};S:=AwPolicy.{overflow=AwOverflow.skip};
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],true),AwStatus.alias,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<1],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<3],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<2],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[..],N,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<1],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[..],N,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<3],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<0],x[0..<0],m[0..<0],v[0..<0],c[0..<0],false),AwStatus.shape,s);
+    #assert aw_refused(aw_step(g[0..<0],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.group,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<3],x[0..<3],m[0..<3],v[0..<3],c[0..<0],false),AwStatus.group,s);
+    many:[17]AwGroup;for i:0..<17 {many[i]=AwGroup.{first=i,count=1,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0};}
+    big:[17]f64;bm:[17]f64;bv:[17]f64;bx:[17]f64;
+    #assert aw_refused(aw_step(many[..],W,s,big[..],bx[..],bm[..],bv[..],c[0..<0],false),AwStatus.group,s);
+    #assert aw_step(many[0..<16],W,s,big[0..<16],bx[0..<16],bm[0..<16],bv[0..<16],c[0..<0],false).status==AwStatus.ok;
+    g[0].eps=0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.number,s);g[0].eps=0.5;
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<1],v[0..<2],c[0..<0],false),AwStatus.state,s);
+    #assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<1],c[0..<0],false),AwStatus.state,s);
+    bad:=AwState.{step=AW_STEPS};#assert aw_refused(aw_step(g[..],W,bad,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.state,bad);
+    v[1]=-1;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.state,s);v[1]=0;
+    m[1]=1.0/0.0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.state,s);m[1]=0;
+    v[0]=0.0/0.0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.state,s);v[0]=0;
+    p[1]=-1.0/0.0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.state,s);p[1]=2;
+    x[1]=0.1;#assert aw_refused(aw_step(g[..],N,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<2],false),AwStatus.precision,s);
+    #assert aw_kept(p[..],m[..],v[..],c[..],keep[..]);
+    // Non-finite gradients: refused, or skipped without touching any value.
+    x[1]=0.0/0.0;#assert aw_refused(aw_step(g[..],N,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<2],false),AwStatus.nonfinite,s);
+    x[1]=-1;x[0]=1.0/0.0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.nonfinite,s);
+    #assert aw_refused(aw_step(g[..],S,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.skipped,AwState.{step=4,skipped=3});
+    // The first element overflows, the second is not finite: non-finite wins.
+    x[0]=1e300;x[1]=1.0/0.0;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.nonfinite,s);
+    // Overflow: the second moment of 1e300 is not representable.
+    x[1]=-1;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.overflow,s);
+    #assert aw_refused(aw_step(g[..],S,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.skipped,AwState.{step=4,skipped=3});
+    x[0]=1;x[1]=1e300;#assert aw_refused(aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false),AwStatus.overflow,s);
+    // A binary32 compute copy that does not fit is an overflow too.
+    x[1]=1;p[0]=1e39;keep[0]=1e39;#assert aw_refused(aw_step(g[..],N,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<2],false),AwStatus.overflow,s);
+    #assert aw_step(g[..],W,s,p[0..<2],x[0..<2],m[0..<2],v[0..<2],c[0..<0],false).status==AwStatus.ok;
+    #assert p[2]==-7 && m[2]==-8 && v[2]==-9 && c[0]==-1 && c[2]==-1;
+}
+#test "a non-finite gradient in an earlier group outranks a later overflow" {
+    g:=[2]AwGroup.[AwGroup.{first=0,count=1,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0},AwGroup.{first=1,count=1,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0}];
+    p:=[2]f64.[1,2];m:[2]f64;v:[2]f64;c:[1]f32;x:=[2]f64.[1.0/0.0,1e300];s:=AwState.{step=1};
+    #assert aw_refused(aw_step(g[..],AwPolicy.{},s,p[..],x[..],m[..],v[..],c[0..<0],false),AwStatus.nonfinite,s);
+    x[0]=1e300;x[1]=0.0/0.0;#assert aw_refused(aw_step(g[..],AwPolicy.{},s,p[..],x[..],m[..],v[..],c[0..<0],false),AwStatus.nonfinite,s);
+    x[1]=1;#assert aw_refused(aw_step(g[..],AwPolicy.{},s,p[..],x[..],m[..],v[..],c[0..<0],false),AwStatus.overflow,s) && p[0]==1 && p[1]==2 && m[0]==0 && v[1]==0;
+}
+#test "a successful step writes exactly its views and the compute copy" {
+    g:=[2]AwGroup.[AwGroup.{first=0,count=1,lr=0.5,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5},AwGroup.{first=1,count=1,lr=0.25,beta1=0,beta2=0.5,eps=0.25,decay=0}];
+    p:=[3]f64.[1,1,-7];m:=[3]f64.[0,5,-8];v:=[3]f64.[0,7,-9];c:=[3]f32.[-1,-1,-1];x:=[2]f64.[2,-3];
+    r:=aw_step(g[..],AwPolicy.{compute=AwCompute.binary32},AwState.{step=2,skipped=6},p[0..<2],x[..],m[0..<2],v[0..<2],c[0..<2],false);
+    #assert r.status==AwStatus.ok && r.state.step==3 && r.state.skipped==6 && r.written==2;
+    e:=aw_cell(g[0],3,1,2,0,0);f:=aw_cell(g[1],3,1,-3,5,7);
+    #assert p[0]==e.p && m[0]==e.m && v[0]==e.v && p[1]==f.p && m[1]==f.m && v[1]==f.v && c[0]==f32(e.p) && c[1]==f32(f.p) && p[2]==-7 && m[2]==-8 && v[2]==-9 && c[2]==-1;
+}

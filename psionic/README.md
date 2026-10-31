@@ -255,3 +255,5 @@ retained; routine checks do not rerun it.
 [Chapter 73](book/ch073-bytes-and-a-small-language-model.md): Train a complete 256-byte bigram model on fixed CC0 synthetic documents, evaluate disjoint held-out splits and sample with a named counter RNG. Run `psionic/check.sh --only byte-lm`.
 
 [Chapter 77](book/ch077-learn-a-tokenizer.md): Deterministic Coax byte-BPE training, pinned nanochat two-digit splitting, independent merges and persisted chapter-5 PST5 round trips. Run `psionic/check.sh --only bpe-train`.
+
+[Chapter 78](book/ch078-adamw-and-explicit-precision.md): AdamW over a binary64 master copy with parameter groups, declared compute precision, all-or-nothing admission, a skip policy and exact resume, checked against an independent oracle. Run `psionic/check.sh --only adamw`.

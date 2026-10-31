@@ -112,6 +112,8 @@
 
 - [77. Learn a tokenizer](ch077-learn-a-tokenizer.md)
 
+- [78. AdamW and explicit precision](ch078-adamw-and-explicit-precision.md)
+
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
