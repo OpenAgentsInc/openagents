@@ -4,7 +4,8 @@
 # live spec with its modules (and Everglade's layers decoded in Coax), built there with gcc, each
 # in a directory of its own. REALM is one or more, the first where play starts: everglade (the
 # default; everglade-pass live --emit), verse (the galaxy, page 1), newland (the Grid, page 1), stair (Hold the Stair), belt
-# (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit).
+# (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit), deadgears (Dead Gears),
+# icecream (Ice Cream Man) or villa (Hecate's Cemetery) (a scene with index assets; scene-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen, each realm: 90 golden frames, the last
 #                                                    against vk-passes drawing the spec's own frame, and
 #                                                    the frame times at 320x180, 2560x1440 and 3840x2160;
@@ -41,7 +42,7 @@ seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
 # The realms travel reaches: a slug (what a navigation names: rh_realm_of) and its module.
-travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade"
+travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa"
 read -r -a realms <<< "${REALM:-everglade}"
 given_of() {
   case "$1" in
@@ -54,6 +55,7 @@ for realm in "${realms[@]}"; do
   case "$realm" in
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
     verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
+    deadgears|icecream|villa) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
   "$root/verse/native/build.sh" "$realm" "$work/$realm/c" > /dev/null
@@ -67,6 +69,7 @@ for realm in "${realms[@]}"; do
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
   echo "$(given_of "$realm")" > "$ship/given"
 done
+cp "$root/verse/native/musl-math.sh" "$work/ship/"
 cp "$here"/vk-passes.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h "$here"/vk-escape.c "$work/ship/"
 echo "${realms[*]}" > "$work/ship/realms"
 echo "$travel" > "$work/ship/travel"
@@ -92,12 +95,14 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
      tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net)
   # each realm as realm-run builds it: no PIE (its pointers fit 32 bits), no contraction
   flags=\"-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -w -I.\"
+  # the math of the wasm (musl, verse/native/musl-math.sh) ahead of glibc, as realm-run links it
+  math=\$(./musl-math.sh \$PWD)
   for r in \$(cat realms); do
     (cd \$r
      read -r -a sources < sources
      for s in \"\${sources[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & done
      wait
-     gcc \$flags \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
+     gcc \$flags \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
      cp ../net .) &
   done
   wait
@@ -112,13 +117,14 @@ here=\$PWD
 # The module a slug opens, when it is one of these realms (travel)
 module_of() { for p in \$(cat \$here/travel); do [ \"\${p%%:*}\" = \"\$1\" ] && [ -d \"\$here/\${p#*:}\" ] && { echo \${p#*:}; return; }; done; }
 if [ $mode = check ]; then
+  differ=''
   for r in \$(cat realms); do
     cd \$here/\$r; given=\$(cat given)
     # the frame the spec was written from (wasm-run's 90th, golden, clock 0), drawn by vk-passes and by vk-realm
     export VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
     (cd spec && \$here/vk-passes spec.txt \$here/\$r/passes.f32)
     VERSE_NATIVE_CLOCK_MS=0 ./vk-realm spec \$given --golden --size 320x180 --headless 90 --out \$here/\$r/realm.f32
-    cmp passes.f32 realm.f32 && echo \"realm.sh: \$r: the realm's 90th frame is vk-passes' to the bit\" || echo \"realm.sh: \$r: the frames differ\"
+    cmp passes.f32 realm.f32 && echo \"realm.sh: \$r: the realm's 90th frame is vk-passes' to the bit\" || { echo \"realm.sh: \$r: the frames differ, \$(cmp -l passes.f32 realm.f32 | wc -l) bytes\"; differ=\"\$differ \$r\"; }
     # the frame times, without the validation layers
     unset VK_INSTANCE_LAYERS
     for size in 320x180 2560x1440 3840x2160; do ./vk-realm spec \$given --size \$size --headless 600; done
@@ -139,6 +145,7 @@ if [ $mode = check ]; then
       echo \"realm.sh: travel: the galaxy opened \$slug, which is not native here; the player stays in the galaxy\"
     fi
   fi
+  [ -z \"\$differ\" ] || { echo \"realm.sh: the frames differ for\$differ\"; exit 1; }
   exit 0
 fi
 if [ $mode = net ]; then

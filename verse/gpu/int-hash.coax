@@ -95,6 +95,8 @@ ih_page :: (out: string, name: string) -> bool {
   if n < 0 { tool_err("int-hash: no "); tool_errln(from); return false; }
   times := ih_count(cast(string) src[0..<n], IH_COAX_SIN);
   stars := ih_count(cast(string) src[0..<n], "#load \"../../../verse/stars.coax\"") == 1;
+  styled := ih_count(cast(string) src[0..<n], "#load \"../../../verse/style.coax\"") == 1;
+  moving := ih_count(cast(string) src[0..<n], "#load \"../../../verse/particle-motion.coax\"") == 1;
   // a page with no sin hash (Orbit League) is written as it is, its loads made whole
   body: [1024] u8;
   r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
@@ -121,6 +123,37 @@ ih_page :: (out: string, name: string) -> bool {
     for k: 0..<text.count { tmp[k] = text[k]; }
     text = cast(string) tmp[0..<text.count];
   }
+  if styled {
+    // the style's hash (verse_style_hash: the facets' jitter, the villa's leaves) too, as Everglade's
+    ys: [IH_FILE] u8; yd: [IH_FILE] u8; yb: [1024] u8; yl: [2048] u8; yx: [IH_FILE] u8;
+    yn := fs_read("verse/style.coax", ys[..]);
+    if yn < 0 { tool_errln("int-hash: no verse/style.coax"); return false; }
+    sty := ih_replace(cast(string) ys[0..<yn], IH_STYLE, IH_STYLE_INT, yd[..], 1);
+    if sty.count == 0 { tool_errln("int-hash: verse/style.coax does not have verse_style_hash"); return false; }
+    // its own loads whole, as it moves beside the page
+    yw: [IH_FILE] u8; vb: [1024] u8; vd: [1024] u8;
+    sty = ih_whole_loads(sty, ih_cat3(fs_cwd(vb[..]), "/verse/", "", vd[..]), yw[..]);
+    if sty.count == 0 { tool_errln("int-hash: cannot rewrite verse/style.coax's loads"); return false; }
+    yp := fs_join(out, "style.coax", yb[..]);
+    if !fs_write(yp, sty) { tool_err("int-hash: cannot write "); tool_errln(yp); return false; }
+    text = ih_replace(text, "#load \"../../../verse/style.coax\"", ih_cat3("#load \"", yp, "\"", yl[..]), yx[..], 1);
+    for k: 0..<text.count { tmp[k] = text[k]; }
+    text = cast(string) tmp[0..<text.count];
+  }
+  if moving {
+    // the particles' motion: its hash and its waves take sin of arguments in the hundreds (a
+    // particle's index times a few), each GPU's own; the copy's sin is reduced to [-pi, pi] first
+    ms: [IH_FILE] u8; md: [IH_FILE] u8; mb: [1024] u8; ml: [2048] u8; mx: [IH_FILE] u8;
+    mn := fs_read("verse/particle-motion.coax", ms[..]);
+    if mn < 0 { tool_errln("int-hash: no verse/particle-motion.coax"); return false; }
+    mo := ih_reduce_sin(cast(string) ms[0..<mn], md[..]);
+    if mo.count == 0 { tool_errln("int-hash: cannot rewrite verse/particle-motion.coax"); return false; }
+    mp := fs_join(out, "particle-motion.coax", mb[..]);
+    if !fs_write(mp, mo) { tool_err("int-hash: cannot write "); tool_errln(mp); return false; }
+    text = ih_replace(text, "#load \"../../../verse/particle-motion.coax\"", ih_cat3("#load \"", mp, "\"", ml[..]), mx[..], 1);
+    for k: 0..<text.count { tmp[k] = text[k]; }
+    text = cast(string) tmp[0..<text.count];
+  }
   text = ih_whole_loads(text, dir, tmp2[..]);
   if text.count == 0 { tool_err("int-hash: cannot rewrite "); tool_errln(from); return false; }
   gpu := fs_join(out, ih_cat3(name, ".coax", "", nb[..]), p[..]);
@@ -132,6 +165,34 @@ ih_page :: (out: string, name: string) -> bool {
   if pr.started != 0 || pr.status != 0 || pr.timed_out { tool_err(cast(string) e[0..<pr.err_n]); tool_err("int-hash: the module failed for "); tool_errln(name); return false; }
   return true;
 }
+// Every call of sin in text made ih_rsin's (sin of its argument reduced to [-pi, pi], computed
+// alike everywhere), the function after it; "" if out is too small.
+IH_RSIN :: "\n// int-hash: sin with its argument reduced first (the check's copy only)\nih_rsin :: (x:f32)->f32 { return sin(x-6.2831855f32*floor(x/6.2831855f32+0.5f32)); }\n";
+ih_reduce_sin :: (text: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < text.count {
+    c := ifx i > 0 then text[i - 1] else ' ';
+    word := c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    if !word && i + 4 <= text.count && text[i..<i + 4] == "sin(" {
+      if n + 8 > out.count { return ""; }
+      for k: 0..<8 { out[n + k] = "ih_rsin("[k]; }
+      n += 8; i += 4; continue;
+    }
+    if n >= out.count { return ""; }
+    out[n] = text[i]; n += 1; i += 1;
+  }
+  if n + IH_RSIN.count > out.count { return ""; }
+  for k: 0..<IH_RSIN.count { out[n + k] = IH_RSIN[k]; }
+  return cast(string) out[0..<n + IH_RSIN.count];
+}
+#test "sin reduced" {
+  o: [512] u8;
+  r := ih_reduce_sin("a:=sin(x)+pm_fract(sin(y));b:=asin(z);c:=f_sin(w);", o[..]);
+  t := "a:=ih_rsin(x)+pm_fract(ih_rsin(y));b:=asin(z);c:=f_sin(w);";
+  #assert r.count == t.count + IH_RSIN.count && r[0..<t.count] == t;
+  #assert ih_reduce_sin("sin(x)", o[0..<4]) == "";
+}
+
 // How many times old is in text (apart).
 ih_count :: (text: string, old: string) -> int {
   n := 0; i := 0;

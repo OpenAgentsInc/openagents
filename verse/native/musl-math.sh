@@ -16,7 +16,7 @@ out="$dir/musl-math"
 if [[ ! -f "$out/done" ]]; then
   rm -rf "$out"; mkdir -p "$out"
   names=()
-  for f in sin cos tan asin acos atan atan2 sinh cosh tanh exp exp2 expm1 log log2 log10 log1p pow cbrt hypot; do
+  for f in sin cos sincos tan asin acos atan atan2 sinh cosh tanh exp exp2 expm1 log log2 log10 log1p pow cbrt hypot; do
     names+=("$f" "${f}f")
   done
   want="$(printf '%s\n' "${names[@]}" | sed 's/$/.lo/')"

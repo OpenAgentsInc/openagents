@@ -305,11 +305,13 @@ int main(int argc, char **argv) {
   if (!s) return 1;
   w = vk_spec_width(s); h = vk_spec_height(s);
   uniforms = vk_spec_buffer(s, "u");
-  puffs = vk_spec_buffer(s, "puffs");
+  puffs = vk_spec_buffer_of(s, "puffs.bin");   // the particles, whatever the module names them
   hud = vk_spec_buffer(s, "hud");
-  static const char *store_names[4] = {"heights", "objects", "pose", "water_nodes"};
+  // store k is the buffer the spec fills from the frame's sK.bin, whatever the shader names it
   for (int k = 0; k < 4; k++) {
-    stores[k].buf = vk_spec_buffer(s, store_names[k]);
+    char store_file[16];
+    snprintf(store_file, sizeof store_file, "s%d.bin", k);
+    stores[k].buf = vk_spec_buffer_of(s, store_file);
     stores[k].version = coaxial_store_version(H.state, k);
     stores[k].cap = coaxial_store_cap(k);
   }

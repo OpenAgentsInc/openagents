@@ -436,7 +436,9 @@ NONE uint32_t coaxial_stores(void) { return 0; }
 NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
 NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
 NONE uint32_t coaxial_store_bytes(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
-NONE uint32_t coaxial_store_version(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
+// an app without store versions has its stores copied every frame, as host.js copies them (its
+// version undefined): a number that is new at every call
+NONE uint32_t coaxial_store_version(uint32_t s, int32_t k) { static uint32_t calls; (void)s; (void)k; return ++calls; }
 NONE uint32_t coaxial_particle_cap(void) { return 0; }
 NONE uint32_t coaxial_particles(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_particle_bytes(uint32_t s) { (void)s; return 0; }

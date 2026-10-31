@@ -25,6 +25,9 @@ VkSpec *vk_spec_open(Vkc *v, const char *path, const VkSpecFiles *files);
 int vk_spec_let(VkSpec *s, const char *name, long value);
 // A buffer the spec makes (`buffer NAME FILE`, `floats NAME`, `index` as "index"), by NAME; NULL if none.
 VkcBuffer *vk_spec_buffer(VkSpec *s, const char *name);
+// The storage buffer a `buffer` directive filled from FILE (a frame's store sK.bin, whatever the
+// shader names it), NULL if none.
+VkcBuffer *vk_spec_buffer_of(VkSpec *s, const char *file);
 // The draw list the passes draw from (else the spec's file).
 void vk_spec_draws(VkSpec *s, const uint32_t *draws);
 // Every directive in order into cmd: the copies and the passes.

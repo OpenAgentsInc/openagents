@@ -504,6 +504,31 @@ Every phase and native feature is a task in the Verse project
     rechecked: the same vertices, draws and particles. The haunted house
     draws no scene natively yet (its data assets); fairy and belt wait on
     the compiler at main (another agent's parser mutant fails its build).
+  - Dead Gears, Ice Cream Man and Hecate's Cemetery (villa) draw natively.
+    verse/gpu/scene-pass.coax checks a scene realm's frame against the
+    browser as host.js draws it: bg, the draw list through scene_vs and
+    scene_fs (group 1 the WGSL's storage names over the frame's stores),
+    the particles asset's sparks, then bloom and post where the WGSL has
+    post_fs, then the HUD; its index and particles assets come from
+    realms.json. --upto ENTRY compares the frame after that entry's pass.
+    int-hash --page now also swaps verse/style.coax's hash (the villa's
+    leaves jitter by it) and reduces sin's argument in a copy of
+    verse/particle-motion.coax (sin of a particle's index times a few is
+    each GPU's own). Dead Gears matches with 0 values past the tolerance,
+    the villa with 19, Ice Cream with 51 (17 pixels one 8-bit step apart
+    on one face: give it --allow 60). realm.sh check: each one's 90th
+    frame in vk-realm is vk-passes' to the bit; 4K frames take 1.5 ms
+    (Dead Gears), 0.9 ms (Ice Cream) and 1.8 ms (villa).
+  - Two native defects fixed on the way. vk-realm found stores by
+    Everglade's names (heights, objects, pose, water_nodes) and so never
+    refreshed Dead Gears' only store; store k is now the buffer the spec
+    fills from sK.bin (vk_spec_buffer_of), and the particles from
+    puffs.bin. A store without coaxial_store_version was copied once
+    natively and every frame by host.js; the weak default now changes at
+    every call. gcc merges sinf and cosf into glibc's sincosf, so
+    musl-math.sh takes musl's sincos too, and realm.sh links vk-realm
+    with it: the villa's game is now the wasm's to the bit. realm.sh check
+    fails when a frame differs (it printed and went on).
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

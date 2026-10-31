@@ -8,7 +8,7 @@
 #define MAXOPS 256
 #define MAXLETS 16
 
-typedef struct { char name[64]; int kind; VkcBuffer buf; VksImage img; VkSampler sampler; } Res;
+typedef struct { char name[64]; char file[64]; int kind; VkcBuffer buf; VksImage img; VkSampler sampler; } Res;
 // A count: a number, a named count (`$NAME`, its index), or the record `each` is at.
 typedef struct { long k; int let; int each; } Count;
 enum { OP_PASS = 1, OP_COPY = 2, OP_EACH = 3, OP_END = 4 };
@@ -148,7 +148,7 @@ VkSpec *vk_spec_open(Vkc *v, const char *path, const VkSpecFiles *files) {
       if (!strcmp(a[0], "index")) { s->index = b; s->has_index = 1; continue; }
       if (s->nres == MAXR) FAIL("at most %d resources", MAXR);
       Res *r = &s->res[s->nres++];
-      snprintf(r->name, sizeof r->name, "%.63s", a[1]); r->kind = VKS_STORAGE; r->buf = b;
+      snprintf(r->name, sizeof r->name, "%.63s", a[1]); snprintf(r->file, sizeof r->file, "%.63s", file); r->kind = VKS_STORAGE; r->buf = b;
       continue;
     }
     if (s->nres == MAXR) FAIL("at most %d resources", MAXR);
@@ -381,6 +381,11 @@ VkcBuffer *vk_spec_buffer(VkSpec *s, const char *name) {
   if (!strcmp(name, "index")) return s->has_index ? &s->index : NULL;
   Res *r = find(s, name);
   return r && r->kind == VKS_STORAGE ? &r->buf : NULL;
+}
+VkcBuffer *vk_spec_buffer_of(VkSpec *s, const char *file) {
+  for (int i = 0; i < s->nres; i++)
+    if (s->res[i].kind == VKS_STORAGE && !strcmp(s->res[i].file, file)) return &s->res[i].buf;
+  return NULL;
 }
 void vk_spec_draws(VkSpec *s, const uint32_t *draws) { s->draws = draws; }
 
