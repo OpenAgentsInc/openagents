@@ -131,7 +131,7 @@ Belt :: struct {
   selected: [SHIPS] bool;
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
-  // The ice rocks in reach of the selected ship, for the row of their names: the economy plan's
+  // The ice rocks in reach of the selected ship, for the row of their names: the fast plan's
   // days, whether it has the propellant, and whether that's worked out yet (one rock a frame)
   reach_days: [ICE_ROCKS] f64; reach_ok: [ICE_ROCKS] bool; reach_have: [ICE_ROCKS] bool;
   reach_ship: int; reach_next: int;
@@ -752,7 +752,7 @@ mine_order :: (s: [] Belt) {
   set_dest(s, j);
 }
 
-// One ice rock's economy plan for the selected ship a frame, for the row of rock names.
+// One ice rock's fast plan for the selected ship a frame, for the row of rock names.
 reach_step :: (s: [] Belt) {
   sk := first_selected(s);
   if sk != s[0].reach_ship {
@@ -762,7 +762,7 @@ reach_step :: (s: [] Belt) {
   if sk < 0 || s[0].dest >= 0 { return; }
   i := s[0].reach_next % ICE_ROCKS;
   s[0].reach_next = (i + 1) % ICE_ROCKS;
-  p := plan_for(s, sk, P_ICE + i, false);
+  p := plan_for(s, sk, P_ICE + i, true);   // the quickest trip in reach: economy is always the slow one
   s[0].reach_days[i] = ifx p.ok then p.tr.tof / DAY else 0.0;
   s[0].reach_ok[i] = p.ok && p.enough;
   s[0].reach_have[i] = true;
@@ -1803,6 +1803,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   sk := first_selected(s);
   if sk < 0 {
     centred(out, d, "SELECT A SHIP", w / 2, cy0 - 12 * k, 7 * k, 0.55, INK_R, INK_G, INK_B);
+    block_rect(d, w / 2 - 90 * k, cy0 - 12 * k - 10 * k, w / 2 + 90 * k, cy0 - 12 * k + 3 * k);   // no name over the hint
     return;
   }
   pw := ifx phone then w - 2 * m else 470 * k;
@@ -1820,7 +1821,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
       x0 := px0 + 8 * k + f32(i) * (bw2 + 8 * k);
       button(s, out, d, x0, py0 + 7 * k, x0 + bw2, py0 + ph - 7 * k, ids[i], 0, labels2[i], 7 * k, false);
     }
-    // the ice rocks by name, each with its economy trip's days: a tap plans the trip
+    // the ice rocks by name, each with its fast trip's days: a tap plans the trip
     cols := ifx phone then 4 else ICE_ROCKS;
     rows := (ICE_ROCKS + cols - 1) / cols;
     rh := 30 * k;
@@ -1847,6 +1848,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
       }
     }
     centred(out, d, "OR TAP A DESTINATION", w / 2, qy0 - 10 * k, 6.5 * k, 0.55, INK_R, INK_G, INK_B);
+    block_rect(d, w / 2 - 90 * k, qy0 - 10 * k - 10 * k, w / 2 + 90 * k, qy0 - 10 * k + 3 * k);   // no name over the hint
     return;
   }
   // A plan: economy and fast, each a button that launches it.
