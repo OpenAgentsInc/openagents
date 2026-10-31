@@ -54,8 +54,9 @@ From `git show 0b401561a0^`, the tree as it stood before the Nuke:
 be read with `git show 0b401561a0^:os/<path>`.
 
 Also gone: `crates/psionic`, the Rust inference engine (2,963 files), and
-`crates/jev`. There is no inference engine in Coax in this repository yet;
-the Coax engine that exists is Metareal (`metareal/`, about 7,700 lines).
+`crates/jev`. Psionic has since been rebuilt in Coax (`psionic/`), and it
+already runs CUDA kernels that `coax cuda` emits on `coderos-4080`. The
+game engine is `verse/` (it was `metareal/` when this was first written).
 
 ## What `coderos-4080` runs today
 
@@ -132,12 +133,12 @@ switches one program at a time and rolls back with the generation.
 | 1 | CPU limits | `cpu-limits.nix` + shell, every 5 min | A small program that reads sysfs and RAPL and writes the limits; the policy as an `#authority` file under `coax mutate` | File I/O in the host C, which a 30-line C face supplies |
 | 2 | Update agent | `bin/coder-update` (245 lines of shell) + `coder-service` trial and rollback (Rust) | One Coax program: fetch, build with `coax build`, trial, roll back. The trial rules are policy, so `#authority` | Process spawn and file I/O in the host face; a Coax `coder` to update |
 | 3 | Desk command | `coder-desk-cli` (Rust) speaking JSON to the compositor | Coax client of the same socket protocol, with the protocol in `proto/` | Unix socket in the host face |
-| 4 | Recording and presentation | `screen-record` (1,523 lines), `recording-hud`, `presentation-mode`, `dictate-toggle` | Coax programs. Dictation shares the voice engine in `metareal/voice.coax` (VAD, end of turn) | PipeWire through C; header import |
+| 4 | Recording and presentation | `screen-record` (1,523 lines), `recording-hud`, `presentation-mode`, `dictate-toggle` | Coax programs. Dictation shares the voice engine in `verse/voice.coax` (VAD, end of turn) | PipeWire through C; header import |
 | 5 | Camera daemon | `coderos-camera` (Rust, V4L2, ONNX Runtime) | Coax capture over V4L2; the hand model as a Coax kernel | Pointer FFI; an inference kernel in Coax |
 | 6 | Compositor | `coder-compositor` + `coder-wm` (Rust, Smithay, about 15,500 lines) | A Coax compositor over wlroots, or Coax window policy inside an existing wlroots compositor first | Header import (§17.2), callbacks, raw pointers into C structs |
 
 Rows 1 to 3 are within reach of today's bootstrap plus a thin C face, the
-same pattern as `metareal/platform/host.c`. Rows 4 to 6 wait on the C
+same pattern as `verse/platform/host.c`. Rows 4 to 6 wait on the C
 interface work the spec already plans: header import through libclang, and
 foreign calls beyond scalars. That makes CoderOS a real consumer for
 ROADMAP R1 (target ABI) and a Linux evidence row in §17.2, which today says
@@ -162,7 +163,7 @@ NixOS configuration.
 
 ## Step 3: what C everywhere makes possible
 
-The kernel, the drivers' userspace interfaces, the desktop stack, Metareal's
+The kernel, the drivers' userspace interfaces, the desktop stack, Verse's
 host and Coax's output are all C. That shared ABI is the opening. These are
 bets, in the order I would try them.
 
@@ -183,25 +184,30 @@ to the default one automatically. This is small, testable and unusual.
 
 ### The engine as the session
 
-Metareal draws through Metal on Apple hardware. On Linux it could own the
+**First light, 2026-10-30:** `verse/kms/` runs Star Catcher on
+`coderos-4080` this way, with DRM/KMS dumb buffers, evdev and a CPU
+rasterizer over the realm's Coax light, at about 40 fps at 2560x1440. See
+`verse/kms/README.md`.
+
+Verse draws through Metal on Apple hardware. On Linux it could own the
 display directly through DRM/KMS and GBM, as a session with no compositor:
 boot, autologin, the engine on the screen, input from libinput. CoderOS
 already has the shape for this; `desktop.nix` chooses the session program
-per host. A kiosk-style Metareal session is a smaller first step than a
+per host. A kiosk-style Verse session is a smaller first step than a
 Coax compositor, and it is also the path to a compositor: a compositor is an
 engine that draws other programs' buffers as textures.
 
 ### Engine and inference in one process
 
-The Metal emitter already turns Coax f32 procedures into shader code. The
-same idea pointed at CUDA C (or SPIR-V for Vulkan) gives one kernel source
+The Metal emitter already turns Coax f32 procedures into shader code, and
+`coax cuda` now emits CUDA C for NVRTC. That gives one kernel source
 for the Mac, the iPhone and the RTX 4080. With the engine and an inference
 engine both in Coax and both linking the same C runtime, they can share one
 process and one GPU allocation: a model's output written into a buffer the
 renderer reads, with no socket, no copy and no second scheduler. The voice
 engine is already in Coax; hand tracking (row 5 above) is the first model
-small enough to try. This needs an inference engine in Coax, which does not
-exist yet; `crates/psionic` was Rust and went with the Nuke.
+small enough to try. Psionic (`psionic/`) is the inference engine in Coax
+that would share the process.
 
 ### Reproducible builds as derivations
 
