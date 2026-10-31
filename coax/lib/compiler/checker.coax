@@ -1844,12 +1844,20 @@ CK_no_args :: (c:CK_Context,id:int) {
 CK_struct_node :: (c:CK_Context,d:int)->int {
   inst:=CK_new(c,CK_Tag.struct_,c.nodes[d].loc);c.nodes[inst].name=c.nodes[d].name;c.nodes[inst].scope=c.nodes[d].scope;c.nodes[inst].origin=d;c.nodes[inst].quantity=c.nodes[d].quantity;return inst;
 }
-// A length argument is a literal or a $N; a type argument is any other type.
+// A length argument is a literal, a named integer constant or a $N; a type
+// argument is any other type. A name the parser read as a type is a constant
+// when one is declared by that name (Box(f64, CAP), Box(f64, lib.CAP)).
 CK_struct_arg :: (c:CK_Context,inst:int,a:int,r:CK_Type) {
   n:=c.nodes[a];length:=0;elem:=CK_NONE;
   if r.bits==1 {
     if n.kind==CK_Tag.expr_int {if n.value==0 || n.value>1073741824 {CK_error(c,n.loc,"E0357","a length argument must be 1 to 1073741824","");return;}length=cast(int)n.value;}
     else if n.kind==CK_Tag.type_param {length=CK_length_param(c,a);}
+    else if n.kind==CK_Tag.type_named && n.head==CK_NONE && CK_lookup(c,CK_Tag.constant,a)!=CK_NONE {
+      // a constant that failed here has said why; one that failed earlier has not
+      c.nodes[a].kind=CK_Tag.expr_ident;before:=c.state[0].error_count;t:=CK_value(c,a,CK_Hint.{type=11});k:=CK_const_int(c,a);if c.state[0].error_count!=before {return;}
+      if !CK_integer(c,t) || k.bad || k.negative || CM_zero(k.mag) || CM_cmp(k.mag,CM_u(1073741824))>0 {CK_error(c,n.loc,"E0357","a length argument must be 1 to 1073741824","");return;}
+      length=cast(int)CM_low(k.mag);
+    }
     else {CK_kind_clash(c,a,r.name,true);return;}
   }
   else if n.kind==CK_Tag.expr_int {CK_kind_clash(c,a,r.name,false);return;}
@@ -80910,6 +80918,217 @@ CK_quantity_fixture :: (c:CK_Context) {
  result:=CK_quantity_convert(c,15);
  if variant==1 {#assert result==CK_NONE && state[0].error_count==1 && errors[0].code=="E0825" && errors[0].message=="convert_unit target must name an @unit type";}
  else {#assert result!=CK_NONE && !state[0].fatal && state[0].error_count==0;want:=22;if variant==2 {want=23;}#assert types[result].unit==want && types[result].carrier==7;}
+}
+
+// r4a-generic-values: a named integer constant is a generic struct's length argument.
+// Source: "Box :: struct($T, $N) { items: [$N] $T; n: int; }\nCAP :: 3;\nWIDE :: CAP * 2 + 1;\nTYPED :: cast(u8) 2;\nMOST :: 1073741824;\nUse :: struct { a: Box(int, CAP); b: Box(f64, WIDE); c: Box(int, 3); d: Box(bool, TYPED); e: [2] Box(u8, CAP); }\nBig :: struct { m: Box(u8, MOST); }\nfirst :: (b: Box($T, $N)) -> $T { return b.items[0]; }\nmain :: () { u: Use; x := first(u.a); y := first(u.c); }\n"
+#test "named integer constants are generic struct lengths" {
+  initial:=[77] CK_Node.[
+    CK_Node.{skip_authority=true},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=65,skip_authority=true},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=1,column=1,offset=0},name="Box",d=3,head=5,tail=9,next=11,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=15,offset=14},name="T",next=4,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=19,offset=18},name="N",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=1,column=25,offset=24},name="items",a=6,next=9,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=1,column=32,offset=31},a=7,b=8,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=33,offset=32},name="N",skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=37,offset=36},name="T",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=1,column=41,offset=40},name="n",a=10,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=44,offset=43},name="int",skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=2,column=1,offset=50},name="CAP",a=12,next=13,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=8,offset=57},value=3,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=3,column=1,offset=60},name="WIDE",a=18,next=19,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=3,column=9,offset=68},name="CAP",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=3,column=15,offset=74},value=2,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=3,column=13,offset=72},a=14,b=15,op=36,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=3,column=19,offset=78},value=1,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=3,column=17,offset=76},a=16,b=17,op=34,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=4,column=1,offset=81},name="TYPED",a=20,next=23,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_cast,loc=CK_Loc.{line=4,column=10,offset=90},a=22,d=21,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=4,column=15,offset=95},name="u8",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=4,column=19,offset=99},value=2,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=5,column=1,offset=102},name="MOST",a=24,next=25,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=5,column=9,offset=110},value=1073741824,skip_authority=true},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=6,column=1,offset=122},name="Use",head=26,tail=42,next=48,skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=17,offset=138},name="a",a=27,next=30,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=20,offset=141},name="Box",head=28,tail=29,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=24,offset=145},name="int",next=29,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=29,offset=150},name="CAP",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=35,offset=156},name="b",a=31,next=34,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=38,offset=159},name="Box",head=32,tail=33,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=42,offset=163},name="f64",next=33,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=47,offset=168},name="WIDE",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=54,offset=175},name="c",a=35,next=38,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=57,offset=178},name="Box",head=36,tail=37,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=61,offset=182},name="int",next=37,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=6,column=66,offset=187},value=3,skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=70,offset=191},name="d",a=39,next=42,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=73,offset=194},name="Box",head=40,tail=41,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=77,offset=198},name="bool",next=41,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=83,offset=204},name="TYPED",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=91,offset=212},name="e",a=43,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=6,column=94,offset=215},a=44,b=45,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=6,column=95,offset=216},value=2,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=98,offset=219},name="Box",head=46,tail=47,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=102,offset=223},name="u8",next=47,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=6,column=106,offset=227},name="CAP",skip_authority=true},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=7,column=1,offset=235},name="Big",head=49,tail=49,next=53,skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=7,column=17,offset=251},name="m",a=50,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=20,offset=254},name="Box",head=51,tail=52,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=24,offset=258},name="u8",next=52,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=28,offset=262},name="MOST",skip_authority=true},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=8,column=1,offset=271},name="first",a=58,b=59,head=54,tail=54,next=65,skip_authority=true},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=8,column=11,offset=281},name="b",a=55,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=8,column=14,offset=284},name="Box",head=56,tail=57,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=8,column=18,offset=288},name="T",next=57,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=8,column=22,offset=292},name="N",skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=8,column=30,offset=300},name="T",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=8,column=33,offset=303},head=60,tail=60,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=8,column=35,offset=305},a=63,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=8,column=42,offset=312},name="b",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_field,loc=CK_Loc.{line=8,column=43,offset=313},name="items",a=61,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_index,loc=CK_Loc.{line=8,column=49,offset=319},a=62,b=64,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=8,column=50,offset=320},skip_authority=true},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=9,column=1,offset=326},name="main",b=66,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=9,column=12,offset=337},head=67,tail=73,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=14,offset=339},name="u",d=68,next=69,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=17,offset=342},name="Use",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=22,offset=347},name="x",a=70,next=73,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=27,offset=352},name="first",head=72,tail=72,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=33,offset=358},name="u",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_field,loc=CK_Loc.{line=9,column=34,offset=359},name="a",a=71,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=39,offset=364},name="y",a=74,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=44,offset=369},name="first",head=76,tail=76,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=50,offset=375},name="u",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_field,loc=CK_Loc.{line=9,column=51,offset=376},name="c",a=75,skip_authority=true}];
+  nodes:[247] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[247] CK_Type;locals:[93] CK_Local;errors:[632] CK_Error;bytes:[46584] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=false,metal=false,authority=false});
+  #assert ok==true && state[0].error_count==0 && state[0].type_count==61 && state[0].instance_count==7;
+  #assert types[21].name=="[$N] $T" && types[21].size==0 && types[21].alignment==1 && types[21].length==-18 && types[21].elem==17;
+  #assert types[24].name=="Box(int, 3)" && types[24].size==32 && types[24].alignment==8 && types[24].length==0 && types[24].elem==0;
+  #assert types[25].name=="[3] int" && types[25].size==24 && types[25].alignment==8 && types[25].length==3 && types[25].elem==11;
+  #assert types[28].name=="Box(f64, 7)" && types[28].size==64 && types[28].alignment==8 && types[28].length==0 && types[28].elem==0;
+  #assert types[29].name=="[7] f64" && types[29].size==56 && types[29].alignment==8 && types[29].length==7 && types[29].elem==7;
+  #assert types[34].name=="Box(bool, 2)" && types[34].size==16 && types[34].alignment==8 && types[34].length==0 && types[34].elem==0;
+  #assert types[35].name=="[2] bool" && types[35].size==2 && types[35].alignment==1 && types[35].length==2 && types[35].elem==2;
+  #assert types[38].name=="Box(u8, 3)" && types[38].size==16 && types[38].alignment==8 && types[38].length==0 && types[38].elem==0;
+  #assert types[39].name=="[3] u8" && types[39].size==3 && types[39].alignment==1 && types[39].length==3 && types[39].elem==12;
+  #assert types[40].name=="[2] Box(u8, 3)" && types[40].size==32 && types[40].alignment==8 && types[40].length==2 && types[40].elem==38;
+  #assert types[43].name=="Box(u8, 1073741824)" && types[43].size==1073741832 && types[43].alignment==8 && types[43].length==0 && types[43].elem==0;
+  #assert types[44].name=="[1073741824] u8" && types[44].size==1073741824 && types[44].alignment==1 && types[44].length==1073741824 && types[44].elem==12;
+  #assert types[49].name=="Box($T, $N)" && types[49].size==1 && types[49].alignment==1 && types[49].length==0 && types[49].elem==0;
+  #assert types[50].name=="[$N] $T" && types[50].size==0 && types[50].alignment==1 && types[50].length==-47 && types[50].elem==45;
+}
+// Source: "Box :: struct($T, $N) { items: [$N] $T; n: int; }\nZERO :: 0;\nNEG :: -1;\nHALF :: 1.5;\nHUGE :: 1073741825;\nWORD :: \"four\";\nCAP :: 3;\nBAD :: nowhere;\nRUN :: #run three();\nPART :: 4 + RUN;\nthree :: () -> int { return 3; }\nPair :: struct { x: int; }\nmain :: () { a: Box(int, ZERO); b: Box(int, NEG); c: Box(int, HALF); d: Box(int, HUGE); e: Box(int, WORD); f: Box(int, Pair); g: Box(int, NOPE); h: Box(int, CAP(int)); i: Box(int, BAD); j: Box(int, RUN); k: Box(int, PART); }\n"
+#test "a length argument that is not a positive integer constant is refused" {
+  initial:=[88] CK_Node.[
+    CK_Node.{skip_authority=true},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=41,skip_authority=true},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=1,column=1,offset=0},name="Box",d=3,head=5,tail=9,next=11,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=15,offset=14},name="T",next=4,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=19,offset=18},name="N",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=1,column=25,offset=24},name="items",a=6,next=9,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=1,column=32,offset=31},a=7,b=8,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=33,offset=32},name="N",skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=37,offset=36},name="T",skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=1,column=41,offset=40},name="n",a=10,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=44,offset=43},name="int",skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=2,column=1,offset=50},name="ZERO",a=12,next=13,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=9,offset=58},skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=3,column=1,offset=61},name="NEG",a=14,next=16,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_unary,loc=CK_Loc.{line=3,column=8,offset=68},a=15,op=35,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=3,column=9,offset=69},value=1,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=4,column=1,offset=72},name="HALF",a=17,next=18,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=4,column=9,offset=80},floating=4609434218613702656,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=5,column=1,offset=85},name="HUGE",a=19,next=20,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=5,column=9,offset=93},value=1073741825,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=6,column=1,offset=105},name="WORD",a=21,next=22,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_string,loc=CK_Loc.{line=6,column=9,offset=113},name="four",skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=7,column=1,offset=121},name="CAP",a=23,next=24,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=7,column=8,offset=128},value=3,skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=8,column=1,offset=131},name="BAD",a=25,next=26,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=8,column=8,offset=138},name="nowhere",skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=9,column=1,offset=147},name="RUN",a=27,next=29,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_run,loc=CK_Loc.{line=9,column=8,offset=154},a=28,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=13,offset=159},name="three",skip_authority=true},
+    CK_Node.{kind=CK_Tag.constant,loc=CK_Loc.{line=10,column=1,offset=168},name="PART",a=32,next=33,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=10,column=9,offset=176},value=4,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=10,column=13,offset=180},name="RUN",skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=10,column=11,offset=178},a=30,b=31,op=34,skip_authority=true},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=11,column=1,offset=185},name="three",a=34,b=35,next=38,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=11,column=16,offset=200},name="int",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=11,column=20,offset=204},head=36,tail=36,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=11,column=22,offset=206},a=37,skip_authority=true},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=11,column=29,offset=213},value=3,skip_authority=true},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=12,column=1,offset=218},name="Pair",head=39,tail=39,next=41,skip_authority=true},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=12,column=18,offset=235},name="x",a=40,field_index=0,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=12,column=21,offset=238},name="int",skip_authority=true},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=13,column=1,offset=245},name="main",b=42,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=13,column=12,offset=256},head=43,tail=84,skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=14,offset=258},name="a",d=44,next=47,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=17,offset=261},name="Box",head=45,tail=46,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=21,offset=265},name="int",next=46,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=26,offset=270},name="ZERO",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=33,offset=277},name="b",d=48,next=51,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=36,offset=280},name="Box",head=49,tail=50,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=40,offset=284},name="int",next=50,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=45,offset=289},name="NEG",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=51,offset=295},name="c",d=52,next=55,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=54,offset=298},name="Box",head=53,tail=54,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=58,offset=302},name="int",next=54,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=63,offset=307},name="HALF",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=70,offset=314},name="d",d=56,next=59,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=73,offset=317},name="Box",head=57,tail=58,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=77,offset=321},name="int",next=58,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=82,offset=326},name="HUGE",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=89,offset=333},name="e",d=60,next=63,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=92,offset=336},name="Box",head=61,tail=62,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=96,offset=340},name="int",next=62,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=101,offset=345},name="WORD",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=108,offset=352},name="f",d=64,next=67,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=111,offset=355},name="Box",head=65,tail=66,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=115,offset=359},name="int",next=66,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=120,offset=364},name="Pair",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=127,offset=371},name="g",d=68,next=71,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=130,offset=374},name="Box",head=69,tail=70,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=134,offset=378},name="int",next=70,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=139,offset=383},name="NOPE",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=146,offset=390},name="h",d=72,next=76,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=149,offset=393},name="Box",head=73,tail=74,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=153,offset=397},name="int",next=74,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=158,offset=402},name="CAP",head=75,tail=75,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=162,offset=406},name="int",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=169,offset=413},name="i",d=77,next=80,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=172,offset=416},name="Box",head=78,tail=79,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=176,offset=420},name="int",next=79,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=181,offset=425},name="BAD",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=187,offset=431},name="j",d=81,next=84,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=190,offset=434},name="Box",head=82,tail=83,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=194,offset=438},name="int",next=83,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=199,offset=443},name="RUN",skip_authority=true},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=13,column=205,offset=449},name="k",d=85,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=208,offset=452},name="Box",head=86,tail=87,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=212,offset=456},name="int",next=87,skip_authority=true},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=217,offset=461},name="PART",skip_authority=true}];
+  nodes:[280] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[280] CK_Type;locals:[104] CK_Local;errors:[720] CK_Error;bytes:[52912] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=false,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==12 && state[0].type_count==32 && state[0].instance_count==0;
+  #assert errors[0].code=="E0306" && errors[0].loc.line==8 && errors[0].loc.column==8 && errors[0].message=="'nowhere' is not declared" && errors[0].fix=="";
+  #assert errors[1].code=="E0357" && errors[1].loc.line==13 && errors[1].loc.column==26 && errors[1].message=="a length argument must be 1 to 1073741824" && errors[1].fix=="";
+  #assert errors[2].code=="E0357" && errors[2].loc.line==13 && errors[2].loc.column==45 && errors[2].message=="a length argument must be 1 to 1073741824" && errors[2].fix=="";
+  #assert errors[3].code=="E0350" && errors[3].loc.line==13 && errors[3].loc.column==63 && errors[3].message=="a float literal cannot become int" && errors[3].fix=="write an integer, or cast(int) a float value";
+  #assert errors[4].code=="E0357" && errors[4].loc.line==13 && errors[4].loc.column==82 && errors[4].message=="a length argument must be 1 to 1073741824" && errors[4].fix=="";
+  #assert errors[5].code=="E0357" && errors[5].loc.line==13 && errors[5].loc.column==101 && errors[5].message=="a length argument must be 1 to 1073741824" && errors[5].fix=="";
+  #assert errors[6].code=="E0368" && errors[6].loc.line==13 && errors[6].loc.column==120 && errors[6].message=="'$N' is a value parameter, not a type" && errors[6].fix=="write a type parameter as $T, and use $N only as an array length";
+  #assert errors[7].code=="E0368" && errors[7].loc.line==13 && errors[7].loc.column==139 && errors[7].message=="'$N' is a value parameter, not a type" && errors[7].fix=="write a type parameter as $T, and use $N only as an array length";
+  #assert errors[8].code=="E0368" && errors[8].loc.line==13 && errors[8].loc.column==158 && errors[8].message=="'$N' is a value parameter, not a type" && errors[8].fix=="write a type parameter as $T, and use $N only as an array length";
+  #assert errors[9].code=="E0357" && errors[9].loc.line==13 && errors[9].loc.column==181 && errors[9].message=="a length argument must be 1 to 1073741824" && errors[9].fix=="";
+  #assert errors[10].code=="E0357" && errors[10].loc.line==13 && errors[10].loc.column==199 && errors[10].message=="a length argument must be 1 to 1073741824" && errors[10].fix=="";
+  #assert errors[11].code=="E0357" && errors[11].loc.line==13 && errors[11].loc.column==217 && errors[11].message=="a length argument must be 1 to 1073741824" && errors[11].fix=="";
 }
 #test "derived unit forms intern nominal products, cancel and keep dimensionless quantity units" {
  nodes:[1024]CK_Node;types:[256]CK_Type;locals:[16]CK_Local;errors:[16]CK_Error;bytes:[32768]u8;state:[1]CK_State;

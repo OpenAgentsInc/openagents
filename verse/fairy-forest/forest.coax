@@ -19,6 +19,7 @@
 // roots wakes. All five, and the heart tree blooms: the ending. The park
 // stays open after it.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
+#load "../../coax/lib/bounded.coax";   // the blooms
 
 // The ground: a rectangle 80 cells of 3 m west to east and 354 south to
 // north, the park (verse/fairy-forest/park.coax) and the streets round it.
@@ -162,8 +163,7 @@ Forest :: struct {
   bloomed_at: [FF_PATCHES] f64;
   awake: [FF_ROOTS] bool;
   awake_at: [FF_ROOTS] f64;
-  blooms: [FF_BLOOMS] Bloom;
-  bloom_n: int;
+  blooms: [1] Bounded(Bloom, FF_BLOOMS);   // coax/lib/bounded.coax
   news: int;               // what just happened: -1 none, 0..4 a root woke, FF_NEWS_HEART the heart tree bloomed
   news_at: f64;
   heart: bool;             // the heart tree has bloomed: the ending
@@ -199,10 +199,9 @@ ff_fade_at :: (x: f32, z: f32) -> f32 {
   return most;
 }
 
+// A full set keeps the blooms it has.
 ff_bloom_add :: (f: [] Forest, x: f32, z: f32, reach: f32, now: f64) {
-  if f[0].bloom_n >= FF_BLOOMS { return; }
-  f[0].blooms[f[0].bloom_n] = Bloom.{x = x, z = z, reach = reach, began = now, on = true};
-  f[0].bloom_n += 1;
+  if !bounded_push(f[0].blooms[..], Bloom.{x = x, z = z, reach = reach, began = now, on = true}) { return; }
 }
 
 // How far a bloom has spread at `now`: eased out over FF_SPREAD seconds.
@@ -217,8 +216,7 @@ ff_bloom_radius :: (b: Bloom, now: f64) -> f32 {
 // restored() over the same circles, with the same soft 5 m edge.
 ff_restored :: (f: [] Forest, x: f32, z: f32, now: f64) -> f32 {
   best := 1 - ff_fade_at(x, z);
-  for i: 0..<f[0].bloom_n {
-    b := f[0].blooms[i];
+  for b: bounded_view(f[0].blooms[..]) {
     r := ff_bloom_radius(b, now);
     if r <= 0 { continue; }
     dx := x - b.x; dz := z - b.z;
@@ -394,8 +392,8 @@ ff_progress_count :: (f: [] Forest) -> int {
   #assert ff_restored(c[..], FF_PATCH[0], FF_PATCH[1], 100) == 1;
   #assert ff_restored(c[..], FF_ROOT[3], FF_ROOT[4], 100) == 1;
   // again: nothing doubles
-  n := c[0].bloom_n;
-  #assert ff_progress_open(c[..], b[..], 101) && c[0].bloom_n == n;
+  n := c[0].blooms[0].count;
+  #assert ff_progress_open(c[..], b[..], 101) && c[0].blooms[0].count == n;
   // another valley's, or a broken one: refused, nothing changed
   b[0] = cast(u8) (FF_PATCHES + 1);
   #assert !ff_progress_open(c[..], b[..], 102);

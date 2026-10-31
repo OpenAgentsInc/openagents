@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.44.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -555,7 +555,13 @@ E0394. Instance keys spell a length as `i` and its value
 parameter used as an array length in a field is a length, any other is a
 type. A type names an instance with an argument per parameter, `Pair(int)`,
 `Box(f64, 4)` (E0800 none given, E0801 a wrong count, E0368 a type for a
-length or a length for a type, E0803 arguments on a type that takes none). A
+length or a length for a type, E0803 arguments on a type that takes none).
+A length argument is an integer literal or, since 0.45.0, a named integer
+constant, folded while checking: `Box(f64, CAP)`, `Box(u8, lib.CAP)`, with
+`CAP :: 2 * 8` as well as `CAP :: 16`. It must be 1 to 1073741824 (E0357,
+also for a constant that is not an integer or is not known while checking),
+and an instance's key spells the value, so `Box(f64, CAP)` and `Box(f64, 16)`
+are one instance. A
 literal `Pair.{a = 1, b = 2}` deduces its instance from its fields: typed
 values bind first, then an untyped literal takes the bound type or its
 default (E0804 a parameter no field sets); a declared type such as `q:

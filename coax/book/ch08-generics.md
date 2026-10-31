@@ -408,6 +408,33 @@ Particle_Pool :: struct {
 When several element types or capacities share that representation, a
 generic struct can now replace the repeated declarations. Its fields and
 each admitted instance still go through ordinary checking and layout.
+Since 0.45.0 the named capacity can be the struct's argument, so the
+constant stays the one place the number is written:
+`Pool(Particle, PARTICLES)` is the same instance as `Pool(Particle, 4096)`.
+
+The standard library has one such struct. `coax/lib/bounded.coax` holds
+`Bounded :: struct($T, $N) { slots: [$N] $T; count: int; }` and the
+procedures over it: `bounded_push` and `bounded_pop` refuse a full or an
+empty store by returning `false` and changing nothing, `bounded_set`
+refuses a slot that isn't live, and `bounded_get` and `bounded_view` read
+the live slots. Each takes a one-element view of the caller's value, so the
+storage stays where the caller declared it:
+
+```jai
+#load "../coax/lib/bounded.coax";
+
+CANDIDATES :: 16;
+Registry :: struct { models: [1] Bounded(Model, CANDIDATES); }
+
+register :: (r: [] Registry, m: Model) -> bool {
+  return bounded_push(r[0].models[..], m);   // false when all 16 are taken
+}
+```
+
+Psionic's model registry (`psionic/lib/shadow.coax`) and the fairy
+forest's blooms (`verse/fairy-forest/forest.coax`) each carried their own
+array and count with its own capacity test; both use `Bounded` now, with
+the same observable results.
 
 ## Specialization costs something
 

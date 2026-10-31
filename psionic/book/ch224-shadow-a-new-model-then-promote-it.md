@@ -114,17 +114,15 @@ sh_register :: (r:ShRegistry,blob:[]u8)->ShRegistry {
     digest:=sh_digest(blob);length:=0;
     for i:0..<SH_NAME_MAX {if blob[i]!=0 {length=i+1;}}
     if length==0 {out.status=ShStatus.shape;return out;}
-    entries:=r.entries;
-    for e:entries[0..<r.count] {
+    for e:bounded_view(out.models[..]) {
         if e.length==length && sh_name(e,blob) {
             if !sh_same(e.digest,digest) {out.status=ShStatus.immutable;}
             return out;
         }
     }
-    if r.count==SH_MODELS_MAX {out.status=ShStatus.capacity;return out;}
     e:=ShEntry.{length=length,digest=digest};
     for i:0..<length {e.name[i]=blob[i];}
-    out.entries[r.count]=e;out.count+=1;
+    if !bounded_push(out.models[..],e) {out.status=ShStatus.capacity;}
     return out;
 }
 sh_name :: (e:ShEntry,blob:[]u8)->bool {for i:0..<e.length {if e.name[i]!=blob[i] {return false;}} return true;}
@@ -227,8 +225,8 @@ sh_activate :: (now:ShActive,r:ShRegistry,expected:int,blob:[]u8,report:ShReport
     out:=now;
     if expected!=now.version {out.status=ShStatus.version;return out;}
     digest:=sh_digest(blob);entry:=-1;
-    entries:=r.entries;
-    for e,k:entries[0..<r.count] {if sh_same(e.digest,digest) {entry=k;}}
+    models:=r.models;
+    for e,k:bounded_view(models[..]) {if sh_same(e.digest,digest) {entry=k;}}
     if entry==-1 || !sh_same(digest,approval.candidate) {out.status=ShStatus.digest;return out;}
     if report.verdict!=ShVerdict.promote || !sh_same(report.candidate,digest)
         || !sh_same(report.active,now.digest) || !sh_same(sh_report_digest(report),approval.report) {out.status=ShStatus.approval;return out;}

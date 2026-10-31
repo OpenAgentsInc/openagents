@@ -13,6 +13,25 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.45.0 — Bounded Storage Library — 2026-10-31
+
+Commit: pending
+
+- A generic struct's length argument may be a named integer constant as well
+  as a literal: `Box(f64, CAP)`, `Box(u8, lib.CAP)`, `CAP :: 2 * 8`. The
+  value is folded while checking, must be 1 to 1073741824 (E0357, also for a
+  non-integer or not-yet-known constant), and names the same instance as the
+  literal it equals. A name that is neither a constant nor a type is still
+  E0368.
+- `coax/lib/bounded.coax` (`coax.bounded`): `Bounded($T, $N)`, fixed-capacity
+  storage the caller owns, with `bounded_push`, `bounded_pop`, `bounded_get`,
+  `bounded_set`, `bounded_clear`, `bounded_view` and `bounded_full`. A full or
+  empty store and a slot that isn't live are refused with `false` and no
+  change. Psionic's model registry (`psionic/lib/shadow.coax`) and the fairy
+  forest's blooms (`verse/fairy-forest/forest.coax`) use it, with their
+  fixtures' outputs unchanged.
+- Programs that compiled before emit identical C.
+
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 
 Commit: [`d93b9cbcefc22c83c061438fc078ec23c8d0a060`](https://github.com/OpenAgentsInc/openagents/commit/d93b9cbcefc22c83c061438fc078ec23c8d0a060)

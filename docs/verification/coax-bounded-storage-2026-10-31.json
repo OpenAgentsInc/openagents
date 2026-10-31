@@ -1,0 +1,144 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-31",
+ "timezone": "America/Chicago",
+ "issue": "r4a-generic-values (#76ba): shared bounded storage used in two domains",
+ "compiler_version": "0.45.0",
+ "library": {
+  "source": "coax/lib/bounded.coax (module coax.bounded)",
+  "api": "Bounded :: struct($T, $N) { slots: [$N] $T; count: int; } with bounded_push, bounded_pop, bounded_get, bounded_set, bounded_clear, bounded_view, bounded_full over a one-element view of caller-owned storage",
+  "refusal": "push on a full store, pop on an empty one, set outside the live slots and any of the three with a count outside 0..N return false and change nothing; get and view trap on an index or count outside the live slots",
+  "checks": "9 checks, 9 passed (4 #forall over int capacity 4; u8, string and record instances held to the whole contract)",
+  "mutation": "coax mutate coax/lib/bounded.coax --library: 212 mutants, 212 killed, 0 survived",
+  "authority_note": "not #authority: loading an #authority file makes every consumer's compile run all its checks, and the fairy page's 36 checks already exceed the default 20M-step budget (E0400 in verse/terrain.coax), so the page would stop building. coax/tests/bounded.sh (run by coax/tests/run.sh) gates the checks and zero survivors instead"
+ },
+ "language_gap_fixed": {
+  "change": "0.45.0: a generic struct's length argument may be a named integer constant (Bounded(ShEntry, SH_MODELS_MAX), Box(u8, lib.CAP)), folded while checking; 1..1073741824 or E0357; same instance as the equal literal",
+  "procedure": "CK_struct_arg in coax/lib/compiler/checker.coax",
+  "checker_checks": "651 checks, 651 passed (2 new generated checks: 'named integer constants are generic struct lengths', 'a length argument that is not a positive integer constant is refused', 12 diagnostics)",
+  "checker_mutation": "focused, root-only on CK_struct_arg split into its own entry source with the rest of the checker and every check retained: 50 mutants, 50 killed, 0 survived (a first run left '||'->'&&' in the refusal test alive; the RUN/PART fixture added a constant that is an integer but not known while checking)",
+  "seed": "bootstrap/checker.c and checker.h regenerated with the released 0.43.0 compiler; the dev compiler emits the same bytes; a stage0 built from the new seed re-emits them (fixpoint) and emits the same compiler.coax C as the dev and 0.43.0 compilers"
+ },
+ "consumers": {
+  "psionic": {
+   "file": "psionic/lib/shadow.coax",
+   "before": "ShRegistry carried models: [SH_MODELS_MAX] ShEntry and count, with its own capacity test in sh_register",
+   "after": "models: [1] Bounded(ShEntry, SH_MODELS_MAX); sh_register refuses with ShStatus.capacity when bounded_push refuses",
+   "checks": "56 checks, 56 passed (47 shadow + 9 loaded bounded)",
+   "mutation": "coax mutate psionic/lib/shadow.coax --library: 1286 mutants, 1286 killed, 0 survived",
+   "example": "psionic/examples/shadow.coax output byte-identical"
+  },
+  "verse": {
+   "file": "verse/fairy-forest/forest.coax",
+   "before": "Forest carried blooms: [FF_BLOOMS] Bloom and bloom_n, with ff_bloom_add's own full test",
+   "after": "blooms: [1] Bounded(Bloom, FF_BLOOMS); ff_bloom_add keeps the set it has when bounded_push refuses; apps/openagents-web/fairy.coax reads bounded_view",
+   "page_checks": "before 136 checks, 100 passed, 36 failed; after 145 checks (9 bounded), 109 passed, the same 36 failing (pre-existing E0400 step-budget failures in verse/terrain.coax and space.coax)"
+  }
+ },
+ "fixtures": {
+  "runner": "coax/tests/bounded.sh",
+  "cases": {
+   "coax/tests/bounded/shadow.coax": "3 rounds x 20 registrations: 29 ok, 28 capacity, 3 immutable, 2 shape; stdout sha256/16 e5fa515a1a9e3cf6 before and after",
+   "psionic/examples/shadow.coax": "stdout sha256/16 33e8399a8b65dde6 before and after (coax/tests/bounded/shadow-example.expected)",
+   "coax/tests/bounded/forest.coax": "blooms patched over a grid and 40 blooms past capacity, restored f32 bits printed; 2673 lines, stdout sha256/16 93afdbb61080c086 before and after"
+  }
+ },
+ "measurements": {
+  "method": "same dev compiler on the pre-change tree (before) and the change (after); macOS /usr/bin/time -l peak RSS on a loaded host",
+  "generated_c_bytes": {
+   "psionic/lib/shadow.coax --library": [
+    116699,
+    150413
+   ],
+   "coax/tests/bounded/shadow.coax": [
+    119999,
+    153714
+   ],
+   "psionic/examples/shadow.coax": [
+    130572,
+    164431
+   ],
+   "coax/tests/bounded/forest.coax": [
+    139885,
+    172860
+   ],
+   "apps/openagents-web/fairy.coax --library": [
+    1662774,
+    1694581
+   ]
+  },
+  "c_growth_note": "about 33 KB per consumer is instances only the library's own checks create (Bounded at int/4, u8/2, string/2 and BoundedRecord/2: their layouts and procedures), emitted as unused static code; the consumers' own instance is one Bounded per element type. The C compiler drops the unused code: the release binaries below are the same size",
+  "release_binary_bytes": {
+   "coax/tests/bounded/shadow.coax": [
+    38040,
+    38040
+   ],
+   "psionic/examples/shadow.coax": [
+    56168,
+    56232
+   ],
+   "coax/tests/bounded/forest.coax": [
+    57672,
+    57560
+   ]
+  },
+  "release_binary_stripped_bytes": {
+   "coax/tests/bounded/shadow.coax": [
+    34400,
+    34400
+   ],
+   "psionic/examples/shadow.coax": [
+    51232,
+    51232
+   ],
+   "coax/tests/bounded/forest.coax": [
+    51568,
+    51552
+   ]
+  },
+  "compile_peak_rss_bytes": {
+   "psionic/lib/shadow.coax": [
+    51068928,
+    63832064
+   ],
+   "coax/tests/bounded/forest.coax": [
+    57344000,
+    86638592
+   ],
+   "apps/openagents-web/fairy.coax": [
+    479117312,
+    591659008
+   ]
+  },
+  "run_peak_rss_bytes": {
+   "coax/tests/bounded/shadow.coax": [
+    1556480,
+    1540096
+   ],
+   "psionic/examples/shadow.coax": [
+    1638400,
+    1638400
+   ],
+   "coax/tests/bounded/forest.coax": [
+    1622016,
+    1622016
+   ]
+  },
+  "evaluator_steps_shadow_47_checks": [
+   16900806,
+   16901976
+  ],
+  "steps_note": "+1170 steps (0.007%) across the 47 shadow checks: two checks call bounded_push/bounded_view instead of inline code (a registry never edits a model in place +941, activation is one compare-and-swap +229); the 45 others are identical. The 9 bounded checks add 25008 steps when loaded",
+  "page_check_steps_note": "fairy page checks that call ff_bloom_add or read blooms take a few percent more steps (bloom spreads 3967 -> 4039, Thornfall 17720 -> 18378)",
+  "peak_rss_note": "compile and check peak RSS grow with the library's checks being checked and evaluated in each consumer (shadow test 51.7 MB -> 59.9 MB; fairy page test 537 MB -> 579 MB)"
+ },
+ "corpus": {
+  "method": "every .coax outside coax/tests in the origin/main tree this change was first rebased on, before 0.44.0 (1372 sources) emitted with coax c (then --library) by the 0.43.0-era base compiler and the change, 120 s timeout each, 6 jobs",
+  "identical_c": 1179,
+  "neither_compiles_standalone_or_timed_out": 192,
+  "status_differs": [
+   "coax/lib/compiler/compiler.coax: one side hit the 120 s timeout on a loaded host; run without a timeout, the base and changed compilers emit identical compiler.coax C"
+  ],
+  "differs": 0
+ }
+}

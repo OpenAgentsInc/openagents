@@ -28,7 +28,7 @@ main :: () {
     reg:ShRegistry;b:=blob_of(v3);reg=sh_register(reg,b[..]);
     for m:models {b=blob_of(m);reg=sh_register(reg,b[..]);#assert reg.status==ShStatus.ok;}
     b=blob_of(v3);active:=ShActive.{digest=sh_digest(b[..]),version=1};
-    print("active: router-v3 (");dig(active.digest);print("), version 1; % models registered\n",reg.count);
+    print("active: router-v3 (");dig(active.digest);print("), version 1; % models registered\n",reg.models[0].count);
 
     records:[4000]ShRecord;reports:[3]ShReport;
     print("shadowed beside router-v3 on 4000 requests:\n");
@@ -43,7 +43,7 @@ main :: () {
     v4:=blob_of(models[0]);ok:=ShApproval.{candidate=reports[0].candidate,report=sh_report_digest(reports[0])};
     print("approval: router-v4 ");dig(ok.candidate);print(" with report ");dig(ok.report);print("\n");
     next:=sh_activate(active,reg,1,v4[..],reports[0],ok);#assert next.status==ShStatus.ok;
-    e:=reg.entries[next.entry];
+    e:=bounded_get(reg.models[..],next.entry);
     print("activate router-v4 expecting version 1: active is now % (",cast(string)e.name[0..<e.length]);dig(next.digest);print("), version %\n",next.version);
 
     print("refused, each leaving the active model unchanged:\n");

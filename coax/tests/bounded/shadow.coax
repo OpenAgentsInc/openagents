@@ -1,0 +1,35 @@
+// Before/after fixture for psionic/lib/shadow.coax's model registry, which
+// moved from a hand-written [SH_MODELS_MAX] ShEntry and count to
+// coax/lib/bounded.coax (r4a-generic-values). It prints only what the
+// registry's callers see: each registration's status, in an order that fills
+// it, refuses the next, repeats and changes known names, and sends bad blobs.
+#import "Basic";
+#load "../../../psionic/lib/shadow.coax";
+
+STATUS :: [7]string.["ok","shape","capacity","immutable","digest","approval","version"];
+NAMES :: "abcdefghijklmnopqrstuvwxyz";
+
+fx_try :: (r: ShRegistry, name: string, seed: u64, step: int) -> ShRegistry {
+  b: [SH_BLOB] u8;
+  m := ShModel.{name = name, skill = 0.5, weight = 0.25, seed = seed};
+  n := sh_blob(m, b[..]);
+  next := sh_register(r, b[0..<ifx n == 0 then SH_BLOB - 1 else n]);
+  print("% % % %\n", step, name, seed, STATUS[cast(int) next.status]);
+  return next;
+}
+
+main :: () {
+  r: ShRegistry;
+  step := 0;
+  for round: 0..<3 {
+    for k: 0..<20 {
+      name := NAMES[k..<k + 1 + round / 2];
+      seed := cast(u64) (ifx k % 5 == 4 && round > 0 then k + 100 else k);
+      r = fx_try(r, name, seed, step); step += 1;
+    }
+  }
+  // a blob of the wrong size, and a nameless one
+  r = fx_try(r, "", 1, step); step += 1;
+  b: [SH_BLOB] u8;
+  print("% nameless %\n", step, STATUS[cast(int) sh_register(r, b[..]).status]);
+}

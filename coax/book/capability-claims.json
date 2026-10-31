@@ -22,7 +22,7 @@
         },
         {
           "id": "generics.structs",
-          "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+          "sha256": "0b44b556f587c4da0828da2f4f4081eb455bc534a7455b00ec313569c885982d"
         },
         {
           "id": "generics.constraints",
@@ -243,7 +243,7 @@
         },
         {
           "id": "generics.structs",
-          "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+          "sha256": "0b44b556f587c4da0828da2f4f4081eb455bc534a7455b00ec313569c885982d"
         },
         {
           "id": "generics.constraints",

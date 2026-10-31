@@ -1,0 +1,193 @@
+// Fixed-capacity storage the caller owns. Bounded($T, $N) holds N slots and a
+// count; the first count slots are live. N may be a literal or a named integer
+// constant. Every operation takes a one-element view of the caller's value
+// (`b: [1] Bounded(int, 8)`, then `bounded_push(b[..], 3)`, or a
+// `[1] Bounded(T, CAP)` field reached through its owner), so the
+// storage stays where the caller put it: nothing is allocated, retained or
+// freed, and a value copy of a Bounded copies its slots. bounded_view() returns a
+// borrow of the caller's live slots that is valid until the next push, pop,
+// clear or change of count; the caller keeps the storage alive and excludes
+// concurrent conflicting access. Elements are ordinary shallow copies.
+//
+// Capacity is refused, never exceeded: push on a full store and pop on an
+// empty one return false and change nothing, and set outside the live slots
+// returns false. A count outside 0..N (a caller wrote the field) is refused
+// the same way by push, pop and set; get and view trap on it, as they trap on
+// an index outside the live slots. pop leaves the old value in its slot.
+// The procedures carry the bounded_ prefix because a local variable may not
+// share a procedure's name: callers keep locals such as view, full and set.
+// Not #authority: that would make every consumer's compile run all of its
+// checks. coax/tests/bounded.sh runs these checks and zero-survivor mutation.
+#module "coax.bounded";
+#export Bounded, bounded_push, bounded_pop, bounded_get, bounded_set, bounded_clear, bounded_view, bounded_full;
+
+Bounded :: struct($T, $N) { slots: [$N] $T; count: int; }
+
+#forall "push admits exactly N values in order and refuses the next" n: 0..<6 {
+  b: [1] Bounded(int, 4);
+  for i: 0..<n {
+    admitted := bounded_push(b[..], 10 + i);
+    #assert admitted == (i < 4);
+  }
+  live := ifx n < 4 then n else 4;
+  #assert b[0].count == live && bounded_full(b[..]) == (live == 4) && bounded_view(b[..]).count == live;
+  for i: 0..<live { #assert bounded_get(b[..], i) == 10 + i && bounded_view(b[..])[i] == 10 + i; }
+  for i: live..<4 { #assert b[0].slots[i] == 0; }
+}
+
+#forall "pop removes the last live value and refuses an empty store" n: 0..<5, k: 0..<6 {
+  b: [1] Bounded(int, 4);
+  for i: 0..<n { #assert bounded_push(b[..], 20 + i); }
+  for j: 0..<k {
+    removed := bounded_pop(b[..]);
+    #assert removed == (j < n);
+  }
+  left := ifx k < n then n - k else 0;
+  #assert b[0].count == left && !bounded_full(b[..]) == (left < 4);
+  for i: 0..<left { #assert bounded_get(b[..], i) == 20 + i; }
+  // pop leaves its slot as it was
+  for i: left..<n { #assert b[0].slots[i] == 20 + i; }
+  // and the store takes values again from the new end while it has room
+  #assert bounded_push(b[..], 99) == (left < 4) && b[0].count == (ifx left < 4 then left + 1 else 4);
+  if left < 4 { #assert bounded_get(b[..], left) == 99; }
+}
+
+#forall "set writes only live slots" n: 0..<5, at: 0..<7 {
+  i := at - 1;
+  b: [1] Bounded(int, 4);
+  for k: 0..<n { #assert bounded_push(b[..], k); }
+  wrote := bounded_set(b[..], i, 77);
+  #assert wrote == (i >= 0 && i < n) && b[0].count == n;
+  for k: 0..<4 {
+    expected := ifx k == i && k < n then 77 else ifx k < n then k else 0;
+    #assert b[0].slots[k] == expected;
+  }
+}
+
+#forall "a count outside 0..N is refused and left as it was" at: 0..<6 {
+  count := ifx at < 2 then at - 2 else at + 3;
+  b: [1] Bounded(int, 4);
+  b[0].count = count;
+  #assert !bounded_push(b[..], 5) && !bounded_pop(b[..]) && !bounded_set(b[..], 0, 5) && b[0].count == count;
+  for k: 0..<4 { #assert b[0].slots[k] == 0; }
+  #assert bounded_full(b[..]) == (count >= 4);
+  bounded_clear(b[..]);
+  #assert b[0].count == 0 && bounded_push(b[..], 5) && bounded_get(b[..], 0) == 5;
+}
+
+#test "clear empties the store and keeps its capacity" {
+  b: [1] Bounded(u8, 2);
+  #assert bounded_push(b[..], 1) && bounded_push(b[..], 2) && bounded_full(b[..]) && !bounded_push(b[..], 4);
+  bounded_clear(b[..]);
+  #assert b[0].count == 0 && bounded_view(b[..]).count == 0 && !bounded_full(b[..]) && !bounded_pop(b[..]);
+  #assert bounded_push(b[..], 255) && bounded_push(b[..], 0) && !bounded_push(b[..], 1);
+  #assert bounded_get(b[..], 0) == 255 && bounded_get(b[..], 1) == 0;
+}
+
+// Each element type is its own instance with its own code, so each one is
+// held to the whole contract: empty, full, both ends of set, a bad count.
+#test "u8 slots keep the contract" {
+  b: [1] Bounded(u8, 2);
+  #assert !bounded_pop(b[..]) && !bounded_set(b[..], 0, 1) && bounded_view(b[..]).count == 0 && !bounded_full(b[..]);
+  #assert bounded_push(b[..], 255) && !bounded_full(b[..]) && bounded_push(b[..], 0) && !bounded_push(b[..], 9) && bounded_full(b[..]) && b[0].count == 2;
+  #assert !bounded_set(b[..], -1, 1) && !bounded_set(b[..], 2, 1) && bounded_set(b[..], 0, 6) && bounded_set(b[..], 1, 7);
+  #assert bounded_get(b[..], 0) == 6 && bounded_get(b[..], 1) == 7 && bounded_view(b[..]).count == 2 && bounded_view(b[..])[0] == 6;
+  #assert bounded_pop(b[..]) && b[0].count == 1 && bounded_view(b[..]).count == 1 && bounded_pop(b[..]) && !bounded_pop(b[..]) && b[0].count == 0;
+  b[0].count = -1;
+  #assert !bounded_push(b[..], 1) && !bounded_pop(b[..]) && !bounded_set(b[..], 0, 1) && b[0].count == -1;
+  b[0].count = 3;
+  #assert !bounded_push(b[..], 1) && !bounded_pop(b[..]) && !bounded_set(b[..], 0, 1) && b[0].count == 3 && bounded_full(b[..]);
+  bounded_clear(b[..]);
+  #assert b[0].count == 0 && b[0].slots[0] == 6 && b[0].slots[1] == 7;
+}
+
+#test "string slots keep the contract" {
+  b: [1] Bounded(string, 2);
+  #assert !bounded_pop(b[..]) && !bounded_set(b[..], 0, "x") && bounded_view(b[..]).count == 0 && !bounded_full(b[..]);
+  #assert bounded_push(b[..], "a") && !bounded_full(b[..]) && bounded_push(b[..], "") && !bounded_push(b[..], "z") && bounded_full(b[..]) && b[0].count == 2;
+  #assert bounded_get(b[..], 0) == "a" && bounded_get(b[..], 1) == "";
+  #assert !bounded_set(b[..], -1, "x") && !bounded_set(b[..], 2, "x") && bounded_set(b[..], 0, "f") && bounded_set(b[..], 1, "g");
+  #assert bounded_get(b[..], 0) == "f" && bounded_get(b[..], 1) == "g" && bounded_view(b[..]).count == 2 && bounded_view(b[..])[0] == "f";
+  #assert bounded_pop(b[..]) && b[0].count == 1 && bounded_view(b[..]).count == 1 && bounded_pop(b[..]) && !bounded_pop(b[..]) && b[0].count == 0;
+  b[0].count = -1;
+  #assert !bounded_push(b[..], "x") && !bounded_pop(b[..]) && !bounded_set(b[..], 0, "x") && b[0].count == -1;
+  b[0].count = 3;
+  #assert !bounded_push(b[..], "x") && !bounded_pop(b[..]) && !bounded_set(b[..], 0, "x") && b[0].count == 3 && bounded_full(b[..]);
+  bounded_clear(b[..]);
+  #assert b[0].count == 0 && b[0].slots[0] == "f" && b[0].slots[1] == "g";
+}
+
+#test "the live view borrows the caller's slots" {
+  b: [1] Bounded(int, 4);
+  #assert bounded_push(b[..], 1) && bounded_push(b[..], 2) && bounded_push(b[..], 3);
+  v := bounded_view(b[..]);
+  v[1] = 20;
+  #assert bounded_get(b[..], 1) == 20 && v.count == 3;
+  sum := 0;
+  for x: bounded_view(b[..]) { sum += x; }
+  #assert sum == 24;
+}
+
+BoundedRecord :: struct { id: int; name: string; weight: f64; }
+
+#test "records keep the contract and are copied as values" {
+  b: [2] Bounded(BoundedRecord, 2);
+  r := BoundedRecord.{id = 7, name = "seven", weight = f64_from_bits(0x8000000000000000)};
+  q := BoundedRecord.{id = 8, name = "eight", weight = 2.5};
+  #assert !bounded_pop(b[0..<1]) && !bounded_set(b[0..<1], 0, q) && bounded_view(b[0..<1]).count == 0 && !bounded_full(b[0..<1]);
+  #assert bounded_push(b[0..<1], r) && !bounded_full(b[0..<1]) && bounded_push(b[0..<1], q) && !bounded_push(b[0..<1], r) && bounded_full(b[0..<1]);
+  #assert b[0].count == 2 && b[1].count == 0;
+  r.id = 70;
+  got := bounded_get(b[0..<1], 0);
+  #assert got.id == 7 && got.name == "seven" && f64_bits(got.weight) == 0x8000000000000000;
+  #assert bounded_view(b[0..<1]).count == 2 && bounded_view(b[0..<1])[1].id == 8;
+  // a value copy of the store copies its slots
+  b[1] = b[0];
+  #assert !bounded_set(b[1..<2], -1, r) && !bounded_set(b[1..<2], 2, r) && bounded_set(b[1..<2], 0, q) && bounded_set(b[1..<2], 1, r);
+  #assert bounded_get(b[0..<1], 0).id == 7 && bounded_get(b[0..<1], 1).id == 8 && bounded_get(b[1..<2], 0).id == 8 && bounded_get(b[1..<2], 1).id == 70;
+  #assert bounded_pop(b[1..<2]) && b[1].count == 1 && b[0].count == 2 && bounded_pop(b[1..<2]) && !bounded_pop(b[1..<2]) && b[1].count == 0;
+  b[1].count = -1;
+  #assert !bounded_push(b[1..<2], r) && !bounded_pop(b[1..<2]) && !bounded_set(b[1..<2], 0, r) && b[1].count == -1;
+  b[1].count = 3;
+  #assert !bounded_push(b[1..<2], r) && !bounded_pop(b[1..<2]) && !bounded_set(b[1..<2], 0, r) && b[1].count == 3 && bounded_full(b[1..<2]);
+  bounded_clear(b[1..<2]);
+  #assert b[1].count == 0 && b[0].count == 2 && b[1].slots[1].id == 70;
+}
+
+bounded_push :: (b: [] Bounded($T, $N), value: $T) -> bool {
+  n := b[0].count;
+  if n < 0 || n >= b[0].slots[..].count { return false; }
+  b[0].slots[n] = value;
+  b[0].count = n + 1;
+  return true;
+}
+
+bounded_pop :: (b: [] Bounded($T, $N)) -> bool {
+  n := b[0].count;
+  if n <= 0 || n > b[0].slots[..].count { return false; }
+  b[0].count = n - 1;
+  return true;
+}
+
+bounded_get :: (b: [] Bounded($T, $N), i: int) -> $T {
+  return b[0].slots[0..<b[0].count][i];
+}
+
+bounded_set :: (b: [] Bounded($T, $N), i: int, value: $T) -> bool {
+  n := b[0].count;
+  if i < 0 || i >= n || n > b[0].slots[..].count { return false; }
+  b[0].slots[i] = value;
+  return true;
+}
+
+bounded_clear :: (b: [] Bounded($T, $N)) {
+  b[0].count = 0;
+}
+
+bounded_view :: (b: [] Bounded($T, $N)) -> [] $T {
+  return b[0].slots[0..<b[0].count];
+}
+
+bounded_full :: (b: [] Bounded($T, $N)) -> bool {
+  return b[0].count >= b[0].slots[..].count;
+}

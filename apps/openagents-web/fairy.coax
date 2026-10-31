@@ -1803,13 +1803,12 @@ paths :: (u: [] f32) {
 
 blooms :: (s: [] Fairy, u: [] f32) {
   f := s[0].forest[..];
-  for i: 0..<f[0].bloom_n {
-    b := f[0].blooms[i];
+  for b, i: bounded_view(f[0].blooms[..]) {
     k := U_BLOOM + i * 4;
     u[k] = b.x; u[k + 1] = b.z; u[k + 2] = ff_bloom_radius(b, s[0].time);
     u[k + 3] = clamp01(1 - cast(f32) (s[0].time - b.began) / 4.0);   // a bright front while it spreads
   }
-  u[U_BLOOM_INFO] = f32(f[0].bloom_n);
+  u[U_BLOOM_INFO] = f32(f[0].blooms[0].count);
 }
 
 // ---- play

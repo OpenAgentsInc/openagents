@@ -16,6 +16,7 @@ and [network notes](lib/net/README.md) describe the larger systems.
 | Selected entry | Current use and boundary | Native link inputs |
 | --- | --- | --- |
 | [`coax.sequence`](lib/sequence.coax): `swap`, `reverse` | Small generic procedures over caller-owned mutable views; used by Verse's pass formatting and Psionic's HTTP buffer rotation | Generated C; no platform shim |
+| [`coax.bounded`](lib/bounded.coax): `Bounded`, `bounded_push`, `bounded_pop`, `bounded_get`, `bounded_set`, `bounded_clear`, `bounded_view`, `bounded_full` | Fixed-capacity storage with explicit refusal, in caller-owned storage; used by Psionic's model registry and Verse's fairy-forest blooms | Generated C; no platform shim |
 | [`verse.hud`](../verse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coaxial consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
 | [URI syntax](lib/net/uri.coax) and [WebSocket framing](lib/net/ws.coax): `uri_parse`, `ws_frame_write`, `ws_frame_read` | Pure bounded protocol pieces; transport and authentication are separate consumers | Generated C; WebSocket's loaded SHA-1 source is included; no socket/TLS shim for these functions |
 | [Tool JSON](lib/json/json.coax): selected `jv_*` reads and `jo_*` writes | Caller-owned node tree and output buffer, used by Coax tools | Generated C; no platform shim |
@@ -28,6 +29,34 @@ extend a native result to every Wasm, Metal, CUDA, SPIR-V or WGSL target.
 `#export` controls Coax module visibility; `#export_c` is a separate C ABI
 choice. Several older libraries still use a flat `#load` graph, so an index
 entry alone does not create a namespace or private boundary.
+
+## Bounded storage
+
+**Maturity and targets:** new experimental shared helper, adopted by two real
+repository consumers in two domains. It supplies no GPU implementation or
+general target promise.
+**Verification:** `coax/bin/coax test coax/lib/bounded.coax --library` and
+`coax/bin/coax mutate coax/lib/bounded.coax --library` (zero survivors), and `coax/tests/bounded.sh`, which compares the consumers'
+fixtures with the outputs recorded before they moved
+([record](../docs/verification/coax-bounded-storage-2026-10-31.json)).
+
+Load `lib/bounded.coax` and declare a `Bounded(T, N)` where it should live:
+a local `b: [1] Bounded(int, 8)` or a field `xs: [1] Bounded(T, CAP)`. N is
+a literal or a named integer constant. Every procedure takes a one-element
+view of that value (`b[..]`, `owner[0].xs[..]`). The logical module is
+`coax.bounded`; the procedures carry the `bounded_` prefix because a local
+variable may not share a procedure's name.
+
+`bounded_push(b, v)` appends and returns `true`, or returns `false` and
+changes nothing when the store is full. `bounded_pop(b)` removes the last
+live value (its slot keeps the old bytes) or returns `false` when empty.
+`bounded_set(b, i, v)` writes a live slot or returns `false`.
+`bounded_get(b, i)` and `bounded_view(b)` read the live slots; an index
+outside them, or a `count` outside `0..N` that a caller wrote, is an
+ordinary bounds trap there and a refusal in push, pop and set.
+`bounded_clear` and `bounded_full` do what they say. Nothing is allocated,
+retained or freed; the view `bounded_view` returns borrows the caller's
+slots until the next change. A value copy of a `Bounded` copies its slots.
 
 ## Mutable sequences
 

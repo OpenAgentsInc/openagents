@@ -1,0 +1,35 @@
+// Before/after fixture for verse/fairy-forest/forest.coax's blooms, which
+// moved from a hand-written [FF_BLOOMS] Bloom and count to coax/lib/bounded.coax
+// (r4a-generic-values). It blooms every patch, then adds blooms past the
+// capacity, and prints what a caller can observe: the restored colour on a
+// grid over each patch at several times, and the blooms the page draws.
+#import "Basic";
+#load "../../../verse/camera.coax";
+#load "../../../verse/terrain.coax";
+#load "../../../verse/fairy-forest/forest.coax";
+
+fx_print :: (f: [] Forest, now: f64) {
+  sum := 0.0;
+  for p: 0..<FF_PATCHES {
+    for dx: 0..<5 { for dz: 0..<5 {
+      x := FF_PATCH[p * 4] + f32(dx * 4 - 8); z := FF_PATCH[p * 4 + 1] + f32(dz * 4 - 8);
+      v := ff_restored(f, x, z, now);
+      sum += f64(v);
+      print("% % % %\n", now, x, z, f32_bits(v));
+    }}
+  }
+  print("sum % %\n", now, f64_bits(sum));
+}
+
+main :: () {
+  f: [1] Forest; f[0].news = -1;
+  for p: 0..<FF_PATCHES { if !ff_bloom(f[..], p, f64(p) * 0.5) { print("refused %\n", p); } }
+  if ff_bloom(f[..], 3, 9) { print("bloomed twice\n"); }
+  // past the capacity: the first FF_BLOOMS are kept, the rest refused
+  for k: 0..<40 { ff_bloom_add(f[..], f32(k), f32(-k), 9, 2 + f64(k)); }
+  for t: 0..<6 { fx_print(f[..], f64(t) * 1.5); }
+  fx_print(f[..], 60);
+  // each extra bloom's centre: restored only where its bloom was kept
+  for k: 0..<40 { print("extra % %\n", k, f32_bits(ff_restored(f[..], f32(k), f32(-k), 60))); }
+  print("progress %\n", ff_progress_count(f[..]));
+}
