@@ -58,6 +58,8 @@ Shape :: struct {
   ear_size: f32 = 1; // 0.5 .. 1.8
   tail: f32 = 1;     // 0 .. 1.8: no tail to a long one
   fluff: f32 = 1;    // 0.5 .. 2: the tail's thickness
+  tail_curl: f32 = 0; // 0 .. 1: a tail held straight out, to curled up over the back
+  ruff: f32 = 0;      // 0 .. 1: a smooth chest, to a full ruff of fur on it
   coat: Fv = Fv.{x = 0.55, y = 0.36, z = 0.2};    // linear red, green, blue
   marks: Fv = Fv.{x = 0.92, y = 0.88, z = 0.82};  // the pattern's colour
   pattern: int;      // PATTERN_*
@@ -192,6 +194,8 @@ verse_figure_shape_fix :: (s: Shape) -> Shape #export_c {
   if !colour_ok(r.marks) { r.marks = fv(0.92, 0.88, 0.82); }
   if r.pattern < 0 || r.pattern >= PATTERNS { r.pattern = PATTERN_PLAIN; }
   if r.look != LOOK_SOFT { r.look = LOOK_LIT; }
+  r.tail_curl = ifx finite(r.tail_curl) then clamp(r.tail_curl, 0, 1) else 0;
+  r.ruff = ifx finite(r.ruff) then clamp(r.ruff, 0, 1) else 0;
   return r;
 }
 
@@ -348,9 +352,11 @@ animal :: (s: Shape) -> Skeleton {
     k = rig_joint(k, hind + 4, hind + 3, fv(0, 0, 0.055 * z));
   }
   k = rig_joint(k, A_TAIL, A_PELVIS, fv(0, 0.03 * z, -0.08 * z));
-  k = rig_joint(k, A_TAIL_2, A_TAIL, fv(0, 0.05 * t, -0.1 * t));
-  k = rig_joint(k, A_TAIL_3, A_TAIL_2, fv(0, 0.04 * t, -0.1 * t));
-  k = rig_joint(k, A_TAIL_TIP, A_TAIL_3, fv(0, 0.02 * t, -0.09 * t));
+  // a curled tail rises and turns forward over the back
+  c := s.tail_curl;
+  k = rig_joint(k, A_TAIL_2, A_TAIL, fv(0, (0.05 + 0.05 * c) * t, (-0.1 + 0.04 * c) * t));
+  k = rig_joint(k, A_TAIL_3, A_TAIL_2, fv(0, (0.04 + 0.06 * c) * t, (-0.1 + 0.12 * c) * t));
+  k = rig_joint(k, A_TAIL_TIP, A_TAIL_3, fv(0, (0.02 - 0.02 * c) * t, (-0.09 + 0.18 * c) * t));
 
   k = rig_bone(k, A_PELVIS, A_SPINE, 0.105 * g, 0.115 * g, REGION_BODY);
   k = rig_bone(k, A_SPINE, A_CHEST, 0.115 * g, 0.125 * g, REGION_BODY);
@@ -367,6 +373,8 @@ animal :: (s: Shape) -> Skeleton {
     k = rig_bone(k, A_TAIL_2, A_TAIL_3, 0.03 * f, 0.025 * f, REGION_TAIL);
     k = rig_bone(k, A_TAIL_3, A_TAIL_TIP, 0.025 * f, 0.01 * f, REGION_TAIL);
   }
+  // a ruff: fur standing out on the chest and the front of the neck
+  if s.ruff > 0.05 { k = rig_bone(k, A_CHEST, A_NECK, (0.11 + 0.06 * s.ruff) * g, (0.075 + 0.015 * s.ruff) * g, REGION_BODY); }
   for leg: 0..<4 {
     top := A_LF + leg * 5;
     hind := leg >= 2;

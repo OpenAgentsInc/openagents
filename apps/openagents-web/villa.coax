@@ -1036,9 +1036,11 @@ figures :: (s: [] Villa, u: [] f32) {
       if !finite3(a) || !finite3(b) { continue; }
       look := ifx glowing then LOOK_GLOW else LOOK_SHADOW;
       red := 0.01f32; green := 0.012f32; blue := 0.02f32;
-      if glowing {   // white light, a little of your pet's coat in it
-        coat := s[0].pet[0].coat;
-        red = 0.72 + 0.28 * coat[0]; green = 0.75 + 0.25 * coat[1]; blue = 0.8 + 0.2 * coat[2];
+      if glowing {   // white light with your pet's coat in it, and its markings where its pattern puts them
+        // its light and dark read strongly, its hue softly: a spirit's colours, never a bright one
+        c := dog_colour(s[0].pet[..], region, i, n);
+        l := 0.3 * c.x + 0.55 * c.y + 0.15 * c.z;
+        red = 0.3 + 0.7 * (l + (c.x - l) * 0.45); green = 0.3 + 0.7 * (l + (c.y - l) * 0.45); blue = 0.32 + 0.68 * (l + (c.z - l) * 0.45);
       }
       if glowing && (region == REGION_EYE || region == REGION_NOSE) { look = LOOK_EYE; red = 0.05; green = 0.07; blue = 0.12; }
       puff := ifx glowing then 1.0f32 else 1.45f32;   // you: a soft, puffed wisp of a figure
@@ -1046,8 +1048,54 @@ figures :: (s: [] Villa, u: [] f32) {
       ball(s, look, a, ra * puff, red, green, blue);
       ball(s, look, b, rb * puff, red, green, blue);
     }
+    if glowing { dog_collar(s, f, n); }
     k := f * 4;
     shadow_cast(s, s[0].bound[k], s[0].bound[k + 2], ifx glowing then 0.32f32 else 0.28f32, ifx glowing then 0.8f32 else 1.6f32, ifx glowing then 0.3f32 else 0.45f32);
+  }
+}
+
+// A dog's bone in its coat or its markings' colour. Its bones come in the rig's order
+// (verse/figure.coax animal): the back's two, the chest's, the neck's, the muzzle, the nose,
+// the eyes, the ears, the tail's, a ruff, then four to a leg (front left, front right, hind
+// left, hind right: the top, two below it, the paw), the legs always last.
+dog_colour :: (p: [] PetUi, region: int, i: int, n: int) -> Point {
+  coat := v3(p[0].coat[0], p[0].coat[1], p[0].coat[2]);
+  marks := v3(p[0].marks[0], p[0].marks[1], p[0].marks[2]);
+  return ifx dog_marked(p[0].pattern, region, i, n) then marks else coat;
+}
+dog_marked :: (pattern: int, region: int, i: int, n: int) -> bool {
+  leg := i - (n - 16); lg := ifx leg >= 0 then leg / 4 else -1; seg := ifx leg >= 0 then leg % 4 else -1;
+  ear := region == 3; left_ear := ear && i % 2 == 0;
+  back := leg < 0 && region == 0 && i <= 1; chest := leg < 0 && region == 0 && i >= 2;
+  if pattern == 1 { return i == 0 || left_ear || (lg == 3 && seg == 0); }                          // patches
+  if pattern == 2 { return ear || region == 2 || region == 4 || seg >= 1; }                          // points
+  if pattern == 3 { return i == 1 || i == 3 || seg == 0 || (region == 4 && i % 2 == 1); }             // stripes
+  if pattern == 4 { return seg >= 2; }                                                               // socks
+  if pattern == 5 { return i == 0 || (ear && !left_ear) || (lg == 0 && seg == 0) || (lg == 3 && seg == 1); }   // spots
+  if pattern == 6 { return back; }                                                                   // saddle
+  if pattern == 7 { return region == 1 || region == 2 || ear; }                                      // mask
+  if pattern == 8 { return region == 2 || chest; }                           // blaze: muzzle to chest
+  return false;
+}
+
+// A collar of coloured light round the dog's neck, and its tag under it.
+dog_collar :: (s: [] Villa, f: int, n: int) {
+  p := s[0].pet[..];
+  c := p[0].collar;
+  if c <= 0 || c >= COLLARS || n < 4 { return; }
+  o := (f * FIG_BONES + 3) * BONE_FLOATS;   // the neck's bone: the neck's joint to the head
+  a := v3(s[0].bones[o], s[0].bones[o + 1], s[0].bones[o + 2]);
+  b := v3(s[0].bones[o + 4], s[0].bones[o + 5], s[0].bones[o + 6]);
+  r := (s[0].bones[o + 3] - 1000 * floor(s[0].bones[o + 3] / 1000) + s[0].bones[o + 7]) * 0.5 * 1.3;
+  if !finite3(a) || !finite3(b) || length(sub(b, a)) < 0.002 { return; }
+  d := unit_or(sub(b, a), v3(0, 1, 0));
+  at := add(a, times(sub(b, a), 0.5));
+  w := hi(r * 0.25, 0.008);
+  limb(s, SHAPE_CYLINDER, LOOK_GLOW, sub(at, times(d, w)), add(at, times(d, w)), r, COLLAR_RGB[c * 3], COLLAR_RGB[c * 3 + 1], COLLAR_RGB[c * 3 + 2]);
+  if p[0].tag {
+    // under the collar on the throat's side: away from the back of the neck
+    down := unit_or(sub(v3(0, -1, 0), times(d, dot(v3(0, -1, 0), d))), v3(0, -1, 0));
+    ball(s, LOOK_GLOW, add(at, times(down, r * 1.05)), hi(r * 0.28, 0.012), 0.82, 0.84, 0.9);
   }
 }
 
@@ -1273,9 +1321,48 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
         plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
       }
     }
+    n = dog_name(s, out, u, n);
   } else { s[0].pet[0].buttons = 0; }
   u[5] = f32(s[0].plate_n);
   return n;
+}
+
+// Your dog's name glows over its head: placed where the camera sees it, smaller and
+// fainter as it walks off (gone past 24 m), never over the HUD's plates or off the screen.
+DOG_NAME_FAR :: 24.0;
+dog_name :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
+  p := s[0].pet[..];
+  if !p[0].has || p[0].text_n[PF_NAME] <= 0 || s[0].bone_n[1] <= 0 || in_space(s) { return n; }
+  at := v3(s[0].bound[4], s[0].bound[5] + s[0].bound[7] * 0.9 + 0.12, s[0].bound[6]);
+  if !finite3(at) { return n; }
+  d := length(sub(at, s[0].shot.eye));
+  a := clamp((f32(DOG_NAME_FAR) - d) / 8, 0, 1);
+  if a <= 0.02 { return n; }
+  cx := u[U_VIEW] * at.x + u[U_VIEW + 1] * at.y + u[U_VIEW + 2] * at.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * at.x + u[U_VIEW + 5] * at.y + u[U_VIEW + 6] * at.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * at.x + u[U_VIEW + 13] * at.y + u[U_VIEW + 14] * at.z + u[U_VIEW + 15];
+  if !(cw > 0.3) { return n; }
+  w := s[0].width; h := s[0].height; k := hi(s[0].dpr, 0.5);
+  x := (cx / cw * 0.5 + 0.5) * w; y := (1 - cy / cw) * 0.5 * h;
+  // the name in capitals, as the HUD writes, at most 24 letters
+  t: [24] u8; tn := 0;
+  name := pet_field(p, PF_NAME);
+  for i: 0..<name.count { if tn < 24 { c := name[i]; t[tn] = ifx c >= 'a' && c <= 'z' then c - 32 else c; tn += 1; } }
+  text := cast(string) t[0..<tn];
+  cap := clamp(60 * k / hi(d, 1), 9 * k, 15 * k);
+  tw := text_width(text, cap);
+  b := Box.{x0 = x - tw / 2 - 6 * k, y0 = y - cap - 6 * k, x1 = x + tw / 2 + 6 * k, y1 = y + 6 * k};
+  if b.x0 < 0 || b.x1 > w || b.y0 < 0 || b.y1 > h { return n; }
+  for i: 0..<s[0].plate_n {
+    o := U_PLATE + i * 8;
+    if b.x1 > u[o] && b.x0 < u[o + 2] && b.y1 > u[o + 1] && b.y0 < u[o + 3] { return n; }
+  }
+  // a soft glow of the coat's light round crisp pale letters
+  coat := p[0].coat;
+  glow := ink(k, 0.55 * a, 0.75 + 0.25 * coat[0], 0.8 + 0.2 * coat[1], 0.9 + 0.1 * coat[2]);
+  glow.core = 2.4 * k; glow.glow = 9 * k;
+  m := draw_text(out, n, text, x - tw / 2, y, cap, GAP, SPACE, glow, false, true);
+  return draw_text(out, m, text, x - tw / 2, y, cap, GAP, SPACE, ink(k, 0.95 * a, 0.97, 0.97, 1.0), false, true);
 }
 
 villa_draws :: (s: [] Villa) -> int #export_c { return DRAWS; }
@@ -1643,4 +1730,93 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   // an emote the agent is still writing doesn't hold the vase up: it has a channel of its own
   p[0].asks = ASK_EMOTE | ASK_VASE;
   #assert villa_pet_next_in(s[..], false) == ASK_VASE && villa_pet_next_in(s[..], true) == ASK_EMOTE;
+}
+
+#test "your dog's name glows over its head, fades far off and keeps off the HUD" {
+  s: [1] Villa;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].still = true;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  p := s[0].pet[..];
+  dx := f32(SPAWN_X) + 1.2; dz := f32(SPAWN_Z) + 2.5;
+  s[0].bound[4] = dx; s[0].bound[5] = 0.4; s[0].bound[6] = dz; s[0].bound[7] = 0.45; s[0].bone_n[1] = 20;
+  none := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert dog_name(s[..], out[..], u[..], 0) == 0;   // no pet yet: no name
+  p[0].has = true;
+  nm := "Biscuit";
+  for i: 0..<nm.count { p[0].text[PF_NAME * FIELD_BYTES + i] = nm[i]; }
+  p[0].text_n[PF_NAME] = nm.count;
+  n := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert n > none;
+  // on a phone too
+  #assert villa_draw(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, false, 0, 0, 0, 0) > 0;
+  #assert dog_name(s[..], out[..], u[..], 0) > 0;
+  // far off it's gone
+  s[0].bound[4] = dx + 60;
+  far := villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0);
+  #assert far < n;
+  #assert dog_name(s[..], out[..], u[..], 0) == 0;
+}
+
+#test "a dog's details (markings, ears, tail, chest, collar and tag) are kept with it and drawn" {
+  s: [1] Villa;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].still = true;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  p := s[0].pet[..];
+  p[0].has = true; p[0].view = PV_PET; p[0].tab = 2;
+  // the DETAILS tab, pressed as a person does, on a phone: every control is on the panel
+  wants := [10] int.[B_PATTERN, 7, B_EARS, 1, B_TAIL, 2, B_COLLAR, 2, B_TAG, 0];
+  for w: 0..<5 {
+    drawn := villa_draw(s[..], out[..], u[..], 390, 844, 1, false, 0, 0, 0, 0);
+    #assert drawn > 0;
+    at := -1;
+    for b: 0..<p[0].buttons { if p[0].button_kind[b] == wants[w * 2] && p[0].button_arg[b] == wants[w * 2 + 1] { at = b; } }
+    #assert at >= 0 && p[0].button[at].y1 <= pet_panel_box(s[..]).y1;
+    bx := p[0].button[at];
+    #assert villa_pointer(s[..], (bx.x0 + bx.x1) / 2, (bx.y0 + bx.y1) / 2, 0, 0, 1);
+    up := villa_pointer(s[..], (bx.x0 + bx.x1) / 2, (bx.y0 + bx.y1) / 2, 2, 0, 1);
+    #assert up;
+  }
+  p[0].chest = 0.8;
+  #assert p[0].pattern == 7 && abs(p[0].avatar[6] - 0.55) < 0.001 && p[0].tail_shape == 2 && p[0].collar == 2 && p[0].tag && p[0].look_new;
+  p[0].view = PV_NONE;
+  body: [8192] u8;
+  bn := pet_body(p, ASK_SAVE, body[..]);
+  #assert bn > 0;
+  t := cast(string) body[0..<bn];
+  // the server answers the avatar as kept: the same words come back
+  q: [1] Villa;
+  qp := q[0].pet[..];
+  pet_start(qp);
+  answer: [9000] u8; an := 0;
+  head := "{\"id\": \"q-0123456789abcdef\", \"slug\": \"ab12cd34\", \"agent\": \"ready\", \"avatar\": ";
+  for i: 0..<head.count { answer[an] = head[i]; an += 1; }
+  av := pj_get(t, pj_space(t, 0), "avatar");
+  e := pj_end(t, av);
+  for i: av..<e { answer[an] = t[i]; an += 1; }
+  answer[an] = '}'; an += 1;
+  pet_take(qp, cast(string) answer[0..<an], true);
+  #assert qp[0].pattern == 7 && qp[0].tail_shape == 2 && abs(qp[0].chest - 0.8) < 0.01 && qp[0].collar == 2 && qp[0].tag && abs(qp[0].avatar[6] - 0.55) < 0.01;
+  // each layout marks different bones (a dog with a tail and a ruff: 30 bones)
+  for a: 0..<PATTERNS_ALL { for b: a + 1..<PATTERNS_ALL {
+    differ := false;
+    for i: 0..<30 { r := ifx i == 4 then 2 else ifx i >= 8 && i < 10 then 3 else ifx i >= 10 && i < 13 then 4 else ifx i == 3 then 1 else 0;
+      if dog_marked(a, r, i, 30) != dog_marked(b, r, i, 30) { differ = true; } }
+    #assert differ;
+  } }
+  // the collar and its tag are drawn round the neck
+  s[0].bone_n[1] = 30;
+  for i: 0..<30 { o := (FIG_BONES + i) * BONE_FLOATS;
+    s[0].bones[o] = 0; s[0].bones[o + 1] = 0.5 + f32(i) * 0.01; s[0].bones[o + 2] = f32(SPAWN_Z) + 2; s[0].bones[o + 3] = 0.05;
+    s[0].bones[o + 4] = 0; s[0].bones[o + 5] = 0.6 + f32(i) * 0.01; s[0].bones[o + 6] = f32(SPAWN_Z) + 2; s[0].bones[o + 7] = 0.05; }
+  drawn := [3] int.[0, 0, 0];
+  for c: 0..<3 {
+    if c == 1 { p[0].tag = false; } if c == 2 { p[0].collar = 0; }
+    #assert villa_draw(s[..], out[..], u[..], 1280, 800, 1, false, 0, 0, 0, 0) > 0;
+    drawn[c] = s[0].counts[SHAPE_BALL] + s[0].counts[SHAPE_CYLINDER];
+  }
+  #assert drawn[0] == drawn[1] + 1 && drawn[1] == drawn[2] + 1;
 }

@@ -120,6 +120,21 @@ vf_set :: (f: [] Figs, i: int, dog: bool, numbers: [] f32, pattern: int, cr: f32
   f[0].figs[i].skel = verse_figure_skeleton(s);
 }
 
+// A dog's details past its build (after vf_set): its tail's shape (0 straight, 1 a plume:
+// raised and bushy, 2 curled over the back) and the fur on its chest (0 .. 1).
+VF_TAIL_STRAIGHT :: 0; VF_TAIL_PLUME :: 1; VF_TAIL_CURL :: 2;
+vf_dress :: (f: [] Figs, i: int, tail: int, ruff: f32) #export_c {
+  if i < 0 || i >= VF_FIGS { return; }
+  s := f[0].figs[i].shape;
+  if s.rig != Rig.animal { return; }
+  s.tail_curl = ifx tail == VF_TAIL_CURL then 1.0f32 else ifx tail == VF_TAIL_PLUME then 0.35f32 else 0.0f32;
+  if tail == VF_TAIL_PLUME { s.fluff = s.fluff * 1.6; }
+  s.ruff = ruff;
+  s = verse_figure_shape_fix(s);
+  f[0].figs[i].shape = s;
+  f[0].figs[i].skel = verse_figure_skeleton(s);
+}
+
 // The gait for a speed (metres a second).
 gait_for_speed :: (s: Shape, speed: f32) -> Gait {
   if !(speed > 0.15) { return Gait.stand; }
@@ -341,4 +356,21 @@ vf_low :: (f: [] Figs, i: int, bones: [] f32, n: int, rump: bool) -> f32 {
     n := vf_place(f[..], 1, 0, 0, 0, 0, bones[..], bound[..]);
     #assert vf_low(f[..], 1, bones[..], n, true) > 0.05;
   }
+}
+
+#test "a dog's tail shape and fluffy chest change its body" {
+  f: [1] Figs;
+  numbers := [10] f32.[1, 1, 1, 1, 1, 1, 0, 1, 1, 1];
+  vf_set(f[..], 1, true, numbers[..], PATTERN_PLAIN, 0.6, 0.4, 0.2, 0.9, 0.9, 0.9);
+  plain := f[0].figs[1].skel;
+  vf_dress(f[..], 1, VF_TAIL_CURL, 0.8);
+  curl := f[0].figs[1].skel;
+  #assert curl.parts == plain.parts + 1;   // the ruff
+  // the curled tail's tip is higher and further forward (toward the head, +z) than the straight one's
+  #assert curl.offset[A_TAIL_TIP].z > plain.offset[A_TAIL_TIP].z && curl.offset[A_TAIL_3].y > plain.offset[A_TAIL_3].y;
+  vf_dress(f[..], 1, VF_TAIL_PLUME, 0);
+  plume := f[0].figs[1].skel;
+  #assert plume.parts == plain.parts && f[0].figs[1].shape.fluff > 1.5;
+  vf_dress(f[..], 1, VF_TAIL_STRAIGHT, 0);
+  #assert f[0].figs[1].shape.tail_curl == 0;
 }

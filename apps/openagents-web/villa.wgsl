@@ -352,7 +352,8 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
   }
   // What glows: the dog's light, one flat cream.
   if (s.look == 5u || s.look == 7u) {
-    let c = mix(pal(P_LIGHT), s.tint, 0.25) * select(1.15, 1.6, s.look == 7u);
+    // the dog's own colours (its coat, markings and collar) show through its light
+    let c = mix(pal(P_LIGHT), s.tint, select(0.8, 0.25, s.look == 7u)) * select(1.15, 1.6, s.look == 7u);
     return Lit(vec4f(mix(c, pal(P_HORIZON), fade * 0.35), select(0.35, 0.9, s.look == 7u)), vec4f(smooth_n, -d));
   }
   // The planet, seen in the flight: two flat tones and its land in flat patches.

@@ -14,6 +14,7 @@
 typedef struct { void *data; int64_t count; } figs_view;
 void vf_start(figs_view f);
 void vf_set(figs_view f, int64_t i, _Bool dog, coax_v_f32 numbers, int64_t pattern, float cr, float cg, float cb, float mr, float mg, float mb);
+void vf_dress(figs_view f, int64_t i, int64_t tail, float ruff);
 void vf_tick(figs_view f, float dt);
 void vf_step(figs_view f, int64_t i, float speed, float dt);
 int64_t vf_place(figs_view f, int64_t i, float x, float y, float z, float yaw, coax_v_f32 out, coax_v_f32 bound);
@@ -125,6 +126,7 @@ static void pet_look(uint32_t state) {
   if (!p->look_new) return;
   p->look_new = false;
   vf_set(fv(), 1, true, (coax_v_f32){p->avatar.e, 10}, p->pattern, p->coat.e[0], p->coat.e[1], p->coat.e[2], p->marks.e[0], p->marks.e[1], p->marks.e[2]);
+  vf_dress(fv(), 1, p->tail_shape, p->chest);
 }
 
 // An action the panel asked for, handed to the host (in the press, for the file picker).
