@@ -103,6 +103,8 @@ dc_of :: (s: [] Stair, k: int, base: int) -> int { return ifx s[0].party[k].leve
 LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
 LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
+CLASS_PAD :: 14;   // a class button's text keeps this far (in CSS px) from its right edge
+
 // ---- the waves: up to three groups each (layer, count, seconds between, delay)
 WAVES :: 10;
 GROUPS :: 3;
@@ -2062,7 +2064,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   for b: B_FIGHTER..<B_LAST_CLASS + 1 {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
-    room := r.x1 - r.x0 - (r.y1 - r.y0) * 0.8 - 8 * k;
+    room := r.x1 - r.x0 - (r.y1 - r.y0) * 0.8 - CLASS_PAD * k;   // clear of the bevelled corner
     while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 7 * k { cnc -= 0.5 * k; }
     m = put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
     while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 6 * k { ccc -= 0.5 * k; }
@@ -2080,7 +2082,6 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
       bh := r.y1 - r.y0;
       tx := r.x0 + bh * 0.8;
-      room := r.x1 - tx - 8 * k;
       nc := cnc;
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
       m = put_int(buf[..], 0, s[0].ct[0].cost[cls]); m = put(buf[..], m, " GOLD");

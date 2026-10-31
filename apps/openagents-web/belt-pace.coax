@@ -1,0 +1,25 @@
+// Belt 2200's economy over four game years, natively: three ships on MINE ICE, re-ordered whenever
+// one sits idle at home, printing Hearth's metal, ice and reaction mass each quarter:
+//   coax/bin/coax c apps/openagents-web/belt-pace.coax --release > /tmp/p.c
+//   clang -std=c11 -O2 -Icoax/platform -o /tmp/p /tmp/p.c coax/platform/process-native.c -lm && /tmp/p
+// 2026-10-31: about 1,500 t of metal a year; the first freighter's 600 t on day 170 (under six
+// real seconds at 30 D/S, three minutes at 1 D/S); the yard's three freighters paid for in two years.
+#import "Basic";
+#load "belt.coax";
+main :: () {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
+  verse_command_only(s[0].cmd[..], 0); verse_command_toggle(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 3);
+  mine_order(s[..]);
+  t0 := s[0].t;
+  first := -1.0; trips := 0;
+  for d: 0..<1460 {
+    s[0].t += DAY; step_ships(s[..], DAY);
+    // a player who keeps re-ordering MINE ICE whenever a miner sits idle at home
+    for k: 0..<s[0].ship_n { if s[0].ships[k].faction == FREE_BELT && s[0].ships[k].cargo_cap > 0.0 && s[0].ships[k].mode == PARKED && s[0].ships[k].work == WORK_NONE { verse_command_only(s[0].cmd[..], k); mine_order(s[..]); if s[0].dest >= 0 { go(s[..], true); } } }
+    if first < 0.0 && s[0].station[0].metal >= FREIGHTER_METAL { first = f64(d); }
+    if d % 91 == 0 { print("day % metal % ice % mass %\n", d, s[0].station[0].metal, s[0].station[0].ice, s[0].station[0].mass); }
+  }
+  print("first freighter's metal on day %\n", first);
+}

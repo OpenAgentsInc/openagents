@@ -567,6 +567,23 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "b22-metal-uses",
+      "parent": "b22-economy",
+      "title": "Something to build with metal after the yard is full",
+      "size": "M",
+      "labels": [],
+      "body": "Measured with apps/openagents-web/belt-pace.coax: three ships on MINE ICE bring Hearth about 1,500 t of metal a year. The yard's three freighters (600 t each) are paid for within two years, and after that metal only piles up (43,000 t after a long game). Give it uses: more yard slots, rigs, armour or point defense for KITE, or a station ring that houses more workers.",
+      "files": [
+        "apps/openagents-web/belt.coax",
+        "apps/openagents-web/belt-station.coax"
+      ],
+      "acceptance": [
+        "In belt-pace, metal four years in is under 2,000 t for a player who builds what it offers"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
