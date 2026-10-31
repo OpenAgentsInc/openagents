@@ -57,7 +57,7 @@ book's structure/claim gate before reading credentials or contacting GitBook.
 
 ## Publish the books
 
-One publisher serves the three books written in Coax. Each has its own
+One publisher serves the three books written in Coax. Each book has its own
 GitBook space and site under openagents.gitbook.io:
 
 | `--book` | Source | Space | Public book | Gate |
@@ -87,10 +87,11 @@ Existing page IDs and URLs remain; new sections (`## X` or `**X**` lines)
 become overview pages because the authoring API does not create Git Sync's
 navigation-only groups. Missing pages are inserted first, so every relative
 book link becomes a stable page reference; pages then move into SUMMARY
-order. For Psionic and Aethyr, a page no longer in SUMMARY is deleted (a
-renamed chapter gets its new URL), a link to another book's README goes to
-that book's public URL, and any other repository link goes to the file at
-the published commit on GitHub. The Coax book never loses a page. The script
+order. For Psionic and Aethyr, the publisher deletes a page that SUMMARY no
+longer lists, so a renamed chapter gets a new URL. A link to another book's
+README goes to that book's public URL. Any other repository link goes to the
+file at the published commit on GitHub. The publisher never deletes a Coax
+book page. The script
 verifies the draft inventory and merged revision. It does not change
 visibility, create a site or export content back into Git.
 

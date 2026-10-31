@@ -32,14 +32,14 @@ release builds on:
 
 ## Books
 
-Three books, each built chapter by chapter from checked code:
+Read our three books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
 - [**Psionic**](https://openagents.gitbook.io/building-psionic-in-coax):
   the machine-learning and execution engine, built in Coax.
 - [**Aethyr**](https://openagents.gitbook.io/building-aethyr-in-coax):
-  the game engine the Verse's realms run on, built in Coax.
+  the game engine that runs the Verse's realms, built in Coax.
 
 ## What we're building
 
