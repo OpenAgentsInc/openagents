@@ -30,6 +30,17 @@ release builds on:
 - **openagents.com**, drawn in Coax in the browser;
 - **native desktop and iOS apps**.
 
+## Books
+
+Three books, each built chapter by chapter from checked code:
+
+- [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
+  the language.
+- [**Psionic**](https://openagents.gitbook.io/building-psionic-in-coax):
+  the machine-learning and execution engine, built in Coax.
+- [**Aethyr**](https://openagents.gitbook.io/building-aethyr-in-coax):
+  the game engine the Verse's realms run on, built in Coax.
+
 ## What we're building
 
 - **Coax** ([`coax/`](coax/README.md)) is a systems language for real-time

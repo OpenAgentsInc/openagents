@@ -53,9 +53,18 @@ python3 psionic/tests/book.py
 
 These are maintenance checks, not compiler/app runtime dependencies. They never
 rewrite prose or bless new evidence automatically. The publisher runs the
-Coax structure/claim gate before reading credentials or contacting GitBook.
+book's structure/claim gate before reading credentials or contacting GitBook.
 
-## Publish the existing book
+## Publish the books
+
+One publisher serves the three books written in Coax. Each has its own
+GitBook space and site under openagents.gitbook.io:
+
+| `--book` | Source | Space | Public book | Gate |
+|---|---|---|---|---|
+| `coax` (default) | `coax/book/` | `sZhQ0yptSOKMneBDWMti` | <https://openagents.gitbook.io/the-coax-programming-language> | `scripts/coax-release.sh --check` and `coax/book/check-structure.py` |
+| `psionic` | `psionic/book/` | `Sha9csfX5lAIHvjiIheN` | <https://openagents.gitbook.io/building-psionic-in-coax> | `psionic/tests/book.py` |
+| `aethyr` | `aethyr/book/` | `QxVdkZGgQYnLsXWZlkTh` | <https://openagents.gitbook.io/building-aethyr-in-coax> | `psionic/tests/book.py --book aethyr` |
 
 Commit the reviewed changes, rebase on `origin/main`, run any checks affected
 by the rebase and push. The existing GitBook space can import the pushed
@@ -63,6 +72,8 @@ repository without setting up Git Sync or creating a second site:
 
 ```sh
 python3 scripts/publish-coax-book.py --token-file /absolute/path/to/gitbook.env
+python3 scripts/publish-coax-book.py --book psionic --token-file /absolute/path/to/gitbook.env
+python3 scripts/publish-coax-book.py --book aethyr --token-file /absolute/path/to/gitbook.env
 ```
 
 Alternatively set `GITBOOK_TOKEN` in the process environment. Never commit a
@@ -71,12 +82,17 @@ one `GITBOOK_TOKEN=...` assignment; the script does not execute the file.
 
 The publisher checks that the worktree is clean and HEAD equals remote main,
 checks the existing space's identity, creates a GitBook draft and publishes
-the SUMMARY page inventory atomically. Existing page IDs and URLs remain; new
-sections become overview pages because the authoring API does not create
-Git Sync's navigation-only groups. Relative book links become stable page
-references, including links to newly inserted pages. The script verifies the
-draft inventory and merged revision. It does not change visibility, create a
-site or export content back into Git.
+the SUMMARY page inventory in one draft that is merged only after it checks.
+Existing page IDs and URLs remain; new sections (`## X` or `**X**` lines)
+become overview pages because the authoring API does not create Git Sync's
+navigation-only groups. Missing pages are inserted first, so every relative
+book link becomes a stable page reference; pages then move into SUMMARY
+order. For Psionic and Aethyr, a page no longer in SUMMARY is deleted (a
+renamed chapter gets its new URL), a link to another book's README goes to
+that book's public URL, and any other repository link goes to the file at
+the published commit on GitHub. The Coax book never loses a page. The script
+verifies the draft inventory and merged revision. It does not change
+visibility, create a site or export content back into Git.
 
 An API error or timeout is not success. Inspect the printed draft before
 retrying; `--change-request ID` resumes that draft for the same source commit.
