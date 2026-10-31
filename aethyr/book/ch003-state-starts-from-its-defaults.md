@@ -6,36 +6,43 @@
 > and [aethyr/loop.coax](../loop.coax)'s clock is safe when it was never
 > constructed.
 
-On 2026-10-31 Orbit League ran without gravity for about two and a half
-hours: its state declared `spin_g: f64 = 1.0`, the native build applied it,
-and the browser read `0` because WebAssembly memory starts zeroed. A realm's
-state is a value the engine constructs, and the same construction must happen
-on every host, before the first step, with nothing left to chance.
+On 2026-10-31, Orbit League ran without gravity for about two and a half
+hours. Its state declared `spin_g: f64 = 1.0`. The native build applied that
+default, but the browser read `0`, because WebAssembly memory starts as
+zeros.
+
+This chapter shows how Aethyr constructs a realm's state the same way on
+every host before the first step.
 
 ## What this chapter teaches
 
 - What a declared default is, and where Coax applies it.
-- Why zeroed memory is not a constructed value.
-- One construction on native and browser hosts, from the compiler's own
-  initializers.
-- Comparing initial states byte for byte, and checking that the comparison
-  is sharp.
+- Why zeroed memory isn't a constructed value.
+- How native and browser hosts use the same compiler-generated initializers.
+- How to compare initial states byte for byte, and how to confirm that the
+  comparison detects a missing default.
 
 ## The method
 
-A realm's state type `T` has, for each field, either a declared default or
-the type's zero. Construction is a function of the type alone:
+Each field of a realm's state type `T` has either a declared default or the
+zero value of its type. Construction depends only on the type:
 
 ```jai
 init(T) = T.{ f₁ = default₁ or zero(f₁), …, fₙ = defaultₙ or zero(fₙ) }
 state   = init(T)          // before any step, on every host
 ```
 
-Natively, `s: [1] T` runs it: the compiler emits `static T coax_init_t_T(void)`
-for each struct with a default and calls it. The walking controller's state
-leans on defaults: it stands on the ground, its camera sits 4.4 m out behind
-and above, its pace and grip are one, and its clock (chapter 1) has its step,
-clamp and cap.
+In a native build, the declaration `s: [1] T` constructs the state. For
+each struct that has a default, the compiler emits
+`static T coax_init_t_T(void)` and calls it.
+
+The walking controller's state uses several defaults:
+
+- `on_ground` is `true`.
+- The camera starts 4.4 m behind and above the player.
+- `pace` and `grip` are `1`.
+- The clock from [chapter 1](ch001-a-frame-has-a-fixed-step.md) has its step,
+  clamp, and step limit set.
 
 <!-- source: verse/player.coax state -->
 ```jai
@@ -76,33 +83,41 @@ Player :: struct {
 }
 ```
 
-In the browser the host allocates the state in the module's memory, which is
-zeroed, and hands it to the engine. Every default there reads as zero: the
-player starts in the air with its camera at the target, and a clock with no
-step. So the host now constructs it too, with the compiler's own initializers:
+In the browser, the host allocates the state in the module's memory. That
+memory starts as zeros, so every default reads as zero: the player starts in
+the air, the camera sits on its target, and the clock has no step. To fix
+this, the browser host also runs the compiler's initializers:
 
-- The build runs `coax/web/defaults.py` over the generated C. It gives each
-  `coax_init_t_T` the face's state needs a public name and writes a wrapper
-  unit that exports `coaxial_state_init(state)`, which writes every defaulted
-  part of a fresh state, and `coaxial_state_default(i)`, where the `i`-th
-  defaulted part sits, for the check. A constructor run by `_initialize`
-  defaults the face's Coax globals (the player, the thumbs).
-- [coax/web/host.js](../../coax/web/host.js) calls `coaxial_state_init` on a
-  fresh state, before the first frame.
+1. The build runs `coax/web/defaults.py` over the generated C. The script
+   exports two functions:
+   - `coaxial_state_init(state)` writes every defaulted field of a new state.
+   - `coaxial_state_default(i)` returns the location of the `i`-th defaulted
+     field. The check uses it.
 
-The code that constructs is the compiler's, the same on both hosts: nothing
-restates a default by hand.
+   A constructor that `_initialize` runs also sets the defaults of the
+   module's Coax globals, such as the player and the thumb controls.
+2. [`coax/web/host.js`](../../coax/web/host.js) calls `coaxial_state_init` on
+   the new state before the first frame.
 
-## A clock that can't freeze
+Both hosts run the same compiler-generated code. No default is copied by
+hand.
 
-A value that is constructed in one place can still be read from memory that
-wasn't, by a host that predates the export or a state restored from old
-bytes. The clock is the piece whose zero is worst: a zero clamp counts every
-frame as no time, so nothing ever steps. `loop_accept_ns` takes the declared
-default for a step, clamp or cap that is zero or negative
-([chapter 1's listing](ch001-a-frame-has-a-fixed-step.md#the-clock)).
-[aethyr/examples/state-defaults.coax](../examples/state-defaults.coax) shows
-both:
+## Keep the clock running with zeroed fields
+
+A state can still contain zeros in two cases:
+
+- An older host doesn't call `coaxial_state_init`.
+- A state is restored from bytes saved before a field existed.
+
+A zeroed clock causes the worst failure. With a clamp of zero, every frame
+counts as no time, so the simulation never steps. To prevent this,
+`loop_accept_ns` replaces a step, clamp, or step limit that is zero or
+negative with its declared default. For the code, see
+[the clock listing in chapter 1](ch001-a-frame-has-a-fixed-step.md#the-clock).
+
+The following example,
+[`aethyr/examples/state-defaults.coax`](../examples/state-defaults.coax),
+prints a constructed player and then runs a zeroed clock:
 
 <!-- source: aethyr/examples/state-defaults.coax example -->
 ```jai
@@ -143,20 +158,19 @@ a 3 s stall on the zeroed clock: steps 8, overlong 1
 
 ## The check
 
-`coax/web/state-defaults.test.ts` boots every engine
-`apps/openagents-web/build.sh` makes, and the Grid, the way the browser
-does: a zeroed state above the module's data, then `coaxial_state_init`. For
-each defaulted part it compares the bytes with native `coax_init` of that
-type, compiled as its own C program: the oracle is the compiler's native
-output, independent of the browser path. A difference names the realm, the
-type, the member and the first byte that differs.
+`coax/web/state-defaults.test.ts` starts every engine that
+`apps/openagents-web/build.sh` builds, plus the Grid, the same way the
+browser does. It allocates a zeroed state and calls `coaxial_state_init`.
+Then, for each defaulted field, it compares the bytes with the output of the
+native `coax_init` for that type, compiled as a separate C program. If the
+bytes differ, the test reports the realm, type, field, and first differing
+byte.
 
-A check that compares a value with itself passes for any value, so this one
-also proves it is sharp: each engine is booted again without
-`coaxial_state_init`, and its zeroed state must differ from native somewhere,
-or the realm fails as "a zeroed state passes the comparison". Every defaulted
-state has at least one non-zero default, so a realm that skipped its defaults
-can't pass.
+The test also confirms that the comparison can fail. It starts each engine a
+second time without calling `coaxial_state_init`. The zeroed state must
+differ from the native state; if it doesn't, the test fails with "a zeroed
+state passes the comparison". Every state with defaults has at least one
+non-zero default, so a realm that skips its defaults fails.
 
 ```shell
 apps/openagents-web/build.sh
@@ -169,25 +183,30 @@ bun test coax/web/state-defaults.test.ts
 | Of those, caught when left zeroed | 16 |
 | Run time | 202 s |
 
-The 16 are Belt, Dead Gears, Everglade, Fairy Forest, Garden, Ice Cream Man,
-Memorial, Orbit League, Hold the Stair, the villa and the pages with state
-defaults; a realm with no declared defaults has nothing to apply. The face's
-globals are defaulted by the constructor but not yet compared byte for byte.
+The 16 states come from Belt, Dead Gears, Everglade, Fairy Forest, Garden,
+Ice Cream Man, Memorial, Orbit League, Hold the Stair, the villa, and the
+pages that declare state defaults. Realms with no declared defaults aren't
+included.
+
+The constructor sets the defaults of the module's globals, but the test
+doesn't compare them byte for byte yet.
 
 ## Still to do
 
-Replay (chapter 5) needs more than defaults: a digest of the constructed
-state, and of the state after a realm's deterministic setup with a fixed
-seed, identical on both hosts. That digest is recorded at the start of every
-session record, so it lands with `ec-replay`. The host's `?.` still lets an
-engine without the export start zeroed; with every realm built by the same
-`build.sh` step that writes it, the realm migration makes the call
-unconditional ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
+- Replay ([chapter 5](ch005-replay-a-session-exactly.md)) needs a digest of
+  the constructed state and of the state after a realm's setup with a fixed
+  seed. Both hosts must produce the same digest. Each session record starts
+  with this digest, so it lands with `ec-replay`.
+- The host calls `coaxial_state_init` with `?.`, so an engine without the
+  export still starts with zeros. After every realm is built by the same
+  `build.sh` step, the realm migration makes the call unconditional. For
+  details, see [chapter 64](ch064-every-realm-runs-on-aethyr.md).
 
 ## Dependencies
 
-[Chapter 1](ch001-a-frame-has-a-fixed-step.md) (the first step runs after
-construction). From Coax: struct defaults
+- [Chapter 1](ch001-a-frame-has-a-fixed-step.md): the first step runs after
+  construction.
+- From Coax: struct defaults
 ([Coax chapter 5](../../coax/book/ch05-structs-enums-unions.md)), memory
 ([Coax chapter 6](../../coax/book/ch06-memory.md)), targets
 ([Coax chapter 21](../../coax/book/ch21-targets.md)), and R16 snapshots

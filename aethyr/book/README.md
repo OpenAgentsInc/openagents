@@ -38,6 +38,18 @@ runnable programs in `aethyr/examples/` with exact transcripts.
 
 Chapters 1–3 are written; every other chapter is a design draft.
 
+## Writing style
+
+Write chapters to the
+[Google developer documentation style guide](https://developers.google.com/style):
+
+- Use short, plain sentences in active voice and present tense.
+- Address the reader as "you".
+- Say what the code does and what was measured. Don't use metaphors,
+  personification, or literary phrasing.
+- Use numbered lists for steps and bulleted lists for related items.
+- Use code font for code, file names, and identifiers.
+
 ## Checking the book
 
 Commands run from the repository root.
