@@ -1,0 +1,11 @@
+// NEW consumer check only; the actual FK source and helpers stay unchanged.
+#load "../../../psionic/lib/robotics/panda-fk-chain.coax";
+#test "Panda source spatial token keeps independently known zero-angle geometry" {
+ words:[208]f64;pfs_sample(words[..]);
+ #assert abs(words[144]+0.662)<2e-12 && abs(words[145])<2e-12 && abs(words[146]-1.8385)<2e-12;
+ #assert abs(words[192]+0.662)<2e-12 && abs(words[193])<2e-12 && abs(words[194]-1.7415)<2e-12;
+}
+pfs_sample :: (words:[]f64) #export_c {
+ #assert words.count==208;q:[7]pfku.Quantity(pfku.Radian,f64);out:[1]PfkOutput;#assert pfk_forward(q[..],out[..])==PfkStatus.ok;
+ for i:0..<13 {pose:=out[0].grip;if i<12 {pose=out[0].links[i];}words[i*16]=pose.position.x;words[i*16+1]=pose.position.y;words[i*16+2]=pose.position.z;for j:0..<4 {words[i*16+3+j]=pose.quaternion[j];}for j:0..<9 {words[i*16+7+j]=pose.rotation[j];}}
+}

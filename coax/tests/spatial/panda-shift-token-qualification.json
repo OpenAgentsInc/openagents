@@ -1,0 +1,323 @@
+{
+  "schema": "coax.panda-spatial-token.native.v1",
+  "passed": true,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "atol_frozen_before_execution": 2e-12,
+  "rtol": 0,
+  "sources_sha256": {
+    "coax/tests/panda-spatial-token-native.cpp": "a93687266d27bfe7d8d7dfb4f6385276d42feca0891b1b7751791543ff79fd59",
+    "coax/tests/panda-spatial-token-oracle.c": "6922537a4f4ed0965b72cf7ea0b773c7d8883074ae586c3ed950472b7d0eb900",
+    "coax/tests/panda_spatial_token_native.py": "4aca23f094e462d9fc2b16b359461e46fd52c507f4178f351815ca5bddf431aa",
+    "coax/tests/spatial/panda-shift-consumer.coax": "2a4cb197511b297ca80bbb1d232912805294a27ae663f6d99d35210a733ec43f",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+  },
+  "frontend_sources_sha256": {
+    "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+    "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "coax/bootstrap/checker.c": "72649db1819083bbcf8cb9be87b75ce2979acacc8d9775b60377bdec99dd8e3e",
+    "coax/bootstrap/checker.h": "76c2e599032a37035c718a9ac1afd50ba7828ca6a1340bd890f04c1a23492632",
+    "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+    "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+    "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "coax/bootstrap/parser.c": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+    "coax/bootstrap/parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+    "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+    "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+    "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+    "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+    "coax/lib/compiler/checker.coax": "0eb708c6b55e02928e9c1780963540f4ce1b7a6f421280baea168e6de56a8765",
+    "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+    "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+    "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+    "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+    "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+    "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+    "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+    "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+    "coax/lib/compiler/parser.coax": "b3ad8dc998257b29d005da4dae6eddfc126f53cde4699954a287167afbde0c11",
+    "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+    "coax/lib/compiler/provenance.coax": "1f021275b37151ff515174e1f42d7f081f03608638c03379c6dd4f952ee78456",
+    "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+    "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+    "coax/src/check.cpp": "c48644ab420ff007bf40b35cb79f3bd87d4a3863e8e44643938880437407db08",
+    "coax/src/coax.h": "9af5fa202e6ae8cb0b17363643621a91d86c3cf81faee03ff4124a6a7cff203c",
+    "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+    "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+    "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+    "coax/src/errors.cpp": "932a825cc155c8d35f259f55032d49b159def3889f84a892dfa32e0feb2049cb",
+    "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+    "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+    "coax/src/main.cpp": "1cda1bd0180618c74259710e052ac3314686303933c2847d5f10c73ba80b2207",
+    "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+    "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+    "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+    "coax/src/release.h": "f793c0ce6f37125aade7801630dd09d0b2da7e9b16058752cd066ce0b45cd65a",
+    "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+    "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+    "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+    "coax/src/verify.cpp": "4acf6a716b9458160a6eb7ebc5c132c089d1cbdb495dace8fadbb0a06215f73a"
+  },
+  "frontend_binary_sha256": "2574f258ead62da03a7ff7b2a2f2a6752d90b798b8d3f6d6dc93d17da32f68ea",
+  "frontend_inputs_sha256": {
+    "proto_importer.o": "72ce2a4b3b1af6f1c6ffc9adecf87bd2f6bd46a2d0960812beefdabe64aaf683",
+    "proto_importer.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+    "proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+  },
+  "profiles": [
+    {
+      "mode": "debug",
+      "variant": "baseline",
+      "binary_sha256": "f359f4e301cfc562a49fd2d9a322da4fcf626af3a7b6f923d7819bbe4f3cc178",
+      "output_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    },
+    {
+      "mode": "debug",
+      "variant": "mutant",
+      "binary_sha256": "a666bf4ebf1de600b97b59497c4c73506381faf855b12ce682ead0f26c2333c0",
+      "output_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    },
+    {
+      "mode": "optimized",
+      "variant": "baseline",
+      "binary_sha256": "38d9580a01ce8074b58f197b05c72489a83832303197dc8ccdf2138ca946ce57",
+      "output_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    },
+    {
+      "mode": "optimized",
+      "variant": "mutant",
+      "binary_sha256": "08c29a0d77c06e67b1a9d925c8d4cbcb667cae01d8e90fe71f79a58c0af7c0aa",
+      "output_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "baseline",
+      "binary_sha256": "5877c10f1ac825d2df39c1efb581c7420911653c7df0329e2e0282b8341bc7dc",
+      "output_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    },
+    {
+      "mode": "asan-ubsan",
+      "variant": "mutant",
+      "binary_sha256": "9e1d4ac755c18de7245f8f705b5f735e75c0bd754e251fa071aa6bc2340bdd60",
+      "output_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "output_words": 208,
+      "native_assertions": 217,
+      "independent_endpoint_comparisons": 6
+    }
+  ],
+  "commands": [
+    {
+      "name": "apply-emit-check-undo",
+      "exit_status": 0,
+      "stdout_sha256": "6aa3f0eb5a2652e89b40c85e7723c9cd369259717f29b48ad5970d011d7cafd2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-debug-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-debug-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-optimized-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-optimized-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-optimized-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-optimized-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-asan-ubsan-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-asan-ubsan-baseline",
+      "exit_status": 0,
+      "stdout_sha256": "c0f287df4cd44ed4e484f10ef9a6e2f61d04f0a12c09d392c1e8b06af7fdea92",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "build-asan-ubsan-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-asan-ubsan-mutant",
+      "exit_status": 0,
+      "stdout_sha256": "c2872bba43a948520cd9100904451e9b38a5fc7121298590f295e98ba6291039",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    }
+  ],
+  "scope": "Exactly one actual Mutator spatial-token site in unchanged dependency pfk_shift; only the NEW consumer check executes. Ordinary sites and old dependency checks are not executed. C++ seam does compiler effects only; independent zero-angle C endpoint constants plus source-derived position-negation/unchanged-attitude relations. No old numeric/SDK/NN or 195/281 mutation runs; no full compiler release qualification.",
+  "prepared_unity_reused": true,
+  "unity_binary_sha256": "22ab564530e0a99058bd7a2f46dd7239a328048aecf8e28a6abde5158c261e05",
+  "actual_mutation": {
+    "schema": "coax.panda-spatial-token.emission.v1",
+    "passed": true,
+    "owner": "pfk_shift",
+    "selected_spatial_mutants": 1,
+    "killed": 1,
+    "survived": 0,
+    "unexecuted_nonspatial_target_sites": 36,
+    "old_dependency_checks_executed": 0,
+    "new_check_cases": 1,
+    "new_check_baseline_steps": 16519,
+    "new_check_mutant_steps": 16480,
+    "source_line": 51,
+    "source_column": 230,
+    "snapshot_expressions": 2179,
+    "snapshot_statements": 359,
+    "snapshot_procedures": 17,
+    "site_local_callee_only": true,
+    "shared_helpers_unchanged": true,
+    "undo_c_header_exact": true
+  },
+  "emitted_sha256": {
+    "baseline": {
+      "c": "f19472421ccbcb72d5dc426072608f519963695ca8ec58974ecd0137a148fc47",
+      "h": "e72140d327071ed68178b2a533ed5b5af736883a0e1d92da6b0a51b4d9f23aab"
+    },
+    "mutant": {
+      "c": "5a92925d68431fc8265525b10c12674417c4ab67f2028226ec7d8aa74b39dc53",
+      "h": "e72140d327071ed68178b2a533ed5b5af736883a0e1d92da6b0a51b4d9f23aab"
+    }
+  },
+  "position_negation": {
+    "comparisons": 117,
+    "max_abs_error": 0.0,
+    "atol": 2e-12,
+    "changed_coordinate_values_per_profile": [
+      35,
+      35,
+      35
+    ],
+    "passed": true
+  },
+  "unchanged_attitude": {
+    "quaternion_and_matrix_words": 507,
+    "byte_exact": true,
+    "passed": true
+  },
+  "native_observed_words": 1248,
+  "native_independent_endpoint_comparisons": 36,
+  "cross_profile_bytes_identical": true,
+  "duration_seconds": 4.720223834039643,
+  "executed_private_record_sha256": "e51c31725b77027d9570076a6f2c1df6876816ae3973de69c67b784b506360ca",
+  "prepared_unity_build": {
+    "binary_sha256": "22ab564530e0a99058bd7a2f46dd7239a328048aecf8e28a6abde5158c261e05",
+    "stderr_bytes": 0,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "CXX": "c++",
+    "flags": [
+      "-std=c++20",
+      "-O1",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Wno-missing-field-initializers"
+    ],
+    "linked_graph_object_sha256": "72ce2a4b3b1af6f1c6ffc9adecf87bd2f6bd46a2d0960812beefdabe64aaf683"
+  },
+  "normal_reconstruction_static_binding": {
+    "passed": true,
+    "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+    "reconstruction_receipt_sha256": "9bf3a2f6f5ca371d4a452042da5e383ea905c9d8398013e78cecfc9507e569c3",
+    "identical_frontend_source_inventory": true,
+    "byte_identical_graph_inputs": {
+      "proto_importer.c": "305f96b2b4e51cc529ff479a6f53efe98e212abffba1c6eb60f2fffce445f788",
+      "proto_importer.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+      "proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+    },
+    "private_graph_object_sha256": "72ce2a4b3b1af6f1c6ffc9adecf87bd2f6bd46a2d0960812beefdabe64aaf683",
+    "normal_graph_object_sha256": "fb122fdb411c67a92dd3aaa5d3b66f55184a875c2655109084a44dba261f2b8f",
+    "objects_or_binaries_claimed_identical": false,
+    "method": "Read-only carry through exact frozen C++/bootstrap/Coax frontend source inventory and byte-identical generated graph C/header/runtime inputs. Original emitted baseline/mutant C/header identities above are retained. No new normal-binary emission, native run, VM check or mutation run is claimed or repeated."
+  },
+  "frontend_binary_role": "Private frontend build context anchor only. Compiler frontend/Mutator/evaluator/emitter execute inside the separately hash-bound unity probe; standalone coax is not invoked in this witness."
+}
