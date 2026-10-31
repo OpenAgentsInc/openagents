@@ -1,0 +1,170 @@
+// Command-line arguments for Coax tools: a copy of argv (program name
+// dropped) and the readings our tools make of it. Pure: args-native.coax
+// fills an Args from the host (coax/platform/tool-native.c) and prints usage.
+//   a: [1] Args; if !args_load(a[..]) { ... }
+//   url := args_at(a[..], 0);                       // positional, by raw index
+//   size := args_value(a[..], "--size", "1280x720"); // the word after the flag
+//   keep := args_has(a[..], "--frames");
+// A flag's value is the word after its first occurrence, as written; the
+// tools parse numbers with args_number (JavaScript Number() on plain
+// decimals) and sizes with args_size.
+#authority;
+
+ARGS_MAX :: 256;          // arguments kept
+ARGS_BYTES :: 131072;     // their bytes, together
+Args :: struct {
+  bytes: [ARGS_BYTES] u8; used: int;
+  v: [ARGS_MAX] string; n: int;
+  full: bool;             // an argument did not fit and was dropped
+}
+
+#test "arguments copy in, read by index, flag and value" {
+  a: [1] Args;
+  #assert args_add(a[..], "http://x/") && args_add(a[..], "out.mp4") && args_add(a[..], "--size") && args_add(a[..], "64x32");
+  #assert args_add(a[..], "--frames") && args_add(a[..], "dir") && args_add(a[..], "--size") && args_add(a[..], "1x1");
+  #assert args_count(a[..]) == 8 && args_at(a[..], 0) == "http://x/" && args_at(a[..], 1) == "out.mp4";
+  #assert args_at(a[..], 8) == "" && args_at(a[..], -1) == "";
+  #assert args_value(a[..], "--size", "z") == "64x32" && args_value(a[..], "--seconds", "3") == "3";
+  #assert args_has(a[..], "--frames") && !args_has(a[..], "--eval") && args_value(a[..], "--frames", "") == "dir";
+  #assert args_find(a[..], "--size") == 2 && args_find(a[..], "--nope") == -1;
+  b: [1] Args;
+  #assert args_add(b[..], "x") && args_add(b[..], "--eval");
+  // a flag at the end has no value: the fallback
+  #assert args_value(b[..], "--eval", "none") == "none" && args_has(b[..], "--eval");
+  #assert args_add(b[..], "") && args_at(b[..], 2) == "" && args_count(b[..]) == 3;
+}
+#test "arguments past the limits are dropped and flagged" {
+  a: [1] Args;
+  big: [ARGS_BYTES] u8;
+  for i: 0..<ARGS_BYTES { big[i] = 'x'; }
+  #assert args_add(a[..], cast(string) big[0..<ARGS_BYTES - 1]) && !a[0].full;
+  #assert args_add(a[..], "y") && a[0].used == ARGS_BYTES;
+  #assert !args_add(a[..], "z") && a[0].full && args_count(a[..]) == 2;
+  b: [1] Args;
+  for i: 0..<ARGS_MAX { #assert args_add(b[..], ""); }
+  #assert !args_add(b[..], "") && b[0].full && args_count(b[..]) == ARGS_MAX;
+}
+// Appends one argument; false (and full set) when it does not fit.
+args_add :: (a: [] Args, s: string) -> bool {
+  if a[0].n >= ARGS_MAX || a[0].used + s.count > ARGS_BYTES { a[0].full = true; return false; }
+  at := a[0].used;
+  for i: 0..<s.count { a[0].bytes[at + i] = s[i]; }
+  a[0].used = at + s.count;
+  a[0].v[a[0].n] = cast(string) a[0].bytes[at..<at + s.count];
+  a[0].n += 1;
+  return true;
+}
+args_count :: (a: [] Args) -> int { return a[0].n; }
+// Argument i (0 is the first after the program name), or "".
+args_at :: (a: [] Args, i: int) -> string {
+  if i < 0 || i >= a[0].n { return ""; }
+  return a[0].v[i];
+}
+// The index of the first argument equal to name, or -1.
+args_find :: (a: [] Args, name: string) -> int {
+  for i: 0..<a[0].n { if a[0].v[i] == name { return i; } }
+  return -1;
+}
+args_has :: (a: [] Args, name: string) -> bool { return args_find(a, name) >= 0; }
+// The word after name's first occurrence, or fallback when name is absent or last.
+args_value :: (a: [] Args, name: string, fallback: string) -> string {
+  i := args_find(a, name);
+  if i < 0 || i + 1 >= a[0].n { return fallback; }
+  return a[0].v[i + 1];
+}
+
+// ---- numbers -----------------------------------------------------------
+
+ArgsNumber :: struct { ok: bool; value: f64; }
+#test "numbers: what Number() gives for plain decimals" {
+  #assert args_number("3").ok && args_number("3").value == 3.0;
+  #assert args_number("1.5").value == 1.5 && args_number("-2").value == -2.0 && args_number("+4").value == 4.0;
+  #assert args_number("0.1").value == 0.1 && args_number(".5").value == 0.5 && args_number("6.").value == 6.0;
+  #assert args_number("  7 ").value == 7.0 && args_number("").ok && args_number("").value == 0.0;
+  #assert args_number("1e3").ok && args_number("1e3").value == 1000.0 && args_number("25e-1").value == 2.5;
+  #assert !args_number("x").ok && !args_number("1x").ok && !args_number("--").ok && !args_number(".").ok && !args_number("1e").ok;
+  #assert !args_number("1e999").ok && !args_number("123456789012345678901").ok;
+  #assert args_number("1.25").value * 4.0 == 5.0 && args_number("4000").value == 4000.0;
+}
+// A decimal number as JavaScript's Number() reads it, for the plain forms
+// our flags take: optional sign, digits with an optional fraction and
+// exponent, surrounding spaces; "" is 0. Up to 17 significant digits and an
+// exponent within 1e-22..1e22 (exact: integer mantissa times a power of ten
+// that is itself exact); anything else is refused (ok false), where Number()
+// would give NaN or a value we do not need.
+args_number :: (text: string) -> ArgsNumber {
+  r: ArgsNumber;
+  lo := 0; hi := text.count;
+  while lo < hi && text[lo] == ' ' { lo += 1; }
+  while hi > lo && text[hi - 1] == ' ' { hi -= 1; }
+  if lo == hi { r.ok = true; return r; }
+  s := text[lo..<hi];
+  i := 0; neg := false;
+  if s[0] == '-' || s[0] == '+' { neg = s[0] == '-'; i = 1; }
+  mant: s64 = 0; digits := 0; scale := 0; seen := false;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    if digits >= 17 { return r; }
+    mant = mant * 10 + cast(s64) (s[i] - '0'); i += 1; seen = true;
+    if mant > 0 { digits += 1; }
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if digits >= 17 { return r; }
+      mant = mant * 10 + cast(s64) (s[i] - '0'); i += 1; scale -= 1; seen = true;
+      if mant > 0 { digits += 1; }
+    }
+  }
+  if !seen { return r; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1; eneg := false; e := 0; edigits := 0;
+    if i < s.count && (s[i] == '-' || s[i] == '+') { eneg = s[i] == '-'; i += 1; }
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if edigits >= 3 { return r; }
+      e = e * 10 + cast(int) (s[i] - '0'); i += 1; edigits += 1;
+    }
+    if edigits == 0 { return r; }
+    scale += ifx eneg then -e else e;
+  }
+  if i != s.count || scale > 22 || scale < -22 { return r; }
+  p: f64 = 1.0;
+  k := ifx scale < 0 then -scale else scale;
+  for j: 0..<k { p = p * 10.0; }
+  v := cast(f64) mant;
+  v = ifx scale < 0 then v / p else v * p;
+  r.ok = true; r.value = ifx neg then -v else v;
+  return r;
+}
+
+ArgsSize :: struct { ok: bool; w: int; h: int; }
+#test "sizes: WIDTHxHEIGHT" {
+  s := args_size("1280x720");
+  #assert s.ok && s.w == 1280 && s.h == 720;
+  #assert args_size("1x1").ok && !args_size("1280").ok && !args_size("x720").ok && !args_size("12x").ok;
+  #assert !args_size("1.5x2").ok && !args_size("-1x2").ok && !args_size("1x2x3").ok && !args_size("99999x1").ok && !args_size("0x5").ok;
+}
+// "WxH" with whole positive numbers up to 16384 each.
+args_size :: (text: string) -> ArgsSize {
+  r: ArgsSize;
+  x := -1;
+  for c, i: text { if c == 'x' { if x >= 0 { return r; } x = i; } }
+  if x < 1 || x + 1 >= text.count { return r; }
+  w := args_whole(text[0..<x]); h := args_whole(text[x + 1..<text.count]);
+  if w < 1 || h < 1 || w > 16384 || h > 16384 { return r; }
+  r.ok = true; r.w = w; r.h = h;
+  return r;
+}
+#test "whole numbers" {
+  #assert args_whole("0") == 0 && args_whole("42") == 42 && args_whole("") == -1 && args_whole("4a") == -1;
+  #assert args_whole("123456789") == 123456789 && args_whole("1234567890") == -1 && args_whole("-3") == -1;
+}
+// Decimal digits only, at most nine of them: the value, or -1.
+args_whole :: (text: string) -> int {
+  if text.count < 1 || text.count > 9 { return -1; }
+  v := 0;
+  for c: text {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}

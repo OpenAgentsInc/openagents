@@ -1,0 +1,35 @@
+// The host side of a Coax command-line tool: argv into Args, stderr, the OS.
+// Effects through coax/platform/tool-native.c, whose main() runs the tool's
+//   tool_main :: () -> int #export_c { ... return 0; }
+// on a big stack and exits with what it returns. Build a tool with
+// coax/web/tool.sh (it links tool-native.c and the other platform effects).
+#load "args.coax";
+
+cxargs_count :: () -> int #foreign;
+cxargs_len :: (i: int) -> int #foreign;
+cxargs_byte :: (i: int, j: int) -> int #foreign;
+cxtool_err :: (byte: int) -> int #foreign;
+cxtool_err_flush :: () -> int #foreign;
+cxtool_os :: () -> int #foreign;
+
+TOOL_MAC :: 1; TOOL_LINUX :: 2;
+
+// argv without the program name. False when an argument did not fit.
+args_load :: (a: [] Args) -> bool {
+  buf: [ARGS_BYTES] u8;
+  n := cxargs_count();
+  for i: 1..<n {
+    k := cxargs_len(i);
+    if k < 0 || k > ARGS_BYTES { a[0].full = true; return false; }
+    for j: 0..<k { buf[j] = cast,trunc(u8) cxargs_byte(i, j); }
+    if !args_add(a, cast(string) buf[0..<k]) { return false; }
+  }
+  return true;
+}
+tool_os :: () -> int { return cxtool_os(); }
+// Writes s to stderr (no newline added).
+tool_err :: (s: string) {
+  for c: s { r := cxtool_err(cast(int) c); }
+  r := cxtool_err_flush();
+}
+tool_errln :: (s: string) { tool_err(s); tool_err("\n"); }
