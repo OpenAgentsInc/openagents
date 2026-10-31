@@ -60,7 +60,9 @@ The [2026-10-31 record](../docs/verification/coax-borrow-origin-foundation-2026-
 binds 25 authored checks / 287 cases, 297 killed root mutants and 94 native
 cases per profile at checked O0, O2 and ASan/UBSan O1. The initial mutation
 failure and the ordering simplification remain recorded alongside the final
-qualification.
+qualification. The final main merge added upstream checker changes after
+that run; the record keeps the earlier producer attribution. Qualification
+of the merged compiler belongs to the following integration child.
 
 The focused gates are:
 

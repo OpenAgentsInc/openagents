@@ -2478,6 +2478,65 @@
     "Logical inactive fields are canonical; native C padding inside a successful output prefix is unspecified. Refusals and untouched tails are byte-guarded.",
     "The first mutation run found 41 survivors among 311 sites. Concrete missing oracles were sharpened and two private ordering routines were simplified while preserving their sign/zero contract. The retained final run kills 297 sites; no equivalence waiver is used.",
     "The provenance rebind reproduces the old fingerprint under the current observed CC/SDK/environment and proves 68 compiled inputs/21 loaded units unchanged. Only the standalone unloaded policy changes compiler fingerprint inputs; the actual compiler bytes remain unchanged. This is a consistency rebind, not a new native execution or full bootstrap.",
-    "No helper/aggregate source diagnostic, checker seed/fixed-point extension, retained request storage, SystemOne lifetime or all-target qualification is claimed. The two following children and original umbrella acceptance remain open."
-  ]
+    "No helper/aggregate source diagnostic, checker seed/fixed-point extension, retained request storage, SystemOne lifetime or all-target qualification is claimed. The two following children and original umbrella acceptance remain open.",
+    "The final main rebase added upstream derived-unit checker/seed changes after the recorded consistency rebind. That earlier rebind is historical; the merged tree compiler is unqualified by this record. Standalone policy/model/native inputs remain unchanged. See post_final_main_merge_scope. The current-tree compiler/bootstrap is handled in the following integration child."
+  ],
+  "post_final_main_merge_scope": {
+    "path": "/tmp/coax-borrow-origin-A0/final-main-merge-scope.json",
+    "sha256": "2e1d8ea9a509e14a9d697bc0010a81e03529cf23cb71f57488649ae7329a9dc2",
+    "result": {
+      "schema": "coax.borrow-origin.final-main-merge-scope.v1",
+      "outcome": "standalone-qualified-earlier-producer-current-compiler-unqualified",
+      "source_head": "5f93d7c01d473d48a432071aba23c8eeb136e76d",
+      "new_main_base": "7c97190da24a88b281e87532aeb57605af3b6c27",
+      "upstream_compiler_change_commits": [
+        "373400c446",
+        "77e45d8e5b"
+      ],
+      "changed_previously_compiled_inputs": {
+        "coax/lib/compiler/checker.coax": {
+          "qualified_sha256": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+          "merged_sha256": "9cd6bf9175e603b651a7f61beea385f63a6da86debb9520fea6682587d3eada3"
+        },
+        "coax/src/errors.cpp": {
+          "qualified_sha256": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+          "merged_sha256": "410cd2944602a9d7a8996d4789dc3d69acc211e87ce1b2a09e4e185b3ff1cbda"
+        },
+        "coax/bootstrap/checker.c": {
+          "qualified_sha256": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+          "merged_sha256": "54f90f5067fb30d5285f0c3e6b2330fa48d42ef22e1981232e15c7ab8c9b5216"
+        },
+        "coax/bootstrap/checker.h": {
+          "qualified_sha256": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+          "merged_sha256": "59533d9a21c8524ad77576b27176e61d0b23f6014d386b64eb7c99b7c40b8395"
+        }
+      },
+      "foundation_model_native_inputs_unchanged": true,
+      "actual_policy_sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "actual_native_producer_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "actual_native_producer_source_fingerprint": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f",
+      "pre_final_merge_consistency_fingerprint": "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b",
+      "pre_final_merge_test_driver": {
+        "sha256": "21ad8e777da56ff062dc9c09f16ab7c9bacbe129f5738a3d8d1af49a5a615d5c",
+        "text": "#!/usr/bin/env bash\n# coax0 tests.\n#   tests/pass/NAME.coax  must compile and run, printing exactly NAME.out\n#                        (in debug and in --release).\n#   tests/fail/NAME.coax  first line \"// expect: E0xxx\" must fail to compile\n#                        with that error code; \"// expect: trap TEXT\" must\n#                        compile, then stop at run time printing TEXT.\nset -uo pipefail\ncd \"$(dirname \"$0\")/..\"\nCOAX=bin/coax\npass=0; fail=0\nnote() { echo \"FAIL $1: $2\"; fail=$((fail + 1)); }\n\nfor src in tests/pass/*.coax; do\n  name=$(basename \"$src\" .coax)\n  for mode in \"\" --release; do\n    got=$(\"$COAX\" run \"$src\" $mode 2>&1)\n    rc=$?\n    if [[ $rc -eq 0 && \"$got\" == \"$(cat \"tests/pass/$name.out\")\" ]]; then pass=$((pass + 1))\n    else note \"$name ${mode:-debug}\" \"output differs:\"; diff <(echo \"$got\") \"tests/pass/$name.out\" | head -20; fi\n  done\ndone\n\nfor src in tests/fail/*.coax; do\n  name=$(basename \"$src\" .coax)\n  expect=$(head -1 \"$src\" | sed -n 's#^// expect: ##p')\n  if [[ \"$expect\" == trap* ]]; then\n    want=${expect#trap }\n    got=$(python3 tests/quiet_crash.py -- \"$COAX\" run \"$src\" 2>&1); rc=$?\n    if [[ $rc -ne 0 && \"$got\" == *\"$want\"* ]]; then pass=$((pass + 1)); else note \"$name\" \"expected a trap with '$want', got exit $rc: $got\"; fi\n  else\n    got=$(\"$COAX\" c \"$src\" 2>&1 >/dev/null); rc=$?\n    if [[ $rc -ne 0 && \"$got\" == *\"error[$expect]\"* ]]; then pass=$((pass + 1)); else note \"$name\" \"expected error[$expect], got exit $rc: $got\"; fi\n  fi\ndone\n\n# examples/NAME.coax with NAME.out: the shipped demos, in both modes.\nfor src in examples/*.coax; do\n  name=${src%.coax}\n  [[ -f $name.out ]] || continue\n  for mode in \"\" --release; do\n    got=$(\"$COAX\" run \"$src\" $mode 2>&1)\n    if [[ \"$got\" == \"$(cat \"$name.out\")\" ]]; then pass=$((pass + 1)); else note \"$src ${mode:-debug}\" \"output differs\"; fi\n  done\ndone\n\n# The C boundary: a Coax library and header linked into a C host.\ngot=$(examples/pulse/run.sh 2>&1 | head -1)\nif [[ \"$got\" == *\"matches the C reference byte for byte\"* ]]; then pass=$((pass + 1)); else note pulse \"$got\"; fi\n\necho \"$pass passed, $fail failed\"\n[[ $fail -eq 0 ]]\nfixtures_rc=$?\npython3 tests/crash_reporting.py && python3 tests/compile_time.py && python3 tests/tools.py\npython_rc=$?\npython3 tests/native.py\nnative_rc=$?\npython3 tests/native_checks.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py && python3 tests/native_check_execution.py && python3 tests/native_execution_transport.py && python3 tests/native_check_forall.py && python3 tests/native_report_inputs.py && python3 tests/native_compiler_identity.py && python3 tests/native_check_semantics.py\nnative_check_baseline_rc=$?\npython3 tests/lexer.py\nlexer_rc=$?\npython3 tests/parser.py\nparser_rc=$?\npython3 tests/run_budget.py\nbudget_rc=$?\npython3 tests/ct_strings.py\nstrings_rc=$?\npython3 tests/traversal_work.py\ntraversal_rc=$?\npython3 tests/provenance.py\nprovenance_rc=$?\npython3 tests/release.py\nrelease_rc=$?\npython3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py\nmutation_schedule_rc=$?\npython3 tests/build_profiles.py\nbuild_profiles_rc=$?\npython3 tests/semantic_profiles.py\nsemantic_profiles_rc=$?\npython3 tests/checker.py\nchecker_rc=$?\npython3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.py && python3 tests/generics.py && python3 tests/effects.py && python3 tests/quantity.py && python3 tests/quantity_native.py\nsources_rc=$?\npython3 tests/reflection.py\nreflection_rc=$?\n# Book maintenance and bounded shared-library adoption, without model/network effects.\npython3 tests/book_claims.py && python3 tests/book_selection.py && python3 tests/library_recipes.py\nlibrary_tools_rc=$?\nsequence_output=$(mktemp -d)\nif [[ -n \"$sequence_output\" ]] && \"$COAX\" test lib/sequence.coax --library && \"$COAX\" mutate lib/sequence.coax --library && \\\n   python3 tests/sequence.py --output \"$sequence_output\"; then\n  sequence_rc=0\nelse\n  sequence_rc=1\nfi\n[[ -z \"$sequence_output\" ]] || rm -rf \"$sequence_output\"\npython3 tests/debugging.py\ndebugging_rc=$?\npython3 tests/nostr.py\nnostr_rc=$?\npython3 tests/constant_time.py\nconstant_time_rc=$?\npython3 tests/wrapping.py\nwrapping_rc=$?\npython3 tests/mul_wide.py && python3 tests/foreign_buffers.py\nmul_wide_rc=$?\npython3 tests/cuda.py && python3 tests/metal_compute.py && \"$COAX\" test lib/compute/mma.coax --lib && \"$COAX\" mutate lib/compute/mma.coax --lib && \"$COAX\" test lib/compute/apple.coax --lib && \"$COAX\" mutate lib/compute/apple.coax --lib\ncuda_rc=$?\ntests/proto/check-cap.sh\nproto_cap_rc=$?\npython3 tests/proto_import.py\nproto_rc=$?\npython3 tests/proto/presence_policy.py\nproto_policy_rc=$?\npython3 tests/proto/message_limit.py\nproto_message_rc=$?\npython3 tests/verify.py\nverify_rc=$?\n\"$COAX\" test tests/proto/runtime.coax\nwire_checks_rc=$?\npython3 tests/nostr/proto_wire_parity.py && \"$COAX\" test tests/nostr/proto_event_validation.coax && \"$COAX\" test tests/nostr/proto_fi_validation.coax\ngenerated_checks_rc=$?\n\"$COAX\" test lib/proto/wire.coax && \"$COAX\" mutate lib/proto/wire.coax\nwire_core_rc=$?\n\"$COAX\" test lib/proto/importer.coax\nimporter_checks_rc=$?\n\"$COAX\" test lib/proto/fingerprint.coax && \"$COAX\" mutate lib/proto/fingerprint.coax\nfingerprint_checks_rc=$?\n\"$COAX\" test lib/compiler/quantity.coax && \"$COAX\" mutate lib/compiler/quantity.coax --root-only && \"$COAX\" test lib/compiler/unit-algebra.coax && \"$COAX\" mutate lib/compiler/unit-algebra.coax --root-only && python3 tests/unit_algebra.py\nunit_algebra_rc=$?\n\"$COAX\" test lib/compiler/unit-forms.coax && \"$COAX\" mutate lib/compiler/unit-forms.coax --root-only && COAX_TEST_COMPILER=\"$PWD/$COAX\" python3 tests/unit_forms.py\nunit_forms_rc=$?\n\"$COAX\" test lib/compiler/spatial-policy.coax && \"$COAX\" mutate lib/compiler/spatial-policy.coax --root-only && COAX_TEST_COMPILER=\"$PWD/$COAX\" python3 tests/spatial_policy.py\nspatial_policy_rc=$?\n\"$COAX\" test lib/compiler/borrow-summary.coax && \"$COAX\" mutate lib/compiler/borrow-summary.coax --root-only && COAX_TEST_COMPILER=\"$PWD/$COAX\" python3 tests/borrow_summary_native.py\nborrow_summary_rc=$?\n[[ $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]\n"
+      },
+      "merged_test_driver_sha256": "2171712770a96f22fa507ceab4f5f1332cdb94efd113ced0e7a66dad992f3588",
+      "scope": "The unchanged standalone policy/model/native harness qualification retains its actual earlier producer. The prior unchanged-compiler proof/reseal happened before this final main rebase. Upstream derived-unit checker/seed changes invalidate reuse of that proof as current-tree compiler provenance. No new provenance or cache is written for this merged compiler. Checker integration and its mandatory seed/bootstrap gates remain the next child.",
+      "command_sequence_error": "The compiled-input guard failed after rebase, but a multiline shell command lacked failure propagation and continued to the authorized push. This scope correction is an append-only main commit; no failed guard is relabeled as passed."
+    }
+  },
+  "source_sha256_scope": "Qualified policy/harness sources and pre-final-merge publication inputs. The merged test driver and clarification document are separately identified below; no earlier execution is relabeled.",
+  "post_final_main_merge_publication_sha256": {
+    "coax/tests/run.sh": "2171712770a96f22fa507ceab4f5f1332cdb94efd113ced0e7a66dad992f3588",
+    "coax/verification-borrow-origins.md": "627dd5607945577e22ee4abe41c9376c8f874f76fa6a1d57a74c4b73e51e263f"
+  },
+  "post_final_main_merge_test_driver_syntax": {
+    "command": [
+      "bash",
+      "-n",
+      "coax/tests/run.sh"
+    ],
+    "exit_status": 0,
+    "scope": "Actual thin syntax check on the merged changed test driver; no full suite or earlier passing result rerun."
+  }
 }
