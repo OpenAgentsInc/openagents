@@ -103,7 +103,11 @@ BALL_MASS :: 150.0;
 BALL_DRAG :: 0.03;       // 1/s
 BALL_MAX :: 32.0;        // m/s: no hit sends it faster
 BOT_REACT :: 0.4;        // seconds the bot waits at a kickoff
+BOT_KICKOFF_CALM :: 3.0; // and how long after it drives in without boost
 CAR_MASS :: 1000.0;
+CAR_WALL_MU :: 0.05;     // the glass is slick: a car pressed into it slides along
+PINNED_SPEED :: 2.0;     // m/s: slower than this against the glass, steering turns the car on the spot
+PINNED_TURN :: 1.4;      // rad/s
 SPAWN_Z :: 28.0;
 FULL_SPIN_G :: G_EARTH;  // the station at full spin: 1 g toward the floor
 MATCH_TIME :: 300.0;     // seconds
@@ -135,6 +139,7 @@ PAD_BIG_R :: 1.6; PAD_SMALL_R :: 1.1;
 ARC :: 36;               // the boost gauge's segments
 STICK :: 60.0;           // CSS pixels of thumb travel for full lock
 CAM_BACK :: 9.5; CAM_UP :: 3.4; FOV :: 1.15;
+CAM_BALL_OFF :: 0.3;   // radians: the furthest ball cam puts the ball off centre to fit the car in
 
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_JUMP :: 16; HOLD_BOOST :: 32;
 KEY_SHIFT :: -13;
@@ -365,6 +370,8 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else 1.0;
   out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
   out.boost = abs(a) < 0.25 && dist > 14.0 && s[0].tanks[1].fuel > 10.0;
+  // the kickoff is a fair race: the bot drives in without boost, so you get there first if you go
+  if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_KICKOFF_CALM { out.boost = false; out.input.throttle = fmin(out.input.throttle, 0.85); }
   near_ball := d3_dist(me.pos, bl.pos);
   // in zero-g the boost is how it gets anywhere
   if s[0].cars[1].wheels == 0 && spin_share(s[0].played) < 0.2 { out.boost = abs(a) < 0.6; out.input.throttle = 0.0; }
@@ -458,7 +465,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   w := rigid_world(dt, s[0].bodies[..]);
   w = rigid_step(w, D3_ZERO);
   // the cars against the arena, the ball, each other
-  for c: 0..<2 { s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, cp[..], 0.1, 0.6); }
+  for c: 0..<2 { s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, cp[..], 0.1, CAR_WALL_MU); }
   for p: bp {
     ct := contact_sphere_plane(s[0].bodies[BALL].pos, BALL_R, p);
     if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
@@ -493,6 +500,16 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   if cc.hit {
     pair := contact_resolve(s[0].bodies[YOU], s[0].bodies[BOT], cc, 0.3, 0.2);
     s[0].bodies[YOU] = pair.a; s[0].bodies[BOT] = pair.b;
+  }
+  // a car on its wheels pressed into the glass turns where you steer: the
+  // tyres alone can't swing it while its nose is pinned
+  for c: 0..<2 {
+    i := c + 1; b := s[0].bodies[i];
+    if s[0].cars[c].wheels < 3 || drives[c].input.steer == 0.0 || drives[c].input.throttle == 0.0 { continue; }
+    if abs(vehicle_forward_speed(b)) > PINNED_SPEED || !at_glass(b.pos) { continue; }
+    want := -drives[c].input.steer * fsign(drives[c].input.throttle) * PINNED_TURN;
+    b.omega.y += (want - b.omega.y) * fmin(1.0, dt * 8.0);
+    s[0].bodies[i] = b;
   }
   // a car on its roof or side, slow, for a second: set back on its wheels
   for c: 0..<2 {
@@ -827,6 +844,103 @@ game_action_done :: (s: [] OrbitLeague) #export_c { s[0].out_n = 0; }
 
 f3 :: (v: D3) -> [3] f32 { o: [3] f32; o[0] = cast(f32) v.x; o[1] = cast(f32) v.y; o[2] = cast(f32) v.z; return o; }
 
+fsign :: (x: f64) -> f64 { return ifx x < 0.0 then -1.0 else 1.0; }
+// Within a car's length of a side or end wall.
+at_glass :: (p: D3) -> bool { return abs(p.x) > ARENA_HX - 3.2 || abs(p.z) > ARENA_HZ - 3.2; }
+
+// Where the eye can be: inside the glass, or in a goal's mouth.
+eye_inside :: (e: D3, slack: f64) -> bool {
+  m := 0.8 - slack;
+  if abs(e.x) > ARENA_HX - m || e.y < m || e.y > ARENA_H - m { return false; }
+  // clear of the goal frames' posts and crossbar
+  if abs(e.z) > ARENA_HZ - 2.5 && abs(e.z) < ARENA_HZ + 1.5 && abs(abs(e.x) - GOAL_HW) < 1.5 && e.y < GOAL_H + 1.5 { return false; }
+  if abs(e.z) > ARENA_HZ - 2.5 && abs(e.z) < ARENA_HZ + 1.5 && abs(e.x) < GOAL_HW + 1.5 && abs(e.y - GOAL_H) < 1.5 { return false; }
+  if abs(e.z) <= ARENA_HZ - m { return true; }
+  return abs(e.z) <= ARENA_HZ + GOAL_D - 1.0 + slack && abs(e.x) < GOAL_HW - m && e.y < GOAL_H - m;
+}
+
+// The tangents of half the view's width and height (view_rows's lens).
+Lens :: struct { tx: f64; ty: f64; }
+lens_of :: (width: f32, height: f32) -> Lens {
+  aspect := cast(f64) (width / hi(height, 1));
+  t := 1.0 / tan(FOV * 0.5);
+  sx := t / fmax(aspect, 0.3); sy := t;
+  if aspect < 1.0 { sx = t * 1.25; sy = sx * aspect; }
+  return Lens.{tx = 1.0 / sx, ty = 1.0 / sy};
+}
+// Where p lands looking from e along look: x, y as shares of the half width
+// and half height (|x|, |y| < 1 on screen; y up); z < 0.3 is behind.
+Lands :: struct { x: f64; y: f64; z: f64; }
+lands :: (e: D3, look: D3, p: D3, l: Lens) -> Lands {
+  r := d3_unit_or(d3(-look.z, 0.0, look.x), D3_X);
+  u := d3_cross(r, look);
+  if u.y < 0.0 { u = d3_neg(u); }
+  d := d3_sub(p, e);
+  z := d3_dot(d, look);
+  if z < 0.3 { return Lands.{x = 9.0, y = 9.0, z = z}; }
+  return Lands.{x = d3_dot(d, r) / z / l.tx, y = d3_dot(d, u) / z / l.ty, z = z};
+}
+// Framed: a car's length or two away, across the middle, above the phone's
+// thumbs and below the score.
+framed :: (q: Lands) -> bool { return q.z >= 5.0 && abs(q.x) < 0.8 && q.y > -0.6 && q.y < 0.75; }
+
+Shot3 :: struct { eye: D3; at: D3; }
+
+// Ball cam looks between the car and the ball, a little toward the ball.
+ball_cam_look :: (e: D3, car: D3, ball: D3) -> D3 {
+  u := d3_unit_or(d3_sub(d3_add(car, d3(0.0, 0.5, 0.0)), e), D3_Z);
+  v := d3_unit_or(d3_sub(ball, e), D3_Z);
+  return d3_unit_or(d3_add(d3_scale(u, 0.45), d3_scale(v, 0.55)), v);
+}
+
+// The shot: the eye behind the car along dir. Against the glass it comes in,
+// rises or swings round the car, the least change that still frames the car
+// (and on ball cam the ball); it never leaves the arena. If nothing frames
+// both, your car wins: the edge marker shows where the ball is.
+choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens) -> Shot3 {
+  best := Shot3.{}; best_cost := 1000000.0;
+  near := Shot3.{}; near_cost := 1000000.0;
+  carp := d3_add(car, d3(0.0, 0.5, 0.0));
+  for h: 0..<3 { for r: 0..<4 { for k: 0..<13 {
+    back := CAM_BACK - cast(f64) r * 2.0;
+    up := CAM_UP + cast(f64) h * 3.0;
+    turn := cast(f64) ((k + 1) / 2) * (PI_D / 12.0) * (ifx k % 2 == 1 then 1.0 else -1.0);
+    c := cos(turn); sn := sin(turn);
+    d := d3(dir.x * c + dir.z * sn, 0.0, -dir.x * sn + dir.z * c);
+    e := d3_add(d3_sub(car, d3_scale(d, back)), d3(0.0, up, 0.0));
+    e.y = fclamp(e.y, 0.8, ARENA_H - 0.8);
+    if !eye_inside(e, 0.0) { continue; }
+    look := ifx ball_cam then ball_cam_look(e, car, ball) else d3_unit_or(d3_sub(at, e), d);
+    cost := abs(turn) + 0.15 * (CAM_BACK - back) + 0.05 * (up - CAM_UP);
+    qc := lands(e, look, carp, l);
+    ok := framed(qc);
+    if ball_cam { ok = ok && framed(lands(e, look, ball, l)); }
+    if ok && cost < best_cost { best_cost = cost; best = Shot3.{eye = e, at = d3_add(e, d3_scale(look, 10.0))}; }
+    // failing that: the nearest the car comes to the frame
+    miss := fmax(abs(qc.x) - 0.8, 0.0) + fmax(-0.6 - qc.y, 0.0) + fmax(qc.y - 0.75, 0.0) + cost * 0.1;
+    if miss < near_cost { near_cost = miss; near = Shot3.{eye = e, at = d3_add(e, d3_scale(look, 10.0))}; }
+  } } }
+  if best_cost < 1000000.0 { return best; }
+  if near_cost >= 1000000.0 {
+    // no eye fits round the car (deep in a goal): above it, looking ahead
+    e := d3(fclamp(car.x, -ARENA_HX + 0.8, ARENA_HX - 0.8), fclamp(car.y + CAM_UP + 3.0, 0.8, ARENA_H - 0.8), fclamp(car.z, -ARENA_HZ - GOAL_D + 1.0, ARENA_HZ + GOAL_D - 1.0));
+    e = d3_sub(e, d3_scale(dir, 2.0));
+    if !eye_inside(e, 0.0) { e.x = fclamp(e.x, -ARENA_HX + 0.8, ARENA_HX - 0.8); e.z = fclamp(e.z, -ARENA_HZ + 2.6, ARENA_HZ - 2.6); }
+    return Shot3.{eye = e, at = d3_add(car, d3_scale(dir, 2.0))};
+  }
+  if !ball_cam { return near; }
+  // nothing frames both (pinned in a corner with the ball high or behind):
+  // your car stays in the frame, turned as far toward the ball as it allows
+  e := near.eye;
+  u := d3_unit_or(d3_sub(carp, e), D3_Z); v := d3_unit_or(d3_sub(ball, e), D3_Z);
+  for i: 0..<12 {
+    t := 0.55 - cast(f64) i * 0.05;
+    look := d3_unit_or(d3_add(d3_scale(u, 1.0 - t), d3_scale(v, t)), u);
+    if framed(lands(e, look, carp, l)) || i == 11 { return Shot3.{eye = e, at = d3_add(e, d3_scale(look, 10.0))}; }
+  }
+  return near;
+}
+
 camera :: (s: [] OrbitLeague, dt: f32) {
   car := s[0].bodies[YOU]; bl := s[0].bodies[BALL];
   f := rigid_axis(car, D3_Z);
@@ -835,17 +949,10 @@ camera :: (s: [] OrbitLeague, dt: f32) {
   flat_v := d3(car.vel.x, 0.0, car.vel.z);
   if d3_len(flat_v) > 4.0 && d3_dot(flat_v, dir) > 0.0 { dir = d3_unit_or(d3_add(dir, d3_scale(d3_unit(flat_v), 0.6)), dir); }
   at := d3_add(car.pos, d3_add(d3_scale(dir, 4.0), d3(0.0, 1.0, 0.0)));
-  if s[0].ball_cam {
-    to := d3_sub(bl.pos, car.pos);
-    dir = d3_unit_or(d3(to.x, 0.0, to.z), dir);
-    at = d3_add(d3_scale(bl.pos, 0.7), d3_scale(car.pos, 0.3));
-  }
-  eye := d3_add(d3_sub(car.pos, d3_scale(dir, CAM_BACK)), d3(0.0, CAM_UP, 0.0));
-  eye.x = fclamp(eye.x, -ARENA_HX + 0.8, ARENA_HX - 0.8);
-  eye.y = fclamp(eye.y, 0.8, ARENA_H - 0.8);
-  eye.z = fclamp(eye.z, -ARENA_HZ - GOAL_D + 1.0, ARENA_HZ + GOAL_D - 1.0);
-  if abs(eye.z) > ARENA_HZ - 0.8 && (abs(eye.x) > GOAL_HW - 0.8 || eye.y > GOAL_H - 0.8) { eye.z = fclamp(eye.z, -ARENA_HZ + 0.8, ARENA_HZ - 0.8); }
-  e := f3(eye); a := f3(at);
+  // ball cam: behind the car on the line from the ball
+  if s[0].ball_cam { to := d3_sub(bl.pos, car.pos); dir = d3_unit_or(d3(to.x, 0.0, to.z), dir); }
+  shot := choose_shot(car.pos, dir, bl.pos, s[0].ball_cam, at, lens_of(s[0].width, s[0].height));
+  e := f3(shot.eye); a := f3(shot.at);
   k: f32 = ifx s[0].cam_ready then 1 - exp(-dt * 7.0) else 1;
   for i: 0..<3 { s[0].cam_eye[i] += (e[i] - s[0].cam_eye[i]) * k; s[0].cam_at[i] += (a[i] - s[0].cam_at[i]) * k; }
   s[0].cam_ready = true;
@@ -1306,4 +1413,96 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
     #assert game_pointer(s, cx, cy, POINTER_UP, 1, 4) && s[0].action == ACT_NAVIGATE;
     #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league/tip";
   }
+}
+
+#test "a kickoff is a fair race: holding W from the countdown, you reach the ball before the bot, and it doesn't score off it" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  s[0].held = HOLD_UP;
+  first := -1.0; you_first := false;
+  for k: 0..<cast(int) ((KICKOFF + 6.0) / STEP) {
+    game_step(s[..], STEP);
+    if first < 0.0 && d3_len(s[0].bodies[BALL].vel) > 2.0 {
+      first = cast(f64) k * STEP;
+      you_first = d3_dist(s[0].bodies[YOU].pos, s[0].bodies[BALL].pos) < d3_dist(s[0].bodies[BOT].pos, s[0].bodies[BALL].pos);
+    }
+  }
+  #assert first > KICKOFF && you_first && s[0].score[1] == 0;
+}
+
+eye_of :: (s: [] OrbitLeague) -> D3 { return d3(cast(f64) s[0].eye[0], cast(f64) s[0].eye[1], cast(f64) s[0].eye[2]); }
+
+#test "ball cam keeps your car on screen everywhere, and the ball too away from the glass, on a laptop and a phone" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  s[0].ball_cam = true;
+  cars := [8] D3.[d3(0.0, 0.5, -28.0), d3(20.0, 0.5, 35.0), d3(-23.5, 0.5, -38.5), d3(0.0, 0.5, 38.5), d3(23.5, 0.5, 0.0), d3(-10.0, 0.5, 20.0), d3(21.0, 0.5, -10.0), d3(-21.5, 0.5, 30.0)];
+  balls := [5] D3.[d3(0.0, 1.4, 0.0), d3(15.0, 8.0, -30.0), d3(-20.0, 3.0, 38.0), d3(0.0, 10.0, 10.0), d3(22.0, 1.4, -38.0)];
+  for size: 0..<2 {
+    s[0].width = ifx size == 0 then 1440.0f32 else 390.0f32; s[0].height = ifx size == 0 then 900.0f32 else 844.0f32;
+    for c: cars { for b: balls { for yaw: 0..<4 {
+      if d3_dist(c, b) < 6.0 { continue; }
+      s[0].bodies[YOU].pos = c; s[0].bodies[YOU].vel = D3_ZERO;
+      s[0].bodies[YOU].orientation = dq_y(cast(f64) yaw * PI_D * 0.5);
+      s[0].bodies[BALL].pos = b;
+      s[0].cam_ready = false;
+      camera(s[..], 0.016); view_rows(s[..]);
+      #assert eye_inside(eye_of(s[..]), 0.01);
+      w := s[0].width; h := s[0].height;
+      pb := seen(s[..], cast(f32) b.x, cast(f32) b.y, cast(f32) b.z);
+      pc := seen(s[..], cast(f32) c.x, cast(f32) c.y + 0.5, cast(f32) c.z);
+      clear := abs(c.x) < ARENA_HX - 3.5 && abs(c.z) < ARENA_HZ - 3.5 && (b.y < 6.0 || abs(c.z) < ARENA_HZ - 6.0);
+      // your car always on screen; clear of the glass, both, the car in the middle above the thumbs
+      #assert pc.ok && pc.x > 0 && pc.x < w && pc.y > 0 && pc.y < h;
+      #assert !clear || pb.ok && pb.x > 0 && pb.x < w && pb.y > 0 && pb.y < h;
+      #assert !clear || pc.x > w * 0.08 && pc.x < w * 0.92 && pc.y > h * 0.12 && pc.y < h * 0.86;
+    } } }
+  }
+}
+
+#test "the chase camera stays inside the glass with the car in front of it, even nose-out of a corner" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  s[0].width = 1440; s[0].height = 900;
+  s[0].bodies[YOU].pos = d3(-23.5, 0.5, -38.5);
+  s[0].bodies[YOU].orientation = dq_y(PI_D * 0.75);   // facing out of the corner, back to the glass
+  s[0].cam_ready = false;
+  camera(s[..], 0.016); view_rows(s[..]);
+  pc := seen(s[..], -23.5, 1.0, -38.5);
+  #assert eye_inside(eye_of(s[..]), 0.01) && pc.ok && pc.x > 0 && pc.x < 1440 && pc.y > 0 && pc.y < 900 && pc.w > 3.0;
+}
+
+// Drive into the glass (or across open floor at x), then hold `held` for
+// secs: how far the car turned, signed (+: toward +x from +z, its left).
+wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
+  game_reset(s); s[0].no_bot = true; kickoff(s);
+  run_for(s, KICKOFF + 0.1);
+  s[0].bodies[YOU].pos = d3(x, 0.9, 0.0); s[0].bodies[YOU].orientation = dq_y(yaw);
+  s[0].held = HOLD_UP;
+  run_for(s, 2.0);
+  f0 := rigid_axis(s[0].bodies[YOU], D3_Z);
+  s[0].held = held;
+  run_for(s, secs);
+  f := rigid_axis(s[0].bodies[YOU], D3_Z);
+  a := acos_d(fclamp(f.x * f0.x + f.z * f0.z, -1.0, 1.0));
+  return ifx f0.z * f.x - f0.x * f.z > 0.0 then a else -a;
+}
+
+#test "a car pinned nose-first against the glass turns right on D, the way it turns on open floor" {
+  s: [1] OrbitLeague;
+  open_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 1.0, -15.0);
+  wall_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 2.0, ARENA_HX - 3.0);
+  #assert abs(open_right) > 0.3 && wall_right * open_right > 0.0 && abs(wall_right) > 0.7;
+}
+#test "a car pinned nose-first against the glass turns left on A" {
+  s: [1] OrbitLeague;
+  open_right := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_RIGHT, 1.0, -15.0);
+  wall_left := wall_run(s[..], PI_D * 0.5, HOLD_UP | HOLD_LEFT, 2.0, ARENA_HX - 3.0);
+  #assert wall_left * open_right < 0.0 && abs(wall_left) > 0.7;
+}
+#test "a car into the glass at an angle turns away on the stick, and S backs it off" {
+  s: [1] OrbitLeague;
+  #assert abs(wall_run(s[..], PI_D * 0.3, HOLD_UP | HOLD_RIGHT, 2.0, ARENA_HX - 3.0)) > 0.7;
+  r := wall_run(s[..], PI_D * 0.5, HOLD_DOWN, 2.0, ARENA_HX - 3.0);
+  #assert s[0].bodies[YOU].pos.x < ARENA_HX - 5.0;
 }

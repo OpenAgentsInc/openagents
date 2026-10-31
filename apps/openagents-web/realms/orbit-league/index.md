@@ -1,6 +1,6 @@
 # Orbit League
 
-A Verse realm at https://openagents.com/realms/orbit-league: electric roadsters playing ball in a glass arena in orbit. You drive the blue car against an orange bot; score more goals in five minutes. Every 90 seconds the station spins down and the arena goes zero-g for half a minute.
+A Verse realm at https://openagents.com/realms/orbit-league: electric roadsters playing ball in a glass arena in orbit. You drive the blue car against a magenta bot; score more goals in five minutes. Every 90 seconds the station spins down and the arena goes zero-g for half a minute.
 
 ## How to play
 
