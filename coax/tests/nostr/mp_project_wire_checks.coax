@@ -19,3 +19,19 @@
  duplicate:=[6]u8.[10,1,120,10,1,121];#assert MP_RepositoryMember_decode(duplicate[..]).error==MP__pb_DUPLICATE;
  wrong:=[2]u8.[8,0];#assert MP_RepositoryMember_decode(wrong[..]).error==MP__pb_WIRE;
 }
+#test "generated member iterator ends on carried, malformed and exhausted wire" {
+ good:=MP_FIX_OK;p:=MP_Project_decode(good[..]);#assert p.error==0;
+ iter:=MP_Project_iter_members(p);#assert iter.error==0 && iter.has_value && !iter.done;
+ #assert MP_RepositoryMember_get_relay_hint(iter.value).present;
+ iter=MP_Project_next_members(iter);#assert iter.error==0 && iter.has_value && !iter.done;
+ #assert !MP_RepositoryMember_get_relay_hint(iter.value).present;
+ iter=MP_Project_next_members(iter);#assert iter.error==0 && iter.done && !iter.has_value;
+ member:=[5]u8.[42,3,10,1,120];
+ carried:=MP_Project.{wire=member[..],error=MP__pb_VALUE};iter=MP_Project_iter_members(carried);
+ #assert iter.error==MP__pb_VALUE && iter.done && !iter.has_value;
+ wrong:=[2]u8.[16,0];iter=MP_Project_iter_members(MP_Project.{wire=wrong[..]});
+ #assert iter.error==MP__pb_WIRE && iter.done && !iter.has_value;
+ iter=MP_Project_Iter_members.{wire=member[..],done=true};iter=MP_Project_next_members(iter);#assert iter.done && !iter.has_value;
+ iter=MP_Project_Iter_members.{wire=member[..],error=MP__pb_VALUE};iter=MP_Project_next_members(iter);#assert iter.error==MP__pb_VALUE && !iter.has_value;
+ malformed:=[1]u8.[0];iter=MP_Project_Iter_members.{wire=malformed[..]};iter=MP_Project_next_members(iter);#assert iter.error==MP__pb_WIRE && iter.done && !iter.has_value;
+}
