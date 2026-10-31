@@ -1,42 +1,43 @@
 # 2. Spaces and units
 
-> Engine-core task: `ec-space` (#12609). The module,
-> [aethyr/space.coax](../space.coax), and its refusal check,
-> [aethyr/refusals.coax](../refusals.coax), landed in `a93d35c2dd`. The task
-> stays open for one check that needs the realms on it: the figure's feet
-> drawn at their physics height in every realm, which lands with the realm
-> migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
+> Engine-core task: `ec-space` (#12609). The module
+> [aethyr/space.coax](../space.coax) and its refusal check
+> [aethyr/refusals.coax](../refusals.coax) landed in `a93d35c2dd`. The task
+> stays open for one check: that every realm draws a figure's feet at their
+> physics height. That check lands with the realm migration
+> ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
 
-A number such as `1.8` is a character's height in metres, a distance on the
-Grid, a pixel offset on a phone or a depth in front of the camera. Engine
-bugs are often a value read in the wrong one of these. A figure's feet drawn
-at floor height while the camera rose with the jump, a shadow placed from a
-stale position, a label projected with the previous frame's camera: each is a
-position used in a space it was not computed in. Aethyr gives each space its
-own type, so the compiler refuses the mix.
+A number such as `1.8` can be a height in metres, a distance on the Grid, a
+pixel offset, or a depth in front of the camera. Many engine bugs come from
+reading a value in the wrong one of these spaces. For example, the Grid drew
+a figure's feet at floor height while the camera rose with the jump: the
+drawing and the camera read the position in different spaces.
+
+Aethyr gives each space its own type, so the compiler refuses code that mixes
+them.
 
 ## What this chapter teaches
 
-- The engine's spaces: world, local (a placement's own frame), view (the
-  camera's), screen and the Grid's drawing units.
-- Moving between spaces only through named functions.
-- Units as types: metres and grid units, converted exactly and only by name.
-- Checking that a mix does not compile.
+- The engine's spaces: world, local, view, screen, and the Grid's drawing
+  units.
+- How to move a point between spaces with named functions only.
+- How to use units as types, so that metres and grid units don't mix.
+- How to check that code that mixes spaces doesn't compile.
 
 ## The method
 
-A position's type is its space. Each space is a struct of the same scalars,
-so a `WorldPoint` costs what three `f32`s cost, and the compiler keeps them
-apart: a `GridPoint` handed to a function that wants a `WorldPoint` is a type
-error, whatever the numbers are.
+A point's type is its space. Each space is a struct of the same scalars, so a
+`WorldPoint` costs the same as three `f32` values. The compiler keeps the
+types apart: if you pass a `GridPoint` to a function that takes a
+`WorldPoint`, the code doesn't compile.
 
 | Space | Type | Units and axes |
 | --- | --- | --- |
-| world | `WorldPoint` | metres, `+Y` up, yaw 0 faces `+Z` (`openagents.engine.v1`): where physics puts things |
-| local | `LocalPoint` | metres in a `Placement`: an origin and a yaw (a room, a carried thing) |
-| view | `ViewPoint` | metres from a `Lens`: `x` right, `y` up, `z` ahead (depth) |
-| screen | `ScreenPoint` | CSS pixels, `+y` down |
-| grid | `GridPoint` | the Grid's drawing units, two metres each, from the places' middle |
+| world | `WorldPoint` | Metres. `+Y` is up, and yaw 0 faces `+Z` (`openagents.engine.v1`). Physics positions are in this space. |
+| local | `LocalPoint` | Metres relative to a `Placement`, which is an origin and a yaw, such as a room or a carried object. |
+| view | `ViewPoint` | Metres from a `Lens`. `x` is right, `y` is up, and `z` is depth ahead. |
+| screen | `ScreenPoint` | CSS pixels. `+y` is down. |
+| grid | `GridPoint` | The Grid's drawing units, two metres each, measured from the middle of the places. |
 
 <!-- source: aethyr/space.coax types -->
 ```jai
@@ -62,9 +63,9 @@ Lens :: struct {
 Seen :: struct { at: ScreenPoint; depth: f32; ok: bool; }
 ```
 
-Distances carry units through Coax's `quantity` library (R12's first slice).
-A grid unit is a unit of length worth two metres, a power of two, so
-converting is exact; `grid_metres` is the only way across.
+Distances use Coax's `quantity` library, the first part of roadmap item R12.
+A grid unit is a unit of length equal to two metres. Two is a power of two, so
+the conversion is exact. Use `grid_metres` to convert; there is no other way.
 
 <!-- source: aethyr/space.coax units -->
 ```jai
@@ -77,11 +78,9 @@ aethyr_grid_per_metre :: () -> f32 #export_c { return GRID_PER_METRE; }   // for
 
 ## The conversions
 
-The Grid draws a metre as half a unit, and it must scale heights as it
-scales the ground. When it did not, a jump's feet were drawn at floor height
-while the camera, which read the physics position, rose: two sources of one
-position. `world_to_grid` is now the one way a world point reaches the
-Grid's drawing:
+The Grid draws one metre as half a unit. It must scale heights by the same
+factor as the ground. `world_to_grid` is the only function that converts a
+world point for the Grid's drawing, and it scales all three axes:
 
 <!-- source: aethyr/space.coax grid -->
 ```jai
@@ -95,10 +94,10 @@ grid_to_world :: (mid: GridPoint, g: GridPoint) -> WorldPoint {
 }
 ```
 
-A lens turns a world point into the camera's view and the view onto the
-screen. A point nearer than the near plane, or behind the eye, is not drawn:
-`Seen.ok` is false rather than a point projected through the eye to the
-wrong side of the screen.
+A `Lens` converts a world point to the camera's view, and the view to the
+screen. If a point is nearer than the near plane, or behind the camera,
+`view_to_screen` returns `Seen.ok` as `false`. It doesn't project the point
+to the wrong side of the screen.
 
 <!-- source: aethyr/space.coax screen -->
 ```jai
@@ -116,8 +115,9 @@ view_to_screen :: (l: Lens, v: ViewPoint) -> Seen {
 world_to_screen :: (l: Lens, w: WorldPoint) -> Seen { return view_to_screen(l, world_to_view(l, w)); }
 ```
 
+The example
 [aethyr/examples/feet-in-every-space.coax](../examples/feet-in-every-space.coax)
-follows a figure at the top of its jump through every space:
+converts a figure's feet at the top of a jump into every space:
 
 <!-- source: aethyr/examples/feet-in-every-space.coax example -->
 ```jai
@@ -161,13 +161,15 @@ back from the grid (2.0, 1.17, -4.0) m
 a point behind the eye is drawn false
 ```
 
-## Mixing spaces does not compile
+## Check that mixed spaces don't compile
 
-A type error that nobody checks can be lost to a cast someone adds later, so
-the refusals are checks too. Each fixture in `aethyr/tests/spaces/` names on
-its first line what the compiler must say about it, and
-`aethyr/refusals.coax` (a Coax tool) compiles each and compares. The bug
-above, a grid point drawn as a world one:
+A type error is only useful if a check keeps it in place. Otherwise, a later
+cast can remove it without anyone noticing. Each fixture in
+`aethyr/tests/spaces/` states on its first line what the compiler must
+report. The tool `aethyr/refusals.coax` compiles each fixture and compares
+the result.
+
+This fixture passes a grid point where a world point is required:
 
 <!-- source: aethyr/tests/spaces/grid-as-world.coax fixture -->
 ```jai
@@ -180,7 +182,7 @@ main :: () {}
 aethyr/tests/spaces/grid-as-world.coax:4:66: error[E0317]: argument 2 of 'world_to_screen' is WorldPoint, given GridPoint
 ```
 
-Metres added to grid units:
+This fixture adds metres to grid units:
 
 <!-- source: aethyr/tests/spaces/metres-plus-grid.coax fixture -->
 ```jai
@@ -194,10 +196,16 @@ aethyr/tests/spaces/metres-plus-grid.coax:4:71: error[E0822]: incompatible quant
   fix: write convert_unit(Metre, value) explicitly
 ```
 
-The six fixtures are those two, a world point given for a view point and a
-screen point for a view point (E0317), a local point stored as a world one
-(E0325), and a control that reaches each space through its named conversion
-and must compile, so a fixture can't pass because nothing compiles at all.
+There are six fixtures:
+
+- a grid point passed as a world point (E0317);
+- a world point passed as a view point (E0317);
+- a screen point passed as a view point (E0317);
+- a local point stored as a world point (E0325);
+- metres added to grid units (E0822);
+- a control that reaches each space through its named conversion and must
+  compile. If nothing compiled, the refusals would pass for the wrong
+  reason; the control catches that.
 
 ```shell
 coax/web/tool.sh aethyr/refusals.coax
@@ -222,32 +230,39 @@ coax/bin/coax test aethyr/refusals.coax --library
 coax/bin/coax mutate aethyr/refusals.coax
 ```
 
-`space.coax`'s checks cover the world arithmetic, distances in their units
-and the exact grid conversion, local round trips at sixteen yaws, a quarter
-turn, the Grid's height scaling (feet 1.17 m up drawn 0.585 units up), and
-the lens: ahead, right, up, the near plane exactly and nothing behind it.
-Mutation kills 78 of 78 mutants of `space.coax` and 47 of 47 of
-`refusals.coax`, whose own checks read a fixture's expectation and decide
-whether the compiler met it.
+The checks in `aethyr/space.coax` cover:
+
+- world arithmetic;
+- distances in their units, and the exact grid conversion;
+- local-to-world round trips at sixteen yaws, and a quarter turn;
+- the Grid's height scaling: feet 1.17 m up are drawn 0.585 units up;
+- the lens: ahead, right, up, a point exactly on the near plane, and points
+  behind the camera.
+
+`coax mutate` kills 78 of 78 mutants of `aethyr/space.coax`. It kills 47 of
+47 mutants of `aethyr/refusals.coax`, whose checks read a fixture's
+expectation and decide whether the compiler met it.
 
 ## Still to do
 
-The figure's feet drawn at their physics height in every realm is a
-cross-realm check: it reads the drawn feet and the physics feet in the same
-frame and requires equality, not closeness. It needs every realm's drawing to
-go through `world_to_grid` or `world_to_view`, so it lands with the migration
-([chapter 64](ch064-every-realm-runs-on-aethyr.md)), which also replaces the
-older vector types: `Point` in [verse/space.coax](../../verse/space.coax),
-`Vec3` in [verse/player.coax](../../verse/player.coax), and the f64 `D3` with
-a floating origin in [verse/rigid.coax](../../verse/rigid.coax) and
-[verse/spacecam.coax](../../verse/spacecam.coax), which gains f64 spaces here
-when it moves.
+One check needs every realm to use these spaces: in the same frame, the drawn
+feet must equal the physics feet exactly. The check lands with the realm
+migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)), after every
+realm draws through `world_to_grid` or `world_to_view`. The migration also
+replaces the older vector types:
+
+- `Point` in [verse/space.coax](../../verse/space.coax);
+- `Vec3` in [verse/player.coax](../../verse/player.coax);
+- the f64 `D3` type with a floating origin in
+  [verse/rigid.coax](../../verse/rigid.coax) and
+  [verse/spacecam.coax](../../verse/spacecam.coax). When these move, this
+  module gains f64 spaces.
 
 ## Dependencies
 
-[Chapter 1](ch001-a-frame-has-a-fixed-step.md) for the interpolated position
-a figure is drawn at. From Coax: R12 units and coordinate frames
-([Coax roadmap](../../coax/ROADMAP.md)), whose first slice is
-[coax/lib/quantity.coax](../../coax/lib/quantity.coax), and generics
-([Coax chapter 8](../../coax/book/ch08-generics.md)). Background:
+This chapter uses the interpolated position from
+[chapter 1](ch001-a-frame-has-a-fixed-step.md). From Coax, you need R12 units
+and coordinate frames ([Coax roadmap](../../coax/ROADMAP.md)), whose first
+part is [coax/lib/quantity.coax](../../coax/lib/quantity.coax), and generics
+([Coax chapter 8](../../coax/book/ch08-generics.md)). For background, see the
 [game-engine systems inventory, section 6](../../docs/research/game-engine-systems.md).

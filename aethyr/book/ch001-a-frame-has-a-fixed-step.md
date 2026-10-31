@@ -1,62 +1,78 @@
 # 1. A frame has a fixed step
 
 > Engine-core task: `ec-loop` (#12609), done in `3102756f8b`. The module is
-> [aethyr/loop.coax](../loop.coax); the walking controller in
-> [verse/player.coax](../../verse/player.coax) (every walking realm) and Orbit
-> League step on it.
+> [aethyr/loop.coax](../loop.coax). The walking controller in
+> [verse/player.coax](../../verse/player.coax), which every walking realm
+> uses, and Orbit League step on it.
 
-A display delivers frames when it can: 60 a second on most phones, 120 or 144
-on fast screens, and sometimes a 300 ms stall when a tab wakes up. A
-simulation that advances by whatever time a frame happened to take gives
-different jumps, different landings and different collisions at every frame
-rate. Aethyr separates the two clocks. Simulation advances only in fixed
-steps; drawing shows a point between the last two steps. One owner advances
-time, and nothing else does.
+A display shows frames at its own rate: 60 frames a second on most phones,
+120 or 144 on fast screens. A browser tab can also pause for 300 ms or more
+when it wakes up. If a simulation advances by each frame's time, a jump
+reaches a different height at each frame rate.
+
+Aethyr keeps two clocks apart:
+
+- The simulation advances only in fixed steps.
+- Drawing shows a point between the last two steps.
+
+This chapter shows the clock that does both.
 
 ## What this chapter teaches
 
 - Why a fixed step makes physics independent of the frame rate.
-- Keeping time in whole nanoseconds, so a step count never depends on float
-  rounding.
-- Clamping a long frame, capping the steps one frame runs, and dropping the
-  backlog past the cap.
-- Interpolating the drawn state between the last two steps.
-- Checking that a jump looks smooth, with numbers.
+- How to keep time in whole nanoseconds, so that a step count doesn't depend
+  on float rounding.
+- How to clamp a long frame, limit the steps in one frame, and drop the
+  extra time.
+- How to draw between the last two steps.
+- How to check that a jump moves smoothly at 60 FPS.
 
 ## The method
 
-Each frame the host reports the elapsed time `Δ`. The clock turns it into
-whole nanoseconds, refuses what is no time, clamps it, adds it to what it
-carries, and owes as many whole steps `h` as fit, up to a cap `N_max`. A
-backlog past the cap is dropped, keeping the part of a step it leaves. After
-the steps run, the part of a step still carried is the drawing factor:
+Each frame, the host reports the time `Δ` since the last frame. The clock
+handles it in these steps:
+
+1. Round `Δ` to whole nanoseconds. Refuse a time that is negative, infinite,
+   or not a number.
+2. Clamp it to `Δ_max`.
+3. Add it to the time carried from earlier frames, `a`.
+4. Count the whole steps `h` in `a`. If there are more than `N_max`, drop the
+   extra steps' time and run `N_max`.
+5. After the steps run, compute `α = a / h`, the part of a step left over.
+   Drawing mixes the last two steps by `α`.
 
 ```jai
-Δ'    = clamp(round_ns(Δ), 0, Δ_max)    // a stall counts as at most Δ_max
+Δ'    = clamp(round_ns(Δ), 0, Δ_max)
 a     = a + Δ'
 n     = ⌊a / h⌋
-if n > N_max { a = a − (n − N_max) h; n = N_max }   // the backlog is dropped
+if n > N_max { a = a − (n − N_max) h; n = N_max }
 a     = a − n h                         // after the n steps run: a in [0, h)
-α     = a / h                           // the drawing factor, in [0, 1)
+α     = a / h                           // in [0, 1)
 draw  = lerp(state_prev, state_now, α)
 ```
 
-Before each step the realm copies the fields it draws to their `prev_`
-copies; after the last step, drawing reads `lerp(prev, now, α)`. Angles mix
-the short way round (`wrap_angle(now − prev)`).
+Before each step, the realm copies the fields that it draws into `prev_`
+fields. After the last step, it draws `lerp(prev, now, α)`. Angles use the
+shorter direction: `wrap_angle(now − prev)`.
 
-Time is an integer. The walking step is 1/64 s, 15,625,000 ns exactly, and 64
-steps are exactly one second. A rate that is not a power of two, such as
-Orbit League's 1/120 s (8,333,333 ns), still steps deterministically: the
-same frame times always give the same step counts, because no float total is
-ever compared against a step. Aethyr's defaults are a 1/64 s step, frames
-counted as at most 0.25 s, and at most eight steps a frame.
+The clock keeps time as an integer number of nanoseconds. The walking step
+is 1/64 s, exactly 15,625,000 ns, so 64 steps are exactly one second. Orbit
+League's step is 1/120 s, which rounds to 8,333,333 ns. Both are
+deterministic: the same frame times give the same step counts, because the
+clock never compares a float total with a step.
+
+The defaults are:
+
+- a step of 1/64 s (`LOOP_STEP_NS`);
+- a longest frame of 0.25 s (`LOOP_MAX_FRAME_NS`);
+- at most eight steps in one frame (`LOOP_MAX_STEPS`).
 
 ## The clock
 
 The clock is a value. A realm keeps one in its state and replaces it each
-frame; it also counts what it refused, clamped and dropped, so frame pacing
-can be read and checked.
+frame. The clock also counts the frames it refused, the frames it clamped,
+the frames with too many steps, and the time it dropped. A realm and its
+checks can read these counts.
 
 <!-- source: aethyr/loop.coax clock -->
 ```jai
@@ -81,10 +97,10 @@ FrameClock :: struct {
 }
 ```
 
-Accepting a frame does all of the method's arithmetic but the steps
-themselves. A clock read from memory that was never constructed (chapter 3)
-takes the defaults it was declared with instead of freezing on a zero step,
-clamp or cap.
+`loop_accept_ns` does all of the method except running the steps. If the
+step, clamp, or step limit is zero or negative, the clock uses the declared
+default. A clock read from memory that was never constructed
+([chapter 3](ch003-state-starts-from-its-defaults.md)) still runs.
 
 <!-- source: aethyr/loop.coax accept -->
 ```jai
@@ -111,8 +127,8 @@ loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock #export_c {
 }
 ```
 
-The realm runs the steps due, then tells the clock they ran. `loop_alpha` is
-what drawing mixes by:
+The realm runs the steps that are due, then calls `loop_ran`. `loop_alpha`
+returns the value that drawing mixes by.
 
 <!-- source: aethyr/loop.coax ran -->
 ```jai
@@ -144,9 +160,14 @@ loop_alpha :: (c: FrameClock) -> f32 #export_c {
 
 ## One owner of time
 
-The walking controller is the first client. Its frame entry point accepts the
-frame on the player's clock, runs exactly the steps due, keeping where each
-began, and pays them; nothing else in the controller reads the frame's time.
+The walking controller uses the clock as follows:
+
+1. `advance_in` passes the frame's time to `loop_accept`.
+2. It runs the number of steps that `loop_due` returns, and saves the
+   position, target, facing, and camera distance before each step.
+3. It calls `loop_ran`.
+
+No other code in the controller reads the frame's time.
 
 <!-- source: verse/player.coax advance -->
 ```jai
@@ -175,8 +196,8 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
 }
 ```
 
-What is drawn reads only the last two steps and `α`: the feet, the facing
-and the camera.
+Drawing reads only the last two steps and `α`. This applies to the feet, the
+facing, and the camera.
 
 <!-- source: verse/player.coax drawn -->
 ```jai
@@ -198,9 +219,11 @@ verse_player_eye :: (p: Player) -> Vec3 #export_c {
 
 ## Steps are the same at any frame rate
 
-The clock's contract, as a check: fed five seconds at 30, 60, 120 or 144
-frames a second, it has run `⌊time / h⌋` steps after every frame, and the
-time drawn, `(ticks + α) h`, is the time fed.
+This check feeds the clock five seconds of frames at 30, 60, 120, and 144
+FPS. After every frame, it requires the following:
+
+- The clock has run `⌊time / h⌋` steps.
+- The drawn time, `(ticks + α) h`, equals the time fed in.
 
 <!-- source: aethyr/loop.coax rates -->
 ```jai
@@ -224,8 +247,9 @@ time drawn, `(ticks + α) h`, is the time fed.
 }
 ```
 
-[aethyr/examples/frame-rates.coax](../examples/frame-rates.coax) feeds the
-same five seconds and a stall, and prints what the clock did:
+The example [aethyr/examples/frame-rates.coax](../examples/frame-rates.coax)
+feeds the same five seconds, then a three-second pause, and prints what the
+clock did:
 
 <!-- source: aethyr/examples/frame-rates.coax example -->
 ```jai
@@ -269,25 +293,27 @@ a 3 s stall: 8 steps, 125000000 ns dropped, overlong 1, stalls 1
 the next frame: 1 step
 ```
 
-A sixtieth of a second rounds up to 16,666,667 ns, so 300 frames feed
-5.0000001 s and reach the 320th step; the other rates round down and stop
-just short of it. The stall counts as 0.25 s, runs eight steps and drops the
-other eight; the frame after it runs one step, as an ordinary frame does.
+At 60 FPS, one frame rounds up to 16,666,667 ns. The 300 frames add up to
+5.0000001 s, so the clock reaches step 320. The other rates round down and
+stop at step 319. The pause counts as 0.25 s: the clock runs eight steps and
+drops the time of the other eight. The next frame runs one step, like any
+other frame.
 
-The player's own check is stronger: a run and jump fed at each of the four
-rates passes through the same states, bit for bit, as one step at a time
-(`verse/player.coax`, "a run and jump has the same states at 30, 60, 120 and
-144 FPS"), and what is drawn always lies between the last two steps.
+The controller has a stronger check, "a run and jump has the same states at
+30, 60, 120 and 144 FPS" in `verse/player.coax`. It runs a jump at each rate
+and compares every step, bit for bit, with the same jump run one step at a
+time. It also requires the drawn feet to lie between the last two steps.
 
-## A jump has no stutter
+## A jump moves smoothly at 60 FPS
 
-At 60 FPS the 64 Hz steps do not land one to a frame: most frames run one
-step and some run two. Drawn at the last step, a jump's height lurches each
-time two steps land in one frame. Drawn between the last two steps, its
-per-frame move changes by little more than gravity changes it.
+At 60 FPS, the 64 Hz steps don't fall one to a frame. Most frames run one
+step, and some run two. If you draw the last step, the jump's height jumps
+forward in each frame that runs two steps. If you draw between the last two
+steps, each frame's movement changes by about as much as gravity changes it.
 
-The check measures how much the drawn height's per-frame move changes from
-one frame to the next, through the jump's flight, and bounds it:
+The check measures, through the jump, how much each frame's change in height
+differs from the previous frame's. It requires that difference to stay under
+a bound:
 
 <!-- source: verse/player.coax stutter -->
 ```jai
@@ -332,8 +358,8 @@ one frame to the next, through the jump's flight, and bounds it:
 }
 ```
 
-[aethyr/examples/jump-at-60.coax](../examples/jump-at-60.coax) prints the
-worst of each over the same jump:
+The example [aethyr/examples/jump-at-60.coax](../examples/jump-at-60.coax)
+prints the largest difference for the same jump:
 
 ```shell
 coax/bin/coax run aethyr/examples/jump-at-60.coax
@@ -345,16 +371,15 @@ feet: interpolated 7.0 mm, last step 76.2 mm
 camera: interpolated 13.1 mm, last step 61.3 mm
 ```
 
-| Drawn at 60 FPS | Interpolated | Last step | Bound checked |
+| Drawn at 60 FPS | Between the last two steps | At the last step | Bound in the check |
 | --- | ---: | ---: | ---: |
-| Feet: change in a frame's move | 7.0 mm | 76.2 mm | 10.7 mm |
-| Camera: change in a frame's move | 13.1 mm | 61.3 mm | 16 mm |
+| Feet | 7.0 mm | 76.2 mm | 10.7 mm |
+| Camera | 13.1 mm | 61.3 mm | 16 mm |
 
-Gravity alone accounts for 6.7 mm (`g Δ²`, with `g` 24 m/s² and `Δ` 1/60 s),
-so interpolation leaves 0.3 mm of error in the feet. The camera follows on a
-spring, which adds its own pull. The same check requires the last-step
-drawing to fail the bounds by at least three times, so a regression to it
-cannot pass.
+Gravity alone accounts for 6.7 mm (`g Δ²`, where `g` is 24 m/s² and `Δ` is
+1/60 s). The camera follows the player on a spring, which adds to its value.
+The check also draws the last step and requires it to exceed each bound at
+least three times over, so a change back to last-step drawing fails.
 
 ## Checks
 
@@ -364,28 +389,42 @@ coax/bin/coax mutate aethyr/loop.coax
 coax/bin/coax test verse/player.coax --library --only FPS
 ```
 
-`aethyr/loop.coax` has nine checks: nanoseconds to the nearest, refusal and
-clamping, the cap, paying steps, a stall, `α`, simulation time, a zeroed
-clock, and the frame-rate contract. `coax mutate` makes 74 mutants of it and
-the checks kill all 74.
+`aethyr/loop.coax` has nine checks. They cover:
+
+- rounding seconds to nanoseconds;
+- refusing and clamping a frame's time;
+- the limit on steps in one frame;
+- paying the steps that ran;
+- a long pause;
+- `α`;
+- simulation time in seconds;
+- a clock read from zeroed memory;
+- the step count at four frame rates.
+
+`coax mutate` makes 74 mutants of `aethyr/loop.coax`, and the checks kill all
+74.
 
 ## What it replaced
 
-Three accumulators with three sets of constants: `verse/player.coax`'s (f32
-seconds, 1/64 s, eight steps, 0.25 s), Orbit League's (f64, 1/120 s, a carry
-capped at eight steps) and Dead Gears' ECS clock
-([verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a
-0.1 s cap, eight steps, a `1e-7` slack so 0.05 s is three steps). The first
-two step on `aethyr/loop.coax` now. Dead Gears' clock, Ice Cream Man's
-1/30 s step, the 0.1 s frame clamps in six page shells' C glue and
-`verse/demolish.coax`'s accumulator move with the realm migration
-([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
+Before this module, three realms each had their own accumulator:
+
+- `verse/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
+- Orbit League: f64, 1/120 s, at most eight steps of carried time.
+- Dead Gears' ECS clock in
+  [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a
+  0.1 s limit, eight steps, and `1e-7` of slack so that 0.05 s counts as
+  three steps.
+
+The first two now use `aethyr/loop.coax`. The realm migration
+([chapter 64](ch064-every-realm-runs-on-aethyr.md)) moves the rest: Dead
+Gears' clock, Ice Cream Man's 1/30 s step, the 0.1 s frame clamps in six page
+shells' C code, and the accumulator in `verse/demolish.coax`.
 
 ## Dependencies
 
-None in this book; this is the first piece. From Coax: checks and mutation
-([Coax chapter 11](../../coax/book/ch11-writing-checks.md)), determinism
-([Coax chapter 16](../../coax/book/ch16-determinism.md)), and later R13 typed
-clocks and multirate ticks ([Coax roadmap](../../coax/ROADMAP.md)), which give
-the step's simulation time its own type. Background:
+This is the book's first chapter. From Coax, you need checks and mutation
+([Coax chapter 11](../../coax/book/ch11-writing-checks.md)) and determinism
+([Coax chapter 16](../../coax/book/ch16-determinism.md)). Later, R13 typed
+clocks and multirate ticks ([Coax roadmap](../../coax/ROADMAP.md)) give
+simulation time its own type. For background, see the
 [game-engine systems inventory, section 5](../../docs/research/game-engine-systems.md).
