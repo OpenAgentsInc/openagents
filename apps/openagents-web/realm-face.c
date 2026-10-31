@@ -925,6 +925,8 @@ static void describe(void) {
     v.quest_line = sandbox ? (coax_string){"", 0} : verse_haunt_step_line(house);
     v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
     v.bearing = verse_haunt_goal_bearing(house);
+    // over the front door's top, for the first step's marker (verse_haunt_goal is just inside it)
+    v.door_at.e[0] = 8; v.door_at.e[1] = 2.7f; v.door_at.e[2] = 19.9f;
     v.editing = false;
     v.me = realm_me(realm_of());
     v.item_n = 0;

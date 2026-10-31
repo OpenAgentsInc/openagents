@@ -112,6 +112,7 @@ RealmView :: struct {
   pieces: bool;         // edit mode makes set pieces from a sentence (the Sandbox): MAKE A SET PIECE, P
   goal: string;         // at the quest's orb: what E does there ("" not at it)
   bearing: f32;         // the orb's angle from where you look, radians (sign: the side)
+  door_at: [3] f32;     // the quest's first step: over the front door (x, y, z), for its marker
   editing: bool;        // edit mode
   items: [ITEMS] string; item_n: int;   // what edit mode's hotbar places, slot 1 up
   selected: string;     // the thing picked ("" none): a drag moves it, a pinch or the wheel sizes it, a twist or Q and E turn it
@@ -200,6 +201,13 @@ QUALITY_LABELS :: [3] string.["GFX HIGH", "GFX MED", "GFX LOW"];
 ACT_QUALITY :: 6;   // host.js: the outbox names the graphics to draw with
 
 HELP_TIME :: 9.0;      // seconds the controls stay written after you first move
+// The way in (2026-10-31: 10 of 12 visitors left in the Yard on "Walk in through the front door"):
+// a marker over the front door until you're through it, the edge glow when it's off the screen,
+// and after DOOR_NUDGE seconds standing still, how to walk there in place of the controls.
+DOOR_NUDGE :: 8.0;
+DOOR_DESK :: "HOLD W TO WALK UP THE PATH TO THE DOOR";
+DOOR_PHONE :: "PUSH THE STICK UP TO WALK TO THE DOOR";
+DISCLOSE_TIME :: 8.0;  // seconds the notice of what the house saves stays up, moved or not
 
 Realm :: struct {
   time: f32; width: f32; height: f32; dpr: f32;
@@ -212,6 +220,8 @@ Realm :: struct {
   map: bool;
   chat: bool;           // the room's chat is open
   moved_at: f32;        // when you first moved (-1 not yet)
+  ready_at: f32;        // when the house opened (-1 not yet)
+  walked_at: f32;       // the last frame a key or the stick was moving you
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool;     // where each button was last drawn
   typing: bool; typed: [TYPED_MAX] u8; typed_n: int;   // the typed box, open, and what's in it
   typed_all: bool;                                      // Cmd+A: all of it selected (textkeys.coax)
@@ -308,7 +318,7 @@ realm_voice_say :: (r: [] Realm, words: string) -> bool #export_c {
 realm_set_quality :: (r: [] Realm, q: int) #export_c { if q >= 0 && q < 3 { r[0].quality = q; } }
 
 realm_reset :: (r: [] Realm) #export_c {
-  r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].hover = -1;
+  r[0].press = -1; r[0].press_id = -1; r[0].moved_at = -1; r[0].ready_at = -1; r[0].hover = -1;
   r[0].hold = -1; r[0].jump_id = -1; r[0].scale_by = 1; r[0].turn_by = 0; r[0].wf_n = 0;
 }
 
@@ -1305,6 +1315,46 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
 // The text after the last line break a wrap would make, roughly: the caret goes after it.
 last_line :: (text: string) -> string { return text; }
 
+// The front door's marker, while the quest's first step is to walk in: where it is on the screen.
+door_spot :: (r: [] Realm, v: RealmView) -> Spot {
+  if !v.has_view { return Spot.{x = 0, y = 0, w = -1}; }
+  return realm_spot(v, v.door_at[0], v.door_at[1], v.door_at[2], r[0].width, r[0].height);
+}
+door_on_screen :: (r: [] Realm, v: RealmView) -> bool {
+  p := door_spot(r, v);
+  m := 24 * r[0].dpr;
+  return p.w >= 0.3 && p.x > m && p.x < r[0].width - m && p.y > m && p.y < r[0].height - m;
+}
+// How much the walk-to-the-door line shows (0 to 1): on the first step, DOOR_NUDGE seconds
+// after the house opened and you haven't moved, or as long after you last stopped short of it.
+door_nudge :: (r: [] Realm, v: RealmView) -> f32 {
+  if v.quest != 0 || r[0].ready_at < 0 { return 0; }
+  still := r[0].time - hi(r[0].ready_at, r[0].walked_at);
+  return ease((still - DOOR_NUDGE) / 0.8);
+}
+// A ring over the door that swells and fades, an arrow down into it and FRONT DOOR.
+draw_door :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
+  k := r[0].dpr;
+  p := door_spot(r, v);
+  pulse := (r[0].time / 1.4) - floor(r[0].time / 1.4);
+  vertices := at;
+  rad := (14 + 22 * pulse) * k;
+  for s: 0..<24 {
+    a0 := cast(f32) s * 6.2831853 / 24; a1 := cast(f32) (s + 1) * 6.2831853 / 24;
+    if lit(out, vertices, p.x + cos(a0) * rad, p.y + sin(a0) * rad, p.x + cos(a1) * rad, p.y + sin(a1) * rad, 0.9 * k, 0.9 * (1 - pulse), 4 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  }
+  bob := sin(r[0].time * 3.2) * 4 * k;
+  // the arrow comes down onto the door; with the door near the top (under the name and the quest's
+  // line) it points up at it from below instead, its words under it
+  up := p.y - 72 * k < top_bottom(r);
+  dir := ifx up then -1.0f32 else 1.0f32;
+  tip := p.y - dir * 22 * k + bob;
+  if lit(out, vertices, p.x, tip - dir * 26 * k, p.x, tip, 1.2 * k, 1, 6 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, p.x - 9 * k, tip - dir * 10 * k, p.x, tip, 1.2 * k, 1, 6 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  if lit(out, vertices, p.x + 9 * k, tip - dir * 10 * k, p.x, tip, 1.2 * k, 1, 6 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { vertices += 6; }
+  return centred(k, out, vertices, "FRONT DOOR", p.x, ifx up then tip + 46 * k else tip - 36 * k, 9 * k, white(k, 0.95));
+}
+
 // The way to the quest's orb when it's off to one side: an orange glow on
 // that edge of the screen, with chevrons pointing out.
 draw_way :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
@@ -1367,6 +1417,8 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices := 0;
 
   realm_tick(r);
+  if r[0].ready_at < 0 { r[0].ready_at = r[0].time; }
+  if r[0].held & (HOLD_FORWARD | HOLD_BACK | HOLD_LEFT | HOLD_RIGHT) != 0 || v.move_on { r[0].walked_at = r[0].time; }
   r[0].sized = v.selected.count > 0;
   if r[0].hold >= v.item_n { r[0].hold = -1; }
 
@@ -1406,7 +1458,9 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
                             w + cap, 18 * k, false, true, used[..]);
   }
 
-  if v.quest > 0 && v.quest < QUEST_STEPS && v.goal.count == 0 && abs(v.bearing) > 0.55 { vertices = draw_way(r, v, out, vertices); }
+  door_seen := false;
+  if v.quest == 0 { door_seen = door_on_screen(r, v); if door_seen { vertices = draw_door(r, v, out, vertices); } }
+  if v.quest >= 0 && v.quest < QUEST_STEPS && v.goal.count == 0 && abs(v.bearing) > 0.55 && !door_seen { vertices = draw_way(r, v, out, vertices); }
   if v.offers > 0 && !r[0].map { vertices = draw_offer(r, v, out, vertices); }
   chatting := chat_shown(r, v);
   if chatting { vertices = draw_chat(r, v, out, vertices); }
@@ -1441,21 +1495,27 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   // first move, what the keys or thumbs do
   if phone(r) { vertices = draw_stick(r, v, out, vertices); }
   help := ifx r[0].moved_at < 0 then 1.0f32 else 1 - ease((r[0].time - r[0].moved_at - HELP_TIME) / 1.5);
-  if help > 0 && v.talking.count == 0 && !r[0].typing && hint_line(r, v).count == 0 {
+  nudge := door_nudge(r, v);
+  if nudge > 0 && v.talking.count == 0 && !r[0].typing && hint_line(r, v).count == 0 {
+    line := ifx phone(r) then DOOR_PHONE else DOOR_DESK;
+    vertices = centred(d, out, vertices, line, r[0].width * 0.5, hotbar_top(r) - 16 * k, 9 * k, orange(k, nudge * (0.8 + 0.2 * sin(r[0].time * 3))));
+  } else if help > 0 && v.talking.count == 0 && !r[0].typing && hint_line(r, v).count == 0 {
     k2 := white(k, 0.6 * help);
     line := ifx phone(r) then HELP_PHONE else HELP_DESK;
     vertices = centred(d, out, vertices, line, r[0].width * 0.5, hotbar_top(r) - 14 * k, 7 * k, k2);
     // what the house saves (analytics.coax), while the controls show and
-    // nothing else is up: on a plate above them
-    if !r[0].map && !chatting && use_label(v).count == 0 {
+    // nothing else is up: on a plate above them, for the first seconds only
+    // (it hid the Yard for as long as you stood still)
+    told := help * (1 - ease((r[0].time - r[0].ready_at - DISCLOSE_TIME) / 1.0));
+    if told > 0.01 && !r[0].map && !chatting && use_label(v).count == 0 {
       said: [1] f32;
       dw := lo(420 * k, r[0].width - 2 * gutter(r) - 24 * k);
       vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, 0, 0, 6.5 * k, GAP, SPACE, white(k, 0), dw, 13 * k, false, false, said[..]);
       bottom := hotbar_top(r) - 40 * k;
       x0 := (r[0].width - dw) * 0.5;
       top := bottom - said[0] - 6.5 * k;
-      plate(r, Box.{x0 = x0 - 12 * k, y0 = top - 15 * k, x1 = x0 + dw + 12 * k, y1 = bottom + 4 * k}, 0.75 * help, LOOK_PLAIN);
-      vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, x0, top - 6.5 * k, 6.5 * k, GAP, SPACE, white(k, 0.8 * help), dw, 13 * k, false, true, said[..]);
+      plate(r, Box.{x0 = x0 - 12 * k, y0 = top - 15 * k, x1 = x0 + dw + 12 * k, y1 = bottom + 4 * k}, 0.75 * told, LOOK_PLAIN);
+      vertices = draw_wrapped(d, out, vertices, TRACK_DISCLOSURE, x0, top - 6.5 * k, 6.5 * k, GAP, SPACE, white(k, 0.8 * told), dw, 13 * k, false, true, said[..]);
     }
   }
   return vertices;
@@ -2462,4 +2522,33 @@ plated :: (u: [] f32, b: Box) -> f32 {
   a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
   c := voice_circle(ph[..]); g := ph[0].boxes[BTN_EXIT];
   #assert ph[0].shown[BTN_EXIT] && c.y - c.r > g.y1;
+}
+
+#test "the first step marks the front door, nudges you there after a while standing still, and the saving notice goes after a few seconds" {
+  r: [1] Realm; desk(r[..]); v := view();
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  v.quest = 0; v.quest_line = "Walk in through the front door"; v.bearing = 0;
+  v.has_view = true;
+  v.camera[0] = 1; v.camera[5] = 1; v.camera[10] = 1; v.camera[14] = 1;
+  v.door_at[0] = 0; v.door_at[1] = 0; v.door_at[2] = 5;
+  #assert door_on_screen(r[..], v);
+  first := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  plates := r[0].plate_n;   // the saving notice's plate is up at first
+  #assert door_nudge(r[..], v) == 0;
+  v.door_at[2] = -5;   // behind you: no marker, the edge glow instead
+  #assert !door_on_screen(r[..], v);
+  v.door_at[2] = 5;
+  for i: 0..<600 { n := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016); }   // ~10 s standing in the Yard
+  #assert door_nudge(r[..], v) > 0.99;
+  later := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  #assert r[0].plate_n == plates - 1;   // the notice has gone
+  // walking: the nudge goes at once, and comes back only after standing still again
+  r[0].held = HOLD_FORWARD;
+  n := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+  r[0].held = 0;
+  #assert door_nudge(r[..], v) == 0;
+  // through the door, the marker and the nudge are done
+  v.quest = 1; v.quest_line = "Pick something from the hotbar";
+  for i: 0..<600 { n = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016); }
+  #assert door_nudge(r[..], v) == 0;
 }
