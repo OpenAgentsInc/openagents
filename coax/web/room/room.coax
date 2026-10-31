@@ -82,7 +82,7 @@ rm_quick :: (v: [] RmServer, name: string) -> int {
   seats := ifx name == "quick-2v2" then ROOM_PLAYERS else 2;
   for r: 0..<ROOMS {
     m := v[0].rooms[r];
-    if !m.live || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 || m.s[0].kicks > 1 { continue; }
+    if !m.live || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 { continue; }
     if rm_seat(v[0].conns[..], r) >= 0 && rm_seat(v[0].conns[..], r) < seats { return r; }
   }
   v[0].quick_n += 1;
@@ -266,4 +266,22 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   m := v[0].rooms[r];
   #assert m.s[0].phase == PHASE_PLAY;
   for seat: 1..<ROOM_PLAYERS { #assert d3_len(m.cars[seat].vel) > 3.0 && m.cars[seat].pos.y > 0.0 && m.cars[seat].pos.y < 3.0; }
+}
+
+#test "QUICK MATCH: a second player a second later joins the waiting match and its countdown starts (ol-quick-match)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  q1 := "GET /api/room/orbit-league/quick-1v1 HTTP/1.1\r\n\r\n";
+  // a room slot used before: its kickoff count carries on
+  r0 := rm_find(v[0].rooms[..], "old"); v[0].rooms[r0].live = false;
+  #assert rm_join(v[..], 0, q1) == 0 && v[0].rooms[v[0].conns[0].room].s[0].kicks > 1;
+  for t: 0..<90 { rm_tick(v[..]); }
+  #assert rm_join(v[..], 1, q1) == 1;
+  #assert v[0].conns[0].room == v[0].conns[1].room;
+  #assert v[0].rooms[v[0].conns[0].room].s[0].phase_t >= 0.0;
+  for t: 0..<3 { rm_tick(v[..]); }
+  n := rm_state(v[..], 1);
+  a: [1] OrbitLeague; game_reset(a[..]); a[0].online = true; a[0].no_bot = true;
+  room_take(a[..], cast(string) v[0].out[0..<n]);
+  #assert a[0].phase_t >= 0.0;
 }
