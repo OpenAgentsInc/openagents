@@ -1395,13 +1395,14 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       // the class's portrait (stair.wgsl), its name, its cost
       light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
       bh := r.y1 - r.y0;
-      tx := r.x0 + bh * 0.95;
+      tx := r.x0 + bh * 0.8;
       room := r.x1 - tx - 8 * k;
       nc := 12 * k;
       while text_width(CLASS_NAME[cls], nc) > room && nc > 7 * k { nc -= 0.5 * k; }
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
       m = put_int(buf[..], 0, CLASS_COST[cls]); m = put(buf[..], m, " GOLD");
       cc := lo(10 * k, nc);
+      while text_width(cast(string) buf[0..<m], cc) > room && cc > 6 * k { cc -= 0.5 * k; }
       n = say_at(out, n, cast(string) buf[0..<m], tx, (r.y0 + r.y1) / 2 + cc + 4 * k, cc, ink(k, light * 0.9, GOLD_R, GOLD_G, GOLD_B));
       continue;
     }
