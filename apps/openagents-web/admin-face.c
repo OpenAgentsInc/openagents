@@ -20,14 +20,16 @@ static coax_v_t_AdminState at(uint32_t state) {
 static void send_ask(uint32_t state) {
   coax_t_AdminState *s = at(state).data;
   if (s->ask_n <= 0) return;
-  // flag 1: a POST (a decision on a report, /admin/reports); its answer is wanted too
-  if (coaxial_http((uint32_t)(uintptr_t)s->ask.e, (uint32_t)s->ask_n, 0, 0, s->post ? 5 : 4) >= 0) coaxial_admin_asked(at(state));
+  // flag 1: a POST (a decision on a report, /admin/reports; a press on /admin/access, with its JSON body); its answer is wanted too
+  int64_t body_n = coaxial_admin_body_n(at(state));
+  uint32_t body = body_n > 0 ? (uint32_t)(uintptr_t)s->pbody.e : 0;
+  if (coaxial_http((uint32_t)(uintptr_t)s->ask.e, (uint32_t)s->ask_n, body, (uint32_t)body_n, s->post ? 5 : 4) >= 0) coaxial_admin_asked(at(state));
 }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_AdminHost) * 7u + offsetof(coax_t_AdminHost, inbox) * 3u + sizeof(coax_t_AdminState) * 5u + 0x41444du);
 }
-// data-page 1: /admin/reports, the review queue; else /admin/analytics.
+// data-page 1: /admin/reports, the review queue; 2: /admin/access; else /admin/analytics.
 EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { coaxial_admin_page(at(state), page); }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_AdminHost); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_admin_max_vertices(); }

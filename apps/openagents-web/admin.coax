@@ -19,6 +19,13 @@
 // (its kind and which one) and it has HIDE and KEEP; "r": a row whose last
 // value is "yes" has RESTORE. A press POSTs /api/admin/reports/KIND/WHICH/ACT
 // and the queue is asked again.
+//
+// And /admin/access (data-page 2): who may make realms (docs/auth/2026-10-31-realm-invites-and-auth.md).
+// GET /api/admin/access answers lines (F|flag|0 or 1, I|invite..., R|request..., C|creator...);
+// they're drawn as the same sections. TURN ON/OFF sets a switch, NEW INVITE makes an invite of
+// the picked uses and days and shows its link once with COPY LINK, REVOKE ends a live invite,
+// APPROVE and DECLINE answer a waiting request, GRANDFATHER makes every realm's maker a creator.
+// Each press POSTs and the lines are asked again.
 
 #load "projects.coax";
 
@@ -32,20 +39,28 @@ AD_ASK :: 512;
 AD_ROW :: 17.0;            // CSS pixels a row
 AD_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 AD_NAVIGATE :: 1;
+AD_COPY :: 2;              // host.js: the outbox's text to the clipboard
 
 AD_OVERVIEW :: 0; AD_SESSIONS :: 1; AD_SESSION :: 2;
-AD_CHIPS :: 16;
-AD_CHIP_LABELS :: [16] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
-                              "AUTOMATED", "BACK", "LOG OUT", "REPORTS", "ANALYTICS", "OUR TEAM"];
-AD_CHIP_ORDER :: [16] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 11, 12, 13, 14];   // OUR TEAM sits beside AUTOMATED
+AD_CHIPS :: 26;
+AD_CHIP_LABELS :: [26] string.["OVERVIEW", "SESSIONS", "1 DAY", "7 DAYS", "30 DAYS", "ALL TIME", "ALL", "WEB", "KIKI", "DEV",
+                              "AUTOMATED", "BACK", "LOG OUT", "REPORTS", "ANALYTICS", "OUR TEAM",
+                              "1 USE", "10 USES", "100 USES", "7 DAYS", "30 DAYS", "90 DAYS", "NEW INVITE", "GRANDFATHER", "COPY LINK", "ACCESS"];
+// OUR TEAM sits beside AUTOMATED; COPY LINK (24) has its own line under the chips
+AD_CHIP_ORDER :: [26] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 11, 16, 17, 18, 19, 20, 21, 22, 23, 12, 13, 14, 25, 24];
+AD_USES :: [3] string.["1", "10", "100"];
+AD_INVITE_DAYS :: [3] string.["7", "30", "90"];
 AD_DAYS :: [4] string.["1", "7", "30", "0"];
 AD_SPACES :: [4] string.["all", "web", "kiki", "dev"];
 AD_CHIP :: 100000;         // hot: AD_CHIP + a chip, or a row's index, AD_ACT + a row's index * 4 + its action, or -1
 AD_ACT :: 200000;
-AD_ACT_LABELS :: [3] string.["HIDE", "KEEP", "RESTORE"];
+AD_ACC :: 300000;          // an access row's button: AD_ACC + a row's index * 8 + its action (3 and up)
+AD_ACT_LABELS :: [8] string.["HIDE", "KEEP", "RESTORE", "TURN ON", "TURN OFF", "REVOKE", "APPROVE", "DECLINE"];
+AD_TURN_ON :: 3; AD_TURN_OFF :: 4; AD_REVOKE :: 5; AD_APPROVE :: 6; AD_DECLINE :: 7;
+AD_P_NEW :: 20; AD_P_GRAND :: 21;   // posting: an access button's 10 + action, or these
 AD_ACT_WORDS :: [3] string.["hide", "keep", "restore"];
 AD_ACT_DONE :: [3] string.["HIDDEN", "KEPT", "RESTORED"];
-AD_ANALYTICS :: 0; AD_REPORTS :: 1;   // the page (data-page)
+AD_ANALYTICS :: 0; AD_REPORTS :: 1; AD_ACCESS :: 2;   // the page (data-page)
 
 AdminState :: struct {
   time: f32; ready: bool;
@@ -60,7 +75,11 @@ AdminState :: struct {
   status: int;                 // -1 nothing asked yet, 0 waiting, else the last answer's HTTP status
   ask: [AD_ASK] u8; ask_n: int;   // a request for the face to send
   scroll: f32; hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
-  outbox: [64] u8; out_n: int; action: int;
+  outbox: [160] u8; out_n: int; action: int;
+  pbody: [160] u8; pbody_n: int;   // the POST's JSON body (/admin/access), or none
+  uses_pick: int; days_pick: int;   // NEW INVITE's uses and days: AD_USES, AD_INVITE_DAYS
+  acc_link: [160] u8; acc_link_n: int;   // the new invite's link: shown once, here only
+  anote: [48] u8; anote_n: int;     // what the last access press did
   data: [] u8; data_n: int;   // AdminHost's (a #test's own short buffer)
   sec_n: int;
   sec_head: [AD_SECTIONS] int; sec_end: [AD_SECTIONS] int;   // the "#" line
@@ -152,7 +171,9 @@ ad_put :: (s: [] AdminState, at: int, text: string) -> int {
 }
 ad_ask :: (s: [] AdminState) {
   s[0].post = false;
+  s[0].pbody_n = 0;
   if s[0].page == AD_REPORTS { s[0].ask_n = ad_put(s, 0, "/api/admin/reports"); ad_waiting(s); return; }
+  if s[0].page == AD_ACCESS { s[0].ask_n = ad_put(s, 0, "/api/admin/access"); ad_waiting(s); return; }
   n := ad_put(s, 0, "/api/admin/analytics?view=");
   if s[0].view == AD_SESSION {
     n = ad_put(s, n, "session&sid=");
@@ -188,12 +209,14 @@ ad_decide :: (s: [] AdminState, row: int, what: int) {
 ad_word_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
 // The face sent it.
 coaxial_admin_asked :: (s: [] AdminState) #export_c { s[0].ask_n = 0; }
+coaxial_admin_body_n :: (s: [] AdminState) -> int #export_c { if s.count < 1 || !s[0].post { return 0; } return s[0].pbody_n; }
 
 // An answer: "STATUS\n" then the rows.
 ad_answer :: (s: [] AdminState, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  if s[0].posting >= 10 { ad_acc_done(s, s[0].posting, code, bytes, i); s[0].posting = 0; ad_ask(s); return; }
   if s[0].posting != 0 {   // a decision's answer: say what it did, and ask for the queue again
     s[0].said = ifx code == 200 then s[0].posting else -1;
     s[0].posting = 0;
@@ -202,6 +225,7 @@ ad_answer :: (s: [] AdminState, bytes: string) {
   }
   s[0].status = ifx code == 0 then 599 else code;
   if code != 200 { s[0].data_n = 0; ad_index(s); return; }
+  if s[0].page == AD_ACCESS { ad_access_rows(s, bytes, i); ad_index(s); s[0].hot = -1; return; }
   n := 0;
   while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
   s[0].data_n = n;
@@ -209,9 +233,158 @@ ad_answer :: (s: [] AdminState, bytes: string) {
   s[0].hot = -1;
 }
 
+// ---- /admin/access
+
+ad_dput :: (s: [] AdminState, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < s[0].data.count { s[0].data[n] = c; n += 1; } }
+  return n;
+}
+// The flags' names, and what the page calls them.
+ad_flag_label :: (name: string) -> string { return ifx name == "realm_invites" then "INVITE ONLY" else ifx name == "auth_v2" then "NEW LOGIN" else ""; }
+ad_flag_name :: (label: string) -> string { return ifx label == "INVITE ONLY" then "realm_invites" else ifx label == "NEW LOGIN" then "auth_v2" else ""; }
+// The value'th "|" field of line (0 is the kind letter).
+ad_field :: (line: string, k: int) -> string {
+  i := 0; c := 0;
+  while c < k && i < line.count { if line[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < line.count && line[j] != '|' { j += 1; }
+  return line[i..<j];
+}
+// The answer's lines, as sections: SWITCHES (a hidden last value: 1 or 0), INVITES, REQUESTS, CREATORS.
+ad_access_rows :: (s: [] AdminState, bytes: string, from: int) {
+  n := 0;
+  for part: 0..<4 {
+    head := ifx part == 0 then "#SWITCHES|fw|SWITCH|STATE|VALUE\n" else ifx part == 1 then "#INVITES|vw|ID|USES|USED|STATE|NOTE\n"
+            else ifx part == 2 then "#REQUESTS|qw|ID|WHO|WHAT THEY'D MAKE|CONTACT|STATE\n" else "#CREATORS|w|WHO|HOW\n";
+    kind := cast(u8) (ifx part == 0 then 'F' else ifx part == 1 then 'I' else ifx part == 2 then 'R' else 'C');
+    n = ad_dput(s, n, head);
+    i := from;
+    while i < bytes.count {
+      e := i;
+      while e < bytes.count && bytes[e] != '\n' { e += 1; }
+      line := bytes[i..<e];
+      i = e + 1;
+      if line.count < 3 || line[0] != kind || line[1] != '|' { continue; }
+      if part == 0 {
+        label := ad_flag_label(ad_field(line, 1));
+        if label.count == 0 { continue; }
+        on := ad_field(line, 2) == "1";
+        n = ad_dput(s, n, label); n = ad_dput(s, n, ifx on then "|ON|1\n" else "|OFF|0\n");
+      } else if part == 1 {
+        for k: 1..<4 { n = ad_dput(s, n, ad_field(line, k)); n = ad_dput(s, n, "|"); }
+        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 6)); n = ad_dput(s, n, "\n");
+      } else if part == 2 {
+        for k: 1..<5 { n = ad_dput(s, n, ad_field(line, k)); n = ad_dput(s, n, "|"); }
+        n = ad_dput(s, n, ad_field(line, 5)); n = ad_dput(s, n, "\n");
+      } else {
+        n = ad_dput(s, n, ad_field(line, 1)); n = ad_dput(s, n, "|"); n = ad_dput(s, n, ad_field(line, 2)); n = ad_dput(s, n, "\n");
+      }
+    }
+  }
+  s[0].data_n = n;
+}
+ad_digits :: (t: string) -> bool {
+  if t.count == 0 || t.count > 19 { return false; }
+  for c: t { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+ad_say :: (s: [] AdminState, word: string) {
+  n := 0;
+  for c: word { if n < s[0].anote.count { s[0].anote[n] = c; n += 1; } }
+  s[0].anote_n = n;
+}
+ad_body :: (s: [] AdminState, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < s[0].pbody.count { s[0].pbody[n] = c; n += 1; } }
+  return n;
+}
+ad_acc_post :: (s: [] AdminState, n: int, posting: int) {
+  s[0].ask_n = n; s[0].post = true; s[0].posting = posting; s[0].anote_n = 0;
+  ad_waiting(s);
+}
+// A row's access button: POST /api/admin/access/...
+ad_acc_press :: (s: [] AdminState, row: int, what: int) {
+  if row < 0 || row >= s[0].row_n || what < AD_TURN_ON || what > AD_DECLINE || s[0].posting != 0 { return; }
+  first := ad_cell(s, s[0].row_at[row], s[0].row_end[row], 0);
+  if what == AD_TURN_ON || what == AD_TURN_OFF {
+    name := ad_flag_name(first);
+    if name.count == 0 { return; }
+    b := ad_body(s, 0, "{\"name\":\""); b = ad_body(s, b, name);
+    s[0].pbody_n = ad_body(s, b, ifx what == AD_TURN_ON then "\",\"on\":true}" else "\",\"on\":false}");
+    ad_acc_post(s, ad_put(s, 0, "/api/admin/access/flag"), 10 + what);
+    return;
+  }
+  if !ad_digits(first) { return; }
+  n := ad_put(s, 0, ifx what == AD_REVOKE then "/api/admin/access/invites/" else "/api/admin/access/requests/");
+  n = ad_put(s, n, first);
+  n = ad_put(s, n, ifx what == AD_REVOKE then "/revoke" else ifx what == AD_APPROVE then "/approve" else "/decline");
+  s[0].pbody_n = 0;
+  ad_acc_post(s, n, 10 + what);
+}
+ad_new_invite :: (s: [] AdminState) {
+  if s[0].posting != 0 { return; }
+  b := ad_body(s, 0, "{\"uses\":"); b = ad_body(s, b, AD_USES[s[0].uses_pick]);
+  b = ad_body(s, b, ",\"days\":"); b = ad_body(s, b, AD_INVITE_DAYS[s[0].days_pick]);
+  s[0].pbody_n = ad_body(s, b, "}");
+  s[0].acc_link_n = 0;   // the last link goes: one at a time
+  ad_acc_post(s, ad_put(s, 0, "/api/admin/access/invites"), AD_P_NEW);
+}
+ad_grandfather :: (s: [] AdminState) {
+  if s[0].posting != 0 { return; }
+  s[0].pbody_n = ad_body(s, 0, "{}");
+  ad_acc_post(s, ad_put(s, 0, "/api/admin/access/grandfather"), AD_P_GRAND);
+}
+// A JSON answer's value for key: a string's text, or a number's digits; "" if it isn't there.
+ad_json :: (bytes: string, from: int, key: string) -> string {
+  k := from;
+  while k + key.count + 2 <= bytes.count {
+    if bytes[k] == '"' && bytes[k + 1..<k + 1 + key.count] == key && bytes[k + 1 + key.count] == '"' {
+      a := k + key.count + 2;
+      while a < bytes.count && (bytes[a] == ' ' || bytes[a] == ':') { a += 1; }
+      if a < bytes.count && bytes[a] == '"' {
+        a += 1; b := a;
+        while b < bytes.count && bytes[b] != '"' { b += 1; }
+        return bytes[a..<b];
+      }
+      b := a;
+      while b < bytes.count && bytes[b] >= '0' && bytes[b] <= '9' { b += 1; }
+      return bytes[a..<b];
+    }
+    k += 1;
+  }
+  return "";
+}
+// An access press's answer: what it did, in the header.
+ad_acc_done :: (s: [] AdminState, posting: int, code: int, bytes: string, i: int) {
+  if code == 409 { ad_say(s, "ALREADY DECIDED"); return; }
+  if code != 200 { ad_say(s, "NOT DONE: ASKED AGAIN"); return; }
+  if posting == AD_P_NEW {
+    url := ad_json(bytes, i, "link");
+    if url.count < 20 || url.count > s[0].acc_link.count || url[0..<8] != "https://" { ad_say(s, "NOT DONE: ASKED AGAIN"); return; }
+    for c: 0..<url.count { s[0].acc_link[c] = url[c]; }
+    s[0].acc_link_n = url.count;
+    ad_say(s, "INVITE MADE: COPY ITS LINK NOW");
+    return;
+  }
+  if posting == AD_P_GRAND {
+    many := ad_json(bytes, i, "approved");
+    buf: [40] u8; m := 0;
+    for c: many { if m < 20 { buf[m] = c; m += 1; } }
+    for c: " MADE CREATORS" { buf[m] = c; m += 1; }
+    ad_say(s, cast(string) buf[0..<m]);
+    return;
+  }
+  what := posting - 10;
+  ad_say(s, ifx what == AD_TURN_ON then "TURNED ON" else ifx what == AD_TURN_OFF then "TURNED OFF" else ifx what == AD_REVOKE then "REVOKED"
+            else ifx what == AD_APPROVE then "APPROVED" else "DECLINED");
+}
+// A row's button target: a report's (AD_ACT, 4 a row) or an access row's (AD_ACC, 8 a row).
+ad_target :: (i: int, what: int) -> int { return ifx what < AD_TURN_ON then AD_ACT + i * 4 + what else AD_ACC + i * 8 + what; }
+
 // ---- layout
 
-AdLayout :: struct { head: Box; top: f32; chips: [AD_CHIPS] Box; shown: [AD_CHIPS] bool; }
+AdLayout :: struct { head: Box; top: f32; chips: [AD_CHIPS] Box; shown: [AD_CHIPS] bool; link_x: f32; }
 
 ad_layout :: (s: [] AdminState) -> AdLayout {
   d := s[0].d; w := s[0].width / d;
@@ -223,15 +396,23 @@ ad_layout :: (s: [] AdminState) -> AdLayout {
   x := x0; y := (m + 76) * d;
   for o: 0..<AD_CHIPS {
     i := AD_CHIP_ORDER[o];
-    l.shown[i] = ifx s[0].page == AD_REPORTS then i == 12 || i == 14
-                 else i != 14 && (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || (i > 10 && i != 15));
-    if !l.shown[i] { continue; }
-    gap := ifx i == 2 || i == 6 || i == 10 || i == 12 || i == 13 then 22.0f32 else 6.0f32;   // the groups apart
+    l.shown[i] = ifx s[0].page == AD_REPORTS then i == 12 || i == 14 || i == 25
+                 else ifx s[0].page == AD_ACCESS then i == 12 || i == 13 || i == 14 || (i >= 16 && i <= 23)
+                 else (i < 16 && i != 14 && (i != 11 || s[0].view == AD_SESSION) && (s[0].view != AD_SESSION || i < 2 || (i > 10 && i != 15)))
+                      || (i == 25 && s[0].view != AD_SESSION);
+    if !l.shown[i] || i == 24 { continue; }
+    gap := ifx i == 2 || i == 6 || i == 10 || i == 12 || i == 13 || i == 16 || i == 19 || i == 22 || i == 23 then 22.0f32 else 6.0f32;   // the groups apart
     cw := chip_width(AD_CHIP_LABELS[i], cap, p);
     if x > x0 { x += gap * d; }
     if x + cw > right && x > x0 { x = x0; y += 26 * d; }
     l.chips[i] = chip_box(AD_CHIP_LABELS[i], x, y, cap, p);
     x += cw;
+  }
+  l.shown[24] = s[0].page == AD_ACCESS && s[0].acc_link_n > 0;
+  if l.shown[24] {   // the new invite's link, on its own line
+    y += 26 * d;
+    l.chips[24] = chip_box(AD_CHIP_LABELS[24], x0, y, cap, p);
+    l.link_x = l.chips[24].x1 + 12 * d;
   }
   l.head = Box.{x0 = m * d, y0 = m * d, x1 = (w - m) * d, y1 = y + 16 * d};
   l.top = l.head.y1 + 12 * d;
@@ -280,11 +461,12 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
   crumb := x + ink_width("OPENAGENTS", 7 * d, GAP, SPACE, dim) + SPACE * 7 * d;  // dim ink is the sans: measure it as drawn
   v = put(out, v, "/ ADMIN", crumb, b.y0 + 22 * d, 7 * d, dim);
-  title := ifx s[0].page == AD_REPORTS then "REPORTS" else "ANALYTICS";
+  title := ifx s[0].page == AD_REPORTS then "REPORTS" else ifx s[0].page == AD_ACCESS then "ACCESS" else "ANALYTICS";
   v = put(out, v, title, x, b.y0 + 54 * d, 22 * d, white);
   note := ifx s[0].status == 0 || s[0].status == 1 then "LOADING" else ifx s[0].view == AD_SESSION then "ONE SESSION"
           else ifx s[0].page == AD_REPORTS && s[0].said > 0 then AD_ACT_DONE[s[0].said - 1]
-          else ifx s[0].page == AD_REPORTS && s[0].said < 0 then "NOT DONE: ASKED AGAIN" else "CHICAGO TIME";
+          else ifx s[0].page == AD_REPORTS && s[0].said < 0 then "NOT DONE: ASKED AGAIN"
+          else ifx s[0].page == AD_ACCESS && s[0].anote_n > 0 then cast(string) s[0].anote[0..<s[0].anote_n] else "CHICAGO TIME";
   v = put_right(out, v, note, b.x1 - 18 * d, b.y0 + 22 * d, 6.5 * d, ifx s[0].status <= 1 then accent else dim);
   if s[0].view == AD_SESSION && s[0].page != AD_REPORTS {
     v = put_fit(out, v, cast(string) s[0].sid[0..<s[0].sid_n], x + text_width("ANALYTICS", 22 * d) + 20 * d, b.y0 + 54 * d, 8 * d, accent,
@@ -294,9 +476,13 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
   for i: 0..<AD_CHIPS {
     if !l.shown[i] { continue; }
     on := (i == 0 && s[0].view == AD_OVERVIEW) || (i == 1 && s[0].view == AD_SESSIONS) || (i >= 2 && i <= 5 && s[0].days == i - 2)
-       || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos) || (i == 15 && s[0].team);
+       || (i >= 6 && i <= 9 && s[0].space == i - 6) || (i == 10 && s[0].autos) || (i == 15 && s[0].team)
+       || (i >= 16 && i <= 18 && s[0].uses_pick == i - 16) || (i >= 19 && i <= 21 && s[0].days_pick == i - 19);
     k := ifx on then accent else ifx s[0].hot == AD_CHIP + i then white else dim;
     v = chip(out, v, AD_CHIP_LABELS[i], l.chips[i].x0, l.chips[i].y1 - 5 * d, cap, k, p);
+  }
+  if l.shown[24] {
+    v = put_fit(out, v, cast(string) s[0].acc_link[0..<s[0].acc_link_n], l.link_x, l.chips[24].y1 - 5 * d, 7 * d, white, b.x1 - 18 * d - l.link_x);
   }
   return frame(out, v, b, 10 * d, p);
 }
@@ -304,7 +490,7 @@ ad_header :: (out: [] f32, at: int, s: [] AdminState, l: AdLayout, p: Pen) -> in
 ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32, p: Pen) -> int {
   d := p.d; v := at;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
-  nrows := s[0].sec_rows[k]; cols := ifx ad_flag(s, k, 'r') then s[0].sec_cols[k] - 1 else s[0].sec_cols[k];   // "r": the last value is a button
+  nrows := s[0].sec_rows[k]; cols := ifx ad_flag(s, k, 'r') || ad_flag(s, k, 'f') then s[0].sec_cols[k] - 1 else s[0].sec_cols[k];   // "r", "f": the last value is a button
   if b.y0 >= top {
     buf: [24] u8;
     note := ifx nrows == 0 then "" else cast(string) buf[0..<ad_number(buf[..], nrows, ifx nrows == 1 then " ROW" else " ROWS")];
@@ -340,8 +526,8 @@ ad_section :: (out: [] f32, at: int, s: [] AdminState, k: int, b: Box, top: f32,
     bx: [2] Box; acts: [2] int;
     nb := ad_buttons(s, k, b, r, bx[..], acts[..]);
     for j: 0..<nb {
-      target := AD_ACT + i * 4 + acts[j];
-      bk := ifx s[0].hot == target then accent else ifx acts[j] == 0 then white else dim;
+      target := ad_target(i, acts[j]);
+      bk := ifx s[0].hot == target then accent else ifx acts[j] == 0 || acts[j] == AD_APPROVE then white else dim;
       v = chip(out, v, AD_ACT_LABELS[acts[j]], bx[j].x0, bx[j].y1 - 5 * d, 6 * d, bk, p);
     }
   }
@@ -356,6 +542,9 @@ ad_buttons :: (s: [] AdminState, k: int, b: Box, r: int, boxes: [] Box, acts: []
   n := 0;
   if ad_flag(s, k, 'a') { acts[0] = 0; acts[1] = 1; n = 2; }
   else if ad_flag(s, k, 'r') && ad_cell(s, s[0].row_at[i], s[0].row_end[i], s[0].sec_cols[k] - 1) == "yes" { acts[0] = 2; n = 1; }
+  else if ad_flag(s, k, 'f') { acts[0] = ifx ad_cell(s, s[0].row_at[i], s[0].row_end[i], s[0].sec_cols[k] - 1) == "1" then AD_TURN_OFF else AD_TURN_ON; n = 1; }
+  else if ad_flag(s, k, 'v') && ad_cell(s, s[0].row_at[i], s[0].row_end[i], 3) == "live" { acts[0] = AD_REVOKE; n = 1; }
+  else if ad_flag(s, k, 'q') && ad_cell(s, s[0].row_at[i], s[0].row_end[i], 4) == "waiting" { acts[0] = AD_APPROVE; acts[1] = AD_DECLINE; n = 2; }
   x := b.x1 - 14 * d;
   y := ad_row_y(b, d, r) + 12.5 * d;
   for j: 0..<n {
@@ -371,6 +560,9 @@ ad_reserve :: (s: [] AdminState, k: int, d: f32) -> f32 {
   p := Pen.{d = d, fade = 1, time = 0};
   if ad_flag(s, k, 'a') { return chip_width("HIDE", 6 * d, p) + chip_width("KEEP", 6 * d, p) + 18 * d; }
   if ad_flag(s, k, 'r') { return chip_width("RESTORE", 6 * d, p) + 12 * d; }
+  if ad_flag(s, k, 'f') { return chip_width("TURN OFF", 6 * d, p) + 12 * d; }
+  if ad_flag(s, k, 'v') { return chip_width("REVOKE", 6 * d, p) + 12 * d; }
+  if ad_flag(s, k, 'q') { return chip_width("APPROVE", 6 * d, p) + chip_width("DECLINE", 6 * d, p) + 18 * d; }
   return 0;
 }
 
@@ -432,7 +624,7 @@ ad_hit :: (s: [] AdminState, x: f32, y: f32) -> int {
   content := ad_place(s, l, boxes[..]);
   d := s[0].d;
   for k: 0..<s[0].sec_n {
-    acting := ad_flag(s, k, 'a') || ad_flag(s, k, 'r');
+    acting := ad_flag(s, k, 'a') || ad_flag(s, k, 'r') || ad_flag(s, k, 'f') || ad_flag(s, k, 'v') || ad_flag(s, k, 'q');
     if !ad_opens(s, k) && !acting { continue; }
     b := boxes[k];
     b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
@@ -441,7 +633,7 @@ ad_hit :: (s: [] AdminState, x: f32, y: f32) -> int {
       if acting {
         bx: [2] Box; acts: [2] int;
         nb := ad_buttons(s, k, b, r, bx[..], acts[..]);
-        for j: 0..<nb { if inside(bx[j], x, y) { return AD_ACT + (s[0].sec_first[k] + r) * 4 + acts[j]; } }
+        for j: 0..<nb { if inside(bx[j], x, y) { return ad_target(s[0].sec_first[k] + r, acts[j]); } }
         continue;
       }
       y0 := ad_row_y(b, d, r);
@@ -466,6 +658,7 @@ ad_back :: (s: [] AdminState) {
 }
 
 ad_act :: (s: [] AdminState, target: int) {
+  if target >= AD_ACC { ad_acc_press(s, (target - AD_ACC) / 8, (target - AD_ACC) % 8); return; }
   if target >= AD_ACT { ad_decide(s, (target - AD_ACT) / 4, (target - AD_ACT) % 4); return; }
   if target >= 0 && target < AD_CHIP { ad_open_session(s, target); return; }
   i := target - AD_CHIP;
@@ -475,8 +668,18 @@ ad_act :: (s: [] AdminState, target: int) {
   else if i == 10 { s[0].autos = !s[0].autos; }
   else if i == 15 { s[0].team = !s[0].team; }
   else if i == 11 { ad_back(s); return; }
-  else if i == 13 || i == 14 || i == 12 {
-    url := ifx i == 13 then "/admin/reports" else ifx i == 14 then "/admin/analytics" else "/api/admin/logout";
+  else if i >= 16 && i <= 18 { s[0].uses_pick = i - 16; return; }
+  else if i >= 19 && i <= 21 { s[0].days_pick = i - 19; return; }
+  else if i == 22 { ad_new_invite(s); return; }
+  else if i == 23 { ad_grandfather(s); return; }
+  else if i == 24 {   // COPY LINK: the host puts it on the clipboard
+    if s[0].acc_link_n == 0 { return; }
+    for c: 0..<s[0].acc_link_n { s[0].outbox[c] = s[0].acc_link[c]; }
+    s[0].out_n = s[0].acc_link_n; s[0].action = AD_COPY; ad_say(s, "COPIED");
+    return;
+  }
+  else if i == 13 || i == 14 || i == 12 || i == 25 {
+    url := ifx i == 13 then "/admin/reports" else ifx i == 14 then "/admin/analytics" else ifx i == 25 then "/admin/access" else "/api/admin/logout";
     for c: 0..<url.count { s[0].outbox[c] = url[c]; }
     s[0].out_n = url.count; s[0].action = AD_NAVIGATE;
     return;
@@ -534,7 +737,7 @@ coaxial_admin_cursor :: (s: [] AdminState) -> int #export_c { if s.count < 1 { r
 coaxial_admin_action :: (s: [] AdminState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
 coaxial_admin_action_done :: (s: [] AdminState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
 coaxial_admin_inbox_cap :: () -> int #export_c { return AD_INBOX; }
-coaxial_admin_page :: (s: [] AdminState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else AD_ANALYTICS; } }
+coaxial_admin_page :: (s: [] AdminState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 1 then AD_REPORTS else ifx page == 2 then AD_ACCESS else AD_ANALYTICS; } }
 coaxial_admin_max_vertices :: () -> int #export_c { return AD_MAX_VERTICES; }
 
 // ---- checks
@@ -664,4 +867,101 @@ AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nno
   coaxial_admin_page(s[..], 1);
   ad_act(s[..], AD_CHIP + 14);
   #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/analytics";
+}
+
+AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000|live|for the playtest\nI|11|1|1|1780000000000|used|\nR|7|npub1asker|a racing track|me@example.com|waiting|1780000000000\nR|6|npub1other|a garden||declined|1770000000000\nC|npub1maker|grandfathered|1760000000000\n";
+
+#test "/admin/access reads the lines into SWITCHES, INVITES, REQUESTS and CREATORS, with buttons only where they do something" {
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_admin_page(s[..], 2);
+  n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access" && !s[0].post && coaxial_admin_body_n(s[..]) == 0;
+  coaxial_admin_asked(s[..]);
+  ad_answer(s[..], "403\n{\"error\":\"admins only\"}");
+  #assert s[0].status == 403 && s[0].sec_n == 0;   // ADMINS ONLY, nothing else
+  ad_ask(s[..]);
+  ad_answer(s[..], AD_ACCESS_LINES);
+  #assert s[0].status == 200 && s[0].sec_n == 4 && s[0].row_n == 7;
+  #assert ad_title(s[..], 0) == "SWITCHES" && ad_title(s[..], 1) == "INVITES" && ad_title(s[..], 2) == "REQUESTS" && ad_title(s[..], 3) == "CREATORS";
+  #assert s[0].sec_rows[0] == 2 && s[0].sec_rows[1] == 2 && s[0].sec_rows[2] == 2 && s[0].sec_rows[3] == 1;
+  #assert ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 0) == "INVITE ONLY" && ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 1) == "ON";
+  #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 4) == "for the playtest" && ad_cell(s[..], s[0].row_at[4], s[0].row_end[4], 2) == "a racing track";
+  #assert ad_cell(s[..], s[0].row_at[6], s[0].row_end[6], 0) == "npub1maker";
+  n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  #assert n > n0;
+  l := ad_layout(s[..]);
+  #assert l.shown[22] && l.shown[23] && l.shown[16] && l.shown[21] && !l.shown[24] && !l.shown[0] && l.shown[13];
+  boxes: [AD_SECTIONS] Box;
+  h := ad_place(s[..], l, boxes[..]);
+  bx: [2] Box; acts: [2] int;
+  #assert ad_buttons(s[..], 0, boxes[0], 0, bx[..], acts[..]) == 1 && acts[0] == AD_TURN_OFF;
+  #assert ad_hit(s[..], (bx[0].x0 + bx[0].x1) * 0.5, (bx[0].y0 + bx[0].y1) * 0.5) == AD_ACC + 0 * 8 + AD_TURN_OFF;
+  #assert ad_buttons(s[..], 0, boxes[0], 1, bx[..], acts[..]) == 1 && acts[0] == AD_TURN_ON;
+  #assert ad_buttons(s[..], 1, boxes[1], 0, bx[..], acts[..]) == 1 && acts[0] == AD_REVOKE;
+  #assert ad_buttons(s[..], 1, boxes[1], 1, bx[..], acts[..]) == 0;   // used up: nothing to press
+  #assert ad_buttons(s[..], 2, boxes[2], 0, bx[..], acts[..]) == 2 && acts[0] == AD_APPROVE && acts[1] == AD_DECLINE;
+  #assert ad_hit(s[..], (bx[1].x0 + bx[1].x1) * 0.5, (bx[1].y0 + bx[1].y1) * 0.5) == AD_ACC + 4 * 8 + AD_DECLINE;
+  #assert ad_buttons(s[..], 2, boxes[2], 1, bx[..], acts[..]) == 0;   // decided already
+  #assert ad_buttons(s[..], 3, boxes[3], 0, bx[..], acts[..]) == 0;
+}
+
+#test "/admin/access's buttons: each POSTs its request, says what it did and asks for the lines again; the new link shows once with COPY LINK" {
+  s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
+  out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_admin_page(s[..], 2);
+  n0 := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
+  ad_answer(s[..], AD_ACCESS_LINES);
+  // TURN OFF invite only
+  ad_act(s[..], AD_ACC + 0 * 8 + AD_TURN_OFF);
+  #assert s[0].post && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/flag";
+  #assert cast(string) s[0].pbody[0..<coaxial_admin_body_n(s[..])] == "{\"name\":\"realm_invites\",\"on\":false}";
+  ad_act(s[..], AD_ACC + 2 * 8 + AD_REVOKE);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/flag";   // one at a time
+  ad_answer(s[..], "200\n{\"name\": \"realm_invites\", \"on\": false}");
+  #assert !s[0].post && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access" && cast(string) s[0].anote[0..<s[0].anote_n] == "TURNED OFF";
+  ad_answer(s[..], AD_ACCESS_LINES);
+  ad_act(s[..], AD_ACC + 1 * 8 + AD_TURN_ON);
+  #assert cast(string) s[0].pbody[0..<s[0].pbody_n] == "{\"name\":\"auth_v2\",\"on\":true}";
+  ad_answer(s[..], "200\n{}");
+  ad_answer(s[..], AD_ACCESS_LINES);
+  // REVOKE the live invite, APPROVE and DECLINE the waiting request
+  ad_act(s[..], AD_ACC + 2 * 8 + AD_REVOKE);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/invites/12/revoke" && coaxial_admin_body_n(s[..]) == 0;
+  ad_answer(s[..], "200\n{}");
+  ad_answer(s[..], AD_ACCESS_LINES);
+  ad_act(s[..], AD_ACC + 4 * 8 + AD_APPROVE);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/requests/7/approve";
+  ad_answer(s[..], "200\n{}");
+  #assert cast(string) s[0].anote[0..<s[0].anote_n] == "APPROVED";
+  ad_answer(s[..], AD_ACCESS_LINES);
+  ad_act(s[..], AD_ACC + 4 * 8 + AD_DECLINE);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/requests/7/decline";
+  ad_answer(s[..], "409\n{\"error\":\"already decided\"}");
+  #assert cast(string) s[0].anote[0..<s[0].anote_n] == "ALREADY DECIDED" && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access";
+  ad_answer(s[..], AD_ACCESS_LINES);
+  // NEW INVITE with 10 uses for 30 days
+  ad_act(s[..], AD_CHIP + 17); ad_act(s[..], AD_CHIP + 20);
+  #assert s[0].posting == 0 && !s[0].post && s[0].uses_pick == 1 && s[0].days_pick == 1;   // picking sends nothing
+  ad_act(s[..], AD_CHIP + 22);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/invites" && cast(string) s[0].pbody[0..<s[0].pbody_n] == "{\"uses\":10,\"days\":30}";
+  ad_answer(s[..], "200\n{\"id\": 13, \"code\": \"00112233445566778899aabbccddeeff\", \"uses\": 10, \"days\": 30, \"link\": \"https://openagents.com/invite#code=00112233445566778899aabbccddeeff\"}");
+  #assert cast(string) s[0].acc_link[0..<s[0].acc_link_n] == "https://openagents.com/invite#code=00112233445566778899aabbccddeeff";
+  ad_answer(s[..], AD_ACCESS_LINES);
+  n := coaxial_admin_frame(s[..], out[..], u[..], 390, 844, 2, 0.016, true);
+  l := ad_layout(s[..]);
+  #assert l.shown[24];
+  #assert ad_hit(s[..], (l.chips[24].x0 + l.chips[24].x1) * 0.5, (l.chips[24].y0 + l.chips[24].y1) * 0.5) == AD_CHIP + 24;
+  ad_act(s[..], AD_CHIP + 24);
+  #assert s[0].action == AD_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "https://openagents.com/invite#code=00112233445566778899aabbccddeeff";
+  coaxial_admin_action_done(s[..]);
+  // GRANDFATHER
+  ad_act(s[..], AD_CHIP + 23);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/grandfather";
+  ad_answer(s[..], "200\n{\"approved\": 3}");
+  #assert cast(string) s[0].anote[0..<s[0].anote_n] == "3 MADE CREATORS";
+  // the other pages link here
+  coaxial_admin_page(s[..], 1);
+  ad_act(s[..], AD_CHIP + 25);
+  #assert s[0].action == AD_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/access";
 }

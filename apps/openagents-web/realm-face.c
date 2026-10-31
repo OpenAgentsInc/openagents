@@ -1111,6 +1111,12 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     coax_string at = track_facts_path((coax_string){(const char *)inbox, length});
     if (at.count == 15 && !memcmp(at.data, "/realms/sandbox", 15)) track_init(tr(), track_cstr("sandbox"));
   }
+  // who may make a realm (access.coax): asked once with the page's facts, its answer taken here
+  if (realm_access_take(realm_of(), kind, (coax_string){(const char *)inbox, length})) return;
+  if (kind == 600 && realm_access_wants(realm_of())) {
+    static const char access_url[] = "/api/playtest/access";
+    realm_access_sent(realm_of(), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, HTTP_ANSWER_PLAYER));
+  }
   if (place_message(state, kind, inbox, length)) return;
   if (kind != 600 && realm_edit_message(realm_of(), kind, (coax_string){(const char *)inbox, length})) { edit_face_drain(ed()); return; }
   if (kind == 600) realm_edit_message(realm_of(), kind, (coax_string){(const char *)inbox, length});

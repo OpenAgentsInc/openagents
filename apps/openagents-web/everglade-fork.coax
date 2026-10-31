@@ -239,7 +239,9 @@ fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
   // FORK IT: "slug S", "path /realms/S"
   s[0].fk[0].going = false;
   if st != 200 {
-    fk_say(s, ifx st == 401 then "NO PLAYER YET: TRY AGAIN IN A MOMENT" else ifx st == 429 then "THAT'S TODAY'S REALMS" else "NOT FORKED: TRY AGAIN");
+    // 403: making realms is invite only and this player isn't an approved creator (coax/web/api access)
+    fk_say(s, ifx st == 401 then "NO PLAYER YET: TRY AGAIN IN A MOMENT" else ifx st == 429 then "THAT'S TODAY'S REALMS"
+              else ifx st == 403 then "MAKING REALMS IS INVITE ONLY FOR NOW" else "NOT FORKED: TRY AGAIN");
     return true;
   }
   path := "";
@@ -447,6 +449,12 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   fork_it(g[..]);
   everglade_fork_requested(g[..], 5);
   #assert fork_message(g[..], HTTP_KIND + 5, "200\nslug x\npath https://evil.example/\n") && everglade_action(g[..]) == 0;
+  // making realms invite only, and this player not approved: the server's 403 says so
+  g[0].fk[0].going = false;
+  fork_it(g[..]);
+  everglade_fork_requested(g[..], 6);
+  #assert fork_message(g[..], HTTP_KIND + 6, "403\ninvite only") && everglade_action(g[..]) == 0;
+  #assert cast(string) g[0].fk[0].note[0..<g[0].fk[0].note_n] == "MAKING REALMS IS INVITE ONLY FOR NOW";
 }
 
 #test "a fork's pane says what it was forked from and who made it; hostile waves send the watch in" {

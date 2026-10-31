@@ -17,7 +17,8 @@
 // it. Coding is coming later, and Blue Rush and Big Brain are locked. A world the table
 // doesn't list (the fixture realm) shows only with ?realms=all. Drag turns it. Players' own
 // realms (pt-planets) circle outside them, the newest REALMS, and each
-// opens its world (/realms/haunted-house#<id>); MAKE YOUR REALM opens the builder (/realms/new)
+// opens its world (/realms/haunted-house#<id>); MAKE YOUR REALM opens the builder (/realms/new),
+// and hides while realm making is invite only for this visitor (access.coax: make 0)
 // (a name, its kind, look, view and time of day) on the server
 // (/api/playtest/planets), or YOUR REALM opens the one you have.
 //
@@ -33,6 +34,7 @@
 #load "world.coax";
 #load "realms.coax";
 #load "galaxy.coax";
+#load "access.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -172,6 +174,7 @@ VerseState :: struct {
   field: [4] f32;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   next: [OUTBOX] u8; next_n: int;   // where to go once the action before it is taken
+  acc: [1] Access;                  // who may make a realm (the galaxy asks once): MAKE YOUR REALM hides on make 0
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
 }
 
@@ -248,6 +251,9 @@ go_to :: (s: [] VerseState, url: string) { s[0].next_n = put(s[0].next[..], 0, u
 request :: (s: [] VerseState, url: string, flags: int) {
   s[0].req_url_n = put(s[0].req_url[..], 0, url); s[0].req_flags = flags; s[0].req_ready = true;
 }
+// The galaxy asks GET /api/playtest/access once (access.coax); the face sends it and says its id.
+verse_access_wants :: (s: [] VerseState) -> bool #export_c { return s[0].page == PAGE_GALAXY && access_wants(s[0].acc[..]); }
+verse_access_sent :: (s: [] VerseState, id: int) #export_c { access_sent(s[0].acc[..], id); }
 verse_requested :: (s: [] VerseState, id: int) #export_c {
   s[0].req_ready = false;
   if s[0].want_id == -2 { s[0].want_id = id; if id < 0 { realm_answered(s, "0\n"); } }
@@ -320,6 +326,7 @@ verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #expor
 // Typed or pasted text (kind 1), what this browser kept (4), and the join's answer.
 verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c {
   if kind == MSG_TEXT && s[0].page == PAGE_GALAXY { return; }
+  if access_take(s[0].acc[..], kind, bytes) { return; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + HTTPS && kind - HTTP_KIND == s[0].want_id && s[0].want_out != 0 {
     s[0].want_id = -1; realm_answered(s, bytes); return;
   }
@@ -570,6 +577,7 @@ realm_button :: (s: [] VerseState, t: [] Track) {
     open_realm(s, mine_text(s));
     return;
   }
+  if access_hides_make(s[0].acc[..]) { return; }
   track(t, "make-realm");
   if s[0].next_n == 0 && s[0].action == 0 { s[0].answered = true; go_to(s, MAKE_URL); }
 }
@@ -1122,7 +1130,9 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   // MAKE YOUR REALM, or YOUR REALM once you have one
   realm_label := ifx s[0].mine_n > 0 then "YOUR REALM" else "MAKE YOUR REALM";
   rw := measure(realm_label, GAP, SPACE, false) * 8 * k + 36 * k;
-  vertices = plate_button(s, out, vertices, BTN_REALM, Box.{x0 = cx - rw * 0.5, y0 = 96 * k, x1 = cx + rw * 0.5, y1 = 124 * k}, realm_label, true);
+  if s[0].mine_n > 0 || !access_hides_make(s[0].acc[..]) {
+    vertices = plate_button(s, out, vertices, BTN_REALM, Box.{x0 = cx - rw * 0.5, y0 = 96 * k, x1 = cx + rw * 0.5, y1 = 124 * k}, realm_label, true);
+  }
 
   // the tag under the Haunted House, the world that opens
   tcap := ifx phone then 7 * k else 8 * k;
@@ -1536,4 +1546,24 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert cast(string) s[0].next[0..<s[0].next_n] == "/login";
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == ACT_NAVIGATE;
+}
+
+#test "MAKE YOUR REALM hides on the galaxy only when the access answer says make 0" {
+  answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n", "0\n"];
+  for z: 0..<3 {
+    s: [1] VerseState; t: [1] Track;
+    page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
+    #assert verse_access_wants(s[..]);
+    verse_access_sent(s[..], 6);
+    verse_message(s[..], t[..], ACCESS_ANSWER + 6, answers[z]);
+    #assert !verse_access_wants(s[..]);
+    redraw(s[..], t[..], 0.016);
+    #assert s[0].shown[BTN_REALM] == (z != 0);
+    realm_button(s[..], t[..]);
+    frame(s[..], t[..], 0.016);
+    #assert (s[0].action == ACT_NAVIGATE) == (z != 0);
+  }
+  l: [1] VerseState; u: [1] Track;
+  page_at(l[..], u[..], PAGE_LANDING, 1440, 900);
+  #assert !verse_access_wants(l[..]);   // only the galaxy links to the builder
 }

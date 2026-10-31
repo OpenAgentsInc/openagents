@@ -33,6 +33,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   if (!track_state.page_n) track_init(tr(), track_cstr("realms"));
   track_frame(tr(), dt, width, height, dpr);
   if (n > 0) track_loaded(tr(), track_cstr("load-landing"));
+  // who may make a realm (access.coax): asked once, its answer a message like any other
+  if (coaxial_realms_access_wants(at(state))) {
+    static const char access_url[] = "/api/playtest/access";
+    coaxial_realms_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
+  }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }

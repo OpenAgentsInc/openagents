@@ -11,12 +11,14 @@
 // counted without our team or automation (coax/web/api/analytics.c). Until
 // they come, POPULAR and PLAYED keep the table's order and show "-".
 // The sort is the location's hash: #popular, #recent, #played or #az.
-// MAKE A REALM, at the header's top right, opens /realms/new.
+// MAKE A REALM, at the header's top right, opens /realms/new; it hides while realm making is invite
+// only and this visitor isn't an approved creator (access.coax: GET /api/playtest/access once).
 
 #load "font.coax";
 #load "textkeys.coax";
 #load "realms/list.coax";
 #load "analytics.coax";
+#load "access.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 60000;
@@ -62,6 +64,7 @@ RealmsState :: struct {
   gx: [MAX_REALMS] f32; gy: [MAX_REALMS] f32; gh: [MAX_REALMS] f32; placed: bool;   // each row's tower, as drawn
   inbox: [INBOX] u8;
   outbox: [OUTBOX] u8; out_n: int; action: int;
+  acc: [1] Access;                   // who may make a realm: MAKE A REALM hides on make 0
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -590,7 +593,7 @@ place_towers :: (s: [] RealmsState, order: [] int, n: int, dt: f32, still: bool)
 
 // ---------------------------------------------------------------- the header and the list
 
-header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int) -> int {
+header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int, make: bool) -> int {
   d := p.d; v := at; b := l.header;
   white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_ACCENT);
   white.sans = false; dim.sans = false;
@@ -612,7 +615,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int) -> int 
     ck := ifx sort == k then accent else (ifx hot == HIT_SORT - k then white else dim);
     v = chip(out, v, SORT_NAMES[k], l.chips[k].x0, l.chips[k].y1 - 5 * d, cap, ck, p);
   }
-  v = chip(out, v, MAKE_LABEL, l.make.x0, l.make.y1 - 5 * d, cap, ifx hot == HIT_MAKE then white else accent, p);
+  if make { v = chip(out, v, MAKE_LABEL, l.make.x0, l.make.y1 - 5 * d, cap, ifx hot == HIT_MAKE then white else accent, p); }
   return frame(out, v, b, 10 * d, p);
 }
 
@@ -722,7 +725,7 @@ realms_frame :: (s: [] RealmsState, out: [] f32, uniforms: [] f32, width: f32, h
   glass(uniforms, 0, l.header, 10 * d, 0.92);
   glass(uniforms, 1, l.scene, 10 * d, 0.55);
   glass(uniforms, 2, l.list, 10 * d, 0.92);
-  v := header(out, 0, l, p, s[0].sort, s[0].hot);
+  v := header(out, 0, l, p, s[0].sort, s[0].hot, !access_hides_make(s[0].acc[..]));
   v = draw_scene(out, v, s, l, p, order[..], n);
   return draw_list(out, v, s, l, p, order[..], n);
 }
@@ -735,7 +738,7 @@ hit :: (s: [] RealmsState, x: f32, y: f32) -> int {
   l := layout(s[0].width, s[0].height, d);
   for k: 0..<SORTS { if inside(l.chips[k], x, y) { return HIT_SORT - k; } }
   if inside(l.home, x, y) { return HIT_HOME; }
-  if inside(l.make, x, y) { return HIT_MAKE; }
+  if inside(l.make, x, y) && !access_hides_make(s[0].acc[..]) { return HIT_MAKE; }
   order: [MAX_REALMS] int;
   n := sorted(s, s[0].sort, order[..]);
   for k: 0..<n {
@@ -780,7 +783,7 @@ choose :: (s: [] RealmsState, sort: int) {
 act :: (s: [] RealmsState, target: int) {
   if target <= HIT_SORT && target > HIT_SORT - SORTS { choose(s, HIT_SORT - target); }
   else if target == HIT_HOME { navigate(s, "/"); }
-  else if target == HIT_MAKE { navigate(s, MAKE_URL); }
+  else if target == HIT_MAKE && !access_hides_make(s[0].acc[..]) { navigate(s, MAKE_URL); }
   else if target >= 0 { s[0].sel = target; open_rank(s, target); }
 }
 
@@ -840,7 +843,9 @@ realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool {
 
 // MSG_VISITS: "slug|visitors|visits|minutes" lines; a slug the table hasn't is left out.
 realms_message :: (s: [] RealmsState, kind: int, length: int) {
-  if s.count < 1 || length < 0 || length > INBOX || kind != MSG_VISITS { return; }
+  if s.count < 1 || length < 0 || length > INBOX { return; }
+  if access_take(s[0].acc[..], kind, cast(string) s[0].inbox[0..<length]) { return; }
+  if kind != MSG_VISITS { return; }
   text := cast(string) s[0].inbox[0..<length];
   for i: 0..<MAX_REALMS * 3 { s[0].stats[i] = 0; }
   n := realm_count();
@@ -874,6 +879,9 @@ coaxial_realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool #export_c
 coaxial_realms_wheel :: (s: [] RealmsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
 coaxial_realms_message :: (s: [] RealmsState, kind: int, length: int) #export_c { realms_message(s, kind, length); }
 coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c { realms_hash(s, length); }
+// The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
+coaxial_realms_access_wants :: (s: [] RealmsState) -> bool #export_c { return s.count > 0 && access_wants(s[0].acc[..]); }
+coaxial_realms_access_sent :: (s: [] RealmsState, id: int) #export_c { if s.count > 0 { access_sent(s[0].acc[..], id); } }
 coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c {
   if s.count < 1 { return 0; }
   return ifx s[0].hot != HIT_NONE then 1 else 0;
@@ -1088,5 +1096,27 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
     #assert hit(s[..], x, y) == HIT_MAKE;
     #assert realms_pointer(s[..], x, y, P_DOWN, 0) && realms_pointer(s[..], x, y, P_UP, 0);
     #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], MAKE_URL);
+  }
+}
+
+#test "MAKE A REALM hides only when the access answer says make 0" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 1\nmake 1\nin 1\ncreator 1\nasked none\n", "404\n{\"error\":\"not found\"}"];
+  for z: 0..<3 {
+    s: [1] RealmsState;
+    w: f32 = 2880; h: f32 = 1800;
+    #assert coaxial_realms_access_wants(s[..]);
+    coaxial_realms_access_sent(s[..], 2);
+    #assert !coaxial_realms_access_wants(s[..]);
+    a := answers[z];
+    for i: 0..<a.count { s[0].inbox[i] = a[i]; }
+    realms_message(s[..], ACCESS_ANSWER + 2, a.count);
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    l := layout(w, h, 2);
+    x := (l.make.x0 + l.make.x1) * 0.5; y := (l.make.y0 + l.make.y1) * 0.5;
+    #assert (hit(s[..], x, y) == HIT_MAKE) == (z != 0);
+    act(s[..], HIT_MAKE);
+    #assert (s[0].action == ACT_NAVIGATE) == (z != 0);
   }
 }

@@ -35,6 +35,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "analytics.coax";
+#load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";
 #load "../../verse/figure.coax" as fig;   // the figures: you, the villagers, the characters
@@ -224,6 +225,7 @@ MyRealm :: struct {
   spec_due: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   ed: [1] RealmEdit; ed_seen: int;   // the shared edit layer, and its version this realm laid out
+  acc: [1] Access;                    // GET /api/playtest/access, asked once (access.coax)
   // the talk: with whom (-1 none), what was said (oldest first), what you are typing, the one question waiting
   talk_p: int; talk_n: int; talk_npc: [TALK_LINES] bool; talk_line: [TALK_LINES * TALK_LINE] u8; talk_line_n: [TALK_LINES] int;
   typed: [TYPED] u8; typed_n: int; asked: [TYPED] u8; asked_n: int; ask_due: bool; talk_wait: bool; spoken: bool;
@@ -416,6 +418,7 @@ SAMPLE :: "realm built\nname A Realm You Built\nstyle lowpoly\nground meadow\nti
 
 realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c {
   begin(s);
+  if access_take(s[0].acc[..], kind, text) { return; }
   if kind == MSG_PACK {
     at: [1] int;
     s[0].loaded = int_at(text, at[..]); if at[0] < 0 { return; }
@@ -476,6 +479,9 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
 // ---- requests
 
 busy :: (s: [] MyRealm) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
+// The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
+realm_access_wants :: (s: [] MyRealm) -> bool #export_c { return access_wants(s[0].acc[..]); }
+realm_access_sent :: (s: [] MyRealm, id: int) #export_c { access_sent(s[0].acc[..], id); }
 realm_requested :: (s: [] MyRealm, id: int) #export_c {
   s[0].req_ready = false; s[0].req_id = id;
   if id < 0 && s[0].req_what == REQ_SPEC && !s[0].spec_ready { s[0].spec_failed = true; }
@@ -1310,7 +1316,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
 realm_blur :: (s: [] MyRealm) #export_c { talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
 leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
-go_new :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
+go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
 
 // A thing placed two metres in front of you.
 place_thing :: (s: [] MyRealm, t: [] Track, thing: int) {
@@ -1764,7 +1770,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     shown_e := plate(s, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
   }
   if s[0].ed[0].plate_n > 0 { right += 46 * k; }
-  if s[0].spec_failed && !s[0].spec_ready {
+  if s[0].spec_failed && !s[0].spec_ready && !access_hides_make(s[0].acc[..]) {
     n = pill(s, out, n, BTN_NEW, Box.{x0 = w * 0.5 - 110 * k, y0 = h * 0.5 - 22 * k, x1 = w * 0.5 + 110 * k, y1 = h * 0.5 + 22 * k}, "BUILD YOUR OWN REALM", true);
   }
   // the tools along the bottom: only those the owner gives (the owner has BUILD always)
@@ -2130,6 +2136,26 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert q[0].people == 1 && person_name(q[..], 0) == "Old Mott" && person_role(q[..], 0) == "keeps the bridge";
   #assert q[0].placed_n == 1 && q[0].placed_thing[0] == 0 && abs(q[0].placed_x[0] - 3.5) < 0.01 && abs(q[0].placed_z[0] + 2.25) < 0.01;
   #assert abs(q[0].lantern_b - 1.0) < 0.01;
+}
+
+#test "a realm that isn't here offers BUILD YOUR OWN REALM unless the access answer says make 0" {
+  answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n", "0\n"];
+  for z: 0..<3 {
+    s: [1] MyRealm; t: [1] Track;
+    track_init(t[..], "realm");
+    #assert realm_access_wants(s[..]);
+    realm_access_sent(s[..], 5);
+    realm_message(s[..], t[..], HTTP_ANSWER_KIND + 5, answers[z]);
+    #assert !realm_access_wants(s[..]);
+    realm_message(s[..], t[..], MSG_DATA_TEXT, "gone-realm");
+    n := frame_of(s[..], t[..], 2560, 1600);
+    realm_requested(s[..], 2);
+    realm_message(s[..], t[..], HTTP_ANSWER_KIND + 2, "404\n{\"error\":\"no such realm\"}");
+    m := frame_of(s[..], t[..], 2560, 1600);
+    #assert s[0].spec_failed && s[0].shown[BTN_NEW] == (z != 0);
+    go_new(s[..]);
+    #assert (s[0].action == ACT_NAVIGATE) == (z != 0);
+  }
 }
 
 #test "a made realm records world-enter (made-<slug>) and realm-enter once its spec is read" {

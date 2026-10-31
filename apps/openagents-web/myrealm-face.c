@@ -26,6 +26,11 @@ static void drain(uint32_t state) {
                               (uint32_t)(uintptr_t)s->req_body.e, (uint32_t)s->req_body_n, (int32_t)s->req_flags);
     realm_requested(at(state), id);
   }
+  // who may make a realm (access.coax): asked once
+  if (realm_access_wants(at(state))) {
+    static const char access_url[] = "/api/playtest/access";
+    realm_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
+  }
   edit_face_drain(ed(state));
   track_drain(&track_state);
 }

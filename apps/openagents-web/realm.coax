@@ -27,6 +27,7 @@
 #load "world.coax";
 #load "room.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -256,6 +257,7 @@ Realm :: struct {
   // The shared edit layer: its board switches other visitors, the house's sounds, its lightning and
   // sparks, and the chat; SETTINGS has the big map and VOICE for visitors
   ed: [1] RealmEdit;
+  acc: [1] Access;      // GET /api/playtest/access, asked once (access.coax)
 }
 
 // What voice.js says (message 50): "phase|caption". "off" or "notice" means the microphone is off.
@@ -337,6 +339,10 @@ realm_wants_text :: (r: [] Realm) -> bool #export_c { return r[0].typing || redi
 // The edit layer's, for the face: a row of its board, and its push to talk handed to the host's outbox.
 realm_row_on :: (r: [] Realm, key: string) -> bool #export_c { return redit_row_on(r[0].ed[..], key); }
 realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c { return redit_message(r[0].ed[..], kind, text); }
+// Who may make a realm (access.coax): the face asks once and hands the answer back.
+realm_access_wants :: (r: [] Realm) -> bool #export_c { return access_wants(r[0].acc[..]); }
+realm_access_sent :: (r: [] Realm, id: int) #export_c { access_sent(r[0].acc[..], id); }
+realm_access_take :: (r: [] Realm, kind: int, text: string) -> bool #export_c { return access_take(r[0].acc[..], kind, text); }
 realm_edit_act :: (r: [] Realm) #export_c {
   if r[0].action != 0 { return; }
   e := redit_take_action(r[0].ed[..], r[0].outbox[..]);
@@ -418,7 +424,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   }
   if b == BTN_SAY { r[0].chat = true; realm_open_text(r, TYPE_CHAT); }
   if b == BTN_PIECE && v.pieces { realm_open_text(r, TYPE_PIECE); }
-  if b == BTN_OWN && v.quest >= QUEST_STEPS && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/realms/new"); r[0].action = ACT_NAVIGATE; }
+  if b == BTN_OWN && v.quest >= QUEST_STEPS && r[0].action == 0 && !access_hides_make(r[0].acc[..]) { r[0].out_n = put(r[0].outbox[..], 0, "/realms/new"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_ACCEPT && v.offers > 0 { r[0].asks |= ASK_ACCEPT; }
   if b == BTN_DECLINE && v.offers > 0 { r[0].asks |= ASK_DECLINE; }
   // a hotbar slot takes its item in hand, or puts it away; the picked thing is let go
@@ -1475,7 +1481,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     vertices = draw_hotbar(r, v, out, vertices);
     if v.pieces && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_PIECE, piece_box(r), "MAKE A SET PIECE", ifx phone(r) then "" else "P", false); }
     // the house done: on to building your own realm (docs/verse/realm-builder.md)
-    if v.quest >= QUEST_STEPS && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN REALM", "", true); }
+    if v.quest >= QUEST_STEPS && v.selected.count == 0 && !access_hides_make(r[0].acc[..]) { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN REALM", "", true); }
     hint := hint_line(r, v);
     if hint.count > 0 {
       if v.selected.count > 0 { vertices = centred(d, out, vertices, v.selected, r[0].width * 0.5, hotbar_top(r) - 32 * k, 9 * k, orange(k, 0.95)); }
@@ -2118,6 +2124,21 @@ plated :: (u: [] f32, b: Box) -> f32 {
   #assert r[0].shown[BTN_OWN];
   realm_do(r[..], v, BTN_OWN);
   #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/realms/new";
+}
+
+#test "BUILD YOUR OWN REALM hides only when the access answer says make 0" {
+  answers := [3] string.["200\ninvites 1\nmake 0\nin 1\ncreator 0\nasked waiting\n", "200\ninvites 1\nmake 1\nin 1\ncreator 1\nasked none\n", "503\n{\"error\":\"no database\"}"];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for z: 0..<3 {
+    r: [1] Realm; desk(r[..]); v := view(); v.quest = QUEST_STEPS;
+    #assert realm_access_wants(r[..]);
+    realm_access_sent(r[..], 1);
+    #assert !realm_access_wants(r[..]) && realm_access_take(r[..], 513, answers[z]);
+    _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
+    #assert r[0].shown[BTN_OWN] == (z != 0);
+    realm_do(r[..], v, BTN_OWN);
+    #assert (r[0].action == ACT_NAVIGATE) == (z != 0);
+  }
 }
 
 #test "placing, Minecraft style: a number or a slot takes an item in hand, a click on the ground places it there, Escape puts it away" {

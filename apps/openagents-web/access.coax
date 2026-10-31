@@ -1,0 +1,96 @@
+// Who may make a realm (docs/auth/2026-10-31-realm-invites-and-auth.md). A page that links to
+// /realms/new asks GET /api/playtest/access once (its face sends it with the player key and the
+// site cookie) and hides MAKE A REALM only when the answer says `make 0`: realm making is invite
+// only and this visitor isn't an approved creator. Before the answer, and on any failure (no
+// answer, a non-200, an older API's 404), the links show as they always have. The server decides;
+// every realm-making route checks again.
+//   coax/bin/coax test apps/openagents-web/access.coax --library
+
+ACCESS_URL :: "/api/playtest/access";
+ACCESS_ANSWER :: 512;          // + the request's id: "STATUS\n" then the lines (coax/web/host.js)
+ACCESS_FLAGS :: 12;            // a GET, its answer wanted (4), the player key sent (8)
+
+Access :: struct {
+  sent: bool; id: int;         // asked once; the id its answer comes back under (-1: not sent)
+  known: bool;                 // a 200 came back
+  make: bool; invites: bool; logged: bool; creator: bool; waiting: bool;
+}
+
+// The face asks once: true until access_sent.
+access_wants :: (a: [] Access) -> bool { return !a[0].sent; }
+access_sent :: (a: [] Access, id: int) { a[0].sent = true; a[0].id = id; }
+// MAKE A REALM hides only on a 200 that says make 0.
+access_hides_make :: (a: [] Access) -> bool { return a[0].known && !a[0].make; }
+
+acc_line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+acc_is :: (line: string, key: string, value: string) -> bool {
+  return line.count == key.count + 1 + value.count && line[0..<key.count] == key && line[key.count] == ' ' && line[key.count + 1..<line.count] == value;
+}
+
+// The lines on their own (a page that already has the body): make, invites, in, creator, asked.
+access_read :: (a: [] Access, body: string) {
+  a[0].known = true; a[0].make = true; a[0].invites = false; a[0].logged = false; a[0].creator = false; a[0].waiting = false;
+  i := 0;
+  while i < body.count {
+    e := acc_line_end(body, i);
+    line := body[i..<e];
+    i = e + 1;
+    if acc_is(line, "make", "0") { a[0].make = false; }
+    if acc_is(line, "invites", "1") { a[0].invites = true; }
+    if acc_is(line, "in", "1") { a[0].logged = true; }
+    if acc_is(line, "creator", "1") { a[0].creator = true; }
+    if acc_is(line, "asked", "waiting") { a[0].waiting = true; }
+  }
+}
+
+// A host message: true when it was the access answer (and it is taken).
+access_take :: (a: [] Access, kind: int, text: string) -> bool {
+  if !a[0].sent || a[0].id < 0 || a[0].known || kind != ACCESS_ANSWER + a[0].id { return false; }
+  e := acc_line_end(text, 0);
+  if text[0..<e] != "200" { a[0].id = -1; return true; }   // no answer, a refusal, an older API: as today
+  access_read(a, ifx e + 1 <= text.count then text[e + 1..<text.count] else "");
+  return true;
+}
+
+#test "MAKE A REALM shows before the answer, on a failure, and with make 1; hides with make 0" {
+  a: [1] Access;
+  #assert access_wants(a[..]) && !access_hides_make(a[..]);
+  access_sent(a[..], 3);
+  #assert !access_wants(a[..]) && !access_hides_make(a[..]);
+  #assert !access_take(a[..], ACCESS_ANSWER + 2, "200\nmake 0\n");   // someone else's answer
+  #assert access_take(a[..], ACCESS_ANSWER + 3, "200\ninvites 1\nmake 0\nin 1\ncreator 0\nasked waiting\n");
+  #assert access_hides_make(a[..]) && a[0].invites && a[0].logged && !a[0].creator && a[0].waiting;
+
+  b: [1] Access;
+  access_sent(b[..], 1);
+  #assert access_take(b[..], ACCESS_ANSWER + 1, "200\ninvites 1\nmake 1\nin 1\ncreator 1\nasked none\n");
+  #assert !access_hides_make(b[..]) && b[0].creator;
+
+  c: [1] Access;
+  access_sent(c[..], 0);
+  #assert access_take(c[..], ACCESS_ANSWER, "404\n{\"error\":\"not found\"}");
+  #assert !access_hides_make(c[..]) && !c[0].known;
+  #assert !access_take(c[..], ACCESS_ANSWER, "200\nmake 0\n");       // taken once
+
+  d: [1] Access;
+  access_sent(d[..], 5);
+  #assert access_take(d[..], ACCESS_ANSWER + 5, "0\n");             // no answer at all
+  #assert !access_hides_make(d[..]);
+
+  e: [1] Access;
+  access_sent(e[..], -1);                                           // the host had no slot
+  #assert !access_take(e[..], ACCESS_ANSWER - 1, "200\nmake 0\n") && !access_hides_make(e[..]);
+
+  f: [1] Access;
+  access_sent(f[..], 2);
+  #assert access_take(f[..], ACCESS_ANSWER + 2, "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n");
+  #assert !access_hides_make(f[..]) && !f[0].invites;
+}
+
+#test "a line is read whole: make 01 or makes 0 is not make 0" {
+  a: [1] Access;
+  access_read(a[..], "makes 0\nmake 01\nmake\n");
+  #assert !access_hides_make(a[..]);
+  access_read(a[..], "make 0");
+  #assert access_hides_make(a[..]);
+}
