@@ -135,6 +135,8 @@ Belt :: struct {
   cam: SpaceCam;
   w: f32; h: f32; dpr: f32; touch: bool;
   claim: [ICE_ROCKS] bool; stock: [ICE_ROCKS] f64;   // a miner leaves a rig at each rock it works; its ice waits for haulers
+  engaged: [SHIPS] int;  // the hostile ship each is in combat range of, -1 none (b22-intercepts)
+  engage_t: [SHIPS] f64; // when it came in range
   building: f64;         // days until the yard's freighter is done, 0 none
   station: [1] Station;  // Hearth Station's stores, refinery and people (belt-station.coax)
   delivered: f64;
@@ -394,6 +396,7 @@ belt_reset :: (s: [] Belt) {
   s[0].speed = 2;
   s[0].station[0] = station_new();
   s[0].building = 0.0;
+  for j: 0..<SHIPS { s[0].engaged[j] = -1; s[0].engage_t[j] = 0.0; }
   for j: 0..<ICE_ROCKS { s[0].claim[j] = false; s[0].stock[j] = 0.0; }
   s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
   s[0].reach_ship = -1;
@@ -593,6 +596,7 @@ arrive :: (s: [] Belt, k: int) {
 step_ships :: (s: [] Belt, dt: f64) {
   t := s[0].t;
   for k: 0..<s[0].ship_n { sight_record(s, k); }
+  intercepts(s, dt);
   // The refinery, worked by whoever is home.
   away := 0;
   for k: 0..<s[0].ship_n {
@@ -836,6 +840,66 @@ next_order :: (s: [] Belt, k: int) -> bool {
     }
   }
   return false;
+}
+
+// ---- intercepts: two hostile ships in flight whose paths bring them within COMBAT_RANGE engage
+COMBAT_RANGE :: 10000000.0;   // m: 10,000 km, a rail gun's reach
+Pass :: struct { tau: f64; dist: f64; }
+// The closest two straight-line motions come over [0, span]: a at ra moving va, b at rb moving vb.
+closest_pass :: (ra: D3, va: D3, rb: D3, vb: D3, span: f64) -> Pass {
+  r := d3_sub(rb, ra); v := d3_sub(vb, va);
+  vv := d3_dot(v, v);
+  tau := ifx vv > 0.0 then fclamp(-d3_dot(r, v) / vv, 0.0, span) else 0.0;
+  return Pass.{tau = tau, dist = d3_len(d3_add(r, d3_scale(v, tau)))};
+}
+hostile :: (a: Ship, b: Ship) -> bool { return a.faction != b.faction; }
+hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+// Over the step just taken (the clock now at s[0].t), a day at a time: pairs coming in range engage
+// at the moment they do; pairs well apart again part.
+intercepts :: (s: [] Belt, dt: f64) {
+  n := s[0].ship_n;
+  pieces := hi_int(1, int(dt / DAY + 0.999));
+  span := dt / f64(pieces);
+  st: [SHIPS] State;
+  for p: 0..<pieces {
+    t0 := s[0].t - dt + f64(p) * span;
+    for k: 0..<n { if s[0].ships[k].mode == FLYING { st[k] = flight_state(s[0].ships[k], t0); } }
+    for i: 0..<n {
+      a := s[0].ships[i];
+      if a.mode != FLYING { continue; }
+      for j: i + 1..<n {
+        b := s[0].ships[j];
+        if b.mode != FLYING || !hostile(a, b) { continue; }
+        if s[0].engaged[i] == j {
+          if d3_dist(st[i].r, st[j].r) > 2.0 * COMBAT_RANGE { s[0].engaged[i] = -1; s[0].engaged[j] = -1; }
+          continue;
+        }
+        if s[0].engaged[i] >= 0 || s[0].engaged[j] >= 0 { continue; }
+        // a straight-line pass is close enough over a day (the Sun bends it by a few thousand km)
+        pass := closest_pass(st[i].r, st[i].v, st[j].r, st[j].v, span);
+        if pass.dist > COMBAT_RANGE { continue; }
+        // the moment it came in range: where the gap first closed to COMBAT_RANGE
+        r := d3_sub(st[j].r, st[i].r); v := d3_sub(st[j].v, st[i].v);
+        vv := d3_dot(v, v); rv := d3_dot(r, v); rr := d3_dot(r, r) - COMBAT_RANGE * COMBAT_RANGE;
+        tin := 0.0;
+        if rr > 0.0 && vv > 0.0 { dd := rv * rv - vv * rr; tin = fclamp((-rv - sqrt(fmax(dd, 0.0))) / vv, 0.0, span); }
+        engage(s, i, j, t0 + tin);
+      }
+    }
+  }
+}
+engage :: (s: [] Belt, i: int, j: int, t: f64) {
+  s[0].engaged[i] = j; s[0].engaged[j] = i;
+  s[0].engage_t[i] = t; s[0].engage_t[j] = t;
+  a := s[0].ships[i]; b := s[0].ships[j];
+  if a.faction != FREE_BELT && b.faction != FREE_BELT { return; }
+  // one of ours: say so and stop the clock
+  mine := ifx a.faction == FREE_BELT then a else b; them := ifx a.faction == FREE_BELT then b else a;
+  buf: [96] u8;
+  n := put(buf[..], 0, them.name); n = put(buf[..], n, " IN RANGE OF "); n = put(buf[..], n, mine.name);
+  say(s, cast(string) buf[0..<n]);
+  s[0].speed = 0;
+  if track_begin(s[0].track[..], "engaged") { track_str(s[0].track[..], "ours", mine.name); track_str(s[0].track[..], "theirs", them.name); track_end(s[0].track[..]); }
 }
 
 // ---- the yard: freighters from metal and people
@@ -1889,6 +1953,13 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
       dot(out, d, px, py, 1.4 * k, 0.9, ICE_R, ICE_G, ICE_B);
     }
   }
+  // Ships in combat range: a line between them.
+  for j: 0..<s[0].ship_n {
+    e := s[0].engaged[j];
+    if e <= j { continue; }
+    a := ship_screen(s, j); b := ship_screen(s, e);
+    stroke_g(out, d, pix(a.x), pix(a.y), pix(b.x), pix(b.y), 1.2 * d[0].k, 0.9, 4 * d[0].k, LOW_R, LOW_G, LOW_B);
+  }
   // The ships, the selected last.
   for j: 0..<s[0].ship_n { if !s[0].cmd[0].selected[j] { draw_ship(s, out, d, j, false); } }
   for j: 0..<s[0].ship_n { if s[0].cmd[0].selected[j] { draw_ship(s, out, d, j, true); } }
@@ -2780,6 +2851,32 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     was = c;
   }
   #assert hauled >= 2 && s[0].ships[SHIP_BASE].work == WORK_MINE && s[0].ships[SHIP_BASE].work_rock == rock;
+}
+
+#test "intercepts: two hostile ships whose paths cross engage at the moment they come in range, stop the clock, and part after" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].speed = 2;
+  tc := s[0].t + 10.0 * DAY;
+  p := d3(400000000000.0, 0.0, 0.0);
+  va := d3(0.0, 18000.0, 0.0); vb := d3(0.0, 16000.0, 3000.0);
+  for q: 0..<2 {
+    k := ifx q == 0 then 0 else 3;   // RASP and IRONWAKE
+    s[0].ships[k].mode = FLYING; s[0].ships[k].t0 = s[0].t; s[0].ships[k].tof = 100.0 * DAY;
+    s[0].ships[k].dep_body = 0; s[0].ships[k].arr_body = 0; s[0].ships[k].at = P_STATION;
+    s[0].ships[k].arc = orbit_from_state(orbit_state_of(p, ifx q == 0 then va else vb), GM_SUN, tc);
+  }
+  for i: 0..<9 { s[0].t += DAY; step_ships(s[..], DAY); }
+  #assert s[0].engaged[0] == -1 && s[0].speed == 2;
+  s[0].t += 2.0 * DAY; step_ships(s[..], 2.0 * DAY);   // a step longer than a day still finds the moment
+  rel := d3_len(d3_sub(va, vb));
+  #assert s[0].engaged[0] == 3 && s[0].engaged[3] == 0 && s[0].speed == 0;
+  #assert abs(s[0].engage_t[0] - (tc - COMBAT_RANGE / rel)) < 600.0;
+  for i: 0..<3 { s[0].t += DAY; step_ships(s[..], DAY); }
+  #assert s[0].engaged[0] == -1;
+  // a straight pass: the closest approach and when
+  c := closest_pass(d3(0.0, 0.0, 0.0), d3(1.0, 0.0, 0.0), d3(10.0, 5.0, 0.0), d3(-1.0, 0.0, 0.0), 100.0);
+  #assert abs(c.tau - 5.0) < 0.0001 && abs(c.dist - 5.0) < 0.0001;
 }
 
 #test "Hearth refines its ice into reaction mass at the refinery's rate, a shift short while the crews are away, and an old save still reads" {
