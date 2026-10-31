@@ -140,7 +140,7 @@ bool check(Arena *arena,File *file){
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
   auto &nodes=input->nodes;auto &objects=input->objects;const size_t old_size=objects.size();objects.resize((size_t)state.used+1,nullptr);
-  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=5)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);else if(k>=40 && k<=52)objects[id]=make<Stmt>(arena);else if(k==COAX_CK_Tag_proc)objects[id]=make<ProcDecl>(arena);else if(k==COAX_CK_Tag_param)objects[id]=make<Param>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);}
+  for(size_t id=old_size;id<objects.size();id++){const auto k=nodes[id].kind;if(k>=1 && k<=5)objects[id]=make<TypeExpr>(arena);else if(k>=16 && k<=33)objects[id]=make<Expr>(arena);else if(k>=40 && k<=52)objects[id]=make<Stmt>(arena);else if(k==COAX_CK_Tag_proc)objects[id]=make<ProcDecl>(arena);else if(k==COAX_CK_Tag_param)objects[id]=make<Param>(arena);else if(k==COAX_CK_Tag_struct_)objects[id]=make<StructDecl>(arena);else if(k==COAX_CK_Tag_field)objects[id]=make<Field>(arena);else if(k==COAX_CK_Tag_field_init)objects[id]=make<FieldInit>(arena);}
   std::vector<TypeInfo*> types={&T_INVALID,&T_VOID,&T_BOOL,&T_STRING,&T_UNTYPED_INT,&T_UNTYPED_FLOAT,&T_F32,&T_F64,&T_S8,&T_S16,&T_S32,&T_S64,&T_U8,&T_U16,&T_U32,&T_U64};
   for(int64_t i=16;i<state.type_count;i++)types.push_back(make<TypeInfo>(arena));
   g_composite_list.clear();
@@ -153,6 +153,8 @@ bool check(Arena *arena,File *file){
   for(int64_t i=16;i<state.type_count;i++){const auto &r=records[(size_t)i];if(r.kind!=COAX_CK_Kind_array && r.kind!=COAX_CK_Kind_view)continue;
     // ... and so does a fixed array whose length is a value parameter ([$N] T).
     bool placeholder=r.length<0;auto at=r.elem;while(records[(size_t)at].kind==COAX_CK_Kind_array || records[(size_t)at].kind==COAX_CK_Kind_view){placeholder=placeholder || records[(size_t)at].length<0;at=records[(size_t)at].elem;}
+    // ... and so does one over a generic struct instance (Pair($T)).
+    placeholder=placeholder || (records[(size_t)at].kind==COAX_CK_Kind_struct_ && nodes[(size_t)records[(size_t)at].decl].generic);
     if(!placeholder && records[(size_t)at].kind!=COAX_CK_Kind_param)g_composite_list.push_back(types[(size_t)i]);}
   // Populate all scalar/reference fields before copying aggregate value lists.
   for(int64_t id=1;id<=state.used;id++){
@@ -167,7 +169,7 @@ bool check(Arena *arena,File *file){
     else switch(v.kind){
       case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
-      case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;break;}
+      case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;p->generic=v.generic;p->key=checked_string(arena,v.key);p->origin=checked_ref<StructDecl>(objects,v.origin);break;}
       case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}
       case COAX_CK_Tag_param:{auto *p=checked_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->type=ty;break;}
       case COAX_CK_Tag_field:{auto *p=checked_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->init=checked_ref<Expr>(objects,v.b);p->type=ty;p->offset=(int32_t)v.field_index;break;}
@@ -197,8 +199,12 @@ bool check(Arena *arena,File *file){
   // Their instances (new proc nodes the checker made) are the procedures that
   // emitters, the evaluator and checks see, after the authored ones.
   std::vector<ProcDecl*> concrete,generic;for(auto *p:file->procs)(p->generic?generic:concrete).push_back(p);
-  for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=o->authority;p->root_source=o->root_source;concrete.push_back(p);}
-  file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);
+  // Struct templates likewise; concrete struct instances follow the authored structs.
+  std::vector<StructDecl*> structs,templates;for(auto *d:file->structs)(d->generic?templates:structs).push_back(d);
+  for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){
+    if(nodes[(size_t)id].kind==COAX_CK_Tag_struct_){auto *d=checked_ref<StructDecl>(objects,id);d->end=d->origin->end;if(!d->generic)structs.push_back(d);continue;}
+    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=o->authority;p->root_source=o->root_source;concrete.push_back(p);}
+  file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);file->structs=to_slice(arena,structs);file->generic_structs=to_slice(arena,templates);
   file->check_input.reset();return true;
 }
 } // namespace coax

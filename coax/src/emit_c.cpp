@@ -389,6 +389,11 @@ std::string tag(Type t) {
     case TypeKind::bool_: return "bool";
     case TypeKind::string_: return "string";
     case TypeKind::struct_: case TypeKind::enum_:
+      // A generic struct instance is its template's name and its bindings' key: t_Pair__3int.
+      if (t->kind == TypeKind::struct_ && t->struct_decl->key.count) {
+        std::string k = to_std(t->struct_decl->name) + "__" + to_std(t->struct_decl->key);
+        return t->scope ? "q" + std::to_string(t->scope) + "t_" + k : "t_" + k;
+      }
       // A name two modules declare is spelled by its module scope; coax_q never comes from a user name.
       if (t->scope) return "q" + std::to_string(t->scope) + "t_" + to_std(t->kind == TypeKind::struct_ ? t->struct_decl->name : t->enum_decl->name);
       return "t_" + t->name;
@@ -2347,7 +2352,8 @@ std::string layout_report(const File *file) {
   std::string s;
   char buf[256];
   for (const StructDecl *d : file->structs) {
-    snprintf(buf, sizeof buf, "%s  size %d  align %d\n", to_std(d->name).c_str(), d->type->size, d->type->align);
+    // an instance is listed by its type: Pair(int)
+    snprintf(buf, sizeof buf, "%s  size %d  align %d\n", d->origin ? type_name(d->type) : to_std(d->name).c_str(), d->type->size, d->type->align);
     s += buf;
     int32_t end = 0;
     for (const Field &f : d->fields) {

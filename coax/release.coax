@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.36.0";
+IMPLEMENTATION_VERSION :: "0.37.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [114]ReleaseFeature.[
+CATALOGUE :: [115]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -101,7 +101,8 @@ CATALOGUE :: [114]ReleaseFeature.[
   ReleaseFeature.{id="verify.evidence",section="Capabilities",name="`coax test/mutate --evidence FILE`",meaning="Schema coax.evidence.v1: each check, authority-coverage and mutation claim bound to sources, compiler, evaluator target, profile, selection and budgets, ending passed, counterexample, inconclusive, infrastructure-error or not-checked; the verdict is the worst, so missing execution is never a pass",status="works",introduced="0.33.0"},
   ReleaseFeature.{id="generics.type-parameters",section="Capabilities",name="`$T` type parameters",meaning="A $T in a procedure's parameter types binds a placeholder type at its first use; every other use is checked against it; only-in-result (E0392), unbound (E0393), nested (E0394), struct-field (E0395), recursive (E0396) and exported (E0398) forms are refused",status="partial",introduced="0.34.0"},
   ReleaseFeature.{id="generics.instantiation",section="Capabilities",name="Generic instantiation",meaning="Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no constraints yet",status="partial",introduced="0.35.0"},
-  ReleaseFeature.{id="generics.value-parameters",section="Capabilities",name="`$N` value parameters",meaning="[$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted; no generic structs yet",status="partial",introduced="0.36.0"},
+  ReleaseFeature.{id="generics.value-parameters",section="Capabilities",name="`$N` value parameters",meaning="[$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted",status="partial",introduced="0.36.0"},
+  ReleaseFeature.{id="generics.structs",section="Capabilities",name="Generic structs",meaning="Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; each instance is laid out and emitted (E0800-E0804, E0223)",status="partial",introduced="0.37.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

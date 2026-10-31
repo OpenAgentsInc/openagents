@@ -283,5 +283,78 @@ class ValueParameters(unittest.TestCase):
                 self.assertEqual(codes, want)
 
 
+STRUCTS = (
+    "Pair :: struct($T) { a: $T; b: $T; }\n"
+    "Box :: struct($T, $N) { items: [$N] $T; n: int; }\n"
+    "Holder :: struct { p: Pair(int); q: Pair(f64); }\n"
+    "swap :: (p: Pair($T)) -> Pair($T) { return Pair.{a = p.b, b = p.a}; }\n"
+    "total :: (b: Box(int, $N)) -> int { s := 0; for v: b.items { s += v; } return s + b.n; }\n"
+    "pick :: (v: [] Pair($T), i: int) -> $T { return v[i].b; }\n"
+    "first :: (b: Box($T, $N)) -> $T { return b.items[0]; }\n"
+    "calc :: () -> int {\n"
+    "  p := Pair.{a = 1, b = 2}; q: Pair(f64) = Pair.{a = 1.5, b = 2}; r := swap(p); w := swap(q);\n"
+    "  bx := Box.{items = [3] int.[1, 2, 3], n = 4}; ps := [2] Pair(int).[p, r];\n"
+    "  h := Holder.{p = r, q = w};\n"
+    "  fb := Box.{items = [2] f64.[0.5, 9.0], n = 0};\n"
+    "  pp: Pair(Pair(int)) = Pair.{a = p, b = r};\n"
+    "  x := cast(int)(first(fb) * 10.0);\n"
+    "  return r.a * 100000 + total(bx) * 1000 + pick(ps[..], 1) * 100 + h.p.b * 10 + pp.b.a + x + cast(int)h.q.a;\n"
+    "}\n"
+)
+
+
+class GenericStructs(unittest.TestCase):
+    setUp = TypeParameters.setUp
+    write = TypeParameters.write
+    coax = TypeParameters.coax
+    codes = TypeParameters.codes
+
+    def test_instances_agree_with_the_evaluator_and_are_laid_out(self):
+        program = self.write("structs.coax", '#import "Basic";\n' + STRUCTS + 'main :: () { print("%\\n", calc()); }\n')
+        compile_time = self.write("structs_ct.coax", '#import "Basic";\n' + STRUCTS + "K :: #run calc();\n"
+                                  'main :: () { print("%\\n", K); }\n#test "structs" { #assert calc() == 210119; }\n')
+        for path in (program, compile_time):
+            for opt in ("0", "2"):
+                r = self.coax("run", path, "--opt", opt)
+                self.assertEqual((r.returncode, r.stdout), (0, "210119\n"), r.stderr)
+        r = self.coax("test", compile_time)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        heads = [line for line in self.coax("layout", program).stdout.splitlines() if not line.startswith(" ")]
+        self.assertEqual(heads, ["Holder  size 32  align 8", "Pair(int)  size 16  align 8", "Pair(f64)  size 16  align 8",
+                                 "Box(int, 3)  size 32  align 8", "Box(f64, 2)  size 24  align 8", "Pair(Pair(int))  size 32  align 8"])
+        c = self.coax("c", program).stdout
+        for name in ("coax_t_Pair__3int", "coax_t_Pair__3f64", "coax_t_Box__3int2i3", "coax_t_Pair__11n0_Pair3int",
+                     "coax_p_swap__3int(", "coax_p_total__2i3(", "coax_p_first__3f642i2("):
+            self.assertIn(name, c)
+        self.assertNotIn("coax_t_Pair ", c)
+        decls = self.coax("deps", program, "--declarations").stdout
+        self.assertIn('"name":"Pair"', decls)
+        self.assertNotIn('"name":"Pair(int)"', decls)
+
+    def test_refused_generic_struct_forms(self):
+        cases = [
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair) {}", ["E0800"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair(int, int)) {}", ["E0801"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } f :: (p: Pair([] int)) {}", ["E0802"]),
+            ("Pair :: struct($T) { a: $T; b: $T; } g :: () { v := [2] int.[1, 2]; p := Pair.{a = v[..], b = v[..]}; }", ["E0802"]),
+            ("V :: struct { v: [] int; } Pair :: struct($T) { a: $T; } f :: (p: Pair(V)) {}", ["E0802"]),
+            ("P :: struct { x: int; } f :: (p: P(int)) {}", ["E0803"]),
+            ("Two :: struct($T, $U) { a: $T; b: $U; } g :: () { t := Two.{a = 1}; }", ["E0804"]),
+            ("Box :: struct($T, $N) { items: [$N] $T; } f :: (b: Box(4, int)) {}", ["E0368", "E0368"]),
+            ("Pair :: struct($T, $T) { a: $T; }", ["E0223"]),
+            ("S :: struct { a: $T; }", ["E0395"]),
+            ("Node :: struct($T) { next: Node($T); }", ["E0353"]),
+        ]
+        for i, (source, want) in enumerate(cases):
+            with self.subTest(source=source):
+                code, codes = self.codes(self.write(f"s{i}.coax", source + "\nmain :: () {}\n"))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(codes, want)
+        r = self.coax("explain", "E0800")
+        self.assertEqual(r.returncode, 0)
+        for code in ("E0223", "E0801", "E0802", "E0803", "E0804"):
+            self.assertEqual(self.coax("explain", code).returncode, 0, code)
+
+
 if __name__ == "__main__":
     unittest.main()

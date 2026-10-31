@@ -140,6 +140,10 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
   // alias.Name: a module-qualified type (name2 is the alias), exactly one alias deep.
   if v.kind==1 && PS_at(t,s,20) && PS_peek(t,s,1).kind==1 {PS_skip(t,s);n[id].name2=n[id].name;n[id].name=PS_take(t,s).text;
     if PS_at(t,s,20) && PS_peek(t,s,1).kind==1 {PS_reexport(s,out,v.loc);return 0;}}
+  // Pair(int), Box(f64, 4): a generic struct's arguments, types or integer lengths.
+  if PS_at(t,s,8) {PS_skip(t,s);
+    while s[0].code=="" {if PS_at(t,s,3) {PS_link(n,id,PS_expression(t,n,s,out));}else {PS_link(n,id,PS_type(t,n,s,out));}if !PS_at(t,s,14) {break;}PS_skip(t,s);}
+    PS_expect(t,s,out,9,"to close the type arguments");}
   return PS_valid(s,id);
 }
 PS_origin :: (n:[] PS_Node,e:int)->PS_Loc {q:=e;while n[q].kind==PS_Tag.expr_field {q=n[q].a;}return n[q].loc;}
@@ -452,7 +456,22 @@ PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
 PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->int {
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
+  if PS_at(t,s,8) {PS_struct_params(t,n,s,out,id);}
   PS_field_block(t,n,s,out,id);return PS_valid(s,id);
+}
+// Pair :: struct($T, $N): a generic struct's parameters, chained from d. The
+// checker binds them per instance (r4a-value-parameters).
+PS_struct_params :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) {
+  PS_skip(t,s);last:=0;
+  while s[0].code=="" {
+    v:=PS_peek(t,s,0);
+    if v.kind!=53 {PS_fail(s,out,v.loc,"E0223","a struct parameter is written $NAME","Pair :: struct($T) { a: $T; b: $T; }");return;}
+    p:=PS_new(n,s,out,PS_Tag.type_param,v.loc);n[p].name=PS_take(t,s).text;
+    q:=n[id].d;while q!=0 {if n[q].name==n[p].name {parts:=[3] string.["struct parameter '$",v.text,"' is listed twice"];PS_error(s,out,v.loc,"E0223","give each parameter its own name",parts[..]);return;}q=n[q].next;}
+    if last==0 {n[id].d=p;}else {n[last].next=p;}last=p;
+    if !PS_at(t,s,14) {break;}PS_skip(t,s);
+  }
+  PS_expect(t,s,out,9,"to close the struct parameters");
 }
 // Build-profile selection operates on fully parsed syntax trees. It is not
 // source-text deletion or arbitrary compile-time expression evaluation.
@@ -3952,6 +3971,38 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   if variant==2 {#assert nodes[id].kind==PS_Tag.type_array && state[0].pos==4;at=nodes[id].b;}
   #assert nodes[at].kind==PS_Tag.type_param && nodes[at].name=="T" && nodes[at].name2=="" && nodes[at].loc.line==2 && nodes[at].loc.column==7 && nodes[at].loc.offset==12;
   if variant==0 || variant==3 {#assert id==1 && state[0].pos==1 && state[0].used==1;}
+}
+#forall "a generic struct lists its $ parameters, each once" variant:0..<4 {
+  // struct($T, $N) { a: $T; } ; struct() ; struct($T, $T) ; struct($T {
+  tokens:=[14] PS_Token.[PS_Token.{kind=2,text="struct"},PS_Token.{kind=8},PS_Token.{kind=53,text="T",loc=PS_Loc.{line=2,column=17,offset=30}},PS_Token.{kind=14},PS_Token.{kind=53,text="N",loc=PS_Loc.{line=2,column=21,offset=34}},PS_Token.{kind=9},
+    PS_Token.{kind=10},PS_Token.{kind=1,text="a"},PS_Token.{kind=16},PS_Token.{kind=53,text="T"},PS_Token.{kind=15},PS_Token.{kind=11},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[2]=PS_Token.{kind=9,loc=PS_Loc.{line=2,column=17,offset=30}};}
+  if variant==2 {tokens[4].text="T";}
+  if variant==3 {tokens[3]=PS_Token.{kind=10};}
+  nodes:[16] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{kind=1,text="Pair"});
+  if variant==0 {
+    #assert state[0].code=="" && id==1 && nodes[1].kind==PS_Tag.decl_struct_ && nodes[1].name=="Pair";
+    p:=nodes[1].d;q:=nodes[p].next;
+    #assert p==2 && nodes[p].kind==PS_Tag.type_param && nodes[p].name=="T" && nodes[p].loc.column==17 && q==3 && nodes[q].name=="N" && nodes[q].next==0;
+    f:=nodes[1].head;#assert f!=0 && nodes[f].name=="a" && nodes[nodes[f].a].kind==PS_Tag.type_param && state[0].pos==12;
+  }
+  if variant==1 {#assert state[0].code=="E0223" && state[0].loc.column==17 && cast(string)message[0..<state[0].length]=="a struct parameter is written $NAME";}
+  if variant==2 {#assert state[0].code=="E0223" && state[0].loc.column==21 && state[0].fix=="give each parameter its own name" && cast(string)message[0..<state[0].length]=="struct parameter '$T' is listed twice";}
+  if variant==3 {#assert state[0].code!="" && state[0].code!="E0223";}
+}
+#forall "a type name takes parenthesized type and length arguments" variant:0..<3 {
+  // Pair(int) ; Box([] u8, 4) ; Pair(int
+  tokens:=[10] PS_Token.[PS_Token.{kind=1,text="Pair"},PS_Token.{kind=8},PS_Token.{kind=1,text="int"},PS_Token.{kind=9},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[2]=PS_Token.{kind=12};tokens[3]=PS_Token.{kind=13};tokens[4]=PS_Token.{kind=1,text="u8"};tokens[5]=PS_Token.{kind=14};tokens[6]=PS_Token.{kind=3,value=4,text="4"};tokens[7]=PS_Token.{kind=9};}
+  if variant==2 {tokens[3]=PS_Token.{kind=15};}
+  nodes:[16] PS_Node;state:[1] PS_State;message:[256] u8;
+  id:=PS_type(tokens[..],nodes[..],state[..],message[..]);
+  if variant==0 {#assert state[0].code=="" && id==1 && state[0].pos==4 && state[0].depth==0 && nodes[1].kind==PS_Tag.type_named && nodes[1].name=="Pair";
+    a:=nodes[1].head;#assert a==2 && nodes[a].kind==PS_Tag.type_named && nodes[a].name=="int" && nodes[a].next==0 && nodes[1].tail==a;}
+  if variant==1 {#assert state[0].code=="" && id==1 && state[0].pos==8;a:=nodes[1].head;b:=nodes[a].next;
+    #assert nodes[a].kind==PS_Tag.type_view && nodes[nodes[a].b].name=="u8" && nodes[b].kind==PS_Tag.expr_int_lit && nodes[b].value==4 && nodes[b].next==0 && nodes[1].tail==b;}
+  if variant==2 {#assert state[0].code!="" && id==0;}
 }
 #forall "a $ name as an array length is one value-parameter node" variant:0..<3 {
   // [$N] int ; [$N] $T ; [$N + 1] int is still refused as an expression

@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -453,6 +453,26 @@ parts of a parameter are checked against the argument after substitution
 accepted; views and arrays of composites that hold a placeholder are still
 E0394. Instance keys spell a length as `i` and its value
 (`coax_p_sum__2i3`).
+
+**Generic structs (0.37.0).** `Pair :: struct($T) { a: $T; b: $T; }` and
+`Box :: struct($T, $N) { items: [$N] $T; n: int; }` are templates: a
+parameter used as an array length in a field is a length, any other is a
+type. A type names an instance with an argument per parameter, `Pair(int)`,
+`Box(f64, 4)` (E0800 none given, E0801 a wrong count, E0368 a type for a
+length or a length for a type, E0803 arguments on a type that takes none). A
+literal `Pair.{a = 1, b = 2}` deduces its instance from its fields: typed
+values bind first, then an untyped literal takes the bound type or its
+default (E0804 a parameter no field sets); a declared type such as `q:
+Pair(f64) = Pair.{...}` gives the instance instead. A procedure parameter
+`p: Pair($T)` or `b: Box(int, $N)` binds from a struct instance argument
+(E0349 any other), and views and arrays of a generic struct are accepted.
+Each instance is a struct of its own, laid out, checked and emitted once
+(`coax layout` lists `Pair(int)  size 16  align 8`; its C type is
+`coax_t_Pair__3int`); a template's field errors are reported once, at the
+template. Instances hold fixed storage only: binding a view, or a struct or
+array holding one, is E0802, so no instance carries a borrow past a view's
+lifetime rule. Struct and procedure instances share the 256-instance budget
+(E0339). Arithmetic on `$T` values still needs constraints (r4a-constraints).
 
 The remainder of this section is the plan.
 

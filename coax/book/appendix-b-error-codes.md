@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -81,6 +81,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0219` | enum needs an underlying type | An enum names its integer width: Outcome :: enum u8 { ... }. The width is part of its layout. |
 | `E0220` | malformed check | #test takes a name string and a block: #test "refunds never exceed payment" { ... }. #forall takes one or more bindings, each a type or a lo..<hi range, then a block: #forall a: u8, b: 0..<10 { ... }. |
 | `E0221` | parser resource limit | The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure. |
+| `E0223` | malformed struct parameter list | A generic struct lists its parameters as $NAME, each once, separated by ',': Pair :: struct($T) { a: $T; b: $T; } or Box :: struct($T, $N) { items: [$N] $T; }. |
 | `E0222` | qualified name reaches through an alias | A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias. |
 
 ## E03xx: checker
@@ -125,7 +126,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0336` | no main | A program needs main :: () { }. A file whose procedures are #export_c can be built as a library with coax lib instead. |
 | `E0337` | main has the wrong signature | main takes no parameters and returns nothing in coax0. |
 | `E0338` | missing return | Some path reaches the end of a procedure that must return a value. |
-| `E0339` | too many generic instances | A program may make at most 256 instances of generic procedures, one per procedure and distinct binding of its type parameters. A chain of generic calls that binds ever larger types never ends; break it with a concrete procedure. |
+| `E0339` | too many generic instances | A program may make at most 256 generic instances: one per generic procedure or struct and distinct binding of its parameters. A chain of generic uses that binds ever larger types never ends; break it with a concrete type. |
 | `E0340` | constant dependency cycle | Constants may refer to each other in any order, but not in a circle. |
 | `E0341` | constant has no value | A constant or #run must produce a value; a call returning nothing cannot. |
 | `E0342` | name is a constant, type or intrinsic | A local cannot take the name of a constant, struct, enum or intrinsic. |
@@ -179,7 +180,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0392` | type parameter appears only in the result | A $T in a procedure's result type must first appear in one of its parameter types, which binds it at each call. Add a parameter whose type uses $T, or return a concrete type. |
 | `E0393` | type parameter is not bound here | Only a procedure's parameter types bind a type parameter. A $T first written in a procedure body, or in a constant, check or other declaration outside a procedure signature, has nothing to bind it. |
 | `E0394` | nested generic type | A placeholder is accepted as $T, as a view [] $T and as a fixed array [N] $T or [$N] $T. A view or array of a composite that holds a placeholder, such as [] [] $T, [] [$N] T or [4] [] $T, is not supported yet. |
-| `E0395` | type parameter in a struct field | Struct fields have concrete types. Generic structs such as Pair :: struct($T) are planned; until then give the field a concrete type. |
+| `E0395` | type parameter in a struct field | A struct field may use only the parameters its struct lists: Pair :: struct($T) { a: $T; b: $T; }. A plain struct lists none, so its fields have concrete types. |
 | `E0396` | recursion through a generic procedure | A generic procedure cannot call itself: each instance would need a bounded specialization budget, which is not implemented. Write the recursion in a concrete procedure. |
 | `E0397` | argument has no value to bind a type parameter | A call's argument binds $T to its type, and a call that returns nothing has none. Pass a value of the type the procedure should work on. |
 | `E0398` | generic procedure cannot be exported | #export_c gives a procedure one C name and signature, which a procedure with type parameters does not have. Export a concrete procedure. |
@@ -245,3 +246,13 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0703` | Metal compute module has no kernel | coax metal-compute compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0704` | outside the SPIR-V lowering | coax spirv lowers what coax metal accepts (f32 and bool, if/else and acyclic calls) to SPIR-V 1.3 for Vulkan. --kernel NAME wraps one procedure of f32 parameters, returning f32 or bool, in a GLCompute entry point; without it the module is a library. A module has at most 256 procedures, 1024 locals in one procedure, 1024 constants and 32 arguments in one call. |
 | `E0705` | shader entry point not found | coax spirv --vertex NAME and --fragment NAME make entry points of procedures declared in the file or the units it loads. Name one of them, spelled as declared. |
+
+## E08xx: generic structs
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `E0800` | generic struct without arguments | A type that names a generic struct gives an argument for each parameter: Pair(int), Box(f64, 4). A literal Pair.{a = 1, b = 2} deduces them from its fields instead. |
+| `E0801` | wrong number of struct arguments | A generic struct takes one argument for each parameter it lists: Box :: struct($T, $N) is written Box(int, 4). |
+| `E0802` | generic struct over a borrow | A generic struct holds fixed storage only. Binding a parameter to a view, or to a struct or array that holds one, would carry a borrow past the rule that a view does not outlive its array. Store the array itself, or an index into it. |
+| `E0803` | arguments on a type that takes none | Only a generic struct takes arguments. A builtin type, an enum or a struct without parameters is written by its name alone. |
+| `E0804` | struct parameter not deduced | A literal of a generic struct deduces each parameter from a field given in it. Give a field that uses the parameter, or declare the variable's type: x: Pair(int) = Pair.{...}. |

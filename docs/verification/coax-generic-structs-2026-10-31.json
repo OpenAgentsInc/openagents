@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-value-parameters (#ce0b0), second half: generic structs",
+  "parent": "r4a-generic-values (#76ba), kept open",
+  "baseline_commit": "03d153e89a",
+  "compiler_version": "0.37.0",
+  "scope": "Pair :: struct($T) and Box :: struct($T, $N) templates; Pair(int) and Box(f64, 4) instances from types, deduced from literals Pair.{...}, bound from Pair($T) parameters; each instance laid out, checked, evaluated and emitted under its own C name; borrows refused.",
+  "kernels": {
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "new_rules": [
+        "PS_struct_params: struct($T, $N) chained from the struct node's d (E0223)",
+        "PS_type: Name(arg, ...) type or integer-literal arguments"
+      ],
+      "checks": "186 checks, 186 passed",
+      "mutation": "1249 mutants, 1249 killed, 0 survived"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_template: one record per parameter, its kind (type or length) fixed by its first use in a field",
+        "CK_struct_type / CK_struct_arg: argument count and kinds (E0800, E0801, E0803, E0368, E0357)",
+        "CK_struct_intern: one instance per template and key, sharing the 256-instance budget (E0339), refusing borrows (E0802), laid out with defaults",
+        "CK_deduce / CK_deduce_pass: literal deduction, typed fields first (E0804, E0348)",
+        "CK_bind on Pair($T) parameters, CK_struct_subst for instances over placeholders, CK_nests allows views and arrays of generic structs",
+        "a template's field errors are reported once (flag2 on the template)"
+      ],
+      "checks": "605 checks, 605 passed",
+      "mutation": "4934 mutants, 4934 killed, 0 survived (4 shards; the last survivor, an enum given arguments, was killed by a new fixture and shard 3 rerun)"
+    },
+    "seeds": "bootstrap/parser.{c,h} and checker.{c,h} regenerated with the trusted 0.36.0 compiler after checks and mutation"
+  },
+  "native_transport": [
+    "src/check.cpp: StructDecl and Field objects for instance nodes; struct templates move to File::generic_structs and concrete instances follow the authored structs; composites over a generic instance stay out of the type list",
+    "src/emit_c.cpp: an instance's C tag is its template name and key (coax_t_Pair__3int); coax layout lists it by type (Pair(int))",
+    "src/main.cpp: declarations and references list templates, not instances; explain --markdown gains E08xx",
+    "src/errors.cpp: E0223, E0800-E0804; E0339 and E0395 explanations updated"
+  ],
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "class": "GenericStructs",
+    "tests": 2,
+    "covers": [
+      "a program over Pair, Box, a struct holding instances, generic procedures over Pair($T), Box(int, $N), Box($T, $N) and [] Pair($T) prints 210119 natively at -O0/-O2, under #run and coax test",
+      "coax layout lists Holder, Pair(int), Pair(f64), Box(int, 3), Box(f64, 2), Pair(Pair(int)) with sizes and alignments",
+      "C names coax_t_Pair__3int, coax_t_Box__3int2i3, coax_t_Pair__11n0_Pair3int, coax_p_first__3f642i2",
+      "refused: E0800, E0801, E0802 (view argument, deduced view, struct holding a view), E0803, E0804, E0368 x2, E0223, E0395, E0353"
+    ]
+  },
+  "limits": [
+    "a literal cannot name its instance (Pair(int).{...} parses as a call); it deduces, or takes a declared type",
+    "arithmetic on $T values waits for r4a-constraints",
+    "declaration IDs name templates; instances appear in layout and C, not in coax deps --declarations"
+  ],
+  "legacy_codegen": {
+    "compared_with": "coax0 0.36.0 (03d153e89a cached build)",
+    "corpus": "996 compilable repo sources outside coax/tests emit byte-identical C (compiler stamp aside); 167 do not compile standalone under either"
+  },
+  "unrelated_failure": "tests/tools.py test_every_error_code_is_explained fails on E0706 from coax/src/shader.cpp (the shader lane's code, not this change)"
+}

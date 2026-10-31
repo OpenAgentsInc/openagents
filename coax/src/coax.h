@@ -395,6 +395,9 @@ struct StructDecl {
   TypeInfo *type = nullptr;
   uint8_t state = 0;     // layout: 0 unseen, 1 visiting, 2 done
   uint8_t defaults = 0;  // default evaluation: 0 unseen, 1 visiting, 2 done
+  bool generic = false;  // a template (Pair :: struct($T)) or an instance over placeholders
+  Str key;               // an instance's bindings, for its C name (Pair__3int)
+  const StructDecl *origin = nullptr;  // an instance's template
 };
 
 struct EnumMember {
@@ -453,6 +456,7 @@ struct File {
   const Source *src = nullptr;
   Slice<Import> imports;
   Slice<ProcDecl *> procs;     // procedures with instances: every emitter and evaluator walks these
+  Slice<StructDecl *> generic_structs;  // struct templates (declaration spans only)
   Slice<ProcDecl *> generics;  // checked generic procedures (declaration spans only, nothing emitted)
   Slice<ConstDecl *> constants;
   Slice<StructDecl *> structs;

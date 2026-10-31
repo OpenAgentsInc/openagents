@@ -553,7 +553,8 @@ static std::string modules_report(const Source *src, const File *file, const Emi
            ",\"revision\":" + json_string(revision[u->module]) + ",\"generated\":" + (gen ? "true" : "false") + "," + span_json(src, loc, end) + "}";
     first = false;
   };
-  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
+  for (const StructDecl *d : file->structs) if (!d->origin) decl(1, d->name, d->loc, d->end);
+  for (const StructDecl *d : file->generic_structs) decl(1, d->name, d->loc, d->end);
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->procs) if (!d->origin) decl(0, d->name, d->loc, d->end);
@@ -718,12 +719,14 @@ static std::string declarations_report(const Source *src, const File *file) {
            ",\"line\":" + std::to_string(source_point(src, loc).loc.line) + ",\"generated\":" + (generated ? "true" : "false") + "," + span_json(src, loc, end) + "}";
     first = false;
   };
-  for (const StructDecl *d : file->structs) decl(1, d->name, d->loc, d->end);
+  for (const StructDecl *d : file->structs) if (!d->origin) decl(1, d->name, d->loc, d->end);
+  for (const StructDecl *d : file->generic_structs) decl(1, d->name, d->loc, d->end);
   for (const EnumDecl *d : file->enums) decl(2, d->name, d->loc, d->end);
   for (const ConstDecl *d : file->constants) decl(3, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->procs) if (!d->origin) decl(0, d->name, d->loc, d->end);
   for (const ProcDecl *d : file->generics) decl(0, d->name, d->loc, d->end);
   for (const StructDecl *d : file->structs) {
+    if (d->origin) continue;  // an instance's uses are its template's
     std::string from = refs.id_json(1, d->name, d->loc);
     for (const Field &f : d->fields) { refs.type(from, f.type, f.loc); refs.expr(from, f.init); }
   }
@@ -910,7 +913,8 @@ static int explain(int argc, char **argv) {
       const ErrorInfo &e = ERRORS[i];
       const char *s = e.code[2] == '1' ? "E01xx: lexer" : e.code[2] == '2' ? "E02xx: parser"
                     : e.code[2] == '3' ? "E03xx: checker" : e.code[2] == '4' ? "E04xx: compile-time evaluation"
-                    : e.code[2] == '5' ? "E05xx: proto imports" : e.code[2] == '6' ? "E06xx: source units" : "E07xx: device code";
+                    : e.code[2] == '5' ? "E05xx: proto imports" : e.code[2] == '6' ? "E06xx: source units"
+                    : e.code[2] == '7' ? "E07xx: device code" : "E08xx: generic structs";
       if (strcmp(s, stage) != 0) {
         printf("\n## %s\n\n| Code | Meaning | What to do |\n| --- | --- | --- |\n", s);
         stage = s;

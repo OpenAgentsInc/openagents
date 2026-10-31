@@ -1,7 +1,7 @@
 # 22. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.36.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.37.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
