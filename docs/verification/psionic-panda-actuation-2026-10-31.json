@@ -235,6 +235,36 @@
       "exit": 0,
       "stdout": "psionic book structure: 117 programs, 450 source-linked listings, local links pass\n",
       "scope": "One new current-input static check after rebase and the reviewed native-graphics evidence refresh; metadata record update does not change those book inputs."
+    },
+    "second_rebase": {
+      "incoming_main_tip": "928a9e25a6",
+      "changed_paths": [
+        "INVARIANTS.md",
+        "aethyr/README.md",
+        "aethyr/book/README.md",
+        "aethyr/book/ch002-spaces-and-units.md",
+        "aethyr/book/ch006-entities-are-born-and-die.md",
+        "aethyr/book/ch007-ask-the-world-where-things-are.md",
+        "aethyr/book/examples.json",
+        "aethyr/entity.coax",
+        "aethyr/examples/born-and-gone.coax",
+        "aethyr/examples/feet-in-every-space.coax",
+        "aethyr/examples/four-questions.coax",
+        "aethyr/fixtures/born-and-gone.out",
+        "aethyr/fixtures/four-questions.out",
+        "aethyr/query.coax",
+        "aethyr/space.coax",
+        "aethyr/tests/entity-oracle.coax",
+        "aethyr/tests/query-oracle.coax",
+        "aethyr/tests/spaces/ok-every-space-by-name.coax",
+        "aethyr/tests/spaces/world-as-view.coax",
+        "docs/verse/engine-core.md",
+        "verse/player.coax",
+        "verse/stand.coax"
+      ],
+      "qualified_book_input_count": 562,
+      "changed_book_inputs": [],
+      "scope": "Aethyr/query/entity and Verse consumers plus invariants changed; no qualified Psionic/capability book input or compiler fingerprint input changed. Carry the already passing117/450 static gate without rerunning it."
     }
   },
   "limits": [
