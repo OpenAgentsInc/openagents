@@ -106,6 +106,7 @@
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
+//   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
 //   font:URL, icons:URL, licence:URL  GPUI's atlas (gpui.js, a WGSL with gpui_atlas): Geist's four
 //                 faces in weight order, Zeron's icons ({name: svg}), and the fonts' licence, served beside them
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
@@ -209,17 +210,15 @@ const firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), fi
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
   scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
-// A claimed realm names its maker (ev-claim-realm, docs/verse/makers.md): "Made by <name>" along the
-// bottom, from oa-api; nothing when unclaimed, offline or in a golden shot. textContent: the name is the maker's own text.
+// A claimed realm's maker (ev-claim-realm, docs/verse/makers.md): their name, from oa-api, as message
+// MAKER_KIND for the realm to draw ("Made by <name>" and TIP, in Coax); nothing when unclaimed, offline or in a golden shot.
+const MAKER_KIND = 608;
+let makerName = "";
 if (realmId && !golden && /^[a-z0-9-]{1,64}$/.test(realmId)) {
   fetch(`/api/playtest/makers/${realmId}`, { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((m) => {
     if (!m || typeof m.name !== "string" || !m.name) return;
-    const tag = document.createElement("div");
-    tag.id = "coaxial-maker";
-    tag.textContent = `Made by ${m.name.slice(0, 40)}`;
-    tag.style.cssText = "position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);transform:translateX(-50%);z-index:1;" +
-      "pointer-events:none;font:500 10px/1.4 ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:.08em;color:rgba(237,237,237,.6);white-space:nowrap";
-    document.body.appendChild(tag);
+    makerName = m.name.slice(0, 40);
+    if (globalThis.coaxial.ready) send(MAKER_KIND, makerName);
   }).catch(() => {});
 }
 let last = 0;
@@ -325,6 +324,7 @@ async function loadEngine(bytes, generation) {
   if (kept) send(4, kept);
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
+  if (makerName) send(MAKER_KIND, makerName);
   // Where the player was in this realm (action 11), before the first frame: a reload never waits on the network.
   const place = golden ? "" : local(placeKey);
   if (place) send(PLACE_KIND, place);
@@ -1608,7 +1608,7 @@ function after(gesture, tap = false) {
   if (code) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
     call("coaxial_action_done");
-    if (code === 1) { if (text.startsWith("https://")) location.assign(text); else if (text.startsWith("/")) location.assign(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
+    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) location.assign(text); else if (text.startsWith("/")) location.assign(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
