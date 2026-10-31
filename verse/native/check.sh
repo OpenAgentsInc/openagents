@@ -6,7 +6,8 @@
 # draw list, counts and particles must be the same bytes; the uniforms and
 # stores must be the same words or within libm's rounding (realm-run.c).
 #   verse/native/check.sh HOST [REALM]    HOST is a Linux machine with nix (coderos-4080);
-#                                          REALM everglade (the default), stair, belt, waterlab, orbitleague, newland or verse (the galaxy)
+#                                          REALM everglade (the default), stair, belt, waterlab, orbitleague, newland, verse (the galaxy)
+#                                          or a scene realm's module (deadgears, icecream, fairy, villa, realm)
 # Everglade needs its pack at apps/openagents-web/realms/everglade/assets/everglade.pack
 # (built by verse/tools/pack_realm.py); both need the wasm toolchain (coax/web/toolchain.sh).
 set -euo pipefail
@@ -41,17 +42,23 @@ case "$realm" in
     pack=""; libraries=(); given=(); there=""
     # a click, space, the arrows and W held a while
     steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
-  *) echo "check.sh: no realm $realm" >&2; exit 2 ;;
+  *)
+    # a scene realm (deadgears, icecream, fairy, villa, realm ...): its module with the site's libraries
+    [[ -f "$web/$realm.coax" ]] || { echo "check.sh: no realm $realm" >&2; exit 2; }
+    pack=""; libraries=(); while IFS= read -r l; do libraries+=("$l"); done < <("$here/build.sh" --libraries "$realm")
+    given=(); there=""
+    # Enter and a click to start, space, the arrows and W held a while
+    steps=(--frames 600 --every 60 --keys 10:-2:1,11:-2:0,20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
 esac
 if [[ "$realm" == newland ]]; then "$root/coax/web/project/build-home.sh" "$work/$realm.wasm"   # the homepage's module, as the site builds it
 else "$root/coax/web/wasm.sh" "$web/$realm.coax" "$web/$realm-face.c" "$work/$realm.wasm" ${libraries[@]+"${libraries[@]}"}; fi
 "$here/build.sh" "$realm" "$work/c"
-cp "$here/everglade.facts" "$here/build.sh" ${pack:+"$pack"} "$work/c/"
+cp "$here/everglade.facts" "$here/build.sh" "$here/musl-math.sh" ${pack:+"$pack"} "$work/c/"
 mkdir -p "$work/c/wasm"
 VERSE_NATIVE_CLOCK_MS=0 bun "$here/wasm-run.ts" "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm" > "$work/wasm.txt"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/c" -cf - . | ssh -o BatchMode=yes "$host" "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; cd \$d; tar -xf - 2>/dev/null
-mkdir -p verse/native; cp build.sh verse/native/
+mkdir -p verse/native; cp build.sh musl-math.sh verse/native/
 nix-shell -p gcc --run 'COAX=/nonexistent verse/native/build.sh $realm \$PWD' > /dev/null
 ./realm-run --test-travel
 VERSE_NATIVE_CLOCK_MS=0 ./realm-run $there ${steps[*]} --against wasm" > "$work/native.txt" || status=$?
@@ -60,6 +67,7 @@ grep -v "^frame" "$work/native.txt"
 strip() { grep "^frame" "$1" | sed -E 's/ u [0-9a-f]+//; s/ s[0-9] [0-9]+ [0-9a-f]+//g'; }
 if diff <(strip "$work/wasm.txt") <(strip "$work/native.txt"); then
   echo "check.sh: $(grep -c "^frame" "$work/native.txt") frames, the same vertices, draws and particles natively as in the wasm"
+  echo "check.sh: the last, $(grep "^frame" "$work/native.txt" | tail -1 | cut -d' ' -f2-10)"
 else
   echo "check.sh: the frames differ"; exit 1
 fi

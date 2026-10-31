@@ -491,6 +491,19 @@ Every phase and native feature is a task in the Verse project
     linearly with their own precision (one step on the Grid's grey text),
     so the check is the shader's; vk-realm draws with host.js's linear
     sampler.
+  - The scene realms' game runs natively: deadgears, icecream, fairy, villa
+    and realm (the haunted house's module) build from apps/openagents-web
+    with the libraries the site's build links them with (`build.sh
+    --libraries REALM` reads them from apps/openagents-web/build.sh), and
+    check.sh steps them (Enter, a click, space, the arrows, W held). A
+    native realm now links musl's transcendental math
+    (verse/native/musl-math.sh) ahead of glibc's: wasi-libc's libm is
+    musl's, and glibc's sinf differs in the last bit, which the villa's
+    walkers compounded to 0.17 apart in ten seconds; with musl's they are
+    within rounding (1.2e-7) and its heights the same words. Every realm
+    rechecked: the same vertices, draws and particles. The haunted house
+    draws no scene natively yet (its data assets); fairy and belt wait on
+    the compiler at main (another agent's parser mutant fails its build).
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

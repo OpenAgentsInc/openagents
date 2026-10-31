@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         differ++;
         double d = fabs((double)ours[i] - theirs[i]), m = fmax(fabs((double)ours[i]), fabs((double)theirs[i]));
         if (d > largest) largest = d;
-        if (!(d <= 1e-6 || d <= m * 1e-6)) beyond++;
+        if (!(d <= 1e-6 || d <= m * 1e-6) && ++beyond <= 6) printf("realm-run: %s word %zu: here %.9g, the wasm %.9g\n", names[k], i, ours[i], theirs[i]);
       }
       printf("realm-run: %s: %zu words, %d differ (largest %.3g), %d beyond rounding\n", names[k], n / 4, differ, largest, beyond);
       far += beyond;

@@ -7,14 +7,28 @@
 #   everglade   apps/openagents-web/everglade.coax and everglade-face.c, as
 #               apps/openagents-web/build.sh links them for the browser
 #   stair       Hold the Stair: apps/openagents-web/stair.coax and stair-face.c (no pack)
+#   any other   apps/openagents-web/REALM.coax and REALM-face.c with the libraries the site's
+#               build (apps/openagents-web/build.sh) links it with: `build.sh --libraries REALM`
+#               prints them
 # The face is built through coax/web/defaults.py's wrapper (REALM.face.c), as coax/web/wasm.sh
 # builds it: its globals and a fresh state get their struct defaults (coaxial_state_init).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
+web="$root/apps/openagents-web"
+# The libraries the site's build links REALM's module with: the paths after its wasm.sh line's
+# output, continued over backslashed lines, with $m (verse/) and $here (apps/openagents-web) put in.
+site_libraries() {
+  awk -v want="\"\$here/$1.coax\"" '
+    !on && index($0, "coax/web/wasm.sh\" " want " ") { on = 1; line = $0 }
+    on && line != $0 { line = line " " $0 }
+    on { if ($0 !~ /\\[ \t]*$/) { print line; exit } }' "$web/build.sh" |
+    tr ' \t\\&' '\n\n\n\n' | tr -d '"' | grep '\.coax$' | sed 1d |
+    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$here/#$web/#"
+}
+if [[ "${1:-}" == --libraries ]]; then site_libraries "${2:?usage: build.sh --libraries REALM}"; exit; fi
 realm="${1:?usage: build.sh REALM OUT}"
 out="${2:?usage: build.sh REALM OUT}"
-web="$root/apps/openagents-web"
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
@@ -29,7 +43,9 @@ case "$realm" in
   # the galaxy (/verse/galaxy, the verse app's page 1), where travel starts
   verse) app="$web/verse.coax"; face="$web/verse-face.c"; libraries=() ;;
   belt|waterlab|orbitleague) app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=() ;;
-  *) echo "build.sh: no realm $realm" >&2; exit 2 ;;
+  *) [[ -f "$web/$realm.coax" && -f "$web/$realm-face.c" ]] || [[ -f "$out/sources" ]] || { echo "build.sh: no realm $realm" >&2; exit 2; }
+    app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=()
+    if [[ -f "$web/build.sh" ]]; then while IFS= read -r l; do libraries+=("$(cd "$(dirname "$l")" && pwd -P)/$(basename "$l")"); done < <(site_libraries "$realm"); fi ;;
 esac
 mkdir -p "$out"
 coax="${COAX:-$root/coax/bin/coax}"
@@ -48,6 +64,8 @@ if [[ -x "$coax" ]]; then
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h ${faces_too[@]+"${faces_too[@]}"} "$out/"
   cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
+  # C the face includes itself (the haunted house's realm-flight.c ...): beside it, not a unit
+  for inc in $(grep -o '^#include "[^"]*\.c"' "$face" | cut -d'"' -f2); do cp "$web/$inc" "$out/"; done
   # shellcheck disable=SC2086
   (cd "$out" && python3 "$root/coax/web/defaults.py" "$(basename "$face")" "$realm.face.c" $units)
   # An export named apart from its C function (the homepage's EXPORT("coaxial_page") void page): wasm
@@ -71,5 +89,7 @@ for s in "${sources[@]}" realm-host.c; do
   gcc "${flags[@]}" -c "$out/$s" -o "$out/${s%.c}.o" & objects+=("$out/${s%.c}.o")
 done
 wait
-gcc "${flags[@]}" "$out/realm-run.c" "${objects[@]}" -lm -o "$out/realm-run"
+# the wasm's math (musl's, verse/native/musl-math.sh) ahead of glibc's
+read -r -a math <<< "$("$here/musl-math.sh" "$out")"
+gcc "${flags[@]}" "$out/realm-run.c" "${objects[@]}" ${math[@]+"${math[@]}"} -lm -o "$out/realm-run"
 echo "$out/realm-run"
