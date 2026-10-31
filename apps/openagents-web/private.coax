@@ -1133,7 +1133,7 @@ pv_open_realm :: (s: [] PrivateState, out: [] f32, at: int, x: f32, y: f32, p: P
 }
 pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
-  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_bitcoin(p);
   v := pv_crumbs(s, out, 0, "TIP", p);
   m := ifx w / d < 700 then 16.0f32 else 40.0f32;
   colw := lo(w - 2 * m * d, 520 * d);
@@ -1239,10 +1239,12 @@ pv_ink :: (p: Pen, kind: int) -> Ink { return ink(p, kind); }
 pv_chrome :: (p: Pen, kind: int) -> Ink { k := ink(p, kind); k.sans = false; return k; }
 // The pages' accent (focus, live, what's yours): a cool blue. Orange is only for Bitcoin (a tip's amount and PAID).
 pv_lit :: (p: Pen, chrome: bool) -> Ink {
-  k := ink(p, INK_ORANGE); k.red = 0.5; k.green = 0.82; k.blue = 1.0;
+  k := ink(p, INK_LIT); k.red = 0.5; k.green = 0.82; k.blue = 1.0;
   if chrome { k.sans = false; }
   return k;
 }
+// Bitcoin's orange (#ff8c1f): a tip's amount and PAID, nothing else.
+pv_bitcoin :: (p: Pen) -> Ink { k := ink(p, INK_LIT); k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.sans = false; return k; }
 BODY :: 7.5;     // small text's cap, CSS pixels (the sans)
 STEP :: 15.0;    // its line
 
@@ -2891,6 +2893,6 @@ pv_tap :: (s: [] PrivateState, id: int) -> bool {
   p := Pen.{d = 2, fade = 1, time = 0};
   a := pv_lit(p, true);
   #assert a.blue > a.red && !a.sans && pv_lit(p, false).blue > pv_lit(p, false).red;
-  b := pv_chrome(p, INK_ORANGE);
+  b := pv_bitcoin(p);
   #assert b.red > b.blue;
 }
