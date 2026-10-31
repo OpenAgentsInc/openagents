@@ -1,10 +1,13 @@
 # Naming the engine
 
+**Decided 2026-10-31: the engine is Aethyr; the realm builder and world-creation
+tools are Aethyrforge.**
+
 The engine core (GitHub #12609: the loop, spaces, state, input, replay,
 queries, entities, camera and budgets that every realm shares) needs a name.
 It sits beside **Coax** (the language), **Psionic** (the model engine) and
 **the Verse** (the world). This doc collects the candidates and how each one
-feels; it's a vibes call. No decision has been made yet.
+feels; it's a vibes call.
 
 ## What the name has to do
 
@@ -116,9 +119,9 @@ Aethyr."
 - **Realm builder and editor: Aethyrforge.** It describes what /realms/new
   does better than "realm builder", and it reads as part of the same family.
 
-## If we adopt it
+## Where the names are used
 
-Renaming touches little, because the engine core is new:
+Applied 2026-10-31:
 
 - #12609 and the Verse "Engine core" milestone titles;
 - `docs/verse/engine-core.md`, and the module folder if the primitives move

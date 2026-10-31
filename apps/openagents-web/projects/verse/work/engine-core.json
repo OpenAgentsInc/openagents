@@ -3,8 +3,8 @@
   "project": "verse",
   "initiative": {
     "slug": "engine-core-init",
-    "title": "Engine core",
-    "body": "The foundational primitives every realm shares. GitHub #12609.",
+    "title": "Aethyr: the engine core",
+    "body": "Aethyr, the engine: the foundational primitives every realm shares. GitHub #12609.",
     "spec": "docs/research/game-engine-systems.md",
     "labels": [
       "engine-core"
@@ -13,7 +13,7 @@
   "milestones": [
     {
       "slug": "engine-core",
-      "title": "Engine core: shared foundations for every realm",
+      "title": "Aethyr engine core: shared foundations for every realm",
       "body": "Time, spaces, state, input, replay, queries, entities, camera, budgets; then every realm migrated. GitHub #12609.",
       "parent": "engine-core-init"
     }
@@ -182,7 +182,7 @@
     {
       "slug": "ec-migrate",
       "parent": "engine-core",
-      "title": "Every realm on the engine core",
+      "title": "Every realm on Aethyr's engine core",
       "size": "L",
       "labels": [
         "engine-core"

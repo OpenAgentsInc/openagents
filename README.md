@@ -84,7 +84,7 @@ release builds on:
     - Orbit League, Belt 2200 and Hold the Stair, pitched by the audience
       of Episode 290 ([design documents](docs/verse/game-ideas/README.md)).
   - [`/realms/new`](https://openagents.com/realms/new) makes a realm from
-    what you say or type ([realm builder](docs/verse/realm-builder.md)), and
+    what you say or type ([Aethyrforge, the realm builder](docs/verse/realm-builder.md)), and
     you edit it by voice ([realm edit](docs/verse/realm-edit.md)). FORK
     makes your own copy of any realm with your own rules
     ([fork](docs/verse/realm-fork.md)), and REPLY names a building after a
