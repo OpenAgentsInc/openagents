@@ -27,6 +27,9 @@ IH_FILE :: 8388608;
 IH_COAX_SIN :: "  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n";
 IH_STYLE :: " v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n";
 // The integer hash of the cell of (x, y) at 1/64, in Coax.
+// the 3D sin hash (Orbit League's and the villa's), and its integer hash
+IH_COAX_SIN3 :: "  return fract(sin(wg_dot3(p,v3(127.1f32,311.7f32,74.7f32)))*43758.5453f32);\n";
+IH_INT3 :: " qx:=cast,trunc(u32)(cast(s32)(floor(p.x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(p.y*64.0f32)));qz:=cast,trunc(u32)(cast(s32)(floor(p.z*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801) ^ mul_wrap(qz,2654435761);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
 // verse/stars.coax's hash (the starfield, belt's sky), and the integer hash in its place
 IH_STARS :: "stars_hash :: (x:f32,y:f32)->f32 { return stars_fract(sin(x*127.1f32+y*311.7f32)*43758.5453f32); }\n";
 IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(y*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
@@ -92,10 +95,17 @@ ih_page :: (out: string, name: string) -> bool {
   if n < 0 { tool_err("int-hash: no "); tool_errln(from); return false; }
   times := ih_count(cast(string) src[0..<n], IH_COAX_SIN);
   stars := ih_count(cast(string) src[0..<n], "#load \"../../../verse/stars.coax\"") == 1;
-  if times == 0 && !stars { tool_err("int-hash: no sin hash in "); tool_errln(from); return false; }
+  // a page with no sin hash (Orbit League) is written as it is, its loads made whole
   body: [1024] u8;
   r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
   text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
+  times3 := ih_count(text, IH_COAX_SIN3);
+  if times3 > 0 {
+    d3: [IH_FILE] u8;
+    text = ih_replace(text, IH_COAX_SIN3, IH_INT3, d3[..], times3);
+    for k: 0..<text.count { dst[k] = text[k]; }
+    text = cast(string) dst[0..<text.count];
+  }
   cb: [1024] u8; db: [1024] u8;
   dir := ih_cat3(fs_cwd(cb[..]), "/apps/openagents-web/gpu/", "", db[..]);
   if stars {

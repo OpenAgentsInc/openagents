@@ -14,7 +14,7 @@
 // and hud each frame.
 // The realms: stair (Hold the Stair), belt (Belt 2200) and waterlab (the water lab: a surface,
 // surface_vs and surface_fs drawn after bg, which writes its depth, as host.js draws a traced
-// page's surface).
+// page's surface) and orbitleague (Orbit League: its roadster's mesh a storage buffer).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -22,7 +22,9 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sequence.coax" as sequence;
 
-FP_REALMS :: [3] string.["stair", "belt", "waterlab"];
+FP_REALMS :: [4] string.["stair", "belt", "waterlab", "orbitleague"];
+// A realm's traced mesh (host.js's mesh:URL, a storage buffer named mesh), "" for none.
+fp_mesh :: (realm: string) -> string { return ifx realm == "orbitleague" then "apps/openagents-web/realms/orbit-league/assets/roadster.bin" else ""; }
 FP_SIZE :: "320 180";
 
 tool_main :: () -> int #export_c {
@@ -43,7 +45,7 @@ fp_known :: (realm: string) -> bool {
   for r: FP_REALMS { if r == realm { return true; } }
   return false;
 }
-#test "the flat realms" { #assert fp_known("stair") && fp_known("belt") && fp_known("waterlab") && !fp_known("everglade") && !fp_known(""); }
+#test "the flat realms" { #assert fp_known("stair") && fp_known("belt") && fp_known("waterlab") && fp_known("orbitleague") && fp_mesh("belt") == "" && !fp_known("everglade") && !fp_known(""); }
 
 fp_run :: (host: string, realm: string, work: string, allow: string, keep: string, emit: string, int_hash: bool) -> int {
   b: [8] [1024] u8; o: [65536] u8;
@@ -80,7 +82,9 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   if surface > 0 && !fp_lower(dir, gpu, realm, "surface_vs", "surface_fs") { return 1; }
   if floats < 1 || floats > 32 { tool_errln("flat-pass: the frame does not say its vertices' floats"); return 1; }
   sp: [4096] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
-  fp_spec(s, hud, floats, surface);
+  mesh := fp_mesh(realm);
+  if mesh.count > 0 && !fp_copy(mesh, fs_join(dir, "mesh.bin", b[4][..])) { return 1; }
+  fp_spec(s, hud, floats, surface, mesh.count > 0);
   if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[4][..]), cast(string) sp[0..<s[0].n]) { tool_errln("flat-pass: cannot write the spec"); return 1; }
   if emit.count > 0 {
     if !fs_mkdir(emit) && fs_kind(emit) <= 0 { tool_errln("flat-pass: cannot make the --emit directory"); return 1; }
@@ -101,24 +105,28 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
 // through fx_vs and fx_fs, blended max, alpha too. With a surface (SURFACE vertices this
 // frame), bg_fs writes its depth (the test always passing) and $surface vertices draw after
 // it, tested less and written, before the strokes.
-fp_spec :: (s: [] Sp, hud: int, floats: int, surface: int) {
+fp_spec :: (s: [] Sp, hud: int, floats: int, surface: int, mesh: bool) {
   put(s, "wgsl page.wgsl\nsize "); put(s, FP_SIZE); put(s, "\nlet hud "); put_int(s, hud);
   if surface > 0 {
     put(s, "\nlet surface "); put_int(s, surface);
-    put(s, "\nbuffer u u.bin\ndepth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\n");
+    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); }
+    put(s, "depth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\n");
     put(s, "pass surface_fs.spv surface_vs surface_fs 1 d 0 0 $surface keep\nbuffer hud hud.bin\n");
   } else {
-    put(s, "\nbuffer u u.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\n");
+    put(s, "\nbuffer u u.bin\n"); if mesh { put(s, "buffer mesh mesh.bin\n"); }
+    put(s, "pass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\n");
   }
   put(s, "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:"); put_int(s, floats); put(s, "\n");
 }
 #test "a flat realm's spec" {
   o: [1024] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
-  fp_spec(s, 7506, 16, 0);
+  fp_spec(s, 7506, 16, 0, false);
   #assert !s[0].bad && cast(string) o[0..<s[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 7506\nbuffer u u.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
-  w: [1024] u8; sw: [1] Sp; sw[0] = Sp.{buf = w[..]}; fp_spec(sw[..], 30, 16, 6);
+  w: [1024] u8; sw: [1] Sp; sw[0] = Sp.{buf = w[..]}; fp_spec(sw[..], 30, 16, 6, false);
   #assert !sw[0].bad && cast(string) w[0..<sw[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 30\nlet surface 6\nbuffer u u.bin\ndepth d frame frame\npass bg_fs.spv bg_vs bg_fs 1 d 0 0 3 always\npass surface_fs.spv surface_vs surface_fs 1 d 0 0 $surface keep\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
-  t: [8] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; fp_spec(sb[..], 1, 16, 0);
+  t: [8] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; fp_spec(sb[..], 1, 16, 0, false);
+  m: [1024] u8; sm: [1] Sp; sm[0] = Sp.{buf = m[..]}; fp_spec(sm[..], 2, 16, 0, true);
+  #assert !sm[0].bad && cast(string) m[0..<sm[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 2\nbuffer u u.bin\nbuffer mesh mesh.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
   #assert sb[0].bad;
 }
 

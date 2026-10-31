@@ -449,6 +449,13 @@ Every phase and native feature is a task in the Verse project
     and written, then the strokes; 0 of 230400 past tolerance against the
     browser, vk-realm's 90th frame vk-passes' to the bit (vk-realm sets
     $surface each frame), 2.4 ms of GPU a frame at 3840x2160.
+  - Orbit League runs natively (`REALM=orbitleague`), its roadster mesh
+    (host.js's mesh:URL) a storage buffer the spec names `mesh`: the game
+    matches the wasm, flat-pass matches the browser (0 of 230400 past
+    tolerance; int-hash --page now swaps the 3D sin hash too, which the villa
+    shares, and passes a page with none), vk-realm's 90th frame is
+    vk-passes' to the bit, 2.8 ms of GPU a frame at 3840x2160. The host's
+    wheel is optional (a realm that does not zoom).
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

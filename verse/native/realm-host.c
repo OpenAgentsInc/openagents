@@ -384,6 +384,7 @@ NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_surface_vertices(uint32_t s) { (void)s; return 0; }
+NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }   // a realm that does not zoom (Orbit League)
 NONE uint32_t coaxial_stores(void) { return 0; }
 NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
 NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }

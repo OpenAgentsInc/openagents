@@ -29,7 +29,7 @@ case "$realm" in
     pack=""; libraries=(); given=(); there=""
     # not golden: golden mode holds the Stair still (its golden is one frame)
     steps=(--frames 900 --every 60 --keys 10:32:1,11:32:0,20:49:1,21:49:0,30:102:1,31:102:0) ;;
-  belt|waterlab)
+  belt|waterlab|orbitleague)
     pack=""; libraries=(); given=(); there=""
     # a click, space, the arrows and W held a while
     steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
