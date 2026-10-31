@@ -1,0 +1,647 @@
+// villa's shaders, the source of apps/openagents-web/villa.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (villa.module,
+// villa.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/look.coax";
+#load "../../../verse/style.coax";
+
+// Hecate's Cemetery's passes (villa.coax) in the flat style, faceted (docs/verse/art-styles.md,
+// Flat and Flat: facets): a plain periwinkle night sky over a soft lilac horizon band, with
+// the moon a flat cream disc in its real phase (or space, in the flight's first take), the
+// scene flat-shaded low poly (each face one tone from its own normal, round shapes coarse and
+// cut), soft lavender cast shadows stretched away from the moon, and a post pass that draws a
+// crisp light line along each shape's outline and blooms only what glows, under the HUD's
+// plates; then the HUD's strokes. No specular, no tone curve: the palette (verse/style.coax
+// FLAT_CEMETERY, moonlit pastels) and each shape's own pastel (LOOK_PAINT) do the work.
+// Every number comes from villa.coax: the view, the eye, the moon, the
+// ground's heights (store 0), each object's place, size, colour and shape
+// (store 1), the shadows, the paths and the plates.
+//
+// The look is Kiki's (verse/planetary-villa/README.md): simple low-poly
+// shapes, each face lit flat; the moon the only key light. The dog glows
+// ivory; you are a shadow, near-black, your edges fuzzy.
+// VillaU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   horizon 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   flash 28
+//   plate 32
+//   moon 160
+//   sky 164
+//   ground 168
+//   shadow 172
+//   path 300
+//   path_info 492
+// the eye, and 1 while space shows
+// the cut's white flash, 0, 0, 0
+// per plate: x0, y0, x1, y1, then scale, alpha, look, 0
+// toward the moon, and its phase (0 new, 0.5 full)
+// the moonlight's strength, the lit share of the disc
+VILLA_MOONLIGHT :: ()->V3 {return v3(0.42f32,0.52f32,0.8f32);} // the planet's rim in space only
+// The palette's slots (verse/style.coax FLAT_*), linear.
+VILLA_PALETTE :: 0.0f32; // FLAT_CEMETERY
+VILLA_P_SKY :: 0.0f32;
+VILLA_P_HORIZON :: 1.0f32;
+VILLA_P_GROUND :: 2.0f32;
+VILLA_P_GROUND2 :: 3.0f32;
+VILLA_P_PATH :: 4.0f32;
+VILLA_P_LIT :: 5.0f32;
+VILLA_P_SHADE :: 6.0f32;
+VILLA_P_SHADOW :: 7.0f32;
+VILLA_P_ACCENT :: 8.0f32;
+VILLA_P_DARK :: 9.0f32;
+VILLA_P_LIGHT :: 10.0f32;
+VILLA_P_FOLIAGE :: 11.0f32;
+VILLA_P_FOLIAGE2 :: 12.0f32;
+VILLA_P_WATER :: 13.0f32;
+VILLA_P_WOOD :: 14.0f32;
+VILLA_P_ROCK :: 17.0f32;
+VILLA_P_SLATE :: 18.0f32;
+villa_pal :: (slot:f32)->V3 {
+  return v3(verse_style_flat_colour(VILLA_PALETTE,slot,0.0f32),verse_style_flat_colour(VILLA_PALETTE,slot,1.0f32),verse_style_flat_colour(VILLA_PALETTE,slot,2.0f32));
+}
+// The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem's
+// width, a tall shape's dithered darkening toward its foot and its steps, a flat shadow's strength.
+VILLA_FADE_FROM :: 40.0f32;
+VILLA_FADE_OVER :: 80.0f32;
+VILLA_FADE_CAP :: 0.5f32;
+VILLA_HEM :: 0.06f32;
+VILLA_DITHER :: 0.25f32;
+VILLA_DITHER_STEPS :: 4.0f32;
+VillaLit :: struct {light:V4; aux:V4; }
+villa_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+villa_hash3 :: (p:V3)->f32 {
+  return fract(sin(wg_dot3(p,v3(127.1f32,311.7f32,74.7f32)))*43758.5453f32);
+}
+villa_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(villa_hash(i),villa_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(villa_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),villa_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+// ---- the sky
+// The ray through a pixel, from the view's rows (villa.coax view).
+villa_ray :: (pos:V2,u:[]f32)->V3 {
+  nx:f32=((pos.x/u[0])*2.0f32)-1.0f32;
+  ny:f32=1.0f32-((pos.y/u[1])*2.0f32);
+  fx2:f32=wg_dot3(v3(u[8],u[9],u[10]),v3(u[8],u[9],u[10]));
+  fy2:f32=wg_dot3(v3(u[12],u[13],u[14]),v3(u[12],u[13],u[14]));
+  return wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[20],u[21],u[22]),wg_div_f3f(wg_mul_f3f(v3(u[8],u[9],u[10]),nx),fx2)),wg_div_f3f(wg_mul_f3f(v3(u[12],u[13],u[14]),ny),fy2)));
+}
+// Stars: a few bright, many faint, a band of them across space.
+villa_stars :: (d:V3,many:f32,u:[]f32)->f32 {
+  c:f32=0.0f32;
+  {
+    layer:s32=0;
+    while layer<2 {
+      scale:f32=ifx layer==1 then 220.0f32 else 90.0f32;
+      q:V3=wg_mul_f3f(d,scale);
+      cell:V3=wg_floor_f3(q);
+      h:f32=villa_hash3(cell);
+      keep:f32=ifx layer==1 then 0.97f32-(0.05f32*many) else 0.985f32;
+      if (h>keep) {
+        at:V3=wg_add_f3f3(cell,v3(villa_hash3(wg_add_f3f(cell,1.3f32)),villa_hash3(wg_add_f3f(cell,2.7f32)),villa_hash3(wg_add_f3f(cell,4.1f32))));
+        r:f32=wg_length3(wg_sub_f3f3(q,at));
+        twinkle:f32=0.75f32+((0.25f32*sin((u[2]*(1.0f32+(3.0f32*h)))+(h*40.0f32)))*(1.0f32-u[4]));
+        c=c+(((((1.0f32-smoothstep(0.0f32,0.35f32,r))*(h-keep))/(1.0f32-keep))*twinkle)*(ifx layer==1 then 0.55f32 else 1.0f32));
+      }
+      layer+=1;
+    }
+  }
+  return c;
+}
+// The moon: a flat ivory disc lit as the real one is now (the sun's side from
+// its phase), the dark side a flat step of the sky; no halo, no texture.
+villa_moon :: (d:V3,sky:V3,u:[]f32)->V4 {
+  m:V3=wg_normalize3(v3(u[160],u[161],u[162]));
+  size:f32=0.045f32;
+  c:f32=wg_dot3(d,m);
+  side:V3=wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),m));
+  up:V3=wg_cross3(m,side);
+  x:f32=wg_dot3(d,side)/size;
+  y:f32=wg_dot3(d,up)/size;
+  r:f32=wg_length2(v2(x,y));
+  if ((r>=1.0f32)||(c<0.0f32)) {
+    return v4(sky.x,sky.y,sky.z,0.0f32);
+  }
+  z:f32=sqrt(fmax(0.0f32,1.0f32-(r*r)));
+  a:f32=u[163]*6.2831853f32;
+  toward_sun:V3=v3(-sin(a),0.0f32,-cos(a));
+  lit:f32=smoothstep(-0.02f32,0.02f32,wg_dot3(v3(x,y,z),toward_sun));
+  disc:V3=wg_mix_f3f3f(wg_mix_f3f3f(sky,villa_pal(VILLA_P_SLATE),0.5f32),villa_pal(VILLA_P_LIGHT),lit);
+  edge:f32=1.0f32-smoothstep(0.97f32,1.0f32,r);
+  return wg_make_f4_f3f(wg_mix_f3f3f(sky,disc,edge),edge*lit);
+}
+villa_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+villa_bg_fs :: (pos:V4,u:[]f32)->VillaLit {
+  d:V3=villa_ray(v2(pos.x,pos.y),u);
+  space:f32=u[27];
+  // the sky: one flat dusty blue, a soft paler band at the horizon; space (the flight) keeps its stars
+  sky:V3=wg_mix_f3f3f(villa_pal(VILLA_P_SKY),villa_pal(VILLA_P_HORIZON),verse_style_flat_sky(d.y));
+  deep:V3=wg_add_f3f3(v3(0.004f32,0.003f32,0.012f32),wg_mul_f3f(v3(0.02f32,0.012f32,0.04f32),pow(1.0f32-abs(wg_dot3(d,wg_normalize3(v3(0.3f32,0.2f32,1.0f32)))),6.0f32)));
+  sky=wg_mix_f3f3f(sky,wg_add_f3f3(deep,wg_mul_f3f(wg_mul_f3f(v3(0.85f32,0.9f32,1.0f32),villa_stars(d,space,u)),1.2f32)),space);
+  mo:V4=villa_moon(d,sky,u);
+  c:V3=wg_add_f3f3(v3(mo.x,mo.y,mo.z),v3(u[28],u[28],u[28]));
+  return VillaLit.{light=v4(c.x,c.y,c.z,(ifx mo.w>0.2f32 then 0.3f32 else 0.0f32)+u[28]),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// ---- the scene
+VillaObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; }
+VillaS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; local:V3; size:V2 #flat; }
+// where on its shape (a unit shape, -0.5 to 0.5)
+// its height (m), how tall it reads (0 to 1)
+villa_quad :: (v:u32)->V2 {
+  q:[6]V2=[6]V2.[v2(0.0f32,0.0f32),v2(1.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,1.0f32)];
+  return q[cast(int)v];
+}
+villa_height :: (x:s32,z:s32,u:[]f32,heights:[]f32)->f32 {
+  n:s32=wg_i32_f(u[168]);
+  cx:s32=wg_clamp_i(x,0,n);
+  cz:s32=wg_clamp_i(z,0,n);
+  return heights[cast(int)(cast,trunc(u32)((cz*(n+1))+cx))];
+}
+VillaVert :: struct {p:V3; n:V3; }
+VILLA_TAU :: 6.2831853f32;
+villa_box_vertex :: (id:u32)->VillaVert {
+  f:u32=id/6;
+  c:V2=wg_sub_f2f2(villa_quad(id%6),v2(0.5f32,0.5f32));
+  n:V3=v3(0.0f32,0.0f32,0.0f32);
+  a:V3=v3(0.0f32,0.0f32,0.0f32);
+  b:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    _sw2:u32=f;
+    if _sw2==0 {
+      n=v3(1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==1 {
+      n=v3(-1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==2 {
+      n=v3(0.0f32,1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==3 {
+      n=v3(0.0f32,-1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==4 {
+      n=v3(0.0f32,0.0f32,1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else {
+      n=v3(0.0f32,0.0f32,-1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    }
+  }
+  return VillaVert.{p=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(n,0.5f32),wg_mul_f3f(a,c.x)),wg_mul_f3f(b,c.y)),n=n};
+}
+// Low poly (art-styles.md, Flat: facets): a sphere is coarse, eight faces round and five down, the
+// rest of its lons x lats grid collapsed to nothing; `nudge` moves each corner in or out by up to that
+// share of the radius (verse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
+VILLA_ROUND :: 8.0f32;
+VILLA_DOWN :: 5.0f32;
+villa_nothing :: ()->VillaVert {
+  return VillaVert.{p=v3(0.0f32,0.0f32,0.0f32),n=v3(0.0f32,1.0f32,0.0f32)};
+}
+villa_globe_vertex :: (id:u32,lons:u32,lats:u32,nudge:f32,seed:f32)->VillaVert {
+  q:u32=id/6;
+  c:V2=villa_quad(id%6);
+  if (((q%lons)>=8)||((q/lons)>=lats)) {
+    return villa_nothing();
+  }
+  i:f32=(cast(f32)(q%lons))+c.x;
+  j:f32=(cast(f32)(q/lons))+c.y;
+  lon:f32=(i/VILLA_ROUND)*VILLA_TAU;
+  lat:f32=(j/VILLA_DOWN)*3.14159265f32;
+  n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
+  return VillaVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*verse_style_facet_jitter(i,j,VILLA_ROUND,VILLA_DOWN,seed)))),n=n};
+}
+// Eight flat sides and flat caps: 48 side vertices, then 8 triangles a cap, top then bottom.
+villa_cylinder_vertex :: (id:u32)->VillaVert {
+  if (id<48) {
+    c:V2=villa_quad(id%6);
+    a:f32=(((cast(f32)(id/6))+c.x)/VILLA_ROUND)*VILLA_TAU;
+    n:V3=v3(cos(a),0.0f32,sin(a));
+    return VillaVert.{p=v3(n.x*0.5f32,c.y-0.5f32,n.z*0.5f32),n=n};
+  }
+  t:u32=sub_wrap(id,48)/3;
+  k:u32=sub_wrap(id,48)%3;
+  top:bool=t<8;
+  y:f32=ifx top then 0.5f32 else -0.5f32;
+  n:V3=v3(0.0f32,ifx top then 1.0f32 else -1.0f32,0.0f32);
+  if (k==0) {
+    return VillaVert.{p=v3(0.0f32,y,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t%8))+(cast(f32)(sub_wrap(k,1))))/VILLA_ROUND)*VILLA_TAU;
+  return VillaVert.{p=v3(cos(a)*0.5f32,y,sin(a)*0.5f32),n=n};
+}
+// Eight sides to its point (24 vertices), then its base (24).
+villa_cone_vertex :: (id:u32)->VillaVert {
+  t:u32=(id%24)/3;
+  k:u32=id%3;
+  if (id<24) {
+    mid:f32=(((cast(f32)(t))+0.5f32)/VILLA_ROUND)*VILLA_TAU;
+    if (k==0) {
+      return VillaVert.{p=v3(0.0f32,0.5f32,0.0f32),n=wg_normalize3(v3(cos(mid),0.5f32,sin(mid)))};
+    }
+    a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/VILLA_ROUND)*VILLA_TAU;
+    return VillaVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=wg_normalize3(v3(cos(a),0.5f32,sin(a)))};
+  }
+  n:V3=v3(0.0f32,-1.0f32,0.0f32);
+  if (k==0) {
+    return VillaVert.{p=v3(0.0f32,-0.5f32,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/VILLA_ROUND)*VILLA_TAU;
+  return VillaVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=n};
+}
+villa_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+villa_scene_vs :: (id:u32,instance:u32,u:[]f32,heights:[]f32,objects:[]VillaObj)->VillaS {
+  o:VillaS;
+  n:u32=wg_u32_f(u[168]);
+  if (instance<mul_wrap(n,n)) {
+    c:V2=villa_quad(id%6);
+    gx:s32=(cast,trunc(s32)(instance%n))+(wg_i32_f(c.x));
+    gz:s32=(cast,trunc(s32)(instance/n))+(wg_i32_f(c.y));
+    w:V3=v3(u[170]+((cast(f32)(gx))*u[169]),villa_height(gx,gz,u,heights),u[171]+((cast(f32)(gz))*u[169]));
+    o.pos=villa_clip(w,u);
+    o.world=w;
+    o.normal=wg_normalize3(v3(villa_height(gx-1,gz,u,heights)-villa_height(gx+1,gz,u,heights),2.0f32*u[169],villa_height(gx,gz-1,u,heights)-villa_height(gx,gz+1,u,heights)));
+    o.tint=v3(0.1f32,0.16f32,0.12f32);
+    o.look=99;
+    o.local=v3(0.0f32,0.0f32,0.0f32);
+    o.size=v2(0.0f32,0.0f32);
+    return o;
+  }
+  m:VillaObj=objects[cast(int)sub_wrap(instance,mul_wrap(n,n))];
+  kind:u32=(wg_u32_f(m.colour.w))%8;
+  shape_look:u32=(wg_u32_f(m.colour.w))/8;
+  // leaves, stones, soil and cut shapes are nudged irregular; figures, what glows and the paint keep even faces
+  nudge:f32=ifx (((shape_look==1)||(shape_look==2))||(shape_look==9))||(shape_look==12) then 0.16f32 else 0.0f32;
+  seed:f32=fract(((m.r0.w*0.137f32)+(m.r2.w*0.071f32))+(m.r1.w*0.29f32));
+  v:VillaVert;
+  {
+    _sw3:u32=kind;
+    if _sw3==1 {
+      v=villa_box_vertex(id);
+    } else if _sw3==2 {
+      v=villa_globe_vertex(id,8,5,nudge,seed);
+    } else if _sw3==3 {
+      v=villa_cylinder_vertex(id);
+    } else if _sw3==5 {
+      v=villa_globe_vertex(id,8,5,nudge,seed);
+    } else {
+      v=villa_cone_vertex(id);
+    }
+  }
+  p:V4=v4(v.p.x,v.p.y,v.p.z,1.0f32);
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  normal:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_cross3(c1,c2),v.n.x),wg_mul_f3f(wg_cross3(c2,c0),v.n.y)),wg_mul_f3f(wg_cross3(c0,c1),v.n.z));
+  o.pos=villa_clip(w,u);
+  o.world=w;
+  o.normal=wg_normalize3(wg_add_f3f3(normal,v3(0.0f32,0.00001f32,0.0f32)));
+  o.tint=v3(m.colour.x,m.colour.y,m.colour.z);
+  o.look=(wg_u32_f(m.colour.w))/8;
+  o.local=v.p;
+  o.size=v2(wg_length3(c1),smoothstep(1.6f32,3.2f32,wg_length3(c1)));
+  return o;
+}
+villa_path_distance :: (p:V2,u:[]f32)->f32 {
+  d:f32=1000.0f32;
+  count:s32=wg_i32_f(u[492]);
+  {
+    i:s32=0;
+    while i<48 {
+      if (i>=count) {
+        break;
+      }
+      seg:V4=wg_at4(u,(cast(int)i)*4+300);
+      a:V2=v2(seg.x,seg.y);
+      ab:V2=wg_sub_f2f2(v2(seg.z,seg.w),a);
+      t:f32=clampf(wg_dot2(wg_sub_f2f2(p,a),ab)/fmax(wg_dot2(ab,ab),0.0001f32),0.0f32,1.0f32);
+      d=fmin(d,wg_length2(wg_sub_f2f2(wg_sub_f2f2(p,a),wg_mul_f2f(ab,t))));
+      i+=1;
+    }
+  }
+  return d;
+}
+// The cast shadows: soft flat shapes stretched away from the moon, the deepest one where they
+// overlap (0 none, 1 all). Each is a foot (x, z, radius) and, packed in w, its length away from
+// the moon in tenths of a metre (the whole part) and its strength (the fraction).
+villa_shade_shadows :: (p:V2,u:[]f32)->f32 {
+  s:f32=0.0f32;
+  k:V3=villa_key_dir(u);
+  away:V2=wg_neg_f2(wg_normalize2(wg_add_f2f2(v2(k.x,k.z),v2(0.0001f32,0.0f32))));
+  {
+    i:s32=0;
+    while i<32 {
+      b:V4=wg_at4(u,(cast(int)i)*4+172);
+      if (b.z<=0.0f32) {
+        break;
+      }
+      reach:f32=floor(b.w)*0.1f32;
+      strength:f32=fract(b.w);
+      t:f32=clampf(wg_dot2(wg_sub_f2f2(p,v2(b.x,b.y)),away),0.0f32,reach);
+      q:V2=wg_sub_f2f2(wg_sub_f2f2(p,v2(b.x,b.y)),wg_mul_f2f(away,t));
+      // narrowing a little toward its far end, as a crown's shadow does
+      r:f32=b.z*(1.0f32-((0.35f32*t)/fmax(reach,0.001f32)));
+      s=fmax(s,verse_style_flat_shadow(wg_length2(q)/r)*fmin(strength*1.4f32,1.0f32));
+      i+=1;
+    }
+  }
+  return s;
+}
+// The light from the moon held at least 0.45 up, so a low or set moon never puts the whole
+// garden in its dark tone: the cemetery is drawn at night, not in the dark.
+villa_key_dir :: (u:[]f32)->V3 {
+  m:V3=wg_normalize3(v3(u[160],u[161],u[162]));
+  return wg_normalize3(v3(m.x,fmax(m.y,0.45f32),m.z));
+}
+// A surface's colour in the palette by its look: the realm keeps its shapes, the palette
+// decides their colours.
+villa_albedo :: (look:u32,tint:V3)->V3 {
+  hi:f32=fmax(tint.x,fmax(tint.y,tint.z));
+  if (look==1) {
+    return wg_mix_f3f3f(villa_pal(VILLA_P_FOLIAGE),villa_pal(VILLA_P_FOLIAGE2),smoothstep(0.17f32,0.22f32,hi));
+  } // cypresses, trees, hedges
+  if (look==2) { // stone: ivory, plaques slate
+    if (hi<0.3f32) {
+      return villa_pal(VILLA_P_SLATE);
+    }
+    return wg_mix_f3f3f(villa_pal(VILLA_P_ROCK),villa_pal(VILLA_P_LIGHT),smoothstep(0.38f32,0.5f32,hi));
+  }
+  if (look==3) {
+    return villa_pal(VILLA_P_DARK);
+  } // iron
+  if (look==4) {
+    return villa_pal(VILLA_P_WATER);
+  }
+  if (look==9) {
+    return villa_pal(VILLA_P_FOLIAGE2);
+  } // turned soil
+  if (look==10) {
+    return villa_pal(VILLA_P_DARK);
+  }
+  if (((look==11)||(look==12))||(look==13)) {
+    return wg_pow_f3f3(wg_clamp_f3f3f3(tint,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  } // a shape's own pastel (sRGB)
+  return villa_pal(VILLA_P_WOOD); // trunks, benches
+}
+villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
+  // Flat faces: the low-poly look comes from the face's own normal.
+  dx:V3=wg_dpdx_f3(s.world);
+  dy:V3=wg_dpdy_f3(s.world);
+  ground_aa:f32=fmax(wg_length2(wg_fwidth_f2(v2(s.world.x,s.world.z))),0.002f32); // derivatives first, while control flow is uniform
+  local_aa:f32=gpu_fwidth(s.local.y);
+  to_eye:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  facet:V3=wg_cross3(dy,dx);
+  facet=wg_normalize3(ifx wg_dot3(facet,facet)<1e-14f32 then v3(0.0f32,1.0f32,0.0f32) else facet);
+  if (wg_dot3(facet,to_eye)<0.0f32) {
+    facet=wg_neg_f3(facet);
+  }
+  smooth_n:V3=wg_normalize3(s.normal);
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  fade:f32=verse_style_flat_fade(d,VILLA_FADE_FROM,VILLA_FADE_OVER,VILLA_FADE_CAP);
+  // You: a spirit visiting from another realm, pale lavender light, solid at its heart and
+  // dissolving toward its rim in a fine ordered dither that drifts, so the bloom and the wisps
+  // rising off you (villa.coax particles) make it soft and fuzzy.
+  if (s.look==6) {
+    facing:f32=abs(wg_dot3(smooth_n,to_eye));
+    drift:f32=floor(u[2]*12.0f32)*(1.0f32-u[4]);
+    body:f32=smoothstep(0.0f32,0.8f32,facing);
+    cell:V2=wg_add_f2f2(wg_floor_f2(wg_div_f2f(v2(s.pos.x,s.pos.y),fmax(u[6],1.0f32))),v2(drift,drift*2.0f32));
+    // a third of its heart and nearly all of its rim let what is behind it show
+    if (verse_style_bayer(cell.x,cell.y)>(body*0.68f32)) {
+      gpu_discard();
+    }
+    core:V3=wg_mix_f3f3f(v3(0.5f32,0.55f32,0.92f32),v3(0.8f32,0.82f32,1.0f32),body);
+    return VillaLit.{light=wg_make_f4_f3f(wg_mix_f3f3f(core,villa_pal(VILLA_P_HORIZON),fade*0.5f32),0.22f32),aux=v4(smooth_n.x,smooth_n.y,smooth_n.z,-d)};
+  }
+  // What glows: the dog's light, one flat cream.
+  if ((s.look==5)||(s.look==7)) {
+    // the dog's own colours (its coat, markings and collar) show through its light
+    c:V3=wg_mul_f3f(wg_mix_f3f3f(villa_pal(VILLA_P_LIGHT),s.tint,ifx s.look==7 then 0.25f32 else 0.8f32),ifx s.look==7 then 1.6f32 else 1.15f32);
+    return VillaLit.{light=wg_make_f4_f3f(wg_mix_f3f3f(c,villa_pal(VILLA_P_HORIZON),fade*0.35f32),ifx s.look==7 then 0.9f32 else 0.35f32),aux=v4(smooth_n.x,smooth_n.y,smooth_n.z,-d)};
+  }
+  // The planet, seen in the flight: two flat tones and its land in flat patches.
+  if (s.look==8) {
+    n:V3=smooth_n;
+    lit:f32=smoothstep(-0.02f32,0.02f32,wg_dot3(n,wg_normalize3(v3(u[160],u[161],u[162]))));
+    land:f32=stepf(0.52f32,villa_noise(v2(wg_atan2(n.z,n.x)*3.0f32,n.y*4.0f32)));
+    base:V3=wg_mix_f3f3f(villa_pal(VILLA_P_SLATE),villa_pal(VILLA_P_GROUND2),land);
+    c:V3=wg_mul_f3f(base,mix(0.25f32,1.0f32,lit));
+    return VillaLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(n.x,n.y,n.z,-d)};
+  }
+  n:V3=facet;
+  xz:V2=v2(s.world.x,s.world.z);
+  base:V3=villa_albedo(s.look,s.tint);
+  cover:f32=0.0f32;
+  edge:f32=1.0f32; // a light outline where this surface stands in front of something further (the post pass)
+  if (s.look==99) {
+    // the ground: soft sage in broad patches of two, its own faces showing; the paths a flat
+    // cream band with a thin light trim along their edges
+    base=wg_mix_f3f3f(villa_pal(VILLA_P_GROUND),villa_pal(VILLA_P_GROUND2),stepf(0.6f32,villa_noise(wg_mul_f2f(xz,0.045f32))));
+    pd:f32=villa_path_distance(xz,u);
+    half:f32=u[493];
+    aa:f32=ground_aa;
+    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_PATH),1.0f32-smoothstep(half-aa,half+aa,pd));
+    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_LIGHT),verse_style_flat_hem(abs(pd-half),0.035f32,aa)*0.7f32);
+    cover=villa_shade_shadows(xz,u);
+    edge=0.0f32;
+  } else if (s.look==4) {
+    edge=0.0f32;
+  } else if (s.look==10) {
+    n=smooth_n;
+  }
+  // trim: a thin cream line along the top of the iron (the gate's bar, the railings' tips)
+  if (s.look==3) {
+    from_top:f32=(0.5f32-s.local.y)*s.size.x;
+    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_ACCENT),verse_style_flat_hem(from_top,0.03f32,fmax(local_aa*s.size.x,0.001f32)));
+  }
+  // one tone a face (art-styles.md, Flat: facets), between the palette's shade and lit; no specular;
+  // the cast shadow a soft lavender shape on the ground
+  band:f32=verse_style_facet_tone(wg_dot3(n,villa_key_dir(u)),1.0f32);
+  c:V3=wg_mul_f3f3(base,wg_mix_f3f3f(villa_pal(VILLA_P_SHADE),villa_pal(VILLA_P_LIT),band));
+  c=wg_mul_f3f3(c,wg_mix_f3f3f(v3(1.0f32,1.0f32,1.0f32),villa_pal(VILLA_P_SHADOW),cover));
+  c=wg_mix_f3f3f(c,villa_pal(VILLA_P_HORIZON),fade);
+  // the outline only where the shape reads at its distance: tiny far things (a tuft, a petal) get none
+  reads:bool=((fmax(s.size.x,0.0f32)/fmax(d,0.1f32))>0.035f32)||(s.look==99);
+  // your dog (look 13): its own coat, markings and collar, faceted like the rest, with a soft
+  // moonlit rim round its outline and a little of it in the bloom, so it is still a spirit's dog
+  share:f32=0.0f32;
+  if (s.look==13) {
+    edge=0.0f32; // its bones meet inside one soft coat: no line between them
+    rim:f32=pow(1.0f32-abs(wg_dot3(smooth_n,to_eye)),2.5f32);
+    c=wg_mix_f3f3f(c,v3(0.92f32,0.94f32,1.0f32),rim*0.55f32);
+    share=0.08f32+(0.3f32*rim);
+  }
+  return VillaLit.{light=v4(c.x,c.y,c.z,share),aux=v4(n.x,n.y,n.z,ifx (edge>0.5f32)&&reads then d else -d)};
+}
+// ---- the post pass (host.js postLayouts): the bright share, blurred at a quarter and an
+// eighth of the size (bloom_fs), added back gently (only what glows has a share); no outline and
+// no tone curve, so the palette shows as it is; under the plates.
+// VillaStep, a uniform block, is read from a []f32 at these offsets (floats):
+//   v 0
+villa_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel_2:V2=wg_div_ff2(1.0f32,wg_cvt_f2u2(wg_dims_2d(bloom_src)));
+  uv:V2=wg_mul_f2f2(wg_mul_f2f(v2(pos.x,pos.y),bloom_step[3]),texel_2);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f2(wg_sub_f2f(wg_mul_f2f(v2(cast(f32)(k&1),cast(f32)(k>>1)),2.0f32),1.0f32),texel_2)),0.0f32);
+        c=wg_add_f3f3(c,wg_mul_f3f(v3(t.x,t.y,t.z),fmin(t.w,1.0f32)));
+        k+=1;
+      }
+    }
+    return wg_make_f4_f3f(wg_mul_f3f(c,0.25f32),1.0f32);
+  }
+  d:V2=wg_mul_f2f2(v2(bloom_step[0],bloom_step[1]),texel_2);
+  c:V3=wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32))),0.316f32));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+villa_encode :: (c:V3)->V3 {
+  return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
+}
+villa_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=6.0f32*s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  dd:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (dd>1.0f32) {
+    return under;
+  }
+  over:bool=s.z>=2.0f32;
+  fill:V3=ifx over then v3(0.045f32,0.055f32,0.09f32) else v3(0.02f32,0.025f32,0.045f32);
+  line:V3=ifx over||(s.z>=1.0f32) then v3(0.62f32,0.7f32,0.88f32) else v3(0.36f32,0.42f32,0.58f32);
+  w:f32=1.25f32*s.x;
+  inside:f32=clampf(0.5f32-dd,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(dd+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*fmin(1.0f32,a+0.1f32))*0.8f32);
+}
+villa_plates :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<16 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=villa_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+32),wg_at4(u,(cast(int)((k*2)+1))*4+32));
+      k+=1;
+    }
+  }
+  return c;
+}
+villa_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_lin:Sampler)->V4 {
+  p:I2=wg_cvt_i2f2(v2(pos.x,pos.y));
+  uv:V2=wg_div_f2f2(v2(pos.x,pos.y),wg_at2(u,0));
+  light:V3=wg_sw_rgb_f4(wg_load_2d(post_light,p,0));
+  near:V3=wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32));
+  far:V3=wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32));
+  c:V3=wg_add_f3f3(light,wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(near,0.55f32),wg_mul_f3f(far,0.45f32)),0.6f32));
+  // the crisp light line along a shape's outline (art-styles.md, Flat: facets): on the near side of
+  // an edge, where a neighbour lies clearly further off (or is sky), fading out with distance
+  own:f32=wg_load_2d(post_aux,p,0).w;
+  if (((own>0.0f32)&&(own<140.0f32))&&(u[27]<0.5f32)) {
+    hi:I2=wg_sub_i2i2(wg_cvt_i2f2(wg_at2(u,0)),i2(1,1));
+    e:f32=verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    c=wg_mix_f3f3f(c,villa_pal(VILLA_P_ACCENT),(e*0.8f32)*(1.0f32-smoothstep(60.0f32,140.0f32,own)));
+  }
+  return wg_make_f4_f3f(villa_plates(v2(pos.x,pos.y),villa_encode(c),u),1.0f32);
+}
+// ---- the HUD's strokes
+VillaV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+villa_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+villa_fx_vs :: (_vid4:u32,_iid5:u32,in_:villa_fx_vs_in,u:[]f32)->VillaV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:VillaV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+villa_fx_fs :: (v:VillaV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+// The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_floor_f3 :: (p0:V3)->V3 {return v3(floor(p0.x),floor(p0.y),floor(p0.z));}
+wg_add_f3f :: (a:V3,b:f32)->V3 {return v3(a.x+b,a.y+b,a.z+b);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_neg_f2 :: (a:V2)->V2 {return v2(-a.x,-a.y);}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
+wg_dpdx_f3 :: (p0:V3)->V3 {return v3(gpu_dpdx(p0.x),gpu_dpdx(p0.y),gpu_dpdx(p0.z));}
+wg_dpdy_f3 :: (p0:V3)->V3 {return v3(gpu_dpdy(p0.x),gpu_dpdy(p0.y),gpu_dpdy(p0.z));}
+wg_fwidth_f2 :: (p0:V2)->V2 {return v2(gpu_fwidth(p0.x),gpu_fwidth(p0.y));}
+wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_cvt_f2u2 :: (p:U2)->V2 {return v2(cast(f32)(p.x),cast(f32)(p.y));}
+wg_div_ff2 :: (a:f32,b:V2)->V2 {return v2(a/b.x,a/b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_sub_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x-b.x,a.y-b.y);}
+wg_add_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x+b.x,a.y+b.y);}
+wg_clamp_i2i2i2 :: (p0:I2,p1:I2,p2:I2)->I2 {return i2(wg_clamp_i(p0.x,p1.x,p2.x),wg_clamp_i(p0.y,p1.y,p2.y));}

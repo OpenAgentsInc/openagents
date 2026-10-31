@@ -334,13 +334,14 @@ wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int {
   return r;
 }
 // The GPU procedures (verse/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
-// depth compare (at level 0, as SPIR-V's explicit-level compare) and a texture's size.
-WG_GPU :: [12] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
-  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions("];
-WG_GPU_ARGS :: [12] int.[0,0,3,4,4,5,5,4,4,4,1,1];
+// depth compare (at level 0, as SPIR-V's explicit-level compare), a texture's size and
+// a fragment's derivatives.
+WG_GPU :: [15] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
+  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth("];
+WG_GPU_ARGS :: [15] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1];
 wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
-  if g<1 || g>11 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  if g<1 || g>14 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
   wg_put(s,out,WG_GPU[g]);
   if g==1 {s[0].called=true;return;}
   for i:0..<n {
@@ -1163,6 +1164,15 @@ WG_WGSL_MOD :: "struct coax_t8 {\n  x: vec4f,\n  y: vec2f,\n}\nstruct coax_in_8 
 WG_SAMPLE_STORE :: "2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5";
 WG_NAMES_STORE :: "fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n";
 WG_WGSL_STORE :: "struct coax_t9 {\n  x: f32,\n  y: u32,\n  z: f32,\n}\nstruct coax_t10 {\n  x: u32,\n  y: f32,\n  z: vec2f,\n  w: array<vec2f, 3>,\n  f4: f32,\n  f5: coax_t9,\n  f6: f32,\n  f7: f32,\n}\nstruct coax_t13 {\n  x: vec3f,\n  y: f32,\n}\nstruct coax_t15 {\n  x: f32,\n  y: f32,\n  z: vec2f,\n}\n@group(0) @binding(0) var<storage, read> k1: array<coax_t10>;\n@group(0) @binding(1) var<storage, read> k2: array<coax_t13>;\n@group(0) @binding(2) var<storage, read> k3: array<coax_t15>;\n@group(0) @binding(3) var<storage, read> us: array<u32>;\n@group(0) @binding(4) var<storage, read> is: array<i32>;\nfn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_x: coax_t10;\n  var l_y: coax_t13;\n  var l_z: coax_t15;\n  l_x = k1[0i];\n  l_y = k2[0i];\n  l_z = k3[0i];\n  return vec4f((((f32(l_x.x) + l_x.w[2i].y) + l_x.f5.z) + l_x.f7), (l_y.x.z + l_y.y), (l_z.z.y + f32(us[0i])), f32(is[0i]));\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+// A fragment of fwidth(pos.x)+dpdx(pos.y) and dpdy(pos.x) (GPU procedures 14, 12, 13).
+WG_SAMPLE_DERIV :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 14 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
+WG_SAMPLE_DERIV_15 :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 15 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
+WG_WGSL_DERIV :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: f32;\n  l_a = (fwidth(l_pos.x) + dpdx(l_pos.y));\n  return vec4f(l_a, dpdy(l_pos.x), 0.0f, 0x1.000000p0f);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+#test "a fragment's derivatives are WGSL's dpdx, dpdy and fwidth, and no GPU procedure is past them" {
+  out:[4096] u8;
+  #assert wg_mtext(WG_SAMPLE_DERIV,"fs pos a\npos\n",out[..])==WG_WGSL_DERIV;
+  #assert wg_mtry(WG_SAMPLE_DERIV_15,"fs pos a\npos\n",out[..])==-1;
+}
 #test "a module: interface structs, bindings, variants and entries, as Chrome's WebGPU compiles it" {
   out:[65536] u8;
   #assert wg_mtext(WG_SAMPLE_MOD,WG_NAMES_MOD,out[..])==WG_WGSL_MOD;

@@ -1,0 +1,3 @@
+--vertices villa_bg_vs,villa_scene_vs,villa_fx_vs
+--fragments villa_bg_fs,villa_scene_fs,villa_bloom_fs,villa_post_fs,villa_fx_fs
+--bindings apps/openagents-web/gpu/villa.bindings --strip villa_

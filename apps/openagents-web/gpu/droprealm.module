@@ -1,0 +1,3 @@
+--vertices droprealm_bg_vs,droprealm_scene_vs,droprealm_fx_vs
+--fragments droprealm_bg_fs,droprealm_scene_fs,droprealm_fx_fs
+--bindings apps/openagents-web/gpu/droprealm.bindings --strip droprealm_

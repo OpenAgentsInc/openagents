@@ -100,7 +100,8 @@ struct ShaderTree {
   // The GPU's procedures in verse/gpu/shader.coax: their CPU bodies serve checks.
   static uint32_t gpu_intrinsic(const std::string &n) {
     static const char *names[] = {"", "gpu_discard", "gpu_sample", "gpu_sample_level", "gpu_sample_layer", "gpu_sample_layer_level",
-                                  "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height"};
+                                  "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height",
+                                  "gpu_dpdx", "gpu_dpdy", "gpu_fwidth"};
     for (uint32_t i = 1; i < sizeof names / sizeof names[0]; i++) if (n == names[i]) return i;
     // A depth texture's size is the same instruction as a 2D texture's.
     if (n == "gpu_depth_width") return 10;

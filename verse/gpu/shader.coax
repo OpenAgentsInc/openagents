@@ -119,6 +119,11 @@ gpu_width :: (t:Tex2D)->u32 {return cast(u32)t.width;}
 gpu_height :: (t:Tex2D)->u32 {return cast(u32)t.height;}
 gpu_depth_width :: (t:TexDepth)->u32 {return cast(u32)t.width;}
 gpu_depth_height :: (t:TexDepth)->u32 {return cast(u32)t.height;}
+// A fragment's derivatives of a value across the screen (dpdx, dpdy, and fwidth their
+// absolute sum). The CPU runs one fragment with no neighbours, so they are 0 there.
+gpu_dpdx :: (v:f32)->f32 {return 0.0f32;}
+gpu_dpdy :: (v:f32)->f32 {return 0.0f32;}
+gpu_fwidth :: (v:f32)->f32 {return 0.0f32;}
 
 #test "vectors are their components' arithmetic" {
   a:=v3(1,2,3);b:=v3(4,5,6);

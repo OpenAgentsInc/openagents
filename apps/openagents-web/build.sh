@@ -25,8 +25,7 @@ splash=$!
   && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
   && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_depth verse_outline_crease verse_outline_strength verse_outline_ink --into apps/openagents-web/realm.wgsl \
   && coax/web/tool.sh coax/web/wgsl-block.coax verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_depth verse_outline_crease --into apps/openagents-web/villa.wgsl)
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
@@ -41,14 +40,14 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
 # and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden belt; do
+for w in verse newland builder deadgears icecream garden belt droprealm villa; do
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
 facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
 flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $flat_fns $facet_fns --into apps/openagents-web/villa.wgsl)
+# (Hecate's Cemetery, villa.wgsl, loads them in its Coax: gpu/villa.coax.)
 # A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.

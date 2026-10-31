@@ -55,6 +55,7 @@
 //   math: 1 sin 2 cos 3 tan 4 exp 5 log 6 sqrt 7 floor 8 abs 9 pow
 //   gpu: 1 discard 2 sample 3 sample_level 4 sample_layer 5 sample_layer_level
 //       6 sample_layer_bias 7 load 8 load_depth 9 compare 10 width 11 height
+//       12 dpdx 13 dpdy 14 fwidth (a fragment's, of an f32)
 #authority;
 
 SH_VOID :: 0; SH_BOOL :: 1; SH_F32 :: 2; SH_S32 :: 3; SH_U32 :: 4; SH_INT :: 5;
@@ -687,8 +688,8 @@ sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
 sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
   g:=sh_next(s,tree);ty:=sh_next(s,tree);n:=sh_next(s,tree);
   // How many arguments each takes.
-  counts:=[11] u32.[0,3,4,4,5,5,4,4,4,1,1];
-  if g<1 || g>11 {sh_fail(s,11);return sh_refused();}
+  counts:=[14] u32.[0,3,4,4,5,5,4,4,4,1,1,1,1,1];
+  if g<1 || g>14 {sh_fail(s,11);return sh_refused();}
   if n!=counts[cast(int)g-1] {sh_fail(s,11);return sh_refused();}
   if !sh_type_ok(s,ty) {return sh_refused();}
   if g==1 {
@@ -698,6 +699,13 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
     return sh_refused();
   }
   f:=sh_tid(s,tree,w,SH_F32);
+  if g>=12 {
+    // OpDPdx 207, OpDPdy 208, OpFwidth 209: only a fragment has neighbours to differ from.
+    if !s[0].fragment || ty!=SH_F32 {sh_fail(s,11);return sh_refused();}
+    v:=sh_value_arg(s,tree,out,w,SH_F32);
+    if !s[0].ok {return sh_refused();}
+    return ShVal.{id=sh_r1(s,w,195+g,f,v),ty=ty};
+  }
   if g>=2 && g<=6 {
     array:=g>=4;
     img:=sh_resource_arg(s,tree,w,ifx array then 1 else 0);smp:=sh_resource_arg(s,tree,w,10);uv:=sh_value_arg(s,tree,out,w,18);
@@ -1804,8 +1812,15 @@ sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int {
 }
 // A fragment entry of a 2D texture, an array, a depth texture, a sampler and a comparison sampler (locals 1..5).
 SH_GPU :: "0 6 6 8 9 10 11 12 6 6 8 9 10 11 12";
-sh_gpu_fs :: (body:string)->int {
-  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
+sh_gpu_fs :: (body:string)->int {out:[8192] u32;return sh_gpu_fs_out(body,out[..]);}
+// Whether the fragment of body lowers with an instruction whose first word is op's.
+sh_gpu_fs_op :: (body:string,op:u32)->bool {
+  out:[8192] u32;n:=sh_gpu_fs_out(body,out[..]);
+  for i:0..<n {if out[i]==op {return true;}} // mutant: equivalent (word 0 is the magic number, never an instruction)
+  return false;
+}
+sh_gpu_fs_out :: (body:string,out:[]u32)->int {
+  t:[4096] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
   n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
   n+=sh_parse(SH_MORE,t[n..<t.count]);
   t[n]=2;n+=1;
@@ -1814,7 +1829,7 @@ sh_gpu_fs :: (body:string)->int {
   nb:=sh_parse(body,t[n+1..<t.count]);
   t[n]=cast(u32)nb;n+=1+nb;
   n+=sh_parse("2 0 0 0 1 1 1 2 3 4 5 6 7",t[n..<t.count]);
-  return SH_lower(t[0..<n],out[..],work[..]);
+  return SH_lower(t[0..<n],out,work[..]);
 }
 #test "GPU procedures take their resources and give their texels" {
   #assert sh_gpu_fs("2 33 2 6 3 18 1 18 4 17 19")>0 && sh_gpu_fs("2 33 2 2 3 18 1 18 4 17 19")==-11;
@@ -2003,6 +2018,14 @@ sh_fields_lower :: (n:int)->int {
   #assert sh_fs("0 13 6 7 7 7 7 7 7 7 7 7 7 7 7 13 6 7 7 7 7 7 7 7 7 7 7 7 7 | 5 ;","","2 0 0 0 1 1 1 2 3 4 5 6 7 8 9 10 11 12 13 14")==-3;
   // The smallest module, in words.
   #assert sh_body("","5")==SH_SMALLEST;
+}
+#test "a fragment's derivatives are OpDPdx, OpDPdy and OpFwidth of an f32" {
+  #assert sh_gpu_fs_op("2 33 12 2 1 16 2 0",(4<<16)|207) && sh_gpu_fs_op("2 33 13 2 1 16 2 0",(4<<16)|208);
+  #assert sh_gpu_fs_op("2 33 14 2 1 16 2 0",(4<<16)|209) && !sh_gpu_fs_op("2 33 12 2 1 16 2 0",(4<<16)|208);
+  #assert sh_gpu_fs("2 33 15 2 1 16 2 0")==-11 && sh_gpu_fs("2 33 12 2 2 16 2 0 16 2 0")==-11;
+  #assert sh_gpu_fs("2 33 13 2 0")==-11 && sh_gpu_fs("2 33 14 2 2 16 2 0 16 2 0")==-11;
+  #assert sh_gpu_fs("2 33 12 3 1 16 2 0")==-11 && sh_gpu_fs("2 33 12 2 1 16 3 0")==-11;
+  #assert sh_vs("6 2 4 4 2 4 4 | 1 2 2 33 14 2 1 16 2 0 4 17 6 ;","","2 0 0 0 1 1 1 9")==-11;
 }
 #test "GPU procedures' resources are the kinds they take" {
   #assert sh_gpu_fs("2 33 2 6 3 16 3 0 18 4 17 19")==-11 && sh_gpu_fs("2 33 2 6 3 18 0 18 4 17 19")==-11;

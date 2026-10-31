@@ -537,7 +537,8 @@ scalar_fn :: (name: string, b: int) -> string {
   if name == "min" { return "fmin"; } if name == "max" { return "fmax"; } if name == "clamp" { return "clampf"; } if name == "step" { return "stepf"; }
   if name == "ceil" { return "wg_ceil"; } if name == "round" { return "wg_round"; } if name == "trunc" { return "wg_trunc"; } if name == "sign" { return "wg_sign"; }
   if name == "exp2" { return "wg_exp2"; } if name == "log2" { return "wg_log2"; } if name == "tanh" { return "wg_tanh"; } if name == "atan2" { return "wg_atan2"; }
-  if name == "atan" { return "wg_atan"; } if name == "acos" { return "wg_acos"; } if name == "asin" { return "wg_asin"; } if name == "inverseSqrt" { return "wg_inverse_sqrt"; }
+  if name == "dpdx" { return "gpu_dpdx"; } if name == "dpdy" { return "gpu_dpdy"; } if name == "fwidth" { return "gpu_fwidth"; }
+    if name == "atan" { return "wg_atan"; } if name == "acos" { return "wg_acos"; } if name == "asin" { return "wg_asin"; } if name == "inverseSqrt" { return "wg_inverse_sqrt"; }
   return "";
 }
 // A componentwise call: of the scalar function f over args of types ty (scalars broadcast), into a vector of n.

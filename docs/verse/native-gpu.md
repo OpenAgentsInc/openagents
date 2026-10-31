@@ -400,16 +400,25 @@ Every phase and native feature is a task in the Verse project
     in the lowering: vector arithmetic written as WGSL's vector operators.
     Every page with a sin hash (the painterly, flat and fixture styles) waits
     on it.
-  - fairy, waterlab, villa, fixture, orbitleague and realm stop the
-    translator (a whole uniform struct as a value, builtins on vectors it
-    does not know, indexing a vector, a vector from a struct's fields);
-    droprealm and stair too (`fwidth` on a vector, `&` pointers).
+  - fairy, waterlab, fixture, orbitleague and realm stop the translator
+    (a whole uniform struct as a value, builtins on vectors it does not
+    know, indexing a vector, a vector from a struct's fields); stair too
+    (`&` pointers).
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
   The `built` golden fails at origin/main since 59347994ba (made realms:
   figures, animals, a windmill) with the hand-written module, before any of
   this.
+- 2026-10-31: derivatives, and two more realms. Coax shaders have a
+  fragment's `gpu_dpdx`, `gpu_dpdy` and `gpu_fwidth` of an f32 (GPU
+  procedures 12-14 of verse/gpu/shader.coax: OpDPdx, OpDPdy and OpFwidth in
+  SPIR-V, spirv-val clean; WGSL's dpdx, dpdy and fwidth; refused in a
+  vertex; 0 on the CPU, which has one fragment and no neighbours), and the
+  translator writes a vector's componentwise. droprealm (drop) and villa
+  (Hecate's Cemetery) are Coax now and match their goldens; villa's module
+  is the same image as the hand one in one stage (the 2 moving blocks are
+  both's). villa no longer declares `post_depth`, which it never read.
 - 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
   one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
   (this site's paths only; the player key, an Authorization line, the
