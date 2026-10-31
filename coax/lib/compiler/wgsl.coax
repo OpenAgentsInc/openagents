@@ -20,22 +20,35 @@
 // (parameters first), separated by spaces.
 #authority;
 
-WG_TYPES :: 512; WG_PROCS :: 512;
-// The work view: where each type's and each procedure's code starts in the tree.
-WG_W_TYPE :: 0; WG_W_PROC :: 512; WG_W_ROOT :: 1024; WG_W_FIRST :: 1536; WG_W_WORDS :: 1537;
+WG_TYPES :: 512; WG_PROCS :: 512; WG_LOCALS :: 2048; WG_ENTRIES :: 64; WG_ARGS :: 64;
+// The work view: where each type's and each procedure's code starts in the tree; the
+// roots; the first entry's procedure; then a module's: the current procedure's view
+// locals (the array each is the view of, plus 1), the interface structs a type is (1
+// attributes, 2 varyings, 4 targets), where each entry starts in the tree, and the
+// rest of the view is the pool of variants: each its procedure, its index among that
+// procedure's variants, and a word for each parameter (wg_bound).
+WG_W_TYPE :: 0; WG_W_PROC :: 512; WG_W_ROOT :: 1024; WG_W_FIRST :: 1536;
+WG_W_ALIAS :: 1537; WG_W_IO :: 3585; WG_W_ENTRY :: 4097; WG_W_POOL :: 4161; WG_POOL :: 8192; WG_W_WORDS :: 12353;
 WG_VOID :: 0;
+// A variant's word for a parameter: a resource's binding (its name id), a pointer to the
+// caller's local array (bit 31 and the array's type), or WG_NONE, not a resource.
+WG_PTR :: 0x80000000; WG_NONE :: 0xFFFFFFFF;
 WG_work_words :: ()->int #export_c {return WG_W_WORDS;}
 WG_out_bytes :: ()->int #export_c {return 4194304;}
 
 WgState :: struct {
   at:int; n:int; ok:bool; reason:u32; mute:int; indent:int;
   types:int; procs:int; proc:int; pow:bool; bits:bool; called:bool;
+  // a module's: the variant being written (its place in the pool) and the pool's use
+  whole:bool; var:int; pool:int;
 }
 
 WG_reason_text :: (reason:u32)->string #export_c {
-  texts:=[7] string.["","a malformed tree","WGSL larger than its buffer","more types or procedures than it holds",
-    "a type or operation WGSL functions do not take yet","an entry that is not a function","a procedure without its names"];
-  if reason>=7 {return "this reason";}
+  texts:=[10] string.["","a malformed tree","WGSL larger than its buffer","more types, procedures, entries, variants or locals than it holds",
+    "a type or operation WGSL does not take here yet","an entry of a stage this mode does not write","a procedure without its names",
+    "a resource without its group and binding","an entry whose parameters or result are not a vertex's or a fragment's",
+    "a storage buffer whose layout WGSL does not keep"];
+  if reason>=10 {return "this reason";}
   return texts[cast(int)reason];
 }
 
@@ -103,6 +116,12 @@ wg_proc_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,p:int) {
   if w[WG_W_ROOT+p]==0 {wg_put(s,out,"coax_p_");}
   wg_put(s,out,wg_word(wg_line(names,p),0));
 }
+// A module's variant v (its place in the pool): coax_p_NAME, coax_p_NAME_K for its procedure's K-th.
+wg_variant_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,v:int) {
+  wg_put(s,out,"coax_p_");wg_put(s,out,wg_word(wg_line(names,cast(int)w[WG_W_POOL+v]),0));
+  seq:=w[WG_W_POOL+v+1];
+  if seq>0 {wg_put(s,out,"_");wg_dec(s,out,seq);}
+}
 wg_first :: (names:string,w:[]u32)->string {return wg_word(wg_line(names,cast(int)w[WG_W_FIRST]),0);}
 // Local i of the procedure being written: p_NAME for a parameter, l_NAME, or l_NAME_I
 // when an earlier local has its name.
@@ -114,16 +133,51 @@ wg_local :: (s:[]WgState,names:string,out:[]u8,i:int,param:bool) {
   for j:0..<i {if wg_word(line,1+j)==n {wg_put(s,out,"_");wg_dec(s,out,cast(u32)i);return;}}
 }
 
-// ---- types: only the scalars, 1 bool 2 f32 3 s32 4 u32; their kind, or 0 refused
+// ---- types: the scalars, 1 bool 2 f32 3 s32 4 u32, and in a module 5 int, which WGSL
+// has no room for, as an i32; their kind, or 0 refused. Every type a signature, a struct
+// or an array names is one of the tree's (wg_head).
+wg_tk :: (tree:[]u32,w:[]u32,t:u32)->u32 {return tree[cast(int)w[WG_W_TYPE+cast(int)t]];}
+wg_part :: (tree:[]u32,w:[]u32,t:u32,i:int)->u32 {return tree[cast(int)w[WG_W_TYPE+cast(int)t]+i];}
 wg_scalar :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->u32 {
   if cast(int)t>=s[0].types {wg_fail(s,1);return 0;} // mutant: equivalent (after a failure the kind is not kept)
-  k:=tree[cast(int)w[WG_W_TYPE+cast(int)t]];
-  if k<1 || k>4 {wg_fail(s,4);return 0;} // mutant: equivalent (after a failure the kind is not kept)
+  k:=wg_tk(tree,w,t);
+  if k<1 || k>(ifx s[0].whole then cast(u32)5 else cast(u32)4) {wg_fail(s,4);return 0;} // mutant: equivalent (after a failure the kind is not kept)
   return k;
 }
-WG_TYPE_TEXT :: [5] string.["","bool","f32","i32","u32"];
-WG_ZERO_TEXT :: [5] string.["","false","0.0f","0i","0u"];
-wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {wg_put(s,out,WG_TYPE_TEXT[cast(int)wg_scalar(s,tree,w,t)]);}
+// A struct of two to four f32 fields in order is a vector: how many, else 0.
+wg_vector :: (tree:[]u32,w:[]u32,t:u32)->int {
+  if wg_tk(tree,w,t)!=7 {return 0;} // mutant: equivalent (every caller asks of a struct, or whether it is a vec4)
+  n:=cast(int)wg_part(tree,w,t,1);
+  if n<2 || n>4 {return 0;}
+  for i:0..<n {if wg_part(tree,w,t,2+2*i)!=2 || (wg_part(tree,w,t,3+2*i)&0x7FFFFFFF)!=cast(u32)(4*i) {return 0;}}
+  return n;
+}
+// A view, texture or sampler, which a module binds rather than passes.
+wg_resource :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->bool {return s[0].whole && wg_tk(tree,w,t)>=9;}
+WG_TYPE_TEXT :: [6] string.["","bool","f32","i32","u32","i32"];
+WG_ZERO_TEXT :: [6] string.["","false","0.0f","0i","0u","0i"];
+WG_FIELD :: [4] string.["x","y","z","w"];
+wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
+  if cast(int)t>=s[0].types {wg_fail(s,1);return;}
+  k:=wg_tk(tree,w,t);
+  if s[0].whole && k==7 {
+    v:=wg_vector(tree,w,t);
+    if v==0 {wg_put(s,out,"coax_t");wg_dec(s,out,t);return;}
+    wg_put(s,out,"vec");wg_dec(s,out,cast(u32)v);wg_put(s,out,"f");return;
+  }
+  if s[0].whole && k==8 {wg_put(s,out,"array<");wg_type(s,tree,w,out,wg_part(tree,w,t,1));wg_put(s,out,", ");wg_dec(s,out,wg_part(tree,w,t,2));wg_put(s,out,">");return;}
+  wg_put(s,out,WG_TYPE_TEXT[cast(int)wg_scalar(s,tree,w,t)]);
+}
+// A value's zero: a scalar's literal, a struct's, vector's or array's constructor with nothing.
+wg_zero :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {
+  if cast(int)t<s[0].types && wg_tk(tree,w,t)>=7 {wg_type(s,tree,w,out,t);wg_put(s,out,"()");return;}
+  wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,t)]);
+}
+// Field i: a vector's component, and the same names for a struct's first four.
+wg_field :: (s:[]WgState,out:[]u8,i:u32) {
+  if i<4 {wg_put(s,out,WG_FIELD[cast(int)i]);return;}
+  wg_put(s,out,"f");wg_dec(s,out,i);
+}
 
 // A constant of kind k from its word: exact, and wrapped when negative so no `--` forms.
 wg_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) {
@@ -162,10 +216,56 @@ wg_has_local :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->bool {
   if i>=cast(int)tree[wg_locals_at(tree,w,s[0].proc)] {wg_fail(s,1);return false;} // mutant: equivalent (after a failure what is written is not kept)
   return true;
 }
-wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
-  if wg_next(s,tree)!=40 {wg_fail(s,4);return;}
-  i:=cast(int)wg_next(s,tree);
-  if wg_has_local(s,tree,w,i) {wg_local(s,names,out,i,false);}
+wg_local_type :: (tree:[]u32,w:[]u32,p:int,i:int)->u32 {return tree[wg_locals_at(tree,w,p)+1+i];}
+// The word of the variant being written for its parameter i (WG_NONE for any other local).
+wg_bound :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->u32 {
+  if i>=wg_params(tree,w,s[0].proc) {return WG_NONE;}
+  return w[WG_W_POOL+s[0].var+2+i];
+}
+// Binding id's line in a module's names: its name, group, binding, and `uniform COUNT` for a uniform block.
+wg_binding :: (s:[]WgState,names:string,id:u32)->string {return wg_line(names,s[0].procs+cast(int)id);}
+// Whether local i is bound to a uniform block.
+wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool {
+  if !wg_has_local(s,tree,w,i) || !wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i)) || w[WG_W_ALIAS+i]!=0 {return false;}
+  id:=wg_bound(s,tree,w,i);
+  return id<WG_PTR && wg_word(wg_binding(s,names,id),3)=="uniform"; // mutant: equivalent (no pointer is to type 0, void)
+}
+// A local as an expression or a place: in a module a resource is its binding's variable,
+// named as the binding, a view of a local array is that array, and a view given as a
+// pointer is what it points to.
+wg_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) {
+  if !wg_has_local(s,tree,w,i) {return;}
+  if !wg_resource(s,tree,w,wg_local_type(tree,w,s[0].proc,i)) {wg_local(s,names,out,i,false);return;}
+  a:=w[WG_W_ALIAS+i];
+  if a>0 {wg_local(s,names,out,cast(int)a-1,false);return;}
+  id:=wg_bound(s,tree,w,i);
+  if id==WG_NONE {wg_fail(s,4);return;}
+  if id<WG_PTR {wg_put(s,out,wg_word(wg_binding(s,names,id),0));return;} // mutant: equivalent (no pointer is to type 0, void)
+  wg_put(s,out,"(*");wg_local(s,names,out,i,true);wg_put(s,out,")");
+}
+// A place: a local; in a module also a field of a place and an element of a place, where
+// a uniform block's float i is its vector i/4's component i%4, read by its helper
+// (wg_global) so the index is reckoned once. A uniform block is not stored to.
+wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) {
+  c:=wg_next(s,tree);
+  if c==40 {wg_ref_local(s,tree,names,w,out,cast(int)wg_next(s,tree));return;}
+  if s[0].whole && c==41 {wg_place(s,tree,names,w,out,store);wg_put(s,out,".");wg_field(s,out,wg_next(s,tree));return;}
+  if s[0].whole && c==42 {
+    at:=s[0].at;
+    if wg_next(s,tree)==40 {
+      i:=cast(int)wg_next(s,tree);
+      if wg_uniform(s,tree,names,w,i) {
+        if store {wg_fail(s,4);return;}
+        wg_put(s,out,"coax_at_");wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"(i32(");wg_expr(s,tree,names,w,out);wg_put(s,out,"))");
+        return;
+      }
+    }
+    s[0].at=at;
+    wg_place(s,tree,names,w,out,store);
+    wg_put(s,out,"[");wg_expr(s,tree,names,w,out);wg_put(s,out,"]");
+    return;
+  }
+  wg_fail(s,4);
 }
 
 // ---- expressions, each written as it is read. Their types are the checked tree's
@@ -176,20 +276,109 @@ WG_MATH :: [9] string.["","sin(","cos(","tan(","exp(","log(","sqrt(","floor(","a
 wg_expr_from :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,at:int) {s[0].at=at;wg_expr(s,tree,names,w,out);}
 // Past the expression at the reading, writing nothing.
 wg_skip :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {s[0].mute+=1;wg_expr(s,tree,names,w,out);s[0].mute-=1;}
+// A call in a module: its resource arguments, the caller's bindings or local arrays,
+// pick the variant of the procedure for them, and the others are its arguments.
+wg_call :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,n:int) {
+  if n>WG_ARGS {wg_fail(s,3);return;}
+  ids:[WG_ARGS] u32;sig:=wg_sig(w,p);args:=s[0].at;
+  for i:0..<n {
+    ids[i]=WG_NONE;
+    if wg_resource(s,tree,w,tree[sig+2+i]) {
+      // a resource argument is a resource local of the caller, as it is bound
+      if wg_next(s,tree)!=18 {wg_fail(s,4);return;}
+      l:=cast(int)wg_next(s,tree);
+      if !wg_has_local(s,tree,w,l) {return;}
+      a:=w[WG_W_ALIAS+l];
+      // a view of nothing bound (WG_NONE) is written as the argument it is, which refuses it
+      ids[i]=ifx a>0 then WG_PTR|wg_local_type(tree,w,s[0].proc,cast(int)a-1) else wg_bound(s,tree,w,l);
+    }
+    else {wg_skip(s,tree,names,w,out);}
+  }
+  v:=wg_variant(s,tree,w,p,ids[0..<n]);
+  if v<0 {return;}
+  s[0].called=wg_ret(tree,w,p)==WG_VOID;
+  wg_variant_name(s,names,w,out,v);wg_put(s,out,"(");
+  s[0].at=args;first:=true;
+  for i:0..<n {
+    if ids[i]<WG_PTR {s[0].at+=2;continue;} // mutant: equivalent (no pointer is to type 0, void)
+    if !first {wg_put(s,out,", ");}
+    first=false;
+    if ids[i]==WG_NONE {wg_expr(s,tree,names,w,out);continue;}
+    // a pointer: to the caller's array, or the one the caller was given
+    s[0].at+=1;l:=cast(int)wg_next(s,tree);a:=w[WG_W_ALIAS+l];
+    if a>0 {wg_put(s,out,"&");wg_local(s,names,out,cast(int)a-1,false);}
+    else {wg_local(s,names,out,l,true);}
+  }
+  wg_put(s,out,")");
+}
+// Procedure p's variant for the words ids: the one there is, else a new one at the end
+// of the pool; -1 when the pool has no room.
+wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int {
+  seq:u32=0;r:=0;
+  while r<s[0].pool {
+    q:=cast(int)w[WG_W_POOL+r];
+    if q==p {
+      seq+=1;same:=true;
+      for i:0..<ids.count {if w[WG_W_POOL+r+2+i]!=ids[i] {same=false;}}
+      if same {return r;}
+    }
+    r+=2+wg_params(tree,w,q);
+  }
+  if WG_W_POOL+r+2+ids.count>w.count {
+    wg_fail(s,3);
+    return -1; // mutant: equivalent (after a failure the variant is not read)
+  }
+  w[WG_W_POOL+r]=cast(u32)p;w[WG_W_POOL+r+1]=seq;
+  for i:0..<ids.count {w[WG_W_POOL+r+2+i]=ids[i];}
+  s[0].pool=r+2+ids.count;
+  return r;
+}
+// The GPU procedures (verse/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
+// depth compare (at level 0, as SPIR-V's explicit-level compare) and a texture's size.
+WG_GPU :: [12] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
+  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions("];
+WG_GPU_ARGS :: [12] int.[0,0,3,4,4,5,5,4,4,4,1,1];
+wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
+  if g<1 || g>11 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  wg_put(s,out,WG_GPU[g]);
+  if g==1 {s[0].called=true;return;}
+  for i:0..<n {
+    if i>0 {wg_put(s,out,ifx (g==7 || g==8) && i==1 then ", vec2i(" else ", ");}
+    wg_expr(s,tree,names,w,out);
+    if (g==7 || g==8) && i==2 {wg_put(s,out,")");}
+  }
+  wg_put(s,out,ifx g==10 then ").x" else (ifx g==11 then ").y" else ")"));
+}
+// A view's count: a local array's length, a storage buffer's arrayLength (a uniform
+// block has none).
+wg_count :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if wg_next(s,tree)!=40 {wg_fail(s,4);return;}
+  i:=cast(int)wg_next(s,tree);
+  if !wg_has_local(s,tree,w,i) {return;}
+  a:=w[WG_W_ALIAS+i];
+  if a>0 {wg_dec(s,out,wg_part(tree,w,wg_local_type(tree,w,s[0].proc,cast(int)a-1),2));wg_put(s,out,"i");return;}
+  id:=wg_bound(s,tree,w,i);
+  if id==WG_NONE || wg_uniform(s,tree,names,w,i) {wg_fail(s,4);return;}
+  if id<WG_PTR {wg_put(s,out,"i32(arrayLength(&");wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"))");return;} // mutant: equivalent (no pointer is to type 0, void)
+  wg_dec(s,out,wg_part(tree,w,id-WG_PTR,2));wg_put(s,out,"i");
+}
 wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   k:=wg_next(s,tree);
   if k==16 {
     t:=wg_next(s,tree);v:=wg_next(s,tree);kind:=wg_scalar(s,tree,w,t);
+    if kind==5 {
+      // an int's two words, as the i32 it must fit
+      hi:=wg_next(s,tree);
+      if hi!=(ifx v>=0x80000000 then cast(u32)0xFFFFFFFF else cast(u32)0) {wg_fail(s,4);return;}
+      kind=3;
+    }
     wg_const(s,names,w,out,kind,v);
     return;
   }
-  if k==17 {wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,wg_next(s,tree))]);return;}
-  if k==18 {
-    i:=cast(int)wg_next(s,tree);
-    if wg_has_local(s,tree,w,i) {wg_local(s,names,out,i,false);}
-    return;
-  }
-  if k==27 {wg_place(s,tree,names,w,out);return;}
+  if k==17 {wg_zero(s,tree,w,out,wg_next(s,tree));return;}
+  if k==18 {wg_ref_local(s,tree,names,w,out,cast(int)wg_next(s,tree));return;}
+  if k==27 {wg_place(s,tree,names,w,out,false);return;}
   if k==19 {
     op:=cast(int)wg_next(s,tree);
     if op<1 || op>18 {wg_fail(s,1);return;}
@@ -208,6 +397,7 @@ wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   if k==22 {
     p:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);
     if p>=s[0].procs || n!=wg_params(tree,w,p) {wg_fail(s,1);return;}
+    if s[0].whole {wg_call(s,tree,names,w,out,p,n);return;}
     s[0].called=wg_ret(tree,w,p)==WG_VOID;
     wg_proc_name(s,names,w,out,p);wg_put(s,out,"(");
     for i:0..<n {
@@ -243,6 +433,22 @@ wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
     s[0].at=end;
     return;
   }
+  if s[0].whole && k==25 {
+    wg_put(s,out,"(");wg_expr(s,tree,names,w,out);wg_put(s,out,").");wg_field(s,out,wg_next(s,tree));
+    return;
+  }
+  if s[0].whole && k==31 {
+    wg_type(s,tree,w,out,wg_next(s,tree));n:=cast(int)wg_next(s,tree);
+    wg_put(s,out,"(");
+    for i:0..<n {
+      if i>0 {wg_put(s,out,", ");}
+      wg_expr(s,tree,names,w,out);
+    }
+    wg_put(s,out,")");
+    return;
+  }
+  if s[0].whole && k==32 {wg_count(s,tree,names,w,out);return;}
+  if s[0].whole && k==33 {wg_gpu(s,tree,names,w,out);return;}
   if k==29 || k==30 {
     t:=wg_next(s,tree);
     if wg_scalar(s,tree,w,t)==1 {wg_fail(s,4);return;}
@@ -272,7 +478,7 @@ wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
     wg_expr_from(s,tree,names,w,out,at);wg_put(s,out,";\n");
     return;
   }
-  if k==3 {wg_tab(s,out);wg_place(s,tree,names,w,out);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==3 {wg_tab(s,out);wg_place(s,tree,names,w,out,true);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
   if k==4 {wg_tab(s,out);wg_put(s,out,"return ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
   if k==5 {wg_tab(s,out);wg_put(s,out,"return;\n");return;}
   if k==6 {
@@ -298,14 +504,20 @@ wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
     wg_tab(s,out);wg_put(s,out,"let coax_to: ");wg_type(s,tree,w,out,t);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");
     wg_tab(s,out);wg_put(s,out,"for (");wg_local(s,names,out,i,false);wg_put(s,out," = coax_from; ");
     wg_local(s,names,out,i,false);wg_put(s,out," < coax_to; ");
-    wg_local(s,names,out,i,false);wg_put(s,out," = ");wg_local(s,names,out,i,false);wg_put(s,out,ifx kind==3 then " + 1i)\n" else " + 1u)\n");
+    wg_local(s,names,out,i,false);wg_put(s,out," = ");wg_local(s,names,out,i,false);wg_put(s,out,ifx kind==4 then " + 1u)\n" else " + 1i)\n");
     wg_body(s,tree,names,w,out);
     s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");
     return;
   }
   if k==9 {wg_tab(s,out);wg_put(s,out,"break;\n");return;}
   if k==10 {wg_tab(s,out);wg_put(s,out,"continue;\n");return;}
-  if k==11 {wg_fail(s,4);return;}
+  if k==11 {
+    // a view of a whole local array: the array itself from here
+    if !s[0].whole {wg_fail(s,4);return;}
+    v:=cast(int)wg_next(s,tree);a:=cast(int)wg_next(s,tree);
+    if wg_has_local(s,tree,w,v) && wg_has_local(s,tree,w,a) {w[WG_W_ALIAS+v]=cast(u32)a+1;} // mutant: equivalent (a local past the procedure's is refused by wg_has_local itself)
+    return;
+  }
   wg_fail(s,1);
 }
 // A statement as the braced body WGSL wants after if, else, while and for.
@@ -319,21 +531,34 @@ wg_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
 // One procedure: its signature, its parameters copied into variables (WGSL's are not
 // assignable), its other locals, its body, and a return of zero when the body does not
 // end in one (WGSL asks every path to return).
-wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int) {
-  s[0].proc=p;
+// Procedure p: in a module its variant v (at v in the pool).
+wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int,v:int) {
+  s[0].proc=p;s[0].var=v;
   sig:=wg_sig(w,p);np:=wg_params(tree,w,p);ret:=wg_ret(tree,w,p);
   at:=wg_locals_at(tree,w,p);nl:=cast(int)tree[at];
+  if nl>WG_LOCALS {wg_fail(s,3);return;}
   for i:0..<nl+1 {if wg_word(wg_line(names,p),i).count==0 {wg_fail(s,6);return;}}
-  wg_put(s,out,"fn ");wg_proc_name(s,names,w,out,p);wg_put(s,out,"(");
+  wg_put(s,out,"fn ");
+  if s[0].whole {wg_variant_name(s,names,w,out,v);} else {wg_proc_name(s,names,w,out,p);}
+  wg_put(s,out,"(");first:=true;
   for i:0..<np {
-    if i>0 {wg_put(s,out,", ");}
-    wg_local(s,names,out,i,true);wg_put(s,out,": ");wg_type(s,tree,w,out,tree[sig+2+i]);
+    t:=tree[sig+2+i];
+    // a bound resource is its binding's variable, not a parameter; a view of a caller's array, a pointer to it
+    to:=wg_resource(s,tree,w,t);
+    if to && wg_bound(s,tree,w,i)<WG_PTR {continue;} // mutant: equivalent (no pointer is to type 0, void)
+    if !first {wg_put(s,out,", ");}
+    first=false;
+    wg_local(s,names,out,i,true);wg_put(s,out,": ");
+    if to {wg_put(s,out,"ptr<function, ");wg_type(s,tree,w,out,wg_bound(s,tree,w,i)-WG_PTR);wg_put(s,out,">");}
+    else {wg_type(s,tree,w,out,t);}
   }
   wg_put(s,out,")");
   if ret!=WG_VOID {wg_put(s,out," -> ");wg_type(s,tree,w,out,ret);}
   wg_put(s,out," {\n");s[0].indent=1;
   for i:0..<nl {
-    wg_tab(s,out);wg_put(s,out,"var ");wg_local(s,names,out,i,false);wg_put(s,out,": ");wg_type(s,tree,w,out,tree[at+1+i]);
+    w[WG_W_ALIAS+i]=0;t:=tree[at+1+i];
+    if wg_resource(s,tree,w,t) {continue;}
+    wg_tab(s,out);wg_put(s,out,"var ");wg_local(s,names,out,i,false);wg_put(s,out,": ");wg_type(s,tree,w,out,t);
     if i<np {wg_put(s,out," = ");wg_local(s,names,out,i,true);}
     wg_put(s,out,";\n");
   }
@@ -344,7 +569,7 @@ wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int) {
   n:=cast(int)wg_next(s,tree);returns:=false;
   for i:0..<n {returns=wg_peek(s,tree)==4;wg_stmt(s,tree,names,w,out);}
   if s[0].at!=body+size {wg_fail(s,1);return;}
-  if ret!=WG_VOID && !returns {wg_put(s,out,"  return ");wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,ret)]);wg_put(s,out,";\n");}
+  if ret!=WG_VOID && !returns {wg_put(s,out,"  return ");wg_zero(s,tree,w,out,ret);wg_put(s,out,";\n");}
   wg_put(s,out,"}\n");
 }
 
@@ -362,34 +587,62 @@ wg_helpers :: (s:[]WgState,names:string,w:[]u32,out:[]u8) {
   }
 }
 
-WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
-  st:[1] WgState;s:=st[..];w:=work;
+// The tree's types and procedures, where each starts: 0, or the refusal.
+// Type t named by the tree is one of its types.
+wg_type_ref :: (s:[]WgState,tree:[]u32,types:int) {if cast(int)wg_next(s,tree)>=types {wg_fail(s,1);}}
+// n type words; a refused one ends the reading.
+wg_type_refs :: (s:[]WgState,tree:[]u32,types:int,n:int) {
+  for i:0..<n {
+    if !s[0].ok {return;} // mutant: equivalent (only how long a refusal takes)
+    wg_type_ref(s,tree,types);
+  }
+}
+// The tree's types and procedures, where each starts, every type they name one of the
+// tree's: 0, or the reason it is refused.
+wg_head :: (s:[]WgState,tree:[]u32,w:[]u32)->int {
   s[0].ok=true;
-  if w.count<WG_W_WORDS {return -2;}
-  if wg_next(s,tree)!=2 {return -1;}
+  if w.count<WG_W_POOL {return 2;}
+  if wg_next(s,tree)!=2 {return 1;}
   types:=cast(int)wg_next(s,tree);
-  if types>WG_TYPES {return -3;}
-  if types<6 {return -1;}
+  if types>WG_TYPES {return 3;}
+  if types<6 {return 1;}
   for t:0..<types {
     w[WG_W_TYPE+t]=cast(u32)s[0].at;
     k:=wg_next(s,tree);
-    if k>11 {return -1;}
-    // a struct's count, then its parts' (type offset) and its size; an array's three; one more for 9 to 11
-    if k==7 {s[0].at+=2*cast(int)wg_next(s,tree)+1;}
-    if k==8 {s[0].at+=3;}
-    if k>=9 {s[0].at+=1;}
+    if k>11 {return 1;}
+    // a struct's count, then its parts' (type offset) and its size; an array's element,
+    // count and stride; a view's element; a texture's or a sampler's kind
+    if k==7 {
+      n:=cast(int)wg_next(s,tree);
+      for i:0..<n {
+        if !s[0].ok {break;} // mutant: equivalent (only how long a refusal takes)
+        wg_type_ref(s,tree,types);s[0].at+=1;
+      }
+      s[0].at+=1;
+    }
+    if k==8 || k==9 {wg_type_ref(s,tree,types);}
+    if k==8 {s[0].at+=2;}
+    if k>=10 {s[0].at+=1;}
   }
   s[0].types=types;
   procs:=cast(int)wg_next(s,tree);
-  if procs>WG_PROCS {return -3;}
+  if procs>WG_PROCS {return 3;}
   s[0].procs=procs;
   for p:0..<procs {
     w[WG_W_PROC+p]=cast(u32)s[0].at;w[WG_W_ROOT+p]=0;
-    s[0].at+=1;params:=cast(int)wg_next(s,tree);
-    s[0].at+=params;
-    s[0].at+=cast(int)wg_next(s,tree);
+    wg_type_ref(s,tree,types);
+    wg_type_refs(s,tree,types,cast(int)wg_next(s,tree));
+    wg_type_refs(s,tree,types,cast(int)wg_next(s,tree));
     s[0].at+=cast(int)wg_next(s,tree);
   }
+  // 0, or what a type's or procedure's reading refused
+  return cast(int)s[0].reason;
+}
+WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+  st:[1] WgState;s:=st[..];w:=work;
+  head:=wg_head(s,tree,w);
+  if head!=0 {return -head;}
+  procs:=s[0].procs;
   entries:=cast(int)wg_next(s,tree);
   if entries<1 {return -1;}
   for e:0..<entries {
@@ -401,7 +654,294 @@ WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
     s[0].at+=wg_params(tree,w,p);
   }
   if !s[0].ok || s[0].at!=tree.count {return -1;}
-  for p:0..<procs {wg_proc(s,tree,names,w,out,p);}
+  for p:0..<procs {wg_proc(s,tree,names,w,out,p,-1);} // mutant: equivalent (a function's procedure has no variant)
+  wg_helpers(s,names,w,out);
+  if !s[0].ok {return -cast(int)s[0].reason;}
+  return s[0].n;
+}
+
+
+// ---- modules: `coax wgsl FILE --vertices A,B --fragments C,D --bindings F`, the tree's
+// entries of stages 0 and 1 with their binding name ids. names: a line a procedure (an
+// entry's first word is its WGSL name), then a line a name id: the name, then for a
+// resource its group and binding (`NAME GROUP BINDING`), and `uniform COUNT` after them for
+// a []f32 read as a uniform block of COUNT vec4fs. Each struct but a vector is a WGSL
+// struct (coax_tN, its fields x, y, z, w, then fN); each resource an entry binds a module
+// variable named as its binding (host.js finds some by name), with coax_at_NAME for a
+// uniform block's floats; each procedure a function for each set of bindings it is
+// called with (coax_p_NAME, coax_p_NAME_K); and each entry a wrapper that takes the
+// stage's inputs, calls its procedure and returns its outputs through interface structs
+// (coax_in_N attributes, coax_io_N varyings, coax_out_N targets), as
+// lib/compiler/shader.coax's interface rules have them.
+
+wg_round :: (x:int,a:int)->int {return (x+a-1)/a*a;} // mutant: equivalent (every size, offset and alignment here is a multiple of 4)
+// WGSL's alignment and size of a type a storage buffer holds (wg_kept says whether it can).
+wg_align :: (tree:[]u32,w:[]u32,t:u32)->int {
+  k:=wg_tk(tree,w,t);
+  if k==8 {return wg_align(tree,w,wg_part(tree,w,t,1));}
+  v:=wg_vector(tree,w,t);
+  if v!=0 {return ifx v==2 then 8 else 16;}
+  // a struct's is its widest field's, and every field's is at least 4
+  a:=4;
+  if k!=7 {return a;}
+  for i:0..<cast(int)wg_part(tree,w,t,1) {
+    f:=wg_align(tree,w,wg_part(tree,w,t,2+2*i));
+    if f>a {a=f;} // mutant: equivalent (the larger of two equal is either)
+  }
+  return a;
+}
+wg_wsize :: (tree:[]u32,w:[]u32,t:u32)->int {
+  k:=wg_tk(tree,w,t);
+  if k==8 {e:=wg_part(tree,w,t,1);return cast(int)wg_part(tree,w,t,2)*wg_round(wg_wsize(tree,w,e),wg_align(tree,w,e));}
+  if k!=7 {return 4;}
+  v:=wg_vector(tree,w,t);
+  if v!=0 {return 4*v;}
+  off:=0;
+  for i:0..<cast(int)wg_part(tree,w,t,1) {f:=wg_part(tree,w,t,2+2*i);off=wg_round(off,wg_align(tree,w,f))+wg_wsize(tree,w,f);}
+  return wg_round(off,wg_align(tree,w,t));
+}
+// Whether WGSL lays t out as the tree's C layout does: f32s, i32s, u32s, and arrays and
+// structs of them with each element and field where C has it and the same size.
+wg_kept :: (tree:[]u32,w:[]u32,t:u32)->bool {
+  k:=wg_tk(tree,w,t);
+  if k>=2 && k<=4 {return true;}
+  if k==8 {e:=wg_part(tree,w,t,1);return wg_kept(tree,w,e) && wg_round(wg_wsize(tree,w,e),wg_align(tree,w,e))==cast(int)wg_part(tree,w,t,3);}
+  if k!=7 {return false;}
+  // a vector is WGSL's vecN, its size C's, its alignment wider (a field's or element's place says whether that fits)
+  if wg_vector(tree,w,t)!=0 {return true;}
+  n:=cast(int)wg_part(tree,w,t,1);off:=0;
+  for i:0..<n {
+    f:=wg_part(tree,w,t,2+2*i);
+    if !wg_kept(tree,w,f) {return false;}
+    off=wg_round(off,wg_align(tree,w,f)); // mutant: equivalent (a field WGSL rounds up makes the struct larger, which its size refuses)
+    if off!=cast(int)(wg_part(tree,w,t,3+2*i)&0x7FFFFFFF) {
+      return false; // mutant: equivalent (a field WGSL puts later makes the struct larger, which its size refuses)
+    }
+    off+=wg_wsize(tree,w,f);
+  }
+  return wg_round(off,wg_align(tree,w,t))==cast(int)wg_part(tree,w,t,2+2*n);
+}
+// A view's elements as a storage buffer's: kept, and as far apart as C has them.
+wg_stored :: (tree:[]u32,w:[]u32,t:u32)->bool {
+  if !wg_kept(tree,w,t) {return false;}
+  size:=ifx wg_tk(tree,w,t)==7 then cast(int)wg_part(tree,w,t,2+2*cast(int)wg_part(tree,w,t,1)) else 4;
+  return wg_round(wg_wsize(tree,w,t),wg_align(tree,w,t))==size;
+}
+
+// Struct t's fields as WGSL's: io 0 plain; WG_IN vertex attributes at locations; WG_IO a
+// position and varyings at locations, an integer or #flat one flat; WG_OUT color targets.
+WG_IN :: 1; WG_IO :: 2; WG_OUT :: 4;
+WG_IO_NAME :: [5] string.["coax_t","coax_in_","coax_io_","","coax_out_"];
+wg_struct :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32,io:int) {
+  wg_put(s,out,"struct ");wg_put(s,out,WG_IO_NAME[io]);wg_dec(s,out,t);wg_put(s,out," {\n");
+  n:=cast(int)wg_part(tree,w,t,1);
+  if n==0 {wg_fail(s,4);return;}
+  for i:0..<n {
+    f:=wg_part(tree,w,t,2+2*i);
+    wg_put(s,out,"  ");
+    if io==WG_IO && i==0 {wg_put(s,out,"@builtin(position) ");}
+    if io!=0 && !(io==WG_IO && i==0) {
+      wg_put(s,out,"@location(");wg_dec(s,out,cast(u32)(ifx io==WG_IO then i-1 else i));wg_put(s,out,") ");
+      k:=wg_tk(tree,w,f);
+      if io==WG_IO && (k==3 || k==4 || k==5 || (wg_part(tree,w,t,3+2*i)&0x80000000)!=0) {wg_put(s,out,"@interpolate(flat) ");} // mutant: equivalent (no offset reaches bit 0 or 30, so only bit 31 counts)
+    }
+    wg_field(s,out,cast(u32)i);wg_put(s,out,": ");wg_type(s,tree,w,out,f);wg_put(s,out,",\n");
+  }
+  wg_put(s,out,"}\n");
+}
+// Struct t's value from the one named `from` of the struct `into`N: into_t(from.x, from.y, ...).
+wg_convert :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,into:string,t:u32,from:string) {
+  wg_put(s,out,into);wg_dec(s,out,t);wg_put(s,out,"(");
+  for i:0..<cast(int)wg_part(tree,w,t,1) {
+    if i>0 {wg_put(s,out,", ");}
+    wg_put(s,out,from);wg_put(s,out,".");wg_field(s,out,cast(u32)i);
+  }
+  wg_put(s,out,")");
+}
+// Entry e's tree, procedure, and how many of its parameters come before its resources.
+wg_entry_at :: (w:[]u32,e:int)->int {return cast(int)w[WG_W_ENTRY+e];}
+wg_entry_proc :: (tree:[]u32,w:[]u32,e:int)->int {return cast(int)tree[wg_entry_at(w,e)+1];}
+wg_plain :: (s:[]WgState,tree:[]u32,w:[]u32,p:int)->int {
+  sig:=wg_sig(w,p);
+  plain:=0; // mutant: equivalent (an entry with a shape has a plain parameter first)
+  for i:0..<wg_params(tree,w,p) {if !wg_resource(s,tree,w,tree[sig+2+i]) {plain=i+1;}}
+  return plain;
+}
+// A struct whose first field is a vec4, a stage's position.
+wg_staged :: (tree:[]u32,w:[]u32,t:u32)->bool {
+  return wg_tk(tree,w,t)==7 && wg_vector(tree,w,t)==0 && wg_vector(tree,w,wg_part(tree,w,t,2))==4;
+}
+wg_mark :: (w:[]u32,t:u32,io:u32) {w[WG_W_IO+cast(int)t]|=io;}
+// Whether entry e has a vertex's or a fragment's shape, marking the interface structs it needs.
+wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool {
+  stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);
+  sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
+  if stage==0 {
+    // the vertex and instance indices, then perhaps a struct of attributes
+    if plain<2 || plain>3 || tree[sig+2]!=4 || tree[sig+3]!=4 {return false;}
+    if plain==3 {
+      a:=tree[sig+4];
+      if wg_tk(tree,w,a)!=7 || wg_vector(tree,w,a)!=0 {return false;}
+      wg_mark(w,a,WG_IN);
+    }
+    // a position, or a position and varyings
+    if wg_vector(tree,w,ret)==4 {return true;}
+    if !wg_staged(tree,w,ret) {return false;}
+    wg_mark(w,ret,WG_IO);
+    return true;
+  }
+  // the position, or a position and varyings; then perhaps whether it is front facing
+  if plain<1 || plain>2 || (plain==2 && tree[sig+3]!=1) {return false;}
+  i0:=tree[sig+2];
+  if wg_vector(tree,w,i0)!=4 {
+    if !wg_staged(tree,w,i0) {return false;}
+    wg_mark(w,i0,WG_IO);
+  }
+  // nothing, a target, or a struct of targets
+  if ret==WG_VOID || wg_vector(tree,w,ret)==4 {return true;}
+  if wg_tk(tree,w,ret)!=7 {return false;}
+  for i:0..<cast(int)wg_part(tree,w,ret,1) {if wg_vector(tree,w,wg_part(tree,w,ret,2+2*i))!=4 {return false;}}
+  wg_mark(w,ret,WG_OUT);
+  return true;
+}
+// Binding id's module variable, of type t.
+WG_TEXTURES :: [3] string.["texture_2d<f32>","texture_2d_array<f32>","texture_depth_2d"];
+WG_SAMPLERS :: [2] string.["sampler","sampler_comparison"];
+wg_global :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,id:u32,t:u32) {
+  line:=wg_binding(s,names,id);name:=wg_word(line,0);
+  if wg_word(line,2).count==0 {wg_fail(s,7);return;}
+  k:=wg_tk(tree,w,t);d:=cast(int)wg_part(tree,w,t,1);
+  wg_put(s,out,"@group(");wg_put(s,out,wg_word(line,1));wg_put(s,out,") @binding(");wg_put(s,out,wg_word(line,2));wg_put(s,out,") var");
+  if k==9 && wg_word(line,3)=="uniform" {
+    if d!=2 {wg_fail(s,4);return;}
+    wg_put(s,out,"<uniform> ");wg_put(s,out,name);wg_put(s,out,": array<vec4f, ");wg_put(s,out,wg_word(line,4));wg_put(s,out,">;\n");
+    wg_put(s,out,"fn coax_at_");wg_put(s,out,name);wg_put(s,out,"(i: i32) -> f32 {\n  return ");wg_put(s,out,name);wg_put(s,out,"[i / 4][i % 4];\n}\n");
+    return;
+  }
+  if k==9 {
+    if !wg_stored(tree,w,cast(u32)d) {wg_fail(s,9);return;}
+    wg_put(s,out,"<storage, read> ");wg_put(s,out,name);wg_put(s,out,": array<");wg_type(s,tree,w,out,cast(u32)d);wg_put(s,out,">;\n");
+    return;
+  }
+  wg_put(s,out," ");wg_put(s,out,name);wg_put(s,out,": ");
+  if k==10 && d<3 {wg_put(s,out,WG_TEXTURES[d]);}
+  else if k==11 && d<2 {wg_put(s,out,WG_SAMPLERS[d]);}
+  else {wg_fail(s,1);}
+  wg_put(s,out,";\n");
+}
+// Whether a resource of entry e before its parameter i, or of an earlier entry, has binding id.
+wg_seen :: (s:[]WgState,tree:[]u32,w:[]u32,e:int,i:int,id:u32)->bool {
+  for f:0..<e+1 {
+    at:=wg_entry_at(w,f);p:=wg_entry_proc(tree,w,f);sig:=wg_sig(w,p);
+    n:=ifx f==e then i else wg_params(tree,w,p);
+    for j:0..<n { // mutant: equivalent (an entry's first parameter is never a resource)
+      if wg_resource(s,tree,w,tree[sig+2+j]) && tree[at+2+j]==id {return true;}
+    }
+  }
+  return false;
+}
+// Entry e's variant: its procedure with the entry's bindings.
+wg_entry_variant :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->int {
+  at:=wg_entry_at(w,e);p:=wg_entry_proc(tree,w,e);sig:=wg_sig(w,p);np:=wg_params(tree,w,p);
+  if np>WG_ARGS {
+    wg_fail(s,3);
+    return -1; // mutant: equivalent (after a failure the variant is not read)
+  }
+  ids:[WG_ARGS] u32;
+  for i:0..<np {ids[i]=ifx wg_resource(s,tree,w,tree[sig+2+i]) then tree[at+2+i] else WG_NONE;}
+  return wg_variant(s,tree,w,p,ids[0..<np]);
+}
+// Entry e's wrapper.
+wg_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) {
+  stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);
+  sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
+  v:=wg_entry_variant(s,tree,w,e);
+  i0:=tree[sig+2];
+  wg_put(s,out,ifx stage==0 then "@vertex\nfn " else "@fragment\nfn ");wg_put(s,out,wg_word(wg_line(names,p),0));
+  if stage==0 {
+    wg_put(s,out,"(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32");
+    if plain==3 {wg_put(s,out,", coax_in: coax_in_");wg_dec(s,out,tree[sig+4]);}
+  }
+  else {
+    if wg_vector(tree,w,i0)==4 {wg_put(s,out,"(@builtin(position) coax_pos: vec4f");}
+    else {wg_put(s,out,"(coax_in: coax_io_");wg_dec(s,out,i0);}
+    if plain==2 {wg_put(s,out,", @builtin(front_facing) coax_front: bool");}
+  }
+  wg_put(s,out,")");
+  vec:=wg_vector(tree,w,ret)==4;
+  if ret!=WG_VOID {
+    if vec {wg_put(s,out,ifx stage==0 then " -> @builtin(position) vec4f" else " -> @location(0) vec4f");}
+    else {wg_put(s,out,ifx stage==0 then " -> coax_io_" else " -> coax_out_");wg_dec(s,out,ret);}
+  }
+  wg_put(s,out," {\n  ");
+  if ret!=WG_VOID {wg_put(s,out,"let coax_r = ");}
+  wg_variant_name(s,names,w,out,v);
+  if stage==0 {
+    wg_put(s,out,"(coax_vid, coax_iid");
+    if plain==3 {wg_put(s,out,", ");wg_convert(s,tree,w,out,"coax_t",tree[sig+4],"coax_in");}
+  }
+  else {
+    if wg_vector(tree,w,i0)==4 {wg_put(s,out,"(coax_pos");}
+    else {wg_put(s,out,"(");wg_convert(s,tree,w,out,"coax_t",i0,"coax_in");}
+    if plain==2 {wg_put(s,out,", coax_front");}
+  }
+  wg_put(s,out,");\n");
+  if ret!=WG_VOID {
+    wg_put(s,out,"  return ");
+    if vec {wg_put(s,out,"coax_r");}
+    else {wg_convert(s,tree,w,out,ifx stage==0 then "coax_io_" else "coax_out_",ret,"coax_r");}
+    wg_put(s,out,";\n");
+  }
+  wg_put(s,out,"}\n");
+}
+
+WG_module :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+  st:[1] WgState;s:=st[..];w:=work;
+  head:=wg_head(s,tree,w);
+  if head!=0 {return -head;}
+  s[0].whole=true;
+  entries:=cast(int)wg_next(s,tree);
+  if entries<1 {return -1;}
+  if entries>WG_ENTRIES {return -3;}
+  for e:0..<entries {
+    w[WG_W_ENTRY+e]=cast(u32)s[0].at;
+    stage:=wg_next(s,tree);p:=cast(int)wg_next(s,tree);
+    if p>=s[0].procs {return -1;}
+    if stage>1 {return -5;}
+    if e==0 {w[WG_W_FIRST]=cast(u32)p;}
+    s[0].at+=wg_params(tree,w,p);
+  }
+  if !s[0].ok || s[0].at!=tree.count {return -1;}
+  for t:0..<s[0].types {w[WG_W_IO+t]=0;} // mutant: equivalent (type 0 is void, never an interface)
+  for e:0..<entries {if !wg_shape(s,tree,w,e) {return -8;}}
+  // the structs, plain and as interfaces
+  for t:0..<s[0].types { // mutant: equivalent (type 0 is void, not a struct)
+    if wg_tk(tree,w,cast(u32)t)!=7 || wg_vector(tree,w,cast(u32)t)!=0 {continue;}
+    io:=w[WG_W_IO+t];
+    wg_struct(s,tree,w,out,cast(u32)t,0);
+    if (io&WG_IN)!=0 {wg_struct(s,tree,w,out,cast(u32)t,WG_IN);}
+    if (io&WG_IO)!=0 {wg_struct(s,tree,w,out,cast(u32)t,WG_IO);}
+    if (io&WG_OUT)!=0 {wg_struct(s,tree,w,out,cast(u32)t,WG_OUT);}
+  }
+  // the bindings, each once
+  for e:0..<entries {
+    at:=wg_entry_at(w,e);p:=wg_entry_proc(tree,w,e);sig:=wg_sig(w,p);
+    for i:0..<wg_params(tree,w,p) { // mutant: equivalent (an entry's first parameter is never a resource)
+      t:=tree[sig+2+i];id:=tree[at+2+i];
+      if wg_resource(s,tree,w,t) && !wg_seen(s,tree,w,e,i,id) {wg_global(s,tree,names,w,out,id,t);}
+    }
+  }
+  // the entries' procedures, then every variant they call, as each is first called
+  for e:0..<entries {v:=wg_entry_variant(s,tree,w,e);}
+  // an entry with no variant has no wrapper to write
+  if !s[0].ok {return -cast(int)s[0].reason;}
+  r:=0;
+  while r<s[0].pool && s[0].ok {
+    p:=cast(int)w[WG_W_POOL+r];
+    wg_proc(s,tree,names,w,out,p,r);
+    r+=2+wg_params(tree,w,p);
+  }
+  for e:0..<entries {wg_wrapper(s,tree,names,w,out,e);}
   wg_helpers(s,names,w,out);
   if !s[0].ok {return -cast(int)s[0].reason;}
   return s[0].n;
@@ -439,10 +979,10 @@ WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_
 }
 #test "every refusal reason has its own text" {
   #assert WG_reason_text(0)=="" && WG_reason_text(1)=="a malformed tree" && WG_reason_text(2)=="WGSL larger than its buffer";
-  #assert WG_reason_text(3)=="more types or procedures than it holds" && WG_reason_text(4)=="a type or operation WGSL functions do not take yet";
-  #assert WG_reason_text(5)=="an entry that is not a function" && WG_reason_text(6)=="a procedure without its names";
-  #assert WG_reason_text(7)=="this reason" && WG_reason_text(4000000000)=="this reason";
-  #assert WG_work_words()==1537 && WG_out_bytes()==4194304;
+  #assert WG_reason_text(3)=="more types, procedures, entries, variants or locals than it holds" && WG_reason_text(4)=="a type or operation WGSL does not take here yet";
+  #assert WG_reason_text(5)=="an entry of a stage this mode does not write" && WG_reason_text(6)=="a procedure without its names";
+  #assert WG_reason_text(7)=="a resource without its group and binding" && WG_reason_text(8)=="an entry whose parameters or result are not a vertex's or a fragment's" && WG_reason_text(9)=="a storage buffer whose layout WGSL does not keep" && WG_reason_text(10)=="this reason" && WG_reason_text(4000000000)=="this reason";
+  #assert WG_work_words()==12353 && WG_W_POOL+WG_POOL==WG_W_WORDS && WG_out_bytes()==4194304;
 }
 #test "a malformed tree, a type or code it does not write, and a missing name are refused" {
   out:[4096] u8;
@@ -600,4 +1140,234 @@ WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_
 #test "a local named as an earlier one takes its index" {
   out:[4096] u8;
   #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 4 2 2 2 2 20 1 4 3 40 1 18 0 3 40 2 18 1 3 40 3 18 2 4 18 3 1 2 0 0","f x y y x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_y: f32;\n  var l_y_2: f32;\n  var l_x_3: f32;\n  l_y = l_x;\n  l_y_2 = l_y;\n  l_x_3 = l_y_2;\n  return l_x_3;\n}\n";
+}
+
+
+// ---- module checks: trees from `coax wgsl FILE --vertices A --fragments B --bindings F --tree`
+wg_mtry :: (text:string,names:string,out:[]u8)->int {
+  t:[8192] u32;work:[WG_W_WORDS] u32;
+  return WG_module(t[0..<wg_parse(text,t[..])],names,out,work[..]);
+}
+wg_mtext :: (text:string,names:string,out:[]u8)->string {return cast(string)out[0..<wg_mtry(text,names,out)];}
+// Three vertex entries (attributes and varyings; the position alone; varyings no fragment
+// takes) and three fragment entries (varyings, front facing and two targets; the position;
+// varyings no vertex gives, and no target): a uniform block, storage buffers of structs and
+// floats, each texture and sampler and every GPU procedure, fields and constructors, structs
+// of one and five floats, views of local arrays of two sizes passed down two calls as
+// pointers, a procedure called with two bindings, int and u32 loops, the i32's limits, pow.
+WG_SAMPLE_MOD :: "2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6";
+WG_NAMES_MOD :: "vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n";
+WG_WGSL_MOD :: "struct coax_t8 {\n  x: vec4f,\n  y: vec2f,\n}\nstruct coax_in_8 {\n  @location(0) x: vec4f,\n  @location(1) y: vec2f,\n}\nstruct coax_t10 {\n  x: vec4f,\n  y: vec4f,\n}\nstruct coax_t12 {\n  x: vec4f,\n  y: vec2f,\n  z: u32,\n  w: f32,\n  f4: i32,\n  f5: i32,\n}\nstruct coax_io_12 {\n  @builtin(position) x: vec4f,\n  @location(0) y: vec2f,\n  @location(1) @interpolate(flat) z: u32,\n  @location(2) @interpolate(flat) w: f32,\n  @location(3) @interpolate(flat) f4: i32,\n  @location(4) @interpolate(flat) f5: i32,\n}\nstruct coax_t13 {\n  x: vec4f,\n  y: f32,\n}\nstruct coax_io_13 {\n  @builtin(position) x: vec4f,\n  @location(0) y: f32,\n}\nstruct coax_t20 {\n  x: f32,\n}\nstruct coax_t21 {\n  x: f32,\n  y: f32,\n  z: f32,\n  w: f32,\n  f4: f32,\n}\nstruct coax_t22 {\n  x: u32,\n  y: f32,\n}\nstruct coax_t23 {\n  x: f32,\n  y: u32,\n}\nstruct coax_t24 {\n  x: vec4f,\n  y: vec4f,\n}\nstruct coax_out_24 {\n  @location(0) x: vec4f,\n  @location(1) y: vec4f,\n}\nstruct coax_t25 {\n  x: vec4f,\n  y: f32,\n}\nstruct coax_io_25 {\n  @builtin(position) x: vec4f,\n  @location(0) y: f32,\n}\n@group(0) @binding(0) var<uniform> u: array<vec4f, 4>;\nfn coax_at_u(i: i32) -> f32 {\n  return u[i / 4][i % 4];\n}\n@group(1) @binding(0) var<storage, read> objs: array<coax_t10>;\n@group(1) @binding(1) var t: texture_2d<f32>;\n@group(1) @binding(2) var s: sampler;\n@group(1) @binding(3) var d: texture_depth_2d;\n@group(1) @binding(4) var c: sampler_comparison;\n@group(1) @binding(5) var arr: texture_2d_array<f32>;\n@group(2) @binding(0) var<storage, read> u2: array<f32>;\nfn coax_p_vs(p_vid: u32, p_iid: u32, p_at: coax_t8) -> coax_t12 {\n  var l_vid: u32 = p_vid;\n  var l_iid: u32 = p_iid;\n  var l_at: coax_t8 = p_at;\n  var l_o: coax_t10;\n  var l_v: coax_t12;\n  l_o = objs[i32(l_iid)];\n  l_v = coax_t12();\n  l_v.x = vec4f((l_at.x.x + coax_p_rd(1i, 0i)), l_o.x.y, f32(i32(arrayLength(&objs))), 0x1.000000p0f);\n  l_v.y = l_at.y;\n  l_v.z = l_vid;\n  l_v.w = l_o.y.x;\n  l_v.f4 = i32(l_iid);\n  l_v.f5 = 3i;\n  return l_v;\n}\nfn coax_p_vs2(p_vid: u32, p_s: u32) -> vec4f {\n  var l_vid: u32 = p_vid;\n  var l_s: u32 = p_s;\n  return vec4f(coax_p_rd(0i, i32(l_s)), f32(l_vid), 0.0f, 0x1.000000p0f);\n}\nfn coax_p_vs3(p_vid: u32, p_iid: u32) -> coax_t13 {\n  var l_vid: u32 = p_vid;\n  var l_iid: u32 = p_iid;\n  var l_o: coax_t13;\n  l_o = coax_t13();\n  l_o.x = vec4f(f32(l_vid), f32(l_iid), 0.0f, 0x1.000000p0f);\n  l_o.y = 0x1.000000p-1f;\n  return l_o;\n}\nfn coax_p_fs(p_v: coax_t12, p_front: bool) -> coax_t24 {\n  var l_v: coax_t12 = p_v;\n  var l_front: bool = p_front;\n  var l_store: array<f32, 2>;\n  var l_k: f32;\n  var l_pw: f32;\n  var l_j: i32;\n  var l_b: u32;\n  var l_neg: i32;\n  var l_mx: i32;\n  var l_mn: i32;\n  var l_o1: coax_t20;\n  var l_f5: coax_t21;\n  var l_uf: coax_t22;\n  var l_p: coax_t23;\n  var l_a: vec4f;\n  var l_b_22: vec4f;\n  var l_e: vec4f;\n  var l_f: vec4f;\n  var l_g: vec4f;\n  var l_h: vec4f;\n  var l_l: f32;\n  var l_m: f32;\n  var l_out: coax_t24;\n  if ((!l_front))\n  {\n    discard;\n  }\n  l_store = array<f32, 2>();\n  l_store[1i] = 0x1.000000p-2f;\n  l_k = ((coax_p_deep(&l_store) + f32(2i)) + coax_p_helper());\n  l_pw = coax_pow_vs(l_k, 0x1.800000p1f);\n  {\n    let coax_from: i32 = 0i;\n    let coax_to: i32 = 2i;\n    for (l_j = coax_from; l_j < coax_to; l_j = l_j + 1i)\n    {\n      l_k = (l_k + 0x1.000000p0f);\n    }\n  }\n  {\n    let coax_from: u32 = 0u;\n    let coax_to: u32 = 2u;\n    for (l_b = coax_from; l_b < coax_to; l_b = l_b + 1u)\n    {\n      l_k = (l_k + f32(l_b));\n    }\n  }\n  l_neg = (-5i);\n  l_mx = 2147483647i;\n  l_mn = (-2147483647i - 1i);\n  l_o1 = coax_t20();\n  l_f5 = coax_t21();\n  l_uf = coax_t22();\n  l_o1.x = l_pw;\n  l_f5.f4 = f32((((l_neg + l_mx) + l_mn) + l_v.f5));\n  l_uf.y = (l_o1.x + l_f5.f4);\n  l_p = coax_t23(l_k, l_v.z);\n  l_a = textureSample(t, s, l_v.y);\n  l_b_22 = textureSampleLevel(t, s, l_v.y, coax_p_rd(i32(l_neg), 5i));\n  l_e = textureSample(arr, s, l_v.y, l_v.f4);\n  l_f = textureSampleLevel(arr, s, l_v.y, l_v.f4, 0.0f);\n  l_g = textureSampleBias(arr, s, l_v.y, l_v.f4, 0x1.000000p0f);\n  l_h = textureLoad(t, vec2i(1i, 2i), 0i);\n  l_l = (textureLoad(d, vec2i(1i, 2i), 0i) + textureSampleCompareLevel(d, c, l_v.y, 0x1.000000p-1f));\n  l_m = f32((((textureDimensions(t).x + textureDimensions(t).y) + textureDimensions(d).x) + textureDimensions(d).y));\n  l_out = coax_t24();\n  l_out.x = vec4f((((l_a.x + l_b_22.y) + l_e.z) + l_f.w), ((l_g.x + l_h.y) + l_uf.y), (l_l + l_m), (l_p.x + f32(l_p.y)));\n  l_out.y = l_v.x;\n  return l_out;\n}\nfn coax_p_fs2(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  return vec4f(coax_p_rd_1(0i, 0i), (textureSample(t, s, vec2f(l_pos.x, l_pos.y))).y, 0.0f, 0x1.000000p0f);\n}\nfn coax_p_fs3(p_v: coax_t25) {\n  var l_v: coax_t25 = p_v;\n  if ((l_v.y > 0x1.000000p-1f))\n  {\n    discard;\n  }\n}\nfn coax_p_rd(p_i: i32, p_j: i32) -> f32 {\n  var l_i: i32 = p_i;\n  var l_j: i32 = p_j;\n  return coax_at_u(i32((l_i + l_j)));\n}\nfn coax_p_deep(p_w: ptr<function, array<f32, 2>>) -> f32 {\n  coax_p_bump(p_w);\n  return ((*p_w)[0i] + f32(2i));\n}\nfn coax_p_helper() -> f32 {\n  var l_st: array<f32, 3>;\n  l_st = array<f32, 3>();\n  l_st[1i] = 0x1.000000p1f;\n  return (coax_p_deep_1(&l_st) + f32(3i));\n}\nfn coax_p_rd_1(p_i: i32, p_j: i32) -> f32 {\n  var l_i: i32 = p_i;\n  var l_j: i32 = p_j;\n  return u2[(l_i + l_j)];\n}\nfn coax_p_bump(p_w: ptr<function, array<f32, 2>>) {\n  (*p_w)[0i] = ((*p_w)[0i] + 0x1.000000p0f);\n}\nfn coax_p_deep_1(p_w: ptr<function, array<f32, 3>>) -> f32 {\n  coax_p_bump_1(p_w);\n  return ((*p_w)[0i] + f32(3i));\n}\nfn coax_p_bump_1(p_w: ptr<function, array<f32, 3>>) {\n  (*p_w)[0i] = ((*p_w)[0i] + 0x1.000000p0f);\n}\n@vertex\nfn vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32, coax_in: coax_in_8) -> coax_io_12 {\n  let coax_r = coax_p_vs(coax_vid, coax_iid, coax_t8(coax_in.x, coax_in.y));\n  return coax_io_12(coax_r.x, coax_r.y, coax_r.z, coax_r.w, coax_r.f4, coax_r.f5);\n}\n@vertex\nfn vs2(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> @builtin(position) vec4f {\n  let coax_r = coax_p_vs2(coax_vid, coax_iid);\n  return coax_r;\n}\n@vertex\nfn vs3(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> coax_io_13 {\n  let coax_r = coax_p_vs3(coax_vid, coax_iid);\n  return coax_io_13(coax_r.x, coax_r.y);\n}\n@fragment\nfn fs(coax_in: coax_io_12, @builtin(front_facing) coax_front: bool) -> coax_out_24 {\n  let coax_r = coax_p_fs(coax_t12(coax_in.x, coax_in.y, coax_in.z, coax_in.w, coax_in.f4, coax_in.f5), coax_front);\n  return coax_out_24(coax_r.x, coax_r.y);\n}\n@fragment\nfn fs2(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs2(coax_pos);\n  return coax_r;\n}\n@fragment\nfn fs3(coax_in: coax_io_25) {\n  coax_p_fs3(coax_t25(coax_in.x, coax_in.y));\n}\nfn coax_bits_vs(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\nfn coax_pow_vs(x: f32, y: f32) -> f32 {\n  if (y == 0.0f) {\n    return 1.0f;\n  }\n  if (x == 0.0f) {\n    return select(coax_bits_vs(0x7f800000u), 0.0f, y > 0.0f);\n  }\n  let r = pow(abs(x), y);\n  if (!(x < 0.0f)) {\n    return r;\n  }\n  if (floor(y) != y) {\n    return coax_bits_vs(0x7fc00000u);\n  }\n  if (fract(y * 0.5f) != 0.0f) {\n    return -r;\n  }\n  return r;\n}\n";
+// Storage buffers of structs WGSL lays out as C does: u32s, vec2s, an array of vec2s, a
+// struct, vec3s; and of u32s and i32s.
+WG_SAMPLE_STORE :: "2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5";
+WG_NAMES_STORE :: "fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n";
+WG_WGSL_STORE :: "struct coax_t9 {\n  x: f32,\n  y: u32,\n  z: f32,\n}\nstruct coax_t10 {\n  x: u32,\n  y: f32,\n  z: vec2f,\n  w: array<vec2f, 3>,\n  f4: f32,\n  f5: coax_t9,\n  f6: f32,\n  f7: f32,\n}\nstruct coax_t13 {\n  x: vec3f,\n  y: f32,\n}\nstruct coax_t15 {\n  x: f32,\n  y: f32,\n  z: vec2f,\n}\n@group(0) @binding(0) var<storage, read> k1: array<coax_t10>;\n@group(0) @binding(1) var<storage, read> k2: array<coax_t13>;\n@group(0) @binding(2) var<storage, read> k3: array<coax_t15>;\n@group(0) @binding(3) var<storage, read> us: array<u32>;\n@group(0) @binding(4) var<storage, read> is: array<i32>;\nfn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_x: coax_t10;\n  var l_y: coax_t13;\n  var l_z: coax_t15;\n  l_x = k1[0i];\n  l_y = k2[0i];\n  l_z = k3[0i];\n  return vec4f((((f32(l_x.x) + l_x.w[2i].y) + l_x.f5.z) + l_x.f7), (l_y.x.z + l_y.y), (l_z.z.y + f32(us[0i])), f32(is[0i]));\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+#test "a module: interface structs, bindings, variants and entries, as Chrome's WebGPU compiles it" {
+  out:[65536] u8;
+  #assert wg_mtext(WG_SAMPLE_MOD,WG_NAMES_MOD,out[..])==WG_WGSL_MOD;
+  #assert wg_mtext(WG_SAMPLE_STORE,WG_NAMES_STORE,out[..])==WG_WGSL_STORE;
+}
+#test "one work view serves one module after another, whatever it held" {
+  out:[65536] u8;t:[8192] u32;work:[WG_W_WORDS] u32;
+  for i:0..<WG_W_WORDS {work[i]=7;}
+  n:=wg_parse(WG_SAMPLE_MOD,t[..]);
+  r:=WG_module(t[0..<n],WG_NAMES_MOD,out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]==WG_WGSL_MOD;
+  n=wg_parse(WG_SAMPLE_STORE,t[..]);
+  r=WG_module(t[0..<n],WG_NAMES_STORE,out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]==WG_WGSL_STORE;
+  n=wg_parse(WG_SAMPLE_MOD,t[..]);
+  r=WG_module(t[0..<n],WG_NAMES_MOD,out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]==WG_WGSL_MOD;
+}
+#test "the pool holds the variants it is given room for: the sample's in 4220 words of work and not one fewer" {
+  out:[65536] u8;t:[8192] u32;work:[WG_W_WORDS] u32;
+  n:=wg_parse(WG_SAMPLE_MOD,t[..]);
+  #assert WG_module(t[0..<n],WG_NAMES_MOD,out[..],work[0..<4220])==WG_WGSL_MOD.count;
+  #assert WG_module(t[0..<n],WG_NAMES_MOD,out[..],work[0..<4219])==-3;
+  #assert WG_module(t[0..<n],WG_NAMES_MOD,out[..],work[0..<WG_W_POOL-1])==-2;
+}
+#test "a module: a procedure holds 2048 locals, and not 2049" {
+  // nameless, so the 2048 are taken and refused for their names (a full one costs more steps than a test has)
+  out:[1024] u8;
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 0 1 6 2048 6 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 0 1 1 0 0","f\npos\n",out[..])==-6;
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 0 1 6 2049 6 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 0 1 1 0 0","f\npos\n",out[..])==-3;
+}
+#test "a module: a call holds 64 arguments, and not 65" {
+  out:[131072] u8;
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 2 0 1 6 1 6 198 1 1 2 22 1 64 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 2 64 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 64 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 6 1 1 4 16 2 0 1 1 0 0","f pos\ng x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\npos\n",out[..])==3161;
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 2 0 1 6 1 6 201 1 1 2 22 1 65 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 16 2 0 2 65 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 65 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 6 1 1 4 16 2 0 1 1 0 0","f pos\ng x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\npos\n",out[..])==-3;
+}
+#test "a module: an entry holds 64 parameters (the position and 63 resources), and not 65" {
+  out:[131072] u8;
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 11 0 1 0 64 6 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 64 6 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 2 1 0 1 1 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1","f pos s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s\npos\ns 0 0\n",out[..])==173;
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 11 0 1 0 65 6 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 65 6 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 2 1 0 1 1 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1","f pos s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s s\npos\ns 0 0\n",out[..])==-3;
+}
+#test "a module refuses an entry it cannot wire, a resource it cannot bind and a value WGSL cannot hold" {
+  out:[65536] u8;
+  // a vertex index that is a float
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 2 2 4 2 2 4 17 1 1 4 31 6 4 18 0 16 2 0 16 2 0 16 2 1065353216 1 0 0 0 1","vs vid iid\nvid\niid\n",out[..])==-8;
+  // an instance index that is a float
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 2 4 2 2 4 2 17 1 1 4 31 6 4 18 1 16 2 0 16 2 0 16 2 1065353216 1 0 0 0 1","vs vid iid\nvid\niid\n",out[..])==-8;
+  // a vertex entry with one value
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 4 1 4 18 1 1 4 31 6 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 1 0 0 0","vs vid\nvid\n",out[..])==-8;
+  // a vertex entry with a fourth value
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 1 6 4 4 4 8 2 4 4 4 8 2 8 1 1 4 27 41 40 2 0 1 0 0 0 1 2 3","vs vid iid a x\nvid\niid\na\nx\n",out[..])==-8;
+  // attributes that are a float
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 3 4 4 2 3 4 4 2 17 1 1 4 31 6 4 18 2 16 2 0 16 2 0 16 2 1065353216 1 0 0 0 1 2","vs vid iid x\nvid\niid\nx\n",out[..])==-8;
+  // attributes that are a vector
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 3 4 4 6 3 4 4 6 5 1 1 4 18 2 1 0 0 0 1 2","vs vid iid x\nvid\niid\nx\n",out[..])==-8;
+  // a vertex result that is a float
+  #assert wg_mtry("2 6 0 1 2 3 4 5 1 2 2 4 4 2 4 4 6 1 1 4 16 2 1065353216 1 0 0 0 1","vs vid iid\nvid\niid\n",out[..])==-8;
+  // a vertex result whose first field is not the position
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 2 2 0 2 4 8 7 4 2 0 2 4 2 8 2 12 16 7 2 6 0 7 8 24 1 8 2 4 4 3 4 4 8 10 1 2 3 40 2 17 8 4 18 2 1 0 0 0 1","vs vid iid o\nvid\niid\n",out[..])==-8;
+  // a fragment entry with no values
+  #assert wg_mtry("2 10 0 1 2 3 4 5 10 0 11 0 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 1 8 2 6 7 2 6 7 20 1 1 4 33 2 8 3 18 0 18 1 31 9 2 16 2 0 16 2 0 1 1 0 0 1","fs t s\nt 0 0\ns 0 1\n",out[..])==-8;
+  // a fragment entry with a third value
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 3 6 1 2 3 6 1 2 5 1 1 4 18 0 1 1 0 0 1 2","fs pos front k\npos\nfront\nk\n",out[..])==-8;
+  // a fragment second value that is not whether it faces
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 2 6 2 2 6 2 5 1 1 4 18 0 1 1 0 0 1","fs pos k\npos\nk\n",out[..])==-8;
+  // a fragment input that is not staged
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 2 2 0 4 4 8 7 4 2 0 2 4 2 8 2 12 16 1 7 1 6 1 6 20 1 1 4 31 7 4 27 41 40 0 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs v\nv\n",out[..])==-8;
+  // a fragment result that is a float
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 2 1 6 1 6 8 1 1 4 27 41 40 0 0 1 1 0 0","fs pos\npos\n",out[..])==-8;
+  // a target that is not a vec4
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 1 8 1 6 2 6 8 17 1 3 3 40 1 17 8 3 41 40 1 0 18 0 4 18 1 1 1 0 0","fs pos o\npos\n",out[..])==-8;
+  // a first target that is not a vec4
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 7 0 6 8 24 1 8 1 6 2 6 8 17 1 3 3 40 1 17 8 3 41 40 1 1 18 0 4 18 1 1 1 0 0","fs pos o\npos\n",out[..])==-8;
+  // a texture with no line in the bindings
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 10 0 11 0 7 2 2 0 2 4 8 1 6 3 6 7 8 3 6 7 8 24 1 1 4 33 2 6 3 18 1 18 2 31 9 2 27 41 40 0 0 27 41 40 0 1 1 1 0 0 1 2","fs pos t s\npos\nt\ns 0 1\n",out[..])==-7;
+  // a sampler with a group and no binding
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 10 0 11 0 7 2 2 0 2 4 8 1 6 3 6 7 8 3 6 7 8 24 1 1 4 33 2 6 3 18 1 18 2 31 9 2 27 41 40 0 0 27 41 40 0 1 1 1 0 0 1 2","fs pos t s\npos\nt 0 0\ns 0\n",out[..])==-7;
+  // a uniform block of u32s
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 1 6 2 6 7 2 6 7 25 1 1 4 31 6 4 29 2 27 42 40 1 16 5 0 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1","fs pos u\npos\nu 0 0 uniform 1\n",out[..])==-4;
+  // a uniform block's count
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 2 6 7 2 6 7 20 1 1 4 31 6 4 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1","fs pos u\npos\nu 0 0 uniform 1\n",out[..])==-4;
+  // a store to a uniform block
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 2 6 7 2 6 7 16 1 2 3 42 40 1 16 5 0 0 16 2 1065353216 4 18 0 1 1 0 0 1","fs pos u\npos\nu 0 0 uniform 1\n",out[..])==-4;
+  // a view of nothing bound
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 28 1 2 3 40 1 17 7 4 31 6 4 27 42 40 1 16 5 0 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..])==-4;
+  // a view of nothing bound, passed on
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 2 6 1 6 2 6 7 25 1 2 3 40 1 17 7 4 31 6 4 22 1 1 18 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 11 1 1 4 27 42 40 0 16 5 0 0 1 1 0 0","fs pos w\ng w\npos\n",out[..])==-4;
+  // the count of a view of nothing bound
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 25 1 2 3 40 1 17 7 4 31 6 4 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..])==-4;
+  // an int past an i32
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 5 26 1 2 3 40 1 16 5 705032704 1 4 31 6 4 29 2 18 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos big\npos\n",out[..])==-4;
+  // an int one past the largest i32
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 5 26 1 2 3 40 1 16 5 2147483648 0 4 31 6 4 29 2 18 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos big\npos\n",out[..])==-4;
+  // an int one past the most negative i32
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 5 26 1 2 3 40 1 16 5 2147483647 4294967295 4 31 6 4 29 2 18 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos big\npos\n",out[..])==-4;
+  // storage: an array of vec2s after a float (vec2s align to 8)
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 2 8 7 2 2 0 8 4 20 9 9 1 6 2 6 10 3 6 10 9 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: a bool
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 1 4 8 9 7 1 6 2 6 8 3 6 8 7 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: a vec4 and a float (20 bytes in C, 32 in WGSL)
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 6 0 2 16 20 9 7 1 6 2 6 8 3 6 8 7 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: a float after a vec2 (20 bytes in C, 24 in WGSL)
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 4 2 0 2 4 7 8 2 16 20 9 8 1 6 2 6 9 3 6 9 8 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: a struct whose vec2 is not where WGSL puts it
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 2 0 7 4 12 7 2 2 0 8 4 16 9 9 1 6 2 6 10 3 6 10 9 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: an array of such structs
+  #assert wg_mtry("2 12 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 2 0 7 4 12 8 8 2 12 7 1 9 0 24 9 10 1 6 2 6 11 3 6 11 10 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: an array of vec3s (12 bytes apart in C, 16 in WGSL)
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 3 2 0 2 4 2 8 12 8 7 2 12 7 1 8 0 24 9 9 1 6 2 6 10 3 6 10 9 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: a vec3 after a float
+  #assert wg_mtry("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 3 2 0 2 4 2 8 12 7 2 2 0 7 4 16 9 8 1 6 2 6 9 3 6 9 8 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // storage: vec3s
+  #assert wg_mtry("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 3 2 0 2 4 2 8 12 9 7 1 6 2 6 8 3 6 8 7 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..])==-9;
+  // a GPU procedure 0
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 0 6 0 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // a GPU procedure past them
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 12 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // a sample of four values
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 4 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // a texture of kind 3
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 3 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // a sampler of kind 2
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 2 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // an entry of stage 2
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 2 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-5;
+  // a word too many
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6 0","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // an entry past the procedures
+  #assert wg_mtry("2 27 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 10 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-1;
+  // a struct with no fields
+  #assert wg_mtry("2 28 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 2 6 0 7 16 24 9 2 7 2 6 0 6 16 32 9 10 7 6 6 0 7 16 4 24 2 2147483676 3 32 5 40 48 7 2 6 0 2 16 20 10 0 11 0 10 2 11 1 10 1 8 2 2 4 7 1 2 0 4 7 5 2 0 2 4 2 8 2 12 2 16 20 7 2 4 0 2 4 8 7 2 2 0 4 4 8 7 2 6 0 6 16 32 7 2 6 0 2 16 20 8 2 3 4 7 0 0 10 12 5 4 4 8 9 11 7 4 4 8 9 11 10 12 111 1 9 3 40 5 27 42 40 4 29 3 18 1 3 40 6 17 12 3 41 40 6 0 31 6 4 19 1 27 41 41 40 2 0 0 22 6 3 16 3 1 18 3 16 3 0 27 41 41 40 5 0 1 29 2 32 40 4 16 2 1065353216 3 41 40 6 1 27 41 40 2 1 3 41 40 6 2 18 0 3 41 40 6 3 27 41 41 40 5 1 0 3 41 40 6 4 29 3 18 1 3 41 40 6 5 16 5 3 0 4 18 6 6 3 4 4 9 3 4 4 9 28 1 1 4 31 6 4 22 6 3 16 3 0 18 2 29 3 18 1 29 2 18 0 16 2 0 16 2 1065353216 13 2 4 4 3 4 4 13 40 1 4 3 40 2 17 13 3 41 40 2 0 31 6 4 29 2 18 0 29 2 18 1 16 2 0 16 2 1065353216 3 41 40 2 1 16 2 1056964608 4 18 2 24 8 12 1 9 14 15 16 17 18 30 12 1 9 14 15 16 17 18 19 9 2 2 5 4 5 5 5 20 21 22 23 6 6 6 6 6 6 2 2 24 497 1 30 6 0 21 18 1 1 1 2 33 1 0 0 3 40 8 17 19 11 9 8 3 42 40 9 16 5 1 0 16 2 1048576000 3 40 10 19 1 19 1 22 7 1 18 9 29 2 32 40 9 22 8 0 3 40 11 23 9 2 18 10 16 2 1077936128 8 12 16 5 0 0 16 5 2 0 1 1 3 40 10 19 1 18 10 16 2 1065353216 8 13 16 4 0 16 4 2 1 1 3 40 10 19 1 18 10 29 2 18 13 3 40 14 16 5 4294967291 4294967295 3 40 15 16 5 2147483647 0 3 40 16 16 5 2147483648 4294967295 3 40 17 17 20 3 40 18 17 21 3 40 19 17 22 3 41 40 17 0 18 11 3 41 40 18 4 29 2 19 1 19 1 19 1 18 14 18 15 18 16 27 41 40 0 5 3 41 40 19 1 19 1 27 41 40 17 0 27 41 40 18 4 3 40 20 31 23 2 18 10 27 41 40 0 2 3 40 21 33 2 6 3 18 3 18 4 27 41 40 0 1 3 40 22 33 3 6 4 18 3 18 4 27 41 40 0 1 22 6 3 29 3 18 14 18 2 16 3 5 3 40 23 33 4 6 4 18 7 18 4 27 41 40 0 1 27 41 40 0 4 3 40 24 33 5 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 0 3 40 25 33 6 6 5 18 7 18 4 27 41 40 0 1 27 41 40 0 4 16 2 1065353216 3 40 26 33 7 6 4 18 3 16 3 1 16 3 2 16 3 0 3 40 27 19 1 33 8 2 4 18 5 16 3 1 16 3 2 16 3 0 33 9 2 4 18 5 18 6 27 41 40 0 1 16 2 1056964608 3 40 28 29 2 19 1 19 1 19 1 33 10 4 1 18 3 33 11 4 1 18 3 33 10 4 1 18 5 33 11 4 1 18 5 3 40 29 17 24 3 41 40 29 0 31 6 4 19 1 19 1 19 1 27 41 40 21 0 27 41 40 22 1 27 41 40 23 2 27 41 40 24 3 19 1 19 1 27 41 40 25 0 27 41 40 26 1 27 41 40 19 1 19 1 18 27 18 28 19 1 27 41 40 20 0 29 2 27 41 40 20 1 3 41 40 29 1 27 41 40 0 0 4 18 29 6 4 6 9 14 15 4 6 9 14 15 46 1 1 4 31 6 4 22 6 3 16 3 0 18 1 16 3 0 25 33 2 6 3 18 2 18 3 31 7 2 27 41 40 0 0 27 41 40 0 1 1 16 2 0 16 2 1065353216 0 1 25 1 25 21 1 1 6 0 19 8 27 41 40 0 1 16 2 1056964608 1 1 2 33 1 0 0 2 3 3 9 3 3 3 9 3 13 1 1 4 27 42 40 1 19 1 18 0 18 2 2 1 9 1 9 24 1 2 2 22 9 1 18 0 4 19 1 27 42 40 0 16 5 0 0 29 2 32 40 0 2 0 2 26 9 34 1 4 3 40 0 17 26 11 1 0 3 42 40 1 16 5 1 0 16 2 1073741824 4 19 1 22 7 1 18 1 29 2 32 40 1 0 1 9 1 9 23 1 1 3 42 40 0 16 5 0 0 19 1 27 42 40 0 16 5 0 0 16 2 1065353216 6 0 0 0 1 2 3 4 0 1 0 5 3 0 2 0 1 1 3 6 7 3 8 5 9 10 11 1 4 12 13 8 5 1 5 6","vs vid iid at u objs o v\nvs2 vid s u\nvs3 vid iid o\nfs v front u t s d c arr store w k pw j b neg mx mn o1 f5 uf p a b e f g h l m out\nfs2 pos u2 t s\nfs3 v\nrd i u j\ndeep w\nhelper st v\nbump w\nvid\niid\nat\nu 0 0 uniform 4\nobjs 1 0\ns 1 2\nv\nfront\nt 1 1\nd 1 3\nc 1 4\narr 1 5\npos\nu2 2 0\n",out[..])==-4;
+  // a struct field's type past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 19 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // an array's element past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 19 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a view's element past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 19 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a result past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 19 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a parameter's type past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 19 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a local's type past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 19 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 6 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a constructor's type past the types
+  #assert wg_mtry("2 19 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 8 7 3 8 7 3 2 0 4 4 2 8 12 7 8 4 0 2 4 7 8 8 16 2 40 9 44 2 56 2 60 64 9 10 7 3 2 0 2 4 2 8 12 7 2 12 0 2 12 16 9 13 7 3 2 0 2 4 7 8 16 9 15 9 4 9 3 1 6 6 6 11 14 16 17 18 9 6 11 14 16 17 18 10 13 15 119 1 4 3 40 6 27 42 40 1 16 5 0 0 3 40 7 27 42 40 2 16 5 0 0 3 40 8 27 42 40 3 16 5 0 0 4 31 19 4 19 1 19 1 19 1 29 2 27 41 40 6 0 27 41 42 41 40 6 3 16 5 2 0 1 27 41 41 40 6 5 2 27 41 40 6 7 19 1 27 41 41 40 7 0 2 27 41 40 7 1 19 1 27 41 41 40 8 2 1 29 2 27 42 40 4 16 5 0 0 29 2 27 42 40 5 16 5 0 0 1 1 0 0 1 2 3 4 5","fs pos k1 k2 k3 us is x y z\npos\nk1 0 0\nk2 0 1\nk3 0 2\nus 0 3\nis 0 4\n",out[..])==-1;
+  // a resource argument that is not a local
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 2 6 2 6 7 2 6 7 27 1 1 4 31 6 4 19 1 22 1 1 17 1 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 11 1 1 4 27 42 40 0 16 5 0 0 1 1 0 0 1","fs pos u\ng u\npos\nu 0 0\n",out[..])==-4;
+  // the count of what is not a local
+  #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 2 6 2 6 7 2 6 7 27 1 1 4 31 6 4 19 1 22 1 1 18 1 29 2 32 41 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 11 1 1 4 27 42 40 0 16 5 0 0 1 1 0 0 1","fs pos u\ng u\npos\nu 0 0\n",out[..])==-4;
+  // no entries
+  #assert wg_mtry("2 6 0 1 2 3 4 5 0 0","",out[..])==-1;
+  // more entries than it holds
+  #assert wg_mtry("2 6 0 1 2 3 4 5 0 65","",out[..])==-3;
+  // the most entries, cut
+  #assert wg_mtry("2 6 0 1 2 3 4 5 0 64","",out[..])==-1;
+  // an entry one past the procedures, its words as many as the types
+  #assert wg_mtry("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 0 1 6 1 6 2 1 0 1 0 1 0 0 0 0 0 0","fs pos\npos\n",out[..])==-1;
+}
+// A module with every word of its work view fill (wg_mtry's are 0).
+wg_mfill :: (text:string,names:string,out:[]u8,fill:u32)->int {
+  t:[8192] u32;work:[WG_W_WORDS] u32;
+  for i:0..<WG_W_WORDS {work[i]=fill;} // mutant: equivalent (a module's output is the same whatever the work view held)
+  return WG_module(t[0..<wg_parse(text,t[..])],names,out,work[..]);
+}
+#test "a module refuses what it cannot write wherever it meets it, whatever the work view held" {
+  out:[65536] u8;
+  // a zero of a type past the types
+  #assert wg_mfill("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 6 10 1 2 3 40 1 17 7 4 18 1 1 1 0 0","fs pos o\npos\n",out[..],4000000000)==-1;
+  // a constructor of a type past the types
+  #assert wg_mfill("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 1 6 20 1 1 4 31 7 4 16 2 1065353216 27 41 40 0 1 16 2 0 16 2 1065353216 1 1 0 0","fs pos\npos\n",out[..],4000000000)==-1;
+  // a sample of two values, the words after it fields
+  #assert wg_mfill("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 1 6 21 1 1 4 31 6 4 33 2 6 2 27 41 40 0 1 16 2 0 16 2 1065353216 1 1 0 0","fs pos\npos\n",out[..],0)==-1;
+  // b6: a view of nothing bound, not given a zero
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 23 1 1 4 31 6 4 27 42 40 1 16 5 0 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..],0)==-4;
+  // b6: the same, the work view huge
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 23 1 1 4 31 6 4 27 42 40 1 16 5 0 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..],4000000000)==-4;
+  // b7: a view of nothing bound, not given a zero
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 2 6 1 6 2 6 7 20 1 1 4 31 6 4 22 1 1 18 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 11 1 1 4 27 42 40 0 16 5 0 0 1 1 0 0","fs pos w\ng w\npos\n",out[..],0)==-4;
+  // b7: the same, the work view huge
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 2 6 1 6 2 6 7 20 1 1 4 31 6 4 22 1 1 18 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 11 1 1 4 27 42 40 0 16 5 0 0 1 1 0 0","fs pos w\ng w\npos\n",out[..],4000000000)==-4;
+  // b8: a view of nothing bound, not given a zero
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 20 1 1 4 31 6 4 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..],0)==-4;
+  // b8: the same, the work view huge
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 1 6 1 6 2 6 7 20 1 1 4 31 6 4 29 2 32 40 1 16 2 0 16 2 0 16 2 1065353216 1 1 0 0","fs pos w\npos\n",out[..],4000000000)==-4;
+  // the count of what is not a local, last in its procedure
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 3 6 2 6 7 2 6 7 20 1 1 4 31 6 4 22 1 1 18 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 8 1 1 4 22 2 1 18 0 2 1 7 1 7 8 1 1 4 29 2 32 41 0 1 1 0 0 1","fs pos u\nh u\ng u\npos\nu 0 0\n",out[..],0)==-4;
+  // a resource argument that is not a local, last in its procedure
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 3 6 2 6 7 2 6 7 20 1 1 4 31 6 4 22 1 1 18 1 16 2 0 16 2 0 16 2 1065353216 2 1 7 1 7 8 1 1 4 22 2 1 17 0 2 1 7 1 7 8 1 1 4 29 2 32 40 0 1 1 0 0 1","fs pos u\nh u\ng u\npos\nu 0 0\n",out[..],0)==-4;
+  // an entry called by another: its one variant
+  #assert wg_mfill("2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 2 6 1 6 1 6 5 1 1 4 18 0 6 1 6 1 6 8 1 1 4 22 0 1 18 0 2 1 0 0 1 1 0","fs pos\nfs2 pos\npos\n",out[..],0)==444 && cast(string)out[0..<444]=="fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  return l_pos;\n}\nfn coax_p_fs2(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  return coax_p_fs(l_pos);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n@fragment\nfn fs2(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs2(coax_pos);\n  return coax_r;\n}\n";
+  // a view of a local array
+  #assert wg_mfill("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 8 2 4 4 1 6 2 6 7 4 6 7 8 7 42 1 4 3 40 2 17 8 3 42 40 2 16 5 1 0 16 2 1073741824 11 3 2 4 31 6 4 27 42 40 1 16 5 1 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1","fs pos u a v\npos\nu 0 0 uniform 1\n",out[..],0)==453 && cast(string)out[0..<453]=="@group(0) @binding(0) var<uniform> u: array<vec4f, 1>;\nfn coax_at_u(i: i32) -> f32 {\n  return u[i / 4][i % 4];\n}\nfn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: array<f32, 4>;\n  l_a = array<f32, 4>();\n  l_a[1i] = 0x1.000000p1f;\n  return vec4f(coax_at_u(i32(1i)), 0.0f, 0.0f, 0x1.000000p0f);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+  // a uniform parameter given a local array
+  #assert wg_mfill("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 8 2 4 4 1 6 2 6 7 4 6 7 8 7 42 1 4 3 40 2 17 8 3 42 40 2 16 5 1 0 16 2 1073741824 11 1 2 4 31 6 4 27 42 40 1 16 5 1 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1","fs pos u a v\npos\nu 0 0 uniform 1\n",out[..],0)==442 && cast(string)out[0..<442]=="@group(0) @binding(0) var<uniform> u: array<vec4f, 1>;\nfn coax_at_u(i: i32) -> f32 {\n  return u[i / 4][i % 4];\n}\nfn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: array<f32, 4>;\n  l_a = array<f32, 4>();\n  l_a[1i] = 0x1.000000p1f;\n  return vec4f(l_a[1i], 0.0f, 0.0f, 0x1.000000p0f);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+  // storage: ints (8 bytes in C, an i32 in WGSL)
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 5 1 6 2 6 7 3 6 7 5 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..],0)==-9;
+  // storage: an array of structs with a bool
+  #assert wg_mfill("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 1 0 2 4 8 8 7 2 8 7 1 8 0 16 9 9 1 6 2 6 10 3 6 10 9 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..],0)==-9;
+  // storage: a vec2 between floats (24 bytes in WGSL)
+  #assert wg_mfill("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 7 3 2 0 7 4 2 12 16 9 8 1 6 2 6 9 3 6 9 8 16 1 2 3 40 2 27 42 40 1 16 5 0 0 4 18 0 1 1 0 0 1","fs pos ps x\npos\nps 0 0\n",out[..],0)==-9;
+  // a fragment input that is a u32
+  #assert wg_mfill("2 8 0 1 2 3 4 5 7 1 2 0 4 7 4 2 0 2 4 2 8 2 12 16 1 7 1 4 1 4 5 1 1 4 17 7 1 1 0 0","fs v\n",out[..],0)==-8;
+  // an element of a local the procedure does not have
+  #assert wg_mfill("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 2 8 2 4 4 1 6 2 6 7 4 6 7 8 7 42 1 4 3 40 2 17 8 3 42 40 2 16 5 1 0 16 2 1073741824 11 3 2 4 31 6 4 27 42 40 999999 16 5 1 0 16 2 0 16 2 0 16 2 1065353216 1 1 0 0 1","fs pos u a v\npos\nu 0 0 uniform 1\n",out[..],0)==-1;
+  t:[8192] u32;work:[WG_W_WORDS] u32;
+  // no room for a variant
+  #assert WG_module(t[0..<wg_parse(WG_SAMPLE_MOD,t[..])],WG_NAMES_MOD,out[..],work[0..<WG_W_POOL])==-3;
 }

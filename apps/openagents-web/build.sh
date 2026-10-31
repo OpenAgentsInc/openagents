@@ -30,9 +30,10 @@ style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_sha
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_styled verse_outline_crease --into apps/openagents-web/fixture.wgsl)
 # The blob canopies (art-styles.md 7) go where there are kit trees or a traced tree: the fixture and Everglade.
 foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canopy_sway verse_style_canopy_open verse_style_near_reach verse_style_near_blades verse_style_near_width verse_style_chroma_gain"
-for w in fixture everglade; do
-  (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $foliage_fns --into "apps/openagents-web/$w.wgsl")
-done
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $foliage_fns --into apps/openagents-web/fixture.wgsl)
+# Everglade's whole module is Coax (verse/everglade/gpu.coax, with verse/style.coax): its
+# entries and bindings (verse/everglade/gpu.module, gpu.bindings) as coax wgsl writes them.
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu.coax apps/openagents-web/everglade.wgsl verse/everglade/gpu.module)
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
 facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.

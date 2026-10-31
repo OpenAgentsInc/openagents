@@ -1,0 +1,78 @@
+// A page's whole WGSL module from Coax (docs/verse/native-gpu.md, G6): `coax wgsl` writes
+// the vertex and fragment entries named, everything they call, their structs and their
+// bindings (lib/compiler/wgsl.coax), and this writes them to OUT under one header line.
+// The bindings file gives each resource its group and binding as the page's host.js
+// layouts have them; --strip takes a prefix off the entries' names (eg_post_fs is post_fs).
+//   coax/web/tool.sh coax/web/wgsl-module.coax FILE.coax OUT.wgsl OPTIONS     (from the repo root)
+// OPTIONS is a file of `--vertices A,B --fragments C,D --bindings F [--strip P]`, apart by
+// spaces or lines, so the page's build and its checks lower the same entries
+// (verse/everglade/gpu.module). OUT is written only when the module changes.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+WM_PAGE :: 4194304;
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  n := args_load(a[..]);
+  count := args_count(a[..]);
+  if !n || count != 3 { tool_errln("usage: wgsl-module FILE.coax OUT.wgsl OPTIONS"); return 2; }
+  file := args_at(a[..], 0); into := args_at(a[..], 1);
+  ob: [8192] u8;
+  on := fs_read(args_at(a[..], 2), ob[..]);
+  if on < 0 { tool_err("wgsl-module: no options file "); tool_errln(args_at(a[..], 2)); return 1; }
+  // coax wgsl FILE and the file's options
+  argv: [16] string;
+  argv[0] = "coax/bin/coax"; argv[1] = "wgsl"; argv[2] = file;
+  m := wm_words(cast(string) ob[0..<on], argv[3..<16]);
+  if m < 0 { tool_errln("wgsl-module: too many options"); return 2; }
+  out: [WM_PAGE] u8; err: [65536] u8;
+  r := proc_run(argv[0..<m + 3], 120000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    tool_err(cast(string) err[0..<r.err_n]);
+    tool_errln("wgsl-module: coax wgsl failed (run from the repo root)");
+    return 1;
+  }
+  page: [WM_PAGE] u8; pn := 0;
+  pn = wm_add(page[..], pn, "// ---- generated: "); pn = wm_add(page[..], pn, file);
+  pn = wm_add(page[..], pn, " (the module) by coax wgsl; do not edit\n");
+  pn = wm_add(page[..], pn, cast(string) out[0..<r.out_n]);
+  if pn < 0 { tool_errln("wgsl-module: the module is too large"); return 1; }
+  text := cast(string) page[0..<pn];
+  was: [WM_PAGE] u8;
+  wn := fs_read(into, was[..]);
+  if wn >= 0 && cast(string) was[0..<wn] == text { return 0; }
+  if !fs_write(into, text) { tool_err("wgsl-module: cannot write "); tool_errln(into); return 1; }
+  return 0;
+}
+// s after the n bytes of out; -1 when it does not fit (or n was already -1).
+wm_add :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+// The words of text (apart by spaces, tabs and lines) into into; their count, -1 when more than it holds.
+wm_words :: (text: string, into: [] string) -> int {
+  n := 0; i := 0;
+  while i < text.count {
+    if text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r' { i += 1; continue; }
+    j := i;
+    while j < text.count && text[j] != ' ' && text[j] != '\t' && text[j] != '\n' && text[j] != '\r' { j += 1; }
+    if n >= into.count { return -1; }
+    into[n] = text[i..<j]; n += 1; i = j;
+  }
+  return n;
+}
+#test "an options file's words" {
+  w: [3] string;
+  #assert wm_words("  --a b\n\t--c\r\n", w[..]) == 3 && w[0] == "--a" && w[1] == "b" && w[2] == "--c";
+  #assert wm_words("", w[..]) == 0 && wm_words("a b c d", w[..]) == -1;
+}
+#test "adding to a page" {
+  o: [4] u8;
+  #assert wm_add(o[..], 0, "ab") == 2 && wm_add(o[..], 2, "cd") == 4 && cast(string) o[..] == "abcd";
+  #assert wm_add(o[..], 3, "cd") == -1 && wm_add(o[..], -1, "") == -1;
+}

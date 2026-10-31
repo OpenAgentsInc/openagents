@@ -104,8 +104,9 @@ the checker) and grows the lowering:
   and the same frame through `verse/native` (realm-host), so both draw the
   same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
   (`verse/everglade/gpu.coax`, `gpu-fx.coax`; `verse/gpu/wgsl.coax` is
-  WGSL's vocabulary), so the live file stays the one source until the web
-  build switches to Coax-emitted WGSL (G6). `verse/gpu/everglade-pass.coax
+  WGSL's vocabulary). Since G6 `gpu.coax` is the source and the web build's
+  `everglade.wgsl` is written from it; the particles' WGSL is still
+  translated. `verse/gpu/everglade-pass.coax
   HOST PASS` checks a pass. The live shaders hash with
   `fract(sin(x) * 43758.5)`, and sin of so large an argument is each GPU's
   own (WGSL bounds its error only on [-pi, pi]). So the check gives both
@@ -355,3 +356,25 @@ Every phase and native feature is a task in the Verse project
   module compiles with no messages, and `coax/web/wgsl.py` is deleted.
   Next: whole modules (entries, bindings, structs and textures) from Coax,
   then the realms' hand-written WGSL moves into it.
+- 2026-10-31: G6's second step, whole modules. `coax wgsl FILE --vertices
+  A,B --fragments C,D --bindings F [--strip P]` writes a page's module:
+  vec2/3/4 structs as WGSL's vectors, other structs, interface structs
+  for attributes, varyings (integers and `#flat` fields flat) and color
+  targets, every resource a module variable named as its binding (host.js
+  finds passes by those names), a `[]f32` uniform block as an array of
+  vec4fs read by a helper, storage buffers only where WGSL lays them out as
+  C does, textures and samplers with the GPU procedures as WGSL's, each
+  procedure written once for each set of bindings it is called with (a view
+  of a caller's local array as a pointer), and the entries' wrappers. What
+  it cannot write it refuses with a reason (an entry's shape, a resource
+  with no binding, a layout WGSL does not keep, a value an i32 cannot
+  hold). `lib/compiler/wgsl.coax` stays `#authority` and gated: 22 checks,
+  1,982 mutants, 0 survived, 35 marked equivalent with their reasons.
+  Everglade is the first page drawn from it: `verse/everglade/gpu.coax`
+  (with `#flat` marks) and `gpu.bindings` are the source, build.sh writes
+  `everglade.wgsl` with `coax/web/wgsl-module.coax` (options in
+  `verse/everglade/gpu.module`), and the hand-written WGSL is gone. The
+  pass check lowers the same Coax to SPIR-V (`int-hash` now swaps the hash
+  in the Coax and writes the module from it), so the browser and the 4080
+  draw from one file. The particles (`everglade-fx.wgsl`) and the other
+  realms are next.

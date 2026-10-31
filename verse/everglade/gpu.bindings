@@ -1,0 +1,26 @@
+# Everglade's bindings for `coax wgsl verse/everglade/gpu.coax` (coax/web/wgsl-module.coax):
+# NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
+# They are coax/web/host.js's layouts: group 0 the frame's uniforms; group 1 the scene (or
+# the bloom's or the post's inputs, each pass its own); group 2 the shadow map; group 3
+# the water's copy of the scene. u is everglade.coax's U block: 575 rows (marks end it at 2300 floats).
+u 0 0 uniform 575
+vertices 1 0
+heights 1 1
+objects 1 2
+pose 1 3
+water_nodes 1 4
+sheets 1 5
+sheet 1 6
+shadow_map 2 0
+shadow_cmp 2 1
+water_scene 3 0
+water_scene_depth 3 1
+bloom_src 1 0
+bloom_lin 1 1
+bloom_step 1 2 uniform 1
+post_light 1 0
+post_quarter 1 1
+post_eighth 1 2
+post_aux 1 3
+post_depth 1 4
+post_lin 1 5

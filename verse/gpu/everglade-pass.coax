@@ -2,10 +2,11 @@
 // docs/verse/native-gpu.md). A frame comes from the browser's wasm
 // (verse/native/wasm-run.ts: the pack, page facts, golden mode, clock 0, 90
 // frames): its uniforms, stores and draw list, with the pack's vertices,
-// indices and layer images. The WGSL and verse/style.coax get one integer
-// hash for their sin hashes (verse/gpu/int-hash.coax: sin of large arguments
-// is each GPU's own), coax/web/wgsl-coax.coax translates that WGSL to Coax as
-// it does the live file, and `coax spirv` lowers the pass's entries.
+// indices and layer images. Everglade's Coax (verse/everglade/gpu.coax) and
+// verse/style.coax get one integer hash for their sin hashes (verse/gpu/int-hash.coax:
+// sin of large arguments is each GPU's own); the browser draws the module `coax wgsl`
+// writes from that Coax (G6), and `coax spirv` lowers the pass's entries from the same.
+// The particles' WGSL is still hand-written: coax/web/wgsl-coax.coax translates it.
 // verse/gpu/pass-check.coax then draws the spec below in headless Chrome and
 // on HOST's GPU and compares. With --live it also compares the live shaders
 // (the sin hashes), reported only: those differ where hashes draw.
@@ -100,7 +101,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   if step("the frame", frame[0..<fn], o[..]) < 0 { return 1; }
   if emit.count > 0 {
     // the live shaders' spec and modules for a host that draws every frame (verse/gpu/vk-realm.c)
-    if !check(host, p, work, frame_dir, "emit", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/everglade-fx.wgsl", "verse/style.coax", "", "", true, false) { return 1; }
+    if !check(host, p, work, frame_dir, "emit", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/style.coax", "", "", true, false) { return 1; }
     ed: [1024] u8;
     cp := [4] string.["cp", "-R", cat(fs_join(work, "emit", b[2][..]), "/.", ed[..]), emit];
     if !fs_mkdir(emit) && fs_kind(emit) <= 0 { tool_errln("everglade-pass: cannot make the --emit directory"); return 1; }
@@ -113,18 +114,19 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   if step("the integer hash", ih[..], o[..]) < 0 { return 1; }
   print("everglade-pass: %, one integer hash on both sides\n", p.name);
   i1: [1024] u8; i2: [1024] u8;
-  i3: [1024] u8;
-  ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "everglade-fx.wgsl", i3[..]), fs_join(int_dir, "style.coax", i2[..]), p.allow, keep, native, true);
+  i3: [1024] u8; i4: [1024] u8;
+  ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "gpu.coax", i4[..]), fs_join(int_dir, "everglade-fx.wgsl", i3[..]), fs_join(int_dir, "style.coax", i2[..]), p.allow, keep, native, true);
   if live {
     print("everglade-pass: %, the live sin hashes (reported only)\n", p.name);
-    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/everglade-fx.wgsl", "verse/style.coax", "9999999", "", native, true);
+    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/style.coax", "9999999", "", native, true);
   }
   return ifx ok then 0 else 1;
 }
 
-// A directory of the spec and its files, then pass-check on it.
+// A directory of the spec and its files, then pass-check on it: the browser draws wgsl, the
+// module coax wgsl wrote from gpu (build.sh), and the GPU gpu's entries as coax spirv lowers them.
 // With compare false the directory is only made (the spec, its modules, the frame's files).
-check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string, wgsl: string, fx_wgsl: string, style: string, allow: string, keep: string, native: bool, compare: bool) -> bool {
+check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string, wgsl: string, gpu: string, fx_wgsl: string, style: string, allow: string, keep: string, native: bool, compare: bool) -> bool {
   b: [8] [1024] u8; o: [262144] u8;
   dir := fs_join(work, tag, b[0][..]);
   if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("everglade-pass: cannot make a directory"); return false; }
@@ -142,17 +144,14 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
     if !copy(fs_join(frame_dir, name, b[1][..]), fs_join(dir, name, b[2][..])) { return false; }
     nlayers += 1;
   }
-  // the Coax: the WGSL translated, its entries lowered, their bindings kept beside them
+  // the Coax's entries lowered, their bindings kept beside them
   cwd := fs_cwd(b[3][..]);
-  coax_out := fs_join(dir, "gpu.coax", b[4][..]);
   sb: [2048] u8;
   style_abs := ifx style.count > 0 && style[0] == '/' then style else cat(cat(cwd, "/", b[5][..]), style, b[6][..]);
   loads := cat(cat(cwd, "/verse/gpu/wgsl.coax,", sb[..]), style_abs, b[7][..]);
-  tr := [9] string.["coax/web/tool.sh", "wgsl-coax", coax_out, "eg", wgsl, "--stop", "---- generated: verse/style.coax", "--loads", loads];
-  if step("the translation", tr[..], o[..]) < 0 { return false; }
   k := 0;
   while ep_word(p.entries, k).count > 0 {
-    if !lower(dir, coax_out, "eg_", ep_word(p.entries, k), ep_word(p.entries, k + 1)) { return false; }
+    if !lower(dir, gpu, "eg_", ep_word(p.entries, k), ep_word(p.entries, k + 1)) { return false; }
     k += 2;
   }
   if p.fx.count > 0 {

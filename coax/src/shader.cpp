@@ -367,6 +367,127 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
 // `coax wgsl FILE --functions A,B`: the procedures named, and what they call, as WGSL
 // functions (lib/compiler/wgsl.coax), each a stage-2 entry of the same tree code. With
 // `tree`, *out is the tree as decimal words, then the names' lines.
+// `coax wgsl FILE --vertices A,B --fragments C,D --bindings F [--strip P]`: a whole module
+// (WG_module), each vertex and fragment entry with its resources bound as F's lines
+// (`NAME GROUP BINDING [uniform COUNT]`) say; an entry's WGSL name is its procedure's
+// without the prefix P.
+#ifndef COAX_BOOTSTRAP_IMPORTER
+static std::vector<std::string> wgsl_list(const std::string &list) {
+  std::vector<std::string> r;
+  size_t from = 0;
+  while (from <= list.size()) {
+    size_t comma = list.find(',', from);
+    std::string want = list.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+    from = comma == std::string::npos ? list.size() + 1 : comma + 1;
+    if (!want.empty()) r.push_back(want);
+  }
+  return r;
+}
+#endif
+bool emit_wgsl_module(const File *file, const std::string &vertices, const std::string &fragments, const std::string &bindings,
+                      const std::string &strip, bool tree_text, std::string *out) {
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  (void)file; (void)vertices; (void)fragments; (void)bindings; (void)strip; (void)tree_text; (void)out;
+  fprintf(stderr, "coax: coax wgsl requires the final compiler, not build-only stage0\n");
+  return false;
+#else
+  ShaderTree t{file};
+  for (Type s : {(Type)&T_VOID, (Type)&T_BOOL, (Type)&T_F32, (Type)&T_S32, (Type)&T_U32, (Type)&T_S64}) t.type(s, {1, 1, 0});
+  std::vector<std::pair<uint32_t, uint32_t>> entries;
+  for (int stage = 0; stage < 2; stage++) {
+    for (const std::string &want : wgsl_list(stage == 0 ? vertices : fragments)) {
+      const ProcDecl *found = nullptr;
+      for (const ProcDecl *p : file->procs) if (ShaderTree::name(p->name) == want) found = p;
+      if (!found) {
+        error_at(file->src, {1, 1, 0}, "E0705", "there is no procedure " + want + " to make an entry point",
+                 "--vertices and --fragments name procedures of the file or what it loads");
+        return false;
+      }
+      entries.emplace_back(stage, t.proc_index(found));
+    }
+  }
+  if (entries.empty()) {
+    error_at(file->src, {1, 1, 0}, "E0705", "coax wgsl needs --functions, or --vertices and --fragments", "name the procedures to write as WGSL");
+    return false;
+  }
+  std::vector<std::vector<uint32_t>> bodies;
+  for (size_t i = 0; i < t.procs.size() && t.ok; i++) bodies.push_back(t.procedure(t.procs[i]));
+  if (!t.ok) return false;
+  std::vector<uint32_t> tree = {2, (uint32_t)t.type_of.size()};
+  tree.insert(tree.end(), t.types.begin(), t.types.end());
+  tree.push_back((uint32_t)bodies.size());
+  for (const auto &b : bodies) tree.insert(tree.end(), b.begin(), b.end());
+  std::vector<std::string> ids;
+  tree.push_back((uint32_t)entries.size());
+  for (auto [stage, proc] : entries) {
+    tree.push_back(stage); tree.push_back(proc);
+    for (const Param &prm : t.procs[proc]->params) {
+      std::string n = ShaderTree::name(prm.name);
+      uint32_t id = 0;
+      while (id < ids.size() && ids[id] != n) id++;
+      if (id == ids.size()) ids.push_back(n);
+      tree.push_back(id);
+    }
+  }
+  // the bindings file: a line a resource
+  std::vector<std::string> lines;
+  if (!bindings.empty()) {
+    FILE *f = fopen(bindings.c_str(), "rb");
+    if (!f) {
+      error_at(file->src, {1, 1, 0}, "E0705", "cannot read the bindings " + bindings, "--bindings names a file of `NAME GROUP BINDING` lines");
+      return false;
+    }
+    std::string text;
+    char buf[4096];
+    size_t got;
+    while ((got = fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, got);
+    fclose(f);
+    size_t at = 0;
+    while (at < text.size()) {
+      size_t e = text.find('\n', at);
+      if (e == std::string::npos) e = text.size();
+      std::string line = text.substr(at, e - at);
+      at = e + 1;
+      if (!line.empty() && line[0] != '#') lines.push_back(line);
+    }
+  }
+  std::string names;
+  for (size_t p = 0; p < t.names.size(); p++) {
+    const auto &line = t.names[p];
+    bool root = false;
+    for (auto [stage, proc] : entries) root = root || proc == p;
+    for (size_t i = 0; i < line.size(); i++) {
+      std::string w = line[i];
+      if (i == 0 && root && !strip.empty() && w.compare(0, strip.size(), strip) == 0 && w.size() > strip.size()) w = w.substr(strip.size());
+      names += (i ? " " : "") + w;
+    }
+    names += "\n";
+  }
+  for (const std::string &id : ids) {
+    std::string line = id;
+    for (const std::string &b : lines) if (b.compare(0, id.size() + 1, id + " ") == 0) line = b;
+    names += line + "\n";
+  }
+  if (tree_text) {
+    for (size_t i = 0; i < tree.size(); i++) *out += (i ? " " : "") + std::to_string(tree[i]);
+    *out += "\n" + names;
+    return true;
+  }
+  std::vector<uint8_t> text((size_t)WG_out_bytes());
+  std::vector<uint32_t> work((size_t)WG_work_words());
+  int64_t n = WG_module({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()},
+                        {work.data(), (int64_t)work.size()});
+  if (n < 0) {
+    coax_string why = WG_reason_text((uint32_t)-n);
+    error_at(file->src, {1, 1, 0}, "E0706", std::string(why.data, (size_t)why.count) + " is outside the WGSL writer",
+             "coax wgsl writes modules as lib/compiler/wgsl.coax does");
+    return false;
+  }
+  out->assign((const char *)text.data(), (size_t)n);
+  return true;
+#endif
+}
+
 bool emit_wgsl(const File *file, const std::string &functions, bool tree_text, std::string *out) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
   (void)file; (void)functions; (void)tree_text; (void)out;
@@ -376,12 +497,7 @@ bool emit_wgsl(const File *file, const std::string &functions, bool tree_text, s
   ShaderTree t{file};
   for (Type s : {(Type)&T_VOID, (Type)&T_BOOL, (Type)&T_F32, (Type)&T_S32, (Type)&T_U32, (Type)&T_S64}) t.type(s, {1, 1, 0});
   std::vector<uint32_t> roots;
-  size_t from = 0;
-  while (from <= functions.size()) {
-    size_t comma = functions.find(',', from);
-    std::string want = functions.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
-    from = comma == std::string::npos ? functions.size() + 1 : comma + 1;
-    if (want.empty()) continue;
+  for (const std::string &want : wgsl_list(functions)) {
     const ProcDecl *found = nullptr;
     for (const ProcDecl *p : file->procs) if (ShaderTree::name(p->name) == want) found = p;
     if (!found) {

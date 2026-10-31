@@ -341,7 +341,7 @@ EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then 
 eg_word :: (i:u32,vertices:[]u32)->f32 {
   return f32_from_bits(vertices[cast(int)i]);
 }
-EgS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32; uv:V2; slice:u32; dye:V4; local:V3; shard:u32; }
+EgS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; uv:V2; slice:u32 #flat; dye:V4 #flat; local:V3; shard:u32 #flat; }
 // a person's cloth dye: rgb, then its rule and share (person_dye)
 // where it is in its mesh's own space (a chunk's cut is there)
 // a chunk of a broken piece: its object + 1 (LOOK_SHARD), else 0
@@ -800,7 +800,7 @@ eg_light_space :: (u:[]f32)->EgLight {
 eg_shadow_place :: (w:V3,k:EgLight)->V3 {
   return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
 }
-EgShade :: struct {pos:V4; uv:V2; slice:u32; cut:u32; local:V3; shard:u32; bare:f32; }
+EgShade :: struct {pos:V4; uv:V2; slice:u32 #flat; cut:u32 #flat; local:V3; shard:u32 #flat; bare:f32 #flat; }
 // A burning tree's leaves (dye.z of a canopy: the share gone) gone in clumps from its crown, the same
 // in its shadow, in its mesh's own space so they hold as it falls.
 eg_leaf_gone :: (local:V3,bare:f32)->bool {

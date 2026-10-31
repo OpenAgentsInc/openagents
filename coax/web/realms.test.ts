@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK } from "./realms"
+import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK, STYLE_MODULE } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -58,6 +58,9 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
+  // or a whole module from Coax, the style its own functions
+  writeFileSync(join(site, "everglade.wgsl"), `// ---- generated: verse/everglade/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // a flat realm needs it as well
   writeFileSync(join(site, "fairy.wgsl"), "// no block\n")

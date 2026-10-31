@@ -3,22 +3,26 @@
 // fract(sin(x) * 43758.5): sin of so large an argument is each platform's
 // own (WGSL bounds sin's error only on [-pi, pi]), so the browser on a Mac
 // and Vulkan on the 4080 draw different ridges and clouds from the same
-// uniforms. For the check only, this writes copies of everglade.wgsl,
-// everglade-fx.wgsl and verse/style.coax whose sin hashes are one integer hash instead, so
-// what is left between the two is the port's own difference. The live
+// uniforms. For the check only, this writes copies of verse/everglade/gpu.coax,
+// verse/style.coax and everglade-fx.wgsl whose sin hashes are one integer hash instead, and
+// the module the browser draws from that Coax (coax/web/wgsl-module.coax, as build.sh makes
+// everglade.wgsl), so what is left between the two is the port's own difference. The live
 // files are not changed.
-//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (writes OUT_DIR/everglade.wgsl, OUT_DIR/everglade-fx.wgsl, OUT_DIR/style.coax)
+//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (from the repo root)
+// writes OUT_DIR/gpu.coax, OUT_DIR/style.coax, OUT_DIR/everglade.wgsl and OUT_DIR/everglade-fx.wgsl.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
 
 IH_FILE :: 8388608;
 
 // The integer hash of the cell of p at 1/64: the same words in WGSL and Coax.
 IH_WGSL :: "let q = vec2u(vec2i(floor(P * 64.0))); var h = (q.x * 1597334677u) ^ (q.y * 3812015801u); h = h * 747796405u; h = (h ^ (h >> 16u)) * 2246822519u; h = h ^ (h >> 13u); return f32(h >> 8u) / 16777216.0;";
 IH_SIN :: "return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }";
-IH_STYLE_WGSL :: "  var l_v: f32 = (sin(((l_x * 127.099998) + (l_y * 311.700012))) * 43758.5469);\n  return (l_v - floor(l_v));\n";
+// Everglade's three sin hashes in its Coax (hash, hash2, weather_hash), the same line.
+IH_COAX_SIN :: "  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n";
 IH_STYLE :: " v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n";
 IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(y*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
 
@@ -27,37 +31,44 @@ tool_main :: () -> int #export_c {
   if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: int-hash OUT_DIR"); return 2; }
   out := args_at(a[..], 0);
   src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8;
-  n := fs_read("apps/openagents-web/everglade.wgsl", src[..]);
-  if n < 0 { tool_errln("int-hash: run from the repo root (no apps/openagents-web/everglade.wgsl)"); return 1; }
-  text := cast(string) src[0..<n];
-  // hash and hash2 and weather_hash: each one line ending in IH_SIN
-  body: [1024] u8;
-  with_p := ih_replace(IH_WGSL, "P", "p", body[..], 1);
-  rep: [2048] u8;
-  r := ih_cat3("", with_p, " }", rep[..]);
-  text = ih_replace(text, IH_SIN, r, dst[..], 3);
-  if text.count == 0 { tool_errln("int-hash: everglade.wgsl does not have its three sin hashes"); return 1; }
-  // the style hash, generated into the WGSL from verse/style.coax
-  b2: [1024] u8;
-  with_xy := ih_replace(IH_WGSL, "P", "vec2f(l_x, l_y)", b2[..], 1);
-  r2: [2048] u8;
-  rs := ih_cat3("  ", with_xy, "\n", r2[..]);
-  text = ih_replace(text, IH_STYLE_WGSL, rs, tmp[..], 1);
-  if text.count == 0 { tool_errln("int-hash: everglade.wgsl does not have verse_style_hash"); return 1; }
   if !fs_mkdir(out) && fs_kind(out) <= 0 { tool_errln("int-hash: cannot make OUT_DIR"); return 1; }
-  if !fs_write(fs_join(out, "everglade.wgsl", p[..]), text) { tool_errln("int-hash: cannot write everglade.wgsl"); return 1; }
+  // the style's hash (verse/style.coax)
   m := fs_read("verse/style.coax", src[..]);
-  if m < 0 { tool_errln("int-hash: no verse/style.coax"); return 1; }
+  if m < 0 { tool_errln("int-hash: run from the repo root (no verse/style.coax)"); return 1; }
   style := ih_replace(cast(string) src[0..<m], IH_STYLE, IH_STYLE_INT, dst[..], 1);
   if style.count == 0 { tool_errln("int-hash: verse/style.coax does not have verse_style_hash"); return 1; }
   if !fs_write(fs_join(out, "style.coax", p[..]), style) { tool_errln("int-hash: cannot write style.coax"); return 1; }
+  // Everglade's three, its loads this copy's style and the library where it is
+  n := fs_read("verse/everglade/gpu.coax", src[..]);
+  if n < 0 { tool_errln("int-hash: no verse/everglade/gpu.coax"); return 1; }
+  body: [1024] u8;
+  r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
+  text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], 3);
+  if text.count == 0 { tool_errln("int-hash: verse/everglade/gpu.coax does not have its three sin hashes"); return 1; }
+  cb: [1024] u8; lb: [2048] u8;
+  lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/verse/gpu/wgsl.coax\";", lb[..]);
+  text = ih_replace(text, "#load \"../gpu/wgsl.coax\";", lib, tmp[..], 1);
+  if text.count == 0 { tool_errln("int-hash: verse/everglade/gpu.coax does not load ../gpu/wgsl.coax"); return 1; }
+  text = ih_replace(text, "#load \"../style.coax\";", "#load \"style.coax\";", dst[..], 1);
+  if text.count == 0 { tool_errln("int-hash: verse/everglade/gpu.coax does not load ../style.coax"); return 1; }
+  gpu := fs_join(out, "gpu.coax", p[..]);
+  if !fs_write(gpu, text) { tool_errln("int-hash: cannot write gpu.coax"); return 1; }
+  // the module the browser draws, from that Coax
+  wb: [1024] u8; o: [65536] u8; e: [65536] u8;
+  mod := [5] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", gpu, fs_join(out, "everglade.wgsl", wb[..]), "verse/everglade/gpu.module"];
+  pr := proc_run(mod[..], 600000, o[..], e[..]);
+  if pr.started != 0 || pr.status != 0 || pr.timed_out { tool_err(cast(string) e[0..<pr.err_n]); tool_errln("int-hash: the module failed"); return 1; }
   // the spells' particles: hash2, the same line
+  wp: [1024] u8;
+  with_p := ih_replace(IH_WGSL, "P", "p", wp[..], 1);
+  rep: [2048] u8;
+  r2 := ih_cat3("", with_p, " }", rep[..]);
   f := fs_read("apps/openagents-web/everglade-fx.wgsl", src[..]);
   if f < 0 { tool_errln("int-hash: no apps/openagents-web/everglade-fx.wgsl"); return 1; }
-  fx := ih_replace(cast(string) src[0..<f], IH_SIN, r, dst[..], 1);
+  fx := ih_replace(cast(string) src[0..<f], IH_SIN, r2, dst[..], 1);
   if fx.count == 0 { tool_errln("int-hash: everglade-fx.wgsl does not have its sin hash"); return 1; }
   if !fs_write(fs_join(out, "everglade-fx.wgsl", p[..]), fx) { tool_errln("int-hash: cannot write everglade-fx.wgsl"); return 1; }
-  print("int-hash: %/everglade.wgsl, %/everglade-fx.wgsl and %/style.coax\n", out, out, out);
+  print("int-hash: %/gpu.coax, %/style.coax, %/everglade.wgsl and %/everglade-fx.wgsl\n", out, out, out, out);
   return 0;
 }
 
