@@ -74,6 +74,25 @@ A typed scheduler must preserve this order and the declared clock domains,
 not infer wall-clock throughput from nominal simulation rates.
 
 
+## Fit the expanded physics book without delaying the rigid path
+
+Main now places imitation, GR00T and this loop at chapters 189–191. The
+[Genesis parity plan](../genesis-parity.md) and Part XVIII add the owned
+physics engine. The next robot backend follows the rigid branch: scene 165,
+bodies 166, articulation 167, broad/narrow contact 168–169 and contact solve 170;
+assets 183, batching 179, sensors 181, observation rendering 182, world replay 184
+and control 188 supply the matching end-to-end path. Those chapter files are
+currently design drafts. Their numbering is a teaching order; dependencies
+such as assets before rendered observations still determine implementation.
+
+The material solvers and their coupling can follow this rigid path. They do
+not have to delay a matching Panda backend. Scalar 109/111, the planning graph,
+checkpoint and runtime clocks retain their stated precursor scopes. The
+current SDK qualification stays usable while Coax R12–R20 and the simulation
+compute phases R21–R24 are delivered in bounded slices. A short recorded-
+command SDK prefix can qualify a changed adapter; it cannot become a fresh
+learned-policy episode score or qualify an owned dynamics/rendering backend.
+
 ## A request boundary is demand-driven
 
 Eight accepted action rows give the normal 200-physics-step interval, but
