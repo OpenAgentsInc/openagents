@@ -133,6 +133,17 @@ cases on the second request; the Directions behavior itself was unchanged.
 The same 26 cases had also passed on the pre-rebase module `c0b8a55f…`,
 both per group and in one run.
 
+## Production
+
+Released by `coax/web/release.sh` as `bcb6099592` (stamp `20261031T052547Z`,
+staged, fast path). Headless muted Chrome on `https://openagents.com/realms/everglade`
+as a guest: the page serves `everglade.5cec37586ce8.wasm` (the qualified
+module above), the scene starts, and pressing G makes 0 decision requests.
+Directions is not offered there today: the published world (version 21) has
+11 owner edits, and the projection refuses authored routes in any edited
+world (`ggp_clear_route` requires `edit_count==0`). Showing Directions in
+production needs edit-aware route reachability, listed below.
+
 ## Remaining gates
 
 This makes local help usable and exercises the real optional shadow consumer.
