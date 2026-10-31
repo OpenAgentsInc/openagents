@@ -2327,3 +2327,19 @@ policy returns `skipped` and advances only the skip counter; views and the step
 counter are otherwise unchanged. C observes spans only.
 Check: `psionic/check.sh --only adamw`: independent oracle, resume at every
 step, debug/release, zero surviving mutants, native ASan/UBSan.
+
+## Checkpoints resume only into the experiment they name
+
+`psionic/lib/data/pack.coax`, `psionic/lib/checkpoint/record.coax` and
+`psionic/lib/checkpoint/resume.coax` (`psionic-resume-v1`). Only training
+documents are packed; every document starts with the boundary token and no
+target is a boundary. An epoch's order depends only on (seed, epoch), so the
+data position is the cursor alone. A checkpoint is the versioned
+little-endian `PSCK` record with its SHA-256; it resumes only when its
+model, tokenizer, dataset and optimizer identities equal the run's, its
+pointer names its revision and digest, and its cursor fits the dataset.
+Every refusal writes nothing. The host publishes a record before its pointer,
+each through a temporary file, fsync and rename, so a crash leaves the
+previous pointer naming a whole record.
+Check: `psionic/check.sh --only resume`: independent oracle, interrupted runs
+bit for bit, zero surviving mutants, native crash-and-resume under ASan/UBSan.
