@@ -89,7 +89,7 @@
 
 - [122. A checkpoint holds the whole experiment](ch122-a-checkpoint-holds-the-whole-experiment.md)
 - [123. Learn a tokenizer](ch123-learn-a-tokenizer.md)
-- [124. AdamW and explicit precision](ch124-adamw-and-explicit-precision.md)
+- [124. AdamW, Muon and explicit precision](ch124-adamw-and-explicit-precision.md)
 
 - [167. Imitation before robotics scale](ch167-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [168. Execute a GR00T policy](ch168-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile

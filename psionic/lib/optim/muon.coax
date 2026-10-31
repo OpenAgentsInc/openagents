@@ -1,0 +1,565 @@
+// nanochat's MuonAdamW on one rank (cpu-muon-v1), over caller-owned binary64
+// state. The planner reproduces GPT.setup_optimizer: which parameters go to
+// AdamW and which to Muon, each group's settings and the flat layout. The step
+// runs AdamW (chapter 124's cell) on the AdamW groups and nanochat's fused Muon
+// update on each matrix of a Muon group: Nesterov momentum, MuonEq row
+// equilibration, Polar Express orthogonalization, Muon+ renormalization,
+// NorMuon variance reduction and cautious weight decay. The whole step is
+// admitted before anything is written: refused and skipped steps leave every
+// view and the step counter unchanged.
+#load "adamw.coax";
+#load "../../fixtures/muon/reference.coax";
+#authority;
+McKind :: enum u8 {adamw;muon;}
+McStatus :: enum u8 {ok;skipped;shape;group;number;state;work;nonfinite;overflow;alias;role;}
+McOverflow :: enum u8 {refuse;skip;}
+McRole :: enum u8 {lm_head;embedding;value_embed;resid;x0;smear_gate;smear_lambda;backout;matrix;}
+// A model tensor: its role and shape (rank 1 is a row: rows is 1).
+McTensor :: struct {role:McRole;rank:int;rows:int;cols:int;}
+// GPT.setup_optimizer's arguments, with its defaults; model_dim is n_embd.
+McHyper :: struct {model_dim:int=768;unembedding_lr:f64=0.004;embedding_lr:f64=0.2;matrix_lr:f64=0.02;weight_decay:f64=0;scalar_lr:f64=0.5;}
+// One group over [first, first+count) of the flat view. AdamW uses lr, beta1,
+// beta2, eps and decay; Muon uses lr, momentum, beta2, decay and ns over count
+// elements of rows x cols matrices, row-major and back to back.
+McGroup :: struct {kind:McKind;first:int;count:int;rows:int;cols:int;lr:f64;beta1:f64;beta2:f64;eps:f64;decay:f64;momentum:f64;ns:int;}
+McPolicy :: struct {overflow:McOverflow;}
+McState :: struct {step:int;skipped:int;}
+McResult :: struct {status:McStatus;state:McState;written:int;}
+McPlan :: struct {status:McStatus;groups:int;elements:int;second:int;work:int;}
+MC_TENSORS :: 4096;
+MC_GROUPS :: 64;
+MC_LR :: 1024.0;
+MC_POLAR_STEPS :: 5;
+// Polar Express (num_iters 5, safety 2e-2, cushion 2), as pinned.
+MC_POLAR :: [15]f64.[8.156554524902461,-22.48329292557795,15.878769915207462,4.042929935166739,-2.808917465908714,0.5000178451051316,3.8916678022926607,-2.772484153217685,0.5060648178503393,3.285753657755655,-2.3681294933425376,0.46449024233003106,2.3465413258596377,-1.7097828382687081,0.42323551169305323];
+
+// Integer minimum and maximum, exact for the shapes admitted (below 2^53).
+mc_gapi :: (a:int,b:int)->int {return cast(int) abs(f64(a-b));}
+mc_min :: (a:int,b:int)->int {return (a+b-mc_gapi(a,b))/2;}
+mc_max :: (a:int,b:int)->int {return (a+b+mc_gapi(a,b))/2;}
+// torch's clamp_min: a value strictly below lo is raised to lo.
+mc_raised :: (x:f64,lo:f64)->bool {return x<lo;}
+mc_floor :: (x:f64,lo:f64)->f64 {if mc_raised(x,lo) {return lo;}return x;}
+mc_norm :: (x:[]f64)->f64 {s:=0.0;for e:x {s+=e*e;}return sqrt(s);}
+mc_rate :: (x:f64)->bool {return x>0 && x<=MC_LR;}
+mc_unit :: (x:f64)->bool {return x>=0 && x<=1;}
+// Muon's learning rate grows by sqrt(rows/cols) for tall matrices.
+mc_lr :: (g:McGroup)->f64 {return g.lr*pow(f64(mc_max(g.rows,g.cols))/f64(g.cols),0.5);}
+mc_hyper :: (g:McGroup)->bool {
+    if g.kind==McKind.adamw {return mc_rate(g.lr) && aw_beta(g.beta1) && aw_beta(g.beta2) && aw_eps(g.eps) && mc_unit(g.decay) && g.lr*g.decay<1 && g.momentum==0 && g.ns==0;}
+    return mc_rate(g.lr) && aw_beta(g.momentum) && aw_beta(g.beta2) && mc_unit(g.decay) && mc_lr(g)*g.decay<1 && g.ns>=0 && g.ns<=MC_POLAR_STEPS && g.beta1==0 && g.eps==0;
+}
+// Second-moment entries a group keeps: one per element for AdamW, one per
+// row (rows >= cols) or column (wide) of each matrix for Muon.
+mc_second :: (g:McGroup)->int {if g.kind==McKind.adamw {return g.count;}return g.count/(g.rows*g.cols)*mc_max(g.rows,g.cols);}
+// Scratch one Muon matrix needs: momentum, X and the next X; A and B; the
+// new second moment and the reduced means.
+mc_work :: (g:McGroup)->int {if g.kind==McKind.adamw {return 0;}k:=mc_min(g.rows,g.cols);return 3*g.rows*g.cols+2*k*k+2*mc_max(g.rows,g.cols);}
+mc_seconds :: (groups:[]McGroup)->int {s:=0;for g:groups {s+=mc_second(g);}return s;}
+mc_scratch :: (groups:[]McGroup)->int {s:=0;for g:groups {s=mc_max(s,mc_work(g));}return s;}
+// Groups cover 0..<n exactly once, in order; a Muon group holds whole matrices.
+mc_cover :: (groups:[]McGroup,n:int)->bool {
+    next:=0;
+    for g:groups {
+        if g.first!=next || g.count<1 || g.count>n {return false;}
+        if g.kind==McKind.adamw {if g.rows!=0 || g.cols!=0 {return false;}} else {if g.rows<1 || g.cols<1 || g.rows>n || g.cols>n || g.count%(g.rows*g.cols)!=0 {return false;}}
+        next+=g.count;
+    }
+    return next==n;
+}
+
+// book:begin polar
+// Polar Express on X (rows x cols, row-major) in place: ns quintic steps
+// X <- a X + (b A + c A A) X with A = X X^T, or X (b A + c A A) with
+// A = X^T X when X is tall, so A is always the smaller square. y is scratch
+// for the next X; a and b hold k x k.
+mc_polar :: (x:[]f64,r:int,c:int,ns:int,y:[]f64,a:[]f64,b:[]f64) {
+    tall:=r>c;k:=mc_min(r,c);
+    for step:0..<ns {
+        ca:=MC_POLAR[3*step];cb:=MC_POLAR[3*step+1];cc:=MC_POLAR[3*step+2];
+        for p:0..<k {for q:0..<k {
+            s:=0.0;
+            if tall {for i:0..<r {s+=x[i*c+p]*x[i*c+q];}} else {for j:0..<c {s+=x[p*c+j]*x[q*c+j];}}
+            a[p*k+q]=s;
+        }}
+        for p:0..<k {for q:0..<k {s:=0.0;for t:0..<k {s+=a[p*k+t]*a[t*k+q];}b[p*k+q]=cb*a[p*k+q]+cc*s;}}
+        for i:0..<r {for j:0..<c {
+            s:=0.0;
+            if tall {for t:0..<k {s+=x[i*c+t]*b[t*k+j];}} else {for t:0..<k {s+=b[i*k+t]*x[t*c+j];}}
+            y[i*c+j]=ca*x[i*c+j]+s;
+        }}
+        for i:0..<r*c {x[i]=y[i];}
+    }
+}
+// book:end polar
+
+// book:begin matrix
+// One matrix of a Muon group: momentum m and second moment s in, the new
+// values computed in w. Returns false when the step would overflow; writes p,
+// m and s only when write is set.
+mc_matrix :: (g:McGroup,p:[]f64,grad:[]f64,m:[]f64,s:[]f64,w:[]f64,write:bool)->bool {
+    r:=g.rows;c:=g.cols;rc:=r*c;k:=mc_min(r,c);red:=mc_max(r,c);
+    oa:=3*rc;ob:=oa+k*k;os:=ob+k*k;ov:=os+red;
+    m2:=w[0..<rc];x:=w[rc..<2*rc];y:=w[2*rc..<oa];a:=w[oa..<ob];b:=w[ob..<os];s2:=w[os..<ov];vm:=w[ov..<ov+red];
+    // Nesterov momentum: the buffer moves toward the gradient, the update
+    // toward the buffer.
+    mu:=g.momentum;total:=0.0;
+    for i:0..<rc {m2[i]=m[i]+(1-mu)*(grad[i]-m[i]);x[i]=grad[i]+mu*(m2[i]-grad[i]);total+=x[i]*x[i];}
+    // The only place a finite step can overflow: past it every value is
+    // normalized. A finite x also means a finite momentum.
+    if !aw_finite(total) {return false;}
+    if !write {return true;}
+    // MuonEq: every row to the mean row norm, then the whole below norm 1.
+    target:=sqrt(total)/sqrt(f64(r));
+    for i:0..<r {row:=x[i*c..<i*c+c];q:=target/mc_floor(mc_norm(row),0.000001);for j:0..<c {row[j]=row[j]*q;}}
+    d:=mc_norm(x)*1.01+0.000001;for i:0..<rc {x[i]=x[i]/d;}
+    mc_polar(x,r,c,g.ns,y,a,b);
+    // Muon+: the Frobenius norm of an exactly semi-orthogonal matrix.
+    f:=sqrt(f64(k))/mc_floor(mc_norm(x),0.000001);for i:0..<rc {x[i]=x[i]*f;}
+    // NorMuon: a running mean square per row (rows >= cols) or per column,
+    // each rescaled by its inverse root, with the total norm kept.
+    rows:=r>=c;size:=r;if rows {size=c;}
+    for i:0..<red {vm[i]=0;}
+    for i:0..<r {for j:0..<c {e:=x[i*c+j]*x[i*c+j];if rows {vm[i]+=e;} else {vm[j]+=e;}}}
+    mean:=0.0;for i:0..<red {vm[i]=vm[i]/f64(size);mean+=vm[i];}
+    vnorm:=sqrt(mean*f64(size));scaled:=0.0;
+    for i:0..<red {s2[i]=s[i]+(1-g.beta2)*(vm[i]-s[i]);st:=1/sqrt(mc_floor(s2[i],0.0000000001));scaled+=vm[i]*f64(size)*st*st;}
+    vnew:=mc_floor(sqrt(scaled),0.0000000001);
+    // Cautious decay: only where the update and the parameter agree in sign.
+    lr:=mc_lr(g);
+    for i:0..<r {for j:0..<c {
+        at:=j;if rows {at=i;}
+        u:=x[i*c+j]*((1/sqrt(mc_floor(s2[at],0.0000000001)))*(vnorm/vnew));
+        pv:=p[i*c+j];mask:=0.0;if u*pv>=0 {mask=1;}
+        p[i*c+j]=pv-(lr*u+lr*g.decay*pv*mask);
+    }}
+    for i:0..<rc {m[i]=m2[i];}for i:0..<red {s[i]=s2[i];}
+    return true;
+}
+// book:end matrix
+
+// Runs (write false) or applies (write true) every group of a step that is
+// already admitted. Returns whether every new value is representable.
+mc_apply :: (groups:[]McGroup,t:int,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,write:bool)->bool {
+    ok:=true;so:=0;
+    for g:groups {
+        if g.kind==McKind.adamw {
+            ag:=AwGroup.{first=g.first,count=g.count,lr=g.lr,beta1=g.beta1,beta2=g.beta2,eps=g.eps,decay=g.decay};
+            for i:0..<g.count {
+                e:=g.first+i;c:=aw_cell(ag,t,params[e],grads[e],m[e],second[so+i]);
+                if !c.ok || !aw_finite(c.p) {ok=false;}
+                if write {params[e]=c.p;m[e]=c.m;second[so+i]=c.v;}
+            }
+        } else {
+            rc:=g.rows*g.cols;red:=mc_max(g.rows,g.cols);
+            for k:0..<g.count/rc {
+                e:=g.first+k*rc;q:=so+k*red;
+                if !mc_matrix(g,params[e..<e+rc],grads[e..<e+rc],m[e..<e+rc],second[q..<q+red],work,write) {ok=false;}
+            }
+        }
+        so+=mc_second(g);
+    }
+    return ok;
+}
+
+// book:begin step
+mc_step :: (groups:[]McGroup,policy:McPolicy,state:McState,params:[]f64,grads:[]f64,m:[]f64,second:[]f64,work:[]f64,overlap:bool)->McResult #export_c {
+    if overlap {return McResult.{status=McStatus.alias,state=state};}
+    n:=params.count;
+    if !aw_parameters(n) || grads.count!=n {return McResult.{status=McStatus.shape,state=state};}
+    if groups.count<1 || groups.count>MC_GROUPS || !mc_cover(groups,n) {return McResult.{status=McStatus.group,state=state};}
+    for g:groups {if !mc_hyper(g) {return McResult.{status=McStatus.number,state=state};}}
+    if m.count!=n || second.count!=mc_seconds(groups) || !aw_state(AwState.{step=state.step,skipped=state.skipped}) {return McResult.{status=McStatus.state,state=state};}
+    for i:0..<n {if !aw_finite(params[i]) || !aw_finite(m[i]) {return McResult.{status=McStatus.state,state=state};}}
+    for x:second {if !aw_finite(x) || x<0 {return McResult.{status=McStatus.state,state=state};}}
+    if work.count<mc_scratch(groups) {return McResult.{status=McStatus.work,state=state};}
+    // Admission: every gradient finite, then every new value representable.
+    bad:=McStatus.ok;t:=state.step+1;
+    for x:grads {if !aw_finite(x) {bad=McStatus.nonfinite;}}
+    if bad==McStatus.ok && !mc_apply(groups,t,params,grads,m,second,work,false) {bad=McStatus.overflow;}
+    if bad!=McStatus.ok {
+        if policy.overflow==McOverflow.skip {return McResult.{status=McStatus.skipped,state=McState.{step=state.step,skipped=state.skipped+1}};}
+        return McResult.{status=bad,state=state};
+    }
+    applied:=mc_apply(groups,t,params,grads,m,second,work,true);
+    return McResult.{state=McState.{step=t,skipped=state.skipped},written=n};
+}
+// book:end step
+
+mc_numel :: (t:McTensor)->int {return t.rows*t.cols;}
+mc_tensor :: (t:McTensor)->bool {
+    if t.rows<1 || t.cols<1 || t.rows>AW_PARAMETERS/t.cols {return false;}
+    if t.rank==1 {return t.rows==1 && t.role!=McRole.matrix;}
+    return t.rank==2;
+}
+mc_before :: (r:int,c:int,r2:int,c2:int)->bool {return r<r2 || (r==r2 && c<c2);}
+// Matrix shapes in lexicographic order, as Python sorts torch shapes: the
+// first, and the next after a shape; rows 0 when there is none.
+McShape :: struct {rows:int;cols:int;}
+mc_first_shape :: (tensors:[]McTensor)->McShape {
+    best:=McShape.{};
+    for t:tensors {if t.role==McRole.matrix && (best.rows==0 || mc_before(t.rows,t.cols,best.rows,best.cols)) {best=McShape.{rows=t.rows,cols=t.cols};}}
+    return best;
+}
+mc_next_shape :: (tensors:[]McTensor,after:McShape)->McShape {
+    best:=McShape.{};
+    for t:tensors {if t.role==McRole.matrix && mc_before(after.rows,after.cols,t.rows,t.cols) && (best.rows==0 || mc_before(t.rows,t.cols,best.rows,best.cols)) {best=McShape.{rows=t.rows,cols=t.cols};}}
+    return best;
+}
+mc_adamw_group :: (gi:int,h:McHyper,first:int,count:int)->McGroup {
+    s:=pow(f64(h.model_dim)/768,-0.5);
+    g:=McGroup.{first=first,count=count,beta1=0.8,beta2=0.95,eps=0.0000000001};
+    if gi==0 {g.lr=h.unembedding_lr*s;g.beta2=0.96;g.decay=0.01;}
+    if gi==1 {g.lr=h.embedding_lr*s;g.beta2=0.995;g.decay=0.001;}
+    if gi==2 {g.lr=h.embedding_lr*s*0.5;g.beta2=0.995;g.decay=0.01;}
+    if gi==3 {g.lr=h.scalar_lr*0.01;g.decay=0.05;}
+    if gi==4 {g.lr=h.scalar_lr;g.beta1=0.96;}
+    if gi==5 {g.lr=0.2;}
+    return g;
+}
+
+// book:begin plan
+// GPT.setup_optimizer: six AdamW groups (lm_head, wte, value embeddings,
+// resid scalars, x0 scalars, then smear gate, smear and backout in that
+// order), then one Muon group per distinct matrix shape in sorted order. A
+// group lists its tensors in model order and occupies a contiguous range;
+// places[i] is where tensor i starts. Empty groups (no value embeddings) are
+// left out: nanochat's update nothing.
+mc_plan :: (tensors:[]McTensor,h:McHyper,groups:[]McGroup,places:[]int)->McPlan #export_c {
+    T:=tensors.count;
+    if T<1 || T>MC_TENSORS || places.count!=T {return McPlan.{status=McStatus.shape};}
+    counts:[9]int;total:=0;
+    for t:tensors {if !mc_tensor(t) {return McPlan.{status=McStatus.role};}counts[cast(int) t.role]+=1;total+=mc_numel(t);}
+    for ri:0..<9 {if ri!=2 && ri!=8 && counts[ri]!=1 {return McPlan.{status=McStatus.role};}}
+    if counts[8]<1 {return McPlan.{status=McStatus.role};}
+    if !aw_parameters(total) {return McPlan.{status=McStatus.shape};}
+    if h.model_dim<1 || h.model_dim>AW_PARAMETERS || !mc_rate(h.unembedding_lr) || !mc_rate(h.embedding_lr) || !mc_rate(h.matrix_lr) || !mc_rate(h.scalar_lr) || !mc_unit(h.weight_decay) {return McPlan.{status=McStatus.number};}
+    shapes:=0;at:=mc_first_shape(tensors);while at.rows!=0 {shapes+=1;at=mc_next_shape(tensors,at);}
+    used:=5+shapes;if counts[2]>0 {used+=1;}
+    if groups.count<used {return McPlan.{status=McStatus.group};}
+    next:=0;g:=0;
+    for gi:0..<6 {
+        // Group 5 holds the smear gate, the smear and the backout, in that order.
+        start:=next;last:=gi+1;if gi==5 {last=8;}
+        for ri:gi..<last {for i:0..<T {if (cast(int) tensors[i].role)==ri {places[i]=next;next+=mc_numel(tensors[i]);}}}
+        if next>start {groups[g]=mc_adamw_group(gi,h,start,next-start);g+=1;}
+    }
+    muon:=g;at=mc_first_shape(tensors);
+    while at.rows!=0 {
+        start:=next;
+        for i:0..<T {t:=tensors[i];if t.role==McRole.matrix && t.rows==at.rows && t.cols==at.cols {places[i]=next;next+=mc_numel(t);}}
+        groups[g]=McGroup.{kind=McKind.muon,first=start,count=next-start,rows=at.rows,cols=at.cols,lr=h.matrix_lr,beta2=0.9,decay=h.weight_decay,momentum=0.95,ns=5};
+        g+=1;at=mc_next_shape(tensors,at);
+    }
+    return McPlan.{groups=g,elements=next,second=mc_seconds(groups[0..<g]),work=mc_scratch(groups[muon..<g])};
+}
+// book:end plan
+
+// Check helpers. Every comparison they make is itself checked below.
+MC_TOL :: 0.000000000001;
+mc_close :: (a:f64,b:f64)->bool {return abs(a-b)<=MC_TOL*(1+abs(b));}
+mc_same :: (p:[]f64,q:[]f64)->bool {if p.count!=q.count {return false;}for i:0..<p.count {if p[i]!=q[i] {return false;}}return true;}
+// The committed group table: six integers and six settings per group.
+mc_fixture_groups :: (ints:[]int,settings:[]f64,out:[]McGroup)->int {
+    count:=ints.count/6;
+    for i:0..<count {
+        g:=McGroup.{first=ints[6*i+1],count=ints[6*i+2],rows=ints[6*i+3],cols=ints[6*i+4],ns=ints[6*i+5]};
+        if ints[6*i]==1 {g.kind=McKind.muon;}
+        g.lr=settings[6*i];g.beta1=settings[6*i+1];g.beta2=settings[6*i+2];g.eps=settings[6*i+3];g.decay=settings[6*i+4];g.momentum=settings[6*i+5];
+        out[i]=g;
+    }
+    return count;
+}
+mc_fixture_tensors :: (roles:[]int,shapes:[]int,out:[]McTensor)->int {
+    for i:0..<roles.count {out[i]=McTensor.{role=cast(McRole) roles[i],rank=shapes[3*i],rows=shapes[3*i+1],cols=shapes[3*i+2]};}
+    return roles.count;
+}
+// Runs a reference case through mc_step from its start and checks every step
+// against the oracle within MC_TOL. At step cut the run moves to fresh
+// buffers holding a copy of the saved parameters and moments, as a resumed
+// process would. resumed is -1 on any mismatch, else how many times it
+// resumed; kept counts the first buffers that still hold the state of the
+// last step run on them.
+McReplay :: struct {resumed:int;kept:int;}
+mc_replay :: (groups:[]McGroup,start:[]f64,grads:[]f64,ps:[]f64,ms:[]f64,ss:[]f64,cut:int)->McReplay {
+    n:=start.count;steps:=ps.count/n;sn:=ss.count/steps;
+    if grads.count!=n*steps || ms.count!=n*steps || ss.count!=sn*steps {return McReplay.{resumed=-1};}
+    pa:[320]f64;ma:[320]f64;sa:[160]f64;pb:[320]f64;mb:[320]f64;sb:[160]f64;w:[256]f64;state:=McState.{};resumed:=0;ran:=steps;
+    for i:0..<n {pa[i]=start[i];}
+    p:=pa[0..<n];m:=ma[0..<n];s:=sa[0..<sn];
+    for k:0..<steps {
+        if k==cut {for i:0..<n {pb[i]=pa[i];mb[i]=ma[i];}for i:0..<sn {sb[i]=sa[i];}p=pb[0..<n];m=mb[0..<n];s=sb[0..<sn];resumed+=1;ran=k;}
+        r:=mc_step(groups,McPolicy.{},state,p,grads[k*n..<k*n+n],m,s,w[..],false);
+        if r.status!=McStatus.ok {return McReplay.{resumed=-1};}state=r.state;
+        for i:0..<n {if !mc_close(p[i],ps[k*n+i]) || !mc_close(m[i],ms[k*n+i]) {return McReplay.{resumed=-1};}}
+        for i:0..<sn {if !mc_close(s[i],ss[k*sn+i]) {return McReplay.{resumed=-1};}}
+    }
+    kept:=0;
+    if mc_close_all(pa[0..<n],ps,ran-1) {kept+=1;}
+    if mc_close_all(ma[0..<n],ms,ran-1) {kept+=1;}
+    if mc_close_all(sa[0..<sn],ss,ran-1) {kept+=1;}
+    return McReplay.{resumed=resumed,kept=kept};
+}
+mc_close_all :: (x:[]f64,ref:[]f64,step:int)->bool {n:=x.count;for i:0..<n {if !mc_close(x[i],ref[step*n+i]) {return false;}}return true;}
+mc_nanochat :: (cut:int,groups:[]McGroup)->McReplay {
+    a:=MC_NANOCHAT_START;g:=MC_NANOCHAT_GRADS;p:=MC_NANOCHAT_PARAMS;m:=MC_NANOCHAT_M;s:=MC_NANOCHAT_S;
+    return mc_replay(groups,a[..],g[..],p[..],m[..],s[..],cut);
+}
+mc_muon :: (cut:int,groups:[]McGroup)->McReplay {
+    a:=MC_MUON_START;g:=MC_MUON_GRADS;p:=MC_MUON_PARAMS;m:=MC_MUON_M;s:=MC_MUON_S;
+    return mc_replay(groups,a[..],g[..],p[..],m[..],s[..],cut);
+}
+
+#test "admission bounds are exact" {
+    #assert !mc_raised(1,1) && mc_raised(0.5,1) && !mc_raised(2,1) && mc_gapi(2,5)==3 && mc_gapi(5,2)==3 && mc_min(4,4)==4 && mc_max(4,4)==4 && mc_min(3,2)==2 && mc_max(2,3)==3 && mc_max(3,2)==3 && mc_floor(0.5,1)==1 && mc_floor(2,1)==2 && mc_floor(1,1)==1;
+    v:=[2]f64.[3,4];#assert mc_norm(v[..])==5 && mc_norm(v[0..<0])==0;
+    #assert mc_rate(MC_LR) && !mc_rate(MC_LR*1.0000001) && !mc_rate(0) && mc_rate(0.0000001) && mc_unit(0) && mc_unit(1) && !mc_unit(1.0000001) && !mc_unit(-0.0000001);
+    m:=McGroup.{kind=McKind.muon,count=8,rows=4,cols=2,lr=0.25,beta2=0.5,decay=0.5,momentum=0.5,ns=5};
+    #assert mc_lr(m)==0.25*sqrt(2.0) && mc_second(m)==4 && mc_work(m)==3*8+2*4+2*4 && mc_hyper(m);
+    m.rows=2;m.cols=4;#assert mc_lr(m)==0.25 && mc_second(m)==4 && mc_work(m)==3*8+2*4+2*4;
+    m.count=16;#assert mc_second(m)==8;m.rows=1;m.cols=2;#assert mc_second(m)==16 && mc_lr(m)==0.25;
+    m.rows=4;m.cols=2;m.count=8;
+    m.ns=0;#assert mc_hyper(m);m.ns=-1;#assert !mc_hyper(m);m.ns=6;#assert !mc_hyper(m);m.ns=5;
+    m.beta1=0.1;#assert !mc_hyper(m);m.beta1=0;m.eps=0.1;#assert !mc_hyper(m);m.eps=0;
+    m.momentum=1;#assert !mc_hyper(m);m.momentum=0;#assert mc_hyper(m);m.beta2=1;#assert !mc_hyper(m);m.beta2=0;#assert mc_hyper(m);
+    m.lr=0;#assert !mc_hyper(m);m.lr=MC_LR;m.decay=0;#assert mc_hyper(m);m.lr=0.25;m.decay=1.0000001;#assert !mc_hyper(m);m.decay=-0.1;#assert !mc_hyper(m);
+    // The decay bound uses the tall rate: 0.8*sqrt(2)*decay must stay below 1.
+    m.lr=0.8;m.decay=1;#assert !mc_hyper(m);m.rows=2;m.cols=4;#assert mc_hyper(m);m.lr=1;#assert !mc_hyper(m);
+    a:=McGroup.{count=3,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=1};
+    #assert mc_hyper(a) && mc_second(a)==3 && mc_work(a)==0;
+    a.lr=1;#assert !mc_hyper(a);a.lr=MC_LR;a.decay=0;#assert mc_hyper(a);a.lr=MC_LR*1.0000001;#assert !mc_hyper(a);a.lr=0.5;
+    a.decay=1.0000001;#assert !mc_hyper(a);a.decay=-0.1;#assert !mc_hyper(a);a.decay=0;
+    a.beta1=1;#assert !mc_hyper(a);a.beta1=0;a.beta2=1;#assert !mc_hyper(a);a.beta2=0;a.eps=0;#assert !mc_hyper(a);a.eps=1;#assert mc_hyper(a);
+    a.momentum=0.1;#assert !mc_hyper(a);a.momentum=0;a.ns=1;#assert !mc_hyper(a);a.ns=0;#assert mc_hyper(a);
+    g:=[3]McGroup.[McGroup.{count=2},McGroup.{kind=McKind.muon,first=2,count=8,rows=2,cols=2},McGroup.{first=10,count=1}];
+    #assert mc_cover(g[..],11) && mc_cover(g[0..<2],10) && !mc_cover(g[..],10) && !mc_cover(g[..],12) && !mc_cover(g[1..<3],9) && mc_cover(g[0..<1],2);
+    g[1].count=6;#assert !mc_cover(g[0..<2],8);g[1].count=8;g[1].first=3;#assert !mc_cover(g[0..<2],11);g[1].first=2;
+    g[1].rows=0;#assert !mc_cover(g[0..<2],10);g[1].rows=2;g[1].cols=0;#assert !mc_cover(g[0..<2],10);g[1].cols=2;
+    g[1].rows=4611686018427387904;#assert !mc_cover(g[0..<2],10);g[1].rows=2;g[1].cols=4611686018427387904;#assert !mc_cover(g[0..<2],10);g[1].cols=2;
+    one:=[1]McGroup.[McGroup.{kind=McKind.muon,count=4,rows=4,cols=1}];#assert mc_cover(one[..],4);one[0].rows=1;one[0].cols=4;#assert mc_cover(one[..],4);one[0].rows=8;one[0].cols=8;#assert !mc_cover(one[..],4);
+    g[1].rows=1;g[1].cols=10;g[1].count=10;#assert mc_cover(g[0..<2],12);g[1].rows=2;g[1].cols=5;#assert mc_cover(g[0..<2],12);g[1].rows=2;g[1].cols=2;g[1].count=8;
+    g[0].rows=1;#assert !mc_cover(g[0..<2],10);g[0].rows=0;g[0].cols=1;#assert !mc_cover(g[0..<2],10);g[0].cols=0;
+    g[0].count=0;#assert !mc_cover(g[0..<1],0);g[0].count=9223372036854775807;#assert !mc_cover(g[0..<2],10);
+}
+#test "tensors, shapes and the AdamW group table" {
+    #assert mc_tensor(McTensor.{rank=1,rows=1,cols=5}) && !mc_tensor(McTensor.{rank=1,rows=2,cols=5}) && !mc_tensor(McTensor.{role=McRole.matrix,rank=1,rows=1,cols=5});
+    #assert mc_tensor(McTensor.{role=McRole.matrix,rank=2,rows=1,cols=5}) && !mc_tensor(McTensor.{rank=3,rows=1,cols=5}) && !mc_tensor(McTensor.{rank=0,rows=1,cols=5});
+    #assert !mc_tensor(McTensor.{rank=2,rows=0,cols=5}) && !mc_tensor(McTensor.{rank=2,rows=5,cols=0}) && mc_tensor(McTensor.{rank=2,rows=4096,cols=4096}) && !mc_tensor(McTensor.{rank=2,rows=4096,cols=4097});
+    #assert !mc_tensor(McTensor.{rank=2,rows=1099511627776,cols=1073741824}) && !mc_tensor(McTensor.{rank=2,rows=16777216,cols=1125899906842624}) && !mc_tensor(McTensor.{rank=2,rows=-1,cols=-1}) && !mc_tensor(McTensor.{rank=2,rows=-1,cols=5}) && mc_tensor(McTensor.{rank=2,rows=16777216,cols=1}) && !mc_tensor(McTensor.{rank=2,rows=16777217,cols=1}) && !mc_tensor(McTensor.{rank=2,rows=1,cols=16777217}) && mc_tensor(McTensor.{rank=2,rows=1,cols=16777216});
+    #assert mc_numel(McTensor.{rows=3,cols=5})==15 && mc_before(1,9,2,0) && mc_before(2,1,2,2) && !mc_before(2,2,2,2) && !mc_before(2,3,2,2) && !mc_before(3,0,2,9);
+    t:=[5]McTensor.[McTensor.{role=McRole.matrix,rows=4,cols=2},McTensor.{rows=1,cols=1},McTensor.{role=McRole.matrix,rows=2,cols=4},McTensor.{role=McRole.matrix,rows=2,cols=3},McTensor.{role=McRole.matrix,rows=4,cols=2}];
+    s:=mc_first_shape(t[..]);#assert s.rows==2 && s.cols==3;s=mc_next_shape(t[..],s);#assert s.rows==2 && s.cols==4;
+    s=mc_next_shape(t[..],s);#assert s.rows==4 && s.cols==2;s=mc_next_shape(t[..],s);#assert s.rows==0 && s.cols==0;
+    s=mc_first_shape(t[1..<2]);#assert s.rows==0;s=mc_first_shape(t[2..<3]);#assert s.rows==2 && s.cols==4;
+    h:=McHyper.{model_dim=192,unembedding_lr=0.25,embedding_lr=0.5,scalar_lr=0.75};
+    a:=[6]McGroup.[mc_adamw_group(0,h,1,2),mc_adamw_group(1,h,3,4),mc_adamw_group(2,h,5,6),mc_adamw_group(3,h,7,8),mc_adamw_group(4,h,9,10),mc_adamw_group(5,h,11,12)];
+    want:=[30]f64.[0.5,0.8,0.96,0.01,0, 1,0.8,0.995,0.001,0, 0.5,0.8,0.995,0.01,0, 0.0075,0.8,0.95,0.05,0, 0.75,0.96,0.95,0,0, 0.2,0.8,0.95,0,0];
+    for i:0..<6 {#assert a[i].kind==McKind.adamw && a[i].first==2*i+1 && a[i].count==2*i+2 && a[i].lr==want[5*i] && a[i].beta1==want[5*i+1] && a[i].beta2==want[5*i+2] && a[i].decay==want[5*i+3] && a[i].eps==0.0000000001 && a[i].momentum==0 && a[i].ns==0 && a[i].rows==0 && a[i].cols==0;}
+}
+#test "hand-derived Muon: one element, Polar Express on singular values, norms kept" {
+    // A 1x1 matrix: momentum 1.5, Nesterov 2.25; the polar and NorMuon steps
+    // reduce it to its sign, so the update is lr plus the cautious decay.
+    g:=McGroup.{kind=McKind.muon,count=1,rows=1,cols=1,lr=0.25,beta2=0.5,decay=0.5,momentum=0.5};
+    w:[16]f64;p:=[1]f64.[2];x:=[1]f64.[3];m:=[1]f64.[0];s:=[1]f64.[0];
+    #assert mc_matrix(g,p[..],x[..],m[..],s[..],w[..],false) && p[0]==2 && m[0]==0 && s[0]==0 && w[0]==1.5 && w[1]==2.25;
+    #assert mc_matrix(g,p[..],x[..],m[..],s[..],w[..],true) && abs(p[0]-1.5)<0.000000000000001 && m[0]==1.5 && abs(s[0]-0.5)<0.000000000000001 && x[0]==3;
+    // Opposite signs: no decay. -2 moves by lr alone.
+    p[0]=-2;m[0]=0;s[0]=0;#assert mc_matrix(g,p[..],x[..],m[..],s[..],w[..],true) && abs(p[0]+2.25)<0.000000000000001;
+    // An exact zero update still decays when the parameter is nonzero: u*p
+    // is 0, which counts as agreeing.
+    zg:=McGroup.{kind=McKind.muon,count=6,rows=2,cols=3,lr=0.25,beta2=0.5,decay=0.5,momentum=0.5,ns=5};zp:=[6]f64.[1,1,2,-1,1,1];zx:=[6]f64.[3,0,0,0,-1,0];zm:[6]f64;zs:[3]f64;zw:[40]f64;
+    #assert mc_matrix(zg,zp[..],zx[..],zm[..],zs[..],zw[..],true) && zp[2]==2*(1-0.25*0.5) && zp[3]==-1*(1-0.25*0.5) && zp[0]<0.75 && zp[4]>-1;
+    // Polar Express on diagonal input acts on each singular value alone:
+    // sigma <- a sigma + (b sigma^2 + c sigma^4) sigma, exactly.
+    wide:=[6]f64.[0.6,0,0,0,0.2,0];tall:=[6]f64.[0.6,0,0,0.2,0,0];y:[6]f64;a:[4]f64;b:[4]f64;
+    mc_polar(wide[..],2,3,5,y[..],a[..],b[..]);mc_polar(tall[..],3,2,5,y[..],a[..],b[..]);
+    d:=[2]f64.[0.6,0.2];
+    for step:0..<5 {for i:0..<2 {q:=d[i]*d[i];d[i]=MC_POLAR[3*step]*d[i]+(MC_POLAR[3*step+1]*q+MC_POLAR[3*step+2]*(q*q))*d[i];}}
+    #assert wide[0]==d[0] && wide[4]==d[1] && wide[1]==0 && wide[2]==0 && wide[3]==0 && wide[5]==0 && tall[0]==d[0] && tall[3]==d[1] && tall[1]==0 && tall[2]==0;
+    #assert abs(d[0]-1)<0.4 && abs(d[1]-1)<0.4 && abs(d[0]-0.6)>0.1;
+    one:=[6]f64.[0.6,0,0,0,0.2,0];mc_polar(one[..],2,3,1,y[..],a[..],b[..]);#assert one[0]==MC_POLAR[0]*0.6+(MC_POLAR[1]*0.36+MC_POLAR[2]*(0.36*0.36))*0.6;
+    none:=[6]f64.[0.6,0,0,0,0.2,0];mc_polar(none[..],2,3,0,y[..],a[..],b[..]);#assert none[0]==0.6 && none[4]==0.2;
+    // Without decay the first update's Frobenius norm is lr*sqrt(min(r,c)),
+    // tall matrices at lr*sqrt(r/c); rows (tall) or columns (wide) leave with
+    // equal norms because the second moment starts at zero.
+    for kind:0..<2 {
+        r:=5;c:=3;if kind==1 {r=3;c=5;}
+        h:=McGroup.{kind=McKind.muon,count=15,rows=r,cols=c,lr=0.125,beta2=0.75,momentum=0.5,ns=5};
+        q:[15]f64;gr:[15]f64;mm:[15]f64;ss:[5]f64;ww:[80]f64;
+        for i:0..<15 {gr[i]=sin(0.7*f64(i)+0.3)+0.1*f64(i%4);q[i]=f64(i%3)-1;}
+        before:=q;#assert mc_matrix(h,q[..],gr[..],mm[..],ss[0..<5],ww[..],true);
+        diff:[15]f64;for i:0..<15 {diff[i]=before[i]-q[i];}
+        #assert abs(mc_norm(diff[..])/mc_lr(h)-sqrt(3.0))<0.000000000001;
+        if kind==0 {#assert mc_lr(h)==0.125*sqrt(5.0/3);for i:1..<5 {#assert abs(mc_norm(diff[3*i..<3*i+3])-mc_norm(diff[0..<3]))<0.000000000001;}} else {#assert mc_lr(h)==0.125;for j:1..<5 {cj:=[3]f64.[diff[j],diff[5+j],diff[10+j]];c0:=[3]f64.[diff[0],diff[5],diff[10]];#assert abs(mc_norm(cj[..])-mc_norm(c0[..]))<0.000000000001;}}
+    }
+}
+mc_case_groups :: (muon:bool,out:[]McGroup)->int {
+    if muon {gi:=MC_MUON_GROUPS;gs:=MC_MUON_SETTINGS;return mc_fixture_groups(gi[..],gs[..],out);}
+    gi:=MC_NANOCHAT_GROUPS;gs:=MC_NANOCHAT_SETTINGS;return mc_fixture_groups(gi[..],gs[..],out);
+}
+#test "the planner reproduces setup_optimizer's groups and layout" {
+    for which:0..<2 {
+        t:[16]McTensor;places:[16]int;groups:[16]McGroup;want:[16]McGroup;n:=0;wp:[16]int;h:=McHyper.{model_dim=4,weight_decay=0.28};
+        if which==0 {r:=MC_NANOCHAT_ROLES;s:=MC_NANOCHAT_SHAPES;n=mc_fixture_tensors(r[..],s[..],t[..]);w:=MC_NANOCHAT_PLACES;for i:0..<n {wp[i]=w[i];}}
+        else {r:=MC_MUON_ROLES;s:=MC_MUON_SHAPES;n=mc_fixture_tensors(r[..],s[..],t[..]);w:=MC_MUON_PLACES;for i:0..<n {wp[i]=w[i];}h=McHyper.{matrix_lr=0.05,weight_decay=0.5};}
+        k:=mc_case_groups(which==1,want[..]);
+        plan:=mc_plan(t[0..<n],h,groups[..],places[0..<n]);
+        #assert plan.status==McStatus.ok && plan.groups==k;
+        for i:0..<n {#assert places[i]==wp[i];}
+        for i:0..<k {
+            a:=groups[i];b:=want[i];
+            // The Muon case's oracle overrides momentum, beta2 and ns after planning, as base_train sets them each step.
+            if which==1 && b.kind==McKind.muon {#assert a.momentum==0.95 && a.beta2==0.9 && a.ns==5;a.momentum=b.momentum;a.beta2=b.beta2;a.ns=b.ns;}
+            #assert a.kind==b.kind && a.first==b.first && a.count==b.count && a.rows==b.rows && a.cols==b.cols && a.lr==b.lr && a.beta1==b.beta1 && a.beta2==b.beta2 && a.eps==b.eps && a.decay==b.decay && a.momentum==b.momentum && a.ns==b.ns;
+        }
+        if which==0 {#assert plan.elements==316 && plan.second==160 && plan.work==256;} else {#assert plan.elements==68 && plan.second==32 && plan.work==95;}
+    }
+}
+#test "planner refusals write nothing" {
+    r:=MC_NANOCHAT_ROLES;s:=MC_NANOCHAT_SHAPES;t:[16]McTensor;n:=mc_fixture_tensors(r[..],s[..],t[..]);
+    places:[16]int;groups:[16]McGroup;for i:0..<16 {places[i]=-1;}h:=McHyper.{model_dim=4};
+    #assert mc_plan(t[0..<n],h,groups[..],places[0..<n-1]).status==McStatus.shape && mc_plan(t[0..<0],h,groups[..],places[0..<0]).status==McStatus.shape;
+    #assert mc_plan(t[0..<n],h,groups[0..<9],places[0..<n]).status==McStatus.group && mc_plan(t[0..<1],h,groups[..],places[0..<1]).status==McStatus.role;
+    bad:=h;bad.model_dim=0;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;bad.model_dim=16777217;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    bad=h;bad.unembedding_lr=0;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    bad=h;bad.embedding_lr=0;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    bad=h;bad.matrix_lr=0;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    bad=h;bad.scalar_lr=0;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    bad=h;bad.weight_decay=1.5;#assert mc_plan(t[0..<n],bad,groups[..],places[0..<n]).status==McStatus.number;
+    // Each singleton role exactly once, at least one matrix, every tensor well formed.
+    keep:=t;
+    for i:0..<n {
+        if t[i].role!=McRole.value_embed && t[i].role!=McRole.matrix {
+            was:=t[i].role;t[i].role=McRole.value_embed;#assert mc_plan(t[0..<n],h,groups[..],places[0..<n]).status==McStatus.role;
+            t[i].role=was;t[14].role=was;#assert mc_plan(t[0..<n],h,groups[..],places[0..<n]).status==McStatus.role;t=keep;
+        }
+    }
+    for i:0..<n {if t[i].role==McRole.matrix {t[i].role=McRole.value_embed;}}#assert mc_plan(t[0..<n],h,groups[..],places[0..<n]).status==McStatus.role;t=keep;
+    t[1].rows=0;#assert mc_plan(t[0..<n],h,groups[..],places[0..<n]).status==McStatus.role;t=keep;
+    t[0].rows=16777216;t[0].cols=1;t[8].rows=1;t[8].cols=1;#assert mc_plan(t[0..<n],h,groups[..],places[0..<n]).status==McStatus.shape;t=keep;
+    for i:0..<16 {#assert places[i]==-1;}
+    #assert mc_plan(t[0..<n],h,groups[0..<10],places[0..<n]).groups==10;
+    one:=h;one.model_dim=1;#assert mc_plan(t[0..<n],one,groups[..],places[0..<n]).status==McStatus.ok;
+    // Exactly 2^24 elements are admitted.
+    t[0].rows=1;t[0].cols=16777216-292;p0:=mc_plan(t[0..<n],h,groups[..],places[0..<n]);#assert p0.status==McStatus.ok && p0.elements==16777216 && places[14]==16777216-292+24;t=keep;
+    many:[4097]McTensor;slots:[4097]int;#assert mc_plan(many[..],h,groups[..],slots[..]).status==McStatus.shape;
+    // Without value embeddings there are five AdamW groups; the capacity is exact.
+    t[14].role=McRole.matrix;t[14].rows=4;t[14].cols=4;p:=mc_plan(t[0..<n],h,groups[0..<9],places[0..<n]);#assert p.status==McStatus.ok && p.groups==9 && groups[5].kind==McKind.muon && groups[6].rows==4 && groups[6].count==80;
+    #assert mc_plan(t[0..<n],h,groups[0..<8],places[0..<n]).status==McStatus.group;
+    // One matrix is enough; the largest width and inventory are admitted.
+    t=keep;for i:2..<8 {t[i].role=McRole.value_embed;}p=mc_plan(t[0..<n],McHyper.{model_dim=16777216},groups[..],places[0..<n]);
+    #assert p.status==McStatus.ok && p.groups==7 && groups[6].kind==McKind.muon && groups[6].rows==4 && groups[6].cols==4 && groups[6].count==16 && groups[0].lr==0.004*pow(16777216.0/768,-0.5);
+    for i:0..<4096 {many[i]=McTensor.{role=McRole.matrix,rank=2,rows=1,cols=1};}for i:0..<7 {many[i].role=cast(McRole) i;}many[2].role=McRole.backout;
+    p=mc_plan(many[0..<4096],h,groups[..],slots[0..<4096]);#assert p.status==McStatus.ok && p.groups==6 && p.elements==4096 && groups[5].count==4089 && slots[4095]==4095 && slots[2]==6;
+}
+#test "independent references: nanochat groups and a Muon-only model" {
+    g:[16]McGroup;k:=mc_case_groups(false,g[..]);q:=mc_nanochat(-1,g[0..<k]);#assert q.resumed==0 && q.kept==3;
+    h:[16]McGroup;j:=mc_case_groups(true,h[..]);u:=mc_muon(-1,h[0..<j]);#assert u.resumed==0 && u.kept==3;
+    // Every setting of every Muon group matters, and so does the grouping.
+    for i:6..<10 {
+        x:=g;x[i].lr*=1.01;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+        x=g;x[i].momentum=0.9;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+        x=g;x[i].beta2=0.95;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+        x=g;x[i].decay=0.25;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+        x=g;x[i].ns=4;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+    }
+    for i:0..<6 {x:=g;x[i].lr*=1.01;#assert mc_nanochat(-1,x[0..<k]).resumed==-1;}
+    // The 4x4 group as AdamW with the matrix rate is not nanochat.
+    x:=g;x[7]=McGroup.{first=124,count=64,lr=0.02,beta1=0.8,beta2=0.95,eps=0.0000000001};#assert mc_nanochat(-1,x[0..<k]).resumed==-1;
+}
+#test "resume from copied state continues the uninterrupted stream" {
+    g:[16]McGroup;k:=mc_case_groups(false,g[..]);for cut:1..<4 {q:=mc_nanochat(cut,g[0..<k]);#assert q.resumed==1 && q.kept==3;}
+    h:[16]McGroup;j:=mc_case_groups(true,h[..]);for cut:1..<5 {q:=mc_muon(cut,h[0..<j]);#assert q.resumed==1 && q.kept==3;}
+    // Resuming with zeroed Muon buffers, or a reset step counter, diverges.
+    a:=MC_MUON_START;x:=MC_MUON_GRADS;want:=MC_MUON_PARAMS;m:[68]f64;s:[32]f64;w:[95]f64;
+    r:=mc_step(h[0..<j],McPolicy.{},McState.{},a[..],x[0..<68],m[..],s[..],w[..],false);#assert r.status==McStatus.ok;
+    keep:=a;mk:=m;sk:=s;
+    for i:14..<68 {m[i]=0;}r=mc_step(h[0..<j],McPolicy.{},r.state,a[..],x[68..<136],m[..],s[..],w[..],false);#assert r.status==McStatus.ok && !mc_close(a[60],want[128]) && mc_close(a[0],want[68]);
+    a=keep;m=mk;for i:0..<32 {s[i]=0;}r=mc_step(h[0..<j],McPolicy.{},McState.{step=1},a[..],x[68..<136],m[..],s[..],w[..],false);#assert r.status==McStatus.ok && !mc_close(a[60],want[128]);
+    a=keep;m=mk;s=sk;r=mc_step(h[0..<j],McPolicy.{},McState.{},a[..],x[68..<136],m[..],s[..],w[..],false);#assert r.status==McStatus.ok && r.state.step==1 && !mc_close(a[0],want[68]) && mc_close(a[60],want[128]);
+}
+mc_refused :: (r:McResult,want:McStatus,s:McState)->bool {return r.status==want && r.state.step==s.step && r.state.skipped==s.skipped && r.written==0;}
+#test "refusals write nothing and skips advance only the skip counter" {
+    g:=[2]McGroup.[McGroup.{count=2,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5,decay=0.5},McGroup.{kind=McKind.muon,first=2,count=4,rows=2,cols=2,lr=0.5,beta2=0.5,decay=0.5,momentum=0.5,ns=5}];
+    p:=[7]f64.[1,2,1,-1,2,0.5,-7];m:=[7]f64.[0,0,0,0,0,0,-8];s:=[5]f64.[0,0,0,0,-9];x:=[7]f64.[1,-1,0.5,1,-2,3,5];w:[25]f64;st:=McState.{step=4,skipped=2};
+    keep:=[19]f64.[1,2,1,-1,2,0.5,-7,0,0,0,0,0,0,-8,0,0,0,0,-9];
+    W:=McPolicy.{};S:=McPolicy.{overflow=McOverflow.skip};
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],true),McStatus.alias,st);
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<5],m[0..<6],s[0..<4],w[..],false),McStatus.shape,st);
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<0],x[0..<0],m[0..<0],s[0..<0],w[..],false),McStatus.shape,st);
+    #assert mc_refused(mc_step(g[0..<0],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.group,st);
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<7],x[0..<7],m[0..<7],s[0..<4],w[..],false),McStatus.group,st);
+    many:[65]McGroup;for i:0..<65 {many[i]=McGroup.{first=i,count=1,lr=0.5,beta1=0.5,beta2=0.5,eps=0.5};}
+    big:[65]f64;bm:[65]f64;bv:[65]f64;bx:[65]f64;
+    #assert mc_refused(mc_step(many[..],W,st,big[..],bx[..],bm[..],bv[..],w[..],false),McStatus.group,st);
+    #assert mc_step(many[0..<64],W,st,big[0..<64],bx[0..<64],bm[0..<64],bv[0..<64],w[0..<0],false).status==McStatus.ok && mc_step(many[0..<1],W,st,big[0..<1],bx[0..<1],bm[0..<1],bv[0..<1],w[0..<0],false).status==McStatus.ok;
+    g[1].ns=6;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.number,st);g[1].ns=5;
+    g[0].eps=0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.number,st);g[0].eps=0.5;
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<5],s[0..<4],w[..],false),McStatus.state,st);
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<3],w[..],false),McStatus.state,st);
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<5],w[..],false),McStatus.state,st);
+    bad:=McState.{step=AW_STEPS};#assert mc_refused(mc_step(g[..],W,bad,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,bad);
+    bad=McState.{skipped=-1};#assert mc_refused(mc_step(g[..],W,bad,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,bad);
+    s[3]=-1;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);s[3]=0;
+    s[1]=1.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);s[1]=0;
+    m[5]=1.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);m[5]=0;
+    p[0]=0.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);p[0]=1;
+    m[0]=-1.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);m[0]=0;
+    p[5]=0.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.state,st);p[5]=0.5;
+    #assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[0..<23],false),McStatus.work,st);
+    // Non-finite gradients: refused, or skipped without touching any value.
+    x[5]=0.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.nonfinite,st);
+    #assert mc_refused(mc_step(g[..],S,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.skipped,McState.{step=4,skipped=3});
+    x[5]=3;x[0]=-1.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.nonfinite,st);
+    // A later non-finite gradient outranks an earlier overflow.
+    x[0]=1e300;x[5]=1.0/0.0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.nonfinite,st);
+    // Overflow in the AdamW group, then in the Muon group's norms.
+    x[5]=3;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.overflow,st);
+    #assert mc_refused(mc_step(g[..],S,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.skipped,McState.{step=4,skipped=3});
+    x[0]=1;x[3]=1e300;x[4]=-1e300;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.overflow,st);
+    x[3]=1e200;x[4]=1;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.overflow,st);
+    // An AdamW moment inconsistent with its second moment sends p past binary64.
+    x[3]=1;x[4]=-2;m[0]=1.7e308;p[0]=-1.7e308;g[0].decay=0;#assert mc_refused(mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false),McStatus.overflow,st);m[0]=0;#assert p[0]==-1.7e308;p[0]=1;g[0].decay=0.5;
+    #assert mc_same(p[..],keep[0..<7]) && mc_same(m[..],keep[7..<14]) && mc_same(s[..],keep[14..<19]);
+    x[3]=1;x[4]=-2;r:=mc_step(g[..],W,st,p[0..<6],x[0..<6],m[0..<6],s[0..<4],w[..],false);#assert r.status==McStatus.ok && r.written==6 && r.state.step==5 && r.state.skipped==2;
+    #assert p[6]==-7 && m[6]==-8 && s[4]==-9 && p[0]!=1 && p[2]!=1 && m[2]!=0 && s[0]!=0 && s[2]!=0;
+}
+#test "a successful step writes exactly the AdamW cell and the Muon matrix" {
+    g:=[2]McGroup.[McGroup.{count=2,lr=0.5,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5},McGroup.{kind=McKind.muon,first=2,count=6,rows=3,cols=2,lr=0.25,beta2=0.5,decay=0.25,momentum=0.5,ns=5}];
+    p:=[8]f64.[1,1,1,-1,2,0.5,-3,0.25];m:=[8]f64.[0,5,0.5,0,0,1,0,0];s:=[5]f64.[0,7,0.25,0,0.5];x:=[8]f64.[2,-3,0.5,1,-2,3,1,-1];w:[32]f64;
+    r:=mc_step(g[..],McPolicy.{},McState.{step=2,skipped=6},p[..],x[..],m[..],s[..],w[..],false);
+    #assert r.status==McStatus.ok && r.state.step==3 && r.state.skipped==6 && r.written==8;
+    ag:=AwGroup.{count=2,lr=0.5,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5};e:=aw_cell(ag,3,1,2,0,0);f:=aw_cell(ag,3,1,-3,5,7);
+    #assert p[0]==e.p && m[0]==e.m && s[0]==e.v && p[1]==f.p && m[1]==f.m && s[1]==f.v;
+    q:=[6]f64.[1,-1,2,0.5,-3,0.25];mm:=[6]f64.[0.5,0,0,1,0,0];ss:=[3]f64.[0.25,0,0.5];gx:=[6]f64.[0.5,1,-2,3,1,-1];ww:[32]f64;
+    #assert mc_matrix(g[1],q[..],gx[..],mm[..],ss[..],ww[..],true);
+    #assert mc_same(p[2..<8],q[..]) && mc_same(m[2..<8],mm[..]) && mc_same(s[2..<5],ss[..]);
+}
+#test "the check helpers see every single difference" {
+    #assert mc_close(0.000000000001,0) && !mc_close(0.000000000002,0) && mc_close(1,1+0.000000000002) && !mc_close(1,1+0.000000000003);
+    a:=[2]f64.[1,2];b:=[2]f64.[1,2];#assert mc_same(a[..],b[..]) && !mc_same(a[..],b[0..<1]) && !mc_same(a[0..<1],b[..]);
+    b[0]=0;#assert !mc_same(a[..],b[..]);b[0]=1;b[1]=0;#assert !mc_same(a[..],b[..]);
+    r4:=[4]f64.[0,0,1,2];#assert mc_close_all(a[..],r4[..],1) && !mc_close_all(a[..],r4[..],0);r4[2]=0;#assert !mc_close_all(a[..],r4[..],1);r4[2]=1;r4[3]=0;#assert !mc_close_all(a[..],r4[..],1);
+    s:=McState.{step=2,skipped=1};r:=McResult.{status=McStatus.state,state=s};
+    #assert mc_refused(r,McStatus.state,s) && !mc_refused(r,McStatus.shape,s) && !mc_refused(r,McStatus.state,McState.{step=3,skipped=1}) && !mc_refused(r,McStatus.state,McState.{step=2});
+    r.written=1;#assert !mc_refused(r,McStatus.state,s);
+    // A replay notices each perturbed expected value, a short trace and a NaN.
+    g:[16]McGroup;k:=mc_case_groups(true,g[..]);a0:=MC_MUON_START;x:=MC_MUON_GRADS;p:=MC_MUON_PARAMS;m:=MC_MUON_M;v:=MC_MUON_S;
+    #assert mc_replay(g[0..<k],a0[..],x[0..<339],p[..],m[..],v[..],-1).resumed==-1 && mc_replay(g[0..<k],a0[..],x[..],p[..],m[0..<339],v[..],-1).resumed==-1 && mc_replay(g[0..<k],a0[..],x[..],p[..],m[..],v[0..<159],-1).resumed==-1;
+    for at:0..<2 {i:=at*339;j:=at*159;
+        p[i]+=0.00000001;#assert mc_replay(g[0..<k],a0[..],x[..],p[..],m[..],v[..],-1).resumed==-1;p[i]=MC_MUON_PARAMS[i];
+        m[i]+=0.00000001;#assert mc_replay(g[0..<k],a0[..],x[..],p[..],m[..],v[..],-1).resumed==-1;m[i]=MC_MUON_M[i];
+        v[j]+=0.00000001;#assert mc_replay(g[0..<k],a0[..],x[..],p[..],m[..],v[..],-1).resumed==-1;v[j]=MC_MUON_S[j];
+    }
+    x[30]=0.0/0.0;#assert mc_replay(g[0..<k],a0[..],x[..],p[..],m[..],v[..],-1).resumed==-1;
+    t:=McTensor.{rank=2,rows=1,cols=2};roles:=[2]int.[8,3];shapes:=[6]int.[2,3,4,1,1,5];out:[2]McTensor;
+    #assert mc_fixture_tensors(roles[..],shapes[..],out[..])==2 && out[0].role==McRole.matrix && out[0].rank==2 && out[0].rows==3 && out[0].cols==4 && out[1].role==McRole.resid && out[1].rank==1 && out[1].rows==1 && out[1].cols==5 && t.rank==2;
+}
+#test "Polar Express matches the independent loop exactly on square, tall and wide inputs" {
+    y:[25]f64;a:[25]f64;b:[25]f64;o0:=MC_POLAR_OUTPUT_0;o1:=MC_POLAR_OUTPUT_1;o2:=MC_POLAR_OUTPUT_2;
+    q:=MC_POLAR_INPUT_0;mc_polar(q[..],4,4,5,y[..],a[..],b[..]);#assert mc_same(q[..],o0[..]);
+    t:=MC_POLAR_INPUT_1;mc_polar(t[..],5,3,5,y[..],a[..],b[..]);#assert mc_same(t[..],o1[..]);
+    w:=MC_POLAR_INPUT_2;mc_polar(w[..],3,5,5,y[..],a[..],b[..]);#assert mc_same(w[..],o2[..]);
+    // Four steps are not five.
+    s:=MC_POLAR_INPUT_0;mc_polar(s[..],4,4,4,y[..],a[..],b[..]);#assert !mc_same(s[..],o0[..]);
+}

@@ -772,6 +772,16 @@
       ]
     },
     {
+      "source": "psionic/examples/muon.coax",
+      "chapter": "psionic/book/ch124-adamw-and-explicit-precision.md",
+      "stdout": "psionic/fixtures/muon.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/exact-replay.coax",
       "chapter": "psionic/book/ch232-exact-replay-as-a-verification-class.md",
       "stdout": "psionic/fixtures/exact-replay.out",
