@@ -461,7 +461,9 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   // a class's portrait on its button
   if (s.w > 0.5 && inside > 0.0) {
     let h = r.w - r.y;
-    let feet = vec2f(r.x + h * 0.5, r.w - h * 0.1);
+    // in the room stair.coax's class_icon leaves it: most of the height, at most 30% of a narrow button
+    let iw = min(h * 0.8, (r.z - r.x) * 0.3);
+    let feet = vec2f(r.x + iw * 0.6, r.w - h * 0.1);
     let sc = h * 0.95;
     let qq = vec2f(p.x - feet.x, feet.y - p.y) / sc;
     if (abs(qq.x) < 0.3 && qq.y > -0.1 && qq.y < 0.9) {

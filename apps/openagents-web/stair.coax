@@ -103,7 +103,9 @@ dc_of :: (s: [] Stair, k: int, base: int) -> int { return ifx s[0].party[k].leve
 LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
 LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
-CLASS_PAD :: 14;   // a class button's text keeps this far (in CSS px) from its right edge
+CLASS_PAD :: 14;
+// The room a class button's portrait takes: most of its height, but no more than 30% of a narrow button.
+class_icon :: (r: Rect) -> f32 { return lo((r.y1 - r.y0) * 0.8, (r.x1 - r.x0) * 0.3); }   // a class button's text keeps this far (in CSS px) from its right edge
 
 // ---- your spells: the tower's wizard (you) has a few a map. Wall of Stone across the stair: the
 // beasts stop at it and break it (SRD panels, AC 15; WALL_HP between them), then climb on. Wall of
@@ -1183,7 +1185,7 @@ sell :: (s: [] Stair, k: int) {
 
 layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
-  top := 52 * k;
+  top := ifx s[0].portrait then 92 * k else 52 * k;   // a phone's spells sit in a row under the top bar
   bottom := ifx s[0].portrait then 216 * k else 118 * k;
   if s[0].card_shot { top = 0; bottom = 0; }   // no HUD: the stair fills the shot
   s[0].scols = ifx s[0].portrait then ROWS else COLS;
@@ -1259,10 +1261,12 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
     set_button(s, B_MAP, Rect.{x0 = w - mw - 10 * k, y0 = 10 * k, x1 = w - 10 * k, y1 = 42 * k}, true);
   } else if !over {
     // your spells, top right
-    sw := ifx s[0].portrait then 58 * k else 96 * k;
+    // (on a phone, a row of their own under the top bar)
+    sw := ifx s[0].portrait then (w - 28 * k - 16 * k) / 3 else 96 * k;
     for i: 0..<YOUR_SPELLS {
-      x1 := w - 10 * k - f32(YOUR_SPELLS - 1 - i) * (sw + 4 * k);
-      set_button(s, B_STONE + i, Rect.{x0 = x1 - sw, y0 = 10 * k, x1 = x1, y1 = 42 * k}, s[0].spells[i] > 0 && !(i == SPELL_SLOW && s[0].slow_t > 0));
+      x1 := w - (ifx s[0].portrait then 14 * k else 10 * k) - f32(YOUR_SPELLS - 1 - i) * (sw + (ifx s[0].portrait then 8 * k else 4 * k));
+      y0 := ifx s[0].portrait then 50 * k else 10 * k;
+      set_button(s, B_STONE + i, Rect.{x0 = x1 - sw, y0 = y0, x1 = x1, y1 = y0 + 32 * k}, s[0].spells[i] > 0 && !(i == SPELL_SLOW && s[0].slow_t > 0));
     }
   }
   if over {
@@ -1765,6 +1769,7 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
   n := at;
   t := s[0].tile;
   k := hi(s[0].dpr, 0.5);
+  n = draw_walls(s, out, n, t);
   for i: 0..<DEFENDERS {
     d := s[0].party[i];
     if !d.live { continue; }
@@ -1779,7 +1784,6 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
         n = seg(out, n, px, py - pr * 1.4, px + pr, py, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
       }
     }
-    if i == 0 { n = draw_walls(s, out, n, t); }
     if d.daylight {
       // Daylight: a warm pool round the cleric
       c := cell_xy(d.cell);
@@ -2085,7 +2089,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
   m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, waves_of(s));
   // on a phone, MAP (before the first wave) takes the wave count's place
-  right := ifx s[0].shown[B_MAP] then s[0].boxes[B_MAP].x0 else ifx s[0].shown[B_STONE] then s[0].boxes[B_STONE].x0 else w;
+  right := ifx s[0].shown[B_MAP] then s[0].boxes[B_MAP].x0 else ifx s[0].shown[B_STONE] && !s[0].portrait then s[0].boxes[B_STONE].x0 else w;
   if lx + text_width(cast(string) buf[0..<m], cap) <= right - 6 * k {
     n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, INK_R, INK_G, INK_B));
     lx += text_width(cast(string) buf[0..<m], cap) + sp;
@@ -2205,7 +2209,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   for b: B_FIGHTER..<B_LAST_CLASS + 1 {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
-    room := r.x1 - r.x0 - (r.y1 - r.y0) * 0.8 - CLASS_PAD * k;   // clear of the bevelled corner
+    room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;   // clear of the bevelled corner
     while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 7 * k { cnc -= 0.5 * k; }
     m = put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
     while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 6 * k { ccc -= 0.5 * k; }
@@ -2222,7 +2226,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       // the class's portrait (stair.wgsl), its name, its cost
       light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
       bh := r.y1 - r.y0;
-      tx := r.x0 + bh * 0.8;
+      tx := r.x0 + class_icon(r);
       nc := cnc;
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
       m = put_int(buf[..], 0, s[0].ct[0].cost[cls]); m = put(buf[..], m, " GOLD");
