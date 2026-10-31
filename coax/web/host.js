@@ -1555,8 +1555,7 @@ function snapshot() {
     gpu.snap = () => {
       clearTimeout(timer);
       try {
-        const c = document.createElement("canvas");
-        c.width = canvas.width; c.height = canvas.height;
+        const c = new OffscreenCanvas(canvas.width, canvas.height);   // never shown: card.js draws the card from it
         c.getContext("2d").drawImage(canvas, 0, 0);
         resolve(c);
       } catch { resolve(null); }
