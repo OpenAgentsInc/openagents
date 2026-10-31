@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.30.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.31.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -34,6 +34,7 @@ Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.
+
 
 
 

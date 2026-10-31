@@ -303,6 +303,7 @@ struct FieldInit {
 
 struct Expr {
   ExprKind kind;
+  uint8_t effects = 0;  // CK_effects: 1 call, 2 trap, 4 overflow trap under checked arithmetic
   Loc loc;
   Type type = &T_INVALID;     // set by the checker
   uint64_t int_value = 0;     // int_lit (bit pattern), bool_lit, enum_value

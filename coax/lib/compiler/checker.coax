@@ -171,7 +171,7 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
   proc=64;constant=65;struct_=66;enum_=67;param=68;field=69;member=70;field_init=71;import_=72;check=73;file=74;assert_=75;
 }
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
-  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;}
+  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;effects_known:bool;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
@@ -402,6 +402,50 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],aliases=aliases[..]};
  #assert CK_alias(c,0,"hud")==1 && CK_alias(c,2,"hud")==3 && CK_alias(c,0,"b")==2;
  #assert CK_alias(c,1,"hud")== -1 && CK_alias(c,2,"b")== -1 && CK_alias(c,0,"hu")== -1;
+}
+#forall "each checked expression names its observable effects" variant:0..<20 {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=11,size=16,alignment=8};
+ // node 3 is the expression under test over leaves 4 and 5
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="x",type=11};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ kinds:=[20] CK_Tag.[CK_Tag.expr_index,CK_Tag.expr_slice,CK_Tag.expr_call,CK_Tag.expr_call,CK_Tag.expr_call,CK_Tag.expr_cast,CK_Tag.expr_cast,CK_Tag.expr_cast,
+   CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,CK_Tag.expr_binary,
+   CK_Tag.expr_unary,CK_Tag.expr_unary,CK_Tag.expr_binary,CK_Tag.expr_ident];
+ ops:=[20] u32.[0,0,0,0,0,0,0,0,37,38,42,43,34,35,36,39,35,52,34,0];
+ typ:=[20] int.[11,16,11,11,11,11,11,7,11,11,11,11,11,11,11,11,11,11,7,11];
+ nodes[3]=CK_Node.{kind=kinds[variant],op=ops[variant],type=typ[variant],a=4,b=5};
+ if variant==3 {nodes[3].byte_intrinsic=1;}if variant==4 {nodes[3].intrinsic=2;}if variant==6 {nodes[3].flag=true;}
+ if variant==2 || variant==3 || variant==4 {nodes[3].a=CK_NONE;nodes[3].b=CK_NONE;nodes[3].head=4;nodes[4].next=5;}
+ want:=[20] u8.[2,2,1,2,0,2,0,0,2,2,2,2,4,4,4,0,4,0,0,0];
+ #assert CK_effects(c,3)==want[variant] && nodes[3].effects_known && nodes[3].effects==want[variant];
+ #assert CK_effects(c,4)==0 && CK_effects(c,0)==0 && CK_effects(c,16)==0 && CK_effects(c, -1)==0;
+}
+#test "the effects pass covers exactly the used nodes" {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,used=3}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ for i:1..<6 {nodes[i]=CK_Node.{kind=CK_Tag.expr_index,type=11};}
+ CK_lower_effects(c);
+ // operand 0 is the null node: it is visited too, and has no effects
+ #assert nodes[0].effects_known && nodes[0].effects==0 && nodes[1].effects==2 && nodes[3].effects==2 && nodes[3].effects_known && !nodes[4].effects_known && nodes[4].effects==0;
+ // statements are not expressions: their operands are lowered on their own
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,a=1,head=2};#assert CK_effects(c,6)==0;
+}
+#test "effects combine through operands, lists and field values, and are computed once" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ // f(a[i] + b, S.{v = -k}) with a folded division and a non-expression
+ nodes[1]=CK_Node.{kind=CK_Tag.expr_call,head=2};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_binary,op=34,type=7,a=3,b=4,next=6};nodes[3]=CK_Node.{kind=CK_Tag.expr_index,type=11};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,type=7};
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_struct,head=7,d=10};nodes[7]=CK_Node.{kind=CK_Tag.field_init,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_unary,op=35,type=11,a=9};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_binary,op=37,type=11,folded=true,a=3};nodes[10]=CK_Node.{kind=CK_Tag.expr_index,type=11};
+ nodes[11]=CK_Node.{kind=CK_Tag.stmt_return,a=3};nodes[12]=CK_Node.{kind=CK_Tag.expr_ct,a=3};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,a=3};
+ #assert CK_effects(c,6)==4 && CK_effects(c,7)==4 && CK_effects(c,9)==0 && CK_effects(c,2)==2;
+ #assert CK_effects(c,1)==7 && CK_effects(c,11)==0 && CK_effects(c,12)==2 && CK_effects(c,13)==2;
+ nodes[3].effects=0;#assert CK_effects(c,1)==7 && CK_effects(c,2)==2;
+ nodes[14]=CK_Node.{kind=CK_Tag.expr_binary,op=34,type=11,effects=4};#assert CK_effects(c,14)==4 && nodes[14].effects_known;
 }
 #forall "sealed modules expose only their exported names" variant:0..<12 {
  nodes:[16]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
@@ -1622,6 +1666,39 @@ CK_coverage :: (c:CK_Context) {
   id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_reach(c,c.nodes[c.nodes[id].a].b);}id=c.nodes[id].next;}
   id=c.nodes[1].head;while id!=CK_NONE {p:=c.nodes[id];if CK_requires_coverage(p) {CK_error(c,p.loc,"E0380",CK_join3(c,"'",p.name,"' is not exercised by any #test or #forall"),"#authority files check every procedure: add a #test or #forall that calls it");}id=p.next;}
 }
+// Ordered lowering (r1a-ordered-lowering): what evaluating a checked
+// expression may observably do. Evaluator and native C share one order
+// (left to right, a place before its value); the emitter sequences operands
+// whenever two of them could make that order observable.
+CK_EFFECT_CALL :: cast(u8) 1;      // runs a procedure: may write state another operand reads
+CK_EFFECT_TRAP :: cast(u8) 2;      // may stop with a trap under every arithmetic profile
+CK_EFFECT_OVERFLOW :: cast(u8) 4;  // may stop with an overflow trap under checked arithmetic
+CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 {
+  integer:=CK_integer(c,n.type);
+  if n.kind==CK_Tag.expr_index || n.kind==CK_Tag.expr_slice {return CK_EFFECT_TRAP;}
+  if n.kind==CK_Tag.expr_call {if n.byte_intrinsic!=0 {return CK_EFFECT_TRAP;}if n.intrinsic!=0 {return 0;}return CK_EFFECT_CALL;}
+  if n.kind==CK_Tag.expr_cast {if integer && !n.flag {return CK_EFFECT_TRAP;}return 0;}
+  if !integer {return 0;}
+  if n.kind==CK_Tag.expr_binary {
+    if n.op==37 || n.op==38 || n.op==42 || n.op==43 {return CK_EFFECT_TRAP;}
+    if n.op==34 || n.op==35 || n.op==36 {return CK_EFFECT_OVERFLOW;}
+  }
+  if n.kind==CK_Tag.expr_unary && n.op==35 {return CK_EFFECT_OVERFLOW;}
+  return 0;
+}
+CK_effects :: (c:CK_Context,id:int)->u8 {
+  if id<0 || id>=c.nodes.count {return 0;}
+  n:=c.nodes[id];if n.effects_known {return n.effects;}
+  e:u8=0;tag:=cast(u32)n.kind;expression:=tag>=16 && tag<40;
+  if n.kind==CK_Tag.field_init {e=CK_effects(c,n.a);}
+  else if expression && !n.folded {
+    e=CK_own_effects(c,n)|CK_effects(c,n.a)|CK_effects(c,n.b)|CK_effects(c,n.c);
+    arg:=n.head;while arg!=CK_NONE {e=e|CK_effects(c,arg);arg=c.nodes[arg].next;}
+  }
+  c.nodes[id].effects=e;c.nodes[id].effects_known=true;return e;
+}
+// Every node of a checked graph, once, after CK_run succeeds.
+CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
 CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16};
   if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
@@ -1664,7 +1741,8 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   }id=p.next;}
   id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_check(c,id);}id=c.nodes[id].next;}
   if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
-  if options.metal && c.state[0].error_count==0 {CK_metal(c);}return c.state[0].error_count==0 && !c.state[0].fatal;
+  if options.metal && c.state[0].error_count==0 {CK_metal(c);}
+  return c.state[0].error_count==0 && !c.state[0].fatal;
 }
 
 #test "wide signed arithmetic preserves the full literal domain" {

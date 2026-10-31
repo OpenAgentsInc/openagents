@@ -226,11 +226,13 @@ _Bool MS_shard_valid(uint64_t l_shard, uint64_t l_count) {
 }
 
 _Bool MS_shard_owns(uint64_t l_index, uint64_t l_shard, uint64_t l_count) {
+  uint64_t coax_t0;
+  uint64_t coax_t1;
   if (!MS_shard_valid(l_shard, l_count))
   {
     return 0;
   }
-  return (coax_mod_u64(l_index, l_count, 70) == coax_sub_u64(l_shard, UINT64_C(1), 70));
+  return (coax_t0 = coax_mod_u64(l_index, l_count, 70), coax_t1 = coax_sub_u64(l_shard, UINT64_C(1), 70), (coax_t0 == coax_t1));
 }
 
 _Bool MS_jobs_valid(uint64_t l_jobs) {

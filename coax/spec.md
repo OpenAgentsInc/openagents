@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.30.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.31.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -429,9 +429,22 @@ Operands and call arguments are evaluated left to right, with
 short-circuit boolean operators and `ifx` evaluating only what they select.
 This is implemented at compile time and at run time. The C emitter stores
 operands in temporaries, in source order, whenever an operand list contains a
-call and another operand that could call or trap, so C's unspecified argument
-order never shows. An assignment evaluates its place, then its value; a
-compound assignment evaluates its place once.
+call and another operand that could call or trap, or (since 0.31.0) two
+operands that could trap, so C's unspecified argument order never shows. An
+assignment evaluates its place, then its value; a compound assignment
+evaluates its place once. Since 0.31.0 the decision comes from the checked
+graph (r1a-ordered-lowering): `CK_effects` in `lib/compiler/checker.coax`
+marks each expression that calls, may trap under every arithmetic profile
+(indexing, slicing, integer `/`, `%`, shifts, checked integer casts, byte
+intrinsics) or may trap only under checked arithmetic (integer `+`, `-`, `*`,
+unary `-`). Two trapping operands, `a[i] + a[j]`, and a trapping place and
+value, `a[i] = a[j]` or `a[i] += a[j]`, are sequenced, so the first trap in
+source order is the one reported natively at every optimization level, as
+the evaluator reports it. `tests/lowering.py` checks the evaluator and
+native -O0/-O2 against written expectations for traps, caller writes,
+destination order, exactly-once compound places and reverse `defer`
+cleanup, and catches a seeded reversed-operand defect. GPU and shader
+emission keep their existing order rules.
 
 ## 8. Control flow
 

@@ -586,14 +586,21 @@ struct Emitter {
   // the C text for each operand. A place (an lvalue in Coax) stays one in C:
   // a comma expression is not, so its address is taken inside it,
   // `(*(t = ..., &(place)))`, and it can be assigned to or addressed again.
+  // The checked graph's effects (CK_effects) decide it: an operand that calls,
+  // or two that may trap, are evaluated in Coax order through temporaries,
+  // never left to C's unspecified operand order.
+  bool may_trap(const Expr *e) const {
+    return !device() && !opts.metal && !trivial(e) && (e->effects & (2 | (opts.wrapping ? 0 : 4)));
+  }
   template <class F> std::string ordered(const std::vector<Operand> &ops, F build, bool place = false) {
-    int calls = 0, nontrivial = 0;
+    int calls = 0, nontrivial = 0, traps = 0;
     for (const Operand &o : ops) {
       if (has_call(o.e)) calls++;
       if (!trivial(o.e)) nontrivial++;
+      if (may_trap(o.e)) traps++;
     }
     std::vector<std::string> texts;
-    if (calls == 0 || nontrivial < 2) {
+    if ((calls == 0 || nontrivial < 2) && traps < 2) {
       for (const Operand &o : ops) texts.push_back(ex(o.e));
       return build(texts);
     }
@@ -1084,7 +1091,8 @@ struct Emitter {
   void assign(const Stmt *s) {
     const Expr *target = s->target;
     if (s->op == Tok::equal) {
-      bool order = (has_call(target) && !trivial(s->expr)) || (has_call(s->expr) && !trivial(target));
+      bool order = (has_call(target) && !trivial(s->expr)) || (has_call(s->expr) && !trivial(target)) ||
+                   (may_trap(target) && may_trap(s->expr));
       if (!order) {
         line(ex(target) + " = " + ex(s->expr) + ";");
       } else {
@@ -1097,7 +1105,7 @@ struct Emitter {
     }
     // x op= v: the place is evaluated once, then v, then the update.
     Expr place{}, value{}, bin{};
-    bool direct = !has_call(target) && !has_call(s->expr);
+    bool direct = !has_call(target) && !has_call(s->expr) && !(may_trap(target) && may_trap(s->expr));
     std::string p, v;
     if (!direct) {
       p = new_temp(pointer_type(target));
