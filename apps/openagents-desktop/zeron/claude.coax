@@ -780,7 +780,32 @@ Engine :: struct {
   cwd: [E_FILE] u8; cwd_n: int;
   sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
   err: [2048] u8;
+  // the room's tools (desk.coax gives them when the chat is on a desk with others)
+  room: bool;
+  calling: bool;                     // a room tool call waits for the desk's answer
+  call: int;                         // which (ROOM_*)
+  call_args: [8192] u8; call_n: int; // its arguments, JSON
+  call_ask: int;                     // an ask_agent's id while it waits for the answer, else -1
 }
+// The room's tools, in the order the server lists them.
+ROOM_AGENTS :: 0; ROOM_ASK :: 1; ROOM_TELL :: 2; ROOM_READ :: 3;
+ROOM_SERVER :: "room";
+// The room as an in-process MCP server on the CLI's options.
+e_room_tools :: (o: [] ClOptions) {
+  k := cl_add_server(o, ROOM_SERVER, "1.0.0");
+  o[0].servers[k].instructions = "Other agents work beside you in this window, each in its own session. agents_list names them; ask_agent waits for one's answer; tell_agent leaves one a note for its next turn; room_read shows the messages between agents.";
+  t := cl_add_server_tool(o, k, "agents_list", "The other agents in this window: name, harness, folder, and whether each is busy.", "{\"type\":\"object\",\"properties\":{}}");
+  t = cl_add_server_tool(o, k, "ask_agent", "Ask another agent (by its name from agents_list). It runs your message as a new turn in its session; its final answer comes back as this tool's result.", "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"name\",\"message\"]}");
+  t = cl_add_server_tool(o, k, "tell_agent", "Leave another agent a note it reads with its next message. Returns at once.", "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"name\",\"message\"]}");
+  t = cl_add_server_tool(o, k, "room_read", "The messages between agents after a point (0 for all), each with its number, from, to and text.", "{\"type\":\"object\",\"properties\":{\"since\":{\"type\":\"integer\"}}}");
+}
+// The room tool's answer goes back to the CLI, which then reads on.
+e_room_reply :: (e: [] Engine, text: string, is_error: bool) {
+  if !e[0].calling { return; }
+  e[0].calling = false; e[0].call_ask = -1;
+  if e[0].on { cl_tool_text(e[0].q[..], text, is_error); }
+}
+e_call_args :: (e: [] Engine) -> string { return cast(string) e[0].call_args[0..<e[0].call_n]; }
 
 e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 
@@ -871,6 +896,7 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
   if e[0].path_n > 5 { cl_add_env(o[..], e_str(e[0].path_env[..], e[0].path_n)); }
   cl_remove_env(o[..], "ANTHROPIC_API_KEY");
   if e[0].sid_n > 0 { o[0].resume = e_str(e[0].sid[..], e[0].sid_n); }
+  if e[0].room { e_room_tools(o[..]); }
   q[0].options = o[0];
   why := cl_start(q, e[0].p[..], "", true, e[0].scratch);
   if why.count > 0 {
@@ -957,7 +983,7 @@ e_go :: (e: [] Engine, s: [] Session, k: int, was_live: bool) {
 }
 e_close :: (e: [] Engine) {
   if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
-  e[0].running = false; e[0].ready = false;
+  e[0].running = false; e[0].ready = false; e[0].calling = false;
 }
 
 // STOP: the control protocol's interrupt (a CLI still starting is closed).
@@ -1048,7 +1074,7 @@ e_pump :: (e: [] Engine, s: [] Session) {
   // initialize answer lists the account's models (Zeron's model probe), and
   // the first message finds it ready
   if !e[0].running && !e[0].warmed && e[0].claude_n > 0 { e[0].warmed = true; b := e_launch(e, s, true); }
-  if !e[0].running || s[0].asking >= 0 { return; }
+  if !e[0].running || s[0].asking >= 0 || e[0].calling { return; }
   for guard: 0..<200 {
     ev := cl_poll(e[0].q[..], e[0].p[..], 0);
     if ev.kind == ClEventKind.idle { return; }
@@ -1063,6 +1089,12 @@ e_pump :: (e: [] Engine, s: [] Session) {
       sid := cl_session_id(e[0].q[..]);
       if sid.count > 0 { e[0].sid_n = e_set(e[0].sid[..], 0, sid); }
       continue;
+    }
+    if ev.kind == ClEventKind.tool_call {
+      // a room tool: the desk answers it (now, or when the other agent has)
+      e[0].calling = true; e[0].call = ev.tool; e[0].call_ask = -1;
+      e[0].call_n = e_set(e[0].call_args[..], 0, ev.arguments);
+      return;
     }
     if ev.kind == ClEventKind.permission {
       e_permission(e, s, ev);

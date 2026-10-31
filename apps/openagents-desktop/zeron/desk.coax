@@ -273,8 +273,10 @@ dsk_room :: (k: [] Desk) {
   r[0].agents = k[0].n;
   for i: 0..<k[0].n {
     s := k[0].chats[i].s; ss := s[0].session[..];
+    s[0].engine[0].room = true;
     if !s[0].ready { continue; }    // its first frame sets it up
     if s[0].stops != k[0].chats[i].stops { k[0].chats[i].stops = s[0].stops; rm_stop(r, i); }
+    dsk_room_call(k, i);
     if k[0].chats[i].was_live && !ss[0].live && rm_running(r, i) >= 0 {
       t := dsk_turn_text(k, i);
       if t.count > 0 { rm_answer(r, i, false, t); }
@@ -295,6 +297,68 @@ dsk_room :: (k: [] Desk) {
       k[0].chats[i].was_live = ss[0].live;
     } else { dsk_take_notes(k, i); }
   }
+}
+// A room tool an agent called (claude.coax e_room_tools): answered now, or for ask_agent when the other agent has answered.
+dsk_room_call :: (k: [] Desk, i: int) {
+  s := k[0].chats[i].s; e := s[0].engine[..];
+  if !e[0].calling { return; }
+  r := k[0].room[..];
+  if e[0].call_ask >= 0 {
+    ans: [RM_ANSWER] u8; an: [1] int;
+    st := rm_result(r, e[0].call_ask, ans[..], an[..]);
+    if st == RM_DONE { e_room_reply(e, cast(string) ans[0..<an[0]], false); }
+    else if st == RM_FAILED { e_room_reply(e, cast(string) ans[0..<an[0]], true); }
+    else if st == RM_FREE { e_room_reply(e, "The ask was lost.", true); }
+    return;
+  }
+  ar := e[0].q[0].ar[..];
+  args := e_call_args(e);
+  out: [RM_ANSWER] u8; n := 0; nb: [64] u8;
+  if e[0].call == ROOM_AGENTS {
+    for j: 0..<k[0].n {
+      if j == i { continue; }
+      names := MODE_NAMES;
+      if n > 0 { n = e_copy(out[..], n, "\n"); }
+      n = e_copy(out[..], n, dsk_agent_name(k, j, nb[..])); n = e_copy(out[..], n, " · ");
+      n = e_copy(out[..], n, names[k[0].chats[j].s[0].mode]); n = e_copy(out[..], n, " · ");
+      n = e_copy(out[..], n, dsk_cwd(k, j)); n = e_copy(out[..], n, " · ");
+      n = e_copy(out[..], n, ifx k[0].chats[j].s[0].session[0].live then "busy" else "idle");
+    }
+    if n == 0 { n = e_copy(out[..], 0, "No other agents are in this window."); }
+    e_room_reply(e, cast(string) out[0..<n], false);
+    return;
+  }
+  if e[0].call == ROOM_READ {
+    since := cl_int(args, "since");
+    from := rm_since(r, ifx since.ok then since.value else 0);
+    for m: from..<r[0].count {
+      if n > 0 { n = e_copy(out[..], n, "\n"); }
+      n = e_copy(out[..], n, "#"); n = zr_put_int(out[..], n, rm_seq(r, m)); n = e_copy(out[..], n, " ");
+      n = e_copy(out[..], n, dsk_agent_name(k, rm_from(r, m), nb[..])); n = e_copy(out[..], n, " → ");
+      n = e_copy(out[..], n, dsk_agent_name(k, rm_to(r, m), nb[..]));
+      kinds := [5] string.["", " asks", " tells", " answers", " cancels"];
+      n = e_copy(out[..], n, kinds[rm_kind(r, m)]); n = e_copy(out[..], n, ": ");
+      n = e_copy(out[..], n, rm_text(r, m));
+    }
+    if n == 0 { n = e_copy(out[..], 0, "No messages yet."); }
+    e_room_reply(e, cast(string) out[0..<n], false);
+    return;
+  }
+  name := cl_str(ar, args, "name");
+  message := cl_str(ar, args, "message");
+  to := dsk_agent(k, name);
+  if to < 0 { e_room_reply(e, rm_error(RM_ERR_AGENT), true); return; }
+  if message.count == 0 { e_room_reply(e, "The message is empty.", true); return; }
+  if e[0].call == ROOM_TELL {
+    got := dsk_tell(k, i, to, message);
+    if got < 0 { e_room_reply(e, rm_error(got), true); return; }
+    n = e_copy(out[..], 0, "Left the note for "); n = e_copy(out[..], n, dsk_agent_name(k, to, nb[..])); n = e_copy(out[..], n, ".");
+    e_room_reply(e, cast(string) out[0..<n], false);
+    return;
+  }
+  id := dsk_ask(k, i, to, message);
+  if id < 0 { e_room_reply(e, rm_error(id), true); return; }
+  e[0].call_ask = id;
 }
 // Notes for an agent move into its chat's preface (sent before its next message).
 dsk_take_notes :: (k: [] Desk, i: int) {
@@ -771,4 +835,35 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   zr_stop(a[..]);
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   #assert rm_result(k[0].room[..], id, ans[..], an[..]) == RM_FAILED;
+}
+
+#test "the room's tools: an agent's ask_agent call waits for the other's answer and gets it as the tool result" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one");
+  i = dsk_add(k[..], b[..], "/w/two");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  e := a[0].engine[..];
+  #assert e[0].room;
+  // agents_list answers at once
+  e[0].calling = true; e[0].call = ROOM_AGENTS; e[0].call_n = e_set(e[0].call_args[..], 0, "{}");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert !e[0].calling;
+  // ask_agent waits
+  e[0].calling = true; e[0].call = ROOM_ASK; e[0].call_n = e_set(e[0].call_args[..], 0, "{\"name\":\"Claude 2\",\"message\":\"Review the diff\"}");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert e[0].calling && e[0].call_ask >= 0;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  bs := b[0].session[..];
+  #assert bs[0].live && s_text_of(bs, bs[0].n - 1) == "Ask from Claude 1 (your answer goes back to it): Review the diff";
+  s_delta(bs, P_TEXT, "LGTM."); s_turn_end(bs, false, "");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert !e[0].calling && e[0].call_ask < 0;
+  // an unknown name is an error at once
+  e[0].calling = true; e[0].call = ROOM_TELL; e[0].call_n = e_set(e[0].call_args[..], 0, "{\"name\":\"Nobody\",\"message\":\"hi\"}");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert !e[0].calling;
 }

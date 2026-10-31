@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+# A Claude Code for check.sh that asks Codex for a review through the room:
+# a message gets an mcp__room__ask_agent call, and the review that comes back
+# as its tool result is quoted in the answer. Lines carry the fields the
+# stream-json parser requires, as 2.1.316 writes them.
+import json, sys
+S = "00000000-0000-0000-0000-000000000000"
+USAGE = {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+def out(x):
+    sys.stdout.write(json.dumps(x) + "\n"); sys.stdout.flush()
+def say(content, mid):
+    out({"type": "assistant", "message": {"id": mid, "model": "claude-opus-5-5", "role": "assistant", "type": "message", "content": content,
+         "stop_reason": None, "stop_sequence": None, "usage": USAGE}, "parent_tool_use_id": None, "uuid": S, "session_id": S})
+ARGS = {"name": "Codex 1", "message": "Review this diff: -a = 1 +b = 1"}
+for line in sys.stdin:
+    try: m = json.loads(line)
+    except Exception: continue
+    t = m.get("type")
+    if t == "control_request":
+        out({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"], "response": {"models": []}}})
+    elif t == "user":
+        say([{"type": "tool_use", "id": "toolu_room", "name": "mcp__room__ask_agent", "input": ARGS}], "m1")
+        out({"type": "control_request", "request_id": "mcp-1", "request": {"subtype": "mcp_message", "server_name": "room",
+             "message": {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "ask_agent", "arguments": ARGS}}}})
+    elif t == "control_response" and m.get("response", {}).get("request_id") == "mcp-1":
+        r = m["response"].get("response", {}).get("mcp_response", {}).get("result", {})
+        got = "".join(c.get("text", "") for c in r.get("content", []))
+        err = bool(r.get("isError"))
+        out({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_room", "content": got, "is_error": err}]},
+             "parent_tool_use_id": None, "uuid": S, "session_id": S})
+        text = ("Codex couldn't: " if err else "Codex reviewed it: ") + got
+        out({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+             "parent_tool_use_id": None, "uuid": S, "session_id": S})
+        say([{"type": "text", "text": text}], "m2")
+        out({"type": "result", "subtype": "success", "is_error": False, "duration_ms": 3100, "duration_api_ms": 3100, "num_turns": 2,
+             "total_cost_usd": 0.021, "usage": USAGE, "modelUsage": {}, "permission_denials": [], "result": text, "uuid": S, "session_id": S})

@@ -312,7 +312,7 @@ transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
 in the composer; the app with claude off PATH, and with a logged-out Claude
 Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
 does; three sessions in two folders with the sidebar open at 1320x880 and
-900x600, a Supervised turn that asks to run `ls` (the stand-in
+900x600, Claude asking Codex for a review through the room, a Supervised turn that asks to run `ls` (the stand-in
 `zeron/fixtures/asks/claude`) waiting, then allowed and denied, with the
 agent's answer read from the `last` step, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
 Sidebar and New Session whose result it reads from the `desk` step), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
@@ -439,7 +439,17 @@ named by harness and place ("Claude 2", "Codex 1"). An ask that would close a
 loop of waiting agents, however long, is refused with a reason; STOP (each
 press counts) cancels the asks that session waits on and the one it was
 answering. `max_hops` is 0 (no limit) unless the user sets one. Not yet: the
-MCP tools that reach it (desk-room-tools) and the ROOM tab (desk-room-ui).
+ROOM tab (desk-room-ui).
+
+Built (2026-10-31): Claude Code sessions on the desk get `agents_list`,
+`ask_agent`, `tell_agent` and `room_read` as the in-process MCP server
+`room` (`e_room_tools`); a call holds the CLI's stream until the desk answers
+it (`dsk_room_call`), at once or, for `ask_agent`, when the other session's
+turn ends. check.sh's `room-ask` has a stand-in Claude Code ask a stand-in
+Codex app-server (`zeron/fixtures/room/`, replaying 0.163.0's answers) to
+review a diff; the review comes back as Claude's tool result. Not yet: the
+same tools for Codex as the asker (its stdio MCP server, `OpenAgents
+--mcp-room`).
 
 ### The UI, first version
 
