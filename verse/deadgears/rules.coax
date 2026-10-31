@@ -101,6 +101,9 @@ Input :: struct {
   // the screen's centre (yaw and pitch). Without it a shot goes level from
   // your chest along aim_x, aim_z.
   ray: bool; from: Point; dir: Point;
+  // Aim assist (#8703): how far (radians) a shot may bend toward a creature
+  // it nearly hit. A phone sets it; with a mouse it is 0 and shots never bend.
+  assist: f32;
 }
 
 State :: struct {
@@ -491,6 +494,28 @@ dg_shot_dir :: (g: Game) -> Point {
 // What the crosshair is on now.
 dg_aimed :: (g: Game) -> RayHit { return dg_ray(g, dg_shot_from(g), dg_shot_dir(g), f32(SHOT_RANGE)); }
 
+// Where the shot goes: the crosshair's ray, or, when that misses and the
+// input allows assist, bent toward the creature whose core is nearest the
+// ray within the assist angle, ahead of you and in plain sight.
+dg_shot :: (g: Game) -> RayHit {
+  hit := dg_aimed(g);
+  most := g.input[0].assist;
+  if hit.who != ECS_NONE || !(most > 0) { return hit; }
+  from := dg_shot_from(g); dir := dg_shot_dir(g);
+  best := hit; best_cos := cos(lo(most, 0.2));
+  for i: 0..<ecs_high(g.e) {
+    if !alive_mutant(g, i) { continue; }
+    to := sub(dg_part_at(g, i, 0), from);
+    l := sqrt(to.x * to.x + to.y * to.y + to.z * to.z);
+    if l < 0.01 || l > f32(SHOT_RANGE) { continue; }
+    c := (to.x * dir.x + to.y * dir.y + to.z * dir.z) / l;
+    if c <= best_cos { continue; }
+    bent := dg_ray(g, from, times(to, 1 / l), f32(SHOT_RANGE));
+    if bent.who == ecs_at(g.e, i) { best = bent; best_cos = c; }
+  }
+  return best;
+}
+
 dg_begin_reload :: (g: Game) -> bool {
   s := g.st[0];
   if s.reload != 0 || s.ammo == 12 || s.reserve == 0 || s.phase != FIGHT { return false; }
@@ -517,11 +542,11 @@ dg_fire :: (g: Game) {
   g.st[0].ammo -= 1;
   g.st[0].cooldown = 0.24;
   p := dg_player_pos(g);
-  hit := dg_aimed(g);
+  hit := dg_shot(g);
   t := hit.who;
   muzzle := v3(p.x, 1.35, p.z);
   add_beam(g, muzzle, hit.at, 0.1, false);
-  emit(g, Event.{kind = EV_SHOT, flag = t != ECS_NONE, n = hit.region, at = muzzle, to = hit.at});
+  emit(g, Event.{kind = EV_SHOT, who = t, flag = t != ECS_NONE, n = hit.region, at = muzzle, to = hit.at});
   if t == ECS_NONE { return; }
   ti := slot_of(t);
   if hit.region == R_HEAD {
@@ -1712,6 +1737,34 @@ shot_hits :: (g: Game) -> int {
   g.hp[slot_of(dg_reactor(g))] = 3;
   for f: 0..<60 { tick(g, me, false, false, 0, -1, 0.05); if g.st[0].phase == LOST { break; } }
   #assert g.st[0].phase == LOST;
+}
+
+#test "aim assist bends a near miss a few degrees on a phone, never with a mouse (#8703)" {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  e := dg_spawn_mutant(g, CRAWLER, 0, -10, -1);   // 18 m off: 3 degrees is a clean miss
+  i := slot_of(e);
+  g.mutant[i].stun = 1000;
+  me := v3(0, 0, 8);
+  core := dg_part_at(g, i, 0);
+  // Aim 3 degrees to the side of its core, then 9 degrees.
+  for far: 0..<2 {
+    for touch: 0..<2 {
+      a: f32 = ifx far == 0 then 0.0524f32 else 0.157f32;
+      aim_at(g, me, core);
+      d := g.input[0].dir;
+      g.input[0].dir = unit_or(v3(d.x * cos(a) - d.z * sin(a), d.y, d.x * sin(a) + d.z * cos(a)), d);
+      g.input[0].assist = ifx touch == 1 then 0.07f32 else 0.0f32;
+      #assert dg_aimed(g).who != e;      // the crosshair itself is off it
+      hits := dg_shot(g).who == e;
+      #assert hits == (touch == 1 && far == 0);
+    }
+  }
+  // Never one behind you.
+  aim_at(g, me, v3(0, 1.35, 20));
+  g.input[0].assist = 0.07;
+  #assert dg_shot(g).who == ECS_NONE;
 }
 
 spawn_crowd :: (g: Game) {

@@ -45,7 +45,7 @@ OBJECT_FLOATS :: 16;
 BOX_VERTICES :: 36;
 
 FX :: 64;
-FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8;
+FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9;
 
 OUTBOX_CAP :: 256;
 MSG_KEPT :: 4;           // host.js: what the realm's slot kept, on each visit
@@ -68,7 +68,11 @@ STICK :: 54.0;           // CSS pixels: the move stick's reach
 PITCH_REST :: -0.09;
 CAMERA_DIST :: 3.8;
 CAMERA_FLOOR :: 0.25;    // the camera stays this far over the deck
-RAISED :: 1.2;           // seconds the cutter stays up after a shot: you face the crosshair
+RAISED :: 1.2;
+// Aim assist on touch (#8703): a shot bends at most this far (4 degrees)
+// toward a creature it nearly hit, and dragging the view slows to
+// ASSIST_SLOW while the crosshair crosses one.
+ASSIST :: 0.07; ASSIST_SLOW :: 0.65;           // seconds the cutter stays up after a shot: you face the crosshair
 COVER_PACE :: 0.43;      // crouched at cover you move at this share of a walk
 DG_WALLS :: 24; DG_BODIES :: 96;
 BODY_NEAR :: 8.0;        // creatures further than this from you can't touch you or the camera this frame
@@ -112,6 +116,8 @@ DeadGears :: struct {
   boxes: [BUTTONS] Rect; shown: [BUTTONS] bool; hover: int; press: int; press_id: int;
   paused: bool;             // Escape or PAUSE, or the tab hidden
   fire_flash: f32; shots: int; hits: int; hit_flash: f32; hurt: f32;
+  kill_flash: f32;          // your shot just killed (#55e7): the crosshair's ticks go red
+  shot_who: int;            // what your last shot hit
   toast: [64] u8; toast_n: int; toast_t: f32;
   alarm: f32;
   deck_hour: f32; pinned_hour: f32; spawn_n: int; spawned: bool;
@@ -616,6 +622,7 @@ aim :: (s: [] DeadGears) {
   g.input[0].ray = true;
   g.input[0].from = shoulder_at(s);
   g.input[0].dir = view_dir(s);
+  g.input[0].assist = ifx s[0].touch then f32(ASSIST) else 0.0f32;   // thumbs only (#8703)
 }
 
 // Stands you at p facing yaw, the camera behind you (a start, Again, a save).
@@ -713,6 +720,7 @@ raised :: (s: [] DeadGears) -> bool { return s[0].raised > 0 || s[0].held & HOLD
 
 turn_view :: (s: [] DeadGears, dt: f32) {
   h := s[0].held;
+  if s[0].touch && reticle_over(s) { s[0].look_yaw *= f32(ASSIST_SLOW); s[0].look_pitch *= f32(ASSIST_SLOW); }
   s[0].yaw += s[0].look_yaw + hold_axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT) * 2.2 * dt;
   s[0].pitch = clamp(s[0].pitch + s[0].look_pitch + hold_axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN) * 1.2 * dt, -0.62, 0.45);
   s[0].yaw = wrap_angle(s[0].yaw);
@@ -738,12 +746,17 @@ heard :: (s: [] DeadGears, from: int) {
     dg_tally(s, e.kind, e.flag);
     if e.kind == EV_SHOT {
       s[0].shots += 1; s[0].fire_flash = 0.1; s[0].raised = f32(RAISED);
-      if e.flag { s[0].hits += 1; s[0].hit_flash = 0.18; effect(s, FX_SPARK, e.to, e.at, 0.28, 1); }
+      if e.flag {
+        s[0].hits += 1; s[0].hit_flash = 0.18; s[0].shot_who = e.who;
+        effect(s, FX_SPARK, e.to, e.at, 0.28, 1);
+        effect(s, FX_MARK, e.to, e.at, 0.5, 1);   // where it landed (#55e7)
+      }
     } else if e.kind == EV_BEAMED && e.flag {
       effect(s, FX_SPARK, e.to, e.at, 0.2, 0.7);
     } else if e.kind == EV_HURT {
       s[0].hurt = hi(s[0].hurt, lo(1, 0.35 + e.amount / 25));
     } else if e.kind == EV_KILLED {
+      if e.who == s[0].shot_who && s[0].hit_flash > 0 { s[0].kill_flash = 0.4; }
       effect(s, FX_DOWN, v3(e.at.x, 0.02, e.at.z), e.at, 0.7, 1);
     } else if e.kind == EV_WAVE {
       s[0].alarm = 4;
@@ -1123,6 +1136,11 @@ effects :: (s: [] DeadGears) {
         r := 0.6 + k * 9;
         box(s, v3(f.at.x + cos(a) * r, 0.05, f.at.z + sin(a) * r), v3(0.3, 0.03, 0.08), v3(0.55, 0.7, 1.0), 2.5 * fade, 0, -a, 0);
       }
+    } else if f.kind == FX_MARK {
+      // A small bright cross where the shot landed, shrinking.
+      m := 0.09 * (1 - k * 0.5);
+      box(s, f.at, v3(m * 2, 0.025, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
+      box(s, f.at, v3(0.025, m * 2, 0.025), v3(1.0, 0.95, 0.9), 5 * fade, 0, 0.785, 0);
     } else if f.kind == FX_LIFT {
       for q: 0..<6 {
         a := f32(q) * 1.047 + k * 3;
@@ -1459,16 +1477,27 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   else { a = put_int(ammo[..], 0, st.ammo); a = put(ammo[..], a, " / "); a = put_int(ammo[..], a, st.reserve); }
   ammo_line := cast(string) ammo[0..<a];
   low := st.ammo <= 3 && st.reload <= 0;
-  // The crosshair, and a flash when the cutter hits.
+  // The crosshair (#55e7): dim over nothing, bright and closed in over a
+  // creature; ticks round it on a hit, red ones on a kill.
   cx := w / 2; cy := h / 2;
-  ch := 7 * k;
-  hit := s[0].hit_flash > 0;
-  cr: f32 = ifx hit then RED_R else INK_R; cg: f32 = ifx hit then RED_G else INK_G; cbl: f32 = ifx hit then RED_B else INK_B;
+  over := reticle_over(s);
+  ch := (ifx over then 6.0f32 else 7.0f32) * k;
+  inner := (ifx over then 1.8f32 else 2.5f32) * k;
+  ca: f32 = ifx over then 1.0f32 else 0.55f32;
   if !fight_over(s) && !s[0].paused {
-    if lit(out, n, cx - ch, cy, cx - 2.5 * k, cy, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
-    if lit(out, n, cx + 2.5 * k, cy, cx + ch, cy, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
-    if lit(out, n, cx, cy - ch, cx, cy - 2.5 * k, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
-    if lit(out, n, cx, cy + 2.5 * k, cx, cy + ch, 0.7 * k, 0.9, 1 * k, cr, cg, cbl, 0) { n += 6; }
+    if lit(out, n, cx - ch, cy, cx - inner, cy, 0.7 * k, ca, 1 * k, INK_R, INK_G, INK_B, 0) { n += 6; }
+    if lit(out, n, cx + inner, cy, cx + ch, cy, 0.7 * k, ca, 1 * k, INK_R, INK_G, INK_B, 0) { n += 6; }
+    if lit(out, n, cx, cy - ch, cx, cy - inner, 0.7 * k, ca, 1 * k, INK_R, INK_G, INK_B, 0) { n += 6; }
+    if lit(out, n, cx, cy + inner, cx, cy + ch, 0.7 * k, ca, 1 * k, INK_R, INK_G, INK_B, 0) { n += 6; }
+    if s[0].hit_flash > 0 || s[0].kill_flash > 0 {
+      kill := s[0].kill_flash > 0;
+      a0 := (ifx kill then 5.0f32 else 4.0f32) * k; a1 := (ifx kill then 11.0f32 else 8.0f32) * k;
+      tr: f32 = ifx kill then RED_R else INK_R; tg: f32 = ifx kill then RED_G else INK_G; tb: f32 = ifx kill then RED_B else INK_B;
+      for corner: 0..<4 {
+        sx: f32 = ifx corner % 2 == 0 then -1.0f32 else 1.0f32; sy: f32 = ifx corner < 2 then -1.0f32 else 1.0f32;
+        if lit(out, n, cx + sx * a0, cy + sy * a0, cx + sx * a1, cy + sy * a1, 0.8 * k, 1, 1 * k, tr, tg, tb, 0) { n += 6; }
+      }
+    }
   }
   // A toast over the crosshair.
   if s[0].toast_t > 0 && s[0].toast_n > 0 {
@@ -1575,6 +1604,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
     s[0].fire_flash = hi(0, s[0].fire_flash - t);
     s[0].raised = hi(0, s[0].raised - t);
     s[0].hit_flash = hi(0, s[0].hit_flash - t);
+    s[0].kill_flash = hi(0, s[0].kill_flash - t);
     s[0].hurt = hi(0, s[0].hurt - t * 1.6);
     s[0].alarm = hi(0, s[0].alarm - t);
     for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += t; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
@@ -1949,6 +1979,52 @@ bot_turn :: (s: [] DeadGears) {
   }
   if best >= 0 { aim_bot(s, best); }
 }
+// The crosshair is over a creature: its ray reaches one before anything solid.
+reticle_over :: (s: [] DeadGears) -> bool {
+  g := game(s);
+  if !g.input[0].ray { return false; }
+  return dg_aimed(g).who != ECS_NONE;
+}
+
+#test "the crosshair brightens over a creature, and every hit leaves a mark where it landed (#55e7)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  g.st[0].ally_time = 1000000;
+  u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  s[0].pitch = -0.5;   // at the deck
+  n := deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert !reticle_over(s[..]);
+  i := -1;
+  for j: 0..<ecs_high(g.e) { if alive_mutant(g, j) && i < 0 { i = j; } }
+  g.pos[i] = v3(0, 0, 3); g.mutant[i].stun = 1000;
+  aim_bot(s[..], i);
+  n = deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert reticle_over(s[..]);
+  hp := g.hp[i];
+  used := deadgears_key(s[..], 'f', 0);
+  n = deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert g.hp[i] < hp && s[0].hit_flash > 0;
+  marked := false;
+  for q: 0..<FX { f := s[0].fx[q]; if f.kind == FX_MARK && f.life > 0 && dg_part_box_near(g, i, f.at) { marked = true; } }
+  #assert marked;
+  // A kill turns the ticks red.
+  g.st[0].cooldown = 0; g.hp[i] = 1;
+  used = deadgears_key(s[..], 'f', 0);
+  n = deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert s[0].kill_flash > 0;
+}
+// p is on (or just by) one of mutant slot i's body parts.
+dg_part_box_near :: (g: Game, i: int, p: Point) -> bool {
+  for k: 0..<PARTS {
+    pt := mutant_part(g.mutant[i], k);
+    if !pt.on { continue; }
+    c := dg_part_at(g, i, k);
+    if flat(c, p) < hi(pt.half.x, pt.half.z) + 0.15 && abs(c.y - p.y) < pt.half.y + 0.15 { return true; }
+  }
+  return false;
+}
+
 // Turns the view so the crosshair is on mutant slot i's core.
 aim_bot :: (s: [] DeadGears, i: int) {
   g := game(s);
