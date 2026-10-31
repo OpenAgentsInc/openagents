@@ -78,6 +78,12 @@ STATION_ORBIT :: 1200000.0;   // m from Ceres's centre
 ROCKS :: 5000;                // the Belt's field, drawn
 ROCKS_FIRST :: 900;           // the first field's rocks, from the stream the ice rocks follow
 SHIPS :: 8;
+// Light lag: what a faction sees of a ship is where it was distance / c ago. Each ship keeps its
+// last SIGHT_N states (position and velocity, one a step: at most two days apart) for where-was-it
+// queries; the same history can serve replay. Bodies and rocks need none: their orbits answer for any time.
+C_LIGHT :: 299792458.0;
+SIGHT_N :: 64;
+Sight :: struct { t: f64; r: D3; v: D3; }
 PATH :: 48;
 
 PARKED :: 0; FLYING :: 1; MINING :: 2;
@@ -131,6 +137,7 @@ Belt :: struct {
   selected: [SHIPS] bool;
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
+  sight: [SHIPS * SIGHT_N] Sight; sight_head: [SHIPS] int; sight_n: [SHIPS] int;
   // The ice rocks in reach of the selected ship, for the row of their names: the fast plan's
   // days, whether it has the propellant, and whether that's worked out yet (one rock a frame)
   reach_days: [ICE_ROCKS] f64; reach_ok: [ICE_ROCKS] bool; reach_have: [ICE_ROCKS] bool;
@@ -571,6 +578,7 @@ arrive :: (s: [] Belt, k: int) {
 // The ships over dt seconds of game time.
 step_ships :: (s: [] Belt, dt: f64) {
   t := s[0].t;
+  for k: 0..<s[0].ship_n { sight_record(s, k); }
   for k: 0..<s[0].ship_n {
     sh := s[0].ships[k];
     if sh.mode == FLYING && t >= sh.t0 + sh.tof { arrive(s, k); continue; }
@@ -752,6 +760,44 @@ mine_order :: (s: [] Belt) {
   j := nearest_ice(s, k);
   if j < 0 { say(s, "NO ICE IN REACH"); return; }
   set_dest(s, j);
+}
+
+// A ship's state now, into its history.
+sight_record :: (s: [] Belt, k: int) {
+  st := ship_state(s, k, s[0].t);
+  h := (s[0].sight_head[k] + 1) % SIGHT_N;
+  s[0].sight[k * SIGHT_N + h] = Sight.{t = s[0].t, r = st.r, v = st.v};
+  s[0].sight_head[k] = h;
+  if s[0].sight_n[k] < SIGHT_N { s[0].sight_n[k] += 1; }
+}
+// Where ship k was at time t: from its history (cubic Hermite between the two states either side),
+// its present course after the newest one, the oldest one before that.
+sight_at :: (s: [] Belt, k: int, t: f64) -> D3 {
+  n := s[0].sight_n[k];
+  if n == 0 { return ship_state(s, k, t).r; }
+  newest := s[0].sight[k * SIGHT_N + s[0].sight_head[k]];
+  if t >= newest.t { return ship_state(s, k, t).r; }
+  for j: 1..<n {
+    b := s[0].sight[k * SIGHT_N + (s[0].sight_head[k] - j + 1 + SIGHT_N) % SIGHT_N];
+    a := s[0].sight[k * SIGHT_N + (s[0].sight_head[k] - j + SIGHT_N) % SIGHT_N];
+    if t >= a.t {
+      h := b.t - a.t;
+      if h <= 0.0 { return a.r; }
+      u := (t - a.t) / h;
+      u2 := u * u; u3 := u2 * u;
+      p := d3_scale(a.r, 2.0 * u3 - 3.0 * u2 + 1.0);
+      p = d3_add(p, d3_scale(a.v, (u3 - 2.0 * u2 + u) * h));
+      p = d3_add(p, d3_scale(b.r, -2.0 * u3 + 3.0 * u2));
+      return d3_add(p, d3_scale(b.v, (u3 - u2) * h));
+    }
+  }
+  return s[0].sight[k * SIGHT_N + (s[0].sight_head[k] - n + 1 + SIGHT_N) % SIGHT_N].r;
+}
+// Where an observer at eye sees ship k now: where it was when the light left it.
+sight_seen :: (s: [] Belt, k: int, eye: D3) -> D3 {
+  p := ship_state(s, k, s[0].t).r;
+  for i: 0..<4 { p = sight_at(s, k, s[0].t - d3_dist(eye, p) / C_LIGHT); }
+  return p;
 }
 
 // One ice rock's fast plan for the selected ship a frame, for the row of rock names.
@@ -2218,6 +2264,24 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     cosang := d3_dot(h, p) / (d3_len(h) * d3_len(p));
     #assert cosang > cos(8.0 * DEG);
   }
+}
+
+#test "light lag: a ship ten light-minutes away is seen where it was ten minutes before" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  select_only(s[..], 0);
+  mine_order(s[..]);
+  go(s[..], true);
+  for i: 0..<20 { belt_step(s[..], 0.05); }   // days of flight in its history
+  now := ship_state(s[..], 0, s[0].t).r;
+  eye := d3_add(now, d3(C_LIGHT * 600.0, 0.0, 0.0));
+  seen := sight_seen(s[..], 0, eye);
+  tau := d3_dist(eye, seen) / C_LIGHT;
+  #assert abs(tau - 600.0) < 1.0;
+  was := ship_state(s[..], 0, s[0].t - tau).r;
+  #assert d3_dist(seen, was) < 1000.0 && d3_dist(seen, now) > 5000.0;
+  // and a day ago, from the history
+  #assert d3_dist(sight_at(s[..], 0, s[0].t - DAY), ship_state(s[..], 0, s[0].t - DAY).r) < 1000.0;
 }
 
 #test "the field: five thousand rocks where their orbits put them, each a quad, all within the vertex budget" {
