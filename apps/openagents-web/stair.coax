@@ -136,9 +136,10 @@ LIFE_RESTORE :: 2; SACRED_WEAPON :: 3; THIEF_TURN :: 0.6;
 LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
 LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
-CLASS_PAD :: 14;
+CLASS_PAD :: 16;
+LABEL_PAD :: 26;   // a plain button's label stays this far (both sides) inside its bevelled card
 // The room a class button's portrait takes: most of its height, but no more than 30% of a narrow button.
-class_icon :: (r: Rect) -> f32 { return lo((r.y1 - r.y0) * 0.8, (r.x1 - r.x0) * 0.3); }   // a class button's text keeps this far (in CSS px) from its right edge
+class_icon :: (r: Rect) -> f32 { return lo((r.y1 - r.y0) * 0.8, (r.x1 - r.x0) * 0.26); }   // a class button's text keeps this far (in CSS px) from its right edge
 
 // ---- your spells: the tower's wizard (you) has a few a map. Wall of Stone across the stair: the
 // beasts stop at it and break it (SRD panels, AC 15; WALL_HP between them), then climb on. Wall of
@@ -2297,16 +2298,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     }
   }
   // buttons; the class buttons share one size of name and cost, the one the narrowest fits
-  cnc := 12 * k; ccc := 10 * k;
-  for b: B_FIGHTER..<B_LAST_CLASS + 1 {
-    if !s[0].shown[b] { continue; }
-    r := s[0].boxes[b];
-    room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;   // clear of the bevelled corner
-    while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 7 * k { cnc -= 0.5 * k; }
-    m = put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
-    while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 6 * k { ccc -= 0.5 * k; }
-  }
-  ccc = lo(ccc, cnc);
+  cnc := class_cap(s, k, true); ccc := class_cap(s, k, false);
   for b: 0..<BUTTONS {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
@@ -2328,9 +2320,8 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     }
     m = button_label(s, b, buf[..]);
     lab := cast(string) buf[0..<m];
-    bc := 12 * k;
+    bc := label_cap(lab, r, k);
     tw := text_width(lab, bc);
-    while tw > r.x1 - r.x0 - 10 * k && bc > 7 * k { bc -= 1 * k; tw = text_width(lab, bc); }
     light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
     cr: f32 = INK_R; cg: f32 = INK_G; cb: f32 = INK_B;
     if b >= B_FIGHTER && b <= B_LAST_CLASS { cr = CLASS_R[b - B_FIGHTER]; cg = CLASS_G[b - B_FIGHTER]; cb = CLASS_B[b - B_FIGHTER]; }
@@ -2418,6 +2409,26 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   return n;
 }
 
+// A plain button's label size: 12 px a unit, smaller until it fits inside the card's bevels.
+label_cap :: (lab: string, r: Rect, k: f32) -> f32 {
+  bc := 12 * k;
+  while text_width(lab, bc) > r.x1 - r.x0 - LABEL_PAD * k && bc > 4 * k { bc -= 0.5 * k; }
+  return bc;
+}
+// The class cards share one size of name (names: true) and of cost, the one the narrowest card fits.
+class_cap :: (s: [] Stair, k: f32, names: bool) -> f32 {
+  cnc := 12 * k; ccc := 10 * k;
+  buf: [24] u8;
+  for b: B_FIGHTER..<B_LAST_CLASS + 1 {
+    if !s[0].shown[b] { continue; }
+    r := s[0].boxes[b];
+    room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;   // clear of the bevelled corner
+    while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 4 * k { cnc -= 0.5 * k; }
+    m := put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
+    while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 4 * k { ccc -= 0.5 * k; }
+  }
+  return ifx names then cnc else lo(ccc, cnc);
+}
 stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   stair_start(s);
   s[0].width = width; s[0].height = height; s[0].dpr = dpr; s[0].still = still;
@@ -3282,5 +3293,30 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
     #assert stair_pointer(s, cx, cy, 0, 1, 4) && s[0].press < 0 && !s[0].down_on;
     #assert stair_pointer(s, cx, cy, 2, 1, 4) && s[0].action == ACT_NAVIGATE;
     #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/hold-the-stair/tip";
+  }
+}
+
+#test "on a 390 and a 320 px phone every label on the bar sits inside its card" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  sizes := [2] f32.[390, 320]; tall := [2] f32.[844, 568]; dprs := [2] f32.[3, 2];
+  buf: [64] u8;
+  for i: 0..<2 {
+    n := stair_frame(s[..], out[..], u[..], sizes[i] * dprs[i], tall[i] * dprs[i], dprs[i], 0.016, false);
+    k := dprs[i];
+    for b: 0..<BUTTONS {
+      if !s[0].shown[b] { continue; }
+      r := s[0].boxes[b];
+      if b >= B_FIGHTER && b <= B_LAST_CLASS {
+        room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;
+        m := put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
+        #assert text_width(CLASS_NAME[b - B_FIGHTER], class_cap(s[..], k, true)) <= room && text_width(cast(string) buf[0..<m], class_cap(s[..], k, false)) <= room;
+        continue;
+      }
+      m := button_label(s[..], b, buf[..]);
+      lab := cast(string) buf[0..<m];
+      #assert text_width(lab, label_cap(lab, r, k)) <= r.x1 - r.x0 - LABEL_PAD * k;
+    }
   }
 }
