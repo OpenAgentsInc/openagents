@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 25's independent oracle: which batches one pass admits, where each
+"""Chapter 36's independent oracle: which batches one pass admits, where each
 question's rows and logits sit, and how large the batch workspace is, derived
 from the written rule and the two models' shapes rather than from plan.coax.
 Checks the transcript of psionic/examples/many-questions.coax.
@@ -31,7 +31,7 @@ def align(n):
 
 
 def layout(m, t, keys):
-    """Region sizes in bytes, in order (chapter 30's workspace)."""
+    """Region sizes in bytes, in order (chapter 44's workspace)."""
     d, f, kh, vh, n, kvh = (m[k] for k in ("d", "f", "kh", "vh", "n", "kvh"))
     channels, values, queries, attended, kv = 256 * kh + 128 * vh, 128 * vh, 512 * n, 256 * n, 256 * kvh
     pad = -(-t // 88) * 88

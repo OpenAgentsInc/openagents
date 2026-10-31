@@ -1,7 +1,7 @@
 # Native Nostr relay client: WebSocket, socket effect, relay state machine
 
 Board task #7de9 `nostr-relay-state-machine` (claimed by claude-relay), part
-of the native Pylon prerequisite for Psionic chapter 19. Recorded
+of the native Pylon prerequisite for Psionic chapter 24. Recorded
 2026-10-29. This is the first partial push. The end-to-end relay test is not
 done yet (see "Missing").
 

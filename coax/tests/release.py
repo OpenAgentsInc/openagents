@@ -8,7 +8,7 @@ COAX=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax')).resolve()
 OUTPUTS=['coax/src/release.h','coax/release-status.json','coax/STATUS.md','coax/book/appendix-a-keywords.md','coax/generated/current.md','coax/generated/version-example.md']
 CHANGELOG='coax/CHANGELOG.md'
 CHANGELOG_TOOLS=['coax/changelog-model.coax','coax/changelog.coax','coax/changelog-bridge.c']
-MANAGED=['coax/README.md','coax/spec.md','coax/ROADMAP.md','coax/book/ch01-getting-started.md','coax/book/ch06-memory.md','coax/book/ch20-inside-coax0.md','coax/book/ch21-road-ahead.md','coax/book/ch22-organizing-programs.md','coax/book/appendix-b-error-codes.md']
+MANAGED=['coax/README.md','coax/spec.md','coax/ROADMAP.md','coax/book/ch01-getting-started.md','coax/book/ch06-memory.md','coax/book/ch27-inside-coax0.md','coax/book/ch28-road-ahead.md','coax/book/ch10-organizing-programs.md','coax/book/appendix-b-error-codes.md']
 class Release(unittest.TestCase):
  def test_compute_catalogue_records_shipped_group_kernels(self):
   data=json.loads((ROOT/'coax/release-status.json').read_text())

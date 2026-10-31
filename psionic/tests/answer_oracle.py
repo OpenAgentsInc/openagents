@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent answer-serialization and decision-quality references for chapter 12.
+"""Independent answer-serialization and decision-quality references for chapter 16.
 
 The answer formulas are transcribed from OneJev qev/answers.py at
 81ce62f1597c91e46767d4d02d6ac2e18534fe94 (read, never imported or run). Rounding
@@ -210,4 +210,4 @@ if __name__ == '__main__':
         assert not sys.argv[1:], 'usage: answer_oracle.py [--write]'
         for path, text in files.items():
             assert path.read_text() == text, f'{path} drifted'
-        print('chapter 12 answer and quality fixtures match the independent references')
+        print('chapter 16 answer and quality fixtures match the independent references')

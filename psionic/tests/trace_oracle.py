@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapters 165 and 166: a separate interpreter for the
+"""Independent oracle for chapters 224 and 225: a separate interpreter for the
 trace machine, seeded programs, trace digests, and exact-memory read streams.
 
 Written from the chapter's specification, not translated from the Coax unit.

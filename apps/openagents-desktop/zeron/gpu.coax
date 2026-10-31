@@ -2,7 +2,7 @@
 //
 // One RTX 4080 holds elephant-1 (the Lab's router) or gpt-oss-20b (Psionic),
 // not both. Elephant normally runs on this Mac's GPU instead (lab.coax,
-// psionic/book/ch031-elephant-on-metal.md), so gpt-oss-20b stays loaded and
+// psionic/book/ch047-elephant-on-metal.md), so gpt-oss-20b stays loaded and
 // the switch is asked for Elephant only when the Mac's server doesn't answer. Before a Lab decision or a Psionic turn the app asks the switch
 // for its model (POST /use/elephant or /use/gptoss). Already loaded: the
 // answer is "ready" and the message goes at once. Otherwise the transcript

@@ -1,4 +1,4 @@
-// Chapter 19: the Pylon's NIP-65 relay list, kind 10002 (NIP-PYLON, "Relay
+// Chapter 24: the Pylon's NIP-65 relay list, kind 10002 (NIP-PYLON, "Relay
 // list"). One r tag per relay; no marker means the pylon reads requests and
 // writes results there, read or write means only that. The content is empty.
 // A buyer sends jobs to the read relays; a reader with no list falls back to

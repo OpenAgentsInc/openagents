@@ -1,11 +1,11 @@
-// Chapter 173: exact replay as a verification class. A claim names a
+// Chapter 232: exact replay as a verification class. A claim names a
 // program, the trace it produced and its outputs by three SHA-256 digests,
 // and the number of steps. A verifier holding the program replays it with
-// chapter 165's interpreter: the whole run, or a window of steps after
+// chapter 224's interpreter: the whole run, or a window of steps after
 // folding the claimed rows that come before it. Every verdict is exact,
 // failed (with the first divergent step and field when the rows are given)
 // or unverifiable, with the reason.
-// Profile replay-v1: chapter 165's machine and trace digest; the program
+// Profile replay-v1: chapter 224's machine and trace digest; the program
 // digest is SHA-256 over each instruction as its code byte then its argument
 // as four little-endian bytes; the output digest is SHA-256 over each output
 // as four little-endian bytes.
@@ -43,7 +43,7 @@ rx_program_digest :: (program:[]TmOp)->[32]u8 {
     return d;
 }
 // The first n integers, each as four little-endian bytes: a trace's rows
-// give chapter 165's trace digest, and a run's outputs its output digest.
+// give chapter 224's trace digest, and a run's outputs its output digest.
 rx_ints_digest :: (v:[]int,n:int)->[32]u8 {
     sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
     for i:0..<n {rx_word(sha[..],v[i]);}
@@ -180,7 +180,7 @@ rx_check :: (program:[]TmOp,claim:RxClaim,rows:[]int,a:int,b:int,budget:int)->Rx
 }
 // book:end check
 
-// Chapter 166's program: store i*i at address i for i = 4..1, then print
+// Chapter 225's program: store i*i at address i for i = 4..1, then print
 // memory 4 plus memory 1 (17), in 53 steps.
 rx_squares :: ()->[20]TmOp {
     return [20]TmOp.[TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.set,arg=0},

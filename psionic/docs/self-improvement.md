@@ -37,7 +37,7 @@ Its answers to those faults:
 
 Measuring the noise floor between two identical doors (0.056 accuracy at 2σ)
 retired two published findings. A partition already at 0.975 cannot show a
-gain, so headroom is measured first. That becomes chapters 178–180.
+gain, so headroom is measured first. That becomes chapters 237–239.
 
 ## Self-improvement: designed, partly built, never closed
 
@@ -65,7 +65,7 @@ What the audits found:
 - **A retraining script wrote the production model with no gate,** training on
   its evaluation cases.
 - **All 41 replayed traces came from groups reserved for calibration or
-  development.** Hence the exposure ledger in chapter 186.
+  development.** Hence the exposure ledger in chapter 245.
 - **A LoRA adapter raised accuracy from 0.77 to 0.90 but worsened log loss from
   1.952 to 2.323,** and did not transfer to another suite.
 
@@ -111,7 +111,7 @@ widen tool grants or lower thresholds.
 
 ## How it fits Psionic
 
-- **The Gym is library code.** Chapters 12, 13, 85, 86, 154, 156 and 174 report
+- **The Gym is library code.** Chapters 16, 17, 139, 140, 209, 213 and 233 report
   through one comparison rule (178–180), whose gates are `#authority` Coax with
   zero surviving mutants.
 - **Optimization runs on Psionic's own models.** With Elephant at about 237 ms a

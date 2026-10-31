@@ -21,42 +21,42 @@ travels outside `messages`, system prompts and tool schemas, so it "does not
 add model-input tokens or alter the model-visible prefix"
 (`docs/deepseek-llm-api-wire-extensions.md`). Psionic owns both sides, so it
 can design the harness's prompt assembly and the server's prefix cache
-(chapter 119) together and measure the result (chapter 146).
+(chapter 174) together and measure the result (chapter 200).
 
 ## What it does, and what Psionic takes
 
 | DeepSeek Harness | Where | Psionic chapter |
 | --- | --- | --- |
-| A turn is zero or more steps; a step is one model request plus its tools; exact durable `turn/*`, `step/*` events | `docs/architecture.md` "Turn flow" | 144 |
-| "Model-visible means logged": every request reconstructable from an append-only session log; history derived from the log; versioned formats with readers for old ones | `core/session`, `docs/architecture.md` "Session log" | 145 |
-| Extensions outside the model input so the prefix stays byte-stable | `docs/deepseek-llm-api-wire-extensions.md` | 146 |
-| A scoped tool registry and guarded pipeline (`tools/pre-execute`, `execute`, `post-execute`); filesystem and process providers sharing one execution world | `core/tools`, "Capability seams" | 147 |
-| Sandbox backends and policy; timeout policy; a reminder against repeating the same tool call | `packages/sandbox/`, `packages/guard/` | 148 |
-| Compaction bracketed by `compaction/start` and `compaction/end` in the log, with a stable summary marker; tool-result pruning; overflow recovery | `packages/compaction/` | 149 |
-| Programmatic tool calling: a model-written program run once against host-provided bindings, with typed failure kinds | `packages/ptc-runtime/` | 150 |
-| Forks at a turn boundary from a seeded log; subagents; background jobs; goals | `packages/subagent/`, `jobs/`, `goal/` | 151 |
-| Everything is a plugin: profiles of ordered bundles, service definition/provider/consumer, registrations owned and unwound by their plugin | `docs/architecture.md`, `packages/boot/` | 152 |
-| MCP client and resources; ACP for editors | `packages/mcp/`, `packages/acp/` | 153 |
-| Benchmarks for session open, conversation fold, long browser sessions, stream reconnect and agent continuation | `benchmarks/` | 154 |
+| A turn is zero or more steps; a step is one model request plus its tools; exact durable `turn/*`, `step/*` events | `docs/architecture.md` "Turn flow" | 198 |
+| "Model-visible means logged": every request reconstructable from an append-only session log; history derived from the log; versioned formats with readers for old ones | `core/session`, `docs/architecture.md` "Session log" | 199 |
+| Extensions outside the model input so the prefix stays byte-stable | `docs/deepseek-llm-api-wire-extensions.md` | 200 |
+| A scoped tool registry and guarded pipeline (`tools/pre-execute`, `execute`, `post-execute`); filesystem and process providers sharing one execution world | `core/tools`, "Capability seams" | 201 |
+| Sandbox backends and policy; timeout policy; a reminder against repeating the same tool call | `packages/sandbox/`, `packages/guard/` | 202 |
+| Compaction bracketed by `compaction/start` and `compaction/end` in the log, with a stable summary marker; tool-result pruning; overflow recovery | `packages/compaction/` | 204 |
+| Programmatic tool calling: a model-written program run once against host-provided bindings, with typed failure kinds | `packages/ptc-runtime/` | 205 |
+| Forks at a turn boundary from a seeded log; subagents; background jobs; goals | `packages/subagent/`, `jobs/`, `goal/` | 206 |
+| Everything is a plugin: profiles of ordered bundles, service definition/provider/consumer, registrations owned and unwound by their plugin | `docs/architecture.md`, `packages/boot/` | 207 |
+| MCP client and resources; ACP for editors | `packages/mcp/`, `packages/acp/` | 208 |
+| Benchmarks for session open, conversation fold, long browser sessions, stream reconnect and agent continuation | `benchmarks/` | 209 |
 
 ## What Psionic does differently
 
 - **The loop stays simple.** The harness exposes a great many extension
-  points. Psionic starts from one loop (chapter 144) and keeps each addition
+  points. Psionic starts from one loop (chapter 198) and keeps each addition
   only with a measured gain on tasks it was not built from, the rule that
   already governs Coder's agent.
 - **Coax, not Node.** DeepSeek Harness is TypeScript on Node, and ordinary host
   plugins run with the host process's authority; the earlier survey noted that
   Cordis's scoped contexts are lifecycle composition, not containment.
   Psionic's harness logic is Coax; third-party plugins run in bounded Wasm with
-  admitted capabilities, distributed as signed Nostr events (chapter 152).
+  admitted capabilities, distributed as signed Nostr events (chapter 207).
 - **Consent before sharing.** `dsh_session_log` is enabled by default and sends
   a contiguous suffix of the canonical session log with each model request to
   DeepSeek's API. Psionic sends no session content anywhere without the
-  person's explicit, per-session, revocable opt-in (chapter 155).
+  person's explicit, per-session, revocable opt-in (chapter 211).
 - **Typed protocols from `proto/`.** Tool schemas, the session log's event
   types and any wire extensions are versioned contracts in `proto/`, not ad hoc
-  JSON (chapters 145 and 147).
+  JSON (chapters 199 and 201).
 - **Bitcoin-only money.** Anything that meters or prices agent work uses the
   Spark wallet outside Psionic.
 

@@ -15,7 +15,7 @@ levels :: (a:string,b:string,c:string)->[8]SuOption {
 }
 UNKNOWN :: SuOption.{named=true,name="unknown",described=true,description="the state does not say"};
 
-// Chapter 12's held-out suite, as in fixtures/quality/heldout-v1.json. Each
+// Chapter 16's held-out suite, as in fixtures/quality/heldout-v1.json. Each
 // item is its own task; the last item of each kind is the locked partition 1.
 heldout :: ()->[12]SuItem {
     s:[12]SuItem;
@@ -39,11 +39,11 @@ QUESTIONS :: [12]string.["How warm is the water in the kettle?","How did Maya pa
     "Which room is the meeting in now?","On which day was the parcel delivered?","Which team should handle this message?",
     "Is the kitchen window open?","Is Sam taller than Lee?","Is the shop open at 20:00?","The capital of France is Paris.",
     "How positive is the review?","How positive is the review?","How severe is the issue?"];
-// Chapter 180's decision gate, with chapter 157's limits.
+// Chapter 239's decision gate, with chapter 214's limits.
 GATE :: SuGate.{kind=0,clear=40,min_tasks=10,replicates=1000,seed=7,cost_limit=1,seconds_limit=30};
 
 show :: (name:string,s:SuSuite) {print("%: items ",name);short(s.items);print(", questions ");short(s.questions);print(", gate ");short(s.gate);print("\n");}
-// A run reads one partition: Elephant was right on every item in chapter 12;
+// A run reads one partition: Elephant was right on every item in chapter 16;
 // the first-option baseline is right where the label is option 0.
 run :: (s:SuSuite,items:[]SuItem,partition:int,system:u64)->SuReceipt {
     values:[12]f64;n:=0;sum:=0.0;
@@ -56,7 +56,7 @@ systems :: [3]string.["","Elephant","first option"];
 main :: () {
     items:=heldout();questions:=QUESTIONS;
     base:=su_suite(items[..],questions[..],GATE,2);#assert base.status==SuStatus.ok;
-    show("chapter 12's suite",base);
+    show("chapter 16's suite",base);
 
     // Reword a question, edit an item, change the gate.
     reworded:=questions;reworded[7]="Is the shop open at 8 pm?";

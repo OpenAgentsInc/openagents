@@ -1,4 +1,4 @@
-// Chapter 115: the wire side of the load generator. The built-in workloads
+// Chapter 170: the wire side of the load generator. The built-in workloads
 // for the two targets, the request bodies a schedule's requests become, which
 // SSE lines are token arrivals, and the server's own reported time. The host
 // (psionic/platform/bench-drive.c) only connects, sends, reads and keeps
@@ -6,8 +6,8 @@
 #load "bench.coax";
 #authority;
 
-// responses: gpt-oss over /v1/responses with SSE (chapter 48b), one event per
-// token. systemone: a NIP-DEC decision over /v1/systemone (chapter 16), one
+// responses: gpt-oss over /v1/responses with SSE (chapter 79), one event per
+// token. systemone: a NIP-DEC decision over /v1/systemone (chapter 20), one
 // answer with latency_ms.
 BwTarget :: enum u8 {responses;systemone;}
 BwEvent :: enum u8 {other;token;end;}

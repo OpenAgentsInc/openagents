@@ -1,4 +1,4 @@
-// Chapter 176: composable weight modules. A module is chapter 168's compiled
+// Chapter 235: composable weight modules. A module is chapter 227's compiled
 // block pinned by a digest of its shape and every weight's bits. Two modules
 // link into one block: the first module's layers, a glue layer that copies its
 // outputs into the second module's input slots, then the second module's
@@ -9,7 +9,7 @@
 // after the other, and as evaluating the composed gate graph. Every module
 // carries a label saying how a user can check it: exact replay, tests,
 // statistical evidence, or none.
-// Profile module-v1: chapter 168's blocks in binary64, at most 4 seams, the
+// Profile module-v1: chapter 227's blocks in binary64, at most 4 seams, the
 // linked residual within 64 slots and 32 layers.
 #load "gate-graph.coax";
 #load "../../coax/lib/crypto/sha256.coax";
@@ -72,7 +72,7 @@ wm_same :: (a:[32]u8,b:[32]u8)->bool {
 }
 
 // book:begin run
-// Chapter 168's run, with each seam checked after its layer.
+// Chapter 227's run, with each seam checked after its layer.
 wm_run :: (m:WmModule,weights:[]f64,inputs:[]int,outputs:[]f64)->WmRun {
     r:WmRun;p:=m.plan;
     if p.status!=GgStatus.ok {r.status=p.status;return r;}
@@ -244,7 +244,7 @@ wm_admit :: (m:WmModule,weights:[]f64,pin:[32]u8,cases:[]WmCase,nodes:[]GgNode,o
 }
 // book:end admit
 
-// Chapter 168's arithmetic step, which also exports its input a: op 0 adds
+// Chapter 227's arithmetic step, which also exports its input a: op 0 adds
 // a and b, 1 subtracts, 2 multiplies.
 wm_step_graph :: ()->[12]GgNode {
     return [12]GgNode.[
@@ -328,7 +328,7 @@ wm_differs :: (m:WmModule,w:[]f64,d:[32]u8)->bool {return !wm_same(d,wm_digest(m
     want:[32]u8;#assert sha256_hash_checked(bytes[..],want[..],false)==SHA_OK;
     #assert wm_same(wm_digest(m,w[..]),want);
 }
-#test "a module runs as chapter 168's block" {
+#test "a module runs as chapter 227's block" {
     p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();
     for op:0..<3 {for a:-3..<4 {
         inputs:=[3]int.[op,a,5-a*a];got:[2]f64;want:[2]int;ref:[2]f64;

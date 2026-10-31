@@ -1,4 +1,4 @@
-// Chapter 3a: bounded CPU value operators over chapter 2a views.
+// Chapter 5: bounded CPU value operators over chapter 3 views.
 #load "tensor-view.coax";
 #authority;
 // book:begin contract

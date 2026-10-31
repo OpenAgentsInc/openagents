@@ -1,4 +1,4 @@
-// Chapter 26a: a bounded, typed straight-line tensor IR and buffer plan.
+// Chapter 38: a bounded, typed straight-line tensor IR and buffer plan.
 #load "tensor-ops-contract.coax";
 #load "tensor-placement.coax";
 #authority;

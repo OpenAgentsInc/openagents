@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 60: projected CPU attention, compression, sharing and exact cache grids.
+# Chapter 92: projected CPU attention, compression, sharing and exact cache grids.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

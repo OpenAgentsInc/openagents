@@ -1,4 +1,4 @@
-# Chapter 78: AdamW and explicit precision, 2026-10-31
+# Chapter 124: AdamW and explicit precision, 2026-10-31
 
 Task #5d0b. Profile `cpu-adamw-v1`, Apple clang arm64, Coax 0.38.0
 (575b776fca). CPU only; no GPU, downloads or model weights.

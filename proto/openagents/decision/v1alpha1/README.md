@@ -18,7 +18,7 @@ Psionic's server (psionic/lib/serve-proto.coax) accepts a request with
 `Content-Type: application/x-protobuf` by transcoding it to the NIP-DEC JSON
 and admitting that, so the protobuf door never admits what the JSON door
 refuses. It answers in protobuf when `Accept: application/x-protobuf`.
-`EntryType` numbers must be integers within 2^53, the same set chapter 5's
+`EntryType` numbers must be integers within 2^53, the same set chapter 9's
 text format accepts; probabilities carry the JSON answer's values (at most
 nine decimals), parsed back exactly. The descriptor is
 `proto/descriptors/systemone.pb`, profile `systemone` in `modules.json`.

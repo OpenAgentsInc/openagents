@@ -65,7 +65,7 @@ replaying it.
   verified pair.
 - It verified only one trivial program, so it built machinery rather than
   capability. The worker's self-test, separate validator devices, owner caps
-  and receipt-first settlement are kept in chapter 177.
+  and receipt-first settlement are kept in chapter 236.
 
 **Status.**
 - Retired in July 2026 until cash-flow positive.
@@ -86,7 +86,7 @@ replaying it.
 6. **Curricula can erase what worked.** Full-trace supervision destroyed
    first-token accuracy.
 7. **Differential harnesses pay off.** The first one found two compiler bugs on
-   its first run; chapter 169 keeps them as planted mutants.
+   its first run; chapter 228 keeps them as planted mutants.
 8. **Keep fixtures small and regenerable.** The import carried 737 MB of
    fixtures, and most of their paths were missing.
 9. **Count only real work and real payments.** One program verified forever,

@@ -1,7 +1,7 @@
-// Chapter 16: the served model. An engine is one authenticated chapter-10
+// Chapter 20: the served model. An engine is one authenticated chapter-14
 // session plus the name, identity and temperature it answers with. It turns a
 // decoded request into probabilities and writes the NIP-DEC 200 body.
-// Chapter 15's resident session plugs in through sv_engine. The slot machine
+// Chapter 19's resident session plugs in through sv_engine. The slot machine
 // at the end decides what each host event means.
 #load "decision-answer.coax";
 #load "serve-request.coax";
@@ -32,7 +32,7 @@ sv_test_toy :: (t:[]SvToy,capacity:int)->SvEngine {
     if !sv_toy_copy(files) {return SvEngine.{};}
     return sv_seal(sv_toy_open(files,memory,capacity),false);
 }
-#test "the owned toy model authenticates through the chapter-10 session path" {
+#test "the owned toy model authenticates through the chapter-14 session path" {
     toy:[1]SvToy;e:=sv_test_toy(toy[..],512);
     #assert e.ok && e.sealed && e.name=="psionic-toy" && e.alias=="" && e.digest==SV_TOY_SHA && e.capacity==512 && e.options==26 && e.temperature==1;
     #assert e.session.status==PsOpenStatus.ok && e.session.model.vocab==268 && e.session.model.layers.count==4;

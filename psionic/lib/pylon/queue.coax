@@ -1,6 +1,6 @@
-// Chapter 19: what the running Pylon does with each job. The units beside
+// Chapter 24: what the running Pylon does with each job. The units beside
 // this one say what a job is (decision.coax), what a beacon says
-// (beacon.coax) and what the engine answers (chapter 16). This unit decides
+// (beacon.coax) and what the engine answers (chapter 20). This unit decides
 // the loop's own questions: which events are answered at all, which wait in
 // the bounded queue, which are refused busy, which job runs next, what a
 // cancel removes, how long the engine may take, which answer goes back after

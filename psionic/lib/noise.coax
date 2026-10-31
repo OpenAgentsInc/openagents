@@ -1,10 +1,10 @@
-// Chapter 179: how far a metric moves by itself. Repeated runs of one
+// Chapter 238: how far a metric moves by itself. Repeated runs of one
 // configuration, grouped in blocks of seeds, give a noise floor: the
 // difference two equal blocks reach by chance. A paired bootstrap that
 // resamples whole tasks gives the spread from which items were written. A
 // partition whose baseline is already within the floor of its ceiling is
 // refused, since no gain could show there.
-// Profile cpu-f64-noise-v1: binary64, chapter 3's compensated accumulator for
+// Profile cpu-f64-noise-v1: binary64, chapter 4's compensated accumulator for
 // every sum, scores where higher is better (losses enter negated), up to 4,096
 // items in 1,024 tasks, 2 to 16 blocks and up to 10,000 replicates.
 #load "tabular.coax";
@@ -31,7 +31,7 @@ NS_SPREAD :: 3.0;
 NS_SHIFT :: 0.3;
 NS_RUNS :: 1000000;
 
-// Checks precede the implementation. Expected values are derived in chapter 179.
+// Checks precede the implementation. Expected values are derived in chapter 238.
 #test "the world at its counters" {
     out:[400]f64;for i:0..<400 {out[i]=7;}
     #assert ns_run(5,7,0.25,out[..])==NsStatus.ok;
@@ -236,7 +236,7 @@ NS_RUNS :: 1000000;
 }
 
 // book:begin world
-// SplitMix64 at a counter, as in chapter 156. Item i belongs to task i/10;
+// SplitMix64 at a counter, as in chapter 213. Item i belongs to task i/10;
 // tasks from 32 on are 5 logits easier, so the baseline saturates there.
 ns_task :: (item:int)->int {return item/NS_PER_TASK;}
 ns_part :: (item:int)->int {return ifx ns_task(item)>=NS_SATURATED then 1 else 0;}

@@ -9,7 +9,7 @@
 // evaluate_bpb's accounting: a target below 0 is ignored, a special token
 // carries zero bytes, and bits per byte is nats / (ln 2 * bytes).
 // This is inference compatibility with a nanochat-format tokenizer; it does
-// not reproduce upstream tokenizer training results (chapter 77 says why).
+// not reproduce upstream tokenizer training results (chapter 123 says why).
 #load "bpe-train.coax";
 #load "ops.coax";
 #authority;
@@ -39,7 +39,7 @@ nc_fixture_specials :: (out:[]int) {for i:0..<9 {out[i]=NC_BASE+i;}}
         q:=sp;q[k]=NC_BASE-1;#assert nc_specials(table[..],q[..],32768)==NcStatus.artifact; // collides with an ordinary token
         q=sp;q[k]=sp[(k+1)%9];#assert nc_specials(table[..],q[..],32768)==NcStatus.artifact; // duplicate or reordered
     }
-    toy:=PT_TOY;#assert pt_layout(toy[..]).status==PtStatus.ok && !nc_ok(pt_layout(toy[..])) && nc_specials(toy[..],sp[..],32768)==NcStatus.artifact; // chapter 5's Qwen toy is not a byte-BPE profile
+    toy:=PT_TOY;#assert pt_layout(toy[..]).status==PtStatus.ok && !nc_ok(pt_layout(toy[..])) && nc_specials(toy[..],sp[..],32768)==NcStatus.artifact; // chapter 9's Qwen toy is not a byte-BPE profile
     #assert nc_status(PtStatus.utf8)==NcStatus.utf8 && nc_status(PtStatus.size)==NcStatus.size && nc_status(PtStatus.range)==NcStatus.artifact && nc_status(PtStatus.budget)==NcStatus.artifact;
 }
 #test "conversation shape, limits, capacity and alias refuse before anything is written" {
@@ -116,7 +116,7 @@ nc_fixture_specials :: (out:[]int) {for i:0..<9 {out[i]=NC_BASE+i;}}
     t[0]=0;t[1]=72;l[0]=0.25;l[1]=0.5;ok=nc_bpb(table[..],t[..],l[..]);#assert ok.status==NcStatus.ok && ok.bytes==2 && ok.nats==0.75; // byte 0 is a token like any other
     t[0]=-2;t[1]=72;l[0]=NC_LOSS_MAX*2;#assert nc_bpb(table[..],t[..],l[..]).status==NcStatus.number; // an ignored target's loss is still checked
 }
-// A chapter 77 table: a PST5 layout with the byte-BPE profile. A layout that
+// A chapter 123 table: a PST5 layout with the byte-BPE profile. A layout that
 // failed has zero counts, which the profile (256 + merges ordinary tokens)
 // already refuses. The ordinary vocabulary is t.counts[0]; specials follow it.
 nc_ok :: (t:PtLayout)->bool {return bt_profile(t);}

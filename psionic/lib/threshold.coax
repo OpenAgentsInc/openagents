@@ -1,10 +1,10 @@
-// Chapter 157: thresholds from written costs. A consumer writes down what each
+// Chapter 214: thresholds from written costs. A consumer writes down what each
 // mistake, second and model call costs; the expected cost of every action at a
 // probability follows, and so do the bands of an Elephant and Mammoth cascade:
 // answer no, escalate to Mammoth, ask a person, answer yes. Mammoth's accuracy
 // is measured on validation data, the bands are frozen into a versioned
 // record, and the record is scored once on a confirmation set.
-// Profile cpu-f64-threshold-v1: binary64, chapter 3's compensated accumulator
+// Profile cpu-f64-threshold-v1: binary64, chapter 4's compensated accumulator
 // for every sum, 1 to 8,192 items, costs within [0, 10^6].
 #load "tabular.coax";
 #authority;
@@ -28,7 +28,7 @@ TH_GRID :: 4096;
 TH_BANDS_MAX :: 4;
 TH_VERSION :: 1;
 
-// Checks precede the implementation. Expected values are derived in chapter 157.
+// Checks precede the implementation. Expected values are derived in chapter 214.
 // A table whose costs are exact binary fractions, so expected costs are exact.
 th_exact :: ()->ThCosts {
     return ThCosts.{wrong_yes=4,wrong_no=2,ask=0.5,per_second=0.25,elephant_dollars=0.125,elephant_seconds=0.5,

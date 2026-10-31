@@ -1,4 +1,4 @@
-// Chapter 19: the check that ties a decision job to chapter 16's server.
+// Chapter 24: the check that ties a decision job to chapter 20's server.
 // Checks only; nothing loads this file. host.coax keeps the server out of the
 // Pylon program's source graph.
 #load "host.coax";

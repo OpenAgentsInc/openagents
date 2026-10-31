@@ -2,7 +2,7 @@
 
 Plan: [coax/nostr.md section 17](../../coax/nostr.md). R1 record:
 [2026-10-29-coax-relay-r1.md](2026-10-29-coax-relay-r1.md). This closes two
-items of its "Missing for R1": the client relay machine and the chapter 19
+items of its "Missing for R1": the client relay machine and the chapter 24
 Pylon talking to the Coax relay on the tailnet, and bounded memory under a
 flood. The flood found that 16 silent or trickling sockets could hold every
 connection slot forever. That is fixed here with checks and zero-survivor
@@ -25,7 +25,7 @@ design. So the Pylon's runs name the relay
 `--url`, because NIP-42 AUTH events must name the URL the client used. The
 flood driver is plain Python, so it uses `--url ws://100.74.238.61:PORT`.
 
-## 1. The chapter 19 Pylon against the Coax relay on the tailnet
+## 1. The chapter 24 Pylon against the Coax relay on the tailnet
 
 The Pylon is the program that runs the client relay machine: `relay_conn`
 (transport), `relay.coax` (subscriptions, reconnects, generations),

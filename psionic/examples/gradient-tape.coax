@@ -17,13 +17,13 @@ main :: () {
     two:=[5]TpNode.[TpNode.{op=TpOp.param},TpNode.{op=TpOp.param},TpNode.{op=TpOp.constant,value=3},
         TpNode.{op=TpOp.mul,a=2,b=0},TpNode.{op=TpOp.add,a=3,b=1}];a[0]=5;
     sum:=run(two[..],a[..],v[..],gr[0..<1]);
-    print("3a + a at a = 5, two nodes reading slot 0: value %, gradient %\n",sum,gr[0]);
+    print("5 + a at a = 5, two nodes reading slot 0: value %, gradient %\n",sum,gr[0]);
     ab:=[3]TpNode.[TpNode.{op=TpOp.param,slot=0},TpNode.{op=TpOp.param,slot=1},TpNode.{op=TpOp.mul,a=0,b=1}];b:=[2]f64.[2,3];
     product:=run(ab[..],b[..],v[..],gr[..]);
     #assert tp_backward(ab[..],v[..],gr[..],false)==TpStatus.ok;
     print("a * b = % at (2, 3), backward twice without zeroing: gradient (%, %), not (3, 2)\n",product,gr[0],gr[1]);
 
-    // Chapter 70's data and models, as programs.
+    // Chapter 103's data and models, as programs.
     x:[9600]f64;y:[2400]f64;lat:[2400]f64;g:[2400]int;tr:[2400]int;te:[2400]int;
     #assert tb_simulate(70,300,x[..],y[..],lat[..],g[..],false).status==TbStatus.ok;
     train:=tr[0..<tb_rows(g[..],0,tr[..],false)];test:=te[0..<tb_rows(g[..],2,te[..],false)];
@@ -37,7 +37,7 @@ main :: () {
     tb_gradient(mlp,p[..],xs[..],y[..],batch,hand[..]);
     #assert tp_gradient(mlp,p[..],xs[..],y[..],batch,tape[..],nodes[..],values[..],false)==TpStatus.ok;
     worst:=0.0;for s:0..<49 {e:=abs(tape[s]-hand[s]);if e>worst {worst=e;}}
-    print("tape against chapter 70's hand-written gradient: largest difference %\n",worst);
+    print("tape against chapter 103's hand-written gradient: largest difference %\n",worst);
 
     c:=TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2};
     order:[2400]int;q:[49]f64;z:[2400]f64;ms:=[2]TbModel.[logistic,mlp];names:=[2]string.["logistic","hidden layer"];

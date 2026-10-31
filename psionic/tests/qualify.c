@@ -1,4 +1,4 @@
-/* Chapter 13 gate host: runs one case; the Coax verdict is the exit status. */
+/* Chapter 17 gate host: runs one case; the Coax verdict is the exit status. */
 #include "qualify-gate.h"
 #include <stdlib.h>
 

@@ -1,4 +1,4 @@
-# Psionic chapter 4a verification — 2026-10-29
+# Psionic chapter 8 verification — 2026-10-29
 
 Profile `psionic-interchange-v1`: bounded named F32/BF16 Safetensors maps,
 versioned LP64 C ABI, contiguous CPU f32 DLPack exchange and explicit leases.
@@ -63,7 +63,7 @@ The format oracle is an independent implementation, not upstream-runtime parity.
 The ABI header is also compiled as C++17 to check public-language compatibility.
 The exact Coax example transcript passes both modes, and the book gate checks
 all local links, jai/shell fences and source-linked listings. The imported
-chapter 1, 2a and original-weight reader checks run in the new root; their
+chapter 1, 3 and original-weight reader checks run in the new root; their
 production files were not changed. No unrelated full suite is claimed.
 
 Source contracts: the [Safetensors format](https://github.com/safetensors/safetensors/blob/main/README.md#format)

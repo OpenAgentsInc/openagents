@@ -258,7 +258,7 @@ dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
 // The builder also tracks streaming: the streaming indices in schedule order,
 // how many there are and how many have been used.
 // book:begin forkstate
-// A forked decision (chapter 8) runs the shared prefix block once, keeping
+// A forked decision (chapter 12) runs the shared prefix block once, keeping
 // what its suffixes need in the fork buffer: each linear layer's last three
 // convolution inputs and delta-rule state, and each full layer's rotated keys
 // and values. A suffix starts at token `start` and reads them; it changes
@@ -462,7 +462,7 @@ dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:in
     return dp_finish(r,p,layer,t,input,output);
 }
 
-// The most tokens one decision may hold (chapter 16 serves up to this).
+// The most tokens one decision may hold (chapter 20 serves up to this).
 DP_MAX_TOKENS :: 512;
 // book:begin plan
 // The whole decision: tokens 0..prefix form the first block. Inputs are the
@@ -578,7 +578,7 @@ dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
     return dp_norm_rows(b,p,1,input+4*(tokens-1)*d,dp_w(dp_final(b.m),d),p.final);
 }
 // book:begin batch
-// Many questions at once (chapter 25): the suffixes of up to DP_BATCH
+// Many questions at once (chapter 36): the suffixes of up to DP_BATCH
 // questions that share one kept prefix run as one pass over the weights.
 // Their tokens sit one question after another in the workspace. Every
 // token-wise launch (norms, projections, gates, feed-forward) takes all of

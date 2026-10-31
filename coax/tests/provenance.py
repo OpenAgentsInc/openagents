@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 SCRIPT=ROOT/'provenance.sh'
 RELEASE_DOCUMENTS=('README.md','spec.md','ROADMAP.md','STATUS.md','release-status.json','CHANGELOG.md',
  'book/appendix-a-keywords.md','book/appendix-b-error-codes.md','book/ch01-getting-started.md',
- 'book/ch06-memory.md','book/ch20-inside-coax0.md','book/ch21-road-ahead.md','book/ch22-organizing-programs.md',
+ 'book/ch06-memory.md','book/ch27-inside-coax0.md','book/ch28-road-ahead.md','book/ch10-organizing-programs.md',
  'generated/current.md','generated/version-example.md')
 BUILD_ARTIFACTS=('lexer.c','lexer.h','parser.c','parser.h','checker.c','checker.h','sources.c','sources.h',
  'proto_runtime.inc','proto_importer.c','proto_importer.h')

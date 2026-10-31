@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused chapter 26b; no full mutation, original models or compiler bootstrap.
+# Focused chapter 39; no full mutation, original models or compiler bootstrap.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

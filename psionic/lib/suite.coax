@@ -1,4 +1,4 @@
-// Chapter 178: a suite is three digests. The items with their tasks,
+// Chapter 237: a suite is three digests. The items with their tasks,
 // partitions and locked partitions carry one digest, the question set
 // another, and the gate a third. Results go to an append-only store in which
 // every receipt names the previous one, a locked partition can be read once,

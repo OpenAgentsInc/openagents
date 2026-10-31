@@ -159,7 +159,7 @@ sm_read :: (keys:[]int,values:[]int,count:int,q:int,beta:f64,format:SmFormat)->S
     mixed:=psionic_ops_total(y);value:=sm_nearest(mixed);
     return SmRead.{value=value,mixed=mixed,exact=value==values[b]};
 }
-// The chapter 166 score with the recency term a transformer needs: scaled by
+// The chapter 225 score with the recency term a transformer needs: scaled by
 // count + 1 so that position t breaks ties but never outweighs a key mismatch.
 sm_logit :: (k:int,q:int,t:int,count:int,beta:f64,format:SmFormat)->f64 {
     score:=em_score(k,q)*(count+1)+t;

@@ -34,7 +34,7 @@ first builds a small "stage 0" compiler, uses it to check and compile
 those Coax parts to C, makes sure the result matches the checked-in
 copies, and only then links the final compiler and puts it at
 `coax/bin/coax`. If any of those checks fail, you don't get a new
-compiler. [Chapter 20](ch20-inside-coax0.md) walks through all of this.
+compiler. [Chapter 27](ch27-inside-coax0.md) walks through all of this.
 
 Let's make sure it worked:
 
@@ -99,7 +99,7 @@ Words that start with `#` are *directives*. They're instructions to the
 compiler rather than code that runs when the program does. `#import`
 makes a module's names available in this file. `Basic` is the module
 that provides `print`; it remains the only named built-in module. `#load`
-adds authored source units to a program (Chapter 22).
+adds authored source units to a program (Chapter 10).
 Nothing is imported unless you ask for it, so the first lines of a file
 tell you what it depends on.
 
@@ -220,7 +220,7 @@ Use `-o` to choose the name: `coax build hello.coax -o greet`. On macOS
 the driver retains a `hello.o` file: Darwin's debug map needs that object.
 Ordinary debug builds include line mappings so a debugger can show your Coax
 source lines. Keep the object with the executable, or package the matching
-symbols with your native toolchain. Chapter 24 shows source maps and LLDB.
+symbols with your native toolchain. Chapter 12 shows source maps and LLDB.
 
 ### `coax c`
 
@@ -275,7 +275,7 @@ wondering what a piece of Coax costs, `coax c` will show you.
 > Note: Generating C is a deliberate choice for now. C goes through
 > toolchains we already trust, like Xcode's clang for the iPhone app,
 > and it lets Coax code link directly into existing C and C++ programs.
-> [Chapter 21](ch21-road-ahead.md) discusses other backends.
+> [Chapter 28](ch28-road-ahead.md) discusses other backends.
 
 ### `coax check`
 
@@ -304,13 +304,13 @@ set for reference:
 | `coax build FILE [-o out]` | Build an executable |
 | `coax check FILE` | Check without building |
 | `coax c FILE` | Print the generated C |
-| `coax test FILE [--evidence OUT]` | Run the file's `#test` and `#forall` checks; `--evidence` records each claim's outcome ([Chapter 10](ch10-writing-checks.md)) |
-| `coax mutate FILE [--root-only] [--jobs N] [--shard I/N]` | Check that the checks would catch small bugs, in parallel or in shards ([Chapter 10](ch10-writing-checks.md)) |
-| `coax layout FILE` | Print every struct's size, alignment and field offsets ([Chapter 11](ch11-data-layout.md)) |
-| `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` ([Chapter 17](ch17-interop.md)) |
-| `coax header FILE [-o out.h]` | Write the C header for those procedures ([Chapter 17](ch17-interop.md)) |
-| `coax metal FILE` | Print `f32` and `bool` procedures as Metal shader code ([Chapter 17](ch17-interop.md)) |
-| `coax proto ...` | Generate Coax from a protocol descriptor ([Chapter 15](ch15-protocol.md)) |
+| `coax test FILE [--evidence OUT]` | Run the file's `#test` and `#forall` checks; `--evidence` records each claim's outcome ([Chapter 11](ch11-writing-checks.md)) |
+| `coax mutate FILE [--root-only] [--jobs N] [--shard I/N]` | Check that the checks would catch small bugs, in parallel or in shards ([Chapter 11](ch11-writing-checks.md)) |
+| `coax layout FILE` | Print every struct's size, alignment and field offsets ([Chapter 13](ch13-data-layout.md)) |
+| `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` ([Chapter 20](ch20-interop.md)) |
+| `coax header FILE [-o out.h]` | Write the C header for those procedures ([Chapter 20](ch20-interop.md)) |
+| `coax metal FILE` | Print `f32` and `bool` procedures as Metal shader code ([Chapter 20](ch20-interop.md)) |
+| `coax proto ...` | Generate Coax from a protocol descriptor ([Chapter 18](ch18-protocol.md)) |
 | `coax explain CODE` | Explain an error code ([Chapter 4](ch04-reading-errors.md)) |
 | `coax version` | Print the compiler's version |
 
@@ -319,7 +319,7 @@ It selects wrapping runtime integers and release build-profile branches;
 native builds also use `-O2`. The next section shows the overflow difference.
 Version 0.25.0 also lets you optimize without choosing wrapping arithmetic:
 `--opt 2` on `run`, `build` or `lib` keeps the default checked arithmetic.
-[Chapter 24](ch24-debugging-and-cost.md) explains the independent selections
+[Chapter 12](ch12-debugging-and-cost.md) explains the independent selections
 and their profile report.
 
 ## When a number gets too big

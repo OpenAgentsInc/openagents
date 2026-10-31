@@ -27,4 +27,4 @@ These are intermediate gates. The whole `psionic/check.sh` suite was not
 repeated in this increment; it now includes the new roots and native tests.
 No upstream model runtime was executed for this evidence. The
 [hybrid progress note](../../psionic/docs/hybrid-kernels.md) defines supported layouts,
-limits and the remaining work to complete chapter 7 and model serving.
+limits and the remaining work to complete chapter 11 and model serving.

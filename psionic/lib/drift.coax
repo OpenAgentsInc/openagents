@@ -1,11 +1,11 @@
-// Chapter 158: record readings, join outcomes, watch drift. Every decision
+// Chapter 215: record readings, join outcomes, watch drift. Every decision
 // leaves a record with no content: the raw and calibrated probabilities, the
 // model, question set, map and policy versions, the threshold, the eligible
 // actions, the chosen action and its selection probability. Its outcome joins
 // later, or never. Windows of joined records are compared with labels drawn
 // from their own probabilities, maps are refitted on a schedule, and other
 // thresholds are evaluated from the log.
-// Profile cpu-f64-drift-v1: binary64, chapter 3's compensated accumulator for
+// Profile cpu-f64-drift-v1: binary64, chapter 4's compensated accumulator for
 // every sum, one yes-or-no question, 1 to 16 windows of 50 to 1,000 decisions.
 #load "calibrate.coax";
 #authority;
@@ -40,7 +40,7 @@ DR_DRAWS :: 200;
 DR_ALERT :: 2;
 DR_LOST :: 0.1;
 
-// Checks precede the implementation. Expected values are derived in chapter 158.
+// Checks precede the implementation. Expected values are derived in chapter 215.
 POLICY :: DrPolicy.{version=3,threshold=0.25,explore=0.125,sure=0.125,wrong_yes=1,wrong_no=3};
 // Found by search: decision DRIFT of the short run is joined and its label
 // changes with the shift; TRUTH_SEED's decision 3 likewise; watching the
@@ -385,7 +385,7 @@ dr_watch :: (entries:[]DrRecord,window:int,seed:u64)->DrWatch #export_c {
     return v;
 }
 // Refit from the raw probabilities of two older windows, gated on a newer
-// one against the map in use: chapter 156's three kinds and its gate.
+// one against the map in use: chapter 213's three kinds and its gate.
 dr_refit :: (entries:[]DrRecord,current:CfMap,fit_from:int,gate_from:int,window:int)->DrRefit {
     fp:[2000]f64;fy:[2000]f64;fq:[2000]int;rows:[2000]int;gp:[1000]f64;gy:[1000]f64;gr:[1000]int;mapped:[1000]f64;
     n:=dr_rows(entries,fit_from,fit_from+DR_FIT*window,true,fp[..],fy[..],rows[..]);

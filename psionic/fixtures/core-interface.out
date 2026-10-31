@@ -1,11 +1,11 @@
-core: chapter 168's block for inputs second, top, ip and arg, with outputs second + top,
+core: chapter 227's block for inputs second, top, ip and arg, with outputs second + top,
   second - top, second * top, and ip + 1 when top is 0, else arg; exact within 2^26
-  chapter 176's admission: exact (pin, 4 cases, source recompiled to the pin)
+  chapter 235's admission: exact (pin, 4 cases, source recompiled to the pin)
 interface: each token is copied from one of 12 sources:
   zero, arg, top, second, local, depth+1, depth-1, outputs+1, add, sub, mul, branch
 controller: per instruction and token, a softmax over the sources that sees only the instruction,
 trained from zero by 200 full-batch steps on -log P(a source that gives the machine's token)
-controller A: trained on count and sum at n = 1..4: 8 traces admitted by chapter 186, 220 rows
+controller A: trained on count and sum at n = 1..4: 8 traces admitted by chapter 245, 220 rows
   loss 0.0062
   routes, with sources training never told apart after a slash:
     push arg, depth+1; get local, arg; set top/add, arg; add add, depth-1/outputs+1; sub sub, top/depth-1; brif top/add, branch; out top/add, outputs+1; ret zero/arg/top/second/local/add/sub/mul, zero/arg/top/second/local/add/sub/mul;
@@ -18,7 +18,7 @@ controller A: trained on count and sum at n = 1..4: 8 traces admitted by chapter
     first miss at n=32: step 4 (mul) wrote 0 for x, where the machine has 1024
   fact: n=4 token 26 of 188, n=8 token 26 of 348, n=11 token 26 of 468, n=12 token 26 of 508
     first miss at n=12: step 6 (mul) wrote 0 for x, where the machine has 12
-controller B: trained on count, sum, stride and fact at n = 1..4: 16 traces admitted by chapter 186, 440 rows
+controller B: trained on count, sum, stride and fact at n = 1..4: 16 traces admitted by chapter 245, 440 rows
   loss 0.006
   routes, with sources training never told apart after a slash:
     push arg, depth+1; get local, arg; set top/add, arg; add add, depth-1/outputs+1; sub sub, depth-1; mul mul, depth-1/outputs+1; brif top/add, branch; out top/add, outputs+1; ret zero/arg/top/second/local/add/sub/mul, zero/arg/top/second/local/add/sub/mul;

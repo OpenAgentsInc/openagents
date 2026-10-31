@@ -7,7 +7,7 @@ SEED :: 179;
 RUNS :: 64;
 BLOCK :: 4;
 
-// Chapter 12's held-out run: kind (0 choice, 1 noul, 2 score), gold option
+// Chapter 16's held-out run: kind (0 choice, 1 noul, 2 score), gold option
 // and Elephant's probabilities, as recorded in fixtures/quality.
 ELEPHANT_KIND :: [12]int.[0,0,0,0,0,1,1,1,1,2,2,2];
 ELEPHANT_GOLD :: [12]int.[1,0,2,2,1,1,0,1,0,0,1,2];
@@ -71,14 +71,14 @@ main :: () {
         print("  tasks: standard error %, % of 1000 at or below 0, % at or below the floor\n",r4(t0.se),t0.below,t1.below);
     }
 
-    // Elephant on chapter 12's suite: one run, so the floor is 0.
+    // Elephant on chapter 16's suite: one run, so the floor is 0.
     correct:[12]f64;brier:[12]f64;same:[12]int;
     for i:0..<12 {
         p:=ELEPHANT_P;q:=p[ELEPHANT_START[i]..<ELEPHANT_START[i+1]];
         correct[i]=ns_correct(q,ELEPHANT_GOLD[i]);brier[i]=-ns_brier(q,ELEPHANT_GOLD[i]);
     }
     kind:=ELEPHANT_KIND;kinds:=[3]string.["choice","noul","score"];
-    print("Elephant, chapter 12's suite, accuracy:\n");
+    print("Elephant, chapter 16's suite, accuracy:\n");
     for w:0..<3 {room(kinds[w],ns_headroom(correct[..],kind[..],w,1,0));}
     room("all",ns_headroom(correct[..],same[..],0,1,0));
     print("Elephant, Brier score (negated, ceiling 0):\n");

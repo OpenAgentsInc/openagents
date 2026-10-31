@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 30b: the original Mammoth decision on a CUDA device. The caller
+# Chapter 46: the original Mammoth decision on a CUDA device. The caller
 # supplies the original files; nothing is downloaded. Without a CUDA driver or
 # NVRTC the harness prints SKIP and exits 0. Usage:
 #   psionic/tests/run_mammoth_device.sh ORIGINAL_DIRECTORY [REPEAT]
@@ -30,7 +30,7 @@ cp "$out/decision-plan.h" "$out/decision-answer.h"
 "$out/mammoth-device" "$1" psionic/fixtures/text/ch05/qwen35.pst "$out/project.cu" "$out/layer.cu" "$out/warp.cu" "${2:-3}" | tee "$out/result.log"
 if grep -q '^SKIP' "$out/result.log"; then exit 0; fi
 # Frozen before the first device run: the choice and 0.0005 absolute on each
-# decision statistic, against chapter 11's recorded CPU result and its
+# decision statistic, against chapter 15's recorded CPU result and its
 # independent reference.
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-cpu "$out/result.log"
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output "$out/result.log"

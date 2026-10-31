@@ -1,4 +1,4 @@
-// Chapter 2a: bounded borrowed CPU f32 views, separate from chapter 2's
+// Chapter 3: bounded borrowed CPU f32 views, separate from chapter 2's
 // contiguous-only contract. Caller keeps one authoritative storage record.
 #authority;
 TV_LIMIT :: 1048576;

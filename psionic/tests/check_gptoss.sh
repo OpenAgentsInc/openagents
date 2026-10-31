@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapters 45-48: offline owned fixtures; no downloaded code or model required.
+# Chapters 64-77: offline owned fixtures; no downloaded code or model required.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

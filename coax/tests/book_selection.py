@@ -30,13 +30,13 @@ class BookSelection(unittest.TestCase):
             'examples/beta.out': 'beta\n',
             'examples/beta.status': '7\n',
             'examples/compile_only.coax': 'main :: () {}\n',
-            'examples/ch24_debug/main.coax': 'main :: () {}\n',
-            'examples/ch24_debug/main.out': 'debug-main\n',
-            'examples/lib/ch14_glow.coax': 'glow :: () {}\n',
-            'examples/ch20_frontend/driver.coax': 'main :: () {}\n',
-            'examples/ch20_frontend/driver.out': 'frontend\n',
-            'examples/ch17_interop/run.out': 'interop\n',
-            'examples/ch26_workflow/run.out': 'workflow\n',
+            'examples/ch12_debug/main.coax': 'main :: () {}\n',
+            'examples/ch12_debug/main.out': 'debug-main\n',
+            'examples/lib/ch17_glow.coax': 'glow :: () {}\n',
+            'examples/ch27_frontend/driver.coax': 'main :: () {}\n',
+            'examples/ch27_frontend/driver.out': 'frontend\n',
+            'examples/ch20_interop/run.out': 'interop\n',
+            'examples/ch24_workflow/run.out': 'workflow\n',
         }.items():
             path = self.book / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,7 +52,7 @@ if args[0] == 'run':
     source = args[1]
     if source.endswith('/frontend.coax'):
         print('frontend')
-    elif source.endswith('ch24_debug/main.coax'):
+    elif source.endswith('ch12_debug/main.coax'):
         print('debug-main')
     else:
         name = pathlib.Path(source).stem
@@ -69,8 +69,8 @@ with open(os.environ['BOOK_SELECTION_LOG'], 'a') as out:
 raise SystemExit(1)
 ''')
         build.chmod(0o755)
-        for relative, name in [('examples/ch17_interop/run.sh', 'interop'),
-                               ('examples/ch26_workflow/run.sh', 'workflow')]:
+        for relative, name in [('examples/ch20_interop/run.sh', 'interop'),
+                               ('examples/ch24_workflow/run.sh', 'workflow')]:
             script = self.book / relative
             script.write_text(f'''#!/usr/bin/env python3
 import json, os
@@ -96,9 +96,9 @@ print('structure')
         result = self.run_book('--list')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(), [
-            'alpha', 'beta', 'compile_only', 'ch24_debug/main', 'ch14_glow',
-            'ch20_frontend', 'ch17_interop', 'ch23_requests.mutation',
-            'ch26_workflow', 'structure'])
+            'alpha', 'beta', 'compile_only', 'ch12_debug/main', 'ch17_glow',
+            'ch27_frontend', 'ch20_interop', 'ch15_requests.mutation',
+            'ch24_workflow', 'structure'])
         self.assertEqual(self.executed(), [])
 
     def test_exact_selection_preserves_modes_and_authored_checks(self):
@@ -139,18 +139,18 @@ print('structure')
         calls = self.executed()
         self.assertEqual(sum(call[:3] == ['compiler', 'run', 'examples/beta.coax'] for call in calls), 2)
         self.assertIn(['compiler', 'c', 'examples/compile_only.coax'], calls)
-        self.assertIn(['compiler', 'test', 'examples/lib/ch14_glow.coax'], calls)
-        self.assertIn(['compiler', 'metal', 'examples/lib/ch14_glow.coax'], calls)
-        self.assertIn(['compiler', 'mutate', 'examples/ch23_requests.coax'], calls)
-        self.assertEqual(calls[-3:], [['compiler', 'mutate', 'examples/ch23_requests.coax'],
+        self.assertIn(['compiler', 'test', 'examples/lib/ch17_glow.coax'], calls)
+        self.assertIn(['compiler', 'metal', 'examples/lib/ch17_glow.coax'], calls)
+        self.assertIn(['compiler', 'mutate', 'examples/ch15_requests.coax'], calls)
+        self.assertEqual(calls[-3:], [['compiler', 'mutate', 'examples/ch15_requests.coax'],
                                      ['workflow'], ['structure']])
         self.assertIn('all book examples pass', result.stdout)
 
     def test_special_selection_does_not_run_other_hosts_or_mutation(self):
-        result = self.run_book('--only', 'ch14_glow')
+        result = self.run_book('--only', 'ch17_glow')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(self.executed(), [['compiler', 'test', 'examples/lib/ch14_glow.coax'],
-                                          ['compiler', 'metal', 'examples/lib/ch14_glow.coax']])
+        self.assertEqual(self.executed(), [['compiler', 'test', 'examples/lib/ch17_glow.coax'],
+                                          ['compiler', 'metal', 'examples/lib/ch17_glow.coax']])
 
     def test_compile_only_and_structure_are_selectable(self):
         result = self.run_book('--only', 'compile_only', 'structure')

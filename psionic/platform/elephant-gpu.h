@@ -1,7 +1,7 @@
 /* Elephant and Mammoth decisions on a CUDA device, for any host: open once,
    then decide prepared requests one at a time. The Coax device plan
    (psionic/lib/device/plan.coax) decides residency, streaming and every
-   launch; this module performs the effects. The CPU session (chapter 10)
+   launch; this module performs the effects. The CPU session (chapter 14)
    authenticates and binds the original files before eg_place. */
 #ifndef PSIONIC_ELEPHANT_GPU_H
 #define PSIONIC_ELEPHANT_GPU_H
@@ -72,12 +72,12 @@ int eg_issue(EgEngine *e, int64_t i, PcStream compute);
    true the decision is abandoned, the streams are drained and EG_STOPPED is
    returned with nothing published. */
 int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
-/* The same decision through a fork (chapter 8): the prefix block (tokens
+/* The same decision through a fork (chapter 12): the prefix block (tokens
    0..prefix) runs once and is kept; this and every later decision with the
    same prefix tokens runs only its suffix from the kept state. Without a
    prefix (0) it is eg_decide. e->forked says which way it ran. */
 int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
-/* Many questions at once (chapter 25): questions[i] has counts[i] tokens,
+/* Many questions at once (chapter 36): questions[i] has counts[i] tokens,
    and all share their first `prefix` tokens. The prefix pass runs unless the
    fork buffer holds it; then every question's suffix runs in one batched
    pass (dp_plan_batch) and question i's logits land at logits + i*EG_VOCAB.

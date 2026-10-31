@@ -244,7 +244,7 @@ further phase/transport attribution remains a next measurement.
 
 ## Third pass: ordered graph replay
 
-[Chapter 45f](../../book/ch045f-replay-the-device-program.md) now implements
+[Chapter 70](../../book/ch070-replay-the-device-program.md) now implements
 Coax descriptor deltas and synchronous decode replay. Kernel arithmetic and
 generated CUDA are unchanged. The adapter retains an ordered node chain,
 updates changing scalar/view bindings, and submits one graph. CPU emulation,

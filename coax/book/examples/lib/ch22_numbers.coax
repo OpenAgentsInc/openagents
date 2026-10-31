@@ -1,3 +1,0 @@
-#load "ch22_types.coax";
-#test "negative and positive cells" { #assert cells_total(Cell.{value= -2},Cell.{value=3})==1; }
-cells_total :: (a: Cell, b: Cell) -> int { return a.value+b.value; }

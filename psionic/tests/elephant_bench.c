@@ -1,6 +1,6 @@
 /* Time the public typed request against the authenticated original Elephant.
    Usage: elephant-bench ORIGINAL_DIRECTORY TOKENIZER_PST [REPEAT [RUNS]]
-   REPEAT copies of "Water is wet." form the state (1 reproduces chapter 10's
+   REPEAT copies of "Water is wet." form the state (1 reproduces chapter 14's
    request); RUNS decisions reuse one authenticated session. */
 #define _POSIX_C_SOURCE 200809L
 #include "decision-answer.h"

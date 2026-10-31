@@ -1,4 +1,4 @@
-// Chapter 20 executable wiring. All protocol/admission/answer decisions are
+// Chapter 25 executable wiring. All protocol/admission/answer decisions are
 // the checked fleet, chapter16/19 and Nostr units. The C host does loopback
 // socket effects, argv, clocks and lifecycle only. Test/demo keys only.
 #import "Basic";

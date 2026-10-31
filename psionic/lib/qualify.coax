@@ -1,4 +1,4 @@
-// Chapter 13: frozen comparison policies, build-bound records and verdicts.
+// Chapter 17: frozen comparison policies, build-bound records and verdicts.
 #load "../../coax/lib/crypto/sha256.coax";
 #load "../fixtures/qualify/qualify-vectors.coax";
 #authority;

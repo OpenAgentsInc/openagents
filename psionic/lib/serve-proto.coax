@@ -1,6 +1,6 @@
 // The protobuf wire for POST /v1/systemone: openagents.decision.v1alpha1.
 // This file decides nothing. A protobuf request is transcoded to the frozen
-// NIP-DEC JSON and admitted by chapter 16's decoder (#authority), so every
+// NIP-DEC JSON and admitted by chapter 20's decoder (#authority), so every
 // bound and refusal stays in one place and the protobuf door can never admit
 // what the JSON door refuses. A protobuf answer re-encodes the JSON answer
 // the engine already rendered, so the choice, the score and the rounding
@@ -102,7 +102,7 @@ SP_INTEGER_MAX :: 9007199254740992;
     bad:=[131]u8.[80,79,83,84,32,47,118,49,47,115,121,115,116,101,109,111,110,101,32,72,84,84,80,47,49,46,49,13,10,67,111,110,116,101,110,116,45,84,121,112,101,58,32,97,112,112,108,105,99,97,116,105,111,110,47,120,45,112,114,111,116,111,98,117,102,13,10,67,111,110,116,101,110,116,45,76,101,110,103,116,104,58,32,52,50,13,10,13,10,26,11,112,115,105,111,110,105,99,45,116,111,121,34,18,26,16,10,14,10,1,120,18,9,41,0,0,0,0,0,0,224,63,42,7,10,1,113,18,2,8,1];m:=131;
     r:=sp_bytes(s,limits,e,pools,cast(string)bad[0..<m],bad[0..<m],scratch[..],50);
     #assert r.step.action==SvAction.refuse && r.step.code==SvCode.unsupported_input && !r.proto_out;
-    // A JSON request takes chapter 16's path unchanged.
+    // A JSON request takes chapter 20's path unchanged.
     j:="POST /v1/systemone HTTP/1.1\r\nContent-Length: 70\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"go\",\"questions\":{\"q\":{\"type\":\"noul\"}}}";
     jb:[256]u8;jn:=json_raw(jb[..],0,j);k:=sp_bytes(s,limits,e,pools,cast(string)jb[0..<jn],jb[0..<jn],scratch[..],50);
     #assert k.step.action==SvAction.decide && !k.proto_out && k.step.request.questions==1;
@@ -133,7 +133,7 @@ sp_flags :: (head:string)->SpFlags #export_c {
 
 // book:begin request
 // One EntryType as JSON. Numbers must be integers within 2^53, the same set
-// chapter 5's text format accepts; anything else is unsupported_input.
+// chapter 9's text format accepts; anything else is unsupported_input.
 sp_entry :: (e:So_EntryType,out:[]u8,at:int,depth:int)->SpOut {
     if depth>SP_DEPTH_MAX {return SpOut.{code=SvCode.invalid_request};}
     which:=So_EntryType_case_value(e);if which.error!=0 {return SpOut.{code=SvCode.malformed};}
@@ -174,7 +174,7 @@ sp_entry :: (e:So_EntryType,out:[]u8,at:int,depth:int)->SpOut {
     if n<0 {return SpOut.{code=SvCode.limit_exceeded};}
     return SpOut.{at=n};
 }
-// A protobuf SystemOneRequest as the NIP-DEC body chapter 16 decodes. Absent
+// A protobuf SystemOneRequest as the NIP-DEC body chapter 20 decodes. Absent
 // fields are left out, so the JSON decoder refuses exactly what it would refuse.
 sp_request_json :: (wire:[]u8,out:[]u8)->SpOut #export_c {
     if wire.count>SV_BODY_MAX {return SpOut.{code=SvCode.limit_exceeded};}
@@ -290,7 +290,7 @@ sp_json_entry :: (j:[]Json,a:[]SpArena,depth:int)->So_EntryType {
 // an incomplete one, or one refused at the head goes to sv_bytes unchanged.
 // A complete protobuf body is transcoded into scratch as a JSON request on the
 // same route and admitted by sv_bytes, so deadlines, Expect: 100-continue,
-// admission and the slot's next phase are chapter 16's. The decoded request
+// admission and the slot's next phase are chapter 20's. The decoded request
 // borrows from scratch, which must outlive the decision. raw is the same
 // bytes as text, as the host holds them.
 sp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,pools:SvPools,text:string,raw:[]u8,scratch:[]u8,now:int)->SpStep #export_c {

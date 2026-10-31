@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 176's independent reference, written from the chapter's specification.
+"""Chapter 235's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/weight-module.coax. From the two modules'
-meanings alone (chapter 168's arithmetic step, which also exports a; then
+meanings alone (chapter 227's arithmetic step, which also exports a; then
 max(x, y), x == 0 and y) it computes what the linked module must return on
 the example's 105 inputs and the example's checksum over them. From the two
 modules' printed sizes and the linking rule it derives the linked block's
 layers, width and weight count, and it decides the 10000-by-10000 case from
-chapter 166's input range. It checks each against the example's output.
+chapter 225's input range. It checks each against the example's output.
 """
 import pathlib
 import re

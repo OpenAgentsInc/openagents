@@ -1,4 +1,4 @@
-// Chapter 26b: bounded symbolic shapes, declared control flow, plan-cache policy.
+// Chapter 39: bounded symbolic shapes, declared control flow, plan-cache policy.
 #load "tensor-ir-host.coax";
 #authority;
 // book:begin types

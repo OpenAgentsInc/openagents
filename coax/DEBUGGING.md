@@ -27,7 +27,7 @@ was needed and the limit. Checks have their own, larger limits than a compile
 From the repository root:
 
 ```sh
-coax/bin/coax build coax/book/examples/ch24_debug/main.coax \
+coax/bin/coax build coax/book/examples/ch12_debug/main.coax \
   -o /tmp/coax-debug --keep-c --source-map /tmp/coax-debug.map.json \
   --timings /tmp/coax-debug.timings.json
 lldb /tmp/coax-debug

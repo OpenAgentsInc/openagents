@@ -1,4 +1,4 @@
-/* Chapter 70 against the independent oracle in tabular_oracle.py. Tolerances
+/* Chapter 103 against the independent oracle in tabular_oracle.py. Tolerances
    were frozen before comparison: draws, labels, splits, thresholds and counts
    exact; latencies 1e-12 relative; parameters, losses and errors 1e-9 relative. */
 #include "tabular-spans.h"

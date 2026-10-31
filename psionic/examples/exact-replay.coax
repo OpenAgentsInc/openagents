@@ -5,7 +5,7 @@
 // book:begin example
 main :: () {
     p:=rx_squares();
-    // The claimant is chapter 166's executor, whose memory is attention.
+    // The claimant is chapter 225's executor, whose memory is attention.
     rows:[256]int;outs:[4]int;keys:[64]int;values:[64]int;
     e:=em_run(p[..],64,rows[..],outs[..],keys[..],values[..],false);
     #assert e.status==TmStatus.ok;

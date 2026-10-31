@@ -1,4 +1,4 @@
-// Chapter 13's gate: one case per process, its verdict as the exit status.
+// Chapter 17's gate: one case per process, its verdict as the exit status.
 #load "qualify-elephant.coax";
 #load "qualify-report.coax";
 YE_GATE_CASES :: 8;
@@ -8,7 +8,7 @@ YE_GATE_CASES :: 8;
 ye_gate :: (k:int)->int #export_c {
     c:[4096]f64;r:[4096]f64;
     if k==0 {
-        names:=[3]string.["chapter 10, layer 0 of token 32","chapter 10, decision probabilities","chapter 10, decision slot mass"];
+        names:=[3]string.["chapter 14, layer 0 of token 32","chapter 14, decision probabilities","chapter 14, decision slot mass"];
         worst:=0;
         for i:0..<YE_CASES {
             status:=qy_print(names[i],ye_policy(i),ye_case(i,c[..],r[..]),QyVerdict.agrees);
@@ -16,7 +16,7 @@ ye_gate :: (k:int)->int #export_c {
         }
         return worst;
     }
-    // Chapter 10's decision values with a complete build record.
+    // Chapter 14's decision values with a complete build record.
     p:=ye_decision_policy();record:=ye_record(1);n:=ye_evidence(1,c[..],r[..]);
     record.sources=qy_text_digest("an example sources digest");record.profile=qy_name(YE_PROFILE);
     bound:=qy_qualify(p,record,c[0..<n],r[0..<n]);

@@ -87,7 +87,7 @@ dl_scan :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,
 // book:end scan
 
 // book:begin fork
-// A forked decision (chapter 8): the prefix block runs once and keeps each
+// A forked decision (chapter 12): the prefix block runs once and keeps each
 // linear layer's last three convolution inputs and delta-rule state; every
 // question's suffix starts from them. mode bit 0 starts from the kept values
 // (else zero), bit 1 keeps the final ones. history holds the three inputs

@@ -2,10 +2,10 @@
 
 ## What was run
 
-Chapter 30b's pinned original `baselabs/mammoth-1` revision
+Chapter 46's pinned original `baselabs/mammoth-1` revision
 `61cec44c281c693992e3d6ebeb44dd3402dfa186` (both shards, 54,713,608,144
 bytes), downloaded on the VM from Hugging Face (341 s, about 160 MB/s) and
-authenticated by chapter 11's session, fully resident on one card:
+authenticated by chapter 15's session, fully resident on one card:
 
 | | |
 | --- | --- |
@@ -34,7 +34,7 @@ Nothing in the repository changed. `cuda-host.c` compiles for
 instruction the warp kernels use runs on sm_120. The 4080's results cannot
 have moved: no source, plan or kernel changed.
 
-`psionic/tests/run_device_warp.sh` (chapter 26's check of the MMA primitive
+`psionic/tests/run_device_warp.sh` (chapter 37's check of the MMA primitive
 against its Coax meaning and of the projections against the CPU profile)
 passes on the card:
 
@@ -55,10 +55,10 @@ the CPU result than on the 4080.
 
 ## Acceptance test, frozen before the first device run
 
-Chapter 30b's rule, committed in `run_mammoth_device.sh` before this card was
-used: the choice must be chapter 11's (`yes`) and each of the four statistics
-within 0.0005 of chapter 11's recorded CPU result (`--check-cpu`); the
-harness also checks chapter 11's independent layer-streamed reference
+Chapter 46's rule, committed in `run_mammoth_device.sh` before this card was
+used: the choice must be chapter 15's (`yes`) and each of the four statistics
+within 0.0005 of chapter 15's recorded CPU result (`--check-cpu`); the
+harness also checks chapter 15's independent layer-streamed reference
 (`--check-output`). The CPU decision was not rerun. All three Mammoth runs
 (first, restart, 13 GiB budget) printed the same values and passed both
 checks.
@@ -99,12 +99,12 @@ resident; nothing streams:
 
 The cold open is the checkpoint hash on one CPU core: 171 MB/s reading from
 the boot disk, 227 MB/s from the page cache. The upload itself is under two
-seconds. The Mammoth harness has no verified-file record (chapter 15), so a
+seconds. The Mammoth harness has no verified-file record (chapter 19), so a
 restart hashes again; with one, a restart would be a few seconds.
 
 ## Warm latency
 
-Chapter 10's sample (`Water is wet.` / `Is the water wet?`, 86 tokens,
+Chapter 14's sample (`Water is wet.` / `Is the water wet?`, 86 tokens,
 49-token prefix), time from the host's request to the probabilities:
 
 | Measure | RTX PRO 6000, resident | RTX PRO 6000, 13.09 GiB budget | RTX 4080, 13.09 GiB budget (ch30b) |
@@ -139,12 +139,12 @@ Lab answers, identical whole and forked in every run:
 | Is the message about fire? | no (p_yes 0.0120051559) | no (0.0120048166) |
 | Is the message true? | yes 0.909866658 | yes 0.909868535 |
 
-## Chapter 115's load generator
+## Chapter 170's load generator
 
 Not run. The server path does not serve Mammoth: `serve-engine.coax`'s
 `sv_elephant` refuses a Mammoth session and `serve-host.c` places with
 `eg_place` (Elephant), not `eg_place_kind`. Every number above comes from
-chapter 30b's harness, `run_mammoth_device.sh`.
+chapter 46's harness, `run_mammoth_device.sh`.
 
 ## Elephant on the same card
 
@@ -160,7 +160,7 @@ chapter 30b's harness, `run_mammoth_device.sh`.
 | Cold start (authenticate, upload, first decision) | 208.6 s (hash 109.9 s, upload 14.79 GiB in 0.57 s) | 101-215 s | 220.7 s |
 | p(yes) | 0.757197863 | 0.757202773 | 0.757202773 |
 
-Both of chapter 30's checks pass; the largest difference from the CPU result
+Both of chapter 44's checks pass; the largest difference from the CPU result
 is 3.2e-6 (confidence). Per-kernel qualification of layers 0 and 3 and the
 readout: 54 of 70 launches bit-identical to the same kernels on the CPU, as on
 the 4080. The other 16 are 15 tensor-core projections, whose per-word
@@ -185,5 +185,5 @@ named `psionic-rtx6000*`.
 - Per-kernel qualification was run for Elephant on this card, not for Mammoth
   (the Mammoth harness has no qualify mode); Mammoth's launches differ from
   Elephant's only in counts.
-- Chapter 115's load generator was not run: the server does not place Mammoth.
+- Chapter 170's load generator was not run: the server does not place Mammoth.
 - Prompts longer than 128 tokens were not compared against the CPU reference.

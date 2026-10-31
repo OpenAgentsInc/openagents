@@ -1,6 +1,6 @@
-# Chapters 26 and 30: warp kernels and tensor cores, 2026-10-29
+# Chapters 37 and 44: warp kernels and tensor cores, 2026-10-29
 
-Same host as the [chapter 26 record](psionic-ch26-2026-10-29.md): RTX 4080,
+Same host as the [chapter 37 record](psionic-ch26-2026-10-29.md): RTX 4080,
 driver 595.71.05, NVRTC 13.2.51, now coax0 0.24.0. Another agent's gpt-oss
 process shared the GPU during part of the session; the numbers below are from
 runs while it was idle (GPU utilization at or below a few percent before
@@ -25,7 +25,7 @@ each run).
 - **Tensor-core projection** (`psionic/lib/device/warp.coax`, 428 mutants,
   zero survivors): `dw_split` writes activations as two BF16 halves,
   `dw_project` multiplies 16 rows by 88 tokens per warp with both halves over
-  a contiguous slice of columns, and chapter 26's `dv_reduce` adds slices.
+  a contiguous slice of columns, and chapter 37's `dv_reduce` adds slices.
 - **Plan** (`psionic/lib/device/plan.coax`, zero survivors): projections of
   16 or more tokens use the tensor-core path; slices double until a launch has
   4,096 warps, each slice keeps at least 8 steps, at most 32.
@@ -38,7 +38,7 @@ Checks: `psionic/tests/run_device_warp.sh`, `psionic/tests/check_device.sh`,
 - MMA primitive against its Coax meaning: `|device - CPU| <= 2^-20 * (|C| + sum |A B|)`.
 - Tensor-core projection against the CPU reference profile (`qm_project`):
   `|device - reference| <= 2^-14 * sum |w x|`.
-- Decision: chapter 30's 0.0005 absolute bound on each statistic, against the
+- Decision: chapter 44's 0.0005 absolute bound on each statistic, against the
   independent reference and the recorded CPU result.
 
 ## Results
@@ -60,18 +60,18 @@ the same session with `psionic/tests/bench_cublas.sh`:
 | 4,096 x 4,096 | 16 | 0.217 ms | 13.3 | 0.052 ms | 24% | 5.0e-7 |
 | 1,024 x 4,096 | 16 | 0.063 ms | 11.5 | 0.017 ms | 27% | 4.4e-7 |
 
-The work-item kernel of chapter 26 ran the same shapes at 5.4-6.9 TFLOP/s.
+The work-item kernel of chapter 37 ran the same shapes at 5.4-6.9 TFLOP/s.
 cuBLAS's BF16 path rounds the activations to BF16, which costs up to 1.7e-4
 of `sum |w x|`; Psionic's halves keep it near 6e-7.
 
-Full decision (chapter 30's sample, plan with tensor-core projections, default
+Full decision (chapter 44's sample, plan with tensor-core projections, default
 budget of 14.2 GiB, 0.94 GiB streamed): `yes`, p(yes) 0.757202773, p(no)
 0.242797227, slot mass 0.228238784, confidence 0.514405545. Against the
 recorded CPU result (0.757196285, 0.242803715, 0.228232722, 0.514392571) the
 largest difference is 1.3e-5 (confidence), inside the frozen 0.0005; the
 independent reference check passes too. Five warm runs took 145.8-148.8 ms
 from request to probabilities (mean 147.3 ms), against 236.6-238.5 ms with
-chapter 26's work-item projections. The tensor-core projections took 94.7 ms
+chapter 37's work-item projections. The tensor-core projections took 94.7 ms
 of a 152.5 ms profiled run (248 launches, 62%); the slice reductions 10.8 ms
 and every other kernel together 47 ms.
 

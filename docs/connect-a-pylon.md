@@ -183,6 +183,6 @@ The browser's shared Coax reader checks original Nostr event IDs and signatures,
 
 Answers and statuses count signed provider events observed since this tab opened. Their contents stay encrypted. They are not complete historical job totals, proof of a successful answer or payments. Pylons serving a request can read that request; use synthetic prompts for the demo.
 
-[Run and qualify a native Pylon](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch019-a-pylon-answers-decisions.md)
+[Run and qualify a native Pylon](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch024-a-pylon-answers-decisions.md)
 
 [Read the source and protocol](https://github.com/OpenAgentsInc/openagents/tree/main/psionic)

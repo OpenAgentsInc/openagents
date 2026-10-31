@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 187's independent reference, written from the chapter's specification.
+"""Chapter 246's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/loop.coax. The world (loop-sim-v1), the
 cycle, the budget shares, the paired statistics and the ablation ledger are
-written again here, and the fixed-set digest uses hashlib over chapter 178's
+written again here, and the fixed-set digest uses hashlib over chapter 237's
 values encoding. Without arguments it rebuilds the example's whole output and
 compares it with psionic/fixtures/loop.out; `--tests` prints the values the
 Coax checks pin.

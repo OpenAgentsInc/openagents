@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 158's independent reference, written from the chapter's specification.
+"""Chapter 215's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/drift.coax. Sums use math.fsum (exactly
-rounded) where the library uses chapter 3's compensated accumulator. Maps are
-fitted with chapter 156's oracle. The run is computed in closed form rather
+rounded) where the library uses chapter 4's compensated accumulator. Maps are
+fitted with chapter 213's oracle. The run is computed in closed form rather
 than by stepping time: every outcome that isn't lost joins at its arrival, and
 a refit sees exactly the records decided in its windows that weren't lost,
 since all of their outcomes arrive before it. `--header` writes the C
@@ -46,7 +46,7 @@ def arrival(seed, t, delay):
 
 
 def ece_loss(p, y):
-    """Chapter 12's calibration error (top label, 15 bins) and clamped log loss."""
+    """Chapter 16's calibration error (top label, 15 bins) and clamped log loss."""
     conf, hit = [[] for _ in range(15)], [0] * 15
     for v, t in zip(p, y):
         top = 0.5 + abs(v - 0.5)

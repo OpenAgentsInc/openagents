@@ -1,6 +1,6 @@
 # Recomputing a free pool
 
-`psionic/lib/mesh/totals.coax` is the pure Coax reader for Chapter 21's
+`psionic/lib/mesh/totals.coax` is the pure Coax reader for Chapter 26's
 bounded free profile. It returns a complete `MtResult` from admitted
 beacon, receipt and check DTOs plus an explicit reader policy:
 
@@ -100,7 +100,7 @@ dependency baseline checks. Its zero-survivor result does not replace the
 SHA-256 dependency's separate qualification. The unit checks cover explicit
 trust, replay/order, timestamp and capacity boundaries, field/ID collision
 binding, sorted commitments, tombstones, self-check exclusion and unknown
-signer/provider poison. The independent Chapter 21 harness exercises the
+signer/provider poison. The independent Chapter 26 harness exercises the
 native signed-event path separately.
 
 The native consumer checks run the example and a maximum-size synthetic

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 2a only: bounded CPU views and independent native addresses.
+# Chapter 3 only: bounded CPU views and independent native addresses.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

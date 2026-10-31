@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 56: focused offline checks. Original weights are opt-in.
+# Chapter 88: focused offline checks. Original weights are opt-in.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}
@@ -49,4 +49,4 @@ if [[ $mutate == 1 ]]; then
     done
 fi
 python3 -I psionic/tests/book.py
-echo 'DeepSeek chapter 56: debug/release, native plain/ASan/UBSan, original tokenizer, independent owned decoder and book pass'
+echo 'DeepSeek chapter 88: debug/release, native plain/ASan/UBSan, original tokenizer, independent owned decoder and book pass'

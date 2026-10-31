@@ -1,11 +1,11 @@
-/* Chapter 16 native checks: a real psionic-serve process over loopback.
+/* Chapter 20 native checks: a real psionic-serve process over loopback.
  *
  *   serve-test PATH_TO_PSIONIC_SERVE LOG_DIRECTORY
  *
  * Starts three toy servers, sends well-formed, malformed, oversized, slow,
  * partial and abandoned requests over TCP, and checks each status, code and
  * body. The answer's probabilities are compared with direct calls to the
- * chapter-10 C adapters (psionic_prepare, psionic_answer) on a separately
+ * chapter-14 C adapters (psionic_prepare, psionic_answer) on a separately
  * opened toy session, with typed inputs built here rather than decoded. */
 #define _GNU_SOURCE
 #include "serve.h"
@@ -103,7 +103,7 @@ static double number_after(const char *body, const char *key) {
     return strtod(at + strlen(key), NULL);
 }
 
-/* The same three questions through the chapter-10 adapters, without HTTP or decoding. */
+/* The same three questions through the chapter-14 adapters, without HTTP or decoding. */
 static void direct(double hot[2], double what[2], double level[3]) {
     coax_t_SvToySizes z = sv_toy_sizes();
     coax_t_SvToyFiles f = {{calloc(z.model, 1), z.model}, {calloc(z.config, 1), z.config}, {calloc(z.tokenizer, 1), z.tokenizer}, {calloc(z.table, 1), z.table}, {calloc(z.tensors, sizeof(coax_t_P5Spec)), z.tensors}};
@@ -155,7 +155,7 @@ static void answers(Server a) {
     const char *pick = what[1] > what[0] ? "\"choice\":\"MARKER-OPT-soup\"" : "\"choice\":\"MARKER-OPT-tea\"";
     CHECK(strstr(r.body, pick) != NULL, "choice is the most probable option");
     CHECK(fabs(served[1] + served[2] - 1) < 0.000001 && fabs(served[3] + served[4] + served[5] - 1) < 0.000001, "distributions sum to one");
-    printf("answer: noul %.9f, choice %.9f/%.9f, score %.9f, matches direct chapter-10 calls\n", served[0], served[1], served[2], served[6]);
+    printf("answer: noul %.9f, choice %.9f/%.9f, score %.9f, matches direct chapter-14 calls\n", served[0], served[1], served[2], served[6]);
     free(r.data);
     /* Each question forks from the same prefix snapshot, so neither its
        siblings nor their order can change it: every question alone, and all

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused gate for chapters 167 to 169; no models, services or GPU needed.
+# Focused gate for chapters 226 to 228; no models, services or GPU needed.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

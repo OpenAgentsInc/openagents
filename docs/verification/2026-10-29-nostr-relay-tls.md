@@ -1,6 +1,6 @@
 # wss:// for the native relay client: a TLS socket effect
 
-This is a prerequisite of Psionic chapter 19 and closes item 3 ("wss://") of
+This is a prerequisite of Psionic chapter 24 and closes item 3 ("wss://") of
 [the relay client record](2026-10-29-nostr-relay-client.md). The owner
 approved it on 2026-10-29 (AGENTS.md, Rules: the C host may link one TLS
 library for the TLS handshake, certificate verification and record

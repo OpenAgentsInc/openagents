@@ -1,4 +1,4 @@
-chapter 165's machine; four program families, each counting n down to 1 in local 0:
+chapter 224's machine; four program families, each counting n down to 1 in local 0:
   count prints n, ..., 1; sum prints 1 + ... + n; stride prints 2n, 2n-2, ..., 2; squares prints n*n, ..., 1
 training traces: count and sum at n = 1, 2, 3, 4, each replayed exactly and admitted as train rows
   220 rows of the machine, 880 tokens
@@ -6,7 +6,7 @@ training traces: count and sum at n = 1, 2, 3, 4, each replayed exactly and admi
 held out: count and sum at n = 8, 16, 32, stride and squares at n = 4, 8, 16, 32: 14 heldout rows, never trained on
   row set cd9ed6630597: 22 rows, 8 train, 14 heldout
 students: one affine model per instruction and token, trained from zero by full-batch gradient descent;
-scored by rollout alone: the state is folded from the student's own rows, chapter 173 replays the run,
+scored by rollout alone: the state is folded from the student's own rows, chapter 232 replays the run,
 and a miss is the first token that differs, of the machine's
 linear, 10000 epochs: training loss 0.3044, 424 of 440 tokens right from true states
   count: n=4 token 39 of 140, n=8 token 39 of 268, n=16 token 39 of 524, n=32 token 39 of 1036

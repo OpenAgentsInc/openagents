@@ -48,7 +48,7 @@ local encrypted task/restart runner in `psionic/tests/pylon/`.
 Stable expert groups retain original token/route ordinals and their weights.
 Each active expert packet is staged once per layer/chunk; gather/expert/scatter
 restore those ordinals. Eight-row matrix tiles share decode while every output
-keeps chapter 63's increasing-K TwoSum/correction reduction and final F32 cast.
+keeps chapter 95's increasing-K TwoSum/correction reduction and final F32 cast.
 Activation grids, clamp/SiLU and pre-down route weighting remain unchanged.
 Combine narrows the routed sum before adding the shared result exactly once.
 
@@ -83,7 +83,7 @@ Check: `psionic/tests/check_deepseek_prefill.sh` covers independent grouping,
 measured-cost chunks, exact serial/layer-major causal state, bounded file reuse,
 native debug/release plain/ASan/UBSan and original MoE evidence replay.
 `psionic/check.sh --only deepseek/prefill --jobs 8` adds zero-survivor mutation.
-Evidence and scope: [chapter 65 record](docs/verification/psionic-ch65-2026-10-29.md).
+Evidence and scope: [chapter 97 record](docs/verification/psionic-ch65-2026-10-29.md).
 
 ## Psionic exact hot-expert residency changes only between steps
 
@@ -108,7 +108,7 @@ Packets concatenate all six original routed FP4 code/scale spans losslessly.
 The native adapter observes addresses and performs mapped/direct I/O; Coax owns
 range, placement, arithmetic and publication. Every file read stages before
 packet publication. The CPU expert adapter binds unchanged packets and calls
-chapter 63's existing arithmetic. No route, route weight or combine order is
+chapter 95's existing arithmetic. No route, route weight or combine order is
 altered. Resident coefficient budget excludes private incoming/I/O work and
 other model/OS/device allocations; the caller budgets those independently.
 
@@ -123,7 +123,7 @@ Check: `psionic/tests/check_deepseek_hot.sh` covers independent phase-shift
 traces, all heat/maps/plans, file/host/resident FFNs, original expert evidence,
 43x384/116 metadata topology and native debug/release plain/ASan/UBSan.
 `psionic/check.sh --only deepseek/hot --jobs 8` adds zero-survivor mutation.
-Scope and source identities: [chapter 64 record](docs/verification/psionic-ch64-2026-10-29.md).
+Scope and source identities: [chapter 96 record](docs/verification/psionic-ch64-2026-10-29.md).
 
 ## Psionic Engram lookup binds the normalized map and reads only planned rows
 
@@ -155,7 +155,7 @@ Check: `psionic/tests/check_deepseek_engram.sh` covers independent original
 normalization/map, full-prefix hashes/history, range layouts, mmap/pread,
 BF16 rows and native debug/release plain/ASan/UBSan failures. The unit
 `psionic/check.sh --only deepseek/engram --jobs 8` adds zero-survivor authority
-mutation. Actual evidence: [chapter 62 record](docs/verification/psionic-ch62-2026-10-29.md).
+mutation. Actual evidence: [chapter 94 record](docs/verification/psionic-ch62-2026-10-29.md).
 
 ## Psionic compressed attention keeps source ownership and causal prefixes explicit
 
@@ -164,7 +164,7 @@ projected-input boundaries: BF16 query/window vectors, F32 compressor KV/gate
 projections and BF16 norm/index weights. Ratio 2 pools per channel and carries
 one unfinished F32 pair; ratio 1 is ungated. Completed rows normalize before
 rotary placement. Index keys derive from the pre-RoPE latent; compressed KV
-and index keys use their distinct chapter 66 grids. V4 keeps adjacent complex
+and index keys use their distinct chapter 98 grids. V4 keeps adjacent complex
 pairs, with pure-window and compressed YaRN profiles and inverse output RoPE.
 
 The pinned 43-layer map distinguishes four KV/index-key owners, eight indexer
@@ -194,7 +194,7 @@ equations, all 43 pinned layer positions, packed caches/candidates/selected
 positions, real whole/split compressor chunks, original 32x128 index and
 64x512/128-window shapes, native debug/release plain/ASan/UBSan and late
 failures. `psionic/check.sh --only deepseek/sparse --jobs 8` adds zero-survivor
-authority mutation. Actual scope: [chapter 60 record](docs/verification/psionic-ch60-2026-10-29.md).
+authority mutation. Actual scope: [chapter 92 record](docs/verification/psionic-ch60-2026-10-29.md).
 
 ## Psionic packed V4.1 caches reconstruct the reference's BF16 grids
 
@@ -225,7 +225,7 @@ native debug/release plain/ASan/UBSan, row-chunk parity, atomic failures and an
 independent pinned ownership/work inventory. `psionic/check.sh --only
 deepseek/cache --jobs 8` adds zero-survivor authority mutation. This qualifies
 CPU source-equation bits, not an original GPU capture or complete attention;
-see the [chapter 66 record](docs/verification/psionic-ch66-2026-10-29.md).
+see the [chapter 98 record](docs/verification/psionic-ch66-2026-10-29.md).
 
 ## Psionic V4.1 expert formats retain separate scales and pre-down route weights
 
@@ -255,7 +255,7 @@ independent FFN fixtures, native debug/release plain/ASan/UBSan, original
 expert/6-of-384 MoE evidence replay and book output. The original configuration
 selects six of 384; the component admits up to eight unique routed IDs.
 `psionic/check.sh --only deepseek/expert --jobs 8` adds zero-survivor mutation.
-Actual checks and original component scope: [chapter 63 record](docs/verification/psionic-ch63-2026-10-29.md).
+Actual checks and original component scope: [chapter 95 record](docs/verification/psionic-ch63-2026-10-29.md).
 
 ## Psionic hyper-connections carry the previous pre-mix with all four streams
 
@@ -283,7 +283,7 @@ scalar fixtures, debug/release, native plain/ASan/UBSan, all seven handoffs
 in a six-sub-block chain, final collapse and original-width projections.
 `psionic/check.sh --only deepseek/hyper --jobs 8` adds zero-survivor mutation.
 Actual checks/source identities and the component scope are in the
-[chapter 61 record](docs/verification/psionic-ch61-2026-10-29.md).
+[chapter 93 record](docs/verification/psionic-ch61-2026-10-29.md).
 
 ## Psionic complete V2-Lite execution commits every layer together
 
@@ -312,7 +312,7 @@ Check: `psionic/tests/check_deepseek_v2.sh` covers complete owned prefix
 references, admission/ownership, native debug/release plain/ASan/UBSan,
 current-source original-answer decoding and lossless original-value replay.
 `psionic/check.sh --only deepseek/v2 --jobs 8` adds zero-survivor mutation.
-Original execution and arithmetic scope: [chapter 58 record](docs/verification/psionic-ch58-2026-10-29.md).
+Original execution and arithmetic scope: [chapter 90 record](docs/verification/psionic-ch58-2026-10-29.md).
 
 ## Psionic latent attention stages new rows and keeps rotary profiles distinct
 
@@ -367,7 +367,7 @@ Check: `psionic/tests/check_deepseek_router.sh --mutate --jobs 8` covers an
 independent Decimal/sort oracle at all original expert dimensions, tiny
 probabilities and near ties, exact boundary checks, native debug/release
 plain/ASan/UBSan and exact book output. See the
-[chapter 59 record](docs/verification/psionic-ch59-2026-10-29.md).
+[chapter 91 record](docs/verification/psionic-ch59-2026-10-29.md).
 
 ## Native relay TLS verifies the peer before exposing plaintext
 
@@ -477,7 +477,7 @@ V4.1-style text recipe and DSML stream protocol, plus an explicitly separate
 R1 tokenizer adapter. Ordinary message/tool strings never become control IDs.
 Adjacent plain fragments join before BPE; only typed specials split runs.
 R1 has no system/DSML control mapping and refuses those boundaries. Its
-existing chapter 56 history/decoder contract is unchanged.
+existing chapter 88 history/decoder contract is unchanged.
 
 `front-v41*.coax` adds `deepseek-front-v41-text-v1`: the pinned original
 129,280-entry V4.1 vocabulary and ranked byte-BPE merges, three ordered isolated
@@ -518,7 +518,7 @@ Check: `psionic/tests/check_deepseek_front.sh` covers owned protocol oracles,
 all 32,896 split pairs, all truncations, original BPE vectors, native
 debug/release plain/ASan/UBSan and book output. `psionic/check.sh --only
 deepseek/front --jobs 8` also runs zero-survivor authority mutation. Scope
-and evidence: [chapter 57 record](docs/verification/psionic-ch57-2026-10-29.md).
+and evidence: [chapter 89 record](docs/verification/psionic-ch57-2026-10-29.md).
 
 ## Psionic DeepSeek R1 distill owns a separate dense CPU profile
 
@@ -556,7 +556,7 @@ ASan/UBSan checks, exact replay and book output. `psionic/check.sh --only
 deepseek --jobs 8` also runs the authority mutation roots. The retained
 original full-model comparison and current-source original slices, their
 actual build identities and limitations are in the
-[chapter 56 record](docs/verification/psionic-ch56-2026-10-29.md).
+[chapter 88 record](docs/verification/psionic-ch56-2026-10-29.md).
 
 ## Psionic original gpt-oss GPU sessions retain model state on device
 
@@ -596,7 +596,7 @@ CPU vectors, never routine full-original CPU inference. Full mutation roots
 remain excluded by the owner's request. Scope, hardware and measurements:
 [device record](docs/verification/psionic-gptoss-device-2026-10-29.md).
 
-The same programs and kernels run on an Apple GPU (chapter 45h) under
+The same programs and kernels run on an Apple GPU (chapter 72) under
 `gpt-oss-metal-f32-ff-v1`: `coax metal-compute` emits `device-kernels.coax`
 unchanged, and `psionic/platform/gptoss-metal.c` implements the same `pg_*`
 interface through `psionic/platform/metal-host.m`. It decides nothing. Every
@@ -606,9 +606,9 @@ buffer or a failed in-kernel Coax check poisons the session. The f64
 reductions are APPLE-FF-v1 float-float pairs, and the YaRN table is built on
 the host in binary64. CUDA graph replay has no Metal counterpart; each program
 is one ordered command buffer. Check: `psionic/tests/run_gptoss_metal.sh` runs
-the tiny model by default. With the original files it applies chapter 45b's
+the tiny model by default. With the original files it applies chapter 66's
 frozen 0.0005 rule and exact routes and top token. `PSIONIC_CPU_GREEDY=1`
-requires the GPU's greedy token IDs to equal chapter 45's CPU engine's, and
+requires the GPU's greedy token IDs to equal chapter 64's CPU engine's, and
 `PSIONIC_DEVICE_QUALIFY=1` repeats layers 0 and 1 and the readout on the CPU,
 launch by launch. [Metal record](docs/verification/psionic-gptoss-metal-2026-10-29.md).
 
@@ -642,10 +642,10 @@ Check: `psionic/tests/check_gptoss.sh` runs focused changed-code checks, native
 plain/ASan/UBSan and exact book transcripts. Full mutation reruns were stopped
 at the owner's request on 2026-10-29; mutation slicing is separate work. Opt-in
 original runs and their exact build/scope limits are in the chapter
-[45](docs/verification/psionic-ch45-2026-10-29.md),
-[46](docs/verification/psionic-ch46-2026-10-29.md),
-[47](docs/verification/psionic-ch47-2026-10-29.md) and
-[48](docs/verification/psionic-ch48-2026-10-29.md) records.
+[64](docs/verification/psionic-ch45-2026-10-29.md),
+[73](docs/verification/psionic-ch46-2026-10-29.md),
+[75](docs/verification/psionic-ch47-2026-10-29.md) and
+[77](docs/verification/psionic-ch48-2026-10-29.md) records.
 
 ## Psionic Harmony text separates ordinary bytes from control IDs
 
@@ -676,7 +676,7 @@ multimodal extensions and whole-model execution remain separate gates.
 Check: `psionic/tests/check_harmony.sh` and the main `psionic/check.sh` cover
 owned original-rank/regex/heap oracles, debug/release, zero-survivor authority
 mutation, native plain/ASan/UBSan and exact book output. See the
-[chapter 44 record](docs/verification/psionic-ch44-2026-10-29.md).
+[chapter 63 record](docs/verification/psionic-ch44-2026-10-29.md).
 
 ## Psionic gpt-oss attention preserves sink mass and visible cache history
 
@@ -703,7 +703,7 @@ separate qualification gates.
 Check: `psionic/tests/check_gptoss_attention.sh` and the main
 `psionic/check.sh` include independent scalar references, debug/release and
 zero-survivor mutation plus native plain/ASan/UBSan gates. See the
-[chapter 36 record](docs/verification/psionic-ch36-2026-10-29.md).
+[chapter 52 record](docs/verification/psionic-ch36-2026-10-29.md).
 
 ## Psionic bounded top-k mixtures preserve route and output semantics
 
@@ -723,7 +723,7 @@ parameter identity, immutable lifetimes and exclusive access are caller duties.
 Check: `psionic/tests/check_moe.sh` and the main `psionic/check.sh` include
 independent Decimal fixtures, debug/release checks, zero-survivor mutation
 and native plain/sanitized gates. See the
-[chapter 35 record](docs/verification/psionic-ch35-2026-10-29.md).
+[chapter 51 record](docs/verification/psionic-ch35-2026-10-29.md).
 
 ## Psionic original MXFP4 decoding admits complete finite windows
 
@@ -741,7 +741,7 @@ and other numerical/back-end profiles require separate evidence.
 Check: `psionic/tests/check_mxfp4.sh` and the main `psionic/check.sh` cover
 Coax checks, zero-survivor mutation, independent scalar bit fixtures and
 native debug/release plus sanitizer checks. See the
-[chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
+[chapter 50 record](docs/verification/psionic-ch34-2026-10-29.md).
 
 ## Psionic registered operators retain typed IR semantics and code leases
 
@@ -760,7 +760,7 @@ leases; derived plans inherit independent registry/module leases, and owners
 cannot close early. Operator authors retain their declared memory/numerical
 contract obligations; callback provenance is trusted producer metadata, not
 sandboxing or attestation. See the focused `operator-registry` gate and
-[chapter 26c evidence](docs/verification/psionic-ch26c-2026-10-29.md) for actual
+[chapter 40 evidence](docs/verification/psionic-ch26c-2026-10-29.md) for actual
 CPU/CUDA/Metal inference, finite-difference VJPs, compiled MLP, batching and
 scalar training. Full mutation runs are omitted under owner instruction.
 
@@ -777,8 +777,8 @@ native specializations. Evictions can survive an allocation failure; outputs
 remain unpublished. CUDA/Metal specializations borrow one compiled module;
 Coax leases refuse unloading its owner before children close. No new backend
 compilation occurs on a shape miss. Synchronous execution and numerical/driver
-failure rules remain 26a's. See the focused `tensor-template` runner and
-[chapter 26b evidence](docs/verification/psionic-ch26b-2026-10-29.md). Full
+failure rules remain 38's. See the focused `tensor-template` runner and
+[chapter 39 evidence](docs/verification/psionic-ch26b-2026-10-29.md). Full
 mutation runs are omitted under the owner's explicit instruction.
 
 ## Psionic tensor IR plans preserve SSA roots and publish whole results
@@ -794,7 +794,7 @@ its root's last use is strictly before the current command, never over an
 operand of that command. The full lowered command stream and persistent
 workspace are owned by an opaque native object; there is no hidden CPU fallback.
 
-The CPU reference uses chapter 3a's compensated f64 operator procedures and
+The CPU reference uses chapter 5's compensated f64 operator procedures and
 wide LayerNorm equations. Planned CPU/CUDA/Metal use the same sequential f32
 Coax arithmetic and distinct per-command numerical flags. Reused workspace
 never erases earlier failures. A final logical gather stages the output;
@@ -817,7 +817,7 @@ authored debug/release, independent Decimal(100) graph oracles, observed
 allocation counts/bytes and native debug/release ASan/UBSan. GPU memory is not
 instrumented by host sanitizers. Metal uses the qualified release emission;
 the failed checked candidate and the owner's omission of full mutation runs
-are recorded in [chapter 26a verification](docs/verification/psionic-ch26a-2026-10-29.md).
+are recorded in [chapter 38 verification](docs/verification/psionic-ch26a-2026-10-29.md).
 Automatic graph extraction, dynamic shapes, narrow dtype IR execution, direct
 `PtdTensor` binding, fusion and differentiation remain separate work.
 
@@ -834,16 +834,16 @@ tolerances.
 and which stream through two slots, and every copy, wait, release and launch;
 `psionic/platform/cuda-host.c` executes those effects and decides nothing.
 Authentication, the session's borrowed weights and their lifetime remain the
-CPU session's (chapter 10); the host must keep a slot's previous launches
+CPU session's (chapter 14); the host must keep a slot's previous launches
 complete before refilling it, which the plan's wait and release operations
 express. Check: `psionic/tests/check_device.sh` covers debug/release checks,
 zero-survivor mutation, CUDA emission and the device projection; the
-[chapter 26](docs/verification/psionic-ch26-2026-10-29.md) and
-[chapter 30](docs/verification/psionic-ch30-2026-10-29.md) records hold the
+[chapter 37](docs/verification/psionic-ch26-2026-10-29.md) and
+[chapter 44](docs/verification/psionic-ch30-2026-10-29.md) records hold the
 device evidence and limits.
 
 The same kernels run on an Apple GPU through `coax metal-compute`
-(chapter 31): `psionic/platform/elephant-metal.c` performs the plan's
+(chapter 47): `psionic/platform/elephant-metal.c` performs the plan's
 launches through `psionic/platform/metal-host.m` and decides nothing. On
 unified memory every weight is resident; a plan that would stream is refused,
 never silently degraded. There is no CPU fallback: no Metal device is
@@ -851,9 +851,9 @@ never silently degraded. There is no CPU fallback: no Metal device is
 results are discarded. Apple GPUs have no binary64, so `f64` is a float-float
 pair (APPLE-FF-v1) whose arithmetic and `exp`/`log`/`sqrt` are qualified
 against binary64 within frozen bounds (`psionic/tests/run_metal_kernels.sh`),
-and the whole decision meets chapter 30's frozen 0.0005 rule against the CPU
+and the whole decision meets chapter 44's frozen 0.0005 rule against the CPU
 reference (`psionic/tests/run_elephant_metal.sh`); the
-[chapter 31 record](docs/verification/psionic-ch31-2026-10-29.md) holds the
+[chapter 47 record](docs/verification/psionic-ch31-2026-10-29.md) holds the
 evidence.
 
 ## Psionic complete model mapping publishes the layer stack together
@@ -906,7 +906,7 @@ output, answer probabilities and live state publish only on success. The text
 profile does not admit images or provide a service or calibration.
 
 Check: `psionic/check.sh` covers debug/release checks, authority mutations,
-book examples and native plain/sanitized adapters. The chapter 10 verification
+book examples and native plain/sanitized adapters. The chapter 14 verification
 record describes the independent original-weight comparisons and limits.
 
 ## Psionic decision plans size caller storage for one pinned request
@@ -918,7 +918,7 @@ capacity and token or prefix counts that the request would refuse. A plan is
 arithmetic, not an allocation or an admission of host memory: checkpoint
 mapping, page cache and allocator behavior remain the caller's concern. Check:
 `psionic/check.sh` covers authority mutation and native plain/sanitized checks;
-the chapter 11 verification record gives the measured Mammoth run.
+the chapter 15 verification record gives the measured Mammoth run.
 
 ## Psionic token blocks stage model state through full-vocabulary readout
 
@@ -1022,7 +1022,7 @@ exclusive-access obligations remain explicit; C observes address ranges only.
 
 Check: `psionic/check.sh` includes independent nonzero block/fork fixtures,
 debug/release zero-survivor mutation and native plain/sanitized checks. See
-[chapter 8 verification](docs/verification/psionic-ch08-2026-10-29.md) for the
+[chapter 12 verification](docs/verification/psionic-ch08-2026-10-29.md) for the
 CoderOS CPU scope and remaining whole-model and upstream-reference gates.
 
 ## Psionic Qwen-style causal layers publish complete state transitions
@@ -1043,7 +1043,7 @@ position, weights and supplied rotary coefficients.
 
 Check: `psionic/check.sh` contains debug/release authority mutation, independent
 full-layer fixtures and native plain/ASan+UBSan checks. See the
-[chapter 7 record](docs/verification/psionic-ch07-2026-10-29.md) for tested
+[chapter 11 record](docs/verification/psionic-ch07-2026-10-29.md) for tested
 limits and the separate CoderOS CPU results. Decision masks and full model
 execution remain future work.
 
@@ -1077,7 +1077,7 @@ caller-supplied interleaved rotary coefficients and a position-major KV cache.
 Width is at most 16 with an even head width, hidden width at most 32 and cache
 capacity at most 16. Shape checks precede multiplication. Each score and
 intermediate vector is narrowed to binary32; products and reductions use the
-chapter 3 compensated binary64 profile without FMA or reassociation.
+chapter 4 compensated binary64 profile without FMA or reassociation.
 
 Inputs, weights, coefficients and the live cache prefix must be finite; rotary
 coefficient magnitudes are at most one. The caller owns the chosen rotary
@@ -1090,7 +1090,7 @@ extents, lifetimes and exclusive access remain caller obligations.
 
 Check: `psionic/check.sh` includes debug/release Coax and zero-survivor
 mutation, independent full-sequence fixtures, native debug/release and
-ASan/UBSan checks, causal isolation and book examples. The chapter 6 record
+ASan/UBSan checks, causal isolation and book examples. The chapter 10 record
 scopes the evidence: this small causal profile does not establish Qwen3.5,
 block-bidirectional decision masks or Elephant/Mammoth execution.
 
@@ -1265,7 +1265,7 @@ every finite half/bfloat16 encoding, RNE boundary vectors, all dtype pairs,
 strided transfers, completion/lifetimes, failure preservation and native
 ASan/UBSan in debug/release. Numerical bounds/device behavior and the owner's
 omission of full mutation runs are recorded in
-[chapter 3b verification](docs/verification/psionic-ch03b-2026-10-29.md).
+[chapter 6 verification](docs/verification/psionic-ch03b-2026-10-29.md).
 
 ## Psionic tensor operators infer support and publish complete value results
 
@@ -1273,8 +1273,8 @@ omission of full mutation runs are recorded in
 operators with pure shape/dtype inference and explicit analytical value VJPs
 for 25 of them. The machine-readable `psionic/fixtures/tensor-ops/operators.json`
 records exact ranks/options, f32 values/masks, i64 indices/auxiliaries, CPU
-backend and differentiation status. It does not widen chapter 3's old profile.
-Operands reuse chapter 2a's admitted signed-stride views and allocation epochs.
+backend and differentiation status. It does not widen chapter 4's old profile.
+Operands reuse chapter 3's admitted signed-stride views and allocation epochs.
 
 Forward work and direct VJP traversal pairs have separate 1,048,576-unit
 bounds. Products/reductions use f64 and ordered compensation before checked f32
@@ -1288,7 +1288,7 @@ scratch but preserves all public outputs and returns zero counts.
 C only observes address ranges, including metadata and integer buffers. Native
 caller obligations include truthful aligned/living spans, immutable inputs,
 exclusive access and fresh unpublished results. Registered tensors are replaced
-through chapter 2a's versioned scatter, and saved graphs must validate their
+through chapter 3's versioned scatter, and saved graphs must validate their
 version tokens before a functional VJP. Returned gradients use logical input
 coordinates; shared-backing/view accumulation and automatic tape integration
 remain separate. No dtype promotion, general operator options, GPU execution or
@@ -1298,7 +1298,7 @@ Check: `psionic/check.sh --only tensor-ops`; authored debug/release checks,
 independent scalar and central-difference references for 38 cases in three
 layouts, explicit tie conventions, actual aliases/work/domain/late-publication
 refusals, native plain/ASan/UBSan and the exact book transcript. See
-[chapter 3a](docs/verification/psionic-ch003a-2026-10-29.md).
+[chapter 5](docs/verification/psionic-ch003a-2026-10-29.md).
 
 ## Psionic CPU tensor views share one authoritative storage version
 
@@ -1327,7 +1327,7 @@ Check: `psionic/check.sh --only tensor-view`; independent native integer address
 and uniqueness enumeration, actual aliases, finite-bit copying, short buffers,
 zero-element null views and maximum-size transpose, plus debug/release native
 ASan/UBSan and the exact book transcript. The dated record is
-[chapter 2a](docs/verification/psionic-ch002a-2026-10-29.md).
+[chapter 3](docs/verification/psionic-ch002a-2026-10-29.md).
 
 ## Psionic tensor storage admits shapes before touching caller data
 
@@ -1350,7 +1350,7 @@ Check: `psionic/check.sh` runs the chapters' Coax debug/release checks and
 zero-survivor authority mutation gates, independent native layouts/indices,
 short allocations, aliases/non-finite representations and a maximum-size copy
 in plain/sanitized debug/release builds, plus source-linked book/transcript
-checks. See `docs/verification/psionic-ch02-2026-10-28.md`. Chapter 3 now adds
+checks. See `docs/verification/psionic-ch02-2026-10-28.md`. Chapter 4 now adds
 a separately qualified dense CPU profile. Autodiff and GPU execution remain
 planned; these checks are bounded evidence,
 not general memory safety or concurrent atomic publication.
@@ -2146,7 +2146,7 @@ disjoint left to right. No pair crosses a piece or document boundary.
 Up to 16 documents / 4096 UTF-8 bytes and 64-byte expanded tokens are admitted;
 late growth failure returns an empty model. PST5 packing validates rule order,
 references and uniqueness, checks capacities/actual aliases before writes and
-publishes only a completed table. The new encoder shares chapter 5's layout,
+publishes only a completed table. The new encoder shares chapter 9's layout,
 span reader and ranked BPE core, with its own explicit splitting profile.
 Inputs/class tables retain immutable valid storage and recorded identities.
 C observes spans and performs verification file effects only.
@@ -2177,7 +2177,7 @@ provider set is allowed. Scope and checks: [live homepage record](docs/verificat
 
 ## Psionic fleet results retain the selected identity and attempt
 
-`psionic/lib/fleet/` is the chapter 20 opt-in loopback JSON adapter. A verified
+`psionic/lib/fleet/` is the chapter 25 opt-in loopback JSON adapter. A verified
 fresh v1 beacon routes only an online free slot advertising the configured
 exact decision identity and free terms. Held generations do not roll back;
 a newer withdrawal removes the old route. Unknown unrelated services never

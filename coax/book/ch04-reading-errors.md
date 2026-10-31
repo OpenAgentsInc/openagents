@@ -179,8 +179,8 @@ say which stage found the problem:
 | `E02xx` | Parser | Turns tokens into a syntax tree | Stops at the first error |
 | `E03xx` | Checker | Names, types, returns, formats | Reports everything it finds |
 | `E04xx` | Compile-time evaluation | Runs `#run` and `#assert` (Chapter 9) | Stops at the first failure |
-| `E05xx` | Descriptor imports | Reads protobuf descriptors (Chapter 15) | Stops at the first failure |
-| `E06xx` | Source loading | Admits the source graph and physical units (Chapter 22) | Stops at the first failure |
+| `E05xx` | Descriptor imports | Reads protobuf descriptors (Chapter 18) | Stops at the first failure |
+| `E06xx` | Source loading | Admits the source graph and physical units (Chapter 10) | Stops at the first failure |
 
 A stage only runs if the ones before it succeeded. You can see this with
 a program that has a bad character and a missing semicolon:
@@ -483,7 +483,7 @@ modes.coax:5:3: error[E0204]: 'switch' is reserved and not supported by coax0 ye
 This tells you whether to fix your spelling or change your approach. It
 also works as a guarantee: since no program that uses `switch` or
 `fixed32` compiles today, none can change meaning when they arrive.
-Chapter 21 lists what's planned.
+Chapter 28 lists what's planned.
 
 ## Errors while compiling your code
 
@@ -555,7 +555,7 @@ in debug builds, and some stay in release builds too:
 Overflow wraps in release builds because that's what the hardware does
 and checking every addition has a cost. The others stop in both, because
 there's no reasonable value to carry on with. Chapter 7 covers handling
-failure on purpose, and Chapter 10 covers finding these bugs with checks
+failure on purpose, and Chapter 11 covers finding these bugs with checks
 before the program ever runs.
 
 ## Errors for tools
@@ -584,7 +584,7 @@ A tool that fixes errors in a loop can work from just these fields: jump
 to `file:line:col`, decide by `code` what kind of edit is needed, apply
 the `fix` when there is one, then run `coax check` again. Because codes
 are stable, that logic doesn't break when the wording of a message
-improves. Chapter 19 looks at how agents use this.
+improves. Chapter 22 looks at how agents use this.
 
 > Note: Two things don't come out as JSON yet. A compile-time error's
 > `note:` lines are printed after its JSON object as plain text, in the

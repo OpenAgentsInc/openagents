@@ -129,7 +129,7 @@ gd_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,token:int,choose:
     #assert gd_program(GT_SHAPE,p,params[..],0,1,true,4,ops[0..<191],args[..]).status==GStatus.capacity;
     #assert gd_kernel_name(-1)=="" && gd_kernel_name(45)=="";
 }
-// Called at admission, never per token. Coefficients keep chapter 43's exact
+// Called at admission, never per token. Coefficients keep chapter 62's exact
 // authored YaRN construction while every application of them runs on device.
 gd_rope :: (capacity:int,out:[]f32)->GResult #export_c {
     if capacity<1 || capacity>4096 {return GResult.{status=GStatus.shape};}if out.count<capacity*64 {return GResult.{status=GStatus.capacity};}

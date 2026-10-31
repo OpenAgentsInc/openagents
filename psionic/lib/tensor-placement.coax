@@ -1,4 +1,4 @@
-// Chapter 3b: placement, dtype/ownership and synchronization policy. Native
+// Chapter 6: placement, dtype/ownership and synchronization policy. Native
 // code owns opaque allocations and device calls; these records decide effects.
 #load "tensor-view.coax";
 #authority;

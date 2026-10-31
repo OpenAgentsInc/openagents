@@ -1,5 +1,5 @@
-/* Chapter 188: run one norm implementation (prefix PFX, chosen at build time
-   with -DPFX=name) over chapter 188's cases, on the CPU or on a CUDA device,
+/* Chapter 247: run one norm implementation (prefix PFX, chosen at build time
+   with -DPFX=name) over chapter 247's cases, on the CPU or on a CUDA device,
    and time it. Every decision lives in Coax: the cases, the contract
    (ks_check), each implementation's knobs and plan. This file moves bytes,
    launches, and prints raw lines that the evaluator reads:

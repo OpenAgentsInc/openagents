@@ -1,8 +1,8 @@
 # From checkpoint inventory to a hybrid block
 
 This records the original-weight building blocks used by
-[chapter 10](../book/ch010-execute-elephant.md) and
-[chapter 11](../book/ch011-execute-mammoth.md), which exercise one original-weight
+[chapter 14](../book/ch014-execute-elephant.md) and
+[chapter 15](../book/ch015-execute-mammoth.md), which exercise one original-weight
 text decision each for Elephant and Mammoth.
 
 The separate rank-five inventory and bundle code retains all five extents,
@@ -11,7 +11,7 @@ including Elephant's `model.visual.patch_embed.proj.weight` shape
 valid shape products, disjoint ranges and complete byte coverage. Bundle
 binding verifies original config/tokenizer/shard hashes, the full trusted
 name/dtype/shape/shard inventory and, when present, the complete shard index.
-The existing chapter 4 `original-weights-v1` contract still admits rank 0–4.
+The existing chapter 7 `original-weights-v1` contract still admits rank 0–4.
 The new inventory's borrowed names and raw bytes must remain immutable and
 alive; its caller supplies and authenticates the trusted pins. Draft metadata
 may change on refusal but public inventory is only published after success.
@@ -43,7 +43,7 @@ The native adapter observes nested aliases, but callers retain the pointer,
 extent, alignment, lifetime and exclusive access obligations. Those component
 checks alone do not establish original-weight numerical parity, resource
 feasibility, request serialization, or a serving API. The separate
-[chapter 10 record](../../docs/verification/psionic-ch10-2026-10-29.md) describes
+[chapter 14 record](../../docs/verification/psionic-ch10-2026-10-29.md) describes
 the real-model comparisons and their limits.
 
 The [layer mapper](../lib/model-io/layer-map.coax) checks the exact

@@ -1,5 +1,5 @@
-/* Chapter 180 against verdict_oracle.py, which wrote the gates again and took
-   its runs, maps and thresholds from chapters 179, 156 and 157's independent
+/* Chapter 239 against verdict_oracle.py, which wrote the gates again and took
+   its runs, maps and thresholds from chapters 238, 213 and 214's independent
    oracles. Tolerances were frozen before comparison: verdicts, reasons, task
    counts, replicates at or below each line, confident errors and right
    answers exactly; gains, floors, log losses, calibration errors, costs and
@@ -38,7 +38,7 @@ static double elephant[33]={
     0.008296165,0.991150862,0.000552973, 0.000428897,0.000749283,0.998821820};
 
 int main(void){
-    /* Chapter 179's suite. */
+    /* Chapter 238's suite. */
     for(int i=0;i<ITEMS;i++){task[i]=i/10;part[i]=i>=320;}
     for(int r=0;r<RUNS;r++)assert(ns_run(179,r,0,fv(scores+r*ITEMS,ITEMS))==COAX_NsStatus_ok);
     coax_t_NsFloor floors[2];
@@ -51,13 +51,13 @@ int main(void){
         for(int w=0;w<2;w++)
             decision(vd_decision(fv(a,ITEMS),fv(b,ITEMS),iv(task,ITEMS),iv(part,ITEMS),w,floors[w],1,7,1000),&vd_oracle_candidates[k][w]);
     }
-    /* Chapter 12: no floor and no headroom. */
+    /* Chapter 16: no floor and no headroom. */
     double correct[12];int64_t each[12],none[12]={0};
     for(int i=0;i<12;i++){correct[i]=ns_correct(fv(elephant+start[i],start[i+1]-start[i]),gold[i]);each[i]=i;}
     coax_t_NsFloor unmeasured={0};
     decision(vd_decision(fv(correct,12),fv(correct,12),iv(each,12),iv(none,12),0,unmeasured,1,7,1000),&vd_oracle_elephant);
 
-    /* Chapter 156: model 1's maps on its test split. */
+    /* Chapter 213: model 1's maps on its test split. */
     double v1[4]={2,0,0.6,-0.6};
     for(int k=0;k<3;k++)assert(cf_simulate(156+k,fv(v1,4),iv(q[k],N),fv(p[k],N),fv(y[k],N),false)==COAX_CfStatus_ok);
     coax_t_CfMap maps[2];const coax_t_CfKind kinds[2]={COAX_CfKind_temperature,COAX_CfKind_binned};
@@ -77,7 +77,7 @@ int main(void){
         }
     }
 
-    /* Chapter 157: the record against the best fixed policy, then time. */
+    /* Chapter 214: the record against the best fixed policy, then time. */
     assert(th_simulate(158,0.9,fv(ce,N),fv(cm,N),fv(cy,N),false)==COAX_ThStatus_ok);
     for(int i=0;i<N;i++)groups[i]=i/4;
     const coax_t_ThCosts costs[2]={{1,3,0.8,2,0.0005,0.15,0.01,1.2,1},{5,1,0.2,0.001,0.0005,0.15,0.01,1.2,300}};

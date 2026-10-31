@@ -1,10 +1,10 @@
-/* Chapter 30b: the authenticated original Mammoth decision on a CUDA device.
-   The CPU session authenticates and binds both original shards (chapter 11);
+/* Chapter 46: the authenticated original Mammoth decision on a CUDA device.
+   The CPU session authenticates and binds both original shards (chapter 15);
    the Coax device plan (psionic/lib/device/plan.coax, kind 1) decides
    residency, streaming and every launch; psionic/platform/elephant-gpu.c
    performs the effects. This harness times a cold open, warm decisions, a
    forked decision and a Lab-style request of five questions about one
-   message: whole, forked, and batched in one suffix pass (chapter 25).
+   message: whole, forked, and batched in one suffix pass (chapter 36).
    Usage: mammoth-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]
    Prints SKIP and exits 0 without a device or NVRTC. */
 #define _GNU_SOURCE
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
         memcmp(tokens, mammoth_request_tokens, sizeof(mammoth_request_tokens))) { fprintf(stderr, "prepared token stream differs from reference\n"); return 1; }
     int64_t T = p.written, P = p.prefix;
 
-    /* The CPU session authenticates both shards and binds the 64 layers (chapter 11),
+    /* The CPU session authenticates both shards and binds the 64 layers (chapter 15),
        sized by ps_plan for the largest decision this harness runs. */
     int64_t capacity = 128;
     coax_t_PsPlan plan = ps_plan(1, capacity, T, P);
@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
         if (forked.status || forked.best != answer.best || fabs(fp[0] - probabilities[0]) > 0.0005) { fprintf(stderr, "forked answer differs\n"); return 1; }
     }
 
-    /* A Lab-style request (chapter 25): whole, forked, batched. */
+    /* A Lab-style request (chapter 36): whole, forked, batched. */
     if (lab_request(e, lab_prepare, lab_read, 2)) return 1;
 
     size_t free_after, total_bytes;

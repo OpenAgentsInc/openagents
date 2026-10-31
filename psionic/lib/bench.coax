@@ -1,4 +1,4 @@
-// Chapter 115: benchmark a service, not a kernel. A seeded load schedule
+// Chapter 170: benchmark a service, not a kernel. A seeded load schedule
 // (arrival times with jitter, input and output lengths drawn from recorded
 // histograms, request contents and sampling choices), the timings of each
 // answer (time to first token, gaps between tokens, end to end, the server's
@@ -7,7 +7,7 @@
 // any run changing more than one variable.
 // Profile bench-us-v1: integer microseconds and integer milli-tokens per
 // second, no floating point; the generator is SplitMix64 at a counter
-// (splitmix64-counter-v1, the same words as chapter 70's tb_bits); up to
+// (splitmix64-counter-v1, the same words as chapter 103's tb_bits); up to
 // 4,096 requests and 16,384 token events per run.
 #authority;
 
@@ -44,7 +44,7 @@ BN_TIMES_MAX :: 16384;
 BN_PCT :: [4]int.[50,90,95,99];
 BN_GOLDEN :: cast(u64)0x9e3779b97f4a7c15;
 
-// Checks precede the implementation. Expected values are derived in chapter 115.
+// Checks precede the implementation. Expected values are derived in chapter 170.
 #test "splitmix64 at a counter has the published seed-zero words" {
     #assert bn_bits(0,0)==(cast(u64)0xe220a8397b1dcdaf) && bn_bits(0,1)==(cast(u64)0x6e789e6aa1b965f4);
     #assert bn_bits(7,3)!=bn_bits(7,4) && bn_bits(7,3)!=bn_bits(8,3);

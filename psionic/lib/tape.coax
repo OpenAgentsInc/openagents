@@ -1,4 +1,4 @@
-// Chapter 71: gradients as a program. A model is written as a list of
+// Chapter 104: gradients as a program. A model is written as a list of
 // operations; one pass forward saves every value, and one pass backward walks
 // the list in reverse and accumulates each node's adjoint into its operands,
 // and parameter adjoints into their slots. Profile cpu-f64-tape-v1: binary64,
@@ -18,7 +18,7 @@ TP_PARAMS_MAX :: 4096;
 TP_BOUND :: 1e100;
 TP_EXP_MAX :: 230.0;
 
-// Checks precede the implementation. Expected values are derived in chapter 71.
+// Checks precede the implementation. Expected values are derived in chapter 104.
 #forall "operations take zero, one or two operands" k:0..<13 {
     want:=1;if k<2 {want=0;} else if k<6 {want=2;}
     #assert tp_arity(cast(TpOp)k)==want;
@@ -70,7 +70,7 @@ tp_b :: (op:TpOp,a:int,b:int)->TpNode {return TpNode.{op=op,a=a,b=b};}
     // x * x: both operands are node 0, so its adjoint receives x twice: 2x.
     sq:=[2]TpNode.[tp_p(0),tp_b(TpOp.mul,0,0)];p:=[1]f64.[3];v:[3]f64;gr:=[1]f64.[0];
     #assert tp_forward(sq[..],p[..],v[..],false)==TpStatus.ok && tp_backward(sq[..],v[..],gr[..],false)==TpStatus.ok && v[1]==9 && gr[0]==6;
-    // Two nodes read slot 0: 3a + 4a has gradient 7 in that slot; slot 1 is read by none.
+    // Two nodes read slot 0: 5 + 8 has gradient 7 in that slot; slot 1 is read by none.
     two:=[5]TpNode.[tp_p(0),tp_p(0),tp_c(3),tp_b(TpOp.mul,2,0),tp_b(TpOp.add,3,1)];
     two[1]=tp_p(0);two[4]=tp_b(TpOp.add,3,1);
     q:=[2]f64.[5,9];w:[5]f64;h:=[2]f64.[0,0];
@@ -154,7 +154,7 @@ tp_b :: (op:TpOp,a:int,b:int)->TpNode {return TpNode.{op=op,a=a,b=b};}
     v[1]=3;gr[0]=-TP_BOUND+3;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.ok && gr[1]==2;
     gr[0]=0;gr[1]=-TP_BOUND;v[0]=-1e90;#assert tp_backward(g[..],v[..],gr[..],false)==TpStatus.number;
 }
-#test "the tabular models as programs: node counts and chapter 70's gradients" {
+#test "the tabular models as programs: node counts and chapter 103's gradients" {
     x:=[9]f64.[0.5,-1,0.25, -0.25,2,-1, 1.5,0.75,0.5];y:=[3]f64.[1,0,1];t:=[3]f64.[2,-1,0.5];rows:=[3]int.[2,0,1];
     nodes:[512]TpNode;v:[512]f64;
     ms:=[3]TbModel.[TbModel.{features=3,logistic=true},TbModel.{features=3},TbModel.{features=3,hidden=2,logistic=true}];
@@ -197,7 +197,7 @@ tp_b :: (op:TpOp,a:int,b:int)->TpNode {return TpNode.{op=op,a=a,b=b};}
     for s:0..<3 {#assert g[s]==first[s] && g[s]!=-7;}
 }
 
-#test "training with the tape matches chapter 70's trainer" {
+#test "training with the tape matches chapter 103's trainer" {
     x:=[10]f64.[0.5,-1, -0.25,2, 1.5,0.75, -1,-0.5, 0.25,0.25];y:=[5]f64.[1,0,1,0,1];t:=[5]f64.[2,-1,0.5,0,1];rows:=[5]int.[0,1,2,3,4];
     nodes:[512]TpNode;v:[512]f64;
     ms:=[3]TbModel.[TbModel.{features=2,hidden=2,logistic=true},TbModel.{features=2,logistic=true},TbModel.{features=2}];
@@ -344,8 +344,8 @@ tp_push :: (nodes:[]TpNode,n:int,node:TpNode)->int {
     nodes[n]=node;
     return n+1;
 }
-// Chapter 70's models and mean loss over `rows`, as a program. Nodes 0 to P-1
-// read parameter slots 0 to P-1, in chapter 70's layout; each use of a
+// Chapter 103's models and mean loss over `rows`, as a program. Nodes 0 to P-1
+// read parameter slots 0 to P-1, in chapter 103's layout; each use of a
 // parameter reads its node, so its adjoint collects every use.
 tp_tabular :: (m:TbModel,x:[]f64,y:[]f64,rows:[]int,nodes:[]TpNode,overlap:bool)->TpBuild #export_c {
     d:=m.features;
@@ -387,7 +387,7 @@ tp_tabular :: (m:TbModel,x:[]f64,y:[]f64,rows:[]int,nodes:[]TpNode,overlap:bool)
 // book:end tabular
 
 // book:begin gradient
-// A drop-in for chapter 70's tb_gradient: build the program, run it forward,
+// A drop-in for chapter 103's tb_gradient: build the program, run it forward,
 // zero the gradients and run it backward. `nodes` and `values` are scratch.
 tp_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64,nodes:[]TpNode,values:[]f64,overlap:bool)->TpStatus #export_c {
     n:=tb_param_count(m);
@@ -405,7 +405,7 @@ tp_gradient :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,g:[]f64,nodes:[]TpN
 // book:end gradient
 
 // book:begin train
-// Chapter 70's trainer with the tape in place of the hand-written gradient:
+// Chapter 103's trainer with the tape in place of the hand-written gradient:
 // the same admission, initialization, shuffle, batches, decay and staging.
 tp_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,nodes:[]TpNode,values:[]f64,overlap:bool)->TbTrain #export_c {
     admitted:=tb_admit_train(m,c,x,y,rows,params,order,overlap);

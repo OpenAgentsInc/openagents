@@ -1,4 +1,4 @@
-"""Chapter 161a's independent check, with onnx 1.17.0 and numpy.
+"""Chapter 219's independent check, with onnx 1.17.0 and numpy.
 
 With no arguments, builds the writer's test network with onnx's own helpers
 and writes its bytes to psionic/fixtures/onnx/write.coax, so the Coax tests

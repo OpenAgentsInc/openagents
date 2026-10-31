@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the frozen chapter 12 held-out request set and emit it as a C table."""
+"""Validate the frozen chapter 16 held-out request set and emit it as a C table."""
 import hashlib
 import json
 import sys

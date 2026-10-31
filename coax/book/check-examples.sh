@@ -5,12 +5,12 @@
 # Selection is validated in full before a compiler, build or fixture can run.
 set -uo pipefail
 cd "$(dirname "$0")"
-sources=(examples/*.coax examples/ch24_debug/main.coax)
+sources=(examples/*.coax examples/ch12_debug/main.coax)
 units=()
 for src in "${sources[@]}"; do
   unit=${src#examples/}; units+=("${unit%.coax}")
 done
-units+=(ch14_glow ch20_frontend ch17_interop ch23_requests.mutation ch26_workflow structure)
+units+=(ch17_glow ch27_frontend ch20_interop ch15_requests.mutation ch24_workflow structure)
 only=0 list=0
 requested=()
 usage() { echo 'usage: check-examples.sh [--list] [--only NAME...] (exact names from --list)' >&2; }
@@ -83,35 +83,35 @@ for src in "${sources[@]}"; do
     "$COAX" test "$src" > "$tmp/checks.log" 2>&1 || { echo "FAIL $src checks"; cat "$tmp/checks.log"; fail=1; }
   fi
 done
-if selected ch14_glow; then
-  "$COAX" test examples/lib/ch14_glow.coax > "$tmp/checks.log" 2>&1 || { echo "FAIL ch14 checks"; cat "$tmp/checks.log"; fail=1; }
-  "$COAX" metal examples/lib/ch14_glow.coax > /dev/null || { echo "FAIL ch14 metal"; fail=1; }
+if selected ch17_glow; then
+  "$COAX" test examples/lib/ch17_glow.coax > "$tmp/checks.log" 2>&1 || { echo "FAIL ch17 checks"; cat "$tmp/checks.log"; fail=1; }
+  "$COAX" metal examples/lib/ch17_glow.coax > /dev/null || { echo "FAIL ch17 metal"; fail=1; }
 fi
-if selected ch20_frontend; then
-  printf '#load "%s";\n' "$PWD/../lib/compiler/lexer.coax" "$PWD/../lib/compiler/parser.coax" "$PWD/examples/ch20_frontend/driver.coax" > "$tmp/frontend.coax"
+if selected ch27_frontend; then
+  printf '#load "%s";\n' "$PWD/../lib/compiler/lexer.coax" "$PWD/../lib/compiler/parser.coax" "$PWD/examples/ch27_frontend/driver.coax" > "$tmp/frontend.coax"
   "$COAX" run "$tmp/frontend.coax" > "$tmp/actual" 2>&1
   status=$?
-  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch20_frontend/driver.out; then
-    echo "FAIL ch20 frontend"; cat "$tmp/actual"; fail=1
+  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch27_frontend/driver.out; then
+    echo "FAIL ch27 frontend"; cat "$tmp/actual"; fail=1
   fi
 fi
-if selected ch17_interop; then
-  examples/ch17_interop/run.sh > "$tmp/actual" 2>&1
+if selected ch20_interop; then
+  examples/ch20_interop/run.sh > "$tmp/actual" 2>&1
   status=$?
-  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch17_interop/run.out; then
-    echo "FAIL ch17 interop"; cat "$tmp/actual"; fail=1
+  if [[ $status != 0 ]] || ! cmp -s "$tmp/actual" examples/ch20_interop/run.out; then
+    echo "FAIL ch20 interop"; cat "$tmp/actual"; fail=1
   fi
 fi
-if selected ch23_requests.mutation; then
-  "$COAX" mutate examples/ch23_requests.coax > "$tmp/mutate.log" 2>&1 || { echo "FAIL ch23 mutation gate"; cat "$tmp/mutate.log"; fail=1; }
+if selected ch15_requests.mutation; then
+  "$COAX" mutate examples/ch15_requests.coax > "$tmp/mutate.log" 2>&1 || { echo "FAIL ch15 mutation gate"; cat "$tmp/mutate.log"; fail=1; }
 fi
-if selected ch26_workflow; then
-  examples/ch26_workflow/run.sh > "$tmp/workflow.log" 2>&1
+if selected ch24_workflow; then
+  examples/ch24_workflow/run.sh > "$tmp/workflow.log" 2>&1
   status=$?
-  if [[ $status != 0 ]] || ! cmp -s "$tmp/workflow.log" examples/ch26_workflow/run.out; then
+  if [[ $status != 0 ]] || ! cmp -s "$tmp/workflow.log" examples/ch24_workflow/run.out; then
     # Optional protoc adds a verified status line to the normal transcript.
-    if [[ $status != 0 ]] || [[ -z ${PROTOC:-} ]] || ! cmp -s "$tmp/workflow.log" examples/ch26_workflow/run-protoc.out; then
-      echo "FAIL ch26 workflow"; cat "$tmp/workflow.log"; fail=1
+    if [[ $status != 0 ]] || [[ -z ${PROTOC:-} ]] || ! cmp -s "$tmp/workflow.log" examples/ch24_workflow/run-protoc.out; then
+      echo "FAIL ch24 workflow"; cat "$tmp/workflow.log"; fail=1
     fi
   fi
 fi

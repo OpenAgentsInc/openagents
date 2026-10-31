@@ -10,7 +10,7 @@ continuous batching, storage and production ingress remain later chapters.
 The public contract is
 [`psionic-gptoss-responses-v1`](../../../proto/openagents/psionic/responses/v1alpha1/README.md).
 The new alpha protobuf projection leaves preserved inference identities alone.
-The [book chapter](../../book/ch048b-serve-responses.md) explains the code and
+The [book chapter](../../book/ch079-serve-responses.md) explains the code and
 [verification record](../../../docs/verification/psionic-responses-2026-10-29.md)
 records the actual qualification.
 
@@ -18,7 +18,7 @@ records the actual qualification.
 
 Use our Coax compiler with `coax cuda` support, a CUDA driver/NVRTC installation,
 the admitted original 20b cache and the pinned Harmony table. The model/profile
-is the same as chapters 45a–45c: original MXFP4/BF16 bytes, 2048 context positions,
+is the same as chapters 65–67: original MXFP4/BF16 bytes, 2048 context positions,
 f32 activations with ordered wide reductions, greedy generation. Weights load
 once before the listener becomes ready. Startup authentication can take about a
 minute on the qualified worker. Do not restart the process for each request.

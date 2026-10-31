@@ -18,43 +18,43 @@
 * [7. Errors and cleanup](ch07-errors.md)
 * [8. Generics and constraints](ch08-generics.md)
 * [9. Compile time](ch09-compile-time.md)
-* [10. Writing checks](ch10-writing-checks.md)
+* [11. Writing checks](ch11-writing-checks.md)
 
 ## Part III. Data and speed
 
-* [11. Data-oriented layout](ch11-data-layout.md)
-* [12. Jobs: captures as effects](ch12-jobs.md)
-* [13. Determinism](ch13-determinism.md)
-* [14. GPU programs](ch14-gpu.md)
+* [13. Data-oriented layout](ch13-data-layout.md)
+* [14. Jobs: captures as effects](ch14-jobs.md)
+* [16. Determinism](ch16-determinism.md)
+* [17. GPU programs](ch17-gpu.md)
 
 ## Part IV. Coax in OpenAgents
 
-* [15. The protocol boundary](ch15-protocol.md)
-* [16. Builds and hot reload](ch16-builds-hot-reload.md)
-* [17. Living beside C, C++ and Swift](ch17-interop.md)
-* [18. Targets: Apple first, then the browser](ch18-targets.md)
-* [19. Built for agents](ch19-agents.md)
+* [18. The protocol boundary](ch18-protocol.md)
+* [19. Builds and hot reload](ch19-builds-hot-reload.md)
+* [20. Living beside C, C++ and Swift](ch20-interop.md)
+* [21. Targets: Apple first, then the browser](ch21-targets.md)
+* [22. Built for agents](ch22-agents.md)
 
 ## Part V. Building Coax
 
-* [20. Inside coax0](ch20-inside-coax0.md)
-* [21. The road ahead](ch21-road-ahead.md)
+* [27. Inside coax0](ch27-inside-coax0.md)
+* [28. The road ahead](ch28-road-ahead.md)
 
 ## Part VI. Building larger programs
 
-* [22. Organizing a larger program](ch22-organizing-programs.md)
-* [23. Asynchronous work and lifetimes](ch23-asynchronous-work.md)
-* [24. Debugging and measuring cost](ch24-debugging-and-cost.md)
-* [25. What verification establishes](ch25-verification-boundaries.md)
-* [26. A complete boundary](ch26-a-complete-boundary.md)
+* [10. Organizing a larger program](ch10-organizing-programs.md)
+* [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md)
+* [12. Debugging and measuring cost](ch12-debugging-and-cost.md)
+* [23. What verification establishes](ch23-verification-boundaries.md)
+* [24. A complete boundary](ch24-a-complete-boundary.md)
 
 ## Part VII. A case study
 
-* [27. Building a voice system in pieces](ch27-case-study-voice.md)
+* [25. Building a voice system in pieces](ch25-case-study-voice.md)
 
 ## Part VIII. Reusing libraries
 
-* [28. Reusing bounded libraries](ch28-library-recipes.md)
+* [26. Reusing bounded libraries](ch26-library-recipes.md)
 
 ## Appendices
 

@@ -1,4 +1,4 @@
-// Chapter 164: shadow a new model, then promote it. A candidate answers every
+// Chapter 222: shadow a new model, then promote it. A candidate answers every
 // request beside the active model; only the active model's answer is used,
 // both are logged, and each record is joined to its outcome when the outcome
 // arrives. A report over the log promotes the candidate only if the two agree
@@ -6,7 +6,7 @@
 // be worse. Candidates are immutable, named by the SHA-256 of their bytes, and
 // activation is one compare-and-swap that needs an approval naming both the
 // candidate's digest and the report's; anything else leaves the active model
-// as it was. Chapter 122 rolls out new builds of one model; this rolls out a
+// as it was. Chapter 177 rolls out new builds of one model; this rolls out a
 // different model.
 // Profile shadow-sim-v1: a simulated three-way decision with label outcomes,
 // binary64 statistics with a margin of two standard errors, and up to 16

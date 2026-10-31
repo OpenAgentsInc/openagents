@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 171's independent reference, written from the chapter's specification.
+"""Chapter 230's independent reference, written from the chapter's specification.
 
-It shares no code with psionic/lib/hull-memory.coax or chapter 165's and 166's
+It shares no code with psionic/lib/hull-memory.coax or chapter 224's and 166's
 interpreters. It runs the example's two programs on its own machine, whose
 memory is read two ways before every step: by a brute-force hard max over all
-stores (chapter 166's rule, latest write winning ties) and by a binary search
+stores (chapter 225's rule, latest write winning ties) and by a binary search
 over the sorted distinct keys. Every read must agree, and it counts both
 methods' comparisons and prints the example's lines.
 """
@@ -20,7 +20,7 @@ def score(k, q):
 
 
 def scan_read(stores, q):
-    """Chapter 166's read: a hard max over every store, the later one on a tie."""
+    """Chapter 225's read: a hard max over every store, the later one on a tie."""
     best = None
     for i, (k, v) in enumerate(stores):
         if best is None or score(k, q) >= score(stores[best][0], q):
@@ -122,7 +122,7 @@ def main():
     for name, p in (("squares", SQUARES), ("fill 64 cells 8 times", FILL)):
         r = run(p)
         if name == "squares":
-            # Chapter 165's published digest for this program.
+            # Chapter 224's published digest for this program.
             assert r["digest"].startswith("d7be7b683aee9a03"), r["digest"]
         print("%s: %d steps, output %d, the interpreter's digest: true" % (name, r["steps"], r["out"][0]))
         print("  %d stores, %d reads; comparisons: scan %d, hull %d" % (r["stores"], r["reads"], r["scan"], r["hull"]))

@@ -6,7 +6,7 @@ models are described in
 [`docs/research/baselabs-decision-models/README.md`](../../../docs/research/baselabs-decision-models/README.md).
 The library works with any host that speaks the same System One wire format,
 including our own: Psionic's `/v1/systemone`
-([chapter 16](../../../psionic/book/ch016-serve-systemone.md)), keyless on
+([chapter 20](../../../psionic/book/ch020-serve-systemone.md)), keyless on
 loopback, answering as `SO_PSIONIC_ELEPHANT` at `SO_PSIONIC_URL`
 (`SoClient.{url = SO_PSIONIC_URL, key_env = ""}`; a `key_env` of `""` sends no
 Authorization header). The Mac app's Lab uses it.

@@ -462,7 +462,7 @@ array and have each node hold the *index* of the next one.
 A struct's fields sit in memory in the order you declare them, each at an
 offset that suits its alignment. Coax never reorders them. That matters
 because other code reads structs by offset: the C compiler on the other side
-of an `#export_c` procedure (Chapter 17), a GPU shader, a file. If the
+of an `#export_c` procedure (Chapter 20), a GPU shader, a file. If the
 compiler reordered fields to save space, adding a field could move every
 other one, and that other code would read garbage without any error.
 
@@ -540,7 +540,7 @@ every `born` aligned; that's the seven bytes at the end. Putting the largest
 fields first lets the small ones pack together.
 
 For one spark, 16 bytes don't matter. For the 50,000 sparks in a particle
-system, the difference is 800 KB of cache traffic every frame. Chapter 11
+system, the difference is 800 KB of cache traffic every frame. Chapter 13
 goes much further into layout, including when to split a struct into
 separate arrays.
 
@@ -817,7 +817,7 @@ match.coax:18:3: error[E0406]: assertion failed
 1 check, 0 passed, 1 failed
 ```
 
-The check names the member we forgot. Chapter 10 is about writing checks
+The check names the member we forgot. Chapter 11 is about writing checks
 like this one.
 
 `describe` uses `ifx`, Coax's expression form of `if`, so the whole match is
@@ -1111,7 +1111,7 @@ alignment. And they carry no version, so next month's `Entity`, with one
 more field, can't read this month's file.
 
 Saves, network messages and protocol records go through explicit, versioned
-encodings that say what every field means on the wire (Chapter 15). Even
+encodings that say what every field means on the wire (Chapter 18). Even
 when reflection generates the encoder, a person still has to decide what
 some fields mean. A field that refers to another entity might be saved as an
 entity ID, as an asset reference, or not at all; the type alone can't say.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 36: owned scalar references, bounded CPU code, no model downloads.
+# Chapter 52: owned scalar references, bounded CPU code, no model downloads.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

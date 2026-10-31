@@ -45,7 +45,7 @@ release builds on:
     [book](coax/book/README.md) describe the language and say which parts
     exist today.
   - The [selected library contracts](coax/LIBRARIES.md) and
-    [offline recipes](coax/book/ch28-library-recipes.md) show how to reuse
+    [offline recipes](coax/book/ch26-library-recipes.md) show how to reuse
     bounded Coax, Verse and Psionic APIs.
 - **Verse** ([`verse/`](verse/)) is the engine. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is

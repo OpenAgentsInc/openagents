@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused gate for chapter 35; no models, services or upstream runtime needed.
+# Focused gate for chapter 51; no models, services or upstream runtime needed.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

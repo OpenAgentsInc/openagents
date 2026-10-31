@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 61: owned offline hyper-connection equations and temporal handoffs.
+# Chapter 93: owned offline hyper-connection equations and temporal handoffs.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

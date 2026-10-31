@@ -22,7 +22,7 @@ int main(int argc,char **argv){
         if(mode){r=psionic_dc_fetch(fileno(file),mode==2,1,stride,0,stride,V(key,1),B(pending,stride),B(io,stride),V(offsets,1));assert(!r.status&&r.written==stride&&!memcmp(pending,packet,(size_t)stride));bytes=pending;}
         if(mode==2){r=psionic_dc_install(c,state,plan.ticket,V(proposed,1),(coax_v_t_DcMove){moves,1},B(ready,1),B(bytes,stride),B(resident,stride));assert(!r.status);state.head=r.head;assert(!memcmp(resident,packet,(size_t)stride));bytes=resident;}
         out[5120]=77;coax_t_DeResult done=psionic_dc_expert(5120,2304,B(bytes,stride),F(input,5120),.137f,10,F(out,5121),work);assert(!done.status&&done.written==5120&&!memcmp(out,expected,sizeof expected)&&out[5120]==77);
-        printf("Original expert: mode %d, all 5120 output words bit-identical to chapter 63's independent reference\n",mode);
+        printf("Original expert: mode %d, all 5120 output words bit-identical to chapter 95's independent reference\n",mode);
     }
     FILE *result=fopen(argv[4],"wb");assert(result&&fwrite(out,1,sizeof expected,result)==sizeof expected);fclose(result);fclose(file);free(packet);free(pending);free(io);free(resident);free(floats);free(wide);return 0;
 }

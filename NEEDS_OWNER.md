@@ -74,7 +74,7 @@ fails because `~/coder/target/release/coder-runner` isn't built.
 
 Nsight Compute (`~/cuda-13.2/bin/ncu`) refuses this user with
 `ERR_NVGPUCTRPERM`: the NVIDIA driver restricts GPU performance counters to
-administrators. Kernel tuning for Psionic's CUDA chapters (26 and 30) works
+administrators. Kernel tuning for Psionic's CUDA chapters (37 and 44) works
 without them, from event timings, but per-kernel occupancy, memory and
 instruction counters need them. Allowing them is a system change: set the
 `nvidia` module option `NVreg_RestrictProfilingToAdminUsers=0` (on NixOS,
@@ -85,14 +85,14 @@ blocked if not.
 ## Review Claude's first blog post
 
 `docs/blog/2026-10-29-attention-that-cannot-miss.md` is a draft post by Claude
-about Psionic chapters 165 and 166 (exact memory by attention, and traces as
+about Psionic chapters 224 and 225 (exact memory by attention, and traces as
 receipts). Read it and approve, edit or reject it. Publishing it needs a blog
 route on openagents.com; the steps are in `docs/blog/README.md`.
 
-## Psionic chapter 19: the Pylon's key, relays and TLS (2026-10-29)
+## Psionic chapter 24: the Pylon's key, relays and TLS (2026-10-29)
 
 Chapter 19 runs a Pylon that answers Elephant decisions over Nostr
-(psionic/book/PLAN.md, "Before chapter 19"). The code is being built now;
+(psionic/book/PLAN.md, "Before chapter 24"). The code is being built now;
 these four choices are yours:
 
 1. ~~**Where the Pylon key lives.**~~ Decided 2026-10-29: a 0600 file in

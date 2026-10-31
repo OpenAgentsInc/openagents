@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 4a only. Python/NumPy are independent verification tooling.
+# Chapter 8 only. Python/NumPy are independent verification tooling.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

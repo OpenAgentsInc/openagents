@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build chapter 115's load generator: OUT [debug|release] [plain|sanitized].
+# Build chapter 170's load generator: OUT [debug|release] [plain|sanitized].
 # Coax emits one C library from psionic/lib/bench-wire.coax (which loads
 # bench.coax); psionic/platform/bench-drive.c links it.
 set -euo pipefail

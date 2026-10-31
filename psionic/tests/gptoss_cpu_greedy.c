@@ -1,4 +1,4 @@
-/* Chapter 45's CPU engine, greedy, on a prompt the GPU harness rendered:
+/* Chapter 64's CPU engine, greedy, on a prompt the GPU harness rendered:
    the reference for the Metal engine's token identity (run_gptoss_metal.sh,
    PSIONIC_CPU_GREEDY=1). One token per forward, single core: minutes.
    Usage: gptoss-cpu-greedy ORIGINAL_DIR PROMPT.i64 OUT.i64 */

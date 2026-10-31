@@ -1,4 +1,4 @@
-// Chapter 31's float-float conformance kernels. On Metal an f64 is a
+// Chapter 47's float-float conformance kernels. On Metal an f64 is a
 // float-float pair (APPLE-FF-v1); compiled to C the same kernels use binary64,
 // which is the oracle. psionic/tests/metal_kernels.c runs both.
 #authority;

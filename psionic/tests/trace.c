@@ -1,4 +1,4 @@
-/* Chapters 165 and 166 against the independent oracle in trace_oracle.py. */
+/* Chapters 224 and 225 against the independent oracle in trace_oracle.py. */
 #include "trace-memory.h"
 #include "trace-oracle.h"
 #include <assert.h>

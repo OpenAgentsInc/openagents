@@ -694,11 +694,11 @@ normal outcome that the app has to show the person, so it's a value of
 case, `send`, is the zero member, just as `none` was for us. Elsewhere
 in the same file, procedures that cross into C return plain `int`s and
 use `-1` for "invalid", a convention any C or Swift caller understands
-([Chapter 17](ch17-interop.md) covers the C boundary). Both are error
+([Chapter 20](ch20-interop.md) covers the C boundary). Both are error
 values; the enum is the clearer of the two, because its type lists
 every reason.
 The bugs, meanwhile, are caught by `#assert` in checks that run on
-every build, which is the subject of [Chapter 10](ch10-writing-checks.md).
+every build, which is the subject of [Chapter 11](ch11-writing-checks.md).
 
 ## What's coming: `try`, `or_else` and optional types
 

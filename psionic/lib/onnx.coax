@@ -1,5 +1,5 @@
-// Chapter 161: read a bounded ONNX graph. A model file is protobuf; this
-// reader walks it field by field, as chapter 16b's wire scanner does, and admits only opset 17 of
+// Chapter 218: read a bounded ONNX graph. A model file is protobuf; this
+// reader walks it field by field, as chapter 21's wire scanner does, and admits only opset 17 of
 // the default domain, seven operators with the attribute values it
 // implements, float initializers held in the file, and static shapes. Each
 // anonymous initializer gets a name from the node that uses it ("/conv/Conv"

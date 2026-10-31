@@ -1,17 +1,17 @@
-# Chapter 31: Elephant fast on Metal (issue #12608), 2026-10-29
+# Chapter 47: Elephant fast on Metal (issue #12608), 2026-10-29
 
-Same model, machines and request as the [chapter 31 record](psionic-ch31-2026-10-29.md):
+Same model, machines and request as the [chapter 47 record](psionic-ch31-2026-10-29.md):
 the pinned original Elephant (`model.safetensors` SHA-256
 `682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba`), a
 MacBook Pro with an Apple M5 Max (128 GB, macOS 26), coderos-4080's RTX 4080,
-and chapter 10's 86-token sample with a 49-token prefix. The Lab request is
+and chapter 14's 86-token sample with a 49-token prefix. The Lab request is
 the desktop app's five-question `LAB_TEST_BODY`.
 
 Commits: `e23facf54a` (group kernels: threadgroup memory and barriers in the
 Coax compute subset, Metal and CUDA), `1a2d3af3e1` (Metal 4 tensor-op tiles
 for Elephant's projections), `fce09c894f` (forks: one prefix pass per
 request, on Metal and CUDA). Session open was made fast separately by
-`ab6211a70b` (verified-file records, chapter 15); this work only fixed its
+`ab6211a70b` (verified-file records, chapter 19); this work only fixed its
 macOS build (`st_mtimespec`).
 
 ## Group kernels
@@ -56,7 +56,7 @@ machine was shared with other agents' work, so the minimum shows the engine
 and the median shows this machine that evening. Profile (tiles): 397.7 ms,
 `dt_project_16x64` 56.3%, `dl_scan` 14.2%, `dl_gate_norm` 8.8%.
 
-Acceptance (chapter 30's frozen rule, 0.0005 against the independent
+Acceptance (chapter 44's frozen rule, 0.0005 against the independent
 reference and the recorded CPU result): passed every run; p(yes) 0.757192428
 against the CPU's 0.757196285. Qualification: 40 launches of layers 0 and 3
 and the readout repeated on the CPU, 19 identical; float-float reductions
@@ -69,7 +69,7 @@ suffix alone 244.2 ms, 0 of 496,640 logits differ from the whole decision.
 ## CUDA (`psionic/tests/run_elephant_device.sh`, RTX 4080)
 
 Card free (gpt-oss-20b stopped through the switch, restored after): whole
-decision 156.5, 147.1, 146.6, 147.7, 148.7 ms (unchanged from chapter 30);
+decision 156.5, 147.1, 146.6, 147.7, 148.7 ms (unchanged from chapter 44);
 forked prefix pass and suffix 239.8 ms, suffix alone 120.3 ms, 0 of 496,640
 logits differ; both frozen checks pass. A first attempt ran while gpt-oss-20b
 had been loaded again by someone else (0.93 GiB budget, 14.19 GiB streamed):

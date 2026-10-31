@@ -1,11 +1,11 @@
-/* psionic-serve: the chapter-16 host for POST /v1/systemone.
+/* psionic-serve: the chapter-20 host for POST /v1/systemone.
  *
  * Effects only. This file opens a loopback socket, reads and writes bounded
  * bytes, reads a monotonic clock, maps model files and runs each decision in
  * one child process so that it can be stopped. What the bytes mean, every
  * refusal, the deadlines, busy refusals and the answer body are decided by
  * Coax (psionic/lib/serve-request.coax, serve-engine.coax, serve-run.coax,
- * and serve-proto.coax for the protobuf wire of chapter 16b).
+ * and serve-proto.coax for the protobuf wire of chapter 21).
  * Nothing from a request or an answer is logged: a log line has a status, a
  * code name and a duration.
  *
@@ -16,7 +16,7 @@
  *
  * --device-mib N (--elephant-gpu) caps the device memory the plan may use;
  * without it the plan takes what is free less 256 MiB. Weights that do not fit
- * stream from host memory (chapter 30a), so a small cap leaves room for
+ * stream from host memory (chapter 45), so a small cap leaves room for
  * another model on the same card.
  *
  * --fixture-delay-ms N (toy only) holds each decision for N ms before it
@@ -151,7 +151,7 @@ typedef struct {
     coax_v_u8 scratch, proto, arena; bool proto_out;
     coax_v_s64 cached_tokens; coax_v_f32 cached_state; bool reuse;
     coax_t_LsSample *sample; coax_t_LsLife life; coax_t_LsUsage usage;
-    int metrics_fd; int64_t host_budget, warmup_ms, auth_us, place_us, compile_us, cached_pages,total_pages,execution_bytes,cpu_execution_bytes; /* chapter 16b */
+    int metrics_fd; int64_t host_budget, warmup_ms, auth_us, place_us, compile_us, cached_pages,total_pages,execution_bytes,cpu_execution_bytes; /* chapter 21 */
 #ifdef PSIONIC_SERVE_GPU
     EgEngine *gpu; int stop_fd; int64_t stop_at; int listener; PsBusy busy;
 #endif

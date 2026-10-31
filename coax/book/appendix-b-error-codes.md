@@ -25,12 +25,12 @@ The first two digits after the `E` give the stage that reports the error:
 | `E01` | Lexer | Chapter 4 |
 | `E02` | Parser | Chapter 4 |
 | `E03` | Checker | Chapter 4 |
-| `E04` | Compile-time evaluation and checks | Chapters 9 and 10 |
-| `E05` | Protobuf descriptor imports | Chapter 15 |
-| `E06` | Source-unit composition | Chapter 22 |
-| `E07` | Device code (`coax cuda`, `coax metal-compute`, `coax spirv`) | Chapter 14 |
+| `E04` | Compile-time evaluation and checks | Chapters 9 and 11 |
+| `E05` | Protobuf descriptor imports | Chapter 18 |
+| `E06` | Source-unit composition | Chapter 10 |
+| `E07` | Device code (`coax cuda`, `coax metal-compute`, `coax spirv`) | Chapter 17 |
 
-Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
+Chapter 4 explains how to read a diagnostic, and Chapter 27 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.

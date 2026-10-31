@@ -1,4 +1,4 @@
-// Chapter 19: the unsigned event template every Pylon record is written as,
+// Chapter 24: the unsigned event template every Pylon record is written as,
 // and the tag reader its checkers share. A template is the NIP-01 event
 // without id and sig: {"pubkey","created_at","kind","tags","content"}.
 // Signing (coax/lib/nostr/event_sign.coax) computes the id over exactly

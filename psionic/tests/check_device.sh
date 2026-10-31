@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused gate for chapters 26 and 30: device kernels and plan checks, CUDA
+# Focused gate for chapters 37 and 44: device kernels and plan checks, CUDA
 # emission, examples and the host build. The device runs only when a CUDA
 # driver and NVRTC are present; otherwise the harness reports SKIP.
 set -euo pipefail

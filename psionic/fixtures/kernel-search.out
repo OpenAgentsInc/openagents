@@ -1,17 +1,17 @@
-workload: Elephant's offset RMS norm over chapter 10's 86-token sample, 86 x 4096, epsilon 1e-6
+workload: Elephant's offset RMS norm over chapter 14's 86-token sample, 86 x 4096, epsilon 1e-6
 contract: squares added in f64 in any order, the rest in f64, one rounding to f32;
   each output must be one of the two f32 values next to the f64 norm
 held out from the agent: a decode row, Mammoth's width 5120, width 1000, width 4097, width 1, width 17, extreme values, zero rows, one huge value among tiny ones
 
 on this CPU, now, every case:
-  chapter 30 (n30): 6 of 10 cases; wrong on width 1000, width 4097, width 1, width 17
+  chapter 44 (n30): 6 of 10 cases; wrong on width 1000, width 4097, width 1, width 17
   the tuner's choice (nt 3240): 10 of 10 cases
   the agent's winner (a8 64160): 10 of 10 cases
 
 on the L4 (NVIDIA L4 compute 8.9, 58 SMs, driver 13020), from the ledger of 15 evaluations:
-  chapter 30, evaluation 15, on its declared widths: best: knob 0, block 32: 124.74 us (124.7 to 124.81 over 11 trials); pass 0 32.19 us, pass 1 92.57 us at block 32
+  chapter 44, evaluation 15, on its declared widths: best: knob 0, block 32: 124.74 us (124.7 to 124.81 over 11 trials); pass 0 32.19 us, pass 1 92.57 us at block 32
   the tuner, evaluation 14: 49 knobs x 6 blocks = 294 configurations, 49 knobs passing every case on both
-    best: knob 3240, block 32: 72.29 us (72.25 to 72.34 over 11 trials) (32 contiguous chunks, 4 outputs an item), 1.73 x chapter 30; pass 0 18.0 us, pass 1 54.48 us at block 32
+    best: knob 3240, block 32: 72.29 us (72.25 to 72.34 over 11 trials) (32 contiguous chunks, 4 outputs an item), 1.73 x chapter 44; pass 0 18.0 us, pass 1 54.48 us at block 32
     slowest: knob 0, block 128: 2632.99 us (2630.12 to 2635.86 over 11 trials) (one item a row, both passes fused)
   the agent: 8 budgeted evaluations, failures included
     a1, evaluation 3: 9 knobs, stopped at block 1024: CUDA error 701 (too many resources requested for launch)
@@ -23,7 +23,7 @@ on the L4 (NVIDIA L4 compute 8.9, 58 SMs, driver 13020), from the ledger of 15 e
     a7, evaluation 9: 10 knobs, 10 passing; best: knob 64160, block 32: 26.36 us (26.3 to 26.38 over 11 trials), faster than the tuner
     a8, evaluation 10: 8 knobs, 8 passing; best: knob 64160, block 32: 25.29 us (25.25 to 25.31 over 11 trials), faster than the tuner
   winner: a8, re-measured in evaluation 13, beside evaluations 14 and 15:
-    same: knob 64160, block 32: 25.33 us (25.29 to 25.35 over 11 trials), 2.85 x the tuner, 4.92 x chapter 30; pass 0 9.26 us, pass 1 16.16 us at block 32
+    same: knob 64160, block 32: 25.33 us (25.29 to 25.35 over 11 trials), 2.85 x the tuner, 4.92 x chapter 44; pass 0 9.26 us, pass 1 16.16 us at block 32
     167 GB/s effective for the 4.23 MB a call must move (x read twice, out written)
     source psionic/kernels/norm/agent/a8.coax
     sha256 6dc4061dbb45b66137c43f1c0dee6acf7e87b987f31c039882b56b7be0142a80, at commit aca6a4ccfd

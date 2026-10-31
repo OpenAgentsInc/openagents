@@ -1,6 +1,6 @@
 # Tiny owned gantry: independent native checks
 
-This slice qualifies the chapter 112 simulator and imitation learner. It uses
+This slice qualifies the chapter 167 simulator and imitation learner. It uses
 owned synthetic episodes, a declared two-axis Cartesian state in metres,
 velocity commands in metres/second, an exact 0.1-second sample and a separate
 zero/expert baseline. It does not drive hardware or claim compatibility with
@@ -26,7 +26,7 @@ COAX=coax/bin/coax psionic/tests/robotics/check-native.sh /tmp/robotics-native
 The thin wrapper emits the actual Coax library, then runs the independent
 oracle in native debug, release and ASan/UBSan modes without fast math or FMA.
 Authority checks and focused root mutation are separate commands; unchanged
-chapter 70 training/numerical dependencies need no repeated mutation gate.
+chapter 103 training/numerical dependencies need no repeated mutation gate.
 
 Qualification on 2026-10-31: **3,882 cases passed in each of native debug,
 release and ASan/UBSan**. No whole-model inference or external simulator ran.
@@ -64,5 +64,5 @@ psionic/check.sh --only robotics/singlearm --jobs 4
 ```
 
 These commands select focused authority mutation and native checks. The
-[chapter 112 record](../../../docs/verification/psionic-ch112-2026-10-31.md)
+[chapter 167 record](../../../docs/verification/psionic-ch112-2026-10-31.md)
 describes the frozen experiment, original hashes, results and limits.

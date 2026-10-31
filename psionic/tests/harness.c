@@ -1,4 +1,4 @@
-/* Chapter 169: the harness's interpreter against the independent oracle, and every planted fault caught natively. */
+/* Chapter 228: the harness's interpreter against the independent oracle, and every planted fault caught natively. */
 #include "compiler-harness.h"
 #include "gate-oracle.h"
 #include "harness-oracle.h"

@@ -231,7 +231,7 @@ own graph is `lib/compiler/compiler.coax`; the iOS HUD and the book capstone
 are actual consumers. Logical module owners, qualified path imports and
 explicit `#export` lists also work. Reexports, configured modules and
 package search remain unsupported.
-See [Chapter 22](book/ch22-organizing-programs.md) for exact scope and limits.
+See [Chapter 10](book/ch10-organizing-programs.md) for exact scope and limits.
 
 ## Native libraries and Metal
 

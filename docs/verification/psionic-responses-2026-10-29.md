@@ -3,7 +3,7 @@
 Scope: `psionic-gptoss-responses-v1`, a new alpha contract, loopback HTTP over
 our resident original gpt-oss-20b CUDA engine. See
 [the profile](../../proto/openagents/psionic/responses/v1alpha1/README.md),
-[the chapter](../../psionic/book/ch048b-serve-responses.md) and
+[the chapter](../../psionic/book/ch079-serve-responses.md) and
 [operating guide](../../psionic/docs/serving/responses.md).
 
 ## Verification
@@ -43,7 +43,7 @@ Owned worker `coderos-4080`, RTX 4080 (16 GiB), original 20b revision
 `713aefbe74715ac78e32ad789ff6e6ad2d6d65372515462b76ab5ecaef8a0e7a`.
 The server authenticates/uploads once before readiness; independent HTTP requests
 reset KV state while retaining the weights. Model/device numerical qualification
-remains the [45a–45c record](psionic-gptoss-device-2026-10-29.md).
+remains the [65–67 record](psionic-gptoss-device-2026-10-29.md).
 
 Actual text create, streamed create, SDK stream accumulation, output limit and
 unsupported-parameter checks pass through the resident GPU server. One short

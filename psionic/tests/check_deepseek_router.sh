@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 59: owned, offline router equations and margin records.
+# Chapter 91: owned, offline router equations and margin records.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}
@@ -37,4 +37,4 @@ if [[ $mutate == 1 ]];then
     "$coax" mutate psionic/lib/deepseek/router-compare.coax --jobs "$jobs" --run-steps 4000000
 fi
 python3 -I psionic/tests/book.py
-echo 'DeepSeek chapter 59: independent numeric/margin oracle, debug/release, native plain/ASan/UBSan and exact book output pass'
+echo 'DeepSeek chapter 91: independent numeric/margin oracle, debug/release, native plain/ASan/UBSan and exact book output pass'

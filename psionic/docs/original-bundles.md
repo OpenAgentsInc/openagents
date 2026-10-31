@@ -6,7 +6,7 @@ caller-provided config, tokenizer, index and shard SHA-256 pins; scans every
 name, dtype, dimension and payload range; checks complete byte coverage and
 compares the full inventory against trusted expected specs. For sharded bundles
 it validates every index entry and, when provided, both `total_size` and
-`total_parameters`. The original chapter 4 rank-four contract is unchanged.
+`total_parameters`. The original chapter 7 rank-four contract is unchanged.
 
 The reviewable [Elephant inventory](../fixtures/models/elephant/manifest.json)
 and [Mammoth inventory](../fixtures/models/mammoth/manifest.json)

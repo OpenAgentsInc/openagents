@@ -1,7 +1,7 @@
 # DeepSeek natively: what the pre-reset work teaches
 
 Planning note, 2026-10-29, for Part IX of the
-[book plan](../../book/PLAN.md) and chapter 13's qualification rules.
+[book plan](../../book/PLAN.md) and chapter 17's qualification rules.
 It condenses the pre-reset DeepSeek V4.1 Flash work, which ran from about
 October 12 to 23, 2026, in the old Rust Psionic. Read the sources with
 `git show 0b401561a0^:<path>`:
@@ -47,7 +47,7 @@ Width is 5,120 and the vocabulary is 129,280.
   UE8M0 scales per 32×32 block. Routed experts are packed FP4 E2M1, low
   nibble first at even K, with separate UE8M0 scales per row and 32 K values.
   A 0xFF scale is NaN. The raw header and converter confirm these layouts;
-  chapter 63 retains exact code/scale vectors and original MoE qualification.
+  chapter 95 retains exact code/scale vectors and original MoE qualification.
 - **Memory.** Experts take 288.8 GB, Engram 202.8 GB and everything else
   18.7 GB. About 13 GB of weights are read per token.
 
@@ -61,7 +61,7 @@ The rest of the ladder comes from the support plan:
 
 ## First rebuilt rung: R1 distill
 
-[Chapter 56](../../book/ch056-execute-a-deepseek-r1-distill.md) now provides
+[Chapter 88](../../book/ch088-execute-a-deepseek-r1-distill.md) now provides
 `deepseek-r1-qwen2-cpu-wide-v1`: the original BF16
 R1-Distill-Qwen-1.5B at `ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562`,
 with complete file authentication, all 28 Qwen2 layers, its own tokenizer,
@@ -76,18 +76,18 @@ corpus, upstream BF16 runtime parity, serving, GPU throughput or V2/V4
 support. The [verification record](../../../docs/verification/psionic-ch56-2026-10-29.md)
 binds the actual executed builds and later original-shaped slices.
 Routine checks use small owned models and recorded arrays; they do not
-repeat full original-model CPU execution. [Chapter 57](../../book/ch057-deepseeks-front-door.md) adds a bounded V4.1-style
+repeat full original-model CPU execution. [Chapter 89](../../book/ch089-deepseeks-front-door.md) adds a bounded V4.1-style
 typed recipe and chunk-safe DSML protocol parser, with a separately named
 R1 tokenizer adapter. The separate V4.1 text adapter now qualifies the original
 vocabulary, three-stage split, Unicode 16 properties and actual-token streams
 on CPU; full recipe options and original V4.1 model execution remain separate.
-Chapter 58 is the next execution rung.
+Chapter 90 is the next execution rung.
 
-[Chapter 59](../../book/ch059-routers-that-balance-themselves.md) supplies the
+[Chapter 91](../../book/ch091-routers-that-balance-themselves.md) supplies the
 bounded CPU-wide V2/V3/V4.1 router equations, including grouped V3 selection,
 unbiased combination weights, deterministic ties and complete comparison/margin
 records. The original V2-Lite BF16 shards are downloaded and SHA-256 checked
-outside the repository, with pinned metadata retained for chapter 58. Latent
+outside the repository, with pinned metadata retained for chapter 90. Latent
 attention and original full V2 execution remain to be implemented. The
 [arc ledger](../../../docs/verification/deepseek-arc-progress.md) keeps every
 remaining chapter, including 141, explicit.
@@ -125,7 +125,7 @@ remaining chapter, including 141, explicit.
   multiply-accumulate units rounded their own way. Emulating that got layer 0
   bit-exact. A one-ulp difference in the hyper-connection mix then flipped
   near-tie expert choices from layer 1 on, and the error grew with depth and
-  context. The rules in chapter 13 follow from this: compare like modes only;
+  context. The rules in chapter 17 follow from this: compare like modes only;
   compare distributions with frozen policies; measure on the device that ran;
   record near-tie regret for routers.
 - **Policies were changed after the data was read.** One was frozen with
@@ -183,25 +183,25 @@ On a 16 GB card such as the 4080, the native model doesn't fit: 289 GB of
 routed experts and 203 GB of Engram need that much RAM beside the card, and
 with experts in host memory one layer took about 7 ms against 0.8 ms on the
 RTX PRO 6000. The 178 GB quant fits only beside about 192 GB of RAM, or
-reads its misses from disk. Chapter 68a measures that card as its own
+reads its misses from disk. Chapter 101 measures that card as its own
 device class, or refuses it.
 
 ## Efficiency techniques to rebuild in Coax
 
 | Technique | Source | Chapter |
 | --- | --- | --- |
-| Expert cache with decayed-frequency heat, routing-profile seeding, host lane for misses, next-layer gate prefetch | Project Maya (MIT, ideas reimplemented); old single-box work | 64 |
-| Layer-major chunked prefill, then grouped block-scaled products | Maya; old W17 work | 65 |
-| FP8/FP4 packed KV where the reference already rounds | Maya; NVIDIA FLARE's compact records (528/288/68 bytes per entry) | 66 |
-| One recorded device sequence per decode step; device-side routing ids and sampling; host one step ahead | Old CUDA-graph stages; DeepSeek's asynchronous scheduler (after SGLang and NanoFlow) | 67 |
-| Engram served from mapped files or disk by row | FLARE's direct-I/O Engram; old host-mapped gather (3.2 µs) | 62 |
-| Low-bit routed experts by importance-weighted GPTQ, as a separate unqualified profile; exact prompt skip of layers 21–39; per-machine calibration | Maya; old #12465, #12470 | 68a |
-| Fixed then variable-length draft verification from a confidence head and a cost curve | DeepSeek's DSpark (+6% at its batch sizes) | 69 |
-| Prefix cache of 128-token pages via content-hashed chains, storage independent of compute, per-traffic retention | DeepSeek 3FS cache (96% hit rate on 77K-token average inputs) | 119 |
-| Prefill cost model, length buckets, pull scheduling; decode balancing on requests plus cache length | DeepSeek's load balancers | 120 |
-| Small prefill groups, large decode groups, separate vision role; scale on unserved tokens and requests in flight | DeepSeek's serving layout (prefill:decode near 1:1) | 125 |
-| Expert parallelism only inside a fast domain; data-parallel attention; redundant experts rebalanced from a load window | DeepSeek; busiest/mean 1.03–1.09 reported | 126 |
-| Special tokens by boundary, chunk-safe streaming parser | DeepSeek's recipe | 57 |
+| Expert cache with decayed-frequency heat, routing-profile seeding, host lane for misses, next-layer gate prefetch | Project Maya (MIT, ideas reimplemented); old single-box work | 96 |
+| Layer-major chunked prefill, then grouped block-scaled products | Maya; old W17 work | 97 |
+| FP8/FP4 packed KV where the reference already rounds | Maya; NVIDIA FLARE's compact records (528/288/68 bytes per entry) | 98 |
+| One recorded device sequence per decode step; device-side routing ids and sampling; host one step ahead | Old CUDA-graph stages; DeepSeek's asynchronous scheduler (after SGLang and NanoFlow) | 99 |
+| Engram served from mapped files or disk by row | FLARE's direct-I/O Engram; old host-mapped gather (3.2 µs) | 94 |
+| Low-bit routed experts by importance-weighted GPTQ, as a separate unqualified profile; exact prompt skip of layers 21–39; per-machine calibration | Maya; old #12465, #12470 | 101 |
+| Fixed then variable-length draft verification from a confidence head and a cost curve | DeepSeek's DSpark (+6% at its batch sizes) | 102 |
+| Prefix cache of 128-token pages via content-hashed chains, storage independent of compute, per-traffic retention | DeepSeek 3FS cache (96% hit rate on 77K-token average inputs) | 174 |
+| Prefill cost model, length buckets, pull scheduling; decode balancing on requests plus cache length | DeepSeek's load balancers | 175 |
+| Small prefill groups, large decode groups, separate vision role; scale on unserved tokens and requests in flight | DeepSeek's serving layout (prefill:decode near 1:1) | 180 |
+| Expert parallelism only inside a fast domain; data-parallel attention; redundant experts rebalanced from a load window | DeepSeek; busiest/mean 1.03–1.09 reported | 181 |
+| Special tokens by boundary, chunk-safe streaming parser | DeepSeek's recipe | 89 |
 
 DeepSeek reported 60K uncached prefill tokens/s and 14K decode tokens/s per
 card, with users seeing 230 tokens/s. These show what batching at scale is

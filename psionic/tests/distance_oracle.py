@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 160's independent reference, written from the chapter's specification.
+"""Chapter 217's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/distance.coax. The items, the backends'
 answers, the centred-log distance, the summaries, the simulated rounds, the
 limits and one checked round are written again here; the answers' digest uses
-hashlib over chapter 178's values encoding. Sums are plain left-to-right loops,
+hashlib over chapter 237's values encoding. Sums are plain left-to-right loops,
 as in the library. `--tests` prints the values the Coax checks pin;
 `--header` writes the C expectations the native harness compares.
 """

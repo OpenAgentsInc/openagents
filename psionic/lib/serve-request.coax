@@ -1,4 +1,4 @@
-// Chapter 16: the request side of POST /v1/systemone. The host only moves
+// Chapter 20: the request side of POST /v1/systemone. The host only moves
 // bytes; this unit decides whether received bytes are a complete HTTP/1.1
 // request, decodes its NIP-DEC body into typed text decisions, checks every
 // NIP-DEC bound before a model is consulted, and writes every response head

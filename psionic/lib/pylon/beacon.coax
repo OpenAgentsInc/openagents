@@ -1,8 +1,8 @@
-// Chapter 19: the Pylon beacon, NIP-PYLON kind 30200 version 1. The writer
+// Chapter 24: the Pylon beacon, NIP-PYLON kind 30200 version 1. The writer
 // turns a pylon's state into the unsigned template (JCS-ordered content,
 // its d/t/x/expiration tags and an optional owner auth tag); the reader
 // admits or refuses a beacon exactly as NIP-PYLON's Validation and Freshness
-// say, for a buyer (chapter 20). The lifecycle and the republish schedule are
+// say, for a buyer (chapter 25). The lifecycle and the republish schedule are
 // pure functions of the clock. The auth tag's NIP-OA signature is carried,
 // not verified: verifying it waits on the signer (see the record). The x
 // digest (SHA-256 of the content) comes from the caller, so this unit's
@@ -39,7 +39,7 @@ PB_SPACING :: 10;      // a relay may refuse a beacon sooner than this after the
 PB_REFRESH_MIN :: 60;
 PB_REFRESH_MAX :: 240;
 
-// ---- fixtures: the chapter-19 Elephant pylon
+// ---- fixtures: the chapter-24 Elephant pylon
 PB_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
 PB_OWNER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
 PB_IDENTITY :: "elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -62,7 +62,7 @@ pb_tags_for :: (out:[]u8,content:string,expiration:string,extra:string)->string 
     return cast(string)out[0..<n];
 }
 
-#test "the chapter-19 beacon content is JCS-ordered and exact" {
+#test "the chapter-24 beacon content is JCS-ordered and exact" {
     lanes:[1]string;services:[1]PbService;settlement:[1]string;b:=pb_fixture(lanes[..],services[..],settlement[..]);
     out:[2048]u8;n:=pb_content(b,out[..]);#assert cast(string)out[0..<n]==PB_CONTENT;
     b.meta="{\"deadline_secs\":8}";n=pb_content(b,out[..]);c:[2048]u8;

@@ -3,7 +3,7 @@
    CUDA engine (elephant-gpu.h), so psionic-serve links one or the other. The
    Coax device plan (psionic/lib/device/plan.coax) decides every launch; this
    module performs the effects. On unified memory every weight is resident:
-   a plan that would stream is refused. The CPU session (chapter 10)
+   a plan that would stream is refused. The CPU session (chapter 14)
    authenticates and binds the original files before eg_place. */
 #ifndef PSIONIC_ELEPHANT_METAL_H
 #define PSIONIC_ELEPHANT_METAL_H
@@ -62,7 +62,7 @@ int eg_encode(EgEngine *e, PmBatch batch, int64_t from, int64_t to);
    be null) is asked before each layer; when it returns true the decision is
    abandoned with nothing published and EG_STOPPED is returned. */
 int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
-/* The same decision through a fork (chapter 8): the prefix block (tokens
+/* The same decision through a fork (chapter 12): the prefix block (tokens
    0..prefix) runs once and is kept; this and every later decision with the
    same prefix tokens runs only its suffix from the kept state. Without a
    prefix (0) it is eg_decide. e->forked says which way it ran. */

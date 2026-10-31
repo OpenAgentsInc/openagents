@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run chapter 115's load generator: BUILD_DIR then bench-drive's arguments.
+# Run chapter 170's load generator: BUILD_DIR then bench-drive's arguments.
 # When PSIONIC_API_KEY is unset and the target port belongs to a server this
 # user runs on this machine, its key is read from that process's environment
 # (Linux: ss and /proc). The key is passed on and never printed.

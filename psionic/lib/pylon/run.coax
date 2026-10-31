@@ -1,7 +1,7 @@
-// Chapter 19: the Pylon program. One process holds a relay connection,
+// Chapter 24: the Pylon program. One process holds a relay connection,
 // authenticates with NIP-42, publishes its NIP-65 relay list and its 30200
 // beacon, subscribes to the 25910 jobs addressed to its key, and answers each
-// with a 26910 result or a 27010 status, decided by the chapter 16 engine.
+// with a 26910 result or a 27010 status, decided by the chapter 20 engine.
 // This file wires units together; it decides nothing itself. The decisions
 // are decision.coax, beacon.coax, relays.coax and queue.coax (#authority),
 // ws.coax and nip42.coax (#authority), and nip44.coax (#authority).
@@ -174,7 +174,7 @@ py_config :: (c:[]PyConfig)->bool {
         else {print("pylon: unknown option %\n",name);return false;}
     }
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
-    if (!c[0].text && c[0].references.count==0) || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 159)\n");py_usage();return false;}
+    if (!c[0].text && c[0].references.count==0) || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 216)\n");py_usage();return false;}
     if c[0].model.count==0 {py_usage();return false;}
     if c[0].doctor {return true;}
     if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
@@ -364,7 +364,7 @@ py_status :: (p:[]Py,jb:PdJob,code:PdCode)->bool {
     return py_reply(p,jb,PD_STATUS,cast(string)body[0..<n],"status");
 }
 
-// ---- the engine (chapter 16's /v1/systemone over HTTP) ----------------------
+// ---- the engine (chapter 20's /v1/systemone over HTTP) ----------------------
 
 PyHttp :: struct {reached:bool;timed_out:bool;status:int;body:string;}
 // POST body to the engine; at most budget_ms for the whole exchange.
@@ -691,7 +691,7 @@ py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
     }
     return false;
 }
-// ---- chapter 159: the self-check and the doctor -----------------------------
+// ---- chapter 216: the self-check and the doctor -----------------------------
 
 // One named file through the host: its bytes into out, the length, -1 when it
 // can't be read, -2 when it is missing.

@@ -1,4 +1,4 @@
-// Chapter 188: the evaluator a kernel search answers to. It owns the
+// Chapter 247: the evaluator a kernel search answers to. It owns the
 // declared workload, the held-out cases, the reference, the numerical
 // contract every candidate must keep, and the rules that turn timings into a
 // verdict. The host only moves bytes and records times.
@@ -7,7 +7,7 @@
 
 // book:begin cases
 // Case 0 is the declared workload: Elephant's offset RMS norm over chapter
-// 10's 86-token sample, 4,096 wide. The rest are held out from the agent:
+// 14's 86-token sample, 4,096 wide. The rest are held out from the agent:
 // a decode row, Mammoth's width, widths no power of two divides, a width of
 // 1, extreme values, zero rows, and one huge value among tiny ones.
 KS_CASES :: 10;

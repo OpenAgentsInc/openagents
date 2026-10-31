@@ -78,7 +78,7 @@ The final production browser proof used actual mouse/touch input on desktop
 and phone. Both saw 3 fresh Pylons and 10 advertised free slots, copied the
 exact 96-byte command and opened the guide with HTTP 200, without JS exceptions.
 While the desktop panel stayed open, one synthetic request to the retained
-Chapter 20 API returned HTTP 200 through Linux provider
+Chapter 25 API returned HTTP 200 through Linux provider
 `d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f`.
 The homepage's observed answer count changed 0→1 without reload in 1,022 ms.
 The phone scenario sent no second job. Production screenshots were inspected.

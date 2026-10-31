@@ -106,7 +106,7 @@ explicitly performs head-only decode without attention/MoE, while
 [24's Makefile](https://github.com/AtlantisPleb/ml-book/blob/88610bb1b233e297eced7d630ddc2647ce1e196b/chapters/24-chat-interface/Makefile)
 still links the temporary engine. The
 [aggregate runner](https://github.com/AtlantisPleb/ml-book/blob/88610bb1b233e297eced7d630ddc2647ce1e196b/run_all_tests.sh)
-ends at chapter 20. These observations bound what that harness establishes;
+ends at chapter 25. These observations bound what that harness establishes;
 they are not results from rerunning it.
 
 For Coax, use one library from the beginning, an enumerated example manifest,
@@ -123,15 +123,15 @@ host examples, and checks structure. These are strong starting practices for
 the Psionic book. Numeric results will additionally need tolerance-aware
 comparisons, with exact transcripts reserved for deliberately stable output.
 
-[Chapter 22](../../coax/book/ch22-organizing-programs.md) explains source
+[Chapter 10](../../coax/book/ch10-organizing-programs.md) explains source
 composition and physical authority ownership.
-[Chapter 23](../../coax/book/ch23-asynchronous-work.md) separates cancellation
-from memory lifetime. [Chapter 25](../../coax/book/ch25-verification-boundaries.md)
+[Chapter 15](../../coax/book/ch15-asynchronous-work.md) separates cancellation
+from memory lifetime. [Chapter 23](../../coax/book/ch23-verification-boundaries.md)
 separates finite checks, mutation sensitivity, native behavior, and actual
 authorization. These distinctions matter directly for tensors, GPU buffers,
 and model admission.
 
-The [GPU chapter](../../coax/book/ch14-gpu.md) documents a scalar Metal
+The [GPU chapter](../../coax/book/ch17-gpu.md) documents a scalar Metal
 profile, not a tensor compute backend. The
 [current inventory](../../coax/STATUS.md) keeps generics, dynamic arrays,
 general ownership, and several target features outside the implemented

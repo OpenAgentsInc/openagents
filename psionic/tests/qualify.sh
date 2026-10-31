@@ -44,4 +44,4 @@ for mode in debug release; do
         echo "native qualify gate $mode $native: 8 exit statuses and transcript match"
     done
 done
-echo "chapter 13 passes: oracle, Coax debug/release checks, zero-survivor mutation, native gate"
+echo "chapter 17 passes: oracle, Coax debug/release checks, zero-survivor mutation, native gate"

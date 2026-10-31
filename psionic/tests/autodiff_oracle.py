@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for psionic/examples/autodiff-mlp.coax (chapter 71b).
+"""Independent oracle for psionic/examples/autodiff-mlp.coax (chapter 106).
 
 Standard library only. It does not read the Coax sources. It rebuilds the
 example's output line for line from its own model of the network:
 - the tape: which nodes need a gradient, which values are saved, and where
   first-fit placement puts every value, staging buffer and gradient;
-- the forward pass in f32 with chapter 26a's operation order;
+- the forward pass in f32 with chapter 38's operation order;
 - the backward pass written out by hand for this network, accumulated in f64
-  in the order chapter 71b documents, with the squared ReLU's VJP in f32;
+  in the order chapter 106 documents, with the squared ReLU's VJP in f32;
 - the finite-difference check, gradient descent and the predictions.
 """
 import math

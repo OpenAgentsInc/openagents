@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 156's independent reference, written from the chapter's specification.
+"""Chapter 213's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/calibrate.coax. Sums use math.fsum
-(exactly rounded) where the library uses chapter 3's compensated accumulator.
+(exactly rounded) where the library uses chapter 4's compensated accumulator.
 The temperature is found by a different search: a binary search over the
 integer bit patterns of doubles in [0.05, 20] for the first slope whose log
 loss derivative is positive. Isotonic steps use a stack of exact fractions.

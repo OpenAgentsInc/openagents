@@ -4,7 +4,7 @@
 openagents.com, or points their agent at a docs page there, runs **one
 script**, and their computer joins the network as a **Pylon**. A Pylon is a
 machine that announces itself on Nostr and answers decision jobs (Psionic
-chapter 19). On stage, the audience sees Pylons appear and answer jobs. A
+chapter 24). On stage, the audience sees Pylons appear and answer jobs. A
 desktop app comes later; the script is today's path.
 
 This is the full spec. **Codex implements it.** Push results to main as each
@@ -13,7 +13,7 @@ item lands, and record them in §4.
 ---
 
 **Demo status — 2026-10-30 16:57 UTC:** the public Pylon page/join flow,
-Mac/Linux rehearsal and native Chapter 20 API are ready. Chapter 21 adds
+Mac/Linux rehearsal and native Chapter 25 API are ready. Chapter 26 adds
 real Linux work, independent Mac replay, signed receipts/checks and a public
 pool snapshot independently reproduced as 2 Pylons, 8 slots, 1 job and 1 pass.
 [Operator runbook](Oct30-demo-runbook.md); exact source/artifact evidence is
@@ -48,7 +48,7 @@ recorded above and in §4.
   beacon.
 - **Default relay:** `wss://relay.openagents.com`, an owner decision of
   2026-10-30 (`run.coax:76`, `PY_DEFAULT_LIST`).
-- **Self-check (chapter 159):** before publishing anything it runs its engine
+- **Self-check (chapter 216):** before publishing anything it runs its engine
   against a shipped reference set and records the identity it serves. Both
   `--references` and `--identity-state` are required:
   `psionic/fixtures/pylon/psionic-toy.selfcheck` or `elephant-1.selfcheck`.
@@ -134,7 +134,7 @@ Kinds 30200 (beacons) and 10002 are stored.
 
 ### Docs
 
-- Chapter 19: `psionic/book/ch019-a-pylon-answers-decisions.md`.
+- Chapter 24: `psionic/book/ch024-a-pylon-answers-decisions.md`.
 - The wire formats: `nips/openagents/NIP-PYLON.md` and `NIP-DEC.md`. NIP-DEC
   states that decision events are ephemeral (20000–29999), so relays store
   none. Buyers resend missed jobs, and the Pylon resends its kept answer for
@@ -204,7 +204,7 @@ and E. Then F. G about an hour before the talk.
   owner decision (Psionic PLAN, Part IV).
 - **Privacy.** A Pylon that serves a request reads it. NIP-44 hides jobs only
   from the relay and other observers.
-- **Routing is opt-in.** [Chapter 20](../psionic/book/ch020-the-api-fans-out.md)
+- **Routing is opt-in.** [Chapter 25](../psionic/book/ch025-the-api-fans-out.md)
   adds a native loopback `psionic-fleet` adapter for JSON `/v1/systemone`
   requests, exact-identity Pylons, checked answers and same-identity local
   fallback. Its public-relay rehearsal is recorded below. The production
@@ -337,7 +337,7 @@ and E. Then F. G about an hour before the talk.
   real page first, prints READY for expected verified slugs, waits for real
   per-provider answer counts, and saves a screenshot plus JSON for G.
 
-- **Chapter 20 public HTTP rehearsal passed, 2026-10-30.** The frozen
+- **Chapter 25 public HTTP rehearsal passed, 2026-10-30.** The frozen
   ASan/UBSan native fleet binary `6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54`
   completed four real HTTP cases: public-relay remote **200** from
   `oct30-mac-demo` (**1,202 ms**); same-identity local engine fallback **200**
@@ -375,7 +375,7 @@ and E. Then F. G about an hour before the talk.
   The display-only full model-identity follow-up is recorded separately,
   without repeating passing unchanged-page/performance checks.
 
-- **Chapter 20 final, 2026-10-30 15:43 UTC, `aeeaf41140`.**
+- **Chapter 25 final, 2026-10-30 15:43 UTC, `aeeaf41140`.**
   `psionic-fleet` now serves the opt-in loopback JSON `/v1/systemone` path:
   verified fresh exact-identity free Pylons, encrypted correlated attempts,
   complete asked-answer validation, bounded failover and same-identity local
@@ -410,7 +410,7 @@ and E. Then F. G about an hour before the talk.
   No overlapping manual site promotion was needed, and no unrelated
   Everglade visual change was approved.
 
-- **Chapter 21 complete, 2026-10-30 16:57 UTC.** Source schemas, memory-only
+- **Chapter 26 complete, 2026-10-30 16:57 UTC.** Source schemas, memory-only
   protobuf witnesses, native producer/checker, strict receipt/label readers,
   bounded pool reduction, public bundle codecs, CLI and runnable book are
   on main through `ab182d2bb1` (pool source `0123d447f4`). All 11 authority
@@ -439,7 +439,7 @@ and E. Then F. G about an hour before the talk.
   The extra loopback adapter remains on port 8799 with its run metadata in
   `/tmp/oct30-mesh-public/run.json`. Existing 8798 and both retained Pylons
   were preserved. Builds remain Python-free; official protobuf is an optional
-  independent test oracle. See the [Chapter 21 book](../psionic/book/ch021-check-the-mesh.md),
+  independent test oracle. See the [Chapter 26 book](../psionic/book/ch026-check-the-mesh.md),
   [native record](verification/psionic-mesh-native-2026-10-30.md) and
   [pool policy record](verification/psionic-mesh-pool-policy-2026-10-30.md).
   Independent integration cases and retained public bundles are in the

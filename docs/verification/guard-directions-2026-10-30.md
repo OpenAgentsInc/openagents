@@ -126,7 +126,7 @@ candidate, evaluation, preflight, capture, example and cache code.
 
 ## What comes next
 
-[Chapter 21e](../../psionic/book/ch021e-directions-on-request.md) composes semantic
+[Chapter 31](../../psionic/book/ch031-directions-on-request.md) composes semantic
 admission with existing Gd lifecycle tickets using synthetic responses. A real
 page integration still needs an explicit Directions interaction and a
 current-frame observation. Every new intent, actor generation, objective,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 64: exact CPU cache policy, bounded file misses and expert parity.
+# Chapter 96: exact CPU cache policy, bounded file misses and expert parity.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax};cc=${COAX_CC:-cc}

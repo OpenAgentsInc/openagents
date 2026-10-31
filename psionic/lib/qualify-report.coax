@@ -1,4 +1,4 @@
-// Chapter 13: plain reports. Printing only; every decision is made in qualify.coax.
+// Chapter 17: plain reports. Printing only; every decision is made in qualify.coax.
 #import "Basic";
 #load "qualify.coax";
 

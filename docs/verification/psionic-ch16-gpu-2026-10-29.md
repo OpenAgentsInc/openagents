@@ -1,4 +1,4 @@
-# Psionic chapter 16: `/v1/systemone` on the RTX 4080, 2026-10-29
+# Psionic chapter 20: `/v1/systemone` on the RTX 4080, 2026-10-29
 
 Verified on `coderos-4080` (Linux x86-64, Intel Core i7-14700K, NVIDIA
 GeForce RTX 4080 16 GB, CUDA 13.2 NVRTC) with coax0 built from this tree.
@@ -15,7 +15,7 @@ and the server refused placement with "the plan refused 128 tokens in
   places the authenticated session's weights by the Coax plan for the
   largest decision. `eg_decide` stages inputs, issues every operation and
   returns the logits, asking a stop callback at each layer start.
-  `psionic/tests/elephant_device.c` (chapter 30) now opens through it and
+  `psionic/tests/elephant_device.c` (chapter 44) now opens through it and
   issues operations with `eg_issue`. Its profile, replay and qualify modes
   are unchanged.
 - `psionic/lib/device/plan.coax` (`#authority`): `dp_replan` schedules a
@@ -23,12 +23,12 @@ and the server refused placement with "the plan refused 128 tokens in
   enough) and `dp_stop_point` marks the 33 layer and readout starts. 2,269
   mutants, 0 survivors.
 - `psionic/lib/serve-run.coax`: `sv_stage` (prepare and fit, the
-  `sv_answers` refusals) and `sv_read` (chapter 10's `ps_answer` readout
+  `sv_answers` refusals) and `sv_read` (chapter 14's `ps_answer` readout
   over device logits), checked against `qr_read`.
 - `psionic/platform/serve-host.c`: `--elephant-gpu DIR`. The decision runs in
   process, because a CUDA context does not survive fork. Deadline and
   disconnect are checked between layers, and a stopped decision publishes
-  nothing. Also the chapter 16b protobuf hooks (`sp_bytes`, `sp_answer`;
+  nothing. Also the chapter 21 protobuf hooks (`sp_bytes`, `sp_answer`;
   refusals stay JSON) for every engine. `serve-build.sh OUT MODE NATIVE gpu`
   builds it, and the unit is now `serve-proto.coax`.
 
@@ -39,7 +39,7 @@ placement 1.34 s (13.85 GiB resident, 0.94 GiB pinned for streaming, budget
 14.19 GiB), ready in 76 s. A second start, with CPU checks running at the
 same time, took 123 s (authentication 121 s).
 
-Warm, chapter 10's sample (`psionic/fixtures/models/serve/elephant-request.json`),
+Warm, chapter 14's sample (`psionic/fixtures/models/serve/elephant-request.json`),
 one loopback connection per request, `curl` `time_total`:
 
 | Run | JSON (ms) |
@@ -54,7 +54,7 @@ built and response parsed with the official runtime through
 decoded to the same values.
 
 Every answer was `yes`, p_yes 0.757202773, p_no 0.242797227, which is chapter
-30's device result. The difference from chapter 10's recorded CPU result
+44's device result. The difference from chapter 14's recorded CPU result
 (0.757196285) is 6.5e-6, within the frozen 0.0005. Elephant was not run on the
 CPU.
 
@@ -82,11 +82,11 @@ fixed before the numbers above were taken.
 
 ## Not done
 
-- The chapter 30 harness was not rerun end to end after the refactor. The
+- The chapter 44 harness was not rerun end to end after the refactor. The
   served path uses the same engine and plan and gives the same p_yes.
 - Multi-question requests run one device decision per question in order,
   with no batching. Only the sample request was timed.
-- The cold start is the CPU authentication, which the chapter 15 identity
+- The cold start is the CPU authentication, which the chapter 19 identity
   cache will shorten.
 - The server checks a decision between layers, so cancelling takes up to one
   layer, about 5 ms.
@@ -101,7 +101,7 @@ add logic.
 
 Served with `--capacity 512` on the same card (otherwise idle): placed
 13.29 GiB resident and 1.50 GiB pinned for streaming (plan budget 13.96 GiB),
-ready after 71.5 s of authentication. Chapter 10's sample answered p_yes
+ready after 71.5 s of authentication. Chapter 14's sample answered p_yes
 0.757202773, identical to the 128-token placement, in 147, 149 and 175 ms
 on the server. A five-question request of 200 to 300 tokens per question
 (the Mac app's Lab) answered in 1.70 to 1.84 s. Long prompts have not been

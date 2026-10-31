@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 161's independent reference, written from the chapter's specification.
+"""Chapter 218's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/onnx.coax and needs only the standard
 library. It decodes the fixtures' protobuf itself, applies the reader's rules

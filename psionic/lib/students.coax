@@ -1,10 +1,10 @@
-// Chapter 174: can gradient descent learn exact execution? A student is one
+// Chapter 233: can gradient descent learn exact execution? A student is one
 // affine model per instruction code and per token, which writes a row's x
 // and y from features of the machine state; ip and code come from the
 // program at the student's own ip. It is trained by full-batch gradient
-// descent on the rows of traces that chapter 186 admitted, and judged only by
-// rolling it out: each step's state is chapter 173's fold of the student's
-// own earlier rows, and the finished run is a claim that chapter 173 replays,
+// descent on the rows of traces that chapter 245 admitted, and judged only by
+// rolling it out: each step's state is chapter 232's fold of the student's
+// own earlier rows, and the finished run is a claim that chapter 232 replays,
 // naming the first token that differs from the machine's.
 // Profile students-v1: features [1, arg, top, second, the local named by
 // arg, depth, outputs, ip]. linear divides each by 16; gated adds each again
@@ -48,7 +48,7 @@ es_t_steps :: (family:EsFamily,n:int)->int {
     p:[32]TmOp;k:=es_program(family,n,p[..]);trace:[4096]int;outs:[64]int;
     return tm_run(p[0..<k],TM_STEPS_MAX,trace[..],outs[..],false).steps;
 }
-// The rules of chapter 165's machine for every code but mul, load and store,
+// The rules of chapter 224's machine for every code but mul, load and store,
 // written by hand as gated weights: what gradient descent would have to find.
 es_t_rules :: ()->[ES_CODES*2*16]f64 {
     w:[ES_CODES*2*16]f64;
@@ -207,7 +207,7 @@ es_t_examples :: ()->[6]EsExample {
     b[1]=3;#assert es_token(es_predict(EsKind.table,t[..],0,0,b))==3;
 }
 #test "the gated kind learns a branch the linear kind cannot" {
-    // brif's y, from rows of chapter 165's rule.
+    // brif's y, from rows of chapter 224's rule.
     g:[8]EsExample;
     for i:0..<8 {
         top:=i%3;ip:=4+i;
@@ -386,7 +386,7 @@ es_token :: (p:f64)->int {
 
 // book:begin examples
 // Appends one example per row of an admitted trace at ex[n..], each with
-// the state chapter 173's fold rebuilds from the rows before it. Returns the
+// the state chapter 232's fold rebuilds from the rows before it. Returns the
 // new count, or -1.
 es_examples :: (program:[]TmOp,rows:[]int,steps:int,ex:[]EsExample,n:int)->int {
     if n<0 || steps<0 || rows.count<steps*TM_TOKENS || n+steps>ex.count {return -1;}
@@ -457,7 +457,7 @@ es_train :: (kind:EsKind,ex:[]EsExample,w:[]f64,epochs:int)->EsFit {
 // book:begin rollout
 // The student runs the program alone for up to budget steps. Each row's ip
 // and code come from the program at the ip the student's own rows reached;
-// x and y are its rounded predictions. The state is chapter 173's fold of
+// x and y are its rounded predictions. The state is chapter 232's fold of
 // the rows written so far, so a row the machine could not have written ends
 // the run as broken.
 es_rollout :: (kind:EsKind,w:[]f64,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->EsRun {
@@ -482,7 +482,7 @@ es_rollout :: (kind:EsKind,w:[]f64,program:[]TmOp,budget:int,rows:[]int,outs:[]i
 
 // book:begin score
 // Rolls the student out for as many steps as the machine takes, then
-// claims its rows as chapter 173's claimants do and has chapter 173 replay
+// claims its rows as chapter 232's claimants do and has chapter 232 replay
 // the claim: exact, or failed at the first token that differs.
 es_score :: (kind:EsKind,w:[]f64,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->EsScore {
     s:EsScore;

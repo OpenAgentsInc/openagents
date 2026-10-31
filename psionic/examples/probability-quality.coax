@@ -1,4 +1,4 @@
-// Chapter 12: the bundle's calibration, published answers and decision quality.
+// Chapter 16: the bundle's calibration, published answers and decision quality.
 #import "Basic";
 #load "../lib/decision-calibration.coax";
 #load "../lib/decision-json.coax";
@@ -18,7 +18,7 @@ main :: () {
     #assert qr_read(QrKind.choice,temperature,logits[..],slots[..],p[0..<3],work[..],false).status==QrStatus.ok;
     j:=pj_answer(QrKind.choice,PJ_SYSTEM_ONE,p[0..<3],colors[..],json[..],false);
     print("%\n",cast(string)json[0..<j.written]);
-    // Chapter 10's original Elephant result for "Is the water wet?".
+    // Chapter 14's original Elephant result for "Is the water wet?".
     p[3]=0.757196285;p[4]=0.242803715;
     answers:=[2]PtOption.[PtOption.{name="yes"},PtOption.{name="no"}];
     j=pj_answer(QrKind.choice,PJ_DECISION_INDEX,p[3..<5],answers[..],json[..],false);

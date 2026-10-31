@@ -1,5 +1,5 @@
-// Chapter 188: the offset RMS norm as a family of coax cuda kernels with
-// tunable knobs, and chapter 30's two norm kernels behind the same contract.
+// Chapter 247: the offset RMS norm as a family of coax cuda kernels with
+// tunable knobs, and chapter 44's two norm kernels behind the same contract.
 //
 // Every implementation the search compares (these two and each agent
 // candidate, with its own prefix P) exports the same four kernels:
@@ -75,7 +75,7 @@ nt_pass1 :: (item:int,rows:int,width:int,knob:int,epsilon:f32,x:[]f32,scale:[]f3
 // book:end passes
 
 // book:begin baseline
-// Chapter 30's kernels: 16 items per row, each adding a contiguous sixteenth
+// Chapter 44's kernels: 16 items per row, each adding a contiguous sixteenth
 // of width/16 columns, then one item per output. Its declared shapes have a
 // width that is a multiple of 16.
 n30_knobs :: (item:int,knobs:[]int) #export_c {if item==0 {knobs[0]=0;knobs[1]=-1;}}
@@ -182,7 +182,7 @@ nt_t_fill :: (rows:int,width:int,x:[]f32,scale:[]f32) {
     nt_pass1(1,rows,width,140,0,x[..],scale[..],work[..],out[..]);
     #assert out[4]==f32(f64(x[4])/sqrt(16.0f64/5)*(1+f64(scale[4]))) && out[3]==-99 && out[9]==-99;
 }
-#test "chapter 30's kernels behind the contract, exact only when 16 divides the width" {
+#test "chapter 44's kernels behind the contract, exact only when 16 divides the width" {
     rows:=2;width:=32;x:[64]f32;scale:[32]f32;nt_t_fill(rows,width,x[..],scale[..]);
     want:[64]f32;nt_t_norm(rows,width,1e-6,x[..],scale[..],want[..]);
     out:[64]f32;work:[32]f64;

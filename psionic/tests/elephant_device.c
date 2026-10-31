@@ -1,4 +1,4 @@
-/* Chapter 30: the authenticated original Elephant decision on a CUDA device.
+/* Chapter 44: the authenticated original Elephant decision on a CUDA device.
    The CPU session authenticates and binds the original files; the Coax device
    plan (psionic/lib/device/plan.coax) decides residency, streaming and every
    launch; psionic/platform/elephant-gpu.c performs the effects, and this
@@ -151,7 +151,7 @@ int main(int argc, char **argv) {
     printf("device: %s, compute %d.%d, %.2f of %.2f GiB free\n", info.name, info.major, info.minor, info.free_bytes / 1073741824.0, info.total_bytes / 1073741824.0);
     printf("compiled %d generated kernels with NVRTC in %.3f s\n", DP_KERNELS, e->compile_seconds);
 
-    /* The CPU session authenticates and binds the original files (chapter 10). */
+    /* The CPU session authenticates and binds the original files (chapter 14). */
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = {NULL, 0}, table = map_file(argv[2]);
     coax_t_PaFile file = {0};
     char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", argv[1]);
@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
        PSIONIC_DEVICE_BUDGET_MIB lowers the budget to measure smaller headroom. */
     const char *budget_env = getenv("PSIONIC_DEVICE_BUDGET_MIB");
     int64_t budget = budget_env && atoll(budget_env) > 0 ? atoll(budget_env) * 1048576LL : 0;
-    er = eg_place(e, session.model, 256, budget); /* room for a batch of five suffixes (chapter 25) */
+    er = eg_place(e, session.model, 256, budget); /* room for a batch of five suffixes (chapter 36) */
     if (er) { fprintf(stderr, "placement status %d (budget %lld): %s\n", er, (long long)e->budget, eg_log()); return 1; }
     if (eg_prepare(e, tokens, T, P)) { fprintf(stderr, "plan refused the decision\n"); return 1; }
     coax_t_DpPlan plan = e->plan;
@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
             printf("  projection %6lld x %-5lld %3d launches %8.2f ms  %.2f TFLOP/s\n", (long long)shape_rows[k], (long long)shape_cols[k], shape_n[k],
                    shape_ms[k] * 1e3, 2.0 * shape_rows[k] * shape_cols[k] * T * shape_n[k] / shape_ms[k] / 1e12);
     }
-    /* A forked decision (chapter 8): the prefix pass and then the suffix from
+    /* A forked decision (chapter 12): the prefix pass and then the suffix from
        the kept state, then the suffix alone as a later question with the same
        prefix would run it. Both must give the whole decision's answer within
        0.0005; a suffix under 16 tokens projects with the work-item kernels,
@@ -327,7 +327,7 @@ int main(int argc, char **argv) {
                "%lld of %d logits differ from the whole decision (largest %.3g); p_yes %.9g %s\n",
                (long long)P, (long long)(T - P), fork_ms[0], fork_ms[1], (long long)e->prefix_passes, (long long)differ, 2 * DP_VOCAB, worst, fp[0], same ? "ok" : "FAIL");
         if (!same || e->prefix_passes != 1) return 1;
-        /* Chapter 25: the Lab request whole, forked and batched. */
+        /* Chapter 36: the Lab request whole, forked and batched. */
         lab_table = table;
         lab_prep = prep;
         lab_opts[0] = opts[0];

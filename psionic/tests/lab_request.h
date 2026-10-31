@@ -1,6 +1,6 @@
-/* Chapter 25: the Lab-style request (five typed questions about one
+/* Chapter 36: the Lab-style request (five typed questions about one
    message, sharing its prefix block) on a placed CUDA engine, four ways:
-   whole decisions, sequential forks (chapter 18), one batched suffix pass
+   whole decisions, sequential forks (chapter 23), one batched suffix pass
    (dp_plan_batch), and the batched pass again with the prefix kept from the
    previous request. Every round but the last starts without a kept prefix.
    The batched logits must equal the sequential forks' bit for bit; the

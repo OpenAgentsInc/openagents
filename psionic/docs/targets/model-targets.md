@@ -5,7 +5,7 @@ in Coax early. Elephant is the first complete real-weight target; Mammoth
 follows on the same engine. Their inference delivery does not wait for the
 book's autodiff, language-model training, or nanochat pipeline chapters.
 
-Full model execution remains planned. Chapters 1–5 implement the bounded scalar
+Full model execution remains planned. Chapters 1–9 implement the bounded scalar
 trainer, storage/numerics, original-weight artifact admission and the
 `qwen35-text-v1` tokenizer/request profile. [The project queue](https://openagents.com/projects/psionic)
 and [roadmap](../roadmap.md) define the actual dependencies and acceptance.
@@ -119,8 +119,8 @@ environment, never this Mac: fetch the pinned files, verify every size and
 digest against the manifest before loading, run the pinned upstream runtime
 in eager CPU f32, and record tokens, chosen intermediate layer tensors,
 recurrent state, logits, probabilities and the final answer with the build
-and library versions. Chapters [10](../../book/ch010-execute-elephant.md) and
-[11](../../book/ch011-execute-mammoth.md) retain such captures in
+and library versions. Chapters [14](../../book/ch014-execute-elephant.md) and
+[15](../../book/ch015-execute-mammoth.md) retain such captures in
 `fixtures/models/elephant/` and `fixtures/models/mammoth/`.
 
 ## What the first implementation must do
@@ -208,9 +208,9 @@ where applicable (`coax/lib/systemone/` and root `proto/`). Version any public
 contract extension first. Hosted serving and wallet/provider policy remain
 separate consumer work; calling Baseten is not native Psionic execution.
 
-## Chapter 5 implementation scope
+## Chapter 9 implementation scope
 
-The [text chapter](../../book/ch005-text-becomes-a-model-request.md)
+The [text chapter](../../book/ch009-text-becomes-a-model-request.md)
 now implements frozen tagged rendering and original tokenizer semantics under
 `qwen35-text-v1` budgets, using Unicode 17.0.0 and integer structured entries.
 Both pinned tokenizer originals had SHA-256

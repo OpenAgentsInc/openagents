@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 70's independent reference, written from the chapter's specification.
+"""Chapter 103's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/tabular.coax. Sums use math.fsum (exactly
-rounded) where the library uses chapter 3's compensated accumulator, and
+rounded) where the library uses chapter 4's compensated accumulator, and
 log loss uses a separately written softplus. Integer draws, the split, the
 initialization and the shuffle are part of the specification and must match
 exactly. `--header` writes the C expectations the native harness compares.

@@ -193,16 +193,16 @@ data means. `coax0` doesn't enforce that rule yet.
 `#run` looks the same, but Coax's is sealed. Jai's `#run` can do anything a
 program can, including printing and reading files. Coax's can compute, but
 it can't print or touch the host, and it runs within a step budget. Chapter
-20 shows the real error you get from a `print` inside `#run` (E0404). The
+27 shows the real error you get from a `print` inside `#run` (E0404). The
 point is that the same source always produces the same constants, and that
 an editor can evaluate your compile-time code safely while you type. File
 and process access at build time is planned through declared capabilities
-(Chapter 16).
+(Chapter 19).
 
 Coax also adds something Jai doesn't have built in: checks. `#test` and
 `#forall` blocks live next to the code, run in the compile-time evaluator,
 and never end up in the program; `coax mutate` then checks the checks.
-Chapter 10 covers them.
+Chapter 11 covers them.
 
 Generic procedures already bind `$T` and fixed-array lengths `$N`, with
 bounded checked instantiation and instance-count reporting. Fixed-storage
@@ -223,10 +223,10 @@ Jai with an explicit rule changed:
 | Macro backticks reach into the caller | The caller variables a macro can touch are listed in its signature | Reading a call should show what it can change |
 | `using` and `#as` | The same split: `using` for naming, `#as` for a declared conversion | Kept as Jai has it |
 | `context` and `push_context` | The same idea, with allocation as a tracked effect | Allocation should be visible to the checker |
-| Threads and mutexes | Jobs with declared read and write effects, scheduled from a frame graph (Chapter 12) | Parallelism with a contract |
-| No published float model | `strict` and `deterministic`, checked through every call (Chapter 13) | Bit-identical simulation and replay |
+| Threads and mutexes | Jobs with declared read and write effects, scheduled from a frame graph (Chapter 14) | Parallelism with a contract |
+| No published float model | `strict` and `deterministic`, checked through every call (Chapter 16) | Bit-identical simulation and replay |
 | Hash tables iterate in table order | Insertion order by default | Replays and determinism |
-| No shader language | Shared GPU layouts; the shader backend is decided by experiment (Chapter 14) | CPU and GPU struct mismatches are a real bug class |
+| No shader language | Shared GPU layouts; the shader backend is decided by experiment (Chapter 17) | CPU and GPU struct mismatches are a real bug class |
 | Metaprogram plugins with compiler messages | The same idea, with typed messages and declared capabilities | Builds stay reproducible |
 | Its own x64 backend and LLVM | C output first; native backends only when measured to be better | Ship through Xcode and Emscripten from the start |
 

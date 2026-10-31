@@ -1,6 +1,6 @@
 # NIP-01 relay messages: `coax/lib/nostr/message.coax` (2026-10-30)
 
-Board: #6015 `nostr-nip01-messages`. Psionic chapter 19 prerequisite 4a.
+Board: #6015 `nostr-nip01-messages`. Psionic chapter 24 prerequisite 4.
 
 ## What it is
 

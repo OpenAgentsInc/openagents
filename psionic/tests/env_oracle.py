@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 181's independent reference, written from the chapter's specification.
+"""Chapter 240's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/env.coax. Tasks, solutions, checkers,
 admission, the simulated agent, rollouts and their replay digests are written
-again here; digests use hashlib over chapter 178's encoding (a length-prefixed
+again here; digests use hashlib over chapter 237's encoding (a length-prefixed
 tag, little-endian u64 fields). `--tests` prints the values the Coax checks pin.
 """
 import hashlib

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 63: owned offline bit/FFN checks and retained original-component replay.
+# Chapter 95: owned offline bit/FFN checks and retained original-component replay.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

@@ -3,7 +3,7 @@
 ## Coax
 
 - [Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md): the language design and implementation
-  plan, including the stages in Chapter 21.
+  plan, including the stages in Chapter 28.
 - [Bootstrap grammar](https://github.com/OpenAgentsInc/openagents/tree/main/coax/grammar.ebnf): the subset the current compiler accepts.
 - [Compiler guide](https://github.com/OpenAgentsInc/openagents/tree/main/coax/README.md): builds, commands, tests and current limits.
 - [Bootstrap seeds](https://github.com/OpenAgentsInc/openagents/tree/main/coax/bootstrap/README.md): how the generated lexer and
@@ -11,7 +11,7 @@
 - [Descriptor importer contract](https://github.com/OpenAgentsInc/openagents/tree/main/coax/proto.md): what `#import_proto` and
   `coax proto` accept and generate.
 - [The compiler's lexer](https://github.com/OpenAgentsInc/openagents/tree/main/coax/lib/compiler/lexer.coax) and
-  [parser](https://github.com/OpenAgentsInc/openagents/tree/main/coax/lib/compiler/parser.coax): the Coax modules Chapter 20 walks
+  [parser](https://github.com/OpenAgentsInc/openagents/tree/main/coax/lib/compiler/parser.coax): the Coax modules Chapter 27 walks
   through.
 
 ## Coax in OpenAgents

@@ -1,4 +1,4 @@
-// Chapter 20 wire projection. JSON and request admission are existing checked
+// Chapter 25 wire projection. JSON and request admission are existing checked
 // units; this file adds the buyer's correlation, answer shape and identity
 // checks. All strings borrow immutable request/result buffers.
 #load "../pylon/host.coax";

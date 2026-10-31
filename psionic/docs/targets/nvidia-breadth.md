@@ -3,7 +3,7 @@
 Read-only source survey, 2026-10-28. The supplied ChatGPT Pro recommendations
 are research input. This document adopts their useful capability progression
 while preserving the owner's earlier priority: **native Elephant, then
-Mammoth, before the broader model program**. Chapters 1–5 currently
+Mammoth, before the broader model program**. Chapters 1–9 currently
 run scalar learning, bounded storage, CPU row/matrix numerics and original
 BF16/F32 artifact admission and bounded text requests in Psionic. All targets here are proposals; no NVIDIA implementation or
 original-training reproduction is claimed.
@@ -12,7 +12,7 @@ The [proposed contents](../../book/PLAN.md) gives each study a place.
 The [roadmap](../roadmap.md) distinguishes teaching order from delivery priority.
 No new project issues are published by this update.
 
-Update, 2026-10-31: [chapter 112](../../book/ch112-imitation-before-robotics-scale.md)
+Update, 2026-10-31: [chapter 167](../../book/ch167-imitation-before-robotics-scale.md)
 now delivers the owned imitation-learning exercise and a small original
 SingleArm data slice. It does not implement a pretrained NVIDIA policy; the
 GR00T/Cosmos model studies below retain their separate prerequisites and gates.

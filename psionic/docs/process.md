@@ -1,6 +1,6 @@
 # Development process
 
-Status: chapters 1–5 implement this workflow through [psionic/check.sh](../check.sh).
+Status: chapters 1–9 implement this workflow through [psionic/check.sh](../check.sh).
 The runner checks the library units, six examples, native boundaries, and
 source-linked book listings. Later target and performance work below remains
 proposed until its workload and evidence exist.
@@ -126,7 +126,7 @@ compared with the independent Transformers capture. The checker
 authenticates the safetensors header and all 32 byte ranges it reads (849
 MiB) against pins, so it needs the original directory but no full-file hash.
 Whole decisions run on the GPU path or are compared against recorded
-references such as the [chapter 10 record](../../docs/verification/psionic-ch10-2026-10-29.md).
+references such as the [chapter 14 record](../../docs/verification/psionic-ch10-2026-10-29.md).
 Re-recording slices (`--generate`) hashes the whole file first and is a
 contract change: review it like a tolerance change.
 
@@ -187,7 +187,7 @@ Before a chapter is called complete, list what ran and what did not. Put
 required owner taps, credentials, paid compute, device checks, or sign-offs
 in the workspace's `NEEDS_OWNER.md` with a concrete action and acceptance
 condition. Work that is entirely local and credential-free should continue
-without an owner dependency. Chapters 1–5 need no owner action.
+without an owner dependency. Chapters 1–9 need no owner action.
 
 Integrate with the app, voice engine, or a future provider only through a
 real consumer's explicit boundary. Introduce cross-surface contracts in root

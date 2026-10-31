@@ -1,6 +1,6 @@
 # Memory-only private witness input
 
-`psionic/platform/mesh-input.c` implements the chapter 21 checker's inherited
+`psionic/platform/mesh-input.c` implements the chapter 26 checker's inherited
 input effects. It has no main and no Nostr/protobuf/decision logic. There is
 no witness file or path argument, file output, diagnostic output or key API.
 The Coax caller observes the input kind, admits its private input profile,
@@ -49,4 +49,4 @@ Source identities, SHA256:
 The Linux warning gate initially exposed compressed statement formatting;
 that was corrected in source, then both final-source platform gates passed.
 No passing gate was repeated for an unrelated main commit. The live
-chapter 20 adapter and Pylons were untouched.
+chapter 25 adapter and Pylons were untouched.

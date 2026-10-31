@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 26: the Coax projection kernels on a CUDA device, against the same
+# Chapter 37: the Coax projection kernels on a CUDA device, against the same
 # kernels compiled to C and the CPU reference profile. Without a CUDA driver
 # or NVRTC the harness prints SKIP and exits 0. Usage:
 #   psionic/tests/run_device_project.sh [quick]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 32: group kernels (threadgroup memory and barriers) on the GPU
+# Chapter 48: group kernels (threadgroup memory and barriers) on the GPU
 # against the same Coax on the CPU, bit for bit. On macOS the Apple GPU runs
 # coax metal-compute's output; elsewhere a CUDA device runs coax cuda's.
 # Prints SKIP without a device. Usage: psionic/tests/run_group_kernels.sh

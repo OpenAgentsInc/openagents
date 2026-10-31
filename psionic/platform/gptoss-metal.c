@@ -63,7 +63,7 @@ PcStatus pg_open(coax_t_GProfile profile,coax_v_t_GFile files,const char *source
     m=pm_alloc((size_t)s->plan.upload.e[0],&s->buffers[0]);if(m){code=pg_status(s,m);goto failed;}
     for(int64_t i=0;i<s->param_count;i++){coax_t_GDParam p=s->params[i];memcpy(pg_bytes(s,0)+p.device,files.data[p.file].data.data+p.begin,(size_t)p.bytes);}
     for(int i=0;i<gd_buffer_count();i++){m=pm_alloc(pg_slot_bytes(s,i),&s->buffers[16+i]);if(m){code=pg_status(s,m);goto failed;}}
-    /* The rotary table is built by Coax on the host (chapter 43's YaRN, binary64 trigonometry) and never recomputed on the GPU. */
+    /* The rotary table is built by Coax on the host (chapter 62's YaRN, binary64 trigonometry) and never recomputed on the GPU. */
     *why=gd_rope(s->shape.capacity,(coax_v_f32){(float*)pg_bytes(s,41),s->plan.counts.e[25]});if(why->status)goto refused;
     code=pg_reset(s);if(code)goto failed;why->status=COAX_GStatus_ok;*out=s;return PC_OK;
 refused:pg_close(s);return PC_OK;

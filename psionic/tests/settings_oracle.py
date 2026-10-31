@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 182's independent reference, written from the chapter's specification.
+"""Chapter 241's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/settings.coax. The simulator, the rule, the
 candidates and the coordinate search are written again here; the floors and
-the decision gate come from chapters 179 and 180's oracles, which are
+the decision gate come from chapters 238 and 239's oracles, which are
 themselves independent of the libraries. `--tests` prints the values the Coax
 checks pin; `--header` writes the C expectations the native harness compares.
 """

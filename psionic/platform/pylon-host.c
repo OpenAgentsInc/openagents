@@ -1,4 +1,4 @@
-/* The chapter-19 Pylon's C host: effects only. It runs the Coax main
+/* The chapter-24 Pylon's C host: effects only. It runs the Coax main
    (psionic/lib/pylon/run.coax, compiled with -Dmain=coax_pylon_main) on a
    thread with a 512 MiB stack, hands the arguments over one byte at a time,
    reads the wall clock, and reports a stop request: SIGTERM, SIGINT, or a
@@ -39,7 +39,7 @@ int64_t pyh_arg_byte(int64_t i, int64_t k) {
   if (i < 0 || i >= g_argc || k < 0 || (size_t)k >= strlen(g_argv[i])) return -1;
   return (unsigned char)g_argv[i][k];
 }
-/* The exit status the Coax main reports (chapter 159: the doctor's verdict). */
+/* The exit status the Coax main reports (chapter 216: the doctor's verdict). */
 int64_t pyh_status(int64_t code) { g_status = (int)(code & 255); return 0; }
 int64_t pyh_now_s(void) { return (int64_t)time(NULL); }
 /* Sleeps ms (at most 10 s), for the reconnect backoff. */
@@ -61,7 +61,7 @@ int64_t pyh_stop(void) {
   return g_stop_used > 0 && access(g_stop_path, F_OK) == 0 ? 1 : 0;
 }
 
-/* Chapter 159: one named file, read whole (at most 1 MiB) or written whole
+/* Chapter 216: one named file, read whole (at most 1 MiB) or written whole
    through a temporary file and a rename. The Coax side names the path a byte
    at a time, as it does the stop file. */
 static char g_file_path[1024];

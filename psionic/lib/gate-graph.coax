@@ -9,10 +9,10 @@ GgStatus :: enum u8 {ok;shape;operand;type;range;layers;width;units;terms;capaci
 // `node` names the refusing node, or the layer for a units refusal.
 GgResult :: struct {status:GgStatus;node:int;}
 // The plan also records each node's layer, slot and the layer that clears its
-// slot (0: never), so chapter 169's interpreter can execute the schedule itself.
+// slot (0: never), so chapter 228's interpreter can execute the schedule itself.
 GgPlan :: struct {status:GgStatus;node:int;layers:int;width:int;units:[32]int;weights:int;values:int;inputs:int;outputs:int;out:[16]RaForm;
     nodes:int;layer:[128]int;slot:[128]int;clear:[128]int;}
-// Deliberate compiler bugs for chapter 169's harness; production code passes none.
+// Deliberate compiler bugs for chapter 228's harness; production code passes none.
 GgFault :: enum u8 {none;early_reuse;same_layer;no_clear;clear_sign;}
 
 GG_NODES_MAX :: 128;
@@ -559,7 +559,7 @@ gg_slots :: (f:RaForm,slot:[]int)->RaForm {r:=f;for t:0..<f.count {r.slots[t]=sl
 
 // book:begin run
 // The compiled block: slot 0 is one, inputs fill slots 1 onward, every other
-// slot starts at zero; each layer is chapter 167's gated layer; outputs are
+// slot starts at zero; each layer is chapter 226's gated layer; outputs are
 // read as linear forms over the final residual.
 gg_run :: (plan:GgPlan,weights:[]f64,inputs:[]int,outputs:[]f64,single:bool,overlap:bool)->GgStatus #export_c {
     if plan.status!=GgStatus.ok {return plan.status;}

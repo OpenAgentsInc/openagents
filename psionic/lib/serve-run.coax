@@ -1,9 +1,9 @@
-// Chapter 16: run every question of an admitted request through chapter 10.
+// Chapter 20: run every question of an admitted request through chapter 14.
 // This file only sequences checked calls: admission, fit and refusal codes
 // live in serve-engine.coax and the model in decision-prepare/answer.coax,
 // all #authority. A complete toy decision exceeds the evaluator's budget, so
 // the success path is checked natively by psionic/tests/serve.c against
-// direct calls to the chapter-10 adapters.
+// direct calls to the chapter-14 adapters.
 #load "serve-original.coax";
 #test "refusals come before any model work" {
     toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);work:SvWork;p:[16320]f64;
@@ -28,7 +28,7 @@ sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f
     return SvCode.none;
 }
 // book:end answers
-// Chapter 16a: the same questions answered with logits from a device. The
+// Chapter 20, on a device: the same questions answered with logits from a device. The
 // host runs the device plan between sv_stage and sv_read, one question at a
 // time; admission and every refusal are the ones sv_answers gives.
 SvStaged :: struct {code:SvCode;prepared:PrResult;}
@@ -39,7 +39,7 @@ sv_stage :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,i:int)-
     prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
     return SvStaged.{code=sv_fits(engine,prepared,work.work.count),prepared=prepared};
 }
-// The readout of chapter 10 (ps_answer) over the last token's logits.
+// The readout of chapter 14 (ps_answer) over the last token's logits.
 sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrResult,logits:[]f32,p:[]f64,prob:[]f64)->SvCode #export_c {
     if !engine.sealed || p.count<SV_ANSWER_POOL || i<0 || i>=request.questions {return SvCode.internal;}
     q:=pools.questions[i];tag:=cast(u8)prepared.kind;
@@ -50,7 +50,7 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
     if r.status!=QrStatus.ok {return SvCode.internal;}
     return SvCode.none;
 }
-#test "a device answer is chapter 10's readout of the device logits" {
+#test "a device answer is chapter 14's readout of the device logits" {
     toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);work:SvWork;p:[16320]f64;prob:[4]f64;
     r:=sv_decode("{\"model\":\"psionic-toy\",\"state\":\"go\",\"questions\":{\"a\":{\"type\":\"choice\",\"instructions\":\"x\",\"criteria\":{\"yes\":null,\"no\":null}}}}",pools);
     #assert r.code==SvCode.none && r.questions==1;
@@ -74,7 +74,7 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
 // Part III operations are composed here to stay within Coax's 64-unit source budget.
 #authority;
 
-// Chapters 14/17: clocks are host observations; statistics and private records are Coax.
+// Chapters 18/22: clocks are host observations; statistics and private records are Coax.
 LS_US_DAY :: 86400000000;
 // book:begin metrics
 LsPhase :: struct {prepare:int;prefix:int;suffix:int;model:int;readout:int;tokens:int;prefix_tokens:int;hit:int;}
@@ -139,7 +139,7 @@ ls_record :: (build:string,identity:string,status:int,s:LsSample,out:[]u8)->int 
     return json_raw(out,at,"]}\n");
 }
 
-// Chapter 17: bounded readiness/promotion and restart policy, independent of OS effects.
+// Chapter 22: bounded readiness/promotion and restart policy, independent of OS effects.
 // book:begin lifecycle
 LsLife :: struct {authenticated:bool;sealed:bool;warm:int;failed:bool;draining:bool;}
 LsRestart :: struct {ok:bool;retry:bool;failures:int;delay_ms:int;}

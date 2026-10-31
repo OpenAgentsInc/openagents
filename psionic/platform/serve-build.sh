@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the chapter-16 /v1/systemone host: OUT MODE(debug|release) NATIVE(plain|sanitized) [gpu|metal].
+# Build the chapter-20 /v1/systemone host: OUT MODE(debug|release) NATIVE(plain|sanitized) [gpu|metal].
 # Coax emits one C library from psionic/lib/serve-proto.coax (which loads
 # serve-run.coax); the host links it.
 # gpu adds the CUDA engine (--elephant-gpu): the device plan's C library, the
 # generated kernels next to the binary, and the CUDA host, loaded at run time.
-# metal adds the Apple GPU engine (--elephant-metal, chapter 31): the same plan,
+# metal adds the Apple GPU engine (--elephant-metal, chapter 47): the same plan,
 # the generated .metal kernels next to the binary, and the Metal host.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

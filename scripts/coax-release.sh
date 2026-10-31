@@ -52,7 +52,7 @@ files=(coax/src/release.h coax/release-status.json coax/STATUS.md coax/book/appe
 failed=0
 # Version banners are bounded regions; unrelated prose and historical versions
 # are never searched/replaced by value.
-managed=(coax/README.md coax/spec.md coax/ROADMAP.md coax/book/ch01-getting-started.md coax/book/ch06-memory.md coax/book/ch20-inside-coax0.md coax/book/ch21-road-ahead.md coax/book/ch22-organizing-programs.md coax/book/appendix-b-error-codes.md)
+managed=(coax/README.md coax/spec.md coax/ROADMAP.md coax/book/ch01-getting-started.md coax/book/ch06-memory.md coax/book/ch27-inside-coax0.md coax/book/ch28-road-ahead.md coax/book/ch10-organizing-programs.md coax/book/appendix-b-error-codes.md)
 for path in "${managed[@]}"; do
   awk -v fragment="$work/outputs/coax_generated_current.md" '
   /^<!-- coax-release:current:start -->$/ {print;while((getline line < fragment)>0)print line;close(fragment);active=1;seen++;next;}

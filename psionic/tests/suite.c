@@ -1,4 +1,4 @@
-/* Chapter 178 against suite_oracle.py, which read chapter 12's held-out file
+/* Chapter 237 against suite_oracle.py, which read chapter 16's held-out file
    and hashed the same encoding with Python's hashlib. The suite is built here
    from the oracle's copy of that file, not from the example's. Every digest,
    status, count and score must be equal. */
@@ -67,7 +67,7 @@ int main(void){
     r.score=INFINITY;assert(su_append(view,count,r).status==COAX_SuStatus_number);
     coax_t_SuGate bad=gate;bad.cost_limit=INFINITY;assert(su_suite(all,q,bad,2).status==COAX_SuStatus_number);
     bad=gate;bad.seconds_limit=NAN;assert(su_suite(all,q,bad,2).status==COAX_SuStatus_number);
-    printf("suite: chapter 12's suite and its edits, every digest, receipt, refusal and comparison equal to the oracle; "
+    printf("suite: chapter 16's suite and its edits, every digest, receipt, refusal and comparison equal to the oracle; "
         "the chain breaks where it was changed; NaN and infinity refused\n");
     return 0;
 }

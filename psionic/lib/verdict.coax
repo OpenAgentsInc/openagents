@@ -1,11 +1,11 @@
-// Chapter 180: gates that can say unverifiable. A decision gate passes a gain
-// only beyond chapter 179's noise floor, on a partition with headroom, with
+// Chapter 239: gates that can say unverifiable. A decision gate passes a gain
+// only beyond chapter 238's noise floor, on a partition with headroom, with
 // whole tasks drawn again; a probability gate ranks log loss and confident
 // errors above calibration error and accuracy; an evaluation gate lets cost
 // and time block a result but never earn one. Every verdict is passed, failed
 // or unverifiable, with the reason.
-// Profile cpu-f64-verdict-v1: binary64, chapter 3's compensated accumulator
-// for every sum, chapter 179's bootstrap and headroom, chapter 156's
+// Profile cpu-f64-verdict-v1: binary64, chapter 4's compensated accumulator
+// for every sum, chapter 238's bootstrap and headroom, chapter 213's
 // measures, at least 10 tasks, and "clear" meaning at most 1 in 40 replicates
 // on the other side.
 #load "noise.coax";
@@ -34,7 +34,7 @@ VD_MIN_TASKS :: 10;
 // Clear: at most 1 replicate in 40 (2.5 percent) on the other side.
 VD_CLEAR :: 40;
 
-// Checks precede the implementation. Expected values are derived in chapter 180.
+// Checks precede the implementation. Expected values are derived in chapter 239.
 vd_is :: (r:VdResult,v:VdVerdict,why:VdReason)->bool {return r.verdict==v && r.reason==why;}
 
 #test "clear means at most 1 replicate in 40" {
@@ -132,7 +132,7 @@ grid :: (gain:f64,a:[]f64,b:[]f64,task:[]int,part:[]int) {
     #assert vd_is(vd_probability(a[..],b[..],y[..],task[..],5,200).result,VdVerdict.passed,VdReason.loss_lower);
 }
 
-#test "the probability gate agrees with chapter 156's measures" {
+#test "the probability gate agrees with chapter 213's measures" {
     v1:=[4]f64.[2,0,0.6,-0.6];q:[400]int;p:[400]f64;y:[400]f64;
     #assert cf_simulate(9,v1[..],q[..],p[..],y[..],false)==CfStatus.ok;
     m:=cf_fit(CfKind.temperature,1,1,0,q[..],p[..],y[..],q[..]);

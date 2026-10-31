@@ -1,4 +1,4 @@
-// Chapter 159: a Pylon checks itself before serving. A shipped reference set
+// Chapter 216: a Pylon checks itself before serving. A shipped reference set
 // names one model identity and a few decision requests with the answers that
 // identity gave, as integers in billionths. Before the Pylon advertises a
 // slot it asks its own engine each request; every answer must give the same

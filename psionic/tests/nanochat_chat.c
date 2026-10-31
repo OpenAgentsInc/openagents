@@ -1,4 +1,4 @@
-/* nanochat conversation tokens natively: the learned chapter 77 table read
+/* nanochat conversation tokens natively: the learned chapter 123 table read
    from disk, the tool-call conversation from the independent goldens, alias
    decided by the host from real addresses, and short or overlapping views
    that must refuse without writing. Usage: nanochat-chat LEARNED.pst */

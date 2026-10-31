@@ -1,4 +1,4 @@
-# Chapter 20 public HTTP rehearsal
+# Chapter 25 public HTTP rehearsal
 
 `result.json` records four cases against the frozen sanitized binary. The
 remote case used `wss://relay.openagents.com` and the real Mac Pylon. The

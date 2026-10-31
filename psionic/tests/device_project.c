@@ -1,4 +1,4 @@
-/* Chapter 25: the Coax projection kernel on a CUDA device, against the same
+/* Chapter 36: the Coax projection kernel on a CUDA device, against the same
    Coax kernel compiled to C and against the CPU reference profile.
    Usage: device-project KERNEL.cu [quick]
    Exits 0 with a SKIP line when no device or NVRTC is present. */

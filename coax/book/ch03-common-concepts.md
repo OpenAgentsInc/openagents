@@ -279,7 +279,7 @@ the inside of strings are Chapter 6.
 
 Every type has one width on every target. `int` is always 64 bits, and
 `uint` is always `u64`, not whatever C's `unsigned` happens to be on
-this machine. When Coax code talks to C (Chapter 17), it writes the
+this machine. When Coax code talks to C (Chapter 20), it writes the
 width it means.
 
 Here are all of them in one program, along with `type_name`, which
@@ -357,7 +357,7 @@ range.
 
 `coax0` doesn't fuse a multiply and an add into one instruction behind
 your back, so each operation rounds once, as written. That matters when
-two machines need the same answer, which is Chapter 13's subject.
+two machines need the same answer, which is Chapter 16's subject.
 
 ### Booleans and strings
 

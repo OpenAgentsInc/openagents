@@ -1,5 +1,5 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 174 (can gradient descent learn exact execution?).
+"""Independent oracle for chapter 233 (can gradient descent learn exact execution?).
 
 Standard library only, sharing no code with psionic/lib/students.coax: its own
 stack machine and program families, its own fold of a student's rows, its own
@@ -108,7 +108,7 @@ def tokens(rows):
     return [t for f, code, x, y in rows for t in (f[7], CODES.index(code), x, y)]
 
 
-# Digests: chapter 173's claim and chapter 186's row set.
+# Digests: chapter 232's claim and chapter 245's row set.
 def le32(values):
     return b"".join(struct.pack("<I", v & 0xFFFFFFFF) for v in values)
 
@@ -279,7 +279,7 @@ def student(kind, epochs, converged, examples, out):
 
 
 def example():
-    out = ["chapter 165's machine; four program families, each counting n down to 1 in local 0:",
+    out = ["chapter 224's machine; four program families, each counting n down to 1 in local 0:",
            "  count prints n, ..., 1; sum prints 1 + ... + n; stride prints 2n, 2n-2, ..., 2; squares prints n*n, ..., 1",
            "training traces: count and sum at n = 1, 2, 3, 4, each replayed exactly and admitted as train rows"]
     examples, admitted, time = [], [], 0
@@ -304,7 +304,7 @@ def example():
     out.append(f"  row set {set_digest(admitted)[:6].hex()}: {len(admitted)} rows, {len(admitted) - held} train, "
                f"{held} heldout")
     out += ["students: one affine model per instruction and token, trained from zero by full-batch gradient descent;",
-            "scored by rollout alone: the state is folded from the student's own rows, chapter 173 replays the run,",
+            "scored by rollout alone: the state is folded from the student's own rows, chapter 232 replays the run,",
             "and a miss is the first token that differs, of the machine's"]
     tally = [student("linear", 10000, True, examples, out), student("gated", 10000, False, examples, out),
              student("gated", 100000, True, examples, out), student("table", 10000, True, examples, out)]

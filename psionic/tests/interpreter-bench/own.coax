@@ -1,4 +1,4 @@
-// Chapter 170's timing driver: the triangle program from 5000 (15,000 steps),
+// Chapter 229's timing driver: the triangle program from 5000 (15,000 steps),
 // run 40 times through the own path. Build with --release and time the
 // binary; steps per second is 15,000 times 40 over the time.
 #import "Basic";

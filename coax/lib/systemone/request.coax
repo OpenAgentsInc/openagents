@@ -19,7 +19,7 @@ SO_BASETEN_KEY_ENV :: "BASETEN_API_KEY";
 SO_ELEPHANT :: "decision-models/baseten-elephant-9b-latest";   // elephant-1, 9B
 SO_MAMMOTH :: "decision-models/baseten-mammoth-27b-latest";    // mammoth-1, 27B
 SO_CONTEXT_TOKENS :: 16384;      // both models refuse a longer request
-// Our own door: Psionic's /v1/systemone (psionic/book/ch016-serve-systemone.md),
+// Our own door: Psionic's /v1/systemone (psionic/book/ch020-serve-systemone.md),
 // psionic-serve --elephant-gpu, loopback only and keyless; reached from
 // another machine through an SSH tunnel to the same port. It answers as
 // elephant-1 and holds up to 512 tokens per question.

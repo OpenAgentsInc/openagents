@@ -3,7 +3,7 @@
 
 // book:begin program
 // A two-layer network as one tensor program. The hidden activation is
-// chapter 26c's consumer-owned squared ReLU, 0.5 * relu(z)^2, registered
+// chapter 40's consumer-owned squared ReLU, 0.5 * relu(z)^2, registered
 // with its own VJP; the loss is the sum of squared errors.
 X :: 0;W1 :: 1;B1 :: 2;W2 :: 3;B2 :: 4;TARGET :: 5;NEG :: 6;LOSS :: 16;
 INPUTS :: 58;

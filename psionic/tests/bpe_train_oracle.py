@@ -58,7 +58,7 @@ def capture(source):
    ids+=p
   assert b''.join(vocab[i] for i in ids)==text.encode();vectors.append(dict(text=text,ids=ids,ends=ends))
  (D/'tokenizer.py.gz').write_bytes(gzip.compress(raw,mtime=0));(D/'LICENSE').write_bytes((source/'LICENSE').read_bytes());(D/'learned.pst').write_bytes(table)
- r=dict(schema=1,profile='byte-bpe-nanochat2-u17-v1',tie_rule='maximum overlapping adjacent-pair count; lowest (left ID,right ID); disjoint left-to-right replacements',normalization='none',source=json.loads((source/'source.json').read_text()),pattern=pattern,regex_version=regex.__version__,classes_sha256=sha(classes),dataset_sha256=sha((ROOT/'psionic/fixtures/byte-lm/dataset.json').read_bytes()),license='CC0-1.0 for chapter 73 synthetic training documents and numeric fixture; pinned nanochat source retains its LICENSE',documents=documents,model=m,vectors=vectors,packed_sha256=sha(table))
+ r=dict(schema=1,profile='byte-bpe-nanochat2-u17-v1',tie_rule='maximum overlapping adjacent-pair count; lowest (left ID,right ID); disjoint left-to-right replacements',normalization='none',source=json.loads((source/'source.json').read_text()),pattern=pattern,regex_version=regex.__version__,classes_sha256=sha(classes),dataset_sha256=sha((ROOT/'psionic/fixtures/byte-lm/dataset.json').read_bytes()),license='CC0-1.0 for chapter 112 synthetic training documents and numeric fixture; pinned nanochat source retains its LICENSE',documents=documents,model=m,vectors=vectors,packed_sha256=sha(table))
  rows=json.loads((D/'training-vectors.json').read_text())
  for case in rows:case['model']=model(case['documents'],pattern,case['requested'])[0]
  (D/'training-vectors.json').write_text(json.dumps(rows,indent=2)+'\n');(D/'training-goldens.coax').write_text(training_goldens(rows))

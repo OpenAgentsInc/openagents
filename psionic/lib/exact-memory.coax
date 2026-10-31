@@ -140,7 +140,7 @@ em_prefix_sums :: (values:[]int,sums:[]int)->EmStatus #export_c {
 // book:end sum
 
 // book:begin run
-// The chapter 165 machine with no memory of its own: before every step its
+// The chapter 224 machine with no memory of its own: before every step its
 // view of memory is rebuilt from nothing but hard-max reads over the stores
 // already in its trace, and an address never stored reads as zero.
 em_pass :: (program:[]TmOp,budget:int,trace:[]int,outputs:[]int,keys:[]int,values:[]int,publish:bool)->TmResult {

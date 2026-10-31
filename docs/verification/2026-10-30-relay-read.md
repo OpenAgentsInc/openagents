@@ -1,6 +1,6 @@
 # Relay frames into the relay client: `coax/lib/nostr/relay_read.coax` (2026-10-30)
 
-Psionic chapter 19 prerequisite 4e: wiring `message.coax` into the relay
+Psionic chapter 24 prerequisite 8: wiring `message.coax` into the relay
 client. This replaces the test-only frame adapter in
 `coax/tests/net/relay_e2e_frames.coax`.
 

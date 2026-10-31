@@ -2,7 +2,7 @@
 #load "../lib/device/project.coax";
 
 // book:begin example
-// The chapter 26 kernels on the CPU: every work item of dv_matvec, then of
+// The chapter 37 kernels on the CPU: every work item of dv_matvec, then of
 // dv_reduce, in any order. The GPU runs the same source.
 main :: () {
     rows:=4;cols:=256;groups:=cols/4;

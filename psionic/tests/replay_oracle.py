@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 173's independent reference, written from the chapter's specification.
+"""Chapter 232's independent reference, written from the chapter's specification.
 
-It shares no code with psionic/lib/replay.coax or chapter 165's interpreter:
+It shares no code with psionic/lib/replay.coax or chapter 224's interpreter:
 its own machine, its own digests with hashlib, its own fold and replay. It
 rebuilds every scenario in psionic/examples/exact-replay.coax and prints the
 same lines, so the two outputs can be compared byte for byte.

@@ -1,4 +1,4 @@
-chapter 179's suite, candidates with 4 seeds against the baseline's first 4:
+chapter 238's suite, candidates with 4 seeds against the baseline's first 4:
   -0.5 logits, open tasks: gain -0.043, floor 0.0893, 1000 of 1000 at or below it -> failed (within the floor)
   -0.5 logits, saturated tasks: gain -0.0219, floor 0.0184, 1000 of 1000 at or below it -> unverifiable (no headroom)
   0.5 logits, open tasks: gain 0.0555, floor 0.0893, 822 of 1000 at or below it -> unverifiable (near the floor)
@@ -7,13 +7,13 @@ chapter 179's suite, candidates with 4 seeds against the baseline's first 4:
   1.5 logits, saturated tasks: gain 0.0031, floor 0.0184, 996 of 1000 at or below it -> unverifiable (no headroom)
   2.5 logits, open tasks: gain 0.3297, floor 0.0893, 0 of 1000 at or below it -> passed (beyond the floor)
   2.5 logits, saturated tasks: gain 0.0063, floor 0.0184, 996 of 1000 at or below it -> unverifiable (no headroom)
-chapter 12, Elephant's accuracy, any candidate: unverifiable (no headroom)
-chapter 156, test split, raw -> calibrated:
+chapter 16, Elephant's accuracy, any candidate: unverifiable (no headroom)
+chapter 213, test split, raw -> calibrated:
   question 0 (temperature): log loss 0.5451 -> 0.4622, confident errors 149 -> 43, calibration error 0.098 -> 0.01, right 1574 -> 1574 of 2000
     replicates of 1000 at or below 0: candidate ahead on log loss 0, baseline ahead 1000, baseline ahead on confident errors 1000 -> passed (lower log loss)
   question 1 (binned): log loss 0.5312 -> 0.4724, confident errors 4 -> 23, calibration error 0.0368 -> 0.0133, right 1493 -> 1579 of 2000
     replicates of 1000 at or below 0: candidate ahead on log loss 0, baseline ahead 1000, baseline ahead on confident errors 0 -> failed (more confident errors)
-chapter 157, the record against always Elephant (voice) and always Mammoth (background):
+chapter 214, the record against always Elephant (voice) and always Mammoth (background):
   voice interruption: cost 0.6548 -> 0.5815, gain 0.0733, floor 0.0, 0 of 1000 at or below it -> passed (beyond the floor)
     0.15 s per decision, limit 0.5 s -> passed (beyond the floor)
   background classification: cost 0.2362 -> 0.1587, gain 0.0775, floor 0.0003, 0 of 1000 at or below it -> passed (beyond the floor)

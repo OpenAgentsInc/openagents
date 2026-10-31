@@ -1,11 +1,11 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 188 (an agent optimizes a Psionic kernel).
+"""Independent oracle for chapter 247 (an agent optimizes a Psionic kernel).
 
 Standard library only, sharing no code with the Coax units or with
 kernel_search_fixture.py. It rebuilds psionic/fixtures/kernel-search.out line
 for line:
-- the CPU lines, by regenerating chapter 188's ten cases (its own xorshift),
-  rerunning the arithmetic of chapter 30's kernels, the tuner's choice and the
+- the CPU lines, by regenerating chapter 247's ten cases (its own xorshift),
+  rerunning the arithmetic of chapter 44's kernels, the tuner's choice and the
   agent's winner in binary64 with one rounding to binary32, and applying the
   contract (one f32 step of the f64 norm) itself;
 - the L4 lines, by parsing the raw evaluator ledger in
@@ -239,12 +239,12 @@ def split(run, k):
 
 
 def example():
-    out = ["workload: Elephant's offset RMS norm over chapter 10's 86-token sample, 86 x 4096, epsilon 1e-6",
+    out = ["workload: Elephant's offset RMS norm over chapter 14's 86-token sample, 86 x 4096, epsilon 1e-6",
            "contract: squares added in f64 in any order, the rest in f64, one rounding to f32;",
            "  each output must be one of the two f32 values next to the f64 norm",
            "held out from the agent: " + ", ".join(NAMES[1:]), "", "on this CPU, now, every case:"]
     cases = [case(c) for c in range(10)]
-    for name, fn in (("chapter 30 (n30)", ch30), ("the tuner's choice (nt 3240)", tuned), ("the agent's winner (a8 64160)", winner)):
+    for name, fn in (("chapter 44 (n30)", ch30), ("the tuner's choice (nt 3240)", tuned), ("the agent's winner (a8 64160)", winner)):
         failed = [c for c in range(10) if not ok(*cases[c], fn(*cases[c]))]
         line = f"  {name}: {10 - len(failed)} of 10 cases"
         if failed:
@@ -255,13 +255,13 @@ def example():
     tuner = max(i for i, r in enumerate(runs) if r["prefix"] == "nt")
     out += ["", f"on the L4 ({runs[base]['gpu']}), from the ledger of {len(runs)} evaluations:"]
     b = best(configs(runs[base], True))
-    out.append(f"  chapter 30, evaluation {base + 1}, on its declared widths: {show('best', b)}{split(runs[base], b[0])}")
+    out.append(f"  chapter 44, evaluation {base + 1}, on its declared widths: {show('best', b)}{split(runs[base], b[0])}")
     tc = configs(runs[tuner], False)
     t = best(tc)
     passing = sum(1 for k in runs[tuner]["knobs"] if all(runs[tuner]["cpu"][k].get(c) == "ok" and runs[tuner]["device"][k].get(c) == "ok" for c in range(10)))
     out.append(f"  the tuner, evaluation {tuner + 1}: {len(runs[tuner]['knobs'])} knobs x 6 blocks = {len(tc)} configurations, "
                f"{passing} knobs passing every case on both")
-    out.append(f"    {show('best', t)}{describe(t[0])}, {num(r2(b[2] / t[2]))} x chapter 30{split(runs[tuner], t[0])}")
+    out.append(f"    {show('best', t)}{describe(t[0])}, {num(r2(b[2] / t[2]))} x chapter 44{split(runs[tuner], t[0])}")
     slow = tc[0]
     for c in tc:
         if c[2] > slow[2]:
@@ -289,7 +289,7 @@ def example():
     r = runs[confirm]
     c = next(x for x in configs(r, False) if x[0] == w[0] and x[1] == w[1])
     out.append(f"  winner: {runs[i]['prefix']}, re-measured in evaluation {confirm + 1}, beside evaluations {tuner + 1} and {base + 1}:")
-    out.append(f"    {show('same', c)}, {num(r2(t[2] / c[2]))} x the tuner, {num(r2(b[2] / c[2]))} x chapter 30{split(r, c[0])}")
+    out.append(f"    {show('same', c)}, {num(r2(t[2] / c[2]))} x the tuner, {num(r2(b[2] / c[2]))} x chapter 44{split(r, c[0])}")
     out.append(f"    {int(math.floor(3 * 352256 * 4 / c[2] / 1e9 + 0.5))} GB/s effective for the 4.23 MB a call must move "
                "(x read twice, out written)")
     out.append(f"    source {r['file']}")

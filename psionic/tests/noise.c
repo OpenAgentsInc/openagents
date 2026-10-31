@@ -1,6 +1,6 @@
-/* Chapter 179 against noise_oracle.py, which drew the same runs and resampled
+/* Chapter 238 against noise_oracle.py, which drew the same runs and resampled
    the same tasks in exactly rounded sums, and read Elephant's probabilities
-   from chapter 12's recorded run. Tolerances were frozen before comparison:
+   from chapter 16's recorded run. Tolerances were frozen before comparison:
    run sums, task and item counts, replicates at or below a floor, open items
    and refusals exactly; block means, standard deviations, floors, gains,
    standard errors, rooms and Brier scores within 1e-12 relative. */

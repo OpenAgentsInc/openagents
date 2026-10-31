@@ -1,7 +1,7 @@
 # Decisions in production: notes from Jev and the decision-model work
 
 Planning note, 2026-10-29, for Part XXII of the [book plan](../book/PLAN.md)
-and small additions to chapters 12 and 17. It condenses pre-reset research,
+and small additions to chapters 16 and 22. It condenses pre-reset research,
 readable with `git show 0b401561a0^:<path>`:
 
 - `docs/research/typesafe/`: three transcripts of TypeSafe's Diogo Almeida
@@ -46,7 +46,7 @@ database than a chat.
   schedule; alert on drift; report reliability, ECE, Brier, log loss and
   confident errors; refuse a map fitted on another model or question set.
 
-These become chapters 156 to 158.
+These become chapters 213 to 215.
 
 ## Checking that two machines answer alike
 
@@ -57,7 +57,7 @@ most 0.0035; CUDA f16 against CPU at most 0.063), while cheap substitutes
 mostly failed (a Q8_0 copy passed 3.6% of rounds, another runtime 18%). Limits
 set between the two separate honest machines from substitutes. Stock vLLM was
 also reported to flip 6 of 300 answers between identical passes. These become
-chapters 159 and 160; chapter 21's re-execution checks use the distance.
+chapters 216 and 217; chapter 26's re-execution checks use the distance.
 
 ## Decisions in milliseconds
 
@@ -70,17 +70,17 @@ against 1.27 ms) with raw-logit error at most 5.25e-6. Both missed a 20 ms
 p99 target at 512 tokens. Lessons kept: execution parity is not decision
 quality; an explicitly selected engine never silently falls back; model
 identity is separate from engine identity; measure cold and warm, interleaved.
-These become chapters 161 to 163.
+These become chapters 218 to 221.
 
 ## Rolling out a different model
 
 The router plan promoted a new model only after running it beside the current
 one on live traffic and meeting disagreement and outcome gates. That is
-chapter 164, distinct from chapter 122's rollout of a new build of the same
+chapter 222, distinct from chapter 177's rollout of a new build of the same
 model.
 
 ## Small additions elsewhere
 
-- Chapter 17: warm up with seeded decisions before reporting ready; the
+- Chapter 22: warm up with seeded decisions before reporting ready; the
   pre-reset engine's first answer fell from 382 to 206 ms with warm-up.
-- Chapter 12: name the corpus and the model identity on every reported result.
+- Chapter 16: name the corpus and the model identity on every reported result.

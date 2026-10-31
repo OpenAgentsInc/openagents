@@ -3,7 +3,7 @@
 ## Delivered scope
 
 The plan was pushed first as `ecba6b57d8`, before implementation. This slice
-implements M0, M1/chapter 21b and the local shadow consumer of M2/chapter 21c in
+implements M0, M1/chapter 28 and the local shadow consumer of M2/chapter 29 in
 [the delivery plan](../verse/pylon-guard-decisions.md). Tests ran on macOS 26.4
 arm64 using this checkout's Coax compiler. No whole-model CPU run, broad model
 mutation, production change or service interruption was needed.

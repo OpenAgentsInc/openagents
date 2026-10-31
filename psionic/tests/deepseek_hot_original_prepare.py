@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an original routed packet from the chapter-63 admitted artifact.
+"""Prepare an original routed packet from the chapter-95 admitted artifact.
 Full-shard admission is reused, not redundantly rerun. Reads six bounded spans.
 """
 import argparse,gzip,hashlib,json

@@ -1,8 +1,8 @@
 # Everglade Directions page, 2026-10-30
 
-Chapter 21f connects requested directions to the actual Everglade game. The
+Chapter 32 connects requested directions to the actual Everglade game. The
 visible line is always the deterministic local rule. Elephant remains an
-explicitly enabled shadow. This record is separate from chapter 21e's five
+explicitly enabled shadow. This record is separate from chapter 31's five
 real-model contexts and the older ambient-v1 page qualification.
 
 ## Implemented boundary

@@ -1,6 +1,6 @@
 # Architecture and considerations
 
-Status: chapters 1–5 implement bounded scalar learning, contiguous CPU storage,
+Status: chapters 1–9 implement bounded scalar learning, contiguous CPU storage,
 `CPU-f32-wide-v1` numerics, `original-weights-v1` artifact admission and
 `qwen35-text-v1` text requests in
 [psionic/](../README.md). Autodiff, full model execution and
@@ -45,7 +45,7 @@ Chapter 2 implements the shape/storage portion of these contracts in
 elements, canonical zero inactive dimensions and checked row-major offsets.
 Its staged copy requires an exact logical input view and sufficient separate
 destination/scratch capacity; it accepts every finite binary32 value. Later
-arithmetic kernels must state their own numeric domains. Chapter 3 now
+arithmetic kernels must state their own numeric domains. Chapter 4 now
 implements a bounded row/matrix profile over that storage. These contracts
 continue to apply:
 
@@ -99,7 +99,7 @@ fixed-profile CPU replay, floating-point comparisons across devices, and model
 quality are separate contracts. Equal generated text is weak numerical
 evidence; teacher-forced intermediate tensors and logits localize errors.
 
-The implemented [chapter 3 profile](../book/ch003-numbers-and-matrices.md)
+The implemented [chapter 4 profile](../book/ch004-numbers-and-matrices.md)
 uses explicit binary64 products/compensated reductions over binary32 storage;
 it does not alter M0's arithmetic. Add/sum/dot/matmul narrow once per output
 with a finite-range check. Masked softmax validates all logits and binary mask
@@ -155,7 +155,7 @@ settlement remain outside Psionic.
 ## Acceleration and current compiler limits
 
 The tensor-compute consumer is a BF16 matrix times f32 vectors with an
-ordered f64 reduction ([chapter 26](../book/ch026-a-coax-compute-subset.md),
+ordered f64 reduction ([chapter 37](../book/ch037-a-coax-compute-subset.md),
 `psionic/lib/device/project.coax`). Its minimum form, with the refusals that
 bound it, is [`psionic/fixtures/compute/`](../fixtures/compute/); run
 `psionic/tests/check_compute_contract.sh` (no GPU needed). The scalar
@@ -179,8 +179,8 @@ Conformance lives with the compiler: `coax/tests/cuda.py` and
 source (and compile it when NVRTC or the Metal toolchain is present). The first
 actual-device acceptance tests compare the same kernels against their CPU
 builds: `psionic/tests/run_device_project.sh` on the RTX 4080 (bit for bit,
-chapter 26) and `psionic/tests/run_metal_kernels.sh` on the Apple M5 Max
-(chapter 31). `psionic/tests/run_metal_host.sh` holds the Metal host's own
+chapter 37) and `psionic/tests/run_metal_kernels.sh` on the Apple M5 Max
+(chapter 47). `psionic/tests/run_metal_host.sh` holds the Metal host's own
 contract on the device with the minimum consumer: its result bit for bit
 against the C build, every binding and launch refusal before anything is
 encoded (null, negative, past-the-end and over-long views, unknown kinds,
@@ -242,7 +242,7 @@ inconsistencies to resolve when those proposed targets are selected.
 
 ## Original artifacts before model-specific execution
 
-[Chapter 4](../book/ch004-reading-original-weights.md) implements
+[Chapter 7](../book/ch007-reading-original-weights.md) implements
 [model-io](../lib/model-io/): byte-bounded Safetensors parsing,
 original BF16/F32 tensor intervals, exact original-byte SHA-256 identities,
 a complete HF shard-index subset and caller-pinned tensor manifests. This
@@ -254,13 +254,13 @@ all nested ranges but performs no parsing, hashing or model policy.
 
 Config and tokenizer bytes are identity-bound opaque sidecars here. Expected
 pins must come from a trusted caller; matching hashes and revision labels
-do not authenticate provenance. Chapter 5 interprets the pinned tokenizer in a separately bounded text profile.
+do not authenticate provenance. Chapter 9 interprets the pinned tokenizer in a separately bounded text profile.
 Actual Elephant/Mammoth configuration, architecture execution and full-model
 resource qualification remain next.
 
 ## Text requests preserve original bytes and token boundaries
 
-[Chapter 5](../book/ch005-text-becomes-a-model-request.md) implements
+[Chapter 9](../book/ch009-text-becomes-a-model-request.md) implements
 [the text library](../lib/text.coax): frozen tagged Base Labs
 choice/noul/score rendering, Unicode-17 NFC and split classes, original Qwen
 byte-BPE/added-token data, and complete branch token-prefix matching. Original

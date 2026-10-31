@@ -1,4 +1,4 @@
-// TEST-ONLY buyer for the chapter 19 Pylon end to end (pylon_e2e.py runs
+// TEST-ONLY buyer for the chapter 24 Pylon end to end (pylon_e2e.py runs
 // it). Tooling only, never shipped. It speaks to the local Coax relay only,
 // with a TEST-ONLY key (sha256 of a fixed label), and checks the Pylon from
 // the outside with independent code: @noble/curves for BIP-340 and

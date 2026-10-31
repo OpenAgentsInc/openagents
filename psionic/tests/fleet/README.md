@@ -38,7 +38,7 @@ regressions. These cover confidence in `[0,1]`, score in the question's
 `[0, level_count-1]`, inclusive exact bounds, and valid exact `0.000001`
 serialization tolerance. Negative nanounits are sent in decimal notation,
 not exponent notation, so the wire tests exercise the intended boundary.
-The current chapter 16 profile admits 2..10 score levels, so valid scores
+The current chapter 20 profile admits 2..10 score levels, so valid scores
 cannot exceed 9; the numeric decoder's one-digit integer profile covers that
 admitted range.
 The peer harness waits for AUTH and both subscriptions before sending HTTP;

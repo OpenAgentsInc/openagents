@@ -1,4 +1,4 @@
-"""Chapter 19 end to end: a Pylon answers decisions over our own Coax relay.
+"""Chapter 24 end to end: a Pylon answers decisions over our own Coax relay.
 
 Tooling only (standard library). Builds the Coax relay and the Pylon with
 ASan and UBSan, starts the relay on 127.0.0.1 (with --store, so its events
@@ -285,20 +285,20 @@ def run(out, serve):
             if f.exists():
                 f.unlink()
         pylon_log = out / 'pylon.log'
-        # Chapter 159: the shipped reference set for the engine's model, and
+        # Chapter 216: the shipped reference set for the engine's model, and
         # a fresh identity state, so this run is a first start.
         references = HERE.parent.parent / 'fixtures' / 'pylon' / ('%s.selfcheck' % MODEL)
         state = out / 'identity-state'
         if state.exists():
             state.unlink()
         pylon = subprocess.Popen([str(out / 'pylon-build/pylon'), '--relay', relay_url, '--engine', engine, '--model', MODEL,
-                                  '--slug', SLUG, '--label', 'Chapter 19 local', '--test-key-label', 'psionic ch19 pylon test key',
+                                  '--slug', SLUG, '--label', 'Chapter 24 local', '--test-key-label', 'psionic ch19 pylon test key',
                                   '--stop-file', str(stop_file), '--decide-ms', '30000',
                                   '--references', str(references), '--identity-state', str(state)],
                                  stdout=open(pylon_log, 'w'), stderr=open(out / 'pylon.err', 'w'), env=env)
         procs.append(pylon)
         check(wait_line(pylon_log, 'pylon: online, waiting for jobs', 120, pylon), 'the Pylon authenticated, published its list and beacon, and subscribed')
-        check('doctor: self-check passed' in pylon_log.read_text(), 'the Pylon passed its self-check before its beacon (chapter 159)')
+        check('doctor: self-check passed' in pylon_log.read_text(), 'the Pylon passed its self-check before its beacon (chapter 216)')
         check(state.exists() and state.read_text().startswith(MODEL + '@sha256:'), 'the Pylon recorded the identity it serves')
         benv = {**os.environ, 'NODE_PATH': NOBLE, 'RELAY': relay_url, 'CONNECT': 'ws://%s:%d' % (HOST, rport), 'SLUG': SLUG,
                 'MODEL': MODEL, 'STOP_FILE': str(stop_file), 'CANCEL': '0' if ENGINE else '1'}

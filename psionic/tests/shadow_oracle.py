@@ -1,5 +1,5 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 164 (shadow, then promote).
+"""Independent oracle for chapter 222 (shadow, then promote).
 
 Rebuilds psionic/fixtures/shadow.out line for line with the standard library:
 SplitMix64 draws, the simulated models, SHA-256 identities from hashlib, the

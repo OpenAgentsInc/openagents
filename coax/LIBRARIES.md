@@ -9,7 +9,7 @@ stable.
 The [language status](STATUS.md) records implemented compiler capabilities.
 Each library still needs its own target, storage, error and verification
 contract. A successful Coax check does not establish native pointer validity,
-GPU execution or runtime authority. [Book chapter 28](book/ch28-library-recipes.md)
+GPU execution or runtime authority. [Book chapter 26](book/ch26-library-recipes.md)
 shows three small offline consumers; the [Psionic book](../psionic/book/README.md)
 and [network notes](lib/net/README.md) describe the larger systems.
 
@@ -54,7 +54,7 @@ bounds traps; they are not an expected-error return channel.
 
 Actual adoption is in [Verse's pass formatter](../verse/gpu/everglade-pass.coax)
 and [Psionic's serving engine](../psionic/lib/serve-engine.coax). The
-[Verse recipe](book/examples/ch28_verse.coax) also uses the alias directly.
+[Verse recipe](book/examples/ch26_verse.coax) also uses the alias directly.
 These are synchronous storage operations, not general ownership or lifetime
 checking.
 
@@ -63,8 +63,8 @@ checking.
 **Maturity and targets:** production-bounded exported CPU geometry, with existing
 iOS and Coaxial consumers. The recipe qualifies selected native C API results;
 it does not add a new renderer, GPU target or physical-device gate.
-**Verification:** `coax/bin/coax test verse/hud.coax --library`; the chapter 28
-`ch28_verse` unit checks the actual public API and refusal cases.
+**Verification:** `coax/bin/coax test verse/hud.coax --library`; the chapter 26
+`ch26_verse` unit checks the actual public API and refusal cases.
 
 The module exports `HudRect`, `HudPoint`, `verse_hud_slot`,
 `verse_hud_frame_point`, `verse_hud_frame_arm`, `verse_hud_tone`,
@@ -81,7 +81,7 @@ general NaN/infinity admission. The caller supplies sensible finite geometry
 and owns conversion to platform pixels and GPU lifetimes.
 
 The actual iOS bridge and Coaxial HUD consumer exercise this source. The
-chapter 28 example checks exact geometry and refusal through the public API;
+chapter 26 example checks exact geometry and refusal through the public API;
 it does not establish rendering or input behavior on a new platform.
 
 ## URI syntax and WebSocket frames
@@ -90,7 +90,7 @@ it does not establish rendering or input behavior on a new platform.
 native and Wasm qualification in the linked network notes; framing here is
 qualified by the selected native C fixture, not by opening a network connection.
 **Verification:** `coax/bin/coax test coax/lib/net/uri.coax --library`,
-`coax/bin/coax test coax/lib/net/ws.coax --library`, and the `ch28_protocol`
+`coax/bin/coax test coax/lib/net/ws.coax --library`, and the `ch26_protocol`
 book unit. Retained URI evidence is in
 [uri-evidence-2026-10-28.json](tests/net/uri-evidence-2026-10-28.json).
 
@@ -120,7 +120,7 @@ message validity; the larger reader/connection supplies those checks.
 Never feed a masked client frame into this server-frame reader as a round
 trip test.
 
-The [offline recipe](book/examples/ch28_protocol.coax) uses independent
+The [offline recipe](book/examples/ch26_protocol.coax) uses independent
 client and server vectors. The full `relay_conn` interface additionally
 requires `socket-native.c`, `tls-native.c` and entropy effects; its [network
 notes](lib/net/README.md) name the exact platform flags and qualification.
@@ -160,13 +160,13 @@ replacement. `jo_raw` expects already-valid JSON from its caller.
 **Maturity and targets:** implemented selected proto3 descriptor API, with
 native C ABI/sanitizer evidence documented in [proto.md](proto.md). This is the
 supported schema/runtime subset, not all protobuf features or a new GPU target.
-**Verification:** `coax/book/examples/ch26_workflow/run.sh` runs the existing
+**Verification:** `coax/book/examples/ch24_workflow/run.sh` runs the existing
 credential-free native capstone; set `BOOK_SANITIZE=1` for its sanitizer path.
 The runner's `PROTOC` oracle is optional. Reuse its retained result when inputs
 are unchanged rather than rerunning it for this index edit.
 
 Import a pinned descriptor with `#import_proto` and use the generated
-message API. The [capstone source](book/examples/ch26_workflow/workflow.coax)
+message API. The [capstone source](book/examples/ch24_workflow/workflow.coax)
 shows `Book_HudInvocation_new`, the selected `set_*` procedures,
 `Book_HudInvocation_encode`, `Book_HudInvocation_decode` and
 `Book_HudInvocation_get_revision`. Prefixes and message fields come from
@@ -184,7 +184,7 @@ The shared wire limits are `PB_MAX_BYTES=1048576`, `PB_MAX_DEPTH=64` and
 [protobuf contract](proto.md) defines error precedence, unknown-field
 handling and alias refusal. Physical overlap observation is a native
 boundary; it cannot run in the compile-time evaluator. The existing
-[capstone host](book/examples/ch26_workflow/host.c) checks real short buffers
+[capstone host](book/examples/ch24_workflow/host.c) checks real short buffers
 and wire bytes. Its runner has an optional independent `protoc` oracle;
 ordinary generation and use need neither `protoc` nor a protobuf runtime.
 
@@ -195,7 +195,7 @@ with selected native C qualification. No device, original-model weights or
 full inference-serving qualification is implied.
 **Verification:** `psionic/check.sh --only tensor learn` is the existing scoped
 unit gate (these exact unit names appear in `psionic/check.sh`); the new
-`ch28_psionic` book unit is the small offline consumer. The unchanged broader
+`ch26_psionic` book unit is the small offline consumer. The unchanged broader
 unit results should be cited, not rerun for a documentation-only change.
 
 `psionic_tensor_layout(shape)` returns status, element/byte counts and
@@ -211,7 +211,7 @@ Check `PsionicTensorStatus.ok` before using the payload.
 be in its finite `[-16,16]` profile; refusal returns
 `PsionicStatus.number`. On success, `value` is the `f32` product. This is
 one scalar operation, not full model inference or GPU qualification. The
-[book recipe](book/examples/ch28_psionic.coax) checks statuses before
+[book recipe](book/examples/ch26_psionic.coax) checks statuses before
 reading values and requires no weights file.
 
 The optional native tensor-copy boundary is different:
@@ -222,12 +222,12 @@ calls Coax. The internal `psionic_tensor_copy_checked(..., overlap)` trusts
 that observation; passing `false` does not validate native addresses.
 Native callers own pointer validity, actual extents and lifetime through
 the synchronous call. Its existing tensor gate covers finite-data,
-capacity, alias and spare-tail cases. The chapter 28 recipe deliberately
+capacity, alias and spare-tail cases. The chapter 26 recipe deliberately
 uses only metadata and scalar prediction, requiring no such observation.
 
 ## Verification and adding a consumer
 
-Use [chapter 28](book/ch28-library-recipes.md) to run exactly the new recipes.
+Use [chapter 26](book/ch26-library-recipes.md) to run exactly the new recipes.
 `coax/book/check-examples.sh --list` names individual source units and special
 host/mutation/structure units. `--only` selects exact names, deduplicates them
 and refuses an empty or unknown selection before any compiler or fixture

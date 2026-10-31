@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 65: layer-major CPU chunks, original MoE replay and grouped products.
+# Chapter 97: layer-major CPU chunks, original MoE replay and grouped products.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax};cc=${COAX_CC:-cc}

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 157's independent reference, written from the chapter's specification.
+"""Chapter 214's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/threshold.coax. Sums use math.fsum
-(exactly rounded) where the library uses chapter 3's compensated accumulator.
+(exactly rounded) where the library uses chapter 4's compensated accumulator.
 Band edges are found by a different search: a binary search over the integer
 bit patterns of nonnegative doubles, for the first number whose cheapest
 action differs from the band's. The draws, the costs and the experiment's

@@ -9,7 +9,7 @@ candidate 0.5 logits better: gain 0.0555, floor 0.0893
 candidate 1.5 logits better: gain 0.1359, floor 0.0893
   items: standard error 0.0173, 0 of 1000 at or below 0, 6 at or below the floor
   tasks: standard error 0.0299, 0 of 1000 at or below 0, 58 at or below the floor
-Elephant, chapter 12's suite, accuracy:
+Elephant, chapter 16's suite, accuracy:
   choice: 5 items, 0 below the ceiling, room 0.0, refused
   noul: 4 items, 0 below the ceiling, room 0.0, refused
   score: 3 items, 0 below the ceiling, room 0.0, refused

@@ -1,6 +1,6 @@
 # GPT-OSS original 20b device execution, 2026-10-29
 
-Scope: chapters 45a–45c, original BF16/MXFP4 weights resident on the owned
+Scope: chapters 65–67, original BF16/MXFP4 weights resident on the owned
 NVIDIA RTX 4080, Coax-generated CUDA arithmetic and Coax dispatch policy.
 The plan was updated first in `d1380d5015`. Full mutation roots and routine
 original CPU inference were excluded at the owner's explicit direction.
@@ -23,7 +23,7 @@ original CPU inference were excluded at the owner's explicit direction.
   --prec-sqrt=true --ftz=false --std=c++17`. No cuBLAS/cuDNN runtime.
 - Generated CUDA SHA-256:
   `7466822732327e7e428febefb3d0b167a154ae3229e743d09bbf550c436ee11b`.
-- Original identity: the independently pinned chapter 45 20b profile, revision
+- Original identity: the independently pinned chapter 64 20b profile, revision
   `6cee5e81ee83917806bbde320786a8fb61efebee`; complete model artifacts
   authenticated by Coax at session admission. Original bytes remain in the
   external cache, outside Git.

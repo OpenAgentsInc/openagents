@@ -1,5 +1,5 @@
-// Chapter 19: NIP-DEC decision jobs at a Pylon. A verified, decrypted 25910
-// becomes the exact {model, state, questions} body chapter 16's server
+// Chapter 24: NIP-DEC decision jobs at a Pylon. A verified, decrypted 25910
+// becomes the exact {model, state, questions} body chapter 20's server
 // decodes (sv_decode, sv_admit), or a typed refusal (host.coax checks the
 // server takes it, so this unit's mutation never reaches the server's); the server's 200 body
 // becomes the 26910 result naming the pylon's served identity; refusals and

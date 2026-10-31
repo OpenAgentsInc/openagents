@@ -1,4 +1,4 @@
-/* Chapter 172 against the independent oracle in soft_oracle.py. */
+/* Chapter 231 against the independent oracle in soft_oracle.py. */
 #include "soft-spans.h"
 #include "soft-oracle.h"
 #include <assert.h>

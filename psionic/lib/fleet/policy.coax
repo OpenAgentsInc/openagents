@@ -1,4 +1,4 @@
-// Chapter 20: bounded fleet admission, selection and reply publication.
+// Chapter 25: bounded fleet admission, selection and reply publication.
 // The caller supplies verified parser/crypto observations; this unit never
 // turns an unverified observation into authority. No allocation or I/O.
 #authority;

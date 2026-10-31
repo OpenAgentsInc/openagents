@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 57: bounded protocol checks; no weights, network or services.
+# Chapter 89: bounded protocol checks; no weights, network or services.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}
@@ -41,4 +41,4 @@ if [[ $mutate == 1 ]]; then
     done
 fi
 python3 -I psionic/tests/book.py
-echo 'DeepSeek chapter 57: protocol oracles, debug/release, all split pairs, native plain/ASan/UBSan, original BPE and book pass'
+echo 'DeepSeek chapter 89: protocol oracles, debug/release, all split pairs, native plain/ASan/UBSan, original BPE and book pass'

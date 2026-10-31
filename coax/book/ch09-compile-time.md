@@ -7,7 +7,7 @@ program is being compiled*, and what they compute becomes part of the
 program. This is the idea from Jai that the rest of Coax leans on most.
 Lookup tables get built before the program starts, facts about the code
 get checked on every build, and later in the book, checks
-([Chapter 10](ch10-writing-checks.md)), layouts and protocol code all
+([Chapter 11](ch11-writing-checks.md)), layouts and protocol code all
 run on the same machinery.
 
 In this chapter we'll take a small program that computes a table at run
@@ -482,7 +482,7 @@ A view's element count is zero because its length belongs to the value.
 The queries take type syntax. They don't make types first-class or expose
 procedure bodies. They describe CPU storage, not protobuf bytes or Metal
 vector packing. The actual C compiler still checks emitted layout assertions.
-See [Chapter 11](ch11-data-layout.md) for those boundaries.
+See [Chapter 13](ch13-data-layout.md) for those boundaries.
 
 ## Compile time is sealed
 
@@ -772,7 +772,7 @@ The evaluator that runs `#run` also runs Coax's checks: `#test` blocks,
 before the code they check, are never part of the program, and have
 their own, much larger step budget. A file marked `#authority;` runs its
 checks on every build. That's a big enough subject to have its own
-chapter: [Chapter 10](ch10-writing-checks.md).
+chapter: [Chapter 11](ch11-writing-checks.md).
 
 ## In the real world: a CRC-32 table
 
@@ -847,7 +847,7 @@ The working layout queries are the first part of the metadata system.
 First-class `type_of`/`Type`, defaults, annotations, procedure signatures,
 effects and explicit alternate-target layout queries remain planned.
 Nominal declaration IDs and original source spans already appear in the
-checked graph reports described in Chapter 22; exposing richer identity
+checked graph reports described in Chapter 10; exposing richer identity
 metadata as compile-time values is separate work. `type_of` is still
 reserved and rejected. Today's metadata does not permit macros, typed
 syntax insertion or compiler plugins.
@@ -904,6 +904,6 @@ every machine. `type_name` and `size_of` are the first pieces of
 reflection; typed code, macros, full reflection, plugins and `#if` are
 planned.
 
-The same evaluator powers Coax's checks. In [Chapter 10](ch10-writing-checks.md)
+The same evaluator powers Coax's checks. In [Chapter 11](ch11-writing-checks.md)
 we'll write them: tests and exhaustive checks that run before the code
 they check, and the tools that check the checks.

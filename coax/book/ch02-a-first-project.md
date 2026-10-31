@@ -742,7 +742,7 @@ ok   #test one escapes on the third step (1 case, 194 steps)
 ```
 
 `coax run` and `coax build` don't run tests; they leave them out. That
-keeps them free in the program you ship. Chapter 10 shows how to make
+keeps them free in the program you ship. Chapter 11 shows how to make
 the compiler run them on every build for code where mistakes are
 expensive, like the OpenAgents wallet.
 
@@ -861,7 +861,7 @@ conversions, procedures and control flow.
 ones we saw. [Chapter 5](ch05-structs-enums-unions.md) covers structs
 and their relatives. [Chapter 6](ch06-memory.md) covers arrays, views
 and strings. [Chapter 9](ch09-compile-time.md) shows what else the
-compiler can run while compiling, and [Chapter 10](ch10-writing-checks.md)
+compiler can run while compiling, and [Chapter 11](ch11-writing-checks.md)
 is all about `#test`, `#assert` and their stronger cousins.
 
 > Note: The repository has a slightly different Mandelbrot program in

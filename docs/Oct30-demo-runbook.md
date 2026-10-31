@@ -67,7 +67,7 @@ model identity, answer and round-trip time. `--list` discovers nodes without
 sending a job; `--all` sends to each eligible toy Pylon in its snapshot.
 The two retained demo slugs are `oct30-mac-demo` and `oct30-coderos-demo`.
 
-## Use the Chapter 20 HTTP adapter
+## Use the Chapter 25 HTTP adapter
 
 The guarded native adapter is listening on the operator Mac:
 
@@ -81,13 +81,13 @@ curl -sS http://127.0.0.1:8798/v1/systemone \
 `service.identity` carries its exact checkpoint identity. The configured
 local fallback must serve that same identity.
 
-[Chapter 20](../psionic/book/ch020-the-api-fans-out.md) contains the source
+[Chapter 25](../psionic/book/ch025-the-api-fans-out.md) contains the source
 build and configuration commands. The retained adapter is loopback-only;
 its current launch/PID/stop details are in `/tmp/oct30-fleet-live/run.json`
 and its log is `/tmp/oct30-fleet-live/fleet.log`. The guarded successor
 started as PID 48404; its recorded stop command is `kill -TERM 48404`.
 
-## Use Chapter 21 receipts and replay
+## Use Chapter 26 receipts and replay
 
 A separate adapter is retained on `http://127.0.0.1:8799/v1/systemone`.
 Send the same JSON request shown above to port 8799. It pins the original
@@ -100,9 +100,9 @@ Its current command, binary hashes, log and recorded stop target are in
 `/tmp/oct30-mesh-public/run.json`; the retained PID is 38998. Check that
 metadata before stopping a historical PID. Stop this adapter with
 `kill -TERM 38998` before shutting down its Pylons. Port 8798 remains the
-ordinary Chapter 20 adapter.
+ordinary Chapter 25 adapter.
 
-[Chapter 21](../psionic/book/ch021-check-the-mesh.md) gives the source build,
+[Chapter 26](../psionic/book/ch026-check-the-mesh.md) gives the source build,
 explicit trust flags, pool publication and independent verification commands.
 The retained pool binary is `/tmp/oct30-pool-native-v4/psionic-mesh-pool`.
 The public capacity proof is in `/tmp/oct30-mesh-public-capacity/`: exact
@@ -137,11 +137,11 @@ drain their Pylon, publish an offline beacon and stop their own engine.
 
 [Oct30MVP results](Oct30MVP.md#4-results-log) records the public relay
 proof, source/compiler/binary identities, both native joins, deployed
-page/browser proof and the guarded Chapter 20 successor. Chapter 20's 419
+page/browser proof and the guarded Chapter 25 successor. Chapter 25's 419
 authority mutants were all killed; prior and successor end-to-end records
 retain their distinct source hashes.
 
-Chapter 21 adds 1,268 killed authority mutants with zero survivors, real
+Chapter 26 adds 1,268 killed authority mutants with zero survivors, real
 Linux→Mac public replay, and independently recomputed signed pool/bundle
 proofs. Exact policy inputs and scope are in
 [the pool policy record](verification/psionic-mesh-pool-policy-2026-10-30.md)

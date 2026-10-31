@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 30: the original Elephant decision on a CUDA device. The caller
+# Chapter 44: the original Elephant decision on a CUDA device. The caller
 # supplies the original files; nothing is downloaded. Without a CUDA driver or
 # NVRTC the harness prints SKIP and exits 0. Usage:
 #   psionic/tests/run_elephant_device.sh ORIGINAL_DIRECTORY [REPEAT]

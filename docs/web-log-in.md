@@ -245,7 +245,7 @@ a Pylon never creates XP.
 
 1. **The job.** A buyer sends a decision job (25910) to a Pylon, and the
    Pylon answers (26910).
-   - The buyer can be the stage buyer (`demo-buyer.ts`), the Chapter 20
+   - The buyer can be the stage buyer (`demo-buyer.ts`), the Chapter 25
      adapter, or a visitor's browser. For a visitor, `/pylon` gets **SEND A
      JOB**, signed with the words account's key in Coax.
    - These events are ephemeral, so relays don't store them.
@@ -365,7 +365,7 @@ global ledger, so the page labels it "XP from OpenAgents checks".
 | XP codec and validator: quest, award, revocation, profile, link, with closed bodies, markers, one `t` per kind | `coax/lib/nostr/xp.coax` |
 | `pylon-check` rule and ledger derivation, with trust list, uniqueness, links | `coax/lib/nostr/xp_ledger.coax` |
 | Receipt (`3201`) and check label (`1985`) codecs | `coax/lib/nostr/pylon_receipt.coax` |
-| Buyers publish receipts | `demo-buyer.ts` and the Chapter 20 adapter (`psionic-fleet`); the browser job in Coax |
+| Buyers publish receipts | `demo-buyer.ts` and the Chapter 25 adapter (`psionic-fleet`); the browser job in Coax |
 | Checker service: subscribe, rerun on the reference engine, label | `psionic/lib/pylon/checker.coax` plus a host |
 | Referee service: weekly quest, award on check-pass | `psionic/lib/pylon/referee.coax` |
 | `--trainer` and the `13195` link | `psionic/lib/pylon/run.coax`, `scripts/join-pylon.sh` |

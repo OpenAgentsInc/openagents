@@ -1,7 +1,7 @@
 # Bounded child-input flush, 2026-10-30
 
 `cxproc_flush_timeout(handle, timeout_ms)` is an additional native process
-effect for the Chapter 21 private witness pipe. Coax chooses the checker,
+effect for the Chapter 26 private witness pipe. Coax chooses the checker,
 arguments, admission and budget. C performs owned pipe I/O and buffering.
 The existing `cxproc_flush` source body is unchanged.
 
@@ -33,4 +33,4 @@ coax/tests/process/flush_timeout.sh
 both platform results. Linux hashes were compared to the local final inputs.
 No passing compiler/crypto/model gate was repeated. These are native effect
 tests, not a claim of memory secrecy for all callers or of Coax authority
-policy verification; Chapter 21 owns the private-witness policy.
+policy verification; Chapter 26 owns the private-witness policy.

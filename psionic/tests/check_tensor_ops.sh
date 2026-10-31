@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 3a only; original models, GPU and full mutation roots stay out.
+# Chapter 5 only; original models, GPU and full mutation roots stay out.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

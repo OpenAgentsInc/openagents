@@ -25,8 +25,8 @@ answer cannot make a fallen, removed, replaced or now-hostile guard greet.
 
 ## Current foundation and gaps
 
-Chapters 19–21 implement Pylon service, fleet routing and explicit-trust mesh
-checks. [21a](../../psionic/book/ch021a-a-public-mesh.md) implements the public
+Chapters 24–26 implement Pylon service, fleet routing and explicit-trust mesh
+checks. [27](../../psionic/book/ch027-a-public-mesh.md) implements the public
 edge at `/api/v1/systemone`. Its [production evidence](../verification/psionic-public-edge-production-2026-10-30.md)
 records real Elephant and Mammoth calls, approximately 5.6–6.0 seconds including
 a deliberate five-second discovery wait. These are recorded observations, not
@@ -56,11 +56,11 @@ must use a real monotonic effect, not game time, which pauses and changes speed.
 | Milestone | Work | Completion evidence |
 | --- | --- | --- |
 | M0. Warm routes without stale authority | A current-connection catch-up barrier and bounded pending-frame drain, then immediate selection of an eligible fresh peer. Cold start, reconnect and absence retain bounded discovery. | Focused signed native peers prove no repeated full discovery delay, no job after a newer withdrawal, expiry and reconnect behavior, and bounded malformed traffic. No whole-model CPU runs. |
-| M1. A decision arrives while play continues (21b) | A reusable Coax ticket/lifecycle gate and generic HTTP cancellation/deadline/late-response fencing. Fixed capacity, one pending guard request, exactly-once consumption and explicit refusal reasons. | Authored Coax checks; focused authority mutation; native debug/release and sanitizer checks; controlled asynchronous browser/effect tests. |
-| M2. An Everglade guard asks (21c) | A small Coax observation/request/response adapter, exact model/question/options validation, and an opt-in shadow integration at the existing guard-frame boundary. | Synthetic responses and actual emitted Wasm exercise request, callback, invalidation and fallback; default/golden modes make no model calls. |
-| M3. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 156–158 and 164 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
-| M3b. Requested directions (21e) | A separate explicit-help candidate, current visible goal and fixed authored routes; new frozen labels/requests and strong deterministic reference. Keep it isolated from the existing ambient policy. | 5/5 finite live smoke contexts match both the authored labels and the instant local rule. No measured player benefit or remote-model advantage. |
-| M3c. Directions in the actual game (21f) | Separate Directions/Find Work control, immediate local tip and optional authenticated shadow. Project current gameplay before policy and draw the HUD afterward in the same frame. | Focused projection/session checks and native ABI oracles; actual Wasm browser qualification covers controls, refusals and cancellation. Remote answers never select the displayed line. |
+| M1. A decision arrives while play continues (28) | A reusable Coax ticket/lifecycle gate and generic HTTP cancellation/deadline/late-response fencing. Fixed capacity, one pending guard request, exactly-once consumption and explicit refusal reasons. | Authored Coax checks; focused authority mutation; native debug/release and sanitizer checks; controlled asynchronous browser/effect tests. |
+| M2. An Everglade guard asks (29) | A small Coax observation/request/response adapter, exact model/question/options validation, and an opt-in shadow integration at the existing guard-frame boundary. | Synthetic responses and actual emitted Wasm exercise request, callback, invalidation and fallback; default/golden modes make no model calls. |
+| M3. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 213–215 and 222 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
+| M3b. Requested directions (31) | A separate explicit-help candidate, current visible goal and fixed authored routes; new frozen labels/requests and strong deterministic reference. Keep it isolated from the existing ambient policy. | 5/5 finite live smoke contexts match both the authored labels and the instant local rule. No measured player benefit or remote-model advantage. |
+| M3c. Directions in the actual game (32) | Separate Directions/Find Work control, immediate local tip and optional authenticated shadow. Project current gameplay before policy and draw the HUD afterward in the same frame. | Focused projection/session checks and native ABI oracles; actual Wasm browser qualification covers controls, refusals and cancellation. Remote answers never select the displayed line. |
 | M4. Ambient application | Explicit opt-in ambient mode displays one authored line after the same admission gate; normal patrol and combat retain priority. No default activation from a confidence number alone. | Calm acceptance, alarm/death/edit/leave invalidation, late/duplicate/old callbacks, malformed answers and service refusals. Browser behavior and frame-time checks on the changed path. |
 | M5. Operational reliability | A narrow consumer-focused slice of 117/120/124: service cancellation, bounded scheduling, capacity budgets and separately hosted qualified same-checkpoint providers with explicit route admission. | Kill/disconnect/overload drills, no stale application, independent-provider recovery and no frame stalls. Provider errors retain useful typed causes. |
 | M6. Other consumers | Other Everglade ambient characters, then discrete decisions in other games. Voice uses its existing epoch gate; continuous vehicle control stays local. | Each consumer has its own legal action set, observation scope, validity conditions, fallback and quality gate. |
@@ -147,8 +147,8 @@ unqualified operational/quality work explicit.
 
 M0 and M1 are implemented. M2 has a runnable local shadow integration and
 actual-Wasm/headless synthetic-edge qualification. The book now has
-[21b](../../psionic/book/ch021b-a-decision-arrives-while-play-continues.md) and
-[21c](../../psionic/book/ch021c-a-guard-asks-a-pylon.md). See the
+[28](../../psionic/book/ch028-a-decision-arrives-while-play-continues.md) and
+[29](../../psionic/book/ch029-a-guard-asks-a-pylon.md). See the
 [verification record](../verification/pylon-guard-decisions-2026-10-30.md) for
 726 selected mutants killed, native/sanitizer/browser scope and measured warm
 routing improvement. Independent review corrected both an empty-history
@@ -163,7 +163,7 @@ from the local synthetic checks.
 
 ## M3 measurement result (2026-10-30)
 
-[Chapter 21d](../../psionic/book/ch021d-measure-a-guard-decision.md) and the
+[Chapter 30](../../psionic/book/ch030-measure-a-guard-decision.md) and the
 [measurement record](../verification/pylon-guard-shadow-2026-10-30.md) deliver
 bounded telemetry, Coax-owned evaluation and actual public/cookie evidence.
 The warm corpus has 16/16 timely pinned replies, median 5925 ms including CLI
@@ -189,7 +189,7 @@ packaging correction. Mammoth's fleet remains
 on its earlier revision. Cold/catch-up/withdrawal rules retain their prior
 focused native qualification; this does not claim production fault tolerance.
 
-[Chapter 21e](../../psionic/book/ch021e-directions-on-request.md) and the
+[Chapter 31](../../psionic/book/ch031-directions-on-request.md) and the
 [directions record](../verification/guard-directions-2026-10-30.md) add an explicit
 help candidate with five fixed choices. Fresh labels and request bytes precede
 calls; development 0/1/4 and held-out 2/3 all chose the expected tip through the
@@ -201,7 +201,7 @@ is unhelpful in those requested contexts; the finite local goal-to-tip rule is
 also perfect and immediate. There is no demonstrated remote-model advantage,
 calibration or measured player benefit.
 
-[Chapter 21f](../../psionic/book/ch021f-a-guard-gives-directions.md) connects that
+[Chapter 32](../../psionic/book/ch032-a-guard-gives-directions.md) connects that
 candidate to the actual Everglade page. Nearby calm Bram offers a separate
 Directions button for the HUD's current unmet objective, or Find Work when no
 quest is followed. Click/touch or G creates an explicit intent without invoking

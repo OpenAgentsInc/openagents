@@ -30,7 +30,7 @@
 // else from ~/work/.secrets/psionic-responses.env (KEY=value lines, kept
 // chmod 600); the default endpoint is http://127.0.0.1:8080 (the RTX 4080
 // through its tunnel). gpt-oss-20b on this Mac's GPU (psionic/serve-gptoss.sh
-// --metal, chapter 45g) is PSIONIC_URL=http://127.0.0.1:8794 with
+// --metal, chapter 71) is PSIONIC_URL=http://127.0.0.1:8794 with
 // PSIONIC_GPTOSS_HOST=local (gpu.coax: no tunnel, no switch); PSIONIC_TOOLS=off
 // leaves the tools out. The key goes
 // to curl through its environment only (never an argument, never logged).

@@ -1,9 +1,9 @@
 # Psionic Part III verification — 2026-10-29
 
-Chapters 14, 15, 17 and 18 extend the existing chapter 16/16b endpoint.
+Chapters 18, 19, 22 and 23 extend the existing chapter 20/21 endpoint.
 Focused checks only: full mutation runs and original whole-model CPU decisions
 are omitted under owner instruction. This serving work does not resolve
-chapter 13's independent original-model conformance/quality gates.
+chapter 17's independent original-model conformance/quality gates.
 
 ## What shipped
 
@@ -20,9 +20,9 @@ chapter 13's independent original-model conformance/quality gates.
   per-request ownership of the device forks already landed on main, a joint
   single-question device path and measured storage/latency comparisons.
 
-The endpoint and protobuf chapters 16/16b remain their existing contracts.
+The endpoint and protobuf chapters 20/21 remain their existing contracts.
 The original CPU-pool/decoded-cache ambition in row 18 is explicitly sequenced
-into chapter 24 and later cache work. No CPU pool or general decoded-weight
+into chapter 35 and later cache work. No CPU pool or general decoded-weight
 cache is claimed by this delivery. Original device execution was already the
 useful serving path, so that is what this part measures and operates.
 
@@ -266,5 +266,5 @@ These opt-in original-device experiments need an available device/model and
 are not part of routine original CPU testing. Future work includes exclusive
 GPU measurements, broader mixed-question fork workloads, removal of discarded
 prefix readout, CPU pools and decoded-cache qualification, fair batching and
-public service operations. Chapter 13's model-quality and independent whole
+public service operations. Chapter 17's model-quality and independent whole
 original-model conformance gates are unchanged.

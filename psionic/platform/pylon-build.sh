@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the chapter-19 Pylon: OUT plain|sanitized [--test-trust].
+# Build the chapter-24 Pylon: OUT plain|sanitized [--test-trust].
 # Coax emits one C program from psionic/lib/pylon/run.coax; the host
 # (pylon-host.c) runs its main on a big-stack thread and links the platform
 # effects: sockets, TLS (tls-native.c with OpenSSL from Nix through

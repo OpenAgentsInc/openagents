@@ -3,7 +3,7 @@
 
 // book:begin example
 main :: () {
-    // One arithmetic step of chapter 165's machine: op 0 adds, 1 subtracts, 2 multiplies.
+    // One arithmetic step of chapter 224's machine: op 0 adds, 1 subtracts, 2 multiplies.
     step:=[12]GgNode.[
         GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.input,k=2}, // op, a, b
         GgNode.{op=GgOp.eq0,a=0},                                                          // n3: op == 0

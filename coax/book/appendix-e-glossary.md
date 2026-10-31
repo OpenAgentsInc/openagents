@@ -2,15 +2,15 @@
 
 **AoS / SoA / blocked SoA.** Array of structs, struct of arrays, and SoA in
 fixed-width blocks (`SOA(4)`). Storage choices for the same logical data
-(Chapter 11).
+(Chapter 13).
 
 **Arena.** An allocator that hands out memory by bumping a pointer and
 frees everything at once on reset. Gives a group of objects one shared
-lifetime. `coax0` allocates its syntax tree this way (Chapter 20).
+lifetime. `coax0` allocates its syntax tree this way (Chapter 27).
 
 **Authority file.** A file that starts with `#authority;`. Every procedure
 in it except `main` and `#foreign` imports must be executed by some check,
-and its checks run on every build (Chapter 10).
+and its checks run on every build (Chapter 11).
 
 **Budget.** A compile-time limit counted in work (steps, depth, nodes),
 never in seconds, so whether a program compiles doesn't depend on the
@@ -22,11 +22,11 @@ has a separate fixed limit.
 run processes or use the network. Pure `#run` code has none.
 
 **Capture list.** The `[read a, write b]` list after a job's signature:
-the data it may touch, and how (Chapter 12).
+the data it may touch, and how (Chapter 14).
 
 **Check.** A `#test` or `#forall` block. It runs in the compile-time
 evaluator under `coax test` (and on every build of an authority file) and
-is never compiled into the program (Chapter 10).
+is never compiled into the program (Chapter 11).
 
 **coax0.** The bootstrap compiler in `coax/`. Compiles a subset of Coax to
 C11.
@@ -57,11 +57,11 @@ fails safely once the slot is reused.
 
 **Hot reload.** Replacing code in a running program while keeping its
 state. In Coax, a resident-host design with safe points and transactional
-migration (Chapter 16).
+migration (Chapter 19).
 
 **Mutant.** A copy of a program with one small change, such as `<` turned
 into `<=` or a statement removed. `coax mutate` builds every mutant it can
-and reports the ones no check fails (Chapter 10).
+and reports the ones no check fails (Chapter 11).
 
 **Place.** Something that can be assigned to: a local variable, a field of a
 place, or an element of a place or a view. Parameters, constants and loop
@@ -78,7 +78,7 @@ bulk.
 
 **Seed.** One of the generated C files in `coax/bootstrap/` that let the
 compiler build its own Coax lexer and parser. A normal build requires the
-seeds to match freshly generated output byte for byte (Chapter 20).
+seeds to match freshly generated output byte for byte (Chapter 27).
 
 **Strict.** Pinned floating-point behavior: no contraction or
 reassociation, fixed rounding, tested math functions.

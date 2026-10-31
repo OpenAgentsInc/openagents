@@ -206,7 +206,7 @@ How it works:
   and Psionic: on the model chip after Psionic in an empty chat (or
   `--mode lab`, shot step `mode lab`).
   Each message first goes to our own Elephant, `elephant-1` served by
-  `psionic-serve --elephant-gpu` (Psionic chapter 16, `/v1/systemone`) on
+  `psionic-serve --elephant-gpu` (Psionic chapter 20, `/v1/systemone`) on
   the RTX 4080 worker `coderos-4080`, through the Coax System One client
   (`coax/lib/systemone`, its keyless Psionic door, polled with `so_step`
   from the frame loop). It asks the old router's five questions (agent,

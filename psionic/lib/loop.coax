@@ -1,4 +1,4 @@
-// Chapter 187: is the loop improving? A loop of proposer, reflector, grader
+// Chapter 246: is the loop improving? A loop of proposer, reflector, grader
 // and student is run for a fixed number of cycles on a fixed set, its cost
 // per accepted result measured every cycle; each component is removed in
 // turn under the same seeds, and a component stays only when its removal

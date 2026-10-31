@@ -1,4 +1,4 @@
-// Chapter 13 applied to chapter 10: frozen Elephant policies and recorded evidence.
+// Chapter 17 applied to chapter 14: frozen Elephant policies and recorded evidence.
 #load "qualify.coax";
 #load "decision-models.coax";
 #load "../fixtures/qualify/elephant-evidence.coax";
@@ -7,7 +7,7 @@
 YE_PROFILE :: "cpu-f32-wide-v1";
 YE_REFERENCE :: "torch-2.10.0-cpu-f32-eager";
 YE_LAYER0_INPUT :: "baselabs/elephant-1 b3f8a93462fb1051a9de031e94a7ff380e254072 token 32 position 0 layer 0\n";
-// Chapter 10's files, by SHA-256 of their bytes.
+// Chapter 14's files, by SHA-256 of their bytes.
 YE_LAYER0_PSIONIC_FILE :: "bb24840a66cdec253c9626c565ddbbc4c46049aea5c9891f889109125f5c26d5";
 YE_LAYER0_TRANSFORMERS_FILE :: "96355941a92956255f1ad3aabf9a29500a88b6ee173aee55d50eaa74052790be";
 YE_PSIONIC_FILE :: "1cf6754f3840f9f8f147ffff03dbc30f85fef4ff543e13c6199d98df946095b9";
@@ -53,15 +53,15 @@ YE_CASES :: 3;
     #assert qy_same(ye_model(),qy_hex(YE_MODEL));
 }
 // Hashing 16 KiB costs about 6 million check steps, so each file has its own check.
-#test "the transcribed decision evidence is chapter 10's files" {
+#test "the transcribed decision evidence is chapter 14's files" {
     #assert qy_same(qy_text_digest(YE_PSIONIC_TEXT),qy_hex(YE_PSIONIC_FILE));
     #assert qy_same(qy_text_digest(YE_REQUEST_TOKENS),qy_hex(YE_REQUEST_FILE));
 }
-#test "the Psionic layer-0 bits are chapter 10's file" {
+#test "the Psionic layer-0 bits are chapter 14's file" {
     #assert qy_same(ye_file_digest(YE_LAYER0_PSIONIC),qy_hex(YE_LAYER0_PSIONIC_FILE));
     changed:=YE_LAYER0_PSIONIC;changed[4095]=changed[4095]^1;#assert !qy_same(ye_file_digest(changed),qy_hex(YE_LAYER0_PSIONIC_FILE));
 }
-#test "the Transformers layer-0 bits are chapter 10's file" {
+#test "the Transformers layer-0 bits are chapter 14's file" {
     c:[4096]f64;r:[4096]f64;
     #assert ye_evidence(0,c[..],r[..])==4096;
     #assert c[0]==f64(f32_from_bits(0xbd529b41)) && r[4095]==f64(f32_from_bits(YE_LAYER0_TRANSFORMERS[4095]));
@@ -75,7 +75,7 @@ YE_CASES :: 3;
     #assert qy_same(qy_values_digest(r[..]),qy_hex(YE_LAYER0_TRANSFORMERS_VALUES));
 }
 // book:begin chapter10
-#test "chapter 10 agrees under the frozen policies, but its build is unknown" {
+#test "chapter 14 agrees under the frozen policies, but its build is unknown" {
     c:[4096]f64;r:[4096]f64;
     y:=ye_case(1,c[..],r[..]);
     #assert y.verdict==QyVerdict.unknown && y.cause==QyCause.sources && y.unknown==0xc0 && y.same && y.tv<0.0000001;
@@ -145,12 +145,12 @@ ye_candidate_count :: (i:int)->int {
     if i==2 {return 1;}
     return 0;
 }
-// What chapter 10 recorded about the build that produced each candidate file.
+// What chapter 14 recorded about the build that produced each candidate file.
 // book:begin history
 ye_record :: (i:int)->QyRecord {
     r:=QyRecord.{dataset=ye_policy(i).dataset,model=qy_hex(YE_MODEL),compiler=qy_name("coax0 0.16.0"),
         reference_profile=qy_name(YE_REFERENCE),role=QyRole.development};
-    // Not recorded in chapter 10: the digest of the sources built, and the
+    // Not recorded in chapter 14: the digest of the sources built, and the
     // arithmetic profile that build executed. They stay unknown.
     if i==0 {r.policy=qy_hex(YE_LAYER0_POLICY);r.mode=QyMode.one_block;r.candidate=qy_hex(YE_LAYER0_PSIONIC_VALUES);r.reference=qy_hex(YE_LAYER0_TRANSFORMERS_VALUES);}
     if i==1 {r.policy=qy_hex(YE_DECISION_POLICY);r.mode=QyMode.replay;r.candidate=qy_hex(YE_DECISION_PSIONIC_VALUES);r.reference=qy_hex(YE_DECISION_TRANSFORMERS_VALUES);}
@@ -162,7 +162,7 @@ ye_record :: (i:int)->QyRecord {
 // Copies case i's compared values into c and r and returns their count.
 ye_evidence :: (i:int,c:[]f64,r:[]f64)->int {
     if i==0 {
-        // The embedded bits are chapter 10's files, or nothing is compared.
+        // The embedded bits are chapter 14's files, or nothing is compared.
         #assert qy_same(ye_file_digest(YE_LAYER0_PSIONIC),qy_hex(YE_LAYER0_PSIONIC_FILE));
         #assert qy_same(ye_file_digest(YE_LAYER0_TRANSFORMERS),qy_hex(YE_LAYER0_TRANSFORMERS_FILE));
         ye_decode(YE_LAYER0_PSIONIC,c);ye_decode(YE_LAYER0_TRANSFORMERS,r);
@@ -171,7 +171,7 @@ ye_evidence :: (i:int,c:[]f64,r:[]f64)->int {
     if i==2 {c[0]=YE_MASS_PSIONIC[0];r[0]=YE_MASS_TRANSFORMERS[0];}
     return ye_candidate_count(i);
 }
-// Qualify case i of chapter 10's recorded evidence.
+// Qualify case i of chapter 14's recorded evidence.
 ye_case :: (i:int,c:[]f64,r:[]f64)->QyReport {
     n:=ye_evidence(i,c,r);
     return qy_qualify(ye_policy(i),ye_record(i),c[0..<n],r[0..<n]);

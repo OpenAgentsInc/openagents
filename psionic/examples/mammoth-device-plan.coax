@@ -1,4 +1,4 @@
-// Chapter 30b's schedule for Mammoth's 86-token sample: the same plan with
+// Chapter 46's schedule for Mammoth's 86-token sample: the same plan with
 // the model's shape as data, at the 4080's 14 GiB and at its smallest budget.
 // Nothing runs: the plan is data that the host executes.
 #import "Basic";

@@ -1,4 +1,4 @@
-/* Chapter 115's load generator: the host effects only. Coax
+/* Chapter 170's load generator: the host effects only. Coax
    (psionic/lib/bench-wire.coax and bench.coax) makes the schedule, writes each
    request body, says which received lines are tokens, reads the server's own
    time, and computes every percentile. This file connects to 127.0.0.1, sends

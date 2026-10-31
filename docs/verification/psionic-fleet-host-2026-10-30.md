@@ -1,6 +1,6 @@
 # Fleet host byte effects — 2026-10-30
 
-`psionic/platform/fleet-host.c` supplies C platform effects to chapter 20's
+`psionic/platform/fleet-host.c` supplies C platform effects to chapter 25's
 Coax runtime. It does not parse HTTP, choose Pylons, validate decisions or
 construct protocol responses. The Coax entry is `coax_fleet_main(void)`.
 
@@ -32,7 +32,7 @@ TCP connections and independently receive/compare the emitted bytes:
 - SIGTERM during a blocked accept. This initially failed at the deadline;
   bounded polling fixed it and the same test then passed on both platforms.
 
-This qualifies host effects, not the chapter 20 HTTP/router end-to-end path.
+This qualifies host effects, not the chapter 25 HTTP/router end-to-end path.
 The integrating Coax implementation and its fleet/Pylon interoperability have
 separate checks and records. No public listeners, real identity or paid work
 are involved in these host tests.

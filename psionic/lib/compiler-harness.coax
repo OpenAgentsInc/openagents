@@ -137,7 +137,7 @@ CH_RUNS_MAX :: 1000;
 // Execute the compiler's own schedule with integers: slot 0 holds 1, inputs
 // sit in their slots, and in each layer every gate reads the residual as it
 // was at the start of the layer, adds its value to its slot, and every slot the
-// plan clears there loses its start-of-layer value. Gates compute chapter 167's
+// plan clears there loses its start-of-layer value. Gates compute chapter 226's
 // identities, which is what the weights mean, not the graph's ideal meaning:
 // a select on a stale condition of 5 gives b + 5(a - b) here as in the block,
 // and the evaluator alone decides what was intended. A node's reported value is

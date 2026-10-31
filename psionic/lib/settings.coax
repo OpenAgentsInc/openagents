@@ -1,4 +1,4 @@
-// Chapter 182: fit settings on recorded answers. A stall detector's weight,
+// Chapter 241: fit settings on recorded answers. A stall detector's weight,
 // threshold and cut point are fitted from answers already recorded, with no
 // model calls: candidates at the midpoints where a decision changes, a
 // coordinate search priced by written costs, and a move kept only when it is
@@ -35,7 +35,7 @@ st_tiny :: ()->[6]StRow {
         StRow.{group=1,p=0.2,quiet=500,stalled=true},StRow.{group=1,p=0.45,quiet=30},
         StRow.{group=2,p=0.1,repeats=2,quiet=40},StRow.{group=2,p=0.55,repeats=8,quiet=600}];
 }
-// The hand-written settings and the written costs of chapter 182.
+// The hand-written settings and the written costs of chapter 241.
 ST_START :: StSettings.{weight=0,threshold=0.5,quiet=700};
 ST_COSTS :: StCosts.{miss=4,alarm=1};
 st_score_is :: (s:StScore,rows:int,stalls:int,flagged:int,caught:int,missed:int,alarms:int,cost:f64)->bool {

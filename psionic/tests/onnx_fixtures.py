@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds chapter 161's ONNX fixtures with the onnx package (pinned 1.17.0).
+"""Builds chapter 218's ONNX fixtures with the onnx package (pinned 1.17.0).
 
 Not part of the CPU check: it needs `onnx==1.17.0` and numpy, so it runs in a
 separate environment. It writes psionic/fixtures/onnx/*.onnx, the byte arrays

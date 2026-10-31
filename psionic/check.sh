@@ -466,7 +466,7 @@ if [[ $tensor_device == 1 ]]; then
     phase "tensor-device-v1 (focused gate, no full mutation claim)"
 fi
 
-# Chapter 26a: checked IR and native plans; GPU qualification is explicit.
+# Chapter 38: checked IR and native plans; GPU qualification is explicit.
 if [[ $tensor_ir == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ir.sh
     phase "tensor-ir-f32-v1 (focused gate, no full mutation claim)"
@@ -488,15 +488,15 @@ if [[ $gguf == 1 ]]; then
 fi
 if [[ $tokenizer_families == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_tokenizer_families.sh --mutate --jobs "$jobs"
-    phase "chapter 36: tokenizer-families"
+    phase "chapter 52: tokenizer-families"
 fi
 if [[ $byte_lm == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_byte_lm.sh --mutate --jobs "$jobs"
-    phase "chapter 73: byte-lm"
+    phase "chapter 112: byte-lm"
 fi
 if [[ $adamw == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_adamw.sh --mutate --jobs "$jobs"
-    phase "chapter 78: adamw"
+    phase "chapter 124: adamw"
 fi
 if [[ $model_pins == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_model_pins.sh --mutate --jobs "$jobs"
@@ -504,11 +504,11 @@ if [[ $model_pins == 1 ]]; then
 fi
 if [[ $bpe_train == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_bpe_train.sh --mutate --jobs "$jobs"
-    phase "chapter 77: bpe-train"
+    phase "chapter 123: bpe-train"
 fi
 if [[ $nanochat_chat == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_nanochat_chat.sh --mutate --jobs "$jobs"
-    phase "chapter 77: nanochat conversation tokens"
+    phase "chapter 123: nanochat conversation tokens"
 fi
 if [[ $interchange == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
@@ -524,10 +524,10 @@ if [[ $robotics == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/robotics/check.sh --mutate --jobs "$jobs" ${robotics_requested[@]+"${robotics_requested[@]}"}
     phase "robotics (chapter112)"
 fi
-# Chapter 13's qualification gate has its own runner; --only qualify selects it.
+# Chapter 17's qualification gate has its own runner; --only qualify selects it.
 if [[ $qualify == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/qualify.sh
-    phase "qualification (chapter 13)"
+    phase "qualification (chapter 17)"
 fi
 
 if [[ $deepseek == 1 ]]; then
@@ -546,13 +546,13 @@ if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_prefill.sh --mutate --jobs "$jobs"
     phase "DeepSeek implemented units"
 fi
-# Chapter 16: the toy model, the serve-run loop and real loopback servers.
+# Chapter 20: the toy model, the serve-run loop and real loopback servers.
 if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" serve-"* ]]; then
     python3 -I psionic/tests/serve_fixture.py
     "$coax" test psionic/lib/serve-run.coax
     "$coax" test psionic/lib/serve-run.coax --release
     COAX="$coax" COAX_CC="$cc" psionic/tests/serve.sh
-    # The protobuf wire (16b): its native answers need the official protobuf
+    # The protobuf wire (21): its native answers need the official protobuf
     # runtime (PROTO_PYTHON, proto/README.md); without it only the Coax checks run.
     if [[ -n ${PROTO_PYTHON:-} ]]; then
         COAX="$coax" COAX_CC="$cc" psionic/tests/check_serve_proto.sh
@@ -561,11 +561,11 @@ if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" serve-"* ]]; then
         "$coax" test psionic/lib/serve-proto.coax --release
         echo "PROTO_PYTHON unset: protobuf native answers not decoded"
     fi
-    phase "chapter 16 server"
+    phase "chapter 20 server"
 fi
-# Chapter 19: the Pylon's checks outside its mutation-gated units (template,
+# Chapter 24: the Pylon's checks outside its mutation-gated units (template,
 # relays, beacon, decision, queue above): host.coax ties them to SHA-256 and
-# host-serve.coax to chapter 16's server. The end to end over a local relay
+# host-serve.coax to chapter 20's server. The end to end over a local relay
 # (psionic/tests/pylon/pylon_e2e.py [--wss]) needs bun and @noble; run it by
 # hand.
 if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" pylon/"* ]]; then
@@ -573,7 +573,7 @@ if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" pylon/"* ]]; then
     "$coax" test psionic/lib/pylon/host.coax --release --run-steps 250000000
     "$coax" test psionic/lib/pylon/host-serve.coax --run-steps 250000000
     "$coax" test psionic/lib/pylon/host-serve.coax --release --run-steps 250000000
-    phase "chapter 19 Pylon"
+    phase "chapter 24 Pylon"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"
 phase book

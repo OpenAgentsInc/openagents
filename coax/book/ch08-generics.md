@@ -523,7 +523,7 @@ clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 three again for `f64`, named `minimum`, `maximum` and `clamp`. A
 tolerance check, `near :: (a: f32, b: f32, tolerance: f32) -> bool`,
 appears in four files. Source loading, logical modules and explicit
-exports now let those files share a concrete helper (Chapter 22). The
+exports now let those files share a concrete helper (Chapter 10). The
 `f32` versus `f64` split still needs comparison constraints before one
 generic `clamp` can cover both. Until then, share the concrete variants
 and preserve their existing floating-point behavior.

@@ -41,7 +41,7 @@ twice :: (x: int) -> int {
 ```
 
 The checker reads every procedure's signature before it checks any body
-(Chapter 20 shows the passes), so order never matters. The same holds in
+(Chapter 27 shows the passes), so order never matters. The same holds in
 the generated C, which gets a prototype for every procedure.
 
 ## Integers and initialization
@@ -227,11 +227,11 @@ in Coax:
   builds and wraps in release builds; it's never undefined.
 - C++ leaves the order of function arguments unspecified. Coax evaluates
   operands and arguments left to right, and the generated C enforces it
-  (Chapter 20 shows how).
+  (Chapter 27 shows how).
 - An out-of-range index is undefined in C++. In Coax it traps.
 - A `printf` whose format doesn't match its arguments compiles in C++, at
   most with a warning. In Coax it doesn't compile. Here's the error from
-  Chapter 20's program with an argument missing:
+  Chapter 27's program with an argument missing:
 
 ```jai
 tiny.coax:17:11: error[E0320]: format has 4 '%' slots but print was given 3 values
@@ -261,8 +261,8 @@ explain each current limit and the remaining design.
 | `enum class E : uint8_t` | `E :: enum u8 { ... }` | works |
 | Pointers | `*T`, and `*T?` for one that may be null | planned |
 | Preprocessor `#if` | Parsed conditional fields/statements with `BUILD_DEBUG`; general conditions and top-level declaration selection follow | `BUILD_DEBUG` fields/statements work; general forms planned |
-| Per-file `-ffp-contract=off` and similar | `strict` on the procedure, so the rule travels with the code (Chapter 13) | contraction is always off; `strict` planned |
-| CMake | `build.coax`, generating CMake and Xcode lists before replacing them (Chapter 16) | planned |
+| Per-file `-ffp-contract=off` and similar | `strict` on the procedure, so the rule travels with the code (Chapter 16) | contraction is always off; `strict` planned |
+| CMake | `build.coax`, generating CMake and Xcode lists before replacing them (Chapter 19) | planned |
 
 ## Calling between them
 
@@ -300,5 +300,5 @@ In C++, `COAX_LAYOUT` is `static_assert` and the declarations sit inside
 `extern "C"`. Going the other way, Coax calls C functions declared with
 `#foreign`, which in `coax0` pass only integers, floats and `bool`; C++
 code is reached through `extern "C"` shims. Data crosses as fixed-width
-fields, explicit lengths and opaque handles. Chapter 17 covers the whole
+fields, explicit lengths and opaque handles. Chapter 20 covers the whole
 boundary.

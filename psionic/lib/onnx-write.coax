@@ -1,13 +1,13 @@
-// Chapter 161a: write a bounded ONNX graph. A chain of Gemm, Relu and Softmax
+// Chapter 219: write a bounded ONNX graph. A chain of Gemm, Relu and Softmax
 // nodes over one float input is written as an ONNX model, field by field and
 // in field-number order, the bytes onnx's own helpers produce for the same
-// graph. Every file is read back by chapter 161's reader before it is
+// graph. Every file is read back by chapter 218's reader before it is
 // returned; a graph the reader would refuse, or whose weights it would name
-// differently, is refused here. Chapter 70's affine models leave this way with
+// differently, is refused here. Chapter 103's affine models leave this way with
 // their feature scaling folded into the weights; its hidden layer uses tanh,
 // which is outside the subset, and is refused.
 // Profile onnx-17-write-v1: IR version 8, opset 17, producer "psionic", raw
-// little-endian binary32 initializers, static shapes, chapter 161's bounds.
+// little-endian binary32 initializers, static shapes, chapter 218's bounds.
 #load "onnx.coax";
 #load "tabular.coax";
 #load "../fixtures/onnx/write.coax";
@@ -108,7 +108,7 @@ ow_t_chain :: ()->OwGraph {
     r:=ow_write(g,values[..],out[..]);
     #assert r.status==OwStatus.ok && r.node==-1 && r.read==OxStatus.ok && r.size==OW_T_MLP_FILE.count;
     want:=OW_T_MLP_FILE;#assert ox_same(out[0..<r.size],want[..]);
-    // Read back by chapter 161: names, shapes and every weight bit.
+    // Read back by chapter 218: names, shapes and every weight bit.
     arena:[64]f32;m:=ox_read(out[0..<r.size],arena[..]);
     #assert m.status==OxStatus.ok && m.tensor_count==3 && ox_t_name(m,0,"fc1.weight") && ox_t_name(m,1,"fc1.bias") && ox_t_name(m,2,"fc2.weight");
     for t:0..<3 {
@@ -146,7 +146,7 @@ ow_t_chain :: ()->OwGraph {
     g=ow_t_mlp();g.node_count=0;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.shape && r.node==-1;
 }
 
-#test "what chapter 161 refuses, the writer refuses" {
+#test "what chapter 218 refuses, the writer refuses" {
     values:=OW_T_MLP_VALUES;out:[1024]u8;arena:[64]f32;
     // Shapes that don't chain: 161 refuses at the node.
     g:=ow_t_mlp();g.features=3;r:=ow_write(g,values[..],out[..]);
@@ -179,7 +179,7 @@ ow_t_chain :: ()->OwGraph {
 }
 
 ow_t_fold_params :: ()->[5]f64 {return [5]f64.[2,-1,0.5,4,0.25];}
-#test "folding chapter 70's scaling into the weights" {
+#test "folding chapter 103's scaling into the weights" {
     p:=ow_t_fold_params();mean:=[4]f64.[1,2,-3,0.5];sd:=[4]f64.[2,0.5,1,4];v:[16]f32;for i:0..<16 {v[i]=9;}
     f:=ow_from_tabular(TbModel.{features=4,logistic=true},p[..],mean[..],sd[..],v[..],"deadline");
     #assert f.status==OwStatus.ok && f.count==10 && f.graph.node_count==2 && f.graph.weight_count==2;
@@ -197,7 +197,7 @@ ow_t_fold_params :: ()->[5]f64 {return [5]f64.[2,-1,0.5,4,0.25];}
     #assert f.status==OwStatus.ok && f.count==5 && f.graph.node_count==1 && ow_t_is(f.graph.output,"seconds");
     #assert v[0]==1 && v[1]==-2 && v[2]==0.5 && v[3]==1 && v[4]==4.25;
     #assert ox_t_shape(f.graph.weights[0].shape,2,4,1,0,0) && f.graph.weights[1].at==4;
-    // Eight features, chapter 70's most.
+    // Eight features, chapter 103's most.
     eight:=[9]f64.[1,2,3,4,5,6,7,8,9];ones:=[8]f64.[1,1,1,1,1,1,1,1];nought:=[8]f64.[0,0,0,0,0,0,0,0];
     f=ow_from_tabular(TbModel.{features=8},eight[..],nought[..],ones[..],v[..],"wide");#assert f.status==OwStatus.ok && f.count==9 && v[8]==9;
     // Space for exactly the weights, and one value less.
@@ -206,7 +206,7 @@ ow_t_fold_params :: ()->[5]f64 {return [5]f64.[2,-1,0.5,4,0.25];}
     #assert ow_from_tabular(TbModel.{features=4,logistic=true},p[..],mean[..],sd[..],v[0..<9],"d").status==OwStatus.capacity;
     // A hidden layer computes tanh, which the subset doesn't have.
     f=ow_from_tabular(TbModel.{features=4,hidden=8,logistic=true},p[..],mean[..],sd[..],v[..],"mlp");#assert f.status==OwStatus.op && f.count==0;
-    // A model chapter 70 wouldn't admit, and a weight past binary32's range.
+    // A model chapter 103 wouldn't admit, and a weight past binary32's range.
     #assert ow_from_tabular(TbModel.{features=9},p[..],mean[..],sd[..],v[..],"x").status==OwStatus.shape;
     #assert ow_from_tabular(TbModel.{features=4},p[0..<4],mean[..],sd[..],v[..],"x").status==OwStatus.shape;
     #assert ow_from_tabular(TbModel.{features=4},p[..],mean[0..<3],sd[..],v[..],"x").status==OwStatus.shape;
@@ -278,7 +278,7 @@ ow_tensor :: (out:[]u8,at:int,stem:string,suffix:string,shape:OxShape,values:[]f
 // A node reads the previous node's output (the graph input first); the last
 // writes the graph output and the others "t1", "t2", ... A Gemm is named
 // "/stem/Gemm" and its weights "stem.weight" and "stem.bias": with no slash in
-// the stem, those are the names chapter 161 gives them back. The file is
+// the stem, those are the names chapter 218 gives them back. The file is
 // staged, read back, and copied out only if 161 admits it.
 ow_check :: (g:OwGraph,values:[]f32)->OwResult {
     if g.node_count>OX_NODES_MAX || g.weight_count>OX_VALUES_MAX {return OwResult.{status=OwStatus.capacity,node=-1};}
@@ -348,10 +348,10 @@ ow_write :: (g:OwGraph,values:[]f32,out:[]u8)->OwResult {
 // book:end write
 
 // book:begin fold
-// Chapter 70's affine models read scaled features, (x - mean) / sd. Folding
+// Chapter 103's affine models read scaled features, (x - mean) / sd. Folding
 // the scaling into the weights lets the exported graph read raw features:
 // w / sd for each weight, and b - sum(w mean / sd) for the bias, in binary64
-// with chapter 3's accumulator, then rounded once to binary32. The logistic
+// with chapter 4's accumulator, then rounded once to binary32. The logistic
 // model becomes two columns, 0 and z, so a two-class Softmax gives sigmoid(z)
 // as its second output.
 ow_from_tabular :: (m:TbModel,params:[]f64,mean:[]f64,sd:[]f64,values:[]f32,stem:string)->OwFold {

@@ -1,4 +1,4 @@
-// Public chapter-5 root: text-only requests, original Qwen tokenizer tables.
+// Public chapter-9 root: text-only requests, original Qwen tokenizer tables.
 #load "text/tokenizer.coax";
 #load "text/request.coax";
 #load "text/prefix.coax";

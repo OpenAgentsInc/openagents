@@ -2,7 +2,7 @@
 """Use the captured independent CPU reference for the original Mammoth sample request.
 
 Mammoth and Elephant pin the same tokenizer.json, so the typed sample renders to
-the same checked token stream as chapter 10; this fixture reuses that file.
+the same checked token stream as chapter 14; this fixture reuses that file.
 """
 import hashlib, json, math, re, sys
 from pathlib import Path
@@ -34,8 +34,8 @@ elif len(sys.argv) == 3 and sys.argv[1] == '--check-output':
         raise ValueError('original Mammoth decision differs from independent CPU reference')
     print(f'original Mammoth decision agrees with independent CPU reference within {TOLERANCE}')
 elif len(sys.argv) == 3 and sys.argv[1] == '--check-cpu':
-    # Frozen before the first device run (chapter 30b), as chapter 30 froze
-    # Elephant's: the same choice as chapter 11's recorded CPU result and
+    # Frozen before the first device run (chapter 46), as chapter 44 froze
+    # Elephant's: the same choice as chapter 15's recorded CPU result and
     # every statistic within 0.0005 of it.
     pattern = r'choice=(\w+) p_yes=([0-9.eE+-]+) p_no=([0-9.eE+-]+) slot_mass=([0-9.eE+-]+) confidence=([0-9.eE+-]+)'
     cpu = re.search(pattern, (models / 'mammoth/psionic-reference.txt').read_text())

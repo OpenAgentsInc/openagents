@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 179's independent reference, written from the chapter's specification.
+"""Chapter 238's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/noise.coax. Sums use math.fsum (exactly
-rounded) where the library uses chapter 3's compensated accumulator. The
-Elephant probabilities are read from chapter 12's recorded run rather than
+rounded) where the library uses chapter 4's compensated accumulator. The
+Elephant probabilities are read from chapter 16's recorded run rather than
 copied. `--header` writes the C expectations the native harness compares.
 """
 import math
@@ -96,7 +96,7 @@ def headroom(score, part, which, ceiling, floor):
 
 
 def elephant():
-    """Chapter 12's twelve held-out items: kind, gold option and probabilities."""
+    """Chapter 16's twelve held-out items: kind, gold option and probabilities."""
     text = open(os.path.join(HERE, "..", "fixtures", "quality", "heldout-v1-elephant-cpu.txt")).read()
     rows = re.findall(r"^(choice|noul|score)-\S+ .*?gold=(\d+).*\n  p=([0-9.,]+)$", text, re.M)
     kinds = {"choice": 0, "noul": 1, "score": 2}

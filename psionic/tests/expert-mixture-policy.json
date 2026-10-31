@@ -3,7 +3,7 @@
   "profile": "deepseek-expert-cpu-wide-v1",
   "frozen_before_original_candidate": true,
   "input": "same owned 5120-value vector as the individual expert qualification",
-  "gate": "original BF16 gate coefficients, original F32 text correction bias, chapter 59 CPU-wide sqrt-softplus router, top six of 384, route scale 1.5",
+  "gate": "original BF16 gate coefficients, original F32 text correction bias, chapter 91 CPU-wide sqrt-softplus router, top six of 384, route scale 1.5",
   "selected_ids": "exact ordered IDs",
   "route_weights": {"atol": 0.000002, "rtol": 0.00002},
   "router_scores": {"atol": 0.000000000001, "rtol": 0.000000000001},

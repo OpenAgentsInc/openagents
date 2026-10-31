@@ -1,6 +1,6 @@
-# Chapter 19: the Pylon's protocol logic — 2026-10-29
+# Chapter 24: the Pylon's protocol logic — 2026-10-29
 
-Psionic chapter 19 ("A Pylon answers decisions") needs signing, NIP-44,
+Psionic chapter 24 ("A Pylon answers decisions") needs signing, NIP-44,
 a relay client and the protocol rules. This record covers the rules: the
 parts that need no key, no cipher and no socket. They are in
 `psionic/lib/pylon/`: four `#authority` units and one glue unit.
@@ -10,8 +10,8 @@ parts that need no key, no cipher and no socket. They are in
 | `template.coax` | The unsigned event template `{pubkey, created_at, kind, tags, content}` every Pylon record is written as, and the tag reader the checkers share. |
 | `beacon.coax` | NIP-PYLON kind `30200` v1: the writer (JCS-ordered content, `d`/`t`/`x`/`expiration` tags, optional owner `auth` tag), the reader's checker (Validation and Freshness), served identities, hardware classes, the online/draining/offline lifecycle and the republish schedule. |
 | `relays.coax` | NIP-65 kind `10002`: the writer and checker, and the read relays a buyer sends jobs to. |
-| `host.coax` | Not `#authority`: it decides nothing. The one-call entries that hash with `coax/lib/crypto/sha256.coax` (`ph_beacon`, `ph_read_beacon`, `ph_digest`), and the checks that tie the units to the real SHA-256 and to chapter 16's `sv_decode`. Keeping SHA-256 and the server out of the authority units' load graph keeps their mutation runs to their own code. |
-| `decision.coax` | NIP-DEC jobs: a decrypted `25910` to chapter 16's exact server body or a typed refusal; the server's `200` body to a `26910` result naming the pylon's served identity; `27010` status bodies; cancel mapped onto the server slot; the deadline as the server's decide budget; unsigned answer templates. |
+| `host.coax` | Not `#authority`: it decides nothing. The one-call entries that hash with `coax/lib/crypto/sha256.coax` (`ph_beacon`, `ph_read_beacon`, `ph_digest`), and the checks that tie the units to the real SHA-256 and to chapter 20's `sv_decode`. Keeping SHA-256 and the server out of the authority units' load graph keeps their mutation runs to their own code. |
+| `decision.coax` | NIP-DEC jobs: a decrypted `25910` to chapter 20's exact server body or a typed refusal; the server's `200` body to a `26910` result naming the pylon's served identity; `27010` status bodies; cancel mapped onto the server slot; the deadline as the server's decide budget; unsigned answer templates. |
 
 ## The boundary other agents call
 
@@ -25,7 +25,7 @@ Each is one call. Nothing here signs, encrypts or touches a socket.
   key and signature; empty omits the tag.
 - **Relay list out.** `pr_write(out, pubkey, created_at, relays:[]PrRelay)->int`,
   the same way.
-- **Beacon in (chapter 20).** After `nostr_event_verify_vartime`, call
+- **Beacon in (chapter 25).** After `nostr_event_verify_vartime`, call
   `ph_read_beacon(kind, signer_hex, tags_json, content)->PbRead` (or
   `pb_read(..., digest)` with a digest already in hand), then
   `pb_fresh(read, received_at, held)->PbFresh` and
@@ -60,7 +60,7 @@ Written down, not resolved by guessing. The NIPs were not edited.
    uses `outcome: "answered"` with `response`, a non-answered outcome with an
    `error` object, and sends every refusal as a `27010` status `error`. The
    coordinator chose the deployed wire; `decision.coax` builds it.
-2. **Door.** Chapter 16's HTTP server names itself `service.door: "psionic"`
+2. **Door.** Chapter 20's HTTP server names itself `service.door: "psionic"`
    with no provider. A Pylon's answer is `{door: "pylon:<slug>", identity,
    provider, version}` as NIP-PYLON says; `pd_result` rewrites it. The
    identity string is the server's own, `elephant-1@sha256:<64 hex>`, and the
@@ -80,7 +80,7 @@ Written down, not resolved by guessing. The NIPs were not edited.
    (NIP-CJ: they must agree).
 6. **State depth.** NIP-DEC allows a `state` object 32 levels deep; the shared
    JSON reader stops at 16, so such a payload is `unsupported_input`, as the
-   chapter 16 server already answers.
+   chapter 20 server already answers.
 7. **Reader rules beyond the text.** The beacon reader also refuses
    `since > observed_at` and `valid_until < observed_at` (negative uptime or
    a beacon expired when made), requires `pools` only to be valid when
@@ -111,7 +111,7 @@ load average was 90–160 throughout, so every mutation run was sharded.
 
 The checks use the NIP-PYLON relay-list example verbatim, a `30200` beacon
 built to the NIP's example shape (an Elephant decision service on one GPU),
-a `25910` with a NIP-DEC structured noul, and the chapter 16 server's own
+a `25910` with a NIP-DEC structured noul, and the chapter 20 server's own
 `200` body shape. Every NIP-PYLON Validation refusal has a case, each beacon
 field at its bounds (label 64 bytes, 16 services, 16 settlements, 8 pools,
 64-byte slugs, 128-byte models, 0..64 slots), freshness at its exact edges,

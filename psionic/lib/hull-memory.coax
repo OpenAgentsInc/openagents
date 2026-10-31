@@ -1,10 +1,10 @@
-// Chapter 171: decode in logarithmic time. Chapter 166 reads memory with a
+// Chapter 230: decode in logarithmic time. Chapter 225 reads memory with a
 // hard max over every store in the trace, so each read scans them all. The
 // keys sit on a parabola, so each distinct key is a vertex of their upper
 // convex hull, and the score along the hull rises to one peak and falls.
 // A binary search over the hull's edges finds that peak in about log2 of
 // the number of distinct keys, and returns exactly what the scan returns.
-// Profile hull-v1: chapter 166's keys, scores and range; the index keeps
+// Profile hull-v1: chapter 225's keys, scores and range; the index keeps
 // one vertex per distinct key, sorted, with that key's latest write.
 #load "exact-memory.coax";
 #authority;
@@ -63,9 +63,9 @@ hm_read :: (x:HmIndex,q:int)->HmRead {
 HmRun :: struct {result:TmResult;stores:int;reads:int;hull:int;scan:int;}
 
 // book:begin run
-// Chapter 166's machine with the hull index in place of the scan: before
+// Chapter 225's machine with the hull index in place of the scan: before
 // every step, each of the 64 cells is read through the hull. scan counts
-// the comparisons chapter 166's read makes over the same stores (one fewer
+// the comparisons chapter 225's read makes over the same stores (one fewer
 // than the number of stores, per read); hull counts this chapter's.
 hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun {
     out:HmRun;x:=index;x.count=0;
@@ -161,7 +161,7 @@ hm_put :: (x:HmIndex,k:int,v:int)->HmIndex {
     #assert hm_read(x,5).vertex==0 && hm_read(x,7).vertex==1 && hm_read(x,9).vertex==2 && hm_read(x,3).vertex==0;
     #assert hm_read(x,6).vertex==1;
 }
-// Compares every read in [lo, hi] with chapter 166's scan over the same
+// Compares every read in [lo, hi] with chapter 225's scan over the same
 // writes: the number of reads, or -1 at the first that differs.
 hm_agrees :: (x:HmIndex,keys:[]int,values:[]int,n:int,lo:int,hi:int)->int {
     for q:lo..<hi+1 {

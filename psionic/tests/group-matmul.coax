@@ -1,4 +1,4 @@
-// Group-kernel conformance (chapter 32): a tiled matrix product through
+// Group-kernel conformance (chapter 48): a tiled matrix product through
 // threadgroup memory and barriers, the same source on the CPU (the oracle,
 // where a thread loop is an ordinary loop), on Apple GPUs (coax
 // metal-compute) and on CUDA (coax cuda). Every output adds its products in

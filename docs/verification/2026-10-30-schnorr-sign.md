@@ -1,6 +1,6 @@
 # BIP-340 signer: `coax/lib/crypto/schnorr_sign.coax` (2026-10-30)
 
-Board: #51f4 `schnorr-sign`. Psionic chapter 19 prerequisite 1.
+Board: #51f4 `schnorr-sign`. Psionic chapter 24 prerequisite 1.
 
 ## What it is
 

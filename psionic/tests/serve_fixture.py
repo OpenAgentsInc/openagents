@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generate the owned chapter-16 toy decision model: small nonzero BF16 weights.
+"""Generate the owned chapter-20 toy decision model: small nonzero BF16 weights.
 
 The model has the Elephant layer schedule (three linear layers, then one full
 attention layer) at width 2, a 64-dimensional rotary head and the 268-entry
-chapter-5 toy vocabulary. It is deterministic teaching data, not a trained model.
+chapter-9 toy vocabulary. It is deterministic teaching data, not a trained model.
 """
 import hashlib,json,math,struct,sys
 from pathlib import Path

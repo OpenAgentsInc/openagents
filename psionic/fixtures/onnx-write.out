@@ -1,4 +1,4 @@
-chapter 70's deadline requests: 1440 training rows, 480 test rows, 4 raw features
+chapter 103's deadline requests: 1440 training rows, 480 test rows, 4 raw features
 trained in binary64: logistic test log loss 0.1593, line test squared error 3.8812 s^2
 deadline.onnx: Gemm, then Softmax over [0, z]
   287 bytes, 2 nodes; deadline.weight, deadline.bias read back by chapter 161 bit for bit
@@ -6,7 +6,7 @@ deadline.onnx: Gemm, then Softmax over [0, z]
 latency.onnx: Gemm alone
   224 bytes, 1 node; latency.weight, latency.bias read back by chapter 161 bit for bit
   480 test rows: seconds within 1.456e-06 of the binary64 model
-chapter 70's MLP: op, tanh is outside the subset
+chapter 103's MLP: op, tanh is outside the subset
 sample test rows:
   row 32: features 6348.0 14.0 1.0 2.5901588952142 -> deadline 0.9795451164245605 0.020454896613955498
   row 32: features 6348.0 14.0 1.0 2.5901588952142 -> latency 11.413291931152344

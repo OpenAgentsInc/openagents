@@ -1,5 +1,5 @@
 /* gpt-oss on an Apple GPU (psionic/platform/gptoss-metal.c): the owned tiny
-   model, then the original 20b against chapter 45's recorded CPU vectors,
+   model, then the original 20b against chapter 64's recorded CPU vectors,
    greedy fixture prompts, a per-launch CPU repeat and timing.
    Usage: gptoss-metal tiny GENERATED_METAL TINY_MODEL
           gptoss-metal original GENERATED_METAL ORIGINAL_DIR OUT_DIR [REPEAT]
@@ -84,7 +84,7 @@ static void original(const char *source,size_t source_bytes,const char *root,con
     for(int i=0;i<3;i++){char path[4096];assert(snprintf(path,sizeof path,"%s/%.*s",root,(int)pins[i].name.count,pins[i].name.data)>0);maps[i]=load(path,&sizes[i]);files[i]=(coax_t_GFile){pins[i].name,bv(maps[i],(int64_t)sizes[i])};}
     PgSession *s=NULL;coax_t_GResult why;double begin=now();TRY(pg_open(profile,(coax_v_t_GFile){files,3},source,source_bytes,17179869184,&s,&why));if(why.status){fprintf(stderr,"device admission status=%u %s\n",why.status,s?pg_error(s):"");exit(3);}assert(s);coax_t_GDPlan plan=pg_plan(s);
     printf("original 20b admitted/authenticated/copied once in %.6f s; weight bytes=%lld workspace=%lld reserve=%d\n",now()-begin,(long long)plan.weights,(long long)plan.workspace,134217728);fflush(stdout);
-    /* Chapter 45's two recorded CPU prefixes. */
+    /* Chapter 64's two recorded CPU prefixes. */
     int64_t control[8],tokens[]={200006,173781};float *logits=alloc(201088,4),*trace=alloc(138240,4),*weights=alloc(96,4);int64_t ids[96];
     for(int step=0;step<2;step++){TRY(pg_reset(s));begin=now();TRY(pg_prefill(s,tokens,step+1,0,0,128,control));assert(!control[0]);printf("original step %d %.6f seconds\n",step,now()-begin);
         TRY(pg_read(s,18,logits,201088*4));TRY(pg_read(s,19,trace,138240*4));TRY(pg_read(s,20,ids,sizeof ids));TRY(pg_read(s,21,weights,96*4));char name[64];

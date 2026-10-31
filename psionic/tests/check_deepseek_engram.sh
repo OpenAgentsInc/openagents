@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 62: normalized IDs, exact n-gram hashes and bounded file-backed rows.
+# Chapter 94: normalized IDs, exact n-gram hashes and bounded file-backed rows.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax};cc=${COAX_CC:-cc}

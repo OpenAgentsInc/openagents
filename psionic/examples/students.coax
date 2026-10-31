@@ -55,11 +55,11 @@ student :: (kind:EsKind,epochs:int,ex:[]EsExample,store:[]f64)->int {
 
 // book:begin example
 main :: () {
-    print("chapter 165's machine; four program families, each counting n down to 1 in local 0:\n");
+    print("chapter 224's machine; four program families, each counting n down to 1 in local 0:\n");
     print("  count prints n, ..., 1; sum prints 1 + ... + n; stride prints 2n, 2n-2, ..., 2; squares prints n*n, ..., 1\n");
 
-    // Training traces are admitted by chapter 186, which replays each one
-    // with chapter 173 and gives its group a role from the time cuts.
+    // Training traces are admitted by chapter 245, which replays each one
+    // with chapter 232 and gives its group a role from the time cuts.
     rows:[64]TrRow;entry:[64]TrEntry;s:=tr_open(17,CUTS,rows[..],entry[..],0);
     ex:[400]EsExample;examples:=0;time:=0;
     for family:0..<2 {
@@ -89,7 +89,7 @@ main :: () {
     print("  row set ");hex6(tr_digest(s));print(": % rows, % train, % heldout\n",s.count,c[1],c[4]);
 
     print("students: one affine model per instruction and token, trained from zero by full-batch gradient descent;\n");
-    print("scored by rollout alone: the state is folded from the student's own rows, chapter 173 replays the run,\n");
+    print("scored by rollout alone: the state is folded from the student's own rows, chapter 232 replays the run,\n");
     print("and a miss is the first token that differs, of the machine's\n");
     store:[ES_CODES*2*ES_TABLE]f64;w:=store[..];
     tally:[4]int;

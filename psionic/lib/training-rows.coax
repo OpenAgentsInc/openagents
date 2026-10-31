@@ -1,13 +1,13 @@
-// Chapter 186: outcomes become training rows. A row set is built for one
+// Chapter 245: outcomes become training rows. A row set is built for one
 // artifact (a router, a calibration refit, a student) from a time-ordered
 // feed of decision outcomes and claimed traces. A decision outcome is
 // admitted only with a label from a check or a diff, never from an agent's
-// own summary. A trace is admitted only when chapter 173 replays it exactly.
+// own summary. A trace is admitted only when chapter 232 replays it exactly.
 // Each group's split comes from the time cuts, and an exposure ledger shared
 // across artifacts gives every group one role: a group one artifact holds out
 // or calibrates on is never trained on by another, and the reverse.
 // Profile rows-v1: keys and the set digest are SHA-256 over 8-byte
-// little-endian words, with trace keys over chapter 173's claim digests.
+// little-endian words, with trace keys over chapter 232's claim digests.
 #load "replay.coax";
 #authority;
 
@@ -111,7 +111,7 @@ tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
     if o.from==TrLabel.summary {a.reason=TrReason.summary;return a;}
     return tr_admit(a.set,TrRow.{source=TrSource.decision,group=o.group,time=o.time,label=o.label,from=o.from,key=tr_outcome_key(o)});
 }
-// The trace is replayed here, whole, within budget steps; chapter 173
+// The trace is replayed here, whole, within budget steps; chapter 232
 // refuses a budget below 1 by shape.
 tr_add_trace :: (s:TrSet,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:int,budget:int)->TrAdd {
     a:=tr_front(s,group,time,true);

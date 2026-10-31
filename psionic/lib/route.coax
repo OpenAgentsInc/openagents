@@ -1,9 +1,9 @@
-// Chapter 164a: learn which model to call. A simulator of tasks and three
+// Chapter 223: learn which model to call. A simulator of tasks and three
 // models whose true success probabilities only it knows, published prices,
 // a router that picks the best expected reward, an old logging policy, and
 // the naive, direct, inverse-propensity and doubly robust estimates of a new
 // policy's value from logs that show only the chosen model's outcome.
-// Profile cpu-f64-route-v1: binary64, chapter 3's compensated accumulator for
+// Profile cpu-f64-route-v1: binary64, chapter 4's compensated accumulator for
 // every sum, three models, 1 to 4,096 tasks of four features.
 #load "tabular.coax";
 #authority;
@@ -17,7 +17,7 @@ RT_TASKS_MAX :: 4096;
 RT_COEF_MAX :: 64.0;
 RT_PER_SECOND :: 0.02;
 
-// Checks precede the implementation. Expected values are derived in chapter 164a.
+// Checks precede the implementation. Expected values are derived in chapter 223.
 #test "tasks are 1 to 4,096 rows of four features, or triples per task" {
     x:[16392]f64;
     #assert rt_tasks(x[0..<4])==1 && rt_tasks(x[0..<16384])==4096 && rt_tasks(x[0..<8])==2;
@@ -314,7 +314,7 @@ rt_simulate :: (seed:u64,truth:[]f64,x:[]f64,success:[]f64,prob:[]f64,overlap:bo
 
 // book:begin route
 // Success probabilities from three logistic models, five parameters each,
-// laid out as chapter 70's: four weights, then the bias.
+// laid out as chapter 103's: four weights, then the bias.
 rt_scores :: (params:[]f64,x:[]f64,out:[]f64,overlap:bool)->RtStatus #export_c {
     n:=rt_tasks(x);
     if params.count!=5*RT_MODELS || n==-1 {return RtStatus.shape;}

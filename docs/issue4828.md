@@ -8,7 +8,7 @@ holds which files, and how to check it.
 ## Why it matters now
 
 #4828 is what stands between the Coax signer and **real keys**. Everything
-else on the path to Psionic chapter 19 (a Pylon that answers decisions over
+else on the path to Psionic chapter 24 (a Pylon that answers decisions over
 Nostr) is on main and passes end to end on test keys:
 
 - `pylon_e2e.py` passes 52/52 over ws:// and 53/53 over wss:// at
@@ -364,7 +364,7 @@ python3 coax/tests/nostr/schnorr_sign.py --round-trips 10000
 # Unit checks (fast)
 coax/bin/coax test coax/lib/crypto/schnorr_sign.coax --run-steps 250000000
 coax/bin/coax test coax/lib/nostr/event_sign.coax --run-steps 250000000
-# Chapter 19 end to end
+# Chapter 24 end to end
 python3 -I psionic/tests/pylon/pylon_e2e.py build/pylon-e2e
 ```
 

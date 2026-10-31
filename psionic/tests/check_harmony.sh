@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 44: pinned DATA, owned references and local native checks only.
+# Chapter 63: pinned DATA, owned references and local native checks only.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

@@ -1,15 +1,15 @@
-// Chapter 175: a frozen exact core with a learned interface. The core is
-// chapter 168's compiled block for the machine's arithmetic and branch
-// target, pinned and admitted as exact by chapter 176. Around it sit fixed
+// Chapter 234: a frozen exact core with a learned interface. The core is
+// chapter 227's compiled block for the machine's arithmetic and branch
+// target, pinned and admitted as exact by chapter 235. Around it sit fixed
 // interface sources: values read straight from the machine state, and the
 // core's four outputs. A controller learns only which source each token of
 // each instruction is copied from, by gradient descent on the probability of
 // the sources that give the machine's token. Every value a run writes is a
 // source's, so a run is exact when its routes are right, and refused, not
-// wrong, when the core's range is exceeded. Chapter 173 judges each run.
+// wrong, when the core's range is exceeded. Chapter 232 judges each run.
 // Profile core-v1: core inputs (second, top, ip, arg) and outputs (second +
 // top, second - top, second * top, ip + 1 when top is 0 and arg otherwise)
-// within chapter 167's range of 2^26; 12 sources; a controller of one
+// within chapter 226's range of 2^26; 12 sources; a controller of one
 // softmax per instruction code and token, seeing only the code.
 #load "students.coax";
 #load "weight-module.coax";
@@ -83,7 +83,7 @@ fc_t_examples :: (family:EsFamily,n:int,ex:[]EsExample,at:int)->int {
     #assert fc_program(0,p[..])==0 && fc_program(ES_N_MAX+1,p[..])==0 && fc_program(ES_N_MAX,p[..])==17;
     #assert fc_program(2,p[0..<16])==0 && fc_program(2,p[0..<17])==17;
 }
-#test "the core is chapter 168's block, admitted by chapter 176" {
+#test "the core is chapter 227's block, admitted by chapter 235" {
     core:=fc_core();
     #assert core.block.plan.status==GgStatus.ok && core.block.label==WmLabel.exact && fc_admit(core)==WmStatus.ok;
     bad:=core;bad.weights[3]+=1;#assert fc_admit(bad)==WmStatus.digest;
@@ -265,7 +265,7 @@ fc_core :: ()->FcCore {
     c.block=wm_module(gg_compile(g[..],o[..],c.weights[..]),WmLabel.exact);
     return c;
 }
-// Chapter 176's admission: the weights hash to the pin, four cases pass, and
+// Chapter 235's admission: the weights hash to the pin, four cases pass, and
 // the source graph recompiles to the same pin.
 fc_admit :: (core:FcCore)->WmStatus {
     fresh:=fc_core();pin:=wm_digest(fresh.block,fresh.weights[..]);
@@ -406,7 +406,7 @@ fc_program :: (n:int,out:[]TmOp)->int {
 // book:end factorial
 
 // book:begin rollout
-// As chapter 174's rollout, but every x and y is copied from its routed
+// As chapter 233's rollout, but every x and y is copied from its routed
 // source. A core output outside the core's range ends the run as refused,
 // before its row is written.
 fc_rollout :: (core:FcCore,c:FcController,program:[]TmOp,budget:int,rows:[]int,outs:[]int)->FcRun {
@@ -430,7 +430,7 @@ fc_rollout :: (core:FcCore,c:FcController,program:[]TmOp,budget:int,rows:[]int,o
 // book:end rollout
 
 // book:begin score
-// The run is claimed and replayed by chapter 173, as in chapter 174. A
+// The run is claimed and replayed by chapter 232, as in chapter 233. A
 // refused run that matched the machine up to its refusal is reported as
 // refused at that step: it stopped, it did not answer wrongly.
 fc_score :: (core:FcCore,c:FcController,program:[]TmOp,rows:[]int,truth:[]int,outs:[]int)->FcScore {

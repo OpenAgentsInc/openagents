@@ -22,9 +22,9 @@ apps/openagents-web/cli/install.sh
 apps/openagents-web/projects/commits.sh
 coax/book/check-examples.sh
 coax/book/check-structure.py
-coax/book/examples/ch17_interop/run.sh
-coax/book/examples/ch26_workflow/run.sh
-coax/book/examples/lib/ch16_build.sh
+coax/book/examples/ch20_interop/run.sh
+coax/book/examples/ch24_workflow/run.sh
+coax/book/examples/lib/ch19_build.sh
 coax/check-proto-cap.sh
 coax/examples/pulse/run.sh
 coax/lib/agent/claude/smoke.sh

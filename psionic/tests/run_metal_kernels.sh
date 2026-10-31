@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 31: the chapter 26 and 30 kernels on an Apple GPU (coax
+# Chapter 47: the chapter 37 and 44 kernels on an Apple GPU (coax
 # metal-compute), against the same kernels compiled to C, the CPU reference
 # profile and binary64. Without a Metal device the harness prints SKIP and
 # exits 0. Usage:

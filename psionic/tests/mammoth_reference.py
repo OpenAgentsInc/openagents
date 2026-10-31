@@ -6,7 +6,7 @@ hold beside the checkpoint mapping. This script therefore builds one
 Transformers `Qwen3_5DecoderLayer` at a time, loads that layer's original BF16
 tensors converted to float32, runs the whole token sequence through it and
 frees it before the next layer. Full-attention layers use eager attention and
-the same additive two-block mask as the chapter 10 reference; linear layers
+the same additive two-block mask as the chapter 14 reference; linear layers
 receive no mask, as in an unpadded Transformers forward. The embedding rows,
 final norm and every vocabulary row of the head are also float32.
 

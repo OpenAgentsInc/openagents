@@ -1,4 +1,4 @@
-// Chapter 30a's schedule for the 86-token sample in 800 MiB, the room left
+// Chapter 45's schedule for the 86-token sample in 800 MiB, the room left
 // beside gpt-oss-20b on a 16 GB card. Nothing runs: the plan is data.
 #import "Basic";
 #load "../lib/device/plan.coax";

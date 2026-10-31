@@ -15,7 +15,7 @@ show_hex :: (name:string,file:[]u8) {
         if i%32==31 || i==file.count-1 {print("\n");} else if i%4==3 {print(" ");}
     }
 }
-// Export, then read back with chapter 161: every name and weight bit.
+// Export, then read back with chapter 218: every name and weight bit.
 export_file :: (f:OwFold,values:[]f32,out:[]u8,arena:[]f32)->OxModel {
     #assert f.status==OwStatus.ok;
     r:=ow_write(f.graph,values,out);#assert r.status==OwStatus.ok;
@@ -45,9 +45,9 @@ main :: () {
     mean:[4]f64;sd:[4]f64;xs:[9600]f64;
     #assert tb_fit_scale(x[..],4,train,mean[..],sd[..],false)==TbStatus.ok;
     #assert tb_apply_scale(x[..],4,mean[..],sd[..],xs[..],false)==TbStatus.ok;
-    print("chapter 70's deadline requests: % training rows, % test rows, 4 raw features\n",train.count,test.count);
+    print("chapter 103's deadline requests: % training rows, % test rows, 4 raw features\n",train.count,test.count);
 
-    // Train both affine models on scaled features, as chapter 70 does.
+    // Train both affine models on scaled features, as chapter 103 does.
     c:=TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2};
     logistic:=TbModel.{features=4,logistic=true};line:=TbModel.{features=4};
     pg:[5]f64;pl:[5]f64;order:[2400]int;
@@ -79,7 +79,7 @@ main :: () {
     pm:[161]f64;vm:[64]f32;
     mlp:=TbModel.{features=4,hidden=8,logistic=true};
     #assert tb_train(mlp,c,xs[..],y[..],train,pm[..],order[..],false).status==TbStatus.ok;
-    print("chapter 70's MLP: %, tanh is outside the subset\n",STATUS[cast(int)ow_from_tabular(mlp,pm[..],mean[..],sd[..],vm[..],"mlp").status]);
+    print("chapter 103's MLP: %, tanh is outside the subset\n",STATUS[cast(int)ow_from_tabular(mlp,pm[..],mean[..],sd[..],vm[..],"mlp").status]);
 
     print("sample test rows:\n");
     for k:0..<4 {

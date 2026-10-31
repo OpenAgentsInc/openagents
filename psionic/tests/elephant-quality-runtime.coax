@@ -1,4 +1,4 @@
-// Owned chapter 12 experiment entry: decision, calibration, answers and metrics remain Coax.
+// Owned chapter 16 experiment entry: decision, calibration, answers and metrics remain Coax.
 #load "../lib/decision-answer.coax";
 #load "../lib/decision-calibration.coax";
 #load "../lib/decision-json.coax";

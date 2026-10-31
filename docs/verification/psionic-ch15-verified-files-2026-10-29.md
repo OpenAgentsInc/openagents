@@ -1,4 +1,4 @@
-# Chapter 15 (first part): verified-file records, 2026-10-29
+# Chapter 19 (first part): verified-file records, 2026-10-29
 
 Every start of the `/v1/systemone` server hashed Elephant's 18.8 GB checkpoint
 on one CPU core before answering: 72 s on an idle host, 195 to 321 s on this
@@ -27,7 +27,7 @@ record the host keeps after an open that hashed.
 the record kept for that device and inode from `PSIONIC_VERIFIED_DIR`
 (default `$XDG_CACHE_HOME/psionic/verified`, else `~/.cache/psionic/verified`),
 and after a successful hashing open write the new record atomically. Used by
-`serve-host.c` (every build) and chapter 30's `elephant_device.c`.
+`serve-host.c` (every build) and chapter 44's `elephant_device.c`.
 
 ## Results
 
@@ -47,7 +47,7 @@ had passed full hashes at 20:24, 20:35 and 20:41 and had not changed since
 10:26. The hashing start above then wrote the same record itself.
 
 The start still takes about 17 s more to pin 14.45 GiB of streamed weights
-(chapter 30a) and 0.5 s to compile kernels.
+(chapter 45) and 0.5 s to compile kernels.
 
 ## Checks
 
@@ -61,7 +61,7 @@ The start still takes about 17 s more to pin 14.45 GiB of streamed weights
   0 survivors each (2 shards). A first version of the record code left 6
   survivors (a -1 sentinel made two checks equivalent); it was restructured
   and tested, not exempted.
-- `serve-build.sh` release plain with and without `gpu`; chapter 30's
+- `serve-build.sh` release plain with and without `gpu`; chapter 44's
   harness compiles with the helper.
 
 ## Not done
@@ -76,7 +76,7 @@ The start still takes about 17 s more to pin 14.45 GiB of streamed weights
   between the two would get the new file's identity for the old mapping; a
   `fstat` of the mapped descriptor would close that.
 - `psionic/tests/serve.sh` (sanitized builds) was not run.
-- `psionic-serve --device-mib N` (chapter 48c) caps the device plan's budget;
+- `psionic-serve --device-mib N` (chapter 80) caps the device plan's budget;
   release builds with and without `gpu` pass, and `--toy --device-mib`
   is refused.
 - Pinning the streamed weights (17 s) is the next start-up cost.

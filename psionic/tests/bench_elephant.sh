@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Time chapter 10's decision path on caller-supplied original files; downloads nothing.
+# Time chapter 14's decision path on caller-supplied original files; downloads nothing.
 # Usage: psionic/tests/bench_elephant.sh ORIGINAL_DIRECTORY [REPEAT [RUNS]]
 set -euo pipefail
 cd "$(dirname "$0")/../.."

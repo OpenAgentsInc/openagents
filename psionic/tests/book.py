@@ -39,7 +39,7 @@ def check():
     docs = [ROOT / "psionic/README.md", *sorted((ROOT / "psionic/book").glob("*.md"))]
     # Chapter files carry three-digit numbers so they list in reading order.
     for doc in (ROOT / "psionic/book").glob("ch*.md"):
-        assert re.fullmatch(r"ch\d{3}[a-z]?-[a-z0-9-]+\.md", doc.name), f"chapter file needs a three-digit number: {doc.name}"
+        assert re.fullmatch(r"ch\d{3}-[a-z0-9-]+\.md", doc.name), f"chapter file needs a three-digit number: {doc.name}"
     pattern = r"<!-- source: ([^ ]+) ([^ ]+) -->\n```jai\n(.*?)\n```"
     for doc in docs:
         text = doc.read_text()

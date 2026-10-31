@@ -156,7 +156,7 @@ def coax():
     lines.append("    bad:=%s;m:=%d;" % (coax_bytes(half), len(half)))
     lines.append("    r:=sp_bytes(s,limits,e,pools,cast(string)bad[0..<m],bad[0..<m],scratch[..],50);")
     lines.append("    #assert r.step.action==SvAction.refuse && r.step.code==SvCode.unsupported_input && !r.proto_out;")
-    lines.append("    // A JSON request takes chapter 16's path unchanged.")
+    lines.append("    // A JSON request takes chapter 20's path unchanged.")
     lines.append('    j:="POST /v1/systemone HTTP/1.1\\r\\nContent-Length: 70\\r\\n\\r\\n{\\"model\\":\\"psionic-toy\\",\\"state\\":\\"go\\",\\"questions\\":{\\"q\\":{\\"type\\":\\"noul\\"}}}";')
     lines.append("    jb:[256]u8;jn:=json_raw(jb[..],0,j);k:=sp_bytes(s,limits,e,pools,cast(string)jb[0..<jn],jb[0..<jn],scratch[..],50);")
     lines.append("    #assert k.step.action==SvAction.decide && !k.proto_out && k.step.request.questions==1;")

@@ -1,9 +1,9 @@
 # gpt-oss-20b on Metal, 2026-10-29
 
-Scope: issue #12607, [chapter 45h](../../psionic/book/ch045h-gpt-oss-on-metal.md).
+Scope: issue #12607, [chapter 72](../../psionic/book/ch072-gpt-oss-on-metal.md).
 This record covers the original gpt-oss-20b served by Psionic from an Apple
-GPU, using chapter 45b/45c's Coax launch programs and kernels, and qualified
-against chapter 45's CPU reference under rules frozen before the device was
+GPU, using chapter 66/67's Coax launch programs and kernels, and qualified
+against chapter 64's CPU reference under rules frozen before the device was
 measured.
 
 ## What was run
@@ -29,15 +29,15 @@ measured.
   the CPU repeat. [Build identities](psionic-gptoss-metal-2026-10-29/build.json).
 - Numerical profile `gpt-oss-metal-f32-ff-v1`: the CUDA profile's f32 storage
   and lane sums, with its ordered f64 reductions computed as APPLE-FF-v1
-  float-float pairs (chapter 31).
+  float-float pairs (chapter 47).
 
 Commits: `903752fd29` (engine and harness), `ea71590285` (Responses
 server `--metal` and desktop endpoint setting).
 
 ## Qualification
 
-1. **Chapter 45's recorded CPU vectors** (`gptoss_device_oracle.py`, bound
-   `|x - ref| / (1 + |ref|) < 0.0005` frozen in chapter 45b, routes and top
+1. **Chapter 64's recorded CPU vectors** (`gptoss_device_oracle.py`, bound
+   `|x - ref| / (1 + |ref|) < 0.0005` frozen in chapter 66, routes and top
    token exact). [Result](psionic-gptoss-metal-2026-10-29/qualification.json):
 
    | Prefix | Logits | Residual trace | Mixture weights | Routes | Top token |
@@ -46,7 +46,7 @@ server `--metal` and desktop endpoint setting).
    | `[200006, 173781]` | 9.05e-6 | 3.923e-4 | 1.21e-7 | exact | 200005 |
 
    The 4080's largest trace error under the same rule is 4.805e-4.
-2. **Greedy token identity.** Chapter 45's CPU engine (`psionic_gptoss_forward`,
+2. **Greedy token identity.** Chapter 64's CPU engine (`psionic_gptoss_forward`,
    `gpt-oss-cpu-wide-v1`, temperature 0) was run on the prompt IDs the GPU
    harness rendered. Both runs generated
    [identical token IDs](psionic-gptoss-metal-2026-10-29/):
@@ -102,8 +102,8 @@ Profile, one command buffer per launch:
 
 Decode is about two thirds of the 4080's rate, which runs with graph replay,
 and prefill is about half. The products are scalar loops on Metal. Threadgroup
-tiles and Apple's matrix units in the compute subset (planned chapters 45d and
-45e) are the next step.
+tiles and Apple's matrix units in the compute subset (planned chapters 68 and
+69) are the next step.
 
 ## Serving
 

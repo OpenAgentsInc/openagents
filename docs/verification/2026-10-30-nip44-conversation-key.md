@@ -110,7 +110,7 @@ zero-survivor gate.
     refuses before writing anything (`out` is left all zero), because its
     own reader would not admit the event. Every larger message, up to the
     65,535-byte COMPAT maximum, takes the same path.
-- **Interoperability both ways:** Psionic chapter 19's buyer
+- **Interoperability both ways:** Psionic chapter 24's buyer
   (`psionic/tests/pylon/buyer.ts`) uses `nostr-effect`'s NIP-44, an
   independent implementation. It encrypts jobs that the Coax Pylon
   decrypts, and decrypts the Coax Pylon's encrypted answers.

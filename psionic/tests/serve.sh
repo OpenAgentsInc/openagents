@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 16 native checks: build psionic-serve in debug and release, plain and
+# Chapter 20 native checks: build psionic-serve in debug and release, plain and
 # with ASan/UBSan, and drive each over loopback with psionic/tests/serve.c.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

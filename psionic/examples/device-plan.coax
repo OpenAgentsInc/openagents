@@ -2,7 +2,7 @@
 #load "../lib/device/plan.coax";
 
 // book:begin example
-// Chapter 30's schedule for the 86-token sample with a 14 GiB device budget.
+// Chapter 44's schedule for the 86-token sample with a 14 GiB device budget.
 // Nothing runs: the plan is data that the host executes.
 main :: () {
     ops:[1500]DpOp;stream:[277]bool;

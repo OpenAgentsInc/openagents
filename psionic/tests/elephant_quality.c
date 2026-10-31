@@ -1,4 +1,4 @@
-/* Run the frozen chapter 12 held-out set through the authenticated original Elephant. */
+/* Run the frozen chapter 16 held-out set through the authenticated original Elephant. */
 #define _POSIX_C_SOURCE 200809L
 #include "elephant-quality-runtime.h"
 #include "elephant-inventory.h"
@@ -70,7 +70,7 @@ int main(int argc,char **argv){
   for(size_t k=(size_t)w;k<ITEMS;k+=(size_t)workers){
    const quality_item *q=&quality_items[k];coax_t_PrResult p=prepared[k];double prob[16];
    float temperature=pc_temperature(calibration,(coax_t_QrKind)q->kind,p.slots);
-   /* State and workspace follow the session capacity, as in chapter 10 where it equalled the token count. */
+   /* State and workspace follow the session capacity, as in chapter 14 where it equalled the token count. */
    int64_t states=max_states,work_count=max_work;
    double t=seconds();
    coax_t_PsAnswer a=psionic_answer(s,p,(coax_v_s64){tokens[k],p.written},(coax_v_t_PtOption){options[k],q->count},temperature,(coax_v_f32){state,states},(coax_v_f64){done[k].p,p.slots},(coax_v_f64){prob,16},(coax_v_f32){scratch,work_count});

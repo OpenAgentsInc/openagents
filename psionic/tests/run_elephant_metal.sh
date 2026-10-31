@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 31: the original Elephant decision on an Apple GPU through Metal.
+# Chapter 47: the original Elephant decision on an Apple GPU through Metal.
 # The caller supplies the original files; nothing is downloaded. Without a
 # Metal device the harness prints SKIP and exits 0. Usage:
 #   psionic/tests/run_elephant_metal.sh ORIGINAL_DIRECTORY [REPEAT]
@@ -28,7 +28,7 @@ flags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-
     -framework Metal -framework Foundation -lm -o "$out/elephant-metal"
 "$out/elephant-metal" "$1" psionic/fixtures/text/ch05/qwen35.pst "$out/project.metal" "$out/layer.metal" "$out/warp.metal" "$out/tile.metal" "${2:-3}" | tee "$out/result.log"
 if grep -q '^SKIP' "$out/result.log"; then exit 0; fi
-# Frozen before the device was measured (chapter 30's rule, unchanged): 0.0005
+# Frozen before the device was measured (chapter 44's rule, unchanged): 0.0005
 # absolute on each decision statistic, against the independent reference and
 # the recorded CPU result.
 python3 -I psionic/tests/elephant_reference_fixture.py --check-output "$out/result.log"

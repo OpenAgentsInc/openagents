@@ -572,7 +572,7 @@ Each phase ends with a measurement committed and a real-phone run.
 
 ## Code
 
-A guided walk through the built pieces, with runnable examples, is Chapter 27 of the Coax book: [Building a voice system in pieces](../../coax/book/ch27-case-study-voice.md).
+A guided walk through the built pieces, with runnable examples, is Chapter 25 of the Coax book: [Building a voice system in pieces](../../coax/book/ch25-case-study-voice.md).
 
 ## Reading the history
 

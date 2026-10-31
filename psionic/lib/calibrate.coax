@@ -1,10 +1,10 @@
-// Chapter 156: fit our own calibration, and refuse a stale one. Per-question
+// Chapter 213: fit our own calibration, and refuse a stale one. Per-question
 // maps (a temperature, ten equal-count bins, or isotonic steps) are fitted on
 // a calibration split, gated on a second split, and reported on a third, with
 // reliability, expected calibration error, Brier, log loss and confident
 // errors. A map names the model and question set it was fitted for, and is
 // refused for any other.
-// Profile cpu-f64-calibrate-v1: binary64, chapter 3's compensated accumulator
+// Profile cpu-f64-calibrate-v1: binary64, chapter 4's compensated accumulator
 // for every sum, yes-or-no questions, 1 to 8,192 rows and 1 to 8 questions.
 #load "tabular.coax";
 #authority;
@@ -27,7 +27,7 @@ CF_FLOOR :: 0.000001;
 CF_SLOPE_MIN :: 0.05;
 CF_SLOPE_MAX :: 20.0;
 
-// Checks precede the implementation. Expected values are derived in chapter 156.
+// Checks precede the implementation. Expected values are derived in chapter 213.
 #test "clamping and logits" {
     #assert cf_clamp(0)==CF_FLOOR && cf_clamp(1)==1-CF_FLOOR && cf_clamp(0.5)==0.5 && cf_clamp(CF_FLOOR)==CF_FLOOR && cf_clamp(1-CF_FLOOR)==1-CF_FLOOR;
     #assert cf_logit(0.5)==0 && cf_logit(0.75)==log(3.0) && cf_logit(0)==log(CF_FLOOR/(1-CF_FLOOR));
@@ -339,7 +339,7 @@ cf_apply :: (maps:[]CfMap,model:u64,questions:u64,q:[]int,p:[]f64,out:[]f64,over
 // book:end apply
 
 // book:begin measure
-// Expected calibration error as chapter 12 measures it (top label, 15 equal
+// Expected calibration error as chapter 16 measures it (top label, 15 equal
 // bins (b/15, (b+1)/15]), Brier summed over both answers, log loss, and
 // confident errors: a top label of at least 0.9 that is wrong.
 cf_measure :: (p:[]f64,y:[]f64,rows:[]int)->CfReport #export_c {

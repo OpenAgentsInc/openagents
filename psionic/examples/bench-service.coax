@@ -10,7 +10,7 @@ show :: (name:string,s:BnStats,scale:f64) {
     print("  %: n %, P50 %, P90 %, P95 %, P99 %\n",name,s.n,f64(s.p[0])*scale,f64(s.p[1])*scale,f64(s.p[2])*scale,f64(s.p[3])*scale);
 }
 
-// Chapter 115's recorded gpt-oss runs (psionic/fixtures/bench/2026-10-29/),
+// Chapter 170's recorded gpt-oss runs (psionic/fixtures/bench/2026-10-29/),
 // measured on a host whose load average was 133 to 167: the identity words,
 // then n and P50/P90/P95/P99 for each of the six metrics.
 RunFile :: struct {run:BnRun;st:[6]BnStats;}

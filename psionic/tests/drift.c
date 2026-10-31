@@ -1,4 +1,4 @@
-/* Chapter 158 against drift_oracle.py, which fitted maps with chapter 156's
+/* Chapter 215 against drift_oracle.py, which fitted maps with chapter 213's
    oracle, computed the run in closed form instead of stepping time, and
    measured in exactly rounded sums. Tolerances were frozen before comparison:
    kinds, adoptions, versions, counts, actions, draws reaching each window and

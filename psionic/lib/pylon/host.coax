@@ -1,8 +1,8 @@
-// Chapter 19: the host's one-call entries. Nothing here decides: it hashes
+// Chapter 24: the host's one-call entries. Nothing here decides: it hashes
 // with coax/lib/crypto/sha256.coax and calls the checked units (beacon,
 // relays and decision are #authority, mutation-gated on their own). Its
 // checks tie those units to the real SHA-256; host-serve.coax ties them to
-// chapter 16's server, which the Pylon program itself does not load (it
+// chapter 20's server, which the Pylon program itself does not load (it
 // speaks to the server over HTTP, and the server's text tables would push
 // run.coax past the compiler's 64-unit source graph).
 #load "decision.coax";

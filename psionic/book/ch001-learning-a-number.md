@@ -152,7 +152,7 @@ The file is `#authority` because it decides whether work and storage are
 admitted. Builds execute its authored checks; the check script also runs
 mutation testing and requires zero survivors. The tests enumerate concrete
 cases. They do not prove correctness for every input or native address.
-[Coax's verification chapter](../../coax/book/ch25-verification-boundaries.md)
+[Coax's verification chapter](../../coax/book/ch23-verification-boundaries.md)
 explains the difference.
 
 ## Keep the work and storage bounded

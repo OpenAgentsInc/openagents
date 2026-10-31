@@ -1,6 +1,6 @@
 # NIP-01 event builder: `coax/lib/nostr/event_sign.coax` (2026-10-30)
 
-Board: #bab4 `nostr-event-sign`. Psionic chapter 19 prerequisite 2.
+Board: #bab4 `nostr-event-sign`. Psionic chapter 24 prerequisite 2.
 
 ## What it is
 

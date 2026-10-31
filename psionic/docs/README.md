@@ -1,6 +1,6 @@
 # Psionic in Coax
 
-Status, 2026-10-29: chapters 1–10 implement M0/M1, bounded original-weight
+Status, 2026-10-29: chapters 1–14 implement M0/M1, bounded original-weight
 artifacts, text requests, small Qwen-style layers and authenticated
 original-weight Elephant text decisions on the tested CPU host. Mammoth and
 autodiff remain proposed. The
@@ -9,9 +9,9 @@ and implement bounded contiguous storage plus dense row/matrix numerics.
 Run `psionic/check.sh` from the repository root.
 [Chapter 1 verification](../../docs/verification/psionic-m0-2026-10-28.md),
 [chapter 2 verification](../../docs/verification/psionic-ch02-2026-10-28.md), and
-[chapter 3 verification](../../docs/verification/psionic-ch03-2026-10-28.md), and
-[chapter 4 verification](../../docs/verification/psionic-ch04-2026-10-29.md), and
-[chapter 5 verification](../../docs/verification/psionic-ch05-2026-10-29.md) state the
+[chapter 4 verification](../../docs/verification/psionic-ch03-2026-10-28.md), and
+[chapter 7 verification](../../docs/verification/psionic-ch04-2026-10-29.md), and
+[chapter 9 verification](../../docs/verification/psionic-ch05-2026-10-29.md) state the
 tested scopes. The retired Rust workspace remains historical input.
 
 Build Psionic as a Coax library whose book explains and exercises the actual
@@ -81,15 +81,15 @@ authored checks and a compiled native host.
 [Chapter 2](../book/ch002-shapes-and-storage.md) now implements bounded
 shape/storage admission, row-major indexing and staged copy.
 [Its verification](../../docs/verification/psionic-ch02-2026-10-28.md) records the tested
-scope. [Chapter 3](../book/ch003-numbers-and-matrices.md) now adds
+scope. [Chapter 4](../book/ch004-numbers-and-matrices.md) now adds
 CPU matrix/reduction/gather/softmax/normalization operations under an explicit
-wide-accumulation profile. [Chapter 4](../book/ch004-reading-original-weights.md)
+wide-accumulation profile. [Chapter 7](../book/ch007-reading-original-weights.md)
 now adds original Safetensors/BF16/F32 inventory, exact-byte identities, complete
 shard/index/manifest admission and bounded finite decoding.
-[Chapter 5](../book/ch005-text-becomes-a-model-request.md) now implements
+[Chapter 9](../book/ch009-text-becomes-a-model-request.md) now implements
 the frozen text renderer, Unicode-17 NFC, original-Qwen byte-BPE and shared
-token-prefix layout under explicit budgets. [Chapter 6](../book/ch006-attention-without-training.md) adds a small causal attention block. [Chapter 7](../book/ch007-a-hybrid-sequence-model.md) composes
-causal Qwen-style linear and full-attention layers. [Chapter 8](../book/ch008-decisions-have-a-different-mask.md) adds decision blocks and hybrid state forks; real-checkpoint qualification remains next.
+token-prefix layout under explicit budgets. [Chapter 10](../book/ch010-attention-without-training.md) adds a small causal attention block. [Chapter 11](../book/ch011-a-hybrid-sequence-model.md) composes
+causal Qwen-style linear and full-attention layers. [Chapter 12](../book/ch012-decisions-have-a-different-mask.md) adds decision blocks and hybrid state forks; real-checkpoint qualification remains next.
 The learning path replaces the hand-written gradient with autodiff over those
 same operations, then builds small physical and language models.
 The [roadmap](roadmap.md) specifies the boundaries of each step.

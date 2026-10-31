@@ -1,4 +1,4 @@
-// Chapter 183: search a policy, cheapest first. A policy is a manifest with a
+// Chapter 242: search a policy, cheapest first. A policy is a manifest with a
 // SHA-256 digest; operators named for what they do grow every policy from the
 // simplest one; successive halving measures them all cheaply, keeps the best
 // half and any policy that alone is best on some task, and measures the
@@ -224,7 +224,7 @@ SR_TEST_TIERS :: [2]SrTier.[SrTier.{tasks=4,trials=1,seed=21},SrTier.{tasks=8,tr
 }
 
 // book:begin manifest
-// A policy's digest: chapter 178's encoding under its own tag.
+// A policy's digest: chapter 237's encoding under its own tag.
 sr_digest :: (p:SrPolicy)->[32]u8 #export_c {
     buf:[64]u8;at:=su_text(buf[..],0,"psionic.policy.v1");buf[at]=p.model;
     at=su_u64(buf[..],at+1,cast(u64)p.retries);buf[at]=p.context;at=su_flag(buf[..],at+1,p.verify);

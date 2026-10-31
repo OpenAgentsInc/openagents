@@ -1,7 +1,7 @@
-// Chapter 70: learning with arrays. A deadline simulator, grouped splits,
+// Chapter 103: learning with arrays. A deadline simulator, grouped splits,
 // feature scaling, affine and one-hidden-layer models trained by minibatch
 // SGD with explicit gradients, and the measurements that compare them.
-// Profile cpu-f64-sgd-v1: binary64 storage and arithmetic, chapter 3's
+// Profile cpu-f64-sgd-v1: binary64 storage and arithmetic, chapter 4's
 // compensated accumulator for every sum, no FMA or reassociation.
 #load "ops.coax";
 #authority;
@@ -29,7 +29,7 @@ TB_DOMAIN :: 1048576.0;
 TB_DEADLINE :: 9.0;
 TB_COST_MAX :: 1000000.0;
 
-// Checks precede the implementation. Expected values are derived in chapter 70.
+// Checks precede the implementation. Expected values are derived in chapter 103.
 #test "SplitMix64 counter zero has the published seed-zero word" {
     #assert tb_bits(0,0)==(cast(u64)0xe220a8397b1dcdaf) && tb_bits(0,1)==(cast(u64)0x6e789e6aa1b965f4);
     #assert tb_uniform(0,0)==0.8833108082136426;
@@ -363,7 +363,7 @@ TB_COST_MAX :: 1000000.0;
 }
 
 // book:begin random
-// SplitMix64 at a counter, the same generator as chapter 45's sampler.
+// SplitMix64 at a counter, the same generator as chapter 64's sampler.
 tb_bits :: (seed:u64,counter:u64)->u64 {
     z:=add_wrap(seed,mul_wrap(TB_GOLDEN,add_wrap(counter,(cast(u64)1))));
     z=mul_wrap(z^(z>>30),(cast(u64)0xbf58476d1ce4e5b9));z=mul_wrap(z^(z>>27),(cast(u64)0x94d049bb133111eb));return z^(z>>31);
@@ -574,7 +574,7 @@ tb_budget :: (m:TbModel,c:TbConfig,rows:int)->bool {
 }
 
 // book:begin train
-// Every refusal, before any work. Chapter 71's trainer shares it.
+// Every refusal, before any work. Chapter 104's trainer shares it.
 tb_admit_train :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,params:[]f64,order:[]int,overlap:bool)->TbStatus {
     n:=tb_param_count(m);d:=m.features;
     if !tb_budget(m,c,rows.count) || c.batch<1 || c.batch>TB_BATCH_MAX || !(c.rate>0 && c.rate<=16) || !tb_in(c.decay,0,1) {return TbStatus.shape;}

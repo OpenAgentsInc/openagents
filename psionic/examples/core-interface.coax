@@ -14,7 +14,7 @@ build :: (family:int,n:int,out:[]TmOp)->int {
     return es_program(cast(EsFamily)family,n,out);
 }
 // The training traces for one controller: each claimed, replayed and
-// admitted by chapter 186 into a set of its own, over the shared ledger.
+// admitted by chapter 245 into a set of its own, over the shared ledger.
 Rows :: struct {ex:[1024]EsExample;count:int;traces:int;entries:int;}
 gather :: (artifact:int,families:[]int,entry:[]TrEntry,entries:int)->Rows {
     out:Rows;rows:[64]TrRow;s:=tr_open(artifact,CUTS,rows[..],entry,entries);time:=0;
@@ -77,9 +77,9 @@ evaluate :: (core:FcCore,c:FcController)->Tally {
 // book:begin example
 main :: () {
     core:=fc_core();
-    print("core: chapter 168's block for inputs second, top, ip and arg, with outputs second + top,\n");
+    print("core: chapter 227's block for inputs second, top, ip and arg, with outputs second + top,\n");
     print("  second - top, second * top, and ip + 1 when top is 0, else arg; exact within 2^26\n");
-    print("  chapter 176's admission: %\n",ifx fc_admit(core)==WmStatus.ok then "exact (pin, 4 cases, source recompiled to the pin)" else "refused");
+    print("  chapter 235's admission: %\n",ifx fc_admit(core)==WmStatus.ok then "exact (pin, 4 cases, source recompiled to the pin)" else "refused");
     print("interface: each token is copied from one of 12 sources:\n  ");
     for s:0..<FC_SOURCES {print("%",SOURCE[s]);print("%",ifx s==FC_SOURCES-1 then "\n" else ", ");}
     print("controller: per instruction and token, a softmax over the sources that sees only the instruction,\n");
@@ -95,7 +95,7 @@ main :: () {
         entries=r.entries;
         print("controller %: trained on",names[k]);
         for i:0..<sizes[k] {print("%",ifx i==0 then " " else ifx i==sizes[k]-1 then " and " else ", ");print("%",FAMILY[fams[i]]);}
-        print(" at n = 1..4: % traces admitted by chapter 186, % rows\n",r.traces,r.count);
+        print(" at n = 1..4: % traces admitted by chapter 245, % rows\n",r.traces,r.count);
         f:=fc_train(core,r.ex[0..<r.count],200,1);#assert f.status==FcStatus.ok && f.unroutable==0;
         print("  loss %\n",r4(f.loss));
         show_routes(f.controller);

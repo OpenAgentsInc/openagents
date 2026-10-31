@@ -1,4 +1,4 @@
-/* Chapter 31: the chapter 26 and 30 kernels on an Apple GPU through coax
+/* Chapter 47: the chapter 37 and 44 kernels on an Apple GPU through coax
    metal-compute, against the same Coax kernels compiled to C, the CPU
    reference profile, and (for the float-float f64 profile) binary64.
    Usage: metal-kernels PROJECT.metal WARP.metal FF.metal [quick]
@@ -50,9 +50,9 @@ static PmArg I(int64_t v) { return (PmArg){PM_ARG_INT, v, 0, NULL, 0, 0}; }
 static PmArg V(PmBuffer b, int64_t count) { return (PmArg){PM_ARG_VIEW, 0, 0, b, 0, count}; }
 static PmBuffer alloc(size_t bytes) { PmBuffer b; TRY(pm_alloc(bytes, &b)); return b; }
 
-/* ---- Chapter 26's work-item projections ---- */
+/* ---- Chapter 37's work-item projections ---- */
 static PmKernel k_project, k_matvec, k_reduce, k_split, k_mma_project, k_tile, k_math, k_arith;
-/* Frozen before measuring, as in chapter 26: the same kernels compiled to C
+/* Frozen before measuring, as in chapter 37: the same kernels compiled to C
    agree bit for bit (or the launch is reported), and each output is within
    2^-15 sum |w x| of the CPU reference profile. */
 static const double PROJECT_BOUND = 1.0 / 32768.0;
@@ -133,8 +133,8 @@ static int project_shape(Shape s, int timing) {
     return ok;
 }
 
-/* ---- Chapter 26's warp kernels on simdgroups ---- */
-/* Frozen as in chapter 26: |device - Coax meaning| <= 2^-20 (|C| + sum |A B|)
+/* ---- Chapter 37's warp kernels on simdgroups ---- */
+/* Frozen as in chapter 37: |device - Coax meaning| <= 2^-20 (|C| + sum |A B|)
    for the primitive, and the projection within 2^-14 sum |w x| of the
    reference profile. */
 static const double MMA_BOUND = 1.0 / 1048576.0, MMA_PROJECT_BOUND = 1.0 / 16384.0;

@@ -10,5 +10,5 @@ On the development Mac using coax0 0.16.0, 152 Coax checks passed in debug and r
 3,663 mutation candidates were killed. Native debug and release checks passed
 normally and with ASan/UBSan; native release checks also passed on CoderOS.
 The tests exercise nonzero attention layers, distinct cache segments, positions,
-stale workspace, bounds and failure isolation. See the chapter 10 verification
+stale workspace, bounds and failure isolation. See the chapter 14 verification
 record for the separately executed original-weight request.

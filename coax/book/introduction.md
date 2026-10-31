@@ -79,12 +79,12 @@ verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
 The `#authority` line tells the compiler that this file makes decisions
 that matter, so every procedure in it must be exercised by a check, and
 the checks run on every build. We'll write checks of our own in
-Chapter 2 and cover them fully in [Chapter 10](ch10-writing-checks.md).
+Chapter 2 and cover them fully in [Chapter 11](ch11-writing-checks.md).
 
 Coax is meant to grow beyond the engine. OpenAgents' web, mobile,
 desktop and cloud code share one public protocol, and Coax types are
 designed to carry that protocol's field numbers and limits
-([Chapter 15](ch15-protocol.md)). Most of that is still design work.
+([Chapter 18](ch18-protocol.md)). Most of that is still design work.
 
 ## How Coax compares
 
@@ -119,7 +119,7 @@ with a borrow checker. Coax doesn't make that promise. Pointers, when
 they arrive, will be managed by hand as in C, and there is no general
 borrow checker. Instead Coax checks the specific things that go wrong in
 engine code: arithmetic, bounds, casts, and (planned) which jobs touch
-which data at the same time, which [Chapter 12](ch12-jobs.md) covers.
+which data at the same time, which [Chapter 14](ch14-jobs.md) covers.
 Coax also aims to build much faster, and it treats compile-time
 execution as an everyday tool.
 
@@ -167,18 +167,18 @@ This table maps what Coax adds to the chapters that cover it:
 | Diagnostics | Stable codes, the source line, and a fix | [4](ch04-reading-errors.md) |
 | Equality and hashing | `#derive(eq, hash)` and explicit constraints (planned) | [5](ch05-structs-enums-unions.md), [8](ch08-generics.md) |
 | Compile time | Bounded `#run` and `#assert` today; typed code generation later | [9](ch09-compile-time.md) |
-| Checks | `#test`, `#forall`, `#authority` and `coax mutate` today | [10](ch10-writing-checks.md) |
-| Parallelism | A job's capture list is its effects (planned) | [12](ch12-jobs.md) |
-| Determinism | Plain IEEE floats today; `strict` mode, `fixed32` and ordered tables planned | [13](ch13-determinism.md) |
-| GPU | Scalar Metal, bounded compute and WGSL graphics modules implemented; general GPU layouts and shader declaration syntax remain planned | [14](ch14-gpu.md) |
-| Protocol | Field numbers, limits and versions on the type | [15](ch15-protocol.md) |
-| Hot reload | Persistent state behind a versioned C boundary (planned) | [16](ch16-builds-hot-reload.md) |
-| Tooling | Errors as JSON today; the compiler as a server agents can query, planned | [19](ch19-agents.md) |
+| Checks | `#test`, `#forall`, `#authority` and `coax mutate` today | [11](ch11-writing-checks.md) |
+| Parallelism | A job's capture list is its effects (planned) | [14](ch14-jobs.md) |
+| Determinism | Plain IEEE floats today; `strict` mode, `fixed32` and ordered tables planned | [16](ch16-determinism.md) |
+| GPU | Scalar Metal, bounded compute and WGSL graphics modules implemented; general GPU layouts and shader declaration syntax remain planned | [17](ch17-gpu.md) |
+| Protocol | Field numbers, limits and versions on the type | [18](ch18-protocol.md) |
+| Hot reload | Persistent state behind a versioned C boundary (planned) | [19](ch19-builds-hot-reload.md) |
+| Tooling | Errors as JSON today; the compiler as a server agents can query, planned | [22](ch22-agents.md) |
 
 And some things Coax will not have: no garbage collector, no exceptions,
 no constructors and destructors, no inheritance, no header files and no
 preprocessor. It also won't load new code at run time on iOS, because
 Apple doesn't allow it. Hot reload is for development machines
-([Chapter 16](ch16-builds-hot-reload.md)).
+([Chapter 19](ch19-builds-hot-reload.md)).
 
 With that, let's build the compiler and write some code.

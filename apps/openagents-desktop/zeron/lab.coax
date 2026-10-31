@@ -1,13 +1,13 @@
 // The Lab: a chat mode in which every message is first routed by our own
 // Elephant (elephant-1 on Psionic's /v1/systemone, psionic/book/
-// ch016-serve-systemone.md) and then runs on the engine it chose. The
+// ch020-serve-systemone.md) and then runs on the engine it chose. The
 // questions are the old HUD router's (router.coax: which agent, how hard,
 // how much reasoning, which Claude model, whether it needs this Mac), with
 // the agents this app can run as the choices: Claude Code, Psionic
 // (gpt-oss-20b) and Codex when it is installed. The request goes through the
 // Coax System One client (coax/lib/systemone) to the keyless door of
 // psionic-serve --elephant-metal on this Mac's GPU, 127.0.0.1:8793 (psionic/
-// book/ch031-elephant-on-metal.md; a launchd agent keeps it up), so gpt-oss-20b
+// book/ch047-elephant-on-metal.md; a launchd agent keeps it up), so gpt-oss-20b
 // stays loaded on the RTX 4080 and nothing swaps. When nothing answers there,
 // the same message goes to Elephant on the RTX 4080 through its tunnel,
 // 127.0.0.1:8790, with the GPU switch (gpu.coax) swapping it in.
@@ -35,7 +35,7 @@ LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
 LAB_START :: "systemctl --user start psionic-gpu-switch";   // the GPU switch (gpu.coax) starts Elephant
 LAB_MESSAGE_MAX :: 1200;        // bytes of the message Elephant reads (a question holds 512 tokens)
 LAB_TIMEOUT_S :: 120;           // Elephant on this Mac takes several seconds for the five questions
-LAB_LOCAL_URL :: "http://127.0.0.1:8793/v1/systemone";   // psionic-serve --elephant-metal (chapter 31)
+LAB_LOCAL_URL :: "http://127.0.0.1:8793/v1/systemone";   // psionic-serve --elephant-metal (chapter 47)
 LAB_LOCAL_START :: "launchctl kickstart gui/$(id -u)/com.openagents.psionic-elephant-metal";
 
 LAB_IDLE :: 0; LAB_ASKING :: 1; LAB_LOADING :: 2;   // loading: Elephant is loading on the GPU (gpu.coax)

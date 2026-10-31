@@ -607,7 +607,7 @@ Three more things that catch people coming from C:
 
 A string is not a `char *`. It isn't guaranteed to end in a zero byte, and
 it can contain zero bytes: `"a\0b"` is three bytes long, and `coax0`
-handles it. Crossing into C passes the pointer and the count (Chapter 17).
+handles it. Crossing into C passes the pointer and the count (Chapter 20).
 
 Bytes are not characters. Coax source and text are UTF-8 by convention, and
 `"héllo".count` is 6, because `é` takes two bytes. `s[i]` is the `i`th
@@ -695,7 +695,7 @@ copy a buffer onto itself.
 > animation file. `verse_cast_open :: (b: [] u8) -> Cast` checks the
 > file's length, magic, version and buffer count with `int_at`, `u32_at`
 > and friends, and returns a `Cast` that isn't `ok` if anything is off. The
-> native side owns the file's bytes. Chapter 15 shows the same idea
+> native side owns the file's bytes. Chapter 18 shows the same idea
 > generated from a protocol description.
 
 ## Memory that outlives a procedure (planned)
@@ -768,7 +768,7 @@ if e := world.get(door) { e.open = true; }
 ```
 
 The engine's entity system already works this way (`ecs::Entity`). Anything
-that outlives a frame, is saved, or has to survive a hot reload (Chapter 16)
+that outlives a frame, is saved, or has to survive a hot reload (Chapter 19)
 should hold a handle rather than an address. Today, the closest thing is an
 `int` index into an array plus a check of `count`, which catches an index
 past the end but not a slot that has been reused.
@@ -839,7 +839,7 @@ An implicit context has costs, and the design handles each one explicitly:
 
 A signature shows less. A procedure with no allocator parameter can still
 allocate. So the compiler is to track allocation as an *effect* in every
-procedure's summary, through every call it makes. A job (Chapter 12), a
+procedure's summary, through every call it makes. A job (Chapter 14), a
 shader or a no-allocation section can't call something that allocates, and
 the error names the call that does.
 
@@ -920,4 +920,4 @@ proven safe. In Chapter 7 we'll look at the other half of writing reliable
 code: errors, traps, and cleaning up with `defer`.
 
 For callbacks, cancellation and GPU buffers whose use outlives a call, see
-[Chapter 23](ch23-asynchronous-work.md). A view does not retain its backing storage.
+[Chapter 15](ch15-asynchronous-work.md). A view does not retain its backing storage.

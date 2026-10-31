@@ -32,7 +32,7 @@ DS_END_THINK :: 151649;
     ids[3]=DS_EOS;#assert ds_parts(ids[..]).status==DsStatus.format;
     ids[3]=DS_END_THINK;ids[4]=DS_THINK;#assert ds_parts(ids[..]).status==DsStatus.format;
 }
-// Chapter 5's classes include marks; this original tokenizer's word runs do not.
+// Chapter 9's classes include marks; this original tokenizer's word runs do not.
 ds_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
     end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);if pt_has(table,t,r.cp,4) {return r.next;}
     pos:=at;if r.cp!=13 && r.cp!=10 {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}end=pt_run(table,t,s,at,1,true);if end>at {return end;}

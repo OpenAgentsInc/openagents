@@ -1,4 +1,4 @@
-// Chapter 4a: bounded inert parameter maps and contiguous CPU exchange policy.
+// Chapter 8: bounded inert parameter maps and contiguous CPU exchange policy.
 #load "model-io/reader.coax";
 #load "tensor-view.coax";
 #load "learn.coax";

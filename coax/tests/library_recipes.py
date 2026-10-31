@@ -48,22 +48,22 @@ class LibraryRecipesTests(unittest.TestCase):
             self.assertEqual(result.stdout, expected)
 
     def test_protocol_checks(self):
-        self.checks("ch28_protocol")
+        self.checks("ch26_protocol")
 
     def test_psionic_checks(self):
-        self.checks("ch28_psionic")
+        self.checks("ch26_psionic")
 
     def test_protocol_checked_o0_native_sanitized(self):
-        self.native("ch28_protocol", "-O0")
+        self.native("ch26_protocol", "-O0")
 
     def test_protocol_checked_o2_native_sanitized(self):
-        self.native("ch28_protocol", "-O2")
+        self.native("ch26_protocol", "-O2")
 
     def test_psionic_checked_o0_native_sanitized(self):
-        self.native("ch28_psionic", "-O0")
+        self.native("ch26_psionic", "-O0")
 
     def test_psionic_checked_o2_native_sanitized(self):
-        self.native("ch28_psionic", "-O2")
+        self.native("ch26_psionic", "-O2")
 
 
 if __name__ == "__main__":

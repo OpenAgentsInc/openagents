@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 13 tooling: independent digest vectors and the transcribed Elephant evidence.
+"""Chapter 17 tooling: independent digest vectors and the transcribed Elephant evidence.
 
 The policy and value encodings below are written from the chapter's description,
 not from the Coax source. Decimal numbers are copied as the exact text of the
@@ -137,4 +137,4 @@ if __name__ == '__main__':
         source = (ROOT / 'psionic/lib/qualify-elephant.coax').read_text()
         for key, value in frozen().items():
             assert f'YE_{key} :: "{value}";' in source, f'YE_{key} differs from its independent value'
-        print('chapter 13 digest vectors and transcribed Elephant evidence match their sources')
+        print('chapter 17 digest vectors and transcribed Elephant evidence match their sources')

@@ -64,7 +64,7 @@ original model is `baselabs/mammoth-1` revision
 That fingerprint authenticates the complete frozen manifest, including
 both original shard hashes, rather than only the index filename.
 
-`psionic/fixtures/pylon/mammoth-1.selfcheck` adds the existing chapter-11
+`psionic/fixtures/pylon/mammoth-1.selfcheck` adds the existing chapter-15
 CPU wet-question golden in billionths, at the same frozen 0.0005 tolerance.
 The independent selfcheck parser admits it. This is one pre-existing golden,
 not a newly claimed six-case Mammoth qualification.

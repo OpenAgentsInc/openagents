@@ -1,8 +1,8 @@
 # DeepSeek V2-Lite attention components — 2026-10-29
 
-This is progress toward chapter 58, not its completion record. The full
+This is progress toward chapter 90, not its completion record. The full
 original V2-Lite decoder, tensor admission, dense/routed/shared FFNs and original
-request comparison remain outstanding. Chapter 58 stays planned in the book.
+request comparison remain outstanding. Chapter 90 stays planned in the book.
 
 `mla.coax` implements both compressed and expanded latent-attention CPU forms,
 with BF16 up-projection coefficients, F32 stored activations/cache rows, and

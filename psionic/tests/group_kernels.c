@@ -1,4 +1,4 @@
-/* Group kernels (chapter 32) on a GPU against the same Coax compiled to C:
+/* Group kernels (chapter 48) on a GPU against the same Coax compiled to C:
    the tiled product through threadgroup memory and barriers, and a group
    total read by shared code. Each output adds its terms in the same order
    on every target, so results must be bit-identical. Build with

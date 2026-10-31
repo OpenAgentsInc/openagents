@@ -1,6 +1,6 @@
-/* Chapter 71 against two independent references: 300 random programs whose
+/* Chapter 104 against two independent references: 300 random programs whose
    values and derivatives tape_oracle.py computed in 60-digit decimal
-   arithmetic by central differences, and chapter 70's oracle, which trained
+   arithmetic by central differences, and chapter 103's oracle, which trained
    the same models with hand-written gradients in exactly rounded sums.
    Tolerances were frozen before comparison: results 1e-11 relative, program
    gradients 1e-9 of max(1, |g|), trained parameters 1e-9 relative. */
@@ -39,7 +39,7 @@ int main(void){
         assert(psionic_tp_backward(nv(prog,t->n),fv(v,t->n),fv(gr,t->params))==COAX_TpStatus_ok);
         for(int s=0;s<t->params;s++){e=rel(gr[s],t->grad[s],1);assert(e<=1e-9);if(e>worst_grad)worst_grad=e;params++;}
     }
-    /* Chapter 70's seed-70 experiment, trained through the tape. */
+    /* Chapter 103's seed-70 experiment, trained through the tape. */
     assert(tb_simulate(70,300,fv(x,4*N),fv(y,N),fv(lat,N),sv(g,N),false).status==COAX_TbStatus_ok);
     assert(tb_rows(sv(g,N),0,sv(tr,N),false)==1440);
     assert(tb_fit_scale(fv(x,4*N),4,sv(tr,1440),fv(mean,4),fv(sd,4),false)==COAX_TbStatus_ok);
@@ -60,7 +60,7 @@ int main(void){
     assert(psionic_tp_gradient(m,fv(tp,2),fv(tx,2),fv(ty,2),sv(rows,2),fv(tg,2),nv(nodes,64),fv(tp,2))==COAX_TpStatus_alias);
     assert(psionic_tp_gradient(m,fv(tp,2),fv(tx,2),fv(ty,2),sv(rows,2),fv(tg,2),nv(nodes,64),fv(values,64))==COAX_TpStatus_ok);
     printf("tape: %d programs and %d gradients agree with 60-digit central differences (worst %.1e and %.1e); "
-        "logistic, hidden-layer and line training reproduce chapter 70's oracle (worst %.1e); bad operations, NaN, infinity and overlap refused\n",
+        "logistic, hidden-layer and line training reproduce chapter 103's oracle (worst %.1e); bad operations, NaN, infinity and overlap refused\n",
         cases,params,worst_value,worst_grad,worst_param);
     return 0;
 }

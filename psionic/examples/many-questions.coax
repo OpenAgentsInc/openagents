@@ -1,4 +1,4 @@
-// Chapter 25: the Lab request (five questions about "Water is wet.", one
+// Chapter 36: the Lab request (five questions about "Water is wet.", one
 // 49-token prefix) as one batched suffix pass. Nothing runs: the plan is data.
 #import "Basic";
 #load "../lib/device/plan.coax";

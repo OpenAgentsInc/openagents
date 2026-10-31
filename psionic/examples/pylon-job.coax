@@ -14,7 +14,7 @@ main :: () {
     route:=pq_route(true,25910,true,cast(int)jb.code,cast(int)jb.type,jb.answerable,false,pq_free(q[..]));
     slot:=pq_put(q[..]);print("route: %, slot %, % of % free\n",route,slot,pq_free(q[..]),PQ_SLOTS);
     budget:=pq_budget(pd_left_ms(jb,CLOCK),30000);print("budget: % ms, set by the deadline: %\n",budget.ms,budget.deadline);
-    // The engine answered 200 with chapter 16's body.
+    // The engine answered 200 with chapter 20's body.
     out:[4096]u8;receipt:="{\"attempt_id\":\"r-1#1\",\"schema\":\"openagents.receipt.execution.v1\",\"transport\":\"relay\"}";
     r:=pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"psionic-pylon-v1",PB_IDENTITY,receipt);
     a:=pq_answer(true,false,200,cast(int)r.code,PQ_NONE);

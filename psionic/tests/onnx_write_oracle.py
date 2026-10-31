@@ -1,7 +1,7 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 161a, standard library only.
+"""Independent oracle for chapter 219, standard library only.
 
-Trains chapter 70's affine models with chapter 70's own oracle, folds their
+Trains chapter 103's affine models with chapter 103's own oracle, folds their
 scaling into binary32 weights, encodes each ONNX file with its own protobuf
 writer, runs the files in emulated binary32, and rebuilds the example's whole
 output, which must equal psionic/fixtures/onnx-write.out line for line.
@@ -84,7 +84,7 @@ def fold(p, mean, sd, logistic):
 
 
 def run(weight, bias, cols, x):
-    """chapter 161's CPU run: binary32 sums in a fixed order, Softmax in binary64."""
+    """chapter 218's CPU run: binary32 sums in a fixed order, Softmax in binary64."""
     row = [f32(v) for v in x]
     z = []
     for j in range(cols):
@@ -117,7 +117,7 @@ def main():
     pg = tab.train(xs, y, train, 4, 0, True, 40, 16, 0.5, 0.0, 1, 2)
     pl = tab.train(xs, lat, train, 4, 0, False, 40, 16, 0.05, 0.0, 1, 2)
     zg, zl = tab.outputs(pg, xs, 4, 0), tab.outputs(pl, xs, 4, 0)
-    out = [f"chapter 70's deadline requests: {len(train)} training rows, {len(test)} test rows, 4 raw features",
+    out = [f"chapter 103's deadline requests: {len(train)} training rows, {len(test)} test rows, 4 raw features",
            f"trained in binary64: logistic test log loss {r4(tab.log_loss(zg, y, test))}, "
            f"line test squared error {r4(tab.mse(zl, lat, test))} s^2"]
     wg, bg = fold(pg, mean, sd, True)
@@ -138,7 +138,7 @@ def main():
     out.append(f"  {len(latency)} bytes, 1 node; latency.weight, latency.bias read back by chapter 161 bit for bit")
     worst = max(abs(run(wl, bl, 1, x[i])[0] - zl[i]) for i in test)
     out.append(f"  {len(test)} test rows: seconds within {up9(worst)} of the binary64 model")
-    out.append("chapter 70's MLP: op, tanh is outside the subset")
+    out.append("chapter 103's MLP: op, tanh is outside the subset")
     out.append("sample test rows:")
     for k in range(4):
         i = test[120 * k]

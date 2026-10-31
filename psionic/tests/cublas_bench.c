@@ -1,4 +1,4 @@
-/* Opt-in comparator (chapter 23): Psionic's Coax projection kernels against
+/* Opt-in comparator (chapter 34): Psionic's Coax projection kernels against
    cuBLAS on the same shapes. cuBLAS is test-only: this harness opens it with
    dlopen from PSIONIC_CUBLAS (default ~/cublas-13.2/lib/libcublas.so.13) and
    skips when it is absent. No library or server build links or loads it.

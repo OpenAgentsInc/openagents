@@ -6,7 +6,7 @@ case and **1.3%** on actual short greedy decode. Coefficient and arithmetic
 execution remain the larger throughput target.
 
 The [performance notebook](../../psionic/docs/serving/performance.md) retains
-our process and backlog. [Chapter 45f](../../psionic/book/ch045f-replay-the-device-program.md)
+our process and backlog. [Chapter 70](../../psionic/book/ch070-replay-the-device-program.md)
 explains the implementation and checks. The
 [retained folder](../../psionic/fixtures/gptoss/qualification/decode-pass3-2026-10-29/)
 holds raw samples, parsed summaries, measured harness source and build identities.

@@ -1,4 +1,4 @@
-// Chapter 71b: reverse mode over chapter 26a's tensor IR, profile
+// Chapter 106: reverse mode over chapter 38's tensor IR, profile
 // autodiff-f32-v1. Forward values are f32, computed by the IR's own command
 // kernel; gradients are accumulated in f64 and rounded once to f32 when
 // published. A tape is a static schedule: forward steps, then backward steps
@@ -6,7 +6,7 @@
 // for exactly as long as some step still reads it.
 //
 // Coax has no callbacks, so the caller steps the tape. Built-in operators
-// run inside ad_run. A registered operator (chapter 26c) and a node with a
+// run inside ad_run. A registered operator (chapter 40) and a node with a
 // custom derivative come back as a call: the caller runs its own kernel, then
 // ad_finish folds the result in.
 #authority;
@@ -15,7 +15,7 @@
 #load "tensor-ir-kernels.coax";
 #load "../examples/operators/squared-relu.coax";
 
-#test "every built-in rule agrees with chapter 3's dense Jacobian" {
+#test "every built-in rule agrees with chapter 4's dense Jacobian" {
     data:=[12]f32.[1,-2,0,3,2,-1,0.5,4,-3,1,2,-0.5];weights:=[12]f32.[1,2,3,-1,0.5,2,-2,1,0.25,3,-1,1];
     for op:0..<7 {
         p:TiProgram;
@@ -122,7 +122,7 @@
     mode.custom[10]=true;mode.custom[8]=true;t=ad_tape(p,mode,OrRegistry.{count=1});
     #assert t.saved[8] && t.saved[9] && t.saved[10] && t.saved[6] && t.value_dies[10]==t.forward+2;
 }
-#test "metadata views and the forward pass agree with chapter 26a's lowering" {
+#test "metadata views and the forward pass agree with chapter 38's lowering" {
     p:TiProgram;p.count=11;p.output=10;
     p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[3,4,0,0]},0);p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[4,2,0,0]},12);
     p.nodes[2]=TiNode.{op=TiOp.view,a=0,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]},strides=[4]int.[1,4,0,0],offset=1};
@@ -311,7 +311,7 @@ AdTape :: struct {
     steps:[AD_STEPS]AdStep;count:int;forward:int;
     values:AdArena;grads:AdArena;kept:int;
 }
-// A call the caller makes. meta is chapter 26c's kernel metadata, items its
+// A call the caller makes. meta is chapter 40's kernel metadata, items its
 // work items and gain the node's parameter. For a custom derivative, y_at,
 // dy_at, ga_at and gb_at are value-arena offsets of the output, the output's
 // gradient and the operand gradients the caller writes, contiguous.
@@ -448,7 +448,7 @@ ad_layout :: (tape:AdTape)->AdTape {
     return t;
 }
 
-// An operand as chapter 26c's kernels read it: inputs from the caller's
+// An operand as chapter 40's kernels read it: inputs from the caller's
 // input buffer, everything else from the value arena.
 ad_describe :: (t:AdTape,x:int,at:int,meta:[]int) {
     v:=t.plan.values[x].view;r:=t.root[x];base:=t.value_at[r];meta[at]=1;

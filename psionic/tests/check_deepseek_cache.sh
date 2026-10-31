@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 66: original cache grids, BF16 bits and separate codec work budgets.
+# Chapter 98: original cache grids, BF16 bits and separate codec work budgets.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

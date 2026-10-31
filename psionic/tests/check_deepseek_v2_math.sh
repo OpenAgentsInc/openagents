@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chapter 58 component gate. Complete V2 execution remains a separate gate.
+# Chapter 90 component gate. Complete V2 execution remains a separate gate.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 coax=${COAX:-$PWD/coax/bin/coax}

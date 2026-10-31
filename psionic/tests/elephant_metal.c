@@ -1,4 +1,4 @@
-/* Chapter 31: the authenticated original Elephant decision on an Apple GPU.
+/* Chapter 47: the authenticated original Elephant decision on an Apple GPU.
    The CPU session authenticates and binds the original files; the Coax device
    plan (psionic/lib/device/plan.coax) decides every launch;
    psionic/platform/elephant-metal.c performs the effects through
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
            info.working_set_bytes / 1073741824.0);
     printf("compiled %d generated kernels with the Metal compiler in %.3f s\n", DP_KERNELS, e->compile_seconds);
 
-    /* The CPU session authenticates and binds the original files (chapter 10). */
+    /* The CPU session authenticates and binds the original files (chapter 14). */
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = {NULL, 0}, table = map_file(argv[2]);
     coax_t_PaFile file = {0};
     char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", argv[1]);
@@ -213,10 +213,10 @@ int main(int argc, char **argv) {
         double median = n % 2 ? times[1 + n / 2] : (times[n / 2] + times[1 + n / 2]) / 2;
         printf("warm median over %d runs: %.1f ms (min %.1f, max %.1f)\n", n, median * 1e3, times[1] * 1e3, times[repeat - 1] * 1e3);
     }
-    /* A forked decision (chapter 8): the prefix pass and then the suffix from
+    /* A forked decision (chapter 12): the prefix pass and then the suffix from
        the kept state, then the suffix alone as a later question with the same
        prefix would run it. Both must give the whole decision's answer: the
-       same logits bit for bit, or else within chapter 30's 0.0005. */
+       same logits bit for bit, or else within chapter 44's 0.0005. */
     {
         static float whole[DP_VOCAB];
         memcpy(whole, e->logits, sizeof whole);

@@ -1,4 +1,4 @@
-// Chapter 160: how far apart may two honest answers be? Two machines answer
+// Chapter 217: how far apart may two honest answers be? Two machines answer
 // the same fresh items; their answers are compared in centred log space; the
 // distances between honest pairs and between cheap substitutes set the limits
 // of a checker's round, and a round checks a subset drawn only after the

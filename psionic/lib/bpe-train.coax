@@ -66,7 +66,7 @@ bt_vocabulary :: (m:BtModel)->BtVocabulary {
 }
 bt_put :: (bytes:[]u8,at:int,n:int) {for i:0..<4 {bytes[at+i]=cast(u8)((cast(u32)n>>(i*8))&255);}}
 bt_less :: (a:BtRule,b:BtRule)->bool {return a.left<b.left || (a.left==b.left && a.right<b.right);}
-// PST5 stores raw bytes and chapter 5's rank/id records; the profile is separate.
+// PST5 stores raw bytes and chapter 9's rank/id records; the profile is separate.
 bt_pack :: (m:BtModel,classes:[]u8,out:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c {
  if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(classes);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}v:=bt_vocabulary(m);if v.status!=PtStatus.ok {return PtResult.{status=v.status};}
  needed:=1056+v.count*8+m.merges*16+t.counts[2]*16+v.pool;if out.count<needed || stage.count<needed {return PtResult.{status=PtStatus.capacity};}
