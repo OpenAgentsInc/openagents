@@ -54,11 +54,13 @@ everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
   things:=0;hidden:u32=0;geometry:=false;
   if rn>=2 {
     things=gr_things(route[..],rn,s[0].ev.edits);hidden=gr_hidden(route[..],rn,s[0].ev.edits.hidden);
-    for i:0..<AB_STONES {st:=s[0].sp.ab[0].stones[i];if st.live && gr_touch_segment(route[..],rn,st.ax,st.az,st.bx,st.bz,f32(AB_ST_THICK)) {geometry=true;}}
-    for i:0..<AB_WALLS {wl:=s[0].sp.ab[0].walls[i];if wl.live && gr_touch_segment(route[..],rn,wl.ax,wl.az,wl.bx,wl.bz,0.5) {geometry=true;}}
-    // A page or test with nothing breakable has an empty demolition world.
+    for i:0..<AB_STONES {st:=s[0].sp.ab[0].stones[i..<i+1];if st[0].live && gr_touch_segment(route[..],rn,st[0].ax,st[0].az,st[0].bx,st[0].bz,f32(AB_ST_THICK)) {geometry=true;}}
+    for i:0..<AB_WALLS {wl:=s[0].sp.ab[0].walls[i..<i+1];if wl[0].live && gr_touch_segment(route[..],rn,wl[0].ax,wl[0].az,wl[0].bx,wl[0].bz,0.5) {geometry=true;}}
+    // A page or test with nothing breakable has an empty demolition world. Each piece, stone and
+    // wall is read through a view, not copied: a copy every frame ran the camera test out of
+    // compile-time traversal (as eb6742455e).
     dm:=sp_dm(s);
-    if dm.count>0 && dm[0].broken_n>0 {for p:0..<dm[0].n {if geometry {break;}pc:=dm[0].pieces[p];if pc.state!=DP_STANDING && gr_touch_box(route[..],rn,pc.x0,pc.z0,pc.x1,pc.z1) {geometry=true;}}}
+    if dm.count>0 && dm[0].broken_n>0 {for p:0..<dm[0].n {if geometry {break;}pc:=dm[0].pieces[p..<p+1];if pc[0].state!=DP_STANDING && gr_touch_box(route[..],rn,pc[0].x0,pc[0].z0,pc[0].x1,pc[0].z1) {geometry=true;}}}
     if dm.count>0 {for b:0..<DEMO_BODIES {if geometry {break;}if dm[0].meta[b].kind!=0 {at:=demo_pos(dm,b);if gr_touch_point(route[..],rn,f32(at.x),f32(at.z),f32(dm[0].meta[b].radius)) {geometry=true;}}}}
   }
   s[0].guide.facts=GgpFacts.{followed=q,stage=stage,guard=0,
