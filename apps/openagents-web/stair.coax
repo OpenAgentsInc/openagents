@@ -1657,6 +1657,7 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     if sd >= 1 && sd <= 999999999 { s[0].seed = cast(u64) sd; stair_reset(s); }
     if query_is(url, "stage", "highlight") { stage_highlight(s); }
     if query_is(url, "stage", "swarm") { stage_highlight(s); s[0].swarm = true; }
+    if query_is(url, "stage", "party") { stage_party(s); }
     if query_is(url, "card", "1") { s[0].card_shot = true; }
     coop_page(s, url);
   }
@@ -1719,6 +1720,19 @@ spot_near :: (s: [] Stair, along: f32) -> int {
     if dd < bd { bd = dd; best = cell; }
   }
   return best;
+}
+// ?stage=party: one of each class at level one up the stair, before the first wave, for
+// looking at the figures (how each reads against the stone at phone size).
+stage_party :: (s: [] Stair) {
+  stair_reset(s);
+  s[0].gold = 99999;
+  for c: 0..<CLASSES {
+    s[0].placed_round = 0;
+    spot := spot_near(s, 0.08 + 0.8 * f32(c) / f32(CLASSES - 1));
+    if spot < 0 || !place(s, spot, c) { break; }
+  }
+  for i: 0..<FX { s[0].fx[i].life = 0; }
+  s[0].gold = 140; s[0].placed_round = 0; s[0].toast_t = 0;
 }
 SWARM :: 500;
 stage_highlight :: (s: [] Stair) {

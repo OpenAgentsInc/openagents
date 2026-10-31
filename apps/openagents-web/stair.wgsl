@@ -270,18 +270,27 @@ fn stand(c: vec3f, local: vec2f, sc: vec2f, t: f32) -> vec3f {
   let feet = vec2f(sc.x + 0.5, sc.y + 0.74);
   let q = vec2f(local.x - feet.x, (feet.y - local.y) * u.map.w) * 0.74;
   var pen = figure(q, k - 10, face, flash, 1.3 / t, f32(i) * 0.37);
+  let cls = k - 10;
+  var lcs = array<vec3f, 7>(vec3f(0.6, 0.75, 1.0), vec3f(0.62, 0.5, 1.0), vec3f(1.0, 0.86, 0.45), vec3f(0.45, 0.95, 0.8), vec3f(0.5, 0.95, 0.45), vec3f(1.0, 0.5, 0.78), vec3f(0.8, 0.9, 1.0));
+  let lc = lcs[clamp(cls, 0, 6)];
+  let g = length(q * vec2f(1.0, 2.6));
+  var under = c;
+  if (!ghost) {
+    // read against dark stone on a phone: a faint light of its class's colour behind it,
+    // and a ring of that colour round its feet
+    let back = length((q - vec2f(0.0, 0.2)) * vec2f(1.0, 0.62));
+    under = under + lc * 0.16 * (1.0 - smoothstep(0.1, 0.34, back));
+    let rim = abs(g - 0.24) - 0.018;
+    under = mix(under, lc, 0.85 * clamp(0.5 - rim / (2.6 / t), 0.0, 1.0));
+  }
   // level 3: the ground under it glows its class's colour
   let level = i32(fract(cell_raw(i)) * 100.0 + 0.5);
   if (level >= 3 && !ghost) {
-    let cls = k - 10;
-    var lcs = array<vec3f, 7>(vec3f(0.6, 0.75, 1.0), vec3f(0.62, 0.5, 1.0), vec3f(1.0, 0.86, 0.45), vec3f(0.45, 0.95, 0.8), vec3f(0.5, 0.95, 0.45), vec3f(1.0, 0.5, 0.78), vec3f(0.8, 0.9, 1.0));
-    let lc = lcs[clamp(cls, 0, 6)];
-    let g = length(q * vec2f(1.0, 2.6));
     pen.glow += lc * (1.0 - smoothstep(0.12, 0.3, g)) * smoothstep(0.08, 0.2, g) * (0.35 + 0.15 * sin(u.time * 3.0));
   }
   // the ghost of one about to go down: see-through, breathing
   let a = select(pen.a, pen.a * (0.45 + 0.15 * sin(u.time * 5.0)), ghost);
-  return mix(c, pen.c, a) + pen.glow * select(1.0, 0.5, ghost);
+  return mix(under, pen.c, a) + pen.glow * select(1.0, 0.5, ghost);
 }
 
 // ---- the map
