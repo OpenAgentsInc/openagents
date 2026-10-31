@@ -1,0 +1,246 @@
+{
+  "schema": "psionic.panda-actuation.publication.v1",
+  "passed": true,
+  "source_commit": "0366d7b40d",
+  "component_and_book_integration": "Actuation and JOINT-passive force query, chapter170, exact runnable listing, example and focused registry.",
+  "qualified_source_entries": 38,
+  "receipts": {
+    "psionic/fixtures/robotics/panda-actuation/qualification.json": "a1366bc05fb796dca89d6a8d135ef269ccecdb3c984925fa5824f56ce5178f62",
+    "psionic/fixtures/robotics/panda-actuation/checks-qualification.json": "c6a6c489aeaf0380e36aab97206840542be4a947aea7189ac6bd1f659ec8b184",
+    "psionic/fixtures/robotics/panda-actuation/sdk-reference.json": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da",
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+    "psionic/fixtures/robotics/panda-actuation/sdk-model.json": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01",
+    "psionic/fixtures/robotics/panda-actuation/sdk-values.f64": "3db8fa7e7bfda7c00e0be75c543ee095d812c2f77925eaa3a03a17363e32d0b0",
+    "psionic/fixtures/robotics/panda-actuation/example.stdout": "9762452469523e3d084eb6bd99cf412b9dea30238b6660b66dbfea3ded062e58"
+  },
+  "source_proof": {
+    "check_groups": 8,
+    "cases": 135,
+    "composition": "Name-bound scope proof, not an aggregate final rerun: math20/20; initial wrapper97/98 with sole survivor in pa_forward_raw; unchanged pa_forward body carries its kills; exact raw-only25/25 after the added refusal observation closes the sole survivor. No final full-wrapper or full authored Quantity-token score is claimed.",
+    "equivalent_waivers": 0,
+    "quantity_operator_token_scope": "Current lowering does not enumerate every authored scalar-quantity operator token. These are actual emitted scopes, complemented by independent literal/SDK/scalar equations."
+  },
+  "native_proof": {
+    "profiles": [
+      {
+        "mode": "debug",
+        "native": {
+          "schema": "psionic.panda-actuation.native.v1",
+          "passed": true,
+          "cases": 18,
+          "record_bytes": 160,
+          "position_rate_boundaries": 36,
+          "control_boundaries": 18,
+          "alias_cases": 4,
+          "assertions": 3960
+        },
+        "metrics": {
+          "actuator_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "generalized_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "actuator_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          }
+        },
+        "clip_counts_exact": true,
+        "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+      },
+      {
+        "mode": "release",
+        "native": {
+          "schema": "psionic.panda-actuation.native.v1",
+          "passed": true,
+          "cases": 18,
+          "record_bytes": 160,
+          "position_rate_boundaries": 36,
+          "control_boundaries": 18,
+          "alias_cases": 4,
+          "assertions": 3960
+        },
+        "metrics": {
+          "actuator_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "generalized_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "actuator_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          }
+        },
+        "clip_counts_exact": true,
+        "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+      },
+      {
+        "mode": "sanitized",
+        "native": {
+          "schema": "psionic.panda-actuation.native.v1",
+          "passed": true,
+          "cases": 18,
+          "record_bytes": 160,
+          "position_rate_boundaries": 36,
+          "control_boundaries": 18,
+          "alias_cases": 4,
+          "assertions": 3960
+        },
+        "metrics": {
+          "actuator_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "generalized_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_SDK": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "actuator_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          },
+          "joint_passive_scalar": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 0.0,
+            "atol": 5e-11,
+            "rtol": 0
+          }
+        },
+        "clip_counts_exact": true,
+        "output_sha256": "3a1fb7af27a1e63f3c5a19f3524733ad60fc2311d4c5c4cb2fda97c2108ee385"
+      }
+    ],
+    "numeric_SDK_comparison_distinct_from_owned_mode_byte_identity": true
+  },
+  "new_SDK_work": {
+    "metadata_only_model_loads": 1,
+    "capture_model_loads": 1,
+    "capture_resets": 18,
+    "case_forward_calls_started": 18,
+    "case_forward_calls_completed": 18,
+    "actual_sparse_rows_verified": 162,
+    "integration_steps": 0,
+    "render_calls": 0,
+    "NN_calls": 0,
+    "old_numeric_gates_repeated": false,
+    "call_counts": "Authored collector API calls; SDK model-compilation internals are not a separate physical trial."
+  },
+  "read_only_review": "Admission order, explicit typed force/target roles, source clamp and affine arithmetic order, atomic complete publication, numeric comparison scope and named mutation carry reviewed. Fluid and constraint friction are not silently treated as damping.",
+  "compiler_current_context_binding": {
+    "path": "docs/verification/coax-build-cache-model-binding-2026-10-31.json",
+    "sha256": "a35e67ba1c28cea95acd45d1f9f4203d3c36d36a0e07b07d57ae98f665dee515"
+  },
+  "prior_integration_book_check": {
+    "schema": "psionic.book.static-integration-result.v1",
+    "passed": true,
+    "command": [
+      "python3",
+      "-I",
+      "psionic/tests/book.py"
+    ],
+    "workdir": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+    "programs": 117,
+    "source_linked_listings": 450,
+    "local_links_passed": true,
+    "qualified_tree": "db16750902d3d4d666387f371ed0c93b06904b96",
+    "integration_commit": "3a7d1963f0",
+    "stdout_path": "/tmp/panda-actuation-integration-book.tool-stdout",
+    "stdout_preservation": "Exact stdout transcribed from the successful tool result chunk88a35b; no process log was originally requested, no passing gate was rerun to create this file.",
+    "old_numerical_results_rerun": false
+  },
+  "post_rebase_context": {
+    "incoming_main": [
+      "e79b8a578b",
+      "978db600cb",
+      "ade901ee30",
+      "75fde94d42"
+    ],
+    "native_graphics_evidence_review": "Reviewed FairyForest and named native realm regressions appended by75fde94d42; refreshed only docs/verse/native-gpu.md evidence hashes in psionic.language.current and coax.wgsl.current. Claim texts and their bounded scope remain unchanged.",
+    "book_check": {
+      "passed": true,
+      "command": [
+        "python3",
+        "-I",
+        "psionic/tests/book.py"
+      ],
+      "exit": 0,
+      "stdout": "psionic book structure: 117 programs, 450 source-linked listings, local links pass\n",
+      "scope": "One new current-input static check after rebase and the reviewed native-graphics evidence refresh; metadata record update does not change those book inputs."
+    }
+  },
+  "limits": [
+    "Actuator and joint-passive force only, not full passive/fluid/contact/constraints/integration or hardware.",
+    "Fixed original source profile and admitted numerical boxes, not generic imported actuator dynamics or control provenance.",
+    "Quantity arithmetic token mutation provenance remains incomplete."
+  ],
+  "old_VM_native_SDK_example_runs_repeated": 0
+}
