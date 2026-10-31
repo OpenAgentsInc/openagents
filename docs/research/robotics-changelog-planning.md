@@ -1,10 +1,8 @@
 **I’d build Coax around predictable memory, explicit execution costs, reproducible worlds, clear CPU/GPU contracts, and fast changes to a running program.** Those foundations would serve games, robotics, simulation, and machine learning unusually well.
 
-Your supplied **0.37.0** changelog already contains substantial pieces: generics, modules, compile-time execution, reflection, evidence reports, native compilation, and several GPU emitters. The biggest opportunity is making those pieces compose reliably across an entire running world. The explicit lifetime limitations in the supplied history are particularly important prerequisites. [Your supplied changelog](https://chatgpt.com/library?file_id=libfile_f2211e0c33ac8191940e7b2b96ebee6c&account_id=personal)
+Your supplied **0.37.0** changelog already contains substantial pieces: generics, modules, compile-time execution, reflection, evidence reports, native compilation, and several GPU emitters. The biggest opportunity is making those pieces compose reliably across an entire running world. The explicit lifetime limitations in the supplied history are particularly important prerequisites.
 
-I drafted **80 proposed releases, from 0.38.0 through 0.117.0**. The full document includes a larger code example, dependencies, and a shipping criterion for every release:
-
-[coax-realtime-roadmap-80-versions.md](https://chatgpt.com/library?file_id=libfile_28a871d8eeb08191a0e6a2674a7cabf9&account_id=personal)
+I drafted **80 proposed releases, from 0.38.0 through 0.117.0**.
 
 **All syntax, commands, and APIs below are proposals.** They are not examples that currently compile under 0.37.0. The versions represent capability milestones, with substantially different implementation costs.
 
