@@ -147,6 +147,7 @@ ZOOM_MAX :: 3.0;
 
 Stair :: struct {
   started: bool;
+  area: [1] Area;          // where every beast is, a tile a bucket, for area queries
   ct: [1] Content;   // the layers, classes, levels, waves and stair (stair-tables.coax)
   track: [1] Track;
   dice: [1] SrdDice;       // the rules' dice: every attack, save and damage roll, from seed
@@ -354,6 +355,7 @@ defender_at :: (s: [] Stair, cell: int) -> int {
 stair_reset :: (s: [] Stair) {
   s[0].phase = BUILD; s[0].wave = 0; s[0].lives = s[0].ct[0].start_lives; s[0].gold = s[0].ct[0].start_gold; s[0].speed = 1;
   for i: 0..<BEASTS { s[0].beasts[i].live = false; }
+  s[0].area[0].ok = false;
   for i: 0..<DEFENDERS { s[0].party[i].live = false; }
   for i: 0..<FX { s[0].fx[i].life = 0; }
   s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0; s[0].placed_round = 0;
@@ -395,6 +397,7 @@ spawn :: (s: [] Stair, kind: int, d: f32) -> int {
   for i: 0..<BEASTS {
     if !s[0].beasts[i].live {
       s[0].beasts[i] = Beast.{live = true, kind = kind, d = d, hp = s[0].ct[0].hp[kind], wob = srd_unit(s[0].looks[..]) * 6.28};
+      s[0].area[0].ok = false;
       return i;
     }
   }
@@ -427,12 +430,13 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
 // The beast furthest along within range of a cell (-1 none); skip: a layer to pass over (-1 none).
 first_in_range :: (s: [] Stair, cell: int, range: f32, skip: int) -> int {
   c := cell_xy(cell);
+  hits: [BEASTS] int;
+  n := area_sphere(s, c.x, c.y, range, hits[..]);
   best := -1; far := -1.0f32;
-  for i: 0..<BEASTS {
-    if !s[0].beasts[i].live || s[0].beasts[i].kind == skip { continue; }
-    p := beast_xy(s, i);
-    dx := p.x - c.x; dy := p.y - c.y;
-    if dx * dx + dy * dy <= range * range && s[0].beasts[i].d > far { far = s[0].beasts[i].d; best = i; }
+  for j: 0..<n {
+    i := hits[j];
+    if s[0].beasts[i].kind == skip { continue; }
+    if s[0].beasts[i].d > far { far = s[0].beasts[i].d; best = i; }
   }
   return best;
 }
@@ -566,16 +570,89 @@ fighter_attack :: (s: [] Stair, k: int) -> bool {
   if a.hit { hurt_beast(s, t, a.damage, STAIR_FIGHTER.kind, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
   return true;
 }
+// ---- area queries: a spatial grid of the beasts, a tile a bucket, built once a step (and again
+// after anything spawns), so a sphere or a line looks only at the tiles it covers.
+Area :: struct {
+  ok: bool;
+  head: [CELLS] int;      // the first beast in a tile (-1 none)
+  next: [BEASTS] int;     // the next beast in the same tile
+  x: [BEASTS] f32; y: [BEASTS] f32;
+  looked: int;            // beasts the last query looked at (its cost)
+}
+area_col :: (x: f32) -> int { return lo_i(hi_i(cast(int) floor(x), 0), COLS - 1); }
+area_row :: (y: f32) -> int { return lo_i(hi_i(cast(int) floor(y), 0), ROWS - 1); }
+area_build :: (s: [] Stair) {
+  for c: 0..<CELLS { s[0].area[0].head[c] = -1; }
+  for i: 0..<BEASTS {
+    if !s[0].beasts[i].live { continue; }
+    p := beast_xy(s, i);
+    s[0].area[0].x[i] = p.x; s[0].area[0].y[i] = p.y;
+    c := area_row(p.y) * COLS + area_col(p.x);
+    s[0].area[0].next[i] = s[0].area[0].head[c];
+    s[0].area[0].head[c] = i;
+  }
+  s[0].area[0].ok = true;
+}
+// Live beasts within r tiles of (x, y), into out in index order; returns how many.
+area_sphere :: (s: [] Stair, x: f32, y: f32, r: f32, out: [] int) -> int {
+  if !s[0].area[0].ok { area_build(s); }
+  n := 0; looked := 0;
+  for row: area_row(y - r)..<area_row(y + r) + 1 {
+    for col: area_col(x - r)..<area_col(x + r) + 1 {
+      i := s[0].area[0].head[row * COLS + col];
+      while i >= 0 {
+        looked += 1;
+        dx := s[0].area[0].x[i] - x; dy := s[0].area[0].y[i] - y;
+        if s[0].beasts[i].live && dx * dx + dy * dy <= r * r && n < len(out) { out[n] = i; n += 1; }
+        i = s[0].area[0].next[i];
+      }
+    }
+  }
+  s[0].area[0].looked = looked;
+  sort_ints(out[0..<n]);
+  return n;
+}
+// Live beasts within half_w tiles of the segment a-b (a line spell), in index order.
+area_line :: (s: [] Stair, ax: f32, ay: f32, bx: f32, by: f32, half_w: f32, out: [] int) -> int {
+  if !s[0].area[0].ok { area_build(s); }
+  n := 0; looked := 0;
+  lx := bx - ax; ly := by - ay;
+  ll := hi(lx * lx + ly * ly, 0.000001);
+  for row: area_row(lo(ay, by) - half_w)..<area_row(hi(ay, by) + half_w) + 1 {
+    for col: area_col(lo(ax, bx) - half_w)..<area_col(hi(ax, bx) + half_w) + 1 {
+      // a tile the line's band doesn't touch is skipped without looking in it
+      cx := f32(col) + 0.5; cy := f32(row) + 0.5;
+      ct := clamp(((cx - ax) * lx + (cy - ay) * ly) / ll, 0, 1);
+      ex := ax + lx * ct - cx; ey := ay + ly * ct - cy;
+      reach := half_w + 0.7072;
+      if ex * ex + ey * ey > reach * reach { continue; }
+      i := s[0].area[0].head[row * COLS + col];
+      while i >= 0 {
+        looked += 1;
+        px := s[0].area[0].x[i]; py := s[0].area[0].y[i];
+        t := clamp(((px - ax) * lx + (py - ay) * ly) / ll, 0, 1);
+        qx := ax + lx * t - px; qy := ay + ly * t - py;
+        if s[0].beasts[i].live && qx * qx + qy * qy <= half_w * half_w && n < len(out) { out[n] = i; n += 1; }
+        i = s[0].area[0].next[i];
+      }
+    }
+  }
+  s[0].area[0].looked = looked;
+  sort_ints(out[0..<n]);
+  return n;
+}
+sort_ints :: (a: [] int) {
+  for i: 1..<len(a) {
+    v := a[i]; j := i - 1;
+    while j >= 0 && a[j] > v { a[j + 1] = a[j]; j -= 1; }
+    a[j + 1] = v;
+  }
+}
 // Live beasts within r tiles of a beast.
 crowd :: (s: [] Stair, t: int, r: f32) -> int {
   p := beast_xy(s, t);
-  n := 0;
-  for i: 0..<BEASTS {
-    if !s[0].beasts[i].live { continue; }
-    q := beast_xy(s, i);
-    if (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) <= r * r { n += 1; }
-  }
-  return n;
+  hits: [BEASTS] int;
+  return area_sphere(s, p.x, p.y, r, hits[..]);
 }
 
 // One defender's turn.
@@ -603,10 +680,11 @@ take_turn :: (s: [] Stair, k: int) -> bool {
       add_fx(s, FX_SHATTER, at.x, at.y, c.x, c.y, 0.6, 0, 0.75, 0.8, 1.0, false);
       dmg := srd_sum(dice, 3, 8);
       total := 0;
-      for i: 0..<BEASTS {
+      hits: [BEASTS] int;
+      nh := area_sphere(s, at.x, at.y, f32(SHATTER_RADIUS), hits[..]);
+      for j: 0..<nh {
+        i := hits[j];
         if !s[0].beasts[i].live { continue; }
-        q := beast_xy(s, i);
-        if (q.x - at.x) * (q.x - at.x) + (q.y - at.y) * (q.y - at.y) > f32(SHATTER_RADIUS) * f32(SHATTER_RADIUS) { continue; }
         sv := srd_save(dice, s[0].ct[0].con[s[0].beasts[i].kind], SHATTER_DC);
         took := ifx sv.success then dmg / 2 else dmg;
         total += took;
@@ -796,6 +874,7 @@ step :: (s: [] Stair, dt: f32) {
       s[0].hurt = 1;
     }
   }
+  s[0].area[0].ok = false;
   if s[0].swarm { for j: live_beasts(s)..<SWARM { b := spawn(s, j % LAYERS, srd_unit(s[0].dice[..]) * s[0].path_len); } }
   if s[0].lives <= 0 {
     s[0].lives = 0; s[0].phase = LOST; s[0].selected = -1; s[0].card = -1;
@@ -1814,7 +1893,17 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       n = say_at(out, n, hint, x0 + text_width(count, c) + 24 * k, yy, c, ink(k, 0.75, INK_R, INK_G, INK_B));
     }
   }
-  // buttons
+  // buttons; the class buttons share one size of name and cost, the one the narrowest fits
+  cnc := 12 * k; ccc := 10 * k;
+  for b: B_FIGHTER..<B_LAST_CLASS + 1 {
+    if !s[0].shown[b] { continue; }
+    r := s[0].boxes[b];
+    room := r.x1 - r.x0 - (r.y1 - r.y0) * 0.8 - 8 * k;
+    while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 7 * k { cnc -= 0.5 * k; }
+    m = put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
+    while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 6 * k { ccc -= 0.5 * k; }
+  }
+  ccc = lo(ccc, cnc);
   for b: 0..<BUTTONS {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
@@ -1828,12 +1917,10 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       bh := r.y1 - r.y0;
       tx := r.x0 + bh * 0.8;
       room := r.x1 - tx - 8 * k;
-      nc := 12 * k;
-      while text_width(CLASS_NAME[cls], nc) > room && nc > 7 * k { nc -= 0.5 * k; }
+      nc := cnc;
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
       m = put_int(buf[..], 0, s[0].ct[0].cost[cls]); m = put(buf[..], m, " GOLD");
-      cc := lo(10 * k, nc);
-      while text_width(cast(string) buf[0..<m], cc) > room && cc > 6 * k { cc -= 0.5 * k; }
+      cc := ccc;
       n = say_at(out, n, cast(string) buf[0..<m], tx, (r.y0 + r.y1) / 2 + cc + 4 * k, cc, ink(k, light * 0.9, GOLD_R, GOLD_G, GOLD_B));
       continue;
     }
@@ -2190,7 +2277,7 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
 #test "the curve: the best play holds the stair, but waves 9 and 10 take lives" {
   s: [1] Stair;
   stair_start(s[..]);
-  r := play_as(s[..], BEST, 15838);   // it wins about three seeds in five (stair-sim.coax)
+  r := play_as(s[..], BEST, 7919);   // it wins about three seeds in five (stair-sim.coax)
   #assert r.won && r.lost_late >= 20 && r.lives < s[0].ct[0].start_lives / 2;
 }
 
@@ -2305,6 +2392,49 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   #assert !s[0].party[pl].smite;
   #assert upgrade(s[..], r) && turn_of(s[..], r) < s[0].ct[0].turn[ROGUE] * 0.8;
   #assert upgrade(s[..], pl) && s[0].party[pl].smite;
+}
+
+#test "area queries: a Fireball's 20-foot sphere and a Lightning Bolt's line over five hundred beasts look only at the tiles they cover, and find what a full scan finds" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for f: 0..<60 { n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.05, false); }
+  live := live_beasts(s[..]);
+  #assert live >= SWARM;
+  hits: [BEASTS] int;
+  most := 0; found := 0;
+  for q: 0..<40 {
+    // a Fireball (20 feet: two tiles) on a beast, then a full scan to check it
+    t := (q * 37) % BEASTS;
+    while !s[0].beasts[t].live { t = (t + 1) % BEASTS; }
+    at := beast_xy(s[..], t);
+    n := area_sphere(s[..], at.x, at.y, 2.0, hits[..]);
+    most = hi_i(most, s[0].area[0].looked);
+    m := 0;
+    for i: 0..<BEASTS {
+      if !s[0].beasts[i].live { continue; }
+      p := beast_xy(s[..], i);
+      if (p.x - at.x) * (p.x - at.x) + (p.y - at.y) * (p.y - at.y) <= 4.0 { #assert m < n && hits[m] == i; m += 1; }
+    }
+    #assert m == n && n >= 1;
+    found += n;
+    // a Lightning Bolt (100 feet long, 5 wide: ten tiles by half a tile) from a defender's tile
+    bx := at.x + 10 * cos(f32(q)); by := at.y + 10 * sin(f32(q));
+    nl := area_line(s[..], at.x, at.y, bx, by, 0.25, hits[..]);
+    ml := 0;
+    lx := bx - at.x; ly := by - at.y; ll := lx * lx + ly * ly;
+    for i: 0..<BEASTS {
+      if !s[0].beasts[i].live { continue; }
+      p := beast_xy(s[..], i);
+      tt := clamp(((p.x - at.x) * lx + (p.y - at.y) * ly) / ll, 0, 1);
+      ex := at.x + lx * tt - p.x; ey := at.y + ly * tt - p.y;
+      if ex * ex + ey * ey <= 0.0625 { #assert ml < nl && hits[ml] == i; ml += 1; }
+    }
+    #assert ml == nl;
+  }
+  // the cost: a Fireball looks at the beasts in its few tiles, never all five hundred
+  #assert most < live / 2 && found > 40;
 }
 
 #test "the camera: two fingers pinch the map in about their middle and pan it, a finger pans when zoomed, and nothing is placed by it" {

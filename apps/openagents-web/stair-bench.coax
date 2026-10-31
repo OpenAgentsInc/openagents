@@ -1,0 +1,30 @@
+// Hold the Stair's area queries, timed natively over the swarm stage's five hundred beasts
+// (the clock is the platform's, so it links process-native.c):
+//   coax/bin/coax c apps/openagents-web/stair-bench.coax --release > /tmp/b.c
+//   clang -std=c11 -O2 -Icoax/platform -o /tmp/b /tmp/b.c coax/platform/process-native.c -lm && /tmp/b
+// On an M-series Mac, 2026-10-31: 508 beasts, 3.2 us a Fireball query with a fresh grid each.
+#import "Basic";
+#load "stair.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+main :: () {
+  s: [1] Stair;
+  stair_start(s[..]);
+  stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm");
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for f: 0..<60 { n := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.05, false); }
+  hits: [BEASTS] int;
+  found := 0;
+  t0 := proc_now_ms();
+  q := 0;
+  while q < 100000 {
+    s[0].area[0].ok = false;   // every query pays for a fresh grid too
+    t := (q * 37) % BEASTS;
+    while !s[0].beasts[t].live { t = (t + 1) % BEASTS; }
+    at := beast_xy(s[..], t);
+    found += area_sphere(s[..], at.x, at.y, 2.0, hits[..]);
+    q += 1;
+  }
+  t1 := proc_now_ms();
+  print("% beasts: % Fireball queries (each with a fresh grid) in % ms, % us each, % found\n", live_beasts(s[..]), q, t1 - t0, f64(t1 - t0) * 1000.0 / f64(q), found);
+}
