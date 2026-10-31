@@ -1,0 +1,210 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "engine-core-init",
+    "title": "Engine core",
+    "body": "The foundational primitives every realm shares. GitHub #12609.",
+    "spec": "docs/research/game-engine-systems.md",
+    "labels": [
+      "engine-core"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "engine-core",
+      "title": "Engine core: shared foundations for every realm",
+      "body": "Time, spaces, state, input, replay, queries, entities, camera, budgets; then every realm migrated. GitHub #12609.",
+      "parent": "engine-core-init"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "ec-loop",
+      "parent": "engine-core",
+      "title": "One frame loop: fixed-step simulation, interpolated drawing, one clock",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. verse/loop.coax: a fixed physics step, an accumulator with an explicit clamp, and an interpolation factor for drawing. One owner advances time.",
+      "files": [],
+      "acceptance": [
+        "Steps are fixed at any frame rate (30, 60, 120, 144 FPS) with identical physics results",
+        "Drawing interpolates between the last two states; no visible stutter in a 60 FPS capture of a jump",
+        "Mutation: 0 survivors"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ec-space",
+      "parent": "engine-core",
+      "title": "Typed spaces and units: world, local, camera, screen; metres versus grid units",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. verse/space.coax: typed positions per space, with conversions only through named functions, and units checked. Every drawn thing (figure, shadow, labels, camera) reads one authoritative position.",
+      "files": [],
+      "acceptance": [
+        "Mixing spaces fails to compile",
+        "The figure's feet are drawn at its physics height in every realm",
+        "Mutation: 0 survivors"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ec-state",
+      "parent": "engine-core",
+      "title": "Declared defaults applied by construction for every realm's state",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. Every realm's state struct gets its defaults by construction on both the native and browser hosts (extends the coaxial_state_init fix).",
+      "files": [],
+      "acceptance": [
+        "A check fails if any realm's state starts zeroed where a default is declared",
+        "Native and browser initial states are byte-identical"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ec-input",
+      "parent": "engine-core",
+      "title": "Input mapping: keys, touch and pads to typed actions, once per step",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. verse/input.coax: raw events become typed actions (move, look, jump, run, act, zoom), sampled once per fixed step. It replaces per-realm input paths.",
+      "files": [],
+      "acceptance": [
+        "The same action stream drives desktop and phone",
+        "No input is lost or doubled between frames and steps"
+      ],
+      "blocked_by": [
+        "ec-loop"
+      ]
+    },
+    {
+      "slug": "ec-replay",
+      "parent": "engine-core",
+      "title": "Determinism and replay: record inputs, replay bit-identically",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. Record the typed action stream and seed; replay any realm session to bit-identical states. Tie-in: coax/ROADMAP.md R16.",
+      "files": [],
+      "acceptance": [
+        "A recorded session replays bit-identically natively and in the browser",
+        "A replay check runs for each migrated realm"
+      ],
+      "blocked_by": [
+        "ec-loop",
+        "ec-input",
+        "ec-state"
+      ]
+    },
+    {
+      "slug": "ec-query",
+      "parent": "engine-core",
+      "title": "One spatial query API: ground, raycast, overlap, sweep",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. verse/query.coax: one meaning of 'on the ground' and one ground height, plus raycasts, overlaps and sweeps over a realm's colliders, shared by movement, camera, AI, picking and placement.",
+      "files": [],
+      "acceptance": [
+        "Jumping, landing and walking off ledges behave the same in every realm",
+        "Mutation: 0 survivors"
+      ],
+      "blocked_by": [
+        "ec-space"
+      ]
+    },
+    {
+      "slug": "ec-entity",
+      "parent": "engine-core",
+      "title": "Entity identity and lifetime: stable IDs, spawn and despawn rules",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. Stable entity IDs and deferred spawn and despawn within a step, used by networking, saves, editing and analytics.",
+      "files": [],
+      "acceptance": [
+        "IDs survive save, load and replay",
+        "Despawning during iteration is safe and checked"
+      ],
+      "blocked_by": [
+        "ec-state"
+      ]
+    },
+    {
+      "slug": "ec-camera",
+      "parent": "engine-core",
+      "title": "One camera follow: consumes interpolated state, smoothed in one place",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. verse/follow.coax: follow, orbit, first-person and dive cameras read the interpolated player state and never step physics.",
+      "files": [],
+      "acceptance": [
+        "Check: no frame-to-frame camera jump above a bound during walk, run and jump at 60 FPS",
+        "The Grid's jump is smooth"
+      ],
+      "blocked_by": [
+        "ec-loop",
+        "ec-space",
+        "ec-query"
+      ]
+    },
+    {
+      "slug": "ec-budget",
+      "parent": "engine-core",
+      "title": "Resource identity and budgets: hashed assets, declared limits that refuse",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. Content-hashed asset identity and declared vertex and memory budgets per realm; exceeding one refuses with a visible error instead of clipping silently.",
+      "files": [],
+      "acceptance": [
+        "Every realm declares budgets",
+        "An over-budget frame is a test failure, not silent clipping"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ec-migrate",
+      "parent": "engine-core",
+      "title": "Every realm on the engine core",
+      "size": "L",
+      "labels": [
+        "engine-core"
+      ],
+      "body": "GitHub #12609. Migrate the Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games onto the shared loop, spaces, input, queries and camera, deleting their private copies.",
+      "files": [],
+      "acceptance": [
+        "No realm keeps a private loop, camera follow, input path or ground logic",
+        "Goldens change only where a fix is visible; the 60 FPS checks hold",
+        "The Grid's floor is one consistent world-space grid from any position"
+      ],
+      "blocked_by": [
+        "ec-loop",
+        "ec-space",
+        "ec-state",
+        "ec-input",
+        "ec-replay",
+        "ec-query",
+        "ec-entity",
+        "ec-camera",
+        "ec-budget"
+      ]
+    }
+  ]
+}
