@@ -1,0 +1,124 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "verse",
+  "initiative": {
+    "slug": "enter-the-verse",
+    "title": "What Episode 290 promised: makers paid, realms forked, worlds shared",
+    "body": "The gameplay promises from the Pleb Lab talk (docs/transcripts/290.md, October 30) that had no task: the three people who pitched games get paid in Bitcoin, makers earn from what players do in their realms, anyone can fork a realm, build one from Claude Code, and the worlds feel alive and shared.",
+    "spec": "docs/transcripts/290.md",
+    "labels": ["episode-290"]
+  },
+  "milestones": [
+    {"slug": "ev-makers-paid", "title": "Makers get paid", "body": "Topher, Ted and Marc paid within 48 hours of the talk (by Sunday November 1, 4 p.m. CST), then every maker earns from their realm.", "parent": "enter-the-verse"},
+    {"slug": "ev-remix", "title": "Fork and build from anywhere", "body": "Fork any realm into your own with your own rules; build one from a shallow clone and Claude Code.", "parent": "enter-the-verse"},
+    {"slug": "ev-alive", "title": "Worlds that are alive and shared", "body": "Other players in Fairy Forest, guards that coordinate, and realms you can reply with.", "parent": "enter-the-verse"}
+  ],
+  "tasks": [
+    {
+      "slug": "ev-claim-realm",
+      "parent": "ev-makers-paid",
+      "title": "A maker claims their realm: Nostr key and Lightning address on it",
+      "size": "M",
+      "labels": ["episode-290", "payments", "api"],
+      "body": "Each realm gets a maker: Orbit League is Topher's, Belt 2200 Ted's, Hold the Stair Marc's (they pitched them on stage). A one-time claim link (/realms/<slug>/claim?code=...) the owner sends them: log in with the phone (Nostr, the existing sign-in), set a Lightning address, and the realm page names them as its maker. Additive migration; the codes are made by an admin and work once. Nothing about the person beyond their npub, display name and Lightning address is stored.",
+      "acceptance": [
+        "API test: a claim code works once, binds the signed-in npub and a Lightning address to the realm, and is refused after",
+        "On production the three realms each have a claim code; the realm page shows 'Made by <name>' once claimed",
+        "NEEDS_OWNER.md names the three links to send, committed and pushed"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-maker-tips",
+      "parent": "ev-makers-paid",
+      "title": "Tip the maker: sats from a player reach the realm's maker",
+      "size": "M",
+      "labels": ["episode-290", "payments"],
+      "body": "A TIP button on a claimed realm: the player pays a Lightning invoice from our Spark receiver (coax spark-receiver-wallet), the maker's share is paid out to their Lightning address, OpenAgents keeps only the cost of the call. The split and payouts go in the existing ledger. Bitcoin only. During launch the first tip to each maker carries the 1,000-sat first-paid-call bonus out of our share. Owner and team tips count as real payments but are flagged team in usage stats.",
+      "acceptance": [
+        "API tests with a fake wallet: a paid invoice credits the maker and queues a payout; a failed payout retries and never pays twice",
+        "One real tip on production to each claimed realm reaches its maker's Lightning address (the owner's sats are fine for the first)"
+      ],
+      "blocked_by": ["ev-claim-realm"]
+    },
+    {
+      "slug": "ev-realm-skill",
+      "parent": "ev-remix",
+      "title": "Build a realm from Claude Code: the skill, the shallow clone, the pull request",
+      "size": "M",
+      "labels": ["episode-290", "docs", "realm-builder"],
+      "body": "What the talk told the room to do: clone the repo one level deep, open Claude Code, point it at the repo, build a realm and open a pull request. A skill file (verse/SKILL.md, linked from /llms.txt and the realm pages' index.md) that tells an agent how a realm is made (realms.json entry, the .coax module, the style block, stage=highlight, tests, goldens), the shallow-clone command, how to run it locally, and what the PR must pass. Test it: a fresh agent with only a shallow clone and the skill makes a small new realm that passes the checks.",
+      "acceptance": [
+        "verse/SKILL.md exists and /llms.txt points to it",
+        "A fresh agent run from a --depth 1 clone, given only the skill, produces a realm that passes coax test, realms.test.ts and builds locally (transcript of the run noted on the task)"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-fork-realm",
+      "parent": "ev-remix",
+      "title": "FORK on any realm: your own copy with your own rules",
+      "size": "L",
+      "labels": ["episode-290", "realm-builder", "api"],
+      "body": "From the talk: our Everglade stays as it is, but anyone can fork it, change the rules or the people, and keep it in their account (\"Doomglade\": always night, zombies come out). A FORK button on a realm makes a made realm whose base is that realm, editable with the shared edit layer and the voice verbs, with a rule set the player picks from the rule sets the engine supports (time locked to night, hostile waves, no destruction, low gravity). The fork credits the original and its maker; the original never changes. Published forks get their own page, card and description (the made-realm OG work).",
+      "acceptance": [
+        "Forking Everglade on production gives a realm at its own URL that loads Everglade with the chosen rule set; the original is unchanged",
+        "The fork's page says what it was forked from and links to it",
+        "API tests for fork, edit and publish"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-ff-shared",
+      "parent": "ev-alive",
+      "title": "Fairy Forest: other fairies in the valley",
+      "size": "M",
+      "labels": ["episode-290", "multiplayer", "fairy-forest"],
+      "body": "The talk said Fairy Forest and Everglade are days from multiplayer. Everglade has other players (verse-eg-shared) and Fairy Forest has a chat room and an inbox; make the other fairies visible and moving in the valley, with names, on the same presence path Everglade uses. If it already works, verify on production with two headless sessions and resolve.",
+      "acceptance": [
+        "Two headless sessions on production see each other's fairy move within a second",
+        "Phone tier keeps its frame budget with ten fairies"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-guards-coordinate",
+      "parent": "ev-alive",
+      "title": "Everglade's guards coordinate: flank, call for help, cut off the escape",
+      "size": "M",
+      "labels": ["episode-290", "npc", "everglade"],
+      "body": "From the talk: NPCs that coordinate like truly formidable enemies. When you break the town, the guard captain's plan (who flanks, who calls reinforcements, who waits under where you float) is a typed decision through our Decisions API (/v1/decisions, Clef first), asked at most every few seconds; each guard's moment-to-moment moves stay game code. With no answer in time, today's escalation still runs. No keyword routing.",
+      "acceptance": [
+        "coax test: with a fake decision, the guards take the assigned roles; with none, the current escalation runs",
+        "A clip (coax/web/tool.sh clip) of guards flanking a floating player"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-reply-realm",
+      "parent": "ev-alive",
+      "title": "Reply with a realm: name a building after a post, smash it, share the clip",
+      "size": "M",
+      "labels": ["episode-290", "share"],
+      "body": "The talk's \"3D reply guy\": paste a post's link or text, a building in a realm takes its words as its sign, you drop a meteor shower on it, and you get a link to share back as a reply: its card is the moment of impact and the page replays it. Store only the text the player typed or the link, never fetch or copy the post's author's details.",
+      "acceptance": [
+        "On production: type a line, smash the building, get a link whose OG image shows the impact and whose page replays it",
+        "Player text is escaped and length-limited; API tests cover it"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ev-asset-upgrades",
+      "parent": "ev-makers-paid",
+      "title": "Listed upgrades: a better fairy from a maker, bought with one tap",
+      "size": "L",
+      "labels": ["episode-290", "payments", "fairy-forest"],
+      "body": "From the talk: someone makes a better fairy, lists it, and in Fairy Forest an UPGRADE button next to your fairy shows the top three; one tap buys it (credits or sats), and its maker is paid like a tip. Start with fairies only: a maker uploads a fairy (the existing asset store and packs), the owner approves listings, and the bought fairy is what others see you as. Bitcoin rails only; credits are the existing credit ledger.",
+      "acceptance": [
+        "An approved listing shows under UPGRADE; buying it changes your fairy for you and for others",
+        "The maker's share is paid out (fake wallet in tests; one real purchase on production)"
+      ],
+      "blocked_by": ["ev-maker-tips"]
+    }
+  ]
+}
