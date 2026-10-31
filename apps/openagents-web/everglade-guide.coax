@@ -196,7 +196,8 @@ eg_first_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int 
   mark:=cast(string)s[0].guide.first_mark[0..<mn];
   // the mark over Bram's head, or over the board, once you are a few steps off
   if m.ok && far>4 {
-    lift:=ifx step==EG_FIRST_TALK then 2.6f32 else 4.5f32;
+    // just over Bram's head, under the gate's name behind him; high over the board
+    lift:=ifx step==EG_FIRST_TALK then 2.15f32 else 4.5f32;
     n=tag(s,out,u,n,mark,v3(m.x,ground_at(s,m.x,m.z)+lift,m.z),9*k,1.0,true);
   }
   title:=EG_FIRST_TITLE[step];
@@ -237,9 +238,14 @@ eg_first_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int 
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].guide.first_shown == EG_FIRST_CAST && !eg_first_mark(g[..], EG_FIRST_CAST).ok;
-  // on a phone it says how to with a finger
-  g[0].touch = true;
+  // on a phone it says how to with a finger, and its plate sits under the chat line and REPLY
   #assert EG_FIRST_HOW_PHONE[EG_FIRST_CAST] != EG_FIRST_HOW[EG_FIRST_CAST];
+  g[0].touch = true;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_CAST;
+  goal := -1;
+  for i: 0..<g[0].plate_n { if abs(u[U_PLATE + i * 8 + 4] - 0.82) < 0.001 && u[U_PLATE + i * 8] < 40 && u[U_PLATE + i * 8 + 1] > 150 { goal = i; } }
+  #assert goal >= 0 && u[U_PLATE + goal * 8 + 1] >= g[0].chat.box.y1 && u[U_PLATE + goal * 8 + 1] >= g[0].rp.boxes[RP_B_OPEN].y1;
   g[0].touch = false;
   // a cast: the board next, marked over it
   g[0].sp.casting = SP_METEOR;

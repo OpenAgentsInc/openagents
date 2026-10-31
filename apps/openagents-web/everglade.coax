@@ -3621,8 +3621,11 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
   if s[0].lift < 0.5 && !s[0].ev.editing {
-    n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you);
-    n = eg_first_hud(s, out, u, n, gutter + cap + small + 44 * k, you);   // until a quest is taken, the first goal (everglade-guide.coax)
+    // under the title; on a phone, where the chat line, HP and REPLY share the top, under them
+    goal_top := gutter + cap + small + 44 * k;
+    if phone(s) { goal_top = hi(goal_top, hi(s[0].chat.box.y1 + 10 * k, s[0].rp.boxes[RP_B_OPEN].y1 + 10 * k)); }
+    n = tracker(s, out, u, n, goal_top, you);
+    n = eg_first_hud(s, out, u, n, goal_top, you);   // until a quest is taken, the first goal (everglade-guide.coax)
   }
   line := hint(s);
   hs := 7.5 * k;
