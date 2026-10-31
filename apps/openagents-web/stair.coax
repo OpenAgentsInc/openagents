@@ -16,6 +16,7 @@
 #load "analytics.coax";
 #load "../../verse/rules/srd5-combat.coax";
 #load "stair-tables.coax";
+#load "stair-coop.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 36000;
@@ -300,6 +301,7 @@ Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
   level: int; surge: bool; slots2: int; bless: int;   // bless: the d4 Bless added to its last roll (0 none)
   magic: int;      // its magic item past level 5: +0 to +MAGIC_TOP
+  seat: int;       // whose it is in co-op (stair-coop.coax): 0 or 1
   fav: int;        // a ranger's favoured layer
   inspired: int;   // a Bardic Inspiration die waiting for its next attack roll (its sides, 0 none)
   smite: bool;     // a paladin's Divine Smite, ready this wave
@@ -362,6 +364,8 @@ Stair :: struct {
   beasts: [BEASTS] Beast;
   party: [DEFENDERS] Defender;
   pops: int; leaked: int; placed: int; placed_round: int;
+  // co-op (stair-coop.coax): which seat this client is, how many play (1 alone), each seat's places this round, the step count
+  me: int; seats: int = 1; placed_by: [2] int; tick: int;
   pick: int;                // the class armed for placing (-1 none)
   paused: bool;
   fx: [FX] Fx; fx_next: int;
@@ -571,7 +575,7 @@ stair_reset :: (s: [] Stair) {
   s[0].area[0].ok = false;
   for i: 0..<DEFENDERS { s[0].party[i].live = false; }
   for i: 0..<FX { s[0].fx[i].life = 0; }
-  s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0; s[0].placed_round = 0;
+  s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0; s[0].placed_round = 0; s[0].placed_by[0] = 0; s[0].placed_by[1] = 0; s[0].tick = 0;
   // a fresh game rolls its seed's dice from the first roll
   s[0].dice[0] = srd_dice(s[0].seed); s[0].looks[0] = srd_dice(s[0].seed ^ 0x5DEECE66D);
   s[0].rules_n = 0;
@@ -1118,7 +1122,7 @@ start_wave :: (s: [] Stair) -> bool {
   s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0; s[0].banner = 1.6;
   for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = s[0].ct[0].delay[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { refresh(s, i); }
-  s[0].placed_round = 0;
+  s[0].placed_round = 0; s[0].placed_by[0] = 0; s[0].placed_by[1] = 0;
   if round_allowance(s, s[0].wave) > round_allowance(s, s[0].wave - 1) {
     buf: [48] u8;
     n := put(buf[..], 0, "NOW "); n = put_int(buf[..], n, round_allowance(s, s[0].wave)); n = put(buf[..], n, " DEFENDERS A ROUND");
@@ -1128,9 +1132,11 @@ start_wave :: (s: [] Stair) -> bool {
 }
 // Defenders allowed in the round that a wave opens (wave 0 is the build before the first).
 round_allowance :: (s: [] Stair, wave: int) -> int { return s[0].ct[0].round_base + hi_i(wave, 0) / s[0].ct[0].round_every; }
-round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s, s[0].wave) - s[0].placed_round, 0); }
+// In co-op each seat has the round's allowance for its own party.
+round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s, s[0].wave) - (ifx s[0].seats > 1 then s[0].placed_by[s[0].me] else s[0].placed_round), 0); }
 
 step :: (s: [] Stair, dt: f32) {
+  s[0].tick += 1;
   for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += dt; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
   s[0].hurt = hi(0, s[0].hurt - dt * 1.5);
   s[0].banner = hi(0, s[0].banner - dt);
@@ -1203,14 +1209,14 @@ place :: (s: [] Stair, cell: int, cls: int) -> bool {
   for i: 0..<DEFENDERS {
     if !s[0].party[i].live {
       d: Defender;
-      d.live = true; d.cls = cls; d.cell = cell; d.slots = MM_SLOTS; d.level = 1;
+      d.live = true; d.cls = cls; d.cell = cell; d.slots = MM_SLOTS; d.level = 1; d.seat = s[0].me;
       // initiative: a d20 sets where in the round its first turn falls
       d.wait = f32(srd_roll(s[0].dice[..], 20)) / 20 * s[0].ct[0].turn[cls];
       d.roll = -1;
       if cls == RANGER { d.fav = strongest_next(s); }
       s[0].party[i] = d;
       s[0].gold -= s[0].ct[0].cost[cls];
-      s[0].placed += 1; s[0].placed_round += 1;
+      s[0].placed += 1; s[0].placed_round += 1; s[0].placed_by[s[0].me % 2] += 1;
       lay_cells(s);
       track_tally(s[0].track[..], "place", CLASS_NAME[cls]);
       return true;
@@ -1254,6 +1260,7 @@ sell :: (s: [] Stair, k: int) {
   s[0].gold += spent(s, k) * 7 / 10;
   s[0].party[k].live = false;
   s[0].placed_round = hi_i(s[0].placed_round - 1, 0);   // a sold defender gives its place in the round back
+  st := s[0].party[k].seat % 2; s[0].placed_by[st] = hi_i(s[0].placed_by[st] - 1, 0);
   lay_cells(s);
 }
 
@@ -1373,8 +1380,8 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
       }
     }
     if s[0].card >= 0 {
-      if next_cost(s, s[0].card) > 0 { set_button(s, B_UPGRADE, Rect.{x0 = w - 134 * k, y0 = ry1 - 78 * k, x1 = w - 14 * k, y1 = ry1 - 44 * k}, can_upgrade(s)); }
-      set_button(s, B_SELL, Rect.{x0 = w - 134 * k, y0 = ry1 - 34 * k, x1 = w - 14 * k, y1 = ry1}, true);
+      if next_cost(s, s[0].card) > 0 && mine(s, s[0].card) { set_button(s, B_UPGRADE, Rect.{x0 = w - 134 * k, y0 = ry1 - 78 * k, x1 = w - 14 * k, y1 = ry1 - 44 * k}, can_upgrade(s)); }
+      if mine(s, s[0].card) { set_button(s, B_SELL, Rect.{x0 = w - 134 * k, y0 = ry1 - 34 * k, x1 = w - 14 * k, y1 = ry1}, true); }
     }
     return;
   }
@@ -1390,8 +1397,8 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
     }
   }
   if s[0].card >= 0 {
-    set_button(s, B_SELL, Rect.{x0 = w - 500 * k, y0 = y0, x1 = w - 396 * k, y1 = y1}, true);
-    if next_cost(s, s[0].card) > 0 { set_button(s, B_UPGRADE, Rect.{x0 = w - 700 * k, y0 = y0, x1 = w - 510 * k, y1 = y1}, can_upgrade(s)); }
+    if mine(s, s[0].card) { set_button(s, B_SELL, Rect.{x0 = w - 500 * k, y0 = y0, x1 = w - 396 * k, y1 = y1}, true); }
+    if next_cost(s, s[0].card) > 0 && mine(s, s[0].card) { set_button(s, B_UPGRADE, Rect.{x0 = w - 700 * k, y0 = y0, x1 = w - 510 * k, y1 = y1}, can_upgrade(s)); }
   }
 }
 can_upgrade :: (s: [] Stair) -> bool {
@@ -2193,6 +2200,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     lens[nl] = put(lines[nl][..], 0, CLASS_NAME[d.cls]); lens[nl] = put(lines[nl][..], lens[nl], " · LEVEL "); lens[nl] = put_int(lines[nl][..], lens[nl], d.level);
     if d.level >= 3 { lens[nl] = put(lines[nl][..], lens[nl], " · "); lens[nl] = put(lines[nl][..], lens[nl], SUBCLASS_NAME[d.cls]); }
     if d.magic > 0 { lens[nl] = put(lines[nl][..], lens[nl], " · +"); lens[nl] = put_int(lines[nl][..], lens[nl], d.magic); }
+    if !mine(s, s[0].card) { lens[nl] = put(lines[nl][..], lens[nl], " · YOUR PARTNER'S"); }
     if !s[0].portrait {
       lens[nl] = put(lines[nl][..], lens[nl], " · HITS "); lens[nl] = put_int(lines[nl][..], lens[nl], d.hits);
       lens[nl] = put(lines[nl][..], lens[nl], " · MISSES "); lens[nl] = put_int(lines[nl][..], lens[nl], d.misses);

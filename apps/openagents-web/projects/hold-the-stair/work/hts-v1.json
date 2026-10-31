@@ -431,17 +431,40 @@
       "title": "Two-player co-op: shared gold, each places their own party",
       "size": "L",
       "labels": [],
-      "body": "Two players in one room share the gold and each places their own defenders, on the room service with the map's seed shared.",
+      "body": "Two players in one room share the gold and each places their own defenders, on the room service with the map's seed shared. The core is stair-coop.coax: a defender's seat, one purse, each seat's own allowance a round, orders on a step, the state hash; two clients given both seats' orders keep one game in a test.",
       "files": [
         "apps/openagents-web/realms/hold-the-stair/",
         "coax/web/api/"
       ],
       "acceptance": [
-        "Two browsers in one match see the same waves and each other's defenders"
+        "Two clients given both seats' orders have equal state hashes, one purse and each other's defenders, and only a seat sells or levels its own (a test)"
       ],
       "blocked_by": [
         "hts-seeded-dice",
         "hts-waves"
+      ],
+      "blocks": [
+        "hts-coop-net"
+      ]
+    },
+    {
+      "slug": "hts-coop-net",
+      "parent": "hts-together",
+      "title": "Co-op over the network: a room that relays the two seats' orders",
+      "size": "M",
+      "labels": [],
+      "body": "stair-coop.coax plays one game from both seats' orders. It needs a room that relays text frames between the two browsers: a generic relay path on the room server (coax/web/room, oa-room, today Orbit League's), agreed with its owner, or another relay. Then ?coop=NAME joins: the first in is seat 0, the page sends its orders a few steps ahead and waits for the other seat's, and the hashes are compared every few seconds.",
+      "files": [
+        "apps/openagents-web/stair-coop.coax",
+        "apps/openagents-web/stair.coax",
+        "coax/web/room/"
+      ],
+      "acceptance": [
+        "Two browsers in one match see the same waves and each other's defenders",
+        "A forced desync is reported on both"
+      ],
+      "blocked_by": [
+        "hts-coop"
       ],
       "blocks": []
     },

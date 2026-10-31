@@ -1,0 +1,86 @@
+// Hold the Stair's co-op core (hts-coop): two players, one stair, one purse. Each places and levels
+// their own party (a defender keeps its seat, and only its seat sells or levels it); the gold is
+// shared, and each seat has the round's allowance of places for itself. The game is the same
+// seeded game on both clients (hts-seeded-dice): only orders cross the network, each naming the
+// step it takes effect on, and the state hash compared every so often finds a desync.
+//   coax/bin/coax test apps/openagents-web/stair.coax --only co-op
+
+CO_PLACE :: 0; CO_UPGRADE :: 1; CO_SELL :: 2; CO_START :: 3; CO_SLOW :: 4; CO_WALL :: 5;
+CoOrder :: struct { tick: int; seat: int; kind: int; cell: int; cls: int; k: int; }
+
+// This client's own defender (alone, every defender is).
+mine :: (s: [] Stair, k: int) -> bool { return s[0].seats <= 1 || (k >= 0 && s[0].party[k].seat == s[0].me); }
+// Two seats, this client's one of them.
+coop_begin :: (s: [] Stair, me: int) { s[0].seats = 2; s[0].me = me % 2; }
+
+// An order, as its seat: what that seat's button does.
+coop_apply :: (s: [] Stair, o: CoOrder) {
+  was := s[0].me;
+  s[0].me = o.seat % 2;
+  if o.kind == CO_PLACE { ok := place(s, o.cell, o.cls); }
+  if o.kind == CO_UPGRADE && o.k >= 0 && o.k < DEFENDERS && mine(s, o.k) { ok := upgrade(s, o.k); }
+  if o.kind == CO_SELL && o.k >= 0 && o.k < DEFENDERS && mine(s, o.k) { sell(s, o.k); }
+  if o.kind == CO_START { ok := start_wave(s); }
+  if o.kind == CO_SLOW { spell_press(s, SPELL_SLOW); }
+  if o.kind == CO_WALL { s[0].spell_pick = o.cls; ok := cast_wall(s, o.cell); }
+  s[0].me = was;
+}
+// A step of the shared game: the orders for it, in the order they were sent, then the step.
+coop_step :: (s: [] Stair, orders: [] CoOrder, n: int) {
+  for i: 0..<n { if orders[i].tick == s[0].tick { coop_apply(s, orders[i]); } }
+  step(s, f32(STEP));
+}
+
+// The state's hash: FNV-1a over what the game is (the wave, lives, gold, the party, the beasts).
+STAIR_FNV :: 1469598103934665603;
+stair_mix :: (h: u64, v: int) -> u64 {
+  w := ifx v > 4000000000000000000 then 4000000000000000000 else ifx v < -4000000000000000000 then -4000000000000000000 else v;
+  r := h; x := cast(u64) (ifx w < 0 then (-(w + 1)) * 2 + 1 else w * 2);
+  for b: 0..<8 { r = mul_wrap(r ^ (x & 255), 1099511628211); x = x >> 8; }
+  return r;
+}
+stair_hash :: (s: [] Stair) -> u64 {
+  h: u64 = STAIR_FNV;
+  h = stair_mix(h, s[0].tick); h = stair_mix(h, s[0].wave); h = stair_mix(h, s[0].phase); h = stair_mix(h, s[0].lives); h = stair_mix(h, s[0].gold);
+  h = stair_mix(h, s[0].pops); h = stair_mix(h, s[0].leaked);
+  for k: 0..<DEFENDERS {
+    if !s[0].party[k].live { continue; }
+    h = stair_mix(h, k); h = stair_mix(h, s[0].party[k].cls); h = stair_mix(h, s[0].party[k].cell); h = stair_mix(h, s[0].party[k].seat);
+    h = stair_mix(h, s[0].party[k].level); h = stair_mix(h, s[0].party[k].magic); h = stair_mix(h, s[0].party[k].pops);
+  }
+  for i: 0..<BEASTS {
+    if !s[0].beasts[i].live { continue; }
+    h = stair_mix(h, i); h = stair_mix(h, s[0].beasts[i].kind); h = stair_mix(h, s[0].beasts[i].hp);
+    h = stair_mix(h, cast(int) (s[0].beasts[i].d * 1000.0));
+  }
+  return h;
+}
+
+#test "co-op: two clients given both seats' orders keep one game: the same hash, one purse, each other's defenders, and only your own to sell" {
+  a: [1] Stair; b: [1] Stair;
+  stair_start(a[..]); stair_start(b[..]);
+  a[0].seed = 7919; stair_reset(a[..]); coop_begin(a[..], 0);
+  b[0].seed = 7919; stair_reset(b[..]); coop_begin(b[..], 1);
+  c0 := spot_near(a[..], 0.3); c1 := spot_near(a[..], 0.6);
+  orders := [4] CoOrder.[
+    CoOrder.{tick = 0, seat = 0, kind = CO_PLACE, cell = c0, cls = FIGHTER},
+    CoOrder.{tick = 0, seat = 1, kind = CO_PLACE, cell = c1, cls = WIZARD},
+    CoOrder.{tick = 3, seat = 1, kind = CO_START},
+    CoOrder.{tick = 240, seat = 0, kind = CO_SLOW}];
+  for t: 0..<600 {
+    coop_step(a[..], orders[..], 4); coop_step(b[..], orders[..], 4);
+  }
+  #assert a[0].wave == 1 && a[0].tick == 600 && stair_hash(a[..]) == stair_hash(b[..]) && a[0].gold == b[0].gold;
+  fa := defender_at(a[..], c0); wb := defender_at(b[..], c1);
+  #assert fa >= 0 && wb >= 0 && a[0].party[fa].seat == 0 && b[0].party[wb].seat == 1 && defender_at(a[..], c1) == wb && defender_at(b[..], c0) == fa;
+  // a seat's own: the wizard is b's to sell, not a's
+  #assert mine(b[..], wb) && !mine(a[..], wb) && mine(a[..], fa);
+  g := a[0].gold;
+  coop_apply(a[..], CoOrder.{seat = 0, kind = CO_SELL, k = wb});
+  #assert a[0].party[wb].live && a[0].gold == g;
+  // a desync: one client levels a defender the other never heard of
+  a[0].gold = 999; b[0].gold = 999;
+  #assert stair_hash(a[..]) == stair_hash(b[..]);
+  coop_apply(b[..], CoOrder.{seat = 1, kind = CO_UPGRADE, k = wb});
+  #assert stair_hash(a[..]) != stair_hash(b[..]);
+}
