@@ -8,6 +8,14 @@ COAX=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax')).resolve()
 OUTPUTS=['coax/src/release.h','coax/release-status.json','coax/STATUS.md','coax/book/appendix-a-keywords.md','coax/generated/current.md','coax/generated/version-example.md']
 MANAGED=['coax/README.md','coax/spec.md','coax/ROADMAP.md','coax/book/ch01-getting-started.md','coax/book/ch06-memory.md','coax/book/ch20-inside-coax0.md','coax/book/ch21-road-ahead.md','coax/book/ch22-organizing-programs.md','coax/book/appendix-b-error-codes.md']
 class Release(unittest.TestCase):
+ def test_compute_catalogue_records_shipped_group_kernels(self):
+  data=json.loads((ROOT/'coax/release-status.json').read_text())
+  features={x['id']:x for x in data['features']}
+  self.assertIn('group kernels',features['target.cuda']['meaning'])
+  self.assertIn('barriers',features['target.cuda']['meaning'])
+  self.assertNotIn('no shared memory',features['target.cuda']['meaning'])
+  self.assertNotIn('no shared memory',features['target.cuda-warp']['meaning'])
+  self.assertEqual(features['target.cuda']['status'],'partial')
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='coax-release-test-');self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
   for name in OUTPUTS+MANAGED+['scripts/coax-release.sh','coax/release.coax','coax/release-model.coax']:
@@ -73,4 +81,10 @@ class Release(unittest.TestCase):
   with mock.patch.object(mod.subprocess,'run',side_effect=subprocess.CalledProcessError(1,['drift'])) as run, mock.patch.object(mod,'token_from_file') as token, mock.patch.object(mod.urllib.request,'build_opener') as network, mock.patch('sys.argv',['publisher','--token-file','secret']):
    with self.assertRaises(subprocess.CalledProcessError):mod.main()
    run.assert_called_once();token.assert_not_called();network.assert_not_called()
+ def test_publisher_rejects_book_claim_drift_before_credentials_or_network(self):
+  spec=importlib.util.spec_from_file_location('coax_publisher_claims',ROOT/'scripts/publish-coax-book.py');mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+  failure=subprocess.CalledProcessError(1,['book-claims'])
+  with mock.patch.object(mod.subprocess,'run',side_effect=[subprocess.CompletedProcess(['release'],0),failure]) as run, mock.patch.object(mod,'token_from_file') as token, mock.patch.object(mod.urllib.request,'build_opener') as network, mock.patch('sys.argv',['publisher','--token-file','secret']):
+   with self.assertRaises(subprocess.CalledProcessError):mod.main()
+   self.assertEqual(run.call_count,2);token.assert_not_called();network.assert_not_called()
 if __name__=='__main__':unittest.main()

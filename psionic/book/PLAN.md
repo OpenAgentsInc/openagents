@@ -36,8 +36,18 @@ trace machine and attention as exact memory,
 feed-forward weights, [169](ch169-a-harness-that-catches-the-compiler.md) catches
 planted compiler bugs, and
 [172](ch172-from-hard-max-to-softmax.md) measures when a floating-point softmax
-keeps that memory exact. **GPU execution and useful throughput are
-not complete.** The device sequence below is the next GPT-OSS delivery path.
+keeps that memory exact.
+
+<!-- capability-claim: psionic.gpu.current -->
+Original gpt-oss 20b GPU execution is recorded in
+[chapter 45b](ch045b-a-complete-cuda-decoder.md) for CUDA and
+[chapter 45h](ch045h-gpt-oss-on-metal.md) for Metal. Batched CUDA prefill and the
+bounded resident CUDA Responses profile have their own records. These results
+do not qualify original 120b GPU execution, every serving workload or a complete
+DeepSeek V4.1 model. The device sequence below distinguishes delivered profiles
+from the remaining target and throughput gates.
+<!-- /capability-claim -->
+
 [Chapter 56](ch056-execute-a-deepseek-r1-distill.md) adds a bounded original
 DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
 [Chapters 70](ch070-learning-with-arrays.md) and
@@ -890,33 +900,35 @@ Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 
 ## Coax features each branch needs
 
-Psionic is a consumer of the [Coax roadmap](../../coax/ROADMAP.md), not a
-place to work around it. The current compiler (see
-[Coax book chapter 21](../../coax/book/ch21-road-ahead.md)) lacks these; a
-chapter that needs one names the smallest language change, its real consumer
-case and its verification gate, and stays planned until the feature runs.
+<!-- capability-claim: psionic.language.current -->
+Psionic is a consumer of the [Coax roadmap](../../coax/ROADMAP.md). The current
+compiler has bounded CUDA and Metal compute, including selected cooperative
+kernels; the general language features below have different remaining scopes.
+A chapter that needs an extension names its concrete consumer and verification
+gate. Existing bounded library implementations are not absent merely because
+their general language form remains planned.
 
-| Missing in Coax today | Where Psionic needs it | Until then |
+| Coax capability and remaining gap | Where Psionic needs it | Available boundary |
 | --- | --- | --- |
-| Buffer/index/loop/dispatch GPU compute; `coax metal` emits scalar `f32`/`bool` helpers only ([ch14](../../coax/book/ch14-gpu.md)) | 26–31, 30, 40 | CPU references; no hand-written tensor shaders. |
-| WGSL emission | 40 | Wasm CPU kernels only. |
-| Jobs, threads and a memory model ([ch12](../../coax/book/ch12-jobs.md), stage 5 not started) | 24, 25, 67, 116–120, 130–139 | A host thread pool calling Coax on disjoint ranges, with the replay gate. |
-| `f16`/`bf16`, FP8 and FP4 scalar types | 22, 34, 41, 50, 63, every BF16 kernel | Decode from `u8`/`u16` bits, as chapter 4 does. |
-| Generics over numeric types ([ch08](../../coax/book/ch08-generics.md)) | Every multi-dtype kernel, 34 | One concrete procedure per dtype. |
-| SIMD lanes (`for_simd`) and vector/matrix types ([ch11](../../coax/book/ch11-data-layout.md)) | 22–24, 93–96 | Scalar loops; measure before asking. |
-| Pointers, dynamic arrays and allocators ([ch06](../../coax/book/ch06-memory.md)) | 22, 25 caches, 46, 64 and 135 expert paging, 76 | Host-owned views with explicit capacities. |
-| A qualified Linux target ([ch18](../../coax/book/ch18-targets.md)) and asynchronous I/O with deadlines and cancellation ([ch23](../../coax/book/ch23-asynchronous-work.md)) | 16–21, 30, 116–129 on hosted machines, 130–143 on mixed peers | Apple CPU and Metal only. |
+| Bounded CUDA/Metal buffer, index, loop and dispatch compute is shipped; additional compute forms need their own admission and target evidence | 26–31, 40 | Generated Coax kernels and CPU oracles; no hand-written tensor shaders. |
+| Direct WGSL emission remains planned | 40 | Use CPU references; existing Coaxial browser rendering does not qualify a Psionic browser compute backend. |
+| Language jobs, threads and a memory model ([ch12](../../coax/book/ch12-jobs.md)) remain planned | 24, 25, 67, 116–120, 130–139 | Host workers may call Coax on disjoint ranges under their explicit replay and lifetime gates. |
+| Native `f16`/`bf16`, FP8 and FP4 scalar types remain planned | 22, 34, 41, 50, 63, every BF16 kernel | Packed storage, casts and format decoders already run in the declared Psionic profiles. |
+| Bounded generic copyable procedures and fixed-storage structs are shipped; numeric operation constraints ([ch08](../../coax/book/ch08-generics.md)) remain planned | Every multi-dtype kernel, 34 | Use admitted generic copying and storage; arithmetic kernels still use concrete numeric types until their constraints are implemented. |
+| General SIMD/vector/matrix types remain planned; selected lane/group loops and matrix primitives already ship | 22–24, 93–96 | Scalar or qualified cooperative kernels; measure before requesting another form. |
+| Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 22, 25 caches, 46, 64 and 135 expert paging, 76 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
+| A broader qualified target matrix and general asynchronous language effects remain work | 16–21, 30, 116–129, 130–143 | Recorded owned Linux/CUDA and Apple CPU/Metal runs retain their named hardware and numerical scopes; they do not qualify every Linux target or an asynchronous ownership model. |
 
-For the framework track, six of these block everything else: safe
-tensor-shaped dynamic storage and views (pointers, dynamic arrays and
-allocators); generic numerical procedures and the narrow float types; GPU
-matrix instructions, reductions and synchronization; a typed tensor IR the
-compiler can see; jobs, asynchronous device effects and buffer lifetimes;
-and qualified Linux and accelerator targets. Coax GPU work should be driven
-by a training consumer as well as an inference one, or Psionic can tune twenty
-architectures for inference without ever gaining a general GPU training
-backend.
-
+The framework track already has strided views (2a), owned device storage (3b),
+a typed tensor IR (26a), bounded specialization (26b), registered operators
+(26c) and bounded CPU autodiff (71b). The tensor IR is explicitly authored
+Psionic data; automatic extraction and transformation of arbitrary Coax
+functions remain separate work. Language ownership, results, constraints for
+generic numerical code, narrow scalar types, additional cooperative forms, asynchronous effects
+and broader target qualification should extend those real consumers. A general
+GPU training backend is not implied by the existing inference or CPU backward
+profiles.
+<!-- /capability-claim -->
 Stable issue slugs describe existing work; chapter numbers are provisional.
 When a branch is selected, split it into concrete issues with the same
 code/checks/book/evidence acceptance loop. The remaining outlines stay proposals

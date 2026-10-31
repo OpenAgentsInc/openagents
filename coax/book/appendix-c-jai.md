@@ -204,16 +204,22 @@ Coax also adds something Jai doesn't have built in: checks. `#test` and
 and never end up in the program; `coax mutate` then checks the checks.
 Chapter 10 covers them.
 
-## Changed on purpose, not built yet
+Generic procedures already bind `$T` and fixed-array lengths `$N`, with
+bounded checked instantiation and instance-count reporting. Fixed-storage
+generic structs also instantiate type and length parameters; view type
+arguments are refused. Constraints remain planned. Chapter 8 explains
+those separate scopes.
 
-The rest of the differences are in the design but not in `coax0`. Each is
-a Jai feature Coax keeps the idea of, with one rule changed:
+## Remaining design differences
+
+The following differences remain in the design. Each keeps an idea from
+Jai with an explicit rule changed:
 
 | Jai | Coax design | Why |
 | --- | --- | --- |
 | `union` overlays storage | `union` is tagged, and `switch` over it must be exhaustive | The safe form should be the default |
 | Equality and hashing found by name; `#poke_name` to make a procedure visible | `#derive(eq, hash)` and named constraints | Errors at the use site, with a fix |
-| `$T/interface` constraints are available | Constraints are the normal way to write generics, and instance counts are reported | A generic's signature should say what it needs |
+| `$T/interface` constraints are available | Named constraints are planned; current unconstrained generic procedures support copying, assignment and indexing | A generic's signature should state its additional required operations |
 | Macro backticks reach into the caller | The caller variables a macro can touch are listed in its signature | Reading a call should show what it can change |
 | `using` and `#as` | The same split: `using` for naming, `#as` for a declared conversion | Kept as Jai has it |
 | `context` and `push_context` | The same idea, with allocation as a tracked effect | Allocation should be visible to the checker |

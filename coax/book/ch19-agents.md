@@ -471,24 +471,27 @@ for when performance or behavior matters and the question is "what will
 the machine run?" The C is meant to be read: names are kept, checks are
 explicit calls, and every trap names a source line.
 
-> Note: The compiler is planned to run as a server that answers questions
-> directly: the type of this expression, where a symbol is used, a job's
-> effects, a struct's layout on a given target, what a macro expanded to
-> and from which generator, what changed since the last build. Generated
-> declarations will keep the chain that produced them, so an error in
-> generated code points at the call that caused it and an agent doesn't
-> "fix" code that will be regenerated over the fix. A canonical formatter
-> is planned as well. None of these exist in `coax0` yet.
+`deps --declarations` and `deps --modules` already report checked nominal
+identities, source ranges, resolved references and conservative revisions
+(Chapter 22). They are batch reports, not a general editor query server.
+
+> Note: A resident query server, revision-bound structured edits and a
+> canonical formatter remain planned. Richer effect and expansion queries
+> also wait for the relevant language features. Generated declarations
+> should keep the chain that produced them so an agent edits the source
+> of generated code rather than its disposable output.
 
 ## The book is checked too
 
 There's one more source of truth an agent reads: documentation. For a
 young language, most of what an agent has seen about it is out of date.
-So the examples in this book aren't copied into the text by hand and left
-to drift. Every program lives in `coax/book/examples/`, and
-`coax/book/check-examples.sh` compiles each one and compares its output
-to the `.out` file the chapter shows. If the compiler changes and the book
-doesn't, that script fails.
+Runnable programs live in `coax/book/examples/`, and
+`coax/book/check-examples.sh` compiles them and compares declared outputs
+and exit statuses. Source-linked excerpts and local navigation have
+separate checks. Illustrative fragments and prose are not all executable
+fixtures; reviewed capability claims bind selected prose to the release
+catalogue and evidence inputs so a change requires review. These checks
+catch specified drift, not every possible error in a chapter.
 
 The compiler's own tests use the same idea for errors. Each file in
 `coax/tests/fail` begins with the code it must produce:

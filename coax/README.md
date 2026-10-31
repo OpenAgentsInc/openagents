@@ -226,7 +226,9 @@ Receipts bind the scope even when both inventories happen to be identical.
 resolved descriptor inputs as schema-version-1 JSON. It is a path inventory,
 not a cache key. No Python or external preprocessing is used. The compiler's
 own graph is `lib/compiler/compiler.coax`; the iOS HUD and the book capstone
-are actual consumers. General module visibility and packages remain planned.
+are actual consumers. Logical module owners, qualified path imports and
+explicit `#export` lists also work. Reexports, configured modules and
+package search remain unsupported.
 See [Chapter 22](book/ch22-organizing-programs.md) for exact scope and limits.
 
 ## Native libraries and Metal
@@ -394,7 +396,8 @@ remain planned. See [the spec](spec.md#102-reflection-now-and-later) and the
 ## Limits and next work
 
 The bootstrap does not implement pointers, dynamic arrays, unions, `switch`,
-optionals and errors (`try`/`or_else`), generics, general reflection, macros,
+optionals and errors (`try`/`or_else`), generic constraints, general
+reflection, macros,
 compiler plugins, context, effects, jobs, general GPU programs, a build language, a native
 backend or a resident compiler. Reserved syntax for them is diagnosed. Views
 borrow storage; E0383 diagnoses direct returns of local fixed-array views,

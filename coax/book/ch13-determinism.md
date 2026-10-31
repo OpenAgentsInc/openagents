@@ -1,12 +1,11 @@
 # Determinism
 
-A program is deterministic when the same input always gives the same
-output: on your laptop and on a phone, in a debug build and a release
-build, today and after the next compiler upgrade. For a game world this
-is what makes replays work. Record the player's inputs, feed them back,
-and the world should arrive at exactly the same state, down to the last
-bit of every float. Saves that load identically and tests that compare
-bytes instead of screenshots depend on the same property.
+A deterministic replay requires the same input to produce the same output
+under its specified execution contract. For a game world, record the
+player's inputs and require the replay to reach the same state, including
+the bits of its floats. Extending that promise to a phone, another backend
+or a compiler upgrade needs qualification of those implementations and
+numerical profiles; it does not follow from a matching run on one laptop.
 
 Determinism is easy to lose without noticing, because most of the ways
 to lose it are decisions the C compiler makes on your behalf. In this
@@ -16,11 +15,11 @@ we can check, at run time and at compile time, against a golden
 fingerprint. We'll finish with the parts of the design that aren't
 built yet.
 
-> Note: The evaluation order, float rounding and compile-time behavior
-> in this chapter are what `coax0` 0.10.0 does today, and every program
-> here runs. The `strict` and `deterministic` annotations, fixed-point
-> types and `#test replay` near the end are planned (spec §13) and
-> marked as such.
+> Note: these example transcripts were captured with `coax0` 0.10.0.
+> Current execution-profile selection is described in Chapter 24. The
+> `strict` and `deterministic` annotations, fixed-point types and
+> `#test replay` near the end remain planned (spec §13). The retained
+> examples do not qualify every CPU, GPU or compiler version.
 
 ## What breaks determinism
 
@@ -276,10 +275,11 @@ garbage.coax:5:22: error[E0405]: compile-time read of an uninitialized variable
 The fix is to leave off the `---`. Use it only when the next thing you
 do is write every element.
 
-## Compile time is already deterministic
+## Compile time has a bounded execution contract
 
 The compile-time evaluator you met in [Chapter 9](ch09-compile-time.md)
-is the first piece of Coax that is deterministic by construction:
+removes several sources of variation. Its results still belong to the
+selected compiler and host math environment:
 
 - It has no clock, no randomness, no files and no output. A `#run` that
   tries to print is an error.
@@ -289,12 +289,13 @@ is the first piece of Coax that is deterministic by construction:
 - Overflow, division by zero, bounds and bad casts are errors in debug
   and release alike, so a constant can't come out differently in the
   two build modes.
-- Its arithmetic is the run-time arithmetic: the same integer widths,
-  and the same one rounding per float operation.
+- It uses the language's integer widths and ordered floating-point
+  operations. Compile-time integers remain checked even when a runtime
+  profile wraps; host math calls are not a portable cross-target oracle.
 
-That last property is what lets a `#run` result stand in for a run-time
-one. Let's check it on something less trivial than Listing 13-3, a float
-recurrence and an integer scrambler:
+For a compatible operation/profile, compare the `#run` result with the
+actual emitted execution. This fixture does that for a float recurrence
+and an integer scrambler:
 
 Filename: same_answer.coax
 
@@ -344,9 +345,10 @@ $ coax run same_answer.coax
 The output is the same with `--release`. `AT_COMPILE` reaches the C as
 the exact bits the compiler computed, written as a hexadecimal float
 literal (`0x1.1be894p+0f`) so nothing is lost by printing and parsing a
-decimal. The run-time loop lands on the same bits whether the C compiler
-builds it at `-O0` or `-O2`. Comparing floats with `==` is usually a
-mistake. Here it's the claim we're testing.
+decimal. In this retained native fixture, the runtime loop lands on the
+same bits at `-O0` and `-O2`. That is evidence for these inputs and
+operations, not a general evaluator/native/GPU equivalence result. Here
+exact float equality is the specific contract being tested.
 
 ## Building a replay
 
@@ -468,10 +470,11 @@ given seed and input.
 
 `fingerprint` reduces the world to one number with FNV-1a, a simple
 hash: for each value, XOR it in and multiply by a prime. We hash the
-bits of each float with the `f32_bits` intrinsic, so two worlds match
-only if every float matches exactly, not merely prints the same. FNV's
-multiply is supposed to wrap around at 32 bits, and that's where we
-have to be careful. If we wrote the obvious line,
+bits of each float with `f32_bits`, so the input to the hash includes
+differences hidden by decimal printing. A 32-bit FNV fingerprint can
+collide: equal fingerprints alone do not prove equal complete states.
+Compare the state bytes when that exact claim matters. FNV's multiply
+is supposed to wrap at 32 bits, and that is where we have to be careful. If we wrote the obvious line,
 
 ```jai
   return (h ^ bits) * 16777619;
@@ -513,10 +516,11 @@ compiled:   1882684683
 other seed: 241112748
 ```
 
-Nice! And `--release` prints exactly the same four lines. The compile-time
-run is the strongest check of the three: `coax0`'s evaluator is a
-separate implementation of Coax's arithmetic, inside the compiler, and
-it lands on the same 32 bits as the native code the C compiler produced.
+The retained `--release` run prints the same four lines. The evaluator
+and emitted native code are separate execution paths agreeing on this
+fixture's fingerprint. They can still share assumptions or bugs, and the
+fingerprint is a compact regression check rather than a proof of complete
+state equality or another target's behavior.
 
 ### Locking the replay in with a test
 
@@ -577,26 +581,30 @@ and keep the golden fingerprint in a test.
 Everything so far is real and checked. Several causes from the start of
 the chapter are still open, and it's worth knowing exactly which.
 
-Math functions. `exp`, `sqrt`, `sin` and the other built-ins call the C
-library's versions, and the compile-time evaluator calls the host's
-library too. So compile time and run time agree on one machine, but
-there's no promise that an iPhone and a Linux server agree on `exp`. Our
-replay used only `+`, `-`, `*` and `/`, which IEEE 754 defines exactly.
-If a replay must match across platforms, keep transcendental functions
-out of its state, or replace them with your own implementation written
-in those four operations.
+Math functions. Native built-ins and compile-time evaluation use host
+math implementations; a matching fixture does not establish that all
+`exp`, `sqrt` or `sin` calls agree, even before moving to another target.
+The replay above uses only `+`, `-`, `*` and `/`. Disabling contraction
+and avoiding transcendental functions remove two sources of difference,
+but do not by themselves qualify cross-backend bit identity. Storage and
+intermediate precision, subnormal handling, conversions, signed zero,
+NaNs and the selected compiler flags also matter. A portable exact replay
+needs a named numerical contract and actual target comparisons.
 
-The GPU. Chapter 14 compiles Coax procedures to Metal. Metal compiles
-shaders with fast math unless the app asks otherwise, so a shader's
-results are close to the CPU's but not guaranteed to be identical. Keep
-anything a replay depends on on the CPU.
+The GPU. Each shader or compute backend has its own compiler, options,
+precision rules and device behavior. Turning fast math off is useful but
+is not a CPU/GPU identity proof. Keep replay state on its qualified
+execution path; moving it to a GPU requires the selected workload and
+numerical profile to pass actual device comparisons. Chapter 14 separates
+CPU math checks from shader execution evidence.
 
-Threads. `coax0` programs are single-threaded; [Chapter 12](ch12-jobs.md)
-covers the planned job system and how it keeps results independent of
-worker count.
+Threads. The Coax job/effect scheduler remains planned. Native hosts can
+still call Coax libraries concurrently; those hosts own synchronization
+and ordering today. [Chapter 12](ch12-jobs.md) describes the additional
+language contract needed for worker-count-independent replay.
 
-Hash tables. `coax0` has none, so there's no iteration order to worry
-about yet.
+Hash tables. There is no general built-in ordered-table contract. Any
+library or host collection used by a replay must state its iteration order.
 
 ## `strict` and `deterministic` (planned)
 

@@ -8,12 +8,15 @@ world, a compiler and an app do not. They need boundaries: who owns a
 type, what crosses a boundary, and which parts a build is allowed to
 replace together.
 
-The current compiler provides source-unit composition with `#load`. You can share
-actual declarations and keep diagnostics and checks tied to their physical
-files. A unit can claim a logical owner with `#module`, which gives its
-declarations stable nominal identities. Qualified names, visibility and
-package management remain planned. A source graph today has one declaration
-namespace.
+<!-- capability-claim: coax.modules.current -->
+The current compiler provides source composition with `#load`, logical
+owners and nominal declaration IDs with `#module`, qualified path imports
+with aliases, and explicit module APIs with `#export`. Declarations in
+different logical modules have separate scopes; an export list keeps the
+module's unlisted declarations private. Physical files retain their own
+diagnostics, checks and authority obligations. Packages, reexports and
+parameterized modules remain unsupported.
+<!-- /capability-claim -->
 
 ## Load another source unit
 
@@ -44,8 +47,11 @@ cells_total :: (a: Cell, b: Cell) -> int { return a.value+b.value; }
 
 The final file declares `Cell`. It is the same declaration in both files,
 not two structurally similar types that happen to have the same spelling.
-Procedure and type names can refer forward across the graph. Duplicate
-names still fail; loading a second unrelated `Cell` is not namespacing.
+Procedure and type names can refer forward across the graph. In this
+unannotated example the loaded units share the legacy namespace, so a
+second unrelated `Cell` still conflicts. Explicit logical modules and
+qualified lookup, introduced below, let independent declarations keep
+the same local spelling.
 
 Paths are literal, nonempty, NUL-free strings, resolved beside the file
 containing the directive. Absolute paths are also explicit inputs. There
@@ -134,14 +140,15 @@ no Python, external preprocessor or `protoc` process.
 
 Parser, checker and evaluator diagnostics point at the original physical
 file and line. Mutation reports do too. Native traps in composed C output
-map their joined source lines back to the original unit. Debugger stepping
-still refers to generated C: this is not general Coax-to-debugger source
-mapping.
+map their joined source lines back to the original unit. Native source
+line maps and optional debugger name presentation also exist; Chapter 24
+explains the limits for optimized values, generated code and target tools.
 
 A protobuf import in a loaded file resolves its descriptor beside that
 file. An error in generated declarations points to that import directive.
-Prefixes still share the graph's namespace; `#load` does not make duplicate
-prefixes into separate protocol modules.
+Use distinct prefixes for imports combined in one declaration scope.
+A source alias does not version a protobuf package or change its published
+message and field identities.
 
 ## See it in actual builds
 
@@ -274,13 +281,15 @@ symbol and header describe a native ABI. A protobuf package, message and
 field number identify interchange across builds. These are different
 contracts.
 
-Independently compiling two `Vec3` declarations still does not make their
-native headers compatible. Use descriptive prefixes for exported structs
-and procedures, preserve generated layout assertions, and inspect the
-actual bridging header when composing independent libraries. Shared source
-solves duplicate declarations within a graph; `#module` names who owns
-them. Stable cross-library ABI identity and module visibility are separate
-work.
+Compatible generated C declarations now compose through per-type ABI
+schema guards; conflicting definitions of the same C spelling fail, even
+when their sizes match. Preserve generated layout assertions and regenerate
+related headers together. Chapter 17 shows that native boundary.
+
+Those guards establish structural C ABI compatibility, not nominal source
+identity or protocol interchangeability. Shared source and `#module` name
+the source declarations, while `#export` controls their source visibility.
+Native symbols still follow `#export_c` and its global C naming rules.
 
 Keep pure decisions in Coax, representation adapters at protocol
 boundaries, and lifecycle/effects in the host. A useful API documents what

@@ -5,6 +5,7 @@ This uses only the standard library. It is never invoked by coax/build.sh or
 by an app build. It does not claim to execute every illustrative fenced block.
 """
 from pathlib import Path
+import importlib.util
 import re
 import sys
 from urllib.parse import unquote, urlsplit
@@ -41,6 +42,10 @@ def problems(root):
                 errors.append(f"{file.name}: missing checked source {source}")
             elif listing not in path.read_text():
                 errors.append(f"{file.name}: excerpt differs from {source}")
+    spec = importlib.util.spec_from_file_location("coax_book_claims", Path(__file__).with_name("capability-claims.py"))
+    claims = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(claims)
+    errors.extend(claims.problems(root.resolve().parents[1]))
     return errors
 
 if __name__ == "__main__":

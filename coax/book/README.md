@@ -44,7 +44,8 @@ Coax fits into OpenAgents: the protocol boundary, builds and hot reload,
 interop with C, C++ and Swift, targets, and tooling for agents. Part V
 opens up the compiler. Part VI turns those pieces into larger programs:
 project organization, asynchronous lifetimes, debugging and cost, verification
-boundaries, and a runnable protocol-to-native capstone.
+boundaries, and a runnable protocol-to-native capstone. Part VII follows a
+voice system through small checked policies and native boundaries.
 
 The best way to learn is to type the examples in and run them. Change
 them, break them on purpose, and read what the compiler says.
@@ -54,13 +55,16 @@ them, break them on purpose, and read what the compiler says.
 Coax is young. Its first compiler, `coax0`, compiles a real but limited
 subset of the language: procedures, integers and floats, strings,
 structs, enums, fixed arrays and views, `defer`, compile-time `#run` and
-`#assert`, checks with `#test` and `#forall`, source graphs with `#load`,
-and a C boundary. A lot of
-what later chapters describe is designed but not built yet.
+`#assert`, checks with `#test` and `#forall`, logical modules and explicit
+exports, generic procedures and fixed-storage struct templates over type
+and length parameters, and a C boundary. Constraints, owning containers and
+other later features remain planned. The generated
+[current status](appendix-a-keywords.md) records the bounded implemented
+subset separately from the full design.
 
-The book is honest about which is which. Anything you can run today is
-shown with its real output. When a chapter describes something `coax0`
-can't compile yet, it says so in a note like this:
+Runnable sections show current source and output. Planned sections are
+marked separately; when a chapter describes something `coax0` cannot
+compile yet, it uses a note like this:
 
 > Note: This feature is planned and not available in `coax0`. The syntax
 > shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
@@ -127,6 +131,8 @@ on your path.
   [24. Debugging and measuring cost](ch24-debugging-and-cost.md),
   [25. What verification establishes](ch25-verification-boundaries.md),
   [26. A complete boundary](ch26-a-complete-boundary.md)
+- Part VII. A case study:
+  [27. Building a voice system in pieces](ch27-case-study-voice.md)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),

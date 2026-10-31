@@ -1,0 +1,90 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "r0-native-check-emission",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Emit selected authored checks as verification-only native C",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "cross-project"
+      ],
+      "blocked_by": [
+        "coax-library-contract-recipes"
+      ],
+      "body": "## Scope\n\nEmit hidden wrappers for selected zero-argument #test bodies from their existing checked AST and original source locations. Put eligibility/reachable-effect admission in a small checked Coax policy; native code transports facts and uses the existing emitter. Reject reachable foreign/output effects and unsupported selected forms explicitly; unrelated product host code must not require linking shims. Do not rename original AST declarations.\n\n## Acceptance\n\nSelected/unselected and duplicate display names; loaded-source locations; caller-buffer assertions; reachable foreign refusal; unrelated host procedures pruned; ordinary product C contains no check wrappers/harness.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+    },
+    {
+      "slug": "r0-native-check-execution",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Run emitted checks with bounded native processes and companion evidence",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "cross-project"
+      ],
+      "blocked_by": [
+        "r0-native-check-emission"
+      ],
+      "body": "## Scope\n\nRun the same verification artifact under checked O0 and O2 with explicit process/output/time limits and retained native compiler/SDK identities. Define a new versioned native companion record linked to evaluator evidence; do not reinterpret coax.evidence.v1 as native execution. Missing compilation/execution and malformed observations must remain infrastructure error or inconclusive.\n\n## Acceptance\n\nSuccess and assertion failure; missing compiler/compile error; timeout/output exhaustion; malformed/truncated observation; source/C/executable hashes and exact check selection; default product authority gates unchanged.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+    },
+    {
+      "slug": "r0-native-check-forall",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Execute finite authored quantified domains in the same case order",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "cross-project"
+      ],
+      "blocked_by": [
+        "r0-native-check-execution"
+      ],
+      "body": "## Scope\n\nReuse a shared finite-domain description/planning path from the checked graph and evaluator. Execute cases in a bounded process per check, preserving bool/enum/range domains, sparse enum order, signed values, nonempty/product limits and last-binding-fastest case order.\n\n## Acceptance\n\nIndependent exact case-order oracle; sparse enums and negative/extreme ranges; empty/excessive products refuse; a specified failing tuple retains original source and binding names.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+    },
+    {
+      "slug": "r0-native-check-semantics",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Qualify native check traps writes cleanup and a seeded defect",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "cross-project"
+      ],
+      "blocked_by": [
+        "r0-native-check-forall"
+      ],
+      "body": "## Scope\n\nQualify authored assertions with independent expected values and guard bytes, exactly-once destination evaluation and reverse cleanup. Separate recognized Coax traps from arbitrary crashes. Seed a defect only into a retained verification artifact and detect it at the affected optimization; reduce bounded quantified inputs while preserving the failure signature.\n\n## Acceptance\n\nEvaluator/O0/O2 agree for supported values/writes/traps/cleanup; seeded native mismatch fails and retains its artifacts; unsupported source minimization is labelled; no test code is shipped.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+    },
+    {
+      "slug": "r0-native-check-consumers",
+      "kind": "task",
+      "parent": "r0-native-check-exe",
+      "title": "Qualify real Verse and Psionic checks with native execution",
+      "size": "S",
+      "labels": [
+        "r0",
+        "usage-audit",
+        "native-checks",
+        "cross-project"
+      ],
+      "blocked_by": [
+        "r0-native-check-semantics"
+      ],
+      "body": "## Scope\n\nUse actual Verse HUD and Psionic tensor/decision checks, preserving all evaluator and physical-source authority obligations. Record selected and unsupported checks, commands, native identities and source-bound outcomes. Large evaluator exhaustion remains inconclusive and authority-unqualified even when a supplemental native test passes; native verification is not a product-gate bypass.\n\n## Acceptance\n\nActual selected Verse/Psionic checks execute evaluator/O0/O2 as supported; original root/dependency mutation scopes remain distinct; default compile/check failure behavior is retained; source docs and catalogue advertise only the qualified subset.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+    }
+  ]
+}

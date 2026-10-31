@@ -8,16 +8,24 @@ version we need. *Constraints* say what a type must be able to do for
 the generic to make sense, so a mistake is reported where the generic
 is used rather than somewhere deep inside it.
 
-In this chapter we'll start with code that runs today and has exactly
-that duplication problem. We'll remove the first layer of duplication
-with an ordinary procedure, hit the wall where ordinary procedures stop
-helping, and then look at how Coax's generics and constraints are
-designed to take us the rest of the way.
+In this chapter we'll start with a comparison algorithm that runs today
+and has exactly that duplication problem. We'll remove its first layer
+with an ordinary procedure, distinguish the generic operations that
+already work from those that need constraints, and then look at the
+remaining design.
 
-> Note: `coax0` doesn't implement generics yet. The first half of this
-> chapter runs today and its examples are checked. From "Writing it once
-> with a type parameter" onward, the code follows spec §7.2 and doesn't
-> compile; where it helps, we'll show what `coax0` says when you try.
+<!-- capability-claim: coax.generics.current -->
+Generic procedures already work: `$T` binds a type from a parameter, calls
+instantiate checked copies, and `[$N] T` binds a fixed array's length.
+These procedures can copy and assign values, index arrays and views, and
+iterate them. A placeholder does not yet support arithmetic, comparisons,
+casts or layout queries. Generic structs also instantiate type and length
+parameters into concrete fixed-storage records. Binding a view type, or a
+struct/array containing one, is refused with E0802; this is a bounded
+restriction, not general ownership safety. Constraints remain planned.
+The `largest` examples below need comparison, so their generic forms are
+still design rather than runnable current examples.
+<!-- /capability-claim -->
 
 ## Removing duplication by extracting a procedure
 
@@ -186,12 +194,15 @@ the type as a parameter.
 
 ## Writing it once with a type parameter
 
-Here's the generic version in the design:
+A type parameter can already abstract over copying and indexing. To
+abstract over `largest`, we also need a rule that permits comparison.
+Here is the intended algorithm; its `>` remains outside today's
+unconstrained generic subset:
 
 ```jai
 #import "Basic";
 
-largest :: (values: [] $T) -> T {
+largest :: (values: [] $T) -> $T {
   result := values[0];
   for n: values {
     if n > result { result = n; }
@@ -208,13 +219,13 @@ main :: () {
 }
 ```
 
-*Listing 8-4: One `largest` for every element type (design; doesn't compile in `coax0`)*
+*Listing 8-4: A generic `largest`; ordering still requires the planned constraint support*
 
-The new piece is `$T`. The dollar sign declares a *type parameter* named
-`T` and says "bind it from the argument here". When we call
-`largest(scores[..])`, the argument is a `[] int`, so `T` is `int`, and
-the result type, written `T`, is `int` too. Later uses of `T` in the
-signature must match what was bound; they don't bind again.
+The first `$T` in the parameter list declares a *type parameter* and says
+"bind it from the argument here". With a `[] int` argument, `$T` binds to
+`int`, and a result written `-> $T` has that same type. Later uses of
+`$T` must match the binding; they do not introduce another type parameter.
+The current compiler already implements those binding rules.
 
 For each distinct `T`, the compiler produces a *specialized* procedure,
 compiled exactly like `largest_int` would be. There's no runtime
@@ -222,15 +233,11 @@ dispatch, no boxed value and no table of function pointers. The program
 in Listing 8-4 would contain two procedures, one for `int` and one for
 `f64`, and nothing else.
 
-Today, `coax0` stops at the dollar sign:
-
-```shell
-$ coax check largest.coax
-largest.coax:3:24: error[E0108]: unexpected character '$'
-  largest :: (values: [] $T) -> T {
-                         ^
-1 error
-```
+Today, the type parameter is accepted, but `n > result` is refused: an
+unconstrained `$T` does not promise that comparison exists. This keeps
+valid copy/index algorithms usable without pretending that every type
+is ordered. The constraint section below describes how a numeric generic
+will state that extra requirement.
 
 > Note: This is the Jai syntax, and Jai programmers will recognize it. In
 > C++ terms, `$T` is a template parameter that's deduced from the
@@ -344,24 +351,37 @@ specialization is allowed.
 
 ## Values as parameters
 
-`$N` works the same way as `$T`, but binds a compile-time *value*
-instead of a type. It's how a generic struct takes a size:
+`$N` already binds a fixed array argument's compile-time length in a
+procedure parameter such as `[$N] int` or `[$N] $T`. Another parameter
+using the same `$N` must have the same length. A view does not bind a fixed
+array length.
+
+Generic structs now declare their own parameter list. A parameter used
+as an array length in a field is a length; another parameter is a type.
+For example, this declaration uses both:
 
 ```jai
-Pool :: struct ($T: Type, $N: int) {
-  items: [N] T;
-  free:  [N] u32;
+Pool :: struct($T, $N) {
+  items: [$N] $T;
+  free:  [$N] u32;
   count: u32;
 }
-
-particles: Pool(Particle, 4096);
 ```
 
-`Pool(Particle, 4096)` is a struct with 4096 `Particle`s inline. A
-different `N` is a different type, with its own fixed size.
+With a concrete fixed-storage `Particle` type already declared, a local
+`Pool(Particle, 4096)` has 4096 particles and free-list entries inline.
+Different arguments give distinct concrete instances. A struct literal can
+deduce bindings from its fields, or a declared instance type can supply
+them. Missing or inconsistent arguments are errors.
 
-Today the nearest thing is a struct with a fixed array whose length is
-a named constant, which works fine as long as you only need one size:
+A procedure parameter such as `p: Pair($T)` can bind a struct instance's
+type argument. Views and arrays of those concrete struct instances also
+work. The current subset refuses a view as a type argument, including an
+array or struct containing a view (E0802). It supplies fixed storage and
+ordinary value copies, not dynamic storage ownership or lifetime inference.
+
+A concrete declaration with one named capacity remains useful when the
+program needs just that one type:
 
 ```jai
 PARTICLES :: 4096;
@@ -373,32 +393,26 @@ Particle_Pool :: struct {
 }
 ```
 
-A second pool of a different size or element type means a second
-struct, which is Listing 8-3's problem again.
+When several element types or capacities share that representation, a
+generic struct can now replace the repeated declarations. Its fields and
+each admitted instance still go through ordinary checking and layout.
 
 ## Specialization costs something
 
 Specializing removes decisions from the running program and gives the
 optimizer concrete code to work with. It also multiplies code: ten key
 types make ten tables. You pay in build time, binary size and
-instruction cache. So the design makes those costs visible instead of
-pretending generics are free:
+instruction cache. The current compiler shares an instance for each
+template and binding within a program. Struct and procedure instances
+share a limit of 256. Repeating the
+same call binding does not make another copy. `--timings` reports total
+`instances` and `instance_generated_bytes`; use those observations when a
+generic increases build time or output size.
 
-Instances are cached by their full key, which includes the resolved
-types, constant arguments, the target, and relevant effects and
-options. Asking for `largest` on `int` in fifty places produces one
-instance.
-
-The compiler reports how many instances each generic produced, their
-code size and the time spent generating them, so you can see which
-generic is responsible for a slow build or a large binary.
-
-Recursive specialization has a limit, and running into it prints the
-chain of instantiations starting from your source, not from inside the
-compiler.
-
-When generics land, measure the instance counts in a real codebase
-before assuming they don't matter.
+Recursive generic calls are currently refused. Richer specialization
+controls and source-level instantiation traces remain planned. The design
+keeps target and relevant semantic options in
+specialization identity as those facilities grow.
 
 ## Baking arguments
 
@@ -508,24 +522,22 @@ clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
 `light.coax` has its own `lo` and `hi`, and `home.coax` has the same
 three again for `f64`, named `minimum`, `maximum` and `clamp`. A
 tolerance check, `near :: (a: f32, b: f32, tolerance: f32) -> bool`,
-appears in four files. Part of that is that `coax0` has no modules yet
-(`#import "Basic";` is the only import), so one file can't share
-procedures with another. The `f32` versus `f64` split is the part
-generics fix: with `$T/Ordered`, one `clamp`
-covers both, and the two copies can't drift apart.
+appears in four files. Source loading, logical modules and explicit
+exports now let those files share a concrete helper (Chapter 22). The
+`f32` versus `f64` split still needs comparison constraints before one
+generic `clamp` can cover both. Until then, share the concrete variants
+and preserve their existing floating-point behavior.
 
 ## Summary
 
 We started with a duplicated loop and removed it the usual way, by
-extracting a procedure. That procedure was still tied to one type, and
-in `coax0` today the only option for a second type is a second copy
-with a second name, because there are no overloads. Coax's planned
-generics fix this with type parameters (`$T`) and value parameters
-(`$N`), specialized at compile time with no runtime dispatch.
-Constraints like `$T/Ordered` put a generic's requirements in its
-signature, so a type that can't do what the body needs is rejected at
-the call that asked for it. Specialization, `#bake_arguments` and
-operators all come with their costs made visible.
+extracting a procedure. Its comparison operation still ties it to a
+concrete numeric type, because constraints and overloads are not yet
+implemented. Copying, assignment and indexing can already use type
+parameters (`$T`) and fixed-array length parameters (`$N`), specialized
+without runtime dispatch. Planned constraints such as `$T/Ordered` will
+state additional operations in the signature. Argument baking and user
+operators remain separate planned features.
 
 In [Chapter 9](ch09-compile-time.md) we'll look at the part of Coax that
 does run today and that much of the rest of the language leans on:

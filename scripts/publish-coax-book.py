@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 from urllib.parse import unquote, urlsplit
@@ -65,6 +66,8 @@ def main():
     # Fail locally before token reads or draft creation if source/book/CLI drift.
     subprocess.run([str(ROOT / "scripts/coax-release.sh"), "--check", "--binary",
                     str(ROOT / "coax/bin/coax")], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(ROOT / "coax/book/check-structure.py")],
+                   cwd=ROOT, check=True)
     token = token_from_file(args.token_file) if args.token_file else os.environ.get("GITBOOK_TOKEN")
     if not token:
         parser.error("set GITBOOK_TOKEN or supply --token-file")

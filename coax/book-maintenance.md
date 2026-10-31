@@ -30,6 +30,31 @@ An excerpt marked `<!-- checked-source: examples/file.coax -->` must occur
 exactly in that source. This is opt-in: illustrative fragments, expected
 errors and elided listings are not all standalone compilable programs.
 
+## Review capability claims
+
+Both books use `coax/book/capability-claims.json` for selected current-scope
+statements. A `capability-claim` block is bound to its exact reviewed prose,
+selected feature objects from the existing Coax catalogue, and retained
+source/evidence files. The catalogue remains authored in `coax/release.coax`;
+the ledger does not define another feature status or establish semantic proof.
+
+The normal Coax and Psionic structure checks validate these bindings. A changed
+capability, statement or evidence file requires reviewing the claim's scope
+before updating its digest. Version-only changes and unrelated catalogue rows
+do not invalidate it. Negative delivery claims also bind the relevant book
+inventory so a new delivered chapter prompts review. Preserve dated hardware,
+numerical and mutation limits when reviewing a claim.
+
+```sh
+python3 coax/tests/book_claims.py
+python3 coax/book/check-structure.py
+python3 psionic/tests/book.py
+```
+
+These are maintenance checks, not compiler/app runtime dependencies. They never
+rewrite prose or bless new evidence automatically. The publisher runs the
+Coax structure/claim gate before reading credentials or contacting GitBook.
+
 ## Publish the existing book
 
 Commit the reviewed changes, rebase on `origin/main`, run any checks affected

@@ -215,7 +215,8 @@ Chapter 6 adds a small causal dense block with caller-supplied interleaved rotar
 tables, grouped-query attention and a key/value cache; its dimensions are
 bounded and do not qualify an actual model. See [chapter 6](book/ch006-attention-without-training.md).
 Chapter 7 implements single-token Qwen-style layers and a small hybrid example;
-complete checkpoint execution and model behavior remain unqualified. See
+its bounded checks do not themselves qualify complete checkpoint execution or
+model behavior. See
 [chapter 7](book/ch007-a-hybrid-sequence-model.md).
 Chapter 8 evaluates a bidirectional full-attention block and forks convolution,
 recurrent and live KV state. The fork compares a caller-bound model identity;
@@ -229,8 +230,15 @@ on the RTX 4080 in about 1.6 s, streaming most of its weights over PCIe.
 [Chapter 25](book/ch025-many-questions-at-once.md) runs a request's question
 suffixes as one pass over the weights, bit-identical to forking them one at a
 time: Mammoth's five-question Lab request on the 4080 drops from 9.3 s to 3.3 s.
-Autodiff remains planned. Original gpt-oss 20b
-GPU execution and a bounded Responses edge are qualified separately above.
+<!-- capability-claim: psionic.autodiff.current -->
+Autodiff is implemented in two bounded CPU profiles: the binary64 scalar tape
+in [chapter 71](book/ch071-gradients-as-a-program.md) and first derivatives over
+32-node f32 tensor programs in
+[chapter 71b](book/ch071b-differentiate-any-tensor-program.md). General function
+transforms, higher derivatives and device backward execution remain planned.
+Original gpt-oss 20b GPU execution and a bounded Responses edge are qualified
+separately above; neither extends the autodiff profile.
+<!-- /capability-claim -->
 
 Chapter [56: Execute a DeepSeek R1 distill](book/ch056-execute-a-deepseek-r1-distill.md)
 adds a bounded original BF16 Qwen2 CPU reference with its own pinned tokenizer,

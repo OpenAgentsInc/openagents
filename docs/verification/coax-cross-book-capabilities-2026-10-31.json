@@ -1,0 +1,428 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "issue": "coax-books-current-capabilities",
+  "issue_root": "66fa63927fd1794f0cae90c8603ac7de8c722436e2a59658bbd97a1ae2bc6ec6",
+  "parent": "coax-book-usage-accuracy",
+  "started_utc": "2026-10-31 13:15 UTC",
+  "baseline_commit": "683e9b3992e88799c4380fa1fce49d2f806a514e",
+  "scope": "Current Coax/Psionic prose and catalogue repair, reviewed-claim invalidation, and book/publication maintenance gates; no new language semantics or product algorithm.",
+  "queue": {
+    "schema_version": 1,
+    "at": "2026-10-31T13:21:17.249324+00:00",
+    "project": "coax",
+    "current_roots": 271,
+    "prior_roots": 269,
+    "all_old_root_ids_unchanged": true,
+    "new_roots": {
+      "coax-books-current-capabilities": "66fa63927fd1794f0cae90c8603ac7de8c722436e2a59658bbd97a1ae2bc6ec6",
+      "r8-typed-gpu-records": "31522171d8f255f2e3e5fdcbe2f635a75e7dd3f87adeec68cb58970afe680243"
+    },
+    "old_root_snapshot": "/tmp/coax-cross-book-roots-before269.json",
+    "current_root_snapshot": "/tmp/coax-cross-book-roots-after271.json",
+    "representative_signed_rank_order": [
+      {
+        "slug": "coax-books-current-capabilities",
+        "root_id": "66fa63927fd1794f0cae90c8603ac7de8c722436e2a59658bbd97a1ae2bc6ec6",
+        "alias": "#66fa",
+        "rank": "zzj",
+        "state": "on:codex-coax-cross-book",
+        "kind": "task",
+        "title": "Correct current Coax and Psionic capability claims"
+      },
+      {
+        "slug": "coax-book-usage-accuracy",
+        "root_id": "35c501b196c148904be673927f3498b28524da10c7c679212712721785355168",
+        "alias": "#35c5",
+        "rank": "zzl",
+        "state": "ready",
+        "kind": "task",
+        "title": "Reconcile the Coax and Psionic books with shipped capabilities and usage"
+      },
+      {
+        "slug": "coax-library-contract-recipes",
+        "root_id": "fc62f830454f904f54a8c555c65dae542f6b6ae5703ae8309eba1ffd21b47397",
+        "alias": "#fc62",
+        "rank": "zzr",
+        "state": "waiting",
+        "kind": "task",
+        "title": "Publish bounded library contracts and runnable cross-domain recipes"
+      },
+      {
+        "slug": "r0-native-check-exe",
+        "root_id": "ccba52ff7f1b14e8beb1f74deef63ab443c5dfe4fd80deab1369bc5cb45b8446",
+        "alias": "#ccba",
+        "rank": "zzu",
+        "state": "ready",
+        "kind": "task",
+        "title": "Run eligible checks on emitted native code"
+      },
+      {
+        "slug": "r3-foreign-borrowed-buffers",
+        "root_id": "04c5dec0d9ad5c95ec52451b18ee61290522f2c240462e38b09d185a957e5bcc",
+        "alias": "#04c5",
+        "rank": "zzw",
+        "state": "ready",
+        "kind": "task",
+        "title": "Call native effects with checked borrowed numeric buffers"
+      },
+      {
+        "slug": "r3a-borrow-summary-consumer",
+        "root_id": "1a6abbcea0bc6beedf25b9bfd78f92c3f3e0af360fefdfccde4453219417d080",
+        "alias": "#1a6a",
+        "rank": "zzwV",
+        "state": "waiting",
+        "kind": "task",
+        "title": "Check aggregate and call-mediated borrows in a real request path"
+      },
+      {
+        "slug": "r4a-generic-values",
+        "root_id": "76bad4951d0c2dc57eda7e4522070c27e951ab21a06177f05f1c5f0368b273b7",
+        "alias": "#76ba",
+        "rank": "zzwl",
+        "state": "ready",
+        "kind": "task",
+        "title": "R4a: generic copyable values over fixed storage"
+      },
+      {
+        "slug": "r2a-results",
+        "root_id": "6541812581360075e6a12e196f4773d4ab5c4a90b39a409098eb60f916833c80",
+        "alias": "#6541",
+        "rank": "zzwt",
+        "state": "waiting",
+        "kind": "task",
+        "title": "R2a: tagged results, optionals and exhaustive switching"
+      },
+      {
+        "slug": "r8-backend-profile-manifest",
+        "root_id": "af3c23a77a44cad95bf4b15808ea698acc0722ae7f87a7caf6a28546361aac50",
+        "alias": "#af3c",
+        "rank": "zzwx",
+        "state": "waiting",
+        "kind": "task",
+        "title": "Bind backend artifacts to explicit target and arithmetic profiles"
+      },
+      {
+        "slug": "r8-typed-gpu-records",
+        "root_id": "31522171d8f255f2e3e5fdcbe2f635a75e7dd3f87adeec68cb58970afe680243",
+        "alias": "#3152",
+        "rank": "zzwz",
+        "state": "waiting",
+        "kind": "task",
+        "title": "Carry typed GPU records and storage views through checked lowering"
+      },
+      {
+        "slug": "r7a-format-evidence",
+        "root_id": "ca69f93a896a77f083747dc30d49d5de3420f174748ced153f5ed6aafd9b5ccd",
+        "alias": "#ca69",
+        "rank": "zzwzV",
+        "state": "ready",
+        "kind": "task",
+        "title": "R7a: a formatter and evidence tools on current APIs"
+      }
+    ],
+    "order_verified": true,
+    "ordering_operations": "10 signed kind30623 move events; no respread, source, status, claim, note or done writes",
+    "move_log": "/tmp/coax-cross-book-order-moves.log",
+    "move_log_sha256": "dfa10e1fe012e6b33cec3ee6b8300221edaf6bb85f968cfd0eeee515ca763420",
+    "before_list": "/tmp/coax-cross-book-order-before.txt",
+    "after_list": "/tmp/coax-cross-book-order-after.txt",
+    "claimed_task_preserved": {
+      "slug": "r4a-value-parameters",
+      "before": {
+        "alias": "#ce0b0",
+        "rank": "zzz",
+        "state": "on:claude-coax-compiler",
+        "kind": "task",
+        "title": "Value parameters $N for fixed arrays and generic struct values"
+      },
+      "after": {
+        "alias": "#ce0b0",
+        "rank": "zzz",
+        "state": "on:claude-coax-compiler",
+        "kind": "task",
+        "title": "Value parameters $N for fixed arrays and generic struct values"
+      }
+    },
+    "observed_state_changes": {},
+    "unrelated_rank_changes": {},
+    "queue_display_limit": "The UI still groups claimed/ready/waiting tasks; this verifies the signed rank order among the representative tasks, not a change to readiness semantics.",
+    "source_edits": false,
+    "publish_data_run": false
+  },
+  "claim_ledger": "coax/book/capability-claims.json",
+  "claims": 8,
+  "checks": {
+    "claim_tool_regressions": {
+      "tests": 10,
+      "passed": 10,
+      "check_first_stub": {
+        "tests": 8,
+        "failed": 7,
+        "passed": 1
+      },
+      "scope_extension": "Boolean schema and unregistered outer README claims are rejected; outside-repository book symlinks refuse before reading.",
+      "final_log": "/tmp/coax-book-claims-scope-green.log",
+      "final_log_sha256": "1822e087313c63643806534667202591c83ac2d5a5db377f3c9f836e91dd8ad4",
+      "additional_red": "/tmp/coax-book-claims-scope-red.log"
+    },
+    "publisher_precredential_regression": {
+      "passed": true
+    },
+    "catalogue_group_scope_regression": {
+      "passed": true
+    },
+    "coax_structure": {
+      "passed": true,
+      "log": "/tmp/coax-books-coax-structure-037.log"
+    },
+    "psionic_structure": {
+      "passed": true,
+      "programs": 96,
+      "source_linked_listings": 378,
+      "log": "/tmp/coax-books-psionic-structure-037.log"
+    },
+    "release_suite": {
+      "passed": true,
+      "tests": 12,
+      "log": "/tmp/coax-books-037-release-suite-green.log",
+      "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 19.280s\n\nOK"
+    },
+    "binary_catalogue_alignment": {
+      "passed": true,
+      "log": "/tmp/coax-books-037-release-binary-green.log"
+    }
+  },
+  "logs": {
+    "/tmp/coax-book-claims-unit-red.log": {
+      "sha256": "ea133d46d20baad4d95f17365ea1d4188ec8393930912a38b615c0c9122d5c50",
+      "tail": "vidence_change_requires_review (__main__.BookClaims.test_evidence_change_requires_review)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/book_claims.py\", line 60, in test_evidence_change_requires_review\n    self.assertTrue(any(\"evidence changed\" in x for x in self.errors()))\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: False is not true\n\n======================================================================\nFAIL: test_malformed_ledger_refuses_without_writes (__main__.BookClaims.test_malformed_ledger_refuses_without_writes)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/book_claims.py\", line 93, in test_malformed_ledger_refuses_without_writes\n    self.assertTrue(claims.problems(self.root))\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: [] is not true\n\n======================================================================\nFAIL: test_missing_duplicate_unknown_and_malformed_markers_refuse (__main__.BookClaims.test_missing_duplicate_unknown_and_malformed_markers_refuse)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/book_claims.py\", line 73, in test_missing_duplicate_unknown_and_malformed_markers_refuse\n    self.assertTrue(self.errors(), text)\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^\nAssertionError: [] is not true : old prose without a claim\n\n\n======================================================================\nFAIL: test_unknown_feature_and_missing_evidence_refuse (__main__.BookClaims.test_unknown_feature_and_missing_evidence_refuse)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/book_claims.py\", line 65, in test_unknown_feature_and_missing_evidence_refuse\n    self.assertGreaterEqual(len(self.errors()), 2)\n    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 0 not greater than or equal to 2\n\n----------------------------------------------------------------------\nRan 8 tests in 0.016s\n\nFAILED (failures=7)\n"
+    },
+    "/tmp/coax-book-claims-unit-green.log": {
+      "sha256": "fdb64f76ee3faf48d76ab43bbb2a2d0a9d4cc51971bf0df9590990e31971669c",
+      "tail": "........\n----------------------------------------------------------------------\nRan 8 tests in 0.026s\n\nOK\n"
+    },
+    "/tmp/coax-book-claims-ledger-red.log": {
+      "sha256": "5abdcf2015269d5f3c4f1be41dd1839bd74b63f025de83e4f5f774c46b952a9b",
+      "tail": "coax.generics.current: evidence changed; review coax/spec.md\ncoax.modules.current: evidence changed; review coax/spec.md\ncoax.targets.current: evidence changed; review coax/spec.md\npsionic.autodiff.current: evidence changed; review coax/spec.md\npsionic.execution.current: evidence changed; review coax/spec.md\npsionic.gpu.current: evidence changed; review coax/spec.md\npsionic.language.current: evidence changed; review coax/spec.md\npsionic.compute.current: evidence changed; review coax/spec.md\npsionic.autodiff.current: text changed; review the claim and its bindings\npsionic.gpu.current: text changed; review the claim and its bindings\npsionic.language.current: text changed; review the claim and its bindings\npsionic.compute.current: text changed; review the claim and its bindings\npsionic.execution.current: text changed; review the claim and its bindings\nmissing capability claim block: coax.modules.current\nmissing capability claim block: coax.targets.current\nmissing capability claim block: coax.generics.current\n"
+    },
+    "/tmp/coax-book-claims-ledger-green.log": {
+      "sha256": "7130b250b6f0c2667c64591aaf2c47afcc63ddd3c67571a114609d6041844729",
+      "tail": "reviewed book claims match prose, catalogue features and retained evidence\n"
+    },
+    "/tmp/coax-book-claims-publisher-red.log": {
+      "sha256": "52d2bbe097b5d5f9be54955b19beecd6b91bced684133b7341448dc708966b9c",
+      "tail": "F\n======================================================================\nFAIL: test_publisher_rejects_book_claim_drift_before_credentials_or_network (__main__.Release.test_publisher_rejects_book_claim_drift_before_credentials_or_network)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/release.py\", line 89, in test_publisher_rejects_book_claim_drift_before_credentials_or_network\n    self.assertEqual(run.call_count,2);token.assert_not_called();network.assert_not_called()\n                                       ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/unittest/mock.py\", line 947, in assert_not_called\n    raise AssertionError(msg)\nAssertionError: Expected 'token_from_file' to not have been called. Called 1 times.\nCalls: [call(PosixPath('secret')), call().__bool__()].\n\n----------------------------------------------------------------------\nRan 1 test in 0.030s\n\nFAILED (failures=1)\n"
+    },
+    "/tmp/coax-book-claims-publisher-green.log": {
+      "sha256": "b5d60f9cf290c92111f9ab63678371e24861312262d57baf5092eb5d8dca5096",
+      "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 0.030s\n\nOK\n"
+    },
+    "/tmp/coax-book-catalogue-group-red.log": {
+      "sha256": "6b7b2c1912d8828ab62dce3097c3e4e1ed86ea98c8bc4a3d9b444adc9013b7c8",
+      "tail": "F\n======================================================================\nFAIL: test_compute_catalogue_records_shipped_group_kernels (__main__.Release.test_compute_catalogue_records_shipped_group_kernels)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/release.py\", line 14, in test_compute_catalogue_records_shipped_group_kernels\n    self.assertIn('group kernels',features['target.cuda']['meaning'])\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'group kernels' not found in 'CUDA C for NVRTC: kernels over an int work item with scalars, bounded fixed arrays, numeric views, for loops and acyclic calls; no shared memory, barriers or atomics yet'\n\n----------------------------------------------------------------------\nRan 1 test in 0.013s\n\nFAILED (failures=1)\n"
+    },
+    "/tmp/coax-books-catalogue-group-green.log": {
+      "sha256": "40d4b09cb29a31c3453c5b3200de67e77c949254a5f480e8c3925d5436a49e54",
+      "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 0.083s\n\nOK\n"
+    },
+    "/tmp/coax-books-coax-structure-green.log": {
+      "sha256": "9045eb0985af662073ad620e006da04ce76f5b2c257e8a2fe951bc2488f36346",
+      "tail": "book navigation, local links and checked excerpts pass\n"
+    },
+    "/tmp/coax-books-psionic-structure-green.log": {
+      "sha256": "c6cb956f6f21d301ea658752d6f03e13f296b758e8979f3ecec97fb3170a7423",
+      "tail": "book structure: 96 programs, 378 source-linked listings, local links pass\n"
+    }
+  },
+  "unchanged_runtime_scope": {
+    "book_example_sources_changed": false,
+    "new_product_algorithms": false,
+    "catalogue_change": "Existing CUDA/warp capability descriptions now acknowledge shipped separate group-kernel shared memory/barriers while preserving partial status and historical introduction versions.",
+    "authority_policy": "release-model.coax validation logic is unchanged; no new Coax admission policy is introduced by prose/data repair.",
+    "parser_or_runtime_rules_authored_by_this_patch": false
+  },
+  "retained_limits": [
+    "Claim hashes invalidate reviewed bindings; they do not understand arbitrary prose or prove feature semantics.",
+    "Named Psionic model/device profiles remain distinct; Mammoth Metal, original120b GPU and fullV4.1 remain unqualified.",
+    "No fresh device/model performance or mutation-completeness result is claimed.",
+    "Library indexes, executable recipes and production adoption remain in coax-library-contract-recipes."
+  ],
+  "compiler_build": {
+    "command": "coax/build.sh",
+    "started_utc": "2026-10-31T13:38:04.515168+00:00",
+    "seconds": 491.711,
+    "exit_status": 0,
+    "timed_out": false,
+    "log": "/tmp/coax-books-037-checked-build.log",
+    "outcome": "passed",
+    "version": "0.37.0",
+    "provenance": [
+      "coax-provenance-v1",
+      "bd7c11f2d901e28bf4f30213c9ad8044dacde327dfbc3061fe96fabfd74579db",
+      "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+      "11d9102d6a60d980821295fa63d529538d4e4eff1807eb4449b38d1e854eec35"
+    ]
+  },
+  "push": {
+    "outcome": "ready_after_all_required_gates",
+    "tested_code_commit": "58650ba84380271596a706912308346e23b65f41",
+    "note": "Final amendment adds evidence and work definitions only; compiler and page inputs remain unchanged."
+  },
+  "prose_baselines": {
+    "coax": "/tmp/coax-current-book-prose-baseline.json",
+    "psionic": "/tmp/coax-books-psionic-baseline.json"
+  },
+  "boundary_prose_review": {
+    "baseline_commit": "683e9b3992e88799c4380fa1fce49d2f806a514e",
+    "old_passages": {
+      "coax/book/ch13-determinism.md": [
+        "is the first piece of Coax that is deterministic by construction:",
+        "So compile time and run time agree on one machine",
+        "only if every float matches exactly"
+      ],
+      "coax/book/ch24-debugging-and-cost.md": [
+        "physical-device/tail budgets, full-loop evidence, status generation and"
+      ],
+      "coax/book/ch27-case-study-voice.md": [
+        "didn't run it for this chapter, because the phone work is still in",
+        "its phone client passes in the iOS simulator"
+      ]
+    },
+    "source_hashes": {
+      "coax/book/ch13-determinism.md": "0e5b50358404ceb3aeb5a0c2f286c360a64b621f153038c13dd64caf629c0ca8",
+      "coax/book/ch24-debugging-and-cost.md": "6c74860a2a1b03196351e2a849c234fba691e8b006b0a20b043f0c5c0d07aa5d",
+      "coax/book/ch27-case-study-voice.md": "a96092cc4ec936064451cefb2b7c5cbedec701a4cc5f6176db43a4cad6268d0e",
+      "docs/verification/coax-r0-2026-10-28.md": "bafa92d129649fc0f479e2df9d83db660dac018a514c7c94c3c5b74eea79d1b5",
+      "docs/verification/coax-r0-tail-budget-2026-10-31.md": "e9901a2ef56a539554cade5f3927fd106fabac98e84127b0a710f71a4c6fd7a4",
+      "docs/verification/coax-r0-loop-attribution-2026-10-31.md": "bcda9ea316b42dc1cd6b8815bab41ed98b8b0d0ad09b41898de42aed0c68a61e",
+      "docs/voice/coax-native-voice.md": "e1d4d3c6e16b9b74a6c5a9810fdf9981b045aa15474e1d0dcfd7c83b62d26118",
+      "apps/openagents-ios/tools/voice-sim-test.sh": "e1ad071109a516201447b99d565cfc36e0413531f9a6a5ae130a308d5662b363",
+      "apps/openagents-ios/Tests/VoiceUITests.swift": "964bd2fa49f8b94b3512ffc7fabb95902ef76bac4f90405881332dc9a7a80f2f",
+      "coax/tests/debugging.py": "c8519b8b77bb05381341c166459e2bb9e39262d0bb82269239174d8951c245af"
+    },
+    "retained_voice_results": {
+      "650c326bf22713553b41640f250baeaba86b0389": "iOS voice: a simulator test for talking over the reply\n\n-OAVoiceBarge (debug only) plays a second recording over the reply once it\nhas played 300 ms. The new UI test checks that playback is cut, frame\ndecisions are applied, and the new turn is recognized and answered. Passes\noffline, live with echo and live with Gemini.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+      "31f990fa2572bc26a2cc20a16619d0532a797678": "iOS 1055: reply audio paced on the player's clock; the voice test listens like a phone\n\n1054 queued every downlink buffer twice (once per callback type) and paced\non consumed callbacks, so replies stalled and played double. Playback now\nschedules each buffer once and keeps 200 ms queued beyond what the player\nhas taken by its own clock, which doesn't lag by the output latency the way\nplayed-back callbacks do. The reply caption only grows.\n\nThe simulator voice test now measures each reply as a listener hears it\n(time to first audio, play time against audio length, gaps where the\nplayer's clock runs past the audio, caption words lost), with a simulated\n0.25 s phone output latency. 1054's code fails it (6749 ms to play 3200 ms,\n168 gaps); this passes offline and live (Google speech, echo and Gemini).\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+    },
+    "new_tests_or_device_runs": false,
+    "updated_source_hashes": {
+      "coax/book/ch13-determinism.md": "92ec1fef41c3867dafecebc9ba95ca4a8603fda160e4f58d7cf98d0bd30e7e3a",
+      "coax/book/ch24-debugging-and-cost.md": "d37f482a221fdc2477dbe7f89d6126ac6b455014690b8a8c365df410ca83be4e",
+      "coax/book/ch27-case-study-voice.md": "c91a7d3d9f9e848e72d981fe02b247c03d56ab2418d88c6865d76d0341ad15d2"
+    },
+    "new_runtime_runs": false,
+    "scope": "Historical float fixtures, native debugging/maps versus other evidence, and retained Simulator voice runs; no runtime, examples or recorded measurements changed."
+  },
+  "source_sha256": {
+    "apps/openagents-web/projects/coax/work/coax.json": "87b3d0ae7d01ffcd7f766c87d6c307cb8797735fb51d35de1a89c6e3eb96a190",
+    "apps/openagents-web/projects/coax/work/cross-book-audit.json": "1eb1bdee902e140e0d5687a92351d64dd3786c7ac780d329c1a09a1e2ffe108c",
+    "apps/openagents-web/projects/coax/work/usage-audit.json": "a6eca3a2259bec8e3bcbcb5ea171f14f84cb795fc80b91f18d2f9ea294921d4c",
+    "coax/README.md": "346a44734386b2cebf8815c84fb50d2ed09cc66ba2cda722dd8bf9683c335b3e",
+    "coax/STATUS.md": "97d858e1520e95c304f67234a8f7552cb2614825f05e5422aff5f7b211a0da52",
+    "coax/book-maintenance.md": "68327747c3ef427b9cd992506c8a7f12a5f9240eaf0c10c798e90c98b1c2035d",
+    "coax/book/README.md": "423a9b0855fb24cbd0cef193db9b329a4fb6675638f6c5b41a8968a36d320341",
+    "coax/book/appendix-a-keywords.md": "385a2fb883926c90ad12e2715d13cca8e612324b8c939ef6e4af55275d37cbe9",
+    "coax/book/appendix-c-jai.md": "9c1fca162bc9c65b0e4bff2fa732a4380b1a087be1ccb624214834024ab16371",
+    "coax/book/appendix-d-cpp.md": "8aacfaa97cb4ad03c158adfe2d022a38853168853883f54987fcc3cd8719493c",
+    "coax/book/capability-claims.json": "00f2dd5610234f9d1663da26ab9fdb7a70b862523ab108c75de3ba03fe82b11b",
+    "coax/book/capability-claims.py": "639ebb408e75be1521d659d5a5c5da34fe383b84f962faa30dd9d8f9d06396eb",
+    "coax/book/ch08-generics.md": "3fdcb5585b2cd5856ec6fb23f6db49d173a7191229f961d246d5fa0117325119",
+    "coax/book/ch09-compile-time.md": "2943f89312602833d729ef90a5456ef21414a5189bc493f1454d6ec8ab43a046",
+    "coax/book/ch11-data-layout.md": "d2923a723b6f9b8f1c4a6492d9c557b739ef14f56263102eed2bcb7663972dc7",
+    "coax/book/ch13-determinism.md": "92ec1fef41c3867dafecebc9ba95ca4a8603fda160e4f58d7cf98d0bd30e7e3a",
+    "coax/book/ch18-targets.md": "94cfccfc5941d7de5c0dd9764d3c54e6ff5c8c012e431a4f86144c80a9f2c94e",
+    "coax/book/ch19-agents.md": "6a560409379b553b8925d446aabdd078406a9d9d332ed7206c026be301e58ebb",
+    "coax/book/ch21-road-ahead.md": "1bb0be265ab946e23c3621d867798d6b6f2bfa54695ae20dca265d63eda62225",
+    "coax/book/ch22-organizing-programs.md": "2b965e010330955586c59f7aa2f8e384504c88292f2443d205c34a3fe111dcf5",
+    "coax/book/ch24-debugging-and-cost.md": "d37f482a221fdc2477dbe7f89d6126ac6b455014690b8a8c365df410ca83be4e",
+    "coax/book/ch27-case-study-voice.md": "c91a7d3d9f9e848e72d981fe02b247c03d56ab2418d88c6865d76d0341ad15d2",
+    "coax/book/check-structure.py": "e5b56d2fb893af30b8defb4cc8ae227eacce687c4b7c9cb97acba8ddbfd3cb1a",
+    "coax/grammar.ebnf": "c61610b4d18a3fd0b6ab0f6095dcb577080838fe72c7a40d6dc7eebf8f182bc2",
+    "coax/release-status.json": "7fbf4e518a47de4aca718978ea496894e17d31077c981a8f938bace2e8aeabc9",
+    "coax/release.coax": "dbc70278091b99fbd4a77915be1a3c788124c93b0dd31f3c8ea1a2a5791e2668",
+    "coax/src/release.h": "12e68ac7d26345db2771f82dde31874d82650e29bbe2c8a40ee4c58a541d68d1",
+    "coax/tests/book_claims.py": "6955983c92b5b902c6ae105bd8336ac40ec92cd894303fa949817e2875dbb9d2",
+    "coax/tests/release.py": "d774b66e5ca3c12f98ce31bd2aff478129f0cd10011c3dc713dcffc434ac0105",
+    "psionic/README.md": "353a6e752bf87e00008ba8947717ced33b4d1f984d15c58e7e23f4af9c8d13a1",
+    "psionic/book/PLAN.md": "7f99dd8372b0e09cbff29119634678af80eb588ac7f42111f88e591a9d5a5431",
+    "psionic/book/ch026-a-coax-compute-subset.md": "8fd74387f6900709eea4f29ed96e2b568df97d68777d0c2abfe40f35d639a52f",
+    "psionic/docs/roadmap.md": "f200bc373a2e0c66a456304579af3f7cecae5ebe5866ef3bcfce161c3a2c5ca6",
+    "psionic/tests/book.py": "f5a6e42f66d083db13a538ef24f9daa07f66ac668e24e81a04c51627c99cdea3",
+    "scripts/publish-coax-book.py": "7e86927422ed8ecfc4204a81ae7e79c8d0752caee40b0a60912342a8f150d7d0",
+    "apps/openagents-web/projects/coax/work/native-check-subtasks.json": "678f18021a00155277db4b2e1ee193417adaeecd91e7aaee0c84c7ef3c613803"
+  },
+  "golden_gate": {
+    "started_utc": "2026-10-31T13:47:02.012492+00:00",
+    "seconds": 218.477,
+    "exit_status": 0,
+    "log": "/tmp/coax-books-037-golden.log",
+    "commit": "58650ba84380271596a706912308346e23b65f41",
+    "outcome": "passed",
+    "pages": 61,
+    "headless": true,
+    "muted": true,
+    "goldens_modified": false,
+    "tail": "  time  fixture-painterly-shafts: 8.0 s\ngoldens http://golden.localhost:58327: passed in 113.1 s (4 tabs)\ngolden-check 58650ba843: every page the range may change matches its golden (113 s)"
+  },
+  "initial_compiler_build": {
+    "outcome": "passed",
+    "command": "coax/build.sh",
+    "log": "/tmp/coax-books-checked-build.log",
+    "version": "0.36.0",
+    "provenance": [
+      "coax-provenance-v1",
+      "3c3a0c820fc31558d6cc20e7b042b98a28848acc9e150ab7840b5fbd06eebb52",
+      "86829d84c9b5b556624f4cf9a2cc2b14194e874010861ddc4c05ee912fed3318",
+      "901557d683ca01e46061df07ce944e6e606eea372c98e7e8a9e3ded38e61407c"
+    ],
+    "source_semantics_changed": false,
+    "catalogue_metadata_changed": true
+  },
+  "rebase": {
+    "base": "4bee62ed09",
+    "upstream_generic_structs": "6132cbaf0a",
+    "resolved_generated_files": [
+      "coax/release-status.json",
+      "coax/src/release.h"
+    ],
+    "resolution": "Regenerated from the merged Coax catalogue, preserving upstream0.37 and the corrected CUDA descriptions; updated reviewed claims to the fixed-storage generic struct scope."
+  },
+  "grammar_reference": {
+    "grammar_rules_changed": true,
+    "reason": "Reference now describes already implemented0.37 struct parameter/type application forms, fixed-array parameters and qualified names; parser/runtime unchanged.",
+    "before_sha256": "79c454b1bc5fbf9af5a454b33d68e27d80e42801349c920554db1dda30897d58",
+    "after_sha256": "c61610b4d18a3fd0b6ab0f6095dcb577080838fe72c7a40d6dc7eebf8f182bc2",
+    "review_sources": [
+      "coax/lib/compiler/parser.coax:PS_type",
+      "coax/lib/compiler/parser.coax:PS_struct_params",
+      "coax/lib/compiler/parser.coax:PS_postfix",
+      "coax/tests/generics.py:GenericStructs",
+      "coax/tests/modules.py:QualifiedLookup"
+    ],
+    "runtime_tests_run": false
+  },
+  "native_work_split": {
+    "parent": "r0-native-check-exe",
+    "children": [
+      "r0-native-check-emission",
+      "r0-native-check-execution",
+      "r0-native-check-forall",
+      "r0-native-check-semantics",
+      "r0-native-check-consumers"
+    ],
+    "published_log": "/tmp/coax-native-subtasks-published.log",
+    "roots": 276,
+    "all_previous_271_root_ids_preserved": true,
+    "implementation_started": false,
+    "signed_order_record": "/tmp/coax-native-subtasks-order.json",
+    "existing_parent_claim_preserved": "claude-b22-hts",
+    "coordination_note": "/tmp/coax-native-coordination-note.log"
+  },
+  "initial_release_suite": {
+    "passed": true,
+    "tests": 12,
+    "log": "/tmp/coax-books-release-suite-green.log",
+    "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 10.985s\n\nOK"
+  }
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs."""
 import argparse
+import importlib.util
 from concurrent.futures import ThreadPoolExecutor
 import os
 import json
@@ -20,6 +21,11 @@ def path(name):
 
 
 def check():
+    spec = importlib.util.spec_from_file_location("coax_book_claims", ROOT / "coax/book/capability-claims.py")
+    claims = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(claims)
+    errors = claims.problems(ROOT)
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
     manifest = json.loads(path("psionic/book/examples.json").read_text())
     assert manifest["schema"] == 1
     examples = manifest["examples"]

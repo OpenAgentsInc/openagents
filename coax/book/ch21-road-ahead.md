@@ -56,13 +56,26 @@ parser, type checker, protobuf descriptor importer, wire runtime and SHA-256
 fingerprinting are Coax now (Chapter 20). Native C++ bridges transport their
 inputs and results. The evaluator and C emitter remain C++.
 
-Much of the language in Parts II to IV isn't built yet: pointers and
-dynamic arrays, tagged unions and `switch`, `try` and error values,
-generics and constraints, the context and allocators, richer reflection and
-macros, jobs and effects, `strict` and `deterministic`, general source modules
-and visibility,
-importing C headers, `build.coax`, hot reload and the browser target. Each
-of those chapters says so where it matters.
+Logical module owners, qualified names, explicit exports, original source
+spans and bounded lowering reports now ship. Generic procedures and
+fixed-storage struct templates instantiate type and length parameters.
+Constraints remain planned, and generic struct bindings reject views and
+view-containing values. Chapters 8 and 22 and the generated status
+catalogue describe the exact subset and its limits.
+
+Pointers and dynamic arrays, tagged unions and `switch`, `try` and
+optionals, the context and allocators, richer reflection and macros, jobs
+and effects, `strict` and `deterministic`, importing C headers, `build.coax`
+and transactional state reload remain planned. Module configuration and
+package management are also separate future work.
+
+<!-- capability-claim: coax.targets.current -->
+Current applications run through native C and Coaxial's Wasm/WebGPU path.
+The compiler's named layout-report target is still `native-lp64`; queries
+for other target layouts refuse rather than borrowing LP64 facts. Existing
+application paths do not establish general cross-target ABI, runtime,
+numerical or debugging qualification. Those gates remain open.
+<!-- /capability-claim -->
 
 ## The rule that orders everything
 
@@ -83,11 +96,11 @@ counts as done, and where each one is today.
 | 0. Bootstrap semantics | Lexer, parser, checker, C emitter, documented scalar grammar | Pass and fail fixtures, checked formats, overflow behavior | Done |
 | 1. Compile-time scalars | Constants, `#run`, `#assert`, `type_name`, `coax check`, bounded evaluation; later the checks (`#test`, `#forall`, `#authority`, `coax test`, `coax mutate`) | Dependencies, cycles, limits, refusal of captures and I/O, the same errors in debug and release, literal output | Done |
 | 2. Data and the C boundary | Structs with defaults, enums, fixed arrays and views, `for`, `defer`, `ifx`, checked casts, ordered operands, `#export_c` with headers and layout assertions, `#foreign` | A real engine kernel called by the native host, outputs independently compared and frame cost measured | R0 benchmark/debugging slice ships; adoption gate remains open |
-| 3. Metadata and generation | CPU type/field/enum metadata ships; stable declaration IDs, richer reflection, `#derive` and hygienic typed code follow | Checked compile-time inspector, independent C oracle and real Haunted House layout consumer; alternate targets and general derived registries remain gated | Started in 0.12.0 |
+| 3. Metadata and generation | CPU type/field/enum metadata and nominal declaration IDs ship; richer reflection, `#derive` and hygienic typed code follow | Checked compile-time inspector, independent C oracle and real Haunted House layout consumer; alternate targets and general derived registries remain gated | Started in 0.12.0 |
 | 4. Build workspaces and tools | Dependency scheduler, capabilities, input manifests, compiler events, then plugins and `build.coax` | One real asset or registry workflow; generated CMake and Xcode lists match the hand-written ones before replacing them | Source graph and `deps` prerequisites ship; workspaces, plugins and `build.coax` remain planned |
 | 5. Effects and deterministic jobs | Region and alias model, effect summaries, strict math, scheduler integration | A real subsystem replays identically at 1, 2, 4 and 8 workers; bad effects and aliases are refused | Not started |
 | 6. Protocol expansion and GPU experiments | Stable layouts, plus the stage 2 ABI proof | More domains on the selected-profile codec; a Metal pipeline proven separately before choosing a shader approach | Started: descriptor imports and codecs ship, and the iOS home uses them |
-| 7. Browser vertical slice | A wasm32 runtime and host ABI, a separate shader bridge | Geometry, memory growth, async resources, input, rendering and debugging in a real browser | Not started |
+| 7. Browser vertical slice | A wasm32 runtime and host ABI, a separate shader bridge | Geometry, memory growth, async resources, input, rendering and debugging in a real browser | Current Coaxial application paths ship; general target/runtime/debugging qualification remains open |
 | 8. Resident compiler and reload | Dependency cache, stable code IDs, safe points, transactional migration | Edit and reload on a Mac host keeps state and resources, rolls back failures, and has measured latency | Not started |
 | 9. More backends | Only after earlier stages have shown their value; C stays as the reference | Native debug and optimized backends pass the same suites and beat the C output on a measured workload | Not started |
 

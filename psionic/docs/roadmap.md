@@ -1,20 +1,33 @@
 # Starting point and roadmap
 
-Status, 2026-10-29: chapters 1–10 implement M0/M1, the artifact slice of M5,
-text requests, bounded Qwen-style layers and authenticated original-weight
-Elephant text decisions on the tested Apple LP64 CPU host. Mammoth and autodiff
-remain `planned`. GPT-OSS chapters 41–48 now implement original-format decoding,
-original 20b/120b **CPU reference** execution, Harmony, seeded sampling,
-correct speculative verification and bounded-schema tools. These are slow
-reference implementations. GPU execution and serving throughput are open gates.
+<!-- capability-claim: psionic.execution.current -->
+Status reviewed 2026-10-31: the recorded CPU profiles execute original Elephant
+and Mammoth text decisions in [chapters 10](../book/ch010-execute-elephant.md)
+and [11](../book/ch011-execute-mammoth.md). The device records cover Elephant
+on CUDA and Metal, and Mammoth on CUDA; [chapter 31](../book/ch031-elephant-on-metal.md)
+has not qualified Mammoth on Metal.
 
-**The next GPT-OSS delivery is the device track in the
-[book plan](../book/PLAN.md#gpt-oss-device-delivery-order): resident original
-20b weights on the RTX 4080 → complete CUDA generation → batched prefill →
-measured throughput and bounded serving → 120b on sufficient device memory →
-batched speculation → device tool integration.** Existing Coax CUDA emission,
-BF16 kernels and driver effects are reused. Do not call this branch complete
-for practical inference until the recorded device throughput gates pass.
+Original gpt-oss 20b has complete recorded CUDA and Metal generation paths in
+[chapters 45b](../book/ch045b-a-complete-cuda-decoder.md) and
+[45h](../book/ch045h-gpt-oss-on-metal.md), plus the bounded resident CUDA
+Responses profile in [chapter 48b](../book/ch048b-serve-responses.md).
+The original 120b CPU reference does not qualify a 120b GPU path. The bounded
+V4.1 component records do not qualify a complete V4.1 model.
+
+CPU autodiff is implemented as a scalar binary64 tape in
+[chapter 71](../book/ch071-gradients-as-a-program.md) and first derivatives of
+32-node f32 tensor programs in
+[chapter 71b](../book/ch071b-differentiate-any-tensor-program.md). General
+function transforms, higher derivatives and device backward execution remain
+planned. The [book status table](../book/README.md) names each delivered scope;
+model quality, broader request coverage and additional targets retain their
+own qualification gates.
+<!-- /capability-claim -->
+
+The [device delivery sequence](../book/PLAN.md#gpt-oss-device-delivery-order)
+keeps the remaining target, scheduling and throughput work separate from those
+recorded profiles. No CPU reference or component result promotes another model,
+device or serving profile.
 
 [Run the first chapter](../book/ch001-learning-a-number.md)
 or `psionic/check.sh`; [retained verification](../../docs/verification/psionic-m0-2026-10-28.md)
@@ -110,8 +123,9 @@ of at most 1,048,576 values into shared numerical storage.
 files, malformed artifacts, digest/index/manifest mismatches, native aliases
 and all BF16 encodings in debug/release with sanitizer and mutation gates.
 The artifact slice of M5 is implemented; optimizer/RNG/data-state resume is
-still planned. Real Elephant/Mammoth checkpoints are not yet qualified. Next
-is the attention/forward core, using chapter 5's text contract below.
+still planned. This reader chapter does not itself qualify whole-model
+execution. Chapters 10 and 11 record the separate original Elephant/Mammoth
+CPU execution profiles, using the text and forward contracts below.
 
 ## Chapter 5: text becomes a model request — implemented
 
@@ -127,9 +141,10 @@ The pinned schema accepts score sizes 1–10, correcting the earlier 2–10 plan
 Unicode/regex/BPE fixtures, actual original data, rendered-request/token IDs,
 mutation and native debug/release/sanitizer evidence. The evidence uses an
 owned oracle, not an executed upstream model runtime. Upstream reference
-capture, broader request qualification and complete Elephant/Mammoth execution
-remain model gates. Chapter 6 now provides the first bounded causal attention
-block; no training dependency has been added to the urgent decision-model path.
+capture and broader request qualification remain separate from this text
+chapter. Complete Elephant/Mammoth execution has its own recorded CPU profiles
+in chapters 10 and 11. Chapter 6 provides the first bounded causal attention
+block; no training dependency has been added to the decision-model path.
 
 ## Chapter 6: attention without training — implemented
 
@@ -139,7 +154,8 @@ dense decoder block with learned RMS scaling, grouped-query attention,
 caller-supplied interleaved rotary tables, SwiGLU and an incremental KV cache.
 Independent full-sequence fixtures and native storage/refusal checks qualify
 this small CPU profile. It does not implement Qwen3.5's exact hybrid block or
-the decision mask. Chapter 7 and real-model qualification remain next.
+the decision mask. Chapter 7 supplies the separate hybrid-layer profile;
+chapters 10 and 11 record whole-model execution against their stated references.
 
 [Chapter 7](../book/ch007-a-hybrid-sequence-model.md) composes
 model-specific causal linear and full-attention layers. [Its verification](../../docs/verification/psionic-ch07-2026-10-29.md)
@@ -153,7 +169,7 @@ implements bidirectional full-attention blocks and snapshots of live recurrent,
 convolution and KV state. Whole-model branch isolation and original-weight
 request comparisons remain separate gates.
 
-## Delivery priority: Elephant, then Mammoth
+## Original delivery sequence: Elephant, then Mammoth
 
 The owner priority is [native Elephant and Mammoth](targets/model-targets.md), with
 shared foundations reused by the later [nanochat pipeline](targets/nanochat.md).
@@ -162,9 +178,11 @@ the existing decision/nanochat dependency graph, acceptance checks and stable
 issue slugs. The NVIDIA breadth and expanded contents below are proposals;
 this update does not add project issues. The existing queue source
 is [work/roadmap.json](../../apps/openagents-web/projects/psionic/work/roadmap.json).
-The signed queue records M0 complete; chapters 2–3 implement M1 and chapter 4
-implements the artifact slice of M5; chapter 5 implements the bounded text profile in source.
-This change does not publish issue-status updates.
+The following table preserves the original delivery sequence and its gating
+rationale. Its "Now" and "Next" labels describe that sequence, not current
+implementation status. Use the current scoped status above and the
+[book status table](../book/README.md) for delivered capabilities. This document
+does not publish issue-status updates.
 
 | Priority | Work | Must finish first |
 | --- | --- | --- |
@@ -184,9 +202,11 @@ This change does not publish issue-status updates.
 
 CPU reference correctness and device execution can advance together. Do not
 wait for a fast full-model CPU service or finish the entire teaching spine
-before starting compute support. Current scalar Metal emission is insufficient
-for these kernels. Reference Python/OneJev is tooling; native model support
-requires actual complete Coax execution.
+before starting compute support. The scalar `coax metal` path alone is
+insufficient for these kernels; the shipped `coax metal-compute` subset supplies
+buffer, loop and selected cooperative kernels. Each model still needs its own
+numerical and target qualification. Reference Python/OneJev is tooling; native
+model support requires actual complete Coax execution.
 
 Smaller synthetic fixtures and source-contract work need no paid hardware.
 A large-weight reference/target run records its actual machine, memory and
@@ -196,9 +216,10 @@ a prerequisite for starting the ready work.
 ## Proposed book order
 
 The [full proposed table of contents](../book/PLAN.md) now gives
-one outline per chapter, with prerequisite notes. Chapters 1–10 and the
-independent MXFP4/router/attention/Harmony chapters 41–44 are runnable;
-chapter numbers and part boundaries are provisional. The new
+one outline per chapter, with prerequisite notes. The
+[book status table](../book/README.md) lists completed chapters and their
+qualified profiles; the plan also contains future outlines. Chapter numbers
+and part boundaries are provisional. The
 [NVIDIA breadth survey](targets/nvidia-breadth.md) records pinned candidate checkpoints,
 operator requirements, data studies and source-license qualifications.
 
@@ -231,11 +252,13 @@ operator requirements, data studies and source-license qualifications.
 | Framework track | 2a–3b, 4a, 26b–26c, 71b–71c, 74a, 75b–75c, 76a–76b, 78a, 81a–81c, 129a–129c, 161a, 189 | Tensor views and an operator library with a manifest → custom operators → general and composable autodiff over 26a's IR → modules, one trainer, data loading, reusable optimizers → GPU training, profiling, eager versus compiled → whole-experiment checkpoints and interchange (Safetensors writing, DLPack, ONNX export; pickles refused) → distributed tensors, data-parallel and fully sharded training → rebuilding three PyTorch tutorials with public APIs only. Graduation: a new network defined, trained, exported and served without PyTorch. |
 | Optional laboratories | A–D | SmolLM2-135M import; Mini/Bolt assistant architectures; higher-order derivatives/PINNs; activation and state inspection. |
 
-Several chapters need Coax compiler features that do not exist yet: GPU
-compute and WGSL emission, jobs and threads, `f16`/`bf16`, numeric generics,
-SIMD, allocators and a Linux target. The plan's
+Several chapters need extensions beyond the shipped bounded compute subset
+and generic copyable procedures and fixed-storage structs: direct WGSL
+emission, language jobs and threads, narrow float scalar types, numeric
+operation constraints, general SIMD and allocators, and broader target
+qualification. The plan's
 [Coax feature map](../book/PLAN.md#coax-features-each-branch-needs)
-names where each is needed and what Psionic does until it exists.
+distinguishes the existing boundaries from those remaining language features.
 
 The first NVIDIA application should be **semantic retrieval with Nemotron
 embeddings**. The preferred first major Verse ML demonstration is

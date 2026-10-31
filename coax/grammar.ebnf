@@ -1,4 +1,5 @@
-(* Coax 0.17.0 accepted subset. Planned language syntax is not in this grammar.
+(* Coax accepted subset. Current feature versions and limits are recorded in
+   release-status.json. Planned language syntax is not in this grammar.
    Lexing: ASCII identifiers (excluding reserved keywords); integer tokens in
    decimal/hex/binary with separators, up to the u64 maximum; decimal float
    tokens with a fraction and/or exponent ("1.5", "2e-3"; never "1." so that
@@ -26,7 +27,10 @@ procedure = identifier, "::", "(", [ parameters ], ")",
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
-struct = identifier, "::", "struct", field-block ;
+struct = identifier, "::", "struct", [ struct-parameters ], field-block ;
+struct-parameters = "(", type-parameter, { ",", type-parameter }, ")" ;
+(* Each parameter is listed once as $NAME. Use as a field's array length
+   determines a length parameter; other uses determine a type parameter. *)
 field-block = "{", { field | profile-fields }, "}" ;
 profile-fields = "#if", "BUILD_DEBUG", field-block, [ "else", field-block ] ;
 field = identifier, ":", type, [ "=", expression ], ";" ;
@@ -38,18 +42,32 @@ check = "#test", string, block
       | "#forall", [ string ], binding, { ",", binding }, block ;
 binding = identifier, ":", ( type | expression, "..<", expression ) ;
 
-type = identifier | reserved-type-name
-     | type-parameter                    (* $T: generic procedures only, spec 7.2 *)
-     | "[", expression, "]", type        (* fixed array; length known while checking *)
-     | "[", "]", type ;                   (* view *)
+type = named-type
+     | type-parameter
+     | "[", ( type-parameter | expression ), "]", type
+     | "[", "]", type ;
+named-type = ( qualified-name | reserved-type-name ), [ type-arguments ] ;
+qualified-name = identifier, [ ".", identifier ] ;
+type-arguments = "(", type-argument, { ",", type-argument }, ")" ;
+type-argument = type | length-expression ;
+length-expression = expression ;
 type-parameter = "$", identifier ;       (* one token: no space after '$' *)
+(* Qualified types use exactly one module alias. Type arguments are checked
+   against a struct template's type/length parameters. The parser selects
+   length-expression only when its first token is an integer literal
+   (including an ASCII character literal); other arguments parse as types.
+   The checker requires a positive admitted integer length, and distinguishes
+   a type argument from a length binding. [$N] T is accepted; [$N + 1] T is
+   not. A concrete array length expression must be known while checking. *)
 
 block = "{", { statement }, "}" ;
 statement = block | declaration | assignment, ";" | return | if | while | for |
             "break", ";" | "continue", ";" | defer | assertion | profile-statements | expression, ";" ;
 profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
-(* BUILD_DEBUG is a fixed workspace selector: true unless --release. Both
-   branches parse; only selected AST participates in semantics/emission.
+(* BUILD_DEBUG is a fixed per-graph selector resolved by the build profile.
+   The legacy defaults are development=true and --release=false; an explicit
+   --build-profile overrides that preset. Both branches parse; only the
+   selected AST participates in semantics/emission.
    This is not arbitrary constant-expression or top-level conditional compilation. *)
 declaration = identifier, ":=", expression, ";" |
               identifier, ":", type, [ "=", ( expression | "---" ) ], ";" ;
@@ -80,7 +98,7 @@ postfix = primary, { ".", identifier
                    | "[", "..", "]" } ;
 field-init = identifier, "=", expression ;
 primary = integer | float | character | string | "true" | "false" |
-          identifier, [ "(", [ arguments ], ")" ] |
+          qualified-name, [ "(", [ arguments ], ")" ] |
           "size_of", "(", type, ")" |
           "type_info", "(", type, ")" |
           ( "field_info" | "enum_info" ), "(", type, ",", expression, ")" |
@@ -91,8 +109,9 @@ arguments = expression, { ",", expression }, [ "," ] ;
 
 (* Semantics also require: unique names with no shadowing; immutable
    parameters, constants and loop variables; untyped literals that fit the
-   type their use requires; one namespace for procedures, constants, structs
-   and enums; no struct containing itself by value; correctly typed calls,
+   type their use requires; one declaration namespace per logical module
+   (unmarked legacy units share theirs); no struct containing itself by value;
+   correctly typed calls,
    returns, fields and elements; a void zero-argument main unless the file is
    built as a library; no unused expression results; literal checked print
    formats; deferred code that does not leave its block; left-to-right
@@ -108,5 +127,12 @@ arguments = expression, { ",", expression }, [ "," ] ;
    procedure except main and #foreign ones is reached from a check.
    A $T type parameter is bound by its first use among a procedure's
    parameter types and means that one type everywhere else in the
-   procedure; only $T and [] $T are accepted, never in struct fields or
-   outside a procedure, and a generic procedure is not yet callable. *)
+   procedure. Fixed arrays and views of admitted generic elements work;
+   placeholder shapes not admitted by the checker are E0394. A generic
+   struct declares its parameters explicitly and may use them in fields;
+   unbound placeholders remain errors. Struct instances reject view type
+   arguments and arguments containing views (E0802), without establishing
+   general lifetime safety. Struct and procedure instances share a bound
+   of 256 (E0339). A struct literal remains Pair.{...}, with bindings deduced
+   from fields or supplied by its declared context; Pair(int) names a type.
+   Constraints remain planned. *)

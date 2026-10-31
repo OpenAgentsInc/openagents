@@ -845,9 +845,12 @@ whether a program compiles depend on the machine.
 
 The working layout queries are the first part of the metadata system.
 First-class `type_of`/`Type`, defaults, annotations, procedure signatures,
-effects, stable declaration IDs and explicit alternate-target layouts remain
-planned. `type_of` is still reserved and rejected. Today's metadata does not
-permit macros, typed syntax insertion or compiler plugins.
+effects and explicit alternate-target layout queries remain planned.
+Nominal declaration IDs and original source spans already appear in the
+checked graph reports described in Chapter 22; exposing richer identity
+metadata as compile-time values is separate work. `type_of` is still
+reserved and rejected. Today's metadata does not permit macros, typed
+syntax insertion or compiler plugins.
 
 A query-bearing source graph gets 65,536 extra checker nodes. Metadata
 expansion shares that bounded pool and refuses exhaustion with E0381;

@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "catalogue": "coax/release-status.json",
+  "claims": [
+    {
+      "id": "coax.generics.current",
+      "document": "coax/book/ch08-generics.md",
+      "scope": "Copyable generic procedures, fixed-array value parameters and fixed-storage generic structs; constraints, general numerical operators and view-containing struct bindings remain unsupported.",
+      "text_sha256": "f561881f63ff76cafb30034e3f53092537f0e2ddbc658b77651b3db6bb98cd94",
+      "features": [
+        {
+          "id": "generics.type-parameters",
+          "sha256": "a9008e3a6c8de2985afb695d18577544eb03364e9a7edde63a588800ffa05150"
+        },
+        {
+          "id": "generics.instantiation",
+          "sha256": "d51df53405a2db73168d2ecc5c78c752db555a1b59c9450fe7e11e1c24723702"
+        },
+        {
+          "id": "generics.value-parameters",
+          "sha256": "f87bdd6b79d22e4de1779a1351274449591735d3e0ed25f5139086b9ce78813b"
+        },
+        {
+          "id": "generics.structs",
+          "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "coax/tests/generics.py",
+          "sha256": "bba017a09f2db57991468a698c3fd6ce30df89e24b18650f08dcd2613c96d83c"
+        }
+      ]
+    },
+    {
+      "id": "coax.targets.current",
+      "document": "coax/book/ch21-road-ahead.md",
+      "scope": "Existing applications and named native-lp64 layout facts; no general alternate-target runtime, ABI, numerical or debugging qualification.",
+      "text_sha256": "b32066c09bc0d346741862cd2b11b31ed4caa51069f575428b0387e998c51404",
+      "features": [
+        {
+          "id": "source.spans",
+          "sha256": "4f5a60274f0b9a78532856823a0c3ee62becd3c0e82121fe186cd801f29ce7de"
+        },
+        {
+          "id": "compiler.semantic-profiles",
+          "sha256": "cdc00d769de19de1fff3385547b8d074d7234dcb14182efe859eb882a2a4d111"
+        },
+        {
+          "id": "target.apple",
+          "sha256": "018bf13bc2c36141ee5387d9f75b3da37af9910a2ebb9c29f7c13895bc924280"
+        },
+        {
+          "id": "target.browser",
+          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+        },
+        {
+          "id": "target.linux",
+          "sha256": "230ec14f05176af9349b7d0fa643783fe653166fcaf27d5c18c5086826afb7f4"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "coax/tests/semantic_profiles.py",
+          "sha256": "8c6afd83dbbea7c11c613aa92190457c763ef7331bccd4930e6d137710cfd5ea"
+        },
+        {
+          "path": "coax/tests/reflection.py",
+          "sha256": "ba0c7eea02924baaee6f20cd09e3aa8dea8951313d61053ef9bc0c92ab6510b1"
+        }
+      ]
+    },
+    {
+      "id": "coax.modules.current",
+      "document": "coax/book/ch22-organizing-programs.md",
+      "scope": "Checked logical modules, qualified references and explicit export lists; no package search, reexports or parameterized modules.",
+      "text_sha256": "7391e15562f5ebc2055047378d0c6ced62db86853281a5bb656a38faebbd6622",
+      "features": [
+        {
+          "id": "source.declarations",
+          "sha256": "a290966438cdfec56d440600994b89c1f628fb8bed8700e33327420ec31c86d6"
+        },
+        {
+          "id": "source.revisions",
+          "sha256": "dab6bf89d6d63c317ab7ea5a4b3503772e1bf2e31ace5c8a4683671c6f56f065"
+        },
+        {
+          "id": "source.qualified",
+          "sha256": "3a390f7551912aba060e9b6d0937c7f862d825cfb30276778bd0c0d3f3f1c7da"
+        },
+        {
+          "id": "source.visibility",
+          "sha256": "b64f8b9bcff6225076fe93a74f513f06acc480525433746154006de36541a625"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "coax/tests/modules.py",
+          "sha256": "f2a22f7df235985e8b403c31e17df63613f78da767a610c64ed3279b2f4f2c82"
+        }
+      ]
+    },
+    {
+      "id": "psionic.autodiff.current",
+      "document": "psionic/README.md",
+      "scope": "CPU scalar binary64 tape and bounded first-order f32 tensor autodiff only; no device backward or general higher derivatives.",
+      "text_sha256": "9fb4ae41f6efe08cd57e5c836931d527dafc822fe5b033e179c1ebc86b27622d",
+      "features": [],
+      "evidence": [
+        {
+          "path": "psionic/lib/tape.coax",
+          "sha256": "fc3038fbcbcb036f3238110edae6ef17b55a11dc67238d15be4f373dc45c3e95"
+        },
+        {
+          "path": "psionic/lib/autodiff.coax",
+          "sha256": "6bb09dd6be49ffac8bd8d09de8d164d0f06de7866781dc9dcf7ad28204b05df9"
+        },
+        {
+          "path": "docs/verification/psionic-ch71-2026-10-29.md",
+          "sha256": "2c22618b7b6ce2b72affd11b2807f2e772114b57b9bef29c35b796af58781444"
+        },
+        {
+          "path": "docs/verification/psionic-ch071b-2026-10-30.md",
+          "sha256": "81a2935dbaabfc91b848d66aab3dc8974fb2961a9512941fc0c6a19aacaaca17"
+        }
+      ]
+    },
+    {
+      "id": "psionic.execution.current",
+      "document": "psionic/docs/roadmap.md",
+      "scope": "Dated recorded named model/device profiles; Mammoth Metal, original120b GPU and complete V4.1 remain unqualified.",
+      "text_sha256": "5e04b794a0a4a791e0e79c108b6276c85837e4854c3611acb50b273405f26d3c",
+      "features": [],
+      "evidence": [
+        {
+          "path": "psionic/book/SUMMARY.md",
+          "sha256": "e4bc3e51b159e92cd4826264ff7c77b2fc217c87a6e69a63430c6de8db654d15"
+        },
+        {
+          "path": "psionic/book/examples.json",
+          "sha256": "70357048c11582b0b1bc1008cdc3d9ab0fb22c54be95f1efb91ee4a2c4615374"
+        },
+        {
+          "path": "docs/verification/psionic-ch10-2026-10-29.md",
+          "sha256": "0853816ab0d18e3ae85a4a93f034c8e8dc0f38fb1096ee3007eff7c607003bfe"
+        },
+        {
+          "path": "docs/verification/psionic-ch11-2026-10-29.md",
+          "sha256": "272c65e30dda95ecd76e417fab22c7e87eb6b2caf9a67aa1656ba5af9aebe748"
+        },
+        {
+          "path": "docs/verification/psionic-ch30b-2026-10-29.md",
+          "sha256": "ee6324e53d04c6377afaa380e0f787baa30427265a4303864c8a8dd59674c198"
+        },
+        {
+          "path": "docs/verification/psionic-ch31-fast-2026-10-29.md",
+          "sha256": "8fda5aedd8518018e139ff5775a5ef2e978364cccbdf6f843069246cfd6e238f"
+        },
+        {
+          "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
+          "sha256": "6ba7efa567e982f67669941b29d795feb4bdc271466ce95cb39cb9082b99d9e6"
+        },
+        {
+          "path": "docs/verification/psionic-gptoss-metal-2026-10-29.md",
+          "sha256": "53e5813e685fd3992a858859709ac122311be6bb471fa63635f128b581019e79"
+        },
+        {
+          "path": "docs/verification/psionic-responses-2026-10-29.md",
+          "sha256": "527ae4ba9aacd8dfcb62d453ba9f5bb5ee0a59228dbd8267be82e4cd62b534ef"
+        }
+      ]
+    },
+    {
+      "id": "psionic.gpu.current",
+      "document": "psionic/book/PLAN.md",
+      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open.",
+      "text_sha256": "3adf494fbf22fee9049debd3590cc40de0479329c315749a2b5261f4b9c20005",
+      "features": [],
+      "evidence": [
+        {
+          "path": "psionic/book/SUMMARY.md",
+          "sha256": "e4bc3e51b159e92cd4826264ff7c77b2fc217c87a6e69a63430c6de8db654d15"
+        },
+        {
+          "path": "psionic/book/examples.json",
+          "sha256": "70357048c11582b0b1bc1008cdc3d9ab0fb22c54be95f1efb91ee4a2c4615374"
+        },
+        {
+          "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
+          "sha256": "6ba7efa567e982f67669941b29d795feb4bdc271466ce95cb39cb9082b99d9e6"
+        },
+        {
+          "path": "docs/verification/psionic-gptoss-metal-2026-10-29.md",
+          "sha256": "53e5813e685fd3992a858859709ac122311be6bb471fa63635f128b581019e79"
+        },
+        {
+          "path": "docs/verification/psionic-responses-2026-10-29.md",
+          "sha256": "527ae4ba9aacd8dfcb62d453ba9f5bb5ee0a59228dbd8267be82e4cd62b534ef"
+        }
+      ]
+    },
+    {
+      "id": "psionic.language.current",
+      "document": "psionic/book/PLAN.md",
+      "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
+      "text_sha256": "8382c0c8424206352ac476d60d32e64f6e3ba53af9e4e761eb6a1a5856179e86",
+      "features": [
+        {
+          "id": "generics.type-parameters",
+          "sha256": "a9008e3a6c8de2985afb695d18577544eb03364e9a7edde63a588800ffa05150"
+        },
+        {
+          "id": "generics.instantiation",
+          "sha256": "d51df53405a2db73168d2ecc5c78c752db555a1b59c9450fe7e11e1c24723702"
+        },
+        {
+          "id": "generics.value-parameters",
+          "sha256": "f87bdd6b79d22e4de1779a1351274449591735d3e0ed25f5139086b9ce78813b"
+        },
+        {
+          "id": "target.cuda",
+          "sha256": "4dfaaece58e20cfbe0f11292020c21f5e3e313812c6c0d57288ef72efa3b28d9"
+        },
+        {
+          "id": "target.cuda-warp",
+          "sha256": "98fbccee45bea3712e175a24e8a3284f10d03347dd0782798f1b5d992f55059e"
+        },
+        {
+          "id": "target.linux",
+          "sha256": "230ec14f05176af9349b7d0fa643783fe653166fcaf27d5c18c5086826afb7f4"
+        },
+        {
+          "id": "target.browser",
+          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+        },
+        {
+          "id": "ownership.full",
+          "sha256": "9029f99e8263fe4b8156a0c837df4e9058c736f706c51875c10786341694eddd"
+        },
+        {
+          "id": "generics.structs",
+          "sha256": "8450f739c571c4dc949a0030df6189e6593369cd81aa38db534b32c90cfdb536"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "psionic/lib/tensor-ir.coax",
+          "sha256": "bf2f7ea9dfb87f09b09b473b157beffd9ef4c248faede798fd7b49cf922cc80b"
+        },
+        {
+          "path": "psionic/lib/tensor-template.coax",
+          "sha256": "8791b38f3327653bbe6b46f5e8aa48df98fb4cc3f910d66e48d05fd91b8ac0ec"
+        },
+        {
+          "path": "psionic/lib/operator-registry.coax",
+          "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733"
+        },
+        {
+          "path": "psionic/lib/autodiff.coax",
+          "sha256": "6bb09dd6be49ffac8bd8d09de8d164d0f06de7866781dc9dcf7ad28204b05df9"
+        }
+      ]
+    },
+    {
+      "id": "psionic.compute.current",
+      "document": "psionic/book/ch026-a-coax-compute-subset.md",
+      "scope": "Later group-kernel capability is distinct from this chapter's retained plain-item/warp performance measurement.",
+      "text_sha256": "ed8817097bedb561fbd9b85bff1454525d49fdfef965e68a55e98375d9e6b550",
+      "features": [
+        {
+          "id": "target.cuda",
+          "sha256": "4dfaaece58e20cfbe0f11292020c21f5e3e313812c6c0d57288ef72efa3b28d9"
+        },
+        {
+          "id": "target.cuda-warp",
+          "sha256": "98fbccee45bea3712e175a24e8a3284f10d03347dd0782798f1b5d992f55059e"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "psionic/tests/run_group_kernels.sh",
+          "sha256": "0e9c3134faaf90825430520794a3b73345af43d2e35540edc7304533504c93f0"
+        },
+        {
+          "path": "docs/verification/psionic-ch26-2026-10-29.md",
+          "sha256": "d6779e8af5d26cda676b489dd74578ff101fe12798a5be8ef6dd40644666d7e6"
+        }
+      ]
+    }
+  ]
+}

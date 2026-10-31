@@ -244,15 +244,15 @@ Floating-point code is compiled with contraction off, so the C compiler
 can't fuse a multiply and an add and change your results, the effect C++
 programmers usually get with `-ffp-contract=off` per file.
 
-## What isn't there yet
+## Current counterparts and remaining design
 
-Many C++ features have a planned Coax counterpart that `coax0` doesn't
-implement. This table is the map; the chapters named in it explain the
-design and mark its status.
+Some C++ features have a bounded working counterpart; others remain
+planned. This table keeps those statuses separate. The linked chapters
+explain each current limit and the remaining design.
 
 | C++ | Coax design | Status in `coax0` |
 | --- | --- | --- |
-| Templates | `$T` generics with named constraints; errors at the use site; instance counts reported (Chapter 8) | planned |
+| Templates | `$T` procedure and fixed-storage struct instances with `$N` lengths; view-containing struct bindings are refused (Chapter 8) | bounded instances work; constraints planned |
 | Classes, inheritance, `virtual` | Structs, `using` for composition, explicit function tables where needed; no hidden vtables | structs work; the rest planned |
 | Exceptions | Error values with `try` and `or_else`; traps for bugs (Chapter 7) | traps work; error values planned |
 | `std::vector<T>` | `[..] T` with an allocator from the context (Chapter 6) | planned |
@@ -260,7 +260,7 @@ design and mark its status.
 | `union` | A tagged `union` with an exhaustive `switch`; raw unions only in an explicit unsafe form (Chapter 5) | planned |
 | `enum class E : uint8_t` | `E :: enum u8 { ... }` | works |
 | Pointers | `*T`, and `*T?` for one that may be null | planned |
-| Preprocessor `#if` | `#if` on compile-time constants, with both branches parsed | planned |
+| Preprocessor `#if` | Parsed conditional fields/statements with `BUILD_DEBUG`; general conditions and top-level declaration selection follow | `BUILD_DEBUG` fields/statements work; general forms planned |
 | Per-file `-ffp-contract=off` and similar | `strict` on the procedure, so the rule travels with the code (Chapter 13) | contraction is always off; `strict` planned |
 | CMake | `build.coax`, generating CMake and Xcode lists before replacing them (Chapter 16) | planned |
 

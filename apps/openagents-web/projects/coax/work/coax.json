@@ -244,7 +244,7 @@
         "testing",
         "usage-audit"
       ],
-      "body": "An optional native check executable runs pinned inputs through the evaluator and the emitted unoptimized and optimized procedures and compares values, traps and buffer writes.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nCurrent differential probes cover a generated bounded grammar. They do not execute arbitrary eligible authored checks from the actual product files on emitted native code.\n\nImplement the optional runner described above and use it on a documented eligible subset of real Verse and Psionic checks. Compare evaluator, checked native `-O0` and checked native `-O2` results, including returned values, specified traps, caller-buffer writes and cleanup. Report unsupported/unexecuted checks explicitly and keep shipping test code separate from product artifacts.\n\n## Usage audit remaining scope\n\nThis issue includes both the core optional native-check runner and its real consumer qualification. The existing small differential grammar does not establish this broader support or general compiler correctness; GPU execution remains separate. Additional eligible syntax needs its own explicit evidence.",
+      "body": "An optional native check executable runs pinned inputs through the evaluator and the emitted unoptimized and optimized procedures and compares values, traps and buffer writes.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nCurrent differential probes cover a generated bounded grammar. They do not execute arbitrary eligible authored checks from the actual product files on emitted native code.\n\nImplement the optional runner described above and use it on a documented eligible subset of real Verse and Psionic checks. Compare evaluator, checked native `-O0` and checked native `-O2` results, including returned values, specified traps, caller-buffer writes and cleanup. Report unsupported/unexecuted checks explicitly and keep shipping test code separate from product artifacts.\n\n## Usage audit remaining scope\n\nThis issue includes both the core optional native-check runner and its real consumer qualification. The existing small differential grammar does not establish this broader support or general compiler correctness; GPU execution remains separate. Additional eligible syntax needs its own explicit evidence.\n\n## 2026-10-31 audit ordering\n\nThis is workstream 2, after current-book repair. Use the already-shipped native-lp64 target facts, semantic-profile selection and versioned evidence record for the initial runner. The broader cross-backend artifact manifest is workstream 6 and is not a technical prerequisite for this native executor. Preserve all evaluator/native comparison, unsupported-case, cleanup, authority-coverage and seeded-defect acceptance above. Split implementation into acceptance-complete children before starting any slice that cannot finish and push within two hours.",
       "files": [
         "coax/tests/native_checks.py",
         "coax/verification-differential.md",
@@ -260,8 +260,7 @@
         "The record names eligible, rejected and unselected checks instead of treating omitted work as covered."
       ],
       "blocked_by": [
-        "r0-semantic-profiles",
-        "r8-backend-profile-manifest"
+        "r0-semantic-profiles"
       ],
       "blocks": [
         "r8-cross-backend-conformance"
@@ -358,7 +357,7 @@
         "tooling",
         "usage-audit"
       ],
-      "body": "coax fmt and evidence reporting using today's compiler APIs; typed queries and revision-bound fixes follow R1a.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nAgents copy inconsistent syntax layout and spend review effort on mechanical changes. A canonical formatter is still missing despite machine-readable diagnostics and a shared checked frontend.\n\nImplement the concrete formatter portion of existing `r7a-format-evidence` using current syntax/source APIs. Preserve comments, literal bytes, directives, physical-file boundaries and authored source ranges; provide check mode and revision-safe writes. Exercise Verse, Psionic and compiler graphs without automatically rewriting unrelated repository files.\n\n## Usage audit remaining scope\n\nThis is a concrete slice of `r7a-format-evidence`; evidence tools, typed queries and compiler-service/LSP operation remain separate. Do not close the existing umbrella solely because formatter idempotence passes. Split the implementation if needed to respect the owner's task limit.",
+      "body": "coax fmt and evidence reporting using today's compiler APIs; typed queries and revision-bound fixes follow R1a.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nAgents copy inconsistent syntax layout and spend review effort on mechanical changes. A canonical formatter is still missing despite machine-readable diagnostics and a shared checked frontend.\n\nImplement the concrete formatter portion of existing `r7a-format-evidence` using current syntax/source APIs. Preserve comments, literal bytes, directives, physical-file boundaries and authored source ranges; provide check mode and revision-safe writes. Exercise Verse, Psionic and compiler graphs without automatically rewriting unrelated repository files.\n\n## Usage audit remaining scope\n\nThis is a concrete slice of `r7a-format-evidence`; evidence tools, typed queries and compiler-service/LSP operation remain separate. Do not close the existing umbrella solely because formatter idempotence passes. Split the implementation if needed to respect the owner's task limit.\n\n## 2026-10-31 audit ordering\n\nThis is workstream 8. Canonical formatting uses the existing lexer/parser/source APIs and evidence records; direct WGSL generation is not a technical prerequisite. Deliver lossless token/comment handling, canonical printing, revision-safe writes/check mode and representative cross-domain validation as bounded slices where needed. Preserve the original umbrella acceptance and leave unsupported syntax and evidence-query work explicit. No blanket repository rewrite is authorized by this implementation issue.",
       "files": [
         "coax/tests/format.py",
         "coax/book/ch19-agents.md"
@@ -371,8 +370,7 @@
         "No unrelated product source formatting is included in the implementation commit."
       ],
       "blocked_by": [
-        "r0-evidence-record",
-        "r8-direct-wgsl-layouts"
+        "r0-evidence-record"
       ],
       "blocks": [
         "r7a-symbol-dependency-evidence"
@@ -403,7 +401,7 @@
         "language",
         "usage-audit"
       ],
-      "body": "Typed results and optionals, exhaustive switch, propagation and exhaustive cleanup, with one real asynchronous adapter.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nReceiving an error/value struct does not force the caller to inspect its error. Real clients separately track status, body, problem, completion and retained buffers, allowing invalid combinations.\n\nDeliver a concrete consumer of umbrella `r2a-results`: tagged success/refusal/cancellation/unknown outcomes, exhaustive switching and cleanup on every exit. Specify inactive-payload access and propagation semantics before implementation. Migrate one existing asynchronous System One, gateway or voice request adapter and preserve its remote idempotency/reconciliation rules.\n\n## Usage audit remaining scope\n\nThe existing `r2a-results` issue remains the language umbrella. A single consumer or tagged struct is not completion of optionals, exhaustive switching, propagation and cleanup. Split this work into linked tasks when necessary; retain missing language forms as open work rather than closing the umbrella.",
+      "body": "Typed results and optionals, exhaustive switch, propagation and exhaustive cleanup, with one real asynchronous adapter.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nReceiving an error/value struct does not force the caller to inspect its error. Real clients separately track status, body, problem, completion and retained buffers, allowing invalid combinations.\n\nDeliver a concrete consumer of umbrella `r2a-results`: tagged success/refusal/cancellation/unknown outcomes, exhaustive switching and cleanup on every exit. Specify inactive-payload access and propagation semantics before implementation. Migrate one existing asynchronous System One, gateway or voice request adapter and preserve its remote idempotency/reconciliation rules.\n\n## Usage audit remaining scope\n\nThe existing `r2a-results` issue remains the language umbrella. A single consumer or tagged struct is not completion of optionals, exhaustive switching, propagation and cleanup. Split this work into linked tasks when necessary; retain missing language forms as open work rather than closing the umbrella.\n\n## Current cross-book consumer evidence\n\nWorkstream 5 of the 2026-10-31 audit follows bounded generic foundations. Use the tensor-view alias-status hazard and one protocol adapter as consumer gates: inactive error payloads must not be interpreted as successes, and cleanup remains ordered. Preserve all original language forms and asynchronous consumer acceptance.",
       "files": [
         "coax/spec.md",
         "coax/grammar.ebnf",
@@ -439,9 +437,12 @@
         "r4",
         "language"
       ],
-      "body": "Generic copyable values and non-owning operations over fixed storage.\n\nRoadmap: coax/ROADMAP.md.",
+      "body": "Generic copyable values and non-owning operations over fixed storage.\n\nRoadmap: coax/ROADMAP.md.\n\n## 2026-10-31 cross-project audit: bounded library workstream\n\nWorkstream 4 completes the existing value-parameter/generic-value, constraint and real-consumer children, then supplies a small common bounded-storage library where existing copies justify it. Preserve ongoing claims and the original acceptance of those children; the shipped generic procedures and fixed-storage generic structs do not complete constraints or the real-consumer gate. Prefer caller-owned fixed storage, explicit capacity/refusal and unchanged atomic-publication rules. Qualify one bounded algorithm/storage operation in at least two of Verse, Psionic and protocol/web code, retaining output, generated size, memory and iteration-cost evidence. Do not close this umbrella from a generic syntax probe alone.\n\nUpstream main now ships the bounded generic-struct slice in Coax0.37.0 (6132cbaf0a). Preserve that delivered work and its existing claim/status; the remaining work here is constraints and measured common-library adoption, not reimplementation of generic structs.",
       "files": [],
-      "acceptance": [],
+      "acceptance": [
+        "The existing type-parameter, instantiation, value-parameter/generic-value, constraint and real-consumer children retain their full acceptance and are complete before this umbrella closes.",
+        "A small shared bounded-storage API is used by representative consumers from at least two project domains, with exact capacity/refusal cases, caller-owned lifetime contracts and retained before/after cost evidence."
+      ],
       "blocked_by": [
         "r1a-identities"
       ],

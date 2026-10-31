@@ -4,9 +4,10 @@ The earlier chapters taught Coax with small programs, and Chapter 26 put
 several features together in one boundary. In this chapter we'll look at
 something bigger: the voice system OpenAgents uses to let people, NPCs and
 agents talk to each other. It's a real system, not a teaching toy. It runs
-on a Mac today, its phone client passes in the iOS simulator, and its decisions about
-who may be heard and what speech costs are held to the same rules as the
-wallet.
+on a Mac, and selected phone-client cases have retained offline and live
+iOS Simulator passes. Its decisions about who may be heard and what
+speech costs are held to the same checking rules as the wallet. Those
+Simulator results are not physical-phone qualification.
 
 We won't read it top to bottom. Instead we'll build it up in the order a
 team would: the protocol first, then one 20 ms frame of audio, then turns,
@@ -21,13 +22,11 @@ in one place: `#import_proto`, fixed arrays and views, `#run`, `#test` and
 `#forall`, `#authority` with `coax mutate`, `#export_c` libraries, and C and
 Swift hosts that stay thin because Coax decides.
 
-> Note: everything shown here was run with `coax0` 0.10.0 on an Apple
-> silicon Mac. The Coax engine, the C face, the voice host and its tests
-> exist and pass. The iOS client in `apps/openagents-ios/OpenAgents/Voice/`
-> is still being finished, and nothing is deployed to a server yet. Where
-> something isn't built, this chapter says so. The system was changing
-> while the chapter was written (on 2026-10-28), so the transcripts and
-> step counts here are a snapshot; rerun the commands to see today's.
+> Note: the original command transcripts, step counts and Mac
+> measurements were captured with `coax0` 0.10.0 on 2026-10-28. Later
+> retained iOS results are identified below. These are historical results,
+> not a fresh run against every current source or device. Current
+> commands and source remain available for a scoped rerun.
 
 ## The problem
 
@@ -1680,17 +1679,17 @@ A launch argument, `-OAVoiceFixture`, streams a bundled recording into
 the same ring the microphone writes, so the simulator test exercises the
 real uplink path without a microphone.
 
-> Note: where the phone stands, as of this writing. The simulator test
-> (`apps/openagents-ios/tools/voice-sim-test.sh`) passes offline and live:
-> the fixture is heard as "Hello foreman, what are we building today?" and
-> the Foreman answers aloud. A second test plays "Wait, stop." over the reply:
-> the phone cuts playback, applies the engine's frame decisions, and the new
-> turn is heard and answered. `INVARIANTS.md` changed with the app code to
-> allow the microphone through the voice toggle. Nothing has been run on a
-> physical iPhone, and a phone has no default voice host yet (the simulator
-> uses the Mac's `127.0.0.1:8787`). One more honest detail: the engine runs
-> on the serial worker queue, fed by a timer, not inside the real-time audio
-> callback.
+> Note: the [voice status note](https://github.com/OpenAgentsInc/openagents/blob/main/docs/voice/coax-native-voice.md)
+> and retained [barge-in result](https://github.com/OpenAgentsInc/openagents/commit/650c326bf22713553b41640f250baeaba86b0389)
+> report offline and live Simulator passes. The fixture is heard and
+> answered; a second recording cuts playback and starts an answered turn.
+> The [iOS 1055 result](https://github.com/OpenAgentsInc/openagents/commit/31f990fa2572bc26a2cc20a16619d0532a797678)
+> additionally reports playback pacing tests with simulated 0.25 s output
+> latency, offline and live with echo and Gemini. These historical runs do
+> not qualify a physical iPhone. The dedicated test script defaults to the
+> Mac's `127.0.0.1:8797`; the ordinary local dev host defaults to port
+> `8787`. The engine runs on a serial worker queue fed by a timer, not
+> inside the real-time audio callback.
 
 ## Testing at every layer
 
@@ -1877,15 +1876,17 @@ design asks for a harness that records each step on real phones.
 ### The app in the simulator
 
 The last layer is `apps/openagents-ios/tools/voice-sim-test.sh`. It builds
-the app, starts the voice host offline (and then live, with credentials),
-boots a dedicated simulator and runs `Tests/VoiceUITests.swift`. The test
-taps Start, checks the voice toggle sits at the top left of the Grid,
-turns voice on, accepts the notice that says Google processes speech, and
-then waits for the phases "hearing", a final transcript, and the echo
-agent's reply, finally checking that the level indicator moved. It drives
-the real uplink path through `-OAVoiceFixture`. As the note above says, we
-didn't run it for this chapter, because the phone work is still in
-progress.
+the app, starts a local offline host and, when credentials are available,
+live Google/echo and Google/Gemini cases. It boots a dedicated Simulator
+and runs `Tests/VoiceUITests.swift`: the Grid toggle, consent, transcript,
+reply and level indicator, followed by talking over the reply. Playback
+checks also cover first-audio delay, duration, gaps and caption loss.
+`-OAVoiceFixture` feeds the actual uplink path without proving a physical
+microphone or phone audio route.
+
+This path has the retained Simulator passes identified above. No new
+Simulator run is claimed by this prose update; keep the result bundle and
+host logs for the exact source/configuration when running it again.
 
 ## What production needs next
 
@@ -1922,17 +1923,20 @@ should hear it. "Who hears whom" is meant to be a Coax decision in a
 `voice-space.coax` grown from Verse's haunt audio; neither the
 forwarder nor that file exists yet.
 
-Deployment. The plan is one small CPU VM in us-central1, behind the
-existing load balancer, since no speech model runs on our machines. It
-isn't deployed. Several host features are development-only as well:
-`Hello.token` isn't checked yet, and the meter lives in memory, so
-restarting the host resets everyone's usage.
+Deployment. The original local runs did not qualify a production service.
+The repository now includes `verse/voice-host/deploy.sh`, which builds a
+container, deploys Cloud Run and runs browser-engine voice smoke cases.
+That script and the local results are separate from retained evidence for
+a particular deployment. Authentication, durable metering and operational
+limits must be checked for the deployed configuration.
 
-Cost. The design's capacity estimate, from Google's list prices, is about
+Cost. The original design's historical capacity estimate was about
 $61 an hour for 100 people talking to agents at once (about $29 of
 recognition and $32 of synthesis), or roughly $0.60 per person-hour. The
 machines are small by comparison, around $200 a month for an active and a
-standby VM. Those numbers are why `voice-meter.coax` is a launch
+standby VM under that proposed VM setup. These are not current provider
+quotes or measured Cloud Run bills. Those assumptions are why
+`voice-meter.coax` is a launch
 requirement rather than a nicety, and why turn-scoped recognition matters:
 the estimate assumes people speak about 30% of the time and that
 recognition runs only during turns. They're estimates; the design says to

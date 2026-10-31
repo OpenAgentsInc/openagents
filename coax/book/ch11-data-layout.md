@@ -383,8 +383,9 @@ switching a layout is a decision backed by a profile.
 
 ## Four layouts, kept apart
 
-> Note: per-target layouts are design (spec section 4.3). `coax0` has one
-> target, the host its C is compiled for.
+> Note: the named layout-report target is currently `native-lp64` (spec
+> section 4.3). Other target queries refuse; application builds for Wasm
+> or a GPU do not add qualified layout-query targets.
 
 One logical struct can have four physical forms, and each is a separate
 question:
@@ -396,10 +397,10 @@ question:
 4. The protocol encoding, when it's saved or sent (Chapter 15).
 
 The rule is that the compiler never answers a layout question with its
-own machine's `sizeof`; every layout question names a target. Today
-there's only one target, so `size_of` and `coax layout` answer for the
-host, and the generated header checks that answer against the C
-compiler. When one declaration has to serve several of these forms, it
+own machine's `sizeof`; every qualified layout report names its target.
+Today `size_of` retains its schema-1 LP64 CPU meaning, and `coax layout`
+reports the supported `native-lp64` description. Generated headers check
+that layout against the actual C compiler. When one declaration has to serve several of these forms, it
 either fits one explicit restricted layout that's valid for all of them,
 or the compiler generates checked adapters between them. There's no
 universal padding assumption.

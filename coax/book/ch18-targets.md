@@ -220,11 +220,11 @@ disagrees.
 
 That's the assertions doing their job, and it also shows their limit. They
 can tell you that the host's layout differs from Coax's. They can't make
-Coax compute the target's layout. That needs Coax to know the target it's
-compiling for, which is the planned `size_of` and layout reporting with an
-explicit target description (spec §10.2). Until then, the generated
-layout is the 64-bit Apple one, and a header that compiles cleanly is how
-you know a target agrees with it.
+Coax compute every target's layout. The compiler now reports an explicit
+`native-lp64` target description (spec §10.2), while other target queries
+refuse with E0612. Schema-1 `size_of` still describes the LP64 CPU layout.
+A clean header check is evidence that the particular C compiler agrees
+with those declarations, not general target qualification.
 
 ## The browser, proved separately
 
@@ -247,10 +247,11 @@ there's no standard error for `coax_trap` to write to, and `print` has to
 become a call into JavaScript. A browser target needs its own small
 runtime, with traps, printing and memory provided as explicit host
 imports. Coaxial's new `coax/web/wasm.sh` supplies upstream LLVM, a WASI
-sysroot and an application-specific C face; `host.js` supplies memory and
-WebGPU for the splash. That narrow path does not make this bare invocation
-work or establish the full Grid, cast, target-aware layouts and browser
-source debugging. Its current scope is recorded in `coax/web.md`.
+sysroot and application-specific C faces; `host.js` supplies memory and
+WebGPU for the current site and Verse consumers. That application path
+does not make this bare invocation work or establish general target-aware
+layouts and browser source debugging. Its current scope and consumer
+evidence are recorded in `coax/web.md`.
 
 And getting a `.wasm` file to link is the beginning, not the proof. A
 browser target has to show each of these working in a real browser:

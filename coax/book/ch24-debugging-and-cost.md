@@ -47,7 +47,9 @@ The optional helper presents authored names and Coax type labels. Ordinary
 `bt` and `frame variable` remain useful, showing the native C names/types.
 
 `--source-map` writes schema-1 names, locations and SHA-256 source hashes and
-implies `--debug-info`. The helper refuses files changed since compilation.
+implies `--debug-info`. The helper refuses its authored-name mapping when
+a recorded source file has changed. That source-hash check does not bind an
+arbitrary executable, object, SDK or descriptor to the map.
 Default debug `build`, `lib` and `run` commands enable original-file line
 mapping. Plain `coax c` opts in explicitly, preserving reproducible bootstrap
 C without absolute paths. Custom native builds also need `-g` when compiling
@@ -63,12 +65,15 @@ maps, objects and executable/dSYM together; Darwin's debug map needs the
 object file retained by the driver. Maps contain absolute checkout paths.
 Do not edit generated C as a fix: it will be generated again.
 
-The regression suite uses real Mac LLDB sessions, including stepping after a
-statement lowered to several C statements. It also checks escaped paths,
-source-hash refusal, duplicate private names in separate libraries, native
-compiler diagnostics and sanitizer stacks. The running iOS Simulator app was
-attached at `verse_cast_pose` in `cast.coax` with a stack through Swift.
-That does not establish every device/target debugging workflow.
+The [retained 2026-10-28 debugging record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-r0-2026-10-28.md)
+reports nine real Mac LLDB regression cases, including stepping after one
+Coax statement lowered to several C statements. Its scope includes escaped
+paths, stale-source refusal, separate-library private names, native compiler
+diagnostics and sanitizer stacks. It also records a live iOS Simulator
+attachment at `verse_cast_pose` in `cast.coax`, with a stack through Swift.
+Those are results for the recorded sources/toolchain. They do not establish
+GPU source debugging, physical-device crash symbolication or every current
+compiler/target workflow.
 
 A Coax trap, an AddressSanitizer report and a compiler diagnostic describe
 different failures. A bounds trap is a runtime violation of a checked
@@ -218,10 +223,18 @@ still pass. This preserves the numeric contract, not signed-zero bit identity.
 The default harness records any missed median gate; `--enforce-budget` makes
 it fail. These are named-Mac results, not universal speed guarantees. A large
 debug outlier remains in the raw report, and the caches increase bounded stack
-use. Inspect tails and memory as well as medians. R0 remains open for
-physical-device/tail budgets, full-loop evidence, status generation and
-independent reference/gate review. The benchmark README and `docs/verification/`
-retain both the original miss and the follow-up, including their actual inputs.
+use. Inspect tails and memory as well as medians. The benchmark README
+and `docs/verification/` retain both the original miss and follow-up with
+their actual inputs.
+
+Later records add [Simulator tail analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-r0-tail-budget-2026-10-31.md)
+and [clean/warm development-loop attribution](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-r0-loop-attribution-2026-10-31.md).
+The tail record is explicitly `simulator-only`, with no physical-device
+verdict; the loop record names its Mac, Coax 0.33.0 source and measured
+build/install/launch scopes. Release/status generation also ships. These
+deliveries do not close R0's physical-device, approved-tail-budget and
+independent reference/gate review requirements or turn the older median
+ratios above into current universal measurements.
 
 ## Timing evidence for secret paths
 

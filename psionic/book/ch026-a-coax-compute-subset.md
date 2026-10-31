@@ -223,9 +223,18 @@ and runs at 11 to 13 TFLOP/s, about twice the work-item kernel.
 
 ## Limits
 
-The subset has no shared memory, barriers or atomics yet, so warps do not
-share tiles; the tensor-core projection reaches about a quarter of cuBLAS's
-BF16 rate. The tested host
-is one NixOS machine with one driver; that is evidence for this machine, not a
-qualified Linux target. [Chapter 30](ch030-elephant-on-cuda.md) uses these
+<!-- capability-claim: psionic.compute.current -->
+The measured work-item and warp kernels in this chapter do not share tiles;
+the reported tensor-core projection reaches about a quarter of cuBLAS's BF16
+rate for that profile. Coax now also has
+[group kernels](../../coax/README.md) with owned shared-memory writes and
+barriers, plus selected Metal matrix primitives. This older measurement is not
+a ceiling on those later kernels. General atomics remain outside the admitted
+compute subset.
+
+The tested host for this chapter is one NixOS machine with one driver. Its
+record qualifies that workload on that machine, not every Linux target.
+<!-- /capability-claim -->
+
+[Chapter 30](ch030-elephant-on-cuda.md) uses these
 kernels, and more like them, for the whole Elephant decision.
