@@ -186,7 +186,15 @@ fn stand(c: vec3f, local: vec2f, sc: vec2f, t: f32) -> vec3f {
   let flash = select(clamp(abs(v) - 1.0, 0.0, 1.0), 0.0, ghost);
   let feet = vec2f(sc.x + 0.5, sc.y + 0.74);
   let q = vec2f(local.x - feet.x, (feet.y - local.y) * u.map.w) * 0.74;
-  let pen = figure(q, k - 10, face, flash, 1.3 / t, f32(i) * 0.37);
+  var pen = figure(q, k - 10, face, flash, 1.3 / t, f32(i) * 0.37);
+  // level 3: the ground under it glows its class's colour
+  let level = i32(fract(cell_raw(i)) * 100.0 + 0.5);
+  if (level >= 3 && !ghost) {
+    let cls = k - 10;
+    let lc = select(select(vec3f(1.0, 0.86, 0.45), vec3f(0.62, 0.5, 1.0), cls == 1), vec3f(0.6, 0.75, 1.0), cls == 0);
+    let g = length(q * vec2f(1.0, 2.6));
+    pen.glow += lc * (1.0 - smoothstep(0.12, 0.3, g)) * smoothstep(0.08, 0.2, g) * (0.35 + 0.15 * sin(u.time * 3.0));
+  }
   // the ghost of one about to go down: see-through, breathing
   let a = select(pen.a, pen.a * (0.45 + 0.15 * sin(u.time * 5.0)), ghost);
   return mix(c, pen.c, a) + pen.glow * select(1.0, 0.5, ghost);
