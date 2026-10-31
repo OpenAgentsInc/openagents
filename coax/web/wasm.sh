@@ -38,7 +38,6 @@ trap 'rm -rf "$work"' EXIT
 # COAXIAL_RUN_STEPS: a larger compile-time budget (coax --run-steps) for libraries whose
 # tables are computed at compile time (secp256k1 signing, for /login's words account).
 run_steps=(); [[ -n "${COAXIAL_RUN_STEPS:-}" ]] && run_steps=(--run-steps "$COAXIAL_RUN_STEPS")
-(cd "$repo" && "$coax_driver" c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$name.c"
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
 # links without the optimizer pass, for the fastest edit-to-screen loop;
@@ -48,16 +47,28 @@ opt=-O2; [[ "$mode" == dev ]] && opt=-O1
 cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 "$opt"
         -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable
         -Wno-unused-but-set-variable -I"$work")
+# Every unit's C first (in parallel), so defaults.py can see them all.
+units=("$coax_file:$name"); gen=()
+for library in ${libraries[@]+"${libraries[@]}"}; do
+  base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
+  units+=("$library:$base")
+done
+for unit in "${units[@]}"; do
+  (cd "$repo" && "$coax_driver" c "${unit%%:*}" --library --header "$work/${unit##*:}.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/${unit##*:}.c" & gen+=($!)
+done
+for pid in "${gen[@]}"; do wait "$pid"; done
+# Struct defaults, as native applies them: the face is built through a
+# wrapper that defaults its coax globals and exports coaxial_state_init.
+python3 "$repo/coax/web/defaults.py" "$face" "$work/$name.face.c" $(for unit in "${units[@]}"; do printf '%s ' "$work/${unit##*:}.c"; done)
 "$clang" "${cflags[@]}" -c "$work/$name.c" -o "$work/$name.o" & coax_pid=$!
 objects=("$work/$name.o" "$work/$name.face.o")
 pids=()
-for library in ${libraries[@]+"${libraries[@]}"}; do
-  base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-  (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c"
+for unit in "${units[@]:1}"; do
+  base="${unit##*:}"
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o" & pids+=($!)
   objects+=("$work/$base.o")
 done
-"$clang" "${cflags[@]}" -c "$face" -o "$work/$name.face.o"
+"$clang" "${cflags[@]}" -I"$(dirname "$face")" -c "$work/$name.face.c" -o "$work/$name.face.o"
 wait "$coax_pid"
 for pid in ${pids[@]+"${pids[@]}"}; do wait "$pid"; done
 link_opt=(); [[ "$mode" == dev ]] || link_opt=("$opt")

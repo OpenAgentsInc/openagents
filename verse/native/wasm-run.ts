@@ -50,6 +50,7 @@ const stateCap = align(Math.max(x.coaxial_state_size(), 1024), 16);
 const total = base + stateCap + maxVertices * floats * 4 + uniformFloats * 4 + 64;
 if (total > memory.buffer.byteLength) memory.grow(Math.ceil((total - memory.buffer.byteLength) / 65536));
 const state = base, vertices = base + stateCap, uniforms = vertices + maxVertices * floats * 4;
+x.coaxial_state_init?.(state); // struct defaults, as the browser host applies them
 if (opt.golden) x.coaxial_golden?.(1);
 
 const bytesAt = (p: number, n: number) => new Uint8Array(memory.buffer, p, n);

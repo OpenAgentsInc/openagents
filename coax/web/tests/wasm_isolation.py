@@ -17,6 +17,7 @@ class WasmIsolation(unittest.TestCase):
             (repo / 'coax/web').mkdir(parents=True); (repo / 'coax/bin').mkdir()
             shutil.copy2(SCRIPT, repo / 'coax/web/wasm.sh')
             shutil.copy2(SCRIPT.parent / 'toolchain.sh', repo / 'coax/web/toolchain.sh')
+            shutil.copy2(SCRIPT.parent / 'defaults.py', repo / 'coax/web/defaults.py')
             compiler = repo / 'coax/bin/coax'
             compiler.write_text('''#!/usr/bin/env python3
 import os, pathlib, sys

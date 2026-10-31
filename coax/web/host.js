@@ -9,6 +9,7 @@
 // `/APP.wgsl`. The wasm exports a scalar C face:
 //   coaxial_layout()          state layout fingerprint
 //   coaxial_state_size()      bytes of state the host keeps
+//   coaxial_state_init(state) optional: a fresh state's struct defaults (wasm.sh writes it)
 //   coaxial_max_vertices(), coaxial_vertex_floats(), coaxial_uniform_floats()
 //   coaxial_frame(state, vertices, uniforms, width, height, dpr, dt, still)
 //                             -> vertex count
@@ -305,6 +306,7 @@ async function loadEngine(bytes, generation) {
   }
   if (arena.layout !== layout) {
     new Uint8Array(memory.buffer, arena.state, arena.stateCap).fill(0); // the state's shape changed: start it over
+    x.coaxial_state_init?.(arena.state); // its struct defaults, as native (coax/web/defaults.py)
     if (engine) say(`state layout changed: ${app} starts over`);
     arena.layout = layout;
   }
