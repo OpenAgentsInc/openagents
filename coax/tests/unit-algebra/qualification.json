@@ -1,0 +1,115 @@
+{
+  "schema": "coax-unit-algebra-qualification-v1",
+  "seed": 6143275235698430529,
+  "profile": "exact signed int64 metadata, inputs <=2^20 scales, intermediates <=2^40; Python arbitrary-precision Fraction oracle",
+  "scope": "separate producer; no compiler/type-interner integration or complete R12",
+  "rows": 114192,
+  "operation_counts": {
+    "normalize": 3354,
+    "product": 36911,
+    "quotient": 36938,
+    "ratio": 36989
+  },
+  "expected_status_counts": {
+    "ok": 103359,
+    "dimension": 8706,
+    "metadata": 200,
+    "scale": 1927
+  },
+  "input_sha256": "2919858e0434078e4763bb24e0714b162b926a05ec8823ec16bff548743cec24",
+  "expected_sha256": "bd1d97b2537563ed5052978c37244928e92c4f3b04d7b0e4c6c56a9dd0ba0eee",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "compiler_sha256": "08776e5c5d6f00fa2289531f7c566ebc06d76d7a0c9c704b7e01e4dff2723df8",
+  "compiler_version": "coax0 0.39.0",
+  "c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "source_sha256": {
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/tests/unit-algebra-native.c": "a13aae236985b768961499edca73c474c90542cb9a514f9e31adc767171bdd86",
+    "coax/tests/unit_algebra.py": "823f7b8d392279d2da60eec71c59ac695000a00ab2c4e7692c0480531ba4210c",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "generated_c_sha256": "df32778e35aa03c422d88cdfbff09291dfc44f65dc5baa5440c0244fb278baf2",
+  "generated_header_sha256": "7f2b2ef715288d3bfd03375ff3f116703ba65ab4035b73608fa21a34d2f86628",
+  "modes": [
+    {
+      "mode": "debug",
+      "passed": true,
+      "exact_results": 114192,
+      "exact_words": 799344,
+      "output_sha256": "bd1d97b2537563ed5052978c37244928e92c4f3b04d7b0e4c6c56a9dd0ba0eee"
+    },
+    {
+      "mode": "release",
+      "passed": true,
+      "exact_results": 114192,
+      "exact_words": 799344,
+      "output_sha256": "bd1d97b2537563ed5052978c37244928e92c4f3b04d7b0e4c6c56a9dd0ba0eee"
+    },
+    {
+      "mode": "sanitized",
+      "passed": true,
+      "exact_results": 114192,
+      "exact_words": 799344,
+      "output_sha256": "bd1d97b2537563ed5052978c37244928e92c4f3b04d7b0e4c6c56a9dd0ba0eee",
+      "sanitizer_flags": [
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer"
+      ],
+      "stderr_bytes": 0,
+      "followup_receipt_sha256": "ef9fdff872c4a6d55016b487fa17c3510ce6b952598936267435a7ed5667d053"
+    }
+  ],
+  "passed": true,
+  "authored_coax_checks": 9,
+  "authored_coax_cases": 1344,
+  "loaded_unchanged_policy_checks": 6,
+  "changed_root_mutation": {
+    "mutants": 69,
+    "killed": 69,
+    "survived": 0,
+    "log_sha256": "74b55d28ccabb50386e72c182c6c87b0f66017c63b356689ac74a6fae058760f"
+  },
+  "checks_log_sha256": "30ccd1e3b20c45cf09ab9cf69a5732fabb234d013f1f8aac096681d0212f1152",
+  "initial_mutation_attempt": {
+    "mutants": 69,
+    "killed": 66,
+    "survived": 3,
+    "resolution": "Added exact final numerator/denominator 2^20+1 refusal and denominator2^20 success observations; no equivalent waivers."
+  },
+  "runtime_dependencies": "Coax-generated C and the C host runtime only; Python fractions and the C transport harness are development tooling.",
+  "not_qualified": [
+    "source compiler integration",
+    "derived-type interning and nominal identity rules",
+    "Quantity products/quotients and affine frames",
+    "device ABI",
+    "complete R12",
+    "compiler bounded proof",
+    "whole compiler correctness",
+    "cross-architecture behavior"
+  ],
+  "earlier_proof_reuse": {
+    "cached_original_receipt_sha256": "f15cf0b0d1bde30e7015351800ae5ffa36bbb02c9f0fe090a26c34cdec09b853",
+    "previous_script_sha256": "e15ec793c8d9a77279870fa1579e8a4426a21348050c0ad5d0b6d083e21ac115",
+    "unchanged_oracle_ast_sha256": {
+      "valid": "7561b2511274e4f708934d30a824d9f8dd478472fbf11c0da2a7b298335c48e2",
+      "expected": "8e45c6c3c6f370a6050cf9657abf52fc41df930f37014a51da1a2008f3d7bfce",
+      "cases": "62b76de74d885584cb260c6b6f13d961dc20f8a1b4922f46b63398556f97555c"
+    },
+    "original_sanitized_stderr_bytes": 0,
+    "reused": [
+      "debug",
+      "release",
+      "Fraction expected results",
+      "Coax checks",
+      "changed-root mutation"
+    ],
+    "rerun": [
+      "sanitized compile",
+      "sanitized execution"
+    ]
+  }
+}

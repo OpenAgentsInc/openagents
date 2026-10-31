@@ -1,0 +1,90 @@
+// First quantity operator policy: matching units and binary scale conversion.
+// All decisions are compile-time facts; this module carries no runtime tags.
+#authority;
+
+Q_Unit :: struct {mass:int;length:int;time:int;angle:int;numerator:int;denominator:int;}
+Q_Status :: enum u8 {ok;metadata;dimension;scale;operation;unit;representation;}
+Q_Conversion :: struct {status:Q_Status;exponent:int;}
+Q_Op :: enum u8 {add;sub;mul;div;eq;ne;lt;le;gt;ge;}
+Q_Operation :: struct {status:Q_Status;result_quantity:bool;}
+
+#forall "quantity dimensions admit both declared boundaries and refuse one beyond" axis:0..<4, value:-8..<9 {
+  u:=Q_Unit.{numerator=1,denominator=1};
+  if axis==0 {u.mass=value;}if axis==1 {u.length=value;}if axis==2 {u.time=value;}if axis==3 {u.angle=value;}
+  #assert Q_unit_valid(u);
+  for bad:[4]int.[-9,9,-9223372036854775808,9223372036854775807] {
+    if axis==0 {u.mass=bad;}if axis==1 {u.length=bad;}if axis==2 {u.time=bad;}if axis==3 {u.angle=bad;}
+    #assert !Q_unit_valid(u);
+  }
+}
+#test "quantity scales require positive bounded numerators and denominators" {
+  for n:[2]int.[1,1048576] {for d:[2]int.[1,1048576] {#assert Q_unit_valid(Q_Unit.{numerator=n,denominator=d});}}
+  for bad:[5]int.[0,-1,1048577,-9223372036854775808,9223372036854775807] {
+    #assert !Q_unit_valid(Q_Unit.{numerator=bad,denominator=1});
+    #assert !Q_unit_valid(Q_Unit.{numerator=1,denominator=bad});
+  }
+}
+#forall "binary conversion ratios retain signed exponents through plus and minus forty" a:0..<21,b:0..<21 {
+  source:=Q_Unit.{length=1,numerator=1<<a,denominator=1};target:=Q_Unit.{length=1,numerator=1,denominator=1<<b};
+  forward:=Q_conversion(source,target);back:=Q_conversion(target,source);
+  #assert forward.status==Q_Status.ok && forward.exponent==a+b;
+  #assert back.status==Q_Status.ok && back.exponent== -(a+b);
+}
+#test "conversion cancels common odd factors but refuses nonbinary ratios" {
+  a:=Q_Unit.{mass=1,length=-2,time=3,angle=1,numerator=1,denominator=3};b:=a;b.denominator=6;
+  r:=Q_conversion(a,b);#assert r.status==Q_Status.ok && r.exponent==1;
+  a.numerator=6;a.denominator=10;b.numerator=3;b.denominator=5;r=Q_conversion(a,b);#assert r.status==Q_Status.ok && r.exponent==0;
+  a.numerator=3;a.denominator=8;b.numerator=3;b.denominator=2;r=Q_conversion(a,b);#assert r.status==Q_Status.ok && r.exponent== -2;
+  a.numerator=1;a.denominator=100;b.numerator=1;b.denominator=1;r=Q_conversion(a,b);#assert r.status==Q_Status.scale && r.exponent==0;
+  r=Q_conversion(b,a);#assert r.status==Q_Status.scale && r.exponent==0;
+  a.numerator=6;a.denominator=35;b.numerator=9;b.denominator=70;r=Q_conversion(a,b);#assert r.status==Q_Status.scale && r.exponent==0;
+  a.numerator=1048575;a.denominator=1048575;b.numerator=1;b.denominator=1;r=Q_conversion(a,b);#assert r.status==Q_Status.ok && r.exponent==0;
+}
+#test "conversion refuses metadata before dimensions and dimensions before scales" {
+  base:=Q_Unit.{numerator=1,denominator=1};
+  for axis:0..<4 {other:=base;if axis==0 {other.mass=1;}if axis==1 {other.length=1;}if axis==2 {other.time=1;}if axis==3 {other.angle=1;}other.numerator=3;
+    r:=Q_conversion(base,other);#assert r.status==Q_Status.dimension && r.exponent==0;
+    r=Q_conversion(other,base);#assert r.status==Q_Status.dimension && r.exponent==0;
+    other.numerator=0;r=Q_conversion(base,other);#assert r.status==Q_Status.metadata && r.exponent==0;
+    r=Q_conversion(other,base);#assert r.status==Q_Status.metadata && r.exponent==0;
+  }
+}
+#forall "operator policy follows an independent operand-family table" operation:0..<10,family:0..<4,facts:0..<4 {
+  ops:=[10]Q_Op.[Q_Op.add,Q_Op.sub,Q_Op.mul,Q_Op.div,Q_Op.eq,Q_Op.ne,Q_Op.lt,Q_Op.le,Q_Op.gt,Q_Op.ge];
+  // Table bits name operations in the public order above. Families are
+  // raw/raw, quantity/raw, raw/quantity and quantity/quantity.
+  allowed:=[4]int.[0,12,4,1011];quantities:=[4]int.[0,12,4,3];
+  same_unit:=(facts&1)!=0;same_representation:=(facts&2)!=0;
+  want:=Q_Status.ok;if (allowed[family]&(1<<operation))==0 {want=Q_Status.operation;}
+  else if !same_representation {want=Q_Status.representation;}
+  else if family==3 && !same_unit {want=Q_Status.unit;}
+  r:=Q_binary(ops[operation],(family&1)!=0,(family&2)!=0,same_unit,same_representation);
+  #assert r.status==want && r.result_quantity==(want==Q_Status.ok && (quantities[family]&(1<<operation))!=0);
+}
+
+Q_unit_valid :: (u:Q_Unit)->bool #export_c {
+  return u.mass>= -8 && u.mass<=8 && u.length>= -8 && u.length<=8 &&
+    u.time>= -8 && u.time<=8 && u.angle>= -8 && u.angle<=8 &&
+    u.numerator>=1 && u.numerator<=1048576 && u.denominator>=1 && u.denominator<=1048576;
+}
+Q_conversion :: (source:Q_Unit,target:Q_Unit)->Q_Conversion #export_c {
+  if !Q_unit_valid(source) || !Q_unit_valid(target) {return Q_Conversion.{status=Q_Status.metadata};}
+  if source.mass!=target.mass || source.length!=target.length || source.time!=target.time || source.angle!=target.angle {return Q_Conversion.{status=Q_Status.dimension};}
+  // Each factor is at most 2^20, so products fit in 2^40. Stripping twos
+  // therefore guarantees the successful signed exponent lies in [-40,40].
+  numerator:=source.numerator*target.denominator;denominator:=source.denominator*target.numerator;exponent:=0;
+  while numerator%2==0 {numerator/=2;exponent+=1;}
+  while denominator%2==0 {denominator/=2;exponent-=1;}
+  if numerator!=denominator {return Q_Conversion.{status=Q_Status.scale};}
+  return Q_Conversion.{exponent=exponent};
+}
+Q_binary :: (op:Q_Op,lhs_quantity:bool,rhs_quantity:bool,same_unit:bool,same_representation:bool)->Q_Operation #export_c {
+  pair:=lhs_quantity && rhs_quantity;
+  comparison:=op==Q_Op.eq || op==Q_Op.ne || op==Q_Op.lt || op==Q_Op.le || op==Q_Op.gt || op==Q_Op.ge;
+  supported:=ifx pair then op==Q_Op.add || op==Q_Op.sub || comparison else
+    (lhs_quantity || rhs_quantity) && (op==Q_Op.mul || (op==Q_Op.div && lhs_quantity));
+  if !supported {return Q_Operation.{status=Q_Status.operation};}
+  if !same_representation {return Q_Operation.{status=Q_Status.representation};}
+  if pair && !same_unit {return Q_Operation.{status=Q_Status.unit};}
+  return Q_Operation.{result_quantity=!comparison};
+}
