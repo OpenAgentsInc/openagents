@@ -1,0 +1,217 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "agent-experience",
+    "title": "Coax for agents: faster builds, clearer failures",
+    "body": "Agents build, test and release Coax many times a day, often several at once on one Mac. This initiative removes the slowest steps and the most confusing failures they hit: rebuilds of an unchanged compiler, stale compilers, a release gate that one unrelated mutant can close, errors that only a person can read, repeated library checks, generated-C patching, opaque step budgets and grep in place of a code index. Evidence is from 2026-10-31. GitHub: https://github.com/OpenAgentsInc/openagents/issues/12611",
+    "spec": "coax/RELEASE.md",
+    "labels": [
+      "agent-experience"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "ax-faster-builds-clearer-failures",
+      "title": "Coax for agents: faster builds, clearer failures",
+      "body": "Eight tasks, worked in this order: ax-build-cache, ax-release-gate, ax-stale-compiler, ax-state-construction, ax-diagnostics-json, ax-code-index, ax-step-budgets, ax-library-check-cache. GitHub umbrella: https://github.com/OpenAgentsInc/openagents/issues/12611",
+      "parent": "agent-experience"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "ax-build-cache",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Share checked compiler builds across worktrees and reuse unchanged gates",
+      "size": "L",
+      "labels": [
+        "agent-experience",
+        "build"
+      ],
+      "body": "## Problem\n\nA full `coax/build.sh` takes about 13.5 minutes, and agents in new worktrees pay for it again. On 2026-10-31, with several agents building at once, the Mac's load average reached 100 to 190. A new compiler version without a cached checked build runs the full bootstrap, including checker mutation (38 stage0 processes).\n\n`coax/build.sh` already keeps checked builds in `~/.cache/coax-release/<fingerprint>/`. Two costs remain:\n\n- A warm build in a new worktree still compiles a temporary stage0 from `coax/src/main.cpp` to validate the release metadata before it looks in the cache.\n- When one compiler file changes, every bootstrap gate runs again, including the test and mutation gates of files that did not change.\n\n## Scope\n\n- Look in the cache first. Validate release metadata with the installed, provenance-verified compiler.\n- Record the time of each bootstrap gate, and keep the timings with the build log.\n- Cache each passing stage0 gate by a hash of the stage0 inputs, the gate command and the content of every source file the gate reads (`coax deps`). Reuse it only on an exact match. `COAX_BUILD_FRESH=1` ignores the cache.\n- Keep one builder per fingerprint, with installs that are atomic and safe when several agents build at once.\n\n## Files\n\n- `coax/build.sh`, `coax/bootstrap-build.sh`\n- `coax/RELEASE.md`, `INVARIANTS.md` (the compiler provenance entry)\n- `coax/CHANGELOG.md`\n\n## Acceptance\n\n- A warm `coax/build.sh` in a new worktree of a cached commit installs a verified `coax/bin/coax` in under 30 seconds.\n- After a change to one compiler file, the rebuild reruns only the gates whose inputs changed, and the log names each reused gate.\n- Three `coax/build.sh` runs of one fingerprint at the same time run one bootstrap, and all three end with the same verified compiler.\n- Reported numbers: a cold build, a warm build in a new worktree, a rebuild after one changed compiler file, and three builds at once.",
+      "files": [
+        "coax/build.sh",
+        "coax/bootstrap-build.sh",
+        "coax/RELEASE.md",
+        "INVARIANTS.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "Warm coax/build.sh in a new worktree of a cached commit: a verified coax/bin/coax in under 30 s",
+        "One changed compiler file: only the gates whose inputs changed run again, and the log names each reused gate",
+        "Three coax/build.sh runs of one fingerprint at once: one bootstrap, three identical verified compilers",
+        "Cold, warm, one-file and three-at-once times are recorded in the task's notes"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ax-release-gate",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Gate releases on changed code only, and run the full mutation check separately",
+      "size": "M",
+      "labels": [
+        "agent-experience",
+        "release"
+      ],
+      "body": "## Problem\n\nOne surviving mutant at `coax/lib/compiler/parser.coax:4864`, from commit 986a0d403e, stopped every release on 2026-10-31, including an unrelated Roadster rendering fix. The repository rule is that only a regression a release causes may stop it.\n\n## Scope\n\n- A release mutates only the compiler code that changed between production's release commit and the release commit, and fails only on survivors in those lines.\n- The full bootstrap mutation check runs separately, with a named owner, and reports survivors on the project page and the umbrella issue.\n- A release whose compiler inputs did not change uses production's compiler build and runs no compiler mutation.\n\n## Files\n\n- `coax/web/release.sh`, `coax/build.sh`, `coax/bootstrap-build.sh`\n- `coax/RELEASE.md`, `INVARIANTS.md`, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- A release that changes no compiler input succeeds while the full mutation check reports a survivor.\n- A release that adds a survivor in a changed compiler line fails and names that line.\n- The full mutation check writes its result where the release does not read it, and names its owner.",
+      "files": [
+        "coax/web/release.sh",
+        "coax/build.sh",
+        "coax/bootstrap-build.sh",
+        "coax/RELEASE.md",
+        "INVARIANTS.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "A release with unchanged compiler inputs succeeds while the full mutation check reports a survivor",
+        "A release that adds a survivor in a changed compiler line fails and names the line",
+        "The full mutation check runs outside release.sh, names its owner, and reports survivors without stopping releases"
+      ],
+      "blocked_by": [
+        "ax-build-cache"
+      ]
+    },
+    {
+      "slug": "ax-stale-compiler",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "A compiler that says when it is older than the source tree",
+      "size": "S",
+      "labels": [
+        "agent-experience",
+        "diagnostics"
+      ],
+      "body": "## Problem\n\nOn 2026-10-31 the shared checkout's `coax/bin` was out of date, and the clip tool failed with error E0315 in `sha1.coax`. Nothing in the message said that the compiler was stale.\n\n## Scope\n\nWhen `coax/bin/coax` runs inside a Coax checkout, it compares its provenance record with the checkout's compiler inputs. When they differ and compilation fails, the error says that the compiler is older than the source tree and gives the command that fixes it (`coax/build.sh`). A matching compiler adds no work beyond the comparison.\n\n## Files\n\n- `coax/src/main.cpp`, `coax/provenance.sh`\n- `coax/spec.md`, the book's tooling chapter, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- A test runs an older compiler against a newer tree and checks that the error names the stale build and `coax/build.sh`.\n- A current compiler prints no stale-build message.\n- The check adds at most 50 ms to `coax test` on a small file.",
+      "files": [
+        "coax/src/main.cpp",
+        "coax/provenance.sh",
+        "coax/spec.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "A test runs an older compiler against a newer tree; the error names the stale build and coax/build.sh",
+        "A current compiler prints no stale-build message",
+        "The check adds at most 50 ms to coax test on a small file"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ax-state-construction",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Compiler-emitted state initialization on every target; retire defaults.py",
+      "size": "L",
+      "labels": [
+        "agent-experience",
+        "codegen"
+      ],
+      "body": "## Problem\n\nOrbit League lost gravity for about 2.5 hours on 2026-10-31. WebAssembly memory starts as zeros, and the page's state defaults were not applied. The current fix, `coax/web/defaults.py`, patches the generated C after the compiler runs.\n\n## Scope\n\nThe compiler emits and exports an initialization function for each exported state value with declared defaults, on every target (native C, the WebAssembly build, Metal hosts). Hosts call it before the first frame. `coax/web/defaults.py` is deleted in the commit that switches the last caller. Related: the Verse project's `ec-state` task.\n\n## Files\n\n- `coax/src/emit_c.cpp`, `coax/spec.md`\n- `coax/web/defaults.py` (deleted), its callers in `coax/web/`\n- `coax/CHANGELOG.md`, the book's interop chapter\n\n## Acceptance\n\n- A test compiles a state struct with declared defaults for native and WebAssembly and checks that both start with the same bytes.\n- `coax/web/defaults.py` no longer exists, and no build step patches generated C.\n- Orbit League starts with gravity in a headless check.",
+      "files": [
+        "coax/src/emit_c.cpp",
+        "coax/spec.md",
+        "coax/web/defaults.py",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "Native and WebAssembly builds of a state with declared defaults start byte-identical",
+        "coax/web/defaults.py is deleted and no build step patches generated C",
+        "Orbit League starts with gravity in a headless check"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ax-diagnostics-json",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Machine-readable diagnostics behind --diagnostics json",
+      "size": "M",
+      "labels": [
+        "agent-experience",
+        "diagnostics"
+      ],
+      "body": "## Problem\n\nCompiler errors are text for a person. Agents parse them with regular expressions and lose the notes and suggested fixes.\n\n## Scope\n\n`coax c|test|mutate --diagnostics json` writes one JSON object a line for each diagnostic: code (for example E0315), severity, message, the primary span (file, line, column, byte offset, length), related spans with notes, and suggested fixes as replacement edits. The text format stays the default and does not change.\n\n## Files\n\n- `coax/src/errors.cpp`, `coax/src/main.cpp`\n- `coax/spec.md`, `coax/book/appendix-b-error-codes.md`, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- A test checks the JSON for one error of each family (lexer, parser, checker, test failure) against a recorded file.\n- Every line parses as JSON, and every span points inside its file.\n- Text output is byte-identical to the previous release without the flag.",
+      "files": [
+        "coax/src/errors.cpp",
+        "coax/src/main.cpp",
+        "coax/spec.md",
+        "coax/book/appendix-b-error-codes.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "Recorded JSON for one lexer, parser, checker and test-failure diagnostic matches",
+        "Every output line parses as JSON and every span lies inside its file",
+        "Text output without the flag is byte-identical to the previous release"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ax-code-index",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "coax query: who uses this, what a module exports, where a name is defined",
+      "size": "L",
+      "labels": [
+        "agent-experience",
+        "tooling"
+      ],
+      "body": "## Problem\n\nAgents use grep to find definitions and uses in Coax code. Grep returns comments, strings and unrelated names, and it does not follow `#load`.\n\n## Scope\n\n`coax query FILE uses NAME`, `coax query FILE exports` and `coax query FILE defines NAME` answer from the checked program, through `#load`, with file, line and column. Output is text by default and JSON with `--json`. The index is cached by source hash.\n\n## Files\n\n- `coax/src/main.cpp` and a new query module\n- `coax/spec.md`, the book's tooling chapter, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- Answers for `coax/lib/compiler/compiler.coax` match a recorded file for each query form.\n- A warm query over the compiler sources answers in under 1 second.\n- Results include no comment or string matches.",
+      "files": [
+        "coax/src/main.cpp",
+        "coax/spec.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "Recorded answers for uses, exports and defines over coax/lib/compiler/compiler.coax match",
+        "A warm query over the compiler sources answers in under 1 s",
+        "No result comes from a comment or a string"
+      ],
+      "blocked_by": [
+        "ax-diagnostics-json"
+      ]
+    },
+    {
+      "slug": "ax-step-budgets",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Per-check step budgets and a step profile",
+      "size": "M",
+      "labels": [
+        "agent-experience",
+        "checks"
+      ],
+      "body": "## Problem\n\nThe Fairy Forest page fails 36 checks on its step budget. That blocked marking bounded storage `#authority` on 2026-10-31. The failure gives one total and does not say where the steps go.\n\n## Scope\n\n- A check can declare its own step budget, which overrides the file's budget for that check.\n- `coax test FILE --profile steps` prints, for each check, its steps and the procedures that used the most.\n\n## Files\n\n- `coax/src/eval.cpp`, `coax/src/main.cpp`, `coax/grammar.ebnf`\n- `coax/spec.md`, the book's testing chapter, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- A test sets a per-check budget that passes where the file budget fails, and the reverse.\n- `--profile steps` on the Fairy Forest page names the procedures that use the most steps in each of the 36 failing checks.\n- A failed budget names the check, its budget and its steps.",
+      "files": [
+        "coax/src/eval.cpp",
+        "coax/src/main.cpp",
+        "coax/grammar.ebnf",
+        "coax/spec.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "A per-check budget overrides the file budget in both directions in a test",
+        "--profile steps names the top procedures for each of the Fairy Forest page's 36 failing checks",
+        "A failed budget names the check, its budget and its steps"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "ax-library-check-cache",
+      "parent": "ax-faster-builds-clearer-failures",
+      "title": "Check a library once and reuse the result in every consumer",
+      "size": "L",
+      "labels": [
+        "agent-experience",
+        "build"
+      ],
+      "body": "## Problem\n\nEach consumer of a library checks the library again and emits its unused code. `coax/lib/bounded.coax` added about 33 KB of unused C to each consumer: `shadow.coax` grew from 116,699 to 150,413 bytes of C, and compiling the fairy page grew from 537 MB to 579 MB of memory.\n\n## Scope\n\n- The compiler checks a loaded library once and caches the result by the hash of the library's source closure.\n- A consumer emits only the library procedures it reaches.\n\n## Files\n\n- `coax/src/check.cpp`, `coax/src/emit_c.cpp`, `coax/src/sources.cpp`\n- `coax/spec.md`, the book's chapter on organizing programs, `coax/CHANGELOG.md`\n\n## Acceptance\n\n- `shadow.coax` emits at most 117,000 bytes of C with `coax/lib/bounded.coax` loaded.\n- Compiling the fairy page uses at most 540 MB of memory.\n- A second compile of a consumer reuses the library's cached check, and the result matches a fresh check.",
+      "files": [
+        "coax/src/check.cpp",
+        "coax/src/emit_c.cpp",
+        "coax/src/sources.cpp",
+        "coax/spec.md",
+        "coax/CHANGELOG.md"
+      ],
+      "acceptance": [
+        "shadow.coax emits at most 117,000 bytes of C with bounded.coax loaded",
+        "Compiling the fairy page uses at most 540 MB",
+        "A cached library check gives the same result as a fresh check"
+      ],
+      "blocked_by": []
+    }
+  ]
+}
