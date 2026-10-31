@@ -611,7 +611,7 @@ control 188, which together can replace MuJoCo behind chapter 191. The
 particle and mesh solvers 172–176 each need 171 (174 also needs 171's sort)
 and can follow in any order; coupling 177–178 needs them; gradients 180 need
 166–175; 181–182 need the scene and 183; 185 runs throughout. The engine reuses
-`verse/` (rigid bodies, contacts) as independent references, not as code to
+Aethyr's `verse/` modules (rigid bodies, contacts) as independent references, not as code to
 copy, and its Coax prerequisites are R12–R20 plus the simulation-compute
 phases R21–R24.
 

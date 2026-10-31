@@ -1,6 +1,6 @@
 # 166. Rigid bodies and time steps
 
-> **Status: unimplemented — design draft.** Verse already steps free rigid
+> **Status: unimplemented — design draft.** Aethyr already steps free rigid
 > bodies in f64 ([`verse/rigid.coax`](../../verse/rigid.coax)); this chapter
 > plans the Psionic solver that generalizes it to batches, devices and
 > stated precision profiles. Nothing here runs yet.
@@ -64,11 +64,11 @@ every body, with no branches on body kind; static bodies have inverse mass
 zero. Each integrator is a named profile (`rigid-semi-implicit-f64-v1`,
 `rigid-implicit-gyro-f32-v1` and so on), so a recording says which one ran.
 
-Verse's module is the independent reference for the first profile. It uses
+Aethyr's module is the independent reference for the first profile. It uses
 RK4 for torque-free attitude and keeps a momentum ledger against named
 external terms; the Psionic kernel is a separate implementation checked
 against it, not a copy. Sleeping (a body at rest for a while is skipped) is
-kept from Verse but is a profile option, because it changes results and is
+kept from Aethyr but is a profile option, because it changes results and is
 incompatible with differentiation (chapter 180).
 
 f64 is the reference precision. Apple GPUs have no f64; the device profile

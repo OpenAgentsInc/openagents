@@ -1,6 +1,6 @@
 # 172. Liquids from particles
 
-> **Status: unimplemented — design draft.** Verse's water labs shade a
+> **Status: unimplemented — design draft.** Aethyr's water labs shade a
 > surface; none simulates the liquid. This chapter plans smoothed-particle
 > hydrodynamics (SPH) on chapter 171's particles. Nothing here runs yet.
 

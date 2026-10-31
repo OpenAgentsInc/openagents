@@ -39,7 +39,7 @@ The format extends the oscillator replay codec: content-addressed, with
 the scene asset, every profile, the compiler and target identities and the
 seed in a header, then controls per step and snapshots at a stated
 interval. Coax R16's replay inventories say which state counts. Playback of
-recorded states (for viewing in Verse) and recomputation replay are separate
+recorded states (for viewing in Aethyr) and recomputation replay are separate
 commands; a recording whose recomputation fails is reported, never silently
 played. Cross-target replay (CUDA recording, CPU recompute) is a stated
 profile with a tolerance, not bitwise.

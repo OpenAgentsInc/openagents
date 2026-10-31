@@ -1,6 +1,6 @@
 # 170. Contact as an optimization
 
-> **Status: unimplemented — design draft.** Verse resolves contacts by
+> **Status: unimplemented — design draft.** Aethyr resolves contacts by
 > sequential impulses ([`verse/contact.coax`](../../verse/contact.coax)).
 > This chapter plans the constraint solver an articulated robot needs:
 > contacts, joint limits and friction solved together as one convex
@@ -65,7 +65,7 @@ body sleep in chapter 166 this is a profile option because it changes
 results and breaks gradients.
 
 Free bodies use the same solver with a free joint, so chapter 166's bodies
-and a robot share one contact path. Verse's sequential-impulse solver stays
+and a robot share one contact path. Aethyr's sequential-impulse solver stays
 as a separate reference and as the cheap profile for games.
 
 ## What it builds

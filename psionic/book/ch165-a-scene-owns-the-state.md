@@ -81,8 +81,8 @@ sequence and the scene's digest are written into every recording (chapter
 stage of which substep.
 
 **Topology is fixed between builds.** Adding or removing bodies requires a
-rebuild in the first profile. A streaming world (Verse adds and removes
-objects constantly) needs pooled capacity and handle generations; that is a
+rebuild in the first profile. A streaming world (an Aethyr realm adds and
+removes objects constantly) needs pooled capacity and handle generations; that is a
 later profile with its own checks, and the scene says which profile it was
 built under.
 

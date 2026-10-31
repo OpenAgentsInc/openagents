@@ -1,6 +1,6 @@
 # 168. Find the pairs that might touch
 
-> **Status: unimplemented — design draft.** Verse tests contacts by
+> **Status: unimplemented — design draft.** Aethyr tests contacts by
 > enumerating the pairs a game names; nothing yet finds candidate pairs in a
 > general scene. Nothing here runs yet.
 

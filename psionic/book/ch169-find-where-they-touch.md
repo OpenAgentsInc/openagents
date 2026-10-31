@@ -68,7 +68,7 @@ shapes negates the normal and leaves depth and points unchanged; ties in
 feature selection break by lowest feature ID. Every test is one routine used
 by the CPU and generated for devices, with the CPU f64 run as the reference.
 
-**Continuous collision.** Verse's swept sphere tests stay; a conservative
+**Continuous collision.** Aethyr's swept sphere tests stay; a conservative
 advancement time-of-impact for general convex pairs is added for small fast
 bodies, and is required by IPC in chapter 178.
 

@@ -18,7 +18,10 @@ The work splits along the existing boundary between the two projects.
   (R22), device graphs and zero-copy buffers (R23), and kernel derivatives
   (R24), on top of the physical-world foundations already planned (R12–R20).
   See [Coax roadmap](../../coax/ROADMAP.md) sections 24–27 and spec stage 11.
-- **Psionic** supplies the engine: solvers, coupling, batching, sensors,
+- **Aethyr**, the engine realms run on (`verse/`), keeps its own game-layer
+  rigid bodies and contacts; they serve as independent references for the
+  Psionic solvers and later consume them.
+- **Psionic** supplies the solvers and the physics engine: solvers, coupling, batching, sensors,
   rendering hooks, assets, replay and validation, as book Part XVIII
   (chapters 165–185), with classical control in 188 and batched policy
   learning in 192.

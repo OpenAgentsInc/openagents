@@ -40,7 +40,7 @@ The coupler is a stage in chapter 165's schedule with `prepare` (collect
 interface points from each solver) and `exchange` (apply equal and opposite
 impulses). Each pair of solvers has its own routine; pairs without one are
 refused at build. The order in which pairs exchange is fixed and recorded.
-A momentum ledger (the same idea as Verse's) sums every impulse the coupler
+A momentum ledger (the same idea as Aethyr's) sums every impulse the coupler
 applies; its total must be zero.
 
 ## What it builds

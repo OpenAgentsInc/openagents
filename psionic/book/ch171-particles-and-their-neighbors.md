@@ -1,6 +1,6 @@
 # 171. Particles and their neighbors
 
-> **Status: unimplemented — design draft.** Verse's particles are visual
+> **Status: unimplemented — design draft.** Aethyr's particles are visual
 > only (GPU sprites with no interaction). This chapter plans the shared
 > particle substrate that chapters 172 to 174 build on. Nothing here runs
 > yet.
