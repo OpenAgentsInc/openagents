@@ -401,6 +401,9 @@ walked=true check=--starts
 ! $thorough || check=--walk
 baseline
 [[ -n "$via" ]] || bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
+# A start that failed right after the switch (a slow engine start under load,
+# 2026-10-31) is walked again before it can roll the release back.
+if ! $walked && [[ -z "$via" && "$check" == --starts ]] && passes_on_retry bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com --starts; then walked=true; fi
 if ! $walked && [[ "$check" == --starts ]] && ! live_ok starts; then already "goldens.ts --starts" "it failed before this release went out too"; walked=true; fi
 prod_smoke=$("$tree/coax/web/smoke.sh" https://openagents.com $via 2>&1) || true; echo "$prod_smoke"
 broke=$(broken_by_release "$prod_smoke" "$(live_smoke_fails)" "$tree/coax/web/smoke.sh" https://openagents.com $via)

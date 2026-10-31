@@ -33,4 +33,20 @@ unset ALWAYS
 export STATE="$dir/s4"; first=$("$dir/smoke"); "$dir/smoke" >/dev/null
 expect "a clean run needs no retry" "$(broken_by_release "$("$dir/smoke")" "" "$dir/smoke")" ""
 expect "no extra run" "$(cat "$STATE")" "3"
+# A whole check (the --starts walk) that fails once passes on its retry; one
+# that always fails does not.
+cat > "$dir/walk" <<'S'
+#!/usr/bin/env bash
+n=$(cat "$STATE" 2>/dev/null || echo 0); echo $((n + 1)) > "$STATE"
+[[ -z "${ALWAYS:-}" && $n -gt 0 ]]
+S
+chmod +x "$dir/walk"
+export STATE="$dir/w1"; "$dir/walk" || true
+passes_on_retry "$dir/walk" 2>/dev/null && r=pass || r=fail
+expect "a walk that failed once passes on retry" "$r" "pass"
+expect "it ran twice" "$(cat "$STATE")" "2"
+export STATE="$dir/w2" ALWAYS=1; "$dir/walk" || true
+passes_on_retry "$dir/walk" 2>/dev/null && r=pass || r=fail
+expect "a walk that keeps failing still fails" "$r" "fail"
+expect "it ran three times" "$(cat "$STATE")" "3"
 exit $fail

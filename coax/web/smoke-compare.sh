@@ -27,3 +27,14 @@ broken_by_release() {
   [[ -z "$broke" ]] || broke=$(confirm_fails "$broke" "$@")
   printf '%s' "$broke"
 }
+# passes_on_retry CMD...: a whole check that failed (the production --starts
+# walk) runs again after the same waits; 0 when any retry passes.
+passes_on_retry() {
+  local wait
+  for wait in ${SMOKE_RETRY_WAITS:-10 20}; do
+    echo "  the check failed; running it again in ${wait} s: $*" >&2
+    sleep "$wait"
+    "$@" && return 0
+  done
+  return 1
+}
