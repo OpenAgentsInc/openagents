@@ -3,6 +3,10 @@
 
 Standard-library maintenance tooling, never part of a compiler or app build.
 Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
+Pages that SUMMARY no longer lists are deleted, and their old URLs redirect to
+the current page with the same name, or to the book's first page.
+After the merge, the live page inventory must equal SUMMARY (`--check-live`
+runs only that comparison).
 """
 import argparse
 import json
@@ -40,7 +44,7 @@ def book_gate(name):
 # book: (directory, space ID, space title, public URL, gate, prune pages missing from SUMMARY)
 BOOKS = {
     "coax": ("coax/book", "sZhQ0yptSOKMneBDWMti", "The Coax Programming Language",
-             "https://openagents.gitbook.io/the-coax-programming-language", coax_gate, False),
+             "https://openagents.gitbook.io/the-coax-programming-language", coax_gate, True),
     "psionic": ("psionic/book", "Sha9csfX5lAIHvjiIheN", "Building Psionic in Coax",
                 "https://openagents.gitbook.io/building-psionic-in-coax", book_gate("psionic"), True),
     "aethyr": ("aethyr/book", "QxVdkZGgQYnLsXWZlkTh", "Building Aethyr in Coax",
@@ -97,17 +101,82 @@ def inventory(directory="coax/book"):
     return result
 
 
+def expected_tree(entries):
+    """The page tree SUMMARY implies: [(title, [child titles])] in order."""
+    tree, groups = [], {}
+    for _, title, group in entries:
+        if not group:
+            tree.append((title, []))
+        else:
+            if group not in groups:
+                groups[group] = []
+                tree.append((group, groups[group]))
+            groups[group].append(title)
+    return tree
+
+
+def live_problems(live_pages, entries):
+    """Differences between a live GitBook page tree and SUMMARY: extra, missing or retitled pages."""
+    want = expected_tree(entries)
+    have = [(p["title"], [c["title"] for c in p.get("pages", [])],
+             [g["title"] for c in p.get("pages", []) for g in c.get("pages", [])]) for p in live_pages]
+    errors = []
+    want_top, have_top = [t for t, _ in want], [t for t, _, _ in have]
+    for title in have_top:
+        if title not in want_top:
+            errors.append(f"extra page: {title}")
+    for title in want_top:
+        if title not in have_top:
+            errors.append(f"missing page: {title}")
+    if not errors and want_top != have_top:
+        errors.append("top-level pages are out of SUMMARY order")
+    for title, children in want:
+        found = [h for h in have if h[0] == title]
+        if len(found) != 1:
+            if found:
+                errors.append(f"duplicate page: {title}")
+            continue
+        _, live_children, grandchildren = found[0]
+        for child in live_children:
+            if child not in children:
+                errors.append(f"extra page under {title}: {child}")
+        for child in children:
+            if child not in live_children:
+                errors.append(f"missing page under {title}: {child}")
+        if len(set(live_children)) != len(live_children):
+            errors.append(f"duplicate pages under {title}")
+        elif set(live_children) == set(children) and live_children != children:
+            errors.append(f"pages under {title} are out of SUMMARY order")
+        errors += [f"extra nested page under {title}: {g}" for g in grandchildren]
+    return errors
+
+
+def redirect_target(old, current):
+    """The current page an old page's URL should reach: same file name without its number, else None."""
+    def name(path):
+        last = (path or "").rstrip("/").rsplit("/", 1)[-1]
+        return re.sub(r"^(ch\d+|part-[ivxl]+\.)-", "", last)
+    matches = [p for p in current if p.get("path") and name(p["path"]) == name(old)]
+    return matches[0]["path"] if len(matches) == 1 else None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--book", choices=sorted(BOOKS), default="coax")
     parser.add_argument("--token-file", type=Path, help="local env file defining GITBOOK_TOKEN")
     parser.add_argument("--change-request", help="resume a previously printed draft ID")
+    parser.add_argument("--check-live", action="store_true",
+                        help="only compare the live page inventory with SUMMARY; change nothing")
     args = parser.parse_args()
     directory, space_id, space_title, public, gate, prune = BOOKS[args.book]
-    gate()
+    if not args.check_live:
+        gate()
     token = token_from_file(args.token_file) if args.token_file else os.environ.get("GITBOOK_TOKEN")
     if not token:
         parser.error("set GITBOOK_TOKEN or supply --token-file")
+    if args.check_live:
+        check_live(args.book, token)
+        return
     if git("remote", "get-url", "origin") != REPOSITORY:
         raise SystemExit("Refusing to publish from an unexpected origin")
     if git("status", "--porcelain", "--untracked-files=all"):
@@ -121,9 +190,11 @@ def main():
     readmes = {BOOKS[b][0] + "/README.md": BOOKS[b][3] for b in BOOKS}
     opener = urllib.request.build_opener(NoRedirect())
 
-    def api(path, body=None):
+    def api(path, body=None, method=None):
+        if method == "PUT":
+            body = {"redirects": body}
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request("https://api.gitbook.com/v1" + path, data=data,
+        req = urllib.request.Request("https://api.gitbook.com/v1" + path, data=data, method=method,
             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
         try:
             with opener.open(req, timeout=45) as response:
@@ -161,15 +232,20 @@ def main():
     tree = api(draft_base + "/content")
     sections = list(dict.fromkeys(group for _, _, group in entries if group))
     leading = sum(1 for _, _, group in entries if not group)
+    def same_group(page, group):
+        # A section renamed only by dropping " (planned)" keeps its page and URL.
+        return page["title"] == group or page["title"].removesuffix(" (planned)") == group
     for index, group in enumerate(sections):
-        if not any(p["title"] == group for p in tree["pages"]):
+        if not any(same_group(p, group) for p in tree["pages"]):
             # The authoring API creates document pages, not Git Sync-only groups.
             # Use a useful overview with the same section title and child URLs.
             body = f"Practical chapters in this section are listed below.\n\n[Source revision](https://github.com/OpenAgentsInc/openagents/commit/{commit})."
             tree = apply([{"operation": "insert_page", "title": group, "slug": slug(group),
                            "at": min(leading + index, len(tree["pages"])),
                            "document": {"markdown": body}}])
-    group_ids = {group: next(p["id"] for p in tree["pages"] if p["title"] == group) for group in sections}
+    group_ids = {group: next(p["id"] for p in tree["pages"] if p["title"] == group)
+                 if any(p["title"] == group for p in tree["pages"])
+                 else next(p["id"] for p in tree["pages"] if same_group(p, group)) for group in sections}
 
     def resolve(tree):
         all_pages = list(pages(tree["pages"]))
@@ -220,14 +296,26 @@ def main():
     for name, title, group in entries:
         if group and group not in placed:
             placed.add(group)
-            place(group_ids[group], None)
+            place(group_ids[group], None, title=group)
         place(resolved[name]["id"], group_ids[group] if group else None,
               title=title, document={"markdown": markdown(name)})
-    keep = set(refs.values()) | {"/pages/" + i for i in group_ids.values()}
-    if prune:
-        changes += [{"operation": "delete_page", "page": p["id"]} for p in tree["pages"]
-                    if "/pages/" + p["id"] not in keep]
+    keep = {page["id"] for page in resolved.values()} | set(group_ids.values())
     tree = apply(changes)
+    # Every kept page is now in place; delete the topmost pages SUMMARY doesn't list.
+    orphans, deleted = [], set()
+    def collect(tree_pages, inside_orphan=False):
+        for p in tree_pages:
+            if p["id"] in keep and inside_orphan:
+                raise SystemExit("A listed page is still inside an unlisted one; not merged")
+            orphan = p["id"] not in keep
+            if orphan and not inside_orphan:
+                orphans.append(p["id"])
+            if orphan or inside_orphan:
+                deleted.add(p["id"])
+            collect(p.get("pages", []), inside_orphan or orphan)
+    collect(tree["pages"])
+    if orphans and prune:
+        tree = apply([{"operation": "delete_page", "page": i} for i in orphans])
     updated = list(pages(tree["pages"]))
     if not prune and not original_ids.issubset({p["id"] for p in updated}):
         raise SystemExit("Draft lost an existing page identity; not merged")
@@ -242,7 +330,51 @@ def main():
     if content["id"] != merged["revision"]:
         raise SystemExit("Published revision does not match the merge; inspect the space")
     print(f"Verified published revision {content['id']} from commit {commit}")
+    # Old URLs of deleted pages redirect to the current page with the same name.
+    current = list(pages(content["pages"]))
+    first = next((p["path"] for p in current if p.get("path") is not None), "")
+    old_paths = [p["path"] for p in pages(live["pages"]) if p["id"] in deleted and p.get("path")]
+    if prune and old_paths:
+        site = find_site(api, space["organization"], public)
+        redirects = [{"source": "/" + old, "intent": "live", "permanent": True,
+                      "destination": {"kind": "path", "spaceId": space_id,
+                                      "path": redirect_target(old, current) or first}}
+                     for old in old_paths if old not in {p.get("path") for p in current}]
+        for start in range(0, len(redirects), 500):
+            api(f"/orgs/{space['organization']}/sites/{site}/redirects", redirects[start:start + 500],
+                method="PUT")
+        print(f"Redirected {len(redirects)} removed page URLs")
+    problems = live_problems(content["pages"], entries)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        raise SystemExit("The live page inventory differs from SUMMARY.md")
+    print(f"Live page inventory matches SUMMARY.md: {sum(1 for _ in pages(content['pages']))} pages")
     print(public)
+
+
+def find_site(api, organization, public):
+    for site in api(f"/orgs/{organization}/sites?limit=100")["items"]:
+        if (site.get("urls", {}).get("published") or "").rstrip("/") == public:
+            return site["id"]
+    raise SystemExit("No published site matches the book; pages merged, redirects not created")
+
+
+def check_live(book, token):
+    """Compare a book's live page inventory with SUMMARY; read-only."""
+    directory, space_id, _, public, _, _ = BOOKS[book]
+    req = urllib.request.Request(f"https://api.gitbook.com/v1/spaces/{space_id}/content",
+                                 headers={"Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(req, timeout=45) as response:
+            content = json.loads(response.read())
+    except (OSError, ValueError):
+        raise SystemExit("GitBook request failed") from None
+    problems = live_problems(content["pages"], inventory(directory))
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        raise SystemExit(f"{book}: the live page inventory differs from SUMMARY.md")
+    print(f"{book}: live page inventory matches SUMMARY.md "
+          f"({sum(1 for _ in pages(content['pages']))} pages, revision {content['id']}) at {public}")
 
 
 if __name__ == "__main__":

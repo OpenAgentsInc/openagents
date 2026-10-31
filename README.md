@@ -41,6 +41,10 @@ Read our three books on GitBook:
 - [**Aethyr**](https://openagents.gitbook.io/building-aethyr-in-coax):
   the game engine that runs the Verse's realms, built in Coax.
 
+To choose a route through them (write current Coax, build a playable realm,
+run an original model or train a small model), see
+[Paths through the books](docs/books/paths.md).
+
 ## What we're building
 
 - **Coax** ([`coax/`](coax/README.md)) is a systems language for real-time
