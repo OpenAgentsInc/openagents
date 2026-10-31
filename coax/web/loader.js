@@ -57,7 +57,8 @@ const mb = (n) => (n / 1048576).toFixed(1);
 /** Bytes of a response as they stream in, `progress(loaded, total)` told as they come (total 0:
  *  the response didn't say). */
 export async function readBytes(response, progress) {
-  const total = Number(response.headers.get("content-length")) || 0;
+  // A gzipped file's Content-Length is its zipped size; the bucket names the unzipped one (upload.py).
+  const total = Number(response.headers.get("x-goog-meta-length") || (response.headers.get("content-encoding") ? 0 : response.headers.get("content-length"))) || 0;
   if (!response.body) { const b = new Uint8Array(await response.arrayBuffer()); progress(b.length, b.length); return b; }
   const reader = response.body.getReader(), chunks = [];
   let loaded = 0;

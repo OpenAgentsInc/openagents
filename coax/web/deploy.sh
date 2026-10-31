@@ -78,7 +78,9 @@ for f in pages:
         rest = re.sub(r'data-assets="[^"]*"', lambda a: re.sub(r'([:|=])(/[^\s|"]+)', asset, a.group(0)), rest)
         # A page that talks (data-voice): the voice engine (coax/web/voice/build.sh), named by its content too.
         if "data-voice=" in rest: rest += f' data-voice-wasm="{put(os.path.join(app, "build", "voice.wasm"), "build/voice.wasm")}"'
-        return f'<script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
+        # The engine is the page's biggest file and host.js asks for it only once it has run:
+        # preloaded, it downloads beside the script (crossorigin: the same request host.js's fetch makes).
+        return f'<link rel="preload" href="{wasm}" as="fetch" crossorigin><script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
     # A directory's page also answers at the bare path (/projects/coax), which

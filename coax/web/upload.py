@@ -44,19 +44,23 @@ def object_name(name, site=False):
     if name.endswith(".wellknown"): return (prefix if site else "") + name[:-10]
     return (prefix if site else "") + (name[:-5] if name.endswith(".page") else name)
 
-# The homepage's seed parts (deploy.sh) are mostly JSON text: stored gzipped, sent as they are to a
-# browser that takes gzip (every one) and unzipped by the bucket for one that doesn't.
-def zipped(name): return name.startswith("build/home-seed/") and name.endswith(".txt")
+# Stored gzipped, sent as they are to a browser that takes gzip (every one) and unzipped by the
+# bucket for a client that doesn't: the homepage's seed parts (deploy.sh, mostly JSON text) and the
+# engines, shaders and host script (Everglade's page: 2.03 MB, 0.82 MB gzipped). Their names still
+# name their content, uncompressed, and they stay cached for good.
+def zipped(name): return (name.startswith("build/home-seed/") and name.endswith(".txt")) or name.endswith((".wasm", ".wgsl", ".js"))
 
 def put(name, path, cache, site=False):
     data = open(path, "rb").read()
     kind = ".html" if name.endswith(".page") else ".json" if name.endswith(".wellknown") else os.path.splitext(name)[1]
     gz = zipped(name)
+    length = len(data)
     if gz: data = gzip.compress(data, mtime=0)
     name = object_name(name, site)
     meta = {"name": name, "cacheControl": cache,
             "contentType": types.get(kind) or mimetypes.guess_type(name)[0] or "application/octet-stream"}
-    if gz: meta["contentEncoding"] = "gzip"
+    # x-goog-meta-length: the unzipped size, for the loading bar (loader.js); Content-Length is the zipped one.
+    if gz: meta["contentEncoding"] = "gzip"; meta["metadata"] = {"length": str(length)}
     b = "coaxial-upload"
     body = (f"--{b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(meta)}\r\n"
             f"--{b}\r\nContent-Type: {meta['contentType']}\r\n\r\n").encode() + data + f"\r\n--{b}--".encode()

@@ -95,6 +95,11 @@ for f, (s, h, body) in zip(files, got):
         check(b"//" not in body and b"/*" not in body, f"{f} ships no comments")
     if ext == ".wasm":
         check(body[:4] == b"\0asm", f"{f} is a wasm module ({len(body)} bytes)")
+# Engines, shaders and the host go gzipped to a browser that takes gzip (upload.py), unzipped to one that doesn't.
+for f in [f for f in files if f.endswith((".wasm", ".js"))][:2]:
+    c = connect("https"); c.request("GET", f, headers={"Host": host, "User-Agent": "coaxial-smoke", "Accept-Encoding": "gzip"})
+    r = c.getresponse(); r.read(); c.close()
+    check(r.status == 200 and r.getheader("content-encoding", "") == "gzip", f"{f} is sent gzipped ({r.getheader('content-length')} bytes)")
 s, h, _ = redirect
 check(s in (301, 308) and h.get("location", "").startswith("https://"), f"http:// redirects to https:// ({s})")
 for path, (s, h, body) in zip(pages, s_pages):
