@@ -142,4 +142,19 @@ Every phase and native feature is a task in the Verse project
   captured presented image, plus present timing locked to the display's
   vblank. Booting a machine straight into this (a session entry in the host's
   NixOS config) is not wired: that is a change to the host's config.
+- 2026-10-31: G3 begins with Everglade's game natively: `verse/native/`.
+  `build.sh everglade OUT` compiles the same Coax and the same browser face
+  (`everglade-face.c`) with gcc instead of to wasm32. `realm-host.c` does
+  what host.js does without the GPU: an arena, the asset pack read from a
+  file and handed over as the browser hands it, page facts, keys, frames and
+  actions. The face's pointers are 32-bit offsets, as in WebAssembly.Memory,
+  so the build has no PIE, malloc stays on the brk heap, and the arena is
+  mapped below 4 GB (`rh_off` refuses anything higher). The network imports
+  are refused, as on a page that is offline. `check.sh HOST` runs both builds
+  through 240 frames (the clock fixed, golden mode, a walk, a turn and a
+  jump). `wasm-run.ts` runs the browser's wasm through the same steps. Every
+  frame's 1,230-1,824 vertices, 190 draws, 104,576 grass blades and 126
+  particles are the same bytes. Of the uniforms and stores, 206 of 238,394
+  words differ, all within libm's rounding (largest 4.8e-7): glibc's
+  `sinf`/`cosf` against wasi-libc's.
 
