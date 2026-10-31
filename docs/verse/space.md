@@ -46,7 +46,7 @@ Belt 2200's first playable built these (October 30).
 
 | Module | What it gives | Loads |
 | --- | --- | --- |
-| `verse/orbit.coax` | Two-body Kepler motion in f64: `Orbit` (a, e, i, node, periapsis, mean anomaly at epoch, mu) and `State` (r, v); `orbit_state` and `orbit_from_state` both ways; Kepler's equation for ellipses (`kepler_elliptic`) and hyperbolas (`kepler_hyperbolic`); `orbit_propagate`. The solar system from J2000 mean elements (`orbit_body`, `orbit_body_state`: the Sun, Mercury to Saturn, the Moon about the Earth, Ceres and Vesta; DE440 GM and radii; `ORBIT_2200` is 1 January 2200). Spheres of influence (`orbit_soi_radius`, `orbit_body_soi`) and the patched-conic handoff (`orbit_relative`, `orbit_absolute`, `orbit_dominant`). Transfers: Lambert's problem by universal variables (`orbit_lambert`), Hohmann (`orbit_hohmann`), one transfer to a target orbit (`orbit_transfer`: both burns, their delta-v, the coast) and the planner (`orbit_plan`: the cheapest over a range of flight times, or the quickest under a delta-v budget). The rocket: `orbit_delta_v`, `orbit_propellant`, `orbit_propellant_from`, `orbit_burn_time`, and a finite burn under gravity with the mass flowing (`orbit_burn_step`, RK4) | rigid |
+| `verse/orbit.coax` | Two-body Kepler motion in f64: `Orbit` (a, e, i, node, periapsis, mean anomaly at epoch, mu) and `State` (r, v); `orbit_state` and `orbit_from_state` both ways; Kepler's equation for ellipses (`kepler_elliptic`) and hyperbolas (`kepler_hyperbolic`); `orbit_propagate`. The solar system from J2000 mean elements (`orbit_body`, `orbit_body_state`: the Sun, Mercury to Saturn, the Moon about the Earth, Ceres and Vesta; DE440 GM and radii; `ORBIT_2200` is 1 January 2200). Spheres of influence (`orbit_soi_radius`, `orbit_body_soi`) and the patched-conic handoff (`orbit_relative`, `orbit_absolute`, `orbit_dominant`); the hyperbolas that leave and reach a world (`orbit_departure`, `orbit_arrival`, `orbit_arrival_state`: periapsis at a given distance, the asymptote a transfer's v-infinity) and `orbit_soi_blend`, which hands a drawn ship from its hyperbola to its heliocentric arc across the sphere without a jump. Transfers: Lambert's problem by universal variables (`orbit_lambert`), Hohmann (`orbit_hohmann`), one transfer to a target orbit (`orbit_transfer`: both burns, their delta-v, the coast) and the planner (`orbit_plan`: the cheapest over a range of flight times, or the quickest under a delta-v budget). The rocket: `orbit_delta_v`, `orbit_propellant`, `orbit_propellant_from`, `orbit_burn_time`, and a finite burn under gravity with the mass flowing (`orbit_burn_step`, RK4) | rigid |
 | `verse/spacecam.coax` | The floating origin: every position stays f64 metres and the camera subtracts its own centre before scaling, so only small numbers reach f32. `spacecam_screen` and `spacecam_world` (pixel to the ecliptic), `spacecam_zoom_at` (the point under the cursor stays put), `spacecam_pan`, `spacecam_look`, `spacecam_follow` (the origin rides a ship), `spacecam_ease` (log-space zoom); twelve decades of zoom, from the outer system on a phone to 20 pixels a metre; a tilt for height | rigid |
 | `verse/stars.coax` | The sky, scalar f32 for a background pass (`coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl`): three layers of hashed stars that drift with the camera, the Sun's disc with a soft limb, and its corona and halo, which keep a far Sun a glowing point | |
 
@@ -57,7 +57,8 @@ ellipse and a hyperbola); an orbit keeps its energy and angular momentum to
 with a 365.25-day year in 2200, the Moon 384,400 km from it, the Earth's
 sphere of influence 925,000 km and Jupiter's 48 million; a ship 100,000 km
 from the Earth is in its sphere and 50,000 km from the Moon in the Moon's;
-Lambert's arc cut from a known orbit gives back its velocities to a
+a departure hyperbola starts at its periapsis and leaves along
+v-infinity at its speed, and arriving is its mirror; Lambert's arc cut from a known orbit gives back its velocities to a
 millimetre a second; Earth to Mars by Hohmann is 2.94 + 2.65 km/s in 259
 days, and the planner finds it within 60 m/s, and a quicker, dearer
 transfer under a bigger budget; a finite burn gives the rocket equation's
@@ -77,7 +78,10 @@ cursor; stars are sparse and the Sun's light falls away.
    time, `orbit_propellant_from` the propellant. Coast on
    `orbit_from_state(tr.depart, GM_SUN, now)`.
 3. Near a world, hand the state over with `orbit_dominant` and
-   `orbit_relative`, and propagate about its GM.
+   `orbit_relative`, and propagate about its GM. To draw a transfer that
+   leaves or reaches a world, build `orbit_departure` / `orbit_arrival`
+   from the arc's velocity relative to the world at the burns and mix the
+   two states by `orbit_soi_blend` (Belt 2200's `flight_state`).
 4. Draw through a `SpaceCam`: `spacecam_screen(cam, p, w, h)` gives pixels
    in f64; convert to f32 only then. Follow a ship by making it the origin.
 5. The background pass calls `verse_starfield` and the Sun's two functions

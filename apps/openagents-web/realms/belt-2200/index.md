@@ -8,6 +8,8 @@ A Verse realm at https://openagents.com/realms/belt-2200: a hard sci-fi strategy
 - Pick where it goes: tap a world, an ice rock or the station, or press MINE ICE (the ice rock it reaches soonest) or HOME. The planner shows two transfers, GO ECONOMY and GO FAST, each with its time, delta-v and propellant; the arc is the coast between the two burns, a tick every 30 days, ending where ship and target meet on the date shown. A ship's card shows its propellant and ice in tonnes.
 - A ship that reaches an ice rock mines until its hold is full, flies home, delivers the ice to Hearth Station, refuels from it (water is reaction mass) and goes back for more. ICE at the top right is the station's stock.
 - Time: PAUSE, 1, 7 or 30 days a second (Space pauses; 1, 2 and 3 pick a speed).
+- The game is kept in this browser as it runs and comes back when you return. NEW (pressed twice) starts over.
+- Leaving or reaching a world, a ship swings out from it, or in to it, on a hyperbola inside the world's sphere of influence before it joins its arc about the Sun.
 - The map: the wheel or a pinch zooms, from the whole system down to a ship's hull; drag (or WASD and the arrows) pans; FOLLOW (or F) rides with the selected ship; C goes back to the whole system; Escape cancels.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 

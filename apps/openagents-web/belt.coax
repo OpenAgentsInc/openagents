@@ -38,8 +38,11 @@ U_BELT :: U_PANEL + PANELS * 8;
 U_DISC :: U_BELT + 4;
 UNIFORM_FLOATS :: U_DISC + DISCS * 8;
 
-OUTBOX_CAP :: 256;
+OUTBOX_CAP :: 4096;
 ACT_NAVIGATE :: 1;
+ACT_KEEP :: 4;          // host.js keeps the text in this browser and gives it back as message 4
+HOST_KEPT :: 4;
+SAVE_EVERY :: 5.0;      // real seconds between saves while the game runs
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -89,6 +92,8 @@ Ship :: struct {
   dry: f64; fuel: f64; fuel_cap: f64; isp: f64; cargo: f64; cargo_cap: f64; mine_rate: f64;   // t, t, t, s, t, t, t/day
   t0: f64; tof: f64; burn2: f64;   // the transfer: its start, time of flight, and propellant for the arrival burn (t)
   arc: Orbit;            // the coast, about the Sun
+  dep: Orbit; dep_body: int;   // leaving a world: the hyperbola about it (patched conics), 0 none
+  arr: Orbit; arr_body: int;   // and arriving at one
   path: [PATH] D3;
   work: int; work_rock: int;
   route: [3] int; route_n: int; route_k: int; idle_until: f64;   // a rival's standing route
@@ -98,7 +103,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -128,6 +133,7 @@ Belt :: struct {
   arrive: [32] u8; arrive_n: int;   // the planned arrival's label, kept for the frame's labels
   panel_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  dirty: bool; save_t: f32; restored: bool; new_armed: f32;
   track: [1] Track;
 }
 
@@ -277,11 +283,52 @@ berth_radius :: (p: int) -> f64 {
 
 ship_state :: (s: [] Belt, k: int, t: f64) -> State {
   sh := s[0].ships[k];
-  if sh.mode == FLYING { return orbit_state(sh.arc, t); }
+  if sh.mode == FLYING { return flight_state(sh, t); }
   base := place_state(s, sh.at, t);
   a := f64(sh.slot) * 1.1 + f64(k) * 0.37;
   r := berth_radius(sh.at) * (1.0 + 0.45 * f64(sh.slot));
   return orbit_state_of(d3_add(base.r, d3(cos(a) * r, sin(a) * r, 0.0)), base.v);
+}
+
+// A ship in flight: its heliocentric coast, handed over to a hyperbola about the world it
+// leaves or reaches inside that world's sphere of influence (verse/orbit.coax), so it swings
+// out from its world and in to its periapsis instead of flying through the centres.
+is_world :: (p: int) -> bool { return p >= 1 && p < BODIES; }
+flight_state :: (sh: Ship, t: f64) -> State {
+  out := orbit_state(sh.arc, t);
+  if sh.dep_body > 0 {
+    h := orbit_state(sh.dep, t);
+    w := orbit_soi_blend(d3_len(h.r), orbit_body_soi(sh.dep_body));
+    if w < 1.0 { out = state_mix(orbit_absolute(h, orbit_body_state(sh.dep_body, t)), out, w); }
+  }
+  if sh.arr_body > 0 {
+    h := orbit_arrival_state(sh.arr, sh.t0 + sh.tof, t);
+    w := orbit_soi_blend(d3_len(h.r), orbit_body_soi(sh.arr_body));
+    if w < 1.0 { out = state_mix(orbit_absolute(h, orbit_body_state(sh.arr_body, t)), out, w); }
+  }
+  return out;
+}
+state_mix :: (a: State, b: State, w: f64) -> State {
+  return orbit_state_of(d3_add(a.r, d3_scale(d3_sub(b.r, a.r), w)), d3_add(a.v, d3_scale(d3_sub(b.v, a.v), w)));
+}
+// The hyperbolas for a ship's transfer: periapsis at its berth's distance, the asymptotes the
+// transfer's velocity relative to each world at the burns.
+ship_hyperbolas :: (s: [] Belt, k: int) {
+  sh := s[0].ships[k];
+  sh.dep_body = 0; sh.arr_body = 0;
+  if is_world(sh.from) {
+    b := orbit_body_state(sh.from, sh.t0);
+    sh.dep = orbit_departure(BODY_GM[sh.from], berth_radius(sh.from), d3_sub(orbit_state(sh.arc, sh.t0).v, b.v), sh.t0);
+    if sh.dep.a != 0.0 { sh.dep_body = sh.from; }
+  }
+  if is_world(sh.at) {
+    tf := sh.t0 + sh.tof;
+    b := orbit_body_state(sh.at, tf);
+    sh.arr = orbit_arrival(BODY_GM[sh.at], berth_radius(sh.at), d3_sub(orbit_state(sh.arc, tf).v, b.v), tf);
+    if sh.arr.a != 0.0 { sh.arr_body = sh.at; }
+  }
+  for i: 0..<PATH { sh.path[i] = flight_state(sh, sh.t0 + sh.tof * f64(i) / f64(PATH - 1)).r; }
+  s[0].ships[k] = sh;
 }
 
 // ---- the world at the start
@@ -294,8 +341,16 @@ ship_new :: (faction: int, name: string, at: int, dry: f64, fuel: f64, isp: f64,
 }
 
 belt_start :: (s: [] Belt) {
+  belt_reset(s);
+  track_init(s[0].track[..], "belt-2200");
+}
+// The game as it begins: 2 March 2200, Hearth Station with 1,200 t of ice and three ships.
+belt_reset :: (s: [] Belt) {
   s[0].started = true;
   s[0].t = ORBIT_2200 + 60.0 * DAY;
+  s[0].delivered = 0.0;
+  for j: 0..<SHIPS { s[0].selected[j] = false; }
+  s[0].toast_n = 0; s[0].toast_t = 0;
   s[0].speed = 2;
   s[0].ice = 1200.0;
   s[0].dest = -1; s[0].follow = -1; s[0].press = -1; s[0].hover = -1;
@@ -349,7 +404,6 @@ belt_start :: (s: [] Belt) {
   s[0].cam.center = D3_ZERO; s[0].cam.goal_center = D3_ZERO;
   s[0].cam.scale = 0.000000001; s[0].cam.goal_scale = 0.000000001;
   s[0].cam.tilt = 0.0;
-  track_init(s[0].track[..], "belt-2200");
 }
 started :: (s: [] Belt) { if !s[0].started { belt_start(s); } }
 
@@ -389,8 +443,9 @@ launch :: (s: [] Belt, k: int, dest: int, p: Plan) -> bool {
   sh.mode = FLYING; sh.at = dest;
   sh.t0 = p.tr.t0; sh.tof = p.tr.tof; sh.burn2 = p.burn2;
   sh.arc = orbit_from_state(p.tr.depart, GM_SUN, p.tr.t0);
-  for i: 0..<PATH { sh.path[i] = orbit_position(sh.arc, sh.t0 + sh.tof * f64(i) / f64(PATH - 1)); }
   s[0].ships[k] = sh;
+  ship_hyperbolas(s, k);
+  s[0].dirty = true;
   return true;
 }
 
@@ -418,8 +473,9 @@ berth :: (s: [] Belt, k: int, p: int) -> int {
 arrive :: (s: [] Belt, k: int) {
   sh := s[0].ships[k];
   if sh.faction == FREE_BELT { sh.fuel = fmax(0.0, sh.fuel - sh.burn2); }
-  sh.mode = PARKED; sh.burn2 = 0.0;
+  sh.mode = PARKED; sh.burn2 = 0.0; sh.dep_body = 0; sh.arr_body = 0;
   s[0].ships[k] = sh;
+  s[0].dirty = true;
   s[0].ships[k].slot = berth(s, k, sh.at);
   buf: [96] u8;
   if sh.faction != FREE_BELT { s[0].ships[k].idle_until = s[0].t + 25.0 * DAY; return; }
@@ -483,6 +539,101 @@ step_ships :: (s: [] Belt, dt: f64) {
       if launch(s, k, dest, p) { s[0].ships[k].route_k = next; } else { s[0].ships[k].idle_until = t + 10.0 * DAY; }
     }
   }
+}
+
+// ---- the save: one text, kept in this browser (host.js action 4) and given back on the next
+// visit. Integers only (times in ms, masses in grams, the coast's start in mm and um/s), so it
+// reads back exactly; the rocks and the start come from belt_start, which is deterministic.
+SAVE_TAG :: "BELT2200 1";
+qi :: (v: f64, scale: f64) -> int {
+  x := v * scale;
+  if !is_finite(x) { return 0; }
+  return int(fclamp(floor(x + 0.5), -9000000000000000000.0, 9000000000000000000.0));
+}
+put_field :: (buf: [] u8, at: int, v: int) -> int { n := put(buf, at, "|"); return put_int(buf, n, v); }
+save_game :: (s: [] Belt, buf: [] u8) -> int {
+  n := put(buf, 0, SAVE_TAG);
+  n = put_field(buf, n, qi(s[0].t, 1000.0)); n = put_field(buf, n, s[0].speed);
+  n = put_field(buf, n, qi(s[0].ice, 1000000.0)); n = put_field(buf, n, qi(s[0].delivered, 1000000.0));
+  n = put_field(buf, n, s[0].ship_n);
+  for k: 0..<s[0].ship_n {
+    sh := s[0].ships[k];
+    n = put(buf, n, "\n"); n = put_int(buf, n, sh.mode);
+    n = put_field(buf, n, sh.at); n = put_field(buf, n, sh.slot); n = put_field(buf, n, sh.from);
+    n = put_field(buf, n, qi(sh.fuel, 1000000.0)); n = put_field(buf, n, qi(sh.cargo, 1000000.0));
+    n = put_field(buf, n, qi(sh.t0, 1000.0)); n = put_field(buf, n, qi(sh.tof, 1000.0)); n = put_field(buf, n, qi(sh.burn2, 1000000.0));
+    n = put_field(buf, n, sh.work); n = put_field(buf, n, sh.work_rock); n = put_field(buf, n, sh.route_k); n = put_field(buf, n, qi(sh.idle_until, 1000.0));
+    st: State;
+    if sh.mode == FLYING { st = orbit_state(sh.arc, sh.t0); }
+    n = put_field(buf, n, qi(st.r.x, 1000.0)); n = put_field(buf, n, qi(st.r.y, 1000.0)); n = put_field(buf, n, qi(st.r.z, 1000.0));
+    n = put_field(buf, n, qi(st.v.x, 1000000.0)); n = put_field(buf, n, qi(st.v.y, 1000000.0)); n = put_field(buf, n, qi(st.v.z, 1000000.0));
+  }
+  return n;
+}
+Cur :: struct { at: int; ok: bool = true; }
+read_int :: (text: string, c: [] Cur) -> int {
+  i := c[0].at;
+  while i < text.count && (text[i] == '|' || text[i] == 10 || text[i] == ' ') { i += 1; }
+  neg := false;
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  v := 0; digits := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + (cast(int) text[i] - '0'); i += 1; digits += 1; }
+  if digits == 0 { c[0].ok = false; }
+  c[0].at = i;
+  return ifx neg then -v else v;
+}
+// Read a save into a fresh start; a text that isn't a whole save of this kind changes nothing.
+load_game :: (s: [] Belt, text: string) -> bool {
+  if text.count < SAVE_TAG.count + 2 { return false; }
+  for i: 0..<SAVE_TAG.count { if text[i] != SAVE_TAG[i] { return false; } }
+  c: [1] Cur; c[0].at = SAVE_TAG.count;
+  ships: [SHIPS] Ship;
+  t := f64(read_int(text, c[..])) / 1000.0;
+  sp := read_int(text, c[..]);
+  ice := f64(read_int(text, c[..])) / 1000000.0;
+  delivered := f64(read_int(text, c[..])) / 1000000.0;
+  if read_int(text, c[..]) != s[0].ship_n || !c[0].ok || t < ORBIT_2200 { return false; }
+  for k: 0..<s[0].ship_n {
+    sh := s[0].ships[k];
+    sh.mode = read_int(text, c[..]); sh.at = read_int(text, c[..]); sh.slot = read_int(text, c[..]); sh.from = read_int(text, c[..]);
+    sh.fuel = f64(read_int(text, c[..])) / 1000000.0; sh.cargo = f64(read_int(text, c[..])) / 1000000.0;
+    sh.t0 = f64(read_int(text, c[..])) / 1000.0; sh.tof = f64(read_int(text, c[..])) / 1000.0; sh.burn2 = f64(read_int(text, c[..])) / 1000000.0;
+    sh.work = read_int(text, c[..]); sh.work_rock = read_int(text, c[..]); sh.route_k = read_int(text, c[..]); sh.idle_until = f64(read_int(text, c[..])) / 1000.0;
+    r := d3(f64(read_int(text, c[..])) / 1000.0, f64(read_int(text, c[..])) / 1000.0, f64(read_int(text, c[..])) / 1000.0);
+    v := d3(f64(read_int(text, c[..])) / 1000000.0, f64(read_int(text, c[..])) / 1000000.0, f64(read_int(text, c[..])) / 1000000.0);
+    if !c[0].ok || sh.mode < PARKED || sh.mode > MINING || sh.at < 1 || sh.at >= PLACES || sh.from < 1 || sh.from >= PLACES { return false; }
+    if sh.mode == FLYING && (sh.tof <= 0.0 || d3_len(r) <= 0.0) { return false; }
+    sh.slot = sh.slot % SHIPS; if sh.slot < 0 { sh.slot = 0; }
+    sh.fuel = fclamp(sh.fuel, 0.0, sh.fuel_cap); sh.cargo = fclamp(sh.cargo, 0.0, sh.cargo_cap);
+    if sh.route_n > 0 { sh.route_k = sh.route_k % sh.route_n; if sh.route_k < 0 { sh.route_k = 0; } }
+    sh.path[0] = r; sh.path[1] = v;   // the coast's start, made into its orbit once the whole save has read
+    ships[k] = sh;
+  }
+  s[0].t = t; s[0].speed = ifx sp >= 0 && sp < 4 then sp else 2;
+  s[0].ice = fmax(ice, 0.0); s[0].delivered = fmax(delivered, 0.0);
+  for k: 0..<s[0].ship_n {
+    sh := ships[k];
+    if sh.mode == FLYING { sh.arc = orbit_from_state(orbit_state_of(sh.path[0], sh.path[1]), GM_SUN, sh.t0); }
+    s[0].ships[k] = sh;
+    if sh.mode == FLYING { ship_hyperbolas(s, k); }
+  }
+  return true;
+}
+// Keep the game now and then while it runs (and at once after an order or an arrival).
+autosave :: (s: [] Belt, real: f32) {
+  if s[0].golden || s[0].action != 0 { return; }
+  s[0].save_t -= real;
+  // every few seconds, or a second after something changed
+  if !(s[0].save_t <= 0 || (s[0].dirty && s[0].save_t <= SAVE_EVERY - 1.0)) { return; }
+  s[0].out_n = save_game(s, s[0].outbox[..]);
+  s[0].action = ACT_KEEP;
+  s[0].save_t = SAVE_EVERY; s[0].dirty = false;
+}
+new_game :: (s: [] Belt) {
+  belt_reset(s);
+  s[0].framed = false; s[0].restored = true; s[0].dirty = true;
+  say(s, "A NEW GAME");
+  if track_begin(s[0].track[..], "new-game") { track_end(s[0].track[..]); }
 }
 
 // ---- orders
@@ -561,6 +712,7 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
+  if kind == HOST_KEPT && !s[0].golden && !s[0].restored { s[0].restored = load_game(s, text); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE { track_world(s[0].track[..], "belt-2200"); }
 }
@@ -637,6 +789,10 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_FOLLOW { follow_ship(s, first_selected(s)); }
   if b.id == B_GO { go(s, b.arg == 1); }
   if b.id == B_CANCEL { s[0].dest = -1; }
+  if b.id == B_NEW {
+    // twice to start over: the first press asks
+    if s[0].new_armed > 0 { s[0].new_armed = 0; new_game(s); } else { s[0].new_armed = 3.0; }
+  }
   if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; }
 }
 
@@ -1343,6 +1499,8 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   dt := date_of(s[0].t);
   n := put_int(buf[..], 0, dt.day); n = put(buf[..], n, " "); n = put(buf[..], n, MONTHS[(dt.month - 1) % 12]); n = put(buf[..], n, " "); n = put_int(buf[..], n, dt.year);
   words(out, d, cast(string) buf[0..<n], m + 12 * k, m + 38 * k, 7.5 * k, 0.75, BELT_R, BELT_G, BELT_B);
+  armed := s[0].new_armed > 0;
+  button(s, out, d, m + tw - 54 * k, m + 13 * k, m + tw - 8 * k, m + 37 * k, B_NEW, 0, ifx armed then "SURE?" else "NEW", 6 * k, armed);
   // The station's ice, top right.
   rx0 := w - m - tw;
   panel(s, u, rx0, m, w - m, m + 50 * k, 0.85, false);
@@ -1478,6 +1636,8 @@ belt_step :: (s: [] Belt, dt: f32) {
     game -= piece;
   }
   if s[0].toast_t > 0 { s[0].toast_t -= f32(real); }
+  if s[0].new_armed > 0 { s[0].new_armed -= f32(real); }
+  autosave(s, f32(real));
   // A plan being shown follows the clock.
   if s[0].dest >= 0 && SPEEDS[s[0].speed] > 0.0 {
     s[0].replan -= f32(real);
@@ -1586,4 +1746,64 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   rivals := 0;
   for k: 0..<s[0].ship_n { if s[0].ships[k].faction != FREE_BELT && s[0].ships[k].route_k != 0 { rivals += 1; } }
   #assert rivals > 0;
+}
+
+#test "a rival leaves its world on a hyperbola and arrives at its periapsis, with no jump at the handoff" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  k := 3;   // IRONWAKE at Mars, bound for Ceres
+  p := plan_for(s[..], k, BODY_CERES, false);
+  #assert launch(s[..], k, BODY_CERES, p);
+  sh := s[0].ships[k];
+  #assert sh.dep_body == BODY_MARS && sh.arr_body == BODY_CERES;
+  t0 := sh.t0; tf := sh.t0 + sh.tof;
+  // it starts at its berth's distance from Mars and ends at its berth's distance from Ceres
+  d0 := d3_dist(flight_state(sh, t0).r, orbit_body_position(BODY_MARS, t0));
+  #assert abs(d0 - berth_radius(BODY_MARS)) < 1.0;
+  d1 := d3_dist(flight_state(sh, tf).r, orbit_body_position(BODY_CERES, tf));
+  #assert abs(d1 - berth_radius(BODY_CERES)) < 1.0;
+  // no jump: step by step it moves no farther than its speed allows (twice over, for the blend)
+  dt := 600.0;
+  prev := flight_state(sh, t0);
+  worst := 0.0;
+  tt := t0 + dt;
+  // (measured from Mars, which moves on at 24 km/s under it)
+  prev_rel := d3_sub(prev.r, orbit_body_position(BODY_MARS, t0));
+  while tt < t0 + 20.0 * DAY {
+    m := orbit_body_state(BODY_MARS, tt);
+    st := flight_state(sh, tt);
+    rel := d3_sub(st.r, m.r);
+    step := d3_dist(rel, prev_rel);
+    allowed := 2.0 * d3_len(d3_sub(st.v, m.v)) * dt + 1000.0;
+    worst = fmax(worst, step / allowed);
+    prev_rel = rel; tt += dt;
+  }
+  #assert worst < 1.0;
+}
+
+#test "a save mid-flight reads back to the same game, and a broken one changes nothing" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  select_only(s[..], 1);
+  mine_order(s[..]);
+  go(s[..], true);
+  for i: 0..<30 { s[0].t += DAY; step_ships(s[..], DAY); }
+  buf: [OUTBOX_CAP] u8;
+  n := save_game(s[..], buf[..]);
+  #assert n > 0 && n < OUTBOX_CAP;
+  b: [1] Belt;
+  belt_start(b[..]);
+  #assert load_game(b[..], cast(string) buf[0..<n]);
+  #assert abs(b[0].t - s[0].t) < 0.001 && abs(b[0].ice - s[0].ice) < 0.001;
+  for k: 0..<s[0].ship_n {
+    #assert b[0].ships[k].mode == s[0].ships[k].mode && b[0].ships[k].at == s[0].ships[k].at;
+    #assert abs(b[0].ships[k].fuel - s[0].ships[k].fuel) < 0.001;
+    #assert d3_dist(ship_state(b[..], k, s[0].t).r, ship_state(s[..], k, s[0].t).r) < 50.0;
+  }
+  c: [1] Belt;
+  belt_start(c[..]);
+  t0 := c[0].t;
+  #assert !load_game(c[..], cast(string) buf[0..<n / 2]);
+  #assert !load_game(c[..], "BELT2200 1|nonsense");
+  #assert c[0].t == t0;
 }
