@@ -2231,7 +2231,8 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       m = put(buf[..], 0, "LAST: SAVE D20 "); m = put_int(buf[..], m, d.roll); m = put(buf[..], m, " = "); m = put_int(buf[..], m, d.total);
       m = put(buf[..], m, " VS DC "); m = put_int(buf[..], m, d.vs); m = put(buf[..], m, ifx d.hit then " FAILED" else " SAVED");
     } else {
-      m = put(buf[..], 0, "LAST: D20 "); m = put_int(buf[..], m, d.roll); m = put(buf[..], m, " + 5");
+      // the attack's own modifier: +5, with level 4's +1, Devotion's +3 and a magic item
+      m = put(buf[..], 0, "LAST: D20 "); m = put_int(buf[..], m, d.roll); m = put(buf[..], m, " + "); m = put_int(buf[..], m, d.total - d.roll - d.bless - d.insp - d.aura);
       if d.bless > 0 { m = put(buf[..], m, " + BLESS "); m = put_int(buf[..], m, d.bless); }
       if d.insp > 0 { m = put(buf[..], m, " + INSPIRED "); m = put_int(buf[..], m, d.insp); }
       if d.aura > 0 { m = put(buf[..], m, " + AURA 1"); }
