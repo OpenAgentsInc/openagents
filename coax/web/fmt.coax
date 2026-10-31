@@ -1,0 +1,85 @@
+// coax fmt: canonical layout of Coax source trivia (coax/lib/text/format.coax).
+//   coax/web/tool.sh fmt FILE.coax...                 print each file formatted (stdout)
+//   coax/web/tool.sh fmt --check FILE.coax...         list files that would change; never writes
+//   coax/web/tool.sh fmt --write FILE.coax...         rewrite files in place
+//   coax/web/tool.sh fmt --write --revision REV FILE  rewrite only if FILE still has revision REV
+// A revision is the 16-hex-digit FNV-1a 64 of the file's bytes; --check prints
+// it, so a caller can format exactly what it looked at. --write re-reads each
+// file just before writing and refuses (exit 3, the file untouched) when it
+// changed since it was read or no longer has the given revision. Malformed
+// source is refused (exit 1) with FILE:LINE: CODE message and never written.
+// Exit 0 when every file is canonical (or was written), 1 refused input,
+// 2 usage, 3 stale, 4 --check found files to change.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/text/format.coax";
+
+FMT_MAX :: 16777216;
+
+fmt_revision :: (data: [] u8) -> u64 {
+  h: u64 = 14695981039346656037;
+  for b: data { h = mul_wrap(h ^ cast(u64) b, 1099511628211); }
+  return h;
+}
+
+fmt_hex :: (v: u64, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<16 { out[i] = digits[cast(int) ((v >> cast(u64) (60 - 4 * i)) & 15)]; }
+  return cast(string) out[0..<16];
+}
+
+fmt_out :: (s: string) { print("%", s); }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("fmt: arguments too long"); return 2; }
+  check := args_has(a[..], "--check");
+  write := args_has(a[..], "--write");
+  want := args_value(a[..], "--revision", "");
+  if check && write { tool_errln("fmt: --check and --write are exclusive"); return 2; }
+  if want.count > 0 && !write { tool_errln("fmt: --revision needs --write"); return 2; }
+  src: [FMT_MAX] u8; out: [FMT_MAX] u8; again: [FMT_MAX] u8; hex: [16] u8;
+  files := 0; worst := 0; differ := 0;
+  i := 0;
+  while i < args_count(a[..]) {
+    arg := args_at(a[..], i);
+    i += 1;
+    if arg == "--check" || arg == "--write" { continue; }
+    if arg == "--revision" { i += 1; continue; }
+    files += 1;
+    n := fs_read(arg, src[..]);
+    if n < 0 { tool_err("fmt: cannot read "); tool_errln(arg); worst = 1; continue; }
+    text := cast(string) src[0..<n];
+    rev := fmt_revision(src[0..<n]);
+    r := fmt_source(text, out[..]);
+    if r.error != FMT_OK {
+      print("%:%: % %\n", arg, r.line, fmt_code(r.error), fmt_message(r.error));
+      worst = 1;
+      continue;
+    }
+    formatted := cast(string) out[0..<r.count];
+    if check {
+      if r.changed { print("% %\n", arg, fmt_hex(rev, hex[..])); differ += 1; }
+      continue;
+    }
+    if !write { fmt_out(formatted); continue; }
+    if want.count > 0 && want != fmt_hex(rev, hex[..]) {
+      print("%: stale: revision % is not %\n", arg, fmt_hex(rev, hex[..]), want);
+      if worst == 0 { worst = 3; }
+      continue;
+    }
+    if !r.changed { continue; }
+    m := fs_read(arg, again[..]);
+    if m != n || fmt_revision(again[0..<m]) != rev {
+      print("%: stale: changed while formatting\n", arg);
+      if worst == 0 { worst = 3; }
+      continue;
+    }
+    if !fs_write(arg, formatted) { tool_err("fmt: cannot write "); tool_errln(arg); worst = 1; }
+  }
+  if files == 0 { tool_errln("usage: coax/web/tool.sh fmt [--check | --write [--revision REV]] FILE.coax..."); return 2; }
+  if worst != 0 { return worst; }
+  if differ > 0 { return 4; }
+  return 0;
+}

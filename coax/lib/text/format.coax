@@ -1,0 +1,243 @@
+// Canonical layout of Coax source trivia (r7a-format-evidence, first slice).
+// fmt_source rewrites only whitespace outside literals: CRLF becomes LF,
+// trailing spaces and tabs go, runs of blank lines become one, leading blank
+// lines go, and the file ends with exactly one newline. Every token, comment
+// text, string and character literal keeps its bytes, so the checked program
+// is unchanged. Malformed input is refused with the lexer's code and the
+// output is not used: a block comment never closed (E0101), a string or
+// character literal not closed on its line (E0106), a lone CR or a NUL byte. Statement layout, indentation and line breaking inside lines are
+// not changed yet. No host calls; the caller supplies the output buffer.
+#authority;
+
+FMT_OK :: 0;
+FMT_ERR_COMMENT :: 1;   // E0101
+FMT_ERR_STRING :: 2;    // E0106
+FMT_ERR_BYTE :: 3;      // a lone CR or a NUL
+FMT_ERR_SPACE :: 4;     // the output buffer is too small
+
+FmtResult :: struct { error: int; count: int; line: int; changed: bool; }
+
+fmt_code :: (error: int) -> string {
+  if error == FMT_ERR_COMMENT { return "E0101"; }
+  if error == FMT_ERR_STRING { return "E0106"; }
+  return "";
+}
+
+fmt_message :: (error: int) -> string {
+  if error == FMT_ERR_COMMENT { return "block comment is never closed"; }
+  if error == FMT_ERR_STRING { return "string is never closed"; }
+  if error == FMT_ERR_BYTE { return "a lone carriage return or a NUL byte"; }
+  if error == FMT_ERR_SPACE { return "the formatted source does not fit its buffer"; }
+  return "";
+}
+
+FMT_Out :: struct { n: int; full: bool; }
+
+fmt_put :: (out: [] u8, o: [] FMT_Out, b: u8) {
+  if o[0].n >= out.count { o[0].full = true; return; }
+  out[o[0].n] = b;
+  o[0].n += 1;
+}
+
+// The line's text without its trailing spaces and tabs.
+fmt_trim :: (src: string, start: int, end: int) -> int {
+  e := end;
+  while e > start && (src[e - 1] == 32 || src[e - 1] == 9) { e -= 1; }
+  return e;
+}
+
+// The byte at i, or 0 past the end (a NUL in the source is refused first).
+fmt_at :: (src: string, i: int) -> u8 { return ifx i < src.count then src[i] else 0; } // mutant: equivalent (past the end is compared only with 10, 13, 42 and 47)
+
+// One pass: classify bytes as code, comment or literal and copy them, laying
+// out only the whitespace at line ends and between lines.
+fmt_source :: (src: string, out: [] u8) -> FmtResult {
+  r := FmtResult.{line = 1};
+  o: [1] FMT_Out;
+  depth := 0;           // block comment nesting
+  quote: u8 = 0;        // 34 or 39 inside a literal
+  line_comment := false;
+  line_start := 0;      // where the current line begins in src
+  blank := false;       // a blank line is waiting to be written
+  wrote := false;       // a non-blank line has been written
+  i := 0;
+  while i <= src.count {
+    c := fmt_at(src, i);
+    next := fmt_at(src, i + 1);
+    if i < src.count && (c == 0 || (c == 13 && next != 10)) { r.error = FMT_ERR_BYTE; return r; }
+    if i == src.count || c == 10 || c == 13 {
+      if quote != 0 { r.error = FMT_ERR_STRING; return r; }
+      e := fmt_trim(src, line_start, i);
+      if e == line_start && depth == 0 {
+        if wrote { blank = true; }
+      } else {
+        if blank { fmt_put(out, o[..], 10); }
+        blank = false;
+        for k: line_start..<e { fmt_put(out, o[..], src[k]); }
+        fmt_put(out, o[..], 10);
+        wrote = true;
+      }
+      if c == 13 { i += 1; }
+      i += 1;
+      line_start = i;
+      line_comment = false;
+      if i <= src.count { r.line += 1; }
+      continue;
+    }
+    step := 1;
+    if line_comment {
+    } else if quote != 0 {
+      if c == 92 && next != 10 && next != 13 { step = 2; }
+      else if c == quote { quote = 0; }
+    } else if depth > 0 {
+      if c == 42 && next == 47 { depth -= 1; step = 2; }
+      else if c == 47 && next == 42 { depth += 1; step = 2; }
+    } else if c == 47 && next == 47 {
+      line_comment = true;
+    } else if c == 47 && next == 42 {
+      depth = 1; step = 2;
+    } else if c == 34 || c == 39 {
+      quote = c;
+    }
+    i += step;
+    if i > src.count { i = src.count; } // mutant: equivalent (at i == count the assignment changes nothing)
+  }
+  if depth > 0 { r.error = FMT_ERR_COMMENT; return r; }
+  if o[0].full { r.error = FMT_ERR_SPACE; return r; }
+  r.count = o[0].n;
+  r.changed = cast(string) out[0..<r.count] != src;
+  return r;
+}
+
+fmt_check :: (src: string, want: string) -> bool {
+  buf: [512] u8;
+  r := fmt_source(src, buf[..]);
+  return r.error == FMT_OK && cast(string) buf[0..<r.count] == want;
+}
+
+fmt_fails :: (src: string, error: int, line: int) -> bool {
+  buf: [512] u8;
+  r := fmt_source(src, buf[..]);
+  return r.error == error && r.line == line;
+}
+
+#test "already canonical source is unchanged" {
+  #assert fmt_check("a :: 1;\n", "a :: 1;\n");
+  #assert fmt_check("f :: () {\n  x := 1;\n\n  y := 2;\n}\n", "f :: () {\n  x := 1;\n\n  y := 2;\n}\n");
+  #assert fmt_check("", "");
+}
+
+#test "line ends: CRLF, trailing spaces and tabs, one final newline" {
+  #assert fmt_check("a :: 1;\r\nb :: 2;\r\n", "a :: 1;\nb :: 2;\n");
+  #assert fmt_check("a :: 1;  \t\nb :: 2; \n", "a :: 1;\nb :: 2;\n");
+  #assert fmt_check("a :: 1;", "a :: 1;\n");
+  #assert fmt_check("a :: 1;\n\n\n", "a :: 1;\n");
+  #assert fmt_check("\n\n  \na :: 1;\n", "a :: 1;\n");
+  #assert fmt_check("   \n", "");
+}
+
+#test "blank-line runs become one; indentation stays" {
+  #assert fmt_check("a :: 1;\n\n\n\nb :: 2;\n", "a :: 1;\n\nb :: 2;\n");
+  #assert fmt_check("a :: 1;\n \t \n\t\nb :: 2;\n", "a :: 1;\n\nb :: 2;\n");
+  #assert fmt_check("\tx := 1;\n", "\tx := 1;\n");
+}
+
+#test "literals and comments keep their bytes" {
+  #assert fmt_check("s :: \"a  \";  \n", "s :: \"a  \";\n");
+  #assert fmt_check("s :: \"\\\"  \";\n", "s :: \"\\\"  \";\n");
+  #assert fmt_check("c :: ' ';\n", "c :: ' ';\n");
+  #assert fmt_check("c :: '\\'';  \n", "c :: '\\'';\n");
+  #assert fmt_check("// keep  this\nx :: 1; // and \"this\n", "// keep  this\nx :: 1; // and \"this\n");
+  #assert fmt_check("/* a  \n\n\n b */\nx :: 1;\n", "/* a\n\n\n b */\nx :: 1;\n");
+  #assert fmt_check("/* a /* b */ \" c */\nx :: 1;\n", "/* a /* b */ \" c */\nx :: 1;\n");
+  #assert fmt_check("x :: 4/2; y :: 3*2;\n", "x :: 4/2; y :: 3*2;\n");
+}
+
+#test "malformed input is refused with its line" {
+  #assert fmt_fails("x :: 1;\n/* open\n", FMT_ERR_COMMENT, 3);
+  #assert fmt_fails("/* a /* b */\n", FMT_ERR_COMMENT, 2);
+  #assert fmt_fails("x :: 1;\ns :: \"open\n", FMT_ERR_STRING, 2);
+  #assert fmt_fails("s :: \"open\\\n\";\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("c :: 'a\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("s :: \"x", FMT_ERR_STRING, 1);
+  #assert fmt_fails("x :: 1;\ry :: 2;\n", FMT_ERR_BYTE, 1);
+  #assert fmt_fails("x :: 1;\r", FMT_ERR_BYTE, 1);
+  #assert fmt_fails("x :: 1;\n\0\n", FMT_ERR_BYTE, 2);
+  #assert fmt_fails("// a \0\n", FMT_ERR_BYTE, 1);
+}
+
+#test "the last byte of a file is classified like any other" {
+  #assert fmt_check("x :: 4 /", "x :: 4 /\n");
+  #assert fmt_check("x :: 4 *", "x :: 4 *\n");
+  #assert fmt_check("// c /", "// c /\n");
+  #assert fmt_check("x :: 1; //", "x :: 1; //\n");
+  #assert fmt_fails("s :: \"x\\", FMT_ERR_STRING, 1);
+  #assert fmt_fails("/* a *", FMT_ERR_COMMENT, 1);
+  #assert fmt_fails("/* a /", FMT_ERR_COMMENT, 1);
+  #assert fmt_fails("/*", FMT_ERR_COMMENT, 1);
+  #assert fmt_fails("'", FMT_ERR_STRING, 1);
+}
+
+#test "a comment opener inside a literal, and a quote inside a comment, are inert" {
+  #assert fmt_check("s :: \"/*\";  \nt :: 1;  \n", "s :: \"/*\";\nt :: 1;\n");
+  #assert fmt_check("s :: \"//\";  \n", "s :: \"//\";\n");
+  #assert fmt_check("c :: '\"';  \n", "c :: '\"';\n");
+  #assert fmt_check("s :: \"'\";  \n", "s :: \"'\";\n");
+  #assert fmt_check("/* ' */ x :: 1;  \n", "/* ' */ x :: 1;\n");
+  #assert fmt_check("/* \" */\n", "/* \" */\n");
+  #assert fmt_check("/**/x :: 1;  \n", "/**/x :: 1;\n");
+  #assert fmt_check("/*/ */x :: 1;  \n", "/*/ */x :: 1;\n");
+  #assert fmt_check("/* a */ /* b */  \n", "/* a */ /* b */\n");
+  #assert fmt_check("// x\r\ns :: \"a\";  \r\n", "// x\ns :: \"a\";\n");
+  #assert fmt_check("/* x */ // y  \n\"a\";\n", "/* x */ // y\n\"a\";\n");
+  #assert fmt_check("s :: \"\\\\\";  \n", "s :: \"\\\\\";\n");
+  #assert fmt_fails("s :: \"\\\r\n\";\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("s :: \"a\r\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("s :: '\r\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("x :: 1;\r\n/* \r\n", FMT_ERR_COMMENT, 3);
+  #assert fmt_fails("// x\ns :: \"open\n", FMT_ERR_STRING, 2);
+  #assert fmt_fails("s :: \"\\\ry\";\n", FMT_ERR_BYTE, 1);
+  #assert fmt_fails("/* a */* \"\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("/* /*/ */ x\n", FMT_ERR_COMMENT, 2);
+  #assert fmt_fails("/* /**/ */x \"\n", FMT_ERR_STRING, 1);
+  #assert fmt_fails("x :: 4/2; s :: \"a\n", FMT_ERR_STRING, 1);
+  #assert fmt_check("/*/ \"\n */\n", "/*/ \"\n */\n");
+}
+
+#test "the checks' own helpers reject wrong expectations" {
+  #assert !fmt_check("a :: 1;  \n", "a :: 1;  \n");
+  #assert !fmt_check("a :: 1;\n", "a :: 2;\n");
+  #assert !fmt_check("/* open\n", "/* open\n");
+  #assert !fmt_check("/*", "");
+  #assert !fmt_fails("/* open\n", FMT_ERR_STRING, 2);
+  #assert !fmt_fails("/* open\n", FMT_ERR_COMMENT, 1);
+  #assert !fmt_fails("x :: 1;\n", FMT_OK, 1) && fmt_fails("x :: 1;\n", FMT_OK, 2);
+}
+
+#test "the output buffer bounds the result" {
+  small: [4] u8;
+  r := fmt_source("abcd\n", small[..]);
+  #assert r.error == FMT_ERR_SPACE;
+  r = fmt_source("abc\n", small[..]);
+  #assert r.error == FMT_OK && r.count == 4 && !r.changed;
+  r = fmt_source("abc", small[..]);
+  #assert r.error == FMT_OK && r.count == 4 && r.changed;
+}
+
+#test "formatting twice changes nothing" {
+  inputs := [5] string.["a ::  1;  \r\n\n\n\nb\t\n", "\n\n/* x  \n */  \n\n", "s :: \"  \";\n\n\n// c  \n", "x", "\n"];
+  for s: inputs {
+    a: [256] u8; b: [256] u8;
+    r1 := fmt_source(s, a[..]);
+    r2 := fmt_source(cast(string) a[0..<r1.count], b[..]);
+    #assert r1.error == FMT_OK && r2.error == FMT_OK && !r2.changed && r2.count == r1.count;
+  }
+}
+
+#test "codes and messages name each refusal" {
+  #assert fmt_code(FMT_ERR_COMMENT) == "E0101" && fmt_message(FMT_ERR_COMMENT) == "block comment is never closed";
+  #assert fmt_code(FMT_ERR_STRING) == "E0106" && fmt_message(FMT_ERR_STRING) == "string is never closed";
+  #assert fmt_code(FMT_ERR_BYTE) == "" && fmt_message(FMT_ERR_BYTE) == "a lone carriage return or a NUL byte";
+  #assert fmt_code(FMT_ERR_SPACE) == "" && fmt_message(FMT_ERR_SPACE) == "the formatted source does not fit its buffer";
+  #assert fmt_code(FMT_OK) == "" && fmt_message(FMT_OK) == "";
+}

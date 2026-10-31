@@ -19,9 +19,9 @@ prove almost nothing, fix that, and then watch the build stop a plausible
 
 > Note: Stable error codes, fix lines, `--json`, `coax explain`,
 > `coax check`, `coax test`, `#authority`, `coax mutate`, `coax layout`
-> and readable C output all work in `coax0` 0.10.0. A formatter, a
-> compiler server that answers queries and expansion traces are designed
-> (spec §17.3) and marked where they come up.
+> and readable C output all work in `coax0` 0.10.0. A first formatter
+> slice works (below). A compiler server that answers queries and expansion
+> traces are designed (spec §17.3) and marked where they come up.
 
 The agent can edit the checks, directives and build scripts as well as the
 implementation. Compiler gates do not protect their own configuration from
@@ -475,11 +475,30 @@ explicit calls, and every trap names a source line.
 identities, source ranges, resolved references and conservative revisions
 (Chapter 22). They are batch reports, not a general editor query server.
 
-> Note: A resident query server, revision-bound structured edits and a
-> canonical formatter remain planned. Richer effect and expansion queries
-> also wait for the relevant language features. Generated declarations
-> should keep the chain that produced them so an agent edits the source
-> of generated code rather than its disposable output.
+`coax/web/tool.sh fmt` is the first slice of a formatter. It lays out only
+whitespace outside literals: CRLF becomes LF, trailing blanks go, a run of
+blank lines becomes one, and a file ends with one newline. Tokens, comment
+text and literal bytes are untouched, so the checked program is the same:
+
+```shell
+$ coax/web/tool.sh fmt --check src/*.coax
+src/pose.coax 8205e21c42e668dc
+$ coax/web/tool.sh fmt --write --revision 8205e21c42e668dc src/pose.coax
+```
+
+`--check` writes nothing and names each file that would change with its
+revision; `--write --revision` rewrites a file only if it still has the
+revision the agent looked at, so a formatter run can't overwrite an edit made
+in between (exit 3, the file untouched). An unclosed comment or string is
+refused with its line and the lexer's code, never written. The repository's
+1,358 Coax files format idempotently; 34 would change.
+
+> Note: A resident query server, revision-bound structured edits and
+> canonical statement layout (indentation, line breaking) remain planned.
+> Richer effect and expansion queries also wait for the relevant language
+> features. Generated declarations should keep the chain that produced them
+> so an agent edits the source of generated code rather than its disposable
+> output.
 
 ## The book is checked too
 
