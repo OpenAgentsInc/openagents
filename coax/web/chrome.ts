@@ -1,5 +1,6 @@
 // The headless Chrome a page check runs, on this machine: its binary and the
-// flags that give it WebGPU (shot.ts, goldens.ts, perf.ts). Always headless,
+// flags that give it WebGPU (goldens.ts, perf.ts; the Coax tools use
+// coax/lib/net/cdp.coax, which makes the same choices). Always headless,
 // muted and on its own profile; it never opens a window or takes focus.
 //   macOS  Google Chrome.app, WebGPU on Metal through ANGLE
 //   Linux  the real Chromium (never a launcher that opens a window, such as

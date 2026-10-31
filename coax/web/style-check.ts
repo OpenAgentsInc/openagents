@@ -25,7 +25,7 @@ async function shoot(url: string, size: string): Promise<Image> {
   const file = join(tmp, `${shots++}.png`)
   // a headless Chrome that doesn't come up (a busy machine) gets two more tries
   for (let tries = 0; tries < 3 && !existsSync(file); tries++) {
-    await Bun.spawn(["bun", join(import.meta.dir, "shot.ts"), url, file, size, "9000"], { stdout: "ignore", stderr: "ignore" }).exited
+    await Bun.spawn([join(import.meta.dir, "tool.sh"), "shot", url, file, size, "9000"], { stdout: "ignore", stderr: "ignore" }).exited
   }
   if (!existsSync(file)) throw new Error(`style check: no shot of ${url} at ${size}`)
   return decodePng(readFileSync(file))

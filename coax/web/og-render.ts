@@ -50,7 +50,7 @@ const port = 4700 + Math.floor(Math.random() * 200)
 const server = Bun.spawn(["bun", join(here, "golden-serve.ts"), site, String(port)], { stdout: "ignore", stderr: "ignore" })
 const base = `http://golden.localhost:${port}`
 const work = mkdtempSync(join(tmpdir(), "og-render-"))
-const shot = (url: string, out: string, wh: string, wait: number) => run(["bun", join(here, "shot.ts"), url, out, wh, String(wait)])
+const shot = (url: string, out: string, wh: string, wait: number) => run([join(here, "tool.sh"), "shot", url, out, wh, String(wait)])
 // PNG to a JPEG under 300 KB, sized to w x h (sips: macOS).
 const jpeg = (png: string, out: string, w: number, h: number) => {
   mkdirSync(dirname(out), { recursive: true })

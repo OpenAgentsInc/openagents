@@ -1,0 +1,67 @@
+// Screenshot a Coaxial page with WebGPU in headless Chrome: no window opens and
+// nothing takes focus. Agents never open a visible browser for checks.
+//   coax/web/tool.sh shot URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS]   (prints what JS returns)
+// It waits WAIT_MS of real time (the pages animate in), then captures. A
+// value the script returns is printed: a string as it is, anything else as
+// compact JSON. Then OUT is printed.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+SHOT_PNG :: 25165824;   // the largest screenshot, 24 MiB
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0); out := args_at(a[..], 1);
+  // The size and wait are positional; a flag in their place leaves the default.
+  size := args_at(a[..], 2); wait := args_at(a[..], 3);
+  if size.count == 0 || (size.count > 1 && size[0] == '-' && size[1] == '-') { size = "1440x900"; }
+  if wait.count == 0 || (wait.count > 1 && wait[0] == '-' && wait[1] == '-') { wait = "4000"; }
+  e := args_find(a[..], "--eval");
+  script := ifx e > 0 then args_at(a[..], e + 1) else "";
+  if !ok || url.count == 0 || out.count == 0 {
+    tool_errln("usage: coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS]");
+    return 2;
+  }
+  wh := args_size(size); ms := args_number(wait);
+  if !wh.ok || !ms.ok || ms.value < 0.0 { tool_errln("shot: WxH is two whole numbers and WAIT_MS a number of milliseconds"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], wh.w, wh.h, "coax-shot-") { tool_err("shot: "); tool_errln(cdp_error(c[..])); return 1; }
+  status := shot(c[..], url, out, wh, cast(int) ms.value, script);
+  cdp_close(c[..]);
+  return status;
+}
+
+shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, wait: int, script: string) -> int {
+  params: [8192] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], wh.w < 600); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return shot_fail(c); }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  if o[0].bad { tool_errln("shot: the URL is too long"); return 2; }
+  if cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { return shot_fail(c); }
+  proc_sleep(wait);
+  if script.count > 0 {
+    v := cdp_evaluate(c, script);
+    if v >= 0 {
+      d := cdp_doc(c);
+      text: [1048576] u8;
+      if jv_kind(d, v) == JV_STRING {
+        n := jv_str(d, v, text[..]);
+        if n >= 0 { print("%\n", cast(string) text[0..<n]); }
+      } else {
+        w: [1] Jo; jo_start(w[..], text[..]); jv_write(d, v, w[..]);
+        if !w[0].bad { print("%\n", jo_text(w[..])); }
+      }
+    }
+    proc_sleep(500);
+  }
+  png: [SHOT_PNG] u8;
+  n := cdp_screenshot(c, png[..]);
+  if n < 0 { return shot_fail(c); }
+  if !fs_write(out, cast(string) png[0..<n]) { tool_err("shot: could not write "); tool_errln(out); return 1; }
+  print("%\n", out);
+  return 0;
+}
+shot_fail :: (c: [] Cdp) -> int { tool_err("shot: "); tool_errln(cdp_error(c)); return 1; }

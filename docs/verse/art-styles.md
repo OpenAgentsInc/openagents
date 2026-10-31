@@ -635,7 +635,7 @@ the pack) rather than less shading.
 
 ### 15. Judging "looks painterly"
 
-Two checks, both headless (`bun coax/web/shot.ts`, never a visible browser):
+Two checks, both headless (`coax/web/tool.sh shot`, never a visible browser):
 
 1. **The style check**, `coax/web/style-check.ts URL --style painterly`.
    It shoots each realm's named views (`realms.json` `style_views`, e.g.

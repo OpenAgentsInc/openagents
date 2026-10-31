@@ -43,7 +43,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
   to make a run pass.
 - **No GitHub Actions.** Checks run locally or on our own machines.
 - **No visible browsers.** Page checks and screenshots run in headless
-  Chrome, which renders WebGPU: `bun coax/web/shot.ts URL OUT.png [WxH]
+  Chrome, which renders WebGPU: `coax/web/tool.sh shot URL OUT.png [WxH]
   [WAIT_MS] [--eval JS]`, or the same flags (`--headless=new --mute-audio
   --enable-unsafe-webgpu --use-angle=metal`) in your own driver. Never open a
   window or take focus on the owner's screen, and never play sound on it:
