@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793471691,
+  "content": "The 3 INVARIANTS.md lines removed are the 'Emission alone is not execution evidence' paragraph, rewritten in place: it keeps that sentence, keeps shared finite-domain traversal and semantic/consumer qualification as separate work and keeps coax.evidence.v1 as evaluator-only; only the 'bounded native execution remains separate' clause changes, because this commit supplies it, and a new 34-line section adds stricter rules (complete original baseline before emission, matching BEGIN/END plus exit0 to pass, signals nonpassing, a separate execution.v1 record, product authority gates unchanged). The only other removed lines in the commit are 0.40.0 version strings, a README table description and the catalogue count 118->119. coax/tests/run.sh only appends native_check_execution.py and native_execution_transport.py to the existing && chain. Both pass at e49a5a7dae (27/27, 4/4).",
+  "tags": [
+    [
+      "commit",
+      "b91aed93e2b4267ccdc117d6cab3f272f2a896db"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "e8cd69d6d3aa35f7a1ac236a18e5d4f09c5a1b46543b8a2c7424577ea085035d",
+  "sig": "c9f864a8b28fb78f8c84130a94341056250c5065de6a884ae5073b67cdc5fd26b3bcabb4d755827f5d3971697d6d898ce2ae9c89c70bb849749af3a86da3db1d"
+}
