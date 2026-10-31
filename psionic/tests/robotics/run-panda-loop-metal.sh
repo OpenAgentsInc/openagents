@@ -20,7 +20,7 @@ python="${GROOT_REFERENCE_PYTHON:-$HOME/.cache/psionic/groot-reference-env/bin/p
 sdk="${MUJOCO_ROOT:-$("$python" -c 'import importlib.util,pathlib;print(pathlib.Path(importlib.util.find_spec("mujoco").origin).parent)')}"
 build="$output/build"
 mkdir -p "$build/shaders"
-"$coax" c psionic/tests/robotics/panda-session.coax --library --release --header "$build/panda-session.h" > "$build/panda-session.c"
+"$coax" c psionic/tests/robotics/panda-clock-session.coax --library --release --header "$build/panda-session.h" > "$build/panda-session.c"
 "$coax" c psionic/lib/robotics/panda-policy.coax --library --release --header "$build/panda-policy-generated.h" > "$build/panda-policy-generated.c"
 if [[ -n "${PANDA_SHADER_CACHE:-}" ]];then
   for module in tile device vision wide text action;do cp "$PANDA_SHADER_CACHE/$module.metal" "$build/shaders/$module.metal";done

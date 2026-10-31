@@ -1,0 +1,5 @@
+#load "panda-loop-types.coax";
+#load "../physics/step-clock-types.coax";
+PkStatus :: enum u8 {ok;state;order;clock;stale;command;effect;}
+PkState :: struct {supervisor:PlState;clock:ScSchedule;last_forward:ScSimInstant;fresh:bool;initial_seconds:f64;}
+PkResult :: struct {status:PkStatus;state:PkState;tag:PlTag;slot:int=-1;fallback:bool;goal_update:bool;pl_status:PlStatus;clock_status:ScStatus;}

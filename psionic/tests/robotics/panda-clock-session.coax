@@ -1,0 +1,3 @@
+// Additive aggregate: existing Ps/Pl/Pc/Pe/Pr exports retain their identities.
+#load "panda-session.coax";
+#load "../../lib/robotics/panda-clock-adapter.coax";

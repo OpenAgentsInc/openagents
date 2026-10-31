@@ -1,0 +1,90 @@
+{
+  "SDK_prefix_modes": "two executions only, ASan+UBSan; portable paired ABI runs debug/release/sanitized separately",
+  "cases": [
+    {
+      "case": "demo_001",
+      "expected_requests": [
+        0,
+        200
+      ],
+      "files": {
+        "init.f64": {
+          "bytes": 360,
+          "sha256": "38a00e0e6d27ef267a9ed7989c6956a3aa6cb134cb5fd28ad1030fd975b6292a"
+        },
+        "original.xml": {
+          "bytes": 60702,
+          "sha256": "539bb6e1d9b515a3c0c64217cb756b2df14383899581df74c32c340af7aed11e"
+        },
+        "scene.xml": {
+          "bytes": 66846,
+          "sha256": "43b0eaa45a42dbd2c5729ba46aa1395d45689e9b540a5db7209379b0d61a3ca4"
+        }
+      },
+      "original_case_ledger": {
+        "bytes": 702,
+        "sha256": "f31779213738469fde5fb162ad2e90ff5fbb0c6f908f903449c7d0fa4cc0c58b"
+      },
+      "recorded_trace": {
+        "bytes": 2560064,
+        "sha256": "d3e67422337d5ea24ba462702b0a0564597343bd733b807b2db8164330b4a4b3"
+      },
+      "rows": 10,
+      "scenario": 0,
+      "steps": 250
+    },
+    {
+      "case": "demo_000",
+      "expected_requests": [
+        0,
+        25,
+        225
+      ],
+      "files": {
+        "init.f64": {
+          "bytes": 360,
+          "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+        },
+        "original.xml": {
+          "bytes": 60702,
+          "sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5"
+        },
+        "scene.xml": {
+          "bytes": 66846,
+          "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+        }
+      },
+      "original_case_ledger": {
+        "bytes": 697,
+        "sha256": "74685948bd575c57af4022495d6afb80b85a178f64594455f5b39547ecff4940"
+      },
+      "recorded_trace": {
+        "bytes": 204864,
+        "sha256": "c7257ad9963c9c0876a3c8cf7095df2c04f60599d54d7614f703f900f1bb00ff"
+      },
+      "rows": 10,
+      "scenario": 2,
+      "steps": 250
+    }
+  ],
+  "command_source": "Explicit recorded-command fixture: copy selected first-eight action rows from existing PTR1 where available; declare every unconsumed test-tail lane zero. This is NOT an authentic later neural reply.",
+  "comparisons": [
+    "all25045-F64states bit-identical",
+    "all250canonical512Brecord payloads bit-identical",
+    "cached request and fresh row-boundary observation bytes from separate installed-SDK forward-only reference"
+  ],
+  "control_source": "Replay original nine actuator words, no controller arithmetic or neural/provider initialization.",
+  "frozen_before_new_SDK_execution": true,
+  "not_claimed": [
+    "new neural output or whole policy evaluation",
+    "task success/outcome comparison",
+    "new pixel/renderer qualification",
+    "whole compiler R13/R18",
+    "real-time watchdog"
+  ],
+  "old_episode_receipts_preserved": true,
+  "profile": "panda-runtime-clock-500-20-v1",
+  "request_observation_F32comparison": "exact bytes",
+  "schema": "psionic-panda-clock-prefix-profile-v1",
+  "snapshot_frozen_atol": 1e-12
+}

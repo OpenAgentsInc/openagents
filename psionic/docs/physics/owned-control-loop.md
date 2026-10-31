@@ -15,6 +15,7 @@ contacts and rendering for the genuine model evaluation.
 | [Force sensitivities](oscillator-functions.md) | Independently checked F32 planning realization, fixed-context q/v/u products |
 | [Checkpoints](oscillator-replay.md) | Exact same-build one-axis state/accepted-force restore; later events external |
 | [Runtime clocks](step-clock.md) | Nominal clock domains and a fixed 500/20Hz owned-oscillator schedule, with demand-driven requests; compiler R13 and robot integration pending |
+| [Panda clock sidecar](panda-runtime-clock.md) | Paired supervisor/clock receipts and two exact recorded-command SDK prefixes; no fresh whole-NN evaluation |
 | [Effect inventory](../../../coax/EFFECTS.md) | Transitive may-effects with witness paths; borrowed/foreign/intrinsic unknowns explicit |
 
 The next sequence follows the compiler [physical-world requirements](../../../coax/ROADMAP.md#15-r12--units-and-coordinate-frames):

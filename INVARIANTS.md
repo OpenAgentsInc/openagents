@@ -59,6 +59,20 @@ and host observations are caller-supplied facts, not authentication. This
 library reads no clock internally. A wall watchdog, compiler R13/R14, complete
 replay, generic sensor-age policy and robot embodiment remain outside this profile.
 
+## Panda clock receipts preserve the old trace and real effect order
+
+The Panda sidecar pairs PlState's action-row cursor with the physical-step
+clock. Last-forward state changes only on the actual forward receipt; fresh
+sample, control intent and one integration receipt follow. Pl's tick advances
+after its 25 trace records, preserving PTR1 field/version identity. Bad or partial
+effects return paired halted state. Ordinary admission is atomic, and clock
+acceptance is checked before the supervisor publishes an action chunk.
+
+Recorded-command prefixes qualify SDK states and adapter order. Their copied
+actuator words/clipping flags and declared unused command tails do not establish
+fresh NN replies, controller recomputation or a new episode score. Historical
+whole-model artifact hashes remain separate from the updated hook qualification.
+
 ## Planning derivatives keep physical execution and fixed context explicit
 
 The oscillator-function bridge augments q/v with held force and builds a

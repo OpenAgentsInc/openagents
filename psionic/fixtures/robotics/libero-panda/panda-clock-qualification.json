@@ -1,0 +1,746 @@
+{
+  "actual_shared_host_header": {
+    "effect_fault_kinds": [
+      "forward",
+      "fresh sample",
+      "synthetic source callback",
+      "integration",
+      "clock word",
+      "render callback",
+      "controller callback"
+    ],
+    "execution_scope": "Real modified header; synthetic SDK/controller/source callbacks. No SDK/controller arithmetic or neural provider initialized. Legacy model_calls field counts fixture callback invocations in this distinct synthetic schema.",
+    "fault_log_hardening_after_execution": "Expected-admission-marker and no-sanitizer checks added to script, then checked over all21existing logs without repeating executions.",
+    "generated_debug_C": {
+      "bytes": 273608,
+      "sha256": "19b7a6c33600feb9337e7cb9db37ff5123eaede29d66629f76117e97bf95c1d6"
+    },
+    "generated_header": {
+      "bytes": 76665,
+      "sha256": "1ae6a57e13d8c10692c8888b388261564ca36522788d94b3d9a3f46d8dd544c3"
+    },
+    "generated_release_C": {
+      "bytes": 271841,
+      "sha256": "bb520a321b1e5af44331320e5dc45938ae8a2b129177a57c44a1c7b3f99b730a"
+    },
+    "modes": {
+      "debug": {
+        "binary": {
+          "bytes": 177240,
+          "sha256": "dc614b8b12ea8317675357273800fc70146e2ac772ddf8ad4cd52b930484c523"
+        },
+        "faults": {
+          "1": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "2": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "3": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 113,
+              "sha256": "60f901bf1992f099d2a965edfb7764e6c69be09a3a63cecb70726b62fd17a07a"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "4": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "5": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "6": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "7": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 123,
+              "sha256": "4a9aa0e077ba2fd9ad6a2f4479a2375315b27d56e5bc549943ff32be470795c9"
+            },
+            "sanitizer_diagnostic": false
+          }
+        },
+        "normal_and_delayed": {
+          "0": {
+            "holds": 0,
+            "ledger": {
+              "bytes": 661,
+              "sha256": "dbc92c0582394e7545b352498227fe154b23c24a9c9690c0c4d192df9aa4d19f"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 0,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 2,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "c00ba66df1f6d0f65b9cb1de0094418731ad669044bc8b010c3a6fba833b6b20"
+            }
+          },
+          "2": {
+            "holds": 1,
+            "ledger": {
+              "bytes": 661,
+              "sha256": "47b4d20f78c87d7dd9b1b1e25b435a13df13545ac41b0ed759f8f1d791504287"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 1,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 3,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "e219bb1cd7c49ec7a8ac6c407787680655eb335df87ee5ed7335ad8eccfacb87"
+            }
+          }
+        }
+      },
+      "release": {
+        "binary": {
+          "bytes": 114392,
+          "sha256": "b35f9a8e20fcf3a534a736e9ee350757ffcdbee89ba78250b531094a8aa84ca2"
+        },
+        "faults": {
+          "1": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "2": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "3": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 113,
+              "sha256": "60f901bf1992f099d2a965edfb7764e6c69be09a3a63cecb70726b62fd17a07a"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "4": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "5": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "6": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "7": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 123,
+              "sha256": "4a9aa0e077ba2fd9ad6a2f4479a2375315b27d56e5bc549943ff32be470795c9"
+            },
+            "sanitizer_diagnostic": false
+          }
+        },
+        "normal_and_delayed": {
+          "0": {
+            "holds": 0,
+            "ledger": {
+              "bytes": 666,
+              "sha256": "fbc8702a629e2c7cda9a063e08c9404321f89fcfce07179bf50c98c9632b7dd1"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 0,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 2,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "c00ba66df1f6d0f65b9cb1de0094418731ad669044bc8b010c3a6fba833b6b20"
+            }
+          },
+          "2": {
+            "holds": 1,
+            "ledger": {
+              "bytes": 661,
+              "sha256": "b93615df9e543782939c81f8d6b8a9bb50ddafb311c6eeed906d4ac1bab94215"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 1,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 3,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "e219bb1cd7c49ec7a8ac6c407787680655eb335df87ee5ed7335ad8eccfacb87"
+            }
+          }
+        }
+      },
+      "sanitized": {
+        "binary": {
+          "bytes": 260856,
+          "sha256": "eb34793e5141dba339bf27252e37a4a1237d9eabe65a243c179c83e483fe8a9d"
+        },
+        "faults": {
+          "1": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "2": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "3": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 113,
+              "sha256": "60f901bf1992f099d2a965edfb7764e6c69be09a3a63cecb70726b62fd17a07a"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "4": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "5": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "6": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 82,
+              "sha256": "dfa1848e65ed749fa3b09263692622af57b99980338ae70b29e2cce7e1594a3e"
+            },
+            "sanitizer_diagnostic": false
+          },
+          "7": {
+            "completed_case_ledger": false,
+            "expected_exit": 1,
+            "log": {
+              "bytes": 123,
+              "sha256": "4a9aa0e077ba2fd9ad6a2f4479a2375315b27d56e5bc549943ff32be470795c9"
+            },
+            "sanitizer_diagnostic": false
+          }
+        },
+        "normal_and_delayed": {
+          "0": {
+            "holds": 0,
+            "ledger": {
+              "bytes": 666,
+              "sha256": "88b7a5336b443a2a99d36f779c9c117db607461093da986cf981afd90233d1f9"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 0,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 2,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "c00ba66df1f6d0f65b9cb1de0094418731ad669044bc8b010c3a6fba833b6b20"
+            }
+          },
+          "2": {
+            "holds": 1,
+            "ledger": {
+              "bytes": 666,
+              "sha256": "ae49a05b9499987f3f988d4be9ed6f0ff8069ff236a602756a077b95ee487840"
+            },
+            "profile": "panda-clock-synthetic-host-seam-v1",
+            "refusals": 1,
+            "rows": 10,
+            "schema": "psionic-panda-clock-synthetic-host-v1",
+            "synthetic_effect_steps": 250,
+            "synthetic_replay_exact": true,
+            "synthetic_source_requests": 3,
+            "trace": {
+              "bytes": 128064,
+              "sha256": "e219bb1cd7c49ec7a8ac6c407787680655eb335df87ee5ed7335ad8eccfacb87"
+            }
+          }
+        }
+      }
+    },
+    "negative_runs": 21,
+    "positive_runs": 6
+  },
+  "adapter_runtime_dependency_closure": {
+    "psionic/lib/physics/step-clock-domain.coax": {
+      "bytes": 8150,
+      "sha256": "b442a75ebb290c852fa5f894e651896abdf583af497ccfaf26d4b24567c459c5"
+    },
+    "psionic/lib/physics/step-clock-schedule.coax": {
+      "bytes": 14342,
+      "sha256": "96d73ee216b4c12d292cbff4607b2729a4d9a761fab8f2799cb1f2beb2e10cf1"
+    },
+    "psionic/lib/physics/step-clock-types.coax": {
+      "bytes": 1389,
+      "sha256": "64e095bd2b781b9bca33f8905d79294e6bdbf9628cc376c2b384f0396ed8cd94"
+    },
+    "psionic/lib/robotics/panda-clock-adapter.coax": {
+      "bytes": 19187,
+      "sha256": "5fb0b43b118614bb740c3aa5b59556123d676eda9d2942f2d60a0e58fe4adaa1"
+    },
+    "psionic/lib/robotics/panda-clock-types.coax": {
+      "bytes": 398,
+      "sha256": "e7cb9bcf182c2677503d940736b69d81b1638d9ba347c78f7cfc44008fa88d7f"
+    },
+    "psionic/lib/robotics/panda-loop-types.coax": {
+      "bytes": 594,
+      "sha256": "3dfa3af43145054fbac21680f5f99f8f8e5b22012769034409e7c5b6922b6abe"
+    },
+    "psionic/lib/robotics/panda-loop.coax": {
+      "bytes": 13785,
+      "sha256": "9a35fbd0fefaa34f23ed0bb6026dc7821d7dfa9f6ba9eafedb4fc8e583a4fcd8"
+    }
+  },
+  "assumptions": [
+    "Caller supplies authenticated immutable source files and valid disjoint typed storage.",
+    "Effect receipts honestly correspond to actual SDK calls; structural cursor validation is not history authentication.",
+    "Pinned Euler scene interpretation is separate from generic last-explicit-forward generation labels."
+  ],
+  "authority": {
+    "authored_checks": 8,
+    "entry": "psionic/lib/robotics/panda-clock-adapter.coax",
+    "equivalent_marked": 0,
+    "killed": 251,
+    "mutants": 251,
+    "record": {
+      "bytes": 116,
+      "sha256": "52c4bbc954fe62ae2ab50cf4e56d56e3ae757e82375f3942ac969a088895a6a2"
+    },
+    "scope": "root-only; inherited checks retained",
+    "survived": 0
+  },
+  "cache_guard": {
+    "exit_status": 2,
+    "log": {
+      "bytes": 54,
+      "sha256": "bde2c069958d71a9a7e497b0ad0f46d9c323fc23d82fb3825ca6b8afca2f6698"
+    },
+    "scope": "Coarse obsolete-API refusal, not authentication of arbitrary cache payloads.",
+    "stale_pre_clock_generated_session_refused_before_build": true
+  },
+  "compiler": {
+    "SDK_library": {
+      "bytes": 8017048,
+      "sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4"
+    },
+    "SDK_version": "3.3.1",
+    "binary": {
+      "bytes": 2769080,
+      "sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31"
+    },
+    "floating_flags": [
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ],
+    "host_compiler": "Apple clang21.0.0",
+    "installed_or_cache_modified": false,
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "version": "coax0 0.43.0"
+  },
+  "contract_preservation": {
+    "PTR1_fields_or_version_changed": false,
+    "PlState_fields_changed": false,
+    "Pl_tick_committed_after_trace": true,
+    "controller_arithmetic_changed": false,
+    "forward_generation_from_successful_effect_receipts": true,
+    "frozen_clock18_source_changed": false,
+    "non_ok_halted_state_adopted_by_host": true,
+    "ordinary_refusal_preserves_pair_and_public_commands": true,
+    "unexpected_effect_receipt_latches_pair": true,
+    "wall_statistics_separate_from_simulation": true
+  },
+  "current_book_chapter": 191,
+  "date": "2026-10-31",
+  "genuine_SDK_prefix": {
+    "SDK_reference_integration_steps": 0,
+    "binary": {
+      "bytes": 275112,
+      "sha256": "85bdb1ec4d8bd87bd1e2436db39b5919cd883c465664eea6a5392c964bd0214b"
+    },
+    "cases": [
+      {
+        "SDK_physics_or_controller_or_neural_reference_rerun": false,
+        "SDK_version": "3.3.1",
+        "cached_observations": 2,
+        "case": "demo_001",
+        "command_fixture_scope": "Recorded selected command rows with explicitly zero unconsumed test tail; not an authentic later NN reply.",
+        "exact_PTR1_records": 250,
+        "exact_model_request_F32words": 16,
+        "exact_snapshot_F64words": 120,
+        "exact_state_F64words": 11250,
+        "fresh_observations": 10,
+        "oracle": {
+          "bytes": 6504,
+          "sha256": "1a9131cb2b49265e81308b744d23a3a48b0caef2a81abd34dd0b90b63a72e0c8"
+        },
+        "passed": true,
+        "payloads": {
+          ".json": {
+            "bytes": 312,
+            "sha256": "1e1e0651dc7e7ffe9f9a4cab3f11478c896c24c3cf90dc6ba8b02b5662d3d09d"
+          },
+          ".observations.f32": {
+            "bytes": 64,
+            "sha256": "27731c89b1faa6806539b884446d6004979be510052c8f52631a156af0637531"
+          },
+          ".recorded-commands.u32": {
+            "bytes": 896,
+            "sha256": "f0cdd9efeeee385357e22d7b4e7a3ecf018c25bb324289d10b87976ff50d696e"
+          },
+          ".records.ptr1": {
+            "bytes": 128000,
+            "sha256": "f722f0dc8c3c1337bfe2d1ccb99f8f566b073ffafe5e4dc45da1753025b16d1d"
+          },
+          ".snapshots.bin": {
+            "bytes": 1344,
+            "sha256": "ea18e57b81f1dcf37ff5459d4a522c6e28670afa649db5601b2a2f4bc0cf824f"
+          },
+          ".states.f64": {
+            "bytes": 90360,
+            "sha256": "4b5dad2b337e82208e0cce8e905c51c9b8e9e8cca27f32cc17b80b8bfea280f6"
+          }
+        },
+        "reference_uses_forward_only": true,
+        "request_origins": [
+          0,
+          200
+        ],
+        "scenario": 0,
+        "schema": "psionic-panda-clock-prefix-reference-v1",
+        "scope": "New typed-clock adapter/effect-order SDK prefix. Existing original traces remain unchanged; no task outcome, fresh NN, controller arithmetic, pixel/renderer or full R13/R18 qualification.",
+        "snapshot_F64words": 120,
+        "snapshot_frozen_atol": 1e-12,
+        "snapshot_max_abs_error": 0.0,
+        "source_reset": {
+          "bytes": 360,
+          "sha256": "38a00e0e6d27ef267a9ed7989c6956a3aa6cb134cb5fd28ad1030fd975b6292a"
+        },
+        "source_scene": {
+          "bytes": 66846,
+          "sha256": "43b0eaa45a42dbd2c5729ba46aa1395d45689e9b540a5db7209379b0d61a3ca4"
+        },
+        "source_trace": {
+          "bytes": 2560064,
+          "sha256": "d3e67422337d5ea24ba462702b0a0564597343bd733b807b2db8164330b4a4b3"
+        },
+        "states": 250
+      },
+      {
+        "SDK_physics_or_controller_or_neural_reference_rerun": false,
+        "SDK_version": "3.3.1",
+        "cached_observations": 3,
+        "case": "demo_000",
+        "command_fixture_scope": "Recorded selected command rows with explicitly zero unconsumed test tail; not an authentic later NN reply.",
+        "exact_PTR1_records": 250,
+        "exact_model_request_F32words": 24,
+        "exact_snapshot_F64words": 130,
+        "exact_state_F64words": 11250,
+        "fresh_observations": 10,
+        "oracle": {
+          "bytes": 6504,
+          "sha256": "1a9131cb2b49265e81308b744d23a3a48b0caef2a81abd34dd0b90b63a72e0c8"
+        },
+        "passed": true,
+        "payloads": {
+          ".json": {
+            "bytes": 315,
+            "sha256": "ca0f74182498b0b2e4a32fb21339baf547989f8212b753c80c3929ef6c90f984"
+          },
+          ".observations.f32": {
+            "bytes": 96,
+            "sha256": "99d3bfa64522d0dfaa3054ba7549010731402e6715fe160c368cfce0fd96b794"
+          },
+          ".recorded-commands.u32": {
+            "bytes": 1344,
+            "sha256": "18bc1cbc2c378bf075fc6d1f133c4e9d24545cfe24bf2118cef2cf8507ee14e3"
+          },
+          ".records.ptr1": {
+            "bytes": 128000,
+            "sha256": "f949ab7812935e50e7e718b486921f73067dbe4eaa3f8e7973fba2807bccd013"
+          },
+          ".snapshots.bin": {
+            "bytes": 1456,
+            "sha256": "92857da3834d0b1f41a56aaf16456fad129cbd013cfdf0bf747e8565fcc00f9e"
+          },
+          ".states.f64": {
+            "bytes": 90360,
+            "sha256": "e99de322271b10cdb1b7579d11479831cbb0dcbc7a50c10495e5fcf0ea181ce7"
+          }
+        },
+        "reference_uses_forward_only": true,
+        "request_origins": [
+          0,
+          25,
+          225
+        ],
+        "scenario": 2,
+        "schema": "psionic-panda-clock-prefix-reference-v1",
+        "scope": "New typed-clock adapter/effect-order SDK prefix. Existing original traces remain unchanged; no task outcome, fresh NN, controller arithmetic, pixel/renderer or full R13/R18 qualification.",
+        "snapshot_F64words": 130,
+        "snapshot_frozen_atol": 1e-12,
+        "snapshot_max_abs_error": 0.0,
+        "source_reset": {
+          "bytes": 360,
+          "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+        },
+        "source_scene": {
+          "bytes": 66846,
+          "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+        },
+        "source_trace": {
+          "bytes": 204864,
+          "sha256": "c7257ad9963c9c0876a3c8cf7095df2c04f60599d54d7614f703f900f1bb00ff"
+        },
+        "states": 250
+      }
+    ],
+    "controller_arithmetic_recomputed": false,
+    "exact_PTR1_records": 500,
+    "exact_cached_and_fresh_snapshot_F64words": 250,
+    "exact_post_step_F64words": 22500,
+    "exact_request_observation_F32words": 40,
+    "executions": 2,
+    "forward_only_reference_calls": 25,
+    "generated_C": {
+      "bytes": 273608,
+      "sha256": "19b7a6c33600feb9337e7cb9db37ff5123eaede29d66629f76117e97bf95c1d6"
+    },
+    "generated_header": {
+      "bytes": 76665,
+      "sha256": "1ae6a57e13d8c10692c8888b388261564ca36522788d94b3d9a3f46d8dd544c3"
+    },
+    "mode": "ASan+UBSan",
+    "neural_provider_initializations": 0,
+    "new_RGB_bytes_compared": 0,
+    "physics_steps": 500,
+    "reset_measurement_scope": "Reset file identities are authenticated; initial prefix bytes copy those inputs. New independent state measurements are the250post-step45-F64 states per case; unchanged SDK reset implementation proof is reused.",
+    "same_binary_reused_for_second_input": true,
+    "scene_pairing": "Normal uses demo001; delayed uses demo000. Each scene/reset/source trace identity is distinct and pinned. No paired policy-outcome comparison.",
+    "snapshot_max_abs_error": 0,
+    "source_reset_F64words_copied": 90,
+    "task_outcome_evaluated": false,
+    "trace_reconstruction": "Actual paired header/selected command/measured SDK state; actuator words and clipping flags copied from authenticated recorded fixture. No fresh controller arithmetic claim."
+  },
+  "historical_original_receipts_preserved": true,
+  "passed": true,
+  "pending": [
+    "fresh whole-NN execution through updated hooks",
+    "new RGB/renderer comparison",
+    "actual steady watchdog/deadline/cancellation",
+    "general R18 sensor age/command policy",
+    "complete runtime snapshot",
+    "compiler R13 clock syntax",
+    "compiler R14 bounded-control proof"
+  ],
+  "portable_new_ABI": {
+    "SDK_or_model_initialized": false,
+    "checks_per_mode": 1061,
+    "debug_stdout_count_observed_in_tool_result": 1061,
+    "header": {
+      "bytes": 40312,
+      "sha256": "5bbdd7d7a1cc29da65319ce5456bd48695e8f84b39ec71d41ccdb543cbabf75f"
+    },
+    "modes": {
+      "debug": {
+        "binary": {
+          "bytes": 76232,
+          "sha256": "e1cb1dbf9366b368bb60ae329df0f82560b954f9a25325d1e63ecd8dce7f578d"
+        },
+        "generated_C": {
+          "bytes": 89134,
+          "sha256": "9beb44b2532afeee0f7627fce35197653e67f28cfe3e00aac96b13ea1f7e255c"
+        }
+      },
+      "release": {
+        "binary": {
+          "bytes": 53320,
+          "sha256": "92a170bf1fc7f4873c39a4cd72be89c6a3e350124b274d44e10339f9d4944bab"
+        },
+        "generated_C": {
+          "bytes": 88998,
+          "sha256": "fa85f711c0daeea3e72cef04ddf2736135b6bd85ef0ce75d0b71ee329a505879"
+        }
+      },
+      "sanitized": {
+        "binary": {
+          "bytes": 131528,
+          "sha256": "7f3f0eb634ae9f1f0864fe0deee2202655ed36da23453b1f7b025f45ad2963da"
+        },
+        "generated_C": {
+          "bytes": 89134,
+          "sha256": "9beb44b2532afeee0f7627fce35197653e67f28cfe3e00aac96b13ea1f7e255c"
+        }
+      }
+    },
+    "release_sanitized_stdout_identical": true
+  },
+  "profile": "panda-runtime-clock-500-20-v1",
+  "schema": "psionic-panda-runtime-clock-qualification-v1",
+  "scope": "New simulation-clock sidecar gates the unchanged PlState supervisor and existing SDK/controller effects. Genuine recorded-control SDK prefix plus synthetic actual-host-header qualification; not new full-NN, task outcome, RGB, compiler R13 or general R18 qualification.",
+  "source_identity": {
+    "psionic/docs/physics/panda-runtime-clock.md": {
+      "bytes": 6772,
+      "sha256": "a89e54925cf9206c24604a92d635952232e9fbeeea458d758e40dca8b61d12d3"
+    },
+    "psionic/fixtures/robotics/libero-panda/panda-clock-prefix-profile.json": {
+      "bytes": 3042,
+      "sha256": "ec35f6d4ed0a93628c61b44142d9b81258d330ae6c907068b99b8ff53779a20a"
+    },
+    "psionic/lib/robotics/panda-clock-adapter.coax": {
+      "bytes": 19187,
+      "sha256": "5fb0b43b118614bb740c3aa5b59556123d676eda9d2942f2d60a0e58fe4adaa1"
+    },
+    "psionic/lib/robotics/panda-clock-types.coax": {
+      "bytes": 398,
+      "sha256": "e7cb9bcf182c2677503d940736b69d81b1638d9ba347c78f7cfc44008fa88d7f"
+    },
+    "psionic/tests/robotics/build-panda-reference.sh": {
+      "bytes": 1581,
+      "sha256": "5bd3c604fcd91748885eb2f50a552fc239f472474f7e2587118df2a7362d14b2"
+    },
+    "psionic/tests/robotics/check-panda-clock-host.sh": {
+      "bytes": 2663,
+      "sha256": "4d928124416c7315aee28785bf9bbaba61debaba7f1db643892bb6e4bf9919e4"
+    },
+    "psionic/tests/robotics/check-panda-clock-prefix.sh": {
+      "bytes": 1562,
+      "sha256": "45ad8a6eee9bbf653d1b5819244719c1c5ad17a56951e62217e63863db50f5ee"
+    },
+    "psionic/tests/robotics/check-panda-clock.sh": {
+      "bytes": 1174,
+      "sha256": "0f1e72d2867e68e4b2529a3d99687ae6fe01e65986d88173167d553002d98330"
+    },
+    "psionic/tests/robotics/panda-clock-host-native.c": {
+      "bytes": 4101,
+      "sha256": "ae0ad6fdcf045979e5bbbc381217a10855c5b164a781ac6309e709a49f94edd6"
+    },
+    "psionic/tests/robotics/panda-clock-native.c": {
+      "bytes": 3207,
+      "sha256": "f53805755a34341263227dfafce34971ed273f08434cb4e4a79421c6d12ba711"
+    },
+    "psionic/tests/robotics/panda-clock-prefix.c": {
+      "bytes": 6790,
+      "sha256": "a4a7f35f140cd5d555cb9c3d91dd89dae38b6a79af1548f6365a272bd626a3e4"
+    },
+    "psionic/tests/robotics/panda-clock-session.coax": {
+      "bytes": 161,
+      "sha256": "7705f0af69d0cb73f28ad82ff08f1421260c748c99be159ca123ee42aef28a25"
+    },
+    "psionic/tests/robotics/panda_clock_prefix_reference.py": {
+      "bytes": 6504,
+      "sha256": "1a9131cb2b49265e81308b744d23a3a48b0caef2a81abd34dd0b90b63a72e0c8"
+    },
+    "psionic/tests/robotics/panda_loop_effects.h": {
+      "bytes": 13024,
+      "sha256": "046ffc6fdb9980c914ca4887077cd3fdb561b64b9b67f825cc6f327f2c3d6280"
+    },
+    "psionic/tests/robotics/run-panda-loop-metal.sh": {
+      "bytes": 3151,
+      "sha256": "c67bc3fff4cfce4ed8b7704661766cc3cab16129175a1d265e4d1c496ee4e2fa"
+    }
+  },
+  "unchanged_proofs_reused": {
+    "clock_roots_mutation_rerun": false,
+    "clock_source_profile": "step-clock-500-20-v1",
+    "old_Pl_controller_trace_env_source_fingerprints_match_historical_receipt": true,
+    "old_native_corpora_rerun": false,
+    "whole_model_or_full_episode_runs": 0
+  }
+}

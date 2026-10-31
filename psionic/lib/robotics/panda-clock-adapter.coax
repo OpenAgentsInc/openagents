@@ -1,0 +1,175 @@
+#load "panda-clock-types.coax";
+#load "panda-loop.coax";
+#load "../physics/step-clock-schedule.coax";
+#authority;
+
+#test "Panda clock startup binds the actual reset baseline and both existing counter domains" {
+  #assert pk_profile()=="panda-runtime-clock-500-20-v1";
+  r:=pk_begin(0.25,0);#assert r.status==PkStatus.ok && pk_valid(r.state) && r.state.supervisor.phase==PlPhase.empty && r.state.clock.now.epoch==1 && r.state.clock.now.step==0 && r.state.last_forward.step==0 && !r.state.fresh;
+  #assert pk_begin(-1,0).status==PkStatus.state && pk_begin(100.001,0).status==PkStatus.state && pk_begin(100,0).status==PkStatus.ok;
+  huge:f64=1e308;inf:=huge*huge;#assert pk_begin(inf,0).status==PkStatus.state && pk_begin(inf-inf,0).status==PkStatus.state;
+  r=pk_begin(0,1);#assert r.status==PkStatus.effect && r.state.supervisor.phase==PlPhase.halted && r.state.clock.phase==ScPhase.halted;
+}
+#test "Panda paired requests consume eight rows and commit Pl only after the final physical trace" {
+  s:=pk_begin(0.25,0).state;request:=pk_request(s,0);#assert request.status==PkStatus.ok && request.tag.tick==0 && request.tag.serial==1 && request.state.clock.serial==1;
+  words:[112]u32;out:[8]PlAction;work:[8]PlAction;r:=pk_accept(request.state,request.tag,0,words[..],out[..],work[..],false);#assert r.status==PkStatus.ok;s=r.state;
+  for row:0..<8 {r=pk_select(s,false);#assert r.status==PkStatus.ok && r.slot==row && !r.fallback;s=r.state;
+    for sub:0..<25 {r=pk_forward(s,0);#assert r.status==PkStatus.ok && r.state.fresh && r.state.last_forward.step==row*25+sub;s=r.state;
+      r=pk_sample(s,0);#assert r.status==PkStatus.ok && r.goal_update==(sub==0) && !r.state.fresh;s=r.state;
+      r=pk_control(s,sub);#assert r.status==PkStatus.ok;s=r.state;
+      step:=row*25+sub+1;r=pk_receipt(s,row,sub+1,f64_bits(0.25+f64(step)*0.002),0);#assert r.status==PkStatus.ok && r.state.supervisor.tick==row && r.state.clock.now.step==step && pk_valid(r.state);s=r.state;
+    }
+    r=pk_commit(s,25,0);#assert r.status==PkStatus.ok && r.state.supervisor.tick==row+1 && r.state.clock.now.step==(row+1)*25 && pk_valid(r.state);s=r.state;
+  }
+  r=pk_request(s,0);#assert r.status==PkStatus.ok && r.tag.tick==8 && r.state.clock.origin==200 && r.state.last_forward.step==199;
+}
+#test "delayed hold and refusal reanchor origins without consuming a model slot" {
+  first:=pk_request(pk_begin(0,0).state,0);held:=pk_select(first.state,true);#assert held.fallback && held.slot==-1;s:=held.state;
+  for sub:0..<25 {s=pk_forward(s,0).state;s=pk_sample(s,0).state;s=pk_control(s,sub).state;s=pk_receipt(s,0,sub+1,f64_bits(f64(sub+1)*0.002),0).state;}
+  s=pk_commit(s,25,0).state;#assert s.supervisor.tick==1 && s.supervisor.phase==PlPhase.waiting && s.clock.phase==ScPhase.waiting && s.clock.now.step==25 && pk_valid(s);
+  words:[112]u32;out:[8]PlAction;work:[8]PlAction;r:=pk_accept(s,first.tag,1,words[..],out[..],work[..],false);#assert r.status==PkStatus.stale && r.clock_status==ScStatus.stale && r.state.clock.pending;
+  s=pk_refuse(s).state;r=pk_request(s,0);#assert r.status==PkStatus.ok && r.tag.tick==1 && r.tag.serial==2 && r.state.clock.origin==25;
+  s=pk_accept(r.state,r.tag,1,words[..],out[..],work[..],false).state;
+  for row:1..<9 {s=pk_select(s,false).state;for sub:0..<25 {s=pk_forward(s,0).state;s=pk_sample(s,0).state;s=pk_control(s,sub).state;s=pk_receipt(s,row,sub+1,f64_bits(f64(row*25+sub+1)*0.002),0).state;}s=pk_commit(s,25,0).state;}
+  r=pk_request(s,0);#assert r.status==PkStatus.ok && r.state.clock.origin==225 && r.tag.serial==3;
+}
+#test "successful forward effects are tracked separately and may not precede source capture" {
+  s:=pk_begin(0,0).state;r:=pk_forward(s,0);#assert r.status==PkStatus.order && r.state.supervisor.phase==PlPhase.halted && r.state.clock.phase==ScPhase.halted;
+  r=pk_request(s,1);#assert r.status==PkStatus.effect && r.state.clock.phase==ScPhase.halted;
+  s=pk_select(s,true).state;r=pk_sample(s,0);#assert r.status==PkStatus.order && r.state.clock.phase==ScPhase.halted;
+  r=pk_forward(s,1);#assert r.status==PkStatus.effect && !r.state.fresh;
+  s=pk_forward(s,0).state;#assert s.fresh;r=pk_forward(s,0);#assert r.status==PkStatus.order && r.state.clock.phase==ScPhase.halted;
+  r=pk_sample(s,1);#assert r.status==PkStatus.effect && r.state.supervisor.phase==PlPhase.halted && !r.state.fresh;
+  s=pk_sample(s,0).state;r=pk_control(s,1);#assert r.status==PkStatus.order && r.state.clock.phase==ScPhase.control;
+  r=pk_control(s,0);#assert r.status==PkStatus.ok;r=pk_abort(r.state);#assert r.status==PkStatus.effect && r.state.clock.phase==ScPhase.halted && r.state.supervisor.phase==PlPhase.halted;
+}
+#test "paired acceptance preserves all public commands and both clocks on ordinary refusal" {
+  q:=pk_request(pk_begin(0,0).state,0);words:[112]u32;out:[8]PlAction;work:[8]PlAction;for i:0..<8 {out[i].v[0]=7;}
+  for mode:0..<8 {tag:=q.tag;now:=0;n:=112;cap:=8;overlap:=false;if mode==0 {tag.epoch=2;}if mode==1 {tag.serial=2;}if mode==2 {tag.profile=2;}if mode==3 {tag.tick=1;}if mode==4 {now=1;}if mode==5 {n=111;}if mode==6 {cap=7;}if mode==7 {overlap=true;}
+    r:=pk_accept(q.state,tag,now,words[0..<n],out[0..<cap],work[..],overlap);#assert r.status!=PkStatus.ok && r.state.clock.phase==ScPhase.waiting && r.state.supervisor.phase==PlPhase.waiting && r.state.clock.remaining==0;for a:out {#assert a.v[0]==7;}}
+  words[111]=0x3fc00000;r:=pk_accept(q.state,q.tag,0,words[..],out[..],work[..],false);#assert r.status==PkStatus.command && r.pl_status==PlStatus.limit && r.state.clock.phase==ScPhase.waiting;
+}
+#test "failed malformed and duplicate integration receipts latch both sides at the last admitted step" {
+  s:=pk_select(pk_begin(0.25,0).state,true).state;s=pk_forward(s,0).state;s=pk_sample(s,0).state;s=pk_control(s,0).state;
+  for mode:0..<7 {tick:=0;sub:=1;time:=f64_bits(0.252);effect:=0;if mode==0 {sub=0;}if mode==1 {sub=2;}if mode==2 {tick=1;}if mode==3 {time=f64_bits(0.254);}if mode==4 {time=0x7ff8000000000001;}if mode==5 {effect=1;}if mode==6 {tick=9223372036854775807;}
+    r:=pk_receipt(s,tick,sub,time,effect);#assert r.status!=PkStatus.ok && r.state.clock.phase==ScPhase.halted && r.state.supervisor.phase==PlPhase.halted && r.state.clock.now.step==0 && r.state.supervisor.tick==0;}
+  good:=pk_receipt(s,0,1,f64_bits(0.252),0);#assert good.status==PkStatus.ok;bad:=pk_receipt(good.state,0,1,f64_bits(0.252),0);#assert bad.status==PkStatus.order && bad.state.clock.now.step==1 && bad.state.clock.phase==ScPhase.halted;
+  #assert pk_commit(s,24,0).status!=PkStatus.ok;
+}
+#test "reset and early success preserve domains without changing published supervisor layouts" {
+  s:=pk_begin(0.25,0).state;q:=pk_request(s,0);r:=pk_reset(q.state,1.5,0);#assert r.status==PkStatus.ok && r.state.supervisor.epoch==2 && r.state.clock.now.epoch==2 && r.state.clock.now.step==0 && r.state.last_forward.epoch==2 && r.state.last_forward.step==0 && r.state.initial_seconds==1.5 && !r.state.clock.pending && pk_valid(r.state);
+  #assert pk_reset(s,-1,0).status!=PkStatus.ok;bad:=pk_reset(s,1,1);#assert bad.status==PkStatus.effect && bad.state.clock.phase==ScPhase.halted;
+  r=pk_finish(s,false);#assert r.status==PkStatus.ok && !r.state.supervisor.success && r.state.supervisor.phase==PlPhase.finished && r.state.clock.phase==ScPhase.finished;
+  r=pk_finish(s,true);#assert r.status==PkStatus.ok && r.state.supervisor.success && r.state.supervisor.phase==PlPhase.finished && r.state.clock.phase==ScPhase.finished && pk_valid(r.state);
+  #assert pk_request(r.state,0).status!=PkStatus.ok;
+  #assert pk_reset(s,0,0).status==PkStatus.ok && pk_reset(s,100,0).status==PkStatus.ok;
+}
+
+#test "paired structural admission rejects independent domain generation and phase damage" {
+  base:=pk_begin(0,0).state;
+  for mode:0..<10 {s:=base;if mode==0 {s.supervisor.epoch=0;}if mode==1 {s.clock.now.epoch=2;}if mode==2 {s.clock.serial=1;}if mode==3 {s.last_forward.epoch=2;}if mode==4 {s.last_forward.step=1;}if mode==5 {s.initial_seconds=-1;}if mode==6 {s.initial_seconds=101;}if mode==7 {s.supervisor.tick=1;}if mode==8 {s.clock.now.step=50;s.last_forward.step=49;}if mode==9 {s.clock.now.step=25;s.last_forward.step=23;}#assert !pk_valid(s) && pk_request(s,0).status==PkStatus.state;}
+  s:=base;s.clock.now.step=25;s.last_forward.step=24;s.clock.origin=25;#assert !pk_valid(s);
+  s=base;s.clock.now.step=25;s.last_forward.step=24;#assert !pk_valid(s);
+  s=base;s.clock.phase=ScPhase.finished;#assert !pk_valid(s);s=base;s.clock.remaining=1;#assert !pk_valid(s);
+  q:=pk_request(base,0);s=q.state;s.clock.phase=ScPhase.row;s.clock.pending=false;#assert !pk_valid(s);s=q.state;s.supervisor.index=1;#assert !pk_valid(s);
+  words:[112]u32;out:[8]PlAction;work:[8]PlAction;ready:=pk_accept(q.state,q.tag,0,words[..],out[..],work[..],false).state;
+  s=ready;s.clock.remaining=7;#assert !pk_valid(s);s=ready;s.clock.phase=ScPhase.finished;#assert !pk_valid(s);
+  active:=pk_select(ready,false).state;s=active;s.clock.phase=ScPhase.halted;#assert !pk_valid(s);s=active;s.fresh=true;s.clock.now.step=1;#assert !pk_valid(s);
+  s=pk_forward(active,0).state;s.clock.phase=ScPhase.control;#assert !pk_valid(s);
+  s=pk_abort(active).state;#assert pk_valid(s);s.clock.phase=ScPhase.finished;#assert !pk_valid(s);
+  s=active;s.supervisor.tick=719;s.supervisor.origin=719;s.supervisor.holding=true;s.clock.origin=17975;s.clock.now.step=18000;s.clock.phase=ScPhase.finished;s.clock.remaining=0;s.last_forward.step=17999;
+  #assert pk_valid(s);last:=s;s.clock.holding=true;#assert !pk_valid(s);s=last;s.clock.pending=true;#assert !pk_valid(s);s=last;s.clock.remaining=1;#assert !pk_valid(s);s=last;s.clock.phase=ScPhase.row;#assert !pk_valid(s);
+  r:=pk_commit(last,24,0);#assert r.status==PkStatus.effect && r.pl_status==PlStatus.effect;
+  r=pk_commit(last,25,0);#assert r.status==PkStatus.ok && r.state.supervisor.tick==720 && r.state.clock.phase==ScPhase.finished && pk_valid(r.state);
+  #assert pk_step(0,1)==1 && pk_step(719,25)==18000 && pk_step(-1,1)==-1 && pk_step(720,1)==-1 && pk_step(0,0)==-1 && pk_step(0,26)==-1;
+  e:=pk_sc_error(ScStatus.order,base);#assert e.status==PkStatus.clock && e.clock_status==ScStatus.order;
+  s=base;s.supervisor.fallbacks=-1;#assert !pk_valid(s);s=base;s.clock.holding=true;#assert !pk_valid(s);s=base;s.last_forward.step=-1;#assert !pk_valid(s);
+  huge:f64=1e308;inf:=huge*huge;s=base;s.initial_seconds=inf-inf;#assert !pk_valid(s);#assert pk_valid(pk_begin(100,0).state);
+  s=base;s.supervisor.tick=1;s.clock.now.step=25;s.last_forward.step=23;#assert !pk_valid(s);
+  s=active;s.clock.now.step=26;s.last_forward.step=25;#assert !pk_valid(s);s=active;s.supervisor.tick=1;s.clock.now.step=24;s.last_forward.step=23;#assert !pk_valid(s);
+  s=pk_finish(base,false).state;s.clock.phase=ScPhase.row;#assert !pk_valid(s);s=pk_finish(base,false).state;s.supervisor.phase=PlPhase.resetting;#assert !pk_valid(s);s=pk_finish(base,false).state;s.clock.holding=true;#assert !pk_valid(s);
+}
+
+pk_profile :: ()->string #export_c {return "panda-runtime-clock-500-20-v1";}
+pk_valid :: (s:PkState)->bool #export_c {
+  h:=s.supervisor;c:=s.clock;
+  if !pl_valid(h) || !sc_schedule_valid(c) || !sc_sim_valid(s.last_forward) || !sc_finite(s.initial_seconds) || s.initial_seconds<0 || s.initial_seconds>100 {return false;}
+  if h.epoch!=c.now.epoch || h.serial!=c.serial || h.origin*25!=c.origin || s.last_forward.epoch!=c.now.epoch || s.last_forward.step>c.now.step || c.now.step-s.last_forward.step>1 {return false;}
+  d:=c.now.step-h.tick*25;if d<0 || d>25 {return false;}
+  if s.fresh && (c.phase!=ScPhase.sample || s.last_forward.step!=c.now.step) {return false;}
+  if h.phase==PlPhase.halted {return c.phase==ScPhase.halted;}
+  if h.phase==PlPhase.stepping {
+    if d==25 {expected:=ifx c.now.step==18000 then ScPhase.finished else ifx h.resume_waiting then ScPhase.waiting else ScPhase.row;
+      return c.phase==expected && !c.holding && c.pending==h.resume_waiting && c.remaining==(ifx h.holding then 0 else 7-h.index);}
+    return cast(u8)c.phase>=2 && cast(u8)c.phase<=4 && c.holding==h.holding && c.pending==h.resume_waiting && c.remaining==(ifx h.holding then 0 else 8-h.index) && (c.phase==ScPhase.sample || s.last_forward.step==c.now.step);
+  }
+  if d!=0 {return false;}
+  if h.phase==PlPhase.empty {return c.phase==ScPhase.row && c.remaining==0;}
+  if h.phase==PlPhase.waiting {return c.phase==ScPhase.waiting && h.index==0;}
+  if h.phase==PlPhase.ready {return c.phase==ScPhase.row && c.remaining==8-h.index;}
+  return h.phase==PlPhase.finished && c.phase==ScPhase.finished && !c.holding;
+}
+pk_result :: (status:PkStatus,s:PkState)->PkResult {return PkResult.{status=status,state=s};}
+pk_halt :: (status:PkStatus,s:PkState)->PkResult {next:=s;next.supervisor.phase=PlPhase.halted;next.clock.phase=ScPhase.halted;next.fresh=false;return pk_result(status,next);}
+pk_pl_error :: (status:PlStatus,s:PkState)->PkResult {r:=pk_result(ifx status==PlStatus.stale then PkStatus.stale else PkStatus.command,s);r.pl_status=status;return r;}
+pk_sc_error :: (status:ScStatus,s:PkState)->PkResult {r:=pk_result(ifx status==ScStatus.stale then PkStatus.stale else PkStatus.clock,s);r.clock_status=status;return r;}
+pk_begin :: (initial_seconds:f64,reset_effect:int)->PkResult #export_c {
+  s:=PkState.{supervisor=pl_reset_done(pl_new(),0).state,clock=sc_begin(),last_forward=ScSimInstant.{epoch=1},initial_seconds=initial_seconds};
+  if !sc_finite(initial_seconds) || initial_seconds<0 || initial_seconds>100 {return pk_result(PkStatus.state,s);}
+  if reset_effect!=0 {return pk_halt(PkStatus.effect,s);}return pk_result(PkStatus.ok,s);
+}
+pk_request :: (s:PkState,capture_effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if capture_effect!=0 {return pk_halt(PkStatus.effect,s);}
+  p:=pl_request(s.supervisor);if p.status!=PlStatus.ok {return pk_pl_error(p.status,s);}
+  c:=sc_request(s.clock,ScObservation.{last_forward=s.last_forward,qpos=s.clock.now});if c.status!=ScStatus.ok {return pk_sc_error(c.status,s);}
+  next:=s;next.supervisor=p.state;next.clock=c.state;r:=pk_result(PkStatus.ok,next);r.tag=p.tag;return r;
+}
+pk_accept :: (s:PkState,tag:PlTag,now:int,words:[]u32,out:[]PlAction,work:[]PlAction,overlap:bool)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}
+  // Only admitted supervisor origin is multiplied. Pl independently checks tag.tick.
+  c:=sc_accept(s.clock,ScTicket.{epoch=tag.epoch,serial=tag.serial,profile=tag.profile,base_step=s.supervisor.origin*25});if c.status!=ScStatus.ok {return pk_sc_error(c.status,s);}
+  p:=pl_accept(s.supervisor,tag,now,words,out,work,overlap);if p.status!=PlStatus.ok {return pk_pl_error(p.status,s);}
+  next:=s;next.supervisor=p.state;next.clock=c.state;return pk_result(PkStatus.ok,next);
+}
+pk_refuse :: (s:PkState)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}p:=pl_refuse(s.supervisor);if p.status!=PlStatus.ok {return pk_pl_error(p.status,s);}
+  c:=sc_refuse(s.clock);if c.status!=ScStatus.ok {return pk_sc_error(c.status,s);}next:=s;next.supervisor=p.state;next.clock=c.state;return pk_result(PkStatus.ok,next);
+}
+pk_select :: (s:PkState,hold:bool)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}p:=ifx hold then pl_hold(s.supervisor,s.supervisor.tick) else pl_choose(s.supervisor,s.supervisor.tick);if p.status!=PlStatus.ok {return pk_pl_error(p.status,s);}
+  c:=sc_select(s.clock,hold);if c.status!=ScStatus.ok {return pk_sc_error(c.status,s);}next:=s;next.supervisor=p.state;next.clock=c.state;r:=pk_result(PkStatus.ok,next);r.slot=p.slot;r.fallback=p.fallback;return r;
+}
+// Receipts follow actual effects. They never infer a successful forward from tick.
+pk_forward :: (s:PkState,effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if s.clock.phase!=ScPhase.sample || s.fresh {return pk_halt(PkStatus.order,s);}if effect!=0 {return pk_halt(PkStatus.effect,s);}
+  next:=s;next.last_forward=s.clock.now;next.fresh=true;return pk_result(PkStatus.ok,next);
+}
+pk_sample :: (s:PkState,effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if !s.fresh {return pk_halt(PkStatus.order,s);}if effect!=0 {return pk_halt(PkStatus.effect,s);}
+  c:=sc_sample(s.clock,s.last_forward);if c.status!=ScStatus.ok {return pk_halt(PkStatus.clock,s);}next:=s;next.clock=c.state;next.fresh=false;r:=pk_result(PkStatus.ok,next);r.goal_update=c.goal_update;return r;
+}
+pk_control :: (s:PkState,substep:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if substep!=s.clock.now.step%25 {return pk_result(PkStatus.order,s);}
+  c:=sc_control(s.clock,substep==0,true);if c.status!=ScStatus.ok {return pk_sc_error(c.status,s);}next:=s;next.clock=c.state;return pk_result(PkStatus.ok,next);
+}
+pk_step :: (tick:int,substep:int)->int #export_c {if tick<0 || tick>719 || substep<1 || substep>25 {return -1;}return tick*25+substep;}
+pk_receipt :: (s:PkState,tick:int,substep:int,current:u64,effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if s.clock.phase!=ScPhase.receipt {return pk_halt(PkStatus.order,s);}if effect!=0 {return pk_halt(PkStatus.effect,s);}
+  step:=pk_step(tick,substep);if !sc_finite_bits(current) {return pk_halt(PkStatus.clock,s);}
+  after:=ScSimInstant.{epoch=s.clock.now.epoch,step=step};if !sc_sdk_time(s.initial_seconds,f64_from_bits(current),after) {return pk_halt(PkStatus.clock,s);}
+  c:=sc_receipt(s.clock,after,0);if c.status!=ScStatus.ok {return pk_halt(PkStatus.clock,s);}next:=s;next.clock=c.state;return pk_result(PkStatus.ok,next);
+}
+// Trace the old Pl tick/substep before calling this row-completion receipt.
+pk_commit :: (s:PkState,steps:int,effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if s.clock.now.step!=(s.supervisor.tick+1)*25 {return pk_halt(PkStatus.clock,s);}
+  p:=pl_commit(s.supervisor,s.supervisor.tick,steps,effect);if p.status!=PlStatus.ok {r:=pk_halt(PkStatus.effect,s);r.pl_status=p.status;return r;}next:=s;next.supervisor=p.state;return pk_result(PkStatus.ok,next);
+}
+pk_abort :: (s:PkState)->PkResult #export_c {if !pk_valid(s) {return pk_result(PkStatus.state,s);}return pk_halt(PkStatus.effect,s);}
+pk_reset :: (s:PkState,initial_seconds:f64,effect:int)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}if !sc_finite(initial_seconds) || initial_seconds<0 || initial_seconds>100 {return pk_halt(PkStatus.clock,s);}if effect!=0 {return pk_halt(PkStatus.effect,s);}
+  p:=pl_reset(s.supervisor);if p.status!=PlStatus.ok {return pk_halt(PkStatus.command,s);}c:=sc_reset(s.clock);if c.status!=ScStatus.ok {return pk_halt(PkStatus.clock,s);}
+  next:=PkState.{supervisor=pl_reset_done(p.state,0).state,clock=c.state,last_forward=c.state.now,initial_seconds=initial_seconds};return pk_result(PkStatus.ok,next);
+}
+pk_finish :: (s:PkState,success:bool)->PkResult #export_c {
+  if !pk_valid(s) {return pk_result(PkStatus.state,s);}p:=pl_finish(s.supervisor,success);if p.status!=PlStatus.ok {return pk_pl_error(p.status,s);}next:=s;next.supervisor=p.state;next.clock.phase=ScPhase.finished;return pk_result(PkStatus.ok,next);
+}

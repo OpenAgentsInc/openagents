@@ -307,3 +307,9 @@ demand-driven chunk requests. Its phase/epoch/refusal rules and native event
 traces are qualified; compiler clock syntax and actual robot integration remain
 pending. Run `psionic/check.sh --only physics/step-clock`, or explicitly select
 `physics/step-clock-native` for its native proof profile.
+
+The [Panda clock sidecar](docs/physics/panda-runtime-clock.md) consumes that
+runtime in the genuine adapter. Paired source/native checks and two short
+recorded-command SDK prefixes are exact; old whole-model episode receipts keep
+their original provenance. `psionic/check.sh --only robotics/panda-clock` runs
+the portable changed-code gate, with explicit SDK prefixes documented separately.

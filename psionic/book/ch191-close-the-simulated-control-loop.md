@@ -504,6 +504,43 @@ explicitly adds the qualified native profile. This foundation does not
 implement compiler clock syntax, R14 bounds, a wall watchdog, generic sensor
 maximum ages, complete snapshots or the Panda/Verse migration.
 
+## Gate the genuine adapter with paired clocks
+
+The [new Panda sidecar](../docs/physics/panda-runtime-clock.md) pairs the runtime
+clock with the existing chunk supervisor. Its own last-forward stamp advances
+only after an actual forward effect receipt. Capture cannot silently borrow
+a stamp manufactured from the current tick. Request, acceptance, selection,
+fresh sample, control intent, one SDK step and row commit are cross-checked.
+The old action tick stays unchanged until its 25 trace records have been encoded;
+physical steps are a separate counter. Partial effects halt both cursors.
+
+The [qualification](../fixtures/robotics/libero-panda/panda-clock-qualification.json)
+covers two 250-step SDK prefixes: normal demo 001 and delayed-first-reply demo 000.
+All 22,500 newly measured post-step F64 words and 500 PTR1 records match the
+original recorded traces exactly; 250 cached/fresh observation words and 40 request
+F32 inputs are exact. The 90 reset words in its artifact are authenticated source
+input bytes, not another initial-state measurement. These runs use recorded
+actuator controls and explicitly named command fixtures, with declared unused
+synthetic tails; later complete NN replies cannot be recovered from PTR1.
+They do not initialize the neural provider or recompute controller arithmetic.
+
+Eight new source checks and 251 root mutants pass. The portable paired ABI
+passes 1,061 checks per native mode. The actual modified host header also runs
+normal/delayed and seven fault cases in debug, release and sanitizer modes;
+failed effects produce no completed ledger. Native state/controller/trace
+proofs outside the changed path are retained.
+
+```shell
+psionic/check.sh --only robotics/panda-clock
+```
+
+The provider build wrappers now use the new aggregate, and their hooked C path
+compiles. The original full learned-policy episode records remain historical
+with their original artifact hashes. A fresh whole-NN run through these hooks,
+new RGB comparison, actual wall watchdog, full snapshots, compiler R13/R14 and
+generic R18 supervision remain separate qualification work. The direct SDK
+prefix command and exact audited inputs are documented in the sidecar notes.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)
