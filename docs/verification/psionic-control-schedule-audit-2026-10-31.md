@@ -38,3 +38,12 @@ Reviewed source identities:
 - `psionic/platform/panda-env.c`: `dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0`
 
 No SDK/model episode, native arithmetic or previous passing mutation gate reran.
+
+
+The later [integrator source profile](../../psionic/fixtures/robotics/libero-panda/integrator-source-profile.json)
+checks all frozen original/rewritten XML pairs against their existing hashes:
+no option overrides the integrator, and no include or plugin is present.
+Pinned 3.3.1 defaults and Euler implementation justify prior-step derived cache
+versus current qpos for this exact profile. The fixture binds both upstream
+source byte hashes and adapter source; it does not relabel the audit as a
+measured sensor timestamp or a generic integrator guarantee.

@@ -1,0 +1,226 @@
+{
+  "schema": "psionic-panda-integrator-source-profile-v1",
+  "scope": "Source/XML audit only, no SDK/model replay or new runtime timing measurement.",
+  "xml_cases": [
+    {
+      "demo": 0,
+      "file": "original.xml",
+      "sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 0,
+      "file": "scene.xml",
+      "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 1,
+      "file": "original.xml",
+      "sha256": "539bb6e1d9b515a3c0c64217cb756b2df14383899581df74c32c340af7aed11e",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 1,
+      "file": "scene.xml",
+      "sha256": "43b0eaa45a42dbd2c5729ba46aa1395d45689e9b540a5db7209379b0d61a3ca4",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 10,
+      "file": "original.xml",
+      "sha256": "e25022df7a7d024f691320b7f879d5b93e59f919c769eb7769e442c4fbf4effe",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 10,
+      "file": "scene.xml",
+      "sha256": "80993d959de6db59a4b053a229dffb18e3e80e396a5bcda85d5b1a808be93e4e",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 20,
+      "file": "original.xml",
+      "sha256": "8a8581a983edc0467b748373e2f3f11e2deac0d9e44069274b11aacbc52e2e05",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 20,
+      "file": "scene.xml",
+      "sha256": "a5e1da77ace7f910e99899ad70d3db3a3131f6a7edc6921a8206d3b1d2b625a3",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 30,
+      "file": "original.xml",
+      "sha256": "e1ff16b0f96532115d8e8fa418505715b04a1b00e64dfb3515fd1d86d44bd9f4",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 30,
+      "file": "scene.xml",
+      "sha256": "2f1e3ad386864efd49c853adc885a7ebd3496e30ce986fb5d4bce9e526569422",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 40,
+      "file": "original.xml",
+      "sha256": "82d41e6c2498787808421e146a04d1ecea281a9bbfd5a9d061927826b1496a56",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 40,
+      "file": "scene.xml",
+      "sha256": "856eb8acefdcf7085c435a262e4f4146fda7ba9c1c13adfe2814205234f87c50",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 49,
+      "file": "original.xml",
+      "sha256": "1ece9bf28ff7b22a464ee3b245a7a590a2545523acd927066dd058dc7f660d2d",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    },
+    {
+      "demo": 49,
+      "file": "scene.xml",
+      "sha256": "c999ec7aab8ccd175f2f6d006abdd8c8e7ca4bfa62f3f14c4cf6c1af4a00ad10",
+      "option_attributes": {
+        "impratio": "20",
+        "density": "1.2",
+        "viscosity": "2e-05",
+        "cone": "elliptic"
+      },
+      "integrator_attribute": null,
+      "includes": 0,
+      "plugins": 0
+    }
+  ],
+  "upstream_sources": [
+    {
+      "path": "src/engine/engine_io.c",
+      "version": "3.3.1",
+      "url": "https://raw.githubusercontent.com/google-deepmind/mujoco/3.3.1/src/engine/engine_io.c",
+      "sha256": "f8eabe5f92b43d145e010f8656475c67c6cee1ca69d314cf8547084e33ba348f",
+      "bytes": 79885
+    },
+    {
+      "path": "src/engine/engine_forward.c",
+      "version": "3.3.1",
+      "url": "https://raw.githubusercontent.com/google-deepmind/mujoco/3.3.1/src/engine/engine_forward.c",
+      "sha256": "9cbd4d7cabb51110eb0e79192e195b6bd654dbdb4ebd7316ba37f002f123d80e",
+      "bytes": 34473
+    }
+  ],
+  "adapter_source": "psionic/platform/panda-env.c",
+  "adapter_sha256": "dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0",
+  "default_integrator": "mjINT_EULER",
+  "manual_source_review": "The adapter loads the unchanged XML and does not override integrator. Pinned mj_step forwards, then selected Euler advances qpos/time without another position forward. In this fixed non-plugin Euler profile the sampled site/body/camera cache describes the prior step while finger qpos is current; reset explicitly forwards.",
+  "interpretation": "Source-profile inference, not an additional measured timestamp. Not a generic RK4/other-integrator cache guarantee.",
+  "sdk_rerun": false,
+  "model_rerun": false,
+  "passed": true
+}

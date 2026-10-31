@@ -96,7 +96,14 @@ internal target. Forwarding earlier would change the qualified policy input.
 A typed replacement must distinguish the last explicit forward generation
 from the current qpos generation. That logical generation is not, without
 an integrator-specific audit, a claim about the physical timestamp of every
-MuJoCo internal cache. Preserve the source order first; qualify a different
-sampling convention under a new profile. A complete checkpoint must retain
+MuJoCo internal cache. The [pinned-scene source audit](../../fixtures/robotics/libero-panda/integrator-source-profile.json)
+now confirms default Euler for all frozen XML pairs: no integrator override,
+include or plugin is present. Thus the prior-step derived/current-qpos label
+is justified for this exact source profile. MuJoCo 3.3.1's
+[default option](https://github.com/google-deepmind/mujoco/blob/3.3.1/src/engine/engine_io.c#L137)
+selects Euler; its [step and Euler path](https://github.com/google-deepmind/mujoco/blob/3.3.1/src/engine/engine_forward.c#L1062)
+forwards before advancing qpos/time without another position forward. This is
+a source inference, not a new runtime timestamp measurement. Preserve the
+source order first; qualify a different sampling convention under a new profile. A complete checkpoint must retain
 or deterministically reconstruct these observation caches, the request/chunk
 state and held controller/gripper state, beyond the scalar checkpoint's q/v.
