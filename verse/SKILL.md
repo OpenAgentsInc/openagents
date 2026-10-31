@@ -93,7 +93,7 @@ realms (and its `wait`):
 ```
 
 If the realm is `flat` or `painterly`, add its WGSL to the matching
-`coax/web/wgsl.py ... --into` line at the top of `build.sh` (Orbit League is
+`coax/web/wgsl-block.coax ... --into` line at the top of `build.sh` (Orbit League is
 flat; Everglade painterly); `lowpoly` needs nothing.
 
 ## 4. Add the table row and the page text

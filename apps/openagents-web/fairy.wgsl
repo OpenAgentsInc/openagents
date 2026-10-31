@@ -919,396 +919,451 @@ struct V {
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
 }
 
-// ---- generated: verse/style.coax (verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time, verse_style_facet_tone, verse_style_facet_jitter, verse_style_facet_edge) by coax/web/wgsl.py; do not edit
-fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
-  if ((l_a < l_b))
-  {
-    return l_a;
-  }
-  return l_b;
+// ---- generated: verse/style.coax (verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time, verse_style_facet_tone, verse_style_facet_jitter, verse_style_facet_edge) by coax wgsl; do not edit
+fn verse_style_flat_light(p_fl_ndl: f32, p_fl_lit: f32) -> f32 {
+  var l_fl_ndl: f32 = p_fl_ndl;
+  var l_fl_lit: f32 = p_fl_lit;
+  return (coax_p_st_sat(((l_fl_ndl * 0x1.000000p-1f) + 0x1.000000p-1f)) * coax_p_st_sat(l_fl_lit));
 }
-fn coax_p_st_max(l_a: f32, l_b: f32) -> f32 {
+fn verse_style_flat_band(p_fl_w: f32) -> f32 {
+  var l_fl_w: f32 = p_fl_w;
+  return coax_p_verse_style_bands(l_fl_w, 0x1.851eb8p-2f, 0x1.3d70a4p-1f, 0x1.47ae14p-7f, 0x1.000000p-1f);
+}
+fn verse_style_flat_band2(p_fl_w: f32) -> f32 {
+  var l_fl_w: f32 = p_fl_w;
+  return coax_p_verse_style_soft_step(0x1.ccccccp-2f, 0x1.47ae14p-7f, l_fl_w);
+}
+fn verse_style_flat_sky(p_fl_up: f32) -> f32 {
+  var l_fl_up: f32 = p_fl_up;
+  return (0x1.000000p0f - coax_p_verse_style_soft_step(0x1.eb851ep-4f, 0x1.eb851ep-4f, l_fl_up));
+}
+fn verse_style_flat_shadow(p_fl_d: f32) -> f32 {
+  var l_fl_d: f32 = p_fl_d;
+  return (0x1.000000p0f - coax_p_verse_style_soft_step(0x1.b33334p-1f, 0x1.333334p-3f, l_fl_d));
+}
+fn verse_style_flat_fade(p_fl_d: f32, p_fl_start: f32, p_fl_reach: f32, p_fl_cap: f32) -> f32 {
+  var l_fl_d: f32 = p_fl_d;
+  var l_fl_start: f32 = p_fl_start;
+  var l_fl_reach: f32 = p_fl_reach;
+  var l_fl_cap: f32 = p_fl_cap;
+  return (l_fl_cap * coax_p_verse_style_soft_step((l_fl_start + (l_fl_reach * 0x1.000000p-1f)), coax_p_st_max((l_fl_reach * 0x1.000000p-1f), 0x1.0624dep-10f), l_fl_d));
+}
+fn verse_style_bayer(p_fl_px: f32, p_fl_py: f32) -> f32 {
+  var l_fl_px: f32 = p_fl_px;
+  var l_fl_py: f32 = p_fl_py;
+  var l_fl_x: f32;
+  var l_fl_y: f32;
+  var l_fl_x0: f32;
+  var l_fl_y0: f32;
+  var l_fl_x1: f32;
+  var l_fl_y1: f32;
+  l_fl_x = (l_fl_px - (0x1.000000p2f * floor((l_fl_px * 0x1.000000p-2f))));
+  l_fl_y = (l_fl_py - (0x1.000000p2f * floor((l_fl_py * 0x1.000000p-2f))));
+  l_fl_x0 = (l_fl_x - (0x1.000000p1f * floor((l_fl_x * 0x1.000000p-1f))));
+  l_fl_y0 = (l_fl_y - (0x1.000000p1f * floor((l_fl_y * 0x1.000000p-1f))));
+  l_fl_x1 = floor((l_fl_x * 0x1.000000p-1f));
+  l_fl_y1 = floor((l_fl_y * 0x1.000000p-1f));
+  return ((((0x1.000000p2f * coax_p_st_bayer2(l_fl_x0, l_fl_y0)) + coax_p_st_bayer2(l_fl_x1, l_fl_y1)) + 0x1.000000p-1f) / 0x1.000000p4f);
+}
+fn verse_style_flat_dither(p_fl_t: f32, p_fl_px: f32, p_fl_py: f32, p_fl_steps: f32) -> f32 {
+  var l_fl_t: f32 = p_fl_t;
+  var l_fl_px: f32 = p_fl_px;
+  var l_fl_py: f32 = p_fl_py;
+  var l_fl_steps: f32 = p_fl_steps;
+  var l_fl_n: f32;
+  l_fl_n = coax_p_st_max(l_fl_steps, 0x1.000000p0f);
+  return coax_p_st_sat((floor(((coax_p_st_sat(l_fl_t) * l_fl_n) + verse_style_bayer(l_fl_px, l_fl_py))) / l_fl_n));
+}
+fn verse_style_flat_hem(p_fl_y: f32, p_fl_width: f32, p_fl_aa: f32) -> f32 {
+  var l_fl_y: f32 = p_fl_y;
+  var l_fl_width: f32 = p_fl_width;
+  var l_fl_aa: f32 = p_fl_aa;
+  return (0x1.000000p0f - coax_p_verse_style_soft_step(l_fl_width, coax_p_st_max(l_fl_aa, 0x1.0c6f7ap-20f), l_fl_y));
+}
+fn verse_style_flat_srgb(p_fl_realm: f32, p_fl_slot: f32, p_fl_ch: f32) -> f32 {
+  var l_fl_realm: f32 = p_fl_realm;
+  var l_fl_slot: f32 = p_fl_slot;
+  var l_fl_ch: f32 = p_fl_ch;
+  if ((l_fl_realm < 0x1.000000p-1f))
+  {
+    if ((l_fl_slot < 0x1.000000p-1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.99999ap-2f, 0x1.da1cacp-2f, 0x1.6147aep-1f);
+    }
+    if ((l_fl_slot < 0x1.800000p0f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.7d70a4p-1f, 0x1.6978d4p-1f, 0x1.b1a9fcp-1f);
+    }
+    if ((l_fl_slot < 0x1.400000p1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.c5a1cap-2f, 0x1.2b020cp-1f, 0x1.12f1aap-1f);
+    }
+    if ((l_fl_slot < 0x1.c00000p1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.f9db22p-2f, 0x1.43126ep-1f, 0x1.2147aep-1f);
+    }
+    if ((l_fl_slot < 0x1.200000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.c00000p-1f, 0x1.a3d70ap-1f, 0x1.6b851ep-1f);
+    }
+    if ((l_fl_slot < 0x1.600000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.000000p0f, 0x1.fae148p-1f, 0x1.f0a3d8p-1f);
+    }
+    if ((l_fl_slot < 0x1.a00000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.51eb86p-1f, 0x1.51eb86p-1f, 0x1.b851ecp-1f);
+    }
+    if ((l_fl_slot < 0x1.e00000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.333334p-1f, 0x1.333334p-1f, 0x1.a3d70ap-1f);
+    }
+    if ((l_fl_slot < 0x1.100000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.f5c290p-1f, 0x1.eb851ep-1f, 0x1.ccccccp-1f);
+    }
+    if ((l_fl_slot < 0x1.300000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.a1cac0p-3f, 0x1.b22d0ep-3f, 0x1.5d2f1ap-2f);
+    }
+    if ((l_fl_slot < 0x1.500000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.ee147ap-1f, 0x1.dfbe76p-1f, 0x1.bdf3b6p-1f);
+    }
+    if ((l_fl_slot < 0x1.700000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.158106p-2f, 0x1.c9ba5ep-2f, 0x1.ae147ap-2f);
+    }
+    if ((l_fl_slot < 0x1.900000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.d1eb86p-2f, 0x1.3d70a4p-1f, 0x1.f5c290p-2f);
+    }
+    if ((l_fl_slot < 0x1.b00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.28f5c2p-1f, 0x1.a3d70ap-1f, 0x1.99999ap-1f);
+    }
+    if ((l_fl_slot < 0x1.d00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.6147aep-1f, 0x1.170a3ep-1f, 0x1.ae147ap-2f);
+    }
+    if ((l_fl_slot < 0x1.f00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.f5c290p-1f, 0x1.c00000p-1f, 0x1.28f5c2p-1f);
+    }
+    if ((l_fl_slot < 0x1.080000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.8f5c28p-1f, 0x1.ccccccp-1f, 0x1.b33334p-1f);
+    }
+    if ((l_fl_slot < 0x1.180000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.8d4fe0p-1f, 0x1.87ae14p-1f, 0x1.bbe76cp-1f);
+    }
+    if ((l_fl_slot < 0x1.280000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.10e560p-1f, 0x1.10e560p-1f, 0x1.71a9fcp-1f);
+    }
+    return coax_p_st_pick(l_fl_ch, 0x1.333334p-1f, 0x1.666666p-1f, 0x1.3d70a4p-1f);
+  }
+  if ((l_fl_realm > 0x1.800000p0f))
+  {
+    if ((l_fl_slot < 0x1.000000p-1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.410624p-1f, 0x1.6353f8p-1f, 0x1.a76c8cp-1f);
+    }
+    if ((l_fl_slot < 0x1.800000p0f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.ab851ep-1f, 0x1.b3b646p-1f, 0x1.d81062p-1f);
+    }
+    if ((l_fl_slot < 0x1.400000p1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.410624p-1f, 0x1.839582p-1f, 0x1.f9db22p-2f);
+    }
+    if ((l_fl_slot < 0x1.c00000p1f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.170a3ep-1f, 0x1.6147aep-1f, 0x1.d60418p-2f);
+    }
+    if ((l_fl_slot < 0x1.200000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.c7ae14p-1f, 0x1.a5e354p-1f, 0x1.795810p-1f);
+    }
+    if ((l_fl_slot < 0x1.600000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.000000p0f, 0x1.f7cedap-1f, 0x1.e7ef9ep-1f);
+    }
+    if ((l_fl_slot < 0x1.a00000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.28f5c2p-1f, 0x1.2d0e56p-1f, 0x1.99999ap-1f);
+    }
+    if ((l_fl_slot < 0x1.e00000p2f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.333334p-1f, 0x1.333334p-1f, 0x1.a3d70ap-1f);
+    }
+    if ((l_fl_slot < 0x1.100000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.fbe76cp-1f, 0x1.f7cedap-1f, 0x1.ee147ap-1f);
+    }
+    if ((l_fl_slot < 0x1.300000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.51eb86p-3f, 0x1.51eb86p-3f, 0x1.f9db22p-3f);
+    }
+    if ((l_fl_slot < 0x1.500000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.ec0832p-1f, 0x1.e5e354p-1f, 0x1.d1eb86p-1f);
+    }
+    if ((l_fl_slot < 0x1.700000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.7df3b6p-2f, 0x1.49374cp-1f, 0x1.03126ep-1f);
+    }
+    if ((l_fl_slot < 0x1.900000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.3126eap-1f, 0x1.9fbe76p-1f, 0x1.f1a9fcp-2f);
+    }
+    if ((l_fl_slot < 0x1.b00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.010624p-1f, 0x1.916872p-1f, 0x1.a5e354p-1f);
+    }
+    if ((l_fl_slot < 0x1.d00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.5d2f1ap-1f, 0x1.0cccccp-1f, 0x1.d1eb86p-2f);
+    }
+    if ((l_fl_slot < 0x1.f00000p3f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.e9fbe8p-1f, 0x1.bdf3b6p-1f, 0x1.3126eap-1f);
+    }
+    if ((l_fl_slot < 0x1.080000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.916872p-1f, 0x1.d3f7cep-1f, 0x1.b7cedap-1f);
+    }
+    if ((l_fl_slot < 0x1.180000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.656042p-1f, 0x1.558106p-1f, 0x1.ab851ep-1f);
+    }
+    if ((l_fl_slot < 0x1.280000p4f))
+    {
+      return coax_p_st_pick(l_fl_ch, 0x1.a5e354p-1f, 0x1.5d2f1ap-1f, 0x1.c9ba5ep-1f);
+    }
+    return coax_p_st_pick(l_fl_ch, 0x1.d60418p-1f, 0x1.472b02p-1f, 0x1.753f7cp-1f);
+  }
+  if ((l_fl_slot < 0x1.000000p-1f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.5374bcp-1f, 0x1.a76c8cp-1f, 0x1.a1cac0p-1f);
+  }
+  if ((l_fl_slot < 0x1.800000p0f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.d1eb86p-1f, 0x1.dfbe76p-1f, 0x1.a1cac0p-1f);
+  }
+  if ((l_fl_slot < 0x1.400000p1f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.3f7ceep-1f, 0x1.6b851ep-1f, 0x1.28f5c2p-2f);
+  }
+  if ((l_fl_slot < 0x1.c00000p1f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.010624p-1f, 0x1.333334p-1f, 0x1.f1a9fcp-3f);
+  }
+  if ((l_fl_slot < 0x1.200000p2f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.b3b646p-1f, 0x1.818938p-1f, 0x1.14fdf4p-1f);
+  }
+  if ((l_fl_slot < 0x1.600000p2f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.000000p0f, 0x1.f5c290p-1f, 0x1.d70a3ep-1f);
+  }
+  if ((l_fl_slot < 0x1.a00000p2f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.666666p-1f, 0x1.666666p-1f, 0x1.ae147ap-1f);
+  }
+  if ((l_fl_slot < 0x1.e00000p2f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.851eb8p-1f, 0x1.800000p-1f, 0x1.c28f5cp-1f);
+  }
+  if ((l_fl_slot < 0x1.100000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.000000p0f, 0x1.ee147ap-1f, 0x1.c18938p-1f);
+  }
+  if ((l_fl_slot < 0x1.300000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.d2f1aap-4f, 0x1.f3b646p-4f, 0x1.51eb86p-3f);
+  }
+  if ((l_fl_slot < 0x1.500000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.e5e354p-1f, 0x1.d60418p-1f, 0x1.a5e354p-1f);
+  }
+  if ((l_fl_slot < 0x1.700000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.bd70a4p-2f, 0x1.14fdf4p-1f, 0x1.d0e560p-3f);
+  }
+  if ((l_fl_slot < 0x1.900000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.6b851ep-1f, 0x1.9fbe76p-1f, 0x1.6978d4p-2f);
+  }
+  if ((l_fl_slot < 0x1.b00000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.1f3b64p-1f, 0x1.9fbe76p-1f, 0x1.818938p-1f);
+  }
+  if ((l_fl_slot < 0x1.d00000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.516872p-1f, 0x1.0ed916p-1f, 0x1.6978d4p-2f);
+  }
+  if ((l_fl_slot < 0x1.f00000p3f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.c18938p-1f, 0x1.09374cp-1f, 0x1.d0e560p-3f);
+  }
+  if ((l_fl_slot < 0x1.080000p4f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.89ba5ep-1f, 0x1.d9999ap-1f, 0x1.ad9168p-1f);
+  }
+  if ((l_fl_slot < 0x1.180000p4f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.5374bcp-1f, 0x1.472b02p-1f, 0x1.89ba5ep-1f);
+  }
+  if ((l_fl_slot < 0x1.280000p4f))
+  {
+    return coax_p_st_pick(l_fl_ch, 0x1.9374bcp-1f, 0x1.676c8cp-1f, 0x1.c18938p-1f);
+  }
+  return coax_p_st_pick(l_fl_ch, 0x1.4f5c28p-1f, 0x1.6b851ep-1f, 0x1.353f7cp-1f);
+}
+fn verse_style_flat_colour(p_fl_realm: f32, p_fl_slot: f32, p_fl_ch: f32) -> f32 {
+  var l_fl_realm: f32 = p_fl_realm;
+  var l_fl_slot: f32 = p_fl_slot;
+  var l_fl_ch: f32 = p_fl_ch;
+  return coax_pow_verse_style_flat_light(verse_style_flat_srgb(l_fl_realm, l_fl_slot, l_fl_ch), 0x1.19999ap1f);
+}
+fn verse_style_flat_time(p_fl_realm: f32, p_fl_ch: f32, p_fl_dusk: f32, p_fl_night: f32) -> f32 {
+  var l_fl_realm: f32 = p_fl_realm;
+  var l_fl_ch: f32 = p_fl_ch;
+  var l_fl_dusk: f32 = p_fl_dusk;
+  var l_fl_night: f32 = p_fl_night;
+  var l_fl_warm: f32;
+  if ((l_fl_realm < 0x1.000000p-1f))
+  {
+    return 0x1.000000p0f;
+  }
+  l_fl_warm = (0x1.000000p0f + ((coax_p_st_pick(l_fl_ch, 0x1.000000p0f, 0x1.99999ap-1f, 0x1.5c28f6p-1f) - 0x1.000000p0f) * coax_p_st_sat(l_fl_dusk)));
+  return (l_fl_warm + ((coax_p_st_pick(l_fl_ch, 0x1.99999ap-3f, 0x1.000000p-2f, 0x1.c28f5cp-2f) - l_fl_warm) * coax_p_st_sat(l_fl_night)));
+}
+fn verse_style_facet_tone(p_fl_ndl: f32, p_fl_lit: f32) -> f32 {
+  var l_fl_ndl: f32 = p_fl_ndl;
+  var l_fl_lit: f32 = p_fl_lit;
+  var l_fl_t: f32;
+  l_fl_t = coax_p_st_sat((((((l_fl_ndl * 0x1.000000p-1f) + 0x1.000000p-1f) * coax_p_st_sat(l_fl_lit)) - 0x1.70a3d8p-3f) / 0x1.666666p-1f));
+  return ((l_fl_t * l_fl_t) * (0x1.800000p1f - (0x1.000000p1f * l_fl_t)));
+}
+fn verse_style_facet_jitter(p_fl_i: f32, p_fl_j: f32, p_fl_round: f32, p_fl_down: f32, p_fl_seed: f32) -> f32 {
+  var l_fl_i: f32 = p_fl_i;
+  var l_fl_j: f32 = p_fl_j;
+  var l_fl_round: f32 = p_fl_round;
+  var l_fl_down: f32 = p_fl_down;
+  var l_fl_seed: f32 = p_fl_seed;
+  var l_fl_a: f32;
+  l_fl_a = (l_fl_i - (l_fl_round * floor((l_fl_i / coax_p_st_max(l_fl_round, 0x1.000000p0f)))));
+  if (((l_fl_j < 0x1.000000p-1f) || (l_fl_j > (l_fl_down - 0x1.000000p-1f))))
+  {
+    l_fl_a = 0.0f;
+  }
+  return ((coax_p_verse_style_hash((l_fl_a + (l_fl_seed * 0x1.a00000p3f)), (l_fl_j + (l_fl_seed * 0x1.c00000p2f))) * 0x1.000000p1f) - 0x1.000000p0f);
+}
+fn verse_style_facet_edge(p_fl_own: f32, p_fl_other: f32) -> f32 {
+  var l_fl_own: f32 = p_fl_own;
+  var l_fl_other: f32 = p_fl_other;
+  var l_fl_gap: f32;
+  var l_fl_at: f32;
+  if ((l_fl_own <= 0.0f))
+  {
+    return 0.0f;
+  }
+  if ((l_fl_other <= 0.0f))
+  {
+    return 0x1.000000p0f;
+  }
+  l_fl_gap = (coax_p_st_max(l_fl_other, (-l_fl_other)) - l_fl_own);
+  l_fl_at = ((l_fl_own * 0x1.47ae14p-5f) + 0x1.000000p-2f);
+  return coax_p_verse_style_soft_step((l_fl_at * 0x1.800000p0f), (l_fl_at * 0x1.000000p-1f), l_fl_gap);
+}
+fn coax_p_st_sat(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return coax_p_st_min(0x1.000000p0f, coax_p_st_max(0.0f, l_x));
+}
+fn coax_p_verse_style_bands(p_w: f32, p_e0: f32, p_e1: f32, p_s: f32, p_mid: f32) -> f32 {
+  var l_w: f32 = p_w;
+  var l_e0: f32 = p_e0;
+  var l_e1: f32 = p_e1;
+  var l_s: f32 = p_s;
+  var l_mid: f32 = p_mid;
+  return ((l_mid * coax_p_verse_style_soft_step(l_e0, l_s, l_w)) + ((0x1.000000p0f - l_mid) * coax_p_verse_style_soft_step(l_e1, l_s, l_w)));
+}
+fn coax_p_verse_style_soft_step(p_e: f32, p_s: f32, p_x: f32) -> f32 {
+  var l_e: f32 = p_e;
+  var l_s: f32 = p_s;
+  var l_x: f32 = p_x;
+  var l_t: f32;
+  l_t = coax_p_st_sat(((l_x - (l_e - l_s)) / coax_p_st_max((0x1.000000p1f * l_s), 0x1.0c6f7ap-20f)));
+  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
+fn coax_p_st_max(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_st_sat(l_x: f32) -> f32 {
-  return coax_p_st_min(1.0, coax_p_st_max(0.0, l_x));
+fn coax_p_st_bayer2(p_fl_a: f32, p_fl_b: f32) -> f32 {
+  var l_fl_a: f32 = p_fl_a;
+  var l_fl_b: f32 = p_fl_b;
+  return (((0x1.000000p1f * l_fl_a) + (0x1.800000p1f * l_fl_b)) - ((0x1.000000p2f * l_fl_a) * l_fl_b));
 }
-fn verse_style_flat_light(l_fl_ndl: f32, l_fl_lit: f32) -> f32 {
-  var coax_t54: f32;
-  var coax_t55: f32;
-  coax_t54 = coax_p_st_sat(((l_fl_ndl * 0.5) + 0.5));
-  coax_t55 = coax_p_st_sat(l_fl_lit);
-  return (coax_t54 * coax_t55);
-}
-fn verse_style_soft_step(l_e: f32, l_s: f32, l_x: f32) -> f32 {
-  var coax_t0: f32;
-  var coax_t1: f32;
-  coax_t0 = (l_x - (l_e - l_s));
-  coax_t1 = coax_p_st_max((2.0 * l_s), 9.99999997e-07);
-  var l_t: f32 = coax_p_st_sat((coax_t0 / coax_t1));
-  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
-}
-fn verse_style_bands(l_w: f32, l_e0: f32, l_e1: f32, l_s: f32, l_mid: f32) -> f32 {
-  var coax_t2: f32;
-  var coax_t3: f32;
-  var coax_t4: f32;
-  var coax_t5: f32;
-  coax_t2 = (l_mid * verse_style_soft_step(l_e0, l_s, l_w));
-  coax_t4 = (1.0 - l_mid);
-  coax_t5 = verse_style_soft_step(l_e1, l_s, l_w);
-  coax_t3 = (coax_t4 * coax_t5);
-  return (coax_t2 + coax_t3);
-}
-fn verse_style_flat_band(l_fl_w: f32) -> f32 {
-  return verse_style_bands(l_fl_w, 0.379999995, 0.620000005, 0.00999999978, 0.5);
-}
-fn verse_style_flat_band2(l_fl_w: f32) -> f32 {
-  return verse_style_soft_step(0.449999988, 0.00999999978, l_fl_w);
-}
-fn verse_style_flat_sky(l_fl_up: f32) -> f32 {
-  return (1.0 - verse_style_soft_step(0.119999997, 0.119999997, l_fl_up));
-}
-fn verse_style_flat_shadow(l_fl_d: f32) -> f32 {
-  return (1.0 - verse_style_soft_step(0.850000024, 0.150000006, l_fl_d));
-}
-fn verse_style_flat_fade(l_fl_d: f32, l_fl_start: f32, l_fl_reach: f32, l_fl_cap: f32) -> f32 {
-  var coax_t56: f32;
-  var coax_t57: f32;
-  coax_t56 = (l_fl_start + (l_fl_reach * 0.5));
-  coax_t57 = coax_p_st_max((l_fl_reach * 0.5), 0.00100000005);
-  return (l_fl_cap * verse_style_soft_step(coax_t56, coax_t57, l_fl_d));
-}
-fn coax_p_st_bayer2(l_fl_a: f32, l_fl_b: f32) -> f32 {
-  return (((2.0 * l_fl_a) + (3.0 * l_fl_b)) - ((4.0 * l_fl_a) * l_fl_b));
-}
-fn verse_style_bayer(l_fl_px: f32, l_fl_py: f32) -> f32 {
-  var coax_t58: f32;
-  var coax_t59: f32;
-  var l_fl_x: f32 = (l_fl_px - (4.0 * floor((l_fl_px * 0.25))));
-  var l_fl_y: f32 = (l_fl_py - (4.0 * floor((l_fl_py * 0.25))));
-  var l_fl_x0: f32 = (l_fl_x - (2.0 * floor((l_fl_x * 0.5))));
-  var l_fl_y0: f32 = (l_fl_y - (2.0 * floor((l_fl_y * 0.5))));
-  var l_fl_x1: f32 = floor((l_fl_x * 0.5));
-  var l_fl_y1: f32 = floor((l_fl_y * 0.5));
-  coax_t58 = (4.0 * coax_p_st_bayer2(l_fl_x0, l_fl_y0));
-  coax_t59 = coax_p_st_bayer2(l_fl_x1, l_fl_y1);
-  return (((coax_t58 + coax_t59) + 0.5) / 16.0);
-}
-fn verse_style_flat_dither(l_fl_t: f32, l_fl_px: f32, l_fl_py: f32, l_fl_steps: f32) -> f32 {
-  var coax_t60: f32;
-  var coax_t61: f32;
-  var l_fl_n: f32 = coax_p_st_max(l_fl_steps, 1.0);
-  coax_t60 = (coax_p_st_sat(l_fl_t) * l_fl_n);
-  coax_t61 = verse_style_bayer(l_fl_px, l_fl_py);
-  return coax_p_st_sat((floor((coax_t60 + coax_t61)) / l_fl_n));
-}
-fn verse_style_flat_hem(l_fl_y: f32, l_fl_width: f32, l_fl_aa: f32) -> f32 {
-  return (1.0 - verse_style_soft_step(l_fl_width, coax_p_st_max(l_fl_aa, 9.99999997e-07), l_fl_y));
-}
-fn coax_p_st_pick(l_fl_ch: f32, l_fl_r: f32, l_fl_g: f32, l_fl_b: f32) -> f32 {
-  if ((l_fl_ch < 0.5))
+fn coax_p_st_pick(p_fl_ch: f32, p_fl_r: f32, p_fl_g: f32, p_fl_b: f32) -> f32 {
+  var l_fl_ch: f32 = p_fl_ch;
+  var l_fl_r: f32 = p_fl_r;
+  var l_fl_g: f32 = p_fl_g;
+  var l_fl_b: f32 = p_fl_b;
+  if ((l_fl_ch < 0x1.000000p-1f))
   {
     return l_fl_r;
   }
-  if ((l_fl_ch < 1.5))
+  if ((l_fl_ch < 0x1.800000p0f))
   {
     return l_fl_g;
   }
   return l_fl_b;
 }
-fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
-  if ((l_fl_realm < 0.5))
-  {
-    if ((l_fl_slot < 0.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.400000006, 0.463, 0.689999998);
-    }
-    if ((l_fl_slot < 1.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.745000005, 0.70599997, 0.847000003);
-    }
-    if ((l_fl_slot < 2.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.442999989, 0.583999991, 0.537);
-    }
-    if ((l_fl_slot < 3.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.493999988, 0.630999982, 0.564999998);
-    }
-    if ((l_fl_slot < 4.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.875, 0.819999993, 0.709999979);
-    }
-    if ((l_fl_slot < 5.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 1.0, 0.99000001, 0.970000029);
-    }
-    if ((l_fl_slot < 6.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.660000026, 0.660000026, 0.860000014);
-    }
-    if ((l_fl_slot < 7.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
-    }
-    if ((l_fl_slot < 8.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.959999979, 0.899999976);
-    }
-    if ((l_fl_slot < 9.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.203999996, 0.211999997, 0.340999991);
-    }
-    if ((l_fl_slot < 10.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.964999974, 0.936999977, 0.870999992);
-    }
-    if ((l_fl_slot < 11.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.270999998, 0.446999997, 0.419999987);
-    }
-    if ((l_fl_slot < 12.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.455000013, 0.620000005, 0.49000001);
-    }
-    if ((l_fl_slot < 13.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.819999993, 0.800000012);
-    }
-    if ((l_fl_slot < 14.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.689999998, 0.545000017, 0.419999987);
-    }
-    if ((l_fl_slot < 15.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.875, 0.579999983);
-    }
-    if ((l_fl_slot < 16.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.899999976, 0.850000024);
-    }
-    if ((l_fl_slot < 17.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.776000023, 0.764999986, 0.866999984);
-    }
-    if ((l_fl_slot < 18.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.532999992, 0.532999992, 0.722000003);
-    }
-    return coax_p_st_pick(l_fl_ch, 0.600000024, 0.699999988, 0.620000005);
-  }
-  if ((l_fl_realm > 1.5))
-  {
-    if ((l_fl_slot < 0.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.694000006, 0.827000022);
-    }
-    if ((l_fl_slot < 1.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.834999979, 0.851000011, 0.921999991);
-    }
-    if ((l_fl_slot < 2.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.757000029, 0.493999988);
-    }
-    if ((l_fl_slot < 3.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.689999998, 0.458999991);
-    }
-    if ((l_fl_slot < 4.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.889999986, 0.824000001, 0.736999989);
-    }
-    if ((l_fl_slot < 5.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 1.0, 0.984000027, 0.953000009);
-    }
-    if ((l_fl_slot < 6.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.588, 0.800000012);
-    }
-    if ((l_fl_slot < 7.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
-    }
-    if ((l_fl_slot < 8.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.991999984, 0.984000027, 0.964999974);
-    }
-    if ((l_fl_slot < 9.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.165000007, 0.246999994);
-    }
-    if ((l_fl_slot < 10.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.961000025, 0.949000001, 0.910000026);
-    }
-    if ((l_fl_slot < 11.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.372999996, 0.643000007, 0.505999982);
-    }
-    if ((l_fl_slot < 12.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.596000016, 0.811999977, 0.486000001);
-    }
-    if ((l_fl_slot < 13.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.501999974, 0.783999979, 0.824000001);
-    }
-    if ((l_fl_slot < 14.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.681999981, 0.524999976, 0.455000013);
-    }
-    if ((l_fl_slot < 15.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.957000017, 0.870999992, 0.596000016);
-    }
-    if ((l_fl_slot < 16.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.783999979, 0.913999975, 0.859000027);
-    }
-    if ((l_fl_slot < 17.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.666999996, 0.834999979);
-    }
-    if ((l_fl_slot < 18.5))
-    {
-      return coax_p_st_pick(l_fl_ch, 0.824000001, 0.681999981, 0.893999994);
-    }
-    return coax_p_st_pick(l_fl_ch, 0.917999983, 0.638999999, 0.728999972);
-  }
-  if ((l_fl_slot < 0.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.827000022, 0.815999985);
-  }
-  if ((l_fl_slot < 1.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.910000026, 0.936999977, 0.815999985);
-  }
-  if ((l_fl_slot < 2.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.624000013, 0.709999979, 0.289999992);
-  }
-  if ((l_fl_slot < 3.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.501999974, 0.600000024, 0.243000001);
-  }
-  if ((l_fl_slot < 4.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.851000011, 0.753000021, 0.541000009);
-  }
-  if ((l_fl_slot < 5.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 1.0, 0.980000019, 0.920000017);
-  }
-  if ((l_fl_slot < 6.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.839999974);
-  }
-  if ((l_fl_slot < 7.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.75999999, 0.75, 0.879999995);
-  }
-  if ((l_fl_slot < 8.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 1.0, 0.964999974, 0.878000021);
-  }
-  if ((l_fl_slot < 9.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.114, 0.122000001, 0.165000007);
-  }
-  if ((l_fl_slot < 10.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.949000001, 0.917999983, 0.824000001);
-  }
-  if ((l_fl_slot < 11.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.435000002, 0.541000009, 0.226999998);
-  }
-  if ((l_fl_slot < 12.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.709999979, 0.811999977, 0.352999985);
-  }
-  if ((l_fl_slot < 13.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.56099999, 0.811999977, 0.753000021);
-  }
-  if ((l_fl_slot < 14.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.658999979, 0.528999984, 0.352999985);
-  }
-  if ((l_fl_slot < 15.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.878000021, 0.518000007, 0.226999998);
-  }
-  if ((l_fl_slot < 16.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.768999994, 0.925000012, 0.838999987);
-  }
-  if ((l_fl_slot < 17.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.638999999, 0.768999994);
-  }
-  if ((l_fl_slot < 18.5))
-  {
-    return coax_p_st_pick(l_fl_ch, 0.787999988, 0.702000022, 0.878000021);
-  }
-  return coax_p_st_pick(l_fl_ch, 0.654999971, 0.709999979, 0.603999972);
-}
-fn verse_style_flat_colour(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
-  return pow(verse_style_flat_srgb(l_fl_realm, l_fl_slot, l_fl_ch), 2.20000005);
-}
-fn verse_style_flat_time(l_fl_realm: f32, l_fl_ch: f32, l_fl_dusk: f32, l_fl_night: f32) -> f32 {
-  var coax_t62: f32;
-  var coax_t63: f32;
-  var coax_t64: f32;
-  var coax_t65: f32;
-  if ((l_fl_realm < 0.5))
-  {
-    return 1.0;
-  }
-  coax_t62 = (coax_p_st_pick(l_fl_ch, 1.0, 0.800000012, 0.680000007) - 1.0);
-  coax_t63 = coax_p_st_sat(l_fl_dusk);
-  var l_fl_warm: f32 = (1.0 + (coax_t62 * coax_t63));
-  coax_t64 = (coax_p_st_pick(l_fl_ch, 0.200000003, 0.25, 0.439999998) - l_fl_warm);
-  coax_t65 = coax_p_st_sat(l_fl_night);
-  return (l_fl_warm + (coax_t64 * coax_t65));
-}
-fn verse_style_facet_tone(l_fl_ndl: f32, l_fl_lit: f32) -> f32 {
-  var coax_t66: f32;
-  var coax_t67: f32;
-  coax_t66 = ((l_fl_ndl * 0.5) + 0.5);
-  coax_t67 = coax_p_st_sat(l_fl_lit);
-  var l_fl_t: f32 = coax_p_st_sat((((coax_t66 * coax_t67) - 0.180000007) / 0.699999988));
-  return ((l_fl_t * l_fl_t) * (3.0 - (2.0 * l_fl_t)));
-}
-fn verse_style_hash(l_x: f32, l_y: f32) -> f32 {
-  var l_v: f32 = (sin(((l_x * 127.099998) + (l_y * 311.700012))) * 43758.5469);
+fn coax_p_verse_style_hash(p_x: f32, p_y: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_v: f32;
+  l_v = (sin(((l_x * 0x1.fc6666p6f) + (l_y * 0x1.37b334p8f))) * 0x1.55dd18p15f);
   return (l_v - floor(l_v));
 }
-fn verse_style_facet_jitter(l_fl_i: f32, l_fl_j: f32, l_fl_round: f32, l_fl_down: f32, l_fl_seed: f32) -> f32 {
-  var l_fl_a: f32 = (l_fl_i - (l_fl_round * floor((l_fl_i / coax_p_st_max(l_fl_round, 1.0)))));
-  if (((l_fl_j < 0.5) || (l_fl_j > (l_fl_down - 0.5))))
+fn coax_p_st_min(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  if ((l_a < l_b))
   {
-    l_fl_a = 0.0;
+    return l_a;
   }
-  return ((verse_style_hash((l_fl_a + (l_fl_seed * 13.0)), (l_fl_j + (l_fl_seed * 7.0))) * 2.0) - 1.0);
+  return l_b;
 }
-fn verse_style_facet_edge(l_fl_own: f32, l_fl_other: f32) -> f32 {
-  if ((l_fl_own <= 0.0))
-  {
-    return 0.0;
+fn coax_bits_verse_style_flat_light(b: u32) -> f32 {
+  return bitcast<f32>(b);
+}
+fn coax_pow_verse_style_flat_light(x: f32, y: f32) -> f32 {
+  if (y == 0.0f) {
+    return 1.0f;
   }
-  if ((l_fl_other <= 0.0))
-  {
-    return 1.0;
+  if (x == 0.0f) {
+    return select(coax_bits_verse_style_flat_light(0x7f800000u), 0.0f, y > 0.0f);
   }
-  var l_fl_gap: f32 = (coax_p_st_max(l_fl_other, (-l_fl_other)) - l_fl_own);
-  var l_fl_at: f32 = ((l_fl_own * 0.0399999991) + 0.25);
-  return verse_style_soft_step((l_fl_at * 1.5), (l_fl_at * 0.5), l_fl_gap);
+  let r = pow(abs(x), y);
+  if (!(x < 0.0f)) {
+    return r;
+  }
+  if (floor(y) != y) {
+    return coax_bits_verse_style_flat_light(0x7fc00000u);
+  }
+  if (fract(y * 0.5f) != 0.0f) {
+    return -r;
+  }
+  return r;
 }
 // ---- end generated

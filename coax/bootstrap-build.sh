@@ -73,6 +73,8 @@ gate "$work/stage0" test lib/compiler/spirv.coax
 gate "$work/stage0" mutate lib/compiler/spirv.coax
 gate "$work/stage0" test lib/compiler/shader.coax
 gate "$work/stage0" mutate lib/compiler/shader.coax
+gate "$work/stage0" test lib/compiler/wgsl.coax
+gate "$work/stage0" mutate lib/compiler/wgsl.coax
 gate "$work/stage0" test lib/compiler/lexer.coax
 gate "$work/stage0" mutate lib/compiler/lexer.coax
 "$work/stage0" c lib/compiler/lexer.coax --library --header "$work/lexer.h" > "$work/lexer.c"

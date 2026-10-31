@@ -48,7 +48,7 @@ and a `style`; a zone without one takes the realm's.
 
 - `coax/web/realms.ts --check` refuses a realm without a style, an unknown
   style, a zone id that appears twice, and a painterly, photoreal or flat realm
-  whose `<module>.wgsl` lacks the style block that `wgsl.py` generates (below).
+  whose `<module>.wgsl` lacks the style block that `coax wgsl` generates (below).
 - The style goes to the module in the page facts (message 600:
   `style=painterly`, and `zone.<id>=<style>` for each zone) and to the page
   as `data-style`. The realm's `index.md` names it.
@@ -72,8 +72,8 @@ day where it changes (built October 29, as-presets; the block's layout is the
 `verse_style_at(preset, clock)` each frame and copies the result into its
 uniforms as one block (`STYLE_FLOATS`, 32 vec4f). The shading functions
 (bands, rim, shadow tint, haze, sky, grass wind, foliage normal, tone) are
-Coax in `verse/style.coax` (a file of their own, because `wgsl.py` lowers
-only the Metal scalar profile, which has no records), written in the subset `coax/web/wgsl.py` lowers, and
+Coax in `verse/style.coax` (a file of their own, because `coax wgsl` writes
+only scalar functions, which have no records), written in the subset `coax wgsl` writes, and
 emitted into each realm's WGSL between
 `// ---- generated: verse/style.coax` markers, the way `verse/look.coax`'s
 outline functions are today. One source, every realm, with checks:

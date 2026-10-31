@@ -40,7 +40,7 @@ const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 // added: when the realm opened, Chicago time to the minute (/realms' RECENT); line: its one line there.
 export const ADDED = /^20\d\d-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d$/
 export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
-// What wgsl.py writes into a realm's WGSL from the style presets: a painterly, photoreal or flat
+// What coax wgsl writes into a realm's WGSL from the style presets: a painterly, photoreal or flat
 // realm draws with it. Required once verse/style.coax exists (as-presets).
 export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
 const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
@@ -76,7 +76,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
     if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat")) {
       const wgsl = join(site, `${r.module}.wgsl`)
-      if (!existsSync(wgsl) || !readFileSync(wgsl, "utf8").includes(STYLE_BLOCK)) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl.py verse/style.coax ... --into it)`)
+      if (!existsSync(wgsl) || !readFileSync(wgsl, "utf8").includes(STYLE_BLOCK)) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
     }
     // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
     for (const a of r.assets) {

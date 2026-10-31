@@ -3,9 +3,9 @@
 // how dim the scene is, the panel behind the terminal or a prompt, and each
 // stroke's place, width, light and glow.
 //
-// Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md), except
+// Temporary: hand-written WGSL until whole modules come from Coax (docs/verse/native-gpu.md, G6), except
 // the HUD bar, which is verse/light.coax's verse_bar (the iOS Start
-// bar's light, Stages.metal bar_fragment) converted by coax/web/wgsl.py at
+// bar's light, Stages.metal bar_fragment) written as WGSL by coax wgsl at
 // build time into the block below. The nebula is the previous
 // openagents.com splash's, unchanged.
 
@@ -65,90 +65,79 @@ fn panel(p: vec2f, under: vec3f) -> vec3f {
   return mix(under, glass, clamp(u.alpha, 0.0, 1.0) * smoothstep(-0.5, 1.0, inside));
 }
 
-// ---- generated: verse/light.coax (verse_bar) by coax/web/wgsl.py; do not edit
-fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
+// ---- generated: verse/light.coax (verse_bar) by coax wgsl; do not edit
+fn verse_bar(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32, p_t: f32, p_press: f32, p_flash: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_w: f32 = p_w;
+  var l_h: f32 = p_h;
+  var l_k: f32 = p_k;
+  var l_t: f32 = p_t;
+  var l_press: f32 = p_press;
+  var l_flash: f32 = p_flash;
+  var l_d: f32;
+  var l_inside: f32;
+  var l_edge: f32;
+  var l_phase: f32;
+  var l_sweep: f32;
+  var l_glass: f32;
+  var l_glow: f32;
+  l_d = coax_p_cut_distance(l_x, l_y, l_w, l_h, l_k);
+  l_inside = (0x1.000000p0f - coax_p_smooth((-0x1.000000p-1f), 0x1.000000p-1f, l_d));
+  l_edge = (0x1.000000p0f - coax_p_smooth((0x1.000000p-1f * l_k), (0x1.99999ap0f * l_k), abs(l_d)));
+  l_phase = ((l_t / 0x1.800000p2f) - floor((l_t / 0x1.800000p2f)));
+  l_sweep = exp((-(((((l_x + (l_y * 0x1.333334p-1f)) / l_w) - ((-0x1.99999ap0f) + ((0x1.99999ap1f * l_phase) / 0x1.c28f5cp-3f))) / 0x1.99999ap-4f) * ((((l_x + (l_y * 0x1.333334p-1f)) / l_w) - ((-0x1.99999ap0f) + ((0x1.99999ap1f * l_phase) / 0x1.c28f5cp-3f))) / 0x1.99999ap-4f))));
+  if ((l_phase > 0x1.c28f5cp-3f))
+  {
+    l_sweep = 0.0f;
+  }
+  l_glass = ((((0x1.1eb852p-5f + (0x1.99999ap-6f * (0x1.000000p0f - (l_y / l_h)))) + (0x1.99999ap-4f * l_press)) + (0x1.99999ap-4f * l_sweep)) * l_inside);
+  l_glow = ((exp(((-coax_p_hi(l_d, 0.0f)) / (0x1.200000p3f * l_k))) * (0x1.000000p0f - l_inside)) * (0x1.99999ap-4f + (0x1.333334p-2f * l_flash)));
+  return ((l_glass + (l_edge * (0x1.4cccccp-1f + (0x1.000000p-1f * l_flash)))) + l_glow);
+}
+fn coax_p_cut_distance(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_w: f32 = p_w;
+  var l_h: f32 = p_h;
+  var l_k: f32 = p_k;
+  var l_dx: f32;
+  var l_dy: f32;
+  var l_box: f32;
+  l_dx = (abs(l_x) - l_w);
+  l_dy = (abs(l_y) - l_h);
+  l_box = (sqrt(((coax_p_hi(l_dx, 0.0f) * coax_p_hi(l_dx, 0.0f)) + (coax_p_hi(l_dy, 0.0f) * coax_p_hi(l_dy, 0.0f)))) + coax_p_lo(coax_p_hi(l_dx, l_dy), 0.0f));
+  return coax_p_hi(l_box, ((abs((l_x + l_y)) - ((l_w + l_h) - (0x1.c00000p3f * l_k))) * 0x1.6a09e6p-1f));
+}
+fn coax_p_smooth(p_a: f32, p_b: f32, p_x: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_x: f32 = p_x;
+  var l_t: f32;
+  l_t = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
+  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
+fn coax_p_hi(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_lo(l_a: f32, l_b: f32) -> f32 {
+fn coax_p_lo(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a < l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_cut_distance(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32) -> f32 {
-  var coax_t14: f32;
-  var coax_t15: f32;
-  var coax_t16: f32;
-  var coax_t17: f32;
-  var coax_t18: f32;
-  var coax_t19: f32;
-  var coax_t20: f32;
-  var coax_t21: f32;
-  var coax_t22: f32;
-  var coax_t23: f32;
-  var l_dx: f32 = (abs(l_x) - l_w);
-  var l_dy: f32 = (abs(l_y) - l_h);
-  coax_t16 = coax_p_hi(l_dx, 0.0);
-  coax_t17 = coax_p_hi(l_dx, 0.0);
-  coax_t15 = (coax_t16 * coax_t17);
-  coax_t19 = coax_p_hi(l_dy, 0.0);
-  coax_t20 = coax_p_hi(l_dy, 0.0);
-  coax_t18 = (coax_t19 * coax_t20);
-  coax_t14 = sqrt((coax_t15 + coax_t18));
-  coax_t21 = coax_p_lo(coax_p_hi(l_dx, l_dy), 0.0);
-  var l_box: f32 = (coax_t14 + coax_t21);
-  coax_t22 = abs((l_x + l_y));
-  coax_t23 = ((l_w + l_h) - (14.0 * l_k));
-  return coax_p_hi(l_box, ((coax_t22 - coax_t23) * 0.707106769));
-}
-fn coax_p_sat(l_a: f32) -> f32 {
-  return coax_p_lo(1.0, coax_p_hi(0.0, l_a));
-}
-fn coax_p_smooth(l_a: f32, l_b: f32, l_x: f32) -> f32 {
-  var l_t: f32 = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
-  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
-}
-fn verse_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
-  var coax_t24: f32;
-  var coax_t25: f32;
-  var coax_t26: f32;
-  var coax_t27: f32;
-  var coax_t28: f32;
-  var coax_t29: f32;
-  var coax_t30: f32;
-  var coax_t31: f32;
-  var coax_t32: f32;
-  var coax_t33: f32;
-  var coax_t34: f32;
-  var l_d: f32 = coax_p_cut_distance(l_x, l_y, l_w, l_h, l_k);
-  var l_inside: f32 = (1.0 - coax_p_smooth((-0.5), 0.5, l_d));
-  coax_t24 = (0.5 * l_k);
-  coax_t25 = (1.60000002 * l_k);
-  coax_t26 = abs(l_d);
-  var l_edge: f32 = (1.0 - coax_p_smooth(coax_t24, coax_t25, coax_t26));
-  coax_t27 = (l_t / 6.0);
-  coax_t28 = floor((l_t / 6.0));
-  var l_phase: f32 = (coax_t27 - coax_t28);
-  let coax_sq1: f32 = ((((l_x + (l_y * 0.600000024)) / l_w) - ((-1.60000002) + ((3.20000005 * l_phase) / 0.219999999))) / 0.100000001);
-  var l_sweep: f32 = exp((-(coax_sq1 * coax_sq1)));
-  if ((l_phase > 0.219999999))
-  {
-    l_sweep = 0.0;
-  }
-  var l_glass: f32 = ((((0.0350000001 + (0.0250000004 * (1.0 - (l_y / l_h)))) + (0.100000001 * l_press)) + (0.100000001 * l_sweep)) * l_inside);
-  coax_t31 = (-coax_p_hi(l_d, 0.0));
-  coax_t32 = (9.0 * l_k);
-  coax_t30 = exp((coax_t31 / coax_t32));
-  coax_t33 = (1.0 - l_inside);
-  coax_t29 = (coax_t30 * coax_t33);
-  coax_t34 = (0.100000001 + (0.300000012 * l_flash));
-  var l_glow: f32 = (coax_t29 * coax_t34);
-  return ((l_glass + (l_edge * (0.649999976 + (0.5 * l_flash)))) + l_glow);
+fn coax_p_sat(p_a: f32) -> f32 {
+  var l_a: f32 = p_a;
+  return coax_p_lo(0x1.000000p0f, coax_p_hi(0.0f, l_a));
 }
 // ---- end generated
 

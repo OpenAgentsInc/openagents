@@ -15,76 +15,119 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-// ---- generated: verse/stars.coax (verse_starfield, verse_sun_disc, verse_sun_corona) by coax/web/wgsl.py; do not edit
-fn coax_p_stars_max(l_a: f32, l_b: f32) -> f32 {
+// ---- generated: verse/stars.coax (verse_starfield, verse_sun_disc, verse_sun_corona) by coax wgsl; do not edit
+fn verse_starfield(p_x: f32, p_y: f32, p_drift_x: f32, p_drift_y: f32, p_t: f32, p_dpr: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_drift_x: f32 = p_drift_x;
+  var l_drift_y: f32 = p_drift_y;
+  var l_t: f32 = p_t;
+  var l_dpr: f32 = p_dpr;
+  var l_k: f32;
+  var l_far: f32;
+  var l_mid: f32;
+  var l_near: f32;
+  l_k = coax_p_stars_max(l_dpr, 0x1.000000p-1f);
+  l_far = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.47ae14p-6f)), (l_y + (l_drift_y * 0x1.47ae14p-6f)), (0x1.200000p3f * l_k), 0x1.eb851ep-4f, (0x1.19999ap-1f * l_k), l_t, 0x1.000000p0f) * 0x1.19999ap-1f);
+  l_mid = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.99999ap-5f)), (l_y + (l_drift_y * 0x1.99999ap-5f)), (0x1.700000p4f * l_k), 0x1.99999ap-4f, (0x1.99999ap-1f * l_k), l_t, 0x1.c00000p2f) * 0x1.b33334p-1f);
+  l_near = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.99999ap-4f)), (l_y + (l_drift_y * 0x1.99999ap-4f)), (0x1.e80000p5f * l_k), 0x1.47ae14p-4f, (0x1.19999ap0f * l_k), l_t, 0x1.a00000p3f) * 0x1.333334p0f);
+  return ((l_far + l_mid) + l_near);
+}
+fn verse_sun_disc(p_d: f32, p_r: f32) -> f32 {
+  var l_d: f32 = p_d;
+  var l_r: f32 = p_r;
+  var l_rr: f32;
+  var l_x: f32;
+  l_rr = coax_p_stars_max(l_r, 0x1.800000p-1f);
+  l_x = ((l_d - l_rr) / coax_p_stars_max((l_rr * 0x1.47ae14p-4f), 0x1.800000p-1f));
+  if ((l_x <= (-0x1.000000p0f)))
+  {
+    return 0x1.000000p0f;
+  }
+  if ((l_x >= 0x1.000000p0f))
+  {
+    return 0.0f;
+  }
+  return (0x1.000000p-1f - (0x1.000000p-1f * l_x));
+}
+fn verse_sun_corona(p_d: f32, p_r: f32, p_dpr: f32) -> f32 {
+  var l_d: f32 = p_d;
+  var l_r: f32 = p_r;
+  var l_dpr: f32 = p_dpr;
+  var l_k: f32;
+  var l_rr: f32;
+  var l_out: f32;
+  var l_corona: f32;
+  var l_halo: f32;
+  var l_glare: f32;
+  l_k = coax_p_stars_max(l_dpr, 0x1.000000p-1f);
+  l_rr = coax_p_stars_max(l_r, 0x1.800000p-1f);
+  l_out = coax_p_stars_max((l_d - l_rr), 0.0f);
+  l_corona = (exp(((-l_out) / ((l_rr * 0x1.333334p-1f) + (0x1.800000p1f * l_k)))) * 0x1.ccccccp-1f);
+  l_halo = (exp(((-l_out) / ((l_rr * 0x1.800000p1f) + (0x1.400000p5f * l_k)))) * 0x1.c28f5cp-3f);
+  l_glare = (0x1.eb851ep-5f / (0x1.000000p0f + (l_out / (0x1.e00000p6f * l_k))));
+  return coax_p_stars_min(((l_corona + l_halo) + l_glare), 0x1.800000p0f);
+}
+fn coax_p_stars_max(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_stars_fract(l_x: f32) -> f32 {
-  return (l_x - floor(l_x));
-}
-fn coax_p_stars_hash(l_x: f32, l_y: f32) -> f32 {
-  return coax_p_stars_fract((sin(((l_x * 127.099998) + (l_y * 311.700012))) * 43758.5469));
-}
-fn verse_star_layer(l_x: f32, l_y: f32, l_cell: f32, l_density: f32, l_size: f32, l_t: f32, l_seed: f32) -> f32 {
-  var l_cx: f32 = floor((l_x / l_cell));
-  var l_cy: f32 = floor((l_y / l_cell));
-  var l_pick: f32 = coax_p_stars_hash((l_cx + l_seed), (l_cy - (l_seed * 0.370000005)));
-  if ((l_pick < (1.0 - l_density)))
+fn coax_p_verse_star_layer(p_x: f32, p_y: f32, p_cell: f32, p_density: f32, p_size: f32, p_t: f32, p_seed: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_cell: f32 = p_cell;
+  var l_density: f32 = p_density;
+  var l_size: f32 = p_size;
+  var l_t: f32 = p_t;
+  var l_seed: f32 = p_seed;
+  var l_cx: f32;
+  var l_cy: f32;
+  var l_pick: f32;
+  var l_ox: f32;
+  var l_oy: f32;
+  var l_dx: f32;
+  var l_dy: f32;
+  var l_d2: f32;
+  var l_bright: f32;
+  var l_twinkle: f32;
+  l_cx = floor((l_x / l_cell));
+  l_cy = floor((l_y / l_cell));
+  l_pick = coax_p_stars_hash((l_cx + l_seed), (l_cy - (l_seed * 0x1.7ae148p-2f)));
+  if ((l_pick < (0x1.000000p0f - l_density)))
   {
-    return 0.0;
+    return 0.0f;
   }
-  var l_ox: f32 = ((0.200000003 + (0.600000024 * coax_p_stars_hash(((l_cx * 1.70000005) + l_seed), (l_cy + 3.0999999)))) * l_cell);
-  var l_oy: f32 = ((0.200000003 + (0.600000024 * coax_p_stars_hash((l_cx - 2.29999995), ((l_cy * 1.29999995) + l_seed)))) * l_cell);
-  var l_dx: f32 = (l_x - ((l_cx * l_cell) + l_ox));
-  var l_dy: f32 = (l_y - ((l_cy * l_cell) + l_oy));
-  var l_d2: f32 = (((l_dx * l_dx) + (l_dy * l_dy)) / (l_size * l_size));
-  var l_bright: f32 = (0.349999994 + (0.649999976 * coax_p_stars_hash((l_cx + 11.0), (l_cy + (l_seed * 2.0)))));
-  var l_twinkle: f32 = (0.800000012 + (0.200000003 * sin(((l_t * (0.699999988 + (2.0 * l_pick))) + (l_pick * 40.0)))));
+  l_ox = ((0x1.99999ap-3f + (0x1.333334p-1f * coax_p_stars_hash(((l_cx * 0x1.b33334p0f) + l_seed), (l_cy + 0x1.8cccccp1f)))) * l_cell);
+  l_oy = ((0x1.99999ap-3f + (0x1.333334p-1f * coax_p_stars_hash((l_cx - 0x1.266666p1f), ((l_cy * 0x1.4cccccp0f) + l_seed)))) * l_cell);
+  l_dx = (l_x - ((l_cx * l_cell) + l_ox));
+  l_dy = (l_y - ((l_cy * l_cell) + l_oy));
+  l_d2 = (((l_dx * l_dx) + (l_dy * l_dy)) / (l_size * l_size));
+  l_bright = (0x1.666666p-2f + (0x1.4cccccp-1f * coax_p_stars_hash((l_cx + 0x1.600000p3f), (l_cy + (l_seed * 0x1.000000p1f)))));
+  l_twinkle = (0x1.99999ap-1f + (0x1.99999ap-3f * sin(((l_t * (0x1.666666p-1f + (0x1.000000p1f * l_pick))) + (l_pick * 0x1.400000p5f)))));
   return ((exp((-l_d2)) * l_bright) * l_twinkle);
 }
-fn verse_starfield(l_x: f32, l_y: f32, l_drift_x: f32, l_drift_y: f32, l_t: f32, l_dpr: f32) -> f32 {
-  var l_k: f32 = coax_p_stars_max(l_dpr, 0.5);
-  var l_far: f32 = (verse_star_layer((l_x + (l_drift_x * 0.0199999996)), (l_y + (l_drift_y * 0.0199999996)), (9.0 * l_k), 0.119999997, (0.550000012 * l_k), l_t, 1.0) * 0.550000012);
-  var l_mid: f32 = (verse_star_layer((l_x + (l_drift_x * 0.0500000007)), (l_y + (l_drift_y * 0.0500000007)), (23.0 * l_k), 0.100000001, (0.800000012 * l_k), l_t, 7.0) * 0.850000024);
-  var l_near: f32 = (verse_star_layer((l_x + (l_drift_x * 0.100000001)), (l_y + (l_drift_y * 0.100000001)), (61.0 * l_k), 0.0799999982, (1.10000002 * l_k), l_t, 13.0) * 1.20000005);
-  return ((l_far + l_mid) + l_near);
-}
-fn verse_sun_disc(l_d: f32, l_r: f32) -> f32 {
-  var coax_t0: f32;
-  var coax_t1: f32;
-  var l_rr: f32 = coax_p_stars_max(l_r, 0.75);
-  coax_t0 = (l_d - l_rr);
-  coax_t1 = coax_p_stars_max((l_rr * 0.0799999982), 0.75);
-  var l_x: f32 = (coax_t0 / coax_t1);
-  if ((l_x <= (-1.0)))
-  {
-    return 1.0;
-  }
-  if ((l_x >= 1.0))
-  {
-    return 0.0;
-  }
-  return (0.5 - (0.5 * l_x));
-}
-fn coax_p_stars_min(l_a: f32, l_b: f32) -> f32 {
+fn coax_p_stars_min(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a < l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn verse_sun_corona(l_d: f32, l_r: f32, l_dpr: f32) -> f32 {
-  var l_k: f32 = coax_p_stars_max(l_dpr, 0.5);
-  var l_rr: f32 = coax_p_stars_max(l_r, 0.75);
-  var l_out: f32 = coax_p_stars_max((l_d - l_rr), 0.0);
-  var l_corona: f32 = (exp(((-l_out) / ((l_rr * 0.600000024) + (3.0 * l_k)))) * 0.899999976);
-  var l_halo: f32 = (exp(((-l_out) / ((l_rr * 3.0) + (40.0 * l_k)))) * 0.219999999);
-  var l_glare: f32 = (0.0599999987 / (1.0 + (l_out / (120.0 * l_k))));
-  return coax_p_stars_min(((l_corona + l_halo) + l_glare), 1.5);
+fn coax_p_stars_hash(p_x: f32, p_y: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  return coax_p_stars_fract((sin(((l_x * 0x1.fc6666p6f) + (l_y * 0x1.37b334p8f))) * 0x1.55dd18p15f));
+}
+fn coax_p_stars_fract(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return (l_x - floor(l_x));
 }
 // ---- end generated
 

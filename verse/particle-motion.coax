@@ -1,7 +1,7 @@
 // Where a particle is and how bright, from its emitter, its number and the
 // clock alone: nothing is kept between frames, so the GPU draws every
 // particle of every emitter in one instanced pass (particles.wgsl, generated
-// from here by coax/web/wgsl.py) and the checks below see the same numbers.
+// from here by coax wgsl) and the checks below see the same numbers.
 // Kinds: 0 embers rising off a flame, 1 dust drifting in a room's air,
 // 2 fireflies wandering over grass and blinking.
 pm_lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }

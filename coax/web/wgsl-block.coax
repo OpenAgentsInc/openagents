@@ -1,0 +1,74 @@
+// A page's WGSL block from Coax (docs/verse/native-gpu.md, G6): `coax wgsl` writes the
+// functions named, with everything they call, and this puts them in F between
+// "// ---- generated: FILE.coax (NAMES)" and "// ---- end generated", in place of
+// the block that is there. The hand-written WGSL around it calls the named functions.
+//   coax/web/tool.sh coax/web/wgsl-block.coax FILE.coax NAME... --into F     (from the repo root)
+//   ... FILE.coax NAME...                                                    the block, printed
+// F must already have FILE's block; it is written only when the block changes.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+WB_PAGE :: 4194304;
+WB_END :: "// ---- end generated\n";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  n := args_load(a[..]);
+  count := args_count(a[..]);
+  into := "";
+  last := count;
+  if count >= 2 && args_at(a[..], count - 2) == "--into" { into = args_at(a[..], count - 1); last = count - 2; }
+  if !n || last < 2 { tool_errln("usage: wgsl-block FILE.coax NAME... [--into F]"); return 2; }
+  file := args_at(a[..], 0);
+  // the names, as coax wgsl takes them and as the block's header lists them
+  list: [65536] u8; ln := 0; head: [65536] u8; hn := 0;
+  for i: 1..<last {
+    name := args_at(a[..], i);
+    if i > 1 { ln = wb_add(list[..], ln, ","); hn = wb_add(head[..], hn, ", "); }
+    ln = wb_add(list[..], ln, name); hn = wb_add(head[..], hn, name);
+  }
+  if ln < 0 || hn < 0 { tool_errln("wgsl-block: too many names"); return 1; }
+  out: [WB_PAGE] u8; err: [65536] u8;
+  argv := [5] string.["coax/bin/coax", "wgsl", file, "--functions", cast(string) list[0..<ln]];
+  r := proc_run(argv[..], 120000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut {
+    tool_err(cast(string) err[0..<r.err_n]);
+    tool_errln("wgsl-block: coax wgsl failed (run from the repo root)");
+    return 1;
+  }
+  // the block: its header, the functions (proc_run joins their lines without the last newline), its end
+  block: [WB_PAGE] u8; bn := 0;
+  bn = wb_add(block[..], bn, "// ---- generated: "); bn = wb_add(block[..], bn, file); bn = wb_add(block[..], bn, " (");
+  bn = wb_add(block[..], bn, cast(string) head[0..<hn]); bn = wb_add(block[..], bn, ") by coax wgsl; do not edit\n");
+  bn = wb_add(block[..], bn, cast(string) out[0..<r.out_n]); bn = wb_add(block[..], bn, "\n"); bn = wb_add(block[..], bn, WB_END);
+  if bn < 0 { tool_errln("wgsl-block: the block is too large"); return 1; }
+  text := cast(string) block[0..<bn];
+  if into.count == 0 { print("%", text); return 0; }
+  page: [WB_PAGE] u8;
+  pn := fs_read(into, page[..]);
+  if pn < 0 { tool_err("wgsl-block: cannot read "); tool_errln(into); return 1; }
+  p := cast(string) page[0..<pn];
+  mark: [4096] u8; mn := wb_add(mark[..], 0, "// ---- generated: "); mn = wb_add(mark[..], mn, file); mn = wb_add(mark[..], mn, " (");
+  start := wb_find(p, cast(string) mark[0..<mn], 0);
+  end := ifx start < 0 then -1 else wb_find(p, WB_END, start);
+  if start < 0 || end < 0 { tool_err("wgsl-block: "); tool_err(into); tool_err(" has no generated block for "); tool_errln(file); return 1; }
+  stop := end + WB_END.count;
+  if p[start..<stop] == text { return 0; }
+  whole: [WB_PAGE] u8; wn := wb_add(whole[..], 0, p[0..<start]); wn = wb_add(whole[..], wn, text); wn = wb_add(whole[..], wn, p[stop..<p.count]);
+  if wn < 0 { tool_errln("wgsl-block: the page is too large"); return 1; }
+  if !fs_write(into, cast(string) whole[0..<wn]) { tool_err("wgsl-block: cannot write "); tool_errln(into); return 1; }
+  return 0;
+}
+// s after the n bytes of out; -1 when it does not fit (or n was already -1).
+wb_add :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+wb_find :: (s: string, part: string, from: int) -> int {
+  for i: from..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}

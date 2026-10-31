@@ -1,0 +1,603 @@
+// WGSL from the shader subset's checked tree (docs/verse/native-gpu.md, G6), for
+// `coax wgsl FILE --functions A,B`: the same tree code v2 that lib/compiler/shader.coax
+// lowers to SPIR-V, written as WGSL functions the web's hand-written modules call
+// (what coax/web/wgsl.py made from `coax metal`'s C). Native code observes the
+// checked tree and hands it here with the names it carries no room for; this file
+// decides every token and refuses what it does not write.
+//
+// The tree's entries are stage 2 here, a function: each is written under its own
+// name, and every procedure it calls as coax_p_NAME. A parameter is p_NAME and a
+// local l_NAME (l_NAME_K for the K-th local when an earlier one has that name).
+// Values are bool, f32, s32 and u32; structs, arrays, views, textures and the
+// 64-bit integers are refused for now (whole modules, with their entries and
+// bindings, come next). Constants are exact: a float as a hexadecimal literal, an
+// infinity or NaN through coax_bits_ROOT (WGSL refuses them in a constant), and
+// pow keeps C's meaning through coax_pow_ROOT (WGSL's leaves a base of 0 or below
+// undefined), save that x to the power 2.0 is x times x, as powf gives it. ROOT is
+// the first entry's name, so blocks of one module do not share a helper.
+//
+// names: a line a procedure, in the tree's order: its name, then its locals' names
+// (parameters first), separated by spaces.
+#authority;
+
+WG_TYPES :: 512; WG_PROCS :: 512;
+// The work view: where each type's and each procedure's code starts in the tree.
+WG_W_TYPE :: 0; WG_W_PROC :: 512; WG_W_ROOT :: 1024; WG_W_FIRST :: 1536; WG_W_WORDS :: 1537;
+WG_VOID :: 0;
+WG_work_words :: ()->int #export_c {return WG_W_WORDS;}
+WG_out_bytes :: ()->int #export_c {return 4194304;}
+
+WgState :: struct {
+  at:int; n:int; ok:bool; reason:u32; mute:int; indent:int;
+  types:int; procs:int; proc:int; pow:bool; bits:bool; called:bool;
+}
+
+WG_reason_text :: (reason:u32)->string #export_c {
+  texts:=[7] string.["","a malformed tree","WGSL larger than its buffer","more types or procedures than it holds",
+    "a type or operation WGSL functions do not take yet","an entry that is not a function","a procedure without its names"];
+  if reason>=7 {return "this reason";}
+  return texts[cast(int)reason];
+}
+
+
+wg_fail :: (s:[]WgState,reason:u32) {if s[0].ok {s[0].ok=false;s[0].reason=reason;}}
+wg_next :: (s:[]WgState,tree:[]u32)->u32 {
+  // past the end: a failure, and 0, which no code reads as anything but another
+  if s[0].at>=tree.count {wg_fail(s,1);return 0;} // mutant: equivalent (0 or 1 after a failure is refused either way)
+  v:=tree[s[0].at];s[0].at+=1;return v;
+}
+// The next word without reading it; 0 past the end.
+wg_peek :: (s:[]WgState,tree:[]u32)->u32 {
+  if s[0].at>=tree.count {return 0;} // mutant: equivalent (past the end, what follows reads past it and fails)
+  return tree[s[0].at];
+}
+
+// ---- text
+wg_put :: (s:[]WgState,out:[]u8,t:string) {
+  if s[0].mute>0 {return;}
+  if s[0].n+t.count>out.count {wg_fail(s,2);return;}
+  for i:0..<t.count {out[s[0].n+i]=t[i];}
+  s[0].n+=t.count;
+}
+wg_dec :: (s:[]WgState,out:[]u8,v:u32) {
+  d:[12] u8;n:=0;x:=v;
+  while x>=10 {d[n]=cast,trunc(u8)(48+x%10);x/=10;n+=1;}
+  d[n]=cast,trunc(u8)(48+x);n+=1;
+  r:[12] u8;
+  for i:0..<n {r[i]=d[n-1-i];}
+  wg_put(s,out,cast(string)r[0..<n]);
+}
+// v as `digits` hexadecimal digits, the high one first.
+wg_hex :: (s:[]WgState,out:[]u8,v:u32,digits:int) {
+  h:="0123456789abcdef";r:[8] u8;
+  for i:0..<digits {r[i]=h[cast(int)((v>>cast(u32)(4*(digits-1-i)))&15)];}
+  wg_put(s,out,cast(string)r[0..<digits]);
+}
+wg_tab :: (s:[]WgState,out:[]u8) {for i:0..<s[0].indent {wg_put(s,out,"  ");}}
+
+// ---- names: line p is procedure p's name, then its locals'
+wg_line :: (names:string,p:int)->string {
+  at:=0;
+  for i:0..<p {
+    while at<names.count && names[at]!='\n' {at+=1;}
+    at+=1;
+  }
+  if at>names.count {return "";} // mutant: equivalent (at the end the line is "" either way)
+  e:=at;
+  while e<names.count && names[e]!='\n' {e+=1;}
+  return names[at..<e];
+}
+// Word k of a line (0 the procedure's name), "" past its end.
+wg_word :: (line:string,k:int)->string {
+  at:=0;
+  for i:0..<k {
+    while at<line.count && line[at]!=' ' {at+=1;}
+    at+=1;
+  }
+  if at>line.count {return "";} // mutant: equivalent (at the end the word is "" either way)
+  e:=at;
+  while e<line.count && line[e]!=' ' {e+=1;}
+  return line[at..<e];
+}
+wg_proc_name :: (s:[]WgState,names:string,w:[]u32,out:[]u8,p:int) {
+  if w[WG_W_ROOT+p]==0 {wg_put(s,out,"coax_p_");}
+  wg_put(s,out,wg_word(wg_line(names,p),0));
+}
+wg_first :: (names:string,w:[]u32)->string {return wg_word(wg_line(names,cast(int)w[WG_W_FIRST]),0);}
+// Local i of the procedure being written: p_NAME for a parameter, l_NAME, or l_NAME_I
+// when an earlier local has its name.
+wg_local :: (s:[]WgState,names:string,out:[]u8,i:int,param:bool) {
+  line:=wg_line(names,s[0].proc);
+  n:=wg_word(line,1+i);
+  wg_put(s,out,ifx param then "p_" else "l_");
+  wg_put(s,out,n);
+  for j:0..<i {if wg_word(line,1+j)==n {wg_put(s,out,"_");wg_dec(s,out,cast(u32)i);return;}}
+}
+
+// ---- types: only the scalars, 1 bool 2 f32 3 s32 4 u32; their kind, or 0 refused
+wg_scalar :: (s:[]WgState,tree:[]u32,w:[]u32,t:u32)->u32 {
+  if cast(int)t>=s[0].types {wg_fail(s,1);return 0;} // mutant: equivalent (after a failure the kind is not kept)
+  k:=tree[cast(int)w[WG_W_TYPE+cast(int)t]];
+  if k<1 || k>4 {wg_fail(s,4);return 0;} // mutant: equivalent (after a failure the kind is not kept)
+  return k;
+}
+WG_TYPE_TEXT :: [5] string.["","bool","f32","i32","u32"];
+WG_ZERO_TEXT :: [5] string.["","false","0.0f","0i","0u"];
+wg_type :: (s:[]WgState,tree:[]u32,w:[]u32,out:[]u8,t:u32) {wg_put(s,out,WG_TYPE_TEXT[cast(int)wg_scalar(s,tree,w,t)]);}
+
+// A constant of kind k from its word: exact, and wrapped when negative so no `--` forms.
+wg_const :: (s:[]WgState,names:string,w:[]u32,out:[]u8,k:u32,v:u32) {
+  if k==1 {wg_put(s,out,ifx v!=0 then "true" else "false");return;}
+  if k==4 {wg_dec(s,out,v);wg_put(s,out,"u");return;}
+  if k==3 {
+    if v<0x80000000 {wg_dec(s,out,v);wg_put(s,out,"i");return;}
+    // the most negative i32 has no positive twin to negate
+    if v==0x80000000 {wg_put(s,out,"(-2147483647i - 1i)");return;}
+    wg_put(s,out,"(-");wg_dec(s,out,cast(u32)(4294967296-cast(int)v));wg_put(s,out,"i)");return;
+  }
+  e:=(v>>23)&255;m:=v&0x7FFFFF;neg:=(v>>31)!=0;
+  if e==255 {
+    wg_put(s,out,"coax_bits_");wg_put(s,out,wg_first(names,w));
+    wg_put(s,out,"(0x");wg_hex(s,out,v,8);wg_put(s,out,"u)");s[0].bits=true;return;
+  }
+  if neg {wg_put(s,out,"(-");}
+  if e==0 && m==0 {wg_put(s,out,"0.0f");}
+  else {
+    // 0x1.HHHHHHpE, or 0x0.HHHHHHp-126 below the normal range; 24 bits, the mantissa's 23 and a 0
+    wg_put(s,out,ifx e==0 then "0x0." else "0x1.");wg_hex(s,out,m<<1,6);wg_put(s,out,"p");
+    x:=ifx e==0 then -126 else cast(int)e-127;
+    if x<0 {wg_put(s,out,"-");x=-x;}
+    wg_dec(s,out,cast(u32)x);wg_put(s,out,"f");
+  }
+  if neg {wg_put(s,out,")");}
+}
+
+// ---- procedures: their signatures (ret, params, the params' types, locals, their types, length, body)
+wg_sig :: (w:[]u32,p:int)->int {return cast(int)w[WG_W_PROC+p];}
+wg_params :: (tree:[]u32,w:[]u32,p:int)->int {return cast(int)tree[wg_sig(w,p)+1];}
+wg_ret :: (tree:[]u32,w:[]u32,p:int)->u32 {return tree[wg_sig(w,p)];}
+wg_locals_at :: (tree:[]u32,w:[]u32,p:int)->int {return wg_sig(w,p)+2+wg_params(tree,w,p);}
+// Local i of the procedure being written, if it has one.
+wg_has_local :: (s:[]WgState,tree:[]u32,w:[]u32,i:int)->bool {
+  if i>=cast(int)tree[wg_locals_at(tree,w,s[0].proc)] {wg_fail(s,1);return false;} // mutant: equivalent (after a failure what is written is not kept)
+  return true;
+}
+wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if wg_next(s,tree)!=40 {wg_fail(s,4);return;}
+  i:=cast(int)wg_next(s,tree);
+  if wg_has_local(s,tree,w,i) {wg_local(s,names,out,i,false);}
+}
+
+// ---- expressions, each written as it is read. Their types are the checked tree's
+// business: WGSL needs none written but a conversion's and a constant's.
+WG_OPS :: [19] string.[""," + "," - "," * "," / "," % "," < "," <= "," > "," >= "," == "," != "," && "," || "," & "," | "," ^ "," << "," >> "];
+WG_MATH :: [9] string.["","sin(","cos(","tan(","exp(","log(","sqrt(","floor(","abs("];
+// The expression at `at`, written; the reading goes on from where it ends.
+wg_expr_from :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,at:int) {s[0].at=at;wg_expr(s,tree,names,w,out);}
+// Past the expression at the reading, writing nothing.
+wg_skip :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {s[0].mute+=1;wg_expr(s,tree,names,w,out);s[0].mute-=1;}
+wg_expr :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  k:=wg_next(s,tree);
+  if k==16 {
+    t:=wg_next(s,tree);v:=wg_next(s,tree);kind:=wg_scalar(s,tree,w,t);
+    wg_const(s,names,w,out,kind,v);
+    return;
+  }
+  if k==17 {wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,wg_next(s,tree))]);return;}
+  if k==18 {
+    i:=cast(int)wg_next(s,tree);
+    if wg_has_local(s,tree,w,i) {wg_local(s,names,out,i,false);}
+    return;
+  }
+  if k==27 {wg_place(s,tree,names,w,out);return;}
+  if k==19 {
+    op:=cast(int)wg_next(s,tree);
+    if op<1 || op>18 {wg_fail(s,1);return;}
+    wg_put(s,out,"(");wg_expr(s,tree,names,w,out);wg_put(s,out,WG_OPS[op]);
+    // a shift's amount is a u32 in WGSL
+    if op>=17 {wg_put(s,out,"u32(");}
+    wg_expr(s,tree,names,w,out);
+    if op>=17 {wg_put(s,out,")");}
+    wg_put(s,out,")");
+    return;
+  }
+  if k==20 || k==21 {
+    wg_put(s,out,ifx k==20 then "(-" else "(!");wg_expr(s,tree,names,w,out);wg_put(s,out,")");
+    return;
+  }
+  if k==22 {
+    p:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);
+    if p>=s[0].procs || n!=wg_params(tree,w,p) {wg_fail(s,1);return;}
+    s[0].called=wg_ret(tree,w,p)==WG_VOID;
+    wg_proc_name(s,names,w,out,p);wg_put(s,out,"(");
+    for i:0..<n {
+      if i>0 {wg_put(s,out,", ");}
+      wg_expr(s,tree,names,w,out);
+    }
+    wg_put(s,out,")");
+    return;
+  }
+  if k==23 {
+    f:=cast(int)wg_next(s,tree);n:=cast(int)wg_next(s,tree);
+    if f<1 || f>9 || n!=(ifx f==9 then 2 else 1) {wg_fail(s,1);return;}
+    if f<9 {wg_put(s,out,WG_MATH[f]);wg_expr(s,tree,names,w,out);wg_put(s,out,")");return;}
+    x:=s[0].at;wg_skip(s,tree,names,w,out);y:=s[0].at;
+    // (each way on reads x again from its start)
+    // x to the power of the constant 2.0 is x times x
+    code:=wg_next(s,tree);s[0].at+=1;v:=wg_next(s,tree);
+    if code==16 && v==0x40000000 {
+      wg_put(s,out,"(");wg_expr_from(s,tree,names,w,out,x);wg_put(s,out," * ");wg_expr_from(s,tree,names,w,out,x);wg_put(s,out,")");
+      s[0].at=y+3;return;
+    }
+    wg_put(s,out,"coax_pow_");wg_put(s,out,wg_first(names,w));wg_put(s,out,"(");
+    wg_expr_from(s,tree,names,w,out,x);wg_put(s,out,", ");wg_expr(s,tree,names,w,out);wg_put(s,out,")");
+    s[0].pow=true;s[0].bits=true;
+    return;
+  }
+  if k==24 {
+    // WGSL's select(false's, true's, condition); every value here is pure, so both are taken
+    c:=s[0].at;wg_skip(s,tree,names,w,out);a:=s[0].at;wg_skip(s,tree,names,w,out);b:=s[0].at;wg_skip(s,tree,names,w,out);
+    end:=s[0].at;
+    wg_put(s,out,"select(");wg_expr_from(s,tree,names,w,out,b);wg_put(s,out,", ");wg_expr_from(s,tree,names,w,out,a);
+    wg_put(s,out,", ");wg_expr_from(s,tree,names,w,out,c);wg_put(s,out,")");
+    s[0].at=end;
+    return;
+  }
+  if k==29 || k==30 {
+    t:=wg_next(s,tree);
+    if wg_scalar(s,tree,w,t)==1 {wg_fail(s,4);return;}
+    wg_put(s,out,ifx k==30 then "bitcast<" else "");wg_type(s,tree,w,out,t);wg_put(s,out,ifx k==30 then ">(" else "(");
+    wg_expr(s,tree,names,w,out);wg_put(s,out,")");
+    return;
+  }
+  wg_fail(s,4);
+}
+
+// ---- statements
+wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if !s[0].ok {return;}
+  k:=wg_next(s,tree);
+  if k==1 {
+    n:=cast(int)wg_next(s,tree);
+    wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;
+    for i:0..<n {wg_stmt(s,tree,names,w,out);}
+    s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");
+    return;
+  }
+  if k==2 {
+    // a call of a procedure with no result is a statement; any other value is let go
+    at:=s[0].at;s[0].called=false;wg_skip(s,tree,names,w,out);
+    wg_tab(s,out);
+    if !s[0].called {wg_put(s,out,"_ = ");}
+    wg_expr_from(s,tree,names,w,out,at);wg_put(s,out,";\n");
+    return;
+  }
+  if k==3 {wg_tab(s,out);wg_place(s,tree,names,w,out);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==4 {wg_tab(s,out);wg_put(s,out,"return ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==5 {wg_tab(s,out);wg_put(s,out,"return;\n");return;}
+  if k==6 {
+    has_else:=wg_next(s,tree)!=0;
+    wg_tab(s,out);wg_put(s,out,"if (");wg_expr(s,tree,names,w,out);wg_put(s,out,")\n");
+    wg_body(s,tree,names,w,out);
+    if has_else {wg_tab(s,out);wg_put(s,out,"else\n");wg_body(s,tree,names,w,out);}
+    return;
+  }
+  if k==7 {
+    wg_tab(s,out);wg_put(s,out,"while (");wg_expr(s,tree,names,w,out);wg_put(s,out,")\n");
+    wg_body(s,tree,names,w,out);
+    return;
+  }
+  if k==8 {
+    // from the first bound to the second, read once, by 1; continue steps
+    i:=cast(int)wg_next(s,tree);
+    if !wg_has_local(s,tree,w,i) {return;}
+    t:=tree[wg_locals_at(tree,w,s[0].proc)+1+i];kind:=wg_scalar(s,tree,w,t);
+    if kind<3 {wg_fail(s,4);return;}
+    wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;
+    wg_tab(s,out);wg_put(s,out,"let coax_from: ");wg_type(s,tree,w,out,t);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");
+    wg_tab(s,out);wg_put(s,out,"let coax_to: ");wg_type(s,tree,w,out,t);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");
+    wg_tab(s,out);wg_put(s,out,"for (");wg_local(s,names,out,i,false);wg_put(s,out," = coax_from; ");
+    wg_local(s,names,out,i,false);wg_put(s,out," < coax_to; ");
+    wg_local(s,names,out,i,false);wg_put(s,out," = ");wg_local(s,names,out,i,false);wg_put(s,out,ifx kind==3 then " + 1i)\n" else " + 1u)\n");
+    wg_body(s,tree,names,w,out);
+    s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");
+    return;
+  }
+  if k==9 {wg_tab(s,out);wg_put(s,out,"break;\n");return;}
+  if k==10 {wg_tab(s,out);wg_put(s,out,"continue;\n");return;}
+  if k==11 {wg_fail(s,4);return;}
+  wg_fail(s,1);
+}
+// A statement as the braced body WGSL wants after if, else, while and for.
+wg_body :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
+  if wg_peek(s,tree)==1 {wg_stmt(s,tree,names,w,out);return;}
+  wg_tab(s,out);wg_put(s,out,"{\n");s[0].indent+=1;
+  wg_stmt(s,tree,names,w,out);
+  s[0].indent-=1;wg_tab(s,out);wg_put(s,out,"}\n");
+}
+
+// One procedure: its signature, its parameters copied into variables (WGSL's are not
+// assignable), its other locals, its body, and a return of zero when the body does not
+// end in one (WGSL asks every path to return).
+wg_proc :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,p:int) {
+  s[0].proc=p;
+  sig:=wg_sig(w,p);np:=wg_params(tree,w,p);ret:=wg_ret(tree,w,p);
+  at:=wg_locals_at(tree,w,p);nl:=cast(int)tree[at];
+  for i:0..<nl+1 {if wg_word(wg_line(names,p),i).count==0 {wg_fail(s,6);return;}}
+  wg_put(s,out,"fn ");wg_proc_name(s,names,w,out,p);wg_put(s,out,"(");
+  for i:0..<np {
+    if i>0 {wg_put(s,out,", ");}
+    wg_local(s,names,out,i,true);wg_put(s,out,": ");wg_type(s,tree,w,out,tree[sig+2+i]);
+  }
+  wg_put(s,out,")");
+  if ret!=WG_VOID {wg_put(s,out," -> ");wg_type(s,tree,w,out,ret);}
+  wg_put(s,out," {\n");s[0].indent=1;
+  for i:0..<nl {
+    wg_tab(s,out);wg_put(s,out,"var ");wg_local(s,names,out,i,false);wg_put(s,out,": ");wg_type(s,tree,w,out,tree[at+1+i]);
+    if i<np {wg_put(s,out," = ");wg_local(s,names,out,i,true);}
+    wg_put(s,out,";\n");
+  }
+  size:=cast(int)tree[at+1+nl];body:=at+2+nl;
+  s[0].at=body;
+  // the body's block, its statements at the function's level
+  if wg_next(s,tree)!=1 {wg_fail(s,1);return;}
+  n:=cast(int)wg_next(s,tree);returns:=false;
+  for i:0..<n {returns=wg_peek(s,tree)==4;wg_stmt(s,tree,names,w,out);}
+  if s[0].at!=body+size {wg_fail(s,1);return;}
+  if ret!=WG_VOID && !returns {wg_put(s,out,"  return ");wg_put(s,out,WG_ZERO_TEXT[cast(int)wg_scalar(s,tree,w,ret)]);wg_put(s,out,";\n");}
+  wg_put(s,out,"}\n");
+}
+
+// The helpers a module uses, under the first entry's name.
+wg_helpers :: (s:[]WgState,names:string,w:[]u32,out:[]u8) {
+  root:=wg_first(names,w);
+  if s[0].bits {wg_put(s,out,"fn coax_bits_");wg_put(s,out,root);wg_put(s,out,"(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n");}
+  if s[0].pow {
+    // C's powf: 1 at y 0; at x 0, 0 or infinity as y is above 0 or not; |x|^y negated
+    // for x below 0 and an odd whole y, NaN for a fractional one
+    wg_put(s,out,"fn coax_pow_");wg_put(s,out,root);wg_put(s,out,"(x: f32, y: f32) -> f32 {\n  if (y == 0.0f) {\n    return 1.0f;\n  }\n");
+    wg_put(s,out,"  if (x == 0.0f) {\n    return select(coax_bits_");wg_put(s,out,root);wg_put(s,out,"(0x7f800000u), 0.0f, y > 0.0f);\n  }\n");
+    wg_put(s,out,"  let r = pow(abs(x), y);\n  if (!(x < 0.0f)) {\n    return r;\n  }\n  if (floor(y) != y) {\n    return coax_bits_");
+    wg_put(s,out,root);wg_put(s,out,"(0x7fc00000u);\n  }\n  if (fract(y * 0.5f) != 0.0f) {\n    return -r;\n  }\n  return r;\n}\n");
+  }
+}
+
+WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c {
+  st:[1] WgState;s:=st[..];w:=work;
+  s[0].ok=true;
+  if w.count<WG_W_WORDS {return -2;}
+  if wg_next(s,tree)!=2 {return -1;}
+  types:=cast(int)wg_next(s,tree);
+  if types>WG_TYPES {return -3;}
+  if types<6 {return -1;}
+  for t:0..<types {
+    w[WG_W_TYPE+t]=cast(u32)s[0].at;
+    k:=wg_next(s,tree);
+    if k>11 {return -1;}
+    // a struct's count, then its parts' (type offset) and its size; an array's three; one more for 9 to 11
+    if k==7 {s[0].at+=2*cast(int)wg_next(s,tree)+1;}
+    if k==8 {s[0].at+=3;}
+    if k>=9 {s[0].at+=1;}
+  }
+  s[0].types=types;
+  procs:=cast(int)wg_next(s,tree);
+  if procs>WG_PROCS {return -3;}
+  s[0].procs=procs;
+  for p:0..<procs {
+    w[WG_W_PROC+p]=cast(u32)s[0].at;w[WG_W_ROOT+p]=0;
+    s[0].at+=1;params:=cast(int)wg_next(s,tree);
+    s[0].at+=params;
+    s[0].at+=cast(int)wg_next(s,tree);
+    s[0].at+=cast(int)wg_next(s,tree);
+  }
+  entries:=cast(int)wg_next(s,tree);
+  if entries<1 {return -1;}
+  for e:0..<entries {
+    stage:=wg_next(s,tree);p:=cast(int)wg_next(s,tree);
+    if p>=procs {return -1;}
+    if stage!=2 {return -5;}
+    w[WG_W_ROOT+p]=1; // mutant: equivalent (any word but 0 marks a root)
+    if e==0 {w[WG_W_FIRST]=cast(u32)p;}
+    s[0].at+=wg_params(tree,w,p);
+  }
+  if !s[0].ok || s[0].at!=tree.count {return -1;}
+  for p:0..<procs {wg_proc(s,tree,names,w,out,p);}
+  wg_helpers(s,names,w,out);
+  if !s[0].ok {return -cast(int)s[0].reason;}
+  return s[0].n;
+}
+
+// ---- checks: trees from `coax spirv FILE --fragment NAME --tree`, the entry's stage made 2
+// A tree's text: words of decimal digits, each after one space.
+wg_parse :: (text:string,out:[]u32)->int {
+  n:=0;v:u32=0;
+  for i:0..<text.count {
+    if text[i]==' ' {out[n]=v;n+=1;v=0;}
+    else {v=v*10+cast(u32)(text[i]-'0');}
+  }
+  out[n]=v;
+  return n+1;
+}
+wg_try :: (text:string,names:string,out:[]u8)->int {
+  t:[4096] u32;work:[WG_W_WORDS] u32;
+  return WG_emit(t[0..<wg_parse(text,t[..])],names,out,work[..]);
+}
+// The WGSL of a tree that must be written.
+wg_text :: (text:string,names:string,out:[]u8)->string {return cast(string)out[0..<wg_try(text,names,out)];}
+WG_SAMPLE_MIX :: "2 6 0 1 2 3 4 5 3 2 4 2 3 4 1 14 2 3 4 1 2 3 4 1 2 3 4 2 2 2 456 1 15 3 40 4 19 1 19 2 19 3 18 0 16 2 1073741824 19 4 18 0 16 2 1077936128 18 0 3 40 5 19 1 19 2 19 1 19 5 18 1 16 3 7 19 17 18 1 16 3 2 19 18 18 1 16 3 1 20 18 1 3 40 6 19 1 19 2 19 1 19 1 19 1 19 3 18 2 16 4 3 19 14 18 2 16 4 5 19 15 18 2 16 4 1 19 16 18 2 16 4 9 19 17 18 2 16 4 2 19 18 18 2 16 4 1 3 40 6 19 1 18 6 19 1 18 2 16 4 1 3 40 7 19 13 19 12 19 12 21 18 3 19 13 19 7 18 0 18 4 19 9 18 0 18 4 19 11 18 0 18 4 19 10 18 0 18 4 2 22 1 1 18 0 3 40 8 16 2 0 8 9 16 3 0 18 1 1 3 6 0 19 10 18 9 16 3 3 1 1 10 6 0 19 8 18 9 16 3 9 1 1 9 3 40 8 19 1 18 8 29 2 18 9 3 40 10 16 4 0 7 19 6 18 10 18 2 1 1 3 40 10 19 1 18 10 16 4 1 3 40 11 24 18 7 19 1 19 1 19 1 19 1 19 1 19 1 19 1 23 1 1 18 0 23 2 1 18 0 23 3 1 18 0 23 4 1 18 0 23 5 1 18 0 23 6 1 18 0 23 7 1 18 0 23 8 1 18 0 19 1 23 9 2 18 0 16 2 1073741824 23 9 2 18 0 18 4 3 40 12 30 2 19 1 19 1 19 1 30 4 18 11 29 4 18 5 18 6 18 10 3 40 13 19 1 19 2 19 1 20 16 2 0 16 2 1069547520 16 2 713624 29 2 19 2 20 16 3 2147483647 16 3 1 6 1 19 6 18 13 16 2 0 1 1 3 40 13 16 2 1065353216 6 1 19 8 18 13 16 2 1073741824 1 1 3 40 13 16 2 1073741824 1 1 3 40 13 16 2 1056964608 4 19 1 19 1 22 2 2 19 1 19 1 18 12 18 8 18 13 18 0 29 2 19 4 18 1 16 3 3 29 2 19 4 18 2 16 4 2 0 1 2 2 2 2 19 1 2 3 40 1 18 0 6 0 19 8 18 1 16 2 0 1 1 5 2 2 2 2 2 2 2 18 1 2 6 0 19 8 18 0 18 1 1 1 4 18 0 4 18 1 1 2 0 0 1 2 3";
+WG_NAMES_MIX :: "mix x n m flag y i k b t j c z w q\nnothing a x\nhi a b\n";
+WG_WGSL_MIX :: "fn mix(p_x: f32, p_n: i32, p_m: u32, p_flag: bool) -> f32 {\n  var l_x: f32 = p_x;\n  var l_n: i32 = p_n;\n  var l_m: u32 = p_m;\n  var l_flag: bool = p_flag;\n  var l_y: f32;\n  var l_i: i32;\n  var l_k: u32;\n  var l_b: bool;\n  var l_t: f32;\n  var l_j: i32;\n  var l_c: u32;\n  var l_z: f32;\n  var l_w: f32;\n  var l_q: f32;\n  l_y = (((l_x * 0x1.000000p1f) - (l_x / 0x1.800000p1f)) + l_x);\n  l_i = ((((l_n % 7i) + (l_n << u32(2i))) - (l_n >> u32(1i))) + (-l_n));\n  l_k = ((((((l_m * 3u) + (l_m & 5u)) + (l_m | 1u)) + (l_m ^ 9u)) - (l_m << u32(2u))) + (l_m >> u32(1u)));\n  l_k = (l_k + (l_m + 1u));\n  l_b = ((((!l_flag) && ((l_x <= l_y) || (l_x >= l_y))) && (l_x != l_y)) || (l_x == l_y));\n  coax_p_nothing(l_x);\n  l_t = 0.0f;\n  {\n    let coax_from: i32 = 0i;\n    let coax_to: i32 = l_n;\n    for (l_j = coax_from; l_j < coax_to; l_j = l_j + 1i)\n    {\n      if ((l_j == 3i))\n      {\n        continue;\n      }\n      if ((l_j > 9i))\n      {\n        break;\n      }\n      l_t = (l_t + f32(l_j));\n    }\n  }\n  l_c = 0u;\n  while ((l_c < l_m))\n  {\n    l_c = (l_c + 1u);\n  }\n  l_z = select(((l_x * l_x) + coax_pow_mix(l_x, l_y)), (((((((sin(l_x) + cos(l_x)) + tan(l_x)) + exp(l_x)) + log(l_x)) + sqrt(l_x)) + floor(l_x)) + abs(l_x)), l_b);\n  l_w = bitcast<f32>((((bitcast<u32>(l_z) + u32(l_i)) + l_k) + l_c));\n  l_q = ((((-0.0f) + 0x1.800000p0f) - 0x0.15c730p-126f) + f32(((-2147483647i) - 1i)));\n  if ((l_q < 0.0f))\n  {\n    l_q = 0x1.000000p0f;\n  }\n  else\n  {\n    if ((l_q > 0x1.000000p1f))\n    {\n      l_q = 0x1.000000p1f;\n    }\n    else\n    {\n      l_q = 0x1.000000p-1f;\n    }\n  }\n  return ((coax_p_hi(((l_w + l_t) + l_q), l_x) + f32((l_n / 3i))) + f32((l_m / 2u)));\n}\nfn coax_p_nothing(p_a: f32) {\n  var l_a: f32 = p_a;\n  var l_x: f32;\n  l_x = l_a;\n  if ((l_x > 0.0f))\n  {\n    return;\n  }\n}\nfn coax_p_hi(p_a: f32, p_b: f32) -> f32 {\n  var l_a: f32 = p_a;\n  var l_b: f32 = p_b;\n  if ((l_a > l_b))\n  {\n    return l_a;\n  }\n  return l_b;\n}\nfn coax_bits_mix(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\nfn coax_pow_mix(x: f32, y: f32) -> f32 {\n  if (y == 0.0f) {\n    return 1.0f;\n  }\n  if (x == 0.0f) {\n    return select(coax_bits_mix(0x7f800000u), 0.0f, y > 0.0f);\n  }\n  let r = pow(abs(x), y);\n  if (!(x < 0.0f)) {\n    return r;\n  }\n  if (floor(y) != y) {\n    return coax_bits_mix(0x7fc00000u);\n  }\n  if (fract(y * 0.5f) != 0.0f) {\n    return -r;\n  }\n  return r;\n}\n";
+WG_SAMPLE_K :: "2 6 0 1 2 3 4 5 1 2 2 2 3 2 2 3 31 1 1 4 19 1 19 1 19 1 19 1 18 0 16 2 2139095040 16 2 3223322624 16 2 7136238 29 2 19 1 18 1 16 3 4294967289 1 2 0 0 1";
+WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_n: i32 = p_n;\n  return ((((l_x + coax_bits_k(0x7f800000u)) + (-0x1.400000p1f)) + 0x0.d9c7dcp-126f) + f32((l_n + (-7i))));\n}\nfn coax_bits_k(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";
+#test "the sample's every statement and expression, as Chrome's WebGPU compiles it" {
+  out:[16384] u8;
+  #assert wg_text(WG_SAMPLE_MIX,WG_NAMES_MIX,out[..])==WG_WGSL_MIX;
+}
+#test "constants are exact: an infinity by its bits, a negative and a subnormal" {
+  out:[4096] u8;
+  #assert wg_text(WG_SAMPLE_K,"k x n\n",out[..])==WG_WGSL_K;
+}
+#test "every refusal reason has its own text" {
+  #assert WG_reason_text(0)=="" && WG_reason_text(1)=="a malformed tree" && WG_reason_text(2)=="WGSL larger than its buffer";
+  #assert WG_reason_text(3)=="more types or procedures than it holds" && WG_reason_text(4)=="a type or operation WGSL functions do not take yet";
+  #assert WG_reason_text(5)=="an entry that is not a function" && WG_reason_text(6)=="a procedure without its names";
+  #assert WG_reason_text(7)=="this reason" && WG_reason_text(4000000000)=="this reason";
+  #assert WG_work_words()==1537 && WG_out_bytes()==4194304;
+}
+#test "a malformed tree, a type or code it does not write, and a missing name are refused" {
+  out:[4096] u8;
+  // not tree code 2
+  #assert wg_try("1 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // an empty tree
+  none:[1] u32;work:[WG_W_WORDS] u32;
+  #assert WG_emit(none[0..<0],"f x\n",out[..],work[..])==-1;
+  // a type count and nothing
+  #assert wg_try("2","f x\n",out[..])==-1;
+  // the types and nothing
+  #assert wg_try("2 6 0 1 2 3 4 5","f x\n",out[..])==-1;
+  // a vertex entry
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 1 0 0","f x\n",out[..])==-5;
+  // no entry
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 0","f x\n",out[..])==-1;
+  // an entry past the procedures
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 1 0 0 0 0 0 0","f x\n",out[..])==-1;
+  // a word too many
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0 0","f x\n",out[..])==-1;
+  // a word short
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0","f x\n",out[..])==-1;
+  // too few types
+  #assert wg_try("2 5 0 1 2 3 4 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // too many types
+  #assert wg_try("2 513 0","f x\n",out[..])==-3;
+  // the most types, cut
+  #assert wg_try("2 512 0","f x\n",out[..])==-1;
+  // too many procedures
+  #assert wg_try("2 6 0 1 2 3 4 5 513","f x\n",out[..])==-3;
+  // the most procedures, cut
+  #assert wg_try("2 6 0 1 2 3 4 5 512","f x\n",out[..])==-1;
+  // an unknown type kind
+  #assert wg_try("2 6 0 1 2 3 4 12 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a type kind past the codes, with a word after it
+  #assert wg_try("2 6 0 1 2 3 4 12 0 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a parameter without a name
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f\n",out[..])==-6;
+  // a procedure without its own name
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0"," x\n",out[..])==-6;
+  // a procedure without its line
+  #assert wg_try("2 6 0 1 2 3 4 5 2 2 1 2 1 2 5 1 1 4 18 0 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","g x",out[..])==-6;
+  // no names
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 0 1 2 0 0","",out[..])==-6;
+  // a 64-bit local
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 2 2 5 5 1 1 4 18 0 1 2 0 0","f x y\n",out[..])==-4;
+  // a 64-bit result
+  #assert wg_try("2 6 0 1 2 3 4 5 1 5 1 2 1 2 5 1 1 4 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // a void result's zero
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 17 0 1 2 0 0","f x\n",out[..])==-4;
+  // a type past the table
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 17 6 1 2 0 0","f x\n",out[..])==-1;
+  // a constant of a type past the table
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 16 6 0 1 2 0 0","f x\n",out[..])==-1;
+  // a local past the procedure's
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 18 1 1 2 0 0","f x\n",out[..])==-1;
+  // an unknown expression
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 4 1 1 4 15 1 2 0 0","f x\n",out[..])==-4;
+  // an element
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 7 1 1 4 25 18 0 0 1 2 0 0","f x\n",out[..])==-4;
+  // operator 19
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 19 19 1 2 0 0","f x\n",out[..])==-1;
+  // operator 0
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 5 1 1 4 19 0 1 2 0 0","f x\n",out[..])==-1;
+  // math 10
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 10 1 1 4 23 10 1 18 0 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // math 0
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 23 0 1 1 2 0 0","f x\n",out[..])==-1;
+  // sin of two
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 23 1 2 1 2 0 0","f x\n",out[..])==-1;
+  // pow of one
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 23 9 1 1 2 0 0","f x\n",out[..])==-1;
+  // a call with too few arguments
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 22 0 0 1 2 0 0","f x\n",out[..])==-1;
+  // a call one past the procedures
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 18 1 1 4 22 1 6 18 0 18 0 18 0 18 0 18 0 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a cast to bool
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 7 1 1 4 29 1 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // a bitcast to bool
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 7 1 1 4 30 1 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // a load of an element
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 10 1 1 4 27 42 40 0 16 3 0 1 2 0 0","f x\n",out[..])==-4;
+  // a store to an element
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 10 1 2 3 41 0 18 0 4 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // a store to a local past the procedure's
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 10 1 2 3 40 1 18 0 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // statement 11
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 2 11 4 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // statement 12
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 2 12 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a float counter
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 13 1 2 8 0 18 0 18 0 1 0 4 18 0 1 2 0 0","f x\n",out[..])==-4;
+  // a bool counter
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 2 2 1 13 1 2 8 1 18 0 18 0 1 0 4 18 0 1 2 0 0","f x b\n",out[..])==-4;
+  // a counter past the procedure's
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 13 1 2 8 1 18 0 18 0 1 0 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a body that is not a block
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 3 4 18 0 1 2 0 0","f x\n",out[..])==-1;
+  // a body longer than its words
+  #assert wg_try("2 6 0 1 2 3 4 5 1 2 1 2 1 2 6 1 1 4 18 0 9 1 2 0 0","f x\n",out[..])==-1;
+  // an operand past the tree's end
+  #assert wg_try("2 6 0 1 2 3 4 5 19 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 2 1 2 1 2 8 1 1 4 19 1 19 1 16 1 2 18 0","g0\ng1\ng2\ng3\ng4\ng5\ng6\ng7\ng8\ng9\ng10\ng11\ng12\ng13\ng14\ng15\ng16\ng17\nf x\n",out[..])==-1;
+  // an if's body past the tree's end
+  #assert wg_try("2 6 0 1 2 3 4 5 19 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 2 1 2 1 2 7 1 1 6 0 19 1 16 1 2 18 0","g0\ng1\ng2\ng3\ng4\ng5\ng6\ng7\ng8\ng9\ng10\ng11\ng12\ng13\ng14\ng15\ng16\ng17\nf x\n",out[..])==-1;
+}
+#test "an empty body returns zero" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 2 1 0 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return 0.0f;\n}\n";
+}
+#test "an if without else may not return, so zero follows" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 10 1 1 6 0 16 1 1 4 18 0 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  if (true)\n  {\n    return l_x;\n  }\n  return 0.0f;\n}\n";
+}
+#test "bool constants, a zero, a load and a value let go" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 18 1 4 2 16 1 0 2 17 2 3 40 0 27 40 0 4 17 2 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  _ = false;\n  _ = 0.0f;\n  l_x = l_x;\n  return 0.0f;\n}\n";
+}
+#test "integers: 10, 100, the most negative i32 and its neighbour" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 18 1 4 2 16 4 10 2 16 4 100 2 16 3 2147483648 4 16 3 2147483649 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  _ = 10u;\n  _ = 100u;\n  _ = (-2147483647i - 1i);\n  return (-2147483647i);\n}\n";
+}
+#test "floats: 1, 2^-1, 2^-127 and a NaN" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 18 1 4 2 16 2 1065353216 2 16 2 1056964608 2 16 2 2097152 4 16 2 2143289344 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  _ = 0x1.000000p0f;\n  _ = 0x1.000000p-1f;\n  _ = 0x0.400000p-126f;\n  return coax_bits_f(0x7fc00000u);\n}\nfn coax_bits_f(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";
+}
+#test "pow by 3.0 and by a local are C's; a value call is let go" {
+  out:[8192] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 1 2 25 1 3 2 23 9 2 18 0 16 2 1077936128 2 22 0 1 18 0 4 23 9 2 18 0 18 0 1 2 0 0","f x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  _ = coax_pow_f(l_x, 0x1.800000p1f);\n  _ = f(l_x);\n  return coax_pow_f(l_x, l_x);\n}\nfn coax_bits_f(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\nfn coax_pow_f(x: f32, y: f32) -> f32 {\n  if (y == 0.0f) {\n    return 1.0f;\n  }\n  if (x == 0.0f) {\n    return select(coax_bits_f(0x7f800000u), 0.0f, y > 0.0f);\n  }\n  let r = pow(abs(x), y);\n  if (!(x < 0.0f)) {\n    return r;\n  }\n  if (floor(y) != y) {\n    return coax_bits_f(0x7fc00000u);\n  }\n  if (fract(y * 0.5f) != 0.0f) {\n    return -r;\n  }\n  return r;\n}\n";
+}
+#test "the first entry names the helpers; one work view serves one tree after another" {
+  out:[8192] u8;t:[512] u32;work:[WG_W_WORDS] u32;
+  n:=wg_parse("2 11 0 1 2 3 4 5 9 2 10 0 11 0 8 2 4 4 7 3 2 0 2 4 2 8 12 2 2 1 2 1 2 6 1 1 4 16 2 2139095040 2 1 2 1 2 8 1 1 4 22 0 1 18 0 1 2 0 0",t[..]);
+  r:=WG_emit(t[0..<n],"g x\nf x\n",out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]=="fn g(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return coax_bits_g(0x7f800000u);\n}\nfn coax_p_f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return g(l_x);\n}\nfn coax_bits_g(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";
+  n=wg_parse("2 11 0 1 2 3 4 5 9 2 10 0 11 0 8 2 4 4 7 3 2 0 2 4 2 8 12 2 2 1 2 1 2 6 1 1 4 16 2 2139095040 2 1 2 1 2 8 1 1 4 22 0 1 18 0 1 2 1 0",t[..]);
+  r=WG_emit(t[0..<n],"g x\nf x\n",out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]=="fn coax_p_g(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return coax_bits_f(0x7f800000u);\n}\nfn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return coax_p_g(l_x);\n}\nfn coax_bits_f(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";
+  n=wg_parse("2 11 0 1 2 3 4 5 9 2 10 0 11 0 8 2 4 4 7 3 2 0 2 4 2 8 12 2 2 1 2 1 2 6 1 1 4 16 2 2139095040 2 1 2 1 2 8 1 1 4 22 0 1 18 0 2 2 1 0 2 0 0",t[..]);
+  r=WG_emit(t[0..<n],"g x\nf x\n",out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]=="fn g(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return coax_bits_f(0x7f800000u);\n}\nfn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return g(l_x);\n}\nfn coax_bits_f(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";
+  n=wg_parse("2 11 0 1 2 3 4 5 9 2 10 0 11 0 8 2 4 4 7 3 2 0 2 4 2 8 12 2 2 1 2 1 2 6 1 1 4 16 2 2139095040 2 1 2 1 2 8 1 1 4 22 0 1 18 0 1 2 0 0",t[..]);
+  r=WG_emit(t[0..<n],"g x\nf x\n",out[..],work[..]);
+  #assert r>0 && cast(string)out[0..<r]=="fn g(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return coax_bits_g(0x7f800000u);\n}\nfn coax_p_f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  return g(l_x);\n}\nfn coax_bits_g(b: u32) -> f32 {\n  return bitcast<f32>(b);\n}\n";}
+#test "too small a buffer or work view is refused, and an exact one is enough" {
+  out:[16] u8;exact:[248] u8;t:[64] u32;work:[8] u32;
+  #assert wg_try(WG_SAMPLE_K,"k x n\n",out[..])==-2;
+  #assert wg_try(WG_SAMPLE_K,"k x n\n",exact[0..<247])==-2 && wg_try(WG_SAMPLE_K,"k x n\n",exact[..])==248;
+  n:=wg_parse(WG_SAMPLE_K,t[..]);
+  #assert WG_emit(t[0..<n],"k x n\n",exact[..],work[..])==-2;
+}
+#test "a call with no result is a statement, and the next value is let go" {
+  out:[4096] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 2 0 1 2 1 2 2 1 0 2 1 2 1 2 11 1 2 2 22 0 1 18 0 2 18 0 1 2 1 0","g x\nf x\n",out[..])=="fn coax_p_g(p_x: f32) {\n  var l_x: f32 = p_x;\n}\nfn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  coax_p_g(l_x);\n  _ = l_x;\n  return 0.0f;\n}\n";
+}
+#test "a local named as an earlier one takes its index" {
+  out:[4096] u8;
+  #assert wg_text("2 6 0 1 2 3 4 5 1 2 1 2 4 2 2 2 2 20 1 4 3 40 1 18 0 3 40 2 18 1 3 40 3 18 2 4 18 3 1 2 0 0","f x y y x\n",out[..])=="fn f(p_x: f32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_y: f32;\n  var l_y_2: f32;\n  var l_x_3: f32;\n  l_y = l_x;\n  l_y_2 = l_y;\n  l_x_3 = l_y_2;\n  return l_x_3;\n}\n";
+}

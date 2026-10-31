@@ -52,17 +52,17 @@ test("refuses a missing or bad clock", () => {
 test("refuses a painterly realm whose WGSL has no style block", () => {
   const site = mkdtempSync(join(tmpdir(), "realms-site-"))
   writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
-  writeFileSync(join(site, "villa.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
-  writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
-  writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
-  writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "villa.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
-  writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // a flat realm needs it as well
   writeFileSync(join(site, "fairy.wgsl"), "// no block\n")
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/fairy.wgsl has no style block/)
-  writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax/web/wgsl.py; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   // a lowpoly realm with a painterly zone needs it too
   writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
   expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true })).toThrow(/partly painterly/)

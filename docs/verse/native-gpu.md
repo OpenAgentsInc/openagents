@@ -341,3 +341,17 @@ Every phase and native feature is a task in the Verse project
   title, the reply and map buttons, the HP bar, the place labels and the
   "E: swing the hammer" prompt. Still to come: sound, and the realm's
   actions (navigation, sockets), which a bare screen ignores for now.
+- 2026-10-31: G6's first step, `coax wgsl`. `coax/lib/compiler/wgsl.coax`
+  (`#authority`, gated in the bootstrap: 14 checks, 867 mutants, 0
+  survived) writes WGSL functions from the same checked tree that
+  `shader.coax` lowers to SPIR-V; `coax wgsl FILE --functions A,B` names
+  the roots, and the driver adds each procedure's local names. Exact
+  constants (hexadecimal floats; an infinity or NaN by its bits), C's
+  `pow` (`x` to the power `2.0` is `x * x`), `for` as Coax runs it (the
+  bound read once). `coax/web/wgsl-block.coax` replaces a page's generated
+  block, and `coax/web/wgsl-compile.coax` compiles WGSL in headless
+  Chrome. The web build's eleven blocks (the HUD bar, the house's light,
+  outlines, particles, the art styles, the stars) now come from it, every
+  module compiles with no messages, and `coax/web/wgsl.py` is deleted.
+  Next: whole modules (entries, bindings, structs and textures) from Coax,
+  then the realms' hand-written WGSL moves into it.

@@ -6,7 +6,7 @@
 // The house is the iOS stage's (apps/openagents-ios/OpenAgents/Platform/
 // Stages.metal haunt_vertex, haunt_fragment and haunt_sky_fragment), ported
 // by hand; its light, fog and the tone curve are the Verse engine's own functions
-// (haunt-light.coax, light.coax) converted by coax/web/wgsl.py at build time
+// (haunt-light.coax, light.coax) written as WGSL by coax wgsl at build time
 // into the generated blocks below, as is the HUD bar (verse_bar). The
 // phone adds a bloom pass over the scene; the browser doesn't yet, so the
 // tone curve is applied as each pixel is drawn.
@@ -265,163 +265,178 @@ fn outlined(p: vec2i, light: vec3f) -> vec3f {
   let c = vec3f(verse_haunt_glow(light.r, near.r, far.r), verse_haunt_glow(light.g, near.g, far.g), verse_haunt_glow(light.b, near.b, far.b));
   return vec4f(panels(pos.xy, tone(c)), 1.0);
 }
-// ---- generated: verse/light.coax (verse_bar, verse_tone) by coax/web/wgsl.py; do not edit
-fn coax_p_hi(l_a: f32, l_b: f32) -> f32 {
+// ---- generated: verse/light.coax (verse_bar, verse_tone) by coax wgsl; do not edit
+fn verse_bar(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32, p_t: f32, p_press: f32, p_flash: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_w: f32 = p_w;
+  var l_h: f32 = p_h;
+  var l_k: f32 = p_k;
+  var l_t: f32 = p_t;
+  var l_press: f32 = p_press;
+  var l_flash: f32 = p_flash;
+  var l_d: f32;
+  var l_inside: f32;
+  var l_edge: f32;
+  var l_phase: f32;
+  var l_sweep: f32;
+  var l_glass: f32;
+  var l_glow: f32;
+  l_d = coax_p_cut_distance(l_x, l_y, l_w, l_h, l_k);
+  l_inside = (0x1.000000p0f - coax_p_smooth((-0x1.000000p-1f), 0x1.000000p-1f, l_d));
+  l_edge = (0x1.000000p0f - coax_p_smooth((0x1.000000p-1f * l_k), (0x1.99999ap0f * l_k), abs(l_d)));
+  l_phase = ((l_t / 0x1.800000p2f) - floor((l_t / 0x1.800000p2f)));
+  l_sweep = exp((-(((((l_x + (l_y * 0x1.333334p-1f)) / l_w) - ((-0x1.99999ap0f) + ((0x1.99999ap1f * l_phase) / 0x1.c28f5cp-3f))) / 0x1.99999ap-4f) * ((((l_x + (l_y * 0x1.333334p-1f)) / l_w) - ((-0x1.99999ap0f) + ((0x1.99999ap1f * l_phase) / 0x1.c28f5cp-3f))) / 0x1.99999ap-4f))));
+  if ((l_phase > 0x1.c28f5cp-3f))
+  {
+    l_sweep = 0.0f;
+  }
+  l_glass = ((((0x1.1eb852p-5f + (0x1.99999ap-6f * (0x1.000000p0f - (l_y / l_h)))) + (0x1.99999ap-4f * l_press)) + (0x1.99999ap-4f * l_sweep)) * l_inside);
+  l_glow = ((exp(((-coax_p_hi(l_d, 0.0f)) / (0x1.200000p3f * l_k))) * (0x1.000000p0f - l_inside)) * (0x1.99999ap-4f + (0x1.333334p-2f * l_flash)));
+  return ((l_glass + (l_edge * (0x1.4cccccp-1f + (0x1.000000p-1f * l_flash)))) + l_glow);
+}
+fn verse_tone(p_light: f32) -> f32 {
+  var l_light: f32 = p_light;
+  return (0x1.000000p0f - exp(((-l_light) * 0x1.59999ap0f)));
+}
+fn coax_p_cut_distance(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_w: f32 = p_w;
+  var l_h: f32 = p_h;
+  var l_k: f32 = p_k;
+  var l_dx: f32;
+  var l_dy: f32;
+  var l_box: f32;
+  l_dx = (abs(l_x) - l_w);
+  l_dy = (abs(l_y) - l_h);
+  l_box = (sqrt(((coax_p_hi(l_dx, 0.0f) * coax_p_hi(l_dx, 0.0f)) + (coax_p_hi(l_dy, 0.0f) * coax_p_hi(l_dy, 0.0f)))) + coax_p_lo(coax_p_hi(l_dx, l_dy), 0.0f));
+  return coax_p_hi(l_box, ((abs((l_x + l_y)) - ((l_w + l_h) - (0x1.c00000p3f * l_k))) * 0x1.6a09e6p-1f));
+}
+fn coax_p_smooth(p_a: f32, p_b: f32, p_x: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_x: f32 = p_x;
+  var l_t: f32;
+  l_t = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
+  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
+fn coax_p_hi(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_lo(l_a: f32, l_b: f32) -> f32 {
+fn coax_p_lo(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a < l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_cut_distance(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32) -> f32 {
-  var coax_t14: f32;
-  var coax_t15: f32;
-  var coax_t16: f32;
-  var coax_t17: f32;
-  var coax_t18: f32;
-  var coax_t19: f32;
-  var coax_t20: f32;
-  var coax_t21: f32;
-  var coax_t22: f32;
-  var coax_t23: f32;
-  var l_dx: f32 = (abs(l_x) - l_w);
-  var l_dy: f32 = (abs(l_y) - l_h);
-  coax_t16 = coax_p_hi(l_dx, 0.0);
-  coax_t17 = coax_p_hi(l_dx, 0.0);
-  coax_t15 = (coax_t16 * coax_t17);
-  coax_t19 = coax_p_hi(l_dy, 0.0);
-  coax_t20 = coax_p_hi(l_dy, 0.0);
-  coax_t18 = (coax_t19 * coax_t20);
-  coax_t14 = sqrt((coax_t15 + coax_t18));
-  coax_t21 = coax_p_lo(coax_p_hi(l_dx, l_dy), 0.0);
-  var l_box: f32 = (coax_t14 + coax_t21);
-  coax_t22 = abs((l_x + l_y));
-  coax_t23 = ((l_w + l_h) - (14.0 * l_k));
-  return coax_p_hi(l_box, ((coax_t22 - coax_t23) * 0.707106769));
-}
-fn coax_p_sat(l_a: f32) -> f32 {
-  return coax_p_lo(1.0, coax_p_hi(0.0, l_a));
-}
-fn coax_p_smooth(l_a: f32, l_b: f32, l_x: f32) -> f32 {
-  var l_t: f32 = coax_p_sat(((l_x - l_a) / (l_b - l_a)));
-  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
-}
-fn verse_bar(l_x: f32, l_y: f32, l_w: f32, l_h: f32, l_k: f32, l_t: f32, l_press: f32, l_flash: f32) -> f32 {
-  var coax_t24: f32;
-  var coax_t25: f32;
-  var coax_t26: f32;
-  var coax_t27: f32;
-  var coax_t28: f32;
-  var coax_t29: f32;
-  var coax_t30: f32;
-  var coax_t31: f32;
-  var coax_t32: f32;
-  var coax_t33: f32;
-  var coax_t34: f32;
-  var l_d: f32 = coax_p_cut_distance(l_x, l_y, l_w, l_h, l_k);
-  var l_inside: f32 = (1.0 - coax_p_smooth((-0.5), 0.5, l_d));
-  coax_t24 = (0.5 * l_k);
-  coax_t25 = (1.60000002 * l_k);
-  coax_t26 = abs(l_d);
-  var l_edge: f32 = (1.0 - coax_p_smooth(coax_t24, coax_t25, coax_t26));
-  coax_t27 = (l_t / 6.0);
-  coax_t28 = floor((l_t / 6.0));
-  var l_phase: f32 = (coax_t27 - coax_t28);
-  let coax_sq1: f32 = ((((l_x + (l_y * 0.600000024)) / l_w) - ((-1.60000002) + ((3.20000005 * l_phase) / 0.219999999))) / 0.100000001);
-  var l_sweep: f32 = exp((-(coax_sq1 * coax_sq1)));
-  if ((l_phase > 0.219999999))
-  {
-    l_sweep = 0.0;
-  }
-  var l_glass: f32 = ((((0.0350000001 + (0.0250000004 * (1.0 - (l_y / l_h)))) + (0.100000001 * l_press)) + (0.100000001 * l_sweep)) * l_inside);
-  coax_t31 = (-coax_p_hi(l_d, 0.0));
-  coax_t32 = (9.0 * l_k);
-  coax_t30 = exp((coax_t31 / coax_t32));
-  coax_t33 = (1.0 - l_inside);
-  coax_t29 = (coax_t30 * coax_t33);
-  coax_t34 = (0.100000001 + (0.300000012 * l_flash));
-  var l_glow: f32 = (coax_t29 * coax_t34);
-  return ((l_glass + (l_edge * (0.649999976 + (0.5 * l_flash)))) + l_glow);
-}
-fn verse_tone(l_light: f32) -> f32 {
-  return (1.0 - exp(((-l_light) * 1.35000002)));
+fn coax_p_sat(p_a: f32) -> f32 {
+  var l_a: f32 = p_a;
+  return coax_p_lo(0x1.000000p0f, coax_p_hi(0.0f, l_a));
 }
 // ---- end generated
 
-// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade, verse_haunt_moon_dir, verse_haunt_moonlight, verse_haunt_shadow_reach, verse_haunt_shadow_edge, verse_haunt_night, verse_haunt_bloom_share, verse_haunt_glow) by coax/web/wgsl.py; do not edit
-fn verse_haunt_ambient(l_ny: f32, l_channel: f32) -> f32 {
-  var l_sky: f32 = select(select(0.150000006, 0.0900000036, (l_channel < 1.5)), 0.0799999982, (l_channel < 0.5));
-  var l_ground: f32 = select(select(0.0199999996, 0.0250000004, (l_channel < 1.5)), 0.0299999993, (l_channel < 0.5));
-  return (l_ground + ((l_sky - l_ground) * ((l_ny * 0.5) + 0.5)));
+// ---- generated: verse/haunt-light.coax (verse_haunt_ambient, verse_haunt_attenuate, verse_haunt_shade, verse_haunt_moon_dir, verse_haunt_moonlight, verse_haunt_shadow_reach, verse_haunt_shadow_edge, verse_haunt_night, verse_haunt_bloom_share, verse_haunt_glow) by coax wgsl; do not edit
+fn verse_haunt_ambient(p_ny: f32, p_channel: f32) -> f32 {
+  var l_ny: f32 = p_ny;
+  var l_channel: f32 = p_channel;
+  var l_sky: f32;
+  var l_ground: f32;
+  l_sky = select(select(0x1.333334p-3f, 0x1.70a3d8p-4f, (l_channel < 0x1.800000p0f)), 0x1.47ae14p-4f, (l_channel < 0x1.000000p-1f));
+  l_ground = select(select(0x1.47ae14p-6f, 0x1.99999ap-6f, (l_channel < 0x1.800000p0f)), 0x1.eb851ep-6f, (l_channel < 0x1.000000p-1f));
+  return (l_ground + ((l_sky - l_ground) * ((l_ny * 0x1.000000p-1f) + 0x1.000000p-1f)));
 }
-fn coax_p_hl_max(l_a: f32, l_b: f32) -> f32 {
+fn verse_haunt_attenuate(p_d: f32, p_r: f32) -> f32 {
+  var l_d: f32 = p_d;
+  var l_r: f32 = p_r;
+  var l_q: f32;
+  l_q = coax_p_hl_max(0.0f, (0x1.000000p0f - (l_d / coax_p_hl_max(l_r, 0x1.47ae14p-7f))));
+  return (l_q * l_q);
+}
+fn verse_haunt_shade(p_albedo: f32, p_light: f32, p_glow: f32, p_distance: f32, p_channel: f32, p_flash: f32) -> f32 {
+  var l_albedo: f32 = p_albedo;
+  var l_light: f32 = p_light;
+  var l_glow: f32 = p_glow;
+  var l_distance: f32 = p_distance;
+  var l_channel: f32 = p_channel;
+  var l_flash: f32 = p_flash;
+  var l_fog: f32;
+  var l_fogcolor: f32;
+  var l_lit: f32;
+  l_fog = (0x1.000000p0f - exp((((-l_distance) * l_distance) * 0x1.fb82c2p-14f)));
+  l_fogcolor = select(select(0x1.1eb852p-4f, 0x1.47ae14p-5f, (l_channel < 0x1.800000p0f)), 0x1.1eb852p-5f, (l_channel < 0x1.000000p-1f));
+  l_lit = ((l_albedo * ((l_light + (l_glow * 0x1.000000p1f)) + (l_flash * 0x1.000000p1f))) * 0x1.4cccccp0f);
+  return (l_lit + ((l_fogcolor - l_lit) * l_fog));
+}
+fn verse_haunt_moon_dir(p_axis: f32) -> f32 {
+  var l_axis: f32 = p_axis;
+  return select(select((-0x1.3f227ep-1f), 0x1.1b1b7ap-1f, (l_axis < 0x1.800000p0f)), (-0x1.1b1b7ap-1f), (l_axis < 0x1.000000p-1f));
+}
+fn verse_haunt_moonlight(p_channel: f32) -> f32 {
+  var l_channel: f32 = p_channel;
+  return select(select(0x1.051eb8p-1f, 0x1.800000p-2f, (l_channel < 0x1.800000p0f)), 0x1.51eb86p-2f, (l_channel < 0x1.000000p-1f));
+}
+fn verse_haunt_shadow_reach(p_axis: f32) -> f32 {
+  var l_axis: f32 = p_axis;
+  return select(0x1.180000p6f, 0x1.a00000p4f, (l_axis < 0x1.000000p-1f));
+}
+fn verse_haunt_shadow_edge(p_u: f32, p_v: f32, p_lit: f32) -> f32 {
+  var l_u: f32 = p_u;
+  var l_v: f32 = p_v;
+  var l_lit: f32 = p_lit;
+  var l_e: f32;
+  var l_fade: f32;
+  l_e = coax_p_hl_max(coax_p_hl_max(((l_u * 0x1.000000p1f) - 0x1.000000p0f), (0x1.000000p0f - (l_u * 0x1.000000p1f))), coax_p_hl_max(((l_v * 0x1.000000p1f) - 0x1.000000p0f), (0x1.000000p0f - (l_v * 0x1.000000p1f))));
+  l_fade = coax_p_hl_min(0x1.000000p0f, coax_p_hl_max(0.0f, ((l_e - 0x1.ccccccp-1f) * 0x1.400000p3f)));
+  return (l_lit + ((0x1.000000p0f - l_lit) * l_fade));
+}
+fn verse_haunt_night(p_light: f32) -> f32 {
+  var l_light: f32 = p_light;
+  var l_t: f32;
+  l_t = (0x1.000000p0f - exp(((-l_light) * 0x1.59999ap0f)));
+  return ((l_t * 0x1.99999ap-1f) + (sqrt(coax_p_hl_max(l_t, 0.0f)) * 0x1.99999ap-3f));
+}
+fn verse_haunt_bloom_share(p_peak: f32, p_glow: f32) -> f32 {
+  var l_peak: f32 = p_peak;
+  var l_glow: f32 = p_glow;
+  var l_own: f32;
+  var l_past: f32;
+  l_own = coax_p_hl_min(0x1.ccccccp-1f, (coax_p_hl_max(0.0f, l_glow) * 0x1.99999ap-1f));
+  l_past = coax_p_hl_min(0x1.000000p0f, (coax_p_hl_max(0.0f, (l_peak - 0x1.000000p0f)) / (l_peak + 0x1.000000p-1f)));
+  return (l_own + (((0x1.000000p0f - l_own) * l_past) * 0x1.333334p-1f));
+}
+fn verse_haunt_glow(p_light: f32, p_near: f32, p_far: f32) -> f32 {
+  var l_light: f32 = p_light;
+  var l_near: f32 = p_near;
+  var l_far: f32 = p_far;
+  return ((l_light + (l_near * 0x1.333334p0f)) + (l_far * 0x1.19999ap0f));
+}
+fn coax_p_hl_max(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn verse_haunt_attenuate(l_d: f32, l_r: f32) -> f32 {
-  var l_q: f32 = coax_p_hl_max(0.0, (1.0 - (l_d / coax_p_hl_max(l_r, 0.00999999978))));
-  return (l_q * l_q);
-}
-fn verse_haunt_shade(l_albedo: f32, l_light: f32, l_glow: f32, l_distance: f32, l_channel: f32, l_flash: f32) -> f32 {
-  var l_fog: f32 = (1.0 - exp((((-l_distance) * l_distance) * 0.000120999997)));
-  var l_fogcolor: f32 = select(select(0.0700000003, 0.0399999991, (l_channel < 1.5)), 0.0350000001, (l_channel < 0.5));
-  var l_lit: f32 = ((l_albedo * ((l_light + (l_glow * 2.0)) + (l_flash * 2.0))) * 1.29999995);
-  return (l_lit + ((l_fogcolor - l_lit) * l_fog));
-}
-fn verse_haunt_moon_dir(l_axis: f32) -> f32 {
-  return select(select((-0.62331003), 0.552944005, (l_axis < 1.5)), (-0.552944005), (l_axis < 0.5));
-}
-fn verse_haunt_moonlight(l_channel: f32) -> f32 {
-  return select(select(0.50999999, 0.375, (l_channel < 1.5)), 0.330000013, (l_channel < 0.5));
-}
-fn verse_haunt_shadow_reach(l_axis: f32) -> f32 {
-  return select(70.0, 26.0, (l_axis < 0.5));
-}
-fn coax_p_hl_min(l_a: f32, l_b: f32) -> f32 {
+fn coax_p_hl_min(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a < l_b))
   {
     return l_a;
   }
   return l_b;
-}
-fn verse_haunt_shadow_edge(l_u: f32, l_v: f32, l_lit: f32) -> f32 {
-  var coax_t0: f32;
-  var coax_t1: f32;
-  coax_t0 = coax_p_hl_max(((l_u * 2.0) - 1.0), (1.0 - (l_u * 2.0)));
-  coax_t1 = coax_p_hl_max(((l_v * 2.0) - 1.0), (1.0 - (l_v * 2.0)));
-  var l_e: f32 = coax_p_hl_max(coax_t0, coax_t1);
-  var l_fade: f32 = coax_p_hl_min(1.0, coax_p_hl_max(0.0, ((l_e - 0.899999976) * 10.0)));
-  return (l_lit + ((1.0 - l_lit) * l_fade));
-}
-fn verse_haunt_night(l_light: f32) -> f32 {
-  var coax_t2: f32;
-  var coax_t3: f32;
-  var l_t: f32 = (1.0 - exp(((-l_light) * 1.35000002)));
-  coax_t2 = (l_t * 0.800000012);
-  coax_t3 = (sqrt(coax_p_hl_max(l_t, 0.0)) * 0.200000003);
-  return (coax_t2 + coax_t3);
-}
-fn verse_haunt_bloom_share(l_peak: f32, l_glow: f32) -> f32 {
-  var coax_t4: f32;
-  var coax_t5: f32;
-  var l_own: f32 = coax_p_hl_min(0.899999976, (coax_p_hl_max(0.0, l_glow) * 0.800000012));
-  coax_t4 = coax_p_hl_max(0.0, (l_peak - 1.0));
-  coax_t5 = (l_peak + 0.5);
-  var l_past: f32 = coax_p_hl_min(1.0, (coax_t4 / coax_t5));
-  return (l_own + (((1.0 - l_own) * l_past) * 0.600000024));
-}
-fn verse_haunt_glow(l_light: f32, l_near: f32, l_far: f32) -> f32 {
-  return ((l_light + (l_near * 1.20000005)) + (l_far * 1.10000002));
 }
 // ---- end generated
 
@@ -459,44 +474,52 @@ struct V {
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
 }
 
-// ---- generated: verse/look.coax (verse_outline_depth, verse_outline_crease, verse_outline_strength, verse_outline_ink) by coax/web/wgsl.py; do not edit
-fn coax_p_lk_max(l_a: f32, l_b: f32) -> f32 {
+// ---- generated: verse/look.coax (verse_outline_depth, verse_outline_crease, verse_outline_strength, verse_outline_ink) by coax wgsl; do not edit
+fn verse_outline_depth(p_lap: f32, p_depth: f32) -> f32 {
+  var l_lap: f32 = p_lap;
+  var l_depth: f32 = p_depth;
+  var l_jump: f32;
+  l_jump = (abs(l_lap) / coax_p_lk_max((0x1.000000p0f - l_depth), 0x1.0c6f7ap-20f));
+  return coax_p_lk_ramp(0x1.47ae14p-5f, 0x1.eb851ep-4f, l_jump);
+}
+fn verse_outline_crease(p_facing: f32) -> f32 {
+  var l_facing: f32 = p_facing;
+  return coax_p_lk_ramp(0x1.800000p-1f, 0x1.19999ap-1f, l_facing);
+}
+fn verse_outline_strength(p_cut: f32, p_glow: f32) -> f32 {
+  var l_cut: f32 = p_cut;
+  var l_glow: f32 = p_glow;
+  return (coax_p_lk_max(0.0f, (0x1.000000p0f - coax_p_lk_max(l_cut, 0.0f))) * (0x1.000000p0f - coax_p_lk_ramp(0x1.000000p-2f, 0x1.333334p-1f, l_glow)));
+}
+fn verse_outline_ink(p_light: f32, p_edge: f32) -> f32 {
+  var l_light: f32 = p_light;
+  var l_edge: f32 = p_edge;
+  return (l_light * (0x1.000000p0f - (0x1.a3d70ap-1f * coax_p_lk_min(0x1.000000p0f, coax_p_lk_max(0.0f, l_edge)))));
+}
+fn coax_p_lk_max(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a > l_b))
   {
     return l_a;
   }
   return l_b;
 }
-fn coax_p_lk_min(l_a: f32, l_b: f32) -> f32 {
+fn coax_p_lk_ramp(p_a: f32, p_b: f32, p_x: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_x: f32 = p_x;
+  var l_t: f32;
+  l_t = coax_p_lk_min(0x1.000000p0f, coax_p_lk_max(0.0f, ((l_x - l_a) / (l_b - l_a))));
+  return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
+fn coax_p_lk_min(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
   if ((l_a < l_b))
   {
     return l_a;
   }
   return l_b;
-}
-fn coax_p_lk_ramp(l_a: f32, l_b: f32, l_x: f32) -> f32 {
-  var l_t: f32 = coax_p_lk_min(1.0, coax_p_lk_max(0.0, ((l_x - l_a) / (l_b - l_a))));
-  return ((l_t * l_t) * (3.0 - (2.0 * l_t)));
-}
-fn verse_outline_depth(l_lap: f32, l_depth: f32) -> f32 {
-  var coax_t0: f32;
-  var coax_t1: f32;
-  coax_t0 = abs(l_lap);
-  coax_t1 = coax_p_lk_max((1.0 - l_depth), 9.99999997e-07);
-  var l_jump: f32 = (coax_t0 / coax_t1);
-  return coax_p_lk_ramp(0.0399999991, 0.119999997, l_jump);
-}
-fn verse_outline_crease(l_facing: f32) -> f32 {
-  return coax_p_lk_ramp(0.75, 0.550000012, l_facing);
-}
-fn verse_outline_strength(l_cut: f32, l_glow: f32) -> f32 {
-  var coax_t2: f32;
-  var coax_t3: f32;
-  coax_t2 = coax_p_lk_max(0.0, (1.0 - coax_p_lk_max(l_cut, 0.0)));
-  coax_t3 = (1.0 - coax_p_lk_ramp(0.25, 0.600000024, l_glow));
-  return (coax_t2 * coax_t3);
-}
-fn verse_outline_ink(l_light: f32, l_edge: f32) -> f32 {
-  return (l_light * (1.0 - (0.819999993 * coax_p_lk_min(1.0, coax_p_lk_max(0.0, l_edge)))));
 }
 // ---- end generated

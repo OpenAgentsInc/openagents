@@ -1,7 +1,7 @@
 // The sky behind space (docs/verse/space.md): a starfield and the Sun, as
 // light per pixel, for any space realm's background pass. Scalar f32 only,
-// so coax/web/wgsl.py turns these into WGSL and Metal (as verse/light.coax):
-//   python3 coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl
+// so coax wgsl turns these into WGSL and Metal (as verse/light.coax):
+//   coax/web/tool.sh coax/web/wgsl-block.coax verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl
 // The stars sit in screen cells (a hash picks which cell has one, where in
 // it and how bright); a drift moves the field slowly as the camera pans, so
 // it reads as far away. The Sun is a disc, a corona falling off with

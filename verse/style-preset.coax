@@ -4,7 +4,7 @@
 // which fills the STYLE_FLOATS uniform block (32 vec4f) its WGSL reads. The
 // shading functions that use those numbers are verse/style.coax (loaded
 // here so the checks below can run them on a preset's own numbers); they are
-// a separate file because wgsl.py lowers only the Metal scalar profile.
+// a separate file because coax wgsl writes only scalar functions.
 //
 // What changes through the day is a StyleKey at each of four clock keys:
 // midnight (0), dawn (0.25), noon (0.5) and dusk (0.75); verse_style_at is

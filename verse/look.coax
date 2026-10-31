@@ -1,5 +1,5 @@
 // The Verse look: stylized outlines, as plain f32 functions the realms' WGSL
-// calls (coax/web/wgsl.py). An outline is ink along where the depth jumps,
+// calls (coax wgsl). An outline is ink along where the depth jumps,
 // the surface turns sharply or the material changes, as strong as the
 // material asks (a glowing one asks for none).
 lk_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}

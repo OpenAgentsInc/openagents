@@ -949,11 +949,11 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "test" && cmd != "mutate" && cmd != "proto")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto")
     return usage();
 
   const char *input = nullptr;
-  std::string out, header, proto_prefix, kernel, fill, stroke, vertex, fragment;
+  std::string out, header, proto_prefix, kernel, fill, stroke, vertex, fragment, functions;
   bool shader_tree = false;
   EmitOptions opts;
   coax_t_CP_Request request{};request.debug_info=-1;
@@ -1024,7 +1024,8 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--fill" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) fill = argv[++i];
     else if (a == "--stroke" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty()) stroke = argv[++i];
     else if (a == "--vertex" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && vertex.empty()) vertex = argv[++i];
-    else if (a == "--tree" && cmd == "spirv") shader_tree = true;
+    else if (a == "--tree" && (cmd == "spirv" || cmd == "wgsl")) shader_tree = true;
+    else if (a == "--functions" && i + 1 < argc && cmd == "wgsl" && functions.empty()) functions = argv[++i];
     else if (a == "--fragment" && i + 1 < argc && cmd == "spirv" && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
     else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
@@ -1087,14 +1088,16 @@ static int main_impl(int argc, char **argv) {
   // Legacy proto emission has no runtime profile; new profile choices require
   // one of the source commands admitted by the checked Coax resolver.
   if(cmd!="proto" || request.arithmetic_count || request.optimization_count || request.build_profile_count || request.debug_count || request.source_map || !g_semantic.path.empty()) {
-    auto profile=CP_resolve({cmd.data(),(int64_t)cmd.size()},request);
+    // coax wgsl takes the shader subset's profile, spirv's (lib/compiler/wgsl.coax)
+    const std::string profile_cmd=cmd=="wgsl"?"spirv":cmd;
+    auto profile=CP_resolve({profile_cmd.data(),(int64_t)profile_cmd.size()},request);
     if(profile.error!=COAX_CP_Error_none) {
       auto message=CP_message(profile.error);fprintf(stderr,"coax: %.*s\n",(int)message.count,message.data);return 1;
     }
     opts.wrapping=profile.arithmetic==1;opts.optimization=(int)profile.optimization;
     opts.development=profile.development;opts.debug_info=profile.debug_info;opts.profile_identity=(int)profile.identity;
     g_semantic.selection=profile;g_semantic.command=cmd;g_semantic.resolved=true;
-    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="spirv"?"spirv":cmd=="c" || cmd=="header"?"c11":"evaluator";
+    g_semantic.backend=profile.native?"native-c11":cmd=="cuda"?"cuda":cmd=="metal" || cmd=="metal-compute"?"metal":cmd=="spirv" || cmd=="wgsl"?"spirv":cmd=="c" || cmd=="header"?"c11":"evaluator";
   }
   for(const auto &name:{std::string(input),out,header,g_timings.source_map,g_timings.path})if(!profile_destination_disjoint(name))return 1;
   if (cmd == "proto") {
@@ -1135,6 +1138,24 @@ static int main_impl(int argc, char **argv) {
     }
     if (out.empty()) fwrite(words.data(), 1, words.size(), stdout);
     else if (!write_file(out, words)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
+      return 1;
+    }
+    return 0;
+  }
+  if (cmd == "wgsl") {
+    // WGSL functions from the shader subset (lib/compiler/wgsl.coax): the ordinary rules, then the writer
+    opts.library = true;
+    Source src;
+    Arena arena;
+    File file;
+    std::string text;
+    if (!front_end(input, &src, &arena, &file, opts, 1) || !emit_wgsl(&file, functions, shader_tree, &text)) {
+      if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
+      return 1;
+    }
+    if (out.empty()) fwrite(text.data(), 1, text.size(), stdout);
+    else if (!write_file(out, text)) {
       fprintf(stderr, "coax: cannot write '%s'\n", out.c_str());
       return 1;
     }

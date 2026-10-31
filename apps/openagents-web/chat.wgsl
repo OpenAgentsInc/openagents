@@ -9,8 +9,8 @@
 // (gpui_color, rgba8, straight alpha).
 //
 // Hand-written WGSL, as Zeron.metal is hand-written Metal: GPUI's fragment
-// shaders are not Coax, so coax/web/wgsl.py (which translates Coax scalar
-// functions) has nothing to translate. Keep the two files in step.
+// shaders are not Coax, so coax wgsl (which writes Coax scalar functions
+// as WGSL) has nothing to write. Keep the two files in step.
 //
 // A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
 //   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset), blur

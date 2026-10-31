@@ -13,37 +13,37 @@ python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # and each realm's page (docs/verse/realm-host.md).
 bun "$here/../../coax/web/realms.ts"
 # The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar --into apps/openagents-web/splash.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/light.coax verse_bar --into apps/openagents-web/splash.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
 splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/light.coax verse_bar verse_tone --into apps/openagents-web/realm.wgsl \
-  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
-  && python3 coax/web/wgsl.py verse/look.coax verse_outline_depth verse_outline_crease verse_outline_strength verse_outline_ink --into apps/openagents-web/realm.wgsl \
-  && python3 coax/web/wgsl.py verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
-  && python3 coax/web/wgsl.py verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl \
-  && python3 coax/web/wgsl.py verse/look.coax verse_outline_depth verse_outline_crease --into apps/openagents-web/villa.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/light.coax verse_bar verse_tone --into apps/openagents-web/realm.wgsl \
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_depth verse_outline_crease verse_outline_strength verse_outline_ink --into apps/openagents-web/realm.wgsl \
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl \
+  && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_depth verse_outline_crease --into apps/openagents-web/villa.wgsl)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/look.coax verse_outline_styled verse_outline_crease --into apps/openagents-web/fixture.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_styled verse_outline_crease --into apps/openagents-web/fixture.wgsl)
 # The blob canopies (art-styles.md 7) go where there are kit trees or a traced tree: the fixture and Everglade.
 foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canopy_sway verse_style_canopy_open verse_style_near_reach verse_style_near_blades verse_style_near_width verse_style_chroma_gain"
 for w in fixture everglade; do
-  (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $foliage_fns --into "apps/openagents-web/$w.wgsl")
+  (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $foliage_fns --into "apps/openagents-web/$w.wgsl")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
 facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
 flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns $facet_fns --into apps/openagents-web/villa.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $flat_fns $facet_fns --into apps/openagents-web/villa.wgsl)
 # A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns $facet_fns --into apps/openagents-web/fairy.wgsl)
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $flat_fns $facet_fns --into apps/openagents-web/fairy.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
@@ -94,7 +94,7 @@ deadgears=$!
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
 # /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in belt.wgsl).
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into apps/openagents-web/belt.wgsl)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into apps/openagents-web/belt.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /realms/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).

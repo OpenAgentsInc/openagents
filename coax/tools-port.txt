@@ -488,7 +488,6 @@ coax/web/voice/builder-smoke.ts
 coax/web/voice/echo-smoke.ts
 coax/web/voice/smoke.ts
 coax/web/wasm.sh
-coax/web/wgsl.py
 docs/verification/data/oct30-pool-linux-artifacts/oct30-pool-linux-build-v4.sh
 docs/verification/data/oct30-pool-linux-artifacts/oct30-pool-linux-build.sh
 docs/verification/data/oct30-pool-linux-artifacts/oct30-pool-linux-public-v4.sh

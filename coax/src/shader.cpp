@@ -17,6 +17,8 @@ struct ShaderTree {
   std::vector<const ProcDecl *> procs;  // the procedures, in order of first need
   std::vector<std::pair<std::string, uint32_t>> scope;
   std::vector<uint32_t> local_types;
+  std::vector<std::string> local_names;         // the procedure being encoded's, by local
+  std::vector<std::vector<std::string>> names;  // each procedure's name, then its locals' (coax wgsl)
   uint32_t locals = 0;
   bool ok = true;
 
@@ -70,6 +72,7 @@ struct ShaderTree {
   uint32_t declare(Str n, Type t, Loc loc) {
     scope.emplace_back(name(n), locals);
     local_types.push_back(type(t, loc));
+    local_names.push_back(name(n));
     return locals++;
   }
   bool find(Str n, uint32_t *id) {
@@ -273,10 +276,12 @@ struct ShaderTree {
 
   // One procedure: its signature, its locals and its body.
   std::vector<uint32_t> procedure(const ProcDecl *p) {
-    words.clear(); scope.clear(); local_types.clear(); locals = 0;
+    words.clear(); scope.clear(); local_types.clear(); local_names.clear(); locals = 0;
     for (const Param &prm : p->params) declare(prm.name, prm.type, prm.loc);
     if (p->body) stmt(p->body);
     else refuse(p->loc, "a procedure without a body");
+    names.push_back({name(p->name)});
+    names.back().insert(names.back().end(), local_names.begin(), local_names.end());
     std::vector<uint32_t> out = {type(p->ret, p->loc), (uint32_t)p->params.count};
     for (uint32_t i = 0; i < (uint32_t)p->params.count; i++) out.push_back(local_types[i]);
     out.push_back(locals);
@@ -355,6 +360,74 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
     uint32_t id = work[1 + 3 * k], binding = work[2 + 3 * k], kind = work[3 + 3 * k];
     *report += "binding " + std::to_string(binding) + " " + (kind < 4 ? kinds[kind] : "?") + " " + (id < names.size() ? names[id] : "?") + "\n";
   }
+  return true;
+#endif
+}
+
+// `coax wgsl FILE --functions A,B`: the procedures named, and what they call, as WGSL
+// functions (lib/compiler/wgsl.coax), each a stage-2 entry of the same tree code. With
+// `tree`, *out is the tree as decimal words, then the names' lines.
+bool emit_wgsl(const File *file, const std::string &functions, bool tree_text, std::string *out) {
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  (void)file; (void)functions; (void)tree_text; (void)out;
+  fprintf(stderr, "coax: coax wgsl requires the final compiler, not build-only stage0\n");
+  return false;
+#else
+  ShaderTree t{file};
+  for (Type s : {(Type)&T_VOID, (Type)&T_BOOL, (Type)&T_F32, (Type)&T_S32, (Type)&T_U32, (Type)&T_S64}) t.type(s, {1, 1, 0});
+  std::vector<uint32_t> roots;
+  size_t from = 0;
+  while (from <= functions.size()) {
+    size_t comma = functions.find(',', from);
+    std::string want = functions.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+    from = comma == std::string::npos ? functions.size() + 1 : comma + 1;
+    if (want.empty()) continue;
+    const ProcDecl *found = nullptr;
+    for (const ProcDecl *p : file->procs) if (ShaderTree::name(p->name) == want) found = p;
+    if (!found) {
+      error_at(file->src, {1, 1, 0}, "E0705", "there is no procedure " + want + " to write as WGSL", "--functions names procedures of the file or what it loads");
+      return false;
+    }
+    roots.push_back(t.proc_index(found));
+  }
+  if (roots.empty()) {
+    error_at(file->src, {1, 1, 0}, "E0705", "coax wgsl needs --functions A,B", "name the procedures to write as WGSL");
+    return false;
+  }
+  std::vector<std::vector<uint32_t>> bodies;
+  for (size_t i = 0; i < t.procs.size() && t.ok; i++) bodies.push_back(t.procedure(t.procs[i]));
+  if (!t.ok) return false;
+  std::vector<uint32_t> tree = {2, (uint32_t)t.type_of.size()};
+  tree.insert(tree.end(), t.types.begin(), t.types.end());
+  tree.push_back((uint32_t)bodies.size());
+  for (const auto &b : bodies) tree.insert(tree.end(), b.begin(), b.end());
+  // each root a function entry; its parameters' name ids, which functions do not use, are 0
+  tree.push_back((uint32_t)roots.size());
+  for (uint32_t proc : roots) {
+    tree.push_back(2); tree.push_back(proc);
+    for (int32_t i = 0; i < t.procs[proc]->params.count; i++) tree.push_back(0);
+  }
+  std::string names;
+  for (const auto &line : t.names) {
+    for (size_t i = 0; i < line.size(); i++) names += (i ? " " : "") + line[i];
+    names += "\n";
+  }
+  if (tree_text) {
+    for (size_t i = 0; i < tree.size(); i++) *out += (i ? " " : "") + std::to_string(tree[i]);
+    *out += "\n" + names;
+    return true;
+  }
+  std::vector<uint8_t> text((size_t)WG_out_bytes());
+  std::vector<uint32_t> work((size_t)WG_work_words());
+  int64_t n = WG_emit({tree.data(), (int64_t)tree.size()}, {names.data(), (int64_t)names.size()}, {text.data(), (int64_t)text.size()},
+                      {work.data(), (int64_t)work.size()});
+  if (n < 0) {
+    coax_string why = WG_reason_text((uint32_t)-n);
+    error_at(file->src, {1, 1, 0}, "E0706", std::string(why.data, (size_t)why.count) + " is outside the WGSL writer",
+             "coax wgsl writes the scalar functions of lib/compiler/wgsl.coax");
+    return false;
+  }
+  out->assign((const char *)text.data(), (size_t)n);
   return true;
 #endif
 }

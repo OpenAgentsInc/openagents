@@ -1,5 +1,5 @@
 // The art styles' shading functions (docs/verse/art-styles.md), as plain f32
-// functions the realms' WGSL calls. coax/web/wgsl.py emits them into a
+// functions the realms' WGSL calls. coax wgsl emits them into a
 // realm's WGSL between "// ---- generated: verse/style.coax" markers, the
 // way verse/look.coax's outlines are. The numbers they take come from the
 // realm's style preset, evaluated at its clock (verse/style-preset.coax:
@@ -292,7 +292,7 @@ verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
 // fills, two or three flat tones a form (lit, shade, dark), no specular, no rim, no outline; a flat
 // sky with one soft horizon band; cast shadows as flat translucent shapes; a thin trim line along
 // some hems; now and then a slight dithered gradient down a tall shape. The edges here are the
-// flat preset's (verse/style-preset.coax STYLE_FLAT), as literals because wgsl.py lowers these.
+// flat preset's (verse/style-preset.coax STYLE_FLAT), as literals because coax wgsl writes these.
 // The light on a flat surface: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
 verse_style_flat_light :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {return st_sat(fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit);}
 // Three flat tones from that light: dark (0) under 0.38, shade (0.5) to 0.62, lit (1) above it. Each

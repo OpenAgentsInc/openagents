@@ -1,0 +1,86 @@
+// WGSL compiled by headless Chrome's WebGPU (its own compiler, Tint), for the WGSL
+// coax wgsl writes (docs/verse/native-gpu.md, G6) and the modules around it: each
+// FILE's errors and warnings, as Chrome reports them, or "ok". It exits 1 when any
+// file has an error. A file that is only functions (a generated block) compiles
+// as it is: WGSL lets a module have no entry points.
+//   coax/web/tool.sh coax/web/wgsl-compile.coax FILE.wgsl...     (from the repo root)
+// Chrome is headless, on its own profile (coax/lib/net/cdp.coax); the page is an
+// empty one served on 127.0.0.1, where WebGPU is allowed.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/net/cdp.coax";
+
+WC_PORT :: "18742";
+WC_FILE :: 1000000;
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: wgsl-compile FILE.wgsl..."); return 2; }
+  dir: [512] u8; page: [1024] u8; d := fs_temp("wgsl-compile-", dir[..]);
+  index := fs_join(d, "index.html", page[..]);
+  if d.count == 0 || !fs_write(index, "<!doctype html><title>wgsl</title>") { tool_errln("wgsl-compile: cannot make the page"); return 1; }
+  server := proc_new();
+  b: [256] u8;
+  ok := proc_arg(server, "coax/web/serve.sh") && proc_arg(server, d) && proc_arg(server, "--listen") && proc_arg(server, wc_cat("127.0.0.1:", WC_PORT, b[..])) && proc_quiet(server);
+  if !ok || proc_start(server) != 0 { tool_errln("wgsl-compile: could not start coax/web/serve.sh (run from the repo root)"); return 1; }
+  proc_sleep(1500);
+  status := 1;
+  c: [1] Cdp;
+  if cdp_launch(c[..], 320, 200, "coax-wgsl-") {
+    status = compile_all(c[..], a[..]);
+    cdp_close(c[..]);
+  } else { tool_err("wgsl-compile: "); tool_errln(cdp_error(c[..])); }
+  k := proc_kill(server, PROC_SIGKILL); r := proc_wait(server, 2000); rel := proc_release(server);
+  gone := fs_remove(index) && fs_remove(d);
+  return status;
+}
+
+compile_all :: (c: [] Cdp, a: [] Args) -> int {
+  b: [256] u8; u: [256] u8;
+  nav: [1024] u8; o: [1] Jo; jo_start(o[..], nav[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], wc_cat(wc_cat("http://127.0.0.1:", WC_PORT, b[..]), "/", u[..])); jo_end(o[..]);
+  if cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { tool_errln(cdp_error(c)); return 1; }
+  proc_sleep(1000);
+  bad := 0;
+  for i: 0..<args_count(a) {
+    path := args_at(a, i);
+    text: [WC_FILE] u8;
+    n := fs_read(path, text[..]);
+    if n < 0 { tool_err("wgsl-compile: cannot read "); tool_errln(path); bad += 1; continue; }
+    // the module's text as a JSON string literal, which is a JavaScript one
+    lit: [CDP_REQ] u8; l: [1] Jo; jo_start(l[..], lit[..]); jo_str(l[..], cast(string) text[0..<n]);
+    e: [CDP_REQ] u8;
+    ex := wc_expr(jo_text(l[..]), e[..]);
+    if l[0].bad || ex.count == 0 { tool_err("wgsl-compile: too large: "); tool_errln(path); bad += 1; continue; }
+    v := cdp_evaluate(c, ex);
+    msg: [65536] u8; m := jv_str(cdp_doc(c), v, msg[..]);
+    if v < 0 || m < 0 { tool_err("wgsl-compile: the browser did not answer for "); tool_errln(path); bad += 1; continue; }
+    said := cast(string) msg[0..<m];
+    print("%: %\n", path, said);
+    if said != "ok" && wc_has(said, "error") { bad += 1; }
+  }
+  return ifx bad > 0 then 1 else 0;
+}
+// The page's script: a device, the module, and its compilation messages, one a line
+// (LINE:COL TYPE: TEXT), or "ok" when there are none.
+wc_expr :: (lit: string, out: [] u8) -> string {
+  head := "(async (code) => { const a = await navigator.gpu?.requestAdapter(); if (!a) return 'error: no WebGPU adapter'; const d = await a.requestDevice(); const m = d.createShaderModule({ code }); const i = await m.getCompilationInfo(); const s = i.messages.map((x) => `${x.lineNum}:${x.linePos} ${x.type}: ${x.message}`).join('\\n'); return s || 'ok'; })(";
+  if head.count + lit.count + 1 > out.count { return ""; }
+  for i: 0..<head.count { out[i] = head[i]; }
+  for i: 0..<lit.count { out[head.count + i] = lit[i]; }
+  out[head.count + lit.count] = ')';
+  return cast(string) out[0..<head.count + lit.count + 1];
+}
+wc_has :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+wc_cat :: (x: string, y: string, out: [] u8) -> string {
+  if x.count + y.count > out.count { return ""; }
+  for i: 0..<x.count { out[i] = x[i]; }
+  for i: 0..<y.count { out[x.count + i] = y[i]; }
+  return cast(string) out[0..<x.count + y.count];
+}
