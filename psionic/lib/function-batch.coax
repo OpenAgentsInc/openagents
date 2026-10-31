@@ -1,0 +1,93 @@
+#load "function-products.coax";
+#authority;
+FX_BATCH :: 64;
+FX_BATCH_ELEMENTS :: 16384;
+FxMapped :: struct {function:FxFunction;batch:int;shared:[FX_DOMAIN]bool;}
+FxMapBuild :: struct {status:FxStatus;map:FxMapped;}
+
+#test "vmap of grad and Jacobian computes per-example values without a caller loop" {
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};f:=fx_function(p).function;df:=fx_grad(f).function;
+  axes:=[2]int.[-1,0];mapped:=fx_vmap(df,axes[..],3);#assert mapped.status==FxStatus.ok && mapped.map.shared[0] && !mapped.map.shared[1];
+  shared:=[2]f32.[2,99];rows:=[6]f32.[77,3,77,4,77,5];values:[16]f32;flags:[16]u8;dots:[16]f64;g:[16]f64;gd:[16]f64;seed:[8]f64;dir:[8]f64;stage:[64]f64;point:[8]f32;out:[13]f64;out[12]=77;
+  w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  r:=fx_vmap_apply(mapped.map,shared[..],rows[..],out[..],w,false);#assert r.status==FxStatus.ok && r.values==6 && out[0]==4 && out[1]==6 && out[2]==4 && out[3]==8 && out[4]==4 && out[5]==10 && out[12]==77;
+  jac:=fx_jacobian(df).function;mj:=fx_vmap(jac,axes[..],3);#assert mj.status==FxStatus.ok;r=fx_vmap_apply(mj.map,shared[..],rows[..],out[..],w,false);#assert r.status==FxStatus.ok && r.values==12;for row:0..<3 {#assert out[4*row]==2 && out[4*row+1]==0 && out[4*row+2]==0 && out[4*row+3]==2;}
+}
+#test "vmap refuses invalid axes budgets and all capacity faults atomically" {
+  p:TiProgram;p.count=1;p.output=0;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);f:=fx_function(p).function;axes:=[1]int.[0];
+  #assert fx_vmap(f,axes[..],0).status==FxStatus.shape && fx_vmap(f,axes[..],65).status==FxStatus.shape && fx_vmap(f,axes[0..<0],1).status==FxStatus.shape;
+  axes[0]=1;#assert fx_vmap(f,axes[..],1).status==FxStatus.shape;axes[0]=-2;#assert fx_vmap(f,axes[..],1).status==FxStatus.shape;axes[0]=0;
+  m:=fx_vmap(f,axes[..],2).map;shared:=[1]f32.[1];rows:=[2]f32.[2,3];values:[1]f32;flags:[1]u8;dots:[1]f64;g:[1]f64;gd:[1]f64;seed:[1]f64;dir:[1]f64;stage:[3]f64;point:[1]f32;out:=[2]f64.[77,77];w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  #assert fx_vmap_apply(m,shared[..],rows[..],out[..],w,true).status==FxStatus.alias;
+  #assert fx_vmap_apply(m,shared[0..<0],rows[..],out[..],w,false).status==FxStatus.shape && fx_vmap_apply(m,shared[..],rows[0..<1],out[..],w,false).status==FxStatus.shape;
+  #assert fx_vmap_apply(m,shared[..],rows[..],out[0..<1],w,false).status==FxStatus.capacity;small:=w;small.stage=stage[0..<2];#assert fx_vmap_apply(m,shared[..],rows[..],out[..],small,false).status==FxStatus.capacity;
+  bad:=m;bad.batch=0;#assert fx_vmap_apply(bad,shared[..],rows[..],out[..],w,false).status==FxStatus.shape;#assert out[0]==77 && out[1]==77;
+}
+#test "vmap admits one and sixty-four rows with exact workspaces and rejects oversized metadata" {
+  p:TiProgram;p.count=1;p.output=0;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);f:=fx_function(p).function;axes:=[2]int.[0,0];
+  bad:FxFunction;#assert fx_vmap(bad,axes[0..<1],1).status==FxStatus.program;
+  #assert fx_vmap(f,axes[..],1).status==FxStatus.shape;
+  shared:=[2]f32.[99,99];rows:[65]f32;out:[65]f64;for i:0..<65 {rows[i]=f32(i+1);out[i]=77;}
+  values:[1]f32;flags:[1]u8;dots:[1]f64;g:[1]f64;gd:[1]f64;seed:[1]f64;dir:[1]f64;stage:[65]f64;point:[1]f32;
+  w:=FxWork.{values=values[0..<0],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  for pass:0..<2 {batch:=ifx pass==0 then 1 else 64;m:=fx_vmap(f,axes[0..<1],batch);#assert m.status==FxStatus.ok;
+    r:=fx_vmap_apply(m.map,shared[0..<1],rows[0..<batch],out[0..<batch],w,false);#assert r.status==FxStatus.ok && r.values==batch && r.derivatives==0;
+    for i:0..<batch {#assert out[i]==f64(i+1);}#assert out[64]==77;
+  }
+  m:=fx_vmap(f,axes[0..<1],2).map;for i:0..<65 {out[i]=77;}
+  #assert fx_vmap_apply(m,shared[..],rows[0..<2],out[..],w,false).status==FxStatus.shape;
+  #assert fx_vmap_apply(m,shared[0..<1],rows[0..<3],out[..],w,false).status==FxStatus.shape;
+  m.batch=65;#assert fx_vmap_apply(m,shared[0..<1],rows[..],out[..],w,false).status==FxStatus.shape;
+  m.function=bad;#assert fx_vmap_apply(m,shared[0..<1],rows[..],out[..],w,false).status==FxStatus.program;
+  for i:0..<65 {#assert out[i]==77;}
+}
+#test "vmap freezes shared coordinates and publishes no rows after a later numeric refusal" {
+  p:TiProgram;p.count=1;p.output=0;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);f:=fx_function(p).function;axes:=[2]int.[-1,0];m:=fx_vmap(f,axes[..],2).map;
+  big:f32=1e30f32;infinity:=big*big;nan:=infinity-infinity;shared:=[2]f32.[2,nan];rows:=[4]f32.[nan,3,infinity,4];out:=[5]f64.[77,77,77,77,77];
+  values:[1]f32;flags:[2]u8;dots:[2]f64;g:[2]f64;gd:[2]f64;seed:[2]f64;dir:[2]f64;stage:[6]f64;point:[2]f32;
+  w:=FxWork.{values=values[0..<0],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  r:=fx_vmap_apply(m,shared[..],rows[..],out[..],w,false);#assert r.status==FxStatus.ok;#assert out[0]==2;#assert out[1]==3;#assert out[2]==2;#assert out[3]==4;#assert out[4]==77;
+  for i:0..<5 {out[i]=77;}rows[3]=infinity;
+  #assert fx_vmap_apply(m,shared[..],rows[..],out[..],w,false).status==FxStatus.number;for i:0..<5 {#assert out[i]==77;}
+  rows[3]=4;for mode:0..<9 {small:=w;if mode==0 {small.flags=flags[0..<0];}if mode==1 {small.dots=dots[0..<1];}if mode==2 {small.grads=g[0..<1];}if mode==3 {small.grad_dots=gd[0..<1];}if mode==4 {small.seed=seed[0..<1];}if mode==5 {small.direction=dir[0..<1];}if mode==6 {small.stage=stage[0..<5];}if mode==7 {small.point=point[0..<1];}
+    if mode==8 {small.stage=stage[..];#assert fx_vmap_apply(m,shared[..],rows[..],out[0..<3],small,false).status==FxStatus.capacity;}else {#assert fx_vmap_apply(m,shared[..],rows[..],out[..],small,false).status==FxStatus.capacity;}
+    for i:0..<5 {#assert out[i]==77;}
+  }
+}
+#test "vmap permits exactly sixteen thousand three hundred eighty-four output elements" {
+  p:TiProgram;p.count=1;p.output=0;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);f:=FxFunction.{program=p,count=1024};axes:=[1]int.[0];m:=fx_vmap(f,axes[..],16);#assert m.status==FxStatus.ok;
+  #assert fx_vmap(f,axes[..],17).status==FxStatus.limit;
+  shared:=[1]f32.[99];rows:[17]f32;for row:0..<17 {rows[row]=f32(row+1);}out:[16385]f64;for i:0..<16385 {out[i]=77;}
+  values:[1]f32;flags:[1]u8;dots:[1]f64;g:[1]f64;gd:[1]f64;seed:[1]f64;dir:[1]f64;stage:[17408]f64;point:[1]f32;
+  w:=FxWork.{values=values[0..<0],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  r:=fx_vmap_apply(m.map,shared[..],rows[0..<16],out[..],w,false);#assert r.status==FxStatus.ok && r.values==16384 && out[16384]==77;
+  for row:0..<16 {for j:0..<1024 {#assert out[row*1024+j]==f64(row+1);}}
+  forged:=m.map;forged.batch=17;#assert fx_vmap_apply(forged,shared[..],rows[..],out[..],w,false).status==FxStatus.limit && out[16384]==77;
+  next:=FxFunction.{program=p,count=565};#assert fx_vmap(next,axes[..],29).status==FxStatus.limit;
+  one_past:=FxMapped.{function=next,batch=29};more_rows:[29]f32;empty:FxWork;
+  #assert fx_vmap_apply(one_past,shared[..],more_rows[..],out[0..<1],empty,false).status==FxStatus.limit;
+
+}
+#test "vmap nominal work limits reject both construction and forged maps before publication" {
+  p:TiProgram;p.count=28;p.output=27;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.view,a=0,shape=TvShape.{rank=1,dims=[4]int.[630,0,0,0]},strides=[4]int.[0,0,0,0]};for i:2..<27 {p.nodes[i]=TiNode.{op=TiOp.relu,a=i-1};}p.nodes[27]=TiNode.{op=TiOp.sum,a=26,axis=0};f:=fx_function(p).function;axes:=[1]int.[0];
+  m:=fx_vmap(f,axes[..],16);#assert m.status==FxStatus.ok && fx_vmap(f,axes[..],17).status==FxStatus.limit;
+  shared:=[1]f32.[0];rows:[17]f32;out:=[1]f64.[77];w:FxWork;forged:=m.map;forged.batch=17;
+  #assert fx_vmap_apply(forged,shared[..],rows[..],out[..],w,false).status==FxStatus.limit && out[0]==77;
+}
+fx_vmap :: (f:FxFunction,axes:[]int,batch:int)->FxMapBuild #export_c {
+  l:=fx_layout(f);if l.status!=FxStatus.ok {return FxMapBuild.{status=l.status};}
+  if batch<1 || batch>FX_BATCH || axes.count!=l.domain {return FxMapBuild.{status=FxStatus.shape};}
+  if f.count*batch>FX_BATCH_ELEMENTS || !fx_work_allowed(l,fx_requests(f)*batch) {return FxMapBuild.{status=FxStatus.limit};}
+  m:=FxMapped.{function=f,batch=batch};for j:0..<l.domain {if axes[j]!=0 && axes[j]!=-1 {return FxMapBuild.{status=FxStatus.shape};}m.shared[j]=axes[j]== -1;}return FxMapBuild.{map=m};
+}
+fx_vmap_apply :: (m:FxMapped,shared:[]f32,rows:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+  f:=m.function;l:=fx_layout(f);if l.status!=FxStatus.ok {return FxRun.{status=l.status};}
+  if m.batch<1 || m.batch>FX_BATCH || shared.count!=l.domain || rows.count!=m.batch*l.domain {return FxRun.{status=FxStatus.shape};}
+  count:=m.batch*f.count;if count>FX_BATCH_ELEMENTS || !fx_work_allowed(l,fx_requests(f)*m.batch) {return FxRun.{status=FxStatus.limit};}
+  if out.count<count || !fx_work_fits(l,w,count+f.count) {return FxRun.{status=FxStatus.capacity};}if overlap {return FxRun.{status=FxStatus.alias};}
+  for row:0..<m.batch {for j:0..<l.domain {w.point[j]=ifx m.shared[j] then shared[j] else rows[row*l.domain+j];}
+    status:=fx_stage(f,l,w.point[0..<l.domain],w);if status!=FxStatus.ok {return FxRun.{status=status};}
+    for j:0..<f.count {w.stage[f.count+row*f.count+j]=w.stage[j];}
+  }
+  for j:0..<count {out[j]=w.stage[f.count+j];}return FxRun.{values=count};
+}

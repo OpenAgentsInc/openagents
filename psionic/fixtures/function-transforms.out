@@ -1,0 +1,12 @@
+profile: CPU TiIR graph, F32 primals and F64 formal partials
+f(2,3,4): 22
+grad: 3 2 8
+value_and_grad: 22 3 2 8
+Jacobian(grad), row-major: 0 1 0; 1 0 0; 0 0 2
+JVP: 3
+VJP(seed=2): 6 4 16
+HVP: -2 1 1
+JVP(grad) and VJP(grad) compose: true
+vmap(grad): 3 2 8; 7 5 8; 2 -1 8
+honest overlap refusal preserves public output: true
+flat binding hole/overlap gradient: 0 2

@@ -1,0 +1,14 @@
+// Explicit nominal element-work ceiling, not a hardware deadline or #bounded.
+#load "function-layout.coax";
+#authority;
+FX_WORK :: 67108864;
+#test "function work ceiling counts the declared repeated derivative scans" {
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};f:=FxFunction.{program=p,count=1};l:=fx_layout(f);
+  #assert fx_work_unit(l)==135;ceiling:=FX_WORK/135;#assert fx_work_allowed(l,1) && fx_work_allowed(l,ceiling) && !fx_work_allowed(l,ceiling+1) && !fx_work_allowed(l,0) && !fx_work_allowed(l,-1);
+  #assert fx_requests(f)==2;f.count=2;f.leaves[0].order=1;f.leaves[1]=FxLeaf.{order=1,first=1};#assert fx_requests(f)==3;
+  f=FxFunction.{count=1};f.program.count=1;f.program.output=0;f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},2);l=fx_layout(f);#assert fx_work_unit(l)==16 && fx_work_allowed(l,FX_WORK/16);
+  f.program.nodes[0].input_base=39;l=fx_layout(f);#assert fx_work_unit(l)==53 && !fx_work_allowed(l,(FX_WORK+1)/53);
+}
+fx_requests :: (f:FxFunction)->int {return 1+f.count;}
+fx_work_unit :: (l:FxLayout)->int {return 8*l.tape.plan.work+(4*l.tape.program.count+8)*l.cells+l.domain+l.codomain;}
+fx_work_allowed :: (l:FxLayout,requests:int)->bool {return requests>0 && requests<=FX_WORK/fx_work_unit(l);}

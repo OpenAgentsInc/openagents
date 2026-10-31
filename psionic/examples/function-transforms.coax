@@ -1,0 +1,105 @@
+#import "Basic";
+#load "../lib/function-batch.coax";
+
+// book:begin graph
+ft_example_program :: ()->TiProgram {
+    p:TiProgram;p.count=7;p.output=6;
+    p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[3,0,0,0]},0);
+    for j:0..<3 {
+        node:=TiNode.{op=TiOp.gather,a=0,axis=0,index_count=1};
+        node.indices[0]=j;p.nodes[1+j]=node;
+    }
+    p.nodes[4]=TiNode.{op=TiOp.multiply,a=1,b=2};
+    p.nodes[5]=TiNode.{op=TiOp.multiply,a=3,b=3};
+    p.nodes[6]=TiNode.{op=TiOp.add,a=4,b=5};
+    return p;
+}
+// book:end graph
+
+main :: () {
+    print("profile: CPU TiIR graph, F32 primals and F64 formal partials\n");
+    values:[64]f32;flags:[64]u8;dots:[64]f64;grads:[64]f64;grad_dots:[64]f64;
+    seed:[16]f64;direction:[16]f64;stage:[128]f64;point:[16]f32;
+    work:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=grads[..],
+        grad_dots=grad_dots[..],seed=seed[..],direction=direction[..],
+        stage=stage[..],point=point[..]};
+    x:=[3]f32.[2,3,4];y:[16]f64;dy:[16]f64;
+
+// book:begin transforms
+    built:=fx_function(ft_example_program());
+    #assert built.status==FxStatus.ok && built.function.count==1;
+    f:=built.function;
+    grad:=fx_grad(f);vg:=fx_value_and_grad(f);
+    #assert grad.status==FxStatus.ok && vg.status==FxStatus.ok;
+    hessian:=fx_jacobian(grad.function);
+    #assert hessian.status==FxStatus.ok && hessian.function.count==9;
+    #assert fx_eval(f,x[..],y[..],work,false).status==FxStatus.ok && y[0]==22;
+    print("f(2,3,4): %\n",cast(int)y[0]);
+    #assert fx_eval(grad.function,x[..],y[..],work,false).status==FxStatus.ok;
+    #assert y[0]==3 && y[1]==2 && y[2]==8;
+    print("grad: % % %\n",cast(int)y[0],cast(int)y[1],cast(int)y[2]);
+    #assert fx_eval(vg.function,x[..],y[..],work,false).status==FxStatus.ok;
+    #assert y[0]==22 && y[1]==3 && y[2]==2 && y[3]==8;
+    print("value_and_grad: % % % %\n",cast(int)y[0],cast(int)y[1],cast(int)y[2],cast(int)y[3]);
+    #assert fx_eval(hessian.function,x[..],y[..],work,false).status==FxStatus.ok;
+    expected:=[9]f64.[0,1,0,1,0,0,0,0,2];
+    for i:0..<9 {#assert y[i]==expected[i];}
+    print("Jacobian(grad), row-major: % % %; % % %; % % %\n",
+        cast(int)y[0],cast(int)y[1],cast(int)y[2],cast(int)y[3],cast(int)y[4],
+        cast(int)y[5],cast(int)y[6],cast(int)y[7],cast(int)y[8]);
+// book:end transforms
+
+// book:begin products
+    v:=[3]f64.[1,-2,0.5];cot:=[3]f64.[2,-1,3];
+    #assert fx_jvp(f,x[..],v[..],y[..],dy[..],work,false).status==FxStatus.ok;
+    #assert y[0]==22 && dy[0]==3;
+    print("JVP: %\n",cast(int)dy[0]);
+    #assert fx_vjp(f,x[..],cot[0..<1],y[..],dy[..],work,false).status==FxStatus.ok;
+    #assert dy[0]==6 && dy[1]==4 && dy[2]==16;
+    print("VJP(seed=2): % % %\n",cast(int)dy[0],cast(int)dy[1],cast(int)dy[2]);
+    #assert fx_hvp(f,x[..],v[..],y[..],dy[..],work,false).status==FxStatus.ok;
+    #assert y[0]==3 && y[1]==2 && y[2]==8 && dy[0]==-2 && dy[1]==1 && dy[2]==1;
+    print("HVP: % % %\n",cast(int)dy[0],cast(int)dy[1],cast(int)dy[2]);
+    #assert fx_jvp(grad.function,x[..],v[..],y[..],dy[..],work,false).status==FxStatus.ok;
+    #assert dy[0]==-2 && dy[1]==1 && dy[2]==1;
+    #assert fx_vjp(grad.function,x[..],cot[..],y[..],dy[..],work,false).status==FxStatus.ok;
+    #assert dy[0]==-1 && dy[1]==2 && dy[2]==6;
+    print("JVP(grad) and VJP(grad) compose: true\n");
+// book:end products
+
+// book:begin batch
+    axes:=[3]int.[0,0,-1];mapped:=fx_vmap(grad.function,axes[..],3);
+    #assert mapped.status==FxStatus.ok;
+    shared:=[3]f32.[99,99,4];rows:=[9]f32.[2,3,77,5,7,77,-1,2,77];
+    result:=fx_vmap_apply(mapped.map,shared[..],rows[..],y[..],work,false);
+    #assert result.status==FxStatus.ok && result.values==9;
+    batched_expected:=[9]f64.[3,2,8,7,5,8,2,-1,8];
+    for i:0..<9 {#assert y[i]==batched_expected[i];}
+    print("vmap(grad): % % %; % % %; % % %\n",
+        cast(int)y[0],cast(int)y[1],cast(int)y[2],cast(int)y[3],cast(int)y[4],
+        cast(int)y[5],cast(int)y[6],cast(int)y[7],cast(int)y[8]);
+// book:end batch
+
+// book:begin refusal
+    aliased:=work;aliased.stage=y[..];
+    for i:0..<16 {y[i]=77;}
+    refused:=fx_eval(f,x[..],y[..],aliased,true);
+    #assert refused.status==FxStatus.alias;
+    for value:y {#assert value==77;}
+    print("honest overlap refusal preserves public output: true\n");
+// book:end refusal
+
+// book:begin bindings
+    alias_program:TiProgram;alias_program.count=3;alias_program.output=2;
+    scalar:=TvShape.{rank=1,dims=[4]int.[1,0,0,0]};
+    alias_program.nodes[0]=ti_input(scalar,1);
+    alias_program.nodes[1]=ti_input(scalar,1);
+    alias_program.nodes[2]=TiNode.{op=TiOp.add,a=0,b=1};
+    alias_function:=fx_function(alias_program);alias_grad:=fx_grad(alias_function.function);
+    #assert alias_function.status==FxStatus.ok && alias_grad.status==FxStatus.ok;
+    flat:=[2]f32.[99,3];
+    #assert fx_eval(alias_grad.function,flat[..],y[..],work,false).status==FxStatus.ok;
+    #assert y[0]==0 && y[1]==2;
+    print("flat binding hole/overlap gradient: % %\n",cast(int)y[0],cast(int)y[1]);
+// book:end bindings
+}

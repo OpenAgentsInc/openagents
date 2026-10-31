@@ -1,0 +1,103 @@
+// Function values are checked permanent-IR graphs, not Coax procedure values.
+// Transforms compose by naming formal partials through order two.
+#load "function-linearize.coax";
+#load "function-budget.coax";
+#authority;
+
+#test "grad value_and_grad and Jacobian compose into a Hessian function" {
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};
+  base:=fx_function(p);#assert base.status==FxStatus.ok && base.function.count==1;
+  grad:=fx_grad(base.function);#assert grad.status==FxStatus.ok && grad.function.count==2 && grad.function.leaves[1].order==1 && grad.function.leaves[1].first==1;
+  vg:=fx_value_and_grad(base.function);#assert vg.status==FxStatus.ok && vg.function.count==3 && vg.function.leaves[0].order==0 && vg.function.leaves[2].first==1;
+  hess:=fx_jacobian(grad.function);#assert hess.status==FxStatus.ok && hess.function.count==4 && hess.function.leaves[2].first==1 && hess.function.leaves[2].second==0 && hess.function.leaves[3].second==1;
+  #assert fx_grad(grad.function).status==FxStatus.shape && fx_jacobian(hess.function).status==FxStatus.order;
+  x:=[2]f32.[3,4];values:[16]f32;flags:[16]u8;dots:[16]f64;g:[16]f64;gd:[16]f64;seed:[8]f64;dir:[8]f64;stage:[32]f64;point:[8]f32;
+  w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};out:[5]f64;out[4]=77;
+  #assert fx_eval(vg.function,x[..],out[..],w,false).status==FxStatus.ok && out[0]==25 && out[1]==6 && out[2]==8;
+  #assert fx_eval(hess.function,x[..],out[..],w,false).status==FxStatus.ok && out[0]==2 && out[1]==0 && out[2]==0 && out[3]==2 && out[4]==77;
+}
+#test "all workspace capacities and overlap refuse before public publication" {
+  p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};f:=fx_function(p).function;x:=[1]f32.[2];values:[2]f32;flags:[2]u8;dots:[2]f64;g:[2]f64;gd:[2]f64;seed:[1]f64;dir:[1]f64;stage:[1]f64;point:[1]f32;out:=[1]f64.[77];
+  for mode:0..<9 {w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+    if mode==0 {w.values=values[0..<0];}if mode==1 {w.flags=flags[0..<1];}if mode==2 {w.dots=dots[0..<1];}if mode==3 {w.grads=g[0..<1];}if mode==4 {w.grad_dots=gd[0..<1];}if mode==5 {w.seed=seed[0..<0];}if mode==6 {w.direction=dir[0..<0];}if mode==7 {w.stage=stage[0..<0];}if mode==8 {w.point=point[0..<0];}#assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.capacity && out[0]==77;
+  }
+  w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  #assert fx_eval(f,x[..],out[..],w,true).status==FxStatus.alias && fx_eval(f,x[0..<0],out[..],w,false).status==FxStatus.shape && fx_eval(f,x[..],out[0..<0],w,false).status==FxStatus.capacity && out[0]==77;
+  bad:FxFunction;#assert fx_eval(bad,x[..],out[..],w,false).status==FxStatus.program && fx_function(bad.program).status==FxStatus.program;
+}
+
+#test "vector output constructors and nonzero selected leaves preserve complete derivative descriptors" {
+  p:TiProgram;p.count=1;p.output=0;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);built:=fx_function(p);#assert built.status==FxStatus.ok && built.function.count==2;
+  for i:0..<2 {#assert built.function.leaves[i].output==i && built.function.leaves[i].order==0 && built.function.leaves[i].first==0 && built.function.leaves[i].second==0;}
+  #assert fx_value_and_grad(built.function).status==FxStatus.shape;
+  f:=built.function;f.count=1;f.leaves[0]=FxLeaf.{output=1};vg:=fx_value_and_grad(f);#assert vg.status==FxStatus.ok && vg.function.count==3 && vg.function.leaves[0].output==1;
+  for j:0..<2 {leaf:=vg.function.leaves[j+1];#assert leaf.output==1 && leaf.order==1 && leaf.first==j && leaf.second==0;}
+  f.leaves[0]=FxLeaf.{output=1,order=1,first=1};vg=fx_value_and_grad(f);#assert vg.status==FxStatus.ok && vg.function.leaves[0].order==1 && vg.function.leaves[0].first==1;
+  for j:0..<2 {leaf:=vg.function.leaves[j+1];#assert leaf.output==1 && leaf.order==2 && leaf.first==1 && leaf.second==j;}
+  f.leaves[0].order=2;#assert fx_jacobian(f).status==FxStatus.order;
+  f.program.count=0;#assert fx_grad(f).status==FxStatus.program;
+}
+#test "Jacobian accepts exactly1024 leaves and refuses the immediate next size" {
+  p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[256,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.view,a=0,shape=TvShape.{rank=1,dims=[4]int.[4,0,0,0]},strides=[4]int.[1,0,0,0]};
+  f:=fx_function(p);r:=fx_jacobian(f.function);#assert f.status==FxStatus.ok && r.status==FxStatus.ok && r.function.count==1024;
+  for i:0..<4 {for j:0..<256 {leaf:=r.function.leaves[i*256+j];#assert leaf.output==i && leaf.order==1 && leaf.first==j && leaf.second==0;}}
+  p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[205,0,0,0]},0);p.nodes[1].shape.dims[0]=5;f=fx_function(p);#assert f.status==FxStatus.ok && fx_jacobian(f.function).status==FxStatus.limit;
+}
+#test "exact work extents admit while nonfinite forward values preserve output" {
+  p:TiProgram;p.count=2;p.output=1;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};f:=fx_function(p).function;x:=[1]f32.[2];values:[1]f32;flags:[2]u8;dots:[2]f64;g:[2]f64;gd:[2]f64;seed:[1]f64;dir:[1]f64;stage:[1]f64;point:[1]f32;out:=[2]f64.[77,88];
+  w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  r:=fx_eval(f,x[..],out[..],w,false);#assert r.status==FxStatus.ok && r.values==1 && r.derivatives==0 && out[0]==4 && out[1]==88;
+  out[0]=77;x[0]=1e30f32;#assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.number && out[0]==77 && out[1]==88;
+  huge:f32=1e30f32;inf:=huge*huge;x[0]=inf;#assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.number && out[0]==77;
+}
+#test "wide gradients reject aggregate alias overflow and propagation overflow atomically" {
+  for powers:8..<10 {
+    p:TiProgram;p.count=3;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);p.nodes[1]=p.nodes[0];p.nodes[2]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},1);a:=0;b:=1;
+    for j:0..<powers {p.nodes[p.count]=TiNode.{op=TiOp.multiply,a=a,b=2};a=p.count;p.count+=1;p.nodes[p.count]=TiNode.{op=TiOp.multiply,a=b,b=2};b=p.count;p.count+=1;}
+    p.nodes[p.count]=TiNode.{op=TiOp.add,a=a,b=b};p.output=p.count;p.count+=1;f:=fx_grad(fx_function(p).function).function;
+    x:=[2]f32.[0,3.2e38f32];v:[32]f32;flags:[32]u8;dots:[32]f64;g:[32]f64;gd:[32]f64;seed:[2]f64;dir:[2]f64;stage:[4]f64;point:[2]f32;out:=[3]f64.[77,88,99];w:=FxWork.{values=v[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+    #assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.number && out[0]==77 && out[1]==88 && out[2]==99;
+  }
+}
+
+#test "selected output clears poisoned cotangent slots before both derivative orders" {
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);p.nodes[1]=TiNode.{op=TiOp.view,a=0,shape=p.nodes[0].shape,strides=[4]int.[0,0,0,0]};p.nodes[2]=TiNode.{op=TiOp.multiply,a=0,b=1};f:=fx_function(p).function;f.count=1;f.leaves[0]=FxLeaf.{output=1,order=1,first=0};x:=[2]f32.[3,4];values:[2]f32;flags:[4]u8;dots:[4]f64;g:[4]f64;gd:[4]f64;seed:=[2]f64.[7,8];dir:[2]f64;stage:[2]f64;point:[2]f32;out:[2]f64;w:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  #assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.ok && out[0]==4;
+  seed[0]=7;seed[1]=8;f.leaves[0].order=2;f.leaves[0].second=1;#assert fx_eval(f,x[..],out[..],w,false).status==FxStatus.ok && out[0]==1;
+}
+
+fx_function :: (p:TiProgram)->FxBuild #export_c {
+  l:=fx_program(p);if l.status!=FxStatus.ok {return FxBuild.{status=l.status};}
+  f:=FxFunction.{program=p,count=l.codomain};for i:1..<f.count {f.leaves[i]=FxLeaf.{output=i};}return FxBuild.{function=f};
+}
+fx_derive :: (f:FxFunction,keep:bool,scalar:bool)->FxBuild {
+  l:=fx_layout(f);if l.status!=FxStatus.ok {return FxBuild.{status=l.status};}if scalar && f.count!=1 {return FxBuild.{status=FxStatus.shape};}
+  for i:0..<f.count {if f.leaves[i].order==2 {return FxBuild.{status=FxStatus.order};}}
+  extra:=ifx keep then 1 else 0;count:=extra+f.count*l.domain;if count>FX_LEAVES {return FxBuild.{status=FxStatus.limit};}
+  out:=FxFunction.{program=f.program,count=count};if keep {out.leaves[0]=f.leaves[0];}
+  for i:0..<f.count {for j:0..<l.domain {leaf:=f.leaves[i];if leaf.order==0 {leaf.first=j;}else {leaf.second=j;}leaf.order+=1;out.leaves[extra+i*l.domain+j]=leaf;}}
+  return FxBuild.{function=out};
+}
+fx_grad :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,false,true);}
+fx_value_and_grad :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,true,true);}
+fx_jacobian :: (f:FxFunction)->FxBuild #export_c {return fx_derive(f,false,false);}
+fx_work_fits :: (l:FxLayout,w:FxWork,stage:int)->bool {
+  return w.values.count>=l.tape.plan.workspace && w.flags.count>=l.tape.plan.flag_elements && w.dots.count>=l.cells && w.grads.count>=l.cells && w.grad_dots.count>=l.cells && w.seed.count>=l.codomain && w.direction.count>=l.domain && w.stage.count>=stage && w.point.count>=l.domain;
+}
+fx_stage :: (f:FxFunction,l:FxLayout,x:[]f32,w:FxWork)->FxStatus {
+  status:=fx_forward(l,x,w);if status!=FxStatus.ok {return status;}
+  for i:0..<f.count {leaf:=f.leaves[i];value:f64=0;
+    if leaf.order==0 {value=ad_read(l.tape,l.tape.program.output,leaf.output,x,w.values);}
+    else {
+      for j:0..<l.codomain {w.seed[j]=0;}w.seed[leaf.output]=1;
+      if leaf.order==1 {status=fx_pullback(l,x,w);if status!=FxStatus.ok {return status;}value=fx_gradient(l,leaf.first,w.grads);}
+      else {for j:0..<l.domain {w.direction[j]=0;}w.direction[leaf.second]=1;status=fx_tangent(l,x,w);if status!=FxStatus.ok {return status;}status=fx_reverse(l,x,w);if status!=FxStatus.ok {return status;}value=fx_gradient(l,leaf.first,w.grad_dots);}
+    }if !fx_finite(value) {return FxStatus.number;}w.stage[i]=value;
+  }return FxStatus.ok;
+}
+fx_eval :: (f:FxFunction,x:[]f32,out:[]f64,w:FxWork,overlap:bool)->FxRun #export_c {
+  l:=fx_layout(f);if l.status!=FxStatus.ok {return FxRun.{status=l.status};}if x.count!=l.domain {return FxRun.{status=FxStatus.shape};}
+  if out.count<f.count || !fx_work_fits(l,w,f.count) {return FxRun.{status=FxStatus.capacity};}if overlap {return FxRun.{status=FxStatus.alias};}
+  if !fx_work_allowed(l,fx_requests(f)) {return FxRun.{status=FxStatus.limit};}
+  status:=fx_stage(f,l,x,w);if status!=FxStatus.ok {return FxRun.{status=status};}for i:0..<f.count {out[i]=w.stage[i];}return FxRun.{values=f.count};
+}

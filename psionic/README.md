@@ -274,3 +274,10 @@ forced-oscillator RK4 solver and learned surrogate. Whole parameter/initial
 state/forcing groups remain held out; independent learned rollouts are measured
 separately from one-step errors, including the stronger affine one-step result.
 Run `psionic/check.sh --only physics/oscillator` for its focused gate.
+
+[Chapter 107](book/ch107-transform-functions-not-just-tensors.md) introduces
+immutable graph functions with first/second partials, JVP/VJP/HVP and shared/
+mapped batching on the bounded CPU tensor-IR profile. Public outputs commit
+atomically after finite-value and storage admission. It does not differentiate
+arbitrary Coax procedures or device graphs. Run `psionic/check.sh --only functions`
+for its focused gate.

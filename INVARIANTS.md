@@ -868,6 +868,25 @@ failure rules remain 38's. See the focused `tensor-template` runner and
 [chapter 39 evidence](docs/verification/psionic-ch26b-2026-10-29.md). Full
 mutation runs are omitted under the owner's explicit instruction.
 
+## Graph-function transforms preserve formal calculus and atomic outputs
+
+`psionic/lib/function-*.coax` transforms immutable permanent tensor-IR graphs,
+not arbitrary Coax procedure values. The fixed profile admits CPU F32 primals
+and formal F64 partials through order two; it does not differentiate the literal
+rounded floating-point map. ReLU has zero derivative/curvature at zero.
+Registered operators, device differentiation and third-order requests are
+refused. Input nodes sharing a flat input coordinate contribute to the same
+adjoint; strided/view/gather reads keep their exact root mapping.
+
+All public execution admits metadata, caller-declared complete overlap facts,
+finite used inputs, capacity and a declared nominal work ceiling before public
+publication. A later numerical or batch-row refusal preserves every public
+output and spare tail; private scratch may change. Batching reads selected
+shared/mapped coordinates only. Raw helpers require an admitted layout and
+fitted, disjoint work. Fixed capacities and the nominal 67,108,864-unit ceiling
+are not compiler `#bounded`, a hardware deadline or a general ownership proof.
+The independent native receipt is `psionic/fixtures/function-native-qualification.json`.
+
 ## Psionic tensor IR plans preserve SSA roots and publish whole results
 
 `psionic/lib/tensor-ir*.coax` owns `tensor-ir-f32-v1`: an explicitly authored,

@@ -57,6 +57,17 @@ if [[ ${#only[@]} -gt 0 ]];then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/physics/check.sh --mutate --jobs "$jobs" "${only[@]}"
     fi
 fi
+# Function-only requests avoid unrelated model provisioning.
+if [[ ${#only[@]} -gt 0 ]];then
+    functions_only=1
+    for item in "${only[@]}";do
+        item=${item%.coax};item=${item#psionic/lib/}
+        case "$item" in functions|functions/all|function-layout|function-linearize|function-budget|function-transforms|function-products|function-batch) ;;*) functions_only=0;;esac
+    done
+    if [[ $functions_only == 1 ]];then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_functions.sh --mutate --jobs "$jobs" "${only[@]}"
+    fi
+fi
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
@@ -332,6 +343,8 @@ picks_native() {
     return 1
 }
 selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; nanochat_chat=0; bpe_train=0; byte_lm=0; decoder=0; adamw=0; resume=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
+functions=0;functions_requested=()
+picks_functions() { local n=${1%.coax};n=${n#psionic/lib/};case "$n" in functions|functions/all|function-layout|function-linearize|function-budget|function-transforms|function-products|function-batch) return 0;;*) return 1;;esac; }
 physics=0;physics_requested=()
 picks_physics() { local n=${1%.coax};n=${n#psionic/lib/};case "$n" in physics|physics/all|physics/oscillator|physics/oscillator-data|physics/oscillator-learn|physics/oscillator-evaluate) return 0;;*) return 1;;esac; }
 robotics=0;robotics_requested=()
@@ -354,6 +367,7 @@ picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek ||
 picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
+    functions=1
     physics=1
     robotics=1
     live_decision=1
@@ -375,6 +389,7 @@ else
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
+        if picks_functions "$n";then hit=1;functions=1;functions_requested+=("$n");fi
         if picks_physics "$n"; then hit=1;physics=1;physics_requested+=("$n");fi
         if picks_robotics "$n"; then hit=1;robotics=1;robotics_requested+=("$n");fi
         if picks_gguf "$n"; then hit=1; gguf=1; fi
@@ -554,6 +569,11 @@ fi
 if [[ $live_decision == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_live_decision.sh
     phase "live-decision (focused operations; no full mutation claim)"
+fi
+
+if [[ $functions == 1 ]];then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_functions.sh --mutate --jobs "$jobs" ${functions_requested[@]+"${functions_requested[@]}"}
+    phase "graph-function transforms and products"
 fi
 
 if [[ $physics == 1 ]];then

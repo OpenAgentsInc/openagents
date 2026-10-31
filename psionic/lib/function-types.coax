@@ -1,0 +1,14 @@
+// Pure graph-function values over chapter38's permanent CPU f32 IR.
+// Source forward operations retain f32; formal tangents/adjoints are f64.
+#load "autodiff.coax";
+FX_LEAVES :: 1024;
+FX_DOMAIN :: 256;
+FX_CELLS :: 16384;
+FxStatus :: enum u8 {ok;program;operation;order;shape;capacity;alias;number;limit;}
+// A component of f, its first partial, or its second partial.
+FxLeaf :: struct {output:int;order:int;first:int;second:int;}
+FxFunction :: struct {program:TiProgram;count:int;leaves:[FX_LEAVES]FxLeaf;}
+FxBuild :: struct {status:FxStatus;function:FxFunction;}
+FxLayout :: struct {status:FxStatus;tape:AdTape;domain:int;codomain:int;cells:int;}
+FxWork :: struct {values:[]f32;flags:[]u8;dots:[]f64;grads:[]f64;grad_dots:[]f64;seed:[]f64;direction:[]f64;stage:[]f64;point:[]f32;}
+FxRun :: struct {status:FxStatus;values:int;derivatives:int;}

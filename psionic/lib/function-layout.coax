@@ -1,0 +1,77 @@
+#load "function-types.coax";
+#authority;
+
+#test "graph function layout preserves root storage aliases and bounded metadata" {
+  p:TiProgram;p.count=3;p.output=2;shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};
+  p.nodes[0]=ti_input(shape,1);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};
+  f:FxFunction;f.program=p;f.count=1;r:=fx_layout(f);#assert r.status==FxStatus.ok && r.domain==3 && r.codomain==1 && r.cells==5;
+  #assert r.tape.root[0]==0 && r.tape.root[1]==1 && r.tape.root[2]==2 && r.tape.grad_at[0]==0 && r.tape.grad_at[1]==2 && r.tape.grad_at[2]==4;
+  #assert r.tape.value_at[1]==0 && r.tape.value_at[2]==2 && r.tape.wants[0] && r.tape.wants[1] && r.tape.wants[2] && !r.tape.plan.reuse && r.tape.program.count==3 && r.tape.program.output==2;
+  f.count=0;#assert fx_layout(f).status==FxStatus.shape;f.count=1025;#assert fx_layout(f).status==FxStatus.shape;f.count=1;
+  for mode:0..<8 {bad:=f;if mode==0 {bad.leaves[0].output=-1;}if mode==1 {bad.leaves[0].output=1;}if mode==2 {bad.leaves[0].order=-1;}if mode==3 {bad.leaves[0].order=3;}if mode==4 {bad.leaves[0].first=1;}if mode==5 {bad.leaves[0].second=1;}if mode==6 {bad.leaves[0].order=1;bad.leaves[0].first=3;}if mode==7 {bad.leaves[0].order=2;bad.leaves[0].second=3;}#assert fx_layout(bad).status==FxStatus.order;}
+  f.leaves[0]=FxLeaf.{order=2,first=2,second=2};#assert fx_layout(f).status==FxStatus.ok;
+  f.leaves[0]=FxLeaf.{order=1,first=2};#assert fx_layout(f).status==FxStatus.ok;f.leaves[0].second=1;#assert fx_layout(f).status==FxStatus.order;
+  f.leaves[0]=FxLeaf.{order=1,first=-1};#assert fx_layout(f).status==FxStatus.order;f.leaves[0]=FxLeaf.{order=2,second=-1};#assert fx_layout(f).status==FxStatus.order;
+}
+#test "domain codomain leaf and root arena ceilings include exactly their limits" {
+  f:FxFunction;f.count=1;f.program.count=1;f.program.output=0;f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);#assert fx_layout(f).status==FxStatus.ok;
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[16,1,0,0]},0);p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[1,64,0,0]},16);p.nodes[2]=TiNode.{op=TiOp.add,a=0,b=1};f.program=p;f.count=1024;f.leaves[1023].output=1023;#assert fx_layout(f).status==FxStatus.ok;
+  f.count=1;f.leaves[1023].output=0;f.program.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[5,1,0,0]},0);f.program.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[1,205,0,0]},5);#assert fx_layout(f).status==FxStatus.limit;
+  f.program=p;for i:3..<17 {f.program.nodes[i]=TiNode.{op=TiOp.relu,a=i-1};}f.program.nodes[17]=TiNode.{op=TiOp.view,a=16,shape=TvShape.{rank=1,dims=[4]int.[944,0,0,0]},strides=[4]int.[1,0,0,0]};f.program.nodes[18]=TiNode.{op=TiOp.relu,a=17};f.program.count=19;f.program.output=18;r:=fx_layout(f);#assert r.status==FxStatus.ok && r.cells==16384;
+  f.program.nodes[17].shape.dims[0]=945;#assert fx_layout(f).status==FxStatus.limit;
+}
+#test "function eligibility refuses foreign placement registered calls and excessive roots" {
+  f:FxFunction;f.count=1;#assert fx_layout(f).status==FxStatus.program;
+  f.program.count=1;f.program.output=0;f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[256,0,0,0]},0);#assert fx_layout(f).status==FxStatus.ok;
+  f.program.nodes[0].input_base=1;#assert fx_layout(f).status==FxStatus.limit;f.program.nodes[0].input_base=0;
+  f.program.count=2;f.program.output=1;f.program.nodes[1]=TiNode.{op=TiOp.registered,a=0,b=0};#assert fx_layout(f).status==FxStatus.operation;
+  f.program.count=1;f.program.output=0;f.program.nodes[0].placement=TiPlacement.cuda;#assert fx_layout(f).status==FxStatus.program;
+  f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[0,0,0,0]},0);#assert fx_layout(f).status==FxStatus.limit;
+}
+#test "wide derivative finite checks reject odd NaNs and either infinity" {
+  #assert fx_finite(0) && fx_finite(1e300) && fx_finite(-1e300);
+  #assert !fx_finite_bits(0x7ff8000000000001) && !fx_finite_bits(0x7ff0000000000000) && !fx_finite_bits(0xfff0000000000000);
+}
+fx_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+fx_finite :: (value:f64)->bool {return fx_finite_bits(f64_bits(value));}
+fx_program :: (p:TiProgram)->FxLayout {
+  r:FxLayout;r.tape.program=p;r.tape.plan=ti_compile(p,TiTarget.{},false);
+  if r.tape.plan.status!=TiStatus.ok {r.status=FxStatus.program;return r;}
+  r.domain=r.tape.plan.input_elements;r.codomain=r.tape.plan.output_elements;
+  if !fx_domain_valid(r.domain,r.codomain) {r.status=FxStatus.limit;return r;}
+  for i:0..<p.count {
+    n:=p.nodes[i];if n.op==TiOp.registered {r.status=FxStatus.operation;return r;}
+    root:=r.tape.plan.values[i].root;r.tape.root[i]=root;r.tape.wants[i]=true;
+    if root==i {
+      size:=r.tape.plan.values[i].storage;if size>FX_CELLS-r.cells {r.status=FxStatus.limit;return r;}
+      r.tape.grad_at[i]=r.cells;r.cells+=size;r.tape.value_at[i]=r.tape.plan.values[i].base;
+    }
+  }
+  return r;
+}
+fx_domain_valid :: (domain:int,codomain:int)->bool {return domain>=1 && domain<=FX_DOMAIN && codomain>=1 && codomain<=FX_LEAVES;}
+fx_count_valid :: (count:int)->bool {return count>=1 && count<=FX_LEAVES;}
+fx_layout :: (f:FxFunction)->FxLayout {
+  r:=fx_program(f.program);
+  // Preserve original priority: program/domain, then leaf count, then roots.
+  if !fx_count_valid(f.count) && fx_domain_valid(r.domain,r.codomain) {r.status=FxStatus.shape;return r;}
+  if r.status!=FxStatus.ok {return r;}
+  for i:0..<f.count {
+    leaf:=f.leaves[i];if leaf.output<0 || leaf.output>=r.codomain || leaf.order<0 || leaf.order>2 {r.status=FxStatus.order;return r;}
+    if leaf.first<0 || leaf.second<0 {r.status=FxStatus.order;return r;}
+    if leaf.order==0 && (leaf.first!=0 || leaf.second!=0) {r.status=FxStatus.order;return r;}
+    if leaf.order==1 && leaf.second!=0 {r.status=FxStatus.order;return r;}
+    if leaf.first>=r.domain || leaf.second>=r.domain {r.status=FxStatus.order;return r;}
+  }
+  return r;
+}
+
+#test "program layout extraction preserves descriptor validation priority" {
+  #assert fx_count_valid(1) && fx_count_valid(1024) && !fx_count_valid(0) && !fx_count_valid(1025);
+  #assert fx_domain_valid(1,1) && fx_domain_valid(256,1024) && !fx_domain_valid(0,1) && !fx_domain_valid(257,1) && !fx_domain_valid(1,0) && !fx_domain_valid(1,1025);
+  f:FxFunction;#assert fx_layout(f).status==FxStatus.program;
+  f.program.count=1;f.program.output=0;f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[257,0,0,0]},0);#assert fx_layout(f).status==FxStatus.limit;
+  f.program.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[1,0,0,0]},0);#assert fx_layout(f).status==FxStatus.shape;
+  f.program.count=2;f.program.output=1;f.program.nodes[1]=TiNode.{op=TiOp.registered,a=0,b=0};#assert fx_layout(f).status==FxStatus.shape;
+  f.count=1;#assert fx_layout(f).status==FxStatus.operation;
+}

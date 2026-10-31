@@ -1,0 +1,375 @@
+{
+  "FD_hessian_tolerance": {
+    "atol": 0.0002,
+    "rtol": 0.0002
+  },
+  "FD_jacobian_tolerance": {
+    "atol": 5e-05,
+    "rtol": 5e-05
+  },
+  "all_native_modes_result_bytes_identical": true,
+  "analytic_tolerance": {
+    "atol": 2e-11,
+    "rtol": 2e-11
+  },
+  "authority": {
+    "entrypoints": {
+      "psionic/lib/function-batch.coax": {
+        "killed": 66,
+        "mutants": 66,
+        "survived": 0
+      },
+      "psionic/lib/function-budget.coax": {
+        "killed": 18,
+        "mutants": 18,
+        "survived": 0
+      },
+      "psionic/lib/function-layout.coax": {
+        "killed": 95,
+        "mutants": 95,
+        "survived": 0
+      },
+      "psionic/lib/function-linearize.coax": {
+        "killed": 279,
+        "mutants": 279,
+        "survived": 0
+      },
+      "psionic/lib/function-products.coax": {
+        "killed": 142,
+        "mutants": 142,
+        "survived": 0
+      },
+      "psionic/lib/function-transforms.coax": {
+        "killed": 104,
+        "mutants": 104,
+        "survived": 0
+      }
+    },
+    "killed": 704,
+    "mutants": 704,
+    "reported_by_source_owner": true,
+    "scope": "root-only per changed entry; dependency checks retained",
+    "survived": 0,
+    "unchanged_dependency_mutation_runs_repeated": false
+  },
+  "changed_dependency_requalification": {
+    "dependencies": {
+      "psionic/lib/tensor-ops-contract.coax": {
+        "current": {
+          "bytes": 22775,
+          "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591"
+        },
+        "previous": {
+          "bytes": 11632,
+          "sha256": "ce4ab759fdbd83afe705819d5a79b4f8efd0b8962a3b95ba12888de2d261f6c4"
+        }
+      },
+      "psionic/lib/tensor-ops.coax": {
+        "current": {
+          "bytes": 41445,
+          "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772"
+        },
+        "previous": {
+          "bytes": 14662,
+          "sha256": "9d8e5163449eb9c1f2afe04f85c208f718d1c6245e347a0f02cca94c36a859f8"
+        }
+      },
+      "psionic/lib/tensor-view.coax": {
+        "current": {
+          "bytes": 29773,
+          "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529"
+        },
+        "previous": {
+          "bytes": 20960,
+          "sha256": "aebf970dee3e36a4f5150d9b22c71b7da518e402a9d1266e2f6664cd38a212f3"
+        }
+      }
+    },
+    "diff_base": "4306397522cd2637f436a785d8cbbf580910a1af",
+    "new_native_results_identical_to_prior_qualified_result": true,
+    "prior_independent_reference_reused": true,
+    "prior_native_qualification": {
+      "generated_C": {
+        "bytes": 501892,
+        "sha256": "4de3214b774afac1cd735ff5db7d0408b7df24f6b79f6c57778d189f79937ff8"
+      },
+      "generated_header": {
+        "bytes": 122796,
+        "sha256": "6ec63e2f89362f508fc06a3a911424b3e7cce75756229159aec25ba6099a5f55"
+      },
+      "native_execution": {
+        "debug": {
+          "binary": {
+            "bytes": 263192,
+            "sha256": "6c1346c64033dac5e32445a774e0382b197ea175615cdb0934f75119e8b8d7cd"
+          },
+          "results": {
+            "bytes": 22084,
+            "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+          }
+        },
+        "release": {
+          "binary": {
+            "bytes": 199256,
+            "sha256": "6dc68a48b890f999cf936c28a58fb365ee025f3eda2cc6ad2abe43c7a5d98438"
+          },
+          "results": {
+            "bytes": 22084,
+            "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+          }
+        },
+        "sanitized": {
+          "binary": {
+            "bytes": 679816,
+            "sha256": "3a2f91500d02b58049e355c1862b4177d99872c44ca4116315104bd8287258e7"
+          },
+          "results": {
+            "bytes": 22084,
+            "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+          }
+        }
+      },
+      "receipt_sha256": "f325c179268e84b813b59cec1565b76069903c84839b92eeda9d852627e29f8b"
+    },
+    "reason": "Upstream tensor contract, operator and view production changes; changed generated native library rebuilt once per mode against exact prior qualified output artifact. No independent oracle or unchanged mutation gate rerun.",
+    "revision": "bbe31e567c907b2b107d77d7f74439f1228fc38d",
+    "source_review": [
+      "Bounded branchless magnitude/rank/address expressions and pairwise sufficient injectivity proof.",
+      "Shared first-argmax helper, sum/max refactoring and equivalent admitted matmul coordinates.",
+      "Exponential overflow checked by final finite/F32-range admission; rational resize-coordinate implementation.",
+      "Function-supported subset numerical outputs, products and refusal checks requalified by changed native build; unrelated operator gates reused from upstream."
+    ]
+  },
+  "coax_source_identity": {
+    "coax/lib/crypto/bytes.coax": {
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+    },
+    "coax/lib/crypto/sha256.coax": {
+      "bytes": 13769,
+      "sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+    },
+    "coax/lib/proto/fingerprint.coax": {
+      "bytes": 19056,
+      "sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a"
+    },
+    "psionic/examples/operators/squared-relu.coax": {
+      "bytes": 2563,
+      "sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4"
+    },
+    "psionic/lib/autodiff.coax": {
+      "bytes": 40439,
+      "sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e"
+    },
+    "psionic/lib/function-batch.coax": {
+      "bytes": 9896,
+      "sha256": "80ac34d52166fd74fca80e91c77cf30345069c23eb6d5fc0345d6f6bd9710de0"
+    },
+    "psionic/lib/function-budget.coax": {
+      "bytes": 1384,
+      "sha256": "fe3607299826b79618030c648e79f9fdb9f07c8fd02cc26f0858bfd17297901f"
+    },
+    "psionic/lib/function-layout.coax": {
+      "bytes": 6842,
+      "sha256": "ad6865671228dbc2f1be82edef91df37a81f0f65a7402ee46bea1fdc77b5c947"
+    },
+    "psionic/lib/function-linearize.coax": {
+      "bytes": 16096,
+      "sha256": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38"
+    },
+    "psionic/lib/function-products.coax": {
+      "bytes": 17833,
+      "sha256": "7197cdd0df1583652dc221646d24d35e807f6d7625f7922c94735d735fc59de5"
+    },
+    "psionic/lib/function-transforms.coax": {
+      "bytes": 11066,
+      "sha256": "769bb2ac80c5ce732529ad273833603f7e9c7d5a55310e1509dd2e1fd19fda1e"
+    },
+    "psionic/lib/function-types.coax": {
+      "bytes": 846,
+      "sha256": "e7ecefaf5ec06563ed629a5d8fd9fa7004026877f6eb33c94dafa782f5fbadbc"
+    },
+    "psionic/lib/operator-registry.coax": {
+      "bytes": 6984,
+      "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733"
+    },
+    "psionic/lib/tensor-ir-host.coax": {
+      "bytes": 9514,
+      "sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a"
+    },
+    "psionic/lib/tensor-ir-kernels.coax": {
+      "bytes": 3706,
+      "sha256": "1aa231bf621098c30b2c346e40d7aca151264421c5aeff8b9d1b17336a3b19de"
+    },
+    "psionic/lib/tensor-ir.coax": {
+      "bytes": 14785,
+      "sha256": "f21f170b75af3de4afb6c7b1d39506c0ff660219c5a02d3d4637a129bd0c7359"
+    },
+    "psionic/lib/tensor-ops-backward.coax": {
+      "bytes": 32085,
+      "sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2"
+    },
+    "psionic/lib/tensor-ops-contract.coax": {
+      "bytes": 22775,
+      "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591"
+    },
+    "psionic/lib/tensor-ops.coax": {
+      "bytes": 41445,
+      "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772"
+    },
+    "psionic/lib/tensor-placement.coax": {
+      "bytes": 17400,
+      "sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0"
+    },
+    "psionic/lib/tensor-view.coax": {
+      "bytes": 29773,
+      "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529"
+    }
+  },
+  "coverage": {
+    "broadcasts": true,
+    "builtin_operators": [
+      "input",
+      "add",
+      "multiply",
+      "matmul",
+      "relu",
+      "sum",
+      "layernorm",
+      "gather",
+      "view",
+      "reshape"
+    ],
+    "checks": [
+      "immutable_original_program_metadata",
+      "Jacobian_product_duality",
+      "Hessian_symmetry",
+      "Hessian_vector_agreement",
+      "all_nine_workspace_field_capacities",
+      "arity_and_output_capacity",
+      "alias_refusal",
+      "NaN_input_direction_and_cotangent",
+      "third_order_refusal",
+      "device_and_registered_operator_refusal",
+      "domain_limit",
+      "high_work_limit_before_publication",
+      "ignored_shared_or_mapped_NaN_slots",
+      "late_batch_number_refusal_atomicity",
+      "public_output_tails"
+    ],
+    "flat_input_gaps_and_overlapping_bindings": true,
+    "input_points_per_program": 3,
+    "layernorm_composed_with_weighted_relu_squared_loss": true,
+    "negative_zero_identity_checked_natively": true,
+    "offset_strided_views_and_noncontiguous_inputs": true,
+    "programs": 11,
+    "repeated_gather_indices": true,
+    "scalar_and_vector_functions": true,
+    "shared_operand_matmul": true,
+    "transforms": [
+      "function",
+      "grad",
+      "value_and_grad",
+      "jacobian",
+      "jacobian_of_grad",
+      "JVP",
+      "VJP",
+      "HVP",
+      "JVP_and_VJP_of_value_and_grad",
+      "VJP_of_grad",
+      "vmap_of_grad",
+      "vmap_of_Hessian"
+    ]
+  },
+  "executed_generated_C": {
+    "bytes": 506481,
+    "sha256": "23997804bc4574531ccd5b1a9b56c13e279a1b8c76ae805f7a08617e4a4b7cd6"
+  },
+  "executed_generated_header": {
+    "bytes": 122796,
+    "sha256": "6ec63e2f89362f508fc06a3a911424b3e7cce75756229159aec25ba6099a5f55"
+  },
+  "finite_difference_points": 30,
+  "formal_derivative_values": 5328,
+  "independent_reference_record": {
+    "bytes": 930,
+    "sha256": "929d1238339b8f50f6694b16508106fd26a262264cd0732f92a12ff359308b86"
+  },
+  "independent_reference_reused_by_exact_output_SHA": true,
+  "limits": {
+    "IR_nodes": 32,
+    "batch": 64,
+    "batch_output_elements": 16384,
+    "compiler_typed_clock_or_bounded_claim": false,
+    "derivative_leaves": 1024,
+    "flat_domain": 256,
+    "nominal_work_units": 67108864,
+    "root_cells": 16384
+  },
+  "max_FD_hessian_abs_error": 2.2447890210552934e-06,
+  "max_FD_jacobian_abs_error": 9.433682350845629e-07,
+  "max_analytic_abs_error": 1.3600232051658168e-15,
+  "native_checks_each_mode": 16113,
+  "native_execution": {
+    "debug": {
+      "binary": {
+        "bytes": 263304,
+        "sha256": "f61a4e2cd2204f580695c738772ff128f97d79d46d89254264fa4c31beb361a0"
+      },
+      "results": {
+        "bytes": 22084,
+        "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+      }
+    },
+    "release": {
+      "binary": {
+        "bytes": 199784,
+        "sha256": "d23ba881b5fb779ac87eb6d7b5c3b5cb1816705fb249324909f3ab45fe2dcccc"
+      },
+      "results": {
+        "bytes": 22084,
+        "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+      }
+    },
+    "sanitized": {
+      "binary": {
+        "bytes": 679816,
+        "sha256": "a5116e1bcf44a3e0cc2cdd0fd8d1d27a149291ef47b815b2004f8a6c6cab8af9"
+      },
+      "results": {
+        "bytes": 22084,
+        "sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a"
+      }
+    }
+  },
+  "native_modes": [
+    "debug",
+    "release",
+    "ASan+UBSan"
+  ],
+  "oracle_sha256": "1ea163e9ee619334c68ae72f694c5f2617389c18d92e7c2983f51ed53849d0f9",
+  "oracle_source_identity": {
+    "psionic/tests/check-function-native.sh": {
+      "bytes": 1743,
+      "sha256": "8f6a96c3f5965be485d845472d5486358124034c59536ddb94737dd2bcf47ca3"
+    },
+    "psionic/tests/function-native.c": {
+      "bytes": 14881,
+      "sha256": "d205c58892fdf5138c9f632250f81aea34b6965ec2eb277929a5a6103fc1cc7a"
+    },
+    "psionic/tests/function_reference.py": {
+      "bytes": 10090,
+      "sha256": "1ea163e9ee619334c68ae72f694c5f2617389c18d92e7c2983f51ed53849d0f9"
+    }
+  },
+  "passed": true,
+  "primal_values_exact": 84,
+  "production_bodies_frozen_before_final_native_build": true,
+  "profile": "cpu-f32-primal-formal-f64-function-v1",
+  "provenance_note": "The six function authority roots remain frozen at their 704/704 mutation closure. After upstream tensor dependency production changes, the regenerated library was rebuilt in debug/release/ASan+UBSan and all 16,113 checks per mode passed. All native output bytes exactly match the earlier independent oracle payload, so that independent proof is reused rather than recomputed. This receipt binds the changed current dependency sources and actually executed regenerated C/header/native artifacts; the prior native binding is retained.",
+  "results_sha256": "7c847fd64667803233b3c4838584b7faaf83ed07c5cfbeec7bd18e6cbe5ba00a",
+  "schema": "psionic-function-native-qualification-v1",
+  "scope": "Pure immutable descriptors over bounded CPU permanent tensor IR. F32 primal operations; formal F64 first/second derivatives that ignore rounding derivatives. No arbitrary Coax procedure transform, registered/foreign derivative, GPU graph differentiation or full-model training claim. ReLU0 uses declared zero derivative/second-rule convention; no finite difference is used in production.",
+  "small_graph_points": 33,
+  "source_hashes_bound_after_final_check_freeze": true
+}
