@@ -53,3 +53,20 @@ This extends the named graphics evidence; it does not qualify Psionic browser
 compute or quantity device code. Only the two changed native-GPU evidence
 bindings were refreshed. The quantity compiler sources are unchanged by this
 review; their immutable merged bootstrap snapshot is retained separately.
+
+## Scalar-unit publication on main 0.43
+
+The final main rebase included 06b6eb364b: Hold the Stair can run natively,
+the default-initialization wrapper now follows the wasm path for native
+realms, optional exports/sockets match the browser host, and the named
+flat-pass graphics check records its browser/Vulkan comparison. Review of
+the native-GPU note adds this named consumer only; no Psionic browser
+compute or quantity-device execution is qualified. The two affected
+capability/evidence hashes are refreshed.
+
+The book structure check passed before that final main rebase, but the push
+command omitted the check after rebase; the first check of the resulting main
+therefore caught the upstream documentation change after e6d4ab1bc0 was
+pushed. This correction records that ordering mistake. Future publication
+uses a single dependent sequence with the book check *after* rebase and
+*before* push. Quantity and Psionic source/numerical proof is unaffected.
