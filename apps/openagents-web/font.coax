@@ -241,7 +241,11 @@ draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, g
       ay := base - (cast(f32) points[(p - 1) * 2 + 1] - 2) * unit;
       bx := pen + cast(f32) points[p * 2] * unit;
       by := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
-      if small { ax = pixel_centre(ax); ay = pixel_centre(ay); bx = pixel_centre(bx); by = pixel_centre(by); }
+      if small {
+        ax = pixel_centre(ax); ay = pixel_centre(ay); bx = pixel_centre(bx); by = pixel_centre(by);
+        // a dot (. : ! ; ·) shorter than a pixel would snap to nothing: keep it a pixel tall
+        if ax == bx && ay == by { by = ay - 1; }
+      }
       if lit(out, vertices, ax, ay, bx, by, core, light, glow, red, green, blue, k.mode) { vertices += 6; }
     }
     pen += glyph_width(c) * cap;
@@ -361,6 +365,20 @@ wrap :: (text: string, from: int, width: f32, gap: f32, space: f32, rich: bool, 
   // without a scale nothing changes (the splash's inks)
   plain := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0};
   #assert draw_text(out[..], 0, "EH", 10.3, 40.7, 15, 0.3, 1, plain, false, false) == n && out[7] == 6;
+}
+
+#test "small text keeps its dots: a period, a colon and an exclamation mark each draw" {
+  out: [600 * VERTEX_FLOATS] f32;
+  k := Ink.{core = 1, light = 0.8, glow = 6, red = 1, green = 1, blue = 1, mode = 0, scale = 2};
+  for cap: 0..<6 {
+    c := 8.0f32 + cast(f32) cap * 1.7;
+    for at: 0..<4 {
+      base := 40.0f32 + cast(f32) at * 0.25;
+      #assert draw_text(out[..], 0, ".", 10.3, base, c, 0.3, 1, k, false, false) == 6;
+      #assert draw_text(out[..], 0, ":", 10.3, base, c, 0.3, 1, k, false, false) == 12;
+      #assert draw_text(out[..], 0, "A.B", 10.3, base, c, 0.3, 1, k, false, false) == draw_text(out[..], 0, "AB", 10.3, base, c, 0.3, 1, k, false, false) + 6;
+    }
+  }
 }
 
 // ---------------------------------------------------------------- the system sans
