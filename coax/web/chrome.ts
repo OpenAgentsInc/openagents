@@ -6,7 +6,13 @@
 //   Linux  the real Chromium (never a launcher that opens a window, such as
 //          CoderOS's coder-browser), WebGPU on Vulkan
 // CHROME names the binary on either.
-import { existsSync, readFileSync } from "node:fs"
+//
+// Start one with launch(profile, flags): every check starts its Chrome there,
+// and every Chrome started there is killed, and its profile removed, when the
+// process exits, whether it ends, throws, or is stopped (SIGINT, SIGTERM,
+// SIGHUP). Only SIGKILL escapes that; release.sh kills a check's whole
+// process group and reaps headless Chromes whose parent is gone (reap-chrome.sh).
+import { existsSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
 const MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -37,4 +43,34 @@ export function gpuFlags(): string[] {
   return process.platform === "darwin"
     ? ["--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal"]
     : ["--enable-unsafe-webgpu", "--enable-features=Vulkan,VulkanFromANGLE", "--use-angle=vulkan", "--ignore-gpu-blocklist"]
+}
+
+// Every Chrome launch() started in this process, with its profile.
+const started = new Set<{ proc: ReturnType<typeof Bun.spawn>, profile: string }>()
+let hooked = false
+function reap() {
+  for (const c of started) {
+    try { if (c.proc.exitCode === null && !c.proc.killed) process.kill(c.proc.pid, "SIGKILL") } catch {}
+    try { rmSync(c.profile, { recursive: true, force: true }) } catch {}
+  }
+  started.clear()
+}
+function hook() {
+  if (hooked) return
+  hooked = true
+  process.on("exit", reap)
+  for (const [signal, n] of [["SIGINT", 2], ["SIGTERM", 15], ["SIGHUP", 1]] as const)
+    process.on(signal, () => { reap(); process.exit(128 + n) })
+}
+
+// Headless Chrome on profile (a directory the caller made), its DevTools on a
+// port it writes to profile/DevToolsActivePort, at about:blank. flags come
+// after the common ones (window size, fake devices...). Killed with its
+// profile removed when this process exits, however it exits.
+export function launch(profile: string, flags: string[] = []): ReturnType<typeof Bun.spawn> {
+  hook()
+  const proc = Bun.spawn([chrome(), "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
+    ...gpuFlags(), ...flags, "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+  started.add({ proc, profile })
+  return proc
 }

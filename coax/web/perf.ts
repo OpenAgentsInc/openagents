@@ -30,7 +30,7 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { chrome as chromePath, gpuFlags } from "./chrome"
+import { launch as launchChrome } from "./chrome"
 
 const args = process.argv.slice(2)
 const flag = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined }
@@ -47,7 +47,6 @@ const SCENES = [
   { name: "river, night", path: "/realms/everglade?clock=0#river" },
   { name: "market, dusk", path: "/realms/everglade?clock=0.75#market" },
 ]
-const chrome = chromePath()
 
 type Frames = { n: number; fps: number; p50: number; p95: number; max: number; over: number }
 const stats = (d: number[]): Frames => {
@@ -94,9 +93,7 @@ class Browser {
   pending = new Map<number, (v: any) => void>()
   constructor(public dpr: number) {}
   async start() {
-    this.proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${this.profile}`, "--no-first-run", "--hide-scrollbars",
-      ...gpuFlags(), `--window-size=${W},${H}`,
-      "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+    this.proc = launchChrome(this.profile, [`--window-size=${W},${H}`])
     const portFile = join(this.profile, "DevToolsActivePort")
     const port = () => existsSync(portFile) ? readFileSync(portFile, "utf8").split("\n")[0].trim() : ""
     for (let i = 0; i < 600 && !/^\d+$/.test(port()); i++) await Bun.sleep(50)

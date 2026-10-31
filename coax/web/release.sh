@@ -124,14 +124,30 @@ secs() { printf '%d.%d' $(( $1 / 1000000 )) $(( $1 % 1000000 / 100000 )); }
 lap() { printf '  %-10s %5s s\n' "$1" "$(secs $(( $(now) - $2 )))"; }
 # Run a check for at most $1 seconds: a hung headless browser fails it instead of
 # holding the release lock (2026-10-30: one hung live-home check held every release for two hours).
+# The check runs in its own process group, and the whole group goes when it ends or
+# passes its limit, so a Chrome it started can't outlive it (2026-10-30: headless
+# Chromes left by killed checks ran for 7 hours). Every browser step runs bounded.
+group=""
 bounded() {
   local limit=$1; shift
-  "$@" & local pid=$!
-  ( sleep "$limit" && kill -TERM "$pid" 2>/dev/null && sleep 5 && kill -KILL "$pid" 2>/dev/null ) & local dog=$!
+  python3 -I -c 'import os, sys; os.setpgid(0, 0); os.execvp(sys.argv[1], sys.argv[1:])' "$@" < /dev/null & local pid=$!
+  group=$pid
+  ( sleep "$limit" && kill -TERM -- "-$pid" 2>/dev/null && sleep 5 && kill -KILL -- "-$pid" 2>/dev/null ) & local dog=$!
   local status=0; wait "$pid" || status=$?
   kill "$dog" 2>/dev/null; wait "$dog" 2>/dev/null || true
+  kill -KILL -- "-$pid" 2>/dev/null || true   # whatever it left running (a Chrome) goes with it
+  group=""
   (( status != 143 && status != 137 )) || echo "  $(basename "$2" 2>/dev/null || echo check) passed its ${limit} s limit" >&2
   return "$status"
+}
+# Headless Chromes on a temporary profile whose parent is gone (adopted by
+# launchd/init): left by a check that was killed outright. Never a person's
+# own Chrome, whose profile isn't in a temporary directory.
+reap_chrome() {
+  local pids
+  pids="$(ps -axo pid=,ppid=,command= | awk -v t="${TMPDIR:-/tmp}" '
+    $2 == 1 && /[Cc]hrom/ && (index($0, "=/tmp/") || index($0, "=/private/tmp/") || index($0, "=/var/folders/") || index($0, "=" t)) { print $1 }')"
+  [[ -z "$pids" ]] || { kill -KILL $pids 2>/dev/null || true; echo "  reaped     $(wc -w <<< "$pids" | tr -d ' ') orphaned headless Chrome process(es)"; }
 }
 start=$(now)
 
@@ -196,6 +212,7 @@ live() {
 lock="${TMPDIR:-/tmp}/coaxial-release.lock" queue="${TMPDIR:-/tmp}/coaxial-release.queue"
 tree="" held=false mine=""
 cleanup() {
+  [[ -z "$group" ]] || kill -KILL -- "-$group" 2>/dev/null || true
   [[ -z "$mine" ]] || rm -f "$mine"
   [[ -z "$tree" ]] || git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true
   ! $held || rm -rf "$lock"
@@ -237,6 +254,7 @@ until mkdir "$lock" 2>/dev/null; do
 done
 held=true
 echo $$ > "$lock/pid"
+reap_chrome
 [[ -z "$mine" ]] || { rm -f "$mine"; mine=""; }
 
 git -C "$repo" fetch -q origin main
@@ -265,7 +283,7 @@ if $stage; then
   fi
   t=$(now)
   if ! $gated; then
-    bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts ||
+    bounded 600 bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts ||
       { echo "release $commit: staging's pages don't start (goldens.ts --starts above); production is untouched" >&2; exit 1; }
     lap starts "$t"
   else
@@ -273,7 +291,7 @@ if $stage; then
   unchanged=()
   [[ -n "$full_walk" || "$passed" != *" staged "* ]] || unchanged=(--unchanged-against https://openagents.com --since "${passed%% *}")
   report="$(mktemp -d)/goldens.json"
-  if ! GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} --report "$report"; then
+  if ! bounded 1800 env GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} --report "$report"; then
     # Only golden comparisons failed: those pages are held back, the rest ships.
     # Anything else (a page that doesn't start, errors, draws nothing, a missing analytics event) stops the release.
     held_names="$(bun -e 'const r = JSON.parse(await Bun.file(process.argv[1]).text()); if (r.other.length || !r.golden.length) process.exit(1); console.log(r.golden.map((g) => g.name).join(" "))' "$report" 2>/dev/null)" ||
@@ -298,12 +316,12 @@ if $stage; then
   # (eg-paint-review), and it takes a few minutes, so it runs when asked.
   if [[ -n "${style_check:-}" ]]; then
     t=$(now)
-    bun "$tree/coax/web/style-check.ts" https://staging.openagents.com --out "$repo/coax/web/style" || echo "  style check: views out of range (a report; nothing is held back)"
+    bounded 900 bun "$tree/coax/web/style-check.ts" https://staging.openagents.com --out "$repo/coax/web/style" || echo "  style check: views out of range (a report; nothing is held back)"
     lap style "$t"
   fi
   # Everglade must hold 60 FPS at dpr 1 and 2 (perf.ts: p95 <= 17.5 ms, no frame over 33 ms, walking and casting).
   t=$(now)
-  bun "$tree/coax/web/perf.ts" https://staging.openagents.com ||
+  bounded 900 bun "$tree/coax/web/perf.ts" https://staging.openagents.com ||
     { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
   lap perf "$t"
   fi
@@ -353,7 +371,7 @@ via=""
 [[ "$(dig +short openagents.com A | sort | head -1)" == "$lb_ip" ]] || via="--via $lb_ip"
 walked=true check=--starts
 ! $thorough || check=--walk
-[[ -n "$via" ]] || bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
+[[ -n "$via" ]] || bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
 if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via; then
   echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
   "$here/rollback.sh" "$stamp"
@@ -374,8 +392,8 @@ if ! $gated && [[ -z "$via" ]]; then
   # Its own checkout of the commit: this run's $tree goes when the run ends.
   aft="$(mktemp -d)"; after="$aft.txt"
   git -C "$repo" worktree add -q --detach "$aft/t" "$full" 2>/dev/null
-  ( { GOLDENS_FULL=1 bun "$aft/t/coax/web/goldens.ts" https://openagents.com && echo "after: goldens passed" || echo "after: goldens differ (report only; fix or retake: bun coax/web/goldens.ts https://staging.openagents.com --update)"
-      bun "$aft/t/coax/web/perf.ts" https://openagents.com && echo "after: 60 FPS held" || echo "after: 60 FPS missed (report only)"
+  ( { bounded 1800 env GOLDENS_FULL=1 bun "$aft/t/coax/web/goldens.ts" https://openagents.com && echo "after: goldens passed" || echo "after: goldens differ (report only; fix or retake: bun coax/web/goldens.ts https://staging.openagents.com --update)"
+      bounded 900 bun "$aft/t/coax/web/perf.ts" https://openagents.com && echo "after: 60 FPS held" || echo "after: 60 FPS missed (report only)"
     } > "$after" 2>&1
     gcloud storage cp "$after" "gs://$prod_bucket/releases/$stamp/AFTER" --quiet > /dev/null 2>&1 || true
     git -C "$repo" worktree remove --force "$aft/t" 2>/dev/null || true ) < /dev/null &

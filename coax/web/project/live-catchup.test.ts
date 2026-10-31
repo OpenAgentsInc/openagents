@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { getPublicKey, finalizeEvent, type Event } from 'nostr-effect/pure'
 import { fold, projectTags, repoTags, TASK_PLAN, filters, followups, KIND_ISSUE, type ProjectConfig } from './model'
 import { tables } from './tables'
+import { launch as launchChrome } from '../chrome'
 import { Relay } from './relay'
 
 const root=join(import.meta.dir,'../../..'), app=join(root,'apps/openagents-web')
@@ -144,7 +145,7 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     return new Response(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:black}canvas{width:100vw;height:100vh;display:block}</style></head><body><canvas id="coaxial"></canvas><script>(()=>{const Raw=WebSocket;globalThis.WebSocket=class extends Raw{constructor(url,...args){super(String(url).startsWith('wss://relay.openagents.com')?'ws://127.0.0.1:${server.port}/relay':url,...args)}}})()</script><script src="/host.js" data-app="project" data-wasm="/project.wasm" data-wgsl="/project.wgsl" data-text="${pk} coax"></script></body></html>`,{headers:{'content-type':'text/html'}})
   },websocket:{open(ws){sockets.add(ws)},message(ws,message){const request=JSON.parse(String(message));if(request[0]==='CLOSE'){(ws.data as any).subs.delete(request[1]);return}(ws.data as any).subs.set(request[1],request);queries.push(request);for(const line of answer(request,fixtureRows,{cap:37}))ws.send(line)},close(ws){sockets.delete(ws)}}})
   const profile=join(temp,'chrome');mkdirSync(profile)
-  const chrome=Bun.spawn([process.env.CHROME??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','--headless=new','--mute-audio',`--user-data-dir=${profile}`,'--no-first-run','--hide-scrollbars','--enable-unsafe-webgpu','--enable-features=Vulkan','--use-angle=metal','--window-size=1440,900','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'})
+  const chrome=launchChrome(profile,['--window-size=1440,900'])
   let ws:WebSocket|undefined
   try{
     let port=''

@@ -53,7 +53,7 @@ import { inflateSync } from "node:zlib"
 import { type World } from "./realms"
 import { goldenPages, GOLDEN_DIR, type Page } from "./golden-pages"
 import { classify, missingGolden } from "./golden-policy"
-import { chrome as chromePath, gpuFlags } from "./chrome"
+import { launch as launchChrome } from "./chrome"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
@@ -208,7 +208,6 @@ const skipping = (name: Name) => unchanged.has(name)
 // ---- Chrome: a small pool of tabs (GOLDENS_POOL, default 4) in one headless
 // Chrome, or one Chrome each (GOLDENS_CHROMES=1). Each tab keeps its own
 // errors, requests and analytics, so each page's checks are its own.
-const chrome = chromePath()
 const POOL = Math.max(1, Number(process.env.GOLDENS_POOL ?? 4)), CHROMES = process.env.GOLDENS_CHROMES === "1"
 const failed: string[] = []
 const procs: { proc: ReturnType<typeof Bun.spawn>; profile: string }[] = []
@@ -222,9 +221,7 @@ async function launch(): Promise<string> {
 }
 async function start() {
   const profile = mkdtempSync(join(tmpdir(), "coax-goldens-"))
-  const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
-    ...gpuFlags(), `--window-size=${W},${H}`,
-    "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+  const proc = launchChrome(profile, [`--window-size=${W},${H}`])
   procs.push({ proc, profile })
   const portFile = join(profile, "DevToolsActivePort")
   const port = () => existsSync(portFile) ? readFileSync(portFile, "utf8").split("\n")[0].trim() : ""

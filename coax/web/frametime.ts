@@ -6,17 +6,16 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { launch as launchChrome } from "./chrome"
 const [url, size = "1280x800", dprS = "1", secS = "8"] = process.argv.slice(2)
 const evalAt = process.argv.indexOf("--eval"); const script = evalAt > 0 ? process.argv[evalAt + 1] : ""
 const phone = process.argv.includes("--phone")
 const skipAt = process.argv.indexOf("--skip"); const skip = skipAt > 0 ? process.argv[skipAt + 1] : ""
 const [w, h] = size.split("x").map(Number), dpr = Number(dprS)
-const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-ft-"))
-const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
-  "--mute-audio", "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", "--enable-dawn-features=allow_unsafe_apis",
+const proc = launchChrome(profile, ["--enable-dawn-features=allow_unsafe_apis",
   "--disable-dawn-features=timestamp_quantization", ...(process.argv.includes("--vsync") ? [] : ["--disable-frame-rate-limit", "--disable-gpu-vsync"]),
-  `--window-size=${w},${h}`, "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+  `--window-size=${w},${h}`])
 const inject = `(() => {
  window.__skip = new Set('${skip}'.split(',').filter(Boolean).map(Number));
  window.__gpu = []; window.__raf = []; window.__info = {};

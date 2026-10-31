@@ -4,13 +4,13 @@
 import {existsSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join,resolve} from 'node:path'
-import {chrome,gpuFlags} from '../chrome'
+import {launch as launchChrome} from '../chrome'
 const base=process.argv[2]?.replace(/\/$/,''),prefix=process.argv[3]??'/tmp/connect-pylon'
 if(!base?.startsWith('http'))throw Error('usage: connect_pylon_browser.ts ORIGIN [OUT_PREFIX]')
 const source=readFileSync(resolve(import.meta.dir,'../../../docs/connect-a-pylon.md'),'utf8')
 const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 const profile=mkdtempSync(join(tmpdir(),'coax-guide-'))
-const proc=Bun.spawn([chrome(),'--headless=new','--mute-audio',`--user-data-dir=${profile}`,'--no-first-run','--hide-scrollbars',...gpuFlags(),'--window-size=1440,900','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'})
+const proc=launchChrome(profile,['--window-size=1440,900'])
 let ws:WebSocket|undefined;const evidence:any={base,at:new Date().toISOString(),scenarios:[]}
 try{
  const portFile=join(profile,'DevToolsActivePort');let port='';for(let i=0;i<200;i++){if(existsSync(portFile)){const candidate=readFileSync(portFile,'utf8').split('\n')[0];if(/^[0-9]+$/.test(candidate)){port=candidate;break}}await Bun.sleep(50)}if(!port)throw Error('Chrome debugger port did not become ready')

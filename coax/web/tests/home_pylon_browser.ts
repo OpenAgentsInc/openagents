@@ -8,7 +8,7 @@
 import {existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {chrome, gpuFlags} from '../chrome'
+import {launch as launchChrome} from '../chrome'
 
 const args = process.argv.slice(2)
 const base = args[0]?.replace(/\/$/, '')
@@ -21,9 +21,7 @@ if (jobAPI) new URL(jobAPI)
 const origin = new URL(base).origin
 const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 const profile = mkdtempSync(join(tmpdir(), 'coax-home-pylons-'))
-const proc = Bun.spawn([chrome(), '--headless=new', '--mute-audio', `--user-data-dir=${profile}`,
-  '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--window-size=1440,900',
-  '--remote-debugging-port=0', 'about:blank'], {stdout:'ignore', stderr:'ignore'})
+const proc = launchChrome(profile, ['--window-size=1440,900'])
 let ws:WebSocket | undefined
 const evidence:any = {base, at:new Date().toISOString(), job_api:jobAPI ?? null, scenarios:[]}
 

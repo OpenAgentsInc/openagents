@@ -17,19 +17,17 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { chrome as chromePath, gpuFlags } from "../chrome"
+import { launch as launchChrome } from "../chrome"
 
 const [url, wav = "verse/voice-host/fixtures/hello-foreman.wav"] = process.argv.slice(2)
 const PHONE = !!process.env.PHONE
 const W = PHONE ? 390 : 1440, H = PHONE ? 844 : 900
-const chrome = chromePath()
 const profile = mkdtempSync(join(tmpdir(), "coax-voice-"))
-const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
+const proc = launchChrome(profile, [
   // The audio service's sandbox can't read the fixture: without this the fake microphone is silent.
-  "--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess",
-  ...gpuFlags(), `--window-size=${W},${H}`,
+  "--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess", `--window-size=${W},${H}`,
   "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${resolve(wav)}%noloop`,
-  "--autoplay-policy=no-user-gesture-required", "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+  "--autoplay-policy=no-user-gesture-required"])
 let ok = false
 try {
   const portFile = join(profile, "DevToolsActivePort")

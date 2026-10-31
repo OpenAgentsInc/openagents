@@ -10,7 +10,7 @@
 import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { chrome as chromePath, gpuFlags } from "./chrome"
+import { launch as launchChrome } from "./chrome"
 
 // realm page, its save slot, how to walk away from the spawn
 // (click: where to press first on a fresh profile at 1280x800, the fairy maker's DONE)
@@ -50,8 +50,7 @@ async function shot(send: (m: string, p?: any) => Promise<any>, out: string) {
 async function check(name: string): Promise<string> {
   const r = REALMS[name]
   const profile = kept ? join(kept, name.replace(/[^a-z-]/g, "_")) : mkdtempSync(join(tmpdir(), "coax-place-"))
-  const proc = Bun.spawn([chromePath(), "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
-    "--hide-scrollbars", ...gpuFlags(), "--window-size=1280,800", "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
+  const proc = launchChrome(profile, ["--window-size=1280,800"])
   try {
     const portFile = join(profile, "DevToolsActivePort")
     for (let i = 0; i < 200 && !(existsSync(portFile) && readFileSync(portFile, "utf8").includes("\n")); i++) await Bun.sleep(50)

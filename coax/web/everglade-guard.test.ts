@@ -7,7 +7,7 @@ import {afterAll, beforeAll, describe, expect, test} from 'bun:test'
 import {existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {chrome as chromePath, gpuFlags} from './chrome'
+import {launch as launchChrome} from './chrome'
 
 const root = join(import.meta.dir, '../..'), wasm = process.env.EVERGLADE_GUARD_WASM
 const live = process.env.EVERGLADE_GUARD_LIVE === '1'
@@ -68,8 +68,7 @@ beforeAll(async()=>{
     const file=join(root,path.startsWith('/coaxial/')?'coax/web/'+path.slice(9):'apps/openagents-web/'+path.slice(1))
     return existsSync(file)?new Response(Bun.file(file)):new Response('',{status:404})
   }})
-  chrome=Bun.spawn([chromePath(),'--headless=new','--mute-audio',`--user-data-dir=${profile}`,'--no-first-run',
-    '--hide-scrollbars',...gpuFlags(),'--window-size=640,480','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'})
+  chrome=launchChrome(profile,['--window-size=640,480'])
   const portFile=join(profile,'DevToolsActivePort')
   for(let i=0;i<100&&!existsSync(portFile);i++)await Bun.sleep(50)
   const port=readFileSync(portFile,'utf8').split('\n')[0]

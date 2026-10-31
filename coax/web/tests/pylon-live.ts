@@ -5,14 +5,14 @@
 import {mkdtempSync,readFileSync,existsSync,writeFileSync,rmSync} from "node:fs"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
-import {chrome,gpuFlags} from "../chrome"
+import {launch as launchChrome} from "../chrome"
 const args=process.argv.slice(2),url=args[0]
 const value=(n:string,d:string)=>{const i=args.indexOf(`--${n}`);return i<0?d:args[i+1]}
 if(!url?.startsWith("http"))throw Error("usage: pylon-live.ts URL --expect SLUG,SLUG --answers N --out FILE")
 const expected=value("expect","").split(",").filter(Boolean),answers=Number(value("answers","1")),seconds=Number(value("timeout","120")),out=value("out","/tmp/pylon-live.png"),perProvider=Number(value("per-provider",answers>0?"1":"0")),identity=value("identity","")
 if(!Number.isInteger(answers)||answers<0||!Number.isInteger(perProvider)||perProvider<0||!Number.isFinite(seconds)||seconds<1||seconds>600)throw Error("invalid bounded live proof options")
 const profile=mkdtempSync(join(tmpdir(),"coax-pylon-live-"))
-const proc=Bun.spawn([chrome(),"--headless=new","--mute-audio",`--user-data-dir=${profile}`,"--no-first-run","--hide-scrollbars",...gpuFlags(),"--window-size=1280,800","--remote-debugging-port=0","about:blank"],{stdout:"ignore",stderr:"ignore"})
+const proc=launchChrome(profile,["--window-size=1280,800"])
 let ws:WebSocket|undefined
 try{
   const portFile=join(profile,"DevToolsActivePort")

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { chrome as chromePath, gpuFlags } from "./chrome"
+import { launch as launchChrome } from "./chrome"
 
 const root = join(import.meta.dir, '../..')
 const temp = mkdtempSync(join(tmpdir(), 'coax-storage-'))
@@ -93,7 +93,7 @@ beforeAll(async () => {
     if (path === '/api/auth/viewer') return new Response('')
     return new Response('<!doctype html><html><body><canvas id="coaxial"></canvas><script type="module" src="/host.js" data-app="probe" data-wasm="/probe.wasm"></script></body></html>', { headers: { 'Content-Type': 'text/html' } })
   } })
-  chrome = Bun.spawn([chromePath(), '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
+  chrome = launchChrome(join(temp, 'chrome'))
   let port = ''
   for (let i = 0; i < 100; i++) { try { port = readFileSync(join(temp, 'chrome/DevToolsActivePort'), 'utf8').split('\n')[0]; break } catch {} await Bun.sleep(50) }
   if (!port) throw Error('Chrome did not open a debugging port')
