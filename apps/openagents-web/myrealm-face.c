@@ -80,6 +80,8 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 }
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return realm_wants_text(at(state)) ? 1u : 0u; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->field.e; }
+// What a check reads (realm_probe): host.js's coaxial.guardProbe(field).
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { return (int32_t)realm_probe(at(state), field); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)realm_cursor(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }

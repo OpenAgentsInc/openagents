@@ -40,6 +40,7 @@
 #load "../../verse/style-preset.coax";
 #load "../../verse/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
+#load "../../aethyr/forge/edit.coax";   // the realm document's edits: a move, undo, the revision a save names
 #load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -142,9 +143,13 @@ WAIT :: 30.0;
 // buttons
 BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
 BTN_CLOSE :: 9; BTN_NEW :: 10; BTN_BYE :: 11; BTN_HOLD :: 12;
-BUTTONS :: 13;
+BTN_MOVE :: 13; BTN_UNDO :: 14; BTN_SAVE :: 15; BTN_PUBLISH :: 16; BTN_FORK :: 17;   // Aethyrforge: the owner's document, and FORK for anyone
+BUTTONS :: 18;
 PANE_NONE :: 0; PANE_BUILD :: 3;
-REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3; REQ_TALK :: 4;
+REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3; REQ_TALK :: 4; REQ_SAVE :: 5; REQ_PUBLISH :: 6; REQ_FORK :: 7;
+TREES_MOST :: 20;   // read_spec's most trees
+PUT_AHEAD :: 2.5;   // PUT IT HERE: metres in front of you
+PICK_PX :: 56.0;    // a tap this near a tree (CSS pixels) picks it to move
 // talking with a character: E or a tap by one, within TALK_NEAR metres; the talk ends past TALK_FAR
 MSG_VOICE :: 50;                           // coax/web/voice.js: "phase|words" (ui.coax's MSG_TEXT: typed text)
 ACT_VOICE :: 7; ACT_VOICE_TO :: 8; ACT_VOICE_SAY :: 9;   // coax/web/voice.js: on/end, whom you face, the answer to speak
@@ -194,6 +199,15 @@ MyRealm :: struct {
   herd_x: [HERD] f32; herd_z: [HERD] f32; villager_x: [VILLAGERS] f32; villager_z: [VILLAGERS] f32;
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
   placed_n: int; placed_thing: [200] int; placed_x: [200] f32; placed_z: [200] f32; placed_yaw: [200] f32;
+  // the document (aethyr/forge/edit.coax): the moves and their undo, the revision a save names;
+  // what the server said: its revision, the one published (0 none), listed, and a fork's parent
+  fd: [1] ForgeDoc; server_rev: int; published_rev: int; listed: bool;
+  from: [SLUG] u8; from_n: int; from_rev: int; from_name: [TITLE] u8; from_name_n: int;
+  moving: int;             // the tree picked to move, -1 none
+  forge_status: int; forge_what: int;   // the last save, publish or fork: its HTTP status and which
+  // each tree as laid out: where, and its pieces and solids (a move shifts them, nothing else)
+  tree_laid: [TREES_MOST] bool; tree_x: [TREES_MOST] f32; tree_z: [TREES_MOST] f32;
+  tree_p0: [TREES_MOST] int; tree_p1: [TREES_MOST] int; tree_s0: [TREES_MOST] int; tree_s1: [TREES_MOST] int;
   // the pack
   loaded: int; total: int; pack_ready: bool; pack_failed: bool;
   mesh_n: int; mesh_name: [MESHES * NAME] u8; mesh_name_n: [MESHES] int;
@@ -242,6 +256,7 @@ realm_reset :: (s: [] MyRealm) {
   s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6; s[0].talk_p = -1;
   // the edit layer's request and presses are none until it starts (a realm with no slug never starts it)
   s[0].ed[0].req_id = -1; s[0].ed[0].press = -1; s[0].ed[0].row_press = -1; s[0].ed[0].finger = -1; s[0].ed[0].switch_row = -1;
+  s[0].moving = -1; s[0].listed = true;
 }
 begin :: (s: [] MyRealm) { if !s[0].started { realm_reset(s); } }
 
@@ -334,6 +349,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   s[0].water_kind = 1; s[0].land = 0; s[0].flier = 0; s[0].plant_kind = 0; s[0].building_n = 0;
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
+  s[0].server_rev = 0; s[0].published_rev = 0; s[0].listed = true; s[0].from_n = 0; s[0].from_rev = 0; s[0].from_name_n = 0;
+  sp: [1] ForgeDoc; forge_reset(sp[..], 0);   // the document as the server has it
   got := false;
   i := 0;
   while i < text.count {
@@ -348,6 +365,25 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     if head == "camera" { c := word_of(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
     if head == "palette" { pw := word_of(line, 1); for k: 0..<4 { if PALETTES[k] == pw { s[0].palette = k; } } continue; }
     if head == "waiting" { s[0].waiting = hi_int(number_word(word_of(line, 1)), 0); continue; }
+    if head == "rev" { s[0].server_rev = hi_int(number_word(word_of(line, 1)), 0); sp[0].rev = s[0].server_rev; continue; }
+    if head == "published" { s[0].published_rev = hi_int(number_word(word_of(line, 1)), 0); continue; }
+    if head == "listed" { s[0].listed = word_of(line, 1) != "0"; continue; }
+    if head == "from" {   // from SLUG REV|NAME: the realm this one was forked from, and its revision then
+      fs := word_of(line, 1); cut := 0; while cut < line.count && line[cut] != '|' { cut += 1; }
+      if slug_ok(fs) && cut < line.count {
+        s[0].from_n = copy_into(s[0].from[..], fs);
+        s[0].from_rev = hi_int(number_word(word_of(line[0..<cut], 2)), 0);
+        s[0].from_name_n = copy_into(s[0].from_name[..], line[cut + 1..<line.count]);
+      }
+      continue;
+    }
+    if head == "moved" {   // moved ENTITY X Z: where a laid-out entity stands instead (metres)
+      at: [1] int; at[0] = word_end(line, 6);
+      x := decimal_at(line, at[..]); if at[0] < 0 { continue; }
+      z := decimal_at(line, at[..]); if at[0] < 0 { continue; }
+      _ := forge_read_move(sp[..], word_of(line, 1), cm_of(x), cm_of(z));
+      continue;
+    }
     if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
     if head == "character" && s[0].people < PEOPLE && line.count > 10 {
       rest := line[10..<line.count];
@@ -410,7 +446,19 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   }
   // 2D faces right when it starts; a realm read again keeps your way
   if s[0].camera == CAM_SIDE && was != CAM_SIDE { s[0].yaw = 1.5707963; s[0].pitch = 0; }
+  forge_take(s, sp[..]);
   return got && s[0].name_n > 0;
+}
+cm_of :: (v: f32) -> int { return cast(int) (v * 100 + (ifx v < 0 then -0.5f32 else 0.5f32)); }
+// The server's document becomes the page's, unless the page has changes not yet saved (their save
+// names the revision they were made from, so the server refuses it if this one is newer). The
+// same document read again keeps its undo steps.
+forge_take :: (s: [] MyRealm, sp: [] ForgeDoc) {
+  if forge_dirty(s[0].fd[..]) { return; }
+  a: [1024] u8; b: [1024] u8;
+  an := forge_save_body(s[0].fd[..], a[..]); bn := forge_save_body(sp, b[..]);
+  if an > 0 && an == bn && cast(string) a[0..<an] == cast(string) b[0..<bn] { return; }
+  s[0].fd[0] = sp[0];
 }
 hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 clamp_int :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
@@ -472,12 +520,113 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
     return;
   }
   if what == REQ_TALK { talk_answered(s, status, body); return; }
+  if what == REQ_SAVE || what == REQ_PUBLISH || what == REQ_FORK { forge_answered(s, what, status, body); return; }
   if what == REQ_PLACE {
     if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
     if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
     if track_begin(t, "realm-place") { track_bool(t, "owner", s[0].owner); track_end(t); }
     return;
   }
+}
+
+// ---- Aethyrforge: the owner moves a tree, takes it back, saves the document, publishes it; anyone forks it
+
+forge_owner :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && s[0].owner; }
+may_fork :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && s[0].server_rev > 0 && !access_hides_make(s[0].acc[..]); }
+may_publish :: (s: [] MyRealm) -> bool { return forge_owner(s) && !forge_dirty(s[0].fd[..]) && s[0].fd[0].rev > 0 && s[0].published_rev != s[0].fd[0].rev; }
+relay :: (s: [] MyRealm) { s[0].laid = false; lay_out(s); }
+// The tree nearest where you stand.
+nearest_tree :: (s: [] MyRealm) -> int {
+  best := -1; bd: f32 = 1000000;
+  for i: 0..<s[0].trees {
+    if !s[0].tree_laid[i] { continue; }
+    c := tree_at(s, i); dx := c.x - s[0].x; dz := c.z - s[0].z; d := dx * dx + dz * dz;
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+// The tree a tap is on (its trunk on the screen within PICK_PX), or -1.
+tree_tapped :: (s: [] MyRealm, x: f32, y: f32) -> int {
+  best := -1; bd := PICK_PX * s[0].dpr;
+  for i: 0..<s[0].trees {
+    if !s[0].tree_laid[i] { continue; }
+    c := tree_at(s, i); sc := seen(s, c.x, 1.5, c.z);
+    if !sc.ok { continue; }
+    d := sqrt((sc.x - x) * (sc.x - x) + (sc.y - y) * (sc.y - y));
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+// MOVE A TREE picks the one nearest you (a tap on another picks that one); PUT IT HERE stands it
+// PUT_AHEAD metres in front of you, as one undo step.
+move_press :: (s: [] MyRealm) {
+  if !forge_owner(s) { return; }
+  if s[0].moving < 0 {
+    i := nearest_tree(s);
+    if i < 0 { return; }
+    s[0].moving = i; relay(s);
+    set_note(s, "Walk to its new place, then put it here.");
+    return;
+  }
+  x := s[0].x + PUT_AHEAD * sin(s[0].yaw); z := s[0].z - PUT_AHEAD * cos(s[0].yaw);
+  b: [16] u8;
+  moved := forge_move(s[0].fd[..], tree_key(s[0].moving, b[..]), cm_of(x), cm_of(z));
+  s[0].moving = -1; relay(s);
+  set_note(s, ifx moved then "Moved. Save keeps it." else "It can't stand there.");
+}
+undo_press :: (s: [] MyRealm) {
+  if !forge_owner(s) { return; }
+  s[0].moving = -1;
+  if forge_undo(s[0].fd[..]) { relay(s); set_note(s, "Undone."); }
+}
+save_press :: (s: [] MyRealm) {
+  if !forge_owner(s) || busy(s) || !forge_dirty(s[0].fd[..]) { return; }
+  n := forge_save_body(s[0].fd[..], s[0].req_body[..]);
+  if n <= 0 { set_note(s, "Too many moves to save."); return; }
+  s[0].moving = -1;
+  ask(s, REQ_SAVE, "/save", n, true);
+}
+publish_press :: (s: [] MyRealm) {
+  if !may_publish(s) || busy(s) { return; }
+  n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].fd[0].rev); n = put(s[0].req_body[..], n, "}");
+  ask(s, REQ_PUBLISH, "/publish", n, true);
+}
+fork_press :: (s: [] MyRealm) {
+  if !may_fork(s) || busy(s) { return; }
+  ask(s, REQ_FORK, "/fork?as=lines", put(s[0].req_body[..], 0, "{}"), true);
+}
+// A whole number after "NAME": in a JSON answer, or -1.
+json_int_of :: (body: string, name: string) -> int {
+  q: [32] u8; qn := put(q[..], 0, "\""); qn = put(q[..], qn, name); qn = put(q[..], qn, "\":");
+  key := cast(string) q[0..<qn];
+  for i: 0..<body.count - key.count + 1 {
+    if body[i..<i + key.count] == key { at: [1] int; at[0] = i + key.count; v := int_at(body, at[..]); return ifx at[0] < 0 then -1 else v; }
+  }
+  return -1;
+}
+forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
+  s[0].forge_status = status; s[0].forge_what = what;
+  changed := "Changed since you opened it. Reload to see it.";
+  if what == REQ_SAVE {
+    if status == 200 { rev := json_int_of(body, "rev"); if rev > 0 { forge_saved(s[0].fd[..], rev); s[0].server_rev = rev; } set_note(s, "Saved."); return; }
+    if status == 409 { s[0].server_rev = hi_int(json_int_of(body, "rev"), s[0].server_rev); set_note(s, changed); return; }
+    set_note(s, ifx status == 403 then "Only its owner saves it." else "Not saved. Try again.");
+    return;
+  }
+  if what == REQ_PUBLISH {
+    if status == 200 { s[0].published_rev = hi_int(json_int_of(body, "rev"), 0); set_note(s, "Published."); return; }
+    set_note(s, ifx status == 409 then changed else "Not published. Try again.");
+    return;
+  }
+  // FORK: "slug S", "path P", "page 0|1"; the page goes there
+  if status == 200 {
+    i := 0;
+    while i < body.count {
+      e := line_end(body, i); line := body[i..<e]; i = e + 1;
+      if word_of(line, 0) == "path" && line.count > 5 && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, line[5..<line.count]); s[0].action = ACT_NAVIGATE; return; }
+    }
+  }
+  set_note(s, ifx status == 429 then "That's today's realms. Fork it tomorrow." else ifx status == 403 then "Making realms is by invite for now." else "Not forked. Try again.");
 }
 
 // ---- requests
@@ -775,14 +924,18 @@ lay_out :: (s: [] MyRealm) {
     if kind == 4 { thing_at(s, 7, c.x, c.z, rand(r[..]) * 3, 1, 0); m := mesh_named(s, "Anvil"); if m >= 0 { k := 0.9 / hi(longest(s, m), 0.01); piece(s, m, c.x + 1.6, c.z + 0.4, 0.5, k, 1, 1, 1); solid(s, c.x + 1.6, c.z + 0.4, 0.5); } }
     if kind >= 5 { prop_at(s, r[..], kind, c); glowing(s, 0); }
   }
+  for i: 0..<TREES_MOST { s[0].tree_laid[i] = false; }
   for i: 0..<s[0].trees {
     c := spot(s, r[..], 8, GROUND_R - 2, 1.0);
     if c.x > 90 { continue; }
+    // tree i: its pieces and solids, so a move (the document's "trees:I") shifts it and nothing else
+    s[0].tree_laid[i] = true; s[0].tree_x[i] = c.x; s[0].tree_z[i] = c.z; s[0].tree_p0[i] = s[0].piece_n; s[0].tree_s0[i] = s[0].solid_n;
     kind := s[0].tree_kind;
     if kind == 3 { kind = cast(int) (rand(r[..]) * 2.99); }
-    if kind == 4 { palm(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
-    if kind == TREE_ACACIA { acacia(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
-    thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind);
+    if kind == 4 { palm(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); }
+    else if kind == TREE_ACACIA { acacia(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); }
+    else { thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind); }
+    s[0].tree_p1[i] = s[0].piece_n; s[0].tree_s1[i] = s[0].solid_n;
   }
   wood(s, r[..]);
   for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); } }
@@ -799,11 +952,29 @@ lay_out :: (s: [] MyRealm) {
     o := (p % 4) * 3;
     pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false, p + 1, 0, 0);
   }
+  trees_moved(s);   // after everything else is laid out where it was, so a move shifts nothing but the tree
   s[0].static_n = s[0].piece_n;
   roofs_out(s); owl_home(s);
   for i: 0..<BIRDS { s[0].owl_y[i] = 0; }
   actors(s);
   s[0].laid = true;
+}
+
+// The document's moves, applied to the trees as laid out: each moved one's pieces and solids
+// shifted to where it stands now; a picked one (MOVE A TREE) glows.
+tree_key :: (i: int, buf: [] u8) -> string { n := put(buf, 0, "trees:"); n = put_int(buf, n, i); return cast(string) buf[0..<n]; }
+tree_at :: (s: [] MyRealm, i: int) -> Spot {
+  b: [16] u8; w := forge_where(s[0].fd[..], tree_key(i, b[..]));
+  if w.found { return Spot.{x = cast(f32) w.x * 0.01, z = cast(f32) w.z * 0.01}; }
+  return Spot.{x = s[0].tree_x[i], z = s[0].tree_z[i]};
+}
+trees_moved :: (s: [] MyRealm) {
+  for i: 0..<s[0].trees {
+    if !s[0].tree_laid[i] { continue; }
+    c := tree_at(s, i); dx := c.x - s[0].tree_x[i]; dz := c.z - s[0].tree_z[i];
+    for p: s[0].tree_p0[i]..<s[0].tree_p1[i] { s[0].piece_x[p] += dx; s[0].piece_z[p] += dz; if i == s[0].moving { s[0].piece_glow[p] = 0.7; } }
+    for k: s[0].tree_s0[i]..<s[0].tree_s1[i] { s[0].solid_x[k] += dx; s[0].solid_z[k] += dz; }
+  }
 }
 
 // A house: walls in its colour, a gabled roof of two dark slabs, the gable's ends filled, a door and two
@@ -1323,6 +1494,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
   if key == 'f' || key == 'F' { fly(s); return true; }
   if (key == 'm' || key == 'M') && s[0].tools[TOOL_MAP] { s[0].map_open = !s[0].map_open; return true; }
   if (key == 'b' || key == 'B') && can_build(s) { talk_close(s); toggle_pane(s, PANE_BUILD); return true; }
+  if key == KEY_ESCAPE && s[0].moving >= 0 { s[0].moving = -1; relay(s); return true; }
   if key == KEY_ESCAPE { if s[0].pane != PANE_NONE || s[0].map_open { s[0].pane = PANE_NONE; s[0].map_open = false; } else { leave(s); } return true; }
   return false;
 }
@@ -1598,6 +1770,8 @@ realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
   if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
   if b == BTN_BYE { return "bye"; } if b == BTN_HOLD { return "hold-to-talk"; }
+  if b == BTN_MOVE { return "move"; } if b == BTN_UNDO { return "undo"; } if b == BTN_SAVE { return "save"; }
+  if b == BTN_PUBLISH { return "publish"; } if b == BTN_FORK { return "fork"; }
   if cell_at(s, x, y) >= 0 { return "thing"; }
   return "";
 }
@@ -1610,6 +1784,11 @@ press_button :: (s: [] MyRealm, t: [] Track, b: int) {
   if b == BTN_MAP { s[0].map_open = !s[0].map_open; }
   if b == BTN_FLY { fly(s); }
   if b == BTN_JUMP { jump(s); }
+  if b == BTN_MOVE { move_press(s); }
+  if b == BTN_UNDO { undo_press(s); }
+  if b == BTN_SAVE { save_press(s); }
+  if b == BTN_PUBLISH { publish_press(s); }
+  if b == BTN_FORK { fork_press(s); }
 }
 realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   begin(s);
@@ -1623,6 +1802,7 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
     if b >= 0 { s[0].press = b; if b == BTN_HOLD { talk_down(s); } return true; }
     c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
     if s[0].talk_p >= 0 && inside(s[0].type_box, x, y) { return true; }   // the keyboard comes up
+    if s[0].moving >= 0 { tp := tree_tapped(s, x, y); if tp >= 0 { if tp != s[0].moving { s[0].moving = tp; relay(s); } return true; } }
     if may_talk(s) { p := person_at(s, x, y); if p >= 0 { talk_open(s, t, p); return true; } }
     // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does.
     // First person on a phone: a thumb on the right half looks round, up and down; on the left it walks.
@@ -1659,6 +1839,47 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
     return true;
   }
   return false;
+}
+// What a check reads of the page (coax/web/forge-journey.coax, through host.js's guardProbe):
+//   0 the spec is read, 1 owner, 2 the server's revision, 3 the document's, 4 unsaved changes,
+//   5 an undo step, 6 the revision published (0 none), 7 trees laid out, 8 the tree picked (-1),
+//   9 moves in the document, 10 and 11 where you stand (cm), 12 listed, 13 a fork's parent's
+//   revision, 14 a request in flight, 15 the last save, publish or fork's status, 16 which (5, 6, 7);
+//   20 + 2i and 21 + 2i: tree i's place (cm; -99999 none); 100 + 4b..103 + 4b: button b's box in
+//   CSS pixels (-1 when it isn't shown).
+PROBE_NONE :: -99999;
+realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
+  if f == 0 { return ifx s[0].spec_ready then 1 else 0; }
+  if f == 1 { return ifx s[0].owner then 1 else 0; }
+  if f == 2 { return s[0].server_rev; }
+  if f == 3 { return s[0].fd[0].rev; }
+  if f == 4 { return ifx forge_dirty(s[0].fd[..]) then 1 else 0; }
+  if f == 5 { return ifx forge_can_undo(s[0].fd[..]) then 1 else 0; }
+  if f == 6 { return s[0].published_rev; }
+  if f == 7 { c := 0; for i: 0..<s[0].trees { if s[0].tree_laid[i] { c += 1; } } return ifx s[0].laid then c else 0; }
+  if f == 8 { return s[0].moving; }
+  if f == 9 { return s[0].fd[0].move_n; }
+  if f == 10 { return cm_of(s[0].x); }
+  if f == 11 { return cm_of(s[0].z); }
+  if f == 12 { return ifx s[0].listed then 1 else 0; }
+  if f == 13 { return s[0].from_rev; }
+  if f == 14 { return ifx busy(s) then 1 else 0; }
+  if f == 15 { return s[0].forge_status; }
+  if f == 16 { return s[0].forge_what; }
+  if f >= 20 && f < 20 + 2 * TREES_MOST {
+    i := (f - 20) / 2;
+    if !s[0].laid || i >= s[0].trees || !s[0].tree_laid[i] { return PROBE_NONE; }
+    c := tree_at(s, i);
+    return ifx (f - 20) % 2 == 0 then cm_of(c.x) else cm_of(c.z);
+  }
+  if f >= 100 && f < 100 + 4 * BUTTONS {
+    b := (f - 100) / 4; e := (f - 100) % 4;
+    if !s[0].shown[b] { return -1; }
+    bx := s[0].boxes[b]; k := hi(s[0].dpr, 0.5);
+    v := ifx e == 0 then bx.x0 else ifx e == 1 then bx.y0 else ifx e == 2 then bx.x1 else bx.y1;
+    return cast(int) (v / k + 0.5);
+  }
+  return PROBE_NONE;
 }
 realm_cursor :: (s: [] MyRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
 realm_action :: (s: [] MyRealm) -> int #export_c {
@@ -1809,6 +2030,25 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     on := (which == BTN_BUILD && s[0].pane == PANE_BUILD) || (which == BTN_MAP && s[0].map_open) || (which == BTN_FLY && s[0].flying);
     n = pill(s, out, n, which, b, word, on);
     bx += tw2 + gap;
+  }
+  // Aethyrforge's row over the tools: only what applies now (nothing to undo: no UNDO)
+  forge: [5] int; forge_n := 0;
+  if forge_owner(s) && s[0].trees > 0 { forge[forge_n] = BTN_MOVE; forge_n += 1; }
+  if forge_owner(s) && forge_can_undo(s[0].fd[..]) { forge[forge_n] = BTN_UNDO; forge_n += 1; }
+  if forge_owner(s) && forge_dirty(s[0].fd[..]) { forge[forge_n] = BTN_SAVE; forge_n += 1; }
+  if may_publish(s) { forge[forge_n] = BTN_PUBLISH; forge_n += 1; }
+  if may_fork(s) { forge[forge_n] = BTN_FORK; forge_n += 1; }
+  if forge_n > 0 {
+    fw := ifx phone then (w - 2 * g - gap * cast(f32) (forge_n - 1)) / cast(f32) forge_n else 132 * k;
+    fx := ifx phone then g else w * 0.5 - (fw * cast(f32) forge_n + gap * cast(f32) (forge_n - 1)) * 0.5;
+    by = by - bh - gap;
+    for i: 0..<forge_n {
+      which := forge[i];
+      word := ifx which == BTN_UNDO then "UNDO" else ifx which == BTN_SAVE then "SAVE" else ifx which == BTN_PUBLISH then "PUBLISH" else ifx which == BTN_FORK then "FORK"
+              else ifx s[0].moving >= 0 then (ifx phone then "PUT HERE" else "PUT IT HERE") else (ifx phone then "MOVE TREE" else "MOVE A TREE");
+      n = pill(s, out, n, which, Box.{x0 = fx, y0 = by, x1 = fx + fw, y1 = by + bh}, word, (which == BTN_MOVE && s[0].moving >= 0) || which == BTN_SAVE);
+      fx += fw + gap;
+    }
   }
   // what to do, until you have walked a little; or a note
   near := ifx s[0].talk_p < 0 && may_talk(s) && s[0].pane == PANE_NONE && !redit_open(s[0].ed[..]) then near_person(s) else -1;
@@ -2856,4 +3096,146 @@ mist_drawn :: (s: [] MyRealm, t: [] Track, u: [] f32) {
   opened(c[..], cv[..], "moor2", "realm moor2\nname Moor\nstyle painterly\nground meadow\ntime day\nowner 0\n");
   cu: [UNIFORM_FLOATS] f32; mist_drawn(c[..], cv[..], cu[..]);
   #assert pu[STYLE_AT + SU_HAZE] == 0 && pu[STYLE_AT + SU_HAZE + 1] > 3.9 * cu[STYLE_AT + SU_HAZE + 1] && cu[STYLE_AT + SU_HAZE + 1] > 0;
+}
+
+// ---- Aethyrforge (aethyr/forge/edit.coax): move a tree, undo, save from the revision read, publish, fork
+FORGED :: "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\ntool build 0\nfeature trees round 6\nfeature rocks 4\nrev 3\npublished 0\nlisted 0\n";
+note_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].note[0..<s[0].note_n] == text; }
+answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
+  realm_requested(s, id);
+  realm_message(s, t, HTTP_ANSWER_KIND + id, text);
+}
+
+#test "MOVE A TREE stands the nearest tree in front of you and moves nothing else; UNDO puts it back" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].laid && realm_probe(s[..], 7) == 6 && realm_probe(s[..], 2) == 3 && realm_probe(s[..], 3) == 3 && realm_probe(s[..], 12) == 0;
+  #assert s[0].shown[BTN_MOVE] && s[0].shown[BTN_FORK] && s[0].shown[BTN_PUBLISH] && !s[0].shown[BTN_UNDO] && !s[0].shown[BTN_SAVE];
+  px: [PIECES] f32; pz: [PIECES] f32; pn := s[0].static_n;   // the laid-out pieces (the figures after them walk)
+  for p: 0..<pn { px[p] = s[0].piece_x[p]; pz[p] = s[0].piece_z[p]; }
+  near := nearest_tree(s[..]);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  #assert s[0].moving == near && realm_probe(s[..], 8) == near && note_is(s[..], "Walk to its new place, then put it here.");
+  m := frame_of(s[..], t[..], 2560, 1600);
+  s[0].yaw = 0.5;
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  c := tree_at(s[..], near);
+  #assert s[0].moving < 0 && forge_dirty(s[0].fd[..]) && note_is(s[..], "Moved. Save keeps it.");
+  #assert abs(c.x - (s[0].x + PUT_AHEAD * sin(0.5f32))) < 0.01 && abs(c.z - (s[0].z - PUT_AHEAD * cos(0.5f32))) < 0.01;
+  #assert realm_probe(s[..], 20 + 2 * near) == cm_of(c.x) && realm_probe(s[..], 9) == 1;
+  // only that tree's pieces moved
+  #assert s[0].static_n == pn;
+  moved := 0;
+  for p: 0..<pn {
+    if px[p] != s[0].piece_x[p] || pz[p] != s[0].piece_z[p] {
+      moved += 1;
+      #assert p >= s[0].tree_p0[near] && p < s[0].tree_p1[near];
+    }
+  }
+  #assert moved == s[0].tree_p1[near] - s[0].tree_p0[near] && moved > 0;
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].shown[BTN_UNDO] && s[0].shown[BTN_SAVE] && !s[0].shown[BTN_PUBLISH];
+  tap_box(s[..], t[..], s[0].boxes[BTN_UNDO]);
+  back := tree_at(s[..], near);
+  #assert !forge_dirty(s[0].fd[..]) && back.x == s[0].tree_x[near] && back.z == s[0].tree_z[near] && note_is(s[..], "Undone.");
+  for p: 0..<pn { #assert px[p] == s[0].piece_x[p] && pz[p] == s[0].piece_z[p]; }
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert !s[0].shown[BTN_UNDO] && !s[0].shown[BTN_SAVE];
+}
+
+#test "SAVE names the revision it was read at; then PUBLISH that revision; FORK goes to the fork" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  s[0].x = 1; s[0].z = 2; s[0].yaw = 0;
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
+  b: [16] u8; key := tree_key(nearest_tree(s[..]), b[..]);
+  want: [200] u8; wn := put(want[..], 0, "{\"rev\":3,\"moved\":[{\"entity\":\""); wn = put(want[..], wn, key); wn = put(want[..], wn, "\",\"x\":1.00,\"z\":-0.50}]}");
+  #assert url_is(s[..], "/api/playtest/realms/forge-court/save") && (s[0].req_flags & HTTP_POST) != 0 && body_is(s[..], cast(string) want[0..<wn]);
+  answered(s[..], t[..], 5, "200\n{\"rev\": 4, \"sha256\": \"ab\"}");
+  #assert !forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 4 && s[0].server_rev == 4 && note_is(s[..], "Saved.") && realm_probe(s[..], 15) == 200;
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].shown[BTN_PUBLISH] && !s[0].shown[BTN_SAVE] && s[0].shown[BTN_UNDO];
+  tap_box(s[..], t[..], s[0].boxes[BTN_PUBLISH]);
+  #assert url_is(s[..], "/api/playtest/realms/forge-court/publish") && body_is(s[..], "{\"rev\":4}");
+  answered(s[..], t[..], 6, "200\n{\"published\": true, \"rev\": 4, \"sha256\": \"ab\", \"listed\": false}");
+  #assert s[0].published_rev == 4 && note_is(s[..], "Published.");
+  m = frame_of(s[..], t[..], 2560, 1600);
+  #assert !s[0].shown[BTN_PUBLISH];
+  // the same document read again keeps its undo step
+  s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
+  spec: [512] u8; sn := put(spec[..], 0, "200\n"); sn = put(spec[..], sn, FORGED[0..<FORGED.count - 27]);
+  sn = put(spec[..], sn, "rev 4\npublished 4\nlisted 0\nmoved "); sn = put(spec[..], sn, key); sn = put(spec[..], sn, " 1.00 -0.50\n");
+  realm_requested(s[..], 7); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 7, cast(string) spec[0..<sn]);
+  #assert forge_can_undo(s[0].fd[..]) && !forge_dirty(s[0].fd[..]) && s[0].published_rev == 4;
+  tap_box(s[..], t[..], s[0].boxes[BTN_FORK]);
+  #assert url_is(s[..], "/api/playtest/realms/forge-court/fork?as=lines") && body_is(s[..], "{}");
+  answered(s[..], t[..], 5, "200\nslug forge-court-fork\npath /realms/forge-court-fork\npage 1\n");
+  #assert realm_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/forge-court-fork";
+}
+
+#test "a moved tree stands where the document says; a save from an older revision is refused and kept unsaved" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 7\npublished 7\nlisted 1\nfrom old-court 2|Old Court\nmoved trees:1 4.00 -5.50\n");
+  c := tree_at(s[..], 1);
+  #assert c.x == 4 && c.z == -5.5 && realm_probe(s[..], 22) == 400 && realm_probe(s[..], 23) == -550 && realm_probe(s[..], 13) == 2;
+  #assert cast(string) s[0].from[0..<s[0].from_n] == "old-court" && cast(string) s[0].from_name[0..<s[0].from_name_n] == "Old Court";
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert !s[0].shown[BTN_PUBLISH];   // revision 7 is the one published
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
+  answered(s[..], t[..], 5, "409\n{\"error\": \"changed since\", \"rev\": 9}");
+  #assert forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 7 && s[0].server_rev == 9 && note_is(s[..], "Changed since you opened it. Reload to see it.");
+  // the spec read again while changes wait doesn't drop them
+  s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
+  realm_requested(s[..], 6); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 6, "200\nrealm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 9\n");
+  #assert forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 7 && s[0].server_rev == 9;
+}
+
+#test "a visitor gets FORK and none of the owner's; a tap on another tree picks it to move; Esc lets it go" {
+  v: [1] MyRealm; u: [1] Track;
+  opened(v[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 0\nfeature trees round 6\nrev 3\n");
+  n := frame_of(v[..], u[..], 2560, 1600);
+  #assert v[0].shown[BTN_FORK] && !v[0].shown[BTN_MOVE] && !v[0].shown[BTN_UNDO] && !v[0].shown[BTN_SAVE] && !v[0].shown[BTN_PUBLISH];
+  move_press(v[..]);
+  #assert v[0].moving < 0;
+  w: [1] MyRealm; x: [1] Track;
+  opened(w[..], x[..], "built", SAMPLE);   // /realms/built's own realm has no revision: nothing to fork
+  m := frame_of(w[..], x[..], 2560, 1600);
+  #assert !w[0].shown[BTN_FORK];
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  k := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  first := s[0].moving;
+  other := -1;
+  for i: 0..<s[0].trees {
+    c := tree_at(s[..], i); sc := seen(s[..], c.x, 1.5, c.z);
+    if i != first && sc.ok && sc.x > 0 && sc.x < 2560 && sc.y > 0 && sc.y < 1200 && tree_tapped(s[..], sc.x, sc.y) == i { other = i; }
+  }
+  if other >= 0 {
+    c := tree_at(s[..], other); sc := seen(s[..], c.x, 1.5, c.z);
+    #assert realm_pointer(s[..], t[..], sc.x, sc.y, POINTER_DOWN, 1, 4) && s[0].moving == other;
+  }
+  #assert realm_key(s[..], t[..], KEY_ESCAPE, true) && s[0].moving < 0;
+}
+
+#test "the forge row fits a 390 px phone, over the tools" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 780, 1688);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  m := frame_of(s[..], t[..], 780, 1688);
+  #assert s[0].shown[BTN_MOVE] && s[0].shown[BTN_UNDO] && s[0].shown[BTN_SAVE] && s[0].shown[BTN_FORK] && s[0].shown[BTN_BUILD];
+  for b: BTN_MOVE..<BUTTONS {
+    if !s[0].shown[b] { continue; }
+    #assert s[0].boxes[b].x0 >= 32 && s[0].boxes[b].x1 <= 748 && s[0].boxes[b].y1 < s[0].boxes[BTN_BUILD].y0;
+    #assert s[0].boxes[b].x1 - s[0].boxes[b].x0 >= 88;   // a thumb's width at 2x
+  }
+  #assert realm_probe(s[..], 100 + 4 * BTN_SAVE) == cast(int) (s[0].boxes[BTN_SAVE].x0 / 2 + 0.5) && realm_probe(s[..], 100 + 4 * BTN_PUBLISH) == -1;
 }

@@ -21,6 +21,13 @@
 //   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
 //   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
+// A made realm is a document with revisions (migrations/0093_realm_documents.sql, Aethyr book chapters 51-55, 82):
+//   GET  /api/playtest/realms/<slug>/doc               -> 200 {doc, sha256}; 404
+//   POST /api/playtest/realms/<slug>/save {rev, moved} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since)
+//   POST /api/playtest/realms/<slug>/publish {rev, listed?}   -> 200 {published, rev, sha256, listed}; 400, 403, 404, 409
+//   POST /api/playtest/realms/<slug>/fork {name?}      -> 200 {slug, path, name, from, rev}: its document copied, parent and revision kept
+// A realm made or forked by a request with an automation mark (X-Verse-Automation, or the cookie
+// verse-automation) is unlisted: off /og's rows and noindex.
 // Any realm: a made one or a hand-built one from realms.json (migrations/0050_realm_edit.sql decides
 // who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
@@ -306,6 +313,19 @@ static void rewrite_page(const char *slug) {
 }
 
 
+// A request a tool or test made (the mark analytics.c reads): its realms stay unlisted.
+static bool automated(const request *q) {
+  char v[64], cookies[2048];
+  if (api_header(q, "X-Verse-Automation", v, sizeof v) && v[0]) return true;
+  return api_header(q, "Cookie", cookies, sizeof cookies) && strstr(cookies, "verse-automation=") != NULL;
+}
+static void unlist_if_automated(const request *q, PGconn *db, const char *slug) {
+  if (!automated(q)) return;
+  const char *v[1] = {slug};
+  PGresult *r = PQexecParams(db, "UPDATE verse.made_realms SET unlisted = true WHERE slug = $1", 1, NULL, v, NULL, NULL, 0);
+  PQclear(r);
+}
+
 static void make_answer(int fd, const char *answer, const char *slug, bool lines) {
   PGconn *db = api_db_new();
   bool paged = db && write_page(db, slug);
@@ -363,6 +383,7 @@ static void make(const request *q, PGconn *db, const char *key) {
     PQclear(r);
     free(again);
   }
+  unlist_if_automated(q, db, slug);
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { make_answer(q->fd, answer, slug, lines); _exit(0); }
@@ -406,6 +427,7 @@ static void fork_realm(const request *q, PGconn *db, const char *slug, const cha
   }
   char *answer = strdup(PQgetvalue(r, 0, 1)), *made = strdup(PQgetvalue(r, 0, 2));
   PQclear(r);
+  unlist_if_automated(q, db, made);
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { make_answer(q->fd, answer, made, lines); _exit(0); }
@@ -715,6 +737,12 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
+  if (!strcmp(what, "doc")) {   // the document now and its hash (0093)
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the document\"}"); return true; }
+    const char *v[1] = {slug};
+    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_doc_of($1) x", 1, v, "doc");
+    return true;
+  }
   if (!strcmp(what, "panes")) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the panes\"}"); return true; }
     const char *v[3] = {slug, key, admin};
@@ -784,6 +812,24 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: publish: %s", PQerrorMessage(db));
+      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    }
+    PQclear(r);
+    return true;
+  }
+  if (!strcmp(what, "save")) {   // only from the revision there now (0093)
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {slug, body, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_save($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    free(body);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
+    }
+    else {
+      const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+      bool theirs = state && !strncmp(state, "22", 2);
+      if (!theirs) api_log("realms: save: %s", PQerrorMessage(db));
       api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
     }
     PQclear(r);

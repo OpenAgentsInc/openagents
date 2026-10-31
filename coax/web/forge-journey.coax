@@ -1,0 +1,423 @@
+// One Aethyrforge maker journey, end to end, in headless Chrome (#12610; aethyr/book chapters 51-55):
+//   1 GENERATE  /realms/new: skip the setup, TYPE a sentence, Enter, MAKE IT; the realm opens
+//   2 MOVE      MOVE A TREE, walk, PUT IT HERE (twice: two moves)
+//   3 UNDO      UNDO takes the second back; the first stays
+//   4 PLAY      walk; nothing unsaved is lost
+//   5 SAVE      SAVE names the revision it was read at; the server keeps the next one
+//   6 RELOAD    the page again: the moved tree stands where it was saved
+//   7 PUBLISH   PUBLISH that revision
+//   8 FORK      FORK: the fork opens, records its parent and the revision; it is moved and saved
+//   9 ORIGINAL  the original's document is byte for byte what it was before the fork
+//
+//   coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX]
+//
+// Every step is a typed action (a tap on a button the page says is shown, typed text, a key held)
+// and is checked from the page's state (coaxial.guardProbe: myrealm.coax realm_probe, builder.coax
+// builder_probe) and the server's (GET /api/playtest/realms/<slug>/doc and its spec), not from
+// pictures. The session carries the automation mark (the cookie verse-automation), so analytics
+// leaves it out and the realms it makes are unlisted (realms.c unlist_if_automated). They are named
+// "Aethyrforge Journey Test <hex>" and "... Fork". --phone is 390x844 at 2x with touch; the default
+// is 1440x900. It prints each step and exits 1 on the first that fails. Nothing opens on screen and
+// no sound plays.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+FJ_SHOT :: 25165824;
+// the pages' buttons (builder.coax, myrealm.coax)
+B_TYPE :: 1; B_MAKE :: 2; B_SKIP :: 5;
+PH_ASK :: 0; PH_BOARD :: 2; PH_SETUP :: 5;
+R_MOVE :: 13; R_UNDO :: 14; R_SAVE :: 15; R_PUBLISH :: 16; R_FORK :: 17;
+NONE :: -99999;
+
+Step :: enum u8 { GENERATE; MOVE; UNDO; PLAY; SAVE; RELOAD; PUBLISH; FORK; ORIGINAL; }
+step_name :: (s: Step) -> string {
+  if s == Step.GENERATE { return "1 generate a courtyard from a sentence"; }
+  if s == Step.MOVE { return "2 move a tree"; }
+  if s == Step.UNDO { return "3 undo"; }
+  if s == Step.PLAY { return "4 play it"; }
+  if s == Step.SAVE { return "5 save"; }
+  if s == Step.RELOAD { return "6 reload: the edit is still there"; }
+  if s == Step.PUBLISH { return "7 publish"; }
+  if s == Step.FORK { return "8 fork it (and edit the fork)"; }
+  return "9 the original is unchanged";
+}
+
+Buf :: struct { b: [8192] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+// A slug is safe to put in a script: a-z, 0-9 and -.
+slug_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// scheme://host[:port] of a URL, "" when it has none.
+origin_of :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count || i == 0 { return ""; }
+  j := i + 3;
+  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
+  return ifx j > i + 3 then url[0..<j] else "";
+}
+
+#test "a journey's pieces" {
+  #assert origin_of("https://staging.openagents.com/realms/new") == "https://staging.openagents.com" && origin_of("nope") == "";
+  #assert slug_ok("aethyrforge-journey-test-1a2b") && !slug_ok("x'y") && !slug_ok("");
+  #assert starts("Aethyrforge Journey Test 1a Fork", "Aethyrforge Journey Test") && ends("Aethyrforge Journey Test 1a Fork", " Fork");
+  #assert step_name(Step.ORIGINAL) == "9 the original is unchanged";
+  b: [1] Buf; bput(b[..], "p("); bint(b[..], -120); bput(b[..], ")");
+  #assert btext(b[..]) == "p(-120)";
+}
+
+// ---- the browser
+
+Run :: struct {
+  phone: bool; w: int; h: int;
+  origin: [256] u8; origin_n: int;
+  slug: [80] u8; slug_n: int; fork: [80] u8; fork_n: int;
+  name: [80] u8; name_n: int;
+  rev: int; tree: int; tx: int; tz: int;   // the revision saved, the tree moved and where it was saved
+  sha: [80] u8; sha_n: int;               // the original's document hash before the fork
+  fail: [400] u8; fail_n: int;
+}
+why :: (r: [] Run, what: string) -> bool {
+  r[0].fail_n = 0; for c: what { if r[0].fail_n < r[0].fail.count { r[0].fail[r[0].fail_n] = c; r[0].fail_n += 1; } }
+  return false;
+}
+why_n :: (r: [] Run, what: string, v: int) -> bool { b: [1] Buf; bput(b[..], what); bput(b[..], " ("); bint(b[..], v); bput(b[..], ")"); return why(r, btext(b[..])); }
+
+js_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+js_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+probe :: (c: [] Cdp, field: int) -> int {
+  b: [1] Buf; bput(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); bint(b[..], field); bput(b[..], ") : -99999");
+  return js_int(c, btext(b[..]), NONE);
+}
+// Waits until probe(field) == want, up to ms.
+wait_probe :: (c: [] Cdp, field: int, want: int, ms: int) -> bool {
+  until := proc_now_ms() + ms;
+  while proc_now_ms() < until { if probe(c, field) == want { return true; } proc_sleep(150); }
+  return probe(c, field) == want;
+}
+path_now :: (c: [] Cdp, out: [] u8) -> string { return js_str(c, "location.pathname", out); }
+
+// ---- the typed actions
+
+// A tap in the middle of button b, where the page says it is: a touch on a phone, a click otherwise.
+tap :: (r: [] Run, c: [] Cdp, b: int) -> bool {
+  x0 := probe(c, 100 + 4 * b); y0 := probe(c, 101 + 4 * b); x1 := probe(c, 102 + 4 * b); y1 := probe(c, 103 + 4 * b);
+  if x0 < 0 || x1 <= x0 || y1 <= y0 { return why_n(r, "the button isn't shown", b); }
+  x := (x0 + x1) / 2; y := (y0 + y1) / 2;
+  if x < 0 || y < 0 || x > r[0].w || y > r[0].h { return why_n(r, "the button is off the screen", b); }
+  p: [1] Buf;
+  for k: 0..<2 {
+    p[0].n = 0;
+    if r[0].phone {
+      bput(p[..], ifx k == 0 then "{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":" else "{\"type\":\"touchEnd\",\"touchPoints\":[");
+      if k == 0 { bint(p[..], x); bput(p[..], ",\"y\":"); bint(p[..], y); bput(p[..], "}]}"); } else { bput(p[..], "]}"); }
+      if cdp_call(c, "Input.dispatchTouchEvent", btext(p[..]), CDP_CALL_MS) < 0 { return why(r, "a touch wasn't taken"); }
+    } else {
+      bput(p[..], ifx k == 0 then "{\"type\":\"mousePressed\",\"x\":" else "{\"type\":\"mouseReleased\",\"x\":");
+      bint(p[..], x); bput(p[..], ",\"y\":"); bint(p[..], y); bput(p[..], ",\"button\":\"left\",\"clickCount\":1}");
+      if cdp_call(c, "Input.dispatchMouseEvent", btext(p[..]), CDP_CALL_MS) < 0 { return why(r, "a click wasn't taken"); }
+    }
+    proc_sleep(90);
+  }
+  proc_sleep(250);
+  return true;
+}
+key_event :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
+  p: [1] Buf;
+  bput(p[..], "{\"type\":\""); bput(p[..], ifx down then "keyDown" else "keyUp"); bput(p[..], "\",\"key\":\""); bput(p[..], key);
+  bput(p[..], "\",\"code\":\""); bput(p[..], code); bput(p[..], "\",\"windowsVirtualKeyCode\":"); bint(p[..], vk); bput(p[..], "}");
+  return cdp_call(c, "Input.dispatchKeyEvent", btext(p[..]), CDP_CALL_MS) >= 0;
+}
+// A key held for ms (W walks).
+hold :: (c: [] Cdp, key: string, code: string, vk: int, ms: int) -> bool {
+  if !key_event(c, true, key, code, vk) { return false; }
+  proc_sleep(ms);
+  return key_event(c, false, key, code, vk);
+}
+press :: (c: [] Cdp, key: string, code: string, vk: int) -> bool { return hold(c, key, code, vk, 60); }
+// Words into the focused keyboard field, as typing does.
+type_text :: (c: [] Cdp, text: string) -> bool {
+  p: [4096] u8; o: [1] Jo;
+  jo_start(o[..], p[..]); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Input.insertText", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+// ---- the server's state, read in the page (its player key, its automation mark)
+
+// GET R/slug/doc: one field of {doc, sha256} as text ("" when it isn't there).
+doc_field :: (r: [] Run, c: [] Cdp, slug: string, expr: string, out: [] u8) -> string {
+  b: [1] Buf;
+  bput(b[..], "fetch('/api/playtest/realms/"); bput(b[..], slug); bput(b[..], "/doc').then(a => a.json()).then(j => String(");
+  bput(b[..], expr); bput(b[..], ")).catch(e => 'error ' + e)");
+  return js_str(c, btext(b[..]), out);
+}
+// GET R/slug (the spec) as the page's player: the line that starts with head, or "".
+spec_line :: (c: [] Cdp, slug: string, head: string, out: [] u8) -> string {
+  b: [1] Buf;
+  bput(b[..], "(async () => { let k = ''; try { k = JSON.parse(localStorage.getItem('verse.player')).key; } catch {}\n");
+  bput(b[..], "  const t = await (await fetch('/api/playtest/realms/"); bput(b[..], slug); bput(b[..], "', {headers: k ? {'X-Verse-Player': k} : {}})).text();\n");
+  bput(b[..], "  return t.split('\\n').find(l => l.startsWith('"); bput(b[..], head); bput(b[..], " ')) || ''; })()");
+  return js_str(c, btext(b[..]), out);
+}
+slug_text :: (r: [] Run) -> string { return cast(string) r[0].slug[0..<r[0].slug_n]; }
+fork_text :: (r: [] Run) -> string { return cast(string) r[0].fork[0..<r[0].fork_n]; }
+
+// ---- the steps
+
+// The realm page has read its spec and laid it out; its owner has the forge row.
+realm_ready :: (r: [] Run, c: [] Cdp) -> bool {
+  if !wait_probe(c, 0, 1, 60000) { return why(r, "the realm never read its spec"); }
+  until := proc_now_ms() + 20000;
+  while proc_now_ms() < until && probe(c, 7) <= 0 { proc_sleep(200); }
+  if probe(c, 7) <= 0 { return why(r, "no trees were laid out"); }
+  if probe(c, 1) != 1 { return why(r, "this session isn't the realm's owner"); }
+  _ := press(c, "Escape", "Escape", 27);   // what a first visit opens over the realm
+  proc_sleep(400);
+  return true;
+}
+// Waits for the page to go to /realms/<slug> other than from; the slug in out.
+went_to :: (r: [] Run, c: [] Cdp, from: string, out: [] u8, ms: int) -> int {
+  until := proc_now_ms() + ms; p: [256] u8;
+  while proc_now_ms() < until {
+    now := path_now(c, p[..]);
+    if starts(now, "/realms/") && now != from && slug_ok(now[8..<now.count]) {
+      n := 0; for ch: now[8..<now.count] { out[n] = ch; n += 1; }
+      return n;
+    }
+    proc_sleep(300);
+  }
+  return 0;
+}
+
+generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
+  if !wait_probe(c, 0, PH_SETUP, 60000) && probe(c, 0) != PH_ASK { return why_n(r, "the builder never started", probe(c, 0)); }
+  for i: 0..<8 { if probe(c, 0) != PH_SETUP { break; } if !tap(r, c, B_SKIP) { return false; } }
+  if !wait_probe(c, 0, PH_ASK, 5000) { return why_n(r, "the setup never ended", probe(c, 0)); }
+  if !tap(r, c, B_TYPE) || !wait_probe(c, 5, 1, 5000) { return why(r, "TYPE gave no field"); }
+  s: [1] Buf;
+  bput(s[..], "A quiet stone courtyard with six round trees and a fountain in the middle. Call it Aethyrforge Journey Test "); bput(s[..], stamp); bput(s[..], ".");
+  proc_sleep(300);
+  if !type_text(c, btext(s[..])) || !press(c, "Enter", "Enter", 13) { return why(r, "the sentence wasn't typed"); }
+  if !wait_probe(c, 0, PH_BOARD, 120000) { return why_n(r, "no board came back for the sentence", probe(c, 0)); }
+  if probe(c, 2) < 0 || probe(c, 3) != 1 { return why(r, "the board has no trees row switched on"); }
+  proc_sleep(500);
+  if !tap(r, c, B_MAKE) { return false; }
+  r[0].slug_n = went_to(r, c, "/realms/new", r[0].slug[..], 120000);
+  if r[0].slug_n == 0 { return why_n(r, "MAKE IT never opened the realm", probe(c, 0)); }
+  if !realm_ready(r, c) { return false; }
+  // the server: revision 1, its name, unlisted, never published
+  o: [200] u8;
+  name := doc_field(r, c, slug_text(r), "j.doc.name", o[..]);
+  if !starts(name, "Aethyrforge Journey Test") { return why(r, "the realm isn't named Aethyrforge Journey Test"); }
+  r[0].name_n = 0; for ch: name { if r[0].name_n < r[0].name.count { r[0].name[r[0].name_n] = ch; r[0].name_n += 1; } }
+  if doc_field(r, c, slug_text(r), "j.doc.rev", o[..]) != "1" { return why(r, "the new realm's document isn't revision 1"); }
+  if doc_field(r, c, slug_text(r), "j.doc.moved.length", o[..]) != "0" { return why(r, "the new realm has moves"); }
+  if spec_line(c, slug_text(r), "listed", o[..]) != "listed 0" { return why(r, "a realm made by this tool isn't unlisted"); }
+  if probe(c, 2) != 1 || probe(c, 4) != 0 { return why(r, "the page's revision isn't the server's"); }
+  return true;
+}
+
+// MOVE A TREE, walk, PUT IT HERE: the picked tree stands somewhere new, one more move, unsaved.
+move_once :: (r: [] Run, c: [] Cdp) -> bool {
+  moves := probe(c, 9);
+  if !tap(r, c, R_MOVE) { return false; }
+  t := probe(c, 8);
+  if t < 0 { return why(r, "MOVE A TREE picked no tree"); }
+  x0 := probe(c, 20 + 2 * t); z0 := probe(c, 21 + 2 * t);
+  if !hold(c, "w", "KeyW", 87, 900) { return why(r, "W wasn't taken"); }
+  proc_sleep(300);
+  if !tap(r, c, R_MOVE) { return false; }
+  if probe(c, 8) != -1 { return why(r, "PUT IT HERE left the tree picked"); }
+  x1 := probe(c, 20 + 2 * t); z1 := probe(c, 21 + 2 * t);
+  if x1 == x0 && z1 == z0 { return why(r, "the tree didn't move"); }
+  if probe(c, 4) != 1 || probe(c, 5) != 1 { return why(r, "a move isn't unsaved and undoable"); }
+  r[0].tree = t; r[0].tx = x1; r[0].tz = z1;
+  return moves >= 0;
+}
+move_tree :: (r: [] Run, c: [] Cdp) -> bool {
+  if !move_once(r, c) { return false; }
+  t := r[0].tree; x := r[0].tx; z := r[0].tz;
+  if !move_once(r, c) { return false; }
+  // the second move: the first stays the one to keep
+  r[0].tree = t; r[0].tx = x; r[0].tz = z;
+  return true;
+}
+undo :: (r: [] Run, c: [] Cdp) -> bool {
+  if !tap(r, c, R_UNDO) { return false; }
+  t := r[0].tree;
+  // the tree the second move took is back where the first put it (or, another tree, where it was laid)
+  if probe(c, 20 + 2 * t) != r[0].tx || probe(c, 21 + 2 * t) != r[0].tz { return why(r, "UNDO didn't put the first move back"); }
+  if probe(c, 4) != 1 || probe(c, 5) != 1 { return why(r, "after one UNDO the first move should still be unsaved and undoable"); }
+  return true;
+}
+play :: (r: [] Run, c: [] Cdp) -> bool {
+  x0 := probe(c, 10); z0 := probe(c, 11);
+  if !hold(c, "w", "KeyW", 87, 1200) || !hold(c, "d", "KeyD", 68, 700) || !hold(c, "s", "KeyS", 83, 900) { return why(r, "the keys weren't taken"); }
+  proc_sleep(300);
+  if probe(c, 10) == x0 && probe(c, 11) == z0 { return why(r, "walking didn't move you"); }
+  if probe(c, 20 + 2 * r[0].tree) != r[0].tx || probe(c, 4) != 1 { return why(r, "walking lost the unsaved move"); }
+  return true;
+}
+save :: (r: [] Run, c: [] Cdp) -> bool {
+  before := probe(c, 3);
+  if !tap(r, c, R_SAVE) { return false; }
+  until := proc_now_ms() + 30000;
+  while proc_now_ms() < until && probe(c, 14) == 1 { proc_sleep(150); }
+  if probe(c, 15) != 200 || probe(c, 16) != 5 { return why_n(r, "SAVE wasn't kept", probe(c, 15)); }
+  r[0].rev = probe(c, 3);
+  if r[0].rev != before + 1 || probe(c, 4) != 0 || probe(c, 2) != r[0].rev { return why_n(r, "the save isn't the next revision", r[0].rev); }
+  // the server's document: that revision, with the move
+  o: [200] u8; k: [1] Buf;
+  bput(k[..], "j.doc.rev + ' ' + j.doc.moved.some(m => m.entity === 'trees:"); bint(k[..], r[0].tree);
+  bput(k[..], "' && Math.round(m.x * 100) === "); bint(k[..], r[0].tx); bput(k[..], " && Math.round(m.z * 100) === "); bint(k[..], r[0].tz); bput(k[..], ")");
+  want: [1] Buf; bint(want[..], r[0].rev); bput(want[..], " true");
+  if doc_field(r, c, slug_text(r), btext(k[..]), o[..]) != btext(want[..]) { return why(r, "the server's document isn't the saved revision with the move"); }
+  return true;
+}
+reload :: (r: [] Run, c: [] Cdp) -> bool {
+  if cdp_call(c, "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 { return why(r, "the page didn't reload"); }
+  proc_sleep(1500);
+  if !realm_ready(r, c) { return false; }
+  if probe(c, 3) != r[0].rev || probe(c, 4) != 0 || probe(c, 5) != 0 { return why_n(r, "the reloaded page isn't the saved revision", probe(c, 3)); }
+  if probe(c, 20 + 2 * r[0].tree) != r[0].tx || probe(c, 21 + 2 * r[0].tree) != r[0].tz { return why(r, "the moved tree isn't where it was saved"); }
+  return true;
+}
+publish :: (r: [] Run, c: [] Cdp) -> bool {
+  if !tap(r, c, R_PUBLISH) { return false; }
+  until := proc_now_ms() + 30000;
+  while proc_now_ms() < until && probe(c, 14) == 1 { proc_sleep(150); }
+  if probe(c, 15) != 200 || probe(c, 16) != 6 || probe(c, 6) != r[0].rev { return why_n(r, "PUBLISH wasn't kept", probe(c, 15)); }
+  o: [200] u8; want: [1] Buf; bput(want[..], "published "); bint(want[..], r[0].rev);
+  if spec_line(c, slug_text(r), "published", o[..]) != btext(want[..]) { return why(r, "the server doesn't have that revision published"); }
+  if spec_line(c, slug_text(r), "listed", o[..]) != "listed 0" { return why(r, "publishing listed a test realm"); }
+  sha := doc_field(r, c, slug_text(r), "j.sha256", o[..]);
+  if sha.count != 64 { return why(r, "no document hash"); }
+  r[0].sha_n = 0; for ch: sha { r[0].sha[r[0].sha_n] = ch; r[0].sha_n += 1; }
+  return true;
+}
+fork :: (r: [] Run, c: [] Cdp) -> bool {
+  from: [1] Buf; bput(from[..], "/realms/"); bput(from[..], slug_text(r));
+  if !tap(r, c, R_FORK) { return false; }
+  r[0].fork_n = went_to(r, c, btext(from[..]), r[0].fork[..], 60000);
+  if r[0].fork_n == 0 { return why_n(r, "FORK never opened the fork", probe(c, 15)); }
+  if !realm_ready(r, c) { return false; }
+  if probe(c, 13) != r[0].rev || probe(c, 3) != 1 { return why(r, "the fork's page doesn't name the revision it came from"); }
+  o: [200] u8; want: [1] Buf; bput(want[..], slug_text(r)); bput(want[..], " "); bint(want[..], r[0].rev);
+  if doc_field(r, c, fork_text(r), "j.doc.forked_from.slug + ' ' + j.doc.forked_from.rev", o[..]) != btext(want[..]) { return why(r, "the fork's document doesn't record its parent and revision"); }
+  if !ends(doc_field(r, c, fork_text(r), "j.doc.name", o[..]), " Fork") { return why(r, "the fork isn't named after the original"); }
+  if spec_line(c, fork_text(r), "listed", o[..]) != "listed 0" { return why(r, "a fork made by this tool isn't unlisted"); }
+  // its own moves came with it; then it is edited and saved as its own
+  if probe(c, 20 + 2 * r[0].tree) != r[0].tx { return why(r, "the fork lost the original's move"); }
+  keep := r[0].rev; ks := r[0].slug_n; kslug: [80] u8; for i: 0..<ks { kslug[i] = r[0].slug[i]; }
+  for i: 0..<r[0].fork_n { r[0].slug[i] = r[0].fork[i]; } r[0].slug_n = r[0].fork_n;
+  ok := move_once(r, c) && save(r, c);
+  for i: 0..<ks { r[0].slug[i] = kslug[i]; } r[0].slug_n = ks; r[0].rev = keep;
+  return ok;
+}
+original :: (r: [] Run, c: [] Cdp) -> bool {
+  o: [200] u8;
+  if doc_field(r, c, slug_text(r), "j.sha256", o[..]) != cast(string) r[0].sha[0..<r[0].sha_n] { return why(r, "the original's document changed"); }
+  want: [1] Buf; bint(want[..], r[0].rev);
+  if doc_field(r, c, slug_text(r), "j.doc.rev", o[..]) != btext(want[..]) { return why(r, "the original's revision changed"); }
+  return true;
+}
+
+run_step :: (r: [] Run, c: [] Cdp, s: Step, stamp: string) -> bool {
+  if s == Step.GENERATE { return generate(r, c, stamp); }
+  if s == Step.MOVE { return move_tree(r, c); }
+  if s == Step.UNDO { return undo(r, c); }
+  if s == Step.PLAY { return play(r, c); }
+  if s == Step.SAVE { return save(r, c); }
+  if s == Step.RELOAD { return reload(r, c); }
+  if s == Step.PUBLISH { return publish(r, c); }
+  if s == Step.FORK { return fork(r, c); }
+  return original(r, c);
+}
+
+open_page :: (r: [] Run, c: [] Cdp, url: string) -> bool {
+  params: [2048] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], r[0].w); jo_key(o[..], "height"); jo_int(o[..], r[0].h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], ifx r[0].phone then 2 else 1); jo_key(o[..], "mobile"); jo_bool(o[..], r[0].phone); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if r[0].phone && cdp_call(c, "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "aethyrforge-journey");
+  jo_key(o[..], "url"); jo_str(o[..], cast(string) r[0].origin[0..<r[0].origin_n]); jo_end(o[..]);
+  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  base := args_at(a[..], 0);
+  origin := origin_of(base);
+  if !ok || origin.count == 0 || origin.count > 255 {
+    tool_errln("usage: coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX]"); return 2;
+  }
+  r: [1] Run;
+  r[0].phone = args_has(a[..], "--phone");
+  r[0].w = ifx r[0].phone then 390 else 1440; r[0].h = ifx r[0].phone then 844 else 900;
+  for ch: origin { r[0].origin[r[0].origin_n] = ch; r[0].origin_n += 1; }
+  shots := args_value(a[..], "--shots", "");
+  rnd: [3] u8;
+  if !cdp_draw(3, rnd[..]) { tool_errln("forge-journey: no entropy"); return 1; }
+  hex := "0123456789abcdef"; st: [1] Buf;
+  for b: rnd { h: [2] u8; h[0] = hex[b / 16]; h[1] = hex[b % 16]; bput(st[..], cast(string) h[..]); }
+  if r[0].phone { bput(st[..], "p"); }
+  stamp := btext(st[..]);
+  c: [1] Cdp;
+  if !cdp_launch(c[..], r[0].w, r[0].h, "coax-forge-journey-") { tool_err("forge-journey: "); tool_errln(cdp_error(c[..])); return 1; }
+  u: [1] Buf; bput(u[..], origin); bput(u[..], "/realms/new");
+  print("forge-journey % at %x% (%), mark aethyrforge-journey\n", origin, r[0].w, r[0].h, ifx r[0].phone then "phone, touch" else "desktop");
+  status := 0;
+  if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /realms/new: "); tool_errln(cdp_error(c[..])); status = 1; }
+  png: [FJ_SHOT] u8;
+  i := 0;
+  while status == 0 && i < 9 {
+    s := cast(Step) cast(u8) i; t0 := proc_now_ms();
+    good := run_step(r[..], c[..], s, stamp);
+    print("% %: % (% ms)\n", ifx good then "ok  " else "FAIL", step_name(s), ifx good then "" else cast(string) r[0].fail[0..<r[0].fail_n], proc_now_ms() - t0);
+    if s == Step.GENERATE && good { print("     realm /realms/% (%)\n", slug_text(r[..]), cast(string) r[0].name[0..<r[0].name_n]); }
+    if s == Step.FORK && good { print("     fork /realms/%\n", fork_text(r[..])); }
+    if shots.count > 0 {
+      p: [1] Buf; bput(p[..], shots); bput(p[..], "-"); bint(p[..], i + 1); bput(p[..], ".png");
+      n := cdp_screenshot(c[..], png[..]);
+      if n > 0 { _ := fs_write(btext(p[..]), cast(string) png[0..<n]); }
+    }
+    if !good { status = 1; }
+    i += 1;
+  }
+  if status == 0 { print("journey: all 9 steps passed\n"); }
+  cdp_close(c[..]);
+  return status;
+}

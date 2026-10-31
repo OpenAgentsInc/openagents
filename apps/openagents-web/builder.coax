@@ -839,6 +839,30 @@ scroll_by :: (s: [] Builder, dy: f32) {
   s[0].scroll = clamp(s[0].scroll + dy, 0, hi(s[0].content - room, 0));
 }
 builder_wheel :: (s: [] Builder, dy: f32) #export_c { begin(s); scroll_by(s, dy * s[0].dpr); }
+// What a check reads of the page (coax/web/forge-journey.coax, through host.js's guardProbe):
+//   0 the phase (PH_*), 1 rows on the board, 2 the trees row (-1 none), 3 it is on, 4 a request
+//   in flight, 5 typing, 6 the plan, 7 MAKE IT is waiting on words; 100 + 4b..103 + 4b: button
+//   b's box in CSS pixels (-1 when it isn't shown).
+builder_probe :: (s: [] Builder, f: int) -> int #export_c {
+  if f == 0 { return s[0].phase; }
+  if f == 1 { return s[0].feat_n; }
+  if f == 2 || f == 3 {
+    for i: 0..<s[0].feat_n { if kind_of(s, i) == "trees" { return ifx f == 2 then i else (ifx s[0].on[i] then 1 else 0); } }
+    return -1;
+  }
+  if f == 4 { return ifx busy(s) then 1 else 0; }
+  if f == 5 { return ifx s[0].typing then 1 else 0; }
+  if f == 6 { return s[0].plan; }
+  if f == 7 { return ifx s[0].make_after then 1 else 0; }
+  if f >= 100 && f < 100 + 4 * BUTTONS {
+    b := (f - 100) / 4; e := (f - 100) % 4;
+    if !s[0].shown[b] { return -1; }
+    bx := s[0].boxes[b]; k := ifx s[0].dpr > 0.5 then s[0].dpr else 0.5f32;
+    v := ifx e == 0 then bx.x0 else ifx e == 1 then bx.y0 else ifx e == 2 then bx.x1 else bx.y1;
+    return cast(int) (v / k + 0.5);
+  }
+  return -99999;
+}
 builder_cursor :: (s: [] Builder) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
 builder_wants_text :: (s: [] Builder) -> bool #export_c { return s[0].typing; }
 builder_action :: (s: [] Builder) -> int #export_c {

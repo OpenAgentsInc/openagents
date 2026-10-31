@@ -150,6 +150,26 @@ phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `verse/style.coax`'
   character, so the host leaves the turn to the page, which asks the character and hands the answer
   back to be spoken (`coax/web/voice.js` actions 7, 8 and 9).
 
+## The document: revisions, moves, save, publish, fork
+
+A made realm is a versioned document (`aethyr.realm`, version 1; `migrations/0093_realm_documents.sql`).
+`GET .../<slug>/doc` answers `{doc, sha256}`; the spec carries `rev N`, `published N`, `listed 0|1`,
+`from SLUG REV|NAME` for a fork, and `moved ENTITY X Z` per moved entity. In the realm, the owner
+gets a row over the tools, each control shown only when it applies: MOVE A TREE (the nearest; a tap
+picks another), PUT IT HERE (2.5 m in front of you), UNDO, SAVE and PUBLISH; anyone who may make
+realms gets FORK. Edits are `aethyr/forge/edit.coax`'s typed operations with undo in the page.
+
+| | |
+| --- | --- |
+| `POST .../<slug>/save {rev, moved}` | the owner; 200 `{rev, sha256}` the next revision; 409 `{error: "changed since", rev}` when the realm changed since `rev`; 400 a bad move (at most 64, `feature:index`, within 40 m) |
+| `POST .../<slug>/publish {rev, listed?}` | the owner; 200 `{published, rev, sha256, listed}`; 409 a stale `rev` |
+| `POST .../<slug>/fork {name?}` | a copy at this revision, owned by you, `forked_from {slug, rev}`, named "NAME Fork"; `?as=lines` answers `slug`, `path`, `page` |
+
+Each saved, published, forked or made revision is kept in `verse.realm_revisions` with its hash.
+A realm made or forked by a tool (the `verse-automation` cookie or `X-Verse-Automation`) is
+unlisted: `noindex` and off `/og`'s rows. `coax/web/tool.sh forge-journey URL [--phone]` walks
+the whole maker journey (make, move, undo, play, save, reload, publish, fork, the original unchanged).
+
 ## Limits
 
 `OA_BUILDER_DAILY_CAP` model calls a day site-wide (3000), one plan per player every 2 s,

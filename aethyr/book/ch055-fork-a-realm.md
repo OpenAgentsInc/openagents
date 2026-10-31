@@ -1,10 +1,11 @@
 # 55. Fork a realm
 
-> **Status: unimplemented — design draft.** Everglade can be forked today
-> (FORK in the realm, `verse.fork_bases`, migration `0075_realm_forks.sql`):
-> a fork is a made realm played by Everglade's module with its own rules and
-> its own city. This chapter plans forks of any realm as a base version plus
-> declared rule switches plus an edit log. Nothing here runs yet.
+> **Status: unimplemented — design draft.** Rules declared by any base and a
+> fork as base version, rule switches and edit log are not built. What runs
+> today: Everglade forks with its own rules
+> (`0075_realm_forks.sql`), and any made realm forks as a copy of its
+> document that records its parent and the revision it came from
+> (`0093_realm_documents.sql`).
 
 A fork is your own copy of someone's realm with your own rules: always
 night, the watch in waves, nothing breakable, a third of the gravity. The
@@ -54,7 +55,18 @@ refused when the fork is made, not ignored when it plays.
 - `waves` reuses the watch's own escalation
   ([verse/everglade/watch.coax](../../verse/everglade/watch.coax)).
 
-Only Everglade is a fork base, its rules are honoured by checks scattered
+- Any made realm forks: FORK in the realm, for anyone who may make realms,
+  calls `POST /api/playtest/realms/<slug>/fork` and opens the fork. The fork
+  is a new made realm owned by whoever forked it, named "NAME Fork" unless a
+  name is given. Its document is a copy of the original's at that revision,
+  with `"forked_from": {"slug": ..., "rev": N}`; it starts at its own
+  revision 1. Its page says "Forked from NAME at revision N." and its spec
+  carries `from SLUG REV|NAME`.
+- Saving the fork never touches the original: the API test and the journey
+  check that the original's document hash and revision are the same after
+  the fork is edited and saved.
+
+Only Everglade has rules a fork switches, its rules are honoured by checks scattered
 through its module, and nothing checks that a rule touches only what it says.
 
 ## What it builds

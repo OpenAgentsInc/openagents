@@ -137,7 +137,7 @@ def realm_fork_checks():
 
     # publishing: its owner lists it, with its own line
     check("a visitor can't publish it", b_call("POST", R + "doomglade/publish", {}, other)[0] == 403)
-    check("a realm that isn't a fork has nothing to publish", b_call("POST", R + "moonlit-marsh/publish", {}, owner)[0] == 404)
+    check("only a made realm's owner publishes it (0093)", b_call("POST", R + "moonlit-marsh/publish", {"rev": 1}, owner)[0] == 403)
     st, pub = b_call("POST", R + "doomglade/publish", {"description": "Always night in Everglade, and the watch comes in waves. <b>Run.</b>"}, owner)
     check("its owner publishes it with its own line, markup taken out", st == 200 and pub == {"published": True, "description": "Always night in Everglade, and the watch comes in waves. bRun./b"}, (st, pub))
     page = ""
@@ -166,6 +166,75 @@ def realm_fork_checks():
           and 'data-base="everglade"' in page2 and "row flock 0 " in b_call("GET", R + ff.get("slug", "x"), key=other)[1], page2[2000:2600])
     check("the fork it came from is unchanged", "waves 1 Hostile waves" in line_map(b_call("GET", R + "doomglade/fork")[1])["rule"]
           and "lowgrav 1 Low gravity" in line_map(b_call("GET", R + "doomglade/fork")[1])["rule"])
+
+    # a made realm is a document with revisions (0093): save from the revision you read, publish one, fork it
+    maker, rival = b_player(), b_player()
+    pid = sql("select id from verse.players where key_sha256 = encode(sha256(convert_to('" + maker + "', 'UTF8')), 'hex')")
+    sql("insert into verse.worlds (id, owner_player, created_ms) values ('made-forge-court', '" + pid + "', 1)")
+    sql("""insert into verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms)
+           values ('forge-court', 'made-forge-court', 'Forge Court', 'lowpoly', 'stone', 'day',
+                   '[{"feature": "trees", "variant": "round", "count": 6, "label": "Six round trees"}]', '{"build": false}', 1)""")
+    st, d0 = b_call("GET", R + "forge-court/doc")
+    check("a made realm's document: revision 1, its setup and features, and a hash", st == 200 and d0["doc"]["rev"] == 1 and d0["doc"]["doc"] == "aethyr.realm"
+          and d0["doc"]["setup"]["ground"] == "stone" and d0["doc"]["moved"] == [] and len(d0["sha256"]) == 64, (st, d0))
+    spec = line_map(b_call("GET", R + "forge-court", key=maker)[1])
+    check("its spec says its revision, never published, listed, and nothing moved", spec.get("rev") == ["1"] and spec.get("published") == ["0"]
+          and spec.get("listed") == ["1"] and "moved" not in spec, spec)
+    mv = [{"entity": "trees:2", "x": 3.256, "z": -4.5}]
+    check("only its owner saves", b_call("POST", R + "forge-court/save", {"rev": 1, "moved": mv}, rival)[0] == 403)
+    check("a save names a revision and holds its moves", b_call("POST", R + "forge-court/save", {"moved": mv}, maker)[0] == 400
+          and b_call("POST", R + "forge-court/save", {"rev": 1, "moved": [{"entity": "Trees 2", "x": 0, "z": 0}]}, maker)[0] == 400
+          and b_call("POST", R + "forge-court/save", {"rev": 1, "moved": [{"entity": "trees:2", "x": 41, "z": 0}]}, maker)[0] == 400
+          and b_call("POST", R + "forge-court/save", {"rev": 1, "moved": [{"entity": "trees:2", "x": 0, "z": 0}] * 65}, maker)[0] == 400)
+    st, sv = b_call("POST", R + "forge-court/save", {"rev": 1, "moved": mv}, maker)
+    check("a save from the revision there now is kept as the next revision, rounded to the centimetre", st == 200 and sv["rev"] == 2 and len(sv["sha256"]) == 64
+          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court", key=rival)[1], (st, sv))
+    st, stale = b_call("POST", R + "forge-court/save", {"rev": 1, "moved": []}, maker)
+    check("a save from an older revision is refused with the revision there now: newer never just wins", st == 409 and stale == {"error": "changed since", "rev": 2}
+          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court")[1], (st, stale))
+    check("any change to what it is makes a new revision (a row switched off)", b_call("POST", R + "forge-court/switch", {"row": "trees", "on": False}, maker)[0] == 200
+          and line_map(b_call("GET", R + "forge-court")[1]).get("rev") == ["3"])
+    b_call("POST", R + "forge-court/switch", {"row": "trees", "on": True}, maker)
+    check("so a save read before it is refused too", b_call("POST", R + "forge-court/save", {"rev": 2, "moved": []}, maker) == (409, {"error": "changed since", "rev": 4}))
+    check("a publish names its revision", b_call("POST", R + "forge-court/publish", {"rev": 3}, maker) == (409, {"error": "changed since", "rev": 4})
+          and b_call("POST", R + "forge-court/publish", {}, maker)[0] == 400 and b_call("POST", R + "forge-court/publish", {"rev": 4}, rival)[0] == 403)
+    st, pb = b_call("POST", R + "forge-court/publish", {"rev": 4, "listed": False}, maker)
+    d4 = b_call("GET", R + "forge-court/doc")[1]
+    check("publishing keeps the revision and its document's hash; unlisted, it is off /og's rows", st == 200 and pb["rev"] == 4 and pb["listed"] is False
+          and pb["sha256"] == d4["sha256"] and line_map(b_call("GET", R + "forge-court")[1]).get("published") == ["4"]
+          and "/realms/forge-court|" not in b_call("GET", R + "made")[1]
+          and sql("select doc->>'rev' from verse.realm_revisions where slug = 'forge-court' and why = 'publish'") == "4", (st, pb))
+    st, fk = b_call("POST", R + "forge-court/fork", {"name": "Forge Court Copy"}, rival)
+    check("anyone forks a made realm: a realm of its own that records its parent and the revision it came from", st == 200 and fk["from"] == "forge-court" and fk["rev"] == 4
+          and fk["slug"] == "forge-court-copy", (st, fk))
+    fs = line_map(b_call("GET", R + "forge-court-copy", key=rival)[1])
+    check("the fork's spec names its parent and revision, starts at revision 1 and keeps the moves", fs.get("from") == ["forge-court 4|Forge Court"]
+          and fs.get("rev") == ["1"] and fs.get("moved") == ["trees:2 3.26 -4.50"] and fs.get("owner") == ["1"], fs)
+    fd = b_call("GET", R + "forge-court-copy/doc")[1]["doc"]
+    check("and its document says so", fd["forked_from"] == {"slug": "forge-court", "rev": 4} and fd["features"] == d4["doc"]["features"], fd)
+    check("its owner saves the fork", b_call("POST", R + "forge-court-copy/save", {"rev": 1, "moved": [{"entity": "trees:2", "x": -9, "z": 9}]}, rival)[0] == 200)
+    check("the original is unchanged: the same revision and the same bytes", b_call("GET", R + "forge-court/doc")[1] == d4)
+    check("the fork's owner can't save the original", b_call("POST", R + "forge-court/save", {"rev": 4, "moved": []}, rival)[0] == 403)
+    page3 = ""
+    for _ in range(50):
+        page3 = site.get("realms/forge-court-copy", {}).get("data", b"").decode()
+        if page3:
+            break
+        time.sleep(0.1)
+    check("the fork's page names its parent and plays the made-realm template", 'Forked from <a href="/realms/forge-court">Forge Court</a> at revision 4.' in page3
+          and 'data-made="forge-court-copy"' in page3, page3[:1600])
+    st, auto, _ = call("POST", R + "forge-court/fork", json.dumps({"name": "Forge Court Probe"}).encode(),
+                    {"Content-Type": "application/json", "X-Verse-Player": rival, "X-Verse-Automation": "forge-journey"})
+    check("a realm a tool makes is unlisted: noindex, off /og's rows", st == 200
+          and sql("select unlisted from verse.made_realms where slug = 'forge-court-probe'") == "t"
+          and "/realms/forge-court-probe|" not in b_call("GET", R + "made")[1], (st, auto))
+    page4 = ""
+    for _ in range(50):
+        page4 = site.get("realms/forge-court-probe", {}).get("data", b"").decode()
+        if page4:
+            break
+        time.sleep(0.1)
+    check("and its page says noindex", '<meta name="robots" content="noindex">' in page4, page4[:400])
 
     sql("delete from verse.published where world = 'everglade' and published_by = 'test'")
     model.shutdown()

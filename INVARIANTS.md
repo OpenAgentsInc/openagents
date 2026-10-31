@@ -14,6 +14,24 @@ same statement that checks it. Checks: `coax/web/api/test_access.py` (each
 gated route refused on, admitted off and for creators and admins; codes
 hashed, spent once, revoked and expired refused).
 
+## A made realm's document changes only from the revision it was read at
+
+A made realm is a versioned document (`verse.realm_doc`,
+`coax/web/api/migrations/0093_realm_documents.sql`) with a revision number
+and a SHA-256 hash. Any change to what it is makes the next revision.
+`POST .../<slug>/save` and `.../<slug>/publish` name the revision they were
+made from, and the server refuses a stale one with 409 and the revision there
+now: the newer write never simply wins, and the page keeps its changes
+unsaved. Only the owner saves or publishes. A fork of a made realm copies the
+document at one revision and records `forked_from {slug, rev}`; nothing done
+to the fork changes the original's document or hash. A realm made or forked
+by a tool (`verse-automation` cookie, `X-Verse-Automation` header) is
+unlisted. Checks: `coax/web/api/test_realm_fork.py` (stale save and publish
+refused, the original byte-identical after the fork is saved, tool-made realms
+unlisted); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
+since; apply then inverse is the identity); `apps/openagents-web/myrealm.coax`
+(a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

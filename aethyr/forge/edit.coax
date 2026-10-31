@@ -1,0 +1,279 @@
+// Aethyrforge's edits to a realm document (book chapters 51, 52 and 82): a move is a typed
+// operation with its inverse, undo and redo walk a log of them, and a save names the revision
+// it was made from, so the server refuses it when the document changed since (409) instead of
+// letting the newer write win.
+//
+// What a made realm's page edits today is where its laid-out entities stand. An entity is named
+// by its feature and its index in that feature's layout ("trees:3"), which the seeded layout keeps
+// stable; the document keeps an override for each moved one (ForgeMove), in whole centimetres so
+// the same document is the same bytes everywhere. Nothing here reads words.
+//   coax/bin/coax test aethyr/forge/edit.coax --library
+
+#module "aethyr.forge.edit";
+
+// book:begin doc
+FORGE_KEY :: 24;       // an entity's name: "trees:3"
+FORGE_MOVES :: 64;     // moved entities one document keeps (the server's limit too)
+FORGE_OPS :: 64;       // undo steps kept; the oldest goes first
+FORGE_REACH :: 4000;   // centimetres from the middle an entity may stand (the server's limit too)
+
+ForgeMove :: struct { key: [FORGE_KEY] u8; key_n: int; x: int; z: int; }   // where it stands instead, in cm
+// One edit: the entity, where it stood before (or `had` false: at its laid-out place) and after.
+ForgeOp :: struct {
+  key: [FORGE_KEY] u8; key_n: int;
+  had: bool; bx: int; bz: int;     // before
+  has: bool; ax: int; az: int;     // after
+}
+ForgeDoc :: struct {
+  rev: int;                        // the revision this document was read at, or last saved as
+  moves: [FORGE_MOVES] ForgeMove; move_n: int;
+  ops: [FORGE_OPS] ForgeOp; op_n: int; done: int;   // the log, and how many of it are applied
+  saved: int;                      // `done` when it was last read or saved; -1 when that state is gone
+}
+// book:end doc
+
+ForgeSpot :: struct { found: bool; x: int; z: int; }
+
+forge_move_key :: (d: [] ForgeDoc, i: int) -> string { return cast(string) d[0].moves[i].key[0..<d[0].moves[i].key_n]; }
+
+// A name the document keeps: a feature's lowercase letters, a colon, an index of one to three digits.
+forge_key_ok :: (key: string) -> bool {
+  if key.count < 3 || key.count > FORGE_KEY { return false; }
+  colon := -1;
+  for i: 0..<key.count { if key[i] == ':' { if colon >= 0 { return false; } colon = i; } }
+  if colon < 1 || key.count - colon - 1 < 1 || key.count - colon - 1 > 3 { return false; }
+  for i: 0..<colon { if key[i] < 'a' || key[i] > 'z' { return false; } }
+  for i: colon + 1..<key.count { if key[i] < '0' || key[i] > '9' { return false; } }
+  return true;
+}
+forge_in_reach :: (x: int, z: int) -> bool { return x >= -FORGE_REACH && x <= FORGE_REACH && z >= -FORGE_REACH && z <= FORGE_REACH; }
+
+// A document read at revision rev with no moves and no history.
+forge_reset :: (d: [] ForgeDoc, rev: int) {
+  d[0].rev = rev; d[0].move_n = 0; d[0].op_n = 0; d[0].done = 0; d[0].saved = 0;
+}
+
+forge_find :: (d: [] ForgeDoc, key: string) -> int {
+  for i: 0..<d[0].move_n { if forge_move_key(d, i) == key { return i; } }
+  return -1;
+}
+forge_where :: (d: [] ForgeDoc, key: string) -> ForgeSpot {
+  i := forge_find(d, key);
+  if i < 0 { return ForgeSpot.{found = false}; }
+  return ForgeSpot.{found = true, x = d[0].moves[i].x, z = d[0].moves[i].z};
+}
+
+// Put key at (x, z), or back at its laid-out place when `at` is false. False when it can't be kept.
+forge_set :: (d: [] ForgeDoc, key: string, at: bool, x: int, z: int) -> bool {
+  i := forge_find(d, key);
+  if !at {
+    if i < 0 { return true; }
+    for j: i..<d[0].move_n - 1 { d[0].moves[j] = d[0].moves[j + 1]; }
+    d[0].move_n -= 1;
+    return true;
+  }
+  if !forge_key_ok(key) || !forge_in_reach(x, z) { return false; }
+  if i < 0 {
+    if d[0].move_n >= FORGE_MOVES { return false; }
+    i = d[0].move_n; d[0].move_n += 1;
+    for k: 0..<key.count { d[0].moves[i].key[k] = key[k]; }
+    d[0].moves[i].key_n = key.count;
+  }
+  d[0].moves[i].x = x; d[0].moves[i].z = z;
+  return true;
+}
+
+// A move read from the server's document (its "moved" lines): no history.
+forge_read_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool { return forge_set(d, key, true, x, z); }
+
+// book:begin ops
+// Apply an edit: refused unless the entity still stands where the edit says it stood.
+forge_apply :: (d: [] ForgeDoc, o: [] ForgeOp) -> bool {
+  key := cast(string) o[0].key[0..<o[0].key_n];
+  now := forge_where(d, key);
+  if now.found != o[0].had || (o[0].had && (now.x != o[0].bx || now.z != o[0].bz)) { return false; }
+  return forge_set(d, key, o[0].has, o[0].ax, o[0].az);
+}
+// The edit that takes it back: before and after swapped.
+forge_inverse :: (o: ForgeOp) -> ForgeOp {
+  r := o;
+  r.had = o.has; r.bx = o.ax; r.bz = o.az;
+  r.has = o.had; r.ax = o.bx; r.az = o.bz;
+  return r;
+}
+// book:end ops
+
+// Move key to (x, z) as one undo step. Redo past here is gone.
+forge_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool {
+  if !forge_key_ok(key) || !forge_in_reach(x, z) { return false; }
+  was := forge_where(d, key);
+  if was.found && was.x == x && was.z == z { return false; }   // nothing changes
+  o: [1] ForgeOp;
+  for k: 0..<key.count { o[0].key[k] = key[k]; }
+  o[0].key_n = key.count;
+  o[0].had = was.found; o[0].bx = was.x; o[0].bz = was.z; o[0].has = true; o[0].ax = x; o[0].az = z;
+  if !forge_apply(d, o[..]) { return false; }
+  if d[0].saved > d[0].done { d[0].saved = -1; }   // the saved state was undone past and is now unreachable
+  d[0].op_n = d[0].done;
+  if d[0].op_n >= FORGE_OPS {   // the oldest step goes
+    for j: 0..<FORGE_OPS - 1 { d[0].ops[j] = d[0].ops[j + 1]; }
+    d[0].op_n = FORGE_OPS - 1;
+    d[0].saved = ifx d[0].saved > 0 then d[0].saved - 1 else -1;
+  }
+  d[0].ops[d[0].op_n] = o[0]; d[0].op_n += 1; d[0].done = d[0].op_n;
+  return true;
+}
+forge_can_undo :: (d: [] ForgeDoc) -> bool { return d[0].done > 0; }
+forge_can_redo :: (d: [] ForgeDoc) -> bool { return d[0].done < d[0].op_n; }
+forge_undo :: (d: [] ForgeDoc) -> bool {
+  if !forge_can_undo(d) { return false; }
+  back: [1] ForgeOp; back[0] = forge_inverse(d[0].ops[d[0].done - 1]);
+  if !forge_apply(d, back[..]) { return false; }
+  d[0].done -= 1;
+  return true;
+}
+forge_redo :: (d: [] ForgeDoc) -> bool {
+  if !forge_can_redo(d) { return false; }
+  again: [1] ForgeOp; again[0] = d[0].ops[d[0].done];
+  if !forge_apply(d, again[..]) { return false; }
+  d[0].done += 1;
+  return true;
+}
+// Changes not yet saved.
+forge_dirty :: (d: [] ForgeDoc) -> bool { return d[0].done != d[0].saved; }
+// The server kept it as revision rev.
+forge_saved :: (d: [] ForgeDoc, rev: int) { d[0].rev = rev; d[0].saved = d[0].done; }
+
+// ---- the save's body: {"rev":N,"moved":[{"entity":"trees:3","x":1.25,"z":-2.5}]}, positions in metres
+forge_put :: (buf: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > buf.count { return -1; }
+  for i: 0..<text.count { buf[at + i] = text[i]; }
+  return at + text.count;
+}
+forge_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return forge_put_int(buf, forge_put(buf, at, "-"), -v); }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  o := at;
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; o = forge_put(buf, o, cast(string) e[..]); }
+  return o;
+}
+// Centimetres as metres with two decimals: -250 is "-2.50".
+forge_put_cm :: (buf: [] u8, at: int, cm: int) -> int {
+  a := ifx cm < 0 then -cm else cm;
+  o := ifx cm < 0 then forge_put(buf, at, "-") else at;
+  o = forge_put_int(buf, o, a / 100);
+  o = forge_put(buf, o, ".");
+  if a % 100 < 10 { o = forge_put(buf, o, "0"); }
+  return forge_put_int(buf, o, a % 100);
+}
+// book:begin save
+// The body of POST /api/playtest/realms/<slug>/save: the revision read, and every move in metres.
+forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
+  n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, ",\"moved\":[");
+  for i: 0..<d[0].move_n {
+    m := d[0].moves[i];
+    if i > 0 { n = forge_put(buf, n, ","); }
+    n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
+    n = forge_put(buf, n, "\",\"x\":"); n = forge_put_cm(buf, n, m.x);
+    n = forge_put(buf, n, ",\"z\":"); n = forge_put_cm(buf, n, m.z); n = forge_put(buf, n, "}");
+  }
+  return forge_put(buf, n, "]}");
+}
+// book:end save
+
+#test "a name is a feature, a colon and an index" {
+  #assert forge_key_ok("trees:3") && forge_key_ok("rocks:120") && forge_key_ok("a:0");
+  #assert !forge_key_ok("trees") && !forge_key_ok(":3") && !forge_key_ok("trees:") && !forge_key_ok("Trees:3");
+  #assert !forge_key_ok("trees:1234") && !forge_key_ok("trees:3:4") && !forge_key_ok("tr ees:3") && !forge_key_ok("trees:x");
+  #assert forge_in_reach(4000, -4000) && !forge_in_reach(4001, 0) && !forge_in_reach(0, -4001);
+}
+
+#test "a move, its undo and its redo" {
+  d: [1] ForgeDoc; forge_reset(d[..], 7);
+  #assert !forge_dirty(d[..]) && !forge_can_undo(d[..]) && !forge_can_redo(d[..]);
+  #assert forge_move(d[..], "trees:3", 125, -250);
+  w := forge_where(d[..], "trees:3");
+  #assert w.found && w.x == 125 && w.z == -250 && forge_dirty(d[..]) && forge_can_undo(d[..]);
+  #assert !forge_move(d[..], "trees:3", 125, -250);   // no change, no step
+  #assert forge_undo(d[..]) && !forge_where(d[..], "trees:3").found && d[0].move_n == 0 && !forge_dirty(d[..]);
+  #assert !forge_undo(d[..]) && forge_can_redo(d[..]);
+  #assert forge_redo(d[..]) && forge_where(d[..], "trees:3").x == 125 && forge_dirty(d[..]) && !forge_redo(d[..]);
+}
+
+#test "an undo of a second move puts back the first, not the laid-out place" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_move(d[..], "trees:0", 100, 100) && forge_move(d[..], "trees:0", 300, -300) && forge_move(d[..], "trees:1", 5, 5);
+  #assert forge_undo(d[..]) && !forge_where(d[..], "trees:1").found;
+  #assert forge_undo(d[..]);
+  w := forge_where(d[..], "trees:0");
+  #assert w.found && w.x == 100 && w.z == 100;
+  #assert forge_move(d[..], "trees:2", 0, 0) && !forge_can_redo(d[..]) && d[0].op_n == 2;   // a new move drops what was undone
+}
+
+#test "an edit is refused when its entity no longer stands where it says" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_move(d[..], "trees:4", 10, 20);
+  o: [1] ForgeOp; k := "trees:4"; for i: 0..<k.count { o[0].key[i] = k[i]; } o[0].key_n = k.count;
+  o[0].had = true; o[0].bx = 11; o[0].bz = 20; o[0].has = true; o[0].ax = 0; o[0].az = 0;
+  #assert !forge_apply(d[..], o[..]) && forge_where(d[..], "trees:4").x == 10;
+  o[0].bx = 10;
+  inv: [1] ForgeOp; inv[0] = forge_inverse(o[0]);
+  #assert forge_apply(d[..], o[..]) && forge_apply(d[..], inv[..]) && forge_where(d[..], "trees:4").x == 10;
+  o[0].had = false;
+  #assert !forge_apply(d[..], o[..]);
+  #assert !forge_move(d[..], "trees:4", 4001, 0) && !forge_move(d[..], "nope", 0, 0);
+}
+
+#test "apply then its inverse leaves the document as it was" {
+  d: [1] ForgeDoc; forge_reset(d[..], 3);
+  #assert forge_read_move(d[..], "rocks:1", -40, 70) && forge_read_move(d[..], "trees:2", 900, -900);
+  before: [512] u8; bn := forge_save_body(d[..], before[..]);
+  for step: 0..<6 {
+    x := step * 37 - 100; z := 250 - step * 91;
+    #assert forge_move(d[..], ifx step % 2 == 0 then "trees:2" else "trees:9", x, z);
+  }
+  for step: 0..<6 { #assert forge_undo(d[..]); }
+  after: [512] u8; an := forge_save_body(d[..], after[..]);
+  #assert bn > 0 && cast(string) before[0..<bn] == cast(string) after[0..<an] && !forge_dirty(d[..]);
+}
+
+#test "saved is a state of the log: undo past it and it is dirty, a new branch loses it" {
+  d: [1] ForgeDoc; forge_reset(d[..], 4);
+  #assert forge_move(d[..], "trees:0", 1, 1);
+  forge_saved(d[..], 5);
+  #assert !forge_dirty(d[..]) && d[0].rev == 5;
+  #assert forge_undo(d[..]) && forge_dirty(d[..]) && forge_redo(d[..]) && !forge_dirty(d[..]);
+  #assert forge_undo(d[..]) && forge_move(d[..], "trees:0", 2, 2) && forge_dirty(d[..]) && d[0].saved == -1;
+  #assert forge_undo(d[..]) && forge_dirty(d[..]);   // the saved state is gone for good
+}
+
+#test "the log keeps its last FORGE_OPS steps" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  for i: 0..<FORGE_OPS + 5 { #assert forge_move(d[..], "trees:0", i + 1, 0); }
+  #assert d[0].op_n == FORGE_OPS && d[0].done == FORGE_OPS && d[0].saved == -1;
+  for i: 0..<FORGE_OPS { #assert forge_undo(d[..]); }
+  #assert !forge_undo(d[..]) && forge_where(d[..], "trees:0").x == 5;   // the five oldest steps are gone
+}
+
+#test "a document keeps at most FORGE_MOVES moved entities" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  for i: 0..<FORGE_MOVES {
+    b: [8] u8; n := forge_put(b[..], 0, "t:"); n = forge_put_int(b[..], n, i);
+    #assert forge_read_move(d[..], cast(string) b[0..<n], i, i);
+  }
+  #assert !forge_read_move(d[..], "t:999", 0, 0) && !forge_move(d[..], "t:998", 0, 0) && forge_move(d[..], "t:5", 0, 0);
+}
+
+#test "the save names its revision and every move, in metres" {
+  d: [1] ForgeDoc; forge_reset(d[..], 12);
+  b: [256] u8;
+  n := forge_save_body(d[..], b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[]}";
+  #assert forge_move(d[..], "trees:3", 125, -250) && forge_move(d[..], "rocks:0", -5, 7);
+  n = forge_save_body(d[..], b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[{\"entity\":\"trees:3\",\"x\":1.25,\"z\":-2.50},{\"entity\":\"rocks:0\",\"x\":-0.05,\"z\":0.07}]}";
+  small: [10] u8;
+  #assert forge_save_body(d[..], small[..]) < 0;
+}

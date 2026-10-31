@@ -1,11 +1,11 @@
 # 54. Publish a realm
 
-> **Status: unimplemented — design draft.** Realms are published today from
-> one table (`apps/openagents-web/realms.json`, written out by
-> `coax/web/realms.ts`), made realms are written straight into the site's
-> bucket, and every release walks every realm against its golden. This
-> chapter plans a published realm as a frozen, checkable version. Nothing
-> here runs yet.
+> **Status: unimplemented — design draft.** The frozen publish record below
+> (document, module build and assets by hash, gated by checks) is not built.
+> What runs today: hand-built realms are published from one table
+> (`apps/openagents-web/realms.json`), and the owner of a made realm
+> publishes a named revision, which records that revision and its document's
+> hash. Visitors still see the latest saved revision, not a frozen one.
 
 Publishing turns a realm someone is working on into one other people visit.
 That needs three promises: what visitors get is a fixed version (a document,
@@ -59,6 +59,17 @@ another environment's realms.
   `index.html`, `index.md` and `realms/made-slugs.txt` into the bucket
   (`drops_site_write`); `upload.py` never removes a listed one
   ([realm-builder.md](../../docs/verse/realm-builder.md), "Releases").
+- A made realm's owner publishes a revision:
+  `POST /api/playtest/realms/<slug>/publish {"rev": N, "listed": true|false}`.
+  The server refuses a revision that is not the current one with `409` and
+  the current revision, records `published_rev`, `published_sha256` and the
+  time, and keeps the revision in `verse.realm_revisions`
+  ([0093_realm_documents.sql](../../coax/web/api/migrations/0093_realm_documents.sql)).
+  `listed: false` keeps the page `noindex` and off `/og`'s rows. In the
+  realm, PUBLISH is shown to the owner only when the saved revision is not
+  yet the published one.
+- Realms made or forked by a tool (the `verse-automation` cookie or the
+  `X-Verse-Automation` header) are unlisted from the start.
 - Forks stay `noindex` until their owner publishes
   ([realm-fork.md](../../docs/verse/realm-fork.md)).
 - Goldens in [coax/web/goldens/](../../coax/web/goldens/everglade.png),
@@ -71,7 +82,8 @@ another environment's realms.
   [verse/realm-template/](../../verse/realm-template/index.md).
 
 The made-realm write and the hand-built table are separate code paths with
-separate checks.
+separate checks. A published made realm's page still plays the latest saved
+revision; serving the published revision, by hash, is still to do.
 
 ## What it builds
 

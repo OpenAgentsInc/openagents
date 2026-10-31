@@ -92,6 +92,8 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return builder_wants_text(at(state)) ? 1u : 0u; }
 // The typed line, in device pixels: x0, y0, x1, y1 (all zero: none).
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->field.e; }
+// What a check reads (builder_probe): host.js's coaxial.guardProbe(field).
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { return (int32_t)builder_probe(at(state), field); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)builder_cursor(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)builder_action(at(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->outbox.e; }

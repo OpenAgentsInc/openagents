@@ -59,6 +59,10 @@ Names are one line of at most 40 characters with markup characters taken out; pa
 them again and realms draw them as Coax glyphs. A new base takes a row in `verse.fork_bases`
 (and its rules in its code) in a migration.
 
+A made realm forks too, without rules: a copy of its document at the revision you forked, which
+records `forked_from {slug, rev}` (`migrations/0093_realm_documents.sql`; see realm-builder.md,
+"The document").
+
 ## Files
 
 `coax/web/api/migrations/0075_realm_forks.sql`, `realms.c` (fork, publish), `npc.c` (a fork's
