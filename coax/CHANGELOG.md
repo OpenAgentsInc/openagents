@@ -1,13 +1,13 @@
 # Coax changelog
 
-The compiler's recorded releases, newest first, from **0.37.0 to 0.1.0**,
-including patch releases. Each commit identifies the version's introduction
-on `main`; explicitly labelled follow-ups landed while that version was still
-current. Dates use the repository's America/Chicago calendar.
+The compiler's recorded releases, newest first, including patch releases.
+Each commit identifies the version's introduction on `main`; explicitly labelled
+follow-ups landed while that version was still current. Dates use the repository's
+America/Chicago calendar.
 
 Reconstructed from the version transitions in `src/main.cpp` (through 0.13.0)
 and [`release.coax`](release.coax) (from 0.14.0), reviewed against their changes
-and retained evidence. Coverage ends at
+and retained evidence. The initial reconstruction covers **0.37.0 to 0.1.0** through
 [`99f0d403f2b335654a54e1a60611f8c8251b3776`](https://github.com/OpenAgentsInc/openagents/commit/99f0d403f2b335654a54e1a60611f8c8251b3776).
 These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;

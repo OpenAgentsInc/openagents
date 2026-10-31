@@ -48,6 +48,8 @@ gate() {
 # checked-in header seed; final publication must match the canonical Coax data.
 gate "$work/stage0" test release-model.coax
 gate "$work/stage0" mutate release-model.coax
+gate "$work/stage0" test changelog-model.coax
+gate "$work/stage0" mutate changelog-model.coax --root-only
 COAX_RELEASE_COMPILER="$PWD/$work/stage0" ../scripts/coax-release.sh --check
 gate "$work/stage0" test lib/compiler/budget.coax
 gate "$work/stage0" mutate lib/compiler/budget.coax

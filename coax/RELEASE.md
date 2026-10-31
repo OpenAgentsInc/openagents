@@ -28,17 +28,37 @@ correctness or authority to execute a decoded request.
 
 ## Updating a release
 
+Every version bump, including a patch bump, requires a new first release entry
+in [`CHANGELOG.md`](CHANGELOG.md). Record the version, an America/Chicago date
+(`YYYY-MM-DD`), and substantive bullets describing the delivered changes and
+their scope. Follow the existing headings and use `Commit: pending` while
+preparing the bump. Missing, stale, duplicate, out-of-order, malformed or
+placeholder-only entries fail release generation before any snapshots change.
+The tool preserves authored notes and historical entries; it does not invent
+release summaries.
+
 From the repository root:
 
 ```sh
-# Edit the version or feature records in coax/release.coax first.
+# Edit coax/release.coax and add the matching CHANGELOG.md entry first.
 scripts/coax-release.sh --write
-coax/bin/coax test coax/release-model.coax
-coax/bin/coax mutate coax/release-model.coax
+# Commit the version bump, notes and generated snapshots locally.
+# The introducing commit now exists; record its exact hash:
+scripts/coax-release.sh --write
 coax/build.sh
 scripts/coax-release.sh --check --binary coax/bin/coax
 python3 -m unittest discover -s coax/tests -p release.py
+# Commit the finalized changelog; push both commits together after rebasing.
 ```
+
+`--write` permits `Commit: pending` for preparation. When Git history contains
+the version's introducing commit, it replaces only the current entry's commit
+line with that full hash and link. `--check` always rejects pending entries;
+in a Git checkout it also rejects an uncommitted version or a hash that differs
+from the observed introducing commit. A rebase can change that hash: rerun
+`--write`, amend the changelog-finalization commit and check before pushing.
+Source archives without Git still require a concrete, well-formed commit line.
+Finalize the hash before building from the bootstrap's private source snapshot.
 
 Run the model's checks/mutation when its policy changes. The normal bootstrap
 already runs them; an unchanged model does not need an additional manual run.
@@ -62,12 +82,20 @@ Coax. Normal generation, bootstrap and app generation need only the Coax/native
 toolchain, shell and standard file utilities. Python is optional test tooling;
 the separate GitBook API publisher also uses Python.
 
+The authority-checked `changelog-model.coax` validates the changelog and plans
+the current commit-line replacement; `changelog.coax` renders that line. The C
+bridge transports file bytes and command-line observations. The shell reads
+the first-parent version transition from Git, when available. Changelog prose
+is checked on every build, including cache reuse, without becoming an input
+that forces an otherwise unchanged compiler to rebuild.
+
 Every managed region is validated before writes begin. On macOS the catalogue
 is compiled for the Mac host, even when Xcode passes an iPhone/Simulator SDK;
 `COAX_HOST_TARGET` supplies an explicit host triple when needed. The tool must
 execute its generator locally, so an inherited cross-target SDK is unsuitable.
 
-`--write` updates only the listed snapshots and explicitly marked regions. It
+`--write` updates the listed snapshots, explicitly marked regions and the
+current changelog commit line when its introducing hash is available. It
 does not replace version numbers in historical prose or generate the error-code
 catalogue, grammar or every explanatory paragraph. Keep those accurate through
 review. Add a managed region explicitly if another document needs current status.

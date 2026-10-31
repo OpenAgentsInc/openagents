@@ -1875,7 +1875,18 @@ reading credentials or creating a draft. Unmanaged historical prose is never
 rewritten by version-value substitution and still needs review. Normal builds
 and generation remain Python-free.
 
-Check: `coax test/mutate coax/release-model.coax` (zero survivors),
+Every compiler-version bump requires a matching newest entry in
+`coax/CHANGELOG.md`, including an authored summary, valid date and commit line.
+The Coax changelog model validates ordering and the current entry before release
+generation writes anything. Preparation may use `Commit: pending`;
+`coax/build.sh` (including compiler-cache reuse), app generation and publication
+checks require a finalized hash. In a Git checkout that hash must match the
+observed introducing commit; archives retain structural validation. `--write`
+fills or repairs only the current commit line from Git, preserving authored history.
+
+Check: `coax test/mutate coax/release-model.coax` and
+`coax test coax/changelog-model.coax` /
+`coax mutate coax/changelog-model.coax --root-only` (zero survivors),
 `scripts/coax-release.sh --check --binary coax/bin/coax`, and
 `coax/tests/release.py` (snapshot repair, version-domain separation, invalid
 metadata, managed regions, stale binaries, real acceptance probes and

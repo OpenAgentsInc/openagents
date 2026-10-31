@@ -15,6 +15,14 @@ set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")"
 root="$(cd .. && pwd -P)"
+# Documentation is not a compiler input: validate it even on cache reuse.
+# An explicit generator override is trusted by its caller. Otherwise reuse
+# only a provenance-verified local compiler, or build a temporary seed tool.
+if [[ -n ${COAX_RELEASE_COMPILER:-} ]] || ./provenance.sh verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" > /dev/null 2>&1; then
+  "$root/scripts/coax-release.sh" --check
+else
+  COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
+fi
 expected="$(./provenance.sh fingerprint "$root")"
 artifacts=(lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h)
 cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"

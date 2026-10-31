@@ -11,14 +11,21 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 SCRIPT=ROOT/'provenance.sh'
+RELEASE_DOCUMENTS=('README.md','spec.md','ROADMAP.md','STATUS.md','release-status.json','CHANGELOG.md',
+ 'book/appendix-a-keywords.md','book/appendix-b-error-codes.md','book/ch01-getting-started.md',
+ 'book/ch06-memory.md','book/ch20-inside-coax0.md','book/ch21-road-ahead.md','book/ch22-organizing-programs.md',
+ 'generated/current.md','generated/version-example.md')
+BUILD_ARTIFACTS=('lexer.c','lexer.h','parser.c','parser.h','checker.c','checker.h','sources.c','sources.h',
+ 'proto_runtime.inc','proto_importer.c','proto_importer.h')
 class ProvenanceTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   cls.tmp=tempfile.TemporaryDirectory(prefix='coax-provenance-');cls.dir=Path(cls.tmp.name)
   cls.addClassCleanup(cls.tmp.cleanup)
+  cls.compiler=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax')).resolve()
   cls.helper=cls.dir/'check'; c=cls.dir/'provenance.c'; h=cls.dir/'provenance.h'
   with c.open('w') as out:
-   subprocess.run([str(ROOT/'bin/coax'),'c',str(ROOT/'lib/compiler/provenance.coax'),
+   subprocess.run([str(cls.compiler),'c',str(ROOT/'lib/compiler/provenance.coax'),
                    '--library','--header',str(h)],stdout=out,check=True,timeout=120)
   subprocess.run(['cc','-std=c11','-O1','-I',str(cls.dir),str(c),str(ROOT/'provenance-bridge.c'),
                   '-o',str(cls.helper)],check=True,timeout=120)
@@ -29,6 +36,8 @@ class ProvenanceTests(unittest.TestCase):
    shutil.copytree(ROOT/name,self.tree/'coax'/name)
   for name in ('build.sh','bootstrap-build.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
    shutil.copy2(ROOT/name,self.tree/'coax'/name)
+  for name in RELEASE_DOCUMENTS+('changelog.coax','changelog-model.coax','changelog-bridge.c'):
+   target=self.tree/'coax'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
   shutil.copy2(ROOT.parent/'scripts/coax-release.sh',self.tree/'scripts/coax-release.sh')
   self.binary=Path(self.tmp.name)/'coax';self.binary.write_bytes(b'tested compiler fixture');self.binary.chmod(0o755)
   self.helper_copy=Path(self.tmp.name)/'helper';shutil.copy2(self.helper,self.helper_copy)
@@ -71,20 +80,28 @@ class ProvenanceTests(unittest.TestCase):
  def test_release_refuses_stale_compiler_before_cloud_commands(self):
   caller=Path(self.tmp.name)/'caller';(caller/'coax/web').mkdir(parents=True);(caller/'coax/bin').mkdir()
   shutil.copy2(ROOT/'web/release.sh',caller/'coax/web/release.sh')
+  shutil.copy2(ROOT/'web/smoke-compare.sh',caller/'coax/web/smoke-compare.sh')
   shutil.copy2(self.binary,caller/'coax/bin/coax');shutil.copy2(self.helper_copy,caller/'coax/bin/provenance-check');shutil.copy2(self.record,caller/'coax/bin/provenance.record')
   (self.tree/'coax/src/eval.cpp').write_text('changed target source')
   fake=Path(self.tmp.name)/'fake';fake.mkdir()
   git=fake/'git';git.write_text("""#!/usr/bin/env python3
-import os,shutil,sys
+import os,shutil,sys,tarfile
 a=sys.argv[1:]
 if 'rev-parse' in a: print('abcdef12')
 elif 'log' in a: print('fixture')
+elif 'archive' in a:
+ with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as archive:
+  for name in ('coax','scripts/coax-release.sh'):
+   archive.add(os.path.join(os.environ['TARGET_TREE'],name),arcname=name)
 elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a[-2])
 """);git.chmod(0o755)
+  # release.sh's orphan-browser cleanup must observe only this isolated fixture.
+  ps=fake/'ps';ps.write_text('#!/bin/sh\nexit 0\n');ps.chmod(0o755)
   cloud=fake/'gcloud';cloud.write_text("#!/bin/sh\necho \"$*\" >> \"$CLOUD_MARKER\"\nexit 99\n");cloud.chmod(0o755)
   marker=Path(self.tmp.name)/'cloud-used';tmp=Path(self.tmp.name)/'release-temp';tmp.mkdir()
   env={**os.environ,'PATH':str(fake)+os.pathsep+os.environ['PATH'], 'TARGET_TREE':str(self.tree),
-       'CLOUD_MARKER':str(marker),'TMPDIR':str(tmp),'COAX_RELEASE_CACHE':str(Path(self.tmp.name)/'release-cache')}
+       'CLOUD_MARKER':str(marker),'TMPDIR':str(tmp),'COAX_RELEASE_CACHE':str(Path(self.tmp.name)/'release-cache'),
+       'COAX_RELEASE_COMPILER':str(self.compiler)}
   result=subprocess.run([str(caller/'coax/web/release.sh')],capture_output=True,text=True,timeout=120,env=env)
   self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
   # The stale build is refused; a fresh bootstrap of the changed source fails too.
@@ -97,6 +114,43 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
   guard=self.tree/'coax/check-proto-cap.sh'
   guard.write_text(guard.read_text()+'\n# changed cap guard\n')
   self.verify(success=False)
+ def test_changelog_policy_and_transport_are_compiler_inputs(self):
+  # Policy and its native transport must invalidate a cached compiler even
+  # when ordinary compiler sources and generated release metadata are intact.
+  identity=self.run_script('fingerprint',self.tree,success=True).stdout.strip()
+  self.run_script('write',self.tree,self.binary,self.helper_copy,self.record,identity,success=True)
+  for name in ('changelog.coax','changelog-model.coax','changelog-bridge.c'):
+   with self.subTest(input=name):
+    path=self.tree/'coax'/name;original=path.read_bytes();path.write_bytes(original+b'\n// changed policy input\n')
+    try:self.verify(success=False)
+    finally:path.write_bytes(original)
+ def test_valid_cache_cannot_bypass_stale_changelog(self):
+  # A genuinely matching provenance receipt isolates release-document drift
+  # from compiler-input drift. No fixture compiler is executable source code.
+  release_env={**os.environ,'COAX_RELEASE_COMPILER':str(self.compiler)}
+  valid=subprocess.run([str(self.tree/'scripts/coax-release.sh'),'--check'],capture_output=True,text=True,timeout=120,env=release_env)
+  self.assertEqual(valid.returncode,0,valid.stdout+valid.stderr)
+  bootstrap=self.tree/'coax/bootstrap-build.sh'
+  bootstrap.write_text('#!/usr/bin/env bash\ntouch "$BOOTSTRAP_MARKER"\nexit 99\n');bootstrap.chmod(0o755)
+  identity=self.run_script('fingerprint',self.tree,success=True).stdout.strip()
+  cache=Path(self.tmp.name)/'cache';saved=cache/identity;saved.mkdir(parents=True)
+  shutil.copy2(self.binary,saved/'coax');shutil.copy2(self.helper_copy,saved/'provenance-check')
+  self.run_script('write',self.tree,saved/'coax',saved/'provenance-check',saved/'provenance.record',identity,success=True)
+  for name in BUILD_ARTIFACTS:(saved/name).write_text('// cached generated artifact fixture\n')
+  path=self.tree/'coax/CHANGELOG.md';original=path.read_text()
+  first=original.index('## ');line_end=original.index('\n',first)
+  path.write_text(original[:first]+'## 99.99.99 — 2026-10-31'+original[line_end:])
+  # Authored historical prose is not a compiler-rebuild input; it still has
+  # to pass the normal build's release gate before cache installation.
+  self.assertEqual(self.run_script('fingerprint',self.tree,success=True).stdout.strip(),identity)
+  self.run_script('verify',self.tree,saved/'coax',saved/'provenance-check',saved/'provenance.record',success=True)
+  marker=Path(self.tmp.name)/'bootstrap-used'
+  env={**release_env,'COAX_RELEASE_CACHE':str(cache),'BOOTSTRAP_MARKER':str(marker)}
+  result=subprocess.run([str(self.tree/'coax/build.sh')],capture_output=True,text=True,timeout=120,env=env)
+  self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+  self.assertIn('changelog',result.stderr.lower(),result.stdout+result.stderr)
+  self.assertFalse((self.tree/'coax/bin/coax').exists(),'stale changelog allowed a cached compiler to be installed')
+  self.assertFalse(marker.exists(),'stale changelog started a fresh bootstrap')
  def test_write_refuses_a_source_change_after_the_original_fingerprint(self):
   old=self.run_script('fingerprint',self.tree,success=True).stdout.strip()
   candidate=Path(self.tmp.name)/'late-record'
@@ -127,7 +181,8 @@ while [[ ! -e "$TEST_FINISH" ]]; do sleep 0.05; done
   source=self.tree/'coax/src/eval.cpp';original=source.read_bytes()
   cache=Path(self.tmp.name)/'cache'
   env={**os.environ,'TEST_READY':str(ready),'TEST_START':str(start),'TEST_READ':str(read),
-       'TEST_FINISH':str(finish),'TEST_HELPER':str(self.helper_copy),'COAX_RELEASE_CACHE':str(cache)}
+       'TEST_FINISH':str(finish),'TEST_HELPER':str(self.helper_copy),'COAX_RELEASE_CACHE':str(cache),
+       'COAX_RELEASE_COMPILER':str(self.compiler)}
   proc=subprocess.Popen([str(self.tree/'coax/build.sh')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                         text=True,env=env,start_new_session=True)
   try:

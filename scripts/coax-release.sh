@@ -2,7 +2,7 @@
 # Coax owns metadata/validation/rendering. This adapter compiles it, transports
 # its fixed output bundle and compares/writes files. No Python build dependency.
 set -euo pipefail
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$root"
 mode=${1:---check}; [[ $mode == --check || $mode == --write ]] || { echo 'usage: scripts/coax-release.sh --check|--write [--binary FILE]' >&2; exit 2; }
 shift || true
@@ -69,6 +69,22 @@ awk -v fragment="$work/outputs/coax_generated_version-example.md" '
 END {if(active || seen!=1)exit 23;}
 ' "$work/outputs/${path//\//_}" > "$work/managed"
 mv "$work/managed" "$work/outputs/${path//\//_}"
+# Changelog structure and commit-line rendering are checked Coax. Git supplies
+# the observed introducing commit; archives retain structure checks without Git.
+version=$(awk -F '"' '/COAX_RELEASE_VERSION\[\]/{sub(/^coax0 /,"",$2);print $2}' "$work/outputs/coax_src_release.h")
+release_commit=""
+if [[ $(git rev-parse --show-toplevel 2>/dev/null || true) == "$root" ]]; then
+  release_commit=pending
+  candidate=$(git log --first-parent --reverse --format=%H -S "IMPLEMENTATION_VERSION :: \"$version\";" -- coax/release.coax | head -1)
+  if [[ -n $candidate ]]; then
+    observed=$(git show "$candidate:coax/release.coax" | awk -F '"' '/^IMPLEMENTATION_VERSION :: /{print $2}')
+    [[ $observed != "$version" ]] || release_commit=$candidate
+  fi
+fi
+"$compiler" c "$root/coax/changelog.coax" --library --header "$work/changelog.h" > "$work/changelog.c"
+"${CC:-cc}" -std=c11 -O1 -w -ffp-contract=off "${host_flags[@]}" -I "$work" "$work/changelog.c" "$root/coax/changelog-bridge.c" -lm -o "$work/changelog"
+"$work/changelog" "$root/coax/CHANGELOG.md" "$version" "$release_commit" "$mode" > "$work/outputs/coax_CHANGELOG.md"
+files+=(coax/CHANGELOG.md)
 if [[ -n $binary ]]; then
   "$binary" status --json > "$work/binary.json"
   "$binary" version > "$work/version"

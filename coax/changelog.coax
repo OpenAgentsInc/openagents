@@ -1,0 +1,6 @@
+// Rendering only; admission and replacement ranges live in the authority model.
+#import "Basic";
+#load "changelog-model.coax";
+CL_render_commit :: (commit:string) #export_c {
+  print("Commit: [`%`](https://github.com/OpenAgentsInc/openagents/commit/%)\n",commit,commit);
+}

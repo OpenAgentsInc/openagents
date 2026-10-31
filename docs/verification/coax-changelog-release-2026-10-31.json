@@ -1,0 +1,118 @@
+{
+  "date": "2026-10-31",
+  "scope": "Require authored current-version changelog notes before Coax release generation; finalize the introducing Git commit before build/app/publication checks, including compiler-cache reuse.",
+  "base_commit": "d5045010374218fcc55362cf5c1b0399efbc20ab",
+  "source_sha256": {
+    "coax/changelog-model.coax": "37279a78e04ac89f2d2860d76b1cb5e5510e04ac54f7d4dee5bd08425cc1b433",
+    "coax/changelog.coax": "41c0030e66cc60e34424442aef732506b620bc2899bcaf1c35c63e8886dc1fa8",
+    "coax/changelog-bridge.c": "573dac44277da4e252d956609b904fb85485400f917161f18358d6d0f0d7ed5a",
+    "scripts/coax-release.sh": "e8d88273852cbc976a159dbcec4ffe9b278578ebacc9e7f01fb3ce5370e713cd",
+    "coax/build.sh": "4e76e14431a5e68a1e8ee6b9c487ccbb130c21049459ab348168106065c2f0c8",
+    "coax/bootstrap-build.sh": "df97210f161dbab210188137eb0d4c063e7ef65754eb194436f57b5707cb22f5",
+    "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+    "coax/tests/release.py": "1130204201fcce3900ecaf1a159791cad37373636421fd0540858ea727a78cc0",
+    "coax/tests/provenance.py": "3e9b85580ead32d077b01ad7c555ac747b72a1cc6421298a492ff1699558ff04",
+    "coax/tests/run.sh": "3fde3680daaae2c3ea964d1299a1d2a9e284d1b934e85243710dc45b834efb02"
+  },
+  "checks": {
+    "check_first": {
+      "release_counterexamples": 15,
+      "release_log": "/tmp/coax-changelog-release-tests-red-corrected.log",
+      "policy_log": "/tmp/coax-changelog-model-red-final-api.log",
+      "cache_and_fingerprint_log": "/tmp/coax-changelog-provenance-red.log"
+    },
+    "authority_model": {
+      "baseline_checks": 18,
+      "mutation_scope": "root-only; complete baseline includes unchanged release-model dependencies",
+      "mutants": 313,
+      "killed": 313,
+      "survived": 0,
+      "equivalent_waivers": 0,
+      "log": "/tmp/coax-changelog-model-mutate-3.log"
+    },
+    "release_workflow": {
+      "cases": 17,
+      "final_affected_cases": 9,
+      "final_seconds": 73.763,
+      "log": "/tmp/coax-changelog-release-tests-final.log",
+      "unchanged_cases": 8,
+      "unchanged_log": "/tmp/coax-changelog-release-tests-integrated.log",
+      "note": "Earlier mixed-input run had two failures from an interim policy stub. Both are included in the stable final affected selection; no mixed failure is treated as a pass."
+    },
+    "provenance": {
+      "cases": 13,
+      "initial_log": "/tmp/coax-changelog-provenance-green.log",
+      "repaired_web_fixture_log": "/tmp/coax-changelog-provenance-web-green.log",
+      "final_affected_cases": 2,
+      "final_seconds": 60.628,
+      "final_log": "/tmp/coax-changelog-provenance-final-gates-green.log",
+      "note": "Updated web-release fixture transports its existing sourced helper and isolates process observation; product web release unchanged."
+    },
+    "native_transport": {
+      "result": "passed",
+      "sanitizers": [
+        "ASan",
+        "UBSan"
+      ],
+      "cases": [
+        "unchanged file bytes",
+        "exact current commit-line replacement",
+        "invalid date refusal",
+        "oversize refusal",
+        "pending publication refusal"
+      ],
+      "leak_detection": "Unsupported by this host; initial detect_leaks=1 run refused before execution, rerun with detect_leaks=0 passed."
+    },
+    "final_metadata_on_original_base": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-final-release.log"
+    },
+    "bootstrap_before_upstream_change": {
+      "result": "passed",
+      "seconds": 574.658,
+      "log": "/tmp/coax-changelog-bootstrap.log",
+      "command_timeout_seconds": 870,
+      "compiler_input_fingerprint": "300bf2c1ef42731e325ac68cf61108d1d680d4fdbb878c16110ed53b0c4888f7",
+      "compiler_sha256": "5589f2c5a417f29ad3f97bb8f50a874a86ca6ecb1f8bcf08e3256fcf01902e83"
+    },
+    "bootstrap": {
+      "result": "passed",
+      "seconds": 538.72,
+      "log": "/tmp/coax-changelog-bootstrap-rebased.log",
+      "command_timeout_seconds": 870,
+      "compiler_input_fingerprint": "841eca107cc9c5a7601550a11568407ab1ddbfaf7b7cdf4f4b71f20ae8f05f50",
+      "compiler_sha256": "1f06ef4e199e98d0ea934653b86268b3cf828db7dc2aff128458d0799f01b7de",
+      "helper_sha256": "49a6e667634109e0c1c7efb4c8119ad5b97d48f44db3f1a8b5c7840e083d8878",
+      "compiler_base_commit": "2431e6eb7c848848102d1c8a5d9ab3384a3399f7",
+      "reason_for_second_build": "An upstream WGSL change modified main.cpp, shader.cpp and wgsl.coax during the first bootstrap."
+    },
+    "rebased_metadata": {
+      "result": "passed",
+      "log": "/tmp/coax-changelog-final-rebased-release.log"
+    },
+    "rebased_generated_code": [
+      {
+        "name": "changelog",
+        "c_sha256": "6a1876465e97f06ecc303bcfa4740e5d8efcadaf4efeaad1bc3231d7a670fb37",
+        "header_sha256": "02fd6974e0f0a255c38fe3676c4b2d2c18964889a548dc61173ba3f9c2d1ea78",
+        "result": "byte-identical"
+      },
+      {
+        "name": "release",
+        "c_sha256": "e34d36d2314a17122109b59545dd183332b99e9f3bc3c693febf8638705bf84e",
+        "header_sha256": "9d1d67f1a9704aeac20d1a33ed8b59405117a8a70142da34246aac6c16b34764",
+        "result": "byte-identical"
+      }
+    ],
+    "rebased_generated_code_reference_compiler_sha256": "5589f2c5a417f29ad3f97bb8f50a874a86ca6ecb1f8bcf08e3256fcf01902e83"
+  },
+  "limits": [
+    "Validation checks release-note structure and explicit placeholder patterns; it does not prove the prose is true.",
+    "Git check verifies the current version introduction when history is available; source archives retain structural validation only.",
+    "The input bound is 262144 bytes. Historical prose is preserved; only the current commit line is rendered.",
+    "No compiler language semantics, product application logic, deployment or book publication changed."
+  ],
+  "initial_policy_compiler_sha256": "5df4330f0aee1cdb81e301771cfe9d95c391a234e8d89a4bec01c2fb93cdcfd7",
+  "rebased_onto": "14039ee25981fc51a51cbbbd4187dc3a62246677",
+  "later_upstream_compiler_input_changes": []
+}

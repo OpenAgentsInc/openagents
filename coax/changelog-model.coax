@@ -1,0 +1,239 @@
+// Bounded release-changelog validation. The adapter observes file and Git bytes;
+// this model decides whether an authored current entry is ready or needs repair.
+#load "release-model.coax";
+#authority;
+
+ChangelogPlan :: struct {ok:bool;replace:bool;from:int;to:int;}
+CL_MAX_BYTES :: 262144;
+CL_HASH :: "0123456789abcdef0123456789abcdef01234567";
+CL_OTHER_HASH :: "abcdef0123456789abcdef0123456789abcdef01";
+CL_VALID :: "# Changelog\n\n## 0.37.0 — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- Generic structs receive concrete checked layouts.\n\n## 0.36.0 — 2026-10-30\n\n- Earlier release notes remain untouched.\n";
+CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- Checked generic constraints qualify concrete bindings.\n";
+
+#test "current authored entry agrees with version and optional observed hash" {
+  p:=CL_plan(CL_VALID,"0.37.0",CL_HASH,false);
+  #assert p.ok && !p.replace && p.from==0 && p.to==0;
+  #assert CL_plan(CL_VALID,"0.37.0","",false).ok;
+  #assert !CL_plan(CL_VALID,"0.38.0",CL_HASH,false).ok;
+  #assert !CL_plan(CL_VALID,"bad",CL_HASH,false).ok;
+  #assert !CL_plan(CL_VALID,"0.37.0",CL_OTHER_HASH,false).ok;
+  #assert !CL_plan(CL_VALID,"0.37.0","bad",true).ok;
+  #assert !CL_plan(CL_VALID,"0.37.0","pending",false).ok;
+  #assert !CL_plan(CL_VALID,"0.37.0","pending",true).ok;
+}
+#test "preparation allows pending only in write mode and repairs exact line" {
+  #assert !CL_plan(CL_PENDING,"0.38.0","",false).ok;
+  #assert !CL_plan(CL_PENDING,"0.38.0",CL_HASH,false).ok;
+  #assert !CL_plan(CL_PENDING,"0.38.0","pending",false).ok;
+  #assert CL_plan(CL_PENDING,"0.38.0","pending",true).ok;
+  p:=CL_plan(CL_PENDING,"0.38.0","",true);
+  #assert p.ok && !p.replace && p.from==0 && p.to==0;
+  p=CL_plan(CL_PENDING,"0.38.0",CL_HASH,true);
+  #assert p.ok && p.replace;
+  #assert CL_PENDING[p.from..<p.to]=="Commit: pending\n";
+  #assert CL_PENDING[0..<p.from]=="# Changelog\n\n## 0.38.0 — 2026-11-01\n\n";
+  #assert CL_PENDING[p.to..<CL_PENDING.count]=="\n- Checked generic constraints qualify concrete bindings.\n";
+  p=CL_plan(CL_VALID,"0.37.0",CL_OTHER_HASH,true);
+  #assert p.ok && p.replace && CL_at(CL_VALID,p.from,"Commit: [`");
+  #assert CL_VALID[p.to-1]=='\n';
+  #assert !CL_plan(CL_VALID,"0.37.0",CL_HASH,true).replace;
+}
+#test "release headings are complete ordered unique and first matches current" {
+  #assert !CL_plan("# Changelog\n","0.37.0","",false).ok;
+  #assert !CL_plan("## 0.37.0 - 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31 extra\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.37.0 — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.38.0 — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## bad — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.36.0 — 2026-02-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.35.0 — 2026-10-30\n## 0.36.0 — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+}
+#test "current entry needs one canonical commit and substantive authored bullet" {
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: nope\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- TODO describe release.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- TBD release notes.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- placeholder notes here.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- pending release notes.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- ...\n","0.37.0","",true).ok;
+}
+#test "date grammar checks real calendar dates including century leap years" {
+  #assert CL_date("2026-10-31") && CL_date("2000-02-29") && CL_date("2024-02-29");
+  #assert CL_date("2026-04-30") && CL_date("2026-12-31") && CL_date("0001-01-01");
+  #assert !CL_date("1900-02-29") && !CL_date("2026-02-29") && !CL_date("2026-04-31");
+  #assert !CL_date("2026-00-10") && !CL_date("2026-13-10") && !CL_date("2026-01-00") && !CL_date("0000-01-01");
+  #assert !CL_date("2026/10/31") && !CL_date("2026-1a-31") && !CL_date("2026-10-3") && !CL_date("2026-10-311");
+  #assert !CL_date("2026/10-31") && !CL_date("2026-10/31");
+}
+#test "hash and byte matching reject malformed boundaries without indexing outside" {
+  #assert CL_hash(CL_HASH) && CL_hash(CL_OTHER_HASH);
+  #assert !CL_hash("") && !CL_hash("0123456789abcdef0123456789abcdef0123456");
+  #assert !CL_hash("0123456789abcdef0123456789abcdef012345678");
+  #assert !CL_hash("0123456789ABCDEF0123456789abcdef01234567") && !CL_hash("g123456789abcdef0123456789abcdef01234567");
+  #assert CL_at("abc",0,"ab") && CL_at("abc",1,"bc") && CL_at("abc",3,"");
+  #assert !CL_at("abc",-1,"a") && !CL_at("abc",2,"bc") && !CL_at("abc",1,"bd");
+  #assert CL_summary("- Concrete layouts now compile.") && CL_summary("-   Checked code receives concrete layouts.");
+  #assert !CL_summary("notes without a bullet") && !CL_summary("- \t  ") && !CL_summary("- tOdO describe this release");
+}
+#test "input bounds and control bytes refuse safely" {
+  #assert !CL_plan("","0.37.0","",false).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\r\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("# Preamble\r\n## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete\0checked layouts.\n","0.37.0","",true).ok;
+  huge:[CL_MAX_BYTES+1]u8;
+  for i:0..<huge.count {huge[i]=' ';}
+  for c,i:CL_PENDING {huge[i]=c;}
+  #assert CL_plan(cast(string) huge[0..<CL_MAX_BYTES],"0.38.0","",true).ok;
+  #assert !CL_plan(cast(string) huge[..],"0.38.0","",true).ok;
+}
+#test "compact entries and no-newline commit replacement preserve byte boundaries" {
+  text:="## 0.0.0 — 0001-01-01\n- Concrete checked layouts.\nCommit: pending";
+  p:=CL_plan(text,"0.0.0",CL_HASH,true);
+  #assert p.ok && p.replace && text[p.from..<p.to]=="Commit: pending" && p.to==text.count;
+  #assert !CL_plan("Commit: pending\n- Concrete checked layouts.\n## 0.37.0 — 2026-10-31\n","0.37.0","",true).ok;
+  #assert CL_at("abc",0,"abc") && !CL_at("abc",0,"xbc") && !CL_at("abc",2,"cd");
+}
+#test "decimal and ASCII normalization have exact public boundaries" {
+  #assert CL_decimal("0000")==0 && CL_decimal("9999")==9999 && CL_decimal("09")==9;
+  #assert CL_decimal("0")==0 && CL_decimal("123")==123 && CL_decimal("0010")==10;
+  #assert CL_decimal("")== -1 && CL_decimal("10000")== -1 && CL_decimal("1:")== -1 && CL_decimal("/1")== -1;
+  #assert CL_lower('A')=='a' && CL_lower('Z')=='z' && CL_lower('M')=='m';
+  #assert CL_lower('@')=='@' && CL_lower('[')=='[' && CL_lower('a')=='a';
+}
+#test "hash and summary character classes have independent finite alphabet oracles" {
+  bytes:[40]u8;for i:0..<40 {bytes[i]='0';}
+  bullet:[10]u8;bullet[0]='-';bullet[1]=' ';
+  for value:1..<128 {
+    c:=cast(u8)value;bytes[0]=c;
+    hex:=false;for allowed:"0123456789abcdef" {if c==allowed {hex=true;}}
+    #assert CL_hash(cast(string) bytes[..])==hex;
+    for i:2..<10 {bullet[i]=c;}
+    letter:=false;for allowed:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" {if c==allowed {letter=true;}}
+    #assert CL_summary(cast(string) bullet[..])==letter;
+    #assert !CL_summary(cast(string) bullet[0..<9]);
+  }
+  #assert !CL_summary("- \tTODO describe release") && !CL_summary("-  TODO describe release");
+  #assert !CL_summary("- PLACEHOLDER") && CL_summary("- Xlaceholder");
+  #assert !CL_summary("- aaaaaaa{") && !CL_summary("- AAAAAAA[") && !CL_summary("- 0000000:");
+}
+#test "calendar refusal checks month ends and leap days exactly" {
+  #assert !CL_date("2026-01-32") && !CL_date("2026-06-31") && !CL_date("2024-02-30");
+  #assert !CL_date("2026-1:-31") && !CL_date("2026-10-3:");
+}
+#test "every canonical commit byte participates in admission" {
+  p:=CL_plan(CL_VALID,"0.37.0",CL_OTHER_HASH,true);
+  #assert p.ok && p.replace;
+  bytes:[512]u8;for c,i:CL_VALID {bytes[i]=c;}
+  for i:p.from..<p.to-1 {
+    old:=bytes[i];bytes[i]='!';
+    #assert !CL_plan(cast(string) bytes[0..<CL_VALID.count],"0.37.0","",true).ok;
+    bytes[i]=old;
+  }
+}
+CL_decimal :: (text:string)->int {
+  if text.count<1 || text.count>4 {return -1;}
+  out:=0;
+  for c:text {if c<'0' || c>'9' {return -1;}out=out*10+int(c)-int('0');}
+  return out;
+}
+CL_lower :: (c:u8)->u8 {
+  if c>='A' && c<='Z' {return c+32;}
+  return c;
+}
+CL_plan :: (text:string,version:string,commit:string,write:bool)->ChangelogPlan #export_c {
+  p:ChangelogPlan;
+  if text.count>CL_MAX_BYTES {return p;}
+  if commit!="" && commit!="pending" && !CL_hash(commit) {return p;}
+  if commit=="pending" && !write {return p;}
+  for c:text {if c==0 || c=='\r' {return p;}}
+  at:=0;headings:=0;previous:=RM_version_code(version);
+  commits:=0;summary:=false;pending:=false;hash:string;
+  separator:=" — ";prefix:="Commit: [`";
+  middle:="`](https://github.com/OpenAgentsInc/openagents/commit/";
+  for c,i:text {
+    if c!='\n' && i+1<text.count {continue;}
+    end:=ifx c=='\n' then i else i+1;line:=text[at..<end];
+    if CL_at(line,0,"## ") {
+      split:=line.count-separator.count-10;
+      if split<8 || !CL_at(line,split,separator) {return p;}
+      found:=line[3..<split];date:=line[split+separator.count..<line.count];
+      code:=RM_version_code(found);
+      if code<0 || (headings>0 && code>=previous) || !CL_date(date) {return p;}
+      previous=code;
+      if headings==0 && found!=version {return p;}
+      headings+=1;
+    } else if headings==1 {
+      if CL_at(line,0,"Commit:") {
+        commits+=1;
+        if commits!=1 {return p;}
+        p.from=at;p.to=ifx end<text.count then end+1 else end;
+        if line=="Commit: pending" {pending=true;}
+        else {
+          second:=prefix.count+40+middle.count;
+          if line.count!=second+41 || !CL_at(line,0,prefix) || !CL_at(line,prefix.count+40,middle) || line[line.count-1]!=')' {return p;}
+          hash=line[prefix.count..<prefix.count+40];
+          if !CL_hash(hash) || line[second..<second+40]!=hash {return p;}
+        }
+      } else if CL_summary(line) {summary=true;}
+    }
+    at=end+1;
+  }
+  if headings==0 || commits!=1 || !summary {return p;}
+  if pending {
+    if !write {return p;}
+  } else if commit=="pending" {return p;}
+  known:=commit!="" && commit!="pending";
+  if known && hash!=commit {
+    if !write {return p;}
+    p.replace=true;
+  }
+  if !p.replace {p.from=0;p.to=0;}
+  p.ok=true;return p;
+}
+CL_at :: (text:string,at:int,part:string)->bool {
+  if at<0 || part.count>text.count || at>text.count-part.count {return false;}
+  for i:0..<part.count {if text[at+i]!=part[i] {return false;}}
+  return true;
+}
+CL_hash :: (text:string)->bool {
+  if text.count!=40 {return false;}
+  for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+CL_date :: (text:string)->bool {
+  if text.count!=10 {return false;}
+  if text[4]!='-' || text[7]!='-' {return false;}
+  year:=CL_decimal(text[0..<4]);month:=CL_decimal(text[5..<7]);day:=CL_decimal(text[8..<10]);
+  if year<1 || month<1 || month>12 || day<1 {return false;}
+  days:=31;
+  if month==4 || month==6 || month==9 || month==11 {days=30;}
+  if month==2 {
+    days=28;if year%4==0 && (year%100!=0 || year%400==0) {days=29;}
+  }
+  return day<=days;
+}
+CL_summary :: (line:string)->bool {
+  if !CL_at(line,0,"- ") {return false;}
+  start:=2;
+  while start<line.count && (line[start]==' ' || line[start]=='\t') {start+=1;}
+  placeholders:=[4]string.["todo","tbd","placeholder","pending"];
+  for word:placeholders {
+    if line.count-start>=word.count {
+      same:=true;
+      for i:0..<word.count {
+        c:=CL_lower(line[start+i]);
+        if c!=word[i] {same=false;}
+      }
+      if same {return false;}
+    }
+  }
+  letters:=0;
+  for i:start..<line.count {
+    c:=line[i];
+    if (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') {letters+=1;}
+  }
+  return letters>=8;
+}
