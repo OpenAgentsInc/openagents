@@ -3,7 +3,7 @@
 // (/api/room/orbit-league/NAME) are untouched; a relay room's WebSocket opens at
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
 // and up to RELAY_SEATS players sit in it, the first in seat 0. What each hears:
-//   y SEAT          you are in, at SEAT (the first frame)
+//   y SEAT N        you are in, at SEAT, with N others (the first frame)
 //   j SEAT          a player sat at SEAT (one each for those already in, after y)
 //   l SEAT          the player at SEAT left
 //   m SEAT TEXT     the player at SEAT sent TEXT (any text frame, as it was sent)
@@ -105,7 +105,8 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   }
   v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat};
   h: [8] u8;
-  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), "");
+  others: [4] u8; others[0] = ' '; others[1] = cast(u8) ('0' + rl_people(v, r) - 1);
+  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), cast(string) others[0..<2]);
   for i: 0..<CONNS { if i != conn && v[0].conns[i].live && v[0].conns[i].relay == r { rl_queue(v, r, conn, -1, rl_head(h[..], 'j', v[0].conns[i].seat, false), ""); } }
   rl_queue(v, r, -1, conn, rl_head(h[..], 'j', seat, false), "");
   return seat;
@@ -158,11 +159,11 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   ga := "GET /api/room/relay/hold-the-stair/K7Q2 HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ga) == 0;
   b0: [512] u8; b1: [512] u8; b2: [512] u8;
-  #assert rl_heard_by(v[..], 0, b0[..]) == "y 0";
+  #assert rl_heard_by(v[..], 0, b0[..]) == "y 0 0";
   #assert rm_join(v[..], 1, ga) == 1;
   // the joiner hears its seat and who is in; the first hears it sat down (the queue is read once: two readers)
   #assert v[0].q_n == 3;
-  #assert rm_relay_next(v[..]) == 3 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<3] == "y 1";
+  #assert rm_relay_next(v[..]) == 5 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<5] == "y 1 1";
   #assert rm_relay_next(v[..]) == 3 && v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 0";
   #assert rm_relay_next(v[..]) == 3 && v[0].rto[0] && !v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 1";
   // a frame goes to the other, as it was, with its seat

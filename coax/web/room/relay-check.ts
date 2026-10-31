@@ -12,6 +12,6 @@ for (let i = 0; i < n; i++) a.send("u " + i);
 while (heard[1].filter((h) => h.startsWith("m 0 u ")).length < n && performance.now() - t0 < 5000) await Bun.sleep(20);
 const ms = performance.now() - t0;
 b.close(); await Bun.sleep(500);
-const ok = heard[0][0] === "y 0" && heard[0][1] === "j 1" && heard[1][0] === "y 1" && heard[1][1] === "j 0" && heard[1][2] === "m 0 hello from a" && heard[0][2] === "m 1 " + "x".repeat(3000) && heard[1].filter((h) => h.startsWith("m 0 u ")).length === n && heard[0].includes("l 1");
+const ok = heard[0][0] === "y 0 0" && heard[0][1] === "j 1" && heard[1][0] === "y 1 1" && heard[1][1] === "j 0" && heard[1][2] === "m 0 hello from a" && heard[0][2] === "m 1 " + "x".repeat(3000) && heard[1].filter((h) => h.startsWith("m 0 u ")).length === n && heard[0].includes("l 1");
 console.log(JSON.stringify({ a: heard[0].slice(0, 3).map((h) => h.slice(0, 20)), b: heard[1].slice(0, 3).map((h) => h.slice(0, 20)), relayed: heard[1].filter((h) => h.startsWith("m 0 u ")).length, ms: Math.round(ms) }));
 console.log(ok ? "relays" : "fails"); a.close(); process.exit(ok ? 0 : 1);
