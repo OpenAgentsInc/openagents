@@ -23,7 +23,7 @@ int main(int argc,char **argv) {
     if(argc!=2) {fprintf(stderr,"usage: elephant-bundle ORIGINAL_DIRECTORY\n");return 2;}
     coax_v_u8 config=map_file(argv[1],"config.json"),tokenizer=map_file(argv[1],"tokenizer.json"),data=map_file(argv[1],"model.safetensors"),none={NULL,0};
     coax_t_PwIdentity identity={str("baselabs/elephant-1"),str("b3f8a93462fb1051a9de031e94a7ff380e254072"),str("f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab"),str("a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f"),str("")};
-    coax_t_PwShard shard={str("model.safetensors"),data,18819722392LL,str("682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba")};
+    coax_t_PwShard shard={str("model.safetensors"),data,18819722392LL,str("682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"),0};
     size_t count=sizeof(elephant_specs)/sizeof(*elephant_specs);
     coax_t_P5Spec *specs=calloc(count,sizeof(*specs));coax_t_P5Tensor *out=calloc(count,sizeof(*out)),*draft=calloc(count,sizeof(*draft));
     if(!specs || !out || !draft) {fprintf(stderr,"out of memory\n");return 2;}

@@ -25,8 +25,8 @@ int main(int argc,char **argv) {
     coax_v_u8 data1=map_file(argv[1],"model-00001-of-00002.safetensors"),data2=map_file(argv[1],"model-00002-of-00002.safetensors");
     coax_t_PwIdentity identity={str("baselabs/mammoth-1"),str("61cec44c281c693992e3d6ebeb44dd3402dfa186"),str("bab5a8ceb73fd6a8f191afaf23afbf689d931da5b3c7c9d5153cf1e4b5024502"),str("a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f"),str("0424520f63f04816eee4d229a4487dc9744866ceb46513e591dd987e401b1663")};
     coax_t_PwShard shards[2]={
-      {str("model-00001-of-00002.safetensors"),data1,49825162976LL,str("29701f9a7b131bedb3fe1d565dad69b912d9128c6fc27e3d8fb0aedc47ae0e06")},
-      {str("model-00002-of-00002.safetensors"),data2,4888445168LL,str("4da0ff5476813bbd9898454f0d7f7ba3c82914c42e32e2b87577c6d69daae671")}};
+      {str("model-00001-of-00002.safetensors"),data1,49825162976LL,str("29701f9a7b131bedb3fe1d565dad69b912d9128c6fc27e3d8fb0aedc47ae0e06"),0},
+      {str("model-00002-of-00002.safetensors"),data2,4888445168LL,str("4da0ff5476813bbd9898454f0d7f7ba3c82914c42e32e2b87577c6d69daae671"),0}};
     size_t count=sizeof(mammoth_specs)/sizeof(*mammoth_specs);
     coax_t_P5Spec *specs=calloc(count,sizeof(*specs));coax_t_P5Tensor *out=calloc(count,sizeof(*out)),*draft=calloc(count,sizeof(*draft));
     if(!specs || !out || !draft) {fprintf(stderr,"out of memory\n");return 2;}

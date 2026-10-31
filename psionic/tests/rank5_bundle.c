@@ -10,7 +10,7 @@ int main(void) {
     unsigned char file[512]={0};size_t n=strlen(head);for(int i=0;i<8;i++)file[i]=(unsigned char)((uint64_t)n>>(8*i));memcpy(file+8,head,n);
     unsigned char config[]="{}";coax_v_u8 text={config,2},none={NULL,0};
     coax_t_PwIdentity id={str("owned"),str("v2"),str(json_sha),str(json_sha),str("")};
-    coax_t_PwShard shard={str("model.safetensors"),{file,(int64_t)n+14},(int64_t)n+14,str(sha)};
+    coax_t_PwShard shard={str("model.safetensors"),{file,(int64_t)n+14},(int64_t)n+14,str(sha),0};
     coax_t_P5Spec specs[2];memset(specs,0,sizeof(specs));specs[0].name=str("vision");specs[0].shape.rank=5;
     for(int i=0;i<5;i++) {specs[0].shape.dims.e[i]=1;}
     specs[1].name=str("bias");specs[1].dtype=COAX_PwDtype_f32;
