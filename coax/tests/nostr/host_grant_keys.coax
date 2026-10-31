@@ -1,0 +1,12 @@
+// Test helpers for coax/lib/nostr/host/grant.coax and host_grant_checks.coax:
+// the generated vectors and a projection view over them. TEST ONLY keys.
+#load "host_grant_vectors.coax";
+
+// A Grant view of projection i (0..HG_PROJECTION_COUNT-1) copied into w, or
+// of the fixture's own projection for i = -1.
+hgk_grant :: (i:int,w:[]u8)->H_Grant {
+  if i<0 {f:=HG_FIXTURE_PROJECTION;for k:0..<f.count {w[k]=f[k];}return H_Grant_decode(w[0..<f.count]);}
+  all:=HG_PROJECTIONS;from:=ifx i==0 then 0 else HG_PROJECTION_ENDS[i-1];to:=HG_PROJECTION_ENDS[i];
+  for k:from..<to {w[k-from]=all[k];}
+  return H_Grant_decode(w[0..<to-from]);
+}

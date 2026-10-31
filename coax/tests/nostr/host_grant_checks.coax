@@ -1,0 +1,40 @@
+// HOST grant binding end to end (coax/lib/nostr/host/grant.coax): grants an
+// independent implementation sealed as 3188 artifacts (host_grant_fixtures.ts),
+// in protobuf Access wires, opened with real BIP-340, ECDH and NIP-44. TEST keys.
+//   coax/bin/coax test coax/tests/nostr/host_grant_checks.coax --steps 2000000000 --run-steps 250000000
+#load "../../lib/nostr/host/grant.coax";
+main :: () {}
+
+hgc_bind :: (wire:[]u8,other:bool)->HostGrant {
+  dev:=ifx other then HG_OTHER_SECRET else HG_DEVICE_SECRET;x:=ifx other then HG_OTHER_X else HG_DEVICE_X;work:[HG_WORK]u8;
+  r:=host_access_bind_checked(wire,dev[..],x[..],work[..],false);
+  for b:work {#assert b==0;}
+  return r;
+}
+
+#test "an independently sealed grant binds to its projection, keeping the exact original" {
+  w:=HG_ACCESS_OK;r:=hgc_bind(w[..],false);
+  #assert r.error==HG_OK && r.original==HG_ORIGINAL_OK && r.rights==4 && r.issued_at==1790000000 && r.expires_at==1790086400 && r.epoch==0;
+  // The retained original survives a round trip through the generated codecs.
+  access:=H_Access_decode(w[..]);auth:=H_Access_get_authorization(access);
+  #assert H_SignedEvent_get_json(auth.value).value==HG_ORIGINAL_OK;
+}
+#test "a forged signature, a missing grant and junk refuse before decryption" {
+  f:=HG_ACCESS_FORGED;#assert hgc_bind(f[..],false).error==HG_SIGNATURE;
+  n:=HG_ACCESS_NO_GRANT;#assert hgc_bind(n[..],false).error==HG_WIRE;
+}
+#test "a substituted projection or plaintext refuses as HG_PROJECTION" {
+  s:=HG_ACCESS_SUBSTITUTED;#assert hgc_bind(s[..],false).error==HG_PROJECTION;
+  o:=HG_ACCESS_OTHER_ENVELOPE;#assert hgc_bind(o[..],false).error==HG_PROJECTION;
+}
+#test "another device's grant, a wrong device key, and a grant not signed by its host refuse" {
+  a:=HG_ACCESS_FOR_OTHER;#assert hgc_bind(a[..],false).error==HG_ARTIFACT && hgc_bind(a[..],true).error==HG_OK;
+  k:=HG_ACCESS_WRONG_KEY_P;#assert hgc_bind(k[..],false).error==HG_DECRYPT;
+  h:=HG_ACCESS_NOT_HOST;#assert hgc_bind(h[..],false).error==HG_ISSUER;
+  m:=HG_ACCESS_MAILBOX;#assert hgc_bind(m[..],false).error==HG_ISSUER;
+}
+#test "a scoped grant is unsupported; a wrong digest or schema is not a host grant" {
+  s:=HG_ACCESS_SCOPED;#assert hgc_bind(s[..],false).error==HG_SCOPED;
+  d:=HG_ACCESS_DIGEST;#assert hgc_bind(d[..],false).error==HG_ENVELOPE;
+  c:=HG_ACCESS_SCHEMA;#assert hgc_bind(c[..],false).error==HG_ENVELOPE;
+}

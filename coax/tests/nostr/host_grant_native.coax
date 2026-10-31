@@ -1,0 +1,18 @@
+// The HOST grant cases compiled to native code (coax run); host_grant_checks.coax
+// runs the same cases in the evaluator. Expected: 0 4 2 12 12 5 0 7 11 11 9 8 8
+//   coax/bin/coax run coax/tests/nostr/host_grant_native.coax --run-steps 250000000
+#load "../../lib/nostr/host/grant.coax";
+#import "Basic";
+
+main :: () {
+  a:=HG_ACCESS_OK;b:=HG_ACCESS_FORGED;c:=HG_ACCESS_NO_GRANT;d:=HG_ACCESS_SUBSTITUTED;e:=HG_ACCESS_OTHER_ENVELOPE;f:=HG_ACCESS_FOR_OTHER;
+  g:=HG_ACCESS_WRONG_KEY_P;h:=HG_ACCESS_NOT_HOST;i:=HG_ACCESS_MAILBOX;j:=HG_ACCESS_SCOPED;k:=HG_ACCESS_DIGEST;l:=HG_ACCESS_SCHEMA;
+  print("% % % % % % % % % % % % %\n",hgc_bind(a[..],false).error,hgc_bind(b[..],false).error,hgc_bind(c[..],false).error,hgc_bind(d[..],false).error,
+    hgc_bind(e[..],false).error,hgc_bind(f[..],false).error,hgc_bind(f[..],true).error,hgc_bind(g[..],false).error,hgc_bind(h[..],false).error,
+    hgc_bind(i[..],false).error,hgc_bind(j[..],false).error,hgc_bind(k[..],false).error,hgc_bind(l[..],false).error);
+}
+
+hgc_bind :: (wire:[]u8,other:bool)->HostGrant {
+  dev:=ifx other then HG_OTHER_SECRET else HG_DEVICE_SECRET;x:=ifx other then HG_OTHER_X else HG_DEVICE_X;work:[HG_WORK]u8;
+  return host_access_bind_checked(wire,dev[..],x[..],work[..],false);
+}
