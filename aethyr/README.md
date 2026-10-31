@@ -20,6 +20,28 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
 | `refusals.coax` | Checks that what must not compile doesn't: the fixtures in `tests/` |
 
+## Audio
+
+`audio/` synthesizes sound from integers: a sample is Q16, a phase a 32-bit
+fraction of a cycle and time a count of samples, with no `libm` and no clock,
+so the same score and seed give byte-identical samples on every build and
+target ([book chapters 65–68](book/ch065-sound-from-numbers.md)).
+
+| Module | What |
+| --- | --- |
+| `audio/synth.coax` | Oscillators (saw, square, sine), seeded noise, ADSR envelopes, decays, a one-pole filter, constant-power pan, soft saturation, Schroeder reverb lines |
+| `audio/score.coax` | The beat grid, keys and triads, patterns and the sequencer, stereo buses with a reverb send, gain automation and the master |
+| `audio/wav.coax` | 16-bit PCM WAV bytes and the FNV-1a hash of rendered samples |
+| `audio/epic.coax` | The `promo-epic` score: 120 BPM in D minor, its section times as typed seconds |
+| `tools/score.coax` | Renders a score to a WAV file (it never plays one) |
+
+```sh
+coax/bin/coax test aethyr/audio/epic.coax --library      # every audio check (it loads the rest)
+coax/bin/coax mutate aethyr/audio/synth.coax --library
+coax/bin/coax mutate aethyr/audio/score.coax --library --root-only
+coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--home S] ...
+```
+
 The older engine modules (`verse/player.coax`, `camera.coax`, `figure.coax`,
 `contact.coax`, `terrain.coax` and the rest) move here with the realm
 migration (ec-migrate).

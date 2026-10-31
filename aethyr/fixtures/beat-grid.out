@@ -1,0 +1,16 @@
+hold at sample 182486: beat 8, sample 182486
+belt at sample 314786: beat 14, sample 314786
+orbit at sample 447086: beat 20, sample 447086
+home at sample 623486: beat 28, sample 623486
+bar 0: root 50 tones 62 65 69
+bar 1: root 46 tones 62 65 70
+bar 2: root 53 tones 60 65 69
+bar 3: root 48 tones 60 64 67
+step 0: tick 7680 sample 182486 (+0) offset 0
+step 1: tick 7920 sample 187998 (+5512) offset 0
+step 2: tick 8160 sample 193511 (+5513) offset 12
+step 3: tick 8400 sample 199023 (+5512) offset 0
+step 4: tick 8640 sample 204536 (+5513) offset 0
+step 5: tick 8880 sample 210048 (+5512) offset 12
+step 6: tick 9120 sample 215561 (+5513) offset 0
+step 7: tick 9360 sample 221073 (+5512) offset 7

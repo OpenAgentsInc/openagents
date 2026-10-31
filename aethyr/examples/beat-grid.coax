@@ -1,0 +1,26 @@
+#import "Basic";
+#load "../audio/score.coax";
+// book:begin example
+// The promo's grid: 120 BPM with beat 0 at 0.138 s (sample 6086). Its sections snap to
+// beats, D minor's i VI III VII are voiced from one rule, and the ostinato's first steps
+// fall on exact samples that alternate 5512 and 5513 apart.
+main :: () {
+  g := Grid.{rate = 44100, bpm = 120, origin = 6086};
+  names := [4] string.["hold", "belt", "orbit", "home"];
+  at := [4] int.[182486, 314786, 447086, 623486];
+  for k: 0..<4 {
+    t := au_grid_tick_at(g, at[k], AU_PPQ);
+    print("% at sample %: beat %, sample %\n", names[k], at[k], t / AU_PPQ, au_grid_sample(g, t));
+  }
+  d := Key.{tonic = 50};
+  degrees := [4] int.[0, 5, 2, 6];
+  for k: 0..<4 { c := au_triad(d, degrees[k], 60, 46); print("bar %: root % tones % % %\n", k, c.root, c.tones[0], c.tones[1], c.tones[2]); }
+  p := Pattern.{step = AU_SIXTEENTH, length = 8};
+  offsets := [8] int.[0, 0, 12, 0, 0, 12, 0, 7];
+  for k: 0..<8 { p.values[k] = offsets[k]; }
+  steps: [8] Step;
+  n := au_sequence(g, p, 8 * AU_PPQ, 1000000, steps[..]);
+  last := steps[0].at;
+  for k: 0..<n { print("step %: tick % sample % (+%) offset %\n", steps[k].index, steps[k].tick, steps[k].at, steps[k].at - last, steps[k].value); last = steps[k].at; }
+}
+// book:end example

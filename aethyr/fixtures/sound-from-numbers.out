@@ -1,0 +1,13 @@
+A4: 440000 mHz, 42852281 phase units a sample
+  phase 1/8: saw -49152 square 65536 sine 46344
+  phase 3/8: saw -16384 square 65536 sine 46344
+  phase 5/8: saw 16384 square -65536 sine -46344
+  phase 7/8: saw 49152 square -65536 sine -46344
+envelope held 0.2 s: 0 44565 39322 39322 39322 19661 0
+pan -1000: left 65536 right 0
+pan -500: left 60549 right 25075
+pan 0: left 46344 right 46344
+pan 500: left 25075 right 60549
+pan 1000: left 0 right 65536
+noise from seed 11: -65446 -42987 -56210 65119
+saturate at drive 1.3: 0 23375 42918 56846 65536

@@ -87,3 +87,10 @@
 - [62. Fairy Forest](ch062-fairy-forest.md)
 - [63. The space games](ch063-the-space-games.md)
 - [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md)
+
+**VIII. Hearing it**
+
+- [65. Sound from numbers: oscillators and envelopes](ch065-sound-from-numbers.md)
+- [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md)
+- [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md)
+- [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md)

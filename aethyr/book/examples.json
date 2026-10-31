@@ -40,6 +40,36 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/sound-from-numbers.coax",
+      "chapter": "aethyr/book/ch065-sound-from-numbers.md",
+      "stdout": "aethyr/fixtures/sound-from-numbers.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/beat-grid.coax",
+      "chapter": "aethyr/book/ch066-a-sequencer-on-the-beat-grid.md",
+      "stdout": "aethyr/fixtures/beat-grid.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/promo-epic.coax",
+      "chapter": "aethyr/book/ch067-scores-mixing-and-a-soundtrack.md",
+      "stdout": "aethyr/fixtures/promo-epic.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,7 +1,7 @@
 # Plan and prerequisites
 
-Proposal, 2026-10-31. Every chapter is a design draft; nothing in the book
-runs yet. The order puts each primitive before anything that uses it, so the
+Proposal, 2026-10-31. Chapters 1–3 and 65–67 are written; the rest are design
+drafts. The order puts each primitive before anything that uses it, so the
 book can be built front to back, but independent branches can start earlier
 than their position. The [contents](SUMMARY.md) give the reading order and the
 [introduction](README.md) the result of each chapter.
@@ -17,6 +17,7 @@ than their position. The [contents](SUMMARY.md) give the reading order and the
 | V. Big worlds | 38–50 | Worlds streamed in cells around a floating origin; spacecraft and the solar system at stated fidelity; rooms, presence and shared state over the network. |
 | VI. Making worlds | 51–55 | Aethyrforge: a realm as a typed document, edited in place, with imported assets, published as a frozen record and forked. |
 | VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on Aethyr with no private copies left. |
+| VIII. Hearing it | 65–68 | Integer synthesis, a beat-grid sequencer, mixing with a reverb send, a master that never clips, WAV output and a rendered soundtrack; then real-time playback, sound placed in the world, and music that follows the game's state. |
 
 ## Engine-core tasks
 
@@ -54,6 +55,17 @@ have no task yet; they consolidate code the realms already share
 | Networking | 5 and 6 | Rooms and presence 49 → shared state 50. |
 | Aethyrforge | 3, 5, 6 and 16 | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. |
 | Realms | The chapters each realm uses | 56–63 in any order once their chapters exist; 64 last. |
+| Sound | Coax only; 1, 2, 5 and 10 for playback in a realm | Oscillators and envelopes 65 → the beat grid 66 → scores and mixing 67 → playback, space and reaction 68. |
+
+## Part VIII: sound
+
+Sound comes last in the numbering but needs only Coax: chapters 65–67 build
+and check offline synthesis from integers, so a score and its seed render the
+same samples on every build and target. The part is numbered after Part VII
+so that adding it renumbered no earlier chapter while Parts I–III were being
+written. Chapter 68, playback inside a running realm, needs chapter 1's clock,
+chapter 2's lens, chapter 5's replay and chapter 10's camera, and can start
+once they settle.
 
 ## Part IV: a physics engine
 

@@ -11,7 +11,8 @@ builder and world-creation tools. Both are written in
 This book builds the engine from scratch, starting with the smallest
 primitive, one clock and one fixed step. Each chapter adds one working piece
 with its own checks and builds only on earlier chapters, until Part VII
-rebuilds every realm from them. You need the Coax language (its book's
+rebuilds every realm from them. Part VIII adds sound; it needs only Part I
+and can be read at any point after it. You need the Coax language (its book's
 Parts I–III) and, for Part IV onward, Psionic's tensor programs
 ([Psionic chapters 3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)).
 
@@ -36,7 +37,7 @@ drops the marker and shows its code the way the Psionic book does: listings
 copied from source between `// book:begin` and `// book:end` markers, and
 runnable programs in `aethyr/examples/` with exact transcripts.
 
-Chapters 1–3 are written; every other chapter is a design draft.
+Chapters 1–3 and 65–67 are written; every other chapter is a design draft.
 
 ## Writing style
 
@@ -191,3 +192,12 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [62. Fairy Forest](ch062-fairy-forest.md) | Unimplemented: design draft | The bloom-and-roots story on saved state, with flight moved from the face into the shared controller, so a full session replays and flies the same at any frame rate. |
 | [63. The space games](ch063-the-space-games.md) | Unimplemented: design draft | Orbit League and Belt 2200 on Aethyr's physics and spacecraft chapters, with `space.md`'s checks, transfers within their stated error and lockstep games that replay to the same hashes. |
 | [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md) | Unimplemented: design draft (`ec-migrate`) | The `ec-migrate` plan: an inventory of each realm's private copies, a migration order, a check that no private loop, camera, input path or ground logic comes back, and goldens and 60 FPS held throughout. |
+
+### VIII. Hearing it
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [65. Sound from numbers: oscillators and envelopes](ch065-sound-from-numbers.md) | Written | Integer oscillators (saw, square, a fitted sine), seeded xorshift noise, ADSR envelopes, decays as a repeated multiply, a one-pole filter, constant-power pan and Padé saturation, with no `libm` and no clock. |
+| [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md) | Written | A tempo grid in ticks whose every step is computed from its own tick, so it never drifts; sections snapped to steps; keys and triads from one voicing rule; patterns stepped to exact samples. |
+| [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md) | Written | Stereo buses with a Schroeder reverb send, gain automation, a master that normalizes, automates and saturates without clipping, WAV files, a sample hash, and the `promo-epic` score rendered by `aethyr/tools/score.coax`. |
+| [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md) | Unimplemented: design draft | Block rendering on the audio clock through a Web Audio worklet and native hosts, sources placed in the world by distance, pan and delay, and music that changes section on the bar line with the game's state, all replaying exactly. |

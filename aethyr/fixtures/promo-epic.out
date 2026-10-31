@@ -1,0 +1,4 @@
+cut at 1000 Hz: 3000 frames, 33 voices, peak 102646 before normalising
+  largest sample 31325 of 32767, 192 samples past half scale, fnv1a64 17619107288867054281
+cut at 8000 Hz: 48000 frames, 60 voices, peak 173263 before normalising
+  largest sample 31325 of 32767, 2344 samples past half scale, fnv1a64 6830452351595467604

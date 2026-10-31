@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../audio/epic.coax";
+// book:begin example
+// Two cuts of promo-epic: the 1 kHz one the checks render (its hash is the one
+// epic.coax records), and a six-second one at 8 kHz. The full bed is the score tool's.
+cut :: (rate: int, unit: f64) {
+  l: [48000] int; r: [48000] int; sl: [48000] int; sr: [48000] int; wet: [48000] int;
+  voice: [28000] int; pcm: [96000] int;
+  s := au_epic_cut(rate, unit);
+  a := au_render_epic(s, l[..], r[..], sl[..], sr[..], wet[..], voice[..], pcm[..]);
+  samples := pcm[0..<2 * a.frames];
+  top := 0; loud := 0;
+  for x: samples { top = au_max(top, au_abs(x)); if au_abs(x) > 16000 { loud += 1; } }
+  print("cut at % Hz: % frames, % voices, peak % before normalising\n", rate, a.frames, a.voices, a.peak);
+  print("  largest sample % of 32767, % samples past half scale, fnv1a64 %\n", top, loud, wav_hash(samples));
+}
+main :: () {
+  cut(1000, 0.5);
+  cut(8000, 1.0);
+}
+// book:end example
