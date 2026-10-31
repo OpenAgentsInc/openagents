@@ -4,11 +4,13 @@
 // worker claims a task, notes on it, releases it, claims again and finishes it.
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { startRelay } from "nostr-effect/relay"
-import { generateSecretKey } from "nostr-effect/pure"
-import { bytesToHex } from "@noble/hashes/utils"
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { generateSecretKey, getPublicKey, type Event } from "nostr-effect/pure"
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fold, KIND_ORDER } from "./model"
+import { Relay, Signer } from "./relay"
 
 const port = 7400 + Math.floor(Math.random() * 40)
 const url = `ws://127.0.0.1:${port}`
@@ -133,3 +135,72 @@ test("ten workers at once each land their note once; a repeated note is not post
   const shown = await run("show", "hmac")
   for (let k = 0; k < 10; k++) expect(shown.split(`w${k}: parallel note ${k}`).length).toBe(2)
 }, 60000)
+
+test("open-task order preserves active legacy ranks and all issues at the page capacity", async () => {
+  await run("publish")
+  await run("status", "sha256", "open")
+  await run("status", "hmac", "resolved")
+  const key = hexToBytes(readFileSync(keyFile, "utf8").trim()), pk = getPublicKey(key)
+  const connection = await Relay.open(url, null)
+  const config = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"))
+  const read = () => connection.all([{ authors: [pk] }])
+  const latestOrder = (events: Event[]) => events.filter((e) => e.kind === KIND_ORDER)
+    .sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id))[0]
+  try {
+    const before = await read(), state = fold(pk, config, before)
+    const ids = new Map(state.issues.map((i) => [i.slug, i.id]))
+    // Historical order events also ranked hierarchy and finished tasks.
+    // Compaction keeps an active task's short rank without reordering it.
+    const legacy = new Map([["init", "1"], ["m-one", "2"], ["sha256", "3"], ["hmac", "4"]])
+    const signer = new Signer(key)
+    signer.after(Math.max(...before.map((e) => e.created_at)))
+    await connection.publish(signer.sign({ kind: KIND_ORDER, content: "", tags: [
+      ["d", config.slug], ["a", `30621:${pk}:${config.slug}`, config.relay],
+      ...[...legacy].map(([slug, rank]) => ["item", ids.get(slug)!, rank]),
+      ["alt", "The legacy task order"],
+    ] }))
+
+    expect(await run("publish")).toContain("order of 1")
+    const compacted = await read(), order = latestOrder(compacted)
+    const ranked = order.tags.filter((t) => t[0] === "item")
+    expect(ranked).toEqual([["item", ids.get("sha256")!, "3"]])
+    const after = fold(pk, config, compacted)
+    expect(after.issues.length).toBe(state.issues.length)
+    expect(after.issues.find((i) => i.slug === "hmac")?.status).toBe("resolved")
+    expect(after.issues.filter((i) => i.kind !== "task").map((i) => i.slug)).toEqual(["init", "m-one"])
+    const shown = await run("list")
+    expect(shown).toMatch(/initiative\s+init/)
+    expect(shown).toMatch(/milestone\s+m-one/)
+    expect(await run("publish")).not.toContain("published kind")
+    expect(latestOrder(await read()).id).toBe(order.id)
+
+    await expect(run("move", "init", "--before", "sha256")).rejects.toThrow("only tasks can be ordered")
+    await expect(run("move", "sha256", "--before", "m-one")).rejects.toThrow("only tasks can be ordered")
+    await expect(run("move", "hmac", "--before", "sha256")).rejects.toThrow("only open items are in the order")
+    await expect(run("move", "sha256", "--before", "hmac")).rejects.toThrow("only open items are in the order")
+    const orderFile = join(dir, "hierarchy-order.txt")
+    writeFileSync(orderFile, "init\nsha256\n")
+    await expect(run("respread", "--order", orderFile)).rejects.toThrow("order files may contain only tasks")
+
+    // The page admits 256 total issues; hierarchy issues must not consume
+    // the relay's 256-tag order-event budget. Finished issues remain in the
+    // project and its history while only active tasks consume order tags.
+    const atCapacity = work("SHA-256, one-shot")
+    for (let i = 0; i < 36; i++) atCapacity.items.push(item(`extra-m${i}`, "milestone", `Extra milestone ${i}`, { parent: "init" }))
+    for (let i = 0; i < 216; i++) atCapacity.items.push(item(`extra-task${i}`, "task", `Extra task ${i}`, { parent: "m-one", size: "S" }))
+    expect(atCapacity.items.length).toBe(256)
+    writeFileSync(join(dir, "work", "a.json"), JSON.stringify(atCapacity))
+    await run("publish")
+    const complete = await read(), completeState = fold(pk, config, complete), completeOrder = latestOrder(complete)
+    const taskIds = new Set(completeState.issues.filter((i) => i.kind === "task" && i.status !== "resolved" && i.status !== "closed").map((i) => i.id))
+    const entries = completeOrder.tags.filter((t) => t[0] === "item")
+    expect(completeState.issues.length).toBe(256)
+    expect(entries.length).toBe(217)
+    expect(completeOrder.tags.length).toBeLessThanOrEqual(256)
+    expect(new Set(entries.map((t) => t[1]))).toEqual(taskIds)
+    expect(entries.find((t) => t[1] === ids.get("sha256"))?.[2]).toBe("3")
+    expect(entries.some((t) => t[1] === ids.get("hmac"))).toBe(false)
+    expect(completeState.issues.find((i) => i.slug === "hmac")?.status).toBe("resolved")
+    expect(await run("publish")).not.toContain("published kind")
+  } finally { connection.close() }
+}, 120000)

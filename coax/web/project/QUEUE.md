@@ -83,6 +83,16 @@ machine that holds the project key
 
 - **Never renumber or reorder by hand in the work file.** Order is the queue
   order event; move with `bun publish.ts move SLUG --before SLUG`.
+- **Queue ranks belong to unfinished tasks.** Initiative and milestone
+  issues stay in deterministic creation order. Resolved and closed tasks
+  keep their status and history, but publishing leaves them and hierarchy
+  issues out of the task-order event. Active task ranks stay intact unless
+  an overlong rank triggers the existing automatic rebalance. Once a
+  finished task has left the order, reopening it appends it unranked at the
+  end. Both move anchors must be unfinished tasks, and `respread --order`
+  files must name tasks. Explicit moves and respreads keep their documented
+  rank behavior. The publisher refuses an order over the relay's tag limit
+  rather than dropping active tasks.
 - **Never mark something done that didn't pass its acceptance checks.** If
   a check can't run here (a device, a key), say so in a note and leave it
   open.

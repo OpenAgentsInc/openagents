@@ -228,7 +228,11 @@
         "Conformance vectors pass in both optimization levels"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [
+        "r0-native-check-exe",
+        "r1a-identities",
+        "r8-backend-profile-manifest"
+      ]
     },
     {
       "slug": "r0-native-check-exe",
@@ -237,18 +241,31 @@
       "size": "M",
       "labels": [
         "r0",
-        "testing"
+        "testing",
+        "usage-audit"
       ],
-      "body": "An optional native check executable runs pinned inputs through the evaluator and the emitted unoptimized and optimized procedures and compares values, traps and buffer writes.\n\nRoadmap: coax/ROADMAP.md.",
-      "files": [],
+      "body": "An optional native check executable runs pinned inputs through the evaluator and the emitted unoptimized and optimized procedures and compares values, traps and buffer writes.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nCurrent differential probes cover a generated bounded grammar. They do not execute arbitrary eligible authored checks from the actual product files on emitted native code.\n\nImplement the optional runner described above and use it on a documented eligible subset of real Verse and Psionic checks. Compare evaluator, checked native `-O0` and checked native `-O2` results, including returned values, specified traps, caller-buffer writes and cleanup. Report unsupported/unexecuted checks explicitly and keep shipping test code separate from product artifacts.\n\n## Usage audit remaining scope\n\nThis issue includes both the core optional native-check runner and its real consumer qualification. The existing small differential grammar does not establish this broader support or general compiler correctness; GPU execution remains separate. Additional eligible syntax needs its own explicit evidence.",
+      "files": [
+        "coax/tests/native_checks.py",
+        "coax/verification-differential.md",
+        "verse/",
+        "psionic/"
+      ],
       "acceptance": [
         "Seeded evaluator/emitter defects are caught",
-        "Mismatches minimised and kept as regressions"
+        "Mismatches minimised and kept as regressions",
+        "An explicit native-check consumer command runs the same selected authored checks through evaluator, checked `-O0` and checked `-O2`, retaining target/profile identities.",
+        "Seeded evaluator/emitter defects produce nonzero counterexample outcomes; timeouts, unavailable tools and unsupported checks cannot produce passed outcomes.",
+        "Returned values, guard bytes, expected traps and cleanup writes are checked independently; test code is absent from normal product emission.",
+        "The record names eligible, rejected and unselected checks instead of treating omitted work as covered."
       ],
       "blocked_by": [
-        "r0-semantic-profiles"
+        "r0-semantic-profiles",
+        "r8-backend-profile-manifest"
       ],
-      "blocks": []
+      "blocks": [
+        "r8-cross-backend-conformance"
+      ]
     },
     {
       "slug": "r0-evidence-record",
@@ -266,7 +283,10 @@
         "Missing execution is never a pass"
       ],
       "blocked_by": [],
-      "blocks": []
+      "blocks": [
+        "r0-authoring-corpus",
+        "r7a-format-evidence"
+      ]
     },
     {
       "slug": "r0-authoring-corpus",
@@ -295,17 +315,38 @@
       "size": "L",
       "labels": [
         "r1",
-        "compiler"
+        "compiler",
+        "usage-audit"
       ],
-      "body": "Declaration and content identities, explicit target descriptions, original spans, basic namespaces and minimal inspectable procedure lowering, pinned with differential fixtures and independent oracles.\n\nRoadmap: coax/ROADMAP.md.",
-      "files": [],
+      "body": "Declaration and content identities, explicit target descriptions, original spans, basic namespaces and minimal inspectable procedure lowering, pinned with differential fixtures and independent oracles.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nA loaded graph has one declaration namespace. Psionic mesh entry points already compose more than one hundred physical units, while Verse and libraries must hand-prefix symbols. Shared source identity, native ABI identity and same-spelling declarations need distinct rules.\n\nDeliver the namespace/identity portion of existing umbrella `r1a-identities` through the parser, checked graph and emitters. Specify explicit logical module IDs, private/public declarations, qualified lookup, reexports if supported, and their content/dependency identities before implementing syntax. Preserve physical-file authority and original spans. Establish the minimal inspectable shared procedure-lowering contract needed by these declarations; do not add a competing semantic frontend. Migrate one existing Verse or Psionic source graph and publish its dependency/identity report.\n\n## Usage audit remaining scope\n\nThis is a substantial implementation contract, not completion by adding a header hash or a namespace parser alone. If it exceeds the owner's two-hour task limit, create linked acceptance-complete subtasks before implementation and keep this task open until all listed behavior lands. Packages, network fetching, privileged builds and general incremental compilation remain separate. The broader `r1a-identities` umbrella closes only on its own full acceptance.",
+      "files": [
+        "coax/spec.md",
+        "coax/grammar.ebnf",
+        "coax/lib/compiler/",
+        "coax/src/coax.h",
+        "coax/tests/modules.py",
+        "coax/tests/sources.py",
+        "coax/ROADMAP.md",
+        "coax/book/ch22-organizing-programs.md"
+      ],
       "acceptance": [
-        "Differential fixtures pass against independent oracles"
+        "Differential fixtures pass against independent oracles",
+        "`python3 coax/tests/modules.py` covers private access refusal, duplicate logical IDs, qualified collisions, dependency cycles, content changes, shared declaration identity and original-source diagnostics.",
+        "`python3 coax/tests/sources.py` and affected checker/seed gates pass; authority requirements survive composition.",
+        "The selected real graph builds and its existing checks run with its authored behavior unchanged; its unit count, exposed names, source/content IDs and generated sizes are retained.",
+        "Deterministic regeneration and the affected evaluator/C/GPU lowering fixtures agree on the same checked declaration identities."
       ],
       "blocked_by": [
-        "r0-semantic-profiles"
+        "r0-semantic-profiles",
+        "r1a-header-composition"
       ],
-      "blocks": []
+      "blocks": [
+        "r2a-results",
+        "r4a-generic-values",
+        "r5a-derivation",
+        "r11a-reload-experiment",
+        "r3-foreign-borrowed-buffers"
+      ]
     },
     {
       "slug": "r7a-format-evidence",
@@ -314,17 +355,28 @@
       "size": "M",
       "labels": [
         "r7",
-        "tooling"
+        "tooling",
+        "usage-audit"
       ],
-      "body": "coax fmt and evidence reporting using today's compiler APIs; typed queries and revision-bound fixes follow R1a.\n\nRoadmap: coax/ROADMAP.md.",
-      "files": [],
+      "body": "coax fmt and evidence reporting using today's compiler APIs; typed queries and revision-bound fixes follow R1a.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nAgents copy inconsistent syntax layout and spend review effort on mechanical changes. A canonical formatter is still missing despite machine-readable diagnostics and a shared checked frontend.\n\nImplement the concrete formatter portion of existing `r7a-format-evidence` using current syntax/source APIs. Preserve comments, literal bytes, directives, physical-file boundaries and authored source ranges; provide check mode and revision-safe writes. Exercise Verse, Psionic and compiler graphs without automatically rewriting unrelated repository files.\n\n## Usage audit remaining scope\n\nThis is a concrete slice of `r7a-format-evidence`; evidence tools, typed queries and compiler-service/LSP operation remain separate. Do not close the existing umbrella solely because formatter idempotence passes. Split the implementation if needed to respect the owner's task limit.",
+      "files": [
+        "coax/tests/format.py",
+        "coax/book/ch19-agents.md"
+      ],
       "acceptance": [
-        "coax fmt is idempotent over the repository's Coax files"
+        "coax fmt is idempotent over the repository's Coax files",
+        "`python3 coax/tests/format.py` verifies idempotence, preserved comments/literals, refused malformed input, stale-write refusal and no modifications in check mode.",
+        "All supported repository Coax sources format twice identically in a temporary corpus.",
+        "Parsed/checked semantic output and eligible native behavior of frozen before/after fixtures agree.",
+        "No unrelated product source formatting is included in the implementation commit."
       ],
       "blocked_by": [
-        "r0-evidence-record"
+        "r0-evidence-record",
+        "r8-direct-wgsl-layouts"
       ],
-      "blocks": []
+      "blocks": [
+        "r7a-symbol-dependency-evidence"
+      ]
     },
     {
       "slug": "r3a-local-borrows",
@@ -348,17 +400,35 @@
       "size": "L",
       "labels": [
         "r2",
-        "language"
+        "language",
+        "usage-audit"
       ],
-      "body": "Typed results and optionals, exhaustive switch, propagation and exhaustive cleanup, with one real asynchronous adapter.\n\nRoadmap: coax/ROADMAP.md.",
-      "files": [],
+      "body": "Typed results and optionals, exhaustive switch, propagation and exhaustive cleanup, with one real asynchronous adapter.\n\nRoadmap: coax/ROADMAP.md.\n\n## Usage audit scope\n\nReceiving an error/value struct does not force the caller to inspect its error. Real clients separately track status, body, problem, completion and retained buffers, allowing invalid combinations.\n\nDeliver a concrete consumer of umbrella `r2a-results`: tagged success/refusal/cancellation/unknown outcomes, exhaustive switching and cleanup on every exit. Specify inactive-payload access and propagation semantics before implementation. Migrate one existing asynchronous System One, gateway or voice request adapter and preserve its remote idempotency/reconciliation rules.\n\n## Usage audit remaining scope\n\nThe existing `r2a-results` issue remains the language umbrella. A single consumer or tagged struct is not completion of optionals, exhaustive switching, propagation and cleanup. Split this work into linked tasks when necessary; retain missing language forms as open work rather than closing the umbrella.",
+      "files": [
+        "coax/spec.md",
+        "coax/grammar.ebnf",
+        "coax/lib/compiler/",
+        "coax/src/eval.cpp",
+        "coax/src/emit_c.cpp",
+        "coax/tests/results.py",
+        "coax/book/ch05-structs-enums-unions.md",
+        "coax/book/ch07-errors.md",
+        "coax/book/ch23-asynchronous-work.md"
+      ],
       "acceptance": [
-        "The spec's R2a examples compile and their checks pass"
+        "The spec's R2a examples compile and their checks pass",
+        "`python3 coax/tests/results.py` rejects nonexhaustive cases and inactive-payload access and covers nested propagation, early return and reverse-order cleanup.",
+        "The same result/cleanup vectors agree in evaluator and checked native `-O0`/`-O2` execution.",
+        "The selected adapter's existing success, refusal, late-completion, duplicate-completion and cancellation traces pass; unknown remote outcomes never trigger an unsafe automatic retry.",
+        "Relevant authority checks and mutation gates pass without equivalent-mutation exemptions."
       ],
       "blocked_by": [
-        "r1a-identities"
+        "r1a-identities",
+        "r3a-borrow-summary-consumer"
       ],
-      "blocks": []
+      "blocks": [
+        "r8-backend-profile-manifest"
+      ]
     },
     {
       "slug": "r4a-generic-values",

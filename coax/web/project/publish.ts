@@ -191,9 +191,10 @@ function orderTags(entries: { id: string; rank: string }[]) {
     ...entries.map((e) => ["item", e.id, e.rank]), ["alt", `The ${config.name} project's task order`]]
 }
 
-/** The order the queue keeps (rank.ts queueOrder): open items only, by rank, new ones after. */
+/** Only unfinished tasks consume queue ranks. Keep queueOrder's finished-item,
+ * reopen/append, relay-budget and automatic-rebalance policy in one place. */
 function ordered(f: Folded, work: WorkItem[]): { id: string; rank: string }[] {
-  return queueOrder(f.issues, work.map((it) => it.slug))
+  return queueOrder(f.issues.filter((i) => i.kind === "task"), work.filter((it) => it.kind === "task").map((it) => it.slug))
 }
 
 async function publishAll(relay: Relay) {
@@ -230,7 +231,12 @@ async function move(relay: Relay, what: string, where: "before" | "after", other
   const work = await readWork(dir)
   const f = await load(relay)
   const entries = ordered(f, work)
-  const id = (s: string) => f.issues.find((i) => i.slug === s)?.id ?? (() => { throw new Error(`no item ${s}`) })()
+  const id = (s: string) => {
+    const item = f.issues.find((i) => i.slug === s)
+    if (!item) throw new Error(`no item ${s}`)
+    if (item.kind !== "task") throw new Error(`only tasks can be ordered: ${s} is ${item.kind}`)
+    return item.id
+  }
   const moving = id(what), anchor = id(other)
   if (moving === anchor) throw new Error("an item can't move relative to itself")
   for (const [s, i] of [[what, moving], [other, anchor]]) if (!entries.some((e) => e.id === i)) throw new Error(`${s} is finished: only open items are in the order`)
@@ -262,6 +268,8 @@ async function respread(relay: Relay, seed: boolean, orderFile = "") {
     const slugOf = new Map(f.issues.map((i) => [i.id, i.slug]))
     const unknown = want.filter((slug) => !f.issues.some((i) => i.slug === slug))
     if (unknown.length) throw new Error(`no items ${unknown.join(", ")}`)
+    const hierarchy = want.filter((slug) => f.issues.some((i) => i.slug === slug && i.kind !== "task"))
+    if (hierarchy.length) throw new Error(`order files may contain only tasks: ${hierarchy.join(", ")}`)
     const was = new Map(entries.map((e, i) => [e.id, i]))
     entries = [...entries].sort((a, b) =>
       (pos.get(slugOf.get(a.id)!) ?? 1e9) - (pos.get(slugOf.get(b.id)!) ?? 1e9) || was.get(a.id)! - was.get(b.id)!)

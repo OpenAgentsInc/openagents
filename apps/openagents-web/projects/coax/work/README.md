@@ -49,6 +49,11 @@ Rules:
 
 Files:
 - `coax.json`: the language roadmap initiative.
+- `usage-audit.json`: concrete Verse/Psionic usage follow-ups. It uses
+  `openagents.project-work.v1` (`items` are already normalized work entries)
+  and extends existing roadmap tasks through parent/blocker references. The
+  dependency chain records implementation order; signed queue ranks still move
+  only through the publisher. Existing umbrella tasks retain their acceptance.
 - `nostr.json`: the Coax Nostr initiative (spec: `coax/nostr.md`), reconciled
   with shipped commits and expanded to include runtime authority, private data,
   phone sign-in and optional key backup. Counts come from the seed, not this text.

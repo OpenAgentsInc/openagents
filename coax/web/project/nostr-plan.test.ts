@@ -2,12 +2,16 @@
 import { expect, test } from "bun:test"
 import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { checkWork, seedItems, topo } from "./model"
+import { checkWork, seedItems, topo, SEED_SCHEMA, WORK_SCHEMA } from "./model"
 const root = join(import.meta.dir, "../../..")
 const dir = join(root, "apps/openagents-web/projects/coax/work")
 const seeds = readdirSync(dir).filter(f => f.endsWith(".json")).sort().map(f => JSON.parse(readFileSync(join(dir, f), "utf8")))
-const seed = seeds.find(s => s.initiative.slug === "coax-nostr")!
-const items = seeds.flatMap(s => seedItems(s))
+const seed = seeds.find(s => s.v === SEED_SCHEMA && s.initiative.slug === "coax-nostr")!
+const items = seeds.flatMap(s => {
+  if (s.v === SEED_SCHEMA) return seedItems(s)
+  if (s.v === WORK_SCHEMA && Array.isArray(s.items)) return s.items
+  throw new Error(`unsupported project work schema: ${s.v}`)
+})
 const tasks = new Map(seed.tasks.map((t: any) => [t.slug, t])) as Map<string, any>
 const reaches = (from: string, target: string, seen = new Set<string>()): boolean => {
   if (seen.has(from)) return false

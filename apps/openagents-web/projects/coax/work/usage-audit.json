@@ -1,0 +1,165 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "r1a-header-composition",
+      "kind": "task",
+      "parent": "r1",
+      "title": "Compose generated headers without native type renaming",
+      "size": "S",
+      "labels": [
+        "usage-audit",
+        "r1",
+        "interop"
+      ],
+      "blocked_by": [],
+      "body": "## Problem\n\nSeparately compiled libraries expose identical fixed arrays, views and loaded records, but their generated headers redefine C types. Basename-only include guards can also hide an unrelated library's exports. The iOS Haunt bridge carries a native renaming workaround.\n\n## Scope\n\nMake compatible emitted array, view, struct and enum declarations compose in either include order, and reject incompatible public spellings explicitly even when their storage sizes match. Keep repeated includes valid and distinguish entry files with the same basename. Change header emission only: preserve generated procedure bodies, exported function signatures and runtime behavior. Remove the native Haunt and web Haunt/Ice Cream/Everglade type-renaming workarounds once their actual generated headers compile together without them. Keeping the aliases would suppress renamed typedefs under the new guards. Consumer logic and layouts remain unchanged.\n\n## Files\n\n- `coax/src/emit_c.cpp`\n- `coax/tests/tools.py` (`HeaderComposition`)\n- `apps/openagents-ios/OpenAgents/Platform/Bridge.h`, only if the workaround is safely removable\n- A focused verification record under `docs/verification/`\n\nThe migration also touches apps/openagents-web/realm-face.c, icecream-face.c and everglade-face.c (canonical type references only), plus the explicit bootstrap header seeds.\n\n## Acceptance\n\n- `python3 coax/tests/tools.py HeaderComposition` passes every test in the class, including fixed arrays/array views, shared loaded records/enums, equal-size incompatible records, conflicting enum values and same-basename entries.\n- `python3 coax/tests/tools.py Tools` passes with the candidate compiler.\n- Both C11 and C++ hosts include compatible headers in both orders and execute both linked libraries; incompatible declarations fail with `incompatible Coax C type`.\n- A fixed source corpus emits byte-identical C procedure implementations before and after the change; only header composition changes.\n- If the Haunt workaround is removed, a header-only native compile of the actual generated Haunt/HUD interfaces passes. No app or device launch is required for this task.\n\n- The actual Haunt, Ice Cream Man and Everglade Wasm targets compile with obsolete aliases removed.\n- coax/web/golden-check.sh --commit HASH passes for the completed commit before pushing.\n\n## Remaining scope\n\nThis fixes header composition only. `r1a-identities` remains open for logical declaration identities, targets, spans, namespaces and shared procedure lowering. Structural header compatibility is not protocol identity or proof of semantic interchangeability."
+    },
+    {
+      "slug": "r3-foreign-borrowed-buffers",
+      "kind": "task",
+      "parent": "r3",
+      "title": "Call native effects with checked borrowed numeric buffers",
+      "size": "L",
+      "labels": [
+        "usage-audit",
+        "interop",
+        "borrows"
+      ],
+      "blocked_by": [
+        "r1a-identities"
+      ],
+      "body": "## Problem\n\nScalar-only `#foreign` calls force sockets, TLS, process arguments and entropy through per-byte bridges. Voice codecs and model I/O need the same bounded buffer boundary.\n\n## Scope\n\nSpecify and implement synchronous borrowed numeric views across `#foreign`, with explicit read/write and non-retention rules, pointer/count widths, empty-view behavior, aliasing and failure semantics. Keep host I/O forbidden in pure checks and `#run`. Port one existing socket/TLS or voice buffer operation, measuring calls and copied bytes on the same workload before and after.\n\n## Files\n\n- `coax/spec.md`, grammar, checker, native ABI/header emission and focused fixtures\n- New `coax/tests/foreign_buffers.py`\n- One selected transport in `coax/lib/net/` and its `coax/platform/` adapter, or `verse/platform/voice.c`\n- The interop/memory book sections\n\n## Acceptance\n\n- `python3 coax/tests/foreign_buffers.py` exercises C11/C++ ABI calls in both directions, zero-length buffers, short destinations, alias policy, invalid count/representation refusal and ordered effects.\n- Pure evaluator/authority checks reject attempts to execute the new foreign effects.\n- Native ASan/UBSan tests pass for the selected real adapter; existing protocol/audio results remain unchanged.\n- Retained measurements show the native call count and copied bytes for the same pinned input; unsupported asynchronous retention is refused explicitly.\n\n## Remaining scope\n\nNo general pointers, ownership transfer, callback retention or general C-header import is implied. Split this contract into linked subtasks if needed to obey the two-hour task limit; do not close it on scalar declarations or a host-only workaround."
+    },
+    {
+      "slug": "r3a-borrow-summary-consumer",
+      "kind": "task",
+      "parent": "r3",
+      "title": "Check aggregate and call-mediated borrows in a real request path",
+      "size": "L",
+      "labels": [
+        "usage-audit",
+        "r3",
+        "lifetimes"
+      ],
+      "blocked_by": [
+        "r3-foreign-borrowed-buffers"
+      ],
+      "body": "## Problem\n\nE0383 rejects simple local-array returns but misses borrows returned through calls, stored inside aggregates or retained into caller state. Request records such as `SoCall` and decoded packets carry exactly those lifetimes.\n\n## Scope\n\nExtend the checked graph with bounded borrow summaries for returned views/strings, aggregate-contained borrows and retained parameter storage. Define caller obligations and conservative unsupported cases. Exercise a real System One request or protocol packet path, preserving legitimate returns of caller-owned borrows.\n\n## Files\n\n- `coax/lib/compiler/checker.coax` and checked-graph/seed plumbing\n- `coax/verification-local-borrows.md`\n- `coax/tests/checker.py`, native lifetime fixtures and new borrow-summary fixtures\n- A selected request adapter under `coax/lib/systemone/` or a selected protocol consumer\n\n## Acceptance\n\n- Negative fixtures reject `return identity(local[..])`, a returned struct/array containing a local borrow, and storing a short-lived local borrow into longer-lived request state.\n- Positive fixtures accept explicit caller-owned buffers and their aggregate subviews, with original-source diagnostics for failures.\n- Affected checker authority checks, zero-survivor mutation, deterministic seed regeneration and native ASan/UBSan fixtures pass.\n- The selected real request path documents and obeys its retained-buffer lifetime through completion and cancellation.\n\n## Remaining scope\n\nThis extends the existing `r3a-local-borrows` work; it does not retroactively claim general memory safety. Loop fixed points, nested-block regions, ownership transfer and foreign retention remain explicit unless implemented and tested here. Split work that exceeds two hours into linked subtasks without dropping these acceptance cases.\n\nExplicit owned scratch/arena capacity, reset epochs, cleanup and no-escape consumer work remains an R3 follow-up; this borrow-summary task does not claim that storage system ships. The broader protocol writer roadmap likewise retains its own acceptance."
+    },
+    {
+      "slug": "r8-backend-profile-manifest",
+      "kind": "task",
+      "parent": "r8",
+      "title": "Bind backend artifacts to explicit target and arithmetic profiles",
+      "size": "M",
+      "labels": [
+        "usage-audit",
+        "targets",
+        "semantics"
+      ],
+      "blocked_by": [
+        "r2a-results",
+        "r0-semantic-profiles"
+      ],
+      "body": "## Problem\n\nNative C, Wasm, Metal and CUDA have different pointer widths, layouts and floating behavior. A compiler version or successful shader build alone cannot identify which execution contract produced an artifact.\n\n## Scope\n\nConsume the semantic-profile contract from existing `r0-semantic-profiles` and emit one versioned target/profile manifest for selected native, Wasm, Metal and CUDA artifacts. Record target ABI, layout profile, integer policy, optimization separately from checks, floating contraction/reassociation/subnormal policy, compiler/toolchain and relevant source/dependency identities. Validate incompatible linked/module combinations.\n\n## Files\n\n- Compiler options, ABI/layout reports and artifact emission\n- `coax/release.coax` only for reviewed capability status changes\n- New `coax/tests/target_profiles.py`\n- The selected Verse/Psionic/WebGPU build adapters\n\n## Acceptance\n\n- `python3 coax/tests/target_profiles.py` checks deterministic manifests, changed-input invalidation, explicit unavailable fields and rejection of incompatible target/profile combinations.\n- Checked optimized C and wrapping optimized C have distinct manifests; choosing optimization alone does not silently select arithmetic policy.\n- The selected actual native/Wasm/Metal/CUDA artifacts retain the manifests beside their build evidence, with device/tool availability distinguished from success.\n\n## Remaining scope\n\nThis depends on, and does not duplicate or close, `r0-semantic-profiles`. A manifest describes a contract; it does not prove target support or numerical equivalence. Broader targets, strict deterministic math and full build manifests retain their separate gates. Split implementation if it cannot fit one two-hour sitting."
+    },
+    {
+      "slug": "r8-cross-backend-conformance",
+      "kind": "task",
+      "parent": "r8",
+      "title": "Run one numerical and layout corpus across the actual backends",
+      "size": "M",
+      "labels": [
+        "usage-audit",
+        "r8",
+        "conformance"
+      ],
+      "blocked_by": [
+        "r0-native-check-exe"
+      ],
+      "body": "## Problem\n\nCPU checks of shared math do not establish GPU behavior. Psionic already observes Metal subnormal flushing while CPU/CUDA retain those values. Layout and tolerance claims need execution evidence for each backend.\n\n## Scope\n\nFreeze a small consumer-derived corpus for integer edges, float literal/cast/rounding cases, signed zero, nonfinite admission, subnormals, array/view widths and shared GPU record offsets. Run applicable cases in checked native C, Wasm, Metal and CUDA using the target/profile manifests. Separate exact results from justified tolerance comparisons.\n\n## Files\n\n- New `coax/tests/backend_conformance/` corpus and bounded runner\n- Existing CUDA/Metal/Wasm test adapters\n- One selected Verse math path and one Psionic tensor path\n- Target matrix/evidence documentation\n\n## Acceptance\n\n- The corpus has independent numeric/byte-layout expectations and frozen exact-versus-tolerance rules.\n- A recorded bounded command executes every available claimed backend and labels unavailable hardware or unsupported cases explicitly.\n- A seeded layout/precision defect fails the relevant backend result; changed target/profile identities invalidate retained evidence.\n- Metal/CUDA readback and actual Wasm memory/ABI behavior are exercised rather than inferred from successful code generation.\n\n## Remaining scope\n\nThis qualifies the named corpus and hardware only. It does not claim universal bit equality, race freedom, general target qualification or full Verse/browser parity. Hardware-dependent unfinished checks leave this issue open; they are not waived by CPU success."
+    },
+    {
+      "slug": "r8-direct-wgsl-layouts",
+      "kind": "task",
+      "parent": "r8",
+      "title": "Generate WGSL and checked resource layouts for one real web pipeline",
+      "size": "L",
+      "labels": [
+        "usage-audit",
+        "r8",
+        "webgpu"
+      ],
+      "blocked_by": [
+        "r8-cross-backend-conformance"
+      ],
+      "body": "## Problem\n\nThe browser shader path and native Metal path carry separately maintained shader/resource layouts. Translating emitted shader text or manually matching offsets leaves target constraints outside the checked Coax graph.\n\n## Scope\n\nImplement a bounded direct WGSL lowering from checked Coax for one actual Coaxial pipeline, with target-specific buffer/resource layout and binding metadata generated from the same declarations. Validate supported stages, scalar/vector forms, offsets, alignment, stride and access. Keep CPU Wasm and shader code distinct and preserve browser/GPU resource lifetimes.\n\n## Files\n\n- Checked GPU profile and WGSL emitter/tests\n- `coax/web/` shader build/host adapters\n- One selected `apps/openagents-web/` pipeline\n- New WGSL layout/readback fixtures and the relevant GPU book sections\n\n## Acceptance\n\n- Focused emitter fixtures reject unsupported types, stages, bindings and incompatible layouts with original-source diagnostics.\n- The actual selected pipeline runs in headless muted WebGPU Chrome; GPU readback verifies generated offsets/strides and justified math tolerances.\n- Its selected shader no longer depends on text-to-text translation of another backend's shader output.\n- The relevant web smoke/golden checks pass for the exact commit, with resource cleanup and failed candidate replacement exercised.\n\n## Remaining scope\n\nThis is one bounded WGSL pipeline, not a full shader language, general engine browser migration or all-platform GPU qualification. Split it into linked tasks before implementation if it exceeds two hours; keep the full pipeline contract open until end-to-end evidence exists."
+    },
+    {
+      "slug": "r7a-symbol-dependency-evidence",
+      "kind": "task",
+      "parent": "r7",
+      "title": "Query checked symbols and select revision-bound consumer checks",
+      "size": "L",
+      "labels": [
+        "usage-audit",
+        "r7",
+        "agents",
+        "verification"
+      ],
+      "blocked_by": [
+        "r7a-format-evidence"
+      ],
+      "body": "## Problem\n\nAgents still search source text and interpret free-form fix strings for symbol/type questions. Applying a fix after the file changes can edit the wrong bytes.\n\nLarge loaded graphs and several backends make repeated full gates expensive. Existing parallel/root-only/sharded mutation helps execution, but callers still assemble consumer checks and evidence reuse manually. Voice also uses one large file-wide step budget for different kinds of checks.\n\n## Scope\n\nExpose bounded typed symbol/type/layout and reference queries from the existing checked graph, returning logical declaration IDs, original physical ranges and source content identities. Add a narrow structured-fix application path with exact expected revision/range and stale-edit rejection. Keep analysis credential-free and unable to run host I/O or privileged build plugins.\n\nBuild a dependency-aware consumer check plan from source/content identities, declared host/build inputs and target/profile manifests. Reuse a passing result only when every required input matches. Add explicit named/per-check cost budgets and selection/evidence records without bypassing complete baseline authority obligations. Integrate one Verse and one Psionic developer loop, leaving full release gates distinct.\n\n## Files\n\n- Compiler query/diagnostic APIs and CLI\n- New `coax/tests/queries.py` and stale-fix fixtures\n- Book chapter 19 and safe-analysis documentation\n\n- Check-planning/evidence tools and versioned schema\n- New `coax/tests/check_plan.py`\n- Selected Verse/Psionic check entry points\n- Verification/book workflow documentation\n\n## Acceptance\n\n- `python3 coax/tests/queries.py` checks qualified lookup, definitions/references across loaded units, field/layout results, generated-declaration provenance and finite query bounds.\n- A structured fix succeeds only against its expected content identity and range; changed or reordered source fails without writing.\n- Analysis refuses host effects and reports missing generated inputs instead of inventing symbols.\n- A frozen real authoring task records repair steps before/after the query/fix path.\n\n- `python3 coax/tests/check_plan.py` demonstrates changed dependency/toolchain/profile/selection/budget invalidation, unchanged-result reuse and refusal of missing identities.\n- A change to a shared unit selects both affected consumers; an unrelated edit does not rerun a passing unchanged gate.\n- Authority baseline checks remain mandatory, and scoped mutation is labelled separately from dependency mutation evidence.\n- A named worst-case check can fail its own budget without relabelling unrelated long trace checks; exhaustion is never passed.\n- Frozen before/after developer-loop records include selected commands, exit statuses, elapsed costs and unexecuted gates.\n\n## Remaining scope\n\nThis does not require or complete general LSP, effects queries, macro expansion traces, plugins or a resident compiler. Existing `r7a-format-evidence` and `r0-authoring-corpus` retain their broader acceptance.\n\nThis builds on `r0-evidence-record`, existing mutation scheduling and `r0-authoring-corpus`; it does not replace their full contracts or introduce trusted remote caching. Complete release, device and independent-review requirements remain in force.\n\nThis combined issue includes both safe symbol/fix queries and dependency-aware check planning. If the full contract exceeds the owner's two-hour task limit, split it into linked acceptance-complete subtasks before implementation; keep this issue open until both scopes pass."
+    },
+    {
+      "slug": "coax-book-usage-accuracy",
+      "kind": "task",
+      "parent": "r7",
+      "title": "Reconcile the Coax book with shipped capabilities and current usage",
+      "size": "S",
+      "labels": [
+        "usage-audit",
+        "book",
+        "documentation"
+      ],
+      "blocked_by": [
+        "r7a-symbol-dependency-evidence"
+      ],
+      "body": "## Problem\n\nGenerated release blocks are current while explanatory prose still contradicts them: source sharing is described as unavailable, loaded-file debugging as generated-C-only, browser work as not started, and voice simulator evidence both passed and unrun. The current ecosystem also includes networking, cryptography, gateways and Psionic.\n\n## Scope\n\nReconcile chapters 8, 18, 21, 22, 24 and 27 and the README navigation with current implementations and retained evidence. Correct the claim that disabling float contraction makes all results equal everywhere. Preserve historical measurements with their dates/scopes and distinguish current, partial and planned behavior. Extend existing managed status/claim checks where practical rather than creating a second catalogue.\n\n## Files\n\n- `coax/book/README.md`, affected chapters and selected source-linked examples\n- `coax/book/check-structure.py` and publication checks as needed\n- `coax/book-maintenance.md`\n\n## Acceptance\n\n- `python3 coax/book/check-structure.py` passes and README/SUMMARY both include the voice case study.\n- `coax/book/check-examples.sh` runs only when executable examples changed; otherwise retained unchanged example evidence is cited.\n- A reviewable claim table cites current source/evidence for each corrected capability and explicitly identifies partial target/GPU/lifetime support.\n- No current capability is marked absent because its general future form remains planned; no old test result is presented as newly rerun.\n\n## Remaining scope\n\nThis corrects current prose and navigation; it does not rewrite the full book or promote a target/profile beyond its evidence. Library contracts and runnable recipes are the following task."
+    },
+    {
+      "slug": "coax-library-contract-recipes",
+      "kind": "task",
+      "parent": "r7",
+      "title": "Publish bounded library contracts and runnable cross-domain recipes",
+      "size": "M",
+      "labels": [
+        "usage-audit",
+        "libraries",
+        "book"
+      ],
+      "blocked_by": [
+        "coax-book-usage-accuracy"
+      ],
+      "body": "## Problem\n\nThe book teaches a small engine language while `coax/lib/`, Verse and Psionic already contain reusable network, crypto, gateway, tensor and model facilities. Users cannot quickly discover supported APIs, required shims, borrowed lifetimes or qualification limits.\n\n## Scope\n\nPublish one discoverable library/maturity index and concise contracts for the actual selected public entry points. Record supported targets/profiles, native link inputs, work/storage bounds, read/write/borrow/retention rules, units, errors and verification commands. Add small runnable recipes that load existing code: shared Verse math/state, a bounded protocol/network exchange using an offline fixture, and a tiny Psionic CPU tensor/model operation. Link specialized books rather than duplicating them.\n\n## Files\n\n- A library index under `coax/` and affected library READMEs\n- `coax/book/` navigation and new checked recipe examples\n- Small fixture/runner integration for those examples\n- Links to `psionic/book/` and Verse documentation\n\n## Acceptance\n\n- Each indexed public entry names its stability/maturity, exact source, targets, required native shims and lifetime/error contract.\n- A documented local command runs each new recipe without credentials, network access or model downloads.\n- Recipe output/exit status and source-linked listings are checked by the book tooling; relevant native boundary fixtures run under sanitizers.\n- Internal implementation modules remain explicitly distinguished from promised public APIs; generated release claims have one canonical source.\n\n## Remaining scope\n\nThis curates existing libraries and small consumers. It does not promise every internal module as a stable package, create a package manager or add broad collection/network features merely to populate an index."
+    },
+    {
+      "slug": "verse-admission-authority",
+      "kind": "task",
+      "parent": "r0",
+      "title": "Extract authority gates for Verse resource, cast and save admission",
+      "size": "M",
+      "labels": [
+        "usage-audit",
+        "verse",
+        "authority"
+      ],
+      "blocked_by": [
+        "coax-library-contract-recipes"
+      ],
+      "body": "## Problem\n\nVerse home configuration, cast asset admission and imported realm-save validation decide whether externally supplied resource bytes reach rendering, but these policies live inside large mixed rendering/host-facing files without their own small authority boundary.\n\n## Scope\n\nExtract the pure resource/configuration, cast metadata and imported-save admission policies into bounded `#authority` units. Pass bytes and metadata explicitly; keep native storage effects in hosts. Preserve existing schema, duplicate/unknown-field policy, error precedence, offset/length/finite-value rules and original asset contracts. Review the authority inventory so moving helpers cannot silently evade the required gates.\n\n## Files\n\n- `verse/home.coax`, `verse/cast.coax`, `verse/haunt.coax` and new small admission units\n- Their focused Coax/native corrupted-input fixtures\n- Verse build/check scripts and authority inventory\n- Relevant invariants and verification record\n\n## Acceptance\n\n- `coax/bin/coax test` and `coax/bin/coax mutate` on each extracted authority unit pass with zero survivors and no equivalent exemptions.\n- Existing real configuration/cast/save fixtures retain their accepted outputs; independent malformed offset, length, index and nonfinite fixtures are refused before binding/drawing.\n- The affected native sanitizer harnesses pass using real assets plus corrupted copies.\n- Build/check entry points explicitly enforce the extracted gates, while pure checks perform no host I/O.\n\n## Remaining scope\n\nThis is consumer admission policy, separate from existing `proto-generated-checks`, `proto-generated-error-precedence` and `proto-nostr-numeric-ranges`. It does not mark every animation/render procedure authority or claim general malformed-input safety from a codec alone. Split resource, cast and save gates into linked subtasks if required by the two-hour limit."
+    }
+  ]
+}
