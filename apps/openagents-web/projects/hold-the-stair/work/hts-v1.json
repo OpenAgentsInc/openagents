@@ -494,6 +494,22 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "hts-phone-bar-fit",
+      "parent": "hts-first-playable",
+      "title": "The defender bar fits a 390 px phone",
+      "size": "S",
+      "labels": [],
+      "body": "On a 390x844 phone (dpr 3) FIGHTER runs into its card's right edge and SPEED 1's card cuts the 1 off. Seen on production 2026-10-31 (headless walk). Fit each label to its card (fit the cap to the width, as the other HUDs do).",
+      "files": [
+        "apps/openagents-web/stair.coax"
+      ],
+      "acceptance": [
+        "A test draws the bar at 390x844 and 320x568 and every label's width is inside its card"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }

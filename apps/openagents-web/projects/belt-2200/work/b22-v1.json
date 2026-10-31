@@ -584,6 +584,22 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "b22-phone-ship-cards",
+      "parent": "b22-one-ship",
+      "title": "Ship cards fit a 390 px phone",
+      "size": "S",
+      "labels": [],
+      "body": "On a 390x844 phone (dpr 3) the SELECT A SHIP row runs off the right edge: KITE's card is cut after FUEL and its ICE line is gone. Seen on production 2026-10-31 (headless walk). Lay the cards out to the width (narrower cards, or two rows / a scroll) so every card shows whole.",
+      "files": [
+        "apps/openagents-web/belt.coax"
+      ],
+      "acceptance": [
+        "A test draws the ship row at 390x844 and 320x568 and every card's box is inside the canvas"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
