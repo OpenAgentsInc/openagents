@@ -180,7 +180,14 @@ source (and compile it when NVRTC or the Metal toolchain is present). The first
 actual-device acceptance tests compare the same kernels against their CPU
 builds: `psionic/tests/run_device_project.sh` on the RTX 4080 (bit for bit,
 chapter 26) and `psionic/tests/run_metal_kernels.sh` on the Apple M5 Max
-(chapter 31). A compiler change to either subset updates `coax/spec.md`, the
+(chapter 31). `psionic/tests/run_metal_host.sh` holds the Metal host's own
+contract on the device with the minimum consumer: its result bit for bit
+against the C build, every binding and launch refusal before anything is
+encoded (null, negative, past-the-end and over-long views, unknown kinds,
+malformed launches, a missing kernel, broken source), an empty launch, a
+launch voided by a failed Coax check, and transfer timed apart from compute
+(on 2026-10-31: 64 MiB into shared storage 2.7 ms, 25 GB/s; the 256x4096
+consumer 0.40 ms of GPU time, 2.8 ms commit to completion). A compiler change to either subset updates `coax/spec.md`, the
 conformance test and these fixtures together; new syntax stays marked
 planned until it runs on a device.
 

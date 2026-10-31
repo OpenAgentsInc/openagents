@@ -168,6 +168,11 @@ PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int
                 if (!a->buffer) { note("argument %d: a view without a buffer", k); return PM_ARGUMENT; }
                 id<MTLBuffer> buffer = (__bridge id<MTLBuffer>)a->buffer;
                 if (a->offset < 0 || a->count < 0 || (NSUInteger)a->offset > buffer.length) { note("argument %d: a view outside its buffer", k); return PM_ARGUMENT; }
+                /* Every element is at least one byte, so a count beyond the
+                   bytes after the offset cannot be a view of this buffer. The
+                   host does not know the element type; a caller still owes
+                   count * element size <= its buffer's remaining bytes. */
+                if ((NSUInteger)a->count > buffer.length - (NSUInteger)a->offset) { note("argument %d: a view longer than its buffer", k); return PM_ARGUMENT; }
                 uint64_t address = buffer.gpuAddress + (uint64_t)a->offset;
                 memcpy(slot, &address, 8);
                 memcpy(slot + 8, &a->count, 8);
