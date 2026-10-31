@@ -1,0 +1,114 @@
+{
+  "schema": "coax-unit-forms-qualification-v1",
+  "seed": 6144685956496830514,
+  "rows": 132956,
+  "operation_counts": {
+    "one": 1,
+    "atom": 9,
+    "valid": 12231,
+    "equal": 40257,
+    "product": 40229,
+    "quotient": 40229
+  },
+  "status_counts": {
+    "ok": 121799,
+    "metadata": 433,
+    "power": 2945,
+    "capacity": 7779
+  },
+  "oracle": "Independent Python arbitrary-precision sparse dictionary accumulation followed by sorting; no sorted-merge producer calls.",
+  "profile": "Canonical <=8 sorted nominal atoms, IDs1..2147483647, nonzero powers within symmetric \u00b12147483647, zero inactive lanes; metadata before power before capacity.",
+  "scope": "Separate producer; no compiler integration, physical metadata, registry ownership, source operator or full R12 qualification.",
+  "input_sha256": "3affb8564c8d0e26d71ad6767ac88a1ca4ba75e18d98a06e370dd12b30bf15ce",
+  "expected_sha256": "0e7b66f517759ce77cddf1ea7db84679b9ced30c784358297af801fbcae00a5d",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "source_sha256": {
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/tests/unit-forms-native.c": "5d19b98e7c200b4bba212d40be5bee13d8aa34453ee6c0fadd3fe796008954a6",
+    "coax/tests/unit_forms.py": "c73762c08f731114ff8e8ba47d940a9ea8a2fcd1ba39e1b674500a785b337820"
+  },
+  "compiler_sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31",
+  "compiler_version": "coax0 0.43.0",
+  "c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "generated_c_sha256": "79b4faa0256db08cde1a12ffe902e1392c675aa8b96e440d762bcf516067ad6f",
+  "generated_header_sha256": "559e1e3c776b16a00c8ace0bb3f158a01d4fa0ed06ebee9be054791f80f08e50",
+  "modes": [
+    {
+      "mode": "debug",
+      "passed": true,
+      "exact_results": 132956,
+      "exact_words": 2526164,
+      "stderr_bytes": 0,
+      "output_sha256": "0e7b66f517759ce77cddf1ea7db84679b9ced30c784358297af801fbcae00a5d"
+    },
+    {
+      "mode": "release",
+      "passed": true,
+      "exact_results": 132956,
+      "exact_words": 2526164,
+      "stderr_bytes": 0,
+      "output_sha256": "0e7b66f517759ce77cddf1ea7db84679b9ced30c784358297af801fbcae00a5d"
+    },
+    {
+      "mode": "sanitized",
+      "passed": true,
+      "exact_results": 132956,
+      "exact_words": 2526164,
+      "stderr_bytes": 0,
+      "output_sha256": "0e7b66f517759ce77cddf1ea7db84679b9ced30c784358297af801fbcae00a5d"
+    }
+  ],
+  "passed": true,
+  "coax_checks": {
+    "authored_families": 10,
+    "authored_cases": 91,
+    "log_sha256": "a145ea71e43ea627c2e06822b42c00e028bd4051207f910811d1a764714b1f2e"
+  },
+  "changed_root_mutation": {
+    "mutants": 122,
+    "killed": 122,
+    "survived": 0,
+    "log_sha256": "2a6cebfe60f44ae90905803734c187683c1f9046f61f818f8e356bacc6f4a167"
+  },
+  "initial_mutation_attempt": {
+    "mutants": 122,
+    "killed": 119,
+    "survived": 3,
+    "resolution": "Added invalid-versus-valid equality operands, exact8atom success and ninthatom refusal. Product implementation unchanged; no equivalent waivers."
+  },
+  "sanitizer_flags": [
+    "-fsanitize=address,undefined",
+    "-fno-sanitize-recover=all",
+    "-fno-omit-frame-pointer"
+  ],
+  "reused_unchanged_proofs": "No UA or M1 check/native/mutation run repeated. This module has no imported policy dependency.",
+  "not_qualified": [
+    "compiler/source-operator integration",
+    "physical unit metadata",
+    "atom declaration/registry ownership",
+    "runtime floating-point operation lowering",
+    "device ABI",
+    "frames",
+    "full R12",
+    "compiler boundedness",
+    "whole compiler correctness",
+    "cross-architecture behavior"
+  ],
+  "tooling_followup": {
+    "change": "Only compiler fallback changed from private tmp0.43 path to repository coax/bin/coax. Explicit COAX_TEST_COMPILER continues to select the qualified private compiler.",
+    "executed_driver_sha256": "c73762c08f731114ff8e8ba47d940a9ea8a2fcd1ba39e1b674500a785b337820",
+    "current_driver_sha256": "9f5e7d216b29d61842bb95c5d120c11c56de7ba0084017790acf535f19dfea06",
+    "unchanged_function_ast_sha256": {
+      "form": "0de6a9fdbb3ae2e74a82b33baafb47d7ea11ddb08e59d61560a4395030613ec0",
+      "valid": "3f192ba815cd488956eaa02079678c0c3aab39d8626e791f90c22d5e8d25b748",
+      "expected": "b5d8c2a927a5ef0d132b3bb3a9bc709df777eed4ce97157881d9c9cfeb6a0760",
+      "cases": "cb8a842acae0563eccb92f94786de9a0fd6bb51dcc5f302bfe0d9b1b8f962d33"
+    },
+    "prior_compiler_sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31",
+    "prior_compiler_version": "coax0 0.43.0",
+    "prior_full_receipt_sha256": "08441301dc31222bdc7f581e91077dcd1017544c728477e2f636fa3d055d78a2",
+    "rerun": false,
+    "reuse": "All prior Coax checks, mutation, independent oracle and native modes retained unchanged. Historical executed source_sha256 remains intact."
+  }
+}
