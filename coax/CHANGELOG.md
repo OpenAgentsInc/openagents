@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 
-Commit: pending
+Commit: [`e92c3e092379f76ce63ced6bd4e3c20b4a48ec49`](https://github.com/OpenAgentsInc/openagents/commit/e92c3e092379f76ce63ced6bd4e3c20b4a48ec49)
 
 - Qualify original checked values, guarded writes and reverse cleanup against independent expectations; add verification-only structured trap observations and bounded artifact-only seeded-defect tuple replay, without promoting failed evaluator baselines.
 
