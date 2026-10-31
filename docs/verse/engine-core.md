@@ -110,9 +110,9 @@ containment (`aethyr/tests/query-oracle.coax`) over 48 random scenes each, to
 1 mm and on the collider; overlaps agree with separate distance code; the
 walker's run, jump onto a 0.5 m ledge, walk across and walk off give the same
 states whether a realm passes walls alone or walls among far bodies and
-floors. Mutation: 307 of 312 killed; the five left are boundaries no input
-reaches differently (the capsule rim and `t = 0`, and a face-edge tie), under
-independent review. Heightfields, rays against floors and the
+floors. Mutation: 312 of 312 killed; an independent review found the float32
+inputs that kill the last five (the capsule rim, roots at exactly `t = 0`,
+and a face-edge tie). Heightfields, rays against floors and the
 realms' own `ground_at` copies move with ec-migrate; the camera's
 `camera_room` moves with ec-camera.
 

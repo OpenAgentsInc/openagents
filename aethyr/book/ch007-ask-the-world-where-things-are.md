@@ -504,7 +504,7 @@ coax/bin/coax mutate aethyr/query.coax --library --root-only
 coax/bin/coax test verse/player.coax --library
 ```
 
-`aethyr/query.coax` has thirteen checks. They cover:
+`aethyr/query.coax` has fourteen checks. They cover:
 
 - the ground: step height, footprint reach, ties, and broken boxes;
 - floors: height, slope, steepness, the floor pad, and floors against boxes;
@@ -518,7 +518,7 @@ coax/bin/coax test verse/player.coax --library
 - sweeps into each of a box's six faces and twelve edges;
 - the ray, sweep, and overlap oracles over random scenes.
 
-`coax mutate` makes 312 mutants of `aethyr/query.coax`, and the checks kill 307. The other five are at boundaries where no input gives a different answer: `s >= 0` and `s <= 1` at the capsule's rim, where the side and the end sphere meet with the same `t`; `t >= 0` for the side and the end spheres, because an origin on the surface already counts as inside; and a tie between a face and an edge in `query_sweep`, which happens only where their normals agree. An independent review checks those five. On `verse/player.coax`, no mutant survives on the lines this task changed.
+`coax mutate` makes 312 mutants of `aethyr/query.coax`, and the checks kill all 312. The last five were boundary mutants that looked equivalent. An independent review found float32 inputs that reach each one: an origin the inside test calls outside, whose side or end root is exactly 0; a ray that enters the side at exactly `s = 0` or `s = 1`, a few ulps from the end sphere's root; and a sweep where a face and an edge give exactly the same `t`. The last check in the file pins those inputs. On `verse/player.coax`, no mutant survives on the lines this task changed.
 
 ## Still to do
 

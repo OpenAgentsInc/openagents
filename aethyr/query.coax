@@ -606,3 +606,25 @@ query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> Query
   h := query_sweep(c, world_point(1.2, 0.5, 0.5), 0.5, world_point(0, 0, 0));
   #assert h.hit && h.t == 0 && h.normal.y == 1 && h.normal.x == 0;
 }
+
+// Found by an independent review of the mutants that survived the checks above: float32
+// rounding reaches boundaries that exact arithmetic never does. At an origin the inside test
+// calls outside, a side or end root is exactly 0; at the rim, the side's s is exactly 0 or 1 a
+// few ulps from the end sphere's root; and a face slab and an edge capsule can tie exactly.
+#test "rounding at the boundaries: roots at exactly 0, the rim, and a face-edge tie" {
+  c1 := [7] f32.[19.0732479, 28.8835201, 20.4564133, 16.5693302, 15.8782892, 1.17422867, 2.67231965];
+  h := query_ray(Colliders.{ground = -1000, capsules = c1[..]}, world_point(15.2116556, 19.6640339, 3.18266678), world_point(1.74461389, -1.77600098, 0.971305847), 10);
+  #assert h.hit && h.t == 0;                        // the side's root
+  c4 := [7] f32.[1.45133376, 2.10842466, -1.51168859, 1.0324918, 2.55770445, -0.133360505, 1.76992822];
+  h = query_ray(Colliders.{ground = -1000, capsules = c4[..]}, world_point(1.03239727, 3.74798942, 1.17655087), world_point(0.164531976, -0.133159027, -0.712857306), 10);
+  #assert h.hit && h.t == 0;                        // an end sphere's root
+  c2 := [7] f32.[0.5, 0, 0.25, 0.5, 1, 0.25, 0.75];
+  h = query_ray(Colliders.{ground = -1000, capsules = c2[..]}, world_point(0.778455198, 3.08846545, 2.79154015), world_point(-0.000675892283, -0.739376545, -0.441458404), 10);
+  #assert h.hit && h.normal.y == 0;                 // the side at s = 0, not the end sphere
+  c3 := [7] f32.[-2, -1, 0, -2, 2, 0, 0.75];
+  h = query_ray(Colliders.{ground = -1000, capsules = c3[..]}, world_point(-2.4361465, 1.54458845, 1.60920346), world_point(0.317984074, 0.502026796, -0.963338554), 10);
+  #assert h.hit && h.t == 0.9071458 && h.normal.y == 0;   // the side at s = 1, a few ulps before the end sphere
+  bx := [6] f32.[0, 0, 0, 1, 1, 1];
+  h = query_sweep(Colliders.{ground = -1000, boxes = bx[..]}, world_point(0.691177666, 2.08973932, 0.368708968), 0.5, world_point(0.342547089, -0.673800766, 0.721275091));
+  #assert h.hit && h.normal.y == 1 && h.normal.z == 0;   // the tie goes to the face found first
+}
