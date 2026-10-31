@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# The realm builder's eval (byo-never-drop): twenty prompts go to the real planner (Gemini on
+# The realm builder's eval (byo-never-drop): forty prompts go to the real planner (Gemini on
 # Vertex, as production asks it) through a throwaway api and Postgres on this Mac, and a second
 # model reads each prompt and its board and says, for every thing asked for, whether the board
 # shows it, lists it as still wanted, or neither. eval_builder.py scores it; nothing matches words.
 #   coax/web/api/eval-builder.sh [--only N] [--out FILE]
+# OA_EVAL_MIGRATIONS=DIR plans with those migrations instead (a before, to compare).
 # Needs a key for a service account that may call Vertex: OA_EVAL_SA_KEY, else
 # ~/work/.secrets/vertex-sa-inference.json. Its token stays in this script's environment.
 set -euo pipefail
@@ -27,6 +28,6 @@ port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000))
 "$pg/bin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
 OA_BUILDER_TIMEOUT_MS=20000 OA_BUILDER_PER_DAY=100 OA_API_ORIGIN="http://127.0.0.1:$api_port" \
-  "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
+  "$work/api" --listen 127.0.0.1:$api_port --migrations "${OA_EVAL_MIGRATIONS:-$here/migrations}" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 100); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 API="http://127.0.0.1:$api_port" python3 -I "$here/eval_builder.py" "$@" || { tail -20 "$work/api.log"; exit 1; }

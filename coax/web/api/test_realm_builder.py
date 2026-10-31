@@ -84,7 +84,7 @@ def realm_builder_checks():
     board = plan.get("board", {})
     kinds = [f["feature"] + ":" + f.get("tool", f.get("variant", f.get("name", ""))) for f in board.get("features", [])]
     check("the board is held to the catalogue: an unknown feature, a nameless character, an unknown tool and a twice-named one are gone",
-          kinds == ["water:", "trees:dead", "lanterns:", "flock:bat", "props:wagon", "character:Old Mott", "tool:talk", "tool:build"], kinds)
+          kinds == ["water:pond", "trees:dead", "lanterns:", "flock:bat", "props:wagon", "character:Old Mott", "tool:talk", "tool:build"], kinds)
     f = {x["feature"]: x for x in board.get("features", [])}
     check("counts are held to their range and a word not the feature's is its default",
           f["trees"]["count"] == 20 and f["lanterns"]["colour"] == "gold" and f["flock"]["count"] == 7, f)

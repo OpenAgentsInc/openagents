@@ -44,8 +44,12 @@ and takes them into it.
    line, under ASKED FOR, NOT IN IT YET, marked NOT APPLIED YET (at most 24, carried through every
    revision). Every thing asked for is named, not only the main ones, and each says whether its feature
    draws it as asked (`same`, 0083): one a feature only stands in for (crows for owls, a pond for a sea)
-   is a `want` line too, beside the stand-in. `coax/web/api/eval-builder.sh` scores twenty prompts with a
-   judge model (the share of things asked for that the board shows or lists; 100% is the rule).
+   is a `want` line too, beside the stand-in. Each thing is said twice (0085): `said`, their words, and
+   `thing`, the same without words about mood (friendly, cosy, spooky), so "friendly owls" drawn as owls
+   never also stands as a wanted line. A whole place (a farm, a village, a cove) is feature `place`, wanted only when
+   the features on the board don't make it; two kinds of animal are two herds. `coax/web/api/eval-builder.sh` scores forty prompts with a judge
+   model (the share of things asked for that the board shows or lists, 100% the rule; the share drawn as
+   asked; and wanted lines that repeat a drawn thing, 0 the rule).
    MAKE IT puts each on the realm's feature list as a waiting ask
    (`docs/verse/realm-edit.md`, "What you asked for"), where an agent can build it.
    OR DROP A DESIGN DOCUMENT (`coax/web/docs.js`, action 31) sends a .md, .txt, .pdf or .docx to
@@ -68,17 +72,19 @@ and takes them into it.
 
 | Feature | Values | Built from |
 |---|---|---|
-| water | small, medium, large | a pond drawn by `myrealm.wgsl` |
-| trees | round, pine, dead, mixed; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted) |
+| land | hills, mountains, cliffs, floating, island, volcano | hills, snow-capped mountains or cliffs round the edge; a floating island (sky past its edge, small islands floating beyond); the sea all round; a volcano glowing and smoking on the skyline (0085) |
+| building | cabin, barn, windmill, lighthouse, castle, tower, market, shop, saloon, temple, ruins (up to 4, one of each) | a log cabin, a red barn, a windmill whose sails turn, a banded lighthouse with its lamp lit, a stone castle (walls, a gate, four roofed towers, a keep), a stone tower, three market stalls, a shop with an awning, a saloon behind a false front, a stepped temple, broken columns (0085) |
+| water | small, medium, large; pond, river, frozen, lava | a pond, a bending river across the land, ice or glowing lava, drawn by `myrealm.wgsl` (0085) |
+| trees | round, pine, dead, mixed, palm, blossom; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted; blossom: pink); palms built of a leaning trunk and fronds (0085) |
 | bigtree | round, pine, dead | one giant tree standing alone, four times a tree's size (0083) |
 | rocks | 2 to 16 | the fixture pack's rock |
-| plants | 4 to 24 | the fixture pack's fern |
+| plants | fern, flower, mushroom, cactus, crystal; 4 to 24 | ferns; flowers on stems; mushrooms that glow after dark; cacti with arms; glowing crystals (0085) |
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
-| flock | crow, bat, owl; 3 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083) |
-| props | crates, barrels, wagon, fence, camp (up to 5) | the fixture pack's props |
+| flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0085) |
+| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue (up to 8) | the fixture pack's props; a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0085) |
 | character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |
-| herd | bison, deer, horse; 3 to 10 | animals roaming their own patches of the land and stopping to graze (0079) |
+| herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079) |
 | dwellings | tepee, tent, hut; 1 to 8 | a camp, doors to its middle: tepees of hide on crossed poles, ridge tents, round thatched huts |
 | village | 3 to 8 people | its people walking about the dwellings or the house: plain figures in everyday colours, never a caricature |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
