@@ -31,3 +31,13 @@ The post-rebase book gate detected stale bindings before chapter 111 commit
 This follow-up corrects that metadata; future dependent publication commands
 use errexit. Chapter 111’s numerical source identities and passed native,
 independent and mutation evidence were unaffected and were not rerun.
+
+## Sensitivity-bridge publication follow-up
+
+Rebase onto 2ce0aab113 brings the realm template and build-time gpu-module
+generation into the named graphics consumer note. The exact reviewed diff
+adds a mounted-template golden comparison (zero changed blocks), removal of
+its hand WGSL and the generation rule. The bounded graphics/Psionic-compute
+claim scope stays unchanged; only the two native-GPU evidence bindings change.
+The book gate stopped publication until that review completed. Numerical
+bridge sources and their passed records are unchanged.

@@ -273,7 +273,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "26e47e2d1d361eba2adca960f2f0089953bf61f7923567ec07c1d38200282fb5"
+          "sha256": "e12ffad8c3b2710a5e6a3b32eae2ef0a83128e3aaf7e5c5b0124232fcde4057c"
         }
       ]
     },
@@ -325,7 +325,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "26e47e2d1d361eba2adca960f2f0089953bf61f7923567ec07c1d38200282fb5"
+          "sha256": "e12ffad8c3b2710a5e6a3b32eae2ef0a83128e3aaf7e5c5b0124232fcde4057c"
         },
         {
           "path": "verse/everglade/gpu.module",
