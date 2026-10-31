@@ -1,0 +1,2 @@
+#test "verification hook control" { #assert answer() == 7; }
+answer :: () -> int #export_c { return 7; }

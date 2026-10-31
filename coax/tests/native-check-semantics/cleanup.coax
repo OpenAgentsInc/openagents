@@ -1,0 +1,40 @@
+#test "nested return cleanup preserves return value and guards" {
+  events := [3]int.[91,0,92];
+  result := nested_return(events[1..<2]);
+  #assert result == 7 && events[1] == 321;
+  #assert events[0] == 91 && events[2] == 92;
+}
+#test "normal nested cleanup precedes outer continuation" {
+  events := [3]int.[91,0,92];
+  nested_fallthrough(events[1..<2]);
+  #assert events[1] == 4251 && events[0] == 91 && events[2] == 92;
+}
+#test "continue break and return each run their cleanup once" {
+  events := [3]int.[91,0,92];
+  result := loop_cleanup(events[1..<2]);
+  #assert result == 712 && events[1] == 7129;
+  #assert events[0] == 91 && events[2] == 92;
+}
+nested_return :: (events:[]int) -> int {
+  defer events[0]=events[0]*10+1;
+  if true {
+    defer events[0]=events[0]*10+2;
+    if true { defer events[0]=events[0]*10+3; return events[0]+7; }
+  }
+  return 99;
+}
+nested_fallthrough :: (events:[]int) {
+  defer events[0]=events[0]*10+1;
+  if true { defer events[0]=events[0]*10+2; events[0]=events[0]*10+4; }
+  events[0]=events[0]*10+5;
+}
+loop_cleanup :: (events:[]int) -> int {
+  defer events[0]=events[0]*10+9;
+  for index:0..<4 {
+    defer events[0]=events[0]*10+index;
+    if index==0 { continue; }
+    if index==2 { break; }
+    events[0]=events[0]*10+7;
+  }
+  return events[0];
+}

@@ -14,6 +14,7 @@
 #load "effects.coax";
 #load "native-execution.coax";
 #load "quantified-execution.coax";
+#load "native-semantics.coax";
 #load "spirv.coax";
 #load "shader.coax";
 #load "wgsl.coax";

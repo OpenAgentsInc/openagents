@@ -1,7 +1,7 @@
 # 27. Inside coax0
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.43.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.44.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 The driver embeds the version and status from a generated header. The authored
@@ -870,6 +870,14 @@ to inspect the current results. `coax/tests/checker.py` adds independent
 IEEE, layout and policy expectations plus native sanitizer coverage.
 This book's `check-examples.sh` runs its examples in debug and release,
 executes authored checks, and exercises the native boundary examples.
+
+The optional [native verification companions](../verification-differential.md)
+also run original checked bodies at O0/O2. Finite properties share the
+evaluator's domain planner. Independent values, guarded writes and cleanup
+expectations exercise the emitted code; a separate semantic experiment can
+recognize an expected runtime trap or reduce a retained C-only seeded defect.
+A failed original evaluator check stays failed even when its native trap
+matches. These tools do not qualify untested targets or replace authority gates.
 
 When you add a feature, it comes with a passing program, a failing program
 for each new error code, and an entry in `errors.cpp` for each code. When

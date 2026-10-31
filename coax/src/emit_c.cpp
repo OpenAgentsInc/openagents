@@ -1656,9 +1656,13 @@ std::string escape_path(const std::string &path) {
 
 // Source-unit provenance is emitted only for composed programs, preserving
 // standalone seed bytes. Runtime helpers receive joined line numbers.
-static std::string source_runtime(const File *file) {
-  if (file->src->units.size()<2) return RUNTIME;
+static std::string source_runtime(const File *file, bool verification = false) {
+  if (file->src->units.size()<2 && !verification) return RUNTIME;
   std::string out="struct coax_source_range { int first, last, base, fixed; const char *path; };\n";
+  if (verification) {
+    const std::string &path = file->src->units.empty() ? file->src->path : file->src->units.front()->canonical;
+    out += "static const char *coax_verification_source_path = \"" + escape_path(path) + "\";\n";
+  }
   out+="static const struct coax_source_range coax_source_ranges[] = {\n";
   auto range=[&](int first,int last,int base,bool fixed,const std::string &path) {
     out+="  {"+std::to_string(first)+","+std::to_string(last)+","+std::to_string(base)+","+(fixed?"1":"0")+",\""+escape_path(path)+"\"},\n";
@@ -1666,18 +1670,37 @@ static std::string source_runtime(const File *file) {
   for (const auto &r:file->src->generated) {
     int first=1+(int)std::count(file->src->text.begin(),file->src->text.begin()+r.start,'\n');
     int last=1+(int)std::count(file->src->text.begin(),file->src->text.begin()+r.end,'\n');
-    auto point=source_point(file->src,r.directive);range(first,last,point.loc.line,true,point.path);
+    auto point=source_point(file->src,r.directive);
+    const SourceUnit *unit = verification ? source_unit_at(file->src, r.directive) : nullptr;
+    range(first,last,point.loc.line,true,unit ? unit->canonical : point.path);
   }
   for (const auto &unit:file->src->units) {
     int count=(int)std::count(file->src->text.begin()+unit->begin,file->src->text.begin()+unit->end,'\n');
-    range(unit->first_line,unit->first_line+std::max(1,count)-1,1,false,unit->path);
+    range(unit->first_line,unit->first_line+std::max(1,count)-1,1,false,verification ? unit->canonical : unit->path);
   }
   out+="};\nstatic const struct coax_source_range *coax_find_source(int line) {\n";
   out+="  for (unsigned i=0;i<sizeof(coax_source_ranges)/sizeof(coax_source_ranges[0]);i++) if (line>=coax_source_ranges[i].first && line<=coax_source_ranges[i].last) return &coax_source_ranges[i];\n  return 0;\n}\n";
-  out+="static const char *coax_path_for(int line) { const struct coax_source_range *r=coax_find_source(line); return r?r->path:coax_source_path; }\n";
+  out+="static const char *coax_path_for(int line) { const struct coax_source_range *r=coax_find_source(line); return r?r->path:"+
+       std::string(verification ? "coax_verification_source_path" : "coax_source_path")+"; }\n";
   out+="static int coax_line_for(int line) { const struct coax_source_range *r=coax_find_source(line); return r?(r->fixed?r->base:r->base+line-r->first):line; }\n";
   std::string runtime=RUNTIME;std::string needle="coax_source_path, line, what";
   runtime.replace(runtime.find(needle),needle.size(),"coax_path_for(line), coax_line_for(line), what");
+  if (verification) {
+    const std::string trap = "static void coax_trap(const char *what, int32_t line) {";
+    const std::string handler =
+        "typedef void (*Coax_VerificationTrapHandler_v1)(const char *, int64_t, const char *, int64_t, int64_t);\n"
+        "static Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n"
+        "void coax_verification_set_trap_v1(Coax_VerificationTrapHandler_v1 handler) { coax_verification_trap_handler_v1 = handler; }\n\n";
+    size_t at = runtime.find(trap);
+    runtime.insert(at, handler);
+    const std::string flush = "  fflush(stdout);\n";
+    at = runtime.find(flush, at + handler.size()) + flush.size();
+    runtime.insert(at,
+        "  if (coax_verification_trap_handler_v1) {\n"
+        "    const char *path = coax_path_for(line);\n"
+        "    coax_verification_trap_handler_v1(what, (int64_t)strlen(what), path, (int64_t)strlen(path), coax_line_for(line));\n"
+        "  }\n");
+  }
   return out+runtime;
 }
 
@@ -2434,7 +2457,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
 
   std::string s = "/* Checked-AST verification bodies. Not product emission. */\n";
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
-  s += source_runtime(file);
+  s += source_runtime(file, true);
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";

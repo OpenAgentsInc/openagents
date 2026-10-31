@@ -1,0 +1,5 @@
+#test "dynamic slice trap" { values := [2]int.[11,12]; result := sliced(values[..],3); }
+sliced :: (values:[]int,end:int) -> int {
+  part := values[0..<end];
+  return part.count;
+}

@@ -1933,6 +1933,31 @@ or qualify a source whose original baseline failed. Captured source, descriptor,
 compiler, policy, observer and native bytes remain bound across phases.
 
 
+## Native semantic experiments preserve failed originals and artifact identity
+
+`native-semantics.coax` owns structured runtime-trap frames, expected-fault
+matching, the single verification-C seed and bounded tuple replay. Only
+`checks-c` emission has an optional trap callback; ordinary product C has no
+callback or check harness. Existing ABI 1/2 tables, EP1/QP1 and execution.v1/v2
+keep their meanings. The semantics observer calls original checked procedures.
+
+Strict positive qualification retains the complete original baseline. A
+negative original stays a counterexample: matching its exact evaluator
+diagnostic and structured native fault is an artifact-only parity experiment,
+with `baseline_qualified=false`. Recognition requires a valid begun case,
+known reason, original physical location, expected abort and complete transport;
+arbitrary crashes or stderr text cannot become recognized Coax traps.
+
+The multiplication-to-addition seed changes exactly one admitted helper anchor
+in a retained copy of verification C. Original sources, original C and their
+passing baseline stay bound. Independent literal products detect the changed
+arithmetic. Coax proposes at most 32 admitted tuple replays against the same
+seeded executable; a fresh process reports separate SP1 single-case progress,
+never invented earlier traversal. Accepted reductions preserve optimization,
+check identity, reason, location and seed identity. This is bounded tuple
+reduction, not a global minimum or arbitrary source minimizer. Host tooling
+retains compiler/SDK/artifact hashes and enforces process/capture bounds.
+
 ## Compiler profile selection preserves legacy defaults and authority
 
 `coax/lib/compiler/profiles.coax` is `#authority` and owns command admission,

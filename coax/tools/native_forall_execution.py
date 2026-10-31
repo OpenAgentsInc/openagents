@@ -99,6 +99,17 @@ def observe_artifact(binary, checks, *, timeout_s=10.0, max_output_bytes=1048576
 
 def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
         max_output_bytes=1048576, cc=None, compiler=None, abi=2):
+    return _run_profile(files, keep=keep, steps=steps, only=only, timeout_s=timeout_s,
+        max_output_bytes=max_output_bytes, cc=cc, compiler=compiler, abi=abi,
+        schema=SCHEMA, observer=OBSERVER, policy_factory=get_policy, observe=_observe)
+
+
+def _run_profile(files, *, keep, steps, only, timeout_s, max_output_bytes, cc,
+                 compiler, abi, schema, observer, policy_factory, observe,
+                 extra_transport=()):
+    # Shared host effects for explicitly versioned verification companions.
+    # Each caller supplies its Coax policy and fixed observer; baseline gates
+    # and the default ABI2 contract are identical for every strict profile.
     started = time.monotonic()
     deadline = started + 840
     compiler = common._compiler(compiler)
@@ -107,17 +118,17 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
         work.mkdir(parents=True, exist_ok=False)
     work = work.resolve()
     session = common.Session(deadline)
-    result = {'schema': SCHEMA, 'scope': 'Complete original evaluator baseline and selected ABI2 native execution',
+    result = {'schema': schema, 'scope': 'Complete original evaluator baseline and selected ABI2 native execution',
               'selection': {'only': only, 'baseline_only': None, 'baseline_list': False},
               'verification_abi': abi, 'compiler': str(compiler), 'compiler_sha256': common._sha(compiler),
               'artifacts': str(work), 'files': [], 'outcome': 'infrastructure-error'}
     transport = [Path(__file__), ROOT / 'tools/native_forall_policy.py', ROOT / 'tools/native_check_execution.py',
                  ROOT / 'tools/native_execution_policy.py', ROOT / 'tools/bounded_process.py',
                  ROOT / 'tools/native_execution_identities.py', ROOT / 'tests/quiet_crash.py',
-                 OBSERVER, OBSERVER.with_suffix('.h'), ROOT / 'tools/native-forall-progress.h']
+                 observer, observer.with_suffix('.h'), ROOT / 'tools/native-forall-progress.h', *extra_transport]
     result['transport_sources'] = {str(path): common._sha(path) for path in transport}
     try:
-        policy = get_policy(compiler, work / 'policy', deadline, _runner=session.run)
+        policy = policy_factory(compiler, work / 'policy', deadline, _runner=session.run)
         result['policy'], result['policy_bootstrap'] = policy.identity, common._record(policy.observations)
         if not policy.abi(abi) or not policy.budget(timeout_s, max_output_bytes):
             result['why'] = 'ABI or execution bounds were refused by Coax policy before original-source execution'
@@ -185,8 +196,8 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                      policy.input_descriptors(baseline_manifest, manifest)]
             item.update({'emission_execution': common._record(emission), 'emission_manifest': manifest,
                          'artifact': {'c': str(c_file), 'c_sha256': c_sha,
-                             'observer': str(OBSERVER), 'observer_sha256': digest(OBSERVER),
-                             'observer_header': str(OBSERVER.with_suffix('.h')), 'observer_header_sha256': digest(OBSERVER.with_suffix('.h')),
+                             'observer': str(observer), 'observer_sha256': digest(observer),
+                             'observer_header': str(observer.with_suffix('.h')), 'observer_header_sha256': digest(observer.with_suffix('.h')),
                              'policy_c': str(policy.c), 'policy_c_sha256': digest(policy.c),
                              'policy_header': str(policy.header), 'policy_header_sha256': digest(policy.header)}})
             if chain is None:
@@ -204,13 +215,13 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                 profile = {'binary': str(binary), 'binary_sha256': '', 'outcome': 'not-checked'}
                 item['profiles'][optimization] = profile
                 compiled = session.run([*native_cc, '-std=c11', optimization, '-ffp-contract=off', '-fno-fast-math',
-                    '-I', str(policy.directory), str(c_file), str(policy.c), str(OBSERVER), '-lm', '-o', str(binary)],
+                    '-I', str(policy.directory), str(c_file), str(policy.c), str(observer), '-lm', '-o', str(binary)],
                     timeout_s=policy.limits.compile_ms / 1000, max_output_bytes=max_output_bytes)
                 profile['compile'] = common._record(compiled)
                 profile['binary_sha256'] = common._sha(binary)
                 profile_codes = [policy.phase(compiled), policy.integrity(c_sha, common._sha(c_file)),
-                    policy.integrity(item['artifact']['observer_sha256'], common._sha(OBSERVER)),
-                    policy.integrity(item['artifact']['observer_header_sha256'], common._sha(OBSERVER.with_suffix('.h'))),
+                    policy.integrity(item['artifact']['observer_sha256'], common._sha(observer)),
+                    policy.integrity(item['artifact']['observer_header_sha256'], common._sha(observer.with_suffix('.h'))),
                     policy.integrity(item['artifact']['policy_c_sha256'], common._sha(policy.c)),
                     policy.integrity(item['artifact']['policy_header_sha256'], common._sha(policy.header)),
                     policy.integrity(profile['binary_sha256'], common._sha(binary))]
@@ -225,7 +236,7 @@ def run(files, *, keep=None, steps=None, only=None, timeout_s=10.0,
                         profile['catalog'] = common._record(catalog)
                         progress_dir = directory / (optimization[1:] + '-progress')
                         progress_dir.mkdir()
-                        observed = _observe(binary, catalog, session, policy, timeout_s, max_output_bytes, progress_dir)
+                        observed = observe(binary, catalog, session, policy, timeout_s, max_output_bytes, progress_dir)
                         profile['execution'] = observed
                         profile_codes.append(OUTCOMES.index(observed['outcome']))
                 profile['outcome'] = OUTCOMES[policy.aggregate(profile_codes)]

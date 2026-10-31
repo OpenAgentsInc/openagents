@@ -88,6 +88,8 @@ gate "$work/stage0" test lib/compiler/native-execution.coax
 gate "$work/stage0" mutate lib/compiler/native-execution.coax --root-only
 gate "$work/stage0" test lib/compiler/quantified-execution.coax
 gate "$work/stage0" mutate lib/compiler/quantified-execution.coax --root-only
+gate "$work/stage0" test lib/compiler/native-semantics.coax
+gate "$work/stage0" mutate lib/compiler/native-semantics.coax --root-only
 gate "$work/stage0" test lib/compiler/spirv.coax
 gate "$work/stage0" mutate lib/compiler/spirv.coax
 gate "$work/stage0" test lib/compiler/shader.coax
@@ -161,6 +163,7 @@ gate "$work/coax" test lib/compiler/sources.coax
 gate "$work/coax" test lib/compiler/native-checks.coax
 gate "$work/coax" test lib/compiler/native-execution.coax
 gate "$work/coax" test lib/compiler/quantified-execution.coax
+gate "$work/coax" test lib/compiler/native-semantics.coax
 "$work/coax" c lib/compiler/lexer.coax --library --header "$work/final-lexer.h" > "$work/final-lexer.c"
 cmp bootstrap/lexer.c "$work/final-lexer.c"
 "$work/coax" c lib/compiler/parser.coax --library --header "$work/final-parser.h" > "$work/final-parser.c"

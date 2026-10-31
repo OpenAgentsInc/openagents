@@ -1,0 +1,8 @@
+// Frozen product table from an independent Python integer oracle; index uses addition only.
+#forall "literal multiplication oracle" x:-3..<4,y:-3..<4 {
+  expected := [49]int.[9,6,3,0,-3,-6,-9,6,4,2,0,-2,-4,-6,3,2,1,0,-1,-2,-3,0,0,0,0,0,0,0,-3,-2,-1,0,1,2,3,-6,-4,-2,0,2,4,6,-9,-6,-3,0,3,6,9];
+  row := x+3;
+  index := row+row+row+row+row+row+row+y+3;
+  #assert actual_multiply(x,y) == expected[index];
+}
+actual_multiply :: (left:int,right:int) -> int { return left*right; }

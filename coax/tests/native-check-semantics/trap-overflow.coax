@@ -1,0 +1,4 @@
+#test "dynamic overflow trap" { result := overflow(127,1); }
+overflow :: (left:s8,right:s8) -> s8 {
+  return left+right;
+}

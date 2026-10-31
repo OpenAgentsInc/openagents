@@ -1,0 +1,4 @@
+#test "dynamic assertion trap" { dynamic_assert(7); }
+dynamic_assert :: (value:int) {
+  #assert value == 8;
+}

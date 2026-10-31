@@ -1,0 +1,351 @@
+// Optional artifact-only semantic experiments. Inputs and borrowed strings stay
+// stable; output storage is disjoint from every input for the duration of a call.
+// A matching expected fault is never a passed authored baseline.
+#load "quantified-execution.coax";
+#authority;
+SM_MAGIC :: "COAXST1\0";
+SM_PROGRESS :: "COAXSP1\0";
+SM_SEED_FROM :: "if (__builtin_mul_overflow(a, b, &r))";
+SM_SEED_TO :: "if (__builtin_add_overflow(a, b, &r))";
+SM_PREFIX :: "/* Checked-AST verification bodies. Not product emission. */\n";
+SM_Trap :: struct {ok:bool;reason:u32;ordinal:int;declaration_index:int;line:int;path:string;}
+SM_Expected :: struct {identity:EP_Identity;reason:u32;line:int;path:string;}
+SM_Result :: struct {outcome:u32;recognized:bool;baseline_qualified:bool;}
+SM_Signature :: struct {optimization:u32;identity:EP_Identity;reason:u32;line:int;path:string;seed_id:string;}
+SM_Ordinal :: struct {reason:u32;ordinal:u64;}
+SM_Reduction :: struct {reason:u32;attempts:int;budget:int;binding:int;choice:int;done:bool;}
+SM_Candidate :: struct {state:SM_Reduction;offered:bool;ordinal:u64;}
+SM_Request :: struct {mode:u32;ordinal:int= -1;case_index:u64;reason:u32;}
+
+#test "runtime reasons are exact and trap frames are length delimited" {
+ #assert SM_reason("assertion failed")==1 && SM_reason("integer overflow in '*'")==4;
+ #assert SM_reason("assertion failed\0")==0 && SM_reason("unknown")==0;
+ id:=ep_test_identity();buf:[100]u8;n:=SM_encode_trap(id,"assertion failed","/a.coax",17,buf[..]);
+ #assert n==39;f:=SM_decode_trap(buf[0..<n]);#assert f.ok && f.reason==1 && f.ordinal==id.ordinal && f.declaration_index==id.declaration_index && f.path=="/a.coax" && f.line==17;
+}
+#test "semantic qualification never promotes artifact-only parity" {
+ #assert SM_qualified(0,true,false) && !SM_qualified(0,true,true) && !SM_qualified(0,false,false) && !SM_qualified(1,true,false);
+}
+
+#test "public semantic and replay entrypoints preserve nonqualification" {
+ id:=ep_test_identity();e:=SM_Expected.{identity=id,reason=1,line=17,path="/a.coax"};buf:[100]u8;region:[32769]u8;#assert QE_initialize(region[..]);
+ p:=ep_test_process();qp:=QE_Observation.{};t:=SM_trap(e,buf[0..<0],qp,p,6);b:=SM_baseline(EP_BaseResult.{});d:=SM_diagnostic(e,"E0406","/a.coax",17,1);
+ sig:=SM_Signature.{identity=id,reason=1,line=17,path="/a.coax",seed_id="seed"};eq:=SM_signature_equal(sig,sig);ok:=SM_accept(sig,sig,1,true);
+ domains:=[1]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain];values:=[1]u64.[0];output:[1]u64;o:=SM_ordinal(domains[..],values[..]);state:=SM_reduce_start(domains[..],values[..],32);candidate:=SM_reduce_next(state,domains[..],values[..],output[..]);
+ q:=QE_Check.{identity=id,kind=2,cases=7,binding_count=1};r:=SM_request(2,"metadata","","","");c:=SM_case(q,domains[..],0,values[..]);n:=SM_encode_replay(id,0,1,0,buf[..]);seen:=SM_replay(q,domains[..],0,region[..],p);seed:=SM_seed(buf[0..<0],buf[..]);limit:=SM_trap_limit();ss:=[1]EP_Source.[ep_test_source()];mi:=SM_baseline_inputs(EP_BaseResult.{},EP_Emission.{},ss[..],ss[..],ss[0..<0],true,true,p,"test");
+ #assert r.mode==1 && r.reason==0;
+}
+
+#forall "all exact runtime reasons match independent stable codes" index:0..<12 {
+ names:=[12]string.["assertion failed","integer overflow in '+'","integer overflow in '-'","integer overflow in '*'","integer overflow in unary '-'","integer overflow in '/'","division by zero","division by zero in '%'","shift amount out of range","index out of bounds","slice out of bounds","cast out of range"];
+ #assert SM_reason(names[index])==cast(u32)index+1;
+ e:=SM_Expected.{identity=ep_test_identity(),reason=cast(u32)index+1,path="/a",line=9};code:=ifx index==0 then "E0406" else ifx index<8 then "E0407" else ifx index==9 || index==10 then "E0410" else "E0411";
+ #assert SM_diagnostic(e,code,"/a",9,1) && !SM_diagnostic(e,"E0000","/a",9,1);
+}
+#test "trap encoders refuse atomically and decoder binds every byte" {
+ id:=ep_test_identity();buf:[4130]u8;for i:0..<buf.count {buf[i]=91;}
+ #assert SM_trap_limit()==4128 && SM_encode_trap(id,"unknown","/",1,buf[..])== -1 && buf[0]==91;
+ #assert SM_encode_trap(id,"assertion failed","",1,buf[..])== -1 && SM_encode_trap(id,"assertion failed","/",0,buf[..])== -1;
+ #assert SM_encode_trap(id,"assertion failed","/",1,buf[0..<32])== -1 && buf[0]==91;
+ path:[4096]u8;for i:0..<path.count {path[i]=120;}#assert SM_encode_trap(id,"cast out of range",cast(string)path[..],4294967295,buf[..])==4128;
+ #assert SM_decode_trap(buf[0..<4128]).ok && !SM_decode_trap(buf[0..<4129]).ok;
+ n:=SM_encode_trap(id,"assertion failed","/a.coax",17,buf[..]);
+ for prefix:0..<n {#assert !SM_decode_trap(buf[0..<prefix]).ok;}
+ for byte:0..<n {old:=buf[byte];buf[byte]^=1;f:=SM_decode_trap(buf[0..<n]);#assert !f.ok || f.reason!=1 || f.ordinal!=id.ordinal || f.declaration_index!=id.declaration_index || f.line!=17 || f.path!="/a.coax";buf[byte]=old;}
+ #assert !SM_decode_trap(buf[0..<n+1]).ok;
+}
+#forall "trap identity and process faults cannot become recognized" defect:0..<23 {
+ id:=ep_test_identity();e:=SM_Expected.{identity=id,reason=1,path="/a",line=9};raw:[100]u8;n:=SM_encode_trap(id,"assertion failed","/a",9,raw[..]);
+ p:=ep_test_process();p.returncode=-6;qp:=QE_Observation.{outcome=1,valid=true,slot=0,state=QE_State.{event=1,row=id.ordinal,declaration_index=id.declaration_index,total=1}};abort_code:int=6;
+ if defect==0 {e.reason=0;}else if defect==1 {e.identity.source="";}else if defect==2 {e.line=0;}else if defect==3 {e.path="";}
+ else if defect==4 {qp.valid=false;}else if defect==5 {qp.outcome=0;}else if defect==6 {qp.state.event=2;}else if defect==7 {qp.slot=1;}
+ else if defect==8 {qp.state.row+=1;}else if defect==9 {qp.state.declaration_index+=1;}else if defect==10 {abort_code=11;}else if defect==11 {p.returncode=-11;}
+ else if defect==12 {raw[16]^=1;}else if defect==13 {raw[20]^=1;}else if defect==14 {raw[12]=2;}else if defect==15 {raw[32]=33;}
+ else if defect==16 {raw[24]=10;}else if defect==17 {raw[0]=0;}else if defect==18 {p.stdout_eof=false;}else if defect==19 {p.stderr_eof=false;}
+ else if defect==20 {p.read_errno=5;}else if defect==21 {p.launched=false;}else {p.finished=false;}
+ r:=SM_trap(e,raw[0..<n],qp,p,abort_code);#assert r.outcome==3 && !r.recognized && !r.baseline_qualified;
+}
+#test "expected artifact-only faults preserve raw baseline failure and limits" {
+ id:=ep_test_identity();e:=SM_Expected.{identity=id,reason=1,path="/a",line=9};raw:[100]u8;n:=SM_encode_trap(id,"assertion failed","/a",9,raw[..]);
+ p:=ep_test_process();p.returncode=-6;qp:=QE_Observation.{outcome=1,valid=true,slot=0,state=QE_State.{event=1,row=id.ordinal,declaration_index=id.declaration_index,total=1}};
+ r:=SM_trap(e,raw[0..<n],qp,p,6);#assert r.outcome==0 && r.recognized && !r.baseline_qualified;
+ p.timeout=true;r=SM_trap(e,raw[0..<0],qp,p,6);#assert r.outcome==2 && !r.recognized;p.timeout=false;p.output_limit=true;#assert SM_trap(e,raw[0..<n],qp,p,6).outcome==2;
+ b:=SM_baseline(EP_BaseResult.{valid=true,outcome=1});#assert b.outcome==0 && !b.baseline_qualified && !b.recognized;
+ #assert SM_baseline(EP_BaseResult.{outcome=2}).outcome==2 && SM_baseline(EP_BaseResult.{valid=true,outcome=0}).outcome==3 && SM_baseline(EP_BaseResult.{valid=true,outcome=1,reason=1}).outcome==3;
+ #assert !SM_diagnostic(e,"E0406","/wrong",9,1) && !SM_diagnostic(e,"E0406","/a",10,1) && !SM_diagnostic(e,"E0406","/a",9,0) && !SM_diagnostic(e,"E0406","/a",9,2);
+}
+#forall "negative evaluator profile binds actual failure and observed sources" defect:0..<20 {
+ v:=EP_BaseResult.{valid=true,outcome=1};m:=EP_Emission.{schema=1,command="test",backend="evaluator",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=0,exit_status=1};
+ ss:=[1]EP_Source.[ep_test_source()];ds:=ss;ps:=ss;p:=ep_test_process();p.returncode=1;so:bool=true;observed:bool=true;compiler:string="test compiler";dn:int=0;
+ if defect==1 {v.valid=false;}else if defect==2 {m.schema=2;}else if defect==3 {m.command="c";}else if defect==4 {m.backend="c11";}else if defect==5 {compiler="";}
+ else if defect==6 {m.compiler="other";}else if defect==7 {m.runtime_arithmetic="wrapping";}else if defect==8 {m.interpreter_arithmetic="wrapping";}else if defect==9 {m.build_profile="release";}
+ else if defect==10 {m.success=1;}else if defect==11 {m.exit_status=0;}else if defect==12 {p.returncode=0;}else if defect==13 {so=false;}else if defect==14 {observed=false;}
+ else if defect==15 {ps[0].sha=EP_TEST_COMPILER;}else if defect==16 {dn=1;ds[0].observed_sha=EP_TEST_COMPILER;}
+ else if defect==17 {p.read_errno=1;}else if defect==18 {p.timeout=true;}else if defect==19 {p.output_limit=true;}
+ out:=SM_baseline_inputs(v,m,ss[..],ps[..],ds[0..<dn],so,observed,p,compiler);#assert out==cast(u32)(ifx defect==0 then 0 else ifx defect>=18 then 2 else 3);
+}
+#forall "signature reduction retains exact physical failure and seed identity" defect:0..<16 {
+ s:=SM_Signature.{optimization=2,identity=ep_test_identity(),reason=1,line=8,path="/a",seed_id="mul-add"};t:=s;
+ if defect==1 {t.optimization=0;}else if defect==2 {t.identity.ordinal+=1;}else if defect==3 {t.identity.declaration_index+=1;}else if defect==4 {t.identity.line+=1;}else if defect==5 {t.identity.column+=1;}
+ else if defect==6 {t.identity.name="x";}else if defect==7 {t.identity.source="/other";}else if defect==8 {t.reason=2;}else if defect==9 {t.line=9;}else if defect==10 {t.path="/b";}else if defect==11 {t.seed_id="other";}
+ else if defect==12 {s.identity.source="";t=s;}else if defect==13 {s.reason=13;t=s;}else if defect==14 {s.line=0;t=s;}else if defect==15 {s.optimization=1;t=s;}
+ #assert SM_signature_equal(s,t)==(defect==0) && SM_accept(s,t,1,true)==(defect==0);
+ #assert !SM_accept(s,t,0,true) && !SM_accept(s,t,1,false);
+}
+#forall "inverse finite ordinals preserve all49 literal table coordinates" ordinal:0..<49 {
+ d:=[2]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain,FD_domain(5,64,true,-3,4,0).domain];v:[2]u64;#assert FD_tuple(d[..],cast(u64)ordinal,v[..])==0;
+ o:=SM_ordinal(d[..],v[..]);#assert o.reason==0 && o.ordinal==cast(u64)ordinal;
+}
+#test "tuple reduction proposes only original-domain simpler candidates and respects budget" {
+ d:=[2]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain,FD_domain(5,64,true,-3,4,0).domain];v:=[2]u64.[18446744073709551613,18446744073709551613];out:[2]u64;s:=SM_reduce_start(d[..],v[..],32);
+ while !s.done {c:=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.state.reason==0;s=c.state;if c.offered {x:=cast,trunc(int)out[0];y:=cast,trunc(int)out[1];if x*y!=x+y {v=out;}}}
+ #assert v[0]==0 && v[1]==18446744073709551615 && s.attempts==3;
+ s=SM_reduce_start(d[..],v[..],1);c:=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.offered && c.state.done && c.state.attempts==1;
+ #assert SM_reduce_start(d[..],v[..],0).reason==1 && SM_reduce_start(d[..],v[..],33).reason==1;
+ empty:[1]FD_Domain;word:[1]u64;s=SM_reduce_start(empty[0..<0],word[0..<0],32);#assert s.done && SM_ordinal(empty[0..<0],word[0..<0]).ordinal==0;
+ #assert !SM_reduce_next(s,empty[0..<0],word[0..<0],word[0..<0]).offered;
+}
+#test "enum ordinal and range-end reduction honor declarations canonical words and original bounds" {
+ words:=[3]u64.[9,2,7];e:=FD_domain(4,8,false,0,0,3).domain;e.values=words[..];d:=[1]FD_Domain.[e];v:=[1]u64.[7];out:[1]u64;
+ #assert SM_ordinal(d[..],v[..]).ordinal==2;s:=SM_reduce_start(d[..],v[..],32);c:=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.offered && out[0]==9 && c.ordinal==0;
+ d[0]=FD_domain(5,64,true,5,9,0).domain;v[0]=8;s=SM_reduce_start(d[..],v[..],32);c=SM_reduce_next(s,d[..],v[..],out[..]);#assert !c.offered;
+ d[0]=FD_domain(5,64,true,-9,-4,0).domain;v[0]=18446744073709551607;s=SM_reduce_start(d[..],v[..],32);c=SM_reduce_next(s,d[..],v[..],out[..]);#assert !c.offered;
+ v[0]=0;#assert SM_ordinal(d[..],v[..]).reason==1;d[0]=e;v[0]=256;#assert SM_ordinal(d[..],v[..]).reason==1;v[0]=8;#assert SM_ordinal(d[..],v[..]).reason==1;
+ d[0]=FD_domain(1,8,false,0,0,0).domain;v[0]=2;#assert SM_ordinal(d[..],v[..]).reason==1;
+}
+#test "replay requests and actual original case bounds are admitted before effects" {
+ #assert SM_request(4,"one","4095","","/p").mode==2 && SM_request(5,"case","0","16777215","/p").case_index==16777215;
+ #assert SM_request(5,"case","0","16777216","/p").reason==1 && SM_request(5,"case","0","00","/p").reason==1 && SM_request(5,"case","0","-1","/p").reason==1;
+ #assert SM_request(5,"case","0","x","/p").reason==1 && SM_request(5,"case","0","","/p").reason==1 && SM_request(5,"case","0","123456789","/p").reason==1;
+ #assert SM_request(3,"metadata","","","").reason==1 && SM_request(2,"metadata","0","","").reason==1 && SM_request(2,"metadata","","1","").reason==1 && SM_request(2,"metadata","","","/p").reason==1;
+ #assert SM_request(4,"other","0","","/p").reason==1 && SM_request(4,"one","-1","","/p").reason==1 && SM_request(4,"one","0","","").reason==1 && SM_request(4,"one","0","1","/p").reason==1;
+ id:=ep_test_identity();q:=QE_Check.{identity=id,kind=2,cases=7,binding_count=1};d:=[1]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain];v:[1]u64;
+ #assert SM_case(q,d[..],6,v[..]) && v[0]==3 && !SM_case(q,d[..],7,v[..]);q.cases=6;#assert !SM_case(q,d[..],0,v[..]);q.cases=7;q.binding_count=0;#assert !SM_case(q,d[..],0,v[..]);
+}
+#test "SP1 is an honest fresh single-case observation independent of previous traversal" {
+ id:=ep_test_identity();q:=QE_Check.{identity=id,kind=2,cases=7,binding_count=1};d:=[1]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain];region:[32769]u8;#assert QE_initialize(region[..]);p:=ep_test_process();p.returncode=-6;
+ #assert SM_encode_replay(id,5,1,0,region[1..<41])==40;region[0]=0;r:=SM_replay(q,d[..],5,region[..],p);#assert r.valid && r.outcome==1 && r.state.case_index==5 && r.state.completed==0;
+ for byte:0..<40 {old:=region[1+byte];region[1+byte]^=1;#assert !SM_replay(q,d[..],5,region[..],p).valid;region[1+byte]=old;}
+ #assert SM_encode_replay(id,5,2,0,region[16385..<16425])==40;region[0]=1;p.returncode=0;r=SM_replay(q,d[..],5,region[..],p);#assert r.outcome==0 && r.valid && r.state.completed==1;
+ for byte:0..<40 {old:=region[1+byte];region[1+byte]^=1;#assert !SM_replay(q,d[..],5,region[..],p).valid;region[1+byte]=old;old=region[16385+byte];region[16385+byte]^=1;#assert !SM_replay(q,d[..],5,region[..],p).valid;region[16385+byte]=old;}
+ p.returncode=-6;#assert SM_replay(q,d[..],5,region[..],p).outcome==3;p.timeout=true;#assert SM_replay(q,d[..],5,region[..],p).outcome==2;
+ #assert SM_encode_replay(id,5,2,-1,region[1..<41])== -1 && SM_encode_replay(id,5,0,0,region[1..<41])== -1 && SM_encode_replay(id,16777216,1,0,region[1..<41])== -1 && SM_encode_replay(id,5,1,0,region[1..<40])== -1;
+}
+#test "seed transformation requires one verified artifact anchor and preserves all other bytes" {
+ input:[256]u8;qe_copy(input[..],0,SM_PREFIX);qe_copy(input[..],SM_PREFIX.count,SM_SEED_FROM);size:=SM_PREFIX.count+SM_SEED_FROM.count;input[size]=10;size+=1;
+ out:[256]u8;for i:0..<out.count {out[i]=91;}
+ n:=SM_seed(input[0..<size],out[1..<out.count-1]);#assert n==size && out[0]==91 && out[out.count-1]==91;
+ for i:0..<SM_PREFIX.count {#assert out[1+i]==SM_PREFIX[i];}for i:0..<SM_SEED_TO.count {#assert out[1+SM_PREFIX.count+i]==SM_SEED_TO[i];}#assert out[n]==10;
+ #assert SM_seed(input[0..<size],out[0..<size-1])== -1 && SM_seed(input[0..<SM_PREFIX.count],out[..])== -1;
+ qe_copy(input[..],SM_PREFIX.count+SM_SEED_FROM.count,SM_SEED_FROM);#assert SM_seed(input[0..<SM_PREFIX.count+2*SM_SEED_FROM.count],out[..])== -1;
+ #assert SM_seed(input[SM_PREFIX.count..<SM_PREFIX.count+SM_SEED_FROM.count],out[..])== -1;
+}
+#test "seed labels and reduction probe outcomes are checked policy" {
+ #assert SM_seed_id("mul-add") && !SM_seed_id("") && !SM_seed_id("other");
+ #assert SM_probe(0)==0 && SM_probe(1)==0 && SM_probe(2)==2 && SM_probe(3)==3 && SM_probe(4)==4 && SM_probe(5)==3;
+}
+
+#test "minimum and exact trap capacities preserve nonzero row and all identity fields" {
+ id:=ep_test_identity();id.ordinal=3;buf:[40]u8;for i:0..<buf.count {buf[i]=91;}
+ #assert SM_encode_trap(id,"assertion failed","/",1,buf[0..<33])==33;f:=SM_decode_trap(buf[0..<33]);#assert f.ok && f.ordinal==3 && f.path=="/" && f.line==1;
+ #assert SM_encode_trap(id,"assertion failed","/a",1,buf[0..<34])==34;
+}
+#test "inverse domains validate canonical chosen enum words and streaming cap boundaries" {
+ d:=[2]FD_Domain.[FD_domain(5,64,true,0,16777216,0).domain,FD_domain(1,8,false,0,0,0).domain];v:=[2]u64.[0,0];
+ #assert SM_ordinal(d[0..<1],v[0..<1]).reason==0 && SM_ordinal(d[..],v[..]).reason==1;
+ d[0]=FD_domain(5,64,true,0,4096,0).domain;d[1]=FD_domain(5,64,true,0,4097,0).domain;#assert SM_ordinal(d[..],v[..]).reason==1;
+ #assert SM_ordinal(d[0..<1],v[..]).reason==1;
+ dd:[65]FD_Domain;vv:[65]u64;#assert SM_ordinal(dd[..],vv[..]).reason==1;
+ d[0]=FD_domain(2,8,true,0,0,0).domain;v[0]=18446744073709551488;#assert SM_ordinal(d[0..<1],v[0..<1]).ordinal==0;
+ v[0]=18446744073709551615;#assert SM_ordinal(d[0..<1],v[0..<1]).ordinal==127;v[0]=0;#assert SM_ordinal(d[0..<1],v[0..<1]).ordinal==128;
+ v[0]=127;#assert SM_ordinal(d[0..<1],v[0..<1]).ordinal==255;
+ v[0]=128;#assert sm_index(d[0],v[0]).reason==1;d[0]=FD_domain(5,64,true,-3,4,0).domain;v[0]=4;#assert sm_index(d[0],v[0]).reason==1;
+ words:=[1]u64.[256];d[0]=FD_domain(4,8,false,0,0,1).domain;d[0].values=words[..];#assert sm_index(d[0],256).reason==1;
+ words[0]=7;#assert sm_index(d[0],8).reason==1;d[0].values=words[0..<0];#assert sm_index(d[0],7).reason==1;
+ d[0]=FD_domain(3,8,false,0,0,0).domain;#assert sm_index(d[0],256).reason==1;
+ #assert sm_magnitude(18446744073709551615,true)==1 && sm_magnitude(9223372036854775808,true)==9223372036854775808;
+}
+#forall "reduction state fields are checked independently including completed endpoints" defect:0..<13 {
+ s:=SM_Reduction.{budget=32};valid:bool=false;
+ if defect==0 {valid=true;}else if defect==1 {s.reason=1;}else if defect==2 {s.budget=0;}else if defect==3 {s.budget=33;}
+ else if defect==4 {s.attempts=-1;}else if defect==5 {s.attempts=33;}else if defect==6 {s.binding=-1;}else if defect==7 {s.binding=3;}
+ else if defect==8 {s.choice=-1;}else if defect==9 {s.choice=2;}else if defect==10 {s.done=true;}
+ else if defect==11 {s.attempts=32;s.done=true;valid=true;}else {s.binding=2;s.done=true;valid=true;}
+ #assert sm_reduction(s,2)==valid;
+}
+#test "reducer refuses malformed state or output without writes and handles second enum choices" {
+ words:=[3]u64.[9,2,7];d:=[1]FD_Domain.[FD_domain(4,8,false,0,0,3).domain];d[0].values=words[..];v:=[1]u64.[7];out:=[1]u64.[91];s:=SM_reduce_start(d[..],v[..],32);
+ c:=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.offered && out[0]==9;c=SM_reduce_next(c.state,d[..],v[..],out[..]);#assert c.offered && out[0]==2 && c.ordinal==1;
+ d[0].count=2;d[0].values=words[0..<2];v[0]=2;s=SM_reduce_start(d[..],v[..],32);c=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.offered;c=SM_reduce_next(c.state,d[..],v[..],out[..]);#assert !c.offered;
+ d[0].count=1;d[0].values=words[0..<1];v[0]=9;s=SM_reduce_start(d[..],v[..],32);#assert !SM_reduce_next(s,d[..],v[..],out[..]).offered;
+ d[0]=FD_domain(3,8,false,0,0,0).domain;v[0]=5;s=SM_reduce_start(d[..],v[..],32);c=SM_reduce_next(s,d[..],v[..],out[..]);#assert out[0]==0;c=SM_reduce_next(c.state,d[..],v[..],out[..]);#assert c.offered && out[0]==1;
+ out[0]=91;s.reason=1;#assert SM_reduce_next(s,d[..],v[..],out[..]).state.reason==1 && out[0]==91;s.reason=0;
+ #assert SM_reduce_next(s,d[..],v[..],out[0..<0]).state.reason==1;
+ v[0]=256;#assert SM_reduce_next(s,d[..],v[..],out[..]).state.reason==1;
+}
+#test "single replay rejects stale slot padding malformed extents and unstarted success" {
+ id:=ep_test_identity();id.ordinal=3;q:=QE_Check.{identity=id,kind=2,cases=7,binding_count=1};d:=[1]FD_Domain.[FD_domain(5,64,true,-3,4,0).domain];r:[32769]u8;#assert QE_initialize(r[..]);p:=ep_test_process();
+ for i:1..<41 {r[i]=91;}#assert SM_encode_replay(id,0,1,0,r[1..<41])==40;r[0]=0;
+ o:=SM_replay(q,d[..],0,r[..],p);#assert o.valid && o.outcome==3;
+ r[16385]=1;#assert !SM_replay(q,d[..],0,r[..],p).valid;r[16385]=0;
+ r[41]=1;#assert !SM_replay(q,d[..],0,r[..],p).valid;r[41]=0;r[32768]=1;#assert !SM_replay(q,d[..],0,r[..],p).valid;r[32768]=0;
+ r[0]=2;#assert !SM_replay(q,d[..],0,r[..],p).valid;r[0]=0;
+ #assert !SM_replay(q,d[..],0,r[0..<32768],p).valid;q.cases=6;#assert !SM_replay(q,d[..],0,r[..],p).valid;q.cases=7;
+ q.identity.source="";v:[1]u64;#assert !SM_case(q,d[..],0,v[..]);
+}
+#test "decimal and seed boundaries are not relaxed by incidental formatting" {
+ #assert SM_request(5,"case","0","0","/p").mode==3 && SM_request(5,"case","0","9","/p").case_index==9;
+ #assert SM_request(4,"case","0","0","/p").reason==1 && SM_request(5,"wrong","0","0","/p").reason==1;
+ #assert sm_decimal("",FD_limit()).reason==1 && sm_decimal("00",FD_limit()).reason==1 && sm_decimal(":",FD_limit()).reason==1 && sm_decimal("-1",FD_limit()).reason==1 && sm_decimal("16777216",FD_limit()).reason==1;
+ data:[256]u8;out:[256]u8;qe_copy(data[..],0,SM_PREFIX);qe_copy(data[..],SM_PREFIX.count,SM_SEED_FROM);n:=SM_PREFIX.count+SM_SEED_FROM.count;
+ #assert SM_seed(data[0..<n],out[0..<n])==n;data[0]^=1;#assert SM_seed(data[0..<n],out[..])== -1;data[0]^=1;
+ qe_copy(data[..],n,"if (");#assert SM_seed(data[0..<n+4],out[..])==n+4;
+}
+
+#test "reducer preserves other coordinates and signed positive unit direction" {
+ d:=[2]FD_Domain.[FD_domain(3,8,false,0,0,0).domain,FD_domain(3,8,false,0,0,0).domain];v:=[2]u64.[5,5];out:[2]u64;s:=SM_reduce_start(d[..],v[..],32);
+ c:=SM_reduce_next(s,d[..],v[..],out[..]);#assert c.offered && out[0]==0;c=SM_reduce_next(c.state,d[..],v[..],out[..]);#assert c.offered && out[0]==1;c=SM_reduce_next(c.state,d[..],v[..],out[..]);#assert c.offered && out[0]==5 && out[1]==0;
+ d[0]=FD_domain(2,8,true,0,0,0).domain;s=SM_reduce_start(d[0..<1],v[0..<1],32);c=SM_reduce_next(s,d[0..<1],v[0..<1],out[0..<1]);#assert c.offered && out[0]==0;
+ c=SM_reduce_next(c.state,d[0..<1],v[0..<1],out[0..<1]);#assert c.offered && out[0]==1;
+ d[0]=FD_domain(1,8,false,0,0,0).domain;#assert sm_index(d[0],2).reason==1;
+ #assert sm_decimal("01",FD_limit()).reason==1;
+ q:=QE_Check.{identity=ep_test_identity(),kind=2,cases=1,binding_count=2};d[0]=FD_domain(5,64,true,0,4096,0).domain;d[1]=FD_domain(5,64,true,0,4097,0).domain;#assert !SM_case(q,d[..],0,out[..]);
+}
+
+#test "a zero coordinate never consumes a no-op reduction replay" {
+ d:=[1]FD_Domain.[FD_domain(3,8,false,0,0,0).domain];v:=[1]u64.[0];out:=[1]u64.[91];s:=SM_reduce_start(d[..],v[..],32);c:=SM_reduce_next(s,d[..],v[..],out[..]);
+ #assert !c.offered && c.state.done && c.state.attempts==0 && out[0]==91;
+}
+
+#test "reduction status admits unfinished work but never malformed state" {
+ s:=SM_Reduction.{budget=32};#assert SM_reduce_status(s,1)==0;s.reason=1;#assert SM_reduce_status(s,1)==3;s.reason=0;
+ #assert SM_reduce_status(s,65)==3 && SM_reduce_status(s,-1)==3;s.binding=1;s.done=true;#assert SM_reduce_status(s,1)==0;
+ s.binding=0;s.attempts=32;#assert SM_reduce_status(s,1)==0;s.done=false;#assert SM_reduce_status(s,1)==3;
+ s.attempts=0;s.budget=33;#assert SM_reduce_status(s,1)==3;
+}
+
+SM_REASONS :: [12]string.["assertion failed","integer overflow in '+'","integer overflow in '-'","integer overflow in '*'","integer overflow in unary '-'","integer overflow in '/'","division by zero","division by zero in '%'","shift amount out of range","index out of bounds","slice out of bounds","cast out of range"];
+SM_reason :: (what:string)->u32 #export_c {for i:0..<SM_REASONS.count {if what==SM_REASONS[i] {return cast(u32)i+1;}}return 0;}
+SM_trap_limit :: ()->int #export_c {return 4128;}
+sm_identity :: (id:EP_Identity)->bool {return EP_row_valid(4096,id.ordinal,id.declaration_index,id.line,id.column,id.name.count,id.source.count,true,true,true);}
+sm_equal :: (a:EP_Identity,b:EP_Identity)->bool {return a.ordinal==b.ordinal && a.declaration_index==b.declaration_index && a.line==b.line && a.column==b.column && a.name==b.name && a.source==b.source;}
+sm_reason :: (reason:u32)->bool {return reason>=1 && reason<=12;}
+sm_expected :: (e:SM_Expected)->bool {return sm_identity(e.identity) && sm_reason(e.reason) && ep_location(e.line) && ep_text(e.path.count);}
+SM_encode_trap :: (id:EP_Identity,what:string,path:string,line:int,out:[]u8)->int #export_c {
+ reason:=SM_reason(what);if !sm_identity(id) || !sm_reason(reason) || !ep_text(path.count) || !ep_location(line) || out.count<32+path.count {return -1;}
+ for i:0..<8 {out[i]=SM_MAGIC[i];}ep_put(out,8,32+path.count);ep_put(out,12,cast(int)reason);ep_put(out,16,id.ordinal);ep_put(out,20,id.declaration_index);ep_put(out,24,line);ep_put(out,28,path.count);qe_copy(out,32,path);return 32+path.count;
+}
+SM_decode_trap :: (raw:[]u8)->SM_Trap #export_c {
+ if raw.count<33 || raw.count>SM_trap_limit() {return SM_Trap.{};}
+ for i:0..<8 {if raw[i]!=SM_MAGIC[i] {return SM_Trap.{};}}
+ reason:=cast(u32)ep_get(raw,12);row:=ep_get(raw,16);decl:=ep_get(raw,20);line:=ep_get(raw,24);n:=ep_get(raw,28);
+ if ep_get(raw,8)!=raw.count || !sm_reason(reason) || !EP_select(4096,row) || !EP_select(4096,decl) || !ep_location(line) || n!=raw.count-32 {return SM_Trap.{};}
+ return SM_Trap.{ok=true,reason=reason,ordinal=row,declaration_index=decl,line=line,path=cast(string)raw[32..<raw.count]};
+}
+SM_trap :: (expected:SM_Expected,raw:[]u8,qp:QE_Observation,process:EP_Process,abort_code:int)->SM_Result #export_c {
+ t:=ep_transport(process);if t!=0 {return SM_Result.{outcome=t};}
+ e:=expected;f:=SM_decode_trap(raw);s:=qp.state;
+ if !sm_expected(e) || !f.ok || !qp.valid || qp.outcome!=1 || s.event!=1 || qp.slot!=0 || s.row!=e.identity.ordinal || s.declaration_index!=e.identity.declaration_index ||
+  abort_code!=6 || process.returncode!= -abort_code || f.ordinal!=s.row || f.declaration_index!=s.declaration_index || f.reason!=e.reason || f.path!=e.path || f.line!=e.line {return SM_Result.{outcome=3};}
+ return SM_Result.{recognized=true};
+}
+SM_baseline :: (validated:EP_BaseResult)->SM_Result #export_c {
+ if validated.outcome==2 {return SM_Result.{outcome=2};}if !validated.valid || validated.reason!=0 || validated.outcome!=1 {return SM_Result.{outcome=3};}return SM_Result.{};
+}
+SM_baseline_inputs :: (validated:EP_BaseResult,meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c {
+ p:=ep_transport(process);if p!=0 {return p;}b:=SM_baseline(validated);if b.outcome!=0 {return b.outcome;}
+ if process.returncode!=1 || meta.schema!=1 || meta.command!="test" || meta.backend!="evaluator" || !ep_text(expected_compiler.count) || meta.compiler!=expected_compiler ||
+  meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=0 || meta.exit_status!=1 ||
+  !sources_observed || !descriptors_observed || !EP_sources_match(evidence_sources,profile_sources) {return 3;}
+ if descriptors.count>0 && !ep_sources_valid(descriptors) {return 3;}return 0;
+}
+SM_diagnostic :: (expected:SM_Expected,code:string,path:string,line:int,count:int)->bool #export_c {
+ e:=expected;if !sm_expected(e) || count!=1 || path!=e.path || line!=e.line {return false;}
+ if e.reason==1 {return code=="E0406";}if e.reason<=8 {return code=="E0407";}if e.reason==10 || e.reason==11 {return code=="E0410";}return code=="E0411";
+}
+SM_qualified :: (outcome:u32,baseline_passed:bool,artifact_only:bool)->bool #export_c {return outcome==0 && baseline_passed && !artifact_only;}
+sm_signature :: (s:SM_Signature)->bool {return (s.optimization==0 || s.optimization==2) && sm_expected(SM_Expected.{identity=s.identity,reason=s.reason,line=s.line,path=s.path}) && SM_seed_id(s.seed_id);}
+SM_signature_equal :: (a:SM_Signature,b:SM_Signature)->bool #export_c {
+ return sm_signature(a) && a.optimization==b.optimization && sm_equal(a.identity,b.identity) && a.reason==b.reason && a.line==b.line && a.path==b.path && a.seed_id==b.seed_id;
+}
+SM_accept :: (expected:SM_Signature,actual:SM_Signature,native_outcome:u32,recognized:bool)->bool #export_c {return native_outcome==1 && recognized && SM_signature_equal(expected,actual);}
+sm_index :: (d:FD_Domain,word:u64)->SM_Ordinal {
+ if !fd_shape(d) || !fd_canonical(word,d.bits,d.is_signed) {return SM_Ordinal.{reason=1};}
+ if d.kind==4 {for i:0..<d.values.count {if d.values[i]==word {return SM_Ordinal.{ordinal=cast(u64)i};}}return SM_Ordinal.{reason=1};}
+ if d.kind==2 || d.kind==5 {rank:=word^FD_SIGN;first:=fd_rank(d.first);if rank<first || rank-first>=d.count {return SM_Ordinal.{reason=1};}return SM_Ordinal.{ordinal=rank-first};}
+ if word>=d.count {return SM_Ordinal.{reason=1};}return SM_Ordinal.{ordinal=word};
+}
+SM_ordinal :: (domains:[]FD_Domain,values:[]u64)->SM_Ordinal #export_c {
+ if !NC_native_arity(2,domains.count) || values.count!=domains.count {return SM_Ordinal.{reason=1};}
+ total:u64=1;ordinal:u64=0;for i:0..<domains.count {
+  d:=domains[i];p:=FD_combine(total,d.count);if p.reason!=0 {return SM_Ordinal.{reason=1};}v:=sm_index(d,values[i]);if v.reason!=0 {return SM_Ordinal.{reason=1};}ordinal=ordinal*d.count+v.ordinal;total=p.total;
+ }return SM_Ordinal.{ordinal=ordinal};
+}
+SM_reduce_start :: (domains:[]FD_Domain,values:[]u64,budget:int)->SM_Reduction #export_c {
+ if budget<1 || budget>32 || SM_ordinal(domains,values).reason!=0 {return SM_Reduction.{reason=1};}return SM_Reduction.{budget=budget,done=domains.count==0};
+}
+sm_reduction :: (s:SM_Reduction,count:int)->bool {return s.reason==0 && s.budget>=1 && s.budget<=32 && s.attempts>=0 && s.attempts<=s.budget && s.binding>=0 && s.binding<=count && (s.choice==0 || s.choice==1) && s.done==(s.binding==count || s.attempts==s.budget);}
+sm_magnitude :: (word:u64,is_signed:bool)->u64 {if is_signed && (word&FD_SIGN)!=0 {return (FD_LAST^word)+1;}return word;}
+sm_target :: (d:FD_Domain,current:u64,choice:int)->u64 {
+ if d.kind==4 {return d.values[ifx choice==1 && d.values.count>1 then 1 else 0];}
+ if choice==1 {return ifx d.is_signed && (current&FD_SIGN)!=0 then FD_LAST else 1;}
+ 
+ return 0;
+}
+SM_reduce_next :: (state:SM_Reduction,domains:[]FD_Domain,current:[]u64,out:[]u64)->SM_Candidate #export_c {
+ s:=state;if !sm_reduction(s,domains.count) || out.count!=current.count || SM_ordinal(domains,current).reason!=0 {return SM_Candidate.{state=SM_Reduction.{reason=1}};}
+ candidate:[64]u64;
+ while !s.done {
+  at:=s.binding;d:=domains[at];word:=sm_target(d,current[at],s.choice);s.choice+=1;if s.choice==2 {s.choice=0;s.binding+=1;}
+  s.done=s.binding==domains.count || s.attempts==s.budget;
+  
+  if d.kind==4 {if sm_index(d,word).ordinal>=sm_index(d,current[at]).ordinal {continue;}}else if sm_magnitude(word,d.is_signed)>=sm_magnitude(current[at],d.is_signed) {continue;}
+  for i:0..<current.count {candidate[i]=current[i];}candidate[at]=word;o:=SM_ordinal(domains,candidate[0..<current.count]);if o.reason!=0 {continue;}
+  for i:0..<out.count {out[i]=candidate[i];}s.attempts+=1;s.done=s.binding==domains.count || s.attempts==s.budget;return SM_Candidate.{state=s,offered=true,ordinal=o.ordinal};
+ }return SM_Candidate.{state=s};
+}
+sm_decimal :: (text:string,limit:u64)->SM_Ordinal {
+ if text.count<1 || (text.count>1 && text[0]=='0') {return SM_Ordinal.{reason=1};}value:u64=0;
+ for c:text {if c<'0' || c>'9' {return SM_Ordinal.{reason=1};}value=value*10+cast(u64)(c-'0');if value>=limit {return SM_Ordinal.{reason=1};}}return SM_Ordinal.{ordinal=value};
+}
+SM_request :: (argc:int,mode:string,ordinal:string,case_index:string,progress_path:string)->SM_Request #export_c {
+ if mode=="metadata" {if argc==2 && ordinal.count==0 && case_index.count==0 && progress_path.count==0 {return SM_Request.{mode=1};}return SM_Request.{reason=1};}
+ row:=EP_ordinal(ordinal);if row<0 || !ep_text(progress_path.count) {return SM_Request.{reason=1};}
+ if mode=="one" && argc==4 && case_index.count==0 {return SM_Request.{mode=2,ordinal=row};}
+ if mode=="case" && argc==5 {index:=sm_decimal(case_index,FD_limit());if index.reason==0 {return SM_Request.{mode=3,ordinal=row,case_index=index.ordinal};}}
+ return SM_Request.{reason=1};
+}
+SM_case :: (check:QE_Check,domains:[]FD_Domain,index:u64,values:[]u64)->bool #export_c {
+ if !QE_check_valid(check,4096,true,true,true,true) || check.binding_count!=domains.count {return false;}
+ total:u64=1;for d:domains {p:=FD_combine(total,d.count);if p.reason!=0 {return false;}total=p.total;}
+ if total!=check.cases {return false;}return FD_tuple(domains,index,values)==0;
+}
+SM_encode_replay :: (id:EP_Identity,index:u64,event:u32,returned:int,out:[]u8)->int #export_c {
+ if !sm_identity(id) || index>=FD_limit() || (event!=1 && event!=2) || returned!=0 || out.count<40 {return -1;}
+ for i:0..<8 {out[i]=SM_PROGRESS[i];}ep_put(out,8,cast(int)event);ep_put(out,12,40);ep_put(out,16,id.ordinal);ep_put(out,20,id.declaration_index);qe_put64(out,24,index);qe_put64(out,32,0);return 40;
+}
+sm_replay_frame :: (id:EP_Identity,index:u64,event:u32,region:[]u8,at:int)->bool {
+ for i:0..<8 {if region[at+i]!=SM_PROGRESS[i] {return false;}}
+ return ep_get(region,at+8)==cast(int)event && ep_get(region,at+12)==40 && ep_get(region,at+16)==id.ordinal && ep_get(region,at+20)==id.declaration_index && qe_get64(region,at+24)==index && qe_get64(region,at+32)==0;
+}
+SM_replay :: (check:QE_Check,domains:[]FD_Domain,index:u64,region:[]u8,process:EP_Process)->QE_Observation #export_c {
+ p:=ep_transport(process);if region.count!=QE_region_size() || region[0]>1 {return qe_invalid(p);}
+ words:[64]u64;if !NC_native_arity(2,domains.count) || !SM_case(check,domains,index,words[0..<domains.count]) {return qe_invalid(p);}
+ slot:=cast(int)region[0];event:=cast(u32)slot+1;
+ if !sm_replay_frame(check.identity,index,event,region,1+slot*QE_SLOT) {return qe_invalid(p);}
+ if slot==0 {for i:0..<QE_SLOT {if region[1+QE_SLOT+i]!=0 {return qe_invalid(p);}}}else if !sm_replay_frame(check.identity,index,1,region,1) {return qe_invalid(p);}
+ for which:0..<2 {for i:40..<QE_SLOT {if region[1+which*QE_SLOT+i]!=0 {return qe_invalid(p);}}}
+ outcome:=EV_INFRASTRUCTURE;if p!=0 {outcome=p;}else if event==2 && process.returncode==0 {outcome=0;}else if event==1 && process.returncode<0 {outcome=1;}
+ return QE_Observation.{outcome=outcome,valid=true,slot=slot,state=QE_State.{event=event,row=check.identity.ordinal,declaration_index=check.identity.declaration_index,case_index=index,total=check.cases,arity=domains.count,completed=cast(u64)slot}};
+}
+sm_at :: (input:[]u8,at:int,text:string)->bool {if input.count-at<text.count {return false;}for i:0..<text.count {if input[at+i]!=text[i] {return false;}}return true;}
+SM_seed :: (input:[]u8,out:[]u8)->int #export_c {
+ if !sm_at(input,0,SM_PREFIX) || out.count<input.count {return -1;}count:int=0;where:int;
+ for i:SM_PREFIX.count..<input.count {if sm_at(input,i,SM_SEED_FROM) {count+=1;where=i;}}
+ if count!=1 {return -1;}for i:0..<input.count {out[i]=input[i];}qe_copy(out,where,SM_SEED_TO);return input.count;
+}
+
+SM_seed_id :: (id:string)->bool #export_c {return id=="mul-add";}
+SM_probe :: (outcome:u32)->u32 #export_c {if outcome<=1 {return 0;}if outcome<=4 {return outcome;}return 3;}
+
+SM_reduce_status :: (state:SM_Reduction,count:int)->u32 #export_c {return ifx NC_native_arity(2,count) && sm_reduction(state,count) then 0 else 3;}

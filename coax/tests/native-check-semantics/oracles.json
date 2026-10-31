@@ -1,0 +1,113 @@
+{
+  "scope": "Independent Python exact-integer products, explicit arithmetic/cleanup results, never read from Coax evaluator output",
+  "multiply_domain": [
+    -3,
+    4
+  ],
+  "multiply_products": [
+    9,
+    6,
+    3,
+    0,
+    -3,
+    -6,
+    -9,
+    6,
+    4,
+    2,
+    0,
+    -2,
+    -4,
+    -6,
+    3,
+    2,
+    1,
+    0,
+    -1,
+    -2,
+    -3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    -3,
+    -2,
+    -1,
+    0,
+    1,
+    2,
+    3,
+    -6,
+    -4,
+    -2,
+    0,
+    2,
+    4,
+    6,
+    -9,
+    -6,
+    -3,
+    0,
+    3,
+    6,
+    9
+  ],
+  "ordered": {
+    "return": 275,
+    "output": [
+      91,
+      521,
+      7,
+      92
+    ],
+    "counter": [
+      81,
+      2,
+      82
+    ]
+  },
+  "cleanup": {
+    "nested_return": 7,
+    "nested_trace": 321,
+    "fallthrough_trace": 4251,
+    "loop_return": 712,
+    "loop_trace": 7129
+  },
+  "division": {
+    "left": [
+      -7,
+      7,
+      -7,
+      7,
+      -1,
+      1
+    ],
+    "right": [
+      3,
+      -3,
+      -3,
+      3,
+      2,
+      -2
+    ],
+    "quotient": [
+      -2,
+      -2,
+      2,
+      2,
+      0,
+      0
+    ],
+    "remainder": [
+      -1,
+      1,
+      -1,
+      1,
+      -1,
+      1
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+#test "dynamic cast trap" { result := narrowed(256); }
+narrowed :: (value:int) -> u8 {
+  return cast(u8) value;
+}

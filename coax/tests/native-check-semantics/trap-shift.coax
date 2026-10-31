@@ -1,0 +1,4 @@
+#test "dynamic shift trap" { result := shifted(64); }
+shifted :: (value:int) -> int {
+  return 1 << value;
+}

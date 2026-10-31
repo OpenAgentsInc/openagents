@@ -253,9 +253,9 @@ across phases. SDK path/version/settings observations do not claim a complete
 SDK-content or toolchain lock. A policy library that cannot start produces an
 explicit nonqualifying setup error. Report destinations refuse aliases of known
 consumed source, descriptor, launcher, toolchain and policy artifact files; a
-preexisting temporary output is preserved. Finite-domain execution, recognized trap
-semantics, seeded-defect reduction and broader real-consumer qualification
-remain the subsequent native-check tasks. The independent vectors and host
+preexisting temporary output is preserved. The opt-in finite-domain and semantic
+companions below extend this verification path; broader real-consumer qualification
+remains separate. The independent vectors and host
 failure fixtures live in `tests/native_check_execution.py`.
 
 ## Finite authored properties with verification ABI 2
@@ -295,6 +295,40 @@ time/output exhaustion is inconclusive. The `coax.native-checks.execution.v2`
 record keeps these semantics separate from execution.v1 and evaluator evidence.
 An artifact-only failing-property observation remains explicitly unqualified
 when its original baseline fails.
+
+## Independent semantics and retained artifact defects
+
+Since 0.43.0, the optional `native_semantics_execution.py` companion uses the
+same strict original-source baseline gates and ABI 2 bodies. Independent literal
+expectations cover signed division/remainder, casts, guarded caller-buffer
+writes, exactly-once destination evaluation and reverse cleanup on ordinary,
+return, break and continue exits.
+
+Verification C alone exposes an optional runtime-trap callback. The fixed
+semantics observer sends Coax-encoded ST1 frames with the known reason and
+original physical path/line. Existing observers leave the callback unset;
+ordinary product C has no hook. Recognition also requires matching begun-case
+identity, expected abort, complete pipe EOF and valid progress. Arbitrary
+signals, spoofed diagnostic text and malformed frames remain unrecognized.
+The checked reason subset covers assertions, integer overflow, division by
+zero, shifts, indices, slices and numeric casts.
+
+A negative fixture keeps its failed original evaluator evidence. Exact JSON
+diagnostic and native-trap parity is an explicitly artifact-only experiment,
+with `baseline_qualified=false`; it never becomes execution.v1/v2 qualification.
+The new `coax.native-checks.semantics.v1` record distinguishes experiment outcome
+from the actual native counterexample and original baseline outcome.
+
+The seeded-defect experiment retains both original and changed C. Coax admits
+one multiplication-to-addition helper edit only in the verification copy. A
+7×7 literal product table detects the seed at O0/O2. Bounded Coax reduction then
+proposes tuples from the original domain for fresh-process replay against the
+same seeded executable. Separate SP1 progress describes that single invocation;
+it does not claim earlier property cases ran. Accepted reductions preserve
+optimization, physical check identity, reason, fault location and seed identity.
+The record labels arbitrary source minimization `not-supported` and makes no
+global-minimum claim. Fixtures and regression controls live in
+`tests/native_check_semantics.py`.
 
 ## Legacy authored-check comparison
 

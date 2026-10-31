@@ -13,6 +13,12 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.44.0 — Native Semantic Checks — 2026-10-31
+
+Commit: pending
+
+- Qualify original checked values, guarded writes and reverse cleanup against independent expectations; add verification-only structured trap observations and bounded artifact-only seeded-defect tuple replay, without promoting failed evaluator baselines.
+
 ## 0.43.0 — Generic Literal Inference — 2026-10-31
 
 Commit: [`baca83b6844126d77059469177b16271b4a40ed7`](https://github.com/OpenAgentsInc/openagents/commit/baca83b6844126d77059469177b16271b4a40ed7)

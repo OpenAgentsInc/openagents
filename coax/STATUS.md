@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.43.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.44.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -143,6 +143,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `coax checks-c FILE` | Verification-only C11 from admitted checked zero-argument #test bodies and their callee closure, with original physical identities; no source rewriting or product main. Default ABI1 refuses selected #forall; opt-in --verification-abi 2 emits bounded finite-property metadata and original parameterized bodies. Unsupported effects/borrow forms refuse; emission alone is not execution evidence | works | 0.39.0 |
 | Original-source native execution companion | Optional native_check_execution.py host tooling runs one checked-AST C artifact at checked O0/O2 with a complete original evaluator baseline, Coax-owned EP1 protocol/verdict policy and bounded isolated native processes. execution.v1 records exact selected identities, source/artifact/compiler/SDK observations. Default ABI1 covers ordinary checks; opt-in ABI2 adds finite properties in execution.v2. Broader trap semantics and real-consumer qualification remain separate | works | 0.41.0 |
 | Finite authored native properties | Opt-in checks-c verification ABI2 and execution.v2 use shared Coax finite-domain admission/traversal for bool, small integers, sparse enums and int ranges, preserving original identities and last-binding-fastest order. Bounded per-property processes publish Coax-validated case progress and named witnesses; original unfiltered baselines remain mandatory. Native arity is limited to 64; ABI1 and execution.v1 remain unchanged | works | 0.42.0 |
+| Native semantic experiments | Optional semantics.v1 tooling qualifies independent value/write/cleanup assertions, recognizes a checked subset of runtime traps through verification-only structured hooks, and detects a retained C-only multiplication seed with bounded signature-preserving tuple replay. Matching an expected failed-original trap is artifact-only and never a passed baseline. Arbitrary source minimization and real-consumer qualification remain separate | works | 0.44.0 |
 | `$T` type parameters | A $T binds from procedure parameters or an explicit generic-struct parameter list; unbound/result-only uses and unsupported nesting are refused (E0392-E0395); recursive or C-exported generic procedures are refused (E0396, E0398) | partial | 0.34.0 |
 | Generic instantiation | Each call deduces its bindings, typed arguments first and then literals for a bare $T (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; built-in constraints restrict admitted types and operations | partial | 0.35.0 |
 | `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted | partial | 0.36.0 |

@@ -1,0 +1,4 @@
+#test "dynamic division trap" { result := division(7,0); }
+division :: (left:int,right:int) -> int {
+  return left/right;
+}

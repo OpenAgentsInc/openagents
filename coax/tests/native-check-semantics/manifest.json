@@ -1,0 +1,139 @@
+{
+  "scope": "Independent source-located expected trap classes and evaluator diagnostic codes, authored before emitter callback implementation",
+  "traps": [
+    {
+      "fixture": "trap-assert",
+      "kind": 1,
+      "source": "trap-assert.coax",
+      "line": 3,
+      "code": "E0406",
+      "diagnostic": {
+        "code": "E0406",
+        "line": 3,
+        "col": 3,
+        "message": "assertion failed [#test dynamic assertion trap]",
+        "file": "trap-assert.coax"
+      }
+    },
+    {
+      "fixture": "trap-overflow",
+      "kind": 2,
+      "source": "trap-overflow.coax",
+      "line": 3,
+      "code": "E0407",
+      "diagnostic": {
+        "code": "E0407",
+        "line": 3,
+        "col": 14,
+        "message": "integer overflow in s8 during compile-time evaluation [#test dynamic overflow trap]",
+        "file": "trap-overflow.coax"
+      }
+    },
+    {
+      "fixture": "trap-divzero",
+      "kind": 7,
+      "source": "trap-divzero.coax",
+      "line": 3,
+      "code": "E0407",
+      "diagnostic": {
+        "code": "E0407",
+        "line": 3,
+        "col": 14,
+        "message": "division by zero during compile-time evaluation [#test dynamic division trap]",
+        "file": "trap-divzero.coax"
+      }
+    },
+    {
+      "fixture": "trap-bounds",
+      "kind": 10,
+      "source": "trap-bounds.coax",
+      "line": 3,
+      "code": "E0410",
+      "diagnostic": {
+        "code": "E0410",
+        "line": 3,
+        "col": 16,
+        "message": "index 2 is out of bounds for 2 elements [#test dynamic bounds trap]",
+        "file": "trap-bounds.coax"
+      }
+    },
+    {
+      "fixture": "trap-slice",
+      "kind": 11,
+      "source": "trap-slice.coax",
+      "line": 3,
+      "code": "E0410",
+      "diagnostic": {
+        "code": "E0410",
+        "line": 3,
+        "col": 17,
+        "message": "slice 0..<3 is out of bounds for 2 elements [#test dynamic slice trap]",
+        "file": "trap-slice.coax"
+      }
+    },
+    {
+      "fixture": "trap-cast",
+      "kind": 12,
+      "source": "trap-cast.coax",
+      "line": 3,
+      "code": "E0411",
+      "diagnostic": {
+        "code": "E0411",
+        "line": 3,
+        "col": 10,
+        "message": "cast to u8 is out of range [#test dynamic cast trap]",
+        "file": "trap-cast.coax"
+      }
+    },
+    {
+      "fixture": "trap-shift",
+      "kind": 9,
+      "source": "trap-shift.coax",
+      "line": 3,
+      "code": "E0411",
+      "diagnostic": {
+        "code": "E0411",
+        "line": 3,
+        "col": 12,
+        "message": "shift by 64 is out of range for int [#test dynamic shift trap]",
+        "file": "trap-shift.coax"
+      }
+    },
+    {
+      "fixture": "trap-loaded",
+      "kind": 1,
+      "source": "loaded-trap.coax",
+      "line": 2,
+      "code": "E0406",
+      "diagnostic": {
+        "code": "E0406",
+        "line": 2,
+        "col": 3,
+        "message": "assertion failed [#test physical loaded source trap]",
+        "file": "loaded-trap.coax"
+      }
+    }
+  ],
+  "mul_add_seed": {
+    "kind": 1,
+    "source": "multiply.coax",
+    "line": 6,
+    "initial_values": [
+      -3,
+      -3
+    ],
+    "initial_ordinal": 0,
+    "source_minimization": "not-supported",
+    "scope": "Exact single checked-integer runtime helper-family macro anchor in a copied verification C artifact: __builtin_mul_overflow -> __builtin_add_overflow; original source, original C, literal products and addition-only indexing unchanged."
+  },
+  "normal_product_c": {
+    "compiler_sha256": "3f4904e2c64033932e403e454f09964e008d53b1e2aeed8c1f2c02db0c9d2d89",
+    "argv": [
+      "c",
+      "coax/tests/native-check-semantics/hook-control.coax",
+      "--library"
+    ],
+    "source_sha256": "125abb4af4dc97dbd7e950afa8e3254b4752a2c9fc49b52e1b7422cc7217c986",
+    "c_sha256": "be79dde1fa73a54acc818ff2cfa2731e2170dc8103bb62132bb9d7e956206bc0"
+  }
+}

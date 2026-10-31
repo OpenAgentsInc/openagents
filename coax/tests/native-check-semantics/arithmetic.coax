@@ -1,0 +1,24 @@
+#forall "division and remainder truncate toward zero" index:0..<6 {
+  left := [6]int.[-7,7,-7,7,-1,1];
+  right := [6]int.[3,-3,-3,3,2,-2];
+  quotient := [6]int.[-2,-2,2,2,0,0];
+  residual := [6]int.[-1,1,-1,1,-1,1];
+  #assert divide(left[index],right[index]) == quotient[index];
+  #assert remainder(left[index],right[index]) == residual[index];
+}
+#test "checked and truncating cast boundaries" {
+  #assert signed_byte(-128) == -128 && signed_byte(127) == 127;
+  #assert unsigned_byte(0) == 0 && unsigned_byte(255) == 255;
+  #assert cast,trunc(u8) -1 == 255;
+  #assert cast,trunc(s8) 128 == -128;
+  #assert cast,trunc(s8) 255 == -1;
+  #assert truncate_signed(-7.9) == -7 && truncate_signed(7.9) == 7;
+  #assert truncate_signed(-0.75) == 0;
+  #assert truncate_unsigned(-0.75) == 0 && truncate_unsigned(255.75) == 255;
+}
+divide :: (left:int,right:int) -> int { return left/right; }
+remainder :: (left:int,right:int) -> int { return left%right; }
+signed_byte :: (value:int) -> s8 { return cast(s8) value; }
+unsigned_byte :: (value:int) -> u8 { return cast(u8) value; }
+truncate_signed :: (value:f64) -> int { return cast(int) value; }
+truncate_unsigned :: (value:f64) -> u8 { return cast(u8) value; }

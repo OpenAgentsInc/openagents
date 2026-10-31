@@ -1,0 +1,4 @@
+#test "dynamic bounds trap" { values := [2]int.[11,12]; result := indexed(values[..],2); }
+indexed :: (values:[]int,index:int) -> int {
+  return values[index];
+}
