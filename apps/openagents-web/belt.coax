@@ -128,6 +128,11 @@ Belt :: struct {
   eco: Plan; fast: Plan; replan: f32;
   follow: int = -1;
   follow_place: int = -1;  // the place the view rides with, -1 none
+  // Without a ship or place followed, the view still moves with the system: the whole-system view
+  // keeps the Sun and Hearth framed as Ceres goes round (system), and a view zoomed in or panned
+  // rides with the place nearest its middle (ride, where it was last frame: ride_r), so the
+  // station you zoomed in on doesn't fly off the screen at eighteen kilometres a second.
+  system: bool; ride: int = -1; ride_r: D3;
   // input
   btn: [BUTTONS] Btn; btn_n: int; press: int = -1; hover: int = -1;
   fingers: [2] Finger;
@@ -377,23 +382,20 @@ belt_reset :: (s: [] Belt) {
     o.m0 = TAU_D * rand_next(r[..]);
     s[0].rocks[k] = o;
   }
-  // The ice rocks, near Ceres along its orbit, so the first trips are short.
-  ceres := orbit_body(BODY_CERES);
-  cl := orbit_state(ceres, s[0].t).r;
-  lon := atan2_d(cl.y, cl.x);
+  // The ice rocks, near Ceres along its orbit, so the first trips are short: Ceres's own state
+  // turned about its orbit's axis, a hair out of its plane and a hair faster or slower. A rock on
+  // another plane or out of round costs kilometres a second to reach however near it looks.
+  cs := orbit_state(orbit_body(BODY_CERES), s[0].t);
+  axis := d3_unit(d3_cross(cs.r, cs.v));
   for k: 0..<ICE_ROCKS {
-    o: Orbit;
-    o.mu = GM_SUN;
-    o.a = (2.6 + 0.35 * rand_next(r[..])) * AU;
-    o.e = 0.02 + 0.08 * rand_next(r[..]);
-    o.i = (1.0 + 7.0 * rand_next(r[..])) * DEG;
-    o.node = TAU_D * rand_next(r[..]);
-    o.peri = TAU_D * rand_next(r[..]);
     side := ifx k % 2 == 0 then 1.0 else -1.0;
-    want := lon + side * (0.06 + 0.07 * f64(k / 2) + 0.03 * rand_next(r[..]));
-    o.epoch = s[0].t;
-    o.m0 = wrap_pi(want - o.node - o.peri);
-    s[0].ices[k] = o;
+    ang := side * (0.012 + 0.012 * f64(k / 2) + 0.006 * rand_next(r[..]));
+    tilt := (rand_next(r[..]) - 0.5) * 0.6 * DEG;
+    speed := 1.0 + 0.006 * (rand_next(r[..]) - 0.5);
+    pr := turn_about(cs.r, axis, ang);
+    pv := d3_scale(turn_about(cs.v, axis, ang), speed);
+    pv = turn_about(pv, d3_unit(pr), tilt);
+    s[0].ices[k] = orbit_from_state(orbit_state_of(pr, pv), GM_SUN, s[0].t);
   }
   // The Free Belt's three, the Mars Union's and the Compact's.
   n := 0;
@@ -415,6 +417,11 @@ belt_reset :: (s: [] Belt) {
   s[0].cam.tilt = 0.0;
 }
 started :: (s: [] Belt) { if !s[0].started { belt_start(s); } }
+// v turned by a radians about the unit axis k (Rodrigues).
+turn_about :: (v: D3, k: D3, a: f64) -> D3 {
+  c := cos(a); sn := sin(a);
+  return d3_add(d3_add(d3_scale(v, c), d3_scale(d3_cross(k, v), sn)), d3_scale(k, d3_dot(k, v) * (1.0 - c)));
+}
 
 // ---- the planner over the game's ships
 
@@ -624,6 +631,7 @@ load_game :: (s: [] Belt, text: string) -> bool {
   }
   s[0].t = t; s[0].speed = ifx sp >= 0 && sp < 4 then sp else 2;
   s[0].ice = fmax(ice, 0.0); s[0].delivered = fmax(delivered, 0.0);
+  s[0].framed = false;   // the next frame frames the saved date's Hearth, not the start's
   for k: 0..<s[0].ship_n {
     sh := ships[k];
     if sh.mode == FLYING { sh.arc = orbit_from_state(orbit_state_of(sh.path[0], sh.path[1]), GM_SUN, sh.t0); }
@@ -711,7 +719,7 @@ mine_order :: (s: [] Belt) {
 
 follow_ship :: (s: [] Belt, k: int) {
   if k < 0 { return; }
-  s[0].follow = k; s[0].follow_place = -1;
+  s[0].follow = k; s[0].follow_place = -1; s[0].system = false; s[0].ride = -1;
   s[0].cam = spacecam_look(s[0].cam, ship_state(s, k, s[0].t).r, 1.4 * f64(hi(s[0].dpr, 0.5)));
   s[0].cam.following = true;
 }
@@ -903,7 +911,7 @@ map_tap :: (s: [] Belt, x: f32, y: f32) {
 // the station with room around it.
 look_at_place :: (s: [] Belt, p: int) {
   size := ifx is_world(p) then BODY_RADIUS[p] * 5.0 else ifx is_ice(p) then ICE_RADII[p - P_ICE] * 8.0 else 4000.0;
-  s[0].follow = -1;
+  s[0].follow = -1; s[0].system = false; s[0].ride = -1;
   s[0].follow_place = p;
   s[0].cam = spacecam_look(s[0].cam, place_state(s, p, s[0].t).r, f64(lo(s[0].w, s[0].h)) / size);
   s[0].cam.following = true;
@@ -912,9 +920,38 @@ look_at_place :: (s: [] Belt, p: int) {
 SYSTEM_SPAN :: 1.6;
 system_scale :: (s: [] Belt) -> f64 { return f64(lo(s[0].w, s[0].h * 0.75)) / (d3_len(place_state(s, P_STATION, s[0].t).r) * SYSTEM_SPAN); }
 look_at_system :: (s: [] Belt) {
-  s[0].follow = -1; s[0].follow_place = -1;
+  s[0].follow = -1; s[0].follow_place = -1; s[0].ride = -1; s[0].system = true;
   s[0].cam = spacecam_look(s[0].cam, d3_scale(place_state(s, P_STATION, s[0].t).r, 0.5), system_scale(s));
   s[0].cam.following = false;
+}
+// After the player pans or zooms: in close (past a few times the system's scale) the view rides
+// with the place nearest (x, y); out at the system's scale it stays put about the Sun.
+RIDE_ZOOM :: 3.0;
+pick_ride :: (s: [] Belt, x: f32, y: f32) {
+  s[0].system = false;
+  s[0].ride = -1;
+  if s[0].follow >= 0 || s[0].follow_place >= 0 || s[0].w <= 0 || s[0].h <= 0 { return; }
+  if s[0].cam.goal_scale < RIDE_ZOOM * system_scale(s) { return; }
+  p := place_at(s, x, y, s[0].w + s[0].h);
+  if p < 0 { return; }
+  s[0].ride = p;
+  s[0].ride_r = place_state(s, p, s[0].t).r;
+}
+// The view's frame, every step: the system view re-framed as Hearth goes round, or the view
+// moved by as much as the place it rides with moved.
+ride_step :: (s: [] Belt) {
+  if s[0].follow >= 0 || s[0].follow_place >= 0 || s[0].w <= 0 || s[0].h <= 0 { return; }
+  if s[0].system {
+    s[0].cam.goal_center = d3_scale(place_state(s, P_STATION, s[0].t).r, 0.5);
+    s[0].cam.goal_scale = system_scale(s);
+    return;
+  }
+  if s[0].ride < 0 { return; }
+  now := place_state(s, s[0].ride, s[0].t).r;
+  moved := d3_sub(now, s[0].ride_r);
+  s[0].cam.center = d3_add(s[0].cam.center, moved);
+  s[0].cam.goal_center = d3_add(s[0].cam.goal_center, moved);
+  s[0].ride_r = now;
 }
 
 box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
@@ -931,10 +968,12 @@ box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
 
 zoom_at :: (s: [] Belt, factor: f64, x: f32, y: f32) {
   s[0].cam = spacecam_zoom_at(s[0].cam, factor, f64(x), f64(y), f64(s[0].w), f64(s[0].h));
+  pick_ride(s, x, y);
 }
 pan :: (s: [] Belt, dx: f32, dy: f32) {
   s[0].cam = spacecam_pan(s[0].cam, f64(dx), f64(dy));
   s[0].follow = -1; s[0].follow_place = -1;
+  pick_ride(s, s[0].w / 2, s[0].h / 2);
 }
 
 belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
@@ -1819,6 +1858,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   if s[0].held & HOLD_DOWN != 0 { pan(s, 0, f32(-hp)); }
   if s[0].held & HOLD_IN != 0 { zoom_at(s, exp(2.5 * real), s[0].w / 2, s[0].h / 2); }
   if s[0].held & HOLD_OUT != 0 { zoom_at(s, exp(-2.5 * real), s[0].w / 2, s[0].h / 2); }
+  ride_step(s);
   // Riding with a ship or a place: the view moves with it (its frame), and eases in from where it was.
   was := s[0].cam.goal_center;
   riding := s[0].cam.following;
@@ -1836,7 +1876,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   s[0].w = width; s[0].h = height; s[0].dpr = dpr;
   if !s[0].framed && width > 0 && height > 0 {
     // The first view: the Sun and Hearth Station, the inner worlds between.
-    s[0].framed = true;
+    s[0].framed = true; s[0].system = true; s[0].ride = -1; s[0].follow = -1; s[0].follow_place = -1;
     home := place_state(s, P_STATION, s[0].t).r;
     s[0].cam.goal_center = d3_scale(home, 0.5);
     s[0].cam.goal_scale = system_scale(s);
@@ -2038,6 +2078,43 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
       #assert p.ok && p.tr.tof <= NEAR_TOF + DAY;
     }
   }
+}
+
+#test "an ice rock beside Ceres is a cheap hop: a few km/s on the economy plan, well inside RASP's tanks" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  for j: 0..<ICE_ROCKS {
+    p := plan_for(s[..], 0, P_ICE + j, false);
+    #assert p.ok && p.enough && p.tr.dv < 4000.0 && p.fuel < 0.5 * s[0].ships[0].fuel;
+  }
+}
+
+#test "the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1280; s[0].h = 800; s[0].dpr = 1;
+  look_at_system(s[..]);
+  s[0].cam = spacecam_settle(s[0].cam);
+  s[0].speed = 3;
+  for i: 0..<2000 { belt_step(s[..], 0.05); }   // 3,000 days: two thirds of Ceres's year
+  q := screen_of(s[..], place_state(s[..], P_STATION, s[0].t).r);
+  #assert q.x > 0.0 && q.x < 1280.0 && q.y > 0.0 && q.y < 800.0;
+  // zoomed in on Hearth: it stays near the middle while the days run
+  h := screen_of(s[..], place_state(s[..], P_STATION, s[0].t).r);
+  zoom_at(s[..], 2000.0, pix(h.x), pix(h.y));
+  #assert s[0].ride == P_STATION && !s[0].system;
+  s[0].cam = spacecam_settle(s[0].cam);
+  before := screen_of(s[..], place_state(s[..], P_STATION, s[0].t).r);
+  for i: 0..<200 { belt_step(s[..], 0.05); }
+  after := screen_of(s[..], place_state(s[..], P_STATION, s[0].t).r);
+  #assert abs(after.x - before.x) < 2.0 && abs(after.y - before.y) < 2.0;
+  // a reload frames the saved date's Hearth
+  buf: [OUTBOX_CAP] u8;
+  n := save_game(s[..], buf[..]);
+  b: [1] Belt;
+  belt_start(b[..]);
+  b[0].framed = true;
+  #assert load_game(b[..], cast(string) buf[0..<n]) && !b[0].framed;
 }
 
 #test "a miner sent for ice mines at the rock, flies home and delivers it, and the rivals fly" {
