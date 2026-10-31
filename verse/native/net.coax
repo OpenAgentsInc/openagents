@@ -1,0 +1,438 @@
+// One HTTPS request for a realm running natively (verse/native/realm-host.c): what
+// coax/web/http-requests.js asks the browser's fetch for, over the approved TLS
+// (coax/platform/tls-native.c: the handshake, the chain and the name verified, records).
+// realm-host starts one of these for each request, so the realm's frame never waits on the
+// network and each process is its TLS's one owner thread:
+//   verse/native/net OUT HOST PORT FLAGS PATH BODY PLAYER CAP TIMEOUT_MS
+// FLAGS are coaxial_http's (1 POST, else GET; 8 send PLAYER as X-Verse-Player; 16 the body's
+// first line is its Authorization header). PATH is this site's ("/api/..."). BODY is a file
+// of the request's bytes, or "-"; PLAYER a key or "-". CAP is the realm's inbox: the answer,
+// "STATUS\n" then the body, is cut to it, or with TIMEOUT_MS > 0 (coaxial_http_bounded) one
+// over it is no answer at all. OUT gets the answer; "0\n" when there was none (the name not
+// verified, a refused or broken connection, a malformed reply, the deadline).
+// Redirects are not followed (the realm's API answers where it is asked). VERSE_AUTOMATION, when
+// set, goes as X-Verse-Automation, so the site's analytics and presence leave an automated run
+// out (coax/web/api/player.c); a person playing has none.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+cxtls_host_push :: (byte: int) -> int #foreign;
+cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxtls_write :: (h: int, byte: int) -> int #foreign;
+cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_byte :: (h: int, i: int) -> int #foreign;
+cxtls_close :: (h: int) -> int #foreign;
+
+NET_MAX :: 2162688;     // a reply's bytes: the largest inbox (2 MB) and its headers
+NET_REQ :: 1114112;     // a request's bytes: a body of up to 1 MB and its headers
+NET_DEADLINE :: 30000;  // an unbounded request's own deadline (ms)
+
+// A reply so far: 0 incomplete, 1 complete, -1 malformed; its status and its body's bytes
+// (in place for a Content-Length or an EOF-ended body; decoded into out for chunks).
+NetReply :: struct { state: int; status: int; at: int; n: int; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 9 {
+    tool_errln("usage: net OUT HOST PORT FLAGS PATH BODY PLAYER CAP TIMEOUT_MS");
+    return 2;
+  }
+  outp := args_at(a[..], 0);
+  host := args_at(a[..], 1);
+  port := args_whole(args_at(a[..], 2));
+  flags := args_whole(args_at(a[..], 3));
+  path := args_at(a[..], 4);
+  cap := args_whole(args_at(a[..], 7));
+  timeout := args_whole(args_at(a[..], 8));
+  if port < 1 || port > 65535 || flags < 0 || cap < 2 || timeout < 0 { tool_errln("net: bad numbers"); return 2; }
+  body: [NET_REQ] u8; bn := 0;
+  if args_at(a[..], 5) != "-" {
+    bn = fs_read(args_at(a[..], 5), body[..]);
+    if bn < 0 { return net_none(outp); }
+  }
+  player := ifx args_at(a[..], 6) == "-" then "" else args_at(a[..], 6);
+  am: [128] u8;
+  auto := net_env("VERSE_AUTOMATION", am[..]);
+  req: [NET_REQ] u8;
+  rn := net_request(req[..], host, path, flags, cast(string) body[0..<bn], player, auto);
+  if rn < 0 { return net_none(outp); }
+  deadline := ifx timeout > 0 then timeout else NET_DEADLINE;
+  start := cxproc_now_ms();
+  for c: host { r := cxtls_host_push(cast(int) c); }
+  h := cxtls_connect(port, deadline);
+  if h < 0 { return net_none(outp); }
+  for i: 0..<rn { if cxtls_write(h, cast(int) req[i]) < 0 { return net_drop(h, outp); } }
+  if cxtls_flush(h, net_left(start, deadline)) < 0 { return net_drop(h, outp); }
+  got: [NET_MAX] u8; gn := 0;
+  dec: [NET_MAX] u8;
+  reply: NetReply;
+  while true {
+    left := net_left(start, deadline);
+    if left <= 0 { return net_drop(h, outp); }
+    k := cxtls_read(h, left);
+    if k < 0 {
+      // the peer closed: a body with no length ends here (CXTLS_EOF, or Linux's close without close_notify)
+      reply = net_reply(cast(string) got[0..<gn], dec[..], true);
+      break;
+    }
+    if gn + k > got.count { return net_drop(h, outp); }
+    for i: 0..<k { got[gn + i] = cast(u8) cxtls_byte(h, i); }
+    gn += k;
+    reply = net_reply(cast(string) got[0..<gn], dec[..], false);
+    if reply.state != 0 { break; }
+  }
+  c := cxtls_close(h);
+  if reply.state != 1 { return net_none(outp); }
+  src := ifx reply.at < 0 then cast(string) dec[0..<reply.n] else cast(string) got[reply.at..<reply.at + reply.n];
+  page: [NET_MAX] u8;
+  pn := net_answer(page[..], reply.status, src, cap, timeout > 0);
+  if pn < 0 { return net_none(outp); }
+  if !fs_write(outp, cast(string) page[0..<pn]) { return 1; }
+  return 0;
+}
+// An environment variable's value into out, "" when it is unset or longer than out.
+net_env :: (name: string, out: [] u8) -> string {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  n := cxproc_getenv();
+  if n < 1 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast(u8) cxproc_getenv_byte(i); }
+  return cast(string) out[0..<n];
+}
+net_left :: (start: int, deadline: int) -> int { return deadline - (cxproc_now_ms() - start); }
+net_drop :: (h: int, outp: string) -> int {
+  c := cxtls_close(h);
+  return net_none(outp);
+}
+net_none :: (outp: string) -> int {
+  if !fs_write(outp, "0\n") { return 1; }
+  return 0;
+}
+
+// s after the n bytes of out; -1 when it does not fit (or n was already -1).
+net_add :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+net_digits :: (out: [] u8, n: int, v: int) -> int {
+  d: [20] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) (cast(int) '0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  r := n;
+  while k > 0 { k -= 1; r = net_add(out, r, cast(string) d[k..<k + 1]); }
+  return r;
+}
+// A header value or a host may hold no byte below a space (no CR or LF to start another header) and no DEL.
+net_plain :: (s: string) -> bool {
+  for c: s { if c < ' ' || c == 127 { return false; } }
+  return true;
+}
+// A path this site serves: "/" first, not "//" (another host), no backslash, space or control.
+net_path_ok :: (p: string) -> bool {
+  if p.count < 1 || p[0] != '/' || (p.count > 1 && p[1] == '/') { return false; }
+  for c: p { if c <= ' ' || c == 127 || c == '\\' { return false; } }
+  return true;
+}
+// The request's bytes into out: their count, or -1 (a path, host, header or size it refuses).
+net_request :: (out: [] u8, host: string, path: string, flags: int, input: string, player: string, auto: string) -> int {
+  if !net_path_ok(path) || host.count < 1 || !net_plain(host) || !net_plain(player) || !net_plain(auto) { return -1; }
+  for c: host { if c == ' ' || c == '/' { return -1; } }
+  body := input; auth := "";
+  if (flags & 16) != 0 && body.count > 0 {
+    nl := -1;
+    for c, i: body { if c == '\n' { nl = i; break; } }
+    if nl < 0 { return -1; }
+    auth = body[0..<nl]; body = body[nl + 1..<body.count];
+    if !net_plain(auth) { return -1; }
+  }
+  post := (flags & 1) != 0;
+  n := net_add(out, 0, ifx post then "POST " else "GET ");
+  n = net_add(out, n, path);
+  n = net_add(out, n, " HTTP/1.1\r\nHost: ");
+  n = net_add(out, n, host);
+  n = net_add(out, n, "\r\nConnection: close\r\nAccept-Encoding: identity\r\nCache-Control: no-store\r\nUser-Agent: verse-native\r\n");
+  if post {
+    n = net_add(out, n, "Content-Type: application/json\r\nContent-Length: ");
+    n = net_digits(out, n, body.count);
+    n = net_add(out, n, "\r\n");
+  }
+  if (flags & 8) != 0 && player.count > 0 { n = net_add(out, n, "X-Verse-Player: "); n = net_add(out, n, player); n = net_add(out, n, "\r\n"); }
+  if auth.count > 0 { n = net_add(out, n, "Authorization: "); n = net_add(out, n, auth); n = net_add(out, n, "\r\n"); }
+  if auto.count > 0 { n = net_add(out, n, "X-Verse-Automation: "); n = net_add(out, n, auto); n = net_add(out, n, "\r\n"); }
+  n = net_add(out, n, "\r\n");
+  if post { n = net_add(out, n, body); }
+  return n;
+}
+
+net_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+// Where the headers end (after the blank line), or -1.
+net_head_end :: (b: string) -> int {
+  if b.count < 4 { return -1; }
+  for i: 0..<b.count - 3 { if b[i] == '\r' && b[i + 1] == '\n' && b[i + 2] == '\r' && b[i + 3] == '\n' { return i + 4; } }
+  return -1;
+}
+// The value of header name (lower case) in the head, trimmed; found false when absent.
+NetHeader :: struct { found: bool; at: int; n: int; }
+net_header :: (head: string, name: string) -> NetHeader {
+  r: NetHeader;
+  i := 0;
+  // past the status line
+  while i + 1 < head.count && !(head[i] == '\r' && head[i + 1] == '\n') { i += 1; }
+  i += 2;
+  while i < head.count {
+    e := i;
+    while e + 1 < head.count && !(head[e] == '\r' && head[e + 1] == '\n') { e += 1; }
+    if e + 1 >= head.count { break; }
+    if e - i > name.count && head[i + name.count] == ':' {
+      same := true;
+      for k: 0..<name.count { if net_lower(head[i + k]) != name[k] { same = false; break; } }
+      if same {
+        s := i + name.count + 1;
+        while s < e && (head[s] == ' ' || head[s] == '\t') { s += 1; }
+        t := e;
+        while t > s && (head[t - 1] == ' ' || head[t - 1] == '\t') { t -= 1; }
+        r.found = true; r.at = s; r.n = t - s;
+        return r;
+      }
+    }
+    i = e + 2;
+  }
+  return r;
+}
+// A whole number of up to 18 digits (base 10 or 16), -1 when it is not one.
+net_number :: (s: string, base: int) -> int {
+  if s.count < 1 || s.count > 18 { return -1; }
+  v := 0;
+  for c: s {
+    d := -1;
+    if c >= '0' && c <= '9' { d = cast(int) (c - '0'); }
+    else if base == 16 && net_lower(c) >= 'a' && net_lower(c) <= 'f' { d = cast(int) (net_lower(c) - 'a') + 10; }
+    if d < 0 { return -1; }
+    v = v * base + d;
+  }
+  return v;
+}
+// The chunked body b decoded into out: its length, -1 incomplete, -2 malformed or too large.
+net_dechunk :: (b: string, out: [] u8) -> int {
+  i := 0; n := 0;
+  while true {
+    e := i;
+    while e + 1 < b.count && !(b[e] == '\r' && b[e + 1] == '\n') { e += 1; }
+    if e + 1 >= b.count { return -1; }
+    // the size, before any chunk extension
+    z := i;
+    while z < e && b[z] != ';' && b[z] != ' ' { z += 1; }
+    size := net_number(b[i..<z], 16);
+    if size < 0 { return -2; }
+    i = e + 2;
+    if size == 0 {
+      // trailers end at a blank line
+      while true {
+        t := i;
+        while t + 1 < b.count && !(b[t] == '\r' && b[t + 1] == '\n') { t += 1; }
+        if t + 1 >= b.count { return -1; }
+        if t == i { return n; }
+        i = t + 2;
+      }
+    }
+    if i + size + 2 > b.count { return ifx n + size > out.count then -2 else -1; }
+    if n + size > out.count { return -2; }
+    for k: 0..<size { out[n + k] = b[i + k]; }
+    n += size;
+    if b[i + size] != '\r' || b[i + size + 1] != '\n' { return -2; }
+    i += size + 2;
+  }
+  return -2;
+}
+// The reply in b so far (ended: the peer closed): complete with its body, incomplete, or malformed.
+net_reply :: (b: string, out: [] u8, ended: bool) -> NetReply {
+  r: NetReply;
+  he := net_head_end(b);
+  if he < 0 { r.state = ifx ended then -1 else 0; return r; }
+  head := b[0..<he];
+  // "HTTP/1.x DDD"
+  if he < 12 || head[0..<7] != "HTTP/1." || head[8] != ' ' { r.state = -1; return r; }
+  st := net_number(head[9..<12], 10);
+  if st < 100 || st > 599 { r.state = -1; return r; }
+  r.status = st;
+  te := net_header(head, "transfer-encoding");
+  if te.found {
+    v := head[te.at..<te.at + te.n];
+    if v.count != 7 { r.state = -1; return r; }
+    for k: 0..<7 { if net_lower(v[k]) != "chunked"[k] { r.state = -1; return r; } }
+    d := net_dechunk(b[he..<b.count], out);
+    if d == -2 || (d == -1 && ended) { r.state = -1; return r; }
+    if d == -1 { return r; }
+    r.state = 1; r.at = -1; r.n = d;
+    return r;
+  }
+  cl := net_header(head, "content-length");
+  if cl.found {
+    want := net_number(head[cl.at..<cl.at + cl.n], 10);
+    if want < 0 { r.state = -1; return r; }
+    if b.count - he < want { r.state = ifx ended then -1 else 0; return r; }
+    r.state = 1; r.at = he; r.n = want;
+    return r;
+  }
+  // no length: 1xx, 204 and 304 have no body; any other ends with the connection
+  if st < 200 || st == 204 || st == 304 { r.state = 1; r.at = he; r.n = 0; return r; }
+  if !ended { return r; }
+  r.state = 1; r.at = he; r.n = b.count - he;
+  return r;
+}
+// The realm's answer, "STATUS\n" then the body, into out within cap bytes: its count; a bounded
+// request's answer over cap is -1 (no answer, as the browser's), an unbounded one is cut.
+net_answer :: (out: [] u8, status: int, body: string, cap: int, bounded: bool) -> int {
+  n := net_digits(out, 0, status);
+  n = net_add(out, n, "\n");
+  if n < 0 || n > cap { return -1; }
+  room := cap - n;
+  if body.count > room && bounded { return -1; }
+  k := ifx body.count > room then room else body.count;
+  return net_add(out, n, body[0..<k]);
+}
+
+#test "a request's bytes" {
+  o: [512] u8;
+  n := net_request(o[..], "openagents.com", "/api/x?a=1", 0, "", "", "");
+  #assert cast(string) o[0..<n] == "GET /api/x?a=1 HTTP/1.1\r\nHost: openagents.com\r\nConnection: close\r\nAccept-Encoding: identity\r\nCache-Control: no-store\r\nUser-Agent: verse-native\r\n\r\n";
+  n = net_request(o[..], "h", "/p", 1 | 8 | 16, "Nostr abc\n{\"a\":1}", "K1", "");
+  #assert cast(string) o[0..<n] == "POST /p HTTP/1.1\r\nHost: h\r\nConnection: close\r\nAccept-Encoding: identity\r\nCache-Control: no-store\r\nUser-Agent: verse-native\r\nContent-Type: application/json\r\nContent-Length: 7\r\nX-Verse-Player: K1\r\nAuthorization: Nostr abc\r\n\r\n{\"a\":1}";
+  // the player only with flag 8, the first line as Authorization only with 16
+  n = net_request(o[..], "h", "/p", 1, "a\nb", "K1", "");
+  #assert cast(string) o[n - 3..<n] == "a\nb" && cast(string) o[n - 7..<n - 3] == "\r\n\r\n";
+}
+#test "an automated run says so" {
+  o: [512] u8;
+  n := net_request(o[..], "h", "/p", 1, "{}", "", "native-check");
+  #assert cast(string) o[0..<n] == "POST /p HTTP/1.1\r\nHost: h\r\nConnection: close\r\nAccept-Encoding: identity\r\nCache-Control: no-store\r\nUser-Agent: verse-native\r\nContent-Type: application/json\r\nContent-Length: 2\r\nX-Verse-Automation: native-check\r\n\r\n{}";
+  #assert net_request(o[..], "h", "/p", 0, "", "", "a\nb") == -1;
+}
+#test "what a request refuses" {
+  o: [512] u8;
+  #assert net_request(o[..], "h", "//evil.example/x", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h", "x", 0, "", "", "") == -1 && net_request(o[..], "h", "", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h", "/a b", 0, "", "", "") == -1 && net_request(o[..], "h", "/a\\b", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h", "/a\nb", 0, "", "", "") == -1 && net_request(o[..], "h", "/a\0", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h", "/a", 8, "", "K\r\nX: y", "") == -1;
+  #assert net_request(o[..], "h", "/a", 17, "no line", "", "") == -1 && net_request(o[..], "h", "/a", 17, "A\rB\nx", "", "") == -1;
+  #assert net_request(o[..], "", "/a", 0, "", "", "") == -1 && net_request(o[..], "h/x", "/a", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h x", "/a", 0, "", "", "") == -1;
+  #assert net_request(o[..], "h", "/", 0, "", "", "") > 0;
+  small: [20] u8;
+  #assert net_request(small[..], "h", "/a", 0, "", "", "") == -1;
+}
+#test "numbers" {
+  o: [32] u8;
+  #assert cast(string) o[0..<net_digits(o[..], 0, 0)] == "0" && cast(string) o[0..<net_digits(o[..], 0, 1234567)] == "1234567";
+  #assert net_digits(o[..], -1, 5) == -1 && net_digits(o[0..<2], 0, 123) == -1;
+  #assert net_number("1a", 16) == 26 && net_number("FF", 16) == 255 && net_number("1a", 10) == -1 && net_number("", 10) == -1;
+  #assert net_number("0", 10) == 0 && net_number("g", 16) == -1 && net_number("1234567890123456789", 10) == -1;
+  #assert net_number("123456789012345678", 10) == 123456789012345678 && net_number(" 1", 10) == -1;
+}
+#test "replies with a length" {
+  d: [64] u8;
+  r := net_reply("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel", d[..], false);
+  #assert r.state == 0;
+  r = net_reply("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel", d[..], true);
+  #assert r.state == -1;
+  b := "HTTP/1.1 201 Created\r\nX-A: 1\r\ncontent-LENGTH:  5 \r\n\r\nhello!";
+  r = net_reply(b, d[..], false);
+  #assert r.state == 1 && r.status == 201 && b[r.at..<r.at + r.n] == "hello";
+  r = net_reply("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n", d[..], false);
+  #assert r.state == 1 && r.status == 404 && r.n == 0;
+  r = net_reply("HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\n", d[..], false);
+  #assert r.state == -1;
+  r = net_reply("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n", d[..], false);
+  #assert r.state == 0;
+  r = net_reply("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n", d[..], true);
+  #assert r.state == -1;
+}
+#test "replies without a length" {
+  d: [64] u8;
+  b := "HTTP/1.1 200 OK\r\nServer: s\r\n\r\nall of it";
+  r := net_reply(b, d[..], false);
+  #assert r.state == 0;
+  r = net_reply(b, d[..], true);
+  #assert r.state == 1 && r.status == 200 && b[r.at..<r.at + r.n] == "all of it";
+  r = net_reply("HTTP/1.1 204 No Content\r\n\r\n", d[..], false);
+  #assert r.state == 1 && r.status == 204 && r.n == 0;
+  r = net_reply("HTTP/1.1 304 Not Modified\r\n\r\n", d[..], false);
+  #assert r.state == 1 && r.n == 0;
+  r = net_reply("HTTP/1.1 101 Switching\r\n\r\n", d[..], false);
+  #assert r.state == 1 && r.status == 101;
+  r = net_reply("HTTP/1.1 205 Reset\r\n\r\n", d[..], false);
+  #assert r.state == 0;
+}
+#test "malformed status lines" {
+  d: [16] u8;
+  #assert net_reply("HTTP/2 200 OK\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 2x0 OK\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 099 OK\r\n\r\n", d[..], false).state == -1 && net_reply("HTTP/1.1 600 OK\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1_200 OK\r\n\r\n", d[..], false).state == -1 && net_reply("HTTP/1.1 20\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("XTTP/1.1 200 OK\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 599 X\r\nContent-Length: 0\r\n\r\n", d[..], false).state == 1;
+  #assert net_reply("HTTP/1.1 100 X\r\nContent-Length: 0\r\n\r\n", d[..], false).status == 100;
+  #assert net_reply("", d[..], false).state == 0 && net_reply("", d[..], true).state == -1;
+}
+#test "chunked replies" {
+  d: [64] u8;
+  b := "HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n5\r\nhello\r\n7;x=y\r\n, world\r\n0\r\nT: 1\r\n\r\n";
+  r := net_reply(b, d[..], false);
+  #assert r.state == 1 && r.at == -1 && cast(string) d[0..<r.n] == "hello, world";
+  // every shorter prefix is incomplete, and an error once the peer has closed
+  for k: 49..<b.count {
+    #assert net_reply(b[0..<k], d[..], false).state == 0;
+    #assert net_reply(b[0..<k], d[..], true).state == -1;
+  }
+  #assert net_reply("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\n0\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, x\r\n\r\n0\r\n\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nz\r\n", d[..], false).state == -1;
+  #assert net_reply("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nabX\r\n0\r\n\r\n", d[..], false).state == -1;
+  r = net_reply("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", d[..], false);
+  #assert r.state == 1 && r.n == 0;
+}
+#test "dechunking" {
+  d: [8] u8;
+  #assert net_dechunk("3\r\nabc\r\n0\r\n\r\n", d[..]) == 3 && cast(string) d[0..<3] == "abc";
+  #assert net_dechunk("3 \r\nabc\r\n0\r\n\r\n", d[..]) == 3;
+  #assert net_dechunk("9\r\nabcdefghi\r\n0\r\n\r\n", d[..]) == -2;
+  #assert net_dechunk("9\r\nabc", d[..]) == -2 && net_dechunk("3\r\nab", d[..]) == -1;
+  #assert net_dechunk("4\r\nabcd\r\n5\r\nefghi\r\n0\r\n\r\n", d[..]) == -2;
+  #assert net_dechunk("", d[..]) == -1 && net_dechunk("3", d[..]) == -1 && net_dechunk("\r\n", d[..]) == -2;
+  #assert net_dechunk("0\r\n", d[..]) == -1 && net_dechunk("0\r\nT: 1\r\n", d[..]) == -1;
+  #assert net_dechunk("0\r\n\r\n", d[0..<0]) == 0;
+}
+#test "headers" {
+  h := "HTTP/1.1 200 OK\r\nA: 1\r\nAb:\t two \r\nB:3\r\n\r\n";
+  x := net_header(h, "ab");
+  #assert x.found && h[x.at..<x.at + x.n] == "two";
+  x = net_header(h, "a");
+  #assert x.found && h[x.at..<x.at + x.n] == "1";
+  x = net_header(h, "b");
+  #assert x.found && h[x.at..<x.at + x.n] == "3";
+  #assert !net_header(h, "c").found && !net_header(h, "http/1.1 200 ok").found;
+  #assert !net_header("HTTP/1.1 200 OK\r\nA: 1", "a").found;
+  x = net_header("HTTP/1.1 200 OK\r\nA:\r\n\r\n", "a");
+  #assert x.found && x.n == 0;
+  #assert net_head_end("ab") == -1 && net_head_end("\r\n\r\n") == 4 && net_head_end("a\r\n\r\nb") == 5 && net_head_end("a\r\n\r") == -1;
+}
+#test "the realm's answer" {
+  o: [32] u8;
+  n := net_answer(o[..], 200, "hello", 32, true);
+  #assert cast(string) o[0..<n] == "200\nhello";
+  #assert net_answer(o[..], 200, "hello", 8, true) == -1;
+  n = net_answer(o[..], 200, "hello", 8, false);
+  #assert cast(string) o[0..<n] == "200\nhell";
+  #assert net_answer(o[..], 200, "", 3, false) == -1 && net_answer(o[..], 200, "", 4, true) == 4;
+  #assert net_answer(o[..], 200, "abcd", 8, true) == 8;
+}
+#test "plain values and paths" {
+  del: [2] u8; del[0] = '/'; del[1] = 127;
+  #assert net_plain("a b~") && !net_plain("a\tb") && !net_plain(cast(string) del[1..<2]) && net_plain("") && !net_plain("\0");
+  #assert net_path_ok("/") && net_path_ok("/api/a?b=c&d=%20") && !net_path_ok("//") && !net_path_ok("/\0") && !net_path_ok(cast(string) del[..]);
+  #assert net_lower('A') == 'a' && net_lower('Z') == 'z' && net_lower('a') == 'a' && net_lower('@') == '@' && net_lower('[') == '[';
+}

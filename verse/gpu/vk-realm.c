@@ -6,12 +6,17 @@
 // buffers in place, its counts are set, and the spec is recorded and presented.
 //   vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden]
 //            [--seconds N] [--demo] [--shot OUT.ppm] [--shot-at S]       on the screen (vkd.h)
+//            [--net DIR] [--origin HOST[:PORT]] [--name NAME]
 //   vk-realm DIR PACK ... --headless FRAMES [--out OUT.f32]                 offscreen
 // DIR holds spec.txt and its files. --size is what the passes draw at (default: the screen's,
 // or the spec's offscreen); on the screen it is scaled to the mode's size. --headless runs
 // FRAMES frames at 1/60 s each (as realm-run and wasm-run do), drawing every one but the first, and writes the last frame's targets as
 // float RGBA (vk-passes' OUT). Escape, the --seconds limit, SIGINT or SIGTERM end it on the
 // screen; display.sh-style launchers (verse/gpu/realm.sh) switch to a free VT first.
+// --net DIR gives the realm its network and what it keeps (realm-host.h, rh_net_open): its
+// requests go to HOST (default openagents.com, port 443) through DIR/../net or ./net (the
+// helper, verse/native/net.coax), and its player key, place and bar (as NAME, default
+// everglade) are files in DIR. Without it the realm is offline, as the checks run it.
 #define _GNU_SOURCE
 #include "evdev.h"
 #include "face.h"
@@ -24,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -35,6 +41,46 @@ static double now_s(void) {
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
   return t.tv_sec + t.tv_nsec / 1e9;
+}
+
+// 16 random hex digits from the kernel.
+static void random_id(char out[17]) {
+  unsigned char b[8] = {0};
+  FILE *f = fopen("/dev/urandom", "rb");
+  if (!f || fread(b, 1, 8, f) != 8) { if (f) fclose(f); f = NULL; for (int i = 0; i < 8; i++) b[i] = (unsigned char)(rand() ^ (int)time(NULL)); }
+  if (f) fclose(f);
+  for (int i = 0; i < 8; i++) snprintf(out + 2 * i, 3, "%02x", b[i]);
+}
+// Online, the page facts host.js gives a browser: this machine's visitor (made once, kept in
+// DIR/visitor, as localStorage keeps a browser's), a new tab each run (fresh), and the time.
+static char *online_facts(char *text, size_t *n, const char *dir) {
+  char path[1100], visitor[17] = {0}, tab[17];
+  snprintf(path, sizeof path, "%s/visitor", dir);
+  mkdir(dir, 0700);
+  FILE *f = fopen(path, "r");
+  if (!f || fread(visitor, 1, 16, f) != 16) {
+    random_id(visitor);
+    FILE *o = fopen(path, "w");
+    if (o) { fputs(visitor, o); fclose(o); }
+  }
+  if (f) fclose(f);
+  random_id(tab);
+  struct timespec t;
+  clock_gettime(CLOCK_REALTIME, &t);
+  char *out = malloc(*n + 256);
+  size_t k = 0;
+  for (char *line = text; line < text + *n;) {
+    char *e = memchr(line, '\n', (size_t)(text + *n - line));
+    size_t len = e ? (size_t)(e - line) : (size_t)(text + *n - line);
+    if (len > 6 && !strncmp(line, "visitor=", 8)) k += (size_t)sprintf(out + k, "visitor=%s\n", visitor);
+    else if (len > 3 && !strncmp(line, "tab=", 4)) k += (size_t)sprintf(out + k, "tab=%s\n", tab);
+    else if (len > 3 && !strncmp(line, "now=", 4)) k += (size_t)sprintf(out + k, "now=%lld\n", (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
+    else { memcpy(out + k, line, len); k += len; out[k++] = '\n'; }
+    line += len + 1;
+  }
+  free(text);
+  *n = k;
+  return out;
 }
 
 // evdev's keys (verse/kms/evdev.h) into the face; the codes are host.js's KEYS.
@@ -139,7 +185,7 @@ static int cmp_double(const void *a, const void *b) { double x = *(const double 
 
 int main(int argc, char **argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] "
+    fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
                     "[--shot-at S] [--headless FRAMES] [--out OUT.f32]\n");
     return 2;
   }
@@ -148,12 +194,16 @@ int main(int argc, char **argv) {
   float scale = 1;
   uint32_t w = 0, h = 0;
   int golden = 0, headless = 0, demo = 0;
+  const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade";
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
     else if (!strcmp(a, "--demo")) demo = 1;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
+    else if (!strcmp(a, "--net")) net_dir = val, i++;
+    else if (!strcmp(a, "--origin")) origin = val, i++;
+    else if (!strcmp(a, "--name")) name = val, i++;
     else if (!strcmp(a, "--extra")) extra = val, i++;
     else if (!strcmp(a, "--size")) { if (sscanf(val, "%ux%u", &w, &h) != 2) { fprintf(stderr, "vk-realm: --size WxH\n"); return 2; } i++; }
     else if (!strcmp(a, "--scale")) scale = (float)atof(val), i++;
@@ -174,10 +224,27 @@ int main(int argc, char **argv) {
     size_t n;
     char *text = slurp(facts, &n);
     if (!text) { fprintf(stderr, "vk-realm: cannot read %s\n", facts); return 1; }
+    if (net_dir) text = online_facts(text, &n, net_dir);
     rh_send(&H, RH_PAGE_KIND, text, n);
     free(text);
   }
   rh_send(&H, RH_VIEWER_KIND, "", 0);
+  if (net_dir) {
+    // HOST or HOST:PORT; the helper beside this program
+    char host[256];
+    snprintf(host, sizeof host, "%s", origin);
+    int port = 443;
+    char *colon = strchr(host, ':');
+    if (colon) { *colon = 0; port = atoi(colon + 1); }
+    char helper[1100];
+    snprintf(helper, sizeof helper, "%s/net", dir);
+    if (access(helper, X_OK)) snprintf(helper, sizeof helper, "./net");
+    char *full = realpath(helper, NULL);
+    if (!full || rh_net_open(&H, full, host, port, net_dir, name)) return 1;
+    fprintf(stderr, "vk-realm: online: %s:%d through %s, kept in %s\n", host, port, full, net_dir);
+    free(full);
+    rh_restore(&H);
+  }
   uint32_t sizes[8];
   int nextra = 0;
   for (const char *p = extra; *p && nextra < 8;) {
@@ -225,8 +292,10 @@ int main(int argc, char **argv) {
     // the frame before the spec was opened is the first of them
     for (frames = 1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
+      if (net_dir) rh_net_poll(&H);
       hud_vertices = rh_frame(&H, (float)w, (float)h, scale, 1.0f / 60);
       update(s);
+      if (net_dir) rh_after(&H, 1);
       double t1 = now_s();
       vks_submit(&v, record, s);
       stepped[frames] = t1 - t0;
@@ -271,9 +340,10 @@ int main(int argc, char **argv) {
       double dt = t - prev;
       prev = t;
       if (dt > 0.1) dt = 0.1;
+      rh_net_poll(&H);   // the answers that came, before the realm's step
       hud_vertices = with_cursor(rh_frame(&H, (float)w, (float)h, scale, (float)dt));
       update(s);
-      rh_after(&H, 0);   // a navigation, a sound, a socket: nothing a bare screen can do yet
+      rh_after(&H, 0);   // keeps the player, place and bar (--net); a navigation or a copy a bare screen ignores
       double t1 = now_s();
       if (shot && !p.shoot && !p.shot_ready && t - start >= shot_at) p.shoot = 1;
       if (vkp_present(&v, &p, record, s, last[0]->image, w, h, NULL, NULL)) { vkp_resize(&v, &p, p.w, p.h); continue; }
@@ -308,6 +378,11 @@ int main(int argc, char **argv) {
     }
     double ran = presented[frames - 1] - presented[skip];
     printf("vk-realm: %d frames in %.1f s (%.2f a second) at %.3f Hz; dropped %d, longest gap %.1f ms\n", n, ran, (n - 1) / ran, 1 / period, dropped, longest * 1000);
+    // the frame times themselves (present to present): the 95th percentile is the play check's
+    int g = 0;
+    for (int i = skip + 1; i < frames; i++) sorted[g++] = presented[i] - presented[i - 1];
+    qsort(sorted, (size_t)g, sizeof(double), cmp_double);
+    printf("vk-realm: frame time median %.2f ms, 95th %.2f ms, 99th %.2f ms\n", sorted[g / 2] * 1000, sorted[g * 95 / 100] * 1000, sorted[g * 99 / 100] * 1000);
   }
   printf("vk-realm: %s, %ux%u, %d frames, %u draws the last; it ended because %s\n", v.props.deviceName, w, h, frames, vk_spec_drawn(s), why);
   if (v.validating) printf("vk-realm: validation: %d errors, %d warnings\n", vkc_validation_errors, vkc_validation_warnings);
@@ -319,6 +394,7 @@ int main(int argc, char **argv) {
     keyboards_close();
     mice_close(&mice);
   }
+  rh_net_close();
   rh_close(&H);
   return vkc_validation_errors ? 1 : 0;
 }
