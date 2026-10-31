@@ -3,14 +3,12 @@
 import {mkdtempSync,readFileSync,existsSync,rmSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import {launch as launchChrome} from '../chrome'
+import {startChrome} from '../chrome'
 const base=process.argv[2]?.replace(/\/$/,'');if(!base)throw Error('usage: home_live_browser.ts ORIGIN')
-const profile=mkdtempSync(join(tmpdir(),'coax-home-live-'))
-const proc=launchChrome(profile,['--window-size=1280,800'])
+const {proc,profile,port}=await startChrome('coax-home-live-',['--window-size=1280,800'])
 let ws:WebSocket|undefined
 try{
- const portFile=join(profile,'DevToolsActivePort');for(let i=0;i<100&&!existsSync(portFile);i++)await Bun.sleep(50)
- const port=readFileSync(portFile,'utf8').split('\n')[0],targets=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json(),target=targets.find((t:any)=>t.type==='page')
+ const targets=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json(),target=targets.find((t:any)=>t.type==='page')
  ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise(r=>ws!.addEventListener('open',r,{once:true}))
  let serial=0,connections=0,received=0,sent=0;const pending=new Map<number,(v:any)=>void>(),errors:string[]=[]
  ws.addEventListener('message',e=>{const m=JSON.parse(String(e.data));pending.get(m.id)?.(m);pending.delete(m.id)

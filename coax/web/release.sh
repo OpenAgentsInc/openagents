@@ -305,7 +305,8 @@ if $stage; then
   lap smoke "$t"
   if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]]; then
     t=$(now)
-    if ! bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; then
+    rc=0; browser_check "the live homepage check" bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com || rc=$?
+    if (( rc == 1 )); then
       if live_ok home; then echo "release $commit: staging's live homepage fails where production's passes; production is untouched" >&2; exit 1; fi
       already "the live homepage check" "$(tail -1 "$base_dir/home")"
     fi
@@ -313,7 +314,8 @@ if $stage; then
   fi
   t=$(now)
   if ! $gated; then
-    if ! bounded 600 bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts; then
+    rc=0; browser_check "goldens.ts --starts" bounded 600 bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts || rc=$?
+    if (( rc == 1 )); then
       if live_ok starts || [[ -n "$live_via" ]]; then echo "release $commit: staging's pages don't start (goldens.ts --starts above) where production's do; production is untouched" >&2; exit 1; fi
       already "goldens.ts --starts" "$(tail -3 "$base_dir/starts" | tr '\n' ' ')"
     fi
@@ -404,7 +406,8 @@ via=""
 walked=true check=--starts
 ! $thorough || check=--walk
 baseline
-[[ -n "$via" ]] || bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
+rc=0; [[ -n "$via" ]] || browser_check "goldens.ts $check" bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || rc=$?
+(( rc != 1 )) || walked=false
 # A start that failed right after the switch (a slow engine start under load,
 # 2026-10-31) is walked again before it can roll the release back.
 if ! $walked && [[ -z "$via" && "$check" == --starts ]] && passes_on_retry bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com --starts; then walked=true; fi
@@ -417,7 +420,8 @@ if ! $walked || [[ -n "$broke" ]]; then
   "$here/rollback.sh" "$stamp"
   exit 1
 fi
-if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]] && ! bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com; then
+rc=0; [[ ! -f "$tree/coax/web/tests/home_live_browser.ts" ]] || browser_check "the live homepage check" bounded 300 bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com || rc=$?
+if (( rc == 1 )); then
   if live_ok home; then
     echo "release $commit: production live homepage failed where it passed before this release; rolling back" >&2
     "$here/rollback.sh" "$stamp"

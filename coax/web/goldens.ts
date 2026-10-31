@@ -53,7 +53,7 @@ import { inflateSync } from "node:zlib"
 import { type World } from "./realms"
 import { goldenPages, GOLDEN_DIR, type Page } from "./golden-pages"
 import { classify, missingGolden } from "./golden-policy"
-import { launch as launchChrome } from "./chrome"
+import { startChrome } from "./chrome"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
@@ -211,23 +211,12 @@ const skipping = (name: Name) => unchanged.has(name)
 const POOL = Math.max(1, Number(process.env.GOLDENS_POOL ?? 4)), CHROMES = process.env.GOLDENS_CHROMES === "1"
 const failed: string[] = []
 const procs: { proc: ReturnType<typeof Bun.spawn>; profile: string }[] = []
-// Chrome under load can take a while to say its port: wait up to 30 s, and start it once more if it doesn't.
+// Chrome under load can take a while to say its port: chrome.ts waits up to 30 s and
+// starts another, three times; past that the walk could not run (exit CANNOT_RUN).
 async function launch(): Promise<string> {
-  for (let attempt = 0; ; attempt++) {
-    const port = await start()
-    if (port) return port
-    if (attempt) throw new Error("headless Chrome didn't start (no DevToolsActivePort in 30 s, twice)")
-  }
-}
-async function start() {
-  const profile = mkdtempSync(join(tmpdir(), "coax-goldens-"))
-  const proc = launchChrome(profile, [`--window-size=${W},${H}`])
-  procs.push({ proc, profile })
-  const portFile = join(profile, "DevToolsActivePort")
-  const port = () => existsSync(portFile) ? readFileSync(portFile, "utf8").split("\n")[0].trim() : ""
-  for (let i = 0; i < 600 && !/^\d+$/.test(port()); i++) await Bun.sleep(50)
-  if (/^\d+$/.test(port())) return port()
-  proc.kill(); return ""
+  const c = await startChrome("coax-goldens-", [`--window-size=${W},${H}`])
+  procs.push({ proc: c.proc, profile: c.profile })
+  return c.port
 }
 
 class Tab {

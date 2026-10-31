@@ -34,7 +34,21 @@ passes_on_retry() {
   for wait in ${SMOKE_RETRY_WAITS:-10 20}; do
     echo "  the check failed; running it again in ${wait} s: $*" >&2
     sleep "$wait"
-    "$@" && return 0
+    local status=0; "$@" || status=$?
+    (( status == 0 )) && return 0
+    (( status != 75 )) || { echo "  the check could not run on its retry (headless Chrome did not start); it doesn't stop this release" >&2; return 0; }
   done
+  return 1
+}
+# browser_check NAME CMD...: a page check in headless Chrome. 0 when it passes,
+# 1 when it fails, 2 when it could not run: its Chrome did not start in three
+# tries (chrome.ts startChrome exits CANNOT_RUN, 75). That is this machine's
+# trouble, not the release's: it is said, and never stops or rolls back a
+# release (2026-10-31: one rolled back for it).
+browser_check() {
+  local name="$1" status=0; shift
+  "$@" || status=$?
+  (( status == 0 )) && return 0
+  if (( status == 75 )); then echo "  $name could not run (headless Chrome did not start); it doesn't stop this release" >&2; return 2; fi
   return 1
 }

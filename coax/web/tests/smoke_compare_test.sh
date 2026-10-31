@@ -49,4 +49,31 @@ export STATE="$dir/w2" ALWAYS=1; "$dir/walk" || true
 passes_on_retry "$dir/walk" 2>/dev/null && r=pass || r=fail
 expect "a walk that keeps failing still fails" "$r" "fail"
 expect "it ran three times" "$(cat "$STATE")" "3"
+# A page check whose Chrome did not start could not run (exit 75): said, and
+# never a failure of the release (2026-10-31: a release rolled back for it).
+rc=0; browser_check "a passing check" true 2>/dev/null || rc=$?; expect "a passing browser check is 0" "$rc" "0"
+rc=0; browser_check "a failing check" false 2>/dev/null || rc=$?; expect "a failing browser check is 1" "$rc" "1"
+rc=0; out=$(browser_check "the live homepage check" bash -c 'exit 75' 2>&1) || rc=$?
+expect "a check whose Chrome didn't start could not run (2)" "$rc" "2"
+expect "and it says so" "$out" "  the live homepage check could not run (headless Chrome did not start); it doesn't stop this release"
+passes_on_retry bash -c 'exit 75' 2>/dev/null && r=pass || r=fail
+expect "a retried walk that could not run doesn't roll back" "$r" "pass"
+# chrome.ts: a Chrome that never says its port is started three times, each one
+# killed (only it: a bystander lives on), and the check exits 75, "could not run".
+cat > "$dir/chrome" <<'S'
+#!/usr/bin/env bash
+echo $$ >> "$PIDS"; exec sleep 30
+S
+chmod +x "$dir/chrome"
+sleep 30 & bystander=$!
+export PIDS="$dir/pids"
+rc=0; out=$(CHROME="$dir/chrome" CHROME_START_WAIT_MS=1500 bun -e 'import { startChrome } from "./chrome"; await startChrome("coax-test-", []); console.log("started")' 2>&1) || rc=$?
+expect "Chrome that won't start: the check exits 75" "$rc" "75"
+expect "it says it could not run" "$(tail -1 <<< "$out")" "could not run: headless Chrome did not start (3 tries)"
+expect "it tried three times" "$(wc -l < "$PIDS" | tr -d ' ')" "3"
+alive=0; for p in $(cat "$PIDS"); do kill -0 "$p" 2>/dev/null && alive=$((alive + 1)); done
+expect "each Chrome it started was killed" "$alive" "0"
+kill -0 "$bystander" 2>/dev/null && r=alive || r=dead
+expect "a process it didn't start lives on" "$r" "alive"
+kill "$bystander" 2>/dev/null || true
 exit $fail
