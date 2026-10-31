@@ -86,10 +86,10 @@ status, raw, _ = call("POST", G, b"{}", {"Content-Type": "application/json", "X-
 check("a headless browser is automation too", status == 200 and check_bot["id"] not in [o["id"] for o in room_call("GET", G)[1]["others"]])
 # A check's sessions that pair (0074): automation marked "pair-..." sees the others of that same mark,
 # and nobody else does; a cookie mark pairs as the header does.
-P = "/api/playtest/presence/pair-test"
+PAIR_ROOM = "/api/playtest/presence/pair-test"
 pa, pb, pc, person = mint(), mint(), mint(), mint()
 def pair_post(key, headers, x):
-    status, raw, _ = call("POST", P, json.dumps({"x": x, "z": 1}).encode(), {"Content-Type": "application/json", "X-Verse-Player": key, **headers})
+    status, raw, _ = call("POST", PAIR_ROOM, json.dumps({"x": x, "z": 1}).encode(), {"Content-Type": "application/json", "X-Verse-Player": key, **headers})
     return [(o["id"], o["x"]) for o in json.loads(raw)["others"]]
 pair_post(person["key"], {}, 0)
 pair_post(pa["key"], {"X-Verse-Automation": "pair-ff-1"}, 1)
@@ -98,6 +98,6 @@ check("and the first sees the second move", (pb["id"], 2) in pair_post(pa["key"]
 check("another pair doesn't see them", pair_post(pc["key"], {"X-Verse-Automation": "pair-ff-2"}, 3) == [(person["id"], 0)])
 check("a mark that isn't a pair doesn't see them", pair_post(pc["key"], {"X-Verse-Automation": "qa-1"}, 3) == [(person["id"], 0)])
 check("a person doesn't see a pair", pair_post(person["key"], {}, 0) == [])
-check("nor does the homepage", [o["id"] for o in room_call("GET", P)[1]["others"]] == [person["id"]])
-check("a pair's GET sees its pair", sorted(o["id"] for o in json.loads(call("GET", P, None, {"X-Verse-Player": pa["key"], "X-Verse-Automation": "pair-ff-1"})[1])["others"]) == sorted([person["id"], pa["id"], pb["id"]]))
+check("nor does the homepage", [o["id"] for o in room_call("GET", PAIR_ROOM)[1]["others"]] == [person["id"]])
+check("a pair's GET sees its pair", sorted(o["id"] for o in json.loads(call("GET", PAIR_ROOM, None, {"X-Verse-Player": pa["key"], "X-Verse-Automation": "pair-ff-1"})[1])["others"]) == sorted([person["id"], pa["id"], pb["id"]]))
 check("a GET joins nobody",room_call("GET", "/api/playtest/presence/nobody-here") == (200, {"others": [], "count": 0}))
