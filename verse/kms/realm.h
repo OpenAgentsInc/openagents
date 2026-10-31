@@ -9,7 +9,9 @@
 #include <stdint.h>
 
 // Named keys, as in coax/web/host.js KEYS.
-enum { REALM_ESCAPE = -1, REALM_ENTER = -2, REALM_BACKSPACE = -3, REALM_LEFT = -4, REALM_RIGHT = -5, REALM_UP = -6, REALM_DOWN = -7 };
+enum { REALM_ESCAPE = -1, REALM_ENTER = -2, REALM_BACKSPACE = -3, REALM_LEFT = -4, REALM_RIGHT = -5, REALM_UP = -6, REALM_DOWN = -7,
+       REALM_HOME = -8, REALM_END = -9, REALM_PAGE_UP = -10, REALM_PAGE_DOWN = -11, REALM_DELETE = -12, REALM_SHIFT = -13,
+       REALM_CONTROL = -14, REALM_TAB = -15 };
 
 const char *realm_name(void);
 size_t realm_state_size(void);

@@ -410,3 +410,33 @@ Every phase and native feature is a task in the Verse project
   The `built` golden fails at origin/main since 59347994ba (made realms:
   figures, animals, a windmill) with the hand-written module, before any of
   this.
+- 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
+  one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
+  (this site's paths only; the player key, an Authorization line, the
+  automation mark; Content-Length, chunked or to the close; the answer cut
+  to the realm's inbox), over the approved TLS (`tls-native.c`, OpenSSL from
+  Nix; 20 checks). realm-host answers `coaxial_http`, `_bounded` and
+  `_cancel` with the browser's eight slots, one net process per request
+  (posix_spawn: the frame never waits, and each process is its TLS's one
+  owner thread), the answers delivered between frames as messages 512 + id.
+  The playtest player (action 5), the place (11) and the bar (12) are kept
+  in `~/.local/state/verse` and the place and bar come back before the
+  first frame; online, the page facts carry this machine's visitor, a new
+  tab and the time. Keys: shift gives capitals and US punctuation, and the
+  browser's named keys (Shift, Tab, Home, End, Page Up/Down, Delete) go
+  through. `realm.sh HOST net` on the 4080: the player minted, the realm, its
+  fork, the world list, presence and analytics, every answer 200. A run
+  nobody plays is marked `X-Verse-Automation` (native-net-check,
+  native-demo), so usage leaves it out; the first unmarked check, at about
+  10:20 CDT (user agent verse-native), should be left out too. Everglade has
+  no sounds (its pack holds none and its Coax plays none), so the native
+  host plays none yet. A 5 minute walk online at 2560x1440 (`realm.sh
+  coderos-4080 screen --seconds 305 --demo`): 18,221 frames in 303.9 s
+  (59.95 a second), 0 dropped, longest gap 22.4 ms; the realm's step p99
+  2.78 ms. Present to present is held to the 16.68 ms refresh, so its 95th
+  percentile, 17.70 ms, is the timer's jitter around one refresh, not a late
+  frame; the next run started where the last left (the kept place).
+  Still open: Escape ends the run (in the browser it closes a field), so
+  leaving wants its own key before the owner plays; a navigation to another
+  realm is ignored; and the owner's own play on coderos-4080 in place of the
+  kiosk (NEEDS_OWNER.md).

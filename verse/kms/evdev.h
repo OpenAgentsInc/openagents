@@ -39,7 +39,11 @@ static void keyboards_open(void) {
   closedir(d);
 }
 
-// Each key to the realm; it returns 1 once Escape is pressed.
+// Each key to the realm; it returns 1 once Escape is pressed. Shift held on any keyboard makes
+// the printable keys their shifted characters, and a key's release is the key its press was
+// (a letter pressed, then shift, then released, lets go of the letter it typed).
+static int keyboards_shift;
+static int keyboards_down[KEY_MAX + 1];
 static int keyboards_read(void *state) {
   int escape = 0;
   struct input_event ev[64];
@@ -47,11 +51,13 @@ static int keyboards_read(void *state) {
     ssize_t n;
     while ((n = read(keyboards[i], ev, sizeof ev)) > 0) {
       for (size_t j = 0; j < (size_t)n / sizeof ev[0]; j++) {
-        if (ev[j].type != EV_KEY || ev[j].value == 2) continue;
-        int k = realm_key_of(ev[j].code);
+        if (ev[j].type != EV_KEY || ev[j].value == 2 || ev[j].code > KEY_MAX) continue;
+        int code = ev[j].code;
+        if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) keyboards_shift += ev[j].value == 1 ? 1 : (keyboards_shift > 0 ? -1 : 0);
+        int k = ev[j].value == 1 ? realm_key_shifted(code, keyboards_shift > 0) : keyboards_down[code];
         if (!k) continue;
-        if (ev[j].value == 1) realm_key(state, k);
-        else realm_key_up(state, k);
+        if (ev[j].value == 1) { keyboards_down[code] = k; realm_key(state, k); }
+        else { keyboards_down[code] = 0; realm_key_up(state, k); }
         if (k == REALM_ESCAPE && ev[j].value == 1) escape = 1;
       }
     }
