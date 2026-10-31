@@ -1,0 +1,1 @@
+#error C1_fixture_requires_a_truthful_compile_failure

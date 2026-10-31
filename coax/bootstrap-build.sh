@@ -75,6 +75,9 @@ gate "$work/stage0" test lib/compiler/effects.coax
 gate "$work/stage0" mutate lib/compiler/effects.coax --root-only
 gate "$work/stage0" test lib/compiler/native-checks.coax
 gate "$work/stage0" mutate lib/compiler/native-checks.coax
+gate "$work/stage0" test lib/compiler/native-execution.coax
+# Dependency policies have their own mutation gates above; retain their full baseline here.
+gate "$work/stage0" mutate lib/compiler/native-execution.coax --root-only
 gate "$work/stage0" test lib/compiler/spirv.coax
 gate "$work/stage0" mutate lib/compiler/spirv.coax
 gate "$work/stage0" test lib/compiler/shader.coax
@@ -142,6 +145,7 @@ gate "$work/coax" test lib/compiler/parser.coax
 gate "$work/coax" test lib/compiler/checker.coax
 gate "$work/coax" test lib/compiler/sources.coax
 gate "$work/coax" test lib/compiler/native-checks.coax
+gate "$work/coax" test lib/compiler/native-execution.coax
 "$work/coax" c lib/compiler/lexer.coax --library --header "$work/final-lexer.h" > "$work/final-lexer.c"
 cmp bootstrap/lexer.c "$work/final-lexer.c"
 "$work/coax" c lib/compiler/parser.coax --library --header "$work/final-parser.h" > "$work/final-parser.c"

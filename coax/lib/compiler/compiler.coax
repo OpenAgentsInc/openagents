@@ -11,6 +11,7 @@
 #load "compute.coax";
 #load "native-checks.coax";
 #load "effects.coax";
+#load "native-execution.coax";
 #load "spirv.coax";
 #load "shader.coax";
 #load "wgsl.coax";

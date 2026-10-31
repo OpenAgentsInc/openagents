@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.40.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.41.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -141,6 +141,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Effect-ordered native lowering | CK_effects classifies each checked expression (call, trap, checked-overflow trap); native C sequences two trapping operands and a trapping place and value, so the first trap in source order is reported at -O0 and -O2 as in the evaluator; coax deps --lowering (0.32.0) prints the coax.lowering.v1 record of those decisions for the eligible subset | partial | 0.31.0 |
 | `coax test/mutate --evidence FILE` | Schema coax.evidence.v1: each check, authority-coverage and mutation claim bound to sources, compiler, evaluator target, profile, selection and budgets, ending passed, counterexample, inconclusive, infrastructure-error or not-checked; the verdict is the worst, so missing execution is never a pass | works | 0.33.0 |
 | `coax checks-c FILE` | Verification-only C11 from admitted checked zero-argument #test bodies and their callee closure, with original physical identities; no source rewriting or product main. Selected #forall and unsupported effects/borrow forms refuse. Execution, finite-domain runners and broader native qualification remain separate | works | 0.39.0 |
+| Original-source native execution companion | Optional native_check_execution.py host tooling runs one checked-AST C artifact at checked O0/O2 with a complete original evaluator baseline, Coax-owned EP1 protocol/verdict policy and bounded isolated native processes. execution.v1 records exact selected identities, source/artifact/compiler/SDK observations. Selected #forall, broader trap semantics and real-consumer qualification remain separate | works | 0.41.0 |
 | `$T` type parameters | A $T binds from procedure parameters or an explicit generic-struct parameter list; unbound/result-only uses and unsupported nesting are refused (E0392-E0395); recursive or C-exported generic procedures are refused (E0396, E0398) | partial | 0.34.0 |
 | Generic instantiation | Each call deduces its bindings (E0348, E0349, E0397); one checked instance per procedure and binding, at most 256 (E0339), evaluated, emitted as name__bindings and mutated like any procedure; no constraints yet | partial | 0.35.0 |
 | `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted | partial | 0.36.0 |

@@ -1,0 +1,2 @@
+// Only observe_artifact may run this; strict run must stop at its failed baseline.
+#test "started native failure" { #assert 8 * 9 == 73; }

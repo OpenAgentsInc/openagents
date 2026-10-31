@@ -1,0 +1,2 @@
+#test "passing selected check" { #assert 4 * 9 == 36; }
+#test "original failing check" { #assert 4 * 9 == 37; }

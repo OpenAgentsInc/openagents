@@ -1,0 +1,647 @@
+// Optional verification-tool policy, not a product runtime or source rewriter.
+// Hosts transport JSON types/values, file/hash facts and process observations.
+// Every view/name/input buffer is valid, stable and disjoint from output buffers
+// for the duration of each call; these are caller obligations, not inferred borrows.
+#load "budget.coax";
+#load "mutation-schedule.coax";
+#load "native-checks.coax";
+#authority;
+
+EP_CHECK_LIMIT :: 4096;
+EP_TEXT_LIMIT :: 4096;
+EP_FRAME_LIMIT :: 8232;
+EP_METADATA_LIMIT :: 67108864;
+EP_PROCESS_LIMIT :: 1048576;
+EP_CASE_MS :: 10000;
+EP_TOTAL_MS :: 840000;
+EP_STEPS :: 20000000;
+EP_MAGIC :: "COAXEP1\0";
+
+EP_Limits :: struct {
+ checks:int;text_bytes:int;frame_bytes:int;metadata_bytes:int;
+ process_output_bytes:int;baseline_output_bytes:int;compile_ms:int;
+ case_ms:int;metadata_ms:int;baseline_ms:int;total_ms:int;steps:int;
+}
+EP_Request :: struct {mode:u32;ordinal:int = -1;reason:u32;}
+EP_Process :: struct {
+ launched:bool;finished:bool;timeout:bool;output_limit:bool;returncode:int;
+ read_errno:int;stdout_eof:bool;stderr_eof:bool;
+}
+EP_Identity :: struct {ordinal:int;declaration_index:int;line:int;column:int;name:string;source:string;}
+EP_Frame :: struct {
+ ok:bool;kind:u32;next:int;count:int;ordinal:int;declaration_index:int;
+ line:int;column:int;name_offset:int;name_count:int;source_offset:int;source_count:int;
+}
+EP_Base :: struct {
+ shape:u32;
+ schema:string;command:string;input:string;compiler_sha:string;compiler_version:string;
+ target:string;arithmetic:string;runtime_arithmetic:string;front_end:string;verdict:string;
+ library:int;only_null:bool;listing:int;root_only:int;exit_status:int;
+ check_steps:int;slots:int;containers:int;run_steps:int;
+}
+EP_Source :: struct {path:string;observed_path:string;sha:string;observed_sha:string;}
+EP_Claim :: struct {
+ kind:string;name:string;source:string;outcome:string;name_string:bool;at_null:bool;
+ line:int;column:int;cases:int;steps:int;
+}
+EP_Emission :: struct {
+ schema:int;command:string;backend:string;compiler:string;runtime_arithmetic:string;
+ interpreter_arithmetic:string;build_profile:string;success:int;exit_status:int;emitted_sha:string;
+}
+EP_BaseResult :: struct {valid:bool;outcome:u32;reason:u32;}
+EP_Plan :: struct {outcome:u32;count:int;}
+
+// Independently authored EP1 vectors from tests/native-check-execution/ep1-vectors.json.
+EP_TEST_CATALOG :: [80]u8.[67,79,65,88,69,80,49,0,1,0,0,0,20,0,0,0,1,0,0,0,67,79,65,88,69,80,49,0,2,0,0,0,60,0,0,0,0,0,0,0,7,0,0,0,11,0,0,0,3,0,0,0,13,0,0,0,7,0,0,0,97,108,112,104,97,0,111,109,101,103,97,206,187,47,97,46,99,111,97,120];
+EP_TEST_EXECUTION :: [120]u8.[67,79,65,88,69,80,49,0,3,0,0,0,60,0,0,0,0,0,0,0,7,0,0,0,11,0,0,0,3,0,0,0,13,0,0,0,7,0,0,0,97,108,112,104,97,0,111,109,101,103,97,206,187,47,97,46,99,111,97,120,67,79,65,88,69,80,49,0,4,0,0,0,60,0,0,0,0,0,0,0,7,0,0,0,11,0,0,0,3,0,0,0,13,0,0,0,7,0,0,0,97,108,112,104,97,0,111,109,101,103,97,206,187,47,97,46,99,111,97,120];
+
+EP_TEST_SHA :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+EP_TEST_COMPILER :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+#test "outcome spellings and selected physical identities are stable" {
+ #assert EP_outcome("passed")==EV_PASSED && EP_outcome("counterexample")==EV_COUNTEREXAMPLE;
+ #assert EP_outcome("inconclusive")==EV_INCONCLUSIVE && EP_outcome("infrastructure-error")==EV_INFRASTRUCTURE;
+ #assert EP_outcome("not-checked")==EV_NOT_CHECKED && EP_outcome("other")==5;
+ claims:=[3]EP_Claim.[ep_test_claim(),ep_test_claim(),ep_test_claim()];
+ claims[0].kind="#authority";claims[1].name="same";claims[2].name="same";claims[2].line=12;
+ mask:=[3]u8.[0,1,1];a:=EP_selected(claims[..],mask[..],1);
+ #assert a.ordinal==1 && a.declaration_index==1 && a.line==12 && a.column==3 && a.name=="same" && a.source=="/a.coax";
+ #assert EP_selected(claims[..],mask[..],-1).ordinal== -1 && EP_selected(claims[..],mask[..],2).ordinal== -1;
+}
+
+#test "limits and canonical request syntax are explicit" {
+ l:=EP_limits();
+ #assert l.checks==4096 && l.text_bytes==4096 && l.frame_bytes==8232 && EP_frame_limit()==8232;
+ #assert l.metadata_bytes==67108864 && l.baseline_output_bytes==67108864 && l.process_output_bytes==1048576;
+ #assert l.compile_ms==120000 && l.case_ms==10000 && l.metadata_ms==5000 && l.baseline_ms==120000;
+ #assert l.total_ms==840000 && l.steps==20000000;
+ #assert EP_budget(1,1,1) && EP_budget(10000,1048576,840000);
+ #assert !EP_budget(0,1,1) && !EP_budget(1,0,1) && !EP_budget(1,1,0);
+ #assert !EP_budget(10001,1,1) && !EP_budget(1,1048577,1) && !EP_budget(1,1,840001);
+ #assert !EP_budget(-1,1,1) && !EP_budget(1,-1,1) && !EP_budget(1,1,-1);
+ #assert EP_mode("metadata")==1 && EP_mode("one")==2 && EP_mode("")==0 && EP_mode("ONE")==0;
+ #assert EP_ordinal("0")==0 && EP_ordinal("1")==1 && EP_ordinal("4095")==4095;
+ #assert EP_ordinal("")==-1 && EP_ordinal("00")==-1 && EP_ordinal("01")==-1;
+ #assert EP_ordinal("-1")==-1 && EP_ordinal("+1")==-1 && EP_ordinal("4096")==-1;
+ #assert EP_ordinal("1x")==-1 && EP_ordinal("12345")==-1;
+ a:=EP_request(2,"metadata","");#assert a.mode==1 && a.ordinal== -1 && a.reason==0;
+ a=EP_request(3,"one","7");#assert a.mode==2 && a.ordinal==7 && a.reason==0;
+ a=EP_request(3,"one","01");#assert a.mode==0 && a.reason==2;
+ a=EP_request(3,"metadata","");#assert a.mode==0 && a.reason==1;
+ a=EP_request(2,"metadata","extra");#assert a.mode==0 && a.reason==1;
+ a=EP_request(1,"","");#assert a.mode==0 && a.reason==1;
+}
+
+#forall "table and row extents distinguish absent storage and empty names" count:-1..<4,ordinal:-1..<4,present:bool {
+ #assert EP_table(count,present)==(present && count>=1);
+ #assert EP_select(count,ordinal)==(count>=1 && ordinal>=0 && ordinal<count);
+ #assert EP_row_valid(count,ordinal,7,11,3,0,7,true,false,true)==(count>=1 && ordinal>=0 && ordinal<count);
+ #assert EP_row_valid(count,ordinal,7,11,3,1,7,true,present,true)==(count>=1 && ordinal>=0 && ordinal<count && present);
+}
+#test "observer admission checks every row field and exact boundaries" {
+ #assert EP_table(4096,true) && !EP_table(4097,true) && !EP_table(0,true);
+ #assert EP_row_valid(4096,4095,4095,4294967295,4294967295,4096,4096,true,true,true);
+ #assert !EP_row_valid(1,0,-1,1,1,0,1,true,false,true);
+ #assert !EP_row_valid(1,0,4096,1,1,0,1,true,false,true);
+ #assert !EP_row_valid(1,0,0,0,1,0,1,true,false,true) && !EP_row_valid(1,0,0,1,0,0,1,true,false,true);
+ #assert !EP_row_valid(1,0,0,4294967296,1,0,1,true,false,true) && !EP_row_valid(1,0,0,1,4294967296,0,1,true,false,true);
+ #assert !EP_row_valid(1,0,0,1,1,-1,1,true,false,true) && !EP_row_valid(1,0,0,1,1,4097,1,true,true,true);
+ #assert !EP_row_valid(1,0,0,1,1,0,0,true,false,true) && !EP_row_valid(1,0,0,1,1,0,4097,true,false,true);
+ #assert !EP_row_valid(1,0,0,1,1,0,1,false,false,true) && !EP_row_valid(1,0,0,1,1,0,1,true,false,false);
+}
+
+#test "frame encoding matches independent bytes and preserves guards on refusal" {
+ cat:=EP_TEST_CATALOG;out:[82]u8;for i:0..<out.count {out[i]=165;}
+ n:=EP_encode_header(1,out[1..<21]);#assert n==20;
+ n=EP_encode_row(2,0,7,"alpha\0omegaλ","/a.coax",11,3,out[21..<81]);#assert n==60;
+ for i:0..<cat.count {#assert out[i+1]==cat[i];}
+ #assert out[0]==165 && out[81]==165;
+ for i:0..<out.count {out[i]=91;}
+ #assert EP_encode_header(0,out[..])== -1 && EP_encode_header(1,out[0..<19])== -1;
+ #assert EP_encode_row(1,0,7,"x","/a",1,1,out[..])== -1;
+ #assert EP_encode_row(5,0,7,"x","/a",1,1,out[..])== -1;
+ #assert EP_encode_row(2,4096,7,"x","/a",1,1,out[..])== -1;
+ #assert EP_encode_row(2,0,4096,"x","/a",1,1,out[..])== -1;
+ #assert EP_encode_row(2,0,7,"x","",1,1,out[..])== -1;
+ #assert EP_encode_row(2,0,7,"x","/a",1,1,out[0..<42])== -1;
+ for i:0..<out.count {#assert out[i]==91;}
+}
+
+#test "frame high bytes empty names and unknown kinds have independent bounds" {
+ out:[64]u8;for i:0..<out.count {out[i]=91;}
+ #assert EP_encode_header(4096,out[..])==20;
+ #assert out[16]==0 && out[17]==16 && out[18]==0 && out[19]==0;
+ #assert EP_encode_row(4,4095,4095,"","/x",4294967295,4294967295,out[..])==42;
+ for i:24..<32 {#assert out[i]==255;}
+ #assert out[16]==255 && out[17]==15 && out[20]==255 && out[21]==15;
+ f:=EP_decode(out[0..<42],0);#assert f.ok && f.kind==4 && f.line==4294967295 && f.column==4294967295 && f.ordinal==4095 && f.declaration_index==4095 && f.name_count==0;
+ cat:=EP_TEST_CATALOG;cat[8]=5;#assert !EP_decode(cat[..],0).ok;
+ cat=EP_TEST_CATALOG;cat[28]=5;#assert !EP_decode(cat[..],20).ok;
+}
+
+#test "decoder returns precise offsets into independently framed spans" {
+ cat:=EP_TEST_CATALOG;f:=EP_decode(cat[..],0);
+ #assert f.ok && f.kind==1 && f.count==1 && f.next==20;
+ f=EP_decode(cat[..],20);
+ #assert f.ok && f.kind==2 && f.next==80 && f.ordinal==0 && f.declaration_index==7;
+ #assert f.line==11 && f.column==3 && f.name_offset==60 && f.name_count==13 && f.source_offset==73 && f.source_count==7;
+ #assert !EP_decode(cat[..],-1).ok && !EP_decode(cat[..],81).ok;
+ #assert !EP_decode(cat[0..<19],0).ok && !EP_decode(cat[0..<79],20).ok;
+}
+#forall "every magic byte and every truncated extent is required" at:0..<8 {
+ cat:=EP_TEST_CATALOG;cat[at]+=1;#assert !EP_decode(cat[..],0).ok;
+ cat=EP_TEST_CATALOG;cat[at+20]+=1;#assert !EP_decode(cat[..],20).ok;
+}
+#forall "metadata and execution reject every incomplete byte prefix" length:0..<120 {
+ wire:=EP_TEST_EXECUTION;p:=ep_test_process();id:=ep_test_identity();ids:=[1]EP_Identity.[id];cat:=EP_TEST_CATALOG;
+ #assert EP_execution(id,wire[0..<length],p)==EV_INFRASTRUCTURE;
+ if length<80 {#assert EP_metadata(ids[..],cat[0..<length],p)==EV_INFRASTRUCTURE;}
+}
+
+#test "metadata requires exact rows order identity and EOF" {
+ cat:=EP_TEST_CATALOG;id:=ep_test_identity();ids:=[1]EP_Identity.[id];p:=ep_test_process();
+ #assert EP_metadata(ids[..],cat[..],p)==EV_PASSED;
+ #assert EP_metadata(ids[0..<0],cat[..],p)==EV_INFRASTRUCTURE;
+ cat[16]=0;#assert EP_metadata(ids[..],cat[..],p)==EV_INFRASTRUCTURE;
+ cat=EP_TEST_CATALOG;cat[52]=14;#assert EP_metadata(ids[..],cat[..],p)==EV_INFRASTRUCTURE;
+ cat=EP_TEST_CATALOG;ids[0].declaration_index=8;#assert EP_metadata(ids[..],cat[..],p)==EV_INFRASTRUCTURE;
+}
+
+#forall "process phases distinguish limits faults incomplete reads and normal completion" launched:bool,finished:bool,timeout:bool,limit:bool,code:-1..<2,read:bool,out_eof:bool,err_eof:bool {
+ p:=EP_Process.{launched=launched,finished=finished,timeout=timeout,output_limit=limit,returncode=code,read_errno=ifx read then 5 else 0,stdout_eof=out_eof,stderr_eof=err_eof};
+ expected:=ifx timeout || limit then EV_INCONCLUSIVE else ifx !launched || !finished || read || !out_eof || !err_eof || code!=0 then EV_INFRASTRUCTURE else EV_PASSED;
+ #assert EP_phase(p)==expected;
+}
+#test "only complete normal execution passes; begun signals remain raw counterexamples" {
+ wire:=EP_TEST_EXECUTION;p:=ep_test_process();id:=ep_test_identity();
+ #assert EP_execution(id,wire[..],p)==EV_PASSED;
+ p.returncode=7;#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ p.returncode=-6;#assert EP_execution(id,wire[0..<60],p)==EV_COUNTEREXAMPLE;
+ #assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ p.returncode=0;#assert EP_execution(id,wire[60..<120],p)==EV_INFRASTRUCTURE;
+ wire[80]=8;#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ p.timeout=true;#assert EP_execution(id,wire[..],p)==EV_INCONCLUSIVE;
+ p.timeout=false;p.output_limit=true;#assert EP_execution(id,wire[..],p)==EV_INCONCLUSIVE;
+}
+
+#test "complete original baseline is source compiler budget and claim bound" {
+ b:=ep_test_base();p:=ep_test_process();sources:=[1]EP_Source.[ep_test_source()];claims:=[1]EP_Claim.[ep_test_claim()];
+ r:=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);
+ #assert r.valid && r.outcome==EV_PASSED && r.reason==0;
+ claims[0].kind="#authority";claims[0].at_null=true;claims[0].source="";claims[0].line=-1;claims[0].column=-1;claims[0].cases=0;claims[0].steps=0;
+ r=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);
+ #assert !r.valid || r.outcome!=EV_PASSED;
+}
+#forall "baseline admission refuses missing or altered top-level facts" defect:0..<24 {
+ b:=ep_test_base();p:=ep_test_process();sources:=[1]EP_Source.[ep_test_source()];claims:=[1]EP_Claim.[ep_test_claim()];
+ if defect==0 {b.shape=254;}else if defect==1 {b.schema="other";}else if defect==2 {b.command="check";}
+ else if defect==3 {b.input="/other";}else if defect==4 {b.compiler_sha=EP_TEST_SHA;}else if defect==5 {b.compiler_version="other";}
+ else if defect==6 {b.target="native";}else if defect==7 {b.arithmetic="wrapping";}else if defect==8 {b.runtime_arithmetic="wrapping";}
+ else if defect==9 {b.library=0;}else if defect==10 {b.only_null=false;}else if defect==11 {b.listing=1;}else if defect==12 {b.root_only=1;}
+ else if defect==13 {b.exit_status=1;}else if defect==14 {b.check_steps=1;}else if defect==15 {b.slots=1;}else if defect==16 {b.containers=1;}
+ else if defect==17 {b.run_steps=1;}else if defect==18 {b.front_end="other";}else if defect==19 {b.verdict="other";}
+ else if defect==20 {sources[0].sha=EP_TEST_COMPILER;}else if defect==21 {sources[0].observed_path="/other";}
+ else if defect==22 {sources[0].observed_sha=EP_TEST_COMPILER;}else {sources[0].path="/other";sources[0].observed_path="/other";}
+ r:=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);
+ #assert !r.valid && r.outcome==EV_INFRASTRUCTURE;
+ reasons:=[24]u32.[2,2,2,3,3,3,4,4,4,4,4,4,4,7,5,5,5,5,8,10,6,6,6,7];#assert r.reason==reasons[defect];
+}
+#forall "authored claims need typed nonempty execution and admitted physical source" defect:0..<11 {
+ b:=ep_test_base();p:=ep_test_process();sources:=[1]EP_Source.[ep_test_source()];claims:=[1]EP_Claim.[ep_test_claim()];
+ if defect==0 {claims[0].kind="other";}else if defect==1 {claims[0].name_string=false;}else if defect==2 {claims[0].at_null=true;}
+ else if defect==3 {claims[0].line=0;}else if defect==4 {claims[0].column=0;}else if defect==5 {claims[0].cases=0;}
+ else if defect==6 {claims[0].cases=-1;}else if defect==7 {claims[0].steps=-1;}else if defect==8 {claims[0].source="/other";}
+ else if defect==9 {claims[0].outcome="other";}else {b.verdict="counterexample";}
+ r:=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);
+ #assert !r.valid && r.outcome==EV_INFRASTRUCTURE && r.reason==cast(u32)(ifx defect==10 then 10 else 9);
+}
+#test "nonpassing complete baselines retain their verdict and never admit execution" {
+ b:=ep_test_base();p:=ep_test_process();sources:=[1]EP_Source.[ep_test_source()];claims:=[1]EP_Claim.[ep_test_claim()];
+ claims[0].outcome="counterexample";b.verdict="counterexample";b.exit_status=1;p.returncode=1;
+ r:=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_COUNTEREXAMPLE;
+ claims[0].outcome="inconclusive";b.verdict="inconclusive";
+ r=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_INCONCLUSIVE;
+ b.front_end="failed";b.verdict="not-checked";
+ r=EP_baseline(b,sources[..],claims[0..<0],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_NOT_CHECKED;
+ p.timeout=true;r=EP_baseline(b,sources[..],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid && r.outcome==EV_INCONCLUSIVE;
+}
+#test "selection is byte exact indexed and explicit about unsupported quantified checks" {
+ claims:=[3]EP_Claim.[ep_test_claim(),ep_test_claim(),ep_test_claim()];mask:=[5]u8.[81,9,9,9,82];
+ claims[1].name="other";claims[1].kind="#forall";claims[2].kind="#authority";
+ p:=EP_plan(claims[..],"alpha",true,mask[1..<4]);#assert p.outcome==EV_PASSED && p.count==1;
+ #assert mask[0]==81 && mask[1]==1 && mask[2]==0 && mask[3]==0 && mask[4]==82;
+ p=EP_plan(claims[..],"",false,mask[1..<4]);#assert p.outcome==EV_NOT_CHECKED && p.count==2 && mask[1]==1 && mask[2]==2;
+ p=EP_plan(claims[..],"absent",true,mask[1..<4]);#assert p.outcome==EV_NOT_CHECKED && p.count==0;
+ p=EP_plan(claims[..],"alpha",true,mask[1..<3]);#assert p.outcome==EV_INFRASTRUCTURE;
+}
+#test "baseline duplicate sources refuse and authority coverage remains evaluator-only" {
+ b:=ep_test_base();p:=ep_test_process();sources:=[2]EP_Source.[ep_test_source(),ep_test_source()];claims:=[2]EP_Claim.[ep_test_claim(),ep_test_claim()];
+ r:=EP_baseline(b,sources[..],claims[0..<1],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid;
+ claims[1].kind="#authority";claims[1].at_null=true;claims[1].source="";claims[1].line=-1;claims[1].column=-1;claims[1].cases=0;claims[1].steps=0;
+ r=EP_baseline(b,sources[0..<1],claims[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_PASSED;
+}
+
+#test "emission source sets and LP64 profile bind generated C to the original baseline" {
+ #assert EP_native_profile(8,8,8) && !EP_native_profile(4,8,8) && !EP_native_profile(8,4,8) && !EP_native_profile(8,8,16);
+ a:=[2]EP_Source.[ep_test_source(),ep_test_source()];a[1].path="/other";a[1].observed_path="/other";
+ b:=[2]EP_Source.[a[1],a[0]];
+ #assert EP_sources_match(a[..],b[..]) && !EP_sources_match(a[..],b[0..<1]);
+ m:=EP_Emission.{schema=1,command="checks-c",backend="c11",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=1,emitted_sha=EP_TEST_SHA};p:=ep_test_process();
+ #assert EP_emission(m,a[..],b[..],p,"test compiler",EP_TEST_SHA)==EV_PASSED;
+ b[0].sha=EP_TEST_COMPILER;b[0].observed_sha=EP_TEST_COMPILER;
+ #assert !EP_sources_match(a[..],b[..]) && EP_emission(m,a[..],b[..],p,"test compiler",EP_TEST_SHA)==EV_INFRASTRUCTURE;
+}
+#forall "emission refuses each mismatched field and source observation" defect:0..<17 {
+ a:=[1]EP_Source.[ep_test_source()];b:=[1]EP_Source.[ep_test_source()];p:=ep_test_process();
+ m:=EP_Emission.{schema=1,command="checks-c",backend="c11",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=1,emitted_sha=EP_TEST_SHA};
+ if defect==0 {m.schema=0;}else if defect==1 {m.command="c";}else if defect==2 {m.backend="metal";}
+ else if defect==3 {m.compiler="other";}else if defect==4 {m.runtime_arithmetic="wrapping";}else if defect==5 {m.interpreter_arithmetic="wrapping";}
+ else if defect==6 {m.build_profile="release";}else if defect==7 {m.success=0;}else if defect==8 {m.exit_status=1;}
+ else if defect==9 {m.emitted_sha=EP_TEST_COMPILER;}else if defect==10 {a[0].observed_path="/other";}else if defect==11 {b[0].observed_path="/other";}
+ else if defect==12 {a[0].observed_sha=EP_TEST_COMPILER;}else if defect==13 {b[0].observed_sha=EP_TEST_COMPILER;}
+ else if defect==14 {a[0].sha="invalid";}else if defect==15 {b[0].path="/other";b[0].observed_path="/other";}else {p.returncode=1;}
+ #assert EP_emission(m,a[..],b[..],p,"test compiler",EP_TEST_SHA)==EV_INFRASTRUCTURE;
+}
+EP_native_profile :: (pointer_bytes:int,long_bytes:int,char_bits:int)->bool #export_c {return pointer_bytes==8 && long_bytes==8 && char_bits==8;}
+ep_sources_valid :: (sources:[]EP_Source)->bool {
+ if !EP_table(sources.count,true) {return false;}
+ for i:0..<sources.count {
+  s:=sources[i];if !ep_text(s.path.count) || s.path!=s.observed_path || !ep_sha(s.sha) || s.sha!=s.observed_sha {return false;}
+  for j:0..<i {if sources[j].path==s.path {return false;}}
+ }
+ return true;
+}
+EP_sources_match :: (baseline:[]EP_Source,emitted:[]EP_Source)->bool #export_c {
+ if baseline.count!=emitted.count || !ep_sources_valid(baseline) || !ep_sources_valid(emitted) {return false;}
+ for i:0..<baseline.count {
+  found:bool=false;for j:0..<emitted.count {if baseline[i].path==emitted[j].path && baseline[i].sha==emitted[j].sha {found=true;}}
+  if !found {return false;}
+ }
+ return true;
+}
+EP_emission :: (meta:EP_Emission,baseline_sources:[]EP_Source,emitted_sources:[]EP_Source,process:EP_Process,expected_compiler_version:string,c_sha:string)->u32 #export_c {
+ p:=EP_phase(process);if p!=EV_PASSED {return p;}
+ if meta.schema!=1 || meta.command!="checks-c" || meta.backend!="c11" || !ep_text(expected_compiler_version.count) || meta.compiler!=expected_compiler_version ||
+  meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=1 || meta.exit_status!=0 ||
+  !ep_sha(c_sha) || meta.emitted_sha!=c_sha || !EP_sources_match(baseline_sources,emitted_sources) {return EV_INFRASTRUCTURE;}
+ return EV_PASSED;
+}
+
+#test "scalar bounds and fixture values exercise exact minimum and maximum facts" {
+ #assert ep_bytes(0) && ep_bytes(4096) && !ep_bytes(-1) && !ep_bytes(4097);
+ #assert ep_text(1) && ep_text(4096) && !ep_text(0) && !ep_text(4097);
+ #assert ep_location(1) && ep_location(4294967295) && !ep_location(0) && !ep_location(4294967296);
+ #assert ep_claim_count(4097) && !ep_claim_count(4098);
+ #assert EP_row_valid(1,0,0,1,1,0,1,true,false,true);
+ a:=EP_request(3,"one","0");#assert a.mode==2 && a.ordinal==0 && a.reason==0;
+ #assert EP_ordinal("9")==9 && EP_ordinal(":")== -1 && EP_ordinal("99999999999999999999999")== -1;
+ c:=ep_test_claim();#assert c.line==11 && c.cases==1 && c.steps==8;
+}
+#forall "SHA admission checks every ASCII class including the first byte" value:0..<128 {
+ bytes:[64]u8;for i:0..<bytes.count {bytes[i]=97;}bytes[0]=cast(u8)value;
+ #assert ep_sha(cast(string)bytes[..])==((value>=48 && value<=57) || (value>=97 && value<=102));
+ #assert !ep_sha(cast(string)bytes[0..<63]);
+}
+#test "source-set admission is unique nonempty observed and bounded" {
+ a:=[2]EP_Source.[ep_test_source(),ep_test_source()];
+ #assert !EP_sources_match(a[..],a[..]) && !EP_sources_match(a[0..<0],a[0..<0]);
+ a[0].path="/";a[0].observed_path="/";#assert EP_sources_match(a[0..<1],a[0..<1]);
+ a[0].path="";a[0].observed_path="";#assert !EP_sources_match(a[0..<1],a[0..<1]);
+}
+#test "framing rejects trailing bytes wrong event kinds and first-byte identity changes" {
+ cat:=EP_TEST_CATALOG;wire:=EP_TEST_EXECUTION;id:=ep_test_identity();ids:=[1]EP_Identity.[id];p:=ep_test_process();
+ cat[28]=3;#assert EP_metadata(ids[..],cat[..],p)==EV_INFRASTRUCTURE;
+ wire[8]=2;#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ wire=EP_TEST_EXECUTION;wire[68]=3;#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ extra:[121]u8;for i:0..<120 {extra[i]=EP_TEST_EXECUTION[i];}
+ #assert EP_execution(id,extra[..],p)==EV_INFRASTRUCTURE;
+ for i:0..<80 {extra[i]=EP_TEST_CATALOG[i];}
+ #assert EP_metadata(ids[..],extra[0..<81],p)==EV_INFRASTRUCTURE;
+ wire=EP_TEST_EXECUTION;id.name="xlpha\0omegaλ";#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ id=ep_test_identity();id.source="!a.coax";#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ id=ep_test_identity();id.name="x";#assert EP_execution(id,wire[..],p)==EV_INFRASTRUCTURE;
+ cat=EP_TEST_CATALOG;cat[56]=0;#assert !EP_decode(cat[..],20).ok;
+ small:[41]u8;#assert EP_encode_row(3,0,0,"","/",1,1,small[..])==41;
+ #assert EP_decode(small[..],0).ok;
+}
+#test "empty original evidence and authority shape cannot masquerade as authored execution" {
+ b:=ep_test_base();p:=ep_test_process();ss:=[1]EP_Source.[ep_test_source()];cs:=[2]EP_Claim.[ep_test_claim(),ep_test_claim()];
+ b.verdict="not-checked";b.exit_status=1;p.returncode=1;
+ r:=EP_baseline(b,ss[..],cs[0..<0],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_NOT_CHECKED;
+ b=ep_test_base();p=ep_test_process();cs[0].kind="#authority";cs[0].at_null=true;cs[0].source="";cs[0].line=-1;cs[0].column=-1;cs[0].cases=0;cs[0].steps=0;
+ r=EP_baseline(b,ss[..],cs[0..<1],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid && r.outcome==EV_NOT_CHECKED && r.reason==11;
+ cs[1]=cs[0];r=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid && r.reason==9;
+ p.timeout=true;r=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.reason==1;
+}
+#forall "authority aggregate preserves its exact null zero-count shape" defect:0..<6 {
+ b:=ep_test_base();p:=ep_test_process();ss:=[1]EP_Source.[ep_test_source()];cs:=[2]EP_Claim.[ep_test_claim(),ep_test_claim()];
+ cs[1].kind="#authority";cs[1].at_null=true;cs[1].source="";cs[1].line=-1;cs[1].column=-1;cs[1].cases=0;cs[1].steps=0;
+ if defect==0 {cs[1].at_null=false;}else if defect==1 {cs[1].source="x";}else if defect==2 {cs[1].line=0;}else if defect==3 {cs[1].column=0;}else if defect==4 {cs[1].cases=1;}else {cs[1].steps=1;}
+ r:=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid && r.reason==9;
+}
+#forall "baseline frontend refusal shape remains distinct from malformed evidence" defect:0..<3 {
+ b:=ep_test_base();b.front_end="failed";b.verdict="not-checked";b.exit_status=1;p:=ep_test_process();p.returncode=1;ss:=[1]EP_Source.[ep_test_source()];cs:=[1]EP_Claim.[ep_test_claim()];
+ length:=0;if defect==0 {length=1;}else if defect==1 {b.verdict="passed";}else {p.returncode=0;b.exit_status=0;}
+ r:=EP_baseline(b,ss[..],cs[0..<length],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert !r.valid && r.reason==8;
+}
+#test "authored zero counters and boundary locations retain valid nonpassing semantics" {
+ b:=ep_test_base();p:=ep_test_process();ss:=[1]EP_Source.[ep_test_source()];cs:=[1]EP_Claim.[ep_test_claim()];
+ cs[0].line=1;cs[0].column=1;cs[0].cases=0;cs[0].steps=0;cs[0].outcome="not-checked";b.verdict="not-checked";b.exit_status=1;p.returncode=1;
+ r:=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid && r.outcome==EV_NOT_CHECKED;
+ cs[0].line=4294967295;cs[0].column=4294967295;cs[0].cases=1;cs[0].outcome="passed";b=ep_test_base();p=ep_test_process();
+ r=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000000);#assert r.valid;
+}
+#test "selection validates masks before returning any borrowed physical identity" {
+ cs:=[3]EP_Claim.[ep_test_claim(),ep_test_claim(),ep_test_claim()];mask:=[3]u8.[0,2,1];cs[1].kind="#forall";
+ a:=EP_selected(cs[..],mask[..],0);#assert a.ordinal==0 && a.declaration_index==2;
+ #assert EP_selected(cs[..],mask[..],4096).ordinal== -1 && EP_selected(cs[..],mask[0..<2],0).ordinal== -1;
+ mask[0]=2;#assert EP_selected(cs[..],mask[..],0).ordinal== -1;mask[0]=0;
+ mask[1]=1;#assert EP_selected(cs[..],mask[..],0).ordinal== -1;mask[1]=3;#assert EP_selected(cs[..],mask[..],0).ordinal== -1;mask[1]=0;
+ cs[0].kind="#authority";mask[0]=1;#assert EP_selected(cs[..],mask[..],0).ordinal== -1;
+ mask[0]=0;cs[0].kind="other";#assert EP_selected(cs[..],mask[..],0).ordinal== -1;
+ cs[0]=ep_test_claim();mask[0]=3;#assert EP_selected(cs[..],mask[..],0).ordinal== -1;
+ mask[0]=0;mask[1]=0;cs[1].kind="#test";cs[1].name_string=false;
+ q:=EP_plan(cs[..],"",false,mask[..]);#assert q.outcome==EV_INFRASTRUCTURE;
+ cs[0].kind="other";q=EP_plan(cs[..],"",false,mask[..]);#assert q.outcome==EV_INFRASTRUCTURE;
+ cs[0]=ep_test_claim();cs[1]=ep_test_claim();q=EP_plan(cs[..],"x",false,mask[..]);#assert q.outcome==EV_INFRASTRUCTURE;
+ cs[0].kind="#authority";mask[0]=8;mask[1]=8;mask[2]=8;q=EP_plan(cs[..],"missing",true,mask[..]);#assert q.outcome==EV_NOT_CHECKED && mask[0]==0;
+}
+
+#test "minimal headers and malformed short rows retain decoder bounds" {
+ cat:=EP_TEST_CATALOG;#assert EP_decode(cat[0..<20],0).ok;
+ cat[32]=20;#assert !EP_decode(cat[0..<40],20).ok;
+ cat=EP_TEST_CATALOG;cat[44]=0;#assert !EP_decode(cat[..],20).ok;
+}
+#forall "expected baseline identity strings and digests are independently validated" defect:0..<5 {
+ b:=ep_test_base();p:=ep_test_process();ss:=[1]EP_Source.[ep_test_source()];cs:=[1]EP_Claim.[ep_test_claim()];
+ input:="/a.coax";version:="test compiler";source_sha:=EP_TEST_SHA;compiler_sha:=EP_TEST_COMPILER;
+ if defect==0 {input="";b.input="";}else if defect==1 {version="";b.compiler_version="";}
+ else if defect==2 {source_sha="bad";}else if defect==3 {compiler_sha="bad";b.compiler_sha="bad";}
+ else {source_sha=EP_TEST_COMPILER;}
+ r:=EP_baseline(b,ss[..],cs[..],p,input,source_sha,compiler_sha,version,20000000);
+ #assert !r.valid && r.reason==cast(u32)(ifx defect==4 then 6 else 3);
+}
+#test "requested evaluator budgets admit the lower boundary and refuse independent upper and zero caps" {
+ b:=ep_test_base();p:=ep_test_process();ss:=[1]EP_Source.[ep_test_source()];cs:=[1]EP_Claim.[ep_test_claim()];
+ b.check_steps=1;r:=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",1);#assert r.valid;
+ b.check_steps=0;r=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",0);#assert !r.valid && r.reason==5;
+ b.check_steps=20000001;r=EP_baseline(b,ss[..],cs[..],p,"/a.coax",EP_TEST_SHA,EP_TEST_COMPILER,"test compiler",20000001);#assert !r.valid && r.reason==5;
+}
+
+#test "artifact integrity requires a valid expected hash and exact observed bytes" {
+ #assert EP_integrity(EP_TEST_SHA,EP_TEST_SHA)==EV_PASSED;
+ #assert EP_integrity(EP_TEST_SHA,EP_TEST_COMPILER)==EV_INFRASTRUCTURE;
+ #assert EP_integrity("bad","bad")==EV_INFRASTRUCTURE;
+ #assert EP_integrity("bad",EP_TEST_SHA)==EV_INFRASTRUCTURE;
+ #assert EP_integrity(EP_TEST_SHA,"bad")==EV_INFRASTRUCTURE;
+}
+EP_integrity :: (expected_sha:string,observed_sha:string)->u32 #export_c {return ifx ep_sha(expected_sha) && expected_sha==observed_sha then EV_PASSED else EV_INFRASTRUCTURE;}
+
+#test "requested evaluator steps refuse raised disabled and malformed caps before effects" {
+ #assert EP_steps(1) && EP_steps(20000000);
+ #assert !EP_steps(0) && !EP_steps(-1) && !EP_steps(20000001);
+}
+EP_steps :: (steps:int)->bool #export_c {return steps>0 && steps<=EP_STEPS;}
+
+#test "original baseline profile binds source and descriptor observations" {
+ m:=EP_Emission.{schema=1,command="test",backend="evaluator",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=1};
+ s:=[1]EP_Source.[ep_test_source()];d:=[1]EP_Source.[ep_test_source()];d[0].path="/schema.pb";d[0].observed_path="/schema.pb";p:=ep_test_process();
+ #assert EP_baseline_inputs(m,s[..],s[..],d[..],true,true,p,"test compiler")==EV_PASSED;
+ #assert EP_baseline_inputs(m,s[..],s[..],d[0..<0],true,true,p,"test compiler")==EV_PASSED;
+ #assert EP_baseline_inputs(m,s[..],s[..],d[..],false,true,p,"test compiler")==EV_INFRASTRUCTURE;
+ #assert EP_baseline_inputs(m,s[..],s[..],d[..],true,false,p,"test compiler")==EV_INFRASTRUCTURE;
+ p.timeout=true;#assert EP_baseline_inputs(m,s[..],s[..],d[..],true,true,p,"test compiler")==EV_INCONCLUSIVE;
+ p.timeout=false;m.compiler="";#assert EP_baseline_inputs(m,s[..],s[..],d[..],true,true,p,"")==EV_INFRASTRUCTURE;
+}
+#forall "baseline profile refuses each identity source or descriptor discrepancy" defect:0..<16 {
+ m:=EP_Emission.{schema=1,command="test",backend="evaluator",compiler="test compiler",runtime_arithmetic="checked",interpreter_arithmetic="checked",build_profile="development",success=1};
+ a:=[1]EP_Source.[ep_test_source()];b:=[1]EP_Source.[ep_test_source()];d:=[2]EP_Source.[ep_test_source(),ep_test_source()];p:=ep_test_process();n:=1;
+ if defect==0 {m.schema=0;}else if defect==1 {m.command="checks-c";}else if defect==2 {m.backend="c11";}else if defect==3 {m.compiler="other";}
+ else if defect==4 {m.runtime_arithmetic="wrapping";}else if defect==5 {m.interpreter_arithmetic="wrapping";}else if defect==6 {m.build_profile="release";}
+ else if defect==7 {m.success=0;}else if defect==8 {m.exit_status=1;}else if defect==9 {b[0].sha=EP_TEST_COMPILER;b[0].observed_sha=EP_TEST_COMPILER;}
+ else if defect==10 {b[0].path="/other";b[0].observed_path="/other";}else if defect==11 {d[0].sha="bad";d[0].observed_sha="bad";}
+ else if defect==12 {d[0].observed_path="/other";}else if defect==13 {d[0].observed_sha=EP_TEST_COMPILER;}else if defect==14 {n=2;}else {p.returncode=1;}
+ #assert EP_baseline_inputs(m,a[..],b[..],d[0..<n],true,true,p,"test compiler")==EV_INFRASTRUCTURE;
+}
+#forall "empty descriptor sets require both explicit list observations" baseline_observed:bool,emitted_observed:bool {
+ s:=[1]EP_Source.[ep_test_source()];
+ #assert EP_input_descriptors(s[0..<0],s[0..<0],baseline_observed,emitted_observed)==(ifx baseline_observed && emitted_observed then EV_PASSED else EV_INFRASTRUCTURE);
+}
+#test "descriptor bindings preserve observed equality uniqueness and one-sided presence" {
+ a:=[2]EP_Source.[ep_test_source(),ep_test_source()];b:=[2]EP_Source.[ep_test_source(),ep_test_source()];
+ #assert EP_input_descriptors(a[0..<1],b[0..<1],true,true)==EV_PASSED;
+ #assert EP_input_descriptors(a[0..<0],b[0..<1],true,true)==EV_INFRASTRUCTURE;
+ #assert EP_input_descriptors(a[0..<1],b[0..<0],true,true)==EV_INFRASTRUCTURE;
+ #assert EP_input_descriptors(a[..],b[..],true,true)==EV_INFRASTRUCTURE;
+ b[0].sha=EP_TEST_COMPILER;b[0].observed_sha=EP_TEST_COMPILER;
+ #assert EP_input_descriptors(a[0..<1],b[0..<1],true,true)==EV_INFRASTRUCTURE;
+ #assert EP_input_descriptors(a[0..<1],a[0..<1],false,true)==EV_INFRASTRUCTURE;
+ #assert EP_input_descriptors(a[0..<1],a[0..<1],true,false)==EV_INFRASTRUCTURE;
+}
+EP_baseline_inputs :: (meta:EP_Emission,evidence_sources:[]EP_Source,profile_sources:[]EP_Source,descriptors:[]EP_Source,sources_observed:bool,descriptors_observed:bool,process:EP_Process,expected_compiler:string)->u32 #export_c {
+ p:=EP_phase(process);if p!=EV_PASSED {return p;}
+ if meta.schema!=1 || meta.command!="test" || meta.backend!="evaluator" || !ep_text(expected_compiler.count) || meta.compiler!=expected_compiler ||
+  meta.runtime_arithmetic!="checked" || meta.interpreter_arithmetic!="checked" || meta.build_profile!="development" || meta.success!=1 || meta.exit_status!=0 ||
+  !sources_observed || !descriptors_observed || !EP_sources_match(evidence_sources,profile_sources) {return EV_INFRASTRUCTURE;}
+ if descriptors.count>0 && !ep_sources_valid(descriptors) {return EV_INFRASTRUCTURE;}
+ return EV_PASSED;
+}
+EP_input_descriptors :: (baseline:[]EP_Source,emitted:[]EP_Source,baseline_observed:bool,emitted_observed:bool)->u32 #export_c {
+ if !baseline_observed || !emitted_observed {return EV_INFRASTRUCTURE;}
+ if baseline.count==0 && emitted.count==0 {return EV_PASSED;}
+ if !EP_sources_match(baseline,emitted) {return EV_INFRASTRUCTURE;}return EV_PASSED;
+}
+
+// Checked policy over supplied observations; no filesystem, process, JSON or pointer effects.
+EP_frame_limit :: ()->int #export_c {return EP_FRAME_LIMIT;}
+EP_limits :: ()->EP_Limits #export_c {
+ return EP_Limits.{checks=EP_CHECK_LIMIT,text_bytes=EP_TEXT_LIMIT,frame_bytes=EP_FRAME_LIMIT,
+  metadata_bytes=EP_METADATA_LIMIT,process_output_bytes=EP_PROCESS_LIMIT,baseline_output_bytes=EP_METADATA_LIMIT,
+  compile_ms=120000,case_ms=EP_CASE_MS,metadata_ms=5000,baseline_ms=120000,total_ms=EP_TOTAL_MS,steps=EP_STEPS};
+}
+EP_budget :: (case_ms:int,output_bytes:int,total_ms:int)->bool #export_c {
+ return case_ms>0 && case_ms<=EP_CASE_MS && output_bytes>0 && output_bytes<=EP_PROCESS_LIMIT && total_ms>0 && total_ms<=EP_TOTAL_MS;
+}
+EP_mode :: (text:string)->u32 #export_c {if text=="metadata" {return 1;}if text=="one" {return 2;}return 0;}
+EP_ordinal :: (text:string)->int #export_c {
+ if text.count<1 {return -1;}
+ if text[0]==48 && text.count!=1 {return -1;}
+ value:int=0;for i:0..<text.count {if text[i]<48 || text[i]>57 {return -1;}value=value*10+cast(int)text[i]-48;if value>=EP_CHECK_LIMIT {return -1;}}
+ return value;
+}
+EP_request :: (argc:int,mode:string,ordinal:string)->EP_Request #export_c {
+ m:=EP_mode(mode);
+ if m==1 && argc==2 && ordinal.count==0 {return EP_Request.{mode=1};}
+ if m==2 && argc==3 {n:=EP_ordinal(ordinal);if n<0 {return EP_Request.{reason=2};}return EP_Request.{mode=2,ordinal=n};}
+ return EP_Request.{reason=1};
+}
+EP_table :: (count:int,present:bool)->bool #export_c {return present && count>=1 && count<=EP_CHECK_LIMIT;}
+EP_select :: (count:int,ordinal:int)->bool #export_c {return EP_table(count,true) && ordinal>=0 && ordinal<count;}
+EP_row_valid :: (count:int,ordinal:int,index:int,line:int,column:int,name_count:int,source_count:int,run_present:bool,name_present:bool,source_present:bool)->bool #export_c {
+ return EP_select(count,ordinal) && index>=0 && index<EP_CHECK_LIMIT && ep_location(line) && ep_location(column) &&
+  ep_bytes(name_count) && ep_text(source_count) && run_present && (name_present || name_count==0) && source_present;
+}
+EP_encode_header :: (count:int,out:[]u8)->int #export_c {
+ if !EP_table(count,true) || out.count<20 {return -1;}
+ for i:0..<8 {out[i]=EP_MAGIC[i];}
+ ep_put(out,8,1);ep_put(out,12,20);ep_put(out,16,count);return 20;
+}
+EP_encode_row :: (kind:u32,ordinal:int,index:int,name:string,source:string,line:int,column:int,out:[]u8)->int #export_c {
+ if kind<2 || kind>4 || !EP_row_valid(EP_CHECK_LIMIT,ordinal,index,line,column,name.count,source.count,true,true,true) {return -1;}
+ total:=40+name.count+source.count;if out.count<total {return -1;}
+ for i:0..<8 {out[i]=EP_MAGIC[i];}
+ ep_put(out,8,cast(int)kind);ep_put(out,12,total);ep_put(out,16,ordinal);ep_put(out,20,index);
+ ep_put(out,24,line);ep_put(out,28,column);ep_put(out,32,name.count);ep_put(out,36,source.count);
+ for i:0..<name.count {out[40+i]=name[i];}
+ for i:0..<source.count {out[40+name.count+i]=source[i];}
+ return total;
+}
+ep_put :: (out:[]u8,at:int,value:int) {n:=value;for i:0..<4 {out[at+i]=cast(u8)(n%256);n/=256;}}
+ep_get :: (data:[]u8,at:int)->int {value:int=0;factor:int=1;for i:0..<4 {value+=cast(int)data[at+i]*factor;factor*=256;}return value;}
+EP_decode :: (data:[]u8,offset:int)->EP_Frame #export_c {
+ if offset<0 || data.count-offset<20 {return EP_Frame.{};}
+ for i:0..<8 {if data[offset+i]!=EP_MAGIC[i] {return EP_Frame.{};}}
+ kind:=ep_get(data,offset+8);total:=ep_get(data,offset+12);
+ if total>data.count-offset {return EP_Frame.{};}
+ if kind==1 {
+  if total!=20 {return EP_Frame.{};}count:=ep_get(data,offset+16);
+  if !EP_table(count,true) {return EP_Frame.{};}
+  return EP_Frame.{ok=true,kind=1,next=offset+total,count=count};
+ }
+ if kind<2 || kind>4 || data.count-offset<41 {return EP_Frame.{};}
+ ordinal:=ep_get(data,offset+16);index:=ep_get(data,offset+20);line:=ep_get(data,offset+24);column:=ep_get(data,offset+28);
+ names:=ep_get(data,offset+32);sources:=ep_get(data,offset+36);
+ if !EP_row_valid(EP_CHECK_LIMIT,ordinal,index,line,column,names,sources,true,true,true) || total!=40+names+sources {return EP_Frame.{};}
+ return EP_Frame.{ok=true,kind=cast(u32)kind,next=offset+total,ordinal=ordinal,declaration_index=index,line=line,column=column,
+  name_offset=offset+40,name_count=names,source_offset=offset+40+names,source_count=sources};
+}
+ep_transport :: (p:EP_Process)->u32 {
+ if p.timeout || p.output_limit {return EV_INCONCLUSIVE;}
+ if !p.launched || !p.finished || p.read_errno!=0 || !p.stdout_eof || !p.stderr_eof {return EV_INFRASTRUCTURE;}
+ return EV_PASSED;
+}
+EP_phase :: (process:EP_Process)->u32 #export_c {
+ t:=ep_transport(process);if t!=EV_PASSED {return t;}if process.returncode!=0 {return EV_INFRASTRUCTURE;}return EV_PASSED;
+}
+ep_span :: (data:[]u8,offset:int,count:int,expected:string)->bool {
+ if count!=expected.count {return false;}for i:0..<count {if data[offset+i]!=expected[i] {return false;}}return true;
+}
+ep_identity :: (expected:EP_Identity,frame:EP_Frame,data:[]u8)->bool {
+ return frame.ordinal==expected.ordinal && frame.declaration_index==expected.declaration_index && frame.line==expected.line && frame.column==expected.column &&
+  ep_span(data,frame.name_offset,frame.name_count,expected.name) && ep_span(data,frame.source_offset,frame.source_count,expected.source);
+}
+EP_metadata :: (expected:[]EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c {
+ p:=EP_phase(process);if p!=EV_PASSED {return p;}
+ if expected.count==0 {return EV_INFRASTRUCTURE;}
+ h:=EP_decode(data,0);if h.count!=expected.count {return EV_INFRASTRUCTURE;}
+ offset:=h.next;for i:0..<expected.count {
+  f:=EP_decode(data,offset);
+  if f.kind!=2 || expected[i].ordinal!=i || !ep_identity(expected[i],f,data) {return EV_INFRASTRUCTURE;}
+  offset=f.next;
+ }
+ if offset!=data.count {return EV_INFRASTRUCTURE;}return EV_PASSED;
+}
+EP_execution :: (expected:EP_Identity,data:[]u8,process:EP_Process)->u32 #export_c {
+ p:=ep_transport(process);if p!=EV_PASSED {return p;}
+ begin:=EP_decode(data,0);if begin.kind!=3 || !ep_identity(expected,begin,data) {return EV_INFRASTRUCTURE;}
+ // A signal after one whole BEGIN is a raw counterexample, not a typed trap.
+ if begin.next==data.count && process.returncode<0 {return EV_COUNTEREXAMPLE;}
+ end:=EP_decode(data,begin.next);
+ if end.kind!=4 || !ep_identity(expected,end,data) || end.next!=data.count || process.returncode!=0 {return EV_INFRASTRUCTURE;}
+ return EV_PASSED;
+}
+EP_outcome :: (text:string)->u32 #export_c {
+ if text=="passed" {return EV_PASSED;}if text=="counterexample" {return EV_COUNTEREXAMPLE;}
+ if text=="inconclusive" {return EV_INCONCLUSIVE;}if text=="infrastructure-error" {return EV_INFRASTRUCTURE;}
+ if text=="not-checked" {return EV_NOT_CHECKED;}return 5;
+}
+ep_sha :: (text:string)->bool {
+ if text.count!=64 {return false;}
+ for i:0..<text.count {b:=text[i];if !((b>=48 && b<=57) || (b>=97 && b<=102)) {return false;}}
+ return true;
+}
+ep_refuse :: (reason:u32)->EP_BaseResult {return EP_BaseResult.{outcome=EV_INFRASTRUCTURE,reason=reason};}
+EP_baseline :: (base:EP_Base,sources:[]EP_Source,claims:[]EP_Claim,process:EP_Process,expected_input:string,expected_input_sha:string,expected_compiler_sha:string,expected_compiler_version:string,requested_steps:int)->EP_BaseResult #export_c {
+ t:=ep_transport(process);if t!=EV_PASSED {return EP_BaseResult.{outcome=t,reason=1};}
+ if base.shape!=255 || base.schema!="coax.evidence.v1" || base.command!="test" {return ep_refuse(2);}
+ if !ep_text(expected_input.count) || !ep_text(expected_compiler_version.count) ||
+  !ep_sha(expected_input_sha) || !ep_sha(expected_compiler_sha) || base.input!=expected_input || base.compiler_sha!=expected_compiler_sha || base.compiler_version!=expected_compiler_version {return ep_refuse(3);}
+ if base.target!="coax-evaluator" || base.arithmetic!="checked" || base.runtime_arithmetic!="checked" || base.library!=1 || !base.only_null || base.listing!=0 || base.root_only!=0 {return ep_refuse(4);}
+ if !EP_steps(requested_steps) || base.check_steps!=requested_steps || base.slots!=cast(int)CB_test_slot_limit() || base.containers!=cast(int)CB_test_container_limit() || base.run_steps!=cast(int)CB_default_steps() {return ep_refuse(5);}
+ if !ep_sources_valid(sources) || !ep_claim_count(claims.count) {return ep_refuse(6);}
+ root:bool=false;for i:0..<sources.count {
+  if sources[i].path==expected_input {if sources[i].sha!=expected_input_sha {return ep_refuse(6);}root=true;}
+ }
+ if !root || base.exit_status!=process.returncode || (process.returncode!=0 && process.returncode!=1) {return ep_refuse(7);}
+ if base.front_end=="failed" {
+  if claims.count!=0 || base.verdict!="not-checked" || process.returncode!=1 {return ep_refuse(8);}
+  return EP_BaseResult.{valid=true,outcome=EV_NOT_CHECKED};
+ }
+ if base.front_end!="ok" {return ep_refuse(8);}
+ bits:u32=0;authored:bool=false;authority:bool=false;
+ for i:0..<claims.count {
+  c:=claims[i];outcome:=EP_outcome(c.outcome);
+  if outcome>EV_NOT_CHECKED || !c.name_string || !ep_bytes(c.name.count) {return ep_refuse(9);}
+  if c.kind=="#authority" {
+   if authority || !c.at_null || c.source.count!=0 || c.line!= -1 || c.column!= -1 || c.cases!=0 || c.steps!=0 {return ep_refuse(9);}authority=true;
+  }else {
+   if (c.kind!="#test" && c.kind!="#forall") || c.at_null || !ep_location(c.line) || !ep_location(c.column) || c.cases<0 || c.steps<0 || (outcome==EV_PASSED && c.cases<1) {return ep_refuse(9);}
+   found:bool=false;for j:0..<sources.count {if sources[j].path==c.source {found=true;}}
+   if !found {return ep_refuse(9);}
+   authored=true;
+  }
+  bits=EV_add(bits,outcome);
+ }
+ verdict:=EV_verdict(bits);
+ if EP_outcome(base.verdict)!=verdict || ((verdict==EV_PASSED)!=(process.returncode==0)) {return ep_refuse(10);}
+ if verdict==EV_PASSED && !authored {return EP_BaseResult.{outcome=EV_NOT_CHECKED,reason=11};}
+ return EP_BaseResult.{valid=true,outcome=verdict};
+}
+EP_plan :: (claims:[]EP_Claim,only:string,has_only:bool,mask:[]u8)->EP_Plan #export_c {
+ if !ep_claim_count(claims.count) || mask.count!=claims.count || !ep_bytes(only.count) || (!has_only && only.count!=0) {return EP_Plan.{outcome=EV_INFRASTRUCTURE};}
+ for i:0..<mask.count {mask[i]=0;}
+ count:int=0;quantified:bool=false;
+ for i:0..<claims.count {
+  c:=claims[i];if c.kind=="#authority" {continue;}
+  if c.kind!="#test" && c.kind!="#forall" {return EP_Plan.{outcome=EV_INFRASTRUCTURE};}
+  if !c.name_string || !ep_bytes(c.name.count) {return EP_Plan.{outcome=EV_INFRASTRUCTURE};}
+  if !has_only || nc_contains(c.name,only) {
+   count+=1;if c.kind=="#forall" {mask[i]=2;quantified=true;}else {mask[i]=1;}
+  }
+ }
+ if count==0 || quantified {return EP_Plan.{outcome=EV_NOT_CHECKED,count=count};}
+ return EP_Plan.{outcome=EV_PASSED,count=count};
+}
+ep_masks :: (claims:[]EP_Claim,mask:[]u8)->bool {
+ if !ep_claim_count(claims.count) || claims.count!=mask.count {return false;}
+ for i:0..<claims.count {
+  c:=claims[i];if c.kind=="#authority" {if mask[i]!=0 {return false;}}
+  else if c.kind=="#test" {if mask[i]!=0 && mask[i]!=1 {return false;}}
+  else if c.kind=="#forall" {if mask[i]!=0 && mask[i]!=2 {return false;}}
+  else {return false;}
+ }
+ return true;
+}
+EP_selected :: (claims:[]EP_Claim,mask:[]u8,ordinal:int)->EP_Identity #export_c {
+ if !ep_masks(claims,mask) || !EP_select(EP_CHECK_LIMIT,ordinal) {return EP_Identity.{ordinal= -1};}
+ declaration:int=0;selected:int=0;
+ for i:0..<claims.count {
+  c:=claims[i];if c.kind=="#authority" {continue;}
+  if mask[i]==1 {
+   if selected==ordinal {return EP_Identity.{ordinal=ordinal,declaration_index=declaration,line=c.line,column=c.column,name=c.name,source=c.source};}
+   selected+=1;
+  }
+  declaration+=1;
+ }
+ return EP_Identity.{ordinal= -1};
+}
+ep_bytes :: (count:int)->bool {return count>=0 && count<=EP_TEXT_LIMIT;}
+ep_text :: (count:int)->bool {return count>0 && count<=EP_TEXT_LIMIT;}
+ep_location :: (value:int)->bool {return value>0 && value<=4294967295;}
+ep_claim_count :: (count:int)->bool {return count<=EP_CHECK_LIMIT+1;}
+
+ep_test_identity :: ()->EP_Identity {return EP_Identity.{ordinal=0,declaration_index=7,line=11,column=3,name="alpha\0omegaλ",source="/a.coax"};}
+ep_test_process :: ()->EP_Process {return EP_Process.{launched=true,finished=true,stdout_eof=true,stderr_eof=true};}
+ep_test_source :: ()->EP_Source {return EP_Source.{path="/a.coax",observed_path="/a.coax",sha=EP_TEST_SHA,observed_sha=EP_TEST_SHA};}
+ep_test_claim :: ()->EP_Claim {return EP_Claim.{kind="#test",name="alpha\0omegaλ",source="/a.coax",outcome="passed",name_string=true,line=11,column=3,cases=1,steps=8};}
+ep_test_base :: ()->EP_Base {return EP_Base.{shape=255,schema="coax.evidence.v1",command="test",input="/a.coax",compiler_sha=EP_TEST_COMPILER,compiler_version="test compiler",target="coax-evaluator",arithmetic="checked",runtime_arithmetic="checked",front_end="ok",verdict="passed",library=1,only_null=true,check_steps=20000000,slots=33554432,containers=2097152,run_steps=100000};}

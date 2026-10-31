@@ -13,6 +13,23 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.41.0 — 2026-10-31
+
+Commit: pending
+
+- The optional `tools/native_check_execution.py` maintenance driver uses the
+  complete original evaluator baseline and one checked-AST C artifact at
+  checked `-O0` and `-O2`, with a fresh bounded process for each selected check.
+  `--only` scopes native execution and never filters the original baseline.
+- Coax owns baseline, bounds, source/artifact binding, EP1 framing and verdict
+  validation. Host tooling handles compilation, files, pipes, process groups
+  and compiler/SDK observations; it never lifts or rewrites check source.
+- The separate `coax.native-checks.execution.v1` record requires complete
+  matching native observations. Exhaustion, unavailable phases and malformed
+  completions cannot pass. Selected finite properties and broader trap,
+  semantic and consumer qualification remain subsequent work.
+
+
 ## 0.40.0 — 2026-10-31
 
 Commit: [`49e92d76ede39c1810c000f3878134243eebdcd8`](https://github.com/OpenAgentsInc/openagents/commit/49e92d76ede39c1810c000f3878134243eebdcd8)

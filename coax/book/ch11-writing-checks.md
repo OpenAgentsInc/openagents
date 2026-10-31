@@ -22,6 +22,12 @@ unsupported effects or borrows. Ordinary `coax c` still omits checks. See the
 [native-check emission contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-differential.md#checked-ast-native-check-c-emission)
 for its supported scope and verification-only C interface.
 
+The optional `coax/tools/native_check_execution.py` maintenance driver executes
+that artifact at `-O0` and `-O2`, after one full original evaluator baseline.
+Coax validates its selected identities and complete process observations;
+host tooling imposes time/output limits. It writes a separate native companion
+record. Selected `#forall` execution remains a later extension.
+
 In this chapter we'll write checks for a small procedure that splits a
 payment between people. We'll start with one example, watch it fail when
 we break the code, and then grow it into rules that cover hundreds of

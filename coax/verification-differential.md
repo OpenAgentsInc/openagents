@@ -181,6 +181,83 @@ itself. Neither obtaining this table nor compiling it establishes that its
 checks pass. The focused independent C-table tests are in
 `tests/native_check_emission.py`.
 
+## Original-source bounded native execution
+
+`tools/native_check_execution.py` is an optional maintenance driver over the
+compiler-owned C interface above. It never reads or rewrites check bodies.
+Coax owns validation and verdict rules in `lib/compiler/native-execution.coax`;
+Python transports JSON/ABI facts and performs compiler, filesystem and process
+effects. A fixed C observer links the same emitted source and generated Coax
+policy C at checked `-O0` and `-O2`, using C11, `-ffp-contract=off` and
+`-fno-fast-math`. This tooling is separate from product and ordinary compiler
+build dependencies.
+
+Run from the repository root with a new artifact directory:
+
+```sh
+python3 coax/tools/native_check_execution.py coax/tests/native-check-execution/identity.coax --keep /tmp/coax-native-execution --out /tmp/coax-native-execution.json --json
+```
+
+Each file first runs exactly one original `coax test --library` baseline,
+without `--only`, under the normal 20,000,000-step limit or an explicitly lower
+`--steps`. The Coax policy refuses larger step requests before execution. A
+missing, malformed, incomplete or nonpassing original baseline cannot qualify
+native execution. The compiler's complete `coax.evidence.v1` record remains
+unchanged inside the separate `coax.native-checks.execution.v1` companion.
+Its target still means the evaluator.
+
+That same baseline invocation also captures its input profile. Coax binds its
+Coax source set and imported protobuf descriptor hashes to the emitted artifact,
+then checks the observed files again after execution. Missing descriptor lists
+are distinct from observed empty lists. This adds input identity evidence without
+changing the evaluator record's schema or meaning.
+
+`--only SUBSTR` scopes native emission/execution and leaves that original
+baseline unfiltered. Passing a selected scope does not qualify unselected
+native declarations. The selection ledger records them, and authority
+execution coverage remains evaluator-only. A selected `#forall` is an explicit
+`not-checked` gap in this first execution slice. The original compiler authority
+admission also applies when emitting C. No legacy source-lifting or alternate
+authority policy is used as a fallback.
+
+The baseline streams evidence on stderr and its input profile on stdout;
+emission streams its profile on stderr and C on stdout. The host bounds both
+outputs while reading them. Each selected check runs in a
+fresh process group, with default limits of ten seconds and one MiB of native
+output, within the command's 840-second and 64-MiB aggregate subprocess-capture limits. Phase
+budgets, actual process statuses, pipe EOF/error observations and bounded raw
+bytes are retained. Expected-fault children use the process-local quiet crash
+launcher. Exhaustion kills the process group and is inconclusive.
+
+The verification-only EP1 stream has a 16-byte header: `COAXEP1\0`, a little
+endian u32 kind, and a little endian u32 total frame length. HEADER (kind 1)
+adds a u32 table count. ROW (2), BEGIN (3) and END (4) add six u32 fields:
+native ordinal, original declaration index, line, column, name-byte count and
+source-byte count, followed by those exact spans. Spans admit NUL and UTF-8;
+each is at most 4,096 bytes. Row frames are at most 8,232 bytes. A metadata stream
+is HEADER plus its exact ordered ROW inventory. Execution is one matching
+BEGIN followed by END. All encoders, decoders and identity checks are Coax.
+
+A passed observation needs normal exit0, complete matching frames, both pipe
+EOFs and no read error. A signal after a valid BEGIN is a raw counterexample;
+it is not labelled a recognized Coax trap. A missing binary, malformed or
+truncated successful stream, identity mismatch, or nonzero exit after complete
+END is infrastructure failure. Time/output limits are inconclusive. The
+existing `EV_*` aggregation keeps infrastructure, counterexample,
+inconclusive and missing observations from becoming a passing qualification.
+
+The companion records actual compiler/target/SDK queries and settings, source,
+C, observer, policy and native executable hashes, exact selection and each
+profile's observations. Original source/C/producer identities are checked
+across phases. SDK path/version/settings observations do not claim a complete
+SDK-content or toolchain lock. A policy library that cannot start produces an
+explicit nonqualifying setup error. Report destinations refuse aliases of known
+consumed source, descriptor, launcher, toolchain and policy artifact files; a
+preexisting temporary output is preserved. Finite-domain execution, recognized trap
+semantics, seeded-defect reduction and broader real-consumer qualification
+remain the subsequent native-check tasks. The independent vectors and host
+failure fixtures live in `tests/native_check_execution.py`.
+
 ## Legacy authored-check comparison
 
 `python3 coax/tools/native_checks.py --selection coax/tests/native-checks.json`

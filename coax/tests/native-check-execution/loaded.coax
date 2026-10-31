@@ -1,0 +1,2 @@
+// A separate physical declaration with the same display name.
+#test "same display" { #assert 7 * 11 == 77; }

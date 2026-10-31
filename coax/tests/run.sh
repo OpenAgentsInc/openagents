@@ -55,7 +55,7 @@ python3 tests/crash_reporting.py && python3 tests/compile_time.py && python3 tes
 python_rc=$?
 python3 tests/native.py
 native_rc=$?
-python3 tests/native_checks.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py
+python3 tests/native_checks.py && python3 tests/native_check_baseline.py && python3 tests/native_check_emission.py && python3 tests/native_check_execution.py && python3 tests/native_execution_transport.py
 native_check_baseline_rc=$?
 python3 tests/lexer.py
 lexer_rc=$?

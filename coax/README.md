@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.40.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.41.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -10,7 +10,7 @@ Everything Coax lives in this folder, at the root of the openagents repo.
 | [`spec.md`](spec.md) | The language specification and implementation plan |
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
-| [`verification-differential.md`](verification-differential.md) | Optional bounded evaluator/native conformance probes and reduction |
+| [`verification-differential.md`](verification-differential.md) | Checked-AST authored native execution, bounded conformance probes and reduction |
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |

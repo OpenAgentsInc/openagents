@@ -1,0 +1,2 @@
+#forall "selected quantified check" i: 0..<4 { #assert i * i >= 0; }
+#test "ordinary other check" { #assert 15 + 16 == 31; }

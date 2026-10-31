@@ -1798,9 +1798,43 @@ than disappearing. Wrapping arithmetic and standalone source maps refuse;
 normal product C/profile behavior is unchanged. The stage0 driver explicitly
 refuses this command while testing and compiling its authoritative Coax policy.
 
-Emission alone is not execution evidence. Bounded native execution, shared
-finite-domain traversal and broader semantic/consumer qualification remain
-separate work. Existing `coax.evidence.v1` continues to describe evaluator runs.
+Emission alone is not execution evidence. The optional native execution
+companion below supplies bounded observations. Shared finite-domain traversal
+and broader semantic/consumer qualification remain separate work. Existing
+`coax.evidence.v1` continues to describe evaluator runs.
+
+## Native execution requires the original baseline and complete observations
+
+`coax/lib/compiler/native-execution.coax` owns baseline, budget, selection,
+source/artifact identity, EP1 protocol and phase/verdict validation. The optional
+`coax/tools/native_check_execution.py` maintenance tool performs host effects
+and transports typed facts; it never parses or rewrites Coax check bodies.
+Python is development tooling, never a product or ordinary compiler-build
+runtime dependency. Policy startup failure has no semantic fallback.
+
+Every selected file gets one complete, unfiltered original evaluator baseline
+under normal or explicitly lower step limits. A failed baseline stops before
+that source's native emission/compilation. `--only` scopes native checks only.
+The same baseline invocation captures its input profile; observed Coax source
+and protobuf descriptor identities must agree across emission and execution.
+One compiler-owned C artifact, the fixed observer and generated Coax policy C
+are linked at checked O0/O2. Each selected body runs in a fresh bounded process
+group. Actual LP64 observations must be admitted before table access.
+
+Native names are byte spans; declaration indices and physical locations remain
+distinct even for duplicate names. A passed process needs complete matching
+BEGIN/END, normal exit0, complete pipe EOF and no transport error. A signal
+after BEGIN is a raw nonpassing observation, never automatically a recognized
+Coax trap. Nonzero status after END or malformed successful output is
+infrastructure failure. Time/output exhaustion is inconclusive. The host
+enforces caps while reading and kills the whole process group on exhaustion.
+
+`coax.native-checks.execution.v1` is separate from evaluator-only evidence and
+the existing legacy/strict-baseline companions. It binds original sources,
+selected identities, C/observer/policy/native hashes and actual compiler/SDK
+observations. Those observations do not claim a complete SDK-content lock or
+broader target qualification. Selected `#forall` remains an explicit gap in
+this execution slice. Existing product authority gates remain unchanged.
 
 
 ## Compiler profile selection preserves legacy defaults and authority

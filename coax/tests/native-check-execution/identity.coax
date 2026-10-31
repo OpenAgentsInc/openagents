@@ -1,0 +1,8 @@
+#load "loaded.coax";
+#test "same display" { #assert 2 * 13 == 26; }
+  #test "receipt [x] quote\" slash\\ nul\0 tail λ" {
+    values := [2]int.[12, 99];
+    increment(values[0..<1]);
+    #assert values[0] == 13 && values[1] == 99;
+  }
+increment :: (values: []int) { values[0] += 1; }

@@ -1,0 +1,4 @@
+#authority;
+#test "passing selected check" { #assert 4 * 9 == 36; }
+#test "original authority failure" { #assert admission() == 0; }
+admission :: () -> int { return 1; }
