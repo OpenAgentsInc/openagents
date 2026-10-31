@@ -8,6 +8,8 @@
 // The signature goes to curl the way a key does: in its environment only.
 // The signing itself is ours_sign.coax (gw_nip98), apart, so a host can
 // build it as a unit of its own beside code whose names the crypto's clash with.
+//
+// Checks: coax test coax/lib/gateway/ours.coax --library (no main of its own).
 #load "gateway.coax";
 
 GW_OURS_URL :: "https://openagents.com/api/v1/inference";

@@ -12,6 +12,8 @@
 // A choice's confidence is (max p - 1/k) / (1 - 1/k), how concentrated the
 // distribution is; it is not the chosen option's probability, which is
 // SoChoice.probability.
+//
+// Checks: coax test coax/lib/systemone/answers.coax --library (no main of its own).
 
 #load "request.coax";
 #load "../agent/claude/fields.coax";

@@ -11,6 +11,8 @@
 //
 // gw_psionic_up asks GET /v1/models with a one-second limit, so a caller
 // can leave the gateway out of a plan when no server is up.
+//
+// Checks: coax test coax/lib/gateway/psionic.coax --library (no main of its own).
 
 #load "rates.coax";
 

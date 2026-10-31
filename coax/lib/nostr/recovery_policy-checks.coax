@@ -1,0 +1,5 @@
+// The checks of recovery_policy.coax, which a verification record pins byte
+// for byte (docs/verification/2026-10-29-nostr-store-recovery-model.md), so
+// its run line lives here.
+// Checks: coax test coax/lib/nostr/recovery_policy-checks.coax --library
+#load "recovery_policy.coax";

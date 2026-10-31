@@ -1,6 +1,8 @@
 // Recorded stream-json fixtures, ported from the crate's protocol/tests.rs:
 // each frame must parse to the same typed value there and here. Run with
 // coax test --library coax/lib/agent/claude/tests.coax.
+//
+// Checks: coax test coax/lib/agent/claude/tests.coax --library (no main of its own).
 
 #load "claude.coax";
 

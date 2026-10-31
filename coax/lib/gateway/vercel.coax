@@ -4,6 +4,8 @@
 // asks for zero-data-retention routing, as the old crates/inference
 // upstream/vercel.rs privacy_fields did. Its usage carries no cost field
 // in Chat Completions; the rates card prices it.
+//
+// Checks: coax test coax/lib/gateway/vercel.coax --library (no main of its own).
 
 #load "gateway.coax";
 

@@ -16,9 +16,9 @@
 # screenshots), then production. The golden walk and the 60 FPS check run AFTER
 # the release is live, against production, as a report (releases/<time>/AFTER):
 # they never hold back a page or stop a release. --gated restores the gate.
-# After them, every Coax suite under apps/openagents-web and verse whose sources
-# changed since production's last release runs at the budget its own header
-# declares (`coax test FILE --steps N` there; coax/web/suites.coax), also a
+# After them, every Coax suite under apps/openagents-web, verse, coax/web and
+# coax/lib whose sources changed since production's last release runs at the
+# budget its own header declares (`coax test FILE --steps N` there; coax/web/suites.coax), also a
 # report only (releases/<time>/SUITES).
 #
 # Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked

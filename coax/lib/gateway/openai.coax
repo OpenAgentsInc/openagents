@@ -3,6 +3,8 @@
 // spoke it: the cap as max_completion_tokens, reasoning_effort, and a strict
 // json_schema response_format. Its usage carries no cost; the rates card
 // prices it. The key is OPENAI_API_KEY, read by curl from the environment.
+//
+// Checks: coax test coax/lib/gateway/openai.coax --library (no main of its own).
 
 #load "gateway.coax";
 

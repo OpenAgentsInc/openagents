@@ -35,6 +35,8 @@
 // refusal, all of out. Conversation keys live in locals that are zeroed
 // before return. These are plain stores, as in nip44-key.coax: erasure the
 // compiler cannot drop is the host's platform contract (zeroize.coax).
+//
+// Checks: coax test coax/lib/nostr/nip59.coax --run-steps 250000000 (its secp tables are built at compile time).
 #load "nip44-key.coax";
 #load "event_sign.coax";
 #load "../../tests/nostr/nip59_keys.coax";

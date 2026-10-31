@@ -8,6 +8,8 @@
 // Infrastructure only: the Mac app's Lab and /chat call this when the
 // owner asks for the wiring. Model calls never block a poll; a step's
 // commands run inside the poll that starts them (30 s each at most).
+//
+// Checks: coax test coax/lib/microcoder/run.coax --library (no main of its own).
 
 #load "tools.coax";
 #load "../gateway/plan.coax";

@@ -23,6 +23,8 @@
 //
 // work holds the decrypted envelope and is zeroed on every admitted return;
 // the conversation key is a zeroed local. Plain stores, as in nip44-key.coax.
+//
+// Checks: coax test coax/lib/nostr/host/grant.coax --run-steps 250000000 (its secp tables are built at compile time).
 #load "../adapters/host-proto-import.coax";
 #load "../nip44-key.coax";
 #load "../event.coax";

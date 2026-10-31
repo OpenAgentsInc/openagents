@@ -2,6 +2,8 @@
 // tests: scripted CLI frames go through cl_feed and the frames the SDK
 // writes back are checked. Run with
 // coax test --library coax/lib/agent/claude/query_tests.coax.
+//
+// Checks: coax test coax/lib/agent/claude/query_tests.coax --library (no main of its own).
 
 #load "claude.coax";
 

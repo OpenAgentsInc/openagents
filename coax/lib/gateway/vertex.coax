@@ -19,6 +19,8 @@
 // streamGenerateContent (GW_WIRE_GEMINI: thought parts, cached-token
 // counts), which the recorded fixture is; its request translator is the
 // Gemini API's (gemini.coax).
+//
+// Checks: coax test coax/lib/gateway/vertex.coax --library (no main of its own).
 
 #load "gateway.coax";
 

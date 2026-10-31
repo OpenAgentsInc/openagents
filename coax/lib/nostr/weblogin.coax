@@ -2,6 +2,8 @@
 // 12 BIP-39 words, their NIP-06 key, and a NIP-98 login signed with it.
 // private-face.c calls these; the page holds the buffers. Each call derives
 // the key it needs and zeroes it before returning: no key outlives a call.
+//
+// Checks: coax test coax/lib/nostr/weblogin.coax --run-steps 250000000 (its secp tables are built at compile time).
 #load "nip06.coax";
 #load "event_sign.coax";
 #load "base64.coax";

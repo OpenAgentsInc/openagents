@@ -31,6 +31,8 @@
 //
 // Pure decisions: no clock, storage or network. All inputs are public;
 // verification is variable-time. Only the local slot handles a secret.
+//
+// Checks: coax test coax/lib/nostr/keys.coax --run-steps 250000000 (its secp tables are built at compile time).
 #load "event_sign.coax";
 #authority;
 

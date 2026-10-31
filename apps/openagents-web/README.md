@@ -27,7 +27,7 @@ House's wood-and-bronze plates, not the HUD bar.
 
 ```sh
 coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
-coax/web/tool.sh suites                              # every suite here and in verse/, each at its header's budget
+coax/web/tool.sh suites                              # every suite here, in verse/, coax/web/ and coax/lib/, each at its header's budget
 coax/web/serve.sh apps/openagents-web                # http://127.0.0.1:8800/, hot reload
 apps/openagents-web/build.sh                         # release build: all page modules
 ```
@@ -35,7 +35,11 @@ apps/openagents-web/build.sh                         # release build: all page m
 A suite's header names how it runs: `coax test FILE --steps N` (and
 `--library`) in its first lines. A suite whose checks need more than the
 default 20,000,000 steps each says so there; nothing raises the budget for
-every suite. `coax/web/tool.sh suites` runs each that way, and a release runs
+every suite. Checks that call a separately compiled unit's `#foreign` (a
+recorded verification boundary, such as project-capacity.coax) can't run at
+compile time: their file says `--native-link UNIT` and exports
+`native_check(i, run)`, and the runner links it with the unit and runs each
+check natively (project-frames.coax). `coax/web/tool.sh suites` runs each that way, and a release runs
 the ones it changed after it is live (releases/<time>/SUITES, a report).
 
 `coax serve` rebuilds on save: a `.coax` or `.c` change swaps the engine

@@ -6,6 +6,8 @@
 // reasoning. GLM has no strict JSON schemas: the gateway carries
 // GW_NO_STRICT_SCHEMA, sends none, and a structured caller (Microcoder)
 // reads the answer out of plain text instead (text_action).
+//
+// Checks: coax test coax/lib/gateway/zai.coax --library (no main of its own).
 
 #load "gateway.coax";
 

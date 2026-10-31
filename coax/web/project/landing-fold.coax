@@ -1,6 +1,8 @@
 // The existing Coax project fold, compiled apart from crypto because coax0
 // has a flat procedure namespace. The linked Coax verifier receives the
 // same immutable original before any field enters this owned store.
+// Checks: coax test coax/web/project/landing-fold.coax --steps 200000000 (the
+// fold's own checks run here, and folding a captured transcript takes ~150M).
 #load "../../../apps/openagents-web/project-fold.coax";
 #load "../../../apps/openagents-web/home-capacity.coax";
 #assert HOME_ISSUES == FOLD_ISSUES; // the homepage takes every row the fold hands up (newland-network.coax hn_project)

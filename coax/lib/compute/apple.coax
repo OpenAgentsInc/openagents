@@ -16,6 +16,8 @@
 // a tile of tm tokens by tn rows of out = x w^T, read straight from device
 // views. w holds BF16 pairs (rows by cols/2 u32, low half first), x and out
 // are f32 (tokens by cols, tokens by rows).
+//
+// Checks: coax test coax/lib/compute/apple.coax --library (no main of its own).
 #authority;
 
 am_bf16 :: (word:u32,high:bool)->f32 {

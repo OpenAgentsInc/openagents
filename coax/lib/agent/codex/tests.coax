@@ -2,6 +2,8 @@
 // (fixture.coax): every line classifies, the answers reach the requests
 // that asked, the thread and turn ids are kept, approvals wait for the host
 // and its answers go out as Zeron's harness writes them.
+//
+// Checks: coax test coax/lib/agent/codex/tests.coax --library (no main of its own).
 
 #load "codex.coax";
 #load "fixture.coax";

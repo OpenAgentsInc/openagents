@@ -5,6 +5,8 @@
 // (GwUsage.cost_usd_micros), and which provider served the answer (the done
 // event's text). From the old crates/openrouter and upstream/openrouter.rs
 // (privacy_fields, the X-Title and HTTP-Referer headers).
+//
+// Checks: coax test coax/lib/gateway/openrouter.coax --library (no main of its own).
 
 #load "gateway.coax";
 

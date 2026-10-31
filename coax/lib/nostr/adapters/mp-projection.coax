@@ -1,6 +1,8 @@
 // An untrusted, source-preserving NIP-MP projection. A matching DTO is not
 // a signature, listing, membership, freshness or repository authority check.
 // The protobuf wire and exact source JSON are borrowed and must remain stable.
+//
+// Checks: coax test coax/lib/nostr/adapters/mp-projection.coax --run-steps 250000000 (its secp tables are built at compile time).
 #load "mp-proto-import.coax";
 #load "event-projection.coax";
 #load "../../../tests/nostr/mp_project_fixtures.coax";

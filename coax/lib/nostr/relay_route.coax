@@ -29,6 +29,8 @@
 //   is ours). The same key again is OK true and not counted twice.
 // - Kind 22242 is never stored or broadcast: relay_server.coax refuses it as
 //   an EVENT (RS_AUTH_KIND) and AUTH never reaches the store or fan-out.
+//
+// Checks: coax test coax/lib/nostr/relay_route.coax --library (no main of its own).
 #authority;
 
 // ---- mirrored codes (tied to their sources in relay.coax) -----------------

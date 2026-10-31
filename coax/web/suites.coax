@@ -1,4 +1,5 @@
-// Every Coax test suite of the web app and the Verse, each run at the budget
+// Every Coax test suite of the web app, the Verse, the web tools (coax/web)
+// and the Coax libraries (coax/lib), each run at the budget
 // its own header declares.
 //   coax/web/tool.sh suites                    # every suite
 //   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (coax deps)
@@ -7,15 +8,25 @@
 //   coax/web/tool.sh suites --jobs N           # suites side by side (default 6)
 //   coax test coax/web/suites.coax --library   # its own checks
 //
-// The convention. A suite is a .coax file under apps/openagents-web/ or
-// verse/ with a #test or #forall in it that no other file #loads, or one
+// The convention. A suite is a .coax file under apps/openagents-web/,
+// verse/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
-// 2000000000` gives each of its tests 2,000,000,000 steps, and --library and
-// --root-only pass on too. A suite with no such line runs at the compiler's
+// 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
+// --run-steps (the compile's own budget: tables built at compile time) and
+// --root-only pass on too. A file with no checks of its own whose header names
+// itself is a suite too: it runs the checks of what it loads (a file pinned by
+// a verification record can't take a header line, so one beside it does). A suite with no such line runs at the compiler's
 // default, 20,000,000 steps a test; one that needs more says so in its own
-// header, and nothing raises the budget for every suite. A file another
-// suite loads runs its tests inside that suite.
+// header, and nothing raises the budget for every suite. A file that a file
+// with checks loads runs its tests inside that one.
+//
+// `--native-link UNIT` on that line makes it a native suite: checks that call
+// a #foreign from a separately compiled unit (a recorded verification
+// boundary) can't run at compile time, so the file exports
+// native_check(i, run) and this builds it and UNIT with coax lib, links them
+// with coax/web/native-check.c and runs every check in its own process. They
+// count as checks like any other.
 //
 // release.sh runs it with --since production's release once the release is
 // live, as a report (releases/<time>/SUITES); it never holds a release back.
@@ -35,8 +46,8 @@ SU_HEAD_LINES :: 80;
 SU_TIMEOUT_MS :: 1800000;    // one suite's longest run, 30 minutes
 SU_JOBS :: 6;
 
-SuHead :: struct { found: bool; steps: string; library: bool; root_only: bool; }
-Suite :: struct { path: string; steps: string; library: bool; root_only: bool; missing: string; }   // missing: a #load not in the tree
+SuHead :: struct { found: bool; steps: string; run_steps: string; library: bool; root_only: bool; native: string; }
+Suite :: struct { path: string; steps: string; run_steps: string; library: bool; root_only: bool; native: string; missing: string; }   // native: the unit it links, beside it   // missing: a #load not in the tree
 // Kept text: bytes is a view of the caller's buffer.
 SuArena :: struct { bytes: [] u8; used: int; full: bool; }
 
@@ -121,7 +132,7 @@ su_head :: (text: string, base: string) -> SuHead {
     for k: 0..<l.count {
       if !su_starts(l, k, "coax test") { continue; }
       // the words after it: the first .coax one is the file it runs
-      named := false; steps := ""; library := false; root_only := false;
+      named := false; steps := ""; run_steps := ""; library := false; root_only := false; native := "";
       w := k + 9;
       while w < l.count {
         while w < l.count && su_space(l[w]) { w += 1; }
@@ -133,16 +144,23 @@ su_head :: (text: string, base: string) -> SuHead {
           named = true;
         } else if word == "--library" { library = true; }
         else if word == "--root-only" { root_only = true; }
-        else if word == "--steps" {
+        else if word == "--native-link" {
+          y := x;
+          while y < l.count && su_space(l[y]) { y += 1; }
+          z := y;
+          while z < l.count && !su_space(l[z]) { z += 1; }
+          native = l[y..<z]; x = z;
+        }
+        else if word == "--steps" || word == "--run-steps" {
           y := x;
           while y < l.count && su_space(l[y]) { y += 1; }
           z := y;
           while z < l.count && l[z] >= '0' && l[z] <= '9' { z += 1; }
-          if z > y { steps = l[y..<z]; }
+          if z > y { if word == "--steps" { steps = l[y..<z]; } else { run_steps = l[y..<z]; } }
         }
         w = x;
       }
-      if named { h.found = true; h.steps = steps; h.library = library; h.root_only = root_only; return h; }
+      if named { h.found = true; h.steps = steps; h.run_steps = run_steps; h.library = library; h.root_only = root_only; h.native = native; return h; }
     }
     i = e + 1; line += 1;
   }
@@ -175,7 +193,11 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
 }
 
 // Under apps/openagents-web/ or verse/, and not in a hidden folder (.dev scratch).
-su_in :: (path: string) -> bool { return (su_starts(path, 0, "apps/openagents-web/") || su_starts(path, 0, "verse/")) && !su_contains(path, "/."); }
+su_in :: (path: string) -> bool {
+  roots := [4] string.["apps/openagents-web/", "verse/", "coax/web/", "coax/lib/"];
+  for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
+  return false;
+}
 
 #test "paths: a #load from a file's folder, dots resolved, never out of the repo" {
   b: [256] u8;
@@ -198,7 +220,11 @@ su_in :: (path: string) -> bool { return (su_starts(path, 0, "apps/openagents-we
   l := su_head("//   coax/bin/coax test --library verse/water.coax --steps 500000000\n", "water.coax");
   #assert l.found && l.library && l.steps == "500000000";
   d := su_head("// coax test verse/space.coax\n", "space.coax");
-  #assert d.found && d.steps == "";
+  #assert d.found && d.steps == "" && d.native == "";
+  n := su_head("//   coax test apps/openagents-web/project-frames.coax --native-link project-capacity.coax\n", "project-frames.coax");
+  #assert n.found && n.native == "project-capacity.coax" && n.steps == "";
+  k := su_head("// coax test keys.coax --library --run-steps 250000000\n", "keys.coax");
+  #assert k.found && k.library && k.run_steps == "250000000" && k.steps == "";
 }
 #test "loads: each #load's repo path, comments and strings that only mention it left out" {
   keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string;
@@ -234,13 +260,48 @@ su_run :: (argv: [] string, dir: string, out: [] u8) -> ProcRun {
   return r;
 }
 
+// A native suite's program: the suite and its unit through coax lib, linked
+// with coax/web/native-check.c in a fresh temporary directory. Its path, kept
+// in into; empty when a step failed, with what that step said in out[0..<said].
+Native :: struct { exe: string; said: int; }
+su_rm :: (dir: string) {
+  rm := [3] string.["rm", "-rf", dir];
+  junk: [4096] u8;
+  r := su_run(rm[..], ".", junk[..]);
+}
+su_native_build :: (coax: string, root: string, dir: string, s: Suite, out: [] u8, into: [] u8) -> Native {
+  no: Native;
+  mk := [2] string.["mktemp", "-d"];
+  t := su_run(mk[..], dir, out);
+  if t.started != 0 || t.status != 0 || t.out_n < 2 { return no; }
+  tb: [4096] u8;
+  if t.out_n > tb.count { return no; }
+  for i: 0..<t.out_n - 1 { tb[i] = out[i]; }
+  tmp := cast(string) tb[0..<t.out_n - 1];
+  pa: [4096] u8; pb: [4096] u8; pc: [4096] u8;
+  suite_o := fs_join(tmp, "suite.o", pa[..]);
+  unit_o := fs_join(tmp, "unit.o", pb[..]);
+  shim := fs_join(root, "coax/web/native-check.c", pc[..]);
+  exe := fs_join(tmp, "checks", into);
+  a1 := [5] string.[coax, "lib", su_base(s.path), "-o", suite_o];
+  a2 := [5] string.[coax, "lib", s.native, "-o", unit_o];
+  a3 := [8] string.["cc", "-O1", shim, suite_o, unit_o, "-lm", "-o", exe];
+  r1 := su_run(a1[..], dir, out);
+  if r1.started != 0 || r1.status != 0 { no.said = r1.out_n; su_rm(tmp); return no; }
+  r2 := su_run(a2[..], dir, out);
+  if r2.started != 0 || r2.status != 0 { no.said = r2.out_n; su_rm(tmp); return no; }
+  r3 := su_run(a3[..], dir, out);
+  if r3.started != 0 || r3.status != 0 { no.said = r3.out_n; su_rm(tmp); return no; }
+  return Native.{exe = exe};
+}
+
 su_contains :: (hay: string, needle: string) -> bool {
   if needle.count == 0 { return false; }
   for i: 0..<hay.count - needle.count + 1 { if su_starts(hay, i, needle) { return true; } }
   return false;
 }
 
-Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [6] [256] u8; fail_n: [6] int; fails_kept: int; }
+Lane :: struct { h: int; suite: int; started_ms: int; last: [512] u8; last_n: int; fails: [6] [256] u8; fail_n: [6] int; fails_kept: int; tmp: [4096] u8; tmp_n: int; }   // tmp: a native suite's build, removed when it ends
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -274,6 +335,8 @@ tool_main :: () -> int #export_c {
     i = e + 1;
   }
   loads: [SU_LOADS] string; nl := 0;
+  load_by: [SU_LOADS] int;     // the file each #load is in
+  tested: [SU_FILES] bool;     // that file has checks of its own
   cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; nc := 0;
   pb: [4096] u8;
   for f: 0..<nf {
@@ -283,21 +346,36 @@ tool_main :: () -> int #export_c {
     text := cast(string) big[0..<n];
     from := nl;
     nl = su_loads(text, path, arena[..], loads[..], nl);
-    if su_in(path) && su_has_tests(text) && nc < SU_SUITES {
-      h := su_head(text, su_base(path));
+    for k: from..<nl { load_by[k] = f; }
+    tested[f] = su_in(path) && (su_has_tests(text) || su_head(text, su_base(path)).found);   // and so runs here
+    h := ifx su_in(path) then su_head(text, su_base(path)) else SuHead.{};
+    if su_in(path) && (su_has_tests(text) || h.found) && nc < SU_SUITES {
       // a #load that isn't in the tree: generated by the build (projects/baked.coax) or staged (a template)
       missing := "";
       for k: from..<nl { if missing.count == 0 && !fs_exists(fs_join(root, loads[k], pb[..])) { missing = loads[k]; } }
-      cand[nc] = Suite.{path = path, steps = su_keep(arena[..], h.steps), library = h.library, root_only = h.root_only, missing = missing};
+      cand[nc] = Suite.{path = path, steps = su_keep(arena[..], h.steps), run_steps = su_keep(arena[..], h.run_steps), library = h.library, root_only = h.root_only, native = su_keep(arena[..], h.native), missing = missing};
       heads[nc] = h.found; nc += 1;
     }
   }
   if arena[0].full || nl >= SU_LOADS || nf >= SU_FILES || nc >= SU_SUITES { tool_errln("suites: more files than it keeps; raise SU_*"); return 2; }
 
+  // A file runs inside a suite here that loads it, directly or through files
+  // without checks: covered, from the loads, until nothing changes.
+  load_to: [SU_LOADS] int;
+  for l: 0..<nl { load_to[l] = -1; for f: 0..<nf { if files[f] == loads[l] { load_to[l] = f; break; } } }
+  covered: [SU_FILES] bool;
+  grew := true;
+  while grew {
+    grew = false;
+    for l: 0..<nl {
+      to := load_to[l]; by := load_by[l];
+      if to >= 0 && to != by && !covered[to] && (tested[by] || covered[by]) { covered[to] = true; grew = true; }
+    }
+  }
   suites: [SU_SUITES] Suite; ns := 0;
   for c: 0..<nc {
     loaded := false;
-    for l: 0..<nl { if loads[l] == cand[c].path { loaded = true; break; } }
+    for f: 0..<nf { if files[f] == cand[c].path { loaded = covered[f]; break; } }
     if loaded && !heads[c] { continue; }
     if only.count > 0 {
       hit := false; s := 0;
@@ -321,7 +399,15 @@ tool_main :: () -> int #export_c {
       av4 := [3] string.[coax, "deps", su_base(suites[s].path)];
       deps := su_run(av4[..], dir, big[..]);
       touched := deps.started != 0 || deps.status != 0;   // can't tell: run it
-      text := cast(string) big[0..<deps.out_n];
+      n_deps := deps.out_n;
+      if suites[s].native.count > 0 && !touched {
+        // the unit it links is a source too
+        av5 := [3] string.[coax, "deps", suites[s].native];
+        unit := su_run(av5[..], dir, big[n_deps..<big.count]);
+        if unit.started != 0 || unit.status != 0 { touched = true; }
+        n_deps += unit.out_n;
+      }
+      text := cast(string) big[0..<n_deps];
       c := 0;
       while !touched && c < d.out_n {
         e := c;
@@ -346,8 +432,10 @@ tool_main :: () -> int #export_c {
     for s: 0..<ns {
       su_say(suites[s].path);
       if suites[s].steps.count > 0 { su_say("  --steps "); su_say(suites[s].steps); } else { su_say("  default"); }
+      if suites[s].run_steps.count > 0 { su_say(" --run-steps "); su_say(suites[s].run_steps); }
       if suites[s].library { su_say(" --library"); }
       if suites[s].root_only { su_say(" --root-only"); }
+      if suites[s].native.count > 0 { su_say(" --native-link "); su_say(suites[s].native); }
       if suites[s].missing.count > 0 { su_say("  (skipped here: loads "); su_say(suites[s].missing); su_say(", not in the tree)"); }
       su_say("\n");
     }
@@ -371,16 +459,33 @@ tool_main :: () -> int #export_c {
     for l: 0..<jobs {
       if lanes[l].h < 0 && next < ns {
         s := suites[next];
-        h := proc_new();
-        ok := h >= 0 && proc_cwd(h, fs_join(root, su_dir(s.path), db2[..])) && proc_arg(h, coax) && proc_arg(h, "test") && proc_arg(h, su_base(s.path));
-        if s.steps.count > 0 { ok = ok && proc_arg(h, "--steps") && proc_arg(h, s.steps); }
-        if s.library { ok = ok && proc_arg(h, "--library"); }
-        if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
+        dir := fs_join(root, su_dir(s.path), db2[..]);
+        h := -1; ok := true; said := 0; run_n := 0;
+        run_buf: [4096] u8;
+        if s.native.count > 0 {
+          // built here, before its lane starts: a few seconds
+          nb := su_native_build(coax, root, dir, s, big[..], run_buf[..]);
+          ok = nb.exe.count > 0; run_n = nb.exe.count;
+          said = ifx nb.said < 2000 then nb.said else 2000;
+          h = ifx ok then proc_new() else -1;
+          ok = ok && h >= 0 && proc_cwd(h, dir) && proc_arg(h, nb.exe);
+        } else {
+          h = proc_new();
+          ok = h >= 0 && proc_cwd(h, dir) && proc_arg(h, coax) && proc_arg(h, "test") && proc_arg(h, su_base(s.path));
+          if s.steps.count > 0 { ok = ok && proc_arg(h, "--steps") && proc_arg(h, s.steps); }
+          if s.run_steps.count > 0 { ok = ok && proc_arg(h, "--run-steps") && proc_arg(h, s.run_steps); }
+          if s.library { ok = ok && proc_arg(h, "--library"); }
+          if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
+        }
+        lanes[l].tmp_n = 0;
+        if ok && s.native.count > 0 { lanes[l].tmp_n = run_n - 7; for k: 0..<run_n - 7 { lanes[l].tmp[k] = run_buf[k]; } }   // less "/checks"
         lanes[l].suite = next; lanes[l].last_n = 0; lanes[l].fails_kept = 0; lanes[l].started_ms = proc_now_ms();
         next += 1;
         if !ok || proc_start(h) != 0 {
           if h >= 0 { r := proc_release(h); }
-          su_say("FAIL "); su_say(s.path); su_say(": the compiler did not start\n"); failed += 1; done += 1;
+          su_say("FAIL "); su_say(s.path); su_say(ifx s.native.count > 0 then ": the native build failed\n" else ": the compiler did not start\n");
+          if said > 0 { su_say(cast(string) big[0..<said]); }
+          failed += 1; done += 1;
           continue;
         }
         lanes[l].h = h;
@@ -412,6 +517,9 @@ tool_main :: () -> int #export_c {
       err: [2048] u8;
       tail := proc_stderr(h, err[..]);
       r := proc_release(h);
+      if lanes[l].tmp_n > 0 {
+        su_rm(cast(string) lanes[l].tmp[0..<lanes[l].tmp_n]);
+      }
       lanes[l].h = -1; done += 1;
       s := suites[lanes[l].suite];
       last := cast(string) lanes[l].last[0..<lanes[l].last_n];

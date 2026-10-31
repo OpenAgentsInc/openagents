@@ -1,0 +1,5 @@
+// The checks of secp_mult_base_native.coax, which a verification record pins
+// byte for byte (docs/verification/2026-10-29-secp-field-guard-proof.json),
+// so its run line lives here.
+// Checks: coax test coax/lib/crypto/secp_mult_base_native-checks.coax --library --run-steps 250000000
+#load "secp_mult_base_native.coax";

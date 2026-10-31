@@ -3,6 +3,8 @@
 // same levels with createImageBitmap (coax/web/host.js layerTexture); here each level is the
 // one above halved by a 2x2 box, its colour weighted by alpha as a premultiplied resize weighs
 // it, so a transparent texel's colour does not bleed into the next level.
+//
+// Checks: coax test coax/lib/image/image.coax --library (no main of its own).
 #authority;
 #load "png.coax";
 #load "jpeg.coax";

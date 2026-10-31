@@ -14,6 +14,8 @@
 // here the 16 products add in f64 and the sum rounds once into C. The device
 // may round its partial sums differently, so a device result is compared
 // within a tolerance, not bit for bit.
+//
+// Checks: coax test coax/lib/compute/mma.coax --library (no main of its own).
 #authority;
 
 cu_bf16 :: (word:u32,high:bool)->f32 {

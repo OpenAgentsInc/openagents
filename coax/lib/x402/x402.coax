@@ -9,6 +9,8 @@
 // guessed. The accepted terms go back byte for byte, as the server sent
 // them. Nothing allocates: callers hand in buffers. The Lab uses it
 // (apps/openagents-desktop/zeron/microcoder.coax).
+//
+// Checks: coax test coax/lib/x402/x402.coax --library (no main of its own).
 #load "../nostr/json.coax";
 
 X402_MAINNET :: "lnbtc:000000000019d6689c085ae165831e93";
