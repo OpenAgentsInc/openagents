@@ -199,7 +199,7 @@ OUTBOX :: 256;
 HOST_FACTS :: 600;
 MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
-BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BUTTONS :: 7;
+BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BTN_QUICK :: 7; BUTTONS :: 8;
 
 SBox :: struct { c: D3; h: D3; }
 // A spark: a short-lived streak of light (a hit's, a goal's).
@@ -1144,11 +1144,11 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
     url := fact_of(text, "url");
     if has_text(url, "mode=2v2") { s[0].mode_set = true; set_mode(s, CARS); }
     else if has_text(url, "mode=1v1") { s[0].mode_set = true; set_mode(s, 2); }
-    else if s[0].touch && !s[0].mode_set && s[0].cars_n != CARS && !has_text(url, "room=") { set_mode(s, CARS); }
+    else if s[0].touch && !s[0].mode_set && s[0].cars_n != CARS && !has_text(url, "room=") && !has_text(url, "quick=") { set_mode(s, CARS); }
   }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=pro") { s[0].bot_smart = true; s[0].bot_miss_k = 0.3; }
   if kind == HOST_FACTS { s[0].lag = cast(f64) url_number(fact_of(text, "url"), "lag=") / 1000.0; }
-  if kind == HOST_FACTS && !s[0].online && has_text(fact_of(text, "url"), "room=") { room_join(s, fact_of(text, "url")); }
+  if kind == HOST_FACTS && !s[0].online && (has_text(fact_of(text, "url"), "room=") || has_text(fact_of(text, "url"), "quick=")) { room_join(s, fact_of(text, "url")); }
   if room_socket(s, kind, text) { return; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; s[0].cars_n = 2; kickoff(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
@@ -1296,6 +1296,47 @@ ball_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
   sp := d3_len(s[0].bodies[BALL].vel);
   if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
 }
+// ol-quick-match: one STEP for the room's bots, the seats no player has
+// (seat = car: even seats blue, odd magenta, in the room's own frame). The
+// players' cars are copied in so the bots see them; each bot drives the game's
+// bot (bot_drive) through the same vehicle physics, against the arena.
+room_bots :: (s: [] OrbitLeague, cars: [] RigidBody, human: [] bool, seats: int) {
+  s[0].cars_n = seats;
+  for c: 0..<seats { if human[c] { s[0].bodies[c + 1] = cars[c]; } }
+  cp := car_planes(); dm := arena_drum();
+  for c: 0..<seats {
+    if human[c] { continue; }
+    i := c + 1;
+    d := bot_drive(s, c);
+    dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[i].pos) else drum_planes(dm, s[0].bodies[i].pos);
+    planes := ifx curved(s) then dp[..] else cp[..];
+    st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], d.input, planes, gravity_at(s[0].field, s[0].bodies[i].pos), STEP);
+    b := st.body; s[0].cars[c] = st.state;
+    s[0].boosting[c] = false;
+    if d.boost {
+      t := thruster_budget(d3(0.0, -0.05, -2.1), D3_Z, BOOST_FORCE, BOOST_RATE);
+      burn := thrust_apply(b, t, s[0].tanks[c], 1.0, STEP);
+      b = burn.body; s[0].tanks[c] = burn.tank; s[0].boosting[c] = burn.thrust > 0.0;
+    } else if s[0].cars[c].wheels > 0 { s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + BOOST_REGEN * STEP); }
+    one: [1] RigidBody; one[0] = b;
+    w := rigid_world(STEP, one[..]);
+    w = rigid_step(w, D3_ZERO);
+    b = vehicle_collide(one[0], s[0].spec, planes, 0.1, CAR_WALL_MU);
+    // it touched the ball: it coasts a moment and draws a new miss, as offline
+    if d3_dist(b.pos, s[0].bodies[BALL].pos) < BALL_R + 2.6 && s[0].played - s[0].bot_touch_t[c] > bot_recover(s) { bot_hit(s, c); }
+    s[0].bodies[i] = b;
+    cars[c] = b;
+  }
+}
+// A quick match's bots at their kickoff spots (the game's kickoff, room frame).
+room_bots_kickoff :: (s: [] OrbitLeague, cars: [] RigidBody, human: [] bool, seats: int) {
+  s[0].no_bot = false; s[0].cars_n = seats;
+  // the room's own kickoff set the ball, the phase and its clock: kept
+  ball := s[0].bodies[BALL]; phase := s[0].phase; t := s[0].phase_t;
+  kickoff(s);
+  s[0].bodies[BALL] = ball; s[0].phase = phase; s[0].phase_t = t;
+  for c: 0..<seats { if !human[c] { cars[c] = s[0].bodies[c + 1]; } }
+}
 // The state frame for the player in `seat`; cars[i] is seat seats[i]'s.
 room_state :: (s: [] OrbitLeague, tick: int, seat: int, cars: [] RigidBody, seats: [] int, players: int, buf: [] u8) -> int {
   return room_state_echo(s, tick, seat, cars, seats, players, -1, buf);
@@ -1342,10 +1383,13 @@ room_join :: (s: [] OrbitLeague, url: string) {
   i := 0; key := "room=";
   found := -1;
   while i + key.count <= url.count { if url[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  // ?quick=1v1 or ?quick=2v2: the room server's matchmaking (ol-quick-match)
+  named := url;
+  if found < 0 && has_text(url, "quick=") { named = ifx has_text(url, "quick=2v2") then "room=quick-2v2" else "room=quick-1v1"; found = 5; }
   if found < 0 { return; }
   n := 0; j := found;
-  while j < url.count && n < ROOM_NAME {
-    c := url[j];
+  while j < named.count && n < ROOM_NAME {
+    c := named[j];
     if c >= 'A' && c <= 'Z' { c += 32; }
     if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { break; }
     s[0].room[n] = c; n += 1; j += 1;
@@ -1403,23 +1447,33 @@ room_take :: (s: [] OrbitLeague, text: string) {
   }
   s[0].phase = phase; s[0].phase_t = cast(f64) phase_ms / 1000.0; s[0].clock = cast(f64) clock_ms / 1000.0;
   s[0].score[0] = now_mine; s[0].score[1] = now_theirs;
-  // the first other player is drawn as the magenta car; a room alone parks it
-  if others > 0 {
+  // the others (players, or a quick match's bots): the first opponent is the
+  // magenta car, drawn between its states; a teammate the blue mate; a second
+  // opponent the other magenta car. A seat nobody has is parked under the floor.
+  opp := 0; mated := false;
+  for k: 0..<others {
     other_seat := room_int(text, at[..], ok[..]);
     car := room_body(text, at[..], ok[..], s[0].bodies[BOT]);
-    if ok[0] {
-      s[0].bodies[BOT] = room_view(car, seat);
+    if !ok[0] { break; }
+    b := room_view(car, seat);
+    if other_seat % 2 == mine {
+      if !mated { s[0].bodies[MATE] = b; mated = true; }
+      continue;
+    }
+    if opp == 0 {
+      s[0].bodies[BOT] = b;
       gap := s[0].net_t - s[0].oth_at;
       if s[0].oth_n > 0 && gap > 0.0 && gap < 0.5 { s[0].oth_gap += (gap - s[0].oth_gap) * 0.1; }
       s[0].oth_prev = ifx s[0].oth_n > 0 then room_other(s) else s[0].bodies[BOT];
       s[0].oth_last = s[0].bodies[BOT]; s[0].oth_at = s[0].net_t; s[0].oth_n = ifx s[0].oth_n < 2 then s[0].oth_n + 1 else 2;
       if kicked { s[0].oth_prev = s[0].oth_last; }
-    }
-    for k: 1..<others { skip_seat := room_int(text, at[..], ok[..]); skip := room_body(text, at[..], ok[..], car); }
-  } else {
-    s[0].bodies[BOT] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -40.0, 0.0), DQ.{});
-    s[0].oth_n = 0;
+    } else if opp == 1 { s[0].bodies[RIVAL] = b; }
+    opp += 1;
   }
+  if opp == 0 { s[0].bodies[BOT] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -40.0, 0.0), DQ.{}); s[0].oth_n = 0; }
+  if !mated { s[0].bodies[MATE] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -1030.0, 0.0), DQ.{}); }
+  if opp < 2 { s[0].bodies[RIVAL] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -1040.0, 0.0), DQ.{}); }
+  s[0].cars_n = ifx mated || opp > 1 then CARS else 2;
   // the round trip: the server sends back the last clock you sent
   echo := room_int(text, at[..], ok[..]);
   if ok[0] && echo >= 0 {
@@ -1434,10 +1488,11 @@ room_take :: (s: [] OrbitLeague, text: string) {
   s[0].bodies[BALL] = room_view(ball, seat);
   if phase == PHASE_PLAY && !kicked {
     n := cast(int) fmin(fmin(cast(f64) PREDICT_MAX, cast(f64) s[0].hist_n), floor(s[0].rtt / STEP + 0.5));
-    cars: [2] RigidBody; cars[1] = s[0].bodies[BOT];
+    cars: [CARS] RigidBody;
+    for c: 1..<CARS { cars[c] = s[0].bodies[c + 1]; }
     for i: 0..<n {
       cars[0] = s[0].you_hist[(s[0].hist_n - n + i) % HIST];
-      ball_step(s, cars[..], ifx others > 0 then 2 else 1);
+      ball_step(s, cars[..], ifx others > 0 then s[0].cars_n else 1);
     }
   }
   err := d3_sub(shown, s[0].bodies[BALL].pos);
@@ -1519,6 +1574,13 @@ take_maker :: (s: [] OrbitLeague, text: string) {
   s[0].maker_n = n;
 }
 
+// QUICK MATCH: this mode's queue on the room server (ol-quick-match).
+quick_match :: (s: [] OrbitLeague) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, ifx s[0].cars_n == CARS then "/realms/orbit-league/?quick=2v2" else "/realms/orbit-league/?quick=1v1");
+  s[0].action = ACT_NAVIGATE;
+  track_tally(s[0].track[..], "quick", "");
+}
 // TIP: the maker's tip page.
 tip :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/orbit-league/tip"); s[0].action = ACT_NAVIGATE; } }
 
@@ -1600,6 +1662,7 @@ game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: i
       s[0].button_id[b] = id;
       if b == BTN_CAM { toggle_cam(s); }
       if b == BTN_AGAIN { play_again(s); }
+      if b == BTN_QUICK { quick_match(s); }
       if b == BTN_MODE { set_mode(s, ifx s[0].cars_n == CARS then 2 else CARS); track_tally(s[0].track[..], ifx s[0].cars_n == CARS then "2v2" else "1v1", ""); }
       if b == BTN_ARENA { set_arena_kind(s, (arena_kind(s) + 1) % 3); track_tally(s[0].track[..], ifx s[0].sphere then "sphere" else ifx s[0].drum then "drum" else "box", ""); }
       if b == BTN_BOOST { track_tally(s[0].track[..], "boost", ""); }
@@ -1946,7 +2009,11 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y1 + 26 * k, 9 * k, white(k, 0.85));
   }
   // the middle: the countdown, a goal, the end
-  if s[0].phase == PHASE_KICKOFF {
+  if s[0].phase == PHASE_KICKOFF && s[0].phase_t < 0.0 {
+    v = centred(d, out, v, "FINDING PLAYERS", w * 0.5, h * 0.3, 16 * k, white(k * 1.4, 1));
+    n = put_int(buf[..], 0, cast(int) ceil_d(-s[0].phase_t));
+    v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, h * 0.3 + 34 * k, 11 * k, white(k, 0.8));
+  } else if s[0].phase == PHASE_KICKOFF {
     left := cast(int) ceil_d(KICKOFF - s[0].phase_t);
     n = put_int(buf[..], 0, left);
     v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, h * 0.3, 52 * k, ink(1.5 * k, 1, 4 * k, PARCH_R, PARCH_G, PARCH_B));
@@ -1976,6 +2043,8 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     if !s[0].online {
       mb := Box.{x0 = db.x0, y0 = db.y1 + 10 * k, x1 = db.x1, y1 = db.y1 + 44 * k};
       v = hud_button(s, out, v, BTN_MODE, mb, ifx s[0].cars_n == CARS then "PLAY 1V1" else "PLAY 2V2", 8 * k);
+      qb := Box.{x0 = db.x0, y0 = mb.y1 + 10 * k, x1 = db.x1, y1 = mb.y1 + 44 * k};
+      v = hud_button(s, out, v, BTN_QUICK, qb, ifx s[0].cars_n == CARS then "QUICK MATCH 2V2" else "QUICK MATCH 1V1", 8 * k);
     }
   }
   // boost, bottom right (above the buttons on a phone)

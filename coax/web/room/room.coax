@@ -20,14 +20,19 @@ ROOMS :: 8;
 CONNS :: 32;
 PATH :: "/api/room/orbit-league/";
 
+QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
+
 RmConn :: struct { live: bool; room: int = -1; seat: int = -1; echo: int = -1; }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
+  bot_kicks: int;      // the kickoff its bots were last set out for
   live: bool; tick: int;
+  quick: int;          // a quick match's seats (2: 1v1, 4: 2v2; bots in the empty ones); 0 a named room
   s: [1] OrbitLeague;
   cars: [ROOM_PLAYERS] RigidBody;
 }
 RmServer :: struct {
+  quick_n: int;      // quick matches made: each gets its own room name
   conns: [CONNS] RmConn;
   rooms: [ROOMS] RmRoom;
   out: [2048] u8;    // the last frame written for the host to send
@@ -66,9 +71,38 @@ rm_find :: (rooms: [] RmRoom, name: string) -> int {
   }
   if free < 0 { return -1; }
   for i: 0..<name.count { rooms[free].name[i] = name[i]; }
-  rooms[free].name_n = name.count; rooms[free].live = true; rooms[free].tick = 0;
+  rooms[free].name_n = name.count; rooms[free].live = true; rooms[free].tick = 0; rooms[free].quick = 0;
   room_reset(rooms[free].s[..]);
   return free;
+}
+// QUICK MATCH (ol-quick-match): "quick-1v1" or "quick-2v2" joins the mode's
+// newest match that is still finding players and has a seat; else a new one,
+// which waits QUICK_WAIT for players before its bots take the empty seats.
+rm_quick :: (v: [] RmServer, name: string) -> int {
+  seats := ifx name == "quick-2v2" then ROOM_PLAYERS else 2;
+  for r: 0..<ROOMS {
+    m := v[0].rooms[r];
+    if !m.live || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 || m.s[0].kicks > 1 { continue; }
+    if rm_seat(v[0].conns[..], r) >= 0 && rm_seat(v[0].conns[..], r) < seats { return r; }
+  }
+  v[0].quick_n += 1;
+  buf: [ROOM_NAME] u8; k := 0;
+  for b: "q" { buf[k] = b; k += 1; }
+  buf[k] = cast(u8) ('0' + seats / 2); k += 1;
+  buf[k] = '-'; k += 1;
+  k = put_int(buf[..], k, v[0].quick_n);
+  r := rm_find(v[0].rooms[..], cast(string) buf[0..<k]);
+  if r < 0 { return -1; }
+  v[0].rooms[r].quick = seats;
+  v[0].rooms[r].s[0].phase_t = -QUICK_WAIT;
+  return r;
+}
+// The seats a room plays: a quick match's, else every seat.
+rm_seats :: (m: RmRoom) -> int { return ifx m.quick > 0 then m.quick else ROOM_PLAYERS; }
+// Which of a room's seats a player has.
+rm_humans :: (v: [] RmServer, r: int, human: [] bool) {
+  for i: 0..<ROOM_PLAYERS { human[i] = false; }
+  for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].room == r { human[v[0].conns[i].seat] = true; } }
 }
 // The lowest seat nobody in room r has, or -1 when it is full.
 rm_seat :: (conns: [] RmConn, r: int) -> int {
@@ -87,14 +121,20 @@ rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
   name: [ROOM_NAME] u8;
   n := rm_path_room(request, name[..]);
   if n == 0 { return -1; }
-  r := rm_find(v[0].rooms[..], cast(string) name[0..<n]);
+  named := cast(string) name[0..<n];
+  r := ifx named == "quick-1v1" || named == "quick-2v2" then rm_quick(v, named) else rm_find(v[0].rooms[..], named);
   if r < 0 { return -1; }
   seat := rm_seat(v[0].conns[..], r);
-  if seat < 0 { return -1; }
+  if seat < 0 || seat >= rm_seats(v[0].rooms[r]) { return -1; }
   v[0].conns[conn] = RmConn.{live = true, room = r, seat = seat};
   // it waits at its end's spawn until it reports
   b := vehicle_body(v[0].rooms[r].s[0].spec, CAR_MASS, d3(cast(f64) (seat / 2) * 6.0, 1.0, -SPAWN_Z), DQ.{});
   v[0].rooms[r].cars[seat] = room_view(b, seat);
+  // a full quick match stops waiting
+  if v[0].rooms[r].quick > 0 {
+    free := rm_seat(v[0].conns[..], r);
+    if free < 0 || free >= v[0].rooms[r].quick { v[0].rooms[r].s[0].phase_t = fmax(v[0].rooms[r].s[0].phase_t, 0.0); }
+  }
   return seat;
 }
 // A text frame from a player: its car.
@@ -116,9 +156,25 @@ rm_tick :: (v: [] RmServer) #export_c {
     cars: [ROOM_PLAYERS] RigidBody; n := 0;
     for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; n += 1; } }
     if n == 0 { v[0].rooms[r].live = false; continue; }
+    if v[0].rooms[r].quick > 0 { rm_quick_tick(v, r); v[0].rooms[r].tick += 1; continue; }
     room_step(v[0].rooms[r].s[..], cars[..], n);
     room_step(v[0].rooms[r].s[..], cars[..], n);
     v[0].rooms[r].tick += 1;
+  }
+}
+// A quick match's tick: its bots drive (set out again at each kickoff), and
+// the ball meets every car, the players' and the bots'.
+rm_quick_tick :: (v: [] RmServer, r: int) {
+  seats := v[0].rooms[r].quick;
+  human: [ROOM_PLAYERS] bool;
+  rm_humans(v, r, human[..]);
+  for k: 0..<2 {
+    if v[0].rooms[r].s[0].kicks != v[0].rooms[r].bot_kicks {
+      v[0].rooms[r].bot_kicks = v[0].rooms[r].s[0].kicks;
+      room_bots_kickoff(v[0].rooms[r].s[..], v[0].rooms[r].cars[..], human[..], seats);
+    }
+    room_bots(v[0].rooms[r].s[..], v[0].rooms[r].cars[..], human[..], seats);
+    room_step(v[0].rooms[r].s[..], v[0].rooms[r].cars[..], seats);
   }
 }
 // What conn hears this tick, written to out: its length (0: nothing).
@@ -129,6 +185,12 @@ rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
   cars: [ROOM_PLAYERS] RigidBody; seats: [ROOM_PLAYERS] int; n := 0;
   for i: 0..<CONNS {
     if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; seats[n] = v[0].conns[i].seat; n += 1; }
+  }
+  // a quick match's bots, in the seats nobody has
+  if v[0].rooms[r].quick > 0 {
+    human: [ROOM_PLAYERS] bool;
+    rm_humans(v, r, human[..]);
+    for seat: 0..<v[0].rooms[r].quick { if !human[seat] { cars[n] = v[0].rooms[r].cars[seat]; seats[n] = seat; n += 1; } }
   }
   return room_state_echo(v[0].rooms[r].s[..], v[0].rooms[r].tick, v[0].conns[conn].seat, cars[..], seats[..], n, v[0].conns[conn].echo, v[0].out[..]);
 }
@@ -180,4 +242,28 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   // everyone leaves: the room closes at the next tick
   rm_left(v[..], 0); rm_left(v[..], 1); rm_tick(v[..]);
   #assert !v[0].rooms[0].live && rm_players(v[..]) == 1;
+}
+
+#test "QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  q1 := "GET /api/room/orbit-league/quick-1v1 HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, q1) == 0 && rm_join(v[..], 1, q1) == 1;
+  #assert v[0].conns[0].room == v[0].conns[1].room && v[0].rooms[v[0].conns[0].room].quick == 2;
+  // full: it stops waiting and counts down
+  #assert v[0].rooms[v[0].conns[0].room].s[0].phase_t >= 0.0;
+  #assert rm_join(v[..], 2, q1) == 0 && v[0].conns[2].room != v[0].conns[0].room;
+  // a 2v2 with one player: it waits, then three bots play
+  q2 := "GET /api/room/orbit-league/quick-2v2 HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 3, q2) == 0;
+  r := v[0].conns[3].room;
+  #assert v[0].rooms[r].quick == ROOM_PLAYERS && v[0].rooms[r].s[0].phase_t < 0.0;
+  n := rm_state(v[..], 3);
+  a: [1] OrbitLeague; game_reset(a[..]); a[0].online = true; a[0].no_bot = true;
+  room_take(a[..], cast(string) v[0].out[0..<n]);
+  #assert a[0].cars_n == CARS && a[0].phase == PHASE_KICKOFF && a[0].phase_t < 0.0;
+  for t: 0..<cast(int) ((QUICK_WAIT + KICKOFF + 1.5) * 60.0) { rm_tick(v[..]); }
+  m := v[0].rooms[r];
+  #assert m.s[0].phase == PHASE_PLAY;
+  for seat: 1..<ROOM_PLAYERS { #assert d3_len(m.cars[seat].vel) > 3.0 && m.cars[seat].pos.y > 0.0 && m.cars[seat].pos.y < 3.0; }
 }
