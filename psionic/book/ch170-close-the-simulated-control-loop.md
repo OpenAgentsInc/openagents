@@ -1275,7 +1275,8 @@ limit. A legal applied endpoint can produce an illegal net force when the bias
 opposes it; the query refuses and preserves caller output. It never clips the
 force into the admitted box. Those large mathematical limits are separate from
 motor command limits. In particular, the controller's finger-position targets
-are metres, while this query requires newtons. Actuator mapping is still absent.
+are metres, while this query requires newtons. The separate actuator map below
+converts those targets; this forward query does not perform that conversion.
 
 The [runnable example](../examples/panda-forward-dynamics.coax) supplies the
 original SDK force from retained context13. The original acceleration was
@@ -1329,6 +1330,77 @@ gravity-driven joint acceleration; it does not turn gravity off. Passive forces,
 damping, contact, actuator conversion and integration are still absent. It is
 not a comparison with the SDK's fully assembled `mj_forward.qacc`, a simulated
 step, a controller rollout, compiler-bounded control or hardware execution.
+
+## A controller target becomes an actuator force
+
+The forward query consumes generalized force, but our controller returns two
+different kinds of control. Its seven arm values are joint forces; its two
+finger values are signed position targets in metres. Passing those metres to
+the newton inputs would change their meaning. The [actuator query](../lib/robotics/panda-actuation.coax)
+keeps the distinction in its typed API.
+
+For the admitted original source profile, arm controls first clamp to five
+±80 and two ±12 ranges. Finger targets clamp to `[0,.04]` and `[-.04,0]`
+metres, then their fixed-gain/affine-bias actuator forces clamp to ±20N. The
+right target stays signed; there is no extra normalized gripper-command map.
+The two products remain separate in source order:
+
+```jai
+finger_force = 1000 * clipped_target + (-1000 * joint_position)
+```
+
+The result keeps actuator force and JOINT-passive force separate. Source joint
+springs are exactly zero, so the latter is viscous damping. The servo's 1000
+coefficient belongs to actuation, not that passive spring model. One can inspect
+the forces without taking a physics step or issuing a command.
+
+<!-- source: psionic/examples/panda-actuation.coax pa-query -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ u:[7]pfku.Quantity(PmHingeGravity,f64);target:[2]pfku.Quantity(pfku.Metre,f64);
+ coordinates:=[9]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483,0.01,-0.01];rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];controls:=[9]f64.[100,-100,100,-100,100,-20,20,0.05,-0.05];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];u[i].value=controls[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];sv[i].value=rates[7+i];target[i].value=controls[7+i];}
+ forces:[1]PaOutput;#assert pa_forward(q[..],s[..],v[..],sv[..],u[..],target[..],forces[..])==PfkStatus.ok;
+ print("clipped controls: %, forces: %\n",forces[0].control_clipped,forces[0].force_clipped);
+ for i:0..<7 {print("hinge % actuator/joint (micro-J/rad): % %\n",i+1,pa_example_micro(forces[0].actuator.hinge[i].value),pa_example_micro(forces[0].joint_passive.hinge[i].value));}
+ for i:0..<2 {print("slide % actuator/joint (micro-N): % %\n",i+1,pa_example_micro(forces[0].actuator.slide[i].value),pa_example_micro(forces[0].joint_passive.slide[i].value));}
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-actuation.coax
+coax/bin/coax run psionic/examples/panda-actuation.coax --release
+COAX=coax/bin/coax psionic/tests/robotics/panda_actuation_check.sh /tmp/panda-actuation-new
+```
+
+The [frozen experiment](../fixtures/robotics/panda-actuation/experiment.json)
+uses 18 new q/rate/control contexts. The independent SDK acquisition first
+admits the compiled actuator profile, then performs exactly 18 forwards with
+no steps, rendering or model inference. It retains separate spring, damper,
+gravity-compensation, fluid and full-passive vectors, actuator-space and
+generalized forces, transmission/control data, and full-system acceleration/
+constraint diagnostics. The latter are future evidence, not owned results.
+
+Debug, release and fail-fast ASan/UBSan each pass 3,960 native assertions. All 162
+actuator, 162 generalized-actuator and 162 joint-passive coefficients agree
+numerically exactly with the SDK and an independent scalar oracle. The frozen
+comparison bound remains 5e-11 absolute, with zero relative tolerance. Exact
+clipping counts come from the independent source-profile oracle; force/count
+output bytes agree across the three owned profiles. Complete finite guards
+precede every maximum, and failed calls preserve caller output even when it
+overlaps inputs. Eight Coax groups cover 135 cases. The record names the unchanged typed-entry body and its carried initial kills,
+the math 20/20 scope and raw-only 25/25 follow-up, while retaining the original
+97/98 missing-observation failure. It makes no aggregate final-rerun score;
+quantity operator-token coverage remains an explicit compiler limitation.
+
+Joint passive is not full passive. The original model enables fluid: retained
+hinge-fluid coefficients reach 4.701012241 energy/radian, and slide-fluid
+coefficients reach 0.859280139N. The fluid calculation still needs an owned
+implementation. `dof_frictionloss` belongs to the constraint solver, so we do
+not invent a Coulomb term in the damping output. Contacts, constraint forces,
+integration, full SDK acceleration parity, compiler-bounded control and hardware
+remain separate milestones.
 
 ## Build the controller sample from one owned state
 

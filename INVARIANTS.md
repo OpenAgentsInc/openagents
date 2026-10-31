@@ -314,6 +314,27 @@ passes. Source-visible helpers remain trusted and unsealed. Passive forces,
 contacts, integration, complete SDK qacc parity, compiler bounded control and
 hardware execution remain separate qualifications.
 
+## Actuation keeps signed position targets and joint passive force distinct
+
+The fixed-source actuation query admits all shapes and finite numerical boxes
+before arithmetic. Arm controls are generalized forces; finger controls are
+already signed metre-valued targets. Clamp controls first, preserve the separate
+fixed-gain/affine-bias operation order, then clamp finger force. No second right-
+finger sign flip or normalized command transformation occurs. Strict clipping
+counts and every force publish together; refusals preserve complete output.
+
+Actuator and joint-passive outputs remain separate. Joint stiffness is exactly
+zero in the admitted profile, so joint passive specializes to typed damping.
+The source fluid is nonzero, and frictionloss belongs to constraints: neither
+may be silently inserted into or omitted from a claimed full passive result.
+SDK support admission precedes all eighteen new case forwards; all parameter,
+flag, named-DOF/gear and actual sparse-row facts stay bound to their receipts.
+Named math, initial-wrapper and raw-only mutation results retain distinct scope
+and the first missing-observation failure; quantity-token coverage remains
+incomplete. Numeric equality with SDK/scalar forces is separate from byte
+equality among owned modes. No integration, full qacc, contact, bounded-control
+or hardware qualification follows from this force query.
+
 ## The owned controller sample is one fresh query with a separate behavior proof
 
 The fixed-source constructor admits matching arm/finger positions and rates,

@@ -67,8 +67,13 @@ The [applied-force forward query](../../fixtures/robotics/panda-forward-dynamics
 now subtracts owned gravity-plus-velocity bias and composes the existing mass
 solve. Its separate applied/net caps, complete finite Gaussian/residual comparisons
 and original prescribed-acceleration corpus qualify an unconstrained query.
-Passive forces, contacts, actuator mapping and integration remain separate;
-a gravity-only query cannot replace the controller's nonzero-velocity bias sample. The
+The [fixed-source actuation and joint-passive query](../../fixtures/robotics/panda-actuation/README.md)
+now maps signed finger-position targets and arm controls to actuator force,
+with strict clipping and a separate viscous damping vector. Eighteen source-
+admitted SDK forwards and independent scalar/native checks qualify that map.
+Full passive still requires the source's nonzero fluid forces; friction/contact
+constraints and integration remain separate. A gravity-only query cannot
+replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The
 [explicit query selector and opt-in adapter](../../fixtures/robotics/panda-query-source/README.md)

@@ -88,7 +88,10 @@ its historical receipt is not a newly generated execution record.
 
 The [unconstrained applied-force query](../../fixtures/robotics/panda-forward-dynamics/README.md)
 separately composes the mass solve and velocity-dependent bias. It does not
-convert controller finger-position targets to force. The declared integrator,
-passive-force, actuator-mapping and contact contracts remain future work. Observation rendering, full snapshots, typed clocks and
+convert controller finger-position targets to force. The separate
+[actuator/joint-passive query](../../fixtures/robotics/panda-actuation/README.md)
+now supplies the admitted fixed-source control map and viscous joint damping.
+The source's nonzero fluid, full passive assembly, declared integrator and
+friction/contact constraints retain their own pending contracts. Observation rendering, full snapshots, typed clocks and
 compiler-enforced bounded control keep their separate gates in the
 [remaining sequence](owned-control-loop.md).

@@ -373,9 +373,19 @@ atomic refusal. The [example](examples/panda-forward-dynamics.coax) recovers a
 preselected original SDK acceleration. Run
 `psionic/check.sh --only robotics/panda-forward-dynamics` for its two authority
 roots and one Darwin-arm64 native/reference gate; other targets fail admission
-rather than count as skipped passes. Passive forces, contacts, actuator mapping
-and integration remain separate. The 85 killed emitted sites do not establish
+rather than count as skipped passes. This query does not assemble passive,
+actuator or contact force, or integrate. The 85 killed emitted sites do not establish
 complete quantity-subtraction token mutation coverage.
+
+The [fixed-source actuator query](fixtures/robotics/panda-actuation/README.md)
+now maps controller arm forces and signed finger-position targets to actuator
+forces, with control/force clipping and a separate joint-passive damping output.
+The [example](examples/panda-actuation.coax) preserves the metre/newton boundary.
+Run `psionic/check.sh --only robotics/panda-actuation` for its two authority
+roots and one offline Darwin-arm64 SDK-fact/scalar/native gate. Eighteen new
+forward-only captures qualify the source profile; the normal gate acquires no
+SDK data. Full passive/fluid, friction/contact constraints and integration remain
+separate; retained full-system acceleration fields are diagnostics.
 
 The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
 assembles the existing 144-word ABI from one admitted state. Its
