@@ -55,14 +55,69 @@ composition that puts the asked-for things where a first visit sees them.
 6. **Random numbers.** Made realms seed from an FNV hash of the realm's text
    (`seed_of`) and step a Park–Miller generator (`rand`, multiplier 48271).
    Everglade and the Sandbox use their own. Aethyr replaces them with one
-   counter-based generator keyed by the seed and each feature's index, as
-   [chapter 51](ch051-a-realm-is-a-document.md) requires.
+   counter-based generator keyed by the realm's seed, the generator's
+   version and each feature's stable ID, as described in
+   [Randomness keyed by stable IDs](#randomness-keyed-by-stable-ids).
 7. **Large worlds.** Generation runs per cell of
    [chapter 38](ch038-stream-a-large-world.md)'s streamed world, so a cell
    generates the same content whatever the load order.
 8. **Edits over generated content.** A placed thing or a removed tree is an
    edit over the generated layout, stored in the realm document, never
    written back into the generator's output.
+
+## Randomness keyed by stable IDs
+
+> **Design draft.** Not implemented.
+
+A feature's position in a list isn't a stable name. If the generator keys
+randomness by index, inserting a feature at index 2 moves every feature after
+it, and a saved edit that refers to "tree 40" lands on a different tree.
+Aethyr keys every draw by values that don't change when the list changes:
+
+```jai
+draw(key: RandomKey, counter: u32) -> u64
+RandomKey :: struct {
+  seed:      u64   // the realm document's seed (chapter 51)
+  generator: u32   // the generator's version, raised when its rules change
+  feature:   u64   // the feature's stable ID from the realm document
+  stream:    u32   // which property: position, rotation, scale, species
+}
+```
+
+The rules:
+
+1. **Every feature has a stable ID.** The realm document assigns it when the
+   feature is created, and it never changes. Reordering, renaming or moving
+   the feature keeps it. A deleted ID is never reused.
+2. **Generated things derive their IDs.** A tree that scatter places inside a
+   feature, or inside a streamed cell, gets an ID derived from its parent's ID
+   and its grid coordinates, not from its order in a list.
+3. **Each property has its own stream.** Position, rotation, scale and
+   species use different `stream` values, so adding a property doesn't shift
+   the draws of the others.
+4. **The generator version is part of the key.** A change to the generator's
+   rules raises `generator`. A document records the version it was generated
+   with, and it regenerates with that version until the author upgrades it.
+5. **Edits refer to stable IDs.** A moved or removed tree is stored as an
+   edit keyed by the tree's derived ID, so the edit applies to the same tree
+   after any regeneration that keeps the ID.
+
+### Checks for stable randomness
+
+- **Insertion.** Inserting a feature anywhere in the document leaves every
+  other feature's generated content byte-identical.
+- **Deletion.** Deleting a feature removes only its content. No other
+  feature's content changes, and its ID isn't reused by a later feature.
+- **Reordering.** Reversing the order of the document's features gives
+  byte-identical generated content.
+- **Regeneration.** Generating twice from the same document, seed and
+  generator version gives byte-identical output natively and in the browser.
+  Raising the generator version changes only the content whose rules
+  changed, and a document that keeps the old version is unchanged.
+- **Saved edits.** A document with edits to five trees (two moved, two
+  removed, one replaced) is regenerated after an unrelated feature is
+  inserted, deleted and reordered. Every edit still applies to the same tree,
+  checked by derived ID and by position.
 
 ## What exists today
 
@@ -96,7 +151,8 @@ The chapter is done when:
 - No scattered tree stands in an exclusion zone, checked for every realm.
 - The same document and seed give byte-identical ground and scatter natively
   and in the browser.
-- Adding a feature leaves every other feature's placements unchanged.
+- Adding a feature leaves every other feature's placements unchanged, and
+  the checks for stable randomness pass.
 - A streamed cell generates the same content in any load order.
 - Made-realm goldens change only where a fix is visible.
 

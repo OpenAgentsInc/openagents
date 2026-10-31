@@ -20,6 +20,7 @@ frames on every host.
 - The host contract: what the host does and what the realm does.
 - The lifecycle events a realm receives: resize, focus lost, hidden,
   shown and leave.
+- How a realm recovers when the GPU device is lost or audio is interrupted.
 - How to compare two hosts byte for byte.
 - Which targets exist, and in what order they arrive.
 
@@ -49,6 +50,59 @@ frames on every host.
 6. **Targets.** Browser (WebGPU), Linux desktop and boot session (Vulkan),
    Mac and iPhone (Metal), then Windows over Vulkan. A signed iOS app
    never loads new code.
+
+## Recovery: device loss and audio interruption
+
+> **Design draft.** Not implemented.
+
+A host can lose its GPU device or its audio output while a realm runs. The
+browser reports a lost WebGPU device through `GPUDevice.lost` (after a driver
+reset, a tab moved to another GPU, or memory pressure). An `AudioContext` can
+move to `suspended` or `interrupted` (a phone call, another app taking the
+audio session, or Bluetooth headphones disconnecting), and native hosts get
+the same events from Metal, Vulkan, Core Audio and the iOS audio session. The
+host contract adds two events, `gpu_lost` and `audio_interrupted`, with these
+rules.
+
+### GPU device loss
+
+1. **The simulation doesn't depend on the GPU.** State lives in Coax memory,
+   not in GPU buffers, so a lost device loses no state. Steps keep running at
+   the fixed rate, and the realm keeps accepting input.
+2. **The host recreates the device.** It requests a new adapter and device,
+   then rebuilds every GPU resource from its source: pipelines from the
+   emitted WGSL or SPIR-V, buffers and textures from the assets and the
+   current state. A resource that can't be rebuilt from source is a design
+   error that the check reports.
+3. **Frames resume from current state.** The first frame after recovery
+   draws the current step. No frame from before the loss is replayed.
+4. **Recovery has a bound.** The host tries to recreate the device up to 3
+   times, 1 second apart. If every try fails, it shows a message that the
+   graphics device stopped and offers a reload. The realm's save is written
+   first.
+5. **Every loss is reported.** The frame report of
+   [chapter 84](ch084-inspect-and-profile-a-running-realm.md) counts each
+   loss, its reason and the recovery time.
+
+### Audio interruption
+
+1. **The audio clock pauses with the device.** While audio is interrupted, no
+   blocks are rendered, and the audio clock of
+   [chapter 68](ch068-sound-in-the-world.md) doesn't advance.
+2. **The simulation continues.** Steps run, and sound events from those steps
+   are not queued for later. A sound whose scheduled sample falls inside the
+   interruption is dropped, so the realm doesn't play a burst of old sounds
+   when audio returns.
+3. **Music resumes on the beat grid.** When audio returns, the music restarts
+   at the next bar line of the current section, computed from the current
+   step.
+4. **Resumption needs a gesture where the platform requires one.** If the
+   browser requires a user gesture to resume an `AudioContext`, the realm
+   shows a control to turn sound back on, and the control is reachable from
+   the keyboard ([chapter 15](ch015-ui-and-the-hud.md)).
+5. **Replay is unaffected.** The rendered stream of chapter 68 is defined by
+   the session, so replay renders the dropped sounds. The live output and the
+   rendered stream differ only during the reported interruption.
 
 ## What exists today
 
@@ -83,6 +137,15 @@ The chapter is done when:
 - A resize from 1440x900 to 390x844 keeps the HUD inside the safe area.
 - A recorded session replays to the same digest in the browser and
   natively ([chapter 5](ch005-replay-a-session-exactly.md)).
+- A forced device loss (`GPUDevice.destroy()` in the browser, a device reset
+  natively) during play is recovered within 3 seconds. The state digest is
+  the same as in a run without the loss, and the first frame after recovery
+  draws the current step.
+- A device loss that can't be recovered saves the realm and shows the reload
+  message, and the save restores the same digest.
+- Audio suspended for 5 seconds during a session and then resumed plays no
+  sound scheduled inside the interruption, restarts the music at the next bar
+  line, and leaves the rendered-stream hash unchanged.
 
 ## Dependencies
 

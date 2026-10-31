@@ -244,7 +244,74 @@ has the commands and results.
 
 - **Real outcomes.** The feed is synthetic. Part XXII's outcome joins are
   the source this is for.
-- **More than binary labels.** Chapter 223's distillation needs answer
-  distributions, which a row can't carry yet.
+- **More than binary labels.** Chapters 141 and 223 need a teacher's answer
+  distributions, which a `rows-v1` row can't carry. They use the separate
+  contract below.
 - **A durable ledger.** It lives in memory for one run. Chapter 239's
   append-only store with its receipt chain is where it belongs.
+
+## A distillation target is a different record
+
+> **Design draft.** Not implemented. `rows-v1` holds binary labels from a
+> check or a diff and traces verified by replay. It holds no teacher
+> predictions.
+
+Distillation trains a student to match a teacher's answer distribution. That
+distribution is a prediction, not an observed outcome: a teacher can be
+confident and wrong. If a target row and an outcome row were the same record,
+a student could be trained on the teacher's mistakes and then scored as if
+they were facts. The design keeps them apart with a separate record,
+`distill-v1`.
+
+### The record
+
+| Field | What it holds |
+| --- | --- |
+| `teacher` | The teacher's identity: model ID, weights digest, tokenizer digest, prompt rendering profile, readout profile (temperature and calibration map, if any) and the numerical profile and host that produced the distribution. |
+| `request` | The digest of the exact rendered tokens, the request's group and its time. |
+| `options` | The option IDs of the decision, in order. |
+| `distribution` | The teacher's probability for each option at temperature 1, and the probability mass outside the options (chapter 13). |
+| `split` | The split from the same time cuts as `rows-v1`, and the exposure-ledger artifact that assigned it. |
+| `teacher_exposure` | Whether the request's group was in the teacher's training or calibration data, when known, and `unknown` otherwise. |
+
+The rules:
+
+1. **Targets hold predictions only.** A `distill-v1` record never holds an
+   outcome label, and a `rows-v1` outcome row never holds a teacher
+   probability. A student's training set and its evaluation join them only by
+   request digest.
+2. **One teacher per target set.** A target set names one teacher identity.
+   Targets from a different teacher, or from the same model with a different
+   readout or numerical profile, form a new set. Two sets are never mixed in
+   one loss.
+3. **A distribution is admitted only when it's valid.** Every probability is
+   finite and nonnegative, the options and the outside mass sum to 1 within
+   `1e-6`, and the request was rendered with the teacher's tokenizer and
+   prompt profile.
+4. **Splits share the exposure ledger.** A request group gets one role across
+   outcome rows and target sets, so a group held out for the student's
+   outcome evaluation is never in its distillation training set.
+5. **Teacher exposure limits evaluation.** A group the teacher trained or
+   calibrated on can be used for training the student, but it isn't used to
+   measure the student's accuracy against outcomes, and a result on it says
+   so. An `unknown` exposure is reported as unknown.
+6. **The distillation temperature is a training setting.** Targets are stored
+   at temperature 1. A temperature used to soften them belongs to the
+   student's training record.
+7. **Agreement and correctness are reported separately.** Agreement with the
+   teacher is computed from targets. Accuracy, Brier score and calibration
+   error are computed from outcome rows. A report never presents agreement as
+   accuracy.
+
+### Checks for distillation targets
+
+- A target whose probabilities sum to `1 + 1e-5` is refused, and so is one
+  with a negative or non-finite probability.
+- A target from a second teacher identity in the same set is refused.
+- A request group held out in the outcome ledger is refused from a training
+  target set.
+- A report built from a set where the teacher is wrong on 20 percent of
+  held-out outcomes shows teacher agreement and outcome accuracy as separate
+  numbers, and the student's accuracy is computed only from outcome rows.
+- A target set's digest changes when the teacher's readout profile changes,
+  even when the weights don't.

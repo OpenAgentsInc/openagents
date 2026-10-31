@@ -9,12 +9,33 @@ evidence and earns its own.
 
 ## What this chapter covers
 
-- Mammoth's slot distributions as soft targets on a recorded request corpus.
+- Mammoth's slot distributions as soft targets on a recorded request corpus,
+  kept as `distill-v1` targets, separate from outcome labels.
 - KL divergence and cross-entropy over decision slots as the training loss.
 - The LoRA and hybrid backward machinery of chapter 140.
 - Held-out agreement with Mammoth.
 - Chapter 16's quality metrics on held-out requests.
 - Elephant's cost measured against Mammoth's on the same host.
+
+## The distillation-target contract
+
+The targets follow the `distill-v1` contract in
+[chapter 247](ch247-outcomes-become-training-rows.md#a-distillation-target-is-a-different-record).
+For this chapter:
+
+- **Teacher identity.** Mammoth's pinned weights, tokenizer and readout, and
+  the numerical profile that produced each distribution (the CPU reference of
+  chapter 15 or the CUDA path of chapter 46). Distributions from the two
+  profiles form two target sets, and the student trains on one.
+- **Teacher distributions.** Mammoth's probability for each decision option
+  at temperature 1, plus the mass outside the options.
+- **Split provenance.** Splits come from the shared exposure ledger. A
+  request group held out to evaluate the student against outcomes is never a
+  training target.
+- **Predictions apart from correctness.** Mammoth's answers are targets, not
+  labels. The student's accuracy and calibration come from outcome rows with
+  labels from a check or a diff. A request with a Mammoth target and no
+  outcome row counts toward agreement only.
 
 ## Dependencies
 
@@ -28,7 +49,10 @@ evidence and earns its own.
 
 ## Done means
 
-- Held-out agreement with Mammoth is reported before and after distillation.
+- Held-out agreement with Mammoth is reported before and after distillation,
+  separately from accuracy against outcome labels.
+- Every target names Mammoth's identity and numerical profile, and every
+  split names the exposure-ledger artifact that assigned it.
 - Chapter 16's metrics are reported for the student, Elephant and Mammoth on
   the same held-out corpus.
 - The student's latency and resource cost are measured against Mammoth's.

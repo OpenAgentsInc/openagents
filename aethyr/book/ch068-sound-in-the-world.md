@@ -39,6 +39,38 @@ and 67. The audio clock is a count of samples rendered. It is separate from
 A late or dropped frame changes when the events arrive, not which sample
 they play on. So a replay renders the same samples as the live session.
 
+### Late events and buffer underruns
+
+The rule above makes the *rendered stream*, the sequence of samples that the
+session defines, independent of frame timing. What the device plays live can
+still differ from it when the simulation or the audio thread stalls. The
+design separates the two and states exactly when they can differ:
+
+1. **The audio side renders ahead by a fixed lead.** The lead `L` is a whole
+   number of blocks, for example 16 blocks of 128 frames (2,048 frames,
+   42.7 ms at 48 kHz). An event recorded at step `k` is scheduled at sample
+   `s(k) + L`.
+2. **A late event is trimmed, not moved.** If an event's scheduled sample has
+   already been sent to the device when the event arrives, the event starts
+   at the first unsent sample, and the samples it missed are skipped. The
+   sound stays aligned with the rendered stream from that sample on. The
+   host counts each late event and records its step and the number of
+   skipped samples.
+3. **An underrun plays silence and keeps the clock.** If the device asks for a
+   block that isn't rendered yet, the host outputs silence for that block.
+   The audio clock still advances by the block's length, and the renderer
+   skips that block's position in the rendered stream. Audio never falls
+   behind the picture. The host counts each underrun and records its sample
+   range.
+4. **Replay uses the rendered stream.** Replay and offline rendering produce
+   the rendered stream. Late-event and underrun records are diagnostics; they
+   aren't replay input, and they don't change the rendered stream.
+
+The promise follows from these rules. Live playback equals the rendered
+stream sample for sample only when no stall is longer than the lead. A longer
+stall produces reported silence or trimmed sounds in the live output, and the
+rendered stream stays the same.
+
 ### Sound in space
 
 A sound source has a world position. The listener is the camera's lens from
@@ -107,8 +139,16 @@ music replays with the session.
 
 - Rendering a score in blocks of 128 frames gives the same samples as
   rendering it whole, for any block size from 1 to 4,096.
-- A replayed session gives the same sample hash as the live session, with
-  frames delivered at 30, 60, and 144 FPS and with a 300 ms stall.
+- A replayed session gives the same rendered-stream hash as the live
+  session, with frames delivered at 30, 60, and 144 FPS and with a 300 ms
+  stall.
+- With a lead of 42.7 ms and a 30 ms stall, the live device output equals the
+  rendered stream sample for sample, with no late events or underruns.
+- With the same lead and a 300 ms stall, the live device output differs from
+  the rendered stream only inside the reported underrun ranges and the
+  reported skipped samples of late events. Every difference is in a record.
+- An event that arrives after its scheduled sample starts at the first unsent
+  sample, and the samples after that equal the rendered stream.
 - Native and browser builds give the same hash for the same session.
 - A source at the reference distance has a gain of 1, and the gain halves
   when the distance doubles. A source on the view's right axis pans fully

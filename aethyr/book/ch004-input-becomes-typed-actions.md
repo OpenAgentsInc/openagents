@@ -485,6 +485,47 @@ coax/bin/coax test verse/player.coax --library
 `coax mutate` makes 126 mutants of `aethyr/input.coax`, and the checks kill all
 126.
 
+## Menus, focus and keyboard activation
+
+> **Design draft.** Not implemented. [Chapter 15](ch015-ui-and-the-hud.md)
+> uses these actions for its focus order and its keyboard and screen-reader
+> journey.
+
+The actions above drive a character. A menu, a dialog or the hotbar needs a
+second set that works without a pointer:
+
+| Action | Kind | Keyboard | Pad | Screen reader |
+| --- | --- | --- | --- | --- |
+| `focus_next` | press | Tab, Down, Right | D-pad down or right | swipe right |
+| `focus_previous` | press | Shift+Tab, Up, Left | D-pad up or left | swipe left |
+| `activate` | press | Enter, Space | A | double-tap |
+| `back` | press | Escape | B | two-finger scrub |
+| `menu` | press | Escape when no UI has focus | Start | magic tap |
+
+The rules:
+
+1. **UI actions are presses.** They go through the same buffer as `jump`
+   and `act`, so each one is taken by exactly one step.
+2. **Focus captures input.** While a UI element has focus, presses that the UI
+   uses aren't delivered as gameplay actions in the same step. Pressing Space
+   on a focused button activates the button and doesn't make the character
+   jump. Levels such as the move axes are zero while a modal UI is open.
+3. **Activation is one action for every device.** A click, a tap, Enter,
+   Space, the pad's A button and a screen reader's activation all produce
+   `activate` on the focused element, in the same step.
+4. **Remapping covers UI actions.** The remapping of
+   [chapter 86](ch086-everyone-can-play.md) can rebind every UI action, but
+   it refuses a mapping that leaves `focus_next`, `activate` or `back`
+   without a key.
+
+Checks for these actions:
+
+- Space on a focused button activates it once, and the character doesn't
+  jump in that step.
+- `activate` from the keyboard, the pad and a click on the same button
+  produce the same action in the same step.
+- A remapping that removes the last key for `back` is refused.
+
 ## Still to do
 
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) moves

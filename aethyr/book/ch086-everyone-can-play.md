@@ -49,7 +49,32 @@ they live in Aethyr's input, UI and sound modules, not in each realm.
 7. **Text IDs and languages.** Every HUD string gets a stable ID in a
    table. The stroke font gains lowercase and accented glyphs (its stage
    3). Pseudolocalization with 40 percent longer strings checks that
-   layouts fit.
+   layouts fit. The languages this chapter supports are listed in
+   [Supported languages](#supported-languages).
+
+## Supported languages
+
+> **Design draft.** Not implemented.
+
+The chapter's scope is explicit. Aethyr supports a language only when the
+font draws its script, the layout handles its direction and line breaking,
+and the input path accepts its text. This chapter's first scope is:
+
+| Scope | Status in this chapter | What it requires |
+| --- | --- | --- |
+| English | Supported | Lowercase glyphs and the string table. |
+| Languages written in Latin script with Latin-1 accents (for example French, German, Spanish and Portuguese) | Supported after the font's stage 3 | Accented glyphs drawn as accented letters, not as their base letter, and the pseudolocalization check. |
+| Right-to-left scripts (Arabic, Hebrew) | Not supported | Bidirectional layout, mirrored UI and glyph shaping. A separate chapter plans them. |
+| Chinese, Japanese and Korean | Not supported | Thousands of glyphs, line breaking without spaces and a glyph atlas instead of strokes. A separate chapter plans them. |
+| Text entry through an input method editor (IME) | Not supported | Composition events from the host, a composition preview and candidate windows. A separate chapter plans it. |
+
+Pseudolocalization establishes less than it appears to. It replaces Latin
+letters with accented Latin letters and lengthens strings by 40 percent, so
+it checks that a layout fits longer text and that no string is hard-coded. It
+doesn't check right-to-left layout, the glyphs and line breaking of Chinese,
+Japanese or Korean, or IME composition. A realm can't claim any of those from
+a pseudolocalization pass. Each needs its own font coverage, layout rules and
+checks with real text in that script.
 
 ## What exists today
 
@@ -85,6 +110,11 @@ The chapter is done when:
 - Every sound marked as information has a caption, checked by a scan of
   the realm's sound table.
 - Pseudolocalized strings fit, and a missing text ID fails the build.
+- Every string in the supported Latin-script languages draws with its
+  accents, checked by rendering each glyph of Latin-1 and comparing it with
+  its base letter.
+- The realm's settings list only the supported languages. A request for an
+  unsupported language or script falls back to English and says so.
 - The settings change no session digest except through the time scale,
   which is recorded in the session.
 

@@ -18,6 +18,8 @@ turn touches into the same typed actions keys produce.
 - Hit areas that equal the drawn rectangles.
 - Text from a stroke font drawn on the GPU.
 - UI input becoming chapter 4's typed actions.
+- Focus order, semantic controls and keyboard activation, so the whole UI
+  works from a keyboard and a screen reader.
 
 ## The method
 
@@ -62,6 +64,70 @@ or click on an element becomes a typed action through chapter 4's mapping,
 sampled once per step like any key. Text is laid out from the font's
 advance widths and drawn as strokes in the UI pass.
 
+## Accessibility: focus, semantics and a full journey
+
+The UI tree is also the accessibility tree. Every interactive element has the
+facts a keyboard user and a screen reader need, and the realm's UI is complete
+only when every task in it works without a pointer.
+
+### Semantic controls
+
+Each element in the tree declares:
+
+- **Role:** `button`, `toggle`, `slider`, `list`, `list item`, `tab`,
+  `dialog`, `text` or `image`.
+- **Label:** a text ID from [chapter 86](ch086-everyone-can-play.md)'s
+  string table, never text drawn only as strokes.
+- **State:** pressed, selected, checked, disabled or expanded, as the role
+  requires, and a slider's value and range.
+- **Action:** the action ID that `activate` produces.
+
+An interactive element without a label is a layout error that the check
+reports. An image that carries information has a label; a decorative image is
+marked decorative and is skipped.
+
+### Focus order
+
+Focus moves through the interactive elements in reading order: top to bottom,
+then start to end of the line, by the drawn rectangles. A container can
+declare an explicit order when reading order is wrong, and the check refuses
+an explicit order that skips an interactive element. These rules apply:
+
+1. A dialog traps focus. `focus_next` from its last element goes to its
+   first, and `back` closes it and returns focus to the element that opened
+   it.
+2. Focus is always visible. The focused element is drawn with an outline at
+   least 2 points wide that contrasts with the panel behind it.
+3. When the focused element disappears, focus moves to the next element in
+   order, or to the container when none is left. It never moves to nothing.
+
+### The host's accessibility tree
+
+The UI is drawn on the GPU, so the host mirrors the tree to the platform's
+accessibility layer each time it changes: hidden DOM elements with ARIA roles
+in the browser (as Filament's HTML twins do for page text), `UIAccessibility`
+on iOS and `NSAccessibility` on macOS. A screen reader's activation arrives
+as `activate` through [chapter 4](ch004-input-becomes-typed-actions.md).
+
+### The complete journey
+
+The acceptance check is one scripted journey, run twice: once with the
+keyboard only and once through the browser's screen-reader path. No step uses
+a pointer:
+
+1. On the landing page, move focus to the realm list and choose a realm.
+2. In the realm, open the menu with `menu`.
+3. Move to the settings, change the text scale and turn on reduced motion.
+4. Close the settings with `back`, and confirm that focus returns to the
+   settings button.
+5. Use a hotbar slot with the keyboard.
+6. Open a dialog, confirm that focus is trapped, and close it.
+7. Leave the realm and return to the landing page.
+
+At every step, the check records the focused element and what the
+accessibility tree reports for it (role, label and state), and compares them
+with the expected values.
+
 ## What it builds
 
 - `aethyr/ui/layout.coax`: safe areas, rows, columns, the hotbar and the
@@ -78,6 +144,11 @@ advance widths and drawn as strokes in the UI pass.
 - A tap and the matching key produce the same action in the same step.
 - Goldens with HUDs (`home-phone.png`, `the-grid.png`) are unchanged after
   the move.
+- Every interactive element has a role and a label, and focus order visits
+  every interactive element exactly once.
+- The complete journey passes with the keyboard only and through the
+  screen-reader path, with the expected focus, role, label and state at
+  every step.
 
 ## Dependencies
 

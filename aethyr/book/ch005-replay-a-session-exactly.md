@@ -91,6 +91,79 @@ Three replay formats and several random generators, none shared.
 - Random streams: draws from one stream are unchanged when another stream
   is consumed more or less.
 
+## Contract: one envelope for every external event
+
+> **Design draft.** This contract is not implemented. It is kept separate
+> from the rest of the chapter so the `ec-replay` task can fill in the
+> sections above without changing it.
+
+A session depends on more than the player's actions. A model answers a
+guard's question, a peer sends a position, the host reports that a purchase
+went through, a file finishes loading. Each of these facts arrives at a time
+the realm doesn't control. To replay a session exactly, the record keeps
+every accepted external fact in one envelope, and replay reads the envelopes
+instead of calling anything.
+
+### The envelope
+
+```jai
+ExternalEvent :: struct {
+  apply_tick: u64       // the step at which the event takes effect
+  order:      u32       // position among the events applied at that tick
+  source:     SourceId  // input, a model service, a peer, the host, a store
+  identity:   u64       // the request ID for a reply, or the epoch for a stream
+  payload:    [u8]      // the accepted payload, in canonical bytes
+}
+```
+
+The session record holds the envelopes in `(apply_tick, order)` order. An
+action sample from chapter 4 is one kind of envelope: its source is `input`
+and its identity is the step number. Model answers, network updates, host
+results and loaded assets use the same envelope with their own sources.
+
+### Rules
+
+1. **Admission picks the tick.** When a fact arrives, the loop admits or
+   rejects it at the next step boundary. An admitted fact gets that step as
+   its `apply_tick`. A fact is never applied at a tick that has already run.
+2. **The record holds accepted facts only.** A rejected fact doesn't change
+   state, so it isn't replay input. A realm can log it separately for
+   diagnosis.
+3. **The payload is the accepted value.** The record stores the payload after
+   validation and canonical encoding, not the raw bytes from the network.
+   Replay doesn't validate again, so a later validator change can't change an
+   old replay.
+4. **One fact, one admission.** A `(source, identity)` pair is admitted at
+   most once. A second copy is rejected.
+5. **Stale facts are rejected.** A reply whose request ID is no longer
+   outstanding (it was cancelled, superseded or timed out) is rejected. A
+   stream update whose epoch is older than the current epoch is rejected.
+6. **Requests come from state.** A live run issues a request only from a step,
+   so the request's identity is a function of the state. Replay computes the
+   same identity and checks it against the next envelope from that source.
+7. **Replay makes no remote calls.** In replay, the model, network, host and
+   store adapters are replaced by a reader over the record. A replay that
+   needs a fact the record doesn't hold stops with a divergence report
+   instead of calling out.
+
+### Acceptance checks for the envelope
+
+- **Delayed event.** A model answer arrives 30 steps after its request. The
+  live run applies it at the admitted tick. Replay applies it at the same
+  tick, and the digests match at every mark.
+- **Duplicate event.** A peer update arrives twice with the same identity.
+  The second copy is rejected and isn't recorded. The state equals a run that
+  received one copy.
+- **Stale event.** An answer arrives for a request the realm cancelled, and an
+  update arrives with an old epoch. Both are rejected, neither is recorded,
+  and the state equals a run in which they never arrived.
+- **Reordered arrival.** Two answers arrive in the opposite order from their
+  requests. The record keeps the admitted order, and replay reproduces it.
+- **No calls in replay.** A replay runs with every adapter set to fail on any
+  call. It completes and matches every mark.
+- **Edited record.** Changing one byte of a recorded payload makes replay
+  report the first divergent step at that envelope's `apply_tick`.
+
 ## Dependencies
 
 [Chapter 1](ch001-a-frame-has-a-fixed-step.md),
