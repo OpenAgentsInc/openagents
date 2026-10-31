@@ -392,15 +392,21 @@ orbitleague_wheel_hit :: (o:V3,d:V3,c:V3,r:f32,w:f32,spin:f32)->OrbitleagueHit {
 }
 // The roadster's mesh (verse/tools/mesh-bvh.coax writes it; host.js binds it, mesh:URL): its
 // triangles in a bounding volume hierarchy, in the car's frame. The nearest triangle the ray
-// (o, d, in that frame) meets: t, the face's normal towards the ray, and its colour, or for
-// paint col.x -1 and col.y the texel's light.
+// (o, d, in that frame) meets: t, and its corners' normals and colours blended to the point it
+// meets (so curves shade smooth and a colour's edge runs smooth across the triangles), the
+// normal turned to the ray's side; for paint (a light, unsaturated colour) col.x -1 and col.y its
+// light. A triangle is 27 words (head word 8); an older mesh's 12 hold one colour (paint coded so
+// already) and no normals, and its faces shade flat.
 OrbitleagueMeshHit :: struct {t:f32; n:V3; col:V3; }
 orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
   r:OrbitleagueMeshHit=OrbitleagueMeshHit.{t=1e9f32,n=v3(0.0f32,1.0f32,0.0f32),col=v3(0.0f32,0.0f32,0.0f32)};
   dd:V3=v3(ifx abs(d.x)<1e-8f32 then 1e-8f32 else d.x,ifx abs(d.y)<1e-8f32 then 1e-8f32 else d.y,ifx abs(d.z)<1e-8f32 then 1e-8f32 else d.z);
   inv:V3=wg_div_ff3(1.0f32,dd);
   tris:s32=wg_i32_f(mesh[3]);
+  stride:s32=ifx mesh[8]>26.5f32 then 27 else 12;
   best:s32=-1;
+  bu:f32=0.0f32;
+  bv:f32=0.0f32;
   stack:[32]s32;
   stack[0]=0;
   sp:s32=1;
@@ -430,7 +436,7 @@ orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
     }
     k:s32=-a-1;
     while k<((-a-1)+c) {
-      w:s32=tris+(k*12);
+      w:s32=tris+(k*stride);
       v0:V3=v3(mesh[cast(int)w],mesh[cast(int)(w+1)],mesh[cast(int)(w+2)]);
       e1:V3=v3(mesh[cast(int)(w+3)],mesh[cast(int)(w+4)],mesh[cast(int)(w+5)]);
       e2:V3=v3(mesh[cast(int)(w+6)],mesh[cast(int)(w+7)],mesh[cast(int)(w+8)]);
@@ -446,6 +452,8 @@ orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
         if ((((uu>=0.0f32)&&(vv>=0.0f32))&&((uu+vv)<=1.0f32))&&((t>1e-4f32)&&(t<r.t))) {
           r.t=t;
           best=w;
+          bu=uu;
+          bv=vv;
         }
       }
       k+=1;
@@ -455,8 +463,32 @@ orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
     e1:V3=v3(mesh[cast(int)(best+3)],mesh[cast(int)(best+4)],mesh[cast(int)(best+5)]);
     e2:V3=v3(mesh[cast(int)(best+6)],mesh[cast(int)(best+7)],mesh[cast(int)(best+8)]);
     n:V3=wg_normalize3(wg_cross3(e1,e2));
-    r.n=ifx wg_dot3(n,d)>0.0f32 then wg_neg_f3(n) else n;
+    n=ifx wg_dot3(n,d)>0.0f32 then wg_neg_f3(n) else n;
+    r.n=n;
     r.col=v3(mesh[cast(int)(best+9)],mesh[cast(int)(best+10)],mesh[cast(int)(best+11)]);
+    if (stride==27) {
+      w0:f32=(1.0f32-bu)-bv;
+      sn:V3=v3(0.0f32,0.0f32,0.0f32);
+      cl:V3=v3(0.0f32,0.0f32,0.0f32);
+      {
+        k:s32=0;
+        while k<3 {
+          wk:f32=ifx k==0 then w0 else ifx k==1 then bu else bv;
+          ck:s32=best+9+(k*3);
+          nk:s32=best+18+(k*3);
+          cl=wg_add_f3f3(cl,wg_mul_f3f(v3(mesh[cast(int)ck],mesh[cast(int)(ck+1)],mesh[cast(int)(ck+2)]),wk));
+          sn=wg_add_f3f3(sn,wg_mul_f3f(v3(mesh[cast(int)nk],mesh[cast(int)(nk+1)],mesh[cast(int)(nk+2)]),wk));
+          k+=1;
+        }
+      }
+      sl:f32=wg_length3(sn);
+      sn=ifx sl>1e-6f32 then wg_mul_f3f(sn,1.0f32/sl) else n;
+      r.n=ifx wg_dot3(sn,n)<0.0f32 then wg_neg_f3(sn) else sn;
+      // paint: light and grey (mesh-bvh.coax mb_paint)
+      hi:f32=fmax(fmax(cl.x,cl.y),cl.z);
+      lo:f32=fmin(fmin(cl.x,cl.y),cl.z);
+      r.col=ifx (hi>0.3f32)&&((hi-lo)<(0.25f32*hi)) then v3(-1.0f32,((0.2126f32*cl.x)+(0.7152f32*cl.y))+(0.0722f32*cl.z),0.0f32) else cl;
+    }
   }
   return r;
 }
@@ -870,9 +902,9 @@ orbitleague_curve_n :: (p:V3,u:[]f32)->V3 {
 // The sphere's deck: the box's markings round its middle, lit rings of
 // latitude, and at each pole its goal: a cap in the team's colour behind a
 // net, ringed in light.
-orbitleague_sph_col :: (p:V3,u:[]f32)->V3 {
+orbitleague_sph_col :: (p:V3,u:[]f32,ft:V3)->V3 {
   q:V2=orbitleague_sph_uv(p,u);
-  c:V3=orbitleague_deck_col(v3(q.x,0.0f32,q.y),1e4f32,u);
+  c:V3=orbitleague_deck_col(v3(q.x,0.0f32,q.y),1e4f32,u,ft);
   hoop:f32=0.0f32;
   {
     k:s32=0;
@@ -886,8 +918,8 @@ orbitleague_sph_col :: (p:V3,u:[]f32)->V3 {
   rho:f32=wg_length2(wg_sub_f2f2(v2(p.x,p.y),wg_sw_xy_f3(orbitleague_sph_c(u))));
   gr:f32=u[87];
   if (rho<gr) {
-    g:V2=wg_mul_f2f(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(wg_div_f2f(v2(p.x,p.y),0.6f32),0.5f32)),0.5f32)),0.6f32);
-    mesh:f32=1.0f32-smoothstep(0.015f32,0.04f32,fmin(g.x,g.y));
+    fi:f32=ft.x*sqrt(1.0f32+fmin(((ft.y*ft.y)+(ft.z*ft.z)),2500.0f32));
+    mesh:f32=orbitleague_grid(v2(p.x,p.y),0.6f32,0.0275f32,0.025f32,fi,fi);
     c=wg_mix_f3f3f(wg_mul_f3f(side,0.35f32),wg_mul_f3f(side,1.3f32),mesh*0.7f32);
   }
   c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(side,v3(1.0f32,1.0f32,1.0f32),0.3f32),exp(-pow((rho-gr)/0.25f32,2.0f32))),1.2f32));
@@ -934,9 +966,9 @@ orbitleague_over_floor :: (p:V3,u:[]f32)->f32 {
   return p.y;
 }
 // The drum's deck: the box's markings unrolled round it, and a lit hoop every 20 m.
-orbitleague_drum_col :: (p:V3,u:[]f32)->V3 {
+orbitleague_drum_col :: (p:V3,u:[]f32,ft:V3)->V3 {
   q:V2=orbitleague_drum_uv(p,u);
-  c:V3=orbitleague_deck_col(v3(q.x,0.0f32,q.y),1e4f32,u);
+  c:V3=orbitleague_deck_col(v3(q.x,0.0f32,q.y),1e4f32,u,ft);
   hz:f32=u[81];
   hoop:f32=0.0f32;
   {
@@ -952,25 +984,68 @@ orbitleague_drum_col :: (p:V3,u:[]f32)->V3 {
   c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(side,(1.0f32-smoothstep(0.0f32,0.6f32,hz-abs(p.z)))),0.6f32));
   return c;
 }
-orbitleague_floor_col :: (p:V3,u:[]f32)->V3 {
-  return orbitleague_deck_col(p,u[80],u);
+orbitleague_floor_col :: (p:V3,u:[]f32,ft:V3)->V3 {
+  return orbitleague_deck_col(p,u[80],u,ft);
+}
+// ---- lines that hold at every distance: a pixel's footprint on a surface, and a line or a
+// grid filtered over it, so they never alias, shimmer or break into moire.
+// The angle a pixel spans (radians): the ray's step across one pixel at the middle of the view.
+orbitleague_pixel_angle :: (u:[]f32)->f32 {
+  return (2.0f32*wg_length3(v3(u[36],u[37],u[38])))/(u[1]*wg_length3(v3(u[28],u[29],u[30])));
+}
+// A surface's footprint frame for a ray rd meeting it at t, its normal n and its two axes a and
+// b: x, how wide a pixel is there head on (metres), y and z, how much it stretches along a and b
+// (the ray's slant along each over its slant into the surface).
+orbitleague_foot :: (rd:V3,t:f32,n:V3,a:V3,b:V3,u:[]f32)->V3 {
+  c:f32=fmax(abs(wg_dot3(rd,n)),0.02f32);
+  return v3(t*orbitleague_pixel_angle(u),wg_dot3(rd,a)/c,wg_dot3(rd,b)/c);
+}
+// The footprint (metres) across a line whose distance grows along (ax, bz) in the surface.
+orbitleague_fw :: (ft:V3,ax:f32,bz:f32)->f32 {
+  s:f32=(ax*ft.y)+(bz*ft.z);
+  return ft.x*sqrt(1.0f32+fmin(s*s,2500.0f32));
+}
+// How much of a pixel f wide a line covers at distance d from its middle: half width hw, its
+// edge soft over `soft`. A line thinner than a pixel draws a pixel and a half wide, as faint as
+// it is thin (its light kept, so it never flickers in and out).
+orbitleague_aa :: (d:f32,hw:f32,soft:f32,f:f32)->f32 {
+  ff:f32=fmax(f,1e-6f32);
+  hh:f32=fmax(hw,0.7f32*ff);
+  e:f32=fmax(soft,ff);
+  return (1.0f32-smoothstep(hh-(0.5f32*e),hh+(0.5f32*e),d))*(hw/hh);
+}
+// Lines every `period` across x, as orbitleague_aa; where the cells shrink under four pixels
+// they fade to their mean cover, so far away a grid is an even tint and never moire.
+orbitleague_lines :: (x:f32,period:f32,hw:f32,soft:f32,f:f32)->f32 {
+  d:f32=abs(fract((x/period)+0.5f32)-0.5f32)*period;
+  a:f32=orbitleague_aa(d,hw,soft,f);
+  m:f32=fmin(1.0f32,(2.0f32*hw)/period);
+  return m+((a-m)*smoothstep(2.0f32,4.0f32,period/fmax(f,1e-6f32)));
+}
+// A square grid on (x, y) of lines every `period`, pixels fx and fy wide along x and y.
+orbitleague_grid :: (q:V2,period:f32,hw:f32,soft:f32,fx:f32,fy:f32)->f32 {
+  a:f32=orbitleague_lines(q.x,period,hw,soft,fx);
+  b:f32=orbitleague_lines(q.y,period,hw,soft,fy);
+  return 1.0f32-((1.0f32-a)*(1.0f32-b));
 }
 // The deck with its edge strip at hx (the drum's has none: it goes on round).
-orbitleague_deck_col :: (p:V3,hx:f32,u:[]f32)->V3 {
+orbitleague_deck_col :: (p:V3,hx:f32,u:[]f32,ft:V3)->V3 {
   hz:f32=u[81];
   gw:f32=u[83];
   c:V3=ifx p.z>0.0f32 then v3(0.11f32,0.075f32,0.125f32) else v3(0.075f32,0.09f32,0.135f32);
   // the deck's plates, five metres a side
-  g:V2=wg_mul_f2f(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(wg_div_f2f(v2(p.x,p.z),5.0f32),0.5f32)),0.5f32)),5.0f32);
-  c=wg_mul_f3f(c,1.0f32-(0.25f32*(1.0f32-smoothstep(0.03f32,0.07f32,fmin(g.x,g.y)))));
-  // the markings
+  fx:f32=orbitleague_fw(ft,1.0f32,0.0f32);
+  fz:f32=orbitleague_fw(ft,0.0f32,1.0f32);
+  c=wg_mul_f3f(c,1.0f32-(0.25f32*orbitleague_grid(v2(p.x,p.z),5.0f32,0.05f32,0.04f32,fx,fz)));
+  // the markings, filtered over the pixel (orbitleague_aa)
   line:f32=0.0f32;
-  line=fmax(line,1.0f32-smoothstep(0.1f32,0.16f32,abs(p.z)));
-  line=fmax(line,1.0f32-smoothstep(0.1f32,0.16f32,abs(wg_length2(v2(p.x,p.z))-9.0f32)));
+  line=fmax(line,orbitleague_aa(abs(p.z),0.13f32,0.06f32,fz));
+  rl:f32=fmax(wg_length2(v2(p.x,p.z)),1e-3f32);
+  line=fmax(line,orbitleague_aa(abs(rl-9.0f32),0.13f32,0.06f32,orbitleague_fw(ft,p.x/rl,p.z/rl)));
   box:V2=v2(abs(p.x)-(gw+5.0f32),abs(p.z)-(hz-12.0f32));
-  line=fmax(line,((1.0f32-smoothstep(0.1f32,0.16f32,abs(box.y)))*stepf(abs(p.x),gw+5.0f32))*stepf(abs(p.z),hz));
-  line=fmax(line,((1.0f32-smoothstep(0.1f32,0.16f32,abs(box.x)))*stepf(hz-12.0f32,abs(p.z)))*stepf(abs(p.z),hz));
-  line=fmax(line,(1.0f32-smoothstep(0.1f32,0.16f32,abs(abs(p.z)-hz)))*stepf(abs(p.x),gw));
+  line=fmax(line,(orbitleague_aa(abs(box.y),0.13f32,0.06f32,fz)*stepf(abs(p.x),gw+5.0f32))*stepf(abs(p.z),hz));
+  line=fmax(line,(orbitleague_aa(abs(box.x),0.13f32,0.06f32,fx)*stepf(hz-12.0f32,abs(p.z)))*stepf(abs(p.z),hz));
+  line=fmax(line,orbitleague_aa(abs(abs(p.z)-hz),0.13f32,0.06f32,fz)*stepf(abs(p.x),gw));
   side:V3=ifx p.z>0.0f32 then ORBITLEAGUE_MAGENTA() else ORBITLEAGUE_BLUE();
   c=wg_mix_f3f3f(c,wg_mix_f3f3f(v3(0.85f32,0.9f32,1.0f32),side,0.35f32),line*0.85f32);
   // a strip of light round the edge
@@ -1218,8 +1293,16 @@ orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4,mesh:[]f32)->Orbi
       uv=v2(p.x,p.y);
     }
     // glass in a frame of thin struts every 5 metres
-    g:V2=wg_mul_f2f(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(wg_div_f2f(uv,5.0f32),0.5f32)),0.5f32)),5.0f32);
-    strut:f32=1.0f32-smoothstep(0.03f32,0.09f32,fmin(g.x,g.y));
+    ga:V3=v3(1.0f32,0.0f32,0.0f32);
+    gb:V3=v3(0.0f32,0.0f32,1.0f32);
+    if (n.x!=0.0f32) {
+      ga=v3(0.0f32,0.0f32,1.0f32);
+      gb=v3(0.0f32,1.0f32,0.0f32);
+    } else if (n.z!=0.0f32) {
+      gb=v3(0.0f32,1.0f32,0.0f32);
+    }
+    gf:V3=orbitleague_foot(rd,t,n,ga,gb,u);
+    strut:f32=orbitleague_grid(uv,5.0f32,0.06f32,0.06f32,orbitleague_fw(gf,1.0f32,0.0f32),orbitleague_fw(gf,0.0f32,1.0f32));
     // the distance to the face's edge (not along its own axis)
     e:f32=fmin(hx-abs(p.x),hz-abs(p.z));
     if (n.x!=0.0f32) {
@@ -1287,13 +1370,18 @@ orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4,mesh:[]f32)->Orbi
   }
   q:V3=wg_add_f3f3(ro,wg_mul_f3f(rd,tn));
   uv:V2=v2(q.x,q.y);
+  na:V3=v3(1.0f32,0.0f32,0.0f32);
+  nb:V3=v3(0.0f32,1.0f32,0.0f32);
   if (nn.x!=0.0f32) {
     uv=v2(q.z,q.y);
+    na=v3(0.0f32,0.0f32,1.0f32);
   } else if (nn.y!=0.0f32) {
     uv=v2(q.x,q.z);
+    nb=v3(0.0f32,0.0f32,1.0f32);
   }
-  g:V2=wg_mul_f2f(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(wg_div_f2f(uv,0.6f32),0.5f32)),0.5f32)),0.6f32);
-  weave:f32=1.0f32-smoothstep(0.015f32,0.04f32,fmin(g.x,g.y));
+  // the mesh's cords, filtered over the pixel: even and unbroken near, an even tint far off
+  nf:V3=orbitleague_foot(rd,tn,nn,na,nb,u);
+  weave:f32=orbitleague_grid(uv,0.6f32,0.0275f32,0.025f32,orbitleague_fw(nf,1.0f32,0.0f32),orbitleague_fw(nf,0.0f32,1.0f32));
   col:V3=ifx zs>0.0f32 then ORBITLEAGUE_MAGENTA() else ORBITLEAGUE_BLUE();
   return OrbitleagueGlass.{t=tn,col=wg_mul_f3f(col,1.2f32),a=clampf(0.12f32+(weave*0.65f32),0.0f32,1.0f32),add=v3(0.0f32,0.0f32,0.0f32)};
 }
@@ -1329,9 +1417,7 @@ orbitleague_bg_vs :: (i:u32,_iid2:u32)->V4 {
   p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
   return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
 }
-orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
-  HULL:[45]V4=[45]V4.[v4(0.0000f32,-1.0000f32,0.0000f32,0.3200f32),v4(0.0000f32,1.0000f32,0.0000f32,0.1200f32),v4(1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(-0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(-0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(0.0000f32,0.0000f32,1.0000f32,2.1500f32),v4(0.0000f32,0.9821f32,0.1886f32,0.2875f32),v4(0.0000f32,-0.6097f32,0.7926f32,1.7407f32),v4(0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(-0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(0.0000f32,0.0000f32,-1.0000f32,2.0800f32),v4(0.0000f32,0.9439f32,-0.3304f32,0.7244f32),v4(0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(-0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(0.0000f32,-0.5547f32,-0.8321f32,1.8000f32),v4(1.0000f32,0.0000f32,0.0000f32,0.1900f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,1.0000f32,0.0000f32,0.0500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.0242f32),v4(0.0000f32,0.6727f32,0.7399f32,0.2408f32),v4(0.0000f32,0.6727f32,-0.7399f32,0.2408f32),v4(0.0000f32,0.0000f32,1.0000f32,0.6600f32),v4(0.0000f32,0.0000f32,-1.0000f32,0.6600f32),v4(0.0000f32,-0.6402f32,0.7682f32,0.5762f32),v4(0.0000f32,-0.6402f32,-0.7682f32,0.5762f32),v4(0.0000f32,0.7276f32,0.6860f32,0.4852f32),v4(0.0000f32,-0.7276f32,-0.6860f32,-0.4452f32),v4(0.0000f32,1.0000f32,0.0000f32,0.4600f32),v4(0.0000f32,-1.0000f32,0.0000f32,-0.0800f32),v4(0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(-0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(-0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.0000f32),v4(0.0000f32,0.9789f32,-0.2043f32,0.4741f32),v4(0.0000f32,0.3304f32,0.9439f32,-0.3728f32),v4(0.0000f32,0.0000f32,-1.0000f32,1.7500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.3458f32),v4(-0.6727f32,0.7399f32,0.0000f32,0.3458f32)];
-  px:V2=v2(pos.x,pos.y);
+orbitleague_trace :: (px:V2,u:[]f32,mesh:[]f32,HULL:[45]V4)->V3 {
   ndc:V2=v2(((px.x/u[0])*2.0f32)-1.0f32,1.0f32-((px.y/u[1])*2.0f32));
   ro:V3=v3(u[24],u[25],u[26]);
   rd:V3=wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_ff3(ndc.x,v3(u[32],u[33],u[34]))),wg_mul_ff3(ndc.y,v3(u[36],u[37],u[38]))));
@@ -1346,7 +1432,8 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
     t:f32=orbitleague_drum_t(ro,rd,u);
     p:V3=wg_add_f3f3(ro,wg_mul_f3f(rd,t));
     if ((t<1e8f32)&&(abs(p.z)<=hz)) {
-      h=OrbitleagueHit.{t=t,n=orbitleague_drum_n(p,u),col=orbitleague_drum_col(p,u),ink=0.0f32,mat=5};
+      dn:V3=orbitleague_drum_n(p,u);
+      h=OrbitleagueHit.{t=t,n=dn,col=orbitleague_drum_col(p,u,orbitleague_foot(rd,t,dn,orbitleague_tangent(dn),v3(0.0f32,0.0f32,1.0f32),u)),ink=0.0f32,mat=5};
     }
   }
   sphere:bool=orbitleague_in_sphere(u);
@@ -1354,7 +1441,8 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
     t:f32=orbitleague_sph_t(ro,rd,u);
     p:V3=wg_add_f3f3(ro,wg_mul_f3f(rd,t));
     if (t<1e8f32) {
-      h=OrbitleagueHit.{t=t,n=orbitleague_sph_n(p,u),col=orbitleague_sph_col(p,u),ink=0.0f32,mat=5};
+      sn:V3=orbitleague_sph_n(p,u);
+      h=OrbitleagueHit.{t=t,n=sn,col=orbitleague_sph_col(p,u,orbitleague_foot(rd,t,sn,orbitleague_tangent(sn),v3(0.0f32,0.0f32,1.0f32),u)),ink=0.0f32,mat=5};
     }
   }
   if ((rd.y<0.0f32)&&(!sphere)) {
@@ -1366,7 +1454,7 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
       on=((abs(p.x)<=gw)&&(abs(p.z)>hz))&&(abs(p.z)<=(hz+gd));
     }
     if (on&&(t<h.t)) {
-      h=OrbitleagueHit.{t=t,n=v3(0.0f32,1.0f32,0.0f32),col=orbitleague_floor_col(p,u),ink=0.0f32,mat=5};
+      h=OrbitleagueHit.{t=t,n=v3(0.0f32,1.0f32,0.0f32),col=orbitleague_floor_col(p,u,orbitleague_foot(rd,t,v3(0.0f32,1.0f32,0.0f32),v3(1.0f32,0.0f32,0.0f32),v3(0.0f32,0.0f32,1.0f32),u)),ink=0.0f32,mat=5};
     }
   }
   h=orbitleague_closer(h,orbitleague_movers(ro,rd,u,HULL,mesh,true));
@@ -1446,6 +1534,86 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
   // zero-g: a cold tint; a goal: its team's flash
   c=wg_mix_f3f3f(c,wg_mul_f3f3(c,v3(0.85f32,0.95f32,1.15f32)),u[7]*0.5f32);
   c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(orbitleague_team(u[31]),u[27]),0.12f32));
+  return c;
+}
+// A curved deck's way round at p (its normal n): across n and the arena's length.
+orbitleague_tangent :: (n:V3)->V3 {
+  a:V3=wg_cross3(n,v3(0.0f32,0.0f32,1.0f32));
+  l:f32=wg_length3(a);
+  return ifx l>1e-3f32 then wg_mul_f3f(a,1.0f32/l) else v3(1.0f32,0.0f32,0.0f32);
+}
+// Does the pixel's ray pass where edges are fine and many: a roadster's box, or within a few
+// pixels of a goal frame's bars? There the pixel is traced four times (orbitleague_bg_fs).
+orbitleague_edgy :: (ro:V3,rd:V3,u:[]f32,mesh:[]f32)->bool {
+  // the mesh's roadster sits in a smaller box than our own (the hull car, its helmet and wing)
+  meshed:bool=mesh[0]>0.5f32;
+  {
+    i:s32=0;
+    while i<orbitleague_ncars(u) {
+      // the car's box (body and wheels, a little over), in its own frame
+      c:OrbitleagueCar=orbitleague_car(i,u);
+      q:V3=wg_sub_f3f3(ro,v3(c.p.x,c.p.y,c.p.z));
+      o:V3=v3(wg_dot3(q,v3(c.x.x,c.x.y,c.x.z)),wg_dot3(q,v3(c.y.x,c.y.y,c.y.z)),wg_dot3(q,v3(c.z.x,c.z.y,c.z.z)));
+      d:V3=v3(wg_dot3(rd,v3(c.x.x,c.x.y,c.x.z)),wg_dot3(rd,v3(c.y.x,c.y.y,c.y.z)),wg_dot3(rd,v3(c.z.x,c.z.y,c.z.z)));
+      d=v3(ifx abs(d.x)<1e-6f32 then 1e-6f32 else d.x,ifx abs(d.y)<1e-6f32 then 1e-6f32 else d.y,ifx abs(d.z)<1e-6f32 then 1e-6f32 else d.z);
+      inv:V3=wg_div_ff3(1.0f32,d);
+      bx:V3=ifx meshed then v3(0.97f32,0.12f32,2.15f32) else v3(1.15f32,0.55f32,2.25f32);
+      t0:V3=wg_mul_f3f3(wg_sub_f3f3(v3(-bx.x,-1.02f32,-bx.z),o),inv);
+      t1:V3=wg_mul_f3f3(wg_sub_f3f3(bx,o),inv);
+      tn:V3=wg_min_f3f3(t0,t1);
+      tf:V3=wg_max_f3f3(t0,t1);
+      if (fmin(fmin(tf.x,tf.y),tf.z)>fmax(fmax(fmax(tn.x,tn.y),tn.z),0.0f32)) {
+        return true;
+      }
+      i+=1;
+    }
+  }
+  if orbitleague_in_sphere(u) {
+    return false;
+  }
+  hz:f32=u[81];
+  gw:f32=u[83];
+  gh:f32=u[84];
+  pa:f32=orbitleague_pixel_angle(u);
+  {
+    e:f32=-1.0f32;
+    while e<=1.0f32 {
+      z:f32=e*(hz+0.15f32);
+      // the frame's box (posts and crossbar), grown by three pixels at its distance
+      lo:V3=v3((-gw)-0.4f32,-0.01f32,z-0.2f32);
+      hi:V3=v3(gw+0.4f32,gh+0.4f32,z+0.2f32);
+      m:f32=(3.0f32*pa)*wg_length3(wg_sub_f3f3(wg_min_f3f3(wg_max_f3f3(ro,lo),hi),ro));
+      outer:OrbitleagueHit=orbitleague_box_hit(ro,rd,wg_mul_f3f(wg_add_f3f3(lo,hi),0.5f32),wg_add_f3f(wg_mul_f3f(wg_sub_f3f3(hi,lo),0.5f32),m),v3(0.0f32,0.0f32,0.0f32),0);
+      // not through the mouth's middle, clear of the bars
+      inner:OrbitleagueHit=orbitleague_box_hit(ro,rd,v3(0.0f32,gh*0.5f32,z),v3(fmax(gw-m,0.0f32),fmax((gh*0.5f32)-m,0.0f32),1.0f32),v3(0.0f32,0.0f32,0.0f32),0);
+      if ((outer.t<1e8f32)&&(inner.t>1e8f32)) {
+        return true;
+      }
+      e=e+2.0f32;
+    }
+  }
+  return false;
+}
+// The world per pixel (orbitleague_trace), four times over (a rotated grid) where edges are fine
+// and many: the roadsters and the goal frames come out smooth-edged even scaled up.
+orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
+  HULL:[45]V4=[45]V4.[v4(0.0000f32,-1.0000f32,0.0000f32,0.3200f32),v4(0.0000f32,1.0000f32,0.0000f32,0.1200f32),v4(1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(-0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(-0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(0.0000f32,0.0000f32,1.0000f32,2.1500f32),v4(0.0000f32,0.9821f32,0.1886f32,0.2875f32),v4(0.0000f32,-0.6097f32,0.7926f32,1.7407f32),v4(0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(-0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(0.0000f32,0.0000f32,-1.0000f32,2.0800f32),v4(0.0000f32,0.9439f32,-0.3304f32,0.7244f32),v4(0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(-0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(0.0000f32,-0.5547f32,-0.8321f32,1.8000f32),v4(1.0000f32,0.0000f32,0.0000f32,0.1900f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,1.0000f32,0.0000f32,0.0500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.0242f32),v4(0.0000f32,0.6727f32,0.7399f32,0.2408f32),v4(0.0000f32,0.6727f32,-0.7399f32,0.2408f32),v4(0.0000f32,0.0000f32,1.0000f32,0.6600f32),v4(0.0000f32,0.0000f32,-1.0000f32,0.6600f32),v4(0.0000f32,-0.6402f32,0.7682f32,0.5762f32),v4(0.0000f32,-0.6402f32,-0.7682f32,0.5762f32),v4(0.0000f32,0.7276f32,0.6860f32,0.4852f32),v4(0.0000f32,-0.7276f32,-0.6860f32,-0.4452f32),v4(0.0000f32,1.0000f32,0.0000f32,0.4600f32),v4(0.0000f32,-1.0000f32,0.0000f32,-0.0800f32),v4(0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(-0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(-0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.0000f32),v4(0.0000f32,0.9789f32,-0.2043f32,0.4741f32),v4(0.0000f32,0.3304f32,0.9439f32,-0.3728f32),v4(0.0000f32,0.0000f32,-1.0000f32,1.7500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.3458f32),v4(-0.6727f32,0.7399f32,0.0000f32,0.3458f32)];
+  px:V2=v2(pos.x,pos.y);
+  ndc:V2=v2(((px.x/u[0])*2.0f32)-1.0f32,1.0f32-((px.y/u[1])*2.0f32));
+  ro:V3=v3(u[24],u[25],u[26]);
+  rd:V3=wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_ff3(ndc.x,v3(u[32],u[33],u[34]))),wg_mul_ff3(ndc.y,v3(u[36],u[37],u[38]))));
+  // one trace (one call, so the shader holds one copy of it): the middle, or four round it
+  SS:[4]V2=[4]V2.[v2(-0.125f32,-0.375f32),v2(0.375f32,-0.125f32),v2(0.125f32,0.375f32),v2(-0.375f32,0.125f32)];
+  n:s32=ifx orbitleague_edgy(ro,rd,u,mesh) then 4 else 1;
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    k:s32=0;
+    while k<n {
+      c=wg_add_f3f3(c,orbitleague_trace(ifx n==1 then px else wg_add_f2f2(px,SS[cast(int)k]),u,mesh,HULL));
+      k+=1;
+    }
+  }
+  c=wg_mul_f3f(c,1.0f32/(cast(f32)(n)));
   return wg_make_f4_f3f(orbitleague_panels(px,c,u),1.0f32);
 }
 // ---- the strokes: one quad per stroke or light (orbitleague.coax lit, tinted_dot)

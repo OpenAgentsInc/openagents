@@ -8,13 +8,16 @@
 // (default -0.98, Orbit League's ground under a car's centre); the glTF's +z is the nose. --cells
 // is the clustering grid's cells along the length (default 90, as Orbit League ships). The words:
 //   0 the triangles' count, 1 the nodes', 2 the nodes' first word (16), 3 the triangles' first word,
-//   4..7 a bounding sphere (centre, radius), 8..15 0
+//   4..7 a bounding sphere (centre, radius), 8 a triangle's words (21), 9..15 0
 //   a node, 8 words: min x y z, A, max x y z, B; a leaf has A = -(its first triangle + 1) and B its
 //   count, an inner node A its first child (the second is A + 1) and B the axis it splits (0 x, 1 y,
 //   2 z), so a ray visits the child on its own side first. Splits are binned by surface area.
-//   a triangle, 12 words: a corner, its two edges from it, and its colour (linear RGB), or for
-//   paint (a light, unsaturated texel: the shader paints it the car's colour) -1 and the texel's
-//   luminance
+//   a triangle, 27 words: a corner and its two edges from it; its three corners' colours (linear
+//   RGB; the corner, then the ends of its edges); and their smooth normals, each the mean of the
+//   faces round that corner, by area, that bend less than MB_CREASE from this one. The shader
+//   blends both across the triangle, so a curve shades as a curve and a colour's edge (paint to
+//   glass, say) runs smooth, not in the triangles' saw teeth. Paint is a light, unsaturated
+//   colour (mb_paint): the shader paints it the car's colour. Word 8 of the head says 27.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -27,6 +30,8 @@ MB_VERTS :: 1000000;
 MB_TRIS :: 2000000;
 MB_TABLE :: 4194304;   // the clustering's hash table (a power of two)
 MB_LEAF :: 4;
+MB_TRI_WORDS :: 27;
+MB_CREASE :: 0.64;     // the cosine of the bend (50 degrees) past which a neighbour's face is not smoothed in
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -204,14 +209,50 @@ mb_run :: (glb_path: string, mesh: string, out_path: string, cells: int, length:
     work_node[sp] = r; work_from[sp] = i; work_to[sp] = to; sp += 1;
     if sp > deepest { deepest = sp; }
   }
+  // each corner's smooth normal: the faces round its vertex that bend less than MB_CREASE from
+  // this one, by area (a face wound the other way counts turned round; thinning leaves some)
+  fnv: [MB_TRIS * 3] f64; fu: [MB_TRIS * 3] f64;
+  for t: 0..<tn {
+    a := tris[t * 3]; b := tris[t * 3 + 1]; c := tris[t * 3 + 2];
+    e1: [3] f64; e2: [3] f64;
+    for k: 0..<3 { e1[k] = cp[b * 3 + k] - cp[a * 3 + k]; e2[k] = cp[c * 3 + k] - cp[a * 3 + k]; }
+    fnv[t * 3] = e1[1] * e2[2] - e1[2] * e2[1];
+    fnv[t * 3 + 1] = e1[2] * e2[0] - e1[0] * e2[2];
+    fnv[t * 3 + 2] = e1[0] * e2[1] - e1[1] * e2[0];
+    l := sqrt(fnv[t * 3] * fnv[t * 3] + fnv[t * 3 + 1] * fnv[t * 3 + 1] + fnv[t * 3 + 2] * fnv[t * 3 + 2]);
+    for k: 0..<3 { fu[t * 3 + k] = ifx l > 0.0 then fnv[t * 3 + k] / l else 0.0; }
+  }
+  first: [MB_VERTS + 1] int; around: [MB_TRIS * 3] int;
+  for v: 0..<nc + 1 { first[v] = 0; }
+  for q: 0..<tn * 3 { first[tris[q] + 1] += 1; }
+  for v: 0..<nc { first[v + 1] += first[v]; }
+  fill: [MB_VERTS] int;
+  for v: 0..<nc { fill[v] = first[v]; }
+  for q: 0..<tn * 3 { v := tris[q]; around[fill[v]] = q / 3; fill[v] += 1; }
+  cnorm: [MB_TRIS * 9] f64;
+  for t: 0..<tn {
+    for e: 0..<3 {
+      v := tris[t * 3 + e];
+      sum := [3] f64.[0.0, 0.0, 0.0];
+      for q: first[v]..<first[v + 1] {
+        f := around[q];
+        bend := fu[t * 3] * fu[f * 3] + fu[t * 3 + 1] * fu[f * 3 + 1] + fu[t * 3 + 2] * fu[f * 3 + 2];
+        if abs(bend) < MB_CREASE { continue; }
+        sg := ifx bend < 0.0 then -1.0 else 1.0;
+        for k: 0..<3 { sum[k] += sg * fnv[f * 3 + k]; }
+      }
+      l := sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+      for k: 0..<3 { cnorm[t * 9 + e * 3 + k] = ifx l > 0.0 then sum[k] / l else fu[t * 3 + k]; }
+    }
+  }
   // the words
   tri_at := 16 + nn * 8;
-  words := tri_at + tn * 12;
+  words := tri_at + tn * MB_TRI_WORDS;
   out: [80000000] u8;
   if words * 4 > out.count { tool_errln("mesh-bvh: too large"); return 1; }
   rad := 0.0;
   for c: 0..<nc { v := sqrt(cp[c * 3] * cp[c * 3] + (cp[c * 3 + 1] + 0.3) * (cp[c * 3 + 1] + 0.3) + cp[c * 3 + 2] * cp[c * 3 + 2]); if v > rad { rad = v; } }
-  head := [16] f64.[cast(f64) tn, cast(f64) nn, 16.0, cast(f64) tri_at, 0.0, -0.3, 0.0, rad, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  head := [16] f64.[cast(f64) tn, cast(f64) nn, 16.0, cast(f64) tri_at, 0.0, -0.3, 0.0, rad, cast(f64) MB_TRI_WORDS, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
   for k: 0..<16 { mb_put(out[..], k, head[k]); }
   for m: 0..<nn {
     w := 16 + m * 8;
@@ -220,7 +261,8 @@ mb_run :: (glb_path: string, mesh: string, out_path: string, cells: int, length:
   }
   paint := 0;
   for q: 0..<tn {
-    t := order[q]; w := tri_at + q * 12;
+    t := order[q]; w := tri_at + q * MB_TRI_WORDS;
+    for k: 0..<9 { mb_put(out[..], w + 18 + k, cnorm[t * 9 + k]); }
     a := tris[t * 3]; b := tris[t * 3 + 1]; c := tris[t * 3 + 2];
     for k: 0..<3 {
       mb_put(out[..], w + k, cp[a * 3 + k]);
@@ -229,10 +271,8 @@ mb_run :: (glb_path: string, mesh: string, out_path: string, cells: int, length:
     }
     col: [3] f64;
     for k: 0..<3 { col[k] = (cc[a * 3 + k] + cc[b * 3 + k] + cc[c * 3 + k]) / 3.0; }
-    lum := 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2];
-    if mb_paint(col[0], col[1], col[2]) {
-      mb_put(out[..], w + 9, -1.0); mb_put(out[..], w + 10, lum); mb_put(out[..], w + 11, 0.0); paint += 1;
-    } else { for k: 0..<3 { mb_put(out[..], w + 9 + k, col[k]); } }
+    if mb_paint(col[0], col[1], col[2]) { paint += 1; }
+    for k: 0..<3 { mb_put(out[..], w + 9 + k, cc[a * 3 + k]); mb_put(out[..], w + 12 + k, cc[b * 3 + k]); mb_put(out[..], w + 15 + k, cc[c * 3 + k]); }
   }
   if !fs_write(out_path, cast(string) out[0..<words * 4]) { tool_err("mesh-bvh: cannot write "); tool_errln(out_path); return 1; }
   if report {
