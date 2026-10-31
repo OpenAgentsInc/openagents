@@ -764,9 +764,12 @@ Tree :: struct {
 TRUNK :: 5.8;   // the tree's height, grid units
 branch_angle :: (b: int) -> f32 { return 0.5 + cast(f32) b * 2.0 * 3.14159265 / cast(f32) BRANCHES; }
 
-grow :: (t: [] Tree, history: string) {
+grow :: (t: [] Tree, all: string) {
+  // the newest MAX_COMMITS commits (the history is oldest first)
+  from := 0;
+  for skip: 0..<rows(all) - MAX_COMMITS { from = next_row(all, from); }
+  history := all[from..<all.count];
   n := rows(history);
-  if n > MAX_COMMITS { n = MAX_COMMITS; }
   t[0].n = n; t[0].history = history;
   for b: 0..<BRANCHES { t[0].last[b] = -1; t[0].count[b] = 0; t[0].used[b] = false; t[0].label_n[b] = 0; }
   // Coax's own subfolders hold their places; the others take what's left
@@ -2554,12 +2557,14 @@ coaxial_project_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 #test "the tree has one node per commit, on the branch of the folder it touched" {
   t: [1] Tree;
   grow(t[..], COAX_HISTORY);
-  #assert t[0].n == COAX_COMMITS && COAX_COMMITS == rows(COAX_HISTORY);
+  #assert t[0].n == (ifx COAX_COMMITS < MAX_COMMITS then COAX_COMMITS else MAX_COMMITS) && COAX_COMMITS == rows(COAX_HISTORY);
+  // past MAX_COMMITS the tree keeps the newest: its last node is the latest commit
+  #assert same(field(t[0].history, t[0].n - 1, 0), field(COAX_HISTORY, COAX_COMMITS - 1, 0));
   total := 0;
   for b: 0..<BRANCHES { total += t[0].count[b]; }
   #assert total == t[0].n;
   for i: 0..<t[0].n {
-    #assert t[0].branch[i] == branch_of(t[..], field(COAX_HISTORY, i, 2));
+    #assert t[0].branch[i] == branch_of(t[..], field(t[0].history, i, 2));
     if i > 0 { #assert t[0].trunk[i] > t[0].trunk[i - 1]; }
     r := sqrt(t[0].at[i].x * t[0].at[i].x + t[0].at[i].z * t[0].at[i].z);
     #assert r > 0.6 && r < PLOT;   // every branch stays over the plot
@@ -3167,7 +3172,7 @@ page_says :: (lv: [] Live, text: string) {
   s: [1] ProjectState; t: [1] Tree; w: [1] Work; lv: [1] Live;
   page_says(lv[..], "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575 coax");
   n := coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  #assert n > 3000 && w[0].baked == 0 && w[0].live == LIVE_CONNECTING && same(w[0].text, COAX_WORK_ITEMS) && t[0].n == COAX_COMMITS;
+  #assert n > 3000 && w[0].baked == 0 && w[0].live == LIVE_CONNECTING && same(w[0].text, COAX_WORK_ITEMS) && t[0].n == (ifx COAX_COMMITS < MAX_COMMITS then COAX_COMMITS else MAX_COMMITS);
   #assert lv[0].pipe[0].n == 1 && same(pipe_bytes(lv[0].pipe[..], 0), COAX_WORK_RELAY);
   pipe_drained(lv[0].pipe[..]);
   coaxial_project_opened(lv[..], 0);
