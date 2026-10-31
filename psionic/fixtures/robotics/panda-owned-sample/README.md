@@ -31,7 +31,7 @@ The [unchanged first receipt](native-qualification.json) preserves executed
 source, compiler, input, C/header and binary identities. Three separate
 [logical-unit refusals](unit-refusals.json) qualify the typed boundary.
 
-The first authored mutation run found three survivors in the constructor:
+The first emitted-site mutation run found three survivors in the constructor:
 a shape guard duplicated delegated FK admission, and typed/raw agreement alone
 did not catch missing public q/qd copies. The redundant guard was removed and
 independent expected public q/qd checks were added. The
@@ -40,6 +40,12 @@ constructor mutants. Five unchanged product bodies retain their exact initial
 zero-survivor evidence; all original checks remain and the dense check is
 stronger. No survivor is waived and no aggregate current-site count is invented.
 The initial source/log are retained as development evidence.
+
+These counts cover actual compiler-emitted mutation sites. Quantity operator
+lowering still has a separate source-token provenance gap: the counts do not
+qualify every typed `+` or `*` token in velocity projection. Independent typed
+literal checks and the complete SDK field comparison qualify that arithmetic
+separately. The spatial source-token profile does not close this quantity gap.
 
 ```shell
 python3 psionic/tests/robotics/panda_owned_sample_mutation_scope.py --output /tmp/new-pcs-scope

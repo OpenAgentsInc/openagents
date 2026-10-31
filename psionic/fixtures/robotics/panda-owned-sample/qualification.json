@@ -30,7 +30,8 @@
     "unchanged_five_procedures": "Exact initial product bodies retain zero-survivor evidence; all original checks retained and dense public expected-q/qd strengthened.",
     "composed_current_zero_survivor_scope": true,
     "waivers": 0,
-    "scope_record_sha256": "f2f0c35bba1d120e84a2189a3a426f52afc191128e60755fce2cf732729c054a"
+    "scope_record_sha256": "f2f0c35bba1d120e84a2189a3a426f52afc191128e60755fce2cf732729c054a",
+    "site_scope": "Actual compiler-emitted sites only; lower-level Quantity operator-token provenance is not fully enumerated. Spatial source-token support does not close that separate gap. Typed literal velocity and independent native field checks remain separate arithmetic evidence."
   },
   "example": {
     "source_sha256": "e063f1c948da640a735003a87e96b3b251ef10f7c603b667477ba4cde824aed0",

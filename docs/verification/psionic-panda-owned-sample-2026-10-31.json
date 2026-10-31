@@ -1,0 +1,195 @@
+{
+  "schema": "psionic.panda-owned-sample.publication-binding.v1",
+  "passed": true,
+  "qualified_compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "source_and_reference_exact": {
+    "sample": {
+      "coax/lib/quantity.coax": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/cases.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/experiment.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-sample-reference.json": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-samples.f64": true,
+      "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-reference.json": true,
+      "psionic/fixtures/robotics/panda-owned-sample/experiment.json": true,
+      "psionic/lib/robotics/panda-control-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-control-types.coax": true,
+      "psionic/lib/robotics/panda-control.coax": true,
+      "psionic/lib/robotics/panda-fingers-chain.coax": true,
+      "psionic/lib/robotics/panda-fingers-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-fingers-profile.coax": true,
+      "psionic/lib/robotics/panda-fingers-types.coax": true,
+      "psionic/lib/robotics/panda-fk-chain.coax": true,
+      "psionic/lib/robotics/panda-fk-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-fk-math.coax": true,
+      "psionic/lib/robotics/panda-fk-profile.coax": true,
+      "psionic/lib/robotics/panda-fk-types.coax": true,
+      "psionic/lib/robotics/panda-inertia-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-inertia-math.coax": true,
+      "psionic/lib/robotics/panda-inertia-profile.coax": true,
+      "psionic/lib/robotics/panda-inertia-types.coax": true,
+      "psionic/lib/robotics/panda-inertia.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-force.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-math.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-types.coax": true,
+      "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-jacobian-math.coax": true,
+      "psionic/lib/robotics/panda-jacobian-types.coax": true,
+      "psionic/lib/robotics/panda-matrix-types.coax": true,
+      "psionic/lib/robotics/panda-matrix.coax": true,
+      "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-owned-sample.coax": true,
+      "psionic/tests/robotics/panda_owned_sample_native.c": true,
+      "psionic/tests/robotics/panda_owned_sample_reference.py": true
+    },
+    "paired_controller": {
+      "psionic/tests/robotics/panda_owned_controller_native.c": true,
+      "psionic/tests/robotics/panda_owned_controller_reference.py": true
+    }
+  },
+  "new_compiler_C_header_bindings": [
+    {
+      "name": "panda-owned-sample",
+      "mode": "debug",
+      "arguments": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-owned-sample.coax",
+        "--library",
+        "--header",
+        "/tmp/compiler-580-model-emission-binding/panda-owned-sample-debug/panda-owned-sample.h"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents",
+      "exit": 0,
+      "stderr_bytes": 0,
+      "C_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "C_exact": true,
+      "header_exact": true,
+      "prior_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+      "passed": true
+    },
+    {
+      "name": "panda-owned-sample",
+      "mode": "release",
+      "arguments": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-owned-sample.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/tmp/compiler-580-model-emission-binding/panda-owned-sample-release/panda-owned-sample.h"
+      ],
+      "cwd": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents",
+      "exit": 0,
+      "stderr_bytes": 0,
+      "C_sha256": "5c7fb2a2b7aad7110af7c071d095b7c67048eede4bf501ed9a03999d244ef956",
+      "header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "C_exact": true,
+      "header_exact": true,
+      "prior_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+      "passed": true
+    }
+  ],
+  "paired_controller_reuses_exact_sample_C": true,
+  "compiler_input_file_binding": {
+    "schema": "coax.compiler-fixture-integration-file-binding.v1",
+    "old_root": "/tmp/coax-spatial-operators-source-final",
+    "new_root": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+    "files_compared": 74,
+    "changed": {
+      "coax/bootstrap/checker.c": {
+        "old": "72649db1819083bbcf8cb9be87b75ce2979acacc8d9775b60377bdec99dd8e3e",
+        "new": "ce6615e39db262b38ff8dd486d1e41f661f2aad3ae6efb9bd65eaacb55a8473d"
+      },
+      "coax/bootstrap/parser.c": {
+        "old": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+        "new": "f145e67525bec737fab558b01b057130bf029ef0a38565c1527160824f473045"
+      },
+      "coax/lib/compiler/checker.coax": {
+        "old": "0eb708c6b55e02928e9c1780963540f4ce1b7a6f421280baea168e6de56a8765",
+        "new": "a12c2e68d88ebef916cc36fc2fe50ede03b2180f6161513a1784c6dc22ce3738"
+      },
+      "coax/lib/compiler/parser.coax": {
+        "old": "b3ad8dc998257b29d005da4dae6eddfc126f53cde4699954a287167afbde0c11",
+        "new": "a54529653ff640a455fee11d84dfc980b7c93e6e4bd36dd93c29eb32e4e07a05"
+      }
+    },
+    "unchanged_count": 70,
+    "limitations": "Source-file inventory only; normal toolchain/SDK/environment fingerprint and new binary are qualified by parent reconstruction."
+  },
+  "sample_source_proof": {
+    "schema": "psionic.panda-owned-sample.qualification.v1",
+    "passed": true,
+    "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "compiler_input_fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+    "source_sha256": {
+      "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": "7b5e33d1289fe3f19ae17da4ba8f7c536675052f0bfa48ee6c32425a96229b1c",
+      "psionic/lib/robotics/panda-owned-sample.coax": "fc6e0ca52e36ad031b1958e564069fe71b87306c0dcf7b6a8fdd5db312387a13"
+    },
+    "experiment_sha256": "90cbf6ea412a656498a4a70826c1241892b2f932e0f67ec468269a5f471374ea",
+    "native_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+    "native_reference_fields": 2160,
+    "native_profiles": 3,
+    "assertions_per_profile": 9811,
+    "source_unit_refusals": 3,
+    "unit_refusal_record_sha256": "b5f1dcc5edac233da3ff68a1c881444c07903ca39ab8245c6eb476a35899f208",
+    "checks_first_sha256": "bb490170fd83a42bce1b1c9879b0c5046652d1237a7af3de26baded5b2fef4e7",
+    "initial_mutation": {
+      "total": 100,
+      "killed": 97,
+      "survivors": 3,
+      "owner": "pcs_forward",
+      "failures": "Redundant q/slide count guard and missing independent public q/qd expectations."
+    },
+    "current_mutation": {
+      "changed_procedure": "pcs_forward",
+      "mutants": 29,
+      "killed": 29,
+      "survivors": 0,
+      "unchanged_five_procedures": "Exact initial product bodies retain zero-survivor evidence; all original checks retained and dense public expected-q/qd strengthened.",
+      "composed_current_zero_survivor_scope": true,
+      "waivers": 0,
+      "scope_record_sha256": "f2f0c35bba1d120e84a2189a3a426f52afc191128e60755fce2cf732729c054a",
+      "site_scope": "Actual compiler-emitted sites only; lower-level Quantity operator-token provenance is not fully enumerated. Spatial source-token support does not close that separate gap. Typed literal velocity and independent native field checks remain separate arithmetic evidence."
+    },
+    "example": {
+      "source_sha256": "e063f1c948da640a735003a87e96b3b251ef10f7c603b667477ba4cde824aed0",
+      "reference_sha256": "1ecff81001e5f72cc88a5e1fc6267231d057f3ddb754703dcc528d74e8f208fa",
+      "golden_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+      "debug_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+      "release_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+      "new_selected_checks": 1
+    },
+    "scope": "Fixed-source fresh raw PcSample constructor only; no SDK/NN/physics/old gate calls. Controller output parity and driver selection are separate evidence. No full simulator/clock/#bounded/hardware claim.",
+    "scope_tool_binding": {
+      "source_sha256": "d429e1f688276c2fe1ec4dd67973197697ed4645e103e1918648bbe44b2a4828",
+      "entry_and_dependency_exact_to_passing_private_scope": true,
+      "mutation_execution_repeated": false
+    },
+    "new_VM_scope": {
+      "groups": 10,
+      "cases": 61,
+      "evidence": "Initial eight groups passed after replacing unsupported Quantity += with typed assignment; two new dense/raw-shape groups passed separately. All checks were retained in the subsequent passing changed-procedure mutation scope. No unchanged passing check rerun."
+    }
+  },
+  "paired_controller_qualification_sha256": "e34c80e2cf9ff9e304c5d99c8da3cc56d930bc28971f77bd832a81f386ae149d",
+  "scope": "Read-only exact-source and new-compiler C/header carry of separately executed constructor/paired-controller results. No native, SDK, numerical, example or source/mutation passing gate repeated. Static controller parity is not a stepped SDK prefix, policy episode, typed clock or bounded-control/hardware proof.",
+  "portable_logical_unit_gate": "Three already qualified compiler refusals are registered by the thin wrapper; existing output paths refuse first, sibling unit logs preserve failures. Shell syntax checked; passing compiler cases were not rerun.",
+  "portable_pair_cache": {
+    "qualification_sha256": "fcb06c7a5ddf44eff5a43352862047725df09b339fac6adb2387ea3d90d0d5c8",
+    "guard_cases": 15,
+    "historical_execution_identity_retained": true,
+    "no_sample_or_controller_rerun": true
+  },
+  "static_book": {
+    "passed": true,
+    "programs": 114,
+    "linked_listings": 447,
+    "qualified_book_tree": "9f9b43a0a1c9c986f3ecb3923111035ee65157b7",
+    "integration_commit": "36d3594a73",
+    "carry_scope": "Root pending fixture README/qualification, thin unit wrapper and this publication record are outside static book/listing/capability inputs. Their file contents were already present at the gate except this metadata addendum. No source/book/capability file changed after the passing check."
+  }
+}
