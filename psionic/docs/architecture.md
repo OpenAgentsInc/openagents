@@ -154,17 +154,35 @@ settlement remain outside Psionic.
 
 ## Acceleration and current compiler limits
 
-The current `coax metal` profile emits scalar `f32`/`bool` helpers with no
-loops, buffer access, or tensor compute entry points. Coaxial's WebGPU drawing
-path likewise does not establish general ML kernel support. A CPU tensor loop
-cannot simply be emitted as a Metal matrix kernel today.
+The tensor-compute consumer is a BF16 matrix times f32 vectors with an
+ordered f64 reduction ([chapter 26](../book/ch026-a-coax-compute-subset.md),
+`psionic/lib/device/project.coax`). Its minimum form, with the refusals that
+bound it, is [`psionic/fixtures/compute/`](../fixtures/compute/); run
+`psionic/tests/check_compute_contract.sh` (no GPU needed). The scalar
+`coax metal` drawing profile still has no buffers or loops; the compute
+profiles below are separate.
 
-Before acceleration, make a separate Coax compiler milestone for the smallest
-needed compute subset: buffer/index types, bounded loops, work-item identity,
-entry/binding layout, and defined arithmetic. Reductions later need explicit
-workgroup memory and synchronization semantics. Checks must cover negative
-admission, generated-source compilation, and real device execution. Preserve
-the CPU oracle and keep new syntax marked planned until it runs.
+| Feature | Status | Where |
+| --- | --- | --- |
+| Kernel entry: `#export_c`, `int` work item first, no result; the entry runs every item below a count, in no defined order | Implemented (`coax cuda`, `coax metal-compute`) | `coax/spec.md`, CUDA compute subset; `lib/compiler/compute.coax` |
+| Buffers: views of numbers as kernel parameters; fixed local arrays of at most 4,096 scalars | Implemented | same |
+| Bounded `for` loops, `if`/`else`, `break`/`continue`, acyclic calls; integer, cast and bounds checks trap the launch | Implemented | same |
+| Defined arithmetic: one rounding per `+ - * /` and `sqrt` (CUDA `--fmad=false`, Metal safe math), so device and C builds agree bit for bit | Implemented | same |
+| Completion: the host launches, waits and copies back; one output element per work item | Implemented (host effects only) | `psionic/platform/cuda-host.c`, `psionic/platform/metal-host.m` |
+| Warp kernels: `for lane: 0..<32`, per-lane register arrays, device primitives | Implemented (CUDA) | `coax/spec.md`, warp kernels; `psionic/lib/device/warp.coax` |
+| Refusals: strings, structs, enums, `while`, `defer`, `#assert`, results, a non-item first parameter, recursion (E0700/E0702); a module without a kernel (E0701/E0703) | Implemented | `coax/tests/cuda.py`, `coax/tests/metal_compute.py`, `psionic/fixtures/compute/refuse-*.coax` |
+| Workgroup/shared memory, barriers, atomics, capability queries | Planned | not in either subset; reductions use a second kernel |
+| Other backends (Vulkan/SPIR-V compute, browser WebGPU compute) | Planned | each needs its own emitter, conformance and device evidence |
+
+Conformance lives with the compiler: `coax/tests/cuda.py` and
+`coax/tests/metal_compute.py` check admission, entry layout and generated
+source (and compile it when NVRTC or the Metal toolchain is present). The first
+actual-device acceptance tests compare the same kernels against their CPU
+builds: `psionic/tests/run_device_project.sh` on the RTX 4080 (bit for bit,
+chapter 26) and `psionic/tests/run_metal_kernels.sh` on the Apple M5 Max
+(chapter 31). A compiler change to either subset updates `coax/spec.md`, the
+conformance test and these fixtures together; new syntax stays marked
+planned until it runs on a device.
 
 Native Metal bindings may create buffers, encode commands, and report
 completion. Tensor arithmetic, tiling choices, and dispatch/admission decisions

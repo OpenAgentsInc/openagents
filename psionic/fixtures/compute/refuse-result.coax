@@ -1,0 +1,2 @@
+// expect: cuda E0700 metal E0702 (a kernel returns nothing)
+k :: (item:int,out:[]f32)->f32 #export_c {out[item]=1;return 0;}

@@ -1,0 +1,42 @@
+// The minimum tensor-compute consumer (chapter 26's shape, cut to its core):
+// a BF16 matrix times an f32 vector, one row per work item, then the row
+// partials added in f64 in a fixed order. `coax test` runs it on the CPU;
+// `coax cuda` and `coax metal-compute` must admit it unchanged.
+#import "Basic";
+cc_bf16 :: (bits:u64,j:int)->f32 {
+    half:=(bits>>cast(u64)(16*j))&0xffff;
+    return f32_from_bits(cast,trunc(u32)half<<16);
+}
+// partial[s*rows+row]: the products of row's group-slice s, groups of four.
+cc_matvec :: (item:int,rows:int,cols:int,slices:int,w:[]u64,x:[]f32,partial:[]f32) #export_c {
+    row:=item/slices;s:=item%slices;groups:=cols/4;per:=groups/slices;sum:f32=0;
+    for k:0..<per {
+        g:=s*per+k;bits:=w[row*groups+g];
+        for j:0..<4 {sum+=cc_bf16(bits,j)*x[4*g+j];}
+    }
+    partial[s*rows+row]=sum;
+}
+cc_reduce :: (item:int,rows:int,slices:int,partial:[]f32,out:[]f32) #export_c {
+    sum:f64=0;
+    for s:0..<slices {sum+=f64(partial[s*rows+item]);}
+    out[item]=f32(sum);
+}
+// 1.0 ... 8.0 as BF16 bit patterns (sign bit 0x8000 negates).
+CC_BF16 :: [8]u64.[0x3f80,0x4000,0x4040,0x4080,0x40a0,0x40c0,0x40e0,0x4100];
+#test "every output belongs to one work item and matches the hand result" {
+    // Rows [1,2,...,8] and [-1,...,-8] as BF16 (exact), x = all 0.5.
+    w:[4]u64;
+    for r:0..<2 {
+        for g:0..<2 {
+            bits:u64=0;
+            for j:0..<4 {h:=CC_BF16[g*4+j];if r==1 {h|=0x8000;}bits|=h<<cast(u64)(16*j);}
+            w[r*2+g]=bits;
+        }
+    }
+    x:[8]f32;for i:0..<8 {x[i]=0.5;}
+    partial:[4]f32;out:[2]f32;
+    for item:0..<4 {cc_matvec(item,2,8,2,w[..],x[..],partial[..]);}
+    for item:0..<2 {cc_reduce(item,2,2,partial[..],out[..]);}
+    #assert partial[0]==5 && partial[2]==13 && partial[1]==-5 && partial[3]==-13;
+    #assert out[0]==18 && out[1]==-18;
+}

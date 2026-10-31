@@ -1,0 +1,2 @@
+// expect: cuda E0700 metal E0702 (the first parameter is the int work item)
+k :: (x:f32,out:[]f32) #export_c {out[0]=x;}

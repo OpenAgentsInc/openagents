@@ -1,0 +1,2 @@
+// expect: cuda E0701 metal E0703 (a module needs a kernel)
+f :: (x:f32)->f32 {return x;}

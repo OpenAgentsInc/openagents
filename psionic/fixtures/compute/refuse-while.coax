@@ -1,0 +1,2 @@
+// expect: cuda E0700 metal E0702 (a while loop: loops are bounded for loops)
+k :: (item:int,out:[]f32) #export_c {i:=0;while i<3 {i+=1;}out[item]=1;}

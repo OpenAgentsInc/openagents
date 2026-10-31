@@ -1,0 +1,2 @@
+// expect: cuda E0700 metal E0702 (a string value)
+k :: (item:int,out:[]f32) #export_c {s:="x";out[item]=1;}

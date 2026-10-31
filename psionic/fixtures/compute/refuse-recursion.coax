@@ -1,0 +1,3 @@
+// expect: cuda E0700 metal E0702 (calls are acyclic)
+g :: (n:int)->int {if n==0 {return 0;}return g(n-1);}
+k :: (item:int,out:[]f32) #export_c {out[item]=cast(f32)g(item);}
