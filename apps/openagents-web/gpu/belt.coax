@@ -1,0 +1,350 @@
+// belt's shaders, the source of apps/openagents-web/belt.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (belt.module,
+// belt.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/stars.coax";
+
+// Belt 2200's two passes (belt.coax decides every number): the sky behind
+// space (verse/stars.coax: the starfield, the Sun's disc and corona; the
+// block below is generated from it), the Belt's dust, the worlds as shaded
+// discs (bands, clouds, caps, Saturn's rings, air at the limb) and the
+// HUD's glass; then the strokes: glowing line art as the homepage draws it
+// (newland.wgsl).
+// BeltU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   sun 4
+//   misc 8
+//   panels 12
+//   belt 76
+//   discs 80
+// x, y, radius (device pixels), dpr
+// the stars' drift x, y, the panel count, the disc count
+// per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, warm, 0
+// the Sun x, y (device pixels), an AU in pixels (0: no dust), the dust's turn
+// per world: x, y, radius (device pixels), kind; then the sunward x, y, seed, spin
+BELT_GREY_LIGHT :: ()->V3 {return v3(0.78f32,0.78f32,0.78f32);}
+BELT_ACCENT :: ()->V3 {return v3(0.216f32,0.851f32,0.851f32);}
+BELT_SUN_CORE :: ()->V3 {return v3(1.0f32,0.97f32,0.9f32);}
+BELT_SUN_GLOW :: ()->V3 {return v3(1.0f32,0.9f32,0.66f32);}
+BELT_DUST :: ()->V3 {return v3(0.6f32,0.6f32,0.62f32);}
+belt_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+belt_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  stars:f32=verse_starfield(pos.x,pos.y,u[8],u[9],u[2],u[7]);
+  c:V3=wg_add_f3f3(v3(0.006f32,0.008f32,0.014f32),wg_mul_f3f(wg_mul_f3f(v3(0.85f32,0.9f32,1.0f32),stars),0.8f32));
+  d:f32=wg_length2(wg_sub_f2f2(v2(pos.x,pos.y),v2(u[4],u[5])));
+  disc:f32=verse_sun_disc(d,u[6]);
+  corona:f32=verse_sun_corona(d,u[6],u[7]);
+  c=wg_mix_f3f3f(wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(BELT_SUN_GLOW(),corona),0.9f32)),BELT_SUN_CORE(),disc);
+  c=wg_add_f3f3(c,wg_mul_f3f(BELT_DUST(),belt_belt_dust(v2(pos.x,pos.y),u)));
+  worlds:s32=wg_i32_f(u[11]);
+  {
+    k:s32=0;
+    while k<12 {
+      if (k>=worlds) {
+        break;
+      }
+      c=belt_world(v2(pos.x,pos.y),c,wg_at4(u,(cast(int)(k*2))*4+80),wg_at4(u,(cast(int)((k*2)+1))*4+80),u);
+      k+=1;
+    }
+  }
+  c=wg_mul_f3f(c,u[3]);
+  n:s32=wg_i32_f(u[10]);
+  {
+    k:s32=0;
+    while k<8 {
+      if (k>=n) {
+        break;
+      }
+      c=belt_panel(v2(pos.x,pos.y),c,wg_at4(u,(cast(int)(k*2))*4+12),wg_at4(u,(cast(int)((k*2)+1))*4+12),u);
+      k+=1;
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// ---- noise for surfaces and dust
+belt_hash2 :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+belt_vnoise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(belt_hash2(i),belt_hash2(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(belt_hash2(wg_add_f2f2(i,v2(0.0f32,1.0f32))),belt_hash2(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+belt_fbm :: (p:V2)->f32 {
+  v:f32=0.0f32;
+  a:f32=0.5f32;
+  q:V2=p;
+  {
+    i:s32=0;
+    while i<3 {
+      v=v+(a*belt_vnoise(q));
+      q=wg_add_f2f2(wg_mul_f2f(q,2.07f32),v2(1.7f32,9.2f32));
+      a=a*0.5f32;
+      i+=1;
+    }
+  }
+  return v/0.875f32;
+}
+// The Belt as dust: a band from 2.1 to 3.3 AU about the Sun with the Kirkwood gaps (Jupiter's
+// resonances at 2.50, 2.82 and 2.95 AU), clumped by noise that turns with the rocks. It fades
+// out when an AU is wider than the screen many times over (close in, there is nothing to see).
+belt_belt_dust :: (p:V2,u:[]f32)->f32 {
+  au:f32=u[78];
+  if (au<=0.0f32) {
+    return 0.0f32;
+  }
+  rel:V2=wg_div_f2f(wg_sub_f2f2(p,v2(u[76],u[77])),au);
+  r:f32=wg_length2(rel);
+  if ((r<2.0f32)||(r>3.5f32)) {
+    return 0.0f32;
+  }
+  prof:f32=smoothstep(2.06f32,2.4f32,r)*(1.0f32-smoothstep(2.95f32,3.4f32,r));
+  g1:f32=(r-2.5f32)/0.022f32;
+  g2:f32=(r-2.82f32)/0.018f32;
+  g3:f32=(r-2.95f32)/0.016f32;
+  gaps:f32=((1.0f32-(0.6f32*exp((-g1)*g1)))-(0.5f32*exp((-g2)*g2)))-(0.4f32*exp((-g3)*g3));
+  c:f32=cos(u[79]);
+  s:f32=sin(u[79]);
+  w:V2=v2((c*rel.x)-(s*rel.y),(s*rel.x)+(c*rel.y));
+  n:f32=(belt_fbm(wg_mul_f2f(w,7.0f32))*0.65f32)+(belt_fbm(wg_mul_f2f(w,31.0f32))*0.35f32);
+  fade:f32=1.0f32-smoothstep(20000.0f32,60000.0f32,au);
+  return (((prof*gaps)*(0.12f32+(((1.1f32*n)*n)*n)))*0.16f32)*fade;
+}
+// ---- the worlds
+// Kinds: 1 Mercury, 2 Venus, 3 the Earth, 4 the Moon, 5 Mars, 6 Jupiter, 7 Saturn, 8 Ceres,
+// 9 Vesta, 10 an ice rock. b is the way to the Sun on screen, a seed and a spin (radians).
+belt_surface :: (kind:s32,n:V3,seed:f32,spin:f32,u:[]f32)->V3 {
+  lon:f32=wg_atan2(n.x,n.z)+spin;
+  uv:V2=wg_add_f2f2(v2(lon,n.y*1.6f32),v2(seed*3.1f32,seed));
+  if (kind==1) {
+    return wg_mul_f3f(v3(0.56f32,0.52f32,0.49f32),(0.7f32+(0.55f32*belt_fbm(wg_mul_f2f(uv,4.0f32)))));
+  }
+  if (kind==2) {
+    return wg_mix_f3f3f(v3(0.93f32,0.87f32,0.7f32),v3(0.98f32,0.95f32,0.86f32),belt_fbm(wg_mul_f2f2(uv,v2(1.5f32,4.0f32))));
+  }
+  if (kind==3) {
+    land:f32=smoothstep(0.52f32,0.58f32,belt_fbm(wg_mul_f2f(uv,2.2f32)));
+    col:V3=wg_mix_f3f3f(v3(0.05f32,0.16f32,0.42f32),wg_mix_f3f3f(v3(0.2f32,0.38f32,0.17f32),v3(0.55f32,0.48f32,0.34f32),belt_fbm(wg_mul_f2f(uv,5.0f32))),land);
+    cap:f32=smoothstep(0.82f32,0.9f32,abs(n.y));
+    cloud:f32=smoothstep(0.5f32,0.72f32,belt_fbm(wg_add_f2f2(wg_mul_f2f2(uv,v2(3.0f32,6.0f32)),v2(u[2]*0.01f32,0.0f32))));
+    return wg_mix_f3f3f(col,v3(0.95f32,0.95f32,0.95f32),fmax(cap,cloud*0.85f32));
+  }
+  if (kind==4) {
+    return wg_mul_f3f(v3(0.62f32,0.62f32,0.6f32),(0.65f32+(0.5f32*smoothstep(0.35f32,0.6f32,belt_fbm(wg_mul_f2f(uv,3.0f32))))));
+  }
+  if (kind==5) {
+    dark:f32=smoothstep(0.45f32,0.65f32,belt_fbm(wg_mul_f2f(uv,3.0f32)));
+    col:V3=wg_mix_f3f3f(v3(0.72f32,0.34f32,0.25f32),v3(0.42f32,0.22f32,0.17f32),dark);
+    return wg_mix_f3f3f(col,v3(0.93f32,0.92f32,0.9f32),smoothstep(0.86f32,0.93f32,abs(n.y)));
+  }
+  if ((kind==6)||(kind==7)) {
+    wob:f32=belt_fbm(v2(lon*2.0f32,n.y*14.0f32))*2.2f32;
+    band:f32=0.5f32+(0.5f32*sin((n.y*(ifx kind==7 then 12.0f32 else 17.0f32))+wob));
+    if (kind==6) {
+      return wg_mix_f3f3f(v3(0.62f32,0.48f32,0.38f32),v3(0.9f32,0.85f32,0.75f32),band);
+    }
+    return wg_mix_f3f3f(v3(0.76f32,0.68f32,0.5f32),v3(0.92f32,0.86f32,0.68f32),band);
+  }
+  if (kind==8) {
+    return wg_add_f3f3(wg_mul_f3f(v3(0.4f32,0.4f32,0.39f32),(0.75f32+(0.45f32*belt_fbm(wg_mul_f2f(uv,5.0f32))))),wg_mul_f3f(v3(0.5f32,0.5f32,0.5f32),smoothstep(0.9f32,0.95f32,belt_fbm(wg_mul_f2f(uv,9.0f32)))));
+  }
+  if (kind==9) {
+    return wg_mul_f3f(v3(0.55f32,0.53f32,0.5f32),(0.7f32+(0.5f32*belt_fbm(wg_mul_f2f(uv,4.0f32)))));
+  }
+  crater:f32=smoothstep(0.55f32,0.7f32,belt_fbm(wg_mul_f2f(uv,5.0f32)));
+  return wg_mul_f3f(wg_mix_f3f3f(v3(0.66f32,0.72f32,0.78f32),v3(0.36f32,0.38f32,0.42f32),crater),(0.85f32+(0.3f32*belt_fbm(wg_mul_f2f(uv,13.0f32)))));
+}
+belt_air :: (kind:s32)->V4 { // the colour at the limb and how much
+  if (kind==2) {
+    return v4(1.0f32,0.95f32,0.82f32,0.55f32);
+  }
+  if (kind==3) {
+    return v4(0.35f32,0.62f32,1.0f32,0.85f32);
+  }
+  if (kind==5) {
+    return v4(0.95f32,0.62f32,0.55f32,0.3f32);
+  }
+  if (kind==6) {
+    return v4(0.9f32,0.86f32,0.78f32,0.2f32);
+  }
+  if (kind==7) {
+    return v4(0.95f32,0.9f32,0.75f32,0.18f32);
+  }
+  return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+}
+// Saturn's rings, seen tilted: an ellipse from 1.24 to 2.27 radii with the Cassini Division,
+// lit except in the planet's shadow.
+belt_rings :: (q:V2,l:V2)->V4 {
+  ca:f32=0.94f32;
+  sa:f32=-0.342f32;
+  r2:V2=v2((ca*q.x)-(sa*q.y),(sa*q.x)+(ca*q.y));
+  e:V2=v2(r2.x,r2.y/0.42f32);
+  rr:f32=wg_length2(e);
+  if ((rr<1.24f32)||(rr>2.27f32)) {
+    return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  }
+  dens:f32=(0.55f32+(0.25f32*sin(rr*46.0f32)))+(0.2f32*sin(rr*131.0f32));
+  dens=dens*(1.0f32-(0.92f32*(smoothstep(1.9f32,1.93f32,rr)-smoothstep(1.98f32,2.01f32,rr))));
+  dens=dens*(smoothstep(1.24f32,1.32f32,rr)*(1.0f32-smoothstep(2.18f32,2.27f32,rr)));
+  dens=dens*(ifx rr>1.55f32 then 1.0f32 else 0.55f32);
+  // the planet's shadow, worked out in the ring's own plane (the squash undone), soft at its edge
+  lr:V2=v2((ca*l.x)-(sa*l.y),(sa*l.x)+(ca*l.y));
+  lp:V2=wg_normalize2(v2(lr.x,lr.y/0.42f32));
+  along:f32=wg_dot2(e,lp);
+  side:f32=wg_length2(wg_sub_f2f2(e,wg_mul_ff2(along,lp)));
+  shade:f32=1.0f32-((0.88f32*(1.0f32-smoothstep(0.95f32,1.05f32,side)))*smoothstep(0.0f32,-0.1f32,along));
+  return wg_make_f4_f3f(wg_mul_f3f(v3(0.86f32,0.8f32,0.66f32),shade),clampf(dens,0.0f32,1.0f32));
+}
+belt_world :: (p:V2,under:V3,a:V4,b:V4,u:[]f32)->V3 {
+  rad:f32=fmax(a.z,0.5f32);
+  rel:V2=wg_sub_f2f2(p,v2(a.x,a.y));
+  d:f32=wg_length2(rel);
+  if (d>((rad*2.4f32)+6.0f32)) {
+    return under;
+  }
+  kind:s32=wg_i32_f(a.w+0.5f32);
+  q:V2=wg_div_f2f(rel,rad);
+  l2:V2=wg_normalize2(wg_add_f2f2(v2(b.x,b.y),v2(0.0001f32,0.0f32)));
+  l:V3=wg_normalize3(v3(l2.x,l2.y,0.35f32));
+  aa:f32=1.2f32/rad;
+  c:V3=under;
+  // the rings' far half, under the planet
+  ring:V4=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  ring_front:bool=false;
+  if (kind==7) {
+    ring=belt_rings(q,l2);
+    ca:f32=0.94f32;
+    sa:f32=-0.342f32;
+    ring_front=((sa*q.x)+(ca*q.y))>0.0f32;
+    if (!ring_front) {
+      c=wg_mix_f3f3f(c,v3(ring.x,ring.y,ring.z),ring.w*0.85f32);
+    }
+  }
+  // the outline: rocks are lumpy
+  edge:f32=1.0f32;
+  if (kind>=8) {
+    dir:V2=wg_div_f2f(q,fmax(wg_length2(q),0.0001f32));
+    lump:f32=ifx kind==10 then 0.3f32 else 0.06f32;
+    edge=1.0f32+((lump*(belt_fbm(wg_add_f2f2(wg_mul_f2f(dir,1.7f32),v2(b.z*7.0f32,b.z*3.0f32)))-0.5f32))*2.0f32);
+  }
+  qe:f32=(d/rad)/edge;
+  atm:V4=belt_air(kind);
+  if ((atm.w>0.0f32)&&(qe>1.0f32)) {
+    lit:f32=0.25f32+(0.75f32*fmax(wg_dot2(wg_div_f2f(q,fmax(wg_length2(q),0.0001f32)),l2),0.0f32));
+    glow:f32=(exp(((-(qe-1.0f32))*rad)/((0.06f32*rad)+1.5f32))*atm.w)*lit;
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(v3(atm.x,atm.y,atm.z),glow),0.8f32));
+  }
+  cover:f32=1.0f32-smoothstep(1.0f32-aa,1.0f32+aa,qe);
+  if (cover>0.0f32) {
+    qq:V2=wg_div_f2f(q,edge);
+    z:f32=sqrt(fmax(1.0f32-wg_dot2(qq,qq),0.0f32));
+    n:V3=v3(qq.x,-qq.y,z);
+    ln:V3=v3(l.x,-l.y,l.z);
+    lam:f32=fmax(wg_dot3(n,ln),0.0f32);
+    col:V3=belt_surface(kind,n,b.z,b.w,u);
+    light:f32=0.035f32+(1.15f32*pow(lam,0.85f32));
+    if ((kind==6)||(kind==7)) {
+      light=light*(0.65f32+(0.35f32*z));
+    }
+    lit_c:V3=wg_mul_f3f(col,light);
+    if (atm.w>0.0f32) {
+      lit_c=wg_add_f3f3(lit_c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(atm.x,atm.y,atm.z),pow(1.0f32-z,3.0f32)),atm.w),0.6f32),smoothstep(-0.2f32,0.4f32,wg_dot3(n,ln))));
+    }
+    c=wg_mix_f3f3f(c,lit_c,cover);
+  }
+  if ((kind==7)&&ring_front) {
+    c=wg_mix_f3f3f(c,v3(ring.x,ring.y,ring.z),ring.w*0.85f32);
+  }
+  return c;
+}
+// A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint
+// scanlines and a glow inside its edge (newland.wgsl's), blue when it is warm (selected).
+belt_panel :: (p:V2,under:V3,r:V4,s:V4,u:[]f32)->V3 {
+  alpha:f32=s.y*u[3];
+  if (alpha<=0.0f32) {
+    return under;
+  }
+  x:f32=p.x-r.x;
+  y:f32=p.y-r.y;
+  w:f32=r.z-r.x;
+  h:f32=r.w-r.y;
+  side:f32=fmin(fmin(x,w-x),fmin(y,h-y));
+  corner:f32=fmin((w-x)+y,x+(h-y))-s.x;
+  inside:f32=fmin(side,corner*0.7071f32);
+  if (inside<=0.0f32) {
+    return under;
+  }
+  warm:f32=ifx s.z>0.5f32 then 1.0f32 else 0.0f32;
+  tint:V3=wg_mix_f3f3f(BELT_GREY_LIGHT(),BELT_ACCENT(),warm);
+  shade:V3=wg_mix_f3f3f(v3(0.022f32,0.022f32,0.022f32),v3(0.013f32,0.013f32,0.013f32),clampf(y/fmax(h,1.0f32),0.0f32,1.0f32));
+  line:f32=ifx fract(p.y/3.0f32)<0.34f32 then 0.018f32 else 0.0f32;
+  edge:f32=(exp((-inside)/22.0f32)*(0.07f32+(0.1f32*warm)))+(0.03f32*warm);
+  glass:V3=wg_add_f3f3(wg_add_f3f3(wg_mix_f3f3f(wg_mul_f3f(under,0.25f32),shade,0.85f32),v3(line,line,line)),wg_mul_f3f(tint,edge));
+  return wg_mix_f3f3f(under,glass,clampf(alpha,0.0f32,1.0f32)*smoothstep(0.0f32,1.5f32,inside));
+}
+// ---- the strokes, one quad each
+BeltV :: struct {pos:V4; place:V2; shape:V4; tint:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode
+belt_fx_vs_in :: struct {a:V4; b:V4; c:V4; }
+belt_fx_vs :: (_vid2:u32,_iid3:u32,in_:belt_fx_vs_in,u:[]f32)->BeltV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  o:BeltV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  return o;
+}
+// A map stroke (mode 1) under a HUD panel shows only faintly through its glass.
+belt_under_hud :: (p:V2,u:[]f32)->f32 {
+  n:s32=wg_i32_f(u[10]);
+  {
+    k:s32=0;
+    while k<8 {
+      if (k>=n) {
+        break;
+      }
+      r:V4=wg_at4(u,(cast(int)(k*2))*4+12);
+      if ((((p.x>=r.x)&&(p.x<=r.z))&&(p.y>=r.y))&&(p.y<=r.w)) {
+        return 0.12f32;
+      }
+      k+=1;
+    }
+  }
+  return 1.0f32;
+}
+belt_fx_fs :: (v:BeltV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  dim:f32=ifx v.tint.w>0.5f32 then belt_under_hud(v2(v.pos.x,v.pos.y),u) else 1.0f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),dim),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

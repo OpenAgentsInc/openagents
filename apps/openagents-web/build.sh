@@ -38,7 +38,7 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
 # and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden; do
+for w in verse newland builder deadgears icecream garden belt; do
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
@@ -101,8 +101,7 @@ deadgears=$!
 # /realms/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
-# /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in belt.wgsl).
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into apps/openagents-web/belt.wgsl)
+# /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /realms/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).

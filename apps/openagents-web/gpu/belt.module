@@ -1,0 +1,3 @@
+--vertices belt_bg_vs,belt_fx_vs
+--fragments belt_bg_fs,belt_fx_fs
+--bindings apps/openagents-web/gpu/belt.bindings --strip belt_
