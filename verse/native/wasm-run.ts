@@ -87,6 +87,13 @@ if (at) bytesAt(at, catalog.bytes.length).set(catalog.bytes);
 [catalog.bytes.length, of(2)?.bytes.length ?? 0, of(3)?.bytes.length ?? 0, layers].forEach((n, i) => x.coaxial_asset_ready(state, i, n));
 (opt.extra ? opt.extra.split(",").map(Number) : []).forEach((n, i) => x.coaxial_asset_ready(state, 4 + i, n));
 console.log(`realm-run: ${count} entries in the pack (${layers} layers), ${floats} floats a vertex, ${uniformFloats} uniforms`);
+// --hash PLACE: the page's location hash, as host.js sendHash delivers it once the engine is up
+if (opt.hash && x.coaxial_hash) {
+  const b = new TextEncoder().encode(opt.hash).subarray(0, x.coaxial_inbox_cap());
+  bytesAt(x.coaxial_inbox(state), b.length).set(b);
+  x.coaxial_hash(state, b.length);
+  after();
+}
 
 const fnv = (b: Uint8Array) => {
   let hh = 0xcbf29ce484222325n;

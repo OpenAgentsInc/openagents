@@ -46,7 +46,8 @@ typedef struct {
   VkSampler sampler;
 } VksBinding;
 
-enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2 };
+// Blending: replace; add (one, one); alpha (source over); multiply (the target by the source's colour).
+enum { VKS_REPLACE = 0, VKS_ADD = 1, VKS_ALPHA = 2, VKS_MUL = 3 };
 typedef struct {
   const uint32_t *words;
   size_t count;
@@ -68,6 +69,9 @@ typedef struct {
   uint32_t ntargets;
   VksImage *depth;
   int blend, depth_test, depth_write, cull_back;
+  int alpha_keep;    // blending keeps the targets' alpha (WebGPU's zero, one)
+  uint32_t masked;   // targets (bit i) this pass leaves as they are: write mask 0
+  int depth_always;  // the depth test passes always (else less)
   int keep;          // keep what the targets hold, else clear them
   float clear[4];    // color targets' clear value; depth clears to 1
 } VksPass;
@@ -87,6 +91,8 @@ typedef struct {
 void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass);
 void vks_pipe_record(VksPipe *p, VkCommandBuffer cmd, const VksPass *pass);
 void vks_pipe_close(Vkc *v, VksPipe *p);
+// One image's level 0 into another of its size and format (colour or depth), both ready to sample after.
+void vks_copy(Vkc *v, VksImage *from, VksImage *to);
 // Records with `record` into a one-time command buffer, submits it and waits.
 void vks_submit(Vkc *v, void (*record)(VkCommandBuffer cmd, void *user), void *user);
 #endif

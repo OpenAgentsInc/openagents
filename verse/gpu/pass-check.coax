@@ -97,16 +97,25 @@ pc_spec :: (text: string) -> PcSpec {
     l := pc_line(text, k);
     d := pc_word(l, 0);
     if d == "size" { s.w = args_whole(pc_word(l, 1)); s.h = args_whole(pc_word(l, 2)); }
-    if d == "pass" { s.nt = args_whole(pc_word(l, 4)); }
+    if d == "pass" { s.nt = pc_targets(pc_word(l, 4)); }
   }
   s.ok = s.w > 0 && s.h > 0 && s.nt > 0 && s.nt <= 8;
   return s;
+}
+// A pass's TARGETS: a number of its own, or names joined by commas.
+pc_targets :: (t: string) -> int {
+  if t.count == 0 || (t[0] >= '0' && t[0] <= '9') { return args_whole(t); }
+  n := 1;
+  for i: 0..<t.count { if t[i] == ',' { n += 1; } }
+  return n;
 }
 #test "the spec's size and its last pass's targets" {
   #assert pc_word("  pass a.spv vs  fs 2", 4) == "2" && pc_word("pass", 1) == "" && pc_word("", 0) == "" && pc_word("a\tb\r", 1) == "b";
   #assert pc_lines("a\nb\n") == 2 && pc_lines("a\nb") == 2 && pc_lines("") == 0 && pc_line("a\nbc\n", 1) == "bc" && pc_line("a", 3) == "";
   s := pc_spec("size 320 180\npass s.spv a b 0 sm 2 2 draws\npass t.spv c d 2 own 0 0 draws\n");
   #assert s.ok && s.w == 320 && s.h == 180 && s.nt == 2;
+  #assert pc_targets("light,aux") == 2 && pc_targets("light") == 1 && pc_targets("3") == 3 && pc_targets("") < 0;
+  #assert pc_spec("size 4 4\npass t c d light,aux - 0 0 3 keep\n").nt == 2;
   #assert !pc_spec("size 320 180\npass s.spv a b 0 sm 2 2 draws\n").ok && !pc_spec("pass t.spv c d 2 own 0 0 3\n").ok && !pc_spec("size 4 4\npass t c d 9 - 0 0 3").ok;
 }
 

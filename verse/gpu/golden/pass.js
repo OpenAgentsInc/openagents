@@ -5,8 +5,8 @@
 // the Chrome DevTools protocol; verse/gpu/vk-passes.c draws the same spec natively
 // (its header documents the directives). Here `wgsl FILE` names the WGSL, and
 // a pass's bindings (SPV.bindings, by name) are found in it by their
-// @group/@binding. Each pass clears its colour targets (rgba16float, made once
-// at the size) to 0 and its depth to 1, tests less and writes depth.
+// @group/@binding. A pass clears its colour targets (rgba16float) to 0 and its
+// depth to 1, tests less and writes depth, unless its options say otherwise.
 //   runSpec(SPEC_FILE) -> {ok: true, targets: [base64 of float32 RGBA rows, ...]} or {ok: false, error}
 //   decodeLayers(LIST_FILE, W, H) -> {ok, levels}; then layerBytes(i) -> base64 of layer i's
 //     rgba8 texels, level after level: the pack's images as host.js layerTexture uploads them
@@ -90,7 +90,7 @@ window.runSpec = async function (specFile) {
     const res = new Map();
     let wgsl = "", module = null, w = 0, h = 0, index = null, draws = null, ndraws = 0;
     const targets = [];
-    let lastTargets = 0;
+    let last = [];
     for (const raw of (await textOf(specFile)).split("\n")) {
       const a = raw.trim().split(/\s+/);
       if (!a[0] || a[0].startsWith("#")) continue;
@@ -123,21 +123,43 @@ window.runSpec = async function (specFile) {
         res.set(a[1], d.createSampler({ magFilter: f, minFilter: f, mipmapFilter: a[4] === "mip" ? "linear" : "nearest",
           addressModeU: wrap, addressModeV: wrap, addressModeW: wrap, ...(a[5] === "less" ? { compare: "less" } : {}) }));
       } else if (a[0] === "depth") {
-        const t = d.createTexture({ size: [+a[2], +a[3]], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+        const t = d.createTexture({ size: [+a[2], +a[3]], format: "depth32float",
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
         res.set(a[1], { texture: t, view: t.createView() });
+      } else if (a[0] === "target") {
+        const t = d.createTexture({ size: [w, h], format: "rgba16float",
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
+        res.set(a[1], { texture: t, view: t.createView() });
+      } else if (a[0] === "copy") {
+        const enc = d.createCommandEncoder();
+        enc.copyTextureToTexture({ texture: res.get(a[1]).texture }, { texture: res.get(a[2]).texture }, [w, h]);
+        d.queue.submit([enc.finish()]);
       } else if (a[0] === "pass") {
-        const [spv, vs, fs] = a.slice(1, 4), nt = +a[4], depthName = a[5], bias = +a[6], slope = +a[7], calls = a[8];
-        while (targets.length < nt) targets.push(d.createTexture({ size: [w, h], format: "rgba16float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }));
-        lastTargets = nt;
+        const [spv, vs, fs] = a.slice(1, 4), depthName = a[5], bias = +a[6], slope = +a[7], calls = a[8], opts = a.slice(9);
+        let colour;
+        if (/^\d+$/.test(a[4])) {
+          const nt = +a[4];
+          while (targets.length < nt) targets.push(d.createTexture({ size: [w, h], format: "rgba16float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }));
+          colour = targets.slice(0, nt);
+        } else colour = a[4].split(",").map((n) => { const r = res.get(n); if (!r) throw new Error(`the spec has no ${n}`); return r.texture; });
+        const keep = opts.includes("keep"), write = !opts.includes("nowrite"), always = opts.includes("always");
+        const mode = (opts.find((o) => o.startsWith("blend=")) || "").slice(6), alphaKeep = opts.includes("alphakeep");
+        const masked = opts.filter((o) => o.startsWith("mask=")).map((o) => +o.slice(5));
+        for (const o of opts) if (!/^(keep|nowrite|always|alphakeep|blend=(add|mul|alpha)|mask=\d+)$/.test(o)) throw new Error(`no pass option ${o}`);
+        const factors = { add: ["one", "one"], mul: ["zero", "src"], alpha: ["src-alpha", "one-minus-src-alpha"] }[mode];
+        const blend = factors ? { color: { operation: "add", srcFactor: factors[0], dstFactor: factors[1] },
+          alpha: alphaKeep ? { operation: "add", srcFactor: "zero", dstFactor: "one" } : { operation: "add", srcFactor: "one", dstFactor: mode === "alpha" ? "one-minus-src-alpha" : "one" } } : undefined;
+        last = colour;
         let depth = null;
         if (depthName === "own") depth = d.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT }).createView();
         else if (depthName !== "-") depth = res.get(depthName).view;
         const pipeline = await d.createRenderPipelineAsync({
           layout: "auto",
           vertex: { module, entryPoint: vs },
-          fragment: { module, entryPoint: fs, targets: Array.from({ length: nt }, () => ({ format: "rgba16float" })) },
+          fragment: { module, entryPoint: fs, targets: colour.map((_, i) => masked.includes(i) ? { format: "rgba16float", writeMask: 0 }
+            : { format: "rgba16float", ...(blend ? { blend } : {}) }) },
           primitive: { topology: "triangle-list", cullMode: "none" },
-          ...(depth ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: bias, depthBiasSlopeScale: slope } } : {}),
+          ...(depth ? { depthStencil: { format: "depth32float", depthWriteEnabled: write, depthCompare: always ? "always" : "less", depthBias: bias, depthBiasSlopeScale: slope } } : {}),
         });
         // the bindings by name, at the group and binding the WGSL declares them
         const groups = new Map();
@@ -154,15 +176,17 @@ window.runSpec = async function (specFile) {
         }
         const enc = d.createCommandEncoder();
         const pass = enc.beginRenderPass({
-          colorAttachments: targets.slice(0, nt).map((t) => ({ view: t.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] })),
-          ...(depth ? { depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } } : {}),
+          colorAttachments: colour.map((t) => ({ view: t.createView(), loadOp: keep ? "load" : "clear", storeOp: "store", clearValue: [0, 0, 0, 0] })),
+          ...(depth ? { depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: keep ? "load" : "clear", depthStoreOp: "store" } } : {}),
         });
         pass.setPipeline(pipeline);
         const top = Math.max(-1, ...groups.keys());
         for (let g = 0; g <= top; g++) pass.setBindGroup(g, d.createBindGroup({ layout: pipeline.getBindGroupLayout(g), entries: groups.get(g) ?? [] }));
-        if (calls === "draws") {
+        if (calls.startsWith("draws")) {
+          const [from, to] = calls === "draws" ? [0, ndraws] : calls.slice(6).split(":").map(Number);
+          if (!(from <= to && to <= ndraws)) throw new Error(`draws:A:B within the list: ${calls}`);
           if (index) pass.setIndexBuffer(index, "uint32");
-          for (let i = 0; i < ndraws; i++) {
+          for (let i = from; i < to; i++) {
             const [first, count, base, instances] = draws.subarray(i * 4, i * 4 + 4);
             if (!count || !instances) continue;
             if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
@@ -177,7 +201,7 @@ window.runSpec = async function (specFile) {
       } else throw new Error(`no directive ${a[0]}`);
     }
     const out = [];
-    for (const t of targets.slice(0, lastTargets)) {
+    for (const t of last) {
       const halves = new Uint16Array((await readLayer(d, t, w, h, 8, 0, 0)).buffer);
       const f = new Float32Array(w * h * 4);
       for (let i = 0; i < f.length; i++) f[i] = half(halves[i]);

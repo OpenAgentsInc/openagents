@@ -246,15 +246,17 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
   VkPipelineMultisampleStateCreateInfo ms = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
   VkPipelineDepthStencilStateCreateInfo ds = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
     .depthTestEnable = pass->depth_test ? VK_TRUE : VK_FALSE, .depthWriteEnable = pass->depth_write ? VK_TRUE : VK_FALSE,
-    .depthCompareOp = VK_COMPARE_OP_LESS};
+    .depthCompareOp = pass->depth_always ? VK_COMPARE_OP_ALWAYS : VK_COMPARE_OP_LESS};
   VkPipelineColorBlendAttachmentState blends[8];
   for (uint32_t i = 0; i < pass->ntargets; i++) {
-    int alpha = pass->blend == VKS_ALPHA;
-    blends[i] = (VkPipelineColorBlendAttachmentState){.blendEnable = pass->blend != VKS_REPLACE,
-      .srcColorBlendFactor = alpha ? VK_BLEND_FACTOR_SRC_ALPHA : VK_BLEND_FACTOR_ONE,
-      .dstColorBlendFactor = alpha ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE, .colorBlendOp = VK_BLEND_OP_ADD,
-      .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE, .dstAlphaBlendFactor = alpha ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE,
-      .alphaBlendOp = VK_BLEND_OP_ADD, .colorWriteMask = 0xF};
+    int alpha = pass->blend == VKS_ALPHA, mul = pass->blend == VKS_MUL, off = (pass->masked >> i) & 1;
+    blends[i] = (VkPipelineColorBlendAttachmentState){.blendEnable = pass->blend != VKS_REPLACE && !off,
+      .srcColorBlendFactor = mul ? VK_BLEND_FACTOR_ZERO : alpha ? VK_BLEND_FACTOR_SRC_ALPHA : VK_BLEND_FACTOR_ONE,
+      .dstColorBlendFactor = mul ? VK_BLEND_FACTOR_SRC_COLOR : alpha ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE,
+      .colorBlendOp = VK_BLEND_OP_ADD,
+      .srcAlphaBlendFactor = pass->alpha_keep ? VK_BLEND_FACTOR_ZERO : VK_BLEND_FACTOR_ONE,
+      .dstAlphaBlendFactor = pass->alpha_keep ? VK_BLEND_FACTOR_ONE : alpha ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA : VK_BLEND_FACTOR_ONE,
+      .alphaBlendOp = VK_BLEND_OP_ADD, .colorWriteMask = off ? 0 : 0xF};
   }
   VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, .attachmentCount = pass->ntargets, .pAttachments = blends};
   VkGraphicsPipelineCreateInfo gpi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = 2, .pStages = stages,
@@ -300,4 +302,29 @@ void vks_pipe_close(Vkc *v, VksPipe *p) {
   vkDestroyDescriptorSetLayout(dev, p->dsl, NULL);
   vkDestroyFramebuffer(dev, p->fb, NULL);
   vkDestroyRenderPass(dev, p->rp, NULL);
+}
+
+typedef struct { VksImage *from, *to; } ImageCopy;
+static void copy_barrier(VkCommandBuffer cmd, VksImage *t, VkImageLayout a, VkImageLayout b, VkAccessFlags sa, VkAccessFlags da) {
+  VkImageMemoryBarrier m = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = sa, .dstAccessMask = da, .oldLayout = a,
+    .newLayout = b, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = t->image,
+    .subresourceRange = {aspect(t), 0, 1, 0, 1}};
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &m);
+}
+static void record_image_copy(VkCommandBuffer cmd, void *user) {
+  ImageCopy *c = user;
+  // the destination's old contents are not kept
+  copy_barrier(cmd, c->from, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+  copy_barrier(cmd, c->to, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+  VkImageCopy region = {.srcSubresource = {aspect(c->from), 0, 0, 1}, .dstSubresource = {aspect(c->to), 0, 0, 1}, .extent = {c->from->w, c->from->h, 1}};
+  vkCmdCopyImage(cmd, c->from->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, c->to->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+  copy_barrier(cmd, c->from, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT,
+               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+  copy_barrier(cmd, c->to, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+}
+void vks_copy(Vkc *v, VksImage *from, VksImage *to) {
+  if (from->w != to->w || from->h != to->h || from->format != to->format) { fprintf(stderr, "vks: a copy between images of different sizes or formats\n"); exit(1); }
+  ImageCopy c = {from, to};
+  vks_submit(v, record_image_copy, &c);
 }

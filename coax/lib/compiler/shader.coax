@@ -43,8 +43,9 @@
 //   stmt: 1 block n stmt* | 2 expr e | 3 store place e | 4 return e | 5 return
 //       | 6 if has_else e stmt [stmt] | 7 while e stmt | 8 for local e e stmt | 9 break | 10 continue
 //       | 11 view local array local: the view local declared to the whole of the
-//         local fixed array (`v:=a[..]`); the array lives in Private storage and
-//         the view writes it, as a binding does not
+//         local fixed array (`v:=a[..]`); a Private variable takes the array's
+//         value and the view writes it, as a binding does not (the array's
+//         own name is the view's from there, and refused)
 //   place: 40 local id | 41 field place i | 42 index place e
 //   expr: 16 const type word [word] | 17 zero type | 18 local id | 19 binary op e e
 //       | 20 negate e | 21 not e | 22 call proc n e* | 23 math fn n e* | 24 select e e e
@@ -924,10 +925,16 @@ sh_live_stmt :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32) {
     sh2(s,w,SH_C,SH_OP_STORE,p.ptr,v.id);return;
   }
   if k==11 {
-    // the view local is the array's Private binding
+    // the view local is the array's Private binding; the Private variable takes the array's value so far
+    // (SPIR-V leaves it undefined, WGSL zero) and the array is the view's from now: its own name refuses
     view:=sh_local(s,tree);array:=sh_local(s,tree);
     if !s[0].ok {return;}
-    w[sh_lw(view,0)]=sh_private(s,tree,w,w[sh_lw(array,1)],w[sh_lw(view,1)]);
+    from:=w[sh_lw(array,0)];at:=w[sh_lw(array,1)];
+    if from==0 {sh_fail(s,5);return;}
+    b:=sh_private(s,tree,w,at,w[sh_lw(view,1)]);
+    if !s[0].ok {return;}
+    sh2(s,w,SH_C,SH_OP_STORE,w[sh_bw(cast(int)b,2)],sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,at),from));
+    w[sh_lw(view,0)]=b;w[sh_lw(array,0)]=0;
     return;
   }
   if k==4 {
@@ -1457,18 +1464,20 @@ sh_body :: (locals:string,body:string)->int {return sh_frag(0,"",0,locals,body);
   n:=sh_calls_out(2,"8 2 1 4 9 2",0,"7 8","1 4 11 2 1 2 22 2 1 18 2 3 42 40 2 16 5 0 0 16 2 1065353216 2 27 42 40 2 16 5 0 0",1,"0 1 8 1 8 11 3 42 40 0 16 5 0 0 16 2 0",out[..]);
   priv:=0;
   for i:0..<n {if out[i]==(4<<16|SH_OP_TYPE_POINTER) && out[i+2]==SH_SC_PRIVATE {priv+=1;}}
-  // spirv-val --target-env vulkan1.1 takes it: the array, one element pointer type, three access chains
-  #assert n==301 && sh_digest(out[..],n)==1217580134 && priv==2;
+  // spirv-val --target-env vulkan1.1 takes it: the array (its value stored in), one element pointer type, three access chains
+  #assert n==308 && sh_digest(out[..],n)==3481195178 && priv==2;
   // not of a fixed array, not of its element type, no count of it, and not as a value
   #assert sh_frag(2,"8 2 1 4 9 2",0,"2 8","11 2 1")==-4 && sh_frag(2,"8 3 1 4 9 2",0,"7 8","11 2 1")==-4;
   #assert sh_frag(2,"8 2 1 4 9 2",0,"7 8","1 2 11 2 1 2 32 40 2")==-5 && sh_frag(2,"8 2 1 4 9 2",0,"7 8","2 26 1")==-1;
   // a V4 element written by its field: the chain to the field is Private too (spirv-val takes it)
   m:=sh_calls_out(2,"8 6 1 16 9 6",0,"7 8","1 2 11 2 1 3 41 42 40 2 16 5 0 0 0 16 2 1065353216",0,"",out[..]);
-  #assert m==272 && sh_digest(out[..],m)==4145305219;
+  #assert m==279 && sh_digest(out[..],m)==1476780400;
   // a V4 is not a fixed array, though its part 1 (4 fields) names the view's element (u32)
   #assert sh_frag(1,"9 4",0,"6 7","11 2 1")==-4;
   // SH_PRIVS of them, and no more
-  #assert sh_frag(2,"8 2 1 4 9 2",0,"7 8 7 8 7 8","1 3 11 2 1 11 4 3 11 6 5")==264;
+  #assert sh_frag(2,"8 2 1 4 9 2",0,"7 8 7 8 7 8","1 3 11 2 1 11 4 3 11 6 5")==285;
+  // the array is the view's once it is declared: a second view of it, or its own name, refuses
+  #assert sh_frag(2,"8 2 1 4 9 2",0,"7 8 8","1 2 11 2 1 11 3 1")==-5 && sh_frag(2,"8 2 1 4 9 2",0,"7 8","1 2 11 2 1 2 27 42 40 1 16 5 0 0")==-5;
   #assert sh_frag(2,"8 2 1 4 9 2",0,"7 8 7 8 7 8 7 8","1 4 11 2 1 11 4 3 11 6 5 11 8 7")==-3;
 }
 #test "a V4 picked by a bool is a branch and an OpPhi, a float an OpSelect" {

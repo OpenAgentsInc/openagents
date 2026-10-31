@@ -14,6 +14,10 @@
 //   bg      the sky, ridges and weather into light and aux
 //   scene   the shadow map from the key light, then the scene (every draw but the water's) with it
 //   grass   the shadow map, then the grass's blades (3 vertices each) with it
+//   water   the frame as host.js draws it up to the post pass: the shadow map; bg (depth always,
+//           not written), the grass and the scene into light, aux and the depth; the light and
+//           depth copied for the water; then each water draw's two halves, transmit (the light
+//           times it) and emit (added), depth tested, not written, aux and alpha kept
 // Both sides sample one linear sampler without anisotropy (host.js asks for 8x, which is each
 // GPU's own), and the layers the browser decoded and mipmapped.
 #import "Basic";
@@ -25,19 +29,21 @@
 EP_PACK :: "apps/openagents-web/realms/everglade/assets/everglade.pack";
 EP_SIZE :: "320 180";
 EP_SHADOW :: 2048;          // the shadow map's side on a desktop (host.js shadowLayout)
-// A pass: the entries it lowers (vertex, fragment; a second pair, or ""), and the values
-// allowed past the tolerance (edge pixels; bg measured 15 at 320x180).
-EpPass :: struct { name: string; vs: string; fs: string; vs2: string; fs2: string; allow: string; }
-EP_PASSES :: [3] EpPass.[
-  EpPass.{name = "bg", vs = "bg_vs", fs = "bg_fs", vs2 = "", fs2 = "", allow = "40"},
-  EpPass.{name = "scene", vs = "shadow_vs", fs = "shadow_fs", vs2 = "scene_vs", fs2 = "scene_fs", allow = "400"},
-  EpPass.{name = "grass", vs = "shadow_vs", fs = "shadow_fs", vs2 = "grass_vs", fs2 = "grass_fs", allow = "400"}];
+// A pass: the entries it lowers (vertex and fragment pairs, each lowered to FS.spv), and the
+// values allowed past the tolerance (edge pixels; bg measured 15 at 320x180).
+// `at` is the place the frame starts at (the page's hash, "" for the spawn).
+EpPass :: struct { name: string; entries: string; allow: string; at: string; }
+EP_PASSES :: [4] EpPass.[
+  EpPass.{name = "bg", entries = "bg_vs bg_fs", allow = "40"},
+  EpPass.{name = "scene", entries = "shadow_vs shadow_fs scene_vs scene_fs", allow = "400"},
+  EpPass.{name = "grass", entries = "shadow_vs shadow_fs grass_vs grass_fs", allow = "400"},
+  EpPass.{name = "water", entries = "shadow_vs shadow_fs bg_vs bg_fs grass_vs grass_fs scene_vs scene_fs water_vs water_transmit_fs water_vs water_emit_fs", allow = "2000", at = "weir"}];
 
 ep_find :: (name: string) -> int {
   for i: 0..<EP_PASSES.count { if EP_PASSES[i].name == name { return i; } }
   return -1;
 }
-#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == -1 && ep_find("") == -1; }
+#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == 1 && ep_find("grass") == 2 && ep_find("water") == 3 && ep_find("bloom") == -1 && ep_find("") == -1; }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -62,9 +68,9 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string) -> int 
   build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
     "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax"];
   if step("the wasm", build[..], o[..]) < 0 { return 1; }
-  frame := [20] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
-    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", frame_dir];
-  if step("the frame", frame[..], o[..]) < 0 { return 1; }
+  frame := [22] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
+    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", frame_dir, "--hash", p.at];
+  if step("the frame", frame[0..<ifx p.at.count > 0 then 22 else 20], o[..]) < 0 { return 1; }
   int_dir := fs_join(work, "int", b[2][..]);
   ih := [3] string.["coax/web/tool.sh", "verse/gpu/int-hash.coax", int_dir];
   if step("the integer hash", ih[..], o[..]) < 0 { return 1; }
@@ -104,31 +110,43 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   loads := cat(cat(cwd, "/verse/gpu/wgsl.coax,", sb[..]), style_abs, b[7][..]);
   tr := [9] string.["coax/web/tool.sh", "wgsl-coax", coax_out, "eg", wgsl, "--stop", "---- generated: verse/style.coax", "--loads", loads];
   if step("the translation", tr[..], o[..]) < 0 { return false; }
-  if !lower(dir, coax_out, p.vs, p.fs) { return false; }
-  if p.vs2.count > 0 && !lower(dir, coax_out, p.vs2, p.fs2) { return false; }
+  k := 0;
+  while ep_word(p.entries, k).count > 0 {
+    if !lower(dir, coax_out, ep_word(p.entries, k), ep_word(p.entries, k + 1)) { return false; }
+    k += 2;
+  }
   // the spec
   dt: [256] u8;
   dn := fs_read(fs_join(dir, "draws.txt", b[1][..]), dt[..]);
   words := cast(string) dt[0..<ifx dn > 0 then dn else 0];
-  draws := args_whole(ep_word(words, 0)) - args_whole(ep_word(words, 1));
+  all := args_whole(ep_word(words, 0));
+  draws := all - args_whole(ep_word(words, 1));
   blades := args_whole(ep_word(words, 2));
   side := ep_image_side(dir, nlayers);
   sp: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
   put(s, "wgsl everglade.wgsl\nsize "); put(s, EP_SIZE); put(s, "\nbuffer u u.bin\n");
-  if p.name == "bg" { put(s, "pass bg_vs.spv bg_vs bg_fs 2 - 0 0 3\n"); }
+  if p.name == "bg" { put(s, "pass bg_fs.spv bg_vs bg_fs 2 - 0 0 3\n"); }
   else {
     if draws <= 0 || side <= 0 { tool_errln("everglade-pass: the frame has no draws or no layers"); return false; }
     put(s, "buffer vertices vertices.bin\nbuffer heights s0.bin\nbuffer objects s1.bin\nbuffer pose s2.bin\nbuffer water_nodes s3.bin\n");
-    put(s, "index index.bin\ndraws draws.bin "); put_int(s, draws); put(s, "\n");
+    put(s, "index index.bin\ndraws draws.bin "); put_int(s, all); put(s, "\n");
     put(s, "layers sheets layers.bin "); put_int(s, side); put(s, " "); put_int(s, side); put(s, " "); put_int(s, nlayers); put(s, " "); put_int(s, ep_levels(side)); put(s, "\n");
     put(s, "sampler sheet linear repeat mip none\n");
     put(s, "depth shadow_map "); put_int(s, EP_SHADOW); put(s, " "); put_int(s, EP_SHADOW); put(s, "\n");
     put(s, "sampler shadow_cmp linear clamp flat less\n");
-    put(s, "pass shadow_vs.spv shadow_vs shadow_fs 0 shadow_map 2 2 draws\n");
-    if p.name == "scene" { put(s, "pass scene_vs.spv scene_vs scene_fs 2 own 0 0 draws\n"); }
-    else {
+    // the scene's draws: every one but the water's
+    sd: [64] u8; da: [1] Sp; da[0] = Sp.{buf = sd[..]}; ds := da[..];
+    put(ds, "draws:0:"); put_int(ds, draws);
+    scene := cast(string) sd[0..<ds[0].n];
+    put(s, "pass shadow_fs.spv shadow_vs shadow_fs 0 shadow_map 2 2 "); put(s, scene); put(s, "\n");
+    if p.name == "scene" { put(s, "pass scene_fs.spv scene_vs scene_fs 2 own 0 0 "); put(s, scene); put(s, "\n"); }
+    if p.name == "grass" || p.name == "water" {
       if blades <= 0 { tool_errln("everglade-pass: the frame has no grass"); return false; }
-      put(s, "pass grass_vs.spv grass_vs grass_fs 2 own 0 0 3:"); put_int(s, blades); put(s, "\n");
+    }
+    if p.name == "grass" { put(s, "pass grass_fs.spv grass_vs grass_fs 2 own 0 0 3:"); put_int(s, blades); put(s, "\n"); }
+    if p.name == "water" {
+      if all <= draws { tool_errln("everglade-pass: the frame has no water"); return false; }
+      ep_water(s, scene, blades, draws, all);
     }
   }
   if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[1][..]), cast(string) sp[0..<s[0].n]) { tool_errln("everglade-pass: cannot write the spec"); return false; }
@@ -138,10 +156,36 @@ check :: (host: string, p: EpPass, work: string, frame_dir: string, tag: string,
   return n >= 0;
 }
 
-// vs and fs of the translation, as VS.spv with VS.spv.bindings (coax spirv's report).
+// The water spec's frame: host.js's main pass up to the post pass (see the header), the water's
+// draws being the list's records from `draws` to `all`.
+ep_water :: (s: [] Sp, scene: string, blades: int, draws: int, all: int) {
+  put(s, "target light\ntarget aux\ndepth scene_depth "); put(s, EP_SIZE); put(s, "\ntarget water_scene\ndepth water_scene_depth "); put(s, EP_SIZE); put(s, "\n");
+  put(s, "pass bg_fs.spv bg_vs bg_fs light,aux scene_depth 0 0 3 always nowrite\n");
+  put(s, "pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:"); put_int(s, blades); put(s, " keep\n");
+  put(s, "pass scene_fs.spv scene_vs scene_fs light,aux scene_depth 0 0 "); put(s, scene); put(s, " keep\n");
+  put(s, "copy light water_scene\ncopy scene_depth water_scene_depth\n");
+  for i: draws..<all {
+    half := [2] string.["water_transmit_fs blend=mul", "water_emit_fs blend=add"];
+    for h: half {
+      put(s, "pass "); put(s, ep_word(h, 0)); put(s, ".spv water_vs "); put(s, ep_word(h, 0)); put(s, " light,aux scene_depth 0 0 draws:");
+      put_int(s, i); put(s, ":"); put_int(s, i + 1); put(s, " keep nowrite "); put(s, ep_word(h, 1)); put(s, " alphakeep mask=1\n");
+    }
+  }
+}
+#test "the water's frame" {
+  o: [4096] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  ep_water(s, "draws:0:5", 9, 5, 6);
+  t := cast(string) o[0..<s[0].n];
+  #assert !s[0].bad && ep_lines(t) == 12;
+  #assert ep_line(t, 6) == "pass grass_fs.spv grass_vs grass_fs light,aux scene_depth 0 0 3:9 keep";
+  #assert ep_line(t, 10) == "pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=mul alphakeep mask=1";
+  #assert ep_line(t, 11) == "pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:5:6 keep nowrite blend=add alphakeep mask=1";
+}
+
+// vs and fs of the translation, as FS.spv with FS.spv.bindings (coax spirv's report).
 lower :: (dir: string, coax_out: string, vs: string, fs_: string) -> bool {
   b: [4] [1024] u8; o: [65536] u8; v: [128] u8; f: [128] u8; nb: [256] u8;
-  spv := fs_join(dir, cat(vs, ".spv", nb[..]), b[0][..]);
+  spv := fs_join(dir, cat(fs_, ".spv", nb[..]), b[0][..]);
   low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat("eg_", vs, v[..]), "--fragment", cat("eg_", fs_, f[..])];
   argv: [9] string;
   for i: 0..<7 { argv[i] = low[i]; }

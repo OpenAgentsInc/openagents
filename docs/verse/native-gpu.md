@@ -265,3 +265,16 @@ Every phase and native feature is a task in the Verse project
   validation 0/0, and 313 of 460,800 values past the tolerance, on
   silhouettes and one roof's mip edge (400 allowed). With the live sin
   hashes, 91,456 are past it, since the painterly noise hashes everywhere.
+- 2026-10-31: G5, grass and water. Grass (the shadow map, then the blades):
+  4 of 460,800 values past the tolerance. Water needed a local array behind
+  a view (`wake_foam`, which `water_wake` writes): `coax spirv` keeps it in a
+  Private variable that takes the array's value (SPIR-V leaves one
+  undefined; WGSL zeroes it, and the first run's foam was garbage there).
+  The water check is the frame host.js draws up to the post pass, at
+  `#weir` (wasm-run `--hash`): the shadow map; bg (depth always, not
+  written), the grass and the scene into light, aux and the depth; the
+  light and depth copied; then each water draw's transmit (multiplied) and
+  emit (added) halves, aux and alpha kept. vk-passes gained named targets,
+  copies, draw ranges and those blends (vkc enables `independentBlend`).
+  On the RTX 4080: validation 0/0, 999 values past the tolerance, on
+  foliage edges and thin wave lines (2,000 allowed).

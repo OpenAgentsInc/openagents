@@ -84,6 +84,8 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   VkPhysicalDeviceFeatures has, want = {0};
   vkGetPhysicalDeviceFeatures(v->gpu, &has);
   want.shaderInt64 = has.shaderInt64;
+  // A pass may blend one target and leave another as it is (WebGPU's per-target blend and write mask).
+  want.independentBlend = has.independentBlend;
   VkDeviceCreateInfo dci = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qci,
                             .enabledExtensionCount = 1 + nd, .ppEnabledExtensionNames = dexts, .pEnabledFeatures = &want};
   CHECK(vkCreateDevice(v->gpu, &dci, NULL, &v->dev));
