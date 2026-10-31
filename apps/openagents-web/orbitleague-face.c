@@ -16,7 +16,7 @@ IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t
 IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
 IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
 
-static uint8_t inbox[4096];
+static uint8_t inbox[32768];   // a clip's link (ol-clips) arrives in the url fact
 static bool golden;
 
 static coax_t_OrbitLeague *game_at(uint32_t state) { return (coax_t_OrbitLeague *)(uintptr_t)state; }
