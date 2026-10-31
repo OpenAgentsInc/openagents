@@ -199,3 +199,8 @@ multiplication keeps its right quantity operand’s family. Comparisons return
 bool. Assignment/type identity still distinguish the families, and explicit
 unit conversion preserves the input family. This is the written M1 rule,
 not a claim that nominal declarations or unit tags have been merged.
+
+A [Psionic compatibility check](../docs/verification/coax-quantity-psionic-compatibility-2026-10-31.json)
+uses the reconstructed 0.42 compiler to emit the owned-plant sensitivity library.
+Its C and header match the qualified 0.39 emission byte for byte. The earlier
+physical/formal/native proofs are therefore reused; no model or SDK trial reran.

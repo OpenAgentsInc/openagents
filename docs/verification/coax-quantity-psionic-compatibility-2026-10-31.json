@@ -1,0 +1,24 @@
+{
+  "schema": "coax-quantity-psionic-compatibility-v1",
+  "compiler_snapshot": "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4",
+  "compiler_sha256": "19f0528a2248c8c4d399031911e2b607894338b9b3b13a868ec230254639afc0",
+  "compiler_version": "coax0 0.42.0",
+  "consumer": "psionic/lib/physics/oscillator-functions.coax",
+  "consumer_sha256": "cfcc95c8b5dd6db2cee34f177f91a0edd1fc1e0b2b5d975f5da20a292b4b6462",
+  "generated_C_sha256": "4670a6b3b1f43a0dbfdae1dec122c83cc9a90036c0b07d7981219fe059fb19b5",
+  "generated_header_sha256": "105b55fada94c8d06725f0359a65407b3053e78848383c1884fef4127930cf1f",
+  "compared_with": "psionic/fixtures/physics/oscillator-functions/qualification.json",
+  "prior_receipt_sha256": "18ab6fc891a9b7a952220f42a3c2f1423cce7465ef8e4c00eec7f45778657e02",
+  "C_and_header_byte_identical": true,
+  "prior_native_proof_reused": {
+    "checks_each_host_mode": 2592,
+    "host_modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "native_rerun": false,
+    "independent_mathematical_oracle_rerun": false
+  },
+  "scope": "Changed compiler emission compatibility for this qualified scalar graph/physical bridge; no whole-model, original-weight, SDK episode or full release-cache gate."
+}
