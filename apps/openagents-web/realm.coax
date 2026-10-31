@@ -14,6 +14,9 @@
 // thin bronze line round it and rounded corners, drawn behind by realm.wgsl
 // (plate), its words parchment and bronze in Filament (font.coax). The
 // projects pages keep the HUD bar; the house has this, plainer, look.
+//
+//   coax/bin/coax test apps/openagents-web/realm.coax --steps 2000000000
+// (the first-step check walks the house frame by frame: about 1.3 billion steps)
 
 #load "font.coax";
 #load "ui.coax";

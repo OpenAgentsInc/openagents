@@ -30,7 +30,7 @@
 // JUMP, FLY, MAP and BUILD are there only when the owner gives them. With TALK, E by a character (or a
 // tap on one) talks with it: type and press Enter; with VOICE too, HOLD TO TALK says it out loud.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
-//   coax/bin/coax test apps/openagents-web/myrealm.coax
+//   coax/bin/coax test apps/openagents-web/myrealm.coax --steps 200000000   (the owl, bird and 0088 checks take up to 65 million)
 
 #load "font.coax";
 #load "ui.coax";

@@ -345,7 +345,7 @@ tool_main :: () -> int #export_c {
   loads: [SU_LOADS] string; nl := 0;
   load_by: [SU_LOADS] int;     // the file each #load is in
   tested: [SU_FILES] bool;     // that file has checks of its own
-  cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; nc := 0;
+  cand: [SU_SUITES] Suite; heads: [SU_SUITES] bool; cand_file: [SU_SUITES] int; nc := 0;
   pb: [4096] u8;
   for f: 0..<nf {
     path := files[f];
@@ -362,7 +362,7 @@ tool_main :: () -> int #export_c {
       missing := "";
       for k: from..<nl { if missing.count == 0 && !fs_exists(fs_join(root, loads[k], pb[..])) { missing = loads[k]; } }
       cand[nc] = Suite.{path = path, steps = su_keep(arena[..], h.steps), run_steps = su_keep(arena[..], h.run_steps), library = h.library, root_only = h.root_only, native = su_keep(arena[..], h.native), missing = missing};
-      heads[nc] = h.found; nc += 1;
+      heads[nc] = h.found; cand_file[nc] = f; nc += 1;
     }
   }
   if arena[0].full || nl >= SU_LOADS || nf >= SU_FILES || nc >= SU_SUITES { tool_errln("suites: more files than it keeps; raise SU_*"); return 2; }
@@ -371,6 +371,17 @@ tool_main :: () -> int #export_c {
   // without checks: covered, from the loads, until nothing changes.
   load_to: [SU_LOADS] int;
   for l: 0..<nl { load_to[l] = -1; for f: 0..<nf { if files[f] == loads[l] { load_to[l] = f; break; } } }
+  // A suite is skipped, not failed, when what it loads loads something not in
+  // the tree: project-checks.coax loads project.coax, which loads the build's
+  // projects/baked.coax. lacks: the first such #load, through any depth.
+  lacks: [SU_FILES] string;
+  for l: 0..<nl { by := load_by[l]; if lacks[by].count == 0 && load_to[l] < 0 && !fs_exists(fs_join(root, loads[l], pb[..])) { lacks[by] = loads[l]; } }
+  spread := true;
+  while spread {
+    spread = false;
+    for l: 0..<nl { to := load_to[l]; by := load_by[l]; if to >= 0 && lacks[by].count == 0 && lacks[to].count > 0 { lacks[by] = lacks[to]; spread = true; } }
+  }
+  for c: 0..<nc { if cand[c].missing.count == 0 { cand[c].missing = lacks[cand_file[c]]; } }
   covered: [SU_FILES] bool;
   grew := true;
   while grew {
