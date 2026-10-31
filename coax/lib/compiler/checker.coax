@@ -81777,14 +81777,36 @@ CK_quantity_fixture :: (c:CK_Context) {
  #assert nodes[13].kind==CK_Tag.type_named && nodes[13].name=="UnitProduct" && nodes[13].scope==2 && nodes[13].next==14 && nodes[13].head==0;
  #assert nodes[18].kind==CK_Tag.type_named && nodes[18].name=="UnitQuotient" && nodes[18].scope==2 && nodes[18].next==0 && nodes[18].head==0;
 }
-#forall "derived target recursion and conversion propagate child refusal as none" variant:0..<3 {
+#forall "derived target recursion and conversion propagate child refusal as none" variant:0..<4 {
  nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);state[0].depth=5;
  nodes[13]=CK_Node.{kind=CK_Tag.expr_call,name="UnitProduct",head=16,tail=18,next=14};nodes[16]=CK_Node.{kind=CK_Tag.expr_ident,name="Metre",next=18};nodes[18]=CK_Node.{kind=CK_Tag.expr_ident,name="UnitOne"};
- if variant==0 {nodes[18].kind=CK_Tag.expr_float;}
+ if variant==0 || variant==3 {nodes[18].kind=CK_Tag.expr_float;}
+ if variant==3 {nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,name="MissingValue"};}
  if variant==1 {state[0].depth=256;}
  if variant==2 {c.nodes=nodes[0..<23];}
  r:=CK_quantity_convert(c,15);#assert r==0 && state[0].error_count==1;
- if variant==0 {#assert errors[0].code=="E0830" && state[0].depth==5;}
+ if variant==0 || variant==3 {#assert errors[0].code=="E0830" && state[0].depth==5;}
  else {#assert errors[0].code=="E0381" && state[0].fatal;if variant==1 {#assert state[0].depth==256;}else {#assert state[0].depth==5;}}
+}
+#forall "derived constructor conversion publishes exact carrier and target identity" representation:6..<8,constructor:0..<3 {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+ types[19].carrier=representation;types[21].elem=representation;nodes[9].type=representation;
+ names:=[3]string.["UnitProduct","UnitQuotient","UnitOne"];nodes[13]=CK_Node.{kind=CK_Tag.expr_call,name=names[constructor],head=16,tail=18,next=14};
+ nodes[16]=CK_Node.{kind=CK_Tag.expr_ident,name="Metre",next=18};nodes[18]=CK_Node.{kind=CK_Tag.expr_ident,name="UnitOne"};
+ if constructor==2 {nodes[13].head=0;nodes[13].tail=0;nodes[2].unit.length=0;}
+ r:=CK_quantity_convert(c,15);#assert r!=0 && state[0].error_count==0 && !state[0].fatal && state[0].depth==0;
+ #assert types[r].carrier==representation && nodes[types[r].decl].origin==3;
+ form:=CK_unit_form(c,types[r].unit);if constructor==2 {#assert form.count==0;}else {#assert types[r].unit==16 && form.count==1 && form.atoms[0]==16 && form.powers[0]==1;}
+ wrapper:=nodes[15];#assert wrapper.kind==CK_Tag.expr_struct && wrapper.mark==1 && wrapper.type==r && wrapper.next==18 && wrapper.loc.offset==223 && wrapper.head==wrapper.tail;
+ field:=nodes[wrapper.head];raw:=nodes[field.a];#assert field.name=="value" && field.field_index==0 && raw.kind==CK_Tag.expr_field && raw.a==14 && raw.name=="value" && raw.field_index==0 && raw.type==representation;
+ #assert nodes[13].kind==CK_Tag.type_named && nodes[13].name==names[constructor] && nodes[13].head==0 && nodes[13].next==14;
+}
+#forall "derived target child refusal has its own none sentinel" bad:0..<2 {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[8192]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);state[0].depth=5;
+ nodes[13]=CK_Node.{kind=CK_Tag.expr_call,name="UnitProduct",head=16,tail=18,next=14};nodes[16]=CK_Node.{kind=CK_Tag.expr_ident,name="Metre",next=18};nodes[18]=CK_Node.{kind=CK_Tag.expr_ident,name="UnitOne"};
+ if bad==0 {nodes[16].kind=CK_Tag.expr_float;}else {nodes[18].kind=CK_Tag.expr_float;}
+ r:=CK_unit_target(c,13);#assert r==0 && state[0].error_count==1 && errors[0].code=="E0830" && state[0].depth==5;
 }
