@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 int main(void){
-    unsigned char bytes[8]={0};coax_v_u8 v={bytes,8},empty={NULL,0};coax_t_PaFile file={v};
+    unsigned char bytes[8]={0};coax_v_u8 v={bytes,8},empty={NULL,0};coax_t_PaFile file={.data=v};
     coax_t_P5Spec *specs=calloc(760,sizeof(*specs));assert(specs);coax_t_PsWorkspace memory;memset(&memory,0,sizeof(memory));
     coax_t_PsSession s=psionic_session_open(2,1,v,v,v,empty,(coax_v_t_PaFile){&file,1},(coax_v_t_P5Spec){specs,760},v,memory);
     assert(s.status==COAX_PsOpenStatus_shape && s.model.vocab==0);

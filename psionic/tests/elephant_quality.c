@@ -33,7 +33,7 @@ int main(int argc,char **argv){
  coax_t_PcCalibration calibration=pc_load(0,readout,(coax_v_u8){NULL,0});
  if(calibration.status){fprintf(stderr,"calibration status=%u\n",calibration.status);return 1;}
  printf("calibration: none in the pinned bundle; temperature %.1f for every kind\n",(double)pc_temperature(calibration,COAX_QrKind_choice,2));
- coax_t_PaFile file={named(argv[1],"model.safetensors")};size_t count=sizeof(elephant_specs)/sizeof(*elephant_specs);
+ coax_t_PaFile file={.data=named(argv[1],"model.safetensors")};size_t count=sizeof(elephant_specs)/sizeof(*elephant_specs);
  coax_t_P5Spec *specs=calloc(count,sizeof(*specs));coax_t_P5Tensor *inventory=calloc(count,sizeof(*inventory)),*draft=calloc(count,sizeof(*draft));
  coax_t_QeLayer *layers=calloc(32,sizeof(*layers));float *params=calloc(1057280,sizeof(float)),*stage=calloc(1057280,sizeof(float)),*work=calloc(50000,sizeof(float)),*norm=calloc(4096,sizeof(float)),*norm_work=calloc(4096,sizeof(float));
  if(!specs||!inventory||!draft||!layers||!params||!stage||!work||!norm||!norm_work)return 2;

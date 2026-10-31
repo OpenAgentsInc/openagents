@@ -27,7 +27,7 @@ int main(int argc,char **argv){
  if(argc!=3){fprintf(stderr,"usage: mammoth-api ORIGINAL_DIRECTORY TOKENIZER_PST\n");return 2;}
  double began=now();
  coax_v_u8 config=named(argv[1],"config.json"),tokenizer=named(argv[1],"tokenizer.json"),readout=named(argv[1],"readout.json"),index=named(argv[1],"model.safetensors.index.json"),table=map_file(argv[2]);
- coax_t_PaFile files[2]={{named(argv[1],"model-00001-of-00002.safetensors")},{named(argv[1],"model-00002-of-00002.safetensors")}};
+ coax_t_PaFile files[2]={{.data=named(argv[1],"model-00001-of-00002.safetensors")},{.data=named(argv[1],"model-00002-of-00002.safetensors")}};
  /* Prepare first: the token stream is independent of the weights and sizes the request. */
  unsigned char *prompt=zeroed(65536,1),*render_work=zeroed(65536,1),*normal=zeroed(262144,1);
  int64_t *candidate=zeroed(16384,8),*full=zeroed(16384,8),*token_stage=zeroed(16384,8),*scalars=zeroed(262144,8),*symbols=zeroed(1024,8),*tokens=zeroed(16384,8);

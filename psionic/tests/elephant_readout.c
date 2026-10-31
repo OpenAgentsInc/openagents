@@ -25,7 +25,7 @@ int main(int argc,char **argv) {
     if(!inv||!draft||!params||!temporary||!layers||!state||!work||!input||!hidden||!norm||!scale||!scratch){fprintf(stderr,"allocation failed\n");return 2;}
     coax_v_u8 bytes={map,st.st_size};coax_t_PwResult scan=p5_inspect_checked(bytes,(coax_v_t_P5Tensor){inv,4096},(coax_v_t_P5Tensor){draft,4096},0);
     if(scan.status || scan.written!=760){fprintf(stderr,"inventory %u\n",scan.status);return 1;}
-    coax_t_PaFile file={bytes};coax_v_t_PaFile files={&file,1};coax_v_t_P5Tensor inventory={inv,scan.written};
+    coax_t_PaFile file={.data=bytes};coax_v_t_PaFile files={&file,1};coax_v_t_P5Tensor inventory={inv,scan.written};
     coax_t_PdShape delta={16,32,128,128,0.000001f};coax_t_QfShape attention={16,4,256,64,0.000001f};
     coax_t_QeShape shape={.linear={4096,12288,delta,COAX_QmDtype_bf16},.full={4096,12288,1,attention,COAX_QmDtype_bf16},.state={24,8,1,delta,attention}};
     for(int i=0;i<32;i++) {

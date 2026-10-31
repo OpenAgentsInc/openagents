@@ -19,7 +19,7 @@ int main(int argc,char **argv) {
     if(inventory.status!=COAX_PwStatus_ok || inventory.written!=760){fprintf(stderr,"inventory status %u\n",inventory.status);return 1;}
     coax_t_PdShape delta={16,32,128,128,0.000001f};coax_t_QfShape attention={16,4,256,64,0.000001f};
     coax_t_QeShape shape={.linear={4096,12288,delta,COAX_QmDtype_bf16},.full={4096,12288,1,attention,COAX_QmDtype_bf16},.state={24,8,1,delta,attention}};
-    coax_t_PaFile file={bytes};int linear=0,full=0;
+    coax_t_PaFile file={.data=bytes};int linear=0,full=0;
     for(int layer=0;layer<32;layer++) {
         coax_t_PmResult r=psionic_map_layer(shape,layer,(coax_v_t_P5Tensor){out,inventory.written},(coax_v_t_PaFile){&file,1},(coax_v_f32){params,100000},(coax_v_f32){work,100000});
         if(r.status!=COAX_PwStatus_ok){fprintf(stderr,"layer %d status %u\n",layer,r.status);return 1;}

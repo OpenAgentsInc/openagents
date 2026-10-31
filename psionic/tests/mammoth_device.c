@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
     coax_t_PsPlan plan = ps_plan(1, capacity, T, P);
     if (plan.status) { fprintf(stderr, "plan status=%u\n", plan.status); return 1; }
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = named(argv[1], "model.safetensors.index.json");
-    coax_t_PaFile files[2] = {{named(argv[1], "model-00001-of-00002.safetensors")}, {named(argv[1], "model-00002-of-00002.safetensors")}};
+    coax_t_PaFile files[2] = {{.data=named(argv[1], "model-00001-of-00002.safetensors")}, {.data=named(argv[1], "model-00002-of-00002.safetensors")}};
     size_t count = sizeof(mammoth_specs) / sizeof(*mammoth_specs);
     if ((int64_t)count != plan.tensors) return 1;
     coax_t_P5Spec *specs = zeroed(plan.tensors, sizeof(coax_t_P5Spec));

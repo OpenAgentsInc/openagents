@@ -15,7 +15,7 @@ int main(void){
         for(int j=0;j<ranks[i];j++){inventory[i].shape.dims.e[j]=dims[i][j];size*=dims[i][j];}
         inventory[i].elements=size;inventory[i].begin=at;at+=2*size;inventory[i].end=at;
     }
-    assert(at==78);coax_t_PaFile file={{bytes,78}};coax_v_t_PaFile files={&file,1};coax_v_t_P5Tensor iv={inventory,14};
+    assert(at==78);coax_t_PaFile file={.data={bytes,78}};coax_v_t_PaFile files={&file,1};coax_v_t_P5Tensor iv={inventory,14};
     float out[20],work[20];for(int i=0;i<20;i++){out[i]=-7;work[i]=-9;}
     coax_t_PmResult r=psionic_map_layer(shape,0,iv,files,(coax_v_f32){out,20},(coax_v_f32){work,20});
     assert(r.status==COAX_PwStatus_ok && r.written==19 && r.layer.linear.conv.count==12 && r.layer.linear.qkv.count==12 && out[19]==-7);
@@ -23,7 +23,7 @@ int main(void){
     r=psionic_map_layer(shape,0,iv,files,(coax_v_f32){out,20},(coax_v_f32){out,20});assert(r.status==COAX_PwStatus_alias && out[0]==-7);
     coax_string old=inventory[0].name;inventory[0].name=(coax_string){(const char *)out,1};
     r=psionic_map_layer(shape,0,iv,files,(coax_v_f32){out,20},(coax_v_f32){work,20});assert(r.status==COAX_PwStatus_alias && out[0]==-7);inventory[0].name=old;
-    coax_t_PaFile other={{(uint8_t *)out,78}};
+    coax_t_PaFile other={.data={(uint8_t *)out,78}};
     r=psionic_map_layer(shape,0,iv,(coax_v_t_PaFile){&other,1},(coax_v_f32){out,20},(coax_v_f32){work,20});assert(r.status==COAX_PwStatus_alias && out[0]==-7);
     puts("layer mapping native: original views, parameter staging and aliases pass");
 }

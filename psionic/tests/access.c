@@ -7,7 +7,7 @@ int main(void) {
     unsigned char bytes[9]={99,0x80,0x3f,0,0x40,0x40,0x40,99,99};
     coax_t_P5Shape shape={1,{{3,0,0,0,0}}};coax_t_P5Tensor tensor;memset(&tensor,0,sizeof(tensor));
     tensor.name=str("weights");tensor.shape=shape;tensor.dtype=COAX_PwDtype_bf16;tensor.elements=3;tensor.begin=1;tensor.end=7;
-    coax_t_PaFile file={{bytes,9}};
+    coax_t_PaFile file={.data={bytes,9}};
     coax_t_PaView view=pa_view(str("weights"),shape,COAX_PwDtype_bf16,(coax_v_t_P5Tensor){&tensor,1},(coax_v_t_PaFile){&file,1});
     assert(view.status==COAX_PwStatus_ok && view.data.data==bytes+1 && view.data.count==6);
     float out[4]={-7,-7,-7,-7},work[4]={-9,-9,-9,-9};

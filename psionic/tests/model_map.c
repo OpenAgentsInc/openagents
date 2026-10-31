@@ -21,7 +21,7 @@ int main(void){
             inventory[entry].elements=size;inventory[entry].begin=at;at+=2*size;inventory[entry].end=at;entry++;
         }
     }
-    assert(entry==53 && at==302);coax_t_PaFile file={{bytes,302}};coax_t_QeLayer layers[5];memset(layers,0,sizeof(layers));float params[66],stage[65],work[27];
+    assert(entry==53 && at==302);coax_t_PaFile file={.data={bytes,302}};coax_t_QeLayer layers[5];memset(layers,0,sizeof(layers));float params[66],stage[65],work[27];
     for(int i=0;i<66;i++)params[i]=-7;
     coax_t_PmaResult r=psionic_map_model(shape,(coax_v_t_P5Tensor){inventory,53},(coax_v_t_PaFile){&file,1},(coax_v_t_QeLayer){layers,5},(coax_v_f32){params,66},(coax_v_f32){stage,65},(coax_v_f32){work,27});
     assert(r.status==COAX_PwStatus_ok && r.written==4 && r.parameters==65 && params[65]==-7);

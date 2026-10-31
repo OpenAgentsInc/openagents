@@ -20,7 +20,7 @@ static coax_v_u8 named(const char *dir,const char *name){char path[4096];int n=s
 int main(int argc,char **argv){
  if(argc!=3){fprintf(stderr,"usage: elephant-api ORIGINAL_DIRECTORY TOKENIZER_PST\n");return 2;}
  coax_v_u8 config=named(argv[1],"config.json"),tokenizer=named(argv[1],"tokenizer.json"),readout=named(argv[1],"readout.json"),index={NULL,0},table=map_file(argv[2]);
- coax_t_PaFile file={named(argv[1],"model.safetensors")};size_t count=sizeof(elephant_specs)/sizeof(*elephant_specs);
+ coax_t_PaFile file={.data=named(argv[1],"model.safetensors")};size_t count=sizeof(elephant_specs)/sizeof(*elephant_specs);
  coax_t_P5Spec *specs=calloc(count,sizeof(*specs));coax_t_P5Tensor *inventory=calloc(count,sizeof(*inventory)),*draft=calloc(count,sizeof(*draft));
  coax_t_QeLayer *layers=calloc(32,sizeof(*layers));float *params=calloc(1057280,sizeof(float)),*stage=calloc(1057280,sizeof(float)),*work=calloc(50000,sizeof(float)),*norm=calloc(4096,sizeof(float)),*norm_work=calloc(4096,sizeof(float));
  if(!specs||!inventory||!draft||!layers||!params||!stage||!work||!norm||!norm_work)return 2;
