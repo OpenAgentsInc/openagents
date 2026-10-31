@@ -155,8 +155,10 @@ def registry_problems(book, root=REPO):
         want = {"design draft": DRAFT, "partly implemented": PARTLY, "planned": PLANNED}.get(c["status"])
         if want and not third.startswith(want):
             errors.append(f"{name}: registry status is {c['status']}; line 3 must start with {want}")
+        # A chapter may quote another status's marker in its prose or code; only its opening block counts.
+        opening = "\n".join(lines[:12])
         for status, marker in (("design draft", DRAFT), ("partly implemented", PARTLY), ("planned", PLANNED)):
-            if c["status"] != status and marker in text:
+            if c["status"] != status and marker in opening:
                 errors.append(f"{name}: has the {status} marker but the registry says {c['status']}")
         # Every example and source listing the chapter shows is implemented source.
         shown = set(re.findall(r"<!-- source: ([^ ]+) [^ ]+ -->", text))
