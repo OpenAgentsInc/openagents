@@ -5,7 +5,7 @@
 // room shows them to each other and to nobody else (migrations/0074_room_presence_pairs.sql), and
 // analytics leaves them out. Each page's presence answers are noted as they arrive. A trial: one
 // session holds W (or S) and the other's page is watched for the first answer that has the mover
-// somewhere new; the time from the key going down to that answer is the latency. The sessions take
+// somewhere new (Escape first closes what a first visit opens); the time from the key going down to that answer is the latency. The sessions take
 // turns. It prints each trial, the median and the largest, and exits 1 when any trial is over the
 // budget (ms) or never shows. --shots writes PREFIX-a.png and PREFIX-b.png at the end. Nothing opens
 // on screen and no sound plays.
@@ -106,12 +106,18 @@ pair_eval_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
   return ifx n > 0 then cast(string) out[0..<n] else "";
 }
 pair_key :: (c: [] Cdp, down: bool, back: bool) -> bool {
-  params: [512] u8; o: [1] Jo; jo_start(o[..], params[..]);
-  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], ifx down then "keyDown" else "keyUp");
-  jo_key(o[..], "key"); jo_str(o[..], ifx back then "s" else "w"); jo_key(o[..], "code"); jo_str(o[..], ifx back then "KeyS" else "KeyW");
-  jo_key(o[..], "windowsVirtualKeyCode"); jo_int(o[..], ifx back then 83 else 87); jo_end(o[..]);
-  return cdp_call(c, "Input.dispatchKeyEvent", jo_text(o[..]), CDP_CALL_MS) >= 0;
+  return ifx back then pair_press(c, down, "s", "KeyS", 83) else pair_press(c, down, "w", "KeyW", 87);
 }
+// A key as the page hears it: a keydown or keyup on window (host.js listens there).
+pair_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], "dispatchEvent(new KeyboardEvent('"); bput(q[..], ifx down then "keydown" else "keyup");
+  bput(q[..], "', {key: '"); bput(q[..], key); bput(q[..], "', code: '"); bput(q[..], code); bput(q[..], "', keyCode: "); bint(q[..], vk);
+  bput(q[..], ", bubbles: true})); 1");
+  return pair_eval_int(c, btext(q[..]), 0) == 1;
+}
+// Escape: closes what a first visit opens over the realm (Fairy Forest's YOUR FAIRY), so W walks.
+pair_escape :: (c: [] Cdp) -> bool { return pair_press(c, true, "Escape", "Escape", 27) && pair_press(c, false, "Escape", "Escape", 27); }
 
 pair_open :: (c: [] Cdp, url: string, origin: string, mark: string, wh: ArgsSize) -> bool {
   params: [8192] u8; o: [1] Jo;
@@ -196,10 +202,13 @@ pair_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, 
   }
   if !seen { tool_errln("presence-pair: the two sessions never saw each other"); return 1; }
   print("each sees the other\n");
+  // what a first visit opens over the realm (Fairy Forest's YOUR FAIRY) may come a moment after joining
+  proc_sleep(3000);
   took: [PAIR_TRIALS_MAX] int;
   for k: 0..<trials {
     mover := ifx k % 2 == 0 then ca else cb; watcher := ifx k % 2 == 0 then cb else ca;
     back := (k / 2) % 2 == 1;
+    if !pair_escape(mover) { return pair_fail(mover, "pressing Escape"); }   // a pane a first visit opens late
     proc_sleep(1500);   // both still, the watcher's last answer where the mover stands
     _ = pair_eval_int(watcher, "window.__see()", 0);
     t0 := pair_eval_int(mover, "Date.now()", -1);

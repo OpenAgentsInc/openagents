@@ -67,7 +67,8 @@ try {
   if (before) await send("Page.addScriptToEvaluateOnNewDocument", { source: before })
   await send("Page.navigate", { url })
   await Bun.sleep(7000)
-  if (script) { await send("Runtime.evaluate", { expression: script, awaitPromise: true }); await Bun.sleep(1000) }
+  let evalResult: any = undefined
+  if (script) { evalResult = (await send("Runtime.evaluate", { expression: script, awaitPromise: true, returnByValue: true }))?.result?.result?.value; await Bun.sleep(1000) }
   await send("Runtime.evaluate", { expression: "window.__gpu.length = 0; window.__raf.length = 0" })
   await Bun.sleep(Number(secS) * 1000)
   const r = await send("Runtime.evaluate", { expression: "JSON.stringify({info: window.__info, gpu: window.__gpu, raf: window.__raf, canvas: [...document.querySelectorAll('canvas')].map(c => [c.width, c.height, c.clientWidth]), dpr: devicePixelRatio, coarse: matchMedia('(pointer: coarse)').matches})", returnByValue: true })
@@ -77,7 +78,7 @@ try {
   const tot = d.gpu.map((g: any) => g.total), span = d.gpu.map((g: any) => g.frame)
   const passes = d.gpu.length ? d.gpu[0].per.length : 0
   const perPass = Array.from({ length: passes }, (_, k) => f(q(d.gpu.filter((g: any) => g.per.length === passes).map((g: any) => g.per[k]), 0.5)))
-  console.log(JSON.stringify({ url, size, dpr, pageDpr: d.dpr, coarse: d.coarse, canvas: d.canvas, info: d.info, frames: d.gpu.length,
+  console.log(JSON.stringify({ url, size, dpr, ...(script ? { evalResult } : {}), pageDpr: d.dpr, coarse: d.coarse, canvas: d.canvas, info: d.info, frames: d.gpu.length,
     gpu_ms: { p50: f(q(tot, 0.5)), p95: f(q(tot, 0.95)), max: f(q(tot, 1)) }, gpu_span_p50: f(q(span, 0.5)), per_pass_p50: perPass,
     raf_ms: { n: d.raf.length, p50: f(q(d.raf, 0.5)), p95: f(q(d.raf, 0.95)) } }))
   ws.close()
