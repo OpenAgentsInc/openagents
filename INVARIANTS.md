@@ -86,6 +86,21 @@ mutation 0 survivors) and `verse/player.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
+## Every walking realm asks one ground question
+
+The walking controller's floor comes from `aethyr/query.coax`:
+`floor_under` in `verse/player.coax` is one `query_stand` call over the
+realm's colliders (a flat ground, walls as boxes, bodies as capsules, and
+floors). The step height (`QUERY_STEP_UP`, 0.55 m), the steepest slope you
+can stand on (`QUERY_STEEP`, 55 degrees) and the floor pad
+(`QUERY_FLOOR_PAD`, 0.15 m) are defined there once; the walker reads them
+from it. Every shape is solid, so a ray or sweep that starts inside one hits
+it at t = 0, and ties go to the earlier collider (the ground, then boxes,
+then capsules, by index). Checks: `aethyr/query.coax` (rays, sweeps and
+overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
+mutation 0 survivors) and `verse/player.coax` ("jumping onto, landing on
+and walking off a ledge is the same in every realm").
+
 ## Simulation steps and supplied wall clocks keep their domains
 
 The step-clock precursor uses integer simulation steps and distinct nominal
