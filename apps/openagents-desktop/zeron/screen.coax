@@ -56,6 +56,8 @@ ZeronState :: struct {
   demo: bool;                    // Zeron's demo conversation instead of a chat
   since_build: f32;              // seconds since the transcript was rebuilt
   host_action: int;              // HOST_*, until the host takes it
+  preface: [4096] u8; preface_n: int;   // notes from other agents (the room's tell_agent), put before the next message sent
+  stops: int;                    // STOPs pressed (the desk cancels the room's asks on each)
   own_pool: [3072] u8;           // the conversation's text until the host attaches its pool (3 KiB: the checks run at the compile-time aggregate limit)
   // the mode, and the Psionic engine with its buffers
   mode: int;                     // MODE_*
@@ -177,6 +179,14 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
   while lo < hi && (raw[lo] == ' ' || raw[lo] == '\n') { lo += 1; }
   while hi > lo &&  (raw[hi - 1] == ' ' || raw[hi - 1] == '\n') { hi -= 1; }
   text := cast(string) raw[lo..<hi];
+  // notes other agents left go first, so the agent reads them with the message (and both are seen)
+  joined: [65536] u8;
+  if s[0].preface_n > 0 && s[0].preface_n + 2 + text.count <= joined.count {
+    k := e_copy(joined[..], 0, cast(string) s[0].preface[0..<s[0].preface_n]);
+    k = e_copy(joined[..], k, "\n\n"); k = e_copy(joined[..], k, text);
+    text = cast(string) joined[0..<k];
+    s[0].preface_n = 0;
+  }
   n := at_take(t, text);
   if s[0].mode == MODE_PSIONIC {
     if n == 0 { zr_ps_send(s, text, text); return true; }
@@ -221,6 +231,7 @@ zr_ps_send :: (s: [] ZeronState, shown: string, text: string) {
   ps_forward(p, ss, text);
 }
 zr_stop :: (s: [] ZeronState) {
+  s[0].stops += 1;
   if gs_stop(s[0].gpu[..], s[0].session[..]) { s[0].psionic[0].hold = false; }
   if s[0].mode == MODE_PSIONIC || zr_lab_psionic(s) { ps_stop(s[0].psionic[..], s[0].session[..]); return; }
   if s[0].mode == MODE_LAB && lab_stop(s[0].lab[..], s[0].session[..]) { return; }

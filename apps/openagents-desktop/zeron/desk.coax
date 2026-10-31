@@ -13,6 +13,7 @@
 // session, Cmd+N and Cmd+W come from its menus. Based on Zeron by Wing, MIT.
 
 #load "screen.coax";
+#load "room.coax";
 
 DSK_MAX :: 64;
 DSK_SIDEBAR_MIN :: 208.0; DSK_SIDEBAR_MAX :: 400.0; DSK_SIDEBAR_DEFAULT :: 256.0;
@@ -39,6 +40,9 @@ DskChat :: struct {
   active_at: f32;           // the desk's clock at its last activity
   seen_n: int;              // its session's parts at that time
   opened: f32;              // the desk's clock when it was made (its order among equals)
+  was_live: bool;           // its turn was running last frame
+  stops: int;               // its STOPs already passed to the room
+  turn_from: int;           // its session's parts when the room's ask started there
 }
 DskHit :: struct { kind: int; i: int; x: f32; y: f32; w: f32; h: f32; }
 
@@ -61,6 +65,7 @@ Desk :: struct {
   host_action: int;
   cursor: int;              // 0 arrow, 1 I-beam, 2 pointing hand, 3 resize left-right
   text: [256] u8;           // a label fitted to its width
+  room: [1] Room;           // the agents' room (room.coax): agent i is chats[i]
 }
 
 dsk_init :: (k: [] Desk) {
@@ -229,6 +234,93 @@ dsk_sort :: (k: [] Desk) {
 // ---------------------------------------------------------------- the frame
 
 // Every session's frame; the shown one drawn right of the sidebar, then the sidebar and tabs over it.
+// An agent's name in the room: its harness and its place among that harness's sessions ("Claude 2").
+dsk_agent_name :: (k: [] Desk, i: int, out: [] u8) -> string {
+  names := MODE_NAMES;
+  m := k[0].chats[i].s[0].mode;
+  nth := 1;
+  for j: 0..<i { if k[0].chats[j].s[0].mode == m { nth += 1; } }
+  n := e_copy(out, 0, names[m]); n = e_copy(out, n, " ");
+  n = zr_put_int(out, n, nth);
+  return cast(string) out[0..<n];
+}
+// The agent that has that name, or -1 (any case).
+dsk_agent :: (k: [] Desk, name: string) -> int {
+  buf: [64] u8;
+  for i: 0..<k[0].n {
+    a := dsk_agent_name(k, i, buf[..]);
+    if a.count != name.count { continue; }
+    same := true;
+    for c: 0..<a.count { x := a[c]; y := name[c]; if x >= 'A' && x <= 'Z' { x += 32; } if y >= 'A' && y <= 'Z' { y += 32; } if x != y { same = false; break; } }
+    if same { return i; }
+  }
+  return -1;
+}
+// The final answer of a session's turn: its text parts since the turn began (the last one, as the SDK's result is).
+dsk_turn_text :: (k: [] Desk, i: int) -> string {
+  ss := k[0].chats[i].s[0].session[..];
+  p := ss[0].n - 1;
+  while p >= k[0].chats[i].turn_from && p >= 0 {
+    if ss[0].parts[p].kind == P_TEXT { return s_text_of(ss, p); }
+    if ss[0].parts[p].kind == P_NOTICE { return ""; }
+    p -= 1;
+  }
+  return "";
+}
+// The room each frame: STOPs cancel asks, finished turns answer theirs, idle agents take the next ask, notes wait in the preface.
+dsk_room :: (k: [] Desk) {
+  r := k[0].room[..];
+  r[0].agents = k[0].n;
+  for i: 0..<k[0].n {
+    s := k[0].chats[i].s; ss := s[0].session[..];
+    if !s[0].ready { continue; }    // its first frame sets it up
+    if s[0].stops != k[0].chats[i].stops { k[0].chats[i].stops = s[0].stops; rm_stop(r, i); }
+    if k[0].chats[i].was_live && !ss[0].live && rm_running(r, i) >= 0 {
+      t := dsk_turn_text(k, i);
+      if t.count > 0 { rm_answer(r, i, false, t); }
+      else { rm_answer(r, i, true, "The agent's turn ended without an answer."); }
+    }
+    k[0].chats[i].was_live = ss[0].live;
+    if ss[0].live { continue; }
+    j := rm_next(r, i);
+    if j >= 0 {
+      buf: [RM_TEXT + 160] u8; nb: [64] u8;
+      n := e_copy(buf[..], 0, "Ask from "); n = e_copy(buf[..], n, dsk_agent_name(k, r[0].asks[j].from, nb[..]));
+      n = e_copy(buf[..], n, " (your answer goes back to it): ");
+      n = e_copy(buf[..], n, cast(string) r[0].asks[j].text[0..<r[0].asks[j].n]);
+      dsk_take_notes(k, i);
+      rm_started(r, j);
+      k[0].chats[i].turn_from = ss[0].n;
+      if !zr_send(s, cast(string) buf[0..<n]) { rm_answer(r, i, true, "That agent couldn't start a turn."); }
+      k[0].chats[i].was_live = ss[0].live;
+    } else { dsk_take_notes(k, i); }
+  }
+}
+// Notes for an agent move into its chat's preface (sent before its next message).
+dsk_take_notes :: (k: [] Desk, i: int) {
+  s := k[0].chats[i].s;
+  if r_notes(k, i) == 0 { return; }
+  tmp: [RM_NOTES] u8;
+  n := rm_take_notes(k[0].room[..], i, tmp[..]);
+  at := s[0].preface_n;
+  if at > 0 { at = e_copy(s[0].preface[..], at, "\n\n"); }
+  s[0].preface_n = e_copy(s[0].preface[..], at, cast(string) tmp[0..<n]);
+}
+r_notes :: (k: [] Desk, i: int) -> int { return ifx i < 64 then k[0].room[0].notes[i].n else 0; }
+// A tell from agent from: "Note from Claude 1: ...", queued.
+dsk_tell :: (k: [] Desk, from: int, to: int, text: string) -> int {
+  buf: [RM_TEXT] u8; nb: [64] u8;
+  if from < 0 || from >= k[0].n { return RM_ERR_AGENT; }
+  n := e_copy(buf[..], 0, "Note from "); n = e_copy(buf[..], n, dsk_agent_name(k, from, nb[..])); n = e_copy(buf[..], n, ": ");
+  n = e_copy(buf[..], n, text);
+  k[0].room[0].agents = k[0].n;
+  return rm_tell(k[0].room[..], from, to, cast(string) buf[0..<n]);
+}
+dsk_ask :: (k: [] Desk, from: int, to: int, text: string) -> int {
+  k[0].room[0].agents = k[0].n;
+  return rm_ask(k[0].room[..], from, to, text);
+}
+
 dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
   dsk_init(k);
   if k[0].n == 0 { return 0; }
@@ -240,6 +332,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
   // the chat's width: the window's less the sidebar, in device px (at least a column's worth)
   cw := width - side * d;
   if cw < 320 * d { cw = 320 * d; }
+  dsk_room(k);
   for i: 0..<k[0].n {
     s := k[0].chats[i].s;
     zr_tick(s, cw, height, dpr, dt1);
@@ -640,4 +733,42 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   dsk_shift(v[..], 0, 2, 100);
   #assert v[0] == 110 && v[4] == 110 && v[20] == -GP_NO_CLIP && v[22] == 150;
   #assert v[28] == 101 && v[32] == 102 && v[35] == 103 && v[48] == 104 && v[50] == GP_NO_CLIP;
+}
+
+#test "the room on the desk: an ask runs as a turn in the other session and its final text comes back; a note goes before the next message; STOP cancels" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one");
+  i = dsk_add(k[..], b[..], "/w/two");
+  nb: [64] u8;
+  #assert dsk_agent_name(k[..], 0, nb[..]) == "Claude 1" && dsk_agent(k[..], "claude 2") == 1 && dsk_agent(k[..], "Codex 1") == -1;
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  id := dsk_ask(k[..], 0, 1, "Review the diff");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  bs := b[0].session[..];
+  // the ask is agent 1's message now, from agent 0, and its turn is running
+  #assert bs[0].live && bs[0].parts[bs[0].n - 1].kind == P_USER && s_text_of(bs, bs[0].n - 1) == "Ask from Claude 1 (your answer goes back to it): Review the diff";
+  #assert dsk_ask(k[..], 1, 0, "which diff?") == RM_ERR_CYCLE;
+  // its turn answers and ends
+  s_delta(bs, P_TEXT, "One nit: rename x.");
+  s_turn_end(bs, false, "");
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  ans: [RM_ANSWER] u8; an: [1] int;
+  #assert rm_result(k[0].room[..], id, ans[..], an[..]) == RM_DONE && cast(string) ans[0..<an[0]] == "One nit: rename x.";
+  // a note waits for agent 0's next message, which carries it
+  #assert dsk_tell(k[..], 1, 0, "Tests pass on main.") == 0;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert a[0].preface_n > 0 && zr_send(a[..], "ship it");
+  as := a[0].session[..];
+  #assert s_text_of(as, as[0].n - 1) == "Note from Claude 2: Tests pass on main.\n\nship it" && a[0].preface_n == 0;
+  // STOP on agent 0 cancels what it waits on
+  s_turn_end(as, false, "");
+  id = dsk_ask(k[..], 0, 1, "again?");
+  #assert id >= 0;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  zr_stop(a[..]);
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert rm_result(k[0].room[..], id, ans[..], an[..]) == RM_FAILED;
 }

@@ -1,0 +1,270 @@
+// The room (docs/desktop/coax-desktop.md, "Agents that talk to each other"):
+// the window's ordered log of messages between agents, and the asks in
+// flight. An agent is a session's index on the desk. ask_agent opens an ask
+// that the desk runs as a new turn in the other session (rm_next, rm_started)
+// and closes with that turn's final answer (rm_answer), which goes back to the
+// asker as its tool result (rm_result), never as a new message, so there are
+// no courtesy loops. tell_agent queues a note for the other agent's next turn
+// (rm_take_notes). An agent can't ask one that is waiting on it, directly or
+// through others (that would never finish), and the call says so. STOP on a
+// session cancels every ask it is waiting on (rm_stop). There is no hop
+// limit unless the user sets one (max_hops).
+
+RM_MSGS :: 128;            // the log keeps the newest this many
+RM_ASKS :: 32;             // asks in flight
+RM_TEXT :: 2000;           // bytes of a message kept
+RM_ANSWER :: 8000;         // bytes of an answer kept
+RM_NOTES :: 4000;          // bytes of notes queued for one agent
+
+// What a log entry is.
+RM_ASK :: 1; RM_TELL :: 2; RM_ANSWERED :: 3; RM_CANCELLED :: 4;
+// An ask's state.
+RM_FREE :: 0; RM_PENDING :: 1; RM_RUNNING :: 2; RM_DONE :: 3; RM_FAILED :: 4;
+// Why an ask or tell was refused (negative results).
+RM_ERR_SELF :: -1; RM_ERR_CYCLE :: -2; RM_ERR_FULL :: -3; RM_ERR_HOPS :: -4; RM_ERR_AGENT :: -5;
+
+RmMsg :: struct {
+  seq: int;                 // its place in the room, from 1
+  kind: int;
+  from: int; to: int;
+  ask: int;                 // the ask it belongs to (-1 for a tell)
+  text: [RM_TEXT] u8; n: int;
+}
+RmAsk :: struct {
+  state: int;
+  id: int;                  // what the asker holds (rm_result); slot + RM_ASKS * generation
+  from: int; to: int;
+  hops: int;                // 1 for an ask from a turn the person started
+  text: [RM_TEXT] u8; n: int;
+  answer: [RM_ANSWER] u8; answer_n: int;
+}
+RmNotes :: struct { text: [RM_NOTES] u8; n: int; }
+
+Room :: struct {
+  msgs: [RM_MSGS] RmMsg; first: int; count: int;   // a ring, oldest at first
+  seq: int;
+  asks: [RM_ASKS] RmAsk; gen: int;
+  notes: [64] RmNotes;
+  agents: int;              // agents are 0..<agents
+  max_hops: int;            // 0: no limit (the default)
+}
+
+rm_copy :: (out: [] u8, at: int, text: string) -> int {
+  k := at;
+  for b: text { if k < out.count { out[k] = b; k += 1; } }
+  // never end inside a character
+  if k == out.count && k > at { while k > at && (out[k - 1] & 0xC0) == 0x80 { k -= 1; } if k > at && out[k - 1] >= 0xC0 { k -= 1; } }
+  return k;
+}
+
+rm_log :: (r: [] Room, kind: int, from: int, to: int, ask: int, text: string) {
+  i := 0;
+  if r[0].count < RM_MSGS { i = (r[0].first + r[0].count) % RM_MSGS; r[0].count += 1; }
+  else { i = r[0].first; r[0].first = (r[0].first + 1) % RM_MSGS; }
+  r[0].seq += 1;
+  r[0].msgs[i].seq = r[0].seq; r[0].msgs[i].kind = kind; r[0].msgs[i].from = from; r[0].msgs[i].to = to; r[0].msgs[i].ask = ask;
+  r[0].msgs[i].n = rm_copy(r[0].msgs[i].text[..], 0, text);
+}
+// The k-th message in the log, oldest first (its slot).
+rm_at :: (r: [] Room, k: int) -> int { return (r[0].first + k) % RM_MSGS; }
+rm_kind :: (r: [] Room, k: int) -> int { return r[0].msgs[rm_at(r, k)].kind; }
+rm_seq :: (r: [] Room, k: int) -> int { return r[0].msgs[rm_at(r, k)].seq; }
+rm_from :: (r: [] Room, k: int) -> int { return r[0].msgs[rm_at(r, k)].from; }
+rm_to :: (r: [] Room, k: int) -> int { return r[0].msgs[rm_at(r, k)].to; }
+rm_text :: (r: [] Room, k: int) -> string { i := rm_at(r, k); return cast(string) r[0].msgs[i].text[0..<r[0].msgs[i].n]; }
+
+rm_open :: (a: RmAsk) -> bool { return a.state == RM_PENDING || a.state == RM_RUNNING; }
+// Is agent a waiting on agent b, through any chain of open asks?
+rm_waits_on :: (r: [] Room, a: int, b: int) -> bool {
+  seen: [64] bool;
+  stack: [64] int; top := 0;
+  stack[0] = a; top = 1;
+  while top > 0 {
+    top -= 1; x := stack[top];
+    for j: 0..<RM_ASKS {
+      q := r[0].asks[j];
+      if !rm_open(q) || q.from != x { continue; }
+      if q.to == b { return true; }
+      if q.to >= 0 && q.to < 64 && !seen[q.to] && top < 64 { seen[q.to] = true; stack[top] = q.to; top += 1; }
+    }
+  }
+  return false;
+}
+// The hops of the ask an agent's current turn answers (0 when the person started it).
+rm_depth :: (r: [] Room, agent: int) -> int {
+  for j: 0..<RM_ASKS { if r[0].asks[j].state == RM_RUNNING && r[0].asks[j].to == agent { return r[0].asks[j].hops; } }
+  return 0;
+}
+rm_slot :: (r: [] Room, id: int) -> int {
+  if id < 0 { return -1; }
+  j := id % RM_ASKS;
+  return ifx r[0].asks[j].id == id && r[0].asks[j].state != RM_FREE then j else -1;
+}
+
+// ask_agent: the ask's id (for rm_result), or an RM_ERR_*.
+rm_ask :: (r: [] Room, from: int, to: int, text: string) -> int {
+  if from < 0 || to < 0 || from >= r[0].agents || to >= r[0].agents { return RM_ERR_AGENT; }
+  if from == to { return RM_ERR_SELF; }
+  if rm_waits_on(r, to, from) { return RM_ERR_CYCLE; }
+  hops := rm_depth(r, from) + 1;
+  if r[0].max_hops > 0 && hops > r[0].max_hops { return RM_ERR_HOPS; }
+  j := -1;
+  for i: 0..<RM_ASKS { if r[0].asks[i].state == RM_FREE || r[0].asks[i].state == RM_DONE || r[0].asks[i].state == RM_FAILED { j = i; break; } }
+  if j < 0 { return RM_ERR_FULL; }
+  r[0].gen += 1;
+  id := j + RM_ASKS * r[0].gen;
+  r[0].asks[j].state = RM_PENDING; r[0].asks[j].id = id; r[0].asks[j].from = from; r[0].asks[j].to = to; r[0].asks[j].hops = hops;
+  r[0].asks[j].n = rm_copy(r[0].asks[j].text[..], 0, text); r[0].asks[j].answer_n = 0;
+  rm_log(r, RM_ASK, from, to, id, text);
+  return id;
+}
+// What the refusal says, for the tool's error.
+rm_error :: (code: int) -> string {
+  if code == RM_ERR_SELF { return "An agent can't ask itself."; }
+  if code == RM_ERR_CYCLE { return "That agent is waiting on you, so it can't answer until you do. Answer it first."; }
+  if code == RM_ERR_FULL { return "Too many asks are waiting. Try again when one is answered."; }
+  if code == RM_ERR_HOPS { return "The hop limit set in Settings stops this ask."; }
+  if code == RM_ERR_AGENT { return "There is no agent by that name in this window."; }
+  return "";
+}
+
+// tell_agent: queued for the agent's next turn; returns at once.
+rm_tell :: (r: [] Room, from: int, to: int, text: string) -> int {
+  if from < 0 || to < 0 || from >= r[0].agents || to >= r[0].agents || to >= 64 { return RM_ERR_AGENT; }
+  if from == to { return RM_ERR_SELF; }
+  rm_log(r, RM_TELL, from, to, -1, text);
+  k := r[0].notes[to].n;
+  if k > 0 { k = rm_copy(r[0].notes[to].text[..], k, "\n\n"); }
+  k = rm_copy(r[0].notes[to].text[..], k, text);
+  r[0].notes[to].n = k;
+  return 0;
+}
+// The notes queued for an agent, taken (the desk puts them before its next turn's message).
+rm_take_notes :: (r: [] Room, agent: int, out: [] u8) -> int {
+  if agent < 0 || agent >= 64 { return 0; }
+  k := rm_copy(out, 0, cast(string) r[0].notes[agent].text[0..<r[0].notes[agent].n]);
+  r[0].notes[agent].n = 0;
+  return k;
+}
+
+// The oldest pending ask for an agent (its slot), which the desk starts when the agent is idle; -1 for none.
+rm_next :: (r: [] Room, agent: int) -> int {
+  best := -1;
+  for j: 0..<RM_ASKS {
+    q := r[0].asks[j];
+    if q.state == RM_PENDING && q.to == agent && (best < 0 || q.id < r[0].asks[best].id) { best = j; }
+  }
+  return best;
+}
+rm_started :: (r: [] Room, slot: int) { if slot >= 0 && r[0].asks[slot].state == RM_PENDING { r[0].asks[slot].state = RM_RUNNING; } }
+// The ask an agent's turn is answering (its slot), or -1.
+rm_running :: (r: [] Room, agent: int) -> int {
+  for j: 0..<RM_ASKS { if r[0].asks[j].state == RM_RUNNING && r[0].asks[j].to == agent { return j; } }
+  return -1;
+}
+// The agent's turn ended: its final answer closes the ask it was running (failed: why it failed).
+rm_answer :: (r: [] Room, agent: int, failed: bool, text: string) {
+  j := rm_running(r, agent);
+  if j < 0 { return; }
+  r[0].asks[j].state = ifx failed then RM_FAILED else RM_DONE;
+  r[0].asks[j].answer_n = rm_copy(r[0].asks[j].answer[..], 0, text);
+  rm_log(r, ifx failed then RM_CANCELLED else RM_ANSWERED, agent, r[0].asks[j].from, r[0].asks[j].id, text);
+}
+// STOP on an agent: every ask it is waiting on is cancelled, and so is the one its turn was answering.
+rm_stop :: (r: [] Room, agent: int) {
+  for j: 0..<RM_ASKS {
+    if !rm_open(r[0].asks[j]) { continue; }
+    from := r[0].asks[j].from; to := r[0].asks[j].to; id := r[0].asks[j].id;
+    if from == agent {
+      r[0].asks[j].state = RM_FAILED; r[0].asks[j].answer_n = rm_copy(r[0].asks[j].answer[..], 0, "Cancelled: you were stopped.");
+      rm_log(r, RM_CANCELLED, agent, to, id, "Cancelled");
+    } else if to == agent {
+      r[0].asks[j].state = RM_FAILED; r[0].asks[j].answer_n = rm_copy(r[0].asks[j].answer[..], 0, "The agent you asked was stopped before it answered.");
+      rm_log(r, RM_CANCELLED, agent, from, id, "Stopped");
+    }
+  }
+}
+// An ask's state for the asker: RM_PENDING or RM_RUNNING while it waits, then RM_DONE (the answer) or RM_FAILED (why). The slot is freed once read.
+rm_result :: (r: [] Room, id: int, out: [] u8, n: [] int) -> int {
+  j := rm_slot(r, id);
+  if j < 0 { return RM_FREE; }
+  st := r[0].asks[j].state;
+  if st == RM_DONE || st == RM_FAILED {
+    n[0] = rm_copy(out, 0, cast(string) r[0].asks[j].answer[0..<r[0].asks[j].answer_n]);
+    r[0].asks[j].state = RM_FREE;
+  }
+  return st;
+}
+// room_read: the index of the first message after seq (count when none).
+rm_since :: (r: [] Room, seq: int) -> int {
+  k := 0;
+  while k < r[0].count && rm_seq(r, k) <= seq { k += 1; }
+  return k;
+}
+
+#test "an ask runs in the other session and its answer comes back to the asker, not as a new message" {
+  r: [1] Room; r[0].agents = 3;
+  id := rm_ask(r[..], 0, 1, "Review this diff");
+  #assert id >= 0 && r[0].count == 1 && rm_kind(r[..], 0) == RM_ASK && rm_text(r[..], 0) == "Review this diff";
+  out: [RM_ANSWER] u8; n: [1] int;
+  #assert rm_result(r[..], id, out[..], n[..]) == RM_PENDING;
+  j := rm_next(r[..], 1);
+  #assert j >= 0 && rm_next(r[..], 0) < 0 && rm_next(r[..], 2) < 0;
+  rm_started(r[..], j);
+  #assert rm_running(r[..], 1) == j && rm_next(r[..], 1) < 0 && rm_result(r[..], id, out[..], n[..]) == RM_RUNNING;
+  rm_answer(r[..], 1, false, "Looks right; one nit on line 4.");
+  #assert rm_result(r[..], id, out[..], n[..]) == RM_DONE && cast(string) out[0..<n[0]] == "Looks right; one nit on line 4.";
+  // read once: the slot is free again
+  #assert rm_result(r[..], id, out[..], n[..]) == RM_FREE;
+  #assert r[0].count == 2 && rm_kind(r[..], 1) == RM_ANSWERED && rm_from(r[..], 1) == 1 && rm_to(r[..], 1) == 0;
+  #assert rm_since(r[..], 1) == 1 && rm_since(r[..], 0) == 0 && rm_since(r[..], 2) == 2;
+}
+
+#test "an agent waiting on an ask can't be asked by the one it waits on, directly or around a chain" {
+  r: [1] Room; r[0].agents = 3;
+  a := rm_ask(r[..], 0, 1, "check the tests");
+  #assert a >= 0;
+  #assert rm_ask(r[..], 1, 0, "which tests?") == RM_ERR_CYCLE && rm_error(RM_ERR_CYCLE).count > 0;
+  b := rm_ask(r[..], 1, 2, "run them");
+  #assert b >= 0 && rm_ask(r[..], 2, 0, "and you?") == RM_ERR_CYCLE;
+  #assert rm_ask(r[..], 2, 2, "me") == RM_ERR_SELF && rm_ask(r[..], 2, 5, "who") == RM_ERR_AGENT;
+  // a third agent not in the chain may ask anyone
+  r[0].agents = 4;
+  #assert rm_ask(r[..], 3, 0, "status?") >= 0;
+  // once answered, the way is open again
+  rm_started(r[..], rm_next(r[..], 2)); rm_answer(r[..], 2, false, "green");
+  rm_started(r[..], rm_next(r[..], 1)); rm_answer(r[..], 1, false, "they pass");
+  #assert rm_ask(r[..], 1, 0, "thanks for asking, anything else?") >= 0;
+}
+
+#test "STOP cancels the asks a session waits on and the one it was answering; tell queues for the next turn" {
+  r: [1] Room; r[0].agents = 3;
+  a := rm_ask(r[..], 0, 1, "summarise the log");
+  b := rm_ask(r[..], 2, 0, "what's the plan?");
+  rm_started(r[..], rm_next(r[..], 1));
+  rm_started(r[..], rm_next(r[..], 0));
+  rm_stop(r[..], 0);
+  out: [RM_ANSWER] u8; n: [1] int;
+  #assert rm_result(r[..], a, out[..], n[..]) == RM_FAILED && cast(string) out[0..<n[0]] == "Cancelled: you were stopped.";
+  #assert rm_result(r[..], b, out[..], n[..]) == RM_FAILED && cast(string) out[0..<n[0]] == "The agent you asked was stopped before it answered.";
+  // agent 1's turn finishing later changes nothing
+  rm_answer(r[..], 1, false, "late");
+  #assert rm_running(r[..], 1) < 0;
+  #assert rm_tell(r[..], 2, 1, "The build is green.") == 0 && rm_tell(r[..], 0, 1, "Use main.") == 0;
+  #assert rm_take_notes(r[..], 1, out[..]) == 30 && cast(string) out[0..<30] == "The build is green.\n\nUse main.";
+  #assert rm_take_notes(r[..], 1, out[..]) == 0;
+}
+
+#test "no hop limit unless the user sets one" {
+  r: [1] Room; r[0].agents = 4;
+  rm_started(r[..], -1);
+  a := rm_ask(r[..], 0, 1, "1"); rm_started(r[..], rm_next(r[..], 1));
+  b := rm_ask(r[..], 1, 2, "2"); rm_started(r[..], rm_next(r[..], 2));
+  #assert b >= 0 && rm_depth(r[..], 2) == 2;
+  #assert rm_ask(r[..], 2, 3, "3") >= 0;
+  r[0].max_hops = 2;
+  #assert rm_ask(r[..], 2, 3, "3 again") == RM_ERR_HOPS;
+  // the log keeps the newest RM_MSGS
+  for i: 0..<RM_MSGS + 5 { e := rm_tell(r[..], 3, 0, "n"); }
+  #assert r[0].count == RM_MSGS && rm_seq(r[..], 0) == r[0].seq - RM_MSGS + 1;
+}

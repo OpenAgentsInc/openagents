@@ -428,6 +428,19 @@ Rules:
 - **Approvals stay with the person.** A tool call that needs approval in one
   harness is asked of the person, even when another agent started the turn.
 
+Built (2026-10-31, `zeron/room.coax` and the desk's `dsk_room`): the room's
+log (the newest 128 messages: asks, notes, answers, cancellations, from → to)
+and the asks in flight. An ask waits until the other session is idle, then
+runs there as a new turn ("Ask from Claude 1 (your answer goes back to it):
+…"); when that turn ends its last text is the asker's result (an empty turn
+or a stopped one is an error the asker reads). A note waits in the other
+chat and goes before its next message ("Note from Claude 2: …"). Agents are
+named by harness and place ("Claude 2", "Codex 1"). An ask that would close a
+loop of waiting agents, however long, is refused with a reason; STOP (each
+press counts) cancels the asks that session waits on and the one it was
+answering. `max_hops` is 0 (no limit) unless the user sets one. Not yet: the
+MCP tools that reach it (desk-room-tools) and the ROOM tab (desk-room-ui).
+
 ### The UI, first version
 
 The layout follows the old app's feature inventory §1.1–1.8, cut to the basics
