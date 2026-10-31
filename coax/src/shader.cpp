@@ -98,6 +98,9 @@ struct ShaderTree {
     static const char *names[] = {"", "gpu_discard", "gpu_sample", "gpu_sample_level", "gpu_sample_layer", "gpu_sample_layer_level",
                                   "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height"};
     for (uint32_t i = 1; i < sizeof names / sizeof names[0]; i++) if (n == names[i]) return i;
+    // A depth texture's size is the same instruction as a 2D texture's.
+    if (n == "gpu_depth_width") return 10;
+    if (n == "gpu_depth_height") return 11;
     return 0;
   }
 
@@ -167,6 +170,12 @@ struct ShaderTree {
         break;
       case ExprKind::call:
         if (e->intrinsic != Intrinsic::none) { words.push_back(23); words.push_back((uint32_t)e->intrinsic); args(e->args); return; }
+        // Wrapping u32 arithmetic is the GPU's own: an ordinary add, subtract or multiply.
+        if (e->byte_intrinsic == ByteIntrinsic::add_wrap || e->byte_intrinsic == ByteIntrinsic::sub_wrap || e->byte_intrinsic == ByteIntrinsic::mul_wrap) {
+          if (e->args[0]->type != &T_U32) break;
+          words.push_back(19); words.push_back(e->byte_intrinsic == ByteIntrinsic::add_wrap ? 1 : e->byte_intrinsic == ByteIntrinsic::sub_wrap ? 2 : 3);
+          expr(e->args[0]); expr(e->args[1]); return;
+        }
         if (e->byte_intrinsic == ByteIntrinsic::f32_bits || e->byte_intrinsic == ByteIntrinsic::f32_from_bits) {
           words.push_back(30); words.push_back(type(e->type, e->loc)); expr(e->args[0]); return;
         }

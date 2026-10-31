@@ -73,16 +73,16 @@ Sampler :: struct {linear:bool;}
 SamplerCompare :: struct {linear:bool;}
 
 clamp_texel :: (i:int,n:int)->int {if i<0 {return 0;} if i>=n {return n-1;} return i;}
-texel :: (texels:[]V4,width:int,height:int,base:int,x:int,y:int)->V4 {
+tex_texel :: (texels:[]V4,width:int,height:int,base:int,x:int,y:int)->V4 {
   return texels[base+clamp_texel(y,height)*width+clamp_texel(x,width)];
 }
 // A layer's texel at uv: the nearest center, or the four around uv blended.
 sample_layer :: (texels:[]V4,width:int,height:int,base:int,linear:bool,uv:V2)->V4 {
   fx:=uv.x*cast(f32)width-0.5f32;fy:=uv.y*cast(f32)height-0.5f32;
-  if !linear {return texel(texels,width,height,base,cast(int)floor(fx+0.5f32),cast(int)floor(fy+0.5f32));}
+  if !linear {return tex_texel(texels,width,height,base,cast(int)floor(fx+0.5f32),cast(int)floor(fy+0.5f32));}
   x0:=floor(fx);y0:=floor(fy);tx:=fx-x0;ty:=fy-y0;ix:=cast(int)x0;iy:=cast(int)y0;
-  top:=mix4(texel(texels,width,height,base,ix,iy),texel(texels,width,height,base,ix+1,iy),tx);
-  bottom:=mix4(texel(texels,width,height,base,ix,iy+1),texel(texels,width,height,base,ix+1,iy+1),tx);
+  top:=mix4(tex_texel(texels,width,height,base,ix,iy),tex_texel(texels,width,height,base,ix+1,iy),tx);
+  bottom:=mix4(tex_texel(texels,width,height,base,ix,iy+1),tex_texel(texels,width,height,base,ix+1,iy+1),tx);
   return mix4(top,bottom,ty);
 }
 
@@ -99,7 +99,7 @@ gpu_sample_layer :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32)->V4 {
 }
 gpu_sample_layer_level :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32,level:f32)->V4 {return gpu_sample_layer(t,s,uv,layer);}
 gpu_sample_layer_bias :: (t:Tex2DArray,s:Sampler,uv:V2,layer:s32,bias:f32)->V4 {return gpu_sample_layer(t,s,uv,layer);}
-gpu_load :: (t:Tex2D,x:s32,y:s32,level:s32)->V4 {return texel(t.texels,t.width,t.height,0,cast(int)x,cast(int)y);}
+gpu_load :: (t:Tex2D,x:s32,y:s32,level:s32)->V4 {return tex_texel(t.texels,t.width,t.height,0,cast(int)x,cast(int)y);}
 gpu_load_depth :: (t:TexDepth,x:s32,y:s32,level:s32)->f32 {
   return t.depth[clamp_texel(cast(int)y,t.height)*t.width+clamp_texel(cast(int)x,t.width)];
 }
@@ -117,6 +117,8 @@ gpu_compare :: (t:TexDepth,s:SamplerCompare,uv:V2,ref:f32)->f32 {
 }
 gpu_width :: (t:Tex2D)->u32 {return cast(u32)t.width;}
 gpu_height :: (t:Tex2D)->u32 {return cast(u32)t.height;}
+gpu_depth_width :: (t:TexDepth)->u32 {return cast(u32)t.width;}
+gpu_depth_height :: (t:TexDepth)->u32 {return cast(u32)t.height;}
 
 #test "vectors are their components' arithmetic" {
   a:=v3(1,2,3);b:=v3(4,5,6);

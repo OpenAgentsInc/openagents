@@ -106,7 +106,7 @@ SH_OP_IMAGE_FETCH :: 95; SH_OP_IMAGE :: 100; SH_OP_QUERY_SIZE_LOD :: 103;
 SH_OP_CONVERT_F_TO_U :: 109; SH_OP_CONVERT_F_TO_S :: 110; SH_OP_CONVERT_S_TO_F :: 111; SH_OP_CONVERT_U_TO_F :: 112;
 SH_OP_U_CONVERT :: 113; SH_OP_S_CONVERT :: 114; SH_OP_BITCAST :: 124; SH_OP_S_NEGATE :: 126; SH_OP_F_NEGATE :: 127;
 SH_OP_LOGICAL_NOT :: 168; SH_OP_SELECT :: 169;
-SH_OP_LOOP_MERGE :: 246; SH_OP_SELECTION_MERGE :: 247; SH_OP_LABEL :: 248; SH_OP_BRANCH :: 249;
+SH_OP_PHI :: 245; SH_OP_LOOP_MERGE :: 246; SH_OP_SELECTION_MERGE :: 247; SH_OP_LABEL :: 248; SH_OP_BRANCH :: 249;
 SH_OP_BRANCH_CONDITIONAL :: 250; SH_OP_KILL :: 252; SH_OP_RETURN :: 253; SH_OP_RETURN_VALUE :: 254; SH_OP_UNREACHABLE :: 255;
 SH_SC_UNIFORM_CONSTANT :: 0; SH_SC_INPUT :: 1; SH_SC_OUTPUT :: 3; SH_SC_FUNCTION :: 7; SH_SC_STORAGE_BUFFER :: 12;
 // Streams.
@@ -522,6 +522,21 @@ sh_ext :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,args:[]u32)->u32 {
 }
 sh_ext1 :: (s:[]ShState,tree:[]u32,w:[]u32,inst:u32,a:u32)->u32 {x:=[1] u32.[a];return sh_ext(s,tree,w,inst,x[..]);}
 sh_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {return sh_r3(s,w,SH_OP_SELECT,sh_tid(s,tree,w,t),c,a,b);}
+// A vector or struct picked by a bool: before SPIR-V 1.4 OpSelect takes
+// only a scalar's or a vector's own width of bools, so a branch to two empty
+// blocks and an OpPhi of the two values (computed before it) at the merge.
+sh_phi_select :: (s:[]ShState,tree:[]u32,w:[]u32,t:u32,c:u32,a:u32,b:u32)->u32 {
+  merge:=sh_id(s);ta:=sh_id(s);tb:=sh_id(s);
+  sh2(s,w,SH_C,SH_OP_SELECTION_MERGE,merge,0);
+  sh3(s,w,SH_C,SH_OP_BRANCH_CONDITIONAL,c,ta,tb);
+  sh_label(s,w,ta);sh_branch(s,w,merge);
+  sh_label(s,w,tb);sh_branch(s,w,merge);
+  sh_label(s,w,merge);
+  ty:=sh_tid(s,tree,w,t);r:=sh_id(s);
+  sh_op(s,w,SH_C,SH_OP_PHI,7);sh_word(s,w,SH_C,ty);sh_word(s,w,SH_C,r);
+  sh_word(s,w,SH_C,a);sh_word(s,w,SH_C,ta);sh_word(s,w,SH_C,b);sh_word(s,w,SH_C,tb);
+  return r;
+}
 sh_fcmp :: (s:[]ShState,tree:[]u32,w:[]u32,op:u32,a:u32,b:u32)->u32 {return sh_r2(s,w,op,sh_tid(s,tree,w,SH_BOOL),a,b);}
 // pow as C's powf, where GLSL's Pow leaves x<0 and x==0 undefined:
 // |x|^y, negated for x<0 and an odd whole y, NaN for x<0 and a fractional y;
@@ -705,12 +720,12 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
     sh_word(s,w,SH_C,uv);sh_word(s,w,SH_C,ref);sh_word(s,w,SH_C,2);sh_word(s,w,SH_C,sh_f32(s,tree,w,0));
     return ShVal.{id=r,ty=ty};
   }
-  // width and height of a 2D texture, at level 0, as u32
+  // width and height of a 2D or depth texture, at level 0, as u32
   if sh_next(s,tree)!=18 {sh_fail(s,11);return sh_refused();}
   id:=sh_local(s,tree);
   if !s[0].ok {return sh_refused();}
   t:=w[sh_lw(id,1)];
-  if sh_kind(tree,w,t)!=10 || sh_part(tree,w,t,1)!=0 || ty!=SH_U32 {sh_fail(s,11);return sh_refused();}
+  if sh_kind(tree,w,t)!=10 || sh_part(tree,w,t,1)==1 || ty!=SH_U32 {sh_fail(s,11);return sh_refused();}
   s[0].query=true;
   img:=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_bw(cast(int)w[sh_lw(id,0)],2)]);
   size:=sh_r2(s,w,SH_OP_QUERY_SIZE_LOD,sh_ivec2(s,tree,w),img,sh_const(s,tree,w,SH_S32,0,0));
@@ -794,7 +809,8 @@ sh_expr :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
     c:=sh_expr(s,tree,out,w);a:=sh_expr(s,tree,out,w);b:=sh_expr(s,tree,out,w);
     if !s[0].ok {return sh_refused();}
     if c.ty!=SH_BOOL || a.ty!=b.ty || sh_resource(tree,w,a.ty)!=0 {sh_fail(s,4);return sh_refused();}
-    return ShVal.{id=sh_select(s,tree,w,a.ty,c.id,a.id,b.id),ty=a.ty};
+    if a.ty<=SH_INT {return ShVal.{id=sh_select(s,tree,w,a.ty,c.id,a.id,b.id),ty=a.ty};}
+    return ShVal.{id=sh_phi_select(s,tree,w,a.ty,c.id,a.id,b.id),ty=a.ty};
   }
   if k==25 {
     v:=sh_expr(s,tree,out,w);i:=sh_next(s,tree);
@@ -1371,7 +1387,10 @@ SH_SAMPLE_B :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 3 6 2 4 4 2 4 4 20 1 1 4
 sh_frag :: (extra:int,types:string,ret:u32,locals:string,body:string)->int {return sh_calls(extra,types,ret,locals,body,0,"");}
 // The same with more procedures after fs (2, 3...), each in its tree words.
 sh_calls :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string)->int {
-  t:[4096] u32;out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  out:[8192] u32;return sh_calls_out(extra,types,ret,locals,body,procs,more,out[..]);
+}
+sh_calls_out :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,more:string,out:[]u32)->int {
+  t:[4096] u32;work:[SH_CHECK_WORK] u32;
   n:=sh_parse("2 0 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
   t[1]=cast(u32)(7+extra);
   n+=sh_parse(types,t[n..<t.count]);
@@ -1385,9 +1404,26 @@ sh_calls :: (extra:int,types:string,ret:u32,locals:string,body:string,procs:int,
   t[n]=cast(u32)nb;n+=1+nb;
   n+=sh_parse(more,t[n..<t.count]);
   n+=sh_parse("2 0 0 0 1 1 1 2",t[n..<t.count]);
-  return SH_lower(t[0..<n],out[..],work[..]);
+  return SH_lower(t[0..<n],out,work[..]);
 }
 sh_body :: (locals:string,body:string)->int {return sh_frag(0,"",0,locals,body);}
+#test "a V4 picked by a bool is a branch and an OpPhi, a float an OpSelect" {
+  out:[8192] u32;
+  n:=sh_calls_out(0,"",0,"6","3 40 1 24 16 1 1 17 6 18 1",0,"",out[..]);
+  #assert n==244 && sh_digest(out[..],n)==320877670;
+  phi:=0;sel:=0;
+  for i:0..<n {if out[i]==(7<<16|SH_OP_PHI) {phi+=1;} if (out[i]&0xffff)==SH_OP_SELECT && (out[i]>>16)==6 {sel+=1;}}
+  #assert phi==1 && sel==0;
+  m:=sh_calls_out(0,"",0,"2","3 40 1 24 16 1 1 16 2 0 18 1",0,"",out[..]);
+  sel=0;phi=0;
+  for i:0..<m {if out[i]==(7<<16|SH_OP_PHI) {phi+=1;} if out[i]==(6<<16|SH_OP_SELECT) {sel+=1;}}
+  #assert m==234 && phi==0 && sel==1;
+  // an int (the last scalar) too
+  m=sh_calls_out(0,"",0,"5","3 40 1 24 16 1 1 16 5 1 0 18 1",0,"",out[..]);
+  sel=0;phi=0;
+  for i:0..<m {if out[i]==(7<<16|SH_OP_PHI) {phi+=1;} if out[i]==(6<<16|SH_OP_SELECT) {sel+=1;}}
+  #assert m>0 && phi==0 && sel==1;
+}
 #test "the template lowers" {
   #assert sh_body("","5")>0 && sh_body("2 4","3 40 1 16 2 0")>0 && sh_frag(1,"8 2 3 12",0,"7","3 42 40 1 16 3 1 16 2 0")>0 && sh_frag(1,"8 2 3 4",0,"7","5")>0;
 }
@@ -1710,6 +1746,7 @@ sh_gpu_fs :: (body:string)->int {
   #assert sh_gpu_fs("2 33 7 2 4 18 1 16 3 0 16 3 0 16 3 0")==-11 && sh_gpu_fs("2 33 8 6 4 18 3 16 3 0 16 3 0 16 3 0")==-11;
   #assert sh_gpu_fs("2 33 9 6 4 18 3 18 5 17 19 16 2 0")==-11 && sh_gpu_fs("2 33 10 4 1 17 8")==-11;
   #assert sh_gpu_fs("2 33 10 4 1 18 4")==-11 && sh_gpu_fs("2 33 10 4 1 18 2")==-11 && sh_gpu_fs("2 33 10 2 1 18 1")==-11;
+  #assert sh_gpu_fs("2 33 11 4 1 18 3")>0 && sh_gpu_fs("2 33 10 4 1 18 1")>0;
   #assert sh_vs("6 2 4 4 2 4 4 | 1 2 2 33 1 0 0 4 17 6 ;","","2 0 0 0 1 1 1 9")==-11;
   #assert sh_vs("6 4 4 4 8 11 4 4 4 8 11 | 1 2 2 33 2 6 3 18 2 18 3 17 19 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;
   #assert sh_vs("6 4 4 4 9 11 4 4 4 9 11 | 1 2 2 33 6 6 5 18 2 18 3 17 19 16 3 0 16 2 0 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;

@@ -1,0 +1,231 @@
+// Translated from WGSL by coax/web/wgsl-coax.coax.
+#load "../gpu/wgsl.coax";
+#load "../style.coax";
+
+// Everglade's spell fire and smoke (everglade-spells.coax sp_fx): soft camera-facing puffs drawn
+// after the scene and the river (host.js particles), depth-tested and not written, in two passes:
+// the smoke first, over what is behind it (premultiplied, particle_over_vs/particle_over_fs), then
+// the fire, the glows and the sparks, added to the light (particle_vs/particle_fs), so what burns
+// glows through its own smoke and blooms. Every puff is three rows (everglade-spells.coax SP_FX_*):
+//   at.xyz, size (its radius, m)
+//   colour.rgb (linear light), heat (fire: 0 to 1, how white its heart is; smoke: how opaque)
+//   axis.xyz (a streak's half-length along its flight, m; zero for a round puff), kind + seed / 2
+// kind: 0 a billow of fire, 1 smoke or dust, 2 a smooth glow or a spark's streak, 3 a ring of light
+// lying on the ground (a shockwave). Group 0 is everglade.wgsl's uniforms, read up to the eye.
+// EgfxU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   horizon 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+EgfxPuff :: struct {at:V4; colour:V4; axis:V4; }
+// The scene's depth as it stood before the river (host.js W5's copy): a puff thins out where what
+// stands behind it comes close, so the ground and walls never cut it with a hard line.
+EGFX_FIRE :: 0.0f32;
+EGFX_SMOKE :: 1.0f32;
+EGFX_GLOW :: 2.0f32;
+EGFX_RING :: 3.0f32;
+EgfxP :: struct {pos:V4; corner:V2; colour:V4; look:V4; depth:V2; near:f32; }
+// across the quad, -1 to 1 (a streak's: along it, then across)
+// kind, seed, a streak's length over its width (fire: how opaque), distance
+// its own w (the view's distance along the eye's axis), and how soft its meeting is (m)
+// how much of it shows for how close the eye is: a puff rolling past the eye thins away, never a wall across the view
+egfx_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+egfx_gone :: ()->EgfxP {
+  o:EgfxP;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+  return o;
+}
+egfx_place :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  o:EgfxP;
+  e:EgfxPuff=puffs[cast(int)n];
+  quad:[6]V2=[6]V2.[v2(-1.0f32,-1.0f32),v2(1.0f32,-1.0f32),v2(-1.0f32,1.0f32),v2(-1.0f32,1.0f32),v2(1.0f32,-1.0f32),v2(1.0f32,1.0f32)];
+  c:V2=quad[cast(int)v];
+  kind:f32=floor(e.axis.w);
+  seed:f32=fract(e.axis.w)*2.0f32;
+  size:f32=e.at.w;
+  to_eye:V3=wg_sub_f3f3(v3(u[24],u[25],u[26]),v3(e.at.x,e.at.y,e.at.z));
+  d:f32=fmax(wg_length3(to_eye),0.001f32);
+  view:V3=wg_div_f3f(to_eye,d);
+  w:V3=v3(e.at.x,e.at.y,e.at.z);
+  streak:f32=ifx kind==EGFX_GLOW then wg_length3(v3(e.axis.x,e.axis.y,e.axis.z)) else 0.0f32; // fire's axis.x is how opaque it is
+  along:f32=0.0f32;
+  if (kind==EGFX_RING) {
+    // flat on the ground, a square round the ring
+    w=wg_add_f3f3(w,wg_mul_f3f(v3(c.x,0.0f32,c.y),size));
+  } else if (streak>0.001f32) {
+    // a streak: a quad along its flight, turned to face the eye, a width round each end
+    a:V3=wg_div_f3f(v3(e.axis.x,e.axis.y,e.axis.z),streak);
+    side:V3=wg_normalize3(wg_add_f3f3(wg_cross3(a,view),v3(0.00001f32,0.0f32,0.0f32)));
+    w=wg_add_f3f3(w,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(a,c.x),(streak+size)),wg_mul_f3f(wg_mul_f3f(side,c.y),size)));
+    along=streak/fmax(size,0.001f32);
+  } else {
+    // a puff: facing the eye, upright, and drawn a little toward the eye so the ground and walls it
+    // rolls over cut less of it
+    right:V3=wg_normalize3(wg_add_f3f3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),view),v3(0.00001f32,0.0f32,0.0f32)));
+    up:V3=wg_cross3(view,right);
+    w=wg_add_f3f3(w,wg_add_f3f3(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(right,c.x),wg_mul_f3f(up,c.y)),size),wg_mul_f3f(view,fmin(size*0.2f32,d*0.5f32))));
+  }
+  o.pos=egfx_clip(w,u);
+  o.depth=v2(o.pos.w,fmax(size*0.6f32,0.15f32));
+  o.corner=c;
+  o.colour=e.colour;
+  o.look=v4(kind,seed,ifx kind==EGFX_FIRE then e.axis.x else along,d);
+  o.near=ifx kind==EGFX_RING then 1.0f32 else smoothstep((size*0.9f32)+0.3f32,(size*2.2f32)+1.0f32,d);
+  return o;
+}
+egfx_particle_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  if (floor(puffs[cast(int)n].axis.w)==EGFX_SMOKE) {
+    return egfx_gone();
+  }
+  return egfx_place(v,n,u,puffs);
+}
+egfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP {
+  kind:f32=floor(puffs[cast(int)n].axis.w);
+  if ((kind!=EGFX_SMOKE)&&(kind!=EGFX_FIRE)) {
+    return egfx_gone();
+  }
+  return egfx_place(v,n,u,puffs);
+}
+egfx_hash2 :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+egfx_noise2 :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(egfx_hash2(i),egfx_hash2(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(egfx_hash2(wg_add_f2f2(i,v2(0.0f32,1.0f32))),egfx_hash2(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+// A billow's churn: two octaves drifting apart, 0 to 1.
+egfx_churn :: (c:V2,seed:f32,u:[]f32)->f32 {
+  t:f32=u[2];
+  return (0.62f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(c,1.7f32),v2((seed*19.0f32)+(t*0.35f32),(seed*7.0f32)-(t*0.55f32)))))+(0.38f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(c,3.9f32),v2((-t)*0.9f32,(seed*13.0f32)+(t*0.4f32)))));
+}
+// How much of a puff is at its corner c: whole inside a lumpy, churning edge, a painted cloud's;
+// as its cover falls it is eaten away from that edge in, never turned to a see-through veil.
+egfx_billow :: (c:V2,seed:f32,rag:f32,soft:f32,cover:f32,u:[]f32)->f32 {
+  n:f32=egfx_churn(c,seed,u);
+  edge:f32=((1.0f32-wg_length2(c))+((n-0.5f32)*rag))-((1.0f32-clampf(cover,0.0f32,1.0f32))*(1.0f32+(0.5f32*rag)));
+  return smoothstep(0.0f32,soft,edge);
+}
+// How much of a puff shows at this pixel for what stands behind it: none where it meets it, all a
+// little in front. The scene's w from its depth: clip z = b - a·w along any ray (a perspective's), b
+// the eye's clip z, a from one point ahead of the eye.
+egfx_soft :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->f32 {
+  b:f32=wg_dot4(wg_at4(u,16),wg_make_f4_f3f(v3(u[24],u[25],u[26]),1.0f32));
+  ahead:V3=wg_add_f3f3(v3(u[24],u[25],u[26]),v3(u[20],u[21],u[22]));
+  a:f32=(b-wg_dot4(wg_at4(u,16),v4(ahead.x,ahead.y,ahead.z,1.0f32)))/fmax(wg_dot3(v3(u[20],u[21],u[22]),v3(u[20],u[21],u[22])),1e-6f32);
+  at:I2=wg_clamp_i2i2i2(wg_cvt_i2f2(v2(p.pos.x,p.pos.y)),i2(0,0),wg_sub_i2i(wg_cvt_i2u2(wg_dims_depth(particle_depth)),1));
+  z:f32=wg_load_depth(particle_depth,at,0);
+  under:f32=z+a; // never zero short of the far plane: the scene's w on the far side of its sign
+  scene:f32=ifx abs(under)>1e-7f32 then b/under else 1e6f32;
+  return clampf((scene-p.depth.x)/p.depth.y,0.0f32,1.0f32);
+}
+// Far puffs fade into the haze.
+egfx_far :: (d:f32,u:[]f32)->f32 {
+  return exp(((-fmax(d-25.0f32,0.0f32))*fmax(u[27],0.002f32))*1.5f32);
+}
+// Fire's colour at a billow's corner: its own, a deeper red at its edge, white-hot at its heart as its
+// heat says; m how much of it is there.
+egfx_fire :: (p:EgfxP,m:f32,u:[]f32)->V3 {
+  // a ball of fire in the town's painted bands: bright where it bulges toward you, its rim rolled
+  // under into a darker, sooty red, so each billow stands out from those behind it; tongues and
+  // folds churning through it; its heart white-hot as its heat says
+  n:f32=(0.6f32*egfx_churn(wg_add_f2f2(wg_mul_f2f(p.corner,1.6f32),v2(0.0f32,(-u[2])*0.7f32)),p.look.y+5.0f32,u))+(0.4f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(p.corner,5.5f32),v2(p.look.y*31.0f32,(-u[2])*2.2f32))));
+  r:f32=wg_length2(p.corner);
+  bulge:f32=sqrt(fmax(1.0f32-(r*r),0.0f32));
+  v:f32=bulge*(0.5f32+(0.8f32*n));
+  band:f32=(smoothstep(0.18f32,0.26f32,v)*0.45f32)+(smoothstep(0.5f32,0.58f32,v)*0.55f32);
+  heart:f32=p.colour.w*smoothstep(0.72f32,0.8f32,v);
+  c:V3=wg_mix_f3f3f(wg_mul_f3f3(v3(p.colour.x,p.colour.y,p.colour.z),v3(0.42f32,0.2f32,0.13f32)),wg_mul_f3f(v3(p.colour.x,p.colour.y,p.colour.z),1.15f32),band);
+  return wg_mix_f3f3f(c,wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.88f32,0.62f32),fmax(fmax(p.colour.x,0.7f32),1.0f32)),1.25f32),heart);
+}
+egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
+  kind:f32=p.look.x;
+  a:f32=0.0f32;
+  c:V3=v3(p.colour.x,p.colour.y,p.colour.z);
+  if (kind==EGFX_RING) {
+    // a ring at the quad's rim, thin and soft
+    r:f32=wg_length2(p.corner);
+    band:f32=1.0f32-smoothstep(0.0f32,0.16f32,abs(r-0.86f32));
+    a=band*(0.7f32+(0.6f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(p.corner,6.0f32),v2(p.look.y*9.0f32,u[2])))));
+  } else if (kind==EGFX_GLOW) {
+    // a smooth glow, or a spark's streak: a hot thin core in a soft halo
+    q:V2=p.corner;
+    if (p.look.z>0.0f32) {
+      q.x=fmax((abs(q.x)*(p.look.z+1.0f32))-p.look.z,0.0f32);
+    }
+    r2:f32=wg_dot2(q,q);
+    if (r2>=1.0f32) {
+      gpu_discard();
+    }
+    a=exp((-r2)*3.5f32)*(1.0f32-r2);
+    c=wg_mix_f3f3f(c,wg_make_f3_f(fmax(c.x,fmax(c.y,c.z))),p.colour.w*exp((-r2)*18.0f32));
+  } else {
+    // fire: its body is drawn over (particle_over_fs); here only its heat's glow, which blooms
+    m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
+    if (m<=0.002f32) {
+      gpu_discard();
+    }
+    c=wg_mul_f3f(egfx_fire(p,m,u),(0.08f32+(0.4f32*p.colour.w)));
+    a=m;
+  }
+  k:f32=((a*p.near)*egfx_far(p.look.w,u))*(ifx kind==EGFX_RING then 1.0f32 else egfx_soft(p,u,particle_depth));
+  // what it adds, and how much of that blooms
+  return wg_make_f4_f3f(wg_mul_f3f(c,k),clampf(k*0.6f32,0.0f32,1.0f32));
+}
+egfx_particle_over_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
+  if (p.look.x==EGFX_FIRE) {
+    // a billow of fire: its own light, covering what is behind as thickly as it is there
+    m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
+    if (m<=0.002f32) {
+      gpu_discard();
+    }
+    a:f32=((clampf(m,0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
+    return wg_make_f4_f3f(wg_mul_f3f(egfx_fire(p,m,u),a),a);
+  }
+  // smoke: lit from above, darker under, ragged and churning, as thick as it says
+  m:f32=egfx_billow(p.corner,p.look.y,0.7f32,0.12f32,p.colour.w,u);
+  if (m<=0.002f32) {
+    gpu_discard();
+  }
+  a:f32=((clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
+  // a ball of smoke lit from above: its top and its bulges catch the light, its underside in shadow
+  n:f32=egfx_churn(wg_add_f2f2(wg_mul_f2f(p.corner,1.1f32),v2(0.0f32,0.4f32)),p.look.y+3.0f32,u);
+  r:f32=wg_length2(p.corner);
+  bulge:f32=sqrt(fmax(1.0f32-(r*r),0.0f32));
+  up:f32=clampf(0.5f32+(0.5f32*((p.corner.y+(0.6f32*bulge))-0.3f32)),0.0f32,1.0f32);
+  lit:f32=mix(0.5f32,1.3f32,smoothstep(0.42f32,0.5f32,up*(0.55f32+(0.8f32*n)))); // two painted bands
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(v3(p.colour.x,p.colour.y,p.colour.z),lit),a),a);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_cvt_i2u2 :: (p:U2)->I2 {return i2(cast,trunc(s32)(p.x),cast,trunc(s32)(p.y));}
+wg_sub_i2i :: (a:I2,b:s32)->I2 {return i2(a.x-b,a.y-b);}
+wg_clamp_i2i2i2 :: (p0:I2,p1:I2,p2:I2)->I2 {return i2(wg_clamp_i(p0.x,p1.x,p2.x),wg_clamp_i(p0.y,p1.y,p2.y));}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}

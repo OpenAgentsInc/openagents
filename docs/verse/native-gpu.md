@@ -102,7 +102,17 @@ the checker) and grows the lowering:
   everglade.coax with `#test` checks. It is compared with a headless-Chrome
   frame of the web build: the same pack, page facts, clock and golden mode,
   and the same frame through `verse/native` (realm-host), so both draw the
-  same scene.
+  same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
+  (`verse/everglade/gpu.coax`, `gpu-fx.coax`; `verse/gpu/wgsl.coax` is
+  WGSL's vocabulary), so the live file stays the one source until the web
+  build switches to Coax-emitted WGSL (G6). `verse/gpu/everglade-pass.coax
+  HOST PASS` checks a pass. The live shaders hash with
+  `fract(sin(x) * 43758.5)`, and sin of so large an argument is each GPU's
+  own (WGSL bounds its error only on [-pi, pi]). So the check gives both
+  sides one integer hash (`verse/gpu/int-hash.coax`, copies only) and
+  allows a stated number of values past an f16's rounding: edge pixels
+  whose test lands within float rounding. `--live` reports the live hashes
+  too.
 - **The scene host** (`verse/gpu`) does host.js's loadShaders, bindScene,
   postTargets and draw over Vulkan: the shadow map, the light and aux
   targets, the water copies, the bloom chain and post, then the HUD. The
@@ -227,3 +237,17 @@ Every phase and native feature is a task in the Verse project
   it on the RTX 4080 against the same procedures run on the CPU: 40,960
   pixels exact, 24,576 within 1e-6, 0 wrong (largest difference 2.98e-8),
   and validation 0/0.
+- 2026-10-31: G5, the bg pass. `coax/web/wgsl-coax.coax` (a Coax tool)
+  translates `everglade.wgsl` to 161 Coax procedures and `everglade-fx.wgsl`
+  to 14, which check. The lowering gained u32 wrapping arithmetic, depth
+  texture sizes, and a vector or struct `ifx` as a branch and an `OpPhi`
+  (OpSelect takes no scalar condition for those before SPIR-V 1.4). Its
+  gates pass: 31 `#test` checks and zero mutation survivors.
+  `verse/gpu/everglade-pass.coax coderos-4080 bg --live` uses frame 90's
+  2,300 uniforms from the wasm. Headless Chrome draws the WGSL, and the RTX
+  4080 draws the Coax under validation, 0 errors and 0 warnings, at 320x180
+  with two rgba16float targets. With one hash on both sides, 15 of 460,800
+  values are past the tolerance, all on ridge-crown edges (40 allowed). With
+  the live sin hashes, 11,749 are, all in the ridge and cloud band. The same
+  Coax run on the CPU differs from the 4080 there too, so it is the
+  platforms' sin, not the port.

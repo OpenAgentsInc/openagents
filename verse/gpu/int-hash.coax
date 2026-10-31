@@ -1,0 +1,85 @@
+// Everglade's hashes, made the same on every GPU, for the per-pass check
+// (docs/verse/native-gpu.md, G5). The live shaders hash with
+// fract(sin(x) * 43758.5): sin of so large an argument is each platform's
+// own (WGSL bounds sin's error only on [-pi, pi]), so the browser on a Mac
+// and Vulkan on the 4080 draw different ridges and clouds from the same
+// uniforms. For the check only, this writes copies of everglade.wgsl and
+// verse/style.coax whose four sin hashes are one integer hash instead, so
+// what is left between the two is the port's own difference. The live
+// files are not changed.
+//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (writes OUT_DIR/everglade.wgsl, OUT_DIR/style.coax)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+IH_FILE :: 8388608;
+
+// The integer hash of the cell of p at 1/64: the same words in WGSL and Coax.
+IH_WGSL :: "let q = vec2u(vec2i(floor(P * 64.0))); var h = (q.x * 1597334677u) ^ (q.y * 3812015801u); h = h * 747796405u; h = (h ^ (h >> 16u)) * 2246822519u; h = h ^ (h >> 13u); return f32(h >> 8u) / 16777216.0;";
+IH_SIN :: "return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }";
+IH_STYLE_WGSL :: "  var l_v: f32 = (sin(((l_x * 127.099998) + (l_y * 311.700012))) * 43758.5469);\n  return (l_v - floor(l_v));\n";
+IH_STYLE :: " v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n";
+IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(y*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: int-hash OUT_DIR"); return 2; }
+  out := args_at(a[..], 0);
+  src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8;
+  n := fs_read("apps/openagents-web/everglade.wgsl", src[..]);
+  if n < 0 { tool_errln("int-hash: run from the repo root (no apps/openagents-web/everglade.wgsl)"); return 1; }
+  text := cast(string) src[0..<n];
+  // hash and hash2 and weather_hash: each one line ending in IH_SIN
+  body: [1024] u8;
+  with_p := ih_replace(IH_WGSL, "P", "p", body[..], 1);
+  rep: [2048] u8;
+  r := ih_cat3("", with_p, " }", rep[..]);
+  text = ih_replace(text, IH_SIN, r, dst[..], 3);
+  if text.count == 0 { tool_errln("int-hash: everglade.wgsl does not have its three sin hashes"); return 1; }
+  // the style hash, generated into the WGSL from verse/style.coax
+  b2: [1024] u8;
+  with_xy := ih_replace(IH_WGSL, "P", "vec2f(l_x, l_y)", b2[..], 1);
+  r2: [2048] u8;
+  rs := ih_cat3("  ", with_xy, "\n", r2[..]);
+  text = ih_replace(text, IH_STYLE_WGSL, rs, tmp[..], 1);
+  if text.count == 0 { tool_errln("int-hash: everglade.wgsl does not have verse_style_hash"); return 1; }
+  if !fs_mkdir(out) && fs_kind(out) <= 0 { tool_errln("int-hash: cannot make OUT_DIR"); return 1; }
+  if !fs_write(fs_join(out, "everglade.wgsl", p[..]), text) { tool_errln("int-hash: cannot write everglade.wgsl"); return 1; }
+  m := fs_read("verse/style.coax", src[..]);
+  if m < 0 { tool_errln("int-hash: no verse/style.coax"); return 1; }
+  style := ih_replace(cast(string) src[0..<m], IH_STYLE, IH_STYLE_INT, dst[..], 1);
+  if style.count == 0 { tool_errln("int-hash: verse/style.coax does not have verse_style_hash"); return 1; }
+  if !fs_write(fs_join(out, "style.coax", p[..]), style) { tool_errln("int-hash: cannot write style.coax"); return 1; }
+  print("int-hash: %/everglade.wgsl and %/style.coax\n", out, out);
+  return 0;
+}
+
+// text with each of exactly `times` occurrences of `old` replaced by `new` in out, else "".
+ih_replace :: (text: string, old: string, new: string, out: [] u8, times: int) -> string {
+  n := 0; found := 0; i := 0;
+  while i < text.count {
+    if i + old.count <= text.count && text[i..<i + old.count] == old {
+      if n + new.count > out.count { return ""; }
+      for k: 0..<new.count { out[n + k] = new[k]; }
+      n += new.count; i += old.count; found += 1;
+    } else {
+      if n >= out.count { return ""; }
+      out[n] = text[i]; n += 1; i += 1;
+    }
+  }
+  return ifx found == times then cast(string) out[0..<n] else "";
+}
+ih_cat3 :: (a: string, b: string, c: string, out: [] u8) -> string {
+  if a.count + b.count + c.count > out.count { return ""; }
+  for k: 0..<a.count { out[k] = a[k]; }
+  for k: 0..<b.count { out[a.count + k] = b[k]; }
+  for k: 0..<c.count { out[a.count + b.count + k] = c[k]; }
+  return cast(string) out[0..<a.count + b.count + c.count];
+}
+#test "replacing an exact number of times" {
+  o: [64] u8;
+  #assert ih_replace("aXbXc", "X", "yy", o[..], 2) == "ayybyyc" && ih_replace("aXb", "X", "y", o[..], 2) == "";
+  #assert ih_replace("ab", "X", "y", o[..], 0) == "ab" && ih_replace("aXb", "X", "0123456789012345678901234567890123456789012345678901234567890123", o[..], 1) == "";
+  #assert ih_cat3("a", "b", "c", o[..]) == "abc";
+}

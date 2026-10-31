@@ -1,0 +1,1538 @@
+// WGSL to Coax (docs/verse/native-gpu.md, G5 and G6): translates a realm's
+// hand-written WGSL into Coax shader procedures over the shader library
+// (verse/gpu/shader.coax and verse/gpu/wgsl.coax), so `coax spirv` lowers
+// them and #test checks run them on the CPU.
+//
+// - Vector arithmetic becomes calls (Coax has no vector operators yet):
+//   a + b on two vec3f is wg_add_f3f3(a, b). The helpers the library does
+//   not have are generated, componentwise, at the end of the output.
+// - The uniform block becomes a []f32 read at its WGSL offsets (u.eye.y is
+//   u[53]); storage buffers are views; textures and samplers are the
+//   library's structs. Module-scope bindings become parameters, threaded
+//   through every procedure that reads them, in declaration order.
+// - for loops become while loops whose continue runs the update; switch
+//   becomes an if chain; let and var declare with their types written out;
+//   a name that would shadow an enclosing one is renamed (Coax forbids it).
+// - u32 + - * wrap (add_wrap...), as WGSL's do; f32 to u32 or i32 clamps.
+// - Comments come along, before the statement they preceded.
+// What it cannot translate it reports with the line, and exits 1.
+//   coax/web/tool.sh wgsl-coax OUT.coax PREFIX IN.wgsl... [--stop MARKER] [--loads A,B]
+// --stop ends each input at the first line holding MARKER (a generated
+// section); procedures it calls that are not defined are taken as f32
+// functions of the realm's own Coax (verse_style_*), called by name.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+
+SRC_MAX :: 1048576;
+TOK_MAX :: 131072;
+AR_MAX :: 67108864;
+OUT_MAX :: 8388608;
+VOC_MAX :: 2097152;
+
+TK_ID :: 1; TK_INT :: 2; TK_FLOAT :: 3; TK_P :: 4; TK_EOF :: 5;
+// Type kinds; the scalar type ids are their codes: 0 void, 1 f32, 2 i32,
+// 3 u32, 4 bool, 5 an abstract float, 6 an abstract int.
+YK_SC :: 1; YK_VEC :: 2; YK_MAT :: 3; YK_ST :: 4; YK_ARR :: 5; YK_RT :: 6; YK_TEX :: 7; YK_SAMP :: 8;
+Y_F :: 1; Y_I :: 2; Y_U :: 3; Y_B :: 4; Y_AF :: 5; Y_AI :: 6;
+// Module variables.
+MV_UNIFORM :: 1; MV_STORAGE :: 2; MV_HANDLE :: 3; MV_PRIVATE :: 4;
+// Parameter attributes.
+PA_VID :: 1; PA_IID :: 2; PA_POS :: 3; PA_FRONT :: 4; PA_LOC :: 5;
+// Operators.
+OP_ADD :: 1; OP_SUB :: 2; OP_MUL :: 3; OP_DIV :: 4; OP_MOD :: 5; OP_LT :: 6; OP_LE :: 7; OP_GT :: 8; OP_GE :: 9;
+OP_EQ :: 10; OP_NE :: 11; OP_AND :: 12; OP_OR :: 13; OP_BAND :: 14; OP_BOR :: 15; OP_XOR :: 16; OP_SHL :: 17; OP_SHR :: 18;
+
+W :: struct {
+  src: [SRC_MAX] u8; sn: int;
+  tk: [TOK_MAX] int; ts: [TOK_MAX] int; te: [TOK_MAX] int; tl: [TOK_MAX] int; nt: int;
+  cs: [16384] int; ce: [16384] int; cl: [16384] int; nc: int; ci: int; last_line: int;
+  p: int;
+  ar: [AR_MAX] u8; an: int;
+  out: [OUT_MAX] u8; on: int;
+  voc: [VOC_MAX] u8; vn: int; hs: [2048] int; hl: [2048] int; nh: int;
+  yk: [1024] int; yn: [1024] int; ye: [1024] int; ny: int;
+  ss: [256] int; se: [256] int; sf: [256] int; sc: [256] int; ns: int;
+  fs: [4096] int; fe: [4096] int; fy: [4096] int; ft: [4096] int; nf: int;
+  ms: [128] int; me: [128] int; my: [128] int; mk: [128] int; mt: [128] int; nm: int;
+  ks: [1024] int; ke: [1024] int; kx: [1024] int; kxe: [1024] int; kt: [1024] int; nk: int;
+  gs: [2048] int; ge: [2048] int; gr: [2048] int; gp: [2048] int; gpn: [2048] int; gb: [2048] int; gbe: [2048] int;
+  gst: [2048] int; gd: [2048] int; gm: [2048] u64; gk: [2048] bool; ng: int;
+  ea: [65536] int; eb: [65536] int; ne: int;
+  ps: [16384] int; pe: [16384] int; py: [16384] int; pa: [16384] int; pt: [16384] int; np: int;
+  ls: [4096] int; le: [4096] int; lo: [4096] int; lon: [4096] int; ly: [4096] int; nl: int;
+  lb: [1048576] u8; lbn: int;   // local names (the arena rewinds after each statement)
+  us: [64] int; un: [64] int; nu: int;
+  pre: [64] u8; pren: int;
+  stop: [256] u8; stopn: int;
+  serial: int; errs: int; fn_cur: int;
+}
+
+Val :: struct {
+  s: int; n: int; ty: int;
+  path: bool; atom: bool; lit: bool; iv: int;
+  um: int; ds: int; dn: int; k: int;      // a uniform reference: module var um-1, at float dynamic text + k
+  cop: int; as: int; an: int; ay: int; bs: int; bn: int; by: int;   // a vector comparison, for all() and any()
+}
+
+// ---- text
+ap :: (w: []W, s: string) { for i: 0..<s.count { w[0].ar[w[0].an + i] = s[i]; } w[0].an += s.count; }
+apc :: (w: []W, c: u8) { w[0].ar[w[0].an] = c; w[0].an += 1; }
+apr :: (w: []W, s: int, n: int) { for i: 0..<n { w[0].ar[w[0].an + i] = w[0].ar[s + i]; } w[0].an += n; }
+apv :: (w: []W, v: Val) { apr(w, v.s, v.n); }
+apn :: (w: []W, n: int) {
+  if n < 0 { apc(w, '-'); apn(w, -n); return; }
+  if n >= 10 { apn(w, n / 10); }
+  apc(w, cast,trunc(u8) (48 + n % 10));
+}
+art :: (w: []W, s: int, n: int) -> string { return cast(string) w[0].ar[s..<s + n]; }
+vtx :: (w: []W, v: Val) -> string { return art(w, v.s, v.n); }
+srx :: (w: []W, s: int, e: int) -> string { return cast(string) w[0].src[s..<e]; }
+tt :: (w: []W, i: int) -> string { return srx(w, w[0].ts[i], w[0].te[i]); }
+cur :: (w: []W) -> string { return tt(w, w[0].p); }
+is_at :: (w: []W, s: string) -> bool { return w[0].tk[w[0].p] != TK_EOF && cur(w) == s; }
+atn :: (w: []W, k: int, s: string) -> bool { i := w[0].p + k; return i < w[0].nt && w[0].tk[i] != TK_EOF && tt(w, i) == s; }
+o :: (w: []W, s: string) { for i: 0..<s.count { w[0].out[w[0].on + i] = s[i]; } w[0].on += s.count; }
+ov :: (w: []W, v: Val) { for i: 0..<v.n { w[0].out[w[0].on + i] = w[0].ar[v.s + i]; } w[0].on += v.n; }
+ind :: (w: []W, d: int) { for i: 0..<d { o(w, "  "); } }
+mkv :: (w: []W, b: int, ty: int) -> Val { return Val.{s = b, n = w[0].an - b, ty = ty}; }
+mka :: (w: []W, b: int, ty: int) -> Val { v := mkv(w, b, ty); v.atom = true; return v; }
+pre :: (w: []W) -> string { return cast(string) w[0].pre[0..<w[0].pren]; }
+
+err :: (w: []W, what: string) {
+  line := ifx w[0].p < w[0].nt then w[0].tl[w[0].p] else 0;
+  print("wgsl-coax: line %: % (at '%')\n", line, what, ifx w[0].p < w[0].nt then cur(w) else "");
+  w[0].errs += 1;
+}
+expect :: (w: []W, s: string) {
+  if !is_at(w, s) { b := w[0].an; ap(w, "expected '"); ap(w, s); ap(w, "'"); err(w, art(w, b, w[0].an - b)); return; }
+  w[0].p += 1;
+}
+
+// ---- lexing
+is_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+is_hex :: (c: u8) -> bool { return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+push_tok :: (w: []W, k: int, s: int, e: int, line: int) {
+  n := w[0].nt; w[0].tk[n] = k; w[0].ts[n] = s; w[0].te[n] = e; w[0].tl[n] = line; w[0].nt = n + 1;
+}
+lex :: (w: []W) {
+  i := 0; line := 1; n := w[0].sn;
+  while i < n {
+    c := w[0].src[i];
+    if c == '\n' { line += 1; i += 1; continue; }
+    if c == ' ' || c == '\t' || c == '\r' { i += 1; continue; }
+    if c == '/' && i + 1 < n && w[0].src[i + 1] == '/' {
+      j := i; while j < n && w[0].src[j] != '\n' { j += 1; }
+      k := w[0].nc; w[0].cs[k] = i; w[0].ce[k] = j; w[0].cl[k] = line; w[0].nc = k + 1;
+      i = j; continue;
+    }
+    if c == '/' && i + 1 < n && w[0].src[i + 1] == '*' {
+      j := i + 2; while j + 1 < n && !(w[0].src[j] == '*' && w[0].src[j + 1] == '/') { if w[0].src[j] == '\n' { line += 1; } j += 1; }
+      i = j + 2; continue;
+    }
+    if is_alpha(c) {
+      j := i; while j < n && (is_alpha(w[0].src[j]) || is_digit(w[0].src[j])) { j += 1; }
+      push_tok(w, TK_ID, i, j, line); i = j; continue;
+    }
+    if is_digit(c) || (c == '.' && i + 1 < n && is_digit(w[0].src[i + 1])) {
+      j := i; fl := false;
+      if c == '0' && i + 1 < n && (w[0].src[i + 1] == 'x' || w[0].src[i + 1] == 'X') {
+        j = i + 2; while j < n && is_hex(w[0].src[j]) { j += 1; }
+      } else {
+        while j < n && is_digit(w[0].src[j]) { j += 1; }
+        if j < n && w[0].src[j] == '.' { fl = true; j += 1; while j < n && is_digit(w[0].src[j]) { j += 1; } }
+        if j < n && (w[0].src[j] == 'e' || w[0].src[j] == 'E') {
+          fl = true; j += 1;
+          if j < n && (w[0].src[j] == '+' || w[0].src[j] == '-') { j += 1; }
+          while j < n && is_digit(w[0].src[j]) { j += 1; }
+        }
+      }
+      if j < n && (w[0].src[j] == 'f' || w[0].src[j] == 'h') { fl = true; j += 1; }
+      else if j < n && (w[0].src[j] == 'u' || w[0].src[j] == 'i') { j += 1; }
+      push_tok(w, ifx fl then TK_FLOAT else TK_INT, i, j, line); i = j; continue;
+    }
+    // punctuation: two characters where they make one operator; '>' stays single (templates)
+    two := false;
+    if i + 1 < n {
+      d := w[0].src[i + 1];
+      if (c == '-' && d == '>') || (c == '<' && d == '=') || (c == '>' && d == '=') || (c == '=' && d == '=') || (c == '!' && d == '=') ||
+         (c == '&' && d == '&') || (c == '|' && d == '|') || (c == '<' && d == '<') || (c == '+' && d == '=') || (c == '-' && d == '=') ||
+         (c == '*' && d == '=') || (c == '/' && d == '=') || (c == '%' && d == '=') || (c == '&' && d == '=') || (c == '|' && d == '=') ||
+         (c == '^' && d == '=') || (c == '+' && d == '+') || (c == '-' && d == '-') { two = true; }
+    }
+    e := ifx two then i + 2 else i + 1;
+    push_tok(w, TK_P, i, e, line); i = e;
+  }
+  push_tok(w, TK_EOF, n, n, line);
+}
+
+// ---- types
+ty_find :: (w: []W, k: int, n: int, e: int) -> int {
+  for i: 0..<w[0].ny { if w[0].yk[i] == k && w[0].yn[i] == n && w[0].ye[i] == e { return i; } }
+  i := w[0].ny; w[0].yk[i] = k; w[0].yn[i] = n; w[0].ye[i] = e; w[0].ny = i + 1;
+  return i;
+}
+ty_init :: (w: []W) { for c: 0..<7 { t := ty_find(w, YK_SC, c, 0); } }
+vec :: (w: []W, base: int, n: int) -> int { return ty_find(w, YK_VEC, n, base); }
+is_sc :: (w: []W, t: int) -> bool { return w[0].yk[t] == YK_SC; }
+is_vec :: (w: []W, t: int) -> bool { return w[0].yk[t] == YK_VEC; }
+vlen :: (w: []W, t: int) -> int { return ifx w[0].yk[t] == YK_VEC then w[0].yn[t] else 0; }
+ybase :: (w: []W, t: int) -> int { return ifx w[0].yk[t] == YK_VEC then w[0].ye[t] else t; }
+conc :: (t: int) -> int { if t == Y_AF { return Y_F; } if t == Y_AI { return Y_I; } return t; }
+abstract :: (t: int) -> bool { return t == Y_AF || t == Y_AI; }
+// The concrete scalar base two operands share (an abstract one takes the other's).
+unify :: (w: []W, a: int, b: int) -> int {
+  x := ybase(w, a); y := ybase(w, b);
+  if !abstract(x) { return x; }
+  if !abstract(y) { return y; }
+  if x == Y_AF || y == Y_AF { return Y_AF; }
+  return Y_AI;
+}
+with_base :: (w: []W, t: int, b: int) -> int { return ifx is_vec(w, t) then vec(w, b, vlen(w, t)) else b; }
+
+// A type's Coax spelling.
+ytx :: (w: []W, t: int) {
+  k := w[0].yk[t];
+  if k == YK_SC {
+    c := conc(t);
+    if c == Y_F { ap(w, "f32"); } else if c == Y_I { ap(w, "s32"); } else if c == Y_U { ap(w, "u32"); } else if c == Y_B { ap(w, "bool"); } else { ap(w, "void"); }
+    return;
+  }
+  if k == YK_VEC {
+    c := conc(w[0].ye[t]);
+    if c == Y_F { ap(w, "V"); } else if c == Y_I { ap(w, "I"); } else if c == Y_U { ap(w, "U"); } else { ap(w, "B"); }
+    apn(w, w[0].yn[t]); return;
+  }
+  if k == YK_MAT { ap(w, "M4"); return; }
+  if k == YK_ST { st_name(w, w[0].ye[t]); return; }
+  if k == YK_ARR { apc(w, '['); apn(w, w[0].yn[t]); apc(w, ']'); ytx(w, w[0].ye[t]); return; }
+  if k == YK_RT { ap(w, "[]"); ytx(w, w[0].ye[t]); return; }
+  if k == YK_TEX { n := w[0].yn[t]; ap(w, ifx n == 1 then "Tex2D" else ifx n == 2 then "Tex2DArray" else "TexDepth"); return; }
+  if k == YK_SAMP { ap(w, ifx w[0].yn[t] == 1 then "SamplerCompare" else "Sampler"); return; }
+}
+// A type's code in helper names: f, i, u, b, f2, i3, u4, m4.
+ycode :: (w: []W, t: int) {
+  k := w[0].yk[t];
+  c := conc(ybase(w, t));
+  if k == YK_MAT { ap(w, "m4"); return; }
+  ap(w, ifx c == Y_F then "f" else ifx c == Y_I then "i" else ifx c == Y_U then "u" else "b");
+  if k == YK_VEC { apn(w, w[0].yn[t]); }
+}
+vctor :: (w: []W, t: int) {   // a vector type's constructor: v3, i2, u4
+  c := conc(w[0].ye[t]);
+  ap(w, ifx c == Y_F then "v" else ifx c == Y_I then "i" else ifx c == Y_U then "u" else "b"); apn(w, w[0].yn[t]);
+}
+st_name :: (w: []W, sid: int) {
+  if sid < 0 || sid >= w[0].ns { print("sid % ns %\n", sid, w[0].ns); err(w, "a struct type out of range"); return; }
+  p := pre(w);
+  if p.count > 0 { apc(w, p[0] - 32); ap(w, p[1..<p.count]); }
+  ap(w, srx(w, w[0].ss[sid], w[0].se[sid]));
+}
+st_find :: (w: []W, name: string) -> int { for i: 0..<w[0].ns { if srx(w, w[0].ss[i], w[0].se[i]) == name { return i; } } return -1; }
+
+// A type at p.
+ptype :: (w: []W) -> int {
+  name := cur(w); w[0].p += 1;
+  if name == "f32" { return Y_F; } if name == "i32" { return Y_I; } if name == "u32" { return Y_U; } if name == "bool" { return Y_B; }
+  if name.count == 5 && name[0..<3] == "vec" {
+    n := cast(int) (name[3] - '0'); c := name[4];
+    return vec(w, ifx c == 'f' then Y_F else ifx c == 'i' then Y_I else ifx c == 'u' then Y_U else Y_B, n);
+  }
+  if name.count == 4 && name[0..<3] == "vec" {
+    n := cast(int) (name[3] - '0'); expect(w, "<"); b := ptype(w); expect(w, ">"); return vec(w, b, n);
+  }
+  if name == "mat4x4f" { return ty_find(w, YK_MAT, 4, 0); }
+  if name == "mat4x4" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_MAT, 4, 0); }
+  if name == "array" {
+    expect(w, "<"); el := ptype(w);
+    if is_at(w, ",") { w[0].p += 1; n := lit_int(w, w[0].p); w[0].p += 1; expect(w, ">"); return ty_find(w, YK_ARR, n, el); }
+    expect(w, ">"); return ty_find(w, YK_RT, 0, el);
+  }
+  if name == "texture_2d" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_TEX, 1, 0); }
+  if name == "texture_2d_array" { expect(w, "<"); b := ptype(w); expect(w, ">"); return ty_find(w, YK_TEX, 2, 0); }
+  if name == "texture_depth_2d" { return ty_find(w, YK_TEX, 3, 0); }
+  if name == "sampler" { return ty_find(w, YK_SAMP, 0, 0); }
+  if name == "sampler_comparison" { return ty_find(w, YK_SAMP, 1, 0); }
+  sid := st_find(w, name);
+  if sid >= 0 { return ty_find(w, YK_ST, 0, sid); }
+  w[0].p -= 1; err(w, "a type this does not know"); w[0].p += 1;
+  return Y_F;
+}
+lit_int :: (w: []W, i: int) -> int {
+  s := tt(w, i); v := 0;
+  if s.count > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') {
+    for j: 2..<s.count {
+      c := s[j];
+      if is_digit(c) { v = v * 16 + cast(int) (c - '0'); }
+      else if c >= 'a' && c <= 'f' { v = v * 16 + cast(int) (c - 'a') + 10; }
+      else if c >= 'A' && c <= 'F' { v = v * 16 + cast(int) (c - 'A') + 10; }
+    }
+    return v;
+  }
+  for j: 0..<s.count { if is_digit(s[j]) { v = v * 10 + cast(int) (s[j] - '0'); } }
+  return v;
+}
+
+// ---- the uniform block's layout (WGSL's uniform address space), in floats
+ualign :: (w: []W, t: int) -> int {
+  k := w[0].yk[t];
+  if k == YK_SC { return 1; }
+  if k == YK_VEC { return ifx w[0].yn[t] == 2 then 2 else 4; }
+  if k == YK_MAT || k == YK_ARR { return 4; }
+  if k == YK_ST {
+    a := 4;
+    return a;
+  }
+  return 1;
+}
+usize :: (w: []W, t: int) -> int {
+  k := w[0].yk[t];
+  if k == YK_SC { return 1; }
+  if k == YK_VEC { return w[0].yn[t]; }
+  if k == YK_MAT { return 16; }
+  if k == YK_ARR { return w[0].yn[t] * ustride(w, w[0].ye[t]); }
+  if k == YK_ST {
+    sid := w[0].ye[t]; at_ := 0;
+    for i: 0..<w[0].sc[sid] { f := w[0].sf[sid] + i; at_ = up(at_, ualign(w, w[0].fy[f])) + usize(w, w[0].fy[f]); }
+    return up(at_, 4);
+  }
+  return 1;
+}
+ustride :: (w: []W, el: int) -> int { return up(usize(w, el), 4); }
+up :: (x: int, a: int) -> int { return (x + a - 1) / a * a; }
+ufield :: (w: []W, sid: int, fi: int) -> int {
+  at_ := 0;
+  for i: 0..<fi { f := w[0].sf[sid] + i; at_ = up(at_, ualign(w, w[0].fy[f])) + usize(w, w[0].fy[f]); }
+  return up(at_, ualign(w, w[0].fy[w[0].sf[sid] + fi]));
+}
+
+// ---- declarations (pass 1)
+skip_attrs :: (w: []W) -> int {   // the attributes at p; returns a stage (1 vertex, 2 fragment, 3 compute) or a parameter attribute
+  r := 0;
+  while is_at(w, "@") {
+    w[0].p += 1; a := cur(w); w[0].p += 1;
+    if a == "vertex" { r = 1; } else if a == "fragment" { r = 2; } else if a == "compute" { r = 3; }
+    if is_at(w, "(") {
+      if a == "builtin" {
+        b := tt(w, w[0].p + 1);
+        if b == "vertex_index" { r = PA_VID; } else if b == "instance_index" { r = PA_IID; } else if b == "position" { r = PA_POS; } else if b == "front_facing" { r = PA_FRONT; }
+      }
+      if a == "location" { r = PA_LOC; }
+      depth := 0;
+      while true { if is_at(w, "(") { depth += 1; } if is_at(w, ")") { depth -= 1; if depth == 0 { w[0].p += 1; break; } } w[0].p += 1; }
+    }
+  }
+  return r;
+}
+skip_to :: (w: []W, s: string) { while !is_at(w, s) && w[0].tk[w[0].p] != TK_EOF { w[0].p += 1; } }
+skip_braces :: (w: []W) {   // p at '{': past its '}'
+  depth := 0;
+  while w[0].tk[w[0].p] != TK_EOF {
+    if is_at(w, "{") { depth += 1; }
+    if is_at(w, "}") { depth -= 1; if depth == 0 { w[0].p += 1; return; } }
+    w[0].p += 1;
+  }
+}
+declare_structs :: (w: []W) {
+  w[0].p = 0;
+  while w[0].tk[w[0].p] != TK_EOF {
+    if is_at(w, "struct") {
+      i := w[0].ns; w[0].ss[i] = w[0].ts[w[0].p + 1]; w[0].se[i] = w[0].te[w[0].p + 1]; w[0].ns = i + 1;
+    }
+    w[0].p += 1;
+  }
+}
+declare :: (w: []W) {
+  w[0].p = 0; sidx := 0;
+  while w[0].tk[w[0].p] != TK_EOF {
+    start := w[0].p;
+    stage := skip_attrs(w);
+    if is_at(w, "struct") {
+      w[0].p += 2; expect(w, "{");
+      sid := sidx; sidx += 1; w[0].sf[sid] = w[0].nf; w[0].sc[sid] = 0;
+      while !is_at(w, "}") {
+        a := skip_attrs(w);
+        f := w[0].nf; w[0].fs[f] = w[0].ts[w[0].p]; w[0].fe[f] = w[0].te[w[0].p]; w[0].ft[f] = w[0].p; w[0].p += 1;
+        expect(w, ":"); w[0].fy[f] = ptype(w); w[0].nf = f + 1; w[0].sc[sid] += 1;
+        if is_at(w, ",") || is_at(w, ";") { w[0].p += 1; }
+      }
+      w[0].p += 1;
+      if is_at(w, ";") { w[0].p += 1; }
+      continue;
+    }
+    if is_at(w, "const") || is_at(w, "override") {
+      w[0].p += 1; k := w[0].nk; w[0].ks[k] = w[0].ts[w[0].p]; w[0].ke[k] = w[0].te[w[0].p]; w[0].kt[k] = w[0].p; w[0].p += 1;
+      if is_at(w, ":") { w[0].p += 1; t := ptype(w); }
+      expect(w, "="); w[0].kx[k] = w[0].p; skip_to(w, ";"); w[0].kxe[k] = w[0].p; w[0].p += 1; w[0].nk = k + 1;
+      continue;
+    }
+    if is_at(w, "var") {
+      w[0].p += 1; kind := MV_HANDLE;
+      if is_at(w, "<") {
+        w[0].p += 1; sp := cur(w);
+        kind = ifx sp == "uniform" then MV_UNIFORM else ifx sp == "private" then MV_PRIVATE else MV_STORAGE;
+        skip_to(w, ">"); w[0].p += 1;
+      }
+      m := w[0].nm; w[0].ms[m] = w[0].ts[w[0].p]; w[0].me[m] = w[0].te[w[0].p]; w[0].mt[m] = w[0].p; w[0].mk[m] = kind; w[0].p += 1;
+      expect(w, ":"); w[0].my[m] = ptype(w); w[0].nm = m + 1;
+      skip_to(w, ";"); w[0].p += 1;
+      continue;
+    }
+    if is_at(w, "fn") {
+      w[0].p += 1; g := w[0].ng; w[0].gs[g] = w[0].ts[w[0].p]; w[0].ge[g] = w[0].te[w[0].p]; w[0].gst[g] = stage; w[0].gd[g] = start; w[0].p += 1;
+      expect(w, "("); w[0].gp[g] = w[0].np; w[0].gpn[g] = 0;
+      while !is_at(w, ")") {
+        a := skip_attrs(w);
+        q := w[0].np; w[0].ps[q] = w[0].ts[w[0].p]; w[0].pe[q] = w[0].te[w[0].p]; w[0].pt[q] = w[0].p; w[0].pa[q] = a; w[0].p += 1;
+        expect(w, ":"); w[0].py[q] = ptype(w); w[0].np = q + 1; w[0].gpn[g] += 1;
+        if is_at(w, ",") { w[0].p += 1; }
+      }
+      w[0].p += 1; w[0].gr[g] = 0;
+      if is_at(w, "->") { w[0].p += 1; a := skip_attrs(w); w[0].gr[g] = ptype(w); }
+      w[0].gb[g] = w[0].p; skip_braces(w); w[0].gbe[g] = w[0].p - 1; w[0].ng = g + 1;
+      continue;
+    }
+    if is_at(w, "alias") || is_at(w, "enable") || is_at(w, "requires") || is_at(w, "diagnostic") { skip_to(w, ";"); w[0].p += 1; continue; }
+    if is_at(w, ";") { w[0].p += 1; continue; }
+    err(w, "a declaration this does not know"); w[0].p += 1;
+  }
+}
+mv_find :: (w: []W, name: string) -> int { for i: 0..<w[0].nm { if srx(w, w[0].ms[i], w[0].me[i]) == name { return i; } } return -1; }
+fn_find :: (w: []W, name: string) -> int { for i: 0..<w[0].ng { if srx(w, w[0].gs[i], w[0].ge[i]) == name { return i; } } return -1; }
+k_find :: (w: []W, name: string) -> int { for i: 0..<w[0].nk { if srx(w, w[0].ks[i], w[0].ke[i]) == name { return i; } } return -1; }
+// Which bindings each procedure reads, with what it calls.
+closure :: (w: []W) {
+  for g: 0..<w[0].ng {
+    m: u64 = 0;
+    for i: w[0].gb[g]..<w[0].gbe[g] {
+      if w[0].tk[i] != TK_ID { continue; }
+      name := tt(w, i);
+      if i > 0 && tt(w, i - 1) == "." { continue; }
+      v := mv_find(w, name);
+      if v >= 0 { m = m | (cast(u64) 1 << cast(u64) v); }
+      f := fn_find(w, name);
+      if f >= 0 && tt(w, i + 1) == "(" { e := w[0].ne; w[0].ea[e] = g; w[0].eb[e] = f; w[0].ne = e + 1; }
+    }
+    w[0].gm[g] = m;
+  }
+  changed := true;
+  while changed {
+    changed = false;
+    for e: 0..<w[0].ne {
+      a := w[0].ea[e]; b := w[0].eb[e];
+      n := w[0].gm[a] | w[0].gm[b];
+      if n != w[0].gm[a] { w[0].gm[a] = n; changed = true; }
+    }
+  }
+}
+
+// ---- comments
+flush :: (w: []W, upto: int, depth: int) {
+  while w[0].ci < w[0].nc && w[0].cs[w[0].ci] < upto {
+    c := w[0].ci;
+    text := srx(w, w[0].cs[c], w[0].ce[c]);
+    if w[0].cl[c] == w[0].last_line && w[0].on > 0 && w[0].out[w[0].on - 1] == '\n' {
+      w[0].on -= 1; o(w, " "); o(w, text); o(w, "\n");
+    } else { ind(w, depth); o(w, text); o(w, "\n"); }
+    w[0].ci += 1;
+  }
+}
+skip_comments :: (w: []W, upto: int) { while w[0].ci < w[0].nc && w[0].cs[w[0].ci] < upto { w[0].ci += 1; } }
+done_line :: (w: []W) { w[0].last_line = w[0].tl[w[0].p - 1]; }
+
+// ---- names and scopes
+KEYWORDS :: [56] string.["struct","union","enum","enum_flags","if","else","ifx","then","while","for","break","continue","return","defer","switch","case","using","cast","xx","inline","no_inline","job","pure","strict","deterministic","shader","try","or_else","push_context","null","true","false","it","it_index","size_of","type_of","type_info","Type","Code","remove","constraint","int","uint","string","float","s8","s16","s32","s64","u8","u16","u64","f64","print","main","in"];
+LIBRARY :: [40] string.["v2","v3","v4","i2","i3","i4","u2","u3","u4","mix","fmin","fmax","clampf","saturate","fract","smoothstep","stepf","abs","sin","cos","tan","exp","log","sqrt","floor","pow","dot2","dot3","dot4","length2","length3","cross3","normalize3","reflect3","texel","at4","add_wrap","sub_wrap","mul_wrap","sample_layer"];
+CWORDS :: [40] string.["short","int","long","char","float","double","signed","unsigned","auto","register","static","extern","const","volatile","default","case","switch","goto","sizeof","typedef","union","struct","enum","void","return","break","continue","do","while","for","if","else","inline","restrict","bool","class","new","delete","this","template"];
+// A struct field's Coax name: a C or C++ keyword takes a trailing _.
+field :: (w: []W, s: string) { ap(w, s); for k: CWORDS { if k == s { apc(w, '_'); } } }
+reserved :: (w: []W, s: string) -> bool {
+  if s == "len" || s == "clamp_texel" || s == "depth_pass" || s == "scale2" || s == "scale3" || s == "scale4" || s == "add2" || s == "add3" || s == "add4" || s == "sub2" || s == "sub3" || s == "mul2" || s == "mul3" || s == "mix3" || s == "mix4" || s == "v3_of" || s == "v4_of" || s == "m4_at" || s == "m4_apply" { return true; }
+  if s.count > 3 && (s[0..<3] == "wg_" || s[0..<3] == "st_") { return true; }
+  if s.count > 4 && s[0..<4] == "gpu_" { return true; }
+  for k: CWORDS { if k == s { return true; } }
+  for k: KEYWORDS { if k == s { return true; } }
+  for k: LIBRARY { if k == s { return true; } }
+  if mv_find(w, s) >= 0 { return true; }
+  return false;
+}
+live :: (w: []W, s: string) -> bool {
+  for i: 0..<w[0].nl { if lname(w, i) == s { return true; } }
+  return false;
+}
+keep_name :: (w: []W, i: int, b: int) {
+  n := w[0].an - b;
+  for j: 0..<n { w[0].lb[w[0].lbn + j] = w[0].ar[b + j]; }
+  w[0].lo[i] = w[0].lbn; w[0].lon[i] = n; w[0].lbn += n; w[0].an = b;
+}
+// Declares a local or parameter named by source s..e: its Coax name (renamed if it would shadow).
+local :: (w: []W, s: int, e: int, ty: int) -> int {
+  name := srx(w, s, e);
+  b := w[0].an; ap(w, name);
+  if reserved(w, name) || live(w, art(w, b, w[0].an - b)) {
+    k := 2;
+    while true {
+      w[0].an = b; ap(w, name); apc(w, '_'); apn(w, k);
+      if !live(w, art(w, b, w[0].an - b)) && !reserved(w, art(w, b, w[0].an - b)) { break; }
+      k += 1;
+    }
+  }
+  i := w[0].nl; w[0].ls[i] = s; w[0].le[i] = e; w[0].ly[i] = ty; keep_name(w, i, b); w[0].nl = i + 1;
+  return i;
+}
+// A fresh local name: _NAME then a serial.
+fresh :: (w: []W, stem: string, ty: int) -> int {
+  w[0].serial += 1;
+  b := w[0].an; ap(w, stem); apn(w, w[0].serial);
+  i := w[0].nl; w[0].ls[i] = 0; w[0].le[i] = 0; w[0].ly[i] = ty; keep_name(w, i, b); w[0].nl = i + 1;
+  return i;
+}
+l_find :: (w: []W, name: string) -> int {
+  i := w[0].nl - 1;
+  while i >= 0 { if w[0].le[i] > w[0].ls[i] && srx(w, w[0].ls[i], w[0].le[i]) == name { return i; } i -= 1; }
+  return -1;
+}
+lname :: (w: []W, i: int) -> string { return cast(string) w[0].lb[w[0].lo[i]..<w[0].lo[i] + w[0].lon[i]]; }
+
+// ---- generated helpers
+// Whether the helper named b..an exists; if not, keeps the definition def..def+dn.
+helper :: (w: []W, name: string, def: int, dn: int) {
+  for i: 0..<w[0].nh { if cast(string) w[0].voc[w[0].hs[i]..<w[0].hs[i] + w[0].hl[i]] == name { return; } }
+  h := w[0].nh; w[0].hs[h] = w[0].vn; w[0].hl[h] = name.count; w[0].nh = h + 1;
+  for i: 0..<name.count { w[0].voc[w[0].vn + i] = name[i]; } w[0].vn += name.count;
+  for i: 0..<dn { w[0].voc[w[0].vn + i] = w[0].ar[def + i]; } w[0].vn += dn;
+}
+CMP :: [4] string.["x","y","z","w"];
+// The scalar Coax function a componentwise builtin is, for the base.
+scalar_fn :: (name: string, b: int) -> string {
+  if b == Y_I || b == Y_U {
+    t := b == Y_I;
+    if name == "min" { return ifx t then "wg_min_i" else "wg_min_u"; }
+    if name == "max" { return ifx t then "wg_max_i" else "wg_max_u"; }
+    if name == "clamp" { return ifx t then "wg_clamp_i" else "wg_clamp_u"; }
+    if name == "abs" { return ifx t then "wg_abs_i" else ""; }
+    if name == "sign" { return ifx t then "wg_sign_i" else ""; }
+    return "";
+  }
+  if name == "abs" || name == "floor" || name == "sin" || name == "cos" || name == "tan" || name == "exp" || name == "log" || name == "sqrt" || name == "pow" || name == "mix" || name == "fract" || name == "smoothstep" || name == "saturate" { return name; }
+  if name == "min" { return "fmin"; } if name == "max" { return "fmax"; } if name == "clamp" { return "clampf"; } if name == "step" { return "stepf"; }
+  if name == "ceil" { return "wg_ceil"; } if name == "round" { return "wg_round"; } if name == "trunc" { return "wg_trunc"; } if name == "sign" { return "wg_sign"; }
+  if name == "exp2" { return "wg_exp2"; } if name == "log2" { return "wg_log2"; } if name == "tanh" { return "wg_tanh"; } if name == "atan2" { return "wg_atan2"; }
+  if name == "atan" { return "wg_atan"; } if name == "acos" { return "wg_acos"; } if name == "asin" { return "wg_asin"; } if name == "inverseSqrt" { return "wg_inverse_sqrt"; }
+  return "";
+}
+// A componentwise call: of the scalar function f over args of types ty (scalars broadcast), into a vector of n.
+cw_helper :: (w: []W, stem: string, f: string, ty: []int, na: int, rt: int) -> Val {
+  // the name: wg_STEM_CODES
+  nb := w[0].an; ap(w, "wg_"); ap(w, stem); apc(w, '_'); for i: 0..<na { ycode(w, ty[i]); }
+  name := art(w, nb, w[0].an - nb);
+  db := w[0].an;
+  ap(w, " :: ("); for i: 0..<na { if i > 0 { apc(w, ','); } apc(w, 'p'); apn(w, i); apc(w, ':'); ytx(w, ty[i]); }
+  ap(w, ")->"); ytx(w, rt); ap(w, " {return "); vctor(w, rt); apc(w, '(');
+  for c: 0..<vlen(w, rt) {
+    if c > 0 { apc(w, ','); }
+    ap(w, f); apc(w, '(');
+    for i: 0..<na { if i > 0 { apc(w, ','); } apc(w, 'p'); apn(w, i); if is_vec(w, ty[i]) { apc(w, '.'); ap(w, CMP[c]); } }
+    apc(w, ')');
+  }
+  ap(w, ");}\n");
+  helper(w, name, db, w[0].an - db);
+  w[0].an = db;
+  v := Val.{s = nb, n = db - nb, ty = rt};
+  return v;
+}
+// Calls helper name (nb..) on the values.
+call_with :: (w: []W, name: Val, a: []Val, na: int, rt: int) -> Val {
+  b := w[0].an; apv(w, name); apc(w, '(');
+  for i: 0..<na { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+  apc(w, ')');
+  return mka(w, b, rt);
+}
+
+// ---- values
+// A uniform reference made a value: a scalar is u[at], a vector wg_at3(u, at).
+mat :: (w: []W, v: Val) -> Val {
+  if v.um == 0 { return v; }
+  t := v.ty; b := w[0].an;
+  name := srx(w, w[0].ms[v.um - 1], w[0].me[v.um - 1]);
+  if is_sc(w, t) { ap(w, name); apc(w, '['); off(w, v, 0); apc(w, ']'); }
+  else if is_vec(w, t) { ap(w, "wg_at"); apn(w, vlen(w, t)); apc(w, '('); ap(w, name); apc(w, ','); off(w, v, 0); apc(w, ')'); }
+  else { err(w, "a whole uniform struct or array as a value"); }
+  r := mka(w, b, t); r.path = is_sc(w, t);
+  return r;
+}
+off :: (w: []W, v: Val, c: int) {
+  if v.dn > 0 { apr(w, v.ds, v.dn); if v.k + c > 0 { apc(w, '+'); apn(w, v.k + c); } }
+  else { apn(w, v.k + c); }
+}
+// Text usable as an operand.
+paren :: (w: []W, v: Val) -> Val {
+  if v.atom { return v; }
+  b := w[0].an; apc(w, '('); apv(w, v); apc(w, ')');
+  r := mka(w, b, v.ty); r.lit = v.lit; r.iv = v.iv;
+  return r;
+}
+// An int index from a value.
+as_int :: (w: []W, v0: Val) -> Val {
+  v := mat(w, v0);
+  if v.lit && v.iv >= 0 { b := w[0].an; apn(w, v.iv); return mka(w, b, Y_AI); }
+  pv := paren(w, v);
+  b := w[0].an; ap(w, "cast(int)"); apv(w, pv);
+  return mkv(w, b, Y_AI);
+}
+// Component c of a vector value (a uniform reference stays one).
+comp :: (w: []W, v: Val, c: int) -> Val {
+  if v.um > 0 { r := v; r.ty = ybase(w, v.ty); r.k = v.k + c; return r; }
+  pv := paren(w, v);
+  b := w[0].an; apv(w, pv); apc(w, '.'); ap(w, CMP[c]);
+  r := mka(w, b, ybase(w, v.ty)); r.path = v.path;
+  return r;
+}
+// A value converted to scalar base tb (a vector's components each).
+convert :: (w: []W, v0: Val, tb: int) -> Val {
+  v := mat(w, v0);
+  from := conc(ybase(w, v.ty)); to := conc(tb);
+  if is_vec(w, v.ty) {
+    if from == to { return v; }
+    rt := vec(w, tb, vlen(w, v.ty));
+    nb := w[0].an; ap(w, "wg_cvt_"); ycode(w, rt); ycode(w, v.ty); name := art(w, nb, w[0].an - nb);
+    db := w[0].an; ap(w, " :: (p:"); ytx(w, v.ty); ap(w, ")->"); ytx(w, rt); ap(w, " {return "); vctor(w, rt); apc(w, '(');
+    for c: 0..<vlen(w, rt) { if c > 0 { apc(w, ','); } scalar_cvt(w, from, to); apc(w, '('); ap(w, "p."); ap(w, CMP[c]); apc(w, ')'); }
+    ap(w, ");}\n"); helper(w, name, db, w[0].an - db); w[0].an = db;
+    b := w[0].an; ap(w, name); apc(w, '('); apv(w, v); apc(w, ')');
+    return mka(w, b, rt);
+  }
+  if from == to || (abstract(ybase(w, v.ty)) && !(ybase(w, v.ty) == Y_AF && to != Y_F)) { r := v; r.ty = to; return r; }
+  b := w[0].an; scalar_cvt(w, from, to); apc(w, '('); apv(w, v); apc(w, ')');
+  return mkv(w, b, to);
+}
+scalar_cvt :: (w: []W, from: int, to: int) {
+  if from == Y_F && to == Y_U { ap(w, "wg_u32_f"); return; }
+  if from == Y_F && to == Y_I { ap(w, "wg_i32_f"); return; }
+  if from == Y_B { ap(w, ifx to == Y_F then "wg_f32_b" else ifx to == Y_U then "wg_u32_b" else "wg_i32_b"); return; }
+  if (from == Y_I && to == Y_U) || (from == Y_U && to == Y_I) { ap(w, ifx to == Y_U then "cast,trunc(u32)" else "cast,trunc(s32)"); return; }
+  ap(w, "cast("); ap(w, ifx to == Y_F then "f32" else ifx to == Y_U then "u32" else ifx to == Y_I then "s32" else "bool"); apc(w, ')');
+}
+
+// ---- expressions
+ex :: (w: []W) -> Val { return exl(w, 0); }
+// The operator at p for precedence level l, and how many tokens it takes.
+op_at :: (w: []W, l: int, n: []int) -> int {
+  n[0] = 1;
+  if w[0].tk[w[0].p] != TK_P { return 0; }
+  s := cur(w);
+  if l == 0 { return ifx s == "||" then OP_OR else 0; }
+  if l == 1 { return ifx s == "&&" then OP_AND else 0; }
+  if l == 2 { return ifx s == "|" then OP_BOR else 0; }
+  if l == 3 { return ifx s == "^" then OP_XOR else 0; }
+  if l == 4 { return ifx s == "&" then OP_BAND else 0; }
+  if l == 5 {
+    if s == "<" { return OP_LT; } if s == "<=" { return OP_LE; } if s == ">=" { return OP_GE; } if s == "==" { return OP_EQ; } if s == "!=" { return OP_NE; }
+    if s == ">" && !shr_at(w) { return OP_GT; }
+    return 0;
+  }
+  if l == 6 {
+    if s == "<<" { return OP_SHL; }
+    if shr_at(w) { n[0] = 2; return OP_SHR; }
+    return 0;
+  }
+  if l == 7 { return ifx s == "+" then OP_ADD else ifx s == "-" then OP_SUB else 0; }
+  if l == 8 { return ifx s == "*" then OP_MUL else ifx s == "/" then OP_DIV else ifx s == "%" then OP_MOD else 0; }
+  return 0;
+}
+shr_at :: (w: []W) -> bool {
+  p := w[0].p;
+  return cur(w) == ">" && w[0].tk[p + 1] == TK_P && tt(w, p + 1) == ">" && w[0].ts[p + 1] == w[0].te[p] && !(tt(w, p + 2) == "=" && w[0].ts[p + 2] == w[0].te[p + 1]);
+}
+exl :: (w: []W, l: int) -> Val {
+  if l == 9 { return unary(w); }
+  a := exl(w, l + 1);
+  n: [1] int;
+  while true {
+    op := op_at(w, l, n[..]);
+    if op == 0 { break; }
+    w[0].p += n[0];
+    b := exl(w, l + 1);
+    a = binop(w, op, a, b);
+  }
+  return a;
+}
+OPS :: [19] string.["", "+", "-", "*", "/", "%", "<", "<=", ">", ">=", "==", "!=", "&&", "||", "&", "|", "^", "<<", ">>"];
+OPNAME :: [19] string.["", "add", "sub", "mul", "div", "mod", "lt", "le", "gt", "ge", "eq", "ne", "and", "or", "band", "bor", "xor", "shl", "shr"];
+binop :: (w: []W, op: int, a0: Val, b0: Val) -> Val {
+  a := mat(w, a0); b := mat(w, b0);
+  ta := a.ty; tb := b.ty;
+  rel := op >= OP_LT && op <= OP_NE;
+  if w[0].yk[ta] == YK_MAT && op == OP_MUL {
+    r := w[0].an; ap(w, "m4_apply("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')');
+    return mka(w, r, tb);
+  }
+  if is_vec(w, ta) || is_vec(w, tb) {
+    ub := unify(w, ta, tb); ub = conc(ub);
+    ca := with_base(w, ta, ub); cb := with_base(w, tb, ub);
+    if rel {
+      v := Val.{ty = vec(w, Y_B, ifx is_vec(w, ta) then vlen(w, ta) else vlen(w, tb)), cop = op, as = a.s, an = a.n, ay = ca, bs = b.s, bn = b.n, by = cb};
+      return v;
+    }
+    rt := ifx is_vec(w, ta) then ca else cb;
+    // the scalar operation each component does
+    sb := w[0].an;
+    if op == OP_MOD && ub == Y_F { ap(w, "wg_fmod"); }
+    else if ub == Y_U && (op == OP_ADD || op == OP_SUB || op == OP_MUL) { ap(w, OPNAME[op]); ap(w, "_wrap"); }
+    else { ap(w, "#"); ap(w, OPS[op]); }
+    f := art(w, sb, w[0].an - sb);
+    nb := w[0].an; ap(w, "wg_"); ap(w, OPNAME[op]); apc(w, '_'); ycode(w, ca); ycode(w, cb); name := art(w, nb, w[0].an - nb);
+    db := w[0].an; ap(w, " :: (a:"); ytx(w, ca); ap(w, ",b:"); ytx(w, cb); ap(w, ")->"); ytx(w, rt); ap(w, " {return "); vctor(w, rt); apc(w, '(');
+    for c: 0..<vlen(w, rt) {
+      if c > 0 { apc(w, ','); }
+      if f[0] == '#' {
+        ap(w, "a"); if is_vec(w, ca) { apc(w, '.'); ap(w, CMP[c]); } ap(w, f[1..<f.count]); ap(w, "b"); if is_vec(w, cb) { apc(w, '.'); ap(w, CMP[c]); }
+      } else {
+        ap(w, f); ap(w, "(a"); if is_vec(w, ca) { apc(w, '.'); ap(w, CMP[c]); } ap(w, ",b"); if is_vec(w, cb) { apc(w, '.'); ap(w, CMP[c]); } apc(w, ')');
+      }
+    }
+    ap(w, ");}\n"); helper(w, name, db, w[0].an - db); w[0].an = db;
+    r := w[0].an; ap(w, name); apc(w, '('); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')');
+    return mka(w, r, rt);
+  }
+  // scalars
+  ub := unify(w, ta, tb);
+  rt := ifx rel || op == OP_AND || op == OP_OR then Y_B else ub;
+  if op == OP_SHL || op == OP_SHR { rt = ta; }
+  pa := paren(w, a); pb := paren(w, b);
+  r := w[0].an;
+  if op == OP_MOD && conc(ub) == Y_F && !(abstract(ta) && abstract(tb)) {
+    ap(w, "wg_fmod("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')'); return mka(w, r, rt);
+  }
+  if ub == Y_U && (op == OP_ADD || op == OP_SUB || op == OP_MUL) {
+    ap(w, OPNAME[op]); ap(w, "_wrap("); apv(w, a); apc(w, ','); apv(w, b); apc(w, ')'); return mka(w, r, rt);
+  }
+  apv(w, pa); ap(w, OPS[op]); apv(w, pb);
+  v := mkv(w, r, rt);
+  if a.lit && b.lit && rt == Y_AI {
+    v.lit = true;
+    if op == OP_ADD { v.iv = a.iv + b.iv; } else if op == OP_SUB { v.iv = a.iv - b.iv; } else if op == OP_MUL { v.iv = a.iv * b.iv; } else { v.lit = false; }
+  }
+  return v;
+}
+unary :: (w: []W) -> Val {
+  if is_at(w, "-") {
+    w[0].p += 1; a := mat(w, unary(w));
+    if is_vec(w, a.ty) {
+      nb := w[0].an; ap(w, "wg_neg_"); ycode(w, a.ty); name := art(w, nb, w[0].an - nb);
+      db := w[0].an; ap(w, " :: (a:"); ytx(w, a.ty); ap(w, ")->"); ytx(w, a.ty); ap(w, " {return "); vctor(w, a.ty); apc(w, '(');
+      for c: 0..<vlen(w, a.ty) { if c > 0 { apc(w, ','); } ap(w, "-a."); ap(w, CMP[c]); }
+      ap(w, ");}\n"); helper(w, name, db, w[0].an - db); w[0].an = db;
+      r := w[0].an; ap(w, name); apc(w, '('); apv(w, a); apc(w, ')');
+      return mka(w, r, a.ty);
+    }
+    pa := paren(w, a);
+    r := w[0].an; apc(w, '-'); apv(w, pa);
+    v := mkv(w, r, a.ty); v.lit = a.lit; v.iv = -a.iv;
+    return v;
+  }
+  if is_at(w, "!") { w[0].p += 1; a := paren(w, mat(w, unary(w))); r := w[0].an; apc(w, '!'); apv(w, a); return mkv(w, r, Y_B); }
+  if is_at(w, "~") { w[0].p += 1; a := paren(w, mat(w, unary(w))); r := w[0].an; apv(w, a); ap(w, "^0xFFFFFFFF"); return mkv(w, r, a.ty); }
+  return postfix(w);
+}
+swz :: (c: u8) -> int {
+  if c == 'x' || c == 'r' { return 0; } if c == 'y' || c == 'g' { return 1; } if c == 'z' || c == 'b' { return 2; } if c == 'w' || c == 'a' { return 3; }
+  return -1;
+}
+postfix :: (w: []W) -> Val {
+  v := primary(w);
+  while true {
+    if is_at(w, ".") {
+      w[0].p += 1; name := cur(w); w[0].p += 1;
+      t := v.ty;
+      if is_vec(w, t) {
+        if name.count == 1 { v = comp(w, v, swz(name[0])); continue; }
+        rt := vec(w, ybase(w, t), name.count);
+        if v.path || v.um > 0 {
+          parts: [4] Val;
+          for i: 0..<name.count { parts[i] = mat(w, comp(w, v, swz(name[i]))); }
+          b := w[0].an; vctor(w, rt); apc(w, '(');
+          for i: 0..<name.count { if i > 0 { apc(w, ','); } apv(w, parts[i]); }
+          apc(w, ')'); v = mka(w, b, rt); continue;
+        }
+        nb := w[0].an; ap(w, "wg_sw_"); ap(w, name); apc(w, '_'); ycode(w, t); hn := art(w, nb, w[0].an - nb);
+        db := w[0].an; ap(w, " :: (p:"); ytx(w, t); ap(w, ")->"); ytx(w, rt); ap(w, " {return "); vctor(w, rt); apc(w, '(');
+        for i: 0..<name.count { if i > 0 { apc(w, ','); } ap(w, "p."); ap(w, CMP[swz(name[i])]); }
+        ap(w, ");}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
+        b := w[0].an; ap(w, hn); apc(w, '('); apv(w, v); apc(w, ')'); v = mka(w, b, rt); continue;
+      }
+      if w[0].yk[t] == YK_ST {
+        sid := w[0].ye[t]; fi := -1;
+        for i: 0..<w[0].sc[sid] { f := w[0].sf[sid] + i; if srx(w, w[0].fs[f], w[0].fe[f]) == name { fi = i; } }
+        if fi < 0 { w[0].p -= 1; err(w, "no such field"); w[0].p += 1; continue; }
+        ft := w[0].fy[w[0].sf[sid] + fi];
+        if v.um > 0 { r := v; r.ty = ft; r.k = v.k + ufield(w, sid, fi); v = r; continue; }
+        pv := paren(w, v);
+        b := w[0].an; apv(w, pv); apc(w, '.'); field(w, name);
+        r := mka(w, b, ft); r.path = v.path; v = r; continue;
+      }
+      w[0].p -= 1; err(w, "a member of this type"); w[0].p += 1;
+      continue;
+    }
+    if is_at(w, "[") {
+      w[0].p += 1; ix := mat(w, ex(w)); expect(w, "]");
+      t := v.ty; k := w[0].yk[t];
+      if v.um > 0 && k == YK_ARR {
+        el := w[0].ye[t]; stride := ustride(w, el);
+        r := v; r.ty = el;
+        if ix.lit { r.k = v.k + ix.iv * stride; }
+        else {
+          iv := paren(w, as_int(w, ix));
+          b := w[0].an;
+          if v.dn > 0 { apr(w, v.ds, v.dn); apc(w, '+'); }
+          apv(w, iv); apc(w, '*'); apn(w, stride);
+          r.ds = b; r.dn = w[0].an - b;
+        }
+        v = r; continue;
+      }
+      if k == YK_MAT {
+        if !ix.lit { err(w, "a matrix column by a dynamic index"); continue; }
+        pv := paren(w, mat(w, v));
+        b := w[0].an; apv(w, pv); ap(w, ".c"); apn(w, ix.iv);
+        r := mka(w, b, vec(w, Y_F, 4)); r.path = v.path; v = r; continue;
+      }
+      if k == YK_VEC {
+        if ix.lit { v = comp(w, v, ix.iv); continue; }
+        vv := mat(w, v);
+        nb := w[0].an; ap(w, "wg_get_"); ycode(w, t); hn := art(w, nb, w[0].an - nb);
+        db := w[0].an; ap(w, " :: (p:"); ytx(w, t); ap(w, ",i:int)->"); ytx(w, ybase(w, t)); ap(w, " {");
+        for c: 0..<vlen(w, t) - 1 { ap(w, "if i=="); apn(w, c); ap(w, " {return p."); ap(w, CMP[c]); ap(w, ";} "); }
+        ap(w, "return p."); ap(w, CMP[vlen(w, t) - 1]); ap(w, ";}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
+        iv := as_int(w, ix);
+        b := w[0].an; ap(w, hn); apc(w, '('); apv(w, vv); apc(w, ','); apv(w, iv); apc(w, ')');
+        v = mka(w, b, ybase(w, t)); continue;
+      }
+      if k == YK_ARR || k == YK_RT {
+        pv := paren(w, v); iv := as_int(w, ix);
+        b := w[0].an; apv(w, pv); apc(w, '['); apv(w, iv); apc(w, ']');
+        r := mka(w, b, w[0].ye[t]); r.path = v.path; v = r; continue;
+      }
+      err(w, "indexing this type");
+      continue;
+    }
+    break;
+  }
+  return v;
+}
+// Arguments in parentheses at p.
+args :: (w: []W, a: []Val) -> int {
+  expect(w, "(");
+  n := 0;
+  while !is_at(w, ")") && w[0].tk[w[0].p] != TK_EOF {
+    a[n] = ex(w); n += 1;
+    if is_at(w, ",") { w[0].p += 1; }
+  }
+  expect(w, ")");
+  return n;
+}
+literal :: (w: []W) -> Val {
+  s := cur(w); k := w[0].tk[w[0].p]; w[0].p += 1;
+  b := w[0].an;
+  if k == TK_INT {
+    last := s[s.count - 1];
+    hex := s.count > 2 && (s[1] == 'x' || s[1] == 'X');
+    body := ifx (last == 'u' || last == 'i') then s[0..<s.count - 1] else s;
+    ap(w, body);
+    v := mka(w, b, ifx last == 'u' then Y_U else ifx last == 'i' && !hex then Y_I else Y_AI);
+    v.lit = true; v.iv = lit_int(w, w[0].p - 1);
+    return v;
+  }
+  body := s;
+  if body[body.count - 1] == 'f' || body[body.count - 1] == 'h' { body = body[0..<body.count - 1]; }
+  if body[0] == '.' { apc(w, '0'); }
+  dot := false; ex_ := false;
+  for c: body { if c == '.' { dot = true; } if c == 'e' || c == 'E' { ex_ = true; } }
+  for i: 0..<body.count {
+    apc(w, body[i]);
+    if body[i] == '.' && (i + 1 == body.count || !is_digit(body[i + 1])) { apc(w, '0'); }
+  }
+  if !dot && !ex_ { ap(w, ".0"); }
+  ap(w, "f32");
+  v := mka(w, b, Y_AF); v.lit = true;
+  return v;
+}
+is_ctor_type :: (s: string) -> bool {
+  if s == "f32" || s == "i32" || s == "u32" || s == "bool" || s == "mat4x4f" || s == "mat4x4" || s == "array" { return true; }
+  return s.count >= 4 && s[0..<3] == "vec" && s[3] >= '2' && s[3] <= '4';
+}
+primary :: (w: []W) -> Val {
+  k := w[0].tk[w[0].p];
+  if k == TK_INT || k == TK_FLOAT { return literal(w); }
+  if is_at(w, "(") {
+    w[0].p += 1; v := mat(w, ex(w)); expect(w, ")");
+    if v.cop > 0 { return v; }
+    r := paren(w, v); r.path = v.path; return r;
+  }
+  if is_at(w, "true") || is_at(w, "false") { b := w[0].an; ap(w, cur(w)); w[0].p += 1; return mka(w, b, Y_B); }
+  if k != TK_ID { err(w, "an expression"); w[0].p += 1; return Val.{ty = Y_F}; }
+  name := cur(w);
+  if name == "bitcast" {
+    w[0].p += 1; expect(w, "<"); t := ptype(w); expect(w, ">");
+    a: [4] Val; n := args(w, a[..]); x := mat(w, a[0]);
+    return bitcast(w, x, t);
+  }
+  if is_ctor_type(name) || st_find(w, name) >= 0 {
+    if tt(w, w[0].p + 1) == "<" || tt(w, w[0].p + 1) == "(" || !(name == "array") {
+      // a type then its arguments: a constructor or a conversion
+      save := w[0].p;
+      t := -1;
+      if name == "array" && tt(w, w[0].p + 1) == "(" { w[0].p += 1; t = -2; }
+      else if name.count == 4 && name[0..<3] == "vec" && tt(w, w[0].p + 1) == "(" { w[0].p += 1; t = -3 - cast(int) (name[3] - '0'); }
+      else { t = ptype(w); }
+      if is_at(w, "(") { return construct(w, t); }
+      w[0].p = save;
+    }
+  }
+  w[0].p += 1;
+  if is_at(w, "(") { return call(w, name); }
+  // a name
+  l := l_find(w, name);
+  if l >= 0 { b := w[0].an; ap(w, lname(w, l)); v := mka(w, b, w[0].ly[l]); v.path = true; return v; }
+  m := mv_find(w, name);
+  if m >= 0 {
+    if w[0].mk[m] == MV_UNIFORM { return Val.{ty = w[0].my[m], um = m + 1, path = true, atom = true}; }
+    b := w[0].an; ap(w, name);
+    if w[0].mk[m] == MV_PRIVATE { ap(w, "[0]"); }
+    v := mka(w, b, w[0].my[m]); v.path = true; return v;
+  }
+  c := k_find(w, name);
+  if c >= 0 {
+    t := const_type(w, c);
+    b := w[0].an; ap(w, pre(w)); upper(w); apc(w, '_'); ap(w, name);
+    if !is_sc(w, t) { ap(w, "()"); }
+    v := mka(w, b, t); v.path = is_sc(w, t);
+    return v;
+  }
+  w[0].p -= 1; err(w, "a name this does not know"); w[0].p += 1;
+  return Val.{ty = Y_F};
+}
+upper :: (w: []W) { b := w[0].an - w[0].pren; for i: b..<w[0].an { c := w[0].ar[i]; if c >= 'a' && c <= 'z' { w[0].ar[i] = c - 32; } } }
+// A constant's type: its expression's, translated aside.
+const_type :: (w: []W, c: int) -> int {
+  save := w[0].p; sb := w[0].an;
+  w[0].p = w[0].kx[c];
+  v := ex(w);
+  w[0].p = save; w[0].an = sb;
+  return v.ty;
+}
+// A constructor of type t at '(' (t -2: an array of what it holds; -3-n: vecN of what it holds).
+construct :: (w: []W, t0: int) -> Val {
+  a: [32] Val; n := args(w, a[..]);
+  for i: 0..<n { a[i] = mat(w, a[i]); }
+  t := t0;
+  if t == -2 { t = ty_find(w, YK_ARR, n, ifx n > 0 then conc_ty(w, a[0].ty) else Y_F); }
+  if t <= -3 {
+    vn := -3 - t; b_ := Y_F;
+    if n > 0 { b_ = conc(ybase(w, a[0].ty)); }
+    t = vec(w, b_, vn);
+  }
+  k := w[0].yk[t];
+  if k == YK_SC {
+    if n == 0 { b := w[0].an; ap(w, ifx t == Y_B then "false" else "0"); return mka(w, b, t); }
+    return convert(w, a[0], t);
+  }
+  if k == YK_ARR {
+    for i: 0..<n { a[i] = convert_ty(w, a[i], w[0].ye[t]); }
+    b := w[0].an; ytx(w, t); ap(w, ".[");
+    for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+    apc(w, ']'); return mka(w, b, t);
+  }
+  if k == YK_ST {
+    sid := w[0].ye[t];
+    for i: 0..<n { a[i] = convert_ty(w, a[i], w[0].fy[w[0].sf[sid] + i]); }
+    b := w[0].an; ytx(w, t); ap(w, ".{");
+    for i: 0..<n {
+      if i > 0 { apc(w, ','); }
+      f := w[0].sf[sid] + i; field(w, srx(w, w[0].fs[f], w[0].fe[f])); apc(w, '=');
+      apv(w, a[i]);
+    }
+    apc(w, '}'); return mka(w, b, t);
+  }
+  if k == YK_MAT {
+    if n != 4 { err(w, "a matrix from other than four columns"); }
+    b := w[0].an; ap(w, "M4.{c0="); apv(w, a[0]); ap(w, ",c1="); apv(w, a[1]); ap(w, ",c2="); apv(w, a[2]); ap(w, ",c3="); apv(w, a[3]); apc(w, '}');
+    return mka(w, b, t);
+  }
+  if k == YK_VEC {
+    vn := w[0].yn[t]; tb := w[0].ye[t];
+    if n == 0 { b := w[0].an; vctor(w, t); apc(w, '('); for c: 0..<vn { if c > 0 { apc(w, ','); } apc(w, '0'); } apc(w, ')'); return mka(w, b, t); }
+    if n == 1 && is_vec(w, a[0].ty) { return convert(w, a[0], tb); }
+    // components: scalars as they are, vectors' components when they are paths, else a helper
+    simple := true;
+    for i: 0..<n { if is_vec(w, a[i].ty) && !a[i].path { simple = false; } }
+    if n == 1 && !(a[0].path || a[0].lit) { simple = false; }
+    if simple {
+      parts: [4] Val; np := 0;
+      for i: 0..<n {
+        if is_vec(w, a[i].ty) { for c: 0..<vlen(w, a[i].ty) { if np < 4 { parts[np] = convert(w, comp(w, a[i], c), tb); np += 1; } } }
+        else { if np < 4 { parts[np] = convert(w, a[i], tb); np += 1; } }
+      }
+      if n == 1 { for c: 1..<vn { parts[c] = parts[0]; } np = vn; }
+      if np != vn { err(w, "a vector from the wrong number of components"); }
+      b := w[0].an; vctor(w, t); apc(w, '(');
+      for c: 0..<vn { if c > 0 { apc(w, ','); } apv(w, parts[c]); }
+      apc(w, ')'); return mka(w, b, t);
+    }
+    // a helper: wg_make_T_CODES
+    ty: [8] int;
+    for i: 0..<n { ty[i] = with_base(w, a[i].ty, tb); a[i] = convert(w, a[i], tb); }
+    nb := w[0].an; ap(w, "wg_make_"); ycode(w, t); apc(w, '_'); for i: 0..<n { ycode(w, ty[i]); } hn := art(w, nb, w[0].an - nb);
+    db := w[0].an; ap(w, " :: ("); for i: 0..<n { if i > 0 { apc(w, ','); } apc(w, 'p'); apn(w, i); apc(w, ':'); ytx(w, ty[i]); }
+    ap(w, ")->"); ytx(w, t); ap(w, " {return "); vctor(w, t); apc(w, '(');
+    np := 0;
+    for i: 0..<n {
+      if is_vec(w, ty[i]) { for c: 0..<vlen(w, ty[i]) { if np > 0 { apc(w, ','); } apc(w, 'p'); apn(w, i); apc(w, '.'); ap(w, CMP[c]); np += 1; } }
+      else { if np > 0 { apc(w, ','); } apc(w, 'p'); apn(w, i); np += 1; }
+    }
+    if n == 1 { for c: 1..<vn { ap(w, ",p0"); } }
+    ap(w, ");}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
+    v := Val.{s = nb, n = db - nb, ty = t};
+    return call_with(w, v, a[..], n, t);
+  }
+  err(w, "constructing this type");
+  return Val.{ty = Y_F};
+}
+// bitcast<t>(x): the same bits as another scalar type, componentwise for vectors.
+bitcast :: (w: []W, x: Val, t: int) -> Val {
+  if is_vec(w, t) {
+    from := conc(ybase(w, x.ty)); to := conc(ybase(w, t));
+    nb := w[0].an; ap(w, "wg_bits_"); ycode(w, t); ycode(w, x.ty); name := art(w, nb, w[0].an - nb);
+    db := w[0].an; ap(w, " :: (p:"); ytx(w, x.ty); ap(w, ")->"); ytx(w, t); ap(w, " {return "); vctor(w, t); apc(w, '(');
+    for c: 0..<vlen(w, t) { if c > 0 { apc(w, ','); } bits_of(w, from, to); apc(w, '('); ap(w, "p."); ap(w, CMP[c]); apc(w, ')'); }
+    ap(w, ");}\n"); helper(w, name, db, w[0].an - db); w[0].an = db;
+    b := w[0].an; ap(w, name); apc(w, '('); apv(w, x); apc(w, ')');
+    return mka(w, b, t);
+  }
+  b := w[0].an; bits_of(w, conc(x.ty), t); apc(w, '('); apv(w, x); apc(w, ')');
+  return mka(w, b, t);
+}
+bits_of :: (w: []W, from: int, to: int) {
+  if to == Y_F { ap(w, ifx from == Y_I then "wg_f32_bits_i" else "f32_from_bits"); return; }
+  if from == Y_F { ap(w, ifx to == Y_U then "f32_bits" else "wg_i32_bits_f"); return; }
+  ap(w, ifx to == Y_U then "cast,trunc(u32)" else "cast,trunc(s32)");
+}
+conc_ty :: (w: []W, t: int) -> int { return ifx is_sc(w, t) then conc(t) else t; }
+// A call to a builtin or a procedure.
+call :: (w: []W, name: string) -> Val {
+  a: [32] Val; n := args(w, a[..]);
+  if name == "all" || name == "any" {
+    v := a[0];
+    if v.cop == 0 { err(w, "all() or any() of other than a comparison"); return Val.{ty = Y_B}; }
+    nb := w[0].an; ap(w, "wg_"); ap(w, name); apc(w, '_'); ap(w, OPNAME[v.cop]); apc(w, '_'); ycode(w, v.ay); ycode(w, v.by); hn := art(w, nb, w[0].an - nb);
+    db := w[0].an; ap(w, " :: (a:"); ytx(w, v.ay); ap(w, ",b:"); ytx(w, v.by); ap(w, ")->bool {return ");
+    for c: 0..<vlen(w, v.ty) {
+      if c > 0 { ap(w, ifx name == "all" then " && " else " || "); }
+      ap(w, "a"); if is_vec(w, v.ay) { apc(w, '.'); ap(w, CMP[c]); } ap(w, OPS[v.cop]); ap(w, "b"); if is_vec(w, v.by) { apc(w, '.'); ap(w, CMP[c]); }
+    }
+    ap(w, ";}\n"); helper(w, hn, db, w[0].an - db); w[0].an = db;
+    b := w[0].an; ap(w, hn); apc(w, '('); apr(w, v.as, v.an); apc(w, ','); apr(w, v.bs, v.bn); apc(w, ')');
+    return mka(w, b, Y_B);
+  }
+  for i: 0..<n { a[i] = mat(w, a[i]); }
+  if name == "select" {
+    t := unify_ty(w, a[0].ty, a[1].ty);
+    if !is_sc(w, a[2].ty) { err(w, "select() by a vector"); }
+    x := convert_ty(w, a[1], t); y := convert_ty(w, a[0], t);
+    b := w[0].an; ap(w, "ifx "); apv(w, a[2]); ap(w, " then "); apv(w, x); ap(w, " else "); apv(w, y);
+    return mkv(w, b, t);
+  }
+  if name == "dot" || name == "length" || name == "normalize" || name == "distance" || name == "cross" || name == "reflect" {
+    t := a[0].ty; vn := vlen(w, t);
+    if vn == 0 {
+      if name == "length" { b := w[0].an; ap(w, "abs("); apv(w, a[0]); apc(w, ')'); return mka(w, b, conc(t)); }
+      err(w, "this builtin on scalars");
+    }
+    b := w[0].an;
+    if name == "distance" {
+      d := binop(w, OP_SUB, a[0], a[1]);
+      b = w[0].an; ap(w, "wg_length"); apn(w, vn); apc(w, '('); apv(w, d); apc(w, ')'); return mka(w, b, Y_F);
+    }
+    for i: 0..<n { a[i] = convert(w, a[i], Y_F); }
+    b = w[0].an;
+    ap(w, "wg_"); ap(w, name); apn(w, vn); apc(w, '(');
+    for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+    apc(w, ')');
+    return mka(w, b, ifx name == "dot" || name == "length" then Y_F else vec(w, Y_F, vn));
+  }
+  if name == "transpose" { b := w[0].an; ap(w, "wg_transpose("); apv(w, a[0]); apc(w, ')'); return mka(w, b, a[0].ty); }
+  if name == "unpack4x8unorm" || name == "unpack4x8snorm" || name == "unpack2x16unorm" {
+    b := w[0].an; ap(w, "wg_"); ap(w, name); apc(w, '('); apv(w, a[0]); apc(w, ')');
+    return mka(w, b, vec(w, Y_F, ifx name == "unpack2x16unorm" then 2 else 4));
+  }
+  if name.count > 7 && name[0..<7] == "texture" { return texture(w, name, a[..], n); }
+  f := scalar_fn(name, conc(ybase(w, a[0].ty)));
+  if f.count > 0 && fn_find(w, name) < 0 {
+    vn := 0; ub := ybase(w, a[0].ty);
+    for i: 0..<n { if vlen(w, a[i].ty) > vn { vn = vlen(w, a[i].ty); } }
+    for i: 1..<n { ub = unify(w, ub, a[i].ty); }
+    ub = conc(ub);
+    if vn == 0 {
+      for i: 0..<n { a[i] = convert(w, a[i], ub); }
+      b := w[0].an; ap(w, f); apc(w, '(');
+      for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+      apc(w, ')'); return mka(w, b, ub);
+    }
+    ty: [8] int;
+    for i: 0..<n { ty[i] = with_base(w, a[i].ty, ub); a[i] = convert(w, a[i], ub); }
+    h := cw_helper(w, name, f, ty[..], n, vec(w, ub, vn));
+    return call_with(w, h, a[..], n, h.ty);
+  }
+  g := fn_find(w, name);
+  if g < 0 {
+    // the realm's own Coax (verse_style_*): an f32 function, called by its name
+    if !(name.count > 6 && name[0..<6] == "verse_") { w[0].p -= 1; err(w, "a function this does not know"); }
+    for i: 0..<n { a[i] = convert(w, a[i], Y_F); }
+    b := w[0].an; ap(w, name); apc(w, '(');
+    for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+    apc(w, ')'); return mka(w, b, Y_F);
+  }
+  for i: 0..<n { a[i] = convert_ty(w, a[i], w[0].py[w[0].gp[g] + i]); }
+  b := w[0].an; ap(w, pre(w)); apc(w, '_'); ap(w, name); apc(w, '(');
+  for i: 0..<n { if i > 0 { apc(w, ','); } apv(w, a[i]); }
+  bindings(w, w[0].gm[g], n > 0);
+  apc(w, ')');
+  return mka(w, b, w[0].gr[g]);
+}
+// The bindings a procedure reads, as arguments or parameters.
+bindings :: (w: []W, m: u64, comma: bool) {
+  first := !comma;
+  for i: 0..<w[0].nm {
+    if (m & (cast(u64) 1 << cast(u64) i)) == 0 { continue; }
+    if !first { apc(w, ','); } first = false;
+    ap(w, srx(w, w[0].ms[i], w[0].me[i]));
+  }
+}
+unify_ty :: (w: []W, a: int, b: int) -> int {
+  if is_vec(w, a) { return with_base(w, a, conc(unify(w, a, b))); }
+  if is_vec(w, b) { return with_base(w, b, conc(unify(w, a, b))); }
+  if is_sc(w, a) && is_sc(w, b) { return conc(unify(w, a, b)); }
+  return a;
+}
+convert_ty :: (w: []W, v: Val, t: int) -> Val { return ifx is_sc(w, t) || is_vec(w, t) then convert(w, v, ybase(w, t)) else v; }
+texture :: (w: []W, name: string, a: []Val, n: int) -> Val {
+  kind := w[0].yn[a[0].ty];   // 1 2D, 2 2D array, 3 depth
+  if name == "textureLoad" { a[1] = convert(w, a[1], Y_I); a[2] = convert(w, a[2], Y_I); }
+  else if name == "textureSampleCompareLevel" || name == "textureSampleCompare" { a[3] = convert(w, a[3], Y_F); }
+  else if kind == 2 { a[3] = convert(w, a[3], Y_I); if n > 4 { a[4] = convert(w, a[4], Y_F); } }
+  else if kind == 1 && n > 3 { a[3] = convert(w, a[3], Y_F); }
+  b := w[0].an;
+  if name == "textureDimensions" {
+    ap(w, ifx kind == 1 then "wg_dims_2d(" else ifx kind == 2 then "wg_dims_array(" else "wg_dims_depth("); apv(w, a[0]); apc(w, ')');
+    return mka(w, b, vec(w, Y_U, 2));
+  }
+  if name == "textureLoad" {
+    ap(w, ifx kind == 3 then "wg_load_depth(" else "wg_load_2d("); apv(w, a[0]); apc(w, ','); apv(w, a[1]); apc(w, ','); apv(w, a[2]); apc(w, ')');
+    return mka(w, b, ifx kind == 3 then Y_F else vec(w, Y_F, 4));
+  }
+  if name == "textureSampleCompareLevel" || name == "textureSampleCompare" {
+    ap(w, "gpu_compare("); apv(w, a[0]); apc(w, ','); apv(w, a[1]); apc(w, ','); apv(w, a[2]); apc(w, ','); apv(w, a[3]); apc(w, ')');
+    return mka(w, b, Y_F);
+  }
+  if kind == 2 {
+    // texture, sampler, uv, layer, [level or bias]
+    ap(w, ifx name == "textureSample" then "gpu_sample_layer(" else ifx name == "textureSampleLevel" then "gpu_sample_layer_level(" else "gpu_sample_layer_bias(");
+    apv(w, a[0]); apc(w, ','); apv(w, a[1]); apc(w, ','); apv(w, a[2]); apc(w, ','); apv(w, a[3]);
+    if n > 4 { apc(w, ','); apv(w, a[4]); }
+    apc(w, ')'); return mka(w, b, vec(w, Y_F, 4));
+  }
+  if kind == 1 {
+    ap(w, ifx name == "textureSample" then "gpu_sample(" else ifx name == "textureSampleLevel" then "gpu_sample_level(" else "gpu_sample_bias(");
+    apv(w, a[0]); apc(w, ','); apv(w, a[1]); apc(w, ','); apv(w, a[2]);
+    if n > 3 { apc(w, ','); apv(w, a[3]); }
+    apc(w, ')'); return mka(w, b, vec(w, Y_F, 4));
+  }
+  err(w, "this texture call");
+  return Val.{ty = Y_F};
+}
+
+// ---- statements
+// The block at p ('{'), its statements at depth d; leaves p past '}' and writes the closing brace (no newline).
+block :: (w: []W, d: int) {
+  expect(w, "{");
+  done_line(w);
+  scope := w[0].nl;
+  while !is_at(w, "}") && w[0].tk[w[0].p] != TK_EOF { stmt(w, d); }
+  flush(w, w[0].ts[w[0].p], d);
+  w[0].nl = scope;
+  w[0].p += 1;
+  ind(w, d - 1); o(w, "}");
+}
+semi :: (w: []W) { if is_at(w, ";") { w[0].p += 1; } }
+stmt :: (w: []W, d: int) {
+  flush(w, w[0].ts[w[0].p], d);
+  sb := w[0].an;
+  if is_at(w, ";") { w[0].p += 1; return; }
+  if is_at(w, "{") { ind(w, d); o(w, "{\n"); block(w, d + 1); o(w, "\n"); return; }
+  if is_at(w, "let") || is_at(w, "var") || is_at(w, "const") { ind(w, d); decl(w); o(w, "\n"); done_line(w); w[0].an = sb; return; }
+  if is_at(w, "if") { ind(w, d); if_chain(w, d); o(w, "\n"); w[0].an = sb; return; }
+  if is_at(w, "for") { for_loop(w, d); w[0].an = sb; return; }
+  if is_at(w, "while") {
+    w[0].p += 1; c := mat(w, ex(w));
+    ind(w, d); o(w, "while "); ov(w, c); o(w, " {\n");
+    u := w[0].nu; w[0].un[u] = 0; w[0].nu = u + 1;
+    block(w, d + 1); w[0].nu = u; o(w, "\n"); w[0].an = sb; return;
+  }
+  if is_at(w, "loop") {
+    w[0].p += 1; ind(w, d); o(w, "while true {\n");
+    u := w[0].nu; w[0].un[u] = 0; w[0].nu = u + 1;
+    block(w, d + 1); w[0].nu = u; o(w, "\n"); w[0].an = sb; return;
+  }
+  if is_at(w, "switch") { switch_(w, d); w[0].an = sb; return; }
+  if is_at(w, "return") {
+    w[0].p += 1; ind(w, d);
+    if is_at(w, ";") { o(w, "return;\n"); }
+    else {
+      v := mat(w, ex(w));
+      rt := w[0].gr[w[0].fn_cur];
+      o(w, "return "); ov(w, convert_ty(w, v, rt)); o(w, ";\n");
+    }
+    semi(w); done_line(w); w[0].an = sb; return;
+  }
+  if is_at(w, "discard") { w[0].p += 1; semi(w); ind(w, d); o(w, "gpu_discard();\n"); done_line(w); return; }
+  if is_at(w, "break") { w[0].p += 1; semi(w); ind(w, d); o(w, "break;\n"); done_line(w); return; }
+  if is_at(w, "continue") {
+    w[0].p += 1; semi(w); ind(w, d);
+    u := w[0].nu - 1;
+    if u >= 0 && w[0].un[u] > 0 { o(w, "{"); for i: 0..<w[0].un[u] { w[0].out[w[0].on + i] = w[0].ar[w[0].us[u] + i]; } w[0].on += w[0].un[u]; o(w, " continue;}\n"); }
+    else { o(w, "continue;\n"); }
+    done_line(w); return;
+  }
+  ind(w, d); stmt_simple(w); semi(w); o(w, "\n"); done_line(w); w[0].an = sb;
+}
+// let, var or const at p: NAME:T = value;
+decl :: (w: []W) {
+  w[0].p += 1;
+  ns := w[0].ts[w[0].p]; ne := w[0].te[w[0].p]; w[0].p += 1;
+  t := -1;
+  if is_at(w, ":") { w[0].p += 1; t = ptype(w); }
+  has := false; v: Val;
+  if is_at(w, "=") { w[0].p += 1; v = mat(w, ex(w)); has = true; if t < 0 { t = conc_ty(w, v.ty); } }
+  semi(w);
+  if t < 0 { err(w, "a declaration with no type or value"); t = Y_F; }
+  l := local(w, ns, ne, t);
+  o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b));
+  if has { o(w, "="); ov(w, convert_ty(w, v, t)); }
+  o(w, ";");
+}
+if_chain :: (w: []W, d: int) {
+  w[0].p += 1;
+  c := mat(w, ex(w));
+  o(w, "if "); ov(w, c); o(w, " {\n");
+  block(w, d + 1);
+  if is_at(w, "else") {
+    w[0].p += 1;
+    if is_at(w, "if") { o(w, " else "); if_chain(w, d); return; }
+    o(w, " else {\n"); block(w, d + 1);
+  }
+}
+// An assignment, increment or call statement at p, without its ';'.
+stmt_simple :: (w: []W) {
+  if is_at(w, "_") && atn(w, 1, "=") { w[0].p += 2; v := mat(w, ex(w)); w[0].serial += 1; o(w, "_d"); b := w[0].an; apn(w, w[0].serial); o(w, art(w, b, w[0].an - b)); o(w, ":="); ov(w, v); o(w, ";"); return; }
+  lhs := postfix(w);
+  if lhs.um > 0 { err(w, "an assignment to a uniform"); }
+  if is_at(w, "++") || is_at(w, "--") {
+    inc := is_at(w, "++"); w[0].p += 1;
+    if conc(lhs.ty) == Y_U { ov(w, lhs); o(w, "="); o(w, ifx inc then "add_wrap(" else "sub_wrap("); ov(w, lhs); o(w, ",1);"); }
+    else { ov(w, lhs); o(w, ifx inc then "+=1;" else "-=1;"); }
+    return;
+  }
+  if is_at(w, "=") { w[0].p += 1; v := mat(w, ex(w)); ov(w, lhs); o(w, "="); ov(w, convert_ty(w, v, lhs.ty)); o(w, ";"); return; }
+  s := cur(w);
+  if w[0].tk[w[0].p] == TK_P && s.count == 2 && s[1] == '=' && s != "==" && s != "!=" && s != "<=" && s != ">=" {
+    op := ifx s[0] == '+' then OP_ADD else ifx s[0] == '-' then OP_SUB else ifx s[0] == '*' then OP_MUL else ifx s[0] == '/' then OP_DIV else ifx s[0] == '%' then OP_MOD else ifx s[0] == '&' then OP_BAND else ifx s[0] == '|' then OP_BOR else OP_XOR;
+    w[0].p += 1;
+    v := mat(w, ex(w));
+    r := binop(w, op, lhs, v);
+    ov(w, lhs); o(w, "="); ov(w, convert_ty(w, r, lhs.ty)); o(w, ";");
+    return;
+  }
+  // a call as a statement: its value, if any, kept in a local Coax lets go unused
+  if lhs.ty != 0 { w[0].serial += 1; o(w, "_r"); b := w[0].an; apn(w, w[0].serial); o(w, art(w, b, w[0].an - b)); o(w, ":="); }
+  ov(w, lhs); o(w, ";");
+}
+for_loop :: (w: []W, d: int) {
+  w[0].p += 1; expect(w, "(");
+  scope := w[0].nl;
+  ind(w, d); o(w, "{\n");
+  if !is_at(w, ";") { ind(w, d + 1); if is_at(w, "var") || is_at(w, "let") { decl(w); } else { stmt_simple(w); semi(w); } o(w, "\n"); } else { w[0].p += 1; }
+  c: Val; hc := false;
+  if !is_at(w, ";") { c = mat(w, ex(w)); hc = true; }
+  expect(w, ";");
+  // the update, as text kept for the loop's end and each continue
+  ub := w[0].on;
+  if !is_at(w, ")") { stmt_simple(w); }
+  un := w[0].on - ub; us := w[0].an;
+  for i: 0..<un { w[0].ar[us + i] = w[0].out[ub + i]; } w[0].an += un; w[0].on = ub;
+  expect(w, ")");
+  ind(w, d + 1); o(w, "while "); if hc { ov(w, c); } else { o(w, "true"); } o(w, " {\n");
+  u := w[0].nu; w[0].us[u] = us; w[0].un[u] = un; w[0].nu = u + 1;
+  // the body, then the update before its closing brace
+  expect(w, "{"); done_line(w);
+  inner := w[0].nl;
+  while !is_at(w, "}") && w[0].tk[w[0].p] != TK_EOF { stmt(w, d + 2); }
+  flush(w, w[0].ts[w[0].p], d + 2);
+  w[0].p += 1; w[0].nl = inner;
+  if un > 0 { ind(w, d + 2); for i: 0..<un { w[0].out[w[0].on + i] = w[0].ar[us + i]; } w[0].on += un; o(w, "\n"); }
+  w[0].nu = u;
+  ind(w, d + 1); o(w, "}\n"); ind(w, d); o(w, "}\n");
+  w[0].nl = scope;
+}
+switch_ :: (w: []W, d: int) {
+  w[0].p += 1;
+  v := mat(w, ex(w));
+  scope := w[0].nl;
+  t := conc_ty(w, v.ty);
+  ind(w, d); o(w, "{\n");
+  l := fresh(w, "_sw", t);
+  ind(w, d + 1); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); o(w, "="); ov(w, v); o(w, ";\n");
+  expect(w, "{");
+  first := true; dflt := -1;
+  while !is_at(w, "}") && w[0].tk[w[0].p] != TK_EOF {
+    flush(w, w[0].ts[w[0].p], d + 1);
+    if is_at(w, "default") {
+      w[0].p += 1; if is_at(w, ":") { w[0].p += 1; }
+      dflt = w[0].p; skip_braces(w); continue;
+    }
+    expect(w, "case");
+    any_default := false; nv := 0; xs: [16] Val;
+    while !is_at(w, ":") && !is_at(w, "{") {
+      if is_at(w, "default") { any_default = true; w[0].p += 1; }
+      else { xs[nv] = mat(w, ex(w)); nv += 1; }
+      if is_at(w, ",") { w[0].p += 1; }
+    }
+    cb := w[0].an;
+    for i: 0..<nv { if i > 0 { ap(w, " || "); } ap(w, lname(w, l)); ap(w, "=="); apv(w, xs[i]); }
+    if is_at(w, ":") { w[0].p += 1; }
+    if any_default { dflt = w[0].p; skip_braces(w); continue; }
+    if first { ind(w, d + 1); o(w, "if "); } else { o(w, " else if "); }
+    o(w, art(w, cb, w[0].an - cb)); o(w, " {\n");
+    block(w, d + 2); first = false;
+  }
+  w[0].p += 1;
+  if dflt >= 0 {
+    end := w[0].p; w[0].p = dflt;
+    if first { ind(w, d + 1); o(w, "{\n"); } else { o(w, " else {\n"); }
+    block(w, d + 2); w[0].p = end; first = false;
+  }
+  if !first { o(w, "\n"); }
+  ind(w, d); o(w, "}\n");
+  w[0].nl = scope;
+}
+
+// ---- declarations (pass 2)
+emit_struct :: (w: []W, sid: int) {
+  b := w[0].an; st_name(w, sid); o(w, art(w, b, w[0].an - b)); o(w, " :: struct {");
+  for i: 0..<w[0].sc[sid] {
+    f := w[0].sf[sid] + i;
+    b = w[0].an; field(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, art(w, b, w[0].an - b)); o(w, ":"); b = w[0].an; ytx(w, w[0].fy[f]); o(w, art(w, b, w[0].an - b)); o(w, "; ");
+  }
+  o(w, "}\n");
+}
+emit_const :: (w: []W, c: int) {
+  save := w[0].p; w[0].p = w[0].kx[c];
+  v := ex(w);
+  w[0].p = save;
+  b := w[0].an; ap(w, pre(w)); upper(w); apc(w, '_'); ap(w, srx(w, w[0].ks[c], w[0].ke[c])); o(w, art(w, b, w[0].an - b));
+  if is_sc(w, v.ty) {
+    o(w, " :: ");
+    if v.lit && (v.ty == Y_U || v.ty == Y_I) { o(w, ifx v.ty == Y_U then "cast(u32)" else "cast(s32)"); }
+    ov(w, v); o(w, ";\n");
+  } else {
+    o(w, " :: ()->"); b = w[0].an; ytx(w, v.ty); o(w, art(w, b, w[0].an - b)); o(w, " {return "); ov(w, v); o(w, ";}\n");
+  }
+}
+emit_fn :: (w: []W, g: int) {
+  w[0].fn_cur = g; w[0].nl = 0; w[0].nu = 0; w[0].lbn = 0;
+  stage := w[0].gst[g];
+  name := srx(w, w[0].gs[g], w[0].ge[g]);
+  fb := w[0].an;
+  // a vertex entry's attributes: a struct of them, the first parameter after the indices
+  nloc := 0;
+  for i: 0..<w[0].gpn[g] { if w[0].pa[w[0].gp[g] + i] == PA_LOC { nloc += 1; } }
+  if stage == 1 && nloc > 0 {
+    o(w, pre(w)); o(w, "_"); o(w, name); o(w, "_in :: struct {");
+    for i: 0..<w[0].gpn[g] {
+      q := w[0].gp[g] + i;
+      if w[0].pa[q] != PA_LOC { continue; }
+      o(w, srx(w, w[0].ps[q], w[0].pe[q])); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b)); o(w, "; ");
+    }
+    o(w, "}\n");
+  }
+  o(w, pre(w)); o(w, "_"); o(w, name); o(w, " :: (");
+  first := true;
+  if stage == 1 {
+    // the vertex and instance index, in that order, then the attributes
+    for want: 1..<3 {
+      found := -1;
+      for i: 0..<w[0].gpn[g] { if w[0].pa[w[0].gp[g] + i] == want { found = w[0].gp[g] + i; } }
+      if !first { o(w, ","); } first = false;
+      if found >= 0 { l := local(w, w[0].ps[found], w[0].pe[found], Y_U); o(w, lname(w, l)); }
+      else { l := fresh(w, ifx want == 1 then "_vid" else "_iid", Y_U); o(w, lname(w, l)); }
+      o(w, ":u32");
+    }
+    if nloc > 0 { o(w, ",in_:"); o(w, pre(w)); o(w, "_"); o(w, name); o(w, "_in"); }
+  } else if stage == 2 {
+    // the varyings (or the position), then front facing
+    for want: 0..<2 {
+      for i: 0..<w[0].gpn[g] {
+        q := w[0].gp[g] + i; pa := w[0].pa[q];
+        if (want == 0 && pa != PA_FRONT) || (want == 1 && pa == PA_FRONT) {
+          if !first { o(w, ","); } first = false;
+          l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b));
+        }
+      }
+    }
+  } else {
+    for i: 0..<w[0].gpn[g] {
+      q := w[0].gp[g] + i;
+      if !first { o(w, ","); } first = false;
+      l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b));
+    }
+  }
+  for i: 0..<w[0].nm {
+    if (w[0].gm[g] & (cast(u64) 1 << cast(u64) i)) == 0 { continue; }
+    if stage > 0 && w[0].mk[i] == MV_PRIVATE { continue; }
+    if !first { o(w, ","); } first = false;
+    o(w, srx(w, w[0].ms[i], w[0].me[i])); o(w, ":");
+    t := w[0].my[i];
+    if w[0].mk[i] == MV_UNIFORM { o(w, "[]f32"); }
+    else if w[0].mk[i] == MV_PRIVATE { o(w, "[]"); b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); }
+    else { b := w[0].an; ytx(w, t); o(w, art(w, b, w[0].an - b)); }
+  }
+  o(w, ")");
+  if w[0].gr[g] != 0 { o(w, "->"); b := w[0].an; ytx(w, w[0].gr[g]); o(w, art(w, b, w[0].an - b)); }
+  o(w, " {\n");
+  // an entry owns its private variables: one element each, its procedures given the view
+  if stage > 0 {
+    for i: 0..<w[0].nm {
+      if (w[0].gm[g] & (cast(u64) 1 << cast(u64) i)) == 0 || w[0].mk[i] != MV_PRIVATE { continue; }
+      name_ := srx(w, w[0].ms[i], w[0].me[i]);
+      o(w, "  "); o(w, name_); o(w, "_store:[1]"); b := w[0].an; ytx(w, w[0].my[i]); o(w, art(w, b, w[0].an - b)); o(w, ";\n");
+      o(w, "  "); o(w, name_); o(w, ":="); o(w, name_); o(w, "_store[..];\n");
+    }
+  }
+  if stage == 1 && nloc > 0 {
+    for i: 0..<w[0].gpn[g] {
+      q := w[0].gp[g] + i;
+      if w[0].pa[q] != PA_LOC { continue; }
+      l := local(w, w[0].ps[q], w[0].pe[q], w[0].py[q]);
+      o(w, "  "); o(w, lname(w, l)); o(w, ":"); b := w[0].an; ytx(w, w[0].py[q]); o(w, art(w, b, w[0].an - b)); o(w, "=in_."); o(w, srx(w, w[0].ps[q], w[0].pe[q])); o(w, ";\n");
+    }
+  }
+  w[0].p = w[0].gb[g];
+  skip_comments(w, w[0].ts[w[0].p]);
+  block(w, 1);
+  o(w, "\n");
+  w[0].an = fb;
+}
+emit :: (w: []W) {
+  // declarations in source order, with the comments before each
+  w[0].p = 0; si := 0;
+  while w[0].tk[w[0].p] != TK_EOF {
+    start := w[0].p;
+    flush(w, w[0].ts[start], 0);
+    stage := skip_attrs(w);
+    if is_at(w, "struct") {
+      sid := si; si += 1;
+      // the uniform block's structs are offsets; the others are Coax structs
+      used := false;
+      for m: 0..<w[0].nm { if w[0].mk[m] == MV_UNIFORM && w[0].my[m] == ty_find(w, YK_ST, 0, sid) { used = true; } }
+      if used { uniform_table(w, sid); } else { emit_struct(w, sid); }
+      skip_braces(w); if is_at(w, ";") { w[0].p += 1; }
+      w[0].last_line = w[0].tl[w[0].p - 1]; continue;
+    }
+    if is_at(w, "const") || is_at(w, "override") {
+      c := k_find(w, tt(w, w[0].p + 1)); emit_const(w, c); skip_to(w, ";"); w[0].p += 1; w[0].last_line = w[0].tl[w[0].p - 1]; continue;
+    }
+    if is_at(w, "var") {
+      m := mv_find(w, tt(w, ifx atn(w, 1, "<") then w[0].p + 2 + 2 else w[0].p + 1));
+      skip_to(w, ";"); w[0].p += 1;
+      w[0].last_line = w[0].tl[w[0].p - 1]; continue;
+    }
+    if is_at(w, "fn") {
+      g := fn_find(w, tt(w, w[0].p + 1));
+      emit_fn(w, g);
+      w[0].p = w[0].gbe[g] + 1; w[0].last_line = w[0].tl[w[0].p - 1];
+      continue;
+    }
+    if is_at(w, "alias") || is_at(w, "enable") || is_at(w, "requires") || is_at(w, "diagnostic") { skip_to(w, ";"); w[0].p += 1; continue; }
+    w[0].p += 1;
+  }
+  flush(w, w[0].sn + 1, 0);
+}
+uniform_table :: (w: []W, sid: int) {
+  b := w[0].an; st_name(w, sid);
+  o(w, "// "); o(w, art(w, b, w[0].an - b)); o(w, ", a uniform block, is read from a []f32 at these offsets (floats):\n");
+  for i: 0..<w[0].sc[sid] {
+    f := w[0].sf[sid] + i;
+    o(w, "//   "); o(w, srx(w, w[0].fs[f], w[0].fe[f])); o(w, " "); b = w[0].an; apn(w, ufield(w, sid, i)); o(w, art(w, b, w[0].an - b)); o(w, "\n");
+  }
+  w[0].an = b;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 {
+    tool_errln("usage: coax/web/tool.sh wgsl-coax OUT.coax PREFIX IN.wgsl... [--stop MARKER] [--loads A,B]");
+    return 2;
+  }
+  w: [1] W;
+  prefix := args_at(a[..], 1);
+  for i: 0..<prefix.count { w[0].pre[i] = prefix[i]; } w[0].pren = prefix.count;
+  stop := args_value(a[..], "--stop", "");
+  loads := args_value(a[..], "--loads", "");
+  buf: [SRC_MAX] u8;
+  i := 2;
+  while i < args_count(a[..]) {
+    path := args_at(a[..], i);
+    if path == "--stop" || path == "--loads" { i += 2; continue; }
+    n := fs_read(path, buf[..]);
+    if n < 0 { print("wgsl-coax: cannot read %\n", path); return 2; }
+    text := cast(string) buf[0..<n];
+    // up to the first line holding the marker
+    if stop.count > 0 {
+      for j: 0..<n - stop.count {
+        if text[j..<j + stop.count] == stop {
+          k := j; while k > 0 && text[k - 1] != '\n' { k -= 1; }
+          n = k; break;
+        }
+      }
+    }
+    for j: 0..<n { w[0].src[w[0].sn + j] = buf[j]; } w[0].sn += n;
+    w[0].src[w[0].sn] = '\n'; w[0].sn += 1;
+    i += 1;
+  }
+  ty_init(w[..]);
+  lex(w[..]);
+  declare_structs(w[..]);
+  declare(w[..]);
+  closure(w[..]);
+  o(w[..], "// Translated from WGSL by coax/web/wgsl-coax.coax.\n");
+  if loads.count > 0 {
+    j := 0;
+    while j <= loads.count {
+      k := j; while k < loads.count && loads[k] != ',' { k += 1; }
+      o(w[..], "#load \""); o(w[..], loads[j..<k]); o(w[..], "\";\n");
+      j = k + 1;
+    }
+  }
+  o(w[..], "\n");
+  emit(w[..]);
+  o(w[..], "\n// ---- generated by wgsl-coax: the vector helpers this file calls\n");
+  for h: 0..<w[0].nh {
+    s := w[0].hs[h];
+    // a helper is its name, then its definition
+    e := ifx h + 1 < w[0].nh then w[0].hs[h + 1] else w[0].vn;
+    for j: s..<e { w[0].out[w[0].on] = w[0].voc[j]; w[0].on += 1; }
+  }
+  out := args_at(a[..], 0);
+  if !fs_write(out, cast(string) w[0].out[0..<w[0].on]) { print("wgsl-coax: cannot write %\n", out); return 2; }
+  print("wgsl-coax: % procedures, % helpers, % bytes, % errors\n", w[0].ng, w[0].nh, w[0].on, w[0].errs);
+  return ifx w[0].errs == 0 then 0 else 1;
+}

@@ -1,0 +1,109 @@
+// One of Everglade's passes, ported to Coax, against the browser (G5,
+// docs/verse/native-gpu.md). A frame's uniforms come from the browser's wasm
+// (verse/native/wasm-run.ts: the pack, page facts, golden mode, clock 0, 90
+// frames). The WGSL and verse/style.coax get one integer hash for their sin
+// hashes (verse/gpu/int-hash.coax: sin of large arguments is each GPU's own),
+// coax/web/wgsl-coax.coax translates that WGSL to Coax as it does the live
+// file, and `coax spirv` lowers the pass. verse/gpu/pass-check.coax then
+// draws the WGSL in headless Chrome and the Coax on HOST's GPU and compares.
+// With --live it also compares the live shaders (the sin hashes), reported
+// only: those differ where the ridges and clouds are.
+//   coax/web/tool.sh verse/gpu/everglade-pass.coax HOST PASS [--live]     (from the repo root; PASS: bg)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+// A pass: its entries, colour targets, vertices, and the values allowed past
+// the tolerance (edge pixels; bg measured 15 at 320x180).
+EpPass :: struct { name: string; vs: string; fs: string; targets: string; vertices: string; allow: string; }
+EP_PASSES :: [1] EpPass.[EpPass.{name = "bg", vs = "bg_vs", fs = "bg_fs", targets = "2", vertices = "3", allow = "40"}];
+EP_PACK :: "apps/openagents-web/realms/everglade/assets/everglade.pack";
+
+ep_find :: (name: string) -> int {
+  for i: 0..<EP_PASSES.count { if EP_PASSES[i].name == name { return i; } }
+  return -1;
+}
+#test "the passes by name" { #assert ep_find("bg") == 0 && ep_find("scene") == -1 && ep_find("") == -1; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: everglade-pass HOST PASS [--live]"); return 2; }
+  host := args_at(a[..], 0);
+  k := ep_find(args_at(a[..], 1));
+  if k < 0 { tool_err("everglade-pass: no pass "); tool_errln(args_at(a[..], 1)); return 2; }
+  p := EP_PASSES[k];
+  if !fs_exists(EP_PACK) { tool_errln("everglade-pass: no Everglade pack (verse/tools/pack_realm.py builds it); run from the repo root"); return 1; }
+  tb: [1024] u8;
+  work := fs_temp("everglade-pass-", tb[..]);
+  if work.count == 0 { tool_errln("everglade-pass: no temporary directory"); return 1; }
+  status := run(host, p, work, args_has(a[..], "--live"));
+  r := fs_remove(work);
+  return status;
+}
+
+run :: (host: string, p: EpPass, work: string, live: bool) -> int {
+  b: [8] [1024] u8;
+  wasm := fs_join(work, "everglade.wasm", b[0][..]);
+  build := [12] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
+    "verse/player.coax", "verse/grid.coax", "verse/everglade/river.coax", "verse/everglade/guard-guide-policy.coax", "", "", "", ""];
+  if !step("the wasm", build[0..<8], false) { return 1; }
+  frame := [20] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
+    "--frames", "90", "--every", "90", "--golden", "--extra", "9000", "--size", "320x180", "--dump", work];
+  if !step("the frame", frame[..], false) { return 1; }
+  int_dir := fs_join(work, "int", b[1][..]);
+  ih := [3] string.["coax/web/tool.sh", "verse/gpu/int-hash.coax", int_dir];
+  if !step("the integer hash", ih[..], false) { return 1; }
+  print("everglade-pass: %, one integer hash on both sides\n", p.name);
+  ok := check(host, p, work, fs_join(int_dir, "everglade.wgsl", b[2][..]), fs_join(int_dir, "style.coax", b[3][..]), "int", p.allow);
+  if live {
+    print("everglade-pass: %, the live sin hashes (reported only)\n", p.name);
+    lr := check(host, p, work, "apps/openagents-web/everglade.wgsl", "verse/style.coax", "live", "9999999");
+  }
+  return ifx ok then 0 else 1;
+}
+
+// The WGSL through wgsl-coax and coax spirv, then pass-check against the browser.
+check :: (host: string, p: EpPass, work: string, wgsl: string, style: string, tag: string, allow: string) -> bool {
+  b: [8] [1024] u8;
+  coax_out := fs_join(work, cat(tag, ".coax", b[0][..]), b[1][..]);
+  spv := fs_join(work, cat(tag, ".spv", b[2][..]), b[3][..]);
+  cwd := fs_cwd(b[4][..]);
+  loads := cat(cat(cwd, "/verse/gpu/wgsl.coax,", b[5][..]), ifx style[0] == '/' then style else cat(cat(cwd, "/", b[6][..]), style, b[7][..]), b[4][..]);
+  vs: [64] u8; fs_: [64] u8;
+  tr := [8] string.["coax/web/tool.sh", "wgsl-coax", coax_out, "eg", wgsl, "--stop", "---- generated: verse/style.coax", "--loads"];
+  tr2: [9] string;
+  for i: 0..<8 { tr2[i] = tr[i]; }
+  tr2[8] = loads;
+  if !step("the translation", tr2[..], false) { return false; }
+  low := [7] string.["coax/bin/coax", "spirv", coax_out, "--vertex", cat("eg_", p.vs, vs[..]), "--fragment", cat("eg_", p.fs, fs_[..])];
+  low2: [9] string;
+  for i: 0..<7 { low2[i] = low[i]; }
+  low2[7] = "-o"; low2[8] = spv;
+  if !step("the lowering", low2[..], false) { return false; }
+  pc := [17] string.["coax/web/tool.sh", "verse/gpu/pass-check.coax", host, wgsl, p.vs, p.fs, spv, fs_join(work, "u.bin", b[5][..]),
+    "--size", "320x180", "--targets", p.targets, "--vertices", p.vertices, "--allow", allow, ""];
+  return step("the comparison", pc[0..<16], true);
+}
+
+cat :: (x: string, y: string, out: [] u8) -> string {
+  if x.count + y.count > out.count { return ""; }
+  for i: 0..<x.count { out[i] = x[i]; }
+  for i: 0..<y.count { out[x.count + i] = y[i]; }
+  return cast(string) out[0..<x.count + y.count];
+}
+#test "cat" { o: [4] u8; #assert cat("ab", "cd", o[..]) == "abcd" && cat("abc", "de", o[..]) == ""; }
+
+// Runs argv; its lines are printed when show is set or it fails.
+step :: (what: string, argv: [] string, show: bool) -> bool {
+  out: [262144] u8; err: [65536] u8;
+  r := proc_run(argv, 900000, out[..], err[..]);
+  ok := r.started == 0 && r.status == 0 && !r.timed_out;
+  if show || !ok {
+    if r.out_n > 0 { print("%\n", cast(string) out[0..<r.out_n]); }
+    tool_err(cast(string) err[0..<r.err_n]);
+  }
+  if !ok { tool_err("everglade-pass: "); tool_err(what); tool_errln(" failed"); }
+  return ok;
+}

@@ -1,0 +1,178 @@
+// WGSL's vocabulary in Coax (docs/verse/native-gpu.md, G5): what a shader
+// translated from WGSL by coax/web/wgsl-coax.coax calls beyond the shader
+// library (shader.coax): integer vectors, the builtins Coax has no
+// instruction for (atan2, tanh, exp2, round, the unpacks...), WGSL's
+// clamping conversions, a uniform block read from a []f32, and texture
+// sizes and loads by vector. The translation generates its componentwise
+// helpers (wg_add_f3f3 and the like) itself; these are the rest. Each is
+// ordinary Coax, so it runs on the CPU in checks and lowers to SPIR-V.
+//   coax/bin/coax test verse/gpu/wgsl.coax --library
+#load "shader.coax";
+
+I2 :: struct {x:s32; y:s32;}
+I3 :: struct {x:s32; y:s32; z:s32;}
+I4 :: struct {x:s32; y:s32; z:s32; w:s32;}
+U2 :: struct {x:u32; y:u32;}
+U3 :: struct {x:u32; y:u32; z:u32;}
+U4 :: struct {x:u32; y:u32; z:u32; w:u32;}
+i2 :: (x:s32,y:s32)->I2 {return I2.{x=x,y=y};}
+i3 :: (x:s32,y:s32,z:s32)->I3 {return I3.{x=x,y=y,z=z};}
+i4 :: (x:s32,y:s32,z:s32,w:s32)->I4 {return I4.{x=x,y=y,z=z,w=w};}
+u2 :: (x:u32,y:u32)->U2 {return U2.{x=x,y=y};}
+u3 :: (x:u32,y:u32,z:u32)->U3 {return U3.{x=x,y=y,z=z};}
+u4 :: (x:u32,y:u32,z:u32,w:u32)->U4 {return U4.{x=x,y=y,z=z,w=w};}
+
+// A uniform block's vectors, from its floats at a WGSL offset.
+wg_at2 :: (u:[]f32,at:int)->V2 {return v2(u[at],u[at+1]);}
+wg_at3 :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
+wg_at4 :: (u:[]f32,at:int)->V4 {return v4(u[at],u[at+1],u[at+2],u[at+3]);}
+
+// Geometry.
+wg_dot2 :: (a:V2,b:V2)->f32 {return dot2(a,b);}
+wg_dot3 :: (a:V3,b:V3)->f32 {return dot3(a,b);}
+wg_dot4 :: (a:V4,b:V4)->f32 {return dot4(a,b);}
+wg_length2 :: (a:V2)->f32 {return sqrt(dot2(a,a));}
+wg_length3 :: (a:V3)->f32 {return sqrt(dot3(a,a));}
+wg_length4 :: (a:V4)->f32 {return sqrt(dot4(a,a));}
+wg_normalize2 :: (a:V2)->V2 {return scale2(a,1.0f32/wg_length2(a));}
+wg_normalize3 :: (a:V3)->V3 {return normalize3(a);}
+wg_normalize4 :: (a:V4)->V4 {return scale4(a,1.0f32/wg_length4(a));}
+wg_cross3 :: (a:V3,b:V3)->V3 {return cross3(a,b);}
+wg_reflect3 :: (i:V3,n:V3)->V3 {return reflect3(i,n);}
+wg_transpose :: (m:M4)->M4 {
+  return M4.{c0=v4(m.c0.x,m.c1.x,m.c2.x,m.c3.x),c1=v4(m.c0.y,m.c1.y,m.c2.y,m.c3.y),
+             c2=v4(m.c0.z,m.c1.z,m.c2.z,m.c3.z),c3=v4(m.c0.w,m.c1.w,m.c2.w,m.c3.w)};
+}
+
+// Scalar builtins Coax has no instruction for.
+WG_PI :: 3.14159265358979f32;
+WG_LN2 :: 0.693147180559945f32;
+wg_fmod :: (a:f32,b:f32)->f32 {return a-b*wg_trunc(a/b);}
+wg_trunc :: (x:f32)->f32 {if x<0 {return -floor(-x);} return floor(x);}
+wg_ceil :: (x:f32)->f32 {return -floor(-x);}
+wg_sign :: (x:f32)->f32 {if x>0 {return 1.0f32;} if x<0 {return -1.0f32;} return 0.0f32;}
+// Halves to even, as WGSL's round.
+wg_round :: (x:f32)->f32 {
+  r:=floor(x+0.5f32);
+  if r-x==0.5f32 && wg_fmod(r,2.0f32)!=0 {return r-1.0f32;}
+  return r;
+}
+wg_exp2 :: (x:f32)->f32 {return exp(x*WG_LN2);}
+wg_log2 :: (x:f32)->f32 {return log(x)/WG_LN2;}
+wg_tanh :: (x:f32)->f32 {
+  if x>10 {return 1.0f32;}
+  if x< -10 {return -1.0f32;}
+  e:=exp(2.0f32*x);
+  return (e-1.0f32)/(e+1.0f32);
+}
+wg_inverse_sqrt :: (x:f32)->f32 {return 1.0f32/sqrt(x);}
+// atan on [0, 1]: Abramowitz and Stegun 4.4.49 (within 2e-8 before f32 rounding).
+wg_atan01 :: (x:f32)->f32 {
+  z:=x*x;
+  p:=-0.0040540580f32;
+  p=p*z+0.0218612288f32; p=p*z-0.0559098861f32; p=p*z+0.0964200441f32; p=p*z-0.1390853351f32;
+  p=p*z+0.1994653599f32; p=p*z-0.3332985605f32; p=p*z+0.9999993329f32;
+  return x*p;
+}
+wg_atan2 :: (y:f32,x:f32)->f32 {
+  ax:=abs(x);ay:=abs(y);
+  hi:=fmax(ax,ay);
+  if hi==0 {return 0.0f32;}
+  r:=wg_atan01(fmin(ax,ay)/hi);
+  if ay>ax {r=WG_PI*0.5f32-r;}
+  if x<0 {r=WG_PI-r;}
+  if y<0 {r=-r;}
+  return r;
+}
+wg_atan :: (x:f32)->f32 {return wg_atan2(x,1.0f32);}
+wg_min_i :: (a:s32,b:s32)->s32 {if b<a {return b;} return a;}
+wg_max_i :: (a:s32,b:s32)->s32 {if b>a {return b;} return a;}
+wg_clamp_i :: (x:s32,lo:s32,hi:s32)->s32 {return wg_min_i(wg_max_i(x,lo),hi);}
+wg_abs_i :: (x:s32)->s32 {if x<0 {return -x;} return x;}
+wg_sign_i :: (x:s32)->s32 {if x>0 {return 1;} if x<0 {return -1;} return 0;}
+wg_min_u :: (a:u32,b:u32)->u32 {if b<a {return b;} return a;}
+wg_max_u :: (a:u32,b:u32)->u32 {if b>a {return b;} return a;}
+wg_clamp_u :: (x:u32,lo:u32,hi:u32)->u32 {return wg_min_u(wg_max_u(x,lo),hi);}
+
+// Conversions as WGSL's: a float to an integer clamps to the range (NaN is 0).
+wg_u32_f :: (x:f32)->u32 {
+  if !(x>0) {return 0;}
+  if x>=4294967040.0f32 {return 4294967040;}
+  return cast(u32)x;
+}
+wg_i32_f :: (x:f32)->s32 {
+  if x!=x {return 0;}
+  if x<= -2147483648.0f32 {return -2147483647-1;}
+  if x>=2147483520.0f32 {return 2147483520;}
+  return cast(s32)x;
+}
+wg_f32_b :: (b:bool)->f32 {if b {return 1.0f32;} return 0.0f32;}
+wg_u32_b :: (b:bool)->u32 {if b {return 1;} return 0;}
+wg_i32_b :: (b:bool)->s32 {if b {return 1;} return 0;}
+wg_f32_bits_i :: (x:s32)->f32 {return f32_from_bits(cast,trunc(u32)x);}
+wg_i32_bits_f :: (x:f32)->s32 {return cast,trunc(s32)f32_bits(x);}
+
+// Packed colours: four bytes (or two u16) of a u32, low first.
+wg_byte :: (x:u32,at:u32)->u32 {return (x>>at)&0xFF;}
+wg_unpack4x8unorm :: (x:u32)->V4 {
+  return v4(cast(f32)wg_byte(x,0)/255.0f32,cast(f32)wg_byte(x,8)/255.0f32,cast(f32)wg_byte(x,16)/255.0f32,cast(f32)wg_byte(x,24)/255.0f32);
+}
+wg_snorm8 :: (b:u32)->f32 {
+  s:=cast(f32)b;
+  if b>=128 {s=s-256.0f32;}
+  return fmax(s/127.0f32,-1.0f32);
+}
+wg_unpack4x8snorm :: (x:u32)->V4 {return v4(wg_snorm8(wg_byte(x,0)),wg_snorm8(wg_byte(x,8)),wg_snorm8(wg_byte(x,16)),wg_snorm8(wg_byte(x,24)));}
+wg_unpack2x16unorm :: (x:u32)->V2 {return v2(cast(f32)(x&0xFFFF)/65535.0f32,cast(f32)(x>>16)/65535.0f32);}
+
+// Textures by vector.
+wg_dims_2d :: (t:Tex2D)->U2 {return u2(gpu_width(t),gpu_height(t));}
+wg_dims_depth :: (t:TexDepth)->U2 {return u2(gpu_depth_width(t),gpu_depth_height(t));}
+wg_load_2d :: (t:Tex2D,c:I2,level:s32)->V4 {return gpu_load(t,c.x,c.y,level);}
+wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c.y,level);}
+
+#test "uniforms read at offsets, geometry as WGSL's" {
+  u:[8] f32;
+  for i:0..<8 {u[i]=cast(f32)i;}
+  #assert wg_at2(u[..],1).y==2 && wg_at3(u[..],2).z==4 && wg_at4(u[..],4).w==7;
+  #assert wg_length2(v2(3,4))==5 && wg_length4(v4(1,1,1,1))==2 && wg_normalize2(v2(0,2)).y==1 && wg_normalize4(v4(0,0,0,3)).w==1;
+  #assert wg_dot2(v2(1,2),v2(3,4))==11 && wg_dot3(v3(1,0,0),v3(2,0,0))==2 && wg_dot4(v4(1,1,1,1),v4(1,2,3,4))==10;
+  #assert wg_length3(v3(0,3,4))==5 && wg_normalize3(v3(2,0,0)).x==1 && wg_cross3(v3(1,0,0),v3(0,1,0)).z==1 && wg_reflect3(v3(1,-1,0),v3(0,1,0)).y==1;
+  m:=M4.{c0=v4(1,2,3,4),c1=v4(5,6,7,8),c2=v4(9,10,11,12),c3=v4(13,14,15,16)};
+  t:=wg_transpose(m);
+  #assert t.c0.y==5 && t.c1.x==2 && t.c3.z==12 && t.c2.w==15 && t.c0.x==1 && t.c3.w==16;
+}
+#test "scalar builtins" {
+  #assert wg_fmod(5.5f32,2)==1.5f32 && wg_fmod(-5.5f32,2)== -1.5f32 && wg_trunc(-1.5f32)== -1 && wg_trunc(1.5f32)==1 && wg_ceil(1.25f32)==2 && wg_ceil(-1.25f32)== -1;
+  #assert wg_sign(3)==1 && wg_sign(-3)== -1 && wg_sign(0)==0;
+  #assert wg_round(2.5f32)==2 && wg_round(3.5f32)==4 && wg_round(-2.5f32)== -2 && wg_round(1.4f32)==1 && wg_round(1.6f32)==2 && wg_round(-1.6f32)== -2;
+  #assert abs(wg_exp2(3)-8)<0.00001f32 && abs(wg_log2(8)-3)<0.00001f32 && wg_inverse_sqrt(4)==0.5f32;
+  #assert wg_tanh(20)==1 && wg_tanh(-20)== -1 && wg_tanh(0)==0 && abs(wg_tanh(0.5f32)-0.46211716f32)<0.000001f32;
+  #assert abs(wg_atan2(1,1)-WG_PI/4)<0.000001f32 && abs(wg_atan2(1,-1)-3*WG_PI/4)<0.000001f32 && abs(wg_atan2(-1,-1)+3*WG_PI/4)<0.000001f32;
+  #assert abs(wg_atan2(2,1)-1.10714872f32)<0.000001f32 && wg_atan2(0,0)==0 && abs(wg_atan2(0,-1)-WG_PI)<0.000001f32 && abs(wg_atan(1)-WG_PI/4)<0.000001f32;
+  #assert wg_min_i(-2,3)== -2 && wg_max_i(-2,3)==3 && wg_clamp_i(9,0,4)==4 && wg_clamp_i(-9,0,4)==0 && wg_abs_i(-3)==3 && wg_abs_i(3)==3;
+  #assert wg_sign_i(-4)== -1 && wg_sign_i(4)==1 && wg_sign_i(0)==0 && wg_min_u(2,3)==2 && wg_max_u(2,3)==3 && wg_clamp_u(9,1,4)==4 && wg_clamp_u(0,1,4)==1;
+}
+#test "conversions clamp; bits and bytes" {
+  #assert wg_u32_f(-3)==0 && wg_u32_f(3.9f32)==3 && wg_u32_f(5000000000.0f32)==4294967040 && wg_u32_f(0)==0;
+  #assert wg_i32_f(-3.9f32)== -3 && wg_i32_f(-5000000000.0f32)== -2147483647-1 && wg_i32_f(5000000000.0f32)==2147483520 && wg_i32_f(7)==7;
+  #assert wg_f32_b(true)==1 && wg_f32_b(false)==0 && wg_u32_b(true)==1 && wg_u32_b(false)==0 && wg_i32_b(true)==1 && wg_i32_b(false)==0;
+  #assert wg_f32_bits_i(1065353216)==1 && wg_i32_bits_f(1)==1065353216 && wg_f32_bits_i(-1073741824)== -2;
+  c:=wg_unpack4x8unorm(0xFF800000);
+  #assert c.x==0 && c.y==0 && abs(c.z-128.0f32/255.0f32)<0.0000001f32 && c.w==1;
+  s:=wg_unpack4x8snorm(0x80FF017F);
+  #assert s.x==1 && abs(s.y-1.0f32/127.0f32)<0.0000001f32 && abs(s.z+1.0f32/127.0f32)<0.0000001f32 && s.w== -1;
+  h:=wg_unpack2x16unorm(0xFFFF0000);
+  #assert h.x==0 && h.y==1;
+  #assert i2(1,2).y==2 && i3(1,2,3).z==3 && i4(1,2,3,4).w==4 && u2(1,2).x==1 && u3(1,2,3).y==2 && u4(1,2,3,4).z==3;
+}
+#test "textures by vector" {
+  texels:[6] V4;
+  for i:0..<6 {texels[i]=v4(cast(f32)i,0,0,1);}
+  t:=Tex2D.{width=3,height=2,texels=texels[..]};
+  d:[6] f32;
+  for i:0..<6 {d[i]=cast(f32)i*0.1f32;}
+  z:=TexDepth.{width=3,height=2,depth=d[..]};
+  #assert wg_dims_2d(t).x==3 && wg_dims_2d(t).y==2 && wg_dims_depth(z).x==3 && wg_dims_depth(z).y==2;
+  #assert wg_load_2d(t,i2(2,1),0).x==5 && wg_load_depth(z,i2(1,1),0)==d[4];
+}

@@ -1,0 +1,3461 @@
+// Translated from WGSL by coax/web/wgsl-coax.coax.
+#load "../gpu/wgsl.coax";
+#load "../style.coax";
+
+// Everglade's three passes: the sky, the scene (with the river's water in
+// two blended halves after it) and the HUD. Every number
+// comes from everglade.coax: the view, the eye and the fog, the sun, the
+// ground's heights (store 0) and each object's place, size, colour and shape
+// (store 1), the shadows, the streets, the paved squares and the HUD's
+// plates and strokes. The kit's meshes come from the realm's pack: its
+// vertices (pack_realm.py: 48 bytes, position, normal, uv, colour with its
+// layer in the top byte) and its texture layers.
+// EgU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   horizon 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   sun 28
+//   ground 32
+//   shadow 36
+//   path 100
+//   path_info 228
+//   square 232
+//   plate 248
+//   water 760
+//   style 1084
+//   solid 1212
+//   light_info 1340
+//   lights 1344
+//   weather 1472
+//   ponds 1484
+//   fx 1500
+//   tide 2096
+//   marks 2104
+// the river's waves, look and mesh (verse/water-look.coax W_* rows)
+// the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
+// where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
+// the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps), and how many of the last are the spells' blasts
+// each lamp: x, y, z, reach; r, g, b, strength
+// rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, deck top (m), buildings in solid (everglade.coax weather_frame)
+// the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
+// W6 (verse/everglade/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
+// above, below, the water's speed over the sill), the rowboats' hulls (x, z, yaw, on), the wakes'
+// trails (2 movers, 8 points each: x, z, when, speed; the newest first), then 64 particles (x, y, z,
+// size; kind, alpha, age's share)
+// the water the spells hold back (everglade-tide.coax td_uniforms): Part Water's trench (ax, az, bx, bz; half width), the whirlpool's eye (x, z, radius)
+// the spells' marks on the ground (everglade-marks.coax sp_marks): a count, then two rows each (ground_mark)
+// The painterly preset at the clock (art-styles.md; everglade.coax writes u.style each frame).
+eg_st :: (i:u32,u:[]f32)->V4 {
+  return wg_at4(u,(cast(int)i)*4+1084);
+}
+// The haze over a surface d metres off at height y, looking along v (spec 4): the preset's curve from
+// where it starts (u.sun.w) and its density (u.eye.w), both the preset's own but thinned over the
+// map's lift, teal where thin and the preset's blue far off, warm toward the key light.
+eg_haze_share :: (d:f32,y:f32,u:[]f32)->f32 {
+  return verse_style_haze(d,y,u[25]-2.5f32,u[31],u[27],eg_st(9,u).z,eg_st(9,u).w);
+}
+eg_haze_colour :: (f:f32,v:V3,u:[]f32)->V3 {
+  hz:V3=wg_sw_xyz_f4(eg_st(10,u));
+  cap:f32=eg_st(9,u).z;
+  h:V3=v3(verse_style_haze_hue(hz.x,0.0f32,f,cap),verse_style_haze_hue(hz.y,1.0f32,f,cap),verse_style_haze_hue(hz.z,2.0f32,f,cap));
+  // the green between the trunks (comparison round 2: the references' near haze is a green-teal mist,
+  // ours a clear sky blue): looking level, the haze takes the meadow's hue, the light it has crossed
+  // the grass and the leaves to reach; by day only, none looking up or down
+  green:V3=wg_div_f3f(eg_meadow_srgb(0.5f32),wg_dot3(eg_meadow_srgb(0.5f32),v3(0.3333f32,0.3333f32,0.3333f32)));
+  level:f32=1.0f32-smoothstep(0.05f32,0.35f32,abs(v.y));
+  h=wg_mix_f3f3f(h,wg_mul_f3f3(h,green),(0.38f32*level)*(1.0f32-eg_st(14,u).w));
+  return wg_mix_f3f3f(h,wg_sw_xyz_f4(eg_st(11,u)),verse_style_haze_glow(wg_dot3(v,wg_sw_xyz_f4(eg_st(1,u)))));
+}
+// The spell bar's square pieces (everglade-spells.coax sp_bar), as the previous engine's HUD drew
+// them (hotbar.rs draw_of, demolition/hotbar.rs meter): a pixel is in the rect when its centre is,
+// as a quad covers it, and s.w is the piece's unit (the tray's, the meter's) or edge (a slot's frame),
+// device pixels. Its colours are the old HUD's, sRGB-encoded as its target encoded them.
+eg_hud_rect :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if ((((p.x<r.x)||(p.y<r.y))||(p.x>=r.z))||(p.y>=r.w)) {
+    return under;
+  }
+  e:f32=fmin(fmin(p.x-r.x,r.z-p.x),fmin(p.y-r.y,r.w-p.y)); // to the nearest edge
+  t:f32=fmax(s.w,1.0f32);
+  look:f32=s.y;
+  if (look>7.5f32) {
+    // a damage number's shade (everglade-watch.coax watch_pops_draw): a soft dark oval under its digits
+    h:V2=wg_max_f2f2(wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32),v2(1.0f32,1.0f32));
+    d:f32=wg_length2(wg_div_f2f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),h)),h));
+    return wg_mix_f3f3f(under,v3(0.03f32,0.0f32,0.0f32),clampf(s.x,0.0f32,1.0f32)*(1.0f32-smoothstep(0.4f32,1.0f32,d)));
+  }
+  if (look<3.5f32) {
+    // the tray (the owner, October 30: as the HUD's other plates, chamfered, grey, no bronze): a
+    // dark see-through well, a thin grey line, its corners cut at 45 degrees
+    dx:f32=fmin(p.x-r.x,r.z-p.x);
+    dy:f32=fmin(p.y-r.y,r.w-p.y);
+    cut:f32=5.0f32*t;
+    if ((dx+dy)<cut) {
+      return under;
+    }
+    rim:f32=fmin(e,((dx+dy)-cut)*0.7071f32);
+    if (rim<t) {
+      return wg_mix_f3f3f(under,v3(0.46f32,0.48f32,0.5f32),0.9f32);
+    }
+    return wg_mix_f3f3f(under,v3(0.045f32,0.05f32,0.058f32),0.82f32);
+  }
+  if (look<5.5f32) {
+    // a slot's frame: a dark grey line, or the HUD's blue while its spell is picked or casting
+    if (e>=t) {
+      return under;
+    }
+    return ifx look>4.5f32 then v3(0.48f32,0.72f32,1.0f32) else v3(0.26f32,0.28f32,0.3f32);
+  }
+  if (look<6.5f32) {
+    // a meter: a bronze line round a dark well
+    if (e<t) {
+      return v3(0.708f32,0.658f32,0.527f32);
+    }
+    return wg_mix_f3f3f(under,v3(0.437f32,0.313f32,0.221f32),0.94f32);
+  }
+  return v3(1.0f32,0.735f32,0.381f32); // the cast's fill, fire orange
+}
+eg_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.x<=0.0f32) {
+    return under;
+  }
+  if (s.y>2.5f32) {
+    return eg_hud_rect(p,under,r,s);
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=6.0f32*s.z;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.y>=2.0f32;
+  fill:V3=ifx over then v3(0.09f32,0.12f32,0.09f32) else v3(0.055f32,0.075f32,0.06f32);
+  line:V3=ifx over||(s.y>=1.0f32) then v3(0.90f32,0.76f32,0.45f32) else v3(0.62f32,0.52f32,0.30f32);
+  w:f32=1.25f32*s.z;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.x,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*fmin(1.0f32,a+0.1f32))*0.8f32);
+}
+eg_plates :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<64 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=eg_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+248),wg_at4(u,(cast(int)((k*2)+1))*4+248));
+      k+=1;
+    }
+  }
+  return c;
+}
+eg_encode :: (c:V3)->V3 {
+  return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
+}
+eg_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// Everything draws light (rgba16float, its alpha the share that blooms) and aux (r: the sky's glow
+// the light shafts blur); post_fs blooms, tones, encodes and lays the plates over it (host.js post).
+EgLit :: struct {light:V4; aux:V4; }
+// The view's inverse (the clip rows', by cofactors), so the sky is painted along each pixel's ray.
+eg_unview :: (u:[]f32)->M4 {
+  m:M4=wg_transpose(M4.{c0=wg_at4(u,8),c1=wg_at4(u,12),c2=wg_at4(u,16),c3=wg_at4(u,20)});
+  a00:f32=m.c0.x;
+  a01:f32=m.c0.y;
+  a02:f32=m.c0.z;
+  a03:f32=m.c0.w;
+  a10:f32=m.c1.x;
+  a11:f32=m.c1.y;
+  a12:f32=m.c1.z;
+  a13:f32=m.c1.w;
+  a20:f32=m.c2.x;
+  a21:f32=m.c2.y;
+  a22:f32=m.c2.z;
+  a23:f32=m.c2.w;
+  a30:f32=m.c3.x;
+  a31:f32=m.c3.y;
+  a32:f32=m.c3.z;
+  a33:f32=m.c3.w;
+  b00:f32=(a00*a11)-(a01*a10);
+  b01:f32=(a00*a12)-(a02*a10);
+  b02:f32=(a00*a13)-(a03*a10);
+  b03:f32=(a01*a12)-(a02*a11);
+  b04:f32=(a01*a13)-(a03*a11);
+  b05:f32=(a02*a13)-(a03*a12);
+  b06:f32=(a20*a31)-(a21*a30);
+  b07:f32=(a20*a32)-(a22*a30);
+  b08:f32=(a20*a33)-(a23*a30);
+  b09:f32=(a21*a32)-(a22*a31);
+  b10:f32=(a21*a33)-(a23*a31);
+  b11:f32=(a22*a33)-(a23*a32);
+  det:f32=(((((b00*b11)-(b01*b10))+(b02*b09))+(b03*b08))-(b04*b07))+(b05*b06);
+  k:f32=1.0f32/(ifx abs(det)<1e-12f32 then 1e-9f32 else det);
+  return M4.{c0=wg_mul_f4f(v4(((a11*b11)-(a12*b10))+(a13*b09),((a02*b10)-(a01*b11))-(a03*b09),((a31*b05)-(a32*b04))+(a33*b03),((a22*b04)-(a21*b05))-(a23*b03)),k),c1=wg_mul_f4f(v4(((a12*b08)-(a10*b11))-(a13*b07),((a00*b11)-(a02*b08))+(a03*b07),((a32*b02)-(a30*b05))-(a33*b01),((a20*b05)-(a22*b02))+(a23*b01)),k),c2=wg_mul_f4f(v4(((a10*b10)-(a11*b08))+(a13*b06),((a01*b08)-(a00*b10))-(a03*b06),((a30*b04)-(a31*b02))+(a33*b00),((a21*b02)-(a20*b04))-(a23*b00)),k),c3=wg_mul_f4f(v4(((a11*b07)-(a10*b09))-(a12*b06),((a00*b09)-(a01*b07))+(a02*b06),((a31*b01)-(a30*b03))-(a32*b00),((a20*b03)-(a21*b01))+(a22*b00)),k)};
+}
+eg_pixel_ray :: (p:V2,u:[]f32)->V3 {
+  ndc:V4=v4(((p.x/u[0])*2.0f32)-1.0f32,1.0f32-((p.y/u[1])*2.0f32),0.9f32,1.0f32);
+  w:V4=m4_apply(eg_unview(u),ndc);
+  return wg_normalize3(wg_sub_f3f3(wg_div_f3f(v3(w.x,w.y,w.z),w.w),v3(u[24],u[25],u[26])));
+}
+eg_hash2 :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+// Stars along a ray at night: one at most per cell of the sky's own grid, a few brighter.
+eg_stars :: (d:V3)->f32 {
+  if (d.y<=0.0f32) {
+    return 0.0f32;
+  }
+  q:V2=wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),(d.y+0.35f32)),260.0f32);
+  g:V2=wg_floor_f2(q);
+  h:f32=eg_hash2(g);
+  if (h<0.93f32) {
+    return 0.0f32;
+  }
+  at:V2=wg_add_f2f(wg_add_f2f2(g,wg_mul_f2f(v2(eg_hash2(wg_add_f2f(g,1.7f32)),eg_hash2(wg_add_f2f(g,9.1f32))),0.8f32)),0.1f32);
+  return (ifx h>0.992f32 then 0.75f32 else 0.32f32)*(1.0f32-smoothstep(0.12f32,0.42f32,wg_length2(wg_sub_f2f2(q,at))));
+}
+// The painted sky along d (spec 5): the gradient by elevation, the horizon band lifted toward the
+// haze, the sun or moon with its two-term halo, and soft two-tone clouds drifting with the wind.
+eg_sky :: (d:V3,l:V3,u:[]f32)->V3 {
+  up:f32=d.y;
+  // horizon to zenith; a warm horizon under a teal zenith greys where they meet, so the blend keeps
+  // the saturation its two ends have there (teal, cream, gold: not grey)
+  h:V3=wg_sw_xyz_f4(eg_st(13,u));
+  z:V3=wg_sw_xyz_f4(eg_st(12,u));
+  t:f32=verse_style_sky_t(up);
+  c:V3=wg_mix_f3f3f(h,z,t);
+  gain:f32=verse_style_chroma_gain(eg_saturation(c),mix(eg_saturation(h),eg_saturation(z),t),1.0f32);
+  cy:f32=verse_style_luma(c.x,c.y,c.z);
+  c=wg_max_f3f3(wg_add_f3f3(v3(cy,cy,cy),wg_mul_f3f(wg_sub_f3f3(c,v3(cy,cy,cy)),gain)),v3(0.0f32,0.0f32,0.0f32));
+  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(eg_st(10,u)),verse_style_sky_band(up,eg_st(12,u).w));
+  ct:f32=wg_dot3(d,l);
+  moon:bool=eg_st(1,u).w>0.5f32;
+  disc:f32=smoothstep(cos(eg_st(14,u).x*1.15f32),cos(eg_st(14,u).x*0.85f32),ct);
+  halo:f32=(verse_style_halo(ct,eg_st(14,u).y)*0.5f32)+(verse_style_halo(ct,eg_st(14,u).z)*0.25f32);
+  // round the sun the sky takes the haze key's colour (painted over, not added: added, the tone
+  // curve whitens it; at dusk it is deep orange), round the moon its light is added
+  if moon {
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),halo),0.5f32));
+  } else {
+    c=wg_mix_f3f3f(c,wg_mul_f3f(wg_sw_xyz_f4(eg_st(11,u)),1.5f32),clampf(halo*1.1f32,0.0f32,0.9f32));
+  }
+  // under cloud (storm, rain, overcast) the disc goes, leaving a soft bright patch where it is, by the
+  // weather's cover; clear (cover up to 0.15) it is the disc as drawn
+  overcast:f32=clampf((u[1478]-0.15f32)/0.55f32,0.0f32,1.0f32);
+  glow_patch:f32=smoothstep(cos(eg_st(14,u).x*7.0f32),1.0f32,ct)*0.12f32;
+  c=wg_mix_f3f3f(c,ifx moon then wg_mul_f3f(v3(0.85f32,0.88f32,1.0f32),1.6f32) else wg_mul_f3f(v3(1.0f32,0.97f32,0.88f32),4.0f32),mix(disc,glow_patch,overcast));
+  cl:V4=eg_st(15,u);
+  c2:V4=eg_st(16,u);
+  if ((up>0.01f32)&&(cl.x>0.0f32)) {
+    t_2:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+    p:V2=wg_add_f2f2(wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),up),cl.y),wg_mul_f2f(wg_mul_f2f(wg_sw_xy_f4(eg_st(25,u)),cl.z),t_2));
+    n:f32=verse_style_cloud_field(p.x,p.y,c2.x,c2.y,cl.w);
+    cover:f32=verse_style_cloud_cover(n,cl.x,c2.z,c2.w);
+    toward:V2=wg_mul_f2f(wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32))),260.0f32);
+    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(p.x+toward.x,p.y+toward.y,c2.x,c2.y,cl.w));
+    night:f32=eg_st(14,u).w;
+    cloud:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(4,u)),eg_st(17,u).w),0.9f32),wg_sw_xyz_f4(eg_st(17,u)),lit),fmax(eg_st(0,u).w,0.3f32)),(1.0f32-(0.75f32*night)));
+    c=wg_mix_f3f3f(c,cloud,(cover*verse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
+  }
+  return wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_make_f3_f(eg_stars(d)),eg_st(14,u).w),0.6f32));
+}
+// ---- the far ridges (eg-paint-distance; art-styles.md: "hills behind it step back in paler, bluer
+// layers, like painted flats on a stage"): past the forest wall, three rings of hills round the town
+// at 160, 260 and 420 m, painted into the sky where no geometry stands. Each is a silhouette over the
+// horizon by its bearing, the nearest crowned with trees, and each takes the haze its distance gives,
+// so they stack paler and bluer; the key lights the face toward it. Nothing is drawn or reachable
+// there, and a phone pays a few noise taps in the sky's pixels.
+EG_RIDGES :: cast(u32)3;
+eg_ridge_ring :: (i:u32)->V4 { // radius (m), top above the town (m), bearing scale, crown (tree) height (m)
+  r:[3]V4=[3]V4.[v4(160.0f32,26.0f32,3.0f32,7.0f32),v4(260.0f32,72.0f32,2.0f32,0.0f32),v4(420.0f32,140.0f32,1.3f32,0.0f32)];
+  return r[cast(int)i];
+}
+eg_ridges :: (d:V3,sky_c:V3,u:[]f32)->V3 {
+  flat:f32=wg_length2(v2(d.x,d.z));
+  if (flat<0.001f32) {
+    return sky_c;
+  }
+  dir:V2=wg_div_f2f(v2(d.x,d.z),flat);
+  e:V2=v2(u[24],u[26]);
+  a:f32=wg_atan2(dir.y,dir.x);
+  {
+    i:u32=0;
+    while i<EG_RIDGES {
+      r:V4=eg_ridge_ring(i);
+      // how far along the ray (on the ground plane) it meets the ring
+      b:f32=wg_dot2(e,dir);
+      c:f32=wg_dot2(e,e)-(r.x*r.x);
+      t:f32=(-b)+sqrt(fmax((b*b)-c,0.0f32));
+      // the silhouette: two octaves round the ring (seamless: sampled on a circle), then tree crowns
+      ring:V2=wg_mul_f2f(v2(cos(a),sin(a)),r.z);
+      k:f32=(cast(f32)(i))*17.0f32;
+      shape:f32=(0.62f32*eg_noise(wg_add_f2f2(ring,v2(k,3.0f32))))+(0.38f32*eg_noise(wg_add_f2f2(wg_mul_f2f(ring,2.7f32),v2(5.0f32,k))));
+      top:f32=r.y*(0.35f32+(0.65f32*shape));
+      if (r.w>0.0f32) { // pointed crowns, a tree every 0.8 degree, some missing, each its own height
+        cell:f32=a*70.0f32;
+        f:f32=fract(cell);
+        h:f32=eg_hash2(v2(floor(cell),k));
+        top=top+(((r.w*(0.4f32+(0.6f32*h)))*pow(fmax(1.0f32-abs((2.0f32*f)-1.0f32),0.0f32),0.6f32))*stepf(0.2f32,h));
+      }
+      if (((d.y*t)/flat)>(top-u[25])) {
+        {i=add_wrap(i,1); continue;}
+      }
+      // its colour: the forest's green (the nearest), going to a slate blue-green with the distance,
+      // the side the key faces brighter, then the haze for its layer
+      lean:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(ring,1.7f32),v2(9.0f32,k)))-0.5f32;
+      face:f32=0.75f32+(0.5f32*clampf((wg_dot3(v3(-dir.x,0.0f32,-dir.y),wg_sw_xyz_f4(eg_st(1,u)))*0.5f32)+lean,0.0f32,1.0f32));
+      land:V3=wg_mix_f3f3f(v3(0.05f32,0.15f32,0.05f32),v3(0.06f32,0.12f32,0.17f32),(cast(f32)(i))*0.5f32);
+      amb:V3=v3(verse_style_ambient(1.0f32,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(1.0f32,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(1.0f32,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
+      lit:V3=wg_mul_f3f3(land,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),face),amb));
+      // a fixed step of the haze cap a layer (0.15, 0.4, 0.65), so each stays apart and the nearest stays green;
+      // never less than the haze a surface that far off takes (the owner, October 29: in fog and storm the far
+      // trees in front of them hazed nearly white while the ridges stayed dark, cut-outs against the hills)
+      fog:f32=fmax(eg_st(9,u).z*(0.15f32+(0.25f32*(cast(f32)(i)))),eg_haze_share(t,r.y*0.5f32,u));
+      return wg_mix_f3f3f(lit,eg_haze_colour(fog,d,u),fog);
+      i=add_wrap(i,1);
+    }
+  }
+  return sky_c;
+}
+eg_bg_fs :: (pos:V4,u:[]f32)->EgLit {
+  d:V3=eg_pixel_ray(v2(pos.x,pos.y),u);
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  c:V3=eg_water_under_view(eg_weather_streaks(eg_weather_sky(eg_ridges(d,eg_sky(d,l,u),u),d,u),d,1000.0f32,u),wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(d,1000.0f32)),d,u); // the far ridges; the weather (W9); diving, the underwater look (W7)
+  b:V4=eg_st(19,u);
+  return EgLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(verse_style_shaft_source(wg_dot3(d,l)),0.0f32,0.0f32,0.0f32)};
+}
+EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then each person's (three rows each, then three of colours) // the river's baked nodes (verse/water-look.coax)
+eg_word :: (i:u32,vertices:[]u32)->f32 {
+  return f32_from_bits(vertices[cast(int)i]);
+}
+EgS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32; uv:V2; slice:u32; dye:V4; local:V3; shard:u32; }
+// a person's cloth dye: rgb, then its rule and share (person_dye)
+// where it is in its mesh's own space (a chunk's cut is there)
+// a chunk of a broken piece: its object + 1 (LOOK_SHARD), else 0
+eg_quad :: (v:u32)->V2 {
+  q:[6]V2=[6]V2.[v2(0.0f32,0.0f32),v2(1.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,1.0f32)];
+  return q[cast(int)v];
+}
+eg_height :: (x:s32,z:s32,u:[]f32,heights:[]f32)->f32 {
+  n:s32=wg_i32_f(u[32]);
+  cx:s32=wg_clamp_i(x,0,n);
+  cz:s32=wg_clamp_i(z,0,n);
+  return heights[cast(int)(cast,trunc(u32)((cz*(n+1))+cx))];
+}
+EgVert :: struct {p:V3; n:V3; }
+EG_TAU :: 6.2831853f32;
+eg_box_vertex :: (id:u32)->EgVert {
+  f:u32=id/6;
+  c:V2=wg_sub_f2f2(eg_quad(id%6),v2(0.5f32,0.5f32));
+  n:V3=v3(0.0f32,0.0f32,0.0f32);
+  a:V3=v3(0.0f32,0.0f32,0.0f32);
+  b:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    _sw2:u32=f;
+    if _sw2==0 {
+      n=v3(1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==1 {
+      n=v3(-1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==2 {
+      n=v3(0.0f32,1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==3 {
+      n=v3(0.0f32,-1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==4 {
+      n=v3(0.0f32,0.0f32,1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else {
+      n=v3(0.0f32,0.0f32,-1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    }
+  }
+  return EgVert.{p=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(n,0.5f32),wg_mul_f3f(a,c.x)),wg_mul_f3f(b,c.y)),n=n};
+}
+eg_sphere_vertex :: (id:u32)->EgVert {
+  q:u32=id/6;
+  c:V2=eg_quad(id%6);
+  lon:f32=(((cast(f32)(q%16))+c.x)/16.0f32)*EG_TAU;
+  lat:f32=(((cast(f32)(q/16))+c.y)/10.0f32)*3.14159265f32;
+  n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
+  return EgVert.{p=wg_mul_f3f(n,0.5f32),n=n};
+}
+eg_cylinder_vertex :: (id:u32)->EgVert {
+  if (id<96) {
+    c:V2=eg_quad(id%6);
+    a:f32=(((cast(f32)(id/6))+c.x)/16.0f32)*EG_TAU;
+    n:V3=v3(cos(a),0.0f32,sin(a));
+    return EgVert.{p=v3(n.x*0.5f32,c.y-0.5f32,n.z*0.5f32),n=n};
+  }
+  t:u32=sub_wrap(id,96)/3;
+  k:u32=sub_wrap(id,96)%3;
+  top:bool=t<16;
+  y:f32=ifx top then 0.5f32 else -0.5f32;
+  n:V3=v3(0.0f32,ifx top then 1.0f32 else -1.0f32,0.0f32);
+  if (k==0) {
+    return EgVert.{p=v3(0.0f32,y,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t%16))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*EG_TAU;
+  return EgVert.{p=v3(cos(a)*0.5f32,y,sin(a)*0.5f32),n=n};
+}
+eg_cone_vertex :: (id:u32)->EgVert {
+  t:u32=(id%48)/3;
+  k:u32=id%3;
+  if (id<48) {
+    mid:f32=(((cast(f32)(t))+0.5f32)/16.0f32)*EG_TAU;
+    if (k==0) {
+      return EgVert.{p=v3(0.0f32,0.5f32,0.0f32),n=wg_normalize3(v3(cos(mid),0.5f32,sin(mid)))};
+    }
+    a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*EG_TAU;
+    return EgVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=wg_normalize3(v3(cos(a),0.5f32,sin(a)))};
+  }
+  n:V3=v3(0.0f32,-1.0f32,0.0f32);
+  if (k==0) {
+    return EgVert.{p=v3(0.0f32,-0.5f32,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*EG_TAU;
+  return EgVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=n};
+}
+// Carved stone (the fountain's): coursed blocks 0.26 m high and 0.6 m long, every other course
+// offset by half, each block its own tone, the joints dark; weathered in streaks running down; wet
+// and darker under the water and a little above it, with a mossy band at the waterline.
+eg_carved :: (tint:V3,p:V3,uv:V2,u:[]f32,water_nodes:[]f32)->V3 {
+  course:f32=floor(uv.y/0.26f32);
+  along:f32=(uv.x/0.6f32)+(ifx fract(course*0.5f32)>0.25f32 then 0.5f32 else 0.0f32);
+  block:f32=floor(along);
+  fy:f32=fract(uv.y/0.26f32);
+  fx:f32=fract(along);
+  gap:f32=fmin(fmin(fx,1.0f32-fx)*0.6f32,fmin(fy,1.0f32-fy)*0.26f32);
+  joint:f32=1.0f32-smoothstep(0.006f32,0.022f32,gap);
+  c:V3=wg_mul_f3f(wg_mul_f3f(tint,(0.86f32+(0.18f32*eg_water_hash(v3(block,course,7.0f32))))),(0.9f32+(0.14f32*eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),6.0f32),p.y*4.0f32)))));
+  c=wg_mul_f3f(c,0.9f32+(0.1f32*eg_noise(v2(uv.x*2.5f32,p.y*0.5f32))));
+  c=wg_mix_f3f3f(c,wg_mul_f3f(c,0.55f32),joint);
+  depth:f32=eg_water_depth_at(p,u,water_nodes);
+  wet:f32=smoothstep(-0.08f32,0.0f32,depth);
+  c=wg_mix_f3f3f(c,wg_mul_f3f3(c,v3(0.6f32,0.66f32,0.64f32)),wet);
+  moss:f32=exp(((-(depth+0.02f32))*(depth+0.02f32))/0.002f32)*smoothstep(0.3f32,0.7f32,eg_noise(v2(uv.x*3.0f32,p.y*9.0f32)));
+  c=wg_mix_f3f3f(c,v3(0.3f32,0.38f32,0.2f32),moss*0.6f32);
+  return c;
+}
+// Timber (the bridge's): on a deck's top, boards 0.3 m wide across the way over with dark gaps and
+// their ends staggered every 2.4 m, each board its own tone; elsewhere, grain along the piece; both
+// weathered in broad patches and darker and wet low down near the water.
+EG_LOOK_PLANKS :: cast(u32)11;
+EG_LOOK_WOOD :: cast(u32)12;
+eg_timber :: (tint:V3,p:V3,n:V3,deck:bool,u:[]f32,water_nodes:[]f32)->V3 {
+  c:V3=tint;
+  if (deck&&(n.y>0.5f32)) {
+    board:f32=floor(p.x/0.3f32);
+    fx:f32=fract(p.x/0.3f32);
+    run:f32=(p.z/2.4f32)+eg_water_hash(v3(board,3.0f32,1.0f32));
+    fz:f32=fract(run);
+    gap:f32=1.0f32-(smoothstep(0.03f32,0.08f32,fmin(fx,1.0f32-fx))*smoothstep(0.004f32,0.012f32,fmin(fz,1.0f32-fz)));
+    grain:f32=(eg_noise(v2(p.x*30.0f32,p.z*1.2f32))*0.6f32)+(eg_noise(v2(p.x*70.0f32,p.z*3.0f32))*0.4f32);
+    c=wg_mul_f3f(wg_mul_f3f(c,(0.82f32+(0.26f32*eg_water_hash(v3(board,floor(run),2.0f32))))),(0.88f32+(0.2f32*grain)));
+    c=wg_mix_f3f3f(c,wg_mul_f3f(c,0.35f32),gap);
+  } else {
+    // grain along the longer horizontal run, or up a post
+    g:V2=ifx abs(n.y)>0.5f32 then v2(p.y*1.2f32,(p.x+p.z)*25.0f32) else v2((p.x*1.0f32)+(p.z*1.0f32),p.y*25.0f32);
+    grain:f32=(eg_noise(v2((p.x*25.0f32)+(p.z*25.0f32),p.y*1.5f32))*0.5f32)+(eg_noise(g)*0.5f32);
+    c=wg_mul_f3f(c,(0.85f32+(0.25f32*grain)));
+  }
+  c=wg_mul_f3f(c,0.9f32+(0.12f32*eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),0.7f32),p.y))));
+  damp:f32=eg_water_depth_at(p,u,water_nodes);
+  c=wg_mix_f3f3f(c,wg_mul_f3f3(c,v3(0.55f32,0.58f32,0.52f32)),smoothstep(-0.25f32,0.0f32,damp));
+  return c;
+}
+// ---- lathed stone (everglade.coax lathe): a profile of (radius, height) points in metres turned
+// about +Y, 48 sectors round in 8 wedges (one object each) of 6 sectors and 28 segments. A profile runs
+// with the solid on its right, so (-t.y, t.x) of a segment faces out; a vertex takes the mean of its
+// two segments' normals unless they meet at a crease. uv: metres round the axis, metres along the profile.
+EG_LATHE_SECTORS :: cast(u32)6;
+EG_LATHE_SEGMENTS :: cast(u32)28;
+EG_LOOK_CARVED :: cast(u32)9;
+eg_lathe_point :: (profile:u32,j:u32)->V2 {
+  // the fountain's basin: the dished floor, the inner wall, the rounded lip, the outer wall, the plinth
+  basin:[22]V2=[22]V2.[v2(0.0f32,0.05f32),v2(1.2f32,0.1f32),v2(2.0f32,0.25f32),v2(2.4f32,0.38f32),v2(2.54f32,0.46f32),v2(2.6f32,0.56f32),v2(2.62f32,0.7f32),v2(2.66f32,0.8f32),v2(2.74f32,0.86f32),v2(2.86f32,0.89f32),v2(2.98f32,0.88f32),v2(3.06f32,0.84f32),v2(3.1f32,0.77f32),v2(3.08f32,0.69f32),v2(3.0f32,0.65f32),v2(2.97f32,0.6f32),v2(2.97f32,0.3f32),v2(3.02f32,0.25f32),v2(3.2f32,0.23f32),v2(3.28f32,0.19f32),v2(3.31f32,0.12f32),v2(3.32f32,-0.3f32)];
+  // the column, top down: the finial, the upper bowl (its floor, inner wall, lip and underside), the
+  // collar, the shaft, the moulded base and plinth
+  column:[29]V2=[29]V2.[v2(0.0f32,2.62f32),v2(0.09f32,2.6f32),v2(0.17f32,2.53f32),v2(0.21f32,2.44f32),v2(0.17f32,2.36f32),v2(0.13f32,2.22f32),v2(0.15f32,2.1f32),v2(0.24f32,1.92f32),v2(0.7f32,1.9f32),v2(1.05f32,1.93f32),v2(1.16f32,2.02f32),v2(1.2f32,2.12f32),v2(1.28f32,2.16f32),v2(1.36f32,2.13f32),v2(1.4f32,2.06f32),v2(1.36f32,1.99f32),v2(1.12f32,1.86f32),v2(0.8f32,1.74f32),v2(0.5f32,1.62f32),v2(0.4f32,1.54f32),v2(0.42f32,1.46f32),v2(0.33f32,1.38f32),v2(0.29f32,1.3f32),v2(0.31f32,0.55f32),v2(0.4f32,0.44f32),v2(0.46f32,0.3f32),v2(0.6f32,0.22f32),v2(0.62f32,0.14f32),v2(0.62f32,-0.1f32)];
+  if (profile==0) {
+    return basin[cast(int)wg_min_u(j,21)];
+  }
+  return column[cast(int)wg_min_u(j,28)];
+}
+eg_lathe_segment_n :: (profile:u32,k:u32)->V2 {
+  t:V2=wg_sub_f2f2(eg_lathe_point(profile,add_wrap(k,1)),eg_lathe_point(profile,k));
+  if (wg_dot2(t,t)<1e-8f32) {
+    return v2(0.0f32,0.0f32);
+  }
+  return wg_normalize2(v2(-t.y,t.x));
+}
+eg_lathe_vertex :: (id:u32,word:u32)->EgVert {
+  profile:u32=word/8;
+  wedge:u32=word%8;
+  q:u32=id/6;
+  c:V2=eg_quad(id%6);
+  seg:u32=q%EG_LATHE_SEGMENTS;
+  sector:u32=q/EG_LATHE_SEGMENTS;
+  a:f32=(((cast(f32)(add_wrap(mul_wrap(wedge,EG_LATHE_SECTORS),sector)))+c.x)/48.0f32)*EG_TAU;
+  j:u32=add_wrap(seg,wg_u32_f(c.y));
+  p:V2=eg_lathe_point(profile,j);
+  n2:V2=eg_lathe_segment_n(profile,seg);
+  // the neighbouring segment at this end: smooth across it unless the two meet at a crease
+  other:V2=v2(0.0f32,0.0f32);
+  if (c.y>0.5f32) {
+    other=eg_lathe_segment_n(profile,add_wrap(seg,1));
+  } else if (seg>0) {
+    other=eg_lathe_segment_n(profile,sub_wrap(seg,1));
+  }
+  if (wg_dot2(n2,other)>0.75f32) {
+    n2=wg_normalize2(wg_add_f2f2(n2,other));
+  }
+  if (wg_dot2(n2,n2)<0.5f32) {
+    n2=v2(0.0f32,1.0f32);
+  }
+  dir:V3=v3(cos(a),0.0f32,sin(a));
+  return EgVert.{p=v3(dir.x*p.x,p.y,dir.z*p.x),n=wg_normalize3(v3(dir.x*n2.x,n2.y,dir.z*n2.x))};
+}
+eg_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+// ---- blob canopies (art-styles.md 7, verse/style.coax): the painterly preset's numbers until
+// eg-paint-light gives Everglade the preset's uniform block
+EG_CANOPY_MIX :: 0.85f32;
+EG_CANOPY_SWAY :: 0.05f32;
+EG_WIND :: ()->V4 {return v4(0.30f32,12.0f32,3.0f32,1.0f32/25.0f32);} // amplitude (rad), wavelength (m), speed (m/s), gust scale
+EG_WIND_DIR :: ()->V2 {return v2(0.8f32,0.6f32);}
+EG_LOOK_FAR_CANOPY :: cast(u32)6; // a far tree's cone, lit as a blob
+EG_LOOK_CANOPY :: cast(u32)7; // a kit tree's leaves, lit as a blob
+EG_PERSON_SPAN :: 2.5f32; // a person's vertex box (verse/tools/people.py SPAN, LOW)
+EG_PERSON_LOW :: ()->V3 {return v3(-1.25f32,-0.25f32,-1.25f32);}
+EG_PERSON_JOINTS :: cast(u32)65; // verse/everglade/people-rig.coax PEOPLE_JOINTS
+EG_BAND_FAR_MID :: 0.6f32;
+EG_BAND_FAR_SHARE :: 0.45f32;
+EG_BAND_FAR_FROM :: 15.0f32;
+EG_BAND_FAR_TO :: 60.0f32;
+EG_AUX_DISTANCE :: 256.0f32; // aux.g: a painted pixel's distance from the eye over this
+EG_SOFT_FROM :: 12.0f32;
+EG_SOFT_TO :: 40.0f32; // the far field's softening, from and to (m)
+EG_SOFT_PHONE :: 0.7f32; // a phone's: from 8.4 to 28 m
+EG_CHARACTER_LOD_BIAS :: 2.0f32; // spec 11: a character's textures two mip levels coarser
+EG_LOOK_CHARACTER :: cast(u32)8; // the Ranger: textured, two bands and the stronger rim (spec 11)
+EG_LOOK_ROCK :: cast(u32)10; // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
+EG_LOOK_FLAME :: cast(u32)13; // a lamp's flame: its colour, glowing as the lamps are lit
+EG_LOOK_WINDOW :: cast(u32)14; // a window pane: the kit's, its glass glowing warm at night
+EG_LOOK_GLOW :: cast(u32)15; // a spell's fire or lightning (everglade-spells.coax): its own light, unlit, all of it blooming
+EG_LOOK_ORB :: cast(u32)16; // a spell's ball of water (everglade-spells.coax): a sphere's rim, highlight and swirl, part see-through
+// A spell's soft parts (everglade-spells.coax), each as much there as the fraction of its instance's
+// kind word says (dye.x; 0 gone, 1 whole): LOOK_FIRE a billow of fire or a flash, white-hot at its heart,
+// churning, its edge feathered; LOOK_SMOKE smoke or dust, lit as the town is, its edge feathered;
+// LOOK_RING a shockwave, a flattened ball drawn only round its rim, so a ring of light races out.
+EG_LOOK_FIRE :: cast(u32)17;
+EG_LOOK_SMOKE :: cast(u32)18;
+EG_LOOK_RING :: cast(u32)19;
+eg_spell_soft :: (look:u32)->bool {
+  return (look>=EG_LOOK_FIRE)&&(look<=EG_LOOK_RING);
+}
+eg_canopy_n :: (n:V3,blob:V3)->V3 {
+  return wg_normalize3(v3(verse_style_canopy_normal(n.x,blob.x,EG_CANOPY_MIX),verse_style_canopy_normal(n.y,blob.y,EG_CANOPY_MIX),verse_style_canopy_normal(n.z,blob.z,EG_CANOPY_MIX)));
+}
+// How far the wind moves a canopy point `share` of its tree's height up, the tree standing at `at`:
+// the grass's wind (frozen at 0 under still), 0.05 m at the top.
+eg_canopy_sway :: (at:V3,share:f32,u:[]f32)->V3 {
+  t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+  theta:f32=verse_style_wind(wg_dot2(v2(at.x,at.z),EG_WIND_DIR()),verse_style_gust(at.x,at.z,t,EG_WIND_DIR().x,EG_WIND_DIR().y,EG_WIND().z,EG_WIND().w),t,EG_WIND().x,EG_WIND().y,EG_WIND().z);
+  d:f32=verse_style_canopy_sway(theta,EG_WIND().x,EG_CANOPY_SWAY,share);
+  return v3(EG_WIND_DIR().x*d,0.0f32,EG_WIND_DIR().y*d);
+}
+eg_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,pose:[]V4)->EgS {
+  return eg_place(id,instance,u,vertices,heights,objects,pose);
+}
+// Where a vertex of a draw lands (the scene and the shadow map both draw it).
+eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,pose:[]V4)->EgS {
+  o:EgS;
+  n:u32=wg_u32_f(u[32]);
+  if (instance<mul_wrap(n,n)) {
+    c:V2=eg_quad(id%6);
+    gx:s32=(cast,trunc(s32)(instance%n))+(wg_i32_f(c.x));
+    gz:s32=(cast,trunc(s32)(instance/n))+(wg_i32_f(c.y));
+    w:V3=v3(u[34]+((cast(f32)(gx))*u[33]),eg_height(gx,gz,u,heights),u[35]+((cast(f32)(gz))*u[33]));
+    normal:V3=wg_normalize3(v3(eg_height(gx-1,gz,u,heights)-eg_height(gx+1,gz,u,heights),2.0f32*u[33],eg_height(gx,gz-1,u,heights)-eg_height(gx,gz+1,u,heights)));
+    o.pos=eg_clip(w,u);
+    o.world=w;
+    o.normal=normal;
+    o.tint=v3(0.30f32,0.50f32,0.20f32);
+    o.look=99;
+    o.uv=v2(0.0f32,0.0f32);
+    o.slice=0;
+    return o;
+  }
+  m:EgObj=objects[cast(int)sub_wrap(instance,mul_wrap(n,n))];
+  kind:u32=(wg_u32_f(m.colour.w))%8;
+  v:EgVert;
+  tint:V3=v3(m.colour.x,m.colour.y,m.colour.z);
+  canopy:bool=false;
+  cone:bool=false;
+  ranger:bool=false;
+  share:f32=0.0f32;
+  glass:bool=false;
+  o.uv=v2(0.0f32,0.0f32);
+  o.slice=0;
+  o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  {
+    _sw3:u32=kind;
+    if _sw3==1 {
+      v=eg_box_vertex(id);
+    } else if _sw3==2 {
+      v=eg_sphere_vertex(id);
+    } else if _sw3==3 {
+      v=eg_cylinder_vertex(id);
+    } else if _sw3==5 {
+      b:u32=mul_wrap(id,12);
+      v=EgVert.{p=v3(eg_word(b,vertices),eg_word(add_wrap(b,1),vertices),eg_word(add_wrap(b,2),vertices)),n=v3(eg_word(add_wrap(b,3),vertices),eg_word(add_wrap(b,4),vertices),eg_word(add_wrap(b,5),vertices))};
+      o.uv=v2(eg_word(add_wrap(b,6),vertices),eg_word(add_wrap(b,7),vertices));
+      o.slice=vertices[cast(int)add_wrap(b,8)]>>24;
+      tint=wg_mul_f3f3(wg_sw_rgb_f4(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,8)])),v3(m.colour.x,m.colour.y,m.colour.z));
+      // a flower in a colour asked for (everglade-items.coax ed_tint: its colour negated): the petals
+      // dyed that colour, the stem and leaves as they are, not the pink petals multiplied darker
+      if (m.colour.x<0.0f32) {
+        tint=wg_sw_rgb_f4(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,8)]));
+        o.dye=wg_make_f4_f3f(wg_neg_f3(v3(m.colour.x,m.colour.y,m.colour.z)),6.0f32);
+      }
+      // a tree's leaves (pack_realm.py: the blob in the vertex's spare word): one soft blob round the
+      // canopy's centre, breathing with the wind
+      blob:u32=vertices[cast(int)add_wrap(b,9)];
+      if (blob!=0) {
+        v.n=eg_canopy_n(v.n,wg_sw_xyz_f4(wg_unpack4x8snorm(blob)));
+        share=(cast(f32)(blob>>24))/255.0f32;
+        canopy=true;
+        // its leaves burnt away (everglade-forest.coax tf_kit: the share gone over the kind word): all
+        // gone, nothing drawn; part gone, the fragment cuts holes where they were (leaf_gone)
+        bare:f32=(cast(f32)((wg_u32_f(m.colour.w))/256))/255.0f32;
+        if (bare>=0.99f32) {
+          v.p=v3(0.0f32,0.0f32,0.0f32);
+          share=0.0f32;
+        }
+        o.dye.z=bare;
+      }
+      glass=vertices[cast(int)add_wrap(b,10)]==1; // a window's glass (pack_realm.py glass_pane)
+      if ((((wg_u32_f(m.colour.w))/8)%32)==EG_LOOK_SHARD) {
+        o.shard=add_wrap(sub_wrap(instance,mul_wrap(n,n)),1);
+      }
+    } else if _sw3==6 {
+      if (m.colour.z>1.5f32) {
+        // One of the city's people (verse/everglade/folk.coax, colour.z 2): a part's 24-byte vertex
+        // (verse/tools/people.py vertex), skinned by up to four joints of its person's block of
+        // the pose, which starts at row colour.y; after the joints, their skin tone and the
+        // outfit's colourway, their hair, and their dye.
+        b:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(id,6));
+        xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
+        zw:u32=vertices[cast(int)add_wrap(b,1)];
+        at:V4=wg_make_f4_f3f(wg_add_f3f3(wg_mul_f3f(v3(xy.x,xy.y,(cast(f32)(zw&0xffff))/65535.0f32),EG_PERSON_SPAN),EG_PERSON_LOW()),1.0f32);
+        nw:V3=wg_sw_xyz_f4(wg_unpack4x8snorm(vertices[cast(int)add_wrap(b,2)]));
+        j:U4=wg_cvt_u4f4(wg_add_f4f(wg_mul_f4f(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,4)]),255.0f32),0.5f32));
+        wt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
+        base:u32=wg_u32_f(m.colour.y);
+        sp:V3=v3(0.0f32,0.0f32,0.0f32);
+        sn:V3=v3(0.0f32,0.0f32,0.0f32);
+        {
+          k:u32=0;
+          while k<4 {
+            r:u32=add_wrap(base,mul_wrap(wg_get_u4(j,cast(int)k),3));
+            a:V4=pose[cast(int)r];
+            c:V4=pose[cast(int)add_wrap(r,1)];
+            e:V4=pose[cast(int)add_wrap(r,2)];
+            sp=wg_add_f3f3(sp,wg_mul_ff3(wg_get_f4(wt,cast(int)k),v3(wg_dot4(a,at),wg_dot4(c,at),wg_dot4(e,at))));
+            sn=wg_add_f3f3(sn,wg_mul_ff3(wg_get_f4(wt,cast(int)k),v3(wg_dot3(v3(a.x,a.y,a.z),nw),wg_dot3(v3(c.x,c.y,c.z),nw),wg_dot3(v3(e.x,e.y,e.z),nw))));
+            k=add_wrap(k,1);
+          }
+        }
+        v=EgVert.{p=sp,n=sn};
+        o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,3)]);
+        colours:u32=add_wrap(base,mul_wrap(EG_PERSON_JOINTS,3));
+        skin:V4=pose[cast(int)colours];
+        kind_2:u32=(zw>>24)&255;
+        o.slice=(zw>>16)&255;
+        tint=v3(1.0f32,1.0f32,1.0f32);
+        if (kind_2==1) {
+          tint=v3(skin.x,skin.y,skin.z);
+        }
+        if (kind_2==2) {
+          tint=v3(pose[cast(int)add_wrap(colours,1)].x,pose[cast(int)add_wrap(colours,1)].y,pose[cast(int)add_wrap(colours,1)].z);
+        }
+        if ((kind_2==3)||(kind_2==4)) {
+          o.slice=add_wrap(o.slice,wg_u32_f(skin.w));
+          d:V4=pose[cast(int)add_wrap(colours,2)];
+          o.dye=wg_make_f4_f3f(v3(d.x,d.y,d.z),((cast(f32)(sub_wrap(kind_2,2)))*2.0f32)+d.w);
+        }
+        ranger=true;
+      } else {
+        // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
+        b:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(id,8));
+        at:V4=v4(eg_word(b,vertices),eg_word(add_wrap(b,1),vertices),eg_word(add_wrap(b,2),vertices),1.0f32);
+        nw:V3=wg_sw_xyz_f4(wg_unpack4x8snorm(vertices[cast(int)add_wrap(b,3)]));
+        j:U4=wg_cvt_u4f4(wg_add_f4f(wg_mul_f4f(wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,6)]),255.0f32),0.5f32));
+        wt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,7)]);
+        sp:V3=v3(0.0f32,0.0f32,0.0f32);
+        sn:V3=v3(0.0f32,0.0f32,0.0f32);
+        {
+          k:u32=0;
+          while k<4 {
+            r:u32=mul_wrap(wg_get_u4(j,cast(int)k),3);
+            a:V4=pose[cast(int)r];
+            c:V4=pose[cast(int)add_wrap(r,1)];
+            e:V4=pose[cast(int)add_wrap(r,2)];
+            sp=wg_add_f3f3(sp,wg_mul_ff3(wg_get_f4(wt,cast(int)k),v3(wg_dot4(a,at),wg_dot4(c,at),wg_dot4(e,at))));
+            sn=wg_add_f3f3(sn,wg_mul_ff3(wg_get_f4(wt,cast(int)k),v3(wg_dot3(v3(a.x,a.y,a.z),nw),wg_dot3(v3(c.x,c.y,c.z),nw),wg_dot3(v3(e.x,e.y,e.z),nw))));
+            k=add_wrap(k,1);
+          }
+        }
+        v=EgVert.{p=sp,n=sn};
+        o.uv=v2(eg_word(add_wrap(b,4),vertices),eg_word(add_wrap(b,5),vertices));
+        o.slice=vertices[cast(int)add_wrap(b,3)]>>24;
+        tint=v3(1.0f32,1.0f32,1.0f32);
+        ranger=true;
+      }
+    } else if _sw3==7 {
+      word:u32=(wg_u32_f(m.colour.w))/256;
+      v=eg_lathe_vertex(id,word);
+      // uv: metres round the axis at this radius, and the height (the masonry's courses)
+      a:f32=wg_atan2(v.p.z,v.p.x);
+      o.uv=v2(a*wg_length2(v2(v.p.x,v.p.z)),v.p.y);
+    } else {
+      v=eg_cone_vertex(id);
+      // a far tree's cone shades as the kit's canopy does: its normal leans to the blob round its middle
+      if (((wg_u32_f(m.colour.w))/8)==1) {
+        v.n=eg_canopy_n(v.n,wg_normalize3(wg_add_f3f3(v.p,v3(0.0f32,0.0001f32,0.0f32))));
+        cone=true;
+      }
+    }
+  }
+  p:V4=v4(v.p.x,v.p.y,v.p.z,1.0f32);
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  if (share>0.0f32) {
+    w=wg_add_f3f3(w,eg_canopy_sway(v3(m.r0.w,m.r1.w,m.r2.w),share,u));
+  }
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  normal:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_cross3(c1,c2),v.n.x),wg_mul_f3f(wg_cross3(c2,c0),v.n.y)),wg_mul_f3f(wg_cross3(c0,c1),v.n.z));
+  o.pos=eg_clip(w,u);
+  o.world=w;
+  o.normal=wg_normalize3(wg_add_f3f3(normal,v3(0.0f32,0.00001f32,0.0f32)));
+  o.tint=tint;
+  o.look=ifx ranger then EG_LOOK_CHARACTER else ifx cone then EG_LOOK_FAR_CANOPY else ifx canopy then EG_LOOK_CANOPY else ((wg_u32_f(m.colour.w))/8)%32;
+  o.local=v.p;
+  if (o.shard!=0) {
+    o.look=5;
+  } // a chunk is its kit mesh, cut (shard_inside)
+  if (o.look==EG_LOOK_WINDOW) {
+    // a window: dye.x how bright its room is at night, from where the window stands (about a third
+    // stay dark), dye.y 1 on its glass and 0.5 on its frame, dye.z the room's warmth (dye.w stays 0,
+    // so person_dye leaves the texture as it is)
+    h:f32=fract(sin(wg_dot3(v3(m.r0.w,m.r1.w,m.r2.w),v3(12.9898f32,4.1414f32,78.233f32)))*43758.547f32);
+    o.dye=v4(ifx h<0.66f32 then 0.6f32+(0.4f32*fract(h*7.31f32)) else 0.0f32,ifx glass then 1.0f32 else 0.5f32,fract(h*13.7f32),0.0f32);
+  }
+  if eg_spell_soft(o.look) {
+    // dye.x how much of it is there (the kind word's fraction over 0.98), dye.y a seed from where it is
+    at:V3=v3(m.r0.w,m.r1.w,m.r2.w);
+    o.dye=v4(fmin(fract(m.colour.w)/0.98f32,1.0f32),fract(sin(wg_dot3(at,v3(12.9898f32,4.1414f32,78.233f32)))*43758.547f32),0.0f32,0.0f32);
+  }
+  return o;
+}
+// ---- the key light's shadow map (spec 3; host.js shadow_vs): every draw but the ground drawn from the
+// light into a depth map round the eye (verse_style_shadow_reach: 60 m, 40 on a phone), its middle
+// snapped to whole texels so shadows hold still, read back with the preset's Poisson taps. A leaf
+// card's clear texels cast nothing, so the canopies throw dappled shade.
+EgLight :: struct {ax:V3; ay:V3; l:V3; mx:f32; my:f32; reach:f32; }
+eg_light_space :: (u:[]f32)->EgLight {
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  ax:V3=ifx abs(l.y)<0.999f32 then wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),l)) else v3(1.0f32,0.0f32,0.0f32);
+  ay:V3=wg_cross3(l,ax);
+  reach:f32=verse_style_shadow_reach(eg_st(31,u).z);
+  size:f32=fmax(eg_st(21,u).x,1.0f32);
+  c:V3=v3(u[24],0.0f32,u[26]);
+  return EgLight.{ax=ax,ay=ay,l=l,mx=verse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=verse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
+}
+eg_shadow_place :: (w:V3,k:EgLight)->V3 {
+  return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
+}
+EgShade :: struct {pos:V4; uv:V2; slice:u32; cut:u32; local:V3; shard:u32; bare:f32; }
+// A burning tree's leaves (dye.z of a canopy: the share gone) gone in clumps from its crown, the same
+// in its shadow, in its mesh's own space so they hold as it falls.
+eg_leaf_gone :: (local:V3,bare:f32)->bool {
+  if (bare<=0.0f32) {
+    return false;
+  }
+  return eg_noise(wg_add_f2f2(wg_mul_f2f(v2(local.x,local.z),1.7f32),v2(local.y*1.3f32,(-local.y)*0.9f32)))<((bare*1.15f32)-0.08f32);
+}
+eg_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,pose:[]V4)->EgShade {
+  o:EgShade;
+  n:u32=wg_u32_f(u[32]);
+  if ((instance<mul_wrap(n,n))||(eg_st(21,u).x<1.0f32)) {
+    o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
+    return o;
+  } // the ground casts nothing
+  v:EgS=eg_place(id,instance,u,vertices,heights,objects,pose);
+  if (((v.look==EG_LOOK_GLOW)||(v.look==EG_LOOK_ORB))||eg_spell_soft(v.look)) {
+    o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
+    return o;
+  } // fire, lightning and the water orb cast no shadow
+  q:V3=eg_shadow_place(v.world,eg_light_space(u));
+  o.pos=wg_make_f4_f2ff(v2(q.x,q.y),q.z,1.0f32);
+  o.uv=v.uv;
+  o.slice=v.slice;
+  o.local=v.local;
+  o.shard=v.shard;
+  o.cut=ifx ((((v.look==5)||(v.look==EG_LOOK_CANOPY))||(v.look==EG_LOOK_CHARACTER))||(v.look==EG_LOOK_ROCK))||(v.look==EG_LOOK_WINDOW) then 1 else 0;
+  o.bare=ifx v.look==EG_LOOK_CANOPY then v.dye.z else 0.0f32;
+  return o;
+}
+eg_shadow_fs :: (v:EgShade,objects:[]EgObj,sheets:Tex2DArray,sheet:Sampler) {
+  if ((v.cut==1)&&(gpu_sample_layer_level(sheets,sheet,v.uv,cast,trunc(s32)(v.slice),0.0f32).w<0.35f32)) {
+    gpu_discard();
+  }
+  if ((v.shard!=0)&&(eg_shard_inside(v.shard,v.local,objects)<0.0f32)) {
+    gpu_discard();
+  }
+  if eg_leaf_gone(v.local,v.bare) {
+    gpu_discard();
+  }
+}
+// ---- the debris (verse/demolish.coax's fracture; everglade-spells.coax sp_shards): a chunk is its
+// piece's own mesh, drawn whole where its body is and cut here to its cell, up to 8 planes in the
+// mesh's space (x y z d: inside where x·p <= d) in the two objects its kind word names (over 256).
+// Where the cut opens the mesh you see its far side from within: that is the broken interior, lit as
+// the plane the eye looks in through, darker and rough; near a cut the outside is scuffed darker.
+EG_LOOK_SHARD :: cast(u32)24;
+eg_shard_plane :: (cell:u32,k:u32,objects:[]EgObj)->V4 {
+  o:EgObj=objects[cast(int)add_wrap(cell,k/4)];
+  j:u32=k%4;
+  if (j==0) {
+    return o.r0;
+  }
+  if (j==1) {
+    return o.r1;
+  }
+  if (j==2) {
+    return o.r2;
+  }
+  return o.colour;
+}
+// How far p (mesh space) is inside chunk `shard`'s cell: below 0 outside it.
+eg_shard_inside :: (shard:u32,p:V3,objects:[]EgObj)->f32 {
+  cell:u32=(wg_u32_f(objects[cast(int)sub_wrap(shard,1)].colour.w))/256;
+  d:f32=1e9f32;
+  {
+    k:u32=0;
+    while k<8 {
+      pl:V4=eg_shard_plane(cell,k,objects);
+      d=fmin(d,pl.w-wg_dot3(v3(pl.x,pl.y,pl.z),p));
+      k=add_wrap(k,1);
+    }
+  }
+  return d;
+}
+// The world normal of the cut the eye looks into chunk `shard` through, at p (mesh space): of the
+// planes the eye is outside, the one the ray from it crosses last.
+eg_shard_cap :: (shard:u32,p:V3,u:[]f32,objects:[]EgObj)->V3 {
+  m:EgObj=objects[cast(int)sub_wrap(shard,1)];
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  a:V3=wg_cross3(c1,c2);
+  b:V3=wg_cross3(c2,c0);
+  c:V3=wg_cross3(c0,c1);
+  e:V3=wg_sub_f3f3(v3(u[24],u[25],u[26]),v3(m.r0.w,m.r1.w,m.r2.w));
+  eye:V3=wg_div_f3f(v3(wg_dot3(a,e),wg_dot3(b,e),wg_dot3(c,e)),wg_dot3(c0,a));
+  cell:u32=(wg_u32_f(m.colour.w))/256;
+  best:f32=-1.0f32;
+  nl:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    k:u32=0;
+    while k<8 {
+      pl:V4=eg_shard_plane(cell,k,objects);
+      se:f32=wg_dot3(v3(pl.x,pl.y,pl.z),eye)-pl.w;
+      if (se<=0.0f32) {
+        {k=add_wrap(k,1); continue;}
+      }
+      t:f32=se/fmax(se-(wg_dot3(v3(pl.x,pl.y,pl.z),p)-pl.w),1e-5f32);
+      if (t>best) {
+        best=t;
+        nl=v3(pl.x,pl.y,pl.z);
+      }
+      k=add_wrap(k,1);
+    }
+  }
+  if (best<0.0f32) {
+    return wg_normalize3(e);
+  }
+  return wg_normalize3(wg_add_f3f3(wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(a,nl.x),wg_mul_f3f(b,nl.y)),wg_mul_f3f(c,nl.z)),v3(0.0f32,1e-6f32,0.0f32)));
+}
+// How much of the key reaches p (normal n): 1 lit, 0 in shadow, the map's taps averaged; outside it, lit.
+// A kit crown's leaves past LEAF_FAR on a phone (scene_fs sets it): one shadow tap, not the tier's four,
+// and no caustics (a crown never stands in water). A crown is hundreds of overlapping leaf cards and
+// every opaque layer is shaded, so the crowns ringing the ponds were a third of a phone's frame there
+// (art-styles.md 14); at that distance the taps' penumbra is under a pixel, so the picture is the same.
+EG_LEAF_FAR :: 24.0f32;
+eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->f32 {
+  if (eg_st(21,u).x<1.0f32) {
+    return 1.0f32;
+  }
+  q:V3=eg_shadow_place(wg_add_f3f3(p,wg_mul_f3f(n,0.08f32)),eg_light_space(u));
+  uv:V2=v2(0.5f32+(0.5f32*q.x),0.5f32-(0.5f32*q.y));
+  texel_2:f32=1.0f32/(cast(f32)(wg_dims_depth(shadow_map).x));
+  phone:f32=eg_st(31,u).z;
+  taps:f32=ifx paint_leaf_far[0] then 1.0f32 else eg_st(21,u).y;
+  r:f32=eg_st(21,u).z;
+  // the taps' disc 1.6 times the preset's: the penumbra spans several texels, so the map's stair-steps
+  // melt into a soft edge; the average then firmed (smoothstep) so a thin caster's shade keeps its depth
+  lit:f32=0.0f32;
+  {
+    k:f32=0.0f32;
+    while k<9.0f32 {
+      if (k>=taps) {
+        break;
+      }
+      o:V2=v2(verse_style_shadow_tap(k,phone,0.0f32),verse_style_shadow_tap(k,phone,1.0f32));
+      lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(o,r),1.6f32),texel_2)),q.z-0.0006f32);
+      k=k+1.0f32;
+    }
+  }
+  inside:bool=wg_all_gt_f2f2(uv,v2(0.0f32,0.0f32))&&wg_all_lt_f2f2(uv,v2(1.0f32,1.0f32));
+  return ifx inside then smoothstep(0.1f32,0.75f32,lit/fmax(taps,1.0f32)) else 1.0f32;
+}
+eg_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+eg_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(eg_hash(i),eg_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(eg_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),eg_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+// The spells' marks on the ground (everglade-marks.coax): frost, ice, scorch, dust, moonlight, creepers,
+// ooze, thorns, wet, each painted into the ground's colour and the blades over it, an edge broken by
+// broad noise and feathered (the owner, October 30: never a flat slab with the grass poking through).
+// q: where on the ground; tip: 0 the ground or a blade's root, 1 a blade's tip (frost settles on top).
+// tint is sRGB, its cover 0 to 1; glow linear light to add; short how much of a blade is burnt away;
+// ice the share of glossy ice there.
+EgMark :: struct {tint:V3; cover:f32; glow:V3; short_:f32; ice:f32; }
+eg_ground_mark :: (q:V2,tip:f32,u:[]f32)->EgMark {
+  m:EgMark;
+  m.tint=v3(0.0f32,0.0f32,0.0f32);
+  m.cover=0.0f32;
+  m.glow=v3(0.0f32,0.0f32,0.0f32);
+  m.short_=0.0f32;
+  m.ice=0.0f32;
+  n:s32=wg_i32_f(u[2104]);
+  {
+    k:s32=0;
+    while k<24 {
+      if (k>=n) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(1+(2*k)))*4+2104);
+      b:V4=wg_at4(u,(cast(int)(2+(2*k)))*4+2104);
+      rel:V2=wg_sub_f2f2(q,v2(a.x,a.y));
+      r:f32=fmax(a.z,0.1f32);
+      d:f32=ifx b.z>0.5f32 then fmax(abs(rel.x),abs(rel.y)) else wg_length2(rel);
+      if (d>((r*1.35f32)+0.3f32)) {
+        {k+=1; continue;}
+      }
+      broad:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(q,(1.6f32/fmax(r,0.8f32))),v2(b.y,b.y*0.7f32)));
+      fine:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(q,1.3f32),v2(b.y*1.7f32,3.1f32)));
+      edge:f32=((d/r)+((broad-0.5f32)*0.5f32))+((fine-0.5f32)*0.14f32);
+      inside:f32=(1.0f32-smoothstep(0.55f32,1.02f32,edge))*b.x;
+      if (inside<=0.002f32) {
+        {k+=1; continue;}
+      }
+      kind:s32=wg_i32_f(a.w+0.5f32);
+      c:V3=v3(0.0f32,0.0f32,0.0f32);
+      w:f32=0.0f32;
+      if (kind==1) {
+        // frost: a rime dusting, thicker on the blades' tops; pale glossy ice in a few patches of it
+        dust:f32=(0.6f32+(0.4f32*eg_noise(wg_add_f2f2(wg_mul_f2f(q,2.7f32),v2(b.y,b.y)))))*(0.72f32+(0.28f32*eg_noise(wg_sub_f2f2(wg_mul_f2f(q,8.3f32),v2(b.y,b.y)))));
+        w=(inside*dust)*mix(0.4f32,0.92f32,tip);
+        c=v3(0.83f32,0.87f32,0.9f32);
+        // ice: pale and glassy, never a flat blue sheet; broken by a streaky grain, its edge soft
+        pool:f32=(eg_noise(wg_add_f2f2(wg_mul_f2f(q,0.9f32),v2(b.y*3.1f32,1.3f32)))*0.75f32)+(eg_noise(wg_add_f2f2(wg_mul_f2f(q,3.7f32),v2(1.7f32,b.y)))*0.25f32);
+        ice:f32=(smoothstep(1.0f32-b.w,1.22f32-b.w,pool)*inside)*(1.0f32-tip);
+        grain:f32=0.85f32+(0.15f32*eg_noise(v2((q.x*9.0f32)+(q.y*3.0f32),q.y*1.5f32)));
+        c=wg_mix_f3f3f(c,wg_mul_f3f(v3(0.66f32,0.71f32,0.74f32),grain),ice);
+        w=fmax(w,ice*0.6f32);
+        m.ice=fmax(m.ice,ice);
+      } else if (kind==2) {
+        // a scorch: black at its heart, a brown singe at its edge; the grass burnt short
+        c=wg_mix_f3f3f(v3(0.24f32,0.17f32,0.1f32),v3(0.055f32,0.048f32,0.042f32),smoothstep(0.95f32,0.45f32,edge));
+        w=inside*0.92f32;
+        m.short_=fmax(m.short_,inside*0.8f32);
+      } else if (kind==3) {
+        c=v3(0.55f32,0.47f32,0.35f32);
+        w=(inside*0.6f32)*mix(1.0f32,0.7f32,tip);
+      } else if (kind==4) {
+        m.glow=wg_add_f3f3(m.glow,wg_mul_f3f(wg_mul_f3f(v3(0.42f32,0.5f32,0.7f32),inside),(0.75f32+(0.25f32*fine))));
+        {k+=1; continue;}
+      } else if (kind==5) {
+        c=v3(0.14f32,0.22f32,0.09f32);
+        w=inside*0.55f32;
+      } else if (kind==6) {
+        c=v3(0.075f32,0.055f32,0.085f32);
+        w=inside*mix(0.85f32,0.5f32,tip);
+      } else if (kind==7) {
+        c=v3(0.4f32,0.33f32,0.2f32);
+        w=(inside*0.42f32)*(0.7f32+(0.3f32*fine));
+      } else {
+        c=v3(0.2f32,0.19f32,0.16f32);
+        w=inside*0.45f32;
+      }
+      // over what is already there
+      total:f32=1.0f32-((1.0f32-m.cover)*(1.0f32-w));
+      m.tint=wg_div_f3f(wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(m.tint,m.cover),(1.0f32-w)),wg_mul_f3f(c,w)),fmax(total,0.0001f32));
+      m.cover=total;
+      k+=1;
+    }
+  }
+  return m;
+}
+eg_path_distance :: (p:V2,u:[]f32)->f32 {
+  d:f32=1000.0f32;
+  count:s32=wg_i32_f(u[228]);
+  {
+    i:s32=0;
+    while i<32 {
+      if (i>=count) {
+        break;
+      }
+      seg:V4=wg_at4(u,(cast(int)i)*4+100);
+      a:V2=v2(seg.x,seg.y);
+      ab:V2=wg_sub_f2f2(v2(seg.z,seg.w),a);
+      t:f32=clampf(wg_dot2(wg_sub_f2f2(p,a),ab)/fmax(wg_dot2(ab,ab),0.0001f32),0.0f32,1.0f32);
+      d=fmin(d,wg_length2(wg_sub_f2f2(wg_sub_f2f2(p,a),wg_mul_f2f(ab,t))));
+      i+=1;
+    }
+  }
+  return d;
+}
+// A shadow is x, z, radius and its strength with the floor it falls on
+// packed in (everglade.coax shadow: strength + 2 * centimetres above -100 m),
+// so one cast on a bench's top darkens the bench, not the ground under it.
+// level: only surfaces within SHADOW_LEVEL of that floor take it (the water takes any).
+EG_SHADOW_LEVEL :: 0.35f32;
+eg_shade_shadows_at :: (p:V2,y:f32,level:bool,u:[]f32)->f32 {
+  s:f32=1.0f32;
+  {
+    i:s32=0;
+    while i<16 {
+      b:V4=wg_at4(u,(cast(int)i)*4+36);
+      if (b.z<=0.0f32) {
+        break;
+      }
+      cm:f32=floor(b.w*0.5f32);
+      strength:f32=b.w-(cm*2.0f32);
+      if (level&&(abs(y-((cm*0.01f32)-100.0f32))>EG_SHADOW_LEVEL)) {
+        {i+=1; continue;}
+      }
+      d:f32=wg_length2(wg_sub_f2f2(p,v2(b.x,b.y)))/b.z;
+      s=s*(1.0f32-(strength*(1.0f32-smoothstep(0.35f32,1.0f32,d))));
+      i+=1;
+    }
+  }
+  return s;
+}
+eg_shade_shadows :: (p:V2,u:[]f32)->f32 {
+  return eg_shade_shadows_at(p,0.0f32,false,u);
+}
+// A person's cloth takes their dye (verse/everglade/folk.coax FOLK_DYE): rule 1 (dye.w 2 plus the
+// share) the pale cloth, pale and unsaturated texels, as the peasant's shirts; rule 2 (dye.w 4 plus
+// the share) the green cloth, texels green over red and blue, as the ranger's tunic. A dyed texel is the dye
+// at the texel's own lightness against the cloth's usual, so folds and seams stay.
+eg_person_dye :: (t:V3,dye:V4)->V3 {
+  // dye.w: 2 + share on a pale cloth, 4 + share on a green one (case 6u's people), 0 for no dye
+  if (dye.w<2.0f32) {
+    return t;
+  }
+  if (dye.w>=6.0f32) {
+    // petals (dye.w 6): any texel more red or blue than green takes the dye, kept as light or dark as
+    // the petal's shading; green stems and leaves stay
+    petal:f32=smoothstep(0.04f32,0.16f32,fmax(t.x,t.z)-t.y);
+    shade:f32=clampf(wg_dot3(t,v3(0.2126f32,0.7152f32,0.0722f32))/0.5f32,0.65f32,1.25f32);
+    return wg_max_f3f3(wg_mix_f3f3f(t,wg_mul_f3f(v3(dye.x,dye.y,dye.z),shade),petal),v3(0.0f32,0.0f32,0.0f32));
+  }
+  green:bool=dye.w>=4.0f32;
+  share:f32=clampf(dye.w-(ifx green then 4.0f32 else 2.0f32),0.0f32,1.0f32);
+  hi:f32=fmax(t.x,fmax(t.y,t.z));
+  lo:f32=fmin(t.x,fmin(t.y,t.z));
+  sat:f32=(hi-lo)/fmax(hi,0.0001f32);
+  light:f32=wg_dot3(t,v3(0.2126f32,0.7152f32,0.0722f32));
+  mask:f32=smoothstep(0.12f32,0.3f32,hi)*(1.0f32-smoothstep(0.22f32,0.42f32,sat));
+  usual:f32=0.42f32;
+  if green {
+    mask=smoothstep(0.02f32,0.06f32,t.y-fmax(t.x,t.z));
+    usual=0.09f32;
+  }
+  dyed:V3=wg_mul_f3f(v3(dye.x,dye.y,dye.z),clampf(light/usual,0.0f32,1.6f32));
+  return wg_max_f3f3(wg_mix_f3f3f(t,dyed,mask*share),v3(0.0f32,0.0f32,0.0f32));
+}
+eg_scene_fs :: (s:EgS,front:bool,u:[]f32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+  paint_leaf_far_store:[1]bool;
+  paint_leaf_far:=paint_leaf_far_store[..];
+  // a character's skin and cloth flat (spec 11): sampled two mip levels coarser, so stitching, pores
+  // and the fabric's grain go and two or three colour masses stay
+  tex:V4=gpu_sample_layer_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
+  if (s.look==EG_LOOK_GLOW) {
+    // fire, a fireball, lightning: white-hot where it faces you, its colour, then deep red at its rim;
+    // up to three times as bright as its colour says, and it all blooms
+    facing:f32=abs(wg_dot3(wg_normalize3(s.normal),wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))));
+    tint:V3=wg_pow_f3f3(wg_max_f3f3(s.tint,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+    rim:V3=wg_mul_f3f3(tint,v3(1.0f32,0.35f32,0.2f32));
+    c:V3=wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f(rim,0.5f32),wg_mix_f3f3f(tint,v3(1.0f32,0.97f32,0.9f32),(facing*facing)*0.6f32),smoothstep(0.0f32,0.7f32,facing)),(0.8f32+(2.4f32*facing)));
+    return EgLit.{light=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+  }
+  if (s.look==EG_LOOK_ORB) {
+    return eg_orb(s,u);
+  }
+  if eg_spell_soft(s.look) {
+    return eg_spell_soft_part(s,u,heights,water_nodes,paint_leaf_far);
+  }
+  n:V3=wg_normalize3(s.normal);
+  base:V3=s.tint;
+  shadow:f32=1.0f32;
+  mark_ice:f32=0.0f32;
+  mark_glow:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (((((s.look==5)||(s.look==EG_LOOK_CANOPY))||(s.look==EG_LOOK_CHARACTER))||(s.look==EG_LOOK_ROCK))||(s.look==EG_LOOK_WINDOW)) {
+    // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
+    // (a canopy's blob normal already faces out, so it keeps it).
+    if (tex.w<0.35f32) {
+      gpu_discard();
+    }
+    // a crown's leaves thin out by an ordered dither within a few metres of the eye, so walking in
+    // the woods the camera looks through the boughs it backs into, not at their undersides
+    if (s.look==EG_LOOK_CANOPY) {
+      keep:f32=smoothstep(1.4f32,3.2f32,wg_length3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26]))));
+      bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+      px:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+      if (((bayer[cast(int)add_wrap(mul_wrap(px.y,4),px.x)]+0.5f32)/16.0f32)>=keep) {
+        gpu_discard();
+      }
+      if eg_leaf_gone(s.local,s.dye.z) {
+        gpu_discard();
+      }
+    }
+    base=wg_mul_f3f3(eg_person_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
+    if ((!front)&&(s.look!=EG_LOOK_CANOPY)) {
+      n=wg_neg_f3(n);
+    }
+    if (s.shard!=0) {
+      inside:f32=eg_shard_inside(s.shard,s.local,objects);
+      if (inside<0.0f32) {
+        gpu_discard();
+      }
+      rough:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.local.x,s.local.y),9.0f32),wg_mul_f2f(v2(s.local.z,s.local.x),6.0f32)));
+      if (!front) {
+        n=eg_shard_cap(s.shard,s.local,u,objects);
+        base=wg_mul_f3f(base,(0.38f32+(0.24f32*rough)));
+      } else {
+        base=wg_mul_f3f(base,mix(0.5f32+(0.2f32*rough),1.0f32,smoothstep(0.0f32,0.05f32,inside)));
+      }
+    }
+    // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
+    if (n.y>0.7f32) {
+      shadow=eg_shade_shadows_at(v2(s.world.x,s.world.z),s.world.y,true,u);
+    }
+  }
+  if (s.look==EG_LOOK_ROCK) {
+    // a rock: its pale texture taken down to a mid grey-brown, mottled in broad patches, and moss
+    // where it faces up (broken by noise), so in full sun it sits under the grass's value, not over it
+    p:V3=s.world;
+    mottle:f32=(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),0.9f32),p.y*0.7f32))*0.6f32)+(eg_noise(wg_sub_f2f(wg_mul_f2f(v2(p.x,p.z),4.1f32),p.y*3.3f32))*0.4f32);
+    base=wg_mul_f3f(wg_mul_f3f3(base,v3(0.62f32,0.6f32,0.55f32)),(0.78f32+(0.34f32*mottle)));
+    moss:f32=smoothstep(0.35f32,0.8f32,n.y+(0.35f32*(eg_noise(wg_add_f2f(wg_mul_f2f(v2(p.x,p.z),2.3f32),p.y))-0.5f32)));
+    base=wg_mix_f3f3f(base,wg_mul_f3f(v3(0.11f32,0.2f32,0.07f32),(0.8f32+(0.4f32*mottle))),moss*0.85f32);
+  }
+  xz:V2=v2(s.world.x,s.world.z);
+  if (s.look==99) {
+    // broad colour only (eg-paint-pack: no fine noise on the ground; patches 4 m and more across)
+    broad:f32=eg_noise(wg_mul_f2f(xz,0.13f32));
+    base=wg_mul_f3f(eg_meadow_srgb(broad),(0.96f32+(0.08f32*eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.23f32),7.0f32)))));
+    {
+      q:s32=0;
+      while q<4 {
+        sq:V4=wg_at4(u,(cast(int)q)*4+232);
+        if (sq.z<=0.0f32) {
+          break;
+        }
+        paved:f32=1.0f32-smoothstep(sq.z-0.3f32,sq.z+0.3f32,wg_length2(wg_sub_f2f2(xz,v2(sq.x,sq.y))));
+        // the square's paving keeps its stone-sized patches (a slab of one grey reads as a stand-in), without the grit
+        stone:V3=wg_mix_f3f3f(v3(0.41f32,0.39f32,0.35f32),v3(0.53f32,0.49f32,0.42f32),(eg_noise(wg_mul_f2f(xz,1.7f32))*0.6f32)+(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.2f32),5.0f32))*0.4f32));
+        base=wg_mix_f3f3f(base,stone,paved);
+        q+=1;
+      }
+    }
+    d:f32=eg_path_distance(xz,u);
+    half:f32=u[229];
+    edge:f32=1.0f32-smoothstep(half-0.12f32,half+0.12f32,d);
+    if (edge>0.0f32) {
+      dirt:V3=wg_mix_f3f3f(v3(0.46f32,0.35f32,0.23f32),v3(0.58f32,0.46f32,0.3f32),(eg_noise(wg_add_f2f(wg_mul_f2f(xz,0.21f32),3.0f32))*0.6f32)+(eg_noise(wg_mul_f2f(xz,0.08f32))*0.4f32));
+      base=wg_mix_f3f3f(base,dirt,edge);
+    }
+    // the river's bed: silt and stones under the water, darker the deeper,
+    // and wet earth where the bank meets it
+    under:f32=eg_water_over(xz,u,heights,water_nodes);
+    mud:V3=wg_mix_f3f3f(v3(0.28f32,0.23f32,0.155f32),v3(0.34f32,0.28f32,0.19f32),eg_noise(wg_mul_f2f(xz,0.24f32)));
+    wet:f32=smoothstep(-0.02f32,0.25f32,under);
+    base=wg_mix_f3f3f(base,wg_mul_f3f(mud,(1.0f32-(0.45f32*smoothstep(0.3f32,2.0f32,under)))),wet);
+    // the spells' marks: frost, scorch and the rest painted into it
+    mk:EgMark=eg_ground_mark(xz,0.0f32,u);
+    base=wg_mix_f3f3f(base,mk.tint,mk.cover);
+    mark_ice=mk.ice;
+    mark_glow=mk.glow;
+    shadow=eg_shade_shadows_at(xz,s.world.y,true,u);
+  } else if (s.look==1) {
+    base=wg_mul_f3f(base,0.8f32+(0.35f32*eg_noise(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),3.1f32),wg_mul_f2f(v2(s.world.z,s.world.x),2.3f32)))));
+  } else if (s.look==2) {
+    base=wg_mul_f3f(base,0.9f32+(0.15f32*eg_noise(wg_add_f2f(wg_mul_f2f(v2(s.world.x,s.world.z),9.0f32),s.world.y*7.0f32))));
+  } else if (s.look==EG_LOOK_CARVED) {
+    base=eg_carved(base,s.world,s.uv,u,water_nodes);
+  } else if ((s.look==EG_LOOK_PLANKS)||(s.look==EG_LOOK_WOOD)) {
+    base=eg_timber(base,s.world,n,s.look==EG_LOOK_PLANKS,u,water_nodes);
+  } else if (s.look==4) {
+    base=wg_mix_f3f3f(base,v3(0.85f32,0.92f32,0.95f32),0.25f32*eg_noise(wg_add_f2f2(wg_mul_f2f(xz,1.5f32),v2(u[2]*0.2f32,0.0f32))));
+  }
+  // the shapes' and the ground's colours are written as they show on screen (sRGB); the light works in
+  // linear, as the kit's textures (sampled sRGB) already are
+  if (((((s.look!=5)&&(s.look!=EG_LOOK_CANOPY))&&(s.look!=EG_LOOK_CHARACTER))&&(s.look!=EG_LOOK_ROCK))&&(s.look!=EG_LOOK_WINDOW)) {
+    base=wg_pow_f3f3(wg_max_f3f3(base,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  }
+  if (s.look==EG_LOOK_FLAME) {
+    // a flame: its colour as light, dim by day, bright and blooming once the lamps are lit
+    glow:f32=u[1341];
+    f:V3=wg_mul_f3f(wg_mul_f3f(base,(0.35f32+(7.0f32*glow))),(0.85f32+(0.3f32*eg_noise(v2(u[2]*6.0f32,(s.world.y*9.0f32)+s.world.x)))));
+    return EgLit.{light=v4(f.x,f.y,f.z,ifx glow>0.05f32 then 0.9f32 else 0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+  }
+  if ((s.look==EG_LOOK_WINDOW)&&(s.dye.y>0.75f32)) {
+    return eg_glass(s,front,u);
+  }
+  paint_leaf_far[0]=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
+  lit:f32=verse_style_contact(eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far),1.0f32-shadow,eg_st(4,u).w);
+  res:EgLit=eg_paint(base,n,s.world,lit,(s.look==EG_LOOK_CHARACTER)||(s.look==3),s.look!=99,u,heights,water_nodes,paint_leaf_far);
+  if ((mark_ice>0.0f32)||(mark_glow.x>0.0f32)) {
+    // ice: a soft sheen of the sky at a glancing look, lit as the sun lights it; moonlight added
+    v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+    fres:f32=pow(1.0f32-fmax(wg_dot3(wg_neg_f3(v),n),0.0f32),4.0f32);
+    key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+    res.light=wg_make_f4_f3f(wg_add_f3f3(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f3(wg_mul_ff3(mark_ice*(0.03f32+(0.22f32*fres)),v3(0.78f32,0.86f32,0.95f32)),wg_add_ff3(0.35f32,wg_mul_ff3(0.65f32,wg_min_f3f3(key,v3(1.5f32,1.5f32,1.5f32)))))),wg_mul_f3f(mark_glow,0.18f32)),res.light.w);
+  }
+  figure:bool=(s.look==EG_LOOK_CHARACTER)||(s.look==3);
+  if (((figure||(s.look==5))||(s.look==EG_LOOK_PLANKS))||(s.look==EG_LOOK_WOOD)) {
+    // the night's fill (the owner, October 29: at night the Ranger and the stalls read as black
+    // cut-outs): what stands near the eye keeps its form and colour under a soft cool moon fill,
+    // from above and the side the moon is on, fading out past 30 m so the far night stays dark;
+    // a figure gets it full, a prop or wall half; the lamps warm both on top (lamp_light)
+    night:f32=eg_st(14,u).w;
+    near:f32=1.0f32-smoothstep(12.0f32,30.0f32,wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world)));
+    face:f32=(0.55f32+(0.25f32*n.y))+(0.2f32*fmax(wg_dot3(n,wg_sw_xyz_f4(eg_st(1,u))),0.0f32));
+    fill:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.10f32,0.13f32,0.26f32),night),near),face),ifx figure then 1.7f32 else 0.5f32);
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f3(base,fill)),res.light.w);
+  }
+  if (s.look==EG_LOOK_WINDOW) {
+    // a lit room's light on its window's frame and sill
+    spill:f32=s.dye.x*u[1341];
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f3(base,eg_room_warm(s.dye.z)),0.9f32),spill)),res.light.w);
+  }
+  return res;
+}
+// A window's glass (seen from the street; from inside a room you look through it): by day a dark
+// pane with the sky's colour across its top, painted flat; from dusk most rooms light, a deep amber
+// brightest low in the pane where the hearth is, each its own warmth, blooming softly. The haze
+// still takes it with distance, less where the room is lit, so far windows are small warm points.
+eg_glass :: (s:EgS,front:bool,u:[]f32)->EgLit {
+  if (!front) {
+    gpu_discard();
+  }
+  v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+  up:f32=clampf(s.uv.y,0.0f32,1.0f32); // the pane's own uv: 0 at the sill, 1 at the arch
+  c:V3=wg_mix_f3f3f(v3(0.035f32,0.05f32,0.065f32),wg_mul_f3f(wg_sw_xyz_f4(eg_st(5,u)),0.45f32),0.35f32+(0.4f32*up));
+  room:f32=s.dye.x*u[1341];
+  c=wg_mix_f3f3f(c,wg_mul_f3f(eg_room_warm(s.dye.z),(1.7f32-(0.8f32*up))),clampf(room,0.0f32,1.0f32));
+  fog:f32=eg_haze_share(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world)),s.world.y,u);
+  c=wg_mix_f3f3f(c,eg_haze_colour(fog,v,u),fog*(1.0f32-(0.6f32*room)));
+  return EgLit.{light=v4(c.x,c.y,c.z,ifx room>0.05f32 then 0.85f32 else 0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// A ball of water (the Water Orb, its drips and splash): a deep body lit by the sun, a swirl moving
+// over it, the sky's colour along its rim, a hard sun highlight; where it faces you it is part
+// see-through, a screen door of 4 by 4 (the scene pass draws no blend), so what's behind shows.
+// A spell's fire, smoke or shockwave (LOOK_FIRE, LOOK_SMOKE, LOOK_RING): an ordered dither drops the
+// pixels it doesn't cover, thinning to its feathered, churning edge, and the bloom blurs what stays.
+eg_spell_soft_part :: (s:EgS,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:[]bool)->EgLit {
+  n:V3=wg_normalize3(s.normal);
+  v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  facing:f32=abs(wg_dot3(n,v));
+  t:f32=u[2];
+  seed:f32=s.dye.y*41.0f32;
+  churn:f32=(0.55f32*eg_noise(wg_add_f2f2(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),1.6f32),wg_mul_f2f(v2(n.x,n.z),1.9f32)),v2(seed+(t*2.1f32),(-t)*2.9f32))))+(0.45f32*eg_noise(wg_add_f2f2(wg_sub_f2f2(wg_mul_f2f(v2(s.world.z,s.world.y),3.1f32),wg_mul_f2f(v2(n.y,n.x),1.4f32)),v2((-t)*2.4f32,seed+(t*1.7f32)))));
+  body:f32=smoothstep(0.02f32,0.8f32,facing);
+  if (s.look==EG_LOOK_RING) {
+    body=smoothstep(0.8f32,0.2f32,abs(n.y));
+  }
+  if (s.look==EG_LOOK_SMOKE) {
+    body=smoothstep(0.0f32,0.9f32,facing);
+  }
+  // sharpened, so most of it is whole or gone and only a thin churning edge is dithered; as its cover
+  // falls it burns away from its edge in
+  cover:f32=smoothstep(0.3f32,0.62f32,(s.dye.x*body)*(0.45f32+(1.0f32*churn)));
+  if (s.look==EG_LOOK_SMOKE) {
+    cover=smoothstep(0.15f32,0.85f32,(s.dye.x*body)*(0.2f32+(1.0f32*churn)));
+  } // smoke: thinner, holed where it churns
+  bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+  px:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+  if (((bayer[cast(int)add_wrap(mul_wrap(px.y,4),px.x)]+0.5f32)/16.0f32)>=cover) {
+    gpu_discard();
+  }
+  deep:V3=wg_pow_f3f3(wg_max_f3f3(s.tint,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  if (s.look==EG_LOOK_SMOKE) {
+    // smoke: its colour, a little mottled, in the town's light
+    return eg_paint(wg_mul_f3f(deep,(0.8f32+(0.4f32*churn))),n,s.world,1.0f32,false,false,u,heights,water_nodes,paint_leaf_far);
+  }
+  // fire: white-hot where it is thickest and faces you, its colour, then a deeper red at its edge
+  // (only a hot colour runs white: a fire cooled to red keeps its colour, mottled, sooty at its edge)
+  hot:f32=clampf((s.tint.y*1.6f32)-0.15f32,0.0f32,1.0f32);
+  heat:f32=clampf((facing*facing)*(0.25f32+(1.0f32*churn)),0.0f32,1.0f32)*hot;
+  edge:V3=wg_mix_f3f3f(v3(0.1f32,0.05f32,0.035f32),wg_mul_f3f3(deep,v3(0.9f32,0.42f32,0.3f32)),0.45f32+(0.55f32*hot));
+  body_c:V3=wg_mul_f3f(wg_mix_f3f3f(deep,v3(1.0f32,0.95f32,0.82f32),(heat*heat)*0.6f32),((0.45f32+((1.1f32*churn)*(1.0f32-(0.5f32*hot))))+(0.5f32*hot)));
+  c:V3=wg_mul_f3f(wg_mix_f3f3f(edge,body_c,smoothstep(0.1f32,0.75f32,facing)),(0.9f32+(1.8f32*heat)));
+  return EgLit.{light=v4(c.x,c.y,c.z,1.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+eg_orb :: (s:EgS,u:[]f32)->EgLit {
+  n:V3=wg_normalize3(s.normal);
+  v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  facing:f32=abs(wg_dot3(n,v));
+  t:f32=u[2];
+  swirl:f32=(0.5f32*eg_noise(wg_add_f2f2(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),2.1f32),wg_mul_f2f(v2(n.x,n.z),3.0f32)),v2(t*1.6f32,(-t)*1.1f32))))+(0.5f32*eg_noise(wg_add_f2f2(wg_sub_f2f2(wg_mul_f2f(v2(s.world.z,s.world.y),2.7f32),wg_mul_f2f(v2(n.y,n.x),2.0f32)),v2((-t)*1.2f32,t*0.9f32))));
+  bayer:[16]f32=[16]f32.[0.0f32,8.0f32,2.0f32,10.0f32,12.0f32,4.0f32,14.0f32,6.0f32,3.0f32,11.0f32,1.0f32,9.0f32,15.0f32,7.0f32,13.0f32,5.0f32];
+  px:U2=wg_mod_u2u2(wg_cvt_u2f2(v2(s.pos.x,s.pos.y)),u2(4,4));
+  clear:f32=smoothstep(0.35f32,0.95f32,facing)*(0.35f32+(0.3f32*swirl));
+  if (((bayer[cast(int)add_wrap(mul_wrap(px.y,4),px.x)]+0.5f32)/16.0f32)<clear) {
+    gpu_discard();
+  }
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  deep:V3=wg_pow_f3f3(wg_max_f3f3(s.tint,v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  body:V3=wg_mul_f3f(wg_mul_f3f(deep,(0.35f32+(0.55f32*fmax(wg_dot3(n,l),0.0f32)))),(0.75f32+(0.5f32*swirl)));
+  fres:f32=pow(1.0f32-facing,3.0f32);
+  rim:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(v3(0.55f32,0.75f32,0.85f32),wg_sw_xyz_f4(eg_st(5,u)),0.3f32),fres),1.3f32);
+  spec:f32=(pow(fmax(wg_dot3(n,wg_normalize3(wg_add_f3f3(l,v))),0.0f32),90.0f32)*2.5f32)+(pow(fmax(wg_dot3(n,wg_normalize3(wg_add_f3f3(v3(-0.4f32,0.8f32,0.2f32),v))),0.0f32),40.0f32)*0.35f32);
+  c:V3=wg_add_f3f3(wg_add_f3f3(body,rim),v3(spec,spec,spec));
+  return EgLit.{light=v4(c.x,c.y,c.z,ifx spec>0.6f32 then 0.7f32 else 0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// The sky a place sees (everglade-sky.coax, baked once after the heights in store 0): the ground
+// point's share between its four, the rest of the sky the higher it stands off the ground, and how much
+// of the ambient light follows it (the rest stays, so a room or a deep wood is darker, never black).
+EG_SKY_RISE :: 7.0f32;
+EG_SKY_SHARE :: 1.0f32;
+eg_sky_seen :: (world:V3,u:[]f32,heights:[]f32)->f32 {
+  n:s32=wg_i32_f(u[32]);
+  gx:f32=(world.x-u[34])/u[33];
+  gz:f32=(world.z-u[35])/u[33];
+  ix:s32=wg_clamp_i(wg_i32_f(floor(gx)),0,n-1);
+  iz:s32=wg_clamp_i(wg_i32_f(floor(gz)),0,n-1);
+  fx:f32=clampf(gx-(cast(f32)(ix)),0.0f32,1.0f32);
+  fz:f32=clampf(gz-(cast(f32)(iz)),0.0f32,1.0f32);
+  p:s32=(n+1)*(n+1);
+  k:s32=(iz*(n+1))+ix;
+  sky:f32=mix(mix(heights[cast(int)(cast,trunc(u32)(p+k))],heights[cast(int)(cast,trunc(u32)((p+k)+1))],fx),mix(heights[cast(int)(cast,trunc(u32)(((p+k)+n)+1))],heights[cast(int)(cast,trunc(u32)(((p+k)+n)+2))],fx),fz);
+  ground:f32=mix(mix(eg_height(ix,iz,u,heights),eg_height(ix+1,iz,u,heights),fx),mix(eg_height(ix,iz+1,u,heights),eg_height(ix+1,iz+1,u,heights),fx),fz);
+  seen:f32=mix(sky,1.0f32,smoothstep(0.0f32,EG_SKY_RISE,world.y-ground));
+  return mix(1.0f32,seen,EG_SKY_SHARE);
+}
+// A lit room's colour: deep amber to a paler gold.
+eg_room_warm :: (k:f32)->V3 {
+  return wg_mix_f3f3f(v3(1.0f32,0.36f32,0.08f32),v3(1.0f32,0.5f32,0.16f32),k);
+}
+// The painterly light (spec 1 to 4): the wrapped key times what of it reaches (lit: the shadow map and
+// the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
+// cool tinted ambient, the warm rim along silhouettes (not on a blade: a field edge on would all be
+// rim), then the haze; with the share that blooms and the glow a hazed surface passes the shafts.
+eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,paint_leaf_far:[]bool)->EgLit {
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  v:V3=wg_normalize3(wg_sub_f3f3(world,v3(u[24],u[25],u[26])));
+  base:V3=eg_weather_wet_base(dry,n,character,u); // rain darkens what it wets (W9)
+  w:f32=verse_style_wrap(wg_dot3(n,l))*lit;
+  band0:f32=ifx character then verse_style_bands2(w,eg_st(8,u).x,eg_st(8,u).y) else verse_style_bands(w,eg_st(7,u).x,eg_st(7,u).y,eg_st(7,u).z,eg_st(7,u).w);
+  // past the near ground the bands draw together (spec 15, fine detail): a crown, a roof, a wall at
+  // forty metres reads as one mass in its light, not a lace of lit and shadowed pieces
+  band:f32=mix(band0,EG_BAND_FAR_MID,EG_BAND_FAR_SHARE*smoothstep(EG_BAND_FAR_FROM,EG_BAND_FAR_TO,wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world))));
+  key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+  amb:V3=wg_mul_ff3(eg_sky_seen(world,u,heights),v3(verse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w)));
+  c:V3=eg_banded(base,wg_mul_f3f3(wg_sw_xyz_f4(eg_st(4,u)),amb),wg_add_f3f3(key,amb),band,u);
+  c=wg_add_f3f3(c,wg_mul_f3f3(base,eg_lamp_light(world,n,u)));
+  // the shadow tint and the light may grey a surface only so far: 0.7 of its albedo's saturation stays
+  gain:f32=verse_style_chroma_gain(eg_saturation(c),eg_saturation(base),0.7f32);
+  cy:f32=verse_style_luma(c.x,c.y,c.z);
+  c=wg_max_f3f3(wg_add_f3f3(v3(cy,cy,cy),wg_mul_f3f(wg_sub_f3f3(c,v3(cy,cy,cy)),gain)),v3(0.0f32,0.0f32,0.0f32));
+  rs:f32=ifx character then eg_st(3,u).x else eg_st(2,u).w;
+  if (rim&&(rs>0.0f32)) {
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(2,u)),verse_style_rim(wg_dot3(n,wg_neg_f3(v)),wg_dot3(n,l),eg_st(3,u).y,eg_st(3,u).z,rs)),lit));
+  } // (none without outlines: verse_style_no_outlines)
+  if (!paint_leaf_far[0]) {
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f3(wg_mul_ff3(eg_water_caustics(world,n,u,water_nodes),base),key),lit));
+  } // light the water focuses on what lies under it
+  c=eg_weather_surface(c,base,n,world,v,lit,character,u,heights); // wet sheen, puddles, lightning (W9)
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  fog:f32=eg_haze_share(d,world.y,u);
+  c=wg_mix_f3f3f(c,eg_haze_colour(fog,v,u),fog);
+  c=eg_weather_streaks(c,v,d,u); // the rain between you and it (W9)
+  c=eg_water_under_view(c,world,v,u); // diving: the underwater look (W7)
+  b:V4=eg_st(19,u);
+  return EgLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(verse_style_shaft_source(wg_dot3(v,l))*fog,d/EG_AUX_DISTANCE,0.0f32,0.0f32)};
+}
+// The lamps' light at p (normal n): each pools within its reach, (1 - (d/reach)^2)^2, wrapped round
+// the surface a little so the ground under a lamp lights all round it; none by day.
+eg_lamp_light :: (p:V3,n:V3,u:[]f32)->V3 {
+  glow:f32=u[1341];
+  count:u32=wg_u32_f(u[1340]);
+  lit_by_day:u32=sub_wrap(count,wg_min_u(wg_u32_f(u[1342]),count)); // the spells' blasts (everglade-spells.coax spells_lamps) burn by day too
+  if ((glow<=0.0f32)&&(lit_by_day==count)) {
+    return v3(0.0f32,0.0f32,0.0f32);
+  }
+  sum:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    i:u32=0;
+    while i<16 {
+      if (i>=count) {
+        break;
+      }
+      at:V4=wg_at4(u,(cast(int)mul_wrap(i,2))*4+1344);
+      c:V4=wg_at4(u,(cast(int)add_wrap(mul_wrap(i,2),1))*4+1344);
+      delta:V3=wg_sub_f3f3(v3(at.x,at.y,at.z),p);
+      d:f32=wg_length3(delta);
+      if (d>=at.w) {
+        {i=add_wrap(i,1); continue;}
+      }
+      k:f32=1.0f32-((d*d)/(at.w*at.w));
+      face:f32=fmax(0.15f32,(wg_dot3(n,wg_div_f3f(delta,fmax(d,0.001f32)))+0.3f32)/1.3f32);
+      sum=wg_add_f3f3(sum,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(c.x,c.y,c.z),c.w),k),k),face),ifx i>=lit_by_day then 1.0f32 else glow));
+      i=add_wrap(i,1);
+    }
+  }
+  return sum;
+}
+eg_saturation :: (c:V3)->f32 {
+  hi:f32=fmax(c.x,fmax(c.y,c.z));
+  return (hi-fmin(c.x,fmin(c.y,c.z)))/fmax(hi,0.0001f32);
+}
+// A banded surface (spec 1 and 3): the shadow band takes the tint's hue once more at the preset's
+// amount with its value kept (painterly shadows are cool, warm albedos too); the lit band the key.
+eg_banded :: (a:V3,dark:V3,bright:V3,band:f32,u:[]f32)->V3 {
+  s:V3=wg_mul_f3f3(a,dark);
+  t:V3=wg_sw_xyz_f4(eg_st(4,u));
+  tl:f32=verse_style_luma(t.x,t.y,t.z);
+  k:f32=eg_st(21,u).w;
+  m:V3=v3(verse_style_cool(s.x,t.x,tl,k),verse_style_cool(s.y,t.y,tl,k),verse_style_cool(s.z,t.z,tl,k));
+  y:f32=verse_style_luma(s.x,s.y,s.z);
+  ym:f32=verse_style_luma(m.x,m.y,m.z);
+  cool:V3=v3(verse_style_keep_value(m.x,y,ym),verse_style_keep_value(m.y,y,ym),verse_style_keep_value(m.z,y,ym));
+  l:V3=wg_mul_f3f3(a,bright);
+  return v3(verse_style_banded(cool.x,l.x,band),verse_style_banded(cool.y,l.y,band),verse_style_banded(cool.z,l.z,band));
+}
+EgV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+eg_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+eg_fx_vs :: (_vid4:u32,_iid5:u32,in_:eg_fx_vs_in,u:[]f32)->EgV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:EgV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+eg_fx_fs :: (v:EgV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+// ---- water (phase W2 of docs/verse/water.md): a port of the previous
+// engine's shared water.wgsl (git show 32e4d59fc2:crates/verse-pbr/src/water/
+// water.wgsl), with this realm's sky, sun, light and fog as its hooks (the
+// old imported renderer's, imported.wgsl). It implements public techniques:
+//
+// - Gerstner waves (Fournier and Reeves 1986, in Finch's GPU Gems 2004 form)
+//   from verse/water.coax's own terms: each angle's constant part comes from
+//   the integer phase counter in f64 on the CPU (water_look_angles).
+// - Schlick's Fresnel (1994) at an index of 1.33, with Snell's window and
+//   total internal reflection from below.
+// - Sky reflection blurred by roughness and the pixel's footprint; sun
+//   glints from GGX (Walter et al. 2007) with the height-correlated Smith
+//   visibility (Heitz 2014), faded with distance by tier.
+// - Crest scattering with the Henyey-Greenstein phase function (1941).
+// - Per-channel Beer-Lambert absorption over the baked depth, from Jerlov's
+//   water types (Marine Optics, 1976).
+// - Shore foam from the baked distance transform; two-phase flow-map
+//   advection of the detail and the foam (Vlachos, Portal 2, 2010).
+//
+// The mesh is the river's baked node grid (store 3, WATER_NODE floats a
+// node: x, level, z, depth, shore, flow x, flow z, white water), a patch an
+// instance, its quads sampled between the nodes. Each patch draws twice
+// after the scene, depth-tested and not written (host.js): water_transmit_fs
+// multiplies what lies behind by the surface's per-channel transmittance,
+// then water_emit_fs adds what it reflects, scatters and foams.
+//
+// This realm draws into a gamma-encoded target (encode), so the transmitted
+// half multiplies by the encoded transmittance, which is exact for a
+// product, and the emitted half adds the encoded difference it makes over a
+// dim bed (WATER_BED), which is close where a bed shows and exact where the
+// water hides it.
+EgWaterU :: struct {waves:[16]V4; detail:[32]V4; ripples:[24]V4; params:V4; absorb:V4; scatter:V4; body:V4; rest:V4; control:V4; grid:V4; grid2:V4; frame:V4; }
+// time, detail count, ripple count, wave count
+// in-scatter rgb, foam
+// roughness, swell gain, eye inside, crest scattering
+// shore band, pixel angle, sun disc, metres along a node
+// detail waves, glint fade, foam octaves, 1
+// nodes across, nodes along, quads across a patch, quads along a patch
+// nodes along a patch, patches
+// the first node's x, z, the way along (rad about +Y from +z), metres across a node
+EG_WATER_IOR :: 1.33f32;
+EG_WATER_F0 :: 0.0200593f32; // ((n - 1) / (n + 1))^2
+EG_WATER_RIPPLE_SPEED :: 1.1f32;
+EG_WATER_FLOW_PERIOD :: 1.6f32;
+EG_WATER_DRY :: 0.6f32;
+EG_WATER_SUN :: ()->V3 {return v3(1.0f32,0.94f32,0.82f32);}
+EG_WATER_SUN_E :: 2.8274f32; // the sun's illuminance: scene_fs's 0.9 times PI
+EG_WATER_BED :: 0.15f32; // the linear radiance a lit bed under the water has, about
+// The water's hooks take the painted sky, the preset's key and its ambient (eg-paint-light).
+eg_water_host_sky :: (dir:V3,level:f32,u:[]f32)->V3 {
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  d:V3=wg_normalize3(v3(dir.x,fmax(dir.y,0.0f32),dir.z));
+  sharp:V3=wg_mix_f3f3f(wg_sw_xyz_f4(eg_st(10,u)),wg_sw_xyz_f4(eg_st(12,u)),verse_style_sky_t(d.y));
+  blurred:V3=wg_mix_f3f3f(wg_sw_xyz_f4(eg_st(10,u)),wg_sw_xyz_f4(eg_st(12,u)),0.55f32);
+  return wg_add_f3f3(wg_mix_f3f3f(sharp,blurred,level*level),wg_mul_f3f(wg_mul_f3f(ifx eg_st(1,u).w>0.5f32 then wg_sw_xyz_f4(eg_st(0,u)) else wg_sw_xyz_f4(eg_st(11,u)),verse_style_halo(wg_dot3(d,l),eg_st(14,u).z)),0.25f32));
+}
+eg_water_host_sun :: (u:[]f32)->V4 {
+  return wg_make_f4_f3f(wg_sw_xyz_f4(eg_st(1,u)),ifx eg_st(0,u).w<=0.0f32 then 0.0f32 else 1.0f32);
+}
+eg_water_host_sun_light :: (u:[]f32)->V3 {
+  return wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),EG_WATER_SUN_E);
+}
+eg_water_host_light :: (world:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->V3 {
+  return eg_water_host_light_shaded(world,n,eg_shade_shadows(v2(world.x,world.z),u),u,shadow_map,shadow_cmp,paint_leaf_far);
+}
+// The same with the soft shadows at world already worked out (sh), so a caller that needs them twice
+// sums the 16 of them once.
+eg_water_host_light_shaded :: (world:V3,n:V3,sh:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->V3 {
+  amb:V3=v3(verse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
+  return wg_add_f3f3(amb,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),fmax(wg_dot3(n,wg_sw_xyz_f4(eg_st(1,u))),0.0f32)),eg_map_lit(world,n,u,shadow_map,shadow_cmp,paint_leaf_far)),sh));
+}
+eg_water_node :: (k:u32,f:u32,water_nodes:[]f32)->f32 {
+  return water_nodes[cast(int)add_wrap(mul_wrap(k,8),f)];
+}
+// A point's place among the nodes (u across, v along), for a straight
+// course: the frame row says where the first node is and which way the rows run.
+eg_water_uv :: (xz:V2,u:[]f32)->V2 {
+  t:V2=v2(sin(u[1082]),cos(u[1082]));
+  side:V2=v2(-t.y,t.x);
+  d:V2=wg_sub_f2f2(xz,v2(u[1080],u[1081]));
+  return v2(wg_dot2(d,side)/fmax(u[1083],1e-3f32),wg_dot2(d,t)/fmax(u[1067],1e-3f32));
+}
+// How deep the water stands over ground at xz (m; 0 where there is none).
+eg_water_over :: (xz:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
+  q:f32=eg_pond_depth_at(v3(xz.x,eg_ground_y(xz,u,heights),xz.y),u);
+  if (q>0.0f32) {
+    return q;
+  }
+  if ((u[1072]<2.0f32)||(u[1083]<=0.0f32)) {
+    return 0.0f32;
+  }
+  uv:V2=eg_water_uv(xz,u);
+  if ((((uv.x<0.0f32)||(uv.y<0.0f32))||(uv.x>(u[1072]-1.0f32)))||(uv.y>(u[1073]-1.0f32))) {
+    return 0.0f32;
+  }
+  return fmax(eg_water_rest(uv,u,water_nodes).depth,0.0f32);
+}
+EgWaterRest :: struct {pos:V3; depth:f32; shore:f32; flow:V2; foam:f32; }
+// The baked grid between its nodes: u across, v along, in node units.
+eg_water_rest :: (uv:V2,u:[]f32,water_nodes:[]f32)->EgWaterRest {
+  cols:u32=wg_u32_f(u[1072]);
+  rows:u32=wg_u32_f(u[1073]);
+  a:V2=wg_clamp_f2f2f2(uv,v2(0.0f32,0.0f32),v2(cast(f32)(sub_wrap(cols,1)),cast(f32)(sub_wrap(rows,1))));
+  i:u32=wg_min_u(wg_u32_f(floor(a.x)),sub_wrap(cols,2));
+  j:u32=wg_min_u(wg_u32_f(floor(a.y)),sub_wrap(rows,2));
+  f:V2=wg_sub_f2f2(a,v2(cast(f32)(i),cast(f32)(j)));
+  k00:u32=add_wrap(mul_wrap(j,cols),i);
+  k10:u32=add_wrap(k00,1);
+  k01:u32=add_wrap(k00,cols);
+  k11:u32=add_wrap(k01,1);
+  o:EgWaterRest;
+  v:[8]f32;
+  {
+    c:u32=0;
+    while c<8 {
+      v[cast(int)c]=mix(mix(eg_water_node(k00,c,water_nodes),eg_water_node(k10,c,water_nodes),f.x),mix(eg_water_node(k01,c,water_nodes),eg_water_node(k11,c,water_nodes),f.x),f.y);
+      c=add_wrap(c,1);
+    }
+  }
+  o.pos=v3(v[0],v[1],v[2]);
+  o.depth=v[3];
+  o.shore=v[4];
+  o.flow=v2(v[5],v[6]);
+  o.foam=v[7];
+  return o;
+}
+// How deep (m) a point lies under the river at rest, or a negative number when it is not under it.
+eg_water_depth_at :: (p:V3,u:[]f32,water_nodes:[]f32)->f32 {
+  f:f32=eg_fountain_depth_at(p,u);
+  if (f>(-0.5f32)) {
+    return f;
+  }
+  q:f32=eg_pond_depth_at(p,u);
+  if (q>(-0.5f32)) {
+    return q;
+  }
+  if ((u[1072]<2.0f32)||(u[1083]<=0.0f32)) {
+    return -1.0f32;
+  }
+  uv:V2=eg_water_uv(v2(p.x,p.z),u);
+  if ((((uv.x<0.0f32)||(uv.y<0.0f32))||(uv.x>(u[1072]-1.0f32)))||(uv.y>(u[1073]-1.0f32))) {
+    return -1.0f32;
+  }
+  r:EgWaterRest=eg_water_rest(uv,u,water_nodes);
+  if (r.depth<=0.0f32) {
+    return -1.0f32;
+  }
+  return r.pos.y-p.y;
+}
+// Caustics (W7, on what lies under the water): the ridges of two drifting noise fields, the
+// light the surface's bumps focus onto the bed, faded in over the first 0.1 m and out with depth,
+// on what faces up. Its share of the key light.
+eg_water_caustic_pattern :: (p:V2,t:f32)->f32 {
+  a:f32=eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(p,1.6f32),t*0.45f32));
+  b:f32=eg_water_noise(wg_make_f3_f2f(wg_add_f2f2(wg_mul_f2f(p,2.9f32),v2(3.1f32,7.7f32)),(t*0.6f32)+4.0f32));
+  ra:f32=1.0f32-abs((2.0f32*a)-1.0f32);
+  rb:f32=1.0f32-abs((2.0f32*b)-1.0f32);
+  return (pow(ra,7.0f32)*0.8f32)+(pow(rb,7.0f32)*0.55f32);
+}
+eg_water_caustics :: (p:V3,n:V3,u:[]f32,water_nodes:[]f32)->f32 {
+  depth:f32=eg_water_depth_at(p,u,water_nodes);
+  if (depth<=0.0f32) {
+    return 0.0f32;
+  }
+  up:f32=smoothstep(-0.2f32,0.6f32,n.y);
+  return (((eg_water_caustic_pattern(v2(p.x,p.z),u[1048])*smoothstep(0.0f32,0.1f32,depth))*exp((-depth)*0.7f32))*up)*1.4f32;
+}
+// ---- under the water (phase W7, verse/water-under.coax): the eye's height over the river (the
+// block's control.w, river.coax; large when not over it) splits each pixel at the near plane
+// (the waterline is affine across the screen: here with the surface taken flat at the eye), and
+// what lies under it takes the painted underwater look: per-channel Beer-Lambert fog toward a
+// teal in-scatter (the same absorption keeps the look continuous across the surface, which
+// water_below draws from beneath through Snell's window), caustics on everything submerged
+// (water_caustics), drifting motes and, on a desktop, 16 samples of sun shafts.
+EG_WATER_NEAR :: 0.1f32;
+EG_WATER_UNDER_ABSORB :: ()->V3 {return v3(0.42f32,0.12f32,0.09f32);} // 1/m: a clear green river
+EG_WATER_UNDER_SCATTER :: ()->V3 {return v3(0.05f32,0.30f32,0.33f32);}
+EG_WATER_UNDER_TINT :: ()->V3 {return v3(0.52f32,0.84f32,0.95f32);} // what the water does to a colour at once: reds go first
+eg_water_eye_over :: (u:[]f32)->f32 {
+  return ifx u[1072]>=2.0f32 then u[1071] else 100.0f32;
+}
+eg_water_pixel_under :: (d:V3,u:[]f32)->bool {
+  return (eg_water_eye_over(u)+(EG_WATER_NEAR*d.y))<0.0f32;
+}
+eg_water_mote_hash :: (c:V3)->V4 {
+  h:V4=v4(eg_water_hash(c),eg_water_hash(wg_add_f3f3(c,v3(17.0f32,3.0f32,5.0f32))),eg_water_hash(wg_add_f3f3(c,v3(7.0f32,29.0f32,11.0f32))),eg_water_hash(wg_add_f3f3(c,v3(2.0f32,13.0f32,31.0f32))));
+  return h;
+}
+// Motes along the view in the first `reach` m: one at most in each 1 m cell, a quarter of them there.
+eg_water_motes :: (o:V3,d:V3,reach:f32,u:[]f32)->f32 {
+  a:f32=0.0f32;
+  n:s32=ifx u[1068]<8.0f32 then 3 else 6;
+  {
+    i:s32=0;
+    while i<n {
+      t:f32=(((cast(f32)(i))+0.5f32)*reach)/(cast(f32)(n));
+      c:V3=wg_floor_f3(wg_add_f3f3(o,wg_mul_f3f(d,t)));
+      h:V4=eg_water_mote_hash(c);
+      if (h.w>0.25f32) {
+        {i+=1; continue;}
+      }
+      drift:V3=wg_mul_f3f(v3(sin((u[1048]*0.3f32)+(h.x*6.0f32)),cos((u[1048]*0.23f32)+(h.y*6.0f32)),0.0f32),0.08f32);
+      m:V3=wg_add_f3f3(wg_add_f3f3(c,v3(h.x,h.y,h.z)),drift);
+      along:f32=fmax(wg_dot3(wg_sub_f3f3(m,o),d),0.05f32);
+      if (along>reach) {
+        {i+=1; continue;}
+      }
+      off:f32=wg_length3(wg_sub_f3f3(m,wg_add_f3f3(o,wg_mul_f3f(d,along))));
+      size:f32=(0.012f32*along)+0.004f32;
+      a=a+(((1.0f32-smoothstep(size*0.4f32,size,off))*0.5f32)*exp((-along)*0.25f32));
+      i+=1;
+    }
+  }
+  return a;
+}
+// Sun shafts: the caustic field above each sample along the view, dimmed by the water over it and
+// by the way back to the eye (desktop only).
+eg_water_shafts :: (o:V3,d:V3,path:f32,level:f32,u:[]f32)->f32 {
+  if (u[1068]<8.0f32) {
+    return 0.0f32;
+  }
+  sum:f32=0.0f32;
+  reach:f32=fmin(path,8.0f32);
+  {
+    i:s32=0;
+    while i<16 {
+      t:f32=(((cast(f32)(i))+0.5f32)/16.0f32)*reach;
+      q:V3=wg_add_f3f3(o,wg_mul_f3f(d,t));
+      below:f32=fmax(level-q.y,0.0f32);
+      sum=sum+(eg_water_caustic_pattern(wg_add_f2f2(v2(q.x,q.z),wg_mul_f2f(wg_mul_f2f(wg_sw_xz_f4(eg_st(1,u)),below),0.6f32)),u[1048])*exp(((-below)*0.5f32)-(t*0.3f32)));
+      i+=1;
+    }
+  }
+  return ((sum/16.0f32)*reach)*0.35f32;
+}
+// What lies at `world` seen from the eye under the water.
+eg_water_under_view :: (c:V3,world:V3,d:V3,u:[]f32)->V3 {
+  if (!eg_water_pixel_under(d,u)) {
+    return c;
+  }
+  o:V3=v3(u[24],u[25],u[26]);
+  level:f32=o.y-eg_water_eye_over(u);
+  dist:f32=wg_length3(wg_sub_f3f3(world,o));
+  // above the surface the water's own pass dims the way through it (water_below)
+  path:f32=dist;
+  if ((world.y>level)&&(d.y>0.0f32)) {
+    path=fmin(dist,(level-o.y)/d.y);
+  }
+  tr:V3=wg_exp_f3(wg_mul_f3f(wg_neg_f3(EG_WATER_UNDER_ABSORB()),path));
+  key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+  light:V3=wg_mul_f3f(EG_WATER_UNDER_SCATTER(),(0.35f32+(0.65f32*verse_style_luma(key.x,key.y,key.z))));
+  col:V3=wg_add_f3f3(wg_mul_f3f3(wg_mul_f3f3(c,EG_WATER_UNDER_TINT()),tr),wg_mul_f3f3(light,wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),tr)));
+  col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f3(v3(1.0f32,0.97f32,0.85f32),key),((eg_water_motes(o,d,fmin(path,6.0f32),u)*0.6f32)+eg_water_shafts(o,d,path,level,u))));
+  return col;
+}
+// ---- the weather (W9: verse/water-weather.coax samples Everglade's schedule; everglade.coax
+// weather_frame writes u.weather). The light and the haze under cloud are set on the CPU; here the
+// sky greys under cloud and flashes with lightning, rain falls as wind-tilted streaks in layers
+// round the eye (2 on a phone, 4 on a desktop), rings on the water where drops land, and the
+// ground darkens, shines and fills its hollows with puddles as it wets, and so do characters.
+eg_weather_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+eg_weather_desktop :: (u:[]f32)->bool {
+  return u[1068]>=8.0f32;
+}
+eg_weather_sky :: (c:V3,d:V3,u:[]f32)->V3 {
+  cloud:f32=fmax(u[1478]-0.15f32,0.0f32)/0.85f32;
+  grey:V3=wg_mul_f3f3(wg_make_f3_f(verse_style_luma(c.x,c.y,c.z)),v3(0.86f32,0.92f32,0.98f32));
+  o:V3=wg_mix_f3f3f(c,wg_mul_f3f(grey,(1.0f32-(0.25f32*cloud))),cloud*0.7f32);
+  o=wg_add_f3f3(o,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.75f32,0.8f32,1.0f32),u[1475]),0.8f32),smoothstep(-0.1f32,0.3f32,d.y)));
+  return o;
+}
+// Rings where drops land on water at p (m): one drop in most 0.55 m cells every 0.7 s, each ring
+// running out 0.3 m and fading.
+eg_weather_rain_slope :: (p:V2,u:[]f32)->V2 {
+  rain:f32=u[1472];
+  if (rain<=0.01f32) {
+    return v2(0.0f32,0.0f32);
+  }
+  cell:f32=0.55f32;
+  base:V2=wg_floor_f2(wg_div_f2f(p,cell));
+  t:f32=u[1048];
+  g:V2=v2(0.0f32,0.0f32);
+  {
+    j:s32=-1;
+    while j<=1 {
+      {
+        i:s32=-1;
+        while i<=1 {
+          c:V2=wg_add_f2f2(base,v2(cast(f32)(i),cast(f32)(j)));
+          h:f32=eg_weather_hash(c);
+          if (h>(0.25f32+(0.75f32*rain))) {
+            {i+=1; continue;}
+          }
+          clock:f32=(t/0.7f32)+(h*7.13f32);
+          phase:f32=fract(clock);
+          turn:f32=floor(clock);
+          at:V2=wg_mul_f2f(wg_add_f2f2(c,v2(eg_weather_hash(wg_add_f2f(c,turn*1.37f32)),eg_weather_hash(wg_add_f2f(wg_add_f2f(c,5.3f32),turn*2.11f32)))),cell);
+          to:V2=wg_sub_f2f2(p,at);
+          dist:f32=wg_length2(to);
+          x:f32=dist-(phase*0.3f32);
+          env:f32=(exp(((-x)*x)/0.0016f32)*(1.0f32-phase))*(1.0f32-phase);
+          g=wg_add_f2f2(g,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_div_f2f(to,fmax(dist,1e-3f32)),env),cos(x*55.0f32)),1.4f32));
+          i+=1;
+        }
+      }
+      j+=1;
+    }
+  }
+  return wg_mul_f2f(g,rain);
+}
+// What rain does to a surface's colour as the ground wets: porous albedo darkens (Lagarde 2013),
+// what faces up most; a character all over.
+eg_weather_wet_share :: (n:V3,character:bool,u:[]f32)->f32 {
+  return u[1476]*(ifx character then 0.8f32 else smoothstep(-0.3f32,0.7f32,n.y));
+}
+eg_weather_wet_base :: (base:V3,n:V3,character:bool,u:[]f32)->V3 {
+  wet:f32=eg_weather_wet_share(n,character,u);
+  if (wet<=0.0f32) {
+    return base;
+  }
+  return wg_mul_f3f(base,(1.0f32-(0.4f32*wet)));
+}
+// A painted sheen where wet surfaces mirror the key, puddles in the ground's hollows that mirror the
+// sky and ring with the rain, and the lightning's flash.
+eg_weather_surface :: (c:V3,base:V3,n:V3,world:V3,v:V3,lit:f32,character:bool,u:[]f32,heights:[]f32)->V3 {
+  o:V3=c;
+  wet:f32=eg_weather_wet_share(n,character,u);
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+  if (wet>0.0f32) {
+    r:V3=wg_reflect3(v,n);
+    o=wg_add_f3f3(o,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(key,smoothstep(0.93f32,0.975f32,wg_dot3(r,l))),wet),0.35f32),lit));
+  }
+  puddles:f32=u[1477];
+  if ((((puddles>0.0f32)&&(!character))&&(n.y>0.97f32))&&(abs(world.y-eg_ground_y(v2(world.x,world.z),u,heights))<0.05f32)) {
+    m:f32=(eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(v2(world.x,world.z),0.45f32),0.5f32))*0.7f32)+(eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(v2(world.x,world.z),1.7f32),2.5f32))*0.3f32);
+    fill:f32=1.0f32-smoothstep(puddles*0.3f32,(puddles*0.3f32)+0.03f32,m);
+    if (fill>0.0f32) {
+      s:V2=eg_weather_rain_slope(v2(world.x,world.z),u);
+      pn:V3=wg_normalize3(v3(-s.x,1.0f32,-s.y));
+      mirror:V3=wg_mul_f3f(wg_min_f3f3(eg_weather_sky(eg_sky(wg_reflect3(v,pn),l,u),wg_reflect3(v,pn),u),v3(1.0f32,1.0f32,1.0f32)),0.75f32); // no sun's disc in a puddle under cloud
+      f:f32=0.25f32+(0.6f32*pow(1.0f32-fmax(-v.y,0.0f32),3.0f32));
+      o=wg_mix_f3f3f(o,wg_mix_f3f3f(wg_mul_f3f(c,0.55f32),mirror,f),fill*0.85f32);
+    }
+  }
+  o=wg_add_f3f3(o,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f3(base,v3(0.75f32,0.8f32,1.0f32)),u[1475]),1.2f32));
+  return o;
+}
+// Rain between the eye and a surface d metres off along v: drops on cylinders round the eye at
+// 1.2, 2.4, 4.8 and 9.6 m (2 on a phone), falling at 7 m/s with the wind. The view ray is sheared
+// into rain space, where every drop falls straight down, so a drop is a short segment along the fall
+// axis: on screen all streaks stay straight and run to the fall's vanishing point, never circling it.
+// A drop is 7 cm long near, 20 cm far, and at least a pixel wide, so it shrinks with distance; near the
+// vanishing point, where a pixel would span many drops, the layer fades instead of shimmering.
+// Whether rain at p falls under cover: below the bridge's deck (plan.coax EG_BRIDGE), or inside a
+// building's footprint (the first u.weather[2].w of u.solid, under its roof; a hidden one is far off).
+// weather_streaks draws no drop where its cylinder's point is covered.
+EG_RAIN_BRIDGE :: ()->V4 {return v4(84.0f32,-18.0f32,92.0f32,-5.0f32);}
+eg_weather_covered :: (p:V3,u:[]f32)->bool {
+  if ((wg_all_ge_f2f2(v2(p.x,p.z),wg_sw_xy_f4(EG_RAIN_BRIDGE()))&&wg_all_le_f2f2(v2(p.x,p.z),wg_sw_zw_f4(EG_RAIN_BRIDGE())))&&(p.y<u[1482])) {
+    return true;
+  }
+  n:u32=wg_u32_f(u[1483]);
+  {
+    i:u32=0;
+    while i<32 {
+      if (i>=n) {
+        break;
+      }
+      b:V4=wg_at4(u,(cast(int)i)*4+1212);
+      if (wg_all_ge_f2f2(v2(p.x,p.z),v2(b.x,b.y))&&wg_all_le_f2f2(v2(p.x,p.z),v2(b.z,b.w))) {
+        return true;
+      }
+      i=add_wrap(i,1);
+    }
+  }
+  return false;
+}
+eg_weather_streaks :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
+  rain:f32=u[1472];
+  if (rain<=0.01f32) {
+    return c;
+  }
+  layers:s32=ifx eg_weather_desktop(u) then 4 else 2;
+  t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+  lean:V2=wg_div_f2f(v2(u[1473],u[1474]),7.0f32);
+  w:V3=v3(v.x+(lean.x*v.y),v.y,v.z+(lean.y*v.y)); // the ray in rain space (same s as along v)
+  flat:f32=wg_length2(v2(w.x,w.z));
+  k:f32=flat/fmax(wg_length3(w),1e-4f32); // the sine of the ray's angle off the fall axis
+  if (k<0.06f32) {
+    return c;
+  }
+  around:f32=(wg_atan2(w.x,w.z)*0.15915494f32)+0.5f32; // 0..1 round the axis
+  px:f32=fmax(u[1065],1e-4f32);
+  a:f32=0.0f32;
+  {
+    i:s32=0;
+    while i<4 {
+      if (i>=layers) {
+        break;
+      }
+      r:f32=1.2f32*wg_exp2(cast(f32)(i));
+      along:f32=r/flat; // how far along v the cylinder is
+      if (along>d) {
+        break;
+      }
+      if eg_weather_covered(wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(v,along)),u) {
+        {i+=1; continue;}
+      }
+      fade:f32=1.0f32-smoothstep(0.04f32,0.12f32,(px*along)/k); // a pixel's run up the axis, m
+      if (fade<=0.0f32) {
+        {i+=1; continue;}
+      }
+      y:f32=w.y*along;
+      cells:f32=wg_round((6.2831853f32*r)/0.12f32); // whole cells round, so no seam
+      q:V2=v2(around*cells,((y+(t*7.0f32))+((cast(f32)(i))*13.7f32))/0.85f32);
+      cell:V2=wg_floor_f2(q);
+      h:f32=eg_weather_hash(wg_add_f2f2(cell,v2((cast(f32)(i))*17.0f32,3.0f32)));
+      if (h>(rain*0.55f32)) {
+        {i+=1; continue;}
+      }
+      f:V2=wg_fract_f2(q);
+      off:f32=(eg_weather_hash(wg_add_f2f(cell,9.1f32))*0.7f32)+0.15f32;
+      top:f32=eg_weather_hash(wg_add_f2f(cell,4.7f32))*0.7f32;
+      width:f32=fmax(((px*along)*1.1f32)/0.12f32,0.02f32); // a pixel, in cells
+      x:f32=abs(f.x-off);
+      len_2:f32=(0.07f32*wg_exp2((cast(f32)(i))*0.5f32))/0.85f32; // 7 cm near, 20 cm at 9.6 m: shorter on screen the farther
+      streak:f32=((1.0f32-smoothstep(width*0.5f32,width,x))*smoothstep(top,top+0.02f32,f.y))*(1.0f32-smoothstep((top+len_2)-0.02f32,top+len_2,f.y));
+      a=a+((streak*(0.55f32-(0.1f32*(cast(f32)(i)))))*fade);
+      i+=1;
+    }
+  }
+  key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(verse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
+  return wg_mix_f3f3f(c,tint,clampf(a,0.0f32,1.0f32)*0.4f32);
+}
+eg_water_shoal :: (k:f32,depth:f32)->f32 {
+  return sqrt(wg_tanh(clampf(k*depth,0.0f32,10.0f32)));
+}
+// The Gerstner displacement (xyz, m) of rest point p0 and how tightly the
+// waves squeeze the surface there (w, crests near one).
+eg_water_gerstner :: (p0:V2,depth:f32,scale:f32,u:[]f32)->V4 {
+  d:V3=v3(0.0f32,0.0f32,0.0f32);
+  squeeze:f32=0.0f32;
+  count:s32=wg_i32_f(u[1051]);
+  gain:f32=u[1061]*scale;
+  {
+    i:s32=0;
+    while i<8 {
+      if (i>=count) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+760);
+      c:V4=wg_at4(u,(cast(int)((i*2)+1))*4+760);
+      k:f32=a.z;
+      amp:f32=(a.w*gain)*eg_water_shoal(k,depth);
+      theta:f32=(k*wg_dot2(v2(a.x,a.y),p0))+c.y;
+      co:f32=cos(theta);
+      s:f32=sin(theta);
+      d.x=d.x+(((c.x*amp)*a.x)*co);
+      d.z=d.z+(((c.x*amp)*a.y)*co);
+      d.y=d.y+(amp*s);
+      squeeze=squeeze+(((c.x*amp)*k)*s);
+      i+=1;
+    }
+  }
+  return v4(d.x,d.y,d.z,squeeze);
+}
+// The waves' slope at p0 (dh/dx, dh/dz) and the squeeze's change of the normal's y (Finch 2004, eq. 12).
+eg_water_gerstner_slope :: (p0:V2,depth:f32,scale:f32,u:[]f32)->V3 {
+  g:V3=v3(0.0f32,0.0f32,0.0f32);
+  count:s32=wg_i32_f(u[1051]);
+  gain:f32=u[1061]*scale;
+  {
+    i:s32=0;
+    while i<8 {
+      if (i>=count) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+760);
+      c:V4=wg_at4(u,(cast(int)((i*2)+1))*4+760);
+      k:f32=a.z;
+      wa:f32=((k*a.w)*gain)*eg_water_shoal(k,depth);
+      theta:f32=(k*wg_dot2(v2(a.x,a.y),p0))+c.y;
+      co:f32=cos(theta);
+      g.x=g.x+((a.x*wa)*co);
+      g.y=g.y+((a.y*wa)*co);
+      g.z=g.z+((c.x*wa)*sin(theta));
+      i+=1;
+    }
+  }
+  return g;
+}
+EgWaterOut :: struct {clip:V4; world_depth:V4; rest_flow:V4; look:V4; extra:V4; }
+// the displaced position, the depth under it at rest
+// the rest position on the plane, the flow (m/s)
+// white water, 0, crest squeeze, shore distance (m)
+// 0, height over the level (m)
+// A patch an instance; its quads are sampled between the baked nodes, and a
+// quad whose four corners stand above the water is dry ground and not drawn.
+// ---- the fountain on the commons (everglade.coax lathe and FOUNTAIN_*; docs/verse/water.md, "The
+// fountain"): its water drawn after the river's patches, in the painted look. Instances: the basin's
+// pool in 8 wedges, the upper bowl's in 4, 8 streams falling from the bowl's lip, 4 arcs of the jet
+// from the finial and 8 splash crowns where the streams land. A pool's quads are rings and sectors,
+// a stream's are round its section and along its fall. The streams fall as thrown water does.
+EG_F_POOL :: 0.62f32; // the basin's water over the ground
+EG_F_POOL_IN :: 0.28f32; // inside the column
+EG_F_POOL_OUT :: 2.64f32; // into the basin's inner wall
+EG_F_BOWL :: 2.09f32; // the upper bowl's water
+EG_F_BOWL_IN :: 0.12f32;
+EG_F_BOWL_OUT :: 1.19f32;
+EG_F_LIP :: ()->V2 {return v2(1.38f32,2.13f32);} // where a stream leaves the bowl's lip (radius, height)
+EG_F_THROW :: 0.7f32; // m/s outward off the lip
+EG_F_FALL_T :: 0.555f32; // s from the lip to the pool
+EG_F_LAND :: 1.77f32; // where the streams meet the pool
+EG_F_JET :: ()->V3 {return v3(0.03f32,2.6f32,0.56f32);} // the jet: its start's radius and height, its time in the air
+EG_F_JET_V :: ()->V2 {return v2(0.5f32,1.8f32);} // outward and up, m/s
+EG_F_JET_LAND :: 0.31f32;
+EG_F_GRAVITY :: 9.8f32;
+eg_fountain_on :: (u:[]f32)->bool {
+  return u[1079]>0.5f32;
+}
+eg_fountain_base :: (u:[]f32)->f32 {
+  return u[1078];
+}
+// The basin's floor under the pool (everglade.wgsl lathe_point's basin, from the middle out).
+eg_fountain_floor :: (r:f32)->f32 {
+  if (r<1.2f32) {
+    return mix(0.05f32,0.1f32,r/1.2f32);
+  }
+  if (r<2.0f32) {
+    return mix(0.1f32,0.25f32,(r-1.2f32)/0.8f32);
+  }
+  if (r<2.4f32) {
+    return mix(0.25f32,0.38f32,(r-2.0f32)/0.4f32);
+  }
+  if (r<2.54f32) {
+    return mix(0.38f32,0.46f32,(r-2.4f32)/0.14f32);
+  }
+  return mix(0.46f32,0.56f32,clampf((r-2.54f32)/0.06f32,0.0f32,1.0f32));
+}
+// The streams' angles: eight, between the column's wedge seams.
+eg_fountain_stream_angle :: (k:u32)->f32 {
+  return (((cast(f32)(k))+0.5f32)/8.0f32)*EG_TAU;
+}
+// How near the angle a is to a stream's (1 on it).
+eg_fountain_stream_near :: (a:f32)->f32 {
+  return pow(fmax(-cos(8.0f32*a),0.0f32),6.0f32);
+}
+// How deep a point lies in the fountain's water, or -1 when it is not in it.
+eg_fountain_depth_at :: (p:V3,u:[]f32)->f32 {
+  if (!eg_fountain_on(u)) {
+    return -1.0f32;
+  }
+  r:f32=wg_length2(v2(p.x,p.z));
+  y:f32=p.y-eg_fountain_base(u);
+  if ((r<EG_F_POOL_OUT)&&(y<(EG_F_POOL+0.08f32))) {
+    return EG_F_POOL-y;
+  }
+  if (((r<EG_F_BOWL_OUT)&&(y>1.85f32))&&(y<(EG_F_BOWL+0.08f32))) {
+    return EG_F_BOWL-y;
+  }
+  return -1.0f32;
+}
+// A stream's (or a jet arc's) tube: its centre at a share v of its fall, and the way it runs.
+EgFall :: struct {centre:V3; along:V3; radius:f32; }
+eg_fountain_fall :: (k:u32,jet:bool,v:f32,u:[]f32)->EgFall {
+  f:EgFall;
+  base:f32=eg_fountain_base(u);
+  if jet {
+    a:f32=((((cast(f32)(k))+0.5f32)/4.0f32)*EG_TAU)+(EG_TAU/16.0f32);
+    dir:V3=v3(cos(a),0.0f32,sin(a));
+    t:f32=v*EG_F_JET().z;
+    f.centre=wg_add_f3f3(wg_mul_f3f(dir,(EG_F_JET().x+(EG_F_JET_V().x*t))),v3(0.0f32,((base+EG_F_JET().y)+(EG_F_JET_V().y*t))-(((0.5f32*EG_F_GRAVITY)*t)*t),0.0f32));
+    f.along=wg_normalize3(wg_add_f3f3(wg_mul_f3f(dir,EG_F_JET_V().x),v3(0.0f32,EG_F_JET_V().y-(EG_F_GRAVITY*t),0.0f32)));
+    f.radius=mix(0.032f32,0.02f32,v);
+    return f;
+  }
+  a:f32=eg_fountain_stream_angle(k);
+  dir:V3=v3(cos(a),0.0f32,sin(a));
+  t:f32=v*EG_F_FALL_T;
+  f.centre=wg_add_f3f3(wg_mul_f3f(dir,(EG_F_LIP().x+(EG_F_THROW*t))),v3(0.0f32,(base+EG_F_LIP().y)-(((0.5f32*EG_F_GRAVITY)*t)*t),0.0f32));
+  f.along=wg_normalize3(wg_add_f3f3(wg_mul_f3f(dir,EG_F_THROW),v3(0.0f32,(-EG_F_GRAVITY)*t,0.0f32)));
+  f.radius=mix(0.075f32,0.05f32,v);
+  return f;
+}
+// ---- the ponds (verse/everglade/plan.coax EG_POND; docs/verse/water.md, W3): still water at each one's
+// level over its carved bowl, 8 wedges an instance of rings and sectors out to 0.3 m past its rim; a
+// quad whose corners all stand on dry ground is not drawn. Part 6, in the painted look.
+EG_POND_PART :: cast(u32)6;
+eg_pond_on :: (p:u32,u:[]f32)->bool {
+  return u[(cast(int)p)*4+1486]>0.5f32;
+}
+// A pond's row with its level risen by the rain as the river's is (W9; the physics adds the same rise).
+eg_pond_row :: (p:u32,u:[]f32)->V4 {
+  q:V4=wg_at4(u,(cast(int)p)*4+1484);
+  q.w=q.w+u[1480];
+  return q;
+}
+// How deep a point lies in a pond, or -1 when it is in none.
+eg_pond_depth_at :: (p:V3,u:[]f32)->f32 {
+  {
+    k:u32=0;
+    while k<4 {
+      q:V4=eg_pond_row(k,u);
+      if (q.z<=0.5f32) {
+        {k=add_wrap(k,1); continue;}
+      }
+      if ((wg_length2(wg_sub_f2f2(v2(p.x,p.z),v2(q.x,q.y)))<(q.z+0.3f32))&&(p.y<(q.w+0.08f32))) {
+        return q.w-p.y;
+      }
+      k=add_wrap(k,1);
+    }
+  }
+  return -1.0f32;
+}
+eg_pond_vertex :: (id:u32,f:u32,u:[]f32,heights:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  qa:u32=wg_u32_f(u[1074]);
+  ql:u32=wg_u32_f(u[1075]);
+  quad_id:u32=id/6;
+  c:V2=eg_quad(id%6);
+  p:u32=f/8;
+  if (((f>=32)||(!eg_pond_on(p,u)))||(quad_id>=mul_wrap(qa,ql))) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  q:V4=eg_pond_row(p,u);
+  qx:u32=quad_id%qa;
+  qz:u32=quad_id/qa;
+  rim:f32=q.z+0.3f32;
+  wedge:u32=f%8;
+  // dry ground under all four corners: not drawn
+  low:f32=1000.0f32;
+  {
+    k:u32=0;
+    while k<4 {
+      ca:f32=((cast(f32)(add_wrap(add_wrap(mul_wrap(wedge,qa),qx),(k&1))))/(8.0f32*(cast(f32)(qa))))*EG_TAU;
+      cr:f32=(rim*(cast(f32)(add_wrap(qz,(k>>1)))))/(cast(f32)(ql));
+      low=fmin(low,eg_ground_y(wg_add_f2f2(v2(q.x,q.y),wg_mul_f2f(v2(cos(ca),sin(ca)),cr)),u,heights)-q.w);
+      k=add_wrap(k,1);
+    }
+  }
+  if (low>EG_WATER_DRY) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  a:f32=(((cast(f32)(add_wrap(mul_wrap(wedge,qa),qx)))+c.x)/(8.0f32*(cast(f32)(qa))))*EG_TAU;
+  r:f32=(rim*((cast(f32)(qz))+c.y))/(cast(f32)(ql));
+  xz:V2=wg_add_f2f2(v2(q.x,q.y),wg_mul_f2f(v2(cos(a),sin(a)),r));
+  world:V3=v3(xz.x,q.w,xz.y);
+  depth:f32=q.w-eg_ground_y(xz,u,heights);
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,depth);
+  o.rest_flow=v4(xz.x,xz.y,0.0f32,0.0f32);
+  // the shore: about where the bowl comes up through the level (its banks climb some 0.6 in 1)
+  o.look=v4(0.0f32,0.0f32,0.0f32,fmax(depth,0.0f32)/0.6f32);
+  o.extra=v4(cast(f32)(EG_POND_PART),0.0f32,r,0.0f32);
+  return o;
+}
+eg_pond_shade :: (i:EgWaterOut,v:V3,eye_distance:f32,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
+  // a pond is calmer than the river: half its detail waves, and the rings you leave
+  detail:V3=eg_water_flow_detail(rest,v2(0.0f32,0.0f32),footprint,u);
+  slope:V2=wg_add_f2f2(wg_mul_f2f(v2(detail.x,detail.y),0.5f32),eg_water_ripples(rest,u,wake_foam));
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
+  if (u[25]<world.y) {
+    return eg_water_below(n,v,eye_distance,wg_length2(slope),u);
+  }
+  return eg_water_painted(world,rest,v2(0.0f32,0.0f32),i.world_depth.w,i.look.w,0.0f32,n,v,footprint,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+}
+// Whether a water part is a surface (the river, the fountain's pools, the ponds) rather than a fall.
+eg_water_surface_part :: (part:u32)->bool {
+  return (part<3)||(part==EG_POND_PART);
+}
+eg_fountain_vertex :: (id:u32,f:u32,u:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  qa:u32=wg_u32_f(u[1074]);
+  ql:u32=wg_u32_f(u[1075]);
+  quad_id:u32=id/6;
+  c:V2=eg_quad(id%6);
+  if (((!eg_fountain_on(u))||(quad_id>=mul_wrap(qa,ql)))||(f>=32)) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  qx:u32=quad_id%qa;
+  qz:u32=quad_id/qa;
+  base:f32=eg_fountain_base(u);
+  time:f32=u[1048];
+  if (f<12) {
+    // a pool: the basin's in 8 wedges, the upper bowl's in 4
+    bowl:bool=f>=8;
+    wedges:f32=ifx bowl then 4.0f32 else 8.0f32;
+    w:u32=ifx bowl then sub_wrap(f,8) else f;
+    a:f32=(((cast(f32)(add_wrap(mul_wrap(w,qa),qx)))+c.x)/(wedges*(cast(f32)(qa))))*EG_TAU;
+    s:f32=((cast(f32)(qz))+c.y)/(cast(f32)(ql));
+    dir:V2=v2(cos(a),sin(a));
+    r:f32=mix(EG_F_POOL_IN,EG_F_POOL_OUT,s);
+    level:f32=EG_F_POOL;
+    depth:f32=EG_F_POOL-eg_fountain_floor(r);
+    shore:f32=fmin(2.61f32-r,r-0.31f32);
+    land:f32=EG_F_LAND;
+    if bowl {
+      r=mix(EG_F_BOWL_IN,EG_F_BOWL_OUT,s);
+      level=EG_F_BOWL;
+      depth=ifx r<0.24f32 then EG_F_BOWL-mix(2.1f32,1.92f32,(r-0.15f32)/0.09f32) else EG_F_BOWL-1.9f32;
+      shore=fmin(1.17f32-r,r-0.15f32);
+      land=EG_F_JET_LAND;
+    }
+    world:V3=v3(dir.x*r,base+level,dir.y*r);
+    off:f32=r-land;
+    // the water runs out from where the falls strike, and churns white there under each one
+    flow:V2=wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(dir,wg_sign(off)),0.28f32),exp(((-off)*off)/0.5f32));
+    white:f32=exp(((-off)*off)/0.03f32)*(ifx bowl then 0.8f32 else 0.35f32+(0.65f32*eg_fountain_stream_near(a)));
+    o.clip=eg_clip(world,u);
+    o.world_depth=v4(world.x,world.y,world.z,depth);
+    o.rest_flow=wg_make_f4_f2f2(v2(world.x,world.z),flow);
+    o.look=v4(white,0.0f32,0.0f32,shore);
+    o.extra=v4(ifx bowl then 2.0f32 else 1.0f32,0.0f32,r,land);
+    return o;
+  }
+  if (f<24) {
+    // a stream (8) or an arc of the jet (4): a tube round its path
+    jet:bool=f>=20;
+    k:u32=ifx jet then sub_wrap(f,20) else sub_wrap(f,12);
+    v:f32=((cast(f32)(qz))+c.y)/(cast(f32)(ql));
+    phi:f32=(((cast(f32)(qx))+c.x)/(cast(f32)(qa)))*EG_TAU;
+    fall:EgFall=eg_fountain_fall(k,jet,v,u);
+    side:V3=wg_normalize3(wg_add_f3f3(wg_cross3(fall.along,v3(0.0f32,1.0f32,0.0f32)),v3(0.0001f32,0.0f32,0.0f32)));
+    up:V3=wg_normalize3(wg_cross3(side,fall.along));
+    // a stream leaves the lip as a broad tongue and gathers round as it falls
+    wide:f32=ifx jet then 1.0f32 else mix(2.0f32,1.0f32,smoothstep(0.0f32,0.5f32,v));
+    n:V3=wg_normalize3(wg_add_f3f3(wg_mul_f3f(side,cos(phi)),wg_mul_f3f(up,sin(phi))));
+    world:V3=wg_add_f3f3(fall.centre,wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(side,cos(phi)),wide),wg_mul_f3f(up,sin(phi))),fall.radius));
+    o.clip=eg_clip(world,u);
+    o.world_depth=v4(world.x,world.y,world.z,fall.radius);
+    o.rest_flow=v4(n.x,n.y,n.z,v);
+    o.look=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+    o.extra=v4(ifx jet then 4.0f32 else 3.0f32,phi/EG_TAU,v,cast(f32)(k));
+    return o;
+  }
+  // a splash crown where a stream strikes: a ring of spray thrown up and out, pulsing
+  k:u32=sub_wrap(f,24);
+  a:f32=eg_fountain_stream_angle(k);
+  at:V3=v3(cos(a)*EG_F_LAND,base+EG_F_POOL,sin(a)*EG_F_LAND);
+  phi:f32=(((cast(f32)(qx))+c.x)/(cast(f32)(qa)))*EG_TAU;
+  v:f32=((cast(f32)(qz))+c.y)/(cast(f32)(ql));
+  pulse:f32=0.75f32+(0.25f32*sin(((time*11.0f32)+((cast(f32)(k))*1.7f32))+(phi*2.0f32)));
+  ring:V3=v3(cos(phi),0.0f32,sin(phi));
+  world:V3=wg_add_f3f3(wg_add_f3f3(at,wg_mul_f3f(ring,mix(0.06f32,0.2f32,v))),v3(0.0f32,((v*0.16f32)*pulse)-0.01f32,0.0f32));
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,0.05f32);
+  o.rest_flow=wg_make_f4_f3f(wg_normalize3(wg_add_f3f3(ring,v3(0.0f32,0.8f32,0.0f32))),v);
+  o.look=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  o.extra=v4(5.0f32,phi/EG_TAU,v,cast(f32)(k));
+  return o;
+}
+// Spray, a stream or a jet: a streaked, broken sheet of white-shot teal, the painted sky in its
+// Fresnel rim, its streaks running down at the water's speed.
+eg_fountain_fall_shade :: (i:EgWaterOut,part:u32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->EgWaterShade {
+  o:EgWaterShade;
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  n:V3=wg_normalize3(v3(i.rest_flow.x,i.rest_flow.y,i.rest_flow.z));
+  v_along:f32=i.rest_flow.w;
+  around:f32=i.extra.y;
+  k:f32=i.extra.w;
+  to_eye:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  t:f32=u[1048];
+  light:V3=eg_water_host_light(world,wg_normalize3(wg_add_f3f3(n,v3(0.0f32,0.6f32,0.0f32))),u,shadow_map,shadow_cmp,paint_leaf_far);
+  facing:f32=abs(wg_dot3(n,to_eye));
+  fresnel:f32=eg_water_fresnel(fmax(facing,0.05f32));
+  sky:V3=eg_water_host_sky(wg_reflect3(wg_neg_f3(to_eye),n),0.0f32,u);
+  streak:f32=eg_water_noise(v3((around*9.0f32)+(k*3.1f32),(v_along*7.0f32)-(t*5.5f32),k));
+  streak=(streak*0.6f32)+(0.4f32*eg_water_noise(v3((around*23.0f32)+k,(v_along*16.0f32)-(t*9.0f32),k+4.0f32)));
+  alpha:f32=0.0f32;
+  white:f32=0.0f32;
+  if (part==5) {
+    // the crown: froth thinning to droplets at its rim
+    froth:f32=eg_water_noise(v3((around*14.0f32)+(k*2.0f32),(v_along*3.0f32)-(t*4.0f32),(t*2.0f32)+k));
+    alpha=(smoothstep(0.35f32,0.7f32,froth+(0.35f32*(1.0f32-v_along)))*(1.0f32-smoothstep(0.55f32,1.0f32,v_along)))*0.9f32;
+    white=0.85f32;
+  } else {
+    // a stream: clearer at the lip, breaking up toward the bottom; seen edge-on it reads thicker
+    thick:f32=mix(0.55f32,0.92f32,1.0f32-facing);
+    alpha=(thick*(0.72f32+(0.4f32*streak)))*(1.0f32-((0.45f32*smoothstep(0.6f32,1.0f32,v_along))*(1.0f32-streak)));
+    white=clampf((0.25f32+(0.55f32*smoothstep(0.45f32,0.85f32,streak)))+(0.3f32*v_along),0.0f32,1.0f32);
+    if (part==4) {
+      white=0.55f32+(0.35f32*streak);
+    }
+  }
+  alpha=clampf(alpha,0.0f32,1.0f32);
+  body:V3=wg_mul_f3f3(wg_pow_f3f3(EG_W_SHALLOW(),v3(2.2f32,2.2f32,2.2f32)),wg_add_f3f3(wg_mul_f3f(light,0.9f32),v3(0.05f32,0.05f32,0.05f32)));
+  foam:V3=wg_mul_f3f3(v3(0.95f32,0.97f32,0.96f32),wg_add_f3f3(wg_mul_f3f(light,0.95f32),v3(0.08f32,0.08f32,0.08f32)));
+  c:V3=wg_add_f3f3(wg_mul_f3f(wg_mix_f3f3f(body,foam,white),(1.0f32-(fresnel*0.5f32))),wg_mul_f3f(wg_mul_f3f(sky,fresnel),0.5f32));
+  o.emit=wg_mul_f3f(c,alpha);
+  o.transmit=wg_make_f3_f(1.0f32-alpha);
+  return o;
+}
+// ---- W6: the weir's falling sheet and the water's particles (verse/everglade/river.coax)
+EG_WEIR_PART :: cast(u32)7;
+EG_FX_PART :: cast(u32)8;
+// The sheet over the weir's sill: across the water's width, falling as thrown water does from the level
+// above to under the level below. Quads across it and down its fall.
+eg_weir_vertex :: (id:u32,u:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  qa:u32=wg_u32_f(u[1074]);
+  ql:u32=wg_u32_f(u[1075]);
+  quad_id:u32=id/6;
+  c:V2=eg_quad(id%6);
+  w0:V4=wg_at4(u,1500);
+  w1:V4=wg_at4(u,1504);
+  if ((w0.w<0.5f32)||(quad_id>=mul_wrap(qa,ql))) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  a:f32=((cast(f32)(quad_id%qa))+c.x)/(cast(f32)(qa));
+  v:f32=((cast(f32)(quad_id/qa))+c.y)/(cast(f32)(ql));
+  rise:f32=u[1480];
+  top:f32=(w1.x+rise)+0.03f32;
+  drop:f32=fmax(w1.x-w1.y,0.05f32)+0.14f32;
+  fall:f32=sqrt((2.0f32*drop)/9.81f32);
+  speed:f32=fmax(w1.z,0.4f32);
+  tt:f32=v*fall;
+  x:f32=mix(w0.x,w0.y,a);
+  world:V3=v3(x,top-((4.905f32*tt)*tt),w0.z-(speed*tt));
+  along:V3=wg_normalize3(v3(0.0f32,(-9.81f32)*tt,-speed));
+  n:V3=v3(0.0f32,-along.z,along.y);
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,0.05f32);
+  o.rest_flow=v4(n.x,n.y,n.z,v);
+  o.look=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  o.extra=v4(cast(f32)(EG_WEIR_PART),a,v,(w0.y-w0.x));
+  return o;
+}
+// The sheet: glassy teal at the lip with the sky in it, streaks running down it, breaking white toward
+// its foot, its sides torn.
+eg_weir_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool)->EgWaterShade {
+  o:EgWaterShade;
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  n:V3=wg_normalize3(v3(i.rest_flow.x,i.rest_flow.y,i.rest_flow.z));
+  v_along:f32=i.rest_flow.w;
+  a:f32=i.extra.y;
+  width:f32=i.extra.w;
+  to_eye:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  t:f32=u[1048];
+  light:V3=eg_water_host_light(world,wg_normalize3(wg_add_f3f3(n,v3(0.0f32,0.5f32,0.0f32))),u,shadow_map,shadow_cmp,paint_leaf_far);
+  facing:f32=abs(wg_dot3(n,to_eye));
+  fresnel:f32=eg_water_fresnel(fmax(facing,0.05f32));
+  sky:V3=eg_water_host_sky(wg_reflect3(wg_neg_f3(to_eye),n),0.0f32,u);
+  x:f32=a*width;
+  streak:f32=eg_water_noise(v3(x*7.0f32,(v_along*3.0f32)-(t*4.5f32),1.0f32));
+  streak=(streak*0.6f32)+(0.4f32*eg_water_noise(v3(x*19.0f32,(v_along*8.0f32)-(t*8.0f32),5.0f32)));
+  sides:f32=smoothstep(0.0f32,0.06f32,a)*smoothstep(0.0f32,0.06f32,1.0f32-a);
+  torn:f32=smoothstep(0.15f32,0.45f32,(streak+(0.5f32*sides))-(0.3f32*(1.0f32-sides)));
+  white:f32=clampf((0.3f32+(0.6f32*smoothstep(0.35f32,0.95f32,v_along)))+(0.45f32*smoothstep(0.55f32,0.85f32,streak)),0.0f32,1.0f32);
+  alpha:f32=clampf((((0.62f32+(0.3f32*v_along))+(0.15f32*streak))*torn)*smoothstep(0.0f32,0.08f32,v_along+0.05f32),0.0f32,0.97f32);
+  // a bright line where it turns over the sill
+  lip:f32=exp(((-v_along)*v_along)/0.004f32)*0.5f32;
+  body:V3=wg_mul_f3f3(wg_pow_f3f3(EG_W_SHALLOW(),v3(2.2f32,2.2f32,2.2f32)),wg_add_f3f3(wg_mul_f3f(light,0.9f32),v3(0.05f32,0.05f32,0.05f32)));
+  foam:V3=wg_mul_f3f3(v3(0.95f32,0.97f32,0.96f32),wg_add_f3f3(wg_mul_f3f(light,0.95f32),v3(0.08f32,0.08f32,0.08f32)));
+  c:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_mix_f3f3f(body,foam,white),(1.0f32-(fresnel*0.5f32))),wg_mul_f3f(wg_mul_f3f(sky,fresnel),0.5f32)),wg_mul_f3f(foam,lip));
+  o.emit=wg_mul_f3f(c,alpha);
+  o.transmit=wg_make_f3_f(1.0f32-alpha);
+  return o;
+}
+// The particles, a quad facing the eye each (6 vertices), as many to an instance as its vertices hold.
+eg_fx_vertex :: (id:u32,f:u32,u:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  if (f==0) {
+    return eg_weir_vertex(id,u);
+  }
+  per:u32=mul_wrap(wg_u32_f(u[1074]),wg_u32_f(u[1075]));
+  k:u32=add_wrap(mul_wrap(sub_wrap(f,1),per),id/6);
+  if (((id/6)>=per)||(k>=64)) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  p:V4=wg_at4(u,(cast(int)add_wrap(EG_FX_PARTS,mul_wrap(k,2)))*4+1500);
+  q:V4=wg_at4(u,(cast(int)add_wrap(add_wrap(EG_FX_PARTS,mul_wrap(k,2)),1))*4+1500);
+  if ((p.w<=0.0f32)||(q.y<=0.002f32)) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  c:V2=wg_sub_f2f2(wg_mul_f2f(eg_quad(id%6),2.0f32),v2(1.0f32,1.0f32));
+  right:V3=wg_normalize3(v3(u[8],u[9],u[10]));
+  up:V3=wg_normalize3(v3(u[12],u[13],u[14]));
+  // a droplet drawn a little longer along its fall
+  world:V3=wg_add_f3f3(wg_add_f3f3(v3(p.x,p.y,p.z),wg_mul_f3f(wg_mul_f3f(right,c.x),p.w)),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(up,c.y),p.w),ifx q.x<0.5f32 then 1.5f32 else 1.0f32));
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,p.w);
+  o.rest_flow=v4(c.x,c.y,0.0f32,0.0f32);
+  o.look=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  o.extra=v4(cast(f32)(EG_FX_PART),q.x,q.y,q.z);
+  return o;
+}
+// A particle: spray and drips a bright bead, mist and steam a soft white puff, faded where it meets what
+// stands behind it (soft particles, from the scene's depth: W5) and close to the eye.
+eg_fx_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,water_scene_depth:TexDepth)->EgWaterShade {
+  o:EgWaterShade;
+  kind:u32=wg_u32_f(i.extra.y+0.5f32);
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  r:f32=wg_length2(v2(i.rest_flow.x,i.rest_flow.y));
+  light:V3=eg_water_host_light(world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far);
+  near:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  alpha:f32=i.extra.z;
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  if ((kind==0)||(kind==2)) {
+    alpha=alpha*(1.0f32-smoothstep(0.55f32,1.0f32,r));
+    c=wg_mul_f3f3(wg_mix_f3f3f(wg_pow_f3f3(EG_W_SHALLOW(),v3(2.2f32,2.2f32,2.2f32)),v3(0.95f32,0.97f32,0.98f32),0.7f32),wg_add_f3f3(wg_mul_f3f(light,0.95f32),v3(0.1f32,0.1f32,0.1f32)));
+  } else {
+    puff:f32=eg_water_noise(wg_make_f3_f2f(wg_add_f2f2(wg_mul_f2f(v2(i.rest_flow.x,i.rest_flow.y),1.6f32),wg_make_f2_f(i.extra.w*2.0f32)),i.extra.w*3.0f32));
+    alpha=alpha*(((1.0f32-smoothstep(0.2f32,1.0f32,r))*(0.6f32+(0.6f32*puff)))*smoothstep(1.2f32,3.5f32,near));
+    c=wg_mul_f3f3(v3(0.92f32,0.94f32,0.95f32),wg_add_f3f3(wg_mul_f3f(light,0.8f32),v3(0.18f32,0.18f32,0.18f32)));
+  }
+  // soft against the scene behind it
+  w:f32=fmax(wg_dot4(wg_at4(u,20),v4(world.x,world.y,world.z,1.0f32)),1e-3f32);
+  alpha=alpha*smoothstep(0.0f32,fmax(i.world_depth.w,0.05f32),eg_water_scene_w(wg_cvt_i2f2(v2(i.clip.x,i.clip.y)),u,water_scene_depth)-w);
+  alpha=clampf(alpha,0.0f32,1.0f32);
+  o.emit=wg_mul_f3f(c,alpha);
+  o.transmit=wg_make_f3_f(1.0f32-alpha);
+  return o;
+}
+eg_water_vs :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  patches:u32=wg_u32_f(u[1077]);
+  if (piece>=add_wrap(patches,64)) {
+    return eg_fx_vertex(id,sub_wrap(sub_wrap(piece,patches),64),u);
+  }
+  if (piece>=add_wrap(patches,32)) {
+    return eg_pond_vertex(id,sub_wrap(sub_wrap(piece,patches),32),u,heights);
+  }
+  if (piece>=patches) {
+    return eg_fountain_vertex(id,sub_wrap(piece,patches),u);
+  }
+  qa:u32=wg_u32_f(u[1074]);
+  ql:u32=wg_u32_f(u[1075]);
+  quad_id:u32=id/6;
+  c:V2=eg_quad(id%6);
+  qx:u32=quad_id%qa;
+  qz:u32=quad_id/qa;
+  across:f32=(u[1072]-1.0f32)/(cast(f32)(qa));
+  along:f32=u[1076]/(cast(f32)(ql));
+  base:f32=(cast(f32)(piece))*u[1076];
+  uv:V2=v2(((cast(f32)(qx))+c.x)*across,base+(((cast(f32)(qz))+c.y)*along));
+  low:f32=1000.0f32;
+  {
+    k:u32=0;
+    while k<4 {
+      corner:V2=v2((cast(f32)(add_wrap(qx,(k&1))))*across,base+((cast(f32)(add_wrap(qz,(k>>1))))*along));
+      low=fmin(low,-eg_water_rest(corner,u,water_nodes).depth);
+      k=add_wrap(k,1);
+    }
+  }
+  r:EgWaterRest=eg_water_rest(uv,u,water_nodes);
+  if (((low-u[1480])>EG_WATER_DRY)||(quad_id>=mul_wrap(qa,ql))) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  wave:V4=eg_water_gerstner(v2(r.pos.x,r.pos.z),r.depth,1.0f32,u);
+  world:V3=wg_add_f3f3(wg_add_f3f3(r.pos,v3(wave.x,wave.y,wave.z)),v3(0.0f32,u[1480],0.0f32)); // risen by the rain (W9)
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,r.depth+u[1480]);
+  o.rest_flow=wg_make_f4_f2f2(v2(r.pos.x,r.pos.z),r.flow);
+  o.look=v4(r.foam,0.0f32,wave.w,r.shore);
+  o.extra=v4(0.0f32,world.y-r.pos.y,0.0f32,0.0f32);
+  return o;
+}
+// ---- detail: what bends the normal but never moves the surface
+// pcg3d (Jarzynski and Olano, "Hash Functions for GPU Rendering", JCGT 2020) on the cell's corner.
+eg_water_hash :: (p:V3)->f32 {
+  v:U3=wg_add_u3u(wg_mul_u3u(wg_bits_u3i3(wg_cvt_i3f3(p)),1664525),1013904223);
+  v.x=add_wrap(v.x,mul_wrap(v.y,v.z));
+  v.y=add_wrap(v.y,mul_wrap(v.z,v.x));
+  v.z=add_wrap(v.z,mul_wrap(v.x,v.y));
+  v=wg_xor_u3u3(v,wg_shr_u3u3(v,u3(16,16,16)));
+  v.x=add_wrap(v.x,mul_wrap(v.y,v.z));
+  return (cast(f32)(v.x>>8))/16777215.0f32;
+}
+eg_water_noise :: (p:V3)->f32 {
+  i:V3=wg_floor_f3(p);
+  f:V3=wg_fract_f3(p);
+  s:V3=wg_mul_f3f3(wg_mul_f3f3(f,f),wg_sub_ff3(3.0f32,wg_mul_ff3(2.0f32,f)));
+  a:f32=eg_water_hash(i);
+  b:f32=eg_water_hash(wg_add_f3f3(i,v3(1.0f32,0.0f32,0.0f32)));
+  c:f32=eg_water_hash(wg_add_f3f3(i,v3(0.0f32,1.0f32,0.0f32)));
+  d:f32=eg_water_hash(wg_add_f3f3(i,v3(1.0f32,1.0f32,0.0f32)));
+  e:f32=eg_water_hash(wg_add_f3f3(i,v3(0.0f32,0.0f32,1.0f32)));
+  g:f32=eg_water_hash(wg_add_f3f3(i,v3(1.0f32,0.0f32,1.0f32)));
+  h:f32=eg_water_hash(wg_add_f3f3(i,v3(0.0f32,1.0f32,1.0f32)));
+  k:f32=eg_water_hash(wg_add_f3f3(i,v3(1.0f32,1.0f32,1.0f32)));
+  return mix(mix(mix(a,b,s.x),mix(c,d,s.x),s.y),mix(mix(e,g,s.x),mix(h,k,s.x),s.y),s.z);
+}
+// The analytic detail waves' slope at p, each faded once it is shorter than a
+// few of the pixel's footprint (m), and the slope variance the faded waves
+// would have added (z), which becomes roughness (after Toksvig 2005).
+eg_water_detail_waves :: (p:V2,footprint:f32,gain:f32,u:[]f32)->V3 {
+  g:V2=v2(0.0f32,0.0f32);
+  lost:f32=0.0f32;
+  t:f32=u[1048];
+  n:s32=wg_min_i(wg_i32_f(u[1068]),wg_i32_f(u[1049]));
+  {
+    i:s32=0;
+    while i<16 {
+      if (i>=n) {
+        break;
+      }
+      a:V4=wg_at4(u,(cast(int)(i*2))*4+824);
+      b:V4=wg_at4(u,(cast(int)((i*2)+1))*4+824);
+      k:f32=a.z;
+      slope:f32=(a.w*k)*gain;
+      keep:f32=clampf((b.z/(6.0f32*fmax(footprint,1e-4f32)))-0.5f32,0.0f32,1.0f32);
+      theta:f32=((k*wg_dot2(v2(a.x,a.y),p))-(b.x*t))+b.y;
+      g=wg_add_f2f2(g,wg_mul_f2f(v2(a.x,a.y),((slope*keep)*cos(theta))));
+      lost=lost+(((0.5f32*slope)*slope)*(1.0f32-(keep*keep)));
+      i+=1;
+    }
+  }
+  return v3(g.x,g.y,lost);
+}
+// A pixel's footprint on the surface (m): the eye's distance times the
+// pixel's angle, stretched along the view at grazing angles.
+eg_water_footprint :: (v:V3,distance:f32,u:[]f32)->f32 {
+  size:f32=fmax(distance*u[1065],1e-4f32);
+  return size*sqrt(1.0f32/fmax(abs(v.y),0.08f32));
+}
+// Detail carried along the flow in two phases half a cycle apart, blended
+// so neither phase's reset shows (Vlachos 2010). Still water stands.
+eg_water_flow_detail :: (p:V2,flow:V2,footprint:f32,u:[]f32)->V3 {
+  if (wg_length2(flow)<=0.02f32) {
+    return eg_water_detail_waves(p,footprint,1.0f32,u);
+  }
+  t:f32=u[1048];
+  phase_a:f32=fract(t/EG_WATER_FLOW_PERIOD);
+  phase_b:f32=fract((t/EG_WATER_FLOW_PERIOD)+0.5f32);
+  da:V3=eg_water_detail_waves(wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_a),EG_WATER_FLOW_PERIOD)),footprint,1.4f32,u);
+  db:V3=eg_water_detail_waves(wg_add_f2f2(wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_b),EG_WATER_FLOW_PERIOD)),v2(3.7f32,1.3f32)),footprint,1.4f32,u);
+  wa:f32=1.0f32-abs((2.0f32*phase_a)-1.0f32);
+  return wg_add_f3f3(wg_mul_f3f(da,wa),wg_mul_f3f(db,(1.0f32-wa)));
+}
+// The ripples' slope at p: damped wave packets riding expanding rings.
+// ---- W6: wakes behind what moves through the water, and the hulls the water keeps out of
+EG_FX_HULLS :: cast(u32)2;
+EG_FX_TRAILS :: cast(u32)5;
+EG_FX_PARTS :: cast(u32)21;
+EG_WAKE_TAN :: 0.3536f32; // tan 19.47 degrees: Kelvin's half-angle, at any speed
+// Whether the spells hold the water back from p (everglade-tide.coax): Part Water's trench, the
+// whirlpool's eye. None is drawn there.
+eg_water_dry :: (p:V2,u:[]f32)->bool {
+  w:f32=u[2100];
+  if (w>0.0f32) {
+    a:V2=v2(u[2096],u[2097]);
+    e:V2=wg_sub_f2f2(v2(u[2098],u[2099]),a);
+    t:f32=wg_dot2(wg_sub_f2f2(p,a),e)/fmax(wg_dot2(e,e),1e-4f32);
+    if (((t>0.0f32)&&(t<1.0f32))&&(wg_length2(wg_sub_f2f2(wg_sub_f2f2(p,a),wg_mul_f2f(e,t)))<w)) {
+      return true;
+    }
+  }
+  r:f32=u[2103];
+  return (r>0.0f32)&&(wg_length2(wg_sub_f2f2(p,v2(u[2101],u[2102])))<r);
+}
+// 1 inside a rowboat's hull: no water is drawn there (the old engine's hull masking).
+eg_water_hull :: (p:V2,u:[]f32)->f32 {
+  {
+    k:u32=0;
+    while k<3 {
+      h:V4=wg_at4(u,(cast(int)add_wrap(EG_FX_HULLS,k))*4+1500);
+      if (h.w<0.5f32) {
+        {k=add_wrap(k,1); continue;}
+      }
+      d:V2=wg_sub_f2f2(p,v2(h.x,h.y));
+      ax:f32=sin(h.z);
+      az:f32=cos(h.z);
+      if ((abs((d.x*az)-(d.y*ax))<0.5f32)&&(abs((d.x*ax)+(d.y*az))<1.54f32)) {
+        return 1.0f32;
+      }
+      k=add_wrap(k,1);
+    }
+  }
+  return 0.0f32;
+}
+// The wakes at p: the slope (x, z) of Kelvin's wedge (its two arms at 19.47 degrees, feathered at the
+// wavelength the mover's speed makes, and the transverse waves between them) and the foam trail down
+// its middle, from the trail of points nearest p. Faded behind the mover and with age.
+eg_water_wake :: (p:V2,u:[]f32,wake_foam:[]f32)->V2 {
+  g:V2=v2(0.0f32,0.0f32);
+  t:f32=u[1048];
+  {
+    m:u32=0;
+    while m<2 {
+      base:u32=add_wrap(EG_FX_TRAILS,mul_wrap(m,8));
+      head:V4=wg_at4(u,(cast(int)base)*4+1500);
+      if ((head.x==0.0f32)&&(head.y==0.0f32)) {
+        {m=add_wrap(m,1); continue;}
+      }
+      // still and its trail faded (its newest point over 8 s old): no wake to draw
+      if ((head.w<0.05f32)&&((t-u[(cast(int)add_wrap(base,1))*4+1502])>8.0f32)) {
+        {m=add_wrap(m,1); continue;}
+      }
+      if (wg_length2(wg_sub_f2f2(p,v2(head.x,head.y)))>14.0f32) {
+        {m=add_wrap(m,1); continue;}
+      }
+      behind:f32=0.0f32;
+      best:f32=1e9f32;
+      at:V4=v4(0.0f32,0.0f32,0.0f32,0.0f32); // along behind the head, lateral (signed), age, speed
+      dir:V2=v2(0.0f32,0.0f32);
+      {
+        k:u32=0;
+        while k<7 {
+          a:V4=wg_at4(u,(cast(int)add_wrap(base,k))*4+1500);
+          b:V4=wg_at4(u,(cast(int)add_wrap(add_wrap(base,k),1))*4+1500);
+          if ((b.x==0.0f32)&&(b.y==0.0f32)) {
+            break;
+          }
+          seg:V2=wg_sub_f2f2(v2(b.x,b.y),v2(a.x,a.y));
+          len_2:f32=wg_length2(seg);
+          if (len_2<0.01f32) {
+            {k=add_wrap(k,1); continue;}
+          }
+          d:V2=wg_div_f2f(seg,len_2);
+          s:f32=clampf(wg_dot2(wg_sub_f2f2(p,v2(a.x,a.y)),d),0.0f32,len_2);
+          off:V2=wg_sub_f2f2(p,wg_add_f2f2(v2(a.x,a.y),wg_mul_f2f(d,s)));
+          lat:f32=wg_length2(off);
+          if (lat<best) {
+            best=lat;
+            at=v4(behind+s,ifx ((d.x*off.y)-(d.y*off.x))>0.0f32 then lat else -lat,t-mix(a.z,b.z,s/len_2),fmax(a.w,b.w));
+            dir=d;
+          }
+          behind=behind+len_2;
+          k=add_wrap(k,1);
+        }
+      }
+      if ((best>20.0f32)||(at.w<0.05f32)) {
+        {m=add_wrap(m,1); continue;}
+      }
+      v:f32=fmin(at.w,2.5f32);
+      age:f32=fmax(at.z,0.0f32);
+      fade:f32=(exp((-at.x)/8.0f32)*exp((-age)*0.3f32))*smoothstep(0.05f32,0.4f32,v);
+      if (fade<0.01f32) {
+        {m=add_wrap(m,1); continue;}
+      }
+      side:f32=ifx at.y>0.0f32 then 1.0f32 else -1.0f32;
+      across:V2=wg_mul_f2f(v2(-dir.y,dir.x),side); // out from the trail, on p's side
+      l:f32=abs(at.y);
+      wave:f32=fmax(((6.2831853f32*v)*v)/9.81f32,0.3f32);
+      feather:f32=0.65f32+(0.35f32*cos((6.2831853f32*at.x)/wave));
+      // the arms
+      arm:f32=0.3f32+(EG_WAKE_TAN*at.x);
+      w:f32=0.16f32+(0.05f32*at.x);
+      x:f32=l-arm;
+      amp:f32=(0.09f32*fade)*fmin(v/1.2f32,1.4f32);
+      g=wg_add_f2f2(g,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(across,(((-2.0f32)*x)/(w*w))),exp(((-x)*x)/(w*w))),amp),w),feather));
+      // the transverse waves between them, crossing the trail
+      inside:f32=1.0f32-smoothstep(arm*0.7f32,arm,l);
+      g=wg_add_f2f2(g,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(dir,sin((6.2831853f32*at.x)/wave)),amp),0.5f32),inside));
+      // the foam trail, spreading and breaking up behind
+      trail:f32=0.22f32+(0.07f32*at.x);
+      wake_foam[0]=fmax(wake_foam[0],(((1.0f32-smoothstep(trail*0.35f32,trail,l))*fade)*fmin(v*1.2f32,1.0f32))*exp((-age)*0.25f32));
+      wake_foam[0]=fmax(wake_foam[0],((exp(((-x)*x)/((w*w)*0.25f32))*fade)*clampf(v-0.6f32,0.0f32,1.0f32))*0.6f32);
+      m=add_wrap(m,1);
+    }
+  }
+  return g;
+}
+eg_water_ripples :: (p:V2,u:[]f32,wake_foam:[]f32)->V2 {
+  g:V2=eg_water_wake(p,u,wake_foam);
+  t:f32=u[1048];
+  count:s32=wg_i32_f(u[1050]);
+  k:f32=6.2831853f32/0.45f32;
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      r:V4=wg_at4(u,(cast(int)i)*4+952);
+      age:f32=t-r.z;
+      to:V2=wg_sub_f2f2(p,v2(r.x,r.y));
+      dist:f32=wg_length2(to);
+      x:f32=dist-(EG_WATER_RIPPLE_SPEED*age);
+      envelope:f32=(exp(((-x)*x)/0.18f32)*exp((-age)*1.1f32))/(1.0f32+(1.5f32*dist));
+      g=wg_add_f2f2(g,wg_mul_f2f(wg_div_f2f(to,fmax(dist,1e-3f32)),(((r.w*envelope)*k)*cos(k*x))));
+      i+=1;
+    }
+  }
+  return g;
+}
+// Foam riding the rings of young ripples.
+eg_water_ripple_foam :: (p:V2,u:[]f32,wake_foam:[]f32)->f32 {
+  foam:f32=wake_foam[0];
+  t:f32=u[1048];
+  count:s32=wg_i32_f(u[1050]);
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      r:V4=wg_at4(u,(cast(int)i)*4+952);
+      age:f32=t-r.z;
+      x:f32=wg_length2(wg_sub_f2f2(p,v2(r.x,r.y)))-(EG_WATER_RIPPLE_SPEED*age);
+      foam=fmax(foam,(exp(((-x)*x)/0.08f32)*exp((-age)*1.6f32))*clampf(r.w*25.0f32,0.0f32,1.0f32));
+      i+=1;
+    }
+  }
+  return foam;
+}
+// Foam's mottled cover: one octave on a phone, two above, carried along the flow in two phases.
+eg_water_foam_noise :: (p:V2,flow:V2,u:[]f32)->f32 {
+  t:f32=u[1048];
+  phase_a:f32=fract(t/EG_WATER_FLOW_PERIOD);
+  phase_b:f32=fract((t/EG_WATER_FLOW_PERIOD)+0.5f32);
+  wa:f32=1.0f32-abs((2.0f32*phase_a)-1.0f32);
+  pa:V2=wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_a),EG_WATER_FLOW_PERIOD));
+  pb:V2=wg_add_f2f2(wg_sub_f2f2(p,wg_mul_f2f(wg_mul_f2f(flow,phase_b),EG_WATER_FLOW_PERIOD)),v2(5.3f32,2.9f32));
+  a:f32=eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(pa,1.3f32),t*0.25f32));
+  b:f32=eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(pb,1.3f32),t*0.25f32));
+  if (u[1070]>1.5f32) {
+    a=(a*0.6f32)+(0.4f32*eg_water_noise(wg_make_f3_f2f(wg_add_f2f2(wg_mul_f2f(pa,4.1f32),v2(t*0.07f32,0.0f32)),t*0.5f32)));
+    b=(b*0.6f32)+(0.4f32*eg_water_noise(wg_make_f3_f2f(wg_add_f2f2(wg_mul_f2f(pb,4.1f32),v2(t*0.07f32,0.0f32)),t*0.5f32)));
+  }
+  return (a*wa)+(b*(1.0f32-wa));
+}
+// ---- optics
+eg_water_fresnel :: (c:f32)->f32 {
+  m:f32=clampf(1.0f32-c,0.0f32,1.0f32);
+  m2:f32=m*m;
+  return EG_WATER_F0+((((1.0f32-EG_WATER_F0)*m2)*m2)*m);
+}
+eg_water_cos_refracted :: (ci:f32)->f32 {
+  return sqrt(fmax(1.0f32-((1.0f32-(ci*ci))/(EG_WATER_IOR*EG_WATER_IOR)),0.0f32));
+}
+// Beer-Lambert through `depth` m seen at cosine ci: the path runs along the refracted ray.
+eg_water_transmittance :: (depth:f32,ci:f32,u:[]f32)->V3 {
+  path:f32=fmax(depth,0.0f32)/fmax(eg_water_cos_refracted(ci),0.05f32);
+  return wg_exp_f3(wg_mul_f3f(wg_neg_f3(v3(u[1052],u[1053],u[1054])),path));
+}
+// Light scattered back toward the eye from inside the water, under the sun and sky.
+eg_water_inscatter :: (u:[]f32)->V3 {
+  sun:V4=eg_water_host_sun(u);
+  sky:V3=eg_water_host_sky(v3(0.0f32,1.0f32,0.0f32),1.0f32,u);
+  lit:V3=wg_mul_f3f(eg_water_host_sun_light(u),((sun.w*fmax(sun.y,0.0f32))/3.14159265f32));
+  return wg_mul_f3f3(v3(u[1056],u[1057],u[1058]),wg_add_f3f3(lit,sky));
+}
+eg_water_sky_roughness :: (roughness:f32,footprint:f32)->f32 {
+  return clampf(sqrt(roughness)+(0.15f32*wg_log2(1.0f32+(footprint*4.0f32))),0.0f32,1.0f32);
+}
+eg_water_ggx :: (noh:f32,a2:f32)->f32 {
+  d:f32=((noh*noh)*(a2-1.0f32))+1.0f32;
+  return a2/((3.14159265f32*d)*d);
+}
+eg_water_smith :: (nov:f32,nol:f32,a2:f32)->f32 {
+  gv:f32=nol*sqrt(((nov*nov)*(1.0f32-a2))+a2);
+  gl:f32=nov*sqrt(((nol*nol)*(1.0f32-a2))+a2);
+  return 0.5f32/fmax(gv+gl,1e-6f32);
+}
+// The sun's glint per unit illuminance: GGX widened by the sun's disc, fading by the tier's distance.
+eg_water_glint :: (n:V3,v:V3,l:V3,roughness:f32,disc:f32,distance:f32,u:[]f32)->f32 {
+  nol:f32=wg_dot3(n,l);
+  nov:f32=fmax(wg_dot3(n,v),1e-3f32);
+  if (nol<=0.0f32) {
+    return 0.0f32;
+  }
+  h:V3=wg_normalize3(wg_add_f3f3(l,v));
+  fade_at:f32=fmax(u[1069],1.0f32);
+  far:f32=smoothstep(0.4f32*fade_at,fade_at,distance);
+  a:f32=fmin(((roughness*roughness)+(disc*0.5f32))+(far*0.08f32),1.0f32);
+  a2:f32=a*a;
+  spec:f32=(eg_water_ggx(fmax(wg_dot3(n,h),0.0f32),a2)*eg_water_smith(nov,nol,a2))*eg_water_fresnel(fmax(wg_dot3(v,h),0.0f32));
+  return (spec*nol)*(1.0f32-(0.75f32*far));
+}
+// Sun through a thin crest toward an eye looking into it (Henyey-Greenstein, g = 0.6).
+eg_water_crest_scatter :: (v:V3,l:V3,n:V3,height:f32,squeeze:f32,u:[]f32)->V3 {
+  strength:f32=u[1063];
+  if (strength<=0.0f32) {
+    return v3(0.0f32,0.0f32,0.0f32);
+  }
+  g:f32=0.6f32;
+  cos_theta:f32=wg_dot3(wg_neg_f3(l),v);
+  hg:f32=(1.0f32-(g*g))/((4.0f32*3.14159265f32)*pow((1.0f32+(g*g))-((2.0f32*g)*cos_theta),1.5f32));
+  thin:f32=clampf(height*2.0f32,0.0f32,1.0f32)*clampf((squeeze*1.5f32)+0.2f32,0.0f32,1.0f32);
+  side:f32=clampf((1.0f32-(n.y*0.6f32))+(wg_dot3(n,v)*0.4f32),0.0f32,1.0f32);
+  through:V3=wg_exp_f3(wg_mul_f3f(wg_neg_f3(v3(u[1052],u[1053],u[1054])),(1.0f32-(0.6f32*thin))));
+  return wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f3(v3(u[1056],u[1057],u[1058]),through),hg),thin),side),strength),12.0f32);
+}
+// The foam: a lace along the shore, the crests the waves squeeze, white water and young ripples.
+eg_water_foam :: (rest:V2,shore:f32,crest:f32,extra:f32,noise:f32,u:[]f32,wake_foam:[]f32)->f32 {
+  band:f32=fmax(u[1064],0.05f32);
+  foam:f32=(1.0f32-smoothstep(0.0f32,band,shore))*smoothstep(0.3f32,0.62f32,noise+(0.15f32*(1.0f32-(shore/band))));
+  foam=fmax(foam,smoothstep(0.62f32,0.95f32,crest)*smoothstep(0.35f32,0.7f32,noise));
+  foam=fmax(foam,clampf(extra,0.0f32,1.0f32)*smoothstep(0.25f32,0.65f32,noise+(0.25f32*extra)));
+  foam=fmax(foam,eg_water_ripple_foam(rest,u,wake_foam)*smoothstep(0.2f32,0.6f32,noise));
+  return clampf(foam*u[1059],0.0f32,1.0f32);
+}
+// bend: the surface's slope that refracts; mirror: the sky's share of emit (rgb) and its weight
+// (W5 puts the scene there where its screen-space reflection finds it)
+EgWaterShade :: struct {emit:V3; transmit:V3; bend:V2; mirror:V4; }
+// The surface seen from below: Snell's window, total internal reflection outside it.
+eg_water_below :: (n:V3,v:V3,path:f32,slope:f32,u:[]f32)->EgWaterShade {
+  o:EgWaterShade;
+  ci:f32=clampf(wg_dot3(v,wg_neg_f3(n)),0.0f32,1.0f32);
+  st2:f32=(EG_WATER_IOR*EG_WATER_IOR)*(1.0f32-(ci*ci));
+  reflectance:f32=1.0f32;
+  if (st2<1.0f32) {
+    reflectance=eg_water_fresnel(sqrt(1.0f32-st2));
+  }
+  fog:V3=wg_mul_f3f(eg_water_inscatter(u),2.4f32);
+  shimmer:f32=1.1f32+(1.6f32*clampf(slope,0.0f32,0.6f32));
+  trans:V3=wg_exp_f3(wg_mul_f3f(wg_neg_f3(v3(u[1052],u[1053],u[1054])),path));
+  o.emit=wg_add_f3f3(wg_mul_f3f3(wg_mul_f3f(wg_mul_f3f(fog,shimmer),reflectance),trans),wg_mul_f3f3(fog,wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),trans)));
+  o.transmit=wg_mul_f3f(trans,(1.0f32-reflectance));
+  return o;
+}
+// A fountain's pool: still water bent by the detail waves and by rings running out from where the
+// falls strike, in the painted look. The basin is shallow, so its bands are read at 1.2 times its
+// depth (the bowl's 1.4): bright teal at the rim, deepening toward the column, never the river's blue.
+eg_fountain_pool_shade :: (i:EgWaterOut,part:u32,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
+  flow:V2=v2(i.rest_flow.z,i.rest_flow.w);
+  r:f32=i.extra.z;
+  land:f32=i.extra.w;
+  t:f32=u[1048];
+  detail:V3=eg_water_flow_detail(wg_mul_f2f(rest,1.6f32),flow,footprint,u);
+  off:f32=r-land;
+  d:f32=abs(off);
+  k:f32=EG_TAU/(ifx part==2 then 0.12f32 else 0.2f32);
+  a:f32=wg_atan2(rest.y,rest.x);
+  near:f32=ifx part==2 then 1.0f32 else 0.45f32+(0.55f32*eg_fountain_stream_near(a));
+  amp:f32=((ifx part==2 then 0.003f32 else 0.006f32)*near)*exp((-d)*1.4f32);
+  ring:V2=wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_div_f2f(rest,fmax(r,1e-3f32)),wg_sign(off)),amp),k),cos((k*d)-(t*9.0f32)));
+  slope:V2=wg_add_f2f2(wg_mul_f2f(v2(detail.x,detail.y),0.7f32),ring);
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
+  deep:f32=ifx part==2 then 1.4f32 else 1.2f32;
+  // and its shore line half as wide as a river's
+  return eg_water_painted_teal(world,rest,flow,i.world_depth.w*deep,i.look.w*2.0f32,i.look.x,n,v,footprint,0.85f32,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+}
+// ---- the painted look (art-styles.md 12; verse/water-look.coax water_paint_*, the `painted` preset,
+// W_ABSORB + 3): colour bands by depth in place of Beer-Lambert, the painted sky's gradient in
+// Schlick's Fresnel with no roughness blur, sparkles where a cell's tilt mirrors the key light, a
+// clean white shore line with a broken inner edge, W6's ripples as white rings, and faint streaks
+// carried along the current. The bed shows through the shallows (its caustics, water_caustics).
+EG_W_SHALLOW :: ()->V3 {return v3(0.30f32,0.72f32,0.74f32);}
+EG_W_MID :: ()->V3 {return v3(0.10f32,0.45f32,0.55f32);}
+EG_W_DEEP :: ()->V3 {return v3(0.05f32,0.22f32,0.36f32);}
+eg_water_paint_ramp :: (edge:f32,x:f32)->f32 {
+  return smoothstep(edge-0.075f32,edge+0.075f32,x);
+}
+eg_water_paint_sparkle :: (rdl:f32)->f32 {
+  return smoothstep(0.99756f32,0.99939f32,rdl);
+}
+eg_water_painted :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+  return eg_water_painted_teal(world,rest,flow,depth,shore,white,n,v,footprint,0.0f32,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+}
+// A fountain's clear water over pale stone: the bands warmed toward a bright teal (teal 1 all of it).
+EG_W_TEAL :: ()->V3 {return v3(0.12f32,0.70f32,0.64f32);}
+eg_water_painted_teal :: (world:V3,rest:V2,flow:V2,depth:f32,shore:f32,white:f32,n:V3,v:V3,footprint:f32,teal:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32)->EgWaterShade {
+  o:EgWaterShade;
+  l:V3=wg_sw_xyz_f4(eg_water_host_sun(u));
+  // the bands, in the light the land has (its shadows fall on the water too)
+  band:V3=wg_mix_f3f3f(wg_mix_f3f3f(wg_mix_f3f3f(EG_W_SHALLOW(),EG_W_MID(),eg_water_paint_ramp(0.4f32,depth)),EG_W_DEEP(),eg_water_paint_ramp(1.5f32,depth)),EG_W_TEAL(),teal);
+  // (each term below that comes out nothing for this pixel, still water's streaks, foam where nothing
+  // churns, the shore line far from the shore, is skipped rather than worked out: a phone at a pond)
+  sh:f32=eg_shade_shadows(v2(world.x,world.z),u);
+  light:V3=eg_water_host_light_shaded(world,v3(0.0f32,1.0f32,0.0f32),sh,u,shadow_map,shadow_cmp,paint_leaf_far);
+  body:V3=wg_mul_f3f3(wg_pow_f3f3(band,v3(2.2f32,2.2f32,2.2f32)),wg_add_f3f3(wg_mul_f3f(light,0.82f32),v3(0.05f32,0.05f32,0.05f32)));
+  // a painted surface is calmer than the optics': the waves bend its reflection a third as much,
+  // and the sky never takes more than half of it, so the bands still show at a grazing look
+  calm:V3=wg_normalize3(wg_mix_f3f3f(v3(0.0f32,1.0f32,0.0f32),n,0.35f32));
+  fresnel:f32=fmin(eg_water_fresnel(fmax(wg_dot3(calm,v),0.001f32)),0.5f32-(0.2f32*teal));
+  refl:V3=eg_water_host_sky(wg_reflect3(wg_neg_f3(v),calm),0.0f32,u);
+  // sparkles: a cell of the grid sparkles when its hashed tilt mirrors the key
+  grid:f32=ifx u[1068]<8.0f32 then 0.25f32 else 0.15f32;
+  cell:V2=wg_floor_f2(wg_div_f2f(rest,grid));
+  jitter:V2=wg_sub_f2f2(v2(eg_water_hash(v3(cell.x,cell.y,1.0f32)),eg_water_hash(v3(cell.x,cell.y,2.0f32))),v2(0.5f32,0.5f32));
+  tilt:V3=wg_normalize3(wg_add_f3f3(n,wg_mul_f3f(v3(jitter.x,0.0f32,jitter.y),0.35f32)));
+  rdl:f32=wg_dot3(wg_reflect3(wg_neg_f3(v),tilt),l);
+  twinkle:f32=0.5f32+(0.5f32*sin(((u[2]*(1.0f32-u[4]))*21.0f32)+(eg_water_hash(v3(cell.x,cell.y,3.0f32))*6.28f32)));
+  centre:V2=wg_mul_f2f(wg_add_f2f2(wg_add_f2f2(cell,v2(0.5f32,0.5f32)),wg_mul_f2f(jitter,0.5f32)),grid);
+  dot_:f32=1.0f32-smoothstep(footprint*1.2f32,footprint*2.2f32,wg_length2(wg_sub_f2f2(rest,centre)));
+  sparkle:f32=(((eg_water_paint_sparkle(rdl)*twinkle)*dot_)*eg_water_host_sun(u).w)*sh;
+  // the shore line (0.25 m, its inner edge broken), white water, the rings, streaks along the current
+  line:f32=0.0f32;
+  if ((shore<0.34f32)&&(depth>(-0.02f32))) {
+    broken:f32=(eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(rest,3.0f32),u[2]*0.3f32))-0.5f32)*0.12f32;
+    line=(1.0f32-smoothstep(0.17f32+broken,0.27f32+broken,shore))*smoothstep(-0.02f32,0.04f32,depth);
+  }
+  churn:f32=0.0f32;
+  if (white>0.0f32) {
+    noise:f32=eg_water_foam_noise(rest,flow,u);
+    churn=clampf(white,0.0f32,1.0f32)*smoothstep(0.3f32,0.6f32,noise+(0.3f32*white));
+  }
+  rings:f32=clampf(eg_water_ripple_foam(rest,u,wake_foam)*1.6f32,0.0f32,1.0f32);
+  // streaks: thin lines stretched along the current, carried down it at its speed
+  speed:f32=wg_length2(flow);
+  streak:f32=0.0f32;
+  if (((speed>0.05f32)&&(depth>0.1f32))&&(footprint<0.25f32)) {
+    along:V2=wg_div_f2f(flow,fmax(speed,1e-3f32));
+    q:V2=v2(wg_dot2(rest,v2(-along.y,along.x))*2.4f32,(wg_dot2(rest,along)*0.3f32)-((u[1048]*speed)*0.3f32));
+    ridge:f32=1.0f32-abs((2.0f32*eg_water_noise(v3(q.x,q.y,u[1048]*0.15f32)))-1.0f32);
+    broken_by:f32=smoothstep(0.4f32,0.7f32,eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(rest,0.6f32),u[1048]*0.1f32)));
+    streak=((((smoothstep(0.95f32,0.995f32,ridge)*broken_by)*smoothstep(0.05f32,0.4f32,speed))*0.35f32)*smoothstep(0.1f32,0.5f32,depth))*(1.0f32-smoothstep(0.08f32,0.25f32,footprint));
+  }
+  foam:f32=clampf(fmax(fmax(line,churn),rings)+streak,0.0f32,1.0f32);
+  alpha:f32=((0.5f32+(0.2f32*teal))+(0.42f32*smoothstep(0.05f32,1.2f32,depth)))*smoothstep(-0.05f32,0.1f32,depth);
+  edge:f32=smoothstep(-0.05f32,0.1f32,depth);
+  foam_rgb:V3=wg_mul_f3f3(v3(0.95f32,0.97f32,0.96f32),wg_add_f3f3(wg_mul_f3f(light,0.9f32),v3(0.06f32,0.06f32,0.06f32)));
+  emit:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(body,alpha),(1.0f32-fresnel)),wg_mul_f3f(wg_mul_f3f(refl,fresnel),edge)),wg_mul_f3f(wg_mul_f3f3(wg_mul_f3f(v3(1.0f32,0.97f32,0.88f32),sparkle),eg_water_host_sun_light(u)),1.2f32));
+  emit=wg_mix_f3f3f(emit,foam_rgb,foam);
+  o.emit=emit;
+  o.transmit=wg_make_f3_f(((1.0f32-alpha)*(1.0f32-(fresnel*edge)))*(1.0f32-foam));
+  o.bend=v2(n.x,n.z);
+  o.mirror=v4(refl.x,refl.y,refl.z,(fresnel*edge)*(1.0f32-foam));
+  return o;
+}
+eg_water_fragment :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
+  part:u32=wg_u32_f(i.extra.x+0.5f32);
+  if (part==EG_WEIR_PART) {
+    return eg_weir_shade(i,u,shadow_map,shadow_cmp,paint_leaf_far);
+  }
+  if (part==EG_FX_PART) {
+    return eg_fx_shade(i,u,shadow_map,shadow_cmp,paint_leaf_far,water_scene_depth);
+  }
+  if (!eg_water_surface_part(part)) {
+    return eg_fountain_fall_shade(i,part,u,shadow_map,shadow_cmp,paint_leaf_far);
+  }
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  rest:V2=v2(i.rest_flow.x,i.rest_flow.y);
+  flow:V2=v2(i.rest_flow.z,i.rest_flow.w);
+  depth:f32=i.world_depth.w;
+  v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  eye_distance:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  footprint:f32=eg_water_footprint(v,eye_distance,u);
+  if (part==EG_POND_PART) {
+    return eg_pond_shade(i,v,eye_distance,footprint,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+  }
+  if (part>=1) {
+    return eg_fountain_pool_shade(i,part,v,footprint,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+  }
+  // the normal, and the roughness its lost detail adds
+  swell:V3=eg_water_gerstner_slope(rest,depth,1.0f32,u);
+  detail:V3=eg_water_flow_detail(rest,flow,footprint,u);
+  slope:V2=wg_add_f2f2(wg_add_f2f2(wg_add_f2f2(v2(swell.x,swell.y),v2(detail.x,detail.y)),eg_water_ripples(rest,u,wake_foam)),eg_weather_rain_slope(v2(world.x,world.z),u));
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32-swell.z,-slope.y));
+  roughness:f32=clampf(sqrt((u[1060]*u[1060])+detail.z),0.02f32,0.6f32);
+  if (u[25]<world.y) {
+    if (u[1062]>0.5f32) {
+      return eg_water_below(n,v,eye_distance,wg_length2(slope),u);
+    }
+    none:EgWaterShade;
+    none.emit=v3(0.0f32,0.0f32,0.0f32);
+    none.transmit=v3(1.0f32,1.0f32,1.0f32);
+    return none;
+  }
+  if (u[1055]>0.5f32) {
+    return eg_water_painted(world,rest,flow,depth,i.look.w,i.look.x,n,v,footprint,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
+  }
+  o:EgWaterShade;
+  nov:f32=fmax(wg_dot3(n,v),1e-3f32);
+  fresnel:f32=eg_water_fresnel(nov);
+  sky:V3=eg_water_host_sky(wg_reflect3(wg_neg_f3(v),n),eg_water_sky_roughness(roughness,footprint),u);
+  l:V3=wg_sw_xyz_f4(eg_water_host_sun(u));
+  light:V3=wg_mul_f3f(eg_water_host_sun_light(u),eg_shade_shadows(v2(world.x,world.z),u));
+  glint:V3=wg_mul_ff3(eg_water_glint(n,v,l,roughness,u[1066],eye_distance,u),light);
+  crest:V3=wg_mul_f3f3(eg_water_crest_scatter(v,l,n,i.extra.y,i.look.z,u),light);
+  noise:f32=eg_water_foam_noise(rest,flow,u);
+  foam:f32=eg_water_foam(rest,i.look.w,i.look.z,i.look.x,noise,u,wake_foam);
+  foam_rgb:V3=wg_mul_f3f3(v3(0.9f32,0.94f32,0.95f32),eg_water_host_light(world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far));
+  // the column under the surface: its in-scatter, and what of the bed comes through
+  ci:f32=clampf(v.y,0.0f32,1.0f32);
+  through:V3=eg_water_transmittance(depth,ci,u);
+  body:V3=wg_mul_f3f3(eg_water_inscatter(u),wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),through));
+  clear:V3=wg_add_f3f3(wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(sky,fresnel),glint),crest),wg_mul_f3f(body,(1.0f32-fresnel)));
+  // thin water at the very edge fades out instead of ending in a line
+  edge:f32=smoothstep(-0.05f32,0.12f32,depth);
+  cover:f32=foam*smoothstep(-0.08f32,0.0f32,depth);
+  o.emit=wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(clear,edge),(1.0f32-cover)),wg_mul_f3f(foam_rgb,cover));
+  o.transmit=wg_mul_f3f(wg_mix_f3f3f(v3(1.0f32,1.0f32,1.0f32),wg_mul_f3f(through,(1.0f32-fresnel)),edge),(1.0f32-cover));
+  o.bend=v2(n.x,n.z);
+  o.mirror=v4(sky.x,sky.y,sky.z,(fresnel*edge)*(1.0f32-cover));
+  return o;
+}
+// The fogged surface, with the HUD's plates over it, as the two halves blend it.
+eg_water_halves :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene_depth:TexDepth)->EgWaterShade {
+  s:EgWaterShade=eg_water_fragment(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth);
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),v3(i.world_depth.x,i.world_depth.y,i.world_depth.z)));
+  fog:f32=eg_haze_share(d,i.world_depth.y,u);
+  emit:V3=wg_add_f3f3(wg_mul_f3f(s.emit,(1.0f32-fog)),wg_mul_f3f3(wg_mul_f3f(eg_haze_colour(fog,wg_div_f3f(wg_sub_f3f3(v3(i.world_depth.x,i.world_depth.y,i.world_depth.z),v3(u[24],u[25],u[26])),fmax(d,0.001f32)),u),fog),wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),s.transmit)));
+  // linear light now (the post pass encodes): what lies behind times the transmittance, plus the emitted
+  o:EgWaterShade=s;
+  o.emit=wg_max_f3f3(emit,v3(0.0f32,0.0f32,0.0f32));
+  return o;
+}
+// ---- W5 (docs/verse/water.md): the scene's light and depth as they stood before the water (host.js
+// waterCopyLayout). A surface (the river, the fountain's pools) draws in one piece over the copy: what
+// lies behind it bent by its slope (refraction), a broken white line where anything stands in it (the
+// bridge's piles, the fountain's column, a swimmer, the ducks), and a soft edge where it meets them. The
+// falls, drawn over the pools, keep the two halves (they multiply and add over what is drawn).
+// The view depth (clip w) a depth-buffer value stands for: the scene's clip z is a w + b.
+eg_water_view_w :: (d:f32,u:[]f32)->f32 {
+  a:f32=wg_dot3(v3(u[16],u[17],u[18]),v3(u[20],u[21],u[22]))/fmax(wg_dot3(v3(u[20],u[21],u[22]),v3(u[20],u[21],u[22])),1e-6f32);
+  b:f32=u[19]-(a*u[23]);
+  w:f32=b/fmin(d-a,-1e-7f32);
+  return ifx (d<0.999999f32)&&(w>0.0f32) then w else 1e6f32;
+}
+eg_water_scene_at :: (px:I2,water_scene:Tex2D)->V3 {
+  size:I2=wg_cvt_i2u2(wg_dims_2d(water_scene));
+  return wg_sw_rgb_f4(wg_load_2d(water_scene,wg_clamp_i2i2i2(px,i2(0,0),wg_sub_i2i2(size,i2(1,1))),0));
+}
+eg_water_scene_w :: (px:I2,u:[]f32,water_scene_depth:TexDepth)->f32 {
+  size:I2=wg_cvt_i2u2(wg_dims_depth(water_scene_depth));
+  return eg_water_view_w(wg_load_depth(water_scene_depth,wg_clamp_i2i2i2(px,i2(0,0),wg_sub_i2i2(size,i2(1,1))),0),u);
+}
+// How much water lies between the surface at world (pixel px) and what is behind it, along the view (m).
+eg_water_thickness :: (px:I2,world:V3,u:[]f32,water_scene_depth:TexDepth)->f32 {
+  w:f32=wg_dot4(wg_at4(u,20),v4(world.x,world.y,world.z,1.0f32));
+  return (fmax(eg_water_scene_w(px,u,water_scene_depth)-w,0.0f32)*wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world)))/fmax(w,1e-3f32);
+}
+// Screen-space reflection: 20 steps out along dir from p, growing; the first step whose point lies behind
+// the copied depth (within the step) is the hit. Returns the scene there and how sure (fading at the
+// screen's edges and toward the last step), or w 0 for none.
+eg_water_ssr :: (p:V3,dir:V3,u:[]f32,water_scene:Tex2D,water_scene_depth:TexDepth)->V4 {
+  // a ray bent down into the water finds the bed, not a reflection
+  if (dir.y<0.03f32) {
+    return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  }
+  size:V2=wg_cvt_f2u2(wg_dims_2d(water_scene));
+  t:f32=0.25f32;
+  last:f32=0.0f32;
+  {
+    k:s32=0;
+    while k<20 {
+      q:V3=wg_add_f3f3(p,wg_mul_f3f(dir,t));
+      c:V4=v4(wg_dot4(wg_at4(u,8),v4(q.x,q.y,q.z,1.0f32)),wg_dot4(wg_at4(u,12),v4(q.x,q.y,q.z,1.0f32)),wg_dot4(wg_at4(u,16),v4(q.x,q.y,q.z,1.0f32)),wg_dot4(wg_at4(u,20),v4(q.x,q.y,q.z,1.0f32)));
+      if (c.w<=0.05f32) {
+        return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+      }
+      ndc:V2=wg_div_f2f(v2(c.x,c.y),c.w);
+      if ((abs(ndc.x)>1.0f32)||(abs(ndc.y)>1.0f32)) {
+        return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+      }
+      px:I2=wg_cvt_i2f2(wg_mul_f2f2(wg_add_f2f2(wg_mul_f2f2(ndc,v2(0.5f32,-0.5f32)),v2(0.5f32,0.5f32)),size));
+      sw:f32=eg_water_scene_w(px,u,water_scene_depth);
+      if ((sw<c.w)&&((c.w-sw)<(((t-last)*1.5f32)+0.3f32))) {
+        edge:f32=fmin(1.0f32-abs(ndc.x),1.0f32-abs(ndc.y));
+        // what it finds must lie above the surface it reflects in
+        sure:f32=((smoothstep(0.0f32,0.12f32,edge)*(1.0f32-smoothstep(14.0f32,20.0f32,cast(f32)(k))))*smoothstep(0.03f32,0.12f32,dir.y))*(1.0f32-smoothstep(12.0f32,30.0f32,t));
+        return wg_make_f4_f3f(eg_water_scene_at(px,water_scene),sure);
+      }
+      last=t;
+      t=(t*1.32f32)+0.1f32;
+      k+=1;
+    }
+  }
+  return v4(0.0f32,0.0f32,0.0f32,0.0f32);
+}
+eg_water_whole :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:[]bool,wake_foam:[]f32,water_scene:Tex2D,water_scene_depth:TexDepth)->V3 {
+  world:V3=v3(i.world_depth.x,i.world_depth.y,i.world_depth.z);
+  px:I2=wg_cvt_i2f2(v2(i.clip.x,i.clip.y));
+  // inside a rowboat's hull the water isn't drawn
+  if ((eg_water_hull(v2(world.x,world.z),u)>0.5f32)||eg_water_dry(v2(world.x,world.z),u)) {
+    return eg_water_scene_at(px,water_scene);
+  }
+  s:EgWaterShade=eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth);
+  w:f32=fmax(wg_dot4(wg_at4(u,20),v4(world.x,world.y,world.z,1.0f32)),1e-3f32);
+  thick:f32=eg_water_thickness(px,world,u,water_scene_depth);
+  // refraction: the bed seen a little aside, more through more water; never something in front of the surface
+  focal:f32=(0.5f32*(cast(f32)(wg_dims_2d(water_scene).y)))*wg_length3(v3(u[12],u[13],u[14]));
+  small:bool=u[1068]<8.0f32;
+  reach:f32=(ifx small then 0.12f32 else 0.16f32)*fmin(thick,1.2f32);
+  off:I2=wg_cvt_i2f2(wg_round_f2(wg_div_f2f(wg_mul_f2f(wg_mul_f2f(s.bend,reach),focal),w)));
+  at:I2=wg_add_i2i2(px,off);
+  if (eg_water_scene_w(at,u,water_scene_depth)<w) {
+    at=px;
+  }
+  behind:V3=eg_water_scene_at(at,water_scene);
+  out:V3=wg_add_f3f3(wg_mul_f3f3(behind,s.transmit),s.emit);
+  v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+  // reflection: on desktop the scene where the reflected ray meets it on the screen, in place of the sky
+  if (((!small)&&(s.mirror.w>0.01f32))&&(u[25]>world.y)) {
+    // reflected off a calmer surface than the shading's: the scene's edges in it stay whole, not broken up
+    calm:V3=wg_normalize3(v3(s.bend.x*0.06f32,1.0f32,s.bend.y*0.06f32));
+    hit:V4=eg_water_ssr(world,wg_reflect3(wg_neg_f3(v),calm),u,water_scene,water_scene_depth);
+    d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world));
+    out=wg_add_f3f3(out,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sub_f3f3(v3(hit.x,hit.y,hit.z),v3(s.mirror.x,s.mirror.y,s.mirror.z)),s.mirror.w),hit.w),(1.0f32-eg_haze_share(d,world.y,u))));
+  }
+  // contact foam: water much thinner than the depth to the bed says (something stands in it), broken
+  part:u32=wg_u32_f(i.extra.x+0.5f32);
+  if (u[25]>world.y) {
+    bed:f32=i.world_depth.w/fmax(v.y,0.08f32);
+    near:f32=(1.0f32-smoothstep(0.03f32,0.2f32,thick))*(1.0f32-smoothstep(0.35f32,0.7f32,thick/fmax(bed,0.02f32)));
+    // most of the surface stands in nothing: no noise, no second lighting there
+    if ((near>0.0f32)&&eg_water_surface_part(part)) {
+      t:f32=u[1048];
+      broken:f32=smoothstep(0.25f32,0.6f32,(eg_water_noise(wg_make_f3_f2f(wg_mul_f2f(v2(i.rest_flow.x,i.rest_flow.y),5.0f32),t*0.8f32))+(0.5f32*near))-0.2f32);
+      foam:f32=clampf((near*broken)*1.4f32,0.0f32,1.0f32);
+      if (foam>0.0f32) {
+        foam_rgb:V3=wg_mul_f3f3(v3(0.95f32,0.97f32,0.96f32),wg_add_f3f3(wg_mul_f3f(eg_water_host_light(world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far),0.9f32),v3(0.06f32,0.06f32,0.06f32)));
+        out=wg_mix_f3f3f(out,foam_rgb,foam);
+      }
+    }
+  }
+  // the soft edge: where the water thins to nothing against what stands in it, what is behind shows whole
+  out=wg_mix_f3f3f(eg_water_scene_at(px,water_scene),out,smoothstep(0.0f32,0.06f32,thick));
+  return wg_max_f3f3(out,v3(0.0f32,0.0f32,0.0f32));
+}
+eg_water_transmit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene_depth:TexDepth)->V4 {
+  paint_leaf_far_store:[1]bool;
+  paint_leaf_far:=paint_leaf_far_store[..];
+  wake_foam_store:[1]f32;
+  wake_foam:=wake_foam_store[..];
+  // a surface draws whole in the light half (water_whole): this half clears what lies behind it
+  if eg_water_surface_part(wg_u32_f(i.extra.x+0.5f32)) {
+    return v4(0.0f32,0.0f32,0.0f32,1.0f32);
+  }
+  return wg_make_f4_f3f(wg_clamp_f3f3f3(eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth).transmit,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),1.0f32);
+}
+eg_water_emit_fs :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,water_scene:Tex2D,water_scene_depth:TexDepth)->V4 {
+  paint_leaf_far_store:[1]bool;
+  paint_leaf_far:=paint_leaf_far_store[..];
+  wake_foam_store:[1]f32;
+  wake_foam:=wake_foam_store[..];
+  if eg_water_surface_part(wg_u32_f(i.extra.x+0.5f32)) {
+    return wg_make_f4_f3f(eg_water_whole(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene,water_scene_depth),0.0f32);
+  }
+  return wg_make_f4_f3f(eg_water_halves(i,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam,water_scene_depth).emit,0.0f32);
+}
+// ---- the post pass (host.js postLayouts, art-styles.md 6 and 9): the bright share at a quarter and an
+// eighth of the size, blurred, mixed back at the preset's bloom mix; the light shafts; then the tone,
+// the encoding and the plates over it.
+// EgStep, a uniform block, is read from a []f32 at these offsets (floats):
+//   v 0
+eg_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel_2:V2=wg_div_ff2(1.0f32,wg_cvt_f2u2(wg_dims_2d(bloom_src)));
+  uv:V2=wg_mul_f2f2(wg_mul_f2f(v2(pos.x,pos.y),bloom_step[3]),texel_2);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f2(wg_sub_f2f(wg_mul_f2f(v2(cast(f32)(k&1),cast(f32)(k>>1)),2.0f32),1.0f32),texel_2)),0.0f32);
+        c=wg_add_f3f3(c,wg_mul_f3f(v3(t.x,t.y,t.z),clampf(t.w,0.0f32,1.0f32)));
+        k+=1;
+      }
+    }
+    return wg_make_f4_f3f(wg_mul_f3f(c,0.25f32),1.0f32);
+  }
+  d:V2=wg_mul_f2f2(v2(bloom_step[0],bloom_step[1]),texel_2);
+  c:V3=wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32))),0.316f32));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+eg_tone :: (c:V3,u:[]f32)->V3 {
+  e:f32=eg_st(18,u).x;
+  t:V3=v3(verse_style_tone(c.x,e),verse_style_tone(c.y,e),verse_style_tone(c.z,e));
+  y:f32=verse_style_luma(t.x,t.y,t.z);
+  t=v3(verse_style_saturation(t.x,y,eg_st(18,u).y),verse_style_saturation(t.y,y,eg_st(18,u).y),verse_style_saturation(t.z,y,eg_st(18,u).y));
+  return v3(verse_style_lift(t.x,eg_st(18,u).z),verse_style_lift(t.y,eg_st(18,u).z),verse_style_lift(t.z,eg_st(18,u).z));
+}
+// Under the water on a desktop (W7, verse/water-under.coax water_under_tier): the view wavers a
+// few pixels where the pixel's near-plane point is under the river, and a pale meniscus marks where
+// the surface crosses the lens. Nothing changes while the eye is well above the water.
+eg_water_waver_at :: (pos:V2,u:[]f32)->I2 {
+  over:f32=eg_water_eye_over(u);
+  // deeper than the near plane every pixel is under; only near the surface is the ray needed
+  if (((!eg_weather_desktop(u))||(over>0.2f32))||((over>(-EG_WATER_NEAR))&&(!eg_water_pixel_under(eg_pixel_ray(pos,u),u)))) {
+    return wg_cvt_i2f2(pos);
+  }
+  t:f32=u[1048];
+  px:f32=(3.0f32*u[1])/900.0f32;
+  o:V2=wg_mul_f2f(v2(sin((pos.y*0.02f32)+(t*1.7f32)),cos((pos.x*0.017f32)+(t*1.3f32))),px);
+  return wg_clamp_i2i2i2(wg_cvt_i2f2(wg_add_f2f2(pos,o)),i2(0,0),wg_sub_i2i(wg_cvt_i2f2(wg_at2(u,0)),1));
+}
+eg_water_meniscus :: (c:V3,pos:V2,u:[]f32)->V3 {
+  if ((!eg_weather_desktop(u))||(abs(eg_water_eye_over(u))>0.2f32)) {
+    return c;
+  }
+  line:f32=eg_water_eye_over(u)+(EG_WATER_NEAR*eg_pixel_ray(pos,u).y);
+  if (line>=0.0f32) {
+    return c;
+  }
+  return wg_mix_f3f3f(c,v3(0.85f32,0.95f32,0.95f32),(1.0f32-smoothstep(0.0f32,0.006f32,-line))*0.7f32);
+}
+eg_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_lin:Sampler)->V4 {
+  light:V3=eg_water_meniscus(wg_sw_rgb_f4(wg_load_2d(post_light,eg_water_waver_at(v2(pos.x,pos.y),u),0)),v2(pos.x,pos.y),u);
+  uv:V2=wg_div_f2f2(v2(pos.x,pos.y),wg_at2(u,0));
+  // the far field softened (spec 15, fine detail; the references' far forest is masses, not leaves): a
+  // pixel painted past SOFT_FROM (aux.g, its distance, from paint) takes the mean of four linear taps
+  // round it, all of it by SOFT_TO; the near ground and the sky stay as drawn
+  // a phone's narrow canvas packs the same middle distance into fewer pixels: its softening starts nearer
+  soft_k:f32=ifx eg_st(31,u).z>0.5f32 then EG_SOFT_PHONE else 1.0f32;
+  far:f32=smoothstep(EG_SOFT_FROM*soft_k,EG_SOFT_TO*soft_k,wg_load_2d(post_aux,wg_cvt_i2f2(v2(pos.x,pos.y)),0).y*EG_AUX_DISTANCE);
+  if (far>0.0f32) {
+    t:V2=wg_div_ff2(0.65f32,wg_at2(u,0));
+    soft:V3=wg_mul_f3f(wg_add_f3f3(wg_add_f3f3(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(post_light,post_lin,wg_add_f2f2(uv,t),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(post_light,post_lin,wg_sub_f2f2(uv,t),0.0f32))),wg_sw_rgb_f4(gpu_sample_level(post_light,post_lin,wg_add_f2f2(uv,v2(t.x,-t.y)),0.0f32))),wg_sw_rgb_f4(gpu_sample_level(post_light,post_lin,wg_add_f2f2(uv,v2(-t.x,t.y)),0.0f32))),0.25f32);
+    light=wg_mix_f3f3f(light,soft,far);
+  }
+  b:V3=wg_add_f3f3(wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32)),0.55f32),wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32)),0.45f32));
+  m:f32=eg_st(19,u).z;
+  c:V3=v3(verse_style_bloom_mix(light.x,b.x,m),verse_style_bloom_mix(light.y,b.y,m),verse_style_bloom_mix(light.z,b.z,m));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_ff3(eg_shafts(v2(pos.x,pos.y),uv,u,post_aux,post_lin),wg_sw_xyz_f4(eg_st(11,u))),eg_st(0,u).w));
+  return wg_make_f4_f3f(eg_plates(v2(pos.x,pos.y),eg_encode(wg_mul_f3f(eg_tone(c,u),u[3])),u),1.0f32);
+}
+// Light shafts (spec 6): march from the pixel toward the key light's place on screen, gathering the
+// sky's glow (aux.r) with each tap weighted decay^i; the canopies and roofs block it, so light streams
+// through the gaps. Faded as the light leaves the frame; the march starts a hashed fraction in.
+eg_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
+  sh:V4=eg_st(20,u);
+  k:V4=eg_clip(wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(wg_sw_xyz_f4(eg_st(1,u)),1000.0f32)),u);
+  if ((k.w<=0.01f32)||(sh.z<=0.0f32)) {
+    return 0.0f32;
+  }
+  at:V2=v2(0.5f32+((0.5f32*k.x)/k.w),0.5f32-((0.5f32*k.y)/k.w));
+  fade:f32=verse_style_shaft_fade(at.x,at.y,sh.w);
+  if (fade<=0.0f32) {
+    return 0.0f32;
+  }
+  n:f32=sh.x;
+  step:V2=wg_div_f2f(wg_sub_f2f2(at,uv),n);
+  jitter:f32=fract(52.9829189f32*fract(wg_dot2(p,v2(0.06711056f32,0.00583715f32))));
+  sum:f32=0.0f32;
+  {
+    i:f32=0.0f32;
+    while i<24.0f32 {
+      if (i>=n) {
+        break;
+      }
+      q:V2=wg_add_f2f2(uv,wg_mul_f2f(step,(i+jitter)));
+      if (wg_any_lt_f2f2(q,v2(0.0f32,0.0f32))||wg_any_gt_f2f2(q,v2(1.0f32,1.0f32))) {
+        break;
+      }
+      sum=sum+(gpu_sample_level(post_aux,post_lin,q,0.0f32).x*verse_style_shaft_tap(i,sh.y));
+      i=i+1.0f32;
+    }
+  }
+  return verse_style_shaft(sum,verse_style_shaft_total(n,sh.y),sh.z,fade);
+}
+// ---- the grass (art-styles.md 8): one tapered triangle a blade, instanced from a hash of its cell
+// (no buffer of blades), in a square two radii across round the eye, world-aligned so blades hold
+// still as you walk; behind the eye or past the radius (shrinking over the last 6 m) none. Its colour
+// is the meadow's under it, the root in the blades' shade and the tip lighter and warmer; its normal
+// the ground's up, tilted toward the light as the wind bends it. None on the streets, the squares,
+// the river, the buildings' and props' footprints; the movers (their blob shadows) part it.
+EG_ROOT :: 0.78f32;
+eg_ground_y :: (q:V2,u:[]f32,heights:[]f32)->f32 {
+  g:V2=wg_div_f2f(wg_sub_f2f2(q,v2(u[34],u[35])),u[33]);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(g));
+  f:V2=wg_fract_f2(g);
+  return mix(mix(eg_height(i.x,i.y,u,heights),eg_height(i.x+1,i.y,u,heights),f.x),mix(eg_height(i.x,i.y+1,u,heights),eg_height(i.x+1,i.y+1,u,heights),f.x),f.y);
+}
+// The meadow's green, sRGB (comparison round 1 against the references: the grass read acid lime, 0.55 to
+// 0.62 saturation at 0.6 value on screen, where theirs is 0.25 to 0.4 at 0.35 to 0.55): broad patches
+// from a cool deep green to a warm olive, the same under the blades as in them.
+EG_MEADOW_COOL :: ()->V3 {return v3(0.25f32,0.38f32,0.22f32);}
+EG_MEADOW_WARM :: ()->V3 {return v3(0.41f32,0.49f32,0.25f32);}
+eg_meadow_srgb :: (t:f32)->V3 {
+  return wg_mix_f3f3f(EG_MEADOW_COOL(),EG_MEADOW_WARM(),t);
+}
+eg_meadow :: (q:V2)->V3 {
+  return wg_pow_f3f3(eg_meadow_srgb(eg_noise(wg_mul_f2f(q,0.13f32))),v3(2.2f32,2.2f32,2.2f32));
+}
+eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
+  m:f32=verse_style_grass_clear(eg_path_distance(q,u)-u[229]);
+  {
+    k:s32=0;
+    while k<4 {
+      sq:V4=wg_at4(u,(cast(int)k)*4+232);
+      if (sq.z<=0.0f32) {
+        break;
+      }
+      m=m*verse_style_grass_clear(wg_length2(wg_sub_f2f2(q,v2(sq.x,sq.y)))-sq.z);
+      k+=1;
+    }
+  }
+  {
+    k:s32=0;
+    while k<32 {
+      b:V4=wg_at4(u,(cast(int)k)*4+1212);
+      if (b.z<=b.x) {
+        {k+=1; continue;}
+      }
+      d:f32=fmax(fmax(b.x-q.x,q.x-b.z),fmax(b.y-q.y,q.y-b.w));
+      m=m*verse_style_grass_clear(d-0.3f32);
+      k+=1;
+    }
+  }
+  return m*verse_style_grass_clear(0.25f32-(eg_water_over(q,u,heights,water_nodes)*5.0f32));
+}
+EgG :: struct {pos:V4; world:V3; n:V3; albedo:V3; glow:V3; }
+eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
+  o:EgG;
+  o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
+  o.world=v3(0.0f32,0.0f32,0.0f32);
+  o.n=v3(0.0f32,1.0f32,0.0f32);
+  o.albedo=v3(0.0f32,0.0f32,0.0f32);
+  o.glow=v3(0.0f32,0.0f32,0.0f32);
+  g:V4=eg_st(22,u);
+  g2:V4=eg_st(23,u);
+  w:V4=eg_st(24,u);
+  w2:V4=eg_st(25,u);
+  per:u32=wg_max_u(wg_u32_f(g.x),1);
+  r:f32=g.y;
+  side:u32=wg_u32_f(2.0f32*r);
+  // past the far field's blades the near ring's (verse_style_near_*): a square 2 reach across, hashed
+  // apart from the far field's by an offset seed, widened toward the eye
+  reach:f32=verse_style_near_reach(eg_st(31,u).z);
+  far_n:u32=mul_wrap(mul_wrap(per,side),side);
+  near:bool=i>=far_n;
+  nper:u32=wg_max_u(wg_u32_f(eg_st(26,u).w),1);
+  nside:u32=wg_u32_f(2.0f32*reach);
+  j:u32=ifx near then sub_wrap(i,far_n) else i;
+  bper:u32=ifx near then nper else per;
+  bside:u32=ifx near then nside else side;
+  half:f32=ifx near then reach else r;
+  cell:u32=j/bper;
+  b:f32=(cast(f32)(j%bper))+(ifx near then 101.0f32 else 0.0f32);
+  c:V2=wg_add_f2f2(wg_sub_f2f2(wg_floor_f2(v2(u[24],u[26])),v2(half,half)),v2(cast(f32)(cell%bside),cast(f32)(cell/bside)));
+  k:V2=wg_add_f2f2(c,v2(b*7.13f32,b*(-3.71f32)));
+  q:V2=wg_add_f2f2(c,v2(eg_hash(k),eg_hash(wg_add_f2f2(k,v2(19.1f32,7.7f32)))));
+  rel:V2=wg_sub_f2f2(q,v2(u[24],u[26]));
+  dist:f32=wg_length2(rel);
+  // behind the eye nothing: the clip test on the root
+  root_clip:V4=eg_clip(v3(q.x,eg_ground_y(q,u,heights),q.y),u);
+  if ((root_clip.w<(-1.0f32))||(abs(root_clip.x)>((root_clip.w*1.2f32)+1.0f32))) {
+    return o;
+  }
+  // the spells' marks on the blades (ground_mark): frost on their tops, scorch burning them short
+  mk:EgMark=eg_ground_mark(q,ifx v==2 then 1.0f32 else 0.0f32,u);
+  tall:f32=((verse_style_blade_height(eg_hash(wg_add_f2f2(k,v2(3.3f32,41.9f32))),g.w,g2.x)*verse_style_grass_fade(dist,r,g.z))*eg_grass_mask(q,u,heights,water_nodes))*(1.0f32-mk.short_);
+  if (tall<0.02f32) {
+    return o;
+  }
+  t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+  wd:V2=v2(w2.x,w2.y);
+  theta:f32=verse_style_wind(wg_dot2(q,wd),verse_style_gust(q.x,q.y,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
+  // the movers (their blob shadows: you, the people, the cats) part the blades within 0.7 m
+  lean:V2=wg_mul_f2f(wd,verse_style_bend(theta,tall,1.0f32));
+  {
+    m:s32=0;
+    while m<8 {
+      sh:V4=wg_at4(u,(cast(int)m)*4+36);
+      if (sh.z<=0.0f32) {
+        break;
+      }
+      away:V2=wg_sub_f2f2(q,v2(sh.x,sh.y));
+      lean=wg_add_f2f2(lean,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(wg_add_f2f2(away,v2(0.0001f32,0.0001f32))),tall),0.85f32),verse_style_part(wg_length2(away),w2.w)));
+      m+=1;
+    }
+  }
+  ang:f32=eg_hash(wg_add_f2f2(k,v2(5.9f32,13.3f32)))*6.2831853f32;
+  across:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(cos(ang),0.0f32,sin(ang)),g2.y),0.5f32),verse_style_near_width(dist,reach));
+  world:V3=v3(q.x,eg_ground_y(q,u,heights),q.y);
+  base:V3=eg_meadow(q);
+  hj:f32=eg_hash(wg_add_f2f2(k,v2(31.7f32,2.9f32)));
+  a:V3=v3(verse_style_jitter(base.x,0.0f32,hj,g2.w),verse_style_jitter(base.y,1.0f32,hj,g2.w),verse_style_jitter(base.z,2.0f32,hj,g2.w));
+  if (v==0) {
+    world=wg_sub_f3f3(world,across);
+    o.albedo=wg_mul_f3f(a,EG_ROOT);
+  } else if (v==1) {
+    world=wg_add_f3f3(world,across);
+    o.albedo=wg_mul_f3f(a,EG_ROOT);
+  } else {
+    world=wg_add_f3f3(world,v3(lean.x,sqrt(fmax((tall*tall)-wg_dot2(lean,lean),(tall*tall)*0.15f32)),lean.y));
+    o.albedo=v3(verse_style_tip(a.x,0.0f32,g2.z),verse_style_tip(a.y,1.0f32,g2.z),verse_style_tip(a.z,2.0f32,g2.z));
+  }
+  o.albedo=wg_mix_f3f3f(o.albedo,wg_pow_f3f3(mk.tint,v3(2.2f32,2.2f32,2.2f32)),mk.cover);
+  o.glow=mk.glow;
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  lx:V2=wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32)));
+  tilt:f32=verse_style_grass_tilt(theta,w.x,w2.z);
+  o.n=wg_normalize3(v3(lx.x*sin(tilt),cos(tilt),lx.y*sin(tilt)));
+  o.pos=eg_clip(world,u);
+  o.world=world;
+  return o;
+}
+eg_grass_fs :: (g:EgG,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+  paint_leaf_far_store:[1]bool;
+  paint_leaf_far:=paint_leaf_far_store[..];
+  res:EgLit=eg_paint(g.albedo,wg_normalize3(g.n),g.world,eg_map_lit(g.world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far),false,false,u,heights,water_nodes,paint_leaf_far);
+  res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(g.glow,0.18f32)),res.light.w);
+  return res;
+}
+// The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sw_xyz_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
+wg_mul_f4f :: (a:V4,b:f32)->V4 {return v4(a.x*b,a.y*b,a.z*b,a.w*b);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_max_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmax(p0.x,p1.x),fmax(p0.y,p1.y),fmax(p0.z,p1.z));}
+wg_sw_xy_f4 :: (p:V4)->V2 {return v2(p.x,p.y);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_add_f4f :: (a:V4,b:f32)->V4 {return v4(a.x+b,a.y+b,a.z+b,a.w+b);}
+wg_cvt_u4f4 :: (p:V4)->U4 {return u4(wg_u32_f(p.x),wg_u32_f(p.y),wg_u32_f(p.z),wg_u32_f(p.w));}
+wg_get_u4 :: (p:U4,i:int)->u32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_get_f4 :: (p:V4,i:int)->f32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_make_f4_f2ff :: (p0:V2,p1:f32,p2:f32)->V4 {return v4(p0.x,p0.y,p1,p2);}
+wg_all_gt_f2f2 :: (a:V2,b:V2)->bool {return a.x>b.x && a.y>b.y;}
+wg_all_lt_f2f2 :: (a:V2,b:V2)->bool {return a.x<b.x && a.y<b.y;}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_cvt_u2f2 :: (p:V2)->U2 {return u2(wg_u32_f(p.x),wg_u32_f(p.y));}
+wg_mod_u2u2 :: (a:U2,b:U2)->U2 {return u2(a.x%b.x,a.y%b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_min_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmin(p0.x,p1.x),fmin(p0.y,p1.y),fmin(p0.z,p1.z));}
+wg_add_ff3 :: (a:f32,b:V3)->V3 {return v3(a+b.x,a+b.y,a+b.z);}
+wg_clamp_f2f2f2 :: (p0:V2,p1:V2,p2:V2)->V2 {return v2(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y));}
+wg_make_f3_f2f :: (p0:V2,p1:f32)->V3 {return v3(p0.x,p0.y,p1);}
+wg_floor_f3 :: (p0:V3)->V3 {return v3(floor(p0.x),floor(p0.y),floor(p0.z));}
+wg_sw_xz_f4 :: (p:V4)->V2 {return v2(p.x,p.z);}
+wg_exp_f3 :: (p0:V3)->V3 {return v3(exp(p0.x),exp(p0.y),exp(p0.z));}
+wg_all_ge_f2f2 :: (a:V2,b:V2)->bool {return a.x>=b.x && a.y>=b.y;}
+wg_sw_zw_f4 :: (p:V4)->V2 {return v2(p.z,p.w);}
+wg_all_le_f2f2 :: (a:V2,b:V2)->bool {return a.x<=b.x && a.y<=b.y;}
+wg_make_f4_f2f2 :: (p0:V2,p1:V2)->V4 {return v4(p0.x,p0.y,p1.x,p1.y);}
+wg_make_f2_f :: (p0:f32)->V2 {return v2(p0,p0);}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_cvt_i3f3 :: (p:V3)->I3 {return i3(wg_i32_f(p.x),wg_i32_f(p.y),wg_i32_f(p.z));}
+wg_bits_u3i3 :: (p:I3)->U3 {return u3(cast,trunc(u32)(p.x),cast,trunc(u32)(p.y),cast,trunc(u32)(p.z));}
+wg_mul_u3u :: (a:U3,b:u32)->U3 {return u3(mul_wrap(a.x,b),mul_wrap(a.y,b),mul_wrap(a.z,b));}
+wg_add_u3u :: (a:U3,b:u32)->U3 {return u3(add_wrap(a.x,b),add_wrap(a.y,b),add_wrap(a.z,b));}
+wg_shr_u3u3 :: (a:U3,b:U3)->U3 {return u3(a.x>>b.x,a.y>>b.y,a.z>>b.z);}
+wg_xor_u3u3 :: (a:U3,b:U3)->U3 {return u3(a.x^b.x,a.y^b.y,a.z^b.z);}
+wg_fract_f3 :: (p0:V3)->V3 {return v3(fract(p0.x),fract(p0.y),fract(p0.z));}
+wg_sub_ff3 :: (a:f32,b:V3)->V3 {return v3(a-b.x,a-b.y,a-b.z);}
+wg_cvt_i2u2 :: (p:U2)->I2 {return i2(cast,trunc(s32)(p.x),cast,trunc(s32)(p.y));}
+wg_sub_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x-b.x,a.y-b.y);}
+wg_clamp_i2i2i2 :: (p0:I2,p1:I2,p2:I2)->I2 {return i2(wg_clamp_i(p0.x,p1.x,p2.x),wg_clamp_i(p0.y,p1.y,p2.y));}
+wg_cvt_f2u2 :: (p:U2)->V2 {return v2(cast(f32)(p.x),cast(f32)(p.y));}
+wg_round_f2 :: (p0:V2)->V2 {return v2(wg_round(p0.x),wg_round(p0.y));}
+wg_add_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x+b.x,a.y+b.y);}
+wg_div_ff2 :: (a:f32,b:V2)->V2 {return v2(a/b.x,a/b.y);}
+wg_sub_i2i :: (a:I2,b:s32)->I2 {return i2(a.x-b,a.y-b);}
+wg_any_lt_f2f2 :: (a:V2,b:V2)->bool {return a.x<b.x || a.y<b.y;}
+wg_any_gt_f2f2 :: (a:V2,b:V2)->bool {return a.x>b.x || a.y>b.y;}
