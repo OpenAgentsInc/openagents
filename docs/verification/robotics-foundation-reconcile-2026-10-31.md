@@ -41,3 +41,15 @@ its hand WGSL and the generation rule. The bounded graphics/Psionic-compute
 claim scope stays unchanged; only the two native-GPU evidence bindings change.
 The book gate stopped publication until that review completed. Numerical
 bridge sources and their passed records are unchanged.
+
+## Quantity integration on current main
+
+Rebase onto 2a6f0ebbef includes the existing graphics extension that emits one
+F32 fragment depth as BuiltIn FragDepth with DepthReplacing. Review of the
+authored shader policy confirms color locations remain contiguous, up to eight
+targets plus one depth are admitted, and duplicate/non-F32/varying depths are
+refused. The native-GPU note now records SPIR-V validation of page entries.
+This extends the named graphics evidence; it does not qualify Psionic browser
+compute or quantity device code. Only the two changed native-GPU evidence
+bindings were refreshed. The quantity compiler sources are unchanged by this
+review; their immutable merged bootstrap snapshot is retained separately.
