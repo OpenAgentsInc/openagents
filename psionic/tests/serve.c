@@ -157,6 +157,25 @@ static void answers(Server a) {
     CHECK(fabs(served[1] + served[2] - 1) < 0.000001 && fabs(served[3] + served[4] + served[5] - 1) < 0.000001, "distributions sum to one");
     printf("answer: noul %.9f, choice %.9f/%.9f, score %.9f, matches direct chapter-10 calls\n", served[0], served[1], served[2], served[6]);
     free(r.data);
+    /* Each question forks from the same prefix snapshot, so neither its
+       siblings nor their order can change it: every question alone, and all
+       three in reverse order, give bit-identical numbers. */
+    #define Q_HOT "\"MARKER-Q-hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"}"
+    #define Q_WHAT "\"MARKER-Q-what\":{\"type\":\"choice\",\"criteria\":{\"MARKER-OPT-tea\":null,\"MARKER-OPT-soup\":\"a meal\"}}"
+    #define Q_LEVEL "\"MARKER-Q-level\":{\"type\":\"score\",\"criteria\":[\"cold\",\"warm\",\"hot\"]}"
+    #define ASK(qs) "{\"model\":\"psionic-toy\",\"state\":\"" STATE "\",\"questions\":{" qs "}}"
+    const char *bodies[4] = {ASK(Q_LEVEL "," Q_WHAT "," Q_HOT), ASK(Q_HOT), ASK(Q_WHAT), ASK(Q_LEVEL)};
+    int from[7] = {1, 2, 2, 3, 3, 3, 3};
+    for (int k = 0; k < 4; k++) {
+        Reply q = ask_body(a.port, bodies[k]); CHECK(q.status == 200, "permuted/alone %d status %d %s", k, q.status, q.body);
+        const char *probs = strstr(q.body, "\"probabilities\":{\"0\":");
+        double got[7] = {number_after(q.body, "\"noul\":"), number_after(q.body, "\"MARKER-OPT-tea\":"), number_after(q.body, "\"MARKER-OPT-soup\":"),
+            number_after(q.body, "\"probabilities\":{\"0\":"), number_after(probs, "\"1\":"), number_after(probs, "\"2\":"), number_after(q.body, "\"score\":")};
+        for (int i = 0; i < 7; i++) if (k == 0 || from[i] == k) CHECK(got[i] == served[i], "request %d value %d: %.17g, joint %.17g", k, i, got[i], served[i]);
+        if (k == 0) CHECK(starts(q.body, "{\"model\":\"psionic-toy\",\"answers\":{\"MARKER-Q-level\""), "answers keep request order: %s", q.body);
+        free(q.data);
+    }
+    printf("answers: each question alone and all three reversed are bit-identical to the joint request\n");
     char *m = post(BODY); size_t n = strlen(m); int fd = dial(a.port);
     for (size_t i = 0; i < n; i += 97) { send_all(fd, m + i, n - i < 97 ? n - i : 97); pause_ms(5); }
     r = receive(fd, 120000); CHECK(r.status == 200 && strstr(r.body, IDENTITY), "partial writes %d", r.status); free(r.data);

@@ -186,6 +186,13 @@ LsPrefixResult :: struct {code:SvCode;cache:LsPrefix;hit:bool;}
     #assert ls_prefix_match(c,"abc",a[..],b[..],2,true);
     #assert !ls_prefix_match(c,"def",a[..],b[..],2,true) && !ls_prefix_match(c,"abc",a[..],b[..],3,true);
     b[0]=9;#assert !ls_prefix_match(c,"abc",a[..],b[..],2,true) && !ls_prefix_match(c,"abc",a[..],a[..],2,false);
+    // A stale entry (never filled, or invalidated), an empty identity, an empty
+    // prefix and token views shorter than the prefix are never reused.
+    stale:=c;stale.valid=false;#assert !ls_prefix_match(stale,"abc",a[..],a[..],2,true) && ls_prefix_match(c,"abc",a[..],a[..],2,true);
+    blank:=c;blank.identity="";#assert !ls_prefix_match(blank,"",a[..],a[..],2,true);
+    zero:=c;zero.count=0;#assert !ls_prefix_match(zero,"abc",a[..],a[..],0,true);
+    one:=c;one.count=1;#assert ls_prefix_match(one,"abc",a[..],a[..],1,true);
+    #assert !ls_prefix_match(c,"abc",a[0..<1],a[..],2,true) && !ls_prefix_match(c,"abc",a[..],a[0..<1],2,true) && ls_prefix_match(c,"abc",a[0..<2],a[0..<2],2,true);
     id:=ls_model_id("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");#assert id[0]==1 && id[7]==239 && id[31]==239;
 }
 #test "health probes are bounded exact paths and readiness cannot bypass warmup" {
