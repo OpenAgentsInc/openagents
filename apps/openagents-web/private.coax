@@ -636,7 +636,7 @@ pv_dark :: (s: [] PrivateState, y: int, x: int) -> bool {
 // The code's panel: the QR (or a box while it comes), what to do and how long it lasts.
 pv_code_panel :: (s: [] PrivateState, out: [] f32, v0: int, cx: f32, y: f32, side: f32, hint: string, done: string, p: Pen) -> int {
   d := p.d; v := v0;
-  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_lit(p, true);
   st := s[0].code_state;
   if st == CODE_SHOWN { v = pv_qr(s, out, v, cx, y, side); }
   else {
@@ -684,7 +684,7 @@ pv_crumbs :: (s: [] PrivateState, out: [] f32, v0: int, where: string, p: Pen) -
   crumb := x + w1 + SPACE * 7 * d;
   v = put(out, v, "/", crumb, cy, 7 * d, dim);
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
-  return put(out, v, where, px, cy, 7 * d, pv_chrome(p, INK_ORANGE));
+  return put(out, v, where, px, cy, 7 * d, pv_lit(p, true));
 }
 // ---------------------------------------------------------------- the words account
 
@@ -808,7 +808,7 @@ pv_short_npub :: (buf: [] u8, npub: string) -> int {
 // the projects, SWAP ACCOUNT. x0..x1 the column; returns where it ends.
 pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen) -> PvFlow {
   d := p.d; r := f; top := 0.0f32;
-  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE); faint := pv_chrome(p, INK_FAINT);
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_lit(p, true); faint := pv_chrome(p, INK_FAINT);
   r.v = put(out, r.v, "YOUR ACCOUNT", x0, r.y, 12 * d, white);
   r.y += 22 * d;
   active := pv_active(s);
@@ -917,7 +917,7 @@ pv_qr_here :: (css_width: f32) -> bool { return css_width >= 520; }
 // /login: the words account and, beside it (below on a phone), the phone app's QR.
 pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
-  white := pv_chrome(p, INK_WHITE); orange := pv_chrome(p, INK_ORANGE);
+  white := pv_chrome(p, INK_WHITE); orange := pv_lit(p, true);
   v := pv_crumbs(s, out, 0, "LOG IN", p);
   wide := w / d >= 900;
   m := ifx w / d < 700 then 16.0f32 else 40.0f32;
@@ -966,7 +966,7 @@ pv_download :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   bx := w * 0.5 - chip_width(label, bc, p) * 0.5; by := y + 34 * d + 30 * d + bc;
   b := chip_box(label, bx, by, bc, p);
   pv_hit(s, b, H_IPHONE);
-  return chip(out, v, label, bx, by, bc, ifx s[0].hot == H_IPHONE then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_ORANGE), p);
+  return chip(out, v, label, bx, by, bc, ifx s[0].hot == H_IPHONE then pv_chrome(p, INK_WHITE) else pv_lit(p, true), p);
 }
 // ---------------------------------------------------------------- a realm's claim (page 4)
 
@@ -998,7 +998,7 @@ pv_claim_send :: (s: [] PrivateState) {
 }
 pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
-  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_lit(p, true);
   v := pv_crumbs(s, out, 0, "CLAIM", p);
   m := ifx w / d < 700 then 16.0f32 else 40.0f32;
   colw := lo(w - 2 * m * d, 520 * d);
@@ -1235,6 +1235,12 @@ pv_link_panel :: (s: [] PrivateState, out: [] f32, v0: int, top: f32, p: Pen) ->
 PvFlow :: struct { y: f32; v: int; }
 pv_ink :: (p: Pen, kind: int) -> Ink { return ink(p, kind); }
 pv_chrome :: (p: Pen, kind: int) -> Ink { k := ink(p, kind); k.sans = false; return k; }
+// The pages' accent (focus, live, what's yours): a cool blue. Orange is only for Bitcoin (a tip's amount and PAID).
+pv_lit :: (p: Pen, chrome: bool) -> Ink {
+  k := ink(p, INK_ORANGE); k.red = 0.5; k.green = 0.82; k.blue = 1.0;
+  if chrome { k.sans = false; }
+  return k;
+}
 BODY :: 7.5;     // small text's cap, CSS pixels (the sans)
 STEP :: 15.0;    // its line
 
@@ -1267,13 +1273,13 @@ pv_chip :: (s: [] PrivateState, out: [] f32, v: int, label: string, x: f32, y: f
   b := chip_box(label, x, y, cap, p);
   if !draw || b.y0 < top || b.y0 > s[0].height { return v; }
   pv_hit(s, b, id);
-  k := ifx on then pv_chrome(p, INK_ORANGE) else ifx s[0].hot == id then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_DIM);
+  k := ifx on then pv_lit(p, true) else ifx s[0].hot == id then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_DIM);
   return chip(out, v, label, x, y, cap, k, p);
 }
 // A marker for todo, doing and done.
 pv_mark :: (out: [] f32, v: int, status: string, x: f32, y: f32, p: Pen) -> int {
   r := 3.2 * p.d;
-  if status == "done" { w := diamond(out, v, x, y, r, ink(p, INK_ORANGE), p.fade); return diamond(out, w, x, y, r * 0.45, ink(p, INK_ORANGE), p.fade); }
+  if status == "done" { w := diamond(out, v, x, y, r, pv_lit(p, false), p.fade); return diamond(out, w, x, y, r * 0.45, pv_lit(p, false), p.fade); }
   if status == "doing" { return diamond(out, v, x, y, r, ink(p, INK_WHITE), p.fade); }
   return diamond(out, v, x, y, r, ink(p, INK_FAINT), p.fade * 0.8);
 }
@@ -1302,7 +1308,7 @@ pv_goals :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
   for k: 0..<n {
     i := pv_nth(s, 'G', k);
     proposed := pv_cell(s, i, 2) == "proposed";
-    if draw && r.y > top && r.y < s[0].height { r.v = diamond(out, r.v, x0 + 4 * d, r.y + 7 * d, 3.2 * d, ink(p, ifx proposed then INK_ORANGE else INK_WHITE), p.fade); }
+    if draw && r.y > top && r.y < s[0].height { r.v = diamond(out, r.v, x0 + 4 * d, r.y + 7 * d, 3.2 * d, ifx proposed then pv_lit(p, false) else ink(p, INK_WHITE), p.fade); }
     r = pv_text(s, out, r, pv_cell(s, i, 4), x0 + 16 * d, x1 - x0 - 16 * d, BODY, ink(p, INK_WHITE), 3, draw, top);
     buf: [160] u8;
     m := ifx proposed then pv_put(buf[..], 0, "PROPOSED") else pv_upper(buf[..], pv_put(buf[..], 0, "AGREED · "), pv_cell(s, i, 3));
@@ -1318,7 +1324,7 @@ pv_goals :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     }
     sub := r; sub.y -= 1 * d;
     right := ifx agree then chip_width("AGREE", 7 * d, p) + 8 * d else 0.0f32;
-    r = pv_text(s, out, sub, cast(string) buf[0..<m], x0 + 16 * d, x1 - x0 - 16 * d - right, 6, ifx proposed then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
+    r = pv_text(s, out, sub, cast(string) buf[0..<m], x0 + 16 * d, x1 - x0 - 16 * d - right, 6, ifx proposed then pv_lit(p, true) else ink(p, INK_DIM), 1, draw, top);
     if agree { r.v = pv_chip(s, out, r.v, "AGREE", x1 - right + 8 * d, sub.y + 9 * d, H_AGREE + k, false, p, draw, top); }
     r.y += ifx agree then 12 * d else 7 * d;
   }
@@ -1361,7 +1367,7 @@ pv_days :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen
     q := pv_upper(sub[..], 0, st);
     if pv_cell(s, i, 4).count > 0 { q = pv_put(sub[..], q, " · "); q = pv_upper(sub[..], q, pv_cell(s, i, 4)); }
     line := r; line.y -= 1 * d;
-    r = pv_text(s, out, line, cast(string) sub[0..<q], x0 + 16 * d, x1 - x0 - 16 * d, 6, ifx st == "doing" then pv_chrome(p, INK_ORANGE) else ink(p, INK_DIM), 1, draw, top);
+    r = pv_text(s, out, line, cast(string) sub[0..<q], x0 + 16 * d, x1 - x0 - 16 * d, 6, ifx st == "doing" then pv_lit(p, true) else ink(p, INK_DIM), 1, draw, top);
     if pv_cell(s, i, 6).count > 0 { r = pv_text(s, out, r, pv_cell(s, i, 6), x0 + 16 * d, x1 - x0 - 16 * d, 6.5, ink(p, INK_FAINT), 2, draw, top); }
     r.y += 6 * d;
   }
@@ -1454,7 +1460,7 @@ pv_agents :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: P
     base := r.y + 10 * d;
     if draw && base > top && base < s[0].height {
       kind := pv_cell(s, i, 4);
-      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ifx kind == "plan" then pv_chrome(p, INK_ORANGE) else pv_chrome(p, INK_DIM), x1 - x0 - 90 * d);
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ifx kind == "plan" then pv_lit(p, true) else pv_chrome(p, INK_DIM), x1 - x0 - 90 * d);
       r.v = put_right(out, r.v, pv_cell(s, i, 2), x1, base, 6.5 * d, ink(p, INK_FAINT));
     }
     r.y += 13 * d;
@@ -1479,7 +1485,7 @@ pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p:
     base := r.y + 10 * d;
     if draw && base > top && base < s[0].height {
       if reply { r.v = rule(out, r.v, x0 + 4 * d, r.y + 3 * d, x0 + 4 * d, r.y + 24 * d, ink(p, INK_DIM), 0.4 * p.fade); }
-      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x, base, 6 * d, pv_chrome(p, ifx reply then INK_DIM else INK_ORANGE), x1 - x - 90 * d);
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x, base, 6 * d, ifx reply then pv_chrome(p, INK_DIM) else pv_lit(p, true), x1 - x - 90 * d);
       r.v = put_right(out, r.v, pv_cell(s, i, 2), x1, base, 6.5 * d, ink(p, INK_FAINT));
     }
     r.y += 13 * d;
@@ -1488,7 +1494,7 @@ pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p:
   }
   r = pv_field(s, out, r, x0, x1, p, draw, top, 0, "Message the agents", "SEND", H_FIELD, H_SEND);
   if s[0].note_n > 0 && s[0].time - s[0].note_at < 4 {
-    r = pv_text(s, out, r, cast(string) s[0].note[0..<s[0].note_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 1, draw, top);
+    r = pv_text(s, out, r, cast(string) s[0].note[0..<s[0].note_n], x0, x1 - x0, 6, pv_lit(p, true), 1, draw, top);
   }
   return r;
 }
@@ -1511,7 +1517,7 @@ pv_field :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
   send_w := chip_width(send, 7 * d, p);
   fb := Box.{x0 = x0, y0 = r.y + 4 * d, x1 = x1 - send_w - 10 * d, y1 = r.y + 34 * d};
   if draw && fb.y1 > top && fb.y0 < s[0].height {
-    k := ifx on then ink(p, INK_ORANGE) else ink(p, INK_DIM);
+    k := ifx on then pv_lit(p, false) else ink(p, INK_DIM);
     r.v = rule(out, r.v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx on then 0.9 * p.fade else 0.45 * p.fade);
     r.v = rule(out, r.v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
     tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
@@ -1535,9 +1541,9 @@ pv_field :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
       caret_x = tx + ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
     }
     if on && pv_all(s) && caret_x > tx + 2 * d && lit(out, r.v, tx - 1 * d, base - 4 * d, caret_x - 1 * d, base - 4 * d, 15 * d, 0.42 * p.fade, 2 * d,
-                                                       ink(p, INK_ORANGE).red, ink(p, INK_ORANGE).green, ink(p, INK_ORANGE).blue, MODE_STROKE) { r.v += 6; }
+                                                       pv_lit(p, false).red, pv_lit(p, false).green, pv_lit(p, false).blue, MODE_STROKE) { r.v += 6; }
     else if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
-      r.v = rule(out, r.v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
+      r.v = rule(out, r.v, caret_x, base - 11 * d, caret_x, base + 3 * d, pv_lit(p, false), p.fade);
     }
     pv_hit(s, fb, hfield);
     if on || !s[0].typing { s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1; }
@@ -1570,7 +1576,7 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     else if cred == "openagents" { m = pv_put(buf[..], m, " · OPENAGENTS KEY"); }
     base := r.y + 10 * d;
     if draw && base > top && base < s[0].height {
-      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, pv_chrome(p, INK_ORANGE), x1 - x0 - 90 * d);
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, pv_lit(p, true), x1 - x0 - 90 * d);
       r.v = put_right(out, r.v, ta_cell(s, i, 4), x1, base, 6.5 * d, ink(p, INK_FAINT));
     }
     r.y += 13 * d;
@@ -1587,9 +1593,9 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
         q := 0;
         if type == "agent.commit" { q = pv_put(word[..], 0, "COMMIT "); }
         q = pv_put(word[..], q, ta_cell(s, j, 4));
-        k2 := ifx type == "agent.edit" then ink(p, INK_PALE) else ifx type == "agent.commit" then pv_chrome(p, INK_DIM) else pv_chrome(p, INK_ORANGE);
+        k2 := ifx type == "agent.edit" then ink(p, INK_PALE) else ifx type == "agent.commit" then pv_chrome(p, INK_DIM) else pv_lit(p, true);
         line = pv_text(s, out, line, cast(string) word[0..<q], x0 + 12 * d, x1 - x0 - 12 * d, 6.5, k2, 2, draw, top);
-        if draw && y0 > top && y0 < s[0].height { line.v = rule(out, line.v, x0 + 4 * d, y0 + 2 * d, x0 + 4 * d, line.y - 2 * d, ink(p, INK_ORANGE), 0.5 * p.fade); }
+        if draw && y0 > top && y0 < s[0].height { line.v = rule(out, line.v, x0 + 4 * d, y0 + 2 * d, x0 + 4 * d, line.y - 2 * d, pv_lit(p, false), 0.5 * p.fade); }
         r = line;
       }
       cards += 1; j += 1;
@@ -1597,7 +1603,7 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     answer := ta_cell(s, i, 7);
     if answer.count > 0 { r.y += 3 * d; r = pv_text(s, out, r, answer, x0, x1 - x0, BODY, ink(p, INK_PALE), 14, draw, top); }
     err := ta_cell(s, i, 8);
-    if err.count > 0 && (status == "failed" || status == "refused") { r.y += 2 * d; r = pv_text(s, out, r, err, x0, x1 - x0, 6.5, pv_chrome(p, INK_ORANGE), 3, draw, top); }
+    if err.count > 0 && (status == "failed" || status == "refused") { r.y += 2 * d; r = pv_text(s, out, r, err, x0, x1 - x0, 6.5, pv_lit(p, true), 3, draw, top); }
     // what it does now, and what can be done with it
     y := r.y + 13 * d;
     sw: [160] u8;
@@ -1616,7 +1622,7 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
     if kind == "undo" && status == "done" { w = pv_put(sw[..], 0, "PUT BACK"); }
     if w > 0 || hk >= 0 {
       if draw && y > top && y < s[0].height && w > 0 {
-        r.v = put_fit(out, r.v, cast(string) sw[0..<w], x0, y, 6 * d, pv_chrome(p, ifx status == "running" then INK_ORANGE else INK_DIM), x1 - x0 - 90 * d);
+        r.v = put_fit(out, r.v, cast(string) sw[0..<w], x0, y, 6 * d, ifx status == "running" then pv_lit(p, true) else pv_chrome(p, INK_DIM), x1 - x0 - 90 * d);
       }
       if hk >= 0 { r.v = pv_chip(s, out, r.v, chipw, x1 - chip_width(chipw, 7 * d, p), y, hk, false, p, draw, top); }
       r.y = y + 6 * d;
@@ -1626,7 +1632,7 @@ pv_agent :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pe
   r = pv_field(s, out, r, x0, x1, p, draw, top, 1, "Ask the project's agent", "ASK", H_AFIELD, H_ASK);
   r = pv_key(s, out, r, x0, x1, p, draw, top);
   if s[0].anote_n > 0 && s[0].time - s[0].anote_at < 6 {
-    r = pv_text(s, out, r, cast(string) s[0].anote[0..<s[0].anote_n], x0, x1 - x0, 6, pv_chrome(p, INK_ORANGE), 2, draw, top);
+    r = pv_text(s, out, r, cast(string) s[0].anote[0..<s[0].anote_n], x0, x1 - x0, 6, pv_lit(p, true), 2, draw, top);
   }
   r.y += 2 * d;
   return pv_text(s, out, r, "What you write here and the project's contents go to Anthropic's API as the model's input.", x0, x1 - x0, 6, ink(p, INK_FAINT), 2, draw, top);
@@ -1650,7 +1656,7 @@ pv_key :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen,
     if ta_cell(s, k, 3) == "1" { m = pv_put(buf[..], m, " · EXPIRED"); }
     rw := chip_width("REPLACE", 7 * d, p); xw := chip_width("REMOVE", 7 * d, p);
     if draw && y > top && y < s[0].height {
-      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, y, 6 * d, pv_chrome(p, ifx ta_cell(s, k, 3) == "1" then INK_ORANGE else INK_DIM), x1 - x0 - rw - xw - 20 * d);
+      r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, y, 6 * d, ifx ta_cell(s, k, 3) == "1" then pv_lit(p, true) else pv_chrome(p, INK_DIM), x1 - x0 - rw - xw - 20 * d);
     }
     r.v = pv_chip(s, out, r.v, "REPLACE", x1 - rw - xw - 8 * d, y, H_KREPLACE, false, p, draw, top);
     r.v = pv_chip(s, out, r.v, "REMOVE", x1 - xw, y, H_KREMOVE, false, p, draw, top);
@@ -1738,7 +1744,7 @@ pv_header :: (s: [] PrivateState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   crumb := x + w1 + SPACE * 7 * d;
   v = put(out, v, "/", crumb, cy, 7 * d, dim);
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_chrome(p, INK_ORANGE));
+  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_lit(p, true));
   pv_hit(s, Box.{x0 = px - 4 * d, y0 = cy - 14 * d, x1 = px + text_width("PROJECTS", 7 * d) + 4 * d, y1 = cy + 6 * d}, H_PROJECTS);
   pi := pv_first(s, 'P');
   wide := box_w(b) > 700 * d;
@@ -1749,7 +1755,7 @@ pv_header :: (s: [] PrivateState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
   word := ifx live then "LIVE" else "OFFLINE";
   lw := chip_width(word, 7 * d, p);
   cap := 7 * d;
-  v = chip(out, v, word, right - so - 8 * d - lw, cy, cap, ifx live then pv_chrome(p, INK_ORANGE) else dim, p);
+  v = chip(out, v, word, right - so - 8 * d - lw, cy, cap, ifx live then pv_lit(p, true) else dim, p);
   lp := chip_width("LINK A PHONE", 7 * d, p);
   if right - so - lw - lp - 16 * d > px + text_width("PROJECTS", 7 * d) + 12 * d {
     v = pv_chip(s, out, v, "LINK A PHONE", right - so - lw - lp - 16 * d, cy, H_LINKPHONE, s[0].linking, p, true, 0);
@@ -1793,7 +1799,7 @@ pv_locked :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   v = put(out, v, b, (w - text_width(b, c2)) * 0.5, h * 0.5 + 18 * d, c2, dim);
   if s[0].note_n > 0 {
     n := cast(string) s[0].note[0..<s[0].note_n];
-    v = put(out, v, n, (w - text_width(n, 6 * d)) * 0.5, h * 0.5 + 44 * d, 6 * d, pv_chrome(p, INK_ORANGE));
+    v = put(out, v, n, (w - text_width(n, 6 * d)) * 0.5, h * 0.5 + 44 * d, 6 * d, pv_lit(p, true));
   }
   m := ifx w / d < 700 then 12.0f32 else 24.0f32;
   x := (m + 18) * d; cy := (m + 22) * d;
@@ -1803,7 +1809,7 @@ pv_locked :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   crumb := x + w1 + SPACE * 7 * d;
   v = put(out, v, "/", crumb, cy, 7 * d, dim);
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_chrome(p, INK_ORANGE));
+  v = put(out, v, "PROJECTS", px, cy, 7 * d, ifx s[0].hot == H_PROJECTS then white else pv_lit(p, true));
   pv_hit(s, Box.{x0 = px - 4 * d, y0 = cy - 14 * d, x1 = px + text_width("PROJECTS", 7 * d) + 4 * d, y1 = cy + 6 * d}, H_PROJECTS);
   return v;
 }
@@ -2877,4 +2883,12 @@ pv_tap :: (s: [] PrivateState, id: int) -> bool {
 
 #test "/login draws its QR for a computer, and on a phone says where to scan instead" {
   #assert pv_qr_here(1440) && pv_qr_here(768) && !pv_qr_here(390) && !pv_qr_here(320);
+}
+
+#test "the pages' accent is blue; only a tip's amount keeps Bitcoin's orange" {
+  p := Pen.{d = 2, fade = 1, time = 0};
+  a := pv_lit(p, true);
+  #assert a.blue > a.red && !a.sans && pv_lit(p, false).blue > pv_lit(p, false).red;
+  b := pv_chrome(p, INK_ORANGE);
+  #assert b.red > b.blue;
 }
