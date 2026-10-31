@@ -394,16 +394,15 @@ orbitleague_wheel_hit :: (o:V3,d:V3,c:V3,r:f32,w:f32,spin:f32)->OrbitleagueHit {
 // triangles in a bounding volume hierarchy, in the car's frame. The nearest triangle the ray
 // (o, d, in that frame) meets: t, and its corners' normals and colours blended to the point it
 // meets (so curves shade smooth and a colour's edge runs smooth across the triangles), the
-// normal turned to the ray's side; for paint (a light, unsaturated colour) col.x -1 and col.y its
-// light. A triangle is 27 words (head word 8); an older mesh's 12 hold one colour (paint coded so
-// already) and no normals, and its faces shade flat.
-OrbitleagueMeshHit :: struct {t:f32; n:V3; col:V3; }
+// normal turned to the ray's side, and how much it is paint (pw, 0 to 1: a light, unsaturated
+// colour, eased over a band so paint fades into glass and trim rather than stepping). A triangle
+// is 27 words (head word 8).
+OrbitleagueMeshHit :: struct {t:f32; n:V3; col:V3; pw:f32; }
 orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
-  r:OrbitleagueMeshHit=OrbitleagueMeshHit.{t=1e9f32,n=v3(0.0f32,1.0f32,0.0f32),col=v3(0.0f32,0.0f32,0.0f32)};
+  r:OrbitleagueMeshHit=OrbitleagueMeshHit.{t=1e9f32,n=v3(0.0f32,1.0f32,0.0f32),col=v3(0.0f32,0.0f32,0.0f32),pw=0.0f32};
   dd:V3=v3(ifx abs(d.x)<1e-8f32 then 1e-8f32 else d.x,ifx abs(d.y)<1e-8f32 then 1e-8f32 else d.y,ifx abs(d.z)<1e-8f32 then 1e-8f32 else d.z);
   inv:V3=wg_div_ff3(1.0f32,dd);
   tris:s32=wg_i32_f(mesh[3]);
-  stride:s32=ifx mesh[8]>26.5f32 then 27 else 12;
   best:s32=-1;
   bu:f32=0.0f32;
   bv:f32=0.0f32;
@@ -436,7 +435,7 @@ orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
     }
     k:s32=-a-1;
     while k<((-a-1)+c) {
-      w:s32=tris+(k*stride);
+      w:s32=tris+(k*27);
       v0:V3=v3(mesh[cast(int)w],mesh[cast(int)(w+1)],mesh[cast(int)(w+2)]);
       e1:V3=v3(mesh[cast(int)(w+3)],mesh[cast(int)(w+4)],mesh[cast(int)(w+5)]);
       e2:V3=v3(mesh[cast(int)(w+6)],mesh[cast(int)(w+7)],mesh[cast(int)(w+8)]);
@@ -464,31 +463,28 @@ orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
     e2:V3=v3(mesh[cast(int)(best+6)],mesh[cast(int)(best+7)],mesh[cast(int)(best+8)]);
     n:V3=wg_normalize3(wg_cross3(e1,e2));
     n=ifx wg_dot3(n,d)>0.0f32 then wg_neg_f3(n) else n;
-    r.n=n;
-    r.col=v3(mesh[cast(int)(best+9)],mesh[cast(int)(best+10)],mesh[cast(int)(best+11)]);
-    if (stride==27) {
-      w0:f32=(1.0f32-bu)-bv;
-      sn:V3=v3(0.0f32,0.0f32,0.0f32);
-      cl:V3=v3(0.0f32,0.0f32,0.0f32);
-      {
-        k:s32=0;
-        while k<3 {
-          wk:f32=ifx k==0 then w0 else ifx k==1 then bu else bv;
-          ck:s32=best+9+(k*3);
-          nk:s32=best+18+(k*3);
-          cl=wg_add_f3f3(cl,wg_mul_f3f(v3(mesh[cast(int)ck],mesh[cast(int)(ck+1)],mesh[cast(int)(ck+2)]),wk));
-          sn=wg_add_f3f3(sn,wg_mul_f3f(v3(mesh[cast(int)nk],mesh[cast(int)(nk+1)],mesh[cast(int)(nk+2)]),wk));
-          k+=1;
-        }
+    w0:f32=(1.0f32-bu)-bv;
+    sn:V3=v3(0.0f32,0.0f32,0.0f32);
+    cl:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<3 {
+        wk:f32=ifx k==0 then w0 else ifx k==1 then bu else bv;
+        ck:s32=best+9+(k*3);
+        nk:s32=best+18+(k*3);
+        cl=wg_add_f3f3(cl,wg_mul_f3f(v3(mesh[cast(int)ck],mesh[cast(int)(ck+1)],mesh[cast(int)(ck+2)]),wk));
+        sn=wg_add_f3f3(sn,wg_mul_f3f(v3(mesh[cast(int)nk],mesh[cast(int)(nk+1)],mesh[cast(int)(nk+2)]),wk));
+        k+=1;
       }
-      sl:f32=wg_length3(sn);
-      sn=ifx sl>1e-6f32 then wg_mul_f3f(sn,1.0f32/sl) else n;
-      r.n=ifx wg_dot3(sn,n)<0.0f32 then wg_neg_f3(sn) else sn;
-      // paint: light and grey (mesh-bvh.coax mb_paint)
-      hi:f32=fmax(fmax(cl.x,cl.y),cl.z);
-      lo:f32=fmin(fmin(cl.x,cl.y),cl.z);
-      r.col=ifx (hi>0.3f32)&&((hi-lo)<(0.25f32*hi)) then v3(-1.0f32,((0.2126f32*cl.x)+(0.7152f32*cl.y))+(0.0722f32*cl.z),0.0f32) else cl;
     }
+    sl:f32=wg_length3(sn);
+    sn=ifx sl>1e-6f32 then wg_mul_f3f(sn,1.0f32/sl) else n;
+    r.n=ifx wg_dot3(sn,n)<0.0f32 then wg_neg_f3(sn) else sn;
+    r.col=cl;
+    // paint: light and grey (mesh-bvh.coax mb_paint, there a hard test), eased over a band
+    hi:f32=fmax(fmax(cl.x,cl.y),cl.z);
+    lo:f32=fmin(fmin(cl.x,cl.y),cl.z);
+    r.pw=smoothstep(0.22f32,0.38f32,hi)*(1.0f32-smoothstep(0.17f32,0.33f32,(hi-lo)/fmax(hi,1e-4f32)));
   }
   return r;
 }
@@ -519,24 +515,29 @@ orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4,mesh:[]f32,seen
       n:V3=m.n;
       col:V3=m.col;
       mat:s32=0;
-      if (m.col.x<0.0f32) {
-        col=wg_mul_f3f(paint,0.75f32+(0.25f32*clampf(m.col.y,0.0f32,1.0f32)));
-        mat=1;
-        if (((decal==1)&&(n.y>0.5f32))&&(abs(abs(p.x)-0.26f32)<0.07f32)) {
-          col=accent;
-        }
-        if (((decal==2)&&(abs(n.x)>0.5f32))&&(((wg_i32_f(floor(p.z*3.0f32)+floor((p.y*3.0f32)+10.0f32)))&1)==0)) {
-          col=accent;
-        }
-        if ((decal==3)&&(p.z>0.35f32)) {
-          col=accent;
-        }
-      } else if ((m.col.x>0.2f32)&&(m.col.x>(3.0f32*m.col.y))) {
+      if ((m.col.x>0.2f32)&&(m.col.x>(3.0f32*m.col.y))) {
         col=wg_mul_f3f(m.col,2.5f32);
         mat=3;
       } else if ((fmax(fmax(m.col.x,m.col.y),m.col.z)<0.05f32)&&(n.y>0.25f32)) {
         // dark and facing up: the glass roof and the windows; dark below is trim
         mat=2;
+      }
+      // paint, blended in by how much of it this is (the band's middle decides the material)
+      if (m.pw>0.0f32) {
+        pc:V3=wg_mul_f3f(paint,0.75f32+(0.25f32*clampf(((0.2126f32*m.col.x)+(0.7152f32*m.col.y))+(0.0722f32*m.col.z),0.0f32,1.0f32)));
+        if (((decal==1)&&(n.y>0.5f32))&&(abs(abs(p.x)-0.26f32)<0.07f32)) {
+          pc=accent;
+        }
+        if (((decal==2)&&(abs(n.x)>0.5f32))&&(((wg_i32_f(floor(p.z*3.0f32)+floor((p.y*3.0f32)+10.0f32)))&1)==0)) {
+          pc=accent;
+        }
+        if ((decal==3)&&(p.z>0.35f32)) {
+          pc=accent;
+        }
+        col=wg_mix_f3f3f(col,pc,m.pw);
+        if (m.pw>0.5f32) {
+          mat=1;
+        }
       }
       h=OrbitleagueHit.{t=m.t,n=n,col=col,ink=0.0f32,mat=mat};
     }
@@ -1602,14 +1603,25 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
   ndc:V2=v2(((px.x/u[0])*2.0f32)-1.0f32,1.0f32-((px.y/u[1])*2.0f32));
   ro:V3=v3(u[24],u[25],u[26]);
   rd:V3=wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[28],u[29],u[30]),wg_mul_ff3(ndc.x,v3(u[32],u[33],u[34]))),wg_mul_ff3(ndc.y,v3(u[36],u[37],u[38]))));
-  // one trace (one call, so the shader holds one copy of it): the middle, or four round it
-  SS:[4]V2=[4]V2.[v2(-0.125f32,-0.375f32),v2(0.375f32,-0.125f32),v2(0.125f32,0.375f32),v2(-0.375f32,0.125f32)];
+  // one trace (one call, so the shader holds one copy of it): the middle, or four round it on
+  // a rotated grid; where those four differ (an edge: paint to glass, body to floor) the rest of
+  // a 4x4 grid, so an edge has sixteen steps of cover and stays smooth scaled up to the screen
+  SS:[16]V2=[16]V2.[v2(-0.125f32,-0.375f32),v2(0.375f32,-0.125f32),v2(0.125f32,0.375f32),v2(-0.375f32,0.125f32),v2(-0.375f32,-0.375f32),v2(0.125f32,-0.375f32),v2(0.375f32,-0.375f32),v2(-0.375f32,-0.125f32),v2(-0.125f32,-0.125f32),v2(0.125f32,-0.125f32),v2(-0.125f32,0.125f32),v2(0.125f32,0.125f32),v2(0.375f32,0.125f32),v2(-0.375f32,0.375f32),v2(-0.125f32,0.375f32),v2(0.375f32,0.375f32)];
   n:s32=ifx orbitleague_edgy(ro,rd,u,mesh) then 4 else 1;
   c:V3=v3(0.0f32,0.0f32,0.0f32);
+  lmin:f32=1e9f32;
+  lmax:f32=-1e9f32;
   {
     k:s32=0;
     while k<n {
-      c=wg_add_f3f3(c,orbitleague_trace(ifx n==1 then px else wg_add_f2f2(px,SS[cast(int)k]),u,mesh,HULL));
+      s:V3=orbitleague_trace(ifx n==1 then px else wg_add_f2f2(px,SS[cast(int)k]),u,mesh,HULL);
+      c=wg_add_f3f3(c,s);
+      l:f32=sqrt(fmax(((0.2126f32*s.x)+(0.7152f32*s.y))+(0.0722f32*s.z),0.0f32));
+      lmin=fmin(lmin,l);
+      lmax=fmax(lmax,l);
+      if (((k==3)&&(n==4))&&((lmax-lmin)>0.06f32)) {
+        n=16;
+      }
       k+=1;
     }
   }

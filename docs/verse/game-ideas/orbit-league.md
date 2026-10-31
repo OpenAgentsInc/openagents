@@ -32,10 +32,11 @@ model by Michael (Sketchfab), traced from a mesh (`verse/tools/mesh-bvh.coax`,
 credited in `apps/openagents-web/realms/orbit-league/licences.md`), painted in the
 game's team colours; the game's own hull roadster draws until the mesh arrives.
 The game still names no carmaker in its own words.
-Each corner of the mesh carries a smooth normal and its colour, blended across
-the triangle, so the body shades as curves and paint meets glass in smooth
-lines; the pixels over a roadster and round the goal frames are traced four
-times, and the net, the glass struts and the floor's lines are filtered over
+Each corner of the mesh (49,210 triangles, `--cells 120`) carries a smooth
+normal and its colour, blended across the triangle, so the body shades as
+curves and paint fades into glass over a narrow band; the pixels over a
+roadster and round the goal frames are traced four times, and sixteen where
+those four differ (an edge), and the net, the glass struts and the floor's lines are filtered over
 each pixel, so none of them alias or turn to moire at any distance.
 
 ## How it plays

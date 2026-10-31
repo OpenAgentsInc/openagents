@@ -6,7 +6,7 @@
 // MESH is the glTF mesh's name (its first primitive is read). The frame: x and z centred on the
 // mesh's bounds, z its length scaled to M metres (default 4.2), its lowest point at height Y
 // (default -0.98, Orbit League's ground under a car's centre); the glTF's +z is the nose. --cells
-// is the clustering grid's cells along the length (default 90, as Orbit League ships). The words:
+// is the clustering grid's cells along the length (default 90; Orbit League ships 120). The words:
 //   0 the triangles' count, 1 the nodes', 2 the nodes' first word (16), 3 the triangles' first word,
 //   4..7 a bounding sphere (centre, radius), 8 a triangle's words (21), 9..15 0
 //   a node, 8 words: min x y z, A, max x y z, B; a leaf has A = -(its first triangle + 1) and B its
