@@ -11,6 +11,8 @@
 #                                                    headless with --net, its requests and answers logged
 # screen runs online: the realm's requests go to openagents.com, and its player key, place and bar
 # are kept in ~/.local/state/verse on HOST (vk-realm --net), so the next run starts where it left.
+# REALM_ESCAPES="S:HOLD,..." (screen) starts a virtual keyboard (vk-escape) for each, pressing Escape at
+# S seconds for HOLD: vk-realm leaves only on one held a second, a short press is the realm's.
 # A run nobody plays (net, and screen with --demo) marks its requests X-Verse-Automation, so the
 # site's usage leaves it out; a person's play has no mark.
 # screen takes HOST's screen, so run it when nobody is using it. As display.sh does, on HOST as
@@ -33,7 +35,7 @@ mkdir -p "$work/ship/spec"
 (cd "$work/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$work/ship/spec/")
 cp "$work/realm"/*.c "$work/realm"/*.h "$work/realm/sources" "$work/ship/"
 cp "$here"/vk-realm.c "$here"/vk-passes.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-   "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$work/ship/"
+   "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vk-escape.c "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$work/ship/"
 cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$work/ship/"
 # the network helper: its Coax as C here, built there against OpenSSL (coax/platform/tls-env.sh's)
 mkdir -p "$work/ship/net-src"
@@ -61,6 +63,7 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
   wait
   gcc \$flags \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
   gcc -std=c11 -O2 -I. vk-passes.c vk-spec.c vks.c vkc.c -lvulkan -lm -o vk-passes
+  gcc -std=c11 -O2 -Wall vk-escape.c -o vk-escape
   echo \"VK_ADD_LAYER_PATH=\$(dirname \$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \"*validation-layers*\" | head -1))\" > env
   echo \"LD_LIBRARY_PATH=\$(pkg-config --variable=libdir vulkan)\" >> env
 ' >&2
@@ -94,6 +97,7 @@ trap 'back; rm -rf \$d' EXIT
 # the watchdog: the screen comes back even if everything here dies
 sudo -n setsid sh -c \"echo \\\$\\\$ > \$d/dog.pid; sleep $((seconds + 20)); pkill -KILL -x vk-realm; chvt \$from\" > /dev/null 2>&1 < /dev/null &
 sudo -n chvt \$to
+for e in \$(echo \"${REALM_ESCAPES:-}\" | tr , ' '); do sudo -n ./vk-escape \${e%%:*} \${e#*:} & done
 sleep 1
 sudo -n env VK_DRIVER_FILES=\$VK_DRIVER_FILES LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ${automation:+VERSE_AUTOMATION=$automation} \
   ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --shot \$d/shot.ppm --net \$HOME/.local/state/verse $args || status=\$?

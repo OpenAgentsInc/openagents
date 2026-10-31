@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_KEYBOARDS 16
@@ -39,11 +40,19 @@ static void keyboards_open(void) {
   closedir(d);
 }
 
-// Each key to the realm; it returns 1 once Escape is pressed. Shift held on any keyboard makes
+// Each key to the realm; it returns 1 once Escape is pressed, or with keyboards_hold_to_leave
+// set, once Escape has been held down for that many seconds (a press alone is the realm's:
+// it closes a field, as in the browser). Call it every frame. Shift held on any keyboard makes
 // the printable keys their shifted characters, and a key's release is the key its press was
 // (a letter pressed, then shift, then released, lets go of the letter it typed).
 static int keyboards_shift;
 static int keyboards_down[KEY_MAX + 1];
+static double keyboards_hold_to_leave, keyboards_escape_since;
+static double keyboards_now(void) {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return t.tv_sec + t.tv_nsec / 1e9;
+}
 static int keyboards_read(void *state) {
   int escape = 0;
   struct input_event ev[64];
@@ -58,10 +67,12 @@ static int keyboards_read(void *state) {
         if (!k) continue;
         if (ev[j].value == 1) { keyboards_down[code] = k; realm_key(state, k); }
         else { keyboards_down[code] = 0; realm_key_up(state, k); }
-        if (k == REALM_ESCAPE && ev[j].value == 1) escape = 1;
+        if (k == REALM_ESCAPE) keyboards_escape_since = ev[j].value == 1 ? keyboards_now() : 0;
+        if (k == REALM_ESCAPE && ev[j].value == 1 && keyboards_hold_to_leave <= 0) escape = 1;
       }
     }
   }
+  if (keyboards_hold_to_leave > 0 && keyboards_escape_since > 0 && keyboards_now() - keyboards_escape_since >= keyboards_hold_to_leave) escape = 1;
   return escape;
 }
 

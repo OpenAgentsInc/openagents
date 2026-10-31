@@ -11,7 +11,7 @@
 // DIR holds spec.txt and its files. --size is what the passes draw at (default: the screen's,
 // or the spec's offscreen); on the screen it is scaled to the mode's size. --headless runs
 // FRAMES frames at 1/60 s each (as realm-run and wasm-run do), drawing every one but the first, and writes the last frame's targets as
-// float RGBA (vk-passes' OUT). Escape, the --seconds limit, SIGINT or SIGTERM end it on the
+// float RGBA (vk-passes' OUT). Escape held a second, the --seconds limit, SIGINT or SIGTERM end it on the
 // screen; display.sh-style launchers (verse/gpu/realm.sh) switch to a free VT first.
 // --net DIR gives the realm its network and what it keeps (realm-host.h, rh_net_open): its
 // requests go to HOST (default openagents.com, port 443) through DIR/../net or ./net (the
@@ -316,17 +316,18 @@ int main(int argc, char **argv) {
     }
   } else {
     keyboards_open();
+    keyboards_hold_to_leave = 1.0;   // a press of Escape is the realm's (it closes a field); held a second, it leaves
     mice_open(&mice, (float)w, (float)h);
     cursor = mice.count > 0;
     MiceTo to = {to_pointer, to_wheel, NULL};
-    fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
+    fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
     double start = now_s(), prev = start;
     while (frames < MAX_FRAMES) {
       double t = now_s();
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
-      if (keyboards_read(NULL)) { why = "Escape was pressed"; break; }
+      if (keyboards_read(NULL)) { why = "Escape was held"; break; }
       mice_read(&mice, (float)w, (float)h, &to);
       if (demo) {
         // walk forward and turn now and then, for a run nobody plays

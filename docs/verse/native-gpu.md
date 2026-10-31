@@ -436,7 +436,9 @@ Every phase and native feature is a task in the Verse project
   2.78 ms. Present to present is held to the 16.68 ms refresh, so its 95th
   percentile, 17.70 ms, is the timer's jitter around one refresh, not a late
   frame; the next run started where the last left (the kept place).
-  Still open: Escape ends the run (in the browser it closes a field), so
-  leaving wants its own key before the owner plays; a navigation to another
-  realm is ignored; and the owner's own play on coderos-4080 in place of the
-  kiosk (NEEDS_OWNER.md).
+  Escape is the realm's now (it closes a field, as in the browser) and
+  leaving is Escape held a second: with two virtual keyboards (`REALM_ESCAPES=
+  "5:0.05,10:1.5" realm.sh HOST screen`), the short press left the run going
+  and the held one ended it, back on VT 1. Still open: a navigation to
+  another realm is ignored, and the owner's own play on coderos-4080 in
+  place of the kiosk (NEEDS_OWNER.md).
