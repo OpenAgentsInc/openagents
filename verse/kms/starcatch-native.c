@@ -1,4 +1,4 @@
-// Star Catcher's native face (verse/kms/realm.h) over starcatch.coax and
+// Star Catcher's native face (verse/kms/realm.h) over starcatch-kms.coax and
 // starcatch-light.coax. It decides nothing.
 #include "realm.h"
 #include "starcatch.h"
@@ -20,6 +20,7 @@ int realm_frame(void *state, float *vertices, float *uniforms, float w, float h,
 }
 bool realm_key(void *state, int key) { return catch_key(at(state), key, 0); }
 bool realm_key_up(void *state, int key) { return catch_key_up(at(state), key, 0); }
+int realm_demo_key(void *state) { return (int)catch_demo_key(at(state)); }
 int realm_action(void *state) {
   int a = (int)catch_action(at(state));
   if (a) catch_action_done(at(state));

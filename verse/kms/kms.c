@@ -5,7 +5,8 @@
 // the game and writes the strokes; this file is the driver: it decides no
 // game rule and no colour.
 //
-//   verse-kms [--seconds N] [--scale K] [--shot FILE.ppm]     on the screen (root, a free VT)
+//   verse-kms [--seconds N] [--scale K] [--shot FILE.ppm] [--record FILE.mp4] [--demo]
+//                                                             on the screen (root, a free VT)
 //   verse-kms --headless WxH [--frames N] [--shot FILE.ppm]   no screen: render and save a frame
 //
 // On the screen it takes DRM master, so the compositor must have let go of
@@ -143,6 +144,41 @@ static int save_ppm(const char *path, const uint32_t *px, int w, int h, int stri
   return fclose(f);
 }
 
+// ---- recording: every shown frame, halved, piped to ffmpeg ($VERSE_KMS_FFMPEG)
+
+static FILE *recorder;
+static uint32_t *half;
+
+static void record_open(const char *path, int w, int h) {
+  const char *ff = getenv("VERSE_KMS_FFMPEG");
+  char cmd[1024];
+  snprintf(cmd, sizeof cmd,
+           "%s -loglevel error -y -f rawvideo -pix_fmt bgr0 -s %dx%d -framerate 40 -i - "
+           "-c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -movflags +faststart '%s'",
+           ff ? ff : "ffmpeg", w / 2, h / 2, path);
+  recorder = popen(cmd, "w");
+  half = malloc((size_t)(w / 2) * (h / 2) * 4);
+  if (!recorder || !half) fprintf(stderr, "verse-kms: can't record to %s\n", path);
+}
+
+static void record_frame(const uint32_t *px, int w, int h) {
+  if (!recorder || !half) return;
+  int hw = w / 2, hh = h / 2;
+  for (int y = 0; y < hh; y++)
+    for (int x = 0; x < hw; x++) {
+      const uint32_t *a = px + (size_t)(2 * y) * w + 2 * x, *b = a + w;
+      uint32_t r = 0, g = 0, bl = 0, q[4] = {a[0], a[1], b[0], b[1]};
+      for (int i = 0; i < 4; i++) { r += q[i] >> 16 & 255; g += q[i] >> 8 & 255; bl += q[i] & 255; }
+      half[(size_t)y * hw + x] = (r / 4) << 16 | (g / 4) << 8 | bl / 4;
+    }
+  fwrite(half, 4, (size_t)hw * hh, recorder);
+}
+
+static void record_close(void) {
+  if (recorder) pclose(recorder);
+  free(half);
+}
+
 // ---- the realm
 
 static void *state;
@@ -150,6 +186,25 @@ static float *vertices, *uniforms;
 
 static int step(int w, int h, float scale, float dt) {
   return realm_frame(state, vertices, uniforms, (float)w, (float)h, scale, dt);
+}
+
+// ---- the demo: a hand on the keyboard, for a recording nobody plays. The
+// realm names the key (realm_demo_key); this only presses and releases.
+
+static void demo_keys(double t) {
+  static int held;
+  static double last_space;
+  int want = realm_demo_key(state);
+  if (want == ' ') {
+    if (held) { realm_key_up(state, held); held = 0; }
+    if (t - last_space > 2.5) { realm_key(state, ' '); realm_key_up(state, ' '); last_space = t; }
+    return;
+  }
+  if (want != held) {
+    if (held) realm_key_up(state, held);
+    if (want) realm_key(state, want);
+    held = want;
+  }
 }
 
 // ---- the keyboard (evdev)
@@ -254,7 +309,7 @@ static void on_flip(int fd, unsigned seq, unsigned s, unsigned us, void *data) {
   flip_pending = 0;
 }
 
-static int run_screen(double seconds, float scale, const char *shot) {
+static int run_screen(double seconds, float scale, const char *shot, const char *record, int demo) {
   const char *card = getenv("VERSE_KMS_CARD");
   int fd = -1;
   if (card) fd = open(card, O_RDWR | O_CLOEXEC);
@@ -308,16 +363,24 @@ static int run_screen(double seconds, float scale, const char *shot) {
   }
   open_keyboards();
   fprintf(stderr, "verse-kms: %s on %dx%d@%d, %d threads, %d keyboards\n", realm_name(), w, h, mode.vrefresh, threads, keyboard_count);
+  // Draw in memory and copy to the scanout buffer: the buffer is
+  // write-combined, so scattered writes and any read back are slow.
+  uint32_t *ram = malloc((size_t)w * h * 4);
+  if (!ram) return 1;
+  if (record) record_open(record, w, h);
   int back = 0, shown = 0, frames = 0, status = 0;
   double start = now_s(), last = start, busy = 0;
   drmEventContext ev = {.version = 2, .page_flip_handler = on_flip};
   while (!stopping && now_s() - start < seconds) {
     read_keys();
     double t = now_s();
+    if (demo) demo_keys(t - start);
     int n = step(w, h, scale, (float)(t - last));
     last = t;
-    draw(buf[back].map, w, h, (int)(buf[back].pitch / 4), vertices, n, uniforms);
+    draw(ram, w, h, w, vertices, n, uniforms);
+    for (int y = 0; y < h; y++) memcpy((char *)buf[back].map + (size_t)y * buf[back].pitch, ram + (size_t)y * w, (size_t)w * 4);
     busy += now_s() - t;
+    record_frame(ram, w, h);
     if (realm_action(state)) break;
     if (!shown) {
       if (drmModeSetCrtc(fd, crtc_id, buf[back].fb, 0, 0, &conn->connector_id, 1, &mode) < 0) {
@@ -337,13 +400,15 @@ static int run_screen(double seconds, float scale, const char *shot) {
         if (poll(&p, 1, 100) > 0) drmHandleEvent(fd, &ev);
       }
     }
-    if (shot && frames == 30) save_ppm(shot, buf[back].map, w, h, (int)(buf[back].pitch / 4));
+    if (shot && frames == 30) save_ppm(shot, ram, w, h, w);
     back ^= 1;
     frames++;
   }
   double total = now_s() - start;
   fprintf(stderr, "verse-kms: %d frames in %.1f s (%.1f fps), %.2f ms drawing a frame\n", frames, total, frames / total, frames ? busy / frames * 1000 : 0);
   close_keyboards();
+  record_close();
+  free(ram);
   if (saved) {
     drmModeSetCrtc(fd, saved->crtc_id, saved->buffer_id, saved->x, saved->y, &conn->connector_id, 1, &saved->mode);
     drmModeFreeCrtc(saved);
@@ -381,14 +446,17 @@ int main(int argc, char **argv) {
   double seconds = 60;
   float scale = 2;
   int hw = 0, hh = 0, frames = 120;
-  const char *shot = NULL;
+  const char *shot = NULL, *record = NULL;
+  int demo = 0;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = atof(argv[++i]);
     else if (!strcmp(argv[i], "--scale") && i + 1 < argc) scale = (float)atof(argv[++i]);
     else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
     else if (!strcmp(argv[i], "--frames") && i + 1 < argc) frames = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--record") && i + 1 < argc) record = argv[++i];
+    else if (!strcmp(argv[i], "--demo")) demo = 1;
     else if (!strcmp(argv[i], "--headless") && i + 1 < argc) { if (sscanf(argv[++i], "%dx%d", &hw, &hh) != 2) hw = 0; }
-    else { fprintf(stderr, "usage: verse-kms [--seconds N] [--scale K] [--shot F.ppm] | --headless WxH [--frames N] [--shot F.ppm]\n"); return 2; }
+    else { fprintf(stderr, "usage: verse-kms [--seconds N] [--scale K] [--shot F.ppm] [--record F.mp4] [--demo] | --headless WxH [--frames N] [--shot F.ppm]\n"); return 2; }
   }
   long cores = sysconf(_SC_NPROCESSORS_ONLN);
   threads = cores < 1 ? 1 : cores > MAX_THREADS ? MAX_THREADS : (int)cores;
@@ -402,7 +470,7 @@ int main(int argc, char **argv) {
   signal(SIGTERM, on_signal);
   if (hw > 0 && hh > 0) return run_headless(hw, hh, frames, scale, shot);
 #ifdef __linux__
-  return run_screen(seconds, scale, shot);
+  return run_screen(seconds, scale, shot, record, demo);
 #else
   fprintf(stderr, "verse-kms: the screen needs Linux; use --headless WxH\n");
   return 2;

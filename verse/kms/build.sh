@@ -17,8 +17,8 @@ else
   stage="$(mktemp -d "${TMPDIR:-/tmp}/verse-kms.XXXXXX")"
   trap 'rm -rf "$stage"' EXIT
   # starcatch.coax loads font.coax from the web app, as it does on the site.
-  cp "$root/verse/realm-template/starcatch.coax" "$root/apps/openagents-web/font.coax" "$stage/"
-  (cd "$stage" && "$coax" c starcatch.coax --library --header "$out/starcatch.h" > "$out/starcatch.c")
+  cp "$root/verse/realm-template/starcatch.coax" "$root/apps/openagents-web/font.coax" "$here/starcatch-kms.coax" "$stage/"
+  (cd "$stage" && "$coax" test starcatch-kms.coax > /dev/null && "$coax" c starcatch-kms.coax --library --header "$out/starcatch.h" > "$out/starcatch.c")
   "$coax" c "$here/starcatch-light.coax" --library --header "$out/starcatch-light.h" > "$out/starcatch-light.c"
   cp "$here/kms.c" "$here/realm.h" "$here/starcatch-native.c" "$out/"
 fi

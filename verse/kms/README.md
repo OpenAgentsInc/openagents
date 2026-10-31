@@ -16,7 +16,8 @@ of drawing a frame on 28 threads, and the compositor resumed after.
 | --- | --- |
 | `kms.c` | The host: KMS mode set and page flips, evdev keys, the threaded rasterizer, `--headless` and `--shot` |
 | `realm.h` | What the host asks of a realm: the browser face's contract plus its light |
-| `starcatch-native.c` | Star Catcher's face over `starcatch.coax` and `starcatch-light.coax` |
+| `starcatch-native.c` | Star Catcher's face over `starcatch-kms.coax` and `starcatch-light.coax` |
+| `starcatch-kms.coax` | The realm, loaded unchanged, plus a demo player for recordings (chase the lowest star), with its check |
 | `starcatch-light.coax` | Star Catcher's sky, hill and strokes, following `starcatch.wgsl` by hand |
 | `build.sh` | Coax to C, then `cc` (with libdrm on Linux; headless only on macOS) |
 | `run.sh` | As root: switch to a free VT so the compositor lets go, run, switch back |
@@ -36,7 +37,11 @@ generated C). Then, at the machine or over SSH:
 sudo verse/kms/run.sh verse/kms/build --seconds 300
 ```
 
-Space starts, the arrows move the basket, Escape leaves. The keyboard is
+Space starts, the arrows move the basket, Escape leaves. To record a
+video while it runs, add `--demo` (the realm's demo player holds the keys)
+and `--record FILE.mp4` with `VERSE_KMS_FFMPEG` naming an ffmpeg (on NixOS,
+`nix-shell -p ffmpeg --run 'command -v ffmpeg'`); frames are halved to
+1280x720. The keyboard is
 grabbed while it runs, so VT keys don't work; Escape or the time limit
 always gives the screen back.
 

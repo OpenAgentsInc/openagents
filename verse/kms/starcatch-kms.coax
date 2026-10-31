@@ -1,0 +1,38 @@
+// Star Catcher for verse-kms: the realm itself, plus a demo player for a
+// recording nobody plays. The player is the rule the realm's own test wins
+// with: chase the lowest star still above the rim. It only names a key; the
+// host presses it.
+//   coax/bin/coax test verse/kms/starcatch-kms.coax   (from a stage with font.coax; build.sh does)
+
+#load "starcatch.coax";
+
+// The key the demo holds now: Space when a game is not running, an arrow
+// toward the lowest star, or 0 to stand still.
+catch_demo_key :: (s: [] Catch) -> int #export_c {
+  catch_start(s);
+  if s[0].phase != PLAY { return ' '; }
+  best := -1; by := -1.0f32;
+  for i: 0..<STARS { if s[0].stars[i].live && s[0].stars[i].y < BASKET_Y && s[0].stars[i].y > by { by = s[0].stars[i].y; best = i; } }
+  if best < 0 { return 0; }
+  d := s[0].stars[best].x - s[0].x;
+  if d < -0.01 { return KEY_LEFT; }
+  if d > 0.01 { return KEY_RIGHT; }
+  return 0;
+}
+
+#test "the demo starts the game and, holding what it names, catches every star" {
+  s: [1] Catch;
+  #assert catch_demo_key(s[..]) == ' ';
+  #assert catch_key(s[..], ' ', 0) && s[0].phase == PLAY;
+  guard := 0;
+  while s[0].phase == PLAY && guard < 200000 {
+    s[0].keys = 0;
+    k := catch_demo_key(s[..]);
+    if k == KEY_LEFT { s[0].keys = HOLD_LEFT; }
+    if k == KEY_RIGHT { s[0].keys = HOLD_RIGHT; }
+    step(s[..], f32(STEP));
+    guard += 1;
+  }
+  #assert s[0].phase == WON && s[0].caught == GOAL;
+  #assert catch_demo_key(s[..]) == ' ';
+}

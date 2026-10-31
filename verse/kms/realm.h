@@ -20,6 +20,8 @@ int realm_uniform_floats(void);
 int realm_frame(void *state, float *vertices, float *uniforms, float w, float h, float scale, float dt);
 bool realm_key(void *state, int key);
 bool realm_key_up(void *state, int key);
+// The key a demo player would hold now (0 none), for recordings.
+int realm_demo_key(void *state);
 // 1 when the realm asks to leave (it navigated); the host then exits.
 int realm_action(void *state);
 // The light: one background pixel, and one stroke fragment's light.
