@@ -397,6 +397,15 @@ roots and one offline Darwin-arm64 native gate. All 42 contexts pass cached
 SDK and independent matrix/virtual-work budgets; no SDK or simulation runs.
 Nonzero wind, ellipsoid fluid, constraints and integration remain pending.
 
+The [smooth acceleration query](fixtures/robotics/panda-smooth/README.md)
+now assembles actuator plus explicit generalized external force plus complete
+passive force, then subtracts owned bias and solves the metric. Its
+[typed example](examples/panda-smooth.coax) keeps target metres separate from
+forces. `psionic/check.sh --only robotics/panda-smooth` selects the new root
+and one offline Darwin-arm64 native gate. Eighteen retained SDK smooth targets
+and two explicitly derived same-state force-equivalent targets pass; no new
+SDK calls run. Constrained acceleration and integration remain pending.
+
 The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
 assembles the existing 144-word ABI from one admitted state. Its
 [example](examples/panda-owned-sample.coax) uses independently frozen SDK fields.

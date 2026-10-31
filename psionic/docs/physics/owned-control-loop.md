@@ -73,7 +73,10 @@ with strict clipping and a separate viscous damping vector. Eighteen source-
 admitted SDK forwards and independent scalar/native checks qualify that map.
 The [owned fluid query](../../fixtures/robotics/panda-fluid/README.md) now completes
 the pinned source's passive force with COM/principal-frame inertia-box drag.
-Friction/contact constraints and integration remain separate. A gravity-only query cannot
+The [smooth composition](../../fixtures/robotics/panda-smooth/README.md) now
+adds actuator and generalized external force to full passive before the
+bias/mass query. Its retained smooth targets do not qualify constrained
+acceleration or integration. Friction/contact constraints remain separate. A gravity-only query cannot
 replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The

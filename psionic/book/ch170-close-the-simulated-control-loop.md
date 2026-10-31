@@ -1494,6 +1494,88 @@ continues using SDK integration. Evidence and exact identities are in
 [`qualification.json`](../fixtures/robotics/panda-fluid/qualification.json),
 and the linked checks, oracle, support, example and reader-guard receipts.
 
+## Assemble the smooth acceleration
+
+The controller, actuator and passive-force queries now meet at one equation.
+For the same admitted positions and rates, the [smooth query](../lib/robotics/panda-smooth.coax)
+constructs actuator force, full passive force and the caller's generalized
+external force, then asks the applied-force solver for acceleration:
+
+```jai
+applied = (actuator + external) + passive
+mass * acceleration = applied - bias
+```
+
+Here `bias` is the owned inverse-dynamics result at zero acceleration: gravity
+and velocity-dependent terms. Full passive already includes joint damping and
+fluid drag. Adding the actuator query's separate damping output again would
+count it twice. The seven hinge forces are energy per radian; two slide forces
+are newtons. External input is generalized force in those coordinates, not a
+Cartesian world force or another motor command.
+
+All span shapes are checked before numerical admission. External force is finite and within the
+inclusive +/-10,000 numerical box; the query then admits positions/rates,
+constructs ambient force and admits the actual controls. The existing applied
+and bias-subtracted net-force caps remain in force. Refusal preserves the
+complete caller output. Nothing clips external or net force into that box.
+Actuator clipping counters still describe actual actuator controls, even when
+external force changes the resulting acceleration.
+
+<!-- source: psionic/examples/panda-smooth.coax psf-query -->
+```jai
+ x:=psf_fixture();q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ control:[7]pfku.Quantity(PmHingeGravity,f64);target:[2]pfku.Quantity(pfku.Metre,f64);
+ external_h:[7]pfku.Quantity(PmHingeGravity,f64);external_s:[2]pfku.Quantity(PmSlideGravity,f64);
+ for i:0..<7 {q[i].value=x.q[i];v[i].value=x.v[i];control[i].value=x.control[i];}
+ for i:0..<2 {s[i].value=x.q[7+i];sv[i].value=x.v[7+i];target[i].value=x.control[7+i];}
+ out:[1]PsfOutput;#assert psf_forward(q[..],s[..],v[..],sv[..],control[..],target[..],external_h[..],external_s[..],out[..])==PmsStatus.ok;
+ print("smooth acceleration (micro-rad/s2, micro-m/s2)\n");
+ for i:0..<7 {print("hinge %: %\n",i+1,psf_example_micro(out[0].acceleration.hinge[i].value));}
+ for i:0..<2 {print("slide %: %\n",i+1,psf_example_micro(out[0].acceleration.slide[i].value));}
+ print("actuator clips: % control, % force\n",out[0].control_clipped,out[0].force_clipped);
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-smooth.coax
+coax/bin/coax run psionic/examples/panda-smooth.coax --release
+COAX=coax/bin/coax psionic/tests/robotics/panda_smooth_check.sh /tmp/panda-smooth-new
+```
+
+The [frozen experiment](../fixtures/robotics/panda-smooth/experiment.json)
+uses 18 previously captured SDK rows with zero generalized external force.
+Their retained target is `qacc_smooth`, which solves the unconstrained force
+system before contact/constraint corrections. The SDK performed no new calls.
+Two additional targets use the same retained rows: at exactly identical q/v,
+replace a recorded actuator-force change with its generalized external-force
+difference. Total force, mass and bias stay the same, so the already recorded
+acceleration is the target. These are derived equal-force comparisons, not two
+new external-force simulator experiments.
+
+Across the 20 contexts, debug, release and fail-fast ASan/UBSan each pass 4,406
+native assertions. Applied-force error is at most 1.78e-14 against the frozen
+5e-10 absolute bound; acceleration error is at most 4.27e-14 against 5e-9, both
+with zero relative tolerance. Status and actuator counters are exact; all three
+owned output/status/count streams agree byte for byte. Native cases inject 180
+nonfinite IEEE payloads, probe numerical endpoints and combined/net caps, and
+exercise all four input/output overlap roles. Every numerical comparison
+admits finite actual and reference values first.
+
+Six Coax groups cover 67 cases, and the new authority root kills 88/88 actual
+emitted mutants with no equivalence waivers. Four static type refusals keep
+position targets, external hinge forces, rates and angular acceleration from
+silently changing units. The example's transcript was written from the retained
+SDK target before execution and passes in both native modes. The record retains
+initial import/test-fixture failures and the compile-time VM's refusal to create
+raw nonfinite F64 values; those payloads belong to the native boundary checks.
+Typed addition token provenance remains the earlier explicit compiler gap.
+
+This is still a force/acceleration query. It does not reproduce the SDK's
+constrained `qacc`, contact/frictionloss solve, discrete implicit damping or
+position/velocity integration. Camera geometry, policy execution, episode
+success, wall-time control and hardware remain separate. The next physical
+step must state and check those integration and constraint contracts.
+
 ## Build the controller sample from one owned state
 
 The source controller consumes one published `PcSample`: 144 F64 words holding

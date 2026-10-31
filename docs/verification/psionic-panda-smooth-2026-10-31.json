@@ -1,0 +1,78 @@
+{
+  "schema": "psionic.panda-smooth.publication-binding.v1",
+  "passed": true,
+  "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+  "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
+  "compiler_guard_carried_from_fluid_publication_sha256": "9c5654788bb2b9481781b56be305a125888055b8b42669919a04377314b32b9c",
+  "scope": "New smooth emission-only binding; existing source/native/oracle/example results carried, no passing numerical proofs repeated",
+  "numerical_reruns": 0,
+  "emissions": [
+    {
+      "mode": "debug",
+      "artifact": "panda-smooth.c",
+      "sha256": "be3fc940344e3da9031617b3ebeb286184ef31f57d5433503afb05c2ab6a1ca4",
+      "bytes": 266037,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "1770a462c4da6c1b8a8cecf64ec7fee939493a6a4bf2b37798fa8fe34ae74f41"
+    },
+    {
+      "mode": "debug",
+      "artifact": "panda-smooth.h",
+      "sha256": "859db3055c495300a2ed49ebc071468275735ce0d0911ca4d2e5a238b7386595",
+      "bytes": 37915,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "1770a462c4da6c1b8a8cecf64ec7fee939493a6a4bf2b37798fa8fe34ae74f41"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-smooth.c",
+      "sha256": "b30e52593991da156dfec55ad014799a49717672bea4946f2b011545984808c7",
+      "bytes": 264425,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "1770a462c4da6c1b8a8cecf64ec7fee939493a6a4bf2b37798fa8fe34ae74f41"
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-smooth.h",
+      "sha256": "859db3055c495300a2ed49ebc071468275735ce0d0911ca4d2e5a238b7386595",
+      "bytes": 37915,
+      "exact_prior_match": true,
+      "prior_qualification_sha256": "1770a462c4da6c1b8a8cecf64ec7fee939493a6a4bf2b37798fa8fe34ae74f41"
+    }
+  ],
+  "component_commit": "f2fb25128e",
+  "original_component_commit": "fa6b97366c",
+  "qualification_sha256": "450e9aeb5bbf4cc66dd03c4561c2efee36c90a4492105a3fe03a575518fb1711",
+  "checks_qualification_sha256": "13bac472d976bb754684bdea2c7bab6e02ccb3cd56f110eda7625a95f66dcd15",
+  "book": {
+    "passed": true,
+    "programs": 121,
+    "source_linked_listings": 468,
+    "stdout_sha256": "eb9208d5cefe8fb76a005977d21e409ea84d3c57161fe8a866ce4b129c1e78c6",
+    "stderr_bytes": 0
+  },
+  "registration": {
+    "authority_roots": [
+      "panda-smooth"
+    ],
+    "native_gate_count": 1,
+    "native_target": "Darwin-arm64",
+    "list_sha256": "c5f401e3f50adea3b2212d90c01531d4d04f10fbcc59ee8709ac111cd61b5771",
+    "shell_syntax_passed": true
+  },
+  "proof_scope": {
+    "direct_cached_SDK_targets": 18,
+    "derived_equal_total_force_targets": 2,
+    "new_SDK_calls": 0,
+    "NN_calls": 0,
+    "render_calls": 0,
+    "physics_steps": 0,
+    "root_mutants": 88,
+    "killed": 88,
+    "survivors": 0,
+    "source_cases": 67,
+    "native_assertions_per_profile": 4406
+  },
+  "shape_wording": "Every span shape precedes numerical admission; raw scalar copies may precede delegated output-shape check.",
+  "limits": "SDK qacc_smooth numerical targets, not constrained qacc/contact/frictionloss/implicit damping/integration/R14/hardware."
+}

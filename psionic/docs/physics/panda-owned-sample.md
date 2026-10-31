@@ -94,6 +94,9 @@ convert controller finger-position targets to force. The separate
 now supplies the admitted fixed-source control map and viscous joint damping.
 The [owned fluid query](../../fixtures/robotics/panda-fluid/README.md) now supplies
 COM/principal-frame resistance and full passive assembly for the pinned profile.
-The declared integrator and friction/contact constraints retain their own pending contracts. Observation rendering, full snapshots, typed clocks and
+The [smooth query](../../fixtures/robotics/panda-smooth/README.md) now combines
+actuation, generalized external and full passive forces into unconstrained
+acceleration. The declared integrator and friction/contact constraints retain
+their own pending contracts. Observation rendering, full snapshots, typed clocks and
 compiler-enforced bounded control keep their separate gates in the
 [remaining sequence](owned-control-loop.md).

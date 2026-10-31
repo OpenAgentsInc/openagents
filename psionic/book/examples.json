@@ -1162,6 +1162,16 @@
       ]
     },
     {
+      "source": "psionic/examples/panda-smooth.coax",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
+      "stdout": "psionic/fixtures/robotics/panda-smooth/example.stdout",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/panda-owned-sample.coax",
       "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
       "stdout": "psionic/fixtures/panda-owned-sample.out",

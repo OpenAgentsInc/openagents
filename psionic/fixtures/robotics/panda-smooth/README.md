@@ -24,11 +24,11 @@ already captured `qacc_smooth` then supplies the target. No external-force SDK
 query was executed. SDK operation order differs from this composition; target
 agreement is numerical, not SDK byte identity.
 
-Six new Coax groups cover 67cases;88/88 actual emitted root sites are killed,
+Six new Coax groups cover 67 cases; 88/88 actual emitted root sites are killed,
 with no equivalence waivers. Typed Quantity addition token provenance remains
 an explicit compiler gap. Four static unit refusals and the independent SDK
 fields supplement that stated scope. Debug/release/fail-fast ASan+UBSan each
-pass 4,406 native assertions,20 admitted cases,180 nonfinite payload probes,
+pass 4,406 native assertions, 20 admitted cases, 180 nonfinite payload probes,
 numerical boundaries/caps and four input/output overlaps. All actual/reference
 fields are finite before comparison. Applied error is at most 1.78e-14 against
 5e-10; acceleration at most 4.27e-14 against 5e-9, zero relative tolerance.

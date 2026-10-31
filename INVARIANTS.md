@@ -431,6 +431,26 @@ unsealed. Independent matrix/SDK/virtual-work evidence keeps frozen budgets,
 retains the earlier failed omission guard and qualifies no new SDK calls,
 physics integration, contact solver, generic models, R14 or hardware.
 
+## Smooth Panda force assembly counts passive sources once
+
+The source-bound smooth query assembles `(actuator + external) + passive`, then
+uses the existing applied-force/bias/mass query. Complete passive already
+contains joint damping and fluid. Finger control targets remain metres;
+external inputs are generalized hinge energy/radian and slide newtons, not
+Cartesian force. Every shape precedes numerical admission; the raw adapter can
+copy scalars before its delegated output-shape check. External admission comes
+before positions/rates and actual controls. Combined applied and net caps
+refuse atomically without external/net clipping. Actuator counters still
+report the actual controls.
+
+The frozen twenty-target proof distinguishes eighteen cached SDK smooth
+accelerations from two derived same-state equal-total-force targets. No new
+external-force SDK query is implied. Numerical SDK agreement and exact owned
+cross-mode bytes are separate. Typed Quantity token mutation provenance stays
+explicitly incomplete. This is unconstrained acceleration, with no contact or
+frictionloss solve, implicit-damping integration, robot episode, R14 or hardware
+claim.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T
