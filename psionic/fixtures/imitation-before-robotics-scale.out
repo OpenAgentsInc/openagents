@@ -1,0 +1,10 @@
+profile: robotics-cartesian-bc-f64-v1
+demonstrations: 4 episodes, 32 rows
+training: 256 updates
+normalized gains, millionths: 500000 500000
+zero: action MSE millionths 57326, success 0/6, worst final error um 2000000
+learned: action MSE millionths 0, success 6/6, worst final error um 478
+expert: action MSE millionths 0, success 6/6, worst final error um 478
+saturated action stays within declared speed: true
+one fixed tick advances the state: true
+wrong tick refuses without changing state: true

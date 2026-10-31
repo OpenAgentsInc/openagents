@@ -570,7 +570,7 @@ different Gemma-4 architecture is an optional study in appendix B.
 | --- | --- |
 | 110. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
 | 111. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
-| 112. Imitation before robotics scale | A tiny policy trained/evaluated in simulation, with action/state normalization and a bounded PhysicalAI SingleArm data exercise. |
+| [112. Imitation before robotics scale](ch112-imitation-before-robotics-scale.md) — runnable: owned CPU imitation and original-data excerpt | Two-axis gantry behavior cloning with fixed state/action scales, whole-episode splits and separate action-error/rollout measures; pinned Panda metadata and 170 exact F32 values from an original PhysicalAI SingleArm episode. This qualifies data handling, not Panda command semantics or GR00T inference. |
 | 113. Execute a GR00T policy | GR00T-N1.7-3B as a candidate, subject to its unresolved artifact-license inconsistency; exact VLA/flow-matching action path for one embodiment. |
 | 114. Close the simulated control loop | Action chunks, observation timing, resets, held-out task success and failure recovery under the selected embodiment. |
 

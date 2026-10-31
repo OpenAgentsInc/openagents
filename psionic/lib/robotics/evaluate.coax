@@ -1,0 +1,61 @@
+#load "sim.coax";
+#authority;
+
+#test "robotics success includes exact tolerance and peak ties keep the first owner" {
+  #assert rk_success(0) && rk_success(0.01) && !rk_success(-0.01) && !rk_success(0.0100001);
+  p:=rk_peak(RkPeak.{},0.5,0.5,100);#assert p.error==0.5 && p.episode==100 && p.axis==0;
+  p=rk_peak(p,0.25,0.5,101);#assert p.error==0.5 && p.episode==100 && p.axis==0;
+  p=rk_peak(p,0.25,0.75,102);#assert p.error==0.75 && p.episode==102 && p.axis==1;
+  p=rk_peak(p,1,0.25,103);#assert p.error==1 && p.episode==103 && p.axis==0;
+}
+#test "robotics zero and expert are separate whole-episode baselines" {
+  z:=rk_evaluate(RkPolicy.{});e:=rk_evaluate_expert();
+  #assert z.status==RkStatus.ok && z.episodes==6 && z.steps==576 && z.successes==0 && z.final_error_max==2 && abs(z.mse-0.057325929036138298)<1e-16;
+  #assert e.status==RkStatus.ok && e.episodes==6 && e.steps==576 && e.successes==6 && abs(e.final_error_max-0.00047750247539846136)<1e-15 && e.mse==0;
+}
+#test "robotics each teacher-forced action coordinate contributes independently" {
+  x:=rk_evaluate(RkPolicy.{x_gain=0.25,y_gain=0.5});y:=rk_evaluate(RkPolicy.{x_gain=0.5,y_gain=0.25});
+  #assert x.status==RkStatus.ok && y.status==RkStatus.ok && x.successes==2 && y.successes==2;
+  #assert abs(x.mse-0.0024315831520581098)<1e-16 && abs(y.mse-0.0026106195930875745)<1e-16;
+  #assert abs(x.final_error_max-0.020276547153583624)<1e-15 && abs(y.final_error_max-0.020276547153583624)<1e-15;
+}
+#test "robotics exact cloned expert has zero teacher-forced action error" {
+  p:=RkPolicy.{x_gain=0.5,y_gain=0.5};r:=rk_evaluate(p);
+  #assert r.status==RkStatus.ok && r.successes==6 && r.mse==0 && r.final_error_max==rk_evaluate_expert().final_error_max;
+  p.x_gain=9;r=rk_evaluate(p);#assert r.status==RkStatus.policy && r.episodes==0 && r.steps==0;
+}
+#test "robotics a numerically valid policy can still leave the simulator workspace" {
+  r:=rk_evaluate(RkPolicy.{x_bias=-1,y_bias=1});
+  #assert r.status==RkStatus.workspace && r.episodes==0 && r.successes==0 && r.steps==0;
+}
+
+// book:begin evaluate
+rk_measure :: (p:RkPolicy,expert:bool)->RkEval {
+  if !rk_policy_ok(p) {return RkEval.{status=RkStatus.policy};}
+  successes:=0;total:=0.0;peak:RkPeak;
+  for episode:100..<106 {
+    initial:=rk_episode(episode).state;teacher:=initial;closed:=initial;
+    for tick:0..<RK_HORIZON {
+      truth:=rk_expert(teacher);predicted:=ifx expert then truth else rk_action(p,teacher);
+      dx:=predicted.velocity.x-truth.velocity.x;dy:=predicted.velocity.y-truth.velocity.y;
+      total+=dx*dx+dy*dy;
+      teacher=rk_step(teacher,truth.velocity,RK_DT).state;
+      chosen:=ifx expert then rk_expert(closed) else rk_action(p,closed);
+      next:=rk_step(closed,chosen.velocity,RK_DT);
+      if next.status!=RkStatus.ok {return RkEval.{status=next.status};}
+      closed=next.state;
+    }
+    ex:=abs(closed.goal.x-closed.position.x);ey:=abs(closed.goal.y-closed.position.y);
+    peak=rk_peak(peak,ex,ey,episode);
+    if rk_success(ex) && rk_success(ey) {successes+=1;}
+  }
+  return RkEval.{episodes=6,successes=successes,steps=6*RK_HORIZON,mse=total/f64(2*6*RK_HORIZON),final_error_max=peak.error,worst_episode=peak.episode,worst_axis=peak.axis};
+}
+// book:end evaluate
+rk_success :: (error:f64)->bool #export_c {return error>=0 && error<=RK_TOLERANCE;}
+rk_peak :: (prior:RkPeak,ex:f64,ey:f64,episode:int)->RkPeak {
+  axis:=1;error:=ey;if ex>=ey {error=ex;axis=0;}
+  if error>prior.error {return RkPeak.{error=error,episode=episode,axis=axis};}return prior;
+}
+rk_evaluate :: (p:RkPolicy)->RkEval #export_c {return rk_measure(p,false);}
+rk_evaluate_expert :: ()->RkEval #export_c {return rk_measure(RkPolicy.{},true);}

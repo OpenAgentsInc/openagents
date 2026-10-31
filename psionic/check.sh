@@ -35,6 +35,17 @@ if [[ ${#only[@]} -gt 0 ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_mesh.sh --jobs "$jobs" "${only[@]}"
     fi
 fi
+# Robotics-only requests avoid unrelated model/oracle provisioning.
+if [[ ${#only[@]} -gt 0 ]]; then
+    robotics_only=1
+    for item in "${only[@]}"; do
+        item=${item%.coax};item=${item#psionic/lib/}
+        if [[ $item != robotics && $item != robotics/* ]]; then robotics_only=0;fi
+    done
+    if [[ $robotics_only == 1 ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/robotics/check.sh --mutate --jobs "$jobs" "${only[@]}"
+    fi
+fi
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
@@ -298,6 +309,8 @@ picks_native() {
     return 1
 }
 selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; bpe_train=0; byte_lm=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
+robotics=0;robotics_requested=()
+picks_robotics() { local n=${1%.coax};n=${n#psionic/lib/};[[ $n == robotics || $n == robotics/sim || $n == robotics/evaluate || $n == robotics/learn || $n == robotics/singlearm ]]; }
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
@@ -312,6 +325,7 @@ picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek ||
 picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
+    robotics=1
     live_decision=1
     interchange=1
     bpe_train=1
@@ -327,6 +341,7 @@ else
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
+        if picks_robotics "$n"; then hit=1;robotics=1;robotics_requested+=("$n");fi
         if picks_gguf "$n"; then hit=1; gguf=1; fi
         if picks_tokenizer_families "$n"; then hit=1; tokenizer_families=1; fi
         if picks_byte_lm "$n"; then hit=1; byte_lm=1; fi
@@ -485,6 +500,10 @@ if [[ $live_decision == 1 ]]; then
     phase "live-decision (focused operations; no full mutation claim)"
 fi
 
+if [[ $robotics == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/robotics/check.sh --mutate --jobs "$jobs" ${robotics_requested[@]+"${robotics_requested[@]}"}
+    phase "robotics (chapter112)"
+fi
 # Chapter 13's qualification gate has its own runner; --only qualify selects it.
 if [[ $qualify == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/qualify.sh

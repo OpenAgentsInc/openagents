@@ -1,0 +1,19 @@
+// Chapter112, robotics-cartesian-bc-f64-v1. This is an owned simulation,
+// not a physical robot embodiment or a hardware command interface.
+RkStatus :: enum u8 {ok;state;policy;action;time;workspace;train;}
+RkVec :: struct {x:f64;y:f64;}
+RkState :: struct {position:RkVec;goal:RkVec;}
+RkPolicy :: struct {x_gain:f64;x_bias:f64;y_gain:f64;y_bias:f64;}
+RkAction :: struct {status:RkStatus;velocity:RkVec;clipped:bool;}
+RkClipped :: struct {value:f64;clipped:bool;}
+RkStep :: struct {status:RkStatus;state:RkState;}
+RkEpisode :: struct {status:RkStatus;state:RkState;split:int;}
+RkFit :: struct {status:RkStatus;policy:RkPolicy;steps:int;loss_x:f64;loss_y:f64;}
+RkDemonstrations :: struct {count:int;episodes:int;x:[32]f64;y:[32]f64;other_x:[32]f64;other_y:[32]f64;rows:[32]int;}
+RkPeak :: struct {error:f64;episode:int=-1;axis:int;}
+RkEval :: struct {status:RkStatus;episodes:int;successes:int;steps:int;mse:f64;final_error_max:f64;worst_episode:int;worst_axis:int;}
+RK_DT :: 0.1;
+RK_SPEED :: 0.5;
+RK_POSITION_SCALE :: 0.25;
+RK_HORIZON :: 96;
+RK_TOLERANCE :: 0.01;

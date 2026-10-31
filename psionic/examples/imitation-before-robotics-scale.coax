@@ -1,0 +1,50 @@
+#import "Basic";
+#load "../lib/robotics/learn.coax";
+
+rk_example_round :: (value:f64,scale:f64)->int {return cast(int)floor(value*scale+0.5);}
+rk_example_show :: (name:string,r:RkEval) {
+    print("%: action MSE millionths %, success %/%, worst final error um %\n",
+        name,rk_example_round(r.mse,1000000),r.successes,r.episodes,rk_example_round(r.final_error_max,1000000));
+}
+
+main :: () {
+    print("profile: robotics-cartesian-bc-f64-v1\n");
+// book:begin fit
+    demonstrations:=rk_demonstrations();
+    #assert demonstrations.episodes==4 && demonstrations.count==32;
+    fit:=rk_train();
+    #assert fit.status==RkStatus.ok && fit.steps==256;
+    #assert abs(fit.policy.x_gain-0.5)<1e-10 && abs(fit.policy.y_gain-0.5)<1e-10;
+    #assert abs(fit.policy.x_bias)<1e-10 && abs(fit.policy.y_bias)<1e-10;
+    print("demonstrations: % episodes, % rows\n",demonstrations.episodes,demonstrations.count);
+    print("training: % updates\n",fit.steps);
+    print("normalized gains, millionths: % %\n",rk_example_round(fit.policy.x_gain,1000000),rk_example_round(fit.policy.y_gain,1000000));
+// book:end fit
+
+// book:begin compare
+    zero:=rk_evaluate(RkPolicy.{});
+    learned:=rk_evaluate(fit.policy);
+    expert:=rk_evaluate_expert();
+    #assert zero.status==RkStatus.ok && learned.status==RkStatus.ok && expert.status==RkStatus.ok;
+    #assert zero.successes==0 && learned.successes==6 && expert.successes==6;
+    #assert zero.steps==576 && learned.steps==576 && expert.steps==576;
+    #assert rk_example_round(zero.mse,1000000)==57326 && learned.mse<1e-20 && expert.mse==0;
+    #assert rk_example_round(zero.final_error_max,1000000)==2000000;
+    #assert rk_example_round(learned.final_error_max,1000000)==478 && rk_example_round(expert.final_error_max,1000000)==478;
+    rk_example_show("zero",zero);rk_example_show("learned",learned);rk_example_show("expert",expert);
+// book:end compare
+
+// book:begin tick
+    far:=rk_action(fit.policy,rk_episode(105).state);
+    #assert far.status==RkStatus.ok && far.clipped;
+    print("saturated action stays within declared speed: %\n",abs(far.velocity.x)<=0.5 && abs(far.velocity.y)<=0.5);
+    state:=RkState.{position=RkVec.{x=-0.25,y=0.25}};
+    action:=rk_action(fit.policy,state);
+    next:=rk_step(state,action.velocity,0.1);
+    #assert action.status==RkStatus.ok && next.status==RkStatus.ok;
+    print("one fixed tick advances the state: %\n",abs(next.state.position.x+0.225)<1e-10 && abs(next.state.position.y-0.225)<1e-10);
+    refused:=rk_step(state,action.velocity,0.2);
+    #assert refused.status==RkStatus.time;
+    print("wrong tick refuses without changing state: %\n",refused.state.position.x==state.position.x && refused.state.position.y==state.position.y);
+// book:end tick
+}

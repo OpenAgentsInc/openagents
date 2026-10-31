@@ -1,5 +1,28 @@
 # Invariants
 
+## Robotics imitation keeps its simulated embodiment and recorded data distinct
+
+`psionic/lib/robotics/` owns `robotics-cartesian-bc-f64-v1`: a two-axis
+Cartesian point in a metre-based workspace, per-axis velocity limits, fixed
+0.1-second ticks and explicit observation/action scales. Coax validates finite
+state, bounded policy and action, time and next workspace before returning a
+new state; refusal returns the original state. Four complete owned episodes
+train two affine heads through the existing checked SGD. Six different complete
+episodes measure teacher-forced action error and independent candidate
+rollouts. Neither one-step error nor the finite success count proves transfer
+to another embodiment, contact dynamics or hardware.
+
+The separate SingleArm reader admits only the pinned Panda metadata profile
+and a bounded inert F32 excerpt: unique semantic fields, exact named 25/8
+channels, finite values, increasing frames, bounded capacity and timestamps
+within the declared binary tolerance. It stages every sample before publication.
+Original-file hashes and the independent Parquet comparison establish this
+committed fixture's provenance; declared digest strings cannot authenticate
+arbitrary future rows. Panda delta-command scaling, physical units, gripper
+semantics, images, GR00T inference and real-robot execution remain unqualified.
+The owned gantry's scales are not a Panda adapter. Evidence:
+`docs/verification/psionic-ch112-2026-10-31.md`.
+
 ## Pylon restarts reserve a durable provider-bound beacon epoch
 
 `psionic/lib/pylon/generation.coax` admits only canonical, provider-bound

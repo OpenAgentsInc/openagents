@@ -1,0 +1,10 @@
+// One pinned proprioception excerpt; these are recorded values, not commands.
+SrStatus :: enum u8 {ok;shape;profile;number;capacity;timing;}
+SrInfo :: struct {status:SrStatus;states:int;actions:int;fps:int;episodes:int;frames:int;}
+SrSample :: struct {frame:int;timestamp:f32;state:[25]f32;action:[8]f32;}
+SrRead :: struct {status:SrStatus;written:int;}
+SR_REVISION :: "73c00c18e7ca108e91846294b20a1d7cd5de9340";
+SR_PARQUET_SHA :: "90f5658a7af7d9df68746ec0726c290f218b279790fb5ad5026519a0c9a69c89";
+SR_SCHEMA :: "psionic-singlearm-f32-v1";
+SR_STATE_NAMES :: [25]string.["eef_pos_x","eef_pos_y","eef_pos_z","eef_quat_x","eef_quat_y","eef_quat_z","eef_quat_w","panda_finger_joint1_pos","panda_finger_joint2_pos","panda_finger_joint1_vel","panda_finger_joint2_vel","panda_joint1_pos","panda_joint2_pos","panda_joint3_pos","panda_joint4_pos","panda_joint5_pos","panda_joint6_pos","panda_joint7_pos","panda_joint1_vel","panda_joint2_vel","panda_joint3_vel","panda_joint4_vel","panda_joint5_vel","panda_joint6_vel","panda_joint7_vel"];
+SR_ACTION_NAMES :: [8]string.["panda_joint1_delta_pos","panda_joint2_delta_pos","panda_joint3_delta_pos","panda_joint4_delta_pos","panda_joint5_delta_pos","panda_joint6_delta_pos","panda_joint7_delta_pos","gripper"];

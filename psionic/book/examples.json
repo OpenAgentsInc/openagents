@@ -960,6 +960,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/imitation-before-robotics-scale.coax",
+      "chapter": "psionic/book/ch112-imitation-before-robotics-scale.md",
+      "stdout": "psionic/fixtures/imitation-before-robotics-scale.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

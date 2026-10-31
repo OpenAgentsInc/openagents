@@ -1,0 +1,116 @@
+// Pinned NVIDIA SingleArm metadata and inert F32 excerpt admission. No Parquet
+// decoder, simulator adapter, controller scaling or real-robot execution.
+#load "singlearm-types.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "singlearm-check-fixtures.coax";
+#authority;
+
+#test "Panda metadata follows exact named25-state8-action profile, not card81" {
+  bytes:[8192]u8;r:=sr_info(sr_fixture_info(bytes[..],0));
+  #assert r.status==SrStatus.ok && r.states==25 && r.actions==8 && r.fps==30 && r.episodes==1273 && r.frames==154256;
+  for change:1..<11 {#assert sr_info(sr_fixture_info(bytes[..],change)).status==SrStatus.profile;}
+  #assert sr_info("").status==SrStatus.shape && sr_info("[]").status==SrStatus.shape && sr_info("{").status==SrStatus.shape;
+  big:[8193]u8;#assert sr_info(cast(string)big[..]).status==SrStatus.capacity;
+}
+#test "recorded F32 samples decode exactly and preserve unused output" {
+  bytes:[8192]u8;out:[3]SrSample;out[2].frame=991;
+  r:=sr_samples(sr_fixture_samples(bytes[..],0),out[..]);
+  #assert r.status==SrStatus.ok && r.written==2 && out[0].frame==0 && out[1].frame==3;
+  #assert f32_bits(out[0].timestamp)==0 && out[1].timestamp==0.1f32;
+  #assert out[0].state[0]==1 && out[0].state[24]==0 && out[1].action[7]==0.125f32 && out[2].frame==991;
+}
+#test "refused excerpts publish no partial sample" {
+  bytes:[8192]u8;out:[8]SrSample;for i:0..<8 {out[i].frame=991;out[i].state[0]=7;}
+  for change:1..<19 {r:=sr_samples(sr_fixture_samples(bytes[..],change),out[..]);#assert r.status!=SrStatus.ok && r.written==0;for i:0..<8 {#assert out[i].frame==991 && out[i].state[0]==7;}}
+  r:=sr_samples(sr_fixture_samples(bytes[..],0),out[0..<1]);#assert r.status==SrStatus.capacity && r.written==0 && out[0].frame==991;
+  #assert sr_samples("[]",out[..]).status==SrStatus.shape && sr_samples("",out[..]).status==SrStatus.shape;
+  big:[8193]u8;#assert sr_samples(cast(string)big[..],out[..]).status==SrStatus.capacity;
+}
+#test "unique semantic keys refuse aliases and duplicates and wrong parents" {
+  d:[1]Jv;n:[20]JvNode;#assert jv_parse(d[..],"{\"fps\":30,\"f\\u0070s\":30}",n[..]);
+  #assert sr_member(d[0],0,"fps")== -1 && sr_member(d[0],0,"none")== -1 && sr_member(d[0],1,"fps")== -1;
+  #assert jv_parse(d[..],"{\"x\":1,\"fps\":30}",n[..]);#assert sr_integer(d[0],sr_member(d[0],0,"fps"))==30;
+  #assert sr_integer(d[0],sr_member(d[0],0,"none"))== -1;
+}
+#test "u32 bit words and finite numeric domain include their declared endpoints" {
+  #assert sr_number(0) && sr_number(0x80000000) && sr_number(1) && sr_number(0x80000001);
+  #assert sr_number(cast(int)f32_bits(1000.0f32)) && sr_number(cast(int)f32_bits(-1000.0f32));
+  for bad:[9]int.[-1,4294967296,0x7f800000,0xff800000,0x7fc00000,0x7f7fffff,0xff7fffff,0x7f800001,0xff800001] {#assert !sr_number(bad);}
+  #assert !sr_number(cast(int)f32_bits(1000.01f32)) && !sr_number(cast(int)f32_bits(-1000.01f32));
+}
+#test "exact byte sample and capacity boundaries are supported" {
+  bytes:[8192]u8;out:[8]SrSample;text:=sr_fixture_info(bytes[..],0);for i:text.count..<8192 {bytes[i]=' ';}
+  #assert sr_info(cast(string)bytes[..]).status==SrStatus.ok;
+  text=sr_fixture_samples(bytes[..],0);for i:text.count..<8192 {bytes[i]=' ';}
+  #assert sr_samples(cast(string)bytes[..],out[0..<2]).status==SrStatus.ok;
+  #assert sr_samples(sr_fixture_samples(bytes[..],19),out[..]).written==8;
+  #assert sr_samples(sr_fixture_samples(bytes[..],20),out[..]).status==SrStatus.ok && out[1].frame==132;
+  #assert sr_samples(sr_fixture_samples(bytes[..],21),out[..]).status==SrStatus.timing;
+  #assert sr_samples(sr_fixture_samples(bytes[..],18),out[..]).status==SrStatus.shape;
+  #assert sr_samples(sr_fixture_samples(bytes[..],22),out[..]).written==1;
+  #assert sr_samples(sr_fixture_samples(bytes[..],23),out[..]).status==SrStatus.ok;
+  #assert sr_samples(sr_fixture_samples(bytes[..],24),out[..]).status==SrStatus.timing;
+}
+#test "typed arrays strings and unique members refuse ambiguous alternatives" {
+  n:[40]JvNode;d:[1]Jv;names:=[1]string.["x"];out:[2]f32;
+  for bad:[8]string.["{}","{\"dtype\":\"float32\",\"shape\":[1,2],\"names\":[\"x\"]}","{\"dtype\":\"float32\",\"shape\":1,\"names\":[\"x\"]}","{\"dtype\":\"float32\",\"shape\":[1],\"names\":[]}","{\"dtype\":\"float32\",\"shape\":[1],\"names\":[\"x\",\"y\"]}","{\"dtype\":\"float32\",\"shape\":[1],\"names\":{\"x\":1}}","{\"dtype\":\"float32\",\"shape\":[1],\"names\":[1]}","{\"dtype\":\"float32\",\"shape\":[1],\"shape\":[1],\"names\":[\"x\"]}"] {#assert jv_parse(d[..],bad,n[..]) && !sr_feature(d[0],0,names[..]);}
+  #assert jv_parse(d[..],"{\"dtype\":\"float32\",\"shape\":[1],\"names\":[\"x\"]}",n[..]) && sr_feature(d[0],0,names[..]);
+  #assert jv_parse(d[..],"[0,0]",n[..]) && sr_values(d[0],0,out[..]) && sr_member(d[0],0,"")== -1;
+  #assert jv_parse(d[..],"[0,0,0]",n[..]) && !sr_values(d[0],0,out[..]);
+  #assert jv_parse(d[..],"{\"a\":0,\"b\":0}",n[..]) && !sr_values(d[0],0,out[..]);
+  #assert jv_parse(d[..],"30",n[..]) && !sr_string(d[0],0,"30") && !sr_string(d[0],-1,"");
+}
+
+sr_member :: (d:Jv,parent:int,key:string)->int {
+  if jv_kind(d,parent)!=JV_OBJECT {return -1;}found:= -1;
+  for i:0..<jv_len(d,parent) {k:=jv_at(d,parent,i);if jv_raw_eq(jv_key(d,k),key) {if found!= -1 {return -1;}found=k;}}
+  return found;
+}
+sr_integer :: (d:Jv,node:int)->int {return jv_int(d,node,-1);}
+sr_string :: (d:Jv,node:int,value:string)->bool {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),value);}
+sr_feature :: (d:Jv,node:int,names:[]string)->bool {
+  shape:=sr_member(d,node,"shape");list:=sr_member(d,node,"names");
+  if !sr_string(d,sr_member(d,node,"dtype"),"float32") || jv_kind(d,shape)!=JV_ARRAY || jv_len(d,shape)!=1 || sr_integer(d,jv_at(d,shape,0))!=names.count || jv_kind(d,list)!=JV_ARRAY || jv_len(d,list)!=names.count {return false;}
+  for name,i:names {if !sr_string(d,jv_at(d,list,i),name) {return false;}}return true;
+}
+// book:begin metadata
+sr_info :: (text:string)->SrInfo #export_c {
+  if text.count>8192 {return SrInfo.{status=SrStatus.capacity};}
+  d:[1]Jv;nodes:[768]JvNode;
+  if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return SrInfo.{status=SrStatus.shape};}
+  v:=d[0];features:=sr_member(v,0,"features");states:=SR_STATE_NAMES;actions:=SR_ACTION_NAMES;
+  if !sr_string(v,sr_member(v,0,"codebase_version"),"v2.1") || !sr_string(v,sr_member(v,0,"robot_type"),"panda") || sr_integer(v,sr_member(v,0,"fps"))!=30 || sr_integer(v,sr_member(v,0,"total_episodes"))!=1273 || sr_integer(v,sr_member(v,0,"total_frames"))!=154256 || !sr_feature(v,sr_member(v,features,"observation.state"),states[..]) || !sr_feature(v,sr_member(v,features,"action"),actions[..]) {return SrInfo.{status=SrStatus.profile};}
+  return SrInfo.{states=25,actions=8,fps=30,episodes=1273,frames=154256};
+}
+// book:end metadata
+sr_number :: (bits:int)->bool {
+  if (bits>>32)!=0 || (bits&0x7f800000)==0x7f800000 {return false;}
+  value:=f32_from_bits(cast(u32)bits);return value>= -1000 && value<=1000;
+}
+sr_values :: (d:Jv,node:int,out:[]f32)->bool {
+  if jv_kind(d,node)!=JV_ARRAY || jv_len(d,node)!=out.count {return false;}
+  for i:0..<out.count {bits:=sr_integer(d,jv_at(d,node,i));if !sr_number(bits) {return false;}out[i]=f32_from_bits(cast(u32)bits);}return true;
+}
+// book:begin samples
+sr_samples :: (text:string,out:[]SrSample)->SrRead #export_c {
+  if text.count>8192 {return SrRead.{status=SrStatus.capacity};}
+  d:[1]Jv;nodes:[768]JvNode;
+  if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return SrRead.{status=SrStatus.shape};}
+  v:=d[0];
+  if !sr_string(v,sr_member(v,0,"schema"),SR_SCHEMA) || !sr_string(v,sr_member(v,0,"source_revision"),SR_REVISION) || !sr_string(v,sr_member(v,0,"parquet_sha256"),SR_PARQUET_SHA) || sr_integer(v,sr_member(v,0,"episode"))!=0 || sr_integer(v,sr_member(v,0,"fps"))!=30 || sr_integer(v,sr_member(v,0,"source_frames"))!=133 {return SrRead.{status=SrStatus.profile};}
+  rows:=sr_member(v,0,"rows");n:=jv_len(v,rows);
+  if jv_kind(v,rows)!=JV_ARRAY || n<1 || n>8 {return SrRead.{status=SrStatus.shape};}
+  if out.count<n {return SrRead.{status=SrStatus.capacity};}
+  staged:[8]SrSample;previous:= -1;
+  for i:0..<n {
+    row:=jv_at(v,rows,i);frame:=sr_integer(v,sr_member(v,row,"frame"));bits:=sr_integer(v,sr_member(v,row,"timestamp_bits"));
+    if frame>=133 || frame<=previous || !sr_number(bits) {return SrRead.{status=SrStatus.timing};}
+    t:=f32_from_bits(cast(u32)bits);
+    if abs(f64(t)-f64(frame)/30.0)>0.0000152587890625 {return SrRead.{status=SrStatus.timing};}
+    staged[i].frame=frame;staged[i].timestamp=t;
+    if !sr_values(v,sr_member(v,row,"state_bits"),staged[i].state[..]) || !sr_values(v,sr_member(v,row,"action_bits"),staged[i].action[..]) {return SrRead.{status=SrStatus.number};}
+    previous=frame;
+  }
+  for i:0..<n {out[i]=staged[i];}return SrRead.{written=n};
+}
+// book:end samples

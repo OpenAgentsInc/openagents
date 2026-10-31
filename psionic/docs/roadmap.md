@@ -24,6 +24,12 @@ model quality, broader request coverage and additional targets retain their
 own qualification gates.
 <!-- /capability-claim -->
 
+[Chapter 112](../book/ch112-imitation-before-robotics-scale.md) opens the robotics
+branch with an owned simulated imitation learner and a bounded original NVIDIA
+SingleArm data excerpt. Its six held-out successes qualify the declared gantry
+task. Panda control semantics, GR00T inference and richer simulated control
+remain later work.
+
 The [device delivery sequence](../book/PLAN.md#gpt-oss-device-delivery-order)
 keeps the remaining target, scheduling and throughput work separate from those
 recorded profiles. No CPU reference or component result promotes another model,

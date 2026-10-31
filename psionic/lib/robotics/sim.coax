@@ -1,0 +1,91 @@
+#load "types.coax";
+#load "owned-episodes.coax";
+#authority;
+
+// Independent exact values precede the implementation.
+#test "robotics state and policy boundaries include both ends" {
+  #assert rk_scalar(-1,1) && rk_scalar(1,1) && rk_scalar(0,1);
+  #assert !rk_scalar(-1.000001,1) && !rk_scalar(1.000001,1);
+  #assert rk_scalar(f64_from_bits((cast(u64)1)),1);
+  s:=RkState.{position=RkVec.{x=-1,y=1},goal=RkVec.{x=1,y=-1}};
+  #assert rk_state_ok(s);s.position.x=1.000001;#assert !rk_state_ok(s);
+  s=RkState.{};s.position.y=-2;#assert !rk_state_ok(s);s=RkState.{};s.goal.x=2;#assert !rk_state_ok(s);s=RkState.{};s.goal.y=-2;#assert !rk_state_ok(s);
+  p:=RkPolicy.{x_gain=-8,x_bias=2,y_gain=8,y_bias=-2};#assert rk_policy_ok(p);
+  p.x_gain=-8.001;#assert !rk_policy_ok(p);p=RkPolicy.{};p.x_bias=2.001;#assert !rk_policy_ok(p);p=RkPolicy.{};p.y_gain=8.001;#assert !rk_policy_ok(p);p=RkPolicy.{};p.y_bias=-2.001;#assert !rk_policy_ok(p);
+}
+#test "robotics normalized affine actions use declared SI scales and clip only outside" {
+  p:=RkPolicy.{x_gain=0.5,y_gain=0.5};s:=RkState.{position=RkVec.{x=-0.25,y=0.25},goal=RkVec.{x=0,y=0}};
+  a:=rk_action(p,s);#assert a.status==RkStatus.ok && a.velocity.x==0.25 && a.velocity.y==-0.25 && !a.clipped;
+  s.goal=RkVec.{x=0.25,y=-0.25};a=rk_action(p,s);#assert a.velocity.x==0.5 && a.velocity.y==-0.5 && !a.clipped;
+  s.goal=RkVec.{x=1,y=-1};a=rk_action(p,s);#assert a.velocity.x==0.5 && a.velocity.y==-0.5 && a.clipped;
+  p=RkPolicy.{x_bias=0.5,y_bias=-0.5};a=rk_action(p,RkState.{});#assert a.velocity.x==0.25 && a.velocity.y==-0.25 && !a.clipped;
+  p.x_gain=9;#assert rk_action(p,s).status==RkStatus.policy;
+  s.position.x=2;#assert rk_action(p,s).status==RkStatus.state;
+  p=RkPolicy.{x_gain=0.5,y_gain=0.5};s=RkState.{goal=RkVec.{x=1}};
+  #assert rk_action(p,s).clipped;s.goal=RkVec.{y=-1};#assert rk_action(p,s).clipped;
+}
+#test "robotics expert is proportional velocity with exact saturation" {
+  s:=RkState.{position=RkVec.{x=-1,y=1},goal=RkVec.{x=1,y=-1}};a:=rk_expert(s);
+  #assert a.status==RkStatus.ok && a.velocity.x==0.5 && a.velocity.y==-0.5 && a.clipped;
+  s.position=RkVec.{x=0.25,y=-0.25};s.goal=RkVec.{};a=rk_expert(s);
+  #assert a.velocity.x==-0.25 && a.velocity.y==0.25 && !a.clipped;
+  s.goal.x=2;#assert rk_expert(s).status==RkStatus.state;
+  s=RkState.{goal=RkVec.{x=1}};#assert rk_expert(s).clipped;s.goal=RkVec.{y=-1};#assert rk_expert(s).clipped;
+  s.goal=RkVec.{x=0.5,y=-0.5};#assert !rk_expert(s).clipped;
+}
+#test "robotics integration is one fixed tick and refuses without changing the input state" {
+  s:=RkState.{position=RkVec.{x=0.25,y=-0.25},goal=RkVec.{x=0.5,y=-0.5}};
+  r:=rk_step(s,RkVec.{x=0.5,y=-0.5},0.1);#assert r.status==RkStatus.ok && r.state.position.x==0.3 && r.state.position.y==-0.3 && r.state.goal.x==0.5 && r.state.goal.y==-0.5;
+  r=rk_step(s,RkVec.{x=0.500001},0.1);#assert r.status==RkStatus.action && r.state.position.x==s.position.x && r.state.position.y==s.position.y;
+  r=rk_step(s,RkVec.{y=-0.500001},0.1);#assert r.status==RkStatus.action && r.state.goal.x==s.goal.x && r.state.goal.y==s.goal.y;
+  r=rk_step(s,RkVec.{},0.1000001);#assert r.status==RkStatus.time && r.state.position.x==s.position.x;
+  r=rk_step(s,RkVec.{},0);#assert r.status==RkStatus.time;
+  s.position.x=1;r=rk_step(s,RkVec.{x=0.5},0.1);#assert r.status==RkStatus.workspace && r.state.position.x==1;
+  s.position.y=-1;r=rk_step(s,RkVec.{y=-0.5},0.1);#assert r.status==RkStatus.workspace && r.state.position.y==-1;
+  s.goal.y=2;r=rk_step(s,RkVec.{x=1},0);#assert r.status==RkStatus.state;
+  s=RkState.{};r=rk_step(s,RkVec.{x=1},0);#assert r.status==RkStatus.action;
+}
+#test "robotics fixed episode identities keep whole held-out runs separate" {
+  for i:0..<4 {e:=rk_episode(i);#assert e.status==RkStatus.ok && e.split==0 && rk_state_ok(e.state);}
+  for i:100..<106 {e:=rk_episode(i);#assert e.status==RkStatus.ok && e.split==1 && rk_state_ok(e.state);}
+  for i:[7]int.[-1,4,99,106,107,1000,9223372036854775807] {#assert rk_episode(i).status==RkStatus.state;}
+  #assert rk_episode(0).state.position.x==-0.5 && rk_episode(3).state.goal.y==0.625;
+  #assert rk_episode(100).state.goal.x==0.7 && rk_episode(105).state.position.x==-1 && rk_episode(105).state.goal.y==-1;
+}
+
+rk_scalar :: (v:f64,bound:f64)->bool {return v>=-bound && v<=bound;}
+rk_state_ok :: (s:RkState)->bool {return rk_scalar(s.position.x,1) && rk_scalar(s.position.y,1) && rk_scalar(s.goal.x,1) && rk_scalar(s.goal.y,1);}
+rk_policy_ok :: (p:RkPolicy)->bool {return rk_scalar(p.x_gain,8) && rk_scalar(p.x_bias,2) && rk_scalar(p.y_gain,8) && rk_scalar(p.y_bias,2);}
+rk_clip :: (v:f64,bound:f64)->RkClipped {if v< -bound {return RkClipped.{value=-bound,clipped=true};}if v>bound {return RkClipped.{value=bound,clipped=true};}return RkClipped.{value=v};}
+
+// book:begin action
+rk_action :: (p:RkPolicy,s:RkState)->RkAction #export_c {
+  if !rk_state_ok(s) {return RkAction.{status=RkStatus.state};}
+  if !rk_policy_ok(p) {return RkAction.{status=RkStatus.policy};}
+  nx:=(s.goal.x-s.position.x)/RK_POSITION_SCALE;ny:=(s.goal.y-s.position.y)/RK_POSITION_SCALE;
+  ux:=p.x_gain*nx+p.x_bias;uy:=p.y_gain*ny+p.y_bias;
+  x:=rk_clip(ux,1);y:=rk_clip(uy,1);
+  return RkAction.{velocity=RkVec.{x=RK_SPEED*x.value,y=RK_SPEED*y.value},clipped=x.clipped || y.clipped};
+}
+// book:end action
+rk_expert :: (s:RkState)->RkAction #export_c {
+  if !rk_state_ok(s) {return RkAction.{status=RkStatus.state};}
+  x:=s.goal.x-s.position.x;y:=s.goal.y-s.position.y;
+  cx:=rk_clip(x,RK_SPEED);cy:=rk_clip(y,RK_SPEED);
+  return RkAction.{velocity=RkVec.{x=cx.value,y=cy.value},clipped=cx.clipped || cy.clipped};
+}
+// book:begin step
+rk_step :: (s:RkState,velocity:RkVec,dt:f64)->RkStep #export_c {
+  if !rk_state_ok(s) {return RkStep.{status=RkStatus.state,state=s};}
+  if !rk_scalar(velocity.x,RK_SPEED) || !rk_scalar(velocity.y,RK_SPEED) {return RkStep.{status=RkStatus.action,state=s};}
+  if dt!=RK_DT {return RkStep.{status=RkStatus.time,state=s};}
+  next:=s;next.position.x+=dt*velocity.x;next.position.y+=dt*velocity.y;
+  if !rk_state_ok(next) {return RkStep.{status=RkStatus.workspace,state=s};}
+  return RkStep.{state=next};
+}
+// book:end step
+rk_episode :: (id:int)->RkEpisode #export_c {
+  if id>=0 && id<4 {return RkEpisode.{state=RK_TRAIN[id]};}
+  if id>=100 && id<106 {return RkEpisode.{state=RK_HELD_OUT[id-100],split=1};}
+  return RkEpisode.{status=RkStatus.state};
+}

@@ -1,0 +1,16 @@
+// Authored before fitting. Whole episode IDs, not neighboring trajectory rows,
+// separate training from evaluation. All coordinates are meters.
+RK_TRAIN :: [4]RkState.[
+  RkState.{position=RkVec.{x=-0.5,y=-0.25},goal=RkVec.{x=-0.25,y=0}},
+  RkState.{position=RkVec.{x=0.5,y=0.25},goal=RkVec.{x=0.25,y=0}},
+  RkState.{position=RkVec.{x=0.25,y=-0.5},goal=RkVec.{x=0.375,y=-0.625}},
+  RkState.{position=RkVec.{x=-0.25,y=0.5},goal=RkVec.{x=-0.375,y=0.625}}
+];
+RK_HELD_OUT :: [6]RkState.[
+  RkState.{position=RkVec.{x=-0.9,y=0.9},goal=RkVec.{x=0.7,y=-0.7}},
+  RkState.{position=RkVec.{x=0.8,y=-0.8},goal=RkVec.{x=-0.6,y=0.6}},
+  RkState.{position=RkVec.{x=-0.55,y=-0.75},goal=RkVec.{x=0.35,y=0.85}},
+  RkState.{position=RkVec.{x=0.65,y=0.45},goal=RkVec.{x=-0.85,y=-0.25}},
+  RkState.{position=RkVec.{x=0,y=0},goal=RkVec.{x=0.45,y=-0.9}},
+  RkState.{position=RkVec.{x=-1,y=1},goal=RkVec.{x=1,y=-1}}
+];

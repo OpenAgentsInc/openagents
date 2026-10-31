@@ -1,0 +1,194 @@
+{
+    "codebase_version": "v2.1",
+    "robot_type": "panda",
+    "total_episodes": 1273,
+    "total_frames": 154256,
+    "total_tasks": 1,
+    "total_videos": 5092,
+    "total_chunks": 2,
+    "chunks_size": 1000,
+    "fps": 30,
+    "splits": {
+        "train": "0:1273"
+    },
+    "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
+    "video_path": "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4",
+    "features": {
+        "action": {
+            "dtype": "float32",
+            "shape": [
+                8
+            ],
+            "names": [
+                "panda_joint1_delta_pos",
+                "panda_joint2_delta_pos",
+                "panda_joint3_delta_pos",
+                "panda_joint4_delta_pos",
+                "panda_joint5_delta_pos",
+                "panda_joint6_delta_pos",
+                "panda_joint7_delta_pos",
+                "gripper"
+            ]
+        },
+        "observation.depths.hand_camera": {
+            "dtype": "video",
+            "shape": [
+                1,
+                512,
+                512
+            ],
+            "names": [
+                "channel",
+                "height",
+                "width"
+            ],
+            "info": {
+                "video.fps": 30.0,
+                "video.height": 512,
+                "video.width": 512,
+                "video.channels": 3,
+                "video.codec": "h264",
+                "video.pix_fmt": "yuv420p",
+                "video.is_depth_map": false,
+                "has_audio": false
+            }
+        },
+        "observation.images.hand_camera": {
+            "dtype": "video",
+            "shape": [
+                3,
+                512,
+                512
+            ],
+            "names": [
+                "channels",
+                "height",
+                "width"
+            ],
+            "info": {
+                "video.fps": 30.0,
+                "video.height": 512,
+                "video.width": 512,
+                "video.channels": 3,
+                "video.codec": "h264",
+                "video.pix_fmt": "yuv420p",
+                "video.is_depth_map": false,
+                "has_audio": false
+            }
+        },
+        "observation.depths.world_camera": {
+            "dtype": "video",
+            "shape": [
+                1,
+                512,
+                512
+            ],
+            "names": [
+                "channel",
+                "height",
+                "width"
+            ],
+            "info": {
+                "video.fps": 30.0,
+                "video.height": 512,
+                "video.width": 512,
+                "video.channels": 3,
+                "video.codec": "h264",
+                "video.pix_fmt": "yuv420p",
+                "video.is_depth_map": false,
+                "has_audio": false
+            }
+        },
+        "observation.images.world_camera": {
+            "dtype": "video",
+            "shape": [
+                3,
+                512,
+                512
+            ],
+            "names": [
+                "channels",
+                "height",
+                "width"
+            ],
+            "info": {
+                "video.fps": 30.0,
+                "video.height": 512,
+                "video.width": 512,
+                "video.channels": 3,
+                "video.codec": "h264",
+                "video.pix_fmt": "yuv420p",
+                "video.is_depth_map": false,
+                "has_audio": false
+            }
+        },
+        "observation.state": {
+            "dtype": "float32",
+            "shape": [
+                25
+            ],
+            "names": [
+                "eef_pos_x",
+                "eef_pos_y",
+                "eef_pos_z",
+                "eef_quat_x",
+                "eef_quat_y",
+                "eef_quat_z",
+                "eef_quat_w",
+                "panda_finger_joint1_pos",
+                "panda_finger_joint2_pos",
+                "panda_finger_joint1_vel",
+                "panda_finger_joint2_vel",
+                "panda_joint1_pos",
+                "panda_joint2_pos",
+                "panda_joint3_pos",
+                "panda_joint4_pos",
+                "panda_joint5_pos",
+                "panda_joint6_pos",
+                "panda_joint7_pos",
+                "panda_joint1_vel",
+                "panda_joint2_vel",
+                "panda_joint3_vel",
+                "panda_joint4_vel",
+                "panda_joint5_vel",
+                "panda_joint6_vel",
+                "panda_joint7_vel"
+            ]
+        },
+        "timestamp": {
+            "dtype": "float32",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "frame_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "episode_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        },
+        "task_index": {
+            "dtype": "int64",
+            "shape": [
+                1
+            ],
+            "names": null
+        }
+    }
+}

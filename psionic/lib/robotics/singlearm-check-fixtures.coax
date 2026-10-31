@@ -1,0 +1,31 @@
+sr_fixture_feature :: (o:[]Jo,count:int,names:[]string,bad_name:bool,bad_dtype:bool) {
+  jo_obj(o);jo_key(o,"dtype");jo_str(o,ifx bad_dtype then "float64" else "float32");jo_key(o,"shape");jo_arr(o);jo_int(o,count);jo_end(o);
+  jo_key(o,"names");jo_arr(o);for name,i:names {jo_str(o,ifx bad_name && i==0 then "unknown" else name);}jo_end(o);jo_end(o);
+}
+sr_fixture_info :: (out:[]u8,change:int)->string {
+  states:=SR_STATE_NAMES;actions:=SR_ACTION_NAMES;
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"codebase_version");jo_str(o[..],ifx change==8 then "v2.0" else "v2.1");
+  jo_key(o[..],"robot_type");jo_str(o[..],ifx change==2 then "other" else "panda");jo_key(o[..],"fps");jo_int(o[..],ifx change==1 then 29 else 30);
+  if change==7 {jo_key(o[..],"fps");jo_int(o[..],30);}
+  jo_key(o[..],"total_episodes");jo_int(o[..],ifx change==9 then 0 else 1273);jo_key(o[..],"total_frames");jo_int(o[..],ifx change==10 then -1 else 154256);
+  jo_key(o[..],"features");jo_obj(o[..]);jo_key(o[..],"observation.state");sr_fixture_feature(o[..],ifx change==3 then 81 else 25,states[..],change==5,false);
+  jo_key(o[..],"action");sr_fixture_feature(o[..],ifx change==4 then 7 else 8,actions[..],false,change==6);jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+sr_fixture_samples :: (out:[]u8,change:int)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],ifx change==1 then "other" else SR_SCHEMA);
+  jo_key(o[..],"source_revision");jo_str(o[..],ifx change==2 then "other" else SR_REVISION);jo_key(o[..],"parquet_sha256");jo_str(o[..],ifx change==3 then "other" else SR_PARQUET_SHA);
+  jo_key(o[..],"episode");jo_int(o[..],ifx change==5 then 1 else 0);jo_key(o[..],"fps");jo_int(o[..],ifx change==4 then 29 else 30);jo_key(o[..],"source_frames");jo_int(o[..],ifx change==6 then 132 else 133);
+  jo_key(o[..],"rows");jo_arr(o[..]);n:=ifx change==7 then 0 else ifx change==18 then 9 else ifx change==19 then 8 else ifx change==22 then 1 else 2;
+  for r:0..<n {
+    frame:=ifx r==0 || change==10 then 0 else ifx change==20 then 132 else ifx change==21 then 133 else r*3;
+    jo_obj(o[..]);jo_key(o[..],"frame");jo_int(o[..],frame);
+    if change==17 {jo_key(o[..],"frame");jo_int(o[..],0);}
+    time_bits:=cast(int)f32_bits(ifx change==11 then 1.0f32 else f32(frame)/30.0f32);
+    if r==0 && (change==23 || change==24) {time_bits=cast(int)f32_bits(0.0000152587890625f32);if change==24 {time_bits+=1;}}
+    jo_key(o[..],"timestamp_bits");jo_int(o[..],time_bits);
+    jo_key(o[..],"state_bits");jo_arr(o[..]);for j:0..<(ifx change==8 then 24 else 25) {
+      b:=cast(int)f32_bits(ifx j==0 then 1.0f32 else 0.0f32);
+      if j==0 {if change==12 {b= -1;}if change==13 {b=4294967296;}if change==14 {b=0x7f800000;}if change==16 {b=cast(int)f32_bits(1001.0f32);}}jo_int(o[..],b);
+    }jo_end(o[..]);jo_key(o[..],"action_bits");jo_arr(o[..]);for j:0..<(ifx change==9 then 7 else 8) {jo_int(o[..],ifx change==15 && j==0 then 0x7fc00000 else cast(int)f32_bits(0.125f32));}jo_end(o[..]);jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}

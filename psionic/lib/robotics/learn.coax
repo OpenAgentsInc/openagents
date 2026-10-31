@@ -1,0 +1,58 @@
+// Behavior cloning reuses chapter70's checked SGD, not a new optimizer.
+#load "evaluate.coax";
+#load "../tabular.coax";
+#authority;
+
+#test "robotics recipe and every demonstration are frozen independently of fitting" {
+  c:=rk_training_config();#assert c.epochs==128 && c.batch==32 && c.rate==1 && c.decay==0 && c.init_seed==0 && c.shuffle_seed==112;
+  d:=rk_demonstrations();#assert d.count==32 && d.episodes==4;
+  ex:=[4]f64.[0.25,-0.25,0.125,-0.125];ey:=[4]f64.[0.25,-0.25,-0.125,0.125];
+  for ep:0..<4 {a:=ex[ep];b:=ey[ep];for tick:0..<8 {r:=ep*8+tick;
+    #assert d.rows[r]==r && abs(d.x[r]-a/0.25)<1e-14 && abs(d.y[r]-a/0.5)<1e-14;
+    #assert abs(d.other_x[r]-b/0.25)<1e-14 && abs(d.other_y[r]-b/0.5)<1e-14;
+    a*=0.9;b*=0.9;
+  }}
+}
+#test "robotics publication requires both training receipts and a valid bounded policy" {
+  rx:=TbTrain.{steps=2,loss=0.25};ry:=TbTrain.{steps=3,loss=0.5};p:=RkPolicy.{x_gain=0.5,x_bias=0.125,y_gain=0.75,y_bias=-0.125};
+  r:=rk_finish(rx,ry,p);#assert r.status==RkStatus.ok && r.steps==5 && r.loss_x==0.25 && r.loss_y==0.5;
+  #assert r.policy.x_gain==0.5 && r.policy.x_bias==0.125 && r.policy.y_gain==0.75 && r.policy.y_bias==-0.125;
+  rx.status=TbStatus.shape;r=rk_finish(rx,ry,p);#assert r.status==RkStatus.train && r.steps==0 && r.policy.x_gain==0 && r.loss_x==0;
+  rx.status=TbStatus.ok;ry.status=TbStatus.capacity;r=rk_finish(rx,ry,p);#assert r.status==RkStatus.train && r.policy.y_gain==0;
+  ry.status=TbStatus.ok;p.x_gain=9;#assert rk_finish(rx,ry,p).status==RkStatus.train;
+}
+#test "robotics fitting uses training episodes only and learns both affine axes" {
+  r:=rk_train();#assert r.status==RkStatus.ok && r.steps==256;
+  #assert abs(r.policy.x_gain-0.5)<1e-10 && abs(r.policy.y_gain-0.5)<1e-10;
+  #assert abs(r.policy.x_bias)<1e-10 && abs(r.policy.y_bias)<1e-10;
+  #assert r.loss_x<1e-20 && r.loss_y<1e-20;
+  e:=rk_evaluate(r.policy);#assert e.status==RkStatus.ok && e.successes==6 && e.mse<1e-20 && e.final_error_max<0.001;
+}
+
+// book:begin train
+rk_demonstrations :: ()->RkDemonstrations #export_c {
+  d:RkDemonstrations;
+  for episode:0..<4 {
+    state:=rk_episode(episode).state;
+    for tick:0..<8 {
+      row:=episode*8+tick;action:=rk_expert(state);
+      d.x[row]=(state.goal.x-state.position.x)/RK_POSITION_SCALE;d.y[row]=action.velocity.x/RK_SPEED;
+      d.other_x[row]=(state.goal.y-state.position.y)/RK_POSITION_SCALE;d.other_y[row]=action.velocity.y/RK_SPEED;d.rows[row]=row;
+      state=rk_step(state,action.velocity,RK_DT).state;
+    }
+  }
+  d.count=32;d.episodes=4;return d;
+}
+rk_training_config :: ()->TbConfig #export_c {return TbConfig.{epochs=128,batch=32,rate=1,decay=0,shuffle_seed=112};}
+rk_finish :: (rx:TbTrain,ry:TbTrain,p:RkPolicy)->RkFit {
+  if rx.status!=TbStatus.ok || ry.status!=TbStatus.ok || !rk_policy_ok(p) {return RkFit.{status=RkStatus.train};}
+  return RkFit.{policy=p,steps=rx.steps+ry.steps,loss_x=rx.loss,loss_y=ry.loss};
+}
+rk_train :: ()->RkFit #export_c {
+  d:=rk_demonstrations();model:=TbModel.{features=1};config:=rk_training_config();order:[32]int;
+  px:[2]f64;py:[2]f64;
+  rx:=tb_train(model,config,d.x[..],d.y[..],d.rows[..],px[..],order[..],false);
+  ry:=tb_train(model,config,d.other_x[..],d.other_y[..],d.rows[..],py[..],order[..],false);
+  return rk_finish(rx,ry,RkPolicy.{x_gain=px[0],x_bias=px[1],y_gain=py[0],y_bias=py[1]});
+}
+// book:end train
