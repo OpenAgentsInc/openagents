@@ -1095,7 +1095,7 @@ Tag :: struct { text: string; x: f32; y: f32; r: f32; cap: f32; light: f32; red:
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 TAGS :: 48;
 BLOCKS :: 128;
-Draw :: struct { n: int; k: f32; w: f32; h: f32; tags: [TAGS] Tag; tag_n: int; blocks: [BLOCKS] Rect; block_n: int; disc_n: int; }
+Draw :: struct { n: int; k: f32; w: f32; h: f32; under: f32; tags: [TAGS] Tag; tag_n: int; blocks: [BLOCKS] Rect; block_n: int; disc_n: int; }
 
 // Labels by importance: the one you are planning or have selected, yours, the worlds, the rivals.
 PRIO_HOT :: 10; PRIO_OWN :: 8; PRIO_WORLD :: 6; PRIO_ICE :: 4; PRIO_RIVAL :: 3; PRIO_PARKED :: 1;
@@ -1184,7 +1184,7 @@ stroke_g :: (out: [] f32, d: [] Draw, ax: f32, ay: f32, bx: f32, by: f32, core: 
   // cull what is wholly off screen
   m := glow + core + 2;
   if (ax < -m && bx < -m) || (ay < -m && by < -m) || (ax > d[0].w + m && bx > d[0].w + m) || (ay > d[0].h + m && by > d[0].h + m) { return; }
-  if lit(out, d[0].n, ax, ay, bx, by, core, light, glow, red, green, blue, 0) { d[0].n += 6; }
+  if lit(out, d[0].n, ax, ay, bx, by, core, light, glow, red, green, blue, d[0].under) { d[0].n += 6; }
 }
 dot :: (out: [] f32, d: [] Draw, x: f32, y: f32, r: f32, light: f32, red: f32, green: f32, blue: f32) {
   stroke_g(out, d, x - 0.01, y, x + 0.01, y, r, light, 1.5 * d[0].k, red, green, blue);
@@ -1321,7 +1321,8 @@ draw_station :: (s: [] Belt, out: [] f32, d: [] Draw, at: D3) {
   }
   reach := hi(rr * 1.5, 7 * k);
   block(d, x, y, reach);
-  if reach < 160 * k { tag(d, "HEARTH", x, y, reach, 7 * k, 0.9, BELT_R, BELT_G, BELT_B, ifx s[0].dest == P_STATION then PRIO_HOT else PRIO_OWN); }
+  // Home is always named: your ships and the ice crowd round it, and would leave it no free side.
+  if reach < 160 * k { tag(d, "HEARTH", x, y, reach, 7 * k, 0.9, BELT_R, BELT_G, BELT_B, PRIO_ALWAYS); }
 }
 
 // A ship: a chevron along its heading, or its hull in metres when close.
@@ -1888,7 +1889,11 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   d: [1] Draw;
   d[0].k = hi(dpr, 0.5); d[0].w = width; d[0].h = height;
+  // the map's strokes are mode 1: belt.wgsl dims them under the HUD's panels, so an orbit or a
+  // rock never draws over a ship's card
+  d[0].under = 1;
   draw_map(s, out, u, d[..]);
+  d[0].under = 0;
   if s[0].stage != STAGE_NONE { stage_rocks(s, u, d[..]); }
   // The box being drawn.
   if s[0].boxing && s[0].dragging {

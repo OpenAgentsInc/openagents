@@ -299,11 +299,22 @@ struct V {
   o.tint = c;
   return o;
 }
+// A map stroke (mode 1) under a HUD panel shows only faintly through its glass.
+fn under_hud(p: vec2f) -> f32 {
+  let n = i32(u.misc.z);
+  for (var k = 0; k < 8; k++) {
+    if (k >= n) { break; }
+    let r = u.panels[k * 2];
+    if (p.x >= r.x && p.x <= r.z && p.y >= r.y && p.y <= r.w) { return 0.12; }
+  }
+  return 1.0;
+}
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
   let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);
   let g = d / max(v.shape.w, 1.0);
   let halo = exp(-5.0 * g * g) * 0.28;
-  return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
+  let dim = select(1.0, under_hud(v.pos.xy), v.tint.a > 0.5);
+  return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade * dim, 1.0);
 }
