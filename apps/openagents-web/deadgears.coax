@@ -51,7 +51,9 @@ OUTBOX_CAP :: 256;
 MSG_KEPT :: 4;           // host.js: what the realm's slot kept, on each visit
 ACT_NAVIGATE :: 1;       // host.js: go to the outbox's URL
 ACT_KEEP :: 4;           // host.js: keep the outbox's text in the realm's slot
-SAVE_TAG :: "deadgears-save 1";
+SAVE_TAG :: "deadgears-save 2";
+SAVE_TAG_1 :: "deadgears-save 1";   // before the fight was kept mid-wave
+SAVES :: 11;
 
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
 DG_RUN_BY_DEFAULT :: true;   // verse/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
@@ -237,8 +239,11 @@ say :: (s: [] DeadGears, text: string) {
   s[0].toast_t = 2.6;
 }
 
-// ---- the save: one line, kept at each wave and repair
-//   deadgears-save 1 WAVE REPAIRS PHASE HEALTH X Z YAW MODE KILLS SUM
+// ---- the save: one line, kept at each wave and repair, and when you leave
+//   deadgears-save 2 WAVE REPAIRS PHASE HEALTH X Z YAW MODE KILLS LEFT REACTOR SUM
+// LEFT has a bit set for each of the wave's creatures still alive (by spawn
+// order), so leaving mid-wave and coming back resumes it. Version 1 lines
+// (without LEFT and REACTOR) still open, at the start of their wave.
 // X, Z and YAW in thousandths; SUM checks the rest.
 
 save_sum :: (v: [] int) -> int {
@@ -246,19 +251,23 @@ save_sum :: (v: [] int) -> int {
   for i: 0..<v.count { sum = (sum * 31 + v[i] + 100000) % 999983; }
   return sum;
 }
-save_values :: (s: [] DeadGears) -> [9] int {
+save_values :: (s: [] DeadGears) -> [SAVES] int {
   g := game(s);
   st := g.st[0];
-  v: [9] int;
+  v: [SAVES] int;
   v[0] = st.wave; v[1] = st.repairs; v[2] = st.phase; v[3] = cast(int) (dg_health(g) + 0.5);
   v[4] = cast(int) (s[0].feet.x * 1000); v[5] = cast(int) (s[0].feet.z * 1000); v[6] = cast(int) (wrap_angle(s[0].yaw) * 1000);
   v[7] = st.mode; v[8] = st.kills;
+  left := 0;
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) && g.mutant[i].seq >= 0 && g.mutant[i].seq < 20 { left = left | (1 << g.mutant[i].seq); } }
+  v[9] = left;
+  v[10] = cast(int) (dg_reactor_health(g) + 0.5);
   return v;
 }
 save_line :: (s: [] DeadGears, out: [] u8) -> int {
   v := save_values(s);
   n := put(out, 0, SAVE_TAG);
-  for i: 0..<9 { n = put(out, n, " "); n = put_int(out, n, v[i]); }
+  for i: 0..<SAVES { n = put(out, n, " "); n = put_int(out, n, v[i]); }
   n = put(out, n, " ");
   return put_int(out, n, save_sum(v[..]));
 }
@@ -286,12 +295,19 @@ read_int :: (text: string, at: [] int) -> int {
 restore :: (s: [] DeadGears, text: string) -> bool {
   started(s);
   tag := SAVE_TAG;
-  if text.count < tag.count + 2 || text[0..<tag.count] != tag { return false; }
+  values := SAVES;
+  if text.count < tag.count + 2 { return false; }
+  if text[0..<tag.count] != tag {
+    if text[0..<tag.count] != SAVE_TAG_1 { return false; }
+    values = 9;
+  }
   at: [1] int; at[0] = tag.count;
-  v: [9] int;
-  for i: 0..<9 { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
+  v: [SAVES] int;
+  for i: 0..<values { v[i] = read_int(text, at[..]); if at[0] < 0 { return false; } }
   sum := read_int(text, at[..]);
-  if at[0] < 0 || sum != save_sum(v[..]) { return false; }
+  if at[0] < 0 || sum != save_sum(v[0..<values]) { return false; }
+  if values < SAVES { v[9] = -1; v[10] = 100; }
+  if v[10] < 1 || v[10] > 100 { return false; }
   wave := v[0]; repairs := v[1]; phase := v[2];
   if wave < 1 || wave > 3 || repairs < 0 || repairs > 3 || phase < FIGHT || phase > LOST || v[7] < 0 || v[7] > 2 { return false; }
   x := f32(v[4]) / 1000; z := f32(v[5]) / 1000;
@@ -305,6 +321,13 @@ restore :: (s: [] DeadGears, text: string) -> bool {
     destroy_all(g, true, C_BOLT);
     g.st[0].phase = phase;
   }
+  if phase == FIGHT && v[9] > 0 {
+    // Mid-wave: only the creatures still alive when you left come back.
+    for i: 0..<ecs_high(g.e) {
+      if alive_mutant(g, i) && (v[9] & (1 << g.mutant[i].seq)) == 0 { ecs_destroy_now(g.e, ecs_at(g.e, i)); }
+    }
+  }
+  g.hp[slot_of(dg_reactor(g))] = f32(v[10]);
   ecs_flush(g.e);
   g.st[0].mode = v[7]; g.st[0].kills = v[8];
   me := me_slot(g);
@@ -339,7 +362,10 @@ deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
     if query_number(url, "card") == 1 { s[0].card = true; }
   }
-  if kind == HOST_HIDDEN { s[0].paused = true; s[0].held = 0; release_fingers(s); }
+  if kind == HOST_HIDDEN {
+    s[0].paused = true; s[0].held = 0; release_fingers(s);
+    if game(s).st[0].phase == FIGHT { keep_save(s); }   // leaving mid-wave keeps where the fight is (#9001)
+  }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE {
     track_world(s[0].track[..], "dead-gears");
@@ -1834,7 +1860,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert restore(next[..], line);
   h := game(next[..]);
   #assert h.st[0].wave == 2 && h.st[0].repairs == 1 && h.st[0].phase == FIGHT && h.st[0].mode == CORE;
-  #assert dg_health(h) == 64 && flat(next[0].feet, v3(2.5, 0, -3)) < 0.01 && dg_alive_mutants(h) == 3 + 2 * 2;
+  #assert dg_health(h) == 64 && flat(next[0].feet, v3(2.5, 0, -3)) < 0.01 && dg_alive_mutants(h) == dg_wave_count(2);
   other: [1] DeadGears;
   #assert !restore(other[..], "fixture-save 1 0 0 3");
   bad: [OUTBOX_CAP] u8;
@@ -1844,6 +1870,36 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert game(other[..]).st[0].wave == 1;
 }
 tag_end :: () -> int { return SAVE_TAG.count + 1; }
+
+#test "leaving mid-wave 1 and coming back resumes the wave" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
+  #assert dg_alive_mutants(g) == dg_wave_count(1);
+  killed := 0;
+  for i: 0..<ecs_high(g.e) { if alive_mutant(g, i) && killed < 2 { dg_hit(g, ecs_at(g.e, i), 10000); killed += 1; } }
+  for i: 0..<3 { n = frame_at(s[..], 1280, 800, 1, 0.05); }
+  g.hp[slot_of(dg_reactor(g))] = 70;
+  left := dg_alive_mutants(g);
+  #assert left == dg_wave_count(1) - 2;
+  deadgears_message(s[..], HOST_HIDDEN, "");
+  #assert deadgears_action(s[..]) == ACT_KEEP;
+  line := cast(string) s[0].outbox[0..<s[0].out_n];
+  back: [1] DeadGears;
+  #assert restore(back[..], line);
+  h := game(back[..]);
+  #assert h.st[0].wave == 1 && h.st[0].phase == FIGHT && dg_alive_mutants(h) == left && dg_reactor_health(h) == 70;
+  // A line kept before this (version 1) still opens, at the wave's start.
+  old: [OUTBOX_CAP] u8;
+  v: [9] int; v[0] = 2; v[2] = FIGHT; v[3] = 80; v[8] = 4;
+  m := put(old[..], 0, SAVE_TAG_1);
+  for i: 0..<9 { m = put(old[..], m, " "); m = put_int(old[..], m, v[i]); }
+  m = put(old[..], m, " "); m = put_int(old[..], m, save_sum(v[..]));
+  was: [1] DeadGears;
+  #assert restore(was[..], cast(string) old[0..<m]);
+  #assert game(was[..]).st[0].wave == 2 && dg_alive_mutants(game(was[..])) == dg_wave_count(2);
+}
 
 #test "a cleared wave says repair and keeps; Again starts over" {
   s: [1] DeadGears;

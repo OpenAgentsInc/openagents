@@ -58,6 +58,12 @@ COVERS :: [35] f32.[-5, 3, 3.2, 1.3, 1.15, 5, 3, 3.2, 1.3, 1.15, -4, -5, 2.6, 1.
                     -8, -12, 2, 3, 1.6, 8, -12, 2, 3, 1.6, 0, -17, 3.8, 2.8, 1.1];
 CARGO_AT :: [18] f32.[-1.2, 5, 0, 1.2, 3, 1, -8, 6, 2, 6, 0, 0, 0, -8, 1, -3, -13, 2];
 WAVE_MIX :: [9] int.[2, 0, 1, 4, 0, 1, 4, 2, 4];
+// Creatures per wave (#9001), from recorded play: wave 1 took 19 s and 28 s
+// to clear with five, a phone player left hurt 15 s in, and one of two
+// wave 2s with seven was lost. Free aim and flanking make each harder, so
+// 4, 6, 8 (were 5, 7, 9).
+WAVE_SIZE :: [3] int.[4, 6, 8];
+dg_wave_count :: (wave: int) -> int { w := ifx wave < 1 then 1 else ifx wave > 3 then 3 else wave; return WAVE_SIZE[w - 1]; }
 CARGO_DAMAGE :: [3] f32.[100, 125, 85];
 // The support engineer's repair: alone it takes this long (you take 2.5 s),
 // from a spot this far beside and in front of the reactor's centre.
@@ -854,7 +860,7 @@ start_wave :: (g: Game, now: bool) {
   if ecs_has(g.e, r, C_USE) { g.progress[slot_of(r)] = 0; g.hp[slot_of(r)] = 100; }
   g.st[0].held = ECS_NONE;
   g.st[0].psi = 100;
-  count := 3 + g.st[0].wave * 2;
+  count := dg_wave_count(g.st[0].wave);
   for i: 0..<count {
     side: f32 = ifx i % 2 == 1 then 1.0f32 else -1.0f32;
     kind := WAVE_MIX[i % 9];
@@ -1286,6 +1292,7 @@ nth_mutant :: (g: Game, n: int) -> int {
 }
 clear_mutants :: (g: Game) {
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { ecs_destroy_now(g.e, ecs_at(g.e, i)); } }
+  g.st[0].next_seq = 1;   // odd: a test's first crawler chases you, not the reactor
 }
 kill_all :: (g: Game) {
   for i: 0..<ecs_high(g.e) { if ecs_match(g.e, i, C_MUTANT, 0) { dg_hit(g, ecs_at(g.e, i), 999); } }
@@ -1330,9 +1337,9 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 
 #test "waves and severing" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
-  #assert dg_mutants(g) == 5;
+  #assert dg_mutants(g) == dg_wave_count(1);
   kinds: [5] bool; distinct := 0;
-  for n: 0..<5 {
+  for n: 0..<dg_wave_count(1) {
     e := nth_mutant(g, n);
     if !kinds[g.mutant[slot_of(e)].kind] { kinds[g.mutant[slot_of(e)].kind] = true; distinct += 1; }
     #assert !dg_blocked(g, g.pos[slot_of(e)].x, g.pos[slot_of(e)].z, 0.3);
@@ -1403,7 +1410,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
 #test "a shooting run clears a wave" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   most := fight_wave(g, ME);
-  #assert g.st[0].phase == REPAIR && g.st[0].kills == 5 && dg_health(g) > 0;
+  #assert g.st[0].phase == REPAIR && g.st[0].kills == dg_wave_count(1) && dg_health(g) > 0;
 }
 
 #test "three waves to victory" {
@@ -1413,7 +1420,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
     #assert g.st[0].phase == REPAIR;
     repair(g);
   }
-  #assert g.st[0].phase == WON && g.st[0].kills == 21;
+  #assert g.st[0].phase == WON && g.st[0].kills == dg_wave_count(1) + dg_wave_count(2) + dg_wave_count(3);
 }
 
 #test "a headshot drops a reaver's head and claw, which crawl on" {
@@ -1713,6 +1720,8 @@ spawn_crowd :: (g: Game) {
 
 #test "no fixed caps: 205 mutants at once" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  clear_mutants(g);
+  for k: 0..<5 { e := dg_spawn_mutant(g, k % TYPES, -6 + f32(k) * 3, -12, -1); }
   spawn_crowd(g);
   #assert dg_alive_mutants(g) == 205;
   tk(g, ME);
