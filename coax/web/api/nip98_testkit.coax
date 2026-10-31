@@ -1,0 +1,58 @@
+// Test helpers for nip98.coax's checks: they run a fixture case
+// (nip98_vectors.coax) through the check, or a literal through one reader.
+// Test code, not the authority: `coax mutate --root-only` mutates nip98.coax
+// itself and runs these as its checks.
+
+// A case's request (body, URL, method, now) through the whole check, or,
+// with signed=false, through everything but BIP-340 (lift_x and the
+// signature): the reader, the id and the rules. That path is cheap, so the
+// mutation checks reach the id and the rules on every signed case.
+n98t_run :: (i:int,signed:bool)->int {
+  work:[N98_WORK]u8;out:[N98_OUT]u8;b:=N98_T_BODIES[i];body:[64]u8;for k:0..<b.count {body[k]=b[k];}
+  bv:=body[0..<b.count];now:=N98_T_NOW;
+  if signed {return nip98_check_coax(N98_T_AUTH[i],N98_T_METHOD[i],N98_T_URLS[i],bv,now,work[..],out[..]).error;}
+  e:=n98_parse(N98_T_AUTH[i],work[..]);if e.error!=N98_OK {return e.error;}
+  hash:[32]u8;idc:=n98_id(e,work[..],hash[..]);if idc!=N98_OK {return idc;}
+  l:=n98_layout();
+  return n98_rules(work[l.tags..<l.content],e.nf[..],e.nl[..],e.ntags,e.kind,e.created,now,N98_T_URLS[i],N98_T_METHOD[i],bv,e.id[..],e.pub[..],out[..]).error;
+}
+n98t :: (i:int)->int {return n98t_run(i,true);}
+n98t_nosig :: (i:int)->int {return n98t_run(i,false);}
+// What the no-signature path answers: the case's own answer, except that a
+// bad point or signature is not looked at, so those cases pass.
+n98t_nosig_want :: (want:int)->int {return ifx want==N98_POINT || want==N98_SIGNATURE then N98_OK else want;}
+// Cases whose full check runs BIP-340 to the end: the heavy checks' (nip98_checks.coax).
+n98t_heavy :: (want:int)->bool {return want==N98_OK || want>=N98_KIND || want==N98_SIGNATURE;}
+
+n98tb :: (hex:string,i:int)->u8 {return cast,trunc(u8)(n98_hexv(hex[2*i])*16+n98_hexv(hex[2*i+1]));}
+// A literal as a read buffer.
+N98TJ :: struct {j:[96]u8;n:int;}
+n98tj :: (lit:string)->N98TJ {r:N98TJ;for i:0..<lit.count {r.j[i]=lit[i];}r.n=lit.count;return r;}
+// The string reader on a literal: it must take all of it and decode to the
+// bytes in want (hex), with the NUL after them in a buffer that held 0xff.
+n98ts :: (lit:string,cap:int,want:string)->bool {
+  t:=n98tj(lit);
+  o:=[16]u8.[0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff];
+  r:=n98_str(t.j[0..<t.n],N98Cursor.{p=0,end=t.n},o[..],cap);
+  if !r.ok || r.c.p!=t.n || r.n*2!=want.count || o[r.n]!=0 {return false;}
+  for i:0..<r.n {if o[i]!=n98tb(want,i) {return false;}}
+  return true;
+}
+n98ts_refused :: (lit:string,cap:int)->bool {
+  t:=n98tj(lit);o:[16]u8;
+  return !n98_str(t.j[0..<t.n],N98Cursor.{p=0,end=t.n},o[..],cap).ok;
+}
+// lit after one byte b (for \v and \f, which Coax strings can't spell).
+n98tib :: (b:u8,lit:string)->N98Int {t:N98TJ;t.j[0]=b;for i:0..<lit.count {t.j[i+1]=lit[i];}return n98_int(t.j[0..<lit.count+1],N98Cursor.{p=0,end=lit.count+1});}
+n98ti :: (lit:string)->N98Int {t:=n98tj(lit);return n98_int(t.j[0..<t.n],N98Cursor.{p=0,end=t.n});}
+// The escaper on raw bytes (hex) at offset 1 with cap: want is the JSON it
+// writes, or "REFUSED".
+n98te :: (hex:string,cap:int,want:string)->bool {
+  raw:[16]u8;for i:0..<hex.count/2 {raw[i]=n98tb(hex,i);}
+  ser:[32]u8;e:=n98_esc(raw[0..<hex.count/2],ser[..],1,cap);
+  if want=="REFUSED" {return !e.ok;}
+  return e.ok && cast(string)ser[1..<e.o]==want;
+}
+// n98_is_hex and n98_key on a literal.
+n98thex :: (lit:string,n:int,want:int)->bool {t:=n98tj(lit);return n98_is_hex(t.j[..],n,want);}
+n98tkey :: (lit:string)->int {t:=n98tj(lit);return n98_key(t.j[..],t.n);}

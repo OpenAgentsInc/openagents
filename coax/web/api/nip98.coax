@@ -17,8 +17,14 @@
 // Public inputs; variable-time verification. A pass authenticates the
 // request's signer for this URL, method and body only: replay (first use),
 // accounts and rights are the caller's.
+//
+// Written for mutation (#authority): refusals are flags, not sign-encoded
+// positions; every buffer's capacity is its own length; the work layout is
+// one running sum; the checks reach the id and the rules without BIP-340
+// (nip98_testkit.coax), so every mutant has a cheap case that sees it.
 #load "../../lib/crypto/schnorr_fast.coax";
 #load "nip98_vectors.coax";
+#load "nip98_testkit.coax";
 #authority;
 
 N98_OK :: 0;
@@ -32,26 +38,41 @@ N98_INPUT :: 27; // the work or out view is too small (a caller bug, never a req
 
 N98_JSON_CAP :: 12288; N98_TAGS :: 16; N98_FIELDS :: 4; N98_FIELD_CAP :: 1024; N98_CONTENT_CAP :: 8192;
 N98_SER_CAP :: 16384; N98_KEY_CAP :: 32;
-// work: decoded event | tag fields | content | serialization | one value.
-N98_AT_TAGS :: N98_JSON_CAP; N98_AT_CONTENT :: N98_AT_TAGS+N98_TAGS*N98_FIELDS*N98_FIELD_CAP;
-N98_AT_SER :: N98_AT_CONTENT+N98_CONTENT_CAP; N98_AT_TMP :: N98_AT_SER+N98_SER_CAP;
-N98_WORK :: N98_AT_TMP+N98_FIELD_CAP;
+// work: decoded event | tag fields | content | serialization | one value (n98_layout).
+N98_WORK :: N98_JSON_CAP+N98_TAGS*N98_FIELDS*N98_FIELD_CAP+N98_CONTENT_CAP+N98_SER_CAP+N98_FIELD_CAP;
 // out: id hex | pubkey hex | u | method | payload.
 N98_OUT_U :: 128; N98_OUT_METHOD :: N98_OUT_U+N98_FIELD_CAP; N98_OUT_PAYLOAD :: N98_OUT_METHOD+16; N98_OUT :: N98_OUT_PAYLOAD+65;
 N98_LLONG_MAX :: 9223372036854775807;
 
 Nip98 :: struct {error:int=N98_INPUT;created_at:int;kind:int;u:int;method:int;payload:int;}
 N98Cursor :: struct {p:int;end:int;}
-N98Parsed :: struct {error:int;ntags:int;nf:[16]int;nl:[64]int;id:[64]u8;pub:[64]u8;sig:[128]u8;created:int;kind:int;content_n:int;}
+// The reader's answer: id and pubkey as hex, pubkey and signature as bytes.
+N98Parsed :: struct {error:int;ntags:int;nf:[16]int;nl:[64]int;id:[64]u8;pub:[64]u8;pk:[32]u8;sg:[64]u8;created:int;kind:int;content_n:int;}
+// Where each part of work starts: the decoded event is work[0..<tags].
+N98Layout :: struct {tags:int;content:int;ser:int;tmp:int;end:int;}
+n98_layout :: ()->N98Layout {
+  l:N98Layout;
+  l.tags=N98_JSON_CAP;
+  l.content=l.tags+N98_TAGS*N98_FIELDS*N98_FIELD_CAP;
+  l.ser=l.content+N98_CONTENT_CAP;
+  l.tmp=l.ser+N98_SER_CAP;
+  l.end=l.tmp+N98_FIELD_CAP;
+  return l;
+}
 
 #test "refusal words are C's" {
   #assert nip98_error_text(N98_OK)=="" && nip98_error_text(N98_BASE64)=="authorization is not base64";
   #assert nip98_error_text(N98_PAYLOAD)=="the payload tag is not this body" && nip98_error_text(N98_INPUT)=="nip98: work buffer too small";
   #assert nip98_error_text(-1)=="nip98: unknown refusal" && nip98_error_text(28)=="nip98: unknown refusal";
 }
+#test "the work layout fills work exactly" {
+  l:=n98_layout();
+  #assert l.tags==12288 && l.content==77824 && l.ser==86016 && l.tmp==102400 && l.end==N98_WORK && N98_WORK==103424;
+}
 #test "base64 takes both alphabets, stops at padding or NUL, and refuses junk or overflow" {
   o:[8]u8;
-  #assert n98_b64("TWFu",o[..],8)==3 && o[0]=='M' && o[2]=='n';
+  #assert n98_b64("TWFu",o[..],8)==3 && o[0]=='M' && o[1]=='a' && o[2]=='n';
+  #assert n98_b64("TWFuTWE",o[..],8)==5 && o[3]=='M' && o[4]=='a';
   #assert n98_b64("-_-_",o[..],8)==3 && o[0]==0xfb && o[1]==0xff;
   #assert n98_b64("+/+/",o[..],8)==3 && o[0]==0xfb;
   #assert n98_b64("YQ==junk",o[..],8)==1 && o[0]=='a';
@@ -60,45 +81,97 @@ N98Parsed :: struct {error:int;ntags:int;nf:[16]int;nl:[64]int;id:[64]u8;pub:[64
   #assert n98_b64("TWFu",o[..],3)==3 && n98_b64("TWFuTQ",o[..],3)==0;
   #assert n98_b64("09az",o[..],8)==3 && o[0]==0xd3;
 }
-// The case's full check, with C's buffers.
-n98t :: (i:int)->int {
-  work:[N98_WORK]u8;out:[N98_OUT]u8;b:=N98_T_BODIES[i];body:[64]u8;for k:0..<b.count {body[k]=b[k];}
-  return nip98_check_coax(N98_T_AUTH[i],N98_T_METHOD[i],N98_T_URLS[i],body[0..<b.count],N98_T_NOW,work[..],out[..]).error;
+#test "base64 digits end where their ranges end" {
+  #assert n98_b64v('A')==0 && n98_b64v('Z')==25 && n98_b64v('a')==26 && n98_b64v('z')==51 && n98_b64v('0')==52 && n98_b64v('9')==61;
+  #assert n98_b64v('@')==-1 && n98_b64v('[')==-1 && n98_b64v('`')==-1 && n98_b64v('{')==-1 && n98_b64v('/')==63 && n98_b64v(':')==-1;
+  #assert n98_b64v('+')==62 && n98_b64v('-')==62 && n98_b64v('_')==63 && n98_b64v(',')==-1 && n98_b64v('.')==-1;
 }
-// Only the parse and the rules: the signature is the heavy checks' (nip98_checks.coax).
-n98t_rules :: (i:int)->int {
-  work:[N98_WORK]u8;out:[N98_OUT]u8;b:=N98_T_BODIES[i];body:[64]u8;for k:0..<b.count {body[k]=b[k];}
-  e:=n98_parse(N98_T_AUTH[i],work[..]);if e.error!=N98_OK {return -1;}
-  return n98_rules(work[N98_AT_TAGS..<N98_AT_CONTENT],e.nf[..],e.nl[..],e.ntags,e.kind,e.created,N98_T_NOW,N98_T_URLS[i],N98_T_METHOD[i],body[0..<b.count],e.id[..],e.pub[..],out[..]).error;
+// The checks over the signed cases (nip98_vectors.coax, from nip98_fixtures.ts).
+#test "the heavy split is the signature's" {
+  #assert n98t_heavy(N98_OK) && n98t_heavy(N98_KIND) && n98t_heavy(N98_PAYLOAD) && n98t_heavy(N98_SIGNATURE);
+  #assert !n98t_heavy(N98_POINT) && !n98t_heavy(N98_ID) && !n98t_heavy(N98_MISSING) && !n98t_heavy(N98_BASE64);
+  #assert n98t_nosig_want(N98_POINT)==N98_OK && n98t_nosig_want(N98_SIGNATURE)==N98_OK && n98t_nosig_want(N98_URL)==N98_URL && n98t_nosig_want(N98_ID)==N98_ID;
 }
-n98t_heavy :: (want:int)->bool {return want==N98_OK || want>=N98_KIND || want==N98_SIGNATURE;}
-#forall "every refusal before the signature is C's, case by case" i:0..<N98_T_COUNT {
+// Each a check of its own: the step budget is per check.
+#forall "every refusal before the signature is C's, case by case (first cases)" i:0..<30 {
   if !n98t_heavy(N98_T_WANT[i]) || N98_T_NAME[i]=="BAD_S" {#assert n98t(i)==N98_T_WANT[i];}
 }
-#forall "the NIP-98 rules after the signature are C's, case by case" i:0..<N98_T_COUNT {
-  want:=N98_T_WANT[i];
-  if (want==N98_OK || want>=N98_KIND) && N98_T_NAME[i]!="DUP_ID" {#assert n98t_rules(i)==want;}
+#forall "every refusal before the signature is C's, case by case (second cases)" i:30..<60 {
+  if !n98t_heavy(N98_T_WANT[i]) || N98_T_NAME[i]=="BAD_S" {#assert n98t(i)==N98_T_WANT[i];}
+}
+#forall "every refusal before the signature is C's, case by case (last cases)" i:60..<N98_T_COUNT {
+  if !n98t_heavy(N98_T_WANT[i]) || N98_T_NAME[i]=="BAD_S" {#assert n98t(i)==N98_T_WANT[i];}
+}
+#forall "the reader, the id and the rules are C's without BIP-340 (first cases)" i:0..<30 {
+  #assert n98t_nosig(i)==n98t_nosig_want(N98_T_WANT[i]);
+}
+#forall "the reader, the id and the rules are C's without BIP-340 (second cases)" i:30..<60 {
+  #assert n98t_nosig(i)==n98t_nosig_want(N98_T_WANT[i]);
+}
+#forall "the reader, the id and the rules are C's without BIP-340 (last cases)" i:60..<N98_T_COUNT {
+  #assert n98t_nosig(i)==n98t_nosig_want(N98_T_WANT[i]);
+}
+#test "the case checks cover every case" {#assert N98_T_COUNT>60 && N98_T_COUNT<=90;}
+#test "the reader returns the event's fields" {
+  work:[N98_WORK]u8;
+  e:=n98_parse(N98_T_AUTH[0],work[..]);
+  #assert e.error==N98_OK && e.created==N98_T_NOW && e.kind==27235 && e.ntags==3 && e.content_n==0;
+  #assert e.nf[0]==2 && e.nf[1]==2 && e.nf[2]==2 && e.nl[0]==1 && e.nl[1]==N98_T_URL.count && e.nl[4]==6 && e.nl[5]==4 && e.nl[8]==7 && e.nl[9]==64;
+  #assert cast(string)e.id[..]==N98_T_ID && cast(string)e.pub[..]==N98_T_PUB;
+  pk:[32]u8;n98_unhex(N98_T_PUB,pk[..]);sg:[64]u8;n98_unhex(N98_T_SIG,sg[..]);
+  #assert cast(string)e.pk[..]==cast(string)pk[..] && cast(string)e.sg[..]==cast(string)sg[..];
 }
 #test "a passing check returns the event's fields" {
   work:[N98_WORK]u8;out:[N98_OUT]u8;b:=N98_T_BODY;body:[64]u8;for k:0..<b.count {body[k]=b[k];}
-  e:=n98_parse(N98_T_AUTH[0],work[..]);
-  r:=n98_rules(work[N98_AT_TAGS..<N98_AT_CONTENT],e.nf[..],e.nl[..],e.ntags,e.kind,e.created,N98_T_NOW,N98_T_URL,"POST",body[0..<b.count],e.id[..],e.pub[..],out[..]);
+  e:=n98_parse(N98_T_AUTH[0],work[..]);l:=n98_layout();
+  r:=n98_rules(work[l.tags..<l.content],e.nf[..],e.nl[..],e.ntags,e.kind,e.created,N98_T_NOW,N98_T_URL,"POST",body[0..<b.count],e.id[..],e.pub[..],out[..]);
   #assert r.error==N98_OK && r.kind==27235 && r.created_at==N98_T_NOW && r.u==N98_T_URL.count && r.method==4 && r.payload==64;
   #assert cast(string)out[0..<64]==N98_T_ID && cast(string)out[64..<128]==N98_T_PUB && cast(string)out[N98_OUT_U..<N98_OUT_U+r.u]==N98_T_URL;
+  #assert cast(string)out[N98_OUT_METHOD..<N98_OUT_METHOD+4]=="POST";
   small:[N98_OUT-1]u8;#assert nip98_check_coax(N98_T_AUTH[0],"POST",N98_T_URL,body[0..<b.count],N98_T_NOW,work[..],small[..]).error==N98_INPUT;
   #assert nip98_check_coax(N98_T_AUTH[0],"POST",N98_T_URL,body[0..<b.count],N98_T_NOW,work[0..<N98_WORK-1],out[..]).error==N98_INPUT;
 }
 #test "C strings end at NUL; method folding is ASCII" {
   z:[3]u8;z[0]='a';z[1]=0;z[2]='b';#assert n98_cstr(cast(string)z[..])=="a" && n98_cstr("ab")=="ab";
+  y:[2]u8;y[0]=0;y[1]='b';#assert n98_cstr(cast(string)y[..])=="" && n98_clen(y[..],2)==0;
   #assert n98_lower('A')=='a' && n98_lower('Z')=='z' && n98_lower('[')=='[' && n98_lower('@')=='@' && n98_lower('a')=='a';
   #assert n98_clen(z[..],3)==1 && n98_clen(z[..],1)==1;
 }
+#test "keeping a tag value stops at its length or the field's limit" {
+  out:[8]u8;v:=[6]u8.['a','b','c','d','e',0];
+  #assert n98_keep(out[..],1,v[..],3,4)==3 && out[0]==0 && out[1]=='a' && out[3]=='c' && out[4]==0;
+  #assert n98_keep(out[..],0,v[..],5,4)==4 && out[3]=='d' && out[4]==0;
+  #assert n98_keep(out[..],0,v[..],0,4)==0;
+}
 #test "decimal and hex writers match %lld and %02x" {
   o:[24]u8;
-  #assert cast(string)o[0..<n98_dec(o[..],0,0)]=="0" && cast(string)o[0..<n98_dec(o[..],0,-12)]=="-12";
+  #assert cast(string)o[0..<n98_dec(o[..],0,0)]=="0" && cast(string)o[0..<n98_dec(o[..],0,-12)]=="-12" && cast(string)o[0..<n98_dec(o[..],0,7)]=="7";
+  q:[12]u8;q[0]='x';q[1]='y';#assert cast(string)q[0..<n98_dec(q[..],2,1790000000)]=="xy1790000000";
   #assert cast(string)o[0..<n98_dec(o[..],0,9223372036854775807)]=="9223372036854775807";
   #assert cast(string)o[0..<n98_dec(o[..],0,-9223372036854775807-1)]=="-9223372036854775808";
-  b:=[2]u8.[0x0f,0xa0];h:[4]u8;n98_hex_out(b[..],h[..]);#assert cast(string)h[..]=="0fa0";
+  b:=[3]u8.[0x0f,0xa0,0x5c];h:[6]u8;n98_hex_out(b[..],h[..]);#assert cast(string)h[..]=="0fa05c";
+}
+#test "hex decodes to bytes" {
+  b:[4]u8;n98_unhex("0fa0c39e",b[..]);#assert b[0]==0x0f && b[1]==0xa0 && b[2]==0xc3 && b[3]==0x9e;
+  n98_unhex("01",b[0..<1]);#assert b[0]==1 && b[1]==0xa0;
+}
+#test "hex fields are exactly lowercase hex of their length" {
+  s:="0123456789abcdef";
+  #assert n98thex(s,16,16) && !n98thex(s,16,15) && !n98thex(s,15,16);
+  #assert !n98thex("g1",2,2) && !n98thex("1g",2,2) && !n98thex("1:",2,2) && !n98thex("1/",2,2);
+  #assert !n98thex("1`",2,2) && !n98thex("1A",2,2) && n98thex("9f",2,2) && n98thex("a0",2,2);
+  z:[3]u8;z[0]='a';z[1]=0;z[2]='b';#assert !n98_is_hex(z[..],3,3) && n98_is_hex(z[..],3,1);
+}
+#test "whitespace and literals as C's reader takes them" {
+  t:=n98tj(" \t\n\rx");#assert n98_ws(t.j[0..<t.n],N98Cursor.{p=0,end=t.n}).p==4;
+  u:=n98tj("\t\t}");#assert n98_ws(u.j[0..<u.n],N98Cursor.{p=0,end=u.n}).p==2;
+  v:=[2]u8.[11,' '];#assert n98_ws(v[..],N98Cursor.{p=0,end=2}).p==0;
+  l:=n98_lit(u.j[0..<u.n],N98Cursor.{p=0,end=u.n},'}');#assert l.ok && l.c.p==3;
+  l=n98_lit(u.j[0..<u.n],N98Cursor.{p=0,end=u.n},']');#assert !l.ok && l.c.p==2;
+  l=n98_lit(u.j[0..<2],N98Cursor.{p=0,end=2},'}');#assert !l.ok && l.c.p==2;
+}
+#test "object keys" {
+  #assert n98tkey("id")==0 && n98tkey("tags")==6 && n98tkey("sig")==2 && n98tkey("kinds")==-1;
 }
 nip98_error_text :: (code:int)->string #export_c {
   words:=[28]string.["","no Nostr authorization","authorization is not base64","not an object","bad key","bad id","bad pubkey","bad sig",
@@ -119,14 +192,16 @@ n98_b64v :: (c:u8)->int {
   if c=='/' || c=='_' {return 63;}
   return -1;
 }
-// The decoded length, or 0 (C's refusal) for a bad character or more than cap bytes.
+// The decoded length, or 0 (C's refusal) for a bad character or more than
+// cap bytes. acc keeps only the bits not yet written, so each byte is the
+// checked cast of exactly eight bits.
 n98_b64 :: (text:string,out:[]u8,cap:int)->int {
   o:=0;acc:=0;bits:=0;
   for c:text {
     if c==0 || c=='=' {break;}
     v:=n98_b64v(c);if v<0 {return 0;}
-    acc=((acc<<6)|v)&0xffffff;bits+=6;
-    if bits>=8 {bits-=8;if o>=cap {return 0;}out[o]=cast,trunc(u8)(acc>>bits);o+=1;}
+    acc=(acc<<6)|v;bits+=6;
+    if bits>=8 {bits-=8;if o>=cap {return 0;}out[o]=cast(u8)(acc>>bits);acc&=(1<<bits)-1;o+=1;}
   }
   return o;
 }
@@ -142,24 +217,25 @@ n98_hexv :: (ch:u8)->int {
   if ch>='A' && ch<='F' {return cast(int)(ch-'A')+10;}
   return -1;
 }
+// Four hex digits, or -1.
 n98_hex4 :: (j:[]u8,at:int)->int {
-  v:=0;for i:0..<4 {h:=n98_hexv(j[at+i]);if h<0 {return 0x110000;}v=v*16+h;}
+  v:=0;for i:0..<4 {h:=n98_hexv(j[at+i]);if h<0 {return -1;}v=v*16+h;}
   return v;
 }
 // A decoded string: C's str(). Returns the next cursor and its decoded length
-// in out[0..<cap-1], or p=-1 for a refusal. Like C, out holds a NUL at o.
-N98Str :: struct {c:N98Cursor;n:int;}
-n98_put :: (out:[]u8,o:int,cap:int,cp:int)->int {
-  n:=ifx cp<0x80 then 1 else ifx cp<0x800 then 2 else ifx cp<0x10000 then 3 else 4;
-  if o+n>=cap {return -1;}
-  if n==1 {out[o]=cast,trunc(u8)(cp);}
-  else if n==2 {out[o]=cast,trunc(u8)(0xc0|(cp>>6));out[o+1]=cast,trunc(u8)(0x80|(cp&63));}
-  else if n==3 {out[o]=cast,trunc(u8)(0xe0|(cp>>12));out[o+1]=cast,trunc(u8)(0x80|((cp>>6)&63));out[o+2]=cast,trunc(u8)(0x80|(cp&63));}
-  else {out[o]=cast,trunc(u8)(0xf0|(cp>>18));out[o+1]=cast,trunc(u8)(0x80|((cp>>12)&63));out[o+2]=cast,trunc(u8)(0x80|((cp>>6)&63));out[o+3]=cast,trunc(u8)(0x80|(cp&63));}
-  return o+n;
+// in out[0..<cap-1], or ok=false for a refusal. Like C, out holds a NUL at n.
+N98Str :: struct {c:N98Cursor;n:int;ok:bool;}
+n98_utf8_len :: (cp:int)->int {return ifx cp<0x80 then 1 else ifx cp<0x800 then 2 else ifx cp<0x10000 then 3 else 4;}
+// cp's UTF-8 at out[o]; the caller made room (n98_utf8_len).
+n98_put :: (out:[]u8,o:int,cp:int) {
+  n:=n98_utf8_len(cp);
+  if n==1 {out[o]=cast(u8)(cp);}
+  else if n==2 {out[o]=cast(u8)(0xc0|(cp>>6));out[o+1]=cast(u8)(0x80|(cp&63));}
+  else if n==3 {out[o]=cast(u8)(0xe0|(cp>>12));out[o+1]=cast(u8)(0x80|((cp>>6)&63));out[o+2]=cast(u8)(0x80|(cp&63));}
+  else {out[o]=cast(u8)(0xf0|(cp>>18));out[o+1]=cast(u8)(0x80|((cp>>12)&63));out[o+2]=cast(u8)(0x80|((cp>>6)&63));out[o+3]=cast(u8)(0x80|(cp&63));}
 }
 n98_str :: (j:[]u8,at:N98Cursor,out:[]u8,cap:int)->N98Str {
-  bad:N98Str;bad.c.p=-1;
+  bad:N98Str;
   c:=n98_ws(j,at);
   if c.p>=c.end || j[c.p]!='"' {return bad;}
   c.p+=1;o:=0;
@@ -171,28 +247,32 @@ n98_str :: (j:[]u8,at:N98Cursor,out:[]u8,cap:int)->N98Str {
     e:=j[c.p];c.p+=1;
     simple:=ifx e=='"' then '"' else ifx e=='\\' then '\\' else ifx e=='/' then '/' else ifx e=='b' then cast(u8)8 else ifx e=='f' then cast(u8)12 else ifx e=='n' then '\n' else ifx e=='r' then '\r' else ifx e=='t' then '\t' else cast(u8)0;
     if simple!=0 {if o+1>=cap {return bad;}out[o]=simple;o+=1;continue;}
-    if e!='u' || c.end-c.p<4 {return bad;}
+    // \u: four digits, then at least the closing quote.
+    if e!='u' || c.end-c.p<5 {return bad;}
     cp:=n98_hex4(j,c.p);c.p+=4;
-    if cp>0xffff {return bad;}
+    if cp<0 {return bad;}
     if cp>=0xd800 && cp<0xdc00 {
-      if c.end-c.p<6 || j[c.p]!='\\' || j[c.p+1]!='u' {return bad;}
+      // A high surrogate: \u and a low one, then at least the closing quote.
+      if c.end-c.p<7 || j[c.p]!='\\' || j[c.p+1]!='u' {return bad;}
       lo:=n98_hex4(j,c.p+2);c.p+=6;
       if lo<0xdc00 || lo>0xdfff {return bad;}
       cp=0x10000+((cp-0xd800)<<10)+(lo-0xdc00);
     } else if cp>=0xdc00 && cp<0xe000 {return bad;}
-    o=n98_put(out,o,cap,cp);if o<0 {return bad;}
+    n:=n98_utf8_len(cp);if o+n>=cap {return bad;}
+    n98_put(out,o,cp);o+=n;
   }
   if c.p>=c.end {return bad;}
   c.p+=1;out[o]=0;
-  return N98Str.{c=c,n=o};
+  return N98Str.{c=c,n=o,ok=true};
 }
 // C's strlen of a decoded value: it ends at the first NUL.
 n98_clen :: (b:[]u8,n:int)->int {for i:0..<n {if b[i]==0 {return i;}}return n;}
-n98_lit :: (j:[]u8,at:N98Cursor,ch:u8)->N98Cursor {
-  c:=n98_ws(j,at);if c.p<c.end && j[c.p]==ch {c.p+=1;return c;}
-  c.p=-1-c.p;return c; // refused: p encodes where it stood (-1-p), for n98_back
+// ch after whitespace: the cursor past it (ok) or at it (refused).
+N98Lit :: struct {c:N98Cursor;ok:bool;}
+n98_lit :: (j:[]u8,at:N98Cursor,ch:u8)->N98Lit {
+  c:=n98_ws(j,at);if c.p<c.end && j[c.p]==ch {c.p+=1;return N98Lit.{c=c,ok=true};}
+  return N98Lit.{c=c,ok=false};
 }
-n98_back :: (c:N98Cursor)->N98Cursor {r:=c;if r.p<0 {r.p=-1-r.p;}return r;}
 // C's strtoll after ws(): more spaces (also \v and \f), a sign, digits, saturating.
 N98Int :: struct {c:N98Cursor;v:int;ok:bool;}
 n98_int :: (j:[]u8,at:N98Cursor)->N98Int {
@@ -200,13 +280,13 @@ n98_int :: (j:[]u8,at:N98Cursor)->N98Int {
   while c.p<c.end && (j[c.p]==' ' || (j[c.p]>=9 && j[c.p]<=13)) {c.p+=1;}
   negative:=false;
   if c.p<c.end && (j[c.p]=='+' || j[c.p]=='-') {negative=j[c.p]=='-';c.p+=1;}
-  digits:=0;v:=0;saturated:=false;
+  first:=c.p;v:=0;saturated:=false;
   while c.p<c.end && j[c.p]>='0' && j[c.p]<='9' {
     d:=cast(int)(j[c.p]-'0');
     if v>(N98_LLONG_MAX-d)/10 {saturated=true;} else {v=v*10+d;}
-    c.p+=1;digits+=1;
+    c.p+=1;
   }
-  if digits==0 {return r;}
+  if c.p==first {return r;}
   if c.p<c.end && (j[c.p]=='.' || j[c.p]=='e' || j[c.p]=='E') {return r;}
   r.v=ifx saturated then (ifx negative then -N98_LLONG_MAX-1 else N98_LLONG_MAX) else (ifx negative then -v else v);
   r.c=c;r.ok=true;return r;
@@ -216,57 +296,58 @@ n98_is_hex :: (s:[]u8,n:int,want:int)->bool {
   for i:0..<want {if !((s[i]>='0' && s[i]<='9') || (s[i]>='a' && s[i]<='f')) {return false;}}
   return true;
 }
+// Hex (already checked) to out.count bytes.
+n98_unhex :: (hex:string,out:[]u8) {
+  for i:0..<out.count {out[i]=cast(u8)(n98_hexv(hex[2*i])*16+n98_hexv(hex[2*i+1]));}
+}
 n98_key :: (k:[]u8,n:int)->int {
   s:=cast(string)k[0..<n98_clen(k,n)];
   names:=[7]string.["id","pubkey","sig","created_at","kind","content","tags"];
   for i:0..<7 {if s==names[i] {return i;}}
   return -1;
 }
-// NIP-01's escaping of a C string into ser at o, as C's esc() with its cap.
-n98_esc :: (s:[]u8,ser:[]u8,o:int,cap:int)->int {
-  if o+1>=cap {return -1;}
+// NIP-01's escaping of a C string into ser at o, as C's esc() with its cap:
+// the end (ok) or a refusal.
+N98Esc :: struct {o:int;ok:bool;}
+n98_esc :: (s:[]u8,ser:[]u8,o:int,cap:int)->N98Esc {
+  bad:N98Esc;
+  if o+1>=cap {return bad;}
   w:=o;ser[w]='"';w+=1;
   for ch:s {
     if ch==0 {break;}
     rep:=ifx ch=='"' then '"' else ifx ch=='\\' then '\\' else ifx ch=='\n' then 'n' else ifx ch=='\r' then 'r' else ifx ch=='\t' then 't' else ifx ch==8 then 'b' else ifx ch==12 then 'f' else cast(u8)0;
     n:=ifx rep!=0 then 2 else 1;
-    if w+n+1>=cap {return -1;}
+    if w+n+1>=cap {return bad;}
     if rep!=0 {ser[w]='\\';ser[w+1]=rep;} else {ser[w]=ch;}
     w+=n;
   }
-  ser[w]='"';return w+1;
-}
-// The string reader, the UTF-8 writer, the number reader and the escaper, case by case.
-n98tb :: (hex:string,i:int)->u8 {return cast,trunc(u8)(n98_hexv(hex[2*i])*16+n98_hexv(hex[2*i+1]));}
-n98ts :: (lit:string,cap:int,want:string)->bool {
-  j:[96]u8;for i:0..<lit.count {j[i]=lit[i];}
-  o:[64]u8;r:=n98_str(j[0..<lit.count],N98Cursor.{p=0,end=lit.count},o[..],cap);
-  if r.c.p!=lit.count || r.n!=want.count/2 || o[r.n]!=0 {return false;}
-  for i:0..<r.n {if o[i]!=n98tb(want,i) {return false;}}
-  return true;
-}
-n98ts_refused :: (lit:string,cap:int)->bool {
-  j:[96]u8;for i:0..<lit.count {j[i]=lit[i];}
-  o:[64]u8;return n98_str(j[0..<lit.count],N98Cursor.{p=0,end=lit.count},o[..],cap).c.p<0;
+  ser[w]='"';return N98Esc.{o=w+1,ok=true};
 }
 #test "strings decode as C's str() does" {
   #assert n98ts("\"abc\"",64,"616263") && n98ts("  \"a\"",64,"61") && n98ts("\"\"",64,"");
   #assert n98ts("\"a\\\"b\\\\c\\/d\"",64,"6122625c632f64");
   #assert n98ts("\"\\b\\f\\n\\r\\t\"",64,"080c0a0d09");
-  #assert n98ts("\"\\u0041\\u007f\"",64,"417f") && n98ts("\"\\u0000\"",64,"00");
+  #assert n98ts("\"\\u0041\\u007f\"",64,"417f") && n98ts("\"\\u0000\"",64,"00") && n98ts("\"\\u1234\"",64,"e188b4");
   #assert n98ts("\"\\u0080\\u07ff\"",64,"c280dfbf");
   #assert n98ts("\"\\u0800\\uFFFF\"",64,"e0a080efbfbf");
   #assert n98ts("\"\\u20AC\\u20ac\"",64,"e282ace282ac");
   #assert n98ts("\"\\uD83D\\uDE00\"",64,"f09f9880") && n98ts("\"\\udbff\\udfff\"",64,"f48fbfbf");
-  #assert n98ts("\"\\ud800\\udc00\"",64,"f0908080");
+  #assert n98ts("\"\\ud800\\udc00\"",64,"f0908080") && n98ts("\"\\ud83d\\ude00x\"",64,"f09f988078");
   #assert n98ts("\"\\ud7ff\\ue000\"",64,"ed9fbfee8080");
+}
+#test "the string checker sees every difference" {
+  #assert !n98ts("\"abc\"",64,"626263") && !n98ts("\"abc\"",64,"616264") && !n98ts("\"abc\"",64,"6162") && !n98ts("\"abc\" ",64,"616263");
+  #assert !n98ts("\"abc",64,"") && !n98ts("\"\"",64,"61");
+  #assert !n98te("61",32,"\"b\"") && !n98te("61",32,"\"a") && !n98te("61",3,"\"a\"");
 }
 #test "strings C refuses are refused" {
   #assert n98ts_refused("abc",64) && n98ts_refused("\"abc",64) && n98ts_refused("\"a\\",64) && n98ts_refused("",64);
   #assert n98ts_refused("\"\\x\"",64) && n98ts_refused("\"\\u12\"",64) && n98ts_refused("\"\\u12g4\"",64) && n98ts_refused("\"\\u/000\"",64);
   #assert n98ts_refused("\"\\u:000\"",64) && n98ts_refused("\"\\u@000\"",64) && n98ts_refused("\"\\uG000\"",64) && n98ts_refused("\"\\u`000\"",64);
-  #assert n98ts_refused("\"\\ud83d\"",64) && n98ts_refused("\"\\ud83d\\u0041\"",64) && n98ts_refused("\"\\ud83dx\\ude00\"",64);
+  #assert n98ts_refused("\"\\u123",64) && n98ts_refused("\"\\u1234",64) && n98ts_refused("\"\\u0g00\"",64);
+  #assert n98ts_refused("\"\\ud83d\"",64) && n98ts_refused("\"\\ud83d\\u0041\"",64) && n98ts_refused("\"\\ud83dx\\ude00\"",64) && n98ts_refused("\"\\ud83d\\\\ude00\"",64);
   #assert n98ts_refused("\"\\ud83d\\ue000\"",64) && n98ts_refused("\"\\ud83d\\udbff\"",64) && n98ts_refused("\"\\ude00\"",64) && n98ts_refused("\"\\udfff\"",64);
+  #assert n98ts_refused("\"\\udc00\\udc00\"",64) && n98ts_refused("\"\\ud83d\\ude00",64) && n98ts_refused("\"\\ud83d\\ude0",64);
   #assert n98ts_refused("\"\\ud83d\\x\"",64) && n98ts_refused("\"\\ud83d\\ude0\"",64);
   c:[3]u8;c[0]='"';c[1]=0x1f;c[2]='"';#assert n98ts_refused(cast(string)c[..],64);
   c[1]=0x20;#assert n98ts(cast(string)c[..],64,"20");
@@ -274,61 +355,59 @@ n98ts_refused :: (lit:string,cap:int)->bool {
 #test "a decoded string fits its buffer with C's NUL" {
   #assert n98ts("\"abc\"",4,"616263") && n98ts_refused("\"abc\"",3);
   #assert n98ts("\"\\n\"",2,"0a") && n98ts_refused("\"\\n\"",1);
+  #assert n98ts("\"\\u0041\"",2,"41") && n98ts_refused("\"\\u0041\"",1);
   #assert n98ts("\"\\u00e9\"",3,"c3a9") && n98ts_refused("\"\\u00e9\"",2);
   #assert n98ts("\"\\u20ac\"",4,"e282ac") && n98ts_refused("\"\\u20ac\"",3);
   #assert n98ts("\"\\ud83d\\ude00\"",5,"f09f9880") && n98ts_refused("\"\\ud83d\\ude00\"",4);
 }
 #test "the UTF-8 writer's lengths and bytes" {
   o:[8]u8;
-  #assert n98_put(o[..],0,8,0x7f)==1 && o[0]==0x7f;
-  #assert n98_put(o[..],1,8,0x80)==3 && o[1]==0xc2 && o[2]==0x80;
-  #assert n98_put(o[..],0,8,0x7ff)==2 && o[0]==0xdf && o[1]==0xbf;
-  #assert n98_put(o[..],0,8,0x800)==3 && o[0]==0xe0 && o[1]==0xa0 && o[2]==0x80;
-  #assert n98_put(o[..],0,8,0xffff)==3 && o[0]==0xef && o[1]==0xbf && o[2]==0xbf;
-  #assert n98_put(o[..],0,8,0x10000)==4 && o[0]==0xf0 && o[1]==0x90 && o[2]==0x80 && o[3]==0x80;
-  #assert n98_put(o[..],0,8,0x10ffff)==4 && o[0]==0xf4 && o[1]==0x8f && o[2]==0xbf && o[3]==0xbf;
-  #assert n98_put(o[..],3,4,0x41)==-1 && n98_put(o[..],2,4,0x41)==3 && n98_put(o[..],2,4,0x80)==-1 && n98_put(o[..],1,4,0x80)==3;
+  #assert n98_utf8_len(0x7f)==1 && n98_utf8_len(0x80)==2 && n98_utf8_len(0x7ff)==2 && n98_utf8_len(0x800)==3;
+  #assert n98_utf8_len(0xffff)==3 && n98_utf8_len(0x10000)==4 && n98_utf8_len(0x10ffff)==4;
+  n98_put(o[..],0,0x7f);#assert o[0]==0x7f;
+  n98_put(o[..],1,0x80);#assert o[1]==0xc2 && o[2]==0x80;
+  n98_put(o[..],0,0x7ff);#assert o[0]==0xdf && o[1]==0xbf;
+  n98_put(o[..],0,0x800);#assert o[0]==0xe0 && o[1]==0xa0 && o[2]==0x80;
+  n98_put(o[..],0,0xffff);#assert o[0]==0xef && o[1]==0xbf && o[2]==0xbf;
+  n98_put(o[..],0,0x10000);#assert o[0]==0xf0 && o[1]==0x90 && o[2]==0x80 && o[3]==0x80;
+  n98_put(o[..],0,0x10ffff);#assert o[0]==0xf4 && o[1]==0x8f && o[2]==0xbf && o[3]==0xbf;
+  n98_put(o[..],4,0x1f600);#assert o[4]==0xf0 && o[5]==0x9f && o[6]==0x98 && o[7]==0x80;
 }
 #test "hex digits as C reads them" {
   #assert n98_hexv('0')==0 && n98_hexv('9')==9 && n98_hexv('a')==10 && n98_hexv('f')==15 && n98_hexv('A')==10 && n98_hexv('F')==15;
   #assert n98_hexv('/')==-1 && n98_hexv(':')==-1 && n98_hexv('`')==-1 && n98_hexv('g')==-1 && n98_hexv('@')==-1 && n98_hexv('G')==-1;
   j:=[4]u8.['B','e','E','f'];#assert n98_hex4(j[..],0)==0xbeef;
+  k:=[5]u8.['1','2','3','x','4'];#assert n98_hex4(k[..],0)==-1 && n98_hex4(k[..],1)==-1;
 }
-n98ti :: (lit:string)->N98Int {j:[40]u8;for i:0..<lit.count {j[i]=lit[i];}return n98_int(j[0..<lit.count],N98Cursor.{p=0,end=lit.count});}
 #test "numbers read as C's strtoll does" {
-  #assert n98ti("12,").ok && n98ti("12,").v==12 && n98ti("12,").c.p==2 && n98ti(" \t\n\r12").v==12;
-  #assert n98ti("-5").v==-5 && n98ti("+7").v==7 && n98ti("0").ok && n98ti("007").v==7;
+  #assert n98ti("12,").ok && n98ti("12,").v==12 && n98ti("12,").c.p==2 && n98ti(" \t\n\r12").v==12 && n98ti("12:").v==12;
+  #assert n98ti("-5").v==-5 && n98ti("+7").v==7 && n98ti("0").ok && n98ti("007").v==7 && n98ti("-0").ok;
   v:[3]u8;v[0]=11;v[1]=12;v[2]='9';#assert n98ti(cast(string)v[..]).v==9;
+  #assert n98tib(11,"9").v==9 && n98tib(11," 9").v==9 && n98tib(11,"\t9").v==9 && n98tib(11,"\r9").v==9 && n98tib(12,"\n9").v==9;
   v[0]=14;#assert !n98ti(cast(string)v[..]).ok;
   v[0]=8;#assert !n98ti(cast(string)v[..]).ok;
-  #assert !n98ti("").ok && !n98ti("-").ok && !n98ti("x1").ok && !n98ti("1.5").ok && !n98ti("1e3").ok && !n98ti("1E3").ok;
+  #assert !n98ti("").ok && !n98ti("-").ok && !n98ti("x1").ok && !n98ti("1.5").ok && !n98ti("1e3").ok && !n98ti("1E3").ok && !n98ti("- 1").ok;
   #assert n98ti("9223372036854775807").v==9223372036854775807 && n98ti("9223372036854775808").v==9223372036854775807;
   #assert n98ti("99999999999999999999").v==9223372036854775807 && n98ti("-99999999999999999999").v==-9223372036854775807-1;
   #assert n98ti("-9223372036854775807").v==-9223372036854775807 && n98ti("922337203685477580").v==922337203685477580;
   #assert n98ti("9223372036854775806").v==9223372036854775806;
 }
-n98te :: (hex:string,cap:int,want:string)->bool {
-  raw:[16]u8;for i:0..<hex.count/2 {raw[i]=n98tb(hex,i);}
-  ser:[32]u8;w:=n98_esc(raw[0..<hex.count/2],ser[..],1,cap);
-  if want=="REFUSED" {return w==-1;}
-  if w!=1+want.count {return false;}
-  for i:0..<want.count {if ser[1+i]!=want[i] {return false;}}
-  return true;
-}
 #test "the escaper writes C's canonical JSON" {
   #assert n98te("612262",32,"\"a\\\"b\"") && n98te("5c2f",32,"\"\\\\/\"");
   #assert n98te("0a0d09080c",32,"\"\\n\\r\\t\\b\\f\"");
   #assert n98te("610062",32,"\"a\"");
-  ser:[8]u8;raw:=[4]u8.[0xc3,0xa9,0x01,0x7f];#assert n98_esc(raw[..],ser[..],0,8)==6 && ser[0]=='"' && ser[1]==0xc3 && ser[2]==0xa9 && ser[3]==1 && ser[4]==0x7f && ser[5]=='"';
+  ser:[8]u8;raw:=[4]u8.[0xc3,0xa9,0x01,0x7f];e:=n98_esc(raw[..],ser[..],0,8);
+  #assert e.ok && e.o==6 && ser[0]=='"' && ser[1]==0xc3 && ser[2]==0xa9 && ser[3]==1 && ser[4]==0x7f && ser[5]=='"';
   #assert n98te("61",5,"\"a\"") && n98te("61",4,"REFUSED") && n98te("0a",6,"\"\\n\"") && n98te("0a",5,"REFUSED");
   #assert n98te("",3,"\"\"") && n98te("",2,"REFUSED");
 }
+// Decimal of v (any int64), as %lld: digits of -|v| so the minimum fits.
 n98_dec :: (out:[]u8,at:int,v:int)->int {
-  // Decimal of v (any int64), as %lld.
   digits:[20]u8;n:=0;w:=at;
-  if v<0 {out[w]='-';w+=1;}
-  m:=v;
-  while true {d:=m%10;if d<0 {d=-d;}digits[n]=cast,trunc(u8)('0'+d);n+=1;m=m/10;if m==0 {break;}}
+  negative:=v<0;
+  if negative {out[w]='-';w+=1;}
+  m:=ifx negative then v else -v;
+  while true {digits[n]=cast(u8)('0'-m%10);n+=1;m=m/10;if m==0 {break;}}
   for i:0..<n {out[w]=digits[n-1-i];w+=1;}
   return w;
 }
@@ -346,116 +425,137 @@ nip98_check_coax :: (authorization:string,method:string,url:string,body:[]u8,now
   return n98_event(authorization,method,url,body,now,work,out);
 }
 n98_no :: (code:int)->Nip98 {r:Nip98;r.error=code;return r;}
+n98_pno :: (code:int)->N98Parsed {r:N98Parsed;r.error=code;return r;}
+// Tag field slot (tag*N98_FIELDS+field) in the tags part of work.
+n98_slot :: (tags:[]u8,slot:int)->[]u8 {return tags[slot*N98_FIELD_CAP..<(slot+1)*N98_FIELD_CAP];}
 n98_parse :: (authorization:string,work:[]u8)->N98Parsed {
   if authorization.count<6 || authorization[0..<6]!="Nostr " {return n98_pno(N98_NO_AUTH);}
-  json:=work[0..<N98_JSON_CAP];
-  n:=n98_b64(authorization[6..<authorization.count],json,N98_JSON_CAP-1);
+  l:=n98_layout();
+  json:=work[0..<l.tags];
+  n:=n98_b64(authorization[6..<authorization.count],json,json.count-1);
   if n==0 {return n98_pno(N98_BASE64);}
   j:=json[0..<n];
-  tags:=work[N98_AT_TAGS..<N98_AT_CONTENT];content:=work[N98_AT_CONTENT..<N98_AT_SER];
-  tmp:=work[N98_AT_TMP..<N98_WORK];
-  key:[N98_KEY_CAP]u8;sig:[128]u8;
-  id:[64]u8;pub:[64]u8;
-  nf:[N98_TAGS]int;nl:[N98_TAGS*N98_FIELDS]int;ntags:=0;content_n:=0;
-  have:=0;created:=0;kind:=0;
+  tags:=work[l.tags..<l.content];content:=work[l.content..<l.ser];tmp:=work[l.tmp..<l.end];
+  key:[N98_KEY_CAP]u8;
+  r:N98Parsed;have:=0;
   c:=N98Cursor.{p=0,end=n};
-  c=n98_lit(j,c,'{');if c.p<0 {return n98_pno(N98_NOT_OBJECT);}
-  close:=n98_lit(j,c,'}');
-  if close.p>=0 {c=close;} else {
-    c=n98_back(close);
+  t:=n98_lit(j,c,'{');if !t.ok {return n98_pno(N98_NOT_OBJECT);}
+  t=n98_lit(j,t.c,'}');c=t.c;
+  if !t.ok {
     while true {
-      k:=n98_str(j,c,key[..],N98_KEY_CAP);if k.c.p<0 {return n98_pno(N98_BAD_KEY);}
-      c=n98_lit(j,k.c,':');if c.p<0 {return n98_pno(N98_BAD_KEY);}
+      k:=n98_str(j,c,key[..],key.count);if !k.ok {return n98_pno(N98_BAD_KEY);}
+      t=n98_lit(j,k.c,':');if !t.ok {return n98_pno(N98_BAD_KEY);}
+      c=t.c;
       field:=n98_key(key[..],k.n);
       if field==0 || field==1 || field==2 {
-        v:=n98_str(j,c,tmp,N98_FIELD_CAP);want:=ifx field==2 then 128 else 64;
-        if v.c.p<0 || !n98_is_hex(tmp,v.n,want) {return n98_pno(N98_BAD_ID+field);}
-        for i:0..<want {if field==0 {id[i]=tmp[i];} else if field==1 {pub[i]=tmp[i];} else {sig[i]=tmp[i];}}
+        v:=n98_str(j,c,tmp,tmp.count);want:=ifx field==2 then 128 else 64;
+        if !v.ok || !n98_is_hex(tmp,v.n,want) {return n98_pno(N98_BAD_ID+field);}
+        hex:=cast(string)tmp[0..<want];
+        if field==0 {for i:0..<64 {r.id[i]=tmp[i];}}
+        else if field==1 {for i:0..<64 {r.pub[i]=tmp[i];}n98_unhex(hex,r.pk[..]);}
+        else {n98_unhex(hex,r.sg[..]);}
         c=v.c;have|=1<<field;
       } else if field==3 || field==4 {
         v:=n98_int(j,c);
         if !v.ok || (field==4 && (v.v<0 || v.v>65535)) {return n98_pno(ifx field==3 then N98_BAD_CREATED else N98_BAD_KIND);}
-        if field==3 {created=v.v;} else {kind=v.v;}
+        if field==3 {r.created=v.v;} else {r.kind=v.v;}
         c=v.c;have|=1<<field;
       } else if field==5 {
-        v:=n98_str(j,c,content,N98_CONTENT_CAP);if v.c.p<0 {return n98_pno(N98_BAD_CONTENT);}
-        content_n=v.n;c=v.c;have|=1<<field;
+        v:=n98_str(j,c,content,content.count);if !v.ok {return n98_pno(N98_BAD_CONTENT);}
+        r.content_n=v.n;c=v.c;have|=1<<field;
       } else if field==6 {
-        // A repeated "tags" restarts the list, as C's reset arrays did not: C kept counting. Match C: continue at ntags.
-        c=n98_lit(j,c,'[');if c.p<0 {return n98_pno(N98_BAD_TAGS);}
-        empty:=n98_lit(j,c,']');
-        if empty.p>=0 {c=empty;} else {
-          c=n98_back(empty);
+        // A repeated "tags" goes on counting from ntags, as C did.
+        t=n98_lit(j,c,'[');if !t.ok {return n98_pno(N98_BAD_TAGS);}
+        t=n98_lit(j,t.c,']');c=t.c;
+        if !t.ok {
           while true {
-            if ntags>=N98_TAGS {return n98_pno(N98_BAD_TAG);}
-            c=n98_lit(j,c,'[');if c.p<0 {return n98_pno(N98_BAD_TAG);}
-            shut:=n98_lit(j,c,']');
-            if shut.p>=0 {c=shut;} else {
-              c=n98_back(shut);
+            if r.ntags>=N98_TAGS {return n98_pno(N98_BAD_TAG);}
+            t=n98_lit(j,c,'[');if !t.ok {return n98_pno(N98_BAD_TAG);}
+            t=n98_lit(j,t.c,']');c=t.c;
+            if !t.ok {
               while true {
-                if nf[ntags]>=N98_FIELDS {return n98_pno(N98_BAD_TAG_FIELD);}
-                slot:=ntags*N98_FIELDS+nf[ntags];
-                v:=n98_str(j,c,tags[slot*N98_FIELD_CAP..<(slot+1)*N98_FIELD_CAP],N98_FIELD_CAP);
-                if v.c.p<0 {return n98_pno(N98_BAD_TAG_FIELD);}
-                nl[slot]=v.n;nf[ntags]+=1;c=v.c;
-                end:=n98_lit(j,c,']');if end.p>=0 {c=end;break;}
-                c=n98_lit(j,n98_back(end),',');if c.p<0 {return n98_pno(N98_BAD_TAG);}
+                if r.nf[r.ntags]>=N98_FIELDS {return n98_pno(N98_BAD_TAG_FIELD);}
+                slot:=r.ntags*N98_FIELDS+r.nf[r.ntags];
+                f:=n98_slot(tags,slot);
+                v:=n98_str(j,c,f,f.count);if !v.ok {return n98_pno(N98_BAD_TAG_FIELD);}
+                r.nl[slot]=v.n;r.nf[r.ntags]+=1;
+                t=n98_lit(j,v.c,']');if t.ok {c=t.c;break;}
+                t=n98_lit(j,t.c,',');if !t.ok {return n98_pno(N98_BAD_TAG);}
+                c=t.c;
               }
             }
-            ntags+=1;
-            end:=n98_lit(j,c,']');if end.p>=0 {c=end;break;}
-            c=n98_lit(j,n98_back(end),',');if c.p<0 {return n98_pno(N98_BAD_TAGS);}
+            r.ntags+=1;
+            t=n98_lit(j,c,']');if t.ok {c=t.c;break;}
+            t=n98_lit(j,t.c,',');if !t.ok {return n98_pno(N98_BAD_TAGS);}
+            c=t.c;
           }
         }
         have|=1<<field;
       } else {return n98_pno(N98_UNKNOWN);}
-      end:=n98_lit(j,c,'}');if end.p>=0 {c=end;break;}
-      c=n98_lit(j,n98_back(end),',');if c.p<0 {return n98_pno(N98_BAD_OBJECT);}
+      t=n98_lit(j,c,'}');if t.ok {c=t.c;break;}
+      t=n98_lit(j,t.c,',');if !t.ok {return n98_pno(N98_BAD_OBJECT);}
+      c=t.c;
     }
   }
   c=n98_ws(j,c);
   if c.p!=c.end {return n98_pno(N98_TRAILING);}
   if have!=127 {return n98_pno(N98_MISSING);}
-  return N98Parsed.{error=N98_OK,ntags=ntags,nf=nf,nl=nl,id=id,pub=pub,sig=sig,created=created,kind=kind,content_n=content_n};
+  return r;
 }
-n98_pno :: (code:int)->N98Parsed {r:N98Parsed;r.error=code;return r;}
-// The rest of C's check: the id over the event's serialization, the key, the
-// signature, then the NIP-98 rules.
-n98_event :: (authorization:string,method:string,url:string,body:[]u8,now:int,work:[]u8,out:[]u8)->Nip98 {
-  e:=n98_parse(authorization,work);
-  if e.error!=N98_OK {return n98_no(e.error);}
-  tags:=work[N98_AT_TAGS..<N98_AT_CONTENT];content:=work[N98_AT_CONTENT..<N98_AT_SER];ser:=work[N98_AT_SER..<N98_AT_TMP];
-  nf:=e.nf;nl:=e.nl;ntags:=e.ntags;pub:=e.pub;sig:=e.sig;id:=e.id;created:=e.created;kind:=e.kind;content_n:=e.content_n;
-
-  // The id: SHA-256 of [0,pubkey,created_at,kind,tags,content].
+// The id: SHA-256 of [0,pubkey,created_at,kind,tags,content], serialized as
+// C did, into hash. N98_OK when it is the event's id. The serialization is
+// always shorter than the decoded event (at most 12287 bytes): it drops the
+// id and sig fields and every key, its strings take no more bytes than the
+// event's own escapes, and its numbers no more digits. So C's room checks
+// (N98_TOO_LONG) never refuse: they stay as guards of ser, one cap for every
+// string (C's tags cap was 4 bytes tighter), and their lines are marked
+// equivalent: no input reaches them.
+n98_id :: (e:N98Parsed,work:[]u8,hash:[]u8)->int {
+  l:=n98_layout();
+  tags:=work[l.tags..<l.content];content:=work[l.content..<l.ser];ser:=work[l.ser..<l.tmp];
+  cap:=ser.count-4; // mutant: equivalent (the guard's room; unreachable, see above)
   o:=0;head:="[0,\"";for b:head {ser[o]=b;o+=1;}
-  for i:0..<64 {ser[o]=pub[i];o+=1;}
-  ser[o]='"';ser[o+1]=',';o+=2;o=n98_dec(ser,o,created);ser[o]=',';o+=1;o=n98_dec(ser,o,kind);
+  for i:0..<64 {ser[o]=e.pub[i];o+=1;}
+  ser[o]='"';ser[o+1]=',';o+=2;o=n98_dec(ser,o,e.created);ser[o]=',';o+=1;o=n98_dec(ser,o,e.kind);
   ser[o]=',';ser[o+1]='[';o+=2;
-  for t:0..<ntags {
+  for t:0..<e.ntags {
     if t>0 {ser[o]=',';o+=1;}
     ser[o]='[';o+=1;
-    for f:0..<nf[t] {
+    for f:0..<e.nf[t] {
       if f>0 {ser[o]=',';o+=1;}
       slot:=t*N98_FIELDS+f;
-      o=n98_esc(tags[slot*N98_FIELD_CAP..<slot*N98_FIELD_CAP+nl[slot]],ser,o,N98_SER_CAP-8);if o<0 {return n98_no(N98_TOO_LONG);}
+      s:=n98_esc(n98_slot(tags,slot)[0..<e.nl[slot]],ser,o,cap);
+      if !s.ok {return N98_TOO_LONG;} // mutant: equivalent (unreachable, see above)
+      o=s.o;
     }
     ser[o]=']';o+=1;
   }
   ser[o]=']';ser[o+1]=',';o+=2;
-  o=n98_esc(content[0..<content_n],ser,o,N98_SER_CAP-4);if o<0 {return n98_no(N98_TOO_LONG);}
-  ser[o]=']';o+=1;
-  hash:[32]u8;if sha256_hash_checked(ser[0..<o],hash[..],false)!=SHA_OK {return n98_no(N98_TOO_LONG);}
-  hex:[64]u8;n98_hex_out(hash[..],hex[..]);
-  if cast(string)hex[..]!=cast(string)id[..] {return n98_no(N98_ID);}
-
-  pk:[32]u8;sg:[64]u8;
-  for i:0..<32 {pk[i]=cast,trunc(u8)(n98_hexv(pub[2*i])*16+n98_hexv(pub[2*i+1]));}
-  for i:0..<64 {sg[i]=cast,trunc(u8)(n98_hexv(sig[2*i])*16+n98_hexv(sig[2*i+1]));}
-  if !sg_lift_x_public(pk[..]).ok {return n98_no(N98_POINT);}
-  if !nostr_fast_verify_vartime(hash[..],pk[..],sg[..]) {return n98_no(N98_SIGNATURE);}
-
-  return n98_rules(tags,nf[..],nl[..],ntags,kind,created,now,url,method,body,id[..],pub[..],out);
+  s:=n98_esc(content[0..<e.content_n],ser,o,cap);
+  if !s.ok {return N98_TOO_LONG;} // mutant: equivalent (unreachable, see above)
+  o=s.o;ser[o]=']';o+=1;
+  // The hash cannot fail (no overlap, at most 16 KiB): a failure would read as a wrong id.
+  status:=sha256_hash_checked(ser[0..<o],hash,false);
+  hex:[64]u8;n98_hex_out(hash,hex[..]);
+  id:=e.id;
+  if status!=SHA_OK || cast(string)hex[..]!=cast(string)id[..] {return N98_ID;}
+  return N98_OK;
+}
+// The rest of C's check: the id, the key, the signature, then the NIP-98 rules.
+n98_event :: (authorization:string,method:string,url:string,body:[]u8,now:int,work:[]u8,out:[]u8)->Nip98 {
+  e:=n98_parse(authorization,work);
+  if e.error!=N98_OK {return n98_no(e.error);}
+  hash:[32]u8;idc:=n98_id(e,work,hash[..]);
+  if idc!=N98_OK {return n98_no(idc);}
+  if !sg_lift_x_public(e.pk[..]).ok {return n98_no(N98_POINT);}
+  if !nostr_fast_verify_vartime(hash[..],e.pk[..],e.sg[..]) {return n98_no(N98_SIGNATURE);}
+  l:=n98_layout();
+  return n98_rules(work[l.tags..<l.content],e.nf[..],e.nl[..],e.ntags,e.kind,e.created,now,url,method,body,e.id[..],e.pub[..],out);
+}
+// value[0..<n] at out[at], at most most bytes (C's fixed fields); the bytes kept.
+n98_keep :: (out:[]u8,at:int,value:[]u8,n:int,most:int)->int {
+  k:=0;while k<n && k<most {out[at+k]=value[k];k+=1;}
+  return k;
 }
 // After the signature: the NIP-98 tags (the last of each, cut as C's fixed
 // fields cut them) and rules. Split out so checks reach it cheaply.
@@ -464,14 +564,11 @@ n98_rules :: (tags:[]u8,nf:[]int,nl:[]int,ntags:int,kind:int,created:int,now:int
   for t:0..<ntags {
     if nf[t]<2 {continue;}
     slot:=t*N98_FIELDS;
-    name:=cast(string)tags[slot*N98_FIELD_CAP..<slot*N98_FIELD_CAP+n98_clen(tags[slot*N98_FIELD_CAP..<(slot+1)*N98_FIELD_CAP],nl[slot])];
-    value:=tags[(slot+1)*N98_FIELD_CAP..<(slot+2)*N98_FIELD_CAP];vn:=n98_clen(value,nl[slot+1]);
-    which:=ifx name=="u" then 1 else ifx name=="method" then 2 else ifx name=="payload" then 3 else 0;
-    if which==0 {continue;}
-    at:=ifx which==1 then N98_OUT_U else ifx which==2 then N98_OUT_METHOD else N98_OUT_PAYLOAD;
-    keep:=ifx which==1 then vn else ifx which==2 then (ifx vn<15 then vn else 15) else (ifx vn<64 then vn else 64);
-    for i:0..<keep {out[at+i]=value[i];}
-    if which==1 {un=keep;} else if which==2 {mn=keep;} else {pn=keep;}
+    nm:=n98_slot(tags,slot);name:=cast(string)nm[0..<n98_clen(nm,nl[slot])];
+    value:=n98_slot(tags,slot+1);vn:=n98_clen(value,nl[slot+1]);
+    if name=="u" {for i:0..<vn {out[N98_OUT_U+i]=value[i];}un=vn;}
+    else if name=="method" {mn=n98_keep(out,N98_OUT_METHOD,value,vn,15);}
+    else if name=="payload" {pn=n98_keep(out,N98_OUT_PAYLOAD,value,vn,64);}
   }
   if kind!=27235 {return n98_no(N98_KIND);}
   if created<now-60 || created>now+60 {return n98_no(N98_TIME);}
@@ -480,9 +577,9 @@ n98_rules :: (tags:[]u8,nf:[]int,nl:[]int,ntags:int,kind:int,created:int,now:int
   if request.count!=mn {return n98_no(N98_METHOD);}
   for i:0..<mn {if n98_lower(out[N98_OUT_METHOD+i])!=n98_lower(request[i]) {return n98_no(N98_METHOD);}}
   if pn>0 {
-    h:[32]u8;if sha256_hash_checked(body,h[..],false)!=SHA_OK {return n98_no(N98_PAYLOAD);}
+    h:[32]u8;status:=sha256_hash_checked(body,h[..],false);
     bh:[64]u8;n98_hex_out(h[..],bh[..]);
-    if cast(string)bh[..]!=cast(string)out[N98_OUT_PAYLOAD..<N98_OUT_PAYLOAD+pn] {return n98_no(N98_PAYLOAD);}
+    if status!=SHA_OK || cast(string)bh[..]!=cast(string)out[N98_OUT_PAYLOAD..<N98_OUT_PAYLOAD+pn] {return n98_no(N98_PAYLOAD);}
   }
   for i:0..<64 {out[i]=id[i];out[64+i]=pub[i];}
   return Nip98.{error=N98_OK,created_at=created,kind=kind,u=un,method=mn,payload=pn};

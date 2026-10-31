@@ -17,7 +17,7 @@ for suffix in c h; do
 done
 if [[ $1 == --generate ]]; then
   { printf '# Qualified compiler SHA-256: '; shasum -a 256 "$coax" | cut -d' ' -f1
-    shasum -a 256 coax/web/api/nip98.coax coax/web/api/nip98_vectors.coax coax/web/api/nip98.generated.c coax/web/api/nip98.generated.h
+    shasum -a 256 coax/web/api/nip98.coax coax/web/api/nip98_vectors.coax coax/web/api/nip98_testkit.coax coax/web/api/nip98.generated.c coax/web/api/nip98.generated.h
   } > "$here/nip98.sha256"
 fi
 echo 'nip98: Coax/C cache matches'

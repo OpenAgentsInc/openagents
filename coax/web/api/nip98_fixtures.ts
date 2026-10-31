@@ -21,11 +21,19 @@ const sign = (e: Ev, secret = SECRET): Ev => {
   out.sig = bytesToHex(schnorr.sign(out.id, secret, new Uint8Array(32)))
   return out
 }
+// Signed over C's reading of the tags: a field ends at its first NUL.
+const signC = (e: Ev): Ev => {
+  const out: Ev = { ...e }
+  out.id = getEventHash({ ...e, tags: e.tags.map((t) => t.map((f) => f.split("\0")[0])) } as any)
+  out.sig = bytesToHex(schnorr.sign(out.id, SECRET, new Uint8Array(32)))
+  return out
+}
 const ev = (change: Partial<Ev> = {}): Ev => ({ pubkey: PUB, created_at: NOW, kind: 27235,
   tags: [["u", URL_], ["method", "POST"], ["payload", BODY_HASH]], content: "", ...change })
 const text = (e: Ev) => JSON.stringify({ id: e.id, pubkey: e.pubkey, created_at: e.created_at, kind: e.kind, tags: e.tags, content: e.content, sig: e.sig })
 const b64 = (s: string, url = false) => { const b = Buffer.from(s, "utf8").toString("base64"); return url ? b.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "") : b }
 const auth = (json: string, url = false) => "Nostr " + b64(json, url)
+
 
 type Case = { name: string; auth: string; method?: string; url?: string; body?: string; now?: number; want: string }
 const good = sign(ev())
@@ -73,6 +81,51 @@ const cases: Case[] = [
   { name: "BAD_BASE64", auth: "Nostr ab*c", want: "N98_BASE64" },
   { name: "NOT_OBJECT", auth: auth("[]"), want: "N98_NOT_OBJECT" },
   { name: "EMPTY_OBJECT", auth: auth("{}"), want: "N98_MISSING" },
+  // Bounds and reader paths, one refusal each (most are cheap: no signature).
+  { name: "JSON_12287", auth: auth("{" + " ".repeat(12285) + "}"), want: "N98_MISSING" },
+  { name: "JSON_12288", auth: auth("{" + " ".repeat(12286) + "}"), want: "N98_BASE64" },
+  { name: "LONE_BRACE", auth: auth("{"), want: "N98_BAD_KEY" },
+  { name: "KEY_NOT_STRING", auth: auth("{1:2}"), want: "N98_BAD_KEY" },
+  { name: "KEY_NO_COLON", auth: auth('{"id" 1}'), want: "N98_BAD_KEY" },
+  { name: "KEY_31", auth: auth(`{"${"k".repeat(31)}":1}`), want: "N98_UNKNOWN" },
+  { name: "KEY_32", auth: auth(`{"${"k".repeat(32)}":1}`), want: "N98_BAD_KEY" },
+  { name: "BAD_PUBKEY", auth: auth(text({ ...good, pubkey: good.pubkey.toUpperCase() })), want: "N98_BAD_PUBKEY" },
+  { name: "BAD_SIG", auth: auth(text({ ...good, sig: good.sig!.slice(0, 127) })), want: "N98_BAD_SIG" },
+  { name: "ID_NUL_FULL", auth: auth(text(good).replace(`"id":"${good.id}"`, `"id":"${good.id}\\u0000${"x".repeat(959)}"`)), want: "N98_BAD_ID" },
+  { name: "ID_NUL_TAIL", auth: auth(text(good).replace(`"id":"${good.id}"`, `"id":"${good.id}\\u0000${"x".repeat(958)}"`)), want: "N98_OK" },
+  { name: "KIND_0", auth: auth(text(good).replace('"kind":27235', '"kind":0')), want: "N98_ID" },
+  { name: "KIND_65535", auth: auth(text(good).replace('"kind":27235', '"kind":65535')), want: "N98_ID" },
+  { name: "NEGATIVE_KIND", auth: auth(text(good).replace('"kind":27235', '"kind":-1')), want: "N98_BAD_KIND" },
+  { name: "TAGS_NOT_ARRAY", auth: auth('{"tags":1}'), want: "N98_BAD_TAGS" },
+  { name: "TAGS_EMPTY", auth: auth('{"tags":[]}'), want: "N98_MISSING" },
+  { name: "TAG_EMPTY", auth: auth('{"tags":[[]]}'), want: "N98_MISSING" },
+  { name: "TAGS_TWO", auth: auth('{"tags":[["a"],[],["b","c"]]}'), want: "N98_MISSING" },
+  { name: "TAG_NOT_ARRAY", auth: auth('{"tags":[1]}'), want: "N98_BAD_TAG" },
+  { name: "TAG_NO_COMMA", auth: auth('{"tags":[["a" "b"]]}'), want: "N98_BAD_TAG" },
+  { name: "TAG_FIELD_NOT_STRING", auth: auth('{"tags":[["a",1]]}'), want: "N98_BAD_TAG_FIELD" },
+  { name: "TAGS_NO_COMMA", auth: auth('{"tags":[["a"] ["b"]]}'), want: "N98_BAD_TAGS" },
+  { name: "OBJ_NO_COMMA", auth: auth('{"content":"" "kind":1}'), want: "N98_BAD_OBJECT" },
+  { name: "TRAILING_WS", auth: auth("{}  \n\t"), want: "N98_MISSING" },
+  { name: "TABS", auth: auth('{\t"content"\t:\t""\t}'), want: "N98_MISSING" },
+  { name: "MISSING_ID", auth: auth(text(good).replace(`"id":"${good.id}",`, "")), want: "N98_MISSING" },
+  { name: "MISSING_SIG", auth: auth(text(good).replace(`,"sig":"${good.sig}"`, "")), want: "N98_MISSING" },
+  // The rules, on signed events (the cheap checks reach them without BIP-340).
+  { name: "OK_NO_U_EMPTY_URL", auth: auth(text(sign(ev({ tags: [["method", "POST"], ["payload", BODY_HASH]] })))), url: "", want: "N98_OK" },
+  { name: "OK_NO_METHOD_EMPTY", auth: auth(text(sign(ev({ tags: [["u", URL_], ["payload", BODY_HASH]] })))), method: "", want: "N98_OK" },
+  { name: "OK_THREE_FIELDS", auth: auth(text(sign(ev({ tags: [["u", URL_, "x"], ["method", "POST", "y"], ["payload", BODY_HASH, "z"]] })))), want: "N98_OK" },
+  { name: "OK_ONE_FIELD_TAGS", auth: auth(text(sign(ev({ tags: [["u"], ["u", URL_], ["method"], ["method", "POST"], ["payload"]] })))), body: '{"a":2}', want: "N98_OK" },
+  { name: "OK_METHOD_16", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POSTPOSTPOSTPOSX"]] })))), method: "POSTPOSTPOSTPOS", want: "N98_OK" },
+  { name: "METHOD_15_VS_14", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POSTPOSTPOSTPOS"]] })))), method: "POSTPOSTPOSTPO", want: "N98_METHOD" },
+  { name: "OK_PAYLOAD_65", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POST"], ["payload", BODY_HASH + "x"]] })))), want: "N98_OK" },
+  { name: "PAYLOAD_1", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POST"], ["payload", "a"]] })))), want: "N98_PAYLOAD" },
+  { name: "PAYLOAD_63", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POST"], ["payload", BODY_HASH.slice(0, 63)]] })))), want: "N98_PAYLOAD" },
+  { name: "METHOD_FIRST", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "XOST"]] })))), want: "N98_METHOD" },
+  { name: "METHOD_LAST", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "POSX"]] })))), want: "N98_METHOD" },
+  { name: "OK_EDGE_EARLY", auth: auth(text(sign(ev({ created_at: NOW + 60 })))), want: "N98_OK" },
+  { name: "OK_MIXED_CASE", auth: auth(text(sign(ev({ tags: [["u", URL_], ["method", "PoSt"]] })))), method: "pOsT", want: "N98_OK" },
+  { name: "URL_PREFIX", auth: auth(text(good)), url: URL_.slice(0, -1), want: "N98_URL" },
+  { name: "OK_NUL_URL_TAG", auth: auth(text(signC(ev({ tags: [["u", URL_ + "\u0000junk"], ["method", "POST"]] })))), want: "N98_OK" },
+  { name: "OK_TAG_NAME_NUL", auth: auth(text(signC(ev({ tags: [["u\u0000x", "nope"], ["u", URL_], ["method", "POST"]] })))), want: "N98_OK" },
 ]
 const lit = (s: string) => JSON.stringify(s)
 const coax = [
@@ -85,7 +138,7 @@ const coax = [
   `N98_T_URLS :: [${cases.length}]string.[${cases.map((c) => lit(c.url ?? URL_)).join(",")}];`,
   `N98_T_BODIES :: [${cases.length}]string.[${cases.map((c) => lit(c.body ?? BODY)).join(",")}];`,
   `N98_T_WANT :: [${cases.length}]int.[${cases.map((c) => c.want).join(",")}];`,
-  `N98_T_PUB :: ${lit(PUB)}; N98_T_ID :: ${lit(good.id!)};`,
+  `N98_T_PUB :: ${lit(PUB)}; N98_T_ID :: ${lit(good.id!)}; N98_T_SIG :: ${lit(good.sig!)};`,
 ]
 const dir = new URL(".", import.meta.url).pathname
 writeFileSync(dir + "nip98_vectors.coax", coax.join("\n") + "\n")
