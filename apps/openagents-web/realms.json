@@ -6,6 +6,7 @@
     { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },
       "realm": {
         "slug": "haunted-house",
+        "added": "2026-10-28T15:00", "line": "Nine haunts to find and doors to open",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["map", "voice"], "things": [],
           "rows": [
             {"id": "others", "label": "Other visitors", "says": "other visitors walking the house"},
@@ -60,6 +61,7 @@
     { "id": "grid", "name": "THE GRID", "kind": "open", "orbit": { "r": 0.3, "a": 5.4, "size": 0.036 },
       "realm": {
         "slug": "the-grid",
+        "added": "2026-10-29T02:53", "line": "The bare Verse world: lines out to the dark",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
             {"id": "robots", "label": "Robots walking their rounds", "says": "the small robots patrolling the grid"},
@@ -86,6 +88,7 @@
     { "id": "everglade", "name": "EVERGLADE", "kind": "open", "orbit": { "r": 0.34, "a": 4.2, "size": 0.032 },
       "realm": {
         "slug": "everglade",
+        "added": "2026-10-28T20:06", "line": "A forest city with quests out to the deep wood",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["map", "build"], "things": ["crate", "barrel", "bench", "fence", "stall"],
           "rows": [
             {"id": "flock", "label": "The flock that follows you", "says": "the birds earned on the river quest that follow whoever walks"},
@@ -127,6 +130,7 @@
     { "id": "deadgears", "name": "DEAD GEARS", "kind": "open", "orbit": { "r": 0.3, "a": 2.9, "size": 0.03 },
       "realm": {
         "slug": "dead-gears",
+        "added": "2026-10-28T20:33", "line": "Hold a ship's hold against three waves",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
             {"id": "alarms", "label": "Flashing wave alarms", "says": "the red alarm strips that flash when a wave comes"},
@@ -145,6 +149,7 @@
     { "id": "belt2200", "name": "BELT 2200", "kind": "open", "orbit": { "r": 0.44, "a": 1.4, "size": 0.032 },
       "realm": {
         "slug": "belt-2200",
+        "added": "2026-10-30T16:57", "line": "Hard sci-fi strategy on the real orbits of 2200",
         "style": "lowpoly",
         "clock": "fixed:0.5",
         "title": "Belt 2200",
@@ -158,6 +163,7 @@
     { "id": "orbit", "name": "ORBIT LEAGUE", "kind": "open", "orbit": { "r": 0.24, "a": 0.35, "size": 0.03 },
       "realm": {
         "slug": "orbit-league",
+        "added": "2026-10-30T17:03", "line": "Rocket roadster ball in a glass arena in orbit",
         "style": "flat",
         "clock": "fixed:0.5",
         "title": "Orbit League",
@@ -224,6 +230,7 @@
     { "id": "sandbox", "name": "SANDBOX", "kind": "open", "orbit": { "r": 0.36, "a": 4.6, "size": 0.03 },
       "realm": {
         "slug": "sandbox",
+        "added": "2026-10-29T02:35", "line": "Open ground everyone builds on together",
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "Sandbox",
@@ -255,6 +262,7 @@
     { "id": "icecream", "name": "ICE CREAM MAN", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 3.7, "size": 0.026 },
       "realm": {
         "slug": "ice-cream-man",
+        "added": "2026-10-28T20:00", "line": "Find three keys and escape the house",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
             {"id": "minions", "label": "The Ice Cream Man's minions", "says": "the minions who hunt you with him"},
@@ -296,6 +304,7 @@
     { "id": "stair", "name": "HOLD THE STAIR", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 1.2, "size": 0.026 },
       "realm": {
         "slug": "hold-the-stair",
+        "added": "2026-10-30T16:54", "line": "Tower defense on the SRD 5e rules",
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "ruleset": "srd5",

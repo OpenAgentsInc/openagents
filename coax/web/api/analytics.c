@@ -196,7 +196,55 @@ static void ingest(const request *q) {
   api_respond(q->fd, 200, "application/json", mark ? TEAM_COOKIE : NULL, out, strlen(out));
 }
 
+// GET /api/analytics/realms: how much each realm is played, for /realms (realmlist.coax), a line a
+// realm: "slug|visitors|visits|minutes". A visit is a page-view of /realms/<slug> (or its old
+// /realm/<slug>); visitors are its distinct devices (pid); minutes run from each visit to the
+// session's next page-view or its last event, at most three hours a visit. The filter is
+// /admin/analytics' (admin.c KEPT): a session with an automation mark, an agent's session-start or
+// our team's mark (auto = 'team', migrations/0037_analytics_team.sql) counts for nothing.
+// Counts only, no visitor's data; kept a minute so a busy page costs one query.
+#define REALM_VISITS \
+  "WITH pv AS (SELECT e.sid, e.ms, e.p->>'pid' AS pid, " \
+  "    substring(coalesce(e.p->>'path', '') from '^/realms?/([a-z0-9-]+)(/.*)?$') AS slug, " \
+  "    lead(e.ms) OVER (PARTITION BY e.sid ORDER BY e.ms, e.id) AS next_ms " \
+  "  FROM analytics.events e WHERE e.ev = 'page-view' AND e.space = 'web'), " \
+  "k AS (SELECT pv.* FROM pv WHERE pv.slug IS NOT NULL AND NOT EXISTS (SELECT 1 FROM analytics.events x " \
+  "  WHERE x.sid = pv.sid AND (x.auto IS NOT NULL OR (x.ev = 'session-start' AND x.p ? 'agent')))) " \
+  "SELECT k.slug, count(DISTINCT coalesce(nullif(k.pid, ''), k.sid))::text, count(*)::text, " \
+  "  round(sum(least(greatest(coalesce(k.next_ms, s.last_ms, k.ms) - k.ms, 0), 10800000)) / 60000.0)::bigint::text " \
+  "FROM k LEFT JOIN analytics.sessions s USING (sid) GROUP BY k.slug ORDER BY count(*) DESC, k.slug LIMIT 200"
+
+static void realm_visits(const request *q) {
+  static char cached[16384]; static size_t cached_n; static double cached_at = -1e18;
+  double now = api_now_ms();
+  if (now - cached_at > 60000) {
+    PGconn *db = api_db();
+    if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+    PGresult *r = PQexec(db, REALM_VISITS);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) {
+      api_log("realm visits: %s", PQerrorMessage(db));
+      PQclear(r);
+      api_json(q->fd, 500, "{\"error\":\"not now\"}");
+      return;
+    }
+    size_t n = 0;
+    for (int i = 0; i < PQntuples(r); i++) {
+      int w = snprintf(cached + n, sizeof cached - n, "%s|%s|%s|%s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1), PQgetvalue(r, i, 2), PQgetvalue(r, i, 3));
+      if (w < 0 || (size_t)w >= sizeof cached - n) break;
+      n += (size_t)w;
+    }
+    PQclear(r);
+    cached_n = n; cached_at = now;
+  }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, cached, cached_n);
+}
+
 bool analytics_route(const request *q) {
+  if (!strcmp(q->path, "/api/analytics/realms")) {
+    if (strcmp(q->method, "GET")) api_json(q->fd, 405, "{\"error\":\"GET\"}");
+    else realm_visits(q);
+    return true;
+  }
   if (strcmp(q->path, "/api/analytics/events")) return false;
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a batch\"}"); return true; }
   ingest(q);

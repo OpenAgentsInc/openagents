@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { page, worlds, STYLE_BLOCK } from "./realms"
+import { listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -98,3 +98,26 @@ test("Everglade and Hold the Stair play by the SRD 5e ruleset and their pages sa
   expect(page(all.find((w) => w.id === "haunted")?.realm ?? all.find((w) => !srd.includes(w.id))!.realm!)).not.toContain("data-ruleset")
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))
+
+// /realms (realmlist.coax): every realm the galaxy lists, with when it opened and its one line.
+test("a listed realm needs when it opened and its one line; an unlisted one doesn't", () => {
+  expect(check((r) => delete r.added)).toThrow(/needs added/)
+  expect(check((r) => (r.added = "Oct 28"))).toThrow(/needs added/)
+  expect(check((r) => delete r.line)).toThrow(/needs line/)
+  expect(check((r) => (r.line = "a|b"))).toThrow(/needs line/)
+  expect(check((r) => (r.line = "x".repeat(61)))).toThrow(/needs line/)
+  expect(check((r) => { delete r.added; delete r.line }, { styleBlock: false }, "fixture")).not.toThrow()
+})
+test("/realms lists the galaxy's listed realms: its rows, its text and its links", () => {
+  const list = worlds(join(SITE, "realms.json"), { styleBlock: false })
+  const shown = listed(list)
+  expect(shown.length).toBeGreaterThan(1)
+  expect(shown.some((r) => r.slug === "fixture")).toBe(false)
+  const rows = JSON.parse(listCoax(list).match(/REALMS_ROWS :: (".*");/)![1]).trim().split("\n")
+  expect(rows.map((l: string) => l.split("|")[0])).toEqual(shown.map((r) => r.slug))
+  for (const r of shown) {
+    expect(listMarkdown(list)).toContain(`(https://openagents.com/realms/${r.slug})`)
+    expect(listPage(list)).toContain(`<a href="/realms/${r.slug}">`)
+  }
+  expect(listPage(list)).toContain('data-app="realmlist" data-lines="44:/api/analytics/realms"')
+})

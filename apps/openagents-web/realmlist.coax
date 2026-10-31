@@ -1,0 +1,972 @@
+// /realms, drawn by Coax: every realm the galaxy lists, as a list and as a
+// grid of towers on the homepage's line-art floor. The sort is POPULAR (its
+// visitors), RECENT (when it opened), PLAYED (minutes in it) or A-Z; the
+// towers move to their new places and grow to the sort's numbers, and the
+// list follows. A click or Enter on a row or a tower opens the realm.
+//
+// The rows are REALMS_ROWS (realms/list.coax, written by coax/web/realms.ts
+// from realms.json). The numbers come from /api/analytics/realms as message
+// MSG_VISITS (host.js data-lines): "slug|visitors|visits|minutes" a realm,
+// counted without our team or automation (coax/web/api/analytics.c). Until
+// they come, POPULAR and PLAYED keep the table's order and show "-".
+// The sort is the location's hash: #popular, #recent, #played or #az.
+
+#load "font.coax";
+#load "textkeys.coax";
+#load "realms/list.coax";
+#load "analytics.coax";
+
+VERTEX_FLOATS :: 12;
+MAX_VERTICES :: 60000;
+PANELS :: 10;
+UNIFORM_FLOATS :: 88;
+MODE_STROKE :: 0.0;
+GAP :: 0.34;
+SPACE :: 0.95;
+MAX_REALMS :: 64;
+INBOX :: 16384;
+OUTBOX :: 256;
+
+// the rows' columns
+C_SLUG :: 0; C_TITLE :: 1; C_LINE :: 2; C_ADDED :: 3; C_STYLE :: 4;
+// the numbers, per row
+N_VISITORS :: 0; N_VISITS :: 1; N_MINUTES :: 2;
+
+SORT_POPULAR :: 0; SORT_RECENT :: 1; SORT_PLAYED :: 2; SORT_AZ :: 3; SORTS :: 4;
+SORT_NAMES :: [4] string.["POPULAR", "RECENT", "PLAYED", "A-Z"];
+SORT_HASH :: [4] string.["popular", "recent", "played", "az"];
+
+// input, as coax/web/host.js sends it
+K_ESCAPE :: -1; K_ENTER :: -2; K_LEFT :: -4; K_RIGHT :: -5; K_UP :: -6; K_DOWN :: -7; K_HOME :: -8; K_END :: -9;
+P_DOWN :: 0; P_MOVE :: 1; P_UP :: 2;
+MSG_VISITS :: 44;    // /api/analytics/realms (host.js data-lines)
+ACT_NAVIGATE :: 1;
+ACT_HASH :: 3;
+
+// what the pointer is on: a realm's place in the sorted order (row or tower), or one of these
+HIT_NONE :: -1; HIT_HOME :: -2; HIT_SORT :: -10;   // HIT_SORT - k: the k-th sort's chip
+
+RealmsState :: struct {
+  time: f32;
+  frames: int;
+  ready: bool;
+  width: f32; height: f32; d: f32;
+  sort: int;
+  sel: int;                          // the realm the keys are on (-1 none)
+  hot: int;                          // what the pointer is over
+  press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  scroll: f32; point_x: f32;
+  stats: [MAX_REALMS * 3] int; counted: bool;   // the numbers per row, once MSG_VISITS came
+  gx: [MAX_REALMS] f32; gy: [MAX_REALMS] f32; gh: [MAX_REALMS] f32; placed: bool;   // each row's tower, as drawn
+  inbox: [INBOX] u8;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+}
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+absf :: (x: f32) -> f32 { if x < 0 { return -x; } return x; }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.002 { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v];
+    out[o + 3] = c[v];
+    out[o + 4] = length;
+    out[o + 5] = core;
+    out[o + 6] = light;
+    out[o + 7] = glow;
+    out[o + 8] = red;
+    out[o + 9] = green;
+    out[o + 10] = blue;
+    out[o + 11] = mode;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- ink and text
+
+// White lines on black, as the homepage's grid; the accent is a cold blue (orange is Bitcoin's).
+Pen :: struct { d: f32; fade: f32; time: f32; }
+INK_WHITE :: 0; INK_DIM :: 1; INK_ACCENT :: 2; INK_PALE :: 3; INK_FAINT :: 4;
+ink :: (p: Pen, kind: int) -> Ink {
+  k := Ink.{core = 0.5 * p.d, light = 0.9 * p.fade, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
+  if kind == INK_DIM { k.light = 0.5 * p.fade; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
+  if kind == INK_FAINT { k.light = 0.26 * p.fade; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
+  if kind == INK_ACCENT { k.light = 1.0 * p.fade; k.red = 0.5; k.green = 0.82; k.blue = 1.0; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95 * p.fade; k.red = 0.78; k.green = 0.9; k.blue = 1.0; }
+  k.sans = kind != INK_ACCENT;
+  return k;
+}
+
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+put :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, at, text, x, y, cap, GAP, SPACE, k, false, false);
+}
+put_right :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - ink_width(text, cap, GAP, SPACE, k), y, cap, k);
+}
+put_center :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink) -> int {
+  return put(out, at, text, x - ink_width(text, cap, GAP, SPACE, k) * 0.5, y, cap, k);
+}
+fits :: (text: string, cap: f32, width: f32, k: Ink) -> int {
+  if ink_width(text, cap, GAP, SPACE, k) <= width { return text.count; }
+  n := 0; i := 0;
+  while i < text.count {
+    r := decode(text, i);
+    if ink_width(text[0..<i + r.len], cap, GAP, SPACE, k) > width - ink_width("...", cap, GAP, SPACE, k) { break; }
+    i += r.len; n = i;
+  }
+  return n;
+}
+put_fit :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, width: f32) -> int {
+  n := fits(text, cap, width, k);
+  if n >= text.count { return put(out, at, text, x, y, cap, k); }
+  v := put(out, at, text[0..<n], x, y, cap, k);
+  return put(out, v, "...", x + ink_width(text[0..<n], cap, GAP, SPACE, k) + (ifx uses_sans(k, cap) then 0.0f32 else GAP * cap), y, cap, k);
+}
+
+put_text :: (buf: [] u8, at: int, text: string) -> int {
+  n := 0;
+  while n < text.count && at + n < buf.count { buf[at + n] = text[n]; n += 1; }
+  return n;
+}
+put_int :: (buf: [] u8, at: int, n: int) -> int {
+  digits: [20] u8; k := 0; x := ifx n < 0 then 0 else n;
+  if x == 0 { digits[0] = '0'; k = 1; }
+  while x > 0 && k < 20 { digits[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  w := 0;
+  for i: 0..<k { if at + w < buf.count { buf[at + w] = digits[k - 1 - i]; w += 1; } }
+  return w;
+}
+
+// ---------------------------------------------------------------- HUD pieces
+
+Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+box_w :: (b: Box) -> f32 { return b.x1 - b.x0; }
+box_h :: (b: Box) -> f32 { return b.y1 - b.y0; }
+inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, k.core, light, k.glow, k.red, k.green, k.blue, k.mode) { return at + 6; }
+  return at;
+}
+
+// A panel's frame: faint outline, 45° cuts on the plain corners, bright brackets top left and bottom right.
+frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
+  k := ink(p, INK_WHITE);
+  v := at; f := 0.2 * p.fade;
+  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, f); }
+  arm := lo(36 * p.d, box_w(b) * 0.25);
+  v = rule(out, v, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, 0.8 * p.fade);
+  v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, 0.8 * p.fade);
+  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, 0.8 * p.fade);
+  v = rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, 0.8 * p.fade);
+  return v;
+}
+
+title_room :: (p: Pen) -> f32 { return 34 * p.d; }
+titled :: (out: [] f32, at: int, b: Box, title: string, note: string, p: Pen) -> int {
+  cap := 8 * p.d; y := b.y0 + 20 * p.d;
+  a := ink(p, INK_ACCENT);
+  v := rule(out, at, b.x0 + 12 * p.d, y - cap * 0.5, b.x0 + 18 * p.d, y - cap * 0.5, a, p.fade);
+  v = put(out, v, title, b.x0 + 24 * p.d, y, cap, a);
+  if note.count > 0 {
+    room := box_w(b) - 48 * p.d - text_width(title, cap);
+    n := fits(note, 6.5 * p.d, room, ink(p, INK_DIM));
+    v = put_right(out, v, note[0..<n], b.x1 - 14 * p.d, y, 6.5 * p.d, ink(p, INK_DIM));
+  }
+  return rule(out, v, b.x0 + 12 * p.d, y + 7 * p.d, b.x1 - 12 * p.d, y + 7 * p.d, ink(p, INK_DIM), 0.12 * p.fade);
+}
+
+chip_width :: (text: string, cap: f32, p: Pen) -> f32 { return text_width(text, cap) + 14 * p.d; }
+chip_height :: (cap: f32, p: Pen) -> f32 { return cap + 10 * p.d; }
+chip :: (out: [] f32, at: int, text: string, x: f32, y: f32, cap: f32, k: Ink, p: Pen) -> int {
+  w := chip_width(text, cap, p); h := chip_height(cap, p); c := 4 * p.d;
+  top := y - cap - 5 * p.d;
+  xs := [7] f32.[x + c, x + w, x + w, x + w - c, x, x, x + c];
+  ys := [7] f32.[top, top, top + h - c, top + h, top + h, top + c, top];
+  v := at;
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, k.light * 0.55); }
+  f := k; f.sans = false;   // chips are chrome: Filament
+  return put(out, v, text, x + 7 * p.d, y, cap, f);
+}
+chip_box :: (text: string, x: f32, y: f32, cap: f32, p: Pen) -> Box {
+  return Box.{x0 = x, y0 = y - cap - 5 * p.d, x1 = x + chip_width(text, cap, p), y1 = y - cap - 5 * p.d + chip_height(cap, p)};
+}
+
+diamond :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> int {
+  v := rule(out, at, x, y - r, x + r, y, k, light);
+  v = rule(out, v, x + r, y, x, y + r, k, light);
+  v = rule(out, v, x, y + r, x - r, y, k, light);
+  return rule(out, v, x - r, y, x, y - r, k, light);
+}
+
+glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32) {
+  if k >= PANELS { return; }
+  o := 8 + k * 8;
+  uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
+  uniforms[o + 4] = cut; uniforms[o + 5] = alpha; uniforms[o + 6] = 0; uniforms[o + 7] = 0;
+}
+
+// ---------------------------------------------------------------- the rows
+
+row_start :: (text: string, row: int) -> int {
+  r := 0; i := 0;
+  while r < row && i < text.count { if text[i] == '\n' { r += 1; } i += 1; }
+  return i;
+}
+field :: (text: string, row: int, col: int) -> string {
+  i := row_start(text, row); c := 0;
+  while c < col && i < text.count && text[i] != '\n' { if text[i] == '|' { c += 1; } i += 1; }
+  j := i;
+  while j < text.count && text[j] != '|' && text[j] != '\n' { j += 1; }
+  return text[i..<j];
+}
+rows :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] == '\n' { n += 1; } }
+  if text.count > 0 && text[text.count - 1] != '\n' { n += 1; }
+  return n;
+}
+same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+parse :: (text: string) -> int {
+  n := 0;
+  for i: 0..<text.count { if text[i] >= '0' && text[i] <= '9' { n = n * 10 + cast(int) (text[i] - '0'); } }
+  return n;
+}
+realm_count :: () -> int { n := rows(REALMS_ROWS); return ifx n > MAX_REALMS then MAX_REALMS else n; }
+
+fold :: (c: u8) -> int { if c >= 'a' && c <= 'z' { return cast(int) c - 32; } return cast(int) c; }
+// a before b: -1, the same 0, after 1 (bytes, letters folded to capitals)
+compare :: (a: string, b: string) -> int {
+  i := 0;
+  while i < a.count && i < b.count {
+    x := fold(a[i]); y := fold(b[i]);
+    if x != y { return ifx x < y then -1 else 1; }
+    i += 1;
+  }
+  if a.count == b.count { return 0; }
+  return ifx a.count < b.count then -1 else 1;
+}
+stat :: (s: [] RealmsState, r: int, n: int) -> int { return s[0].stats[r * 3 + n]; }
+
+// Whether row a goes before row b in this sort; a tie keeps the table's order.
+goes_before :: (s: [] RealmsState, sort: int, a: int, b: int) -> bool {
+  c := 0;
+  if sort == SORT_POPULAR {
+    c = stat(s, b, N_VISITORS) - stat(s, a, N_VISITORS);
+    if c == 0 { c = stat(s, b, N_VISITS) - stat(s, a, N_VISITS); }
+  } else if sort == SORT_PLAYED {
+    c = stat(s, b, N_MINUTES) - stat(s, a, N_MINUTES);
+  } else if sort == SORT_RECENT {
+    c = compare(field(REALMS_ROWS, b, C_ADDED), field(REALMS_ROWS, a, C_ADDED));
+  } else {
+    c = compare(field(REALMS_ROWS, a, C_TITLE), field(REALMS_ROWS, b, C_TITLE));
+  }
+  if c != 0 { return c < 0; }
+  return a < b;
+}
+// The rows in the sort's order; returns how many.
+sorted :: (s: [] RealmsState, sort: int, out: [] int) -> int {
+  n := realm_count();
+  if n > out.count { n = out.count; }
+  for i: 0..<n {
+    j := i;
+    while j > 0 && goes_before(s, sort, i, out[j - 1]) { out[j] = out[j - 1]; j -= 1; }
+    out[j] = i;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- what the numbers say
+
+MONTHS :: [12] string.["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+// "2026-10-30T16:57" as "OCT 30"
+put_day :: (buf: [] u8, at: int, added: string) -> int {
+  if added.count < 10 { return put_text(buf, at, "-"); }
+  m := parse(added[5..<7]);
+  if m < 1 || m > 12 { return put_text(buf, at, "-"); }
+  n := put_text(buf, at, MONTHS[m - 1]);
+  n += put_text(buf, at + n, " ");
+  return n + put_int(buf, at + n, parse(added[8..<10]));
+}
+// minutes as "45 MIN" or "12 H"; "-" before the numbers come
+put_minutes :: (buf: [] u8, at: int, minutes: int, counted: bool) -> int {
+  if !counted { return put_text(buf, at, "-"); }
+  if minutes < 60 { n := put_int(buf, at, minutes); return n + put_text(buf, at + n, " MIN"); }
+  n := put_int(buf, at, (minutes + 30) / 60);
+  return n + put_text(buf, at + n, " H");
+}
+put_count :: (buf: [] u8, at: int, n: int, counted: bool) -> int {
+  if !counted { return put_text(buf, at, "-"); }
+  return put_int(buf, at, n);
+}
+
+// ---------------------------------------------------------------- layout
+
+Layout :: struct { wide: bool; header: Box; scene: Box; list: Box; home: Box; chips: [4] Box; row_h: f32; rows_top: f32; }
+
+WIDE :: 900.0;   // CSS pixels: the scene and the list side by side from here
+CHIP_CAP :: 8.0;
+layout :: (width: f32, height: f32, d: f32) -> Layout {
+  w := width / d; h := height / d;
+  m := ifx w < 700 then 12.0f32 else 24.0f32;
+  g := ifx w < 700 then 8.0f32 else 16.0f32;
+  l: Layout;
+  l.wide = w >= WIDE;
+  head := ifx l.wide then 104.0f32 else 126.0f32;
+  l.header = Box.{x0 = m * d, y0 = m * d, x1 = (w - m) * d, y1 = (m + head) * d};
+  top := m + head + g;
+  if l.wide {
+    split := m + (w - 2 * m - g) * 0.52;
+    l.scene = Box.{x0 = m * d, y0 = top * d, x1 = split * d, y1 = (h - m) * d};
+    l.list = Box.{x0 = (split + g) * d, y0 = top * d, x1 = (w - m) * d, y1 = (h - m) * d};
+  } else {
+    sh := clamp(h * 0.36, 210, 340);
+    l.scene = Box.{x0 = m * d, y0 = top * d, x1 = (w - m) * d, y1 = (top + sh) * d};
+    l.list = Box.{x0 = m * d, y0 = (top + sh + g) * d, x1 = (w - m) * d, y1 = (h - m) * d};
+  }
+  p := Pen.{d = d, fade = 1, time = 0};
+  cap := CHIP_CAP * d;
+  all := 0.0f32;
+  for k: 0..<SORTS { all += chip_width(SORT_NAMES[k], cap, p) + 8 * d; }
+  y := ifx l.wide then l.header.y0 + 58 * d else l.header.y1 - 16 * d;
+  x := ifx l.wide then l.header.x1 - 18 * d - all + 8 * d else l.header.x0 + 18 * d;
+  for k: 0..<SORTS {
+    l.chips[k] = chip_box(SORT_NAMES[k], x, y, cap, p);
+    x += chip_width(SORT_NAMES[k], cap, p) + 8 * d;
+  }
+  l.home = Box.{x0 = l.header.x0 + 18 * d, y0 = l.header.y0 + 10 * d, x1 = l.header.x0 + 18 * d + text_width("OPENAGENTS", 7 * d), y1 = l.header.y0 + 26 * d};
+  l.row_h = (ifx l.wide then 52.0f32 else 62.0f32) * d;
+  l.rows_top = l.list.y0 + title_room(p) + (ifx l.wide then 16.0f32 else 2.0f32) * d;
+  return l;
+}
+
+max_scroll :: (l: Layout, n: int, d: f32) -> f32 {
+  return hi(0, l.rows_top + l.row_h * cast(f32) n + 8 * d - l.list.y1);
+}
+row_box :: (l: Layout, k: int, scroll: f32, d: f32) -> Box {
+  y := l.rows_top + l.row_h * cast(f32) k - scroll;
+  return Box.{x0 = l.list.x0 + 8 * d, y0 = y, x1 = l.list.x1 - 8 * d, y1 = y + l.row_h};
+}
+row_visible :: (l: Layout, b: Box) -> bool { return b.y0 >= l.rows_top - 1 && b.y1 <= l.list.y1 + 1; }
+
+// ---------------------------------------------------------------- the grid scene
+
+// The floor is cols by cols cells seen from a corner (the homepage's isometric grid);
+// a cell's x and y run right-down and left-down, z up, in cells.
+Iso :: struct { ox: f32; oy: f32; c: f32; cols: int; }
+TOWER_MAX :: 2.0;   // the tallest tower, in cells
+cols_for :: (n: int) -> int { c := 1; while c * c < n { c += 1; } return c; }
+// From the tallest tower's top at the back, (TOWER_MAX - 0.5) cells over the back corner, to the
+// floor's front edge half a cell past the last row: cols + TOWER_MAX cells high, cols + 0.5 wide each way.
+iso_of :: (b: Box, n: int, p: Pen) -> Iso {
+  d := p.d; cols := cols_for(n); cf := cast(f32) cols;
+  top := b.y0 + title_room(p) + 28 * d; bottom := b.y1 - 24 * d;
+  c := hi(1, lo((box_w(b) - 32 * d) / ((cf + 0.5) * 2 * 0.866), (bottom - top) / (cf + TOWER_MAX)));
+  height := (cf + TOWER_MAX) * c;
+  return Iso.{ox = (b.x0 + b.x1) * 0.5, oy = top + (bottom - top - height) * 0.5 + (TOWER_MAX - 0.5) * c, c = c, cols = cols};
+}
+sx :: (k: Iso, x: f32, y: f32) -> f32 { return k.ox + (x - y) * k.c * 0.866; }
+sy :: (k: Iso, x: f32, y: f32, z: f32) -> f32 { return k.oy + (x + y) * k.c * 0.5 - z * k.c; }
+// a cell's place for the k-th realm in the order, its centre in cells
+cell_x :: (k: Iso, i: int) -> f32 { return cast(f32) (i % k.cols) + 0.5; }
+cell_y :: (k: Iso, i: int) -> f32 { return cast(f32) (i / k.cols) + 0.5; }
+
+// How tall each row's tower is in this sort, in cells: its number over the most, or by recency.
+tower_height :: (s: [] RealmsState, sort: int, r: int, rank: int, n: int) -> f32 {
+  if sort == SORT_POPULAR || sort == SORT_PLAYED {
+    which := ifx sort == SORT_POPULAR then N_VISITORS else N_MINUTES;
+    most := 0;
+    for i: 0..<n { if stat(s, i, which) > most { most = stat(s, i, which); } }
+    if most == 0 { return 0.5; }
+    return 0.22 + (TOWER_MAX - 0.22) * cast(f32) stat(s, r, which) / cast(f32) most;
+  }
+  if sort == SORT_RECENT && n > 1 { return 0.3 + (TOWER_MAX - 0.3) * (1 - cast(f32) rank / cast(f32) (n - 1)); }
+  return 0.6;
+}
+
+HALF :: 0.22;   // a tower's half width, in cells
+// A tower's box on screen, for the pointer.
+tower_box :: (k: Iso, x: f32, y: f32, h: f32) -> Box {
+  return Box.{x0 = sx(k, x - HALF, y + HALF), y0 = sy(k, x - HALF, y - HALF, h), x1 = sx(k, x + HALF, y - HALF), y1 = sy(k, x + HALF, y + HALF, 0)};
+}
+
+draw_tower :: (out: [] f32, at: int, k: Iso, x: f32, y: f32, h: f32, p: Pen, lit_up: bool) -> int {
+  v := at;
+  e := ink(p, ifx lit_up then INK_ACCENT else INK_WHITE);
+  light := ifx lit_up then p.fade else 0.62 * p.fade;
+  xs := [4] f32.[x - HALF, x + HALF, x + HALF, x - HALF];
+  ys := [4] f32.[y - HALF, y - HALF, y + HALF, y + HALF];
+  // the top, all four edges
+  for i: 0..<4 {
+    j := (i + 1) % 4;
+    v = rule(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), sx(k, xs[j], ys[j]), sy(k, xs[j], ys[j], h), e, light);
+  }
+  // the three edges up that face us (not the back corner) and the base's two front edges
+  for i: 1..<4 { v = rule(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], 0), sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), e, light * 0.8); }
+  v = rule(out, v, sx(k, xs[1], ys[1]), sy(k, xs[1], ys[1], 0), sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), e, light * 0.8);
+  v = rule(out, v, sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), sx(k, xs[3], ys[3]), sy(k, xs[3], ys[3], 0), e, light * 0.8);
+  if lit_up {
+    // the lit tower's top hatched, and its floor cell drawn
+    for t: 1..<4 {
+      f := cast(f32) t * 0.25;
+      v = rule(out, v, sx(k, x - HALF + 2 * HALF * f, y - HALF), sy(k, x - HALF + 2 * HALF * f, y - HALF, h),
+               sx(k, x - HALF + 2 * HALF * f, y + HALF), sy(k, x - HALF + 2 * HALF * f, y + HALF, h), e, 0.45 * p.fade);
+    }
+    cx := [4] f32.[x - 0.5, x + 0.5, x + 0.5, x - 0.5]; cy := [4] f32.[y - 0.5, y - 0.5, y + 0.5, y + 0.5];
+    for i: 0..<4 {
+      j := (i + 1) % 4;
+      v = rule(out, v, sx(k, cx[i], cy[i]), sy(k, cx[i], cy[i], 0), sx(k, cx[j], cy[j]), sy(k, cx[j], cy[j], 0), e, 0.5 * p.fade);
+    }
+  }
+  return v;
+}
+
+draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order: [] int, n: int) -> int {
+  d := p.d; b := l.scene;
+  v := titled(out, at, b, "THE GRID", SORT_NAMES[s[0].sort], p);
+  if n == 0 { return frame(out, v, b, 10 * d, p); }
+  k := iso_of(b, n, p);
+  // the floor: the cells, and fainter lines a cell beyond them
+  fl := ink(p, INK_DIM);
+  c := cast(f32) k.cols;
+  for i: 0..<k.cols + 1 {
+    t := cast(f32) i;
+    v = rule(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, c), sy(k, t, c, 0), fl, 0.32 * p.fade);
+    v = rule(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, c, t), sy(k, c, t, 0), fl, 0.32 * p.fade);
+    v = rule(out, v, sx(k, t, c), sy(k, t, c, 0), sx(k, t, c + 0.5), sy(k, t, c + 0.5, 0), fl, 0.12 * p.fade);
+    v = rule(out, v, sx(k, c, t), sy(k, c, t, 0), sx(k, c + 0.5, t), sy(k, c + 0.5, t, 0), fl, 0.12 * p.fade);
+    v = rule(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, -0.5), sy(k, t, -0.5, 0), fl, 0.12 * p.fade);
+    v = rule(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, -0.5, t), sy(k, -0.5, t, 0), fl, 0.12 * p.fade);
+  }
+  // the towers back to front (x + y grows toward us), each where its rank puts it
+  drawn: [MAX_REALMS] int;
+  for i: 0..<n {
+    r := order[i];
+    j := i;
+    while j > 0 && s[0].gx[drawn[j - 1]] + s[0].gy[drawn[j - 1]] > s[0].gx[r] + s[0].gy[r] { drawn[j] = drawn[j - 1]; j -= 1; }
+    drawn[j] = r;
+  }
+  name_cap := (ifx l.wide then 6.5f32 else 6.0f32) * d;
+  ranks: [MAX_REALMS] int;
+  for q: 0..<n { ranks[order[q]] = q; }
+  for i: 0..<n {
+    r := drawn[i];
+    on := s[0].hot == ranks[r] || s[0].sel == ranks[r];
+    v = draw_tower(out, v, k, s[0].gx[r], s[0].gy[r], s[0].gh[r], p, on);
+  }
+  // the labels over every tower, so no tower's lines cross them
+  for i: 0..<n {
+    r := drawn[i];
+    rank := ranks[r];
+    on := s[0].hot == rank || s[0].sel == rank;
+    x := s[0].gx[r]; y := s[0].gy[r]; h := s[0].gh[r];
+    // its rank over it, and on a wide page its name
+    buf: [8] u8; m := put_int(buf[..], 0, rank + 1);
+    ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
+    lab := ink(p, ifx on then INK_ACCENT else INK_DIM);
+    if l.wide && k.c > 70 * d {
+      v = put_center(out, v, field(REALMS_ROWS, r, C_TITLE), sx(k, x, y), ty, name_cap, ifx on then ink(p, INK_PALE) else ink(p, INK_DIM));
+      v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty - name_cap - 7 * d, 6 * d, lab);
+    } else {
+      v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty, 6 * d, lab);
+    }
+  }
+  // the lit realm's name along the panel's foot, where a phone has no room over the towers
+  if !(l.wide && k.c > 70 * d) {
+    lit_rank := ifx s[0].hot >= 0 && s[0].hot < n then s[0].hot else s[0].sel;
+    if lit_rank >= 0 && lit_rank < n {
+      v = put_center(out, v, field(REALMS_ROWS, order[lit_rank], C_TITLE), (b.x0 + b.x1) * 0.5, b.y1 - 12 * d, 8 * d, ink(p, INK_PALE));
+    }
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// Each tower eases toward its place and height; still (a golden) puts it there.
+place_towers :: (s: [] RealmsState, order: [] int, n: int, dt: f32, still: bool) {
+  cols := cols_for(n);
+  k := Iso.{ox = 0, oy = 0, c = 1, cols = cols};
+  a := ifx still || !s[0].placed then 1.0f32 else clamp(dt * 7, 0, 1);
+  for i: 0..<n {
+    r := order[i];
+    tx := cell_x(k, i); ty := cell_y(k, i); th := tower_height(s, s[0].sort, r, i, n);
+    s[0].gx[r] += (tx - s[0].gx[r]) * a;
+    s[0].gy[r] += (ty - s[0].gy[r]) * a;
+    s[0].gh[r] += (th - s[0].gh[r]) * a;
+  }
+  s[0].placed = true;
+}
+
+// ---------------------------------------------------------------- the header and the list
+
+header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int) -> int {
+  d := p.d; v := at; b := l.header;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_ACCENT);
+  white.sans = false; dim.sans = false;
+  x := b.x0 + 18 * d; right := b.x1 - 18 * d;
+  v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx hot == HIT_HOME then white else dim);
+  crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "REALMS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, accent);
+  ty := b.y0 + 58 * d;
+  v = put(out, v, "REALMS", x, ty, 26 * d, white);
+  if l.wide {
+    tx := x + text_width("REALMS", 26 * d) + 22 * d;
+    v = put_fit(out, v, "WORLDS ON THE VERSE YOU PLAY IN THE BROWSER", tx, ty - 4 * d, 8 * d, white, l.chips[0].x0 - tx - 30 * d);
+  } else {
+    v = put_fit(out, v, "WORLDS YOU PLAY IN THE BROWSER", x, ty + 22 * d, 7.5 * d, white, right - x);
+  }
+  cap := CHIP_CAP * d;
+  for k: 0..<SORTS {
+    ck := ifx sort == k then accent else (ifx hot == HIT_SORT - k then white else dim);
+    v = chip(out, v, SORT_NAMES[k], l.chips[k].x0, l.chips[k].y1 - 5 * d, cap, ck, p);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+WIDTHS :: [3] f32.[84, 70, 64];
+COLUMNS :: [3] string.["VISITORS", "PLAYED", "OPENED"];
+draw_row :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, b: Box, r: int, rank: int, p: Pen, lit_up: bool, focused: bool) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_ACCENT); faint := ink(p, INK_FAINT);
+  if lit_up || focused {
+    k := ifx focused then accent else ink(p, INK_PALE);
+    v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 2 * d, b.y1 - 6 * d, k, p.fade);
+    v = rule(out, v, b.x0 + 2 * d, b.y0 + 6 * d, b.x0 + 8 * d, b.y0 + 6 * d, k, p.fade);
+    v = rule(out, v, b.x0 + 2 * d, b.y1 - 6 * d, b.x0 + 8 * d, b.y1 - 6 * d, k, p.fade);
+  }
+  nk := ifx lit_up || focused then accent else white;
+  nk.sans = true;
+  counted := s[0].counted;
+  num: [8] u8; nn := put_int(num[..], 0, rank + 1);
+  x := b.x0 + 16 * d; right := b.x1 - 12 * d;
+  v = put(out, v, cast(string) num[0..<nn], x, b.y0 + 24 * d, 7 * d, faint);
+  x += 22 * d;
+  vis: [24] u8; vn := put_count(vis[..], 0, stat(s, r, N_VISITORS), counted);
+  mins: [24] u8; mn := put_minutes(mins[..], 0, stat(s, r, N_MINUTES), counted);
+  day: [16] u8; dn := put_day(day[..], 0, field(REALMS_ROWS, r, C_ADDED));
+  vals := [3] string.[cast(string) vis[0..<vn], cast(string) mins[0..<mn], cast(string) day[0..<dn]];
+  if l.wide {
+    total := 0.0f32;
+    for c: 0..<3 { total += WIDTHS[c] * d; }
+    left := right - total;
+    v = put_fit(out, v, field(REALMS_ROWS, r, C_TITLE), x, b.y0 + 22 * d, 10 * d, nk, left - x - 12 * d);
+    v = put_fit(out, v, field(REALMS_ROWS, r, C_LINE), x, b.y0 + 39 * d, 6.5 * d, dim, left - x - 12 * d);
+    cx := left;
+    sorted_col := ifx s[0].sort == SORT_POPULAR then 0 else (ifx s[0].sort == SORT_PLAYED then 1 else (ifx s[0].sort == SORT_RECENT then 2 else -1));
+    for c: 0..<3 {
+      v = put(out, v, vals[c], cx, b.y0 + 30 * d, 8 * d, ifx c == sorted_col then white else dim);
+      cx += WIDTHS[c] * d;
+    }
+  } else {
+    // the sort's number at the right, the line under the name, the other numbers under that
+    which := ifx s[0].sort == SORT_PLAYED then 1 else (ifx s[0].sort == SORT_RECENT then 2 else 0);
+    tag: [40] u8; tn := put_text(tag[..], 0, vals[which]);
+    if which == 0 && counted { tn += put_text(tag[..], tn, " VISITORS"); }
+    big := cast(string) tag[0..<tn];
+    v = put_right(out, v, big, right, b.y0 + 20 * d, 7 * d, white);
+    v = put_fit(out, v, field(REALMS_ROWS, r, C_TITLE), x, b.y0 + 20 * d, 10 * d, nk, right - x - ink_width(big, 7 * d, GAP, SPACE, white) - 12 * d);
+    v = put_fit(out, v, field(REALMS_ROWS, r, C_LINE), x, b.y0 + 36 * d, 6.5 * d, dim, right - x);
+    meta: [64] u8; mt := 0;
+    for c: 0..<3 {
+      if c == which { continue; }
+      if mt > 0 { mt += put_text(meta[..], mt, "   "); }
+      mt += put_text(meta[..], mt, COLUMNS[c]);
+      mt += put_text(meta[..], mt, " ");
+      mt += put_text(meta[..], mt, vals[c]);
+    }
+    v = put_fit(out, v, cast(string) meta[0..<mt], x, b.y0 + 51 * d, 5.5 * d, faint, right - x);
+  }
+  return rule(out, v, b.x0 + 10 * d, b.y1, b.x1 - 10 * d, b.y1, dim, 0.1 * p.fade);
+}
+
+draw_list :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order: [] int, n: int) -> int {
+  d := p.d; b := l.list;
+  buf: [48] u8;
+  c := put_int(buf[..], 0, n);
+  c += put_text(buf[..], c, ifx n == 1 then " REALM" else " REALMS");
+  if l.wide { c += put_text(buf[..], c, "  -  ENTER OPENS"); }
+  v := titled(out, at, b, "ALL REALMS", cast(string) buf[0..<c], p);
+  dim := ink(p, INK_DIM);
+  if l.wide {
+    total := 0.0f32;
+    for k: 0..<3 { total += WIDTHS[k] * d; }
+    cx := b.x1 - 20 * d - total;
+    y := l.rows_top - 6 * d;
+    v = put(out, v, "REALM", b.x0 + 46 * d, y, 6 * d, dim);
+    for k: 0..<3 { v = put(out, v, COLUMNS[k], cx, y, 6 * d, dim); cx += WIDTHS[k] * d; }
+  }
+  for k: 0..<n {
+    rb := row_box(l, k, s[0].scroll, d);
+    if !row_visible(l, rb) { continue; }
+    v = draw_row(out, v, s, l, rb, order[k], k, p, s[0].hot == k, s[0].sel == k);
+  }
+  if s[0].scroll > 1 { v = diamond(out, v, b.x1 - 20 * d, l.rows_top + 4 * d, 3 * d, ink(p, INK_ACCENT), p.fade); }
+  if s[0].scroll < max_scroll(l, n, d) - 1 { v = diamond(out, v, b.x1 - 20 * d, b.y1 - 12 * d, 3 * d, ink(p, INK_ACCENT), p.fade); }
+  return frame(out, v, b, 10 * d, p);
+}
+
+// ---------------------------------------------------------------- the frame
+
+realms_frame :: (s: [] RealmsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = HIT_NONE; s[0].sel = -1; s[0].press = HIT_NONE; }
+  s[0].time += clamp(dt, 0, 0.1);
+  s[0].frames += 1;
+  time := ifx still then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  fade := ifx still then 1.0f32 else ease(time / 0.9);
+  p := Pen.{d = d, fade = fade, time = time};
+  l := layout(width, height, d);
+  order: [MAX_REALMS] int;
+  n := sorted(s, s[0].sort, order[..]);
+  place_towers(s, order[..], n, dt, still);
+  s[0].scroll = clamp(s[0].scroll, 0, max_scroll(l, n, d));
+  if s[0].sel >= n { s[0].sel = n - 1; }
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 3; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, l.header, 0, 0); }
+  glass(uniforms, 0, l.header, 10 * d, 0.92);
+  glass(uniforms, 1, l.scene, 10 * d, 0.55);
+  glass(uniforms, 2, l.list, 10 * d, 0.92);
+  v := header(out, 0, l, p, s[0].sort, s[0].hot);
+  v = draw_scene(out, v, s, l, p, order[..], n);
+  return draw_list(out, v, s, l, p, order[..], n);
+}
+
+// ---------------------------------------------------------------- input
+
+hit :: (s: [] RealmsState, x: f32, y: f32) -> int {
+  if s[0].d <= 0 { return HIT_NONE; }
+  d := s[0].d;
+  l := layout(s[0].width, s[0].height, d);
+  for k: 0..<SORTS { if inside(l.chips[k], x, y) { return HIT_SORT - k; } }
+  if inside(l.home, x, y) { return HIT_HOME; }
+  order: [MAX_REALMS] int;
+  n := sorted(s, s[0].sort, order[..]);
+  for k: 0..<n {
+    b := row_box(l, k, s[0].scroll, d);
+    if row_visible(l, b) && inside(b, x, y) && y <= l.list.y1 { return k; }
+  }
+  if inside(l.scene, x, y) && n > 0 {
+    p := Pen.{d = d, fade = 1, time = 0};
+    k := iso_of(l.scene, n, p);
+    // the nearest tower first: the one with the largest x + y
+    best := HIT_NONE; depth := -1.0f32;
+    for i: 0..<n {
+      r := order[i];
+      if inside(tower_box(k, s[0].gx[r], s[0].gy[r], s[0].gh[r]), x, y) && s[0].gx[r] + s[0].gy[r] > depth { best = i; depth = s[0].gx[r] + s[0].gy[r]; }
+    }
+    return best;
+  }
+  return HIT_NONE;
+}
+
+navigate :: (s: [] RealmsState, url: string) {
+  if url.count == 0 || url.count > OUTBOX { return; }
+  s[0].out_n = put_text(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+open_rank :: (s: [] RealmsState, k: int) {
+  order: [MAX_REALMS] int;
+  n := sorted(s, s[0].sort, order[..]);
+  if k < 0 || k >= n { return; }
+  buf: [96] u8;
+  m := put_text(buf[..], 0, "/realms/");
+  m += put_text(buf[..], m, field(REALMS_ROWS, order[k], C_SLUG));
+  navigate(s, cast(string) buf[0..<m]);
+}
+choose :: (s: [] RealmsState, sort: int) {
+  if sort < 0 || sort >= SORTS { return; }
+  s[0].sort = sort; s[0].sel = -1; s[0].scroll = 0;
+  s[0].out_n = put_text(s[0].outbox[..], 0, SORT_HASH[sort]);
+  s[0].action = ACT_HASH;
+}
+
+act :: (s: [] RealmsState, target: int) {
+  if target <= HIT_SORT && target > HIT_SORT - SORTS { choose(s, HIT_SORT - target); }
+  else if target == HIT_HOME { navigate(s, "/"); }
+  else if target >= 0 { s[0].sel = target; open_rank(s, target); }
+}
+
+realms_pointer :: (s: [] RealmsState, x: f32, y: f32, phase: int, kind: int) -> bool {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = hit(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else HIT_NONE;
+    return true;
+  }
+  if phase == P_MOVE {
+    s[0].point_x = x;
+    if kind == 0 { s[0].hot = hit(s, x, y); }
+    if s[0].press != HIT_NONE || kind != 0 {
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll += s[0].drag_y - y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := hit(s, x, y);
+    if !s[0].dragged && target == s[0].press && target != HIT_NONE { act(s, target); }
+    s[0].press = HIT_NONE;
+    if kind != 0 { s[0].hot = HIT_NONE; }
+    return true;
+  }
+  s[0].press = HIT_NONE;
+  return true;
+}
+
+// Keys: up and down choose a realm, Enter opens it, left and right (or 1 to 4) pick the sort.
+realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool {
+  if s.count < 1 { return false; }
+  if tk_command(key, mods) != TK_KEY { return false; }
+  n := realm_count();
+  if key == K_DOWN { s[0].sel = ifx s[0].sel < 0 then 0 else (ifx s[0].sel + 1 < n then s[0].sel + 1 else n - 1); }
+  else if key == K_UP { s[0].sel = ifx s[0].sel <= 0 then 0 else s[0].sel - 1; }
+  else if key == K_HOME { s[0].sel = 0; }
+  else if key == K_END { s[0].sel = n - 1; }
+  else if key == K_ENTER { if s[0].sel >= 0 { open_rank(s, s[0].sel); } return true; }
+  else if key == K_ESCAPE { s[0].sel = -1; return true; }
+  else if key == K_RIGHT { choose(s, (s[0].sort + 1) % SORTS); return true; }
+  else if key == K_LEFT { choose(s, (s[0].sort + SORTS - 1) % SORTS); return true; }
+  else if key >= '1' && key <= '4' { choose(s, key - cast(int) '1'); return true; }
+  else { return false; }
+  if n == 0 { s[0].sel = -1; return true; }
+  if s[0].d > 0 {
+    l := layout(s[0].width, s[0].height, s[0].d);
+    b := row_box(l, s[0].sel, s[0].scroll, s[0].d);
+    if b.y0 < l.rows_top { s[0].scroll -= l.rows_top - b.y0; }
+    if b.y1 > l.list.y1 { s[0].scroll += b.y1 - l.list.y1; }
+  }
+  return true;
+}
+
+// MSG_VISITS: "slug|visitors|visits|minutes" lines; a slug the table hasn't is left out.
+realms_message :: (s: [] RealmsState, kind: int, length: int) {
+  if s.count < 1 || length < 0 || length > INBOX || kind != MSG_VISITS { return; }
+  text := cast(string) s[0].inbox[0..<length];
+  for i: 0..<MAX_REALMS * 3 { s[0].stats[i] = 0; }
+  n := realm_count();
+  for line: 0..<rows(text) {
+    slug := field(text, line, 0);
+    for r: 0..<n {
+      if !same(slug, field(REALMS_ROWS, r, C_SLUG)) { continue; }
+      s[0].stats[r * 3 + N_VISITORS] = parse(field(text, line, 1));
+      s[0].stats[r * 3 + N_VISITS] = parse(field(text, line, 2));
+      s[0].stats[r * 3 + N_MINUTES] = parse(field(text, line, 3));
+    }
+  }
+  s[0].counted = true;
+}
+
+// The location's hash names the sort; anything else is POPULAR.
+realms_hash :: (s: [] RealmsState, length: int) {
+  if s.count < 1 || length < 0 || length > INBOX { return; }
+  h := cast(string) s[0].inbox[0..<length];
+  want := SORT_POPULAR;
+  for k: 0..<SORTS { if same(h, SORT_HASH[k]) { want = k; } }
+  if want != s[0].sort { s[0].sort = want; s[0].sel = -1; s[0].scroll = 0; }
+}
+
+coaxial_realms_frame :: (s: [] RealmsState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32,
+                         dt: f32, still: bool) -> int #export_c {
+  return realms_frame(s, out, uniforms, width, height, dpr, dt, still);
+}
+coaxial_realms_pointer :: (s: [] RealmsState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c { return realms_pointer(s, x, y, phase, kind); }
+coaxial_realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool #export_c { return realms_key(s, key, mods); }
+coaxial_realms_wheel :: (s: [] RealmsState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_realms_message :: (s: [] RealmsState, kind: int, length: int) #export_c { realms_message(s, kind, length); }
+coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c { realms_hash(s, length); }
+coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c {
+  if s.count < 1 { return 0; }
+  return ifx s[0].hot != HIT_NONE then 1 else 0;
+}
+coaxial_realms_action :: (s: [] RealmsState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_realms_action_done :: (s: [] RealmsState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_realms_inbox_cap :: () -> int #export_c { return INBOX; }
+coaxial_realms_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_realms_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_realms_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------- tests
+
+on_canvas :: (out: [] f32, n: int, w: f32, h: f32, d: f32) -> bool {
+  for v: 0..<n {
+    x := out[v * VERTEX_FLOATS]; y := out[v * VERTEX_FLOATS + 1];
+    if x < -12 * d || y < -12 * d || x > w + 12 * d || y > h + 12 * d { return false; }
+  }
+  return true;
+}
+within :: (a: Box, b: Box) -> bool { return a.x0 >= b.x0 - 0.5 && a.y0 >= b.y0 - 0.5 && a.x1 <= b.x1 + 0.5 && a.y1 <= b.y1 + 0.5; }
+apart :: (a: Box, b: Box) -> bool { return a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0; }
+visits :: (s: [] RealmsState, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  realms_message(s, MSG_VISITS, text.count);
+}
+rank_of :: (s: [] RealmsState, slug: string) -> int {
+  order: [MAX_REALMS] int;
+  n := sorted(s, s[0].sort, order[..]);
+  for k: 0..<n { if same(field(REALMS_ROWS, order[k], C_SLUG), slug) { return k; } }
+  return -1;
+}
+
+#test "every listed realm is a row with a slug, a title, a line and when it opened" {
+  n := realm_count();
+  #assert n >= 2 && n <= MAX_REALMS;
+  for r: 0..<n {
+    #assert field(REALMS_ROWS, r, C_SLUG).count > 0 && field(REALMS_ROWS, r, C_TITLE).count > 0 && field(REALMS_ROWS, r, C_LINE).count > 0;
+    #assert field(REALMS_ROWS, r, C_ADDED).count == 16;
+  }
+}
+
+#test "each sort puts the realms in its order, ties in the table's" {
+  s: [1] RealmsState;
+  order: [MAX_REALMS] int;
+  n := sorted(s[..], SORT_POPULAR, order[..]);
+  // no numbers yet: POPULAR and PLAYED keep the table's order
+  for k: 0..<n { #assert order[k] == k; }
+  #assert sorted(s[..], SORT_PLAYED, order[..]) == n && order[0] == 0;
+  // RECENT: newest first
+  #assert sorted(s[..], SORT_RECENT, order[..]) == n;
+  for k: 1..<n { #assert compare(field(REALMS_ROWS, order[k - 1], C_ADDED), field(REALMS_ROWS, order[k], C_ADDED)) >= 0; }
+  // A-Z
+  #assert sorted(s[..], SORT_AZ, order[..]) == n;
+  for k: 1..<n { #assert compare(field(REALMS_ROWS, order[k - 1], C_TITLE), field(REALMS_ROWS, order[k], C_TITLE)) <= 0; }
+  // the numbers: the most visitors first, then the most minutes for PLAYED; a slug we don't list is left out
+  last := field(REALMS_ROWS, n - 1, C_SLUG);
+  buf: [256] u8; m := put_text(buf[..], 0, last);
+  m += put_text(buf[..], m, "|40|90|7\nnot-a-realm|999|999|999\n");
+  m += put_text(buf[..], m, field(REALMS_ROWS, 0, C_SLUG));
+  m += put_text(buf[..], m, "|3|4|500\n");
+  visits(s[..], cast(string) buf[0..<m]);
+  #assert s[0].counted;
+  #assert rank_of(s[..], last) == 0 && rank_of(s[..], field(REALMS_ROWS, 0, C_SLUG)) == 1;
+  s[0].sort = SORT_PLAYED;
+  #assert rank_of(s[..], field(REALMS_ROWS, 0, C_SLUG)) == 0 && rank_of(s[..], last) == 1;
+}
+
+#test "the sort chips work, by click, key and hash" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for z: 0..<2 {
+    s: [1] RealmsState;
+    w := sizes[z * 2] * 2; h := sizes[z * 2 + 1] * 2;
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    l := layout(w, h, 2);
+    for k: 0..<SORTS {
+      #assert within(l.chips[k], l.header);
+      if k > 0 { #assert apart(l.chips[k], l.chips[k - 1]); }
+      cx := (l.chips[k].x0 + l.chips[k].x1) * 0.5; cy := (l.chips[k].y0 + l.chips[k].y1) * 0.5;
+      #assert realms_pointer(s[..], cx, cy, P_DOWN, 0) && realms_pointer(s[..], cx, cy, P_UP, 0);
+      #assert s[0].sort == k && s[0].action == ACT_HASH && same(cast(string) s[0].outbox[0..<s[0].out_n], SORT_HASH[k]);
+      coaxial_realms_action_done(s[..]);
+    }
+    #assert realms_key(s[..], K_RIGHT, 0) && s[0].sort == SORT_POPULAR;
+    #assert realms_key(s[..], '2', 0) && s[0].sort == SORT_RECENT;
+    for i: 0..<6 { s[0].inbox[i] = "played"[i]; }
+    realms_hash(s[..], 6);
+    #assert s[0].sort == SORT_PLAYED;
+    s[0].inbox[0] = 'x';
+    realms_hash(s[..], 1);
+    #assert s[0].sort == SORT_POPULAR;
+  }
+}
+
+#test "a click on a row or a tower opens that realm" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for z: 0..<2 {
+    s: [1] RealmsState;
+    w := sizes[z * 2] * 2; h := sizes[z * 2 + 1] * 2;
+    s[0].sort = SORT_AZ;
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    order: [MAX_REALMS] int;
+    n := sorted(s[..], SORT_AZ, order[..]);
+    l := layout(w, h, 2);
+    b := row_box(l, 0, 0, 2);
+    #assert row_visible(l, b) && within(b, l.list);
+    x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+    #assert realms_pointer(s[..], x, y, P_DOWN, 0) && realms_pointer(s[..], x, y, P_UP, 0);
+    want: [96] u8; m := put_text(want[..], 0, "/realms/"); m += put_text(want[..], m, field(REALMS_ROWS, order[0], C_SLUG));
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], cast(string) want[0..<m]);
+    coaxial_realms_action_done(s[..]);
+    // the last realm's tower, at the front of the grid
+    p := Pen.{d = 2, fade = 1, time = 0};
+    k := iso_of(l.scene, n, p);
+    r := order[n - 1];
+    tb := tower_box(k, s[0].gx[r], s[0].gy[r], s[0].gh[r]);
+    #assert within(tb, l.scene);
+    tx := (tb.x0 + tb.x1) * 0.5; ty := tb.y1 - 4;
+    #assert hit(s[..], tx, ty) == n - 1;
+    #assert realms_pointer(s[..], tx, ty, P_DOWN, 0) && realms_pointer(s[..], tx, ty, P_UP, 0);
+    m = put_text(want[..], 0, "/realms/"); m += put_text(want[..], m, field(REALMS_ROWS, r, C_SLUG));
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], cast(string) want[0..<m]);
+  }
+}
+
+#test "the page fits a desktop, a tablet and a 320 px phone, with numbers and without" {
+  sizes := [8] f32.[1440, 900, 1080, 760, 390, 844, 320, 568];
+  dprs := [4] f32.[1, 2, 3, 2];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  for z: 0..<4 {
+    for pass: 0..<2 {
+      s: [1] RealmsState;
+      if pass == 1 { visits(s[..], "haunted-house|120|300|4000\neverglade|30|31|200\n"); }
+      w := sizes[z * 2] * dprs[z]; h := sizes[z * 2 + 1] * dprs[z];
+      for sort: 0..<SORTS {
+        s[0].sort = sort; s[0].hot = 0;
+        v := realms_frame(s[..], out[..], uniforms[..], w, h, dprs[z], 0, true);
+        #assert v > 600 && v < MAX_VERTICES && on_canvas(out[..], v, w, h, dprs[z]);
+      }
+      l := layout(w, h, dprs[z]);
+      #assert apart(l.header, l.scene) && apart(l.scene, l.list) && apart(l.header, l.list);
+      #assert l.list.y1 - l.rows_top > l.row_h;
+    }
+  }
+}
+
+#test "the towers ease to their places, and a still frame puts them there" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  s: [1] RealmsState;
+  #assert realms_frame(s[..], out[..], uniforms[..], 2880, 1800, 2, 0.016, false) > 0;
+  x0 := s[0].gx[0];
+  #assert x0 == 0.5;   // the first frame places them
+  choose(s[..], SORT_AZ);
+  #assert realms_frame(s[..], out[..], uniforms[..], 2880, 1800, 2, 0.016, false) > 0;
+  order: [MAX_REALMS] int;
+  n := sorted(s[..], SORT_AZ, order[..]);
+  rank := 0;
+  for k: 0..<n { if order[k] == 0 { rank = k; } }
+  k := Iso.{ox = 0, oy = 0, c = 1, cols = cols_for(n)};
+  if cell_x(k, rank) != 0.5 { #assert s[0].gx[0] != x0 && s[0].gx[0] != cell_x(k, rank); }
+  #assert realms_frame(s[..], out[..], uniforms[..], 2880, 1800, 2, 0, true) > 0;
+  #assert s[0].gx[0] == cell_x(k, rank) && s[0].gy[0] == cell_y(k, rank);
+}

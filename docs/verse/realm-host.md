@@ -16,6 +16,11 @@ writes `apps/openagents-web/realms.coax` (the galaxy's table, loaded by
 `verse.coax`) and `realms/<slug>/index.html` (the realm's page) from it; the
 build runs it first, and `bun coax/web/realms.ts --check` fails when the
 written files are behind the table or the table breaks a rule below (`bun test coax/web/realms.test.ts`). Don't edit the written files.
+It also writes `/realms` from the realms the galaxy lists: `realms/list.coax` (the rows
+`realmlist.coax` draws as a list and a grid of towers), `realms/index.html` and
+`realms/index.md`. Its numbers (visitors, visits, minutes played) come live from
+`GET /api/analytics/realms` (`coax/web/api/analytics.c`), which leaves out our team and
+automation the way `/admin/analytics` does.
 
 ## 1. The table entry
 
@@ -34,6 +39,7 @@ written files are behind the table or the table breaks a rule below (`bun test c
 | `orbit` | `r` the orbit's radius and `size` the planet's, both as shares of the galaxy's size (the playtest's orbits are 0.15 to 0.46); `a` its angle in radians. Pick an orbit the galaxy already draws (`ORBITS` in `verse.coax`) or one clear of the others. |
 | `realm.slug` | The page: `/realms/<slug>`. Its old address, `/realm/<slug>` (before October 29), answers 301 to it at the load balancer, path and query kept. |
 | `realm.title`, `description`, `alt` | The page's title, its description and its link-preview text. |
+| `realm.added`, `line` | Required for a listed open realm: when it opened (`2026-10-30T16:57`, Chicago time; `/realms`' RECENT) and its one line on `/realms` (at most 60 characters, no `|` or `"`). |
 | `realm.module` | The module: `apps/openagents-web/<module>.coax`, `<module>-face.c` and `<module>.wgsl`, built to `build/<module>.wasm` by a line in `build.sh`. Two realms may share a module (the page tells it which realm it is). |
 | `realm.slot` | The save slot (below). Unique across realms. |
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
