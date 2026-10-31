@@ -2,12 +2,12 @@
 static const char *coax_source_path = "lib/compiler/checker.coax";
 struct coax_source_range { int first, last, base, fixed; const char *path; };
 static const struct coax_source_range coax_source_ranges[] = {
-  {1,82374,1,0,"lib/compiler/checker.coax"},
-  {82375,82464,1,0,"lib/compiler/quantity.coax"},
-  {82465,82604,1,0,"lib/compiler/unit-algebra.coax"},
-  {82605,82727,1,0,"lib/compiler/unit-forms.coax"},
-  {82728,82848,1,0,"lib/compiler/spatial-policy.coax"},
-  {82849,82918,1,0,"lib/compiler/spatial-mutation.coax"},
+  {1,82381,1,0,"lib/compiler/checker.coax"},
+  {82382,82471,1,0,"lib/compiler/quantity.coax"},
+  {82472,82611,1,0,"lib/compiler/unit-algebra.coax"},
+  {82612,82734,1,0,"lib/compiler/unit-forms.coax"},
+  {82735,82855,1,0,"lib/compiler/spatial-policy.coax"},
+  {82856,82925,1,0,"lib/compiler/spatial-mutation.coax"},
 };
 static const struct coax_source_range *coax_find_source(int line) {
   for (unsigned i=0;i<sizeof(coax_source_ranges)/sizeof(coax_source_ranges[0]);i++) if (line>=coax_source_ranges[i].first && line<=coax_source_ranges[i].last) return &coax_source_ranges[i];
@@ -18339,18 +18339,18 @@ coax_t_Q_Conversion Q_conversion(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target)
   {
     return ((coax_t_Q_Conversion){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
-  int64_t l_numerator = coax_mul_s64((l_source).numerator, (l_target).denominator, 82449);
-  int64_t l_denominator = coax_mul_s64((l_source).denominator, (l_target).numerator, 82449);
+  int64_t l_numerator = coax_mul_s64((l_source).numerator, (l_target).denominator, 82456);
+  int64_t l_denominator = coax_mul_s64((l_source).denominator, (l_target).numerator, 82456);
   int64_t l_exponent = INT64_C(0);
-  while (coax_mod_s64(l_numerator, INT64_C(2), 82450) == INT64_C(0))
+  while (coax_mod_s64(l_numerator, INT64_C(2), 82457) == INT64_C(0))
   {
-    l_numerator = coax_div_s64(l_numerator, INT64_C(2), 82450);
-    l_exponent = coax_add_s64(l_exponent, INT64_C(1), 82450);
+    l_numerator = coax_div_s64(l_numerator, INT64_C(2), 82457);
+    l_exponent = coax_add_s64(l_exponent, INT64_C(1), 82457);
   }
-  while (coax_mod_s64(l_denominator, INT64_C(2), 82451) == INT64_C(0))
+  while (coax_mod_s64(l_denominator, INT64_C(2), 82458) == INT64_C(0))
   {
-    l_denominator = coax_div_s64(l_denominator, INT64_C(2), 82451);
-    l_exponent = coax_sub_s64(l_exponent, INT64_C(1), 82451);
+    l_denominator = coax_div_s64(l_denominator, INT64_C(2), 82458);
+    l_exponent = coax_sub_s64(l_exponent, INT64_C(1), 82458);
   }
   if (l_numerator != l_denominator)
   {
@@ -18383,7 +18383,7 @@ static int64_t coax_p_UA_gcd(int64_t l_a, int64_t l_b) {
   int64_t l_y = l_b;
   while (l_y != INT64_C(0))
   {
-    int64_t l_remainder = coax_mod_s64(l_x, l_y, 82569);
+    int64_t l_remainder = coax_mod_s64(l_x, l_y, 82576);
     l_x = l_y;
     l_y = l_remainder;
   }
@@ -18396,8 +18396,8 @@ static coax_t_UA_Result coax_p_UA_finish(coax_t_Q_Unit l_dimensions, int64_t l_n
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
   int64_t l_divisor = coax_p_UA_gcd(l_numerator, l_denominator);
-  int64_t l_n = coax_div_s64(l_numerator, l_divisor, 82579);
-  int64_t l_d = coax_div_s64(l_denominator, l_divisor, 82579);
+  int64_t l_n = coax_div_s64(l_numerator, l_divisor, 82586);
+  int64_t l_d = coax_div_s64(l_denominator, l_divisor, 82586);
   if ((l_n > INT64_C(1048576)) || (l_d > INT64_C(1048576)))
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(3))});
@@ -18427,8 +18427,8 @@ coax_t_UA_Result UA_product(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(1))});
   }
-  coax_t_Q_Unit l_dimensions = (coax_t519 = coax_add_s64((l_a).mass, (l_b).mass, 82590), coax_t520 = coax_add_s64((l_a).length, (l_b).length, 82590), coax_t521 = coax_add_s64((l_a).time, (l_b).time, 82590), coax_t522 = coax_add_s64((l_a).angle, (l_b).angle, 82590), ((coax_t_Q_Unit){.mass = coax_t519, .length = coax_t520, .time = coax_t521, .angle = coax_t522}));
-  return (coax_t523 = coax_mul_s64((l_a).numerator, (l_b).numerator, 82591), coax_t524 = coax_mul_s64((l_a).denominator, (l_b).denominator, 82591), coax_p_UA_finish(l_dimensions, coax_t523, coax_t524));
+  coax_t_Q_Unit l_dimensions = (coax_t519 = coax_add_s64((l_a).mass, (l_b).mass, 82597), coax_t520 = coax_add_s64((l_a).length, (l_b).length, 82597), coax_t521 = coax_add_s64((l_a).time, (l_b).time, 82597), coax_t522 = coax_add_s64((l_a).angle, (l_b).angle, 82597), ((coax_t_Q_Unit){.mass = coax_t519, .length = coax_t520, .time = coax_t521, .angle = coax_t522}));
+  return (coax_t523 = coax_mul_s64((l_a).numerator, (l_b).numerator, 82598), coax_t524 = coax_mul_s64((l_a).denominator, (l_b).denominator, 82598), coax_p_UA_finish(l_dimensions, coax_t523, coax_t524));
 }
 
 coax_t_UA_Result UA_quotient(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
@@ -18442,8 +18442,8 @@ coax_t_UA_Result UA_quotient(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(1))});
   }
-  coax_t_Q_Unit l_dimensions = (coax_t525 = coax_sub_s64((l_a).mass, (l_b).mass, 82595), coax_t526 = coax_sub_s64((l_a).length, (l_b).length, 82595), coax_t527 = coax_sub_s64((l_a).time, (l_b).time, 82595), coax_t528 = coax_sub_s64((l_a).angle, (l_b).angle, 82595), ((coax_t_Q_Unit){.mass = coax_t525, .length = coax_t526, .time = coax_t527, .angle = coax_t528}));
-  return (coax_t529 = coax_mul_s64((l_a).numerator, (l_b).denominator, 82596), coax_t530 = coax_mul_s64((l_a).denominator, (l_b).numerator, 82596), coax_p_UA_finish(l_dimensions, coax_t529, coax_t530));
+  coax_t_Q_Unit l_dimensions = (coax_t525 = coax_sub_s64((l_a).mass, (l_b).mass, 82602), coax_t526 = coax_sub_s64((l_a).length, (l_b).length, 82602), coax_t527 = coax_sub_s64((l_a).time, (l_b).time, 82602), coax_t528 = coax_sub_s64((l_a).angle, (l_b).angle, 82602), ((coax_t_Q_Unit){.mass = coax_t525, .length = coax_t526, .time = coax_t527, .angle = coax_t528}));
+  return (coax_t529 = coax_mul_s64((l_a).numerator, (l_b).denominator, 82603), coax_t530 = coax_mul_s64((l_a).denominator, (l_b).numerator, 82603), coax_p_UA_finish(l_dimensions, coax_t529, coax_t530));
 }
 
 coax_t_UA_Result UA_ratio(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target) {
@@ -18458,7 +18458,7 @@ coax_t_UA_Result UA_ratio(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
-  return (coax_t531 = ((coax_t_Q_Unit){0}), coax_t532 = coax_mul_s64((l_source).numerator, (l_target).denominator, 82603), coax_t533 = coax_mul_s64((l_source).denominator, (l_target).numerator, 82603), coax_p_UA_finish(coax_t531, coax_t532, coax_t533));
+  return (coax_t531 = ((coax_t_Q_Unit){0}), coax_t532 = coax_mul_s64((l_source).numerator, (l_target).denominator, 82610), coax_t533 = coax_mul_s64((l_source).denominator, (l_target).numerator, 82610), coax_p_UA_finish(coax_t531, coax_t532, coax_t533));
 }
 
 _Bool UF_valid(coax_t_UF_Form l_form) {
@@ -18474,14 +18474,14 @@ _Bool UF_valid(coax_t_UF_Form l_form) {
     {
       if (l_i < (l_form).count)
       {
-        if (((((((l_form).atoms).e[coax_index(l_i, 8, 82695)] <= l_previous) || (((l_form).atoms).e[coax_index(l_i, 8, 82695)] > INT64_C(2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 82695)] == INT64_C(0))) || (((l_form).powers).e[coax_index(l_i, 8, 82695)] < INT64_C(-2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 82695)] > INT64_C(2147483647)))
+        if (((((((l_form).atoms).e[coax_index(l_i, 8, 82702)] <= l_previous) || (((l_form).atoms).e[coax_index(l_i, 8, 82702)] > INT64_C(2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 82702)] == INT64_C(0))) || (((l_form).powers).e[coax_index(l_i, 8, 82702)] < INT64_C(-2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 82702)] > INT64_C(2147483647)))
         {
           return 0;
         }
-        l_previous = ((l_form).atoms).e[coax_index(l_i, 8, 82696)];
+        l_previous = ((l_form).atoms).e[coax_index(l_i, 8, 82703)];
       }
       else
-      if ((((l_form).atoms).e[coax_index(l_i, 8, 82697)] != INT64_C(0)) || (((l_form).powers).e[coax_index(l_i, 8, 82697)] != INT64_C(0)))
+      if ((((l_form).atoms).e[coax_index(l_i, 8, 82704)] != INT64_C(0)) || (((l_form).powers).e[coax_index(l_i, 8, 82704)] != INT64_C(0)))
       {
         return 0;
       }
@@ -18496,8 +18496,8 @@ coax_t_UF_Form UF_one(void) {
 
 coax_t_UF_Result UF_atom(int64_t l_atom) {
   coax_t_UF_Form l_form = ((coax_t_UF_Form){.count = INT64_C(1)});
-  ((l_form).atoms).e[coax_index(INT64_C(0), 8, 82703)] = l_atom;
-  ((l_form).powers).e[coax_index(INT64_C(0), 8, 82703)] = INT64_C(1);
+  ((l_form).atoms).e[coax_index(INT64_C(0), 8, 82710)] = l_atom;
+  ((l_form).powers).e[coax_index(INT64_C(0), 8, 82710)] = INT64_C(1);
   if (!UF_valid(l_form))
   {
     return ((coax_t_UF_Result){.status = ((coax_t_UF_Status)UINT64_C(1))});
@@ -18523,7 +18523,7 @@ _Bool UF_equal(coax_t_UF_Form l_a, coax_t_UF_Form l_b) {
     int64_t coax_hi535 = (l_a).count;
     for (int64_t l_i = coax_lo535; l_i < coax_hi535; l_i++)
     {
-      if ((coax_t536 = ((l_a).atoms).e[coax_index(l_i, 8, 82709)], coax_t537 = ((l_b).atoms).e[coax_index(l_i, 8, 82709)], (coax_t536 != coax_t537)) || (coax_t538 = ((l_a).powers).e[coax_index(l_i, 8, 82709)], coax_t539 = ((l_b).powers).e[coax_index(l_i, 8, 82709)], (coax_t538 != coax_t539)))
+      if ((coax_t536 = ((l_a).atoms).e[coax_index(l_i, 8, 82716)], coax_t537 = ((l_b).atoms).e[coax_index(l_i, 8, 82716)], (coax_t536 != coax_t537)) || (coax_t538 = ((l_a).powers).e[coax_index(l_i, 8, 82716)], coax_t539 = ((l_b).powers).e[coax_index(l_i, 8, 82716)], (coax_t538 != coax_t539)))
       {
         return 0;
       }
@@ -18549,34 +18549,34 @@ static coax_t_UF_Result coax_p_UF_merge(coax_t_UF_Form l_a, coax_t_UF_Form l_b, 
   {
     int64_t l_atom = ((int64_t)0);
     int64_t l_power = ((int64_t)0);
-    if ((l_j == (l_b).count) || ((l_i < (l_a).count) && (coax_t540 = ((l_a).atoms).e[coax_index(l_i, 8, 82717)], coax_t541 = ((l_b).atoms).e[coax_index(l_j, 8, 82717)], (coax_t540 < coax_t541))))
+    if ((l_j == (l_b).count) || ((l_i < (l_a).count) && (coax_t540 = ((l_a).atoms).e[coax_index(l_i, 8, 82724)], coax_t541 = ((l_b).atoms).e[coax_index(l_j, 8, 82724)], (coax_t540 < coax_t541))))
     {
-      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 82717)];
-      l_power = ((l_a).powers).e[coax_index(l_i, 8, 82717)];
-      l_i = coax_add_s64(l_i, INT64_C(1), 82717);
+      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 82724)];
+      l_power = ((l_a).powers).e[coax_index(l_i, 8, 82724)];
+      l_i = coax_add_s64(l_i, INT64_C(1), 82724);
     }
     else
-    if ((l_i == (l_a).count) || (coax_t542 = ((l_b).atoms).e[coax_index(l_j, 8, 82718)], coax_t543 = ((l_a).atoms).e[coax_index(l_i, 8, 82718)], (coax_t542 < coax_t543)))
+    if ((l_i == (l_a).count) || (coax_t542 = ((l_b).atoms).e[coax_index(l_j, 8, 82725)], coax_t543 = ((l_a).atoms).e[coax_index(l_i, 8, 82725)], (coax_t542 < coax_t543)))
     {
-      l_atom = ((l_b).atoms).e[coax_index(l_j, 8, 82718)];
-      l_power = ((l_b).powers).e[coax_index(l_j, 8, 82718)];
+      l_atom = ((l_b).atoms).e[coax_index(l_j, 8, 82725)];
+      l_power = ((l_b).powers).e[coax_index(l_j, 8, 82725)];
       if (l_division)
       {
-        l_power = coax_neg_s64(l_power, 82718);
+        l_power = coax_neg_s64(l_power, 82725);
       }
-      l_j = coax_add_s64(l_j, INT64_C(1), 82718);
+      l_j = coax_add_s64(l_j, INT64_C(1), 82725);
     }
     else
     {
-      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 82719)];
-      l_power = ((l_b).powers).e[coax_index(l_j, 8, 82719)];
+      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 82726)];
+      l_power = ((l_b).powers).e[coax_index(l_j, 8, 82726)];
       if (l_division)
       {
-        l_power = coax_neg_s64(l_power, 82719);
+        l_power = coax_neg_s64(l_power, 82726);
       }
-      l_power = coax_add_s64(l_power, ((l_a).powers).e[coax_index(l_i, 8, 82719)], 82719);
-      l_i = coax_add_s64(l_i, INT64_C(1), 82719);
-      l_j = coax_add_s64(l_j, INT64_C(1), 82719);
+      l_power = coax_add_s64(l_power, ((l_a).powers).e[coax_index(l_i, 8, 82726)], 82726);
+      l_i = coax_add_s64(l_i, INT64_C(1), 82726);
+      l_j = coax_add_s64(l_j, INT64_C(1), 82726);
     }
     if ((l_power < INT64_C(-2147483647)) || (l_power > INT64_C(2147483647)))
     {
@@ -18586,10 +18586,10 @@ static coax_t_UF_Result coax_p_UF_merge(coax_t_UF_Form l_a, coax_t_UF_Form l_b, 
     {
       if (l_count < INT64_C(8))
       {
-        ((l_staged).atoms).e[coax_index(l_count, 8, 82721)] = l_atom;
-        ((l_staged).powers).e[coax_index(l_count, 8, 82721)] = l_power;
+        ((l_staged).atoms).e[coax_index(l_count, 8, 82728)] = l_atom;
+        ((l_staged).powers).e[coax_index(l_count, 8, 82728)] = l_power;
       }
-      l_count = coax_add_s64(l_count, INT64_C(1), 82721);
+      l_count = coax_add_s64(l_count, INT64_C(1), 82728);
     }
   }
   if (l_count > INT64_C(8))
@@ -18760,9 +18760,9 @@ coax_t_SP_Op SOM_pair(coax_t_SP_Op l_operation) {
     int64_t coax_hi544 = INT64_C(4);
     for (int64_t l_i = coax_lo544; l_i < coax_hi544; l_i++)
     {
-      if (l_operation == (l_from).e[coax_index(l_i, 4, 82905)])
+      if (l_operation == (l_from).e[coax_index(l_i, 4, 82912)])
       {
-        return (l_to).e[coax_index(l_i, 4, 82905)];
+        return (l_to).e[coax_index(l_i, 4, 82912)];
       }
     }
   }

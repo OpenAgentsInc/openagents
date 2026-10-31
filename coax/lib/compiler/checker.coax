@@ -82146,6 +82146,13 @@ CK_spatial_fixture :: (c:CK_Context) {
  c.nodes[3].next=21;c.nodes[21]=CK_Node.{kind=CK_Tag.struct_,name="World",type=23,frame_decl=true,frame=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=32}};
  c.types[23]=CK_Type.{kind=CK_Kind.struct_,name="World",decl=21,size=1,alignment=1};
 }
+#test "spatial fixture is an admitted frame tag and leaves interning the next node" {
+ nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
+ size:=types[23].size;alignment:=types[23].alignment;types[23].size=0;types[23].alignment=0;
+ CK_frame_layout(c,21);#assert state[0].error_count==0 && nodes[21].mark==2 && types[23].size==size && types[23].alignment==alignment;
+ #assert state[0].used==21 && state[0].type_count==24;t:=CK_spatial_intern(c,SP_Kind.point,23,16,6,CK_Loc.{});#assert t==24 && types[t].decl==22 && state[0].used==25;
+}
 #forall "spatial interning owns complete kind frame unit representation and physical layout" kind:1..<3,rep:6..<8 {
  nodes:[512]CK_Node;types:[128]CK_Type;locals:[8]CK_Local;errors:[8]CK_Error;bytes:[16384]u8;state:[1]CK_State;
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_spatial_fixture(c);
