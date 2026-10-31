@@ -27,3 +27,13 @@ publish credentials or attach trust flags to the data. The test in
 `coax/tests/nostr/block_project.py` uses pinned source examples, protoc and
 actual generated Coax readers/writers on native sanitizers and Wasm; it is
 codec interoperability evidence, not NIP-MP or security conformance.
+
+`coax/lib/nostr/adapters/mp-projection.coax` compares an untrusted Project
+projection with the exact original JSON and the event projection. It checks the
+kind, singleton metadata and ordered members, including hint presence. The
+underlying event comparison does not recompute the ID or verify a signature.
+Singleton tags may retain extra elements; member tags must have two or three.
+Coordinate grammar and duplicate coordinates, listing and fold behavior,
+freshness, signatures and authority remain independent obligations. This is not
+an ingest validator or a live-page cutover. Its result borrows the wire, which
+must remain live and unchanged while in use.

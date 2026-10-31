@@ -1,0 +1,7 @@
+// Test-only bridge: copy exact source bytes when the untrusted projection agrees.
+#load "../../lib/nostr/adapters/mp-projection.coax";
+mpa_test_copy :: (wire:[]u8,out:[]u8)->int #export_c {
+ r:=mpa_read(wire);if !r.consistent {return -1;}
+ if r.original.count>out.count {return -2;}
+ for i:0..<r.original.count {out[i]=r.original[i];}return r.original.count;
+}

@@ -1,0 +1,98 @@
+// An untrusted, source-preserving NIP-MP projection. A matching DTO is not
+// a signature, listing, membership, freshness or repository authority check.
+// The protobuf wire and exact source JSON are borrowed and must remain stable.
+#load "mp-proto-import.coax";
+#load "event-projection.coax";
+#load "../../../tests/nostr/mp_project_fixtures.coax";
+#load "../../../tests/nostr/proto_wire_MP.coax";
+#load "../../../tests/nostr/mp_event_wire_checks.coax";
+#load "../../../tests/nostr/mp_project_wire_checks.coax";
+#authority;
+
+MpaProject :: struct {original:[]u8;consistent:bool;}
+
+// Compare the DTO's supported fields with the already source-checked event.
+// Tags not represented by MP remain in the original; they are not discarded.
+mpa_tags :: (p:MP_Project,e:N_Event)->bool {
+ identifier:=MP_Project_get_identifier(p);name:=MP_Project_get_name(p);
+ description:=MP_Project_get_description(p);channel:=MP_Project_get_channel(p);
+ visibility:=MP_Project_get_visibility(p);
+ if !identifier.present || identifier.value.count==0 {return false;}
+ seen:u32=0;members:=MP_Project_iter_members(p);tags:=N_Event_iter_tags(e);
+ while tags.has_value {
+  values:=N_Tag_iter_values(tags.value);
+  if !values.has_value {tags=N_Event_next_tags(tags);continue;}
+  tag:=values.value;values=N_Tag_next_values(values);
+  field:=ifx tag=="d" then 1 else ifx tag=="name" then 2 else ifx tag=="description" then 4 else ifx tag=="buzz-channel" then 8 else ifx tag=="buzz-visibility" then 16 else 0;
+  if field!=0 {
+   if !values.has_value || (seen & cast(u32)field)!=0 {return false;}
+   seen|=cast(u32)field;
+   if field==1 && values.value!=identifier.value {return false;}
+   if field==2 && (!name.present || values.value!=name.value) {return false;}
+   if field==4 && (!description.present || values.value!=description.value) {return false;}
+   if field==8 && (!channel.present || values.value!=channel.value) {return false;}
+   if field==16 && (!visibility.present || values.value!=visibility.value) {return false;}
+  } else if tag=="a" {
+   if !values.has_value {return false;} // an absent member reads no coordinate and fails below
+   coordinate:=MP_RepositoryMember_get_coordinate(members.value);
+   hint:=MP_RepositoryMember_get_relay_hint(members.value);
+   if !coordinate.present || coordinate.value!=values.value {return false;}
+   values=N_Tag_next_values(values);
+   if values.has_value {
+    if !hint.present || hint.value!=values.value {return false;}
+    values=N_Tag_next_values(values);if values.has_value {return false;}
+   } else if hint.present {return false;}
+   members=MP_Project_next_members(members);
+  }
+  tags=N_Event_next_tags(tags);
+ }
+ // Iterators over a decoded (fully checked) wire cannot fail.
+ if members.has_value {return false;}
+ return (seen & 1)!=0 && ((seen & 2)!=0)==name.present && ((seen & 4)!=0)==description.present && ((seen & 8)!=0)==channel.present && ((seen & 16)!=0)==visibility.present;
+}
+
+mpa_read :: (wire:[]u8)->MpaProject #export_c {
+ p:=MP_Project_decode(wire);if p.error!=0 {return MpaProject.{};}
+ source:=MP_Project_get_original(p);if !source.present {return MpaProject.{};}
+ checked:=npa_read(source.value.wire);if !checked.consistent {return MpaProject.{};}
+ signed:=N_SignedEvent_decode(source.value.wire);event:=N_SignedEvent_get_event(signed);
+ kind:=N_Event_get_kind(event.value);
+ if kind.value!=30621 || !mpa_tags(p,event.value) {return MpaProject.{};}
+ return MpaProject.{original=checked.original,consistent=true};
+}
+
+#test "MP projection accepts matching originals without treating them as authority" {
+ good:=MP_FIX_OK;plain:=MP_FIX_MIN;empty_tag:=MP_FIX_EMPTY_TAG;
+ a:=mpa_read(good[..]);#assert a.consistent && a.original.count>0;
+ b:=mpa_read(plain[..]);#assert b.consistent && b.original.count>0;
+ #assert mpa_read(empty_tag[..]).consistent;
+ bad_bad_kind:=MP_FIX_BAD_KIND;#assert !mpa_read(bad_bad_kind[..]).consistent;
+ bad_bad_original:=MP_FIX_BAD_ORIGINAL;#assert !mpa_read(bad_bad_original[..]).consistent;
+}
+#test "MP metadata cannot diverge from source or have ambiguous names" {
+ bad_bad_d:=MP_FIX_BAD_D;#assert !mpa_read(bad_bad_d[..]).consistent;
+ bad_bad_name:=MP_FIX_BAD_NAME;#assert !mpa_read(bad_bad_name[..]).consistent;
+ bad_bad_description:=MP_FIX_BAD_DESCRIPTION;#assert !mpa_read(bad_bad_description[..]).consistent;
+ bad_bad_channel:=MP_FIX_BAD_CHANNEL;#assert !mpa_read(bad_bad_channel[..]).consistent;
+ bad_bad_visibility:=MP_FIX_BAD_VISIBILITY;#assert !mpa_read(bad_bad_visibility[..]).consistent;
+ bad_dup_d:=MP_FIX_DUP_D;#assert !mpa_read(bad_dup_d[..]).consistent;
+ bad_dup_name:=MP_FIX_DUP_NAME;#assert !mpa_read(bad_dup_name[..]).consistent;
+ bad_empty_d:=MP_FIX_EMPTY_D;#assert !mpa_read(bad_empty_d[..]).consistent;
+}
+#test "MP tags and projection agree on presence, in both directions" {
+ a:=MP_FIX_A_NO_VALUE;#assert !mpa_read(a[..]).consistent;
+ b:=MP_FIX_MISSING_MEMBER;#assert !mpa_read(b[..]).consistent;
+ c:=MP_FIX_EXTRA_HINT;#assert !mpa_read(c[..]).consistent;
+ d:=MP_FIX_NO_D;#assert !mpa_read(d[..]).consistent;
+ e:=MP_FIX_NAME_ONLY;#assert !mpa_read(e[..]).consistent;
+ f:=MP_FIX_DESCRIPTION_ONLY;#assert !mpa_read(f[..]).consistent;
+ g:=MP_FIX_CHANNEL_ONLY;#assert !mpa_read(g[..]).consistent;
+ h:=MP_FIX_VISIBILITY_ONLY;#assert !mpa_read(h[..]).consistent;
+}
+#test "MP members preserve source order and optional hint presence" {
+ bad_bad_member:=MP_FIX_BAD_MEMBER;#assert !mpa_read(bad_bad_member[..]).consistent;
+ bad_bad_hint:=MP_FIX_BAD_HINT;#assert !mpa_read(bad_bad_hint[..]).consistent;
+ bad_missing_hint:=MP_FIX_MISSING_HINT;#assert !mpa_read(bad_missing_hint[..]).consistent;
+ bad_extra_member:=MP_FIX_EXTRA_MEMBER;#assert !mpa_read(bad_extra_member[..]).consistent;
+ bad_bad_member_arity:=MP_FIX_BAD_MEMBER_ARITY;#assert !mpa_read(bad_bad_member_arity[..]).consistent;
+}

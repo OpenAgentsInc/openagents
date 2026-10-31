@@ -1,0 +1,83 @@
+// Checks the actual imported descriptor's wire runtime. These fixtures are
+// shared by the MP adapter; this is the real generated MP profile runtime.
+#test "protobuf byte and cursor bounds" {
+ #assert MP__pb_small(0) && MP__pb_small(1048576) && !MP__pb_small(-1) && !MP__pb_small(1048577);
+ #assert MP__pb_cursor(0,0) && MP__pb_cursor(2,2) && !MP__pb_cursor(2,-1) && !MP__pb_cursor(2,3);
+ #assert !MP__pb_cursor(-1,0) && !MP__pb_cursor(1048577,0);
+}
+#test "protobuf varints enforce termination and overflow" {
+ a:=[1]u8.[0];v:=MP__pb_var(a[..],0);#assert v.error==0 && v.value==0 && v.next==1;
+ #assert MP__pb_var(a[..],-1).error==MP__pb_WIRE && MP__pb_var(a[..],1).error==MP__pb_WIRE;
+ a[0]=128;#assert MP__pb_var(a[..],0).error==MP__pb_WIRE;
+ two:=[2]u8.[128,1];v=MP__pb_var(two[..],0);#assert v.error==0 && v.value==128 && v.next==2;
+ wide:=[10]u8.[255,255,255,255,255,255,255,255,255,1];v=MP__pb_var(wide[..],0);
+ #assert v.error==0 && v.value==18446744073709551615 && v.next==10;
+ for i:0..<10 {#assert MP__pb_var(wide[0..<i],0).error==MP__pb_WIRE;}
+ wide[9]=2;#assert MP__pb_var(wide[..],0).error==MP__pb_WIRE;
+}
+#test "protobuf scalar wire kinds and bounds" {
+ bytes:=[8]u8.[1,2,3,4,5,6,7,8];
+ zeros:[8]u8;#assert MP__pb_scalar(zeros[..],0,1).raw==0 && MP__pb_scalar(zeros[..],0,5).raw==0;
+ x:=MP__pb_scalar(bytes[..],0,0);#assert x.error==0 && x.raw==1 && x.start==0 && x.next==1;
+ x=MP__pb_scalar(bytes[..],0,1);#assert x.error==0 && x.raw==0x0807060504030201 && x.start==0 && x.next==8;
+ x=MP__pb_scalar(bytes[..],0,5);#assert x.error==0 && x.raw==0x04030201 && x.next==4;
+ x=MP__pb_scalar(bytes[..],4,5);#assert x.error==0 && x.raw==0x08070605 && x.start==4 && x.next==8;
+ #assert MP__pb_scalar(bytes[..],1,1).error==MP__pb_WIRE && MP__pb_scalar(bytes[..],5,5).error==MP__pb_WIRE;
+ #assert MP__pb_scalar(bytes[..],-1,0).error==MP__pb_WIRE && MP__pb_scalar(bytes[..],9,0).error==MP__pb_WIRE;
+ #assert MP__pb_scalar(bytes[..],0,2).error==MP__pb_WIRE && MP__pb_scalar(bytes[..],0,3).error==MP__pb_WIRE;
+}
+#test "protobuf field parsing and minimal encodings" {
+ varint:=[3]u8.[8,128,1];f:=MP__pb_scan(varint[..],0);
+ #assert f.error==0 && f.number==1 && f.wt==0 && f.raw==128 && f.start==0 && f.next==3 && MP__pb_minimal(varint[..],f);
+ overlong:=[3]u8.[8,128,0];f=MP__pb_scan(overlong[..],0);#assert f.error==0 && f.raw==0 && !MP__pb_minimal(overlong[..],f);
+ data:=[4]u8.[18,2,97,98];f=MP__pb_scan(data[..],0);#assert f.error==0 && f.number==2 && f.wt==2 && f.payload.count==2 && f.payload[0]==97 && f.payload[1]==98 && f.next==4 && MP__pb_minimal(data[..],f);
+ long_len:=[4]u8.[18,129,0,97];f=MP__pb_scan(long_len[..],0);#assert f.error==0 && !MP__pb_minimal(long_len[..],f);
+ long_key:=[3]u8.[136,0,1];f=MP__pb_scan(long_key[..],0);#assert f.error==0 && !MP__pb_minimal(long_key[..],f);
+ fixed64:=[9]u8.[17,1,2,3,4,5,6,7,8];f=MP__pb_scan(fixed64[..],0);#assert f.error==0 && f.wt==1 && f.raw==0x0807060504030201 && MP__pb_minimal(fixed64[..],f);
+ fixed32:=[5]u8.[29,1,2,3,4];f=MP__pb_scan(fixed32[..],0);#assert f.error==0 && f.wt==5 && f.raw==0x04030201 && MP__pb_minimal(fixed32[..],f);
+ maxkey:=[6]u8.[248,255,255,255,15,0];f=MP__pb_scan(maxkey[..],0);#assert f.error==0 && f.number==536870911 && f.next==6;
+ too_high:=[6]u8.[128,128,128,128,16,0];#assert MP__pb_scan(too_high[..],0).error==MP__pb_WIRE;
+ prefixed:=[4]u8.[8,1,8,1];f=MP__pb_scan(prefixed[..],2);#assert f.error==0 && MP__pb_minimal(prefixed[..],f);
+ invalid:=[1]u8.[0];#assert MP__pb_scan(invalid[..],0).error==MP__pb_WIRE;
+ invalid[0]=11;#assert MP__pb_scan(invalid[..],0).error==MP__pb_WIRE;
+ #assert MP__pb_scan(invalid[..],-1).error==MP__pb_LIMIT && MP__pb_scan(invalid[..],2).error==MP__pb_LIMIT;
+ #assert MP__pb_scan(invalid[..],1).done;
+ broken:=[1]u8.[128];#assert !MP__pb_minimal(broken[..],MP__pb_Field.{start=0});
+ #assert !MP__pb_minimal(broken[..],MP__pb_Field.{start=0,wt=2});
+ badlen:=[2]u8.[10,128];#assert !MP__pb_minimal(badlen[..],MP__pb_Field.{start=0,wt=2});
+ #assert !MP__pb_minimal(varint[..],MP__pb_Field.{start=-1,wt=1});
+ empty:=[2]u8.[10,0];f=MP__pb_scan(empty[..],0);#assert f.error==0 && f.payload.count==0 && f.next==2;
+ truncated:=[3]u8.[10,2,97];#assert MP__pb_scan(truncated[..],0).error==MP__pb_WIRE;
+}
+#forall "protobuf single-byte UTF-8" byte:u8 {
+ value:=[1]u8.[byte];#assert MP__pb_utf8(value[..])==(byte<128);
+}
+#test "protobuf UTF-8 scalar boundaries and truncations" {
+ a:=[2]u8.[194,128];#assert MP__pb_utf8(a[..]);a[0]=193;#assert !MP__pb_utf8(a[..]);a[0]=223;a[1]=191;#assert MP__pb_utf8(a[..]);a[1]=192;#assert !MP__pb_utf8(a[..]);
+ b:=[3]u8.[224,160,128];#assert MP__pb_utf8(b[..]);b[1]=159;#assert !MP__pb_utf8(b[..]);b[0]=237;b[1]=159;#assert MP__pb_utf8(b[..]);b[1]=160;#assert !MP__pb_utf8(b[..]);b[0]=239;b[1]=191;b[2]=191;#assert MP__pb_utf8(b[..]);b[2]=127;#assert !MP__pb_utf8(b[..]);
+ c:=[4]u8.[240,144,128,128];#assert MP__pb_utf8(c[..]);c[1]=143;#assert !MP__pb_utf8(c[..]);c[0]=244;c[1]=143;c[2]=191;c[3]=191;#assert MP__pb_utf8(c[..]);c[1]=144;#assert !MP__pb_utf8(c[..]);c[0]=245;#assert !MP__pb_utf8(c[..]);
+ c[0]=240;c[1]=144;c[2]=128;c[3]=128;
+ for n:1..<4 {#assert !MP__pb_utf8(c[0..<n]);}
+ c[2]=127;#assert !MP__pb_utf8(c[..]);c[2]=192;#assert !MP__pb_utf8(c[..]);c[2]=128;
+ c[3]=127;#assert !MP__pb_utf8(c[..]);c[3]=192;#assert !MP__pb_utf8(c[..]);
+ c[0]=241;c[1]=128;c[2]=128;c[3]=128;#assert MP__pb_utf8(c[..]);
+ b[0]=225;b[1]=128;b[2]=128;#assert MP__pb_utf8(b[..]);
+ #assert MP__pb_utf8(c[0..<0]);
+}
+#test "protobuf field search retains bounded source semantics" {
+ a:=[5]u8.[8,1,18,1,97];x:=MP__pb_find(a[..],1);#assert x.error==0 && !x.done && x.raw==1;
+ x=MP__pb_find(a[..],2);#assert x.error==0 && !x.done && x.payload.count==1 && x.payload[0]==97;
+ x=MP__pb_find(a[..],3);#assert x.error==0 && x.done && x.raw==0 && x.payload.count==0;
+ x=MP__pb_find(a[0..<0],1);#assert x.error==0 && x.done && x.raw==0 && x.payload.count==0;
+ bad:=[1]u8.[128];x=MP__pb_find(bad[..],1);#assert x.error==MP__pb_WIRE && x.done && x.raw==0 && x.payload.count==0;
+ trailing:=[3]u8.[8,1,128];x=MP__pb_find(trailing[..],1);#assert x.error==0 && !x.done && x.raw==1;
+}
+#test "protobuf varint size transitions" {
+ #assert MP__pb_vsize(0)==1 && MP__pb_vsize(127)==1 && MP__pb_vsize(128)==2;
+ #assert MP__pb_vsize(16383)==2 && MP__pb_vsize(16384)==3 && MP__pb_vsize(2097152)==4;
+}
+#test "generated protobuf message admission and default budget" {
+ #assert MP__pb_message_admitted(0,0) && MP__pb_message_admitted(64,1048576);
+ #assert !MP__pb_message_admitted(-1,0) && !MP__pb_message_admitted(65,0) && !MP__pb_message_admitted(0,-1) && !MP__pb_message_admitted(0,1048577);
+ #assert MP__pb_root_depth()==0 && MP__pb_default_fields()==524288 && MP__pb_require_fields() && !MP__pb_partial_fields();
+}

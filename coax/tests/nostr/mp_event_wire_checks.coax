@@ -1,0 +1,143 @@
+// The MP profile includes the same event schema; exercise its generated readers.
+#test "generated event tag validators preserve wire, budgets and bounds" {
+ empty:[1]u8;
+ #assert MP_Tag__check(empty[0..<0],64,0,true,false).error==0;
+ #assert MP_Tag__check(empty[0..<0],65,0,true,false).error==MP__pb_LIMIT;
+ one:=[3]u8.[10,1,120];c:=MP_Tag__check(one[..],0,1,true,false);
+ #assert c.error==0 && c.left==0;
+ #assert MP_Tag__check(one[..],0,0,true,false).error==MP__pb_LIMIT;
+ #assert MP_Tag_decode(one[..]).error==0;
+ wrong:=[2]u8.[8,0];#assert MP_Tag_decode(wrong[..]).error==MP__pb_WIRE;
+ malformed:=[1]u8.[0];#assert MP_Tag_decode(malformed[..]).error==MP__pb_WIRE;
+ invalid:=[3]u8.[10,1,255];#assert MP_Tag_decode(invalid[..]).error==MP__pb_UTF8;
+ overlong:=[4]u8.[10,129,0,120];#assert MP_Tag_decode(overlong[..]).error==0;
+ #assert MP_Tag_decode_minimal(overlong[..]).error==MP__pb_WIRE;
+ many:[195]u8;for i:0..<65 {many[i*3]=10;many[i*3+1]=1;many[i*3+2]=120;}
+ #assert MP_Tag__check(many[0..<192],0,64,true,false).error==0;
+ #assert MP_Tag__check(many[0..<195],0,65,true,false).error==MP__pb_LIMIT;
+ bounded:[131077]u8;bounded[0]=10;bounded[1]=128;bounded[2]=128;bounded[3]=8;
+ #assert MP_Tag_decode(bounded[0..<131076]).error==0;
+ bounded[1]=129;#assert MP_Tag_decode(bounded[..]).error==MP__pb_LIMIT;
+ list:=[8]u8.[16,0,10,1,120,10,1,121];tag:=MP_Tag_decode(list[..]);iter:=MP_Tag_iter_values(tag);
+ #assert iter.error==0 && iter.has_value && iter.value=="x";
+ iter=MP_Tag_next_values(iter);#assert iter.error==0 && iter.has_value && iter.value=="y";
+ iter=MP_Tag_next_values(iter);#assert iter.error==0 && iter.done && !iter.has_value;
+ bad:=MP_Tag.{wire=wrong[..]};iter=MP_Tag_iter_values(bad);#assert iter.error==MP__pb_WIRE && iter.done;
+ bad=MP_Tag.{wire=one[..],error=MP__pb_VALUE};iter=MP_Tag_iter_values(bad);#assert iter.error==MP__pb_VALUE && iter.done;
+ iter=MP_Tag_Iter_values.{wire=one[..],done=true};iter=MP_Tag_next_values(iter);#assert iter.done && !iter.has_value;
+ iter=MP_Tag_Iter_values.{wire=one[..],error=MP__pb_VALUE};iter=MP_Tag_next_values(iter);#assert iter.error==MP__pb_VALUE && !iter.has_value;
+ iter=MP_Tag_Iter_values.{wire=malformed[..]};iter=MP_Tag_next_values(iter);#assert iter.error==MP__pb_WIRE && iter.done && !iter.has_value;
+}
+#test "generated event fields enforce wire, presence and nested budgets" {
+ empty:[1]u8;
+ #assert MP_Event__check(empty[0..<0],65,0,false,false).error==MP__pb_LIMIT;
+ #assert MP_Event__check(empty[0..<0],0,0,true,false).error==MP__pb_REQUIRED;
+ for f:1..<8 {
+  wire:[140]u8;n:=0;
+  if f==3 || f==4 {wire[0]=cast(u8)(f*8);wire[1]=1;n=2;}
+  else {
+   wire[0]=cast(u8)(f*8+2);
+   if f==1 || f==2 {wire[1]=32;n=34;}
+   else if f==7 {wire[1]=64;n=66;}
+   else if f==5 {wire[1]=3;wire[2]=10;wire[3]=1;wire[4]=120;n=5;}
+   else {wire[1]=1;wire[2]=120;n=3;}
+  }
+  budget:=1;if f==5 {budget=2;}
+  check:=MP_Event__check(wire[0..<n],0,budget,false,false);#assert check.error==0 && check.left==0;
+  #assert MP_Event__check(wire[0..<n],0,budget-1,false,false).error==MP__pb_LIMIT;
+  if f!=5 {
+   for i:0..<n {wire[n+i]=wire[i];}
+   #assert MP_Event__check(wire[0..<n*2],0,10,false,false).error==MP__pb_DUPLICATE;
+  }
+  if f==3 || f==4 {wire[0]=cast(u8)(f*8+2);}else {wire[0]=cast(u8)(f*8);}
+  wire[1]=0;#assert MP_Event__check(wire[0..<2],0,10,false,false).error==MP__pb_WIRE;
+  if f==1 || f==2 || f==7 {wire[0]=cast(u8)(f*8+2);wire[1]=1;wire[2]=0;#assert MP_Event__check(wire[0..<3],0,10,false,false).error==MP__pb_LIMIT;}
+  if f==6 {wire[0]=50;wire[1]=1;wire[2]=255;#assert MP_Event__check(wire[0..<3],0,10,false,false).error==MP__pb_UTF8;}
+ }
+ nonminimal:=[3]u8.[24,129,0];
+ #assert MP_Event__check(nonminimal[..],0,1,false,false).error==0;
+ #assert MP_Event__check(nonminimal[..],0,1,false,true).error==MP__pb_WIRE;
+ maximum:=[6]u8.[32,255,255,255,255,15];#assert MP_Event__check(maximum[..],0,1,false,false).error==0;
+ overflow:=[6]u8.[32,128,128,128,128,16];#assert MP_Event__check(overflow[..],0,1,false,false).error==MP__pb_VALUE;
+ content:[262149]u8;content[0]=50;content[1]=128;content[2]=128;content[3]=16;
+ #assert MP_Event__check(content[0..<262148],0,1,false,false).error==0;
+ content[1]=129;#assert MP_Event__check(content[..],0,1,false,false).error==MP__pb_LIMIT;
+ nested:=[5]u8.[42,3,10,1,120];
+ #assert MP_Event__check(nested[..],63,2,false,false).error==0;
+ #assert MP_Event__check(nested[..],64,2,false,false).error==MP__pb_LIMIT;
+ many:[4098]u8;for i:0..<2049 {many[i*2]=42;many[i*2+1]=0;}
+ #assert MP_Event__check(many[0..<4096],0,2048,false,false).error==0;
+ #assert MP_Event__check(many[..],0,2049,false,false).error==MP__pb_LIMIT;
+}
+#test "generated event and envelope required fields remain distinct" {
+ event:[192]u8;event[0]=10;event[1]=32;event[34]=18;event[35]=32;
+ event[68]=24;event[69]=1;event[70]=32;event[71]=1;event[72]=50;event[73]=1;event[74]=120;event[75]=58;event[76]=64;
+ n:=141;#assert MP_Event_decode(event[0..<n]).error==0;
+ forged:=MP_Event.{wire=event[0..<n],error=MP__pb_VALUE};
+ #assert MP_Event_get_id(forged).error==MP__pb_VALUE;
+ #assert MP_Event_get_pubkey(forged).error==MP__pb_VALUE;
+ #assert MP_Event_get_created_at(forged).error==MP__pb_VALUE;
+ #assert MP_Event_get_kind(forged).error==MP__pb_VALUE;
+ #assert MP_Event_get_content(forged).error==MP__pb_VALUE;
+ #assert MP_Event_get_sig(forged).error==MP__pb_VALUE;
+ #assert MP_Event_iter_tags(forged).error==MP__pb_VALUE && MP_Event_iter_tags(forged).done;
+ empty:[1]u8;missing_event:=MP_Event.{wire=empty[0..<0]};
+ #assert MP_Event_get_id(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_get_pubkey(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_get_created_at(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_get_kind(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_get_content(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_get_sig(missing_event).error==MP__pb_REQUIRED;
+ #assert MP_Event_iter_tags(missing_event).error==MP__pb_REQUIRED && MP_Event_iter_tags(missing_event).done;
+ badkey:=[1]u8.[0];
+ iter:=MP_Event_Iter_tags.{wire=badkey[..]};iter=MP_Event_next_tags(iter);#assert iter.error==MP__pb_WIRE && iter.done && !iter.has_value;
+ iter=MP_Event_Iter_tags.{wire=event[0..<n],done=true};iter=MP_Event_next_tags(iter);#assert iter.done && !iter.has_value;
+ iter=MP_Event_Iter_tags.{wire=event[0..<n],error=MP__pb_VALUE};iter=MP_Event_next_tags(iter);#assert iter.error==MP__pb_VALUE && !iter.has_value;
+ starts:=[6]int.[0,34,68,70,72,75];sizes:=[6]int.[34,34,2,2,3,66];
+ for missing:0..<6 {
+  short:[192]u8;k:=0;
+  for f:0..<6 {if f!=missing {for i:0..<sizes[f] {short[k]=event[starts[f]+i];k+=1;}}}
+  #assert MP_Event_decode(short[0..<k]).error==MP__pb_REQUIRED;
+ }
+ overlong:[193]u8;overlong[0]=10;overlong[1]=160;overlong[2]=0;
+ for i:2..<n {overlong[i+1]=event[i];}
+ #assert MP_Event_decode(overlong[0..<n+1]).error==0;
+ #assert MP_Event_decode_minimal(overlong[0..<n+1]).error==MP__pb_WIRE;
+ envelope:[320]u8;envelope[0]=10;envelope[1]=1;envelope[2]=120;envelope[3]=18;envelope[4]=141;envelope[5]=1;
+ for i:0..<n {envelope[6+i]=event[i];}
+ total:=6+n;#assert MP_SignedEvent_decode(envelope[0..<total]).error==0;
+ // The ordinary envelope accepts a valid non-minimal field length; its
+ // minimal variant rejects it even when all required fields are present.
+ overlong_envelope:[321]u8;overlong_envelope[0]=10;overlong_envelope[1]=129;overlong_envelope[2]=0;
+ for i:2..<total {overlong_envelope[i+1]=envelope[i];}
+ #assert MP_SignedEvent_decode(overlong_envelope[0..<total+1]).error==0;
+ #assert MP_SignedEvent_decode_minimal(overlong_envelope[0..<total+1]).error==MP__pb_WIRE;
+ forged_envelope:=MP_SignedEvent.{wire=envelope[0..<total],error=MP__pb_VALUE};
+ #assert MP_SignedEvent_get_original_json(forged_envelope).error==MP__pb_VALUE;
+ #assert MP_SignedEvent_get_event(forged_envelope).error==MP__pb_VALUE;
+ missing_envelope:=MP_SignedEvent.{wire=empty[0..<0]};
+ #assert MP_SignedEvent_get_original_json(missing_envelope).error==MP__pb_REQUIRED;
+ #assert MP_SignedEvent_get_event(missing_envelope).error==MP__pb_REQUIRED;
+ #assert MP_SignedEvent__check(empty[0..<0],65,0,false,false).error==MP__pb_LIMIT;
+ single:=[3]u8.[10,1,120];
+ #assert MP_SignedEvent__check(single[..],0,1,false,false).error==0;
+ #assert MP_SignedEvent__check(single[..],0,0,false,false).error==MP__pb_LIMIT;
+ duplicate:=[6]u8.[10,1,120,10,1,121];#assert MP_SignedEvent__check(duplicate[..],0,2,false,false).error==MP__pb_DUPLICATE;
+ wrong_event:=[2]u8.[16,0];#assert MP_SignedEvent__check(wrong_event[..],0,1,false,false).error==MP__pb_WIRE;
+
+ #assert MP_SignedEvent__check(envelope[0..<total],63,8,false,false).error==0;
+ #assert MP_SignedEvent__check(envelope[0..<total],64,8,false,false).error==MP__pb_LIMIT;
+ #assert MP_SignedEvent__check(envelope[0..<total],0,8,false,false).left==0;
+ #assert MP_SignedEvent_decode(envelope[0..<3]).error==MP__pb_REQUIRED;
+ #assert MP_SignedEvent_decode(envelope[3..<total]).error==MP__pb_REQUIRED;
+ for i:0..<n+3 {envelope[total+i]=envelope[3+i];}
+ #assert MP_SignedEvent__check(envelope[0..<total+n+3],0,20,false,false).error==MP__pb_DUPLICATE;
+ badchild:=[3]u8.[18,1,0];#assert MP_SignedEvent__check(badchild[..],0,3,false,false).error==MP__pb_WIRE;
+ invalid:=[2]u8.[8,0];#assert MP_SignedEvent__check(invalid[..],0,2,false,false).error==MP__pb_WIRE;
+ nonminimal:=[4]u8.[10,129,0,120];
+ #assert MP_SignedEvent__check(nonminimal[..],0,1,false,false).error==0;
+ #assert MP_SignedEvent__check(nonminimal[..],0,1,false,true).error==MP__pb_WIRE;
+ large:[524293]u8;large[0]=10;large[1]=128;large[2]=128;large[3]=32;
+ #assert MP_SignedEvent__check(large[0..<524292],0,1,false,false).error==0;
+ large[1]=129;#assert MP_SignedEvent__check(large[..],0,1,false,false).error==MP__pb_LIMIT;
+}
