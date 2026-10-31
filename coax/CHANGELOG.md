@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.42.0 — 2026-10-31
 
-Commit: [`cbb2178e3fd1ed3e13da237a07235f35bb86221f`](https://github.com/OpenAgentsInc/openagents/commit/cbb2178e3fd1ed3e13da237a07235f35bb86221f)
+Commit: [`b9ed63a38faa74fee5557b506b2d2c042f77e4ef`](https://github.com/OpenAgentsInc/openagents/commit/b9ed63a38faa74fee5557b506b2d2c042f77e4ef)
 
 - Finite-domain admission, products and tuple traversal now share one Coax
   kernel between the evaluator and native verification, preserving the
