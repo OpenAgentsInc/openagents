@@ -4,7 +4,7 @@
   "style": "painterly",
   "paint": [2, 3, 19, 23, 32, 33, 35],
   "neutral": [0, 3, 4, 19, 22, 27, 28],
-  "budget": 8700000,
+  "budget": 9050000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
   "texture_size": 512,
@@ -117,6 +117,39 @@
     },
     {
       "name": "Custom_Cat",
+      "licence": "openagents-custom-models"
+    },
+    "Bed_Twin1",
+    "Chest_Wood",
+    {
+      "name": "Custom_Rug",
+      "licence": "openagents-custom-models"
+    },
+    "Candle_1",
+    "Bookcase_2",
+    "BookGroup_Medium_1",
+    "Book_Stack_1",
+    "Potion_2",
+    "SmallBottles_1",
+    "Shelf_Simple",
+    "Table_Plate",
+    {
+      "name": "Custom_Portrait",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Armchair",
+      "licence": "openagents-custom-models"
+    },
+    "Floor_WoodLight",
+    "Nightstand_Shelf",
+    {
+      "name": "Custom_Broom",
+      "licence": "openagents-custom-models"
+    },
+    "Prop_Crate",
+    {
+      "name": "Custom_Moon",
       "licence": "openagents-custom-models"
     }
   ],

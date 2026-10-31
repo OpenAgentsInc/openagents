@@ -402,8 +402,8 @@ fails on any patch of open ground left over).
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
 - **The pack:** `verse/packs/everglade.json`, compiled to
-  `realms/everglade/assets/everglade.pack` (8.3 MB: 8,296,120 bytes,
-  budget 8,700,000) with `licences.md`; it carries the town's 44 Medieval
+  `realms/everglade/assets/everglade.pack` (9.0 MB,
+  budget 9,050,000) with `licences.md`; it carries the town's 44 Medieval
   Village and Fantasy Props pieces as well as the forest's, the Ranger
   (1.7 MB of it) and the people's 14 shared parts and clips (2.0 MB). The
   budget was 5 MB before the Ranger and rose by the Ranger's bytes, rounded
@@ -411,7 +411,11 @@ fails on any patch of open ground left over).
   from 14 parts, every texture once (512 px JPEG layers), outfits decimated
   to half their triangles and heads and hair to 60%. It rose again from 8,250,000
   by the 13 placeable props and plants of the voice edits' catalogue (596,364
-  bytes of mesh, no new textures but a plain white one), rounded up. It also carries 1,024 identity indices (`"identity"`), so
+  bytes of mesh, no new textures but a plain white one), rounded up. It rose
+  from 8,700,000 to 9,050,000 (now 9,039,012 bytes) by the 18 furnishings of the houses,
+  stables, tower and observatory (beds, chests, rugs, candles, bookcases, books,
+  potions, bottles, shelves, plates, portraits, armchairs, light boards,
+  nightstands, a broom, a crate for hay and a glass orb), rounded up. It also carries 1,024 identity indices (`"identity"`), so
   the city's shapes, drawn from the vertex index alone, share the pack's
   index buffer.
 - **The phone:** each frame the trees in view and nearer than 55 m (42 m on
@@ -473,9 +477,34 @@ Each building is put together from its footprint in `plan.coax`, in
   wall beside the doorway is shut. `#in-inn`, `#in-store`, `#in-smithy`,
   `#in-alchemist`, `#in-fighters`, `#in-rangers` and `#in-temple` start you
   inside, far enough in that the camera stays in the room.
+- **Lived-in rooms** (`everglade-interiors.coax`): every other building
+  can be walked into too. The six houses are each someone's: Hollis's
+  family home (a long table set with plates, mugs and bread, a rug before
+  the hearth, the children's beds under a loft and the parents' bed up its
+  stair), Fern the baker's (a kneading table thick with loaves, flour
+  sacks, racks of bread, two beds in the loft), Ada the weaver's (a loom
+  and its hanging cloth, dyed bolts, rugs, her bed in the loft), Quill the
+  scholar's (bookcases, a desk under books and scrolls, a globe, an
+  armchair by the fire, the bed in the loft), Garrick the widower's (one
+  bed under his wife's portrait, one chair, one plate, his sword on the
+  pegs) and Isolde the hunter's (pelts, packs and gear on the pegs, stores,
+  a trestle table, the bed in the loft). The stables have three stalls
+  with hay, a trough and a bucket each, bales by the door, the tack wall,
+  a cart and a broom (no horses: the kits have no four-legged rig). The
+  mages' tower has a scrying table with a glowing orb, bookcases, shelves
+  of glowing reagents and two galleries round an open well, a stair up to
+  each. The observatory has the telescope on its pier, its tube pitched up
+  toward the dome, a desk with star charts and candles, a glowing globe,
+  charts on the walls and a gallery with a cot. `#in-house-1` to `#in-house-6`,
+  `#in-stables`, `#in-mages` and `#in-observatory` start you inside.
+  Every piece is a town piece: it breaks, wood and cloth burn, it falls
+  when what holds it goes, R or a long rest stands it again. Hearths are
+  lamps at night (`lamp_at`, kind 3), and people whose routine takes them
+  home are drawn in their own room.
 - **Draw cost:** every kit piece of the town is one instance of one of
   the pack's meshes; the checks hold each mesh's count under its cap and
-  the town within 3,061 pieces.
+  the town within 4,119 pieces (the interiors add about 1,060; the near
+  draw stays at about 630 of `LOD_OBJECTS`' 1,600).
 
 ## The river (W3 of the water system)
 

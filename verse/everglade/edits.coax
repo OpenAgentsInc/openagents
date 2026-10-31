@@ -426,7 +426,7 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
 
 #test "a thing stands in the open: not in a building, the palisade, the woods, the river or past the edge" {
   #assert eg_edit_fault(eg_one(eg_thing(0, 6, -12, 0, 1)), 0) == EG_FAULT_NONE;           // on the commons
-  #assert eg_edit_fault(eg_one(eg_thing(0, -27, 41, 0, 1)), 0) == EG_FAULT_SOLID;         // in the mages' tower
+  #assert eg_edit_fault(eg_one(eg_thing(0, -27, 41, 0, 1)), 0) == EG_FAULT_NONE;          // in the mages' tower's room: it furnishes it
   #assert eg_edit_fault(eg_one(eg_thing(0, -14, -37, 0, 1)), 0) == EG_FAULT_NONE;          // in the inn's room: it furnishes it
   #assert eg_edit_fault(eg_one(eg_thing(1, 20, -56, 0, 1)), 0) == EG_FAULT_SOLID;         // in the south wall
   #assert eg_edit_fault(eg_one(eg_thing(1, 1, 1, 0, 1)), 0) == EG_FAULT_SOLID;            // in the fountain
@@ -466,7 +466,7 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert abs(back[0].things[1].size - 1) < 0.001 && abs(back[0].things[1].x + 20.5) < 0.001;
   #assert !eg_edits_read("eg-edit 2\n", back[..]) && !eg_edits_read("eg-edit 1\nt 1 2 3\n", back[..]) && !eg_edits_read("eg-edit 1\nx 1 2 3 4 5\n", back[..]);
   // a thing that can't stand where it says is dropped; an unknown kind too; sizes are held to their range
-  #assert eg_edits_read("eg-edit 1\nt 0 -2700 4100 0 100\nt 99 600 -1200 0 100\nt 1 600 -1200 0 900\n", back[..]);
+  #assert eg_edits_read("eg-edit 1\nt 0 100 100 0 100\nt 99 600 -1200 0 100\nt 1 600 -1200 0 900\n", back[..]);
   #assert back[0].n == 1 && back[0].things[0].kind == 1 && back[0].things[0].size == f32(EG_EDIT_SIZE_MAX);
   #assert eg_edits_read("eg-edit 1\n", back[..]) && back[0].n == 0;
 }
@@ -528,10 +528,10 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   // a patch of flowers is walked through: it doesn't stop a thing standing in it
   #assert eg_edit_fault(back[0], 2) == EG_FAULT_NONE;
   #assert !eg_edits_read("eg-edit 1\nt 1 600 -1200 0 100 0 5\n", back[..]) && !eg_edits_read("eg-edit 1\nb x\n", back[..]);
-  // a flower may stand in the open, not in a building, on a street or in a placed thing
+  // a flower may stand in the open or a building's room, not in the fountain, on a street or in a placed thing
   solids: [EG_SOLIDS * EG_BOX] f32;
   sn := everglade_solids(solids[..]);
-  #assert eg_spot_free(e, solids[..], sn, 10, -14, 0.15) && !eg_spot_free(e, solids[..], sn, -27, 41, 0.15);
+  #assert eg_spot_free(e, solids[..], sn, 10, -14, 0.15) && eg_spot_free(e, solids[..], sn, -27, 41, 0.15) && !eg_spot_free(e, solids[..], sn, 1, 1, 0.15);
   #assert !eg_spot_free(e, solids[..], sn, 0, -34, 0.15) && !eg_spot_free(e, solids[..], sn, 6, -12, 0.15);
   // moving and resizing take placed things, never the city's people
   #assert eg_pick_things(e, 3.2, -7, EG_PICK_ANY, false).n_people == 0;

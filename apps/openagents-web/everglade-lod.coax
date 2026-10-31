@@ -30,6 +30,7 @@ lod_reach :: (m: int) -> f32 {
   if m == M_APPLES || m == M_BARREL || m == M_CRATE { return f32(LOD_NEAR); }
   if m >= M_TABLE && m <= M_SCROLL && m != M_BANNER && m != M_GABLE { return f32(LOD_NEAR); }
   if m >= M_CARROT && m <= M_PUMPKIN && m != M_CART { return f32(LOD_NEAR); }
+  if m >= M_BED && m != M_FLOOR_LIGHT { return f32(LOD_NEAR); }   // the rooms' furniture (everglade-interiors.coax)
   return 0;
 }
 

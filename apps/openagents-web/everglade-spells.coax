@@ -225,27 +225,39 @@ Spells :: struct {
 // brick walls stone, posts and doors Medium, window glass Small and fragile,
 // props fragile, iron things resilient.
 // (mesh - 12, as KIT_MESH from Wall_Plaster_Straight: 0 plaster; 1 plaster window; 2 plaster door; 3 plaster grid; 4 brick; 5 brick window; 6 brick door; 7 window; 8 door; 9 corner; 10 roof; 11 tower roof; 12 log; 13 floor wood; 14 floor brick; 15 chimney; 16 stair; 17 stall; 18 apples; 19 barrel; 20 crate; 21 table; 22 chair; 23 bench; 24 mug; 25 shelf; 26 bag; 27 anvil; 28 weapon stand; 29 sword; 30 shield; 31 cauldron; 32 dummy; 33 banner; 34 pegs; 35 chalice; 36 gable; 37 scroll; 38 step; 39 fence;)
-SP_MAT :: [40] int.[
+SP_MESHES :: KIT_MESHES - 12;   // the town's meshes, from Wall_Plaster_Straight
+SP_MAT :: [SP_MESHES] int.[
   MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_STONE, MAT_STONE, MAT_STONE, MAT_GLASS,
   MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_STONE, MAT_STONE,
   MAT_WOOD, MAT_WOOD, MAT_CLOTH, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD,
   MAT_STONE, MAT_WOOD, MAT_CLOTH, MAT_IRON, MAT_WOOD, MAT_IRON, MAT_WOOD, MAT_IRON,
-  MAT_WOOD, MAT_CLOTH, MAT_WOOD, MAT_IRON, MAT_STONE, MAT_CLOTH, MAT_STONE, MAT_WOOD];
-SP_SIZE :: [40] int.[
+  MAT_WOOD, MAT_CLOTH, MAT_WOOD, MAT_IRON, MAT_STONE, MAT_CLOTH, MAT_STONE, MAT_WOOD,
+  // 40..52, the placeable things and the cat, as they were: wood, Medium
+  MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_WOOD,
+  // 53..70 (eg-interiors): bed, chest, rug, candle, bookcase, books, book stack, potion, bottles, wall
+  // shelf, plate, portrait, armchair, light floor, nightstand, broom, bale (and trough), orb
+  MAT_WOOD, MAT_WOOD, MAT_CLOTH, MAT_CLOTH, MAT_WOOD, MAT_CLOTH, MAT_CLOTH, MAT_GLASS, MAT_GLASS, MAT_WOOD,
+  MAT_STONE, MAT_CLOTH, MAT_CLOTH, MAT_WOOD, MAT_WOOD, MAT_WOOD, MAT_CLOTH, MAT_GLASS];
+SP_SIZE :: [SP_MESHES] int.[
   SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_SMALL,
   SIZE_MEDIUM, SIZE_MEDIUM, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_LARGE, SIZE_MEDIUM,
   SIZE_LARGE, SIZE_LARGE, SIZE_SMALL, SIZE_SMALL, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_SMALL, SIZE_MEDIUM,
   SIZE_TINY, SIZE_MEDIUM, SIZE_SMALL, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_TINY, SIZE_SMALL, SIZE_SMALL,
-  SIZE_MEDIUM, SIZE_MEDIUM, SIZE_SMALL, SIZE_TINY, SIZE_LARGE, SIZE_TINY, SIZE_MEDIUM, SIZE_MEDIUM];
-SP_TOUGH :: [40] bool.[
+  SIZE_MEDIUM, SIZE_MEDIUM, SIZE_SMALL, SIZE_TINY, SIZE_LARGE, SIZE_TINY, SIZE_MEDIUM, SIZE_MEDIUM,
+  SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM, SIZE_MEDIUM,
+  SIZE_MEDIUM, SIZE_SMALL, SIZE_MEDIUM, SIZE_TINY, SIZE_MEDIUM, SIZE_SMALL, SIZE_TINY, SIZE_TINY, SIZE_TINY, SIZE_SMALL,
+  SIZE_TINY, SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_SMALL, SIZE_SMALL, SIZE_MEDIUM, SIZE_SMALL];
+SP_TOUGH :: [SP_MESHES] bool.[
   true, true, true, true, true, true, true, false, true, true,
   true, true, true, true, true, true, true, false, false, false,
   false, false, false, false, false, false, false, true, false, true,
-  false, true, false, false, false, true, true, false, true, false];
+  false, true, false, false, false, true, true, false, true, false,
+  false, false, false, false, false, false, false, false, false, false, false, false, false,
+  false, false, false, false, false, false, false, false, false, false, false, false, false, true, false, false, false, false];
 
 sp_object :: (mesh: int) -> SrdObject {
   m := mesh - (KIT_FOREST + KIT_TREES);
-  if m < 0 || m >= 40 { return srd_object(MAT_WOOD, SIZE_MEDIUM, false); }
+  if m < 0 || m >= SP_MESHES { return srd_object(MAT_WOOD, SIZE_MEDIUM, false); }
   return srd_object(SP_MAT[m], SP_SIZE[m], SP_TOUGH[m]);
 }
 sp_on :: (s: [] Everglade) -> bool { return s[0].sp.on && s[0].sp.ready && s[0].sp.dm.count > 0; }

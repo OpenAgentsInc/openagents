@@ -1,0 +1,708 @@
+// What the rest of Everglade's buildings hold inside (eg-interiors), loaded by everglade.coax: the six
+// houses, the stables, the mages' tower and the observatory were walls round nothing (the owner, October
+// 30: "the houses don't have any internals"). Each now has a floor and a room that suits whoever lives or
+// works there, laid with the town (furnish, build_town) out of the kits' pieces, so every piece is a town
+// piece like the inn's tables: it breaks, wood and cloth burn (everglade-fire.coax fi_fuel), it falls
+// when what holds it goes (verse/demolish.coax supports), it draws by the same distance rules
+// (everglade-lod.coax), and R or a long rest stands it back up with the town.
+//
+//   - House 1, Hollis's: a family home. A long table with a bench and chairs, plates, mugs and bread, a
+//     rug before the hearth, the children's beds under a loft and the parents' bed up its stair.
+//   - House 2, Fern's: the baker's. A kneading table thick with loaves, flour sacks, racks of bread, and
+//     two beds in the loft (Vega the astronomer sleeps here by day).
+//   - House 3, Ada's: the weaver's. A loom of posts and a hanging cloth, bolts of dyed cloth on the
+//     shelves and in the chests, rugs over the floor, her bed in the loft.
+//   - House 4, Quill's: the scholar's. Bookcases, a desk under books and scrolls, candles, a globe, an
+//     armchair by the fire, the bed in the loft.
+//   - House 5, Garrick's: a widower's. One bed under his wife's portrait with candles by it, one chair at
+//     a small table, one plate, an armchair by the hearth, his sword on the pegs.
+//   - House 6, Isolde's: the hunter's. Pelts on the floor and over the bed, packs and gear on the pegs,
+//     barrels and crates of stores, a trestle table, the bed in the loft.
+//   - The stables: three stalls along the back with hay, a trough and a bucket each, bales stacked by the
+//     door, the tack wall (saddlebags on pegs), a cart, a broom. (No horses: there is no four-legged rig.)
+//   - The mages' tower: a scrying table with a glowing orb, bookcases, shelves of glowing reagents, and
+//     two galleries round an open well, a stair up to each, the archmage's bed on the top one.
+//   - The observatory: the telescope on its pier, its tube up through the open tower toward the dome;
+//     a desk with star charts, a celestial globe, bookcases, and a gallery with its stair.
+//
+// The hearths are a chimney breast from the floor to the roof's chimney (everglade-dress.coax chimney_on)
+// with a fire in its hearthstones; it, the candles, the reagents and the orb glow (the engine's flame
+// shapes, drawn each frame near you while what holds them stands) and the hearths light their rooms at
+// night (lamps). The people who live in a house are drawn inside it at night (people).
+
+IN_GLOWS :: 96;
+IN_HEARTH :: 0; IN_CANDLE :: 1; IN_REAGENT :: 2; IN_ORB :: 3;
+IN_NEAR :: 30.0;           // m: a glow nearer than this is drawn
+IN_NEAR_PHONE :: 18.0;
+IN_LOFT :: 3.0;            // m: a house's loft floor, at the wall's top plate
+IN_HEARTHS :: 6;           // the houses' hearths light their rooms (lamps)
+
+InGlow :: struct { x: f32; y: f32; z: f32; kind: int; hue: int; obj: int; piece: int; }
+Interiors :: struct { glow: [IN_GLOWS] InGlow; n: int; }
+
+// ---- laying a room: (u, v) in the room's frame (room_of: u along the door's wall, v in from it)
+
+in_at :: (r: Room, u: f32, v: f32, y: f32) -> Point { return v3(r.fx + r.ux * u + r.vx * v, r.y + y, r.fz + r.uz * u + r.vz * v); }
+in_put3 :: (s: [] Everglade, r: Room, m: int, u: f32, v: f32, y: f32, yaw: f32, sx: f32, sy: f32, sz: f32) {
+  p := in_at(r, u, v, y);
+  piece(s, m, p.x, p.y, p.z, r.face + yaw, sx, sy, sz);
+}
+in_put :: (s: [] Everglade, r: Room, m: int, u: f32, v: f32, y: f32, yaw: f32) { in_put3(s, r, m, u, v, y, yaw, 1, 1, 1); }
+in_putk :: (s: [] Everglade, r: Room, m: int, u: f32, v: f32, y: f32, yaw: f32, k: f32) { in_put3(s, r, m, u, v, y, yaw, k, k, k); }
+// The same tinted (the kit's colours times rgb), and the tint taken off after.
+in_tinted :: (s: [] Everglade, r: Room, m: int, u: f32, v: f32, y: f32, yaw: f32, sx: f32, sy: f32, sz: f32, cr: f32, cg: f32, cb: f32) {
+  s[0].kit_tint[0] = cr; s[0].kit_tint[1] = cg; s[0].kit_tint[2] = cb;
+  in_put3(s, r, m, u, v, y, yaw, sx, sy, sz);
+  s[0].kit_tint[0] = 0;
+}
+// The object the last piece of mesh m went to, or -1.
+in_last :: (s: [] Everglade, m: int) -> int {
+  g := group_of(m);
+  if s[0].kit_used[g] < 1 { return -1; }
+  return s[0].group_at[g] + s[0].kit_used[g] - 1;
+}
+in_glow :: (s: [] Everglade, obj: int, kind: int, at: Point, hue: int) {
+  n := s[0].inside.n;
+  if n >= IN_GLOWS || obj < 0 { return; }
+  s[0].inside.glow[n] = InGlow.{x = at.x, y = at.y, z = at.z, kind = kind, hue = hue, obj = obj, piece = -1};
+  s[0].inside.n = n + 1;
+}
+
+// A loaf of bread (the kit's rock, small, baked brown), a candle that glows, a reagent that glows.
+in_loaf :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32) {
+  in_tinted(s, r, M_STONE, u, v, y + 0.04, yaw, 0.26, 0.2, 0.18, 1.55, 1.05, 0.52);
+}
+in_candle :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32) {
+  in_putk(s, r, M_CANDLE, u, v, y, 0, 1.4);
+  in_glow(s, in_last(s, M_CANDLE), IN_CANDLE, in_at(r, u, v, y + 0.2), 0);
+}
+in_reagent :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, hue: int) {
+  in_putk(s, r, M_POTION, u, v, y, f32(hue), 1.2);
+  in_glow(s, in_last(s, M_POTION), IN_REAGENT, in_at(r, u, v, y + 0.12), hue);
+}
+// A wall shelf at height y against a wall (yaw from facing in), with what's on it laid by the caller.
+in_shelf :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32) { in_put(s, r, M_WALL_SHELF, u, v, y, yaw); }
+// A rug on the floor (the kit's 2 by 3 m), tinted, scaled.
+in_rug :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32, k: f32, cr: f32, cg: f32, cb: f32) {
+  in_tinted(s, r, M_RUG, u, v, y + 0.045, yaw, k, 1, k, cr, cg, cb);
+}
+
+// The hearth: a chimney breast of the kit's brick from the floor up to the roof's chimney, its hearth
+// on the side (fu, fv) faces: a ring of hearthstones, a pot by them, the fire's glow. Its (u, v).
+in_hearth_uv :: (s: [] Everglade, r: Room, b: int) -> Point {
+  c := chimney_on(b, r.y);
+  dx := c.x - r.fx; dz := c.z - r.fz;
+  return v3(dx * r.ux + dz * r.uz, 0, dx * r.vx + dz * r.vz);
+}
+in_hearth :: (s: [] Everglade, r: Room, b: int, fu: f32, fv: f32) -> Point {
+  h := in_hearth_uv(s, r, b);
+  c := chimney_on(b, r.y);
+  in_tinted(s, r, M_CHIMNEY, h.x, h.z, 0, 0, 1, (c.y + 0.25 - r.y) / 3.178, 1, 1.0, 0.84, 0.72);
+  host := in_last(s, M_CHIMNEY);
+  cu := h.x + fu * 0.9; cv := h.z + fv * 0.9;
+  for k: 0..<6 {
+    a := f32(k) * 1.0472;
+    in_tinted(s, r, M_STONE, cu + cos(a) * 0.42, cv + sin(a) * 0.42, 0, a, 0.24, 0.24, 0.24, 0.62, 0.6, 0.58);
+  }
+  in_putk(s, r, M_POT, cu + fv * 0.75 + fu * 0.2, cv - fu * 0.75 + fv * 0.2, 0, 0.6, 0.8);
+  in_glow(s, host, IN_HEARTH, in_at(r, cu, cv, 0.08), 0);
+  return v3(cu, 0, cv);
+}
+
+// A loft of light boards at IN_LOFT over the tiles (u, v) its rows of two-metre tiles centre on, a post
+// up at each open corner, a rail along its open edges (laid by the caller), and its stair.
+in_loft_tile :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32) { in_put(s, r, M_FLOOR_LIGHT, u, v, y, 0); }
+in_post :: (s: [] Everglade, r: Room, u: f32, v: f32, y0: f32, y1: f32) { in_put3(s, r, M_CORNER, u, v, y0, 0, 1.6, (y1 - y0) / f32(STOREY), 1.6); }
+// A rail (the kit's fence) along u (along_u) or along v, its middle at (u, v), on the floor at y.
+in_rail :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, along_u: bool) { in_put(s, r, M_FENCE, u, v, y, ifx along_u then 0.0f32 else f32(PI) / 2); }
+// A stair whose top step reaches height y0 + 3 at v_top, rising toward +v, its middle at u.
+in_stair :: (s: [] Everglade, r: Room, u: f32, v_top: f32, y0: f32) { in_put(s, r, M_STAIR, u, v_top - 4.35, y0, BACK); }
+
+// A bed and what goes with one: the bed (along v, its head to the back), a chest at its foot.
+in_bed :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32, k: f32) { in_putk(s, r, M_BED, u, v, y, yaw, k); }
+
+// ---- the rooms
+
+in_furnish :: (s: [] Everglade, r: Room, b: int) -> bool {
+  if b == EG_MAGES { in_mages(s, r); return true; }
+  if b == EG_OBSERVATORY { in_observatory(s, r); return true; }
+  if b == EG_STABLES { in_stables(s, r); return true; }
+  if b == EG_HOUSES { in_family(s, r, b); return true; }
+  if b == EG_HOUSES + 1 { in_baker(s, r, b); return true; }
+  if b == EG_HOUSES + 2 { in_weaver(s, r, b); return true; }
+  if b == EG_HOUSES + 3 { in_scholar(s, r, b); return true; }
+  if b == EG_HOUSES + 4 { in_widower(s, r, b); return true; }
+  if b == EG_HOUSES + 5 { in_hunter(s, r, b); return true; }
+  return false;
+}
+
+HALF_PI :: 1.5707964;
+
+// House 1 (8 m along the door's wall, 10 deep; the door at u +1, the hearth near the back left).
+in_family :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, 0, -1);
+  h := in_hearth_uv(s, r, b);
+  in_rug(s, r, h.x, h.z - 2.2, 0, HALF_PI, 1, 0.78, 0.42, 0.36);
+  in_putk(s, r, M_ARMCHAIR, h.x - 1.3, h.z - 1.9, 0, 0.6, 1.1);
+  in_put(s, r, M_STOOL, h.x + 0.9, h.z - 2.0, 0, 0);
+  // the long table on the left, a bench against the wall and chairs on the near side
+  tu := -W + 1.05; tv := 3.1f32;
+  in_put(s, r, M_TABLE, tu, tv, 0, HALF_PI);
+  in_put(s, r, M_BENCH, -W + 0.27, tv, 0, HALF_PI);
+  for c: 0..<3 { in_put(s, r, M_CHAIR, tu + 0.95, tv - 0.9 + f32(c) * 0.9, 0, -HALF_PI); }
+  for c: 0..<4 { in_put(s, r, M_PLATE, tu + (ifx c % 2 == 0 then -0.25f32 else 0.25f32), tv - 0.95 + f32(c) * 0.62, 0.81, 0); }
+  in_put(s, r, M_MUG, tu + 0.3, tv - 0.6, 0.81, 0.4); in_put(s, r, M_MUG, tu - 0.3, tv + 0.4, 0.81, 2.0); in_put(s, r, M_MUG, tu + 0.25, tv + 0.9, 0.81, 1.0);
+  in_loaf(s, r, tu, tv + 0.1, 0.81, 0.3); in_loaf(s, r, tu - 0.1, tv - 0.2, 0.81, 1.9);
+  in_putk(s, r, M_POT, tu, tv + 1.15, 0.81, 0, 0.7);
+  in_candle(s, r, tu - 0.05, tv - 0.55, 0.81);
+  // shelves on the left wall past the table: pots, bread, a vase
+  in_shelf(s, r, -W + 0.15, 5.0, 1.45, HALF_PI); in_shelf(s, r, -W + 0.15, 5.0, 1.95, HALF_PI);
+  in_putk(s, r, M_POT, -W + 0.17, 4.75, 1.47, 0, 0.5); in_putk(s, r, M_POT, -W + 0.17, 5.25, 1.47, 1, 0.5);
+  in_loaf(s, r, -W + 0.17, 4.8, 1.97, 0.2); in_loaf(s, r, -W + 0.17, 5.2, 1.97, 1.2);
+  in_putk(s, r, M_VASE, -W + 0.3, 7.2, 0, 0, 0.6);
+  in_portrait(s, r, -W + 0.02, 9.0, 1.35, HALF_PI);
+  // the children's beds under the loft, a chest between, a candle on it
+  in_bed(s, r, W - 0.95, B - 1.25, 0, BACK, 0.78);
+  in_bed(s, r, W - 2.65, B - 1.25, 0, BACK, 0.78);
+  in_putk(s, r, M_CHEST, W - 1.8, B - 2.9, 0, BACK, 0.7);
+  in_rug(s, r, W - 1.8, B - 3.4, 0, HALF_PI, 0.75, 0.5, 0.62, 0.72);
+  // the loft over the back right, its stair up the right wall from the door
+  lu0 := 1.0f32; lu1 := 3.0f32;
+  for i: 0..<2 { for j: 0..<2 { in_loft_tile(s, r, ifx i == 0 then lu0 else lu1, B - 3.0 + f32(j) * 2, f32(IN_LOFT)); } }
+  edge := B - 4.0;
+  in_post(s, r, 0.05, edge, 0, f32(IN_LOFT)); in_post(s, r, 0.05, B - 0.1, 0, f32(IN_LOFT));
+  in_rail(s, r, 0.05, edge + 1.0, f32(IN_LOFT), false); in_rail(s, r, 0.05, edge + 3.0, f32(IN_LOFT), false);
+  in_rail(s, r, 1.0, edge, f32(IN_LOFT), true);
+  in_stair(s, r, W - 0.88, edge, 0);
+  // up there: the parents' bed, a chest at its foot, a candle on a stand
+  in_bed(s, r, 2.3, B - 1.25, f32(IN_LOFT), BACK, 1);
+  in_rug(s, r, 2.3, B - 3.2, f32(IN_LOFT), HALF_PI, 0.6, 0.62, 0.36, 0.3);
+  in_putk(s, r, M_CHEST, 0.75, B - 0.45, f32(IN_LOFT), BACK, 0.75);
+  in_candle(s, r, 0.55, B - 0.45, f32(IN_LOFT) + 0.54);
+  // a barrel and a broom by the door, a bucket by the hearth
+  in_put(s, r, M_BARREL, -W + 0.4, 0.8, 0, 0);
+  in_put(s, r, M_BROOM, -0.8, 0.6, 0, 0.3);
+  in_putk(s, r, M_BUCKET, h.x + 1.2, h.z - 0.9, 0, 0, 1);
+}
+
+// A portrait hung on a wall at height y, facing in (yaw from facing in).
+in_portrait :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32) { in_put(s, r, M_PORTRAIT, u, v, y, yaw); }
+// A banner (cloth on its pole) hung against a wall, dyed.
+in_banner :: (s: [] Everglade, r: Room, u: f32, v: f32, y: f32, yaw: f32, k: f32, cr: f32, cg: f32, cb: f32) {
+  in_tinted(s, r, M_BANNER, u, v, y, yaw, k, k, 1, cr, cg, cb);
+}
+// A loft over the back of a 10 m square room, on the side `side` (-1 left, 1 right) of the middle, its
+// stair up that side's wall; its open edge at B - 4.
+in_back_loft :: (s: [] Everglade, r: Room, side: f32) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  for i: 0..<2 { for j: 0..<2 { in_loft_tile(s, r, side * (1.6 + f32(i) * 2), B - 3.0 + f32(j) * 2, f32(IN_LOFT)); } }
+  edge := B - 4.0;
+  inner := side * 0.6;
+  in_post(s, r, inner, edge, 0, f32(IN_LOFT)); in_post(s, r, inner, B - 0.1, 0, f32(IN_LOFT));
+  in_rail(s, r, inner, edge + 1.0, f32(IN_LOFT), false); in_rail(s, r, inner, edge + 3.0, f32(IN_LOFT), false);
+  in_rail(s, r, side * 1.65, edge, f32(IN_LOFT), true);
+  in_stair(s, r, side * (W - 0.88), edge, 0);
+}
+
+// House 2: the baker's (10 by 10; the door in the middle, the hearth front right: her oven).
+in_baker :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, 0, -1);
+  h := in_hearth_uv(s, r, b);
+  // a second oven of brick beside the hearth, its mouth glowing
+  in_put3(s, r, M_CHIMNEY, h.x + 1.0, h.z, 0, 0, 1, 0.42, 1);
+  in_glow(s, in_last(s, M_CHIMNEY), IN_HEARTH, in_at(r, h.x + 1.0, h.z - 0.55, 0.5), 1);
+  // the kneading table at the front right, thick with loaves
+  tu := W - 1.5; tv := 2.0f32;
+  in_put(s, r, M_TABLE, tu, tv, 0, 0);
+  for k: 0..<9 { in_loaf(s, r, tu - 1.1 + f32(k % 5) * 0.55, tv - 0.25 + f32(k / 5) * 0.45, 0.81, f32(k) * 0.7); }
+  in_tinted(s, r, M_BAG, tu + 1.0, tv + 0.1, 0.81, 0.5, 0.6, 0.5, 0.6, 1.0, 0.98, 0.9);
+  in_put(s, r, M_STOOL, tu - 0.4, tv - 0.85, 0, 0);
+  // flour sacks and barrels at the back right
+  for k: 0..<4 { in_tinted(s, r, M_BAG, W - 0.4 - f32(k % 2) * 0.62, B - 0.4 - f32(k / 2) * 0.55, 0, f32(k) * 1.3, 1, 1, 1, 1.0, 0.97, 0.88); }
+  in_put(s, r, M_BARREL, W - 1.8, B - 0.4, 0, 0); in_put(s, r, M_BARREL, W - 0.45, B - 1.7, 0, 0.6);
+  // racks of bread on the right wall
+  for k: 0..<3 {
+    y := 0.9 + f32(k) * 0.5;
+    in_shelf(s, r, W - 0.15, 5.9, y, -HALF_PI);
+    for l: 0..<3 { in_loaf(s, r, W - 0.17, 5.5 + f32(l) * 0.4, y + 0.02, f32(k + l)); }
+  }
+  // the table they eat at, under the loft on the left
+  eu := -2.4f32; ev := B - 2.6;
+  in_put(s, r, M_TABLE, eu, ev, 0, 0);
+  in_put(s, r, M_CHAIR, eu - 0.8, ev - 0.85, 0, 0); in_put(s, r, M_CHAIR, eu + 0.8, ev - 0.85, 0, 0);
+  in_put(s, r, M_BENCH, eu, ev + 0.9, 0, BACK);
+  in_put(s, r, M_PLATE, eu - 0.6, ev, 0.81, 0); in_put(s, r, M_PLATE, eu + 0.6, ev, 0.81, 0);
+  in_put(s, r, M_MUG, eu - 0.3, ev + 0.2, 0.81, 1); in_loaf(s, r, eu, ev - 0.1, 0.81, 0.4);
+  in_candle(s, r, eu + 0.15, ev + 0.25, 0.81);
+  in_back_loft(s, r, -1);
+  // up in the loft: her bed and the one Vega sleeps in by day, a chest
+  in_bed(s, r, -3.5, B - 1.25, f32(IN_LOFT), BACK, 0.82);
+  in_bed(s, r, -1.6, B - 1.25, f32(IN_LOFT), BACK, 0.82);
+  in_putk(s, r, M_CHEST, -2.55, B - 2.95, f32(IN_LOFT), 0, 0.7);
+  in_candle(s, r, -2.55, B - 2.95, f32(IN_LOFT) + 0.5);
+  in_put(s, r, M_BROOM, 1.2, 0.55, 0, 0.5);
+  in_rug(s, r, -0.6, 4.2, 0, 0, 0.7, 0.66, 0.5, 0.36);
+}
+
+// The weaver's dyes: madder red, woad blue, weld green, a straw gold, a heather violet.
+WEAVE_CLOTH :: [15] f32.[0.82, 0.4, 0.42,  0.42, 0.55, 0.8,  0.5, 0.72, 0.46,  0.86, 0.8, 0.5,  0.62, 0.45, 0.72];
+// House 3: the weaver's (10 by 10; the door in the middle, the hearth front right).
+in_weaver :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, 0, -1);
+  h := in_hearth_uv(s, r, b);
+  in_putk(s, r, M_ARMCHAIR, h.x - 1.4, h.z - 1.4, 0, 0.8, 1.1);
+  // the loom against the left wall: two posts, a beam and a rail across, the cloth on it half woven
+  lu := -W + 0.5; lv := 5.0f32;
+  in_post(s, r, lu, lv - 1.0, 0, 2.2); in_post(s, r, lu, lv + 1.0, 0, 2.2);
+  in_rail(s, r, lu, lv, 1.4, false); in_rail(s, r, lu, lv, 0.3, false);
+  in_banner(s, r, lu + 0.05, lv, 0.25, HALF_PI, 1.2, 0.62, 0.45, 0.62);
+  in_put(s, r, M_STOOL, lu + 0.9, lv, 0, 0);
+  in_put(s, r, M_BUCKET, lu + 1.3, lv + 1.3, 0, 0);
+  // bolts of dyed cloth on the shelves by the loom and in a chest
+  for k: 0..<2 {
+    y := 1.2 + f32(k) * 0.55;
+    in_shelf(s, r, -W + 0.15, 1.2, y, HALF_PI);
+    for l: 0..<3 { c := ((k * 3 + l) % 5) * 3; in_tinted(s, r, M_BAG, -W + 0.2, 0.85 + f32(l) * 0.36, y + 0.02, HALF_PI, 0.5, 0.36, 0.5, WEAVE_CLOTH[c], WEAVE_CLOTH[c + 1], WEAVE_CLOTH[c + 2]); }
+  }
+  in_putk(s, r, M_CHEST, -W + 0.5, 8.4, 0, HALF_PI, 0.85);
+  // rugs of her own weaving over the floor
+  in_rug(s, r, -1.6, 4.6, 0, 0, 0.85, 0.72, 0.38, 0.4);
+  in_rug(s, r, 1.6, 7.5, 0, HALF_PI, 0.8, 0.42, 0.52, 0.72);
+  in_banner(s, r, W - 0.12, 5.0, 0.4, -HALF_PI, 0.9, 0.5, 0.7, 0.52);
+  // a work table on the right with cloth and scissors' worth of clutter
+  in_put(s, r, M_TABLE, W - 0.65, 3.4, 0, -HALF_PI);
+  for l: 0..<3 { c := (l * 2 % 5) * 3; in_tinted(s, r, M_BAG, W - 0.6, 2.6 + f32(l) * 0.7, 0.81, f32(l), 0.55, 0.3, 0.6, WEAVE_CLOTH[c], WEAVE_CLOTH[c + 1], WEAVE_CLOTH[c + 2]); }
+  in_candle(s, r, W - 0.8, 4.5, 0.81);
+  in_back_loft(s, r, 1);
+  in_bed(s, r, 2.55, B - 1.25, f32(IN_LOFT), BACK, 1);
+  in_tinted(s, r, M_RUG, 2.55, B - 1.5, f32(IN_LOFT) + 0.82, 0, 0.62, 1, 0.5, 0.82, 0.62, 0.5);   // a woven coverlet over it
+  in_putk(s, r, M_NIGHTSTAND, 1.0, B - 0.25, f32(IN_LOFT), BACK, 0.8);
+  in_candle(s, r, 1.0, B - 0.3, f32(IN_LOFT) + 0.98);
+  in_put(s, r, M_BROOM, -1.2, 0.55, 0, 0.2);
+}
+
+// House 4: the scholar's (10 by 10; the door in the middle, the hearth front left).
+in_scholar :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, -1, 0);
+  h := in_hearth_uv(s, r, b);
+  in_putk(s, r, M_ARMCHAIR, h.x - 0.9, h.z + 1.5, 0, BACK + 0.5, 1.1);
+  in_rug(s, r, h.x - 0.9, h.z + 0.6, 0, 0, 0.7, 0.45, 0.32, 0.52);
+  in_put(s, r, M_BOOK_STACK, h.x - 0.4, h.z + 1.9, 0, 0.4);
+  // bookcases on the right wall and the back
+  in_put(s, r, M_BOOKCASE, W - 0.22, 1.1, 0, -HALF_PI); in_put(s, r, M_BOOKCASE, W - 0.22, 4.6, 0, -HALF_PI);
+  in_put(s, r, M_BOOKCASE, W - 0.22, 8.85, 0, -HALF_PI);
+  in_put(s, r, M_BOOKCASE, -1.0, B - 0.22, 0, BACK);
+  // the desk under the loft's edge, deep in books, scrolls and candles, the globe beside it
+  du := -2.5f32; dv := 5.5f32;
+  in_put(s, r, M_TABLE, du, dv, 0, 0);
+  in_put(s, r, M_CHAIR, du, dv + 0.85, 0, BACK);
+  in_put(s, r, M_BOOKS, du - 0.6, dv - 0.3, 0.81, 0); in_put(s, r, M_BOOK_STACK, du + 0.9, dv - 0.2, 0.81, 0.3);
+  in_put(s, r, M_BOOK_STACK, du + 0.95, dv + 0.25, 0.81, 1.4); in_put(s, r, M_SCROLL, du, dv + 0.1, 0.81, 0.3);
+  in_put(s, r, M_SCROLL, du + 0.35, dv - 0.25, 0.81, 1.2); in_put(s, r, M_MUG, du - 1.15, dv + 0.3, 0.81, 0.5);
+  in_candle(s, r, du + 0.45, dv + 0.3, 0.81); in_candle(s, r, du - 0.95, dv - 0.2, 0.81);
+  in_put(s, r, M_NIGHTSTAND, du - 1.9, dv + 1.6, 0, HALF_PI);
+  in_tinted(s, r, M_ORB, du - 1.9, dv + 1.6, 1.22, 0, 0.16, 0.16, 0.16, 0.7, 0.85, 1.0);   // a globe
+  for k: 0..<4 { in_put(s, r, M_BOOK_STACK, W - 1.2 + f32(k % 2) * 0.35, 6.9 + f32(k / 2) * 0.4, 0, f32(k)); }
+  in_back_loft(s, r, -1);
+  in_bed(s, r, -2.55, B - 1.25, f32(IN_LOFT), BACK, 1);
+  in_putk(s, r, M_CHEST, -0.95, B - 0.45, f32(IN_LOFT), BACK, 0.7);
+  in_put(s, r, M_BOOKS, -0.95, B - 0.45, f32(IN_LOFT) + 0.5, BACK);
+  in_candle(s, r, -1.3, B - 2.3, f32(IN_LOFT));
+  in_portrait(s, r, W - 0.02, 6.6, 1.6, -HALF_PI);
+}
+
+// House 5: a widower's (10 along the door's wall, 8 deep; the hearth front right). Everything for one.
+in_widower :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, 0, -1);
+  h := in_hearth_uv(s, r, b);
+  in_putk(s, r, M_ARMCHAIR, h.x + 1.5, h.z - 1.1, 0, -0.9, 1.1);
+  in_rug(s, r, h.x + 0.4, h.z - 1.6, 0, HALF_PI, 0.6, 0.52, 0.42, 0.34);
+  // his bed against the back wall, her portrait over it, two candles under it on the chest
+  in_bed(s, r, -3.6, B - 1.25, 0, BACK, 0.85);
+  in_portrait(s, r, -4.0, B - 0.02, 1.35, BACK);
+  in_putk(s, r, M_CHEST, -2.1, B - 0.45, 0, BACK, 0.7);
+  in_candle(s, r, -2.3, B - 0.45, 0.5); in_candle(s, r, -1.9, B - 0.4, 0.5);
+  in_put(s, r, M_NIGHTSTAND, -W + 0.22, B - 3.0, 0, HALF_PI);
+  // one chair at a small table, one plate, one mug, a loaf
+  tu := -2.7f32; tv := 2.6f32;
+  in_putk(s, r, M_TABLE, tu, tv, 0, HALF_PI, 0.62);
+  in_put(s, r, M_CHAIR, tu + 0.85, tv, 0, -HALF_PI);
+  in_put(s, r, M_PLATE, tu + 0.2, tv, 0.5, 0); in_put(s, r, M_MUG, tu - 0.15, tv + 0.4, 0.5, 0.6); in_loaf(s, r, tu - 0.2, tv - 0.3, 0.5, 1.1);
+  // his sword and shield on the pegs by the door (he was a smith before he was alone)
+  in_put(s, r, M_PEGS, -W + 0.08, 1.6, 1.6, HALF_PI);
+  in_put(s, r, M_SWORD, -W + 0.15, 1.3, 0.9, HALF_PI); in_putk(s, r, M_SHIELD, -W + 0.12, 2.1, 0.9, HALF_PI, 0.8);
+  in_shelf(s, r, W - 0.15, 1.8, 1.5, -HALF_PI);
+  in_putk(s, r, M_POT, W - 0.17, 1.6, 1.52, 0, 0.45); in_put(s, r, M_MUG, W - 0.17, 2.05, 1.52, 0.3);
+  in_put(s, r, M_BARREL, W - 0.4, B - 0.4, 0, 0.3);
+  in_put(s, r, M_BUCKET, h.x - 0.8, h.z - 0.5, 0, 0);
+}
+
+// House 6: the hunter's (10 by 10; the door in the middle, the hearth back right).
+in_hunter :: (s: [] Everglade, r: Room, b: int) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  _ := in_hearth(s, r, b, 0, -1);
+  h := in_hearth_uv(s, r, b);
+  // pelts by the fire and down the middle of the floor
+  in_rug(s, r, h.x - 0.2, h.z - 2.0, 0, HALF_PI + 0.3, 0.7, 0.52, 0.4, 0.3);
+  in_rug(s, r, -1.4, 3.6, 0, 0.2, 0.6, 0.58, 0.56, 0.52);
+  in_put(s, r, M_STOOL, h.x + 1.1, h.z - 1.4, 0, 0); in_put(s, r, M_STOOL, h.x - 1.3, h.z - 1.5, 0, 0);
+  // the gear wall on the right: pegs with packs and a shield, a rack of spears
+  in_put(s, r, M_PEGS, W - 0.08, 1.2, 1.6, -HALF_PI); in_put(s, r, M_PEGS, W - 0.08, 5.0, 1.6, -HALF_PI);
+  in_tinted(s, r, M_BAG, W - 0.3, 1.1, 0.95, -HALF_PI, 0.55, 0.6, 0.55, 0.62, 0.5, 0.36);
+  in_tinted(s, r, M_BAG, W - 0.3, 5.1, 0.95, -HALF_PI, 0.55, 0.6, 0.55, 0.5, 0.45, 0.32);
+  in_put(s, r, M_WEAPONS, W - 0.4, 3.0, 0, -HALF_PI);
+  // stores: barrels and crates at the front left, the trestle table, a chest
+  in_put(s, r, M_BARREL, -W + 0.4, 0.8, 0, 0); in_put(s, r, M_BARREL, -W + 1.15, 0.85, 0, 1.2);
+  in_putk(s, r, M_CRATE, -W + 0.45, 1.75, 0, 0.3, 0.9); in_putk(s, r, M_CRATE, -W + 0.45, 1.75, 0.84, 1.1, 0.75);
+  tu := -2.8f32; tv := 4.4f32;
+  in_put(s, r, M_TABLE, tu, tv, 0, HALF_PI);
+  in_put(s, r, M_BENCH, tu + 0.85, tv, 0, -HALF_PI);
+  in_put(s, r, M_PLATE, tu, tv - 0.6, 0.81, 0); in_put(s, r, M_MUG, tu + 0.2, tv - 0.2, 0.81, 0.8);
+  in_putk(s, r, M_POT, tu - 0.1, tv + 0.6, 0.81, 0.3, 0.6); in_loaf(s, r, tu + 0.15, tv + 0.2, 0.81, 2);
+  in_candle(s, r, tu - 0.2, tv - 1.0, 0.81);
+  in_back_loft(s, r, -1);
+  in_bed(s, r, -2.55, B - 1.25, f32(IN_LOFT), BACK, 1);
+  in_rug(s, r, -2.55, B - 1.4, f32(IN_LOFT) + 0.82, 0, 0.55, 0.5, 0.42, 0.32);   // a fur over it
+  in_putk(s, r, M_CHEST, -0.9, B - 0.45, f32(IN_LOFT), BACK, 0.75);
+  in_candle(s, r, -0.7, B - 0.5, f32(IN_LOFT) + 0.54);
+  in_put(s, r, M_BROOM, 1.2, 0.55, 0, 0.1);
+}
+
+// The stables (12 by 12, the door left of the middle): three stalls along the back.
+HAY :: Point.{x = 1.45, y = 1.2, z = 0.56};
+in_stables :: (s: [] Everglade, r: Room) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  front := B - 4.2;
+  for st: 0..<3 {
+    cu := (f32(st) - 1) * 3.6;
+    // the partitions between the stalls and at the ends of the row, two rails each, and its front rails
+    if st < 2 {
+      pu := cu + 1.8;
+      in_rail(s, r, pu, front + 1.05, 0, false); in_rail(s, r, pu, front + 3.1, 0, false);
+      in_rail(s, r, pu, front + 1.05, 0.62, false); in_rail(s, r, pu, front + 3.1, 0.62, false);
+      in_post(s, r, pu, front, 0, 1.5);
+    }
+    in_rail(s, r, cu - 1.1, front, 0, true); in_rail(s, r, cu - 1.1, front, 0.62, true);
+    // hay in the back of each, its trough and its bucket
+    in_tinted(s, r, M_STONE, cu - 0.5, B - 0.9, -0.1, f32(st) * 1.7, 1.3, 0.42, 1.0, HAY.x, HAY.y, HAY.z);
+    in_tinted(s, r, M_STONE, cu + 0.9, B - 1.6, -0.1, f32(st) * 2.3 + 1, 0.8, 0.3, 0.8, HAY.x, HAY.y, HAY.z);
+    in_put3(s, r, M_BALE, cu + 0.6, B - 0.35, 0, 0, 1.5, 0.42, 0.5);
+    in_put(s, r, M_BUCKET, cu - 1.2, B - 0.4, 0, f32(st));
+  }
+  // bales stacked in the front left corner, loose hay on the floor
+  for k: 0..<5 {
+    row := k / 3; i := k % 3;
+    if row == 1 && i == 2 { continue; }
+    in_tinted(s, r, M_BALE, -W + 0.45 + f32(row) * 0.25, 1.1 + f32(i) * 0.75 + f32(row) * 0.35, f32(row) * 0.5, HALF_PI, 0.65, 0.48, 1.1, HAY.x, HAY.y, HAY.z);
+  }
+  in_tinted(s, r, M_STONE, -2.0, 4.6, -0.12, 0.7, 1.4, 0.18, 1.2, HAY.x, HAY.y, HAY.z);
+  in_tinted(s, r, M_STONE, 2.6, 5.4, -0.12, 2.1, 1.0, 0.16, 1.2, HAY.x, HAY.y, HAY.z);
+  // the tack wall on the right: pegs with saddlebags and blankets
+  for k: 0..<2 {
+    v := 1.2 + f32(k) * 3.8;
+    in_put(s, r, M_PEGS, W - 0.08, v, 1.6, -HALF_PI);
+    in_tinted(s, r, M_BAG, W - 0.3, v - 0.25, 0.9, -HALF_PI, 0.6, 0.7, 0.6, 0.56, 0.4, 0.28);
+    in_tinted(s, r, M_BAG, W - 0.3, v + 0.3, 0.95, -HALF_PI, 0.45, 0.5, 0.5, 0.42, 0.5, 0.62);
+  }
+  in_put(s, r, M_CHEST, W - 0.5, 5.6, 0, -HALF_PI);
+  in_put(s, r, M_CART, W - 1.4, 0.0 + 1.6, 0, 0.0);
+  in_put(s, r, M_BARREL, -W + 0.4, 4.4, 0, 0.4); in_put(s, r, M_BARREL, -W + 0.4, 5.2, 0, 1.4);
+  in_put(s, r, M_BROOM, -W + 0.3, 6.1, 0, 0.6);
+  in_put(s, r, M_STOOL, 1.4, 6.0, 0, 0);
+}
+
+// A gallery round an open well at height y (a 10 m square room, its two-metre tiles centred on -4
+// .. 4): the outer ring of tiles but the two over the stair (on the side `stair` of the room, -1 left,
+// 1 right, -0 none), rails along the well's edges.
+in_gallery :: (s: [] Everglade, r: Room, y: f32, stair: f32) {
+  for i: 0..<5 {
+    for j: 0..<5 {
+      u := f32(i - 2) * 2; v := 1.0 + f32(j) * 2;
+      ring := i == 0 || i == 4 || j == 0 || j == 4;
+      if !ring { continue; }
+      if stair != 0 && u == stair * 4 && (j == 1 || j == 2) { continue; }   // the hole the stair comes up through
+      in_loft_tile(s, r, u, v, y);
+    }
+  }
+  for k: 0..<3 {
+    in_rail(s, r, f32(k - 1) * 2, 2.0, y, true); in_rail(s, r, f32(k - 1) * 2, 8.0, y, true);
+    in_rail(s, r, -3.0, 3.0 + f32(k) * 2, y, false); in_rail(s, r, 3.0, 3.0 + f32(k) * 2, y, false);
+  }
+}
+
+// The mages' tower (10 by 10, three storeys): a scrying table, books, reagents, two galleries.
+REAGENT_HUES :: 4;
+in_mages :: (s: [] Everglade, r: Room) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  st := f32(STOREY);
+  // the scrying table in the well, its orb glowing
+  in_put(s, r, M_TABLE, 0, 7.3, 0, 0);
+  in_tinted(s, r, M_ORB, 0, 7.3, 0.81, 0, 0.17, 0.17, 0.17, 0.75, 0.82, 1.0);
+  in_glow(s, in_last(s, M_ORB), IN_ORB, in_at(r, 0, 7.3, 1.0), 0);
+  in_put(s, r, M_BOOKS, -1.0, 7.2, 0.81, 0.2); in_put(s, r, M_SCROLL, 0.9, 7.15, 0.81, 0.6);
+  in_candle(s, r, -0.6, 7.6, 0.81); in_candle(s, r, 0.7, 7.55, 0.81);
+  in_rug(s, r, 0, 7.3, 0, HALF_PI, 1.0, 0.45, 0.36, 0.72);
+  in_put(s, r, M_CHAIR, 0, 6.35, 0, 0);
+  // bookcases on the back wall, and on the right; reagents on the shelves on the left
+  in_put(s, r, M_BOOKCASE, -2.6, B - 0.22, 0, BACK); in_put(s, r, M_BOOKCASE, 2.6, B - 0.22, 0, BACK);
+  in_put(s, r, M_BOOKCASE, W - 0.22, 5.4, 0, -HALF_PI);
+  for k: 0..<3 {
+    y := 0.9 + f32(k) * 0.55;
+    in_shelf(s, r, -W + 0.15, 9.0, y, HALF_PI);
+    for l: 0..<3 { in_reagent(s, r, -W + 0.17, 8.65 + f32(l) * 0.35, y + 0.02, (k + l) % REAGENT_HUES); }
+  }
+  for k: 0..<2 {
+    y := 0.9 + f32(k) * 0.55;
+    in_shelf(s, r, -W + 0.15, 5.0, y, HALF_PI);
+    for l: 0..<2 { in_putk(s, r, M_BOTTLES, -W + 0.17, 4.75 + f32(l) * 0.5, y + 0.02, HALF_PI, 1.3); }
+  }
+  in_put(s, r, M_CAULDRON, W - 1.0, 1.4, 0, 0);
+  in_reagent(s, r, W - 1.8, 1.0, 0, 1);
+  for k: 0..<3 { in_put(s, r, M_BOOK_STACK, -W + 1.2 + f32(k) * 0.3, 1.0, 0, f32(k)); }
+  // the stair up the left wall to the first gallery, and up the right from it to the second
+  in_stair(s, r, -(W - 0.88), 6.0, 0);
+  in_gallery(s, r, st, -1);
+  in_stair(s, r, W - 0.88, 6.0, st);
+  in_gallery(s, r, 2 * st, 1);
+  for c: 0..<4 {
+    pu := ifx c % 2 == 0 then -3.0f32 else 3.0f32; pv := ifx c < 2 then 2.0f32 else 8.0f32;
+    in_post(s, r, pu, pv, 0, st); in_post(s, r, pu, pv, st, 2 * st);
+  }
+  // the first gallery: books, a reading chair, more reagents
+  in_put(s, r, M_BOOKCASE, -2.0, B - 0.22, st, BACK); in_put(s, r, M_BOOKCASE, 2.0, B - 0.22, st, BACK);
+  in_putk(s, r, M_ARMCHAIR, W - 0.9, 8.6, st, -HALF_PI - 0.4, 1.1);
+  in_shelf(s, r, -0.5, 0.55, st + 1.2, 0);
+  for l: 0..<3 { in_reagent(s, r, -0.85 + f32(l) * 0.35, 0.57, st + 1.22, (l + 2) % REAGENT_HUES); }
+  in_banner(s, r, 0, 0.5, st + 0.3, 0, 1, 0.42, 0.36, 0.78);
+  // the second: the archmage's bed and chest, a candle
+  in_bed(s, r, -0.6, 9.0, 2 * st, -HALF_PI, 1);
+  in_putk(s, r, M_CHEST, 2.6, B - 0.45, 2 * st, BACK, 0.8);
+  in_candle(s, r, 2.4, B - 0.45, 2 * st + 0.55);
+  in_put(s, r, M_BOOKS, -3.9, 4.5, 2 * st, HALF_PI);
+  in_banner(s, r, -W + 0.1, 5.0, 2 * st + 0.3, HALF_PI, 1, 0.36, 0.42, 0.78);
+}
+
+// The observatory (8 by 8, four storeys under its dome): the telescope up through the open tower.
+in_observatory :: (s: [] Everglade, r: Room) {
+  W := r.width / 2 - 0.4; B := r.depth - 0.4;
+  st := f32(STOREY);
+  // the pier, and the tube on it: the kit's barrel, stretched to 5 m, its eyepiece at the pier's top,
+  // pitched 62 degrees up toward the dome, over the open middle
+  pu := 0.0f32; pv := 4.0f32;
+  in_tinted(s, r, M_BALE, pu, pv, 0, 0, 0.7, 1.1, 0.7, 0.62, 0.6, 0.6);
+  tilt := 1.0821f32;
+  d := v3(-r.ux * cos(tilt), sin(tilt), -r.uz * cos(tilt));
+  side := v3(r.vx, 0, r.vz);
+  over := v3(r.ux * sin(tilt), cos(tilt), r.uz * sin(tilt));
+  base := in_at(r, pu, pv, 1.05);
+  long := 5.0f32 / 0.9; girth := 0.42f32 / 0.7;
+  s[0].kit_tint[0] = 0.5; s[0].kit_tint[1] = 0.42; s[0].kit_tint[2] = 0.3;
+  rows := [12] f32.[side.x * girth, d.x * long, over.x * girth, base.x,   side.y * girth, d.y * long, over.y * girth, base.y,
+                    side.z * girth, d.z * long, over.z * girth, base.z];
+  kit_rows(s, group_of(M_BARREL), rows[..]);
+  // its brass bands
+  for k: 0..<3 {
+    at := add(base, times(d, 0.8 + f32(k) * 1.7));
+    band := 0.24f32 / 0.9; ring := 0.5f32 / 0.7;
+    s[0].kit_tint[0] = 0.86; s[0].kit_tint[1] = 0.7; s[0].kit_tint[2] = 0.38;
+    rb := [12] f32.[side.x * ring, d.x * band, over.x * ring, at.x,   side.y * ring, d.y * band, over.y * ring, at.y,
+                    side.z * ring, d.z * band, over.z * ring, at.z];
+    kit_rows(s, group_of(M_BARREL), rb[..]);
+  }
+  s[0].kit_tint[0] = 0;
+  in_put(s, r, M_STOOL, pu + 0.9, pv, 0, 0);
+  // the desk on the back wall: star charts, a book, candles; the globe beside it
+  in_put(s, r, M_TABLE, 1.5, B - 0.6, 0, BACK);
+  in_put(s, r, M_CHAIR, 1.5, B - 1.45, 0, 0);
+  in_tinted(s, r, M_SCROLL, 1.0, B - 0.6, 0.81, 0.2, 2.2, 1, 2.2, 0.72, 0.78, 0.95);
+  in_tinted(s, r, M_SCROLL, 2.0, B - 0.5, 0.81, 1.4, 2.0, 1, 2.0, 0.95, 0.9, 0.78);
+  in_put(s, r, M_BOOKS, 2.3, B - 0.8, 0.81, 0.1); in_put(s, r, M_BOOK_STACK, 0.4, B - 0.7, 0.81, 0.5);
+  in_candle(s, r, 0.7, B - 0.4, 0.81); in_candle(s, r, 2.6, B - 0.35, 0.81);
+  in_put(s, r, M_NIGHTSTAND, W - 0.25, B - 0.3, 0, BACK);
+  in_tinted(s, r, M_ORB, W - 0.25, B - 0.3, 1.22, 0.4, 0.2, 0.2, 0.2, 0.55, 0.72, 1.0);
+  in_glow(s, in_last(s, M_ORB), IN_ORB, in_at(r, W - 0.25, B - 0.3, 1.42), 1);
+  // the charts of the sky on the walls, a bookcase on the right
+  in_banner(s, r, -W + 0.1, 5.4, 0.4, HALF_PI, 1, 0.3, 0.36, 0.7);
+  in_banner(s, r, -3.0, B - 0.1, 0.4, BACK, 1, 0.3, 0.36, 0.7);
+  in_put(s, r, M_BOOKCASE, -W + 0.22, 1.6, 0, HALF_PI);
+  in_rug(s, r, pu, pv, 0, 0, 0.9, 0.36, 0.38, 0.6);
+  // the stair up the right wall to the gallery
+  in_stair(s, r, W - 0.88, 5.9, 0);
+  for i: 0..<4 {
+    for j: 0..<4 {
+      u := f32(i) * 2 - 3; v := 1.0 + f32(j) * 2;
+      if !(i == 0 || i == 3 || j == 0 || j == 3) { continue; }
+      if i == 3 && (j == 1 || j == 2) { continue; }
+      in_loft_tile(s, r, u, v, st);
+    }
+  }
+  in_rail(s, r, 0, 2.0, st, true); in_rail(s, r, 0, 6.0, st, true); in_rail(s, r, 2.0, 4.0, st, false);
+  for c: 0..<4 { in_post(s, r, ifx c % 2 == 0 then -2.0f32 else 2.0f32, ifx c < 2 then 2.0f32 else 6.0f32, 0, st); }
+  // up on the gallery: a cot for the long nights, a chest of instruments, more charts
+  in_bed(s, r, 2.8, 6.4, st, BACK, 0.8);
+  in_putk(s, r, M_CHEST, -2.8, B - 0.45, st, BACK, 0.75);
+  in_put(s, r, M_BOOKCASE, 0.5, B - 0.22, st, BACK);
+  in_banner(s, r, 2.0, 0.5, st + 0.3, 0, 1, 0.3, 0.36, 0.7);
+  in_candle(s, r, -2.6, B - 0.45, st + 0.54);
+}
+
+// ---- each frame: the glows near you, while what holds them stands
+
+in_up :: (s: [] Everglade, k: int) -> bool {
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return true; }
+  w := sp_dm(s);
+  g := s[0].inside.glow[k];
+  p := g.piece;
+  if p < 0 || p >= w[0].n || w[0].pieces[p].object != g.obj {
+    p = -2;
+    for i: 0..<w[0].n { if w[0].pieces[i].object == g.obj { p = i; break; } }
+    s[0].inside.glow[k].piece = p;
+  }
+  if p < 0 { return true; }
+  return w[0].pieces[p].state == DP_STANDING;
+}
+// The reagents' colours: green, violet, blue, rose.
+REAGENT_RGB :: [12] f32.[0.4, 1.0, 0.55,   0.75, 0.45, 1.0,   0.4, 0.7, 1.0,   1.0, 0.5, 0.75];
+in_glows :: (s: [] Everglade, u: [] f32, eye: Point) {
+  if !s[0].pack_ready { return; }
+  reach := ifx phone(s) then f32(IN_NEAR_PHONE) else f32(IN_NEAR);
+  t := cast(f32) s[0].time;
+  for k: 0..<s[0].inside.n {
+    g := s[0].inside.glow[k];
+    dx := g.x - eye.x; dz := g.z - eye.z;
+    if dx * dx + dz * dz > reach * reach || !in_view(u, g.x, g.y, g.z, 1.0) { continue; }
+    if !in_up(s, k) { continue; }
+    if g.kind == IN_HEARTH { hearth_fire(s, g.x, g.y, g.z, ifx g.hue == 1 then 0.45f32 else 0.62f32, t + f32(k)); continue; }
+    if g.kind == IN_CANDLE {
+      beat := 1 + 0.12 * sin(t * 13.0 + f32(k) * 2.1);
+      shape(s, SHAPE_CONE, LOOK_FLAME, v3(g.x, g.y + 0.035 * beat, g.z), 0, 0.05 * sin(t * 3.3 + f32(k)), 0.04, 0.09 * beat, 0.04, 1.0, 0.72, 0.3);
+      continue;
+    }
+    if g.kind == IN_REAGENT {
+      c := (g.hue % REAGENT_HUES) * 3;
+      pulse := 0.8 + 0.2 * sin(t * 2.0 + f32(k));
+      shape(s, SHAPE_SPHERE, LOOK_FLAME, v3(g.x, g.y, g.z), 0, 0, 0.07 * pulse, 0.08 * pulse, 0.07 * pulse, REAGENT_RGB[c], REAGENT_RGB[c + 1], REAGENT_RGB[c + 2]);
+      continue;
+    }
+    // an orb: a pale light in it, slowly breathing
+    pulse := 0.85 + 0.15 * sin(t * 1.3 + f32(k));
+    shape(s, SHAPE_SPHERE, LOOK_FLAME, v3(g.x, g.y, g.z), t * 0.2, 0, 0.2 * pulse, 0.2 * pulse, 0.2 * pulse, 0.6, 0.75, 1.0);
+  }
+}
+// A hearth's fire, smaller than the brazier's: a bed of coals and tongues of flame, size k.
+HEARTH_TONGUES :: 5;
+hearth_fire :: (s: [] Everglade, x: f32, y: f32, z: f32, k: f32, t: f32) {
+  shape(s, SHAPE_BOX, LOOK_FLAME, v3(x, y - 0.03, z), 0.4, 0, 0.42 * k, 0.08 * k, 0.42 * k, 0.55, 0.12, 0.04);
+  for i: 0..<HEARTH_TONGUES {
+    a := f32(i) * 2.39996;
+    rr := ifx i == 0 then 0.0f32 else 0.1 + 0.07 * f32(i % 3);
+    beat := sin(t * (6.3 + f32(i) * 0.9) + f32(i) * 1.7) * 0.5 + sin(t * (11.1 + f32(i) * 1.3) + f32(i)) * 0.25;
+    h := (0.55 - rr) * 1.6 * (1 + 0.32 * beat) * k;
+    w := (0.2 + 0.08 * (1 - rr * 3)) * k;
+    sway := 0.05 * sin(t * 3.1 + f32(i) * 2.2);
+    hot := clamp((h - 0.25) * 1.8, 0, 1);
+    shape(s, SHAPE_CONE, LOOK_FLAME, v3(x + cos(a) * rr * k + sway * k, y + h / 2, z + sin(a) * rr * k), a, sway * 1.5, w, h, w,
+          1.0, 0.3 + 0.4 * hot, 0.05 + 0.12 * hot);
+  }
+}
+
+// The hearths that light their rooms at night (lamps): house h's (0 to IN_HEARTHS - 1), x and z.
+in_hearth_light :: (h: int) -> Point {
+  b := EG_HOUSES + h;
+  c := chimney_on(b, 0);
+  return v3(c.x, 0, c.z);
+}
+
+// Where someone who lives in building b stands inside it of a night: by its hearth or in its middle,
+// a little apart for each of the household (k).
+in_home_spot :: (s: [] Everglade, b: int, k: int) -> Point {
+  r := room_of(s, b);
+  u := -1.2 + 0.9 * f32(k % 3); v := r.depth * 0.5 + 0.6 * f32(k % 2);
+  if b >= EG_HOUSES {
+    h := in_hearth_uv(s, r, b);
+    u = h.x + 0.9 * f32(k % 2) - 0.45; v = h.z - 1.9;
+  }
+  return in_at(r, u, v, 0);
+}
+
+// Where across a room its #in- link starts you (everglade_hash), when the usual spot won't do: house 1's
+// and the observatory's doors are a module off the middle, so the usual spot is on the doorway's line
+// (the camera behind you would go out through it); house 1's stair and the observatory's pier stand
+// on the other side; the observatory's spot is beside its telescope's pier.
+in_spawn_u :: (b: int, usual: f32) -> f32 {
+  if b == EG_HOUSES { return -0.6; }
+  if b == EG_OBSERVATORY { return 0.8; }
+  return usual;
+}
+
+// The building whose door spot (x, z) is (where routines.coax leaves someone who has gone in), or -1.
+folk_home :: (x: f32, z: f32) -> int {
+  for b: 0..<EG_BUILDINGS {
+    dx := EG_DOOR[b * 2] - x; dz := EG_DOOR[b * 2 + 1] - z;
+    if dx * dx + dz * dz < 0.25 { return b; }
+  }
+  return -1;
+}
+
+// ---- checks
+
+#test "interiors: every building has a room inside it, its pieces laid as town pieces" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  for b: 0..<EG_BUILDINGS {
+    #assert EG_INTERIOR[b] && EG_ROOM_ID[b].count > 3;
+  }
+  // count the furniture standing in each building this file furnishes (not its walls, floor, roof or chimney)
+  for b: 0..<EG_BUILDINGS {
+    if b != EG_MAGES && b < EG_OBSERVATORY { continue; }
+    k := b * EG_BOX;
+    x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+    n := 0;
+    for m: M_STALL..<KIT_MESHES {
+      if m == M_GABLE || m == M_STEP || m == M_FLOOR_LIGHT { continue; }
+      gr := group_of(m);
+      for i: 0..<g[0].kit_used[gr] {
+        o := (g[0].group_at[gr] + i) * OBJECT_FLOATS;
+        x := g[0].objects[o + 3]; z := g[0].objects[o + 11];
+        if x > x0 + 0.3 && x < x1 - 0.3 && z > z0 + 0.3 && z < z1 - 0.3 { n += 1; }
+      }
+    }
+    #assert n >= 12;
+  }
+  // every group's pieces fit their caps (nothing was dropped for want of room)
+  for gr: KIT_FOREST..<KIT_GROUPS { #assert g[0].kit_used[gr] < g[0].group_cap[gr] || g[0].group_cap[gr] == 0; }
+  // a glow for each hearth, candle, reagent and orb
+  #assert g[0].inside.n > 40 && g[0].inside.n <= IN_GLOWS;
+  hearths := 0;
+  for k: 0..<g[0].inside.n { if g[0].inside.glow[k].kind == IN_HEARTH { hearths += 1; } }
+  #assert hearths >= 6;
+}
+
+#test "interiors: the new pieces break, and the wood and the cloth burn" {
+  wood := [10] int.[M_BED, M_CHEST, M_BOOKCASE, M_WALL_SHELF, M_ARMCHAIR, M_FLOOR_LIGHT, M_NIGHTSTAND, M_BROOM, M_BALE, M_RUG];
+  for k: 0..<10 {
+    o := sp_object(wood[k]);
+    #assert o.material == MAT_WOOD || o.material == MAT_CLOTH;
+  }
+  #assert sp_object(M_POTION).material == MAT_GLASS && sp_object(M_ORB).material == MAT_GLASS;
+  #assert sp_object(M_PLATE).material == MAT_STONE;
+}
+
+#test "interiors: the small pieces draw near you by the LOD rules, and the near run holds them all" {
+  for m: M_BED..<KIT_MESHES {
+    if m == M_FLOOR_LIGHT { #assert lod_reach(m) == 0; continue; }
+    #assert lod_reach(m) == f32(LOD_NEAR);
+  }
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  total := 0;
+  for m: KIT_TREES * 2..<KIT_MESHES { if lod_reach(m) > 0 { total += g[0].kit_used[group_of(m)]; } }
+  #assert total <= LOD_OBJECTS;
+  lod_frame(g[..], v3(0, 2, 0));
+  for m: KIT_TREES * 2..<KIT_MESHES { if lod_reach(m) > 0 && g[0].kit_used[group_of(m)] > 0 { #assert g[0].lod.first[m] >= 0; } }
+}

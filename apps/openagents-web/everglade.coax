@@ -74,6 +74,7 @@
 #load "everglade-guard-ai.coax";
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
+#load "everglade-interiors.coax";
 #load "everglade-hammer.coax";
 #load "everglade-lod.coax";
 #load "everglade-sky.coax";
@@ -148,15 +149,15 @@ KIT_CAP :: 80;            // a forest group's instances
 KIT_AT :: SHAPE_OBJECTS;
 KIT_GROUPS :: KIT_MESHES - KIT_TREES;
 // The town's pieces' instances, a group each, from mesh 12 on.
-TOWN_CAP :: [53] int.[
-  260, 200, 20, 140, 220, 200, 8, 330, 20, 140,
-  16, 12, 760, 328, 100, 12, 4, 8, 16, 30,
-  64, 12, 40, 24, 24, 12, 10, 4, 6, 6,
-  8, 3, 6, 12, 4, 2, 40, 6, 8, 20,
-  0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 40,
-  4
+TOWN_CAP :: [71] int.[
+  260, 200, 20, 140, 220, 200, 8, 330, 20, 169,
+  16, 12, 760, 567, 100, 21, 14, 8, 16, 44,
+  68, 23, 51, 29, 34, 12, 35, 4, 9, 9,
+  11, 6, 6, 21, 12, 2, 40, 13, 8, 84,
+  0, 13, 8, 3, 3, 9, 0, 100, 0, 0, 80, 50, 4,
+  13, 12, 16, 21, 13, 7, 13, 15, 6, 16, 10, 5, 7, 64, 6, 7, 11, 5
 ];
-TOWN_OBJECTS :: 3279;     // the sum of TOWN_CAP
+TOWN_OBJECTS :: 4119;     // the sum of TOWN_CAP
 OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS + WATCH_OBJECTS;   // and an admin's placed things (everglade-items.coax), the spells' debris, and the watch's swords and shields (everglade-watch.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 // Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
@@ -209,8 +210,8 @@ LOOK_ROCK :: 10;
 // What glows at night (everglade.wgsl): a lamp's or the brazier's flame (its colour times how lit the
 // lamps are, blooming), and the windows, whose glass (the pack's glass_pane) glows warm.
 LOOK_FLAME :: 13; LOOK_WINDOW :: 14;   // (11 and 12 are the planks and the sawn wood)
-KIT_MESHES :: 65;
-KIT_MESH :: [65] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
+KIT_MESHES :: 83;
+KIT_MESH :: [83] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "CommonTree_3", "CommonTree_3_Leaves",
   "CommonTree_4", "CommonTree_4_Leaves", "Bush_Common_Flowers", "Fern_1", "Rock_Medium_1", "Rock_Medium_2",
   "Wall_Plaster_Straight", "Wall_Plaster_Window_Wide_Round", "Wall_Plaster_Door_Round", "Wall_Plaster_WoodGrid",
   "Wall_UnevenBrick_Straight", "Wall_UnevenBrick_Window_Wide_Round", "Wall_UnevenBrick_Door_Round", "Window_Wide_Round1",
@@ -223,7 +224,11 @@ KIT_MESH :: [65] string.["Pine_5", "Pine_5_Leaves", "Pine_4", "Pine_4_Leaves", "
   "Carrot", "Pot_1", "Bucket_Wooden_1", "Stall_Cart_Empty", "Vase_2", "Stool", "Coin_Pile", "Flower_3_Single",
   "Plant_7", "Custom_Pumpkin", "Custom_Rock", "Custom_Bush",
   // the city's cats (eg-paint-people)
-  "Custom_Cat"];
+  "Custom_Cat",
+  // what the houses, the stables, the mages' tower and the observatory hold inside (eg-interiors)
+  "Bed_Twin1", "Chest_Wood", "Custom_Rug", "Candle_1", "Bookcase_2", "BookGroup_Medium_1", "Book_Stack_1", "Potion_2",
+  "SmallBottles_1", "Shelf_Simple", "Table_Plate", "Custom_Portrait", "Custom_Armchair", "Floor_WoodLight", "Nightstand_Shelf",
+  "Custom_Broom", "Prop_Crate", "Custom_Moon"];
 // The town's meshes by name.
 M_PLASTER :: 12; M_PLASTER_WINDOW :: 13; M_PLASTER_DOOR :: 14; M_PLASTER_GRID :: 15;
 M_BRICK :: 16; M_BRICK_WINDOW :: 17; M_BRICK_DOOR :: 18; M_WINDOW :: 19; M_DOOR :: 20; M_CORNER :: 21;
@@ -233,6 +238,9 @@ M_SHELF :: 37; M_BAG :: 38; M_ANVIL :: 39; M_WEAPONS :: 40; M_SWORD :: 41; M_SHI
 M_BANNER :: 45; M_PEGS :: 46; M_CHALICE :: 47; M_GABLE :: 48; M_SCROLL :: 49; M_STEP :: 50; M_FENCE :: 51;
 M_CARROT :: 52; M_POT :: 53; M_BUCKET :: 54; M_CART :: 55; M_VASE :: 56; M_STOOL :: 57; M_COINS :: 58; M_FLOWER3 :: 59;
 M_SPROUT :: 60; M_PUMPKIN :: 61; M_STONE :: 62; M_SHRUB :: 63; M_CAT :: 64;
+M_BED :: 65; M_CHEST :: 66; M_RUG :: 67; M_CANDLE :: 68; M_BOOKCASE :: 69; M_BOOKS :: 70; M_BOOK_STACK :: 71; M_POTION :: 72;
+M_BOTTLES :: 73; M_WALL_SHELF :: 74; M_PLATE :: 75; M_PORTRAIT :: 76; M_ARMCHAIR :: 77; M_FLOOR_LIGHT :: 78; M_NIGHTSTAND :: 79;
+M_BROOM :: 80; M_BALE :: 81; M_ORB :: 82;
 STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
 // The shapes' five draws, then a draw per kit mesh, then yours, the
@@ -371,6 +379,7 @@ Everglade :: struct {
   pack_loaded: int; pack_total: int;
   kit_used: [KIT_GROUPS] int;
   kit_tint: [3] f32;        // the tint the next kit pieces take (0: none): a house's own plaster or roof
+  inside: Interiors;        // the glows in the buildings (everglade-interiors.coax): hearths, candles, reagents, orbs
   // the chimneys (everglade-dress.coax): how many, each one's object, building and demolition piece, and a still frame
   chimney_n: int; chimney_obj: [SMOKE_CHIMNEYS] int; chimney_b: [SMOKE_CHIMNEYS] int; chimney_piece: [SMOKE_CHIMNEYS] int; smoke_still: bool;
   group_at: [KIT_GROUPS] int; group_cap: [KIT_GROUPS] int;
@@ -1137,7 +1146,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
     k := b * EG_BOX;
     d := everglade_door(b);
     mid := ifx d.side < 2 then (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2 else (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2;
-    u := ifx abs(d.along - mid) < 1.5 then 1.8f32 else 0.0f32;
+    u := in_spawn_u(b, ifx abs(d.along - mid) < 1.5 then 1.8f32 else 0.0f32);   // clear of the doorway's line and the room's things (everglade-interiors.coax)
     x := r.fx + r.vx * v + r.ux * u; z := r.fz + r.vz * v + r.uz * u;
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = r.face;
     s[0].feet = v3(x, ground_at(s, x, z), z);
@@ -1995,6 +2004,7 @@ furnish :: (s: [] Everglade, b: int) {
   for i: 0..<cast(int) ((x1 - x0) / 2 + 0.5) {
     for j: 0..<cast(int) ((z1 - z0) / 2 + 0.5) { piece(s, floor_mesh, x0 + 1 + f32(i) * 2, r.y + 0.03, z0 + 1 + f32(j) * 2, 0, 1, 1, 1); }
   }
+  if in_furnish(s, r, b) { return; }   // the houses, the stables, the mages' tower, the observatory (everglade-interiors.coax)
   W := r.width / 2 - 1.2; D := r.depth - 1.0;
   if b == EG_INN {
     for t: 0..<4 {
@@ -2125,6 +2135,7 @@ stalls :: (s: [] Everglade) {
 }
 
 build_town :: (s: [] Everglade) {
+  s[0].inside.n = 0;
   palisade(s);
   for b: 0..<EG_BUILDINGS {
     if eg_hidden(s[0].ev.edits, b) { continue; }   // an admin took it away (everglade-items.coax)
@@ -2254,7 +2265,7 @@ piece :: (s: [] Everglade, m: int, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy
 // and a brazier on the commons. Each pools its light on the ground and the walls round it (everglade.wgsl
 // lamp_light) from dusk, full at night; the nearest LIGHTS to the eye are lit, and every one is drawn.
 LAMP_BRAZIER :: [3] f32.[-5, 5.5, 10];       // x, z, reach (m)
-LAMP_DOOR_REACH :: 8.0; LAMP_TORCH_REACH :: 9.0;
+LAMP_DOOR_REACH :: 8.0; LAMP_TORCH_REACH :: 9.0; LAMP_HEARTH_REACH :: 6.5;
 LAMP_TOWN :: 70.0;                              // torches only at the crossings within the town
 // Lamp i: x, y (its flame's height above the ground), z, reach; kind 0 brazier, 1 lantern, 2 torch;
 // false past the last.
@@ -2266,7 +2277,12 @@ lamp_at :: (i: int, out: [] Lamp) -> bool {
     out[0] = Lamp.{x = EG_DOOR[b * 2], z = EG_DOOR[b * 2 + 1], up = 2.3, reach = LAMP_DOOR_REACH, kind = 1}; return true;
   }
   k := i - 1 - EG_BUILDINGS;
-  if k >= EG_NODES { return false; }
+  if k >= EG_NODES + IN_HEARTHS { return false; }
+  if k >= EG_NODES {
+    // a house's hearth (everglade-interiors.coax): its fire lights the room
+    h := in_hearth_light(k - EG_NODES);
+    out[0] = Lamp.{x = h.x, z = h.z, up = 0.7, reach = LAMP_HEARTH_REACH, kind = 3}; return true;
+  }
   x := EG_NODE_XZ[k * 2] + f32(EG_PATH_HALF) + 0.6; z := EG_NODE_XZ[k * 2 + 1];
   out[0] = Lamp.{x = x, z = z, up = 2.1, reach = LAMP_TORCH_REACH, kind = 2};
   if abs(x) > LAMP_TOWN || abs(z) > LAMP_TOWN { out[0].kind = -1; }
@@ -2276,8 +2292,8 @@ lamp_at :: (i: int, out: [] Lamp) -> bool {
   }
   return true;
 }
-LAMP_COLOUR :: [9] f32.[1.0, 0.46, 0.16,   1.0, 0.66, 0.32,   1.0, 0.52, 0.2];
-LAMP_STRENGTH :: [3] f32.[2.6, 1.8, 2.2];
+LAMP_COLOUR :: [12] f32.[1.0, 0.46, 0.16,   1.0, 0.66, 0.32,   1.0, 0.52, 0.2,   1.0, 0.5, 0.2];
+LAMP_STRENGTH :: [4] f32.[2.6, 1.8, 2.2, 2.0];
 // Their posts and flames, once the pack is in (the brazier is the kit's cauldron).
 lamp_posts :: (s: [] Everglade) {
   if !s[0].pack_ready { return; }
@@ -2286,7 +2302,7 @@ lamp_posts :: (s: [] Everglade) {
   while lamp_at(i, l[..]) {
     m := l[0];
     i += 1;
-    if m.kind < 0 { continue; }
+    if m.kind < 0 || m.kind == 3 { continue; }   // a hearth's fire is drawn with its room (in_glows)
     g := ground_at(s, m.x, m.z);
     c := m.kind * 3;
     if m.kind == 0 {
@@ -2591,8 +2607,13 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
     x := 0.0f32; z := 0.0f32;
     if i < EG_SPOTS {
       watch_apply(s, i);
-      if s[0].folk[i].indoors { continue; }
-      x = s[0].folk[i].x; z = s[0].folk[i].z;
+      if s[0].folk[i].indoors {
+        // at home (everglade-interiors.coax): inside the building whose door they went in by
+        hb := folk_home(s[0].folk[i].x, s[0].folk[i].z);
+        if hb < 0 || eg_hidden(s[0].ev.edits, hb) { continue; }
+      }
+      pl := person_place(s, i);
+      x = pl.x; z = pl.z;
     } else {
       p := person_place(s, i);
       x = p.x; z = p.z;
@@ -2630,7 +2651,13 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
 // their beat or the watch (everglade-watch.coax).
 person_place :: (s: [] Everglade, i: int) -> Placed {
   p: Placed;
-  if i < EG_SPOTS { p.x = s[0].folk[i].x; p.z = s[0].folk[i].z; p.face = s[0].folk[i].yaw; p.walking = s[0].folk[i].walking; return p; }
+  if i < EG_SPOTS {
+    p.x = s[0].folk[i].x; p.z = s[0].folk[i].z; p.face = s[0].folk[i].yaw; p.walking = s[0].folk[i].walking;
+    // indoors, they are at home by its hearth (everglade-interiors.coax)
+    hb := ifx s[0].folk[i].indoors then folk_home(p.x, p.z) else -1;
+    if hb >= 0 { hp := in_home_spot(s, hb, i); p.x = hp.x; p.z = hp.z; p.face = room_of(s, hb).face; }
+    return p;
+  }
   k := i - EG_SPOTS;
   if watch_busy(s, i) || watch_is_rein(i) { a := s[0].wt[0].actors[i]; p.x = a.x; p.z = a.z; p.face = a.yaw; return p; }
   p.x = s[0].wv.at[k].x; p.z = s[0].wv.at[k].z; p.face = s[0].wv.at[k].yaw; p.walking = s[0].wv.at[k].walking;
@@ -3677,6 +3704,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   edit_draw(s);
   lamp_posts(s);   // after the edits' draw, which sets the town's groups back to the town's own
   kit_cats(s);
+  in_glows(s, u, shot.eye);   // the hearths, candles, reagents and orbs indoors (everglade-interiors.coax)
   watch_arms(s);
   hm_frame(s, t); hm_draw(s, shown);   // the sledgehammer (everglade-hammer.coax)
   rp_frame(s, t); rp_board(s);   // reply with a realm: its swarm and its sign (everglade-reply.coax)
@@ -3840,7 +3868,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
-  #assert total == TOWN_OBJECTS && KIT_GROUPS - KIT_FOREST == 53;
+  #assert total == TOWN_OBJECTS && KIT_GROUPS - KIT_FOREST == 71;
   #assert KIT_MESH[M_FENCE] == "Prop_WoodenFence_Single" && KIT_MESH[M_ROOF] == "Roof_RoundTiles_6x8" && KIT_MESH[M_CHALICE] == "Chalice";
   g: [1] Everglade;
   everglade_start(g[..]);
@@ -4581,11 +4609,11 @@ contains :: (text: string, part: string) -> bool {
   for i: 0..<11 { for j: i + 1..<11 { #assert looks[i] != looks[j]; } }
   #assert LOOK_WINDOW != LOOK_FLAME && LOOK_WINDOW != LOOK_WOOD && LOOK_WINDOW != LOOK_PLANKS && LOOK_WINDOW > 8;
 }
-#test "the lamps: a brazier, a lantern at each door, torches at the town's crossings off the squares; lit from dusk, full at night" {
+#test "the lamps: a brazier, a lantern at each door, torches at the town's crossings off the squares, the houses' hearths; lit from dusk, full at night" {
   l: [1] Lamp;
-  n := 0; torches := 0;
-  while lamp_at(n, l[..]) { if l[0].kind == 2 { torches += 1; } n += 1; }
-  #assert n == 1 + EG_BUILDINGS + EG_NODES && torches > 8 && torches < EG_NODES;
+  n := 0; torches := 0; hearths := 0;
+  while lamp_at(n, l[..]) { if l[0].kind == 2 { torches += 1; } if l[0].kind == 3 { hearths += 1; } n += 1; }
+  #assert n == 1 + EG_BUILDINGS + EG_NODES + IN_HEARTHS && torches > 8 && torches < EG_NODES && hearths == IN_HEARTHS;
   #assert lamp_at(0, l[..]) && l[0].kind == 0 && lamp_at(1, l[..]) && l[0].kind == 1 && l[0].x == EG_DOOR[0];
   // the commons' ring of crossings sits on the commons: no torch there
   #assert lamp_at(1 + EG_BUILDINGS, l[..]) && l[0].kind == -1;

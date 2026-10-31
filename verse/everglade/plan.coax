@@ -74,13 +74,14 @@ EG_BUILDING_NAME :: [16] string.[
   "OBSERVATORY", "STABLES", "HOUSE", "HOUSE",
   "HOUSE", "HOUSE", "HOUSE", "HOUSE"
 ];
-// The buildings you walk into (eg-buildings): the inn, the three shops,
-// the two guild halls and the temple. Their walls stand 0.4 m thick inside
-// the footprint, with a doorway in the wall that faces the door spot.
-EG_INTERIOR :: [16] bool.[true, true, true, true, true, true, false, true, false, false, false, false, false, false, false, false];
-EG_INTERIORS :: 7;
+// The buildings you walk into (eg-buildings, eg-interiors): every one, the inn, the three shops,
+// the two guild halls, the mages' tower, the temple, the observatory, the stables and the six houses.
+// Their walls stand 0.4 m thick inside the footprint, with a doorway in the wall that faces the door spot.
+EG_INTERIOR :: [16] bool.[true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true];
+EG_INTERIORS :: 16;
 // The hash that starts you inside one (#in-inn): "" for those you can't enter.
-EG_ROOM_ID :: [16] string.["in-inn", "in-store", "in-smithy", "in-alchemist", "in-fighters", "in-rangers", "", "in-temple", "", "", "", "", "", "", "", ""];
+EG_ROOM_ID :: [16] string.["in-inn", "in-store", "in-smithy", "in-alchemist", "in-fighters", "in-rangers", "in-mages", "in-temple",
+  "in-observatory", "in-stables", "in-house-1", "in-house-2", "in-house-3", "in-house-4", "in-house-5", "in-house-6"];
 EG_WALL :: 0.4;         // a wall's thickness
 EG_MODULE :: 2.0;       // the kit's walls are 2 m modules
 EG_DOORWAY :: 1.9;      // the gap a doorway leaves in a wall

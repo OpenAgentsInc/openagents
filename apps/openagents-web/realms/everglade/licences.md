@@ -1,6 +1,6 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (8,365,576 bytes of its 8,700,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (9,039,012 bytes of its 9,050,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
@@ -80,6 +80,24 @@ Every asset in `everglade.pack` (8,365,576 bytes of its 8,700,000-byte budget) a
 | Custom_Rock | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | Custom_Bush | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | Custom_Cat | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Bed_Twin1 | mesh | Quaternius Fantasy Props MegaKit |
+| Chest_Wood | mesh | Quaternius Fantasy Props MegaKit |
+| Custom_Rug | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Candle_1 | mesh | Quaternius Fantasy Props MegaKit |
+| Bookcase_2 | mesh | Quaternius Fantasy Props MegaKit |
+| BookGroup_Medium_1 | mesh | Quaternius Fantasy Props MegaKit |
+| Book_Stack_1 | mesh | Quaternius Fantasy Props MegaKit |
+| Potion_2 | mesh | Quaternius Fantasy Props MegaKit |
+| SmallBottles_1 | mesh | Quaternius Fantasy Props MegaKit |
+| Shelf_Simple | mesh | Quaternius Fantasy Props MegaKit |
+| Table_Plate | mesh | Quaternius Fantasy Props MegaKit |
+| Custom_Portrait | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Armchair | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Floor_WoodLight | mesh | Quaternius Medieval Village MegaKit |
+| Nightstand_Shelf | mesh | Quaternius Fantasy Props MegaKit |
+| Custom_Broom | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Prop_Crate | mesh | Quaternius Medieval Village MegaKit |
+| Custom_Moon | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | people/male-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
@@ -144,48 +162,4 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Mega Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Water Orb | `lorc/frozen-orb.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Reverse Gravity | `delapouite/gravitation.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Wind Wall | `lorc/whirlwind.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Levitate | `delapouite/body-height.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Feather Fall | `lorc/feather.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Gust of Wind | `lorc/wind-slap.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Thunderwave | `lorc/sonic-boom.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Wall of Stone | `delapouite/stone-wall.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Telekinesis | `lorc/juggler.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Black Tentacles | `delapouite/tentacles-barrier.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Ice Knife | `lorc/ice-spear.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Ice Storm | `lorc/ice-bolt.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Sleet Storm | `lorc/snowflake-2.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Water Walk | `lorc/sprint.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Control Water | `lorc/tornado-discs.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Create or Destroy Water | `delapouite/fog.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Water Breathing | `lorc/shield-reflect.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Moonbeam | `delapouite/moon-orbit.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Produce Flame | `carl-olsen/flame.svg` | Icons made by Carl Olsen, game-icons.net (CC BY 3.0) |
-| Starry Wisp | `lorc/star-swirl.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Shillelagh | `lorc/wizard-staff.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Poison Spray | `lorc/poison-gas.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Elementalism | `lorc/tornado-discs.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Entangle | `delapouite/vines.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Faerie Fire | `delapouite/fairy.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Healing Word | `zeromancer/heart-plus.svg` | Icons made by Zeromancer, game-icons.net (CC BY 3.0) |
-| Spike Growth | `lorc/thorny-vine.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Call Lightning | `lorc/lightning-storm.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Wall of Fire | `lorc/fire-ring.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Conjure Animals | `lorc/wolf-howl.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Polymorph | `delapouite/frog-prince.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Mass Cure Wounds | `delapouite/healing.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Sunbeam | `lorc/sunbeams.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Wall of Thorns | `lorc/thorn-helix.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Fire Storm | `lorc/burning-embers.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Sunburst | `lorc/sun-radiations.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Storm of Vengeance | `lorc/lightning-tree.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Shapechange | `lorc/dragon-spiral.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Speak with Animals | `lorc/parrot-head.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Wild Resurgence | `lorc/cycle.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Ray of Frost | `lorc/fire-ray.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Fog Cloud | `lorc/dust-cloud.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
-| Hold Person | `delapouite/frozen-body.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Cone of Cold | `lorc/icicles-aura.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
-| Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
