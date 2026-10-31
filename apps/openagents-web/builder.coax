@@ -163,6 +163,8 @@ Builder :: struct {
   stopping: bool; stop_at: f32; quiet_at: f32; got: [TYPED] u8; got_n: int;
   vphase: [WORD] u8; vphase_n: int; caption: [CAPTION] u8; caption_n: int;
   said: [TYPED] u8; said_n: int;
+  said_typed: bool;
+  typed_rise: f32;          // how much higher the typed field reaches for its extra lines        // the words last sent were typed: a plan that fails gives them back to edit
   // setup: the question shown, and each answer (an index into its words, -1 not answered)
   q: int; chosen: [QUESTIONS] int; to_board: bool;
   // the board
@@ -293,7 +295,7 @@ fail :: (s: [] Builder, why: string) {
 ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
   w := words[trim_from(words)..<trim_to(words)];
   if w.count == 0 || busy(s) || s[0].phase == PH_INVITE { return; }
-  s[0].said_n = copy_into(s[0].said[..], w);
+  s[0].said_n = copy_into(s[0].said[..], w); s[0].said_typed = via == "typed";
   n := put(s[0].req_body[..], 0, "{\"prompt\":");
   n = json_quote(s[0].req_body[..], n, w, 300);
   if s[0].plan > 0 && n > 0 {
@@ -534,6 +536,11 @@ read_board :: (s: [] Builder, body: string) -> bool {
 
 answer_of :: (text: string) -> string { e := line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
 status_of :: (text: string) -> int { return number_of(text[0..<line_end(text, 0)]); }
+// A plan that failed: typed words come back in the field, to send again or change, never lost.
+words_back :: (s: [] Builder) {
+  if !s[0].said_typed || s[0].said_n == 0 || s[0].typing { return; }
+  s[0].typed_n = copy_into(s[0].typed[..], said_text(s)); s[0].typing = true; s[0].typing_desc = false;
+}
 // The server's few words for why not, as a sentence.
 say_why :: (s: [] Builder, status: int, body: string) {
   if status == 0 || body.count == 0 || body.count > 80 || body[0] == '{' { fail(s, "That didn't reach the server. Try again."); return; }
@@ -569,13 +576,14 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
   }
   if status != 200 {
     track_fail(t, ifx what == REQ_PLAN then "builder-plan" else "builder-make", status); say_why(s, status, body);
+    if what == REQ_PLAN { words_back(s); }
     if what == REQ_PLAN && s[0].make_after { s[0].make_after = false; make_it(s, t); }
     return;
   }
   if what == REQ_PLAN {
     revised := s[0].plan > 0;
     before := board_sum(s);
-    if !read_board(s, body) { fail(s, "The board didn't come back. Try again."); return; }
+    if !read_board(s, body) { fail(s, "The board didn't come back. Try again."); words_back(s); return; }
     s[0].phase = PH_BOARD;
     // every revision says so: what it changed is on the board, or why nothing did
     if revised && board_sum(s) == before { set_note(s, "Saved. The board already had all of that."); }
@@ -1095,23 +1103,37 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   bottom := h - g - bh;
   board := s[0].phase == PH_BOARD || ((s[0].phase == PH_PLANNING || s[0].phase == PH_MAKING) && s[0].feat_n > 0 && s[0].plan > 0);
   if s[0].typing {
-    // the typed line and SEND
-    fb := Box.{x0 = x0, y0 = bottom - 54 * k, x1 = x1 - 96 * k, y1 = bottom - 10 * k};
+    // what is typed, wrapped onto up to four lines (the end stays in view: a long prompt can be read
+    // back on a phone before it is sent), and SEND
+    cap := 9 * k;
+    shown := ifx s[0].typed_n > 0 then typed_text(s) else "";
+    at_line: [TYPED_LINES_MOST] int;
+    lines := wrap_lines(shown, cap, x1 - 96 * k - x0 - 28 * k, at_line[..]);
+    first := hi_int(0, lines - TYPED_LINES);
+    seen_n := lines - first;
+    lh := 18 * k;
+    fb := Box.{x0 = x0, y0 = bottom - 54 * k - cast(f32) (seen_n - 1) * lh, x1 = x1 - 96 * k, y1 = bottom - 10 * k};
+    s[0].typed_rise = cast(f32) (seen_n - 1) * lh;
     plate(s, fb, 0.96, LOOK_LIT);
     s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
-    shown := ifx s[0].typed_n > 0 then typed_text(s) else "";
-    cap := 9 * k; room := fb.x1 - fb.x0 - 28 * k;
-    // the end of a long line stays in view
-    from := 0; while from < shown.count && measure(shown[from..<shown.count], GAP, SPACE, false) * cap > room { from += 1; }
-    n = write(d, out, n, shown[from..<shown.count], fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, cap, GAP, SPACE, white(k, 1), false, false);
+    room := fb.x1 - fb.x0 - 28 * k;
+    base := fb.y0 + 22 * k + 4.5 * k;
+    last := shown[0..<0];
+    for l: first..<lines {
+      e := ifx l + 1 < lines then at_line[l + 1] else shown.count;
+      part := shown[at_line[l]..<e];
+      n = write(d, out, n, part, fb.x0 + 14 * k, base + cast(f32) (l - first) * lh, cap, GAP, SPACE, white(k, 1), false, false);
+      last = part;
+    }
     hint := ifx s[0].typing_desc then "TYPE ITS ONE-LINE DESCRIPTION" else "TYPE THE WORLD YOU WANT";
-    if s[0].typed_n == 0 { n = write(d, out, n, hint, fb.x0 + 14 * k, (fb.y0 + fb.y1) * 0.5 + 4.5 * k, fit_cap(hint, cap, room), GAP, SPACE, white(k, 0.4), false, false); }
+    if s[0].typed_n == 0 { n = write(d, out, n, hint, fb.x0 + 14 * k, base, fit_cap(hint, cap, room), GAP, SPACE, white(k, 0.4), false, false); }
     blink := s[0].still || sin(s[0].time * 6) > 0;
     if blink {
-      cxr := fb.x0 + 14 * k + measure(shown[from..<shown.count], GAP, SPACE, false) * cap + 2 * k;
-      if lit(out, n, cxr, fb.y0 + 12 * k, cxr, fb.y1 - 12 * k, 0.6 * k, 0.9, 1 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
+      cxr := fb.x0 + 14 * k + measure(last, GAP, SPACE, false) * cap + 2 * k;
+      cy := base + cast(f32) (seen_n - 1) * lh;
+      if lit(out, n, cxr, cy - 13 * k, cxr, cy + 5 * k, 0.6 * k, 0.9, 1 * k, EMBER_R, EMBER_G, EMBER_B, MODE_STROKE) { n += 6; }
     }
-    n = pill(s, out, n, BTN_SEND, Box.{x0 = x1 - 86 * k, y0 = fb.y0, x1 = x1, y1 = fb.y1}, "SEND", true);
+    n = pill(s, out, n, BTN_SEND, Box.{x0 = x1 - 86 * k, y0 = fb.y1 - 44 * k, x1 = x1, y1 = fb.y1}, "SEND", true);
   } else { s[0].field[0] = 0; s[0].field[1] = 0; s[0].field[2] = 0; s[0].field[3] = 0; }
 
   gap := 10 * k;
@@ -1140,7 +1162,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   if status.count > 0 {
     m := put(buf[..], 0, status); upper(buf[..], m);
     line := cast(string) buf[0..<m];
-    base := ifx s[0].typing then bottom - 66 * k else bottom - 16 * k;
+    base := ifx s[0].typing then bottom - 66 * k - s[0].typed_rise else bottom - 16 * k;
     pulse := ifx s[0].still then 1.0f32 else 0.75 + 0.25 * sin(s[0].time * 4);
     lit_k := ifx s[0].phase == PH_PLANNING || s[0].phase == PH_MAKING then pulse else 0.9f32;
     n = centred(d, out, n, line, cx, base, fit_cap(line, 8.5 * k, col), ifx s[0].note_n > 0 && s[0].phase != PH_PLANNING then ember(k, 0.95) else white(k, lit_k));
@@ -1148,7 +1170,7 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
 
   top := tb.y1 + 14 * k;
   if board {
-    lift := ifx s[0].typing then 80 * k else 78 * k;
+    lift := ifx s[0].typing then 80 * k + s[0].typed_rise else 78 * k;
     n = draw_board(s, out, n, Box.{x0 = x0, y0 = top, x1 = x1, y1 = bottom - lift});
     if !s[0].typing { n = pill(s, out, n, BTN_DOC, Box.{x0 = x0, y0 = bottom - 70 * k, x1 = x1, y1 = bottom - 38 * k}, ifx s[0].doc_busy then "READING YOUR DOCUMENT" else "OR ADD FROM A DESIGN DOCUMENT", false); }
   } else {
@@ -1237,6 +1259,22 @@ draw_invite :: (s: [] Builder, out: [] f32, at: int, top: f32) -> int {
   }
   return n;
 }
+// Where each line of text starts when it is wrapped at room (pixels, at cap): at a space where one
+// fits, else mid-word; at most starts.count lines (the rest runs on in the last).
+TYPED_LINES :: 4; TYPED_LINES_MOST :: 40;
+wrap_lines :: (text: string, cap: f32, room: f32, at_line: [] int) -> int {
+  if at_line.count == 0 { return 0; }
+  at_line[0] = 0; lines := 1; from := 0;
+  while from < text.count && lines < at_line.count {
+    end := from; space := -1;
+    while end < text.count && measure(text[from..<end + 1], GAP, SPACE, false) * cap <= room { if text[end] == ' ' { space = end; } end += 1; }
+    if end >= text.count { break; }
+    next := ifx space > from then space + 1 else hi_int(end, from + 1);
+    at_line[lines] = next; lines += 1; from = next;
+  }
+  return lines;
+}
+hi_int :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 
 // The empty board's two lines: what to do, for how the words come (talking or
 // typing, a phone or a pointer). Typing never says SAY or TALK.
@@ -1267,7 +1305,7 @@ builder_frame :: (s: [] Builder, t: [] Track, out: [] f32, uniforms: [] f32, wid
   if s[0].voice && !s[0].faced && s[0].action == 0 {
     s[0].faced = true; s[0].out_n = put(s[0].outbox[..], 0, VOICE_FACING); s[0].action = ACT_VOICE_TO;
   }
-  if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { fail(s, "That took too long. Try again."); }
+  if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { plan := s[0].req_what == REQ_PLAN; fail(s, "That took too long. Try again."); if plan { words_back(s); } }
   talk_tick(s, t);
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
@@ -1808,4 +1846,34 @@ access_answer :: (s: [] Builder, t: [] Track, text: string) { builder_access_sen
   s[0].req_what = REQ_PLAN;
   answer(s[..], t[..], "403\ncross-site");
   #assert s[0].phase == PH_ASK && note_text(s[..]) == "Cross-site.";
+}
+#test "a long prompt typed on a 390 px phone wraps onto four lines, all inside the field; a plan that fails gives the words back" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], false);
+  n := frame_of(s[..], t[..], 780, 1688, 2);
+  tap(s[..], t[..], s[0].boxes[BTN_TYPE]);
+  words := "a foggy moor with a lighthouse keeper, a stone wall, giraffes and a shipwreck on the shore";
+  builder_message(s[..], t[..], MSG_TEXT, words);
+  m := frame_of(s[..], t[..], 780, 1688, 2);
+  at_line: [TYPED_LINES_MOST] int;
+  lines := wrap_lines(words, 9 * 2, s[0].field[2] - s[0].field[0] - 28 * 2, at_line[..]);
+  #assert lines == 5 && words[at_line[1] - 1] == ' ' && words[at_line[4] - 1] == ' ';
+  // the field grew upward for its three more lines (the first is out of view), and SEND sits beside
+  // its last; all on the screen
+  #assert s[0].field[3] - s[0].field[1] == (44 + 3 * 18) * 2 && s[0].field[1] > 0 && s[0].field[3] <= 1688;
+  #assert s[0].shown[BTN_SEND] && s[0].boxes[BTN_SEND].x1 <= 780 && s[0].boxes[BTN_SEND].y1 == s[0].field[3];
+  // a word longer than the room breaks mid-word rather than running out of the field
+  one: [TYPED_LINES_MOST] int;
+  #assert wrap_lines("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 18, 200, one[..]) >= 2 && wrap_lines("", 18, 200, one[..]) == 1;
+  // sent, and refused: the words are back in the field to send again, not lost
+  #assert builder_key(s[..], t[..], KEY_ENTER, 0, true) && s[0].phase == PH_PLANNING && !s[0].typing;
+  answer(s[..], t[..], "403\ncross-site");
+  #assert s[0].phase == PH_ASK && s[0].typing && typed_text(s[..]) == words;
+  // said out loud and refused: nothing is put in a field
+  v: [1] Builder; u: [1] Track;
+  ready(v[..], u[..], true);
+  k := frame_of(v[..], u[..], 780, 1688, 2);
+  builder_message(v[..], u[..], MSG_VOICE, "heard|a pond");
+  answer(v[..], u[..], "0\n");
+  #assert !v[0].typing && v[0].typed_n == 0;
 }

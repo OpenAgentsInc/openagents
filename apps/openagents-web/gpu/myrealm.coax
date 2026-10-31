@@ -442,8 +442,8 @@ myrealm_bg_fs :: (pos:V4,u:[]f32)->V4 {
   if ((myrealm_land(u)>0.5f32)&&(myrealm_land(u)<1.5f32)) {
     ground=wg_mix_f3f3f(ground,wg_mul_f3f3(v3(0.32f32,0.22f32,0.15f32),myrealm_daylight(v3(0.0f32,1.0f32,0.0f32),u)),smoothstep(u[31]-0.9f32,u[31]-0.4f32,r));
   }
-  // the realm's edge fades into the horizon's haze
-  haze:f32=clampf(1.0f32-exp((-fmax(t-u[39],0.0f32))*0.018f32),0.0f32,1.0f32);
+  // the realm's edge fades into the horizon's haze (u[43]: mist over the land, four times as thick)
+  haze:f32=clampf(1.0f32-exp((-fmax(t-u[39],0.0f32))*0.018f32*(1.0f32+3.0f32*u[43])),0.0f32,1.0f32);
   ground=wg_mix_f3f3f(ground,v3(u[48],u[49],u[50]),haze*0.85f32);
   edge:f32=ifx down then 1.0f32-smoothstep(u[31]-3.0f32,u[31]+6.0f32,r) else 0.0f32;
   if ((myrealm_land(u)>1.5f32)&&down) {
@@ -576,7 +576,7 @@ myrealm_scene_fs :: (s:MyrealmS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4 {
   lit=wg_add_f3f3(lit,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.62f32,0.28f32),myrealm_lamp_near(s.world,n,u)),1.6f32),u[55]));
   lit=wg_add_f3f3(lit,wg_add_f3f3(wg_mul_f3f(myrealm_lanterns_near(s.world,n,u),1.4f32),wg_make_f3_f(fmax(s.glow,0.0f32))));
   far:f32=fmax(wg_length3(wg_sub_f3f3(s.world,v3(u[28],u[29],u[30])))-u[39],0.0f32);
-  haze:f32=clampf(1.0f32-exp((-far)*0.018f32),0.0f32,1.0f32);
+  haze:f32=clampf(1.0f32-exp((-far)*0.018f32*(1.0f32+3.0f32*u[43])),0.0f32,1.0f32);
   // a floating island's sky is clear: what floats in it keeps its colour further off
   thick:f32=ifx (myrealm_land(u)>0.5f32)&&(myrealm_land(u)<1.5f32) then 0.4f32 else 0.85f32;
   c:V3=wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f3(wg_mul_f3f3(myrealm_paletted(v3(tex.x,tex.y,tex.z),u),s.tint),lit),v3(u[48],u[49],u[50]),haze*thick),u[3]);

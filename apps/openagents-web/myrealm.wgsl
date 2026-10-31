@@ -233,7 +233,7 @@ fn coax_p_bg_fs(p_pos: vec4f) -> vec4f {
   {
     l_ground = coax_p_wg_mix_f3f3f(l_ground, coax_p_wg_mul_f3f3(coax_p_v3(0x1.47ae14p-2f, 0x1.c28f5cp-3f, 0x1.333334p-3f), coax_p_myrealm_daylight(coax_p_v3(0.0f, 0x1.000000p0f, 0.0f))), coax_p_smoothstep((coax_at_u(i32(31i)) - 0x1.ccccccp-1f), (coax_at_u(i32(31i)) - 0x1.99999ap-2f), l_r));
   }
-  l_haze = coax_p_clampf((0x1.000000p0f - exp(((-coax_p_fmax((l_t - coax_at_u(i32(39i))), 0.0f)) * 0x1.26e978p-6f))), 0.0f, 0x1.000000p0f);
+  l_haze = coax_p_clampf((0x1.000000p0f - exp((((-coax_p_fmax((l_t - coax_at_u(i32(39i))), 0.0f)) * 0x1.26e978p-6f) * (0x1.000000p0f + (0x1.800000p1f * coax_at_u(i32(43i))))))), 0.0f, 0x1.000000p0f);
   l_ground = coax_p_wg_mix_f3f3f(l_ground, coax_p_v3(coax_at_u(i32(48i)), coax_at_u(i32(49i)), coax_at_u(i32(50i))), (l_haze * 0x1.b33334p-1f));
   l_edge = select(0.0f, (0x1.000000p0f - coax_p_smoothstep((coax_at_u(i32(31i)) - 0x1.800000p1f), (coax_at_u(i32(31i)) + 0x1.800000p2f), l_r)), l_down);
   if (((coax_p_myrealm_land() > 0x1.800000p0f) && l_down))
@@ -299,7 +299,7 @@ fn coax_p_scene_fs(p_s: coax_t15) -> vec4f {
   l_lit = coax_p_wg_add_f3f3(l_lit, coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_v3(0x1.000000p0f, 0x1.3d70a4p-1f, 0x1.1eb852p-2f), coax_p_myrealm_lamp_near(l_s.y, l_n)), 0x1.99999ap0f), coax_at_u(i32(55i))));
   l_lit = coax_p_wg_add_f3f3(l_lit, coax_p_wg_add_f3f3(coax_p_wg_mul_f3f(coax_p_myrealm_lanterns_near(l_s.y, l_n), 0x1.666666p0f), coax_p_wg_make_f3_f(coax_p_fmax(l_s.f6, 0.0f))));
   l_far = coax_p_fmax((coax_p_wg_length3(coax_p_wg_sub_f3f3(l_s.y, coax_p_v3(coax_at_u(i32(28i)), coax_at_u(i32(29i)), coax_at_u(i32(30i))))) - coax_at_u(i32(39i))), 0.0f);
-  l_haze = coax_p_clampf((0x1.000000p0f - exp(((-l_far) * 0x1.26e978p-6f))), 0.0f, 0x1.000000p0f);
+  l_haze = coax_p_clampf((0x1.000000p0f - exp((((-l_far) * 0x1.26e978p-6f) * (0x1.000000p0f + (0x1.800000p1f * coax_at_u(i32(43i))))))), 0.0f, 0x1.000000p0f);
   l_thick = select(0x1.b33334p-1f, 0x1.99999ap-2f, ((coax_p_myrealm_land() > 0x1.000000p-1f) && (coax_p_myrealm_land() < 0x1.800000p0f)));
   l_c_20 = coax_p_wg_mul_f3f(coax_p_wg_mix_f3f3f(coax_p_wg_mul_f3f3(coax_p_wg_mul_f3f3(coax_p_myrealm_paletted(coax_p_v3(l_tex.x, l_tex.y, l_tex.z)), l_s.f4), l_lit), coax_p_v3(coax_at_u(i32(48i)), coax_at_u(i32(49i)), coax_at_u(i32(50i))), (l_haze * l_thick)), coax_at_u(i32(3i)));
   return coax_p_wg_make_f4_f3f(coax_p_myrealm_panels(coax_p_v2(l_s.x.x, l_s.x.y), l_c_20), 0x1.000000p0f);

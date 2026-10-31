@@ -353,7 +353,7 @@ ISLE_W :: [6] f32.[8, 6, 6, 8, 7, 6];
 // myrealm-things.coax beast): each kind's build, coat and marks, and what it carries (horns,
 // antlers, a mane, a hump, wool).
 // size, legs, body, girth, head, snout, ears (0 pricked, 1 hanging), tail, fluff, tail curl, ruff
-BUILD :: [143] f32.[
+BUILD :: [187] f32.[
   2.5, 0.85, 1.05, 1.6, 1.25, 0.8, 0.6, 0.6, 1.4, 0, 1,     // bison
   2.1, 1.55, 0.9, 0.85, 0.9, 1.1, 0, 0.25, 1.2, 0.4, 0,     // deer
   2.8, 1.45, 1.15, 1.35, 1.05, 1.6, 0, 1.4, 1.6, 0, 0,      // horse
@@ -366,9 +366,13 @@ BUILD :: [143] f32.[
   1.25, 1.0, 1.0, 1.0, 1.05, 1.05, 0.8, 1.0, 1.0, 0.7, 0,   // dog
   2.8, 1.6, 1.1, 1.1, 1.0, 1.25, 0.5, 0.7, 0.9, 0, 0,       // camel
   1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0, 1.0, 1.0, 0, 0,          // chicken (beast)
-  3.8, 1.2, 1.3, 1.4, 1.3, 1.5, 0, 1.8, 2.0, 0, 0];         // dinosaur
+  3.8, 1.2, 1.3, 1.4, 1.3, 1.5, 0, 1.8, 2.0, 0, 0,          // dinosaur
+  3.6, 1.15, 1.2, 1.75, 1.45, 0.55, 1.0, 0.5, 0.6, 0, 0,    // elephant (and its trunk, tusks and ears)
+  2.6, 2.1, 0.95, 0.95, 0.85, 1.2, 0, 0.8, 0.6, 0, 0,       // giraffe (its own long neck and head)
+  0.95, 1.1, 0.85, 0.9, 1.3, 0.6, 0.6, 1.9, 0.8, 0.8, 0,    // monkey (a pale face)
+  0.6, 0.8, 0.9, 0.95, 1.2, 0.8, 0, 2.2, 3.0, 1.0, 0];      // squirrel (a bushy tail curled over its back)
 // coat, then its marks; and its pattern
-COATS :: [78] f32.[
+COATS :: [102] f32.[
   0.3, 0.2, 0.13,  0.14, 0.1, 0.07,
   0.7, 0.48, 0.3,  0.95, 0.9, 0.82,
   0.5, 0.32, 0.2,  0.12, 0.09, 0.07,
@@ -381,9 +385,14 @@ COATS :: [78] f32.[
   0.6, 0.42, 0.25,  0.95, 0.9, 0.82,
   0.8, 0.64, 0.42,  0.7, 0.55, 0.36,
   1, 1, 1,  1, 1, 1,
-  0.36, 0.55, 0.28,  0.8, 0.75, 0.45];
-PATTERN :: [13] int.[2, 4, 2, 2, 0, 1, 0, 4, 2, 4, 0, 0, 4];
-DINO :: 12; CHICKEN :: 11;
+  0.36, 0.55, 0.28,  0.8, 0.75, 0.45,
+  0.52, 0.5, 0.5,  0.44, 0.42, 0.42,
+  0.96, 0.74, 0.34,  0.5, 0.27, 0.12,
+  0.44, 0.29, 0.17,  0.86, 0.72, 0.56,
+  0.78, 0.4, 0.16,  0.96, 0.9, 0.78];
+PATTERN :: [17] int.[2, 4, 2, 2, 0, 1, 0, 4, 2, 4, 0, 0, 4, 0, 1, 0, 0];
+DINO :: 12; CHICKEN :: 11; ELEPHANT :: 13; GIRAFFE :: 14; MONKEY :: 15; SQUIRREL :: 16;
+IVORY :: [3] f32.[0.95, 0.9, 0.78];
 animal_shape :: (kind: int) -> fig.Shape {
   b := kind * 11; c := kind * 6;
   return fig.Shape.{rig = fig.Rig.animal, size = BUILD[b], legs = BUILD[b + 1], body = BUILD[b + 2], girth = BUILD[b + 3], head = BUILD[b + 4],
@@ -411,6 +420,8 @@ animal_figure :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, pace: f32,
     a := joints[part.a]; e := joints[part.b];
     col := c;
     g := part.region;
+    // a giraffe's neck and head are its own (below), long and high
+    if kind == GIRAFFE && (part.a == fig.A_NECK || g == fig.REGION_HEAD || g == fig.REGION_MUZZLE || g == fig.REGION_EAR || g == fig.REGION_EYE || g == fig.REGION_NOSE) { continue; }
     marked := (sh.pattern == fig.PATTERN_POINTS && (g == fig.REGION_EAR || g == fig.REGION_MUZZLE || g == fig.REGION_LOWER || g == fig.REGION_TAIL))
       || (sh.pattern == fig.PATTERN_SOCKS && g == fig.REGION_LOWER && (part.a - fig.A_LF) % 5 >= 2)
       || (sh.pattern == fig.PATTERN_PATCHES && g == fig.REGION_BODY && (q + i) % 2 == 0)
@@ -448,6 +459,53 @@ animal_figure :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, pace: f32,
   if kind == 10 {
     // a hump
     ball(s, sp.x, sp.y + 0.11 * z0, sp.z, 0.085 * z0, c.x * 0.95, c.y * 0.95, c.z * 0.95);
+  }
+  fx := sin(yaw); fz := -cos(yaw);
+  if kind == ELEPHANT {
+    // a trunk hanging from its face nearly to the ground, curling forward at its tip; two tusks; big
+    // ears flat against its head
+    ns := joints[fig.A_NOSE];
+    mx := ns.x + fx * 0.08 * z0; mz := ns.z + fz * 0.08 * z0;
+    round_cone(s, ns.x, ns.y, ns.z, 0.07 * z0, mx, 0.42 * ns.y, mz, 0.05 * z0, c.x, c.y, c.z);
+    round_cone(s, mx, 0.42 * ns.y, mz, 0.05 * z0, mx + fx * 0.1 * z0, 0.14 * ns.y, mz + fz * 0.1 * z0, 0.035 * z0, c.x, c.y, c.z);
+    for side: 0..<2 {
+      w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      tx := ns.x + ax * w * 0.06 * z0; tz := ns.z + az * w * 0.06 * z0;
+      round_cone(s, tx, ns.y - 0.02 * z0, tz, 0.022 * z0, tx + fx * 0.14 * z0, ns.y - 0.1 * z0, tz + fz * 0.14 * z0, 0.008 * z0, IVORY[0], IVORY[1], IVORY[2]);
+      ex := hd.x + ax * w * 0.15 * z0 - fx * 0.03 * z0; ez := hd.z + az * w * 0.15 * z0 - fz * 0.03 * z0;
+      round_cone(s, ex, hd.y + 0.04 * z0, ez, 0.13 * z0, ex - fx * 0.02 * z0, hd.y - 0.1 * z0, ez - fz * 0.02 * z0, 0.09 * z0, m.x, m.y, m.z);
+    }
+  }
+  if kind == GIRAFFE {
+    // a long neck rising high from its shoulders, patched, with a short mane; a small head on it,
+    // two ossicones, dark eyes
+    nx := ck.x + fx * 0.22 * z0; ny := ck.y + 0.95 * z0; nz := ck.z + fz * 0.22 * z0;
+    round_cone(s, ck.x, ck.y + 0.04 * z0, ck.z, 0.085 * z0, nx, ny, nz, 0.045 * z0, c.x, c.y, c.z);
+    for q: 0..<4 {
+      f := 0.2 + 0.2 * cast(f32) q;
+      side: f32 = ifx q % 2 == 0 then 1.0f32 else -1.0f32;
+      ball(s, ck.x + (nx - ck.x) * f + ax * side * 0.04 * z0, ck.y + (ny - ck.y) * f, ck.z + (nz - ck.z) * f + az * side * 0.04 * z0, 0.04 * z0, m.x, m.y, m.z);
+    }
+    round_cone(s, ck.x - fx * 0.03 * z0, ck.y + 0.1 * z0, ck.z - fz * 0.03 * z0, 0.02 * z0, nx - fx * 0.04 * z0, ny, nz - fz * 0.04 * z0, 0.015 * z0, m.x, m.y, m.z);
+    hx := nx + fx * 0.16 * z0; hy := ny - 0.03 * z0; hz2 := nz + fz * 0.16 * z0;
+    round_cone(s, nx, ny, nz, 0.055 * z0, hx, hy, hz2, 0.035 * z0, c.x, c.y, c.z);
+    for side: 0..<2 {
+      w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      ox := nx + ax * w * 0.025 * z0; oz := nz + az * w * 0.025 * z0;
+      round_cone(s, ox, ny + 0.03 * z0, oz, 0.012 * z0, ox, ny + 0.1 * z0, oz, 0.016 * z0, m.x, m.y, m.z);
+      ball(s, nx + fx * 0.05 * z0 + ax * w * 0.04 * z0, ny + 0.01 * z0, nz + fz * 0.05 * z0 + az * w * 0.04 * z0, 0.012 * z0, 0.04, 0.03, 0.03);
+    }
+  }
+  if kind == MONKEY {
+    // a pale face in front of its head
+    ball(s, hd.x + fx * 0.07 * hz, hd.y - 0.01 * hz, hd.z + fz * 0.07 * hz, 0.075 * hz, m.x, m.y, m.z);
+  }
+  if kind == SQUIRREL {
+    // its bushy tail: up from its rump and curling over its back
+    for q: 0..<4 {
+      f := cast(f32) q;
+      ball(s, pv.x - fx * (0.16 - 0.05 * f) * z0, pv.y + (0.12 + 0.13 * f) * z0, pv.z - fz * (0.16 - 0.05 * f) * z0, (0.11 - 0.012 * f) * z0, c.x * 1.05, c.y * 1.05, c.z * 1.05);
+    }
   }
   if kind == 3 {
     // wool: soft lumps over the back

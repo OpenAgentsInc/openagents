@@ -138,7 +138,7 @@ def realm_builder_checks():
     check("its text says what is there and what visitors may do", "- 20 dead trees" in md and "Large pond" not in md and "- Talk" in md and "Build" not in md, md)
     # its link preview (0071): every tag, its line written from what is in it, never the Haunted House's picture
     check("its page has every preview tag, its line from what is in it, and the branded card until its own",
-          '<meta property="og:description" content="A forest at night with 20 dead trees, 4 rocks, a flock of bats and a wagon, where Old Mott lives. A realm built on the Verse.">' in page
+          '<meta property="og:description" content="A forest at night with 20 dead trees, 4 rocks, a flock of bats and wagons, where Old Mott lives. A realm built on the Verse.">' in page
           and '<meta name="twitter:card" content="summary_large_image">' in page and '<meta property="og:image:width" content="1200">' in page
           and "og-verse.jpg" not in page and '/og/default.jpg"' in page and 'data-card="/api/playtest/realms/" + slug + "/card"' not in page
           and 's.dataset.card = "/api/playtest/realms/" + slug + "/card"' in page and "ff8c1f" not in page, page[:1600])
@@ -327,7 +327,7 @@ def realm_builder_checks():
           len(builder_seen) - n0 == 2 and len(asked_again) == 3 and asked_again[1]["role"] == "model" and "small red house" in asked_again[2]["parts"][0]["text"]
           and "house feature" in asked_again[2]["parts"][0]["text"], [c["parts"][0]["text"][:120] for c in asked_again])
     kinds = [(f["feature"], f["on"], f["label"]) for f in sub.get("board", {}).get("features", [])]
-    check("subject: the second answer is the board, the house first, in its colour", st == 200 and kinds[0] == ("house", True, "A small red house")
+    check("subject: the second answer is the board, the house first, in its colour", st == 200 and kinds[0] == ("house", True, "A small red cottage")
           and sub["asked"] == HOUSE, (st, kinds, sub.get("asked")))
     row = sql(f"select retried, repaired is null, asked_for->0->>'feature' from verse.realm_plans where id = {sub['plan']}")
     check("subject: the plan keeps what was asked and that it was asked again", row == "t|t|house", row)
@@ -379,6 +379,35 @@ def realm_builder_checks():
     st, _ = b_call("POST", "/api/playtest/realms/plan", {"prompt": "a quick fen"}, b_player())
     check("two stalled tries are a 503, not a wait", st == 503, st)
     builder_mode["stall"] = 0
+
+    # round 3 (0092): what the eval found missing is drawn, its words say what is drawn, and a whole
+    # thing is wanted only for the part of it the board doesn't draw
+    lab = lambda f: sql("select verse.builder_label(verse.builder_hold_feature('" + json.dumps(f) + "'::jsonb))")
+    check("0092: mist, a pagoda, a longhouse, elephants, acacias, a fountain, a stone wall and a shipwreck are the catalogue's",
+          lab({"feature": "mist"}) == "Mist over the land" and lab({"feature": "building", "variant": "pagoda"}) == "A pagoda"
+          and lab({"feature": "building", "variant": "longhouse"}) == "A longhouse" and lab({"feature": "herd", "variant": "elephant", "count": 4}) == "A herd of 4 elephants"
+          and lab({"feature": "herd", "variant": "monkey", "count": 5}) == "A herd of 5 monkeys" and lab({"feature": "trees", "variant": "acacia", "count": 6}) == "6 acacia trees"
+          and lab({"feature": "trees", "variant": "autumn", "count": 5}) == "5 autumn trees, orange and red"
+          and lab({"feature": "props", "variant": "fountain"}) == "A fountain" and lab({"feature": "props", "variant": "wall"}) == "A stone wall"
+          and lab({"feature": "props", "variant": "wreck"}) == "A shipwreck", lab({"feature": "herd", "variant": "elephant", "count": 4}))
+    check("0092: words that said less than is drawn: a market of stalls, a stream, a cottage, wagons",
+          lab({"feature": "building", "variant": "market"}) == "A market of stalls" and lab({"feature": "water", "size": "small", "variant": "river"}) == "A stream"
+          and lab({"feature": "water", "size": "large", "variant": "river"}) == "A river"
+          and lab({"feature": "house", "size": "small", "colour": "red", "count": 1}) == "A small red cottage"
+          and lab({"feature": "house", "size": "small", "colour": "red", "count": 3}) == "3 small red cottages"
+          and lab({"feature": "house", "size": "large", "colour": "red", "count": 1}) == "A large red house" and lab({"feature": "props", "variant": "wagon"}) == "Wagons",
+          lab({"feature": "house", "size": "small", "colour": "red", "count": 1}))
+    wanted = lambda asked: sql("select verse.builder_wanted(NULL, '" + json.dumps(asked).replace("'", "''") + "'::jsonb)::text")
+    w = wanted([{"said": "a pirate cove", "thing": "pirate cove", "feature": "place", "drawn": "an island", "same": False, "missing": ""},
+                {"said": "a haunted swamp", "thing": "haunted swamp", "feature": "place", "drawn": "dead trees", "same": False, "missing": "swamp"},
+                {"said": "a shipwreck", "thing": "shipwreck", "feature": "none", "drawn": "", "same": False, "missing": "shipwreck"},
+                {"said": "friendly owls", "thing": "owls", "feature": "flock", "drawn": "owls", "same": True, "missing": ""},
+                {"said": "a giant tree", "thing": "giant tree", "feature": "bigtree", "drawn": "a giant tree", "same": False, "missing": ""},
+                {"said": "a koi pond", "thing": "koi pond", "feature": "water", "drawn": "a pond", "same": False, "missing": "koi"}])
+    check("0092: a drawn thing is wanted only for what of it isn't drawn; one no feature draws, whole", w == '["swamp", "shipwreck", "koi"]', w)
+    check("0092: an older answer with no missing still keeps its place whole", wanted([{"thing": "pirate cove", "feature": "place", "same": False}]) == '["pirate cove"]')
+    items = sql("select verse.builder_schema()->'properties'->'asked'->'items'->'required'")
+    check("0092: each asked thing says what of it is missing", '"missing"' in items and "mist" in sql("select verse.builder_order()::text"), items)
     time.sleep(3.2)
     gcs_server.shutdown()
     builder_fake.shutdown()

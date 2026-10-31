@@ -113,7 +113,7 @@ def realm_rights_checks():
     st, made = b_call("POST", "/api/playtest/realms", {"plan": plan.get("plan"), "on": [True, True, True, True]}, maker)
     slug = made.get("slug", "")
     st, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
-    check("a made realm's spec has its role and its board's rows", "role owner\n" in spec and "row water 1 Small pond\n" in spec and "row props:wagon 1 A wagon\n" in spec, spec)
+    check("a made realm's spec has its role and its board's rows", "role owner\n" in spec and "row water 1 Small pond\n" in spec and "row props:wagon 1 Wagons\n" in spec, spec)
     check("a visitor can't switch a made realm's row", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, visitor)[0] == 403)
     check("its owner switches one off", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, maker)[0] == 200)
     st, spec = b_call("GET", "/api/playtest/realms/" + slug)

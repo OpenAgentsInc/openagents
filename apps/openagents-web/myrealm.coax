@@ -176,6 +176,7 @@ MyRealm :: struct {
   fire_n: int; fire_x: [FIRES] f32; fire_z: [FIRES] f32; weed_n: int; weed_x: [WEEDS] f32; weed_z: [WEEDS] f32;
   glow_pen: f32;           // what is drawn next glows by this much (glowing)
   trees: int; tree_kind: int; rocks: int; plants: int;
+  mist: bool;              // mist over the land (0092): the haze thick and near, pale
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool; owls: bool;
   great: bool; great_kind: int; great_x: f32; great_z: f32;
@@ -257,7 +258,9 @@ THING_NAMES :: [THINGS] string.["crate", "barrel", "tree", "rock", "plant", "lan
 THING_WORDS :: [THINGS] string.["CRATE", "BARREL", "TREE", "ROCK", "FERN", "LANTERN", "FENCE", "CHEST"];
 GROUNDS :: [6] string.["meadow", "forest", "desert", "snow", "stone", "beach"];
 TIMES :: [4] string.["day", "dawn", "dusk", "night"];
-PROPS :: [14] string.["crates", "barrels", "wagon", "fence", "camp", "campfire", "boat", "bridge", "signpost", "well", "treasure", "graves", "tumbleweeds", "statue"];
+PROP_KINDS :: 17;
+PROPS :: [PROP_KINDS] string.["crates", "barrels", "wagon", "fence", "camp", "campfire", "boat", "bridge", "signpost", "well", "treasure", "graves", "tumbleweeds", "statue",
+                              "fountain", "wall", "wreck"];
 PROP_MOST :: 8;
 PALETTES :: [4] string.["natural", "pastel", "vivid", "muted"];
 COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
@@ -325,7 +328,7 @@ slug_ok :: (text: string) -> bool {
 // The spec (verse.builder_spec), a line each.
 read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
-  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false;
+  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false; s[0].mist = false;
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
   s[0].herd = 0; s[0].herd_split = HERD; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
   s[0].water_kind = 1; s[0].land = 0; s[0].flier = 0; s[0].plant_kind = 0; s[0].building_n = 0;
@@ -374,8 +377,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
         v := word_of(line, 3); s[0].water_kind = ifx v == "river" then 2 else ifx v == "frozen" then 3 else ifx v == "lava" then 4 else 1;
       }
       if f == "land" { for k: 0..<6 { if LANDS[k] == a { s[0].land = k + 1; } } }
-      if f == "building" && s[0].building_n < BUILDINGS { for k: 0..<11 { if BUILDING_KINDS[k] == a { s[0].building[s[0].building_n] = k; s[0].building_n += 1; } } }
-      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else ifx a == "palm" then 4 else ifx a == "blossom" then 5 else 0; }
+      if f == "building" && s[0].building_n < BUILDINGS { for k: 0..<BUILDING_N { if BUILDING_KINDS[k] == a { s[0].building[s[0].building_n] = k; s[0].building_n += 1; } } }
+      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else ifx a == "palm" then 4 else ifx a == "blossom" then 5 else ifx a == "autumn" then TREE_AUTUMN else ifx a == "acacia" then TREE_ACACIA else 0; }
       if f == "rocks" { s[0].rocks = clamp_int(count_of(line, 6), 0, 16); }
       if f == "plants" { s[0].plants = clamp_int(count_of(line, 10), 0, 24); for k: 0..<5 { if PLANT_KINDS[k] == a { s[0].plant_kind = k; } } }
       if f == "lanterns" {
@@ -395,13 +398,14 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
         c := word_of(line, 3); s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
       }
       if f == "herd" {
-        kind := 0; for k: 0..<13 { if HERDS[k] == a { kind = k; } }
+        kind := 0; for k: 0..<HERD_N { if HERDS[k] == a { kind = k; } }
         if s[0].herd == 0 { s[0].herd = clamp_int(count_of(line, 6), 0, HERD); s[0].herd_kind = kind; }
         else if s[0].herd_split == HERD { s[0].herd_split = s[0].herd; s[0].herd = clamp_int(s[0].herd + count_of(line, 6), 0, HERD); s[0].herd_kind2 = kind; }
       }
       if f == "dwellings" { s[0].dwellings = clamp_int(count_of(line, 4), 0, DWELLINGS); s[0].dwelling_kind = ifx a == "tent" then 1 else ifx a == "hut" then 2 else 0; }
+      if f == "mist" { s[0].mist = true; }
       if f == "village" { s[0].villagers = clamp_int(count_of(line, 5), 0, VILLAGERS); }
-      if f == "props" && s[0].prop_n < PROP_MOST { for k: 0..<14 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
+      if f == "props" && s[0].prop_n < PROP_MOST { for k: 0..<PROP_KINDS { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
   // 2D faces right when it starts; a realm read again keeps your way
@@ -638,6 +642,7 @@ thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: i
   if t == 2 && kind == 2 { r = 0.75; g = 0.62; b = 0.5; }    // dead: bare and grey-brown
   piece(s, m, x, z, yaw, k, r, g, b);
   if t == 2 && kind == 5 { r = 1.45; g = 0.72; b = 0.92; }   // blossom: pink
+  if t == 2 && kind == TREE_AUTUMN { r = 1.6; g = ifx sin(x * 3.1 + z * 1.7) > 0 then 0.95f32 else 0.6f32; b = 0.22; }   // autumn: orange and red
   if t == 2 && kind != 2 { piece(s, leaves_of(s, m), x, z, yaw, k, r, g, b); }
   // a tree is a wall; anything lower is a top you can jump onto in 2D
   o := m * 6; top := lo((s[0].mesh_box[o + 4] - s[0].mesh_box[o + 1]) * k, STAND_TOP);
@@ -758,7 +763,14 @@ lay_out :: (s: [] MyRealm) {
     if c.x > 90 { continue; }
     if kind == 0 { for j: 0..<3 { thing_at(s, 0, c.x + (cast(f32) j - 1) * 1.1, c.z + (ifx j == 1 then 0.6f32 else 0.0f32), rand(r[..]) * 0.6, 1, 0); } }
     if kind == 1 { for j: 0..<3 { thing_at(s, 1, c.x + (cast(f32) j - 1) * 0.9, c.z + rand(r[..]) * 0.5, rand(r[..]) * 3, 1, 0); } }
-    if kind == 2 { m := mesh_named(s, "Prop_Wagon"); if m >= 0 { k := 3.6 / hi(longest(s, m), 0.01); a := rand(r[..]) * 3; piece(s, m, c.x, c.z, a, k, 1, 1, 1); solid(s, c.x, c.z, 1.6); } }
+    if kind == 2 {
+      // wagons: two, one drawn up behind the other
+      m := mesh_named(s, "Prop_Wagon");
+      if m >= 0 {
+        k := 3.6 / hi(longest(s, m), 0.01); a := rand(r[..]) * 3;
+        for j: 0..<2 { o := 3.4 * cast(f32) j; wx := c.x + o * sin(a + 0.4); wz := c.z + o * cos(a + 0.4); piece(s, m, wx, wz, a + 0.3 * cast(f32) j, k, 1, 1, 1); solid(s, wx, wz, 1.6); }
+      }
+    }
     if kind == 3 { a := rand(r[..]) * 3; for j: 0..<5 { o := (cast(f32) j - 2) * 2.0; thing_at(s, 6, c.x + o * cos(a), c.z - o * sin(a), a, 1, 0); } }
     if kind == 4 { thing_at(s, 7, c.x, c.z, rand(r[..]) * 3, 1, 0); m := mesh_named(s, "Anvil"); if m >= 0 { k := 0.9 / hi(longest(s, m), 0.01); piece(s, m, c.x + 1.6, c.z + 0.4, 0.5, k, 1, 1, 1); solid(s, c.x + 1.6, c.z + 0.4, 0.5); } }
     if kind >= 5 { prop_at(s, r[..], kind, c); glowing(s, 0); }
@@ -769,6 +781,7 @@ lay_out :: (s: [] MyRealm) {
     kind := s[0].tree_kind;
     if kind == 3 { kind = cast(int) (rand(r[..]) * 2.99); }
     if kind == 4 { palm(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
+    if kind == TREE_ACACIA { acacia(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
     thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind);
   }
   wood(s, r[..]);
@@ -1430,8 +1443,10 @@ json_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> 
   n := put(out, at, ifx comma then ",\"" else "\""); n = put(out, n, name); n = put(out, n, "\":\"");
   n = json_in(out, n, text); return put(out, n, "\"");
 }
-TREE_WORDS :: [6] string.["round trees", "pines", "dead trees", "trees of every kind", "palm trees", "blossom trees"];
-PROP_WORDS :: [14] string.["crates", "barrels", "a wagon", "a fence", "a camp", "a campfire", "boats", "a bridge", "a signpost", "a well", "treasure", "gravestones", "tumbleweeds", "a statue"];
+TREE_AUTUMN :: 6; TREE_ACACIA :: 7;
+TREE_WORDS :: [8] string.["round trees", "pines", "dead trees", "trees of every kind", "palm trees", "blossom trees", "autumn trees, orange and red", "acacia trees"];
+PROP_WORDS :: [PROP_KINDS] string.["crates", "barrels", "wagons", "a fence", "a camp", "a campfire", "boats", "a bridge", "a signpost", "a well", "treasure", "gravestones", "tumbleweeds", "a statue",
+                                   "a fountain", "a stone wall", "a shipwreck"];
 CAMERA_CONTROLS :: [4] string.[
   "W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns.",
   "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
@@ -1449,6 +1464,7 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   if s[0].trees > 0 { n = json_in(out, n, " There are "); n = json_in(out, n, TREE_WORDS[s[0].tree_kind]); n = json_in(out, n, "."); }
   if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
   if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
+  if s[0].mist { n = json_in(out, n, " Mist lies over the land."); }
   if s[0].birds > 0 { n = json_in(out, n, FLIER_SAY[s[0].flier]); }
   if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
   for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
@@ -1722,9 +1738,12 @@ draw_world :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   return n;
 }
 
-// The characters' names, on a plate over each within reach.
+// The characters' names, on a plate over each within reach; none while a panel or the map is open
+// (a name drawn over the edit list hid its rows on a phone).
+names_shown :: (s: [] MyRealm) -> bool { return s[0].pane == PANE_NONE && !s[0].map_open && !redit_open(s[0].ed[..]); }
 draw_names :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   k := s[0].dpr; n := at;
+  if !names_shown(s) { return n; }
   for p: 0..<s[0].people {
     dx := s[0].person_x[p] - s[0].x; dz := s[0].person_z[p] - s[0].z;
     if sqrt(dx * dx + dz * dz) > 12 { continue; }
@@ -1954,6 +1973,17 @@ snow_low_sky :: (o: [] f32) {
   }
   o[SU_CLOUDS] = SNOW_LOW_CLOUDS;   // fewer clouds: their teal undersides grey a rose sky
 }
+// Mist (0092): the horizon the haze fades to goes pale and grey (its own brightness kept, so a misty
+// night stays dark), and a painterly or flat realm's haze starts at the eye, four times as thick.
+MIST_GREY :: 0.6; MIST_THICK :: 4.0;
+mist_horizon :: (h: [] f32) {
+  l := 0.3 * h[0] + 0.55 * h[1] + 0.15 * h[2];
+  for i: 0..<3 { h[i] = (1 - MIST_GREY) * h[i] + MIST_GREY * (1.12 * l + 0.04); }
+}
+mist_style :: (o: [] f32) {
+  o[SU_HAZE] = 0; o[SU_HAZE + 1] *= MIST_THICK; o[SU_HAZE + 2] = hi(o[SU_HAZE + 2], 0.85);
+  mist_horizon(o[SU_HAZE_COLOUR..<SU_HAZE_COLOUR + 3]);
+}
 SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.42, 0.52, 0.8,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
 HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  1.0, 0.74, 0.56,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
 SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.75, 0.6, -0.4, 1.0,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
@@ -2029,7 +2059,9 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   }
   uniforms[EYE_AT + 3] = GROUND_R;
   uniforms[RAY_AT + 3] = ifx s[0].ortho then 1.0f32 else 0.0f32;   // 2D: every pixel's ray is the same, from its own place
-  uniforms[RAY_AT + 7] = HAZE_FROM[s[0].camera];
+  uniforms[RAY_AT + 7] = ifx s[0].mist then 0.0f32 else HAZE_FROM[s[0].camera];
+  uniforms[RAY_AT + 11] = ifx s[0].mist then 1.0f32 else 0.0f32;   // myrealm.wgsl: the low-poly haze four times as thick
+  if s[0].mist { mist_horizon(uniforms[HORIZON_AT..<HORIZON_AT + 3]); }
   style := cast(string) s[0].style[0..<s[0].style_n];
   uniforms[SKY_AT + 3] = ifx style == "painterly" then 1.0f32 else 0.0f32;
   if s[0].spec_ready && (style == "painterly" || style == "flat") {
@@ -2037,6 +2069,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     p := ifx style == "flat" then verse_style_flat(FLAT_GARDEN, tier) else verse_style_preset(STYLE_PAINTERLY, tier);
     done := verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
     if snow_paint && (tod == 1 || tod == 2) { snow_low_sky(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
+    if s[0].mist { mist_style(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
   }
   uniforms[HORIZON_AT + 3] = STARS[tod];
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
@@ -2386,6 +2419,9 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   tap_box(s[..], t[..], Box.{x0 = s[0].ed[0].boxes[RB_EDIT].x0, y0 = s[0].ed[0].boxes[RB_EDIT].y0, x1 = s[0].ed[0].boxes[RB_EDIT].x1, y1 = s[0].ed[0].boxes[RB_EDIT].y1});
   m2 := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].ed[0].pane == REDIT_BOARD && s[0].ed[0].row_shown[1] && s[0].pane == PANE_NONE;
+  // the characters' name plates stay off the edit list (one drawn over its rows on a phone)
+  buf: [64] f32;
+  #assert !names_shown(s[..]) && draw_names(s[..], buf[..], 7) == 7;
   // BUILD takes its place: one pane at a time
   tap_box(s[..], t[..], s[0].boxes[BTN_BUILD]);
   #assert s[0].pane == PANE_BUILD && s[0].ed[0].pane == REDIT_SHUT;
@@ -2788,4 +2824,36 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   // the windmill's sails turn in front of its cap, clear of the tower
   dx := s[0].mill_x[0]; dz := s[0].mill_z[0] - 6;
   #assert sqrt(dx * dx + dz * dz) < 18 && dz < 0;
+}
+
+mist_drawn :: (s: [] MyRealm, t: [] Track, u: [] f32) {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  n := realm_frame(s, t, out[..], u, 1280, 800, 2, 0.016, false);
+}
+#test "0092's things are drawn: mist, a pagoda, a longhouse, elephants and giraffes, acacias, a fountain, a stone wall, a shipwreck, wagons" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "savanna", "realm savanna\nname Savanna\nstyle lowpoly\nground desert\ntime dusk\nowner 0\nfeature mist\nfeature building pagoda\nfeature building longhouse\nfeature trees acacia 6\nfeature herd elephant 4\nfeature herd giraffe 3\nfeature props fountain\nfeature props wall\nfeature props wreck\nfeature props wagon\n");
+  #assert s[0].laid && s[0].mist && s[0].building_n == 2 && s[0].building[0] == BUILD_PAGODA && s[0].building[1] == BUILD_LONGHOUSE;
+  #assert s[0].tree_kind == TREE_ACACIA && s[0].trees == 6 && s[0].herd == 7 && s[0].herd_kind == ELEPHANT && s[0].herd_kind2 == GIRAFFE;
+  #assert s[0].prop_n == 4 && s[0].props[0] == PROP_FOUNTAIN && s[0].props[1] == PROP_WALL && s[0].props[2] == PROP_WRECK && s[0].props[3] == 2;
+  #assert s[0].piece_n <= PIECES && s[0].static_n < PIECES - 200;
+  // the elephants and giraffes keep apart: an elephant's room is the biggest of the herd's
+  #assert herd_room(ELEPHANT) > herd_room(2) && herd_room(GIRAFFE) > 0.5;
+  // mist: the low-poly haze thick and from the eye, the horizon greyer than without it
+  u: [UNIFORM_FLOATS] f32; mist_drawn(s[..], t[..], u[..]);
+  #assert u[RAY_AT + 11] == 1 && u[RAY_AT + 7] == 0;
+  q: [1] MyRealm; v: [1] Track;
+  opened(q[..], v[..], "clear", "realm clear\nname Clear\nstyle lowpoly\nground desert\ntime dusk\nowner 0\nfeature trees autumn 5\nfeature water small river\n");
+  w: [UNIFORM_FLOATS] f32; mist_drawn(q[..], v[..], w[..]);
+  #assert !q[0].mist && w[RAY_AT + 11] == 0 && w[RAY_AT + 7] == HAZE_FROM[CAM_THIRD] && q[0].tree_kind == TREE_AUTUMN;
+  spread := u[HORIZON_AT] - u[HORIZON_AT + 2]; was := w[HORIZON_AT] - w[HORIZON_AT + 2];
+  #assert abs(spread) < abs(was) * 0.5;
+  // a painterly realm's haze is thicker and starts at the eye in mist
+  p: [1] MyRealm; pv: [1] Track;
+  opened(p[..], pv[..], "moor", "realm moor\nname Moor\nstyle painterly\nground meadow\ntime day\nowner 0\nfeature mist\n");
+  pu: [UNIFORM_FLOATS] f32; mist_drawn(p[..], pv[..], pu[..]);
+  c: [1] MyRealm; cv: [1] Track;
+  opened(c[..], cv[..], "moor2", "realm moor2\nname Moor\nstyle painterly\nground meadow\ntime day\nowner 0\n");
+  cu: [UNIFORM_FLOATS] f32; mist_drawn(c[..], cv[..], cu[..]);
+  #assert pu[STYLE_AT + SU_HAZE] == 0 && pu[STYLE_AT + SU_HAZE + 1] > 3.9 * cu[STYLE_AT + SU_HAZE + 1] && cu[STYLE_AT + SU_HAZE + 1] > 0;
 }

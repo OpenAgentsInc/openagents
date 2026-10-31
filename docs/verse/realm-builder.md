@@ -29,7 +29,10 @@ and takes them into it.
    it. The microphone is open only while TALK is on (`coax/web/voice.js` "on"/"end"; other realms
    keep push to talk). The page's `data-voice="haunted-house"` reuses that route of the
    voice host, facing "Realm builder" so the host leaves the turn to the page). The heard words, or
-   typed ones (TYPE IT), go to `POST /api/playtest/realms/plan?as=lines`.
+   typed ones (TYPE IT), go to `POST /api/playtest/realms/plan?as=lines`. What is typed wraps onto
+   up to four lines (the field grows upward, its end in view), so a long prompt can be read back on a
+   phone before SEND; a plan that fails (refused, unreached, too slow) puts typed words back in the
+   field to send again.
 2. **Board.** The server asks Gemini (`OA_BUILDER_MODEL`, default `gemini-2.5-flash` with its thinking off (0060: a board in 1 to 2 s; a try cut off at 3.5 s is tried once more), Vertex first,
    like the NPCs) under a fixed JSON schema built from the catalogue. It keeps only catalogue
    features with catalogue values and writes each row's words itself (`verse.builder_label`), so the
@@ -49,7 +52,16 @@ and takes them into it.
    never also stands as a wanted line. A whole place (a farm, a village, a cove) is feature `place`, wanted only when
    the features on the board don't make it; two kinds of animal are two herds. `coax/web/api/eval-builder.sh` scores forty prompts with a judge
    model (the share of things asked for that the board shows or lists, 100% the rule; the share drawn as
-   asked; and wanted lines that repeat a drawn thing, 0 the rule).
+   asked; and wanted lines that repeat a drawn thing, 0 the rule). Each asked thing a feature draws
+   also says `missing` (0092), the part of it the board does not draw as asked; its line still wanted
+   is that part only, and none when it is empty ("a koi pond" drawn as a pond wants "koi"; "a giant
+   tree" beside A giant tree wants nothing). A thing no feature draws (`none`) is wanted whole.
+   Round 3 (2026-10-31, 0092), the forty prompts with the Gemini judge on a throwaway database:
+   before (origin/main, 0089) 98.5% covered, 72.1% drawn as asked, 17 wanted lines repeating a
+   drawn thing; with the new things, mist and `missing` for places only, 98.5%, 75.0% and 29; with
+   `missing` for every drawn thing, 99.0%, 75.6% and 17. What still fails: a stream planned as a
+   medium river, a lake as a frozen pond, and whole places the realm's name already says
+   (cyberpunk city street, candy land, harbour town), which the judge counts as drawn.
    MAKE IT puts each on the realm's feature list as a waiting ask
    (`docs/verse/realm-edit.md`, "What you asked for"), where an agent can build it.
    OR DROP A DESIGN DOCUMENT (`coax/web/docs.js`, action 31) sends a .md, .txt, .pdf or .docx to
@@ -73,18 +85,19 @@ and takes them into it.
 | Feature | Values | Built from |
 |---|---|---|
 | land | hills, mountains, cliffs, floating, island, volcano | hills, snow-capped mountains or cliffs round the edge; a floating island (sky past its edge, small islands floating beyond); the sea all round; a volcano glowing and smoking on the skyline (0088) |
-| building | cabin, barn, windmill, lighthouse, castle, tower, market, shop, saloon, temple, ruins (up to 4, one of each) | a log cabin, a red barn, a windmill whose sails turn, a banded lighthouse with its lamp lit, a stone castle (walls, a gate, four roofed towers, a keep), a stone tower, three market stalls, a shop with an awning, a saloon behind a false front, a stepped temple, broken columns (0088) |
+| building | cabin, barn, windmill, lighthouse, castle, tower, market, shop, saloon, temple, ruins, pagoda, longhouse (up to 4, one of each) | a log cabin, a red barn, a windmill whose sails turn, a banded lighthouse with its lamp lit, a stone castle (walls, a gate, four roofed towers, a keep), a stone tower, three market stalls ("A market of stalls"), a shop with an awning, a saloon behind a false front, a stepped temple, broken columns (0088); a pagoda of three red storeys under tiled roofs curling up at their corners, and a longhouse, long and low under a steep turf roof (0092) |
 | water | small, medium, large; pond, river, frozen, lava | a pond, a bending river across the land, ice or glowing lava, drawn by `myrealm.wgsl` (0088) |
-| trees | round, pine, dead, mixed, palm, blossom; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted; blossom: pink); palms built of a leaning trunk and fronds (0088) |
+| trees | round, pine, dead, mixed, palm, blossom, autumn, acacia; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted; blossom: pink; autumn: orange and red); palms built of a leaning trunk and fronds (0088); acacias, a forking trunk under two flat slabs of crown (0092) |
 | bigtree | round, pine, dead | one giant tree standing alone, four times a tree's size (0083) |
 | rocks | 2 to 16 | the fixture pack's rock |
 | plants | fern, flower, mushroom, cactus, crystal; 4 to 24 | ferns; flowers on stems; mushrooms that glow after dark; cacti with arms; glowing crystals (0088) |
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
 | flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0088) |
-| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue (up to 8) | the fixture pack's props; a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088) |
+| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue, fountain, wall, wreck (up to 8) | the fixture pack's props (two wagons: "Wagons"); a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088); a fountain (a stone basin, water and glowing jets), a stone wall with a gap, a shipwreck (a broken hull on its side, ribs and a mast) (0092) |
 | character | a name and a role (up to 4) | a figure (verse/figure.coax, drawn bone by bone as round cones: myrealm-shapes.coax) with its name and role |
-| house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |
-| herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079) |
+| house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065); a small one is "a cottage" (0092) |
+| herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur, elephant, giraffe, monkey, squirrel; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079); elephants with trunks, tusks and big ears, giraffes with long patched necks, monkeys with pale faces, squirrels with bushy tails (0092) |
+| mist | (on or off) | mist lying low over the land: the haze starts at once, four times as thick, and greys the horizon (0092; `uniforms[RAY_AT + 11]`) |
 | dwellings | tepee, tent, hut; 1 to 8 | a camp, doors to its middle: tepees of hide on crossed poles, ridge tents, round thatched huts |
 | village | 3 to 8 people | its people walking about the dwellings or the house (with neither, a few cottages round a well): plain figures in everyday colours, never a caricature |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |

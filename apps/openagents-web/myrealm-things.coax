@@ -8,17 +8,24 @@ LAND_HILLS :: 1; LAND_MOUNTAINS :: 2; LAND_CLIFFS :: 3; LAND_FLOATING :: 4; LAND
 LAND_WORDS :: [7] string.["", " Hills roll round it.", " Mountains stand round it.", " Cliffs wall it in.",
                           " It is an island floating in the sky.", " It is an island in the sea.", " A volcano smokes on the skyline."];
 BUILDINGS :: 4;
-BUILDING_KINDS :: [11] string.["cabin", "barn", "windmill", "lighthouse", "castle", "tower", "market", "shop", "saloon", "temple", "ruins"];
-BUILDING_WORDS :: [11] string.["a log cabin", "a red barn", "a windmill", "a lighthouse", "a castle", "a stone tower", "a market",
-                               "a shop", "a saloon", "a temple", "ruins"];
-BUILDING_R :: [11] f32.[2.8, 3.4, 1.8, 1.6, 6.0, 1.7, 4.6, 2.6, 3.4, 5.2, 3.4];   // its footprint, for a free spot
-HERDS :: [13] string.["bison", "deer", "horse", "sheep", "goat", "cow", "pig", "wolf", "fox", "dog", "camel", "chicken", "dinosaur"];
+// (0092_builder_round3.sql: a pagoda and a longhouse; elephants, giraffes, monkeys and squirrels)
+BUILDING_N :: 13;
+BUILDING_KINDS :: [BUILDING_N] string.["cabin", "barn", "windmill", "lighthouse", "castle", "tower", "market", "shop", "saloon", "temple", "ruins",
+                                       "pagoda", "longhouse"];
+BUILDING_WORDS :: [BUILDING_N] string.["a log cabin", "a red barn", "a windmill", "a lighthouse", "a castle", "a stone tower", "a market",
+                               "a shop", "a saloon", "a temple", "ruins", "a pagoda", "a longhouse"];
+BUILDING_R :: [BUILDING_N] f32.[2.8, 3.4, 1.8, 1.6, 6.0, 1.7, 4.6, 2.6, 3.4, 5.2, 3.4, 3.4, 5.0];   // its footprint, for a free spot
+BUILD_RUINS :: 10; BUILD_PAGODA :: 11; BUILD_LONGHOUSE :: 12;
+HERD_N :: 17;
+HERDS :: [HERD_N] string.["bison", "deer", "horse", "sheep", "goat", "cow", "pig", "wolf", "fox", "dog", "camel", "chicken", "dinosaur",
+                          "elephant", "giraffe", "monkey", "squirrel"];
 FLIERS :: [9] string.["crow", "bat", "owl", "parrot", "gull", "dragon", "fairy", "firefly", "butterfly"];
 FLY_CROW :: 0; FLY_BAT :: 1; FLY_OWL :: 2; FLY_PARROT :: 3; FLY_GULL :: 4; FLY_DRAGON :: 5; FLY_FAIRY :: 6; FLY_FIREFLY :: 7; FLY_BUTTERFLY :: 8;
 FLIER_SAY :: [9] string.[" Birds circle overhead.", " Bats circle overhead.", " Owls circle overhead.", " Parrots circle overhead.",
                          " Seagulls circle overhead.", " A dragon circles overhead.", " Fairies flit about, glowing.", " Fireflies glow in the air.",
                          " Butterflies flit about."];
 PLANT_KINDS :: [5] string.["fern", "flower", "mushroom", "cactus", "crystal"];
+PROP_STATUE :: 13; PROP_FOUNTAIN :: 14; PROP_WALL :: 15; PROP_WRECK :: 16;
 FIRES :: 4; MILLS :: 4; WEEDS :: 3;
 STONE_RGB :: [3] f32.[0.66, 0.64, 0.6];
 WOOD_RGB :: [3] f32.[0.58, 0.4, 0.25];
@@ -279,6 +286,62 @@ building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
     solid(s, x, z, 4.9);
     return;
   }
+  if kind == BUILD_PAGODA {
+    // a pagoda: three storeys of red walls narrowing as they rise, each under a broad roof of dark
+    // tiles whose corners curl up, a spire on top
+    for k: 0..<3 {
+      f := cast(f32) k;
+      w := 4.4 - 0.95 * f; base := 1.95 * f;
+      coat(s, 1);
+      sized(s, crate, x, base, z, yaw, 0, w, 1.55, w, 1.15, 0.22, 0.16);
+      for c: 0..<4 {   // its posts at the corners, dark
+        u: f32 = ifx c % 2 == 0 then 0.5 * w else -0.5 * w; v: f32 = ifx c < 2 then 0.5 * w else -0.5 * w;
+        sized(s, crate, fr_x(x, yaw, u, v), base, fr_z(z, yaw, u, v), yaw, 0, 0.18, 1.55, 0.18, 0.3, 0.12, 0.1);
+      }
+      glowing(s, 0);
+      ry := base + 1.5; rw := w + 2.2;
+      sized(s, crate, x, ry, z, yaw, 0, rw, 0.22, rw, 0.2, 0.24, 0.26);
+      sized(s, crate, x, ry + 0.22, z, yaw, 0, rw - 1.0, 0.24, rw - 1.0, 0.23, 0.27, 0.29);
+      sized(s, crate, x, ry + 0.46, z, yaw, 0, rw - 2.0, 0.2, rw - 2.0, 0.26, 0.3, 0.32);
+      for c: 0..<4 {   // the corners curling up
+        u: f32 = ifx c % 2 == 0 then 0.5 * rw else -0.5 * rw; v: f32 = ifx c < 2 then 0.5 * rw else -0.5 * rw;
+        cx := fr_x(x, yaw, u, v); cz := fr_z(z, yaw, u, v);
+        round_cone(s, cx, ry + 0.1, cz, 0.16, fr_x(x, yaw, 1.08 * u, 1.08 * v), ry + 0.6, fr_z(z, yaw, 1.08 * u, 1.08 * v), 0.06, 0.2, 0.24, 0.26);
+      }
+    }
+    round_cone(s, x, 6.3, z, 0.22, x, 8.2, z, 0.04, 0.8, 0.62, 0.3);   // the spire
+    coat(s, 1);
+    part_at(s, crate, x, z, yaw, 0, 2.21, 0, 0.9, 1.3, 0.06, 0.12, 0.06, 0.05);   // the door
+    solid(s, x, z, 2.6);
+    return;
+  }
+  if kind == BUILD_LONGHOUSE {
+    // a longhouse: a long low hall of dark timber, its turf roof steep and down nearly to the ground,
+    // a door in the middle of its long side, its gable ends crossed with carved boards
+    l: f32 = 9.0; d: f32 = 4.2; h: f32 = 1.6;
+    glowing(s, 0);
+    part_at(s, crate, x, z, yaw, 0, 0, 0, l, h, d, 0.5, 0.33, 0.2);
+    half := 0.5 * d + 0.5; rise: f32 = 2.6; slope := sqrt(half * half + rise * rise); tilt := turn_of(rise, half);
+    // the roof's two slopes along its length: the house's frame turned a quarter so the ridge runs along it
+    ry := yaw + 1.5707963;
+    ax := cos(ry); az := -sin(ry);
+    for side: 0..<2 {
+      k: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      sized(s, crate, x + k * 0.5 * half * ax, h + 0.5 * rise - 0.15, z + k * 0.5 * half * az, ry, -k * tilt, slope + 0.2, 0.3, l + 0.6, 0.34, 0.42, 0.2);
+    }
+    sized(s, crate, x, h, z, ry, 0, 0.6 * d, 0.55 * rise, l - 0.1, 0.46, 0.3, 0.18);   // the gables, filled
+    coat(s, 1);
+    part_at(s, crate, x, z, yaw, 0, 0.5 * d + 0.02, 0, 1.0, 1.5, 0.08, 0.16, 0.1, 0.07);   // the door
+    for e: 0..<2 {   // the crossed boards over each end's ridge
+      u: f32 = ifx e == 0 then 0.5 * l + 0.2 else -0.5 * l - 0.2;
+      for k: 0..<2 {
+        w: f32 = ifx k == 0 then 1.0f32 else -1.0f32;
+        round_cone(s, fr_x(x, yaw, u, 0), h + rise - 0.3, fr_z(z, yaw, u, 0), 0.08, fr_x(x, yaw, u, w * 0.7), h + rise + 0.7, fr_z(z, yaw, u, w * 0.7), 0.05, 0.4, 0.26, 0.16);
+      }
+    }
+    for k: 0..<3 { u := (cast(f32) k - 1) * 3.2; solid(s, fr_x(x, yaw, u, 0), fr_z(z, yaw, u, 0), 2.3); }
+    return;
+  }
   // ruins: broken columns in two rows, a lintel still on two, one fallen, blocks about
   pale := RUIN_RGB; heights := RUIN_H;
   for k: 0..<6 {
@@ -376,6 +439,22 @@ palm :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, grow: f32) {
   for k: 0..<3 { sized(s, crate, tx, ty, tz, yaw + cast(f32) k * 1.0471976, 0, 4.6 * grow, 0.07, 0.55, 0.32, 0.62, 0.22); }
   for k: 0..<3 { sized(s, crate, tx, ty - 0.22, tz, yaw + 0.52 + cast(f32) k * 1.0471976, 0, 3.8 * grow, 0.07, 0.5, 0.26, 0.52, 0.18); }
   sized(s, crate, tx + 0.15, ty - 0.35, tz, yaw, 0, 0.24, 0.24, 0.24, 0.42, 0.28, 0.16);
+  solid(s, x, z, 0.3);
+}
+// An acacia: a thin trunk forking low into two leaning limbs, under a broad flat crown of two
+// layers, wider than it is tall (a savanna's tree).
+acacia :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, grow: f32) {
+  crate := mesh_named(s, "Prop_Crate");
+  h := 4.2 * grow; ax := cos(yaw); az := -sin(yaw);
+  bark_r: f32 = 0.42; bark_g: f32 = 0.32; bark_b: f32 = 0.22;
+  round_cone(s, x, 0, z, 0.2 * grow, x, 0.45 * h, z, 0.15 * grow, bark_r, bark_g, bark_b);
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    round_cone(s, x, 0.42 * h, z, 0.13 * grow, x + w * 1.3 * grow * ax, 0.93 * h, z + w * 1.3 * grow * az, 0.08 * grow, bark_r, bark_g, bark_b);
+  }
+  coat(s, 1);
+  sized(s, crate, x, 0.92 * h, z, yaw, 0, 5.6 * grow, 0.42 * grow, 4.4 * grow, 0.36, 0.5, 0.2);
+  sized(s, crate, x + 0.3 * ax, 0.92 * h + 0.4 * grow, z + 0.3 * az, yaw + 0.5, 0, 4.0 * grow, 0.36 * grow, 3.2 * grow, 0.4, 0.56, 0.22);
   solid(s, x, z, 0.3);
 }
 FLOWER_RGB :: [12] f32.[1.35, 0.3, 0.3,  1.4, 1.2, 0.3,  1.4, 1.4, 1.35,  0.85, 0.5, 1.35];
@@ -528,6 +607,54 @@ prop_at :: (s: [] MyRealm, r: [] Seed, kind: int, c: Spot) {
   }
   if kind == 12 {
     for k: 0..<WEEDS { if s[0].weed_n < WEEDS { n := s[0].weed_n; s[0].weed_x[n] = c.x + 1.5 * cast(f32) k; s[0].weed_z[n] = c.z + 2.0 * cast(f32) k - 2; s[0].weed_n = n + 1; } }
+    return;
+  }
+  if kind == PROP_FOUNTAIN {
+    // a fountain: a round stone basin of water, a pillar in the middle with a small bowl on it, water
+    // spilling from the bowl
+    sr := STONE_RGB[0] * 1.15; sg := STONE_RGB[1] * 1.15; sb := STONE_RGB[2] * 1.12;
+    masoned(s);
+    round_cone(s, c.x, 0, c.z, 1.7, c.x, 0.55, c.z, 1.75, sr, sg, sb);
+    untextured(s);
+    round_cone(s, c.x, 0.5, c.z, 1.5, c.x, 0.56, c.z, 1.5, 0.3, 0.55, 0.75);   // its water
+    masoned(s);
+    round_cone(s, c.x, 0.5, c.z, 0.22, c.x, 1.6, c.z, 0.18, sr, sg, sb);
+    round_cone(s, c.x, 1.55, c.z, 0.35, c.x, 1.75, c.z, 0.7, sr, sg, sb);
+    glowing(s, 0.35);
+    round_cone(s, c.x, 1.72, c.z, 0.12, c.x, 2.15, c.z, 0.04, 0.75, 0.95, 1.2);   // the jet
+    for k: 0..<6 {
+      t := a + cast(f32) k * 1.0471976;
+      round_cone(s, c.x + 0.66 * sin(t), 1.72, c.z + 0.66 * cos(t), 0.06, c.x + 1.05 * sin(t), 0.6, c.z + 1.05 * cos(t), 0.05, 0.75, 0.95, 1.2);
+    }
+    coat(s, 1);
+    solid(s, c.x, c.z, 1.8);
+    return;
+  }
+  if kind == PROP_WALL {
+    // a stone wall: a low dry-stone wall in a long line, its stones laid in courses, a gap to walk through
+    masoned(s);
+    for k: 0..<4 {
+      u := (cast(f32) k - 1.5) * 3.4 + (ifx k >= 2 then 1.2f32 else -1.2f32) * 0.5;
+      wx := c.x + u * cos(a); wz := c.z - u * sin(a);
+      sized(s, crate, wx, 0, wz, a, 0, 3.2, 1.0, 0.6, STONE_RGB[0], STONE_RGB[1] * 0.98, STONE_RGB[2] * 0.94);
+      sized(s, crate, wx, 1.0, wz, a, 0, 3.25, 0.14, 0.68, STONE_RGB[0] * 0.92, STONE_RGB[1] * 0.92, STONE_RGB[2] * 0.9);
+      solid(s, wx, wz, 0.9);
+    }
+    coat(s, 1);
+    return;
+  }
+  if kind == PROP_WRECK {
+    // a shipwreck: a broken hull on its side half sunk in the ground, ribs showing where it split,
+    // a snapped mast lying beside it
+    hx := c.x; hz := c.z;
+    sized(s, crate, hx, -0.2, hz, a, 0.5, 2.6, 1.7, 7.0, 0.44, 0.3, 0.18);
+    sized(s, crate, hx + 0.5 * cos(a), 0.9, hz - 0.5 * sin(a), a, 0.5, 2.0, 0.12, 6.6, 0.3, 0.2, 0.12);   // its dark deck
+    for k: 0..<4 {   // ribs where the stern broke off
+      v := 3.7 + 0.45 * cast(f32) k;
+      sized(s, crate, hx + v * sin(a), 0, hz + v * cos(a), a, 0.5, 0.14, 1.8 - 0.25 * cast(f32) k, 0.14, 0.4, 0.27, 0.16);
+    }
+    sized(s, round, hx - 2.4 * cos(a) + 1.0 * sin(a), 0.15, hz + 2.4 * sin(a) + 1.0 * cos(a), a + 0.3, 1.5707963, 0.24, 5.5, 0.24, 0.36, 0.26, 0.16);
+    solid(s, hx, hz, 2.0); solid(s, hx + 3 * sin(a), hz + 3 * cos(a), 1.6); solid(s, hx - 3 * sin(a), hz - 3 * cos(a), 1.6);
     return;
   }
   // a statue: a figure in stone on a plinth, one arm raised
