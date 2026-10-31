@@ -1120,24 +1120,3 @@ first_difference :: (a: string, b: string) -> string {
   return a[line..<e];
 }
 
-#test "the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte" {
-  s: [1] Store; f: [1] Fold; t: [1] Tables;
-  #assert read_transcript(s[..], COAX_RELAY) == 5;
-  #assert s[0].dropped == 0 && s[0].n > 100;
-  fold(s[..], f[..], "coax");
-  #assert f[0].project >= 0 && f[0].order >= 0 && f[0].repo >= 0;
-  write_tables(s[..], f[..], t[..]);
-  #assert first_difference(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) == "";
-  #assert equal(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) && t[0].items_n > 20;
-  #assert first_difference(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) == "";
-  #assert equal(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) && t[0].log_n > 20;
-  #assert first_difference(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) == "";
-  #assert equal(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) && t[0].plans_n > 20;
-  #assert first_difference(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) == "";
-  #assert equal(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) && t[0].info_n > 20;
-  #assert first_difference(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) == "";
-  #assert equal(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) && t[0].details_n > 20000;
-  // the same events again (a second subscription, a reconnect) change nothing
-  n := s[0].n;
-  #assert read_transcript(s[..], COAX_RELAY) == 5 && s[0].n == n;
-}

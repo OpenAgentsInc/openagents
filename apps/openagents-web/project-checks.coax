@@ -1,0 +1,355 @@
+// The project page's checks that need its production-sized state (Store,
+// Fold, Tables, Live, Work): the page's own units load the typed Nostr
+// readers, which are #authority, so compiling the page runs the graph's
+// checks at compile-time limits (coax/spec.md, "#authority belongs to a
+// physical source unit"). These checks live here, in a unit only `coax test`
+// compiles, with its larger limits:
+//   coax/bin/coax test apps/openagents-web/project-checks.coax --library --steps 2000000000
+// project-frames.coax keeps the frame checks that link the capacity kernel.
+#load "project.coax";
+
+// ---- from project.coax
+
+#test "Coax's introduction fits phones and both resource links navigate" {
+  wk:[1]Work;s:[1]ProjectState;
+  wk[0].slug="coax";wk[0].key=COAX_PROJECT_KEY;
+  #assert project_intro(wk[..]);
+  sizes:=[12]f32.[320,568,1,390,844,1,1440,900,1,640,1136,2];
+  for k:0..<4 {
+    width:=sizes[k*3];height:=sizes[k*3+1];d:=sizes[k*3+2];
+    l:=project_layout(width,height,d,wk[..]);
+    #assert fits_in(l.header,width,height) && fits_in(l.scene,width,height) && fits_in(l.queue,width,height) && box_h(l.queue)>=QUEUE_MIN*d;
+    #assert apart(l.header,l.scene) && apart(l.scene,l.queue);
+    if l.agents_on {#assert fits_in(l.agents,width,height) && apart(l.queue,l.agents);}
+    book:=coax_book_box(l.header,d);changes:=coax_changelog_box(l.header,d);
+    #assert inside(l.header,book.x0,book.y0) && inside(l.header,book.x1,book.y1) && box_h(book)>=44*d;
+    #assert inside(l.header,changes.x0,changes.y0) && inside(l.header,changes.x1,changes.y1) && box_h(changes)>=44*d;
+    #assert box_w(book)>=44*d && box_w(changes)>=44*d && apart(book,changes);
+    #assert box_w(book)>=text_width(COAX_BOOK_LABEL,9*d) && box_w(changes)>=text_width(COAX_CHANGELOG_LABEL,9*d);
+    s[0].width=width;s[0].height=height;s[0].dpr=d;
+    #assert click(s[..],wk[..],mid_x(book),mid_y(book));
+    #assert same(cast(string)s[0].outbox[0..<s[0].out_n],COAX_BOOK_URL);
+    #assert click(s[..],wk[..],mid_x(changes),mid_y(changes));
+    #assert same(cast(string)s[0].outbox[0..<s[0].out_n],"/coax/changelog");
+    s[0].pointed=true;s[0].px=mid_x(changes);s[0].py=mid_y(changes);
+    #assert coaxial_project_cursor(s[..],wk[..])==1;
+  }
+  wk[0].key="other";#assert !project_intro(wk[..]);
+}
+
+#test "the tree has one node per commit, on the branch of the folder it touched" {
+  t: [1] Tree;
+  grow(t[..], COAX_HISTORY);
+  #assert t[0].n == (ifx COAX_COMMITS < MAX_COMMITS then COAX_COMMITS else MAX_COMMITS) && COAX_COMMITS == rows(COAX_HISTORY);
+  // past MAX_COMMITS the tree keeps the newest: its last node is the latest commit
+  #assert same(field(t[0].history, t[0].n - 1, 0), field(COAX_HISTORY, COAX_COMMITS - 1, 0));
+  total := 0;
+  for b: 0..<BRANCHES { total += t[0].count[b]; }
+  #assert total == t[0].n;
+  for i: 0..<t[0].n {
+    #assert t[0].branch[i] == branch_of(t[..], field(t[0].history, i, 2));
+    if i > 0 { #assert t[0].trunk[i] > t[0].trunk[i - 1]; }
+    r := sqrt(t[0].at[i].x * t[0].at[i].x + t[0].at[i].z * t[0].at[i].z);
+    #assert r > 0.6 && r < PLOT;   // every branch stays over the plot
+  }
+  // the newest commit on each branch is its last
+  for b: 0..<BRANCHES {
+    if t[0].count[b] > 0 { #assert t[0].branch[t[0].last[b]] == b; }
+  }
+}
+
+#test "a made-up history: branches by folder, oldest first" {
+  t: [1] Tree;
+  grow(t[..], "a|2026-01-01|src|x|one\nb|2026-01-02|web|x|two\nc|2026-01-03|src|x|three\nd|2026-01-04|spec|x|four\n");
+  #assert t[0].n == 4 && t[0].count[1] == 2 && t[0].count[4] == 1 && t[0].count[0] == 1;
+  #assert t[0].last[1] == 2 && t[0].last[4] == 1 && t[0].last[2] == -1;
+  #assert same(field("a|bb|c\nd|e|f\n", 1, 1), "e") && same(field("a|bb|c\n", 0, 1), "bb");
+}
+
+#test "the layout fits a desktop, a tablet and a 320 px phone, without overlaps" {
+  sizes := [8] f32.[1440, 900, 1080, 760, 768, 1024, 320, 568];
+  dprs := [4] f32.[1, 2, 2, 2];
+  for k: 0..<4 {
+    w := sizes[k * 2] * dprs[k]; h := sizes[k * 2 + 1] * dprs[k];
+    l := layout(w, h, dprs[k]);
+    #assert fits_in(l.header, w, h) && fits_in(l.scene, w, h) && fits_in(l.queue, w, h) && fits_in(l.agents, w, h);
+    #assert apart(l.header, l.scene) && apart(l.header, l.queue) && apart(l.scene, l.queue) && apart(l.queue, l.agents) && apart(l.scene, l.agents);
+    if l.activity_on { #assert fits_in(l.activity, w, h) && apart(l.activity, l.agents) && apart(l.activity, l.scene); }
+    #assert box_h(l.scene) >= 150 * dprs[k] && box_h(l.queue) >= 60 * dprs[k];
+  }
+  #assert layout(1440, 900, 1).wide && !layout(320 * 2, 568 * 2, 2).columns;
+}
+
+#test "the queue lists open tasks first and fits its panel" {
+  out: [60000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20};
+  b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  n := queue(out[..], 0, b, p);
+  #assert n > 600;
+  for v: 0..<n { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  #assert open_tasks() == 4 && claimed_tasks() == 3 && rows(TASKS) == 8;
+  // a short panel draws fewer rows, never past its bottom
+  small := Box.{x0 = 0, y0 = 0, x1 = 296, y1 = 120};
+  m := queue(out[..], 0, small, p);
+  #assert m < n;
+  for v: 0..<m { #assert out[v * VERTEX_FLOATS + 1] <= 132; }
+}
+
+#test "the real queue: in progress first, then ready by rank, then waiting; done ones kept apart" {
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  #assert w[0].n == 9 && w[0].tasks == 7 && w[0].done_n == 2 && w[0].milestone_n == 1 && w[0].initiative == 0;
+  // in progress: f (claimed by w1); ready: c (rank 5, its blocker b is done), e (7); then waiting: g (draft, 2), d (6, waits on e)
+  #assert w[0].working_n == 1 && w[0].ready_n == 2 && w[0].queued == 5;
+  names := [5] string.["f1", "c1", "e1", "g1", "d1"];
+  for k: 0..<5 { #assert same(item(w[..], FIXTURE, w[0].queue[k], 0), names[k]); }
+  #assert w[0].ready[3] && !w[0].ready[4] && !w[0].ready[7];
+  #assert w[0].claimed[6] && !w[0].claimed[3] && same(item(w[..], FIXTURE, 6, 6), "w1");
+  #assert w[0].waits[4] == 5 && w[0].waits[3] == -1;
+  // the latest finished, newest first: h (closed at 200), then b (100, in abc1234567)
+  #assert w[0].recent_n == 2 && w[0].recent[0] == 8 && w[0].recent[1] == 2;
+  #assert same(item(w[..], FIXTURE, 2, 11), "abc1234567");
+  pr := progress(w[..], 1);
+  #assert pr.total == 7 && pr.done == 2 && pr.ready == 3;
+  #assert w[0].initiative_n == 1 && w[0].initiatives[0] == 0;
+}
+
+#test "a plan's steps are found by alias, and the current one is the first not done" {
+  #assert keyed("a|1\nb|2\n", "b", 0) == 1 && keyed("a|1\n", "z", 0) == -1;
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  w[0].plans = FIXTURE_PLAN;
+  out: [20000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20};
+  // four fit: the window starts at the step before the current one
+  a := plan_steps(out[..], 0, w[..], "f1", 0, 20, 300, 1000, 4, p);
+  #assert a.v > 0 && a.y > 20;
+  none := plan_steps(out[..], 0, w[..], "c1", 0, 20, 300, 1000, 4, p);
+  #assert none.y == 20;
+  #assert a.v > 300;
+  #assert a.y >= 20 + 11 * 4;
+  w[0].claimed[6] = true;
+  #assert w[0].working_n == 1 && same(item(w[..], FIXTURE, w[0].queue[0], 0), "f1");
+  #assert same(item(w[..], FIXTURE, w[0].queue[0], 6), "w1");
+  big := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  q1 := real_queue(out[..], 0, big, p, w[..]);
+  e: [1] Work;
+  read_work(e[..], FIXTURE);
+  q0 := real_queue(out[..], 0, big, p, e[..]);
+  #assert q0 > 600;
+  #assert q1 != q0;
+}
+
+#test "a finished task drops its worker" {
+  w: [1] Work;
+  read_work(w[..], "t1|task|resolved|Tee||S|w9|||1|t|0123456789|0000000300\n");
+  #assert !w[0].claimed[0] && w[0].working_n == 0 && w[0].queued == 0 && w[0].recent_n == 1;
+}
+
+#test "a task ranked above an open blocker is flagged, and stays waiting" {
+  w: [1] Work;
+  read_work(w[..], FIXTURE);
+  // d (rank 6) waits on e (rank 7): ranked above it
+  #assert w[0].ahead[4] == 5 && !w[0].ready[4];
+  // c (rank 5) waits on b, which is done: no flag
+  #assert w[0].ahead[3] == -1;
+  // ranks compare as bytes: "1z" < "2", "V" < "a", "a" < "aV"
+  #assert before("1z", "2") && before("V", "a") && before("a", "aV") && !before("b", "aV");
+  e: [1] Work;
+  read_work(e[..], "");
+  #assert e[0].n == 0 && e[0].queued == 0;
+}
+
+#test "the real queue draws inside its panel, and an empty one says so" {
+  out: [60000 * VERTEX_FLOATS] f32;
+  p := Pen.{d = 1, fade = 1, time = 20, demo = false};
+  w: [1] Work;
+  read_work(w[..], COAX_WORK_ITEMS);
+  #assert rows(COAX_WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(COAX_WORK_ITEMS) && rows(VERSE_WORK_ITEMS) <= MAX_ITEMS;
+  b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
+  n := real_queue(out[..], 0, b, p, w[..]);
+  #assert n > 600;
+  for v: 0..<n { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  e: [1] Work;
+  read_work(e[..], "");
+  m := real_queue(out[..], 0, b, p, e[..]);
+  #assert m > 60 && m < n;
+  q := plan(out[..], 0, b, p, w[..]);
+  for v: 0..<q { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  // the made-up project, with a task in progress and two finished, draws inside too
+  f: [1] Work;
+  read_work(f[..], FIXTURE);
+  k := real_queue(out[..], 0, b, p, f[..]);
+  #assert k > 600;
+  // and with a plan under its task in progress: more strokes, still inside
+  f[0].plans = FIXTURE_PLAN; f[0].plan_info = "f1|2|7|14:52|14:41|chose the RFC vectors\n";
+  kp := real_queue(out[..], 0, b, p, f[..]);
+  #assert kp > k;
+  for v: 0..<kp { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  short := Box.{x0 = 0, y0 = 0, x1 = 300, y1 = 200};
+  ks := real_queue(out[..], 0, short, p, f[..]);
+  for v: 0..<ks { #assert out[v * VERTEX_FLOATS + 1] <= 212; }
+  for v: 0..<k { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+  a := real_agents(out[..], 0, b, p, false, true, w[..]);
+  for v: 0..<a { #assert out[v * VERTEX_FLOATS + 1] <= 712; }
+}
+
+#test "COAX_WORK_DETAILS fields decode as details.ts escapes them" {
+  buf: [256] u8;
+  // details.ts escapeDetail("a|b\nc\\d \\. e")
+  n := undetail("a\\pb\\nc\\\\d \\\\. e", buf[..]);
+  #assert same(cast(string) buf[0..<n], "a|b\nc\\d \\. e");
+  // escapeList([["10-28 14:52 CDT", "w1", "took it | now"], ["10-28 15:00 CDT", "", "x\\:y"]])
+  m := undetail("10-28 14:52 CDT\\:w1\\:took it \\p now\\.10-28 15:00 CDT\\:\\:x\\\\:y", buf[..]);
+  list := cast(string) buf[0..<m];
+  #assert pieces(list, ITEM_BREAK) == 2 && pieces("", ITEM_BREAK) == 0;
+  one := piece(list, ITEM_BREAK, 0); two := piece(list, ITEM_BREAK, 1);
+  #assert same(piece(one, PART_BREAK, 0), "10-28 14:52 CDT") && same(piece(one, PART_BREAK, 1), "w1") && same(piece(one, PART_BREAK, 2), "took it | now");
+  #assert same(piece(two, PART_BREAK, 1), "") && same(piece(two, PART_BREAK, 2), "x\\:y");
+  // a buffer too small keeps what fits
+  small: [4] u8;
+  #assert undetail("abcdef", small[..]) == 4;
+  // the snapshot: one row an item, six fields each, keyed by the items' aliases
+  w: [1] Work;
+  read_work(w[..], COAX_WORK_ITEMS);
+  w[0].details = COAX_WORK_DETAILS; index_details(w[..]);
+  #assert rows(COAX_WORK_DETAILS) == w[0].n;
+  for r: 0..<w[0].n {
+    k := detail_of(w[..], r);
+    #assert k >= 0 && cell(COAX_WORK_DETAILS, k, 1).count == 64;
+    bars := 0; i := k;
+    while i < COAX_WORK_DETAILS.count && COAX_WORK_DETAILS[i] != '\n' { if COAX_WORK_DETAILS[i] == '|' { bars += 1; } i += 1; }
+    #assert bars == 5;
+  }
+  #assert keyed_start("ab|1\nb|2\n", "b") == 5 && keyed_start("ab|1\n", "a") == -1;
+}
+
+#test "a project made from a drop links its first realm from the header; one that isn't doesn't" {
+  #assert realm_path("/projects/lantern-garden/realm") && !realm_path("https://example.com/x") && !realm_path("/projects/")
+    && !realm_path("/projects/a b") && !realm_path("/verse");
+  sizes := [4] f32.[1440, 900, 320, 568];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    s: [1] ProjectState; wk: [1] Work;
+    s[0].width = w; s[0].height = h; s[0].dpr = 2; s[0].pointed = true; s[0].touch = k == 1;
+    wk[0].name = "LANTERN GARDEN";
+    hb := layout(w, h, 2).header;
+    #assert realm_box(wk[..], hb, 2).x1 <= realm_box(wk[..], hb, 2).x0;   // none named
+    wk[0].realm = "/projects/lantern-garden/realm";
+    rb := realm_box(wk[..], hb, 2);
+    #assert rb.x1 > rb.x0 && rb.x1 <= hb.x1 && rb.x0 > hb.x0 + 36 + text_width("OPENAGENTS / PROJECTS /", 14);
+    #assert same(realm_label(wk[..], hb, 2), ifx k == 0 then "WALK THE REALM" else "REALM");
+    s[0].px = (rb.x0 + rb.x1) * 0.5; s[0].py = (rb.y0 + rb.y1) * 0.5;
+    if k == 0 { #assert coaxial_project_cursor(s[..], wk[..]) == 1; }
+    #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;
+    #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/lantern-garden/realm");
+  }
+}
+
+#test "a member adds to a project from its header: ADD TO PROJECT opens the drop area for it" {
+  key := "f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7";
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for k: 0..<2 {
+    w := sizes[k * 2] * 2; h := sizes[k * 2 + 1] * 2;
+    s: [1] ProjectState; wk: [1] Work;
+    s[0].width = w; s[0].height = h; s[0].dpr = 2; s[0].pointed = true;
+    wk[0].name = "PLANETARY VILLA";
+    hb := layout(w, h, 2).header;
+    set_add(wk[..], "planetary villa", key);
+    #assert wk[0].add.count == 0;
+    set_add(wk[..], "planetary-villa", "f8");
+    #assert wk[0].add.count == 0;
+    set_add(wk[..], "planetary-villa", key);
+    #assert same(wk[0].add, "/projects?add=planetary-villa&key=f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7#new");
+    ab := add_box(wk[..], hb, 2);
+    #assert ab.x1 > ab.x0 && ab.x1 <= hb.x1 && ab.x0 > hb.x0 + 36 + text_width("OPENAGENTS / PROJECTS / PLANETARY VILLA", 14);
+    #assert same(add_label(wk[..], hb, 2), ifx k == 0 then "ADD TO PROJECT" else "ADD");
+    wk[0].realm = "/projects/planetary-villa/realm";
+    rb := realm_box(wk[..], hb, 2); ab = add_box(wk[..], hb, 2);
+    #assert ab.x1 <= ab.x0 || ab.x1 < rb.x0;   // left of the realm's link, or none
+    if k == 0 {
+      #assert ab.x1 > ab.x0;
+      s[0].px = (ab.x0 + ab.x1) * 0.5; s[0].py = (ab.y0 + ab.y1) * 0.5;
+      #assert coaxial_project_cursor(s[..], wk[..]) == 1;
+      #assert click(s[..], wk[..], s[0].px, s[0].py) && s[0].action == ACT_NAVIGATE;
+      #assert same(cast(string) s[0].outbox[0..<s[0].out_n], wk[0].add);
+    }
+  }
+}
+
+#test "another project's open need keeps a task waiting; a resolved or closed one doesn't" {
+  w: [1] Work;
+  w[0].links = "c1|needs|verse|d981|open|The galaxy\ne1|needs|verse|abcd|resolved|Done\ne1|needs|verse|abce|closed|Closed\nf1|by|planetary-villa|a3b5|open|Wants f\n";
+  read_work(w[..], FIXTURE);
+  // c1 was ready (its blocker b1 is done): now it waits on Verse's d981; e1's needs are done
+  #assert !w[0].ready[3] && w[0].far[3] == 0 && w[0].waits[3] == -1;
+  #assert w[0].ready[5] && w[0].far[5] == -1 && w[0].far[6] == -1;
+  #assert w[0].ready_n == 1;
+  // a page with no links is as it was
+  e: [1] Work;
+  read_work(e[..], FIXTURE);
+  #assert e[0].ready[3] && e[0].far[3] == -1 && e[0].ready_n == 2;
+  buf: [32] u8;
+  n := put_project(buf[..], 0, "planetary-villa");
+  #assert same(cast(string) buf[0..<n], "PLANETARY VILLA") && same(far_label("missing"), "NOT FOUND") && !link_open("resolved") && link_open("missing");
+}
+
+#test "all 320 physical rows fit the private Work parser" {
+  w:[1]Work;bytes:[320]u8;
+  for i:0..<bytes.count {bytes[i]='\n';}
+  read_work(w[..],cast(string)bytes[..]);
+  #assert w[0].n==320 && w[0].tasks==320 && w[0].queued==320;
+}
+
+// ---- from project-links.coax
+
+#test "the links of the fixture equal links.ts's, byte for byte: needs in tag order, who needs it by project, impostors dropped" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; ls: [1] Store; lr: [1] LinkRoots;
+  out: [LINKS_CAP] u8;
+  read_frames(s[..], LINKS_FIX_OURS, LINKS_FIX_KEY);
+  #assert s[0].n == 6 && s[0].dropped == 0;
+  fold(s[..], f[..], "alpha");
+  write_tables(s[..], f[..], t[..]);
+  read_frames(ls[..], LINKS_FIX_FAR, ANY_KEY);
+  #assert ls[0].n == 13 && ls[0].dropped == 0 && author_of(ls[..], 0).count == 64;
+  n := write_links(s[..], f[..], t[0].order[..], ls[..], LINKS_FIX_KEY, "alpha", lr[..], out[..]);
+  #assert n > 0 && first_difference(cast(string) out[0..<n], LINKS_FIX_TABLE) == "";
+  #assert equal(cast(string) out[0..<n], LINKS_FIX_TABLE);
+  // the impostor's issue under beta's address is no root of beta's
+  #assert lr[0].n == 6;
+  // a store for one key never keeps another's, and never records an author
+  #assert s[0].author[0] == -1;
+}
+
+#test "a project address must be well formed to count" {
+  k := "1111111111111111111111111111111111111111111111111111111111111111";
+  #assert valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:verse");
+  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:-verse");
+  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:Verse");
+  #assert !valid_coord("30621:111:verse") && !valid_coord("30617:1111111111111111111111111111111111111111111111111111111111111111:verse");
+  #assert k.count == 64;
+}
+
+// ---- from project-fold.coax
+
+#test "the fold of a captured relay transcript equals model.ts fold() and tables.ts, byte for byte" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables;
+  #assert read_transcript(s[..], COAX_RELAY) == 5;
+  #assert s[0].dropped == 0 && s[0].n > 100;
+  fold(s[..], f[..], "coax");
+  #assert f[0].project >= 0 && f[0].order >= 0 && f[0].repo >= 0;
+  write_tables(s[..], f[..], t[..]);
+  #assert first_difference(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) == "";
+  #assert equal(cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS) && t[0].items_n > 20;
+  #assert first_difference(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) == "";
+  #assert equal(cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG) && t[0].log_n > 20;
+  #assert first_difference(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) == "";
+  #assert equal(cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS) && t[0].plans_n > 20;
+  #assert first_difference(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) == "";
+  #assert equal(cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO) && t[0].info_n > 20;
+  #assert first_difference(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) == "";
+  #assert equal(cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS) && t[0].details_n > 20000;
+  // the same events again (a second subscription, a reconnect) change nothing
+  n := s[0].n;
+  #assert read_transcript(s[..], COAX_RELAY) == 5 && s[0].n == n;
+}

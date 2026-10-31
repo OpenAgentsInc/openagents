@@ -166,29 +166,4 @@ read_frames :: (s: [] Store, text: string, key: string) {
   }
 }
 
-#test "the links of the fixture equal links.ts's, byte for byte: needs in tag order, who needs it by project, impostors dropped" {
-  s: [1] Store; f: [1] Fold; t: [1] Tables; ls: [1] Store; lr: [1] LinkRoots;
-  out: [LINKS_CAP] u8;
-  read_frames(s[..], LINKS_FIX_OURS, LINKS_FIX_KEY);
-  #assert s[0].n == 6 && s[0].dropped == 0;
-  fold(s[..], f[..], "alpha");
-  write_tables(s[..], f[..], t[..]);
-  read_frames(ls[..], LINKS_FIX_FAR, ANY_KEY);
-  #assert ls[0].n == 13 && ls[0].dropped == 0 && author_of(ls[..], 0).count == 64;
-  n := write_links(s[..], f[..], t[0].order[..], ls[..], LINKS_FIX_KEY, "alpha", lr[..], out[..]);
-  #assert n > 0 && first_difference(cast(string) out[0..<n], LINKS_FIX_TABLE) == "";
-  #assert equal(cast(string) out[0..<n], LINKS_FIX_TABLE);
-  // the impostor's issue under beta's address is no root of beta's
-  #assert lr[0].n == 6;
-  // a store for one key never keeps another's, and never records an author
-  #assert s[0].author[0] == -1;
-}
 
-#test "a project address must be well formed to count" {
-  k := "1111111111111111111111111111111111111111111111111111111111111111";
-  #assert valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:verse");
-  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:-verse");
-  #assert !valid_coord("30621:1111111111111111111111111111111111111111111111111111111111111111:Verse");
-  #assert !valid_coord("30621:111:verse") && !valid_coord("30617:1111111111111111111111111111111111111111111111111111111111111111:verse");
-  #assert k.count == 64;
-}
