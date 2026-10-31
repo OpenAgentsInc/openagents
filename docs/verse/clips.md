@@ -25,6 +25,9 @@ realm, a feature being shown off, or a moment a player really had.
    the camera, the bot's plan. A stage is game code with a test, so it keeps
    working as the game changes, and anyone (or any agent) can ask for it by
    name. Every realm should grow a `highlight` stage and a few named ones.
+   `&card=1` leaves the HUD out (Hold the Stair, Orbit League, Belt 2200,
+   Dead Gears): the link-preview cards are shot that way
+   (`coax/web/og-render.ts`).
 3. **Where clips come from**, in order of trust:
    - **Recorded:** a real session replayed. Games that are deterministic
      (fixed steps, seeded dice) only need the inputs and the seed, so a

@@ -146,6 +146,7 @@ Stair :: struct {
   time: f64; clock: f32; acc: f32;
   width: f32; height: f32; dpr: f32;
   golden: bool; still: bool; touch: bool;
+  card_shot: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   // the map's layout this frame
   portrait: bool; ox: f32; oy: f32; tile: f32; scols: int; srows: int;
   path_len: f32;
@@ -702,6 +703,7 @@ layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   top := 52 * k;
   bottom := ifx s[0].portrait then 184 * k else 118 * k;
+  if s[0].card_shot { top = 0; bottom = 0; }   // no HUD: the stair fills the shot
   s[0].scols = ifx s[0].portrait then ROWS else COLS;
   s[0].srows = ifx s[0].portrait then COLS else ROWS;
   aw := w - 24 * k; ah := h - top - bottom - 16 * k;
@@ -922,6 +924,7 @@ stair_message :: (s: [] Stair, kind: int, t: string) #export_c {
     if wv >= 1 && wv <= WAVES { s[0].wave = cast(int) wv - 1; }
     if fact_of(t, "coarse") == "1" { s[0].touch = true; }
     if query_is(url, "stage", "highlight") { stage_highlight(s); }
+    if query_is(url, "card", "1") { s[0].card_shot = true; }
   }
   ok := track_message(s[0].track[..], kind, t);
   if kind == HOST_PAGE { track_world(s[0].track[..], "hold-the-stair"); }
@@ -1575,7 +1578,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
     n = draw_beasts(s, out, n);
     n = draw_fx(s, out, n);
   }
-  n = draw_hud(s, out, u, n, width, height);
+  if !s[0].card_shot { n = draw_hud(s, out, u, n, width, height); }
   u[U_INFO2 + 2] = f32(s[0].plate_n);
   track_frame(s[0].track[..], dt, width, height, dpr);
   if n > 0 { track_loaded(s[0].track[..], "load-engine"); }

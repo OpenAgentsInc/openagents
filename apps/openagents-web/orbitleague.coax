@@ -148,6 +148,7 @@ Spark :: struct { p: D3; v: D3; life: f64; max: f64; red: f32; green: f32; blue:
 
 OrbitLeague :: struct {
   started: bool; golden: bool; still: bool; touch: bool;
+  card: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   time: f32; width: f32; height: f32; dpr: f32;
   bodies: [BODIES] RigidBody;
   cars: [2] VehicleState;
@@ -695,6 +696,7 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "card=1") { s[0].card = true; }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_FACTS { track_world(s[0].track[..], "orbit-league"); }
 }
@@ -1048,7 +1050,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
     p := pad_at(i); o := PADS_AT + i * 4;
     u[o] = cast(f32) p.x; u[o + 1] = cast(f32) p.z; u[o + 2] = cast(f32) p.y; u[o + 3] = cast(f32) (1.0 - s[0].pad_wait[i] / pad_wait_of(i));
   }
-  n := draw_hud(s, out);
+  n := ifx s[0].card then draw_sparks(s, out, 0) else draw_hud(s, out);
   u[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
     o := PANEL_AT + i * 8; b := s[0].plates[i];

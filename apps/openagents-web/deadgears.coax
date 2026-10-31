@@ -82,6 +82,7 @@ DeadGears :: struct {
   clock: f32;               // the render clock: stops while paused
   width: f32; height: f32; dpr: f32;
   touch: bool; golden: bool; still: bool;
+  card: bool;   // ?card=1: the hold without the HUD, for a link's card (coax/web/og-render.ts)
   feet: Point; yaw: f32; pitch: f32; walking: f32;
   eye: Point; at: Point;
   ally_last: Point; ally_speed: f32;
@@ -321,6 +322,7 @@ deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c {
     n := query_number(url, "spawn");
     if n > 0 { s[0].spawn_n = cast(int) lo(n, 400); }
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
+    if query_number(url, "card") == 1 { s[0].card = true; }
   }
   if kind == HOST_HIDDEN { s[0].paused = true; s[0].held = 0; release_fingers(s); }
   t := track_message(s[0].track[..], kind, text);
@@ -1460,7 +1462,8 @@ deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height:
   u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr;
   u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = 0.02;
-  n := hud(s, u, out);
+  n := 0;
+  if s[0].card { s[0].plate_n = 0; } else { n = hud(s, u, out); }
   u[5] = f32(s[0].plate_n);
   track_frame(s[0].track[..], dt, width, height, dpr);
   if n > 0 { track_loaded(s[0].track[..], "load-engine"); }

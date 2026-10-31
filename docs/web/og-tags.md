@@ -51,8 +51,12 @@ several pages, the branded default on an ordinary page.
 **Rendered cards, per kind of page** (`coax/web/og-render.ts`, outputs
 committed in `apps/openagents-web/og/`):
 
-- **Realm**: a still of the realm itself, shot in headless WebGPU in golden
-  mode, under its name. A realm with a hand-made `card` in `realms.json`
+- **Realm**: a still of the realm itself at its best moment, without its
+  HUD, under its name (`STILLS` in `og-render.ts`): a game with a staged
+  highlight (Hold the Stair, Orbit League, Belt 2200) is stepped into it in
+  fixed game time with `?stage=highlight&card=1` (`card=1` leaves the HUD
+  out; Dead Gears takes it too); the walking realms are shot large in golden
+  mode and cropped clear of their HUD. A realm with a hand-made `card` in `realms.json`
   keeps it (the Haunted House keeps `/verse/og-verse.jpg`). A realm's line is
   its `share` field when it has one (20 to 200 characters), else its
   description, shortened.
@@ -87,8 +91,7 @@ page's preview from the sources, without a build.
   are written by oa-api, not the site build: they should take the same rules
   (a description tag, twitter tags, and a card that isn't the Haunted
   House's). That is a migration replacing `verse.builder_page`.
-- Hand-made cards for the realms people share most (Dead Gears, Orbit
-  League, Belt 2200), from a staged moment (`?stage=highlight`,
-  `docs/verse/clips.md`) instead of the first frame.
+- `?card=1` (no HUD) in the walking realms too, so their cards need no crop,
+  and a `highlight` stage for each of them.
 - Render cards at release time instead of committing them, once the release
   machine runs headless Chrome reliably, so a project's bar is never stale.

@@ -4,7 +4,7 @@
 // branded card for a page that has none yet. Each is /og#card=PATH (og.coax) captured
 // at 1200x630 in headless Chrome with WebGPU (no window, no sound) and saved as a JPEG
 // under 300 KB. A realm's card is a still of the realm itself under its name: the
-// realm is shot first (golden mode) and its card drawn over that shot.
+// realm is shot first, at its best moment without its HUD (STILLS), and its card drawn over that shot.
 //
 //   bun coax/web/og-render.ts                 the missing cards (a stage is built for it)
 //   bun coax/web/og-render.ts --all           every rendered card again (a project's tasks done move)
@@ -39,6 +39,21 @@ const site = join(stage, "site")
 const rows = readFileSync(join(site, "og/pages.txt"), "utf8").split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split("|"))
 const realms: Record<string, any> = Object.fromEntries(JSON.parse(readFileSync(join(app, "realms.json"), "utf8")).worlds
   .filter((w: any) => w.realm).map((w: any) => [w.realm.slug, w.realm]))
+// How each realm's still is taken: its best moment, without the HUD. A staged moment
+// (?stage=highlight, docs/verse/clips.md) is stepped `skip` seconds of game time in; ?card=1 asks
+// the game to leave its HUD out. A realm without it is shot big (its HUD small at the edges)
+// and cropped to [x, y, w, h] clear of it. Anything not listed: golden mode at 1680x638.
+const STILLS: Record<string, { query?: string; skip?: number; size?: string; crop?: number[] }> = {
+  "hold-the-stair": { query: "?stage=highlight&card=1", skip: 10 },
+  "orbit-league": { query: "?stage=highlight&card=1", skip: 1.65 },
+  "belt-2200": { query: "?stage=highlight&card=1", skip: 2.5 },
+  "dead-gears": { query: "?golden&card=1&hour=17.5" },
+  "the-grid": { size: "2520x957", crop: [150, 0, 2160, 822] },
+  "fixture": { size: "2520x957", crop: [560, 170, 1400, 532] },
+  "drop": { size: "2520x957", crop: [500, 200, 1520, 578] },
+  "built": { size: "2520x957", crop: [260, 70, 2000, 760] },
+  "sandbox": { size: "2520x957", crop: [220, 0, 2000, 760] },
+}
 const dirOf = (path: string) => path.replace(/^\//, "")
 // A page's card is ours to render when it isn't hand-made: its image is the default or its rendered card.
 const ours = (r: string[]) => !r[2] && (r[8] === "default" || r[8] === "rendered") && r[0] !== "/404"
@@ -66,10 +81,19 @@ try {
     const [path, kind] = r
     const card = join(app, renderedCard(dirOf(path)))
     if (kind === "realm") {
-      const slug = path.split("/")[2], realm = realms[slug]
-      // wider than the card's band, so the realm's HUD reads smaller in it; then fitted to 1200x456
-      const png = join(work, `${slug}-still.png`)
-      shot(`${base}${path}?golden`, png, "1680x638", Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
+      const slug = path.split("/")[2], realm = realms[slug], how = STILLS[slug] ?? {}
+      const png = join(work, `${slug}-still.png`), [w, h] = (how.size ?? "1680x638").split("x").map(Number)
+      if (how.skip !== undefined) {
+        // a staged moment, stepped in fixed game time (clip.ts): the same frame every render
+        const frames = join(work, `${slug}-frames`)
+        run(["bun", join(here, "clip.ts"), `${base}${path}${how.query}`, join(work, `${slug}.mp4`), "--size", how.size ?? "1680x638",
+          "--seconds", "0.034", "--fps", "30", "--skip", String(how.skip), "--frames", frames])
+        run(["cp", join(frames, "f00000.png"), png])
+      } else {
+        shot(`${base}${path}${how.query ?? "?golden"}`, png, `${w}x${h}`, Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
+      }
+      // the part of the shot clear of the realm's HUD, then fitted to the card's 1200x456 band
+      if (how.crop) { const [x, y, cw, ch] = how.crop; run(["sips", "-c", String(ch), String(cw), "--cropOffset", String(y), String(x), png, "--out", png]) }
       jpeg(png, join(site, `og/stills/${slug}.jpg`), 1200, 456)
     }
     const png = join(work, `card-${n}.png`)
