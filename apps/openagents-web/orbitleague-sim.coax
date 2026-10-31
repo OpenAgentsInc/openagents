@@ -58,12 +58,30 @@ arena :: (kind: int, glass: [] f64) -> bool {
   return worst <= 5 && first <= 2 && early == 0 && bot * 2 <= you * 3 + 8 && t[0].score[1] >= 2;
 }
 
+// The pro bot (?bot=pro, ol-bot): full matches against the novices who aim
+// behind the ball, in the box: each plays to the clock (a tie goes on to overtime) and the
+// pro wins more than it loses.
+pro :: () -> bool {
+  lags := [3] f64.[0.0, 0.4, 0.8];
+  you := 0; bot := 0; ended := 0;
+  glass: [3] f64;
+  for lag: lags {
+    s: [1] OrbitLeague;
+    game_reset(s[..]); s[0].bot_smart = true; s[0].bot_miss_k = 0.3;
+    novice(s[..], MATCH_TIME + 60.0, lag, true, glass[..]);
+    if s[0].phase == PHASE_OVER || s[0].overtime { ended += 1; }
+    you += s[0].score[0]; bot += s[0].score[1];
+    print("pro (every % s): you % bot %, over % overtime %\n", lag, s[0].score[0], s[0].score[1], s[0].phase == PHASE_OVER, s[0].overtime);
+  }
+  return ended == 3 && bot > you;
+}
 main :: () {
   glass: [3] f64;
+  pro_ok := pro();
   box := arena(ARENA_BOX, glass[..]);
   drum := arena(ARENA_DRUM, glass[..]);
   sphere := arena(ARENA_SPHERE, glass[..]);
   print("the longest a car stood on the box's glass: % s\n", glass[2]);
-  ok := box && drum && sphere && glass[2] < 2.5;
+  ok := box && drum && sphere && pro_ok && glass[2] < 2.5;
   print("%\n", ifx ok then "holds" else "FAILS");
 }

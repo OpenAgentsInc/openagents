@@ -121,6 +121,10 @@ BOT_MISS_LATE :: 6.0;
 // slower there and waits longer after a hit (ol-drum-bot).
 BOT_DRUM_THROTTLE :: 0.5;
 BOT_DRUM_RECOVER :: 2.5;
+BOT_PATH :: 30;          // ol-bot: the ball's path ahead, a sample every BOT_PATH_DT
+BOT_PATH_DT :: 0.1;
+BOT_LOOK :: 0.1;         // it looks again this often
+BOT_DEFEND :: 0.35;      // defending, it waits this share of the way from its goal to the ball
 bot_recover :: (s: [] OrbitLeague) -> f64 { return ifx s[0].drum then BOT_DRUM_RECOVER else BOT_RECOVER; }
 STUCK_TIME :: 0.7;       // seconds a car lies tipped or leans on the glass, slow, before it is set back on its wheels
 CAR_MASS :: 1000.0;
@@ -223,6 +227,9 @@ OrbitLeague :: struct {
   bot_jump_t: f64;
   bot_touch_t: f64 = -100.0;   // when the bot last hit the ball (played seconds)
   bot_aim: f64;               // its aim's miss on this approach, metres across the goal
+  bot_smart: bool;            // ?bot=pro: the bot reads the ball's path, meets it and defends (ol-bot); the default is the beginner's bot
+  bot_miss_k: f64 = 1.0;      // its aim's miss, scaled (the pro misses less)
+  bot_path: [BOT_PATH] D3; bot_path_at: f64 = -100.0; bot_path_goal: int = -1;   // ol-bot: where the ball goes, if no car touches it
   no_bot: bool;               // ?bot=0: practice alone
   drum: bool;                 // ?arena=drum: the drum, not the box
   sphere: bool;               // ?arena=sphere: the sphere (drum is then false)
@@ -550,6 +557,32 @@ ball_hit :: (ball: RigidBody, car: RigidBody, spec: VehicleSpec, ct: Contact) ->
   return out;
 }
 
+// ol-bot: the ball's path for the next three seconds with no car touching
+// it (the same ball physics, on a copy), and which goal, if any, it ends in.
+bot_predict :: (s: [] OrbitLeague) {
+  keep := s[0].bodies[BALL];
+  none: [1] RigidBody;
+  s[0].bot_path_goal = -1;
+  per := cast(int) (BOT_PATH_DT / STEP + 0.5);
+  for k: 0..<BOT_PATH {
+    if s[0].bot_path_goal < 0 {
+      for i: 0..<per { ball_step(s, none[..], 0); }
+      s[0].bot_path_goal = goal_past(s, s[0].bodies[BALL].pos.z);
+    }
+    s[0].bot_path[k] = s[0].bodies[BALL].pos;
+  }
+  s[0].bodies[BALL] = keep;
+  s[0].bot_path_at = s[0].played;
+}
+// Where it meets the ball: the first point on the path it can reach in time.
+bot_intercept :: (s: [] OrbitLeague, me: RigidBody) -> D3 {
+  pace := fmax(d3_len(me.vel) * 0.6 + 8.0, 10.0);
+  for k: 0..<BOT_PATH {
+    p := s[0].bot_path[k];
+    if d3_dist(p, me.pos) / pace <= cast(f64) (k + 1) * BOT_PATH_DT { return p; }
+  }
+  return s[0].bot_path[BOT_PATH - 1];
+}
 bot_drive :: (s: [] OrbitLeague) -> Drive {
   me := s[0].bodies[BOT]; bl := s[0].bodies[BALL];
   goal := goal_point(s, -1.0);     // it attacks your goal, at -z
@@ -560,13 +593,30 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   // just after a hit it coasts: you get a chance at the ball
   if s[0].played - s[0].bot_touch_t < bot_recover(s) { out.input.throttle = 0.2; return out; }
   // it aims at a point across your goal mouth that misses by bot_aim
-  goal.x = fclamp(s[0].bot_aim, -GOAL_HW - 6.0, GOAL_HW + 6.0);
+  goal.x = fclamp(s[0].bot_aim * s[0].bot_miss_k, -GOAL_HW - 6.0, GOAL_HW + 6.0);
   // the sphere's goal is a cap SPHERE_GOAL_R round: the miss in the same proportion
   if s[0].sphere { goal.x *= SPHERE_GOAL_R / GOAL_HW; }
-  aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
-  // ahead of where the ball goes: a short lead on its velocity
-  lead := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
-  target := d3_sub(lead, d3_scale(aim, 3.0));
+  // the beginner's bot: a short lead on the ball's velocity
+  meet := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
+  // the pro: where the ball is going, and the first point it can meet it
+  if s[0].bot_smart {
+    if s[0].played - s[0].bot_path_at > BOT_LOOK || s[0].played < s[0].bot_path_at { bot_predict(s); }
+    meet = bot_intercept(s, me);
+  }
+  aim := d3_unit_or(d3_sub(goal, ifx s[0].bot_smart then meet else bl.pos), d3(0.0, 0.0, -1.0));
+  target := d3_sub(meet, d3_scale(aim, 3.0));
+  // the pro, lined up behind the ball toward the goal, drives on through it
+  if s[0].bot_smart {
+    to := d3_sub(meet, me.pos);
+    along := d3_dot(to, aim);
+    if along > 0.0 && d3_len(d3_sub(to, d3_scale(aim, along))) < 2.0 { target = d3_add(meet, d3_scale(aim, 4.0)); }
+  }
+  // the pro defends: the ball is headed into its own goal (+z) and it can't
+  // get there first, so it drops back between the ball and the goal
+  own := goal_point(s, 1.0);
+  if s[0].bot_smart && s[0].bot_path_goal == BLUE && d3_dist(me.pos, own) > d3_dist(bl.pos, own) {
+    target = d3_add(own, d3_scale(d3_sub(bl.pos, own), BOT_DEFEND));
+  }
   // on the wrong side of the ball (between it and our goal): go round, back toward its own goal
   if me.pos.z < bl.pos.z - 1.0 { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), ifx s[0].sphere then bl.pos.y else 0.0, bl.pos.z + 9.0); }
   target.x = fclamp(target.x, -arena_hx(s) + 2.0, arena_hx(s) - 2.0);
@@ -989,6 +1039,7 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=60") { s[0].spin_every = 60.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=off") { s[0].spin_every = 0.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=half") { s[0].spin_g = HALF_SPIN; }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=pro") { s[0].bot_smart = true; s[0].bot_miss_k = 0.3; }
   if kind == HOST_FACTS { s[0].lag = cast(f64) url_number(fact_of(text, "url"), "lag=") / 1000.0; }
   if kind == HOST_FACTS && !s[0].online && has_text(fact_of(text, "url"), "room=") { room_join(s, fact_of(text, "url")); }
   if room_socket(s, kind, text) { return; }
@@ -2672,4 +2723,30 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
     last = shown;
   }
   #assert moved > 8.0 && worst < 0.1;
+}
+
+// ---- the pro bot (ol-bot)
+
+#test "the pro bot reads where a rolling ball goes, and drops back when it heads for its goal (ol-bot)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); s[0].bot_smart = true;
+  run_for(s[..], KICKOFF + 0.1);
+  s[0].bodies[BALL].pos = d3(0.0, BALL_R, 0.0); s[0].bodies[BALL].vel = d3(0.0, 0.0, 30.0);
+  bot_predict(s[..]);
+  #assert s[0].bot_path_goal == BLUE && s[0].bot_path[5].z > 10.0 && s[0].bodies[BALL].pos.z == 0.0;
+  s[0].bodies[BALL].vel = d3(8.0, 0.0, 0.0);
+  bot_predict(s[..]);
+  #assert s[0].bot_path_goal == -1 && s[0].bot_path[4].x > 2.0;
+}
+#test "the pro bot scores into an empty goal (ol-bot; orbitleague-sim.coax plays full 1v1s against it)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); s[0].bot_smart = true; s[0].bot_miss_k = 0.0;
+  run_for(s[..], KICKOFF + 0.1);
+  // you park out of the way, by your goal's corner
+  s[0].bodies[YOU].pos = d3(ARENA_HX - 3.0, 1.0, -ARENA_HZ + 6.0);
+  s[0].bodies[BALL].pos = d3(-6.0, BALL_R, -22.0);
+  s[0].bodies[BOT].pos = d3(0.0, 1.0, -8.0);
+  t := 0.0;
+  while t < 6.0 && s[0].score[MAGENTA] == 0 { run_for(s[..], 0.25); t += 0.25; }
+  #assert s[0].score[MAGENTA] >= 1;
 }
