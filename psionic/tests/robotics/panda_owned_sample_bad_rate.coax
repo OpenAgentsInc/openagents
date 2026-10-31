@@ -1,0 +1,5 @@
+#load "../../lib/robotics/panda-owned-sample.coax";
+wrong :: () {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(pfku.Radian,f64);w:[2]pfku.Quantity(PidLinearRate,f64);out:[1]PcSample;
+ r:=pcs_forward(q[..],s[..],v[..],w[..],out[..]);
+}

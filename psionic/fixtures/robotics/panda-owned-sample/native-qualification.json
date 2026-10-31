@@ -1,0 +1,534 @@
+{
+  "schema": "psionic.panda-owned-sample.qualification.v1",
+  "passed": true,
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "psionic/lib/robotics/panda-owned-sample.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-owned-sample-native-first/debug/panda-owned-sample.h"
+      ],
+      "seconds": 0.3545213750330731,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "psionic/lib/robotics/panda-owned-sample.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-owned-sample-native-first/release/panda-owned-sample.h"
+      ],
+      "seconds": 0.39528687502024695,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "5c7fb2a2b7aad7110af7c071d095b7c67048eede4bf501ed9a03999d244ef956",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-sample-native-first/debug",
+        "/private/tmp/panda-owned-sample-native-first/debug/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-sample-native-first/debug/native"
+      ],
+      "seconds": 0.29427858302369714,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-owned-sample-native-first/debug/native",
+        "/private/tmp/panda-owned-sample-native-first/input.bin",
+        "/private/tmp/panda-owned-sample-native-first/debug/samples.f64"
+      ],
+      "seconds": 0.2535672909580171,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "167216d2716d3061ea79793e8ae1f4f17cd6754b3f3cd6e055297537212f8895",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-sample-native-first/release",
+        "/private/tmp/panda-owned-sample-native-first/release/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-sample-native-first/release/native"
+      ],
+      "seconds": 0.7609942919807509,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-owned-sample-native-first/release/native",
+        "/private/tmp/panda-owned-sample-native-first/input.bin",
+        "/private/tmp/panda-owned-sample-native-first/release/samples.f64"
+      ],
+      "seconds": 0.21301179198781028,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "167216d2716d3061ea79793e8ae1f4f17cd6754b3f3cd6e055297537212f8895",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-sample-native-first/debug",
+        "/private/tmp/panda-owned-sample-native-first/debug/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-sample-native-first/sanitized/native"
+      ],
+      "seconds": 1.1865946250036359,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-owned-sample-native-first/sanitized/native",
+        "/private/tmp/panda-owned-sample-native-first/input.bin",
+        "/private/tmp/panda-owned-sample-native-first/sanitized/samples.f64"
+      ],
+      "seconds": 0.31605387496529147,
+      "exit": 0,
+      "stderr_bytes": 0,
+      "stdout_sha256": "167216d2716d3061ea79793e8ae1f4f17cd6754b3f3cd6e055297537212f8895",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic.panda-owned-sample.native.v1",
+        "passed": true,
+        "cases": 15,
+        "words_per_case": 144,
+        "inclusive_boundaries": 36,
+        "alias_cases": 4,
+        "assertions": 9811
+      },
+      "C_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "16fda434b6add62205cc80e25fe5a409beaa114daf784fef313f3caac86403f7",
+      "output_sha256": "1443b1519e20474a00463a29b423e335e82312a567b3f7913eab284de0746ba7",
+      "finite_actual_words": 2160,
+      "finite_expected_words": 2160,
+      "fields": {
+        "position": {
+          "values": 45,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "rotation": {
+          "values": 135,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 1.9984014443252818e-15,
+          "max_budget_fraction": 0.0009992007221626409,
+          "passed": true
+        },
+        "q": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "qd": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "mass": {
+          "values": 735,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 5.329070518200751e-15,
+          "max_budget_fraction": 0.00026645352591003757,
+          "passed": true
+        },
+        "jp": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 5.828670879282072e-16,
+          "max_budget_fraction": 0.0002914335439641036,
+          "passed": true
+        },
+        "jr": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "velocity": {
+          "values": 90,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 3.3306690738754696e-16,
+          "max_budget_fraction": 1.6653345369377348e-05,
+          "passed": true
+        },
+        "bias": {
+          "values": 105,
+          "atol": 5e-10,
+          "rtol": 0,
+          "max_abs_error": 1.7763568394002505e-14,
+          "max_budget_fraction": 3.552713678800501e-05,
+          "passed": true
+        },
+        "lower": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "upper": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        }
+      }
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic.panda-owned-sample.native.v1",
+        "passed": true,
+        "cases": 15,
+        "words_per_case": 144,
+        "inclusive_boundaries": 36,
+        "alias_cases": 4,
+        "assertions": 9811
+      },
+      "C_sha256": "5c7fb2a2b7aad7110af7c071d095b7c67048eede4bf501ed9a03999d244ef956",
+      "header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "23bf349099a531545a3a4cadb806220a6993357ffbe92facec34698c92bef485",
+      "output_sha256": "1443b1519e20474a00463a29b423e335e82312a567b3f7913eab284de0746ba7",
+      "finite_actual_words": 2160,
+      "finite_expected_words": 2160,
+      "fields": {
+        "position": {
+          "values": 45,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "rotation": {
+          "values": 135,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 1.9984014443252818e-15,
+          "max_budget_fraction": 0.0009992007221626409,
+          "passed": true
+        },
+        "q": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "qd": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "mass": {
+          "values": 735,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 5.329070518200751e-15,
+          "max_budget_fraction": 0.00026645352591003757,
+          "passed": true
+        },
+        "jp": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 5.828670879282072e-16,
+          "max_budget_fraction": 0.0002914335439641036,
+          "passed": true
+        },
+        "jr": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "velocity": {
+          "values": 90,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 3.3306690738754696e-16,
+          "max_budget_fraction": 1.6653345369377348e-05,
+          "passed": true
+        },
+        "bias": {
+          "values": 105,
+          "atol": 5e-10,
+          "rtol": 0,
+          "max_abs_error": 1.7763568394002505e-14,
+          "max_budget_fraction": 3.552713678800501e-05,
+          "passed": true
+        },
+        "lower": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "upper": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        }
+      }
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic.panda-owned-sample.native.v1",
+        "passed": true,
+        "cases": 15,
+        "words_per_case": 144,
+        "inclusive_boundaries": 36,
+        "alias_cases": 4,
+        "assertions": 9811
+      },
+      "C_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "fdd984f46edd0ff88cad142a5e0222f793a388eefc27571b0eda57fa0572806c",
+      "output_sha256": "1443b1519e20474a00463a29b423e335e82312a567b3f7913eab284de0746ba7",
+      "finite_actual_words": 2160,
+      "finite_expected_words": 2160,
+      "fields": {
+        "position": {
+          "values": 45,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "rotation": {
+          "values": 135,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 1.9984014443252818e-15,
+          "max_budget_fraction": 0.0009992007221626409,
+          "passed": true
+        },
+        "q": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "qd": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "mass": {
+          "values": 735,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 5.329070518200751e-15,
+          "max_budget_fraction": 0.00026645352591003757,
+          "passed": true
+        },
+        "jp": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 5.828670879282072e-16,
+          "max_budget_fraction": 0.0002914335439641036,
+          "passed": true
+        },
+        "jr": {
+          "values": 315,
+          "atol": 2e-12,
+          "rtol": 0,
+          "max_abs_error": 4.440892098500626e-16,
+          "max_budget_fraction": 0.0002220446049250313,
+          "passed": true
+        },
+        "velocity": {
+          "values": 90,
+          "atol": 2e-11,
+          "rtol": 0,
+          "max_abs_error": 3.3306690738754696e-16,
+          "max_budget_fraction": 1.6653345369377348e-05,
+          "passed": true
+        },
+        "bias": {
+          "values": 105,
+          "atol": 5e-10,
+          "rtol": 0,
+          "max_abs_error": 1.7763568394002505e-14,
+          "max_budget_fraction": 3.552713678800501e-05,
+          "passed": true
+        },
+        "lower": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        },
+        "upper": {
+          "values": 105,
+          "atol": 0,
+          "rtol": 0,
+          "max_abs_error": 0.0,
+          "max_budget_fraction": 0,
+          "passed": true
+        }
+      }
+    }
+  ],
+  "SDK_calls": 0,
+  "simulation_steps": 0,
+  "reference_cases": 15,
+  "words_per_case": 144,
+  "independence_scope": "Fifteen paired contexts; some q/v inputs repeat across acceleration cases. Not fifteen independent states.",
+  "scope": "Fresh fixed-source sample fields, storage, ABI and admission only; no controller-output or rollout proof.",
+  "numeric_profile": "Darwin arm64 F64 scalar libm, -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off",
+  "finite_guard_self_check": {
+    "passed": true,
+    "refused_cases": 5,
+    "poison_word": 2159,
+    "expected_and_actual_share_same_guard": true
+  },
+  "input_sha256": "d59fdc6fc01b51ae3ff78bb1233d7a9945f4d8135aee7a4efdd0b41fdbd40195",
+  "source_sha256": {
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/cases.f64": "684c892c72d4e6341e695c1b7bae22a5d5e7d01e3310f1349b98c5c0c8271b49",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/experiment.json": "6b255a86a733e7a1d2f797691cec0b3fa3954b3b0d61e5a70de51a4691a81019",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-sample-reference.json": "6282bc042fadeb5b7f2e51b2ddc683d4cbe3f8ad659144c07edce2d2721976c9",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-pc-samples.f64": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-reference.json": "27da6f9c18c45fd7f4572e630b42a0e80ddb56921679a34dfcdd51b16cdf89a4",
+    "psionic/fixtures/robotics/panda-owned-sample/experiment.json": "90cbf6ea412a656498a4a70826c1241892b2f932e0f67ec468269a5f471374ea",
+    "psionic/lib/robotics/panda-control-check-fixtures.coax": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e",
+    "psionic/lib/robotics/panda-control-types.coax": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3",
+    "psionic/lib/robotics/panda-control.coax": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": "7b010bc725c0c0494fc7377003591d1a16e63f334e7d409f6e73e936668252ac",
+    "psionic/lib/robotics/panda-jacobian-math.coax": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f",
+    "psionic/lib/robotics/panda-jacobian-types.coax": "408c9a3ff60888564b189ad5920f97ed9761a060cf981c7701979d4f9c08e58a",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": "7b5e33d1289fe3f19ae17da4ba8f7c536675052f0bfa48ee6c32425a96229b1c",
+    "psionic/lib/robotics/panda-owned-sample.coax": "fc6e0ca52e36ad031b1958e564069fe71b87306c0dcf7b6a8fdd5db312387a13",
+    "psionic/tests/robotics/panda_owned_sample_native.c": "af1c204d0325d272634137318ff9b31be57c8304864c724e8dd7db859de088dd",
+    "psionic/tests/robotics/panda_owned_sample_reference.py": "cd21faf4d1723cf73cc093fe90639a850d90b6a61694ba0fe2174d70775ffb99"
+  },
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "native_modes_byte_identical": true,
+  "seconds": 3.7976516670314595
+}

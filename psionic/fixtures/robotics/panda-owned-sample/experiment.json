@@ -1,0 +1,45 @@
+{
+  "schema": "psionic.panda-owned-sample.experiment.v1",
+  "frozen_before_owned_comparison": true,
+  "frozen_at_UTC": "2026-10-31T22:10:34.174017+00:00",
+  "task_start_UTC": "2026-10-31T22:09:00Z",
+  "deadline_UTC": "2026-11-01T00:09:00Z",
+  "reference_source": "panda-inverse-dynamics/sdk-pc-samples.f64",
+  "reference_sha256": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+  "reference_manifest_sha256": "6282bc042fadeb5b7f2e51b2ddc683d4cbe3f8ad659144c07edce2d2721976c9",
+  "reference_shape": [
+    15,
+    144
+  ],
+  "independence_scope": "Fifteen paired inverse-dynamics contexts; some q/v states can repeat across acceleration patterns. No claim of fifteen independent states. SDK collection preceded owned implementation/comparison.",
+  "numerical_q_box": {
+    "hinge_abs_inclusive": 100,
+    "slide_abs_inclusive": 1
+  },
+  "numerical_rate_box": {
+    "hinge_abs_inclusive": 20,
+    "slide_abs_inclusive": 2
+  },
+  "field_atol": {
+    "position": 2e-12,
+    "rotation": 2e-12,
+    "q": 0,
+    "qd": 0,
+    "mass": 2e-11,
+    "jp": 2e-12,
+    "jr": 2e-12,
+    "velocity": 2e-11,
+    "bias": 5e-10,
+    "lower": 0,
+    "upper": 0
+  },
+  "rtol": 0,
+  "native_profiles": [
+    "debug",
+    "release",
+    "fail-fast ASan/UBSan"
+  ],
+  "numeric_profile": "Darwin arm64 scalar-libm; -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off",
+  "scope": "Fresh fixed-source controller sample only. No observation ordering change, SDK stepping, whole-policy episode, hardware, full compiler-bounded control or owned simulator claim.",
+  "controller_output_comparison": "Separate future corpus/budgets; not qualified by sample closeness."
+}

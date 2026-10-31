@@ -1,0 +1,54 @@
+{
+  "schema": "psionic.panda-owned-sample.qualification.v1",
+  "passed": true,
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "compiler_input_fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": "7b5e33d1289fe3f19ae17da4ba8f7c536675052f0bfa48ee6c32425a96229b1c",
+    "psionic/lib/robotics/panda-owned-sample.coax": "fc6e0ca52e36ad031b1958e564069fe71b87306c0dcf7b6a8fdd5db312387a13"
+  },
+  "experiment_sha256": "90cbf6ea412a656498a4a70826c1241892b2f932e0f67ec468269a5f471374ea",
+  "native_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+  "native_reference_fields": 2160,
+  "native_profiles": 3,
+  "assertions_per_profile": 9811,
+  "source_unit_refusals": 3,
+  "unit_refusal_record_sha256": "b5f1dcc5edac233da3ff68a1c881444c07903ca39ab8245c6eb476a35899f208",
+  "checks_first_sha256": "bb490170fd83a42bce1b1c9879b0c5046652d1237a7af3de26baded5b2fef4e7",
+  "initial_mutation": {
+    "total": 100,
+    "killed": 97,
+    "survivors": 3,
+    "owner": "pcs_forward",
+    "failures": "Redundant q/slide count guard and missing independent public q/qd expectations."
+  },
+  "current_mutation": {
+    "changed_procedure": "pcs_forward",
+    "mutants": 29,
+    "killed": 29,
+    "survivors": 0,
+    "unchanged_five_procedures": "Exact initial product bodies retain zero-survivor evidence; all original checks retained and dense public expected-q/qd strengthened.",
+    "composed_current_zero_survivor_scope": true,
+    "waivers": 0,
+    "scope_record_sha256": "f2f0c35bba1d120e84a2189a3a426f52afc191128e60755fce2cf732729c054a"
+  },
+  "example": {
+    "source_sha256": "e063f1c948da640a735003a87e96b3b251ef10f7c603b667477ba4cde824aed0",
+    "reference_sha256": "1ecff81001e5f72cc88a5e1fc6267231d057f3ddb754703dcc528d74e8f208fa",
+    "golden_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+    "debug_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+    "release_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e",
+    "new_selected_checks": 1
+  },
+  "scope": "Fixed-source fresh raw PcSample constructor only; no SDK/NN/physics/old gate calls. Controller output parity and driver selection are separate evidence. No full simulator/clock/#bounded/hardware claim.",
+  "scope_tool_binding": {
+    "source_sha256": "d429e1f688276c2fe1ec4dd67973197697ed4645e103e1918648bbe44b2a4828",
+    "entry_and_dependency_exact_to_passing_private_scope": true,
+    "mutation_execution_repeated": false
+  },
+  "new_VM_scope": {
+    "groups": 10,
+    "cases": 61,
+    "evidence": "Initial eight groups passed after replacing unsupported Quantity += with typed assignment; two new dense/raw-shape groups passed separately. All checks were retained in the subsequent passing changed-procedure mutation scope. No unchanged passing check rerun."
+  }
+}

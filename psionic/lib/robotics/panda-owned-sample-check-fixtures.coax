@@ -1,0 +1,14 @@
+// Test-only field observer and poison; not a source/pose admission API.
+#load "panda-control-types.coax";
+pcs_words :: (s:PcSample)->[144]f64 {
+ r:[144]f64;for i:0..<3 {r[i]=s.position[i];}for i:0..<9 {r[3+i]=s.rotation[i];}
+ for i:0..<7 {r[12+i]=s.q[i];r[19+i]=s.qd[i];}for i:0..<49 {r[26+i]=s.mass[i];}
+ for i:0..<21 {r[75+i]=s.jp[i];r[96+i]=s.jr[i];}for i:0..<6 {r[117+i]=s.velocity[i];}
+ for i:0..<7 {r[123+i]=s.bias[i];r[130+i]=s.lower[i];r[137+i]=s.upper[i];}return r;
+}
+pcs_poison :: ()->PcSample {
+ s:PcSample;for i:0..<3 {s.position[i]=1000+f64(i);}for i:0..<9 {s.rotation[i]=2000+f64(i);}
+ for i:0..<7 {s.q[i]=3000+f64(i);s.qd[i]=4000+f64(i);s.bias[i]=5000+f64(i);s.lower[i]=6000+f64(i);s.upper[i]=7000+f64(i);}
+ for i:0..<49 {s.mass[i]=8000+f64(i);}for i:0..<21 {s.jp[i]=9000+f64(i);s.jr[i]=10000+f64(i);}for i:0..<6 {s.velocity[i]=11000+f64(i);}return s;
+}
+pcs_same :: (a:PcSample,b:PcSample) {x:=pcs_words(a);y:=pcs_words(b);for i:0..<144 {#assert x[i]==y[i];}}

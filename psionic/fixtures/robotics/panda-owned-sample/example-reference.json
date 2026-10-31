@@ -1,0 +1,60 @@
+{
+  "schema": "psionic.panda-owned-sample.example-reference.v1",
+  "prewritten_before_example": true,
+  "reference_sha256": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+  "case_index": 13,
+  "fields": [
+    {
+      "label": "position 0 (um)",
+      "index": 0,
+      "micro": -436080
+    },
+    {
+      "label": "position 1 (um)",
+      "index": 1,
+      "micro": 202897
+    },
+    {
+      "label": "position 2 (um)",
+      "index": 2,
+      "micro": 1633424
+    },
+    {
+      "label": "linear velocity 0 (um/s)",
+      "index": 117,
+      "micro": -369917
+    },
+    {
+      "label": "linear velocity 1 (um/s)",
+      "index": 118,
+      "micro": 324773
+    },
+    {
+      "label": "linear velocity 2 (um/s)",
+      "index": 119,
+      "micro": -200486
+    },
+    {
+      "label": "angular velocity 0 (urad/s)",
+      "index": 120,
+      "micro": -97355
+    },
+    {
+      "label": "angular velocity 1 (urad/s)",
+      "index": 121,
+      "micro": 417416
+    },
+    {
+      "label": "angular velocity 2 (urad/s)",
+      "index": 122,
+      "micro": 806651
+    },
+    {
+      "label": "hinge 2 bias (uJ/rad)",
+      "index": 124,
+      "micro": -9051169
+    }
+  ],
+  "rounding": "floor(x*1000000+0.5)",
+  "golden_sha256": "131e930c8836dd861f8ede136e044fbfafe99465fe251f2a086509c4fdd0b23e"
+}

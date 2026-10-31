@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.panda-owned-sample.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "cases": [
+    {
+      "name": "angle",
+      "source_sha256": "27f43dec1aa730911e0e1f6db69628c3a1239b0b93702dddf5e81f5bbbaae946",
+      "argv": [
+        "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_angle.coax",
+        "--library"
+      ],
+      "exit": 1,
+      "diagnostic_sha256": "c9f42817d8540b2306c8e656fb4623375ee33e9e0a8b4f8ceeabd941956f3280",
+      "diagnostic": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_angle.coax:4:18: error[E0317]: argument 1 of 'pcs_forward' is [] Quantity(Radian, f64), given [] Quantity(Metre, f64)\n   r:=pcs_forward(q[..],s[..],v[..],w[..],out[..]);\n                   ^\n1 error\n"
+    },
+    {
+      "name": "rate",
+      "source_sha256": "5a1fe9ca9a82da7c81f8792786faea5689195db39d4ae2ccfe145dec6b97b465",
+      "argv": [
+        "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_rate.coax",
+        "--library"
+      ],
+      "exit": 1,
+      "diagnostic_sha256": "8643f382f0cf4b0f8b21057d9df62bd1295c211054c4967face24012b2ec1ca6",
+      "diagnostic": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_rate.coax:4:30: error[E0317]: argument 3 of 'pcs_forward' is [] Quantity(PidAngularRate, f64), given [] Quantity(Radian, f64)\n   r:=pcs_forward(q[..],s[..],v[..],w[..],out[..]);\n                               ^\n1 error\n"
+    },
+    {
+      "name": "slide_rate",
+      "source_sha256": "a29883b7408db2bf56a32c1ae17de23c36a66af86f0e7f65d58cb0bdb8d32e4e",
+      "argv": [
+        "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_slide_rate.coax",
+        "--library"
+      ],
+      "exit": 1,
+      "diagnostic_sha256": "0acd37f13455c9f37501a1064a13f4ac3a245dd60d04050e2ec3098473c8a8ed",
+      "diagnostic": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_sample_bad_slide_rate.coax:4:36: error[E0317]: argument 4 of 'pcs_forward' is [] Quantity(PidLinearRate, f64), given [] Quantity(PidAngularRate, f64)\n   r:=pcs_forward(q[..],s[..],v[..],w[..],out[..]);\n                                     ^\n1 error\n"
+    }
+  ]
+}

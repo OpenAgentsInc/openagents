@@ -1,0 +1,24 @@
+#import "Basic";
+#load "../lib/robotics/panda-owned-sample.coax";
+#test "Panda owned sample example display rounds signed coordinates independently" {
+ #assert panda_sample_micro(0.125)==125000 && panda_sample_micro(-0.125)== -125000 && panda_sample_micro(0)==0;
+}
+panda_sample_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("fixed Panda9: one fresh controller sample\n");
+// book:begin sample
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);w:[2]pfku.Quantity(PidLinearRate,f64);
+ coordinates:=[9]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9,0.017,-0.029];
+ rates:=[9]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1,0.03,-0.02];
+ for i:0..<7 {q[i].value=coordinates[i];v[i].value=rates[i];}
+ for i:0..<2 {s[i].value=coordinates[7+i];w[i].value=rates[7+i];}
+ sample:[1]PcSample;#assert pcs_forward(q[..],s[..],v[..],w[..],sample[..])==PcStatus.ok;
+ #assert pc_sample(sample[0])==PcStatus.ok;
+ for i:0..<3 {print("position % (um): %\n",i,panda_sample_micro(sample[0].position[i]));}
+ for i:0..<3 {print("linear velocity % (um/s): %\n",i,panda_sample_micro(sample[0].velocity[i]));}
+ for i:0..<3 {print("angular velocity % (urad/s): %\n",i,panda_sample_micro(sample[0].velocity[3+i]));}
+ print("hinge 2 bias (uJ/rad): %\n",panda_sample_micro(sample[0].bias[1]));
+// book:end sample
+ print("query only; no physics step\n");
+}

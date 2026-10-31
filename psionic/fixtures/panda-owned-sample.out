@@ -1,0 +1,12 @@
+fixed Panda9: one fresh controller sample
+position 0 (um): -436080
+position 1 (um): 202897
+position 2 (um): 1633424
+linear velocity 0 (um/s): -369917
+linear velocity 1 (um/s): 324773
+linear velocity 2 (um/s): -200486
+angular velocity 0 (urad/s): -97355
+angular velocity 1 (urad/s): 417416
+angular velocity 2 (urad/s): 806651
+hinge 2 bias (uJ/rad): -9051169
+query only; no physics step

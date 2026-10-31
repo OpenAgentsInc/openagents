@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.panda-owned-sample.changed-procedure-scope.v1",
+  "prior_full_source_sha256": "b859f2a4c0a67bcbdaa1fa695ff3d056f0d291d67fbea79bfc21e7e1cc1aa195",
+  "current_source_sha256": "fc6e0ca52e36ad031b1958e564069fe71b87306c0dcf7b6a8fdd5db312387a13",
+  "initial_mutation_result": {
+    "total": 100,
+    "killed": 97,
+    "survivors": 3,
+    "all_surviving_owner": "pcs_forward"
+  },
+  "changed_procedures": [
+    "pcs_forward"
+  ],
+  "unchanged_body_sha256": {
+    "pcs_status": "c91c8def4734585328403d6a68fb4fab6528cafddc6e211dc002e20c81c2b778",
+    "pcs_rates": "dcc49183cd76f6825d073d5dedb6b528f038091b5b9b12e3979b48a9e7ebd472",
+    "pcs_velocity": "5742285f48e19f006a6b6f03fb74ac5bf5c5e09e7050fafac7d9d4f271dd9a4d",
+    "pcs_pack": "3581c63fcef3153fd8d1e2cdd6a6742077fe8cd63fc3d213f436da71daadab04",
+    "pcs_forward_raw": "4afae002fcfbe0d2602a05cd6fe5b91e9a23746505d61e81261b92b5fe4376dd"
+  },
+  "entry_sha256": "79675fc7602049e627f7e3f5e9f57c84e9644c76b80d7229220bf64aba75ed2d",
+  "dependency_sha256": "788e0d12fd6eb2408b16358120058d838d22f725e42338275fdb53cb5ba40d54",
+  "scope": "Only exact changed pcs_forward body is entry source. All original checks remain; dense public output check is strengthened. Other five exact product bodies retain initial zero-survivor evidence. No waiver, check filtering or old passing procedure mutation rerun."
+}

@@ -1,0 +1,11 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/robotics/panda-owned-sample.coax:99:21: mutant survived: '||' became '&&'
+   if angles.count!=7 || slides.count!=2 || hinge_rates.count!=7 || slide_rates.count!=2 || output.count!=1 {return PcStatus.shape;}
+                      ^
+psionic/lib/robotics/panda-owned-sample.coax:102:19: mutant survived: the assignment was removed
+   for i:0..<7 {q[i]=angles[i];v[i]=hinge_rates[i];rawv[i]=hinge_rates[i].value;}for i:0..<2 {rawv[7+i]=slide_rates[i].value;}
+                    ^
+psionic/lib/robotics/panda-owned-sample.coax:102:34: mutant survived: the assignment was removed
+   for i:0..<7 {q[i]=angles[i];v[i]=hinge_rates[i];rawv[i]=hinge_rates[i].value;}for i:0..<2 {rawv[7+i]=slide_rates[i].value;}
+                                   ^
+100 mutants, 97 killed, 3 survived
