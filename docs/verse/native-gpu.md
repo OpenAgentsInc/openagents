@@ -140,6 +140,16 @@ Every phase and native feature is a task in the Verse project
 
 ## Status
 
+**The port is done (2026-10-31, release 2a94f5fab2).** G0 through G6 have
+each passed their exit check: all 16 realms in realms.json, and the
+fixture's painterly style, run natively on the 4080 with every 90th frame
+identical to vk-passes. Travel works from the galaxy. Every .wgsl in
+apps/openagents-web is `coax wgsl` output. The release's after-check passed
+every golden and Everglade at 60 FPS. What remains is the owner's
+play-through on the 4080's screen (NEEDS_OWNER.md), after which the
+Chromium kiosk can be retired. The Mac app over Metal and the later GPU
+tasks (native-gpu.json) come after the port.
+
 - 2026-10-30: plan written. G0 started: `verse/gpu/`.
 - 2026-10-30: G0 compute passes on `coderos-4080`, headless. `verse/gpu/build.sh`
   then `vk-check 1920x1080` runs the 393-word Coax module on the RTX 4080:
