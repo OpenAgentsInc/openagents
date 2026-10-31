@@ -138,6 +138,63 @@ main :: () {
 }
 ```
 
+## Conversation tokens
+
+[`nanochat-chat.coax`](../lib/nanochat-chat.coax) puts nanochat's conversation
+format on top of this vocabulary. The pinned `tokenizer.py` appends nine
+special tokens after the ordinary ones, in a fixed order (`<|bos|>`,
+`<|user_start|>`, `<|user_end|>`, `<|assistant_start|>`, `<|assistant_end|>`,
+`<|python_start|>`, `<|python_end|>`, `<|output_start|>`, `<|output_end|>`), so
+the learned 320-token table gives IDs 320 to 328. `nc_specials` refuses a
+declared special ID that collides with an ordinary token, repeats, reorders, or
+falls outside the model vocabulary.
+
+`nc_render` follows `render_conversation`: `<|bos|>` first; a leading system
+message joins the first user message with two newlines; user and assistant then
+alternate; user text, the start tokens and python output are unsupervised (mask
+0), while assistant text, python calls and `<|assistant_end|>` are supervised
+(mask 1); the first `max_tokens` (at most 2,048) are kept and the full length
+is reported. Text is always ordinary bytes: a user who types `<|bos|>` gets the
+bytes of `<|bos|>`, not the special token. Every refusal, including invalid
+UTF-8 in the last part, happens before any ID is written. `nc_document` is a
+pretraining document: `<|bos|>` and the text.
+
+Bits per byte follow nanochat's `evaluate_bpb`: an ignored target (below 0)
+counts nothing, a special token counts zero bytes, and the result is nats over
+`ln 2` times bytes.
+
+<!-- source: psionic/lib/nanochat-chat.coax bpb -->
+```jai
+nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c {
+    if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcStatus.artifact};}
+    if targets.count!=losses.count {return NcBpb.{status=NcStatus.shape};}
+    nats:PsionicAccumulator;bytes:=0;
+    for i:0..<targets.count {
+        if !(losses[i]>=0 && losses[i]<=NC_LOSS_MAX) {return NcBpb.{status=NcStatus.number};}
+        if targets[i]<0 {continue;}
+        b:=nc_token_bytes(table,targets[i]);if b<0 {return NcBpb.{status=NcStatus.shape};}
+        if b>0 {nats=psionic_ops_accumulate(nats,losses[i]);bytes+=b;}
+    }
+    if bytes==0 {return NcBpb.{status=NcStatus.shape};}
+    total:=psionic_ops_total(nats);
+    return NcBpb.{nats=total,bytes=bytes,bpb=total/(log(2.0)*f64(bytes))};
+}
+```
+
+This is inference compatibility with a nanochat-format tokenizer, checked
+against an [independent oracle](../tests/nanochat_chat_oracle.py) that splits
+with Python's `re` and Unicode 17 classes, merges by lowest rank, reproduces
+all 147 retained vectors first, and then renders six conversations (system
+merge, tool call and output, Unicode, two-digit numbers, special-looking text,
+truncation), four BOS documents and one bits-per-byte case. It is not a
+reproduction of upstream tokenizer training: nanochat trains its 32,768-token
+vocabulary with rustbpe on its own corpus, and our 64 merges, corpus and tie
+rule are this chapter's own.
+
+```shell
+psionic/check.sh --only nanochat-chat --jobs 8
+```
+
 ```shell
 coax/bin/coax run psionic/examples/bpe-train.coax
 psionic/check.sh --only bpe-train --jobs 8

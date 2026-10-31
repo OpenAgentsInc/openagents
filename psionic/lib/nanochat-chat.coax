@@ -1,0 +1,224 @@
+// nanochat conversation tokens over the chapter 77 byte BPE (profile
+// byte-bpe-nanochat2-u17-v1). From the pinned tokenizer.py at 92d63d4e:
+// nine special tokens follow the ordinary vocabulary in a fixed order;
+// render_conversation begins with <|bos|>, merges a leading system message
+// into the first user message with "\n\n", alternates user and assistant,
+// supervises (mask 1) only assistant text, python calls and <|assistant_end|>,
+// leaves python output unsupervised, and keeps the first max_tokens. Text is
+// encoded as ordinary bytes: "<|bos|>" typed by a user is not a special token.
+// evaluate_bpb's accounting: a target below 0 is ignored, a special token
+// carries zero bytes, and bits per byte is nats / (ln 2 * bytes).
+// This is inference compatibility with a nanochat-format tokenizer; it does
+// not reproduce upstream tokenizer training results (chapter 77 says why).
+#load "bpe-train.coax";
+#load "ops.coax";
+#authority;
+NcRole :: enum u8 {system;user;assistant;}
+NcPartKind :: enum u8 {text;python;output;}
+NcPart :: struct {kind:NcPartKind;text:string;}
+// list=false: content is text. list=true: content is parts[first..<first+parts].
+NcMessage :: struct {role:NcRole;text:string;list:bool;first:int;parts:int;}
+NcStatus :: enum u8 {ok;shape;size;capacity;alias;utf8;artifact;number;}
+NcResult :: struct {status:NcStatus;written:int;total:int;}
+NcBpb :: struct {status:NcStatus;nats:f64;bytes:int;bpb:f64;}
+NC_SPECIAL_COUNT :: 9;
+NC_MAX_TOKENS :: 2048;
+// A per-token loss in nats: NaN, infinities, negatives and anything past this refuse.
+NC_LOSS_MAX :: 10000.0;
+NC_USER_START :: 1;NC_USER_END :: 2;NC_ASSISTANT_START :: 3;NC_ASSISTANT_END :: 4;
+NC_PYTHON_START :: 5;NC_PYTHON_END :: 6;NC_OUTPUT_START :: 7;NC_OUTPUT_END :: 8;
+NC_SPECIAL_NAMES :: [9]string.["<|bos|>","<|user_start|>","<|user_end|>","<|assistant_start|>","<|assistant_end|>","<|python_start|>","<|python_end|>","<|output_start|>","<|output_end|>"];
+
+// Checks precede the implementation; the independent goldens are loaded at the end.
+nc_fixture_specials :: (out:[]int) {for i:0..<9 {out[i]=NC_BASE+i;}}
+#test "declared special IDs must follow the ordinary vocabulary in nanochat's order" {
+    table:=NC_LEARNED;sp:[9]int;nc_fixture_specials(sp[..]);
+    #assert NC_BASE==320 && pt_layout(table[..]).counts[0]==320 && nc_ok(pt_layout(table[..])) && !nc_ok(pt_layout(table[0..<2000])) && pt_layout(table[0..<2000]).status==PtStatus.artifact && pt_layout(table[0..<2000]).counts[0]==0 && nc_specials(table[..],sp[..],329)==NcStatus.ok && nc_specials(table[..],sp[..],32768)==NcStatus.ok;
+    #assert nc_specials(table[..],sp[..],328)==NcStatus.artifact && nc_specials(table[..],sp[0..<8],32768)==NcStatus.artifact && nc_specials(table[0..<2000],sp[..],32768)==NcStatus.artifact;
+    for k:0..<9 {
+        q:=sp;q[k]=NC_BASE-1;#assert nc_specials(table[..],q[..],32768)==NcStatus.artifact; // collides with an ordinary token
+        q=sp;q[k]=sp[(k+1)%9];#assert nc_specials(table[..],q[..],32768)==NcStatus.artifact; // duplicate or reordered
+    }
+    toy:=PT_TOY;#assert pt_layout(toy[..]).status==PtStatus.ok && !nc_ok(pt_layout(toy[..])) && nc_specials(toy[..],sp[..],32768)==NcStatus.artifact; // chapter 5's Qwen toy is not a byte-BPE profile
+    #assert nc_status(PtStatus.utf8)==NcStatus.utf8 && nc_status(PtStatus.size)==NcStatus.size && nc_status(PtStatus.range)==NcStatus.artifact && nc_status(PtStatus.budget)==NcStatus.artifact;
+}
+#test "conversation shape, limits, capacity and alias refuse before anything is written" {
+    table:=NC_LEARNED;sp:[9]int;nc_fixture_specials(sp[..]);ids:[2048]int;mask:[2048]u8;for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    u:=NcMessage.{role=NcRole.user,text="hi"};a:=NcMessage.{role=NcRole.assistant,text="ok"};sy:=NcMessage.{role=NcRole.system,text="be"};
+    parts:=[2]NcPart.[NcPart.{text="x"},NcPart.{kind=NcPartKind.python,text="1"}];
+    ok:=[2]NcMessage.[u,a];
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],1,ids[..],mask[..],false).status==NcStatus.ok && ids[0]==320 && mask[0]==0 && ids[1]==-7;
+    full:=nc_render(table[..],sp[..],32768,ok[..],parts[..],2048,ids[..],mask[..],false);
+    #assert full.status==NcStatus.ok && full.written==full.total && full.written>=7 && ids[full.written-1]==324 && mask[full.written-1]==1 && ids[1]==321 && mask[1]==0;
+    for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    #assert nc_render(table[..],sp[..],328,ok[..],parts[..],8,ids[..],mask[..],false).status==NcStatus.artifact;
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],0,ids[..],mask[..],false).status==NcStatus.shape;
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],2049,ids[..],mask[..],false).status==NcStatus.shape;
+    #assert nc_render(table[..],sp[..],32768,ok[0..<0],parts[..],8,ids[..],mask[..],false).status==NcStatus.shape;
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],8,ids[0..<7],mask[..],false).status==NcStatus.capacity;
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],8,ids[..],mask[0..<7],false).status==NcStatus.capacity;
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[..],8,ids[0..<8],mask[0..<8],true).status==NcStatus.alias;
+    orders:=[6][3]NcMessage.[[3]NcMessage.[a,u,a],[3]NcMessage.[u,u,a],[3]NcMessage.[u,a,a],[3]NcMessage.[sy,a,u],[3]NcMessage.[u,sy,a],[3]NcMessage.[sy,sy,u]];
+    for k:0..<6 {m:=orders[k];#assert nc_render(table[..],sp[..],32768,m[..],parts[..],8,ids[..],mask[..],false).status==NcStatus.shape;}
+    // A system and a user message with no assistant reply is a whole conversation.
+    pair:=[2]NcMessage.[sy,u];r2:=nc_render(table[..],sp[..],32768,pair[..],parts[..],64,ids[..],mask[..],false);
+    #assert r2.status==NcStatus.ok && r2.written==r2.total && ids[0]==320 && ids[1]==321 && ids[r2.written-1]==322;for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    // Text content ignores the parts array entirely.
+    #assert nc_render(table[..],sp[..],32768,ok[..],parts[0..<0],2048,ids[..],mask[..],false).written==full.written;for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    alone:=[1]NcMessage.[sy];#assert nc_render(table[..],sp[..],32768,alone[..],parts[..],8,ids[..],mask[..],false).status==NcStatus.shape;
+    // Parts belong to assistant messages and stay inside the parts array.
+    l:=a;l.list=true;l.first=0;l.parts=2;m:=[2]NcMessage.[u,l];
+    #assert nc_render(table[..],sp[..],32768,m[..],parts[..],32,ids[..],mask[..],false).status==NcStatus.ok;for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    edges:=[4][2]int.[[2]int.[1,2],[2]int.[0,3],[2]int.[-1,1],[2]int.[0,-1]];
+    for k:0..<4 {m[1].first=edges[k][0];m[1].parts=edges[k][1];#assert nc_render(table[..],sp[..],32768,m[..],parts[..],32,ids[..],mask[..],false).status==NcStatus.shape;}
+    m[1].first=2;m[1].parts=0;#assert nc_render(table[..],sp[..],32768,m[..],parts[..],32,ids[..],mask[..],false).status==NcStatus.ok;for i:0..<2048 {ids[i]=-7;mask[i]=7;}
+    lu:=u;lu.list=true;m[0]=lu;m[1]=a;#assert nc_render(table[..],sp[..],32768,m[..],parts[0..<0],32,ids[..],mask[..],false).status==NcStatus.shape;
+    s2:=[3]NcMessage.[sy,lu,a];#assert nc_render(table[..],sp[..],32768,s2[..],parts[..],32,ids[..],mask[..],false).status==NcStatus.shape;
+    for i:0..<2048 {#assert ids[i]==-7 && mask[i]==7;}
+}
+#test "late text failures are atomic, and a merged system message must fit" {
+    table:=NC_LEARNED;sp:[9]int;nc_fixture_specials(sp[..]);ids:[64]int;mask:[64]u8;for i:0..<64 {ids[i]=-7;mask[i]=7;}
+    bad:=[1]u8.[255];
+    parts:=[3]NcPart.[NcPart.{text="x"},NcPart.{kind=NcPartKind.python,text="1"},NcPart.{kind=NcPartKind.output,text="2"}];
+    // Invalid UTF-8 in the user text, the assistant text, or any of the three
+    // part kinds (the last message to be encoded) refuses with nothing written.
+    for where:0..<5 {
+        m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text="hi"},NcMessage.{role=NcRole.assistant,text="ok"}];p:=parts;
+        if where==0 {m[0].text=cast(string)bad[..];} else if where==1 {m[1].text=cast(string)bad[..];}
+        else {m[1].list=true;m[1].parts=3;p[where-2].text=cast(string)bad[..];}
+        #assert nc_render(table[..],sp[..],32768,m[..],p[..],64,ids[..],mask[..],false).status==NcStatus.utf8;
+    }
+    for i:0..<64 {#assert ids[i]==-7 && mask[i]==7;}
+    huge:[4097]u8;for i:0..<4097 {huge[i]='a';}
+    over:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=cast(string)huge[..]},NcMessage.{role=NcRole.assistant,text="ok"}];
+    #assert nc_render(table[..],sp[..],32768,over[..],parts[..],64,ids[..],mask[..],false).status==NcStatus.size && ids[0]==-7;
+    // system + "\n\n" + user must fit the 4,096-byte merge buffer.
+    s:=[3]NcMessage.[NcMessage.{role=NcRole.system,text=cast(string)huge[0..<4093]},NcMessage.{role=NcRole.user,text="bb"},NcMessage.{role=NcRole.assistant,text="c"}];
+    #assert nc_render(table[..],sp[..],32768,s[..],parts[..],64,ids[..],mask[..],false).status==NcStatus.size && ids[0]==-7;
+    s[0].text="a";s[1].text="b";#assert nc_render(table[..],sp[..],32768,s[..],parts[..],64,ids[..],mask[..],false).status==NcStatus.ok;
+    j:[5]u8;big:[4096]u8;#assert nc_join(big[..],cast(string)huge[0..<4093],"b") && !nc_join(big[..],cast(string)huge[0..<4093],"bb");
+    #assert nc_join(j[..],"ab","c") && j[0]=='a' && j[1]=='b' && j[2]==10 && j[3]==10 && j[4]=='c' && !nc_join(j[..],"ab","cd") && nc_join(j[0..<4],"ab","");
+}
+#test "a document needs room for BOS; token bytes and bits per byte refuse what they cannot count" {
+    table:=NC_LEARNED;ids:[3]int;ids[0]=-7;bad:=[1]u8.[255];
+    #assert nc_document(table[..],"ab",ids[0..<1],false).status==NcStatus.capacity && nc_document(table[..],"ab",ids[..],true).status==NcStatus.alias && ids[0]==-7;
+    #assert nc_document(table[..],cast(string)bad[..],ids[..],false).status==NcStatus.utf8 && nc_document(table[0..<2000],"a",ids[..],false).status==NcStatus.artifact;
+    r:=nc_document(table[..],"",ids[..],false);#assert r.status==NcStatus.ok && r.written==1 && r.total==1 && ids[0]==320;
+    r=nc_document(table[..],"a",ids[0..<2],false);#assert r.status==NcStatus.ok && r.written==2 && r.total==2 && ids[0]==320 && ids[1]==97;
+    #assert nc_token_bytes(table[..],-1)==-1 && nc_token_bytes(table[..],0)==1 && nc_token_bytes(table[..],319)>1 && nc_token_bytes(table[..],320)==0 && nc_token_bytes(table[..],328)==0 && nc_token_bytes(table[..],329)==-1 && nc_token_bytes(table[0..<2000],0)==-1;
+    t:=[2]int.[72,101];l:=[2]f64.[1,NC_LOSS_MAX];
+    ok:=nc_bpb(table[..],t[..],l[..]);#assert ok.status==NcStatus.ok && ok.bytes==2 && ok.nats==1+NC_LOSS_MAX;
+    l[1]=0;ok=nc_bpb(table[..],t[..],l[..]);#assert ok.status==NcStatus.ok && ok.nats==1 && ok.bpb==1/(2*log(2.0));
+    zero:=0.0;for x:[4]f64.[-0.5,NC_LOSS_MAX*2,zero/zero,1/zero] {l[0]=x;#assert nc_bpb(table[..],t[..],l[..]).status==NcStatus.number;}
+    l[0]=1;#assert nc_bpb(table[..],t[0..<1],l[..]).status==NcStatus.shape && nc_bpb(table[0..<2000],t[..],l[..]).status==NcStatus.artifact;
+    t[1]=329;#assert nc_bpb(table[..],t[..],l[..]).status==NcStatus.shape;
+    t[0]=-1;t[1]=320;#assert nc_bpb(table[..],t[..],l[..]).status==NcStatus.shape; // nothing left to count
+    t[0]=0;t[1]=72;l[0]=0.25;l[1]=0.5;ok=nc_bpb(table[..],t[..],l[..]);#assert ok.status==NcStatus.ok && ok.bytes==2 && ok.nats==0.75; // byte 0 is a token like any other
+    t[0]=-2;t[1]=72;l[0]=NC_LOSS_MAX*2;#assert nc_bpb(table[..],t[..],l[..]).status==NcStatus.number; // an ignored target's loss is still checked
+}
+// A chapter 77 table: a PST5 layout with the byte-BPE profile. A layout that
+// failed has zero counts, which the profile (256 + merges ordinary tokens)
+// already refuses. The ordinary vocabulary is t.counts[0]; specials follow it.
+nc_ok :: (t:PtLayout)->bool {return bt_profile(t);}
+// An artifact's declared special IDs: exactly base+0..base+8 in nanochat's
+// order, inside the model vocabulary. Anything else collides or reorders.
+nc_specials :: (table:[]u8,specials:[]int,vocab:int)->NcStatus #export_c {
+    t:=pt_layout(table);if !nc_ok(t) || specials.count!=NC_SPECIAL_COUNT {return NcStatus.artifact;}
+    base:=t.counts[0];if base+NC_SPECIAL_COUNT>vocab {return NcStatus.artifact;}
+    for i:0..<NC_SPECIAL_COUNT {if specials[i]!=base+i {return NcStatus.artifact;}}
+    return NcStatus.ok;
+}
+nc_status :: (s:PtStatus)->NcStatus {
+    if s==PtStatus.utf8 {return NcStatus.utf8;}
+    if s==PtStatus.size {return NcStatus.size;}
+    return NcStatus.artifact;
+}
+NcStage :: struct {n:int;total:int;limit:int;ids:[2048]int;mask:[2048]u8;}
+nc_add :: (s:[]NcStage,id:int,m:u8) {if s[0].n<s[0].limit {s[0].ids[s[0].n]=id;s[0].mask[s[0].n]=m;s[0].n+=1;}s[0].total+=1;}
+nc_text :: (s:[]NcStage,table:[]u8,text:string,m:u8)->NcStatus {
+    e:=bt_encode(table,text);if e.status!=PtStatus.ok {return nc_status(e.status);}
+    for i:0..<e.written {nc_add(s,e.ids[i],m);}return NcStatus.ok;
+}
+// system + "\n\n" + user into out[0..<a.count+2+b.count]; false when it does not fit.
+nc_join :: (out:[]u8,a:string,b:string)->bool {
+    if a.count+2+b.count>out.count {return false;}
+    for i:0..<a.count {out[i]=a[i];}out[a.count]=10;out[a.count+1]=10;for i:0..<b.count {out[a.count+2+i]=b[i];}
+    return true;
+}
+// book:begin render
+nc_render :: (table:[]u8,specials:[]int,vocab:int,messages:[]NcMessage,parts:[]NcPart,max_tokens:int,ids:[]int,mask:[]u8,overlap:bool)->NcResult #export_c {
+    status:=nc_specials(table,specials,vocab);if status!=NcStatus.ok {return NcResult.{status=status};}
+    if max_tokens<1 || max_tokens>NC_MAX_TOKENS || messages.count==0 {return NcResult.{status=NcStatus.shape};}
+    if ids.count<max_tokens || mask.count<max_tokens {return NcResult.{status=NcStatus.capacity};}
+    if overlap {return NcResult.{status=NcStatus.alias};}
+    for m:messages {if m.list && (m.role!=NcRole.assistant || m.first<0 || m.parts<0 || m.first>parts.count-m.parts) {return NcResult.{status=NcStatus.shape};}}
+    start:=0;merged:[4096]u8;user:="";
+    if messages[0].role==NcRole.system {
+        // A list-content user was already refused above.
+        if messages.count<2 || messages[1].role!=NcRole.user {return NcResult.{status=NcStatus.shape};}
+        if !nc_join(merged[..],messages[0].text,messages[1].text) {return NcResult.{status=NcStatus.size};}
+        user=cast(string)merged[0..<messages[0].text.count+2+messages[1].text.count];start=1;
+    }
+    want:=NcRole.user;
+    for i:start..<messages.count {if messages[i].role!=want {return NcResult.{status=NcStatus.shape};}want=ifx want==NcRole.user then NcRole.assistant else NcRole.user;}
+    s:[1]NcStage;s[0].limit=max_tokens;base:=specials[0];
+    nc_add(s[..],base,0); // <|bos|>
+    for i:start..<messages.count {
+        m:=messages[i];
+        if m.role==NcRole.user {
+            text:=ifx i==start && start==1 then user else m.text;
+            nc_add(s[..],base+NC_USER_START,0);status=nc_text(s[..],table,text,0);if status!=NcStatus.ok {return NcResult.{status=status};}nc_add(s[..],base+NC_USER_END,0);
+        } else {
+            nc_add(s[..],base+NC_ASSISTANT_START,0);
+            if !m.list {status=nc_text(s[..],table,m.text,1);if status!=NcStatus.ok {return NcResult.{status=status};}}
+            else {
+                for k:m.first..<m.first+m.parts {
+                    p:=parts[k];
+                    if p.kind==NcPartKind.text {status=nc_text(s[..],table,p.text,1);}
+                    else if p.kind==NcPartKind.python {nc_add(s[..],base+NC_PYTHON_START,1);status=nc_text(s[..],table,p.text,1);nc_add(s[..],base+NC_PYTHON_END,1);}
+                    else {nc_add(s[..],base+NC_OUTPUT_START,0);status=nc_text(s[..],table,p.text,0);nc_add(s[..],base+NC_OUTPUT_END,0);}
+                    if status!=NcStatus.ok {return NcResult.{status=status};}
+                }
+            }
+            nc_add(s[..],base+NC_ASSISTANT_END,1);
+        }
+    }
+    for i:0..<s[0].n {ids[i]=s[0].ids[i];mask[i]=s[0].mask[i];}
+    return NcResult.{written=s[0].n,total=s[0].total};
+}
+// book:end render
+// A pretraining document: <|bos|> then the text's ordinary tokens.
+nc_document :: (table:[]u8,text:string,ids:[]int,overlap:bool)->NcResult #export_c {
+    t:=pt_layout(table);if !nc_ok(t) {return NcResult.{status=NcStatus.artifact};}
+    e:=bt_encode(table,text);if e.status!=PtStatus.ok {return NcResult.{status=nc_status(e.status)};}
+    if ids.count<e.written+1 {return NcResult.{status=NcStatus.capacity};}
+    if overlap {return NcResult.{status=NcStatus.alias};}
+    ids[0]=t.counts[0];for i:0..<e.written {ids[i+1]=e.ids[i];}
+    return NcResult.{written=e.written+1,total=e.written+1};
+}
+// Bytes a token stands for: its ordinary bytes, 0 for a special token, -1 outside the vocabulary.
+nc_token_bytes :: (table:[]u8,id:int)->int #export_c {
+    t:=pt_layout(table);if !nc_ok(t) {return -1;}
+    if id>=t.counts[0] && id<t.counts[0]+NC_SPECIAL_COUNT {return 0;}
+    // Negative and past-the-end IDs are pt_span's range refusals.
+    s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return -1;}return s.end-s.begin;
+}
+// book:begin bpb
+nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c {
+    if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcStatus.artifact};}
+    if targets.count!=losses.count {return NcBpb.{status=NcStatus.shape};}
+    nats:PsionicAccumulator;bytes:=0;
+    for i:0..<targets.count {
+        if !(losses[i]>=0 && losses[i]<=NC_LOSS_MAX) {return NcBpb.{status=NcStatus.number};}
+        if targets[i]<0 {continue;}
+        b:=nc_token_bytes(table,targets[i]);if b<0 {return NcBpb.{status=NcStatus.shape};}
+        if b>0 {nats=psionic_ops_accumulate(nats,losses[i]);bytes+=b;}
+    }
+    if bytes==0 {return NcBpb.{status=NcStatus.shape};}
+    total:=psionic_ops_total(nats);
+    return NcBpb.{nats=total,bytes=bytes,bpb=total/(log(2.0)*f64(bytes))};
+}
+// book:end bpb
+
+#load "../fixtures/nanochat/learned.coax";
+#load "../fixtures/nanochat/chat-goldens.coax";

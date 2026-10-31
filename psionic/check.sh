@@ -82,6 +82,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == model-pins ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_model_pins.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == nanochat-chat ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_nanochat_chat.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == interchange || $chapter == interchange-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     fi
@@ -308,7 +311,7 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; bpe_train=0; byte_lm=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; nanochat_chat=0; bpe_train=0; byte_lm=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
 robotics=0;robotics_requested=()
 picks_robotics() { local n=${1%.coax};n=${n#psionic/lib/};[[ $n == robotics || $n == robotics/sim || $n == robotics/evaluate || $n == robotics/learn || $n == robotics/singlearm ]]; }
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
@@ -317,6 +320,7 @@ picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == g
 picks_tokenizer_families() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tokenizer-families || $n == tokenizer-families-* ]]; }
 picks_byte_lm() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == byte-lm || $n == byte-lm-* ]]; }
 picks_model_pins() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == model-pins ]]; }
+picks_nanochat_chat() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == nanochat-chat ]]; }
 picks_bpe_train() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == bpe-train || $n == bpe-train-* ]]; }
 picks_interchange() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == interchange || $n == interchange-* ]]; }
 picks_tensor_ir() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-ir || $n == tensor-ir-* ]]; }
@@ -330,6 +334,7 @@ if [[ ${#only[@]} -eq 0 ]]; then
     interchange=1
     bpe_train=1
     model_pins=1
+    nanochat_chat=1
     byte_lm=1
     tokenizer_families=1
     gguf=1
@@ -347,6 +352,7 @@ else
         if picks_byte_lm "$n"; then hit=1; byte_lm=1; fi
         if picks_bpe_train "$n"; then hit=1; bpe_train=1; fi
         if picks_model_pins "$n"; then hit=1; model_pins=1; fi
+        if picks_nanochat_chat "$n"; then hit=1; nanochat_chat=1; fi
         if picks_interchange "$n"; then hit=1; interchange=1; fi
         if picks_operator_registry "$n"; then hit=1; operator_registry=1; fi
         if picks_tensor_template "$n"; then hit=1; tensor_template=1; fi
@@ -489,6 +495,10 @@ fi
 if [[ $bpe_train == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_bpe_train.sh --mutate --jobs "$jobs"
     phase "chapter 77: bpe-train"
+fi
+if [[ $nanochat_chat == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_nanochat_chat.sh --mutate --jobs "$jobs"
+    phase "chapter 77: nanochat conversation tokens"
 fi
 if [[ $interchange == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
