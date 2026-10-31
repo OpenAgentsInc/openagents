@@ -53,6 +53,12 @@ int64_t cxproc_stderr_count(int64_t h);
 int64_t cxproc_stderr_byte(int64_t h, int64_t i);
 int64_t cxproc_release(int64_t h);
 int64_t cxproc_now_ms(void);
+/* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
+   instead of pipes (a browser that logs freely must never block on a pipe
+   nobody reads). stdin stays a pipe. */
+int64_t cxproc_quiet(int64_t h);
+/* Sleeps ms milliseconds (0..86400000): 0, or -1. */
+int64_t cxproc_sleep_ms(int64_t ms);
 /* The host's own environment: cxproc_getenv_push the name's bytes, then
    cxproc_getenv returns the value's length (or -1 when unset) and
    cxproc_getenv_byte its bytes, until the next lookup. */

@@ -1,0 +1,58 @@
+// The native check of coax/lib/sys: real files, real child processes, real
+// argv. `coax test` cannot reach these effects (foreign calls do not run
+// while checking), so this program does, and prints "sys selftest: ok".
+//   coax/web/tool.sh coax/lib/sys/selftest.coax one "two words"
+#import "Basic";
+#load "tool.coax";
+#load "fs.coax";
+#load "proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+tool_main :: () -> int #export_c {
+  bad := 0;
+  a: [1] Args;
+  bad += check(args_load(a[..]) && args_count(a[..]) == 2 && args_at(a[..], 0) == "one" && args_at(a[..], 1) == "two words", "argv arrives whole");
+  tmp: [1024] u8;
+  dir := fs_temp("coax-sys-", tmp[..]);
+  bad += check(dir.count > 0 && fs_kind(dir) == FS_DIR, "a temporary directory");
+  p: [1024] u8; q: [1024] u8; data: [64] u8;
+  f := fs_join(dir, "a.txt", p[..]);
+  bad += check(fs_write(f, "hello") && fs_append(f, " world") && fs_size(f) == 11, "write, append, size");
+  n := fs_read(f, data[..]);
+  bad += check(n == 11 && cast(string) data[0..<n] == "hello world" && fs_read(f, data[0..<4]) == -1, "read whole, refuse a short buffer");
+  sub := fs_join(dir, "x/y/z", q[..]);
+  bad += check(fs_mkdir(sub) && fs_kind(sub) == FS_DIR && fs_mkdir(sub), "mkdir with parents, twice");
+  l: [1] FsList;
+  bad += check(fs_list(dir, l[..]) == 2 && fs_entry(l[..], 0) == "a.txt" && fs_entry(l[..], 1) == "x", "list, sorted");
+  bad += check(fs_kind(fs_join(dir, "nope", q[..])) == FS_NONE && fs_read(dir, data[..]) == -1 && fs_list(f, l[..]) == -1, "missing, not-a-file, not-a-dir");
+  out: [4096] u8; err: [4096] u8;
+  echo := [3] string.["sh", "-c", "echo one; echo two; echo oops >&2; exit 3"];
+  r := proc_run(echo[..], 10000, out[..], err[..]);
+  bad += check(r.started == 0 && r.status == 3 && cast(string) out[0..<r.out_n] == "one\ntwo" && cast(string) err[0..<r.err_n] == "oops\n" && !r.timed_out, "run: stdout lines, stderr, status");
+  t0 := proc_now_ms();
+  slow := [2] string.["sleep", "30"];
+  r = proc_run(slow[..], 300, out[..], err[..]);
+  took := proc_now_ms() - t0;
+  bad += check(r.timed_out && r.status == 137 && took < 5000, "a timeout kills the child");
+  none := [1] string.["coax-no-such-program"];
+  r = proc_run(none[..], 1000, out[..], err[..]);
+  bad += check(r.started == PROC_ENOENT, "a missing program is ENOENT");
+  h := proc_new();
+  ok := proc_arg(h, "sh") && proc_arg(h, "-c") && proc_arg(h, "echo loud; echo loud >&2; echo $COAX_SYS_X") && proc_env(h, "COAX_SYS_X=1") && proc_quiet(h);
+  bad += check(ok && proc_start(h) == 0 && proc_line(h, 5000, out[..]) == PROC_EOF && proc_wait(h, 5000) == 0 && proc_release(h), "quiet: output dropped, exit 0");
+  t0 = proc_now_ms(); proc_sleep(120);
+  bad += check(proc_now_ms() - t0 >= 110, "sleep");
+  env: [256] u8;
+  bad += check(proc_getenv("HOME", env[..]).count > 0 && !proc_has_env("COAX_SYS_SURELY_UNSET"), "environment");
+  cwd: [4096] u8;
+  bad += check(fs_cwd(cwd[..]).count > 0, "working directory");
+  bad += check(fs_remove(dir) && fs_kind(dir) == FS_NONE && fs_remove(dir), "remove a tree, and again");
+  if bad == 0 { print("sys selftest: ok\n"); return 0; }
+  print("sys selftest: % failed\n", bad);
+  return 1;
+}

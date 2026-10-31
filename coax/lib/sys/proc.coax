@@ -1,0 +1,165 @@
+// Child processes for Coax tools: start a program with arguments, read its
+// output, wait with a timeout, kill its whole process group. Effects are
+// coax/platform/process-native.c (cxproc_*, shared with the agent SDKs);
+// what to run and when to give up is decided here and by the caller.
+//   h := proc_new();
+//   ok := proc_arg(h, "ffmpeg") && proc_arg(h, "-version");
+//   if ok && proc_start(h) == 0 { ... proc_wait(h, 5000) ... }
+//   r := proc_release(h);
+// or, for a program run to its end:
+//   argv := [2] string.["ffmpeg", "-version"]; out: [65536] u8; err: [4096] u8;
+//   r := proc_run(argv[..], 60000, out[..], err[..]);   // r.status, r.out_n, r.err_n, r.timed_out
+// Every child runs in its own process group; a timeout kills the group.
+
+cxproc_new :: () -> int #foreign;
+cxproc_push :: (h: int, field: int, byte: int) -> int #foreign;
+cxproc_end :: (h: int, field: int) -> int #foreign;
+cxproc_quiet :: (h: int) -> int #foreign;
+cxproc_spawn :: (h: int) -> int #foreign;
+cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign;
+cxproc_line_byte :: (h: int, i: int) -> int #foreign;
+cxproc_write :: (h: int, byte: int) -> int #foreign;
+cxproc_flush :: (h: int) -> int #foreign;
+cxproc_close_stdin :: (h: int) -> int #foreign;
+cxproc_kill :: (h: int, sig: int) -> int #foreign;
+cxproc_wait :: (h: int, timeout_ms: int) -> int #foreign;
+cxproc_pid :: (h: int) -> int #foreign;
+cxproc_stderr_count :: (h: int) -> int #foreign;
+cxproc_stderr_byte :: (h: int, i: int) -> int #foreign;
+cxproc_release :: (h: int) -> int #foreign;
+cxproc_now_ms :: () -> int #foreign;
+cxproc_sleep_ms :: (ms: int) -> int #foreign;
+cxproc_getenv_push :: (byte: int) -> int #foreign;
+cxproc_getenv :: () -> int #foreign;
+cxproc_getenv_byte :: (i: int) -> int #foreign;
+
+PROC_EOF :: -1; PROC_TIMEOUT :: -2; PROC_ERROR :: -3; PROC_TOO_LONG :: -4;
+PROC_RUNNING :: -2;              // proc_wait: still running at the timeout
+PROC_SIGKILL :: 9; PROC_SIGTERM :: 15;
+PROC_ARG :: 0; PROC_ENV :: 1; PROC_UNSET :: 2; PROC_CWD :: 3;
+PROC_ENOENT :: 2;                // proc_start: the program was not found
+
+#test "deadlines: what is left, never below zero, -1 for ever" {
+  #assert proc_left(-1, 500) == -1 && proc_left(1000, 400) == 600 && proc_left(1000, 1000) == 0 && proc_left(1000, 2000) == 0;
+  #assert proc_deadline(500, 100) == 600 && proc_deadline(-1, 100) == -1 && proc_deadline(0, 100) == 100;
+}
+// The absolute deadline for a timeout from now (-1: none).
+proc_deadline :: (timeout_ms: int, now: int) -> int { return ifx timeout_ms < 0 then -1 else now + timeout_ms; }
+// How long a wait may last before deadline: -1 for ever, else at least 0.
+proc_left :: (deadline: int, now: int) -> int {
+  if deadline < 0 { return -1; }
+  return ifx deadline > now then deadline - now else 0;
+}
+#test "exit statuses read as words" {
+  out: [64] u8;
+  #assert proc_status_text(0, false, out[..]) == "exit 0" && proc_status_text(137, false, out[..]) == "signal 9";
+  #assert proc_status_text(1, false, out[..]) == "exit 1" && proc_status_text(-1, false, out[..]) == "unknown status";
+  #assert proc_status_text(0, true, out[..]) == "timed out" && proc_status_text(255, false, out[..]) == "exit 255";
+}
+// What a proc_wait status means: "exit N", "signal N", "timed out".
+proc_status_text :: (status: int, timed_out: bool, out: [] u8) -> string {
+  if timed_out { return "timed out"; }
+  if status < 0 { return "unknown status"; }
+  word := ifx status > 128 && status < 160 then "signal " else "exit ";
+  v := ifx status > 128 && status < 160 then status - 128 else status;
+  n := 0;
+  for c: word { out[n] = c; n += 1; }
+  tmp: [8] u8; k := 0;
+  while true { tmp[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// A free process slot, or -1.
+proc_new :: () -> int { return cxproc_new(); }
+proc_field :: (h: int, field: int, s: string) -> bool {
+  for c: s { if c == 0 || cxproc_push(h, field, cast(int) c) != 0 { return false; } }
+  return cxproc_end(h, field) == 0;
+}
+// The next argument (the first is the program: a path, or a name looked up on PATH).
+proc_arg :: (h: int, s: string) -> bool { return proc_field(h, PROC_ARG, s); }
+// "NAME=value" set on top of the inherited environment.
+proc_env :: (h: int, entry: string) -> bool { return proc_field(h, PROC_ENV, entry); }
+// An inherited variable removed.
+proc_unset :: (h: int, name: string) -> bool { return proc_field(h, PROC_UNSET, name); }
+proc_cwd :: (h: int, dir: string) -> bool { return proc_field(h, PROC_CWD, dir); }
+// stdout and stderr to /dev/null (before proc_start).
+proc_quiet :: (h: int) -> bool { return cxproc_quiet(h) == 0; }
+// Starts the child: 0, PROC_ENOENT when the program is not found, another errno otherwise.
+proc_start :: (h: int) -> int { return cxproc_spawn(h); }
+proc_pid :: (h: int) -> int { return cxproc_pid(h); }
+// The next stdout line (without its newline) into out: its length, or
+// PROC_EOF, PROC_TIMEOUT, PROC_ERROR, PROC_TOO_LONG (bigger than out, skipped).
+proc_line :: (h: int, timeout_ms: int, out: [] u8) -> int {
+  n := cxproc_read_line(h, timeout_ms);
+  if n < 0 { return n; }
+  if n > out.count { return PROC_TOO_LONG; }
+  for i: 0..<n { out[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
+  return n;
+}
+// Writes s to the child's stdin.
+proc_send :: (h: int, s: string) -> bool {
+  for c: s { if cxproc_write(h, cast(int) c) != 0 { return false; } }
+  return cxproc_flush(h) == 0;
+}
+proc_close_stdin :: (h: int) -> bool { return cxproc_close_stdin(h) == 0; }
+// The child's exit status (128 + N after signal N), or PROC_RUNNING at the timeout.
+proc_wait :: (h: int, timeout_ms: int) -> int { return cxproc_wait(h, timeout_ms); }
+// Signals the child's whole process group.
+proc_kill :: (h: int, sig: int) -> bool { return cxproc_kill(h, sig) == 0; }
+// Kills what is left of the group, reaps the child and frees the slot.
+proc_release :: (h: int) -> bool { return cxproc_release(h) == 0; }
+// The last bytes the child wrote to stderr (kept while its stdout was read).
+proc_stderr :: (h: int, out: [] u8) -> string {
+  n := cxproc_stderr_count(h);
+  if n > out.count { n = out.count; }
+  total := cxproc_stderr_count(h);
+  for i: 0..<n { out[i] = cast,trunc(u8) cxproc_stderr_byte(h, total - n + i); }
+  return cast(string) out[0..<n];
+}
+
+ProcRun :: struct { started: int; status: int = -1; timed_out: bool; out_n: int; err_n: int; cut: bool; }
+// Runs argv to its end, or kills it at timeout_ms (-1: no limit). stdout
+// lines go into out joined by newlines (cut when out is full); the end of
+// stderr into err. started is proc_start's answer (0 when it ran).
+proc_run :: (argv: [] string, timeout_ms: int, out: [] u8, err: [] u8) -> ProcRun {
+  r: ProcRun;
+  h := proc_new();
+  if h < 0 { r.started = PROC_ERROR; return r; }
+  ok := argv.count > 0;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  if !ok { done := proc_release(h); r.started = PROC_ERROR; return r; }
+  r.started = proc_start(h);
+  if r.started != 0 { done := proc_release(h); return r; }
+  deadline := proc_deadline(timeout_ms, cxproc_now_ms());
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, proc_left(deadline, cxproc_now_ms()), line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n == PROC_TIMEOUT { r.timed_out = true; break; }
+    if n == PROC_TOO_LONG { r.cut = true; continue; }
+    if r.out_n > 0 { if r.out_n < out.count { out[r.out_n] = '\n'; r.out_n += 1; } else { r.cut = true; } }
+    for i: 0..<n { if r.out_n < out.count { out[r.out_n] = line[i]; r.out_n += 1; } else { r.cut = true; } }
+  }
+  if r.timed_out { k := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, ifx r.timed_out then 2000 else proc_left(deadline, cxproc_now_ms()));
+  if r.status == PROC_RUNNING { r.timed_out = true; k := proc_kill(h, PROC_SIGKILL); r.status = proc_wait(h, 2000); }
+  r.err_n = proc_stderr(h, err).count;
+  done := proc_release(h);
+  return r;
+}
+
+proc_now_ms :: () -> int { return cxproc_now_ms(); }
+proc_sleep :: (ms: int) { r := cxproc_sleep_ms(ms); }
+// The host's environment variable name, into out; "" when unset (see proc_has_env).
+proc_getenv :: (name: string, out: [] u8) -> string {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  n := cxproc_getenv();
+  if n < 0 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast,trunc(u8) cxproc_getenv_byte(i); }
+  return cast(string) out[0..<n];
+}
+proc_has_env :: (name: string) -> bool {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  return cxproc_getenv() >= 0;
+}

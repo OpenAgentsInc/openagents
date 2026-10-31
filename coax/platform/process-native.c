@@ -26,7 +26,7 @@ typedef struct { char *data; size_t count, cap; } Bytes;
 typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
-  int used, started, reaped, status;
+  int used, started, reaped, status, quiet;
   pid_t pid;
   int in, out, err;
   List args, env, unset;
@@ -87,6 +87,20 @@ int64_t cxproc_new(void) {
     return i;
   }
   return -1;
+}
+
+int64_t cxproc_quiet(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->quiet = 1;
+  return 0;
+}
+
+int64_t cxproc_sleep_ms(int64_t ms) {
+  if (ms < 0 || ms > 86400000) return -1;
+  struct timespec t = {(time_t)(ms / 1000), (long)(ms % 1000) * 1000000}, left;
+  while (nanosleep(&t, &left) != 0) { if (errno != EINTR) return -1; t = left; }
+  return 0;
 }
 
 int64_t cxproc_push(int64_t h, int64_t field, int64_t byte) {
@@ -162,6 +176,10 @@ int64_t cxproc_spawn(int64_t h) {
 #endif
     signal(SIGPIPE, SIG_DFL);
     dup2(in[0], 0); dup2(out[1], 1); dup2(err[1], 2);
+    if (p->quiet) {
+      int null = open("/dev/null", O_WRONLY);
+      if (null >= 0) { dup2(null, 1); dup2(null, 2); if (null > 2) close(null); }
+    }
     close(in[0]); close(in[1]); close(out[0]); close(out[1]); close(err[0]); close(err[1]);
     close(report[0]);
     for (size_t i = 0; i < p->unset.count; i++) unsetenv(p->unset.items[i].data);
