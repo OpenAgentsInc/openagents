@@ -99,7 +99,9 @@ for f, (s, h, body) in zip(files, got):
 for f in [f for f in files if f.endswith((".wasm", ".js"))][:2]:
     c = connect("https"); c.request("GET", f, headers={"Host": host, "User-Agent": "coaxial-smoke", "Accept-Encoding": "gzip"})
     r = c.getresponse(); r.read(); c.close()
-    check(r.status == 200 and r.getheader("content-encoding", "") == "gzip", f"{f} is sent gzipped ({r.getheader('content-length')} bytes)")
+    # A copy the CDN cached before it was stored gzipped (Age, same content name) is still the right bytes.
+    gz, cached = r.getheader("content-encoding", "") == "gzip", r.getheader("age") is not None
+    check(r.status == 200 and (gz or cached), f"{f} is sent gzipped ({r.getheader('content-length')} bytes)" if gz else f"{f}: the CDN's copy from before it was stored gzipped")
 s, h, _ = redirect
 check(s in (301, 308) and h.get("location", "").startswith("https://"), f"http:// redirects to https:// ({s})")
 for path, (s, h, body) in zip(pages, s_pages):
