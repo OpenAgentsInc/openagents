@@ -10,7 +10,7 @@ A Verse realm at https://openagents.com/realms/belt-2200: a hard sci-fi strategy
 - Time: PAUSE, 1, 7 or 30 days a second (Space pauses; 1, 2 and 3 pick a speed).
 - The game is kept in this browser as it runs and comes back when you return. NEW (pressed twice) starts over.
 - Leaving or reaching a world, a ship swings out from it, or in to it, on a hyperbola inside the world's sphere of influence before it joins its arc about the Sun.
-- The map: the wheel or a pinch zooms, from the whole system down to a ship's hull; drag (or WASD and the arrows) pans; FOLLOW (or F) rides with the selected ship; C goes back to the whole system; Escape cancels.
+- The map: the wheel or a pinch zooms, from the whole system down to a ship's hull; drag (or WASD and the arrows) pans; FOLLOW (or F) rides with the selected ship; with no ship selected, a tap on a world, a rock or the station flies the view to it and rides with it; SYSTEM (or C) goes back to the whole system; Escape cancels.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made

@@ -204,9 +204,12 @@ fn rings(q: vec2f, l: vec2f) -> vec4f {
   dens *= 1.0 - 0.92 * (smoothstep(1.9, 1.93, rr) - smoothstep(1.98, 2.01, rr));
   dens *= smoothstep(1.24, 1.32, rr) * (1.0 - smoothstep(2.18, 2.27, rr));
   dens *= select(0.55, 1.0, rr > 1.55);
-  let along = dot(q, l);
-  let side = length(q - along * l);
-  let shade = select(1.0, 0.12, along < 0.0 && side < 1.0);
+  // the planet's shadow, worked out in the ring's own plane (the squash undone), soft at its edge
+  let lr = vec2f(ca * l.x - sa * l.y, sa * l.x + ca * l.y);
+  let lp = normalize(vec2f(lr.x, lr.y / 0.42));
+  let along = dot(e, lp);
+  let side = length(e - along * lp);
+  let shade = 1.0 - 0.88 * (1.0 - smoothstep(0.95, 1.05, side)) * smoothstep(0.0, -0.1, along);
   return vec4f(vec3f(0.86, 0.8, 0.66) * shade, clamp(dens, 0.0, 1.0));
 }
 fn world(p: vec2f, under: vec3f, a: vec4f, b: vec4f) -> vec3f {

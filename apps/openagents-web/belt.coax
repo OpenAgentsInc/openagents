@@ -103,7 +103,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -123,6 +123,7 @@ Belt :: struct {
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
   follow: int = -1;
+  follow_place: int = -1;  // the place the view rides with, -1 none
   // input
   btn: [BUTTONS] Btn; btn_n: int; press: int = -1; hover: int = -1;
   fingers: [2] Finger;
@@ -353,7 +354,7 @@ belt_reset :: (s: [] Belt) {
   s[0].toast_n = 0; s[0].toast_t = 0;
   s[0].speed = 2;
   s[0].ice = 1200.0;
-  s[0].dest = -1; s[0].follow = -1; s[0].press = -1; s[0].hover = -1;
+  s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
   for i: 0..<2 { s[0].fingers[i].id = -1; }
   r: [1] Rand;
   // The Belt's field.
@@ -698,7 +699,7 @@ mine_order :: (s: [] Belt) {
 
 follow_ship :: (s: [] Belt, k: int) {
   if k < 0 { return; }
-  s[0].follow = k;
+  s[0].follow = k; s[0].follow_place = -1;
   s[0].cam = spacecam_look(s[0].cam, ship_state(s, k, s[0].t).r, 1.4 * f64(hi(s[0].dpr, 0.5)));
   s[0].cam.following = true;
 }
@@ -748,7 +749,7 @@ belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c {
   if key == 'f' || key == 'F' { follow_ship(s, first_selected(s)); return true; }
   if key == 'h' || key == 'H' { if first_selected(s) >= 0 { set_dest(s, P_STATION); } return true; }
   if key == 'm' || key == 'M' { mine_order(s); return true; }
-  if key == 'c' || key == 'C' { s[0].follow = -1; s[0].cam = spacecam_look(s[0].cam, D3_ZERO, 0.000000001); s[0].cam.following = false; return true; }
+  if key == 'c' || key == 'C' { look_at_system(s); return true; }
   if key == 9 {
     // the next Free Belt ship
     k := first_selected(s);
@@ -789,6 +790,7 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_FOLLOW { follow_ship(s, first_selected(s)); }
   if b.id == B_GO { go(s, b.arg == 1); }
   if b.id == B_CANCEL { s[0].dest = -1; }
+  if b.id == B_SYSTEM { look_at_system(s); }
   if b.id == B_NEW {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; new_game(s); } else { s[0].new_armed = 3.0; }
@@ -817,6 +819,11 @@ place_at :: (s: [] Belt, x: f32, y: f32, reach: f32) -> int {
     q := screen_of(s, place_state(s, p, s[0].t).r);
     dx := pix(q.x) - x; dy := pix(q.y) - y;
     d := dx * dx + dy * dy;
+    if p == BODY_MOON {
+      // drawn only when it stands apart from the Earth; until then a tap there means the Earth
+      e := screen_of(s, orbit_body_position(BODY_EARTH, s[0].t));
+      if pix(sqrt((e.x - q.x) * (e.x - q.x) + (e.y - q.y) * (e.y - q.y))) < 14 * hi(s[0].dpr, 0.5) { continue; }
+    }
     if p < BODIES {
       r := pix(spacecam_pixels(s[0].cam, BODY_RADIUS[p]));
       if d < r * r { d = 0; }
@@ -849,7 +856,30 @@ map_tap :: (s: [] Belt, x: f32, y: f32) {
     say(s, cast(string) buf[0..<n]);
     return;
   }
-  if s[0].dest >= 0 { s[0].dest = -1; }
+  if s[0].dest >= 0 { s[0].dest = -1; return; }
+  // nothing selected: a tap on a world, a rock or the station flies the view to it
+  if selected_count(s) == 0 {
+    p := place_at(s, x, y, 22 * k);
+    if p >= 0 { look_at_place(s, p); }
+  }
+}
+
+// The view flies to a place and rides with it: a world a fifth of the screen across, a rock or
+// the station with room around it.
+look_at_place :: (s: [] Belt, p: int) {
+  size := ifx is_world(p) then BODY_RADIUS[p] * 5.0 else ifx is_ice(p) then ICE_RADII[p - P_ICE] * 8.0 else 4000.0;
+  s[0].follow = -1;
+  s[0].follow_place = p;
+  s[0].cam = spacecam_look(s[0].cam, place_state(s, p, s[0].t).r, f64(lo(s[0].w, s[0].h)) / size);
+  s[0].cam.following = true;
+}
+// The whole system again: the Sun and Hearth Station, the inner worlds between.
+SYSTEM_SPAN :: 1.6;
+system_scale :: (s: [] Belt) -> f64 { return f64(lo(s[0].w, s[0].h * 0.75)) / (d3_len(place_state(s, P_STATION, s[0].t).r) * SYSTEM_SPAN); }
+look_at_system :: (s: [] Belt) {
+  s[0].follow = -1; s[0].follow_place = -1;
+  s[0].cam = spacecam_look(s[0].cam, d3_scale(place_state(s, P_STATION, s[0].t).r, 0.5), system_scale(s));
+  s[0].cam.following = false;
 }
 
 box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
@@ -869,7 +899,7 @@ zoom_at :: (s: [] Belt, factor: f64, x: f32, y: f32) {
 }
 pan :: (s: [] Belt, dx: f32, dy: f32) {
   s[0].cam = spacecam_pan(s[0].cam, f64(dx), f64(dy));
-  s[0].follow = -1;
+  s[0].follow = -1; s[0].follow_place = -1;
 }
 
 belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
@@ -1573,10 +1603,18 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
   gx := m + 4 * (bw + 6 * k);
   button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "GALAXY", 6.5 * k, false);
+  // Zoomed in or riding with something: a way back to the whole system.
+  away := s[0].cam.goal_scale > system_scale(s) * 4.0 || s[0].cam.goal_scale < system_scale(s) / 3.0 || s[0].follow >= 0 || s[0].follow_place >= 0;
+  toast_at := sy + 52 * k;
+  if away {
+    vy := ifx phone then sy + 34 * k else sy;
+    button(s, out, d, w - m - 84 * k, vy, w - m, vy + 28 * k, B_SYSTEM, 0, "SYSTEM", 6.5 * k, false);
+    if phone { toast_at = sy + 86 * k; }
+  }
   // The toast.
   if s[0].toast_t > 0 && s[0].toast_n > 0 {
     a := clamp(s[0].toast_t, 0, 1);
-    s[0].toast_y = sy + 52 * k;
+    s[0].toast_y = toast_at;
     centred(out, d, cast(string) s[0].toast[0..<s[0].toast_n], w / 2, s[0].toast_y, 7.5 * k, 0.95 * a, INK_R, INK_G, INK_B);
   }
   // The Free Belt's ships, as cards along the bottom.
@@ -1708,10 +1746,15 @@ belt_step :: (s: [] Belt, dt: f32) {
   if s[0].held & HOLD_DOWN != 0 { pan(s, 0, f32(-hp)); }
   if s[0].held & HOLD_IN != 0 { zoom_at(s, exp(2.5 * real), s[0].w / 2, s[0].h / 2); }
   if s[0].held & HOLD_OUT != 0 { zoom_at(s, exp(-2.5 * real), s[0].w / 2, s[0].h / 2); }
+  // Riding with a ship or a place: the view moves with it (its frame), and eases in from where it was.
+  was := s[0].cam.goal_center;
+  riding := s[0].cam.following;
   if s[0].follow >= 0 { s[0].cam = spacecam_follow(s[0].cam, ship_state(s, s[0].follow, s[0].t).r); }
+  if s[0].follow_place >= 0 { s[0].cam = spacecam_follow(s[0].cam, place_state(s, s[0].follow_place, s[0].t).r); }
+  if riding && (s[0].follow >= 0 || s[0].follow_place >= 0) { s[0].cam.center = d3_add(s[0].cam.center, d3_sub(s[0].cam.goal_center, was)); }
   s[0].cam = ifx s[0].golden then spacecam_settle(s[0].cam) else spacecam_ease(s[0].cam, real);
   // Locked on: the floating origin is the ship itself, exactly.
-  if s[0].follow >= 0 && s[0].cam.following { s[0].cam.center = s[0].cam.goal_center; }
+  if (s[0].follow >= 0 || s[0].follow_place >= 0) && s[0].cam.following && d3_dist(s[0].cam.center, s[0].cam.goal_center) * s[0].cam.scale < 0.5 { s[0].cam.center = s[0].cam.goal_center; }
 }
 
 belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
@@ -1722,7 +1765,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     s[0].framed = true;
     home := place_state(s, P_STATION, s[0].t).r;
     s[0].cam.goal_center = d3_scale(home, 0.5);
-    s[0].cam.goal_scale = f64(lo(width, height * 0.75)) / (d3_len(home) * 1.6);
+    s[0].cam.goal_scale = system_scale(s);
     s[0].cam = spacecam_settle(s[0].cam);
   }
   if !s[0].golden { s[0].clock += clamp(dt, 0, 0.1); }
