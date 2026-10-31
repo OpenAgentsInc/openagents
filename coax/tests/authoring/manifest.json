@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "note": "Frozen: change a start or an oracle only by bumping version (runs.jsonl names the version it ran).",
   "tasks": [
     {
@@ -60,7 +60,7 @@
       ],
       "start_sha256": {
         "mean.coax": "fa909cb03049c47d4bf81d57b5dc1e2dca650c6001587af4e858e7016c6ce46a",
-        "task.md": "69b35cd749c17d8f0dbfc21f5eda5380d77f0e063ca10925616dec70093ed039"
+        "task.md": "32a7372a1c65378d07c77986afe483aea984b10b0a3f57aca8782ab3ffb34ab4"
       },
       "oracle_sha256": "1678dcb795ccf937e0bb4872518c2dcfca932946320c180052c0261acaa0d8b5",
       "oracle_checks": 2,
@@ -83,7 +83,7 @@
       ],
       "start_sha256": {
         "frame.coax": "7f50645f4190d6f61d4db20df4d653e7e748aadf513d2377d9f3e291c0f46965",
-        "task.md": "9e28cd7ebb73fa75b7f6b70745f3d5d99aec33ea72769254ef96f4db642b33de"
+        "task.md": "ba3d2fe643a16fc5a6b6945a21e1de96ef4e28860eac6f30911b229b341d8844"
       },
       "oracle_sha256": "4bda8bc6e718675953ac1a58fff367ead94563c7d7e2dedd7bbc7d64ddbba9f0",
       "oracle_checks": 4,

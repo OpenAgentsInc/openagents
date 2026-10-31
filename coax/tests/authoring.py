@@ -23,6 +23,8 @@ the check ran out of time), not-checked (no check was run). A record also keeps
 the repair iterations (checks before the final one), unintended edits (files
 changed that the task doesn't allow), the lines changed (review effort) and the
 seconds from prepare to record, against the pinned starting revision.
+Only the check tool's runs are counted: an agent that runs the compiler itself
+gets feedback the iteration count doesn't see (first run, type-error).
 """
 import hashlib
 import json
