@@ -64,12 +64,112 @@ TO_NAMES :: [27]string.["add","subtract","multiply","divide","negate","relu","ex
     #assert to_plan(ToRequest.{op=ToOp.matmul},TvShape.{rank=2,dims=[4]int.[1024,1,0,0]},TvShape.{rank=2,dims=[4]int.[1,1024,0,0]},0).work==1048576;
 }
 
+#test "names, arities and differentiability are an exact table" {
+    #assert to_known_tag(0) && to_known_tag(26) && !to_known_tag(27);
+    #assert to_name(0)=="add" && to_name(26)=="cross_entropy" && to_name(13)=="softmax" && to_name(-1)=="" && to_name(27)=="";
+    arity:=[27]int.[2,2,2,2,1,1,1,1,2,2,1,1,1,1,1,2,2,1,1,2,2,1,1,1,1,2,1];
+    for tag:0..<27 {op:=cast(ToOp)cast(u8)tag;#assert to_arity(op)==arity[tag] && to_differentiable(op)==(tag!=8 && tag!=9) && to_name(tag)==TO_NAMES[tag];}
+    x:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};y:=TvShape.{rank=2,dims=[4]int.[3,0,0,0]};
+    #assert to_same_shape(x,x) && !to_same_shape(x,y) && !to_same_shape(y,x);y=x;y.dims[0]=2;#assert !to_same_shape(x,y);
+    #assert !to_work_fits(-1,1) && !to_work_fits(1,-1) && !to_work_fits(1,1048577) && to_work_fits(1,1048576) && to_work_fits(1048576,0) && !to_work_fits(2,524289);
+}
+#test "elementwise plans broadcast both ways and refuse each bad input alone" {
+    none:=TvShape.{rank=1};row:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};grid:=TvShape.{rank=2,dims=[4]int.[4,3,0,0]};
+    p:=to_plan(ToRequest.{op=ToOp.divide},row,grid,0);#assert p.status==ToStatus.ok && p.shape.rank==2 && p.shape.dims[0]==4 && p.shape.dims[1]==3 && p.n==12 && p.na==3 && p.nb==12 && p.inner==1 && p.work==12;
+    p=to_plan(ToRequest.{op=ToOp.less},grid,row,0);#assert p.status==ToStatus.ok && p.shape.rank==2 && p.shape.dims[0]==4 && p.shape.dims[1]==3 && p.n==12;
+    column:=TvShape.{rank=2,dims=[4]int.[4,1,0,0]};p=to_plan(ToRequest.{op=ToOp.equal},column,row,0);#assert p.status==ToStatus.ok && p.shape.dims[0]==4 && p.shape.dims[1]==3;
+    p=to_plan(ToRequest.{op=ToOp.multiply},row,column,0);#assert p.status==ToStatus.ok && p.shape.dims[0]==4 && p.shape.dims[1]==3 && p.n==12;
+    p=to_plan(ToRequest.{op=ToOp.negate},grid,none,0);#assert p.status==ToStatus.ok && p.shape.rank==2 && p.n==12 && p.nb==0 && p.inner==1 && p.work==12;
+    #assert to_plan(ToRequest.{op=ToOp.negate},grid,row,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{},TvShape.{rank=5},row,0).status==ToStatus.shape && to_plan(ToRequest.{},row,TvShape.{rank=5},0).status==ToStatus.shape;
+    huge:=TvShape.{rank=2,dims=[4]int.[1024,1025,0,0]};
+    #assert to_plan(ToRequest.{},huge,row,0).status==ToStatus.limit && to_plan(ToRequest.{},row,huge,0).status==ToStatus.limit;
+    #assert to_plan(ToRequest.{op=ToOp.take},row,none,-1).status==ToStatus.capacity && to_plan(ToRequest.{op=ToOp.take},row,none,1048577).status==ToStatus.capacity;
+    one:=TvShape.{rank=1,dims=[4]int.[1,0,0,0]};p=to_plan(ToRequest.{op=ToOp.take},one,none,1048576);#assert p.status==ToStatus.ok && p.n==1048576;
+    #assert to_plan(ToRequest.{},row,row,1).status==ToStatus.capacity;
+}
+#test "axis plans name their exact inner width at every axis bound" {
+    none:=TvShape.{rank=1};a:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};
+    #assert to_plan(ToRequest.{op=ToOp.sum,axis=2},a,none,0).status==ToStatus.parameter;
+    p:=to_plan(ToRequest.{op=ToOp.sum,axis=1},a,none,0);#assert p.status==ToStatus.ok && p.inner==3 && p.work==6 && p.n==2;
+    p=to_plan(ToRequest.{op=ToOp.maximum,axis=0},a,none,0);#assert p.status==ToStatus.ok && p.inner==2 && p.shape.rank==1 && p.shape.dims[0]==3;
+    p=to_plan(ToRequest.{op=ToOp.softmax,axis=1},a,none,0);#assert p.status==ToStatus.ok && p.inner==3 && p.n==6 && p.work==18 && p.shape.rank==2;
+    #assert to_plan(ToRequest.{op=ToOp.softmax,axis=1},TvShape.{rank=2,dims=[4]int.[2,0,0,0]},none,0).status==ToStatus.shape;
+    b:=TvShape.{rank=2,dims=[4]int.[2,0,0,0]};p=to_plan(ToRequest.{op=ToOp.update,axis=1},a,b,0);#assert p.status==ToStatus.ok && p.n==6 && p.inner==1 && p.work==6;
+    b.dims[1]=1;p=to_plan(ToRequest.{op=ToOp.update,axis=1},a,b,1);#assert p.status==ToStatus.ok && p.inner==1 && p.work==6;
+    b.dims[1]=2;p=to_plan(ToRequest.{op=ToOp.update,axis=1},a,b,2);#assert p.status==ToStatus.ok && p.inner==2 && p.work==12 && p.shape.dims[1]==3;
+    b=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};#assert to_plan(ToRequest.{op=ToOp.concat,axis=1},a,b,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.concat,axis=1},a,TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0).status==ToStatus.shape;
+    b=TvShape.{rank=2,dims=[4]int.[4,3,0,0]};p=to_plan(ToRequest.{op=ToOp.concat,axis=0},a,b,0);#assert p.status==ToStatus.ok && p.shape.dims[0]==6 && p.shape.dims[1]==3 && p.n==18;
+    half:=TvShape.{rank=1,dims=[4]int.[524288,0,0,0]};p=to_plan(ToRequest.{op=ToOp.concat},half,half,0);#assert p.status==ToStatus.ok && p.n==1048576;
+    more:=half;more.dims[0]=524289;#assert to_plan(ToRequest.{op=ToOp.concat},half,more,0).status==ToStatus.limit;
+    p=to_plan(ToRequest.{op=ToOp.topk,axis=1,k=0},a,none,0);#assert p.status==ToStatus.ok && p.n==0 && p.aux==0;
+    p=to_plan(ToRequest.{op=ToOp.topk,axis=1,k=3},a,none,0);#assert p.status==ToStatus.ok && p.n==6 && p.inner==3;
+    #assert to_plan(ToRequest.{op=ToOp.topk,axis=1,k=-1},a,none,0).status==ToStatus.parameter;
+    p=to_plan(ToRequest.{op=ToOp.sort,axis=0},a,none,0);#assert p.status==ToStatus.ok && p.n==6 && p.aux==6 && p.inner==2 && p.work==24 && p.aux_dtype==ToDtype.i64;
+}
+#test "matrix and convolution plans refuse each mismatch alone" {
+    m:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};k:=TvShape.{rank=2,dims=[4]int.[3,4,0,0]};
+    #assert to_plan(ToRequest.{op=ToOp.matmul},TvShape.{rank=1,dims=[4]int.[3,0,0,0]},k,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.matmul},m,TvShape.{rank=1,dims=[4]int.[3,0,0,0]},0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.matmul},m,m,0).status==ToStatus.shape;
+    p:=to_plan(ToRequest.{op=ToOp.matmul},m,k,0);#assert p.shape.rank==2 && p.shape.dims[0]==2 && p.shape.dims[1]==4 && p.inner==3;
+    x:=TvShape.{rank=4,dims=[4]int.[1,2,4,5]};w:=TvShape.{rank=4,dims=[4]int.[3,2,2,3]};
+    p=to_plan(ToRequest.{op=ToOp.conv2d},x,w,0);#assert p.shape.dims[0]==1 && p.shape.dims[1]==3 && p.shape.dims[2]==3 && p.shape.dims[3]==3 && p.inner==12;
+    #assert to_plan(ToRequest.{op=ToOp.conv2d},TvShape.{rank=3,dims=[4]int.[2,4,5,0]},w,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.conv2d},x,TvShape.{rank=3,dims=[4]int.[3,2,2,0]},0).status==ToStatus.shape;
+    bad:=w;bad.dims[1]=1;#assert to_plan(ToRequest.{op=ToOp.conv2d},x,bad,0).status==ToStatus.shape;
+    bad=w;bad.dims[2]=0;#assert to_plan(ToRequest.{op=ToOp.conv2d},x,bad,0).status==ToStatus.shape;
+    bad=w;bad.dims[3]=0;#assert to_plan(ToRequest.{op=ToOp.conv2d},x,bad,0).status==ToStatus.shape;
+    bad=w;bad.dims[2]=5;#assert to_plan(ToRequest.{op=ToOp.conv2d},x,bad,0).status==ToStatus.shape;
+    bad=w;bad.dims[3]=6;#assert to_plan(ToRequest.{op=ToOp.conv2d},x,bad,0).status==ToStatus.shape;
+    full:=TvShape.{rank=4,dims=[4]int.[1,2,4,5]};p=to_plan(ToRequest.{op=ToOp.conv2d},x,full,0);#assert p.status==ToStatus.ok && p.n==1 && p.inner==40 && p.shape.dims[2]==1 && p.shape.dims[3]==1;
+    dot:=TvShape.{rank=4,dims=[4]int.[1,2,1,1]};p=to_plan(ToRequest.{op=ToOp.conv2d},x,dot,0);#assert p.status==ToStatus.ok && p.inner==2 && p.shape.dims[2]==4 && p.shape.dims[3]==5 && p.n==20;
+    bank:=TvShape.{rank=4,dims=[4]int.[0,2,2,3]};p=to_plan(ToRequest.{op=ToOp.conv2d},x,bank,0);#assert p.status==ToStatus.ok && p.inner==0 && p.n==0 && p.work==0;
+}
+#test "image plans hold every height width and stride bound" {
+    none:=TvShape.{rank=1};x:=TvShape.{rank=4,dims=[4]int.[1,1,5,7]};
+    p:=to_plan(ToRequest.{op=ToOp.maxpool2d,height=2,width=3,stride=2},x,none,0);#assert p.status==ToStatus.ok && p.shape.dims[2]==2 && p.shape.dims[3]==3 && p.inner==6 && p.n==6 && p.work==36;
+    p=to_plan(ToRequest.{op=ToOp.avgpool2d,height=5,width=7,stride=1048576},x,none,0);#assert p.status==ToStatus.ok && p.n==1 && p.inner==35;
+    #assert to_plan(ToRequest.{op=ToOp.avgpool2d,height=1,width=1,stride=1048577},x,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=6,width=1},x,none,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=1,width=8},x,none,0).status==ToStatus.shape;
+    p=to_plan(ToRequest.{op=ToOp.maxpool2d,height=1,width=6},x,none,0);#assert p.status==ToStatus.ok && p.shape.dims[2]==5 && p.shape.dims[3]==2;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=0,width=1},x,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=1,width=0},x,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=2,width=2},TvShape.{rank=3,dims=[4]int.[1,5,7,0]},none,0).status==ToStatus.shape;
+    dot:=TvShape.{rank=4,dims=[4]int.[1,1,1,1]};
+    p=to_plan(ToRequest.{op=ToOp.nearest2d,height=1048576,width=1},dot,none,0);#assert p.status==ToStatus.ok && p.n==1048576 && p.shape.dims[2]==1048576;
+    p=to_plan(ToRequest.{op=ToOp.nearest2d,height=1,width=1048576},dot,none,0);#assert p.status==ToStatus.ok && p.n==1048576 && p.shape.dims[3]==1048576;
+    #assert to_plan(ToRequest.{op=ToOp.nearest2d,height=1048577,width=1},dot,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.bilinear2d,height=1,width=1048577},dot,none,0).status==ToStatus.parameter;
+    p=to_plan(ToRequest.{op=ToOp.bilinear2d,height=1,width=1},dot,none,0);#assert p.status==ToStatus.ok && p.n==1 && p.inner==1;
+    #assert to_plan(ToRequest.{op=ToOp.bilinear2d,height=2,width=2},TvShape.{rank=4,dims=[4]int.[1,1,0,2]},none,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.bilinear2d,height=2,width=2},TvShape.{rank=4,dims=[4]int.[1,1,2,0]},none,0).status==ToStatus.shape;
+    p=to_plan(ToRequest.{op=ToOp.nearest2d,height=2,width=3},TvShape.{rank=4,dims=[4]int.[0,1,1,1]},none,0);#assert p.status==ToStatus.ok && p.n==0;
+}
+#test "loss plans are scalars over every admitted value" {
+    none:=TvShape.{rank=1};a:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};
+    p:=to_plan(ToRequest.{op=ToOp.mse},a,a,0);#assert p.status==ToStatus.ok && p.shape.rank==0 && p.n==1 && p.inner==6 && p.work==6;
+    #assert to_plan(ToRequest.{op=ToOp.mse},a,TvShape.{rank=2,dims=[4]int.[3,2,0,0]},0).status==ToStatus.shape;
+    p=to_plan(ToRequest.{op=ToOp.cross_entropy},a,none,2);#assert p.inner==6 && p.work==6;
+    #assert to_plan(ToRequest.{op=ToOp.cross_entropy},TvShape.{rank=1,dims=[4]int.[3,0,0,0]},none,3).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.cross_entropy},TvShape.{rank=2,dims=[4]int.[0,3,0,0]},none,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.cross_entropy},TvShape.{rank=2,dims=[4]int.[2,0,0,0]},none,2).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.cross_entropy},a,none,1).status==ToStatus.shape && to_plan(ToRequest.{op=ToOp.cross_entropy},a,none,3).status==ToStatus.shape;
+    p=to_plan(ToRequest.{op=ToOp.cross_entropy},TvShape.{rank=2,dims=[4]int.[1,1,0,0]},none,1);#assert p.status==ToStatus.ok && p.n==1 && p.inner==1;
+}
+
 to_known_tag :: (tag:u8)->bool #export_c {return tag<27;}
 to_name :: (tag:int)->string #export_c {if tag<0 || tag>=27 {return "";}return TO_NAMES[tag];}
 to_arity :: (op:ToOp)->int #export_c {if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less || op==ToOp.update || op==ToOp.concat || op==ToOp.matmul || op==ToOp.conv2d || op==ToOp.mse {return 2;}return 1;}
-to_differentiable :: (op:ToOp)->bool #export_c {return cast(u8)op<27 && op!=ToOp.equal && op!=ToOp.less;}
+to_differentiable :: (op:ToOp)->bool #export_c {return to_known_tag(cast(u8)op) && op!=ToOp.equal && op!=ToOp.less;}
 to_same_shape :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
 to_work_fits :: (n:int,inner:int)->bool {if n<0 || inner<0 {return false;}if n==0 || inner==0 {return true;}return n<=TV_LIMIT/inner;}
+// The broadcast rank is a branchless maximum: a tie has one answer, so no
+// comparison there can be equivalent.
+// Concatenated extents need no own limit: each is at most 2^20, so the sum
+// cannot overflow and the output shape check below refuses it.
 // Pure inference: no pointer or coefficient is read here. Irrelevant request
 // fields have no semantics; named fields are checked in their operator branch.
 to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c {
@@ -80,7 +180,7 @@ to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c {
     if to_arity(r.op)==1 && cb.elements!=0 {return ToPlan.{status=ToStatus.shape};}
     p:=ToPlan.{shape=a,na=ca.elements,nb=cb.elements,value_dtype=ToDtype.f32,inner=1};op:=r.op;
     if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less {
-        rank:=a.rank;if b.rank>rank {rank=b.rank;}p.shape=TvShape.{rank=rank};
+        rank:=(a.rank+b.rank+tv_magnitude(a.rank-b.rank))/2;p.shape=TvShape.{rank=rank};
         for i:0..<rank {da:=1;db:=1;if i>=rank-a.rank {da=a.dims[i-(rank-a.rank)];}if i>=rank-b.rank {db=b.dims[i-(rank-b.rank)];}
             if da!=db && da!=1 && db!=1 {return ToPlan.{status=ToStatus.shape};}d:=da;if da==1 {d=db;}p.shape.dims[i]=d;}
     }else if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum || op==ToOp.softmax || op==ToOp.take || op==ToOp.update || op==ToOp.concat || op==ToOp.sort || op==ToOp.topk {
@@ -89,15 +189,17 @@ to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c {
             if op!=ToOp.sum && width==0 {return ToPlan.{status=ToStatus.shape};}p.inner=width;
             if r.keep {p.shape.dims[r.axis]=1;}else {p.shape=TvShape.{rank=a.rank-1};cursor:=0;for i:0..<a.rank {if i!=r.axis {p.shape.dims[cursor]=a.dims[i];cursor+=1;}}}
         }else if op==ToOp.softmax {if width==0 {return ToPlan.{status=ToStatus.shape};}p.inner=width;
-        }else if op==ToOp.take || op==ToOp.update {p.shape.dims[r.axis]=indices;if op==ToOp.update {if !to_same_shape(p.shape,b) {return ToPlan.{status=ToStatus.shape};}p.shape=a;p.inner=indices;if p.inner<1 {p.inner=1;}}
-        }else if op==ToOp.concat {if a.rank!=b.rank {return ToPlan.{status=ToStatus.shape};}for i:0..<a.rank {if i!=r.axis && a.dims[i]!=b.dims[i] {return ToPlan.{status=ToStatus.shape};}}if b.dims[r.axis]>TV_LIMIT-width {return ToPlan.{status=ToStatus.limit};}p.shape.dims[r.axis]=width+b.dims[r.axis];
+        }else if op==ToOp.take || op==ToOp.update {p.shape.dims[r.axis]=indices;if op==ToOp.update {if !to_same_shape(p.shape,b) {return ToPlan.{status=ToStatus.shape};}p.shape=a;p.inner=indices;if p.inner==0 {p.inner+=1;}}
+        }else if op==ToOp.concat {if a.rank!=b.rank {return ToPlan.{status=ToStatus.shape};}for i:0..<a.rank {if i!=r.axis && a.dims[i]!=b.dims[i] {return ToPlan.{status=ToStatus.shape};}}p.shape.dims[r.axis]=width+b.dims[r.axis];
         }else {if op==ToOp.topk {if r.k<0 || r.k>width {return ToPlan.{status=ToStatus.parameter};}p.shape.dims[r.axis]=r.k;}p.inner=width;p.aux_dtype=ToDtype.i64;}
     }else if op==ToOp.matmul {
         if a.rank!=2 || b.rank!=2 || a.dims[1]!=b.dims[0] {return ToPlan.{status=ToStatus.shape};}p.shape=TvShape.{rank=2,dims=[4]int.[a.dims[0],b.dims[1],0,0]};p.inner=a.dims[1];
     }else if op==ToOp.conv2d {
         if r.stride!=1 {return ToPlan.{status=ToStatus.parameter};}
-        if a.rank!=4 || b.rank!=4 || a.dims[1]!=b.dims[1] || b.dims[2]<1 || b.dims[3]<1 || a.dims[2]<b.dims[2] || a.dims[3]<b.dims[3] {return ToPlan.{status=ToStatus.shape};}
-        p.shape=TvShape.{rank=4,dims=[4]int.[a.dims[0],b.dims[0],a.dims[2]-b.dims[2]+1,a.dims[3]-b.dims[3]+1]};p.inner=cb.elements;
+        // Admitted shapes keep axes past their rank at zero, so kernel axes of at
+        // least one and an image at least as wide already require rank four.
+        if a.dims[1]!=b.dims[1] || b.dims[2]<1 || b.dims[3]<1 || a.dims[2]<b.dims[2] || a.dims[3]<b.dims[3] {return ToPlan.{status=ToStatus.shape};}
+        p.shape=TvShape.{rank=4,dims=[4]int.[a.dims[0],b.dims[0],a.dims[2]-b.dims[2]+1,a.dims[3]-b.dims[3]+1]};
         if b.dims[0]>0 {p.inner=cb.elements/b.dims[0];}else {p.inner=0;}
     }else if op==ToOp.maxpool2d || op==ToOp.avgpool2d || op==ToOp.nearest2d || op==ToOp.bilinear2d {
         if a.rank!=4 {return ToPlan.{status=ToStatus.shape};}if r.height<1 || r.height>TV_LIMIT || r.width<1 || r.width>TV_LIMIT {return ToPlan.{status=ToStatus.parameter};}
