@@ -75,3 +75,7 @@ Use a fresh output directory; receipts preserve failures. `qualification.json`,
 `checks-qualification.json`, `oracle-qualification.json`, the support addendum
 and guard/example receipts record exact identities. The runnable example is
 `psionic/examples/panda-fluid.coax`, marker `pfl-query`.
+
+The historical proof binds its actual a429 compiler SHA to FP580. The driver
+reports that fingerprint only for that exact known binary; unknown compiler
+fingerprints remain null. A metadata-only followup records this correction.

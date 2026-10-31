@@ -741,5 +741,6 @@
       "cause": "detect_leaks=1 unsupported on Darwin; sanitized process stopped before product startup. Existing sanitized binary was run once after config correction; debug/release carried by exact artifact hashes."
     },
     "native_receipt_sha256": "88921762498a27b16e16e4d672e0016cf55de3f6a10c71137a6a12e7d882cdd5"
-  }
+  },
+  "current_compiler_binding_followup": "compiler-binding-qualification.json"
 }

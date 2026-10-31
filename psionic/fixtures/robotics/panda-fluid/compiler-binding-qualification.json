@@ -1,0 +1,14 @@
+{
+  "schema": "psionic.panda-fluid.compiler-binding-followup.v1",
+  "passed": true,
+  "earlier_driver_sha256": "f48402daa7f327b571a45a738fb0ff049878960f53841313fd2be2d7b548e0bc",
+  "current_driver_sha256": "e912c4e5b36d8e543accb43cf92ce2604262350b01a076e3b7c66ee418098be6",
+  "known_compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "known_compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "known_pair_matches_recorded_execution": true,
+  "unknown_compiler_fingerprint_is_null": true,
+  "only_metadata_initializer_changed": true,
+  "all_other_functions_AST_identical": true,
+  "no_Coax_native_or_oracle_reruns": true,
+  "historical_qualification_remains_bound_to_actual_a429_compiler": true
+}
