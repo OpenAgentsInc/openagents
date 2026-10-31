@@ -1,0 +1,96 @@
+// A compiler that is older than its checkout says so when a command fails.
+// It builds a checkout in a temporary directory from COAX_DIR's compiler
+// sources, with COMPILER at its coax/bin/coax and the digest coax/build.sh
+// writes, then:
+//   - a failing command with matching sources prints no stale-compiler note;
+//   - after one compiler source changes, the same command names the stale
+//     build and coax/build.sh;
+//   - a passing command prints nothing, and the check adds at most 50 ms.
+//   coax/web/tool.sh coax/tests/stale-compiler.coax COAX_DIR COMPILER
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+contains :: (text: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[i + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "contains finds a part at the start, the end and nowhere" {
+  #assert contains("abc", "ab") && contains("abc", "bc") && contains("abc", "") && contains("abc", "abc");
+  #assert !contains("abc", "abd") && !contains("ab", "abc") && !contains("", "a");
+  #assert !contains("xbc", "abc") && !contains("aab", "abb");
+}
+
+// The best of three runs of argv, in milliseconds.
+best_ms :: (argv: [] string, out: [] u8, err: [] u8) -> int {
+  best := 1000000;
+  for k: 0..<3 {
+    t0 := proc_now_ms();
+    r := proc_run(argv, 60000, out, err);
+    took := proc_now_ms() - t0;
+    if r.started == 0 && took < best { best = took; }
+  }
+  return best;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: stale-compiler.coax COAX_DIR COMPILER"); return 2; }
+  coax := args_at(a[..], 0);
+  compiler := args_at(a[..], 1);
+  bad := 0;
+  tmp: [1024] u8;
+  dir := fs_temp("coax-stale-", tmp[..]);
+  tb: [1024] u8; eb: [1024] u8; bb: [1024] u8; gb: [1024] u8; wb: [1024] u8; db: [1024] u8;
+  tree := fs_join(dir, "tree", tb[..]);
+  exe := fs_join(tree, "coax/bin/coax", eb[..]);
+  bad_file := fs_join(dir, "bad.coax", bb[..]);
+  good_file := fs_join(dir, "good.coax", gb[..]);
+  source := fs_join(tree, "coax/lib/compiler/wgsl.coax", wb[..]);
+  digest := fs_join(tree, "coax/bin/source-digest", db[..]);
+  out: [65536] u8; err: [65536] u8;
+  make := [8] string.["sh", "-c",
+    "mkdir -p \"$1/coax/bin\" \"$1/coax/lib\" && cp -R \"$2/src\" \"$2/bootstrap\" \"$1/coax/\" && cp -R \"$2/lib/compiler\" \"$2/lib/proto\" \"$1/coax/lib/\" && cp \"$3\" \"$1/coax/bin/coax\" && \"$1/coax/bin/coax\" source-digest \"$1\" > \"$1/coax/bin/source-digest\"",
+    "sh", tree, coax, compiler, ""];
+  r := proc_run(make[0..<7], 120000, out[..], err[..]);
+  bad += check(r.started == 0 && r.status == 0 && fs_size(digest) == 65, "a checkout with the compiler and its source digest");
+  bad += check(fs_write(bad_file, "main :: () { x := y; }\n") && fs_write(good_file, "main :: () {}\n#test \"t\" {#assert 1 == 1;}\n"), "a failing and a passing program");
+
+  fail_argv := [3] string.[exe, "c", bad_file];
+  r = proc_run(fail_argv[..], 60000, out[..], err[..]);
+  current := cast(string) err[0..<r.err_n];
+  bad += check(r.status != 0 && contains(current, "E0306") && !contains(current, "out of date"), "a failure with current sources has no stale-compiler note");
+
+  pass_argv := [3] string.[exe, "test", good_file];
+  before := best_ms(pass_argv[..], out[..], err[..]);
+
+  bad += check(fs_append(source, "// a newer compiler source\n"), "one compiler source changes");
+  r = proc_run(fail_argv[..], 60000, out[..], err[..]);
+  stale := cast(string) err[0..<r.err_n];
+  bad += check(r.status != 0 && contains(stale, "E0306") && contains(stale, "this compiler is out of date") && contains(stale, "coax/build.sh"), "a failure with newer sources names the stale build and coax/build.sh");
+
+  r = proc_run(pass_argv[..], 60000, out[..], err[..]);
+  bad += check(r.status == 0 && r.err_n == 0, "a passing command prints no note");
+  after := best_ms(pass_argv[..], out[..], err[..]);
+  print("  coax test, best of 3: % ms with matching sources, % ms with newer sources\n", before, after);
+  bad += check(after <= before + 50, "the check adds at most 50 ms to a passing coax test");
+
+  bad += check(fs_remove(dir), "the temporary checkout is removed");
+  if bad == 0 { print("stale compiler: ok\n"); return 0; }
+  print("stale compiler: % failed\n", bad);
+  return 1;
+}

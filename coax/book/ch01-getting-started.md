@@ -321,6 +321,12 @@ set for reference:
 | `coax proto ...` | Generate Coax from a protocol descriptor ([Chapter 18](ch18-protocol.md)) |
 | `coax explain CODE` | Explain an error code ([Chapter 4](ch04-reading-errors.md)) |
 | `coax version` | Print the compiler's version |
+| `coax source-digest ROOT` | Print the hash of the compiler sources under `ROOT/coax`; `coax/build.sh` writes it to `coax/bin/source-digest` |
+
+When a command fails and the checkout's compiler sources no longer match
+`coax/bin/source-digest`, the compiler adds a note after the errors: it is
+out of date, the errors may come from the old compiler, and
+`coax/build.sh` rebuilds it. A command that succeeds does no extra work.
 
 `run`, `build`, `lib` and `c` also take the legacy `--release` preset.
 It selects wrapping runtime integers and release build-profile branches;

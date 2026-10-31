@@ -67,7 +67,7 @@ python3 tests/ct_strings.py
 strings_rc=$?
 python3 tests/traversal_work.py
 traversal_rc=$?
-python3 tests/provenance.py
+python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$(cd "$(dirname "$COAX")" && pwd -P)/$(basename "$COAX")"
 provenance_rc=$?
 python3 tests/release.py
 release_rc=$?

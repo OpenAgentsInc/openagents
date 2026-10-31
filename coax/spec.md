@@ -1647,7 +1647,13 @@ slice, not just a successful Wasm link.
 Implemented commands: `coax version`, `check`, `c`, `build`, `run`, `lib`,
 `header`, `layout` (struct sizes, alignment, offsets and padding), `deps`
 (source/descriptor input inventory) and
-`explain` (every error code, also as the Markdown table the book uses).
+`explain` (every error code, also as the Markdown table the book uses) and
+`source-digest ROOT` (one hash of the compiler sources under `ROOT/coax`:
+`src`, `bootstrap`, `lib/compiler` and `lib/proto`). `coax/build.sh` writes
+that digest to `coax/bin/source-digest`. When a command exits nonzero and the
+compiler runs from `ROOT/coax/bin/coax`, it compares the digest with `ROOT`'s
+sources and, when they differ, prints that the compiler is out of date and
+that `ROOT/coax/build.sh` rebuilds it. A successful command does not compare.
 `--keep-c` retains generated source for inspection; `--json` prints
 diagnostics as JSON lines for tools and agents. Errors have stable codes,
 source locations and fix text where available; compile-time failures add call

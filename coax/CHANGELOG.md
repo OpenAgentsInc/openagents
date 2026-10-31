@@ -44,6 +44,11 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   `coax/bin/mutation-survivors` and `releases/<time>/MUTATION`.
   `COAX_MUTATION_FULL=1 coax/build.sh` is the full check, which gates on
   every survivor.
+- Follow-up (`ax-stale-compiler`): `coax source-digest ROOT` prints one hash
+  of the compiler sources under `ROOT/coax`, and `coax/build.sh` writes it to
+  `coax/bin/source-digest`. A failing command run from `ROOT/coax/bin/coax`
+  whose checkout's sources differ from that digest adds a note that the
+  compiler is out of date and that `ROOT/coax/build.sh` rebuilds it.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

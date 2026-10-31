@@ -96,6 +96,13 @@ check_documents() {
     COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
   fi
 }
+# The hash of this checkout's compiler sources beside the compiler, so a
+# failing command can say the compiler is older than the checkout (coax
+# source-digest). A compiler without the command leaves no digest.
+write_source_digest() {
+  if bin/coax source-digest "$root" > "bin/.source-digest.$$" 2> /dev/null; then mv "bin/.source-digest.$$" bin/source-digest
+  else rm -f "bin/.source-digest.$$" bin/source-digest; fi
+}
 from_cache() {
   [[ -z "${COAX_BUILD_FRESH:-}" && -d "$cache" ]] || return 1
   survivors_allowed "$cache" || return 1
@@ -106,6 +113,7 @@ from_cache() {
   mkdir -p bin
   ./provenance.sh install "$root" "$cache" 2> /dev/null || return 1
   artifacts_from "$cache"
+  write_source_digest
   echo "coax/build.sh: installed the checked build ${expected:0:12} from $cache_root"
 }
 # A checked build into the cache, whole or not at all, verified again first.
@@ -163,6 +171,7 @@ else
       mv "bin/.$artifact.$$" "bin/$artifact"
     done
     ./provenance.sh install "$root" "$snapshot/coax/bin"
+    write_source_digest
     keep
   fi
   report_survivors
