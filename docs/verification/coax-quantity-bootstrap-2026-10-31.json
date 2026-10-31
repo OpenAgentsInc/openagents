@@ -1,0 +1,553 @@
+{
+  "schema": "coax-quantity-normal-bootstrap-reconstruction-v1",
+  "scope": "Focused normal-path checked-in seed reconstruction and compiler C/header fixed point; not complete bootstrap/release/cache qualification.",
+  "root": "/private/tmp/coax-quantity-main-d4db651f8b",
+  "source_commit": "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4",
+  "working_directory": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+  "normal_rebuild_command": [
+    "coax/build.sh"
+  ],
+  "normal_rebuild_executed": false,
+  "cache_or_installed_release_published": false,
+  "commands": [
+    {
+      "name": "fingerprint-before",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-quantity-main-d4db651f8b"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 1.5942784590297379,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/fingerprint-before.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/fingerprint-before.stderr"
+    },
+    {
+      "name": "seed-budget",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/budget.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-budget.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.0636472079786472,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-budget.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-budget.stderr"
+    },
+    {
+      "name": "seed-check-domains",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/check-domains.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-check-domains.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.08825608302140608,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-check-domains.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-check-domains.stderr"
+    },
+    {
+      "name": "seed-profiles",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/profiles.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-profiles.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.08421633299440145,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-profiles.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-profiles.stderr"
+    },
+    {
+      "name": "seed-mutation-schedule",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/mutation-schedule.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-mutation-schedule.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.06815875001484528,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-mutation-schedule.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-mutation-schedule.stderr"
+    },
+    {
+      "name": "seed-lexer",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/lexer.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-lexer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.2556695410166867,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-lexer.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-lexer.stderr"
+    },
+    {
+      "name": "seed-parser",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/parser.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-parser.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.6458884999738075,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-parser.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-parser.stderr"
+    },
+    {
+      "name": "seed-checker",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/checker.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-checker.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 2.1050365419941954,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-checker.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-checker.stderr"
+    },
+    {
+      "name": "seed-sources",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/sources.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.1616122090490535,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/seed-sources.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/seed-sources.stderr"
+    },
+    {
+      "name": "stage0-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-DCOAX_BOOTSTRAP_IMPORTER",
+        "-I",
+        "bootstrap",
+        "-I",
+        "/private/tmp/coax-quantity-bootstrap-final",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/stage0",
+        "src/main.cpp",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-check-domains.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-mutation-schedule.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-budget.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-profiles.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-lexer.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-parser.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-checker.o",
+        "/private/tmp/coax-quantity-bootstrap-final/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 11.370758124976419,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/stage0-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/stage0-cxx.stderr"
+    },
+    {
+      "name": "stage0-graph",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-final/stage0",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 15.162725125032011,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/proto_importer.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/stage0-graph.stderr"
+    },
+    {
+      "name": "graph-object",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 6.753103166993242,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/graph-object.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/graph-object.stderr"
+    },
+    {
+      "name": "final-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-quantity-bootstrap-final",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-final/coax",
+        "src/main.cpp",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 14.501512209011707,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/final-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/final-cxx.stderr"
+    },
+    {
+      "name": "final-version",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-final/coax",
+        "version"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.21817474998533726,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/final-version.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/final-version.stderr"
+    },
+    {
+      "name": "final-graph",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-final/coax",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-final/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 28.53129012498539,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/rebuilt.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/final-graph.stderr"
+    },
+    {
+      "name": "graph-c-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.c",
+        "/private/tmp/coax-quantity-bootstrap-final/rebuilt.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.012935000006109476,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/graph-c-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/graph-c-fixedpoint.stderr"
+    },
+    {
+      "name": "graph-header-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-quantity-bootstrap-final/proto_importer.h",
+        "/private/tmp/coax-quantity-bootstrap-final/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.012789042026270181,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/graph-header-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/graph-header-fixedpoint.stderr"
+    },
+    {
+      "name": "final-seed-parser",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-final/coax",
+        "c",
+        "lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-final/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.8778383329627104,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/parser-final.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/final-seed-parser.stderr"
+    },
+    {
+      "name": "parser-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.c",
+        "/private/tmp/coax-quantity-bootstrap-final/parser-final.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.025632333010435104,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/parser-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/parser-seed-c-match.stderr"
+    },
+    {
+      "name": "parser-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.h",
+        "/private/tmp/coax-quantity-bootstrap-final/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.01862054195953533,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/parser-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/parser-seed-header-match.stderr"
+    },
+    {
+      "name": "final-seed-checker",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-final/coax",
+        "c",
+        "lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-final/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 13.987336916965432,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/checker-final.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/final-seed-checker.stderr"
+    },
+    {
+      "name": "checker-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.c",
+        "/private/tmp/coax-quantity-bootstrap-final/checker-final.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.028794332989491522,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/checker-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/checker-seed-c-match.stderr"
+    },
+    {
+      "name": "checker-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.h",
+        "/private/tmp/coax-quantity-bootstrap-final/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 0.02100662502925843,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/checker-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/checker-seed-header-match.stderr"
+    },
+    {
+      "name": "fingerprint-after",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-quantity-main-d4db651f8b"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-d4db651f8b/coax",
+      "elapsed_seconds": 1.8244582920451649,
+      "exit": 0,
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-final/fingerprint-after.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-final/fingerprint-after.stderr"
+    }
+  ],
+  "passed": true,
+  "input_fingerprint_before": "bc42e221b7ed98b174a20b5a3a35a4dda94914b528a35981467b1b9a08d88381",
+  "normal_bootstrap_recipe_sha256": "9ce3849b12817899f0d50126fa60162834553fc9c763620293a25fcb9bd2a6ca",
+  "normal_seed_compile_order": [
+    "budget",
+    "check-domains",
+    "profiles",
+    "mutation-schedule",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "normal_seed_link_order": [
+    "check-domains",
+    "mutation-schedule",
+    "budget",
+    "profiles",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "seed_sha256": {
+    "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+    "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+    "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+    "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+    "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+    "coax/bootstrap/checker.c": "1f3e902f91fcab21097b7c03dd52f2771654ef2432f824a9788d07f7e55f4a19",
+    "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+    "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+    "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8"
+  },
+  "authored_source_sha256": {
+    "coax/lib/compiler/compiler.coax": "abcff46546d11e470e171e9953e4ed2fc09c150153d859e7d49d28fe3882c0d1",
+    "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+    "coax/lib/compiler/checker.coax": "0cc4e0288ddfd9b1f34e9e4e465824a0b5e2a1e6453d97acb31a7266dd63652e",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "compiler_version": "coax0 0.42.0",
+  "input_fingerprint_after": "bc42e221b7ed98b174a20b5a3a35a4dda94914b528a35981467b1b9a08d88381",
+  "artifacts": {
+    "stage0": "77af2523251bfd865d30cf58435912acd540993cc19666b1433f523c24ffa9d2",
+    "proto_importer.c": "4199473cdc0a4838e9ee2b6a133925b82e113098f16f2eb03d98483b282db2fd",
+    "proto_importer.h": "11d7eba886bf77b3a6940b16306297f439a2f19cd396cd2bcac33d2b99443edd",
+    "proto_importer.o": "895cd26dd577f85a6723a52a1b8e0c13498b94071ebad25562626a1e578d8ada",
+    "coax": "19f0528a2248c8c4d399031911e2b607894338b9b3b13a868ec230254639afc0",
+    "rebuilt.c": "4199473cdc0a4838e9ee2b6a133925b82e113098f16f2eb03d98483b282db2fd",
+    "rebuilt.h": "11d7eba886bf77b3a6940b16306297f439a2f19cd396cd2bcac33d2b99443edd"
+  },
+  "fixed_points": {
+    "compiler_graph_c": true,
+    "compiler_graph_header": true,
+    "checked_in_parser_seed_c_and_header": true,
+    "checked_in_checker_seed_c_and_header": true
+  },
+  "not_run": [
+    "Complete bootstrap-build.sh standalone policy/mutation gates.",
+    "Complete compiler tests or unrelated parser/checker mutation.",
+    "Release metadata/provenance verification and cache/installed compiler publication."
+  ],
+  "created_utc": "2026-10-31T19:11:18.309145+00:00",
+  "focused_reconstruction_command": [
+    "python3",
+    "/tmp/coax-quantity-bootstrap/rebuild.py",
+    "--root",
+    "/tmp/coax-quantity-main-d4db651f8b",
+    "--work",
+    "/tmp/coax-quantity-bootstrap-final",
+    "--source-commit",
+    "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4",
+    "--run"
+  ],
+  "reconstruction_script_sha256": "68ccd366a29640c6daad70ce4e149a2151defb9dfcbbd8d12b13ca71eb618959",
+  "embedded_protocol_sources_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+  "compiler_binary_path": "/tmp/coax-quantity-bootstrap-final/coax",
+  "compiler_binary_canonical_path": "/private/tmp/coax-quantity-bootstrap-final/coax",
+  "compiler_sha256": "19f0528a2248c8c4d399031911e2b607894338b9b3b13a868ec230254639afc0",
+  "duration_seconds": 98.4137385430513,
+  "longest_command_seconds": 28.53129012498539,
+  "normal_rebuild_instruction": {
+    "cwd": "repository root at the qualified source revision",
+    "command": "coax/build.sh",
+    "status": "Not executed here. Full normal bootstrap standalone gates, release/provenance checks and cache/installed-compiler publication remain pending."
+  },
+  "new_merged_dependency": "The 0.42.0 normal recipe adds checked-in check-domains.c/h for native finite-property execution. Its seed was compiled and linked in the exact normal order read from bootstrap-build.sh.",
+  "verification_limit": "The merged-source compiler rebuilds its authored graph C/header and reproduces checked-in parser/checker seeds. This finite fixed-point result does not certify all compiler semantics or establish a complete release/cache qualification.",
+  "c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "cpp_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "merged_quantity_integration": {
+    "scope": "One new family-interoperation regression only; prior nine CLI cases and all passing numerical/mutation corpora are reused.",
+    "test": "coax/tests/quantity.py::Quantities.test_explicit_family_interoperation_on_one_imported_unit",
+    "driver_sha256": "7602b17818c98017895d92c9ed50842f91f2c9bad00658420ac551846b4b07d9",
+    "tests_run": 1,
+    "passed": true,
+    "log_sha256": "774d1086a37de6d8b9e2865f12621648cb23ee1c9a1e8f5919ee23e907dcf70c",
+    "checks": [
+      "Typed A+B returns A; typed B+A returns B for one shared imported unit/carrier.",
+      "Scalar-left multiplication returns the right quantity family.",
+      "Explicit scale conversion preserves each family.",
+      "Cross-family comparison matches raw equal values.",
+      "Five C header signatures erase to double.",
+      "Direct cross-family assignment is still refused."
+    ]
+  },
+  "native_result_reuse": {
+    "record": "docs/verification/coax-quantity-native-2026-10-31.json",
+    "assembly_record": "docs/verification/coax-quantity-assembly-2026-10-31.json",
+    "fresh_merged_compiler_c_sha256": "f45375017775fbc01a01a930640ace8cf0deb03abc0e297e286a624c3da8dec7",
+    "fresh_merged_compiler_header_sha256": "65c0af8c2bacd8130b50c8043c124296c8278ac24c5be4ba72dc199a3eb86e65",
+    "exact_previous_C_and_header": true,
+    "prior_native_modes_repeated": false
+  },
+  "verse_consumer": {
+    "raw_grid_source_commit": "2a6f0ebbef",
+    "typed_grid_source_commit": "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4",
+    "comparison": {
+      "coax_p_smooth": {
+        "exact_C_function_text_equal": true,
+        "raw_sha256": "e27415e4cc65f8afe89253835610e2662e1f9b072f57bd9fbfe230891d910744",
+        "typed_sha256": "e27415e4cc65f8afe89253835610e2662e1f9b072f57bd9fbfe230891d910744"
+      },
+      "coax_p_fog": {
+        "exact_C_function_text_equal": true,
+        "raw_sha256": "993bd6728111b9a50156763c3095c8cdefbd4ae562c2afc2edecdae3aef6427a",
+        "typed_sha256": "993bd6728111b9a50156763c3095c8cdefbd4ae562c2afc2edecdae3aef6427a"
+      }
+    },
+    "scope": "Only smooth and fog function text after stripping #line directives; the updated-main Grid has other intentional spawn/way-line changes. No whole-file identity claim.",
+    "previous_fog_property_cases": 130,
+    "previous_fog_property_repeated": false,
+    "previous_fog_log_sha256": "bf96f17045824f19edeb7313f2ae8ce868b4c54fbcfdd7581878e1682d68e4aa"
+  }
+}

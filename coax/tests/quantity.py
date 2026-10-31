@@ -59,4 +59,21 @@ V :: #run calc(); #assert V==29;''');self.assertEqual(r.returncode,0,r.stderr)
   (self.work/'units.coax').write_text('#module "test.quantity.units";\n'+PRELUDE)
   p=self.work/'client.coax';p.write_text('#module "test.quantity.client"; #load "units.coax" as u; f :: (a:u.Quantity(u.HalfMetre,f32))->u.Quantity(u.Metre,f32) #export_c {return convert_unit(u.Metre,a);}')
   r=subprocess.run([str(COMPILER),'c',str(p),'--library'],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertEqual(r.returncode,0,r.stderr)
+ def test_explicit_family_interoperation_on_one_imported_unit(self):
+  source='#load "'+str(ROOT/'coax/lib/quantity.coax')+'" as u;\n'+'''A :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+B :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+family_ab :: (a:A(u.Metre,f64),b:B(u.Metre,f64))->A(u.Metre,f64) #export_c {return a+b;}
+family_ba :: (b:B(u.Metre,f64),a:A(u.Metre,f64))->B(u.Metre,f64) #export_c {return b+a;}
+family_scale :: (s:f64,b:B(u.Metre,f64))->B(u.Metre,f64) #export_c {return s*b;}
+family_convert_a :: (a:A(u.Metre,f64))->A(u.HalfMetre,f64) #export_c {return convert_unit(u.HalfMetre,a);}
+family_convert_b :: (b:B(u.Metre,f64))->B(u.HalfMetre,f64) #export_c {return convert_unit(u.HalfMetre,b);}
+family_value :: ()->f64 {a:A(u.Metre,f64)=A.{value=3};b:B(u.Metre,f64)=B.{value=4};x:=family_ab(a,b);y:=family_ba(b,a);#assert x==y;return x.value+y.value+family_scale(2.0,b).value+family_convert_a(a).value+family_convert_b(b).value;}
+FamilyAnswer :: #run family_value();#assert FamilyAnswer==36;
+'''
+  p=self.work/'families.coax';p.write_text(source);header=self.work/'families.h'
+  r=subprocess.run([str(COMPILER),'c',str(p),'--library','--header',str(header)],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertEqual(r.returncode,0,r.stderr)
+  h=header.read_text()
+  for signature in ['double family_ab(double a, double b);','double family_ba(double b, double a);','double family_scale(double s, double b);','double family_convert_a(double a);','double family_convert_b(double b);']:self.assertIn(signature,h)
+  p.write_text(source+'bad_family_assignment :: (a:A(u.Metre,f64))->B(u.Metre,f64) {return a;}\n')
+  r=subprocess.run([str(COMPILER),'c',str(p),'--library'],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'');self.assertIn('A(',r.stderr);self.assertIn('B(',r.stderr)
 if __name__=='__main__':unittest.main()

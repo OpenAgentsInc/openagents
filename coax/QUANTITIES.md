@@ -157,12 +157,21 @@ The [checker integration record](../docs/verification/coax-quantity-checker-2026
 retains all 647 checks and mutates 16 exact changed procedures: 1,090/1,090
 mutants killed, with zero survivors and no equivalent waivers. Its resolved
 AST, failure-sentinel, resource-arena, coefficient and module-shadow checks
-cover the authored lowering, including nine focused native CLI cases. A
+cover the authored lowering, including nine focused CLI cases. A
 refreshed compiler emits the exact previously qualified native C/header;
 those passing arithmetic, ABI and assembly runs are reused rather than repeated.
 
-Checked-in-seed reconstruction and compiler C/header fixed point:
-**pending final receipt**.
+The [normal-path reconstruction record](../docs/verification/coax-quantity-bootstrap-2026-10-31.json)
+uses immutable merged commit `d4db651f8b`: all eight checked-in seeds,
+including the new check-domains seed, build stage0 and the authored compiler
+graph. The resulting 0.42.0 compiler reproduces the compiler C and header
+exactly, and reproduces the checked-in parser/checker C and headers. The
+98.4-second reconstruction retains source fingerprint `bc42e221…d88381`.
+One new family-interoperation smoke passes on that exact compiler, including
+typed return families, explicit conversion, scalar-left multiplication and
+refused cross-family assignment. Its emitted native fixture C/header match
+the earlier qualified artifacts exactly; updated-main Grid `smooth` and
+`fog` C functions also match their raw versions exactly.
 
 These private, focused results do not by themselves qualify or publish a
 normal release cache. The full normal bootstrap, release/provenance checks
@@ -171,7 +180,9 @@ and cache/installed-compiler status must be recorded separately.
 Use a compiler built from the milestone sources for focused checks; the test
 drivers default to `coax/bin/coax` and accept `COAX_TEST_COMPILER` for a private
 compiler. An older installed binary requires rebuilding before it accepts the
-new syntax.
+new syntax. The concrete normal rebuild is `coax/build.sh`; this milestone
+proved its checked-in-seed reconstruction and fixed point, while the complete
+standalone release gates and release-cache publication remain pending.
 
 ```shell
 python3 coax/tests/quantity.py
