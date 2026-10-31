@@ -277,7 +277,7 @@
         },
         {
           "path": "coax/QUANTITIES.md",
-          "sha256": "c02aa5d219a4d4b740f12e8b5690e21a2e8b40472e485989ba67aadea9e1ba38"
+          "sha256": "82670d388fd8912b9d7f6bd4737d42fd0908205cb3ba036e3834cb7fa5f0386c"
         },
         {
           "path": "coax/lib/quantity.coax",
