@@ -1,0 +1,3 @@
+--vertices builder_bg_vs,builder_fx_vs
+--fragments builder_bg_fs,builder_fx_fs
+--bindings apps/openagents-web/gpu/builder.bindings --strip builder_

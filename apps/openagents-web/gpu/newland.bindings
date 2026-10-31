@@ -1,0 +1,4 @@
+# newland's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out.
+u 0 0 uniform 28
+sans_atlas 0 1
+sans_sampler 0 2

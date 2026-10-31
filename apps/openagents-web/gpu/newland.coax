@@ -1,0 +1,192 @@
+// newland's shaders, the source of apps/openagents-web/newland.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (newland.module,
+// newland.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// The live homepage's two passes (newland.coax decides every number): the
+// splash's slow nebula fading up from black, darker at the edges (the
+// vignette; newland.coax dims the strokes to match), with the glass of the
+// feed and the buttons, then the strokes.
+//
+// The
+// nebula, the glass and the stroke modes are project.wgsl's and splash.wgsl's.
+// NewlandU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   count 5
+//   vignette 6
+//   pad1 7
+//   panels 8
+// per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0 (newland.coax PANELS + EDIT_PANELS)
+// The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").
+newland_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+newland_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+newland_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(newland_hash(i),newland_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(newland_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),newland_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+newland_fbm :: (q:V2)->f32 {
+  p:V2=q;
+  v:f32=0.0f32;
+  a:f32=0.5f32;
+  {
+    k:s32=0;
+    while k<5 {
+      v=v+(a*newland_noise(p));
+      p=wg_add_f2f2(wg_mul_f2f(p,2.03f32),v2(1.7f32,9.2f32));
+      a=a*0.5f32;
+      k+=1;
+    }
+  }
+  return v;
+}
+// The page's tokens, as newland.coax names them: grayscale for everything,
+// Arwes's electric blue (its theme's primary main(3), hsl(180, 68.07%, 53.33%))
+// for a handful of accents drawn as strokes, and Bitcoin orange for Bitcoin
+// payments only.
+NEWLAND_GREY_WHITE :: ()->V3 {return v3(0.94f32,0.94f32,0.94f32);}
+NEWLAND_GREY_LIGHT :: ()->V3 {return v3(0.78f32,0.78f32,0.78f32);}
+NEWLAND_ACCENT :: ()->V3 {return v3(0.216f32,0.851f32,0.851f32);}
+NEWLAND_BITCOIN :: ()->V3 {return v3(1.0f32,0.55f32,0.12f32);}
+newland_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  uv:V2=wg_div_f2f(wg_sub_f2f2(v2(pos.x,pos.y),wg_mul_ff2(0.5f32,wg_at2(u,0))),u[1]);
+  t:f32=u[2]*0.032f32;
+  w:V2=v2(newland_fbm(wg_add_f2f2(wg_mul_f2f(uv,1.5f32),v2(t,-t))),newland_fbm(wg_add_f2f(wg_add_f2f2(wg_mul_f2f(uv,1.5f32),v2(-t,t*0.7f32)),4.0f32)));
+  n:f32=newland_fbm(wg_add_f2f2(wg_add_f2f2(wg_mul_f2f(uv,2.1f32),wg_mul_ff2(2.4f32,w)),v2(0.0f32,t)));
+  glow:f32=exp((-1.9f32)*wg_dot2(uv,uv));
+  tint:V3=wg_mix_f3f3f(v3(0.045f32,0.045f32,0.045f32),v3(0.185f32,0.185f32,0.185f32),n*n);
+  c:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(tint,glow),(0.2f32+(0.8f32*n))),0.85f32);
+  // a faint grey horizon behind the Grid
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(NEWLAND_GREY_LIGHT(),0.055f32),exp(-pow((uv.y+0.05f32)*5.0f32,2.0f32))),glow));
+  star:f32=stepf(0.998f32,newland_hash(wg_floor_f2(wg_mul_f2f(v2(pos.x,pos.y),0.5f32))))*(0.5f32+(0.5f32*sin((u[2]*1.3f32)+(newland_hash(wg_floor_f2(v2(pos.x,pos.y)))*40.0f32))));
+  c=wg_add_f3f3(c,wg_make_f3_f((star*0.35f32)*(1.0f32-(glow*0.6f32))));
+  // the vignette, as newland.coax's for the strokes
+  q:V2=wg_div_f2f(wg_sub_f2f2(v2(pos.x,pos.y),wg_mul_ff2(0.5f32,wg_at2(u,0))),(0.5f32*wg_length2(wg_at2(u,0))));
+  r2:f32=(q.x*q.x)+((q.y*q.y)*1.3f32);
+  c=wg_mul_f3f(c,mix(1.0f32,clampf(1.18f32-(1.25f32*r2),0.0f32,1.0f32),u[6]));
+  c=wg_mul_f3f(c,u[3]);
+  // the page's first four (the card's glass, the fifth, stays as it was: its strokes are the card), then
+  // the Grid's edit layer's plates after the page's five
+  {
+    k:s32=0;
+    while k<13 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      if (k==4) {
+        {k+=1; continue;}
+      }
+      c=newland_panel(v2(pos.x,pos.y),c,wg_at4(u,(cast(int)(k*2))*4+8),wg_at4(u,(cast(int)((k*2)+1))*4+8),u);
+      k+=1;
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint scanlines and
+// a grey glow inside its edge.
+newland_panel :: (p:V2,under:V3,r:V4,s:V4,u:[]f32)->V3 {
+  alpha:f32=s.y*u[3];
+  if (alpha<=0.0f32) {
+    return under;
+  }
+  x:f32=p.x-r.x;
+  y:f32=p.y-r.y;
+  w:f32=r.z-r.x;
+  h:f32=r.w-r.y;
+  side:f32=fmin(fmin(x,w-x),fmin(y,h-y));
+  corner:f32=fmin((w-x)+y,x+(h-y))-s.x;
+  inside:f32=fmin(side,corner*0.7071f32);
+  if (inside<=0.0f32) {
+    return under;
+  }
+  tint:V3=NEWLAND_GREY_LIGHT();
+  warm:f32=ifx s.z>0.5f32 then 1.0f32 else 0.0f32;
+  shade:V3=wg_mix_f3f3f(v3(0.022f32,0.022f32,0.022f32),v3(0.013f32,0.013f32,0.013f32),clampf(y/fmax(h,1.0f32),0.0f32,1.0f32));
+  line:f32=ifx fract(p.y/3.0f32)<0.34f32 then 0.018f32 else 0.0f32;
+  edge:f32=(exp((-inside)/22.0f32)*(0.07f32+(0.1f32*warm)))+(0.035f32*warm);
+  glass:V3=wg_add_f3f3(wg_add_f3f3(wg_mix_f3f3f(wg_mul_f3f(under,0.25f32),shade,0.85f32),v3(line,line,line)),wg_mul_f3f(tint,edge));
+  return wg_mix_f3f3f(under,glass,clampf(alpha,0.0f32,1.0f32)*smoothstep(0.0f32,1.5f32,inside));
+}
+// ---- the strokes: text, the HUD, the Grid, the tree and the agents, one quad each
+NewlandV :: struct {pos:V4; place:V2; shape:V4; tint:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode (project.coax MODE_*)
+newland_fx_vs_in :: struct {a:V4; b:V4; c:V4; }
+newland_fx_vs :: (_vid2:u32,_iid3:u32,in_:newland_fx_vs_in,u:[]f32)->NewlandV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  o:NewlandV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  return o;
+}
+newland_fx_fs :: (v:NewlandV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.tint.w>3.5f32) {
+    // A sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels.
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  mode:f32=v.tint.w;
+  if ((mode>1.5f32)&&(mode<2.5f32)) {
+    // A payment in flight, as the Payment Network demo draws one
+    // (aethyr-cpp src/paynet/render.cpp): a capsule glow-wide with a
+    // white-hot head, its tail fading back along the path.
+    r:f32=d/fmax(v.shape.w,1.0f32);
+    if (r>=1.0f32) {
+      return v4(0.0f32,0.0f32,0.0f32,1.0f32);
+    }
+    tail:f32=ifx v.shape.x>1.0f32 then mix(0.08f32,1.0f32,clampf(v.place.x/v.shape.x,0.0f32,1.0f32)) else 1.0f32;
+    g:f32=exp(((-r)*r)*5.0f32)*(1.0f32-r);
+    hot:f32=exp(((-r)*r)*36.0f32)*v.shape.y;
+    c:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),g),wg_mul_f3f(NEWLAND_GREY_WHITE(),hot)),tail),v.shape.z),u[3]);
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  if ((mode>0.5f32)&&(mode<1.5f32)) {
+    // A link: soft across, and faded within 8 px of its nodes.
+    ends:f32=smoothstep(0.0f32,8.0f32,v.place.x)*smoothstep(0.0f32,8.0f32,v.shape.x-v.place.x);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),((core*0.8f32)+halo)),ends),v.shape.z),u[3]),1.0f32);
+  }
+  if (mode>2.5f32) {
+    // An amount: a near-white core in a coloured glow.
+    c:V3=wg_mul_f3f(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(wg_mix_f3f3f(v3(v.tint.x,v.tint.y,v.tint.z),NEWLAND_GREY_WHITE(),0.75f32),core),wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),halo),1.8f32)),v.shape.z),u[3]);
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

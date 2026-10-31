@@ -1,0 +1,3 @@
+--vertices verse_bg_vs,verse_fx_vs
+--fragments verse_bg_fs,verse_fx_fs
+--bindings apps/openagents-web/gpu/verse.bindings --strip verse_

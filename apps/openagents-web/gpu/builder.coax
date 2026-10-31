@@ -1,0 +1,244 @@
+// builder's shaders, the source of apps/openagents-web/builder.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (builder.module,
+// builder.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// Build your own realm's two passes: verse.wgsl's night and plates (the playtest's look), and the
+// strokes over it. Every place and size comes from builder.coax. Kept in step with verse.wgsl.
+// BuilderU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   panels 5
+//   k 6
+//   pad0 7
+//   panel 8
+// per plate (verse.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+// The system sans for the lede and the brand: the host's glyph atlas (coax/web/host.js, "the sans atlas").
+// A plate (realm.wgsl's): a dark wood fill with one thin bronze line round
+// it and small rounded corners. Look 1 lights the line; 2 (under the mouse
+// or pressed) adds a step lighter fill and the bright line.
+builder_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=4.0f32*s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.z>=2.0f32;
+  lit:bool=over||((s.z>=1.0f32)&&(s.z<2.0f32));
+  fill:V3=ifx over then v3(0.235f32,0.168f32,0.115f32) else v3(0.165f32,0.114f32,0.078f32);
+  line:V3=ifx lit then v3(0.86f32,0.70f32,0.42f32) else v3(0.69f32,0.541f32,0.29f32);
+  w:f32=1.25f32*s.x;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
+}
+// The playtest's PLAYTEST NOW (hud-button.js): dark glass with two corners
+// cut, a thin bright edge, a sweep of light every 6 s, scan lines, and two
+// corner brackets standing off it. Look 4; 5 under the mouse, 6 pressed.
+builder_band :: (x:f32,lo:f32,hi:f32)->f32 {
+  return stepf(lo,x)*stepf(x,hi);
+}
+builder_cover :: (d:f32)->f32 {
+  return 1.0f32-smoothstep(-0.5f32,0.5f32,d);
+}
+builder_rim :: (d:f32,w:f32)->f32 {
+  return 1.0f32-smoothstep((w*0.5f32)-0.5f32,(w*0.5f32)+0.5f32,abs(d+(w*0.5f32)));
+}
+builder_sd_box :: (p:V2,b:V2)->f32 {
+  q:V2=wg_sub_f2f2(wg_abs_f2(p),b);
+  return wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32);
+}
+builder_sd_cut :: (p:V2,b:V2,cut:f32)->f32 {
+  return fmax(builder_sd_box(p,b),(abs(p.x+p.y)-((b.x+b.y)-cut))*0.70710678f32);
+}
+builder_hud :: (pos:V2,under:V3,r:V4,s:V4,u:[]f32)->V3 {
+  k:f32=s.x;
+  ext:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  q:V2=wg_sub_f2f2(pos,wg_add_f2f2(v2(r.x,r.y),ext)); // y down
+  if wg_any_gt_f2f2(wg_abs_f2(q),wg_add_f2f2(ext,wg_make_f2_f(40.0f32*k))) {
+    return under;
+  }
+  press:f32=ifx s.z>=5.5f32 then 1.0f32 else 0.0f32;
+  hover:f32=ifx s.z>=4.5f32 then 1.0f32 else 0.0f32;
+  p:V2=wg_div_f2f(q,(1.0f32-(0.03f32*press)));
+  n:V2=wg_div_f2f2(p,ext);
+  glass:V3=wg_add_f3f(v3(0.035f32,0.04f32,0.05f32),0.05f32*(0.5f32-(0.5f32*n.y)));
+  edge:V3=v3(0.92f32,0.95f32,1.0f32);
+  d_box:f32=builder_sd_box(p,ext);
+  d:f32=builder_sd_cut(p,ext,14.0f32*k);
+  inside:f32=builder_cover(d);
+  rgb:V3=wg_add_f3f(wg_add_f3f(wg_add_f3f(glass,0.012f32*stepf(2.0f32*k,pos.y-((3.0f32*k)*floor(pos.y/(3.0f32*k))))),0.10f32*press),0.04f32*hover);
+  col:V3=wg_mul_f3f(wg_mul_f3f(rgb,0.8f32),inside);
+  alpha:f32=0.8f32*inside;
+  t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+  phase:f32=fract(t/6.0f32);
+  w:f32=(p.x+(p.y*0.6f32))/ext.x;
+  sweep:f32=exp(-pow((w-mix(-1.6f32,1.6f32,phase/0.22f32))/0.10f32,2.0f32))*builder_band(phase,0.0f32,0.22f32);
+  col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(v3(0.10f32,0.10f32,0.10f32),sweep),inside));
+  on_cut:f32=stepf(d_box,d-0.25f32);
+  e:f32=(builder_rim(d,1.2f32*k)*(0.42f32+(0.2f32*hover)))+((builder_rim(d,2.6f32*k)*on_cut)*0.95f32);
+  col=wg_add_f3f3(col,wg_mul_f3f(edge,e));
+  alpha=alpha+e;
+  off:f32=6.0f32*k;
+  arm:f32=16.0f32*k;
+  th:f32=1.4f32*k;
+  br:f32=0.0f32;
+  {
+    c:s32=0;
+    while c<2 {
+      m:V2=ifx c==0 then v2(p.x,-p.y) else v2(-p.x,p.y);
+      b:V2=wg_sub_f2f2(m,wg_add_f2f2(ext,v2(off,off)));
+      br=fmax(br,fmax(builder_band(b.x,-arm,th*0.5f32)*stepf(abs(b.y),th*0.5f32),builder_band(b.y,-arm,th*0.5f32)*stepf(abs(b.x),th*0.5f32)));
+      c+=1;
+    }
+  }
+  col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(v3(0.85f32,0.85f32,0.85f32),br),0.55f32));
+  alpha=alpha+(br*0.55f32);
+  alpha=fmin(alpha,1.0f32);
+  col=wg_min_f3f3(col,v3(alpha,alpha,alpha));
+  glow:f32=(exp((-fmax(d,0.0f32))/(9.0f32*k))*(1.0f32-inside))*0.10f32;
+  opacity:f32=1.0f32-(0.45f32*press);
+  return wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_add_f3f3(col,wg_mul_f3f(under,(1.0f32-alpha))),opacity),wg_mul_f3f(under,(1.0f32-opacity))),v3(glow,glow,glow));
+}
+builder_panels :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<16 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      s:V4=wg_at4(u,(cast(int)((k*2)+1))*4+8);
+      if (s.z>=3.5f32) {
+        c=builder_hud(p,c,wg_at4(u,(cast(int)(k*2))*4+8),s,u);
+      } else {
+        c=builder_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+8),s);
+      }
+      k+=1;
+    }
+  }
+  return c;
+}
+builder_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+builder_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(builder_hash(i),builder_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(builder_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),builder_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+builder_fbm :: (q:V2)->f32 {
+  p:V2=q;
+  v:f32=0.0f32;
+  a:f32=0.5f32;
+  {
+    k:s32=0;
+    while k<5 {
+      v=v+(a*builder_noise(p));
+      p=wg_add_f2f2(wg_mul_f2f(p,2.03f32),v2(1.7f32,9.2f32));
+      a=a*0.5f32;
+      k+=1;
+    }
+  }
+  return v;
+}
+// The playtest's field behind the landing and the map (app.js FIELD_SHADER,
+// its cool tint): a slow nebula glowing from the middle, and stars.
+builder_field :: (pos:V2,u:[]f32)->V3 {
+  uv:V2=wg_div_f2f(wg_sub_f2f2(pos,wg_mul_ff2(0.5f32,wg_at2(u,0))),u[1]);
+  t:f32=(20.0f32+(ifx u[4]>0.5f32 then 0.0f32 else u[2]))*0.035f32;
+  w:V2=v2(builder_fbm(wg_add_f2f2(wg_mul_f2f(uv,1.6f32),v2(t,-t))),builder_fbm(wg_add_f2f(wg_add_f2f2(wg_mul_f2f(uv,1.6f32),v2(-t,t*0.7f32)),4.0f32)));
+  n:f32=builder_fbm(wg_add_f2f2(wg_add_f2f2(wg_mul_f2f(uv,2.2f32),wg_mul_ff2(2.4f32,w)),v2(0.0f32,t)));
+  glow:f32=exp((-2.2f32)*wg_dot2(uv,uv));
+  tint:V3=wg_mix_f3f3f(v3(0.05f32,0.055f32,0.075f32),v3(0.20f32,0.21f32,0.27f32),n*n);
+  c:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(tint,glow),glow),(0.2f32+(0.8f32*n)));
+  px:V2=wg_div_f2f(wg_mul_f2f(pos,fmin(2.0f32,fmax(u[6],1.0f32))),fmax(u[6],1.0f32));
+  star:f32=stepf(0.9975f32,builder_hash(wg_floor_f2(wg_mul_f2f(px,0.5f32))))*(0.5f32+(0.5f32*sin(((20.0f32+u[2])*1.3f32)+(builder_hash(wg_floor_f2(px))*40.0f32))));
+  c=wg_add_f3f3(c,wg_make_f3_f((star*0.5f32)*(1.0f32-(glow*0.6f32))));
+  return c;
+}
+builder_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+builder_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  return wg_make_f4_f3f(builder_panels(p,wg_mul_f3f(builder_field(p,u),u[3]),u),1.0f32);
+}
+// ---- the strokes: one quad per stroke or light (verse.coax lit, tinted_dot)
+BuilderV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode
+builder_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+builder_fx_vs :: (_vid2:u32,_iid3:u32,in_:builder_fx_vs_in,u:[]f32)->BuilderV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:BuilderV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+builder_fx_fs :: (v:BuilderV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.tint.w>4.5f32) {
+    // an orb (verse.coax MODE_ORB): lit from the top left, #9a97a3 to #3c3a46, a faint halo
+    r:f32=v.shape.y;
+    d:f32=wg_length2(v.place);
+    inside:f32=1.0f32-smoothstep(r-0.75f32,r+0.75f32,d);
+    t:f32=clampf((wg_length2(wg_add_f2f2(v.place,wg_make_f2_f(0.35f32*r)))-(0.1f32*r))/(0.9f32*r),0.0f32,1.0f32);
+    lit:V3=wg_mix_f3f3f(v3(0.604f32,0.592f32,0.639f32),v3(0.235f32,0.227f32,0.275f32),t);
+    halo:f32=(0.03f32*(1.0f32-smoothstep(0.8f32*r,2.0f32*r,d)))*(1.0f32-inside);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_add_f3f3(wg_mul_f3f(lit,inside),wg_mul_f3f(v3(0.93f32,0.93f32,0.93f32),halo)),v.shape.z),u[3]),1.0f32);
+  }
+  if (v.tint.w>3.5f32) {
+    // a sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_make_f2_f :: (p0:f32)->V2 {return v2(p0,p0);}
+wg_any_gt_f2f2 :: (a:V2,b:V2)->bool {return a.x>b.x || a.y>b.y;}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_add_f3f :: (a:V3,b:f32)->V3 {return v3(a.x+b,a.y+b,a.z+b);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_min_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmin(p0.x,p1.x),fmin(p0.y,p1.y),fmin(p0.z,p1.z));}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

@@ -1,0 +1,4 @@
+# garden's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out.
+u 0 0 uniform 82
+heights 1 0
+objects 1 1

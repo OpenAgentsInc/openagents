@@ -1,0 +1,3 @@
+--vertices icecream_bg_vs,icecream_scene_vs,icecream_fx_vs
+--fragments icecream_bg_fs,icecream_scene_fs,icecream_fx_fs
+--bindings apps/openagents-web/gpu/icecream.bindings --strip icecream_

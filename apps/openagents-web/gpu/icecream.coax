@@ -1,0 +1,262 @@
+// icecream's shaders, the source of apps/openagents-web/icecream.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (icecream.module,
+// icecream.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// IcecreamU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   panels 5
+//   k 6
+//   outline 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   fog 28
+//   range 32
+//   hud 36
+//   spare 40
+//   rooms 44
+//   panel 444
+icecream_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  if ((((p.x<(r.x-2.0f32))||(p.y<(r.y-2.0f32)))||(p.x>(r.z+2.0f32)))||(p.y>(r.w+2.0f32))) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=fmin(ifx s.w>0.0f32 then s.w else 4.0f32*s.x,fmin(half.x,half.y));
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  look:s32=wg_i32_f(s.z+0.5f32);
+  fill:V3=v3(0.165f32,0.114f32,0.078f32);
+  line:V3=v3(0.69f32,0.541f32,0.29f32);
+  if (look==1) {
+    line=v3(0.86f32,0.70f32,0.42f32);
+  }
+  if (look==2) {
+    fill=v3(0.235f32,0.168f32,0.115f32);
+    line=v3(0.95f32,0.80f32,0.52f32);
+  }
+  if (look==3) {
+    fill=v3(0.29f32,0.13f32,0.17f32);
+    line=v3(1.0f32,0.56f32,0.69f32);
+  }
+  if (look==4) {
+    fill=v3(0.22f32,0.16f32,0.07f32);
+    line=v3(0.97f32,0.77f32,0.17f32);
+  }
+  if (look==5) {
+    fill=v3(0.30f32,0.20f32,0.07f32);
+    line=v3(1.0f32,0.86f32,0.40f32);
+  }
+  w:f32=(1.25f32*s.x)*(ifx look>=3 then 1.6f32 else 1.0f32);
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
+}
+icecream_panels :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<40 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=icecream_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+444),wg_at4(u,(cast(int)((k*2)+1))*4+444));
+      k+=1;
+    }
+  }
+  return c;
+}
+icecream_overlay :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  hurt:f32=clampf(u[36],0.0f32,1.0f32);
+  if (hurt>0.0f32) {
+    e:f32=fmin(fmin(p.x,u[0]-p.x),fmin(p.y,u[1]-p.y))/(120.0f32*u[6]);
+    c=wg_mix_f3f3f(c,v3(1.0f32,0.24f32,0.43f32),(hurt*0.75f32)*clampf(1.0f32-e,0.0f32,1.0f32));
+  }
+  if (u[38]>0.5f32) {
+    band:f32=wg_fmod((p.y/u[6]),46.0f32);
+    c=wg_mix_f3f3f(c,v3(0.157f32,0.094f32,0.055f32),ifx band<34.0f32 then 0.94f32 else 0.35f32);
+  }
+  day:f32=clampf(u[37],0.0f32,1.0f32);
+  if (day>0.0f32) {
+    q:V2=wg_sub_f2f2(wg_div_f2f2(p,wg_at2(u,0)),v2(0.7f32,0.25f32));
+    r:f32=wg_length2(wg_mul_f2f2(q,v2(u[0]/fmax(u[1],1.0f32),1.0f32)));
+    sky:V3=ifx r<0.08f32 then v3(1.0f32,0.984f32,0.878f32) else ifx r<0.14f32 then v3(1.0f32,0.898f32,0.541f32) else v3(0.749f32,0.91f32,1.0f32);
+    c=wg_mix_f3f3f(c,sky,day);
+  }
+  return c;
+}
+icecream_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+icecream_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  return wg_make_f4_f3f(icecream_panels(v2(pos.x,pos.y),icecream_overlay(v2(pos.x,pos.y),wg_mul_f3f(v3(u[28],u[29],u[30]),u[3]),u),u),1.0f32);
+}
+ICECREAM_CHUNK :: cast(u32)1020;
+ICECREAM_OBJ_BASE :: cast(u32)8388608;
+ICECREAM_OBJ_OUTLINE :: cast(u32)4194304;
+ICECREAM_LIT_FLAT :: cast(u32)128;
+ICECREAM_INK :: ()->V3 {return v3(0.17f32,0.11f32,0.08f32);}
+IcecreamS :: struct {pos:V4; world:V3; normal:V3; colour:V3; look:V4 #flat; shine:f32 #flat; }
+icecream_clip_of :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+icecream_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]V4)->IcecreamS {
+  o:IcecreamS;
+  object:bool=instance>=ICECREAM_OBJ_BASE;
+  outline:bool=false;
+  at:u32=add_wrap(mul_wrap(instance,ICECREAM_CHUNK),id);
+  light:V3=v3(1.0f32,1.0f32,1.0f32);
+  tint:V3=v3(1.0f32,1.0f32,1.0f32);
+  mode:f32=0.0f32;
+  shine:f32=0.0f32;
+  r0:V4=v4(1.0f32,0.0f32,0.0f32,0.0f32);
+  r1:V4=v4(0.0f32,1.0f32,0.0f32,0.0f32);
+  r2:V4=v4(0.0f32,0.0f32,1.0f32,0.0f32);
+  if object {
+    k:u32=sub_wrap(instance,ICECREAM_OBJ_BASE);
+    outline=(k&ICECREAM_OBJ_OUTLINE)!=0;
+    i:u32=mul_wrap(((k&sub_wrap(ICECREAM_OBJ_OUTLINE,1))>>10),6);
+    r0=objects[cast(int)i];
+    r1=objects[cast(int)add_wrap(i,1)];
+    r2=objects[cast(int)add_wrap(i,2)];
+    tint=v3(objects[cast(int)add_wrap(i,3)].x,objects[cast(int)add_wrap(i,3)].y,objects[cast(int)add_wrap(i,3)].z);
+    shine=objects[cast(int)add_wrap(i,3)].w;
+    light=v3(objects[cast(int)add_wrap(i,4)].x,objects[cast(int)add_wrap(i,4)].y,objects[cast(int)add_wrap(i,4)].z);
+    if (objects[cast(int)add_wrap(i,4)].w>0.5f32) {
+      mode=1.0f32;
+      light=tint;
+    }
+    at=add_wrap(mul_wrap(add_wrap(wg_u32_f(objects[cast(int)add_wrap(i,5)].x),(k&1023)),ICECREAM_CHUNK),id);
+  }
+  b:u32=mul_wrap(at,6);
+  p:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
+  n:V4=wg_unpack4x8snorm(vertices[cast(int)add_wrap(b,3)]);
+  c:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,4)]);
+  slot:u32=vertices[cast(int)add_wrap(b,4)]>>24;
+  hull:V4=wg_unpack4x8snorm(vertices[cast(int)add_wrap(b,5)]);
+  w:V3=v3(wg_dot3(v3(r0.x,r0.y,r0.z),p)+r0.w,wg_dot3(v3(r1.x,r1.y,r1.z),p)+r1.w,wg_dot3(v3(r2.x,r2.y,r2.z),p)+r2.w);
+  normal:V3=v3(wg_dot3(v3(r0.x,r0.y,r0.z),v3(n.x,n.y,n.z)),wg_dot3(v3(r1.x,r1.y,r1.z),v3(n.x,n.y,n.z)),wg_dot3(v3(r2.x,r2.y,r2.z),v3(n.x,n.y,n.z)));
+  if (!object) {
+    if (slot>=ICECREAM_LIT_FLAT) {
+      light=wg_min_f3f3(wg_mul_f3f(v3(u[(cast(int)wg_min_u(sub_wrap(slot,ICECREAM_LIT_FLAT),99))*4+44],u[(cast(int)wg_min_u(sub_wrap(slot,ICECREAM_LIT_FLAT),99))*4+45],u[(cast(int)wg_min_u(sub_wrap(slot,ICECREAM_LIT_FLAT),99))*4+46]),1.05f32),v3(1.0f32,1.0f32,1.0f32));
+      mode=1.0f32;
+    } else {
+      light=v3(u[(cast(int)wg_min_u(slot,99))*4+44],u[(cast(int)wg_min_u(slot,99))*4+45],u[(cast(int)wg_min_u(slot,99))*4+46]);
+    }
+    shine=fmax(n.w,0.0f32);
+  }
+  clip:V4=icecream_clip_of(w,u);
+  if outline {
+    mode=2.0f32;
+    if ((hull.w<=0.0f32)||(((n.x==0.0f32)&&(n.y==0.0f32))&&(n.z==0.0f32))) {
+      clip=v4(2.0f32,2.0f32,2.0f32,1.0f32);
+    } else {
+      hw:V3=v3(wg_dot3(v3(r0.x,r0.y,r0.z),v3(hull.x,hull.y,hull.z)),wg_dot3(v3(r1.x,r1.y,r1.z),v3(hull.x,hull.y,hull.z)),wg_dot3(v3(r2.x,r2.y,r2.z),v3(hull.x,hull.y,hull.z)));
+      push:V4=v4(wg_dot3(v3(u[8],u[9],u[10]),hw),wg_dot3(v3(u[12],u[13],u[14]),hw),wg_dot3(v3(u[16],u[17],u[18]),hw),wg_dot3(v3(u[20],u[21],u[22]),hw));
+      dir:V2=v2(push.x,push.y);
+      len_2:f32=wg_length2(dir);
+      if (len_2>1e-6f32) {
+        dir=wg_div_f2f(dir,len_2);
+      }
+      near:f32=clampf(6.0f32/clip.w,0.35f32,1.0f32);
+      clip=wg_make_f4_f2f2(wg_add_f2f2(v2(clip.x,clip.y),wg_mul_f2f(wg_div_f2f2(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(dir,u[7]),hull.w),near),2.0f32),wg_at2(u,0)),clip.w)),v2(clip.z,clip.w));
+    }
+  }
+  o.pos=clip;
+  o.world=w;
+  o.normal=normal;
+  o.colour=wg_mul_f3f3(v3(c.z,c.y,c.x),tint);
+  o.look=v4(light.x,light.y,light.z,mode);
+  o.shine=shine;
+  return o;
+}
+icecream_scene_fs :: (s:IcecreamS,front:bool,u:[]f32)->V4 {
+  mode:f32=s.look.w;
+  shine:f32=s.shine;
+  fog:f32=smoothstep(u[32],u[33],wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world)))*u[34];
+  c:V3;
+  if (mode>1.5f32) {
+    if front {
+      gpu_discard();
+    }
+    c=wg_mix_f3f3f(ICECREAM_INK(),v3(u[28],u[29],u[30]),fog*0.6f32);
+  } else {
+    if (!front) {
+      gpu_discard();
+    }
+    if (mode>0.5f32) {
+      c=wg_mix_f3f3f(v3(s.look.x,s.look.y,s.look.z),v3(u[28],u[29],u[30]),fog*0.6f32);
+    } else {
+      n:V3=wg_normalize3(s.normal);
+      l:V3=wg_normalize3(v3(0.35f32,1.0f32,0.25f32));
+      d:f32=wg_dot3(n,l);
+      band:f32=ifx d>0.25f32 then 1.0f32 else ifx d>(-0.35f32) then 0.86f32 else 0.74f32;
+      c=wg_mul_f3f(wg_mul_f3f3(s.colour,v3(s.look.x,s.look.y,s.look.z)),band);
+      if (shine>0.0f32) {
+        v:V3=wg_normalize3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+        h:V3=wg_normalize3(wg_add_f3f3(l,v));
+        sp:f32=pow(fmax(wg_dot3(n,h),0.0f32),28.0f32);
+        c=wg_add_f3f3(c,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,1.0f32,1.0f32),smoothstep(0.4f32,0.5f32,sp)),0.6f32),shine),wg_mul_f3f(v3(0.06f32,0.06f32,0.06f32),shine)));
+      }
+      c=wg_mix_f3f3f(c,v3(u[28],u[29],u[30]),fog);
+    }
+  }
+  return wg_make_f4_f3f(icecream_panels(v2(s.pos.x,s.pos.y),icecream_overlay(v2(s.pos.x,s.pos.y),wg_mul_f3f(c,u[3]),u),u),1.0f32);
+}
+IcecreamV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+icecream_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+icecream_fx_vs :: (_vid2:u32,_iid3:u32,in_:icecream_fx_vs_in,u:[]f32)->IcecreamV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:IcecreamV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+icecream_fx_fs :: (v:IcecreamV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_min_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmin(p0.x,p1.x),fmin(p0.y,p1.y),fmin(p0.z,p1.z));}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_make_f4_f2f2 :: (p0:V2,p1:V2)->V4 {return v4(p0.x,p0.y,p1.x,p1.y);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}

@@ -1,0 +1,341 @@
+// garden's shaders, the source of apps/openagents-web/garden.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (garden.module,
+// garden.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// The Garden's three passes: the sky, the scene and the HUD. Every number
+// comes from garden.coax: the view, the eye, the sun, the ground's heights
+// (store 0) and each object's place, size, colour and shape (store 1), the
+// shadows, the paths and the HUD's plates and strokes.
+// GardenU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   horizon 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   sun 28
+//   ground 32
+//   shadow 36
+//   path 100
+//   path_info 228
+//   plate 232
+GARDEN_HORIZON :: ()->V3 {return v3(0.80f32,0.86f32,0.90f32);}
+GARDEN_ZENITH :: ()->V3 {return v3(0.36f32,0.56f32,0.82f32);}
+garden_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.x<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=6.0f32*s.z;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.y>=2.0f32;
+  fill:V3=ifx over then v3(0.09f32,0.12f32,0.09f32) else v3(0.055f32,0.075f32,0.06f32);
+  line:V3=ifx over||(s.y>=1.0f32) then v3(0.90f32,0.76f32,0.45f32) else v3(0.62f32,0.52f32,0.30f32);
+  w:f32=1.25f32*s.z;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.x,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*fmin(1.0f32,a+0.1f32))*0.8f32);
+}
+garden_plates :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<12 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=garden_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+232),wg_at4(u,(cast(int)((k*2)+1))*4+232));
+      k+=1;
+    }
+  }
+  return c;
+}
+garden_encode :: (c:V3)->V3 {
+  return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
+}
+garden_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+garden_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  up:f32=clampf(((u[7]-pos.y)/fmax(u[1],1.0f32))*1.6f32,0.0f32,1.0f32);
+  sky:V3=wg_mix_f3f3f(GARDEN_HORIZON(),GARDEN_ZENITH(),pow(up,0.7f32));
+  return wg_make_f4_f3f(garden_plates(v2(pos.x,pos.y),garden_encode(sky),u),1.0f32);
+}
+GardenObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; }
+GardenS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; }
+garden_quad :: (v:u32)->V2 {
+  q:[6]V2=[6]V2.[v2(0.0f32,0.0f32),v2(1.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,1.0f32)];
+  return q[cast(int)v];
+}
+garden_height :: (x:s32,z:s32,u:[]f32,heights:[]f32)->f32 {
+  n:s32=wg_i32_f(u[32]);
+  cx:s32=wg_clamp_i(x,0,n);
+  cz:s32=wg_clamp_i(z,0,n);
+  return heights[cast(int)(cast,trunc(u32)((cz*(n+1))+cx))];
+}
+GardenVert :: struct {p:V3; n:V3; }
+GARDEN_TAU :: 6.2831853f32;
+garden_box_vertex :: (id:u32)->GardenVert {
+  f:u32=id/6;
+  c:V2=wg_sub_f2f2(garden_quad(id%6),v2(0.5f32,0.5f32));
+  n:V3=v3(0.0f32,0.0f32,0.0f32);
+  a:V3=v3(0.0f32,0.0f32,0.0f32);
+  b:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    _sw2:u32=f;
+    if _sw2==0 {
+      n=v3(1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==1 {
+      n=v3(-1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==2 {
+      n=v3(0.0f32,1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==3 {
+      n=v3(0.0f32,-1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==4 {
+      n=v3(0.0f32,0.0f32,1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else {
+      n=v3(0.0f32,0.0f32,-1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    }
+  }
+  return GardenVert.{p=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(n,0.5f32),wg_mul_f3f(a,c.x)),wg_mul_f3f(b,c.y)),n=n};
+}
+garden_sphere_vertex :: (id:u32)->GardenVert {
+  q:u32=id/6;
+  c:V2=garden_quad(id%6);
+  lon:f32=(((cast(f32)(q%16))+c.x)/16.0f32)*GARDEN_TAU;
+  lat:f32=(((cast(f32)(q/16))+c.y)/10.0f32)*3.14159265f32;
+  n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
+  return GardenVert.{p=wg_mul_f3f(n,0.5f32),n=n};
+}
+garden_cylinder_vertex :: (id:u32)->GardenVert {
+  if (id<96) {
+    c:V2=garden_quad(id%6);
+    a:f32=(((cast(f32)(id/6))+c.x)/16.0f32)*GARDEN_TAU;
+    n:V3=v3(cos(a),0.0f32,sin(a));
+    return GardenVert.{p=v3(n.x*0.5f32,c.y-0.5f32,n.z*0.5f32),n=n};
+  }
+  t:u32=sub_wrap(id,96)/3;
+  k:u32=sub_wrap(id,96)%3;
+  top:bool=t<16;
+  y:f32=ifx top then 0.5f32 else -0.5f32;
+  n:V3=v3(0.0f32,ifx top then 1.0f32 else -1.0f32,0.0f32);
+  if (k==0) {
+    return GardenVert.{p=v3(0.0f32,y,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t%16))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*GARDEN_TAU;
+  return GardenVert.{p=v3(cos(a)*0.5f32,y,sin(a)*0.5f32),n=n};
+}
+garden_cone_vertex :: (id:u32)->GardenVert {
+  t:u32=(id%48)/3;
+  k:u32=id%3;
+  if (id<48) {
+    mid:f32=(((cast(f32)(t))+0.5f32)/16.0f32)*GARDEN_TAU;
+    if (k==0) {
+      return GardenVert.{p=v3(0.0f32,0.5f32,0.0f32),n=wg_normalize3(v3(cos(mid),0.5f32,sin(mid)))};
+    }
+    a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*GARDEN_TAU;
+    return GardenVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=wg_normalize3(v3(cos(a),0.5f32,sin(a)))};
+  }
+  n:V3=v3(0.0f32,-1.0f32,0.0f32);
+  if (k==0) {
+    return GardenVert.{p=v3(0.0f32,-0.5f32,0.0f32),n=n};
+  }
+  a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*GARDEN_TAU;
+  return GardenVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=n};
+}
+garden_clip :: (w:V3,u:[]f32)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
+}
+garden_scene_vs :: (id:u32,instance:u32,u:[]f32,heights:[]f32,objects:[]GardenObj)->GardenS {
+  o:GardenS;
+  n:u32=wg_u32_f(u[32]);
+  if (instance<mul_wrap(n,n)) {
+    c:V2=garden_quad(id%6);
+    gx:s32=(cast,trunc(s32)(instance%n))+(wg_i32_f(c.x));
+    gz:s32=(cast,trunc(s32)(instance/n))+(wg_i32_f(c.y));
+    w:V3=v3(u[34]+((cast(f32)(gx))*u[33]),garden_height(gx,gz,u,heights),u[35]+((cast(f32)(gz))*u[33]));
+    normal:V3=wg_normalize3(v3(garden_height(gx-1,gz,u,heights)-garden_height(gx+1,gz,u,heights),2.0f32*u[33],garden_height(gx,gz-1,u,heights)-garden_height(gx,gz+1,u,heights)));
+    o.pos=garden_clip(w,u);
+    o.world=w;
+    o.normal=normal;
+    o.tint=v3(0.30f32,0.50f32,0.20f32);
+    o.look=99;
+    return o;
+  }
+  m:GardenObj=objects[cast(int)sub_wrap(instance,mul_wrap(n,n))];
+  kind:u32=(wg_u32_f(m.colour.w))%8;
+  v:GardenVert;
+  {
+    _sw3:u32=kind;
+    if _sw3==1 {
+      v=garden_box_vertex(id);
+    } else if _sw3==2 {
+      v=garden_sphere_vertex(id);
+    } else if _sw3==3 {
+      v=garden_cylinder_vertex(id);
+    } else {
+      v=garden_cone_vertex(id);
+    }
+  }
+  p:V4=v4(v.p.x,v.p.y,v.p.z,1.0f32);
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  normal:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_cross3(c1,c2),v.n.x),wg_mul_f3f(wg_cross3(c2,c0),v.n.y)),wg_mul_f3f(wg_cross3(c0,c1),v.n.z));
+  o.pos=garden_clip(w,u);
+  o.world=w;
+  o.normal=wg_normalize3(wg_add_f3f3(normal,v3(0.0f32,0.00001f32,0.0f32)));
+  o.tint=v3(m.colour.x,m.colour.y,m.colour.z);
+  o.look=(wg_u32_f(m.colour.w))/8;
+  return o;
+}
+garden_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+garden_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(garden_hash(i),garden_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(garden_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),garden_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+garden_path_distance :: (p:V2,u:[]f32)->f32 {
+  d:f32=1000.0f32;
+  count:s32=wg_i32_f(u[228]);
+  {
+    i:s32=0;
+    while i<32 {
+      if (i>=count) {
+        break;
+      }
+      seg:V4=wg_at4(u,(cast(int)i)*4+100);
+      a:V2=v2(seg.x,seg.y);
+      ab:V2=wg_sub_f2f2(v2(seg.z,seg.w),a);
+      t:f32=clampf(wg_dot2(wg_sub_f2f2(p,a),ab)/fmax(wg_dot2(ab,ab),0.0001f32),0.0f32,1.0f32);
+      d=fmin(d,wg_length2(wg_sub_f2f2(wg_sub_f2f2(p,a),wg_mul_f2f(ab,t))));
+      i+=1;
+    }
+  }
+  return d;
+}
+garden_shade_shadows :: (p:V2,u:[]f32)->f32 {
+  s:f32=1.0f32;
+  {
+    i:s32=0;
+    while i<16 {
+      b:V4=wg_at4(u,(cast(int)i)*4+36);
+      if (b.z<=0.0f32) {
+        break;
+      }
+      d:f32=wg_length2(wg_sub_f2f2(p,v2(b.x,b.y)))/b.z;
+      s=s*(1.0f32-(b.w*(1.0f32-smoothstep(0.35f32,1.0f32,d))));
+      i+=1;
+    }
+  }
+  return s;
+}
+garden_scene_fs :: (s:GardenS,u:[]f32)->V4 {
+  n:V3=wg_normalize3(s.normal);
+  base:V3=s.tint;
+  xz:V2=v2(s.world.x,s.world.z);
+  shadow:f32=1.0f32;
+  if (s.look==99) {
+    broad:f32=garden_noise(wg_mul_f2f(xz,0.13f32));
+    fine:f32=garden_noise(wg_mul_f2f(xz,2.7f32));
+    base=wg_mul_f3f(wg_mix_f3f3f(v3(0.24f32,0.43f32,0.15f32),v3(0.38f32,0.58f32,0.22f32),broad),(0.88f32+(0.2f32*fine)));
+    d:f32=garden_path_distance(xz,u);
+    half:f32=u[229];
+    edge:f32=1.0f32-smoothstep(half-0.12f32,half+0.12f32,d);
+    if (edge>0.0f32) {
+      grit:f32=(garden_noise(wg_mul_f2f(xz,5.0f32))*0.5f32)+(garden_noise(wg_mul_f2f(xz,13.0f32))*0.5f32);
+      dirt:V3=wg_mix_f3f3f(v3(0.55f32,0.46f32,0.33f32),v3(0.68f32,0.6f32,0.46f32),grit);
+      base=wg_mix_f3f3f(base,dirt,edge);
+    }
+    shadow=garden_shade_shadows(xz,u);
+  } else if (s.look==1) {
+    base=wg_mul_f3f(base,0.8f32+(0.35f32*garden_noise(wg_add_f2f2(wg_mul_f2f(v2(s.world.x,s.world.y),3.1f32),wg_mul_f2f(v2(s.world.z,s.world.x),2.3f32)))));
+  } else if (s.look==2) {
+    base=wg_mul_f3f(base,0.9f32+(0.15f32*garden_noise(wg_add_f2f(wg_mul_f2f(v2(s.world.x,s.world.z),9.0f32),s.world.y*7.0f32))));
+  } else if (s.look==4) {
+    base=wg_mix_f3f3f(base,v3(0.85f32,0.92f32,0.95f32),0.25f32*garden_noise(wg_add_f2f2(wg_mul_f2f(xz,1.5f32),v2(u[2]*0.2f32,0.0f32))));
+  }
+  sun:V3=wg_normalize3(v3(u[28],u[29],u[30]));
+  lambert:f32=fmax(wg_dot3(n,sun),0.0f32);
+  sky:V3=wg_mix_f3f3f(v3(0.34f32,0.31f32,0.24f32),v3(0.56f32,0.66f32,0.80f32),(n.y*0.5f32)+0.5f32);
+  c:V3=wg_mul_f3f(wg_mul_f3f3(base,wg_add_f3f3(wg_mul_f3f(sky,0.62f32),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.94f32,0.82f32),lambert),0.9f32),shadow))),mix(0.75f32,1.0f32,shadow));
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  fog:f32=1.0f32-exp((-fmax(d-22.0f32,0.0f32))*0.014f32);
+  c=wg_mix_f3f3f(c,GARDEN_HORIZON(),clampf(fog,0.0f32,0.9f32));
+  return wg_make_f4_f3f(garden_plates(v2(s.pos.x,s.pos.y),garden_encode(c),u),1.0f32);
+}
+GardenV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+garden_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+garden_fx_vs :: (_vid4:u32,_iid5:u32,in_:garden_fx_vs_in,u:[]f32)->GardenV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:GardenV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+garden_fx_fs :: (v:GardenV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}

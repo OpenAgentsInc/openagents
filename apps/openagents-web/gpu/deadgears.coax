@@ -1,0 +1,356 @@
+// deadgears's shaders, the source of apps/openagents-web/deadgears.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (deadgears.module,
+// deadgears.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+
+// DeadgearsU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   plates 5
+//   k 6
+//   horizon 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   sun 28
+//   sunc 32
+//   sky 36
+//   gnd 40
+//   zen 44
+//   hor 48
+//   fog 52
+//   info 56
+//   light 60
+//   shadow 380
+//   occ 476
+//   plate 556
+deadgears_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.x<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=4.0f32*s.z;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.y>=2.0f32;
+  fill:V3=ifx over then v3(0.07f32,0.09f32,0.11f32) else v3(0.025f32,0.032f32,0.042f32);
+  line:V3=ifx over||(s.y>=1.0f32) then v3(0.82f32,0.88f32,0.96f32) else v3(0.36f32,0.42f32,0.5f32);
+  w:f32=1.0f32*s.z;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.x,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,(edge*fmin(1.0f32,a+0.1f32))*0.85f32);
+}
+deadgears_plates :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<16 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=deadgears_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+556),wg_at4(u,(cast(int)((k*2)+1))*4+556));
+      k+=1;
+    }
+  }
+  return c;
+}
+deadgears_tone :: (c:V3)->V3 {
+  x:V3=wg_max_f3f3(c,v3(0.0f32,0.0f32,0.0f32));
+  return wg_clamp_f3f3f3(wg_div_f3f3(wg_mul_f3f3(x,wg_add_f3f(wg_mul_ff3(2.51f32,x),0.03f32)),wg_add_f3f(wg_mul_f3f3(x,wg_add_f3f(wg_mul_ff3(2.43f32,x),0.59f32)),0.14f32)),v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32));
+}
+deadgears_encode :: (c:V3)->V3 {
+  return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
+}
+deadgears_hurt :: (p:V2,c:V3,u:[]f32)->V3 {
+  if (u[59]<=0.0f32) {
+    return c;
+  }
+  q:V2=wg_mul_f2f(wg_sub_f2f(wg_div_f2f2(p,wg_at2(u,0)),0.5f32),2.0f32);
+  edge:f32=smoothstep(0.55f32,1.35f32,wg_length2(q));
+  return wg_mix_f3f3f(c,v3(0.55f32,0.04f32,0.03f32),(edge*u[59])*0.6f32);
+}
+deadgears_hash :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+deadgears_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(deadgears_hash(i),deadgears_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(deadgears_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),deadgears_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+deadgears_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+deadgears_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  up:f32=clampf(((u[7]-pos.y)/fmax(u[1],1.0f32))*1.8f32,0.0f32,1.0f32);
+  sky:V3=wg_mix_f3f3f(v3(u[48],u[49],u[50]),v3(u[44],u[45],u[46]),pow(up,0.6f32));
+  sky=wg_mul_f3f(wg_mul_f3f3(sky,sky),1.4f32);
+  cloud:f32=deadgears_noise(v2(((pos.x/fmax(u[1],1.0f32))*3.0f32)+(u[2]*0.01f32),up*7.0f32))*deadgears_noise(v2((pos.x/fmax(u[1],1.0f32))*9.0f32,up*19.0f32));
+  sky=wg_mix_f3f3f(sky,wg_mul_f3f(v3(u[48],u[49],u[50]),1.1f32),(cloud*0.35f32)*(1.0f32-(up*0.5f32)));
+  return wg_make_f4_f3f(deadgears_plates(v2(pos.x,pos.y),deadgears_encode(deadgears_tone(wg_mul_f3f(sky,0.9f32))),u),1.0f32);
+}
+DeadgearsObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; }
+DeadgearsS :: struct {pos:V4; world:V3; normal:V3; tint:V3; glow:f32; }
+deadgears_quad :: (v:u32)->V2 {
+  q:[6]V2=[6]V2.[v2(0.0f32,0.0f32),v2(1.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,0.0f32),v2(1.0f32,1.0f32),v2(0.0f32,1.0f32)];
+  return q[cast(int)v];
+}
+// The figures (deadgears.coax ROUNDS, the first objects): each a bone of a
+// verse/figure.coax rig, a round cone from end a (r0: its place, its radius)
+// to end b (r1), as Hecate's Cemetery draws its figures' bones: two half
+// balls and the side between, eight round, two rings to a half
+// (ROUND_VERTICES, 240).
+DeadgearsVert :: struct {p:V3; n:V3; }
+DEADGEARS_ROUNDS :: cast(u32)96;
+DEADGEARS_AROUND :: cast(u32)8;
+DEADGEARS_RINGS :: cast(u32)2;
+deadgears_round_vertex :: (m:DeadgearsObj,id:u32)->DeadgearsVert {
+  q:u32=id/6;
+  c:V2=deadgears_quad(id%6);
+  row:u32=add_wrap(q/DEADGEARS_AROUND,wg_u32_f(c.y));
+  k:f32=((cast(f32)(add_wrap(q%DEADGEARS_AROUND,wg_u32_f(c.x))))/(cast(f32)(DEADGEARS_AROUND)))*6.2831853f32;
+  a:V3=v3(m.r0.x,m.r0.y,m.r0.z);
+  b:V3=v3(m.r1.x,m.r1.y,m.r1.z);
+  axis:V3=wg_normalize3(wg_add_f3f3(wg_sub_f3f3(b,a),v3(0.0f32,0.00001f32,0.0f32)));
+  side:V3=wg_normalize3(wg_cross3(axis,ifx abs(axis.y)<0.9f32 then v3(0.0f32,1.0f32,0.0f32) else v3(1.0f32,0.0f32,0.0f32)));
+  other:V3=wg_cross3(axis,side);
+  out:V3=wg_add_f3f3(wg_mul_f3f(side,cos(k)),wg_mul_f3f(other,sin(k)));
+  top:bool=row>DEADGEARS_RINGS;
+  step:f32=((cast(f32)(ifx top then sub_wrap(sub_wrap(row,DEADGEARS_RINGS),1) else row))/(cast(f32)(DEADGEARS_RINGS)))*1.5707963f32;
+  phi:f32=ifx top then step else step-1.5707963f32;
+  n:V3=wg_add_f3f3(wg_mul_f3f(out,cos(phi)),wg_mul_f3f(axis,sin(phi)));
+  r:f32=ifx top then m.r1.w else m.r0.w;
+  return DeadgearsVert.{p=wg_add_f3f3(ifx top then b else a,wg_mul_f3f(n,r)),n=n};
+}
+deadgears_scene_vs :: (id:u32,instance:u32,u:[]f32,objects:[]DeadgearsObj)->DeadgearsS {
+  o:DeadgearsS;
+  m:DeadgearsObj=objects[cast(int)instance];
+  if (instance<DEADGEARS_ROUNDS) {
+    v:DeadgearsVert=deadgears_round_vertex(m,id);
+    o.pos=v4(wg_dot4(wg_at4(u,8),v4(v.p.x,v.p.y,v.p.z,1.0f32)),wg_dot4(wg_at4(u,12),v4(v.p.x,v.p.y,v.p.z,1.0f32)),wg_dot4(wg_at4(u,16),v4(v.p.x,v.p.y,v.p.z,1.0f32)),wg_dot4(wg_at4(u,20),v4(v.p.x,v.p.y,v.p.z,1.0f32)));
+    o.world=v.p;
+    o.normal=v.n;
+    o.tint=wg_pow_f3f3(wg_max_f3f3(v3(m.colour.x,m.colour.y,m.colour.z),v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+    o.glow=m.colour.w;
+    return o;
+  }
+  f:u32=id/6;
+  c:V2=wg_sub_f2f2(deadgears_quad(id%6),v2(0.5f32,0.5f32));
+  n:V3=v3(0.0f32,0.0f32,0.0f32);
+  a:V3=v3(0.0f32,0.0f32,0.0f32);
+  b:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    _sw2:u32=f;
+    if _sw2==0 {
+      n=v3(1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else if _sw2==1 {
+      n=v3(-1.0f32,0.0f32,0.0f32);
+      a=v3(0.0f32,1.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==2 {
+      n=v3(0.0f32,1.0f32,0.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,0.0f32,1.0f32);
+    } else if _sw2==3 {
+      n=v3(0.0f32,-1.0f32,0.0f32);
+      a=v3(0.0f32,0.0f32,1.0f32);
+      b=v3(1.0f32,0.0f32,0.0f32);
+    } else if _sw2==4 {
+      n=v3(0.0f32,0.0f32,1.0f32);
+      a=v3(1.0f32,0.0f32,0.0f32);
+      b=v3(0.0f32,1.0f32,0.0f32);
+    } else {
+      n=v3(0.0f32,0.0f32,-1.0f32);
+      a=v3(0.0f32,1.0f32,0.0f32);
+      b=v3(1.0f32,0.0f32,0.0f32);
+    }
+  }
+  p:V4=wg_make_f4_f3f(wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(n,0.5f32),wg_mul_f3f(a,c.x)),wg_mul_f3f(b,c.y)),1.0f32);
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  c0:V3=v3(m.r0.x,m.r1.x,m.r2.x);
+  c1:V3=v3(m.r0.y,m.r1.y,m.r2.y);
+  c2:V3=v3(m.r0.z,m.r1.z,m.r2.z);
+  normal:V3=wg_add_f3f3(wg_add_f3f3(wg_mul_f3f(wg_cross3(c1,c2),n.x),wg_mul_f3f(wg_cross3(c2,c0),n.y)),wg_mul_f3f(wg_cross3(c0,c1),n.z));
+  wp:V4=v4(w.x,w.y,w.z,1.0f32);
+  o.pos=v4(wg_dot4(wg_at4(u,8),wp),wg_dot4(wg_at4(u,12),wp),wg_dot4(wg_at4(u,16),wp),wg_dot4(wg_at4(u,20),wp));
+  o.world=w;
+  o.normal=wg_normalize3(wg_add_f3f3(normal,v3(0.0f32,0.00001f32,0.0f32)));
+  o.tint=wg_pow_f3f3(wg_max_f3f3(v3(m.colour.x,m.colour.y,m.colour.z),v3(0.0f32,0.0f32,0.0f32)),v3(2.2f32,2.2f32,2.2f32));
+  o.glow=m.colour.w;
+  return o;
+}
+deadgears_slab :: (o:V3,d:V3,lo:V3,hi:V3)->bool {
+  inv:V3=wg_div_ff3(1.0f32,d);
+  t0:V3=wg_mul_f3f3(wg_sub_f3f3(lo,o),inv);
+  t1:V3=wg_mul_f3f3(wg_sub_f3f3(hi,o),inv);
+  a:V3=wg_min_f3f3(t0,t1);
+  b:V3=wg_max_f3f3(t0,t1);
+  near:f32=fmax(fmax(a.x,a.y),a.z);
+  far:f32=fmin(fmin(b.x,b.y),b.z);
+  return far>fmax(near,0.02f32);
+}
+deadgears_sunlight :: (p:V3,n:V3,u:[]f32)->f32 {
+  s:V3=wg_normalize3(v3(u[28],u[29],u[30]));
+  if (s.y<=0.01f32) {
+    return 0.0f32;
+  }
+  o:V3=wg_add_f3f3(p,wg_mul_f3f(n,0.03f32));
+  v:f32=1.0f32;
+  if (abs(s.x)>0.001f32) {
+    t:f32=((wg_sign(s.x)*15.8f32)-o.x)/s.x;
+    if ((t>0.02f32)&&((o.y+(s.y*t))<5.6f32)) {
+      return 0.0f32;
+    }
+  }
+  if (abs(s.z)>0.001f32) {
+    wall:f32=ifx s.z>0.0f32 then 13.8f32 else -23.8f32;
+    t:f32=(wall-o.z)/s.z;
+    if ((t>0.02f32)&&((o.y+(s.y*t))<6.0f32)) {
+      return 0.0f32;
+    }
+  }
+  if (o.y<5.6f32) {
+    t:f32=(5.8f32-o.y)/s.y;
+    q:V3=wg_add_f3f3(o,wg_mul_f3f(s,t));
+    rib:f32=abs(fract(((q.z+22.0f32)/4.0f32)+0.5f32)-0.5f32)*4.0f32;
+    v=v*smoothstep(0.1f32,0.2f32,rib);
+  }
+  count:s32=wg_i32_f(u[58]);
+  {
+    i:s32=0;
+    while i<10 {
+      if (i>=count) {
+        break;
+      }
+      if deadgears_slab(o,s,v3(u[(cast(int)(i*2))*4+476],u[(cast(int)(i*2))*4+477],u[(cast(int)(i*2))*4+478]),v3(u[(cast(int)((i*2)+1))*4+476],u[(cast(int)((i*2)+1))*4+477],u[(cast(int)((i*2)+1))*4+478])) {
+        return 0.0f32;
+      }
+      i+=1;
+    }
+  }
+  return v;
+}
+deadgears_blobs :: (p:V3,u:[]f32)->f32 {
+  if (p.y>0.12f32) {
+    return 1.0f32;
+  }
+  s:f32=1.0f32;
+  count:s32=wg_i32_f(u[57]);
+  {
+    i:s32=0;
+    while i<24 {
+      if (i>=count) {
+        break;
+      }
+      b:V4=wg_at4(u,(cast(int)i)*4+380);
+      d:f32=wg_length2(wg_sub_f2f2(v2(p.x,p.z),v2(b.x,b.y)))/b.z;
+      s=s*(1.0f32-(b.w*(1.0f32-smoothstep(0.3f32,1.0f32,d))));
+      i+=1;
+    }
+  }
+  return s;
+}
+deadgears_scene_fs :: (s:DeadgearsS,u:[]f32)->V4 {
+  n:V3=wg_normalize3(s.normal);
+  base:V3=s.tint;
+  if (s.glow<0.0f32) {
+    c:V3=wg_mul_f3f(base,1.6f32);
+    return wg_make_f4_f3f(deadgears_plates(v2(s.pos.x,s.pos.y),deadgears_hurt(v2(s.pos.x,s.pos.y),deadgears_encode(deadgears_tone(c)),u),u),1.0f32);
+  }
+  if ((s.world.y<0.02f32)&&(n.y>0.5f32)) {
+    base=wg_mul_f3f(base,(0.85f32+(0.25f32*deadgears_noise(wg_mul_f2f(v2(s.world.x,s.world.z),1.3f32))))+(0.08f32*deadgears_noise(wg_mul_f2f(v2(s.world.x,s.world.z),11.0f32))));
+  }
+  sun:V3=wg_normalize3(v3(u[28],u[29],u[30]));
+  lit:f32=(deadgears_sunlight(s.world,n,u)*fmax(wg_dot3(n,sun),0.0f32))*u[31];
+  ambient:V3=wg_mix_f3f3f(v3(u[40],u[41],u[42]),v3(u[36],u[37],u[38]),(n.y*0.5f32)+0.5f32);
+  occlusion:f32=deadgears_blobs(s.world,u);
+  light:V3=wg_add_f3f3(wg_mul_f3f(ambient,occlusion),wg_mul_f3f(wg_mul_f3f(v3(u[32],u[33],u[34]),lit),mix(0.35f32,1.0f32,occlusion)));
+  count:s32=wg_i32_f(u[56]);
+  {
+    i:s32=0;
+    while i<40 {
+      if (i>=count) {
+        break;
+      }
+      l:V4=wg_at4(u,(cast(int)(i*2))*4+60);
+      to:V3=wg_sub_f3f3(v3(l.x,l.y,l.z),s.world);
+      d:f32=wg_length3(to);
+      if (d>=l.w) {
+        {i+=1; continue;}
+      }
+      fall:f32=1.0f32-(d/l.w);
+      wrap:f32=(fmax(wg_dot3(n,wg_div_f3f(to,fmax(d,0.001f32))),0.0f32)*0.85f32)+0.15f32;
+      light=wg_add_f3f3(light,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(u[(cast(int)((i*2)+1))*4+60],u[(cast(int)((i*2)+1))*4+61],u[(cast(int)((i*2)+1))*4+62]),fall),fall),wrap),1.4f32));
+      i+=1;
+    }
+  }
+  c:V3=wg_add_f3f3(wg_mul_f3f3(base,light),wg_mul_f3f(wg_mul_f3f(base,s.glow),1.3f32));
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  fog:f32=1.0f32-exp((-fmax(d-6.0f32,0.0f32))*u[27]);
+  c=wg_mix_f3f3f(c,v3(u[52],u[53],u[54]),clampf(fog,0.0f32,0.85f32));
+  return wg_make_f4_f3f(deadgears_plates(v2(s.pos.x,s.pos.y),deadgears_hurt(v2(s.pos.x,s.pos.y),deadgears_encode(deadgears_tone(wg_mul_f3f(c,1.15f32))),u),u),1.0f32);
+}
+DeadgearsV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+deadgears_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+deadgears_fx_vs :: (_vid3:u32,_iid4:u32,in_:deadgears_fx_vs_in,u:[]f32)->DeadgearsV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:DeadgearsV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+deadgears_fx_fs :: (v:DeadgearsV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_max_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmax(p0.x,p1.x),fmax(p0.y,p1.y),fmax(p0.z,p1.z));}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_add_f3f :: (a:V3,b:f32)->V3 {return v3(a.x+b,a.y+b,a.z+b);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_div_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x/b.x,a.y/b.y,a.z/b.z);}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_make_f3_f :: (p0:f32)->V3 {return v3(p0,p0,p0);}
+wg_pow_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(pow(p0.x,p1.x),pow(p0.y,p1.y),pow(p0.z,p1.z));}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_div_ff3 :: (a:f32,b:V3)->V3 {return v3(a/b.x,a/b.y,a/b.z);}
+wg_min_f3f3 :: (p0:V3,p1:V3)->V3 {return v3(fmin(p0.x,p1.x),fmin(p0.y,p1.y),fmin(p0.z,p1.z));}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}

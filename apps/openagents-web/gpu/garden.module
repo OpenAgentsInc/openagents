@@ -1,0 +1,3 @@
+--vertices garden_bg_vs,garden_scene_vs,garden_fx_vs
+--fragments garden_bg_fs,garden_scene_fs,garden_fx_fs
+--bindings apps/openagents-web/gpu/garden.bindings --strip garden_

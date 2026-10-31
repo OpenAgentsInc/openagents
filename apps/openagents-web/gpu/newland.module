@@ -1,0 +1,3 @@
+--vertices newland_bg_vs,newland_fx_vs
+--fragments newland_bg_fs,newland_fx_fs
+--bindings apps/openagents-web/gpu/newland.bindings --strip newland_

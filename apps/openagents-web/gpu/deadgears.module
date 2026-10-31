@@ -1,0 +1,3 @@
+--vertices deadgears_bg_vs,deadgears_scene_vs,deadgears_fx_vs
+--fragments deadgears_bg_fs,deadgears_scene_fs,deadgears_fx_fs
+--bindings apps/openagents-web/gpu/deadgears.bindings --strip deadgears_
