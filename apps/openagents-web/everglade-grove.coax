@@ -172,6 +172,26 @@ gv_in_square :: (c: Point, x: f32, z: f32) -> bool { h := f32(GV_EN_SIDE) * 0.5;
 gv_right :: (s: [] Everglade) -> Point { f := ab_forward(s); return v3(-f.z, 0, f.x); }
 // Your casting hand, out ahead of your chest on your right.
 gv_hand :: (s: [] Everglade) -> Point { return add(ab_you(s), add(v3(0, 1.2, 0), add(times(ab_forward(s), 0.35), times(gv_right(s), 0.25)))); }
+// Whether anyone the watch knows stands within `r` m of `at` (fire landing beside someone is an attack).
+gv_near_person :: (s: [] Everglade, at: Point, r: f32) -> bool {
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { continue; }
+    if length(sub(ab_person_at(s, i), at)) < r { return true; }
+  }
+  return false;
+}
+// Whether `at` is on or against one of the town's standing pieces (a wall, a door, a stall, a roof).
+gv_struck_town :: (s: [] Everglade, at: Point) -> bool {
+  if s[0].sp.dm.count < 1 { return false; }
+  w := sp_dm(s);
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || at.y < p.y0 - 0.6 || at.y > p.y1 + 0.6 { continue; }
+    dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
+    if dx * dx + dz * dz < 0.36 { return true; }
+  }
+  return false;
+}
 gv_crime :: (s: [] Everglade, at: Point, heard: f32) {
   if !watch_on(s) { return; }
   _ := watch_crime(watch_w(s), at, heard, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]);
@@ -299,7 +319,11 @@ gv_bolt_land :: (s: [] Everglade, b: GvBolt) {
     floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
     if b.target < 0 && at.y - floor_y < 0.6 && !fr_wet(s, at.x, at.z) { sp_add_scorch(s, v3(at.x, floor_y, at.z), 0.35, false); wd_light(s, v3(at.x, floor_y, at.z), WD_GEN - 2); }
     if b.body >= 0 && b.body < DEMO_BODIES && sp_dm(s)[0].meta[b.body].kind != 0 { s[0].sp.burn[b.body] = hi(s[0].sp.burn[b.body], f32(GV_BURN)); }
-    if b.target < 0 { _ := fi_catch(s, at, 0.6, FI_SPELL); }   // wood it strikes catches
+    if b.target < 0 {
+      _ := fi_catch(s, at, 0.6, FI_SPELL);   // wood it strikes catches
+      // fire hurled at the town is a crime whether or not it catches: whoever sees or hears it comes
+      if gv_struck_town(s, at) || gv_near_person(s, at, 2) { gv_crime(s, at, GV_BOLT_HEAR[b.kind]); }
+    }
     fr_melt(s, at, 0.8);
   } else if b.kind == GV_BOLT_WISP {
     // it breaks in a burst of starlight

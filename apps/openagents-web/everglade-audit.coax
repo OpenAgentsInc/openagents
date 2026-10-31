@@ -320,3 +320,63 @@ au_face :: (g: [] Everglade, i: int, back: f32) {
   wd_fires_frame(g[..], 1.0 / 30);
   #assert au_hp(g[..], i) < 500;
 }
+
+// Whether guard i is after you (or will be once back on their feet).
+au_turned :: (g: [] Everglade, i: int) -> bool {
+  a := watch_w(g)[0].actors[i];
+  return a.mode == WM_CHASE || (a.mode == WM_DOWN && a.after == WM_CHASE);
+}
+
+#test "audit: Produce Flame hurled at a guard turns them on you, hit or miss" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 6);
+  for k: 0..<8 {
+    au_whole(g[..], i);
+    #assert !au_turned(g[..], i);
+    v[0].pf_cool = 0;
+    gv_bolt_at(g[..], GV_BOLT_FLAME, i, -1, ab_person_at(g[..], i));
+    for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+    #assert au_turned(g[..], i);
+  }
+}
+
+#test "audit: Produce Flame hurled at a building turns the guard who sees or hears it" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  w := sp_dm(g[..]);
+  // a wooden wall to strike, standing clear of the ground
+  pc := -1;
+  for k: 0..<w[0].n {
+    p := w[0].pieces[k];
+    if p.state == DP_STANDING && fi_fuel(p) >= 1 && p.y1 - p.y0 > 1.5 { pc = k; break; }
+  }
+  #assert pc >= 0;
+  p := w[0].pieces[pc];
+  at := v3(p.cx, (p.y0 + p.y1) / 2, p.cz);
+  g[0].feet = v3(p.cx, 0, p.cz - 6); g[0].face = 0;
+  au_put(g[..], i, p.cx + 12, p.cz);
+  au_whole(g[..], i);
+  v[0].pf_cool = 0;
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, at);
+  for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+  #assert au_turned(g[..], i);
+}
+
+#test "audit: a Produce Flame landing beside a guard turns them" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 6);
+  au_whole(g[..], i);
+  v[0].pf_cool = 0;
+  p := wd_feet(g[..], i);
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, v3(p.x + 1, ground_at(g[..], p.x + 1, p.z), p.z));
+  for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+  #assert au_turned(g[..], i);
+}

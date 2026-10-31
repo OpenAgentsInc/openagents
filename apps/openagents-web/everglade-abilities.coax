@@ -650,11 +650,15 @@ ab_tk_pick :: (s: [] Everglade) -> AbPick {
   }
   for i: 0..<WATCH_ACTORS {
     if !ab_person_ok(s, i) { continue; }
-    c := ab_person_at(s, i);
-    along := dot(sub(c, r.from), r.dir);
-    if along <= 0.3 || along - 0.4 >= pick.t { continue; }
-    if length(sub(add(r.from, times(r.dir, along)), c)) > 0.6 { continue; }
-    pick = AbPick.{kind = 2, idx = i, t = hi(along - 0.4, 0.31)};
+    // the whole of them, legs to head: their middle, and a point low and high on them
+    mid := ab_person_at(s, i);
+    for h: 0..<3 {
+      c := add(mid, v3(0, f32(h - 1) * 0.6, 0));
+      along := dot(sub(c, r.from), r.dir);
+      if along <= 0.3 || along - 0.4 >= pick.t { continue; }
+      if length(sub(add(r.from, times(r.dir, along)), c)) > 0.45 { continue; }
+      pick = AbPick.{kind = 2, idx = i, t = hi(along - 0.4, 0.31)};
+    }
   }
   if pick.kind == 0 { pick.idx = -1; }
   return pick;

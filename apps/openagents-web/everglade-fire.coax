@@ -37,6 +37,7 @@ FI_HEAR :: 30.0;           // m the watch hears a building catch from
 FI_SOOT :: 10.0;           // s to burn black
 FI_ROUND :: 6.0;           // s a round: who stands in it burns once a round
 FI_PEOPLE_DICE :: 1; FI_PEOPLE_SIDES :: 10;
+FI_CRIME_EVERY :: 3.0;    // s between the crimes a spreading fire makes
 FI_BURN_DEBRIS :: 6.0;     // s what breaks off a burning piece burns on
 // what lit it: a fire spell, a bolt, a Mega Thunderbolt, the grass fire, a burning piece of debris
 FI_SPELL :: 0; FI_BOLT :: 1; FI_MEGA :: 2; FI_GRASS :: 3; FI_EMBER :: 4;
@@ -55,6 +56,7 @@ Fire :: struct {
   burn: [FI_MAX] FiBurn; n: int;
   soot: [DEMO_PIECES] f32; sooty: bool;   // how black each piece has burnt, 0 to 1; whether any has
   lit: int;                               // pieces caught so far (the checks count them)
+  crime_at: f32;                          // when its spreading last made a crime
   next: [WATCH_ACTORS] f32; you_next: f32;
   embers_t: f32;
   dome_dmg: int; dome_gone: bool; dome_cool: f32;
@@ -114,7 +116,10 @@ fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
     if f <= 0 || fi_burning(s, i) || sp_rand(s) >= odds * f { continue; }
     if fi_ignite(s, i) { n += 1; }
   }
-  if n > 0 && how <= FI_MEGA { gv_crime(s, at, f32(FI_HEAR)); }
+  // a spell's flame catching is a crime; so is the fire it started spreading to a building (at most one
+  // in FI_CRIME_EVERY s, so a burning street doesn't heat the watch every second)
+  v := fi_of(s);
+  if n > 0 && (how <= FI_MEGA || v[0].time - v[0].crime_at >= f32(FI_CRIME_EVERY)) { v[0].crime_at = v[0].time; gv_crime(s, at, f32(FI_HEAR)); }
   // the dome: stone, it does not catch, but the flame wears it (halved)
   if how == FI_SPELL || how == FI_GRASS { if fi_dome_gap(s, at) < r { fi_dome_hurt(s, srd_object_damage(fi_dome_object(), srd_sum(s[0].sp.dice[..], 4, 6), DMG_FIRE), at); } }
   return n;

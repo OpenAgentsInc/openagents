@@ -107,8 +107,6 @@ SP_FRICTION :: 0.6;       // timber or stone on ground
 SP_BOND :: 3.0e5;         // Pa: a mortar joint's or a pegged joint's shear strength
 SP_DROPS :: 12;
 SP_GROUPS :: 192;         // a building each, then 16 m cells for the rest
-SP_REGROW :: 60.0;        // s of rest before a broken building grows back
-SP_REGROW_AWAY :: 30.0;   // m you must be from it
 SP_NEWS :: 5.0;           // s a cast's line shows
 // The debris is drawn as the pieces' own meshes, cut (verse/demolish.coax's fracture): each chunk an
 // instance of the mesh it broke from, posed as its body is, in its run of SHARD_AT (a run per mesh,
@@ -214,7 +212,6 @@ Spells :: struct {
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
   rb: [1] Rubble;              // falling rubble's blows and the Wall of Stone's crumbled blocks (everglade-rubble.coax)
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
-  regrow_t: f32;
   frame_ms: f32;
   notes: [8] int; note_n: int;   // spells cast or used this frame, for everglade-track.coax
 }
@@ -264,7 +261,7 @@ everglade_attach_demolish :: (s: [] Everglade, w: [] DemoWorld) #export_c {
   if any { sp_shapes(s); }
 }
 
-// The group a piece regrows with: the building it stands in, else a 16 m cell.
+// The group a piece stands back up with (R): the building it stands in, else a 16 m cell.
 sp_group :: (x: f32, z: f32) -> int {
   for b: 0..<EG_BUILDINGS {
     k := b * EG_BOX;
@@ -1101,8 +1098,6 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if ev.kind == 1 { sp_add_puff(s, add(ev.at, v3(0, 0.5, 0)), v3(0.6, 0.4, 0.3), hi(ev.size, 0.8), 3.5, 0.62); }
   }
   if s[0].sp.walls_dirty { sp_open_walls(s); }
-  s[0].sp.regrow_t += dt;
-  if s[0].sp.regrow_t > 1 { s[0].sp.regrow_t = 0; sp_regrow(s); }
   // every piece's instance, as it is now
   rows: [12] f32;
   for i: 0..<w[0].n {
@@ -1217,28 +1212,6 @@ sp_open_walls :: (s: [] Everglade) {
   for k: 0..<12 { out[on * 6 + k] = s[0].sp.wall_keep[keep * 6 + k]; }
   for k: 0..<(on + 2) * 6 { s[0].walls[k] = out[k]; }
   s[0].wall_n = on;
-}
-
-// A broken building grows back whole after SP_REGROW s of rest with you SP_REGROW_AWAY m away.
-sp_regrow :: (s: [] Everglade) {
-  w := sp_dm(s);
-  latest: [SP_GROUPS] f64;
-  hurt: [SP_GROUPS] bool;
-  for g: 0..<SP_GROUPS { latest[g] = 0; hurt[g] = false; }
-  for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    if p.state == DP_STANDING && p.hp >= p.max_hp { continue; }
-    g := clamp_i(p.group, 0, SP_GROUPS - 1);
-    hurt[g] = true;
-    if p.hit_at > latest[g] { latest[g] = p.hit_at; }
-    if p.state == DP_LOOSE { latest[g] = w[0].clock; }
-  }
-  for g: 0..<SP_GROUPS {
-    if !hurt[g] || w[0].clock - latest[g] < f64(SP_REGROW) { continue; }
-    dx := s[0].sp.group_x[g] - s[0].feet.x; dz := s[0].sp.group_z[g] - s[0].feet.z;
-    if dx * dx + dz * dz < f32(SP_REGROW_AWAY * SP_REGROW_AWAY) { continue; }
-    _ := sp_restore(s, g);
-  }
 }
 
 // ---- drawing the spells
@@ -2111,7 +2084,7 @@ sp_dome_rest :: (s: [] Everglade) -> f32 {
 }
 // The dome falls when what held it breaks: under gravity onto what stands below it, or the ground,
 // bouncing once on a hard landing with a burst of stone dust, then lying still. Stood up
-// again (R, or the town regrowing), it is back on its tower.
+// again (R, or a long rest), it is back on its tower.
 sp_dome :: (s: [] Everglade, dt: f32) {
   if !s[0].sp.dome_on { s[0].sp.dome_on = true; s[0].sp.dome_y = sp_dome_spot(s).y; s[0].sp.dome_vy = 0; return; }
   rest := sp_dome_rest(s);
@@ -2277,7 +2250,7 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   #assert !g[0].sp.bolt.live && g[0].sp.news_n > 0 && g[0].sp.dmg.amount >= 20 && g[0].sp.dmg.amount <= 200;
 }
 
-#test "spells: a broken building grows back after a minute with you away, not while you stand by it" {
+#test "spells: a broken building stays broken, however long you are away, until R or a long rest" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2289,11 +2262,11 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   g[0].sp.dmg = SrdDamage.{amount = 200, kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE};
   sp_blast(g[..], v3(ix, ground_at(g[..], ix, iz) + 1, iz), SP_MEGA);
   #assert demo_hurt(w, EG_INN);
-  g[0].feet = v3(ix, 0, iz - 12);
-  w[0].clock += 61; sp_regrow(g[..]);
-  #assert demo_hurt(w, EG_INN);
   g[0].feet = v3(ix, 0, iz - 60);
-  sp_regrow(g[..]);
+  w[0].clock += 600;
+  for f: 0..<3 { _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.5, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert demo_hurt(w, EG_INN);
+  _ := sp_restore(g[..], -1);
   #assert !demo_hurt(w, EG_INN);
 }
 
