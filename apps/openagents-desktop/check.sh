@@ -17,13 +17,13 @@ update=0; [[ "${1:-}" == --update ]] && update=1
 mkdir -p "$out" "$here/goldens"
 export BROWSER=/usr/bin/true PSIONIC_HOST=none
 
-home="$out/home"; rm -rf "$home"; mkdir -p "$home/work/openagents" "$home/work/zeron"
+home="$out/home"; rm -rf "$home" "$out/settings.json"; mkdir -p "$home/work/openagents" "$home/work/zeron"
 so="$here/zeron/fixtures/signed-out:/usr/bin:/bin"
 asks="$here/zeron/fixtures/asks:/usr/bin:/bin"
 room="$here/zeron/fixtures/room:/usr/bin:/bin"
 mkdir -p "$home/.codex"; echo '{}' > "$home/.codex/auth.json"   # Codex's login on disk, for the stand-in codex
 three="wait 1 ; send Fix the sidebar width ; folder $home/work/openagents ; wait 1 ; send Review the tab bar ; folder $home/work/zeron ; wait 2"
-# name | size | steps | a line the run must print (or empty) | engine: demo, or the PATH the app starts with in an empty home
+# name | size | steps | a line the run must print (or empty) | engine: demo, or the PATH the app starts with in an empty home | more arguments
 cases=(
   "chat-1320x880|2640,1760|fixture open||demo"
   "chat-900x600|1800,1200|fixture open||demo"
@@ -35,6 +35,8 @@ cases=(
   "approval-deny|2640,1760|access supervised ; send list the files ; wait 2 ; answer deny ; waitidle 10 ; last|last: Refused: The user denied this.|$asks"
   "room-ask|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; last|last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)|$room"
   "room-codex-asks|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last|last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)|$room"
+  "settings-quit|2640,1760|$three ; menu Toggle Sidebar ; keyevent cmd+1 ; menu Close Tab ; desk|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"
+  "settings-reopen|2640,1760|wait 1 ; desk ; window|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"
   "sidebar-open|2640,1760|$three||$so"
   "sidebar-900x600|1800,1200|$three||$so"
   "sidebar-shortcuts|2640,1760|$three ; keyevent cmd+1 ; keyevent shift+down ; keyevent shift+up ; menu Close Tab ; menu Toggle Sidebar ; menu New Session ; wait 1 ; desk|desk: active=3 tabs=0,2,3 sessions=4 collapsed=1|$so"
@@ -42,9 +44,10 @@ cases=(
 
 fail=0
 for c in "${cases[@]}"; do
-  IFS='|' read -r name size steps expect engine <<<"$c"
+  IFS='|' read -r name size steps expect engine extra <<<"$c"
+  read -r -a more <<<"${extra:-}"
   if [[ "$engine" == demo ]]; then log="$("$app" --shot "$out/$name.png" --size "$size" --demo --cwd "$home/work/openagents" --do "$steps" 2>&1 || true)"
-  else log="$(env -i HOME="$home" USER="$USER" PATH="$engine" BROWSER=/usr/bin/true PSIONIC_HOST=none "$app" --shot "$out/$name.png" --size "$size" --cwd "$home/work/openagents" --do "$steps" 2>&1 || true)"; fi
+  else log="$(env -i HOME="$home" USER="$USER" PATH="$engine" BROWSER=/usr/bin/true PSIONIC_HOST=none "$app" --shot "$out/$name.png" --size "$size" --cwd "$home/work/openagents" ${more[@]+"${more[@]}"} --do "$steps" 2>&1 || true)"; fi
   if [[ -n "$expect" ]] && ! grep -qF -- "$expect" <<<"$log"; then echo "FAIL $name: no \"$expect\" in: $log"; fail=1; continue; fi
   if ((update)); then cp "$out/$name.png" "$here/goldens/$name.png"; echo "updated goldens/$name.png"; continue; fi
   if result="$("$app" --compare "$out/$name.png" "$here/goldens/$name.png")"; then echo "ok   $name: $result"

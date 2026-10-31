@@ -215,6 +215,24 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
 final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemValidation {
   // The desk (zeron/desk.coax): every session's chat; the input and the frame go through it.
   let desk = dsk_new()!
+  let settings = ds_new()!
+  // settings.json (zeron/settings.coax): ~/Library/Application Support/OpenAgents/settings.json, or --settings PATH;
+  // none for --demo and for shots without --settings
+  var settingsPath: String?
+  func saveSettings() {
+    guard let path = settingsPath else { return }
+    let f = window?.frame ?? .zero
+    var out = [UInt8](repeating: 0, count: 1 << 20)
+    let n = ds_save(desk, Float(f.origin.x), Float(f.origin.y), Float(f.width), Float(f.height), &out, Int32(out.count))
+    guard n > 0 else { return }
+    try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    try? Data(out[0..<Int(n)]).write(to: URL(fileURLWithPath: path), options: .atomic)
+  }
+  // The saved frame, if any (the host sets the window to it).
+  func savedFrame() -> NSRect? {
+    var f = [Float](repeating: 0, count: 4)
+    return ds_window(settings, &f) != 0 ? NSRect(x: CGFloat(f[0]), y: CGFloat(f[1]), width: CGFloat(f[2]), height: CGFloat(f[3])) : nil
+  }
   // the room's socket, which each Codex session's MCP server (this binary, --mcp-room) connects to
   lazy var room: RoomServer = {
     let r = RoomServer(path: (NSTemporaryDirectory() as NSString).appendingPathComponent("oa-room-\(getpid()).sock"))
@@ -350,7 +368,26 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
     if args.contains("--demo") { zr_demo(first); add(first, cwd: cwd); return }
+    let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
+    settingsPath = value("--settings").map { ($0 as NSString).expandingTildeInPath }
+      ?? (args.contains("--shot") ? nil : (home as NSString).appendingPathComponent("Library/Application Support/OpenAgents/settings.json"))
+    // every session as it was at quit, each in its own chat, then the tabs
+    if let path = settingsPath, let data = FileManager.default.contents(atPath: path) {
+      let json = [UInt8](data)
+      let n = ds_load(settings, desk, json, Int32(json.count))
+      var buf = [UInt8](repeating: 0, count: 4096)
+      for i in 0..<n {
+        let m = Int(ds_restore_cwd(settings, i, &buf, Int32(buf.count)))
+        let dir = m > 0 ? String(decoding: buf[0..<m], as: UTF8.self) : cwd
+        guard let chat = i == 0 ? first : zr_new() else { continue }
+        Array(dir.utf8).withUnsafeBufferPointer { zr_attach(chat, $0.baseAddress, Int32($0.count)) }
+        add(chat, cwd: dir)
+        ds_restore(settings, desk, i, dsk_count(desk) - 1)
+      }
+      if n > 0 { ds_restore_tabs(settings, desk, 0); return }
+    }
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(first, $0.baseAddress, Int32($0.count)) }
+    ds_defaults(settings, first)
     add(first, cwd: cwd)
     if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic", "lab", "codex"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
     for (flag, which) in [("--model", Int32(1)), ("--effort", Int32(2))] { if let v = value(flag) { named(which, v) } }
@@ -363,6 +400,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   func newSession(cwd: String) {
     guard let chat = zr_new() else { return }
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(chat, $0.baseAddress, Int32($0.count)) }
+    ds_defaults(settings, chat)
     add(chat, cwd: cwd)
     needsDisplay = true
   }
@@ -528,7 +566,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
                               bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
             let rep = NSBitmapImageRep(cgImage: g.makeImage()!)
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
-            dsk_quit(self.desk); exit(0)
+            self.saveSettings(); dsk_quit(self.desk); exit(0)
           }
         }
       }
@@ -555,6 +593,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "newchat": zr_new_chat(state)
     case "folder": newSession(cwd: (arg as NSString).expandingTildeInPath)   // a new session in that folder, as the folder picker makes it
     case "sidebar": dsk_toggle(desk)
+    case "window": print("window: " + (savedFrame().map { "\(Int($0.width))x\(Int($0.height)) at \(Int($0.origin.x)),\(Int($0.origin.y))" } ?? "none"))
     case "answer": if zr_answer(state, arg == "allow" ? 1 : 0) == 0 { print("answer: nothing is asking") }   // the asking notice's Allow or Deny, as a press on it
     case "status", "last":   // the status strip's words; the conversation's last text
       var b = [UInt8](repeating: 0, count: 4096)

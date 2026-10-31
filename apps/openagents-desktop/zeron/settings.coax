@@ -1,0 +1,198 @@
+// settings.json (docs/desktop/coax-desktop.md, "Storage"): the window's frame,
+// the sidebar's width and whether it is collapsed, the defaults a new session
+// starts with (the harness and access of the session shown at quit), and
+// every session: its folder, harness, model, effort, access, title and the
+// harness's own session (Claude Code's session id for --resume, Codex's
+// thread for thread/resume). The host reads the file at launch (ds_load),
+// makes a chat for each session in its folder (ds_restore_cwd, then
+// ds_restore), reopens the tabs (ds_restore_tabs) and writes it back at quit
+// (ds_save). Its transcripts are kept apart (desk-chat-store).
+
+#load "desk.coax";
+
+DS_JSON :: 65536;
+Settings :: struct {
+  json: [DS_JSON] u8; n: int;   // the file as read
+  sessions: int;
+  window: [4] f32; has_window: bool;
+  def_mode: int; def_access: int; has_defaults: bool;
+}
+DS_ARENA :: 16384;
+
+ds_mode_of :: (name: string) -> int {
+  names := MODE_NAMES;
+  for m: 0..<MODE_COUNT { if zr_same(names[m], name) { return m; } }
+  return -1;
+}
+ds_put_num :: (w: [] ClOut, v: int) { b: [24] u8; n := zr_put_int(b[..], 0, ifx v < 0 then 0 else v); if v < 0 { cl_put(w, "-"); } cl_put(w, cast(string) b[0..<n]); }
+ds_put_key :: (w: [] ClOut, first: bool, key: string) { if !first { cl_put(w, ","); } cl_put_string(w, key); cl_put(w, ":"); }
+
+// The file for the desk now; x, y, w, h the window's frame (AppKit's, points). Its length.
+ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int {
+  o: [1] ClOut; o[0].buf = out;
+  names := MODE_NAMES;
+  cl_put(o[..], "{\"window\":{\"x\":"); ds_put_num(o[..], cast(int) x); cl_put(o[..], ",\"y\":"); ds_put_num(o[..], cast(int) y);
+  cl_put(o[..], ",\"w\":"); ds_put_num(o[..], cast(int) w); cl_put(o[..], ",\"h\":"); ds_put_num(o[..], cast(int) h); cl_put(o[..], "}");
+  cl_put(o[..], ",\"sidebar\":{\"width\":"); ds_put_num(o[..], cast(int) k[0].width);
+  cl_put(o[..], ifx k[0].collapsed then ",\"collapsed\":true}" else ",\"collapsed\":false}");
+  if k[0].n > 0 {
+    s := dsk_chat(k);
+    cl_put(o[..], ",\"defaults\":{\"mode\":"); cl_put_string(o[..], names[s[0].mode]);
+    cl_put(o[..], ",\"access\":"); ds_put_num(o[..], s[0].engine[0].access); cl_put(o[..], "}");
+  }
+  cl_put(o[..], ",\"active\":"); ds_put_num(o[..], k[0].active);
+  cl_put(o[..], ",\"tabs\":[");
+  for t: 0..<k[0].ntabs { if t > 0 { cl_put(o[..], ","); } ds_put_num(o[..], k[0].tabs[t]); }
+  cl_put(o[..], "],\"sessions\":[");
+  for i: 0..<k[0].n {
+    s := k[0].chats[i].s; e := s[0].engine[..];
+    if i > 0 { cl_put(o[..], ","); }
+    cl_put(o[..], "{\"cwd\":"); cl_put_string(o[..], dsk_cwd(k, i));
+    cl_put(o[..], ",\"mode\":"); cl_put_string(o[..], names[s[0].mode]);
+    model := ""; effort := e[0].effort;
+    if s[0].mode == MODE_CODEX && s[0].codex.count > 0 {
+      cx := s[0].codex;
+      if cx[0].model >= 0 && cx[0].model < cx[0].cat[0].n { model = cx[0].cat[0].id[cx[0].model]; }
+      effort = cx[0].effort;
+    } else if e[0].model >= 0 && e[0].model < e[0].cat[0].n { model = e[0].cat[0].id[e[0].model]; }
+    if model.count > 0 { cl_put(o[..], ",\"model\":"); cl_put_string(o[..], model); }
+    cl_put(o[..], ",\"effort\":"); ds_put_num(o[..], effort);
+    cl_put(o[..], ",\"access\":"); ds_put_num(o[..], e[0].access);
+    title := dsk_title(k, i);
+    if title != "New session" && !s[0].demo { cl_put(o[..], ",\"title\":"); cl_put_string(o[..], title); }
+    if e[0].sid_n > 0 { cl_put(o[..], ",\"claude\":"); cl_put_string(o[..], e_str(e[0].sid[..], e[0].sid_n)); }
+    if s[0].codex.count > 0 && s[0].codex[0].tid_n > 0 { cl_put(o[..], ",\"codex\":"); cl_put_string(o[..], cx_str(s[0].codex[0].tid[..], s[0].codex[0].tid_n)); }
+    cl_put(o[..], "}");
+  }
+  cl_put(o[..], "]}\n");
+  return ifx o[0].failed then 0 else o[0].len;
+}
+
+ds_text :: (g: [] Settings) -> string { return cast(string) g[0].json[0..<g[0].n]; }
+// Reads the file: the sidebar now, the window and defaults kept for the host and new sessions. The sessions to restore.
+ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int {
+  g[0].n = e_copy(g[0].json[..], 0, json);
+  t := ds_text(g);
+  abuf: [DS_ARENA] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  if !cl_at(t, "sessions").ok { g[0].sessions = 0; return 0; }
+  dsk_init(k);
+  wd := cl_int(t, "sidebar.width");
+  if wd.ok { k[0].width = clamp_f(cast(f32) wd.value, DSK_SIDEBAR_MIN, DSK_SIDEBAR_MAX); }
+  k[0].collapsed = cl_bool(t, "sidebar.collapsed").value;
+  keys := [4] string.["window.x", "window.y", "window.w", "window.h"];
+  g[0].has_window = true;
+  for j: 0..<4 { v := cl_int(t, keys[j]); if !v.ok { g[0].has_window = false; } else { g[0].window[j] = cast(f32) v.value; } }
+  m := ds_mode_of(cl_str(ar[..], t, "defaults.mode"));
+  a := cl_int(t, "defaults.access");
+  g[0].has_defaults = m >= 0 && a.ok;
+  if g[0].has_defaults { g[0].def_mode = m; g[0].def_access = cast(int) a.value; }
+  g[0].sessions = cl_count(cl_raw(t, "sessions"));
+  if g[0].sessions > DSK_MAX { g[0].sessions = DSK_MAX; }
+  return g[0].sessions;
+}
+clamp_f :: (v: f32, lo: f32, hi: f32) -> f32 { return ifx v < lo then lo else ifx v > hi then hi else v; }
+ds_session :: (g: [] Settings, i: int) -> string { return cl_json(cl_raw(ds_text(g), "sessions"), cl_item(cl_raw(ds_text(g), "sessions"), i)); }
+// Session i's folder (the host attaches its chat there).
+ds_restore_cwd :: (g: [] Settings, i: int, out: [] u8) -> int {
+  if i < 0 || i >= g[0].sessions { return 0; }
+  abuf: [DS_ARENA] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  return e_copy(out, 0, cl_str(ar[..], ds_session(g, i), "cwd"));
+}
+// Session i, just added to the desk as chat c: its harness, model, effort, access, title and harness session.
+ds_restore :: (g: [] Settings, k: [] Desk, i: int, c: int) {
+  if i < 0 || i >= g[0].sessions || c < 0 || c >= k[0].n { return; }
+  abuf: [DS_ARENA] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  t := ds_session(g, i);
+  s := k[0].chats[c].s; e := s[0].engine[..];
+  m := ds_mode_of(cl_str(ar[..], t, "mode"));
+  if m >= 0 { coaxial_zeron_choose(s, CH_MODE, m); }
+  model := cl_str(ar[..], t, "model");
+  if model.count > 0 { got := coaxial_zeron_choose_named(s, CH_MODEL, model); }
+  ef := cl_int(t, "effort"); if ef.ok { coaxial_zeron_choose(s, CH_EFFORT, cast(int) ef.value); }
+  ac := cl_int(t, "access"); if ac.ok { coaxial_zeron_choose(s, CH_ACCESS, cast(int) ac.value); }
+  k[0].chats[c].title_n = e_copy(k[0].chats[c].title[..], 0, cl_str(ar[..], t, "title"));
+  e[0].sid_n = e_set(e[0].sid[..], 0, cl_str(ar[..], t, "claude"));
+  if s[0].codex.count > 0 { s[0].codex[0].tid_n = e_set(s[0].codex[0].tid[..], 0, cl_str(ar[..], t, "codex")); }
+}
+// The tabs and the shown session, once every session is back (base: the desk's index of session 0).
+ds_restore_tabs :: (g: [] Settings, k: [] Desk, base: int) {
+  t := ds_text(g);
+  tabs := cl_raw(t, "tabs");
+  n := cl_count(tabs);
+  nt := 0;
+  for j: 0..<n {
+    v := cl_int_of(tabs, cl_item(tabs, j));
+    c := base + cast(int) v.value;
+    if !v.ok || c < 0 || c >= k[0].n { continue; }
+    dup := false;
+    for q: 0..<nt { if k[0].tabs[q] == c { dup = true; } }
+    if !dup && nt < DSK_MAX { k[0].tabs[nt] = c; nt += 1; }
+  }
+  if nt == 0 { return; }
+  k[0].ntabs = nt;
+  a := cl_int(t, "active");
+  c := base + ifx a.ok then cast(int) a.value else 0;
+  k[0].active = ifx dsk_tab_of(k, c) >= 0 then c else k[0].tabs[0];
+}
+// A new session (not a restored one) starts with the defaults.
+ds_defaults :: (g: [] Settings, s: [] ZeronState) {
+  if !g[0].has_defaults { return; }
+  coaxial_zeron_choose(s, CH_MODE, g[0].def_mode);
+  coaxial_zeron_choose(s, CH_ACCESS, g[0].def_access);
+}
+
+coaxial_ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return ds_save(k, x, y, w, h, out); }
+coaxial_ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int #export_c { if g.count < 1 || k.count < 1 { return 0; } return ds_load(g, k, json); }
+coaxial_ds_window :: (g: [] Settings, out: [] f32) -> bool #export_c {
+  if g.count < 1 || !g[0].has_window || out.count < 4 { return false; }
+  for j: 0..<4 { out[j] = g[0].window[j]; }
+  return true;
+}
+coaxial_ds_restore_cwd :: (g: [] Settings, i: int, out: [] u8) -> int #export_c { if g.count < 1 { return 0; } return ds_restore_cwd(g, i, out); }
+coaxial_ds_restore :: (g: [] Settings, k: [] Desk, i: int, c: int) #export_c { if g.count > 0 && k.count > 0 { ds_restore(g, k, i, c); } }
+coaxial_ds_restore_tabs :: (g: [] Settings, k: [] Desk, base: int) #export_c { if g.count > 0 && k.count > 0 { ds_restore_tabs(g, k, base); } }
+coaxial_ds_defaults :: (g: [] Settings, s: [] ZeronState) #export_c { if g.count > 0 && s.count > 0 { ds_defaults(g, s); } }
+
+#test "settings.json: what is saved at quit comes back at launch: the sidebar, the window, the tabs and every session with its harness session" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState; c: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]); dsk_test_chat(c[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one");
+  i = dsk_add(k[..], b[..], "/w/two");
+  i = dsk_add(k[..], c[..], "/w/three");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  coaxial_zeron_choose(b[..], CH_MODE, MODE_CODEX);
+  coaxial_zeron_choose(c[..], CH_ACCESS, 2);
+  s_user(a[0].session[..], "Fix the sidebar width\nand more");
+  a[0].engine[0].sid_n = e_set(a[0].engine[0].sid[..], 0, "5f2c-claude");
+  k[0].width = 300; k[0].collapsed = true;
+  #assert dsk_close_tab(k[..]);    // the shown one (three) closes; two is shown
+  json: [DS_JSON] u8;
+  jn := ds_save(k[..], 100, 80, 1320, 880, json[..]);
+  #assert jn > 0;
+  // a new launch
+  k2: [1] Desk; g: [1] Settings;
+  #assert ds_load(g[..], k2[..], cast(string) json[0..<jn]) == 3;
+  #assert k2[0].width == 300 && k2[0].collapsed;
+  win: [4] f32;
+  #assert coaxial_ds_window(g[..], win[..]) && win[0] == 100 && win[1] == 80 && win[2] == 1320 && win[3] == 880;
+  a2: [1] ZeronState; b2: [1] ZeronState; c2: [1] ZeronState;
+  dsk_test_chat(a2[..]); dsk_test_chat(b2[..]); dsk_test_chat(c2[..]);
+  cwd: [1024] u8;
+  #assert cast(string) cwd[0..<ds_restore_cwd(g[..], 1, cwd[..])] == "/w/two";
+  i = dsk_add(k2[..], a2[..], "/w/one"); ds_restore(g[..], k2[..], 0, 0);
+  i = dsk_add(k2[..], b2[..], "/w/two"); ds_restore(g[..], k2[..], 1, 1);
+  i = dsk_add(k2[..], c2[..], "/w/three"); ds_restore(g[..], k2[..], 2, 2);
+  ds_restore_tabs(g[..], k2[..], 0);
+  #assert k2[0].ntabs == 2 && k2[0].tabs[0] == 0 && k2[0].tabs[1] == 1 && k2[0].active == 1;
+  #assert b2[0].mode == MODE_CODEX && c2[0].engine[0].access == 2;
+  #assert e_str(a2[0].engine[0].sid[..], a2[0].engine[0].sid_n) == "5f2c-claude";
+  #assert dsk_title(k2[..], 0) == "Fix the sidebar width" && dsk_title(k2[..], 2) == "New session";
+  // new sessions take the shown one's harness
+  d2: [1] ZeronState; dsk_test_chat(d2[..]);
+  ds_defaults(g[..], d2[..]);
+  #assert g[0].has_defaults && d2[0].mode == MODE_CODEX;
+  // a file that isn't settings restores nothing
+  #assert ds_load(g[..], k2[..], "not json") == 0;
+}

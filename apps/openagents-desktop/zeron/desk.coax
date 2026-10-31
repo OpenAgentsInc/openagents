@@ -47,6 +47,7 @@ DskChat :: struct {
   call_on: bool; call: int; call_conn: int; call_ask: int;
   call_args: [8192] u8; call_n: int;
   call_rpc: [64] u8; call_rpc_n: int;  // the MCP request's id, raw JSON, echoed in the answer
+  title: [DSK_TITLE] u8; title_n: int;  // its title from settings.json, until a message gives it one
 }
 // An answer to a Codex MCP server, for the host to write to its connection.
 DskOut :: struct { conn: int; line: [RM_ANSWER + 512] u8; n: int; }
@@ -171,6 +172,7 @@ dsk_title :: (k: [] Desk, i: int) -> string {
       return cast(string) t[0..<e];
     }
   }
+  if k[0].chats[i].title_n > 0 { return cast(string) k[0].chats[i].title[0..<k[0].chats[i].title_n]; }
   return "New session";
 }
 dsk_status :: (k: [] Desk, i: int) -> int {

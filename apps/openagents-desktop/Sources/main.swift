@@ -225,6 +225,8 @@ final class App: NSObject, NSApplicationDelegate {
     window.center()
     let args = CommandLine.arguments
     zeron.configure(args)
+    // the frame it had at quit, kept on a screen
+    if !args.contains("--shot"), let f = zeron.savedFrame(), f.width >= 900, f.height >= 600 { window.setFrame(window.constrainFrameRect(f, to: NSScreen.main), display: false) }
     // --shot draws offscreen; the window never shows.
     if !args.contains("--shot") { window.makeKeyAndOrderFront(nil) }
     window.makeFirstResponder(window.contentView)
@@ -252,7 +254,7 @@ final class App: NSObject, NSApplicationDelegate {
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
   // Claude Code's process group goes with the app.
-  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { dsk_quit(v.desk) } }
+  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { v.saveSettings(); dsk_quit(v.desk) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
   // app menu, File (New Session Cmd+N, New Session in Folder… Shift+Cmd+N, Close Tab Cmd+W), View (Toggle Sidebar Cmd+S), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,

@@ -312,7 +312,8 @@ transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
 in the composer; the app with claude off PATH, and with a logged-out Claude
 Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
 does; three sessions in two folders with the sidebar open at 1320x880 and
-900x600, Claude asking Codex for a review through the room, a Supervised turn that asks to run `ls` (the stand-in
+900x600, a quit and reopen with `--settings` (the tabs, the shown session
+and the collapsed sidebar come back), Claude asking Codex for a review through the room, a Supervised turn that asks to run `ls` (the stand-in
 `zeron/fixtures/asks/claude`) waiting, then allowed and denied, with the
 agent's answer read from the `last` step, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
 Sidebar and New Session whose result it reads from the `desk` step), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
@@ -535,6 +536,16 @@ Data is local, under `~/Library/Application Support/OpenAgents/`:
   session (`--resume` for Claude, `thread/resume` for Codex).
 - `room.jsonl`: the room's messages.
 - `settings.json`: window, sidebar width, shortcuts and defaults.
+
+Built (2026-10-31, `zeron/settings.coax`): `settings.json` keeps the window's
+frame, the sidebar's width and whether it is collapsed, the defaults a new
+session starts with (the harness and access of the session shown at quit),
+the open tabs and the shown one, and every session: folder, harness, model,
+effort, access, title, and Claude Code's session id or Codex's thread. At
+launch each session comes back as its own chat in its folder and the next
+message resumes it (`--resume`, `thread/resume`); the transcript itself
+comes with desk-chat-store. `--settings PATH` uses another file (shots use
+none unless given one; `--demo` none). Not yet: shortcuts in the file.
 
 No account is needed. A Nostr identity (the same one the phone uses for
 `/login`) comes later, for sync and for openagents.com projects.

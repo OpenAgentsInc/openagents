@@ -176,3 +176,12 @@ int32_t room_mcp(const uint8_t *line, int32_t n, int32_t agent, uint8_t *out, in
   *len = (int32_t)l; return kind;
 }
 int32_t room_mcp_result(const uint8_t *reply, int32_t n, uint8_t *out, int32_t cap) { return (int32_t)coaxial_room_mcp_result(str(reply, n), (coax_v_u8){out, cap}); }
+static coax_v_t_Settings ds_at(void *g) { return (coax_v_t_Settings){(coax_t_Settings *)g, 1}; }
+void *ds_new(void) { return calloc(1, sizeof(coax_t_Settings)); }
+int32_t ds_save(void *desk, float x, float y, float w, float h, uint8_t *out, int32_t cap) { return (int32_t)coaxial_ds_save(desk_at(desk), x, y, w, h, (coax_v_u8){out, cap}); }
+int32_t ds_load(void *g, void *desk, const uint8_t *json, int32_t n) { return (int32_t)coaxial_ds_load(ds_at(g), desk_at(desk), str(json, n)); }
+int32_t ds_window(void *g, float *out) { return coaxial_ds_window(ds_at(g), (coax_v_f32){out, 4}) ? 1 : 0; }
+int32_t ds_restore_cwd(void *g, int32_t i, uint8_t *out, int32_t cap) { return (int32_t)coaxial_ds_restore_cwd(ds_at(g), i, (coax_v_u8){out, cap}); }
+void ds_restore(void *g, void *desk, int32_t i, int32_t c) { coaxial_ds_restore(ds_at(g), desk_at(desk), i, c); }
+void ds_restore_tabs(void *g, void *desk, int32_t base) { coaxial_ds_restore_tabs(ds_at(g), desk_at(desk), base); }
+void ds_defaults(void *g, void *state) { coaxial_ds_defaults(ds_at(g), at(state)); }
