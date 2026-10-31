@@ -1,0 +1,58 @@
+// Explicit one-Radian/one-Metre normalized coefficients only. This checked
+// numerical profile is not generic SPD or physical-POD provenance admission.
+#load "panda-mass-solve-check-fixtures.coax";
+#authority;
+#forall "Panda mass solve every raw matrix word finite and inclusive range" lane:0..<81,negative:bool {
+ m:[81]u64;f:[9]u64;sign:u64;if negative {sign=0x8000000000000000;}
+ for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {m[lane]=bad|sign;#assert pms_admit_bits(m,f)==PmsStatus.number;}
+ m[lane]=f64_bits(100000000.00000001)|sign;#assert pms_admit_bits(m,f)==PmsStatus.range;
+ m[lane]=f64_bits(100000000.0)|sign;#assert pms_admit_bits(m,f)==PmsStatus.ok;
+ matrix:=pms_identity();force:[9]f64;matrix[lane]=100000000.00000001;pms_failed_zero(pms_solve_force_admitted(matrix,force),PmsStatus.range);
+}
+#forall "Panda mass solve every NETforce word finite and inclusive range" lane:0..<9,negative:bool {
+ m:[81]u64;f:[9]u64;sign:u64;if negative {sign=0x8000000000000000;}
+ for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {f[lane]=bad|sign;#assert pms_forces_admit(f)==PmsStatus.number && pms_admit_bits(m,f)==PmsStatus.number;}
+ f[lane]=f64_bits(10000.000000000002)|sign;#assert pms_forces_admit(f)==PmsStatus.range && pms_admit_bits(m,f)==PmsStatus.range;
+ f[lane]=f64_bits(10000.0)|sign;#assert pms_forces_admit(f)==PmsStatus.ok && pms_admit_bits(m,f)==PmsStatus.ok;
+}
+#test "Panda mass solve numerical admission preserves first word and matrix-before-force order" {
+ m:[81]u64;f:[9]u64;m[0]=f64_bits(100000001.0);m[1]=0x7ff0000000000000;f[0]=0x7ff0000000000000;#assert pms_admit_bits(m,f)==PmsStatus.range;
+ m[0]=0;#assert pms_admit_bits(m,f)==PmsStatus.number;
+ f[0]=f64_bits(10001.0);f[1]=0x7ff0000000000000;#assert pms_forces_admit(f)==PmsStatus.range;
+}
+#forall "Panda mass solve exact symmetry and each inclusive pivot boundary" lane:0..<9 {
+ m:=pms_identity();f:[9]f64;f[lane]=0.25;m[lane*9+lane]=0.25;r:=pms_solve_raw(m,f);#assert r.status==PmsStatus.ok;for i:0..<9 {#assert r.acceleration[i]==(ifx i==lane then 1.0 else 0.0);}
+ m[lane*9+lane]=0.24999999999999997;pms_failed_zero(pms_solve_raw(m,f),PmsStatus.factor);
+ m[lane*9+lane]= -1;pms_failed_zero(pms_solve_raw(m,f),PmsStatus.factor);
+ m[lane*9+lane]=100000000.00000001;pms_failed_zero(pms_solve_raw(m,f),PmsStatus.range);
+ m=pms_identity();f[lane]=10000.000000000002;pms_failed_zero(pms_solve_raw(m,f),PmsStatus.range);
+}
+#test "Panda mass solve dense rational SPD has an independently known full solution" {
+ m:[81]f64;want:[9]f64;f:[9]f64;
+ // M = 2I + uu^T, u_i=(i+1)/8. All stored coefficients are binary exact.
+ for i:0..<9 {want[i]=(f64(i)-4)/8;for j:0..<9 {m[i*9+j]=f64((i+1)*(j+1))/64;if i==j {m[i*9+j]+=2;}}}
+ for i:0..<9 {for j:0..<9 {f[i]+=m[i*9+j]*want[j];}}
+ r:=pms_solve_raw(m,f);#assert r.status==PmsStatus.ok;for i:0..<9 {#assert abs(r.acceleration[i]-want[i])<2e-14;}
+ for i:0..<9 {for j:0..<i {bad:=m;bad[i*9+j]+=0.125;pms_failed_zero(pms_solve_raw(bad,f),PmsStatus.factor);}}
+ zero:[9]f64;r=pms_solve_raw(m,zero);#assert r.status==PmsStatus.ok;for x:r.acceleration {#assert x==0;}
+}
+
+pms_forces_admit :: (words:[9]u64)->PmsStatus {for bits:words {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>10000 {return PmsStatus.range;}}return PmsStatus.ok;}
+pms_matrix_admit :: (matrix:[81]u64)->PmsStatus {for bits:matrix {if !pfk_finite(bits) {return PmsStatus.number;}if abs(f64_from_bits(bits))>100000000 {return PmsStatus.range;}}return PmsStatus.ok;}
+pms_admit_bits :: (matrix:[81]u64,force:[9]u64)->PmsStatus {status:=pms_matrix_admit(matrix);if status!=PmsStatus.ok {return status;}return pms_forces_admit(force);}
+pms_solve_raw :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+ mb:[81]u64;fb:[9]u64;for i:0..<81 {mb[i]=f64_bits(matrix[i]);}for i:0..<9 {fb[i]=f64_bits(force[i]);}status:=pms_admit_bits(mb,fb);if status!=PmsStatus.ok {return PmsRaw.{status=status};}
+ return pms_factor(matrix,force);
+}
+// Trusted precondition: force was already admitted in this explicit basis.
+// Keep one force admission on the public path, before quantity arithmetic.
+pms_solve_force_admitted :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+ bits:[81]u64;for i:0..<81 {bits[i]=f64_bits(matrix[i]);}status:=pms_matrix_admit(bits);if status!=PmsStatus.ok {return PmsRaw.{status=status};}return pms_factor(matrix,force);
+}
+// Trusted finite/range preconditions are established by either wrapper above.
+pms_factor :: (matrix:[81]f64,force:[9]f64)->PmsRaw {
+ for i:1..<9 {for j:0..<i {if matrix[i*9+j]!=matrix[j*9+i] {return PmsRaw.{status=PmsStatus.factor};}}}
+ l:[81]f64;for i:0..<9 {for j:0..<i+1 {value:=matrix[i*9+j];for k:0..<j {value-=l[i*9+k]*l[j*9+k];}if i==j {if value<0.25 {return PmsRaw.{status=PmsStatus.factor};}l[i*9+j]=sqrt(value);}else {l[i*9+j]=value/l[j*9+j];}}}
+ y:[9]f64;for i:0..<9 {value:=force[i];for j:0..<i {value-=l[i*9+j]*y[j];}y[i]=value/l[i*9+i];}
+ result:PmsRaw;for step:0..<9 {i:=8-step;value:=y[i];for j:i+1..<9 {value-=l[j*9+i]*result.acceleration[j];}result.acceleration[i]=value/l[i*9+i];}return result;
+}

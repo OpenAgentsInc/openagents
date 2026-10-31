@@ -1,0 +1,99 @@
+{
+  "schema": "psionic.panda-mass-solve.qualification.v1",
+  "passed": false,
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "experiment_sha256": "821bc5f81c53819e6276dc6edf57615c6119b2413fec298347b1a9a748117b43",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-mass-solve-basis.coax": "1b13f3d784293110920ac3bd250dd08ba472e9105a2cc312781ab750eb54ce56",
+    "psionic/lib/robotics/panda-mass-solve-captured-checks.coax": "b198ffc969a86c8f86981c0899c2141ad0eedc7fbebfa44806e41f0c6996b2b4",
+    "psionic/lib/robotics/panda-mass-solve-check-fixtures.coax": "57299d5100b559e4aa64e29db9809458a2b25ce858afc4568cd71862c66d57d3",
+    "psionic/lib/robotics/panda-mass-solve-math.coax": "6748aab83899698dba5cf400c07ca44c1e69869c49ea9eddcc236ce1a8c0af78",
+    "psionic/lib/robotics/panda-mass-solve-types.coax": "e9377ab6bdb6627bbcc47d071790f2bc2eeb9444711ea3cde6c80afa6c5c4a0e",
+    "psionic/lib/robotics/panda-mass-solve.coax": "6d25a8837e7e3be1e922dd753a54f5dc40ab1f32697236069c8d00169c21221f",
+    "psionic/tests/robotics/panda_mass_solve_bad_acceleration.coax": "17f599d66d622f1538db13869009905dde039d7cf3f304448d3e30cbbc66039e",
+    "psionic/tests/robotics/panda_mass_solve_bad_angle.coax": "0cdf06a58ed4b813c5eb2a289180948dc5ad82e53034ee796716355cd8cef7ed",
+    "psionic/tests/robotics/panda_mass_solve_bad_hinge_force.coax": "c2b077f70c721ecec7ca78f18c7dba0dca0c5ec20d69aa63c8dfe2d0440e7d2a",
+    "psionic/tests/robotics/panda_mass_solve_bad_slide_force.coax": "b9badcf314a5e01cd2dfd4fe3b0ec0dc3b212f27c97e8aebf0c027ccd2775228",
+    "psionic/tests/robotics/panda_mass_solve_check.sh": "a85b9466dbaafa48c362b034005a58a86298f953ab4a319aa4860c0e0237654f",
+    "psionic/tests/robotics/panda_mass_solve_entry.coax": "4cd5cd3b296af2a847682b46906be9dfdc252825afa5cb8c26736f14de91ad7c",
+    "psionic/tests/robotics/panda_mass_solve_native.c": "8d9b208320a4dda9b1de43effb7d29252fcc4170e7e4298d8c260691e2ec0915",
+    "psionic/tests/robotics/panda_mass_solve_reference.py": "b7fdeb8ba7f5eab7338c6d851c965e7b981f80bc981314d04626f55c0af83db0",
+    "psionic/fixtures/robotics/panda-mass-solve/experiment.json": "821bc5f81c53819e6276dc6edf57615c6119b2413fec298347b1a9a748117b43",
+    "psionic/fixtures/robotics/panda-mass-solve/known-solution-checks.json": "4ffa3c9f6c7e38ee4dbc2a3099a50106542bebb2beabb67254db4621ca53b18b"
+  },
+  "case_sha256": "0fafa8323b7c2159b3dd88e1d8dd89c15b92ad1120795060db2a55e0023762b5",
+  "independent_reference_sha256": "9b0fbaf7fde57b637508bdaf44eaa376423adb7fa01e703270af12adf49253e8",
+  "public_cases": 129,
+  "raw_cases": 7,
+  "output_words_per_mode": 1224,
+  "old_component_gate_rerun": false,
+  "SDK_calls": 0,
+  "scope": "M(q)*acceleration=NET generalized force only; no implicit gravity/velocity bias/damping/contact/actuator force, no integration/controller/importer/hardware/#bounded claim.",
+  "basis": {
+    "hinge": "one Radian",
+    "slide": "one Metre",
+    "normalized_matrix": "Joule*Second^2 = Kilogram*Metre^2",
+    "normalized_force": "Joule",
+    "normalized_acceleration": "Second^-2",
+    "restored_acceleration": "seven Radian/Second^2 then two Metre/Second^2",
+    "normalization_is_explicit": true
+  },
+  "numeric_profile": "Darwin-arm64 F64 scalar-libm, -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off; debug/release/ASan exact bytes are target-specific.",
+  "modes": [],
+  "source_refusals": [
+    {
+      "name": "angle",
+      "diagnostic": "E0317",
+      "refused": true,
+      "source_sha256": "0cdf06a58ed4b813c5eb2a289180948dc5ad82e53034ee796716355cd8cef7ed",
+      "stderr_sha256": "dd8c317ab11afef419fff97adf5ad199a82eb1069cff5d22e2accce63a1cfdf1"
+    },
+    {
+      "name": "hinge_force",
+      "diagnostic": "E0317",
+      "refused": true,
+      "source_sha256": "c2b077f70c721ecec7ca78f18c7dba0dca0c5ec20d69aa63c8dfe2d0440e7d2a",
+      "stderr_sha256": "c1e66c4ae085cc6254211d166ad5acf0854904522e2812c95a3a7ff60cda3e8d"
+    },
+    {
+      "name": "slide_force",
+      "diagnostic": "E0317",
+      "refused": true,
+      "source_sha256": "b9badcf314a5e01cd2dfd4fe3b0ec0dc3b212f27c97e8aebf0c027ccd2775228",
+      "stderr_sha256": "1bc6d506bf52af95b64dbe679cb598e15eca66db5358e6436fe7016256e0eb7b"
+    },
+    {
+      "name": "acceleration",
+      "diagnostic": "E0330",
+      "refused": true,
+      "source_sha256": "17f599d66d622f1538db13869009905dde039d7cf3f304448d3e30cbbc66039e",
+      "stderr_sha256": "9b0389c27f94297c6ab29679abad5e993f6d1ef5a0c7a8e2109502bc3b81f9f5"
+    }
+  ],
+  "commands": [
+    {
+      "name": "emit-debug",
+      "exit_status": 0,
+      "stdout_sha256": "f3cd186fb3848d63db5a5b084bee8ef30227eb70f2730eab264dab569545138b",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build-debug",
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "exit_status": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 31,
+      "stderr_sha256": "63f69629624c875afffe1cad7ad5ca1a73c895c88ff1eeb15721561f5db6c9cb"
+    }
+  ],
+  "failure": "RuntimeError(('run-debug', 'Panda mass solve native line17\\n'))",
+  "seconds": 0.9536733329878189
+}

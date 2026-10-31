@@ -1,0 +1,54 @@
+// Fixed-source M(q)*a=NETforce. Gravity/velocity bias/passive/actuator/contact
+// forces are NOT assembled here. All public output is staged before publication.
+#load "panda-mass-solve-math.coax";
+#load "panda-mass-solve-basis.coax";
+#load "panda-mass-solve-captured-checks.coax";
+#authority;
+#test "Panda mass solve public shapes and coordinate-before-force refusal stay atomic" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:=[2]PmsOutput.[pms_poison(),pms_poison()];old:=out[0];
+ #assert pms_forward(q[0..<6],s[..],h[..],f[..],out[0..<1])==PmsStatus.shape;pms_same(out[0],old);
+ #assert pms_forward(q[..],s[0..<1],h[..],f[..],out[0..<1])==PmsStatus.shape;pms_same(out[0],old);
+ #assert pms_forward(q[..],s[..],h[0..<6],f[..],out[0..<1])==PmsStatus.shape;pms_same(out[0],old);
+ #assert pms_forward(q[..],s[..],h[..],f[0..<1],out[0..<1])==PmsStatus.shape;pms_same(out[0],old);
+ #assert pms_forward(q[..],s[..],h[..],f[..],out[0..<0])==PmsStatus.shape;pms_same(out[0],old);
+ #assert pms_forward(q[..],s[..],h[..],f[..],out[..])==PmsStatus.shape;pms_same(out[0],old);pms_same(out[1],old);
+ q[0].value=101;h[0].value=10001;#assert pms_forward(q[..],s[..],h[..],f[..],out[0..<1])==PmsStatus.range;pms_same(out[0],old);
+ q[0].value=0;#assert pms_forward(q[..],s[..],h[..],f[..],out[0..<1])==PmsStatus.range;pms_same(out[0],old);
+ h[0].value=0;f[1].value=10001;#assert pms_forward(q[..],s[..],h[..],f[..],out[0..<1])==PmsStatus.range;pms_same(out[0],old);
+ rawq:[7]f64;raws:[2]f64;rawh:[7]f64;rawf:[2]f64;
+ #assert pms_forward_raw(rawq[0..<6],raws[..],rawh[..],rawf[..],out[0..<1])==PmsStatus.shape;
+ #assert pms_forward_raw(rawq[..],raws[0..<1],rawh[..],rawf[..],out[0..<1])==PmsStatus.shape;
+ #assert pms_forward_raw(rawq[..],raws[..],rawh[0..<6],rawf[..],out[0..<1])==PmsStatus.shape;
+ #assert pms_forward_raw(rawq[..],raws[..],rawh[..],rawf[0..<1],out[0..<1])==PmsStatus.shape;pms_same(out[0],old);
+}
+#test "Panda mass solve zero NETforce gives zero acceleration without adding gravity" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:[1]PmsOutput;q[1].value=0.3;q[3].value= -2;s[0].value=0.013;s[1].value= -0.027;
+ #assert pms_forward(q[..],s[..],h[..],f[..],out[..])==PmsStatus.ok;for a:out[0].hinge {#assert a.value==0;}for a:out[0].slide {#assert a.value==0;}
+}
+#forall "Panda mass solve every NETforce coordinate refuses before unchecked factorization" lane:0..<9 {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:=[1]PmsOutput.[pms_poison()];old:=out[0];
+ if lane<7 {h[lane].value=10000.000000000002;}else {f[lane-7].value=10000.000000000002;}
+ #assert pms_forward(q[..],s[..],h[..],f[..],out[..])==PmsStatus.range;pms_same(out[0],old);
+}
+#test "Panda mass solve trusted publication helper adopts only admitted result and preserves every refused lane" {
+ out:=[2]PmsOutput.[pms_poison(),pms_poison()];old:=out[0];raw:PmsRaw;raw.status=PmsStatus.factor;
+ #assert pms_publish(raw,out[0..<1])==PmsStatus.factor;pms_same(out[0],old);
+ #assert pms_publish(raw,out[0..<0])==PmsStatus.shape;pms_same(out[0],old);
+ raw.status=PmsStatus.ok;for i:0..<9 {raw.acceleration[i]=f64(i)-4.5;}
+ #assert pms_publish(raw,out[..])==PmsStatus.shape;pms_same(out[0],old);pms_same(out[1],old);
+ #assert pms_publish(raw,out[0..<1])==PmsStatus.ok;for i:0..<7 {#assert out[0].hinge[i].value==raw.acceleration[i];}for i:0..<2 {#assert out[0].slide[i].value==raw.acceleration[i+7];}pms_same(out[1],old);
+}
+
+pms_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),net_hinge:[]pfku.Quantity(PmHingeGravity,f64),net_slide:[]pfku.Quantity(PmSlideGravity,f64),output:[]PmsOutput)->PmsStatus #export_c {
+ if net_hinge.count!=7 || net_slide.count!=2 || output.count!=1 {return PmsStatus.shape;}
+ metric:[1]PmOutput;model:=pm_forward(angles,slides,metric[..]);if model!=PfkStatus.ok {return pms_model_status(model);}
+ bits:[9]u64;for i:0..<7 {bits[i]=f64_bits(net_hinge[i].value);}for i:0..<2 {bits[7+i]=f64_bits(net_slide[i].value);}admission:=pms_forces_admit(bits);if admission!=PmsStatus.ok {return admission;}
+ h:[7]pfku.Quantity(PmHingeGravity,f64);s:[2]pfku.Quantity(PmSlideGravity,f64);for i:0..<7 {h[i]=net_hinge[i];}for i:0..<2 {s[i]=net_slide[i];}
+ problem:=pms_basis(metric[0],h,s);return pms_publish(pms_solve_force_admitted(problem.mass,problem.force),output);
+}
+pms_publish :: (solved:PmsRaw,output:[]PmsOutput)->PmsStatus {if output.count!=1 {return PmsStatus.shape;}if solved.status!=PmsStatus.ok {return solved.status;}output[0]=pms_restore(solved.acceleration);return PmsStatus.ok;}
+pms_forward_raw :: (radians:[]f64,metres:[]f64,net_hinge:[]f64,net_slide:[]f64,output:[]PmsOutput)->PmsStatus #export_c {
+ if radians.count!=7 || metres.count!=2 || net_hinge.count!=7 || net_slide.count!=2 {return PmsStatus.shape;}
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmHingeGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);
+ for i:0..<7 {q[i].value=radians[i];h[i].value=net_hinge[i];}for i:0..<2 {s[i].value=metres[i];f[i].value=net_slide[i];}return pms_forward(q[..],s[..],h[..],f[..],output);
+}

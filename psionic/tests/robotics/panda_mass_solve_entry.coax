@@ -1,0 +1,3 @@
+// Test-only direct seam to the same checked raw solver; no alternate math.
+#load "../../lib/robotics/panda-mass-solve.coax";
+pms_probe_raw :: (matrix:[81]f64,force:[9]f64)->PmsRaw #export_c {return pms_solve_raw(matrix,force);}

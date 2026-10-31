@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-mass-solve.coax";
+wrong :: (out:PmsOutput)->pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64) {return out.hinge[0];}

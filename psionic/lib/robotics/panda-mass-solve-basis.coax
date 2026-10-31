@@ -1,0 +1,26 @@
+// Materialize physical coordinate bases before raw F64 factorization. There is
+// no implicit angle erasure and no square root of a quantity in this profile.
+#load "panda-mass-solve-types.coax";
+#authority;
+#test "Panda mass solve basis preserves all mixed blocks and NETforce lanes" {
+ metric:PmOutput;h:[7]pfku.Quantity(PmHingeGravity,f64);s:[2]pfku.Quantity(PmSlideGravity,f64);
+ for i:0..<7 {h[i].value=f64(i)+0.125;for j:0..<7 {metric.hinge_hinge[i*7+j].value=f64(i*9+j)+0.25;}for j:0..<2 {metric.hinge_slide[i*2+j].value=f64(i*9+7+j)+0.25;metric.slide_hinge[j*7+i].value=f64((j+7)*9+i)+0.25;}}
+ for i:0..<2 {s[i].value= -f64(i)-0.75;for j:0..<2 {metric.slide_slide[i*2+j].value=f64((i+7)*9+j+7)+0.25;}}
+ p:=pms_basis(metric,h,s);for i:0..<81 {#assert p.mass[i]==f64(i)+0.25;}for i:0..<7 {#assert p.force[i]==h[i].value;}for i:0..<2 {#assert p.force[7+i]==s[i].value;}
+ raw:[9]f64;for i:0..<9 {raw[i]=f64(i)-4.5;}restored:=pms_restore(raw);for i:0..<7 {#assert restored.hinge[i].value==raw[i];}for i:0..<2 {#assert restored.slide[i].value==raw[7+i];}
+}
+#test "Panda mass solve maps every existing fixed-model status without altering roles" {
+ from:=[5]PfkStatus.[PfkStatus.ok,PfkStatus.shape,PfkStatus.number,PfkStatus.range,PfkStatus.rotation];want:=[5]PmsStatus.[PmsStatus.ok,PmsStatus.shape,PmsStatus.number,PmsStatus.range,PmsStatus.factor];for i:0..<5 {#assert pms_model_status(from[i])==want[i];}
+}
+
+pms_basis :: (metric:PmOutput,hinge:[7]pfku.Quantity(PmHingeGravity,f64),slide:[2]pfku.Quantity(PmSlideGravity,f64))->PmsProblem {
+ rad:pfku.Quantity(pfku.Radian,f64);rad.value=1;metre:pfku.Quantity(pfku.Metre,f64);metre.value=1;out:PmsProblem;
+ for i:0..<7 {for j:0..<7 {value:=convert_unit(PmsMetricUnit,metric.hinge_hinge[i*7+j]*rad*rad);out.mass[i*9+j]=value.value;}for j:0..<2 {hs:=convert_unit(PmsMetricUnit,metric.hinge_slide[i*2+j]*rad*metre);sh:=convert_unit(PmsMetricUnit,metric.slide_hinge[j*7+i]*metre*rad);out.mass[i*9+7+j]=hs.value;out.mass[(j+7)*9+i]=sh.value;}f:=convert_unit(PmsEnergy,hinge[i]*rad);out.force[i]=f.value;}
+ for i:0..<2 {for j:0..<2 {value:=convert_unit(PmsMetricUnit,metric.slide_slide[i*2+j]*metre*metre);out.mass[(i+7)*9+j+7]=value.value;}f:=convert_unit(PmsEnergy,slide[i]*metre);out.force[i+7]=f.value;}return out;
+}
+pms_restore :: (raw:[9]f64)->PmsOutput {
+ rad:pfku.Quantity(pfku.Radian,f64);rad.value=1;metre:pfku.Quantity(pfku.Metre,f64);metre.value=1;out:PmsOutput;
+ for i:0..<7 {a:pfku.Quantity(PmsInverseSecond2,f64);a.value=raw[i];out.hinge[i]=convert_unit(UnitQuotient(pfku.Radian,UnitProduct(pfku.Second,pfku.Second)),rad*a);}
+ for i:0..<2 {a:pfku.Quantity(PmsInverseSecond2,f64);a.value=raw[7+i];out.slide[i]=convert_unit(UnitQuotient(pfku.Metre,UnitProduct(pfku.Second,pfku.Second)),metre*a);}return out;
+}
+pms_model_status :: (s:PfkStatus)->PmsStatus {if s==PfkStatus.ok {return PmsStatus.ok;}if s==PfkStatus.shape {return PmsStatus.shape;}if s==PfkStatus.number {return PmsStatus.number;}if s==PfkStatus.range {return PmsStatus.range;}return PmsStatus.factor;}

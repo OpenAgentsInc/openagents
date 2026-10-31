@@ -1,0 +1,6 @@
+// New solver assertions only; no model or force admission.
+#load "panda-mass-solve-types.coax";
+pms_poison :: ()->PmsOutput {out:PmsOutput;for i:0..<7 {out.hinge[i].value=101+f64(i);}for i:0..<2 {out.slide[i].value= -201-f64(i);}return out;}
+pms_same :: (a:PmsOutput,b:PmsOutput) {for i:0..<7 {#assert f64_bits(a.hinge[i].value)==f64_bits(b.hinge[i].value);}for i:0..<2 {#assert f64_bits(a.slide[i].value)==f64_bits(b.slide[i].value);}}
+pms_failed_zero :: (r:PmsRaw,want:PmsStatus) {#assert r.status==want;for x:r.acceleration {#assert f64_bits(x)==0;}}
+pms_identity :: ()->[81]f64 {m:[81]f64;for i:0..<9 {m[i*9+i]=1;}return m;}

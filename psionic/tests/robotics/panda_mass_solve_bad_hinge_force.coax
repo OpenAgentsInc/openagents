@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-mass-solve.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);h:[7]pfku.Quantity(PmSlideGravity,f64);f:[2]pfku.Quantity(PmSlideGravity,f64);out:[1]PmsOutput;r:=pms_forward(q[..],s[..],h[..],f[..],out[..]);print(int(r));}

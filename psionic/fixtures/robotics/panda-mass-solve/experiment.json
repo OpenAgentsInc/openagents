@@ -1,0 +1,136 @@
+{
+  "schema": "psionic.panda-mass-solve.experiment.v1",
+  "frozen_before_new_numerical_execution": true,
+  "source_main": "cc5e608523",
+  "public_profile": "fixed16body-nine-coordinate-NETforce-inertial-response-f64-v1",
+  "scope": "M(q)*acceleration=NET generalized force only; no implicit gravity/velocity bias/damping/contact/actuator force, no integration/controller/importer/hardware/#bounded claim.",
+  "admission": {
+    "hinge_position_abs_rad": 100.0,
+    "slide_position_abs_m": 1.0,
+    "normalized_force_abs_J": 10000.0,
+    "raw_normalized_matrix_entry_abs_kg_m2": 100000000.0,
+    "raw_cholesky_pivot_min_kg_m2": 0.25,
+    "limits_inclusive": true,
+    "raw_exact_numeric_symmetry": true,
+    "order": "all shapes, existing fixed-M9 q/slide admission, NETforces in index order finite then range; lowlevel raw solver admits matrix words then forces then symmetry then pivots",
+    "pivot_scope": "Fixed model min armature .714286 plus PSD body metric supports conservative .25 pivotfloor; this is not generic SPD acceptance."
+  },
+  "basis": {
+    "hinge": "one Radian",
+    "slide": "one Metre",
+    "normalized_matrix": "Joule*Second^2 = Kilogram*Metre^2",
+    "normalized_force": "Joule",
+    "normalized_acceleration": "Second^-2",
+    "restored_acceleration": "seven Radian/Second^2 then two Metre/Second^2",
+    "normalization_is_explicit": true
+  },
+  "budgets": {
+    "acceleration": {
+      "atol": 2e-10,
+      "rtol": 2e-12
+    },
+    "residual": {
+      "atol": 2e-09,
+      "rtol": 2e-12
+    },
+    "application": "per decoded scalar in the declared one-Radian/one-Metre basis; no mixed-unit vector norm",
+    "frozen_before_observation": true
+  },
+  "corpus": {
+    "retained_qualified_metric_q_cases": 57,
+    "netforce_patterns_per_cached_metric": 2,
+    "cached_metric_public_contexts": 114,
+    "SDK_mass_cases": 5,
+    "known_acceleration_patterns_per_SDK": 3,
+    "SDK_known_acceleration_public_contexts": 15,
+    "total_public_contexts": 129,
+    "force_patterns": [
+      "alternating +/-10000J by coordinate index",
+      "(coordinate_index-4)*.125J"
+    ],
+    "SDK_known_acceleration_patterns_per_s2": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.125,
+        -0.25,
+        0.375,
+        -0.5,
+        0.625,
+        -0.75,
+        0.875,
+        -1.0,
+        1.125
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.03
+      ]
+    ],
+    "raw_helper_profiles": "independent analytic diagonal and dense rational SPD, signedzero, inclusive caps/pivot, nonsymmetric/indefinite/nonfinite/range refusals"
+  },
+  "frozen_product_dependencies": {
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc"
+  },
+  "cached_metric_component": {
+    "qualified_public_receipt": "psionic/fixtures/robotics/panda-inertia/qualification.json",
+    "qualified_public_receipt_sha256": "a87497a57a4126e125451aaae802094ab6b6fa597c60701990af9b82bfb2ef41",
+    "executed_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+    "input_sha256": "d517fef912556d8e680411bcd7f59efe30f28c13c8d3396b49dffc94fb8f5147",
+    "input_bytes": 4112,
+    "output_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+    "output_bytes": 41040,
+    "recorded_cases": 57,
+    "recorded_words_per_case": 90,
+    "reference_kind": "PREVIOUSLY QUALIFIED COAX M9 COMPONENT OUTPUT, not fresh SDK data. New solver oracle uses its first81mass words; nine cached gravity words are not applied as forces.",
+    "old_component_gates_rerun": false
+  },
+  "retained_SDK": {
+    "sdk-cases.f64": {
+      "sha256": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+      "bytes": 360
+    },
+    "sdk-dynamics.f64": {
+      "sha256": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed",
+      "bytes": 3600
+    },
+    "sdk-dynamics.json": {
+      "sha256": "bf63ab336cd828bbb2a4b17316e742b0f080e9402a198a542dc924c32408c287",
+      "bytes": 2156
+    },
+    "sdk-reference.json": {
+      "sha256": "51fd49e3eeb68df0cc8c4246dfe167c5fa1e281ac112cad0e155445e5c536346",
+      "bytes": 7578
+    }
+  },
+  "native_profile": "Darwin-arm64 F64 scalar-libm, -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off; debug/release/ASan exact bytes are target-specific."
+}

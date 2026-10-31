@@ -1,0 +1,13 @@
+// NET-force inertial response, not total actuator dynamics. Raw numeric helpers
+// keep trusted basis/provenance preconditions; source PODs are not sealed.
+#load "panda-inertia.coax";
+PmsStatus :: enum u8 {ok;shape;number;range;factor;}
+PmsMetricUnit :: struct @unit(mass=1,length=2,time=0,angle=0,numerator=1,denominator=1) {}
+PmsEnergy :: struct @unit(mass=1,length=2,time=-2,angle=0,numerator=1,denominator=1) {}
+PmsInverseSecond2 :: struct @unit(mass=0,length=0,time=-2,angle=0,numerator=1,denominator=1) {}
+PmsProblem :: struct {mass:[81]f64;force:[9]f64;}
+PmsRaw :: struct {status:PmsStatus;acceleration:[9]f64;}
+PmsOutput :: struct {
+ hinge:[7]pfku.Quantity(UnitQuotient(pfku.Radian,UnitProduct(pfku.Second,pfku.Second)),f64);
+ slide:[2]pfku.Quantity(UnitQuotient(pfku.Metre,UnitProduct(pfku.Second,pfku.Second)),f64);
+}
