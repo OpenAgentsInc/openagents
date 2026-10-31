@@ -275,7 +275,7 @@ layers :: (c: [] Cdp, dir: string, file: string, w: int, h: int, n: int, levels:
 // ---- the GPU host
 gpu :: (host: string, dir: string, spec_name: string, out: [] f32) -> bool {
   b: [4] [1024] u8; buf: [PC_FILE] u8;
-  for f: [5] string.["verse/gpu/vk-passes.c", "verse/gpu/vks.c", "verse/gpu/vks.h", "verse/gpu/vkc.c", "verse/gpu/vkc.h"] {
+  for f: [7] string.["verse/gpu/vk-passes.c", "verse/gpu/vk-spec.c", "verse/gpu/vk-spec.h", "verse/gpu/vks.c", "verse/gpu/vks.h", "verse/gpu/vkc.c", "verse/gpu/vkc.h"] {
     n := fs_read(f, buf[..]);
     if n < 0 || !fs_write(fs_join(dir, fs_base(f), b[0][..]), cast(string) buf[0..<n]) { tool_err("pass-check: cannot copy "); tool_errln(f); return false; }
   }
@@ -284,7 +284,7 @@ gpu :: (host: string, dir: string, spec_name: string, out: [] f32) -> bool {
   jo_put(s[..], "cd '"); jo_put(s[..], dir); jo_put(s[..], "' && COPYFILE_DISABLE=1 tar --no-xattrs --exclude native.f32 -cf - . | ssh -o BatchMode=yes ");
   jo_put(s[..], host);
   jo_put(s[..], " 'set -e; d=$(mktemp -d); trap \"rm -rf $d\" EXIT; tar -x -C $d 2>/dev/null; cd $d; export VK_DRIVER_FILES=${VK_DRIVER_FILES:-/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json}; ");
-  jo_put(s[..], "nix-shell -p gcc vulkan-headers vulkan-loader vulkan-validation-layers --run \"set -e; gcc -std=c11 -O2 -I. vk-passes.c vks.c vkc.c -lvulkan -lm -o vk-passes; ");
+  jo_put(s[..], "nix-shell -p gcc vulkan-headers vulkan-loader vulkan-validation-layers --run \"set -e; gcc -std=c11 -O2 -I. vk-passes.c vk-spec.c vks.c vkc.c -lvulkan -lm -o vk-passes; ");
   jo_put(s[..], "export VK_ADD_LAYER_PATH=\\$(dirname \\$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \\\"*validation-layers*\\\" | head -1)); export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation; ");
   jo_put(s[..], "./vk-passes "); jo_put(s[..], spec_name); jo_put(s[..], " out.f32 >&2\"; cat out.f32' > native.f32");
   argv := [3] string.["bash", "-c", jo_text(s[..])];

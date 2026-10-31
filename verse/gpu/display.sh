@@ -24,7 +24,7 @@ VERSE_KMS_GEN_ONLY=1 VERSE_KMS_REGEN=1 "$root/verse/kms/build.sh" "$work" > /dev
 light="$root/verse/kms/starcatch-light.coax"
 "$coax" spirv "$light" --fill starcatch_sky_r,starcatch_sky_g,starcatch_sky_b -o "$work/sky.spv"
 "$coax" spirv "$light" --stroke starcatch_fx -o "$work/fx.spv"
-cp "$here"/vk-display.c "$here"/vk-escape.c "$here"/vkc.c "$here"/vkc.h "$here"/vkp.c "$here"/vkp.h "$here"/vkr.c "$here"/vkr.h "$work/"
+cp "$here"/vk-display.c "$here"/vk-escape.c "$here"/vkc.c "$here"/vkc.h "$here"/vkd.c "$here"/vkd.h "$here"/vkp.c "$here"/vkp.h "$here"/vkr.c "$here"/vkr.h "$work/"
 args="$*"
 escape="${VERSE_DISPLAY_ESCAPE:-}"
 
@@ -33,7 +33,7 @@ d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; tar -x -C \"\$d\" 2>/dev/null; cd \"\$d
 nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validation-layers --run '
   set -e
   realm=\"starcatch-native.c starcatch.c starcatch-light.c\"
-  gcc -std=c11 -O2 -Wall -Wno-unknown-pragmas -I. \$(pkg-config --cflags libdrm) vk-display.c vkc.c vkp.c vkr.c \$realm \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-display
+  gcc -std=c11 -O2 -Wall -Wno-unknown-pragmas -I. \$(pkg-config --cflags libdrm) vk-display.c vkc.c vkd.c vkp.c vkr.c \$realm \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-display
   gcc -std=c11 -O2 -Wall vk-escape.c -o vk-escape
   ${VERSE_DISPLAY_BUILD_ONLY:+echo built; exit 0}
   echo \"VK_ADD_LAYER_PATH=\$(dirname \$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \"*validation-layers*\" | head -1))\" > env
@@ -61,4 +61,6 @@ echo \"display.sh: back on VT \$from (\$(sudo -n fgconsole))\"
 [ -f shot.ppm ] && sudo -n cp shot.ppm /tmp/verse-display-shot.ppm && sudo -n chmod 644 /tmp/verse-display-shot.ppm
 exit \${status:-0}
 "
-[ -n "${VERSE_DISPLAY_BUILD_ONLY:-}" ] || scp -q "$host:/tmp/verse-display-shot.ppm" display-shot.ppm 2>/dev/null && echo "display.sh: the presented image is in display-shot.ppm" || true
+if [[ -z "${VERSE_DISPLAY_BUILD_ONLY:-}" ]]; then
+  scp -q "$host:/tmp/verse-display-shot.ppm" display-shot.ppm 2>/dev/null && echo "display.sh: the presented image is in display-shot.ppm" || true
+fi

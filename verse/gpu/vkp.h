@@ -35,5 +35,10 @@ void vkp_wait(Vkc *v, Vkp *p);
 // before the present (a Wayland frame callback rides on its commit). It
 // returns 1 when the swapchain is out of date (resize and draw again), else 0.
 int vkp_frame(Vkc *v, Vkp *p, VkcTarget *t, const VkcPass *passes, void (*before)(void *), void *arg);
+// The same for passes of the caller's own: `record` draws into the frame's command buffer, then
+// src (w by h, a sampled image its passes leave in SHADER_READ_ONLY_OPTIMAL) is blitted to the
+// swapchain image, filtered linearly when the sizes differ (verse/gpu/vk-realm.c).
+int vkp_present(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *user, VkImage src, uint32_t w, uint32_t h,
+                void (*before)(void *), void *arg);
 void vkp_close(Vkc *v, Vkp *p);
 #endif

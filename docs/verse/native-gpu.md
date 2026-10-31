@@ -297,3 +297,36 @@ Every phase and native feature is a task in the Verse project
   9,170 of 460,800 values past the tolerance, median 0.006 (half-float
   steps in stacked fire), 25 pixels off by more than 0.1 at billow edges
   (10,000 allowed); post with the particles, 14 passes, 659 of 230,400.
+- 2026-10-31: the pack's images in Coax. `coax/lib/image/png.coax` and
+  `deflate.coax` (8f1456e4d9), `jpeg.coax` (baseline, 1 or 3 components, 2x
+  chroma, restarts, several scans; libjpeg-turbo's islow IDCT, fancy
+  upsampling and fixed-point colour, and its leniency with damaged entropy
+  data: 34 good and 65 refused files checked, 1,347 mutants, 0 survived), and
+  `image.coax` (either format, 2x2 mips, the browser's upscale of a half-size
+  layer and its premultiplied round trip; 0 survivors). All 27 pack JPEGs
+  decode to PIL's bytes. `verse/gpu/layers.coax LIST OUT SIDE` writes the
+  layers file in about 2.5 s; `everglade-pass --native-layers` draws the
+  scene pass with them: 343 of 460,800 values past the tolerance (313 with
+  the browser's decode, 400 allowed).
+- 2026-10-31: gpu-realm-host, Everglade natively at 60 fps. `vk-spec.c`
+  keeps a spec on the GPU: every buffer, texture, target and pipeline made
+  once, the whole spec recorded into one command buffer, with named counts
+  (`let NAME V`, `$NAME`) and `each draws:A:B` ... `end` for the water's
+  per-draw halves. Targets and depths may follow the frame's size (`target
+  NAME /4`, `depth NAME frame`). vk-passes and the browser's runner read the
+  same format, and the post and water checks are unchanged (659 and 999
+  past the tolerance). `everglade-pass live --emit DIR` writes the live
+  WGSL's spec and modules with the layers decoded in Coax. `vk-realm.c` runs
+  the realm's C (realm-host) each frame, writes its uniforms, stores (on a
+  version change), particles and draw list into the spec's buffers in place,
+  and presents the post target on the screen (`vkd.c`, the display
+  takeover now shared with vk-display; `vkp_present`). `verse/gpu/realm.sh
+  HOST check` draws 90 golden frames offscreen: the 90th is vk-passes'
+  frame to the bit, validation 0/0. On the RTX 4080 the realm's step is
+  about 2 ms and the GPU's frame 4.1 ms at 2560x1440 (6.9 ms at 3840x2160).
+  `realm.sh HOST screen --seconds 25 --demo` ran on DP-1 at 2560x1440:
+  1,433 frames in 23.9 s (59.94 a second), longest gap 21 ms, then back on
+  VT 1; the presented image is the village, the grass, the shadows and the
+  Ranger walking. Still to come: the HUD's own vertices (host.js draws them
+  with its fx pipeline after post; the panels show, their text does not),
+  the pointer, sound, and the realm's actions (navigation, sockets).

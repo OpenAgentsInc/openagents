@@ -92,7 +92,10 @@ static void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkIm
   vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
-int vkp_frame(Vkc *v, Vkp *p, VkcTarget *t, const VkcPass *passes, void (*before)(void *), void *arg) {
+// A frame: `record` draws into cmd, then src (w by h, left in `layout`, read after `stage`) is
+// blitted to the swapchain image with `filter`, and src goes back to `layout`.
+static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *user, VkImage src, uint32_t w, uint32_t h,
+                 VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, VkFilter filter, void (*before)(void *), void *arg) {
   double t0 = now_s();
   uint32_t image;
   VkResult got = vkAcquireNextImageKHR(v->dev, p->chain, UINT64_MAX, p->acquired, VK_NULL_HANDLE, &image);
@@ -105,13 +108,17 @@ int vkp_frame(Vkc *v, Vkp *p, VkcTarget *t, const VkcPass *passes, void (*before
   CHECK(vkResetCommandBuffer(cmd, 0));
   VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
   CHECK(vkBeginCommandBuffer(cmd, &begin));
-  vkc_target_record(t, cmd, passes);
+  record(cmd, user);
+  if (layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    barrier(cmd, src, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, access, VK_ACCESS_TRANSFER_READ_BIT, stage, VK_PIPELINE_STAGE_TRANSFER_BIT);
   VkImage dst = p->images[image];
   barrier(cmd, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
           VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-  VkImageBlit blit = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)t->w, (int32_t)t->h, 1}},
+  VkImageBlit blit = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)w, (int32_t)h, 1}},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)p->w, (int32_t)p->h, 1}}};
-  vkCmdBlitImage(cmd, t->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
+  vkCmdBlitImage(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
+  if (layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    barrier(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout, VK_ACCESS_TRANSFER_READ_BIT, access, VK_PIPELINE_STAGE_TRANSFER_BIT, stage);
   VkImageLayout last = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   VkAccessFlags last_access = VK_ACCESS_TRANSFER_WRITE_BIT;
   if (p->shoot == 1 && p->shot.buf) {
@@ -139,6 +146,24 @@ int vkp_frame(Vkc *v, Vkp *p, VkcTarget *t, const VkcPass *passes, void (*before
   if (shown == VK_ERROR_OUT_OF_DATE_KHR) return 1;
   if (shown != VK_SUCCESS && shown != VK_SUBOPTIMAL_KHR) CHECK(shown);
   return 0;
+}
+
+typedef struct { VkcTarget *t; const VkcPass *passes; } TargetFrame;
+static void record_target(VkCommandBuffer cmd, void *user) {
+  TargetFrame *f = user;
+  vkc_target_record(f->t, cmd, f->passes);
+}
+int vkp_frame(Vkc *v, Vkp *p, VkcTarget *t, const VkcPass *passes, void (*before)(void *), void *arg) {
+  TargetFrame f = {t, passes};
+  // the target is left ready to copy from
+  return frame(v, p, record_target, &f, t->image, t->w, t->h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+               VK_FILTER_NEAREST, before, arg);
+}
+int vkp_present(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *user, VkImage src, uint32_t w, uint32_t h,
+                void (*before)(void *), void *arg) {
+  return frame(v, p, record, user, src, w, h, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_FILTER_LINEAR, before, arg);
 }
 
 void vkp_close(Vkc *v, Vkp *p) {

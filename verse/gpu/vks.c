@@ -333,3 +333,8 @@ void vks_copy(Vkc *v, VksImage *from, VksImage *to) {
   ImageCopy c = {from, to};
   vks_submit(v, record_image_copy, &c);
 }
+void vks_copy_record(VkCommandBuffer cmd, VksImage *from, VksImage *to) {
+  if (from->w != to->w || from->h != to->h || from->format != to->format) { fprintf(stderr, "vks: a copy between images of different sizes or formats\n"); exit(1); }
+  ImageCopy c = {from, to};
+  record_image_copy(cmd, &c);
+}

@@ -81,6 +81,29 @@ window.layerBytes = async function (layer) {
   return toB64(out);
 };
 
+// The spec with its counts in place (vk-spec.h): `let NAME V` lines gone, $NAME their numbers,
+// and each `each draws:A:B` ... `end` block written out once a record, draws:each that one.
+const expandSpec = (text) => {
+  const lets = new Map(), out = [];
+  const num = (t) => {
+    if (!t.startsWith("$")) return +t;
+    if (!lets.has(t.slice(1))) throw new Error(`the spec has no count ${t}`);
+    return lets.get(t.slice(1));
+  };
+  let body = null, range = null;
+  for (const raw of text.split("\n")) {
+    const a = raw.trim().split(/\s+/);
+    if (a[0] === "let") { lets.set(a[1], +a[2]); continue; }
+    if (a[0] === "each") { range = a[1].slice(6).split(":").map(num); body = []; continue; }
+    if (a[0] === "end") {
+      for (let i = range[0]; i < range[1]; i++) for (const l of body) out.push(l.replace(/\bdraws:each\b/, `draws:${i}:${i + 1}`));
+      body = null;
+      continue;
+    }
+    (body ?? out).push(raw.replace(/\$(\w+)/g, (m) => String(num(m))));
+  }
+  return out;
+};
 window.runSpec = async function (specFile) {
   try {
     const d = await gpu();
@@ -91,7 +114,7 @@ window.runSpec = async function (specFile) {
     let wgsl = "", module = null, w = 0, h = 0, index = null, draws = null, ndraws = 0;
     const targets = [];
     let last = [];
-    for (const raw of (await textOf(specFile)).split("\n")) {
+    for (const raw of expandSpec(await textOf(specFile))) {
       const a = raw.trim().split(/\s+/);
       if (!a[0] || a[0].startsWith("#")) continue;
       if (a[0] === "wgsl") {
@@ -123,7 +146,7 @@ window.runSpec = async function (specFile) {
         res.set(a[1], d.createSampler({ magFilter: f, minFilter: f, mipmapFilter: a[4] === "mip" ? "linear" : "nearest",
           addressModeU: wrap, addressModeV: wrap, addressModeW: wrap, ...(a[5] === "less" ? { compare: "less" } : {}) }));
       } else if (a[0] === "depth") {
-        const t = d.createTexture({ size: [+a[2], +a[3]], format: "depth32float",
+        const t = d.createTexture({ size: a[2] === "frame" ? [w, h] : [+a[2], +a[3]], format: "depth32float",
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
         res.set(a[1], { texture: t, view: t.createView() });
       } else if (a[0] === "floats") {
@@ -131,7 +154,8 @@ window.runSpec = async function (specFile) {
         d.queue.writeBuffer(b, 0, f);
         res.set(a[1], { buffer: b });
       } else if (a[0] === "target") {
-        const t = d.createTexture({ size: a[2] ? [+a[2], +a[3]] : [w, h], format: "rgba16float",
+        const k = a[2] && a[2].startsWith("/") ? +a[2].slice(1) : 0;
+        const t = d.createTexture({ size: k ? [Math.ceil(w / k), Math.ceil(h / k)] : a[2] ? [+a[2], +a[3]] : [w, h], format: "rgba16float",
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
         res.set(a[1], { texture: t, view: t.createView() });
       } else if (a[0] === "copy") {

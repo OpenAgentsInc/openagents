@@ -95,6 +95,8 @@ void vks_pipe_record(VksPipe *p, VkCommandBuffer cmd, const VksPass *pass);
 void vks_pipe_close(Vkc *v, VksPipe *p);
 // One image's level 0 into another of its size and format (colour or depth), both ready to sample after.
 void vks_copy(Vkc *v, VksImage *from, VksImage *to);
+// The same, recorded into cmd (its sizes and formats checked as vks_copy checks them).
+void vks_copy_record(VkCommandBuffer cmd, VksImage *from, VksImage *to);
 // Records with `record` into a one-time command buffer, submits it and waits.
 void vks_submit(Vkc *v, void (*record)(VkCommandBuffer cmd, void *user), void *user);
 #endif
