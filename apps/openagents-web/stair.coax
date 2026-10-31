@@ -129,7 +129,7 @@ INK_R :: 0.86; INK_G :: 0.88; INK_B :: 0.92;
 GOLD_R :: 1.0; GOLD_G :: 0.8; GOLD_B :: 0.35;
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; }
+Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; }
 Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
   level: int; surge: bool; slots2: int; bless: int;   // bless: the d4 Bless added to its last roll (0 none)
@@ -160,6 +160,7 @@ Stair :: struct {
   paused: bool;
   fx: [FX] Fx; fx_next: int;
   hurt: f32;
+  banner: f32;              // the wave's name across the map as it starts (seconds left)
   selected: int;            // a cell (-1 none)
   card: int;                // a defender whose card shows (-1 none)
   hover: int;               // the cell under the mouse (-1)
@@ -575,7 +576,7 @@ wave_groups_done :: (s: [] Stair) -> bool {
 
 start_wave :: (s: [] Stair) -> bool {
   if s[0].phase != BUILD || s[0].wave >= WAVES { return false; }
-  s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0;
+  s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0; s[0].banner = 1.6;
   for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = WAVE_DELAY[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { refresh(s, i); }
   s[0].placed_round = 0;
@@ -593,6 +594,7 @@ round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s[0].wave) - s[
 step :: (s: [] Stair, dt: f32) {
   for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += dt; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
   s[0].hurt = hi(0, s[0].hurt - dt * 1.5);
+  s[0].banner = hi(0, s[0].banner - dt);
   for i: 0..<DEFENDERS { if s[0].party[i].live { s[0].party[i].flash = hi(0, s[0].party[i].flash - dt * 4); } }
   if s[0].phase != FIGHT { return; }
   w := s[0].wave - 1;
@@ -613,6 +615,7 @@ step :: (s: [] Stair, dt: f32) {
     if !s[0].beasts[i].live { continue; }
     s[0].beasts[i].d += LAYER_SPEED[s[0].beasts[i].kind] * dt;
     s[0].beasts[i].wob += dt * 3;
+    s[0].beasts[i].age += dt;
     if s[0].beasts[i].d >= s[0].path_len {
       s[0].beasts[i].live = false;
       s[0].lives -= LAYER_LIVES[s[0].beasts[i].kind];
@@ -956,7 +959,10 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
     lx := ahead.x - q.x; ly := ahead.y - q.y;
     ll := hi(sqrt(lx * lx + ly * ly), 0.001); lx /= ll; ly /= ll;
     bob := sin(b.wob) * t * 0.04;
-    rad := LAYER_SIZE[b.kind] * t;
+    // out of its outer skin (or the cellar door) with a bounce
+    grow := clamp01(b.age / 0.28);
+    pop := 1 - (1 - grow) * (1 - grow) * (1 - grow) + 0.22 * sin(grow * 3.14159);
+    rad := LAYER_SIZE[b.kind] * t * (0.35 + 0.65 * pop);
     y := q.y - t * 0.24 + bob;
     r := LAYER_R[b.kind]; g := LAYER_G[b.kind]; bl := LAYER_B[b.kind];
     // a bubble a little squashed and stretched as it bobs
@@ -1410,14 +1416,58 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     if (b == B_START && s[0].phase == BUILD) || b == B_UPGRADE { cr = GOLD_R; cg = GOLD_G; cb = GOLD_B; }
     n = say_at(out, n, lab, (r.x0 + r.x1) / 2 - tw / 2, (r.y0 + r.y1) / 2 + bc / 2, bc, ink(k, light, cr, cg, cb));
   }
+  // the next wave, on the back wall: a bubble of each layer and how many
+  if s[0].phase == BUILD && s[0].wave < WAVES && s[0].tile > 0 {
+    wy := s[0].oy - f32(WALL_ROWS) * s[0].tile * f32(SQUASH) * 0.5;
+    wh := f32(WALL_ROWS) * s[0].tile * f32(SQUASH);
+    pc := lo(wh * 0.42, 13 * k);
+    br := pc * 0.62;
+    // what it says and how wide, to centre it
+    total := text_width("NEXT", pc) + 10 * k;
+    for g: 0..<GROUPS {
+      kind := WAVE_KIND[s[0].wave * GROUPS + g];
+      if kind < 0 { continue; }
+      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
+      total += br * 2 + 4 * k + text_width(cast(string) buf[0..<m], pc) + 12 * k;
+    }
+    px := s[0].ox + f32(s[0].scols) * s[0].tile * 0.5 - total / 2;
+    plate(s, u, Rect.{x0 = px - 10 * k, y0 = wy - pc * 0.5 - 7 * k, x1 = px + total + 4 * k, y1 = wy + pc * 0.5 + 7 * k}, 0.8, 0);
+    n = say_at(out, n, "NEXT", px, wy + pc * 0.5, pc, ink(k, 0.8, INK_R, INK_G, INK_B));
+    px += text_width("NEXT", pc) + 10 * k;
+    for g: 0..<GROUPS {
+      kind := WAVE_KIND[s[0].wave * GROUPS + g];
+      if kind < 0 { continue; }
+      n = bubble(out, n, px + br, wy, br, 1, LAYER_R[kind], LAYER_G[kind], LAYER_B[kind], 0, 0, 0, 0);
+      px += br * 2 + 4 * k;
+      m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
+      n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, LAYER_R[kind], LAYER_G[kind], LAYER_B[kind]));
+      px += text_width(cast(string) buf[0..<m], pc) + 12 * k;
+    }
+  }
+  // the wave's name as it starts
+  if s[0].banner > 0 && s[0].phase == FIGHT {
+    a := clamp01(s[0].banner / 0.4) * clamp01((1.6 - s[0].banner) / 0.15);
+    m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave);
+    bc := lo(44 * k, w / 9);
+    grow := 1 + 0.08 * (1.6 - s[0].banner);
+    my := s[0].oy + f32(s[0].srows) * s[0].tile * f32(SQUASH) * 0.5;
+    n = say_mid(out, n, cast(string) buf[0..<m], w / 2, my + bc * grow * 0.5, bc * grow, Ink.{core = 1.6 * k, light = a, glow = 3 * k, red = GOLD_R, green = GOLD_G, blue = GOLD_B, mode = 0, scale = k});
+  }
   // a toast
   if s[0].toast_t > 0 && s[0].phase != WON && s[0].phase != LOST {
     tt := cast(string) s[0].toast[0..<s[0].toast_n];
     c := 14 * k;
-    n = say_mid(out, n, tt, w / 2, 86 * k, c, ink(k, clamp01(s[0].toast_t), GOLD_R, GOLD_G, GOLD_B));
+    // over the map's first row, on a dark plate, clear of the wall and its preview
+    ty := s[0].oy + s[0].tile * f32(SQUASH) * 0.5 + c * 0.5;
+    tw := text_width(tt, c);
+    plate(s, u, Rect.{x0 = w / 2 - tw / 2 - 14 * k, y0 = ty - c - 10 * k, x1 = w / 2 + tw / 2 + 14 * k, y1 = ty + 10 * k}, clamp01(s[0].toast_t) * 0.9, 0);
+    n = say_mid(out, n, tt, w / 2, ty, c, ink(k, clamp01(s[0].toast_t), GOLD_R, GOLD_G, GOLD_B));
   }
   if s[0].paused && s[0].phase != WON && s[0].phase != LOST {
-    n = say_mid(out, n, "PAUSED", w / 2, 118 * k, 20 * k, ink(k, 1, INK_R, INK_G, INK_B));
+    py := s[0].oy + f32(s[0].srows) * s[0].tile * f32(SQUASH) * 0.5;
+    pw := text_width("PAUSED", 20 * k);
+    plate(s, u, Rect.{x0 = w / 2 - pw / 2 - 18 * k, y0 = py - 24 * k, x1 = w / 2 + pw / 2 + 18 * k, y1 = py + 24 * k}, 0.9, 0);
+    n = say_mid(out, n, "PAUSED", w / 2, py + 10 * k, 20 * k, ink(k, 1, INK_R, INK_G, INK_B));
   }
   // the end
   if s[0].phase == WON || s[0].phase == LOST {
