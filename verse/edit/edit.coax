@@ -861,7 +861,7 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   if e[0].pane == REDIT_SHUT {
     if e[0].waiting > 0 {
       // the count of cards waiting, under EDIT
-      w: [24] u8; m := redit_put_int(w[..], 0, e[0].waiting); m = redit_put(w[..], m, " WAITING");
+      w: [24] u8; m := redit_put_int(w[..], 0, e[0].waiting); m = redit_put(w[..], m, ifx e[0].waiting == 1 then " NEW IDEA" else " NEW IDEAS");
       n = redit_text(e, out, n, cast(string) w[0..<m], anchor.x0, anchor.y1 + 14 * k, 6.5 * k, redit_parch(k, 0.9), 0);
     }
     return n;
@@ -875,13 +875,13 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   redit_plate(e, RBox.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}, 0.9, 0);
   pad := 14 * k;
   // the tabs: one pane at a time
-  tabs := [3] string.["FEATURES", "SETTINGS", "WAITING"];
+  tabs := [3] string.["FEATURES", "SETTINGS", "IDEAS"];
   tw := (pw - 2 * pad - 2 * 6 * k) / 3;
   for t: 0..<3 {
     bx := x0 + pad + f32(t) * (tw + 6 * k);
     label := tabs[t];
     lab: [24] u8;
-    if t == 2 { m := redit_put_int(lab[..], 0, e[0].waiting); m = redit_put(lab[..], m, " WAITING"); label = cast(string) lab[0..<m]; }
+    if t == 2 && e[0].waiting > 0 { m := redit_put(lab[..], 0, "IDEAS · "); m = redit_put_int(lab[..], m, e[0].waiting); label = cast(string) lab[0..<m]; }
     n = redit_button(e, out, n, RB_TAB + t, RBox.{x0 = bx, y0 = y0 + pad, x1 = bx + tw, y1 = y0 + pad + 30 * k}, label, e[0].pane == t + 1);
   }
   y := y0 + pad + 30 * k + 18 * k;
@@ -904,7 +904,10 @@ redit_rows_at :: (e: [] RealmEdit, out: [] f32, at: int, i: int, label: string, 
   return redit_text(e, out, n, label, x + size + 10 * k, y + (h + 8 * k) / 2, 8 * k, ifx on then redit_parch(k, 0.95) else redit_parch(k, 0.55), room - size - 10 * k);
 }
 
-// The list's item i: a bullet, what it is, APPLIED or NOT APPLIED, and DELETE. A board's row (what
+// An item's state in plain words: in the realm, being taken out, or asked for and not in it yet.
+redit_tag :: (on: bool, removing: bool) -> string { return ifx on then "IN IT" else ifx removing then "REMOVING" else "NOT IN IT YET"; }
+
+// The list's item i: a bullet, what it is, IN IT or NOT IN IT YET, and DELETE. A board's row (what
 // the realm's code switches) is a tap to switch, then the asks, newest first.
 redit_item :: (e: [] RealmEdit, out: [] f32, at: int, i: int, x: f32, y: f32, room: f32) -> int {
   k := e[0].dpr; p_h := 26 * k; p_cap := 7.5 * k; p_tag_cap := 6.5 * k;
@@ -912,7 +915,7 @@ redit_item :: (e: [] RealmEdit, out: [] f32, at: int, i: int, x: f32, y: f32, ro
   p_a := i - e[0].row_n;
   p_words := ifx p_row then redit_label_of(e, i) else redit_ask_words(e, p_a);
   p_on := ifx p_row then e[0].row_on[i] else e[0].ask_state[p_a] == ASK_APPLIED;
-  p_tag := ifx p_on then "APPLIED" else ifx !p_row && e[0].ask_state[p_a] == ASK_REMOVING then "REMOVING" else "NOT APPLIED";
+  p_tag := redit_tag(p_on, !p_row && e[0].ask_state[p_a] == ASK_REMOVING);
   p_dw := 60 * k;
   e[0].del_box[i] = RBox.{x0 = x + room - p_dw, y0 = y + 1 * k, x1 = x + room, y1 = y + p_h - 1 * k}; e[0].del_shown[i] = true;
   // DELETE is an outline, not a plate (a realm has few plates)
@@ -1099,7 +1102,7 @@ redit_lore_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room:
   n := redit_title(e, out, at, cast(string) e[0].focus_name[0..<e[0].focus_name_n], "'S LORE", x, y, room);
   p_tall := redit_lo(150 * k, bottom - y - 90 * k);
   p_lines := redit_hi_int(1, cast(int) ((p_tall - 14 * k) / (7.5 * k * 1.7)));
-  n = redit_field(e, out, n, RF_LORE, RBox.{x0 = x, y0 = y + 22 * k, x1 = x + room, y1 = y + 22 * k + p_tall}, "TAP TO WRITE WHO THEY ARE", p_lines);
+  n = redit_field(e, out, n, RF_LORE, RBox.{x0 = x, y0 = y + 22 * k, x1 = x + room, y1 = y + 22 * k + p_tall}, "WRITE WHO THEY ARE", p_lines);
   yy := y + 22 * k + p_tall + 12 * k;
   half := (room - 8 * k) / 2;
   n = redit_button(e, out, n, RB_SAVE, RBox.{x0 = x, y0 = yy, x1 = x + half, y1 = yy + 32 * k}, ifx e[0].dirty then "SAVE" else "SAVED", e[0].dirty);

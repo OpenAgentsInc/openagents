@@ -327,3 +327,7 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert !e[0].doc_busy && e[0].asks_due && cast(string) e[0].note[0..<e[0].note_n] == "From your document: 2 applied, 1 not applied yet.";
   #assert redit_message(e[..], REDIT_MSG_DOC, "415\ndrop a .md, .txt, .pdf or .docx") && cast(string) e[0].note[0..<e[0].note_n] == "Drop a .md, .txt, .pdf or .docx.";
 }
+
+#test "the panel speaks plainly: IN IT, NOT IN IT YET, IDEAS for visitors' cards" {
+  #assert redit_tag(true, false) == "IN IT" && redit_tag(false, false) == "NOT IN IT YET" && redit_tag(false, true) == "REMOVING";
+}

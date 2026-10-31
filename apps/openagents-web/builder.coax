@@ -875,7 +875,7 @@ draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
   s[0].boxes[BTN_SETUP] = Box.{x0 = area.x0, y0 = area.y0 + 36 * k, x1 = area.x1, y1 = area.y0 + 60 * k}; s[0].shown[BTN_SETUP] = true;
   // its one-line description: what a shared link shows; tap to write it
   dl: [DESC + 8] u8;
-  dn := ifx s[0].desc_n > 0 then put(dl[..], 0, desc_text(s)) else put(dl[..], 0, "TAP TO WRITE ITS ONE-LINE DESCRIPTION");
+  dn := ifx s[0].desc_n > 0 then put(dl[..], 0, desc_text(s)) else put(dl[..], 0, "ADD A ONE-LINE DESCRIPTION");
   upper(dl[..], dn);
   dline := cast(string) dl[0..<dn];
   dcap := 7.5 * k; droom := area.x1 - area.x0 - 2 * pad;
@@ -922,13 +922,11 @@ draw_board :: (s: [] Builder, out: [] f32, at: int, area: Box) -> int {
     y += 26 * k;
     for i: 0..<s[0].wants {
       if y >= s[0].list.y0 - 1 && y + row <= s[0].list.y1 + 1 {
-        tag := "NOT APPLIED YET"; tcap := 6.5 * k;
-        tw := measure(tag, GAP, SPACE, false) * tcap;
+        tw := 0.0f32;   // the section's head says NOT IN IT YET: no tag on each row
         wb: [WANT] u8; wn := put(wb[..], 0, want_of(s, i)); upper(wb[..], wn);
         words := cast(string) wb[0..<wn];
         tx := area.x0 + pad + 4 * k;
         n = write(d, out, n, words, tx, y + row * 0.5 + 4.5 * k, fit_cap(words, 9 * k, area.x1 - pad - tw - 16 * k - tx), GAP, SPACE, white(k, 0.6), false, false);
-        n = write(d, out, n, tag, area.x1 - pad - tw, y + row * 0.5 + 3 * k, tcap, GAP, SPACE, white(k, 0.45), false, false);
       }
       y += row;
     }
