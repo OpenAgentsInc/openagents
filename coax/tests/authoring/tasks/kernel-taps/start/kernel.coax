@@ -1,0 +1,15 @@
+// A box filter over a row of samples: each output is the mean of the sample
+// and its neighbours, the row's ends repeated past its edges.
+box :: (src: [] f32, dst: [] f32) {
+  n := src.count;
+  for i: 0..<n {
+    sum: f32 = 0;
+    for j: -1..<2 {
+      k := i + j;
+      if k < 0 { k = 0; }
+      if k > n - 1 { k = n - 1; }
+      sum += src[k];
+    }
+    dst[i] = sum / 3;
+  }
+}

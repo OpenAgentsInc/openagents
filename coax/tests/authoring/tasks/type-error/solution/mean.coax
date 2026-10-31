@@ -1,0 +1,17 @@
+// Statistics over a row of frame times (milliseconds).
+mean :: (v: [] f32) -> f64 {
+  sum: f64 = 0;
+  for x: v { sum += f64(x); }
+  return sum / f64(v.count);
+}
+// How many frames ran over the budget.
+over :: (v: [] f32, budget: f64) -> int {
+  n := 0;
+  for x: v { if f64(x) > budget { n += 1; } }
+  return n;
+}
+// The share of frames over the budget, 0 to 1.
+over_share :: (v: [] f32, budget: f64) -> f32 {
+  if v.count == 0 { return 0; }
+  return f32(over(v, budget)) / f32(v.count);
+}

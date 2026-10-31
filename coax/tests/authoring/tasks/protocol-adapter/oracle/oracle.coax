@@ -1,0 +1,25 @@
+// The oracle for protocol-adapter (frozen: its SHA-256 is pinned in manifest.json).
+#load "frame.coax";
+main :: () {}
+#test "y SEAT N: in, with N others" {
+  f := read_frame("y 1 1");
+  #assert f.kind == F_IN && f.seat == 1 && f.others == 1;
+  g := read_frame("y 0 0");
+  #assert g.kind == F_IN && g.seat == 0 && g.others == 0;
+}
+#test "an older relay's y SEAT still reads, others not known" {
+  f := read_frame("y 2");
+  #assert f.kind == F_IN && f.seat == 2 && f.others == -1;
+}
+#test "the other frames are as they were" {
+  #assert read_frame("j 3").kind == F_JOIN && read_frame("j 3").seat == 3;
+  #assert read_frame("l 0").kind == F_LEFT;
+  m := read_frame("m 1 o 12 place 40 1");
+  #assert m.kind == F_MSG && m.seat == 1 && m.at == 4;
+}
+#test "not frames" {
+  #assert read_frame("y 1 x").kind == F_NONE;
+  #assert read_frame("y").kind == F_NONE;
+  #assert read_frame("q 1").kind == F_NONE;
+  #assert read_frame("j 1 2").kind == F_NONE;
+}

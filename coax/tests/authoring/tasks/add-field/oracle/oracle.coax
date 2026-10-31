@@ -1,0 +1,26 @@
+// The oracle for add-field (frozen: its SHA-256 is pinned in manifest.json).
+#load "ship.coax";
+main :: () {}
+#test "a ship's fuel survives its record" {
+  s: [1] Ship; b: [64] u8; r: [1] Ship;
+  s[0].x = 120; s[0].y = 7; s[0].crew = 30; s[0].fuel = 4500;
+  n := encode(s[0], b[..]);
+  #assert b[0] == 2;
+  #assert decode(b[0..<n], r[..]);
+  #assert r[0].x == 120 && r[0].y == 7 && r[0].crew == 30 && r[0].fuel == 4500;
+}
+#test "a version 1 record still reads, with no fuel" {
+  old: [13] u8; r: [1] Ship;
+  old[0] = 1; old[1] = 120; old[5] = 7; old[9] = 30;
+  r[0].fuel = 99;
+  #assert decode(old[..], r[..]);
+  #assert r[0].x == 120 && r[0].y == 7 && r[0].crew == 30 && r[0].fuel == 0;
+}
+#test "a short or unknown record is refused" {
+  s: [1] Ship; b: [64] u8; r: [1] Ship;
+  s[0].fuel = 1;
+  n := encode(s[0], b[..]);
+  #assert !decode(b[0..<n - 1], r[..]);
+  b[0] = 9;
+  #assert !decode(b[0..<n], r[..]);
+}

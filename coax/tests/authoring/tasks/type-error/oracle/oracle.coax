@@ -1,0 +1,15 @@
+// The oracle for type-error (frozen: its SHA-256 is pinned in manifest.json).
+#load "mean.coax";
+main :: () {}
+#test "the mean, the count over and its share" {
+  v: [4] f32;
+  v[0] = 16; v[1] = 17; v[2] = 34; v[3] = 13;
+  #assert mean(v[..]) == 20.0;
+  #assert over(v[..], 16.7) == 2;
+  #assert over_share(v[..], 16.7) == 0.5;
+  #assert over(v[..], 40.0) == 0 && over_share(v[..], 40.0) == 0;
+}
+#test "an empty row has no share over" {
+  v: [1] f32;
+  #assert over_share(v[0..<0], 16.7) == 0;
+}

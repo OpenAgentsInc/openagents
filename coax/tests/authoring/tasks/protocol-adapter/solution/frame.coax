@@ -1,0 +1,22 @@
+// A room relay's frames, read into a Frame (coax/web/room/room-relay.coax):
+//   y SEAT N        you are in, at SEAT, with N others (N absent from older relays)
+//   j SEAT          a player sat at SEAT
+//   l SEAT          the player at SEAT left
+//   m SEAT TEXT     the player at SEAT sent TEXT
+F_NONE :: 0; F_IN :: 1; F_JOIN :: 2; F_LEFT :: 3; F_MSG :: 4;
+Frame :: struct { kind: int; seat: int; at: int; others: int; }   // at: where TEXT starts (F_MSG); others: -1 when not known
+
+// The frame's kind and seat; kind F_NONE when it isn't one.
+read_frame :: (t: string) -> Frame {
+  f := Frame.{kind = F_NONE, seat = -1, at = -1, others = -1};
+  if t.count < 3 || t[1] != ' ' || t[2] < '0' || t[2] > '9' { return f; }
+  seat := int(t[2] - '0');
+  c := t[0];
+  if c == 'y' && t.count == 3 { f.kind = F_IN; }
+  if c == 'y' && t.count == 5 && t[3] == ' ' && t[4] >= '0' && t[4] <= '9' { f.kind = F_IN; f.others = int(t[4] - '0'); }
+  if c == 'j' && t.count == 3 { f.kind = F_JOIN; }
+  if c == 'l' && t.count == 3 { f.kind = F_LEFT; }
+  if c == 'm' && t.count >= 4 && t[3] == ' ' { f.kind = F_MSG; f.at = 4; }
+  if f.kind != F_NONE { f.seat = seat; }
+  return f;
+}

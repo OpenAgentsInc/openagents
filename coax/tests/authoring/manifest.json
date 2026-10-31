@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "note": "Frozen: change a start or an oracle only by bumping version (runs.jsonl names the version it ran).",
+  "tasks": [
+    {
+      "id": "kernel-taps",
+      "title": "Change a kernel: a five-tap box filter",
+      "start": [
+        "kernel.coax",
+        "task.md"
+      ],
+      "editable": [
+        "kernel.coax"
+      ],
+      "start_sha256": {
+        "kernel.coax": "915cb7f51e99dd68ad2ea0b0747c3bff124cb557cff6ae4e740868b28a735ba8",
+        "task.md": "ed74b572112f539bac6b227900bc64c3961fb7d34d25e8c1b9a356eeb9cc9cbe"
+      },
+      "oracle_sha256": "4c4baec5d9f93bc572a76259264ca76b843cab2d854d999d6105037de6c23124",
+      "oracle_checks": 3,
+      "budget": {
+        "seconds": 120,
+        "steps": 100000000,
+        "minutes": 15,
+        "checks": 8
+      }
+    },
+    {
+      "id": "add-field",
+      "title": "Add a field: a ship's fuel, kept in its save record",
+      "start": [
+        "ship.coax",
+        "task.md"
+      ],
+      "editable": [
+        "ship.coax"
+      ],
+      "start_sha256": {
+        "ship.coax": "b718aa3449ce1946a327cdb355cc1eebb03f37de74e646659ecac8c54aaedbf4",
+        "task.md": "5baeb347c8f8b28570f785253d3d38c8c58bc906297df36624b02d855b98c846"
+      },
+      "oracle_sha256": "ea0825db74d0ee3dc5c564199a9f178cd2e0a55e87afda3562894e4b62335a34",
+      "oracle_checks": 3,
+      "budget": {
+        "seconds": 120,
+        "steps": 100000000,
+        "minutes": 15,
+        "checks": 8
+      }
+    },
+    {
+      "id": "type-error",
+      "title": "Repair type errors without changing meaning",
+      "start": [
+        "mean.coax",
+        "task.md"
+      ],
+      "editable": [
+        "mean.coax"
+      ],
+      "start_sha256": {
+        "mean.coax": "fa909cb03049c47d4bf81d57b5dc1e2dca650c6001587af4e858e7016c6ce46a",
+        "task.md": "69b35cd749c17d8f0dbfc21f5eda5380d77f0e063ca10925616dec70093ed039"
+      },
+      "oracle_sha256": "1678dcb795ccf937e0bb4872518c2dcfca932946320c180052c0261acaa0d8b5",
+      "oracle_checks": 2,
+      "budget": {
+        "seconds": 120,
+        "steps": 100000000,
+        "minutes": 15,
+        "checks": 8
+      }
+    },
+    {
+      "id": "protocol-adapter",
+      "title": "Update a protocol adapter: y SEAT N from the room relay",
+      "start": [
+        "frame.coax",
+        "task.md"
+      ],
+      "editable": [
+        "frame.coax"
+      ],
+      "start_sha256": {
+        "frame.coax": "7f50645f4190d6f61d4db20df4d653e7e748aadf513d2377d9f3e291c0f46965",
+        "task.md": "9e28cd7ebb73fa75b7f6b70745f3d5d99aec33ea72769254ef96f4db642b33de"
+      },
+      "oracle_sha256": "4bda8bc6e718675953ac1a58fff367ead94563c7d7e2dedd7bbc7d64ddbba9f0",
+      "oracle_checks": 4,
+      "budget": {
+        "seconds": 120,
+        "steps": 100000000,
+        "minutes": 15,
+        "checks": 8
+      }
+    }
+  ]
+}

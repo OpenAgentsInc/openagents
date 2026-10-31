@@ -1,0 +1,29 @@
+// A ship and its save record: a version byte, then little-endian u32 fields.
+SHIP_VERSION :: 1;
+Ship :: struct { x: int; y: int; crew: int; }
+
+put_u32 :: (out: [] u8, at: int, v: int) -> int {
+  out[at] = cast(u8) (v & 255); out[at + 1] = cast(u8) ((v >> 8) & 255);
+  out[at + 2] = cast(u8) ((v >> 16) & 255); out[at + 3] = cast(u8) ((v >> 24) & 255);
+  return at + 4;
+}
+get_u32 :: (src: [] u8, at: int) -> int {
+  return int(src[at]) | (int(src[at + 1]) << 8) | (int(src[at + 2]) << 16) | (int(src[at + 3]) << 24);
+}
+
+// The record's length.
+encode :: (s: Ship, out: [] u8) -> int {
+  out[0] = cast(u8) SHIP_VERSION;
+  n := put_u32(out, 1, s.x);
+  n = put_u32(out, n, s.y);
+  n = put_u32(out, n, s.crew);
+  return n;
+}
+// False when the record is not one this version reads.
+decode :: (src: [] u8, s: [] Ship) -> bool {
+  if src.count < 13 || src[0] != cast(u8) SHIP_VERSION { return false; }
+  s[0].x = get_u32(src, 1);
+  s[0].y = get_u32(src, 5);
+  s[0].crew = get_u32(src, 9);
+  return true;
+}

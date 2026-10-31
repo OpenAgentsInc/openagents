@@ -1,0 +1,25 @@
+// The oracle for kernel-taps (frozen: its SHA-256 is pinned in manifest.json).
+#load "kernel.coax";
+main :: () {}
+near :: (a: f32, b: f32) -> bool { return a - b < 0.0001 && b - a < 0.0001; }
+#test "an impulse spreads over five samples, a fifth each" {
+  src: [9] f32; dst: [9] f32;
+  src[4] = 5;
+  box(src[..], dst[..]);
+  for i: 0..<9 { #assert near(dst[i], ifx i >= 2 && i <= 6 then 1.0f32 else 0.0f32); }
+}
+#test "the ends are clamped: the first sample counts three times at the left edge" {
+  src: [6] f32; dst: [6] f32;
+  for i: 0..<6 { src[i] = f32(i); }
+  box(src[..], dst[..]);
+  #assert near(dst[0], (0 + 0 + 0 + 1 + 2) / 5.0);
+  #assert near(dst[1], (0 + 0 + 1 + 2 + 3) / 5.0);
+  #assert near(dst[3], (1 + 2 + 3 + 4 + 5) / 5.0);
+  #assert near(dst[5], (3 + 4 + 5 + 5 + 5) / 5.0);
+}
+#test "a flat row stays flat" {
+  src: [4] f32; dst: [4] f32;
+  for i: 0..<4 { src[i] = 2.5; }
+  box(src[..], dst[..]);
+  for i: 0..<4 { #assert near(dst[i], 2.5); }
+}
