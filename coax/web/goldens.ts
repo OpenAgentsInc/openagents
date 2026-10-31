@@ -386,16 +386,21 @@ if (journey) lanes.push({ name: "journey", run: async (t) => {
   }
   const galaxy = await t.arrive("galaxy")
   if (!galaxy) return
-  // The Haunted House's tag (orange words under its planet) moves with the
-  // orbit: click the middle of the row with the most orange in it.
+  // The Haunted House's tag (a plate edged in the focus's lit gold under its
+  // planet, verse.coax EMBER_*; orange is only for Bitcoin since 34c9bb6f0f)
+  // moves with the orbit. Its top and bottom edges are the two longest gold
+  // rows a plate's height apart: click between them, in the middle.
   const fresh = png(await t.shot()), rows = new Array(fresh.h).fill(0), xs: number[][] = Array.from({ length: fresh.h }, () => [])
   for (let y = 0; y < fresh.h; y++) for (let x = 0; x < fresh.w; x++) {
     const i = (y * fresh.w + x) * 4, r = fresh.px[i], g = fresh.px[i + 1], b = fresh.px[i + 2]
-    if (r > 170 && g > 80 && g < 190 && b < 100 && r - g > 50) { rows[y]++; xs[y].push(x) }
+    if (r > 180 && g > 140 && g < 215 && b > 70 && b < 150 && r - b > 70) { rows[y]++; xs[y].push(x) }
   }
-  const y = rows.indexOf(Math.max(...rows)), x = xs[y].sort((a, b) => a - b)[xs[y].length >> 1]
-  t.check(rows[y] > 20, `galaxy: the Haunted House's tag is drawn (${rows[y]} orange pixels at y ${y})`)
-  if (rows[y] <= 20) return
+  const top = rows.indexOf(Math.max(...rows))
+  let other = -1
+  for (let y = Math.max(0, top - 40); y <= Math.min(fresh.h - 1, top + 40); y++) if (Math.abs(y - top) >= 10 && (other < 0 || rows[y] > rows[other])) other = y
+  const y = other >= 0 && rows[other] > rows[top] / 2 ? (top + other) >> 1 : top + 12, x = xs[top].sort((a, b) => a - b)[xs[top].length >> 1]
+  t.check(rows[top] > 20, `galaxy: the Haunted House's tag is drawn (${rows[top]} gold pixels at y ${top})`)
+  if (rows[top] <= 20) return
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
     await t.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 })
   if (!(await t.arrive("haunted-house")) || root) return
