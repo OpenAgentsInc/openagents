@@ -1,0 +1,35 @@
+// World XYZ algebra. Helpers trust admitted finite fixed-model inputs; no
+// public caller-POD provenance gate or general frame-transform API is implied.
+#load "panda-inverse-dynamics-types.coax";
+#authority;
+#test "inverse dynamics dense cross and matrix products have independent literal components" {
+ c:=pid_cross([3]f64.[1,2,3],[3]f64.[-4,5,-6]);#assert c[0]== -27 && c[1]== -6 && c[2]==13;
+ r:=pid_matvec([9]f64.[2,1,-1,-3,4,2,5,-2,6],[3]f64.[1,-2,3]);#assert r[0]== -3 && r[1]== -5 && r[2]==27;
+}
+#forall "inverse dynamics fixed hinge and slide recurrences keep physical world accelerations" kind:0..<3 {
+ p:=PidBodyMotion.{linear=[3]f64.[1,2,3],angular=[3]f64.[0,0,2],linear_acceleration=[3]f64.[3,5,7],angular_acceleration=[3]f64.[0,0,3]};
+ c:=pid_child(p,[3]f64.[4,5,6],[3]f64.[1,0,0],cast(PidJoint)kind,4,5);
+ vl:=[3]f64.[-9,10,3];a:=[3]f64.[-28,-3,7];w:=[3]f64.[0,0,2];alpha:=[3]f64.[0,0,3];
+ if kind==1 {w=[3]f64.[4,0,2];alpha=[3]f64.[5,8,3];}if kind==2 {vl[0]= -5;a=[3]f64.[-23,13,7];}
+ for i:0..<3 {#assert c.linear[i]==vl[i] && c.angular[i]==w[i] && c.linear_acceleration[i]==a[i] && c.angular_acceleration[i]==alpha[i];}
+}
+#test "inverse dynamics mixed world axes distinguish axis derivative and slide Coriolis signs" {
+ p:=PidBodyMotion.{linear=[3]f64.[2,-3,5],angular=[3]f64.[1,2,3],linear_acceleration=[3]f64.[7,11,-13],angular_acceleration=[3]f64.[-2,3,4]};
+ r:=[3]f64.[-3,4,2];axis:=[3]f64.[0.6,0.8,0];h:=pid_child(p,r,axis,PidJoint.hinge,-2,3);s:=pid_child(p,r,axis,PidJoint.slide,-2,3);
+ // w×r=(-8,-11,10); alpha×r=(-10,-8,1); w×(w×r)=(53,-34,5).
+ #assert h.linear[0]== -6 && h.linear[1]== -14 && h.linear[2]==15;
+ #assert abs(h.angular[0]+0.2)<1e-14 && abs(h.angular[1]-0.4)<1e-14 && h.angular[2]==3;
+ #assert abs(h.angular_acceleration[0]-4.6)<1e-14 && abs(h.angular_acceleration[1]-1.8)<1e-14 && abs(h.angular_acceleration[2]-4.8)<1e-14;
+ #assert abs(s.linear[0]+7.2)<1e-14 && abs(s.linear[1]+15.6)<1e-14 && s.linear[2]==15;
+ #assert abs(s.linear_acceleration[0]-61.4)<1e-13 && abs(s.linear_acceleration[1]+35.8)<1e-13 && abs(s.linear_acceleration[2]+5.4)<1e-13;
+}
+
+pid_cross :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+pid_matvec :: (m:[9]f64,v:[3]f64)->[3]f64 {r:[3]f64;for i:0..<3 {for j:0..<3 {r[i]+=m[i*3+j]*v[j];}}return r;}
+pid_child :: (parent:PidBodyMotion,r:[3]f64,axis:[3]f64,kind:PidJoint,speed:f64,acceleration:f64)->PidBodyMotion {
+ child:=parent;wr:=pid_cross(parent.angular,r);ar:=pid_cross(parent.angular_acceleration,r);centripetal:=pid_cross(parent.angular,wr);
+ for i:0..<3 {child.linear[i]+=wr[i];child.linear_acceleration[i]+=ar[i]+centripetal[i];}
+ if kind==PidJoint.hinge {turn:=pid_cross(parent.angular,axis);for i:0..<3 {child.angular[i]+=axis[i]*speed;child.angular_acceleration[i]+=axis[i]*acceleration+turn[i]*speed;}}
+ if kind==PidJoint.slide {turn:=pid_cross(parent.angular,axis);for i:0..<3 {child.linear[i]+=axis[i]*speed;child.linear_acceleration[i]+=axis[i]*acceleration+2.0*turn[i]*speed;}}
+ return child;
+}

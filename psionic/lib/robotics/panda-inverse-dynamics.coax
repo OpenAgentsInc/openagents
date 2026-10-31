@@ -1,0 +1,63 @@
+// Fixed16-body9DOF inverse force: M(q)*a + c(q,v) + g(q).
+// No actuator/passive/contact force, integration, generic importer or hardware.
+#load "panda-inverse-dynamics-force.coax";
+#load "panda-inverse-dynamics-check-fixtures.coax";
+#authority;
+#forall "inverse dynamics shape predicates preserve every span count before numerical admission" field:0..<7,delta:0..<5 {
+ n:=[7]int.[7,2,7,2,7,2,1];n[field]+=delta-2;#assert pid_shapes(n[0],n[1],n[2],n[3],n[4],n[5],n[6])==(delta==2);
+}
+#forall "inverse dynamics raw shapes preserve each packed coordinate extent" field:0..<4,delta:0..<5 {
+ n:=[4]int.[9,9,9,1];n[field]+=delta-2;#assert pid_raw_shapes(n[0],n[1],n[2],n[3])==(delta==2);
+}
+#forall "inverse dynamics all rate acceleration boundaries and next outside word are explicit" axis:0..<9,negative:bool,acceleration:bool {
+ hinge:=ifx acceleration then 200.0 else 20.0;slide:=ifx acceleration then 20.0 else 2.0;limit:=ifx axis<7 then hinge else slide;words:[9]u64;words[axis]=f64_bits(ifx negative then -limit else limit);
+ #assert pid_admit(words,hinge,slide)==PfkStatus.ok;words[axis]+=1;#assert pid_admit(words,hinge,slide)==PfkStatus.range;
+ for bad:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff0000000000001,0x7ff8000000000001,0xfff8000000000001] {words[axis]=bad;#assert pid_admit(words,hinge,slide)==PfkStatus.number;}
+}
+#test "inverse dynamics increasing index number and range precedence is preserved" {
+ words:[9]u64;words[0]=f64_bits(21);words[1]=0x7ff8000000000001;#assert pid_admit(words,20,2)==PfkStatus.range;
+ words[0]=0x7ff8000000000001;words[1]=f64_bits(21);#assert pid_admit(words,20,2)==PfkStatus.number;
+}
+#forall "inverse dynamics typed shape refusal leaves all public output bytes unchanged" field:0..<8 {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);out:=[2]PidOutput.[pid_poison(),pid_poison()];old:=out[0];
+ qs:=q[..];ss:=s[..];vs:=v[..];svs:=sv[..];as:=a[..];sas:=sa[..];os:=out[0..<1];
+ if field==0 {qs=q[0..<6];}if field==1 {ss=s[0..<1];}if field==2 {vs=v[0..<6];}if field==3 {svs=sv[0..<1];}if field==4 {as=a[0..<6];}if field==5 {sas=sa[0..<1];}if field==6 {os=out[0..<0];}if field==7 {os=out[..];}
+ q[0].value=101;#assert pid_inverse(qs,ss,vs,svs,as,sas,os)==PfkStatus.shape;pid_same(out[0],old);pid_same(out[1],old);
+}
+#forall "inverse dynamics delegated positions then velocity then acceleration refusal is atomic" field:0..<6 {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);out:=[1]PidOutput.[pid_poison()];old:=out[0];
+ if field==0 {q[0].value=101;}if field==1 {s[0].value=2;}if field==2 {v[0].value=21;}if field==3 {sv[0].value=3;}if field==4 {a[0].value=201;}if field==5 {sa[0].value=21;}
+ #assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],out[..])==PfkStatus.range;pid_same(out[0],old);
+}
+#test "inverse dynamics admitted force keeps spare output raw ABI bias parity and acceleration linearity" {
+ q:=[7]pfku.Quantity(pfku.Radian,f64).[pfku.Quantity.{value=0.3},pfku.Quantity.{value=-0.4},pfku.Quantity.{value=0.5},pfku.Quantity.{value=-1.6},pfku.Quantity.{value=-0.7},pfku.Quantity.{value=1.2},pfku.Quantity.{value=0.9}];s:[2]pfku.Quantity(pfku.Metre,f64);s[0].value=0.017;s[1].value=-0.029;
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);out:=[2]PidOutput.[pid_poison(),pid_poison()];old:=out[1];g:[1]PidOutput;bias:[1]PidOutput;opposite:[1]PidOutput;
+ #assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],g[..])==PfkStatus.ok;
+ m:[1]PmOutput;#assert pm_forward(q[..],s[..],m[..])==PfkStatus.ok;for i:0..<7 {#assert abs(g[0].hinge[i].value-m[0].hinge_gravity[i].value)<2e-10;}for i:0..<2 {#assert abs(g[0].slide[i].value-m[0].slide_gravity[i].value)<2e-10;}
+ for i:0..<7 {v[i].value=(f64(i)-3)*0.2;}sv[0].value=0.03;sv[1].value=-0.02;#assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],bias[..])==PfkStatus.ok;
+ for i:0..<7 {v[i].value=-v[i].value;}for i:0..<2 {sv[i].value=-sv[i].value;}#assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],opposite[..])==PfkStatus.ok;for i:0..<9 {#assert abs(pid_at(bias[0],i)-pid_at(opposite[0],i))<2e-11;}
+ for i:0..<7 {a[i].value=f64(i)-3;}sa[0].value=0.2;sa[1].value=-0.15;#assert pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],out[0..<1])==PfkStatus.ok;pid_same(out[1],old);
+ for i:0..<7 {want:=opposite[0].hinge[i].value;for j:0..<7 {want+=m[0].hinge_hinge[i*7+j].value*a[j].value;}for j:0..<2 {want+=m[0].hinge_slide[i*2+j].value*sa[j].value;}#assert abs(out[0].hinge[i].value-want)<2e-9;}
+ for i:0..<2 {want:=opposite[0].slide[i].value;for j:0..<7 {want+=m[0].slide_hinge[i*7+j].value*a[j].value;}for j:0..<2 {want+=m[0].slide_slide[i*2+j].value*sa[j].value;}#assert abs(out[0].slide[i].value-want)<2e-9;}
+ rq:[9]f64;rv:[9]f64;ra:[9]f64;for i:0..<7 {rq[i]=q[i].value;rv[i]=v[i].value;ra[i]=a[i].value;}for i:0..<2 {rq[i+7]=s[i].value;rv[i+7]=sv[i].value;ra[i+7]=sa[i].value;}raw:[1]PidOutput;#assert pid_inverse_raw(rq[..],rv[..],ra[..],raw[..])==PfkStatus.ok;pid_same(raw[0],out[0]);
+ #assert pid_inverse_raw(rq[0..<8],rv[..],ra[..],raw[..])==PfkStatus.shape;pid_same(raw[0],out[0]);
+}
+
+pid_shapes :: (q:int,s:int,v:int,sv:int,a:int,sa:int,out:int)->bool {return q==7 && s==2 && v==7 && sv==2 && a==7 && sa==2 && out==1;}
+pid_raw_shapes :: (q:int,v:int,a:int,out:int)->bool {return q==9 && v==9 && a==9 && out==1;}
+// Positive finite bounds are fixed policy constants at the admitted entry point.
+pid_admit :: (words:[9]u64,hinge:f64,slide:f64)->PfkStatus {
+ for i:0..<9 {if !pfk_finite(words[i]) {return PfkStatus.number;}limit:=ifx i<7 then hinge else slide;if abs(f64_from_bits(words[i]))>limit {return PfkStatus.range;}}return PfkStatus.ok;
+}
+pid_inverse :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),velocities:[]pfku.Quantity(PidAngularRate,f64),slide_velocities:[]pfku.Quantity(PidLinearRate,f64),accelerations:[]pfku.Quantity(PidAngularAcceleration,f64),slide_accelerations:[]pfku.Quantity(PidLinearAcceleration,f64),output:[]PidOutput)->PfkStatus #export_c {
+ if !pid_shapes(angles.count,slides.count,velocities.count,slide_velocities.count,accelerations.count,slide_accelerations.count,output.count) {return PfkStatus.shape;}
+ poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
+ v:[9]f64;a:[9]f64;vw:[9]u64;aw:[9]u64;for i:0..<7 {v[i]=velocities[i].value;a[i]=accelerations[i].value;vw[i]=f64_bits(v[i]);aw[i]=f64_bits(a[i]);}for i:0..<2 {v[i+7]=slide_velocities[i].value;a[i+7]=slide_accelerations[i].value;vw[i+7]=f64_bits(v[i+7]);aw[i+7]=f64_bits(a[i+7]);}
+ status=pid_admit(vw,20,2);if status!=PfkStatus.ok {return status;}status=pid_admit(aw,200,20);if status!=PfkStatus.ok {return status;}
+ fresh:=pid_sum_owned(poses[0],pm_profile(),v,a);output[0]=fresh;return PfkStatus.ok;
+}
+pid_inverse_raw :: (positions:[]f64,velocities:[]f64,accelerations:[]f64,output:[]PidOutput)->PfkStatus #export_c {
+ if !pid_raw_shapes(positions.count,velocities.count,accelerations.count,output.count) {return PfkStatus.shape;}
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);a:[7]pfku.Quantity(PidAngularAcceleration,f64);sa:[2]pfku.Quantity(PidLinearAcceleration,f64);
+ for i:0..<7 {q[i].value=positions[i];v[i].value=velocities[i];a[i].value=accelerations[i];}for i:0..<2 {s[i].value=positions[i+7];sv[i].value=velocities[i+7];sa[i].value=accelerations[i+7];}return pid_inverse(q[..],s[..],v[..],sv[..],a[..],sa[..],output);
+}

@@ -1,0 +1,11 @@
+// Fixed source inverse force. PmHingeGravity/PmSlideGravity are the existing
+// physical J/radian and newton unit tags; their names do not restrict a force
+// to the gravity contribution. All raw world arrays are trusted internal data.
+#load "panda-inertia.coax";
+PidAngularRate :: struct @unit(mass=0,length=0,time=-1,angle=1,numerator=1,denominator=1) {}
+PidLinearRate :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+PidAngularAcceleration :: struct @unit(mass=0,length=0,time=-2,angle=1,numerator=1,denominator=1) {}
+PidLinearAcceleration :: struct @unit(mass=0,length=1,time=-2,angle=0,numerator=1,denominator=1) {}
+PidJoint :: enum u8 {fixed;hinge;slide;}
+PidBodyMotion :: struct {linear:[3]f64;angular:[3]f64;linear_acceleration:[3]f64;angular_acceleration:[3]f64;}
+PidOutput :: struct {hinge:[7]pfku.Quantity(PmHingeGravity,f64);slide:[2]pfku.Quantity(PmSlideGravity,f64);}

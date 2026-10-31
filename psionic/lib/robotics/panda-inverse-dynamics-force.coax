@@ -1,0 +1,45 @@
+// Body COM Newton-Euler force projected by qualified world body columns.
+#load "panda-inverse-dynamics-motion.coax";
+#authority;
+PidWrench :: struct {force:[3]f64;torque:[3]f64;}
+#test "inverse dynamics COM acceleration gyroscopic torque and gravity have literal values" {
+ pose:PfkPose;pose.position.x=1;pose.position.y=2;pose.position.z=3;pose.quaternion[0]=1;pose.rotation=[9]f64.[1,0,0,0,1,0,0,0,1];
+ body:=PmBody.{mass=2,com=[3]f64.[4,5,6],inertial=[4]f64.[1,0,0,0],principal=[3]f64.[2,3,5]};motion:=PidBodyMotion.{angular=[3]f64.[1,2,3],linear_acceleration=[3]f64.[7,8,9],angular_acceleration=[3]f64.[2,-3,4]};
+ w:=pid_wrench(pose,body,motion,[3]f64.[0,0,-10]);force:=[3]f64.[-110,12,106];torque:=[3]f64.[16,-18,22];for i:0..<3 {#assert w.force[i]==force[i] && w.torque[i]==torque[i];}
+ pose.rotation=[9]f64.[0,-1,0,1,0,0,0,0,1];pose.quaternion=[4]f64.[sqrt(0.5),0,0,sqrt(0.5)];w=pid_wrench(pose,body,motion,[3]f64.[0,0,-10]);force=[3]f64.[128,-76,-18];torque=[3]f64.[24,-12,18];for i:0..<3 {#assert w.force[i]==force[i] && w.torque[i]==torque[i];}
+}
+#test "inverse dynamics every world projection and generalized force pack lane is explicit" {
+ c:PmColumns;for i:0..<27 {c.linear[i]=f64(i)+1;c.angular[i]=f64(i)-13;}w:=PidWrench.{force=[3]f64.[-110,12,106],torque=[3]f64.[16,-18,22]};values:[9]f64;
+ for j:0..<9 {#assert pid_project(c,w,j)==28*f64(j)+1998;values[j]=f64(j)+0.25;}out:=pid_pack(values);for i:0..<7 {#assert out.hinge[i].value==f64(i)+0.25;}for i:0..<2 {#assert out.slide[i].value==f64(i)+7.25;}
+}
+#test "inverse dynamics source kinetic metric and armature acceleration agree at zero rate" {
+ poses:=pm_cardinal();profile:PmProfile;for i:0..<16 {profile.bodies[i].inertial[0]=1;}profile.bodies[15]=PmBody.{mass=2,com=[3]f64.[1,2,3],inertial=[4]f64.[1,0,0,0],principal=[3]f64.[2,3,5],ancestors=383};profile.gravity=[3]f64.[1,-2,3];for i:0..<9 {profile.armature[i]=f64(i)+1;}
+ v:[9]f64;a:[9]f64;for i:0..<9 {a[i]=f64(i)-3;}out:=pid_sum_owned(poses,profile,v,a);metric:=pm_sum_owned(poses,profile);
+ for i:0..<7 {want:=metric.hinge_gravity[i].value;for j:0..<7 {want+=metric.hinge_hinge[i*7+j].value*a[j];}for j:0..<2 {want+=metric.hinge_slide[i*2+j].value*a[j+7];}#assert abs(out.hinge[i].value-want)<1e-10;}
+ for i:0..<2 {want:=metric.slide_gravity[i].value;for j:0..<7 {want+=metric.slide_hinge[i*7+j].value*a[j];}for j:0..<2 {want+=metric.slide_slide[i*2+j].value*a[j+7];}#assert abs(out.slide[i].value-want)<1e-10;}
+}
+
+
+#test "inverse dynamics every moving source body contributes to acceleration force" {
+ q:=[7]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9];s:=[2]f64.[0.017,-0.029];poses:[1]PffOutput;#assert pff_forward_raw(q[..],s[..],poses[..])==PfkStatus.ok;
+ profile:=pm_profile();v:[9]f64;a:[9]f64;for i:0..<9 {a[i]=f64(i)-3;}out:=pid_sum_owned(poses[0],profile,v,a);m:=pm_sum_owned(poses[0],profile);
+ for i:0..<7 {want:=m.hinge_gravity[i].value;for j:0..<7 {want+=m.hinge_hinge[i*7+j].value*a[j];}for j:0..<2 {want+=m.hinge_slide[i*2+j].value*a[j+7];}#assert abs(out.hinge[i].value-want)<2e-10;}
+ for i:0..<2 {want:=m.slide_gravity[i].value;for j:0..<7 {want+=m.slide_hinge[i*7+j].value*a[j];}for j:0..<2 {want+=m.slide_slide[i*2+j].value*a[j+7];}#assert abs(out.slide[i].value-want)<2e-10;}
+}
+
+pid_wrench :: (pose:PfkPose,body:PmBody,motion:PidBodyMotion,gravity:[3]f64)->PidWrench {
+ com:=pm_com(pose,body.com);r:=[3]f64.[com[0]-pose.position.x,com[1]-pose.position.y,com[2]-pose.position.z];turn:=pid_cross(motion.angular_acceleration,r);spin:=pid_cross(motion.angular,pid_cross(motion.angular,r));inertia:=pm_inertia(pose,body.inertial,body.principal);iw:=pid_matvec(inertia,motion.angular);ia:=pid_matvec(inertia,motion.angular_acceleration);gyro:=pid_cross(motion.angular,iw);w:PidWrench;
+ for i:0..<3 {w.force[i]=body.mass*(motion.linear_acceleration[i]+turn[i]+spin[i]-gravity[i]);w.torque[i]=ia[i]+gyro[i];}return w;
+}
+pid_project :: (columns:PmColumns,wrench:PidWrench,joint:int)->f64 {
+ value:f64=0;for row:0..<3 {value+=columns.linear[row*9+joint]*wrench.force[row]+columns.angular[row*9+joint]*wrench.torque[row];}return value;
+}
+pid_pack :: (values:[9]f64)->PidOutput {out:PidOutput;for i:0..<7 {out.hinge[i].value=values[i];}for i:0..<2 {out.slide[i].value=values[i+7];}return out;}
+// Helpers trust a locally produced pose and the exact source profile. Neither
+// caller-authored PmProfile nor writable PidOutput values attest provenance.
+pid_sum_owned :: (poses:PffOutput,profile:PmProfile,velocities:[9]f64,accelerations:[9]f64)->PidOutput {
+ motion:=pid_motion(poses,velocities,accelerations);values:[9]f64;
+ // Fixed bodies0/1 have no generalized columns; their base reactions are not outputs.
+ for body:2..<16 {pose:=pid_pose(poses,body);b:=profile.bodies[body];wrench:=pid_wrench(pose,b,motion[body],profile.gravity);com:=pm_com(pose,b.com);columns:=pm_columns(com,b.ancestors,poses);for joint:0..<9 {values[joint]+=pid_project(columns,wrench,joint);}}
+ for joint:0..<9 {values[joint]+=profile.armature[joint]*accelerations[joint];}return pid_pack(values);
+}

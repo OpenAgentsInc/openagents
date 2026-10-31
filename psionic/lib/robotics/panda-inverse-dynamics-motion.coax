@@ -1,0 +1,34 @@
+// Fixed16-body world kinematics. Accelerations are physical kinematic values;
+// gravity is applied to required COM force later, never hidden in these arrays.
+#load "panda-inverse-dynamics-math.coax";
+#authority;
+#test "inverse dynamics zero rates and accelerations keep all body motion zero" {
+ q:=[7]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9];s:=[2]f64.[0.017,-0.029];poses:[1]PffOutput;#assert pff_forward_raw(q[..],s[..],poses[..])==PfkStatus.ok;v:[9]f64;a:[9]f64;m:=pid_motion(poses[0],v,a);
+ for b:0..<16 {for i:0..<3 {#assert m[b].linear[i]==0 && m[b].angular[i]==0 && m[b].linear_acceleration[i]==0 && m[b].angular_acceleration[i]==0;}}
+}
+#forall "inverse dynamics each velocity and acceleration basis agrees with geometric body columns" axis:0..<9,kind:0..<2 {
+ q:=[7]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9];s:=[2]f64.[0.017,-0.029];poses:[1]PffOutput;#assert pff_forward_raw(q[..],s[..],poses[..])==PfkStatus.ok;v:[9]f64;a:[9]f64;if kind==0 {v[axis]=1;}else {a[axis]=1;}m:=pid_motion(poses[0],v,a);profile:=pm_profile();
+ for body:0..<16 {pose:=pid_pose(poses[0],body);columns:=pm_columns([3]f64.[pose.position.x,pose.position.y,pose.position.z],profile.bodies[body].ancestors,poses[0]);for row:0..<3 {
+  if kind==0 {#assert abs(m[body].linear[row]-columns.linear[row*9+axis])<2e-12 && abs(m[body].angular[row]-columns.angular[row*9+axis])<2e-12;}
+  else {#assert abs(m[body].linear_acceleration[row]-columns.linear[row*9+axis])<2e-12 && abs(m[body].angular_acceleration[row]-columns.angular[row*9+axis])<2e-12;}
+ }}
+}
+#test "inverse dynamics slide-only rates do not create angular or linear acceleration" {
+ q:=[7]f64.[0.3,-0.4,0.5,-1.6,-0.7,1.2,0.9];s:=[2]f64.[0.017,-0.029];poses:[1]PffOutput;#assert pff_forward_raw(q[..],s[..],poses[..])==PfkStatus.ok;v:[9]f64;v[7]=0.2;a:[9]f64;m:=pid_motion(poses[0],v,a);
+ for b:0..<16 {for i:0..<3 {#assert m[b].angular[i]==0 && m[b].linear_acceleration[i]==0 && m[b].angular_acceleration[i]==0;if b<12 || b>=14 {#assert m[b].linear[i]==0;}else {#assert abs(m[b].linear[i]-poses[0].fingers[0].rotation[i*3+1]*0.2)<1e-15;}}}
+}
+
+// References are fixed validated source topology; index is in0..15.
+pid_pose :: (poses:PffOutput,index:int)->PfkPose {if index<12 {return poses.arm.links[index];}return poses.fingers[index-12];}
+pid_motion :: (poses:PffOutput,velocities:[9]f64,accelerations:[9]f64)->[16]PidBodyMotion {
+ motion:[16]PidBodyMotion;arm:=pfk_profile();fingers:=pff_profile();
+ // Bodies0 and1 are fixed world/base bodies and retain exact zero motion.
+ for body:2..<16 {
+  parent:int;joint:int;kind:=PidJoint.fixed;pose:=pid_pose(poses,body);axis:[3]f64;
+  if body<12 {node:=arm[body];parent=node.parent;joint=node.joint;if joint>=0 {kind=PidJoint.hinge;for i:0..<3 {axis[i]=pose.rotation[i*3+2];}}}
+  else {node:=fingers[body-12];parent=node.parent;joint=node.joint;if joint>=0 {kind=PidJoint.slide;joint+=7;for i:0..<3 {axis[i]=pose.rotation[i*3+1];}}}
+  p:=motion[parent];origin:=pid_pose(poses,parent).position;
+  r:=[3]f64.[pose.position.x-origin.x,pose.position.y-origin.y,pose.position.z-origin.z];speed:f64=0;acceleration:f64=0;if kind!=PidJoint.fixed {speed=velocities[joint];acceleration=accelerations[joint];}
+  motion[body]=pid_child(p,r,axis,kind,speed,acceleration);
+ }return motion;
+}

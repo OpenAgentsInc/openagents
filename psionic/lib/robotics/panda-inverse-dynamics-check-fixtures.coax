@@ -1,0 +1,4 @@
+#load "panda-inverse-dynamics-types.coax";
+pid_poison :: ()->PidOutput {out:PidOutput;for i:0..<7 {out.hinge[i].value=12345+f64(i);}for i:0..<2 {out.slide[i].value=23456+f64(i);}return out;}
+pid_same :: (a:PidOutput,b:PidOutput) {for i:0..<7 {#assert f64_bits(a.hinge[i].value)==f64_bits(b.hinge[i].value);}for i:0..<2 {#assert f64_bits(a.slide[i].value)==f64_bits(b.slide[i].value);}}
+pid_at :: (out:PidOutput,j:int)->f64 {if j<7 {return out.hinge[j].value;}return out.slide[j-7].value;}
